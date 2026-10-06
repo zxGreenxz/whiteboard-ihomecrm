@@ -1,6 +1,11 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { DEFERRED_TEST_PATTERNS } from "./scripts/lib/deferred-modules.mjs";
+
+if (process.env.VITEST && DEFERRED_TEST_PATTERNS.length) {
+  console.warn("DEFERRED: test riêng Zalo/Copilot không chạy; xem tooling/deferred-modules.json. Không tính là pass.");
+}
 
 // Các gói @radix-ui mà ENTRY import tĩnh (qua Toaster/Tooltip/Label/Checkbox/
 // Slot của màn auth) — đo bằng build chẩn đoán 2026-07-26: tách mỗi gói Radix
@@ -81,6 +86,7 @@ export default defineConfig(() => ({
     // this one's, and `verify:upstream` already covers that code.
     exclude: [
       ...configDefaults.exclude,
+      ...DEFERRED_TEST_PATTERNS,
       ".e2e-fleet/**",
       "**/.claude/worktrees/**",
       // Same class as the line above: `vitest run` takes NAME patterns, not paths,

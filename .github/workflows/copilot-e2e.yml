@@ -1,3 +1,5 @@
+# DEFERRED by user request: retained for restoration, no scheduled or manual execution.
+# Restore together with tooling/deferred-modules.json and test-matrix declarations.
 # E2E Copilot — 4 spec chạy trên trình duyệt thật, KHÔNG chạy theo mỗi PR.
 #
 # VÌ SAO TÁCH RA KHỎI ci-gates.yml
@@ -124,9 +126,6 @@ on:
         options:
           - full
           - batch-remaining
-  schedule:
-    # 19:00 UTC = 02:00 giờ Việt Nam (UTC+7) — ngoài giờ làm việc.
-    - cron: '0 19 * * *'
 
 permissions:
   contents: read
@@ -139,6 +138,7 @@ concurrency:
 
 jobs:
   copilot-e2e:
+    if: ${{ false }} # DEFERRED, not pass evidence
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

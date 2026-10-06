@@ -121,18 +121,6 @@
         "src/pages/home/launcherTiles.ts"
       ]
     },
-    "copilot": {
-      "label": "AI Copilot",
-      "why": "Copilot trả lời người dùng thật bằng giọng của hệ thống; tài liệu sai hoặc rò rỉ tài liệu nhạy cảm đều là sự cố hướng ra ngoài.",
-      "crossReview": false,
-      "gates": [
-        "npm run gate:copilot-docs"
-      ],
-      "paths": [
-        "src/copilot/**",
-        "docs/he-thong/**"
-      ]
-    },
     "docs": {
       "label": "Tài liệu",
       "why": "Rủi ro thấp, nhưng số đếm chép tay và trang quá hạn đã từng dẫn người đọc đi sai.",

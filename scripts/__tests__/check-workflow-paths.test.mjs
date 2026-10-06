@@ -213,12 +213,17 @@ describe("trạng thái thật của repo", () => {
     }
   });
 
-  it("copilot negative-proofs có PAT để đo kill switch production khi artifact quá hạn", () => {
+  it("deferred Copilot cannot run through CI or its retained manual workflow", () => {
     const job = wf(".github/workflows/ci-gates.yml").jobs["quality-gates"];
-    const step = job.steps.find((item) => String(item.name).startsWith("copilot-gates"));
-    expect(step, "phải tìm thấy bước copilot-gates").toBeDefined();
-    expect(step.env?.SUPABASE_PAT).toBe("${{ secrets.SUPABASE_PAT }}");
-    expect(step.run).toContain("node scripts/check-copilot-negative-proofs.mjs");
+    const commands = job.steps.map((step) => step.run ?? '').join('\n');
+    expect(commands).not.toMatch(/node scripts\/(?:check-copilot-|run-copilot-|generate-copilot-|check-golden-eval-report)/);
+    expect(commands).not.toMatch(/^\s+scripts\/__tests__\/[^\n]*copilot[^\n]*\\$/m);
+    expect(commands).toContain('supabase/functions/llm-proxy/index.test.ts');
+    expect(commands).toContain('supabase/functions/quick-entry/index.test.ts');
+    expect(commands).toContain('scripts/__tests__/check-migration-provenance.test.mjs');
+    const dormant = wf('.github/workflows/copilot-e2e.yml');
+    expect(layOn(dormant).schedule).toBeUndefined();
+    expect(dormant.jobs['copilot-e2e'].if).toBe('${{ false }}');
   });
 
   it("supabase-migrate: mọi script job chạy đều được CẢ push phủ", () => {

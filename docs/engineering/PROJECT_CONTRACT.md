@@ -4,10 +4,12 @@
 Đọc file này một lần, rồi đọc mã và hướng dẫn đúng khu vực đang sửa.
 Manifest được liên kết dưới đây sở hữu cấu hình và số liệu; không sao chép chúng thành luật thứ hai.
 
+Tạm ngưng phát triển, tối ưu và kiểm chuyên biệt Zalo/Copilot; bỏ qua context riêng, chỉ đọc [hồ sơ riêng](../deferred/zalo-copilot.md) khi user mở lại.
+
 ## 1. Dự án và nguồn tra cứu
 
 iHomeCRM quản lý cho thuê và sổ sách đang vận hành: React/Vite, Supabase, Vercel,
-Cloudflare R2, worker Zalo và Network Center.
+Cloudflare R2 và Network Center.
 
 | Cần biết | Nguồn |
 |---|---|
@@ -155,13 +157,6 @@ Normalizer bỏ partition runtime theo [generated-types-policy.json](../../supab
   test phải chứng minh chuỗi trong comment không làm gate báo đạt.
 - Giữ LF cho shebang theo `.gitattributes`. Không tính suite bị skip hoặc thiếu runner là pass.
 
-## 8b. Tài liệu AI Copilot
-
-[manifest.json](../he-thong/manifest.json) sở hữu `copilotIngest` và `reviewed`;
-frontmatter không lặp hai khoá này. File mới phải khai manifest; file bị loại phải có `why`.
-`requiredPermission` áp dụng cả kết quả và gợi ý; khi chưa load quyền, chỉ trả tài liệu không gắn quyền.
-Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
-
 ## 9. Credential
 
 - Vault duy nhất là `CLAUDE.local.md` ở checkout chính, bị gitignore; agent được đọc lúc task cần.
@@ -179,7 +174,7 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 
 1. Xác định scope/risk, đọc source và phụ thuộc liên quan; sửa đúng nguyên nhân.
 2. Trong lúc sửa, chạy test của phần đang sửa và `npm run typecheck:baseline`, cộng phép kiểm
-   §5–8 và risk-map của tier bị đụng. Bộ vitest đầy đủ do CI chạy.
+   §5–8 và risk-map của tier bị đụng. Bộ Vitest mặc định do CI chạy.
 3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
    đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
    Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh chạy song song, kèm nhóm

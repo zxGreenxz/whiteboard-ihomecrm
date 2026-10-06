@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
 import { laCI, lietKeUntracked, phanCap } from './lib/git-scope.mjs';
+import { isDeferredTest } from './lib/deferred-modules.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
@@ -80,8 +81,9 @@ export function phanLoaiMoCoi(orphans, tapUntracked, ci) {
   return { cung, mem };
 }
 
-export function assignSuites(files, suites) {
-  const matchers = suites.map((s) => ({
+export function assignSuites(files, suites, deferredTest = isDeferredTest) {
+  const activeSuites = suites.filter((s) => s.status !== 'deferred');
+  const matchers = activeSuites.map((s) => ({
     id: s.id,
     runner: s.runner,
     res: (s.includes ?? []).map(globToRegExp),
@@ -91,17 +93,19 @@ export function assignSuites(files, suites) {
     // khai app-unit ôm chúng.
     exRes: (s.excludes ?? []).map(globToRegExp),
   }));
-  const bySuite = new Map(suites.map((s) => [s.id, []]));
+  const bySuite = new Map(activeSuites.map((s) => [s.id, []]));
   const orphans = [];
+  const deferred = [];
 
   for (const file of files) {
+    if (deferredTest(file)) { deferred.push(file); continue; }
     const owners = matchers
       .filter((m) => m.res.some((re) => re.test(file)) && !m.exRes.some((re) => re.test(file)))
       .map((m) => m.id);
     if (owners.length === 0) orphans.push(file);
     for (const id of owners) bySuite.get(id).push(file);
   }
-  return { bySuite, orphans };
+  return { bySuite, orphans, deferred };
 }
 
 /**
@@ -198,6 +202,15 @@ function main(argv) {
   const loiCiJob = [];
   const cacheJob = new Map();
   for (const s of matrix.suites) {
+    if (s.status === 'deferred') {
+      if (!s.deferredReason || s.deferredReason.length < 30) loiCiJob.push(`${s.id}: DEFERRED cần lý do rõ trong deferredReason.`);
+      const owned = files.filter((file) => (s.includes ?? []).some((pattern) => globToRegExp(pattern).test(file))
+        && !(s.excludes ?? []).some((pattern) => globToRegExp(pattern).test(file)));
+      for (const file of owned.filter((file) => !isDeferredTest(file))) {
+        loiCiJob.push(`${s.id}: suite DEFERRED nhận test đang hoạt động ${file} — không được bỏ kiểm shared tests.`);
+      }
+      continue;
+    }
     if (!Array.isArray(s.ciJobs)) {
       loiCiJob.push(`${s.id}: thiếu trường \`ciJobs\` (mảng {workflow, job}; để [] nếu chỉ chạy local).`);
       continue;
@@ -218,7 +231,7 @@ function main(argv) {
   // xuất hiện trong đúng job. Nếu không, một include có thể làm hết "mồ côi"
   // trên giấy dù workflow không hề chạy file đó.
   const loiLenhCi = [];
-  for (const s of matrix.suites.filter((suite) => suite.ciCommandStep)) {
+  for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciCommandStep)) {
     const target = s.ciJobs?.[0];
     if (!target) {
       loiLenhCi.push(`${s.id}: có ciCommandStep nhưng không có ciJobs[0] để đối chiếu.`);
@@ -244,6 +257,7 @@ function main(argv) {
   // mà không ai phải quyết định gì.
   const loiBlocked = [];
   for (const s of matrix.suites) {
+    if (s.status === 'deferred') continue;
     const chayCi = Array.isArray(s.ciJobs) && s.ciJobs.length > 0;
     if (chayCi) {
       if (s.blockedFromCi) loiBlocked.push(`${s.id}: vừa khai ciJobs vừa khai blockedFromCi — mâu thuẫn, chọn một.`);
@@ -300,7 +314,11 @@ function main(argv) {
     return;
   }
 
-  const { bySuite, orphans } = assignSuites(files, matrix.suites);
+  const { bySuite, orphans, deferred } = assignSuites(files, matrix.suites);
+  if (deferred.length > 0) {
+    console.warn(`⚠ DEFERRED: ${deferred.length} file test Zalo/Copilot được lưu để mở lại; KHÔNG chạy, KHÔNG tính là pass (tooling/deferred-modules.json).`);
+    if (argv.includes('--list')) for (const file of deferred) console.log(`  DEFERRED  ${file}`);
+  }
 
   // ── Runner khai phải CHẠY NỔI file đó ─────────────────────────────────────
   //
@@ -408,7 +426,7 @@ function main(argv) {
   }
 
   console.log(
-    `✅ ${files.length} file test, ${matrix.suites.length} suite, không file nào mồ côi${
+    `✅ Phân bổ ${files.length - deferred.length} file test đang hoạt động, ${bySuite.size} suite, không file nào mồ côi${
       moCoiMem.length > 0 ? ` (trừ ${moCoiMem.length} file chưa add — xem ⚠ trên)` : ''
     }.`,
   );

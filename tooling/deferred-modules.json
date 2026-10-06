@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "note": "docs/deferred/zalo-copilot.md",
+  "modules": [
+    {
+      "id": "copilot",
+      "testPatterns": [
+        "src/copilot/**/*.test.ts",
+        "src/copilot/**/*.test.tsx",
+        "src/app/capabilities/__tests__/copilotPageContracts.test.ts",
+        "scripts/__tests__/check-copilot-*.test.mjs",
+        "scripts/__tests__/copilot-*.test.mjs",
+        "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+        "scripts/__tests__/check-golden-eval-report.test.mjs",
+        "scripts/__tests__/check-doc-freshness.test.mjs",
+        ".e2e-fleet/specs/copilot-*.spec.ts",
+        ".e2e-fleet/controlled/copilot-*.test.mjs",
+        ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
+        ".e2e-fleet/controlled/workflow-safety.test.mjs"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "check-copilot-routes",
+        "check-copilot-tool-inventory",
+        "check-doc-freshness",
+        "check-copilot-page-contracts",
+        "check-copilot-safe-control-markers",
+        "check-copilot-provider-policy",
+        "check-copilot-e2e-files",
+        "check-copilot-golden-eval",
+        "check-copilot-forbidden-actions",
+        "check-copilot-negative-proofs",
+        "generate-copilot-guide-corpus"
+      ]
+    },
+    {
+      "id": "zalo",
+      "testPatterns": [
+        "src/components/chat-zalo/**/*.test.ts",
+        "src/components/chat-zalo/**/*.test.tsx",
+        "src/hooks/chat-zalo/**/*.test.ts",
+        "src/hooks/__tests__/zaloMediaFeedback.test.ts",
+        "src/hooks/__tests__/zaloActions.feedback.test.ts",
+        "worker/__tests__/auto-reply-*.test.js",
+        "worker/__tests__/automation-*.test.js",
+        "worker/__tests__/scope-guard.test.js",
+        ".e2e-fleet/specs/chat-zalo.spec.ts"
+      ],
+      "gates": []
+    }
+  ]
+}

@@ -51,6 +51,32 @@ describe('assignSuites — excludes', () => {
   });
 });
 
+describe('assignSuites — deferred modules are not active coverage', () => {
+  const suites = [
+    { id: 'app', runner: 'vitest', includes: ['src/**/*.test.ts'] },
+    { id: 'copilot-browser', runner: 'playwright', status: 'deferred', includes: ['.e2e-fleet/specs/copilot.spec.ts'] },
+  ];
+  const dormant = (file) => file.includes('copilot');
+
+  it('reports deferred files separately while retaining shared quick-entry and money tests', () => {
+    const result = assignSuites([
+      'src/copilot/chat.test.ts', '.e2e-fleet/specs/copilot.spec.ts',
+      'src/quick-entry/save.test.ts', 'src/money.test.ts',
+    ], suites, dormant);
+    expect(result.deferred).toEqual(['src/copilot/chat.test.ts', '.e2e-fleet/specs/copilot.spec.ts']);
+    expect(result.bySuite.get('app')).toEqual(['src/quick-entry/save.test.ts', 'src/money.test.ts']);
+    expect(result.bySuite.has('copilot-browser')).toBe(false);
+    expect(result.orphans).toEqual([]);
+  });
+
+  it('does not let a deferred suite hide an undeclared active orphan', () => {
+    const result = assignSuites(['.e2e-fleet/specs/money.spec.ts'], [
+      { id: 'paused', runner: 'playwright', status: 'deferred', includes: ['.e2e-fleet/specs/**'] },
+    ], dormant);
+    expect(result.orphans).toEqual(['.e2e-fleet/specs/money.spec.ts']);
+  });
+});
+
 describe('crossRunnerConflicts', () => {
   // Đây là ca đã xảy ra thật 05/08/2026: 22 file `node:test` bị bước Vitest quét
   // phải và fail hàng loạt "No test suite found", trong khi matrix vẫn khai

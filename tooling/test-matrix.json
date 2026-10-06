@@ -1,7 +1,9 @@
 {
   "$comment": "Bản đồ: file test nào do suite nào chạy, bằng runner gì. Vấn đề nó giải: một file test viết ra nhưng KHÔNG nằm trong lệnh nào sẽ im lặng không bao giờ chạy — nhìn vào repo thì thấy 'đã có test', nhìn vào CI thì thấy xanh, mà thực tế không ai kiểm gì. Đó cũng là lý do repo đã có verify-network-center-test-completeness.mjs: test bị SKIP cũng báo pass. File này mở rộng ý đó ra toàn repo. Kiểm: npm run gate:test-matrix",
   "schemaVersion": 1,
+  "deferredModules": "tooling/deferred-modules.json",
   "notes": [
+    "deferredModules loại test được tạm hoãn khỏi mọi suite đang hoạt động. status=deferred giữ metadata để khôi phục, không khai test đã chạy hay pass.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json."
   ],
@@ -21,6 +23,8 @@
     },
     {
       "id": "copilot-golden-controlled-browser",
+      "status": "deferred",
+      "deferredReason": "Tạm hoãn test riêng Copilot theo yêu cầu người dùng; giữ source và metadata để mở lại. Không tính là đã kiểm hoặc pass.",
       "runner": "node --test",
       "ciJob": "copilot-e2e / copilot-e2e",
       "command": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs .e2e-fleet/controlled/copilot-batch-preflight.test.mjs .e2e-fleet/controlled/copilot-approval-readback.test.mjs",
@@ -183,6 +187,8 @@
     },
     {
       "id": "e2e-fleet-copilot",
+      "status": "deferred",
+      "deferredReason": "Tạm hoãn test riêng Copilot theo yêu cầu người dùng; giữ source và metadata để mở lại. Không tính là đã kiểm hoặc pass.",
       "runner": "playwright",
       "ciJob": "copilot-e2e / copilot-e2e",
       "command": "cd .e2e-fleet && FLEET_WORKERS=2 npx playwright test specs/copilot-readonly-smoke.spec.ts specs/copilot-confirmation.spec.ts specs/copilot-draft-matrix.spec.ts --reporter=list --trace=off",
@@ -204,6 +210,8 @@
     },
     {
       "id": "e2e-room-pass-live-acceptance",
+      "status": "deferred",
+      "deferredReason": "Tạm hoãn test riêng Copilot theo yêu cầu người dùng; giữ source và metadata để mở lại. Không tính là đã kiểm hoặc pass.",
       "runner": "playwright",
       "ciJob": "(local — reviewed Task17 operator only)",
       "command": "cd .e2e-fleet && FLEET_WORKERS=1 npx playwright test specs/copilot-room-pass-consent.spec.ts --reporter=list --trace=off",
@@ -252,13 +260,13 @@
         ".e2e-fleet/specs/copilot-draft-matrix.spec.ts",
         ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts"
       ],
-      "note": "Phần fleet CHƯA lên CI: bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO. Ba spec Copilot đã tách sang suite e2e-fleet-copilot nên bị loại ở `excludes` — nếu không, matrix sẽ nói hai suite cùng sở hữu chúng.",
+      "note": "Phần fleet hoạt động chưa lên CI: bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO hoặc TEST. Test riêng Copilot/Zalo được loại qua deferredModules; metadata suite Copilot giữ lại để khôi phục.",
       "ciJobs": [],
       "environment": "local",
       "blockedFromCi": {
-        "reason": "Credential KHÔNG còn là rào cản: 5 secret FLEET_* đã nạp 02/09/2026 và 3 spec Copilot đang chạy thật ở copilot-e2e.yml. Phần còn lại của fleet vẫn chưa có job nào gọi tới, và một số spec ghi dữ liệu đòi FLEET_BASE_URL trỏ bản preview dựng từ đúng commit đang review — chưa có đường dựng preview đó trong CI. Thiếu là JOB + MÔI TRƯỜNG, không phải mật khẩu.",
+        "reason": "Phần fleet hoạt động chưa có job CI gọi tới; các spec ghi dữ liệu cần FLEET_BASE_URL trỏ preview đúng commit và fixture DEMO/TEST được điều phối. Workflow Copilot hiện tạm hoãn, không cung cấp bằng chứng cho phần fleet này.",
         "expiry": "2026-11-30",
-        "exitCondition": "Dựng preview theo commit (hoặc chọn một môi trường DEMO cố định non-production) rồi mở rộng copilot-e2e.yml — hoặc thêm workflow fleet riêng — chạy nốt các spec còn lại; chuyển chúng sang suite có `ciJobs` và xoá mục này."
+        "exitCondition": "Dựng preview theo commit và workflow fleet riêng cho các spec đang hoạt động; chuyển chúng sang suite có ciJobs và xoá mục này. Không tự bật lại module được tạm hoãn."
       }
     },
     {

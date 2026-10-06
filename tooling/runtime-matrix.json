@@ -63,7 +63,7 @@
       "path": ".github/workflows/copilot-e2e.yml",
       "node": "24.18.0",
       "deno": null,
-      "note": "E2E Copilot chay tay + cron 19:00 UTC (02:00 VN). Node theo ci-gates: no chi chay npm ci + Playwright, khong co rang buoc engines rieng. Can secret FLEET_* nen tach khoi quality-gates."
+      "note": "DEFERRED: bỏ cron, khóa job kể cả chạy tay. Giữ runtime để phục hồi theo docs/deferred/zalo-copilot.md khi người dùng mở lại."
     },
     {
       "path": ".github/workflows/external-controls.yml",

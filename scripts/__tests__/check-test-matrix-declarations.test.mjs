@@ -73,7 +73,7 @@ describe("bất biến khai báo của test-matrix.json", () => {
   });
 
   it("suite không chạy CI phải có reason + expiry + exitCondition", () => {
-    for (const s of matrix.suites.filter((x) => (x.ciJobs ?? []).length === 0)) {
+    for (const s of matrix.suites.filter((x) => x.status !== 'deferred' && (x.ciJobs ?? []).length === 0)) {
       expect(s.blockedFromCi?.reason?.length, `${s.id}`).toBeGreaterThan(29);
       expect(s.blockedFromCi?.expiry, `${s.id}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(s.blockedFromCi?.exitCondition, `${s.id}`).toBeTruthy();
@@ -115,7 +115,7 @@ describe("bất biến khai báo của test-matrix.json", () => {
   });
 
   it("suite có ciCommandStep khai đúng lệnh đang chạy trong workflow", () => {
-    for (const s of matrix.suites.filter((suite) => suite.ciCommandStep)) {
+    for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciCommandStep)) {
       const target = s.ciJobs[0];
       const doc = yaml.load(readFileSync(new URL(`../../${target.workflow}`, import.meta.url), "utf8"));
       expect(lenhCuaBuoc(doc, target.job, s.ciCommandStep), s.id).toBe(s.command);

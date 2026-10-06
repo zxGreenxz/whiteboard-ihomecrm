@@ -1,7 +1,7 @@
 # Mục lục tham chiếu hệ thống
 
 > **Reviewed:** 2026-07-20  
-> `src/copilot/tools/registry.ts` nạp mọi `docs/he-thong/*.md` cho AI Copilot. Chỉ giữ hành vi hiện hành hoặc cảnh báo current trong thư mục này; audit lịch sử nằm ở `docs/audits/` và `docs/refactor-2026-07/`.
+> Mục lục chỉ dẫn tới các domain trong phạm vi đang làm. Giữ hành vi hiện hành hoặc cảnh báo current trong thư mục này; audit lịch sử nằm ở `docs/audits/` và `docs/refactor-2026-07/`.
 
 ## Domain canonical
 
@@ -25,16 +25,14 @@
 | 15 | [Kênh công khai, Sale phòng & Thu tiền](15-kenh-cong-khai-sale-thu-tien.md) | `/r/:token`, `/sale-phong`, `/thu-tien` |
 | 16 | [Thanh lý hợp đồng](16-thanh-ly-hop-dong.md) | Move-out, forfeit, settlement và chứng từ |
 | 17 | [Bảng lương & thưởng](17-luong-thuong.md) | Ledger, snapshot, V5, hardening thời gian/ảnh |
-| 18 | [Zalo Chat](18-zalo-chat.md) | Worker, queue, hội thoại và Realtime |
 | 19 | [SOP tiền & sổ quỹ](19-sop-tien-va-so-quy.md) | Quy tắc vận hành tiền xuyên domain |
 | 20 | [Phê duyệt tài chính](20-phe-duyet-tai-chinh.md) | Rule, request, inbox, quyết định và posting |
-| 21 | [AI Copilot](21-ai-copilot.md) | Runtime, tool, UI-control, safety và giới hạn |
 | 22 | [Trung tâm mạng](22-network-center.md) | Fleet MikroTik, 4 thao tác đóng, rollout theo toà |
 | 99 | [Quy trình tổng end-to-end](99-quy-trinh-tong.md) | Luồng xuyên domain và nguồn sự thật |
 
 ## Tham chiếu cắt ngang
 
-- [24 — Phát hành nền tảng](24-platform-delivery.md) — bốn đường lên production (web/schema/Edge/worker), CI gate nào chạy ở đâu, cron. Không phải domain nghiệp vụ nên Copilot **không** đọc.
+- [24 — Phát hành nền tảng](24-platform-delivery.md) — bốn đường lên production (web/schema/Edge/worker), CI gate nào chạy ở đâu, cron.
 - [Realtime sync](realtime-sync.md) — chiến lược đồng bộ, invalidation và cập nhật giao diện.
 - [Audit hiệu năng 30/06](perf-2026-06-30-toi-uu-hieu-nang.md) — bằng chứng theo mốc, không thay tài liệu domain hiện hành.
 

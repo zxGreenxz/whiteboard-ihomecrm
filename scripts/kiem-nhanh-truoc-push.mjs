@@ -23,6 +23,7 @@ import { readPat } from "./capture-production-catalog.mjs";
 import { DAO } from "./check-strict-islands.mjs";
 import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
 import { FILE_SINH as FILE_CORPUS_HUONG_DAN } from "./generate-copilot-guide-corpus.mjs";
+import { isDeferredGate } from "./lib/deferred-modules.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -42,7 +43,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // biên nhận cặp đôi với MỘT migration cụ thể và phải đi cùng commit của
 // migration đó (suýt tạo evidence mồ côi 25/08/2026).
 const TYPES = "src/integrations/supabase/types.ts";
-const TU_CHUA = [
+const TAT_CA_TU_CHUA = [
   ["sinh types.ts từ DB thật (gen:types)", ["scripts/gen-supabase-types.mjs"], { mang: true, soHuu: [TYPES] }],
   ["chuẩn hoá types.ts (bỏ partition + ghim phiên bản nền tảng)", ["scripts/normalize-supabase-types.mjs", "--write"], { soHuu: [TYPES] }],
   ["sinh manifest bề mặt RPC", ["scripts/generate-rpc-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/rpc-surface.json"] }],
@@ -61,7 +62,7 @@ const TU_CHUA = [
 ];
 
 // ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
-export const GATE_NHANH = [
+const TAT_CA_GATE_NHANH = [
   // contract-gates
   "check-agent-contract",
   "check-runtime-matrix",
@@ -114,6 +115,11 @@ export const GATE_NHANH = [
   // nợ strict mới
   "check-new-modules-strict",
 ];
+
+const tenScript = (muc) => Array.isArray(muc) ? muc[0] : muc;
+export const GATE_TAM_HOAN = TAT_CA_GATE_NHANH.filter((muc) => isDeferredGate(tenScript(muc)));
+export const GATE_NHANH = TAT_CA_GATE_NHANH.filter((muc) => !isDeferredGate(tenScript(muc)));
+export const TU_CHUA = TAT_CA_TU_CHUA.filter(([, args]) => !isDeferredGate(args[0]));
 
 // Nhóm NẶNG: chỉ đo MÃ NGUỒN — tách riêng để `--khong-dao-strict` còn đường chạy
 // nhanh khi chỉ sửa docs/script.
@@ -319,6 +325,7 @@ async function main() {
   process.on("SIGINT", () => { nhaLock(); process.exit(130); });
 
   try {
+    console.log(`⏸ DEFERRED: ${GATE_TAM_HOAN.length} gate và generator chuyên biệt tạm hoãn theo tooling/deferred-modules.json; không tính là đạt.`);
     console.log("── Bước 1/3: máy tự sinh số ──");
     // File đã bẩn TRƯỚC Bước 1 (so với index): --fix có vá số trên đó thì cũng
     // KHÔNG stage — có thể là sửa tay dở của phiên khác.
@@ -481,7 +488,7 @@ async function main() {
     if (doSo.length === 0 && loiTuChua.length === 0 && process.exitCode !== 1) {
       const soGate = danhSach.length + (quyet === "chay" ? 1 : 0);
       const conThieu = quyet === "chay" ? "" : " (Bước 3 CHƯA đo — xem ⚠ ở trên)";
-      console.log(`\n✅ Sạch — ${soGate} gate xanh trong ${giay}s${conThieu}. Push được.`);
+      console.log(`\n✅ ${soGate} gate đang áp dụng đạt trong ${giay}s${conThieu}; ${GATE_TAM_HOAN.length} gate DEFERRED, chưa kiểm. Push được.`);
       return;
     }
 

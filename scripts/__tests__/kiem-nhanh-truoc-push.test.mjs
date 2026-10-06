@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import {
   GATE_NANG,
   GATE_NHANH,
+  GATE_TAM_HOAN,
+  TU_CHUA,
   chayGioiHan,
   danhGiaLock,
   danhSachChay,
@@ -19,6 +21,7 @@ import {
   thuocSoHuu,
   tinhTapStage,
 } from "../kiem-nhanh-truoc-push.mjs";
+import { isDeferredTest } from "../lib/deferred-modules.mjs";
 
 describe("thuocSoHuu", () => {
   it("khớp file đích danh và tiền tố thư mục (kết thúc bằng /)", () => {
@@ -124,6 +127,39 @@ describe("quyetDinhDoRoOrg", () => {
 });
 
 describe("danh sách gate", () => {
+  it("hoãn gate và generator chuyên biệt nhưng vẫn kiểm tiền, quyền, migration", () => {
+    expect(GATE_TAM_HOAN).toContain("check-copilot-tool-inventory");
+    expect(GATE_TAM_HOAN).toContain("check-doc-freshness");
+    expect(GATE_NHANH).not.toContain("check-copilot-tool-inventory");
+    expect(GATE_NHANH).not.toContain("check-doc-freshness");
+    expect(TU_CHUA.some(([, args]) => args[0] === "scripts/generate-copilot-guide-corpus.mjs")).toBe(false);
+    for (const gate of ["check-money-table-dml", "check-route-permission-drift", "check-migration-provenance", "check-test-matrix"]) {
+      expect(GATE_NHANH).toContain(gate);
+    }
+  });
+
+  it("hoãn test chuyên biệt kể cả đường Windows, không mở rộng sang file kế bên", () => {
+    for (const path of [
+      "src/copilot/model.test.ts", "src/copilot/ui/chat.test.tsx",
+      "src\\hooks\\chat-zalo\\__tests__\\chat.test.ts",
+      "worker/__tests__/automation-runner.test.js",
+      "scripts/__tests__/check-copilot-routes.test.mjs",
+      ".e2e-fleet/specs/chat-zalo.spec.ts",
+    ]) expect(isDeferredTest(path), path).toBe(true);
+    for (const path of [
+      "src/copilot-other/chat.test.ts", "src/hooks/chat-zalo-other/chat.test.ts",
+      "src/hooks/__tests__/OrganizationContext.test.ts",
+      "src/lib/__tests__/copilotAuthorizedScopeRevocationMigration.test.ts",
+      "src/lib/__tests__/copilotMockOffFinalizeClampMigration.test.ts",
+      "src/lib/quickEntry/__tests__/convert.test.ts",
+      "supabase/functions/llm-proxy/index.test.ts",
+      "supabase/functions/quick-entry/index.test.ts",
+      "scripts/__tests__/check-csp-build-attestation.test.mjs",
+      "worker/__tests__/room-list-table-parity.test.js",
+      "worker/__tests__/lifecycle-sale.test.js",
+    ]) expect(isDeferredTest(path), path).toBe(false);
+  });
+
   it("lint ratchet nằm trong nhóm NẶNG — nó là gate CI hay đỏ sau push, nhưng chạy 3,5 phút", () => {
     expect(GATE_NANG).toContain("check-eslint-baseline");
     expect(GATE_NHANH).not.toContain("check-eslint-baseline");

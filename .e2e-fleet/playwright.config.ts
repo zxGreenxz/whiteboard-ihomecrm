@@ -1,6 +1,11 @@
 import { defineConfig } from '@playwright/test';
+import { DEFERRED_TEST_PATTERNS } from '../scripts/lib/deferred-modules.mjs';
 
 import { DUONG_DAN_COOKIE_BYPASS } from './global-setup';
+
+if (DEFERRED_TEST_PATTERNS.length) {
+  console.warn('DEFERRED: E2E riêng Zalo/Copilot không chạy; xem tooling/deferred-modules.json. Không tính là pass.');
+}
 
 /**
  * Mở khoá bản preview của Vercel, và CHỈ khi được đưa chìa.
@@ -29,6 +34,7 @@ function trangThaiMoKhoaPreview(): { storageState: string } | Record<string, nev
 // Tăng workers = mở nhiều trình duyệt cùng lúc. Chạy headless trên prod.
 export default defineConfig({
   testDir: './specs',
+  testIgnore: DEFERRED_TEST_PATTERNS.map((pattern) => `**/${pattern}`),
   globalSetup: './global-setup.ts',
   timeout: 90_000,
   expect: { timeout: 20_000 },

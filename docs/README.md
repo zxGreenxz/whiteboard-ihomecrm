@@ -1,7 +1,7 @@
 # Trung tâm tài liệu ptcrm
 
 > **Last reviewed:** 2026-09-02  
-> Đây là cổng vào duy nhất cho toàn bộ Markdown trong `docs/`. Mỗi nhóm có một index gần nhất; không tạo thêm file status song song khi đã có nguồn current.
+> Đây là cổng vào tài liệu trong phạm vi đang làm. Mỗi nhóm có một index gần nhất; không tạo thêm file status song song khi đã có nguồn current.
 
 ## Bắt đầu từ đâu
 
@@ -14,11 +14,9 @@
 | Đọc schema, migration và nguồn sự thật | [Database schema](DATABASE_SCHEMA.md) |
 | Vận hành Supabase | [Supabase runbook](../supabase/README.md) |
 | Xem trạng thái authorization | [Authorization current status](authorization/README.md) |
-| Vận hành AI Copilot | [AI Copilot current status](ai-copilot/README.md) |
 | Vận hành lương V5 | [Hệ lương thưởng](bang-luong/README.md) |
-| Vận hành Zalo worker | [Zalo CRM](zalo/README.md) |
 
-## Mục lục đầy đủ
+## Mục lục đang dùng
 
 ### Hợp đồng kỹ thuật — luật, không phải mô tả
 
@@ -37,7 +35,6 @@
 - [CODEBASE_STRUCTURE.md](CODEBASE_STRUCTURE.md) — canonical engineering overview.
 - [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) — inventory schema và cách xác minh nguồn đúng.
 - [AUTHORIZATION-PLAN.md](AUTHORIZATION-PLAN.md) — design baseline; trạng thái live ở `authorization/README.md`.
-- [AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md](AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md) — audit/roadmap snapshot bất biến. File này được giữ nguyên; các số liệu và link lịch sử bên trong không thay current runtime truth.
 
 ### Hướng dẫn đã xuất bản
 
@@ -49,11 +46,9 @@
 
 ### Tham chiếu kỹ thuật và vận hành
 
-- [he-thong/README.md](he-thong/README.md) — index đủ `00`–`24`, `99`, realtime và performance evidence.
+- [he-thong/README.md](he-thong/README.md) — tham chiếu các domain trong phạm vi đang làm, realtime và performance evidence.
 - [authorization/README.md](authorization/README.md) — current status + toàn bộ evidence/tranche còn giữ.
-- [ai-copilot/README.md](ai-copilot/README.md) — runtime, giới hạn, plan và spike evidence.
 - [bang-luong/README.md](bang-luong/README.md) — system reference, runbook, spec, plan và implementation log.
-- [zalo/README.md](zalo/README.md) — hiện trạng, rủi ro, setup và plan.
 - [doi-chieu/README.md](doi-chieu/README.md) — runbook đối chiếu NABUBU/Hiển Thu và 686-TCB/TKHIEP.
 
 ### Kế hoạch, audit và hồ sơ lịch sử
@@ -77,9 +72,9 @@
 | Loại | Ý nghĩa | Ví dụ |
 |---|---|---|
 | `canonical/current` | Mô tả hành vi hiện tại | `he-thong/**`, `CODEBASE_STRUCTURE.md`, `DATABASE_SCHEMA.md` |
-| `current-status` | Một index duy nhất cho trạng thái runtime | `authorization/README.md`, `ai-copilot/README.md` |
-| `runbook` | Quy trình vận hành/sự cố | `bang-luong/V5-RUNBOOK.md`, `zalo/ZALO-WORKER-SETUP.md`, `doi-chieu/**` |
-| `active-plan` | Việc chưa đóng hoặc kế hoạch đánh giá | `plans/**`, `zalo/PLAN.md` |
+| `current-status` | Một index duy nhất cho trạng thái runtime | `authorization/README.md` |
+| `runbook` | Quy trình vận hành/sự cố | `bang-luong/V5-RUNBOOK.md`, `doi-chieu/**` |
+| `active-plan` | Việc chưa đóng hoặc kế hoạch đánh giá | `docs/superpowers/plans/` trong phạm vi được giao |
 | `presentation-plan` | Bản demo/proposal cho họp | `huong-dan-su-dung/08-ke-hoach-phat-trien/**` |
 | `audit-evidence` | Snapshot theo ngày/commit | `audits/**`, authorization tranche, refactor phase |
 | `redirect` | Biển chỉ đường từ URL tài liệu cũ | hai trang báo cáo công nợ đã chuyển |
@@ -125,7 +120,7 @@ bối cảnh, không dùng làm đặc tả để code.
 
 - Không nhân bản cùng một nội dung ở nhiều nơi. Trang phụ tóm tắt và link về nguồn canonical.
 - Khi một plan hoàn tất, chuyển kết luận bền vững vào tài liệu current rồi xoá/đánh nhãn plan lịch sử.
-- Không để tài liệu historical trong `docs/he-thong/` vì AI Copilot nạp toàn bộ thư mục đó.
+- Giữ tài liệu historical ngoài `docs/he-thong/`; không dùng snapshot cũ thay cho tài liệu hiện hành.
 - Khi di chuyển/xoá file, cập nhật mọi comment/script/inbound link trong cùng commit.
 - Không sửa hoặc commit secret, dữ liệu nhận diện khách hàng hay output live nhạy cảm vào Markdown.
 
