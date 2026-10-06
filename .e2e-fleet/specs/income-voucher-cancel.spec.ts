@@ -96,6 +96,9 @@ test('phieu-thu-tao-la-tu-ghi-so-va-huy-duoc-ngay-tai-trang-thu-chi', async ({ p
   await page.getByRole('button', { name: 'Thêm hạng mục' }).click();
   await page.getByRole('checkbox', { name: /Tiền cọc/i }).first().click();
   await page.getByRole('button', { name: 'Xác nhận' }).click();
+  // Phiếu có hạng mục Tiền cọc bắt buộc chọn phòng (07/10/2026, depositRoomRule.ts).
+  await page.getByRole('combobox', { name: 'Phòng *' }).click();
+  await page.getByRole('option').filter({ hasNotText: 'Không chọn' }).first().click();
   await page.getByRole('textbox', { name: 'Số tiền' }).first().fill('250000');
 
   const [createResp] = await Promise.all([
@@ -207,7 +210,7 @@ test('nguoi-khong-phai-nguoi-thu-bi-chan-voi-cau-tieng-viet', async ({ browser }
   );
   const [ieType] = await sbGet(
     authChu,
-    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&limit=1`,
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&is_deposit=is.false&limit=1`,
   );
   const stamp = Date.now();
   const today = new Date().toISOString().slice(0, 10);

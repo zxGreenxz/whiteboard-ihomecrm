@@ -120,7 +120,7 @@ async function seedPendingVoucher(a: SbAuth, name: string, accountId: string) {
   const acc = { id: accountId };
   const [t] = await sbGet(
     a,
-    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&limit=1`,
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&is_deposit=is.false&limit=1`,
   );
   await sbRpc(a, 'ie_compat_insert_v2', {
     p_row: {

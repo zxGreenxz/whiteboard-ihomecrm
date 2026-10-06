@@ -76,7 +76,7 @@ async function seedPendingVoucher(a: SbAuth, name: string) {
   const [acc] = await sbGet(a, 'accounts?select=id&name=eq.DEMO%20Qu%E1%BB%B9%20ti%E1%BB%81n%20m%E1%BA%B7t&limit=1');
   const [t] = await sbGet(
     a,
-    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&limit=1`,
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&is_deposit=is.false&limit=1`,
   );
   const r = await fetch(`${a.base}/rest/v1/rpc/ie_compat_insert_v2`, {
     method: 'POST',

@@ -71,6 +71,9 @@ test('thu-tien-coc-tu-duyet-ngay', async ({ page }) => {
   await page.getByRole('button', { name: 'Thêm hạng mục' }).click();
   await page.getByRole('checkbox', { name: /Tiền cọc/i }).first().click();
   await page.getByRole('button', { name: 'Xác nhận' }).click();
+  // Phiếu có hạng mục Tiền cọc bắt buộc chọn phòng (07/10/2026, depositRoomRule.ts).
+  await page.getByRole('combobox', { name: 'Phòng *' }).click();
+  await page.getByRole('option').filter({ hasNotText: 'Không chọn' }).first().click();
   await page.getByRole('textbox', { name: 'Số tiền' }).first().fill('1000000');
 
   const [resp] = await Promise.all([

@@ -124,7 +124,7 @@ async function createIncomeAs(a: SbAuth, name: string, stamp: number, toa?: ToaN
   if (!seen.length) return '';
   const [t] = await sbGet(
     a,
-    `income_expense_types?select=id&organization_id=eq.${seen[0].organization_id}&type=eq.income&limit=1`,
+    `income_expense_types?select=id&organization_id=eq.${seen[0].organization_id}&type=eq.income&is_deposit=is.false&limit=1`,
   );
   const access = JSON.parse((await sbRpc(a, 'list_my_cashbook_access_v2', {})).body) as {
     cashbook_id: string;
