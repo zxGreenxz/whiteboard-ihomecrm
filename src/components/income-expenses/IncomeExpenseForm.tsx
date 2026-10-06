@@ -688,6 +688,8 @@ const IncomeExpenseFormInner = ({
       })),
       { shouldValidate: form.formState.isSubmitted }
     );
+    // Lỗi "cọc phải chọn phòng" phụ thuộc hạng mục: bỏ dòng cọc thì lỗi ở ô Phòng phải tự tắt.
+    if (form.formState.isSubmitted) void form.trigger('room_id');
   };
 
   const handleItemDescriptionChange = (index: number, value: string) => {
@@ -1575,6 +1577,7 @@ const IncomeExpenseFormInner = ({
                             variant="ghost"
                             size="icon"
                             className="shrink-0 h-8 w-8 text-destructive hover:text-destructive"
+                            aria-label={`Xoá hạng mục ${index + 1}`}
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="h-4 w-4" />

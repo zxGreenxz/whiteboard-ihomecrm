@@ -99,6 +99,16 @@ describe('Phiếu Tiền cọc bắt buộc chọn phòng', () => {
     expect(h.create).not.toHaveBeenCalled();
   });
 
+  it('bỏ dòng Tiền Cọc sau khi bị chặn ⇒ lỗi ở ô Phòng tự tắt', async () => {
+    moFormTao('tien-coc', 'Tiền Cọc');
+    fireEvent.click(nutLuu());
+    await waitFor(() => expect(oPhong().getAttribute('aria-invalid')).toBe('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Xoá hạng mục 1' }));
+    await waitFor(() => expect(oPhong().getAttribute('aria-invalid')).toBe('false'));
+    expect(screen.queryByText(DEPOSIT_ROOM_REQUIRED_MESSAGE)).toBeNull();
+    expect(screen.queryByText('Phòng *')).toBeNull();
+  });
+
   it('hạng mục không phải cọc ⇒ không bắt chọn phòng', async () => {
     moFormTao('tien-phong', 'Tiền phòng');
     expect(screen.queryByText('Phòng *')).toBeNull();

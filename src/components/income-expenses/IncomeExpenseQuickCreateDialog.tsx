@@ -48,6 +48,7 @@ import {
 import QuickCategoryInput from "./QuickCategoryInput";
 import CategoryCombobox from "@/components/income-expense-types/CategoryCombobox";
 import { todayISO } from '@/lib/collect';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom } from '@/lib/depositRoomRule';
 
 interface Props {
   open: boolean;
@@ -251,9 +252,12 @@ const IncomeExpenseQuickCreateDialog = ({
     }
   };
 
+  // Cọc không có phòng thì không hợp đồng nào nhận (depositRoomRule.ts) — "toàn tòa nhà" không đủ.
+  const depositNeedsRoom = needsDepositRoom([parsed.typeId], parsed.roomId, depositTypeIdSet(typeRows));
   const canSubmit =
     !!parsed.buildingId &&
     (!!parsed.roomId || parsed.isBuildingWide) &&
+    !depositNeedsRoom &&
     !!parsed.typeId &&
     parsed.amount != null &&
     !!accountId &&
@@ -439,13 +443,13 @@ const IncomeExpenseQuickCreateDialog = ({
             <>
               <PreviewRow
                 label="Phòng"
-                ok={!!parsed.roomId || parsed.isBuildingWide}
+                ok={(!!parsed.roomId || parsed.isBuildingWide) && !depositNeedsRoom}
                 value={
                   parsed.isBuildingWide
                     ? "Toàn tòa nhà (không phòng)"
                     : parsed.roomToken || "(chưa có)"
                 }
-                error={parsed.errors.roomNotFound}
+                error={parsed.errors.roomNotFound ?? (depositNeedsRoom ? DEPOSIT_ROOM_REQUIRED_MESSAGE : undefined)}
               />
               <PreviewRow
                 label="Tòa nhà"

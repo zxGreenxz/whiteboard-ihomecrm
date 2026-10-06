@@ -19,6 +19,11 @@
 --   phòng và hạng mục một lượt) không bị chặn nhầm ở trạng thái giữa chừng.
 --   Câu lỗi trùng DEPOSIT_ROOM_REQUIRED_MESSAGE (src/lib/depositRoomRule.ts): client dẫn
 --   lỗi về ô Phòng và báo đúng nguyên nhân.
+--   Lưu ý: lỗi nổ lúc COMMIT nên khối EXCEPTION bọc từng dòng trong một hàm (vd vòng lặp
+--   của generate_recurring_vouchers) KHÔNG bắt được — cả lượt chạy bị huỷ, không chỉ
+--   dòng hỏng. Hôm nay không có nguồn sinh ca đó: bước kiểm dữ liệu dưới đây bảo đảm
+--   không còn phiếu cọc sống thiếu phòng để làm phiếu cha, và không hợp đồng sống nào
+--   thiếu phòng để thanh lý chép room_id NULL sang phiếu hoàn/cấn cọc.
 --
 -- KHÔNG ĐỔI
 --   Không sửa phiếu cũ (4 phiếu thiếu phòng đều CANCELLED — không bị canh). Không đổi
@@ -28,29 +33,6 @@
 --   DROP TRIGGER zz_ie_item_deposit_requires_room ON public.income_expense_items;
 --   DROP TRIGGER zz_ie_deposit_requires_room ON public.income_expenses;
 -- ============================================================
-
--- 0. Không bật chặn khi còn phiếu cọc sống thiếu phòng: phiếu đó sẽ không sửa được.
-DO $truoc$
-DECLARE
-  v_ma text;
-BEGIN
-  SELECT string_agg(coalesce(ie.code, ie.id::text), ', ' ORDER BY ie.code)
-    INTO v_ma
-    FROM public.income_expenses ie
-   WHERE ie.room_id IS NULL
-     AND ie.deleted_at IS NULL
-     AND ie.approval_status IS DISTINCT FROM 'CANCELLED'
-     AND EXISTS (SELECT 1
-                   FROM public.income_expense_items i
-                   JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
-                  WHERE i.income_expense_id = ie.id
-                    AND t.is_deposit);
-  IF v_ma IS NOT NULL THEN
-    RAISE EXCEPTION 'Còn phiếu cọc chưa huỷ mà thiếu phòng: % — gắn phòng hoặc huỷ trước khi bật chặn', v_ma
-      USING ERRCODE = '55000';
-  END IF;
-END
-$truoc$;
 
 -- 1. Hàm kiểm (chạy lúc COMMIT). DEFINER để RLS không che dòng khi chính client ghi.
 CREATE OR REPLACE FUNCTION app_private.guard_deposit_voucher_room_v1()
@@ -115,7 +97,47 @@ CREATE CONSTRAINT TRIGGER zz_ie_deposit_requires_room
   WHEN (NEW.room_id IS NULL AND NEW.deleted_at IS NULL)
   EXECUTE FUNCTION app_private.guard_deposit_voucher_room_v1();
 
--- 3. Tự kiểm (chỉ catalog — chạy được trên database rỗng).
+-- 3. Không bật chặn khi dữ liệu đang có sẵn ca vi phạm. Đặt SAU lệnh tạo trigger: hai
+--    bảng đã bị khoá (SHARE ROW EXCLUSIVE) tới hết transaction nên không ai chen ghi được
+--    giữa lúc đếm và lúc trigger có hiệu lực. Bảng rỗng (dựng lại từ baseline) thì qua.
+DO $du_lieu$
+DECLARE
+  v_ma text;
+  v_hd int;
+BEGIN
+  -- Phiếu cọc sống thiếu phòng: sẽ không sửa được nữa.
+  SELECT string_agg(coalesce(ie.code, ie.id::text), ', ' ORDER BY ie.code)
+    INTO v_ma
+    FROM public.income_expenses ie
+   WHERE ie.room_id IS NULL
+     AND ie.deleted_at IS NULL
+     AND ie.approval_status IS DISTINCT FROM 'CANCELLED'
+     AND EXISTS (SELECT 1
+                   FROM public.income_expense_items i
+                   JOIN public.income_expense_types t ON t.id = i.income_expense_type_id
+                  WHERE i.income_expense_id = ie.id
+                    AND t.is_deposit);
+  IF v_ma IS NOT NULL THEN
+    RAISE EXCEPTION 'Còn phiếu cọc chưa huỷ mà thiếu phòng: % — gắn phòng hoặc huỷ trước khi bật chặn', v_ma
+      USING ERRCODE = '55000';
+  END IF;
+
+  -- Hợp đồng sống thiếu phòng: thanh lý chép room_id của hợp đồng sang phiếu hoàn/cấn cọc
+  -- (approve_contract_termination_v1, terminate_contract_move_out_impl,
+  -- create_termination_refund_voucher_v1) ⇒ sẽ bị chặn với câu "chọn phòng" mà người
+  -- dùng không làm theo được. Đo production 07/10/2026: 0 / 444 hợp đồng.
+  SELECT count(*) INTO v_hd
+    FROM public.contracts c
+   WHERE c.room_id IS NULL
+     AND c.deleted_at IS NULL;
+  IF v_hd > 0 THEN
+    RAISE EXCEPTION 'Còn % hợp đồng chưa xoá mà thiếu phòng — gắn phòng trước khi bật chặn phiếu cọc thiếu phòng', v_hd
+      USING ERRCODE = '55000';
+  END IF;
+END
+$du_lieu$;
+
+-- 4. Tự kiểm (chỉ catalog — chạy được trên database rỗng).
 DO $sau$
 DECLARE
   v_n int;

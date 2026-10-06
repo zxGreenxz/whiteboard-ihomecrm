@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Resolver } from 'react-hook-form';
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom, withDepositRoomRule } from '../depositRoomRule';
@@ -88,5 +89,13 @@ describe('máy chủ chặn phiếu cọc thiếu phòng (trigger zz_ie_deposit_
     expect(voucherFailureMessage(loiMayChu, 'tạo phiếu')).toBe(
       'Phiếu có hạng mục Tiền cọc phải chọn phòng. Chọn phòng của khách đặt cọc rồi lưu lại.',
     );
+  });
+});
+
+describe('câu lỗi máy chủ khớp câu client', () => {
+  it('migration raise ĐÚNG DEPOSIT_ROOM_REQUIRED_MESSAGE — lệch là client mất đường dẫn lỗi về ô Phòng', () => {
+    const sql = readFileSync('supabase/migrations/20261006173923_phieu_coc_bat_buoc_phong.sql', 'utf8');
+    expect(sql).toContain(`RAISE EXCEPTION '${DEPOSIT_ROOM_REQUIRED_MESSAGE}'`);
+    expect(sql).toContain("ERRCODE = '23514'");
   });
 });
