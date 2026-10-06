@@ -1,4 +1,5 @@
 import type { OperationErrorRule } from './friendlyError';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE } from './depositRoomRule';
 
 // Reviewed RPC reasons: sua_phieu_cho_duyet (20260925080906), ie_annotate_v1
 // (20260730120000), wp1_evidence_protection (20260801000000). This list must
@@ -12,6 +13,7 @@ export const VOUCHER_ERROR_RULES: readonly OperationErrorRule[] = [
     ['Tên ngân hàng nhận vượt quá 255 ký tự','receive_bank_name','Tên ngân hàng nhận tối đa 255 ký tự.'],
     ['Toà nhà không thuộc tổ chức của phiếu','building_id','Chọn toà nhà thuộc công ty của phiếu.'],
     ['Phòng không thuộc toà/tổ chức của phiếu','room_id','Chọn phòng thuộc toà nhà đã chọn.'],
+    [DEPOSIT_ROOM_REQUIRED_MESSAGE,'room_id','Phiếu có hạng mục Tiền cọc phải chọn phòng. Chọn phòng của khách đặt cọc rồi lưu lại.'],
     ['Sổ quỹ không thuộc tổ chức của phiếu','account_id','Chọn sổ quỹ thuộc công ty của phiếu.'],
     ['Không có quyền sử dụng sổ quỹ này','account_id','Không có quyền sử dụng sổ quỹ này. Chọn sổ quỹ bạn có quyền sử dụng.'],
   ] as const).map(([message,field,description])=>({message,description,fieldErrors:{[field]:description}})),

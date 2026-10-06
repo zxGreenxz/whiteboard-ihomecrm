@@ -12,6 +12,7 @@ import { DraftCard } from "../DraftCard";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
 import type { DraftState } from "@/lib/quickEntry/compose";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
+import type { CategoryRef } from "@/lib/quickEntry/categorySuggest";
 import { PERSONAL_CATEGORIES } from "@/lib/personalCategories";
 import type { Wallet } from '@/lib/personalFinance/contract';
 
@@ -58,6 +59,7 @@ function Harness(p: {
   spy?: (s: DraftState) => void;
   aiModel?: string | null;
   personalWallets?: Wallet[];
+  categoryList?: CategoryRef[];
 }) {
   const [s, setS] = useState(p.initial);
   return (
@@ -68,7 +70,7 @@ function Harness(p: {
         today={today}
         buildings={p.buildingList ?? buildings}
         rooms={rooms}
-        categories={categories}
+        categories={p.categoryList ?? categories}
         cashbooks={p.cashbookList ?? cashbooks}
         personalCategories={PERSONAL_CATEGORIES.map((name,i)=>({id:'cat-'+i,name,type:'EXPENSE',hidden:false}))}
         personalWallets={p.personalWallets}
@@ -308,5 +310,30 @@ describe("DraftCard — cá nhân", () => {
     expect(screen.queryByLabelText("Sổ quỹ")).toBeNull();
     expect(screen.getByText("Ảnh chỉ để AI đọc — không lưu.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Lưu vào ví" })).toHaveProperty("disabled", false);
+  });
+});
+
+describe("DraftCard — hạng mục Tiền cọc bắt buộc chọn phòng", () => {
+  const coc = [...categories, { id: "t-coc", name: "Tiền Cọc", category: "Tiền Cọc", type: "income" as const, is_deposit: true }];
+  const cocLine = { description: "khách cọc G03", amount: 1_000_000, categoryId: "t-coc", personalCategory: null, periodStart: null, periodEnd: null, transactionType: "INCOME" as const };
+
+  it("phòng để Cả toà ⇒ khoá Lưu, báo đỏ rõ nguyên nhân, ô Phòng đỏ", () => {
+    render(<Harness categoryList={coc} initial={state({ transactionType: "INCOME", lines: [cocLine] })} />);
+    expect((screen.getByRole("button", { name: "Lưu phiếu thu" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("alert").textContent).toBe("Phiếu có hạng mục Tiền cọc phải chọn phòng.");
+    expect(screen.getByRole("combobox", { name: "Phòng" }).getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText("Phòng *")).toBeTruthy();
+  });
+
+  it("đã chọn phòng ⇒ lưu được, không báo", () => {
+    render(<Harness categoryList={coc} initial={state({ transactionType: "INCOME", roomId: "r301", lines: [cocLine] })} />);
+    expect((screen.getByRole("button", { name: "Lưu phiếu thu" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Phiếu có hạng mục Tiền cọc phải chọn phòng.")).toBeNull();
+  });
+
+  it("hạng mục thường để Cả toà ⇒ không bắt phòng", () => {
+    render(<Harness categoryList={coc} initial={state()} />);
+    expect((screen.getByRole("button", { name: "Lưu phiếu chi" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("Phòng")).toBeTruthy();
   });
 });

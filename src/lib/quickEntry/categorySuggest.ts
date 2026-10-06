@@ -33,6 +33,8 @@ export interface CategoryRef {
   manual_hidden?: boolean | null;
   quick_entry_hidden?: boolean | null;
   sort_order?: number | null;
+  /** Hạng mục cọc ⇒ thẻ phải chọn phòng (depositRoomRule.ts). */
+  is_deposit?: boolean | null;
 }
 
 /** Hạng mục dòng tiền (không phải chi phí thường): đoán yếu vào đây thì không điền sẵn. */

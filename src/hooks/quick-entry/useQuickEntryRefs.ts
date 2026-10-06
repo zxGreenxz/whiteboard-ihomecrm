@@ -100,6 +100,7 @@ export function useQuickEntryRefs() {
       manual_hidden: t.manual_hidden ?? false,
       quick_entry_hidden: t.quick_entry_hidden ?? false,
       sort_order: t.sort_order ?? null,
+      is_deposit: t.is_deposit ?? false,
     }));
     return [...usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted }),...usableExpenseCategories(rows, { organizationId: orgId, canUseRestricted: canRestricted,type:'income' })];
   }, [canCompany, orgId, typesQ.data, canRestricted]);

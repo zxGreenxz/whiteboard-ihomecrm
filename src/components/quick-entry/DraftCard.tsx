@@ -20,6 +20,7 @@ import type { IeFormBuilding, IeFormRoom } from "@/hooks/useIncomeExpenseFormSco
 import type { PickerOption } from "@/hooks/quick-entry/useQuickEntryRefs";
 import { isLocked, type CardStatus } from "@/lib/quickEntry/cardStatus";
 import { primaryCode } from "@/lib/quickEntry/spokenBuilding";
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom } from "@/lib/depositRoomRule";
 import type { PersonalCategoryRef } from '@/lib/quickEntry/personalRefs';
 import type { Wallet } from '@/lib/personalFinance/contract';
 
@@ -121,7 +122,10 @@ export function DraftCard(props: DraftCardProps) {
   const d = state.draft;
   const company = d.mode === "company";
   const locked = isLocked(status);
-  const canSave = validateDraft(d).ok;
+  // Cọc không có phòng thì không HĐ nào nhận (depositRoomRule.ts) ⇒ chặn lưu ngay trên thẻ.
+  const hasDepositLine = company && needsDepositRoom(d.lines.map((l) => l.categoryId), null, depositTypeIdSet(props.categories));
+  const depositNeedsRoom = hasDepositLine && !d.roomId;
+  const canSave = validateDraft(d).ok && !depositNeedsRoom;
   const noCashbook = company && props.cashbooks.length === 0;
   const issues = issueTexts(d, noCashbook);
   const total = d.lines.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
@@ -268,7 +272,7 @@ export function DraftCard(props: DraftCardProps) {
                   </span>
                 )}
               </Field>
-              <Field label="Phòng">
+              <Field label={hasDepositLine ? "Phòng *" : "Phòng"}>
                 <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                   value={d.roomId ?? WHOLE_BUILDING}
                   onValueChange={(v) => update("roomId", { roomId: v === WHOLE_BUILDING ? null : v })}
@@ -276,6 +280,7 @@ export function DraftCard(props: DraftCardProps) {
                   disabled={!d.buildingId}
                   searchPlaceholder="Tìm phòng…"
                   aria-label="Phòng"
+                  aria-invalid={depositNeedsRoom || undefined}
                 />
               </Field>
               <Field label="Sổ quỹ chi tiền">
@@ -384,6 +389,11 @@ export function DraftCard(props: DraftCardProps) {
           {status.kind === "rejected" && status.message && (
             <p className="text-xs text-destructive" role="alert">
               {status.message}
+            </p>
+          )}
+          {depositNeedsRoom && (
+            <p className="text-xs text-destructive" role="alert">
+              {DEPOSIT_ROOM_REQUIRED_MESSAGE}
             </p>
           )}
           {issues.length > 0 && <p className="text-xs text-muted-foreground">{issues.slice(0, 3).join(" ")}</p>}

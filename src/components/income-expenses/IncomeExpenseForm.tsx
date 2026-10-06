@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form';
 import { focusFirstError,applyFeedbackToForm } from '@/lib/formErrors';
 import {friendlyError} from '@/lib/friendlyError';
 import {VOUCHER_ERROR_RULES} from '@/lib/voucherErrorRules';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule } from '@/lib/depositRoomRule';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Dialog,
@@ -346,8 +347,13 @@ const IncomeExpenseFormInner = ({
   const formRef = useRef<HTMLFormElement>(null);
   const form = useForm<IncomeExpenseFormValues>({
     shouldFocusError: false,
-    resolver: zodResolver(
-      accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema,
+    // Phiếu có hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
+    resolver: withDepositRoomRule(
+      zodResolver(accountOptional ? incomeExpenseNoAccountFormSchema : incomeExpenseFormSchema),
+      (values) =>
+        needsDepositRoom(values.items.map((it) => it.income_expense_type_id), values.room_id, depositTypeIds)
+          ? ['room_id']
+          : [],
     ),
     defaultValues: {
       type: defaultType ?? 'INCOME',
@@ -562,7 +568,7 @@ const IncomeExpenseFormInner = ({
     const value = roomId === '__none__' ? null : roomId;
     setSelectedRoomId(value ?? undefined);
     setShowInactiveContracts(false);
-    form.setValue('room_id', value);
+    form.setValue('room_id', value, { shouldValidate: form.formState.isSubmitted });
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
     autoLinkedContractIdRef.current = null;
@@ -969,7 +975,10 @@ const IncomeExpenseFormInner = ({
           )}
 
           <Form {...form}>
-            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, (errors) => {
+              if (errors.room_id?.type === 'deposit_room') toast.error(DEPOSIT_ROOM_REQUIRED_MESSAGE);
+              void focusFirstError(errors, { root: formRef.current });
+            })} className="space-y-4">
               <QueryRegion label="danh mục lập phiếu" queries={requiredSources} skeleton="none"><></></QueryRegion>
               {submitError && !staleVersion && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
               {cashbookAccessError && <div role="alert" className="text-sm text-destructive">Chưa kiểm tra được quyền sử dụng sổ quỹ. <Button type="button" variant="outline" onClick={() => retryCashbooks()}>Tải lại sổ quỹ</Button></div>}
@@ -1061,7 +1070,7 @@ const IncomeExpenseFormInner = ({
                   name="room_id"
                   render={({ field }) => (
                     <FormItem data-field-name={field.name}>
-                      <FormLabel>Phòng</FormLabel>
+                      <FormLabel>{hasDepositItem ? 'Phòng *' : 'Phòng'}</FormLabel>
                       <FormControl>
                         <SearchableSelect
                           value={field.value ?? '__none__'}

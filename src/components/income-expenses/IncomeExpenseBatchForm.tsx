@@ -56,6 +56,8 @@ import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { focusFirstError } from '@/lib/formErrors';
+import { DEPOSIT_ROOM_REQUIRED_MESSAGE, needsDepositRoom, withDepositRoomRule } from '@/lib/depositRoomRule';
+import { toast } from 'sonner';
 import { VoucherPartialError, voucherFailureMessage, voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 import { todayISO } from '@/lib/collect';
 
@@ -85,6 +87,7 @@ const ItemRow = ({
   onRemove,
   buildings,
   errors,
+  isDeposit,
 }: {
   index: number;
   item: BatchItemRow;
@@ -92,13 +95,15 @@ const ItemRow = ({
   onRemove: (idx: number) => void;
   buildings: IeFormBuilding[];
   errors?: FieldErrors<BatchItemRow>;
+  /** Hạng mục cọc ⇒ phòng bắt buộc (depositRoomRule.ts). */
+  isDeposit: boolean;
 }) => {
   const fieldProps = (field: keyof BatchItemRow) => ({
     name: `items.${index}.${field}`,
     'data-field-name': `items.${index}.${field}`,
     'aria-invalid': !!errors?.[field],
     'aria-describedby': `batch-item-${index}-${field}-error`,
-    'aria-label': `${field === 'building_id' ? 'Tòa nhà' : field === 'unit_price' ? 'Số tiền' : field === 'start_date' ? 'Từ tháng' : 'Đến tháng'} hạng mục ${index + 1}`,
+    'aria-label': `${field === 'building_id' ? 'Tòa nhà' : field === 'room_id' ? 'Phòng' : field === 'unit_price' ? 'Số tiền' : field === 'start_date' ? 'Từ tháng' : 'Đến tháng'} hạng mục ${index + 1}`,
   });
   const fieldError = (field: keyof BatchItemRow) => errors?.[field]?.message && <p id={`batch-item-${index}-${field}-error`} role="alert" className="text-xs text-destructive">{String(errors[field]?.message)}</p>;
   const { data: rooms = [] } = useIncomeExpenseFormRooms(item.building_id || undefined);
@@ -176,7 +181,7 @@ const ItemRow = ({
 
         <div className="col-span-2 sm:col-span-1">
           <label className="text-[11px] text-muted-foreground font-medium">
-            Phòng
+            {isDeposit ? 'Phòng *' : 'Phòng'}
           </label>
           <Select
             value={item.room_id ?? '__none__'}
@@ -185,7 +190,7 @@ const ItemRow = ({
             }
             disabled={!item.building_id}
           >
-            <SelectTrigger className="h-8 text-sm">
+            <SelectTrigger {...fieldProps("room_id")} className="h-8 text-sm">
               <SelectValue placeholder="Chọn phòng" />
             </SelectTrigger>
             <SelectContent>
@@ -197,6 +202,7 @@ const ItemRow = ({
               ))}
             </SelectContent>
           </Select>
+          {fieldError("room_id")}
         </div>
 
         <div>
@@ -278,7 +284,12 @@ const IncomeExpenseBatchForm = ({
   const [partialIds, setPartialIds] = useState<readonly string[]>([]);
   const form = useForm<IncomeExpenseBatchFormValues>({
     shouldFocusError: false,
-    resolver: zodResolver(incomeExpenseBatchFormSchema),
+    // Dòng hạng mục cọc phải chọn phòng — xem depositRoomRule.ts.
+    resolver: withDepositRoomRule(zodResolver(incomeExpenseBatchFormSchema), (values) =>
+      values.items.flatMap((it, i) =>
+        needsDepositRoom([it.income_expense_type_id], it.room_id, depositTypeIds) ? [`items.${i}.room_id`] : [],
+      ),
+    ),
     defaultValues: {
       type: defaultType ?? 'EXPENSE',
       shared_name: '',
@@ -417,7 +428,10 @@ const IncomeExpenseBatchForm = ({
           </DialogHeader>
 
           <Form {...form}>
-            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => { void focusFirstError(errors, { root: formRef.current }); })} className="space-y-4">
+            <form ref={formRef} onSubmit={form.handleSubmit(onSubmit, errors => {
+              if (errors.items?.some?.((row) => row?.room_id?.type === 'deposit_room')) toast.error(DEPOSIT_ROOM_REQUIRED_MESSAGE);
+              void focusFirstError(errors, { root: formRef.current });
+            })} className="space-y-4">
               {/* Tabs loại phiếu */}
               <Tabs
                 value={form.watch('type')}
@@ -628,6 +642,7 @@ const IncomeExpenseBatchForm = ({
                         onRemove={handleRowRemove}
                         buildings={buildings}
                         errors={form.formState.errors.items?.[index]}
+                        isDeposit={depositTypeIds.has(item.income_expense_type_id)}
                       />
                     ))}
 

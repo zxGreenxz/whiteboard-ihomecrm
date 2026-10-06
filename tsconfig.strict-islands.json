@@ -1386,6 +1386,7 @@
     "src/lib/vnDate.ts",
     "src/lib/voucherAnnotate.ts",
     "src/lib/voucherErrorRules.ts",
+    "src/lib/depositRoomRule.ts",
     "src/lib/voucherFeedback.ts",
     "src/lib/voucherReversalGrouping.ts",
     "src/lib/voucherSources.ts",

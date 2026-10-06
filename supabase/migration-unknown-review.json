@@ -873,6 +873,27 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261006173923_phieu_coc_bat_buoc_phong.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261006173923_phieu_coc_bat_buoc_phong.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.guard_deposit_voucher_room_v1(); CREATE CONSTRAINT TRIGGER zz_ie_item_deposit_requires_room ON public.income_expense_items / zz_ie_deposit_requires_room ON public.income_expenses (DEFERRABLE INITIALLY DEFERRED)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 object trên — sinh 06/10/2026 (giờ UTC) ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 07/10/2026 (giờ VN) — phiếu có hạng mục cọc phải gắn phòng (ca PT2609155 nhập trùng PT2610026), chưa đi qua lane apply — 3 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp lên TEST qua test-env:thu-sql (ROLLBACK rồi --ghi); thăm dò trong BEGIN…ROLLBACK bằng JWT thật: create_income_expense_v1 và ie_compat_insert_v2 phiếu cọc KHÔNG phòng ⇒ 23514 đúng câu báo; cọc CÓ phòng và phiếu thường không phòng ⇒ tạo được; qua PostgREST của TEST (NATHAN) ⇒ HTTP 400 code 23514, không phiếu nào được ghi. Sẽ áp qua npm run migrate:forward (người dùng chạy, có backup) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.guard_deposit_voucher_room_v1",
+        "trigger:public.income_expense_items.zz_ie_item_deposit_requires_room",
+        "trigger:public.income_expenses.zz_ie_deposit_requires_room"
+      ],
+      "raSoatBoi": "Claude Code — phiếu cọc bắt buộc chọn phòng 07/10/2026",
+      "sha256": "225fe63bd0d547047a17d3e4b6f1be1aae75512c15466bcd25daaa75089b30f1"
     }
   }
 }
