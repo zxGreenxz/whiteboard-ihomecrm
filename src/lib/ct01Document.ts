@@ -1,3 +1,4 @@
+import type PizZip from 'pizzip';
 import type { Customer } from '@/types/customer';
 import type { Building } from '@/types/building';
 import type { BuildingLegalOwner } from './buildingLegalOwner';
@@ -20,24 +21,30 @@ function formatDate(value: string | null): string {
   return parts ? `${parts[3]}/${parts[2]}/${parts[1]}` : '';
 }
 
-export function buildCT01Data(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, now = new Date()): Record<string, string> {
-  const ward = building.ward.trim();
-  if (!ward) throw new CT01InputError('Tòa nhà chưa có phường/xã. Vui lòng cập nhật tòa nhà trước khi tải CT01.');
+/** Phần kiểm chung của cả phòng (tòa, số phòng, chủ quyền, thời hạn) — lỗi ở đây đúng cho mọi khách. */
+export function assertCT01Lease(building: CT01Building, lease: CT01LeaseDetails): void {
+  if (!building.ward.trim()) throw new CT01InputError('Tòa nhà chưa có phường/xã. Vui lòng cập nhật tòa nhà trước khi tải CT01.');
   if (!building.street_address?.trim()) throw new CT01InputError('Tòa nhà chưa có địa chỉ chi tiết. Vui lòng cập nhật tòa nhà trước khi tải CT01.');
-  const id = customer.id_number?.trim() ?? '';
-  if (id && !/^\d{1,12}$/.test(id)) throw new CT01InputError('Số định danh của khách không phù hợp với 12 ô của mẫu CT01. Vui lòng kiểm tra hồ sơ khách.');
   if (lease.durationMonths !== 12 && lease.durationMonths !== 24) throw new CT01InputError('Vui lòng chọn thời hạn tạm trú 12 hoặc 24 tháng.');
   if (!lease.roomNumber.trim()) throw new CT01InputError('Hợp đồng đang ở chưa có số phòng. Vui lòng kiểm tra phòng trước khi tải.');
   if (!lease.owner.full_name.trim() || !lease.owner.id_number.trim()) {
     throw new CT01InputError('Tòa nhà chưa đủ họ tên và CCCD của người đứng tên chủ quyền. Vui lòng bổ sung trong chỉnh sửa tòa nhà.');
   }
+}
+
+export function buildCT01Data(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, now = new Date()): Record<string, string> {
+  assertCT01Lease(building, lease);
+  const ward = building.ward.trim();
+  const id = customer.id_number?.trim() ?? '';
+  if (id && !/^\d{1,12}$/.test(id)) throw new CT01InputError('Số định danh của khách không phù hợp với 12 ô của mẫu CT01. Vui lòng kiểm tra hồ sơ khách.');
   const birth = customer.date_of_birth?.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric',
   }).formatToParts(now);
   const datePart = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
   const genderLabels: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
-  const address = building.street_address.trim();
+  // assertCT01Lease đã chặn địa chỉ trống; `?? ''` chỉ để TypeScript biết điều đó.
+  const address = (building.street_address ?? '').trim();
   const localityPrefix = /^(phường|xã|thị trấn|đặc khu)\s+\S/i;
   const addressParts = address.split(',').map(value => value.trim());
   const localityIndex = addressParts.findIndex(value => localityPrefix.test(value));
@@ -74,32 +81,53 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
   return data;
 }
 
-export async function renderCT01Document(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, now = new Date()): Promise<Blob> {
-  const data = buildCT01Data(customer, building, lease, now);
-  const [{ default: Docxtemplater }, { default: PizZip }, response] = await Promise.all([
+/** Tải mẫu một lần, trả hàm điền dữ liệu; mỗi lần gọi dựng một bản Word riêng từ cùng byte mẫu. */
+export async function createCT01Renderer(): Promise<(data: Record<string, string>) => PizZip> {
+  const [{ default: Docxtemplater }, { default: PizZipClass }, response] = await Promise.all([
     import('docxtemplater'), import('pizzip'), fetch(`${import.meta.env.BASE_URL}templates/ct01.docx`),
   ]);
   if (!response.ok) throw new Error('Không tải được mẫu CT01. Vui lòng thử lại.');
-  const document = new Docxtemplater(new PizZip(await response.arrayBuffer()), {
-    paragraphLoop: true, linebreaks: true, nullGetter: () => '',
-  });
-  document.render(data);
-  return document.getZip().generate({
+  const template = await response.arrayBuffer();
+  return data => {
+    const document = new Docxtemplater(new PizZipClass(template), {
+      paragraphLoop: true, linebreaks: true, nullGetter: () => '',
+    });
+    document.render(data);
+    return document.getZip();
+  };
+}
+
+export function wordBlob(zip: PizZip): Blob {
+  return zip.generate({
     type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE',
   });
 }
 
-export async function downloadCT01Document(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, requestedAt = new Date()): Promise<void> {
-  const blob = await renderCT01Document(customer, building, lease, requestedAt);
+export async function renderCT01Document(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, now = new Date()): Promise<Blob> {
+  const data = buildCT01Data(customer, building, lease, now);
+  const render = await createCT01Renderer();
+  return wordBlob(render(data));
+}
+
+/** Bỏ ký tự điều khiển và ký tự Windows cấm trong tên tệp. */
+function safeFileName(raw: string): string {
+  return Array.from(raw).filter(character => character.charCodeAt(0) >= 32)
+    .join('').replace(/[<>:"/\\|?*]/g, '').trim();
+}
+
+export function downloadWordBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement('a');
   link.href = url;
-  const safeName = Array.from(customer.full_name).filter(character => character.charCodeAt(0) >= 32)
-    .join('').replace(/[<>:"/\\|?*]/g, '').trim();
-  link.download = `CT01 - ${safeName || 'Khach hang'}.docx`;
+  link.download = fileName;
   window.document.body.appendChild(link);
   link.click();
   link.remove();
   // Giữ URL cho trình duyệt kịp bắt đầu tải (đặc biệt trên thiết bị di động).
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function downloadCT01Document(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, requestedAt = new Date()): Promise<void> {
+  const blob = await renderCT01Document(customer, building, lease, requestedAt);
+  downloadWordBlob(blob, `CT01 - ${safeFileName(customer.full_name) || 'Khach hang'}.docx`);
 }

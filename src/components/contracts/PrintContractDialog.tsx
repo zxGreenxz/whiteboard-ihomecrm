@@ -24,6 +24,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { ContractTemplatePicker } from './ContractTemplatePicker';
 import { friendlyError } from '@/lib/friendlyError';
 import { useContractRentSupport } from '@/hooks/useContractRentSupport';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CT01InputError, downloadWordBlob } from '@/lib/ct01Document';
+import { buildCT01RoomBundle, type CT01RoomBundle } from '@/lib/ct01RoomBundle';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: "Xe máy",
@@ -57,6 +62,14 @@ export function PrintContractDialog({
 
   const [selectedId, setSelectedId] = useState<string>("");
   const [isRendering, setIsRendering] = useState(false);
+  // Kèm một tệp CT01 + HĐ ở nhờ của mọi khách trong phòng để in ký cùng lúc.
+  const { data: permissions } = useMyPermissions();
+  const buildingId = contract?.room?.building_id ?? contract?.room?.building?.id ?? null;
+  const roomMembers = (contract?.contract_customers ?? []).filter((cc) => cc.customer_id);
+  const canPrintResidence =
+    canUse(permissions, "customers", "print", buildingId ?? undefined) && roomMembers.length > 0;
+  const [withResidence, setWithResidence] = useState(true);
+  const [residenceMonths, setResidenceMonths] = useState<12 | 24>(24);
 
   // Pre-select the default template (or first available) on open.
   useEffect(() => {
@@ -129,11 +142,55 @@ export function PrintContractDialog({
       if (needsSupport && !row?.schedule) throw new Error('Chưa xác minh được lịch hỗ trợ của hợp đồng.');
       const data = buildContractTemplateData({ contract, vehicles, rentSupport: row?.schedule ?? undefined });
       const blob = await renderContractDocx(selected.file_url, data);
-      const safeName = `${selected.name}_${
-        contract.contract_number ?? contract.id.slice(0, 8)
-      }`.replace(/[\\/:*?"<>|]+/g, "_");
+      const contractCode = contract.contract_number ?? contract.id.slice(0, 8);
+      const fileName = (prefix: string) => `${prefix}_${contractCode}`.replace(/[\\/:*?"<>|]+/g, "_");
+      const safeName = fileName(selected.name);
+
+      // Tệp CT01 lỗi không được chặn hợp đồng: dựng trước, tải hợp đồng, rồi báo riêng.
+      let residence: CT01RoomBundle | null = null;
+      let residenceError: unknown = null;
+      if (canPrintResidence && withResidence) {
+        try {
+          residence = await buildCT01RoomBundle({
+            buildingId,
+            roomNumber: contract.room?.name,
+            durationMonths: residenceMonths,
+            members: roomMembers.map((cc) => ({
+              customerId: cc.customer_id,
+              isRepresentative: cc.is_representative,
+              fallbackName: cc.customer?.full_name,
+            })),
+          });
+        } catch (err) {
+          residenceError = err;
+        }
+      }
+
       downloadDocxBlob(blob, safeName);
-      toast.success("Đã chuẩn bị file hợp đồng để tải");
+      if (residence?.blob) {
+        downloadWordBlob(residence.blob, `${fileName("CT01 + HĐ ở nhờ")}.docx`);
+        toast.success(`Đã tải hợp đồng và tệp CT01 + HĐ ở nhờ của ${residence.included.length} khách`);
+      } else {
+        toast.success("Đã chuẩn bị file hợp đồng để tải");
+      }
+      if (residence && residence.skipped.length > 0) {
+        toast.warning(
+          residence.blob
+            ? `Tệp CT01 còn thiếu ${residence.skipped.length} khách`
+            : "Chưa tạo được tệp CT01 cho khách nào",
+          { description: residence.skipped.map((s) => `${s.name}: ${s.reason}`).join(" · "), duration: 12_000 },
+        );
+      }
+      if (residenceError) {
+        console.error("Render CT01 room bundle failed", residenceError);
+        toast.warning("Đã tải hợp đồng, chưa tạo được tệp CT01", {
+          description:
+            residenceError instanceof CT01InputError
+              ? residenceError.message
+              : friendlyError(residenceError, "Chưa tạo được tệp CT01", { operation: "tạo tệp CT01" }).description,
+          duration: 12_000,
+        });
+      }
       onOpenChange(false);
     } catch (err) {
       console.error("Render contract template failed", err);
@@ -168,6 +225,40 @@ export function PrintContractDialog({
           )}
 
           <ContractTemplatePicker templates={templates} selectedId={selectedId} onSelect={setSelectedId} isLoading={isLoading} />
+
+          {canPrintResidence && (
+            <div className="rounded-md border px-3 py-2.5 space-y-2">
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={withResidence}
+                  disabled={isRendering}
+                  onCheckedChange={(checked) => setWithResidence(checked === true)}
+                />
+                <span>
+                  Kèm tệp CT01 + HĐ ở nhờ cho {roomMembers.length} khách trong phòng
+                  <span className="block text-xs text-muted-foreground">
+                    Một tệp Word, mỗi khách một bộ — in một lần cho cả phòng ký.
+                  </span>
+                </span>
+              </label>
+              {withResidence && (
+                <label className="flex items-center gap-2 pl-6 text-sm text-muted-foreground">
+                  Thời hạn tạm trú
+                  <select
+                    aria-label="Thời hạn tạm trú"
+                    value={residenceMonths}
+                    disabled={isRendering}
+                    onChange={(event) => setResidenceMonths(event.target.value === "12" ? 12 : 24)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50"
+                  >
+                    <option value="12">12 tháng</option>
+                    <option value="24">24 tháng</option>
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

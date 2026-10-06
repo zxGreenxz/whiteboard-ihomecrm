@@ -1181,6 +1181,8 @@
     "src/lib/ct01Document.ts",
     "src/lib/ct01DownloadService.ts",
     "src/lib/ct01Helpers.ts",
+    "src/lib/ct01RoomBundle.ts",
+    "src/lib/docxMerge.ts",
     "src/lib/ct01Validation.ts",
     "src/lib/currencyAmountInput.ts",
     "src/lib/customerAddressConversion.ts",
