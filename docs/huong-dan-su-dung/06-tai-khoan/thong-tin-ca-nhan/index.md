@@ -1,113 +1,142 @@
 ---
 title: "Thông tin cá nhân"
-description: "Xem và cập nhật họ tên, email, số điện thoại, ảnh đại diện, đổi mật khẩu đăng nhập và bật/tắt thông báo đẩy cho từng thiết bị."
+description: "Xem và cập nhật hồ sơ, ảnh đại diện, chọn công ty làm việc, đổi mật khẩu, bật thông báo đẩy cho từng thiết bị và chọn loại thông báo muốn nhận."
 routes: ["/account/profile"]
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Thông tin cá nhân
 
-Trang **Thông tin cá nhân** là hồ sơ của chính bạn trong hệ thống: nơi bạn xem và sửa **họ tên**, **email**, **số điện thoại**, đổi **ảnh đại diện**, đổi **mật khẩu đăng nhập** và bật/tắt **thông báo đẩy (Push)** cho từng thiết bị. Đây không phải nơi cấu hình cả tổ chức hay ghi tiền — mọi thay đổi ở đây chỉ áp dụng cho **tài khoản của riêng bạn**. Tên và ảnh bạn đặt ở đây chính là những gì đồng nghiệp nhìn thấy khi bạn tạo hợp đồng, lập phiếu thu chi hay nhận việc.
-
-Nguyên tắc cần nhớ: **email trong trang này là email hiển thị trong hồ sơ**, khác với việc đổi mật khẩu đăng nhập; còn **thông báo đẩy bật riêng cho từng thiết bị** — bật trên máy tính không tự bật trên điện thoại và ngược lại.
+Trang **Thông tin cá nhân** là hồ sơ của chính bạn: sửa **họ tên**, **email**, **số điện thoại**, đổi **ảnh đại diện**, chọn **công ty làm việc**, đổi **mật khẩu đăng nhập**, bật **thông báo đẩy (Push)** cho thiết bị đang dùng và chọn **loại thông báo muốn nhận**. Mọi thay đổi ở đây chỉ áp dụng cho **tài khoản của riêng bạn** — không cấu hình cả tổ chức, không ghi tiền. Tên và ảnh đặt ở đây là những gì đồng nghiệp thấy khi bạn lập hợp đồng, phiếu thu chi hay nhận việc.
 
 ::: info Điều kiện tiên quyết
-- Chỉ cần **đã đăng nhập** — route này không yêu cầu `settings.view` hay quyền nghiệp vụ đặc biệt.
+- Chỉ cần **đã đăng nhập** — route không yêu cầu `settings.view` hay quyền nghiệp vụ nào, nên mọi tài khoản đều mở được, cả trên máy tính lẫn điện thoại.
 - Để bật **thông báo đẩy**, trình duyệt phải hỗ trợ (Chrome/Edge/Firefox bản mới; hoặc Safari trên iOS 16.4+ sau khi "Thêm vào màn hình chính").
-- Để đổi **ảnh đại diện**, chuẩn bị một ảnh **JPG hoặc PNG, tối đa 2MB**.
+- Để đổi **ảnh đại diện**, chuẩn bị ảnh **JPG hoặc PNG, tối đa 2MB**.
 :::
 
 ## Hướng dẫn từng bước
 
-![Màn Thông tin cá nhân của demo.chunha với ảnh đại diện, họ tên, email, số điện thoại và khu Đổi mật khẩu](./images/buoc-01-man-hinh.webp)
+**Bước 1**: Mở trang: menu bên trái => nhóm **Tài khoản** => **Thông tin cá nhân**, hoặc bấm tên/ảnh của bạn ở chân menu, hoặc vào thẳng `/account/profile`. Trên máy tính, trang gồm các thẻ theo thứ tự: **Ảnh đại diện**, **Công ty làm việc**, **Thông tin cá nhân**, **Đổi mật khẩu**, **Thông báo đẩy (Push)**, **Thông báo tôi muốn nhận**.
 
-**Bước 1**: Mở trang. Bấm vào **ảnh đại diện/tên của bạn** ở góc trên (hoặc menu tài khoản) => **Thông tin cá nhân**, hoặc vào thẳng đường dẫn `/account/profile`. Màn hình chia thành các thẻ: **Ảnh đại diện**, **Thông tin cá nhân**, **Đổi mật khẩu** và **Thông báo đẩy (Push)**.
+**Bước 2**: (Tuỳ chọn) Đổi **ảnh đại diện**: ở thẻ **Ảnh đại diện**, nhấn vào vòng tròn ảnh để chọn file, hoặc rê chuột lên ảnh rồi bấm **Ctrl+V** để dán ảnh đang sao chép. Ảnh quá 2MB bị từ chối với dòng *"Chọn ảnh không quá 2MB."*; tải xong hệ thống báo *"Ảnh đại diện đã được CẬP NHẬT thành công"*.
 
-**Bước 2**: Đổi **ảnh đại diện** (tuỳ chọn). Ở thẻ **Ảnh đại diện**, nhấn vào vòng tròn ảnh để chọn file, hoặc rê chuột lên ảnh rồi bấm **Ctrl+V** để dán ảnh đang copy. Chấp nhận **JPG, PNG, tối đa 2MB**. Tải xong hệ thống báo "Ảnh đại diện đã được CẬP NHẬT thành công".
+**Bước 3**: Cập nhật thẻ **Thông tin cá nhân**:
 
-**Bước 3**: Cập nhật **thông tin cá nhân**. Ở thẻ **Thông tin cá nhân**, chỉnh ba ô:
-- **Họ và tên**: tên hiển thị của bạn khắp hệ thống (trên hợp đồng, phiếu thu chi, danh sách nhân viên…).
-- **Email**: email hiển thị trong hồ sơ (dùng để liên hệ). Lưu ý: sửa ô này **không** đổi email đăng nhập của bạn.
+- **Họ và tên**: tên hiển thị của bạn khắp hệ thống.
+- **Email**: email hiển thị trong hồ sơ (để liên hệ). Sửa ô này **không** đổi email/tên đăng nhập.
 - **Số điện thoại**: số liên hệ của bạn.
 
-**Bước 4**: Ấn **Lưu thay đổi**. Hệ thống báo "Dữ liệu đã được CẬP NHẬT thành công" và tên/ảnh mới sẽ xuất hiện ở những nơi hiển thị bạn.
+Bấm **Lưu thay đổi**; hệ thống báo *"Đã cập nhật thông tin cá nhân."*
 
-**Bước 5**: (Khi cần) Đổi **mật khẩu đăng nhập**. Ở thẻ **Đổi mật khẩu**, nhập **Mật khẩu hiện tại**, rồi **Mật khẩu mới** (ít nhất **6 ký tự**) và **Xác nhận mật khẩu mới** (gõ lại đúng như trên). Ấn **Đổi mật khẩu** — hệ thống báo "Mật khẩu đã được đổi thành công". Lần đăng nhập sau bạn dùng mật khẩu mới.
+![Bước 3 - Thẻ Thông tin cá nhân với Họ và tên, Email, Số điện thoại và nút Lưu thay đổi](./images/buoc-01-ho-so.webp)
 
-**Bước 6**: (Tuỳ chọn) Bật **thông báo đẩy** cho thiết bị đang dùng. Ở thẻ **Thông báo đẩy (Push)**, gạt **Bật trên thiết bị này** để cấp quyền và nhận thông báo trên thanh trạng thái (ví dụ có tin nhắn Zalo mới) kể cả khi không mở web. Badge đổi thành **Đang bật**. Bấm **Gửi thông báo thử** để kiểm tra thiết bị đã nhận được chưa.
+**Bước 4**: (Khi cần) Đổi **mật khẩu đăng nhập** ở thẻ **Đổi mật khẩu**: nhập **Mật khẩu mới** (ít nhất **6 ký tự**) và **Xác nhận mật khẩu mới** (gõ lại đúng như trên), rồi bấm **Đổi mật khẩu**. Hệ thống báo *"Mật khẩu đã được đổi thành công"*; lần đăng nhập sau dùng mật khẩu mới.
+
+![Bước 4 - Thẻ Đổi mật khẩu với ba ô mật khẩu và nút Đổi mật khẩu](./images/buoc-02-doi-mat-khau.webp)
+
+::: warning Ô "Mật khẩu hiện tại" chưa được kiểm tra
+Theo mã nguồn hiện hành, hệ thống đổi mật khẩu cho **phiên đang đăng nhập** mà **không đối chiếu** ô **Mật khẩu hiện tại**. Vì vậy đừng để máy đang đăng nhập cho người khác dùng, và đăng xuất khi dùng máy chung.
+:::
+
+**Bước 5**: (Tuỳ chọn) Bật **thông báo đẩy** cho thiết bị đang dùng ở thẻ **Thông báo đẩy (Push)**: gạt **Bật trên thiết bị này** để cấp quyền và đăng ký. Badge cạnh tiêu đề đổi từ **Đang tắt** sang **Đang bật** (hoặc **Chưa xác định** nếu chưa đọc được trạng thái — bấm **Kiểm tra lại**). Bấm **Gửi thông báo thử** để kiểm tra thiết bị đã nhận được chưa; nếu gửi thử lỗi, thẻ hiện khung **Kết quả gửi thử gần nhất**.
+
+**Bước 6**: (Tuỳ chọn) Chọn loại thông báo ở thẻ **Thông báo tôi muốn nhận**. Mỗi loại có hai công tắc: **Trong app** (chuông và trang Bản tin) và **Đẩy về máy** (thông báo bật lên trên điện thoại/máy tính kể cả khi chưa mở web). Bảy loại hiện có:
+
+| Loại | Khi nào có thông báo |
+|---|---|
+| **Phiếu chờ tôi duyệt** | Gộp mỗi lượt: có bao nhiêu phiếu thu chi đang chờ chữ ký của bạn |
+| **Phiếu của tôi được duyệt / bị từ chối** | Kết quả xử lý phiếu do bạn lập |
+| **Phiếu chờ duyệt bị huỷ** | Báo người duyệt biết khỏi phải chờ nữa |
+| **Việc được giao cho tôi** | Có công việc mới gán về tên bạn |
+| **Bàn giao tiền mặt chờ tôi xác nhận** | Ai đó bàn giao quỹ và đang đợi bạn nhận |
+| **Chốt sổ quỹ** | Nhắc chốt sổ sau khi bàn giao, đề nghị chốt chờ bạn ký, biên bản đã ký |
+| **Việc cần theo dõi khi trả phòng** | Nhắc báo trả đến hẹn, phòng dọn/sửa quá hạn hoặc chưa hẹn, hồ sơ trả phòng chờ hoàn tất |
+
+Gạt công tắc là **tự lưu ngay**, không có nút Lưu. Nếu bạn thuộc nhiều tổ chức, chọn **Tổ chức** trước khi gạt — tuỳ chọn lưu riêng cho từng tổ chức. Tắt **Đẩy về máy** chỉ ngừng thông báo bật lên; dòng thông báo vẫn nằm trong Bản tin nếu **Trong app** còn bật.
+
+![Bước 6 - Thẻ Thông báo tôi muốn nhận với bảy loại thông báo và hai cột công tắc Trong app, Đẩy về máy](./images/buoc-03-thong-bao-muon-nhan.webp)
+
+::: tip Hai lớp công tắc thông báo
+Công tắc **Bật trên thiết bị này** (thẻ Thông báo đẩy) quyết định thiết bị có nhận push hay không. Các công tắc **Đẩy về máy** (thẻ Thông báo tôi muốn nhận) quyết định loại nào được đẩy. Muốn nhận push một loại trên điện thoại thì cần bật cả hai.
+:::
 
 ## Các tính năng khác trên màn hình
 
 ### Chọn công ty làm việc
 
-Trên cả máy tính và điện thoại, mở **Tài khoản** → **Công ty làm việc** (ngay dưới ảnh đại diện), rồi chọn **Công ty đang chọn** trong dropdown. Copilot dùng công ty này để xác định phạm vi dữ liệu.
+Thẻ **Công ty làm việc** (ngay dưới ảnh đại diện) có ô **Công ty đang chọn**. Copilot và ô ghi nhanh có AI dùng công ty này để xác định phạm vi dữ liệu.
 
-Lựa chọn tự lưu theo tài khoản, không cần bấm **Lưu thay đổi**. Đăng xuất rồi đăng nhập lại, đóng mở web, mở ứng dụng đã ghim hoặc đăng nhập trên trình duyệt khác đều khôi phục công ty đã chọn. Khi bạn đổi công ty, lựa chọn mới thay thế lựa chọn cũ. Mỗi tài khoản nhớ riêng. Nếu chưa đồng bộ được vì mất mạng, lựa chọn vẫn được giữ trên thiết bị và có nút **Thử lại**. Nếu công ty không còn khả dụng hoặc tài khoản bị gỡ quyền, hệ thống yêu cầu chọn lại trong danh sách hiện có (chỉ còn một công ty thì tự chọn công ty đó).
+Lựa chọn **tự lưu theo tài khoản**, không cần bấm **Lưu thay đổi**: đăng xuất rồi đăng nhập lại, đóng mở web, mở ứng dụng đã ghim hoặc đăng nhập trên trình duyệt khác đều khôi phục công ty đã chọn, cho đến khi bạn đổi. Nếu chưa đồng bộ được (ví dụ mất mạng), thẻ báo *"Chưa lưu được lựa chọn công ty lên tài khoản. Lựa chọn trên thiết bị vẫn được giữ; hãy thử lại."* kèm nút **Thử lại**. Nếu tải danh sách lỗi, bấm **Thử lại**; lựa chọn đã lưu không bị xoá. Tài khoản chưa có công ty nào thấy dòng *"Tài khoản chưa có công ty khả dụng. Liên hệ quản trị viên để được cấp quyền."* Nếu công ty không còn khả dụng, hệ thống yêu cầu chọn lại (chỉ còn một công ty thì tự chọn).
 
-Nếu tải danh sách bị lỗi, bấm **Thử lại**; lựa chọn đã lưu không bị xoá vì lỗi tải. Nếu Copilot nhắc chọn tổ chức, bấm **Mở Tài khoản để chọn công ty** ngay trong khung chat.
+Nếu Copilot nhắc chọn tổ chức, bấm **Mở Tài khoản để chọn công ty** ngay trong khung chat. Ở **Ví cá nhân** hoặc **Báo chi nhanh**, nếu chưa có công ty đã chọn, ô ghi nhanh cho chọn công ty ngay để dùng AI đọc ảnh và giọng nói; nội dung đang soạn vẫn được giữ, và bạn vẫn dùng được **Nhập tay** khi chưa có công ty.
 
-Ở **Ví cá nhân** hoặc **Báo chi nhanh**, nếu chưa có công ty đã chọn, ô ghi nhanh cho chọn công ty ngay để dùng AI đọc ảnh và giọng nói. Nội dung và ảnh đang soạn vẫn được giữ; khoản gửi ở chế độ **Cá nhân** vẫn lưu vào ví cá nhân. Bạn vẫn có thể dùng **Nhập tay** khi chưa có công ty.
+### Trên điện thoại
+
+Mở `/account/profile` trên điện thoại hiện màn **Tài khoản** dạng ứng dụng: phần đầu có ảnh, tên, email và nhãn **Quản trị viên** (tài khoản có quyền xem thành viên) hoặc **Nhân viên**; nút máy ảnh để đổi ảnh. Bên dưới là các thẻ **Công ty làm việc**, **Thông tin cá nhân**, **Đổi mật khẩu**; mục **Tùy chọn** có công tắc **Thông báo đẩy** và thẻ **Thông báo tôi muốn nhận**; tiếp theo là dòng **Gói dịch vụ**, **Cài CRM lên máy** (hướng dẫn thêm vào màn hình chính), nút **Đăng xuất** và số phiên bản.
+
+### Bảng nút / ô
 
 | Nút / Ô | Công dụng |
 | --- | --- |
-| **Ảnh đại diện** (vòng tròn) | Nhấn để chọn file, hoặc rê chuột lên rồi **Ctrl+V** để dán ảnh. JPG/PNG, tối đa 2MB. |
-| **Họ và tên** | Tên hiển thị của bạn trên toàn hệ thống. |
-| **Email** | Email hiển thị trong hồ sơ (không phải email đăng nhập). |
-| **Số điện thoại** | Số liên hệ cá nhân. |
-| **Lưu thay đổi** | Ghi lại họ tên / email / SĐT vừa sửa. |
-| **Mật khẩu hiện tại** | Ô nhập trong thẻ Đổi mật khẩu (điền để chắc chắn đúng người). |
-| **Mật khẩu mới** / **Xác nhận mật khẩu mới** | Mật khẩu đăng nhập mới (≥ 6 ký tự) và ô gõ lại để tránh gõ nhầm. |
-| **Đổi mật khẩu** | Áp dụng mật khẩu mới cho lần đăng nhập sau. |
-| **Bật trên thiết bị này** (gạt) | Bật/tắt thông báo đẩy cho **riêng thiết bị** đang dùng. Badge **Đang bật** / **Đang tắt**. |
-| **Gửi thông báo thử** | Bắn một thông báo thử để kiểm tra thiết bị đã nhận được chưa (chỉ dùng khi đã bật). |
+| **Ảnh đại diện** (vòng tròn) | Nhấn để chọn file, hoặc rê chuột lên rồi **Ctrl+V**. JPG/PNG, tối đa 2MB |
+| **Công ty đang chọn** | Công ty làm việc của bạn; tự lưu theo tài khoản |
+| **Họ và tên** / **Email** / **Số điện thoại** | Thông tin hồ sơ; **Email** là email hiển thị, không phải email đăng nhập |
+| **Lưu thay đổi** | Lưu họ tên / email / SĐT vừa sửa |
+| **Mật khẩu mới** / **Xác nhận mật khẩu mới** | Mật khẩu đăng nhập mới (≥ 6 ký tự) và ô gõ lại |
+| **Đổi mật khẩu** | Áp dụng mật khẩu mới ngay cho tài khoản |
+| **Bật trên thiết bị này** | Bật/tắt thông báo đẩy cho riêng thiết bị đang dùng |
+| **Gửi thông báo thử** | Gửi một thông báo thử (chỉ bấm được khi đã bật) |
+| Công tắc **Trong app** / **Đẩy về máy** | Chọn loại thông báo muốn nhận; tự lưu |
 
-::: tip Email hồ sơ khác email đăng nhập
-Ô **Email** ở thẻ Thông tin cá nhân chỉ đổi **email hiển thị trong hồ sơ**, dùng để liên hệ và hiển thị — nó **không** thay đổi địa chỉ email bạn dùng để đăng nhập. Nếu cần đổi email đăng nhập thật, hãy liên hệ quản trị/kênh hỗ trợ.
-:::
-
-::: warning Đổi mật khẩu áp dụng ngay và khó "hoàn tác"
-Nút **Đổi mật khẩu** đổi **mật khẩu đăng nhập thật** của tài khoản. Sau khi đổi, mật khẩu cũ hết hiệu lực — hãy chắc bạn nhớ mật khẩu mới trước khi rời trang. Nếu là tài khoản dùng chung, đổi mật khẩu sẽ khiến người khác không đăng nhập được.
+::: warning Đổi mật khẩu áp dụng ngay
+Nút **Đổi mật khẩu** đổi **mật khẩu đăng nhập thật**. Sau khi đổi, mật khẩu cũ hết hiệu lực. Nếu là tài khoản dùng chung (như tài khoản demo), đổi mật khẩu sẽ khiến người khác không đăng nhập được.
 :::
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Tải ảnh đại diện báo lỗi kích thước | Ảnh vượt **2MB**. Chọn ảnh nhỏ hơn hoặc nén lại rồi tải lại (chỉ nhận **JPG/PNG**). |
-| Bấm **Đổi mật khẩu** không được | Thiếu ô hoặc sai điều kiện: phải nhập cả **Mật khẩu mới** và **Xác nhận**, mật khẩu mới **≥ 6 ký tự**, và hai ô phải **khớp nhau**. |
-| Đổi mật khẩu xong không đăng nhập lại được | Bạn đang dùng mật khẩu cũ. Dùng mật khẩu mới vừa đặt; nếu quên, dùng chức năng **Quên mật khẩu** ở màn đăng nhập. |
-| Đổi email trong hồ sơ nhưng đăng nhập vẫn dùng email cũ | Đúng như thiết kế: ô Email ở đây chỉ là **email hiển thị**, không đổi email đăng nhập. |
-| Gạt **Bật trên thiết bị này** không được (mờ đi) | Trình duyệt không hỗ trợ, hoặc quyền thông báo đang bị **chặn**. Mở cài đặt trang web trong trình duyệt => cho phép **Thông báo** rồi thử lại. |
-| Trên iPhone/iPad không bật được thông báo | Mở bằng **Safari** => nút **Chia sẻ** => **Thêm vào MH chính**, rồi mở app từ màn hình chính mới bật được (yêu cầu iOS 16.4+). |
-| Bật thông báo ở máy tính nhưng điện thoại không nhận | Thông báo đẩy **bật riêng từng thiết bị** — vào trang này trên điện thoại và bật lại **Bật trên thiết bị này**. |
-| Đổi tên/ảnh nhưng đồng nghiệp vẫn thấy tên cũ | Nhờ họ tải lại trang; dữ liệu hồ sơ được làm mới sau khi lưu. |
+| Tải ảnh đại diện báo *"Chọn ảnh không quá 2MB."* | Ảnh vượt 2MB. Chọn ảnh nhỏ hơn hoặc nén lại |
+| Bấm **Đổi mật khẩu** báo lỗi dưới ô | *"Nhập mật khẩu mới."*, *"Mật khẩu mới phải có ít nhất 6 ký tự."*, *"Nhập lại mật khẩu mới."* hoặc *"Mật khẩu xác nhận không khớp."* — sửa đúng ô được chỉ |
+| Đổi mật khẩu xong không đăng nhập được | Dùng mật khẩu mới; nếu quên, dùng **Quên mật khẩu** ở màn đăng nhập |
+| Đổi email trong hồ sơ nhưng vẫn đăng nhập bằng email cũ | Đúng thiết kế: ô Email ở đây chỉ là email hiển thị |
+| Thẻ Thông báo đẩy báo *"Quyền thông báo đang bị chặn…"*, công tắc mờ | Mở cài đặt trang web trong trình duyệt → cho phép **Thông báo** rồi thử lại |
+| Trên iPhone/iPad không bật được thông báo | Mở bằng **Safari** → nút **Chia sẻ** → **Thêm vào MH chính**, rồi mở app từ màn hình chính (iOS 16.4+) |
+| Bật thông báo ở máy tính nhưng điện thoại không nhận | Thông báo đẩy bật riêng từng thiết bị — vào trang này trên điện thoại và bật lại |
+| Thẻ Thông báo tôi muốn nhận báo *"Tuỳ chọn cá nhân chưa bật trên máy chủ…"* | Đang hiển thị mặc định (nhận tất cả) và tạm chưa lưu được; liên hệ quản trị |
+| Thẻ báo *"Chưa xác nhận được cấu hình thông báo đã lưu…"* | Bấm **Đọc lại trạng thái** trước khi gạt tiếp |
+| Thẻ ghi *"Bạn chưa thuộc tổ chức nào…"* | Tài khoản chưa được mời vào tổ chức nào nên chưa có tuỳ chọn để đặt |
 
 ## Thử trực tiếp trên sandbox
 
 <SandboxTry account="demo.chunha" app-path="/account/profile" view-only>
 
-Bài xem: **Xem thông tin tài khoản của bạn (đừng đổi mật khẩu tài khoản demo dùng chung).**
+**Bài tập chỉ xem** — đừng đổi mật khẩu hay hồ sơ của tài khoản demo dùng chung.
 
-1. Mở đường dẫn trên (hoặc menu tài khoản => **Thông tin cá nhân**).
-2. Đọc thẻ **Thông tin cá nhân**: xem **Họ và tên**, **Email**, **Số điện thoại** đang có. Đây là những gì hiển thị cho đồng nghiệp trong Tòa DEMO A/B.
-3. Xem thẻ **Ảnh đại diện** và ghi nhận cách đổi (nhấn ảnh hoặc rê chuột + **Ctrl+V**), giới hạn **JPG/PNG, 2MB**.
-4. Ngó qua thẻ **Đổi mật khẩu** để biết các ô cần điền — **nhưng đừng bấm Đổi mật khẩu**, vì đây là tài khoản demo dùng chung, đổi sẽ làm người khác không đăng nhập được.
-5. Xem thẻ **Thông báo đẩy (Push)**: quan sát badge **Đang bật/Đang tắt** và nút **Gửi thông báo thử**.
+1. Mở **Tài khoản** => **Thông tin cá nhân** và đối chiếu thứ tự các thẻ.
+2. Xem thẻ **Công ty làm việc**: công ty đang chọn của demo là **iHome CRM (Demo)**.
+3. Xem thẻ **Đổi mật khẩu** để biết các ô cần điền — **không bấm Đổi mật khẩu**.
+4. Xem thẻ **Thông báo tôi muốn nhận**: bảy loại, hai cột công tắc — không gạt công tắc (gạt là lưu ngay).
 
-Kết quả mong đợi: bạn hiểu trang này gom **hồ sơ cá nhân + đổi mật khẩu + thông báo đẩy theo thiết bị**, mọi thay đổi chỉ áp dụng cho tài khoản của bạn, và email ở đây là **email hiển thị** chứ không phải email đăng nhập.
+**Kết quả mong đợi**
+
+- Giao diện khớp nội dung hướng dẫn.
+- Không có thông tin, mật khẩu hay tuỳ chọn thông báo nào của tài khoản demo bị thay đổi.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Gói cước](/06-tai-khoan/goi-cuoc/) — xem gói thuê bao và hạn sử dụng của tài khoản.
-- [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — nguồn phát nhiều thông báo đẩy (tin nhắn Zalo mới) mà bạn bật ở thẻ **Thông báo đẩy**.
-- [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/) — nơi quản trị viên quản lý membership, vai trò và phạm vi.
-- [Phân quyền](/05-cai-dat/phan-quyen/) — quyết định mỗi tài khoản làm được gì (khác với thông tin cá nhân của riêng bạn).
+- [Gói cước](/06-tai-khoan/goi-cuoc/) — gói thuê bao và hạn sử dụng của tài khoản.
+- [Trợ lý AI](/05-cai-dat/tro-ly-ai/) — Copilot dùng công ty bạn chọn ở đây.
+- [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — nguồn phát nhiều thông báo đẩy.
+- [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/) — nơi quản trị viên quản lý thành viên, vai trò và phạm vi.
+- [Mẫu vai trò và phân quyền](/05-cai-dat/phan-quyen/) — quyết định mỗi tài khoản làm được gì.

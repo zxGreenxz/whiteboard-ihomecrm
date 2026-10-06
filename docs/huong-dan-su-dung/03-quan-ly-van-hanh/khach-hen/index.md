@@ -6,8 +6,8 @@ permissions: [{module: leads, action: view}]
 viewport: desktop
 audience: [sale]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
@@ -27,9 +27,9 @@ Màn **Khách hẹn** (còn gọi là *lead* — khách tiềm năng) là nơi b
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại menu bên trái, ấn chọn **Khách hẹn**. Màn **Quản lý Khách hẹn** hiện bảng Kanban 5 cột, 5 thẻ đếm số lead theo giai đoạn ở đầu trang, ô tìm kiếm và hai nút **Xuất Excel** / **Tạo khách hẹn**.
+**Bước 1**: Tại menu bên trái, ấn chọn **Khách hàng** => **Khách hẹn**. Màn **Quản lý Khách hẹn** ("Theo dõi tiến trình khách hàng tiềm năng") hiện hai nút **Xuất Excel** / **Tạo khách hẹn** ở góc phải, ô tìm kiếm, 5 thẻ đếm số lead theo giai đoạn và bảng Kanban 5 cột. Khi chưa có lead nào, bảng được thay bằng dòng **Chưa có khách hẹn nào** kèm nút **Tạo khách hẹn**.
 
-![Màn Khách hẹn: bảng Kanban 5 cột đang ở empty state trên DEMO](./images/buoc-01-danh-sach.webp)
+![Màn Quản lý Khách hẹn trên DEMO: 5 thẻ đếm đều 0 và dòng Chưa có khách hẹn nào](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Hiểu 5 giai đoạn của phễu (đọc từ trái sang phải). Mỗi thẻ lead nằm trong đúng một cột theo trạng thái của nó:
 
@@ -43,7 +43,7 @@ Màn **Khách hẹn** (còn gọi là *lead* — khách tiềm năng) là nơi b
 
 **Bước 3**: Nhập một khách hẹn mới. Ấn nút **Tạo khách hẹn** để mở hộp thoại **Tạo khách hẹn mới**, rồi điền:
 
-![Hộp thoại Tạo khách hẹn mới được mở để nhận diện các trường rồi đóng bằng Hủy](./images/buoc-02-form-tao.webp)
+![Hộp thoại Tạo khách hẹn mới với các ô Tên, SĐT, Email, Nguồn, Trạng thái, Toà nhà, Căn hộ quan tâm, Thời gian hẹn, Người giới thiệu, CTV, Người tìm khách, Ghi chú](./images/buoc-02-form-tao.webp)
 
 - **Tên \*** và **SĐT \*** — bắt buộc.
 - **Email** — không bắt buộc (nếu nhập phải đúng định dạng).
@@ -51,7 +51,7 @@ Màn **Khách hẹn** (còn gọi là *lead* — khách tiềm năng) là nơi b
 - **Trạng thái \*** — mặc định **Mới**; giữ nguyên khi vừa tạo.
 - **Toà nhà** và **Căn hộ quan tâm** — căn khách đang nhắm tới (chọn toà trước, danh sách căn lọc theo toà). Gắn toà ở đây cũng quyết định nhân viên nào thấy được lead.
 - **Thời gian hẹn** — nếu đã có lịch hẹn xem căn hộ, chọn ngày giờ ở đây.
-- **Người giới thiệu / CTV / Người tìm khách** — ghi công người mang khách về (cộng tác viên, sale).
+- **Người giới thiệu**, **CTV**, **Người tìm khách** — ba ô riêng để ghi công người mang khách về (người quen giới thiệu, cộng tác viên, sale).
 - **Ghi chú** — nhu cầu, ngân sách, lưu ý riêng của khách.
 
 Điền xong ấn **Tạo khách hẹn**. Thẻ lead mới xuất hiện ở cột **Mới**.
@@ -80,7 +80,7 @@ Nút **Tạo đặt cọc** trong hộp thoại lead ghi qua nhiều request ri�
 :::
 
 ::: warning "Chuyển sang Đặt cọc" là luồng legacy, không phải nguồn tiền chuẩn
-Cọc sinh ra từ nút này tạo hồ sơ người-thuê legacy + phiếu cọc theo nhiều bước riêng, **không** hiển thị ở tab **Phiếu giữ chỗ** của màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) và **không** tạo giữ phòng kỹ thuật. Khi ký hợp đồng bạn còn phải nhập lại hồ sơ khách. Không tạo lại cọc ở cả hai nơi: nếu trước đây đã dùng nút legacy, hãy đối soát phiếu, khách/người nộp và phòng trước khi xử lý tiếp.
+Cọc sinh ra từ nút này tạo hồ sơ người-thuê legacy + phiếu cọc theo nhiều bước riêng, **không** tạo hồ sơ giữ chỗ ở khối **Giữ chỗ / Cọc trước hợp đồng** của màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) và **không** khoá phòng cho đúng khách. Khi ký hợp đồng bạn còn phải nhập lại hồ sơ khách. Không tạo lại cọc ở cả hai nơi: nếu trước đây đã dùng nút legacy, hãy đối soát phiếu, khách/người nộp và phòng trước khi xử lý tiếp.
 :::
 
 ::: tip Cọc gộp vào hoá đơn tháng đầu
@@ -97,6 +97,7 @@ Sau khi khách đặt cọc và ký hợp đồng, phần cọc còn thiếu (n�
 | --- | --- |
 | Ô tìm kiếm | Lọc nhanh theo **tên / SĐT / email / căn hộ / toà nhà**; áp ngay vào cả 5 cột và 5 thẻ đếm. Từ khoá được **giữ lại khi tải lại trang (F5)**. |
 | 5 thẻ đếm đầu trang | Đếm số lead ở từng giai đoạn (**Mới / Đã hẹn / Đang tư vấn / Đã chuyển đổi / Thất bại**) theo phạm vi đang tìm kiếm. |
+| **Xem thêm N (còn M)** (cuối mỗi cột) | Mỗi cột Kanban hiện trước 30 thẻ; bấm để nạp thêm thẻ của đúng cột đó. |
 | **Tạo khách hẹn** | Mở hộp thoại nhập lead mới (chỉ hiện khi bạn có quyền **Tạo**). |
 | **Xem chi tiết** (trên thẻ lead) | Mở hộp thoại xem đầy đủ liên hệ, nguồn, toà/căn quan tâm, lịch hẹn, ghi chú và nhật ký hoạt động của lead. |
 | **Sửa** (trên thẻ lead) | Mở hộp thoại **Chỉnh sửa khách hẹn** — nơi đổi thông tin và đổi **Trạng thái** để chuyển giai đoạn. |
@@ -113,16 +114,17 @@ Sau khi khách đặt cọc và ký hợp đồng, phần cọc còn thiếu (n�
 | Danh sách trống dù chắc chắn có lead | Nhân viên chỉ thấy lead thuộc toà được gán phạm vi. Kiểm tra lại phân quyền toà, và kiểm tra ô tìm kiếm còn dính từ khoá cũ (từ khoá giữ qua F5). |
 | Không chọn được **Căn hộ quan tâm** | Chọn **Toà nhà** trước; danh sách căn hộ chỉ đổ ra sau khi đã chọn toà. |
 | Lead đã xoá vẫn xuất hiện lại trên bảng | Đây là khoảng trống đã biết: thao tác xoá mềm ghi `deleted_at`, nhưng truy vấn danh sách hiện chưa luôn loại bản ghi đã xoá. Không xoá lặp lại để "thử"; ghi nhận mã/tên lead và báo quản trị kỹ thuật đối soát. |
-| Đã chuyển đổi nhưng không thấy cọc ở màn **Đặt cọc** | Cọc từ nút **Chuyển sang Đặt cọc** đi theo cơ chế cũ, không hiện ở tab **Phiếu giữ chỗ** của /deposits (xem cảnh báo ở Bước 6). Muốn có cọc giữ chỗ chính thức, tạo cọc trực tiếp ở màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/). |
+| Đã chuyển đổi nhưng không thấy giữ chỗ ở màn **Đặt cọc** | Cọc từ nút **Chuyển sang Đặt cọc** đi theo cơ chế cũ, không tạo hồ sơ giữ chỗ cho khách (xem cảnh báo ở Bước 6). Muốn có giữ chỗ chính thức, dùng **Tạo đặt cọc** ở màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/). |
+| Cột chỉ hiện 30 thẻ dù chắc chắn có nhiều hơn | Mỗi cột phân trang 30 thẻ; bấm **Xem thêm** ở cuối cột. |
 | Cần thêm lịch hẹn nhưng không thấy ô ngày | Ô **Thời gian hẹn** nằm trong hộp thoại **Tạo khách hẹn mới** / **Chỉnh sửa khách hẹn** — mở form Sửa của lead để nhập. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/leads" app-label="Mở màn Khách hẹn" fixtures="Snapshot 13/08/2026: pipeline đang rỗng." view-only>
+<SandboxTry account="demo.chunha" app-path="/leads" app-label="Mở màn Khách hẹn" fixtures="Snapshot 07/10/2026: pipeline đang rỗng, 5 thẻ đếm đều 0." view-only>
 
 Pipeline hiện không có lead. Bài này chỉ dùng để định vị năm giai đoạn và các điều khiển:
 
-1. Đọc năm cột **Mới / Đã hẹn / Đang tư vấn / Đã chuyển đổi / Thất bại** và empty state.
+1. Đọc năm thẻ đếm **Mới / Đã hẹn / Đang tư vấn / Đã chuyển đổi / Thất bại** và dòng **Chưa có khách hẹn nào**.
 2. Nhận diện nút **Tạo khách hẹn**, ô tìm kiếm và bộ lọc; không tạo hoặc chuyển đổi lead trong bài quan sát.
 3. Ấn **Tạo khách hẹn** để xem cấu trúc form, rồi đóng bằng **Hủy**; không điền hoặc lưu dữ liệu.
 4. Khi có lead thật, mở bản ghi đang hiển thị và cập nhật trạng thái theo tiến độ sale thay vì dùng tên/số điện thoại fixture. Luồng tiền chính thức vẫn nằm ở màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/).
@@ -134,7 +136,7 @@ Kết quả mong đợi: bạn nắm được phễu lead và hiểu rõ hai vi�
 ## Quy trình liên quan
 
 - [Quy trình khách thuê](/01-bat-dau/quy-trinh-khach-thue/) — toàn cảnh vòng đời: Khách hẹn → Cọc → Hợp đồng → Cư dân.
-- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — bước tiếp theo sau khi chuyển đổi lead; tạo và theo dõi phiếu giữ chỗ chính thức.
+- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — bước tiếp theo sau khi chốt lead; tạo và theo dõi giữ chỗ / phiếu cọc chính thức.
 - [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — ký hợp đồng cho khách đã cọc; cọc còn thiếu gộp vào hoá đơn tháng đầu.
 - [Cư dân](/03-quan-ly-van-hanh/cu-dan/) — hồ sơ khách hàng chính thức sau khi ký hợp đồng.
 - [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — chọn căn hộ khách quan tâm và xem tình trạng phòng.

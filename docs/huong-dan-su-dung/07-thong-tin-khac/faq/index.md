@@ -1,13 +1,14 @@
 ---
 title: "Câu hỏi thường gặp (FAQ)"
-description: "Giải đáp các điểm dễ nhầm trong bản hiện hành: duyệt khác ghi sổ, cọc, làm tròn, nợ cũ, hoàn tiền, báo cáo legacy, route chuyển hướng và RBAC V3."
+description: "Giải đáp các điểm dễ nhầm trong bản hiện hành: duyệt khác ghi sổ, phiếu chờ duyệt và chốt lợi nhuận, cọc, làm tròn, nợ cũ, hoàn tiền, báo cáo legacy, route chuyển hướng và RBAC V3."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: null
 status: published
 ---
 
@@ -31,6 +32,12 @@ Một phiếu `APPROVED/UNPOSTED` chỉ là **Đã Duyệt - Chưa Thu/Chi**. Ch
 ::: danger Khi đối soát tiền
 Không kết luận từ chữ **Đã duyệt**. Hãy mở phiếu, kiểm trạng thái **Đã Thu/Đã Chi**, sổ quỹ, posting và lịch sử hoàn tác. Báo cáo dòng tiền canonical đọc posting line còn hiệu lực, gồm cả dòng `POSTING` và `REVERSAL`.
 :::
+
+## Phiếu chờ duyệt có tính vào lợi nhuận không? Vì sao không chốt được tháng?
+
+Có. Báo cáo lợi nhuận hiện **đã tính** phiếu chờ duyệt thuộc kết quả kinh doanh vào tổng và ghi riêng một dòng *"Trong tổng có: n phiếu chờ duyệt (thu … · chi …)"*. Vì vậy số lợi nhuận không nhảy lần nữa khi phiếu được duyệt.
+
+Khi chốt lợi nhuận một tháng của một toà, máy chủ **từ chối** nếu tháng đó (theo ngày phiếu) còn phiếu ở trạng thái chờ duyệt, với thông báo dạng *"Còn N phiếu chờ duyệt trong tháng MM/YYYY của toà …: mã phiếu… — duyệt hoặc huỷ trước khi chốt."* Phiếu **Đã Duyệt - Chưa Chi** không chặn chốt. Xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/) và [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
 
 ## Vì sao cọc không được tính vào doanh thu?
 
@@ -69,9 +76,11 @@ Các route báo cáo công nợ cũ `/reports/finance/new-contract-debt`, `/repo
 
 **Không ở bước tạo nghĩa vụ hiện tại.** Core tạo phiếu hoàn ở trạng thái `UNAPPROVED/UNPOSTED`, chưa gán sổ (`account_id=NULL`). Nó chưa phải tiền đã chi. Chỉ khi phiếu được duyệt đúng workflow, gán sổ và posting thành `POSTED` thì mới là **Đã Chi**.
 
-::: warning Giới hạn đang biết của luồng hoàn tiền
-UI và server hiện còn sai khác về ngày hoàn, sổ quỹ, response key và cách tính trần hoàn. Vì vậy sau khi tạo yêu cầu, phải kiểm tra phiếu thật trong Thu chi/Sổ quỹ; không suy “bấm Lập phiếu chi” là tiền đã ra quỹ.
+::: warning Kiểm phiếu thật sau khi lập yêu cầu hoàn
+Hộp hoàn tiền trên hoá đơn tự ghi rõ: *"Đây là bước lập yêu cầu hoàn tiền. Chưa thực hiện chi; kiểm tra sổ quỹ khi duyệt và chi phiếu."* Sau khi tạo yêu cầu, mở phiếu trong [Thu chi](/03-quan-ly-van-hanh/thu-chi/) và kiểm trạng thái; không suy "đã lập yêu cầu" là tiền đã ra quỹ.
 :::
+
+Hoàn **cọc** khi thanh lý hợp đồng đi theo luồng riêng — xem [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/).
 
 ## Báo cáo Tiền thừa có phải số dư credit khách hàng chính xác không?
 
@@ -93,7 +102,7 @@ Kiểm lần lượt:
 2. Tài khoản đang mang vai trò nào.
 3. Role binding có scope đúng organization/khu vực/toà/sổ không.
 4. Có override `DENY` hay không — `DENY` thắng `ALLOW`.
-5. Tính năng có bị runtime flag tắt không. Network Center có mặc định code `off`; cấp quyền không tự làm route xuất hiện — đối chiếu deployment hiện tại.
+5. Tính năng có bị cờ phát hành tắt không. Ví dụ [Trung tâm mạng](/03-quan-ly-van-hanh/trung-tam-mang/) chỉ có route khi bản build bật chế độ `production`/`demo` (bản production hiện bật), và mỗi toà còn có chế độ riêng **Đã tắt / Chỉ đọc / Được thực thi** — có quyền chưa chắc thao tác được.
 
 Route quản trị thành viên hiện hành là `/settings/members`; `/settings/staff` chỉ chuyển hướng. Xem [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
 
@@ -103,7 +112,15 @@ RBAC V3 dùng vai trò thật trong `organization_roles`, không còn là “m�
 
 ## Trang Lịch sử cập nhật có phải release log đầy đủ không?
 
-Không. `/changelog` hiện render một mảng tĩnh gồm các mục năm 2024–2025 trong source. Nó không tự đồng bộ commit, migration hay deployment và không phải nguồn phát hành authoritative. Dùng [Ghi chú phiên bản](/07-thong-tin-khac/ghi-chu-phien-ban/) để hiểu giới hạn này.
+Không. Liên kết **Lịch sử** ở chân menu mở `/changelog` (*Lịch sử cập nhật*), hiện chỉ là một danh sách tĩnh gồm ba mục v0.8.0–v1.0.0 năm 2024–2025. Nó không tự đồng bộ commit, migration hay deployment và không phải nguồn phát hành chính thức. Dùng [Ghi chú phiên bản](/07-thong-tin-khac/ghi-chu-phien-ban/) để xem các thay đổi gần đây.
+
+Tương tự, hai liên kết **FAQ** (`/faq`, *Câu hỏi thường gặp* — 10 câu hỏi cơ bản) và **Hướng dẫn App** (`/app-guide`, nói về ứng dụng di động Resident) ở chân menu là nội dung tĩnh cũ trong app. Tài liệu đầy đủ và cập nhật là site hướng dẫn này.
+
+## "Hôm nay" và "Việc của tôi" trên điện thoại khác nhau thế nào?
+
+- Ô **Hôm nay** (`/my-day`) là màn ngày công: toà nên ghé, kiểm tra nhà, việc đang làm được giao và chuyên cần tháng — dữ liệu nằm trên hệ thống. Xem [Hôm nay — ngày công & việc trong ngày](/02-theo-doi-nhanh/viec-cua-toi/).
+- Ô **Việc của tôi** (`/viec-cua-toi`) là sổ ghi việc cá nhân, **chỉ lưu trên điện thoại đang dùng**, không đồng bộ và không giao được cho người khác. Xem [Việc của tôi (việc cá nhân)](/02-theo-doi-nhanh/viec-ca-nhan/).
+- Công việc vận hành giao cho nhân viên nằm ở [Công việc](/03-quan-ly-van-hanh/cong-viec/).
 
 ## Tôi nên làm gì khi nghi giao dịch tiền bị lỗi?
 

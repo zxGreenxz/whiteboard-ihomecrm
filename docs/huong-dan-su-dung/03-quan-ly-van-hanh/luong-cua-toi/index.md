@@ -1,107 +1,107 @@
 ---
 title: "Lương của tôi"
-description: "Màn tự xem lương dành cho nhân viên trên điện thoại: lương cứng, thưởng theo việc đã làm, thưởng nóng, hoa hồng, tổng thực nhận và lịch sử — số liệu khớp đúng với bảng lương của quản trị."
+description: "Màn tự xem lương của nhân viên trên điện thoại: tổng thu nhập tích luỹ, số còn nhận, các khoản cộng/trừ, chặng nhiệm vụ, nhật ký nhiệm vụ và lợi nhuận đầu tư — cùng nguồn số với bảng lương của quản trị."
 routes: ["/finance/my-salary"]
 permissions: []
 viewport: mobile
 audience: [nhan-vien]
 captured:
-  date: "2026-07-20"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.quanly
 status: published
 ---
 
 # Lương của tôi
 
-Màn **Lương của tôi** là nơi bạn — nhân viên vận hành — tự xem tiền lương của chính mình ngay trên điện thoại, không phải hỏi ai. Toàn bộ con số ở đây được **tính từ dữ liệu vận hành thật**: việc bạn đã hoàn thành, hợp đồng bạn đã ký, phiếu thu bạn đã ghi — chứ không nhập tay. Màn cho bạn thấy **lương cứng**, các khoản **thưởng tự động** (thưởng theo việc, thưởng cuối tuần/ngày lễ, thưởng ký hợp đồng ngoài giờ), **hoa hồng sale**, phần **đầu tư** (nếu bạn đồng thời là cổ đông), các khoản **trừ** (ứng lương, tiền phòng ở) và cuối cùng là **Thực nhận**. Kèm theo là **lịch sử việc** liệt kê từng dòng bằng chứng đã cộng thành thưởng. Đây là màn **chỉ để xem** — bạn không ghi hay sửa tiền ở đây, nên cứ mở ra xem thoải mái.
+Màn **Lương của tôi** là nơi nhân viên vận hành tự xem tiền lương của chính mình, không cần hỏi ai. Mọi con số được tính từ dữ liệu vận hành thật — ngày công, việc đã hoàn thành, hợp đồng ký ngoài giờ, phiếu hoa hồng, lợi nhuận đầu tư đã chốt, ứng lương và tiền phòng — và khớp đúng với số quản trị thấy ở [Bảng lương](/03-quan-ly-van-hanh/bang-luong/). Đây là màn **chỉ để xem**: bạn không ghi hay sửa tiền ở đây.
 
 ::: info Điều kiện tiên quyết
-- Bạn đã **đăng nhập** bằng tài khoản nhân viên. Mọi tài khoản đăng nhập đều mở được đường dẫn `/finance/my-salary`.
-- Bạn đã được quản trị **cấu hình là người hưởng lương** trong **Bảng lương => Cấu hình** (xem [Bảng lương](/03-quan-ly-van-hanh/bang-luong/)). Nếu chưa, màn chỉ hiện thông điệp hướng dẫn liên hệ quản trị.
-- Nên mở trang bằng **điện thoại** để có bố cục tối ưu (giao diện tối, gọn cho một tay cầm máy).
-- Là nhân viên, khi bấm mục **Bảng lương** ở thanh bên, hệ thống mở thẳng màn **Lương của tôi** này ở **tab mới** — bạn không vào được bảng lương của người khác.
+- Đã đăng nhập. Mọi tài khoản đều mở được `/finance/my-salary`; với nhân viên (không có quyền quản trị lương), bấm **Tài chính => Bảng lương** ở menu sẽ mở màn này ở **tab mới**.
+- Đã được quản trị khai là người hưởng lương ở **Bảng lương => Cấu hình**. Nếu chưa, màn chỉ hiện dòng **"Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập."**
+- Nên mở bằng **điện thoại**: màn là giao diện tối trọn màn hình, có thanh tab dưới đáy. Trên máy tính, cùng đường dẫn hiện bản bố cục rộng với cùng số liệu.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Ở thanh bên, bấm mục **Bảng lương** — với tài khoản nhân viên, hệ thống mở màn **Lương của tôi** ở một **tab mới** (hoặc bạn mở thẳng đường dẫn `/finance/my-salary`). Nếu bạn **chưa được cấu hình** hưởng lương, màn hiện đúng một dòng nhắn: **"Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập."** — đây là trạng thái bình thường của tài khoản mới, hãy nhờ quản trị thêm bạn vào cấu hình lương (Bước tiếp theo giải thích).
+**Bước 1**: Mở màn **Lương của tôi**. Đầu màn có lời chào kèm cấp độ, bộ chọn tháng **‹ T10/2026 ›** và nút quay lại (đóng tab). Thẻ lớn hiện **Tổng thu nhập tích luỹ tháng này** (nhãn **REALTIME**: số cập nhật theo dữ liệu mới), thanh tiến độ tới hạng kế tiếp (**Lên hạng …** hoặc **Đỉnh cao Vô địch** khi đã đạt mục tiêu), các chip khoản (**Lương cứng**, **Thưởng việc**, **Đầu tư**, **HH Sale**, **Đã ứng**, **Tiền phòng** — chỉ hiện khoản khác 0) và dòng **Còn nhận**.
 
-![Màn Lương của tôi trên điện thoại (self-view của nhân viên): nền tối, tiêu đề "Lương của tôi" và thông điệp "Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập."](./images/buoc-01-mobile.webp)
+![Bước 1 - Màn Lương của tôi trên điện thoại của demo.quanly: tổng thu nhập tích luỹ 8.000.000đ, chip Lương cứng +8tr, Còn nhận 8.000.000 và chặng nhiệm vụ tháng](./images/buoc-01-mobile.webp)
 
-**Bước 2**: Nếu bạn đã được cấu hình, hãy nhờ quản trị mở **Bảng lương => Cấu hình** một lần để thêm bạn vào danh sách người hưởng lương — khai **Lương cứng**, **Tiền phòng** (phòng bạn ở giá ưu đãi, nếu có), **biệt danh (alias)** để khớp phiếu hoa hồng, và **Mục tiêu thu**. Sau khi có cấu hình, mở lại màn **Lương của tôi**, phần trên cùng hiện thẻ **Thực nhận** của tháng đang xem (ví dụ nhân viên **Nguyễn Văn A** có Thực nhận **1.000.000đ**).
+- **Tổng thu nhập** = lương cứng + thưởng việc + đầu tư + hoa hồng (trước khi trừ).
+- **Còn nhận** = thực nhận (đã trừ ứng lương và tiền phòng) − phần đã trả. Góc phải hiện **Đã trả …** khi đã có phiếu lương được duyệt, nếu chưa thì hiện **Chuỗi** ngày liên tục.
+- Bấm một chip để mở bảng chi tiết của khoản đó (ví dụ từng dòng thưởng, từng phiếu hoa hồng, khoản ứng, khấu trừ tiền phòng tháng kế).
 
-**Bước 3**: Đọc phần **chi tiết lương** theo đúng thứ tự cộng — trừ:
+**Bước 2**: Kéo xuống để xem **Chặng nhiệm vụ tháng** (các mốc **Khởi động**, **Bứt phá**, **Lương cứng**, **Vô địch** theo mục tiêu thu nhập), bốn ô **Thợ sửa chữa**, **Cú đêm** (HĐ ngoài giờ / CN / lễ), **Chuỗi lửa**, **Chuyên cần** (số ngày công), danh sách **Nhiệm vụ đã hoàn thành** (**Tất cả ›**) và **Hành trình 6 tháng** để so sánh các tháng.
 
-- **Lương cứng** — mức cố định theo cấu hình của bạn.
-- **Thưởng tự động** — gộp 3 nhóm: thưởng **theo loại việc** đã hoàn thành, phụ cấp **cuối tuần / ngày lễ**, và **ký hợp đồng ngoài giờ** (+50.000đ khi hoàn thành sau giờ hành chính hoặc vào Chủ nhật/ngày lễ).
-- **Hoa hồng (HH Sale)** — phiếu chi hoa hồng có tên người nhận khớp **biệt danh** của bạn, thuộc kỳ tháng đang xem.
-- **Đầu tư** — chỉ hiện nếu bạn đồng thời là cổ đông: phần lợi nhuận được chia của các toà **đã chốt** trong tháng.
-- **Ứng lương** — các phiếu ứng đã duyệt trong tháng, **trừ** vào lương.
-- **Tiền phòng** — nếu bạn ở phòng giá ưu đãi, hoá đơn phòng tháng kế được **khấu trừ** thẳng vào lương.
+![Bước 2 - Phần dưới màn Lương: chặng nhiệm vụ tháng, bốn ô thống kê, nhiệm vụ đã hoàn thành và hành trình 6 tháng](./images/buoc-02-chi-tiet.webp)
 
-Công thức tổng: **Thực nhận = Lương cứng + Thưởng + Hoa hồng + Đầu tư − Ứng lương − Tiền phòng**.
+**Bước 3**: Dùng thanh tab dưới đáy:
 
-**Bước 4**: Kéo xuống **lịch sử việc** để xem từng dòng bằng chứng. Ngày/giờ tính thưởng lấy từ dấu thời gian server khi hoàn thành; ảnh chụp là bằng chứng đối chiếu. Nếu quản trị đánh dấu một việc **Không tính**, dòng vẫn còn trong bảng kê nhưng thưởng của việc đó là 0đ để bạn biết vì sao tổng thay đổi.
+- **Lương** — màn chính ở Bước 1–2.
+- **Nhiệm vụ** — **Nhật ký nhiệm vụ** của tháng: từng việc đã cộng thành thưởng. Việc bị quản trị đánh dấu **Không tính** vẫn hiện nhưng thưởng bằng 0.
+- **Đầu tư** — **Lợi nhuận đầu tư**: **Tổng lợi nhuận đầu tư tháng này**, số toà, nhãn **Đã chốt**/**Chờ chốt** và **Lợi nhuận theo từng nhà**. Chỉ có số khi bạn đồng thời là cổ đông và lợi nhuận toà đã được chốt.
 
-**Bước 5**: Đổi **tháng** để xem lại lịch sử. Bạn lùi được về các tháng cũ **đã chốt**, nhưng hệ thống **chặn xem vượt** mốc tháng bạn được phép xem — số liệu tháng cũ đã đóng băng nên luôn khớp với lúc quản trị chốt.
+![Bước 3 - Tab Đầu tư: tổng lợi nhuận đầu tư tháng 10/2026 bằng 0đ, chưa có phần đầu tư](./images/buoc-03-dau-tu.webp)
 
-::: tip Vì sao có khi bạn thấy tháng trước, chưa thấy tháng này
-Mặc định màn **lùi 1 tháng cho tới khi chốt**: bạn xem **tháng trước** cho tới khi quản trị **chốt** tháng đó, rồi màn mới nhảy sang **tháng hiện tại**. Nhờ vậy bạn luôn nhìn số đã ổn định, không bị nhảy số giữa chừng khi việc trong tháng còn đang phát sinh. Quản trị có thể bật/tắt hiển thị từng tháng riêng cho bạn.
-:::
-
-::: tip Thưởng nóng khi vừa hoàn thành việc
-Ngay khi bạn bấm **Hoàn thành** một việc có thưởng, popup và thông báo đẩy cho biết kết quả tại thời điểm hoàn thành. Khoản tháng vẫn theo bảng kê hiện hành: nếu quản trị loại riêng việc đó khỏi thưởng trước khi chốt, dòng còn hiển thị nhưng số thưởng về 0đ. Xem thao tác ở [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/).
-:::
+**Bước 4**: Đổi tháng bằng **‹ ›** ở đầu màn. Bạn lùi được về các tháng cũ, nhưng không xem vượt mốc tháng được phép. Mặc định bạn thấy **tháng trước** cho tới khi tháng trước được quản trị **chốt**, sau đó mới thấy tháng hiện tại; quản trị có thể bật/tắt riêng từng tháng ở **Tháng hiển thị cho nhân viên**.
 
 ::: warning Số của tháng chưa chốt là tạm tính
-Với tháng **chưa được quản trị chốt**, con số là **tạm tính** và có thể **thay đổi** khi bạn làm thêm việc, ký thêm hợp đồng, hoặc khi phiếu hoa hồng được duyệt. Chỉ khi quản trị **chốt tháng**, các số mới được **đóng băng** và là con số cuối cùng. Đây là màn chỉ-xem, bạn không tự chốt hay tự sửa được — mọi thay đổi tiền đều do quản trị thực hiện bên [Bảng lương](/03-quan-ly-van-hanh/bang-luong/).
+Với tháng chưa chốt, số có thể đổi khi bạn làm thêm việc, ký thêm hợp đồng, khi phiếu hoa hồng được duyệt hoặc khi quản trị loại một việc khỏi thưởng. Chỉ khi quản trị **chốt kỳ**, số mới đóng băng.
 :::
 
-::: warning "Thực nhận" là số lương ròng, không phải trạng thái đã nhận tiền
-Thẻ **Thực nhận**, snapshot lương đã chốt và phần **Đầu tư** được phân bổ cho biết số được tính cho bạn, không chứng minh tiền đã vào tay. Khoản trả lương/lợi nhuận chỉ là tiền thật đã chi khi request tương ứng ở trạng thái `POSTED`; request đã duyệt nhưng `UNPOSTED` vẫn chưa làm giảm sổ quỹ.
+::: warning "Còn nhận" không phải trạng thái đã nhận tiền
+Thực nhận và phần **Đầu tư** cho biết số được tính cho bạn. Phiếu chi lương do quản trị lập phải được **duyệt**, và tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** (`posting_status = POSTED`).
+:::
+
+::: tip Thưởng ngay khi hoàn thành việc
+Khi bấm **Hoàn thành** một việc có thưởng ở [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/), popup và thông báo cho biết kết quả tại thời điểm đó; khoản tháng vẫn theo bảng kê hiện hành.
 :::
 
 ## Các tính năng khác trên màn hình
 
 | Thành phần | Công dụng |
 | --- | --- |
-| Thẻ **Thực nhận** | Số lương ròng được tính cho tháng đang xem (đã cộng thưởng, trừ ứng và tiền phòng); xem trạng thái payout để biết đã chi thật hay chưa. |
-| Chi tiết **Lương cứng / Thưởng / Hoa hồng / Đầu tư** | Các khoản **cộng** vào lương, tách rõ từng nguồn. |
-| Chi tiết **Ứng lương / Tiền phòng** | Các khoản **trừ** khỏi lương trong tháng. |
-| **Lịch sử việc** (bảng kê) | Liệt kê từng dòng bằng chứng (việc, phụ cấp, ký HĐ) đã cộng thành Thưởng tự động. |
-| Điều hướng **tháng** | Lùi về các tháng cũ đã chốt để xem lại; chặn xem vượt mốc được phép. |
-| Giao diện tối, gọn tay | Bố cục tối ưu cho điện thoại, xem nhanh một tay. |
-
-Số nhân viên bạn thấy ở đây **luôn khớp** với số quản trị thấy trong bảng lương — cùng một nguồn tính, không có "hai sổ".
+| Thẻ **Tổng thu nhập tích luỹ tháng này** | Tổng các khoản cộng của tháng đang xem, cập nhật theo dữ liệu mới |
+| Chip khoản | Bấm để xem chi tiết từng khoản cộng/trừ |
+| **Còn nhận** | Thực nhận trừ phần đã trả |
+| **Chặng nhiệm vụ tháng** | Tiến độ so với các mốc thu nhập của tháng |
+| Bốn ô thống kê | Số việc sửa chữa, HĐ ngoài giờ/CN/lễ, chuỗi ngày, ngày công |
+| **Hành trình 6 tháng** | So sánh thu nhập các tháng đã chốt |
+| Tab **Nhiệm vụ** / **Đầu tư** | Nhật ký việc tính thưởng; lợi nhuận đầu tư theo từng nhà |
 
 ## Tình huống & lỗi thường gặp
 
-| Tình huống | Cách xử lý |
+| Tình huống | Nguyên nhân & cách xử lý |
 | --- | --- |
-| Màn hiện **"Bạn chưa được cấu hình hưởng lương"** | Tài khoản của bạn chưa nằm trong danh sách hưởng lương. Nhờ quản trị thêm bạn ở **Bảng lương => Cấu hình** (xem [Bảng lương](/03-quan-ly-van-hanh/bang-luong/)). |
-| Không thấy **tháng hiện tại**, chỉ thấy tháng trước | Đúng chính sách **lùi-tháng**: bạn xem tháng trước cho tới khi nó được **chốt**, rồi màn mới sang tháng này. |
-| **Thưởng** ít hơn bạn nghĩ | Kiểm tra loại việc, ảnh, điều kiện giờ/ngày và xem dòng có bị quản trị đánh dấu **Không tính** hay không. Mốc giờ do server ghi khi hoàn thành. |
-| Phần **Đầu tư** bằng 0 dù bạn là cổ đông | Lợi nhuận toà **chưa chốt** (còn nháp) thì chưa cộng; màn hiện trạng thái "chờ chốt" cho tới khi quản trị chốt lợi nhuận (xem [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/)). |
-| Chưa thấy **Hoa hồng (HH Sale)** | Phiếu hoa hồng chưa được duyệt, hoặc **biệt danh** của bạn chưa khớp tên người nhận trên phiếu chi. Nhờ quản trị kiểm tra cấu hình biệt danh. |
-| Số **thay đổi** giữa các lần xem | Bình thường với tháng **chưa chốt** — số là tạm tính, cập nhật theo việc mới. Chốt tháng xong sẽ đứng yên. |
+| Màn hiện **"Bạn chưa được cấu hình hưởng lương"** | Nhờ quản trị thêm bạn ở **Bảng lương => Cấu hình** |
+| Chỉ thấy tháng trước, không thấy tháng này | Tháng trước chưa được chốt; đây là chính sách hiển thị, không phải lỗi |
+| Không bấm được **›** sang tháng sau | Đã tới tháng mới nhất bạn được xem |
+| Thưởng ít hơn dự kiến | Kiểm loại việc, ảnh hoàn thành, điều kiện giờ/ngày, và việc có bị đánh dấu **Không tính** không |
+| Tab **Đầu tư** báo **Chờ chốt** hoặc bằng 0 | Lợi nhuận toà chưa chốt, hoặc bạn không phải cổ đông của toà nào; xem [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
+| Chưa thấy **HH Sale** | Phiếu hoa hồng chưa được gán cho bạn hoặc tên người nhận chưa khớp biệt danh; nhờ quản trị kiểm |
+| Số thay đổi giữa các lần xem | Bình thường với tháng chưa chốt |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.kythuat" app-path="/finance/my-salary" app-label="Mở màn Lương của tôi" fixtures="tài khoản nhân viên demo chưa cấu hình hưởng lương" view-only>
+<SandboxTry account="demo.quanly" app-path="/finance/my-salary" app-label="Mở màn Lương của tôi" fixtures="DEMO 07/10/2026: demo.quanly được cấu hình lương 8.000.000đ, tháng 10/2026 tạm tính, chưa có nhiệm vụ và đầu tư" view-only>
 
-Xem lương của chính mình — lương theo việc, thưởng, tổng (mở trên điện thoại, chỉ xem):
+**Bài tập chỉ xem**
 
-1. Mở màn **Lương của tôi** bằng điện thoại. Vì tài khoản demo **chưa được cấu hình** hưởng lương, bạn sẽ thấy thông điệp **"Bạn chưa được cấu hình hưởng lương. Liên hệ quản trị để được thiết lập."** — đây chính là trải nghiệm của một nhân viên mới trước khi quản trị thiết lập.
-2. Ghi nhớ: đây là nơi **duy nhất** nhân viên tự xem lương của mình — lương cứng, thưởng theo việc đã làm, thưởng nóng, hoa hồng và tổng thực nhận — mà không cần hỏi ai.
-3. Khi được cấu hình, phần trên cùng sẽ hiện thẻ **Thực nhận**, bên dưới là chi tiết cộng/trừ và **lịch sử việc**.
+1. Mở màn bằng điện thoại, đọc thẻ tổng thu nhập, chip khoản và dòng **Còn nhận**.
+2. Bấm chip **Lương cứng** để xem chi tiết rồi đóng; kéo xuống xem chặng nhiệm vụ.
+3. Chuyển qua tab **Nhiệm vụ** và **Đầu tư**, rồi thử lùi một tháng.
 
-Đây là màn **chỉ để xem** — không có thao tác ghi tiền, nên cứ mở ra xem thoải mái.
+**Kết quả mong đợi**
+
+- Màn khớp các nhãn như bài mô tả.
+- Không có dữ liệu nào bị tạo hoặc sửa (màn chỉ đọc).
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) — phía quản trị: cấu hình người hưởng lương, chốt và trả lương; là nơi thiết lập để màn Lương của tôi có dữ liệu.
-- [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/) — hoàn thành việc để nhận **thưởng nóng**, khoản này dồn vào Thưởng tự động của bạn.
-- [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) — nguồn của phần **Đầu tư** khi bạn đồng thời là cổ đông.
-- [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — theo dõi tiền cá nhân của bạn tách khỏi tiền vận hành toà nhà.
+- [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) — phía quản trị: cấu hình, chốt kỳ, lập phiếu chi lương.
+- [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/) — hoàn thành việc để nhận thưởng.
+- [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) — nguồn của phần **Đầu tư**.
+- [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — tiền cá nhân, tách khỏi tiền vận hành.

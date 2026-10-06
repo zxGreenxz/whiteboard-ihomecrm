@@ -9,8 +9,8 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-08-13"
-  commit: "6acd7b4"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, product-owner, ky-thuat]
@@ -39,6 +39,22 @@ Trang này là kế hoạch tương lai, không phải hướng dẫn tính năn
 ::: danger Kết luận cần chốt trước
 AI hiện tại phù hợp với giai đoạn thử nghiệm hỏi đáp có giới hạn, nhưng **chưa nên mở rộng quyền tự thao tác hoặc tự ghi dữ liệu**. Kế hoạch này bắt đầu bằng việc khóa các rủi ro nền tảng, sau đó mới mở rộng từng nhóm nghiệp vụ.
 :::
+
+### Trạng thái triển khai — đối chiếu mã nguồn ngày 07/10/2026
+
+Kế hoạch này viết sau audit 20/07/2026. Từ đó mã Copilot đã thay đổi nhiều (hơn 160 commit). Bảng dưới chỉ ghi những điểm đối chiếu được trong mã nguồn bản đang chạy; việc **bật cho từng tổ chức/trang** do máy chủ quyết định (entitlement, kill switch, khoá rollout mặc định tắt) và không được kiểm lại trên production lần này.
+
+| Điểm trong kế hoạch | Bản đang chạy |
+|---|---|
+| 11.1 UI-control phải deny-by-default | **Đã làm theo hướng đề xuất:** các tool điều khiển theo chỉ số phần tử của PageAgent đã tắt; AI chỉ chạm được control khai sẵn trong danh sách an toàn của từng trang (`safeControlIds`), cần cả entitlement lẫn quyền `ai_copilot.ui_control`. |
+| 11.2 Proxy khoá model | **Một phần:** proxy từ chối model sai định dạng `provider:model-id` và model không có giá trong cấu hình (`bad_pricing`). |
+| 11.3 Lọc link do model sinh | **Đã làm:** link được lọc trước khi gắn vào `href` (chặn `javascript:`, `data:`…). |
+| 11.4 Ghi dữ liệu không đi DML trực tiếp | **Đã làm cho phiếu thu chi:** tạo phiếu đi qua RPC xem trước rồi RPC thực thi sau khi người dùng xác nhận trên thẻ. Mã nguồn còn khai thêm các thao tác ghi khác (ghi chú phiếu, giữ chỗ, ghi chỉ số công tơ, trạng thái tin phòng, cờ hội thoại Zalo) đi qua cùng khuôn xác nhận. |
+| Kế hoạch nhiều bước, người duyệt | **Đã có** thẻ kế hoạch (lập kế hoạch → người dùng duyệt → thực thi từng bước), có bước nhập **PIN** cho thao tác nhạy cảm. |
+| Danh mục công cụ | Từ 6 công cụ đọc/hướng dẫn nay đã có **hàng chục** công cụ đọc theo miền (toà, phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu…), công cụ hướng dẫn tra site tài liệu này, công cụ ghi nhớ. |
+| 11.5 Nguồn sự thật database | Không đối chiếu trong lần cập nhật tài liệu này. |
+
+Hướng dẫn sử dụng hiện hành: [Trợ lý AI](/05-cai-dat/tro-ly-ai/). Các mục 10–21 bên dưới giữ nguyên nội dung kế hoạch gốc (hiện trạng kỹ thuật tháng 07/2026).
 
 ## Tóm tắt trong một phút
 

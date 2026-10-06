@@ -7,8 +7,8 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-08-13"
-  commit: "6acd7b4"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, product-owner, ky-thuat]
@@ -27,6 +27,8 @@ status: published
 
 ::: warning Cách dùng mẫu
 Tạo thư mục mới dưới `docs/huong-dan-su-dung/08-ke-hoach-phat-trien/<ten-plan>/index.md`, sao chép các mục cần thiết và thêm link vào `docs-site/.vitepress/sidebar.mts`.
+
+Khi một phần kế hoạch **đã lên production**, đừng sửa phần đề xuất thành hướng dẫn: thêm khung **Trạng thái triển khai — đối chiếu mã nguồn ngày …** ngay dưới phần mở đầu (hạng mục · bản đang chạy · link trang hướng dẫn vận hành), ghi rõ chỗ nào làm khác đề xuất, và cập nhật bảng đối chiếu ở [trang tổng của mục 08](/08-ke-hoach-phat-trien/). Ví dụ: [Quy trình thu chi](/08-ke-hoach-phat-trien/quy-trinh-chi-phi/).
 :::
 
 ## 1. Tóm tắt một trang

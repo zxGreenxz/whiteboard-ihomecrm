@@ -5,9 +5,9 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: null
-  commit: null
-  account: null
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
   manifest: null
 audience: [chu-nha, quan-ly-toa, ke-toan, sale, ky-thuat, co-dong]
 status: published
@@ -15,7 +15,11 @@ status: published
 
 # Sandbox — Môi trường thực hành
 
-Sandbox production là tổ chức **DEMO** tách biệt dữ liệu công ty thật. Snapshot hiện hành có **4 toà** — `DEMO Toà A`, `DEMO Toà B`, `DEMO Toà C`, `DEMO Toà D` — mỗi toà ít nhất 10 phòng, bao phủ đủ trạng thái đang thuê, sắp hết hạn, giữ chỗ, trống và bảo trì. Ngoài ra có ít nhất 20 khách hàng và 8 phương tiện để thực hành các luồng liên quan.
+Sandbox production là tổ chức **DEMO** tách biệt dữ liệu công ty thật. Snapshot thiết kế có **4 toà** — `DEMO Toà A`, `DEMO Toà B`, `DEMO Toà C`, `DEMO Toà D` — mỗi toà ít nhất 10 phòng, cùng khách hàng, hợp đồng, hoá đơn và phiếu thu chi để thực hành các luồng liên quan.
+
+::: info Số liệu đo ngày 07/10/2026
+Đăng nhập `demo.chunha` thấy **44 phòng** (16 đang thuê, 24 trống), **40 hợp đồng**, **17 hoá đơn**, **27 khách hàng** và **83 phiếu thu chi**. Sổ cọc, chỉ số điện nước và tài sản hiện **trống**; bảng tin ghi 0 hợp đồng sắp hết hạn trong 30 ngày. Vì dữ liệu dùng chung và thời gian trôi, một số trạng thái của snapshot (giữ chỗ, sắp hết hạn) có thể không còn — đây là trạng thái dữ liệu, không phải lỗi màn hình.
+:::
 
 ::: tip Cách học hiệu quả
 Mỗi trang có khối **Thử trực tiếp**. Đọc điều kiện/quyền trước, mở app bằng tài khoản gợi ý, đối chiếu kết quả rồi chỉ reset khi thật sự cần.
@@ -57,8 +61,8 @@ Reset khôi phục **snapshot đang được phát hành**, không khôi phục 
 
 ## Bố cục dữ liệu demo
 
-- 4 toà, mỗi toà ≥10 phòng.
-- 5 trạng thái hiển thị phòng được tạo bằng dữ liệu hợp đồng/cọc thật: đang thuê, sắp hết hạn, giữ chỗ, trống, bảo trì.
+- 4 toà, mỗi toà ≥10 phòng (44 phòng).
+- Khi vừa reset, các trạng thái phòng đang thuê, sắp hết hạn, giữ chỗ, trống, bảo trì được tạo bằng dữ liệu hợp đồng/cọc thật; theo thời gian hợp đồng hết hạn và thao tác của người dùng chung sẽ làm số liệu lệch khỏi snapshot.
 - `demo.quanly` và `demo.quanly2` tạo hai lát cắt phạm vi không chồng lấn để kiểm tra phân quyền theo toà.
 - Tài khoản kỹ thuật/kế toán/sale/cổ đông có phạm vi tổ chức nhưng capability khác nhau, vì phạm vi không thay thế quyền thao tác.
 

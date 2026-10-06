@@ -6,91 +6,96 @@ permissions: [{module: hotline, action: view}, {module: hotline, action: create}
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Hotline
 
-Hotline là danh bạ **số điện thoại/đường dây nóng** mà bạn muốn khách nhìn thấy để liên hệ. Khi khách mở **trang Phòng trống công khai** (link chia sẻ `/r/:token` bạn gửi cho sale/khách), số hotline này là nơi khách bấm **Gọi** hoặc **Zalo** để hỏi thuê phòng. Trang này giúp bạn **tạo, sửa, bật/tắt và xoá** các hotline; còn việc *chọn hotline nào hiện ra* thì làm ở tab **Cài đặt hiển thị** của **Sale Phòng**. Đây không phải nơi ghi tiền — chỉ là một danh mục cấu hình.
+Hotline là danh bạ **số điện thoại/đường dây nóng** mà bạn muốn khách nhìn thấy để liên hệ. Khi khách mở **trang Phòng trống công khai** (link chia sẻ bạn gửi cho sale/khách), số hotline là nơi khách bấm **Gọi** hoặc **Zalo** để hỏi thuê phòng. Trang **Quản lý Hotline** giúp bạn **tạo, sửa, bật/tắt và xoá** hotline; còn việc *chọn hotline nào hiện ra* thì làm ở tab **Cài đặt hiển thị** của [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/). Đây chỉ là một danh mục cấu hình, không liên quan tới tiền.
 
-Nguyên tắc cần nhớ: nếu bạn **không chọn** hotline cụ thể ở phần Cài đặt hiển thị, trang công khai sẽ tự lấy **hotline đang hoạt động đầu tiên** của bạn. Vì vậy chỉ cần đánh dấu đúng **Trạng thái** ở đây là khách đã có số để gọi.
+Nguyên tắc cần nhớ: nếu bạn **không chọn** hotline cụ thể ở Cài đặt hiển thị, trang công khai tự lấy **hotline đang hoạt động đầu tiên**. Vì vậy chỉ cần đánh dấu đúng **Trạng thái** ở đây là khách đã có số để gọi.
 
 ::: info Điều kiện tiên quyết
-- Quyền xem/quản lý **Hotline** (`hotline.view`) — thường là chủ nhà hoặc quản lý toà.
-- Không bắt buộc phải có gì trước đó: đây là một danh mục độc lập, tạo lúc nào cũng được.
-- Nếu muốn hotline thật sự hiển thị cho khách, bạn cần đã dùng **trang Phòng trống công khai / Sale Phòng** (nơi có tab **Cài đặt hiển thị**).
+- Quyền **Hotline** (module `hotline`): `view` để mở trang; `create`/`edit`/`delete` để thêm, sửa, xoá.
+- Không cần dữ liệu nào có trước: đây là danh mục độc lập.
+- Muốn hotline thật sự hiển thị cho khách, bạn cần dùng trang **Phòng trống công khai** qua [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/).
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào **Cài đặt** => **Danh mục khác**, rồi mở thẻ **Quản lý Hotline**. Bạn thấy danh sách hotline hiện có với các cột **Tên**, **Số điện thoại**, **Mô tả**, **Trạng thái** (badge **Hoạt động** hoặc **Ngừng**) và cột **Thao tác**. Nếu chưa có hotline nào, màn hình hiện dòng "Chưa có dữ liệu. Hãy thêm mới."
+**Bước 1**: Vào **Cài đặt hệ thống** => **Danh mục khác**, rồi mở thẻ **Quản lý Hotline** (đường dẫn `/settings/categories/hotlines`). Bảng có các cột **Tên**, **Số điện thoại**, **Mô tả**, **Trạng thái** (nhãn **Hoạt động** hoặc **Ngừng**) và **Thao tác**. Nếu chưa có hotline nào, màn hình hiện *"Chưa có dữ liệu. Hãy thêm mới."* — DEMO hiện ở trạng thái này.
 
-**Bước 2**: Ấn **Thêm mới** ở góc trên bên phải để mở form tạo hotline.
+![Trang Quản lý Hotline của DEMO: chưa có dữ liệu, nút Thêm mới ở góc phải](./images/buoc-01-danh-sach.webp)
 
-**Bước 3**: Điền thông tin trong form:
-- **Tên hotline** (bắt buộc, có dấu *): tên gợi nhớ, ví dụ `Hotline CSKH DEMO` hoặc `Zalo thuê phòng Tòa DEMO A`.
-- **Số điện thoại** (bắt buộc, có dấu *): số khách sẽ bấm gọi, ví dụ `0900 000 000`.
+**Bước 2**: Ấn **Thêm mới** ở góc trên bên phải. Hộp **Thêm mới** mở ra.
+
+**Bước 3**: Điền thông tin:
+- **Tên hotline** (bắt buộc): tên gợi nhớ, ví dụ `Hotline CSKH` hoặc `Zalo thuê phòng Tòa A`.
+- **Số điện thoại** (bắt buộc): số khách sẽ bấm gọi.
 - **Mô tả** (tuỳ chọn): ghi chú nội bộ, ví dụ "Trực từ 8h–20h".
-- **Trạng thái**: tích ô **Đang hoạt động** để hotline sẵn sàng được chọn hiển thị. Bỏ tích nếu muốn giữ số trong danh mục nhưng chưa cho dùng.
+- **Trạng thái**: tích ô **Đang hoạt động**. Ô này **mặc định chưa tích** khi thêm mới — nhớ tích nếu muốn hotline được dùng ngay.
 
-**Bước 4**: Ấn **Thêm mới** trong form để lưu. Hệ thống báo "Hotline đã được tạo thành công" và dòng mới xuất hiện trong danh sách với badge **Hoạt động** (nếu bạn đã tích Trạng thái).
+![Hộp Thêm mới hotline: Tên hotline, Số điện thoại, Mô tả, ô Đang hoạt động chưa tích, nút Hủy và Thêm mới](./images/buoc-02-form-them.webp)
 
-**Bước 5**: (Tuỳ chọn) Chọn hotline này để hiển thị cho khách. Sang **Sale Phòng** => tab **Cài đặt hiển thị**, ở ô **Hotline hiển thị** chọn đúng hotline vừa tạo (định dạng "Tên · Số điện thoại"), rồi ấn **Lưu cài đặt**. Để nguyên "Mặc định (hotline đầu tiên)" thì trang tự lấy hotline hoạt động đầu tiên.
+**Bước 4**: Ấn **Thêm mới** trong hộp để lưu. Hệ thống báo *"Đã tạo hotline <tên>."* và dòng mới xuất hiện trong bảng. Thiếu ô bắt buộc thì hộp báo ngay dưới ô đó (*Nhập tên hotline.*, *Nhập số điện thoại.*).
 
-**Bước 6**: Sửa hoặc xoá khi cần. Trên mỗi dòng, ấn nút **bút chì** (Sửa) để mở lại form và chỉnh, hoặc nút **thùng rác** (Xoá) để xoá hotline (hệ thống hỏi xác nhận trước).
+**Bước 5**: (Tuỳ chọn) Chọn hotline này để hiển thị cho khách. Sang **Sale Phòng** => tab **Cài đặt hiển thị**, ở ô **Hotline hiển thị** chọn hotline vừa tạo rồi ấn **Lưu cài đặt**. Để nguyên **Mặc định (hotline đầu tiên)** thì trang tự lấy hotline hoạt động đầu tiên.
+
+**Bước 6**: Sửa hoặc xoá khi cần. Trên mỗi dòng, ấn **bút chì** để mở hộp **Cập nhật**, hoặc **thùng rác** để mở hộp **Xác nhận xóa**.
 
 ::: tip Số nào thật sự hiện ra cho khách — thứ tự ưu tiên
-Trên trang Phòng trống công khai, số liên hệ của một phòng **thường** được chọn theo thứ tự: **Liên hệ QL riêng của toà** (nếu toà đã điền số liên hệ công khai trong màn Toà nhà) đè lên **hotline được chọn ở Cài đặt hiển thị**, đè lên **hotline hoạt động đầu tiên**. Riêng phòng dạng **"khách nhờ sale" (pass)**: nếu khách bật "Liên hệ quản lý" thì trang che số khách và dùng số QL/hotline của toà; ngược lại dùng thẳng số khách. Nên nếu đã cấu hình hotline mà khách vẫn thấy số khác, hãy kiểm tra xem toà đó có đặt **Liên hệ QL riêng** không.
+Trên trang Phòng trống công khai, số liên hệ của một phòng được ưu tiên theo thứ tự: **Liên hệ quản lý toà** (nếu toà đã điền ở **Sale Phòng** => tab **Thông tin sale**) => **Hotline hiển thị** chọn ở **Cài đặt hiển thị** => **hotline hoạt động đầu tiên**. Riêng phòng dạng **Khách nhờ sale**, trang có thể dùng số của khách hoặc số quản lý tuỳ cách khách chọn. Nếu đã cấu hình hotline mà khách vẫn thấy số khác, hãy kiểm tra **Liên hệ quản lý toà** của toà đó.
 :::
 
 ::: warning Xoá hotline không hoàn tác được
-Nút **thùng rác** xoá hẳn hotline khỏi danh mục — hộp thoại **Xác nhận xóa** ghi rõ "Hành động này không thể hoàn tác". Nếu bạn xoá đúng hotline đang được chọn ở **Cài đặt hiển thị**, trang công khai sẽ **rơi về hotline hoạt động đầu tiên** (hoặc không còn số nào nếu bạn xoá hết). Muốn tạm ẩn một số mà vẫn giữ lại, hãy **bỏ tích Trạng thái** (chuyển sang **Ngừng**) thay vì xoá.
+Hộp **Xác nhận xóa** ghi *"Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác."* Nếu xoá đúng hotline đang chọn ở **Cài đặt hiển thị**, trang công khai sẽ rơi về hotline hoạt động đầu tiên (hoặc không còn số nào nếu xoá hết). Muốn tạm ẩn mà vẫn giữ lại, hãy **bỏ tích Đang hoạt động** (chuyển sang **Ngừng**) thay vì xoá.
 :::
 
 ## Các tính năng khác trên màn hình
 
 | Nút / Cột | Công dụng |
 | --- | --- |
-| **Thêm mới** | Mở form tạo hotline mới. |
+| **Thêm mới** | Mở hộp tạo hotline mới. |
 | **Tên** (cột) | Tên gợi nhớ của hotline. |
 | **Số điện thoại** (cột) | Số khách sẽ bấm **Gọi** / **Zalo** trên trang công khai. |
 | **Mô tả** (cột) | Ghi chú nội bộ, không hiển thị cho khách. |
-| **Trạng thái** (cột) | Badge **Hoạt động** / **Ngừng** — chỉ hotline **Hoạt động** mới được chọn hiển thị và mới dùng làm "hotline đầu tiên" mặc định. |
-| **Bút chì** (Sửa) | Mở lại form để đổi tên, số, mô tả hoặc bật/tắt trạng thái. |
-| **Thùng rác** (Xoá) | Xoá hotline (có xác nhận, không hoàn tác). |
-| **Đang hoạt động** (ô tích trong form) | Bật/tắt hotline; tắt để tạm ẩn khỏi lựa chọn hiển thị mà không mất dữ liệu. |
-| **Quay lại Danh mục khác** | Link ở góc trên trái để trở về trang **Danh mục khác**. |
+| **Trạng thái** (cột) | **Hoạt động** / **Ngừng** — chỉ hotline **Hoạt động** mới được chọn hiển thị và dùng làm hotline mặc định. |
+| **Bút chì** | Mở hộp **Cập nhật** để đổi tên, số, mô tả hoặc trạng thái. |
+| **Thùng rác** | Xoá hotline (có xác nhận, không hoàn tác). |
+| **Quay lại Danh mục khác** | Liên kết góc trên trái để về trang **Danh mục khác**. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Khách mở trang Phòng trống mà không thấy số nào để gọi | Chưa có hotline nào ở trạng thái **Hoạt động**. Tạo hotline mới và tích **Đang hoạt động**, hoặc bật lại một hotline đang **Ngừng**. |
-| Trang công khai hiện **sai số** so với hotline bạn muốn | Bạn có nhiều hotline nên hệ thống lấy **hotline hoạt động đầu tiên**. Vào **Sale Phòng** => **Cài đặt hiển thị**, chọn đúng **Hotline hiển thị** rồi Lưu. |
-| Đã chọn hotline ở Cài đặt hiển thị nhưng khách vẫn thấy số khác | Toà đó có **Liên hệ QL riêng** (số liên hệ công khai của toà) đang đè lên hotline chung; hoặc phòng đang ở dạng **pass** dùng số khách/QL. Kiểm tra cấu hình liên hệ ở màn Toà nhà. |
-| Lỡ xoá hotline đang được chọn hiển thị | Tạo lại hotline và chọn lại ở **Cài đặt hiển thị**. Trong lúc chờ, trang tự dùng hotline hoạt động đầu tiên. |
-| Không lưu được form | Thiếu ô bắt buộc: **Tên hotline** và **Số điện thoại** (có dấu *) phải được điền. |
-| Muốn ngừng một số nhưng vẫn giữ lại để dùng sau | Đừng xoá — mở **Sửa** và **bỏ tích Trạng thái** để chuyển hotline sang **Ngừng**. |
-| Nhân viên không thấy mục Hotline | Thiếu quyền `hotline.view`. Nhờ chủ nhà cấp quyền ở trang phân quyền. |
+| Khách mở trang Phòng trống mà không thấy số nào để gọi | Chưa có hotline nào **Hoạt động** và toà chưa có liên hệ quản lý. Tạo hotline và tích **Đang hoạt động**, hoặc bật lại một hotline đang **Ngừng**. |
+| Vừa thêm hotline nhưng nhãn hiện **Ngừng** | Lúc thêm chưa tích **Đang hoạt động**. Mở **bút chì**, tích ô rồi bấm **Cập nhật**. |
+| Trang công khai hiện **sai số** | Có nhiều hotline nên hệ thống lấy hotline hoạt động đầu tiên. Vào **Sale Phòng** => **Cài đặt hiển thị**, chọn đúng **Hotline hiển thị** rồi **Lưu cài đặt**. |
+| Đã chọn hotline nhưng khách vẫn thấy số khác | Toà đó đã điền **Liên hệ quản lý toà** ở tab **Thông tin sale**, số này được ưu tiên hơn hotline chung. |
+| Hiện *"Chưa tải được quản lý hotline."* | Lỗi mạng hoặc máy chủ khi đọc dữ liệu. Bấm **Tải lại**. |
+| Mở trang bị đưa về **Bảng tin** | Thiếu quyền **Hotline** (xem). Nhờ chủ nhà cấp ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/settings/categories/hotlines" view-only>
+<SandboxTry account="demo.chunha" app-path="/settings/categories/hotlines" app-label="Mở màn Quản lý Hotline" fixtures="Snapshot 07/10/2026: DEMO chưa có hotline nào" view-only>
 
-Bài xem: **Xem hotline cấu hình.**
+**Bài tập chỉ xem**
 
-1. Từ menu, vào **Cài đặt** => **Danh mục khác** => **Quản lý Hotline** (hoặc mở thẳng đường dẫn trên).
-2. Đọc danh sách hotline: chú ý các cột **Tên**, **Số điện thoại**, **Mô tả** và **Trạng thái**. Phân biệt badge **Hoạt động** với **Ngừng** — chỉ số **Hoạt động** mới được đưa ra cho khách trên trang Phòng trống.
-3. Nếu danh sách trống, bạn sẽ thấy dòng "Chưa có dữ liệu. Hãy thêm mới." — nghĩa là chưa có hotline nào để hiển thị cho khách.
+1. Mở **Cài đặt hệ thống** => **Danh mục khác** => **Quản lý Hotline**; DEMO đang hiện *"Chưa có dữ liệu. Hãy thêm mới."*
+2. Bấm **Thêm mới** để xem các ô **Tên hotline**, **Số điện thoại**, **Mô tả**, **Đang hoạt động**, rồi bấm **Hủy** — không bấm **Thêm mới** trong hộp.
 
-Kết quả mong đợi: bạn hiểu **Hotline chỉ là danh bạ số liên hệ** cấp cho trang Phòng trống công khai; muốn khách thấy số nào thì bật **Trạng thái** ở đây và (nếu cần) chọn số đó tại **Cài đặt hiển thị** của **Sale Phòng**.
+**Kết quả mong đợi**
+
+- Bạn hiểu hotline chỉ là danh bạ số liên hệ cho trang Phòng trống công khai.
+- Không có dữ liệu DEMO nào bị tạo, sửa hoặc xoá.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Danh mục khác](/05-cai-dat/danh-muc-khac/) — trang chứa lối vào **Quản lý Hotline** cùng các danh mục phụ khác.
-- [Toà nhà](/03-quan-ly-van-hanh/toa-nha/) — nơi đặt **Liên hệ QL riêng** của từng toà, có thể đè lên hotline chung.
-- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `hotline.view` để nhân viên xem/quản lý hotline.
+- [Danh mục khác](/05-cai-dat/danh-muc-khac/) — trang chứa lối vào **Quản lý Hotline**.
+- [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) — chọn **Hotline hiển thị** và điền **Liên hệ quản lý toà**.
+- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền **Hotline** cho nhân viên.

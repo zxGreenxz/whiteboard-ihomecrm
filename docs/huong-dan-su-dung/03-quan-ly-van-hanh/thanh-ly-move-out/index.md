@@ -1,139 +1,139 @@
 ---
 title: "Thanh lý hợp đồng — Khách rời phòng"
-description: "Quyết toán công nợ, cọc và khoản cuối kỳ khi khách trả phòng, kèm checklist bắt buộc để xác minh hợp đồng, phòng, hoá đơn và phiếu tiền sau thanh lý."
-routes: ["/contracts/:id"]
+description: "Báo ngày dự kiến trả phòng, ghi nhận khách trả phòng (quyết toán ngay hoặc quyết toán sau), chốt công nợ, hoàn cọc, thu thêm và hoàn lại khách, kèm checklist đối soát sau thanh lý."
+routes: ["/contracts/:id", "/contracts"]
 permissions: [{module: contracts, action: terminate}]
 viewport: desktop
 audience: [quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Thanh lý hợp đồng — Khách rời phòng
 
-Khi một khách **trả phòng đúng quy trình** (báo trước, dọn đi, bàn giao lại phòng), bạn dùng luồng **Khách rời phòng** để tất toán hợp đồng. Hệ thống tính công nợ và khoản thu thêm để cấn vào cọc, nhưng một số bước phụ như ghi chỉ số và ghi lịch sử thanh lý là best-effort. Vì vậy thông báo thành công chưa đủ để kết luận toàn bộ dòng tiền/audit đã hoàn tất; bắt buộc đối soát sau thao tác.
+Khi một khách **trả phòng đúng quy trình** (hết hạn hoặc trả trước hạn, bàn giao lại phòng), bạn đi qua ba chặng: **báo ngày dự kiến trả phòng** (khi khách thông báo), **ghi nhận trả phòng thực tế** (khi bàn giao), và **quyết toán** cọc/công nợ — ngay lúc trả hoặc để sau. Tách hai chặng cuối giúp phòng được **trả trống để sale ngay** trong khi kế toán quyết toán sau, không ai phải đoán.
 
-::: danger Thanh lý là thao tác GHI TIỀN và KHÓ HOÀN TÁC
-Bấm hoàn tất thanh lý sẽ **ghi phiếu thu/chi thật**, **gạch nợ các hoá đơn được form tải vào quyết toán** và **đóng hợp đồng**; các phiếu chính được duyệt ngay, không có bước xác nhận thứ hai để bạn kịp rút lại. Ghi chỉ số và bản ghi lịch sử là bước best-effort nên vẫn cần hậu kiểm. Hãy kiểm tra kỹ **ngày chuyển đi**, **công nợ**, **số cọc hoàn trả** và **các khoản thu thêm** trước khi xác nhận. Bài kiểm tra trong tài liệu chỉ **mở form rồi đóng**, tuyệt đối không hoàn tất thanh lý.
+::: danger Quyết toán là thao tác GHI TIỀN và KHÔNG THỂ HOÀN TÁC
+Bấm **Lập hoá đơn & Thanh lý** rồi **Xác nhận thanh lý** sẽ **ghi phiếu thu/chi thật**, **quyết toán các hoá đơn còn nợ** và **đóng hợp đồng**. Kiểm tra kỹ **ngày trả phòng**, **công nợ**, **tiền cọc hoàn trả**, **thu thêm** và **hoàn lại khách** trước khi xác nhận. Bài kiểm tra trong tài liệu chỉ **mở form rồi đóng**.
 :::
 
 ::: info Điều kiện tiên quyết
-- Bạn có quyền **Hợp đồng => Thanh lý** (module `contracts`, action `terminate`) để thấy và bấm được nút **Thanh lý** trên màn chi tiết hợp đồng.
-- Hợp đồng đang ở trạng thái còn hiệu lực (**ACTIVE**) — chưa **TERMINATED** hay **EXPIRED**, và còn gắn phòng/toà nhà.
-- Nên **ghi chỉ số điện lần cuối** hoặc biết **số điện cuối kỳ** để chốt tiền điện chính xác (xem [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/)). Nếu bỏ trống, hệ thống vẫn cho thanh lý nhưng sẽ không có tiền điện cuối.
-- Tiền cọc phải đang nằm ở **sổ CỌC (giữ hộ khách)** hoặc trên sổ thật đã thu; hệ thống tự bù cọc từ đó. Xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) và [Hoàn/bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/).
+- Quyền **Hợp đồng => Thanh lý** (module `contracts`, action `terminate`) — nút **Đăng ký chuyển đi** và **Thanh lý** chỉ hiện khi bạn có quyền này.
+- Hợp đồng đang hiệu lực và còn gắn phòng/toà nhà.
+- Nên biết **chỉ số điện/nước khi bàn giao**; nếu chưa có, chọn **bổ sung sau** (hồ sơ sẽ vào hàng chờ bổ sung chỉ số).
+- Tiền cọc đã thu nằm trên các phiếu cọc của hợp đồng — xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) và [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/).
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào menu **Khách hàng => Hợp đồng**, mở một hợp đồng **Đang hoạt động** đang hiển thị. Ảnh production dùng `HD-2026-00001`, phòng **A-01**, **DEMO Tòa A**. Trên thanh thao tác của màn chi tiết, bấm nút đỏ **Thanh lý**. Hộp thoại hiện hai lựa chọn: **Khách bỏ cọc** và **Khách rời phòng**.
+**Bước 1 — Báo ngày dự kiến trả phòng**: Khi khách báo sẽ trả, mở [trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) và ấn **Đăng ký chuyển đi** (ở danh sách là nút **ĐK chuyển đi**). Hộp **Báo ngày dự kiến trả phòng** ("Hợp đồng vẫn đang ở cho đến khi làm thanh lý") có **Ngày dự kiến trả phòng \*** và **Lý do / ghi chú**; ấn **Lưu ngày dự kiến**.
 
-![Hộp thoại Thanh lý hợp đồng với hai lựa chọn Khách bỏ cọc và Khách rời phòng](./images/buoc-01-dialog.webp)
+![Hộp Báo ngày dự kiến trả phòng: Ngày dự kiến trả phòng, Lý do / ghi chú, nút Lưu ngày dự kiến](./images/buoc-01-bao-tra-phong.webp)
 
-**Bước 2**: Bấm **Khách rời phòng**. Form **Thanh lý — Khách rời phòng** mở ra, gồm bốn khối từ trên xuống:
+Sau khi lưu: trang chi tiết hiện dải **Khách dự kiến trả phòng: dd/mm/yyyy** kèm **Sửa / hủy báo trả phòng**; trang công khai [Phòng trống](/03-quan-ly-van-hanh/trang-phong-trong/) hiện phòng là **Sắp trống**. Đến ngày hẹn, hợp đồng vào khối **Cần xác nhận ngày trả phòng** đầu màn [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — bấm **Cập nhật ngày trả** để đổi ngày, hoặc **Hủy báo trả phòng** nếu khách ở tiếp. Báo trả **không** đóng hợp đồng và không ghi tiền.
 
-- **THÔNG TIN HỢP ĐỒNG** — Mã HĐ, Khách hàng, **Phòng**, Ngày BĐ, Ngày KT và ô **Ngày chuyển đi** (bắt buộc, mặc định là hôm nay). Ngày chuyển đi này chính là **ngày kết thúc thực tế** ghi vào hợp đồng.
-- **CÔNG NỢ KHÁCH HÀNG** — liệt kê các hoá đơn khách **chưa thanh toán**. Trong snapshot `HD-2026-00001`, khối này hiện *Không có hoá đơn chưa thanh toán*.
-- **HOÀN CỌC VÀ TIỀN THỪA** — ô **Tiền cọc hoàn trả** lấy theo phần cọc thực có thể hoàn và ô **Tiền phòng thừa** lấy credit còn lại. Snapshot cho thấy nghĩa vụ cọc 4.000.000đ nhưng đã thu 0đ, nên **Tiền cọc hoàn trả = 0đ**.
-- **THU THÊM** — *Các khoản khách phải trả thêm*: **Tiền phòng + Nước + PDV**, **Tiền điện**, **Tiền vệ sinh**.
+**Bước 2 — Ghi nhận khách trả phòng**: Khi khách bàn giao thực tế, ấn nút đỏ **Thanh lý**. Hộp **Thanh lý hợp đồng** mở ra:
 
-![Form Thanh lý — Khách rời phòng của HD-2026-00001: không có công nợ, tiền cọc hoàn trả 0đ và khu Thu thêm](./images/buoc-02-form.webp)
+- **Ngày khách thực tế trả phòng \*** (mặc định hôm nay).
+- **Loại thanh lý \***: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc** (bỏ cọc xem trang [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/)).
+- **Nội dung thanh lý \*** — bắt buộc, dùng để đối chiếu và **in trên phiếu hoàn cọc**. Có thể bấm **Dùng nội dung mẫu** rồi bổ sung.
+- **Chỉ số điện, nước khi bàn giao**: mặc định tích **Chưa đủ chỉ số, bổ sung sau. Vẫn ghi nhận khách đã trả phòng.** Bỏ tích để nhập số trên từng đồng hồ đã kiểm tra và **Thời điểm đo thực tế** (số 0 chỉ dùng khi đồng hồ thực sự bằng 0).
 
-**Bước 3**: Kiểm tra **CÔNG NỢ KHÁCH HÀNG** và **Ngày chuyển đi**. Nếu còn hoá đơn chưa thu, chúng sẽ được **gạch nợ** trong lúc thanh lý (đánh dấu *Đã thu* bằng bút toán "Quyết toán khi thanh lý", **không huỷ** hoá đơn). Đặt đúng **Ngày chuyển đi** vì hệ thống dùng ngày này làm mốc tính số ngày ở nốt cho khoản **Tiền phòng + Nước + PDV** và ghi vào `actual_end_date` của hợp đồng.
+![Hộp Thanh lý hợp đồng: Ngày khách thực tế trả phòng, Loại thanh lý chọn Trả phòng trước hạn, Nội dung thanh lý điền mẫu, khối chỉ số bàn giao](./images/buoc-02-tra-phong.webp)
 
-::: danger Không xác nhận khi công nợ còn đang tải hoặc vừa báo lỗi
-Tổng nợ trong form được tính phía trình duyệt. Nếu truy vấn hoá đơn đang loading hoặc lỗi, giá trị có thể rơi về 0 và làm số hoàn cọc tăng sai. Trước khi xác nhận, tải lại đến khi bảng công nợ hiển thị ổn định, đối chiếu tổng với danh sách hoá đơn/Payment Schedule và kiểm tra cả hoá đơn bị huỷ/xoá/cancelled bằng nguồn kế toán phù hợp.
+**Bước 3 — Chọn quyết toán ngay hay để sau**:
+
+- **Trả phòng, quyết toán sau**: xác nhận khách đã đi; hợp đồng chuyển **Đã thanh lý** với ngày trả thực tế, phòng trống để sale, và hồ sơ vào tab **Chờ quyết toán** của màn Hợp đồng. Tiền cọc, khấu trừ và tiền hoàn xử lý khi quyết toán. Thao tác này **không ghi tiền**.
+- **Tiếp tục quyết toán ngay**: chuyển sang form quyết toán (Bước 4).
+
+Với hồ sơ đã trả phòng, mở lại từ tab **Chờ quyết toán** (nút **Quyết toán**) hoặc khối **Hồ sơ trả phòng** trên trang chi tiết (**Quyết toán hồ sơ này**). Hộp mở với tiêu đề **Quyết toán hồ sơ đã trả phòng**, giữ ngày và nội dung đã ghi; nếu đổi loại thanh lý phải nhập **Lý do đổi loại thanh lý**. Ấn **Tiếp tục quyết toán**.
+
+**Bước 4 — Form Quyết toán — Khách rời phòng**, từ trên xuống:
+
+- **THÔNG TIN HỢP ĐỒNG**: Mã HĐ, Khách hàng, Phòng, Ngày BĐ, Ngày KT, **Ngày trả phòng đã xác nhận** (chỉ đọc).
+- **CÔNG NỢ KHÁCH HÀNG**: hoá đơn chưa thanh toán (Mã HĐ, Kỳ, Tổng tiền, Đã TT, Còn lại) hoặc *Không có hoá đơn chưa thanh toán*.
+- **HOÀN CỌC VÀ TIỀN THỪA**: **Tiền cọc hoàn trả** (mặc định bằng cọc **đã thu**, dòng dưới ghi "Cọc theo HĐ … · Đã thu …"; nhập quá số đã thu thì hệ thống chỉ hoàn tối đa số đã thu) và **Tiền thừa của khách (credit) áp vào quyết toán** (mặc định 0; nếu khách có credit, ô ghi rõ số credit hiện có — phần không nhập vẫn treo trên hợp đồng).
+- **THU THÊM** (các khoản khách phải trả thêm): **Tiền phòng + Nước + PDV** theo khoảng **Ở từ → đến**, **Tiền điện** (số đầu → **Số cuối**), **Tiền vệ sinh** (mặc định 200.000 đ), và khoản tuỳ ý. Các khoản này vào **hoá đơn thanh lý riêng** (kỳ tháng trả phòng) và được khấu trừ vào cọc — không sửa hoá đơn tiền phòng hằng tháng.
+- **HOÀN LẠI KHÁCH**: **Tiền phòng ngày không ở** theo khoảng **Không ở từ → đến** và khoản hoàn tuỳ ý. Phần này **giảm lợi nhuận** (khác hoàn cọc là tiền giữ hộ); nếu khách còn nợ, nó được cấn thẳng vào công nợ trước.
+- **TỔNG HỢP**: Tổng công nợ, Tiền cọc hoàn trả, Tiền phòng thừa, Hoàn lại khách, Tổng thu thêm, **Tổng khấu trừ (công nợ + thu thêm)** và ô kết quả **Chủ nhà trả lại khách** hoặc **Khách còn phải trả**.
+- **Ghi chú**.
+
+![Form Quyết toán — Khách rời phòng của HD-2026-00008: công nợ INV-E2E-HUY-0001 500.000 đ, Tiền cọc hoàn trả 0 đ (cọc HĐ 3.000.000 đ, đã thu 0 đ), khu Thu thêm](./images/buoc-03-quyet-toan.webp)
+
+> **Số quyết toán = (Cọc hoàn trả + Tiền thừa áp vào + Hoàn lại khách) − (Công nợ + Tổng thu thêm)**
+
+**Bước 5**: Nếu kết quả là **Khách còn phải trả**, chọn một trong hai:
+
+- **Khách đã trả đủ … khi rời phòng — ghi nhận thu ngay**: chọn **Sổ nhận tiền** (mặc định **Tự chọn (sổ Thu của bạn)**).
+- **Ghi nợ** — hoá đơn giữ công nợ chờ thu sau; không ghi doanh thu khi chưa thu được tiền.
+
+**Bước 6**: Ấn **Lập hoá đơn & Thanh lý**. Hộp **Xác nhận thanh lý — khách rời phòng** tóm tắt **Cọc hoàn/cấn (kẹp theo đã thu)**, **Công nợ được quyết toán**, **Thu thêm**, **Tiền thừa (credit) áp vào quyết toán**, **Hoàn lại khách** (tách phần cấn vào công nợ / chi trả khách), cảnh báo credit còn treo (nếu có) và dòng cuối **Trả lại khách** / **Khách trả thêm (ghi thu ngay)** / **Khách còn nợ (ghi nợ chờ thu)**. Ấn **Xem lại** để quay lại, hoặc **Xác nhận thanh lý** để chốt.
+
+::: danger Xác nhận = ghi tiền và đóng hợp đồng ngay
+Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản thu thêm; quyết toán các hoá đơn còn nợ; chuyển phần cọc đã cấn thành **doanh thu thanh lý** (vào KQKD); tạo **phiếu chi hoàn cọc / trả khách** cho phần dư (hoàn cọc nằm ngoài KQKD, hoàn tiền phòng ngày không ở thì giảm lợi nhuận); đổi hợp đồng sang **Đã thanh lý** và giải phóng phòng. Phiếu chi **"Trả khách thanh lý"** có thể còn **chờ duyệt** — trang chi tiết sẽ nhắc vào phiếu, **chọn sổ quỹ chi tiền** rồi **Duyệt**; chỉ phiếu đã ghi sổ (**POSTED**) mới là tiền thật đã ra quỹ.
 :::
 
-**Bước 4**: Xem khối **HOÀN CỌC VÀ TIỀN THỪA**. Số **thực trả cho khách** không phải là cả cục cọc, mà được tính theo công thức:
+**Bước 7 — Checklist sau thanh lý** (trước khi cho thuê lại hoặc chi tiền ngoài hệ thống):
 
-> **Hoàn cọc thực = (Cọc hoàn trả + Tiền phòng thừa) − (Công nợ + Tổng thu thêm)**
-
-- Phần cọc dùng để **bù nợ và các khoản thu thêm** sẽ được chuyển thành **Doanh thu thanh lý** trên **sổ vận hành của toà** và **tính vào KQKD**.
-- Phần cọc **còn dư** sau khi trừ hết mới là tiền **hoàn trả thật** cho khách, chi ra từ **sổ CỌC** và **nằm ngoài KQKD** (trả lại tiền giữ hộ, không phải doanh thu).
-- Nếu khấu trừ **vượt** số cọc (khách còn phải trả thêm), phần âm đó thành khoản **khách trả thêm**, ghi thu vào sổ vận hành và **tính vào KQKD**.
-
-Với snapshot `HD-2026-00001`, hợp đồng ghi cọc **4.000.000đ** nhưng **đã thu 0đ**; vì vậy ô **Tiền cọc hoàn trả** là **0đ**. Hệ thống không được hoàn một nghĩa vụ cọc mà khách chưa thực nộp.
-
-**Bước 5**: Điền khu **THU THÊM** nếu khách còn phải trả các khoản cuối kỳ:
-
-- **Tiền phòng + Nước + PDV** — tiền cho những ngày ở nốt trong tháng cuối, tính theo **khoảng ngày *Ở từ → đến*** (ô *đến* mặc định là ngày chuyển đi). Nhập số tiền hoặc để hệ thống prorate theo số ngày.
-  - **Tiền điện** — nhập **Số cuối** để tính khoản cuối kỳ. Việc ghi bản chỉ số vào công tơ là best-effort và có thể không thành công nếu trùng/lỗi; vẫn phải kiểm tra lại màn [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/).
-  - **Tiền vệ sinh** — dùng mức hiển thị trên form và sửa theo chính sách đang áp dụng; không coi số fixture trong ảnh là biểu phí cố định.
-- Có thể bấm **Thêm khoản** cho một mục tuỳ ý (tên + số tiền).
-
-Mọi khoản thu thêm được **gộp chung vào một hoá đơn thanh lý** và **cấn trừ vào cọc** ngay (khác luồng bỏ cọc — nơi thu thêm ra một hoá đơn AR riêng chờ thu).
-
-::: danger Xác nhận hoàn tất = ghi tiền và đóng hợp đồng ngay
-Khi bạn bấm xác nhận thanh lý, hệ thống lập tức: (1) tạo/ghép **hoá đơn thanh lý** kèm các khoản thu thêm; (2) **gạch nợ mọi hoá đơn còn lại** về *Đã thu*; (3) chuyển phần cọc đã cấn thành **Doanh thu thanh lý** (vào KQKD) và **chi hoàn cọc dư** cho khách (ngoài KQKD); (4) **chốt số điện** vào công tơ; (5) đổi hợp đồng sang **TERMINATED** và **giải phóng phòng về trống**. Tất cả **duyệt ngay** — không có bước Duyệt thứ hai, nên **rất khó hoàn tác**. Chỉ bấm khi mọi con số đã đúng.
-:::
-
-**Bước 6**: Sau khi thanh lý, hoàn tất checklist trước khi cho thuê lại phòng hoặc chi tiền ngoài hệ thống:
-
-1. Hợp đồng ở **TERMINATED**, đúng `actual_end_date`; phòng thực sự **TRỐNG** và không còn hợp đồng hiệu lực.
-2. Hoá đơn tất toán/nợ cũ có trạng thái và số dư đúng; không còn khoản bị loading/ẩn khỏi danh sách.
-3. Phiếu hoàn cọc và phiếu doanh thu/cấn trừ tồn tại đúng một lần, đúng sổ, đúng số tiền, đúng trạng thái duyệt/posting.
-4. Có bản ghi thanh lý/lịch sử tương ứng; nếu thiếu, ghi nhận lỗi audit và báo quản trị, không thanh lý lại.
-5. Chỉ số cuối (nếu nhập) xuất hiện đúng một lần ở [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/).
-
-Luồng hoàn legacy và V2 có thể cùng tồn tại. Nếu đã thấy một phiếu hoàn từ bất kỳ luồng nào, không mở/tạo thêm hoàn cọc chỉ vì màn khác đang trống.
+1. Hợp đồng ở **Đã thanh lý**, đúng ngày trả thực tế; khối **Hồ sơ trả phòng** ghi **Đã chốt quyết toán**; phòng thực sự trống.
+2. Hoá đơn còn nợ và hoá đơn thanh lý có trạng thái và số dư đúng.
+3. Phiếu hoàn cọc / trả khách tồn tại đúng một lần, đúng số, có **nội dung thanh lý**; đã chọn sổ quỹ, đã duyệt và đã ghi sổ.
+4. Chỉ số bàn giao: nếu đã chọn bổ sung sau, hồ sơ nằm trong khối **Chờ bổ sung chỉ số bàn giao** (tab Chờ quyết toán) — bấm **Mở mốc bàn giao** để nhập.
+5. Credit còn treo (nếu cảnh báo có nhắc) được xử lý riêng.
 
 ## Các tính năng khác trên màn hình
 
 | Thành phần | Công dụng |
 | --- | --- |
-| Nút **Thanh lý** (đỏ) | Mở hộp thoại chọn hình thức thanh lý (Khách bỏ cọc / Khách rời phòng). |
-| Nút **Khách rời phòng** | Chọn luồng MOVE_OUT — chốt điện, cấn nợ, hoàn cọc, phòng về trống (bài này). |
-| Nút **Khách bỏ cọc** | Chọn luồng FORFEIT — khách bỏ ngang, mất cọc; xem [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/). |
-| Ô **Ngày chuyển đi** | Ngày kết thúc thực tế; mốc tính tiền phòng ở nốt và ghi vào hợp đồng. |
-| Khối **CÔNG NỢ KHÁCH HÀNG** | Liệt kê hoá đơn chưa thanh toán sẽ được gạch nợ khi thanh lý. |
-| Ô **Tiền cọc hoàn trả** | Phần cọc thực có thể hoàn đưa vào bù trừ; hệ thống trừ nợ + thu thêm để ra số hoàn thật. Không mặc định bằng nghĩa vụ cọc nếu khách chưa nộp đủ. |
-| Ô **Tiền phòng thừa** | Credit khách nộp dư còn lại, cộng vào nguồn bù cùng tiền cọc. |
-| Khu **THU THÊM** | Tiền phòng+Nước+PDV theo ngày, Tiền điện (chốt công tơ), Tiền vệ sinh, khoản tuỳ ý. |
-| Nút **Thêm khoản** | Thêm một dòng thu thêm tuỳ ý (tên + số tiền). |
-| Khối **Tiền cọc** (cột phải) | Đối chiếu Tổng cọc / Đã thu / Còn lại của hợp đồng trước khi thanh lý. |
+| **Đăng ký chuyển đi** / **ĐK chuyển đi** | Mở hộp **Báo ngày dự kiến trả phòng** (sửa/hủy được khi đã báo). |
+| Khối **Cần xác nhận ngày trả phòng** (màn Hợp đồng) | Hợp đồng đã đến ngày hẹn trả; **Cập nhật ngày trả**. |
+| Nút **Thanh lý** (đỏ) | Mở hộp **Thanh lý hợp đồng** (ngày trả, loại thanh lý, nội dung, chỉ số bàn giao). |
+| **Dùng nội dung mẫu** | Điền nhanh nội dung thanh lý theo loại đã chọn. |
+| **Trả phòng, quyết toán sau** | Ghi nhận trả phòng, phòng trống, hồ sơ vào tab **Chờ quyết toán**; không ghi tiền. |
+| **Tiếp tục quyết toán ngay** / **Tiếp tục quyết toán** | Sang form quyết toán. |
+| Tab **Chờ quyết toán** → **Quyết toán** | Mở đúng hồ sơ đã trả phòng để quyết toán sau. |
+| Khu **THU THÊM** / **HOÀN LẠI KHÁCH** | Khoản khách trả thêm (vào hoá đơn thanh lý) / khoản mình trả lại khách (giảm lợi nhuận). |
+| **Lập hoá đơn & Thanh lý** → **Xác nhận thanh lý** | Chốt quyết toán (không hoàn tác). **Quay lại** về bước trước, **Hủy** đóng hộp. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách hiểu / xử lý |
 | --- | --- |
-| Không thấy nút **Thanh lý** | Bạn thiếu quyền **Hợp đồng => Thanh lý** (`contracts.terminate`), hoặc hợp đồng đã **TERMINATED/EXPIRED**. Nhờ chủ nhà cấp quyền. |
-| Chọn nhầm **Khách bỏ cọc** | Đó là luồng giữ cọc làm phí phạt bằng cặp bút toán nội bộ tự duyệt, không phải hoàn tiền khách. Nếu khách trả phòng đúng quy trình, hãy dùng **Khách rời phòng**. Xem [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/). |
-| **Tiền hoàn trả nhỏ hơn** tổng cọc | Đúng thiết kế: cọc bị **cấn vào công nợ + thu thêm** trước, chỉ phần dư mới hoàn khách. Phần cấn thành Doanh thu thanh lý (vào KQKD). |
-| Khấu trừ **vượt** cọc | Không hoàn trả; phần vượt trở thành khoản **khách trả thêm**, ghi thu vào sổ vận hành và tính KQKD. |
-| Không nhớ **số điện cuối** | Có thể để trống ô Tiền điện — thanh lý vẫn chạy nhưng **không có tiền điện cuối**. Nên [ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/) trước, hoặc nhập **Số cuối** ngay trong khu Thu thêm để chốt luôn. |
-| Chốt số điện **không thấy** trong công tơ | Việc ghi chỉ số khi thanh lý là **best-effort** (bọc trong xử lý lỗi để không chặn thanh lý); nếu trùng/lỗi, bản ghi có thể không tạo — kiểm tra lại ở [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/). |
-| Hợp đồng đã đóng nhưng không có dòng lịch sử thanh lý | Việc ghi `contract_terminations` có lỗi đã biết có thể bị bỏ qua. Đối chiếu toàn bộ checklist, báo quản trị phục hồi audit trail và **không** chạy thanh lý/hoàn cọc lần nữa. |
-| Tab hoàn/bỏ cọc trống dù đã thấy phiếu chi | Không tạo hoàn mới. Đối chiếu mọi sổ và trạng thái posting; các writer hoàn cọc có thể cùng tồn tại và màn đọc không bao phủ giống nhau. `/finance/refund-log` hiện là **Sổ tiền thối**, không phải bằng chứng hoàn cọc. |
-| Hoá đơn nợ cũ vẫn còn sau thanh lý | Move-out **gạch nợ** hoá đơn về *Đã thu* (bằng bút toán "Quyết toán khi thanh lý"), **không huỷ**. Chúng vẫn hiển thị nhưng đã tất toán. |
-| Lỡ thanh lý nhầm | Rất khó hoàn tác vì mọi phiếu đã duyệt và phòng đã về trống. Liên hệ chủ nhà / kế toán để đảo bút toán thủ công; đừng tự sửa lẻ tẻ. |
+| Không thấy nút **Thanh lý** / **Đăng ký chuyển đi** | Thiếu quyền `contracts.terminate`, hoặc hợp đồng đã **Thanh lý**. |
+| Nút **Trả phòng, quyết toán sau** / **Tiếp tục quyết toán ngay** bị mờ | Chưa chọn loại thanh lý, chưa nhập **Nội dung thanh lý**, hoặc chưa nhập đủ chỉ số khi đã bỏ tích "bổ sung sau". |
+| Form báo "Không tải được công nợ và số dư khách hàng" | Không quyết toán khi số nợ chưa tải được — tổng có thể sai. Đóng hộp, tải lại trang rồi làm lại. |
+| **Tiền cọc hoàn trả = 0** dù hợp đồng ghi cọc | Khách chưa thực nộp cọc (đã thu 0 đ). Hệ thống không hoàn một nghĩa vụ cọc khách chưa nộp. |
+| **Tiền hoàn trả nhỏ hơn** tổng cọc | Đúng thiết kế: cọc cấn vào công nợ + thu thêm trước, chỉ phần dư mới hoàn khách. |
+| Khách có credit nhưng không được tính | Ô credit mặc định 0. Nhập số muốn cấn (tối đa bằng credit); phần không nhập vẫn treo trên hợp đồng và hộp xác nhận sẽ nhắc. |
+| Chưa biết chỉ số điện cuối | Giữ tích **bổ sung sau** khi ghi nhận trả phòng; bổ sung ở khối **Chờ bổ sung chỉ số bàn giao**. Tiền điện cuối kỳ có thể nhập ở khu Thu thêm nếu đã biết số. |
+| Đổi loại thanh lý khi quyết toán sau | Phải nhập **Lý do đổi loại thanh lý**; loại ban đầu vẫn được giữ để đối soát. |
+| Lỡ thanh lý nhầm | Không thể hoàn tác vì phiếu đã tạo và phòng đã giải phóng. Liên hệ chủ nhà / kế toán; đừng tự sửa lẻ tẻ. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở danh sách Hợp đồng" fixtures="HD-2026-00001 · A-01 · cọc yêu cầu 4.000.000đ, đã thu 0đ, không có công nợ" view-only>
+<SandboxTry account="demo.chunha" app-path="/deposits" app-label="Mở màn Đặt cọc để vào hợp đồng" fixtures="Snapshot 07/10/2026: HD-2026-00008 · DEMO Toà D · D-03 · cọc 3.000.000 đ, đã thu 0 đ · 1 hoá đơn nợ 500.000 đ." view-only>
 
 Bài tập **an toàn** — chỉ mở form và **không hoàn tất**:
 
-1. Mở `HD-2026-00001` của phòng **A-01**, bấm nút đỏ **Thanh lý**.
-2. Trong hộp thoại, chọn **Khách rời phòng** để mở form **Thanh lý — Khách rời phòng**.
-3. Quan sát khối **CÔNG NỢ KHÁCH HÀNG** hiện *Không có hoá đơn chưa thanh toán*, và ô **Tiền cọc hoàn trả = 0đ** dù cọc theo hợp đồng là 4.000.000đ.
-4. Nhận diện khu **THU THÊM** nhưng không nhập số; các trường này sẽ làm thay đổi quyết toán nếu dùng trong nghiệp vụ thật.
-5. **ĐÓNG hộp thoại** để không ghi tiền.
+1. Ở **Đặt cọc** → **Sổ cọc đầy đủ** → tab **Đủ / Thiếu cọc**, bấm tên **DEMO Khách 08** để mở hợp đồng D-03.
+2. Ấn **Đăng ký chuyển đi** để xem hộp báo trả phòng, rồi **Đóng**.
+3. Ấn **Thanh lý**, chọn **Trả phòng trước hạn**, bấm **Dùng nội dung mẫu**, rồi **Tiếp tục quyết toán ngay**.
+4. Đọc khối **CÔNG NỢ KHÁCH HÀNG** (hoá đơn 500.000 đ) và **Tiền cọc hoàn trả = 0 đ** vì cọc chưa thu; kéo xuống xem **TỔNG HỢP** báo **Khách còn phải trả**.
+5. Ấn **Hủy** để đóng — **không** bấm **Lập hoá đơn & Thanh lý** hay **Trả phòng, quyết toán sau**.
 
-Kết quả mong đợi: bạn hiểu dòng tiền move-out — **cọc bù nợ + thu thêm ⇒ Doanh thu thanh lý (vào KQKD)**, **phần dư ⇒ hoàn trả khách (ngoài KQKD)**, mọi phiếu duyệt ngay và **phòng về trống** khi hoàn tất.
+Kết quả mong đợi: bạn hiểu ba chặng báo trả → trả phòng → quyết toán, và dòng tiền **cọc bù nợ + thu thêm ⇒ doanh thu thanh lý**, **phần dư ⇒ hoàn khách**.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) — luồng còn lại: khách bỏ ngang, giữ cọc làm phí phạt qua cặp bút toán nội bộ tự duyệt.
-- [Hoàn/bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — theo dõi tiền cọc, hoàn cọc và bỏ cọc theo hợp đồng.
-- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — nguồn tiền cọc và credit dư dùng để bù trừ khi thanh lý.
-- [Chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — nơi có nút Thanh lý và vòng đời hợp đồng.
-- [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/) — chốt chỉ số điện nước; thanh lý ghi thẳng số cuối vào công tơ.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) và [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — nơi xem phiếu hoàn cọc và Doanh thu thanh lý phát sinh.
-- [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) — Doanh thu thanh lý vào KQKD, ảnh hưởng phân bổ lợi nhuận cổ đông.
+- [Thanh lý — Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) — loại thanh lý còn lại: khách bỏ ngang, giữ cọc làm phí phạt.
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — khối **Cần xác nhận ngày trả phòng** và tab **Chờ quyết toán**.
+- [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — theo dõi tiền cọc, hoàn cọc và bỏ cọc.
+- [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — nơi có nút Thanh lý và khối Hồ sơ trả phòng.
+- [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/) — chỉ số điện nước của phòng.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) và [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — nơi duyệt phiếu "Trả khách thanh lý" và xem doanh thu thanh lý.
 - [Quy trình thanh lý](/01-bat-dau/quy-trinh-thanh-ly/) — bức tranh tổng quát về thanh lý hợp đồng.

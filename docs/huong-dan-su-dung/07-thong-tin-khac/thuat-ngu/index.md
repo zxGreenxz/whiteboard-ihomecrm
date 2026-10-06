@@ -6,8 +6,9 @@ permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: null
 status: published
 ---
 
@@ -83,6 +84,8 @@ Phần cọc thiếu không được nhập chung vào “nợ cũ” của hoá
 
 `AVAILABLE ⇄ OCCUPIED` và `AVAILABLE ⇄ RESERVED` phần lớn được hệ thống tính theo hợp đồng/cọc. Chỉ đặt tay trạng thái vận hành như bảo trì hoặc không khai thác khi luồng màn hình cho phép.
 
+Trên [Sơ đồ toà nhà](/02-theo-doi-nhanh/so-do-toa-nha/) có thêm nhãn hiển thị **Sắp trống** (hợp đồng còn hiệu lực nhưng chỉ còn 1–30 ngày) — đây không phải mã lưu trong dữ liệu. `MAINTENANCE` hiện thành **Ngừng hoạt động**; căn `UNAVAILABLE` không hợp đồng hiện như **Trống** trên sơ đồ.
+
 ## Trạng thái hoá đơn
 
 | Nhãn | Mã | Ý nghĩa |
@@ -140,7 +143,11 @@ Các nhãn này không phải nguồn authoritative cho số tiền cọc còn g
 | **Binding** | Liên kết một membership với vai trò và scope. |
 | **Scope** | Phạm vi organization, khu vực, toà hoặc sổ mà binding/override áp dụng. |
 | **Override** | Ngoại lệ `ALLOW`/`DENY` cho thành viên; `DENY` thắng khi cùng áp dụng. |
-| **Runtime-off** | Tính năng có code/quyền trong catalog nhưng route không được dựng khi runtime của build là `off`. Network Center dùng cơ chế này. |
+| **Runtime-off / cờ phát hành** | Tính năng có code/quyền trong catalog nhưng route không được dựng khi cờ của bản build là `off`. [Trung tâm mạng](/03-quan-ly-van-hanh/trung-tam-mang/) dùng cơ chế này; bản production hiện **bật**, và mỗi toà còn có chế độ riêng **Đã tắt / Chỉ đọc / Được thực thi**. |
+| **Danh mục chi chuẩn** | Danh sách hạng mục chi thống nhất của công ty (từ 03/10/2026); chỉ chủ công ty thêm/sửa/xoá, quản lý chỉ chọn. Xem [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/). |
+| **Cam kết chi / luật chi theo hạng mục** | Cấu hình ở `/settings/finance/cam-ket-chi` (menu **Tài chính** => **Cam kết chi**, chỉ chủ công ty sửa được). Mỗi hạng mục chi đi theo một luật: **Theo cam kết** (so với số tiền đã ký của tháng — tiền nhà, internet, quản lý…), **Theo trần** (so với trần đã công bố — điện, nước) hoặc **Từng phiếu** (như cũ: người có quyền duyệt tự duyệt, phiếu từ 600.000đ của người khác chờ duyệt). Máy chỉ quyết thay khi bộ máy ở chế độ **đang áp dụng**; ở chế độ **đang chạy thử** mọi phiếu vẫn duyệt như cũ. Luật này chỉ quyết việc **duyệt**; tiền thật vẫn chỉ tính khi phiếu **Đã Chi**. |
+| **Báo chi nhanh** | Màn `/chi-tieu`: gõ, nói hoặc chụp bill để tạo **thẻ nháp** phiếu chi. Xem [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/). |
+| **Ngày công (v5)** | Ngày có ít nhất một việc thật (kiểm tra nhà, thu tiền kèm check nhà, sửa chữa) — tính trên màn [Hôm nay](/02-theo-doi-nhanh/viec-cua-toi/); số tiền hiển thị là TẠM TÍNH tới khi khoá sổ cuối tháng. |
 
 ## Route canonical thường bị nhầm
 

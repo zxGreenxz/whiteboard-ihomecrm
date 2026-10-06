@@ -1,85 +1,91 @@
 ---
 title: "Kho (địa điểm lưu)"
-description: "Khai báo và quản lý danh mục kho — các địa điểm lưu tài sản và vật tư (tên kho, vị trí) dùng để tham chiếu trong toàn hệ thống."
+description: "Khai báo danh mục Kho tài sản — các địa điểm cất tài sản, nội thất (tên kho, vị trí) để tra cứu."
 routes: ["/settings/categories/warehouses"]
 permissions: [{module: warehouses, action: view}, {module: warehouses, action: create}, {module: warehouses, action: edit}, {module: warehouses, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Kho (địa điểm lưu)
 
-Trang **Kho tài sản** là nơi bạn khai báo danh mục các **địa điểm lưu** — những chỗ cất giữ tài sản, nội thất và vật tư dự phòng như kho tầng hầm, phòng kỹ thuật, kho tổng... Mỗi kho chỉ gồm hai thông tin đơn giản: **Tên kho** và **Vị trí**. Bạn dùng danh mục này để ghi nhận và tham chiếu tài sản/vật tư của mình đang được cất ở đâu, tách khỏi các căn hộ đang cho thuê.
+Màn **Kho tài sản** là nơi khai báo danh sách các **địa điểm cất giữ** tài sản, nội thất và đồ dự phòng — kho tầng hầm, phòng kỹ thuật, kho tổng… Mỗi kho chỉ có hai thông tin: **Tên kho** và **Vị trí**. Danh mục dùng chung cho cả công ty, không tách theo toà nhà.
 
-Đây là danh mục dùng chung ở cấp tài khoản (không tách theo từng tòa nhà). Hiện tại kho là **danh mục khai báo độc lập** để tham chiếu — bạn tạo và quản lý danh sách kho ở đây, còn việc ghi tài sản vào từng phòng/căn hộ được làm ở màn Tài sản.
+Hiện kho là **danh mục khai báo để tra cứu**: màn [Tài sản](/03-quan-ly-van-hanh/tai-san/) chưa có ô chọn kho, nên tài sản vẫn được gắn theo toà/phòng ở màn đó. Kho tài sản ở đây cũng **khác** với [Kho vật tư](/03-quan-ly-van-hanh/kho-vat-tu/) (tồn vật tư tiêu hao, phiếu nhập/xuất).
 
 ::: info Điều kiện tiên quyết
-- Quyền **Kho => Xem** (module `warehouses`, action `view`) để mở danh mục.
-- Quyền **Thêm / Sửa / Xoá** trên Kho nếu muốn tạo mới, chỉnh sửa hoặc xoá một kho.
-- Trang nằm trong nhóm **Cài đặt hệ thống**, truy cập qua **Cài đặt** => **Danh mục khác** => nhóm **Tài sản** => **Kho**.
+- Quyền **Kho => Xem** (module `warehouses`, action `view`) để mở màn hình.
+- Quyền **Thêm / Sửa / Xoá** (`warehouses.create` / `edit` / `delete`) để lưu thay đổi. Nút vẫn hiện với mọi người vào được màn; thiếu quyền thì máy chủ từ chối khi lưu và hộp thoại báo lỗi.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào **Cài đặt** => **Danh mục khác**. Trong nhóm **Tài sản**, chọn **Kho**. Trang mở ra tại đường dẫn `/settings/categories/warehouses` với tiêu đề **Kho tài sản**.
+**Bước 1**: Vào **Cài đặt hệ thống** => **Danh mục khác**, trong nhóm **Tài sản** chọn thẻ **Kho tài sản**. Màn hình có tiêu đề **Kho tài sản** ("Quản lý kho tài sản"), liên kết **Quay lại Danh mục khác** và nút **Thêm mới**. Khi đã có kho, bảng gồm cột **Tên kho**, **Vị trí** và **Thao tác**. Snapshot DEMO ngày 07/10/2026 chưa có kho nào nên màn hiện *"Chưa có dữ liệu. Hãy thêm mới."*
 
-**Bước 2**: Xem bảng danh sách kho. Bảng có các cột **Tên kho**, **Vị trí** và **Thao tác** (nút Sửa / Xoá của từng dòng). Nếu chưa khai kho nào, màn hiện dòng "Chưa có dữ liệu. Hãy thêm mới.".
+![Bước 1 - Màn Kho tài sản, DEMO chưa có kho](./images/buoc-01-danh-sach.webp)
 
-**Bước 3**: Muốn thêm một kho mới, ấn nút **Thêm mới** ở góc phải trên. Trong form:
-- Nhập **Tên kho** (bắt buộc) — ví dụ "Kho DEMO A - Tầng hầm".
-- Nhập **Vị trí** (tuỳ chọn, ô nhiều dòng) — mô tả nơi đặt kho, ví dụ "Tầng hầm Tòa DEMO A, cạnh chỗ để xe".
-- Ấn **Thêm mới** để lưu. Kho vừa tạo xuất hiện ngay trong bảng.
+**Bước 2**: Ấn **Thêm mới**. Trong hộp thoại **Thêm mới**:
+- Nhập **Tên kho \*** (bắt buộc) — ví dụ "Kho tầng hầm Toà A".
+- Nhập **Vị trí** (tuỳ chọn, ô nhiều dòng) — mô tả nơi đặt kho, ví dụ "Tầng hầm, cạnh chỗ để xe".
+- Ấn **Thêm mới** để lưu, hoặc **Hủy** để đóng. Lưu xong, thông báo *"Đã tạo kho tài sản <tên kho>."* hiện ra và kho xuất hiện trong bảng.
 
-**Bước 4**: Muốn chỉnh sửa, ấn biểu tượng **bút chì** (Sửa) trên dòng kho. Form mở ra với tiêu đề **Cập nhật** kèm sẵn Tên kho / Vị trí hiện tại. Sửa xong ấn **Cập nhật**.
+![Bước 2 - Hộp thoại Thêm mới với ô Tên kho và Vị trí](./images/buoc-02-form-them.webp)
 
-**Bước 5**: Muốn xoá một kho, ấn biểu tượng **thùng rác** (Xoá) trên dòng đó. Hộp thoại **Xác nhận xóa** hiện ra với thông báo "Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác." — ấn **Xóa** để xác nhận, hoặc **Hủy** để giữ lại.
+**Bước 3**: Muốn sửa, ấn biểu tượng **bút chì** trên dòng kho. Hộp thoại **Cập nhật** mở sẵn tên và vị trí hiện tại; sửa xong ấn **Cập nhật**.
+
+**Bước 4**: Muốn xoá, ấn biểu tượng **thùng rác**. Hộp thoại **Xác nhận xóa** báo *"Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác."* — ấn **Xóa** để xác nhận, hoặc **Hủy** để giữ lại.
 
 ::: warning Xoá kho là xoá vĩnh viễn
-Nút **Xoá** ở đây **xoá hẳn** bản ghi kho khỏi hệ thống (không phải ẩn tạm), và **không thể hoàn tác**. Nếu lỡ xoá nhầm, bạn phải tạo lại kho bằng tay. Chỉ xoá những kho thực sự không còn dùng; nếu chỉ tạm ngừng, cân nhắc đổi tên (ví dụ thêm "(ngừng dùng)") thay vì xoá.
+Nút **Xóa** xoá hẳn bản ghi kho, không khôi phục được. Nếu chỉ tạm ngừng dùng, cân nhắc đổi tên (ví dụ thêm "(ngừng dùng)") thay vì xoá.
 :::
 
-**Bước 6**: Muốn quay về trang tổng hợp danh mục, ấn liên kết **Quay lại Danh mục khác** ở góc trái trên.
+**Bước 5**: Ấn **Quay lại Danh mục khác** để trở về trang danh mục tổng hợp.
 
 ## Các tính năng khác trên màn hình
 
 | Nút / Thành phần | Công dụng |
 | --- | --- |
-| Nút **Thêm mới** | Mở form tạo kho mới (Tên kho + Vị trí). |
-| Biểu tượng **Sửa** (bút chì) | Mở form chỉnh Tên kho / Vị trí của dòng đang chọn. |
-| Biểu tượng **Xoá** (thùng rác) | Xoá vĩnh viễn kho (có bước xác nhận trước khi xoá). |
-| Liên kết **Quay lại Danh mục khác** | Trở về trang danh mục tổng hợp (`/settings/categories`). |
-| Trường **Tên kho** | Bắt buộc, không được để trống — dùng để nhận diện kho. |
-| Trường **Vị trí** | Mô tả tuỳ chọn (ô nhập nhiều dòng) ghi chú nơi đặt kho. |
+| Nút **Thêm mới** | Mở hộp thoại tạo kho mới (Tên kho + Vị trí). |
+| Biểu tượng **bút chì** | Mở hộp thoại **Cập nhật** của dòng đang chọn. |
+| Biểu tượng **thùng rác** | Mở hộp thoại **Xác nhận xóa**. |
+| Liên kết **Quay lại Danh mục khác** | Trở về `/settings/categories`. |
+| Trường **Tên kho** | Bắt buộc; để trống sẽ báo *"Nhập tên kho."* |
+| Trường **Vị trí** | Ghi chú tuỳ chọn, nhiều dòng. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Không thấy mục **Kho** trong **Danh mục khác** | Tài khoản của bạn chưa có quyền **Kho => Xem** (module `warehouses`). Nhờ chủ nhà cấp quyền trong phần phân quyền nhân viên. |
-| Ấn **Thêm mới** / **Cập nhật** nhưng không lưu được | Thường do bỏ trống **Tên kho** (trường bắt buộc). Nhập tên kho rồi lưu lại. |
-| Lỡ xoá nhầm một kho, muốn khôi phục | Xoá kho là **vĩnh viễn**, không có thùng rác để khôi phục. Bạn phải tạo lại kho bằng tay (Tên + Vị trí như cũ). |
-| Không có ô lọc theo tòa nhà trên màn này | Đúng thiết kế: kho là danh mục **phẳng theo tài khoản**, dùng chung cho mọi tòa, không phân theo từng tòa nhà. |
-| Danh sách trống dù chắc chắn đã tạo kho | Thường do quyền: nhân viên chỉ thấy dữ liệu theo quyền được cấp. Kiểm tra lại quyền **Kho => Xem** hoặc nhờ quản lý cấp quyền. |
-| Tạo kho nhưng không thấy nó tự gắn vào tài sản nào | Kho hiện là **danh mục khai báo để tham chiếu** — hệ thống chưa tự động gắn kho vào từng tài sản hay phiếu di chuyển. Dùng danh sách này để ghi chú/tra cứu địa điểm lưu. |
+| Không thấy thẻ **Kho tài sản** hoặc bị chuyển về Bảng tin | Tài khoản chưa có quyền **Kho => Xem** (module `warehouses`) hoặc **Danh mục khác**. Nhờ chủ nhà cấp quyền. |
+| Ấn lưu nhưng ô báo *"Nhập tên kho."* | Nhập **Tên kho** rồi lưu lại. |
+| Hộp thoại báo *"Chưa lưu được kho tài sản…"* hoặc *"Chưa xóa được kho tài sản…"* | Thiếu quyền tương ứng hoặc mất kết nối. Đọc phần mô tả trong thông báo, kiểm tra quyền rồi thử lại. |
+| Màn báo *"Chưa tải được kho tài sản."* | Ấn **Tải lại**; nút **Thêm mới** bị khoá cho tới khi tải được danh sách. |
+| Lỡ xoá nhầm một kho | Không khôi phục được; tạo lại kho bằng tay. |
+| Không có ô lọc theo toà nhà | Đúng thiết kế: kho là danh mục chung của công ty. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.kythuat" app-path="/settings/categories/warehouses" view-only>
+<SandboxTry account="demo.chunha" app-path="/settings/categories/warehouses" app-label="Mở màn Kho tài sản" fixtures="Snapshot 07/10/2026: DEMO chưa có kho tài sản nào." view-only>
 
-Xem danh sách kho:
+**Bài tập chỉ xem**
 
-1. Đọc bảng **Kho tài sản** — chú ý hai cột **Tên kho** và **Vị trí**.
-2. Ấn biểu tượng **bút chì** (Sửa) trên một dòng để xem đầy đủ hai trường của form (không cần Lưu).
-3. Để ý màn không có ô lọc theo tòa nhà — kho là danh mục dùng chung theo tài khoản.
+1. Mở màn **Kho tài sản**, xác nhận màn đang trống.
+2. Ấn **Thêm mới** để xem hai trường **Tên kho** và **Vị trí**, rồi ấn **Hủy** — không lưu.
 
-Kết quả mong đợi: bạn hình dung được danh mục kho gồm những gì và biết chỗ để thêm/sửa/xoá một địa điểm lưu.
+**Kết quả mong đợi**
+
+- Giao diện khớp hướng dẫn.
+- Không có kho nào bị tạo, sửa hoặc xoá trên DEMO.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Danh mục chung](/05-cai-dat/danh-muc-chung/) — trang tổng hợp các danh mục dùng chung khác của hệ thống, cùng nhóm với danh mục Kho.
+- [Danh mục khác](/05-cai-dat/danh-muc-khac/) — trang tổng hợp các danh mục, trong đó có nhóm **Tài sản**.
+- [Tài sản](/03-quan-ly-van-hanh/tai-san/) — khai báo và theo dõi từng món tài sản theo toà/phòng.
+- [Kho vật tư](/03-quan-ly-van-hanh/kho-vat-tu/) — tồn kho vật tư tiêu hao, phiếu nhập/xuất.

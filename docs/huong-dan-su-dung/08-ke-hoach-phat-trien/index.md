@@ -7,8 +7,8 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-08-13"
-  commit: "6acd7b4"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, ky-thuat]
@@ -17,6 +17,17 @@ status: published
 
 ::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
 Toàn bộ mục 08 là tài liệu đề xuất/trình bày. Route, quyền, trạng thái, flow và timeline trong các trang này không xác nhận tính năng đang chạy trong production. Muốn biết runtime hiện hành, đối chiếu hướng dẫn vận hành và source code.
+:::
+
+::: info Đối chiếu với bản đang chạy — 07/10/2026
+Một phần các kế hoạch dưới đây **đã thành tính năng thật**. Khi cần hướng dẫn thao tác, hãy dùng trang vận hành tương ứng thay vì bản kế hoạch:
+
+| Kế hoạch | Đã có trong bản đang chạy (đối chiếu mã nguồn commit `81c5a3cd`) | Trang hướng dẫn |
+|---|---|---|
+| Quy trình thu chi | Bốn trục trạng thái phiếu; **Duyệt** tách **Duyệt và Thu/Chi**; chi bắt buộc sổ quỹ + ngày + chứng từ; báo cáo lợi nhuận tính cả phiếu chờ duyệt; máy chủ chặn chốt lợi nhuận khi tháng còn phiếu chờ duyệt; Người giữ sổ / Người biết sổ; luật chi theo hạng mục (**Cam kết chi**); **danh mục chi chuẩn**; **Báo chi nhanh**. | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) · [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) · [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
+| AI Copilot | Trợ lý chat trong app có entitlement và kill switch; công cụ đọc dữ liệu; tạo phiếu thu chi qua bước xem trước + xác nhận (RPC giao dịch); điều khiển giao diện chỉ qua danh sách control an toàn; lọc link do mô hình sinh; mã PIN xác nhận bước nhạy cảm. | [Trợ lý AI](/05-cai-dat/tro-ly-ai/) |
+
+Chi tiết từng mục nằm ở khung *Trạng thái triển khai* đầu mỗi trang kế hoạch.
 :::
 
 <div class="plan-hero">

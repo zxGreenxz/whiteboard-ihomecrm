@@ -1,23 +1,23 @@
 ---
-title: "Cư dân — danh sách & hồ sơ"
-description: "Tra cứu, tạo và quản lý hồ sơ cư dân/khách hàng: loại khách, trạng thái, CCCD, liên hệ, phương tiện và nhập hàng loạt từ Excel."
-routes: ["/customers", "/customers/new"]
+title: "Cư dân (Khách hàng) — danh sách & hồ sơ"
+description: "Tra cứu, tạo và quản lý hồ sơ cư dân/khách hàng: loại khách, trạng thái, CCCD, liên hệ, phương tiện, hồ sơ tạm trú và nhập hàng loạt từ Excel."
+routes: ["/customers", "/customers/new", "/customers/:id"]
 permissions: [{module: customers, action: view}]
 viewport: desktop
 audience: [quan-ly-toa, sale]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
-# Cư dân — danh sách & hồ sơ
+# Cư dân (Khách hàng) — danh sách & hồ sơ
 
-Màn **Cư dân** là nơi lưu và tra cứu hồ sơ `customers`: thông tin cá nhân/tổ chức, giấy tờ, địa chỉ, liên hệ và phương tiện. Hệ thống vẫn còn bảng `tenants` legacy ở một số luồng cũ; hai nguồn này không tự đồng bộ hoàn toàn. Với hợp đồng/cọc mới, đối chiếu khách theo hồ sơ `customers` và không giả định một người-thuê legacy đã tự xuất hiện đúng ở đây.
+Màn **Quản lý Khách hàng** (menu **Khách hàng** => **Khách hàng**; tài liệu gọi chung là "cư dân") là nơi lưu và tra cứu hồ sơ `customers`: thông tin cá nhân/tổ chức, giấy tờ, địa chỉ, liên hệ và phương tiện. Hệ thống vẫn còn bảng `tenants` legacy ở một số luồng cũ; hai nguồn này không tự đồng bộ hoàn toàn. Với hợp đồng/cọc mới, đối chiếu khách theo hồ sơ `customers` và không giả định một người-thuê legacy đã tự xuất hiện đúng ở đây.
 
-::: tip Snapshot production DEMO (13/08/2026)
-Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê**, thẻ **Tổng** hiển thị **24** và thẻ **Nước ngoài** là **0**. Các dòng đang hiển thị dùng tên `DEMO Khách 01` trở đi; lượt xác minh không ghi dữ liệu và console không có lỗi. Con số này là ảnh chụp runtime tại thời điểm kiểm tra, không phải số lượng cố định cho mọi tổ chức.
+::: tip Snapshot production DEMO (07/10/2026)
+Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê**, thẻ **Tất cả** hiển thị **24** và thẻ **Khách nước ngoài** là **0**. Các dòng dùng tên `DEMO Khách 01` trở đi; nhiều hồ sơ DEMO chưa có CCCD, ngày sinh, địa chỉ. Con số này là ảnh chụp runtime tại thời điểm kiểm tra, không phải số lượng cố định cho mọi tổ chức.
 :::
 
 ::: info Điều kiện tiên quyết
@@ -29,15 +29,17 @@ Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê*
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại menu bên trái, ấn chọn **Cư dân**. Snapshot hiện hành tải ở tab **Đang thuê** và chỉ hiển thị hai thẻ nhanh **24 Tất cả** / **0 Khách nước ngoài**, cùng ô tìm kiếm, bộ lọc vị trí và các nút thao tác. Việc chọn **Cá nhân/Tổ chức** nằm trong form hồ sơ, không phải hai thẻ thống kê riêng trên danh sách hiện tại.
+**Bước 1**: Tại menu bên trái, ấn chọn **Khách hàng** => **Khách hàng**. Màn **Quản lý Khách hàng** tải ở tab **Đang thuê**, hiện hai thẻ nhanh **Tất cả** / **Khách nước ngoài**, ô lọc **Tất cả toà nhà** / **Chọn phòng**, ô **Tìm kiếm khách hàng...** và hàng nút biểu tượng: **+** (thêm), **Xuất Excel**, **Nhập Excel**, **In**, **Dạng lưới** / **Dạng danh sách**. Bảng có các cột **Khách hàng** (tên + SĐT), **Căn hộ đang ở**, **CMND/CCCD/Hộ chiếu**, **Ngày sinh**, **Địa chỉ**, **Thao tác** (xem / sửa / xoá). Việc chọn **Cá nhân/Tổ chức** nằm trong form hồ sơ, không phải thẻ thống kê.
 
-![Màn Cư dân: danh sách khách DEMO kèm thẻ thống kê, tab trạng thái và ô tìm kiếm](./images/buoc-01-danh-sach.webp)
+![Màn Quản lý Khách hàng: tab Đang thuê, thẻ Tất cả 24 / Khách nước ngoài 0, bộ lọc toà-phòng, hàng nút và bảng khách DEMO](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Chọn tab trạng thái nếu cần — **Đang thuê** / **Đã chuyển đi** / **Khách vãng lai**. Trạng thái `MOVED_OUT` và `WALK_IN` hiện không được vòng đời hợp đồng cập nhật tự động đáng tin cậy, nên hai tab này có thể rỗng dù nghiệp vụ thực tế đã xảy ra. Thẻ **Khách nước ngoài** lọc riêng nhóm quốc tịch; danh sách hiện không có thẻ lọc **Cá nhân/Tổ chức**.
 
 **Bước 3**: Tại ô tìm kiếm, gõ **tên**, **số điện thoại**, **email** hoặc **số CCCD** để lọc nhanh. Muốn thu hẹp theo vị trí, dùng ô lọc **Toà nhà** (danh sách phẳng A→Z, chọn 1 toà hoặc tất cả); chọn xong một toà thì ô **Phòng** mới bật lên. Các bộ lọc và ô tìm kiếm được giữ lại khi bạn tải lại trang (F5).
 
-**Bước 4**: Muốn thêm khách mới, ấn nút **Thêm**. Hệ thống mở form tạo hồ sơ tại **/customers/new**. Ở đầu form, chọn **Loại khách hàng**: **Cá nhân** (điền **Họ và tên**) hoặc **Tổ chức** (điền **Tên công ty** và **Người đại diện**).
+**Bước 4**: Muốn thêm khách mới, ấn nút **+** màu xanh. Hệ thống mở trang **Thêm khách hàng** tại **/customers/new**. Ở đầu form, chọn **Cá nhân** hoặc **Tổ chức** (điền **Tên công ty** và **Người đại diện**). Form gồm các khối **Đọc CCCD**, **Hình ảnh**, **Thông tin chung** (**Họ tên khách \***, **Số điện thoại \***, Email, CMND/CCCD, Ngày cấp, Nơi cấp, Ngày sinh, Giới tính…), **Địa chỉ**, **Thông tin khác** và **Thông tin xe**.
+
+![Trang Thêm khách hàng: nút Cá nhân / Tổ chức, khối Đọc CCCD với Quét bằng camera, khối Hình ảnh và Thông tin chung](./images/buoc-02-form-them.webp)
 
 **Bước 5**: Với khách **Cá nhân**, chọn hoặc đưa con trỏ vào ô **Đọc CCCD**, rồi dán ảnh bằng **Ctrl+V**. Bạn cũng có thể kéo thả, chọn file hoặc bấm **Quét bằng camera**. Khi đọc được QR CCCD hợp lệ, hệ thống điền thông tin vào form để bạn kiểm tra.
 
@@ -53,9 +55,15 @@ Nếu chọn nhầm ảnh khi hệ thống đang đọc, chọn hoặc dán ản
 Trên bản demo/sandbox, **đừng nhập CCCD, số điện thoại hay ảnh giấy tờ thật** của khách. Hãy dùng dữ liệu giả (ví dụ SĐT `0900 000 098`, số CCCD bịa) để tránh lộ thông tin cá nhân.
 :::
 
-**Bước 6**: Tải ảnh giấy tờ ở khu **Ảnh giấy tờ** (kéo-thả hoặc dán clipboard, mỗi ảnh ≤ 10MB). Khách **Cá nhân** có 3 ô: **CCCD mặt trước**, **CCCD mặt sau**, **Hộ chiếu**. Khách **Tổ chức** dùng ô đầu làm **Đăng ký kinh doanh**. Ảnh được lưu vào kho riêng tư, chỉ hiển thị qua đường dẫn có chữ ký nên an toàn.
+**Bước 6**: Tải ảnh giấy tờ ở khối **Hình ảnh** (kéo-thả, bấm chọn hoặc Ctrl+V, mỗi ảnh ≤ 10MB). Khách **Cá nhân** có 3 ô: **CCCD mặt trước**, **CCCD mặt sau**, **Hộ chiếu**. Khách **Tổ chức** dùng ô đầu làm **Đăng ký kinh doanh**. Ảnh được lưu vào kho riêng tư, chỉ hiển thị qua đường dẫn có chữ ký nên an toàn.
 
-**Bước 7**: Kiểm tra lại toàn bộ rồi ấn **Lưu**. Hệ thống quay về danh sách **Cư dân**, hồ sơ mới nằm ở tab **Đang thuê**. Muốn mở lại hồ sơ, ấn nút **Xem** trên dòng khách để mở trang chi tiết (thông tin cá nhân, ảnh CCCD, địa chỉ, phương tiện, danh sách hợp đồng, liên hệ khẩn cấp).
+**Bước 7**: Kiểm tra lại toàn bộ rồi ấn **Lưu**. Hệ thống quay về danh sách, hồ sơ mới nằm ở tab **Đang thuê**.
+
+**Bước 8**: Xem nhanh hồ sơ — ấn biểu tượng mắt (hoặc tên khách) trên dòng để mở hộp **Chi tiết khách hàng**: nút **Sao chép** / **Sửa** / **Xoá**, **Thông tin cá nhân**, **Ảnh CCCD**, **Địa chỉ**, **Thông tin phương tiện** và khối **Hồ sơ tạm trú (Cổng DVC Bộ Công an)** (xem [Đăng ký tạm trú trên Cổng DVC](/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/)).
+
+![Hộp Chi tiết khách hàng của DEMO Khách 04: Sao chép / Sửa / Xoá, Thông tin cá nhân, Địa chỉ, Thông tin phương tiện và khối Hồ sơ tạm trú](./images/buoc-03-chi-tiet-nhanh.webp)
+
+Trang hồ sơ đầy đủ **/customers/&lt;mã&gt;** (mở từ khối **Khách thuê** của [trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/)) có nút **Quay lại**, **Sao chép**, **Sửa**, **Mẫu CT01**, **Xoá** và các thẻ Thông tin cá nhân, Ảnh CCCD/CMND, Địa chỉ, Phương tiện, **Hợp đồng (n)**, Liên hệ khẩn cấp, Ghi chú — xem [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/).
 
 ::: tip Người ở cùng & người đại diện
 Một hợp đồng có thể gắn **nhiều cư dân** (người ở cùng), trong đó **một người là đại diện** đứng tên. Việc gắn nhiều khách và chọn ai đại diện được thực hiện **khi ký hợp đồng** (xem [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/)), không phải trên màn Cư dân. Ở trang chi tiết khách, cờ **Đại diện** cho biết khách đó có phải người đứng tên hợp đồng hay không.
@@ -77,20 +85,23 @@ Kết quả tra cứu hiển thị riêng và không tự thay đổi địa ch�
 | --- | --- |
 | Tab **Đang thuê / Đã chuyển đi / Khách vãng lai** | Lọc theo trường trạng thái hồ sơ; không suy ra tự động đầy đủ từ hợp đồng, nên `MOVED_OUT/WALK_IN` có thể thiếu. |
 | Thẻ **Tất cả / Khách nước ngoài** | Thống kê nhanh theo phạm vi đang lọc; snapshot hiện tại lần lượt là 24 và 0. |
+| Biểu tượng mắt / tên khách | Mở hộp **Chi tiết khách hàng** (kèm khối Hồ sơ tạm trú). |
 | Ô tìm kiếm | Lọc theo **tên / SĐT / email / số CCCD**. |
 | Ô lọc **Toà nhà** | Bộ lọc giao diện theo toà được làm giàu từ hợp đồng; không giới hạn phạm vi đọc `customers.view` ở tầng dữ liệu. |
 | Ô lọc **Phòng** | Combobox gõ-để-tìm, chỉ bật khi đã chọn đúng 1 toà. |
-| Nút **Thêm** | Mở form tạo hồ sơ mới tại **/customers/new** (chỉ hiện khi có quyền **Thêm**). |
+| Nút **+** | Mở trang **Thêm khách hàng** tại **/customers/new** (chỉ hiện khi có quyền **Thêm**). |
 | Nút **Nhập Excel** | Nhập hàng loạt khách từ file Excel; đọc thêm được cả ảnh CCCD từ đường dẫn trong file. |
 | Nút **Xuất Excel** | Xuất danh sách khách đang lọc ra file. |
-| Nút **Xem** / **Sửa** / **Xoá** trên mỗi dòng | Mở chi tiết, sửa hồ sơ (**/customers/:id/edit**), hoặc xoá mềm hồ sơ. |
-| **Mẫu CT01** (trong trang chi tiết) | Lập và in tờ khai thay đổi thông tin cư trú từ hồ sơ khách (xem [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/)). |
+| Nút **Xem** / **Sửa** / **Xoá** trên mỗi dòng | Mở hộp chi tiết, sửa hồ sơ (**/customers/:id/edit**, trang **Chỉnh sửa khách hàng**), hoặc xoá mềm hồ sơ. |
+| Nút **In** | In màn hình danh sách hiện tại. |
+| **Mẫu CT01** (trang hồ sơ đầy đủ) | Lập và in tờ khai thay đổi thông tin cư trú từ hồ sơ khách (xem [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/)). |
+| Khối **Hồ sơ tạm trú** (hộp chi tiết) | Lưu ảnh hợp đồng/CT01 đã ký, tải **CT01+HĐT**, gửi hồ sơ sang Cổng DVC. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Không thấy nút **Thêm** / **Nhập Excel** | Bạn thiếu quyền **Thêm/Nhập**. Nhờ quản trị cấp action tương ứng. |
+| Không thấy nút **+** / **Nhập Excel** | Bạn thiếu quyền **Thêm/Nhập**. Nhờ quản trị cấp action tương ứng. |
 | Lưu báo **"SĐT hoặc CCCD đã tồn tại"** | Trùng số điện thoại hoặc số CCCD với một hồ sơ khác. Tìm lại khách đó thay vì tạo trùng, hoặc kiểm tra số nhập vào. |
 | Không lưu được vì lỗi số điện thoại | SĐT phải là **10–11 chữ số**, không dấu cách/ký tự. Nhập lại cho đúng định dạng. |
 | Chọn **Phòng** ở bộ lọc nhưng ra 0 khách | Bộ lọc theo phòng hiện chưa có tác dụng lọc khách; hãy lọc bằng ô **Toà nhà** và ô tìm kiếm theo tên/SĐT. |
@@ -106,13 +117,13 @@ Kết quả tra cứu hiển thị riêng và không tự thay đổi địa ch�
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/customers" app-label="Mở màn Cư dân" fixtures="24 khách DEMO đang thuê; 0 khách nước ngoài" view-only>
+<SandboxTry account="demo.chunha" app-path="/customers" app-label="Mở màn Khách hàng" fixtures="Snapshot 07/10/2026: 24 khách DEMO đang thuê; 0 khách nước ngoài" view-only>
 
 Bài tập **chỉ xem** trên snapshot đang hiển thị:
 
-1. Quan sát tab **Đang thuê** và đối chiếu thẻ **Tổng = 24** cùng thẻ **Nước ngoài = 0**.
-2. Dùng ô tìm kiếm với từ khoá `DEMO Khách`, rồi mở một dòng đang hiển thị để xem hồ sơ chi tiết, hợp đồng và phương tiện (nếu có).
-3. Quay lại danh sách, bỏ từ khoá và xác nhận các dòng `DEMO Khách 01` trở đi vẫn thuộc tab **Đang thuê**. Không ấn **Thêm**, **Lưu**, **Sửa** hoặc **Xoá**.
+1. Quan sát tab **Đang thuê** và đối chiếu thẻ **Tất cả = 24** cùng thẻ **Khách nước ngoài = 0**.
+2. Dùng ô tìm kiếm với từ khoá `DEMO Khách 04`, rồi bấm biểu tượng mắt để mở hộp **Chi tiết khách hàng** và xem khối **Hồ sơ tạm trú**.
+3. Đóng hộp, bỏ từ khoá. Không ấn **+**, **Lưu**, **Sửa**, **Xoá** hay các nút tải ảnh / gửi DVC.
 
 Kết quả mong đợi: bạn đọc được snapshot khách DEMO hiện hành và biết đường mở hồ sơ mà không tạo hoặc thay đổi dữ liệu.
 

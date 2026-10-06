@@ -1,92 +1,90 @@
 ---
 title: "Danh mục khác (tổng quan)"
-description: "Cổng điều hướng tới các danh mục Tài chính, Tài sản và Khác; Sổ quỹ dùng route chính thức /finance/cashbooks."
+description: "Trang cổng gom 14 thẻ danh mục theo ba nhóm Tài chính, Tài sản và Khác; bấm thẻ để sang trang quản lý riêng."
 routes: ["/settings/categories"]
 permissions: [{module: categories, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Danh mục khác (tổng quan)
 
-Trang **Danh mục khác** là "bản đồ" gom các lối vào cấu hình phụ trợ. Bản thân trang không nhập liệu; nó chỉ chia thẻ thành **Tài chính**, **Tài sản** và **Khác**, rồi điều hướng sang route tương ứng. Danh sách hiện hành không có thẻ Tài khoản ngân hàng riêng; quản lý sổ tiền mặt/ngân hàng tại `/finance/cashbooks`.
+Trang **Danh mục khác** (`/settings/categories`, dòng phụ *"Quản lý các danh mục phụ trong hệ thống"*) là trang cổng: bản thân nó không nhập liệu, chỉ xếp **14 thẻ** thành ba nhóm **Tài chính**, **Tài sản** và **Khác**. Bấm một thẻ để sang trang quản lý riêng của danh mục đó. Một vài thẻ dẫn sang route nằm ngoài phần Cài đặt (ví dụ **Sổ quỹ** mở `/finance/cashbooks`).
 
 ::: info Điều kiện tiên quyết
-- Bạn cần quyền **Danh mục** (module `categories`, hành động `view`) để mở trang tổng hợp này.
-- Mỗi thẻ danh mục con dẫn sang một trang riêng; quyền vào trang đích do phân quyền của đúng nghiệp vụ đó quyết định. Nếu bạn bấm vào một danh mục mà thấy danh sách trống hoặc báo lỗi khi thao tác, rất có thể bạn chưa được cấp quyền cho danh mục đó — hãy nhờ chủ nhà mở quyền trong [Phân quyền](/05-cai-dat/phan-quyen/).
+- Quyền **Danh mục khác** (module `categories`, hành động `view`) để mở trang cổng.
+- Mỗi trang đích có quyền riêng (ví dụ `cashbooks`, `auto_debt`, `service_quotas`, `meters`, `suppliers`, `warehouses`, `asset_types`, `assets`, `hotline`, `task_types`). Thiếu quyền trang đích thì bấm thẻ sẽ bị đưa về **Bảng tin**.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Từ thanh bên trái, mở nhóm **Cài đặt hệ thống** => **Danh mục khác**. (Trong nhóm này còn có **Cài đặt chung**, **Mẫu biểu** và **Nhân viên**.)
+**Bước 1**: Ở thanh bên trái, mở **Cài đặt hệ thống** => **Danh mục khác**. (Cùng nhóm còn có **Cài đặt chung**, **Mẫu biểu**, **Tổ chức**, **Thành viên**, **Mẫu vai trò**, **Trợ lý AI**, **Quay số may mắn** — tuỳ quyền của bạn.)
 
-**Bước 2**: Màn hình hiện các danh mục được xếp theo ba nhóm: **Tài chính**, **Tài sản** và nhóm **Khác**. Mỗi ô là một thẻ bấm được, kèm mô tả ngắn công dụng.
+**Bước 2**: Màn hình hiện ba khối thẻ. Mỗi thẻ có tên và một dòng mô tả ngắn.
 
-![Màn hình](./images/buoc-01-man-hinh.webp)
+![Trang Danh mục khác: nhóm Tài chính 5 thẻ, nhóm Tài sản 5 thẻ, nhóm Khác 4 thẻ](./images/buoc-01-man-hinh.webp)
 
-**Bước 3**: Bấm vào thẻ danh mục bạn muốn chỉnh — ví dụ **Nhà cung cấp** hoặc **Danh sách tầng** — để mở trang quản lý riêng của danh mục đó.
+**Bước 3**: Bấm thẻ cần làm việc để sang trang quản lý riêng. Các trang danh mục con đều có liên kết **Quay lại Danh mục khác** ở góc trên trái.
 
-**Bước 4**: Chỉ thao tác thêm/sửa/xoá nếu trang đích thực sự có form và bạn có quyền tương ứng. Phạm vi dữ liệu phụ thuộc RLS và scope của từng module; không mặc định mọi danh mục đều áp dụng cho mọi toà.
+**Bước 4**: Chỉ thêm/sửa/xoá khi trang đích có form và bạn có quyền tương ứng. Ba thẻ **Danh mục chung**, **Lịch sử di chuyển**, **Lịch sử sửa chữa** hiện mới là trang *"Tính năng đang phát triển"*.
 
 ## Các tính năng khác trên màn hình
 
-Bảng dưới liệt kê đầy đủ các thẻ danh mục trên trang tổng quan, công dụng và tài liệu chi tiết (nếu đã có).
+| Nhóm | Thẻ | Mở tới | Xem hướng dẫn |
+| --- | --- | --- | --- |
+| Tài chính | **Sổ quỹ** | `/finance/cashbooks` (đã chuyển sang **Tài chính** ở nhóm Quản lý & vận hành) | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) |
+| Tài chính | **Gạch nợ tự động** | `/settings/categories/auto-debt` | [Gạch nợ tự động](/05-cai-dat/gach-no-tu-dong/) |
+| Tài chính | **Loại thu chi** | Chuyển hướng sang `/settings/income-expense-types` | [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/) |
+| Tài chính | **Định mức dịch vụ** | `/settings/categories/service-quotas` | [Định mức dịch vụ](/05-cai-dat/dinh-muc-dich-vu/) |
+| Tài chính | **Đồng hồ công tơ** | `/settings/meters` | [Công tơ](/01-bat-dau/cong-to/) |
+| Tài sản | **Nhà cung cấp** | `/settings/categories/suppliers` | [Nhà cung cấp](/05-cai-dat/nha-cung-cap/) |
+| Tài sản | **Kho tài sản** | `/settings/categories/warehouses` | [Kho (địa điểm lưu)](/05-cai-dat/kho-cai-dat/) |
+| Tài sản | **Loại tài sản** | `/settings/categories/asset-types` | [Loại tài sản](/05-cai-dat/loai-tai-san/) |
+| Tài sản | **Lịch sử di chuyển** | `/settings/categories/asset-movements` — trang giữ chỗ | [Loại tài sản](/05-cai-dat/loai-tai-san/) |
+| Tài sản | **Lịch sử sửa chữa** | `/settings/categories/asset-maintenance` — trang giữ chỗ | [Loại tài sản](/05-cai-dat/loai-tai-san/) |
+| Khác | **Quản lý Hotline** | `/settings/categories/hotlines` | [Hotline](/05-cai-dat/hotline/) |
+| Khác | **Danh mục chung** | `/settings/categories/general` — trang giữ chỗ | [Danh mục chung](/05-cai-dat/danh-muc-chung/) |
+| Khác | **Danh sách tầng** | `/settings/categories/floors` | [Danh sách tầng](/05-cai-dat/danh-sach-tang/) |
+| Khác | **Loại công việc** | `/settings/categories/task-types` | [Loại công việc](/05-cai-dat/loai-cong-viec/) |
 
-| Nhóm | Thẻ danh mục | Dùng để làm gì | Xem hướng dẫn |
-|------|--------------|----------------|----------------|
-| Tài chính | **Sổ quỹ** | Quản lý các sổ quỹ tiền mặt / ngân hàng để ghi nhận tiền vào — ra | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Khởi tạo sổ quỹ](/01-bat-dau/so-quy-loai-thu-chi/) |
-| Tài chính | **Gạch nợ tự động** | Cấu hình quy tắc tự động khớp tiền chuyển khoản vào công nợ khách | — |
-| Tài chính | **Loại thu chi** | Danh mục hạng mục thu / chi dùng khi lập phiếu quỹ | [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/) |
-| Tài chính | **Định mức dịch vụ** | Đơn giá điện, nước và các dịch vụ áp cho hợp đồng | [Dịch vụ & định mức](/01-bat-dau/dich-vu-dinh-muc/) · [Dịch vụ](/03-quan-ly-van-hanh/dich-vu/) |
-| Tài chính | **Đồng hồ công tơ** | Khai báo công tơ điện / nước cho từng phòng để ghi chỉ số | [Công tơ](/01-bat-dau/cong-to/) · [Ghi chỉ số](/03-quan-ly-van-hanh/ghi-chi-so/) |
-| Tài sản | **Nhà cung cấp** | Danh bạ đối tác cung cấp vật tư / dịch vụ | [Nhà cung cấp](/05-cai-dat/nha-cung-cap/) |
-| Tài sản | **Kho tài sản** | Quản lý kho vật tư và tài sản của tòa nhà | — |
-| Tài sản | **Loại tài sản** | Phân nhóm tài sản (máy lạnh, tủ lạnh, giường…) | — |
-| Tài sản | **Lịch sử di chuyển / sửa chữa** | Theo dõi các lần luân chuyển và sửa chữa tài sản | — |
-| Khác | **Quản lý Hotline** | Danh bạ số hotline hiển thị cho khách / cư dân | — |
-| Khác | **Danh mục chung** | Khu vực danh mục dùng chung (đang phát triển) | — |
-| Khác | **Danh sách tầng** | Khai báo danh sách tầng dùng khi tạo phòng | [Danh sách tầng](/05-cai-dat/danh-sach-tang/) |
-| Khác | **Loại công việc** | Phân loại công việc / sự cố cho đội bảo trì | [Loại công việc](/05-cai-dat/loai-cong-viec/) |
-
-::: warning
-Một vài trang danh mục con (ví dụ **Quản lý Hotline**, **Danh sách tầng**) **xoá vĩnh viễn** khi bạn bấm xoá — không có thùng rác để khôi phục. Hãy chắc chắn hạng mục không còn được dùng trước khi xoá.
+::: warning Xoá ở trang danh mục con là xoá hẳn
+Các trang như **Quản lý Hotline** và **Danh sách tầng** hỏi *"Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác."* trước khi xoá; đã xoá thì không có thùng rác để khôi phục.
 :::
 
 ## Tình huống & lỗi thường gặp
 
-| Tình huống | Nguyên nhân | Cách xử lý |
-|-----------|-------------|-----------|
-| Bấm một thẻ danh mục nhưng danh sách trống hoặc báo lỗi khi lưu | Bạn chưa được cấp quyền cho đúng nghiệp vụ đó | Nhờ chủ nhà mở quyền trong [Phân quyền](/05-cai-dat/phan-quyen/); trang tổng quan không tự chặn nên vẫn mở được, chỉ danh mục con mới hiện đúng theo quyền |
-| Là nhân viên chỉ quản vài tòa nhưng vẫn thấy toàn bộ hotline / mẫu biểu | Đây là chủ ý: hotline và mẫu biểu dùng chung cho cả tổ chức, không tách theo tòa | Không cần xử lý — các danh mục này vốn dùng chung |
-| Bấm **Danh mục chung** thấy trang trống | Danh mục chung đang trong quá trình phát triển, chưa có nội dung | Bỏ qua, dùng các danh mục con khác |
-| Sửa danh mục trên máy này nhưng máy khác chưa thấy đổi | Trang đích đang giữ dữ liệu cũ trong phiên trước | Tải lại (F5) trang danh mục để lấy dữ liệu mới nhất |
-| Lỡ tay xoá một hotline / tầng | Các trang này xoá vĩnh viễn, không hoàn tác được | Nhập lại thủ công hạng mục vừa xoá |
+| Tình huống | Nguyên nhân & cách xử lý |
+| --- | --- |
+| Bấm một thẻ nhưng bị đưa về **Bảng tin** | Bạn có quyền vào trang cổng nhưng chưa có quyền của trang đích. Nhờ chủ nhà mở quyền trong [Phân quyền](/05-cai-dat/phan-quyen/). |
+| Bấm **Danh mục chung**, **Lịch sử di chuyển** hoặc **Lịch sử sửa chữa** thấy *Tính năng đang phát triển* | Đúng hiện trạng: ba trang này chưa có nội dung. |
+| Không thấy thẻ **Tài khoản ngân hàng** | Trang cổng không còn thẻ này; sổ tiền mặt/ngân hàng/ví quản lý ở **Sổ quỹ** (`/finance/cashbooks`). Xem [Tài khoản ngân hàng](/05-cai-dat/tai-khoan-ngan-hang/). |
+| Mở link cũ `/settings/categories/meters` hoặc `/settings/categories/income-expense-types` | Hai đường dẫn cũ tự chuyển sang `/settings/meters` và `/settings/income-expense-types`. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/settings/categories" view-only>
-Dạo qua các nhóm danh mục con.
+<SandboxTry account="demo.chunha" app-path="/settings/categories" app-label="Mở trang Danh mục khác" fixtures="Snapshot 07/10/2026: 14 thẻ, ba nhóm Tài chính, Tài sản, Khác" view-only>
 
-Bạn đang xem trang **Danh mục khác** của tài khoản demo (Tòa **DEMO A** và **DEMO B**). Hãy làm quen với bố cục:
+**Bài tập chỉ xem**
 
-1. Nhìn nhóm **Tài chính**: tìm các thẻ **Sổ quỹ**, **Gạch nợ tự động**, **Loại thu chi**, **Định mức dịch vụ**, **Đồng hồ công tơ**.
-2. Nhìn cột **Tài sản**: **Nhà cung cấp**, **Kho tài sản**, **Loại tài sản**, **Lịch sử di chuyển / sửa chữa**. Snapshot hiện tại của Tài sản đang rỗng; **Loại tài sản** và **Nhà cung cấp** đều là bề mặt đang phát triển.
-3. Nhìn nhóm **Khác**: **Quản lý Hotline**, **Danh mục chung**, **Danh sách tầng**, **Loại công việc**.
-4. Rê chuột qua từng thẻ để đọc mô tả ngắn, hình dung mỗi danh mục dùng cho việc gì trước khi bấm vào chỉnh thật.
+1. Đếm thẻ trong từng nhóm: **Tài chính** (Sổ quỹ, Gạch nợ tự động, Loại thu chi, Định mức dịch vụ, Đồng hồ công tơ), **Tài sản** (Nhà cung cấp, Kho tài sản, Loại tài sản, Lịch sử di chuyển, Lịch sử sửa chữa), **Khác** (Quản lý Hotline, Danh mục chung, Danh sách tầng, Loại công việc).
+2. Bấm **Lịch sử sửa chữa** để thấy trang giữ chỗ, rồi bấm **Quay lại Danh mục khác**.
+
+**Kết quả mong đợi**
+
+- Bạn biết mỗi danh mục nằm ở thẻ nào và thẻ nào chưa có nội dung.
+- Không có dữ liệu DEMO nào thay đổi.
+
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Cài đặt chung](/05-cai-dat/cai-dat-chung/) — bật/tắt hành vi mặc định của hệ thống
-- [Mẫu biểu](/05-cai-dat/mau-bieu/) — mẫu in hợp đồng, hoá đơn, biên bản
-- [Chữ ký](/05-cai-dat/chu-ky/) — chữ ký điện tử chèn vào tài liệu
-- [Tài khoản ngân hàng](/05-cai-dat/tai-khoan-ngan-hang/)
-- [Nhà cung cấp](/05-cai-dat/nha-cung-cap/)
-- [Danh sách tầng](/05-cai-dat/danh-sach-tang/)
-- [Loại công việc](/05-cai-dat/loai-cong-viec/)
+- [Cài đặt chung](/05-cai-dat/cai-dat-chung/) — cấu hình hành vi hệ thống.
+- [Mẫu biểu](/05-cai-dat/mau-bieu/) — mẫu in hợp đồng, hoá đơn, biên bản.
+- [Chữ ký](/05-cai-dat/chu-ky/) — trang mẫu chữ ký (chưa kết nối dữ liệu).
+- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền cho từng trang danh mục.
 - [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/)
-- [Phân quyền](/05-cai-dat/phan-quyen/)

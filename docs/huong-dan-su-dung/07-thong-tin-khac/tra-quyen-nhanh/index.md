@@ -1,19 +1,26 @@
 ---
 title: "Bảng tra quyền nhanh"
-description: "Catalog 231 quyền hiện hành, cách tính quyền hiệu lực theo RBAC V3, route canonical, runtime flag, scope và các quyền nhạy cảm về tiền."
+description: "Catalog 223 khoá quyền hiện hành, cách tính quyền hiệu lực theo RBAC V3, route canonical, cờ phát hành, scope và các quyền nhạy cảm về tiền."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: null
 status: published
 ---
 
 # Bảng tra quyền nhanh
 
-Catalog frontend và registry quyền production hiện khớp **223 khoá quyền** (231 trừ 8 khóa OpenClaw Zalo đã xóa cùng cả hệ ngày 30/08/2026). Catalog cho biết **quyền nào tồn tại**; việc một người có mở được trang và thao tác được hay không còn phụ thuộc membership, vai trò, scope, override, runtime flag và kiểm tra RLS/RPC phía server.
+Bản đang chạy có **223 khoá quyền** `module.action`, thuộc **42 module**, được bộ chọn quyền xếp vào **41 trang**. Catalog cho biết **quyền nào tồn tại**; việc một người có mở được trang và thao tác được hay không còn phụ thuộc membership, vai trò, scope, override, cờ phát hành và kiểm tra RLS/RPC phía server.
+
+::: info Nguồn đếm (07/10/2026, commit `81c5a3cd`)
+Đếm từ mã nguồn: registry `PERMISSION_GROUPS` trong `src/lib/permissions.ts` (42 module, mỗi module = các action `core` — mặc định view/create/edit/delete — cộng `extra`) cho **223** khoá; catalog theo trang `PAGE_GROUPS` trong `src/lib/permissionPages.ts` cho **223** khoá trên **41** trang. Hai danh sách khớp 1–1 (không khoá nào lệch). Số này **không** đổi so với lần rà 30/08/2026 (231 trừ 8 khoá OpenClaw Zalo đã gỡ). Danh sách khoá trong cơ sở dữ liệu production không được đếm lại lần này.
+:::
+
+Từ 15/09/2026, giao diện đọc quyền **theo công ty đang chọn và theo toà/sổ** (`get_my_permissions_v2`): một nhân viên chỉ được duyệt ở một toà sẽ chỉ thấy nút **Duyệt/Thu/Chi** ở đúng toà đó, và đổi công ty trên thanh chọn sẽ nạp lại quyền của công ty mới.
 
 ## Quyền hiệu lực trong RBAC V3
 
@@ -118,7 +125,7 @@ Các bảng dưới dùng đúng key `module.action`. Route là route canonical 
 
 | Trang · route | Quyền hiện hành |
 |---|---|
-| **Trung tâm mạng** · `/network-center` | `network_center.view`, `network_center.execute`. Route mặc định không được dựng khi `VITE_NETWORK_CENTER_MODE` là `off`; đây là bề mặt nội bộ/runtime-gated. |
+| **Trung tâm mạng** · `/network-center` | `network_center.view` — xem; `network_center.execute` — chạy thao tác trên router (nhạy cảm). Route chỉ được dựng khi cờ `VITE_NETWORK_CENTER_MODE` của bản build là `production`/`demo` (bản production hiện bật); mỗi toà còn có chế độ **Đã tắt / Chỉ đọc / Được thực thi**. Xem [Trung tâm mạng](/03-quan-ly-van-hanh/trung-tam-mang/). |
 | **Công việc** · `/tasks` | `tasks.view/create/edit/delete/complete/approve`. `tasks.complete` tách khỏi CRUD; `tasks.approve` là quyền duyệt/nghiệm thu nhạy cảm. |
 | **Loại công việc** · `/settings/categories/task-types` | `task_types.view/create/edit/delete`. |
 
@@ -142,13 +149,31 @@ Các bảng dưới dùng đúng key `module.action`. Route là route canonical 
 | **Cài đặt chung** · `/settings/general` | `settings.view/create/edit/delete`; xoá là quyền nhạy cảm. |
 | **Phân quyền nhân viên** · `/settings/members` | `users.view/create/edit/delete/manage_templates`. Toàn bộ nhóm được xếp nhạy cảm. `/settings/staff` là route cũ chuyển hướng; vai trò nằm ở `/settings/roles`. |
 
+## Trang không có khoá riêng hoặc dùng chung khoá
+
+Một số màn không có dòng riêng trong bộ chọn quyền; route của chúng chỉ đòi đăng nhập hoặc dùng lại khoá của trang khác (đối chiếu `src/app/routes/*` ngày 07/10/2026):
+
+| Trang · route | Cổng vào route | Ghi chú |
+|---|---|---|
+| **Bảng tin** · `/`, `/dashboard` | Chỉ đăng nhập | Dữ liệu vẫn lọc theo phạm vi. |
+| **Chờ duyệt** · `/approvals` | Chỉ đăng nhập | Máy chủ chỉ trả yêu cầu đang giao cho chính bạn. |
+| **Báo chi nhanh** · `/chi-tieu` | Chỉ đăng nhập | Trang tự rẽ: `income_expenses.create` ⇒ phiếu chi công ty, `personal_finance.create` ⇒ Ví cá nhân. Ô trên màn hình chính/menu chỉ hiện khi có `income_expenses.create`; lập phiếu vẫn bị máy chủ kiểm. |
+| **Thanh toán** · `/thanh-toan` | `thu_tien.collect` | |
+| **Phí cố định** · `/settings/finance/fixed-fees` | `thu_tien.collect` | |
+| **Cam kết chi** · `/settings/finance/cam-ket-chi` | `thu_tien.collect` | Chỉ chủ công ty sửa được (máy chủ chặn người khác). |
+| **Hôm nay** · `/my-day` và **Việc của tôi** · `/viec-cua-toi` | Chỉ đăng nhập | Dữ liệu của chính bạn; Việc của tôi lưu trên thiết bị. |
+| **Bảng lương** · `/finance/salary`, **Lương của tôi** · `/finance/my-salary` | Chỉ đăng nhập | Trang tự rẽ theo năng lực `salary.*`; RLS giới hạn dữ liệu. |
+| **Trợ lý AI** · `/settings/ai-copilot` | Chỉ đăng nhập | Mục menu gác `ai_copilot.view`; quyền quản trị thật kiểm ở máy chủ. |
+
 ## Các tình huống thường gặp
 
 | Tình huống | Cách hiểu và xử lý |
 |---|---|
 | Có key `view` nhưng không thấy dữ liệu của một toà | Scope binding không bao gồm toà đó, hoặc RLS lọc theo phạm vi. |
 | Có quyền duyệt phiếu nhưng không có nút Thu/Chi | Duyệt và posting tách nhau; kiểm `cashbooks.post`, custody và scope sổ. |
-| Có quyền Network Center nhưng route 404/không hiện | Runtime Network Center đang off hoặc build không ở mode production/demo phù hợp. |
+| Có quyền Trung tâm mạng nhưng route 404/không hiện | Cờ phát hành của bản build đang `off` (bản production hiện bật). |
+| Có `network_center.execute` nhưng nút thao tác bị khoá | Toà đang ở chế độ **Chỉ đọc** hoặc **Đã tắt**; đó là cài đặt triển khai theo toà. |
+| Thấy nút Duyệt ở toà này nhưng không thấy ở toà khác | Đúng mô hình: quyền được đọc theo toà/sổ trong phạm vi binding. |
 | Sửa vai trò rồi nhiều người đổi quyền | Đúng mô hình V3: họ dùng chung vai trò. Muốn thay đổi riêng một người, chỉnh binding/scope/override hoặc tạo vai trò khác. |
 | Cấp quyền lương nhưng nhân viên chỉ thấy lương mình | `/finance/salary` tự rẽ theo năng lực và cấu hình; RLS không cho xem toàn bộ chỉ vì route mở được. |
 | Không thấy báo cáo công nợ cũ | Các route debt đã chuyển về `/thu-tien`; dùng quyền `thu_tien.*`. |

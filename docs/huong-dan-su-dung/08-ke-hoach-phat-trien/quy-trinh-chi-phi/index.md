@@ -8,8 +8,8 @@ routes: ["/income-expense", "/approvals", "/finance/cashbooks", "/reports/financ
 permissions: ["income_expenses.create", "income_expenses.approve", "cashbooks.view", "cashbooks.post", "cashbooks.share", "shareholder_profit.lock"]
 viewport: responsive
 captured:
-  date: "2026-08-13"
-  commit: "e8cc059"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, product-owner, ky-thuat]
@@ -36,8 +36,25 @@ Flow, trạng thái và mô hình quyền dưới đây là đề xuất thiết
 </div>
 
 ::: warning Trạng thái tài liệu
-Flow chính và phạm vi giai đoạn đầu đã được chốt là chỉ chi đủ một lần. Phạm vi người duyệt và cách phân loại quyền dữ liệu cũ vẫn cần quyết định trước migration. Tài liệu chưa khẳng định hệ thống hiện tại đã vận hành theo flow này.
+Flow chính và phạm vi giai đoạn đầu đã được chốt là chỉ chi đủ một lần. Phần lớn flow đã được triển khai (xem bảng dưới); phần còn lại của trang giữ nguyên làm hồ sơ thiết kế. Khi cần thao tác thật, dùng các trang hướng dẫn vận hành được liên kết.
 :::
+
+### Trạng thái triển khai — đối chiếu mã nguồn ngày 07/10/2026
+
+| Hạng mục của kế hoạch | Bản đang chạy | Hướng dẫn vận hành |
+|---|---|---|
+| Không còn nhãn "Nháp"; `UNAPPROVED` = **Chờ duyệt** | **Đã có.** Bảng nhãn chuẩn: Chờ duyệt, Cần bổ sung, Đang tranh chấp, Đã Duyệt - Chưa Chi/Thu (· Chờ phân sổ), Đã Chi/Thu, Đã hoàn tác, Đã hủy. | [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/) |
+| **Duyệt** tách khỏi **Duyệt và Chi** nguyên tử | **Đã có.** Nút Duyệt và Thu/Chi chỉ bật khi người bấm vừa có quyền duyệt vừa là Người giữ sổ của sổ được chọn. | [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) · [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+| Mỗi lần Chi bắt buộc **Ngày chi · Sổ quỹ · Chứng từ**, chi đủ một lần | **Đã có.** Hộp ghi sổ đòi sổ quỹ, ngày và ít nhất một ảnh/tệp chứng từ; số tiền là tổng đã duyệt. Riêng chi lương có thể chi nhiều đợt (**Số tiền đợt chi**). | [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+| Báo cáo lợi nhuận tính cả phiếu chờ duyệt, ghi rõ số phiếu | **Đã có.** Thanh đối chiếu ghi *"Trong tổng có: n phiếu chờ duyệt (thu … · chi …)"*. | [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
+| Server từ chối chốt lợi nhuận khi kỳ còn phiếu chờ duyệt | **Đã có, khác đề xuất ở cách đếm:** máy chủ đếm **mọi** phiếu chờ duyệt của toà có **ngày phiếu** trong tháng (không lọc theo KQKD, không theo kỳ áp dụng của hạng mục) và trả *"Còn N phiếu chờ duyệt trong tháng … — duyệt hoặc huỷ trước khi chốt."* Phiếu Đã Duyệt - Chưa Chi không chặn. | [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) |
+| **Người giữ sổ / Người biết sổ** cấp theo từng sổ | **Đã có** (binding `CUSTODIAN` / `KNOWER`). | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) |
+| Ai được duyệt khoản chi | **Đã có thêm** luật chi theo hạng mục ở **Cam kết chi** (`/settings/finance/cam-ket-chi`): Theo cam kết / Theo trần / Từng phiếu (từ 600.000đ chờ duyệt); bộ máy có hai chế độ *đang chạy thử* và *đang áp dụng*. | [Thuật ngữ — Cam kết chi](/07-thong-tin-khac/thuat-ngu/) |
+| Hạng mục chi thống nhất | **Đã có** danh mục chi chuẩn (từ 03/10/2026): chỉ chủ công ty thêm/sửa hạng mục. | [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/) |
+| Lập phiếu chi nhanh từ hiện trường | **Đã có** Báo chi nhanh `/chi-tieu`: gõ/nói/chụp bill ⇒ thẻ nháp phiếu chi, vẫn đi qua duyệt và ghi sổ như trên. | [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) |
+| Thanh toán một phần / nhiều sổ cho một phiếu thường | **Chưa** (ngoài phạm vi giai đoạn đầu, như đề xuất). | — |
+
+Các con số, ví dụ tháng 07/2026 và lộ trình bên dưới là nội dung của bản đề xuất gốc, không cập nhật theo dữ liệu hiện tại.
 
 ## Tóm tắt trong một phút
 
@@ -587,6 +604,9 @@ Không tự chuyển toàn bộ danh sách “được phép sử dụng” cũ 
 - [Phân tích tài chính](/04-bao-cao/phan-tich-tai-chinh/)
 - [Quy trình chốt tháng tài chính](/01-bat-dau/quy-trinh-chot-thang/)
 - [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/)
+- [Báo chi nhanh (gõ, nói, chụp bill)](/03-quan-ly-van-hanh/bao-chi-nhanh/)
+- [Sổ quỹ & loại thu chi — danh mục chi chuẩn](/01-bat-dau/so-quy-loai-thu-chi/)
+- [Thuật ngữ — Cam kết chi](/07-thong-tin-khac/thuat-ngu/)
 
 <div class="plan-callout">
   <strong>Thông điệp cuối:</strong> lợi nhuận trả lời “khoản thu chi thuộc kỳ nào”; phê duyệt trả lời “có được phép chi không”; ghi sổ trả lời “tiền đã thực sự di chuyển chưa”; phân quyền trả lời “ai được nhìn và thao tác sổ nào”. Bốn câu hỏi này phải được lưu và kiểm soát độc lập.

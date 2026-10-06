@@ -1,74 +1,87 @@
 ---
 title: "Gạch nợ tự động"
-description: "Cấu hình quy tắc tự động cấn trừ tiền chuyển khoản ngân hàng vào công nợ hoá đơn cũ."
+description: "Lưu cấu hình số tài khoản ngân hàng dùng cho gạch nợ tự động và trạng thái bật/tắt của cấu hình."
 routes: ["/settings/categories/auto-debt"]
 permissions: [{module: auto_debt, action: view}, {module: auto_debt, action: create}, {module: auto_debt, action: edit}, {module: auto_debt, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Gạch nợ tự động
 
-Màn hình này để bạn khai báo **tài khoản ngân hàng dùng đối soát** và bật quy tắc gạch nợ. Khi đã bật, hệ thống tự nhận diện tiền chuyển khoản đổ về tài khoản đó rồi **cấn trừ vào công nợ hoá đơn cũ** của khách — bạn không phải mở từng hoá đơn để thu tay. Trang này **chỉ lưu cấu hình**; việc đối soát và tạo phiếu thu thực tế chạy ở một pipeline nền riêng, không diễn ra ngay trên màn hình này.
+Màn hình này lưu **cấu hình gạch nợ tự động**: số **tài khoản ngân hàng** nhận tiền của khách và trạng thái **Đang bật / Đã tắt** của cấu hình đó. Đây là nơi khai báo trước cho tính năng đối soát chuyển khoản.
+
+::: warning Hiện màn này chỉ lưu cấu hình
+Ở phiên bản hiện tại, hệ thống **chưa tự đọc giao dịch ngân hàng, chưa tự cấn trừ công nợ và chưa tự tạo phiếu thu** từ cấu hình này — kể cả khi tích **Bật gạch nợ tự động**. Tiền khách chuyển khoản vẫn phải ghi nhận bằng thao tác thu tiền hoá đơn (xem [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/)); chỉ khi phiếu thu ở trạng thái **Đã Thu** (đã ghi sổ) thì tiền mới vào sổ quỹ.
+:::
 
 ::: info Điều kiện tiên quyết
-- Tài khoản có quyền xem/quản lý **Gạch nợ tự động** (module `auto_debt`) và vào được **Cài đặt** => **Danh mục khác**.
-- Bạn cần biết **số tài khoản ngân hàng** thật dùng để nhận tiền khách (đúng số TK đang đối soát ở sổ quỹ ngân hàng).
+- Quyền **Gạch nợ tự động => Xem** (module `auto_debt`, action `view`) để mở màn hình.
+- Quyền **Thêm / Sửa / Xoá** (`auto_debt.create` / `edit` / `delete`) để lưu thay đổi. Nút vẫn hiện với mọi người vào được màn; thiếu quyền thì máy chủ từ chối khi lưu và hộp thoại báo lỗi.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào **Cài đặt** => **Danh mục khác** => **Gạch nợ tự động** để mở màn hình cấu hình.
+**Bước 1**: Vào **Cài đặt hệ thống** => **Danh mục khác**, trong nhóm **Tài chính** chọn thẻ **Gạch nợ tự động**. Màn hình có tiêu đề **Gạch nợ tự động** ("Cấu hình gạch nợ tự động"), liên kết **Quay lại Danh mục khác** và nút **Thêm mới**. Khi đã có cấu hình, bảng gồm cột **Tài khoản ngân hàng**, **Trạng thái** (**Đang bật** / **Đã tắt**) và **Thao tác**. Snapshot DEMO ngày 07/10/2026 chưa có cấu hình nào nên màn hiện *"Chưa có dữ liệu. Hãy thêm mới."*
 
-**Bước 2**: Ở góc trên bên phải, ấn nút **Thêm mới**. Hộp thoại **Thêm mới** hiện ra.
+![Bước 1 - Màn Gạch nợ tự động, DEMO chưa có cấu hình](./images/buoc-01-danh-sach.webp)
 
-**Bước 3**: Nhập **Tài khoản ngân hàng** — số tài khoản mà hệ thống sẽ theo dõi để nhận diện tiền khách chuyển vào (ô bắt buộc, có dấu `*`).
+**Bước 2**: Ấn **Thêm mới**. Hộp thoại **Thêm mới** hiện ra với dòng hướng dẫn *"Nhập thông tin gạch nợ tự động. Các mục có dấu \* cần được điền."*
 
-::: danger Bật gạch nợ = cho phép hệ thống tự ghi nhận tiền
-Khi bạn tích **Kích hoạt** (**Bật gạch nợ tự động**), mọi khoản chuyển khoản khớp luật sẽ được **tự động cấn vào công nợ và đánh dấu hoá đơn đã thanh toán** mà không cần thao tác thu tay. Chỉ bật khi số tài khoản đã đúng và bạn muốn hệ thống tự chạy.
-:::
+![Bước 2 - Hộp thoại Thêm mới với ô Tài khoản ngân hàng và ô tích Bật gạch nợ tự động](./images/buoc-02-form-them.webp)
 
-**Bước 4**: Tích ô **Kích hoạt** (nhãn **Bật gạch nợ tự động**) nếu muốn quy tắc chạy ngay; bỏ trống nếu chỉ muốn lưu để dùng sau.
+**Bước 3**: Nhập **Tài khoản ngân hàng \*** — số tài khoản nhận tiền của khách (bắt buộc).
 
-**Bước 5**: Ấn **Thêm mới** để lưu. Xuất hiện thông báo *"Cấu hình gạch nợ tự động đã được tạo thành công"* và dòng mới hiện trong bảng, cột **Trạng thái** hiển thị **Đang bật** hoặc **Đã tắt**.
+**Bước 4**: Ở mục **Kích hoạt**, tích **Bật gạch nợ tự động** nếu muốn đánh dấu cấu hình là **Đang bật**; bỏ trống thì cấu hình lưu ở trạng thái **Đã tắt**.
 
-::: warning Sửa / tắt / xoá đều có hiệu lực ngay
-Dùng biểu tượng **bút chì** để mở **Cập nhật** (đổi số TK hoặc bật/tắt), biểu tượng **thùng rác** để mở **Xác nhận xóa**. Tắt hoặc xoá một cấu hình sẽ ngừng gạch nợ cho tài khoản đó; các phiếu thu đã sinh trước đó không bị gỡ theo.
+**Bước 5**: Ấn **Thêm mới** để lưu (hoặc **Hủy** để đóng). Lưu xong, thông báo *"Đã tạo cấu hình gạch nợ <số tài khoản>."* hiện ra và dòng mới xuất hiện trong bảng.
+
+**Bước 6**: Muốn sửa, ấn biểu tượng **bút chì** trên dòng — hộp thoại **Cập nhật** mở sẵn số tài khoản và trạng thái; sửa rồi ấn **Cập nhật**. Muốn xoá, ấn biểu tượng **thùng rác** — hộp thoại **Xác nhận xóa** báo *"Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác."*; ấn **Xóa** để xác nhận hoặc **Hủy**.
+
+::: warning Xoá là xoá hẳn
+Nút **Xóa** xoá vĩnh viễn dòng cấu hình, không khôi phục được. Muốn tạm ngừng, hãy bỏ tích **Bật gạch nợ tự động** thay vì xoá.
 :::
 
 ## Các tính năng khác trên màn hình
 
-| Nút / Bộ lọc | Công dụng |
+| Nút / Thành phần | Công dụng |
 |---|---|
-| **Thêm mới** | Mở hộp thoại tạo một cấu hình gạch nợ mới. |
-| Ô **Tài khoản ngân hàng** | Số tài khoản hệ thống theo dõi để nhận diện tiền chuyển vào (bắt buộc). |
-| Ô tích **Kích hoạt** (**Bật gạch nợ tự động**) | Bật/tắt quy tắc cho riêng tài khoản đó. |
-| Cột **Trạng thái** (**Đang bật** / **Đã tắt**) | Cho biết cấu hình đang chạy hay đang tạm dừng. |
-| Biểu tượng **bút chì** | Mở **Cập nhật** để sửa số TK hoặc trạng thái. |
-| Biểu tượng **thùng rác** | Mở **Xác nhận xóa** để gỡ cấu hình. |
-| **Quay lại Danh mục khác** | Trở về trang **Danh mục khác** trong Cài đặt. |
+| **Thêm mới** | Mở hộp thoại tạo một cấu hình mới. |
+| Ô **Tài khoản ngân hàng** | Số tài khoản nhận tiền (bắt buộc). |
+| Ô tích **Bật gạch nợ tự động** (mục **Kích hoạt**) | Đặt trạng thái cấu hình là **Đang bật** hoặc **Đã tắt**. |
+| Cột **Trạng thái** | Nhãn **Đang bật** / **Đã tắt** của từng cấu hình. |
+| Biểu tượng **bút chì** | Mở hộp thoại **Cập nhật**. |
+| Biểu tượng **thùng rác** | Mở hộp thoại **Xác nhận xóa**. |
+| **Quay lại Danh mục khác** | Trở về trang **Danh mục khác**. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Nguyên nhân & cách xử lý |
 |---|---|
-| Đã lưu nhưng hoá đơn chưa tự gạch nợ | Việc đối soát chạy ở pipeline nền riêng, không tức thời trên trang này. Kiểm tra **Trạng thái** phải là **Đang bật** và số tài khoản khớp đúng TK nhận tiền thực. |
-| Trạng thái vẫn hiện **Đã tắt** | Chưa tích **Kích hoạt** khi lưu. Bấm **bút chì** => tích **Bật gạch nợ tự động** => **Cập nhật**. |
-| Không lưu được, báo thiếu thông tin | Ô **Tài khoản ngân hàng** bắt buộc — không được để trống. |
-| Thông báo *"Không thể tạo cấu hình gạch nợ tự động"* | Thiếu quyền hoặc mất kết nối. Kiểm tra quyền module `auto_debt`, đăng nhập lại rồi thử lại. |
-| Gạch nợ nhầm sang tài khoản khác | Mỗi số TK chỉ nên có **một** dòng cấu hình; xoá dòng trùng để tránh khớp hai lần. |
+| Đã bật cấu hình nhưng hoá đơn không tự chuyển **Đã thanh toán** | Đúng với phiên bản hiện tại — hệ thống chưa tự đối soát chuyển khoản. Ghi nhận tiền bằng [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/). |
+| Ấn **Thêm mới** trong hộp thoại nhưng không lưu, ô báo *"Nhập tài khoản ngân hàng."* | Ô **Tài khoản ngân hàng** bắt buộc. Nhập số tài khoản rồi lưu lại. |
+| Hộp thoại báo *"Chưa lưu được gạch nợ tự động…"* | Thiếu quyền `auto_debt.create`/`edit` hoặc mất kết nối. Đọc phần mô tả trong thông báo, kiểm tra quyền rồi thử lại. |
+| Màn báo *"Chưa tải được gạch nợ tự động."* | Ấn **Tải lại**. Nút **Thêm mới** bị khoá cho tới khi tải được danh sách. |
+| Có hai dòng cùng một số tài khoản | Xoá dòng thừa để danh sách rõ ràng. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.ketoan" app-path="/settings/categories/auto-debt" view-only>
+<SandboxTry account="demo.chunha" app-path="/settings/categories/auto-debt" app-label="Mở màn Gạch nợ tự động" fixtures="Snapshot 07/10/2026: DEMO chưa có cấu hình gạch nợ nào." view-only>
 
-**Bài xem**
+**Bài tập chỉ xem**
 
-Xem quy tắc gạch nợ tự động: mở danh sách cấu hình, quan sát cột **Tài khoản ngân hàng** và cột **Trạng thái** (**Đang bật** / **Đã tắt**). Bấm biểu tượng **bút chì** một dòng để xem hộp thoại **Cập nhật** với ô **Tài khoản ngân hàng** và ô tích **Bật gạch nợ tự động** — chỉ xem, không cần lưu.
+1. Mở màn **Gạch nợ tự động**, xác nhận màn đang trống (*"Chưa có dữ liệu. Hãy thêm mới."*).
+2. Ấn **Thêm mới** để xem hai trường **Tài khoản ngân hàng** và **Kích hoạt** (**Bật gạch nợ tự động**), rồi ấn **Hủy** — không lưu.
+
+**Kết quả mong đợi**
+
+- Giao diện khớp hướng dẫn.
+- Không có cấu hình nào bị tạo, sửa hoặc xoá trên DEMO.
 
 </SandboxTry>
 

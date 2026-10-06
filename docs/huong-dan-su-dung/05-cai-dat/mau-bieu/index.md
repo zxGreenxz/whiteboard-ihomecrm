@@ -1,91 +1,121 @@
 ---
 title: "Mẫu biểu (hợp đồng, hoá đơn, biên bản)"
-description: "Quản lý các mẫu in dùng chung: hợp đồng đặt cọc, hợp đồng thuê, biên bản bàn giao, mẫu hoá đơn và mẫu thu chi."
+description: "Quản lý mẫu in .docx dùng chung: hợp đồng thuê, biên bản bàn giao, mẫu hoá đơn, mẫu thu chi và biểu mẫu khác; tra 99 mã biến để chèn vào file mẫu."
 routes: ["/settings/templates"]
 permissions: [{module: templates, action: view}, {module: templates, action: create}, {module: templates, action: edit}, {module: templates, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Mẫu biểu (hợp đồng, hoá đơn, biên bản)
 
-Trang **Mẫu biểu** là nơi bạn lưu sẵn các mẫu in dùng chung cho toàn bộ tài khoản: hợp đồng đặt cọc, hợp đồng thuê, biên bản bàn giao, mẫu hoá đơn và mẫu thu chi. Mỗi mẫu là một file Word (`.docx`) mà bạn thiết kế theo ý mình, chèn các **mã biến** (ví dụ tên khách, số hợp đồng, giá thuê) — khi in, hệ thống tự điền dữ liệu thật vào mã biến rồi tạo ra file để bạn tải về, không cần soạn lại từng bản. Các mẫu ở đây được dùng lại ở nhiều nơi: khi in hợp đồng từ màn hình **Hợp đồng**, khi in hoá đơn từ màn hình **Hoá đơn**. Mẫu biểu dùng chung cho mọi tòa nhà trong tài khoản, không phân theo từng tòa.
+Trang **Mẫu biểu** là nơi bạn lưu các mẫu in dùng chung: hợp đồng thuê, biên bản bàn giao, mẫu hoá đơn, mẫu thu chi và các biên bản khác. Mỗi mẫu là một file Word (`.docx`) bạn tự thiết kế, chèn các **mã biến** (ví dụ `{CONTRACT_NUMBER}` là số hợp đồng). Khi in, hệ thống điền dữ liệu thật vào mã biến và tạo file để bạn tải về. Mẫu ở đây được dùng khi in hợp đồng từ màn **Hợp đồng**, in hoá đơn từ màn **Hoá đơn**, và có thể gắn sẵn cho từng toà nhà hoặc phòng.
 
 ::: info Điều kiện tiên quyết
-Bạn cần quyền **Mẫu biểu** (xem) để mở trang này; muốn thêm/sửa/xóa mẫu cần thêm quyền tương ứng. Trang nằm trong nhóm **Cài đặt hệ thống**, truy cập qua **Cài đặt** => **Mẫu biểu**. Đây là dữ liệu dùng chung của chủ tài khoản — nhân viên được phân quyền **Mẫu biểu** sẽ thấy và dùng chung toàn bộ mẫu, không phân theo tòa nhà được giao.
+- Quyền **Biểu mẫu / Chữ ký** (module `templates`): `view` để mở trang; `create`/`edit`/`delete` để thêm, sửa, xoá mẫu.
+- Lối vào: **Cài đặt hệ thống** => **Mẫu biểu** (đường dẫn `/settings/templates`).
+- Một file Word `.docx` không quá 5MB đã chèn sẵn mã biến.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào **Cài đặt** => **Mẫu biểu**. Trang mở ra tại đường dẫn `/settings/templates`.
+**Bước 1**: Vào **Cài đặt hệ thống** => **Mẫu biểu**. Đầu trang có tiêu đề **Mẫu biểu**, hai nút **Xem mã biến** và **Thêm mẫu**.
 
-**Bước 2**: Chọn tab loại mẫu bạn muốn xem hoặc quản lý. Trang chia thành các tab theo loại mẫu: **Mẫu chữ ký**, **HĐ đặt cọc**, **HĐ thuê**, **Biên bản bàn giao**, **Mẫu hoá đơn**, **Mẫu thu chi** và **Biểu mẫu khác**. Mỗi tab chỉ liệt kê các mẫu thuộc đúng loại đó. Ô tìm kiếm phía trên giúp bạn lọc nhanh theo tên hoặc mã mẫu.
+**Bước 2**: Chọn tab loại mẫu. Trang có 7 tab: **Mẫu chữ ký**, **HĐ đặt cọc**, **HĐ thuê**, **BB bàn giao**, **Mẫu hóa đơn**, **Mẫu thu chi**, **Biểu mẫu khác** (mở sẵn tab **Mẫu chữ ký**). Mỗi tab có ô **Tìm kiếm mẫu...** (lọc theo tên hoặc mã) và bảng các cột **Mã**, **Thao tác**, **Tên mẫu**, **Loại**, **Xem mẫu PDF**, **Mặc định**. Tab chưa có mẫu sẽ ghi *"Chưa có … nào. Nhấn 'Thêm mẫu' để tạo mới."* — tab **HĐ thuê** của DEMO hiện đang như vậy.
 
-![Màn hình](./images/buoc-01-man-hinh.webp)
+![Trang Mẫu biểu, tab HĐ thuê của DEMO đang trống; hai nút Xem mã biến và Thêm mẫu ở góc phải](./images/buoc-01-man-hinh.webp)
 
-**Bước 3**: Thêm một mẫu mới. Bấm nút **Thêm mẫu**, rồi khai báo:
-- **Tên** mẫu (ví dụ "HĐ thuê Tòa DEMO A").
-- **Danh mục** — loại mẫu, quyết định mẫu nằm ở tab nào.
-- **Mô tả** (tùy chọn).
-- Gạt Switch **Mặc định** nếu muốn đây là mẫu được chọn sẵn khi in.
-- Chọn **file** mẫu: **chỉ chấp nhận file Word `.docx`, dung lượng tối đa 5MB**. Không tải lên được file PDF.
+**Bước 3**: Bấm **Thêm mẫu**. Hộp **THÊM MẪU HỢP ĐỒNG** mở ra, khai báo:
+- **Tên** (bắt buộc).
+- **Loại biên bản bàn giao** (bắt buộc) — thực chất là loại mẫu, quyết định mẫu nằm ở tab nào (xem bảng dưới).
+- **Mô tả** (tuỳ chọn).
+- **File mẫu** (bắt buộc): bấm vùng *Click để tải file* và chọn **tệp `.docx` không quá 5MB**.
+- Công tắc **Mặc định** nếu muốn đây là mẫu được chọn sẵn khi in.
 
-Bấm lưu. Hệ thống tự sinh **mã mẫu** (dạng `MHD000001`) và tải file lên kho lưu trữ riêng tư của bạn.
+Bấm **Lưu**. Hệ thống tự sinh **mã mẫu** dạng `MHD000001` và tải file lên kho lưu trữ.
 
-**Bước 4**: Đặt mẫu mặc định. Gạt Switch **Mặc định** ngay trên dòng của mẫu. Mỗi loại mẫu chỉ có **một mẫu mặc định** — khi bạn bật mẫu này làm mặc định, mẫu mặc định cũ cùng loại sẽ tự động bị tắt. Mẫu mặc định là mẫu được chọn sẵn khi bạn in hợp đồng hoặc hoá đơn.
+![Hộp THÊM MẪU HỢP ĐỒNG: Tên, Loại biên bản bàn giao đang chọn Hợp đồng ký mới, Mô tả, File mẫu .docx tối đa 5MB, công tắc Mặc định](./images/buoc-02-them-mau.webp)
 
-**Bước 5**: Xem, tải, sửa hoặc xóa mẫu bằng các nút trên mỗi dòng:
-- Nút **Xem** (biểu tượng con mắt): mở nhanh file mẫu trong tab mới.
-- Nút **Tải** (biểu tượng tải xuống): tải file `.docx` gốc về máy để chỉnh sửa.
-- Nút **Sửa**: đổi tên, mô tả, danh mục, hoặc thay file mẫu khác.
-- Nút **Xóa**: gỡ mẫu khỏi danh sách.
+| Giá trị ô **Loại biên bản bàn giao** | Mẫu hiện ở tab |
+| --- | --- |
+| Hợp đồng ký mới | **HĐ thuê** |
+| Biên bản thanh lý hợp đồng / Biên bản gia hạn hợp đồng / Biên bản chuyển nhượng hợp đồng | **Biểu mẫu khác** |
+| Hóa đơn | **Mẫu hóa đơn** |
+| Biên lai | **Mẫu thu chi** |
+| Biên bản bàn giao tài sản | **BB bàn giao** |
 
-**Bước 6**: Tra cứu mã biến để thiết kế mẫu. Bấm nút **Xem mã biến** để mở danh sách toàn bộ mã biến mà hệ thống hỗ trợ (khoảng 97 mã, chia theo 9 nhóm: thông tin hợp đồng, khách đại diện, phòng, tòa nhà, danh sách khách thuê, tài sản, phí dịch vụ, phương tiện...). Bạn có thể tìm kiếm và **sao chép** từng mã, rồi dán vào file `.docx` của mình. Cú pháp mã biến:
-- `{TÊN_MÃ}` — điền một giá trị đơn (ví dụ `{CONTRACT_NUMBER}` là số hợp đồng, `{RENT_PRICE}` là giá thuê).
-- `{#TÊN}...{/TÊN}` — vùng lặp cho bảng nhiều dòng (ví dụ bảng danh sách khách thuê, bảng phí dịch vụ).
+::: warning Tab Mẫu chữ ký và HĐ đặt cọc chưa nhận mẫu mới
+Hộp **Thêm mẫu** không có lựa chọn nào đưa mẫu vào tab **Mẫu chữ ký** hoặc **HĐ đặt cọc**, nên hai tab này chỉ hiện mẫu đã có từ trước. Chữ ký/con dấu hãy chèn thẳng vào file `.docx` (xem [Chữ ký](/05-cai-dat/chu-ky/)).
+:::
 
-**Bước 7**: Dùng mẫu khi in. Sau khi đã có mẫu, bạn không in trên trang này. Mẫu được dùng ở nơi phát sinh chứng từ:
-- **In hợp đồng thuê**: mở màn hình **Hợp đồng** => chọn hợp đồng => in. Hệ thống chọn sẵn mẫu **HĐ thuê** đang đặt mặc định, điền dữ liệu thật vào mã biến và tạo file `.docx` để bạn tải về.
-- **In hoá đơn**: mở màn hình **Hoá đơn** => chọn hoá đơn => in. Hệ thống dùng mẫu hoá đơn đã gắn cho hoá đơn đó, hoặc mẫu hoá đơn mặc định.
+**Bước 4**: Đặt mẫu mặc định bằng công tắc ở cột **Mặc định** của dòng. Mỗi loại mẫu chỉ có **một mẫu mặc định**: bật mẫu này thì mẫu mặc định cũ cùng loại tự tắt.
+
+**Bước 5**: Thao tác trên từng dòng:
+- Cột **Thao tác**: **bút chì** để sửa tên, mô tả, loại hoặc thay file; **thùng rác** để xoá mẫu.
+- Cột **Xem mẫu PDF**: **Xem** mở nhanh file mẫu, **Tải** tải file `.docx` gốc về máy.
+
+**Bước 6**: Bấm **Xem mã biến** để mở hộp **Danh sách mã code biểu mẫu hợp đồng** — **99 mã** chia 9 nhóm: *Thông tin hợp đồng*, *Tòa nhà & Phòng*, *Giá thuê & Thanh toán*, *Tiền cọc & Khuyến mãi*, *Khách thuê*, *Chủ nhà*, *Thống kê & Dịch vụ*, *Thanh lý*, *Bảng dữ liệu*. Gõ vào ô **Tìm theo mã hoặc tên trường...** để lọc, bấm một mã để sao chép rồi dán vào file `.docx`. Cú pháp:
+- `{TÊN_MÃ}` — điền một giá trị (ví dụ `{CONTRACT_NUMBER}`, `{SIGN_DATE}`).
+- `{#TÊN}...{/TÊN}` — vùng lặp cho bảng nhiều dòng (danh sách khách thuê, phí dịch vụ…).
+
+![Hộp Danh sách mã code biểu mẫu hợp đồng: 99 mã, nhóm Thông tin hợp đồng với CONTRACT_NUMBER, SIGN_DATE, START_DATE…](./images/buoc-03-ma-bien.webp)
+
+**Bước 7**: Dùng mẫu khi in — bạn không in trên trang này:
+- **In hợp đồng thuê**: ở màn **Hợp đồng**, chọn hợp đồng rồi in. Hộp in liệt kê các mẫu tab **HĐ thuê**, chọn sẵn mẫu **Mặc định** (hoặc mẫu đầu tiên).
+- **In hoá đơn**: ở màn **Hoá đơn**, hộp in dùng mẫu đã gắn cho hoá đơn; nếu chưa gắn thì chọn mẫu loại **Hóa đơn** đang mặc định (hoặc mẫu đầu tiên); chưa có mẫu nào thì in theo khổ A4 dựng sẵn.
+- Form **Toà nhà** và **Phòng** có ô chọn sẵn mẫu hợp đồng/hoá đơn riêng.
 
 ## Các tính năng khác trên màn hình
 
 | Tính năng | Mô tả |
-|-----------|-------|
-| **Tab loại mẫu** | 7 tab: Mẫu chữ ký, HĐ đặt cọc, HĐ thuê, Biên bản bàn giao, Mẫu hoá đơn, Mẫu thu chi, Biểu mẫu khác. Mỗi tab lọc theo đúng loại mẫu. |
-| Ô **tìm kiếm** | Lọc nhanh danh sách mẫu theo tên hoặc mã mẫu (lọc ngay trên trang). |
-| Switch **Mặc định** | Đặt mẫu được chọn sẵn khi in. Mỗi loại chỉ một mẫu mặc định; bật mẫu này thì mẫu cũ tự tắt. |
-| Nút **Xem mã biến** | Tra cứu và sao chép toàn bộ mã biến để chèn vào file mẫu `.docx`. |
-| Nút **Xem** / **Tải** | Mở nhanh hoặc tải file mẫu gốc về máy. |
+| --- | --- |
+| **7 tab loại mẫu** | Mẫu chữ ký, HĐ đặt cọc, HĐ thuê, BB bàn giao, Mẫu hóa đơn, Mẫu thu chi, Biểu mẫu khác. |
+| Ô **Tìm kiếm mẫu...** | Lọc mẫu trong tab theo tên hoặc mã. |
+| Công tắc **Mặc định** | Mẫu được chọn sẵn khi in; mỗi loại một mẫu. |
+| **Xem mã biến** | Tra cứu và sao chép 99 mã biến. |
+| **Xem** / **Tải** | Mở nhanh hoặc tải file mẫu gốc. |
+| Dòng đếm cuối bảng | *1 - n trên tổng số n bản ghi*. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
-|------------|------------|
-| Tải file mẫu lên báo lỗi, không nhận file | Chỉ chấp nhận file Word **`.docx`** và dung lượng **tối đa 5MB**. File PDF, `.doc` cũ hoặc file quá lớn sẽ bị từ chối. Hãy lưu lại dưới định dạng `.docx`. |
-| In hợp đồng ra nhưng có ô để trống | Trong file mẫu bạn đã gõ sai tên mã biến (ví dụ thiếu dấu ngoặc nhọn, sai chữ). Mã lạ hoặc không có dữ liệu sẽ để trống. Mở **Xem mã biến**, sao chép đúng mã rồi dán lại. |
-| In ra không đúng mẫu mình muốn | Kiểm tra lại mẫu nào đang đặt **Mặc định** cho loại đó — khi in, hệ thống ưu tiên mẫu mặc định. Bật đúng mẫu bạn muốn làm mặc định. |
-| Không thấy mục **Mẫu biểu** trong menu **Cài đặt** | Tài khoản của bạn chưa có quyền **Mẫu biểu** (xem). Nhờ chủ nhà cấp quyền trong phần phân quyền nhân viên. |
-| Sửa một mẫu nhưng thấy đổi ở mọi tòa nhà | Đúng như thiết kế: mẫu biểu dùng chung cho toàn tài khoản, không phân theo tòa. Đổi một mẫu sẽ áp dụng cho mọi tòa nhà. |
+| --- | --- |
+| Chọn file bị báo *"Chỉ chấp nhận file .docx"* hoặc *"File không được vượt quá 5MB"* | Lưu lại file dưới dạng Word `.docx` và giảm dung lượng (nén ảnh trong file). PDF và `.doc` cũ không được nhận. |
+| In hợp đồng ra có ô để trống | Mã biến gõ sai (thiếu ngoặc nhọn, sai chữ) hoặc hợp đồng không có dữ liệu đó. Mở **Xem mã biến**, sao chép đúng mã rồi dán lại. |
+| In ra không đúng mẫu mong muốn | Kiểm tra mẫu nào đang **Mặc định** ở loại đó, và mẫu gắn riêng cho toà/phòng/hoá đơn. |
+| Vừa thêm mẫu nhưng không thấy trong tab đang mở | Mẫu nằm ở tab theo **Loại biên bản bàn giao** đã chọn (xem bảng ở Bước 3). |
+| Mở trang bị đưa về **Bảng tin** | Thiếu quyền **Biểu mẫu / Chữ ký** (xem). Nhờ chủ nhà cấp ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 
-::: warning Cẩn thận khi đổi hoặc xóa mẫu mặc định
-Việc thay đổi mẫu **Mặc định** hoặc xóa một mẫu đang được dùng để in sẽ ảnh hưởng ngay tới các lần in hợp đồng/hoá đơn sau đó. Trước khi xóa, hãy chắc chắn đã có mẫu thay thế được đặt mặc định cho loại đó, để việc in không bị nhảy sang mẫu khác ngoài ý muốn.
+::: warning Cẩn thận khi đổi hoặc xoá mẫu mặc định
+Đổi mẫu **Mặc định** hoặc xoá mẫu đang dùng ảnh hưởng ngay tới các lần in sau. Trước khi xoá, hãy đặt mẫu thay thế làm mặc định cho loại đó.
 :::
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/settings/templates" view-only>
-Xem các mẫu biểu có sẵn trong tài khoản demo. Lần lượt mở từng tab (HĐ đặt cọc, HĐ thuê, Biên bản bàn giao, Mẫu hoá đơn, Mẫu thu chi) để thấy các loại mẫu khác nhau. Bấm **Xem mã biến** để xem danh sách mã biến dùng khi thiết kế mẫu hợp đồng. Các mẫu này chính là bản dùng khi in hợp đồng và hoá đơn.
+<SandboxTry account="demo.chunha" app-path="/settings/templates" app-label="Mở trang Mẫu biểu" fixtures="Snapshot 07/10/2026: tab HĐ thuê của DEMO chưa có mẫu" view-only>
+
+**Bài tập chỉ xem**
+
+1. Bấm lần lượt 7 tab và xem mỗi tab đang có mẫu nào (tab **HĐ thuê** của DEMO đang trống).
+2. Bấm **Thêm mẫu**, mở ô **Loại biên bản bàn giao** để xem 7 lựa chọn, rồi **Hủy** — không bấm **Lưu**.
+3. Bấm **Xem mã biến**, gõ `DATE` vào ô tìm để lọc các mã ngày, rồi **Đóng**.
+
+**Kết quả mong đợi**
+
+- Bạn biết mẫu thêm mới rơi vào tab nào và cách tra mã biến.
+- Không có mẫu DEMO nào bị tạo, sửa hoặc xoá.
+
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — nơi in hợp đồng thuê từ mẫu đã tạo
-- [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — nơi in hoá đơn từ mẫu hoá đơn
-- [Chữ ký](/05-cai-dat/chu-ky/) — mẫu chữ ký điện tử chèn vào chứng từ
-- [Cài đặt chung](/05-cai-dat/cai-dat-chung/) — bật/tắt các hành vi hệ thống liên quan hợp đồng, hoá đơn
-- [Danh mục khác](/05-cai-dat/danh-muc-khac/) — trang tổng hợp điều hướng sang mọi danh mục
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — in hợp đồng thuê từ mẫu.
+- [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — in hoá đơn từ mẫu.
+- [Toà nhà](/03-quan-ly-van-hanh/toa-nha/) — gắn mẫu hợp đồng/hoá đơn mặc định cho từng toà.
+- [Chữ ký](/05-cai-dat/chu-ky/) — trang mẫu chữ ký (chưa kết nối dữ liệu).
+- [Danh mục khác](/05-cai-dat/danh-muc-khac/) — trang tổng hợp danh mục.

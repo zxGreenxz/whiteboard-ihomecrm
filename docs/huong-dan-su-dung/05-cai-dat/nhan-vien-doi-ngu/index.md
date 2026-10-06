@@ -1,83 +1,116 @@
 ---
 title: "Thành viên tổ chức"
-description: "Mời thành viên bằng email, gán một hoặc nhiều vai trò theo phạm vi và quản lý ngoại lệ quyền trong mô hình RBAC V3."
+description: "Xem hồ sơ tổ chức, mời thành viên bằng email, gán vai trò theo phạm vi và quản lý ngoại lệ quyền của từng người."
 routes: ["/settings/organization", "/settings/members", "/settings/roles"]
 permissions: [{module: users, action: view}, {module: users, action: create}, {module: users, action: edit}, {module: users, action: delete}, {module: users, action: manage_templates}]
 viewport: responsive
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Thành viên tổ chức
 
-![Màn Thành viên production của tổ chức DEMO với 7 tài khoản, vai trò, phạm vi và số quyền đang hiệu lực](./images/buoc-01-man-hinh.webp)
+Ba màn trong menu **Cài đặt hệ thống** cùng lo chuyện "ai làm việc trong công ty, được làm gì, ở đâu":
 
-::: info Snapshot quyền hiệu lực
-Ảnh ngày 13/08/2026 cho thấy `demo.chunha` đang hiển thị **229 quyền hiệu lực**, trong khi thẻ vai trò **Chủ công ty** ở màn Mẫu vai trò có **231 quyền**. Đây là bằng chứng vai trò/catalog và quyền hiệu lực của một thành viên không phải cùng một con số; scope hoặc ngoại lệ có thể làm kết quả cuối khác đi.
-:::
+- **Tổ chức** (`/settings/organization`): hồ sơ công ty, số liệu tổng quát, lời mời và nhật ký phân quyền.
+- **Thành viên** (`/settings/members`): danh sách người trong tổ chức, mời người mới và mở hộp thoại **Phân quyền** của từng người.
+- **Mẫu vai trò** (`/settings/roles`): các gói quyền dùng lại — xem chi tiết ở [Mẫu vai trò và phân quyền](/05-cai-dat/phan-quyen/).
 
-Trang chính để quản lý người trong tổ chức là `/settings/members`. Route cũ `/settings/staff` **chỉ chuyển hướng** đến route này. `/settings/organization` quản lý thông tin tổ chức, còn `/settings/roles` quản lý các gói quyền dùng lại.
+Route cũ `/settings/staff` **chỉ chuyển hướng** đến `/settings/members`.
 
 ::: info Điều kiện tiên quyết
-- `users.view` để mở các trang tổ chức, thành viên và vai trò.
-- `users.create`, `users.edit`, `users.delete` cho các thao tác tương ứng với thành viên.
-- `users.manage_templates` để quản lý **Mẫu vai trò**.
-- Bạn không thể sửa phân quyền của chính mình.
+- `users.view` để mở cả ba màn (route và mục menu đều gác bằng quyền này).
+- Đổi **Tên tổ chức** cần quyền sửa cài đặt chung; thiếu quyền thì ô tên bị khoá kèm dòng *"Cần quyền "Sửa cài đặt chung" để đổi tên."*.
+- Mời, sửa phân quyền, thu hồi lời mời: máy chủ kiểm lại quyền quản trị thành viên của bạn ở từng thao tác.
+- Bạn **không thể sửa phân quyền của chính mình**.
 :::
 
-## Mời thành viên
+## Hướng dẫn từng bước
 
-1. Mở `/settings/members` và bấm **Mời thành viên**.
-2. Nhập **email thật** của người nhận và chọn loại thành viên.
-3. Có thể chọn một vai trò ban đầu. Nếu chọn vai trò, phải chọn ít nhất một phạm vi áp dụng.
-4. Gửi lời mời. Hệ thống hiển thị đường dẫn mời **một lần**; sao chép và gửi thủ công cho người nhận.
-5. Người nhận đăng nhập bằng đúng email đã được mời rồi mở `/invite/:token` để vào tổ chức.
+**Bước 1**: Tại menu bên trái, mở **Cài đặt hệ thống** => **Thành viên**. Mỗi người là một thẻ gồm tên, nhãn loại thành viên (**Chủ sở hữu**, **Nhân sự**, **Đối tác**, **Cổ đông**, **Tài khoản dịch vụ**), nhãn **bạn** nếu là chính bạn, email, các vai trò kèm phạm vi (*toàn tổ chức* hoặc tên toà/sổ), và dòng cuối là **số quyền** đang có, số ngoại lệ (**+N riêng** / **−N bị cấm**) và số sổ quỹ đang giữ (**giữ N sổ**). Ô **Tìm theo tên, email hoặc vai trò…** lọc nhanh danh sách.
 
-Hệ thống hiện không tự gửi email mời. Không tạo nhân viên bằng tên đăng nhập/mật khẩu tại trang này.
+![Bước 1 - Màn Thành viên của tổ chức DEMO với 8 thẻ thành viên, vai trò, phạm vi và số quyền](./images/buoc-01-danh-sach-thanh-vien.webp)
 
-## Vai trò và phạm vi
+Snapshot DEMO ngày 07/10/2026: 8 thành viên, 2 chủ sở hữu (vai trò **Chủ công ty**, *toàn tổ chức*); các tài khoản DEMO còn lại mang vai trò **Quản Lý Tòa** — người áp *toàn tổ chức* có 136 quyền, còn **DEMO Quản Lý** và **DEMO Quản Lý 2** chỉ áp ở hai toà mỗi người nên thẻ hiện 102 quyền. Cùng một vai trò nhưng phạm vi hẹp hơn có thể cho số quyền thấp hơn, vì có những quyền chỉ áp được ở phạm vi toàn tổ chức.
 
-Mỗi thành viên có thể mang nhiều vai trò, mỗi vai trò được gắn qua một `role_binding` và phải có ít nhất một scope:
+::: warning Thẻ ghi "chưa gán phạm vi — không có tác dụng"
+Vai trò không kèm phạm vi nào thì không cấp được quyền gì. Mở **Phân quyền** của người đó và chọn ít nhất một phạm vi.
+:::
 
-| Scope | Ý nghĩa |
+**Bước 2**: Bấm **Mời thành viên** để mời người mới. Hộp thoại có:
+
+- **Email**: email thật của người được mời (ví dụ `nguoimoi@congty.com`).
+- **Loại thành viên**: **Nhân sự** (mặc định), **Đối tác**, **Cổ đông** hoặc **Chủ sở hữu**. Chọn **Chủ sở hữu** sẽ hiện cảnh báo *"Chủ sở hữu có toàn quyền, kể cả sửa phân quyền người khác."*
+- **Vai trò khi vào (tuỳ chọn)**: mặc định **Chưa gán — cấp sau**; mỗi vai trò hiện kèm số quyền. Nếu chọn vai trò thì phải chọn tiếp **Áp vai trò ở đâu** (ít nhất một phạm vi).
+
+![Bước 2 - Hộp thoại Mời thành viên với ô Email, Loại thành viên và Vai trò khi vào](./images/buoc-02-moi-thanh-vien.webp)
+
+**Bước 3**: Bấm **Tạo lời mời**. Hệ thống **không tự gửi email**: hộp thoại hiện đường dẫn mời kèm hạn dùng, và đường dẫn chỉ hiện **một lần duy nhất** — đóng hộp thoại là không xem lại được. Bấm nút sao chép rồi gửi đường dẫn cho người nhận, sau đó bấm **Xong**.
+
+**Bước 4**: Người nhận đăng nhập bằng **đúng email đã được mời** rồi mở đường dẫn `/invite/:token` để vào tổ chức. Lời mời đang chờ hiện ở màn **Tổ chức** (bước 5).
+
+**Bước 5**: Mở **Cài đặt hệ thống** => **Tổ chức** để xem tổng quan:
+
+- **Hồ sơ tổ chức**: **Tên tổ chức** (sửa được nếu đủ quyền; sửa xong bấm nút dấu tích bên cạnh để lưu) và **Mã định danh** (mã kỹ thuật, không đổi được). Tổ chức demo có nhãn **Bản demo**.
+- Bốn ô số: **Thành viên** (kèm số chủ sở hữu), **Mẫu vai trò**, **Phạm vi địa điểm** (số toà · số khu vực), **Sổ quỹ** (kèm số ngoại lệ đang bật).
+- **Lời mời**: các lời mời trong 90 ngày qua với trạng thái *đang chờ*, *đã vào*, *đã thu hồi* hoặc *hết hạn*. Lời mời đang chờ có nút **Thu hồi**.
+- **Nhật ký phân quyền**: 50 thay đổi gần nhất (sửa phân quyền thành viên, tạo/sửa vai trò, mời, chấp nhận/thu hồi lời mời, sửa thông tin tổ chức), mỗi dòng có người làm, thời điểm, lý do và số quyền được thêm/bị mất. Các dòng được móc xích bằng mã băm — sửa hoặc xoá một dòng sẽ làm gãy chuỗi và bị phát hiện.
+
+![Bước 5 - Màn Tổ chức của DEMO: hồ sơ tổ chức, bốn ô số liệu, lời mời và nhật ký phân quyền](./images/buoc-03-to-chuc.webp)
+
+## Vai trò, phạm vi và ngoại lệ
+
+Mỗi thành viên có thể mang nhiều vai trò; mỗi vai trò gắn cho người đó phải kèm ít nhất một phạm vi:
+
+| Phạm vi (nhãn trên màn) | Ý nghĩa |
 |---|---|
-| `ORGANIZATION` | Toàn tổ chức, gồm cả toà nhà và sổ quỹ tạo trong tương lai; không kết hợp scope khác trong cùng binding |
-| `AREA` | Một khu vực và dữ liệu thuộc khu vực đó |
-| `BUILDING` | Một toà nhà cụ thể |
-| `CASHBOOK` | Một sổ quỹ cụ thể |
+| **Toàn tổ chức** | Mọi toà nhà và sổ quỹ, gồm cả những cái tạo sau này; không kết hợp phạm vi khác trong cùng một vai trò |
+| **Khu vực** | Một khu vực và dữ liệu thuộc khu vực đó |
+| **Toà nhà** | Một toà nhà cụ thể |
+| **Sổ quỹ** | Một sổ quỹ cụ thể |
 
-Vai trò chỉ chứa gói quyền, **không chứa phạm vi**. Cùng một vai trò có thể gán cho một người ở nhiều scope khác nhau.
-
-## Chỉnh quyền một thành viên
-
-Mở thành viên để dùng ba tab:
-
-- **Vai trò & phạm vi**: thêm/bớt role binding và scope.
-- **Ngoại lệ**: thêm `ALLOW` hoặc `DENY` cho riêng người này, có lý do và nhật ký.
-- **Quyền hiệu lực**: xem kết quả cuối cùng sau khi cộng quyền từ vai trò, phạm vi và ngoại lệ.
-
-Quyền hiệu lực được tính từ `organization_memberships`, `organization_roles`, `role_permissions`, `role_bindings`, `role_binding_scopes` và `member_permission_overrides`. Khi xung đột, **`DENY` luôn thắng**.
+Vai trò chỉ chứa gói quyền, **không chứa phạm vi**. Bấm **Phân quyền** trên thẻ thành viên để mở hộp thoại ba tab **Vai trò & phạm vi**, **Ngoại lệ**, **Quyền hiệu lực**; mọi lần lưu đều phải ghi **Lý do thay đổi** vào nhật ký. Cách dùng chi tiết ở [Mẫu vai trò và phân quyền](/05-cai-dat/phan-quyen/).
 
 ::: warning Sửa vai trò ảnh hưởng ngay nhiều người
-Vai trò là gói quyền sống, không phải bản sao chép vào từng thành viên. Chỉnh một vai trò tại `/settings/roles` làm thay đổi quyền hiệu lực của **mọi thành viên đang mang vai trò đó ngay lập tức**.
+Vai trò là gói quyền dùng chung, không phải bản sao chép vào từng thành viên. Sửa một vai trò ở **Mẫu vai trò** làm thay đổi quyền của **mọi thành viên đang mang vai trò đó ngay lập tức**. Chỉ muốn chỉnh một người thì dùng tab **Ngoại lệ**.
 :::
+
+## Thử trực tiếp trên sandbox
+
+<SandboxTry account="demo.chunha" app-path="/settings/members" app-label="Mở màn Thành viên" fixtures="Snapshot 07/10/2026: 8 thành viên, 2 vai trò (Chủ công ty, Quản Lý Tòa)" view-only>
+
+**Bài tập chỉ xem**
+
+1. Đối chiếu các thẻ thành viên: loại thành viên, vai trò, phạm vi và số quyền.
+2. Bấm **Mời thành viên** để xem các trường rồi bấm **Huỷ** — không bấm **Tạo lời mời**.
+3. Mở **Cài đặt hệ thống** => **Tổ chức** để xem bốn ô số liệu và nhật ký phân quyền.
+
+**Kết quả mong đợi**
+
+- Giao diện khớp nội dung hướng dẫn.
+- Không có lời mời hay thay đổi phân quyền nào được tạo.
+
+</SandboxTry>
 
 ## Tình huống thường gặp
 
 | Tình huống | Cách xử lý |
 |---|---|
-| Không gán được vai trò | Chọn ít nhất một scope; mỗi binding bắt buộc có phạm vi |
-| Người nhận không vào được tổ chức | Đăng nhập đúng email được mời rồi mở lại link `/invite/:token` |
-| Không nhận được email mời | Hệ thống không tự gửi; người mời phải sao chép và gửi link thủ công |
-| Có quyền nhưng không thao tác được ở một toà/sổ | Kiểm tra scope của role binding và ngoại lệ `DENY` |
-| Muốn sửa quyền của chính mình | Nhờ một quản trị viên đủ quyền khác thực hiện |
+| Không bấm được **Tạo lời mời** sau khi chọn vai trò | Chọn ít nhất một phạm vi ở **Áp vai trò ở đâu** |
+| Người nhận không vào được tổ chức | Đăng nhập đúng email được mời rồi mở lại link `/invite/:token`; nếu lời mời *hết hạn* hoặc *đã thu hồi*, tạo lời mời mới |
+| Không nhận được email mời | Hệ thống không tự gửi; người mời phải sao chép và gửi đường dẫn thủ công |
+| Lỡ đóng hộp thoại trước khi sao chép đường dẫn | Đường dẫn không xem lại được. Thu hồi lời mời đang chờ ở màn **Tổ chức** rồi mời lại |
+| Có quyền nhưng không thao tác được ở một toà/sổ | Kiểm tra phạm vi của vai trò và ngoại lệ **Cấm** của người đó |
+| Ô **Tên tổ chức** bị khoá | Cần quyền sửa cài đặt chung |
+| Muốn sửa quyền của chính mình | Hộp thoại báo *"Không thể tự sửa quyền của chính mình."* — nhờ một chủ sở hữu khác thực hiện |
 
 ## Quy trình liên quan
 
 - [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)
-- [Mẫu vai trò và quyền](/05-cai-dat/phan-quyen/)
+- [Mẫu vai trò và phân quyền](/05-cai-dat/phan-quyen/)
 - [Tạo khu vực và toà nhà](/01-bat-dau/tao-toa-nha/)
+- [Quản trị người dùng (super admin)](/05-cai-dat/admin-users/)

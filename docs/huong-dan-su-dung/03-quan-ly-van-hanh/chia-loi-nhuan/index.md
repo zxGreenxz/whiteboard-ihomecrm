@@ -1,131 +1,145 @@
 ---
 title: "Chia lợi nhuận cổ đông"
-description: "Khai tỷ lệ cổ phần, xem preview nguồn, chốt hoặc chốt lại lợi nhuận theo revision rồi gửi yêu cầu chi cho cổ đông."
+description: "Xem báo cáo doanh thu – chi phí, khai cổ đông và tỷ lệ theo toà, chốt lợi nhuận tháng theo từng nhà, xử lý phần chưa phân bổ rồi lập phiếu chi lợi nhuận cho cổ đông."
 routes: ["/reports/finance/profit-distribution"]
-permissions: [{module: shareholder_profit, action: view}]
+permissions:
+  - {module: reports_finance, action: profit_distribution}
+  - {module: shareholder_profit, action: view}
 viewport: desktop
 audience: [chu-nha, co-dong]
 captured:
-  date: "2026-07-20"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Chia lợi nhuận cổ đông
 
-Trang **Phân bổ & chia lợi nhuận** giúp bạn khai tỷ lệ góp vốn theo toà, xem lợi nhuận nguồn của tháng, trừ lương điều hành, chốt phần được chia và theo dõi số đã chi/còn lại.
+Trang **Báo cáo Lợi Nhuận** gom báo cáo doanh thu – chi phí và toàn bộ nghiệp vụ chia lợi nhuận cổ đông vào một chỗ: khai tỷ lệ góp vốn theo toà, chốt lợi nhuận tháng theo từng nhà, trừ lương điều hành, quyết định phần chưa phân bổ và theo dõi số đã chi/còn phải trả cho từng cổ đông.
 
-Đây là route chuẩn `/reports/finance/profit-distribution`. Hai địa chỉ cũ `/finance/shareholder-profit` và `/reports/finance/shareholder-profit` chỉ chuyển hướng về trang này.
-
-::: warning Tab quản trị đang ẩn trên giao diện
-Trên **desktop**, nhấp nhanh **3 lần vào icon xanh bên trái tiêu đề "Báo cáo Lợi Nhuận"** để hiện các tab **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** nếu tài khoản có quyền. Bản mobile hiện không có các tab chốt/cấu hình; hãy mở bằng máy tính hoặc bật chế độ trang desktop.
-:::
-
-Nguyên tắc chính:
-
-**Phần được chia = (LN tự tính + Điều chỉnh − Lương điều hành) × tỷ lệ cổ đông.**
-
-Lần chốt hiện hành do server tính và ghi trong một giao dịch có source hash, idempotency và revision. Bạn không còn mở khoá từng toà rồi xoá snapshot bằng tay như flow cũ.
+Route chuẩn là `/reports/finance/profit-distribution`. Các địa chỉ cũ `/finance/shareholder-profit`, `/reports/finance/shareholder-profit` và `/report/finance-by-month` **chỉ chuyển hướng** về trang này, không còn màn riêng.
 
 ::: info Điều kiện tiên quyết
-- Có quyền `shareholder_profit.view`; thao tác chốt cần `lock`, đặt lại cần `unlock`, chi lợi nhuận cần `distribute`, và **Chi lương điều hành** cần `pay_manager`. Quyền `shareholder_profit.pay_manager` đã có trong danh mục Phân quyền và được cấp độc lập với quyền chi lợi nhuận cổ đông.
-- Dùng desktop cho thao tác chốt/cấu hình và mở nhóm tab ẩn bằng 3 lần nhấp icon tiêu đề.
-- Đã khai cổ đông, tỷ lệ theo toà và quản lý điều hành nếu có.
-- Thu/chi của tháng đã được rà soát; xem [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/).
-- Cấu hình active phải thuộc đúng tổ chức. Cổ đông/quản lý đã tắt hoạt động hoặc xoá mềm không nhận phần mới.
+- Mục menu **Báo cáo tài chính => Báo cáo Lợi Nhuận** (và ô **BC Lợi Nhuận** ở màn hình chính) hiện khi tài khoản có quyền `reports_finance.profit_distribution`.
+- Tab **Tổng quan** (quản lý) cần `shareholder_profit.view`; **Chốt LN tháng** cần quyền chốt (`lock`) hoặc mở khoá (`unlock`) ở đúng tổ chức; **Cổ đông & tỷ lệ** cần `manage_shareholders`; **Chi lợi nhuận** cần `distribute`; **Chi lương điều hành** cần `pay_manager`.
+- Thu/chi của tháng đã được rà soát và các sổ quỹ đã chốt hết tháng ở [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/); xem [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/).
+- Dùng **máy tính**: bản điện thoại chỉ có các tab **BC Thu Chi**, **Tổng quan**, **Của tôi**, không có tab chốt và cấu hình.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1: Mở trang và hiện tab quản trị.** Vào **Báo cáo tài chính => Báo cáo Lợi Nhuận** trên desktop. Nhấp nhanh 3 lần vào icon xanh bên trái tiêu đề; nếu có quyền, các tab **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** sẽ hiện. Tài khoản có quyền ở nhiều tổ chức phải chọn đúng tổ chức trước khi thao tác.
+**Bước 1**: Vào **Báo cáo tài chính => Báo cáo Lợi Nhuận**. Dải xanh đầu trang hiện các tab theo quyền của bạn: **BC Doanh Thu Chi Phí** (doanh thu, chi phí, lợi nhuận theo phòng/khoản trong tháng) và **Tổng quan**.
 
-![Màn Phân bổ và chia lợi nhuận cổ đông với các tab báo cáo, tổng quan, chốt tháng và cấu hình tỷ lệ](./images/buoc-01-man-hinh.webp)
+![Bước 1 - Trang Báo cáo Lợi Nhuận mở ở tab BC Doanh Thu Chi Phí, có tab Tổng quan bên cạnh](./images/buoc-01-man-hinh.webp)
 
-**Bước 2: Kiểm tra cổ đông và tỷ lệ.** Ở tab **Cổ đông & tỷ lệ**, rà tên, trạng thái hoạt động, tài khoản đăng nhập và phần trăm theo từng toà. Tổng tỷ lệ active của một toà không được vượt 100%.
+**Bước 2**: Hiện các tab quản trị. Các tab **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** mặc định ẩn. Nhấp nhanh **3 lần** vào biểu tượng tròn bên trái tiêu đề **Báo cáo Lợi Nhuận**; tab ẩn hiện ra, có dấu **•** sau tên. Nhấp 3 lần nữa để ẩn lại.
 
-**Bước 3: Xem preview canonical.** Mở tab **Chốt LN tháng**. Bảng hiển thị:
+**Bước 3**: Mở tab **Cổ đông & tỷ lệ** để kiểm tra cổ đông, tỷ lệ theo toà và quản lý điều hành. Dải trên cùng đếm **Cổ đông**, **Quản lý điều hành**, **Tòa nhà** và **Tỷ lệ gán đủ 100%**. Dùng **+ Thêm cổ đông** để gán tài khoản đăng nhập và chọn toà kèm tỷ lệ; dùng **+ Thêm quản lý** để khai quy tắc **Lương điều hành** — khoản này bị trừ khỏi lợi nhuận từng nhà **trước** khi chia cho cổ đông.
 
-- **Doanh thu / Chi phí / LN tự tính** từ nguồn accrual server;
-- **Điều chỉnh có dấu**: nhập số dương hoặc âm;
-- **Lý do điều chỉnh**: bắt buộc khi điều chỉnh khác 0;
-- **Lương điều hành** do server tính theo quy tắc active;
-- **LN chia cổ đông** và preview phần của từng người;
-- source hash, trạng thái snapshot và cảnh báo **Cũ/Đã lệch nguồn** nếu dữ liệu đã thay đổi.
+![Bước 3 - Tab Cổ đông và tỷ lệ của DEMO chưa có cổ đông và quản lý điều hành, có nút Thêm cổ đông và Thêm quản lý](./images/buoc-02-co-dong-ty-le.webp)
 
-::: danger Không chốt khi preview chưa ổn định
-Nếu preview đang tải lại, có lỗi nguồn, tỷ lệ vượt 100%, cấu hình sai tổ chức hoặc source hash đổi, hãy sửa dữ liệu rồi tải lại. Server sẽ từ chối ghi nếu nguồn đổi sau lúc bạn xem preview.
+**Bước 4**: Mở tab **Chốt LN tháng**. Chọn **tổ chức**, **tháng**, **năm**; bấm **Tải lại số nguồn** nếu vừa sửa phiếu. Dải KPI hiện **Kỳ chốt** (Chưa chốt / Chốt một phần / Đã chốt toàn bộ, kèm số nhà đã chốt), **Tổng quỹ sau lương**, **Đã phân bổ cổ đông**, **Chưa phân bổ** và **Source hash**. Bảng **Lợi nhuận theo nhà** có các cột **Doanh thu**, **Chi phí**, **LN tự tính**, **Điều chỉnh có dấu** (kèm ô lý do), **Lương điều hành**, **Quỹ sau lương**, **Tỷ lệ CĐ**, **Đã phân bổ**, **Phần chưa phân bổ** và **Snapshot hiện tại**.
+
+**Quỹ sau lương = LN tự tính + Điều chỉnh − Lương điều hành**; phần cổ đông nhận = Quỹ sau lương × tỷ lệ của họ ở nhà đó.
+
+![Bước 4 - Tab Chốt LN tháng tháng 10/2026: dải KPI, cảnh báo sổ quỹ chưa chốt và tháng chưa kết thúc, bảng lợi nhuận theo nhà có ô tick](./images/buoc-03-chot-ln-thang.webp)
+
+Trên bảng có thể xuất hiện các cảnh báo:
+
+- **Còn N sổ quỹ chưa chốt hết tháng** — chỉ nhắc, không chặn. Hộp chia sổ theo việc của ai: **Bạn chốt được ngay** (bấm tên sổ để sang Sổ quỹ), **Chờ BẠN ký**, **Chờ người khác ký**, **Chờ người giữ sổ đề nghị**, **Chưa có người ký** (gán một người vai trò Kế toán toàn tổ chức).
+- **Tháng chưa kết thúc** — chốt giữa tháng thì mọi phiếu ghi sau đó của nhà đã chốt bị khoá; nên đợi qua ngày cuối tháng.
+- **Số đã chốt không còn khớp nguồn hiện tại** / nhãn **Đã lệch nguồn**, **Cũ** — dữ liệu thu chi, hạng mục, tỷ lệ hoặc cấu hình lương đã đổi sau lần chốt.
+
+**Bước 5**: Xử lý **Phần chưa phân bổ**. Nhà có tổng tỷ lệ cổ đông dưới 100% sẽ còn phần dư. Với mỗi nhà đang chọn còn dư từ 0,01đ, chọn **Giữ lại lợi nhuận** (phần đó ở lại công ty) hoặc **Chuyển kỳ sau** (trở thành phần phải chia ở kỳ sau), và nhập lý do 8–500 ký tự. Thiếu lựa chọn hoặc lý do thì nút xác nhận chốt bị khoá.
+
+::: tip Phần chưa chia thuộc về công ty
+Phần % chưa gán cổ đông là phần của chính công ty. Thông thường chọn **Giữ lại lợi nhuận**; chỉ chọn **Chuyển kỳ sau** khi thật sự có cam kết chia phần đó ở kỳ sau.
 :::
 
-**Bước 4: Chọn nhà rồi chốt.** Mỗi dòng trong bảng có một ô tick ở đầu. Mặc định hệ thống tick sẵn mọi nhà chưa chốt; bỏ tick những nhà chưa muốn chốt rồi bấm **Chốt N nhà đã chọn**. Sau xác nhận, chỉ những nhà đó có snapshot `LOCKED` và revision kiểm toán — các nhà còn lại giữ nguyên, **phiếu thu-chi của chúng vẫn sửa được bình thường**.
+**Bước 6**: Chọn nhà rồi chốt. Mỗi dòng có ô tick; mặc định hệ thống tick sẵn mọi nhà chưa chốt (ô đầu bảng ghi số đã chọn, ví dụ `4/4`). Bỏ tick nhà chưa muốn chốt, bấm **Chốt N nhà đã chọn**, đọc hộp **Chốt N nhà của MM/YYYY?** rồi xác nhận **Chốt N nhà**.
 
-Dùng cách này khi muốn trả phần lợi nhuận của vài nhà trước (ví dụ nhà có nhân viên góp vốn) mà sổ sách các nhà khác chưa xong. Số nào đã chốt thì chảy ngay vào cột **Đầu tư** của bảng lương tháng đó.
+- Server tính lại trên **toàn tháng** nhưng chỉ ghi những nhà đang chọn; nhà khác giữ nguyên và phiếu của chúng vẫn sửa được.
+- Sau khi chốt, **mọi phiếu có ngày trong tháng** của các nhà đó bị khoá với mọi người, kể cả chủ công ty — gồm cả phiếu thu tiền của hoá đơn tháng đó dù phiếu mang ngày tháng sau.
+- Nhà còn phiếu **Chờ duyệt** trong tháng thì server không cho chốt; lỗi nêu rõ mã phiếu cần duyệt hoặc huỷ trước.
+- Nếu source hash đổi giữa lúc xem và lúc ghi, server từ chối để bạn tải preview mới.
 
 ::: warning Nhà dùng chung một quy tắc lương điều hành phải chốt cùng lúc
-Quy tắc lương `TOTAL_GROUP` chia một khoản cho **cả nhóm nhà** theo lợi nhuận từng nhà. Tick một nhà trong nhóm thì hệ thống tự tick nốt các nhà còn lại và báo cho bạn biết vì sao (bỏ tick cũng bỏ cả nhóm). Đừng cố lách: chốt nửa nhóm sẽ dồn phần lớn khoản lương đó vào nhà đã chốt và làm sai số đã chia cho cổ đông của chính nhà đó — server chặn bằng thông báo **"Lương điều hành … phải chốt cùng lúc"**.
+Quy tắc lương kiểu `TOTAL_GROUP` chia một khoản cho cả nhóm nhà theo lợi nhuận từng nhà. Tick một nhà trong nhóm thì hệ thống tự tick các nhà còn lại (bỏ tick cũng bỏ cả nhóm). Server chặn chốt nửa nhóm bằng thông báo **"Lương điều hành … phải chốt cùng lúc"**.
 :::
 
-**Bước 5: Chốt lại khi nguồn thay đổi.** Nếu nhà đã chốt nhưng thu/chi, tỷ lệ hoặc cấu hình lương thay đổi, màn hình đánh dấu snapshot **Cũ**. Tick đúng những nhà đó rồi bấm **Chốt lại N nhà đã chọn**, nhập lý do bắt buộc và xem preview mới. Chốt lại tạo revision mới; lịch sử cũ vẫn được giữ.
+**Bước 7**: Chốt lại khi nguồn thay đổi. Tick đúng những nhà đã chốt đang báo **Cũ/Đã lệch nguồn**, bấm **Chốt lại N nhà đã chọn**, nhập **Lý do chốt lại** rồi xác nhận. Chốt lại tạo revision mới; lịch sử cũ vẫn giữ. Vùng chọn **không được lẫn** nhà đã chốt với nhà chưa chốt — chốt và chốt lại phải làm hai lượt.
 
-Vùng chọn **không được lẫn** nhà đã chốt với nhà chưa chốt: chốt và chốt lại là hai thao tác khác nhau, làm hai lượt.
+**Bước 8**: Mở khoá hoặc đặt lại khi cần sửa phiếu (cần quyền `unlock`). Hai nút chạy trên đúng những nhà đang tick:
 
-**Bước 6: Mở khoá / Đặt lại theo nhà.** Nhà đã chốt xen nhà chưa chốt là **bình thường** — đó chính là cái bạn vừa làm ở Bước 4. Hai nút này cũng chạy trên đúng vùng đang tick:
+- **Mở khoá N nhà đã chọn** — mở để sửa, lập hoặc huỷ phiếu có ngày trong tháng của những nhà đó. Bắt buộc ghi **Lý do mở khoá** 8–1000 ký tự; lý do được lưu cùng người mở. Phần đã phân bổ cho cổ đông và lương điều hành của những nhà này **bị xoá**, bản chốt về Nháp — sửa xong phải chốt lại.
+- **Đặt lại N nhà đã chọn** — bỏ snapshot hiện tại để chốt mới từ đầu, cần lý do 8–1000 ký tự. Khi tháng còn snapshot trên **toà ảo hoặc toà đã xoá**, màn hình báo đỏ và nút đổi thành **Đặt lại cả tháng (gồm dòng legacy)**.
 
-- **Mở khoá N nhà đã chọn** — gỡ khoá để sửa phiếu của những nhà đó. Phải gõ **lý do mở khoá** (ít nhất 8 ký tự), lý do được lưu lại. Phần đã phân bổ cho cổ đông và quản lý của chúng **bị xoá**, snapshot về Nháp, sửa xong phải chốt lại. Từ 25/09/2026 tháng đã chốt khoá **mọi** phiếu có ngày trong tháng đó với **mọi người** (kể cả chủ công ty), và cả phiếu thu tiền của **hoá đơn tháng đó** dù phiếu mang ngày tháng sau (không sửa/huỷ/đổi hình thức thu được; thu thêm nợ cũ thì vẫn thu được); còn phiếu Chờ duyệt trong tháng/toà thì **không chốt được** — duyệt hoặc huỷ trước.
-- **Đặt lại N nhà đã chọn** — bỏ hẳn snapshot của những nhà đó để chốt mới từ đầu, cần nhập lý do.
-
-Riêng khi tháng còn snapshot nằm trên **toà ảo hoặc toà đã xoá**, màn hình báo đỏ và bạn phải đặt lại các dòng đó trước khi chốt tiếp. Reset được bảo vệ bằng state hash và danh sách snapshot của **cả tháng**; nếu ai đó vừa chốt hoặc mở khoá nhà khác thì thao tác bị từ chối để bạn tải lại.
-
-::: warning Đặt lại không xoá lịch sử kiểm toán
-Thao tác bỏ snapshot hiện tại của những nhà đang chọn, nhưng revision trước đó vẫn tồn tại. Chỉ dùng khi màn hình yêu cầu hoặc khi trạng thái nhà đó thực sự không thể reclose an toàn.
+::: danger Mở khoá xoá phần đã phân bổ
+Mở khoá không chỉ "cho sửa phiếu": nó xoá phân bổ cổ đông và lương điều hành của các nhà đó. Đặt lại vẫn giữ lịch sử revision để kiểm toán, nhưng server kiểm trạng thái **toàn tháng** trước khi ghi — nếu ai đó vừa chốt hoặc mở khoá nhà khác, thao tác bị từ chối để bạn tải lại.
 :::
 
-**Bước 7: Gửi yêu cầu chi lợi nhuận.** Ở tab **Tổng quan**, chọn cổ đông, số tiền, sổ quỹ, ngày và ghi chú rồi bấm **Chi lợi nhuận**. Hệ thống tạo request canonical có idempotency; nút **Chi lương điều hành** dùng writer tương tự và cần quyền `shareholder_profit.pay_manager`.
+**Bước 9**: Chi lợi nhuận cho cổ đông. Mở tab **Tổng quan**: dải KPI hiện **Tổng LN đã chốt (luỹ kế)**, **Tổng được chia cổ đông**, **Đã ứng / đã chia**, **Còn phải trả**; bên dưới là biểu đồ theo tháng, theo nhà và bảng **Theo cổ đông (luỹ kế)** (Được chia / Đã ứng / Còn lại). Bấm **+ Chi lợi nhuận** (hoặc nút **Chi** trên dòng cổ đông), điền cổ đông, số tiền, sổ quỹ, ngày, ghi chú rồi **Ghi phiếu chi**. Nút **+ Chi lương điều hành** ở thẻ **Lương điều hành (luỹ kế)** dùng hộp tương tự và cần quyền `pay_manager`.
 
-Việc **chốt/phân bổ** hoặc request được **duyệt** chưa chứng minh cổ đông hay quản lý đã nhận tiền. Chỉ request `POSTED` mới tạo biến động trên sổ quỹ thật; phiếu sau khi post nằm trên toà ảo **Chung**, gắn đúng cổ đông/quản lý và không tính lại vào KQKD, tránh trừ lợi nhuận hai lần.
+![Bước 9 - Tab Tổng quan với các KPI luỹ kế, biểu đồ theo tháng và nút Chi lợi nhuận; DEMO chưa có cổ đông nên số đều 0](./images/buoc-04-tong-quan.webp)
 
-## Thành phần trên màn hình
+::: danger Đã chốt, đã duyệt chưa phải là đã chi tiền
+Chốt/phân bổ chỉ xác định phần **được chia**. **Ghi phiếu chi** tạo một phiếu chi lợi nhuận; thông báo sau khi ghi cho biết phiếu đang chờ duyệt hay đã duyệt. Cột **Đã ứng / đã chia** cộng các phiếu đã **duyệt**. Tiền chỉ thật sự ra khỏi sổ quỹ khi phiếu ở trạng thái **Đã Chi** (`posting_status = POSTED`) — kiểm tra ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) hoặc [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/). Phiếu chi lợi nhuận nằm trên toà ảo **Chung** và không tính lại vào KQKD, tránh trừ lợi nhuận hai lần.
+:::
 
-| Khu vực | Công dụng |
+## Các tính năng khác trên màn hình
+
+| Khu vực / Nút | Công dụng |
 |---|---|
-| **Phân bổ lợi nhuận** | Đối chiếu doanh thu, chi phí và lợi nhuận theo kỳ trước khi chốt |
-| **Tổng quan** | Xem Được chia, Đã ứng/đã chi và Còn lại theo cổ đông/quản lý |
-| **Chốt LN tháng** | Preview nguồn, điều chỉnh, close/reclose/reset và xem trạng thái revision |
-| **Cổ đông & tỷ lệ** | Quản lý cổ đông, tỷ lệ theo toà, tài khoản và quản lý điều hành |
-| Badge **Cũ / Đã lệch nguồn** | Snapshot hiện tại không còn khớp dữ liệu/cấu hình mới |
-| **Source hash** | Mã nguồn preview dùng để chống chốt trên dữ liệu đã đổi |
-| **Chốt lại tháng** | Tạo revision mới và thay snapshot đã chốt sau khi nhập lý do |
-| **Đặt lại tháng** | Bỏ toàn bộ snapshot hiện tại của tháng khi state hỗn hợp/legacy |
+| Tab **BC Doanh Thu Chi Phí** | Doanh thu, chi phí, lợi nhuận theo tháng; lọc toà, phòng, Thu & Chi; công tắc **Kỳ phân bổ**, **Chỉ KQKD**; chip cảnh báo phòng thiếu hoá đơn/phòng trống; bấm số phòng để xem vòng đời hợp đồng trong năm |
+| Tab **Tổng quan** | Số luỹ kế đã chốt, được chia, đã ứng/đã chia, còn phải trả theo cổ đông và lương điều hành |
+| Tab **Chốt LN tháng** • | Preview nguồn, điều chỉnh có dấu, phần chưa phân bổ, chốt/chốt lại/mở khoá/đặt lại theo nhà |
+| Tab **Cổ đông & tỷ lệ** • | Thêm/sửa/xoá cổ đông, tỷ lệ theo toà, quản lý điều hành và quy tắc lương điều hành |
+| Tab **Lương của tôi** • | Quản lý điều hành đang đăng nhập tự xem phần lương điều hành của mình |
+| Tab **Tổng quan** (cổ đông) | Cổ đông có quyền báo cáo nhưng không quản trị chỉ thấy phần lợi nhuận của chính mình |
+| **Tải lại số nguồn** | Đọc lại preview và trạng thái chốt của tháng |
+| **Bỏ chỉnh sửa** | Bỏ vùng chọn và điều chỉnh đang nhập, quay về gợi ý mặc định |
+| **Source hash** | Mã nguồn của preview, dùng để chặn chốt trên dữ liệu đã đổi |
 
-## Tình huống thường gặp
+## Tình huống & lỗi thường gặp
 
-| Tình huống | Cách xử lý |
+| Tình huống | Nguyên nhân & cách xử lý |
 |---|---|
-| Không thấy tab quản trị | Dùng desktop và nhấp nhanh 3 lần icon xanh bên trái tiêu đề. Nếu vẫn không hiện, tài khoản thiếu quyền `lock`/`unlock`/`manage_shareholders`; cổ đông thuần chỉ xem phần của mình |
-| Preview báo tỷ lệ vượt 100% | Sửa tỷ lệ active ở tab Cổ đông & tỷ lệ rồi tải lại |
-| Snapshot hiện badge **Cũ** | Xem preview mới và dùng **Chốt lại tháng** với lý do |
-| Báo trạng thái tháng không đồng nhất | Dùng **Đặt lại tháng**, sau đó chốt lại toàn bộ |
-| Bấm chốt báo source conflict | Dữ liệu đổi sau preview; tải lại, kiểm số rồi xác nhận lại |
-| Điều chỉnh bị từ chối | Số khác 0 phải có lý do 8–500 ký tự |
-| Cổ đông inactive không có allocation mới | Đây là hành vi đúng; bật lại trước khi chốt nếu họ vẫn phải nhận phần |
-| Bấm Chi nhưng chưa thấy giảm quỹ | Request còn chờ duyệt hoặc đã duyệt nhưng chưa `POSTED`; mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) để theo dõi. Nếu **Chi lương điều hành** bị từ chối quyền, kiểm tra tài khoản đã được cấp `shareholder_profit.pay_manager`. |
-| Còn lại âm | Rà các phiếu chi đã post cho cổ đông ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
+| Không thấy tab Chốt LN tháng / Cổ đông & tỷ lệ | Dùng máy tính và nhấp nhanh 3 lần biểu tượng bên trái tiêu đề. Vẫn không hiện thì tài khoản thiếu quyền `lock`/`unlock`/`manage_shareholders` |
+| Không thấy mục Báo cáo Lợi Nhuận ở menu | Thiếu `reports_finance.profit_distribution`; vẫn có thể mở trực tiếp route nếu có quyền `shareholder_profit` |
+| Báo **Chọn tổ chức cần thao tác** | Tài khoản có quyền ở nhiều tổ chức; chọn đúng tổ chức ở ô đầu thanh công cụ |
+| Nút xác nhận chốt bị khoá, báo **Chưa có cách xử lý phần lợi nhuận còn dư** | Chọn Giữ lại lợi nhuận/Chuyển kỳ sau và nhập lý do 8–500 ký tự cho từng nhà còn dư, hoặc bỏ tick các nhà đó |
+| Báo **Còn N phiếu chờ duyệt trong tháng … của toà …** | Duyệt hoặc huỷ các phiếu được liệt kê ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) rồi chốt lại |
+| Nút Chốt báo vùng chọn đang lẫn | Đang tick cả nhà đã chốt lẫn chưa chốt; tách thành hai lượt |
+| Sau khi chốt không sửa được phiếu của tháng | Đúng thiết kế; dùng **Mở khoá N nhà đã chọn** (mất phần đã phân bổ, phải chốt lại) |
+| Báo **Tháng còn snapshot của toà đã xoá hoặc toà ảo** | Bấm **Đặt lại cả tháng (gồm dòng legacy)** rồi chốt lại |
+| Điều chỉnh bị từ chối | Số khác 0 phải có lý do |
+| Bấm Chi nhưng sổ quỹ chưa giảm | Phiếu còn chờ duyệt hoặc chưa **Đã Chi**; theo dõi ở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) |
+| **Còn phải trả** âm | Đã chi cho cổ đông nhiều hơn phần được chia luỹ kế; rà phiếu chi ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/reports/finance/profit-distribution" app-label="Mở màn Chia lợi nhuận" fixtures="Dữ liệu demo có cổ đông và tỷ lệ" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/profit-distribution" app-label="Mở Báo cáo Lợi Nhuận" fixtures="DEMO 07/10/2026: 4 toà, chưa có cổ đông và quản lý điều hành; tháng 10/2026 chưa chốt, còn 1 sổ quỹ chưa chốt" view-only>
 
-1. Trên desktop, nhấp nhanh 3 lần icon xanh bên trái tiêu đề để hiện tab quản trị; mở **Cổ đông & tỷ lệ**, xem tỷ lệ theo toà và trạng thái active.
-2. Sang **Chốt LN tháng**, chọn tháng và đọc preview: LN nguồn, điều chỉnh, lương điều hành, LN chia cổ đông, source hash. Tick đúng những nhà muốn chốt.
-3. Quan sát badge trạng thái và nút **Chốt / Chốt lại / Đặt lại** tương ứng. Không xác nhận thao tác ghi trong bài xem thử.
-4. Sang **Tổng quan** để đối chiếu Được chia, Đã ứng và Còn lại.
+**Bài tập chỉ xem**
+
+1. Mở trang, đọc tab **BC Doanh Thu Chi Phí** và **Tổng quan**.
+2. Nhấp nhanh 3 lần biểu tượng bên trái tiêu đề để hiện **Chốt LN tháng** và **Cổ đông & tỷ lệ**.
+3. Ở **Chốt LN tháng**, xem dải KPI, cảnh báo sổ quỹ/tháng chưa kết thúc và các cột của bảng. **Không** bấm **Chốt N nhà đã chọn**, **Mở khoá** hay **Đặt lại**.
+4. Ở **Cổ đông & tỷ lệ**, xem nơi thêm cổ đông và quản lý điều hành rồi đóng, không lưu.
+
+**Kết quả mong đợi**
+
+- Thấy đúng các tab, nhãn KPI và cột như bài mô tả.
+- Không có dữ liệu DEMO nào bị chốt, sửa hoặc ghi phiếu.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — rà số vận hành trước Profit Close.
-- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt request chi lợi nhuận/lương điều hành.
-- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — xem phiếu chi đã được post.
-- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — nguồn tiền của khoản chi sau duyệt.
-- [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — sổ cá nhân, tách hoàn toàn khỏi lợi nhuận doanh nghiệp.
-- [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) — lương nhân viên vận hành, khác lương điều hành bị trừ trước khi chia.
+- [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — rà số vận hành trước khi chốt lợi nhuận.
+- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — chốt sổ từng tháng trước khi chốt lợi nhuận.
+- [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) — duyệt phiếu chờ trong tháng và phiếu chi lợi nhuận/lương điều hành.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — xem phiếu chi đã **Đã Chi**.
+- [Bảng lương](/03-quan-ly-van-hanh/bang-luong/) — cột **Thu nhập đồng hành** lấy phần lợi nhuận đã chốt.
+- [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) — sổ cá nhân, tách khỏi lợi nhuận doanh nghiệp.

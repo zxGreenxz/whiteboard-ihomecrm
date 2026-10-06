@@ -6,8 +6,9 @@ permissions: [{module: categories, action: view}, {module: categories, action: c
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
@@ -17,7 +18,7 @@ Trang **Danh sách tầng** là một **danh mục phụ** trong Cài đặt. N�
 
 ::: info Điều kiện tiên quyết
 
-- Quyền xem mục **Cài đặt => Danh mục khác** (`categories.view`).
+- Quyền **Danh mục khác** (module `categories`): `view` để mở trang; sửa/xoá dòng cần thêm quyền `edit`/`delete` tương ứng.
 - Đã có ít nhất **1 toà nhà** và một vài **phòng** để tầng có ý nghĩa khi lọc/hiển thị.
 - Nắm rằng tầng thật của phòng được khai ngay trong hồ sơ phòng, không phải ở trang này (xem [Tạo tầng & phòng](/01-bat-dau/tao-tang-phong/)).
 
@@ -25,17 +26,19 @@ Trang **Danh sách tầng** là một **danh mục phụ** trong Cài đặt. N�
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Ở menu bên trái, vào **Cài đặt** => **Danh mục khác**. Trong nhóm **Khác**, ấn thẻ **Danh sách tầng**.
+**Bước 1**: Ở menu bên trái, vào **Cài đặt hệ thống** => **Danh mục khác**. Trong nhóm **Khác**, ấn thẻ **Danh sách tầng** (đường dẫn `/settings/categories/floors`).
 
-![Màn hình danh sách tầng trong Cài đặt: cột Số tầng, Tên tầng, Mô tả, Trạng thái](./images/buoc-01-man-hinh.webp)
+![Màn hình Danh sách tầng: cột Số tầng, Tên tầng, Mô tả, Trạng thái, Thao tác; nhiều dòng cùng số tầng vì gộp nhiều toà](./images/buoc-01-man-hinh.webp)
 
-**Bước 2**: Màn hình hiện bảng danh mục tầng với 4 cột: **Số tầng**, **Tên tầng**, **Mô tả** và **Trạng thái** (nhãn **Hoạt động** / **Ngừng**). Bảng liệt kê tầng của **tất cả các toà** gộp chung, sắp xếp theo số tầng tăng dần.
+**Bước 2**: Màn hình hiện bảng danh mục tầng với 4 cột: **Số tầng**, **Tên tầng**, **Mô tả** và **Trạng thái** (nhãn **Hoạt động** / **Ngừng**), cùng cột **Thao tác**. Bảng liệt kê tầng của **tất cả các toà** gộp chung, sắp xếp theo số tầng tăng dần. Ở DEMO (07/10/2026), các dòng chỉ có số tầng (1, 2, 3…) lặp lại theo từng toà, cột **Tên tầng** để trống.
 
-**Bước 3**: Dùng bảng này để **rà soát**: kiểm tra xem đã có đủ các tầng cần thiết chưa, tên tầng đã dễ đọc chưa (ví dụ **Tầng trệt**, **Lửng**). Vì bảng gộp chung nhiều toà, bạn có thể thấy nhiều dòng cùng **Số tầng** (mỗi toà một dòng) — đây là điều bình thường.
+**Bước 3**: Dùng bảng này để **rà soát**: kiểm tra xem đã có đủ các tầng cần thiết chưa, tên tầng đã dễ đọc chưa (ví dụ **Tầng trệt**, **Lửng**). Vì bảng gộp chung nhiều toà và không ghi tên toà, bạn sẽ thấy nhiều dòng cùng **Số tầng** — đây là điều bình thường.
 
-**Bước 4**: Muốn sửa tên/mô tả một tầng, ấn biểu tượng **bút chì** ở cột **Thao tác**, chỉnh **Tên tầng** hoặc **Mô tả** rồi ấn **Cập nhật**.
+**Bước 4**: Muốn sửa tên/mô tả một tầng, ấn biểu tượng **bút chì** ở cột **Thao tác**. Hộp **Cập nhật** mở ra với ba ô **Số tầng** (bắt buộc), **Tên tầng**, **Mô tả** — không có ô chọn toà. Chỉnh xong ấn **Cập nhật**, hoặc **Hủy** để đóng.
 
-**Bước 5**: Muốn **thêm một tầng mới**, hãy làm trong **form thêm phòng** (**Căn hộ / Phòng** => **Thêm** => ô **Tầng** => **+ Thêm tầng**) chứ **không** dùng nút **Thêm mới** ở trang này. Lý do: nút **Thêm mới** ở đây không có ô chọn toà nhà nên tầng không gắn được vào toà và hệ thống sẽ báo **"Không thể tạo tầng"** (xem mục Tình huống & lỗi thường gặp).
+![Hộp Cập nhật tầng: ô Số tầng bắt buộc, Tên tầng, Mô tả, nút Hủy và Cập nhật](./images/buoc-02-form-sua.webp)
+
+**Bước 5**: Muốn **thêm một tầng mới**, hãy làm trong **form thêm phòng** (**Căn hộ / Phòng** => **Thêm** => ô **Tầng** => **+ Thêm tầng**) chứ **không** dùng nút **Thêm mới** ở trang này. Lý do: hộp **Thêm mới** ở đây không có ô chọn toà nhà nên tầng không gắn được vào toà; bấm lưu sẽ nhận lỗi ngay trong hộp (dạng *"Chưa lưu được danh sách tầng…"*).
 
 ::: tip Vì sao "Danh sách tầng" không phải nguồn tầng thật
 Mỗi phòng đã tự mang **số tầng riêng** trong hồ sơ phòng. Bảng **Danh sách tầng** chỉ là **nhãn đặt tên** giúp sơ đồ toà và bộ lọc hiển thị đẹp hơn. Xoá hay đổi một dòng ở đây **không** làm phòng đổi tầng, cũng không xoá phòng nào.
@@ -50,7 +53,7 @@ Mỗi phòng đã tự mang **số tầng riêng** trong hồ sơ phòng. Bảng
 | Cột **Mô tả** | Ghi chú tuỳ ý cho tầng. |
 | Cột **Trạng thái** | Nhãn **Hoạt động** / **Ngừng** của dòng tầng. |
 | Biểu tượng **bút chì** | Mở hộp thoại sửa để chỉnh Tên tầng / Mô tả của một tầng đã có. |
-| Biểu tượng **thùng rác** | Xoá vĩnh viễn một dòng tầng khỏi danh mục (xem cảnh báo bên dưới). |
+| Biểu tượng **thùng rác** | Mở hộp **Xác nhận xóa** để xoá vĩnh viễn một dòng tầng (xem cảnh báo bên dưới). |
 | Nút **Thêm mới** | Có mặt trên trang nhưng **không gắn được toà** — nên tạo tầng qua form thêm phòng. |
 | **Quay lại Danh mục khác** | Liên kết trở về trang Danh mục khác. |
 
@@ -62,7 +65,9 @@ Biểu tượng **thùng rác** xoá **cứng** dòng tầng khỏi danh mục (
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Ấn **Thêm mới** ở trang này rồi lưu thì báo **"Không thể tạo tầng"** | Đúng như thiết kế: form ở đây không có ô chọn toà nên tầng không gắn được vào toà nào. Hãy tạo tầng qua **Căn hộ / Phòng => Thêm => ô Tầng => + Thêm tầng**. |
+| Ấn **Thêm mới** ở trang này rồi lưu thì hộp báo **"Chưa lưu được danh sách tầng…"** | Form ở đây không có ô chọn toà nên tầng không gắn được vào toà nào. Hãy tạo tầng qua **Căn hộ / Phòng => Thêm => ô Tầng => + Thêm tầng**. |
+| Sửa **Số tầng** thì báo *"Số tầng này đã có trong tòa. Nhập số tầng khác."* | Toà của dòng đó đã có tầng mang số này. Chọn số khác hoặc chỉ sửa **Tên tầng**/**Mô tả**. |
+| Hiện *"Chưa tải được danh sách tầng."* | Lỗi mạng hoặc máy chủ khi đọc dữ liệu. Bấm **Tải lại**. |
 | Thấy nhiều dòng trùng **Số tầng** | Bảng gộp tầng của **mọi toà**, mỗi toà có thể có cùng số tầng. Đây là hành vi bình thường, không phải lỗi trùng. |
 | Sửa tên tầng nhưng phòng vẫn không đổi tầng | Đúng: tầng thật của phòng nằm trong hồ sơ phòng, không lấy từ danh mục này. Muốn đổi tầng của phòng, sửa ngay trong hồ sơ phòng. |
 | Trang hiện **"Chưa có dữ liệu. Hãy thêm mới."** | Chưa có tầng nào được tạo (hoặc bạn không có quyền xem). Tạo tầng qua form thêm phòng; nếu vẫn trống, kiểm tra lại quyền **categories.view**. |
@@ -70,13 +75,13 @@ Biểu tượng **thùng rác** xoá **cứng** dòng tầng khỏi danh mục (
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/settings/categories/floors" app-label="Mở màn Danh sách tầng" view-only>
+<SandboxTry account="demo.chunha" app-path="/settings/categories/floors" app-label="Mở màn Danh sách tầng" fixtures="Snapshot 07/10/2026: các dòng tầng 1, 2, 3… lặp theo từng toà DEMO, chưa đặt tên tầng" view-only>
 
 **Hãy nhìn thấy**
 
-1. Mở màn **Cài đặt => Danh mục khác => Danh sách tầng** của toà demo (**Tòa DEMO A** / **Tòa DEMO B**).
+1. Mở màn **Cài đặt hệ thống => Danh mục khác => Danh sách tầng**.
 2. Quan sát 4 cột **Số tầng**, **Tên tầng**, **Mô tả**, **Trạng thái**; để ý bảng gộp chung tầng của các toà và sắp theo số tầng tăng dần.
-3. Ấn biểu tượng **bút chì** ở một dòng để xem hộp thoại sửa chỉ gồm **Số tầng**, **Tên tầng**, **Mô tả** — không có ô chọn toà nhà.
+3. Ấn biểu tượng **bút chì** ở một dòng để xem hộp **Cập nhật** chỉ gồm **Số tầng**, **Tên tầng**, **Mô tả** — không có ô chọn toà nhà. Đóng bằng **Hủy**, không bấm **Cập nhật**.
 
 **Kết quả mong đợi**: bạn hiểu đây là danh mục **chỉ để đặt tên và lọc** tầng, không phải nơi quyết định phòng thuộc tầng nào, và việc thêm tầng nên làm trong form thêm phòng.
 

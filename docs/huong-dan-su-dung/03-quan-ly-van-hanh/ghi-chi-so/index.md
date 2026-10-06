@@ -6,8 +6,8 @@ permissions: [{module: meter_readings, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
@@ -17,7 +17,7 @@ status: published
 Màn **Ghi chỉ số** là nơi mỗi tháng bạn đọc số đồng hồ điện, nước của từng phòng và lưu lại. Hệ thống tự lấy **chỉ số đầu** từ lần ghi trước (hoặc chỉ số ban đầu của công tơ), tự tính **số tiêu thụ = chỉ số mới − chỉ số đầu**, rồi chốt lại (duyệt) để làm dữ liệu đầu vào cho hoá đơn tiền điện, tiền nước. Bạn có thể ghi từng phòng bằng form, hoặc import cả loạt bằng file Excel. Điểm cốt lõi cần nhớ: **chỉ những chỉ số đã ở trạng thái "Đã duyệt" mới được hoá đơn lấy làm chỉ số điện — hãy ghi và chốt chỉ số trước khi lên hoá đơn tháng.**
 
 ::: info Điều kiện tiên quyết
-- Quyền **Ghi chỉ số => Xem** (module `meter_readings`, action `view`) để mở màn; quyền **Ghi chỉ số => Tạo** để bấm **Thêm chỉ số** và **Import**.
+- Quyền **Ghi chỉ số => Xem** (module `meter_readings`, action `view`) để mở màn; quyền **Ghi chỉ số => Tạo** để lưu được chỉ số mới qua **Thêm chỉ số** hoặc **Import** (hai nút luôn hiện; thiếu quyền thì lúc lưu hệ thống từ chối).
 - Đã khai báo **công tơ** cho các phòng — không có công tơ thì không ghi chỉ số được. Xem [Công tơ điện nước](/01-bat-dau/cong-to/).
 - Đã có **dịch vụ** Điện/Nước kèm đơn giá để hoá đơn tính tiền theo mức tiêu thụ. Xem [Dịch vụ & định mức](/01-bat-dau/dich-vu-dinh-muc/).
 - Là nhân viên, bạn chỉ ghi và thấy chỉ số của các toà được gán phạm vi cho mình.
@@ -25,22 +25,24 @@ Màn **Ghi chỉ số** là nơi mỗi tháng bạn đọc số đồng hồ đi
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại thanh menu, ấn chọn **Tài chính** => **Ghi chỉ số**. Màn mở ra với hàng **thẻ thống kê** ở trên (chỉ số đã duyệt, chưa duyệt, tổng tiêu thụ điện theo kWh, nước theo m³), bên dưới là **danh sách các lần ghi chỉ số** theo tháng. Snapshot production ngày 13/08/2026 của tài khoản DEMO đang rỗng; đây là trạng thái hợp lệ khi kỳ/phạm vi chưa có lần ghi.
+**Bước 1**: Tại thanh menu, ấn chọn **Tài chính** => **Ghi chỉ số**. Góc trên phải có hai nút **Import** và **Thêm chỉ số**. Bên dưới là năm **thẻ thống kê** của tháng đang lọc (**Công tơ chưa chốt**, **Chỉ số đã duyệt**, **Chỉ số chưa duyệt**, **Tổng tiêu thụ điện** theo kWh, **Tổng tiêu thụ nước** theo m³), hàng bộ lọc và **danh sách các lần ghi chỉ số**. Snapshot production ngày 07/10/2026 của tài khoản DEMO đang rỗng (**Chưa có chỉ số nào**, mọi thẻ bằng 0); đây là trạng thái hợp lệ khi kỳ/phạm vi chưa có lần ghi.
 
-![Màn Ghi chỉ số và khu thống kê/danh sách theo kỳ](./images/buoc-01-danh-sach.webp)
+![Màn Ghi chỉ số của DEMO tháng 10/2026: nút Import và Thêm chỉ số, năm thẻ thống kê bằng 0, hàng bộ lọc và trạng thái Chưa có chỉ số nào](./images/buoc-01-danh-sach.webp)
 
-**Bước 2**: Đọc một dòng trong danh sách. Mỗi dòng gồm: **mã chỉ số** kèm badge trạng thái (**Đã duyệt** hoặc **Chưa duyệt**), tên **công tơ**, **chỉ số đầu**, **chỉ số cuối**, **số tiêu thụ** (chênh lệch, hệ thống tự tính — không sửa tay), **ngày chốt** và **người chốt**. Dùng ô lọc **Toà nhà**, **Loại công tơ** và **Tháng chốt** ở đầu bảng để thu hẹp danh sách.
+**Bước 2**: Đọc một dòng trong danh sách. Mỗi dòng gồm: **mã chỉ số** kèm badge trạng thái (**Đã duyệt** hoặc **Chưa duyệt**), tên **công tơ**, **chỉ số đầu**, **chỉ số cuối**, **số tiêu thụ** (chênh lệch, hệ thống tự tính — không sửa tay), **ngày chốt** và **người chốt**; nút **⋯** ở cột **Thao tác** mở menu **Cập nhật** / **Xoá**. Dùng hàng bộ lọc **Tất cả tòa nhà**, **Tất cả phòng**, **Tất cả loại** (Điện / Nước / Gas), **Tháng chốt** và **Tất cả trạng thái** (Đã duyệt / Chưa duyệt) để thu hẹp danh sách.
 
-**Bước 3**: Ghi chỉ số mới cho một tháng — ấn **Thêm chỉ số**. Trong form, chọn **Tòa nhà** (bắt buộc), **Phòng**, **Loại công tơ** (**Điện** hoặc **Nước**), **Tháng chốt** và **Ngày chốt**. Ngay khi đủ toà và tháng, form **tự nạp bảng các công tơ chưa chốt** của bộ lọc đó — mỗi dòng có sẵn cột **Chỉ số đầu** (lấy từ lần ghi trước hoặc chỉ số ban đầu của công tơ) và ô nhập **Chỉ số mới**.
+**Bước 3**: Ghi chỉ số mới cho một tháng — ấn **Thêm chỉ số**. Trong hộp **Thêm chỉ số**, chọn **Tòa nhà** (bắt buộc), **Phòng** (để **Tất cả phòng** nếu ghi cả toà), **Loại công tơ** (**Điện** hoặc **Nước**), **Tháng chốt** và **Ngày chốt**. Ô tích **Công tơ chưa chốt trong tháng** (bật sẵn) giới hạn bảng vào các công tơ chưa có chỉ số của tháng. Ngay khi đủ toà và tháng, form **tự nạp bảng công tơ** với các cột **Tên công tơ**, **Chỉ số đầu** (lấy từ lần ghi trước hoặc chỉ số ban đầu của công tơ), ô nhập **Chỉ số mới**, **Ghi chú** và **Hình ảnh** (ảnh mặt đồng hồ).
+
+![Hộp Thêm chỉ số: Tòa nhà, Phòng, Loại công tơ Điện, Tháng chốt, Ngày chốt, ô tích Công tơ chưa chốt trong tháng và nút Lưu](./images/buoc-03-them-chi-so.webp)
 
 ::: tip Chỉ số đầu tự nối tiếp kỳ trước (carry-forward)
 Bạn **không cần nhập chỉ số đầu**. Với lần ghi đầu tiên của một công tơ, hệ thống lấy **chỉ số ban đầu** khai lúc tạo công tơ; từ lần thứ hai trở đi, hệ thống tìm lần ghi trước để lấy chỉ số cuối làm đầu kỳ. Tuy nhiên cơ sở dữ liệu không chặn tuyệt đối các lần ghi trùng công tơ/ngày/tháng, nên hãy kiểm tra danh sách và thứ tự ngày chốt; dữ liệu trùng hoặc nhập lệch thứ tự có thể làm chuỗi carry-forward không còn liên tục.
 :::
 
-**Bước 4**: Nhập **Chỉ số mới** đọc được trên mặt đồng hồ cho từng dòng công tơ. Hệ thống tự lấy **Chỉ số mới − Chỉ số đầu** ra **số tiêu thụ**. Ấn **Thêm chỉ số** (nút lưu ở cuối form) để lưu. Các dòng bạn bỏ trống (không nhập) sẽ được bỏ qua.
+**Bước 4**: Nhập **Chỉ số mới** đọc được trên mặt đồng hồ cho từng dòng công tơ. Hệ thống tự lấy **Chỉ số mới − Chỉ số đầu** ra **số tiêu thụ**. Ấn **Lưu** ở cuối hộp. Các dòng bạn bỏ trống hoặc để 0 sẽ được bỏ qua; nếu không dòng nào có số, hệ thống báo **Vui lòng nhập ít nhất 1 chỉ số**.
 
 ::: warning Chỉ số mới không được nhỏ hơn chỉ số đầu
-Nếu bạn nhập **chỉ số mới nhỏ hơn chỉ số đầu**, hệ thống báo lỗi đỏ ngay tại dòng đó và **chặn lưu** — vì số tiêu thụ không thể âm. Kiểm tra lại con số đọc trên đồng hồ; nếu đồng hồ thật sự đã quay vòng hoặc bị thay, hãy xử lý ở màn công tơ trước. Ngoài ra, khi chọn **Tất cả phòng**, form không cho lưu: hãy **chọn đúng một phòng cụ thể** rồi mới nhập và lưu.
+Nếu bạn nhập **chỉ số mới nhỏ hơn chỉ số đầu**, hệ thống báo lỗi đỏ ngay tại dòng đó và **chặn lưu** — vì số tiêu thụ không thể âm. Kiểm tra lại con số đọc trên đồng hồ; nếu đồng hồ thật sự đã quay vòng hoặc bị thay, hãy xử lý ở màn công tơ trước.
 :::
 
 **Bước 5**: Kiểm tra trạng thái duyệt. Chỉ số vừa lưu xuất hiện trong danh sách với badge **Đã duyệt** — nghĩa là đã được chốt và **sẵn sàng làm chỉ số điện cho hoá đơn tháng**. Khi lập hoá đơn, hệ thống chỉ nhặt **chỉ số Đã duyệt gần nhất** của phòng làm chỉ số đầu tiền điện; chỉ số **Chưa duyệt** sẽ bị bỏ qua. Vì vậy hãy đảm bảo mọi phòng đã có chỉ số **Đã duyệt** của tháng **trước khi** [sinh hoá đơn](/03-quan-ly-van-hanh/sinh-hoa-don/).
@@ -63,9 +65,10 @@ Màn hiện tại chưa nối nút **Duyệt / Duyệt hàng loạt** cho các d
 | **Thêm chỉ số** | Mở form ghi chỉ số theo toà + tháng, tự nạp danh sách công tơ chưa chốt. |
 | **Import** | Nạp chỉ số hàng loạt từ file Excel theo mã công tơ; dòng thành công ban đầu ở trạng thái **Chưa duyệt**. |
 | Badge **Đã duyệt / Chưa duyệt** | Trạng thái chốt của chỉ số; chỉ **Đã duyệt** mới được hoá đơn lấy làm chỉ số điện. |
-| Menu **Cập nhật** trên từng dòng | Sửa **chỉ số mới**, ngày chốt, ghi chú, ảnh của một lần ghi (toà/phòng/loại/tháng khoá, không đổi được). |
+| **Tất cả trạng thái** | Lọc **Đã duyệt** / **Chưa duyệt**. |
+| Menu **Cập nhật** trên từng dòng | Mở hộp **Cập nhật chỉ số** để sửa **chỉ số mới**, ngày chốt, ghi chú, ảnh của một lần ghi (toà/phòng/loại/tháng khoá, không đổi được). |
 | Menu **Xoá** trên từng dòng | Gỡ một lần ghi (xoá mềm). |
-| **Xoá hàng loạt** | Chọn nhiều dòng rồi gỡ cùng lúc. |
+| **Xoá hàng loạt** | Tích chọn nhiều dòng rồi gỡ cùng lúc (hộp **Xác nhận xoá hàng loạt**); **Bỏ chọn** để huỷ chọn. |
 
 Bộ lọc đang chọn được **giữ lại khi bạn tải lại trang (F5)**.
 
@@ -74,7 +77,9 @@ Bộ lọc đang chọn được **giữ lại khi bạn tải lại trang (F5)*
 | Tình huống | Cách xử lý |
 |---|---|
 | Bảng công tơ trong form **rỗng** | Chưa chọn đủ **Toà nhà** và **Tháng chốt**, hoặc mọi công tơ của toà đã chốt tháng đó rồi. Đổi tháng, hoặc kiểm tra công tơ đã khai chưa ở [Công tơ điện nước](/01-bat-dau/cong-to/). |
-| Không lưu được, báo **"Vui lòng chọn phòng"** | Bạn đang để **Tất cả phòng**. Chọn đúng **một phòng cụ thể** rồi nhập chỉ số và lưu lại. |
+| Báo **"Vui lòng nhập ít nhất 1 chỉ số"** | Mọi dòng đang trống hoặc bằng 0. Nhập **Chỉ số mới** cho ít nhất một công tơ rồi **Lưu**. |
+| Bảng công tơ báo **Không có công tơ chưa chốt cho bộ lọc đã chọn** | Mọi công tơ đã có chỉ số của tháng, hoặc toà/phòng chưa có công tơ loại đó. Bỏ tích **Công tơ chưa chốt trong tháng** để xem cả công tơ đã chốt, hoặc khai công tơ ở [Công tơ điện nước](/01-bat-dau/cong-to/). |
+| Danh sách là các khối xám | Đang tải dữ liệu; nếu tải lỗi, khung báo **Chưa tải được…** kèm nút tải lại. |
 | Lỗi đỏ **chỉ số mới nhỏ hơn chỉ số đầu** | Số tiêu thụ không thể âm. Đọc lại con số trên đồng hồ; nếu đồng hồ đã thay/quay vòng, xử lý ở màn Công tơ trước. |
 | Phòng thiếu công tơ nên không hiện để ghi | Sang [Công tơ điện nước](/01-bat-dau/cong-to/) thêm đủ công tơ **Điện/Nước** cho phòng đó rồi quay lại ghi. |
 | Chỉ số rơi **nhầm tháng** so với mong đợi | Tháng của lần ghi bám theo **Ngày chốt**, không phải ô Tháng chốt. Chọn ngày chốt nằm đúng trong tháng bạn muốn ghi. |
@@ -83,7 +88,7 @@ Bộ lọc đang chọn được **giữ lại khi bạn tải lại trang (F5)*
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/meter-readings" app-label="Mở màn Ghi chỉ số" fixtures="Snapshot 13/08/2026: danh sách đang rỗng." view-only>
+<SandboxTry account="demo.chunha" app-path="/meter-readings" app-label="Mở màn Ghi chỉ số" fixtures="Snapshot 07/10/2026: tháng 10/2026 chưa có chỉ số nào, mọi thẻ thống kê bằng 0." view-only>
 
 Quan sát màn hình mà không ghi dữ liệu:
 

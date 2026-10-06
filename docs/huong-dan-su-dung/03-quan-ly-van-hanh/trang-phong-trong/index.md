@@ -1,136 +1,143 @@
 ---
 title: "Trang phòng trống công khai (khách xem)"
-description: "Chia sẻ một liên kết /r/:token để khách xem danh sách phòng trống, giá, ảnh, hotline và sơ đồ tầng của toà — không cần đăng nhập; sale đã đăng nhập có thể tạo cọc giữ phòng ngay trên trang."
+description: "Chia sẻ một liên kết /r/:token để khách xem danh sách phòng trống, giá, ảnh, hotline và sơ đồ tầng của toà — không cần đăng nhập; người đã đăng nhập có quyền có thể giữ chỗ hoặc nhận cọc ngay trên trang."
 routes: ["/r/:token", "/phongtrong"]
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Trang phòng trống công khai (khách xem)
 
-Trang **Phòng trống** công khai là một liên kết dạng `https://ptcrm.vercel.app/r/<token>` mà bạn gửi cho khách hoặc cộng tác viên sale để họ tự xem các phòng còn trống của toà — **không cần đăng nhập, không cần tài khoản**. Khách mở link sẽ thấy danh sách phòng trống theo từng toà, giá thuê, ảnh phòng, sơ đồ tầng và nút liên hệ (Gọi / Zalo / Chỉ đường). Bạn tạo và quản lý liên kết này ở trang **Sale Phòng**, còn trang mà bài này mô tả chính là **những gì khách nhìn thấy**. Nếu bạn đang đăng nhập và có quyền, bạn còn có thể **tạo cọc giữ phòng ngay trên trang** để khoá phòng cho khách chỉ bằng một chạm.
+Trang **Phòng trống** công khai là một liên kết dạng `https://ptcrm.vercel.app/r/<token>` mà bạn gửi cho khách hoặc cộng tác viên sale để họ tự xem các phòng còn trống — **không cần đăng nhập, không cần tài khoản**. Khách mở link sẽ thấy danh sách phòng trống theo từng toà, giá thuê, ảnh phòng, sơ đồ tầng và nút liên hệ (Gọi / Zalo / Chỉ đường). Bạn tạo và quản lý liên kết này ở trang [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/), còn bài này mô tả **những gì khách nhìn thấy**. Nếu bạn đang đăng nhập và có quyền, bạn còn có thể **giữ chỗ hoặc nhận cọc ngay trên trang**.
 
 ::: info Điều kiện tiên quyết
-- **Khách xem trang thì không cần quyền gì** — chỉ cần bạn gửi cho họ liên kết `/r/<token>` còn hiệu lực. Liên kết mở với vai trò ẩn danh, không lộ thông tin chủ nhà, hợp đồng hay công nợ.
-- Để **tạo và quản lý liên kết chia sẻ**, bạn cần quyền **Sale Phòng => Xem** (module `sale_phong`, action `view`) để mở trang **Sale Phòng**, và quyền **Sale Phòng => Quản lý link chia sẻ** (`manage_tokens`) để tạo / thu hồi liên kết. Xem cách tạo token ở [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/).
-- Để **tạo cọc giữ phòng ngay trên trang công khai**, bạn phải **đang đăng nhập** và có quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`). Khách ẩn danh không bao giờ thấy nút này.
+- **Khách xem trang thì không cần quyền gì** — chỉ cần liên kết `/r/<token>` còn hiệu lực. Liên kết mở với vai trò ẩn danh, không lộ thông tin chủ nhà, hợp đồng hay công nợ.
+- Để **tạo và quản lý liên kết chia sẻ**, bạn cần quyền **Sale Phòng => Xem** (`sale_phong.view`) và **Quản lý link chia sẻ** (`manage_tokens`). Xem cách tạo ở [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/).
+- Để **giữ chỗ / nhận cọc ngay trên trang công khai**, bạn phải **đang đăng nhập** và có quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`). Khách ẩn danh không bao giờ thấy nút này.
 - Trang chỉ hiện các toà đang có **ít nhất một phòng trống / sắp trống / khách nhờ sale**; toà đã kín phòng sẽ không xuất hiện.
+:::
+
+::: tip Bài này không kèm ảnh chụp
+Tài khoản DEMO chưa có link chia sẻ nào, còn địa chỉ thương hiệu `/phongtrong` hiển thị phòng thật của công ty, nên bài chỉ mô tả bằng chữ. Muốn xem tận mắt, hãy tạo một link ở **Sale Phòng** rồi mở nó trong tab ẩn danh.
 :::
 
 ## Tạo liên kết chia sẻ để gửi khách
 
 Trang công khai không tự có sẵn — bạn phải tạo một **token chia sẻ** trước:
 
-1. Vào **Sale Phòng => tab Link chia sẻ**, ấn tạo liên kết mới và đặt một **nhãn** dễ nhớ (ví dụ "Gửi khách khu DEMO A").
-2. Hệ thống sinh một chuỗi token ngẫu nhiên và ghép thành liên kết `https://ptcrm.vercel.app/r/<token>`. Ấn **copy** rồi gửi qua Zalo / SMS cho khách.
-3. Cùng một chủ nhà có thể tạo **nhiều liên kết** khác nhau (để biết khách đến từ nguồn nào); mọi liên kết đều hiển thị cùng bộ phòng trống của bạn.
+1. Vào **Sale Phòng => tab Link chia sẻ**, ấn **Tạo link mới** và đặt một **nhãn** dễ nhớ (ví dụ "Gửi khách khu Gò Vấp").
+2. Hệ thống sinh token ngẫu nhiên và ghép thành liên kết `https://ptcrm.vercel.app/r/<token>`. Ấn **Copy link** rồi gửi qua Zalo / SMS cho khách.
+3. Bạn có thể tạo **nhiều liên kết** khác nhau (để biết khách đến từ nguồn nào); mọi liên kết đều hiển thị cùng bộ phòng trống của bạn.
 
 Ngoài liên kết có token, hệ thống còn một địa chỉ thương hiệu cố định là **`/phongtrong`** (dùng cho tên miền riêng) — cùng một trang, chỉ khác là token cố định.
 
 ::: tip Muốn xem đúng góc nhìn của khách
-Sau khi tạo token, hãy mở liên kết `/r/<token>` trong một **tab ẩn danh** (hoặc trình duyệt bạn chưa đăng nhập). Khi đó bạn thấy chính xác những gì khách thấy — không có nút "Tạo cọc giữ phòng", không có ô "Thưởng sale" nội bộ.
+Mở liên kết `/r/<token>` trong một **tab ẩn danh** (hoặc trình duyệt chưa đăng nhập). Khi đó bạn thấy chính xác những gì khách thấy — không có nút **Tạo cọc giữ phòng**, không có dòng **Thưởng sale** nội bộ.
 :::
 
 ## Khách nhìn thấy gì trên trang
 
-Khi mở liên kết, khách thấy một trang tối giản, gọn cho điện thoại:
+Khi mở liên kết, khách thấy một trang gọn cho điện thoại:
 
-- **Bộ lọc đầu trang**: các chip chọn **Quận** và chọn **Toà nhà**, cùng một chip **Tổng hợp** để xem gộp tất cả các toà. Con số "trống" trên mỗi thẻ toà/tầng đếm cả phòng **đang trống**, **sắp trống** và **khách nhờ sale**.
-- **Hai chế độ xem**:
-  - **Danh sách** — mỗi phòng là một thẻ có ảnh, giá thuê, tiện ích; phòng đã thuê được ẩn bớt.
-  - **Sơ đồ** — bản vẽ mặt bằng từng tầng theo đúng vị trí phòng; phòng đã thuê hiện mờ để khách hình dung vị trí phòng trống.
-- **Chi tiết phòng** (mở từ một phòng): thư viện ảnh, giá thuê / tiền cọc / giá điện, **loại phòng**, thang máy hay thang bộ, ô **Khuyến mãi** (nếu bạn có nhập), và các nút hành động: **Gọi**, **Zalo**, **Chỉ đường**, **Chia sẻ** (gửi kèm toàn bộ ảnh phòng) và **Tải ảnh**.
-- **Số liên hệ**: mặc định là **hotline** của bạn; nếu bạn đã đặt số liên hệ riêng cho từng toà thì nút Gọi/Zalo dùng số của toà đó.
+- **Đầu trang**: tiêu đề **Phòng trống**, nút **Tải ảnh** (xuất một ảnh bảng danh sách phòng trống để gửi Zalo) và chấm **Live · giờ cập nhật**.
+- **Hai chế độ xem**: **Danh sách** (thẻ toà, mỗi phòng là một thẻ có ảnh, giá, tiện ích) và **Sơ đồ** (mặt bằng từng tầng theo đúng vị trí phòng; phòng đã thuê hiện mờ).
+- **Bộ lọc**: hàng chip **Quận** (Tất cả / từng quận), hàng **Tòa nhà** (chip **Tổng hợp** xem gộp mọi toà kèm số toà và số phòng trống, rồi từng toà kèm quận và số trống), hàng **Khoảng giá** (`Mọi giá`, `< 4tr`, `4–5tr`, `> 5tr`).
+- **Thẻ toà**: tên toà, số phòng trống, địa chỉ, người liên hệ quản lý kèm nút **Zalo** và số điện thoại, các ô phòng nhanh dạng "số phòng · giá".
+- **Chi tiết phòng** (mở từ một phòng): giá (triệu/tháng), nhãn tình trạng, thư viện ảnh, diện tích, **Loại phòng**, nội thất, **Khuyến mãi** (nếu có) và các nút **Tải ảnh**, **Chỉ đường**, **Chia sẻ** (gửi kèm toàn bộ ảnh phòng), **Gọi Quản Lý** (hoặc **Gọi khách** với phòng khách nhờ sale), **Zalo**.
+- **Số liên hệ**: dùng **Liên hệ quản lý toà** đã nhập ở **Sale Phòng => Thông tin sale**; toà chưa có thì dùng **hotline** chọn ở **Cài đặt hiển thị**. Không có số nào thì nút hiện **Chưa có số liên hệ**.
 
-Ảnh phòng và ảnh toà hiển thị ở đây được phục vụ từ kho ảnh riêng (Cloudflare R2) cho tải nhanh, không tốn băng thông trang chính.
-
-::: tip Trang tự cập nhật theo thời gian thực "mềm"
-Trang tự làm mới sau mỗi vài phút và mỗi khi khách quay lại tab, nên khách luôn thấy tình trạng phòng gần với hiện tại. Khi một phòng vừa được thuê hoặc vừa được đặt cọc giữ chỗ, nó sẽ tự biến mất khỏi danh sách trống ở lần làm mới kế tiếp — bạn không cần sửa gì thủ công.
+::: tip Trang tự cập nhật
+Khi tab đang mở, trang tự tải lại dữ liệu mỗi vài giây (giãn dần tới 1 phút nếu mạng lỗi) và dừng khi tab bị ẩn. Phòng vừa được thuê hoặc vừa được giữ chỗ sẽ tự đổi trạng thái ở lần làm mới kế tiếp — bạn không cần sửa gì thủ công.
 :::
 
 ## Trạng thái phòng hiển thị cho khách
 
-Trang tự tính trạng thái từng phòng dựa trên **hợp đồng thật**, không dựa vào cờ trạng thái thủ công của phòng (vì cờ đó có thể cũ). Có bốn trạng thái:
+Trang tự tính trạng thái từng phòng dựa trên **hợp đồng thật, báo trả phòng, giữ chỗ và lịch dọn/sửa**, không dựa vào công tắc trạng thái thủ công của phòng:
 
 | Nhãn | Ý nghĩa với khách |
 | --- | --- |
-| **Trống** | Phòng đang trống thật, sẵn sàng cho thuê. |
-| **Sắp trống** | Còn hợp đồng nhưng sắp kết thúc (hoặc khách đã đăng ký chuyển đi) trong khoảng "số ngày báo sắp trống" bạn cấu hình — trang hiện "Dự kiến trống từ …". |
-| **Khách nhờ sale** | Phòng đang có khách thuê nhưng khách nhờ bạn tìm người sang lại — hiện chính sách và giá do khách đặt. Có thể hiện **số của khách** hoặc chỉ **"Liên hệ quản lý"** tuỳ khách chọn. |
-| **Đã thuê** | Phòng đã có người thuê (hoặc đã được cọc giữ chỗ) — hiện mờ trong sơ đồ, ẩn khỏi danh sách trống. |
+| **Trống sẵn** | Phòng đang trống thật, sẵn sàng cho thuê. |
+| **Đang chuẩn bị · dự kiến dd/mm/yyyy** | Phòng trống nhưng đang dọn/sửa; nếu chưa có ngày thì ghi "chưa có ngày dự kiến", nếu ngày dự kiến đã qua thì ghi "cần xác nhận ngày sẵn sàng". |
+| **Sắp trống · dd/mm/yyyy** | Còn hợp đồng nhưng sắp kết thúc hoặc khách đã báo trả, trong khoảng "Số ngày báo sắp trống" bạn cấu hình. |
+| **Cần xác nhận ngày trống** | Khách đã báo trả nhưng ngày trống dự kiến đã qua mà chưa ghi nhận trả phòng thật. |
+| **Khách pass phòng** | Phòng đang có khách thuê nhưng khách nhờ tìm người sang lại — hiện chính sách và giá do khách đặt, số của khách hoặc chỉ "Liên hệ quản lý" tuỳ khách chọn. |
+| **Đã thuê / giữ chỗ** | Phòng đã có người thuê hoặc đã được giữ chỗ — hiện mờ trong sơ đồ, ẩn khỏi danh sách trống. |
 
 Khoảng "sắp trống" (mặc định 30 ngày) và hotline hiển thị được chỉnh trong **Sale Phòng => Cài đặt hiển thị**.
 
-## Tạo cọc giữ phòng ngay trên trang (khi bạn đã đăng nhập)
+## Giữ chỗ / nhận cọc ngay trên trang (khi bạn đã đăng nhập)
 
-Nếu bạn — chủ nhà hoặc sale — mở **chính liên kết công khai đó** trong lúc **đang đăng nhập** và có quyền `sale_phong.create_deposit`, bạn sẽ thấy thêm nút **Tạo cọc giữ phòng** ở chi tiết phòng (và có thể chạm thẳng ô phòng xanh ở chế độ Tổng hợp). Đây là cách khoá nhanh một phòng cho khách ngay tại hiện trường:
+Nếu bạn — chủ nhà hoặc sale — mở **chính liên kết công khai đó** trong lúc **đang đăng nhập** và có quyền `sale_phong.create_deposit`, bạn sẽ thấy thêm nút **Tạo cọc giữ phòng** ở chi tiết phòng (phòng chưa thuê) và có thể chạm thẳng ô phòng trống ở chế độ **Tổng hợp**. Hộp thoại **Giữ chỗ / Nhận cọc** mở ra:
 
-1. Mở phòng còn trống, ấn **Tạo cọc giữ phòng**.
-2. Điền số tiền cọc (có thể để trống nếu chỉ giữ chỗ tạm), ngày vào dự kiến rồi xác nhận.
-3. Hệ thống **thử tạo giữ chỗ canonical 24 giờ** trước, sau đó tạo voucher cọc. Hai thao tác là request riêng, không nguyên tử; nếu writer giữ chỗ, quyền hoặc hạ tầng không sẵn sàng, luồng có thể tiếp tục tạo voucher mà không khoá phòng.
-4. Số tiền để trống hoặc **1đ** dùng tài khoản ảo **CỌC**; số tiền lớn hơn 1 dùng sổ quỹ thật mặc định của nhân viên khi tìm thấy. Voucher mới có thể còn chờ duyệt/chưa post, nên hãy kiểm tra trạng thái và phòng sau khi tạo.
+1. Chọn một trong hai cách: **Giữ chỗ chưa nhận tiền** hoặc **Có nhận cọc**.
+2. Chọn **Khách hàng \*** — phải chọn đúng một khách.
+3. Với **Giữ chỗ chưa nhận tiền**: chọn **Giữ chỗ đến \*** (bắt buộc). Với **Có nhận cọc**: nhập **Số tiền cọc**, chọn **Sổ quỹ nhận cọc** (mặc định sổ quỹ mặc định của chính bạn), tuỳ chọn **Giữ chỗ đến** và **Ngày bổ sung cọc**.
+4. Tuỳ chọn **Ngày dự kiến vào**, rồi ấn **Giữ chỗ 0 đồng** hoặc **Tạo cọc & giữ chỗ**.
 
-::: danger Không coi việc bấm nút là bằng chứng đã thu tiền hoặc đã khoá phòng
-`APPROVED + UNPOSTED` vẫn chưa làm tiền vào sổ; chỉ voucher `POSTED` trên một sổ quỹ thật mới chứng minh đã thu tiền. Giữ chỗ 24 giờ là nỗ lực best-effort và có thể fail-open, nên sau khi xác nhận hãy mở [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) hoặc [Thu chi](/03-quan-ly-van-hanh/thu-chi/) để kiểm trạng thái, đồng thời tải lại trang để chắc phòng đã biến khỏi danh sách. Khoản cọc được ghi riêng và **không tính vào KQKD**.
+Giữ chỗ và phiếu cọc nguồn được tạo **trong cùng một lần ghi** ở máy chủ: thành công thì trang báo "Đã giữ phòng … • Chưa thu tiền" hoặc "Đã lưu cọc và giữ phòng …"; lỗi thì không có bản ghi nào được tạo. Hạn giữ chỗ **chỉ để nhắc**: quá hạn, phòng vẫn giữ cho khách này đến khi bạn huỷ giữ chỗ hoặc ký hợp đồng.
+
+::: danger Tạo phiếu cọc chưa phải là đã thu tiền
+Phiếu cọc đi theo luồng duyệt/nhận tiền hiện hành; phiếu **chờ duyệt** chưa tính là đã nhận. Chỉ phiếu đã ghi sổ (**POSTED**) trên một sổ quỹ thật mới chứng minh tiền đã vào quỹ. Sau khi tạo, mở [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) hoặc [Thu chi](/03-quan-ly-van-hanh/thu-chi/) để kiểm trạng thái phiếu. Khoản cọc được ghi riêng và **không tính vào KQKD**.
 :::
 
-::: warning Voucher cọc và giữ chỗ là hai bản ghi riêng
-Trang công khai chỉ **tạo**, không có nút gỡ. Vì voucher và giữ chỗ không cùng một giao dịch, huỷ một bên chưa chắc tự huỷ bên kia. Khi khách đổi ý, xử lý voucher ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) hoặc [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/), rồi kiểm tra lại trạng thái/giữ chỗ của phòng trước khi mở bán.
+::: warning Trang công khai chỉ tạo, không huỷ
+Trang công khai không có nút gỡ giữ chỗ. Khi khách đổi ý, vào [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/), khối **Giữ chỗ / Cọc trước hợp đồng**, dùng **Hủy giữ chỗ** (giữ chỗ chưa nhận tiền) hoặc **Xử lý cọc hiện tại** (đã nhận cọc) trước khi mở bán lại phòng.
 :::
 
 ## Đo đếm lượt xem của khách
 
-Mọi thao tác của khách trên trang — mở trang, thời gian xem, phòng nào được hiện ra / mở chi tiết, bấm Gọi / Zalo / Chia sẻ / Tải ảnh — đều được **ghi nhận ẩn danh**. Bạn xem báo cáo này ở **Sale Phòng => tab Thống kê**: tổng quan lượt truy cập, phòng được xem nhiều nhất, xu hướng theo thời gian, theo từng liên kết chia sẻ, và cả lỗi phát sinh. Có công tắc **loại trừ lượt xem nội bộ** để không tính những lần chính nhân viên mở trang.
+Mọi thao tác của khách trên trang — mở trang, thời gian xem, phòng nào được hiện ra / mở chi tiết, bấm Gọi / Zalo / Chia sẻ / Tải ảnh — đều được **ghi nhận ẩn danh**, cùng lỗi phát sinh trên trình duyệt của khách. Bạn xem ở **Sale Phòng => tab Thống kê**: Tổng quan, Phòng được xem nhiều, Theo thời gian, Theo link và **Lỗi**. Có công tắc **Loại trừ lượt xem nội bộ** để không tính những lần chính nhân viên mở trang.
 
 ## Các tính năng khác
 
 | Nút / khu vực | Công dụng |
 | --- | --- |
-| Chip **Quận** / **Toà nhà** | Lọc nhanh phòng theo quận hoặc theo từng toà. |
+| Chip **Quận** / **Tòa nhà** / **Khoảng giá** | Lọc nhanh phòng theo quận, toà hoặc dải giá. |
 | Chip **Tổng hợp** | Xem gộp tất cả các toà trong một màn, mỗi toà một thẻ tóm tắt. |
 | Chuyển **Danh sách / Sơ đồ** | Đổi giữa xem thẻ phòng và xem mặt bằng từng tầng. |
-| **Gọi / Zalo** | Liên hệ theo số của toà (nếu có) hoặc hotline chung; với phòng khách nhờ sale là số khách hoặc "Liên hệ quản lý". |
-| **Chỉ đường** | Mở Google Maps tới địa chỉ toà. |
-| **Chia sẻ** | Gửi thông tin phòng kèm **toàn bộ ảnh** qua trình chia sẻ của điện thoại; máy không hỗ trợ thì sao chép nội dung. |
-| **Tải ảnh** | Lưu toàn bộ ảnh của phòng về máy. |
-| **Tạo cọc giữ phòng** | Chỉ hiện khi bạn đăng nhập + có quyền `create_deposit` — khoá phòng bằng một phiếu cọc. |
+| **Tải ảnh** (đầu trang) | Xuất một ảnh bảng danh sách phòng trống để gửi nhanh. |
+| **Gọi Quản Lý / Gọi khách**, **Zalo** | Liên hệ theo số của toà (nếu có) hoặc hotline chung; với phòng khách nhờ sale là số khách hoặc quản lý. |
+| **Chỉ đường** | Mở bản đồ tới toà (link riêng của toà nếu có, không thì tìm theo địa chỉ). |
+| **Chia sẻ** / **Tải ảnh** (chi tiết phòng) | Gửi thông tin phòng kèm toàn bộ ảnh qua trình chia sẻ của điện thoại, hoặc lưu ảnh về máy. |
+| **Tạo cọc giữ phòng** | Chỉ hiện khi bạn đăng nhập + có quyền `create_deposit` — mở hộp **Giữ chỗ / Nhận cọc**. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Khách mở link báo **"Liên kết không hợp lệ hoặc đã hết hạn"** | Liên kết đã bị **thu hồi** hoặc gõ sai token. Vào **Sale Phòng => Link chia sẻ** để khôi phục liên kết đã thu hồi hoặc tạo liên kết mới rồi gửi lại. |
+| Khách mở link báo **"Liên kết không hợp lệ hoặc đã hết hạn"** | Liên kết đã bị **thu hồi**, bị xoá hoặc gõ sai token. Vào **Sale Phòng => Link chia sẻ** để **Khôi phục** link đã thu hồi hoặc tạo link mới rồi gửi lại. |
+| Trang báo **"Chưa tải được danh sách phòng"** | Lỗi mạng tạm thời. Bấm **Thử lại**; trang cũng tự thử lại. |
 | **Không thấy toà nào** trên trang | Trang chỉ hiện toà có ít nhất một phòng **trống / sắp trống / khách nhờ sale**. Toà đã kín phòng sẽ không xuất hiện — đúng thiết kế. |
-| Thấy vài toà **lạ** hoặc dữ liệu mẫu | Khi mở trang mà **không có token hợp lệ**, trang rơi về **dữ liệu mẫu** để xem thử giao diện. Hãy mở đúng liên kết `/r/<token>` bạn đã tạo. |
-| Muốn **gỡ một liên kết** đã lỡ gửi | Ở **Sale Phòng => Link chia sẻ**, dùng **Thu hồi** (khách hết xem được ngay, vẫn khôi phục được sau). Chỉ **Xoá** khi muốn mất hẳn — không lấy lại được. |
-| **Không thấy nút "Tạo cọc giữ phòng"** dù đang đăng nhập | Bạn thiếu quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`), hoặc đang mở trang ở tab chưa đăng nhập. Nhờ quản trị cấp quyền — xem [Phân quyền](/05-cai-dat/phan-quyen/). |
-| Phòng vừa cọc **vẫn còn** trên link của khách | Trang làm mới sau vài phút; bảo khách tải lại trang. Phòng đã cọc giữ chỗ sẽ tự ẩn ở lần làm mới kế tiếp. |
-| Số liên hệ hiển thị **sai** | Đặt số riêng cho từng toà trong **Sale Phòng => Thông tin sale**, hoặc chỉnh hotline chung ở [Hotline](/05-cai-dat/hotline/). |
+| **Không thấy nút "Tạo cọc giữ phòng"** dù đang đăng nhập | Bạn thiếu quyền **Sale Phòng => Tạo cọc nhanh** (`create_deposit`), đang mở ở tab chưa đăng nhập, hoặc phòng đã thuê / là phòng khách pass. Xem [Phân quyền](/05-cai-dat/phan-quyen/). |
+| Hộp **Giữ chỗ / Nhận cọc** báo "Phải chọn đúng một khách hàng." hoặc "Chọn hạn giữ chỗ khi chưa nhận tiền." | Chọn khách; với giữ chỗ chưa nhận tiền thì bắt buộc chọn **Giữ chỗ đến**. Với nhận cọc thì phải nhập số tiền dương và chọn **Sổ quỹ nhận cọc**. |
+| Phòng vừa giữ chỗ **vẫn còn** trên link của khách | Bảo khách tải lại trang; trạng thái đổi ở lần làm mới kế tiếp. |
+| Số liên hệ hiển thị **sai** | Đặt **Liên hệ quản lý toà** trong **Sale Phòng => Thông tin sale**, hoặc chỉnh hotline chung ở [Hotline](/05-cai-dat/hotline/). |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.sale" app-path="/sale-phong" app-label="Mở trang Sale Phòng" view-only>
+<SandboxTry account="demo.chunha" app-path="/sale-phong" app-label="Mở trang Sale Phòng" fixtures="Snapshot 07/10/2026: DEMO chưa có link chia sẻ nào." view-only>
 
-Trang công khai cần một token chia sẻ, nên hãy bắt đầu từ trang **Sale Phòng** rồi mở link ở tab ẩn danh để thấy đúng góc nhìn khách:
+Trang công khai cần một token chia sẻ, mà DEMO hiện chưa có link nào, nên bài thử chỉ xem:
 
-1. Vào **Sale Phòng => tab Link chia sẻ**, tạo một liên kết mới cho các toà **DEMO A** / **DEMO B** và **copy** đường link `/r/<token>`.
-2. Mở link đó trong một **tab ẩn danh** (không đăng nhập) — bạn sẽ thấy danh sách phòng trống của Tòa DEMO A và DEMO B, thử chuyển giữa **Danh sách** và **Sơ đồ**, và mở chi tiết một phòng.
-3. Quay lại tab đã đăng nhập, sang **tab Thống kê** để thấy lượt xem vừa rồi được ghi nhận.
+1. Vào **Sale Phòng => tab Link chia sẻ**, quan sát dòng "Chưa có link chia sẻ nào" và nút **Tạo link mới** — không tạo link trên tài khoản dùng chung.
+2. Sang tab **Cài đặt hiển thị** để xem **Số ngày báo "sắp trống"** và **Hotline hiển thị** — hai thiết lập quyết định nhãn **Sắp trống** và số liên hệ khách thấy.
+3. Sang tab **Thống kê** để xem các chỉ số sẽ được ghi khi khách mở link.
 
-Đây là bản xem thử: bạn duyệt được luồng nhưng không ghi thay đổi thật. Trên bản thật, nếu mở chính link đó khi đã đăng nhập và có quyền, bạn sẽ thấy thêm nút **Tạo cọc giữ phòng**.
+Kết quả mong đợi: bạn biết nơi tạo link, nơi chỉnh cách trang công khai hiển thị và nơi xem lượt truy cập, không có dữ liệu DEMO nào bị tạo.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
 - [Sale Phòng](/03-quan-ly-van-hanh/sale-phong/) — nơi tạo liên kết chia sẻ, cấu hình hiển thị, ảnh sale, sơ đồ tầng và xem thống kê lượt truy cập.
-- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — bổ sung và quản lý tiền cọc sau khi tạo cọc giữ phòng trên trang công khai.
-- [Thu tiền tại phòng (điện thoại)](/03-quan-ly-van-hanh/thu-tien-mobile/) — công cụ cầm tay đi thu tiền hoá đơn, cùng họ với các màn ngoài hiện trường.
+- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — theo dõi, bổ sung, huỷ giữ chỗ và xử lý cọc sau khi tạo trên trang công khai.
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/) — kiểm phiếu cọc đã duyệt và đã ghi sổ hay chưa.
 - [Hotline](/05-cai-dat/hotline/) — cấu hình số hotline mặc định hiển thị trên trang công khai.
 - [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `sale_phong.view`, `manage_tokens`, `create_deposit` cho nhân viên.
-- [Căn hộ & phòng](/03-quan-ly-van-hanh/can-ho-phong/) — quản lý phòng, giá thuê và trạng thái phòng làm nguồn cho trang công khai.
+- [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/) — quản lý phòng, giá và theo dõi dọn/sửa làm nguồn cho trang công khai.

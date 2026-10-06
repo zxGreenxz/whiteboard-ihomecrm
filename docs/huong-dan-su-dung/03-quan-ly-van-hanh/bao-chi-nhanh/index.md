@@ -5,6 +5,10 @@ routes: ["/chi-tieu"]
 permissions: [{module: income_expenses, action: create}, {module: personal_finance, action: create}]
 viewport: mobile
 audience: [quan-ly-toa, ke-toan, chu-nha]
+captured:
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
@@ -21,9 +25,13 @@ Màn **Báo chi nhanh** cho bạn ghi thu hoặc chi bằng cách **gõ một c�
 - Ô và mục menu Báo chi nhanh hiện với người có quyền **Thu chi ⇒ Tạo**. Người chỉ có quyền Ví cá nhân cũng có ô ghi nhanh ngay tại **Cá nhân → Ví cá nhân**, hoặc mở đường dẫn `/chi-tieu`.
 :::
 
+![Màn Báo chi nhanh trên điện thoại: khung gợi ý cách gõ, hai nút Công ty và Cá nhân, dòng Mô hình AI và ô nhập với các nút ảnh kèm nội dung, chụp bill, chọn ảnh, micro](./images/buoc-01-man-hinh.webp)
+
 ## Chọn ghi vào Công ty hay Cá nhân
 
-Có cả hai quyền thì dùng hai nút **Cá nhân** | **Công ty** dưới ô nhập để chọn nơi gửi. Đổi nơi gửi vẫn giữ chữ và ảnh đang điền; thẻ đã gửi giữ nguyên nơi nhận ban đầu. Chỉ có một quyền thì chỉ nhập được vào nơi đó.
+Có cả hai quyền thì dùng hai nút **Công ty** | **Cá nhân** ngay trên ô nhập để chọn nơi gửi; dòng dưới tiêu đề đổi theo: **Ghi phiếu chi công ty** hoặc **Ghi vào Ví cá nhân**. Đổi nơi gửi vẫn giữ chữ và ảnh đang điền; thẻ đã gửi giữ nguyên nơi nhận ban đầu. Chỉ có một quyền thì chỉ nhập được vào nơi đó.
+
+Phần AI chạy theo **công ty đang chọn**. Nếu tài khoản chưa chọn công ty, màn hiện ô **Chọn công ty để dùng AI** (khoản cá nhân vẫn lưu vào ví cá nhân); chưa có công ty nào thì vẫn nhập tay được.
 
 ## Cách 1 — Gõ một câu
 
@@ -53,7 +61,7 @@ Nói tên toà theo cách quen gọi, ví dụ `nhà một lẻ hai Lê Văn Th�
 
 Chạm biểu tượng **máy ảnh** để chụp, hoặc **ảnh** để chọn từ thư viện; trên máy tính có thể **dán ảnh** (Ctrl+V) vào ô nhập. AI đọc tổng tiền, cửa hàng, ngày, từng món; bill điện nước thì đọc thêm **mã khách hàng** và **kỳ** để tự tìm toà và hạng mục.
 
-Nút **Ảnh kèm nội dung** ở ngoài cùng bên trái cho phép chọn ảnh rồi bổ sung chữ hoặc ghi âm trước khi gửi chung. Hủy ghi âm giữ ảnh và chữ đã nhập.
+Nút **Ảnh kèm nội dung** (kẹp giấy, ngoài cùng bên trái) dùng khi muốn nói thêm về ảnh: chọn ảnh xong, máy **bắt đầu ghi âm ngay** ("Nói nội dung bổ sung, bấm Xong để gửi cùng ảnh"); bấm **Xong** để gửi ảnh cùng lời nói. Máy không ghi âm được thì gõ thêm chữ rồi bấm Gửi. Huỷ ghi âm vẫn giữ ảnh và chữ đã nhập.
 
 - Ảnh khoản **công ty** được lưu làm **chứng từ** của phiếu khi bạn bấm Lưu.
 - Ảnh khoản **cá nhân** chỉ để AI đọc, **không lưu**.
@@ -71,7 +79,11 @@ Một số hạng mục **không có** ở Báo chi nhanh vì chỉ lập ở m�
 
 ## Soát thẻ rồi Lưu
 
-Thẻ công ty có: loại **Thu/Chi**, ngày giao dịch, người nhận/cửa hàng, toà, phòng (hoặc *Cả toà*), sổ quỹ và các dòng mô tả, hạng mục, số tiền. Thẻ có dấu **AI đọc — soát lại** cần được kiểm tra trước khi lưu. Ô bạn đã tự sửa được giữ nguyên khi AI trả lời sau đó.
+Thẻ công ty có: loại **Thu/Chi**, ngày giao dịch (nút nhanh **Hôm nay**, **Hôm qua**), người nhận/cửa hàng, toà, phòng (hoặc **Cả toà (không gắn phòng)**), **Sổ quỹ chi tiền** và các dòng mô tả, hạng mục, số tiền; **Thêm dòng** để thêm khoản. Thẻ có dấu **AI đọc — soát lại** cần được kiểm tra trước khi lưu. Ô bạn đã tự sửa được giữ nguyên khi AI trả lời sau đó. Còn thiếu toà hoặc hạng mục thì thẻ nhắc ngay dưới các dòng và nút Lưu bị mờ.
+
+![Thẻ nháp Công ty 320.000đ từ câu "sơn 300k, keo 20k": loại Chi, ngày 07/10/2026, ô Toà chưa chọn, Phòng Cả toà, Sổ quỹ chi tiền DEMO Quỹ tiền mặt, dòng sơn 300.000 đ; phía trên có câu AI chưa đọc được lần này và nút Thử AI lại](./images/buoc-02-the-nhap.webp)
+
+*Ảnh chụp ở chế độ chỉ đọc nên AI bị chặn: màn báo **AI chưa đọc được lần này. Thử lại hoặc nhập tay.** kèm nút **Thử AI lại**, thẻ chỉ có phần máy tự tách từ câu gõ, toà và hạng mục để trống cho bạn chọn tay. Khi AI chạy bình thường, hai ô này thường được điền sẵn.*
 
 - Sổ quỹ chọn sẵn trong các sổ **bạn được chi**. Chưa được giao sổ nào thì thẻ báo rõ và không lưu được phiếu công ty — nhờ quản trị giao sổ.
 - Kỳ này toà đã có phiếu cùng hạng mục thì thẻ nhắc mã phiếu đó để bạn khỏi chi trùng (chỉ nhắc, không chặn).
@@ -80,7 +92,7 @@ Bấm **Lưu phiếu thu/chi** (theo loại khoản công ty) hoặc **Lưu vào
 
 | Thẻ hiện | Nghĩa là |
 | --- | --- |
-| **Đã lưu PC… · Đã duyệt** / **Chờ duyệt** | Phiếu đã tạo; trạng thái duyệt do luật chi của công ty quyết, y như phiếu lập tay. Bấm **Xem trong Thu chi** để mở. |
+| **Đã lưu PC… · Đã duyệt** / **Chờ duyệt** | Phiếu đã tạo; trạng thái duyệt do luật chi của công ty quyết, y như phiếu lập tay. **Đã duyệt** chưa chắc là tiền đã ra sổ — chỉ khi phiếu ở Thu chi mang nhãn **Đã Chi**/**Đã Thu** mới là tiền thật đã ghi sổ quỹ. Bấm **Xem trong Thu chi** để mở. |
 | **Đã ghi vào Ví cá nhân** | Khoản cá nhân đã ghi. |
 | Thẻ khoá + **Gửi lại y nguyên** | Mất mạng giữa chừng, chưa biết đã lưu chưa. Gửi lại đúng yêu cầu cũ để tránh tạo thêm khoản; áp dụng cả cá nhân và phiếu công ty có khóa chống trùng. Thẻ cũ chưa xác minh được có thể yêu cầu kiểm tra sổ trước. |
 | Lỗi đỏ | Bị từ chối (vd thiếu quyền ở toà đó) — sửa rồi lưu lại. |
@@ -90,6 +102,8 @@ Thẻ chưa lưu được giữ lại khi bạn tải lại trang (trong 48 gi�
 ## Chọn mô hình AI (để tự so sánh)
 
 Bấm dòng **Mô hình AI** ngay trên ô nhập để mở ba ô chọn. Chưa chọn gì thì cả hai ô để **Mặc định (máy chủ chọn)** — dùng bộ mô hình công ty đặt sẵn, không cần chỉnh nếu chỉ nhập chi bình thường.
+
+![Bảng chọn mô hình AI mở ra với ba ô Giọng nói (chép lời), Đọc chữ / ảnh để lập phiếu đều là Mặc định (máy chủ chọn) và ô Mức suy nghĩ đang mờ](./images/buoc-05-mo-hinh-ai.webp)
 
 - **Giọng nói (chép lời)** — Mặc định hoặc 1 trong 5 mô hình chép tiếng Việt tốt nhất: **Google Chirp 3** (chính xác nhất, ~3 giây); **Deepgram Nova 3** và **OpenAI Whisper** nhanh hơn (~1,4 giây)…
 - **Đọc chữ / ảnh để lập phiếu** — Mặc định hoặc GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna (nhanh nhất), GPT-5.6 Terra (chọn hạng mục đúng nhất), GPT-5.6 Luna.

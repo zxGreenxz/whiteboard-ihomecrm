@@ -1,82 +1,111 @@
 ---
 title: "Thu tiền tại hoá đơn"
-description: "Ghi nhận một lần thu cho hoá đơn bằng TM/TK/TT, phân bổ cọc và doanh thu, hoặc hoàn tác bằng chứng từ đảo."
+description: "Ghi nhận một lần thu cho hoá đơn bằng TM/TK/TT vào đúng sổ nhận tiền, xử lý tiền thối/giữ nợ khách, đổi hình thức thu hoặc hoàn tác có lý do."
 routes: ["/invoices", "/invoices/:id"]
 permissions: [{module: invoices, action: view}, {module: invoices, action: record_payment}]
 viewport: desktop
 audience: [ke-toan]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Thu tiền tại hoá đơn
 
-Luồng này ghi một lần thanh toán vào đúng hoá đơn và sổ quỹ. Bạn cần quyền xem hoá đơn và quyền `invoices.record_payment` để dùng nút thu.
+Luồng này ghi một lần thanh toán vào đúng hoá đơn và đúng sổ nhận tiền. Bạn cần quyền xem hoá đơn và quyền **Thu tiền (ghi nhận thanh toán)** (`invoices.record_payment`) để thấy nút thu. Trên điện thoại, dùng [Thu tiền tại phòng](/03-quan-ly-van-hanh/thu-tien-mobile/) cho nhanh.
 
-::: info Ảnh production hiện là điểm vào, chưa phải hộp thoại Thu tiền
-Snapshot `demo.chunha` ngày 13/08/2026 không có hoá đơn, nên `/invoices` dừng ở empty state **Chưa có hoá đơn nào**. Không thể mở nút **Thu tiền** hoặc chụp hộp thoại mà không tạo dữ liệu tài chính. Ảnh dưới đây ghi lại đúng trạng thái đó; phần thao tác áp dụng khi đã có hoá đơn còn nợ.
+::: info Điều kiện tiên quyết
+- Hoá đơn ở trạng thái **Đã duyệt**, **Trả 1 phần** hoặc **Quá hạn** và còn phải thu.
+- Người thu đã có **sổ tiền mặt riêng** (cho TM) và được giao giữ/biết sổ nhận **Chuyển khoản / Thanh toán** của toà. Chủ công ty cài ở **Sổ quỹ → Sổ nhận tiền**.
 :::
 
 ## Ghi nhận một lần thu
 
-**Bước 1**: Mở danh sách hoá đơn. Nếu có hoá đơn còn nợ, mở đúng dòng, kiểm tra **còn nợ** rồi chọn **Thu tiền**. Nếu trang hiện **Chưa có hoá đơn nào**, dừng; không có khoản nào để thu.
+**Bước 1**: Tại **Tài chính** => **Hoá đơn**, bấm nút tròn **Thu tiền** (biểu tượng $) trên dòng hoá đơn còn nợ, hoặc mở chi tiết rồi bấm **Ghi nhận thanh toán**. Hộp **Ghi nhận thanh toán** hiện tóm tắt **Kỳ thanh toán**, **Tổng tiền**, **Đã thanh toán**, **Còn lại**.
 
-![Danh sách Hoá đơn DEMO đang ở trạng thái chưa có hoá đơn để thu](./images/buoc-01-thu-tien.webp)
+![Hộp Ghi nhận thanh toán cho hoá đơn INV-E2E-HUY-0001: Tiền khách đưa 500.000, Tiền thối, Phương thức TM và dòng báo người thu chưa có sổ tiền mặt riêng](./images/buoc-01-ghi-nhan-thanh-toan.webp)
 
-**Bước 2**: Nhập số tiền theo từng phương thức:
+**Bước 2**: Nhập **Tiền khách đưa** (mặc định điền sẵn số còn lại) và chọn **Phương thức**:
 
-- `TM`: tiền mặt.
-- `TK`: chuyển khoản vào tài khoản/sổ được chọn.
-- `TT`: phương thức thu khác được hệ thống hỗ trợ.
+- `TM` — Tiền mặt: luôn vào **Sổ tiền mặt riêng** của người thu, không chọn được sổ khác.
+- `TK` — Chuyển khoản và `TT` — Thanh toán: chọn **Sổ quỹ nhận** trong danh sách sổ của toà mà bạn được giữ/biết (sổ **mặc định** đứng đầu).
 
-Chọn đúng sổ quỹ cho từng phần tiền và kiểm tra tổng nhận trước khi xác nhận.
+Khách trả bằng nhiều hình thức thì bấm **+** để thêm dòng thanh toán; mỗi dòng có số tiền, phương thức và sổ riêng.
 
-**Bước 3**: Nếu khoản thu có cả tiền cọc và doanh thu, phân bổ các dòng ngay trong cùng lần thu. Phần cọc và phần doanh thu là **các item của cùng một collection/voucher**, không phải hai phiếu thu độc lập.
+**Bước 3**: Nếu khách đưa dư, nhập **Tiền thối** thực tế; hoặc tích **Nợ khách (trừ kỳ sau)** để giữ phần dư làm tiền nợ khách của hợp đồng, trừ vào hoá đơn kỳ sau (khi đó không tạo phiếu chi thối). Có tiền thối thì chọn **Sổ ghi nhận tiền thối**.
 
-**Bước 4**: Xác nhận và mở lại lịch sử thanh toán để kiểm tra mã chứng từ, tổng đã thu và còn nợ.
+**Bước 4**: Kiểm tra **Ngày thanh toán** (không được ở tương lai), đính **Ảnh chứng từ thanh toán** nếu có (bấm chọn, kéo thả hoặc Ctrl+V; JPG/PNG/GIF tối đa 5MB) và **Ghi chú**. Khung **Sau khi thanh toán** cho biết đã thanh toán, còn lại, tiền thối/giữ nợ và **Trạng thái mới** (**Đã thanh toán** hoặc **Trả 1 phần**).
 
-::: info Tính nguyên tử của một hoá đơn
-Luồng hiện hành dùng `record_invoice_collection_v5`: mọi phần `TM/TK/TT` của **một hoá đơn** được ghi trong một giao dịch nguyên tử. Nếu một phần lỗi, toàn bộ lần thu đó không được ghi dở dang.
+**Bước 5**: Bấm **Ghi nhận thanh toán**. Nếu hoá đơn vừa có một khoản thu **cùng số tiền trong 30 phút**, hệ thống hỏi **Có thể đang thu trùng** — chọn **Không thu** nếu đúng là trùng, hoặc **Vẫn thu tiếp**.
+
+::: info Một lần thu là một giao dịch nguyên tử
+Mọi dòng `TM/TK/TT` của **một hoá đơn** được ghi trong cùng một giao dịch: hoặc tất cả cùng lưu, hoặc không dòng nào được lưu. Mỗi dòng tạo một phiếu thu "Thu tiền theo HĐ …" gắn với hoá đơn. Nếu mạng chập chờn lúc gửi, dữ liệu đã nhập được giữ lại; bấm ghi lại là an toàn vì lệnh dùng cùng khoá chống trùng. Nếu hệ thống báo "Lần thu trước có thể đã được ghi", đóng hộp, tải lại hoá đơn rồi thu theo số còn lại mới.
 :::
 
-::: warning Thu nhiều hoá đơn
-Thao tác hàng loạt trên nhiều hoá đơn vẫn chạy thành nhiều giao dịch. Một số hoá đơn có thể thành công trước khi hoá đơn khác lỗi; luôn đọc kết quả từng dòng và đối soát các hoá đơn đã ghi.
+::: danger Đã duyệt chưa chắc là tiền đã vào sổ
+Phiếu thu tạo ra từ lần thu đã ở trạng thái duyệt, nhưng tiền chỉ coi là vào sổ quỹ khi phiếu ở trạng thái **Đã Thu** (đã ghi sổ — `POSTED`). Đối chiếu ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) / [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) trước khi bàn giao hoặc chốt quỹ.
 :::
 
-## Hoàn tác lần thu
+::: tip Khoản thiếu lẻ dưới 10.000đ
+Khi khách đóng thiếu dưới 10.000đ, hệ thống tự làm tròn, ghi khoản này vào sổ "Làm tròn tiền thiếu" và đánh dấu hoá đơn **Đã thanh toán** đủ — trừ khi phần thiếu thuộc tiền cọc. Tra lại các khoản này bằng nút **Khoản bỏ qua** trên màn Hoá đơn.
+:::
 
-Chọn lần thu cần sửa và dùng **Hoàn tác/Đảo thu**. Writer chuẩn là `reverse_invoice_collection_v5` (hoặc đường tương thích cho dữ liệu cũ).
+## Xem, đổi hình thức thu và hoàn tác
 
-- Ở chế độ kế toán chuẩn, hệ thống có thể tạo chứng từ đối ứng.
-- Ở một số chế độ tương thích, chứng từ có thể được huỷ tại chỗ.
-- Cả hai cách đều giữ dấu vết kiểm toán và cập nhật lại số đã thu/còn nợ.
+**Bước 6**: Ở cột **Đã thanh toán** của danh sách, bấm **(Xem)** để mở hộp **Các lần thanh toán**. Mỗi lần thu có mã phiếu (bấm để mở phiếu trong sổ Thu/Chi), ảnh chứng từ và các nút thao tác.
 
-Không xoá phiếu thu hoặc chỉnh trực tiếp số dư để sửa một lần thu.
+- **Đổi hình thức thu**: chuyển một dòng thu sang hình thức/sổ nhận khác (ví dụ TM ↔ TK, hoặc đổi sổ trong cùng hình thức) — **không đổi số tiền và không đổi nợ hoá đơn**. Chỉ người đã thu, chủ công ty hoặc quản trị hệ thống đổi được; phải ghi **Lý do đổi** (tối thiểu 8 ký tự) và lần đổi được lưu vào lịch sử phiếu. Dòng có tiền thối hoặc làm tròn không đổi được.
+- **Hoàn tác**: huỷ toàn bộ một lần thu (mọi dòng TM/TK/TT của lần đó), bắt buộc nhập **Lý do hoàn tác**. Tuỳ chế độ kế toán, hệ thống tạo **phiếu chi đối ứng** (giữ nguyên lịch sử gốc) hoặc chuyển phiếu thu sang **Đã huỷ**; cả hai cách đều tính lại số đã thu của hoá đơn.
+
+Không xoá phiếu thu hoặc chỉnh tay số dư để sửa một lần thu.
+
+## Thu nhiều hoá đơn cùng lúc
+
+Nút tròn **Thanh toán hàng loạt — Mode Excel** mở bảng **Thanh toán hàng loạt — Mode Excel**: chọn toà & kỳ → **Tải dữ liệu** → nhập TM/TT/TK/Thối cho từng phòng → **Ghi nhận N thanh toán**.
+
+::: warning Thu hàng loạt không nguyên tử giữa các hoá đơn
+Mỗi hoá đơn là một giao dịch riêng. Một số hoá đơn có thể đã ghi trước khi hoá đơn khác lỗi; luôn đọc kết quả từng dòng và đối soát, không bấm ghi lại cả lô.
+:::
 
 ## Hoàn tiền cho khách
 
-::: danger Luồng hiện tại tạo nghĩa vụ chờ hoàn
-Hộp thoại hoàn tiền có trường ngày và sổ quỹ, nhưng writer hiện tại chưa dùng hai giá trị này. Nó chỉ gọi `create_invoice_refund_obligation_v2` để tạo nghĩa vụ hoàn tiền đang chờ, chưa phát sinh dòng tiền ra. Sau đó phải kiểm tra phiếu chờ, duyệt và post theo [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/). Công thức số còn phải hoàn hiện cũng có vấn đề đã biết, vì vậy phải đối chiếu số tiền trước khi duyệt.
+::: danger Luồng hiện tại chỉ tạo phiếu chi chờ duyệt
+Với hoá đơn âm hoặc khách đã trả dư, nút thu đổi thành **Hoàn trả khách**. Hộp này có **Ngày hoàn trả** và **Sổ quỹ chi**, nhưng luồng ghi hiện hành chưa dùng hai giá trị đó; bấm **Lập phiếu chi** chỉ tạo phiếu chi hoàn trả ở trạng thái **Chờ duyệt**, chưa có tiền ra. Sau đó duyệt theo [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) và đối chiếu số tiền trước khi duyệt; tiền chỉ ra khi phiếu ở trạng thái **Đã Chi**.
 :::
+
+## Tình huống & lỗi thường gặp
+
+| Tình huống | Nguyên nhân & cách xử lý |
+|---|---|
+| Ô sổ báo **Người thu chưa có sổ tiền mặt riêng — nhờ chủ công ty cài ở Sổ nhận tiền.** | Tài khoản đang thu chưa được cài sổ tiền mặt riêng; nút ghi nhận bị khoá. Nhờ chủ công ty cài ở **Sổ quỹ → Sổ nhận tiền**. |
+| Báo **chưa dùng được sổ nhận Chuyển khoản/Thanh toán nào của toà** | Toà chưa cài sổ, hoặc người thu chưa được giao giữ/biết sổ đó. Nhờ chủ công ty kiểm ở **Sổ quỹ → Sổ nhận tiền**. |
+| **Ngày thu không được ở tương lai** | Chọn lại ngày thanh toán là hôm nay hoặc trước đó. |
+| **Số đã thu vừa thay đổi; vui lòng tải lại hóa đơn** | Có người vừa thu hoá đơn này. Đóng hộp, tải lại rồi thu theo số còn lại mới. |
+| Báo lợi nhuận tháng **đã chốt** | Tháng của khoản thu đã khoá lợi nhuận và chia cho cổ đông. Không sửa/hoàn tác khoản thu của tháng đó; lập điều chỉnh ở tháng hiện tại hoặc nhờ chủ tổ chức mở khoá tháng. |
+| Nút **Đổi hình thức thu** bị mờ | Bạn không phải người đã thu và không phải chủ công ty. |
+
+## Thử trực tiếp trên sandbox
+
+<SandboxTry account="demo.chunha" app-path="/invoices" app-label="Mở danh sách Hoá đơn" fixtures="Snapshot 07/10/2026: hoá đơn INV-E2E-HUY-0001 (DEMO Toà D - D-03, 500.000đ, Quá hạn); tài khoản demo.chunha chưa có sổ tiền mặt riêng nên hộp thu báo thiếu sổ." view-only>
+
+**Bài tập chỉ xem**
+
+1. Bấm nút **Thu tiền** trên dòng hoá đơn, đọc các ô **Tiền khách đưa**, **Phương thức**, ô sổ nhận và khung **Sau khi thanh toán**.
+2. Bấm **Hủy** để đóng. Không bấm **Ghi nhận thanh toán**.
+
+**Kết quả mong đợi**
+
+- Bạn nhận ra vì sao ô sổ báo thiếu sổ tiền mặt riêng và biết ai phải cài.
+- Không có lần thu nào được ghi.
+
+</SandboxTry>
 
 ## Quy trình liên quan
 
 - [Chi tiết, in hoá đơn & QR tra cứu](/03-quan-ly-van-hanh/hoa-don-chi-tiet/)
 - [Thu tiền tại phòng trên điện thoại](/03-quan-ly-van-hanh/thu-tien-mobile/)
+- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
 - [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/)
 - [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/)
-
-## Thử trực tiếp trên sandbox
-
-<SandboxTry account="demo.chunha" app-path="/invoices" app-label="Mở danh sách Hoá đơn" fixtures="Snapshot 13/08/2026: chưa có hoá đơn để thu." view-only>
-
-1. Xác nhận empty state **Chưa có hoá đơn nào** và không cố mở một URL chi tiết tự đoán.
-2. Nhận diện vị trí bộ lọc/danh sách; không tạo hoá đơn hoặc ghi nhận thanh toán trong bài chỉ xem.
-3. Khi có hoá đơn thật, chỉ thu trên dòng còn nợ và kiểm tra lại lịch sử collection sau khi xác nhận.
-
-Kết quả mong đợi: bạn biết điều kiện bắt buộc để mở luồng Thu tiền là phải có một hoá đơn thật còn nợ.
-
-</SandboxTry>

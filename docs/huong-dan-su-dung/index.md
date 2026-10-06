@@ -5,7 +5,7 @@ markdownStyles: false
 hero:
   name: "ptcrm"
   text: "Tài liệu vận hành hiện hành"
-  tagline: Hướng dẫn theo đúng luồng màn hình, route, quyền và dữ liệu đang dùng — đối chiếu đến 13/08/2026
+  tagline: Hướng dẫn theo đúng luồng màn hình, route, quyền và dữ liệu đang dùng — đối chiếu đến 07/10/2026
   actions:
     - theme: brand
       text: Bắt đầu sử dụng
@@ -32,7 +32,7 @@ features:
     link: /04-bao-cao/
   - icon: 🛡️
     title: Quyền theo RBAC V3
-    details: Membership, vai trò, binding, phạm vi và ngoại lệ ALLOW/DENY; catalog hiện có 231 khoá quyền, trong đó 223 khoá đang hiện ở bộ chọn quyền mặc định.
+    details: Membership, vai trò, binding, phạm vi và ngoại lệ ALLOW/DENY; catalog hiện có 223 khoá quyền (41 trang, 10 nhóm), khớp giữa giao diện và máy chủ.
     link: /07-thong-tin-khac/tra-quyen-nhanh
   - icon: ⚙️
     title: Cài đặt & tài khoản

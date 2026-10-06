@@ -6,8 +6,9 @@ permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  account: demo
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: null
 status: published
 ---
 
@@ -34,7 +35,16 @@ Repo hiện không công bố một số điện thoại, email hay endpoint h�
 3. Kiểm vai trò, role binding, scope và override `DENY` ở `/settings/members`.
 4. Đối chiếu key tại [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
 5. Kiểm route có phải đường cũ đã redirect không; ví dụ `/settings/staff` đã chuyển sang `/settings/members`.
-6. Với Network Center, kiểm runtime flag của đúng deployment; có quyền nhưng runtime `off` thì route vẫn không xuất hiện.
+6. Với [Trung tâm mạng](/03-quan-ly-van-hanh/trung-tam-mang/), kiểm thêm chế độ của từng toà (**Đã tắt / Chỉ đọc / Được thực thi**); có quyền thực thi nhưng toà đang **Chỉ đọc** thì nút thao tác vẫn bị khoá.
+
+### Đọc đúng thông báo lỗi trên màn
+
+| Bạn thấy | Nghĩa là | Nên làm |
+|---|---|---|
+| Khung **Chưa tải được <tên khu vực>** kèm nút **Tải lại** | Một truy vấn của riêng khu đó lỗi; phần còn lại của trang vẫn dùng được. | Bấm **Tải lại**; lặp lại nhiều lần thì báo lỗi kèm tên khu vực. |
+| Trang **Chưa mở được trang …** với nút **Về trang chủ** / **Tải lại** | Lỗi hiển thị cả trang. | Tải lại; nếu vẫn lỗi, chụp màn và báo kèm URL. |
+| Trang **Chưa tải được trang …** sau khi có bản cập nhật | Trình duyệt còn giữ bản cũ. | Bấm **Tải lại**. |
+| Thông báo **Chưa xác nhận được kết quả …** sau khi bấm lưu/thu/chi | Hệ thống **không biết chắc** thao tác đã ghi hay chưa (mạng chập chờn, hết thời gian chờ). Nội dung bạn đang nhập được giữ lại. | **Không bấm lại ngay.** Dùng nút **Đọc lại…/Kiểm tra lại** nếu có, hoặc mở danh sách/phiếu để xem đã có bản ghi chưa rồi mới quyết định. |
 
 ### Nếu số tiền không khớp
 
@@ -44,7 +54,7 @@ Repo hiện không công bố một số điện thoại, email hay endpoint h�
 4. Xác định sổ quỹ và người giữ sổ; kiểm có posting `POSTED` hay reversal `REVERSED`.
 5. Đối chiếu Sổ quỹ/Dòng tiền dựa trên posting. **Không chỉ nhìn chữ Đã duyệt.**
 6. Nếu là hoàn tiền hoá đơn, nhớ rằng bước tạo nghĩa vụ hiện tại có thể chỉ tạo `UNAPPROVED/UNPOSTED`, chưa gán sổ và chưa phải tiền đã chi.
-7. Nếu là cọc hoặc tiền thừa, kiểm cảnh báo nguồn dữ liệu: báo cáo cọc và tiền thừa hiện chưa phải nguồn canonical cuối cùng.
+7. Nếu là cọc hoặc tiền thừa, kiểm cảnh báo nguồn dữ liệu: báo cáo **Danh sách tiền cọc** (đọc bảng cọc cũ) và **Tiền thừa** (tính theo chênh lệch hoá đơn) hiện chưa phải nguồn chuẩn cuối cùng — đối chiếu lại ngày 07/10/2026.
 
 ::: danger Không “F5 rồi bấm lại” với giao dịch tiền
 Tải lại trang có thể hữu ích cho lỗi hiển thị, nhưng không phải cách xác định giao dịch đã ghi hay chưa. Trước khi thử lại, phải kiểm id giao dịch, posting, sổ quỹ và lịch sử idempotency/reversal. Nếu chưa xác định được, dừng và báo lỗi.

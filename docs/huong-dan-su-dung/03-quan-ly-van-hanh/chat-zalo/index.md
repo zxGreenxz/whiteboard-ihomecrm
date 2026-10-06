@@ -6,13 +6,17 @@ permissions: [{module: chat_zalo, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Chat Zalo — hội thoại
+
+::: warning Trạng thái hiện hành (07/10/2026)
+Kênh **Chat Zalo** đang **tạm ngưng phát triển** từ 06/10/2026: màn `/chat-zalo` vẫn nằm trong menu **Kênh chat** và vẫn mở được theo quyền, nhưng chưa có tính năng mới hay bản sửa lỗi cho kênh này cho tới khi được mở lại. Việc gửi/nhận tin thật phụ thuộc **tài khoản Zalo đã kết nối** và **tiến trình nền** của công ty bạn — tài liệu này mô tả giao diện, không xác nhận tiến trình nền của từng công ty đang chạy.
+:::
 
 Màn **Chat Zalo** đưa kênh Zalo vào thẳng CRM: bạn nhắn tin 2 chiều với khách trọ, khách tiềm năng (lead) hay môi giới ngay trong web, không phải mở app Zalo riêng. Khi có và chọn một hội thoại, màn hình mở thành **workspace 3 cột** — **danh sách hội thoại** bên trái, **khung chat** ở giữa, **panel thông tin** bên phải — cùng với gửi tin theo **nhãn phân loại** hàng loạt và **thông báo đẩy (Web Push)** mỗi khi có tin mới. Dùng trang này để chăm sóc khách, tư vấn lead và nhắc nhở mà vẫn giữ toàn bộ lịch sử trong hệ thống.
 
@@ -22,40 +26,42 @@ Trang `/chat-zalo` là hệ **Chat Zalo hiện hành** dùng nhóm quyền `chat
 
 ::: info Điều kiện tiên quyết
 - Quyền **Chat Zalo => Xem** (module `chat_zalo`, action `view`) để mở trang `/chat-zalo`. Không có quyền này thì mục **Chat Zalo** bị ẩn khỏi menu nhóm **Kênh chat**.
-- Quyền **Gửi** (`send`) để nhắn tin, thả cảm xúc, thu hồi và gửi hàng loạt; **Quản lý mẫu tin** (`manage_templates`) để thêm/sửa/xoá thư viện mẫu; **Quản lý tự động hoá** (`manage_automation`) để bật/tắt hai công tắc tự động hoá.
+- Quyền **Gửi / soạn tin nhắn** (`send`) để nhắn tin, thả cảm xúc, thu hồi và gửi hàng loạt; **Quản lý mẫu tin / ZNS** (`manage_templates`) để thêm/sửa/xoá thư viện mẫu; **Bật/tắt luồng tự động hoá** (`manage_automation`) để bật/tắt hai công tắc tự động hoá. (Tên quyền theo trang [Phân quyền](/05-cai-dat/phan-quyen/), nhóm **Kênh chat**.)
 - Một **tài khoản Zalo đã kết nối** và tiến trình nền đang chạy — đây là thứ thực sự gửi/nhận tin với Zalo. Chưa kết nối thì danh sách trống, gửi tin sẽ nằm chờ chứ không đi.
 - Nên dùng một **tài khoản Zalo phụ riêng** cho việc kết nối (không dùng nick chính), vì đây là kênh Zalo cá nhân — mở cùng nick đó ở nơi khác có thể làm rớt phần nhận tin. Kênh **Zalo OA / ZNS** được chừa sẵn cho giai đoạn sau, hiện chưa dùng.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Mở **Kênh chat** => **Chat Zalo**. Khi đã chọn một hội thoại, workspace có thể mở đủ 3 cột: **danh sách hội thoại** (bên trái), **khung chat** (giữa) và **panel thông tin** (phải). Snapshot production ngày 13/08/2026 của `demo.chunha` không có hội thoại, nên ảnh chỉ thể hiện danh sách/empty state và vùng chọn hội thoại; **panel thông tin chưa xuất hiện**. Trên điện thoại, các vùng chuyển thành từng màn thay vì đứng cạnh nhau.
+**Bước 1**: Mở **Kênh chat** => **Chat Zalo**. Cột trái gồm ô **chọn tài khoản** ("Đang xem N/M tài khoản"), tiêu đề **Hội thoại** kèm số đếm, hai nút **Chia sẻ / Gửi hàng loạt** (biểu tượng loa) và **Soạn tin mới theo SĐT**, ô **Tìm theo tên, SĐT, mã phòng…**, các chip lọc và dòng **Tự động hoá** ở chân cột. Khi đã chọn một hội thoại, workspace mở đủ 3 cột: **danh sách hội thoại** (trái), **khung chat** (giữa) và **panel thông tin** (phải). Ảnh chụp ngày 07/10/2026 của `demo.chunha`: **chưa kết nối tài khoản Zalo nào** ("Đang xem 0/0 tài khoản"), danh sách báo "Không có hội thoại phù hợp" và vùng giữa ghi "Chưa có hội thoại — kết nối Zalo để bắt đầu"; panel thông tin chưa xuất hiện. Trên điện thoại, các vùng chuyển thành từng màn thay vì đứng cạnh nhau.
 
-![Chat Zalo DEMO ở trạng thái chưa có hội thoại nên panel thông tin chưa xuất hiện](./images/buoc-01-man-hinh.webp)
+![Chat Zalo DEMO chưa kết nối tài khoản: ô Đang xem 0/0 tài khoản, danh sách Hội thoại 0, các chip lọc và dòng Tự động hoá 0 luồng bật](./images/buoc-01-man-hinh.webp)
 
-**Bước 2**: Kết nối một tài khoản Zalo. Ở đầu danh sách hội thoại có ô **chọn tài khoản**; bấm **Kết nối Zalo cá nhân**. Một hộp thoại hiện **mã QR** — mở app Zalo trên điện thoại (tài khoản phụ), vào quét mã. Kết nối xong, trạng thái tài khoản chuyển sang **đã kết nối** và hệ thống bắt đầu **đồng bộ danh bạ, nhóm và các tin gần đây** vào danh sách hội thoại. Nếu mã QR hết hạn, bấm kết nối lại để lấy mã mới. Cùng ô này còn có thao tác **kết nối lại** / **ngắt kết nối** cho từng tài khoản.
+**Bước 2**: Kết nối một tài khoản Zalo. Bấm ô **chọn tài khoản** ở đầu cột trái để mở khung **Tài khoản hiển thị**, rồi bấm **Kết nối Zalo cá nhân**. Một hộp thoại hiện **mã QR** — mở app Zalo trên điện thoại (tài khoản phụ), vào quét mã. Kết nối xong, hộp thoại tự đóng, trạng thái tài khoản chuyển sang **Đang kết nối** và hệ thống bắt đầu **đồng bộ danh bạ, nhóm và các tin gần đây** vào danh sách hội thoại. Nếu mã QR hết hạn, bấm kết nối lại để lấy mã mới.
+
+![Khung Tài khoản hiển thị mở từ ô chọn tài khoản, với liên kết Chọn tất cả và nút Kết nối Zalo cá nhân](./images/buoc-02-chon-tai-khoan.webp)
+
+Khi đã có tài khoản, mỗi dòng trong khung **Tài khoản hiển thị** có chấm trạng thái (**Đang kết nối / Chưa kết nối / Lỗi kết nối**) và các nút **Chỉ xem tài khoản này**, **Đăng nhập lại**, **Ngắt kết nối**; **Chọn tất cả** để xem hội thoại của mọi tài khoản cùng lúc.
 
 ::: warning Đây là kênh Zalo cá nhân — dùng nick phụ
 Kết nối chạy qua Zalo cá nhân nên có rủi ro bị Zalo hạn chế nếu gửi quá nhiều như spam. Hãy dùng **một tài khoản Zalo phụ dành riêng**, đừng dùng nick cá nhân chính. Mỗi tài khoản chỉ nên có **một nơi nhận tin** — nếu bạn đăng nhập cùng nick đó trên Zalo Web ở máy khác, phần nhận tin của CRM có thể bị đá rớt (hệ thống sẽ tự đăng nhập lại từ phiên đã lưu).
 :::
 
-**Bước 3**: Tìm và mở hội thoại. Danh sách sắp theo tin mới nhất. Gõ vào **ô tìm kiếm** để lọc theo **tên**, **số điện thoại**, hoặc **mã phòng**; dùng các chip **Tất cả · Chưa đọc · Khách trọ · Lead** để thu hẹp, hoặc bấm **bộ lọc nhãn** để chỉ xem hội thoại thuộc một **nhãn phân loại**. Bấm vào một hội thoại để mở **khung chat** — hệ thống tự **đánh dấu đã đọc** (số chưa đọc về 0).
+**Bước 3**: Tìm và mở hội thoại. Danh sách sắp theo tin mới nhất. Gõ vào ô **Tìm theo tên, SĐT, mã phòng…** để lọc; dùng các chip **Tất cả · Chưa đọc · Khách trọ · Lead · Danh bạ** để thu hẹp (**Danh bạ** là những người đã đồng bộ từ danh bạ Zalo nhưng chưa từng nhắn tin), hoặc bấm **bộ lọc nhãn** để chỉ xem hội thoại thuộc một **nhãn phân loại**. Bấm vào một hội thoại để mở **khung chat** — hệ thống tự **đánh dấu đã đọc** (số chưa đọc về 0). Nhấp chuột phải vào một dòng hội thoại để **Ghim hội thoại**, **Tắt thông báo**, **Đánh dấu chưa đọc** hoặc **Gắn hồ sơ CRM…** (tìm khách hàng theo tên/SĐT để nối hội thoại với hồ sơ khách).
 
-**Bước 4**: Nhắn tin. Ở ô soạn dưới khung chat, gõ nội dung rồi nhấn **Enter** để gửi. Bong bóng tin của bạn hiện lên ngay (nếu gửi lỗi sẽ tự thu lại), và có dấu tick chuyển từ **đã gửi** sang **đã xem** khi đối phương đọc. Bấm **mẫu tin** để chèn nhanh một câu soạn sẵn vào ô. Muốn trả lời trích dẫn một tin cụ thể, dùng thao tác **trả lời** trên tin đó.
+Muốn nhắn cho một người chưa có trong danh sách, bấm **Soạn tin mới theo SĐT**: chọn **Gửi từ tài khoản**, nhập **Số điện thoại** (10 số, bắt đầu bằng 0); nếu đã có hội thoại với số đó, hệ thống gợi ý mở lại thay vì tạo mới.
 
-Nếu có quyền `chat_zalo.manage_templates`, bấm biểu tượng **Quản lý mẫu tin** trong thư viện mẫu để mở hộp thoại thêm, sửa, bật/tắt hoặc xoá mẫu dùng chung cho công ty. Nội dung mẫu được chèn vào ô soạn để bạn kiểm tra trước khi gửi.
+**Bước 4**: Nhắn tin. Ở ô soạn dưới khung chat ("Nhập tin nhắn… gõ / để chèn mẫu, Shift+Enter xuống dòng"), gõ nội dung rồi nhấn **Enter** để gửi (**Shift+Enter** để xuống dòng). Bong bóng tin của bạn hiện lên ngay, và có dấu tick chuyển từ **đã gửi** sang **đã xem** khi đối phương đọc. Hàng nút dưới ô soạn gồm **biểu tượng cảm xúc**, **Gửi ảnh**, **Đính kèm tệp**, **Ghi âm**, **sticker** và **mẫu tin**; bạn cũng có thể kéo thả tệp vào khung chat. Gõ `/` ở đầu ô soạn (hoặc bấm nút **mẫu tin**) để chèn nhanh một câu soạn sẵn. Muốn trả lời trích dẫn một tin cụ thể, dùng thao tác **Trả lời** trên tin đó.
 
-::: tip Gửi ảnh/file từ web đang được hoàn thiện
-Bốn nút **biểu tượng cảm xúc / gửi ảnh / đính kèm / ghi âm** cạnh ô soạn hiện là chỗ dành sẵn — **gửi media từ web chưa bật**. Trước mắt bạn gửi **văn bản** và **trả lời (reply)**; còn ảnh/video từ phía khách gửi tới vẫn hiển thị và xem được bình thường.
-:::
+Nếu có quyền `chat_zalo.manage_templates`, bấm biểu tượng **Quản lý mẫu tin** trong **Thư viện mẫu tin** để mở hộp thoại thêm, sửa, bật/tắt hoặc xoá mẫu dùng chung cho công ty. Nội dung mẫu được chèn vào ô soạn để bạn kiểm tra trước khi gửi.
 
-**Bước 5**: Thao tác trên từng tin. Trỏ vào một bong bóng để hiện menu: **thả cảm xúc** (emoji), **thu hồi** (chỉ với tin **do bạn gửi đi**), và **Chia sẻ** (chuyển nội dung tin sang hộp thoại gửi hàng loạt). Với hội thoại **nhóm**, đầu khung chat có nút **Tải thêm tin cũ** để kéo về lịch sử cũ hơn.
+**Bước 5**: Thao tác trên từng tin. Trỏ vào một bong bóng để hiện thanh thao tác: **thả cảm xúc**, **Trả lời**, **Chia sẻ tin này** (đưa nội dung tin sang hộp thoại gửi hàng loạt), **Thu hồi (cả hai phía)** (chỉ với tin **do bạn gửi đi**) và **Xoá ở phía bạn**. Biểu tượng **Tìm trong hội thoại** ở đầu khung chat giúp tìm chữ trong hội thoại đang mở. Với hội thoại **nhóm**, đầu khung chat có nút **Tải thêm tin cũ** để kéo về lịch sử cũ hơn.
 
 ::: warning Thu hồi và tải tin cũ chạy nền, chờ vài giây
 **Thu hồi** chỉ áp dụng cho tin bạn đã gửi đi và **không lấy lại được** sau khi đối phương đã đọc — cân nhắc trước khi bấm. Cả **thu hồi**, **thả cảm xúc** và **tải thêm tin cũ** đều được đẩy xuống tiến trình nền xử lý, nên có thể mất vài giây mới thấy kết quả cập nhật trong khung chat.
 :::
 
-**Bước 6**: Gửi tin hàng loạt (broadcast). Bấm nút **loa** ở đầu danh sách để mở hộp thoại gửi hàng loạt: lọc người nhận theo **nhãn phân loại** + **tìm kiếm**, dùng **Chọn tất cả** (chỉ chọn trong tập đang lọc), soạn nội dung rồi gửi. Hệ thống báo **đã gửi tới N hội thoại**; tiến trình nền gửi **tuần tự, có giãn nhịp** để tránh bị Zalo coi là spam.
+**Bước 6**: Gửi tin hàng loạt (broadcast). Bấm nút **loa** (**Chia sẻ / Gửi hàng loạt**) ở đầu danh sách để mở hộp thoại cùng tên: lọc người nhận theo **Phân loại** (nhãn) + ô **Tìm hội thoại…**, dùng **Chọn tất cả** (chỉ chọn trong tập đang lọc), soạn nội dung rồi bấm **Gửi tới N**. Hệ thống báo **"Đã xếp N/M hội thoại vào hàng đợi gửi"** — nếu N nhỏ hơn M, thông báo cảnh báo số hội thoại chưa được xếp hàng (đừng gửi lại toàn bộ danh sách). Tiến trình nền gửi **tuần tự, có giãn nhịp** để tránh bị Zalo coi là spam. Chi tiết xem [Chat Zalo — mẫu tin & tự động hoá](/03-quan-ly-van-hanh/zalo-mau-tin/).
 
 ::: warning Gửi hàng loạt khó thu hồi
 Một lần broadcast gửi đi cho **nhiều người cùng lúc** và **không có nút hoàn tác cả lô**. Hãy kiểm tra kỹ tập người nhận (đúng nhãn, đã bỏ những hội thoại không phù hợp) và nội dung trước khi bấm gửi.
@@ -124,15 +130,17 @@ Mục **Nhật ký** ghi mọi lượt máy chạy, **kể cả lượt quyết 
 
 | Nút / Bộ lọc | Công dụng |
 | --- | --- |
-| Ô **chọn tài khoản** (đầu danh sách) | Xem **nhiều tài khoản Zalo cùng lúc** (bật/tắt từng nick hoặc xem tất cả); kèm nút **Kết nối Zalo cá nhân**, **kết nối lại**, **ngắt kết nối**. |
-| **Ô tìm kiếm** | Lọc hội thoại theo tên, số điện thoại hoặc mã phòng (chạy trên danh sách đã tải). |
-| Chip **Tất cả / Chưa đọc / Khách trọ / Lead** | Lọc nhanh; **Chưa đọc** chỉ hiện hội thoại còn tin chưa đọc. |
+| Ô **chọn tài khoản** (đầu danh sách) | Mở khung **Tài khoản hiển thị**: xem **nhiều tài khoản Zalo cùng lúc** (**Chọn tất cả** hoặc **Chỉ xem tài khoản này**); kèm nút **Kết nối Zalo cá nhân**, **Đăng nhập lại**, **Ngắt kết nối**. |
+| **Ô tìm kiếm** | Lọc hội thoại theo tên, số điện thoại hoặc mã phòng (chạy trên danh sách đã tải; hiển thị tối đa 300 dòng, gõ tìm để thu hẹp). |
+| Chip **Tất cả / Chưa đọc / Khách trọ / Lead / Danh bạ** | Lọc nhanh; **Chưa đọc** gồm cả hội thoại bạn tự đánh dấu chưa đọc; **Khách trọ / Lead** chỉ hiện hội thoại đã gắn hồ sơ CRM; **Danh bạ** là người trong danh bạ Zalo chưa từng nhắn tin. |
 | **Bộ lọc nhãn** | Chỉ hiện hội thoại thuộc một **nhãn phân loại** (nhãn đồng bộ từ Zalo). |
-| Nút **loa** (broadcast) | Gửi cùng một tin tới nhiều hội thoại theo nhãn + tìm kiếm. |
-| **Mẫu tin** (trong ô soạn) | Chèn nhanh một câu soạn sẵn vào nội dung. |
-| Thao tác trên tin | **Thả cảm xúc**, **Thu hồi** (tin mình gửi), **Chia sẻ / chuyển tiếp** sang hộp thoại gửi hàng loạt. |
+| Nút **loa** (**Chia sẻ / Gửi hàng loạt**) | Gửi cùng một tin tới nhiều hội thoại theo nhãn + tìm kiếm. |
+| Nút **Soạn tin mới theo SĐT** | Bắt đầu chat với một số điện thoại từ tài khoản Zalo đang kết nối. |
+| Menu chuột phải trên hội thoại | **Ghim hội thoại**, **Tắt thông báo**, **Đánh dấu chưa đọc**, **Gắn hồ sơ CRM…** |
+| Hàng nút dưới ô soạn | Biểu tượng cảm xúc, **Gửi ảnh**, **Đính kèm tệp**, **Ghi âm**, sticker và **mẫu tin** (hoặc gõ `/`). |
+| Thao tác trên tin | **Thả cảm xúc**, **Trả lời**, **Chia sẻ tin này**, **Thu hồi (cả hai phía)** (tin mình gửi), **Xoá ở phía bạn**. |
 | **Tải thêm tin cũ** | Kéo về lịch sử cũ hơn — chỉ có với hội thoại **nhóm**. |
-| Tab **Thông tin / Tự động hoá** (panel phải) | Xem hồ sơ liên hệ/nhóm; bật/tắt hai công tắc tự động hoá. |
+| Tab **Thông tin / Tự động hoá** (panel phải) | Xem hồ sơ liên hệ/nhóm, bật **Sale / Môi giới**; bật/tắt hai công tắc tự động hoá, **Dừng khẩn cấp**, **Cài đặt chi tiết**. |
 
 ## Tình huống & lỗi thường gặp
 
@@ -140,7 +148,8 @@ Mục **Nhật ký** ghi mọi lượt máy chạy, **kể cả lượt quyết 
 | --- | --- |
 | Vào trang nhưng **danh sách hội thoại trống** | Chưa có **tài khoản Zalo nào được kết nối** (hoặc tiến trình nền chưa chạy). Bấm **Kết nối Zalo cá nhân** và quét QR; sau khi kết nối, danh bạ và tin gần đây sẽ được đồng bộ vào danh sách. |
 | Gõ tin, bấm gửi nhưng **tin không đi** (bong bóng đứng ở "đang gửi") | Tài khoản Zalo đang **mất kết nối** hoặc tiến trình nền dừng. Kiểm tra trạng thái tài khoản ở ô chọn tài khoản, bấm **kết nối lại**; tin đang chờ sẽ được gửi khi kết nối trở lại. |
-| Bấm chip **Khách trọ** / **Lead** mà **không thấy hội thoại nào** | Hai bộ lọc này lọc theo phân loại hồ sơ CRM, nhưng việc **gắn hội thoại với hồ sơ khách/lead chưa được bật** — nên hiện chưa khớp gì. Dùng **bộ lọc nhãn** hoặc **ô tìm kiếm** để lọc thay thế. |
+| Bấm chip **Khách trọ** / **Lead** mà **không thấy hội thoại nào** | Hai chip này chỉ hiện hội thoại **đã gắn hồ sơ CRM**. Nhấp chuột phải vào hội thoại → **Gắn hồ sơ CRM…** → tìm khách hàng theo tên/SĐT để gắn. Hộp thoại này hiện chỉ tìm **khách hàng**, nên chip **Lead** thường vẫn trống. |
+| Dòng chân danh sách luôn ghi "Đã chạy 0 lượt hôm nay" | Con số này ở chân cột trái **chưa đếm lượt chạy thật**. Muốn biết máy có chạy không, mở **Nhật ký** trong tab Tự động hoá. |
 | Không thấy nút **thu hồi** trên một tin | Thu hồi **chỉ áp dụng cho tin do bạn gửi đi**. Tin của khách gửi tới không thu hồi được. |
 | Không có nút **Tải thêm tin cũ** ở một hội thoại 1–1 | Tính năng tải lịch sử cũ hiện **chỉ hỗ trợ hội thoại nhóm**. Với chat 1–1, hệ thống giữ các tin gần đây đã đồng bộ. |
 | Bật công tắc tự động hoá mà **không thấy tin tự gửi** | Mở **Nhật ký** trong tab Tự động hoá — nó ghi cả những lượt máy **cố ý không gửi** kèm lý do. Ba lý do hay gặp: chưa chọn người nhận nào; danh sách phòng không đổi so lần trước (máy bỏ lượt); ngoài khung giờ cho phép. Nhật ký hoàn toàn trống nhiều ngày = tài khoản Zalo đã rớt phiên, cần kết nối lại. |
@@ -152,13 +161,13 @@ Mục **Nhật ký** ghi mọi lượt máy chạy, **kể cả lượt quyết 
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/chat-zalo" app-label="Mở màn Chat Zalo" fixtures="Snapshot 13/08/2026: 0 tài khoản, 0 hội thoại." view-only>
+<SandboxTry account="demo.chunha" app-path="/chat-zalo" app-label="Mở màn Chat Zalo" fixtures="Ảnh chụp 07/10/2026: 0 tài khoản Zalo, 0 hội thoại." view-only>
 
-Đăng nhập và mở màn **Chat Zalo**. Đây là bài **chỉ xem giao diện** — snapshot DEMO chưa có hội thoại nên danh sách trống. Bạn nên nhìn thấy:
+Đăng nhập và mở màn **Chat Zalo**. Đây là bài **chỉ xem giao diện** — DEMO chưa kết nối tài khoản Zalo nên danh sách trống. Bạn nên nhìn thấy:
 
-- Danh sách hội thoại/empty state và vùng yêu cầu chọn hội thoại. Panel thông tin bên phải chỉ xuất hiện sau khi có và chọn một hội thoại, nên ảnh hiện tại chưa thể hiện đủ ba vùng.
-- Ô **chọn tài khoản** với nút **Kết nối Zalo cá nhân**, cùng **ô tìm kiếm**, các chip lọc **Tất cả · Chưa đọc · Khách trọ · Lead** và **bộ lọc nhãn**.
-- Nút **loa** (gửi hàng loạt) ở đầu danh sách và panel thông tin bên phải với hai tab **Thông tin** / **Tự động hoá**.
+- Ô **chọn tài khoản** ghi "Đang xem 0/0 tài khoản"; bấm vào để thấy khung **Tài khoản hiển thị** với nút **Kết nối Zalo cá nhân** — **không bấm** nút này.
+- Tiêu đề **Hội thoại**, nút **loa** (gửi hàng loạt), nút **Soạn tin mới theo SĐT**, **ô tìm kiếm**, các chip lọc và dòng **Tự động hoá** ở chân cột.
+- Vùng giữa ghi "Chưa có hội thoại — kết nối Zalo để bắt đầu". Panel thông tin bên phải (tab **Thông tin** / **Tự động hoá**) chỉ xuất hiện sau khi có và chọn một hội thoại.
 
 Mục tiêu: làm quen chỗ đứng của từng khu vực trên màn hình để khi kết nối tài khoản Zalo thật, bạn biết ngay tìm và mở hội thoại, soạn tin và gửi hàng loạt ở đâu.
 

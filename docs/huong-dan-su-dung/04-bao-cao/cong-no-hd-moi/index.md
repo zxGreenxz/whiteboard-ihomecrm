@@ -10,25 +10,26 @@ permissions: [{module: thu_tien, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
 captured:
-  date: "2026-07-20"
-  account: production
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
+  account: demo.chunha
 status: published
 ---
 
 # Công nợ hợp đồng mới (đã chuyển)
 
-`/reports/finance/new-contract-debt` hiện là một `Navigate` redirect thẳng tới `/thu-tien`. Không có component, truy vấn, bảng số liệu hay file xuất riêng cho báo cáo cũ.
+`/reports/finance/new-contract-debt` hiện chỉ là một lệnh chuyển hướng thẳng tới `/thu-tien`. Không còn màn hình, bảng số liệu hay file xuất riêng cho báo cáo cũ. Đã kiểm ngày 07/10/2026 trên production: mở đường dẫn cũ sẽ vào thẳng màn **Thu tiền**.
 
 ## Nơi làm việc hiện hành
 
-Route đích `/thu-tien` cần quyền `thu_tien.view`. Các hành động tại đó có quyền riêng:
+Màn đích `/thu-tien` cần quyền **Vào trang Thu tiền** (`thu_tien.view`). Các hành động tại đó có quyền riêng:
 
-- Ghi nhận thu: `thu_tien.collect`.
-- Xem báo cáo thu: `thu_tien.report`.
-- Hoàn tác: `thu_tien.undo`.
+- Thu đủ / thu một phần: `thu_tien.collect`.
+- Xem báo cáo thu tiền: `thu_tien.report`.
+- Hoàn tác phiếu thu: `thu_tien.undo`.
 
-Dùng [Thu tiền tại phòng](/03-quan-ly-van-hanh/thu-tien-mobile/) để lọc theo tòa/kỳ và xem hóa đơn còn phải thu. Khi cần chi tiết từng hóa đơn, mở [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/).
+Dùng [Thu tiền tại phòng](/03-quan-ly-van-hanh/thu-tien-mobile/) để lọc theo toà/kỳ và xem hoá đơn còn phải thu. Khi cần chi tiết từng hoá đơn, mở [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/).
 
-::: warning Không đối chiếu theo tài liệu/report cũ
-Bookmark cũ vẫn hoạt động nhờ redirect, nhưng không nên mô tả các cột, KPI hoặc nguồn dữ liệu của báo cáo đã bị gỡ như thể chúng còn tồn tại.
+::: warning Không đối chiếu theo tài liệu/báo cáo cũ
+Bookmark cũ vẫn hoạt động nhờ chuyển hướng, nhưng không nên mô tả các cột, chỉ số hoặc nguồn dữ liệu của báo cáo đã gỡ như thể chúng còn tồn tại.
 :::

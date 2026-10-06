@@ -1,117 +1,120 @@
 ---
 title: "Trang chi tiết hợp đồng"
-description: "Đọc toàn cảnh một hợp đồng qua 5 tab, in hợp đồng, và mở các thao tác vòng đời (gia hạn, chuyển phòng, thanh lý) ngay từ đầu trang."
+description: "Đọc toàn cảnh một hợp đồng trên một trang: thông tin, dịch vụ, lịch sử, khách thuê, tài chính; mở các thao tác vòng đời (cập nhật, in, gia hạn, chuyển phòng, nhượng, báo trả phòng, thanh lý) ngay từ thanh đầu trang."
 routes: ["/contracts/:id"]
 permissions: [{module: contracts, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-08-13"
-  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  date: "2026-10-07"
+  commit: "81c5a3cdf03740321061db919a40991c772bd4b4"
   account: demo.chunha
 status: published
 ---
 
 # Trang chi tiết hợp đồng
 
-Trang chi tiết là nơi bạn xem toàn cảnh một hợp đồng thuê: thông tin hợp đồng, khách đại diện, phòng, tình hình tiền cọc, hoá đơn và lịch sử biến động — tất cả gom trong 5 tab. Từ đầu trang, bạn cũng mở được mọi thao tác trong vòng đời hợp đồng (cập nhật, in, gia hạn, chuyển phòng, nhượng, đăng ký chuyển đi, thanh lý). Mỗi khi cần "soi kỹ một hợp đồng" hoặc thực hiện một nghiệp vụ trên nó, bạn vào đây.
+Trang chi tiết là nơi bạn xem toàn cảnh một hợp đồng thuê **trên một trang duy nhất** (không còn chia tab): thông tin hợp đồng và dịch vụ, lịch sử biến động, khách thuê, và bảng tài chính gom tiền cọc với hoá đơn. Thanh đầu trang màu tối luôn dính trên cùng, chứa mọi thao tác vòng đời (cập nhật, in, QR, gia hạn, chuyển phòng, nhượng, báo trả phòng, thanh lý). Mỗi khi cần "soi kỹ một hợp đồng" hoặc làm một nghiệp vụ trên nó, bạn vào đây.
 
 ::: info Điều kiện tiên quyết
 - Quyền **Hợp đồng => Xem** (module `contracts`, action `view`) để mở trang chi tiết.
 - Là nhân viên, bạn chỉ xem được hợp đồng thuộc các toà được gán phạm vi cho mình.
-- Mỗi thao tác dùng quyền riêng: **Gia hạn** cần `contracts.renew`, **Chuyển phòng** cần `contracts.transfer`, **Thanh lý** cần `contracts.terminate`, **In** cần `contracts.print`; **Cập nhật** mới dùng `contracts.edit`. Nút có thể vẫn hiển thị trước khi server kiểm tra quyền/phạm vi, nên thấy nút không có nghĩa thao tác sẽ được chấp nhận.
-- Đã có sẵn hợp đồng để mở. Nếu chưa, tạo hợp đồng ở trang [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/).
+- Mỗi nút cần quyền riêng và chỉ hiện khi bạn có quyền: **Cập nhật** cần `contracts.edit`, **In hợp đồng** cần `contracts.print`, **Gia hạn** cần `contracts.renew`, **Chuyển phòng** / **Nhượng HĐ** cần `contracts.transfer`, **Đăng ký chuyển đi** / **Thanh lý** cần `contracts.terminate`, **Xoá** (hợp đồng nháp) cần `contracts.delete`.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Từ menu **Khách hàng => Hợp đồng**, ấn chọn một dòng hợp đồng trong danh sách để mở trang chi tiết. Đầu trang hiện tên hợp đồng (ví dụ **HD-2026-00001**), một hàng nút thao tác, rồi 5 tab bên dưới.
+**Bước 1**: Mở trang chi tiết. Đường dẫn đầy đủ là `/contracts/<mã>` — bạn đến từ liên kết tên khách ở màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) (tab **Đủ / Thiếu cọc**), từ hồ sơ [khách hàng](/03-quan-ly-van-hanh/cu-dan/), từ thông báo, hoặc dán link. Ở màn danh sách [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/), nút **Xem chi tiết** mở cùng nội dung này trong một cửa sổ.
 
-![Trang chi tiết hợp đồng: thông tin hợp đồng, tiền cọc, các tab và hàng nút thao tác](./images/buoc-01-chi-tiet.webp)
+**Bước 2**: Đọc thanh đầu trang:
 
-**Bước 2**: Ở tab **Thông tin chung** (mở sẵn), đọc thẻ **Thông tin hợp đồng**: số hợp đồng, ngày ký, ngày bắt đầu / kết thúc, giá thuê, chu kỳ thanh toán, thanh tiến độ và ghi chú. Cạnh tên trạng thái (**Đang hoạt động**) sẽ có chip xanh dương **Đã gia hạn** nếu hợp đồng từng được gia hạn.
+- Tầng trên: **Toà · Phòng**, chip trạng thái (ví dụ **Đang hoạt động**), chip đỏ **Còn công nợ …** nếu hợp đồng còn nợ hoá đơn; dòng phụ ghi mã hợp đồng · khách đại diện · số điện thoại. Bên phải là hàng nút **Cập nhật**, **In hợp đồng**, **QR hợp đồng**, **Gia hạn**, **Chuyển phòng**, **Nhượng HĐ**, **Đăng ký chuyển đi**, **Thanh lý** (đỏ) và nút **Đóng** (✕) quay về danh sách.
+- Tầng dưới: 4 ô **Phòng · Toà nhà**, **Giá thuê**, **Hiệu lực** (từ ngày – đến ngày) và **Thời hạn** (còn bao nhiêu ngày, đã thuê bao nhiêu ngày, thanh tiến độ % kèm ngày hết hạn).
 
-**Bước 3**: Xem thẻ **Tiền cọc** (bên phải): **Tổng tiền cọc**, **Đã thu**, **Còn lại** và danh sách phiếu thu cọc nếu có. Con số **Đã thu** được cộng tự động từ các phiếu thu cọc — bạn không gõ tay. Ảnh production ngày 13/08/2026 cho thấy `HD-2026-00001` có nghĩa vụ cọc **4.000.000đ**, đã thu **0đ**, còn thiếu **4.000.000đ**; ba con số này không được đọc thay thế cho nhau.
+![Trang chi tiết HD-2026-00008 (DEMO Toà D · Phòng D-03): thanh đầu trang với chip Đang hoạt động, Còn công nợ 500.000, hàng nút thao tác, cảnh báo Còn thiếu 3.000.000 tiền cọc và khối Hợp đồng & Dịch vụ](./images/buoc-01-chi-tiet.webp)
 
-Badge hoặc trường `deposit_paid` có thể còn giá trị cũ nếu phiếu cọc cuối cùng bị huỷ/xoá. Khi số tiền có ảnh hưởng quyết định hoàn/thu, đối chiếu danh sách phiếu thực tế và trạng thái duyệt/posting, không chỉ đọc badge tổng hợp.
+**Bước 3**: Đọc dải cảnh báo ngay dưới thanh đầu (chỉ hiện khi có): **Còn thiếu … tiền cọc** (kèm lý do cho nợ nếu có) hoặc **Còn … cọc — thu trong hoá đơn đầu**; **Khách dự kiến trả phòng / Đến ngày / Đã quá ngày dự kiến trả phòng** kèm nút **Sửa / hủy báo trả phòng**; **Phiếu thanh lý chờ xử lý** (ví dụ phiếu chi "Trả khách thanh lý" chưa chọn sổ quỹ). Nút **Tạo phiếu hoa hồng** hiện khi hợp đồng còn cần lập phiếu hoa hồng môi giới / thưởng Sale.
 
-**Bước 4**: Đọc thẻ **Tóm tắt hoá đơn** (tổng hoá đơn, tổng phát sinh, đã thanh toán, công nợ) và thẻ **Thông tin khách hàng** (khách đại diện đứng đầu, phương tiện, ghi chú). Kéo xuống để thấy thẻ **Phòng** (vị trí, chỉ số điện/nước đầu) và thẻ **Thời gian**.
+**Bước 4**: Đọc khối **Hợp đồng & Dịch vụ**:
 
-**Bước 5**: Lần lượt ấn qua các tab còn lại để xem chi tiết:
-- **Dịch vụ**: danh sách dịch vụ đăng ký trong hợp đồng cùng đơn giá riêng.
-- **Hoá đơn**: bảng hoá đơn của hợp đồng (kỳ, hạn, tổng / đã thu / còn lại, trạng thái).
-- **Thanh toán**: gom các lần thu tiền từ mọi hoá đơn của hợp đồng.
-- **Lịch sử**: dòng thời gian gia hạn / chuyển phòng / thanh lý kèm nhãn trạng thái. Đây không phải audit trail tuyệt đối: một số hợp đồng đã thanh lý có thể thiếu bản ghi thanh lý do lỗi đã biết.
+- Cột **Hợp đồng**: Số hợp đồng, Ngày ký, Bắt đầu, Kết thúc, Giá thuê, Chu kỳ, Tiền cọc, Ghi chú.
+- Cột **Dịch vụ**: **Chỉ số đầu** điện/nước (hoặc "chưa ghi") và các dịch vụ đang áp với đúng nguồn giá (theo toà hay riêng hợp đồng).
+- **Lịch sử hợp đồng**: mỗi sự kiện một dòng có nhãn — **TẠO MỚI**, **GIA HẠN**, **CHUYỂN PHÒNG**, **NHƯỢNG HĐ**, **THANH LÝ** — kèm ngày và tóm tắt (ví dụ mốc hiệu lực mới).
 
-**Bước 6**: Muốn in hợp đồng, ấn **In hợp đồng** ở đầu trang. Hệ thống dựng bản in theo **mẫu biểu** đã cấu hình, có chỗ ký của chủ nhà và khách thuê — bạn xem trước rồi in hoặc lưu PDF.
+**Bước 5**: Kéo xuống khối **Khách thuê** (số người, khách **ĐẠI DIỆN**, số điện thoại, giấy tờ, phương tiện). Biểu tượng mắt mở chi tiết khách; biểu tượng giấy tờ mở hộp ảnh CCCD kèm thông tin trên thẻ.
 
-**Bước 7**: Cần sửa thông tin, ấn **Cập nhật** để mở lại form hợp đồng, chỉnh xong ấn **Lưu**. Nút **Cập nhật** ẩn khi hợp đồng đã **Thanh lý**. Với hợp đồng còn ở trạng thái **Nháp** (chưa kích hoạt), bạn thấy thêm nút **Xoá**.
+**Bước 6**: Đọc khối **Tài chính** — một bảng gom theo nhóm với cột **Khoản mục**, **Kỳ / ngày**, **Số tiền**, **Đã thu**, **Còn nợ**:
 
-::: tip "Đã gia hạn" nhưng vẫn "Đang hoạt động"
-Khi gia hạn, hợp đồng **giữ nguyên trạng thái Đang hoạt động** — hệ thống không tạo trạng thái riêng cho việc gia hạn. Dấu **Đã gia hạn** (chip xanh dương cạnh trạng thái) được suy ra từ lịch sử gia hạn, nên một hợp đồng vừa **Đang hoạt động** vừa mang dấu **Đã gia hạn** là hoàn toàn bình thường. Chi tiết các lần gia hạn nằm ở tab **Lịch sử**.
-:::
+- **Tiền cọc**: dòng **Tiền cọc theo hợp đồng** và các phiếu cọc thực thu (phiếu chưa duyệt không được tính).
+- **Hoá đơn**: từng hoá đơn của hợp đồng (bấm biểu tượng mắt để **Xem chi tiết hoá đơn**) và các lần thanh toán.
+- **Quyết toán** (hợp đồng đã thanh lý): **Cọc tính quyết toán**, **Công nợ cấn trừ**, **Phí phạt + thu thêm**, **Net quyết toán (hồ sơ)** hoặc **Cọc giữ làm doanh thu** (bỏ cọc).
+- Dòng **Tổng cộng**; góc phải có các chip **Nợ hoá đơn …**, **Thiếu cọc …**.
 
-::: tip Tiền cọc là hệ quả của phiếu thu cọc
-Số **Đã thu** ở thẻ Tiền cọc không phải ô bạn tự điền — nó được cộng lại từ các **phiếu thu cọc** gắn với hợp đồng. Khi ký hợp đồng, hệ thống tự tạo phiếu thu cọc vào sổ **"CỌC (giữ hộ khách)"**; phần cọc còn thiếu sẽ được gộp thành một dòng trong **hoá đơn tháng đầu**. Vì vậy nếu thấy số cọc chưa khớp, hãy kiểm tra lại phiếu thu cọc ở tab **Thanh toán** hoặc danh sách phiếu trong thẻ Tiền cọc, đừng chỉnh tay con số.
+![Phần dưới trang chi tiết: Lịch sử hợp đồng (TẠO MỚI), Khách thuê (DEMO Khách 08 · ĐẠI DIỆN) và bảng Tài chính với nhóm Tiền cọc, Hoá đơn, Tổng cộng](./images/buoc-02-chi-tiet-cuon.webp)
+
+**Bước 7**: In hợp đồng — ấn **In hợp đồng**, chọn mẫu biểu đã cấu hình, xem trước rồi in hoặc tải tài liệu.
+
+**Bước 8**: Sửa thông tin — ấn **Cập nhật** để mở form **Cập nhật hợp đồng (mã HĐ)**, chỉnh xong ấn **Cập nhật**. Nút **Cập nhật** ẩn khi hợp đồng đã **Thanh lý**. Hợp đồng còn ở trạng thái **Nháp** có thêm nút **Xoá**.
+
+**Bước 9**: Với hợp đồng **đã thanh lý**, đầu trang hiện khối **Hồ sơ trả phòng** với trạng thái **Đã trả phòng · Chờ quyết toán** hoặc **Đã chốt quyết toán**, loại thanh lý ban đầu/hiện tại, **Nội dung thanh lý**; hồ sơ đang chờ có nút **Quyết toán hồ sơ này** (xem [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/)). Hợp đồng đang hiệu lực có liên kết nhượng thì hiện thêm khối liên kết nhượng (xem [Gia hạn, chuyển phòng & nhượng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/)).
+
+::: tip Tiền cọc là hệ quả của phiếu cọc
+Số **Đã thu** của nhóm Tiền cọc không phải ô bạn tự điền — nó được cộng từ các **phiếu cọc** đã duyệt gắn với hợp đồng (phiếu nhập lúc ký, phiếu giữ chỗ được chuyển sang, phiếu bổ sung cọc). Nếu số chưa khớp, kiểm tra từng phiếu và trạng thái duyệt/ghi sổ ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/); đừng chỉnh tay con số. Chỉ phiếu đã ghi sổ (**POSTED**) mới chứng minh tiền đã vào quỹ.
 :::
 
 ::: warning Thao tác vòng đời có thể khó hoàn tác
-Các nút **Gia hạn**, **Chuyển phòng**, **Nhượng HĐ**, **Đăng ký chuyển đi** và nhất là **Thanh lý** thay đổi hợp đồng thật (đổi ngày, đổi phòng, đóng hợp đồng...). Trang chi tiết có thể hiển thị nút dù bạn thiếu action hoặc phạm vi; server sẽ từ chối khi thực thi. Dùng **Đăng ký chuyển đi** từ trang chi tiết để giữ nguyên ghi chú hiện có; thao tác tương tự từ dòng danh sách có lỗi đã biết có thể làm trống ghi chú hợp đồng.
+Các nút **Gia hạn**, **Chuyển phòng**, **Nhượng HĐ**, **Đăng ký chuyển đi** và nhất là **Thanh lý** thay đổi hợp đồng thật (đổi ngày, đổi phòng, đóng hợp đồng, ghi tiền…). Kiểm tra kỹ trước khi xác nhận trong từng hộp thoại.
 :::
 
 ## Các tính năng khác trên màn hình
 
 | Nút / Thành phần | Công dụng |
 | --- | --- |
-| **Quay lại** | Trở về danh sách hợp đồng. |
-| **Cập nhật** | Mở form hợp đồng để sửa thông tin. Ẩn khi hợp đồng đã **Thanh lý**. |
-| **In hợp đồng** | Dựng bản in theo mẫu biểu, có chỗ ký chủ nhà và khách; xem trước rồi in / lưu PDF. |
-| **QR hợp đồng** | Tạo mã QR / link công khai để khách tự tra hoá đơn mới nhất mà không cần đăng nhập. Ẩn khi hợp đồng **Nháp** hoặc **Thanh lý**. |
-| **Gia hạn** | Mở hộp thoại gia hạn (giữ **Đang hoạt động**). Xem [Gia hạn & chuyển phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/). |
-| **Chuyển phòng** | Chuyển hợp đồng sang phòng khác, giữ nguyên hợp đồng. |
-| **Nhượng HĐ** | Đổi khách đại diện của hợp đồng. |
-| **Đăng ký chuyển đi** | Ghi nhận ngày khách dự kiến trả phòng (chưa thanh lý) — bật cảnh báo sắp trống. |
-| **Thanh lý** | Mở hộp thoại thanh lý (rời phòng hoặc bỏ cọc) — kết thúc hợp đồng. Xem [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/). |
-| Tab **Thông tin chung** | Thẻ hợp đồng, khách, phòng, tiền cọc, tóm tắt hoá đơn, thời gian. |
-| Tab **Dịch vụ** | Dịch vụ đăng ký trong hợp đồng + đơn giá riêng. |
-| Tab **Hoá đơn** | Bảng hoá đơn của hợp đồng. |
-| Tab **Thanh toán** | Các lần thu tiền của mọi hoá đơn. |
-| Tab **Lịch sử** | Dòng thời gian gia hạn / chuyển phòng / thanh lý. |
+| **Đóng** (✕) | Trở về danh sách hợp đồng. |
+| **Cập nhật** | Mở form hợp đồng để sửa. Ẩn khi hợp đồng đã **Thanh lý**. |
+| **In hợp đồng** | Chọn mẫu biểu, xem trước rồi in / tải tài liệu. |
+| **QR hợp đồng** | Mã QR / link công khai để khách tự tra hoá đơn mới nhất. Ẩn khi hợp đồng **Nháp** hoặc **Thanh lý**. |
+| **Gia hạn** / **Chuyển phòng** / **Nhượng HĐ** | Xem [Gia hạn, chuyển phòng & nhượng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/). Chỉ hiện khi hợp đồng đang hiệu lực. |
+| **Đăng ký chuyển đi** | Mở hộp **Báo ngày dự kiến trả phòng** (hợp đồng vẫn đang ở đến khi thanh lý). |
+| **Thanh lý** | Ghi nhận trả phòng và quyết toán — xem [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) / [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/). |
+| **Tạo phiếu hoa hồng** | Lập phiếu hoa hồng môi giới / thưởng Sale còn thiếu sau khi ký. |
+| Khối **Hợp đồng & Dịch vụ** | Điều khoản, chỉ số đầu, dịch vụ đang áp, lịch sử hợp đồng. |
+| Khối **Khách thuê** | Danh sách người ở, khách đại diện, giấy tờ, phương tiện. |
+| Khối **Tài chính** | Tiền cọc + hoá đơn (+ quyết toán) với cột Đã thu / Còn nợ. |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Bấm **Gia hạn / Thanh lý...** thì báo lỗi từ chối quyền | Kiểm tra đúng action (`renew`, `transfer`, `terminate`, `print`) và phạm vi toà; quyền `edit` chung không thay thế các action này. |
-| Số **Đã thu** ở thẻ Tiền cọc không khớp | Mở danh sách phiếu và trạng thái duyệt/posting để đối chiếu; trường tổng hợp có thể chưa giảm về 0 nếu phiếu cuối biến mất. Không hoàn/thu theo badge đơn lẻ. |
-| Hợp đồng đã thanh lý nhưng tab **Lịch sử** không có dòng | Đây có thể là lỗi ghi thiếu `contract_terminations`. Đối chiếu trạng thái hợp đồng, phòng, hoá đơn tất toán và phiếu tiền; báo quản trị phục hồi audit trail, không thanh lý lại. |
-| Hợp đồng vừa **Đang hoạt động** vừa có dấu **Đã gia hạn** | Đúng thiết kế: gia hạn không đổi trạng thái, hợp đồng vẫn **Đang hoạt động**. Xem các lần gia hạn ở tab **Lịch sử**. |
-| Không thấy nút **QR hợp đồng** | Nút QR ẩn với hợp đồng **Nháp** và **Thanh lý**. QR chỉ dùng cho hợp đồng đang hiệu lực. |
-| Không thấy nút **Cập nhật** | Hợp đồng đã **Thanh lý** thì không sửa được nữa; trang chỉ còn để xem. |
-| Mở trang báo lỗi / không tìm thấy hợp đồng | Đường dẫn sai hoặc hợp đồng đã bị xoá. Ấn nút quay lại và mở lại từ danh sách [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/). |
-| Thẻ **Thông tin khách hàng** hiện "Hợp đồng chưa có khách hàng nào" | Hợp đồng chưa gắn khách đại diện. Ấn **Cập nhật** để chọn khách đại diện cho hợp đồng. |
+| Không thấy một nút thao tác | Nút chỉ hiện khi bạn có đúng quyền (`edit`, `print`, `renew`, `transfer`, `terminate`, `delete`) và hợp đồng ở trạng thái phù hợp. Hợp đồng đã thanh lý không còn Gia hạn / Chuyển phòng / Thanh lý. |
+| Chip **Chưa xác minh được công nợ** ở đầu trang | Chưa tải được hoá đơn của hợp đồng. Tải lại trang trước khi đọc công nợ. |
+| Dải cảnh báo "Không tải được: …" | Một vài nguồn (phương tiện, tài chính…) chưa tải được; số liệu các mục đó có thể thiếu. Tải lại trang. |
+| Số **Đã thu** ở nhóm Tiền cọc không khớp | Mở từng phiếu cọc và trạng thái duyệt/ghi sổ để đối chiếu; phiếu chưa duyệt không được tính. Không hoàn/thu theo một con số đơn lẻ. |
+| Hợp đồng đã gia hạn nhưng chip vẫn **Đang hoạt động** | Đúng thiết kế: gia hạn giữ hợp đồng hiệu lực, chỉ dời ngày kết thúc. Xem dòng **GIA HẠN** ở **Lịch sử hợp đồng**. |
+| Không thấy nút **QR hợp đồng** | QR ẩn với hợp đồng **Nháp** và **Thanh lý**. |
+| Mở trang báo "ID hợp đồng không hợp lệ" / không tìm thấy | Đường dẫn sai hoặc hợp đồng đã bị xoá. Bấm **Quay lại danh sách** và mở lại từ [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/). |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở danh sách hợp đồng" fixtures="HD-2026-00001 · phòng A-01 · DEMO Khách 01 · cọc yêu cầu 4.000.000đ, đã thu 0đ" view-only>
+<SandboxTry account="demo.chunha" app-path="/deposits" app-label="Mở màn Đặt cọc" fixtures="Snapshot 07/10/2026: HD-2026-00008 · DEMO Toà D · D-03 · DEMO Khách 08 · cọc 3.000.000 đ, đã thu 0 đ · 1 hoá đơn nợ 500.000 đ." view-only>
 
-Làm quen trang chi tiết bằng bản ghi đang hiển thị trong snapshot ngày 13/08/2026:
+Làm quen trang chi tiết bằng một hợp đồng DEMO:
 
-1. Trong danh sách hợp đồng, mở `HD-2026-00001` của phòng **A-01**.
-2. Ở tab **Thông tin chung**, đọc thẻ **Thông tin hợp đồng** và thẻ **Tiền cọc** — để ý trạng thái **Đang hoạt động**, **Tổng cọc 4.000.000đ**, **Đã thu 0đ**, **Còn lại 4.000.000đ**.
-3. Lần lượt ấn qua các tab **Dịch vụ**, **Hoá đơn**, **Thanh toán**, **Lịch sử** để xem hợp đồng có những gì.
-4. Ấn nút **In hợp đồng** ở đầu trang để xem bản in theo mẫu biểu (chỉ xem trước, không cần in ra).
+1. Ở màn **Đặt cọc**, ấn **Sổ cọc đầy đủ** → tab **Đủ / Thiếu cọc**, bấm tên một khách để mở trang chi tiết hợp đồng.
+2. Đọc thanh đầu trang: chip trạng thái, chip **Còn công nợ**, 4 ô Phòng · Giá thuê · Hiệu lực · Thời hạn.
+3. Kéo xuống đọc **Lịch sử hợp đồng**, **Khách thuê** và bảng **Tài chính** — để ý nhóm **Tiền cọc** (theo hợp đồng vs đã thu) tách khỏi nhóm **Hoá đơn**.
+4. Ấn **In hợp đồng** để xem hộp chọn mẫu, rồi đóng — không bấm các nút thao tác khác.
 
-Kết quả mong đợi: bạn quen với bố cục trang chi tiết, đọc được thông tin qua 5 tab và biết mở bản in hợp đồng.
+Kết quả mong đợi: bạn đọc được toàn cảnh hợp đồng trên một trang và biết mỗi nút vòng đời nằm ở đâu.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — danh sách hợp đồng, nơi mở trang chi tiết và tạo hợp đồng mới.
-- [Gia hạn & chuyển phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — chi tiết thao tác Gia hạn và Chuyển phòng mở từ trang này.
-- [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — chi tiết thao tác Thanh lý (rời phòng / bỏ cọc).
-- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — nguồn của các phiếu thu cọc phản ánh vào thẻ Tiền cọc.
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — danh sách hợp đồng, soạn nháp và ký hợp đồng mới.
+- [Gia hạn, chuyển phòng & nhượng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/) — các thao tác Gia hạn, Chuyển phòng, Nhượng HĐ mở từ trang này.
+- [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) và [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) — báo trả phòng, trả phòng và quyết toán.
+- [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) — nguồn của các phiếu cọc phản ánh vào nhóm Tiền cọc.
 - [Cư dân](/03-quan-ly-van-hanh/cu-dan/) — người ở gắn với hợp đồng.
-- [Phương tiện](/03-quan-ly-van-hanh/phuong-tien/) — xe của khách hiển thị trong thẻ khách hàng.
+- [Phương tiện](/03-quan-ly-van-hanh/phuong-tien/) — xe của khách hiển thị trong khối Khách thuê.
 - [Hồ sơ CT01](/03-quan-ly-van-hanh/ho-so-ct01/) — khai báo tạm trú gắn với khách của hợp đồng.
