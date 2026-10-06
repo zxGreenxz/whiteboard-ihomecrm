@@ -23,9 +23,9 @@ function withDocRepo(test) {
     }
     for (let i = 0; i < 200; i++) put(`tests/${i}.test.mjs`, 'export const ok = true;\n');
     for (let i = 0; i < 100; i++) put(`supabase/migrations/${i}.sql`, '-- fixture\n');
-    put('supabase/README.md', '100 file hiện có\n');
+    put('supabase/README.md', 'Tra migration runbook và inventory được sinh từ Git.\n');
     put('docs/DATABASE_SCHEMA.md', 'hiện có 100 file\n');
-    put('docs/CODEBASE_STRUCTURE.md', '(100 file + 0 trong)\n`.e2e-fleet/**` | 0 spec\n`contracts/**` | 3 file\n`src/app/routes/**` (0 file theo domain)\nmột lệnh: 1 suite, mỗi suite một runner\n');
+    put('docs/CODEBASE_STRUCTURE.md', 'Bản đồ source; số đếm nằm trong inventory được sinh từ Git.\n');
     put('tooling/test-matrix.json', JSON.stringify({ suites: [{}] }));
     put('supabase/migration-provenance.json', JSON.stringify({ entries: [] }));
     put('supabase/migration-policy.json', JSON.stringify(['0/0 file unknown là file CHỈ ALTER', '0 file unknown còn lại thì NGƯỢC LẠI', '0 version bị trùng (0 file)']));
@@ -46,6 +46,19 @@ function withDocRepo(test) {
 }
 
 describe('CLI — JSON là nguồn inventory, MD chỉ do renderer ghi', () => {
+  it('router không cần số chép tay; các claim còn tồn tại vẫn bắt số sai', () => withDocRepo((repo) => {
+    expect(repo.run('check-doc-counts.mjs').status).toBe(0);
+    repo.put('docs/DATABASE_SCHEMA.md', 'hiện có 101 file\n');
+    const schema = repo.run('check-doc-counts.mjs');
+    expect(schema.status).toBe(1);
+    expect(schema.stderr).toContain('docs/DATABASE_SCHEMA.md');
+    repo.put('docs/DATABASE_SCHEMA.md', 'hiện có 100 file\n');
+    repo.put('supabase/migration-policy.json', JSON.stringify(['1/0 file unknown là file CHỈ ALTER', '0 file unknown còn lại thì NGƯỢC LẠI', '0 version bị trùng (0 file)']));
+    const provenance = repo.run('check-doc-counts.mjs');
+    expect(provenance.status).toBe(1);
+    expect(provenance.stderr).toContain('supabase/migration-policy.json');
+  }));
+
   it('--fix không vá MD generated; chỉ render từ JSON phục hồi bản MD cũ', () => withDocRepo((repo) => {
     const original = readFileSync(repo.mdPath, 'utf8');
     const stale = original.replace('**200** file test', '**199** file test');

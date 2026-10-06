@@ -1,240 +1,84 @@
 # Project Contract — hướng dẫn chung cho agent
 
-Áp dụng cho mọi agent làm việc trong repo. `AGENTS.md` và `CLAUDE.md` chỉ chứa cách dùng tool riêng.
-Đọc file này một lần, rồi đọc mã và hướng dẫn đúng khu vực đang sửa.
-Manifest được liên kết dưới đây sở hữu cấu hình và số liệu; không sao chép chúng thành luật thứ hai.
-
-Tạm ngưng phát triển, tối ưu và kiểm chuyên biệt Zalo/Copilot; bỏ qua context riêng, chỉ đọc [hồ sơ riêng](../deferred/zalo-copilot.md) khi user mở lại.
+Đọc adapter của agent và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần, rồi tra source.
+Không tự đọc audit mới nhất, plan cũ hoặc lần theo toàn bộ liên kết. Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
+Zalo/Copilot vẫn tạm ngưng theo [hồ sơ riêng](../deferred/zalo-copilot.md); chỉ mở khi user yêu cầu.
 
 ## 1. Dự án và nguồn tra cứu
 
-iHomeCRM quản lý cho thuê và sổ sách đang vận hành: React/Vite, Supabase, Vercel,
-Cloudflare R2 và Network Center.
-
-| Cần biết | Nguồn |
-|---|---|
-| Phạm vi rủi ro, gate tối thiểu, review độc lập | [risk-map.json](../../tooling/risk-map.json) |
-| Phiên bản Node/Deno và package con | [runtime-matrix.json](../../tooling/runtime-matrix.json) |
-| Test nào chạy bằng runner nào, ở job nào | [test-matrix.json](../../tooling/test-matrix.json) |
-| Tên lệnh đang tồn tại | [package.json](../../package.json) |
-| RPC/Edge/realtime và dữ liệu kiểm kê | [surfaces](../../contracts/surfaces/), [generated](../generated/) |
-| Nghiệp vụ đang dùng | [docs/he-thong](../he-thong/README.md) |
-
-Không đưa nhật ký sự cố đã đóng hoặc số lượng bảng/test/migration vào hướng dẫn chung.
-Lịch sử nằm trong Git; số đo nằm trong manifest hoặc bằng chứng của lần chạy.
+React/Vite, Supabase, Cloudflare R2 và Network Center. Chọn scope từ diff và source.
+[risk-map](../../tooling/risk-map.json) sở hữu tier/review; [test-matrix](../../tooling/test-matrix.json) sở hữu runner; [runtime-matrix](../../tooling/runtime-matrix.json) sở hữu runtime; [package.json](../../package.json) sở hữu lệnh.
+Chỉ đọc [một domain](../he-thong/README.md) nếu chưa rõ nghiệp vụ; manifest và evidence thay số đếm chép tay.
 
 ## 2. Phạm vi dữ liệu
 
-Production có hai tổ chức dùng chung database. Bản sao để thử tính năng là một
-**project Supabase riêng** (môi trường TEST), không phải một org trong production.
-
-| Nơi | ID | Quyền thao tác của agent |
-|---|---|---|
-| Org THẬT (production) | `aaaa0000-0000-4000-8000-000000000001` | Chỉ đọc dữ liệu nghiệp vụ |
-| Org DEMO (production) | `dddd0000-0000-4000-8000-000000000001` | Đọc/ghi fixture, tự dọn |
-| Môi trường TEST | project `ihomecrm-test` (ref trong vault) | Đọc/ghi để thử tính năng |
-
-- Môi trường TEST mang đủ dữ liệu, tài khoản, vai trò production (không có byte ảnh/file),
-  mật khẩu TEST riêng trong vault; web là Preview của nhánh `test-env`.
-  Đồng bộ bằng `npm run test-env:sync`; thử migration bằng `npm run test-env:thu-sql -- <file>`.
-  Xem [test-env/README](../../scripts/test-env/README.md).
-- Không dựng lại org sao chép (cơ chế `clone-org`) trong database production; thử ở môi trường TEST.
-  `sandbox_org_ids()` vẫn trả id org TEST cũ `cccc0000-0000-4000-8000-000000000001` (org đã xoá).
-  Cho tới khi gỡ hàm này, bảng mới có `organization_id` cần policy `<bảng>_hide_sandbox_admin`,
-  bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
-- SECURITY DEFINER cần tự kiểm quyền: lọc toà qua `can_access_building()` /
-  `accessible_building_ids()`; không tự thêm lối tắt `is_super_admin() OR …`.
-- E2E chỉ ghi org DEMO hoặc môi trường TEST.
-- Thay schema production theo §4–5; quyền thử dữ liệu không thay thế quyền đổi schema.
+Org THẬT chỉ đọc; fixture chỉ ghi DEMO hoặc project TEST riêng và phải dọn. Credential không cấp quyền ghi schema.
+Trước thao tác dữ liệu/quyền, đọc [DATA_ENVIRONMENTS](DATA_ENVIRONMENTS.md): ID đích, JWT/RLS và scope toà; không dựng lại clone-org trong production.
 
 ## 3. Git, review và phát hành
 
-- Hạng mục độc lập hoặc dài hơi dùng `git worktree` riêng từ `origin/main`.
-  Kiểm `git status` trước khi sửa; giữ nguyên công việc dở dang của phiên khác.
-- Commit theo `feat(scope): …`, `fix(scope): …`, `chore(scope): …`; ghi thay đổi, lý do và kiểm chứng.
-  Trailer theo adapter agent. Chỉ stage file cụ thể; cấm `git add -A` / `git add .`.
-- Trước khi tích hợp: fetch, rebase lên `origin/main`; giải conflict mã nguồn bằng tay.
-  Với file máy sinh: lấy bản của main rồi chạy lại generator, kiểm diff trước khi stage.
-- Push thường dùng `git push origin HEAD:main`; kiểm trước bằng
-  `git merge-base --is-ancestor origin/main HEAD`. Không force-push để vượt conflict.
-- Thay đổi tiền, phân quyền, lịch sử migration cần draft PR để review trước khi vào main.
-  Review độc lập theo `crossReview` của risk-map: một lượt trên diff cuối của nhánh. Reviewer chỉ đọc
-  diff và biên nhận gate, không chạy lại gate; báo mọi phát hiện kèm mức độ và độ tin cậy, tác giả lọc.
-  Sau khi sửa, re-review chỉ phần vừa sửa. Tier không có `crossReview` không cần agent review.
-  PR ghi số đo và gate đã chạy; chưa mở được PR thì báo rõ, không tuyên bố đã mở.
-- App phát hành từ nhánh `production`; `main` tạo Preview.
-  Docs có cấu hình deploy riêng: kiểm `npm run check:external-controls` khi thay đổi phát hành,
-  không suy ra cấu hình hiện tại từ ảnh chụp hoặc số đo cũ.
-- Agent được tự commit/push và promote khi đủ bằng chứng. Dùng
-  `npm run promote:production -- --sha <sha>` để kiểm CI của đúng commit;
-  thêm `--apply` để phát hành sau khi đạt. Không push trực tiếp để bỏ qua kiểm tra.
-- Gate đỏ, chưa xong, thiếu bằng chứng hoặc lỗi bị nuốt bởi `continue-on-error` không phải đạt.
-  Job kiểm nhánh production chạy sau push; nó không ngăn Vercel nhận một push sai.
-- Rollback app bằng deployment đã xác minh trước đó; không rollback schema phá huỷ tự động.
-- Hạ tầng: ghim exact image/action/runtime; không bind rộng hoặc retry ngầm thao tác không idempotent.
-  Ghi digest/actor/SHA, giữ secret ngoài log/artifact, kiểm rollback bằng artifact thật.
+- Kiểm status, giữ WIP; việc độc lập dùng git worktree. Chỉ stage file cụ thể; cấm `git add -A` / `git add .`.
+- Fetch/rebase `origin/main` trước tích hợp; conflict source sửa tay, file máy sinh lấy bản của main rồi chạy lại generator.
+- Commit nêu lý do/kiểm chứng; trailer theo adapter. Push `git push origin HEAD:main` sau kiểm ancestor; không force-push né conflict.
+- Tiền, quyền, lịch sử migration cần draft PR. Theo `crossReview`: review một lần trên diff cuối và receipts, không chạy lại gate; sửa xong chỉ re-review phần sửa.
+- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng. Không push trực tiếp bỏ lane.
+- Đổi phát hành phải kiểm `npm run check:external-controls`. Gate đỏ/skip/thiếu bằng chứng không phải đạt; rollback app bằng deployment đã xác minh, không tự rollback schema phá huỷ.
 
 ## 4. Ghi schema production và backup
 
-- Dùng `npm run migrate:forward -- <file.sql>` (dry-run mặc định) và `--apply` khi thực thi.
-  Không dùng PAT trong vault để ghi thẳng qua Management API, bỏ qua lane.
-- Lane mặc định tạo backup và kiểm dump trước khi tự cấp biên nhận apply.
-  Đường bỏ backup `--khong-backup "<lý do>"` cần promotion token
-  `IHOMECRM_PROMOTION_TOKEN` nhập lúc chạy; không lấy token này từ vault.
-- Kiểm đúng project/org/environment, cây làm việc sạch trong worktree đang thao tác, SHA đã review,
-  provenance/digest và catalog trước/sau. Thiếu hoặc lệch bằng chứng thì dừng apply.
-- Backup cho thao tác schema/backfill ngoài lane: dùng
-  `node scripts/backup-before-schema.mjs --reason "<thao tác>"` trước khi ghi.
-  Dump và manifest ở `%USERPROFILE%/ihomecrm-backups/`, ngoài Git.
-- PITR là rủi ro đã đăng ký trong [known-gaps.yaml](../../tooling/known-gaps.yaml).
-  Dump phải đủ điều kiện restore; diễn tập với role/policy Supabase, không chỉ đếm bảng.
+Trước schema/backfill đọc [migration runbook](MIGRATION_STRATEGY.md). Chỉ dùng forward lane có backup/biên nhận; kiểm đích, SHA review, digest và catalog trước/sau. Thiếu bằng chứng thì dừng apply.
+Không dùng PAT ghi thẳng Management API để bỏ lane. Hạ tầng ghim exact runtime/image/action, không bind rộng hoặc retry ngầm thao tác không idempotent; kiểm rollback bằng artifact thật.
 
 ## 5. Migration và database
 
-- Cấp tên bằng `node scripts/tao-ten-migration.mjs <slug>`; không chọn timestamp bằng tay.
-  Migration mới ở `supabase/migrations/`, immutable sau merge/deploy.
-- Stage migration trước `npm run provenance:generate` vì generator đọc index.
-  Chạy `npm run gate:migration-provenance`; cutoff và trạng thái lấy từ
-  [migration-policy.json](../../supabase/migration-policy.json) và manifest provenance.
-- Legacy history **KHÔNG replay được** (có trùng version và file đã hand-apply).
-  Không chạy `supabase db push` để phát hành; không replay `migrations-archive/`,
-  sửa/đổi tên file đã deploy, hoặc sửa ledger cho lịch sử trông sạch.
-- Dựng database mới theo [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md):
-  baseline đã ghim + forward lane, kiểm trên database dùng một lần.
-- Migration phải idempotent. Restore/replay dùng database dùng một lần; một số harness CI có PAT
-  kiểm database đích trong ROLLBACK. CI không auto-apply/commit migration production.
-
-| Thay đổi | Kiểm chứng |
-|---|---|
-| VIEW | `node scripts/check-view-invoker.mjs`; giữ `security_invoker=true` khi CREATE OR REPLACE |
-| FUNCTION/RPC | `node scripts/check-stable-fn-locks.mjs`, ACL/owner/search_path và gọi qua PostgREST |
-| RLS/POLICY | Harness role thật + JWT, ca được phép và ca cross-tenant bị từ chối |
-| Tiền | Cả `npm run gate:reconcile-money` và `npm run gate:reconcile-money-v2`; idempotency + concurrency |
-| Schema | Catalog/surface liên quan và generated types (§6) |
-| Edge deploy | Kiểm project ref/org thật, cây sạch; ghi SHA đã review + digest bundle trước deploy |
-
-Hàm lấy khoá dòng phải `VOLATILE`: STABLE/IMMUTABLE gọi qua PostgREST có thể lỗi `25006`
-dù chạy SQL trực tiếp đạt. Đối chiếu tiền phải bắt cap-1000, không lấy tổng trang đầu làm tổng thật.
-Reconcile v1 kiểm phạm vi đọc qua JWT/RLS; v2 kiểm số dư posting. Giữ cả hai khi các đường đọc còn dùng.
+Migration đã merge/deploy là immutable; legacy không replay được. Dựng database bằng baseline + forward lane trên database dùng một lần.
+Runbook sở hữu tên migration, provenance, idempotency, PostgREST/JWT/RLS, kiểm tiền v1/v2 và volatility; mở trước khi sửa SQL/RPC/quyền/tiền.
 
 ## 6. Generated types
 
-```bash
-npm run gen:types
-npm run types:normalize
-npm run types:check
-```
-
-Generator tự ghi atomic vào `src/integrations/supabase/types.ts` và thêm header.
-Không redirect đầu ra, không sửa generated types bằng tay.
-Normalizer bỏ partition runtime theo [generated-types-policy.json](../../supabase/generated-types-policy.json).
-`gate:truoc-push` gọi các bước này; thiếu credential/mạng phải báo phần chưa xác minh.
+Chỉ sinh types/surfaces khi scope cần theo kế hoạch gate; UI hoặc docs thuần không tự gọi DB. Quy trình atomic trong [migration runbook](MIGRATION_STRATEGY.md#generated-types).
+Không sửa generated types bằng tay hoặc redirect generator. Thiếu credential/mạng phải ghi chưa xác minh.
 
 ## 7. TypeScript
 
-- Kiểm kiểu bằng `npm run typecheck:baseline`: nó chạy tsc trên `tsconfig.app.json` có cache tăng dần
-  rồi so với `ts-baseline.json`; không thêm fingerprint vào baseline.
-  Root `tsc --noEmit` không đi theo project references nên không kiểm app.
-- Module mới phải strict-clean; tăng strict theo island, không flip toàn repo hoặc tăng baseline để né lỗi.
-- Listener `src/app/providers/AuthCacheSync.tsx` chỉ chạy đồng bộ:
-  không `await supabase.*` trong callback auth vì có thể deadlock; đăng ký/huỷ trong effect.
+`npm run typecheck:baseline` kiểm `tsconfig.app.json` theo `ts-baseline.json`; root `tsc --noEmit` không kiểm app.
+Module mới strict-clean; không tăng baseline né lỗi. Chi tiết auth/deadlock và cấu trúc ở [bản đồ code](../CODEBASE_STRUCTURE.md).
 
 ## 8. Kiểm thử đúng phạm vi
 
-- Tra runner/lệnh trong test-matrix; không suy rằng mọi test dưới `supabase/functions/` đều chạy Deno.
-- Runtime lấy từ runtime-matrix; giữ `deno.lock` của từng function.
-  Package con cần `npm ci --prefix <package>` trước test để tránh lấy nhầm thư viện root.
-- Chạy test liên quan; thay runtime/UI cần typecheck, build và kiểm bundle.
-  Tài liệu hoặc script thuần không cần E2E toàn app.
-- Nếu đổi UX, chạy E2E headless cho luồng và vai trò bị ảnh hưởng, kiểm console errors.
-- E2E: vào `.e2e-fleet/`, chạy `npx playwright test specs/<file>.spec.ts`, mặc định headless.
-  Mật khẩu qua `FLEET_PASS_*`; kiểm console errors; chỉ ghi DEMO và dọn fixture.
-  Chỉ bật `FLEET_HEADED=1` khi user yêu cầu hiện trình duyệt.
-- Kiểm đột biến bắt buộc cho invariant tiền, phân quyền, cách ly org, migration và gate có thể báo xanh rỗng.
-  Dùng `scripts/dot-bien.mjs`: xác nhận hash đổi, suite đỏ đúng lý do, khôi phục trong finally và kiểm hash.
-  Ghi neo/digest/kết quả; mã thoát 0 = đạt, 1 = gate bỏ lọt, 3 = không kiểm được.
-- Gate quét mã phải bỏ chú thích bằng `scripts/lib/bo-chu-thich.mjs`;
-  test phải chứng minh chuỗi trong comment không làm gate báo đạt.
-- Giữ LF cho shebang theo `.gitattributes`. Không tính suite bị skip hoặc thiếu runner là pass.
+- Test hành vi bị đổi bằng runner trong manifest. Sửa UI kiểm luồng/vai trò và viewport bị ảnh hưởng, ảnh chụp cùng console; không mặc định quét desktop lẫn mobile hay E2E toàn app.
+- Build/bundle ở CI một lần cho đúng candidate; local chỉ chạy khi cần chẩn đoán hoặc thiếu bằng chứng. Không dựng lại bản không đổi chỉ để báo xong.
+- Tiền, quyền, cách ly org, migration và verifier có thể xanh rỗng cần kiểm đột biến; [hướng dẫn kiểm](../CODEBASE_STRUCTURE.md#kiểm-thử) giữ quy trình hash/khôi phục và E2E headless.
+- Test bị skip/DEFERRED hoặc thiếu runner vẫn là chưa kiểm. Không hạ kiểm soát để CI xanh.
 
 ## 9. Credential
 
-- Vault duy nhất là `CLAUDE.local.md` ở checkout chính, bị gitignore; agent được đọc lúc task cần.
-  Trong worktree, nạp đúng credential cần dùng vào process env từ vault chính; không tạo bản sao.
-- Không commit secret, tạo vault thứ hai, in cả file/token ra log, chat, artifact hoặc commit.
-  Biến VITE công khai không phải chỗ để lưu secret.
-- Tên credential và preflight: [local-credential-contract.json](../../tooling/local-credential-contract.json).
-  Chạy `npm run gate:local-credentials` tại checkout có vault khi cần;
-  không chạy preflight vault local trên CI.
-- Thiếu/hết hạn credential: báo đúng khả năng bị chặn, không lách bằng key khác.
-  Thêm credential cần cập nhật manifest; nghi lộ thì rotate và cập nhật vault.
-- Quyền ghi schema theo §4; có credential không tự cấp quyền ghi dữ liệu org THẬT.
+Vault duy nhất `CLAUDE.local.md` ở checkout chính, bị ignore. Chỉ nạp khóa cần dùng vào process env, không sao chép/in/commit secret; VITE công khai không chứa secret.
+Tên khóa ở [local-credential-contract](../../tooling/local-credential-contract.json); preflight local chỉ khi thao tác cần, không chạy vault preflight trên CI. Thiếu/hết hạn thì báo đúng khả năng bị chặn; nghi lộ phải rotate.
 
 ## 10. Hoàn tất thay đổi
 
-1. Xác định scope/risk, đọc source và phụ thuộc liên quan; sửa đúng nguyên nhân.
-2. Trong lúc sửa, chạy test của phần đang sửa và `npm run typecheck:baseline`, cộng phép kiểm
-   §5–8 và risk-map của tier bị đụng. Bộ Vitest mặc định do CI chạy.
-3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
-   đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
-   Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh chạy song song, kèm nhóm
-   nặng có cache (kiểm kiểu + đảo strict + lint ratchet) khi không có `--khong-dao-strict`;
-   (3) đo rò chéo tổ chức (`measure-org-leak`, chạy cùng lúc với bước 2) khi có `SUPABASE_PAT`.
-   Bước 3 bỏ được bằng `-- --khong-do-ro-org`;
-   thiếu credential là ⚠, nhưng thiếu credential MÀ staged diff đụng `supabase/migrations/**`
-   là ❌ — migration đổi được ranh giới tổ chức nên đó đúng là lượt không được bỏ đo.
-   Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
-   Gate đã gồm kiểm kiểu, đảo strict và lint ratchet, nên không chạy riêng chúng trước gate. Gate đỏ thì sửa,
-   chạy lại đúng script đỏ (`node scripts/<tên>.mjs`), rồi chạy gate đầy đủ một lần trước push.
-4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.
-
-Gate có lock theo worktree; không xoá lock của tiến trình còn sống.
-File untracked của mình có cảnh báo phải xử lý trước khi stage.
-Kết quả xanh của gate và test trên đúng bản đang commit là bằng chứng kiểm. Chỉ chạy lại khi file
-đã đổi sau lượt đó, có lỗi mới hoặc còn nghi vấn chưa giải quyết.
+1. Stage đúng file sau focused tests; xem `npm run gate:truoc-push -- --plan` để biết scope, lệnh và lý do chọn. Mặc định đọc staged diff; fallback bảo thủ khi không phân loại được.
+2. Chạy `npm run gate:truoc-push` cho kế hoạch đó; `--full` chỉ khi cần toàn bộ active gates. Không chạy riêng typecheck/strict/lint rồi lặp lại cùng phép kiểm trong gate.
+3. Cửa đỏ: sửa và chạy đúng kiểm bị ảnh hưởng. Giữ receipt xanh của đầu vào không đổi; chỉ kiểm lại khi source/dependency thay, có lỗi mới hoặc nghi vấn cụ thể. Không mặc định full rerun.
+4. Báo kết quả, phạm vi, phần chưa kiểm; review/phát hành theo §3. Gate lock thuộc worktree: không xoá lock của tiến trình sống; xử lý untracked của mình trước stage.
 
 ## 11. Điều kiện dừng
 
-Dừng thao tác phụ thuộc khi sai đích, thiếu credential, lệch digest/provenance hoặc gate bắt buộc chưa đạt.
-Giữ nguyên bằng chứng lỗi và nêu giới hạn xác minh; tiếp tục phần độc lập trong phạm vi được giao.
-Không hạ kiểm soát, tăng baseline hoặc nuốt lỗi chỉ để CI xanh.
+Dừng thao tác phụ thuộc khi sai đích, thiếu credential, lệch digest/provenance hoặc gate bắt buộc chưa đạt; giữ bằng chứng lỗi, tiếp tục phần độc lập.
+Không nuốt lỗi, tăng baseline hoặc gọi phần chưa đo là pass. Quyền thử dữ liệu không thay quyền đổi schema.
 
 ## 12. Tra cứu mã nguồn và GitNexus
 
-Source, Git diff và contract/harness là căn cứ khi sửa code. GitNexus là CLI tùy chọn
-để tìm callers/callees và luồng qua nhiều file; không chứng minh SQL/RLS hoặc production.
-Không dùng Understand Anything trong luồng agent/CI của repo.
-
-- Tra file/symbol đã biết bằng `rg`; đọc source quanh kết quả trước khi sửa.
-- Khi cần quan hệ liên file, dùng `graph:query`, `graph:context`, `graph:impact` hoặc
-  `graph:trace` trong package.json. Wrapper tự kiểm index; không cần gate freshness riêng.
-- Chỉ gọi `graph:analyze` nếu câu hỏi thực sự cần graph và index chưa dùng được.
-  Mỗi task tối đa một lần tự dựng với timeout mặc định; lỗi/hết giờ thì dùng source.
-  Không tự dựng sau mỗi lần sửa, trước commit hoặc chỉ vì task thuộc nhóm high-risk.
-- Sau khi code đổi, graph là bản chụp cũ; kiểm Git diff, imports/callers và test liên quan.
-  RPC/Edge/realtime, SQL, quyền và tiền luôn đối chiếu manifest/source/harness hiện có.
-- Dùng wrapper ghim ở `scripts/run-pinned-gitnexus.mjs`; cấu hình trong
-  `tooling/agent-tools.json`. Không commit index hoặc để tool sinh lại hướng dẫn agent.
+Tra file/symbol bằng `rg`, đọc imports/callers và tests. Source, Git diff, contract/harness là căn cứ; graph không chứng minh SQL/RLS hay production.
+GitNexus tùy chọn qua `scripts/run-pinned-gitnexus.mjs`, pin ở `tooling/agent-tools.json`; chỉ analyze khi thật cần và tối đa một lần/task. Lỗi/hết giờ dùng source; không đưa graph/Understand Anything vào CI hay sinh lại hướng dẫn.
 
 ## 13. Hướng dẫn chuyên đề và khoảng trống
 
-Chỉ đọc chuyên đề khi nhiệm vụ cần:
-[migration](MIGRATION_STRATEGY.md), [dữ liệu/org](DATA_ENVIRONMENTS.md),
-[Network Center](../../infra/network-center-worker/README.md).
-
-Khoảng trống đang mở ở [known-gaps.yaml](../../tooling/known-gaps.yaml).
-`npm run gate:known-gaps` báo cáo; `node scripts/check-known-gaps.mjs --strict` dùng khi rà định kỳ.
-Đóng bằng kết quả kiểm chứng; gia hạn phải có lý do mới. Không chép gap/sự cố đã đóng sang adapter.
+Chỉ mở runbook theo thao tác: [migration](MIGRATION_STRATEGY.md), [dữ liệu/org](DATA_ENVIRONMENTS.md), [Network Center](../../infra/network-center-worker/README.md).
+[known-gaps](../../tooling/known-gaps.yaml) là khoảng trống hoạt động; đóng bằng evidence, không chép sự cố cũ thành luật. Plan/audit là snapshot, chỉ đọc khi task cần.
 
 ## 14. Quy ước code
 
-- UI dùng shadcn/ui, Lucide; form dùng React Hook Form + Zod.
-- Dữ liệu qua hook/domain service có loading/error state; không gọi RPC trực tiếp trong component.
-  High-risk dùng wrapper typed, validate kết quả tại boundary; không thêm RPC cast `any`.
-  Kiểm bằng `npm run gate:rpc-cast`.
-- Tailwind mặc định; CSS riêng phải cô lập và có lý do. File/media theo lớp storage R2 hiện có.
-- Sonner/error boundary cho phản hồi; phân biệt permission, validation, concurrency, conflict, internal.
-  Không biến lỗi thành dữ liệu rỗng hoặc hiển thị chi tiết kỹ thuật cho người dùng.
-- Lazy load route/component nặng, đo bundle khi đổi tải trang.
-- Đặt route ở `src/app/routes/`, capability ở `src/app/capabilities/`, page ở `src/pages/`,
-  UI domain ở `src/components/`, data hook ở `src/hooks/`, tiện ích/schema ở `src/lib/`.
+UI shadcn/Lucide, Tailwind, React Hook Form + Zod; dữ liệu qua hook/service typed, không RPC trực tiếp trong component hoặc thêm cast `any` high-risk.
+Giữ loading/error và phân biệt lỗi quyền/validation/concurrency; không trả rỗng che lỗi. Lazy route nặng, đo bundle khi đổi tải trang; file/media đi lớp storage hiện có.

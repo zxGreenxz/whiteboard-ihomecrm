@@ -1,136 +1,36 @@
-# Trung tâm tài liệu ptcrm
+# Tài liệu iHomeCRM
 
-> **Last reviewed:** 2026-09-02  
-> Đây là cổng vào tài liệu trong phạm vi đang làm. Mỗi nhóm có một index gần nhất; không tạo thêm file status song song khi đã có nguồn current.
+Chọn nguồn theo câu hỏi. Index này không yêu cầu đọc hết các tài liệu được dẫn.
+Agent mặc định đọc adapter + [Project Contract](engineering/PROJECT_CONTRACT.md); thêm một tài liệu đúng phạm vi khi cần, rồi tra source.
 
-## Bắt đầu từ đâu
+## Nguồn hiện hành
 
-| Nhu cầu | Nguồn nên đọc |
+| Cần biết | Nguồn |
 |---|---|
-| **Sắp sửa code trong repo này** | **[PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md) — đọc TRƯỚC** |
-| Thao tác trên giao diện | [Hướng dẫn sử dụng](huong-dan-su-dung/) và sidebar VitePress |
-| Hiểu hành vi code/DB hiện tại | [Tham chiếu hệ thống](he-thong/README.md) |
-| Tìm entry point/module/test | [Cấu trúc codebase](CODEBASE_STRUCTURE.md) |
-| Đọc schema, migration và nguồn sự thật | [Database schema](DATABASE_SCHEMA.md) |
-| Vận hành Supabase | [Supabase runbook](../supabase/README.md) |
-| Xem trạng thái authorization | [Authorization current status](authorization/README.md) |
-| Vận hành lương V5 | [Hệ lương thưởng](bang-luong/README.md) |
+| Luật, scope kiểm, review, phát hành | [Project Contract](engineering/PROJECT_CONTRACT.md) |
+| Hành vi nghiệp vụ của một domain | [Mục lục hệ thống](he-thong/README.md) |
+| Route, hook, RPC, runner và quy ước kỹ thuật | [Bản đồ code](CODEBASE_STRUCTURE.md) |
+| Schema/migration và backup | [Migration runbook](engineering/MIGRATION_STRATEGY.md) |
+| Dữ liệu, JWT/RLS, DEMO/TEST | [Data environments](engineering/DATA_ENVIRONMENTS.md) |
+| Authorization đang áp dụng | [Authorization](authorization/README.md) |
+| Lương V5 | [Lương thưởng](bang-luong/README.md) |
+| Thao tác đối chiếu được giao | [Đối chiếu](doi-chieu/README.md) |
+| Tài liệu xuất bản cho người dùng | [Hướng dẫn](huong-dan-su-dung/index.md), [docs-site](../docs-site/README.md) |
 
-## Mục lục đang dùng
+Cấu hình, số đo và generated views ở `tooling/`, `contracts/surfaces/`, `docs/generated/`; không tạo bản luật thứ hai trong Markdown.
 
-### Hợp đồng kỹ thuật — luật, không phải mô tả
+## Hồ sơ theo yêu cầu
 
-- **[engineering/PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md)** — luật chung cho mọi agent
-  và mọi người sửa repo này: ba tổ chức trong cùng database, đường ghi production, migration, gate
-  bắt buộc theo loại thay đổi, secret, công cụ tri thức. `CLAUDE.md` và `AGENTS.md` chỉ là **adapter**
-  trỏ về đây; khi hai bên nói khác nhau thì Contract thắng.
-- `tooling/` (ngoài `docs/`) — các file **máy đọc** mà Contract cưỡng chế, không phải tài liệu:
-  `agent-tools.json`, `runtime-matrix.json`, `test-matrix.json`, `known-gaps.yaml`,
-  `local-credential-contract.json`, `plan-remaining.json`, `program-status.json`, và các
-  `*-baseline.json` của ratchet. Sửa văn xuôi mà quên sửa file tương ứng ở đây là cách hai bản lệch
-  nhau — gate sẽ bắt, nhưng chỉ khi bạn chạy nó.
+- [Plan/spec](plans/README.md): chỉ đọc plan được giao; checkbox cũ không phải backlog hiện tại.
+- [Audit](audits/README.md): evidence theo commit/ngày, không mặc định đọc audit mới nhất.
+- [Prompt nghiên cứu](prompts/README.md): mẫu tùy chọn khi task yêu cầu, không áp cho mọi việc.
+- [Kho lưu](archive/2026-10/README.md): bản đã thay thế/lịch sử, giữ để tra cứu; đường cũ có redirect.
+- Zalo/Copilot vẫn deferred; không tự mở lại context hoặc kiểm chuyên biệt.
 
-### Tài liệu gốc ở `docs/`
+## Duy trì
 
-- [CODEBASE_STRUCTURE.md](CODEBASE_STRUCTURE.md) — canonical engineering overview.
-- [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) — inventory schema và cách xác minh nguồn đúng.
-- [AUTHORIZATION-PLAN.md](AUTHORIZATION-PLAN.md) — design baseline; trạng thái live ở `authorization/README.md`.
-
-### Hướng dẫn đã xuất bản
-
-- [Trang chủ hướng dẫn](huong-dan-su-dung/) — 7 nhóm thao tác vận hành và khu demo kế hoạch số 8.
-- [Sidebar đầy đủ](../docs-site/.vitepress/sidebar.mts) — mục lục của mọi trang published.
-- [Mẫu trang](huong-dan-su-dung/_template.md) — template nội bộ, không xuất bản.
-- Hai trang `cong-no-hd-moi` và `khach-no-tien` là redirect stub có `kind: redirect`, giữ cho bookmark cũ; nội dung vận hành hiện tại nằm ở Quy trình thu tiền.
-- Khu [08 — Kế hoạch phát triển](huong-dan-su-dung/08-ke-hoach-phat-trien/) là presentation/proposal, không phải hướng dẫn runtime.
-
-### Tham chiếu kỹ thuật và vận hành
-
-- [he-thong/README.md](he-thong/README.md) — tham chiếu các domain trong phạm vi đang làm, realtime và performance evidence.
-- [authorization/README.md](authorization/README.md) — current status + toàn bộ evidence/tranche còn giữ.
-- [bang-luong/README.md](bang-luong/README.md) — system reference, runbook, spec, plan và implementation log.
-- [doi-chieu/README.md](doi-chieu/README.md) — runbook đối chiếu NABUBU/Hiển Thu và 686-TCB/TKHIEP.
-
-### Kế hoạch, audit và hồ sơ lịch sử
-
-- [plans/README.md](plans/README.md) — thư mục ĐÓNG BĂNG từ 02/09/2026 (index kèm trạng thái từng
-  plan). **Mọi plan mới đi `docs/superpowers/plans/`** (tên `YYYY-MM-DD-<slug>.md`); spec thiết kế đi
-  `docs/superpowers/specs/`; runbook đi `docs/superpowers/runbooks/`.
-- [prompts/README.md](prompts/README.md) — prompt nghiên cứu tái sử dụng, không phải spec.
-- [audits/README.md](audits/README.md) — index ĐẦY ĐỦ mọi audit snapshot (07/2026 → nay), kèm trạng
-  thái finding.
-- [refactor-2026-07/README.md](refactor-2026-07/README.md) — hồ sơ phase, risk register và bằng chứng refactor.
-
-> **Không có `docs/archive/`, và đó là quyết định chứ không phải thiếu sót.** Plan kiến trúc liệt kê
-> một thư mục `docs/archive`; vai trò đó do `refactor-2026-07/` đảm nhiệm — nó CHÍNH LÀ kho hồ sơ
-> lịch sử, chỉ khác là tên nói rõ hồ sơ của đợt nào thay vì gộp mọi thứ vào một cái thùng không niên
-> đại. Tạo thêm `archive/` sẽ cho hai chỗ cùng nghĩa "đồ cũ", và thứ nằm ở đâu sẽ tuỳ người cất.
-> Đợt sau cần lưu trữ thì tạo `refactor-<năm>-<tháng>/` mới, đừng gom vào `archive/`.
-
-## Phân loại vòng đời
-
-| Loại | Ý nghĩa | Ví dụ |
-|---|---|---|
-| `canonical/current` | Mô tả hành vi hiện tại | `he-thong/**`, `CODEBASE_STRUCTURE.md`, `DATABASE_SCHEMA.md` |
-| `current-status` | Một index duy nhất cho trạng thái runtime | `authorization/README.md` |
-| `runbook` | Quy trình vận hành/sự cố | `bang-luong/V5-RUNBOOK.md`, `doi-chieu/**` |
-| `active-plan` | Việc chưa đóng hoặc kế hoạch đánh giá | `docs/superpowers/plans/` trong phạm vi được giao |
-| `presentation-plan` | Bản demo/proposal cho họp | `huong-dan-su-dung/08-ke-hoach-phat-trien/**` |
-| `audit-evidence` | Snapshot theo ngày/commit | `audits/**`, authorization tranche, refactor phase |
-| `redirect` | Biển chỉ đường từ URL tài liệu cũ | hai trang báo cáo công nợ đã chuyển |
-
-Code chạy, generated types, migration mới hơn và runtime production luôn thắng audit/spec cũ. Tài liệu historical phải có banner hoặc nằm trong nhóm evidence.
-
-### Quy ước banner vòng đời (chuẩn hoá 02/09/2026)
-
-Tài liệu plan/spec/status không còn phản ánh hiện tại phải mang đúng MỘT banner ngay dưới tiêu đề H1:
-
-```markdown
-> **[LỊCH SỬ — ĐÃ SHIP <ngày>]** Tài liệu hiện hành: `docs/he-thong/<file>.md`. Giữ làm bằng chứng, không cập nhật nữa.
-```
-
-```markdown
-> **[LỖI THỜI — BỊ THAY THẾ]** Thay bằng: `<đường dẫn file>`. Nội dung dưới đây có thể sai so với hiện tại.
-```
-
-```markdown
-> **[CÒN SỐNG — trạng thái <ngày>]** <phần nào xong, phần nào chưa, chờ gì>
-```
-
-Luật đọc: file có banner **LỊCH SỬ** hoặc **LỖI THỜI** không được coi là mô tả hiện tại — kể cả khi
-nội dung bên trong tự nhận là "hiện hành". Banner **CÒN SỐNG** phải nêu trạng thái theo ngày; quá
-90 ngày không cập nhật thì coi như nghi vấn, xác minh lại bằng code trước khi tin.
-
-## Dành cho AI agent
-
-Thứ tự đọc khi nhận việc trong repo này:
-
-1. **[engineering/PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md)** — luật, đọc trước mọi thứ.
-2. **`docs/he-thong/<chủ đề>`** — hành vi hiện tại của vùng sắp sửa.
-3. **Audit MỚI NHẤT của chủ đề** trong [audits/README.md](audits/README.md) — lỗi đã biết, finding
-   còn mở.
-4. **Plan CÒN SỐNG** (nếu đang làm dở) trong `docs/superpowers/plans/` — trạng thái từng phần.
-
-Tra file và symbol đã biết trực tiếp trong source; [bản đồ codebase](CODEBASE_STRUCTURE.md) chỉ vị trí
-route/capability, hook/service, RPC/Edge/realtime, SQL/migration và test runner. GitNexus chỉ là CLI
-tùy chọn cho quan hệ liên file theo Contract §12. Plan/spec có banner LỊCH SỬ/LỖI THỜI chỉ dùng làm
-bối cảnh, không dùng làm đặc tả để code.
-
-## Quy tắc duy trì
-
-- Không nhân bản cùng một nội dung ở nhiều nơi. Trang phụ tóm tắt và link về nguồn canonical.
-- Khi một plan hoàn tất, chuyển kết luận bền vững vào tài liệu current rồi xoá/đánh nhãn plan lịch sử.
-- Giữ tài liệu historical ngoài `docs/he-thong/`; không dùng snapshot cũ thay cho tài liệu hiện hành.
-- Khi di chuyển/xoá file, cập nhật mọi comment/script/inbound link trong cùng commit.
-- Không sửa hoặc commit secret, dữ liệu nhận diện khách hàng hay output live nhạy cảm vào Markdown.
-
-## Kiểm tra
-
-```powershell
-npm run docs:check
-npm --prefix docs-site run build
-git diff --check
-npm run typecheck:baseline
-```
-
-`docs:check` kiểm link, nội dung trùng SHA-256, ảnh và sidebar. Trang `kind: redirect`/`sidebar: false` được phép không xuất hiện trong sidebar.
+- Một chủ sở hữu cho mỗi luật. Kết luận mới cập nhật nguồn hiện hành, audit cũ giữ nguyên bằng chứng.
+- Phân biệt tài liệu vận hành, kế hoạch được giao và snapshot; ngày gần đây không tự chứng minh còn hiệu lực.
+- `docs/he-thong/` và `docs/huong-dan-su-dung/` là đầu vào runtime/site: không di chuyển/xoá để dọn context agent.
+- Generated Markdown sửa ở generator/manifest; untracked và file đang dở không tự nhập vào đợt dọn tài liệu.
+- Khi chuyển file, giữ provenance và inbound links; không nhân bản toàn bộ nội dung làm status thứ hai.

@@ -20,7 +20,6 @@
 //
 // Không cần credential, không đọc database.
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,21 +45,9 @@ export const demSqlTuDanhSach = (paths, dir) => {
  * .sql untracked — WIP của phiên song song — nên `--fix` từng ghi 709 vào docs
  * trong khi CI (đọc cây commit) chỉ thấy 707 → đỏ (án lệ c9f3937f, chữa tay
  * bằng worktree sạch; đây là bản mã hoá). Con số phải TÁI LẬP ĐƯỢC từ commit —
- * cùng triết lý với demTracked ngay dưới.
+ * không bị file tạm trên đĩa thay đổi.
  */
 const demSql = (dir) => demSqlTuDanhSach(lietKeTracked([dir]), dir);
-
-/**
- * Đếm file ĐÃ ĐƯỢC GIT TRACK khớp một mẫu.
- *
- * Dùng `git ls-files` chứ không duyệt đĩa: thư mục làm việc có build output, file
- * tạm và file chưa add: đếm chúng sẽ ra một con số không ai khác tái lập được, mà
- * tái lập được mới là điểm của cả gate này.
- */
-const demTracked = (re, boQua = []) =>
-  execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
-    .split("\n")
-    .filter((p) => p && re.test(p) && !boQua.some((x) => x.test(p))).length;
 
 /**
  * Nhóm migration TRÙNG SỐ VERSION từ một danh sách đường dẫn — chỉ xét file
@@ -96,68 +83,14 @@ const demTrungVersion = () => demTrungVersionTuDanhSach(lietKeTracked(["supabase
  */
 export const CLAIMS = [
   {
-    file: "supabase/README.md",
-    // "… — 625 file hiện có gồm 33 nhóm trùng version …"
-    re: /(\b)(\d{3,4})( file hiện có)/,
-    dem: () => demSql("supabase/migrations"),
-    moTa: "số file trong supabase/migrations",
-  },
-  {
     file: "docs/DATABASE_SCHEMA.md",
     // "Repository hiện có 625 file trong …"
     re: /(hiện có\s+)(\d{3,4})(\s+file)/,
     dem: () => demSql("supabase/migrations"),
     moTa: "số file trong supabase/migrations",
   },
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    // "(625 file + 15 trong `migrations-archive/`)"
-    re: /(\()(\d{3,4})( file \+ )/,
-    dem: () => demSql("supabase/migrations"),
-    moTa: "số file trong supabase/migrations",
-  },
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    re: /( file \+ )(\d{1,3})( trong)/,
-    dem: () => demSql("supabase/migrations-archive"),
-    moTa: "số file trong supabase/migrations-archive",
-  },
-
-  // ── Bốn con số thêm 11/08/2026 khi mở rộng CODEBASE_STRUCTURE ────────────
-  //
-  // Chính tài liệu đó nay mở đầu bằng câu "mọi con số ở đây đếm được và có gate
-  // canh". Thêm số mà không thêm mục ở đây thì câu ấy thành lời hứa suông —
-  // và một lời hứa suông trong tài liệu định hướng còn tệ hơn không hứa gì.
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    // "| `.e2e-fleet/**` | 44 spec Playwright |"
-    re: /(`\.e2e-fleet\/\*\*` \| )(\d{1,3})( spec)/,
-    dem: () => demTracked(/^\.e2e-fleet\/specs\/.*\.spec\.ts$/),
-    moTa: "số spec Playwright trong .e2e-fleet/specs",
-  },
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    // "| `contracts/**` | 13 file hợp đồng |"
-    re: /(`contracts\/\*\*` \| )(\d{1,3})( file)/,
-    dem: () => demTracked(/^contracts\//),
-    moTa: "số file trong contracts/",
-  },
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    // "- Route/gate: `src/app/routes/**` (11 file theo domain…"
-    re: /(`src\/app\/routes\/\*\*` \()(\d{1,3})( file theo domain)/,
-    dem: () => demTracked(/^src\/app\/routes\/[^/]+\.tsx$/),
-    moTa: "số file route trong src/app/routes",
-  },
-  {
-    file: "docs/CODEBASE_STRUCTURE.md",
-    // "…chạy chung một lệnh: 9 suite, mỗi suite một runner…"
-    re: /(một lệnh: )(\d{1,3})( suite, mỗi suite một runner)/,
-    dem: () => JSON.parse(readFileSync(join(repoRoot, "tooling/test-matrix.json"), "utf8")).suites.length,
-    moTa: "số suite trong tooling/test-matrix.json",
-  },
-
-  // Contract tham chiếu manifest, không sở hữu số đếm để generator sửa.
+  // Contract, CODEBASE_STRUCTURE và supabase/README tham chiếu nguồn đếm;
+  // chúng không còn sở hữu con số văn xuôi để --fix sửa.
 
   // Inventory JSON được kiểm toàn bộ với input Git ở main(), kể cả khi JSON
   // và MD cùng cũ. MD chỉ do generate-docs-views ghi, không vá số bằng --fix.

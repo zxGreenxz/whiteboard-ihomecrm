@@ -1,6 +1,25 @@
 {
   "$comment": "Phạm vi rủi ro, gate tối thiểu và review độc lập theo PROJECT_CONTRACT §3. Một file có thể khớp nhiều tier.",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "scope": {
+    "cosmeticPaths": ["src/components/**/*.tsx", "src/pages/**/*.tsx", "src/pages/home/launcherTiles.ts", "src/pages/home/homeLauncher.css", "src/components/**/*.css"],
+    "sharedPaths": ["package.json", "package-lock.json", "tsconfig*.json", "vite.config.ts", "eslint*", "ts-baseline.json", "tailwind.config.ts", "postcss.config.js", "components.json", "deno.lock", "tooling/**", ".github/workflows/**", "scripts/lib/**", "scripts/kiem-nhanh-truoc-push.mjs", "scripts/check-risk-classifier.mjs", "scripts/check-test-matrix.mjs", "scripts/check-workflow-paths.mjs", "scripts/promote-to-production.mjs", "src/main.tsx", "src/App.tsx", "src/app/providers/**", "src/integrations/**", "src/components/ui/**", "AGENTS.md", "CLAUDE.md", "AI_RULES.md", "docs/engineering/PROJECT_CONTRACT.md"],
+    "schemaPaths": ["supabase/migrations/**", "supabase/migration-policy.json", "supabase/migration-provenance.json", "contracts/surfaces/**", "docs/generated/schema-change-evidence/**"],
+    "uiPaths": ["src/components/**", "src/pages/**", "src/app/routes/**", "src/app/capabilities/**", "public/demos/**"],
+    "docsPaths": ["docs/**", "docs-site/**", "*.md", "**/*.md"],
+    "demoPaths": ["public/demos/personal-finance/**"],
+    "realtimePaths": ["src/lib/realtime/**", "src/providers/Realtime*.tsx", "contracts/surfaces/realtime-surface.json"],
+    "policyNote": "NGHIÊM NHẤT chỉ để báo cáo. Nghĩa vụ gate là hợp mọi miền; cosmetic cần AST whitelist trong vùng khai, handlers/data/permission không được hạ kiểm. Unknown hoặc dependency chưa map chạy full active."
+  },
+  "gateProfiles": {
+    "docs-only": ["check-docs", "check-doc-counts", "generate-docs-views", "check-baseline-doc"],
+    "cosmetic-ui": ["check-ts-baseline", "check-eslint-baseline", "app-build", "bundle-inventory"],
+    "ui-behavior": ["check-ts-baseline", "check-eslint-baseline", "app-build", "bundle-inventory", "check-capability-surfaces", "check-route-permission-drift", "check-route-guards"],
+    "logic": ["check-ts-baseline", "check-eslint-baseline", "check-strict-islands", "check-new-modules-strict", "check-raw-rpc-callers", "check-rpc-cast-ratchet", "check-error-swallow-ratchet", "check-money-table-dml", "app-build", "bundle-inventory"],
+    "schema": ["check-migration-provenance", "normalize-supabase-types", "check-no-auto-apply", "check-management-api-writes", "check-promote-readiness", "check-migration-test-liveness", "check-approver-provenance", "check-residence-dossier-rls", "check-rpc-surface", "check-edge-surface", "check-realtime-surface", "build-org-boundary-inventory", "check-view-invoker", "check-stable-fn-locks", "check-definer-acl", "check-definer-body-authz", "check-permission-catalog", "check-migration-ledger-frozen", "check-forward-migration-idempotent", "measure-org-leak", "test-cross-tenant", "generated-types-drift"],
+    "money-auth": ["check-ts-baseline", "check-eslint-baseline", "app-build", "bundle-inventory", "check-money-table-dml", "check-rpc-cast-ratchet", "test-cross-tenant", "measure-org-leak", "check-permission-catalog", "check-definer-acl", "check-definer-body-authz", "check-approver-provenance", "check-residence-dossier-rls", "build-org-boundary-inventory"],
+    "shared-tooling": ["check-agent-contract", "check-runtime-matrix", "check-test-matrix", "check-workflow-paths"]
+  },
   "tiers": {
     "money": {
       "label": "Tiền",
@@ -8,6 +27,7 @@
       "crossReview": true,
       "gates": [
         "npm run gate:reconcile-money",
+        "npm run gate:reconcile-money-v2",
         "idempotency",
         "concurrency"
       ],
@@ -67,8 +87,7 @@
         "npm run gen:types && npm run types:normalize (nếu đổi schema)"
       ],
       "paths": [
-        "supabase/migrations/**",
-        "supabase/functions/**"
+        "supabase/migrations/**"
       ]
     },
     "infrastructure": {
@@ -136,7 +155,7 @@
     }
   },
   "notes": [
-    "Một file có thể thuộc nhiều tier — lấy tier NGHIÊM NHẤT khớp được.",
+    "Một file có thể thuộc nhiều tier — tier NGHIÊM NHẤT để báo cáo, hợp gate của MỌI tier khớp để không mất nghĩa vụ.",
     "crossReview=true: một agent thứ hai review độc lập trước khi promote (PROJECT_CONTRACT §3). Chỉ áp dụng cho các tier được đánh dấu.",
     "Danh sách gate ở đây là TỐI THIỂU, không phải đầy đủ: luôn chạy thêm test của chính domain đang sửa."
   ]

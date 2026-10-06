@@ -1,663 +1,368 @@
-# Main/PR: kiểm chất lượng; gate có credential chỉ chạy trên main.
-# Production: xác minh bằng chứng CI của đúng SHA sau push. Promote qua script trước khi push.
-
+# Scope and commands have one owner: gate-plan + gate-registry.
+# Only the always-running aggregate is release evidence; missing checks fail closed.
 name: CI Gates
-
 on:
   pull_request:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - production
-      - 'release/*'
-
+    branches: [main, production, 'release/*']
 permissions:
   contents: read
-
+  actions: read
 concurrency:
   group: ci-gates-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  # preflight chạy cho MỌI ref trừ production (trước 15/09/2026 chỉ chạy trên main).
-  # Đổi vì nó nay trả thêm bộ lọc đường dẫn cho các job chạy trên PR. Nó không đọc
-  # GIÁ TRỊ secret nào ra ngoài — chỉ trả true/false "có hay không", nên chạy nó ở
-  # PR không mở thêm bề mặt gì; các job cần credential vẫn tự khoá `github.ref ==
-  # 'refs/heads/main'` trong `if:` của chúng.
   preflight:
     if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # `actions: read` cho bước `pr` đọc danh sách run của chính workflow này.
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read
       pull-requests: read
     outputs:
-      has_pat: ${{ steps.check.outputs.has_pat }}
-      has_cli_token: ${{ steps.check.outputs.has_cli_token }}
-      has_test_creds: ${{ steps.check.outputs.has_test_creds }}
-      # MẶC ĐỊNH LÀ CHẠY. Khi bước `loc` không chạy được (workflow_dispatch không có
-      # base để so), output của nó là chuỗi rỗng — và '' != 'false' cho ra `true`,
-      # tức chạy đủ. Bộ lọc chỉ được phép BỚT việc khi nó đã thật sự nhìn thấy diff.
-      ma_nguon: ${{ steps.loc.outputs.ma_nguon != 'false' }}
-      # 'true' chỉ khi push main mà chính SHA này đã có lượt pull_request xanh.
-      pr_da_xanh: ${{ steps.pr.outputs.pr_da_xanh }}
+      required_jobs: ${{ steps.plan.outputs.required_jobs }}
+      needs_demo_browser: ${{ steps.plan.outputs.needs_demo_browser }}
+      needs_docs_build: ${{ steps.plan.outputs.needs_docs_build }}
+      needs_deno: ${{ steps.plan.outputs.needs_deno }}
     steps:
-      - id: check
-        env:
-          PAT: ${{ secrets.SUPABASE_PAT }}
-          CLI: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          TE: ${{ secrets.SUPABASE_TEST_EMAIL }}
-          TP: ${{ secrets.SUPABASE_TEST_PASSWORD }}
-        run: |
-          echo "has_pat=$([ -n "$PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "has_cli_token=$([ -n "$CLI" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "has_test_creds=$([ -n "$PAT" ] && [ -n "$TE" ] && [ -n "$TP" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      # MỘT bộ lọc duy nhất, khai theo lối CÓ (allowlist) chứ không theo lối TRỪ.
-      #
-      # Vì sao không tách `realtime`/`sql`/`test` thành các bộ lọc hẹp riêng: đúng
-      # cái bẫy check-workflow-paths.mjs sinh ra để canh — một bộ lọc hẹp hơn thực
-      # tế làm checker nằm im cho tới khi ai đó tình cờ đụng đường dẫn khác, và im
-      # lặng đó không ai nhìn thấy. Bớt bốn job cho PR chỉ-docs đã là toàn bộ phần
-      # thưởng; chia nhỏ thêm chỉ đổi lấy rủi ro bỏ sót.
-      #
-      # `docs/**`, `docs-site/**`, `infra/**`, `.e2e-fleet/**` và `*.md` ở gốc CỐ Ý
-      # nằm ngoài danh sách — đó là tập duy nhất làm bộ lọc trả false.
-      # secret-scan và quality-gates KHÔNG dùng bộ lọc này: cái thứ nhất vì tài liệu
-      # cũng lộ được secret, cái thứ hai vì nó chứa chính các gate đếm số tài liệu.
-      - id: loc
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
-        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          filters: |
-            ma_nguon:
-              - 'src/**'
-              - 'scripts/**'
-              - 'worker/**'
-              - 'api/**'
-              - 'supabase/**'
-              - 'contracts/**'
-              - 'tooling/**'
-              - 'test/**'
-              - 'vendor/**'
-              - 'public/**'
-              - '.github/workflows/**'
-              - 'index.html'
-              - 'package.json'
-              - 'package-lock.json'
-              - 'tsconfig*.json'
-              - 'eslint.config.js'
-              - 'eslint-baseline.json'
-              - 'ts-baseline.json'
-              - 'vite.config.ts'
-              - 'tailwind.config.ts'
-              - 'postcss.config.js'
-              - 'components.json'
-              - 'vercel.json'
-              - 'deno.lock'
-
-      # CI main KHÔNG chạy lại phần tĩnh khi chính SHA này đã có lượt pull_request
-      # xanh (01/10/2026). Đo: lượt main chạy lại y hệt PR mất 7–10 phút, job chậm
-      # nhất là timezone-gate. Phần tĩnh khi ấy đã chạy trên đúng cây mã này (push
-      # main chỉ fast-forward, nên merge commit của PR trùng cây với SHA). Các job
-      # đọc database thật vẫn chạy. promote-to-production.mjs đòi bằng chứng xanh
-      # của job tĩnh từ một lượt của commit (thieuBangChungTinh).
-      # API lỗi ⇒ 0 ⇒ chạy đủ: hỏng thì chạy thừa, không bao giờ bỏ sót.
-      #
-      # Chỉ tin lượt PR khi: xanh trong 24 giờ qua (gate theo thời gian như mã test
-      # ngày tháng không cũ), chạy từ chính repo này (không phải fork), và commit
-      # thuộc một PR nhắm vào main (PR xếp chồng thử trên cây khác). Lần chạy lại
-      # (run_attempt > 1) luôn chạy đủ — xem điều kiện ở từng job.
-      - id: pr
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+          node-version: '24.18.0'
+          cache: npm
+      - run: npm ci
+      - id: plan
+        name: Plan selected gates for exact checkout
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tu=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          n=$(timeout 30 gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci-gates.yml/runs?event=pull_request&status=success&head_sha=${GITHUB_SHA}&created=%3E%3D${tu}&per_page=20" \
-                --jq "[.workflow_runs[] | select(.head_repository.full_name == \"${GITHUB_REPOSITORY}\")] | length" 2>/dev/null || echo 0)
-          base=$(timeout 30 gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-                --jq '[.[] | select(.base.ref == "main")] | length' 2>/dev/null || echo 0)
-          echo "Lượt pull_request xanh (24 giờ, cùng repo) của ${GITHUB_SHA}: ${n:-0}; PR vào main chứa SHA này: ${base:-0}"
-          if [ "${n:-0}" -gt 0 ] 2>/dev/null && [ "${base:-0}" -gt 0 ] 2>/dev/null; then
-            echo "pr_da_xanh=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "pr_da_xanh=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/ci-gate-plan.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gate-plan-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-  # quality-gates LUÔN chạy cả trên main: nhiều gate trong đó phụ thuộc thời gian
-  # hoặc database thật (giấy miễn lỗ hổng có hạn, negative-proofs 14 ngày...), nên
-  # lượt PR xanh không chứng minh được hôm nay vẫn xanh.
   quality-gates:
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/production'
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'quality-gates')
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency (npm ci — khớp package-lock.json)
-        id: caidat
-        run: npm ci
-
-      - name: Organization backup envelope regressions (no credentials)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
-
-      - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: |
-          loi=0
-          node scripts/check-agent-contract.mjs || loi=1
-          node scripts/check-runtime-matrix.mjs || loi=1
-          node scripts/check-known-gaps.mjs || loi=1
-          node scripts/check-capability-surfaces.mjs || loi=1
-          node scripts/check-route-permission-drift.mjs || loi=1
-          node scripts/check-capability-docs.mjs || loi=1
-          node scripts/check-baseline-doc.mjs || loi=1
-          node scripts/check-route-guards.mjs || loi=1
-          node scripts/check-test-matrix.mjs || loi=1
-          node scripts/check-workflow-paths.mjs || loi=1
-          node scripts/check-raw-rpc-callers.mjs || loi=1
-          node scripts/check-realtime-query-keys.mjs || loi=1
-          node scripts/check-evidence-store.mjs || loi=1
-          node scripts/check-test-only-exports.mjs || loi=1
-          node scripts/check-unknown-review.mjs || loi=1
-          node scripts/check-ts-suppressions.mjs || loi=1
-          node scripts/check-rpc-cast-ratchet.mjs || loi=1
-          node scripts/check-rpc-in-view-ratchet.mjs || loi=1
-          node scripts/check-error-swallow-ratchet.mjs || loi=1
-          node scripts/check-money-table-dml.mjs || loi=1
-          exit $loi
-
-      - name: schema-gates (provenance migration · canonical types · đường ghi production)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: |
-          loi=0
-          node scripts/check-migration-provenance.mjs || loi=1
-          node scripts/normalize-supabase-types.mjs --check || loi=1
-          node scripts/check-no-auto-apply.mjs || loi=1
-          node scripts/check-management-api-writes.mjs || loi=1
-          node scripts/check-promote-readiness.mjs || loi=1
-          node scripts/check-migration-test-liveness.mjs || loi=1
-          exit $loi
-
-      - name: Lỗ hổng phụ thuộc — phân tầng theo tầm với, mỗi mục có hạn ký nhận
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-dependency-audit.mjs
-
-      - name: docs-freshness (số đếm tài liệu)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: |
-          loi=0
-          node scripts/check-doc-counts.mjs || loi=1
-          node scripts/generate-docs-views.mjs --check || loi=1
-          exit $loi
-
-      - name: Deferred module checks (not pass)
-        run: echo "DEFERRED - Zalo/Copilot checks are retained in tooling/deferred-modules.json; not run, not pass evidence."
-
-      - name: Cài Deno cho test Edge llm-proxy
-        if: ${{ !cancelled() }}
-        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+      - uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        if: needs.preflight.outputs.needs_deno == 'true'
         with:
           deno-version: 2.9.4
+      - name: Install docs dependencies only for a selected docs build
+        if: needs.preflight.outputs.needs_docs_build == 'true'
+        run: npm ci --prefix docs-site
+      - name: Install browser for the selected offline demo only
+        if: needs.preflight.outputs.needs_demo_browser == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job quality-gates
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-quality-gates-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/quality-gates/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Deno test — supabase/functions/llm-proxy
-        if: ${{ !cancelled() }}
-        run: |
-          set -euo pipefail
-          deno test --config supabase/functions/llm-proxy/deno.json \
-            supabase/functions/llm-proxy/index.test.ts --allow-env
-
-      - name: Deno test — supabase/functions/quick-entry
-        if: ${{ !cancelled() }}
-        run: |
-          set -euo pipefail
-          deno test --config supabase/functions/quick-entry/deno.json \
-            supabase/functions/quick-entry/index.test.ts --allow-env
-      - name: Module mới phải strict ngay từ đầu
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-new-modules-strict.mjs
-
-      - name: Phan loai rui ro thay doi (bao cao)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-risk-classifier.mjs
-
-      - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: npm run typecheck:baseline
-
-      - name: Lint root-owned code (ratchet — chặn lỗi MỚI, nợ cũ khai ở eslint-baseline.json)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-eslint-baseline.mjs
-
-      - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
-        id: build
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: npm run build
-
-      - name: Bundle không có hồi quy eager-import
-        if: ${{ !cancelled() && steps.build.conclusion == 'success' }}
-        run: node scripts/generate-bundle-inventory.mjs
-
-      - name: node --test (script test dùng node:test)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: |
-          node --test \
-            scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
-            scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
-            scripts/__tests__/backup-luu-tru.test.mjs \
-            scripts/__tests__/check-agent-contract.test.mjs \
-            scripts/__tests__/check-external-controls.test.mjs \
-            scripts/__tests__/run-pinned-gitnexus.test.mjs \
-            scripts/__tests__/check-migration-provenance.test.mjs \
-            scripts/__tests__/check-no-auto-apply.test.mjs \
-            scripts/__tests__/check-csp-build-attestation.test.mjs \
-            scripts/__tests__/check-dependency-audit.test.mjs \
-            scripts/__tests__/check-eslint-baseline.test.mjs \
-            scripts/__tests__/check-realtime-key-ownership.test.mjs \
-            scripts/__tests__/check-rpc-arg-names.test.mjs \
-            scripts/__tests__/check-rpc-layer.test.mjs \
-            scripts/__tests__/check-rpc-name-literal.test.mjs \
-            scripts/__tests__/generate-bundle-inventory.test.mjs \
-            scripts/__tests__/check-ts-suppressions.test.mjs \
-            scripts/__tests__/check-ts-baseline.test.mjs
-
-  # KHÔNG gắn bộ lọc đường dẫn vào đây, dù PR chỉ-docs không cần chạy test.
-  # `tooling/test-matrix.json` khai job này là chủ sở hữu ĐỘC LẬP của suite
-  # `app-unit`: bộ test lớn nhất repo không được để một job khác hỏng làm kết quả
-  # test biến mất. Từ 01/10/2026 nó chờ `preflight` (~10 s) chỉ để đọc
-  # `pr_da_xanh`; `!cancelled()` giữ nó chạy cả khi preflight hỏng, và
-  # check-test-matrix-declarations khoá việc nó không bao giờ chờ quality-gates.
   vitest-tests:
     runs-on: ubuntu-latest
     needs: preflight
     if: >-
-      !cancelled() &&
-      github.ref != 'refs/heads/production' &&
-      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'vitest-tests')
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: 'npm'
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
 
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job vitest-tests
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-vitest-tests-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/vitest-tests/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Cài dependency (npm ci — khớp package-lock.json)
-        id: caidat
-        run: npm ci
-
-      - name: Vitest (root-owned app and script suites)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: >
-          npx vitest run src scripts/__tests__ worker/__tests__
-          --exclude 'services/**'
-          --exclude 'infra/**'
-          --exclude '.e2e-fleet/**'
-          --exclude 'scripts/__tests__/network-center-*.test.mjs'
-          --exclude 'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs'
-          --exclude 'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs'
-          --exclude 'scripts/__tests__/backup-luu-tru.test.mjs'
-          --exclude 'scripts/__tests__/check-agent-contract.test.mjs'
-          --exclude 'scripts/__tests__/check-external-controls.test.mjs'
-          --exclude 'scripts/__tests__/check-golden-eval-report.test.mjs'
-          --exclude 'scripts/__tests__/copilot-golden-browser-evidence.test.mjs'
-          --exclude 'scripts/__tests__/copilot-g1-acceptance.test.mjs'
-          --exclude 'scripts/__tests__/copilot-g1-guard.test.mjs'
-          --exclude 'scripts/__tests__/copilot-remaining-reports.test.mjs'
-          --exclude 'scripts/__tests__/copilot-g3-voucher-lifecycle.test.mjs'
-          --exclude 'scripts/__tests__/copilot-g3-writer-admission.test.mjs'
-          --exclude 'scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs'
-          --exclude 'scripts/__tests__/copilot-golden-real-cli.test.mjs'
-          --exclude 'scripts/__tests__/run-pinned-gitnexus.test.mjs'
-          --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
-          --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-docs-manifest.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-negative-proofs.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs'
-          --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs'
-          --exclude 'scripts/__tests__/copilot-ledger-audit.test.mjs'
-          --exclude 'scripts/__tests__/copilot-ledger-audit-rpc.test.mjs'
-          --exclude 'scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs'
-          --exclude 'scripts/__tests__/copilot-l4-risk-ceiling-acceptance.test.mjs'
-          --exclude 'scripts/__tests__/copilot-demo-deny-fixture.test.mjs'
-          --exclude 'scripts/__tests__/copilot-room-pass-active.test.mjs'
-          --exclude 'scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs'
-          --exclude 'scripts/__tests__/copilot-room-pass-resume.test.mjs'
-          --exclude 'scripts/__tests__/copilot-room-pass-sessions.test.mjs'
-          --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs'
-          --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs'
-          --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
-          --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs'
-          --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs'
-          --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs'
-          --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
-          --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs'
-          --exclude 'scripts/__tests__/generate-bundle-inventory.test.mjs'
-          --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
-          --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'
-
-  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
-  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
-  # đúng danh sách file đổi.
   strict-islands-gate:
     runs-on: ubuntu-latest
     needs: preflight
     if: >-
-      github.ref != 'refs/heads/production' &&
-      needs.preflight.outputs.ma_nguon == 'true' &&
-      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency (npm ci — khớp package-lock.json)
-        run: npm ci
-
-      - name: Đảo strict — vùng đã sạch không được bẩn lại
-        run: node scripts/check-strict-islands.mjs
-
-  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
-  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
-  # đúng danh sách file đổi.
-  timezone-gate:
-    runs-on: ubuntu-latest
-    needs: preflight
-    if: >-
-      github.ref != 'refs/heads/production' &&
-      needs.preflight.outputs.ma_nguon == 'true' &&
-      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency (npm ci — khớp package-lock.json)
-        run: npm ci
-
-      - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
-        run: npm run gate:timezone
-
-  security-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: preflight
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.preflight.outputs.has_pat == 'true'
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'strict-islands-gate')
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency
-        run: npm ci
-
-      - name: Definer ACL drift (SECURITY DEFINER anon-executable)
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-definer-acl.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
 
-      - name: View security_invoker (chống lộ dữ liệu xuyên tenant qua view)
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-view-invoker.mjs
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job strict-islands-gate
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-strict-islands-gate-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/strict-islands-gate/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Approver provenance (chống writer legacy tạo phiếu tự-duyệt)
+  timezone-gate:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'timezone-gate')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-approver-provenance.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
 
-      - name: Catalog quyền FE khớp permission_definitions
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-permission-catalog.mjs
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job timezone-gate
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-timezone-gate-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/timezone-gate/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Sổ ledger migration không bị viết lại
+  security-gates:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'security-gates')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-migration-ledger-frozen.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
 
-      - name: RLS ảnh hồ sơ tạm trú (ca thật dưới JWT, kết thúc bằng ROLLBACK)
+      - name: Execute selected gates and write receipts
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-residence-dossier-rls.mjs
-
-      - name: Migration forward chạy lại được lần hai (idempotent)
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-forward-migration-idempotent.mjs --tu-moc "${{ github.event.before }}"
-
-      - name: Bề mặt RPC · Edge · realtime khớp catalog live
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: |
-          node scripts/check-rpc-surface.mjs
-          node scripts/check-edge-surface.mjs
-          node scripts/check-realtime-surface.mjs
-          # Lớp sâu hơn ba cái trên: chúng canh RPC có TỒN TẠI, cái này canh TÊN
-          # THAM SỐ. PostgREST phân giải hàm bằng tham số có tên, nên sai một tên
-          # là cả lời gọi hỏng với PGRST202 "không tìm thấy hàm" — thông báo đó
-          # dẫn người sửa đi tìm migration thiếu thay vì nhìn vào tên tham số.
-          # Đọc manifest đã sinh, KHÔNG tự gọi mạng.
-          node scripts/check-rpc-arg-names.mjs
-          # KHOẢNG MÙ của chính ba gate trên: chúng tìm tên RPC bằng chuỗi viết
-          # thẳng, nên lời gọi có tên đi qua biến thì cả ba đều không thấy. Gate
-          # này đếm và khoá phần mù đó lại (đo 12/08/2026: 31/270 = 11,5%).
-          node scripts/check-rpc-name-literal.mjs
-          # Tầng: `supabase.rpc()` không được gọi thẳng trong component. Gom về
-          # hook/lib thì hai gate trên có ít điểm phải soi hơn, và quyền sở hữu
-          # query key nằm cùng chỗ với lời gọi.
-          node scripts/check-rpc-layer.mjs
-          # Tầng KEY của realtime: check-realtime-descriptors chặn ba nguồn ở tầng
-          # BẢNG (publication ↔ hub ↔ descriptor), không gì chặn tầng key.
-          # `invalidateQueries` khớp theo prefix và IM LẶNG khi không khớp ai.
-          node scripts/check-realtime-key-ownership.mjs
-          # NỐI VÀO CI 26/08/2026 — trước đó gate này MỒ CÔI: không workflow nào
-          # gọi nó, trong khi CTE của nó bị CHÉP NGUYÊN VĂN vào
-          # kiem-bao-mat-sau-khoi-phuc.mjs (chạy trong restore-drill). Bản gốc
-          # không ai chạy thì hai bản sẽ trôi khỏi nhau trong im lặng — chạy nó
-          # ở đây (job đã có PAT sẵn) là cách rẻ nhất giữ nguồn còn sống.
-          node scripts/check-stable-fn-locks.mjs
-
-      - name: Mọi bảng có organization_id đều có chỗ đứng
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/build-org-boundary-inventory.mjs --check
-
-      - name: Không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật)
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/measure-org-leak.mjs
+          SUPABASE_PAT: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_PAT || '' }}
+        run: node scripts/ci-run-gates.mjs --job security-gates
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-security-gates-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/security-gates/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
   generated-types-drift:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     needs: preflight
     if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.preflight.outputs.has_cli_token == 'true'
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'generated-types-drift')
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency
-        run: npm ci
-
-      - name: Gen types từ DB thật rồi so với src/integrations/supabase/types.ts đã commit
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          # scripts/gen-supabase-types.mjs GHI THẲNG vào src/integrations/supabase/types.ts
-          # (outputPath hardcode ở :192) và TỰ chèn header (:9/:79). stdout chỉ có banner npm.
-          # Bản cũ `npm run gen:types > /tmp/x.ts` hỏng cả hai vế: vế phải là banner, vế trái
-          # đã bị script ghi đè trước khi diff chạy ⇒ job luôn exit 1. Phải sao lưu trước.
-          #
-          # PHẢI CHUẨN HOÁ TRƯỚC KHI DIFF — đây là lỗi thứ hai của cùng bước này, sửa
-          # 12/08/2026. `gen:types` sinh bản THÔ (32.985 dòng, gồm 92 partition
-          # `*_YYYYMMDD` của bảng mẫu realtime), còn file được commit là bản ĐÃ BỎ
-          # partition (28.569 dòng — xem `npm run types:normalize`, và Contract §6 quy
-          # định đúng thứ tự gen → normalize → check). Thiếu bước normalize thì diff luôn
-          # lệch đúng 92 bảng đó, tức job KHÔNG BAO GIỜ xanh được dù schema khớp hoàn
-          # toàn. Đã đo: sau khi thêm normalize, diff rỗng trên cùng SHA mà CI báo trôi.
-          cp src/integrations/supabase/types.ts /tmp/types.committed.ts
-          npm run gen:types
-          npm run types:normalize
-          diff -u /tmp/types.committed.ts src/integrations/supabase/types.ts \
-            && echo "✅ types.ts khớp schema DB — không trôi." \
-            || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types (script tự ghi + tự thêm header, KHÔNG redirect)"; exit 1; }
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+
+      - name: Execute selected gates and write receipts
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+        run: node scripts/ci-run-gates.mjs --job generated-types-drift
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-generated-types-drift-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/generated-types-drift/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
   reconcile-money:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     needs: preflight
     if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.preflight.outputs.has_test_creds == 'true'
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'reconcile-money')
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Cài dependency (cần @supabase/supabase-js)
-        run: npm ci
-
-      - name: Đối chiếu tiền — 3 nguồn độc lập (SQL SUM / RPC RLS / phân trang FE)
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-          SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
-          SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
-        run: node scripts/reconcile-money.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+
+      - name: Execute selected gates and write receipts
+        env:
+          SUPABASE_PAT: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_PAT || '' }}
+          SUPABASE_TEST_EMAIL: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_TEST_EMAIL || '' }}
+          SUPABASE_TEST_PASSWORD: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_TEST_PASSWORD || '' }}
+        run: node scripts/ci-run-gates.mjs --job reconcile-money
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-reconcile-money-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/reconcile-money/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
   cross-tenant-isolation:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     needs: preflight
     if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.preflight.outputs.has_pat == 'true'
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'cross-tenant-isolation')
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Ma trận âm bản cách ly tenant (OWNER/ADMIN/FULL-SCOPE staff)
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/test-cross-tenant.mjs
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+
+      - name: Execute selected gates and write receipts
+        env:
+          SUPABASE_PAT: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_PAT || '' }}
+        run: node scripts/ci-run-gates.mjs --job cross-tenant-isolation
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-cross-tenant-isolation-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/cross-tenant-isolation/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
   secret-scan:
     runs-on: ubuntu-latest
     needs: preflight
     if: >-
-      !cancelled() &&
-      github.ref != 'refs/heads/production' &&
-      !(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == '1' && needs.preflight.outputs.pr_da_xanh == 'true')
-    timeout-minutes: 20
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'secret-scan')
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
           persist-credentials: false
-
-      - name: Cài gitleaks (pin version + sha256)
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+      - name: Install pinned gitleaks with checksum
         run: |
           set -euo pipefail
           curl -sSfL -o /tmp/gitleaks.tar.gz \
@@ -665,48 +370,91 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           /tmp/gitleaks version
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job secret-scan
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-secret-scan-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/secret-scan/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
 
-      - name: Chốt chặn xanh-rỗng — phải thật sự có lịch sử để quét
-        run: |
-          set -euo pipefail
-          COMMITS=$(git rev-list --count HEAD)
-          echo "Lịch sử: $COMMITS commit"
-          if [ "$COMMITS" -lt 500 ]; then
-            echo "::error::Chỉ thấy $COMMITS commit (sàn 500). Checkout nông ⇒ 'no leaks found' là vô nghĩa."
-            exit 1
-          fi
-
-      - name: Quét toàn lịch sử
-        run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
-
-  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
-  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
-  # đúng danh sách file đổi.
   realtime-gates:
     runs-on: ubuntu-latest
     needs: preflight
     if: >-
-      github.ref != 'refs/heads/production' &&
-      needs.preflight.outputs.ma_nguon == 'true'
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'realtime-gates')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - run: npm ci
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+
+      - name: Execute selected gates and write receipts
+        env:
+          SUPABASE_PAT: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_PAT || '' }}
+        run: node scripts/ci-run-gates.mjs --job realtime-gates
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-realtime-gates-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/realtime-gates/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  gate-aggregate:
+    if: always() && github.ref != 'refs/heads/production'
+    needs: [preflight, quality-gates, vitest-tests, strict-islands-gate, timezone-gate, security-gates, generated-types-drift, reconcile-money, cross-tenant-isolation, secret-scan, realtime-gates]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
           persist-credentials: false
-
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-
-      - name: Cài phụ thuộc
-        run: npm ci
-
-      - name: Bảng realtime hub lắng nghe đều được publish
+          cache: npm
+      - run: npm ci
+      - name: Download plan
+        if: always()
         env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-realtime-descriptors.mjs
-
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+      - name: Download current attempt receipts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --pattern "gate-receipts-*-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-receipts
+      - name: Aggregate required evidence
+        if: always()
+        env:
+          CI_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/ci-aggregate-gates.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-aggregate-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/aggregate.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
   production-promotion:
     if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest

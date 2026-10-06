@@ -81,8 +81,8 @@ describe("danhGiaLock", () => {
     expect(danhGiaLock({ pid: 123, batDauMs: 1000 }, pidChet, 2000)).toBe("stale");
   });
 
-  it("quá 20 phút ⇒ stale kể cả pid còn sống — gate không chạy lâu vậy, đó là xác treo", () => {
-    expect(danhGiaLock({ pid: 123, batDauMs: 0 }, pidSong, 21 * 60 * 1000)).toBe("stale");
+  it("không cướp lock của pid sống kể cả gate đã chạy hơn 20 phút", () => {
+    expect(danhGiaLock({ pid: 123, batDauMs: 0 }, pidSong, 21 * 60 * 1000)).toBe("song");
   });
 
   it("lock hỏng/không đọc được ⇒ stale", () => {

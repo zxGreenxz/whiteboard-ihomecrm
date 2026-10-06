@@ -15,6 +15,10 @@ import { readFileSync } from "node:fs";
 import { findForbidden } from "../check-agent-contract.mjs";
 import * as gate from "../check-agent-contract.mjs";
 
+const runbookPaths = ['docs/engineering/MIGRATION_STRATEGY.md', 'docs/engineering/DATA_ENVIRONMENTS.md', 'docs/CODEBASE_STRUCTURE.md'];
+const runbooks = () => Object.fromEntries(runbookPaths.map((file) => [file,
+  readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')]));
+
 const co = (text, id) => findForbidden(text, "AGENTS.md").some((p) => p.id === id);
 
 describe('hướng dẫn dùng được và giữ ngắn', () => {
@@ -37,8 +41,11 @@ describe('hướng dẫn dùng được và giữ ngắn', () => {
   });
 
   it('chặn phình adapter cả bằng dòng dài và nhiều dòng', () => {
-    assert.ok(check('x\n'.repeat(61)).some(p => p.id === 'guide-too-long'));
-    assert.ok(check('x'.repeat(6001)).some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x\n'.repeat(26)).some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x'.repeat(3001)).some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x\n'.repeat(101), 'docs/engineering/PROJECT_CONTRACT.md').some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x'.repeat(8193), 'docs/engineering/PROJECT_CONTRACT.md').some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x\n'.repeat(61), 'docs/README.md').some(p => p.id === 'guide-too-long'));
   });
 
   it('con trỏ trong HTML comment không thay hướng dẫn người đọc', () => {
@@ -177,9 +184,27 @@ describe('cấu hình GitNexus tùy chọn', () => {
       'Graph không phải điều kiện làm việc. Nếu chọn GitNexus, dùng wrapper `scripts/run-pinned-gitnexus.mjs` với pin trong `tooling/agent-tools.json`.',
     ];
     for (const policy of policies) {
-      assert.equal(gate.checkContractInvariants(thayMuc12(policy))
+      assert.equal(gate.checkContractInvariants(thayMuc12(policy), runbooks())
         .some((p) => p.id === 'contract-lost-invariant'), false, policy);
     }
+  });
+
+  it('chi tiết chuyển tới đúng runbook vẫn phải hiện diện, không được mất trong lúc rút Contract', () => {
+    const contract = readFileSync(new URL('../../docs/engineering/PROJECT_CONTRACT.md', import.meta.url), 'utf8');
+    assert.deepEqual(gate.checkContractInvariants(contract, runbooks()), []);
+    for (const [file, needle] of [
+      ['docs/engineering/MIGRATION_STRATEGY.md', 'IHOMECRM_PROMOTION_TOKEN'],
+      ['docs/engineering/DATA_ENVIRONMENTS.md', 'can_access_building'],
+      ['docs/CODEBASE_STRUCTURE.md', 'FLEET_PASS'],
+    ]) {
+      const documents = runbooks();
+      documents[file] = documents[file].replaceAll(needle, 'REMOVED');
+      const errors = gate.checkContractInvariants(contract, documents);
+      assert.ok(errors.some((p) => p.file === file && p.id === 'contract-lost-invariant'), needle);
+      // Chép nội dung sang Contract/comment không thay thế runbook sở hữu nó.
+      assert.ok(gate.checkContractInvariants(`${contract}\n${needle}`, documents).some((p) => p.file === file));
+    }
+    assert.ok(gate.checkContractInvariants(contract, {}).some((p) => p.file === runbookPaths[0]));
   });
 });
 

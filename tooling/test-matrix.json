@@ -2,6 +2,20 @@
   "$comment": "Bản đồ: file test nào do suite nào chạy, bằng runner gì. Vấn đề nó giải: một file test viết ra nhưng KHÔNG nằm trong lệnh nào sẽ im lặng không bao giờ chạy — nhìn vào repo thì thấy 'đã có test', nhìn vào CI thì thấy xanh, mà thực tế không ai kiểm gì. Đó cũng là lý do repo đã có verify-network-center-test-completeness.mjs: test bị SKIP cũng báo pass. File này mở rộng ý đó ra toàn repo. Kiểm: npm run gate:test-matrix",
   "schemaVersion": 1,
   "deferredModules": "tooling/deferred-modules.json",
+  "sourceSelectionRules": [
+    {"id":"navigation","sourcePaths":["src/components/layout/**","src/pages/home/**","src/app/routes/**","src/app/capabilities/**"],"suiteId":"app-unit","testPatterns":["src/pages/home/**/*.test.*","src/app/routes/**/*.test.*","src/app/capabilities/**/*.test.*","scripts/__tests__/*route*.test.mjs"],"viewports":["affected"]},
+    {"id":"quick-entry","sourcePaths":["src/components/quick-entry/**","src/pages/quick-entry/**","src/hooks/quick-entry/**","src/lib/quickEntry/**"],"suiteId":"app-unit","testPatterns":["src/components/quick-entry/**/*.test.*","src/pages/quick-entry/**/*.test.*","src/hooks/quick-entry/**/*.test.*","src/lib/**/quickEntry*.test.*"],"viewports":["affected"]},
+    {"id":"personal-finance","sourcePaths":["src/components/personal-finance/**","src/pages/personal-finance/**","src/hooks/personal-finance/**","src/lib/personal-finance/**"],"suiteId":"app-unit","testPatterns":["src/**/personal-finance/**/*.test.*","src/**/personalFinance*.test.*"],"viewports":["affected"]},
+    {"id":"personal-finance-demo","sourcePaths":["public/demos/personal-finance/**",".e2e-fleet/specs/personal-finance-demo.spec.ts"],"suiteId":"e2e-personal-finance-demo","testPatterns":[".e2e-fleet/specs/personal-finance-demo.spec.ts"],"viewports":["affected"],"ciSafe":true},
+    {"id":"llm-proxy","sourcePaths":["supabase/functions/llm-proxy/**"],"suiteId":"edge-deno-llm-proxy","testPatterns":["supabase/functions/llm-proxy/*.test.ts"]},
+    {"id":"quick-entry-edge","sourcePaths":["supabase/functions/quick-entry/**"],"suiteId":"edge-deno-quick-entry","testPatterns":["supabase/functions/quick-entry/index.test.ts"]},
+    {"id":"network-edge","sourcePaths":["supabase/functions/network-center-worker/**","supabase/functions/network-watchdog/**"],"suiteId":"edge-deno","testPatterns":["supabase/functions/network-center-worker/index.test.ts","supabase/functions/network-watchdog/index.test.ts"]},
+    {"id":"network-worker","sourcePaths":["infra/network-center-worker/**"],"suiteId":"network-center-worker","testPatterns":["infra/network-center-worker/**/*.test.ts"]},
+    {"id":"network-native","sourcePaths":["scripts/network-center-*.mjs","scripts/__tests__/network-center-*.test.mjs"],"suiteId":"node-native","workflowOwner":".github/workflows/network-center-validation.yml","jobs":["validate"],"testPatterns":["scripts/__tests__/network-center-*.test.mjs"]},
+    {"id":"backup-envelope","sourcePaths":["scripts/org-context-repair/**"],"suiteId":"organization-backup-envelope","testPatterns":["scripts/org-context-repair/sealed-artifact.test.mjs"]},
+    {"id":"money-and-schema-invariants","profiles":["schema","money-auth"],"suiteId":"app-unit","testPatterns":["src/**/*.test.*","scripts/__tests__/**/*.test.*","worker/__tests__/**/*.test.*"]},
+    {"id":"money-and-schema-node","profiles":["schema","money-auth"],"suiteId":"node-native","testPatterns":["scripts/__tests__/**/*.test.mjs"]}
+  ],
   "notes": [
     "deferredModules loại test được tạm hoãn khỏi mọi suite đang hoạt động. status=deferred giữ metadata để khôi phục, không khai test đã chạy hay pass.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
@@ -10,6 +24,8 @@
   "suites": [
     {
       "id": "organization-backup-envelope",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
       "runner": "node --test",
       "ciJob": "quality-gates",
       "command": "node --test scripts/org-context-repair/sealed-artifact.test.mjs",
@@ -48,6 +64,8 @@
     },
     {
       "id": "app-unit",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
       "runner": "vitest",
       "ciJob": "vitest-tests",
       "command": "npx vitest run src scripts/__tests__ worker/__tests__",
@@ -68,6 +86,9 @@
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
+        "scripts/__tests__/gate-evidence.test.mjs",
+        "scripts/__tests__/selected-vitest.test.mjs",
+        "scripts/__tests__/ci-gate-execution.test.mjs",
         "scripts/__tests__/check-copilot-routes.test.mjs",
         "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
         "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
@@ -125,6 +146,7 @@
     },
     {
       "id": "edge-deno",
+      "workflowOwner": ".github/workflows/network-center-validation.yml",
       "runner": "deno",
       "ciJob": "network-center-validation / validate",
       "command": "deno test --config supabase/functions/<fn>/deno.json supabase/functions/<fn>/index.test.ts --allow-env",
@@ -146,6 +168,8 @@
     },
     {
       "id": "edge-deno-llm-proxy",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
       "runner": "deno",
       "ciJob": "ci-gates / quality-gates",
       "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env  (CI dùng denoland/setup-deno 2.9.4; máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
@@ -167,6 +191,8 @@
     },
     {
       "id": "edge-deno-quick-entry",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
       "runner": "deno",
       "ciJob": "ci-gates / quality-gates",
       "command": "deno test --config supabase/functions/quick-entry/deno.json supabase/functions/quick-entry/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
@@ -245,6 +271,20 @@
       }
     },
     {
+      "id": "e2e-personal-finance-demo",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "playwright",
+      "ciJob": "quality-gates",
+      "command": "node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.config.ts .e2e-fleet/specs/personal-finance-demo.spec.ts --workers=1 --reporter=list",
+      "includes": [".e2e-fleet/specs/personal-finance-demo.spec.ts"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "environment": "ci",
+      "risk": "normal",
+      "timeoutMinutes": 10,
+      "note": "Offline demo tự dựng HTTP fixture; không gọi Supabase, không đọc credential. Planner chọn riêng spec này khi source demo đổi; fleet live vẫn do suite local sở hữu."
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
       "ciJob": "(local — phần fleet còn lại chưa có job CI)",
@@ -254,6 +294,7 @@
         ".e2e-fleet/specs/**/*.spec.ts"
       ],
       "excludes": [
+        ".e2e-fleet/specs/personal-finance-demo.spec.ts",
         ".e2e-fleet/specs/voucher-detail-read-scope.spec.ts",
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",
@@ -271,6 +312,7 @@
     },
     {
       "id": "network-center-worker",
+      "workflowOwner": ".github/workflows/network-center-validation.yml",
       "runner": "vitest (per-package)",
       "ciJob": "network-center-validation / validate",
       "command": "npm --prefix infra/network-center-worker test",
@@ -298,6 +340,8 @@
     },
     {
       "id": "node-native",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
       "runner": "node --test",
       "ciJob": "quality-gates (ci-gates) / validate (network-center-validation)",
       "command": "node --test <file>",
@@ -307,6 +351,9 @@
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
+        "scripts/__tests__/gate-evidence.test.mjs",
+        "scripts/__tests__/selected-vitest.test.mjs",
+        "scripts/__tests__/ci-gate-execution.test.mjs",
         "scripts/__tests__/check-copilot-routes.test.mjs",
         "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
         "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
@@ -365,7 +412,7 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 20,
-      "note3": "BỔ SUNG 12/08/2026: bảy file từ `check-copilot-routes` tới `check-ts-suppressions` là gate viết SAU đợt sửa 06/08 và 11/08, mỗi cái lại dùng `node:test` mà không ai nối vào đây — nên chúng bị xếp nhầm vào suite Vitest và KHÔNG lệnh nào chạy chúng. Đo lúc phát hiện: 77 test, xanh cả 77, chưa từng chạy trong CI lần nào. Thêm gate mới dùng `node:test` phải sửa BA chỗ: `includes` ở đây, bước `node --test` và danh sách `--exclude` của Vitest trong ci-gates.yml."
+      "note3": "Matrix sở hữu includes/excludes; gate-registry sở hữu command, planner chọn file. Test network-center giữ workflow/runtime riêng theo sourceSelectionRules; không nhân đôi danh sách lệnh trong YAML."
     }
   ],
   "ignore": [

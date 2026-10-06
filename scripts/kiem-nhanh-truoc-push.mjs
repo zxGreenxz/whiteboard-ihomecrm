@@ -1,141 +1,27 @@
 #!/usr/bin/env node
-// Sinh artifact theo allowlist rồi chạy các gate trước push.
-// Stage đúng source/test đầu vào trước khi chạy; kiểm diff staged sau khi xong.
-// Có bước đọc Supabase để sinh types/surfaces: cần credential và mạng.
-//
-//   npm run gate:truoc-push
-//   npm run gate:truoc-push -- --khong-dao-strict   # docs/script thuần
-//   npm run gate:truoc-push -- --khong-do-ro-org    # bỏ Bước 3 (đo rò chéo tổ chức)
-//
-// Mỗi worktree có lock riêng. Generator chỉ stage file thuộc sở hữu; bước vá
-// tài liệu chỉ stage file sạch trước lượt chạy và thực sự được sửa trong lượt.
-// Chốt cuối kiểm index. Không stage file WIP ngoài phạm vi hoặc xoá lock sống.
-// Thiếu bằng chứng live không được tính là schema đã khớp.
-// Thoát 0 = gate tĩnh đạt; 1 = có lỗi, xem phần tổng hợp.
+// Kiểm staged snapshot bằng kế hoạch dùng chung với CI.
+// --plan chỉ in lựa chọn; --full mở rộng bộ active, vẫn giữ module DEFERRED.
+// Generator chỉ chạy khi đầu vào liên quan đổi, chỉ stage artifact thuộc sở hữu.
+// Receipt local không thay bằng chứng CI. Exit 1 = lỗi, 3 = chưa đủ đầu vào.
 
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readPat } from "./capture-production-catalog.mjs";
 import { DAO } from "./check-strict-islands.mjs";
-import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
-import { FILE_SINH as FILE_CORPUS_HUONG_DAN } from "./generate-copilot-guide-corpus.mjs";
-import { isDeferredGate } from "./lib/deferred-modules.mjs";
-
+import { GATE_REGISTRY, GENERATOR_REGISTRY, getGate } from "./lib/gate-registry.mjs";
+import { createGateReceipt, canReuseGateReceipt } from "./lib/gate-evidence.mjs";
+import { indexInputConflicts } from "./lib/local-gate-snapshot.mjs";
+import { mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-// ── Bước 1: máy sinh số — chạy TRƯỚC để gate phía dưới đo bản đã tươi ────────
-// Mục có `mang: true` gọi ra ngoài (Supabase catalog / DB thật) — hỏng thì cảnh
-// báo ⚠ chứ không chặn: offline không phải lỗi của code. Nhưng nếu bạn VỪA đổi
-// schema/RPC thì phải chạy lại khi có mạng — CI sẽ đo bằng catalog live.
-//
-// Vì sao types + surface nằm đây (thêm 25/08/2026): mổ xẻ 17 lần CI đỏ từ
-// 20–25/08 thì 12 lần do số đếm tài liệu, 8 lần do types.ts trôi, 3 lần do
-// manifest bề mặt RPC trôi — toàn bộ là artifact MÁY SỞ HỮU mà quy trình lại
-// bắt con người nhớ chạy đúng 5 lệnh đúng thứ tự. Từ nay một lệnh này làm hết.
-//
-// `soHuu`: file/tiền-tố (kết thúc `/`) mà generator này được phép tự stage.
-// `kieu: "va-tay"`: file NGƯỜI viết, máy chỉ vá số — stage theo dòng DA_SUA.
-// docs/generated/schema-change-evidence/ cố ý KHÔNG thuộc sở hữu của ai ở đây:
-// biên nhận cặp đôi với MỘT migration cụ thể và phải đi cùng commit của
-// migration đó (suýt tạo evidence mồ côi 25/08/2026).
-const TYPES = "src/integrations/supabase/types.ts";
-const TAT_CA_TU_CHUA = [
-  ["sinh types.ts từ DB thật (gen:types)", ["scripts/gen-supabase-types.mjs"], { mang: true, soHuu: [TYPES] }],
-  ["chuẩn hoá types.ts (bỏ partition + ghim phiên bản nền tảng)", ["scripts/normalize-supabase-types.mjs", "--write"], { soHuu: [TYPES] }],
-  ["sinh manifest bề mặt RPC", ["scripts/generate-rpc-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/rpc-surface.json"] }],
-  ["sinh manifest bề mặt Edge", ["scripts/generate-edge-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/edge-function-surface.json"] }],
-  ["sinh manifest bề mặt realtime", ["scripts/generate-realtime-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/realtime-surface.json"] }],
-  ["sinh kiểm kê repo (JSON)", ["scripts/generate-repository-inventory.mjs", "--write"], { soHuu: ["docs/generated/repository-inventory.json"] }],
-  // Đối số `import.meta.glob` của corpus hướng dẫn — literal sinh từ CAPABILITIES.
-  // Đây là artifact MÁY SỞ HỮU nằm trong src/, và nó phải tươi TRƯỚC gate: thêm
-  // một capability `public` mà quên sinh lại nghĩa là trang đó không vào bundle
-  // (Copilot mất trang), gỡ một capability mà quên sinh lại nghĩa là trang vẫn
-  // được phân phối công khai (án lệ I5).
-  ["sinh corpus hướng dẫn cho Copilot", ["scripts/generate-copilot-guide-corpus.mjs", "--write"], { soHuu: [FILE_CORPUS_HUONG_DAN] }],
-  ["sinh bản .md render từ manifest", ["scripts/generate-docs-views.mjs"], { soHuu: DANH_SACH_VIEW }],
-  ["sửa số đếm trong tài liệu", ["scripts/check-doc-counts.mjs", "--fix"], { kieu: "va-tay" }],
-  ["dán số baseline từ manifest vào README", ["scripts/check-baseline-doc.mjs", "--fix"], { kieu: "va-tay" }],
-];
-
-// ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
-const TAT_CA_GATE_NHANH = [
-  // contract-gates
-  "check-agent-contract",
-  "check-runtime-matrix",
-  "check-known-gaps",
-  "check-capability-surfaces",
-  "check-route-permission-drift",
-  "check-capability-docs",
-  "check-baseline-doc",
-  "check-route-guards",
-  "check-test-matrix",
-  "check-workflow-paths",
-  "check-raw-rpc-callers",
-  "check-realtime-query-keys",
-  "check-evidence-store",
-  "check-test-only-exports",
-  "check-unknown-review",
-  "check-ts-suppressions",
-  "check-rpc-cast-ratchet",
-  "check-rpc-in-view-ratchet",
-  "check-error-swallow-ratchet",
-  "check-money-table-dml",
-  // schema-gates
-  "check-migration-provenance",
-  ["normalize-supabase-types", "--check"],
-  "check-no-auto-apply",
-  "check-management-api-writes",
-  "check-promote-readiness",
-  "check-migration-test-liveness",
-  // docs-freshness (số đã được bước 1 chữa; ở đây chỉ còn xác nhận)
-  "check-copilot-docs-manifest",
-  "check-copilot-routes",
-  "check-copilot-tool-inventory",
-  "check-doc-counts",
-  "check-doc-freshness",
-  ["generate-docs-views", "--check"],
-  // copilot-gates — bảy cổng nối vào CI (ci-gates.yml, bước "copilot-gates").
-  // Sáu cổng đầu tĩnh, không mạng. `check-copilot-negative-proofs` (G4,
-  // 03/09/2026) bình thường cũng chỉ đọc artifact JSON. Khi artifact hợp lệ chỉ
-  // bị quá tuổi, nó cần SUPABASE_PAT để hỏi helper production; chỉ hoãn làm tươi
-  // khi execution_plan trên DEMO đang tắt. Nó KHÔNG tự chạy live-proofs.
-  "check-copilot-page-contracts",
-  "check-copilot-safe-control-markers",
-  "check-copilot-provider-policy",
-  "check-copilot-e2e-files",
-  "check-copilot-golden-eval",
-  "check-copilot-forbidden-actions",
-  "check-copilot-negative-proofs",
-  // Corpus hướng dẫn: đối số glob phải khớp allowlist CAPABILITIES từng dòng.
-  ["generate-copilot-guide-corpus", "--check"],
-  // nợ strict mới
-  "check-new-modules-strict",
-];
-
-const tenScript = (muc) => Array.isArray(muc) ? muc[0] : muc;
-export const GATE_TAM_HOAN = TAT_CA_GATE_NHANH.filter((muc) => isDeferredGate(tenScript(muc)));
-export const GATE_NHANH = TAT_CA_GATE_NHANH.filter((muc) => !isDeferredGate(tenScript(muc)));
-export const TU_CHUA = TAT_CA_TU_CHUA.filter(([, args]) => !isDeferredGate(args[0]));
-
-// Nhóm NẶNG: chỉ đo MÃ NGUỒN — tách riêng để `--khong-dao-strict` còn đường chạy
-// nhanh khi chỉ sửa docs/script.
-//
-// `check-eslint-baseline` vào đây 15/09/2026: nó là bước "Lint root-owned code
-// (ratchet)" của job quality-gates, tức một trong những cửa đỏ SAU KHI push mà
-// người ngồi máy không hề được cảnh báo trước. `check-ts-baseline` vào 01/10/2026
-// cùng lý do (bước "Typecheck baseline" của quality-gates), để agent khỏi chạy
-// riêng nó trước gate. Cả ba đều có cache (đo 01/10, lượt sau): đảo strict 7 s
-// mỗi đảo, kiểm kiểu 14 s, lint 2 s. Đảo strict tách MỖI ĐẢO MỘT CỬA (sinh từ
-// bảng DAO, nên đảo mới tự vào gate) để hai lượt tsc nguội chạy song song.
-export const GATE_NANG = [
-  ...DAO.map((d) => ["check-strict-islands", "--dao", d.ten]),
-  "check-ts-baseline",
-  "check-eslint-baseline",
-];
+// Compatibility exports for callers; execution below uses the selected plan.
+export const GATE_TAM_HOAN = JSON.parse(readFileSync(join(repoRoot, 'tooling/deferred-modules.json'), 'utf8')).modules.flatMap((m) => m.gates);
+export const GATE_NHANH = Object.values(GATE_REGISTRY).filter((g) => g.local && g.job === 'quality-gates' && !g.id.startsWith('suite:') && !['check-ts-baseline','check-eslint-baseline'].includes(g.id)).map((g) => g.id);
+export const GATE_NANG = [...DAO.map((d) => ['check-strict-islands', '--dao', d.ten]), 'check-ts-baseline', 'check-eslint-baseline'];
+export const TU_CHUA = Object.values(GENERATOR_REGISTRY).map((g) => [g.id, g.args, { soHuu: g.owns, kieu: g.patch ? 'va-tay' : 'may', mang: g.external }]);
 
 /**
  * Số cửa chạy cùng lúc: chừa 2 luồng cho máy, tối thiểu 2, tối đa 8.
@@ -164,24 +50,6 @@ export async function chayGioiHan(cacViec, gioiHan) {
   await Promise.all(Array.from({ length: Math.min(gioiHan, cacViec.length) }, tho));
   return ketQua;
 }
-
-const chay = (args) => spawnSync("node", args.map((a, i) => (i === 0 ? join(repoRoot, a) : a)), {
-  cwd: repoRoot,
-  encoding: "utf8",
-});
-
-/** Bản bất đồng bộ của `chay`, trả cùng dạng { status, stdout, stderr } kèm số giây. */
-const chayNen = (args) =>
-  new Promise((resolve) => {
-    const t0 = Date.now();
-    const p = spawn("node", args.map((a, i) => (i === 0 ? join(repoRoot, a) : a)), { cwd: repoRoot });
-    let stdout = "";
-    let stderr = "";
-    p.stdout.setEncoding("utf8").on("data", (d) => { stdout += d; });
-    p.stderr.setEncoding("utf8").on("data", (d) => { stderr += d; });
-    p.on("error", (e) => resolve({ status: null, stdout, stderr: `${stderr}${e.message}`, giay: (Date.now() - t0) / 1000 }));
-    p.on("close", (status) => resolve({ status, stdout, stderr, giay: (Date.now() - t0) / 1000 }));
-  });
 
 const goiGit = (args) =>
   (spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout ?? "")
@@ -265,13 +133,11 @@ export function quyetDinhDoRoOrg({ bat = true, coCredential = false, dungMigrati
 
 /**
  * Lock đã tồn tại là "song" (phải chờ) hay "stale" (chiếm được)?
- * Stale khi: không đọc được, pid đã chết, hoặc quá hạn (gate không chạy quá
- * 20 phút — lâu hơn là xác treo của một phiên đã bị kill).
+ * Stale khi không đọc được hoặc pid đã chết. Không cướp lock sống theo tuổi.
  */
-export function danhGiaLock(lock, pidConSong, bayGioMs, hanMs = 20 * 60 * 1000) {
+export function danhGiaLock(lock, pidConSong) {
   if (!lock || typeof lock.pid !== "number" || typeof lock.batDauMs !== "number") return "stale";
   if (!pidConSong(lock.pid)) return "stale";
-  if (bayGioMs - lock.batDauMs > hanMs) return "stale";
   return "song";
 }
 
@@ -309,199 +175,119 @@ function chiemLock() {
   }
 }
 
+export function selectLocalGates(plan, { full = false } = {}) {
+  return plan.gateIds.map((id) => getGate(id, plan)).filter((gate) => gate.local || (full && gate.id.startsWith('suite:') && gate.evidenceClass === 'static'));
+}
+
+// Default preview is for a human/agent. The complete snapshot stays in JSON evidence.
+export function summarizeGatePlan(plan) {
+  return {
+    snapshot: plan.snapshot, profiles: plan.profiles, fullFallback: plan.fullFallback,
+    changedPaths: plan.changedPaths, reasons: plan.reasons, gateIds: plan.gateIds,
+    gates: plan.gateIds.map((id) => { const gate = getGate(id, plan); return { id, command: gate.command, args: gate.args, local: gate.local, job: gate.job, evidenceClass: gate.evidenceClass, requires: gate.requires }; }),
+    suites: plan.suiteSelections.map(({ id, runner, mode, files, viewports }) => ({ id, runner, mode, testFileCount: files.length, viewports })),
+    generatorIds: plan.generatorIds, requiredJobs: plan.requiredJobs,
+    requiredExternalWorkflows: plan.requiredExternalWorkflows, browserRequirements: plan.browserRequirements,
+    unavailable: plan.unavailable, executionMismatches: plan.executionMismatches,
+    deferred: 'Zalo/Copilot — không chạy và không tính là pass',
+  };
+}
+
+function execute(gate) {
+  return new Promise((resolve) => {
+    const startedAt = new Date().toISOString();
+    const child = spawn(gate.command, gate.args, { cwd: repoRoot, env: process.env });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (data) => { stdout += data; });
+    child.stderr.setEncoding('utf8').on('data', (data) => { stderr += data; });
+    child.on('error', (error) => resolve({ status: 'blocked', exitCode: 3, stdout, stderr: error.message, startedAt, completedAt: new Date().toISOString() }));
+    child.on('close', (code) => resolve({ status: code === 0 ? 'passed' : code === 3 ? 'blocked' : 'failed', exitCode: code ?? 3, stdout, stderr, startedAt, completedAt: new Date().toISOString() }));
+  });
+}
+
 async function main() {
-  const boDaoStrict = process.argv.includes("--khong-dao-strict");
-  const boDoRoOrg = process.argv.includes("--khong-do-ro-org");
-  const t0 = Date.now();
-
+  const { planFromGit } = await import('./lib/gate-plan.mjs');
+  const full = process.argv.includes('--full');
+  const dry = process.argv.includes('--plan');
+  let plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
+  if (dry) { console.log(JSON.stringify(process.argv.includes('--json') ? plan : summarizeGatePlan(plan), null, 2)); return; }
+  if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
   const lock = chiemLock();
-  if (lock.loi) {
-    console.error(`❌ ${lock.loi}`);
-    process.exitCode = 1;
-    return;
-  }
-  const nhaLock = () => { try { unlinkSync(lock.duong); } catch { /* đã gỡ */ } };
-  process.on("exit", nhaLock);
-  process.on("SIGINT", () => { nhaLock(); process.exit(130); });
-
+  if (lock.loi) { console.error(lock.loi); process.exitCode = 3; return; }
+  const release = () => { try { unlinkSync(lock.duong); } catch { /* already released */ } };
+  process.once('exit', release);
+  process.once('SIGINT', () => { release(); process.exit(130); });
   try {
-    console.log(`⏸ DEFERRED: ${GATE_TAM_HOAN.length} gate và generator chuyên biệt tạm hoãn theo tooling/deferred-modules.json; không tính là đạt.`);
-    console.log("── Bước 1/3: máy tự sinh số ──");
-    // File đã bẩn TRƯỚC Bước 1 (so với index): --fix có vá số trên đó thì cũng
-    // KHÔNG stage — có thể là sửa tay dở của phiên khác.
-    const banTruoc = new Set(goiGit(["diff", "--name-only"]));
-    const loiTuChua = [];
-    const canhBaoMang = [];
-    const ketQuaMuc = [];
-    for (const [ten, args, tuyChon = {}] of TU_CHUA) {
-      const r = chay(args);
-      const thanhCong = r.status === 0;
-      if (thanhCong) console.log(`  ✅ ${ten}`);
-      else if (tuyChon.mang) {
-        canhBaoMang.push([ten, tuyChon]);
-        console.log(`  ⚠ ${ten} (exit ${r.status}) — cần mạng/PAT; nếu bạn vừa đổi schema/RPC thì PHẢI chạy lại khi có mạng`);
-      } else {
-        loiTuChua.push([ten, r]);
-        console.log(`  ❌ ${ten} (exit ${r.status})`);
+    if (process.argv.includes('--khong-dao-strict') || process.argv.includes('--khong-do-ro-org')) {
+      console.warn('Cờ cũ không hạ nghĩa vụ: bộ chọn quyết định gate cần chạy; phép kiểm CI chưa chạy không tính là đạt.');
+    }
+    let selected = selectLocalGates(plan, { full });
+    const inputs = [...new Set([...selected.flatMap((gate) => gate.inputs), ...(plan.inputPaths ?? []), ...(plan.inputPatterns ?? [])])];
+    const conflicts = indexInputConflicts(repoRoot, inputs);
+    if (conflicts.length) { console.error('Đầu vào khác INDEX; stage đúng phần dự định trước khi kiểm:\n' + conflicts.join('\n')); process.exitCode = 3; return; }
+    const before = new Set(goiGit(['diff', '--name-only']));
+    const prepared = [];
+    for (const id of plan.generatorIds) {
+      const generator = GENERATOR_REGISTRY[id];
+      if (!generator) throw new Error('Unknown generator: ' + id);
+      if (generator.requires?.some((key) => !process.env[key])) {
+        console.error('CHƯA KIỂM: generator ' + id + ' thiếu credential ' + generator.requires.filter((key) => !process.env[key]).join(', '));
+        process.exitCode = 3; return;
       }
-      ketQuaMuc.push({
-        ten,
-        kieu: tuyChon.kieu ?? "may",
-        soHuu: tuyChon.soHuu ?? [],
-        thanhCong,
-        daSua: thanhCong && tuyChon.kieu === "va-tay" ? layDaSua(r.stdout) : [],
-      });
+      const result = await execute(generator);
+      if (result.status !== 'passed') { console.error(id + ': ' + result.stderr + result.stdout); process.exitCode = result.exitCode; return; }
+      prepared.push({ ten: id, kieu: generator.patch ? 'va-tay' : 'may', soHuu: generator.owns ?? [], thanhCong: true, daSua: generator.patch ? layDaSua(result.stdout) : [] });
     }
-
-    // TỰ STAGE theo ALLOWLIST SỞ HỮU, không chỉ nhắc.
-    //
-    // Bản trước-nữa in "NHỚ stage kèm commit" rồi phó mặc trí nhớ con người —
-    // trí nhớ thua (4 commit fix(ci) đo 25/08 chỉ để dán lại thứ máy sinh).
-    // Bản 25/08 tự stage nhưng theo delta git status toàn repo — vơ nhầm file
-    // phiên khác (mổ xẻ 28/08). Bản này chỉ stage file THUỘC SỞ HỮU của
-    // generator vừa chạy THÀNH CÔNG và đang khác INDEX.
-    //
-    // Thứ tự quan trọng: stage TRƯỚC Bước 2. check-doc-counts đếm bằng
-    // `git ls-files` nên một file chưa `git add` sẽ không được tính — chạy gate
-    // trước khi stage cho ra kết quả "khớp" GIẢ rồi CI đỏ.
-    const soHuuMayOk = ketQuaMuc.filter((m) => m.thanhCong && m.kieu === "may").flatMap((m) => m.soHuu);
-    const dangKhac = new Set(dangKhacIndexTrong([...new Set(soHuuMayOk)]));
-    const { stage, boQua } = tinhTapStage(ketQuaMuc, dangKhac, banTruoc);
-
-    for (const b of boQua) {
-      console.log(`  ⚠ KHÔNG stage ${b.file} — file đang có sửa tay dở từ TRƯỚC (có thể phiên khác).`);
-      console.log(`     Generator đã vá số trên đĩa; nếu file là của bạn thì tự stage phần số đếm.`);
+    const owned = prepared.filter((g) => g.kieu === 'may').flatMap((g) => g.soHuu);
+    const { stage, boQua } = tinhTapStage(prepared, new Set(dangKhacIndexTrong(owned)), before);
+    if (boQua.length) { console.error('Không stage artifact lẫn sửa tay: ' + boQua.map((item) => item.file).join(', ')); process.exitCode = 3; return; }
+    if (stage.length) {
+      const added = spawnSync('git', ['add', '--', ...stage], { cwd: repoRoot, encoding: 'utf8' });
+      if (added.status !== 0) throw new Error(added.stderr || 'Cannot stage owned artifacts');
     }
-    if (stage.length > 0) {
-      const add = spawnSync("git", ["add", "--", ...stage], { cwd: repoRoot, encoding: "utf8" });
-      if (add.status === 0) {
-        console.log(`  ✍ generator cập nhật ${stage.length} file thuộc sở hữu — ĐÃ tự \`git add\`:`);
-      } else {
-        console.log(`  ✍ generator cập nhật ${stage.length} file — KHÔNG tự stage được (${add.stderr?.trim() || "git lỗi"}), stage tay:`);
+    // Generated inputs belong to this snapshot, not the plan from before preparation.
+    plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
+    if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
+    selected = selectLocalGates(plan, { full });
+    const finalInputs = [...new Set([...selected.flatMap((gate) => gate.inputs), ...(plan.inputPaths ?? []), ...(plan.inputPatterns ?? [])])];
+    const afterConflicts = indexInputConflicts(repoRoot, finalInputs);
+    if (afterConflicts.length) { console.error('Đầu vào vẫn khác INDEX: ' + afterConflicts.join(', ')); process.exitCode = 3; return; }
+    const runId = 'local-' + randomUUID();
+    const cache = join(repoRoot, '.cache/gate-receipts'); mkdirSync(cache, { recursive: true });
+    writeFileSync(join(cache, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
+    console.log('Phạm vi: ' + plan.profiles.join(', ') + '; ' + selected.length + ' gate local; DEFERRED không tính pass.');
+    const started = Date.now();
+    const results = await chayGioiHan(selected.map((gate) => async () => {
+      const receiptPath = join(cache, gate.id.replace(/[^a-z0-9-]/gi, '_') + '.json');
+      let previous; try { previous = JSON.parse(readFileSync(receiptPath, 'utf8')); } catch { /* no receipt */ }
+      if (previous && canReuseGateReceipt(previous, { gate, plan, runId, trustedRunIds: [previous.runId], runtime: { node: process.version } })) {
+        return { id: gate.id, status: 'passed', reused: true };
       }
-      for (const f of stage) console.log(`      ${f}`);
+      const result = await execute(gate);
+      const changedWhileRunning = indexInputConflicts(repoRoot, gate.inputs);
+      if (changedWhileRunning.length) { result.status = 'blocked'; result.exitCode = 3; result.stderr += '\nInput changed during execution: ' + changedWhileRunning.join(', '); }
+      const currentTree = spawnSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim();
+      if (currentTree !== plan.snapshot.tree) { result.status = 'blocked'; result.exitCode = 3; result.stderr += '\nINDEX changed during execution'; }
+      const receipt = createGateReceipt({ gate, plan, runId, ...result });
+      writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
+      return { id: gate.id, ...result };
+    }), soLuongSongSong(availableParallelism()));
+    const finalTree = spawnSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim();
+    const finalConflicts = indexInputConflicts(repoRoot, finalInputs);
+    if (finalTree !== plan.snapshot.tree || finalConflicts.length) {
+      console.error('CHƯA KIỂM: đầu vào đổi trong lượt chạy: ' + (finalTree !== plan.snapshot.tree ? 'INDEX; ' : '') + finalConflicts.join(', '));
+      process.exitCode = 3;
     }
-
-    // ── Chốt lỗ hổng "gate đọc working tree, CI đọc bản commit" ──────────────
-    //
-    // Án lệ 25/08/2026, run 32873960678: check-doc-counts --fix sửa số trong
-    // docs ở máy, battery xanh — nhưng file đó bẩn dở từ phiên trước nên không
-    // được stage, CI đọc bản commit vẫn số cũ → đỏ. Chốt này vì thế đo đúng
-    // thứ CI sẽ thấy:
-    //   (a) artifact máy-toàn-phần của generator đã chạy: phải KHÔNG còn khác
-    //       index (tự stage ở trên phải vét sạch);
-    //   (b) số đếm đọc từ INDEX phải khớp (check-doc-counts --nguon-index) —
-    //       file va-tay bẩn của phiên khác không làm chốt này đỏ, vì bản index
-    //       (thứ CI đọc) vẫn đúng.
-    const conKhac = dangKhacIndexTrong([...new Set(soHuuMayOk)]);
-    if (conKhac.length > 0) {
-      console.log(`\n  ❌ ${conKhac.length} artifact máy sinh vẫn khác INDEX sau khi tự stage — bất thường, stage tay rồi chạy lại:`);
-      for (const f of conKhac) console.log(`       git add ${f}`);
-      process.exitCode = 1;
+    for (const result of results) {
+      console.log((result.status === 'passed' ? '✅ ' : '❌ ') + result.id + (result.reused ? ' (dùng lại biên nhận đúng đầu vào)' : ''));
+      if (result.status !== 'passed') console.error(result.stdout + result.stderr);
     }
-    const rIndex = chay(["scripts/check-doc-counts.mjs", "--nguon-index"]);
-    if (rIndex.status !== 0) {
-      console.log("\n  ❌ Số đếm trong INDEX (bản CI sẽ đọc) chưa khớp:");
-      if (rIndex.stdout?.trim()) console.log(rIndex.stdout.trim().replace(/^/gm, "     "));
-      if (rIndex.stderr?.trim()) console.log(rIndex.stderr.trim().replace(/^/gm, "     "));
-      console.log("     File nêu trên cần được stage phần số đếm (git add <file>, hoặc git add -p");
-      console.log("     nếu file đang lẫn sửa tay dở của phiên khác) rồi chạy lại.");
-      process.exitCode = 1;
-    } else {
-      console.log("  ✅ số đếm trong INDEX khớp — bản CI sẽ đọc là bản đúng");
-    }
-    for (const [ten, tuyChon] of canhBaoMang) {
-      if (tuyChon.soHuu?.length) {
-        console.log(`  ⚠ ${ten} chưa chạy được — artifact có thể cũ: ${tuyChon.soHuu.join(", ")}. PHẢI chạy lại khi có mạng.`);
-      }
-    }
-
-    console.log(`  (bước 1: ${Math.round((Date.now() - t0) / 1000)}s)`);
-
-    // Bước 3 chỉ đọc staged diff (đã chốt sau Bước 1) và chờ mạng (~50 s), không
-    // phụ thuộc Bước 2 — nên khởi động ngay, chạy song song; kết quả vẫn in sau
-    // Bước 2 như cũ.
-    const stagedFiles = goiGit(["diff", "--cached", "--name-only"]);
-    const coMigration = dungMigration(stagedFiles);
-    const quyet = quyetDinhDoRoOrg({
-      bat: !boDoRoOrg,
-      coCredential: Boolean(readPat()),
-      dungMigration: coMigration,
-    });
-    const huaDoRo = quyet === "chay" ? chayNen(["scripts/measure-org-leak.mjs"]) : null;
-
-    const tBuoc2 = Date.now();
-    const doSo = [];
-    const danhSach = danhSachChay({ boDaoStrict });
-    const gioiHan = soLuongSongSong(availableParallelism());
-    console.log(`\n── Bước 2/3: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} nhóm nặng), ${gioiHan} cửa cùng lúc ──`);
-    const cacKetQua = await chayGioiHan(
-      danhSach.map((muc) => () => {
-        const args = Array.isArray(muc) ? muc : [muc];
-        return chayNen([`scripts/${args[0]}.mjs`, ...args.slice(1)]);
-      }),
-      gioiHan,
-    );
-    danhSach.forEach((muc, i) => {
-      const ten = Array.isArray(muc) ? muc.join(" ") : muc;
-      const r = cacKetQua[i];
-      const giay = r.giay >= 10 ? ` (${Math.round(r.giay)}s)` : "";
-      if (r.status === 0) {
-        console.log(`  ✅ ${ten}${giay}`);
-      } else {
-        // exit 3 = "không kiểm được" (thiếu tiền đề) — tin KHÁC "kiểm rồi thấy vi
-        // phạm", in nhãn riêng nhưng vẫn tính là chưa sạch: chưa nhìn thấy thì
-        // chưa được coi là đạt (Contract §3).
-        console.log(`  ${r.status === 3 ? "⚠" : "❌"} ${ten} (exit ${r.status})${giay}`);
-        doSo.push([ten, r]);
-      }
-    });
-
-    // ── Bước 3/3: rò chéo tổ chức — cần mạng + PAT, nên KHÔNG bao giờ giả xanh ──
-    console.log(`  (bước 2: ${Math.round((Date.now() - tBuoc2) / 1000)}s)`);
-    console.log("\n── Bước 3/3: không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật) ──");
-    if (quyet === "bo-qua") {
-      console.log("  ⚠ bỏ theo cờ --khong-do-ro-org — CI (job security-gates) vẫn đo, và nó mới là bản đếm.");
-      if (coMigration) {
-        console.log("     Commit này ĐỤNG supabase/migrations/** — tự tắt phép đo ở đúng lượt cần nó nhất.");
-      }
-    } else if (quyet === "canh-bao") {
-      console.log("  ⚠ thiếu SUPABASE_PAT (env hoặc CLAUDE.local.md) — CHƯA đo, không phải đã sạch.");
-      console.log("     Worktree không có CLAUDE.local.md: chạy lại với SUPABASE_PAT=… nếu vừa đổi policy/RLS.");
-    } else if (quyet === "do") {
-      console.log("  ❌ thiếu SUPABASE_PAT mà staged diff ĐỤNG supabase/migrations/** —");
-      console.log("     migration là thứ đổi được ranh giới tổ chức; đây đúng là lượt không được bỏ đo.");
-      console.log("     Chạy lại kèm SUPABASE_PAT=… (chỉ đọc, mọi truy vấn bọc ROLLBACK).");
-      doSo.push(["measure-org-leak (thiếu credential, có migration)", { stdout: "", stderr: "" }]);
-    } else {
-      const r = await huaDoRo;
-      const giay = `${Math.round(r.giay)}s, song song với bước 2`;
-      if (r.status === 0) {
-        console.log(`  ✅ measure-org-leak (${giay})`);
-      } else {
-        console.log(`  ${r.status === 3 ? "⚠" : "❌"} measure-org-leak (exit ${r.status}; ${giay})`);
-        doSo.push(["measure-org-leak", r]);
-      }
-    }
-
-    const giay = Math.round((Date.now() - t0) / 1000);
-    if (doSo.length === 0 && loiTuChua.length === 0 && process.exitCode !== 1) {
-      const soGate = danhSach.length + (quyet === "chay" ? 1 : 0);
-      const conThieu = quyet === "chay" ? "" : " (Bước 3 CHƯA đo — xem ⚠ ở trên)";
-      console.log(`\n✅ ${soGate} gate đang áp dụng đạt trong ${giay}s${conThieu}; ${GATE_TAM_HOAN.length} gate DEFERRED, chưa kiểm. Push được.`);
-      return;
-    }
-
-    console.log(`\n❌ ${doSo.length + loiTuChua.length} mục chưa sạch (${giay}s). Output từng mục:`);
-    for (const [ten, r] of [...loiTuChua, ...doSo]) {
-      console.log(`\n───── ${ten} ─────`);
-      if (r.stdout?.trim()) console.log(r.stdout.trim());
-      if (r.stderr?.trim()) console.log(r.stderr.trim());
-    }
-    process.exitCode = 1;
-  } finally {
-    nhaLock();
-  }
+    const requiredOnCi = plan.gateIds.filter((id) => !selected.some((gate) => gate.id === id));
+    if (plan.browserRequirements?.length) console.log('KIỂM UI CẦN BẰNG CHỨNG RIÊNG (gate kỹ thuật không xác nhận giao diện): ' + JSON.stringify(plan.browserRequirements));
+    if (requiredOnCi.length) console.log('CHƯA KIỂM ở local — CI chịu trách nhiệm: ' + requiredOnCi.join(', '));
+    console.log('Local: ' + results.filter((r) => r.status === 'passed').length + '/' + results.length + ' đạt, ' + Math.round((Date.now() - started) / 1000) + 's. Phát hành vẫn cần CI của đúng commit.');
+    if (results.some((r) => r.status !== 'passed')) process.exitCode = results.some((r) => r.status === 'failed') ? 1 : 3;
+  } finally { release(); process.removeListener('exit', release); }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

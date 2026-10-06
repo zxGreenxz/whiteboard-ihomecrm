@@ -39,17 +39,15 @@ describe("chonMoc", () => {
     expect(kq.files).toEqual(["x.ts", "y.sql"]);
   });
 
-  it("merge-base BẰNG HEAD ⇒ KHÔNG dùng nó, rơi về HEAD~1 (đường của push vào main)", () => {
-    // Đây là ca đã hỏng suốt: merge-base = HEAD ⇒ diff rỗng ⇒ "0 file đổi".
+  it("merge-base BẰNG HEAD không đoán HEAD~1 vì push có thể chứa nhiều commit", () => {
     const kq = chonMoc([], coTatCa, dungDiff({ mergeBase: "HEAD_SHA", head: "HEAD_SHA", ranges: { "HEAD~1..HEAD": ["m.sql"] } }));
-    expect(kq.nhan).toContain("HEAD~1");
-    expect(kq.files).toEqual(["m.sql"]);
+    expect(kq).toBeNull();
   });
 
-  it("không có origin/main lẫn main ⇒ vẫn dùng được HEAD~1", () => {
+  it("không có origin/main lẫn main ⇒ thiếu mốc, không đoán HEAD~1", () => {
     const coRef = (r) => r === "HEAD~1";
     const kq = chonMoc([], coRef, dungDiff({ ranges: { "HEAD~1..HEAD": ["z.ts"] } }));
-    expect(kq.nhan).toContain("HEAD~1");
+    expect(kq).toBeNull();
   });
 
   it("commit đầu tiên của repo (không có HEAD~1) ⇒ null ⇒ gọi phía trên thoát 3", () => {
@@ -61,9 +59,12 @@ describe("chonMoc", () => {
     for (const kq of [
       chonMoc(["--base", "r"], coTatCa, dungDiff({ ranges: { "r..HEAD": [] } })),
       chonMoc([], coTatCa, dungDiff({ mergeBase: "B", ranges: {} })),
-      chonMoc([], (r) => r === "HEAD~1", dungDiff({ ranges: {} })),
     ]) {
       expect(kq?.nhan, "thiếu nhãn mốc").toBeTruthy();
     }
+  });
+  it("mốc before/after sự kiện bao trọn push nhiều commit", () => {
+    const kq = chonMoc(["--before", "OLD", "--after", "NEW"], coTatCa, dungDiff({ ranges: { "OLD..NEW": ["first.sql", "last.md"] } }));
+    expect(kq.files).toEqual(["first.sql", "last.md"]);
   });
 });

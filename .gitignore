@@ -134,3 +134,8 @@ public/ocr-assets/
 
 # Cấu hình cá nhân của Codex CLI (cùng họ với CLAUDE.local.md — có thể chứa key).
 .codex/
+
+# Verification receipts are local evidence, not project documentation.
+/.cache/gate-receipts/
+/.gate-evidence/
+/.gate-receipts/

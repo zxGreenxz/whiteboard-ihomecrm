@@ -10,8 +10,8 @@
 // CÁI BẪY CHÍNH: `continue-on-error` LÀM JOB BÁO XANH
 //   GitHub đặt `conclusion: failure` cho BƯỚC, nhưng JOB vẫn `success`. Nghĩa là
 //   mọi công cụ đọc kết luận ở mức job — kể cả trang Checks — sẽ thấy màu xanh
-//   trong khi một bước đã fail. Repo này CÓ dùng continue-on-error (đăng ký ở
-//   tooling/known-gaps.yaml), nên đây không phải rủi ro lý thuyết.
+//   trong khi một bước đã fail. Giữ chốt này cả khi workflow hiện không dùng
+//   continue-on-error, để việc thêm lại nó không hạ điều kiện phát hành.
 //
 //   Script đọc kết luận ở mức BƯỚC. Một bước fail vẫn là fail, dù ai nuốt nó.
 //
@@ -24,7 +24,9 @@
 // Exit 3 là mặc định khi thiếu GH_TOKEN — "không hỏi được CI" KHÁC "CI xanh".
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -59,38 +61,6 @@ export function locRunsDanhGia(workflowRuns) {
   return (workflowRuns ?? []).filter((r) => r.head_branch !== 'production');
 }
 
-/**
- * Job tĩnh của CI Gates không bao giờ bị bộ lọc đường dẫn bỏ qua. vitest-tests và
- * secret-scan được BỎ QUA trên main khi chính SHA đó đã có lượt pull_request xanh
- * (ci-gates.yml, output `pr_da_xanh` của preflight), nên bằng chứng xanh có thể
- * nằm ở lượt PR. quality-gates hiện luôn chạy trên main; giữ trong danh sách để
- * chốt vẫn đứng nếu ai đó cho nó nghỉ. Chốt so theo TÊN HIỂN THỊ mà API GitHub
- * trả về; check-workflow-paths.test.mjs khoá rằng các job này không có `name:` riêng
- * (nên tên hiển thị = id), không dính bộ lọc đường dẫn, và mọi job được nghỉ trên
- * main đều nằm trong danh sách.
- */
-export const JOB_TINH = ['quality-gates', 'vitest-tests', 'secret-scan'];
-
-/**
- * Job tĩnh xuất hiện mà KHÔNG có lượt xanh nào trong các run CI Gates của commit
- * (chỉ toàn bỏ qua, hoặc còn đang chạy) ⇒ chưa đủ bằng chứng. Job không xuất hiện
- * thì không đòi: run cũ hoặc fixture không có nó.
- *
- * @param cacLuot [{ run, jobs }] — run đã lọc khỏi nhánh production
- */
-export function thieuBangChungTinh(cacLuot) {
-  const thieu = [];
-  for (const ten of JOB_TINH) {
-    const lan = cacLuot
-      .filter(({ run }) => run.path === '.github/workflows/ci-gates.yml')
-      .flatMap(({ jobs }) => (jobs ?? []).filter((j) => j.name === ten));
-    if (lan.length > 0 && !lan.some((j) => j.status === 'completed' && j.conclusion === 'success')) {
-      thieu.push(`CI Gates / ${ten}: chưa có lượt xanh nào cho commit này (main bỏ qua, chờ lượt PR cùng SHA)`);
-    }
-  }
-  return thieu;
-}
-
 export function danhGiaJobs(jobs) {
   const doGate = [];
   const nuot = [];
@@ -103,7 +73,7 @@ export function danhGiaJobs(jobs) {
         dangChay.push(`${job.name} › ${s.name}`);
         continue;
       }
-      if (s.conclusion === 'failure' || s.conclusion === 'timed_out') {
+      if (['failure', 'timed_out', 'cancelled'].includes(s.conclusion)) {
         (jobXanh ? nuot : doGate).push(`${job.name} › ${s.name}`);
       }
     }
@@ -141,15 +111,58 @@ async function goiGitHub(duong, token) {
   return res.json();
 }
 
+export function validAggregateForRun(aggregate, run, sha) {
+  return aggregate?.schemaVersion === 1 && aggregate.status === 'passed' &&
+    aggregate.snapshot?.head === sha && aggregate.runId === `${run.id}:${run.run_attempt}` &&
+    Array.isArray(aggregate.gateIds) && aggregate.gateIds.length > 0 &&
+    ['policyDigest', 'runtimeDigest', 'inputDigest'].every((key) => typeof aggregate[key] === 'string' && aggregate[key].length > 0) &&
+    Array.isArray(aggregate.requiredExternalWorkflows);
+}
+
+export function validateExternalWorkflowEvidence(required, observations, sha) {
+  const missing = [];
+  for (const obligation of required) {
+    if (!obligation?.workflow || !Array.isArray(obligation.jobs) || obligation.jobs.length === 0) {
+      missing.push('Invalid external workflow obligation'); continue;
+    }
+    const matching = observations.filter(({ run }) => run.path === obligation.workflow && run.head_sha === sha &&
+      run.head_branch !== 'production' && run.status === 'completed' && run.conclusion === 'success');
+    for (const name of obligation.jobs) {
+      const proven = matching.some(({ jobs }) => jobs.some((job) => job.name === name && job.status === 'completed' &&
+        job.conclusion === 'success' && job.steps?.some((step) => step.status === 'completed' && step.conclusion === 'success') && danhGiaJobs([job]).datDieuKien));
+      if (!proven) missing.push(`${obligation.workflow} / ${name}: missing successful exact-SHA external evidence`);
+    }
+  }
+  return missing;
+}
+
+function readAggregateArtifact(repo, run, token) {
+  if (!Number.isInteger(run.id) || !Number.isInteger(run.run_attempt)) throw new Error('Incomplete run artifact identity');
+  const temporaryRoot = resolve(tmpdir());
+  const folder = mkdtempSync(join(temporaryRoot, 'ihomecrm-gate-evidence-'));
+  try {
+    execFileSync('gh', ['run', 'download', String(run.id), '--repo', repo, '--name', `gate-aggregate-attempt-${run.run_attempt}`, '--dir', folder], {
+      env: { ...process.env, GH_TOKEN: token }, stdio: 'pipe', timeout: 30_000,
+    });
+    return JSON.parse(readFileSync(join(folder, 'aggregate.json'), 'utf8'));
+  } finally {
+    // Remove only the fresh temporary directory owned by this invocation.
+    if (dirname(resolve(folder)) !== temporaryRoot || !basename(folder).startsWith('ihomecrm-gate-evidence-')) throw new Error('Unsafe evidence temporary path');
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
 /** Read one complete observation. Missing evidence remains pending; API errors throw. */
-export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
+export async function readGateEvidence(repo, sha, token, request = goiGitHub, readAggregate = readAggregateArtifact) {
   const runs = await request(`/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`, token);
   if (!Array.isArray(runs.workflow_runs) || !Number.isInteger(runs.total_count) || runs.total_count !== runs.workflow_runs.length) {
     throw new Error('GitHub workflow evidence incomplete');
   }
   const selected = locRunsDanhGia(runs.workflow_runs);
   const jobs = [];
-  const cacLuot = [];
+  const observations = [];
+  const requiredExternal = [];
+
   const pendingRuns = [];
   const failedRuns = [];
   let hasCompletedMainCi = false;
@@ -171,18 +184,27 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
       }
     }
     if (
-      run.path === '.github/workflows/ci-gates.yml' && run.head_branch === 'main' &&
+      run.path === '.github/workflows/ci-gates.yml' && run.head_branch === 'main' && run.head_sha === sha &&
       run.status === 'completed' && run.conclusion === 'success' &&
-      // `preflight` chỉ đọc cấu hình, không kiểm gì: không được một mình nó làm
-      // lượt main thành "hoàn tất" khi mọi job khác bị bỏ qua.
-      result.jobs.some((job) => job.name !== 'preflight' && job.status === 'completed' && job.conclusion === 'success' &&
+      // Only the aggregate checks every selected gate/job receipt. An ordinary
+      // successful job (or a green PR on another SHA) is not release evidence.
+      result.jobs.some((job) => job.name === 'gate-aggregate' && job.status === 'completed' && job.conclusion === 'success' &&
         job.steps?.some((step) => step.status === 'completed' && step.conclusion === 'success'))
-    ) hasCompletedMainCi = true;
-    cacLuot.push({ run, jobs: result.jobs });
+    ) {
+      const aggregate = await readAggregate(repo, run, token);
+      if (!validAggregateForRun(aggregate, run, sha)) pendingRuns.push(`CI Gates / ${run.id}: aggregate artifact is incomplete or mismatched`);
+      else {
+        hasCompletedMainCi = true;
+        requiredExternal.push(...aggregate.requiredExternalWorkflows);
+      }
+    }
+
+    observations.push({ run, jobs: result.jobs });
     jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
   }
-  if (!hasCompletedMainCi) pendingRuns.push('Chưa có CI Gates trên main hoàn tất với bằng chứng bước đã chạy');
-  pendingRuns.push(...thieuBangChungTinh(cacLuot));
+  if (!hasCompletedMainCi) pendingRuns.push('Chưa có gate-aggregate trên main hoàn tất cho đúng SHA với bằng chứng bước đã chạy');
+  pendingRuns.push(...validateExternalWorkflowEvidence(requiredExternal, observations, sha));
+
   const verdict = danhGiaJobs(jobs);
   verdict.dangChay.push(...pendingRuns);
   verdict.doGate.push(...failedRuns);

@@ -1,6 +1,16 @@
 # Môi trường dữ liệu
 
-ID và quyền ghi của THẬT/DEMO/TEST nằm ở [Project Contract](PROJECT_CONTRACT.md) §2.
+Đọc trước thao tác dữ liệu/quyền; [Project Contract](PROJECT_CONTRACT.md) §2 quy định giới hạn thao tác.
+
+| Đích | ID/quyền |
+|---|---|
+| Org THẬT trong production | `aaaa0000-0000-4000-8000-000000000001`: chỉ đọc nghiệp vụ |
+| Org DEMO trong production | `dddd0000-0000-4000-8000-000000000001`: fixture thử, tự dọn |
+| Project TEST `ihomecrm-test` | Project Supabase riêng; ref trong vault, được thử dữ liệu/schema theo lane |
+
+Mật khẩu TEST riêng; web Preview nhánh `test-env`. Bản sao có dữ liệu/tài khoản/vai trò, không có byte ảnh/file. Thử SQL bằng `npm run test-env:thu-sql -- <file>`.
+Không dựng lại clone-org trong production. `sandbox_org_ids()` còn trả org TEST cũ `cccc0000-0000-4000-8000-000000000001` đã xoá; tới khi gỡ helper, bảng mới có `organization_id` cần policy `<bảng>_hide_sandbox_admin`, bọc phép so bằng `COALESCE(…, false)` để xử lý NULL.
+
 Production có hai org (THẬT, DEMO) dùng chung database. Môi trường TEST là project Supabase
 riêng mang bản sao dữ liệu thật — bảo vệ như dữ liệu thật; xem [test-env/README](../../scripts/test-env/README.md).
 
@@ -12,7 +22,7 @@ riêng mang bản sao dữ liệu thật — bảo vệ như dữ liệu thật;
   `*_hide_sandbox_admin` giấu sandbox theo org. Không coi hai họ policy là đồng nghĩa.
 - Với `organization_id IS NULL`, dùng predicate xử lý NULL đúng; không để phép phủ định NULL
   giấu nhầm dòng hợp lệ.
-- SECURITY DEFINER phải tự kiểm scope; RLS của bảng không thay thế kiểm quyền trong hàm.
+- SECURITY DEFINER tự lọc toà bằng `can_access_building()` / `accessible_building_ids()`; không thêm lối tắt `is_super_admin() OR …`. RLS của bảng không thay kiểm quyền trong hàm.
 - Kiểm truy vấn bằng role + JWT thật, gồm cả ca được phép và ca khác org bị chặn.
   Kết quả SELECT bằng postgres không chứng minh cách ly người dùng.
 
@@ -31,6 +41,10 @@ trong database production: nó từng nhân đôi báo cáo và đẩy phiếu b
 
 Đo rò rỉ giữa các org: truy vấn qua PostgREST bằng JWT của tài khoản thật (không phải role
 `postgres`, vốn bỏ qua RLS) và phân biệt:
+
+Staged diff chạm `supabase/migrations/**` phải có phép đo `scripts/measure-org-leak.mjs`
+trong kế hoạch kiểm; thiếu credential cần cho phép đo là thiếu gate bắt buộc, không được
+bỏ qua để push/apply. UI hoặc docs thuần không tự mở kết nối DB chỉ để chạy kiểm này.
 
 | Kết quả | Ý nghĩa |
 |---|---|

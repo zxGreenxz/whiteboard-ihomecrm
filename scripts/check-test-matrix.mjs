@@ -22,6 +22,8 @@ import yaml from 'js-yaml';
 
 import { laCI, lietKeUntracked, phanCap } from './lib/git-scope.mjs';
 import { isDeferredTest } from './lib/deferred-modules.mjs';
+import { getGate } from './lib/gate-registry.mjs';
+import { selectionDigest } from './lib/selected-vitest.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
@@ -170,6 +172,33 @@ export function lenhCuaBuoc(doc, tenJob, tenBuoc) {
   return String(step.run ?? '').trim();
 }
 
+/** Registry executors bind exact file lists directly or through the selected-plan digest. */
+export function validateRegistrySuite({ suite, doc, files, resolveGate = getGate }) {
+  const problems = [];
+  if (!files?.length) return [`${suite.id}: registry suite has no files`];
+  let gate;
+  try { gate = resolveGate(`suite:${suite.id}`, { environment: 'ci', suiteSelections: [{ id: suite.id, mode: 'all', files }] }); }
+  catch (error) { return [`${suite.id}: ${error.message}`]; }
+  const target = suite.ciJobs?.find((entry) => entry.workflow === '.github/workflows/ci-gates.yml');
+  if (!gate || !target || gate.job !== target.job) problems.push(`${suite.id}: registry job differs from matrix`);
+  if (!doc?.jobs?.[target?.job]?.steps?.some((step) => step.run?.trim() === `node scripts/ci-run-gates.mjs --job ${target.job}`)) problems.push(`${suite.id}: missing registry executor in declared job`);
+  const args = gate?.args ?? [];
+  const boundedVitest = suite.id === 'app-unit' && args[0] === 'scripts/run-selected-vitest.mjs';
+  const correctRunner = suite.runner === 'node --test' ? gate?.command === 'node' && args.includes('--test')
+    : suite.runner.startsWith('vitest') ? gate?.command === 'node' && (boundedVitest || args[0]?.endsWith('/vitest.mjs'))
+      : suite.runner.startsWith('deno') ? gate?.command === 'deno'
+        : suite.runner.startsWith('playwright') ? args[0]?.includes('playwright') : false;
+  if (!correctRunner) problems.push(`${suite.id}: registry uses a different runner`);
+  if (boundedVitest) {
+    const expected = ['scripts/run-selected-vitest.mjs', '--plan', '.gate-evidence/plan.json', '--selection-digest', selectionDigest(files)];
+    if (JSON.stringify(args) !== JSON.stringify(expected)) problems.push(`${suite.id}: registry selection digest or plan path differs from matrix-owned tests`);
+  } else {
+    const actual = args.filter((arg) => TEST_FILE.test(arg)).sort();
+    if (JSON.stringify(actual) !== JSON.stringify([...files].sort())) problems.push(`${suite.id}: registry file list differs from matrix-owned tests`);
+  }
+  return problems;
+}
+
 function main(argv) {
   const matrix = JSON.parse(readFileSync(MATRIX_PATH, 'utf8'));
   const files = trackedTestFiles(matrix.ignore ?? []);
@@ -231,7 +260,7 @@ function main(argv) {
   // xuất hiện trong đúng job. Nếu không, một include có thể làm hết "mồ côi"
   // trên giấy dù workflow không hề chạy file đó.
   const loiLenhCi = [];
-  for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciCommandStep)) {
+  for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciExecutor !== 'gate-registry' && suite.ciCommandStep)) {
     const target = s.ciJobs?.[0];
     if (!target) {
       loiLenhCi.push(`${s.id}: có ciCommandStep nhưng không có ciJobs[0] để đối chiếu.`);
@@ -249,6 +278,14 @@ function main(argv) {
     } else if (actual !== s.command) {
       loiLenhCi.push(`${s.id}: lệnh CI của bước \`${s.ciCommandStep}\` không khớp trường \`command\` trong matrix.`);
     }
+  }
+
+  const registryFiles = assignSuites(files, matrix.suites).bySuite;
+  for (const suite of matrix.suites.filter((entry) => entry.status !== 'deferred' && entry.ciExecutor === 'gate-registry')) {
+    const target = suite.ciJobs?.find((entry) => entry.workflow === '.github/workflows/ci-gates.yml');
+    let doc;
+    try { doc = yaml.load(readFileSync(join(repoRoot, target?.workflow ?? ''), 'utf8')); } catch { /* reported below */ }
+    loiLenhCi.push(...validateRegistrySuite({ suite, doc, files: registryFiles.get(suite.id) }));
   }
 
   // ── Phép kiểm 5: suite không chạy CI phải có LÝ DO và HẠN ──
@@ -281,7 +318,9 @@ function main(argv) {
   // không có trong matrix, tức matrix mô tả sai phạm vi của suite lớn nhất repo.
   const loiExclude = [];
   const appUnit = matrix.suites.find((s) => s.id === 'app-unit');
-  if (!appUnit?.ciVitestStep) {
+  if (appUnit?.ciExecutor === 'gate-registry') {
+    // validateRegistrySuite above proves the resolved explicit list and runner.
+  } else if (!appUnit?.ciVitestStep) {
     loiExclude.push('app-unit thiếu `ciVitestStep` — không biết đối chiếu với bước nào trong CI.');
   } else {
     const wf = appUnit.ciJobs?.[0]?.workflow;

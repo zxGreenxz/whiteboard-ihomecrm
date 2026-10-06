@@ -1,38 +1,21 @@
 # iHomeCRM
 
-Ứng dụng quản lý cho thuê: hợp đồng, hoá đơn, thu chi, sổ quỹ, công tơ, lương thưởng và lợi nhuận.
-Frontend React/Vite; backend Supabase; file trên Cloudflare R2; worker Zalo và Network Center chạy riêng.
+Ứng dụng quản lý cho thuê và sổ sách: React/Vite, Supabase, Cloudflare R2, Network Center.
 
 ## Bắt đầu
 
-Agent đọc [Project Contract](docs/engineering/PROJECT_CONTRACT.md).
-Nghiệp vụ ở [docs/he-thong](docs/he-thong/README.md);
-cấu trúc mã ở [CODEBASE_STRUCTURE.md](docs/CODEBASE_STRUCTURE.md).
-Số liệu repo/database ở [docs/generated](docs/generated/), không chép lại vào README.
-
-Chọn Node theo [runtime-matrix.json](tooling/runtime-matrix.json), dùng runtime của CI app để cài root.
-Package con dùng runtime và dependency riêng.
+Agent đọc [Project Contract](docs/engineering/PROJECT_CONTRACT.md); chỉ mở [một domain](docs/he-thong/README.md) khi chưa rõ nghiệp vụ hoặc [bản đồ code](docs/CODEBASE_STRUCTURE.md) khi chưa rõ vị trí source.
+Chọn runtime của package từ [runtime-matrix](tooling/runtime-matrix.json).
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Credential nằm trong `CLAUDE.local.md` bị gitignore. Chỉ nạp vào process env khi cần, không in hoặc sao chép.
-Không ghi dữ liệu thử vào org THẬT; phạm vi DEMO/TEST theo Contract §2.
+Vault `CLAUDE.local.md` ở checkout chính, không in/sao chép secret. Chỉ ghi fixture vào DEMO/TEST theo Contract §2.
 
-## Kiểm tra và phát hành
+## Kiểm chứng và phát hành
 
-```bash
-npm run typecheck:baseline
-npx vitest run <path>
-npm run build
-npm run gate:truoc-push
-```
-
-Chọn runner/gate theo [test-matrix](tooling/test-matrix.json) và [risk-map](tooling/risk-map.json).
-Thay đổi docs/script thuần không cần build hoặc E2E app nếu không chạm runtime.
-
-App dùng `main` cho Preview và `production` để phát hành.
-Kiểm CI đúng SHA bằng `npm run promote:production -- --sha <sha>`; chỉ thêm `--apply` sau khi đạt.
-Quy trình Git/review/deploy nằm ở Contract §3; migration/backup ở §4–6.
+Sau focused tests và stage file cụ thể, xem `npm run gate:truoc-push -- --plan`, rồi chạy kế hoạch mặc định theo scope.
+Không mặc định chạy full gate hoặc build local; receipt trên đầu vào không đổi có thể dùng lại. Runner/review lấy từ [test-matrix](tooling/test-matrix.json) và [risk-map](tooling/risk-map.json).
+`main` tạo Preview; `production` phát hành qua promote đúng SHA theo Contract §3. Migration/backup có runbook riêng.

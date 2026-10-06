@@ -98,8 +98,24 @@ describe("BỘ CA 5 LOẠI THAY ĐỔI (Đợt 2 — Verification)", () => {
 });
 
 describe("chống-xanh-rỗng", () => {
-  it("risk-map có đủ 8 tier — thiếu thì mọi phép phân loại trên là vô nghĩa", () => {
-    expect(Object.keys(tiers).length).toBe(8);
+  it("một file khớp cả auth và migration giữ nghĩa vụ cả hai", () => {
+    const r = phanLoai(["shared.ts"], {
+      authorization: { paths: ["shared.ts"], gates: ["role-jwt"], crossReview: true },
+      migration: { paths: ["shared.ts"], gates: ["catalog"], crossReview: true },
+    });
+    expect(r.gates).toEqual(["role-jwt", "catalog"]);
+    expect(r.nghiemNhat).toBe("authorization");
+  });
+  it("các miền đang hoạt động còn được phân loại, dù số tier thay đổi khi deferred", () => {
+    for (const [path, expected] of [
+      ["src/hooks/useInvoices.ts", "money"],
+      ["src/lib/permissions.ts", "authorization"],
+      ["supabase/migrations/new.sql", "migration"],
+      [".github/workflows/ci-gates.yml", "infrastructure"],
+      ["AGENTS.md", "agent-contract"],
+      ["src/App.tsx", "product-surface"],
+      ["docs/README.md", "docs"],
+    ]) expect(xepTier(path, tiers), path).toBe(expected);
   });
 
   it("mọi tier đều khai gates và paths không rỗng", () => {

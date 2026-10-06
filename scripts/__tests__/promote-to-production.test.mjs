@@ -11,12 +11,35 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { danhGiaJobs, locRunsDanhGia, readGateEvidence, waitForGateEvidence } from "../promote-to-production.mjs";
+import { danhGiaJobs, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
 
 const buoc = (name, conclusion, status = "completed") => ({ name, conclusion, status });
 // `status` mặc định "completed": phần lớn ca nói về job đã xong. Ca job đang
 // chạy khai status tường minh — chính ca đó đã bắt được lỗi xếp nhầm loại.
 const job = (name, conclusion, steps, status = "completed") => ({ name, conclusion, steps, status });
+const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
+
+describe('external workflow obligations', () => {
+  const required = [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'], suiteIds: ['network-center-worker'] }];
+  const observation = { run: { path: required[0].workflow, head_sha: 'sha', status: 'completed', conclusion: 'success', head_branch: 'main' }, jobs: [job('validate', 'success', [buoc('test', 'success')])] };
+  it('requires named jobs from the exact candidate, never absence or a different workflow', () => {
+    expect(validateExternalWorkflowEvidence(required, [observation], 'sha')).toEqual([]);
+    expect(validateExternalWorkflowEvidence(required, [], 'sha').length).toBeGreaterThan(0);
+    for (const patch of [{ head_sha: 'other' }, { path: 'other.yml' }, { status: 'in_progress' }, { conclusion: 'failure' }]) {
+      expect(validateExternalWorkflowEvidence(required, [{ ...observation, run: { ...observation.run, ...patch } }], 'sha').length).toBeGreaterThan(0);
+    }
+    for (const candidate of [job('other', 'success', [buoc('test', 'success')]), job('validate', 'skipped', []), job('validate', 'success', [buoc('hidden', 'failure')])]) {
+      expect(validateExternalWorkflowEvidence(required, [{ ...observation, jobs: [candidate] }], 'sha').length).toBeGreaterThan(0);
+    }
+  });
+  it('aggregate artifact binds exact run attempt/SHA and contains external obligations', () => {
+    const run = { id: 1, run_attempt: 1 };
+    expect(validAggregateForRun(aggregate(), run, 'abc123')).toBe(true);
+    for (const patch of [{ status: 'failed' }, { runId: '1:2' }, { snapshot: { head: 'other' } }, { gateIds: [] }, { requiredExternalWorkflows: undefined }, { policyDigest: '' }]) {
+      expect(validAggregateForRun({ ...aggregate(), ...patch }, run, 'abc123')).toBe(false);
+    }
+  });
+});
 
 describe("locRunsDanhGia", () => {
   // Cú push `production` kích hoạt CI mới trên nhánh đó — gồm cả run đang chạy
@@ -40,8 +63,8 @@ describe("locRunsDanhGia", () => {
 });
 
 describe("GitHub evidence readiness", () => {
-  const run = (overrides = {}) => ({ id: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", status: "completed", conclusion: "success", ...overrides });
-  const greenJobs = () => [job("quality-gates", "success", [buoc("test", "success")])];
+  const run = (overrides = {}) => ({ id: 1, run_attempt: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", head_sha: "abc123", status: "completed", conclusion: "success", ...overrides });
+  const greenJobs = () => [job("gate-aggregate", "success", [buoc("aggregate", "success")])];
   const read = (runs, jobs = greenJobs()) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
     if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") {
       return { total_count: runs.length, workflow_runs: runs };
@@ -50,7 +73,7 @@ describe("GitHub evidence readiness", () => {
       return { total_count: jobs.length, jobs };
     }
     throw new Error(`Unexpected API request: ${path}`);
-  });
+  }, async () => aggregate());
 
   it("requires completed run evidence even when visible jobs have already passed", async () => {
     const result = await read([run({ status: "in_progress", conclusion: null })]);
@@ -64,6 +87,17 @@ describe("GitHub evidence readiness", () => {
     expect(result.verdict.doGate).toContain(`CI Gates (run ${conclusion})`);
   });
 
+  it.each([undefined, 'other-sha'])('rejects run metadata with missing/different tested SHA: %s', async (head_sha) => {
+    expect((await read([run({ head_sha })])).verdict.datDieuKien).toBe(false);
+  });
+
+  it.each(['quality-gates', 'preflight'])('ordinary green job %s cannot replace aggregate evidence', async (name) => {
+    expect((await read([run()], [job(name, 'success', [buoc('test', 'success')])])).verdict.datDieuKien).toBe(false);
+  });
+
+  it.each(['skipped', 'cancelled', 'failure'])('aggregate %s blocks promotion despite another successful job', async (conclusion) => {
+    expect((await read([run()], [job('gate-aggregate', conclusion, []), job('quality-gates', 'success', [buoc('test', 'success')])])).verdict.datDieuKien).toBe(false);
+  });
   it("no runs and no jobs remain missing evidence, never a vacuous pass", async () => {
     expect((await read([])).verdict.datDieuKien).toBe(false);
     expect((await read([run()], [])).verdict.datDieuKien).toBe(false);
@@ -97,6 +131,14 @@ describe("GitHub evidence readiness", () => {
     const result = await read([run(), run({ id: 2, head_branch: "production", status: "in_progress", conclusion: null })]);
     expect(result.verdict.datDieuKien).toBe(true);
     expect(result.jobs).toHaveLength(1);
+  });
+
+  it('a green main aggregate with unresolved external obligations remains unverified', async () => {
+    const result = await readGateEvidence('owner/repo', 'abc123', 'fixture', async (path) => path.includes('/jobs?')
+      ? { total_count: 1, jobs: greenJobs() }
+      : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
+    expect(result.verdict.datDieuKien).toBe(false);
+    expect(result.verdict.dangChay.join(' ')).toContain('network-center-validation.yml / validate');
   });
 
   it.each([
@@ -179,71 +221,9 @@ describe("GitHub evidence readiness", () => {
   });
 });
 
-// ── CI main không chạy lại phần tĩnh khi PR cùng bản đã xanh (01/10/2026) ──
-//
-// Trên main, quality-gates / vitest-tests / secret-scan bị BỎ QUA khi chính SHA
-// đó đã có lượt pull_request xanh. Bằng chứng xanh khi ấy nằm ở lượt PR. Chốt
-// dưới đây đòi bằng chứng đó: job tĩnh chỉ toàn "skipped" ở mọi lượt của commit
-// thì chưa được phát hành.
-describe("bằng chứng job tĩnh khi main bỏ chạy lại", () => {
-  const runMain = { id: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", status: "completed", conclusion: "success" };
-  const runPr = { id: 2, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "feat/x", status: "completed", conclusion: "success" };
-  const xanh = (ten) => job(ten, "success", [buoc("chạy", "success")]);
-  const bo = (ten) => job(ten, "skipped", []);
-  const jobsMainBoQua = [xanh("preflight"), xanh("security-gates"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
-  const jobsPr = [xanh("preflight"), xanh("quality-gates"), xanh("vitest-tests"), xanh("secret-scan")];
-  const doc = (runs, jobsTheoRun) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
-    if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") return { total_count: runs.length, workflow_runs: runs };
-    const m = /\/actions\/runs\/(\d+)\/jobs/.exec(path);
-    if (m) { const jobs = jobsTheoRun[m[1]] ?? []; return { total_count: jobs.length, jobs }; }
-    throw new Error(`Unexpected API request: ${path}`);
-  });
-
-  it("main bỏ qua job tĩnh, lượt PR cùng SHA có chúng xanh ⇒ đủ điều kiện", async () => {
-    const kq = await doc([runMain, runPr], { 1: jobsMainBoQua, 2: jobsPr });
-    expect(kq.verdict.datDieuKien).toBe(true);
-  });
-
-  it("main bỏ qua job tĩnh mà không lượt nào của commit có chúng xanh ⇒ chặn", async () => {
-    const kq = await doc([runMain], { 1: jobsMainBoQua });
-    expect(kq.verdict.datDieuKien).toBe(false);
-    const thieu = kq.verdict.dangChay.join(" | ");
-    expect(thieu).toContain("quality-gates");
-    expect(thieu).toContain("vitest-tests");
-    expect(thieu).toContain("secret-scan");
-  });
-
-  it("lượt PR CŨNG bỏ qua job tĩnh ⇒ không có bằng chứng ⇒ chặn (chính chốt mới, không nhờ run đỏ)", async () => {
-    const prBoQua = [xanh("preflight"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
-    const kq = await doc([runMain, runPr], { 1: jobsMainBoQua, 2: prBoQua });
-    expect(kq.verdict.doGate).toEqual([]);
-    expect(kq.verdict.datDieuKien).toBe(false);
-    expect(kq.verdict.dangChay.join(" | ")).toContain("vitest-tests");
-  });
-
-  it("job cùng tên ở workflow KHÁC không được tính là bằng chứng của CI Gates", async () => {
-    const runKhac = { ...runPr, id: 3, name: "External Controls", path: ".github/workflows/external-controls.yml", head_branch: "main" };
-    const kq = await doc([runMain, runKhac], { 1: jobsMainBoQua, 3: jobsPr });
-    expect(kq.verdict.datDieuKien).toBe(false);
-  });
-
-  it("lượt main chỉ có preflight xanh, mọi job khác bỏ qua ⇒ chưa phải 'CI Gates trên main hoàn tất'", async () => {
-    const chiPreflight = [xanh("preflight"), bo("security-gates"), bo("quality-gates"), bo("vitest-tests"), bo("secret-scan")];
-    const kq = await doc([runMain, runPr], { 1: chiPreflight, 2: jobsPr });
-    expect(kq.verdict.datDieuKien).toBe(false);
-    expect(kq.verdict.dangChay.join(" | ")).toContain("Chưa có CI Gates trên main hoàn tất");
-  });
-
-  it("lượt PR có job tĩnh ĐỎ thì không thành bằng chứng", async () => {
-    const prDo = [xanh("preflight"), job("quality-gates", "failure", [buoc("lint", "failure")]), xanh("vitest-tests"), xanh("secret-scan")];
-    const kq = await doc([runMain, { ...runPr, conclusion: "failure" }], { 1: jobsMainBoQua, 2: prDo });
-    expect(kq.verdict.datDieuKien).toBe(false);
-  });
-});
-
 describe("promotion CLI exit codes", () => {
   const script = fileURLToPath(new URL("../promote-to-production.mjs", import.meta.url));
-  const successfulJob = job("ci", "success", [buoc("test", "success")]);
+  const successfulJob = job("gate-aggregate", "success", [buoc("aggregate", "success")]);
   it.each([
     ["missing jobs", [], 200, 3],
     ["queued job", [job("ci", null, [], "queued")], 200, 3],
@@ -251,11 +231,24 @@ describe("promotion CLI exit codes", () => {
     ["verified green dry run", [successfulJob], 200, 0],
     ["API failure", [successfulJob], 403, 3],
   ])("%s", (_name, jobs, apiStatus, expected) => {
-    const fixture = `globalThis.fetch = async (url) => {
+    const fixture = `
+    import cp from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { writeFileSync } from 'node:fs';
+    import { join } from 'node:path';
+    const originalExec = cp.execFileSync;
+    cp.execFileSync = (command, args, options) => {
+      if (command !== 'gh') return originalExec(command, args, options);
+      const directory = args[args.indexOf('--dir') + 1];
+      writeFileSync(join(directory, 'aggregate.json'), JSON.stringify(${JSON.stringify(aggregate('a'.repeat(40)))}));
+      return Buffer.alloc(0);
+    };
+    syncBuiltinESMExports();
+    globalThis.fetch = async (url) => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
-        : { total_count: 1, workflow_runs: [{ id: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', status: 'completed', conclusion: 'success' }] };
+        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', head_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
     const result = spawnSync(process.execPath, [

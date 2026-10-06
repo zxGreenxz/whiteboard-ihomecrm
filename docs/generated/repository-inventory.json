@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1250,
-  "soFileDocBangFs": 278,
-  "tongLoiGoi": 603,
-  "khongPhanLoaiDuoc": 276,
+  "tongSoFileTest": 1256,
+  "soFileDocBangFs": 279,
+  "tongLoiGoi": 606,
+  "khongPhanLoaiDuoc": 278,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -414,6 +414,14 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/check-agent-contract.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "tai-lieu": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/copilot-g3-writer-admission.test.mjs",
@@ -1072,14 +1080,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/__tests__/check-agent-contract.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/check-copilot-page-contracts.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -1142,6 +1142,12 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/gate-plan.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/generate-bundle-inventory.test.mjs",

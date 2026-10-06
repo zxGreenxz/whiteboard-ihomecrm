@@ -9,8 +9,11 @@ import yaml from 'js-yaml';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTRACT = 'docs/engineering/PROJECT_CONTRACT.md';
 const AGENT_FILES = ['CLAUDE.md', 'AGENTS.md', 'AI_RULES.md'];
+const INVARIANT_RUNBOOKS = ['docs/engineering/MIGRATION_STRATEGY.md',
+  'docs/engineering/DATA_ENVIRONMENTS.md', 'docs/CODEBASE_STRUCTURE.md'];
 const REFERENCE_GUIDES = ['README.md', 'docs/engineering/MIGRATION_STRATEGY.md',
-  'docs/engineering/DATA_ENVIRONMENTS.md', 'docs/decisions/ADR-0003-agent-pr-only.md'];
+  'docs/engineering/DATA_ENVIRONMENTS.md', 'docs/decisions/ADR-0003-agent-pr-only.md',
+  'docs/README.md', 'docs/CODEBASE_STRUCTURE.md'];
 
 const FORBIDDEN = [
   {
@@ -60,8 +63,9 @@ export function findForbidden(text, file) {
   return ra;
 }
 
-const GUIDE_LIMITS = { 'CLAUDE.md': [60, 6000], 'AGENTS.md': [60, 6000],
-  'AI_RULES.md': [10, 1000], [CONTRACT]: [260, 26000] };
+const GUIDE_LIMITS = { 'CLAUDE.md': [25, 3000], 'AGENTS.md': [25, 3000],
+  'AI_RULES.md': [10, 1000], [CONTRACT]: [100, 8192],
+  'README.md': [60, 6000], 'docs/README.md': [60, 6000] };
 const visibleMarkdown = (text) => text.replace(/<!--[\s\S]*?-->/g, '');
 
 export function checkGuide(raw, file, scripts, exists) {
@@ -253,7 +257,8 @@ function main() {
     problems.push(...checkGuide(text, file, scripts, exists));
   }
 
-  problems.push(...checkContractInvariants(contract));
+  problems.push(...checkContractInvariants(contract,
+    Object.fromEntries(INVARIANT_RUNBOOKS.map((file) => [file, read(file)]))));
 
   let trackedFiles = [];
   try {
@@ -334,13 +339,29 @@ const CONTRACT_INVARIANTS = [
     ['lấy bản của main rồi chạy lại generator', 'cách giải conflict file máy-sinh khi rebase'],
 ];
 
-export function checkContractInvariants(contract) {
-  const text = visibleMarkdown(contract);
-  return CONTRACT_INVARIANTS.flatMap(([needle, what]) => text.includes(needle) ? [] : [{
-    file: CONTRACT,
-    id: 'contract-lost-invariant',
-    why: `Mất phần "${what}" (không còn nhắc \`${needle}\`).`,
-  }]);
+// Chi tiết chỉ có một chủ sở hữu; rút Contract không được làm mất safety trong runbook.
+const RUNBOOK_OWNERS = new Map([
+  ...['check-view-invoker', 'security_invoker', 'check-stable-fn-locks', '25006',
+    'VOLATILE', 'reconcile-money', 'cap-1000', 'IHOMECRM_PROMOTION_TOKEN',
+    'KHÔNG replay được', 'migrations-archive', 'trùng version', 'gen:types',
+    'types:normalize', 'backup-before-schema', 'migration-policy.json', 'tao-ten-migration']
+    .map((needle) => [needle, INVARIANT_RUNBOOKS[0]]),
+  ...['hide_sandbox_admin', 'can_access_building', 'aaaa0000', 'dddd0000',
+    'cccc0000', 'clone-org', 'test-env:sync'].map((needle) => [needle, INVARIANT_RUNBOOKS[1]]),
+  ...['deadlock', 'FLEET_PASS', 'headless', 'bo-chu-thich', 'deno.lock']
+    .map((needle) => [needle, INVARIANT_RUNBOOKS[2]]),
+]);
+
+export function checkContractInvariants(contract, runbooks = {}) {
+  return CONTRACT_INVARIANTS.flatMap(([needle, what]) => {
+    const file = RUNBOOK_OWNERS.get(needle) ?? CONTRACT;
+    const text = visibleMarkdown(file === CONTRACT ? contract : (runbooks[file] ?? ''));
+    return text.includes(needle) ? [] : [{
+      file,
+      id: 'contract-lost-invariant',
+      why: `Mất phần "${what}" trong nguồn sở hữu (không còn nhắc \`${needle}\`).`,
+    }];
+  });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

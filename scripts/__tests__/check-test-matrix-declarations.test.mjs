@@ -11,10 +11,38 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 
-import { coExcludeCuaBuoc, jobCuaWorkflow, lenhCuaBuoc } from "../check-test-matrix.mjs";
+import { coExcludeCuaBuoc, jobCuaWorkflow, lenhCuaBuoc, validateRegistrySuite, assignSuites, trackedTestFiles } from "../check-test-matrix.mjs";
+import { selectionDigest } from '../lib/selected-vitest.mjs';
 
 const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
 const CI = ".github/workflows/ci-gates.yml";
+
+describe('registry suite proof rejects false declarations', () => {
+  const suite = { id: 'example', runner: 'node --test', ciJobs: [{ workflow: CI, job: 'quality-gates' }] };
+  const doc = { jobs: { 'quality-gates': { steps: [{ run: 'node scripts/ci-run-gates.mjs --job quality-gates' }] } } };
+  const gate = { id: 'suite:example', job: 'quality-gates', command: 'node', args: ['--test', 'scripts/example.test.mjs'] };
+  const check = (patch = {}) => validateRegistrySuite({ suite, doc, files: ['scripts/example.test.mjs'], resolveGate: () => gate, ...patch });
+  it('rejects missing executor, wrong job, wrong runner, missing files and extra files', () => {
+    expect(check()).toEqual([]);
+    expect(check({ doc: { jobs: {} } }).length).toBeGreaterThan(0);
+    expect(check({ resolveGate: () => ({ ...gate, job: 'other' }) }).length).toBeGreaterThan(0);
+    expect(check({ resolveGate: () => ({ ...gate, args: ['node_modules/vitest/vitest.mjs', 'run', 'scripts/example.test.mjs'] }) }).length).toBeGreaterThan(0);
+    expect(check({ resolveGate: () => ({ ...gate, args: ['--test'] }) }).length).toBeGreaterThan(0);
+    expect(check({ resolveGate: () => ({ ...gate, args: [...gate.args, 'scripts/extra.test.mjs'] }) }).length).toBeGreaterThan(0);
+    expect(check({ files: [] }).length).toBeGreaterThan(0);
+  });
+  it('binds a bounded Vitest launcher to precisely the matrix-owned selection', () => {
+    const files = ['src/example.test.ts'];
+    const selected = { ...suite, id: 'app-unit', runner: 'vitest' };
+    const args = ['scripts/run-selected-vitest.mjs', '--plan', '.gate-evidence/plan.json', '--selection-digest', selectionDigest(files)];
+    const checkSelection = (override = args) => check({ suite: selected, files, resolveGate: () => ({ ...gate, args: override }) });
+    expect(checkSelection()).toEqual([]);
+    expect(checkSelection([...args.slice(0, -1), selectionDigest(['src/other.test.ts'])]).length).toBeGreaterThan(0);
+    expect(checkSelection([args[0], '--plan', 'different.json', ...args.slice(3)]).length).toBeGreaterThan(0);
+    expect(checkSelection([...args, '--extra']).length).toBeGreaterThan(0);
+    expect(checkSelection(['scripts/other-launcher.mjs', ...args.slice(1)]).length).toBeGreaterThan(0);
+  });
+});
 
 describe("coExcludeCuaBuoc", () => {
   const dung = (run, name = "B") => yaml.load(`jobs:\n  j:\n    steps:\n      - name: ${name}\n        run: ${run}\n`);
@@ -80,12 +108,12 @@ describe("bất biến khai báo của test-matrix.json", () => {
     }
   });
 
-  it("app-unit khai đúng tập cờ --exclude của bước Vitest thật", () => {
+  it("app-unit registry executes precisely the matrix-owned files", () => {
     const s = matrix.suites.find((x) => x.id === "app-unit");
     const doc = yaml.load(readFileSync(new URL(`../../${CI}`, import.meta.url), "utf8"));
-    const that = coExcludeCuaBuoc(doc, s.ciVitestStep);
-    expect(that, "không tìm thấy bước Vitest — phép đối chiếu đã mất neo").not.toBeNull();
-    expect([...s.excludes].sort()).toEqual([...that].sort());
+    const files = assignSuites(trackedTestFiles(matrix.ignore), matrix.suites).bySuite.get(s.id);
+    expect(files.length).toBeGreaterThan(100);
+    expect(validateRegistrySuite({ suite: s, doc, files })).toEqual([]);
   });
 
   it("full root Vitest has one independent owner with its own pinned installation", () => {
@@ -98,11 +126,11 @@ describe("bất biến khai báo của test-matrix.json", () => {
     // waiting for quality-gates is not.
     expect([job.needs].flat(), "Vitest must not wait for quality-gates").not.toContain("quality-gates");
     expect([undefined, "preflight"]).toContain(job.needs);
-    const run = lenhCuaBuoc(doc, suite.ciJobs[0].job, suite.ciVitestStep);
+    const run = lenhCuaBuoc(doc, suite.ciJobs[0].job, 'Execute selected gates and write receipts');
     expect(run, "declared Vitest owner must execute its test step").not.toBeNull();
-    expect(run.split(/\s+--exclude\s+/)[0].trim()).toBe(suite.command);
+    expect(run).toBe('node scripts/ci-run-gates.mjs --job vitest-tests');
     const owners = Object.values(doc.jobs).filter((candidate) =>
-      candidate.steps?.some((step) => step.name === suite.ciVitestStep));
+      candidate.steps?.some((step) => step.run === 'node scripts/ci-run-gates.mjs --job vitest-tests'));
     expect(owners).toHaveLength(1);
     const checkout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
     expect(checkout.with["fetch-depth"]).toBe(0);
@@ -115,7 +143,7 @@ describe("bất biến khai báo của test-matrix.json", () => {
   });
 
   it("suite có ciCommandStep khai đúng lệnh đang chạy trong workflow", () => {
-    for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciCommandStep)) {
+    for (const s of matrix.suites.filter((suite) => suite.status !== 'deferred' && suite.ciExecutor !== 'gate-registry' && suite.ciCommandStep)) {
       const target = s.ciJobs[0];
       const doc = yaml.load(readFileSync(new URL(`../../${target.workflow}`, import.meta.url), "utf8"));
       expect(lenhCuaBuoc(doc, target.job, s.ciCommandStep), s.id).toBe(s.command);

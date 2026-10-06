@@ -2,7 +2,7 @@
 // Phân loại rủi ro một thay đổi: file nào đổi → tier nào → phải chạy gate nào.
 //
 // VÌ SAO CẦN (plan Đợt 2)
-//   `tooling/risk-map.json` đã khai đủ 8 tier kèm gate bắt buộc, nhưng KHÔNG có gì
+//   `tooling/risk-map.json` khai các tier kèm gate bắt buộc, nhưng trước đây không có gì
 //   đọc nó. Một bảng luật không ai đọc thì chỉ là văn bản: người sửa `useInvoices.ts`
 //   vẫn phải tự nhớ rằng đó là tier `money` và phải chạy `gate:reconcile-money` +
 //   idempotency + concurrency. "Tự nhớ" là thứ hỏng đúng vào lúc bận nhất.
@@ -74,13 +74,15 @@ export function phanLoai(files, tiers) {
   const theoTier = new Map();
   const khongTier = [];
   for (const f of files) {
-    const t = xepTier(f, tiers);
-    if (!t) {
+    const matches = Object.entries(tiers).filter(([, t]) => (t.paths ?? []).some((g) => khopGlob(f, g))).map(([name]) => name);
+    if (!matches.length) {
       khongTier.push(f);
       continue;
     }
-    if (!theoTier.has(t)) theoTier.set(t, []);
-    theoTier.get(t).push(f);
+    for (const t of matches) {
+      if (!theoTier.has(t)) theoTier.set(t, []);
+      theoTier.get(t).push(f);
+    }
   }
   const thuTu = Object.keys(tiers);
   const nghiemNhat = thuTu.find((t) => theoTier.has(t)) ?? null;
@@ -109,9 +111,17 @@ const tach = (s) =>
  *
  *   Đó là kiểu hỏng tệ nhất: không phải gate thiếu, mà là gate CÓ và báo sai.
  *
- * Thứ tự: --files → --staged → --base → merge-base với origin/main → HEAD~1.
+ * Thứ tự: --files → --staged → --before/--after hoặc --base → merge-base.
+ * Không đoán HEAD~1: push có thể chứa nhiều commit.
  */
 export function chonMoc(argv, coRef, diff) {
+  const iBefore = argv.indexOf("--before");
+  const iAfter = argv.indexOf("--after");
+  if (iBefore >= 0 || iAfter >= 0) {
+    const before = argv[iBefore + 1]; const after = argv[iAfter + 1];
+    return iBefore >= 0 && iAfter >= 0 && before && after && coRef(before) && coRef(after)
+      ? { nhan: `event ${before}..${after}`, files: diff(`${before}..${after}`) } : null;
+  }
   const iB = argv.indexOf("--base");
   if (iB >= 0) {
     const r = argv[iB + 1];
@@ -126,9 +136,7 @@ export function chonMoc(argv, coRef, diff) {
     if (base && base !== diff.head()) return { nhan: `merge-base ${goc}`, files: diff(`${base}..HEAD`) };
   }
 
-  // Dự phòng: so với commit ngay trước. Đây là câu trả lời đúng cho "vừa push cái
-  // gì lên main", và nó chỉ vô nghĩa khi HEAD là commit đầu tiên của repo.
-  if (coRef("HEAD~1")) return { nhan: "HEAD~1 (không tách khỏi mốc chung)", files: diff("HEAD~1..HEAD") };
+  // Report không có mốc trả chưa xác minh; planner dùng full active fallback.
   return null;
 }
 
@@ -144,12 +152,10 @@ function layFile(argv) {
     };
   }
 
-  // `--staged`: phân loại thứ ĐANG SỬA, kể cả chưa commit. Đây là lúc người ta
-  // thật sự cần biết phải chạy gate nào — hỏi sau khi đã commit thì muộn rồi.
+  // `--staged` đọc đúng index; WIP và file untracked không phải nội dung commit.
   if (argv.includes("--staged")) {
-    const daTheoDoi = tach(git(["diff", "--name-only", "HEAD"]));
-    const chuaTheoDoi = tach(git(["ls-files", "--others", "--exclude-standard"]));
-    return { nhan: "cây làm việc (--staged)", files: [...new Set([...daTheoDoi, ...chuaTheoDoi])] };
+    const daTheoDoi = tach(git(["diff", "--cached", "--no-renames", "--name-only"]));
+    return { nhan: "index (--staged)", files: daTheoDoi };
   }
 
   if (git(["rev-parse", "--is-shallow-repository"]) === "true") return null;
@@ -162,7 +168,7 @@ function layFile(argv) {
       return false;
     }
   };
-  const diff = (range) => tach(git(["diff", "--name-only", range]));
+  const diff = (range) => tach(git(["diff", "--no-renames", "--name-only", range]));
   diff.mergeBase = (r) => {
     try {
       return git(["merge-base", r, "HEAD"]);
