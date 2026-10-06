@@ -1,4 +1,4 @@
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -105,6 +105,73 @@ test('only exact TEST read cancellations are expected; writes and real network f
     { ...readRpc, url: 'https://tryymsxyyckgbrmmvozx.supabase.co/rest/v1/notifications', method: 'GET' },
     { ...readRpc, url: `${LOCAL}/rest/v1/notifications`, method: 'GET' },
   ]) assert.equal(chrome.expectedReadCancellation(input, TEST_ORIGIN), false);
+});
+
+test('completed TEST REST HEAD allows only exact abort after 2xx headers, never GET body loss', () => {
+  assert.equal(typeof chrome.expectedCompletedHead, 'function');
+  const head = { url: `${TEST_ORIGIN}/rest/v1/notifications?select=id`, method: 'HEAD', reason: 'net::ERR_ABORTED', responseStatus: 200 };
+  for (const responseStatus of [200, 204, 206, 299]) {
+    assert.equal(chrome.expectedCompletedHead({ ...head, responseStatus }, TEST_ORIGIN), true);
+  }
+  for (const patch of [
+    { method: 'GET' }, { method: 'POST' }, { reason: 'net::ERR_CONNECTION_RESET' },
+    { reason: 'net::ERR_ABORTED_OTHER' }, { responseStatus: null }, { responseStatus: undefined },
+    { responseStatus: 199 }, { responseStatus: 300 }, { responseStatus: 404 }, { responseStatus: 500 },
+    { url: `${TEST_ORIGIN}/rest/v1/rpc/read_income_expense_details_v1` },
+    { url: `${TEST_ORIGIN}/auth/v1/user` }, { url: `${TEST_ORIGIN}/storage/v1/object/public/a` },
+    { url: 'https://tryymsxyyckgbrmmvozx.supabase.co/rest/v1/notifications' },
+    { url: `https://user:pass@${TEST_REF}.supabase.co/rest/v1/notifications` },
+    { url: `${LOCAL}/rest/v1/notifications` },
+  ]) assert.equal(chrome.expectedCompletedHead({ ...head, ...patch }, TEST_ORIGIN), false, JSON.stringify(patch));
+});
+
+test('Chrome idle waits for late reads and rechecks outstanding RPCs after an earlier idle', async () => {
+  assert.equal(typeof chrome.createChromeNetworkIdle, 'function');
+  vi.useFakeTimers();
+  try {
+    const network = chrome.createChromeNetworkIdle();
+    let settled = false;
+    const waiting = network.wait().then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(400);
+    const lateRead = {};
+    network.started(lateRead);
+    await vi.advanceTimersByTimeAsync(600);
+    assert.equal(settled, false, 'read starting after boundary must delay navigation');
+    network.finished(lateRead);
+    await vi.advanceTimersByTimeAsync(499);
+    assert.equal(settled, false, 'completion still requires a quiet interval');
+    await vi.advanceTimersByTimeAsync(1);
+    await waiting;
+    assert.equal(settled, true);
+    const writer = {};
+    network.started(writer);
+    settled = false;
+    const next = network.wait().then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(settled, false, 'an earlier idle must not bypass a later RPC');
+    network.finished(writer);
+    await vi.advanceTimersByTimeAsync(500);
+    await next;
+    assert.equal(settled, true);
+  } finally { vi.useRealTimers(); }
+});
+
+test('Chrome idle fails on bounded timeout and lease abort rather than navigating over pending work', async () => {
+  assert.equal(typeof chrome.createChromeNetworkIdle, 'function');
+  vi.useFakeTimers();
+  try {
+    const network = chrome.createChromeNetworkIdle();
+    network.started({});
+    const timedOut = assert.rejects(network.wait({ timeoutMs: 1000 }), /network.*timeout/i);
+    await vi.advanceTimersByTimeAsync(1000);
+    await timedOut;
+    const controller = new AbortController();
+    const interrupted = assert.rejects(network.wait({ signal: controller.signal }), /lease interrupted/);
+    controller.abort(new Error('lease interrupted'));
+    await interrupted;
+    assert.equal(vi.getTimerCount(), 0);
+    await assert.rejects(network.wait({ signal: controller.signal }), /lease interrupted/);
+  } finally { vi.useRealTimers(); }
 });
 
 test('Chrome abort drain waits for a sent financial write to finish before cleanup', async () => {

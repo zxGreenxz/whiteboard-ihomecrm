@@ -23,6 +23,8 @@ const CHECKS = ['bundle', 'buildSha', 'loginOwner', 'testBanner', 'buildings', '
 const DIAGNOSTICS = ['consoleErrors', 'pageErrors', 'blockedRequests', 'httpErrors', 'requestFailures'];
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
 const navigationGuards = new WeakMap();
+const latestBoundaries = new WeakMap();
+const pageIdleWaits = new WeakMap();
 
 export function validateChromeTarget(cred, buildSha) {
   if (!/^[a-z0-9]{20}$/.test(cred.testRef ?? '') || cred.testRef === PROD_REF) {
@@ -84,6 +86,48 @@ export function expectedReadCancellation({ url: raw, method, reason, boundary, r
   } catch { return false; }
 }
 
+export function expectedCompletedHead({ url: raw, method, reason, responseStatus }, testOrigin) {
+  // HEAD không có response body: headers 2xx đã là kết quả đầy đủ. Giữ riêng evidence
+  // Chrome báo ERR_ABORTED sau headers; không áp dụng cho GET hoặc lỗi trước headers.
+  if (method !== 'HEAD' || reason !== 'net::ERR_ABORTED'
+    || !Number.isInteger(responseStatus) || responseStatus < 200 || responseStatus >= 300) return false;
+  try {
+    const url = new URL(raw);
+    return url.origin === testOrigin && !url.username && !url.password && /^\/rest\/v1\/[^/]+$/.test(url.pathname);
+  } catch { return false; }
+}
+
+/** Chờ request thực đã xong và một khoảng yên; lifecycle networkidle cũ không đủ cho refetch. */
+export function createChromeNetworkIdle() {
+  const pending = new Set(), waiters = new Set();
+  return {
+    started(id) { pending.add(id); for (const changed of waiters) changed(); },
+    finished(id) { if (pending.delete(id)) for (const changed of waiters) changed(); },
+    async wait({ timeoutMs = 45_000, quietMs = 500, signal } = {}) {
+      signal?.throwIfAborted();
+      await new Promise((resolveWait, reject) => {
+        let quietTimer;
+        const done = (error) => {
+          clearTimeout(quietTimer);
+          clearTimeout(timeout);
+          waiters.delete(changed);
+          signal?.removeEventListener('abort', aborted);
+          if (error) reject(error); else resolveWait();
+        };
+        const changed = () => {
+          clearTimeout(quietTimer);
+          if (pending.size === 0) quietTimer = setTimeout(() => done(), quietMs);
+        };
+        const aborted = () => done(signal.reason);
+        const timeout = setTimeout(() => done(new Error(`Chrome network idle timeout; ${pending.size} request chưa xong.`)), timeoutMs);
+        waiters.add(changed);
+        signal?.addEventListener('abort', aborted, { once: true });
+        changed();
+      });
+    },
+  };
+}
+
 /** Giữ browser tới khi writer đã gửi có kết quả; mất mạng/timeout là outcome chưa rõ. */
 export function createChromeMutationDrain(testOrigin) {
   const pending = new Set(), ambiguous = new Set(), waiters = new Set();
@@ -112,12 +156,23 @@ export function createChromeMutationDrain(testOrigin) {
   };
 }
 
-function navigationBoundary(context, action) { navigationGuards.get(context)?.snapshot(action); }
+function navigationBoundary(context, action) {
+  latestBoundaries.set(context, { action, at: Date.now() });
+  navigationGuards.get(context)?.snapshot(action);
+}
+async function settleChromePage(page) {
+  const wait = pageIdleWaits.get(page);
+  assert.ok(wait, 'Chrome page phải có request tracking trước khi chuyển trang');
+  await wait();
+}
 async function navigateChrome(page, url) {
+  await settleChromePage(page);
   navigationBoundary(page.context(), `navigate:${url.split('?')[0]}`);
   await page.goto(url);
+  await settleChromePage(page);
 }
 async function closeChromeContext(context) {
+  await Promise.all(context.pages().map(settleChromePage));
   navigationBoundary(context, 'close-context');
   await context.close();
 }
@@ -246,8 +301,11 @@ async function guardedContext(browser, origin, testOrigin, diagnostics, { signal
   });
   context.on('page', (page) => {
     const statuses = new WeakMap();
-    page.on('request', (request) => reads.started(request));
-    page.on('requestfinished', (request) => { reads.finished(request); mutations.finished(request, false, statuses.get(request)); });
+    const requestedAt = new WeakMap();
+    const network = createChromeNetworkIdle();
+    pageIdleWaits.set(page, () => network.wait({ signal }));
+    page.on('request', (request) => { network.started(request); reads.started(request); requestedAt.set(request, Date.now()); });
+    page.on('requestfinished', (request) => { network.finished(request); reads.finished(request); mutations.finished(request, false, statuses.get(request)); });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       const url = message.location().url;
@@ -265,10 +323,20 @@ async function guardedContext(browser, origin, testOrigin, diagnostics, { signal
     });
     page.on('requestfailed', (request) => {
       const reason = request.failure()?.errorText ?? 'request failed';
+      network.finished(request);
       mutations.finished(request, true);
       const readCancellation = reads.cancelled(request, reason, statuses.get(request));
       reads.finished(request);
-      const failure = { resource: resourceIdentity(request.url()), method: request.method(), reason };
+      const boundary = latestBoundaries.get(context);
+      const failure = { resource: resourceIdentity(request.url()), method: request.method(), reason,
+        responseStatus: statuses.get(request) ?? null, ageMs: Date.now() - (requestedAt.get(request) ?? Date.now()),
+        pagePath: new URL(page.url()).pathname,
+        latestBoundary: boundary ? { action: boundary.action, ageMs: Date.now() - boundary.at } : null };
+      if (expectedCompletedHead({ url: request.url(), method: request.method(), reason,
+        responseStatus: statuses.get(request) }, testOrigin)) {
+        diagnostics.expectedCompletedHeads.push(failure);
+        return;
+      }
       if (expectedReadCancellation({ url: request.url(), method: request.method(), reason,
         boundary: readCancellation?.boundary, responseStatus: statuses.get(request) }, testOrigin)) {
         diagnostics.expectedReadCancellations.push({ ...failure, boundary: readCancellation.boundary });
@@ -299,17 +367,20 @@ async function loginUi(page, email, password, testOrigin, expect) {
   assert.equal(session.user?.email?.toLowerCase(), email.toLowerCase(), 'JWT đăng nhập phải thuộc đúng tài khoản TEST');
   assert.ok(session.access_token && session.user?.id, 'Đăng nhập phải trả phiên JWT thật');
   await page.waitForURL((url) => url.pathname === '/account/profile');
+  await settleChromePage(page);
   return { authorization: `Bearer ${session.access_token}`, userId: session.user.id };
 }
 
 async function chooseOrganization(page, name, expect) {
   if (new URL(page.url()).pathname !== '/account/profile') await navigateChrome(page, '/account/profile');
+  await settleChromePage(page);
   const select = page.getByRole('combobox', { name: 'Công ty đang chọn', exact: true });
   await expect(select).toBeEnabled();
   await select.click();
   navigationBoundary(page.context(), 'select-organization');
   await page.getByRole('option', { name, exact: true }).click();
   await expect(select).toHaveText(name);
+  await settleChromePage(page);
 }
 
 export async function testApi(testOrigin, cred, session, path, body, { fetchImpl = fetch } = {}) {
@@ -340,7 +411,7 @@ function accountBalance(test, accountId) {
 export async function runChrome({ cred, test, reportDir, buildSha, headed = false, lease }) {
   const started = Date.now();
   const result = { status: 'failed', requestedSha: buildSha, servedSha: null, assertionCount: 0, checks: {},
-    browser: { channel: 'chrome', headless: !headed }, diagnostics: Object.fromEntries([...DIAGNOSTICS, 'expectedMedia404', 'expectedReadCancellations'].map((key) => [key, []])),
+    browser: { channel: 'chrome', headless: !headed }, diagnostics: Object.fromEntries([...DIAGNOSTICS, 'expectedMedia404', 'expectedReadCancellations', 'expectedCompletedHeads'].map((key) => [key, []])),
     cleanup: { status: 'not-created', balanceRestored: false, retainedFixtureIds: [] }, errors: [] };
   const secrets = Object.values(cred ?? {}).filter((value) => typeof value === 'string');
   const name = `TEST_ENV_CHROME_${randomUUID()}`;
