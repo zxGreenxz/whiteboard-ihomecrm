@@ -44,7 +44,7 @@ async function main(argv) {
   });
 }
 
-main(process.argv).then((c) => process.exit(c), (e) => {
+main(process.argv).then((c) => process.exit(process.exitCode || c), (e) => {
   console.error(`❌ ${e.message}`);
-  process.exit(1);
+  process.exit(process.exitCode || 1);
 });

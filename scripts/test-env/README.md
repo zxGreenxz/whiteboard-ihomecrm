@@ -20,13 +20,21 @@ npm run test-env:check -- --sync
 npm run test-env:check
 ```
 
-Quick yêu cầu lượt sync mới nhất đạt, snapshot không quá 24 giờ và catalog TEST chưa đổi từ
-biên nhận sau hậu kỳ. Có thể chọn tuổi bằng `--max-age-hours <số giờ>`; report ghi tuổi thực.
+Quick yêu cầu lượt sync mới nhất đạt, snapshot không quá 24 giờ, catalog và metadata custom role
+(thuộc tính, membership, owner/ACL) chưa đổi từ biên nhận sau hậu kỳ. Có thể chọn tuổi bằng
+`--max-age-hours <số giờ>`; report ghi tuổi thực.
 Sau migration thử, sync lại để về baseline; chưa có chế độ cấp biên nhận cho schema thử.
 
 Runner giữ khoá chung xuyên suốt sync → JWT/RLS → build → Chrome → cleanup. Sync, `thu-sql` và
 JWT harness độc lập dùng cùng khoá; lượt khác gặp khoá bận dừng trước khi ghi. Bộ fleet cũ và
 thao tác tay không tự tham gia khoá: không dùng TEST đồng thời với lượt kiểm/đồng bộ.
+
+Ngoài advisory lock, `test_env.active_run` giữ token của lượt đang chạy. Mất kết nối giữ khoá
+không cho lượt khác tự chen vào. Ctrl+C/SIGTERM dừng việc mới, chờ thao tác đang gửi hoàn tất và
+dọn dưới khoá trước khi thoát. Nếu bị kill cưỡng bức hoặc không xác minh được kết quả ghi/cleanup,
+marker được giữ để chặn lượt sau. Không tự xoá marker vì đã quá giờ: cần xác minh mọi tiến trình
+và request cũ đã dừng, kiểm biên nhận/nhãn fixture, dọn và đối chiếu trạng thái phiếu/số dư;
+sau đó mới xoá đúng token của lượt bị bỏ dở trong khi giữ cùng advisory lock.
 
 Chrome headless build chính worktree với public config TEST, serve loopback và kiểm SHA trên
 app; không cần đăng nhập Vercel. Nó kiểm đăng nhập vai thật, xem dữ liệu, tạo phiếu thu tự duyệt/

@@ -1,4 +1,5 @@
 // Metadata owner/ACL được đọc bằng cùng phiên snapshot với pg_dump.
+import { createHash } from 'node:crypto';
 import { APP_SCHEMAS, ident, lit } from './lib.mjs';
 
 const PLATFORM_ROLES = ['postgres', 'anon', 'authenticated', 'service_role', 'authenticator', 'dashboard_user', 'pgbouncer', 'cli_login_postgres'];
@@ -12,6 +13,14 @@ const canonical = (value) => {
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((k) => [k, canonical(value[k])]));
   return value;
 };
+
+/** Băm cả thuộc tính vai, membership và ACL để quick check bắt drift ngoài sqlVanTay. */
+export function ownersDigest(meta) {
+  if (!meta || !['roles', 'memberships', 'routines', 'schemaAcl'].every((key) => Array.isArray(meta[key]))) {
+    throw new Error('Thiếu metadata owner/role từ snapshot TEST.');
+  }
+  return createHash('sha256').update(JSON.stringify(canonical(meta))).digest('hex');
+}
 
 export function kiemOwnersSnapshot(source, target, parts = ['roles', 'memberships', 'routines', 'schemaAcl']) {
   kiemMetadataOwners(source);

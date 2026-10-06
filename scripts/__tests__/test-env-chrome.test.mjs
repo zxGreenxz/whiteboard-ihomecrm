@@ -71,6 +71,93 @@ test('only a missing TEST Storage byte is expected; API 404 and failed media 500
   ]) assert.equal(chrome.expectedMissingMedia(url, status, TEST_ORIGIN), false);
 });
 
+test('Chrome TEST API pins public schema for GET and RPC POST instead of default api schema', async () => {
+  assert.equal(typeof chrome.testApi, 'function');
+  for (const [path, body, method] of [['/rest/v1/accounts?select=id', undefined, 'GET'], ['/rest/v1/rpc/list_my_cashbook_access_v2', {}, 'POST']]) {
+    const result = await chrome.testApi(TEST_ORIGIN, { testPublishableKey: 'public-test-key' }, { authorization: 'Bearer test-jwt' }, path, body, {
+      fetchImpl: async (url, options) => {
+        assert.equal(url, `${TEST_ORIGIN}${path}`);
+        assert.equal(options.method, method);
+        const headers = new Headers(options.headers);
+        const publicSchema = headers.get('accept-profile') === 'public' && headers.get('content-profile') === 'public';
+        return new Response(JSON.stringify(publicSchema ? [{ id: 'visible' }] : { code: 'PGRST202' }), { status: publicSchema ? 200 : 404 });
+      },
+    });
+    assert.deepEqual(result, [{ id: 'visible' }]);
+  }
+});
+
+test('only exact TEST read cancellations are expected; writes and real network failures remain errors', () => {
+  assert.equal(typeof chrome.expectedReadCancellation, 'function');
+  for (const method of ['GET', 'HEAD']) {
+    assert.equal(chrome.expectedReadCancellation({ url: `${TEST_ORIGIN}/rest/v1/notifications?select=id`, method, reason: 'net::ERR_ABORTED', boundary: 'navigate' }, TEST_ORIGIN), true);
+  }
+  const readRpc = { url: `${TEST_ORIGIN}/rest/v1/rpc/business_performance_organizations_v1`, method: 'POST', reason: 'net::ERR_ABORTED', boundary: 'organization' };
+  assert.equal(chrome.expectedReadCancellation(readRpc, TEST_ORIGIN), true);
+  for (const input of [
+    { ...readRpc, url: `${TEST_ORIGIN}/rest/v1/rpc/cancel_income_voucher_v1` },
+    { ...readRpc, url: `${TEST_ORIGIN}/rest/v1/rpc/create_income_expense_v1` },
+    { ...readRpc, url: `${TEST_ORIGIN}/rest/v1/notifications` },
+    { ...readRpc, reason: 'net::ERR_CONNECTION_RESET' },
+    { ...readRpc, reason: 'net::ERR_ABORTED_OTHER' },
+    { ...readRpc, boundary: undefined },
+    { ...readRpc, responseStatus: 500 },
+    { ...readRpc, url: 'https://tryymsxyyckgbrmmvozx.supabase.co/rest/v1/notifications', method: 'GET' },
+    { ...readRpc, url: `${LOCAL}/rest/v1/notifications`, method: 'GET' },
+  ]) assert.equal(chrome.expectedReadCancellation(input, TEST_ORIGIN), false);
+});
+
+test('Chrome abort drain waits for a sent financial write to finish before cleanup', async () => {
+  assert.equal(typeof chrome.createChromeMutationDrain, 'function');
+  const drain = chrome.createChromeMutationDrain(TEST_ORIGIN);
+  const requestId = {};
+  drain.started(requestId, { url: `${TEST_ORIGIN}/rest/v1/rpc/create_income_expense_v1`, method: 'POST' });
+  let settled = false;
+  const pending = drain.drain(1000).then((value) => { settled = true; return value; });
+  await Promise.resolve();
+  assert.equal(settled, false);
+  drain.finished(requestId);
+  assert.deepEqual(await pending, { safe: true, pendingCount: 0, ambiguousCount: 0 });
+});
+
+test('Chrome abort drain retains unknown writes after network failure or bounded timeout', async () => {
+  assert.equal(typeof chrome.createChromeMutationDrain, 'function');
+  for (const mode of ['failed', 'timeout']) {
+    const drain = chrome.createChromeMutationDrain(TEST_ORIGIN);
+    const id = {};
+    drain.started(id, { url: `${TEST_ORIGIN}/rest/v1/rpc/cancel_income_voucher_v1`, method: 'POST' });
+    if (mode === 'failed') drain.finished(id, true);
+    const receipt = await drain.drain(5);
+    assert.equal(receipt.safe, false);
+    assert.equal(receipt.pendingCount + receipt.ambiguousCount, 1);
+  }
+});
+
+test('Chrome mutation drain treats completed gateway 5xx as unknown commit outcome', async () => {
+  for (const status of [500, 502, 503, 504]) {
+    const drain = chrome.createChromeMutationDrain(TEST_ORIGIN);
+    const id = {};
+    drain.started(id, { url: `${TEST_ORIGIN}/rest/v1/rpc/create_income_expense_v1`, method: 'POST' });
+    drain.finished(id, false, status);
+    assert.deepEqual(await drain.drain(5), { safe: false, pendingCount: 0, ambiguousCount: 1 });
+  }
+  const completed = chrome.createChromeMutationDrain(TEST_ORIGIN);
+  const id = {};
+  completed.started(id, { url: `${TEST_ORIGIN}/rest/v1/rpc/create_income_expense_v1`, method: 'POST' });
+  completed.finished(id, false, 200);
+  assert.deepEqual(await completed.drain(5), { safe: true, pendingCount: 0, ambiguousCount: 0 });
+});
+
+test('Chrome mutation drain tracks compat writer and excludes unrelated reads', async () => {
+  assert.equal(typeof chrome.createChromeMutationDrain, 'function');
+  const drain = chrome.createChromeMutationDrain(TEST_ORIGIN);
+  drain.started({}, { url: `${TEST_ORIGIN}/rest/v1/notifications`, method: 'GET' });
+  drain.started({}, { url: `${TEST_ORIGIN}/rest/v1/rpc/business_performance_organizations_v1`, method: 'POST' });
+  assert.equal((await drain.drain(5)).safe, true);
+  drain.started({}, { url: `${TEST_ORIGIN}/rest/v1/rpc/ie_compat_insert_v2`, method: 'POST' });
+  assert.equal((await drain.drain(5)).safe, false);
+});
+
 test('receipt scrubber removes JWT, known credentials, query tokens and email addresses', () => {
   assert.equal(typeof chrome.sanitizeChromeEvidence, 'function');
   const evidence = chrome.sanitizeChromeEvidence({ error: 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature failed private-value',

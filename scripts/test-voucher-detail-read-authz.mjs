@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { assertTestLease, withTestLock } from './test-env/lock.mjs';
+import { assertTestLease, markTestCleanupRequired, withTestCleanup, withTestLock } from './test-env/lock.mjs';
 // JWT/PostgREST authorization regression. Fixtures live ONLY in guarded TEST.
 // Fixture setup bypasses business triggers locally; assertions never bypass RLS.
 import assert from 'node:assert/strict';
@@ -25,8 +25,30 @@ export async function testConnection() {
   return { cred, test, url: `https://${cred.testRef}.supabase.co` };
 }
 
+async function testFetch(ctx, url, options, { write = false } = {}) {
+  ctx.signal?.throwIfAborted();
+  try {
+    // A cancelled client request does not prove that the server cancelled a write.
+    // Let started writes settle before finally starts cleanup under the durable token.
+    const response = await fetch(url, { ...options, signal: write ? undefined : ctx.signal });
+    if (write && response.status >= 500 && ctx.writeState) ctx.writeState.uncertain = true;
+    return response;
+  } catch (error) {
+    if (write && ctx.writeState) ctx.writeState.uncertain = true;
+    throw error;
+  }
+}
+
+async function testJson(ctx, response, write = false) {
+  try { return await response.json(); }
+  catch (error) {
+    if (write && ctx.writeState) ctx.writeState.uncertain = true;
+    throw error;
+  }
+}
+
 export async function signInTest(ctx, email, password) {
-  const r = await fetch(`${ctx.url}/auth/v1/token?grant_type=password`, {
+  const r = await testFetch(ctx, `${ctx.url}/auth/v1/token?grant_type=password`, {
     method: 'POST', headers: { apikey: ctx.cred.testPublishableKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
@@ -43,30 +65,40 @@ export async function originalTestSession(ctx) {
 
 export async function request(ctx, jwt, path, body, profile = 'public') {
   const start = performance.now();
-  const r = await fetch(`${ctx.url}/rest/v1/${path}`, {
+  const write = body !== undefined && path !== `rpc/${RPC}` && path !== 'rpc/ie_detail_metadata_v1';
+  const r = await testFetch(ctx, `${ctx.url}/rest/v1/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       apikey: ctx.cred.testPublishableKey, Authorization: `Bearer ${jwt}`,
       'Content-Type': 'application/json', 'Accept-Profile': profile, 'Content-Profile': profile,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const json = await r.json();
+  }, { write });
+  const json = await testJson(ctx, r, write);
   return { status: r.status, ok: r.ok, json, ms: performance.now() - start };
 }
 
 const idsOf = rows => rows.map(r => r.id).sort();
 const sqlIds = ids => ids.map(lit).join(',');
-const replicaTransaction = (ctx, sql) => psql(ctx.test, `BEGIN; SET LOCAL session_replication_role=replica; ${sql} COMMIT;`);
+const replicaTransaction = (ctx, sql) => {
+  ctx.signal?.throwIfAborted();
+  return psql(ctx.test, `BEGIN; SET LOCAL session_replication_role=replica; ${sql} COMMIT;`);
+};
 
 export async function runHarness({ baseline = false, context, lease, reportPath = REPORT } = {}) {
-  const ctx = context ?? await testConnection();
-  if (!lease) return withTestLock(ctx, held => runHarness({ baseline, context: ctx, lease: held, reportPath }));
+  const connection = context ?? await testConnection();
+  if (!lease) return withTestLock(connection, held => runHarness({ baseline, context: connection, lease: held, reportPath }));
+  const ctx = { ...connection, signal: lease.signal, writeState: { uncertain: false } };
   await assertTestLease(lease, ctx.test);
   const cases = [], measures = [], coverage = {};
   const check = async (name, fn) => {
+    await assertTestLease(lease, ctx.test);
     try { await fn(); cases.push({ name, status: 'PASS' }); console.log(`PASS ${name}`); }
-    catch (error) { cases.push({ name, status: 'FAIL', error: error.message }); console.log(`FAIL ${name}: ${error.message}`); }
+    catch (error) {
+      cases.push({ name, status: 'FAIL', error: error.message }); console.log(`FAIL ${name}: ${error.message}`);
+      ctx.signal.throwIfAborted();
+      if (ctx.writeState.uncertain) throw error;
+    }
   };
   const get = async (jwt, path) => {
     const r = await request(ctx, jwt, path); assert.equal(r.status, 200, `${path.split('?')[0]} HTTP ${r.status}`); return r.json;
@@ -107,12 +139,14 @@ export async function runHarness({ baseline = false, context, lease, reportPath 
     if (!baseline) {
       const password = `Tt!${randomBytes(20).toString('base64url')}`;
       const email = `voucher-read-${suffix}@example.invalid`;
-      const created = await fetch(`${ctx.url}/auth/v1/admin/users`, {
+      await assertTestLease(lease, ctx.test);
+      markTestCleanupRequired(lease, ctx.test);
+      const created = await testFetch(ctx, `${ctx.url}/auth/v1/admin/users`, {
         method: 'POST', headers: { apikey: ctx.cred.testSecretKey, Authorization: `Bearer ${ctx.cred.testSecretKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, email_confirm: true }),
-      });
+      }, { write: true });
       assert.equal(created.status, 200, `fixture actor creation HTTP ${created.status}`);
-      actorId = (await created.json()).id; assert(actorId, 'actor id required');
+      actorId = (await testJson(ctx, created, true)).id; assert(actorId, 'actor id required');
       const otherBuilding = psqlJson(ctx.test, `select id from public.buildings where organization_id=${lit(OTHER_ORG)} and deleted_at is null order by id limit 1`)[0]?.id;
       assert(otherBuilding, 'cross-org fixture must have a real building');
       const fixtures = Object.fromEntries(['owner', 'possession', 'none', 'restricted', 'cross', 'zero', 'large', 'change', 'rounding', 'recipient'].map(name => [name, randomUUID()]));
@@ -315,17 +349,21 @@ export async function runHarness({ baseline = false, context, lease, reportPath 
   } finally {
     if (actorId) {
       try {
-      replicaTransaction(ctx, `delete from public.income_expense_supplements where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
-        delete from public.income_expense_revisions where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
-        delete from public.income_expense_items where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
-        delete from public.income_expenses where id in (${sqlIds(fixtureIds) || 'NULL'});
-        delete from public.cashbook_possession_bindings where id=${lit(bindingId)};
-        delete from public.accounts where id in (${sqlIds(accountIds)});
-        delete from public.organization_memberships where id=${lit(membershipId)};`);
-      const r = await fetch(`${ctx.url}/auth/v1/admin/users/${actorId}`, { method: 'DELETE',
-        headers: { apikey: ctx.cred.testSecretKey, Authorization: `Bearer ${ctx.cred.testSecretKey}` } });
-      assert.equal(r.status, 200, `fixture actor cleanup HTTP ${r.status}`);
-      assert.equal(psqlJson(ctx.test, `select count(*)::int n from public.income_expenses where id in (${sqlIds(fixtureIds) || 'NULL'})`)[0].n, 0);
+        await withTestCleanup(lease, ctx.test, async cleanupLease => {
+          const cleanupCtx = { ...ctx, signal: cleanupLease.signal };
+          replicaTransaction(cleanupCtx, `delete from public.income_expense_supplements where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
+            delete from public.income_expense_revisions where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
+            delete from public.income_expense_items where income_expense_id in (${sqlIds(fixtureIds) || 'NULL'});
+            delete from public.income_expenses where id in (${sqlIds(fixtureIds) || 'NULL'});
+            delete from public.cashbook_possession_bindings where id=${lit(bindingId)};
+            delete from public.accounts where id in (${sqlIds(accountIds)});
+            delete from public.organization_memberships where id=${lit(membershipId)};`);
+          const r = await testFetch(cleanupCtx, `${ctx.url}/auth/v1/admin/users/${actorId}`, { method: 'DELETE',
+            headers: { apikey: ctx.cred.testSecretKey, Authorization: `Bearer ${ctx.cred.testSecretKey}` } }, { write: true });
+          assert.equal(r.status, 200, `fixture actor cleanup HTTP ${r.status}`);
+          assert.equal(psqlJson(ctx.test, `select count(*)::int n from public.income_expenses where id in (${sqlIds(fixtureIds) || 'NULL'})`)[0].n, 0);
+          assert.equal(ctx.writeState.uncertain, false, 'An HTTP write outcome is unknown; keep active_run until manual verification.');
+        });
       } catch (error) {
         cases.push({ name: 'fixture.cleanup', status: 'FAIL', error: `${error.message}; fixture actor ${actorId}` });
         console.log(`FAIL fixture.cleanup: ${error.message}; fixture actor ${actorId}`);
@@ -352,6 +390,6 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
     console.error('Usage: node scripts/test-voucher-detail-read-authz.mjs --env test [--baseline]');
     process.exitCode = 1;
   } else {
-    runHarness({ baseline: args.includes('--baseline') }).catch(error => { console.error(error.message); process.exitCode = 1; });
+    runHarness({ baseline: args.includes('--baseline') }).catch(error => { console.error(error.message); process.exitCode ||= 1; });
   }
 }

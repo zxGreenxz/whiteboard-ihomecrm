@@ -11,6 +11,8 @@ import { promisify } from 'node:util';
 import { batBuocDichTest, lit, PROD_REF, psqlJson, repoRoot } from './lib.mjs';
 import { matKhauTest } from './hau-ky.mjs';
 import { trangLazy, chunkTrongDist, fileEntryTuHtml, bytesEntry, trangMatChunk } from '../generate-bundle-inventory.mjs';
+import { createNavigationReadGuard } from '../lib/commission-e2e-network.mjs';
+import { assertTestLease, markTestCleanupRequired, withTestCleanup } from './lock.mjs';
 
 const exec = promisify(execFile);
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
@@ -20,6 +22,7 @@ const CHECKS = ['bundle', 'buildSha', 'loginOwner', 'testBanner', 'buildings', '
   'createUi', 'autoApprovedPosted', 'cancelUi', 'reversed', 'balanceRestored'];
 const DIAGNOSTICS = ['consoleErrors', 'pageErrors', 'blockedRequests', 'httpErrors', 'requestFailures'];
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
+const navigationGuards = new WeakMap();
 
 export function validateChromeTarget(cred, buildSha) {
   if (!/^[a-z0-9]{20}$/.test(cred.testRef ?? '') || cred.testRef === PROD_REF) {
@@ -68,6 +71,55 @@ export function expectedMissingMedia(raw, status, testOrigin) {
     const url = new URL(raw);
     return status === 404 && url.origin === testOrigin && /^\/storage\/v1\/(?:object|render\/image)\//.test(url.pathname);
   } catch { return false; }
+}
+
+export function expectedReadCancellation({ url: raw, method, reason, boundary, responseStatus }, testOrigin) {
+  if (!boundary || reason !== 'net::ERR_ABORTED' || responseStatus >= 400) return false;
+  try {
+    const url = new URL(raw);
+    if (url.origin !== testOrigin || url.username || url.password) return false;
+    if (['GET', 'HEAD'].includes(method)) return /^\/rest\/v1\/[^/]+$/.test(url.pathname);
+    // SELECT-only sidebar roster, source: 20260725001000_business_performance_rpc_authz.sql.
+    return method === 'POST' && url.pathname === '/rest/v1/rpc/business_performance_organizations_v1';
+  } catch { return false; }
+}
+
+/** Giữ browser tới khi writer đã gửi có kết quả; mất mạng/timeout là outcome chưa rõ. */
+export function createChromeMutationDrain(testOrigin) {
+  const pending = new Set(), ambiguous = new Set(), waiters = new Set();
+  const receipt = () => ({ safe: pending.size === 0 && ambiguous.size === 0,
+    pendingCount: pending.size, ambiguousCount: ambiguous.size });
+  return {
+    started(id, { url: raw, method }) {
+      const url = new URL(raw);
+      if (url.origin === testOrigin && method === 'POST'
+        && /^\/rest\/v1\/rpc\/(?:create_income_expense_v1|ie_compat_insert_v2|cancel_income_voucher_v1)$/.test(url.pathname)) pending.add(id);
+    },
+    finished(id, failed = false, status) {
+      if (!pending.delete(id)) return;
+      // Gateway 502/504 có thể trả về trước khi transaction ở origin commit.
+      if (failed || status >= 500) ambiguous.add(id);
+      if (pending.size === 0) for (const done of waiters) done();
+    },
+    async drain(timeoutMs = 45_000) {
+      if (pending.size > 0) await new Promise((resolveWait) => {
+        const done = () => { clearTimeout(timer); waiters.delete(done); resolveWait(); };
+        const timer = setTimeout(done, timeoutMs);
+        waiters.add(done);
+      });
+      return receipt();
+    },
+  };
+}
+
+function navigationBoundary(context, action) { navigationGuards.get(context)?.snapshot(action); }
+async function navigateChrome(page, url) {
+  navigationBoundary(page.context(), `navigate:${url.split('?')[0]}`);
+  await page.goto(url);
+}
+async function closeChromeContext(context) {
+  navigationBoundary(context, 'close-context');
+  await context.close();
 }
 
 export function sanitizeChromeEvidence(value, secrets = []) {
@@ -168,11 +220,14 @@ function resourceIdentity(raw) {
   } catch { return '[invalid-url]'; }
 }
 
-async function guardedContext(browser, origin, testOrigin, diagnostics) {
+async function guardedContext(browser, origin, testOrigin, diagnostics, { signal, mutations }) {
   const context = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' });
+  const reads = createNavigationReadGuard({ appOrigin: origin, testOrigin });
+  navigationGuards.set(context, reads);
   const policy = { localOrigin: origin, testOrigin };
   await context.route('**/*', async (route) => {
     const req = route.request();
+    if (signal.aborted) { await route.abort('aborted'); return; }
     const allowed = networkAllowed(req.url(), policy)
       && (!FONT_HOSTS.has(new URL(req.url()).hostname) || ['GET', 'HEAD'].includes(req.method()));
     if (!allowed) {
@@ -180,14 +235,19 @@ async function guardedContext(browser, origin, testOrigin, diagnostics) {
       await route.abort('blockedbyclient');
       return;
     }
+    mutations.started(req, { url: req.url(), method: req.method() });
     await route.continue();
   });
   if (typeof context.routeWebSocket !== 'function') throw new Error('Playwright thiếu routeWebSocket: không thể bảo vệ toàn bộ mạng Chrome.');
   await context.routeWebSocket('**/*', (socket) => {
+    if (signal.aborted) { socket.close(); return; }
     if (networkAllowed(socket.url(), policy)) socket.connectToServer();
     else { diagnostics.blockedRequests.push({ method: 'WEBSOCKET', resource: resourceIdentity(socket.url()) }); socket.close(); }
   });
   context.on('page', (page) => {
+    const statuses = new WeakMap();
+    page.on('request', (request) => reads.started(request));
+    page.on('requestfinished', (request) => { reads.finished(request); mutations.finished(request, false, statuses.get(request)); });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       const url = message.location().url;
@@ -197,16 +257,25 @@ async function guardedContext(browser, origin, testOrigin, diagnostics) {
     });
     page.on('pageerror', (error) => diagnostics.pageErrors.push(error.message));
     page.on('response', (response) => {
+      statuses.set(response.request(), response.status());
       if (response.status() < 400) return;
       const target = { status: response.status(), resource: resourceIdentity(response.url()) };
       if (expectedMissingMedia(response.url(), response.status(), testOrigin)) diagnostics.expectedMedia404.push(target);
       else diagnostics.httpErrors.push(target);
     });
     page.on('requestfailed', (request) => {
-      // Navigation teardown is deliberate; all genuine errors, including failed fetch, remain red.
       const reason = request.failure()?.errorText ?? 'request failed';
+      mutations.finished(request, true);
+      const readCancellation = reads.cancelled(request, reason, statuses.get(request));
+      reads.finished(request);
+      const failure = { resource: resourceIdentity(request.url()), method: request.method(), reason };
+      if (expectedReadCancellation({ url: request.url(), method: request.method(), reason,
+        boundary: readCancellation?.boundary, responseStatus: statuses.get(request) }, testOrigin)) {
+        diagnostics.expectedReadCancellations.push({ ...failure, boundary: readCancellation.boundary });
+        return;
+      }
       if (reason === 'net::ERR_ABORTED' && request.isNavigationRequest()) return;
-      diagnostics.requestFailures.push({ resource: resourceIdentity(request.url()), reason });
+      diagnostics.requestFailures.push(failure);
     });
     page.setDefaultTimeout(45_000);
     page.setDefaultNavigationTimeout(45_000);
@@ -217,7 +286,7 @@ async function guardedContext(browser, origin, testOrigin, diagnostics) {
 async function loginUi(page, email, password, testOrigin, expect) {
   // Đi thẳng tới hồ sơ bằng redirect hợp lệ của app: không mở Dashboard/onboarding
   // rồi huỷ các request còn chạy ngay sau khi đăng nhập.
-  await page.goto('/login?next=/account/profile');
+  await navigateChrome(page, '/login?next=/account/profile');
   await expect(page.getByRole('status', { name: 'Môi trường TEST' })).toBeVisible();
   await page.getByLabel('Tài Khoản', { exact: true }).fill(email);
   await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
@@ -234,18 +303,20 @@ async function loginUi(page, email, password, testOrigin, expect) {
 }
 
 async function chooseOrganization(page, name, expect) {
-  if (new URL(page.url()).pathname !== '/account/profile') await page.goto('/account/profile');
+  if (new URL(page.url()).pathname !== '/account/profile') await navigateChrome(page, '/account/profile');
   const select = page.getByRole('combobox', { name: 'Công ty đang chọn', exact: true });
   await expect(select).toBeEnabled();
   await select.click();
+  navigationBoundary(page.context(), 'select-organization');
   await page.getByRole('option', { name, exact: true }).click();
   await expect(select).toHaveText(name);
 }
 
-async function testApi(testOrigin, cred, session, path, body) {
+export async function testApi(testOrigin, cred, session, path, body, { fetchImpl = fetch } = {}) {
   assert.ok(/^\/(?:rest\/v1\/|auth\/v1\/user$)/.test(path) && !path.includes('://'), 'Chỉ gọi API TEST định danh');
-  const response = await fetch(`${testOrigin}${path}`, { method: body === undefined ? 'GET' : 'POST', redirect: 'error',
-    headers: { apikey: cred.testPublishableKey, Authorization: session.authorization, 'Content-Type': 'application/json' },
+  const response = await fetchImpl(`${testOrigin}${path}`, { method: body === undefined ? 'GET' : 'POST', redirect: 'error',
+    headers: { apikey: cred.testPublishableKey, Authorization: session.authorization, 'Content-Type': 'application/json',
+      'Accept-Profile': 'public', 'Content-Profile': 'public' },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(45_000) });
   if (!response.ok) throw new Error(`API TEST ${path.split('?')[0]} HTTP ${response.status}`);
   return response.json();
@@ -266,20 +337,38 @@ function accountBalance(test, accountId) {
  * Tự build chính source worktree, pin commit + digest bundle, rồi chạy Chrome cài sẵn.
  * Trả failed receipt thay vì vứt evidence khi UI hỏng. Caller PHẢI kiểm status.
  */
-export async function runChrome({ cred, test, reportDir, buildSha, headed = false }) {
+export async function runChrome({ cred, test, reportDir, buildSha, headed = false, lease }) {
   const started = Date.now();
   const result = { status: 'failed', requestedSha: buildSha, servedSha: null, assertionCount: 0, checks: {},
-    browser: { channel: 'chrome', headless: !headed }, diagnostics: Object.fromEntries([...DIAGNOSTICS, 'expectedMedia404'].map((key) => [key, []])),
+    browser: { channel: 'chrome', headless: !headed }, diagnostics: Object.fromEntries([...DIAGNOSTICS, 'expectedMedia404', 'expectedReadCancellations'].map((key) => [key, []])),
     cleanup: { status: 'not-created', balanceRestored: false, retainedFixtureIds: [] }, errors: [] };
   const secrets = Object.values(cred ?? {}).filter((value) => typeof value === 'string');
   const name = `TEST_ENV_CHROME_${randomUUID()}`;
   let temporary, server, browser, custodian, account, beforeBalance;
   let targetVerified = false;
-  let testOrigin;
+  let testOrigin, mutations, stopping;
+  let cleanupRequired = false;
+  const closeBrowser = async () => {
+    if (browser) for (const context of browser.contexts()) navigationBoundary(context, 'close-browser');
+    await browser?.close();
+  };
+  const stopChrome = () => {
+    if (stopping) return;
+    result.interrupted = true;
+    result.errors.push('Chrome dừng vì lease TEST bị ngắt hoặc mất.');
+    stopping = (async () => {
+      result.inflightMutation = await mutations.drain();
+      await closeBrowser();
+    })().catch((error) => { result.errors.push(`Dừng Chrome: ${error.message}`); });
+  };
   const check = (key) => { result.checks[key] = true; result.assertionCount = Object.keys(result.checks).length; };
   try {
     testOrigin = validateChromeTarget(cred, buildSha);
     assert.ok(cred.passwordSeed, 'Chrome cần seed mật khẩu TEST');
+    await assertTestLease(lease, test);
+    mutations = createChromeMutationDrain(testOrigin);
+    lease.signal.addEventListener('abort', stopChrome, { once: true });
+    lease.signal.throwIfAborted();
     await batBuocDichTest(cred, test);
     targetVerified = true;
     const { stdout: head } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, windowsHide: true });
@@ -294,7 +383,7 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     result.prebuild = { scripts: [], sourceManifestsUnchanged: false };
     for (const script of ['scripts/qr/build-wechat-wasm.mjs', 'scripts/ocr/build-assets.mjs']) {
       await exec(process.execPath, [join(repoRoot, script)], {
-        cwd: repoRoot, env: buildEnv, windowsHide: true, timeout: 240_000, maxBuffer: 8 * 1024 * 1024,
+        cwd: repoRoot, env: buildEnv, windowsHide: true, timeout: 240_000, maxBuffer: 8 * 1024 * 1024, signal: lease.signal,
       });
       result.prebuild.scripts.push(script);
     }
@@ -302,7 +391,7 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     assert.deepEqual(afterAssets, beforeAssets, 'Prebuild đổi source assets; cần review source mới trước khi chạy Chrome');
     result.prebuild.sourceManifestsUnchanged = true;
     await exec(process.execPath, [join(repoRoot, 'node_modules/vite/bin/vite.js'), 'build', '--outDir', outDir, '--emptyOutDir'], {
-      cwd: repoRoot, env: buildEnv, windowsHide: true, timeout: 240_000, maxBuffer: 8 * 1024 * 1024,
+      cwd: repoRoot, env: buildEnv, windowsHide: true, timeout: 240_000, maxBuffer: 8 * 1024 * 1024, signal: lease.signal,
     });
     const index = await readFile(join(outDir, 'index.html'), 'utf8');
     result.bundle = await inspectChromeBundle(outDir, index);
@@ -312,9 +401,11 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     assert.ok(!/rel=["'](?:preconnect|dns-prefetch)["'][^>]*tryymsxyyckgbrmmvozx/.test(index), 'Build TEST không được preconnect production');
     result.indexSha256 = createHash('sha256').update(index).digest('hex');
     await writeFile(join(outDir, 'build-meta.json'), JSON.stringify({ buildSha, indexSha256: result.indexSha256, environment: 'test' }));
+    await assertTestLease(lease, test);
     server = await serveChromeBuild(outDir, testOrigin);
     const { chromium, expect } = await import('@playwright/test');
     browser = await chromium.launch({ channel: 'chrome', headless: !headed, args: ['--disable-background-networking', '--disable-component-update', '--disable-domain-reliability', '--disable-sync'] });
+    await assertTestLease(lease, test);
     result.browser.version = browser.version();
     const metadataResponse = await fetch(`${server.origin}/build-meta.json`);
     assert.equal(metadataResponse.status, 200);
@@ -324,7 +415,7 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     const [organization] = psqlJson(test, `select name from public.organizations where id=${lit(ORG)}::uuid`);
     assert.ok(organization?.name, 'TEST cần công ty bản sao để kiểm Chrome');
     secrets.push(organization.name);
-    const ownerContext = await guardedContext(browser, server.origin, testOrigin, result.diagnostics);
+    const ownerContext = await guardedContext(browser, server.origin, testOrigin, result.diagnostics, { signal: lease.signal, mutations });
     const ownerPage = await ownerContext.newPage();
     const ownerPassword = matKhauTest(cred.passwordSeed, OWNER);
     const custodianPassword = matKhauTest(cred.passwordSeed, CUSTODIAN);
@@ -340,7 +431,7 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     await expect(ownerPage.getByRole('status', { name: 'Môi trường TEST' })).toBeVisible();
     await expect(ownerPage).toHaveTitle(/^\[TEST\]/);
     check('testBanner');
-    await ownerPage.goto('/buildings');
+    await navigateChrome(ownerPage, '/buildings');
     const buildingRow = ownerPage.locator('tbody tr').first();
     await expect(buildingRow).toBeVisible();
     await expect(buildingRow.locator('td').nth(2)).toHaveText(/\S/);
@@ -354,15 +445,16 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     await buildingSearch.fill(buildingName);
     await expect(ownerPage.locator('tbody tr').first()).toContainText(buildingName);
     check('search');
-    await ownerPage.goto('/income-expense');
+    await navigateChrome(ownerPage, '/income-expense');
     await expect(ownerPage.getByPlaceholder(/mã phi[ếe]u|mã phòng/i).first()).toBeVisible();
     await expect(ownerPage.locator('tbody tr').first()).toBeVisible();
     await expect(ownerPage.locator('tbody tr').first()).toContainText(/\S/);
     check('incomeExpense');
-    await ownerContext.close();
+    await closeChromeContext(ownerContext);
 
     // Chủ công ty thật không giữ sổ; dùng TEST system custodian để thử ghi thu trên UI.
-    const context = await guardedContext(browser, server.origin, testOrigin, result.diagnostics);
+    await assertTestLease(lease, test);
+    const context = await guardedContext(browser, server.origin, testOrigin, result.diagnostics, { signal: lease.signal, mutations });
     const page = await context.newPage();
     custodian = await loginUi(page, CUSTODIAN, custodianPassword, testOrigin, expect);
     secrets.push(custodian.authorization, custodian.authorization.replace(/^Bearer /, ''));
@@ -377,7 +469,7 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     const [item] = psqlJson(test, `select id,name from public.income_expense_types where organization_id=${lit(ORG)}::uuid and type='income' and not system_only and not manual_hidden and not internal_transfer and not is_deposit and not is_restricted and archived_at is null order by name limit 1`);
     assert.ok(item, 'Cần hạng mục thu chọn tay không phải tiền cọc');
     secrets.push(item.name);
-    await page.goto('/income-expense');
+    await navigateChrome(page, '/income-expense');
     await page.getByRole('button', { name: 'Thêm phiếu', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Thêm phiếu lẻ', exact: true }).click();
     const form = page.getByRole('dialog', { name: 'THÊM PHIẾU THU/CHI', exact: true });
@@ -392,23 +484,28 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     await picker.getByRole('checkbox', { name: item.name, exact: true }).check();
     await picker.getByRole('button', { name: 'Xác nhận', exact: true }).click();
     await form.getByPlaceholder('Số tiền', { exact: true }).fill('1000');
+    await assertTestLease(lease, test);
+    markTestCleanupRequired(lease, test);
+    cleanupRequired = true;
+    result.cleanup.fixtureLabel = name;
     const [madeResponse] = await Promise.all([
       page.waitForResponse((response) => response.url() === `${testOrigin}/rest/v1/rpc/create_income_expense_v1`),
       form.getByRole('button', { name: 'Lưu', exact: true }).click(),
     ]);
     assert.equal(madeResponse.status(), 200, 'UI tạo phiếu phải thành công');
     const made = await madeResponse.json();
+    result.fixtureId = made.id;
+    await assertTestLease(lease, test);
     const created = fixtureRows(test, name);
     assert.equal(created.length, 1, 'UI phải tạo đúng một fixture');
     assert.equal(created[0].id, made.id);
     assert.equal(created[0].account_id, account.id);
-    result.fixtureId = made.id;
     check('createUi');
     assert.equal(created[0].approval_status, 'APPROVED');
     assert.equal(created[0].posting_status, 'POSTED');
     assert.equal(Number(accountBalance(test, account.id)) - Number(beforeBalance), 1000, 'Tạo phiếu phải tăng sổ quỹ đúng 1.000đ');
     check('autoApprovedPosted');
-    await page.goto('/income-expense');
+    await navigateChrome(page, '/income-expense');
     await page.getByPlaceholder(/mã phi[ếe]u|mã phòng/i).first().fill(name);
     const row = page.locator('tr', { hasText: name });
     await expect(row).toHaveCount(1);
@@ -417,11 +514,13 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     await cancel.click();
     const dialog = page.getByRole('alertdialog', { name: 'Xác nhận huỷ phiếu', exact: true });
     await dialog.getByRole('textbox').fill(`TEST cleanup ${name}`);
+    await assertTestLease(lease, test);
     const [cancelled] = await Promise.all([
       page.waitForResponse((response) => response.url() === `${testOrigin}/rest/v1/rpc/cancel_income_voucher_v1`),
       dialog.getByRole('button', { name: /^Huỷ phiếu(?: và cập nhật sổ quỹ)?$/ }).click(),
     ]);
     assert.equal(cancelled.status(), 200, 'UI huỷ phải thành công');
+    await assertTestLease(lease, test);
     check('cancelUi');
     await expect(dialog).not.toBeVisible();
     const [after] = fixtureRows(test, name);
@@ -430,36 +529,50 @@ export async function runChrome({ cred, test, reportDir, buildSha, headed = fals
     check('reversed');
     assert.equal(accountBalance(test, account.id), beforeBalance, 'Huỷ UI phải trả số dư sổ về ban đầu');
     check('balanceRestored');
-    await context.close();
+    await closeChromeContext(context);
   } catch (error) {
     result.errors.push(error.message);
   } finally {
+    if (stopping) await stopping;
+    if (mutations) result.inflightMutation = await mutations.drain();
     // Dò bằng tên ngẫu nhiên ngay cả khi response tạo bị mất; không tạo lại/retry writer.
-    if (targetVerified) {
+    if (targetVerified && cleanupRequired) {
       try {
-        let rows = fixtureRows(test, name);
-        assert.ok(rows.length <= 1, 'Fixture không được trùng');
-        result.cleanup.retainedFixtureIds = rows.map((row) => row.id);
-        if (rows.length) {
-          assert.ok(account && beforeBalance !== undefined && custodian, 'Thiếu danh tính/số dư để hoàn tác fixture');
-          assert.equal(rows[0].account_id, account.id, 'Chỉ dọn fixture đúng sổ đã ghim');
-          if (rows[0].approval_status !== 'CANCELLED' || rows[0].posting_status !== 'REVERSED') {
-            await testApi(testOrigin, cred, custodian, '/rest/v1/rpc/cancel_income_voucher_v1', { p_voucher: rows[0].id, p_reason: `TEST cleanup ${name}` });
+        await withTestCleanup(lease, test, async (cleanupLease) => {
+          assert.equal(result.inflightMutation?.safe, true, 'Outcome HTTP writer chưa rõ; giữ marker và nhãn fixture để xử lý sau, không quét rồi báo sạch trước commit muộn.');
+          await assertTestLease(cleanupLease, test);
+          let rows = fixtureRows(test, name);
+          result.cleanup.retainedFixtureIds = rows.map((row) => row.id);
+          assert.ok(rows.length <= 1, 'Fixture không được trùng');
+          if (rows.length) {
+            assert.ok(account && beforeBalance !== undefined && custodian, 'Thiếu danh tính/số dư để hoàn tác fixture');
+            assert.equal(rows[0].account_id, account.id, 'Chỉ dọn fixture đúng sổ đã ghim');
+            if (rows[0].approval_status !== 'CANCELLED' || rows[0].posting_status !== 'REVERSED') {
+              await assertTestLease(cleanupLease, test);
+              await testApi(testOrigin, cred, custodian, '/rest/v1/rpc/cancel_income_voucher_v1', { p_voucher: rows[0].id, p_reason: `TEST cleanup ${name}` });
+            }
+            await assertTestLease(cleanupLease, test);
+            rows = fixtureRows(test, name);
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].approval_status, 'CANCELLED');
+            assert.equal(rows[0].posting_status, 'REVERSED');
+            assert.equal(accountBalance(test, account.id), beforeBalance, 'Cleanup phải hoàn trả số dư');
+            result.cleanup = { status: 'cancelled-audit-retained', balanceRestored: true, retainedFixtureIds: rows.map((row) => row.id),
+              fixtureLabel: name, reason: 'Giữ phiếu CANCELLED/REVERSED cùng audit và posting reversal; không xoá lịch sử tiền bằng SQL.' };
+          } else {
+            assert.equal(accountBalance(test, account.id), beforeBalance, 'Không có fixture nhưng vẫn phải khớp số dư trước');
+            result.cleanup = { status: 'not-created', balanceRestored: true, retainedFixtureIds: [], fixtureLabel: name };
           }
-          rows = fixtureRows(test, name);
-          assert.equal(rows.length, 1);
-          assert.equal(rows[0].approval_status, 'CANCELLED');
-          assert.equal(rows[0].posting_status, 'REVERSED');
-          assert.equal(accountBalance(test, account.id), beforeBalance, 'Cleanup phải hoàn trả số dư');
-          result.cleanup = { status: 'cancelled-audit-retained', balanceRestored: true, retainedFixtureIds: rows.map((row) => row.id),
-            fixtureLabel: name, reason: 'Giữ phiếu CANCELLED/REVERSED cùng audit và posting reversal; không xoá lịch sử tiền bằng SQL.' };
-        } else result.cleanup = { status: 'not-created', balanceRestored: account ? accountBalance(test, account.id) === beforeBalance : null, retainedFixtureIds: [] };
+        });
       } catch (error) {
         result.cleanup.status = 'failed';
+        result.cleanup.fixtureLabel = name;
+        result.cleanup.pendingMarkerRetained = true;
         result.errors.push(`Cleanup: ${error.message}`);
       }
     }
-    for (const [label, close] of [['Chrome', () => browser?.close()], ['server', () => server?.close()]]) {
+    lease?.signal?.removeEventListener('abort', stopChrome);
+    for (const [label, close] of [['Chrome', closeBrowser], ['server', () => server?.close()]]) {
       try { await close(); } catch (error) { result.errors.push(`${label}: ${error.message}`); }
     }
     if (temporary) {

@@ -20,11 +20,11 @@
 
 ## Tasks
 
-- [ ] Owner restore: thêm `owners.mjs`, capture qua `xuat.mjs`, prepare/restore qua `khoi-phuc.mjs`; tests phản chứng role nguy hiểm và ACL sai.
-- [ ] Shared lock + receipt: thêm `lock.mjs`, `check.mjs`, helper policy; refactor sync export và thu-sql/harness dùng chung lock; test busy/lost/forged lease, receipt thiếu/lệch/cũ, empty suite.
-- [ ] Chrome lane: `chrome.mjs` build đúng SHA, login TEST, smoke, lifecycle fixture, network và console evidence, cleanup cả khi fail; chạy tuần tự.
-- [ ] Media isolation: sửa storage URL boundary + render fallback TEST, tests production unchanged và không gọi origin production.
-- [ ] Update README, DATA_ENVIRONMENTS, Contract §8, npm commands và test-matrix.
+- [x] Owner restore: thêm `owners.mjs`, capture qua `xuat.mjs`, prepare/restore qua `khoi-phuc.mjs`; tests phản chứng role nguy hiểm và ACL sai.
+- [x] Shared lock + receipt: thêm `lock.mjs`, `check.mjs`, helper policy; refactor sync export và thu-sql/harness dùng chung lock; test busy/lost/forged lease, receipt thiếu/lệch/cũ, empty suite.
+- [x] Chrome lane: `chrome.mjs` build đúng SHA, login TEST, smoke, lifecycle fixture, network và console evidence, cleanup cả khi fail; chạy tuần tự.
+- [x] Media isolation: sửa storage URL boundary + render fallback TEST, tests production unchanged và không gọi origin production.
+- [x] Update README, DATA_ENVIRONMENTS, Contract §8, npm commands và test-matrix.
 - [ ] Unit RED/GREEN, mutation guard, full sync thực tế, JWT + Chrome, gate:truoc-push; đọc diff cuối và gate receipts bởi reviewer độc lập.
 - [ ] Commit, push branch và draft PR vì thay đổi owner/ACL; báo kết quả, timing và giới hạn. Không tự coi draft PR là đã phát hành production.
 

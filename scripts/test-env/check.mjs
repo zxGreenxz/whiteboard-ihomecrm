@@ -11,6 +11,7 @@ import { runHarness } from '../test-voucher-detail-read-authz.mjs';
 import { credential, ghiLog, ketNoi, kiemCongCu, psqlJson, repoRoot } from './lib.mjs';
 import { assertTestLease, withTestLock } from './lock.mjs';
 import { assertSuite, catalogDigest, checkSnapshot } from './receipt.mjs';
+import { ownersDigest, sqlOwners } from './owners.mjs';
 import { syncTest } from './sync.mjs';
 import { sqlVanTay } from './van-tay.mjs';
 
@@ -73,13 +74,14 @@ export async function checkTest(argv = []) {
         await assertTestLease(lease, context.test);
         const [exists] = psqlJson(context.test, "select to_regclass('test_env.lich_su') is not null as ready");
         const latest = exists.ready ? psqlJson(context.test, 'select ket_qua, snapshot_prod, chi_tiet from test_env.lich_su order by id desc limit 1')[0] : null;
-        return checkSnapshot(latest, { digest: catalogDigest(psqlJson(context.test, sqlVanTay())), maxAgeHours });
+        return checkSnapshot(latest, { digest: catalogDigest(psqlJson(context.test, sqlVanTay())),
+          ownersDigest: ownersDigest(psqlJson(context.test, sqlOwners())[0]), maxAgeHours });
       });
       await step('data-jwt', async () => assertSuite(await runHarness({ context, lease, reportPath: join(reportDir, 'jwt-report.md') }), 33));
       await step('chrome', async () => {
         await assertTestLease(lease, context.test);
         const { runChrome } = await import('./chrome.mjs');
-        const result = await runChrome({ ...context, reportDir, buildSha: source.sha });
+        const result = await runChrome({ ...context, lease, reportDir, buildSha: source.sha });
         return assertSuite(result, 12);
       });
       await step('source-unchanged', async () => {
@@ -100,5 +102,5 @@ export async function checkTest(argv = []) {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  checkTest(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
+  checkTest(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode ||= 1; });
 }

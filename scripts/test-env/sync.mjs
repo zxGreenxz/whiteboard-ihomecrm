@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertTestLease, withTestLock } from "./lock.mjs";
 import { catalogDigest } from "./receipt.mjs";
+import { kiemOwnersSnapshot, ownersDigest as digestOwners, sqlOwners } from "./owners.mjs";
 
 import { cauHinhProjectTest } from "./cau-hinh.mjs";
 import { capNhatThongKe, choApiSanSang, dungCronTest, datMatKhauTest, ghiLichSu, thayRefTrongHam, xoaPush } from "./hau-ky.mjs";
@@ -40,8 +41,8 @@ export async function syncTest({ argv = [], context, lease } = {}) {
 
   const thuMuc = join(process.env.TEST_ENV_WORKDIR || join(homedir(), "ihomecrm-backups", "test-env"), batDau.replace(/[:.]/g, "-"));
   mkdirSync(thuMuc, { recursive: true });
-  // Bản dump chứa dữ liệu cá nhân + hash mật khẩu thật: xoá cả khi tiến trình bị ngắt
-  // (SIGINT/SIGTERM gọi process.exit, khối finally không kịp chạy).
+  // Bản dump chứa dữ liệu cá nhân + hash mật khẩu thật: dọn trong finally và
+  // đăng ký thêm exit cleanup; ngắt mềm vẫn giữ thời gian cho finally hoàn tất.
   const xoaDump = () => {
     if (giuDump) return;
     rmSync(join(thuMuc, "app.dump"), { force: true });
@@ -117,15 +118,19 @@ export async function syncTest({ argv = [], context, lease } = {}) {
     const apiReady = await buoc("cho-api", () => choApiSanSang(testUrl, cred.testSecretKey));
     if (!apiReady) throw new Error("Data API TEST chưa sẵn sàng; không cấp biên nhận DAT.");
     const schemaDigest = catalogDigest(psqlJson(test, sqlVanTay()));
+    const owners = psqlJson(test, sqlOwners())[0];
+    kiemOwnersSnapshot(x.meta.owners, owners);
+    const ownersDigest = digestOwners(owners);
     writeFileSync(join(thuMuc, "snapshot.json"), JSON.stringify({ snapshotLuc,
-      sourceCatalogDigest: catalogDigest(x.vanTay), schemaDigest, tableHashes: x.bam, stages: moc }, null, 2));
+      sourceCatalogDigest: catalogDigest(x.vanTay), sourceOwnersDigest: digestOwners(x.meta.owners),
+      schemaDigest, ownersDigest, tableHashes: x.bam, stages: moc }, null, 2));
 
     const ketQua = dat ? "DAT" : "LECH";
     ghiLichSu(test, {
       batDau, snapshotLuc, ketQua,
-      chiTiet: { schemaDigest, moc, lechVanTay: kiem.lechVt.length, lechDuLieu: kiem.lechBam.length, pgRestoreLoi: kp.loi.length, fkNotValid: kp.fkNotValid.map((f) => `${f.bang}.${f.ten}`), soFile: x.meta.object.length, soTaiKhoan: x.meta.user.length },
+      chiTiet: { schemaDigest, ownersDigest, moc, lechVanTay: kiem.lechVt.length, lechDuLieu: kiem.lechBam.length, pgRestoreLoi: kp.loi.length, fkNotValid: kp.fkNotValid.map((f) => `${f.bang}.${f.ten}`), soFile: x.meta.object.length, soTaiKhoan: x.meta.user.length },
     });
-    ghiLog("xong", `${dat ? "✅ TEST khớp production tuyệt đối" : "❌ TEST LỆCH production — xem kiem.json"} · ${JSON.stringify(moc)}`);
+    ghiLog("xong", `${dat ? "✅ TEST khớp snapshot production trước hậu kỳ" : "❌ TEST LỆCH snapshot — xem kiem.json"} · ${JSON.stringify(moc)}`);
     return dat ? 0 : 1;
   } catch (error) {
     try { ghiLichSu(test, { batDau, snapshotLuc: batDau, ketQua: "FAILED", chiTiet: { moc } }); } catch { /* original error retained */ }
@@ -136,8 +141,8 @@ export async function syncTest({ argv = [], context, lease } = {}) {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  syncTest({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code; }, (e) => {
+  syncTest({ argv: process.argv.slice(2) }).then((code) => { process.exitCode ||= code; }, (e) => {
     console.error(`❌ ${e.message}`);
-    process.exitCode = 1;
+    process.exitCode ||= 1;
   });
 }

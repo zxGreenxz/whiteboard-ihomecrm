@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { kiemOwnersSnapshot, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
+import { kiemOwnersSnapshot, ownersDigest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
 
 const roles = [{ name: 'ie_detail_reader', inherit: true, login: false, superuser: false,
   createdb: false, createrole: false, replication: false, bypassrls: false, connectionLimit: -1,
@@ -27,6 +27,36 @@ async function fixture(run) {
 }
 
 describe('TEST restore preserves restricted routine execution identity', () => {
+  it('owners digest is stable across catalog row and object-key order', () => {
+    const source = metadata();
+    const reordered = structuredClone(source);
+    reordered.memberships.reverse(); reordered.routines[0].acl.reverse();
+    reordered.roles[0] = Object.fromEntries(Object.entries(reordered.roles[0]).reverse());
+    expect(ownersDigest(source)).toMatch(/^[0-9a-f]{64}$/);
+    expect(ownersDigest(source)).toBe(ownersDigest(reordered));
+  });
+
+  it.each([
+    ['BYPASSRLS', meta => { meta.roles[0].bypassrls = true; }],
+    ['membership admin option', meta => { meta.memberships[0].admin = true; }],
+    ['membership inherit option', meta => { meta.memberships[0].inherit = false; }],
+    ['membership set option', meta => { meta.memberships[0].set = false; }],
+    ['new membership', meta => { meta.memberships.push({ role: 'ie_detail_reader', member: 'anon', admin: false, inherit: true, set: true }); }],
+    ['schema grant option', meta => { meta.schemaAcl[0].grantable = true; }],
+    ['schema CREATE privilege', meta => { meta.schemaAcl[0].privilege = 'CREATE'; }],
+    ['routine owner', meta => { meta.routines[0].owner = 'postgres'; }],
+    ['routine ACL', meta => { meta.routines[0].acl.push({ grantee: null, grantable: false }); }],
+  ])('owners digest changes for %s drift', (_name, change) => {
+    const source = metadata(); const target = structuredClone(source); change(target);
+    expect(ownersDigest(target)).not.toBe(ownersDigest(source));
+  });
+
+  it('owners digest rejects missing query metadata', () => {
+    for (const meta of [undefined, null, {}, { roles: [], memberships: [], routines: [] }]) {
+      expect(() => ownersDigest(meta)).toThrow(/metadata|snapshot/);
+    }
+  });
+
   it('restores custom owner and denies anon while authenticated runs as restricted owner', async () => fixture(async (db) => {
     const meta = metadata();
     await db.exec(sqlKhoiPhucVai(meta));

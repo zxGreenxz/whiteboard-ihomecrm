@@ -228,9 +228,22 @@ export function kiemCongCu() {
 }
 
 const _donKhiThoat = [];
-/** Đăng ký việc dọn (đồng bộ) chạy khi tiến trình thoát — kể cả khi bị SIGINT/SIGTERM. */
+/** Đăng ký việc dọn đồng bộ chạy khi tiến trình thực sự thoát. */
 export function khiThoat(fn) {
   _donKhiThoat.push(fn);
+}
+
+let _shutdown;
+/** Ngắt công việc mới, nhưng để finally bất đồng bộ dọn dữ liệu trước khi thoát. */
+export function testEnvSignal() {
+  if (!_shutdown) {
+    _shutdown = new AbortController();
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => {
+      process.exitCode = sig === 'SIGINT' ? 130 : 143;
+      _shutdown.abort(new Error(`Nhận ${sig}; dừng công việc mới và chờ dọn TEST.`));
+    });
+  }
+  return _shutdown.signal;
 }
 
 let _passFile = null;
@@ -240,6 +253,7 @@ let _passFile = null;
  * Xoá khi tiến trình thoát, kể cả khi lỗi.
  */
 export function dangKyMatKhau(entries) {
+  testEnvSignal();
   const lines = entries.map((e) => pgPassLine(e.host, 5432, "postgres", e.user, e.password)).join("");
   if (!_passFile) {
     _passFile = join(tmpdir(), `.pgpass-test-env-${process.pid}`);
@@ -248,7 +262,6 @@ export function dangKyMatKhau(entries) {
       try { rmSync(_passFile, { force: true }); } catch { /* đã xoá */ }
     };
     process.on("exit", don);
-    for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { don(); process.exit(130); });
   }
   writeFileSync(_passFile, lines, { encoding: "utf8", mode: 0o600 });
   process.env.PGPASSFILE = _passFile;
