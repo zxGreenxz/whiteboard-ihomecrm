@@ -4,11 +4,14 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import {
+  browserLocalStorage,
+  browserSessionStorage,
+  clearAccountBrowserState,
+} from "@/lib/accountBrowserState";
 
 const AUTH_SESSION_QUERY_KEY = ["auth", "session"] as const;
 const AUTH_USER_QUERY_KEY = ["auth", "user"] as const;
-const BUSINESS_PERFORMANCE_FILTER_PREFIX =
-  "flt:rpt-business-performance:";
 
 type AuthQueryRefetchScheduler = (callback: () => void) => void;
 type AuthDocumentReloader = () => boolean;
@@ -44,40 +47,6 @@ function isAuthMutationKey(mutationKey: readonly unknown[] | undefined) {
   return mutationKey?.[0] === "auth";
 }
 
-function sessionStorageSafely(): Storage | null {
-  try {
-    return typeof window === "undefined" ? null : window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function clearBusinessPerformanceReportFilters(
-  storage: Storage | null = sessionStorageSafely(),
-): void {
-  if (!storage) return;
-
-  const matchingKeys: string[] = [];
-  try {
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key?.startsWith(BUSINESS_PERFORMANCE_FILTER_PREFIX)) {
-        matchingKeys.push(key);
-      }
-    }
-  } catch {
-    return;
-  }
-
-  for (const key of matchingKeys) {
-    try {
-      storage.removeItem(key);
-    } catch {
-      // Storage may become unavailable between enumeration and removal.
-    }
-  }
-}
-
 /**
  * Đọc lại các khu vực ĐANG HIỆN mà lần tải trước đã lỗi.
  *
@@ -110,9 +79,10 @@ export function syncAuthQueryCache(
   queryClient: QueryClient,
   event: AuthChangeEvent,
   session: Session | null,
-  storage: Storage | null = sessionStorageSafely(),
+  storage: Storage | null = browserSessionStorage(),
   schedule: AuthQueryRefetchScheduler = scheduleMacrotask,
   reloadDocument: AuthDocumentReloader = reloadDocumentSafely,
+  localStore: Storage | null = browserLocalStorage(),
 ): void {
   const previousUserState = queryClient.getQueryState(AUTH_USER_QUERY_KEY);
   const previousUserId = authUserId(previousUserState?.data);
@@ -125,19 +95,34 @@ export function syncAuthQueryCache(
   );
   const resetQueryHashes = new Set<string>();
   const mutationCache = queryClient.getMutationCache();
-  const hasPendingNonAuthMutation =
+  const pendingMutations = principalChanged
+    ? mutationCache
+        .getAll()
+        .filter((mutation) => mutation.state.status === "pending")
+    : [];
+  const hasPendingNonAuthMutation = pendingMutations.some(
+    (mutation) => !isAuthMutationKey(mutation.options.mutationKey),
+  );
+  // Tài khoản đang đăng nhập rời tab mà tab này không tự làm: hết phiên, đăng xuất
+  // hay đổi tài khoản ở tab khác. Nạp lại trang để không còn gì của tài khoản cũ
+  // trong bộ nhớ JS (bộ lọc đang giữ trong state, cache module). Đăng nhập/đăng
+  // xuất ngay trong tab thì mutation ['auth', …] đang chạy và tự điều hướng
+  // (useLogout nạp lại trang /login) — nạp lại chen ngang sẽ cắt luồng đó.
+  // PASSWORD_RECOVERY: trang đặt lại mật khẩu cần chính sự kiện này, nạp lại là mất.
+  const leftSignedInAccount =
     principalChanged &&
-    mutationCache
-      .getAll()
-      .some(
-        (mutation) =>
-          mutation.state.status === "pending" &&
-          !isAuthMutationKey(mutation.options.mutationKey),
-      );
+    previousUserId !== null &&
+    previousUserId !== nextUserId &&
+    event !== "PASSWORD_RECOVERY" &&
+    !pendingMutations.some((mutation) =>
+      isAuthMutationKey(mutation.options.mutationKey),
+    );
 
   notifyManager.batch(() => {
     if (principalChanged) {
-      clearBusinessPerformanceReportFilters(storage);
+      // Bộ lọc/lựa chọn của tài khoản trước không được sang tài khoản sau
+      // (báo lỗi 06/10/2026, xem src/lib/accountBrowserState.ts).
+      clearAccountBrowserState(storage, localStore);
       const queryCache = queryClient.getQueryCache();
       for (const query of queryCache.getAll()) {
         if (isLiveAuthQueryKey(query.queryKey)) continue;
@@ -157,7 +142,7 @@ export function syncAuthQueryCache(
   });
 
   let reloadInitiated = false;
-  if (hasPendingNonAuthMutation) {
+  if (hasPendingNonAuthMutation || leftSignedInAccount) {
     // TanStack cannot cancel running mutation callbacks or queued microtasks;
     // reloading is the strongest generic boundary for tearing down the old realm.
     try {

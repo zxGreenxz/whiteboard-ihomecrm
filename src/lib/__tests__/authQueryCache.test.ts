@@ -1,10 +1,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import {
-  clearBusinessPerformanceReportFilters,
-  syncAuthQueryCache,
-} from "@/lib/authQueryCache";
+import { syncAuthQueryCache } from "@/lib/authQueryCache";
 
 function session(userId: string, accessToken = userId): Session {
   return {
@@ -417,28 +414,94 @@ describe("syncAuthQueryCache", () => {
   });
 });
 
-describe("clearBusinessPerformanceReportFilters", () => {
-  it("removes only business-performance report filters", () => {
-    const storage = memoryStorage({
-      "flt:rpt-business-performance:period": "2026-07",
-      "flt:rpt-business-performance:buildings": "[]",
-      "flt:other-report:period": "2026-06",
+// Báo lỗi 06/10/2026: NATHAN mở /contracts thấy 0 hợp đồng vì tab còn giữ bộ lọc
+// toà của tài khoản đăng nhập trước (trước đây chỉ bộ lọc một báo cáo được dọn).
+describe("ranh giới tài khoản", () => {
+  const signedIn = (client: QueryClient, userId: string | null) =>
+    client.setQueryData(["auth", "user"], userId ? session(userId).user : null);
+
+  it("đổi tài khoản thì xoá bộ lọc mọi trang và lựa chọn giao diện chung, giữ phiên và nhật ký tiền", () => {
+    const client = queryClient();
+    signedIn(client, "user-a");
+    const tab = memoryStorage({
+      "flt:contracts:buildingIds": '["toa-cua-a"]',
+      "flt:contracts:room": '"P101"',
+      "flt:rpt-business-performance:month": '"2026-09"',
+    });
+    const device = memoryStorage({
+      "invoice-list-column-visibility-v1": "{}",
+      "sb-ref-auth-token": "{}",
+      "ihome:pending-collection:v1:user-a:org-1:inv-1": "{}",
     });
 
-    clearBusinessPerformanceReportFilters(storage);
+    syncAuthQueryCache(client, "SIGNED_IN", session("user-b"), tab, vi.fn(), () => true, device);
 
-    expect(storage.getItem("flt:rpt-business-performance:period")).toBeNull();
-    expect(storage.getItem("flt:rpt-business-performance:buildings")).toBeNull();
-    expect(storage.getItem("flt:other-report:period")).toBe("2026-06");
+    expect(tab.length).toBe(0);
+    expect(device.getItem("invoice-list-column-visibility-v1")).toBeNull();
+    expect(device.getItem("sb-ref-auth-token")).toBe("{}");
+    expect(device.getItem("ihome:pending-collection:v1:user-a:org-1:inv-1")).toBe("{}");
   });
 
-  it("swallows unavailable storage errors", () => {
-    const storage = {
-      get length() {
-        throw new DOMException("blocked", "SecurityError");
-      },
-    } as unknown as Storage;
+  it.each([
+    ["hết phiên / đăng xuất ở tab khác", "SIGNED_OUT", null],
+    ["đổi tài khoản ở tab khác", "SIGNED_IN", "user-b"],
+  ] as const)("%s thì nạp lại trang", (_case, event, nextUserId) => {
+    const client = queryClient();
+    signedIn(client, "user-a");
+    const reloadDocument = vi.fn(() => true);
 
-    expect(() => clearBusinessPerformanceReportFilters(storage)).not.toThrow();
+    syncAuthQueryCache(client, event, nextUserId ? session(nextUserId) : null, null, vi.fn(), reloadDocument, null);
+
+    expect(reloadDocument).toHaveBeenCalledOnce();
+  });
+
+  it("đăng xuất ngay trong tab không bị nạp lại chen ngang (useLogout tự mở /login)", () => {
+    const client = queryClient();
+    signedIn(client, "user-a");
+    addPendingMutation(client, ["auth", "logout"]);
+    const tab = memoryStorage({ "flt:contracts:buildingIds": '["toa-cua-a"]' });
+    const reloadDocument = vi.fn(() => true);
+
+    syncAuthQueryCache(client, "SIGNED_OUT", null, tab, vi.fn(), reloadDocument, null);
+
+    expect(reloadDocument).not.toHaveBeenCalled();
+    expect(tab.length).toBe(0);
+  });
+
+  it("đăng nhập từ màn đăng nhập chỉ dọn, không nạp lại", () => {
+    const client = queryClient();
+    signedIn(client, null);
+    // Trang đóng lúc đăng xuất có thể ghi lại bộ lọc khi unmount (IncomeExpensePage).
+    const tab = memoryStorage({ "flt:income-expense:filters": "{}" });
+    const reloadDocument = vi.fn(() => true);
+
+    syncAuthQueryCache(client, "SIGNED_IN", session("user-b"), tab, vi.fn(), reloadDocument, null);
+
+    expect(reloadDocument).not.toHaveBeenCalled();
+    expect(tab.length).toBe(0);
+  });
+
+  it("PASSWORD_RECOVERY không nạp lại (trang đặt lại mật khẩu cần chính sự kiện đó)", () => {
+    const client = queryClient();
+    signedIn(client, "user-a");
+    const reloadDocument = vi.fn(() => true);
+
+    syncAuthQueryCache(client, "PASSWORD_RECOVERY", session("user-b"), null, vi.fn(), reloadDocument, null);
+
+    expect(reloadDocument).not.toHaveBeenCalled();
+  });
+
+  it("làm mới token cùng người dùng không dọn gì, không nạp lại", () => {
+    const client = queryClient();
+    signedIn(client, "user-a");
+    const tab = memoryStorage({ "flt:contracts:buildingIds": '["toa-1"]' });
+    const device = memoryStorage({ "invoice-list-column-visibility-v1": "{}" });
+    const reloadDocument = vi.fn(() => true);
+
+    syncAuthQueryCache(client, "TOKEN_REFRESHED", session("user-a", "token-2"), tab, vi.fn(), reloadDocument, device);
+
+    expect(reloadDocument).not.toHaveBeenCalled();
+    expect(tab.getItem("flt:contracts:buildingIds")).toBe('["toa-1"]');
+    expect(device.getItem("invoice-list-column-visibility-v1")).toBe("{}");
   });
 });

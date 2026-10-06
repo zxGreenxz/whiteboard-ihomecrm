@@ -5,6 +5,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { safeAuthRedirect } from '@/lib/authRedirect';
+import { restartAtLogin } from '@/lib/accountBrowserState';
 import {
   isAuthBootstrapTimeoutError,
   withAuthBootstrapTimeout,
@@ -185,9 +186,7 @@ export const useLogin = () => {
 // =============================================
 
 export const useLogout = () => {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationKey: ['auth', 'logout'],
@@ -211,15 +210,12 @@ export const useLogout = () => {
       }
     },
     onSuccess: () => {
-      // Clear all queries
       queryClient.clear();
-
-      toast({
-        title: 'Đã đăng xuất khỏi thiết bị này',
-        description: 'Hẹn gặp lại bạn!',
-      });
-
-      navigate('/login');
+      // Nạp lại HẲN trang /login thay vì điều hướng trong app: bộ lọc, cache và state
+      // của tài khoản vừa thoát không sang được tài khoản đăng nhập kế tiếp (báo lỗi
+      // 06/10/2026 — NATHAN thấy 0 hợp đồng vì tab giữ bộ lọc toà của tài khoản trước).
+      // Lời chào "Đã đăng xuất" bỏ theo trang cũ; màn đăng nhập hiện ra là đủ báo.
+      restartAtLogin();
     },
     onError: (error: Error) => {
       notifyActionError(error, 'Chưa đăng xuất được khỏi thiết bị này');

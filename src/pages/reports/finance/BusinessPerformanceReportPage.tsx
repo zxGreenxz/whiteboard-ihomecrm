@@ -870,6 +870,8 @@ function AuthorizedBusinessPerformanceReportPage({
               value={buildingFilterValue}
               onChange={setSelectedBuildingIds}
               buildings={scopedPhysicalBuildings}
+              // Trang tự chuẩn hoá lựa chọn và báo "không còn quyền" (fail-closed).
+              pruneUnknown={false}
               placeholder="Tất cả tòa nhà vật lý"
               disabled={
                 !selectedOrganizationId || scopedPhysicalBuildings.length === 0

@@ -52,6 +52,14 @@ Luồng đăng nhập hiện điều hướng về `/`. Nếu bạn được đ�
 
 Người quản trị tạo lời mời tại `/settings/members` và gửi link thủ công. Người nhận phải đăng nhập bằng **đúng email được mời**, sau đó mở `/invite/:token`. Đăng nhập đúng nhưng link hết hạn vẫn không thể nhận lời mời; cần nhờ quản trị tạo link mới.
 
+## Đăng xuất & đổi tài khoản
+
+Bấm **Đăng xuất** (máy tính: biểu tượng ở góc dưới thanh bên; điện thoại: trang Tài khoản). Ứng dụng nạp lại hẳn trang `/login` và xoá mọi thứ tài khoản vừa thoát để lại trên trình duyệt: bộ lọc của mọi trang, cột đã ẩn ở bảng hoá đơn và thu chi, sổ chi chọn gần nhất. Tài khoản đăng nhập kế tiếp luôn bắt đầu từ bộ lọc mặc định.
+
+- Phiên hết hạn, hoặc đăng xuất/đổi tài khoản ở tab khác: các tab còn mở tự nạp lại và cũng xoá như trên.
+- Còn giữ: phiên đăng nhập của tài khoản mới và dấu vết chống ghi trùng tiền. Dấu vết này gắn riêng từng người, để chính người đó đối chiếu lần thu đang dở khi đăng nhập lại.
+- Ô lọc toà tự bỏ toà bạn không còn được xem (mất quyền, đổi công ty) và trở về **Tất cả toà nhà**, thay vì lọc theo một toà không hiện tên.
+
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
