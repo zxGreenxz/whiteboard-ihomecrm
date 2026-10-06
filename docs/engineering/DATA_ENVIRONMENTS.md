@@ -30,7 +30,8 @@ riêng mang bản sao dữ liệu thật — bảo vệ như dữ liệu thật;
 
 Ưu tiên thử tính năng trên project TEST. `npm run test-env:check -- --sync` tạo bản sao mới rồi
 kiểm JWT/RLS và thao tác Chrome; `npm run test-env:check` dùng lại snapshot đạt còn mới, không
-xoá dữ liệu mỗi lần sửa UI. Xem [quy trình và cleanup](../../scripts/test-env/README.md).
+xoá dữ liệu mỗi lần sửa UI. Chỉ đồng bộ, không kiểm: `npm run test-env:sync` (cùng khoá chung,
+tự đối chiếu vân tay catalog và từng bảng). Xem [quy trình và cleanup](../../scripts/test-env/README.md).
 Runner build mã nguồn của worktree bằng public config TEST, mở loopback, ghi SHA + digest nguồn,
 kiểm build thực và chặn request production. Vault được đọc từ checkout chính, không sao chép.
 
