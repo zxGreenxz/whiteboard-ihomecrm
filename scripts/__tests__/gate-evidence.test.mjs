@@ -14,7 +14,7 @@ test('receipt binds exact SHA/tree/input/policy/runtime and executed command', (
   for (const field of ['policyDigest', 'runtimeDigest', 'inputDigest', 'commandDigest']) {
     assert.equal(validateGateReceipt(receipt({ [field]: 'different' }), context()).valid, false, field);
   }
-  for (const field of ['head', 'tree', 'source']) {
+  for (const field of ['base', 'head', 'tree', 'source']) {
     assert.equal(validateGateReceipt(receipt({ snapshot: { ...plan.snapshot, [field]: 'different' } }), context()).valid, false, field);
   }
   assert.equal(validateGateReceipt(receipt({ runtime: { node: 'v22.0.0' } }), context()).valid, false);

@@ -35,6 +35,7 @@ export function validateGateReceipt(receipt, { gate, plan, runId, now = Date.now
   for (const field of ['head', 'tree', 'source']) {
     if (!plan.snapshot?.[field] || receipt.snapshot?.[field] !== plan.snapshot[field]) problems.push(`Snapshot ${field} mismatch`);
   }
+  if ((receipt.snapshot?.base ?? null) !== (plan.snapshot?.base ?? null)) problems.push('Snapshot base mismatch');
   for (const field of ['policyDigest', 'runtimeDigest', 'inputDigest']) {
     if (!plan[field] || receipt[field] !== plan[field]) problems.push(`${field} mismatch`);
   }
