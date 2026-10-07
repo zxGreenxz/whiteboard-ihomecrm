@@ -202,3 +202,20 @@ gaps:
       Dựng lại fixture DEMO (hoặc đổi spec sang toà DEMO đang có), chạy 7 spec trên preview đúng
       commit bằng vai thật, đính bằng chứng; spec nào đỏ thì sửa. Chỉ đóng khi có lượt chạy xanh,
       không đóng chỉ vì code đã lên production.
+  - id: xoa-tam-tru-chua-co-luot-nop-that
+    where: >
+      extensions/tam-tru/{submit-watch.js,panel.js,background.js} · src/hooks/useTamTruKetQuaSync.ts ·
+      residence_registrations.procedure_code = 'TAMTRU_06'
+    expires_at: 2026-11-30
+    why: >
+      Luồng Xóa đăng ký tạm trú (TAMTRU_06, commit f92fb650/77045536, 07/10/2026) đã kiểm sống
+      phần ĐIỀN form trên Cổng DVC thật (không lưu, không nộp) và có unit test cho background,
+      panel, fill-engine. Hai phần chưa có bằng chứng sống: (1) chưa có lượt NỘP hồ sơ xoá thật,
+      nên việc submit-watch bắt mã từ add_subm_info_v2 và panel ghi procedureCode theo ô Thủ tục
+      mới chỉ suy từ đọc mã trang (saveDataNew(isSend) dùng chung với đăng ký); (2) background.js
+      và panel.js chưa chạy trong extension đã nạp — lúc kiểm sống chỉ chèn fill-engine vào trang.
+    exit_condition: >
+      Một lượt nộp xoá thật bằng extension ≥ 1.1.0 đã nạp: mã hồ sơ về CRM thành dòng
+      residence_registrations có procedure_code TAMTRU_06, temp_resident_from/to NULL, hiện
+      "Đã huỷ tạm trú" trong chi tiết khách và không lẫn vào lịch sử đăng ký. Đính mã hồ sơ
+      và SUBM_ID làm bằng chứng; sai ở đâu thì sửa trước khi đóng.
