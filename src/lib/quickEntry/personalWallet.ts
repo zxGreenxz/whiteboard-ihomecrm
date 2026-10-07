@@ -38,8 +38,10 @@ export function resolvePersonalWallet(input: {
   const rawText = input.text ?? '';
   const text = affirmativeText(rawText);
   const explicit = input.wallets.filter(wallet => mentions(text, normalizeWalletText(wallet.name)));
-  if (explicit.length) return explicit.length === 1 && !explicit[0].hidden
-    ? {walletId:explicit[0].id, reason:'explicit'} : {walletId:null,reason:'unresolved'};
+  if (explicit.length) {
+    const [only] = explicit;
+    return explicit.length === 1 && only && !only.hidden ? {walletId:only.id, reason:'explicit'} : {walletId:null,reason:'unresolved'};
+  }
   const namedWallet = /(?:^|[\s,;])(?:ví|vi)\s*[:=]?\s+\S/i.test(affirmativeSource(rawText));
   if (namedWallet && !/\bvi\s+(?:tien mat|cash|chuyen khoan)\b/.test(text)) return {walletId:null,reason:'unresolved'};
   const method = /\b(?:tien mat|cash)\b/.test(text) ? 'cash' : /\b(?:chuyen khoan|bank transfer)\b/.test(text) ? 'bank' : null;
@@ -51,8 +53,9 @@ export function resolvePersonalWallet(input: {
   const platform = platformFromText(rawText) || (!negativePlatform && input.evidence?.platform);
   if (platform) {
     const candidates = input.wallets.filter(wallet => normalizeWalletText(wallet.name) === 'the sp');
-    return candidates.length === 1 && !candidates[0].hidden
-      ? {walletId:candidates[0].id,reason:'platform'} : {walletId:null,reason:'unresolved'};
+    const [only] = candidates;
+    return candidates.length === 1 && only && !only.hidden
+      ? {walletId:only.id,reason:'platform'} : {walletId:null,reason:'unresolved'};
   }
   const bank = input.evidence?.payment_method === 'bank_transfer';
   const walletId = defaultPersonalWallet(input.wallets, bank ? 'bank' : 'cash');
