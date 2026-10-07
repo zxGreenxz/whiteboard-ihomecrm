@@ -341,7 +341,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 2
+        "forwardSuccessions": 3
       },
       "witness": {
         "functions": [
@@ -800,6 +800,29 @@
               },
               "after": {
                 "md5": "26100576d7adde1bba05cb84ca8ffdc0",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20261007003604_authorize_before_org_lock.sql",
+          "sha256": "1420930273cea0eeb5b7c725eb6655aae7c875e379cd1737933c85c12b05b88c",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261007003604_authorize_before_org_lock.json",
+          "expectedCounts": {
+            "functions": 1
+          },
+          "functions": [
+            {
+              "signature": "public.create_sale_bonus_from_deposit_v1(uuid,numeric,text,text,text,date,uuid,jsonb)",
+              "before": {
+                "md5": "c4509ba56079f7c60b8ed3581714f27f",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "5c120cb4a699f4520cbd68cc75ee4071",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
               }
