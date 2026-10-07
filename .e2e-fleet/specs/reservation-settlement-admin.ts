@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { layPat } from '../../scripts/lib/vault.mjs';
 
 export const RESERVATION_DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
 const OWNER = 'de6f33f3-349f-4bec-bd3d-106192f6715e';
@@ -14,13 +14,9 @@ function checked(marker: string, roomId: string) {
 async function sql<T>(query: string, readOnly = false): Promise<T[]> {
   if (process.env.FLEET_RESERVATION_LIVE !== '1') throw new Error('FLEET_RESERVATION_LIVE=1 is required');
   // Worktrees intentionally do not receive a copied vault. Prefer the
-  // process-scoped credential loaded by the caller; keep the local-vault path
-  // only as a fallback for runs from the primary checkout.
-  let pat = process.env.SUPABASE_PAT;
-  if (!pat) {
-    const vault = readFileSync(new URL('../../CLAUDE.local.md', import.meta.url), 'utf8');
-    pat = vault.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
-  }
+  // process-scoped credential; the shared helper falls back to the primary
+  // checkout's vault.
+  const pat = layPat({ bien: ['SUPABASE_PAT'] });
   if (!pat) throw new Error('Missing SUPABASE_PAT for DEMO fixture');
   const response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
     method: 'POST', headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },

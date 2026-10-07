@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
 import { loadSupabaseAdminConfig } from '../../scripts/apply-accounting-rollout.mjs';
@@ -8,9 +7,7 @@ import { DEMO_ORG_ID, DEMO_OWNER_EMAIL, runQuery, fixtureInvoiceSql,
 
 test('issued adjustment, collection, review, mobile history and edit after reversal', async ({ page, browser, baseURL }) => {
   test.setTimeout(300_000);
-  const config = loadSupabaseAdminConfig({ readFile: (path: string | URL, encoding: BufferEncoding) =>
-    readFileSync(String(path).includes('CLAUDE.local.md') && process.env.IHOMECRM_SECRET_FILE
-      ? process.env.IHOMECRM_SECRET_FILE : path, encoding) });
+  const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
   const query = <Row extends object = Record<string, unknown>>(sql: string) => runQuery<Row>(sql, config);
   const marker = fixtureMarker(`adjustment-ui-${newRunId()}`), month = '2098-10';
   const actor = (await query<{ id: string }>(`SELECT id FROM auth.users WHERE email=${sqlLiteral(DEMO_OWNER_EMAIL)}`))[0].id;
