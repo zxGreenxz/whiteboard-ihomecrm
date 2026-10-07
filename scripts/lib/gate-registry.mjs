@@ -22,7 +22,7 @@ for (const id of [
   'check-management-api-writes', 'check-promote-readiness', 'check-migration-test-liveness',
   'check-doc-counts', 'check-new-modules-strict', 'check-ts-baseline', 'check-eslint-baseline',
   'check-docs', 'check-rpc-arg-names', 'check-rpc-name-literal', 'check-rpc-layer',
-  'check-realtime-key-ownership',
+  'check-realtime-key-ownership', 'check-vault-access',
 ]) nodeGate(id);
 for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths']) gates[id].inputs = docsInputs;
 nodeGate('normalize-supabase-types', 'quality-gates', { args: ['scripts/normalize-supabase-types.mjs', '--check'] });
