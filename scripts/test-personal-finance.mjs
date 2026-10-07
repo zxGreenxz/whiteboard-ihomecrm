@@ -6,12 +6,13 @@ import { readFileSync } from 'node:fs';
 import { credential, ketNoi, batBuocDichTest, psql, psqlJson, lit } from './test-env/lib.mjs';
 import { parseSnapshot } from '../src/lib/personalFinance/contract.ts';
 
-export const migrations = ['supabase/migrations/20261004212309_personal_finance_wallets.sql', 'supabase/migrations/20261004212701_personal_finance_rpc_only.sql'];
+export const migrations = ['supabase/migrations/20261004212309_personal_finance_wallets.sql', 'supabase/migrations/20261004212701_personal_finance_rpc_only.sql', 'supabase/migrations/20261007155311_personal_transaction_attachments.sql'];
 const cred = credential(), { test } = await ketNoi(cred);
 await batBuocDichTest(cred, test);
 assert(cred.testPublishableKey, 'publishable key required for real actor requests');
 if (process.argv.includes('--apply')) for (const file of migrations) psql(test, `BEGIN;${readFileSync(file, 'utf8')}COMMIT;`);
-const url = `https://${cred.testRef}.supabase.co`, actors = [];
+const url = `https://${cred.testRef}.supabase.co`, actors = [], uploadedPaths = [];
+const attachmentBucket = 'personal-finance-attachments';
 const ORG = 'aaaa0000-0000-4000-8000-000000000001', OTHER = 'dddd0000-0000-4000-8000-000000000001';
 let checks = 0;
 const check = async (name, fn) => { try { await fn(); checks++; console.log(`PASS ${name}`); } catch (cause) { throw new Error(`FAIL ${name}`, { cause }); } };
@@ -41,6 +42,19 @@ const create = async (actor, entity, data) => (await mutate(actor, { action: `${
 const update = (actor, entity, row, data) => mutate(actor, { action: `${entity}.update`, id: row.id, expected_version: row.version, data });
 const remove = (actor, entity, row) => mutate(actor, { action: `${entity}.delete`, id: row.id, expected_version: row.version, data: {} });
 const reject = async (actor, payload, marker) => { const r = await rpc(actor, 'mutate', { p_request_key: randomUUID(), p_payload: payload }); assert(!r.ok, marker); return r; };
+async function storage(actor, path, method = 'GET', body) {
+ const response = await fetch(`${url}/storage/v1/${path}`, { method, signal: AbortSignal.timeout(45000), headers: { apikey: cred.testPublishableKey, ...(actor ? { Authorization: `Bearer ${actor.jwt}` } : {}), 'Content-Type': body instanceof Buffer ? 'image/png' : 'application/json' }, body: body instanceof Buffer ? body : body === undefined ? undefined : JSON.stringify(body) });
+ return response;
+}
+// Forward DDL reloads PostgREST's schema cache asynchronously. Only probe a read-only RPC.
+if (process.argv.includes('--apply')) {
+ for (let attempt=0; attempt<40; attempt++) {
+  const ready = await rest(null, 'rpc/is_super_admin', {});
+  if (ready.data?.code !== 'PGRST002') { assert(ready.ok, `schema readiness HTTP ${ready.status}`); break; }
+  assert(attempt<39, 'PostgREST schema cache did not become ready');
+  await new Promise(resolve => setTimeout(resolve,500));
+ }
+}
 try {
  const owner = await actor('owner', ORG), same = await actor('same', ORG), other = await actor('other', OTHER), admin = await actor('admin', ORG, 'OWNER'), superAdmin = await actor('super', ORG, 'STAFF', true);
  assert.equal((await rest(superAdmin, 'rpc/is_super_admin', {})).data, true, 'fixture must be a real super admin');
@@ -191,8 +205,44 @@ try {
   const after = await must(owner, 'snapshot'); assert.equal(after.transactions.length, before.transactions.length + 1200);
   assert.equal(after.wallets.find(w => w.id === wallet.id).balance, before.wallets.find(w => w.id === wallet.id).balance - 1200);
  });
+ await check('personal attachment upload/read/bind isolation and durable unlink', async () => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jL1kAAAAASUVORK5CYII=', 'base64');
+  const path = `${owner.id}/${randomUUID()}.png`;
+  uploadedPaths.push(path);
+  const upload = await storage(owner, `object/${attachmentBucket}/${path}`, 'POST', png);
+  assert(upload.ok, `owner upload HTTP ${upload.status}`);
+  assert((await storage(owner, `object/sign/${attachmentBucket}/${path}`, 'POST', { expiresIn: 60 })).ok);
+  for (const who of [same, other, admin, superAdmin, null]) {
+   assert(!(await storage(who, `object/sign/${attachmentBucket}/${path}`, 'POST', { expiresIn: 60 })).ok, 'foreign signed image access');
+   if (who) {
+    await must(who, 'bootstrap');
+    const own = await must(who, 'snapshot');
+    await reject(who, { action: 'transaction.create', data: { ...txn, wallet_id: own.wallets[0].id, category_id: own.categories.find(c => c.seed_key === 'food').id, attachment_paths: [path] } }, 'foreign attachment bind');
+   }
+  }
+  const payload = { action: 'transaction.batch', rows: [{ ...txn, attachment_paths: [path] }] }, requestKey = randomUUID();
+  const saved = await mutate(owner, payload, requestKey), row = saved.entities[0];
+  assert.deepEqual(row.attachment_paths, [path]);
+  assert.deepEqual(await mutate(owner, payload, requestKey), saved);
+  const edited = (await update(owner, 'transaction', row, { description: 'keep image' })).entities[0];
+  assert.deepEqual(edited.attachment_paths, [path]);
+  await update(owner, 'transaction', edited, { attachment_paths: [] });
+  assert.deepEqual(await mutate(owner, payload, requestKey), saved, 'old attachment receipt retained');
+  const before = (await must(owner, 'snapshot')).transactions.length;
+  await reject(owner, { action: 'transaction.batch', rows: [txn, { ...txn, attachment_paths: [`${owner.id}/${randomUUID()}.png`] }] }, 'missing attachment accepted');
+  assert.equal((await must(owner, 'snapshot')).transactions.length, before, 'attachment batch rollback');
+  assert(!(await storage(owner, `object/${attachmentBucket}/${path}`, 'PUT', png)).ok, 'immutable file replacement');
+  await storage(owner, `object/${attachmentBucket}`, 'DELETE', { prefixes: [path] });
+  assert((await storage(owner, `object/sign/${attachmentBucket}/${path}`, 'POST', { expiresIn: 60 })).ok, 'client delete must not remove receipt object');
+ });
  console.log(`PERSONAL FINANCE: ${checks} checks PASS (5 real JWT actors; fixtures cleaned in finally)`);
 } finally {
+ try {
+ if (uploadedPaths.length) {
+  const cleaned = await fetch(`${url}/storage/v1/object/${attachmentBucket}`, { method: 'DELETE', headers: adminHeaders, body: JSON.stringify({ prefixes: uploadedPaths }) });
+  assert(cleaned.ok, `attachment fixture cleanup HTTP ${cleaned.status}`);
+ }
+ } finally {
  if (actors.length) {
   const ids = actors.map(lit).join(',');
   psql(test, `BEGIN;SET LOCAL session_replication_role=replica;DELETE FROM public.organization_memberships WHERE user_id IN (${ids});DELETE FROM public.user_roles WHERE user_id IN (${ids});DELETE FROM public.super_admins WHERE user_id IN (${ids});COMMIT;`);
@@ -202,4 +252,5 @@ try {
   assert.equal(psqlJson(test, `select count(*)::int n from public.personal_finance_requests where user_id in (${ids})`)[0].n, 0, 'cleanup receipts');
   console.log(`CLEANUP ${actors.length} disposable accounts`);
  }
+}
 }

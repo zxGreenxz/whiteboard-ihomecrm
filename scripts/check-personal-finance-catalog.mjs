@@ -52,3 +52,15 @@ psql(test, `BEGIN;
  END $verify$;
  ROLLBACK;`);
 console.log(`PASS actor ownership survives future DDL/event trigger; exemption review ${exemptions[0].expires_at}`);
+
+const attachmentColumn = psqlJson(test, "select is_nullable,data_type,column_default from information_schema.columns where table_schema='public' and table_name='personal_transactions' and column_name='attachment_paths'");
+assert.equal(attachmentColumn.length,1); assert.equal(attachmentColumn[0].is_nullable,'NO'); assert.equal(attachmentColumn[0].data_type,'ARRAY'); assert(attachmentColumn[0].column_default.includes('{}'));
+const bucket = psqlJson(test, "select public,file_size_limit,allowed_mime_types from storage.buckets where id='personal-finance-attachments'");
+assert.equal(bucket.length,1); assert.equal(bucket[0].public,false); assert.equal(bucket[0].file_size_limit,5242880); assert.deepEqual(bucket[0].allowed_mime_types,['image/jpeg','image/png','image/webp']);
+const attachmentPolicies = psqlJson(test, "select policyname,permissive,roles,cmd from pg_policies where schemaname='storage' and tablename='objects' and policyname like 'personal_attachment_%'");
+assert.equal(attachmentPolicies.length,6);
+for (const [name,cmd] of [['read_fence','SELECT'],['insert_fence','INSERT'],['no_replace','UPDATE'],['no_delete','DELETE']]) {
+ const policy = attachmentPolicies.find(p => p.policyname===`personal_attachment_${name}`);
+ assert(policy); assert.equal(policy.permissive,'RESTRICTIVE'); assert.equal(policy.cmd,cmd); assert.deepEqual(policy.roles,['public']);
+}
+console.log('PASS attachment column, private image bucket limits and immutable owner-only storage fences');

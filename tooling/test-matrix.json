@@ -81,6 +81,7 @@
         "worker/__tests__/**/*.test.js"
       ],
       "excludes": [
+        "scripts/__tests__/personal-attachments.test.mjs",
         ".e2e-fleet/**",
         "infra/**",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
@@ -349,6 +350,7 @@
       "risk": "infrastructure",
       "includes": [
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
+        "scripts/__tests__/personal-attachments.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
