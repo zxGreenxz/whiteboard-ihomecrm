@@ -138,7 +138,8 @@ export interface PlacedLine {
 /** Atomic rows preserve two independent identical entries; never group by amount/content/category. */
 export function toPersonalBatch(d:QuickDraft):Mutation {
  if(d.mode!=='personal')throw new Error('Khoản công ty không ghi vào ví cá nhân.');
- return normalizeMutation({action:'transaction.batch',rows:d.lines.map(l=>({type:l.transactionType??d.transactionType??'EXPENSE',amount:l.amount,txn_date:d.date,wallet_id:d.personalWalletId,category_id:l.personalCategoryId,description:clean(l.description,500)}))});
+ if(d.personalAttachmentPending)throw new Error('Ảnh chứng từ cần đính lại hoặc gỡ trước khi lưu.');
+ return normalizeMutation({action:'transaction.batch',rows:d.lines.map(l=>({type:l.transactionType??d.transactionType??'EXPENSE',amount:l.amount,txn_date:d.date,wallet_id:d.personalWalletId,category_id:l.personalCategoryId,description:clean(l.description,500),...(d.personalAttachmentPaths!==undefined?{attachment_paths:[...d.personalAttachmentPaths]}:{})}))});
 }
 
 /** Một tin nhiều khoản: khác toà hoặc khác phòng ⇒ phiếu riêng (room_id ở cấp phiếu). */

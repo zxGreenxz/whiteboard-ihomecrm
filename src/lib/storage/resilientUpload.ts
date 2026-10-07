@@ -52,6 +52,10 @@ export interface UploadProgress {
 }
 
 export interface ResilientUploadOptions {
+  /** Private durable evidence is unlinked by its transaction, never physically deleted by clients. */
+  deleteOnFailure?: boolean;
+  /** Caller retained this unique key from a prior attempt; confirm a conflict by stored size. */
+  resumeExisting?: boolean;
   onProgress?: (progress: UploadProgress) => void;
   /** Huỷ thật lệnh tải (gỡ ảnh, đóng hộp). Ném AbortError. */
   signal?: AbortSignal;
@@ -275,6 +279,7 @@ export async function uploadResilient(
 
   /** Dọn khoá của lần gửi dở — hỏng thì chỉ để lại một tệp rác, không chặn người dùng. */
   const cleanup = () => {
+    if(options.deleteOnFailure===false)return;
     void deps.remove(bucket, key).catch((error: unknown) => {
       console.warn('[tai-anh] không dọn được lần gửi dở:', key, error);
     });
@@ -310,7 +315,7 @@ export async function uploadResilient(
       if (outcome.kind === 'reject') throw outcome.error;
       if (outcome.kind === 'conflict') {
         // Lần gửi ĐẦU TIÊN mà trùng khoá (có đuôi ngẫu nhiên) là chuyện lạ: không nhận vơ.
-        if (sends === 1) throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
+        if (sends === 1&&!options.resumeExisting) throw new UploadRejectedError(409, 'Đã có tệp khác cùng tên trong kho');
         // Từ lần gửi thứ 2: trùng nghĩa là CHÍNH tệp này đã lên ở lần trước mà mất trả lời.
         const size = await within(
           deps.storedSize(bucket, key).catch((): null => null),

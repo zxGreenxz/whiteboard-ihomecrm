@@ -10,9 +10,10 @@ const h = vi.hoisted(() => ({
   readCategoriesWithAi: vi.fn(),
   transcribeAudio: vi.fn(),
   uploadPhoto: vi.fn(),
+  uploadPersonalPhoto: vi.fn(),
   saveCompany: vi.fn(),
   savePersonal: vi.fn(),
-  pending: [] as Array<{ownerId:string;requestKey:string;payload:{action:string;rows:Array<{type:'EXPENSE';amount:number;txn_date:string;wallet_id:string;category_id:string;description:string}>}}>,
+  pending: [] as Array<{ownerId:string;requestKey:string;payload:{action:string;rows:Array<{type:'EXPENSE';amount:number;txn_date:string;wallet_id:string;category_id:string;description:string;attachment_paths?:string[]}>}}>,
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/copilot/copilotConfig", () => ({ makeCopilotFetch: () => vi.fn(), newTaskId: () => "qe-test", QUICK_ENTRY_BASE: "https://proxy.test" }));
@@ -23,7 +24,7 @@ vi.mock("../quickEntryAi", () => ({
   transcribeAudio: h.transcribeAudio,
 }));
 vi.mock("../useQuickEntrySave", () => ({
-  useQuickEntrySave: () => ({ uploadPhoto: h.uploadPhoto, saveCompany: h.saveCompany, savePersonal: h.savePersonal, pendingPersonalRequests:h.pending }),
+  useQuickEntrySave: () => ({ uploadPhoto: h.uploadPhoto, uploadPersonalPhoto:h.uploadPersonalPhoto, saveCompany: h.saveCompany, savePersonal: h.savePersonal, pendingPersonalRequests:h.pending }),
 }));
 
 import { needsAi, onlyCategoriesMissing, useQuickEntryFeed } from "../useQuickEntryFeed";
@@ -537,11 +538,11 @@ describe("useQuickEntryFeed — ảnh bill", () => {
     expect(c.photo).toBe(file);
   });
 
-  it("cá nhân: ảnh chỉ để AI đọc — KHÔNG giữ file", async () => {
+  it("cá nhân: giữ ảnh để tải chứng từ khi lưu", async () => {
     h.readWithAi.mockResolvedValue(ok(bill));
     const { result } = mount();
     await act(async () => result.current.submitPhoto(new File(["img"], "bill.jpg", { type: "image/jpeg" }), "personal"));
-    expect(cardsOf(result)[0].photo).toBeNull();
+    expect(cardsOf(result)[0].photo).toBeInstanceOf(File);
   });
 
   it("AI lỗi ⇒ vẫn có thẻ trống để nhập tay, kèm lời báo", async () => {
@@ -713,8 +714,57 @@ it('reload locks editable-looking card from persisted pending payload instead of
  const r=refs();h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'bún',amount_vnd:50000,category:'c1',confidence:1}]})));
  const first=mount(r);await act(async()=>first.result.current.submitText('bún 50k','personal'));
  const card=cardsOf(first.result)[0];
- h.pending=[{ownerId:USER,requestKey:card.id,payload:{action:'transaction.batch',rows:[{type:'EXPENSE',amount:70000,txn_date:'2026-09-01',wallet_id:r.personalWallets[0].id,category_id:r.personalCategories[0].id,description:'Đã gửi'}]}}];
+ const path='11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333.webp';
+ h.pending=[{ownerId:USER,requestKey:card.id,payload:{action:'transaction.batch',rows:[{type:'EXPENSE',amount:70000,txn_date:'2026-09-01',wallet_id:r.personalWallets[0].id,category_id:r.personalCategories[0].id,description:'Đã gửi',attachment_paths:[path]}]}}];
  first.unmount();const restored=mount(r);
  await waitFor(()=>expect(restored.result.current.cards[card.id]?.status.kind).toBe('unknown'));
  expect(restored.result.current.cards[card.id].state.draft.lines[0]).toMatchObject({amount:70000,description:'Đã gửi'});
+ expect(restored.result.current.cards[card.id].state.draft.personalAttachmentPaths).toEqual([path]);
+});
+it('personal photo stays local, failure blocks save, retry persists actual paths before mutation', async () => {
+  const file=new File(['bill'],'bill.png',{type:'image/png'});
+  h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1'}]})));
+  const {result}=mount();
+  await act(async()=>result.current.submitPhoto(file,'personal'));
+  const card=cardsOf(result)[0];
+  expect(card.photo).toBe(file);
+  h.uploadPersonalPhoto.mockRejectedValueOnce(new Error('Không có quyền tải ảnh'));
+  await act(async()=>result.current.saveCard(card.id));
+  expect(cardsOf(result)[0].status.kind).toBe('rejected');
+  expect(h.savePersonal).not.toHaveBeenCalled();
+  const path='11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333.webp';
+  h.uploadPersonalPhoto.mockResolvedValueOnce(path);
+  h.savePersonal.mockImplementation(async(draft)=>{
+    expect(JSON.parse(localStorage.getItem(draftsKey(USER,ORG))!).cards[0].state.draft.personalAttachmentPaths).toEqual([path]);
+    expect(draft.personalAttachmentPaths).toEqual([path]);
+    return {kind:'unknown',ids:[],done:0,message:'retry'};
+  });
+  await act(async()=>result.current.saveCard(card.id));
+  await act(async()=>result.current.saveCard(card.id));
+  expect(h.uploadPersonalPhoto).toHaveBeenCalledTimes(2);
+  expect(h.savePersonal).toHaveBeenCalledTimes(2);
+});
+it('reload loses the unuploaded File, retains the marker and refuses Save until explicit discard',async()=>{
+ h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1'}]})));
+ const first=mount();await act(async()=>first.result.current.submitPhoto(new File(['img'],'bill.png',{type:'image/png'}),'personal'));const id=cardsOf(first.result)[0].id;first.unmount();
+ const restored=mount();await waitFor(()=>expect(cardsOf(restored.result)).toHaveLength(1));
+ expect(cardsOf(restored.result)[0].photo).toBeNull();expect(cardsOf(restored.result)[0].state.draft.personalAttachmentPending).toBe(true);
+ await act(async()=>restored.result.current.saveCard(id));expect(h.savePersonal).not.toHaveBeenCalled();
+ const card=cardsOf(restored.result)[0];act(()=>restored.result.current.changeCard(id,{...card.state,touched:['personalAttachmentPaths'],draft:{...card.state.draft,personalAttachmentPending:false}}));
+ h.savePersonal.mockResolvedValue({kind:'saved',ids:[],done:1,message:'saved'});await act(async()=>restored.result.current.saveCard(id));expect(h.savePersonal).toHaveBeenCalledOnce();
+});
+it('one photo split into income/expense cards uploads once and shares the confirmed path',async()=>{
+ const r=refs({personalCategories:[...refs().personalCategories,{...refs().personalCategories[0],id:'33333333-3333-4333-8333-333333333333',type:'INCOME',name:'Lương'}]});
+ h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1',transactionType:'EXPENSE'},{desc:'Lương',amount_vnd:100000,category:'c2',transactionType:'INCOME'}]})));
+ const {result}=mount(r);await act(async()=>result.current.submitPhoto(new File(['img'],'bill.png',{type:'image/png'}),'personal'));
+ expect(cardsOf(result)).toHaveLength(2);const path='11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333.webp';h.uploadPersonalPhoto.mockResolvedValue(path);h.savePersonal.mockResolvedValue({kind:'saved',ids:[],done:1,message:'saved'});
+ for(const card of cardsOf(result))await act(async()=>result.current.saveCard(card.id));
+ expect(h.uploadPersonalPhoto).toHaveBeenCalledOnce();expect(h.savePersonal.mock.calls.every(([draft])=>JSON.stringify(draft.personalAttachmentPaths)===JSON.stringify([path]))).toBe(true);
+});
+it('closing the feed aborts upload and a late completion never sends a money mutation',async()=>{
+ let finish!:(path:string)=>void;h.uploadPersonalPhoto.mockImplementation(()=>new Promise<string>(r=>{finish=r;}));
+ h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1'}]})));
+ const view=mount();await act(async()=>view.result.current.submitPhoto(new File(['img'],'bill.png',{type:'image/png'}),'personal'));const id=cardsOf(view.result)[0].id;
+ let pending!:Promise<void>;act(()=>{pending=view.result.current.saveCard(id);});const signal=h.uploadPersonalPhoto.mock.calls[0][2] as AbortSignal;view.unmount();expect(signal.aborted).toBe(true);
+ await act(async()=>{finish('11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333.webp');await pending;});expect(h.savePersonal).not.toHaveBeenCalled();
 });

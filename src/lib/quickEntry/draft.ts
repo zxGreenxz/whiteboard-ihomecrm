@@ -8,6 +8,7 @@
 import { MAX_AMOUNT_VND } from "./amount";
 import { z } from 'zod';
 import type { WalletResolution } from './personalWallet';
+import { personalAttachmentPathSchema } from '@/lib/personalFinance/contract';
 
 const walletResolutionSchema = z.object({walletId:z.string().nullable(),reason:z.enum(['manual','explicit','platform','bank_transfer','cash_default','unresolved'])});
 
@@ -31,6 +32,9 @@ export interface DraftLine {
 }
 
 export interface QuickDraft {
+  personalAttachmentPaths?: string[];
+  /** Local evidence was selected; reload loses File and must require explicit reattach/unlink. */
+  personalAttachmentPending?: boolean;
   personalWalletResolution?: WalletResolution;
   transactionType?: TransactionType;
   personalWalletId?: string | null;
@@ -55,6 +59,7 @@ export interface QuickDraft {
 
 /** Persisted drafts may be incomplete, but field types and transaction directions must be trustworthy. */
 export const quickDraftSchema=z.object({
+ personalAttachmentPaths:z.array(z.string()).max(20).optional(),personalAttachmentPending:z.boolean().optional(),
  id:z.string().min(1),mode:z.enum(['company','personal']),date:z.string(),name:z.string(),vendor:z.string().nullable(),
  buildingId:z.string().nullable(),roomId:z.string().nullable(),accountId:z.string().nullable(),attachmentUrls:z.array(z.string()),
  transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalWalletResolution:walletResolutionSchema.optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
@@ -114,9 +119,14 @@ export function validateDraft(d: QuickDraft): DraftValidation {
       if (!/^https:\/\//.test(u)) add(`attachmentUrls.${i}`, "Ảnh chứng từ chưa tải xong.");
     });
   } else if (d.attachmentUrls.length > 0) {
-    add("attachmentUrls", "Khoản cá nhân không lưu ảnh.");
+    add("attachmentUrls", "Ảnh phiếu công ty không gắn vào khoản cá nhân; đính lại ảnh chứng từ cá nhân.");
   }
   if (d.mode === 'personal' && !d.personalWalletId) add('personalWalletId', 'Chọn ví cá nhân.');
+  if(d.mode==='personal'){
+    if(d.personalAttachmentPending)add('personalAttachmentPending','Ảnh chứng từ cần đính lại hoặc gỡ trước khi lưu.');
+    if((d.personalAttachmentPaths?.length??0)>MAX_ATTACHMENTS)add('personalAttachmentPaths',`Tối đa ${MAX_ATTACHMENTS} ảnh chứng từ.`);
+    for(const path of d.personalAttachmentPaths??[])if(!personalAttachmentPathSchema.safeParse(path).success)add('personalAttachmentPaths','Ảnh chứng từ chưa tải xong.');
+  }
 
   return Object.keys(issues).length ? { ok: false, issues } : { ok: true };
 }

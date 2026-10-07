@@ -88,7 +88,7 @@ describe("validateDraft — khoản cá nhân", () => {
     expect(validateDraft(personal())).toEqual({ ok: true });
   });
 
-  it("khoản cá nhân KHÔNG được mang ảnh (không lưu ảnh cá nhân)", () => {
+  it("khoản cá nhân không nhận URL ảnh phiếu công ty (ảnh cá nhân đi personalAttachmentPaths)", () => {
     expect(Object.keys(issues(personal({ attachmentUrls: ["https://x.test/a.jpg"] })))).toEqual(["attachmentUrls"]);
   });
 });

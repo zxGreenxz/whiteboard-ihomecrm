@@ -41,6 +41,8 @@ function keepable(c: StoredCard): boolean {
 }
 
 function onReload(c: StoredCard): CardStatus {
+  // Upload precedes prepare. A missing File is recoverable evidence, not an unknown money write.
+  if(c.state.draft.mode==='personal'&&c.state.draft.personalAttachmentPending&&c.status.kind==='saving')return {kind:'draft'};
   if(c.state.draft.mode==='personal' && !c.state.draft.personalProtocol && (c.personalDone>0||['saving','unknown','maybe_saved'].includes(c.status.kind)))return {kind:'maybe_saved',message:`Nháp cũ đã xác nhận ${c.personalDone} khoản; phần còn lại chưa rõ. Mở Ví cá nhân đối chiếu chứng từ trước khi tạo phần còn thiếu. Không tự gửi lại nháp này.`};
   if (c.status.kind === "saving") {
     return { kind: "unknown", message: c.state.draft.mode === "personal" ? UNKNOWN_AFTER_RELOAD_PERSONAL : UNKNOWN_AFTER_RELOAD };

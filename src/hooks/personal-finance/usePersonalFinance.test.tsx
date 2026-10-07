@@ -12,6 +12,14 @@ const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-822
 const snapshot=(owner_id=owner)=>({owner_id,schema_version:1,wallets:[],categories:[],transactions:[],transfers:[],budgets:[],goals:[]});
 function mount(){const queryClient=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;return{...renderHook(()=>({read:usePersonalFinance(),write:usePersonalFinanceMutation()}),{wrapper}),queryClient};}
 beforeEach(()=>{localStorage.clear();io.owner=owner;io.transport.mockReset();io.headers.mockReset();});afterEach(cleanup);
+it('forwards attachment path arrays through transaction edits without scalar coercion',async()=>{
+ io.transport.mockImplementation(async(name:string)=>({data:name==='personal_finance_snapshot'?snapshot():null,error:null}));
+ const hook=mount();await waitFor(()=>expect(hook.result.current.read.data).toBeTruthy());
+ const path=`${owner}/${other}.webp`;
+ const request=hook.result.current.write.prepare({action:'transaction.update',id:other,expected_version:1,data:{attachment_paths:[path]}});
+ await act(async()=>{await expect(hook.result.current.write.mutateAsync(request)).rejects.toMatchObject({outcomeUnknown:true});});
+ const write=io.transport.mock.calls.find(c=>c[0]==='personal_finance_mutate');expect(write?.[1].p_payload.data.attachment_paths).toEqual([path]);
+});
 it('routes each service operation to its exact RPC and pins the checked JWT on every request',async()=>{
  io.transport.mockImplementation(async(name:string,args?:{p_request_key:string})=>({error:null,data:name==='personal_finance_snapshot'?snapshot():name==='personal_finance_mutate'?{owner_id:owner,request_key:args!.p_request_key,action:'wallet.create',entities:[{id:other,user_id:owner,version:1,name:'Ví',kind:'cash',icon:'wallet',opening_balance:0,hidden:false,is_default:false}]}:null}));
  const h=mount();await waitFor(()=>expect(h.result.current.read.data).toBeTruthy());

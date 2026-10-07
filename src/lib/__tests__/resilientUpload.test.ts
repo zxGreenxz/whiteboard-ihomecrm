@@ -63,6 +63,21 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('uploadResilient', () => {
+  it('a caller-retained durable key resumes its prior upload after matching a first-attempt conflict',async()=>{
+    const {d}=deps([traLoi(409,{error:'Duplicate'})],{storedSize:vi.fn(async()=>FILE.size)});
+    await expect(uploadResilient('personal-finance-attachments',KEY,FILE,{resumeExisting:true,deleteOnFailure:false},d)).resolves.toMatchObject({path:KEY});
+    expect(d.remove).not.toHaveBeenCalled();
+    const mismatch=deps([traLoi(409,{error:'Duplicate'})],{storedSize:vi.fn(async()=>FILE.size+1)});
+    await expect(uploadResilient('personal-finance-attachments',KEY,FILE,{resumeExisting:true,deleteOnFailure:false},mismatch.d)).rejects.toMatchObject({statusCode:409});
+  });
+  it('durable personal evidence opts out of physical cleanup after abort and exhaustion', async()=>{
+    const ctl=new AbortController();const aborted=deps([dungIm]);
+    const result=uploadResilient('personal-finance-attachments',KEY,FILE,{signal:ctl.signal,deleteOnFailure:false},aborted.d).catch(e=>e);
+    await vi.advanceTimersByTimeAsync(100);ctl.abort();expect(isAbortError(await result)).toBe(true);expect(aborted.d.remove).not.toHaveBeenCalled();
+    const exhausted=deps([], {getToken:()=>new Promise<string|null>(()=>{})});
+    const pending=uploadResilient('personal-finance-attachments',KEY,FILE,{deleteOnFailure:false},exhausted.d).catch(e=>e);
+    await vi.advanceTimersByTimeAsync(CONNECT_MS*3+2000);expect(await pending).toBeInstanceOf(UploadTimeoutError);expect(exhausted.d.remove).not.toHaveBeenCalled();
+  });
   it('gửi đúng multipart như storage-js: khoá, phiên, x-upsert=false; báo % và xong ngay lần đầu', async () => {
     const { d, sent } = deps([ok]);
     const tien: UploadProgress[] = [];

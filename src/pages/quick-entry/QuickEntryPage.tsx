@@ -168,6 +168,7 @@ export default function QuickEntryPage() {
                 personalCategories={refs.personalCategories}
                 personalWallets={refs.personalWallets}
                 photoUrl={c.previewUrl}
+                hasLocalPhoto={!!c.photo}
                 aiModel={c.aiModel}
                 defaultAccountFor={refs.defaultAccountFor}
                 onChange={(next) => feed.changeCard(id, next)}

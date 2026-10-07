@@ -5,7 +5,8 @@
 //          điền ô người dùng chưa sửa. Thẻ công ty đủ tiền + toà, chỉ thiếu hạng mục ⇒ câu lệnh rút gọn
 //          chỉ hỏi hạng mục (onlyCategoriesMissing).
 //   Ảnh  — nén vừa ngân sách proxy ⇒ AI đọc ⇒ một thẻ. AI hỏng vẫn ra thẻ trống để nhập tay. Ảnh khoản
-//          công ty giữ lại để tải lên làm chứng từ khi lưu; ảnh khoản cá nhân bỏ ngay.
+//          công ty giữ lại để tải lên làm chứng từ khi lưu; ảnh khoản cá nhân cũng giữ, tải vào kho riêng
+//          của chủ ví ngay trước lần gửi đầu (đường dẫn ghi lên thẻ trước khi chuẩn bị yêu cầu tiền).
 //   Lưu  — tải ảnh MỘT lần (URL giữ trên thẻ), khoá chống trùng theo id thẻ, chặn bấm hai lần; ví cá
 //          nhân nhớ số khoản đã ghi để gửi lại không ghi trùng.
 //   AI tắt / không quyền / hết lượt (hoặc lỗi liên tục) ⇒ tắt AI cho phiên này; nhập tay luôn chạy.
@@ -197,6 +198,11 @@ export function useQuickEntryFeed(opts: {
   const [voiceOff, setVoiceOff] = useState<AiErrorView | null>(null);
   const failures = useRef({ read: 0, voice: 0 });
   const inflight = useRef(new Set<string>());
+  const uploads=useRef(new Map<string,AbortController>());
+  const uploadedPhotos=useRef(new WeakMap<File,Promise<string>>());
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;for(const controller of uploads.current.values())controller.abort();};},[]);
+  useEffect(()=>()=>{for(const controller of uploads.current.values())controller.abort();uploads.current.clear();uploadedPhotos.current=new WeakMap();},[scope]);
   const urls = useRef(new Set<string>());
 
   // Mở trang / đổi công ty: dọn nháp của người khác trên máy, nạp nháp của chính mình.
@@ -270,7 +276,7 @@ export function useQuickEntryFeed(opts: {
         const request=pendingPersonal.find(p=>p.ownerId===userId&&p.requestKey===(c.state.draft.personalRequestKey??id));
         const rows=request?.payload.action==='transaction.batch'?request.payload.rows:undefined;
         if(!rows?.length)continue;
-        changed=true;cards[id]={...c,status:{kind:'unknown',message:'Yêu cầu đang chờ xác nhận. Chỉ gửi lại nguyên nội dung đã gửi.'},state:{...c.state,draft:{...c.state.draft,personalProtocol:1,personalRequestKey:request!.requestKey,date:rows[0].txn_date,personalWalletId:rows[0].wallet_id,transactionType:rows[0].type,lines:rows.map(row=>({description:row.description??'',amount:row.amount,transactionType:row.type,personalCategoryId:row.category_id,personalCategory:null,categoryId:null,periodStart:null,periodEnd:null}))}}};
+        changed=true;cards[id]={...c,status:{kind:'unknown',message:'Yêu cầu đang chờ xác nhận. Chỉ gửi lại nguyên nội dung đã gửi.'},state:{...c.state,draft:{...c.state.draft,personalProtocol:1,personalRequestKey:request!.requestKey,personalAttachmentPaths:rows[0].attachment_paths,personalAttachmentPending:false,date:rows[0].txn_date,personalWalletId:rows[0].wallet_id,transactionType:rows[0].type,lines:rows.map(row=>({description:row.description??'',amount:row.amount,transactionType:row.type,personalCategoryId:row.category_id,personalCategory:null,categoryId:null,periodStart:null,periodEnd:null}))}}};
       }
       return changed?{...f,cards}:f;
     });
@@ -303,7 +309,7 @@ export function useQuickEntryFeed(opts: {
     setFeed((f) => f.scope!==scope?f:({ ...f, messages: f.messages.map((m) => (m.id === id ? fn(m) : m)) }));
   }, [scope]);
   const addEntry = useCallback((message: FeedMessage, cards: FeedCard[]) => {
-    setFeed((f) => f.scope!==scope?f:({
+    setFeed((f) => f.scope!==scope||!mounted.current||aiScope.current.epoch!==aiEpoch?f:({
       ...f,
       messages: [...f.messages, message],
       cards: { ...f.cards, ...Object.fromEntries(cards.map((c) => [c.id, c])) },
@@ -617,14 +623,14 @@ export function useQuickEntryFeed(opts: {
 
     const newCards: FeedCard[] = draftsFromBill(result, {...ctx,sourceText:caption}).map(state=>({
       id: state.draft.id,
-      state,
+      state:mode==='personal'?{...state,draft:{...state.draft,personalAttachmentPending:true}}:state,
       status: { kind: "draft" },
       aiModel: model,
-      photo: mode === "company" ? file : null,
+      photo: file,
       previewUrl,
       personalDone: 0,
     }));
-    setFeed((f) => f.scope!==scope?f:({
+    setFeed((f) => f.scope!==scope||!mounted.current||aiScope.current.epoch!==aiEpoch?f:({
       ...f,
       cards: { ...f.cards, ...Object.fromEntries(newCards.map(c=>[c.id,c])) },
       messages: f.messages.map((m) => (m.id === messageId ? { ...m, reading: false, note, cardIds: newCards.map(c=>c.id) } : m)),
@@ -643,11 +649,32 @@ export function useQuickEntryFeed(opts: {
     }
     const kind = card.status.kind;
     if (kind !== "draft" && kind !== "rejected" && kind !== "unknown") return;
-    if (kind !== "unknown" && !validateDraft(card.state.draft).ok) return;
+    if (kind !== "unknown" && !validateDraft({...card.state.draft,...(card.photo?{personalAttachmentPending:false}:{})}).ok) return;
     inflight.current.add(id);
     try {
       patchCard(id, (c) => ({ ...c, status: { kind: "saving" } }));
       let draft = card.state.draft;
+      if(personal&&card.photo&&draft.personalAttachmentPending&&kind!=='unknown'){
+        const controller=new AbortController();uploads.current.set(id,controller);
+        try{
+          let uploading=uploadedPhotos.current.get(card.photo);
+          if(!uploading){uploading=save.uploadPersonalPhoto(userId!,card.photo,controller.signal);uploadedPhotos.current.set(card.photo,uploading);}
+          const path=await uploading;
+          if(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||controller.signal.aborted||!feedRef.current.cards[id])return;
+          draft={...draft,personalAttachmentPaths:[...(draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false};
+          // Persist every sibling sharing this image before prepare writes its durable pending request.
+          const cards={...feedRef.current.cards};
+          for(const [key,c] of Object.entries(cards))if(c.photo===card.photo&&c.state.draft.personalAttachmentPending){
+            cards[key]={...c,photo:null,state:{...c.state,draft:{...c.state.draft,personalAttachmentPaths:[...(c.state.draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false}}};
+          }
+          const next={...feedRef.current,cards};feedRef.current=next;setFeed(next);
+          try{const raw=serializeCards(Object.values(cards).map(c=>({state:c.state,status:c.status,personalDone:c.personalDone})),Date.now());if(raw)localStorage.setItem(scope!,raw);}catch{/* Pending request storage still guards the actual network mutation. */}
+        }catch(e){
+          uploadedPhotos.current.delete(card.photo);
+          if(mounted.current&&scopeRef.current===scope&&!controller.signal.aborted)patchCard(id,c=>({...c,status:{kind:'rejected',message:messageOf(e,'Chưa tải được ảnh chứng từ. Thử lại.')}}));
+          return;
+        }finally{uploads.current.delete(id);}
+      }
       if (draft.mode === "company" && card.photo && draft.attachmentUrls.length === 0) {
         try {
           const url = await save.uploadPhoto(card.photo, draft.id);
@@ -659,6 +686,7 @@ export function useQuickEntryFeed(opts: {
           return;
         }
       }
+      if(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||!feedRef.current.cards[id])return;
       // Atomic personal batch: progress is published only after the complete receipt is confirmed.
       const progress = (done: number) => patchCard(id, (c) => ({ ...c, personalDone: done }));
       const out =
@@ -672,12 +700,13 @@ export function useQuickEntryFeed(opts: {
 
   const changeCard = useCallback(
     (id: string, next: DraftState) => {
-      patchCard(id, (c) => (editable(c) ? { ...c, state: next, status: c.status.kind === "rejected" ? { kind: "draft" } : c.status } : c));
+      patchCard(id, (c) => (editable(c) ? { ...c, state: next,...(next.touched.includes('personalAttachmentPaths')&&!next.draft.personalAttachmentPending?{photo:null}:{}), status: c.status.kind === "rejected" ? { kind: "draft" } : c.status } : c));
     },
     [patchCard],
   );
 
   const discardCard = useCallback((id: string) => {
+    uploads.current.get(id)?.abort();
     setFeed((f) => {
       if (!f.cards[id]) return f;
       const cards = { ...f.cards };
