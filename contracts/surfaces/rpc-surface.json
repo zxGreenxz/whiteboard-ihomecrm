@@ -2,19 +2,19 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 2472,
-    "catalogFunctions": 1256,
+    "catalogFunctions": 1261,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 363,
+    "calledRpcs": 367,
     "byRisk": {
-      "normal": 261,
+      "normal": 265,
       "financial": 102
     },
-    "securityDefiner": 346
+    "securityDefiner": 350
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2404,6 +2404,63 @@
       ],
       "risk": "financial"
     },
+    "get_customer_residence_history_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_customer_id uuid, p_before_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT 50",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/customerResidenceHistory.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_customer_residence_location_ids_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid, p_include_history boolean DEFAULT false, p_after_id uuid DEFAULT NULL::uuid, p_limit integer DEFAULT 500",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/customerResidenceHistory.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_customer_residence_summaries_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_customer_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/customerResidenceHistory.ts"
+      ],
+      "risk": "normal"
+    },
     "get_customer_stats": {
       "definitions": [
         {
@@ -2412,7 +2469,7 @@
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": false,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=\"\"",
           "execRoles": [
             "authenticated",
             "service_role"
@@ -4960,6 +5017,25 @@
       ],
       "callers": [
         "src/hooks/rooms/useRoomTurnover.ts"
+      ],
+      "risk": "normal"
+    },
+    "reconcile_contract_customers_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_contract_id uuid, p_expected jsonb, p_customers jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/customerResidenceHistory.ts"
       ],
       "risk": "normal"
     },

@@ -93,6 +93,7 @@ export const DANH_SACH_NHAY_CAM = [
   'salary_bonus_rules',
   // — thông tin cá nhân —
   'customers',
+  'customer_residence_events',
   'profiles',
   'tenants',
   'contract_tenants',
@@ -141,6 +142,13 @@ export const PRIMITIVE_PHAM_VI = [
   // danh tính người gọi. NHƯNG gate chỉ kiểm tên CÓ MẶT trong thân, không kiểm thứ
   // tự: chính lần rà này bắt hai hàm gọi chúng SAU khi đã khoá tổ chức (vá ở
   // 20261007003604). Caller mới phải gọi chúng trước mọi đọc/khoá theo UUID ngoài.
+  // Đọc thân migration 20261007064802 ngày 07/10/2026: residence_scope_v1
+  // trả boolean từ auth.uid + my_org_ids + sandbox denial + building ownership
+  // + can_access_building + can_do_on_building. Caller phải dùng kết quả lọc/
+  // chặn, PERFORM bỏ kết quả không đủ. assert_residence_reader_v1 tự RAISE
+  // 42501 nếu caller/org/customer không hợp lệ; row reader vẫn phải lọc building.
+  'residence_scope_v1',
+  'assert_residence_reader_v1',
   'contract_draft_scope_allowed', //  → TRẢ boolean (không tự RAISE): auth.uid + my_org_ids + can_access_building + authorized_scope_v3 (20260928013253); caller phải RAISE khi false
   'rent_support_subject_v1', //       → rent_support_scope_v1 (cùng bộ primitive trên), tự RAISE 42501
   'rent_support_payout_lock_v1', //   → câu đầu là authorize_commission_request_v1: auth.uid + my_org_ids RAISE trước khoá tổ chức; quyền theo toà kiểm SAU khoá (chỉ cùng công ty mới tới được đó)
@@ -273,7 +281,13 @@ export function phanTichThanHam({ suKien = [], allowlist = [], chuaVa = [] } = {
     // là thứ canh nó.
     const bang = DANH_SACH_NHAY_CAM.filter((b) => chamBang(body, b));
     if (bang.length === 0) return null;
-    if (PRIMITIVE_PHAM_VI.some((x) => body.includes(x.toLowerCase()))) return null;
+    // Hai primitive mới được nhận dạng theo lời gọi thực, bỏ literal. Đây là
+    // kiểm cú pháp hẹp, không chứng minh toàn bộ control flow/thứ tự kiểm quyền.
+    const residencePrimitives = ['residence_scope_v1', 'assert_residence_reader_v1'];
+    if (PRIMITIVE_PHAM_VI.some((x) => !residencePrimitives.includes(x) && body.includes(x.toLowerCase()))) return null;
+    const code = body.replace(/'(?:''|[^'])*'/g, "''");
+    if (/\bperform\s+app_private\.assert_residence_reader_v1\s*\(/.test(code)) return null;
+    if (/\b(?:where|and|or|if|return)\s+(?:not\s+)?app_private\.residence_scope_v1\s*\(/.test(code)) return null;
     return bang;
   };
 

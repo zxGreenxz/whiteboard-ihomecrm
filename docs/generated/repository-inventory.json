@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1287,
   "soFileDocBangFs": 288,
-  "tongLoiGoi": 620,
+  "tongLoiGoi": 621,
   "khongPhanLoaiDuoc": 286,
   "theoLoai": {
     "ma-nguon": {
@@ -424,6 +424,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/check-definer-body-authz.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/copilot-g3-writer-admission.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -622,14 +630,6 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/check-definer-body-authz.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/check-forward-migration-idempotent-pinned.test.mjs",

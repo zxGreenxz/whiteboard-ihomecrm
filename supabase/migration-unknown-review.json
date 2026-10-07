@@ -873,33 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261007064802_customer_residence_history.sql": {
-      "sha256": "4b453eb478b0e3c65d86b61306526d80a0cbca866dbc2d6ed46f8f6475aa4877",
-      "missingObjects": [
-        "table:app_private.customer_residence_events",
-        "function:app_private.guard_customer_residence_events_v1",
-        "function:app_private.residence_scope_v1",
-        "function:app_private.append_customer_residence_v1",
-        "function:app_private.guard_residence_membership_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration mới, chưa áp dụng vào Supabase TEST hoặc production. Kiểm SQL bằng disposable PGlite với schema fixture và auth shim; không coi đây là kiểm JWT/PostgREST hoặc catalog live. Giữ trạng thái unknown đến khi hoàn tất lane apply được duyệt.",
-      "raSoatBoi": "Codex — Task 1 customer residence history, 2026-10-07",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261007064802_customer_residence_history.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.customer_residence_events"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/customerResidenceMigration.test.ts",
-          "trich_doan": "const db = new PGlite();"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/customerResidenceMigration.test.ts",
-          "trich_doan": "await db.exec(readFileSync(migration, 'utf8'));"
-        }
-      ]
     }
   }
 }

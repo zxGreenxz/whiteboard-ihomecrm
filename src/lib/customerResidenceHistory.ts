@@ -82,21 +82,11 @@ export const residenceEventLabels: Record<string, string> = {
   FORFEIT: 'Bỏ cọc',
   CONTRACT_DELETED: 'Xóa hợp đồng'
 };
-// Provisional contract for the reviewed forward migration 20261007064802.
-// Replace this narrow facade with generated RPC types after the approved schema lane runs.
-type ResidenceRpcName = 'get_customer_residence_location_ids_v1' | 'get_customer_residence_summaries_v1' | 'get_customer_residence_history_v1' | 'reconcile_contract_customers_v1';
-type ResidenceRpc = (name: ResidenceRpcName, args: Record<string, unknown>) => PromiseLike<{
-  data: unknown;
-  error: null | {
-    code?: string;
-    message: string;
-  };
-}>;
-const rpc: ResidenceRpc = (name, args) => (supabase.rpc as unknown as ResidenceRpc)(name, args);
-async function call(name: ResidenceRpcName, args: Record<string, unknown>) {
-  const result = await rpc(name, args);
-  if (result.error)
-    throw result.error;
+// RPC arguments are checked against the generated Supabase schema. JSON replies
+// still pass through the runtime domain validators below.
+async function rpcData(request: PromiseLike<{ data: unknown; error: unknown }>) {
+  const result = await request;
+  if (result.error) throw result.error;
   return result.data;
 }
 export async function readResidenceSummaries(org: string, ids: readonly string[]) {
@@ -107,28 +97,28 @@ export async function readResidenceSummaries(org: string, ids: readonly string[]
   const result: CustomerResidenceSummary[] = [];
   for (let start = 0; start < ids.length; start += 200) {
     const chunk = ids.slice(start, start + 200);
-    result.push(...parseResidenceSummaries(await call('get_customer_residence_summaries_v1', { p_organization_id: org, p_customer_ids: chunk }), chunk));
+    result.push(...parseResidenceSummaries(await rpcData(supabase.rpc('get_customer_residence_summaries_v1', { p_organization_id: org, p_customer_ids: chunk })), chunk));
   }
   return result;
 }
 export async function readResidenceHistory(org: string, customer: string, before: number | null = null) {
-  const page = parseResidenceHistory(await call('get_customer_residence_history_v1', {
+  const page = parseResidenceHistory(await rpcData(supabase.rpc('get_customer_residence_history_v1', {
     p_organization_id: org,
     p_customer_id: customer,
-    p_before_id: before,
+    p_before_id: before ?? undefined,
     p_limit: 50
-  }), org, customer);
+  })), org, customer);
   if (before !== null && page.events.some(row => row.id >= before))
     throw new TypeError('Lịch sử không tiến sang trang kế tiếp.');
   return page;
 }
 export async function reconcileResidenceMembers(org: string, contract: string, expected: ContractRelationSnapshot['customers'], desired: ContractRelationSnapshot['customers']) {
-  const data = await call('reconcile_contract_customers_v1', {
+  const data = await rpcData(supabase.rpc('reconcile_contract_customers_v1', {
     p_organization_id: org,
     p_contract_id: contract,
     p_expected: expected,
     p_customers: desired
-  });
+  }));
   const parsed = z.array(z.object({ customer_id: z.string().min(1), is_representative: z.boolean(), notes: z.string().nullable() })).parse(data);
   const rows = parsed.map(row => {
     if (typeof row.customer_id !== 'string' || typeof row.is_representative !== 'boolean' || (row.notes !== null && typeof row.notes !== 'string'))
@@ -143,14 +133,14 @@ export async function readResidenceLocationIds(org: string, building?: string, r
   const ids: string[] = [];
   let after: string | null = null;
   for (; ;) {
-    const page = z.array(uuid).parse(await call('get_customer_residence_location_ids_v1', {
+    const page = z.array(uuid).parse(await rpcData(supabase.rpc('get_customer_residence_location_ids_v1', {
       p_organization_id: org,
-      p_building_id: building ?? null,
-      p_room_id: room ?? null,
+      p_building_id: building,
+      p_room_id: room,
       p_include_history: includeHistory,
-      p_after_id: after,
+      p_after_id: after ?? undefined,
       p_limit: 500
-    }));
+    })));
     if (page.some((id, i) => {
       const previous = page[i - 1] ?? after;
       return previous !== null && id <= previous;
