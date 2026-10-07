@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
 import { loadSupabaseAdminConfig } from '../../scripts/apply-accounting-rollout.mjs';
@@ -10,7 +11,9 @@ import {
 // All money goes through the production UI; teardown reverses before deleting.
 test('invoice partial collection -> Thu tiền keypad completes the same invoice', async ({ page }) => {
   test.setTimeout(240_000);
-  const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
+  const config = loadSupabaseAdminConfig({ readFile: (path: string | URL, encoding: BufferEncoding) =>
+    readFileSync(String(path).includes('CLAUDE.local.md') && process.env.IHOMECRM_SECRET_FILE
+      ? process.env.IHOMECRM_SECRET_FILE : path, encoding) });
   const query = <Row extends object = Record<string, unknown>>(sql: string) => runQuery<Row>(sql, config);
   const marker = fixtureMarker(`payment-ui-${newRunId()}`);
   const month = '2096-10';

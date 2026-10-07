@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-import { layPat } from '../../scripts/lib/vault.mjs';
 
 const DEMO_ORG_ID = 'dddd0000-0000-4000-8000-000000000001';
 const DEMO_OWNER_EMAIL = 'demo.chunha@username.ihomecrm.local';
@@ -104,7 +103,10 @@ function readOptional(url: URL): string | null {
 }
 
 function loadAdminConfig(): AdminConfig {
-  const pat = layPat({ bien: ['SUPABASE_PAT'] });
+  const localConfig = readOptional(new URL('../../CLAUDE.local.md', import.meta.url));
+  const pat =
+    process.env.SUPABASE_PAT?.trim() ||
+    localConfig?.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
   if (!pat) {
     throw new Error(
       'Thiếu Supabase PAT: đặt SUPABASE_PAT hoặc cấu hình CLAUDE.local.md để preflight/cleanup E2E.',
