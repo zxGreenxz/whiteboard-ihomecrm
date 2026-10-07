@@ -8,7 +8,29 @@ import {
   sqlDoOwnerPersonal,
   xepNhomTheoSoDo,
   MA_THOAT_CHOT_HONG,
+  nhanVaiTrenLog,
 } from "../measure-org-leak.mjs";
+
+// Repo public: log CI ai cũng đọc, nên email/tên đăng nhập tài khoản thật không
+// được in ở đó; local vẫn in để người chạy biết đang đo vai nào.
+describe("nhanVaiTrenLog — không lộ tài khoản thật trên log CI", () => {
+  const that = { uid: "u1", org: "aaaa-bbbb", email: "fixture-user@example.invalid" };
+  const tongHop = { uid: "u0", org: "zzzz", email: "(tổ chức tổng hợp)", tongHop: true };
+
+  it("CI ẩn email tài khoản thật nhưng vẫn có nhãn", () => {
+    const nhan = nhanVaiTrenLog(that, { CI: "true" });
+    expect(nhan).not.toContain("fixture-user");
+    expect(nhan.length).toBeGreaterThan(0);
+  });
+
+  it("local in email để người chạy đối chiếu", () => {
+    expect(nhanVaiTrenLog(that, {})).toBe("fixture-user@example.invalid");
+  });
+
+  it("nhân vật tổng hợp giữ nhãn mô tả ở mọi nơi", () => {
+    expect(nhanVaiTrenLog(tongHop, { CI: "true" })).toBe("(tổ chức tổng hợp)");
+  });
+});
 
 // Bộ đo này chỉ có giá trị nếu nó KHÔNG BAO GIỜ nói dối theo hướng an toàn.
 //

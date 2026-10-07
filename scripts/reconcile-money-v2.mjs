@@ -35,6 +35,7 @@ import {
   executeManagementQuery,
   loadSupabaseAdminConfig,
 } from './apply-accounting-rollout.mjs';
+import { dinhDangTien, GHI_CHU_CI, laLogCongKhai, vanBanNguoiDung } from './lib/che-so-lieu-ci.mjs';
 
 const PAGE = 1000; // trần 1000 dòng/response (PostgREST) = SUPABASE_PAGE (src/lib/supabaseFetchAll.ts)
 const HARD_CAP = 200_000; // trần an toàn phân trang: vượt = nghi order không ổn định
@@ -62,7 +63,8 @@ if (argMonth !== undefined) {
   };
 }
 
-const fmt = (n) => Number(n).toLocaleString('vi-VN');
+// Log CI của repo public ai cũng đọc: trên CI số tiền bị thay bằng nhãn ẩn.
+const fmt = (n) => dinhDangTien(n);
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 // ---- Config (PAT + projectRef). loadSupabaseAdminConfig ném lỗi nếu thiếu. ----
@@ -93,6 +95,7 @@ async function roQuery(sql) {
 
 async function main() {
   console.log('\n=== ĐỐI CHIẾU TIỀN V2 — POSTING-AWARE (plan §11.2 / roadmap §4c) ===\n');
+  if (laLogCongKhai()) console.log(`${GHI_CHU_CI}\n`);
 
   // ---- (3) SCHEMA GATE: chưa có accounts_with_balance_v2 ⇒ Stage-10 chưa forward-apply ----
   const gate = await roQuery(
@@ -168,7 +171,8 @@ async function main() {
     mismatch = true;
     console.log(`  ❌ ${diffs.length} sổ LỆCH (legacy ≠ v2):\n`);
     for (const r of diffs) {
-      const nm = r.name ? ` — ${r.name}` : '';
+      const ten = vanBanNguoiDung(r.name);
+      const nm = ten ? ` — ${ten}` : '';
       console.log(`    · account ${r.account_id}  org ${r.organization_id}${nm}`);
       console.log(
         `      legacy ${fmt(r.legacy_amount)}  |  v2 ${fmt(r.v2_amount)}  |  diff ${fmt(r.diff)} VND`,

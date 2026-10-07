@@ -25,6 +25,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { vanBanNguoiDung } from './lib/che-so-lieu-ci.mjs';
+
 import { readPat, readProjectRef, runSql } from './capture-production-catalog.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -475,6 +477,16 @@ const SQL_NHAN_VAT = `
      AND NOT EXISTS (SELECT 1 FROM public.super_admins s WHERE s.user_id = m.user_id)
    ORDER BY m.organization_id, u.email`;
 
+/**
+ * Nhãn in ra log cho một nhân vật. Email/tên đăng nhập của tài khoản THẬT không
+ * được lên log CI (repo public — ai cũng đọc); mã tổ chức rút gọn đã đủ định danh.
+ * Nhân vật tổng hợp mang nhãn mô tả, không phải dữ liệu người dùng.
+ */
+export function nhanVaiTrenLog(nv, env = process.env) {
+  if (nv?.tongHop) return nv.email;
+  return vanBanNguoiDung(nv?.email, env) || 'tài khoản thật (ẩn trên CI)';
+}
+
 /** Suy nhân vật TỪ DATABASE, không hard-code người — người có thể nghỉ việc. */
 function chonNhanVat(rows) {
   const theoOrg = new Map();
@@ -541,7 +553,7 @@ async function main(argv) {
         doi_chung_am: doiChungAm,
       });
       if (!chotCuoi.dat) {
-        console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nv.email}:`);
+        console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nhanVaiTrenLog(nv)} (org ${nv.org.slice(0, 4)}…):`);
         for (const l of chotCuoi.loi) console.error(`   - ${l}`);
         console.error('   KHÔNG ghi baseline. Số đo lúc này không đáng tin.');
         return MA_THOAT_CHOT_HONG;
@@ -549,7 +561,7 @@ async function main(argv) {
       bang.push(...kq.bang.filter((b) => lo.includes(b.bang)));
     }
     doDuoc.push({ nhanVat: nv, bang });
-    console.log(`✔ ${nv.email} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
+    console.log(`✔ ${nhanVaiTrenLog(nv)} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
   }
 
   // ─── Điểm mù cũ: 12 bảng KHÔNG có cột organization_id chưa từng được quét ───

@@ -35,6 +35,8 @@
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
+import { dinhDangTien, GHI_CHU_CI, laLogCongKhai } from './lib/che-so-lieu-ci.mjs';
+
 const PAGE = 1000; // = SUPABASE_PAGE (src/lib/supabaseFetchAll.ts)
 const HARD_CAP = 100_000; // trần an toàn phân trang: vượt = nghi order không ổn định
 const REF_CONST = 'tryymsxyyckgbrmmvozx';
@@ -105,7 +107,8 @@ if (argMonth !== undefined) {
   }
 }
 
-const fmt = (n) => Number(n).toLocaleString('vi-VN');
+// Log CI của repo public ai cũng đọc: trên CI số tiền bị thay bằng nhãn ẩn.
+const fmt = (n) => dinhDangTien(n);
 
 // ---- Management API (NGUỒN A) ----
 async function sqlQuery(sql) {
@@ -199,6 +202,7 @@ async function resolveWindow() {
 
 async function run() {
   console.log(`\n=== ĐỐI CHIẾU TIỀN — 3 NGUỒN ĐỘC LẬP (A=SQL · B=RPC+RLS · C=phân trang) ===\n`);
+  if (laLogCongKhai()) console.log(`${GHI_CHU_CI}\n`);
 
   // Đăng nhập JWT thật (NGUỒN B + C đi qua RLS).
   const { error: authErr } = await sb.auth.signInWithPassword({
