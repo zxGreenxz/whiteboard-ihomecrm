@@ -6,7 +6,7 @@ name: Supabase Migration Validation
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     # Liệt kê mọi script workflow chạy để sửa checker cũng kích hoạt validation.
     paths:
       - 'supabase/migrations/**'
@@ -19,11 +19,18 @@ on:
       - '.github/workflows/supabase-migrate.yml'
   workflow_dispatch: {}
 
+# Repo public: token của job chỉ đọc mã; validator không cần ghi gì lên GitHub.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       # Runtime exact của workflow; package có runtime khác giữ matrix riêng.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
