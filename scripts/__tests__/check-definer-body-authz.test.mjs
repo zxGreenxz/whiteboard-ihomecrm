@@ -240,9 +240,9 @@ describe('helper miền hợp đồng nháp / hỗ trợ tiền thuê (đọc th
   // hàm nằm ngoài phạm vi gate và ca "không còn bị báo" xanh rỗng.
   const suKien = ['20260902100049_ten_phieu_hoa_hong_theo_phong_va_ghi_chu_luc_xem', '20260801020000_sale_bonus_from_deposit',
     '20260820090000_sale_bonus_deposit_account_attachments', '20260928024559_contract_draft_sign_checkin',
-    '20260930101338_rent_support_upfront_payouts', '20261007000825_sale_bonus_deposit_authorize_before_lock']
+    '20260930101338_rent_support_upfront_payouts', '20261007003604_authorize_before_org_lock']
     .flatMap((file) => docSuKien(readFileSync(`supabase/migrations/${file}.sql`, 'utf8')).map((s) => ({ ...s, file })));
-  const truocBanVa = suKien.filter((s) => !s.file.startsWith('20261007000825'));
+  const truocBanVa = suKien.filter((s) => !s.file.startsWith('20261007003604'));
   const viPham = phanTichThanHam({ suKien: truocBanVa }).viPham.map((v) => v.ham);
 
   it('năm hàm gác bằng helper đã đọc thân không còn bị báo', () => {
@@ -256,7 +256,7 @@ describe('helper miền hợp đồng nháp / hỗ trợ tiền thuê (đọc th
     expect(viPham).toContain('public.create_sale_bonus_from_deposit_v1');
   });
 
-  it('bản vá 20261007000825 làm hàm đó xanh', () => {
+  it('bản vá 20261007003604 làm hàm đó xanh', () => {
     expect(phanTichThanHam({ suKien }).viPham.map((v) => v.ham)).not.toContain('public.create_sale_bonus_from_deposit_v1');
   });
 });

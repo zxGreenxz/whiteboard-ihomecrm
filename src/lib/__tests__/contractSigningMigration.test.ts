@@ -6,6 +6,12 @@ const path='supabase/migrations/20260928024559_contract_draft_sign_checkin.sql';
 const sql=existsSync(path)?readFileSync(path,'utf8'):'';
 const unifiedPath='supabase/migrations/20260929010015_unified_contract_editor_draft_signing.sql';
 const unified=existsSync(unifiedPath)?readFileSync(unifiedPath,'utf8'):'';
+// 20261007003604 [2]: register_contract_signed_document_v1 kiểm view+print TRƯỚC khoá tổ chức.
+const orderPath='supabase/migrations/20261007003604_authorize_before_org_lock.sql';
+const orderSql=existsSync(orderPath)?readFileSync(orderPath,'utf8'):'';
+const registerPatch=orderSql.slice(orderSql.indexOf('-- [2]'));
+const registerOriginal=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.register_contract_signed_document_v1'),
+  sql.indexOf('END $$;',sql.indexOf('CREATE OR REPLACE FUNCTION public.register_contract_signed_document_v1'))+'END $$;'.length);
 const db=new PGlite();
 const uid=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const org=uid(1),other=uid(2),building=uid(3),room=uid(4),draft=uid(5),doc=uid(6),actor=uid(7),customer=uid(8),template=uid(9),request=uid(10);
@@ -54,6 +60,8 @@ beforeAll(async()=>{
     GRANT SELECT,INSERT,UPDATE,DELETE ON storage.objects TO authenticated;
     CREATE POLICY existing_generic_policy ON storage.objects FOR ALL TO authenticated USING(true) WITH CHECK(true);
   `);await db.exec(sql);await db.exec(sql);if(unified){await db.exec(unified);await db.exec(unified);}
+  // Mọi bài dưới đây chạy trên register đã vá thứ tự kiểm quyền/khoá.
+  await db.exec(registerPatch);await db.exec(registerPatch);
 },30000);
 beforeEach(async()=>{
   await db.exec(`RESET ROLE;SELECT set_config('test.deny','',false),set_config('test.boundary_fail','',false),set_config('test.deny_authorizer','',false);
@@ -208,5 +216,31 @@ describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
     await expect(db.query('SELECT public.register_contract_signed_document_v1($1,$2,$3)',[org,signingId,'d'.repeat(64)])).rejects.toMatchObject({code:'23505'});
     expect((await db.query('UPDATE storage.objects SET name=name RETURNING *')).rows).toHaveLength(0);
     await db.exec("RESET ROLE;SELECT set_config('test.deny','contracts.print',false);SET ROLE authenticated");expect((await db.query('SELECT * FROM storage.objects')).rows).toHaveLength(0);await db.exec('RESET ROLE');
+  });
+  it('registration refuses outsiders before taking the org lock (20261007003604); the 28/09 body locked first',async()=>{
+    const signingId=(await sign()).rows[0].result.id;
+    const register=(organization:string,signing:string)=>db.query('SELECT public.register_contract_signed_document_v1($1,$2,$3)',[organization,signing,'c'.repeat(64)]);
+    // Khoá giả ném LK001: lỗi đó còn nguyên dù transaction ROLLBACK, nên đo được hàm có TỚI bước khoá hay không.
+    await db.exec(`CREATE OR REPLACE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS void LANGUAGE plpgsql VOLATILE AS $$ BEGIN RAISE EXCEPTION 'lock reached' USING ERRCODE='LK001';END $$`);
+    try{
+      await db.exec("SELECT set_config('test.deny','contracts.print',false)");
+      await expect(register(org,signingId)).rejects.toMatchObject({code:'42501'});
+      await db.exec("SELECT set_config('test.deny','contracts.view',false)");
+      await expect(register(org,signingId)).rejects.toMatchObject({code:'42501'});
+      await db.exec("SELECT set_config('test.deny','',false)");
+      await expect(register(other,signingId)).rejects.toMatchObject({code:'42501'});
+      await expect(register(org,uid(99))).rejects.toMatchObject({code:'42501'});
+      await expect(register(org,signingId)).rejects.toMatchObject({code:'LK001'});
+      // Đột biến: thân 20260928024559 khoá trước rồi mới kiểm quyền.
+      await db.exec(registerOriginal);
+      await db.exec("SELECT set_config('test.deny','contracts.print',false)");
+      await expect(register(org,signingId)).rejects.toMatchObject({code:'LK001'});
+      await db.exec("SELECT set_config('test.deny','',false)");
+      await expect(register(other,signingId)).rejects.toMatchObject({code:'LK001'});
+    }finally{
+      await db.exec(`SELECT set_config('test.deny','',false);
+        CREATE OR REPLACE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS void LANGUAGE plpgsql VOLATILE AS $$ BEGIN PERFORM set_config('test.locked',$1::text,true);END $$`);
+      await db.exec(registerPatch);
+    }
   });
 });

@@ -1,14 +1,20 @@
 // create_sale_bonus_from_deposit_v1 phải kiểm quyền TRƯỚC khi khoá tổ chức/hợp đồng
-// (migration 20261007000825). Chạy trên PGlite với migration thật của luồng hỗ trợ
-// tiền thuê; khoá tổ chức được ghi sổ để đo nó có bị lấy hay không.
+// (migration 20261007003604 [1]). Chạy trên PGlite với migration thật của luồng hỗ trợ
+// tiền thuê.
+//
+// Cách đo thứ tự: một lỗi làm cả transaction ROLLBACK, nên ghi sổ "đã khoá" vào bảng
+// sẽ mất theo và cho kết quả xanh rỗng. Thay vào đó khoá giả NÉM LK001 khi chế độ
+// 'raise' bật: thấy LK001 là hàm đã TỚI bước khoá, thấy 42501 là bị chặn trước đó.
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { setupPayoutDb, org, building, uuid } from './fixtures/rentSupportPayoutDb';
+import { setupPayoutDb, org, actor, building, room, uuid } from './fixtures/rentSupportPayoutDb';
 
 const upfront = 'supabase/migrations/20260930101338_rent_support_upfront_payouts.sql';
-const patch = 'supabase/migrations/20261007000825_sale_bonus_deposit_authorize_before_lock.sql';
+const orderSql = readFileSync('supabase/migrations/20261007003604_authorize_before_org_lock.sql', 'utf8');
+const patch = orderSql.slice(orderSql.indexOf('-- [1]'), orderSql.indexOf('-- [2]'));
 const ownDeposit = uuid(700), foreignDeposit = uuid(701), foreignOrg = uuid(702), foreignBuilding = uuid(703), foreignContract = uuid(704);
+const planDeposit = uuid(705), planContract = uuid(706);
 
 async function database(withPatch: boolean) {
   const db = new PGlite();
@@ -16,69 +22,72 @@ async function database(withPatch: boolean) {
   await db.exec(`
     ALTER TABLE public.income_expenses ADD COLUMN building_id uuid;
     CREATE TABLE public.lock_log(org uuid);
-    CREATE OR REPLACE FUNCTION app_private.lock_org_for_decision_v1(p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN INSERT INTO public.lock_log VALUES(p); END $$;
+    CREATE OR REPLACE FUNCTION app_private.lock_org_for_decision_v1(p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN
+      IF current_setting('test.lock_oracle',true)='raise' THEN RAISE EXCEPTION 'lock reached' USING ERRCODE='LK001'; END IF;
+      INSERT INTO public.lock_log VALUES(p); END $$;
     INSERT INTO public.organizations VALUES('${foreignOrg}','ACTIVE');
     INSERT INTO public.buildings VALUES('${foreignBuilding}','${foreignOrg}',NULL,'ACTIVE',false);
     INSERT INTO public.contracts(id,organization_id,status) VALUES('${foreignContract}','${foreignOrg}','ACTIVE');
+    INSERT INTO public.contracts(id,organization_id,room_id,status) VALUES('${planContract}','${org}','${room}','ACTIVE');
+    INSERT INTO app_private.contract_rent_support_plans(organization_id,contract_id,revision,payload,committed_total,payer,deduction_policy,state,customer_hash,created_by)
+      VALUES('${org}','${planContract}',1,'{}',0,'BUILDING','COMMISSION_ONLY','ACTIVE','h','${actor}');
     INSERT INTO public.income_expenses(id,organization_id,building_id,type,approval_status) VALUES('${ownDeposit}','${org}','${building}','INCOME','APPROVED');
     INSERT INTO public.income_expenses(id,organization_id,building_id,contract_id,type,approval_status)
-      VALUES('${foreignDeposit}','${foreignOrg}','${foreignBuilding}','${foreignContract}','INCOME','APPROVED');
+      VALUES('${foreignDeposit}','${foreignOrg}','${foreignBuilding}','${foreignContract}','INCOME','APPROVED'),
+            ('${planDeposit}','${org}','${building}','${planContract}','INCOME','APPROVED');
   `);
-  if (withPatch) await db.exec(readFileSync(patch, 'utf8'));
+  if (withPatch) await db.exec(patch);
   return db;
 }
 const call = (db: PGlite, deposit: string) => db.query('SELECT public.create_sale_bonus_from_deposit_v1($1,100000) AS r', [deposit]);
-const locks = async (db: PGlite) => (await db.query<{ n: number }>('SELECT count(*)::int n FROM public.lock_log')).rows[0]?.n;
+const oracle = (db: PGlite, mode: 'raise' | 'log') => db.exec(`SELECT set_config('test.lock_oracle','${mode}',false)`);
 
 describe('create_sale_bonus_from_deposit_v1 sau bản vá', () => {
   let db: PGlite;
   beforeAll(async () => { db = await database(true); }, 60_000);
   afterAll(async () => db.close());
 
-  it('phiếu cọc của toà ngoài phạm vi bị từ chối 42501 mà không lấy khoá tổ chức nào', async () => {
-    await db.exec('TRUNCATE public.lock_log');
+  it('phiếu cọc của toà ngoài phạm vi bị từ chối 42501 TRƯỚC bước khoá tổ chức', async () => {
+    await oracle(db, 'raise');
     await expect(call(db, foreignDeposit)).rejects.toMatchObject({ code: '42501' });
-    expect(await locks(db)).toBe(0);
   });
 
-  it('phiếu cọc không tồn tại vẫn báo P0002 như trước, không khoá', async () => {
-    await db.exec('TRUNCATE public.lock_log');
+  it('phiếu cọc không tồn tại vẫn báo P0002 như trước, không tới bước khoá', async () => {
+    await oracle(db, 'raise');
     await expect(call(db, uuid(799))).rejects.toMatchObject({ code: 'P0002' });
-    expect(await locks(db)).toBe(0);
   });
 
-  it('người có quyền trên toà đi tiếp như cũ: khoá tổ chức rồi tới bản canonical', async () => {
+  it('người có quyền trên toà qua bước kiểm và đi tiếp như cũ tới bản canonical', async () => {
+    await oracle(db, 'raise');
+    await expect(call(db, ownDeposit)).rejects.toMatchObject({ code: 'LK001' });
+    await oracle(db, 'log');
     await db.exec('TRUNCATE public.lock_log');
     expect((await call(db, ownDeposit)).rows).toEqual([{ r: {} }]);
-    expect(await locks(db)).toBe(1);
+    expect((await db.query<{ n: number }>('SELECT count(*)::int n FROM public.lock_log')).rows[0]?.n).toBe(1);
   });
 
   it('quản trị nền tảng vẫn được qua như điều kiện của bản canonical', async () => {
-    await db.exec(`TRUNCATE public.lock_log;
-      CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;`);
+    await oracle(db, 'raise');
+    await db.exec('CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;');
     try {
-      // Qua bước kiểm quyền; dừng ở bước hợp đồng như bản 30/09 vì fixture không có phòng/toà của hợp đồng ngoài.
-      await call(db, foreignDeposit).catch(() => undefined);
-      expect(await locks(db)).toBe(1);
+      await expect(call(db, foreignDeposit)).rejects.toMatchObject({ code: 'LK001' });
     } finally {
       await db.exec('CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT false $$;');
     }
   });
 
-  it('gate tĩnh nhận ra bản vá có chốt phạm vi', () => {
-    const sql = readFileSync(patch, 'utf8');
-    const body = sql.slice(sql.indexOf('AS $$'));
-    expect(body.indexOf('public.can_access_building(d.building_id)')).toBeLessThan(body.indexOf('lock_org_for_decision_v1'));
-    expect(body.indexOf('auth.uid()')).toBeLessThan(body.indexOf('FOR UPDATE'));
+  it('nhánh hợp đồng có gói hỗ trợ giữ nguyên: kiểm hoa hồng rồi PT409', async () => {
+    await oracle(db, 'log');
+    await expect(call(db, planDeposit)).rejects.toMatchObject({ code: 'PT409' });
   });
 });
 
 describe('đột biến: bản 30/09 chưa vá', () => {
-  it('khoá tổ chức của công ty khác TRƯỚC khi bị từ chối — đúng lỗi bản vá sửa', async () => {
+  it('TỚI bước khoá tổ chức với phiếu cọc của công ty khác — đúng lỗi bản vá sửa', async () => {
     const db = await database(false);
     try {
-      await call(db, foreignDeposit).catch(() => undefined);
-      expect(await locks(db)).toBe(1);
+      await oracle(db, 'raise');
+      await expect(call(db, foreignDeposit)).rejects.toMatchObject({ code: 'LK001' });
     } finally {
       await db.close();
     }

@@ -54,7 +54,7 @@ function canonicalDelegate(fnName: string, helper: string, corpus = migrationCor
   const open = rest.indexOf(tag[1]) + tag[1].length;
   const body = rest.slice(0, rest.indexOf(tag[1], open));
   if (!body.includes(`RETURN ${helper}(`)) return wrapper;
-  // The wrapper may be revised later (20261007000825 moved its authorization
+  // The wrapper may be revised later (20261007003604 moved its authorization
   // ahead of the locks) while the canonical copy stays in the migration that made
   // it: resolve the copy by its pair, not by the latest wrapper file.
   const copyIndex = corpus.slice(0, wrapperIndex + 1).map(m => m.sql.includes(`','${helper}']`)).lastIndexOf(true);

@@ -137,11 +137,13 @@ export const PRIMITIVE_PHAM_VI = [
   'authorize_income_expense_review_v1',
   'income_expense_action_scope_v1',
   // Ba helper dưới đây MỞ RA ĐỌC ngày 07/10/2026 khi gate đỏ lần đầu với ký hợp
-  // đồng nháp (20260928024559) và hỗ trợ tiền thuê (20260930101338). Mỗi cái tự
-  // hỏi danh tính người gọi rồi RAISE 42501 TRƯỚC khi đọc/khoá dữ liệu:
-  'contract_draft_scope_allowed', //  → auth.uid + my_org_ids + can_access_building + authorized_scope_v3 (20260928013253)
-  'rent_support_subject_v1', //       → rent_support_scope_v1 (auth.uid + my_org_ids + can_access_building + authorized_scope_v3), RAISE 42501
-  'rent_support_payout_lock_v1', //   → câu đầu là authorize_commission_request_v1: auth.uid + my_org_ids RAISE 42501 trước mọi khoá
+  // đồng nháp (20260928024559) và hỗ trợ tiền thuê (20260930101338). Mỗi cái hỏi
+  // danh tính người gọi. NHƯNG gate chỉ kiểm tên CÓ MẶT trong thân, không kiểm thứ
+  // tự: chính lần rà này bắt hai hàm gọi chúng SAU khi đã khoá tổ chức (vá ở
+  // 20261007003604). Caller mới phải gọi chúng trước mọi đọc/khoá theo UUID ngoài.
+  'contract_draft_scope_allowed', //  → TRẢ boolean (không tự RAISE): auth.uid + my_org_ids + can_access_building + authorized_scope_v3 (20260928013253); caller phải RAISE khi false
+  'rent_support_subject_v1', //       → rent_support_scope_v1 (cùng bộ primitive trên), tự RAISE 42501
+  'rent_support_payout_lock_v1', //   → câu đầu là authorize_commission_request_v1: auth.uid + my_org_ids RAISE trước khoá tổ chức; quyền theo toà kiểm SAU khoá (chỉ cùng công ty mới tới được đó)
 ];
 
 /**
