@@ -7,7 +7,7 @@ import { DEMO_ORG_ID, DEMO_OWNER_EMAIL, runQuery, fixtureInvoiceSql,
 
 test('issued adjustment, collection, review, mobile history and edit after reversal', async ({ page, browser, baseURL }) => {
   test.setTimeout(300_000);
-  const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
+  const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
   const query = <Row extends object = Record<string, unknown>>(sql: string) => runQuery<Row>(sql, config);
   const marker = fixtureMarker(`adjustment-ui-${newRunId()}`), month = '2098-10';
   const actor = (await query<{ id: string }>(`SELECT id FROM auth.users WHERE email=${sqlLiteral(DEMO_OWNER_EMAIL)}`))[0].id;
