@@ -4,13 +4,15 @@ import { canReuseGateReceipt, createGateReceipt, STATIC_EVIDENCE_MAX_AGE_MS } fr
 const usableSha = (sha) => typeof sha === 'string' && sha.length > 0 && !/^0+$/.test(sha);
 
 /**
- * A push to main plans from the production tip, so one aggregate covers every
- * commit promotion would ship — not only this push. A red or cancelled earlier
- * push can no longer drop out of release evidence. Fallback: event.before, then full.
+ * A push or workflow_dispatch on main plans from the production tip, so one
+ * aggregate covers every commit promotion would ship — not only this push. A red
+ * or cancelled earlier push can no longer drop out of release evidence.
+ * Fallback: event.before (push only), then full. A full plan selects static gates
+ * only (no live gate), so promote never accepts it as release evidence.
  */
 export function selectEventSnapshot({ eventName, event = {}, checkoutSha, ref, productionTip = null, productionIsAncestor = false }) {
   let fallback = null;
-  if (eventName === 'push' && ref === 'refs/heads/main') {
+  if ((eventName === 'push' || eventName === 'workflow_dispatch') && ref === 'refs/heads/main') {
     if (usableSha(productionTip) && productionTip !== checkoutSha && productionIsAncestor) {
       return { base: productionTip, head: checkoutSha, full: false, reason: 'origin/production là tổ tiên của HEAD: plan phủ cả dải production..HEAD' };
     }
@@ -21,7 +23,7 @@ export function selectEventSnapshot({ eventName, event = {}, checkoutSha, ref, p
   const usable = usableSha(base);
   const source = eventName === 'pull_request' ? 'base của pull request' : 'event.before';
   const reason = usable ? (fallback ? `${fallback}; dùng ${source}` : `Dùng ${source}`)
-    : `${fallback ? `${fallback}; ` : ''}không có base kiểm được: chạy full`;
+    : `${fallback ? `${fallback}; ` : ''}không có base kiểm được: chạy full gate tĩnh (không gate live; promote không nhận)`;
   return { base: usable ? base : null, head: checkoutSha, full: !usable, reason };
 }
 

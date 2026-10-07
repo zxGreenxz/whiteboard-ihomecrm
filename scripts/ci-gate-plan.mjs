@@ -15,7 +15,7 @@ const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.en
 // fetch-depth: 0 checks out every branch, so origin/production is local here.
 let productionTip = null;
 let productionIsAncestor = false;
-if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs/heads/main') {
+if (['push', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME) && process.env.GITHUB_REF === 'refs/heads/main') {
   try { productionTip = execFileSync('git', ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/production^{commit}'], { cwd: root, encoding: 'utf8' }).trim(); } catch { productionTip = null; }
   if (productionTip) productionIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', productionTip, head], { cwd: root }).status === 0;
 }

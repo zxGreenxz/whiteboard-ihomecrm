@@ -33,6 +33,20 @@ test('main push plans from the production tip so evidence covers every commit pr
   assert.equal(selectEventSnapshot({ ...main, ref: 'refs/heads/release/x', productionTip: 'prod', productionIsAncestor: true }).base, 'before');
 });
 
+test('workflow_dispatch on main also plans from production; without it the plan is full and marked unaccepted', () => {
+  const dispatch = { eventName: 'workflow_dispatch', event: {}, checkoutSha: 'head', ref: 'refs/heads/main' };
+  const covered = selectEventSnapshot({ ...dispatch, productionTip: 'prod', productionIsAncestor: true });
+  assert.deepEqual([covered.base, covered.full], ['prod', false]);
+  assert.match(covered.reason, /production\.\.HEAD/);
+  for (const patch of [{ productionTip: null }, { productionTip: 'prod', productionIsAncestor: false }, { productionTip: 'head', productionIsAncestor: true }]) {
+    const full = selectEventSnapshot({ ...dispatch, ...patch });
+    assert.deepEqual([full.base, full.full], [null, true]);
+    assert.match(full.reason, /không gate live; promote không nhận/);
+  }
+  // Dispatch on another branch never borrows the production base.
+  assert.equal(selectEventSnapshot({ ...dispatch, ref: 'refs/heads/feature/x', productionTip: 'prod', productionIsAncestor: true }).base, null);
+});
+
 test('cross-run trust requires exact tested SHA and successful same-repo PR into main within 24h', () => {
   const now = Date.parse('2026-10-06T12:00:00Z');
   const run = { id: 1, run_attempt: 1, path: '.github/workflows/ci-gates.yml', event: 'pull_request', status: 'completed', conclusion: 'success', head_sha: 'sha', head_repository: { full_name: 'owner/repo' }, created_at: new Date(now - 1000).toISOString(), pull_requests: [{ base: { ref: 'main', repo: { full_name: 'owner/repo' } } }] };

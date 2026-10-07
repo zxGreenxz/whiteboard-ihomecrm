@@ -151,11 +151,12 @@ export function validateExternalWorkflowEvidence(required, observations, sha) {
 /**
  * Aggregate chỉ chứng minh dải base..sha của plan. Promote phát hành cả dải
  * production..sha, nên base phải là tổ tiên (hoặc chính) đầu production hiện tại.
- * Plan full (không base) phủ mọi thứ. Audit 07/10/2026: nhiều lần promote mang
- * theo commit đỏ/huỷ ở giữa vì lượt sau chỉ plan diff của chính nó.
+ * Plan không base (unknown-base) KHÔNG phủ: full fallback chỉ thêm gate tĩnh, không
+ * chọn gate live nào, nên dải có migration/tiền sẽ lọt với 0 gate live.
+ * Audit 07/10/2026: nhiều lần promote mang theo commit đỏ/huỷ ở giữa vì lượt sau
+ * chỉ plan diff của chính nó.
  */
 export async function evidenceCoversProduction(snapshot, { productionTip, compare }) {
-  if (snapshot?.base === null && snapshot?.source === 'unknown-base') return true;
   const base = snapshot?.base;
   if (typeof base !== 'string' || !/^[0-9a-f]{40}$/.test(base)) return false;
   const tip = await productionTip();
@@ -230,8 +231,10 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
       const aggregate = await readAggregate(repo, run, token);
       if (!validAggregateForRun(aggregate, run, sha)) pendingRuns.push(`CI Gates / ${run.id}: aggregate artifact is incomplete or mismatched`);
       else if (!(await evidenceCoversProduction(aggregate.snapshot, coverage))) {
-        const base = String(aggregate.snapshot?.base ?? 'không rõ').slice(0, 12);
-        uncovered.push(`CI Gates / run ${run.id}: plan chỉ phủ ${base}..${sha.slice(0, 12)}, không phủ production ${String(productionTip ?? '?').slice(0, 12)}..${sha.slice(0, 12)}`);
+        const base = aggregate.snapshot?.base;
+        uncovered.push(typeof base === 'string'
+          ? `CI Gates / run ${run.id}: plan chỉ phủ ${base.slice(0, 12)}..${sha.slice(0, 12)}, không phủ production ${String(productionTip ?? '?').slice(0, 12)}..${sha.slice(0, 12)}`
+          : `CI Gates / run ${run.id}: plan không có base (full chỉ gồm gate tĩnh, không gate live) — không phủ production..${sha.slice(0, 12)}`);
       } else {
         hasCompletedMainCi = true;
         requiredExternal.push(...aggregate.requiredExternalWorkflows);
@@ -349,7 +352,7 @@ async function main(argv) {
     console.error('\n❌ Bằng chứng gate KHÔNG PHỦ hết các commit sẽ lên production:');
     for (const b of kq.khongPhu) console.error(`  - ${b}`);
     console.error('  Commit ở giữa có thể đỏ/bị huỷ mà chưa ai kiểm lại. Cần một lượt CI Gates trên main');
-    console.error('  có plan phủ từ production (push kế tiếp, hoặc chủ chạy workflow_dispatch = plan full).');
+    console.error('  có plan từ đầu production: push kế tiếp, hoặc workflow_dispatch trên main (nay cũng plan từ production).');
   }
 
   if (!kq.datDieuKien) {

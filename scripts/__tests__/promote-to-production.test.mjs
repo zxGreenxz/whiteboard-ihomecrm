@@ -17,7 +17,9 @@ const buoc = (name, conclusion, status = "completed") => ({ name, conclusion, st
 // `status` mặc định "completed": phần lớn ca nói về job đã xong. Ca job đang
 // chạy khai status tường minh — chính ca đó đã bắt được lỗi xếp nhầm loại.
 const job = (name, conclusion, steps, status = "completed") => ({ name, conclusion, steps, status });
-const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha, base: null, source: 'unknown-base' }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
+// Default evidence is a main plan whose base IS the current production tip.
+const PROD_TIP = 'b'.repeat(40);
+const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha, base: PROD_TIP, source: 'commit-range' }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
 
 describe('external workflow obligations', () => {
   const required = [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'], suiteIds: ['network-center-worker'] }];
@@ -96,6 +98,7 @@ describe("GitHub evidence readiness", () => {
     if (path === "/repos/owner/repo/actions/runs/1/jobs?per_page=100") {
       return { total_count: jobs.length, jobs };
     }
+    if (path === "/repos/owner/repo/git/ref/heads/production") return { object: { sha: PROD_TIP } };
     throw new Error(`Unexpected API request: ${path}`);
   }, async () => aggregate());
 
@@ -160,21 +163,22 @@ describe("GitHub evidence readiness", () => {
   it('a green main aggregate with unresolved external obligations remains unverified', async () => {
     const result = await readGateEvidence('owner/repo', 'abc123', 'fixture', async (path) => path.includes('/jobs?')
       ? { total_count: 1, jobs: greenJobs() }
-      : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
+      : path.endsWith('/git/ref/heads/production') ? { object: { sha: PROD_TIP } }
+        : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
     expect(result.verdict.datDieuKien).toBe(false);
     expect(result.verdict.dangChay.join(' ')).toContain('network-center-validation.yml / validate');
   });
 
   describe('aggregate base must cover production..target', () => {
-    const tip = 'b'.repeat(40);
+    const tip = PROD_TIP;
     const base = 'c'.repeat(40);
     const coverage = (status, calls = []) => ({
       productionTip: async () => { calls.push('tip'); return tip; },
       compare: async (from, to) => { calls.push(`${from.slice(0, 1)}...${to.slice(0, 1)}`); return { status }; },
     });
-    it('full plan covers without asking GitHub; base equal to or behind production covers', async () => {
+    it('a full plan without base never covers (it selects no live gate); base equal to or behind production covers', async () => {
       const calls = [];
-      expect(await evidenceCoversProduction({ base: null, source: 'unknown-base' }, coverage('diverged', calls))).toBe(true);
+      expect(await evidenceCoversProduction({ base: null, source: 'unknown-base' }, coverage('identical', calls))).toBe(false);
       expect(calls).toEqual([]);
       expect(await evidenceCoversProduction({ base: tip }, coverage('diverged'))).toBe(true);
       for (const status of ['ahead', 'identical']) expect(await evidenceCoversProduction({ base }, coverage(status, calls))).toBe(true);
@@ -207,11 +211,18 @@ describe("GitHub evidence readiness", () => {
       const options = { waitMs: 30, pollMs: 10, now: () => 0, sleep: async () => { throw new Error('must not wait'); } };
       expect((await waitForGateEvidence(async () => ({ jobs: [], verdict }), options)).verdict.khongPhu.length).toBe(1);
     });
-    it('one covering aggregate (e.g. a full dispatch run) is enough', async () => {
+    it('one covering aggregate (e.g. a main dispatch planned from production) is enough', async () => {
       const narrow = { ...aggregate(), snapshot: { head: 'abc123', base, source: 'commit-range' } };
       const { verdict } = await readWithBase('behind', [narrow, aggregate()]);
       expect(verdict.datDieuKien).toBe(true);
       expect(verdict.khongPhu).toEqual([]);
+    });
+    it('a dispatch without a production ancestor (full, no live gate) is refused, not waited on', async () => {
+      const full = { ...aggregate(), snapshot: { head: 'abc123', base: null, source: 'unknown-base' } };
+      const { verdict } = await readWithBase('ahead', [full]);
+      expect(verdict.datDieuKien).toBe(false);
+      expect(verdict.khongPhu.join(' ')).toMatch(/không có base .*không gate live/);
+      expect(verdict.dangChay).toEqual([]);
     });
   });
 
@@ -332,6 +343,7 @@ describe("promotion CLI exit codes", () => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
+        : url.endsWith('/git/ref/heads/production') ? { object: { sha: '${PROD_TIP}' } }
         : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', event: 'push', head_sha: '${head}', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
