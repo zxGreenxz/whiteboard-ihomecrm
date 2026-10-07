@@ -25,6 +25,15 @@ it('unlink is local until Save; cancel keeps the persisted transaction',async()=
  cleanup();show();await screen.findByAltText('Ảnh chứng từ 1');fireEvent.click(screen.getByLabelText('Gỡ ảnh chứng từ 1'));fireEvent.click(screen.getByText('Lưu thay đổi'));
  await waitFor(()=>expect(h.prepare).toHaveBeenCalled());expect(h.prepare.mock.calls[0][0].data).toEqual({attachment_paths:[]});
 });
+it('a new transaction without images omits attachment_paths; with an image it sends the uploaded path',async()=>{
+ const create=()=>render(<FinanceEditor embedded editor={{entity:'transaction'}} snapshot={s} permissions={{create:true,edit:true,delete:true}} onClose={vi.fn()}/>);
+ create();fireEvent.change(screen.getByLabelText('Số tiền'),{target:{value:'5000'}});fireEvent.click(screen.getByRole('button',{name:/^Lưu/}));
+ await waitFor(()=>expect(h.prepare).toHaveBeenCalled());expect(h.prepare.mock.calls[0][0].data).not.toHaveProperty('attachment_paths');
+ cleanup();h.prepare.mockClear();h.upload.mockResolvedValue(path);create();
+ fireEvent.change(screen.getByLabelText('Số tiền'),{target:{value:'5000'}});fireEvent.change(screen.getByLabelText('Thêm ảnh chứng từ'),{target:{files:[new File(['img'],'bill.png',{type:'image/png'})]}});
+ await screen.findByAltText('Ảnh chứng từ 1');fireEvent.click(screen.getByRole('button',{name:/^Lưu/}));
+ await waitFor(()=>expect(h.prepare).toHaveBeenCalled());expect(h.prepare.mock.calls[0][0].data.attachment_paths).toEqual([path]);
+});
 it('read-only details show images without add/unlink controls',async()=>{
  show({create:false,edit:false,delete:false});await screen.findByAltText('Ảnh chứng từ 1');
  expect(screen.queryByLabelText('Thêm ảnh chứng từ')).toBeNull();expect(screen.queryByLabelText('Gỡ ảnh chứng từ 1')).toBeNull();

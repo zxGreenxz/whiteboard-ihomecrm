@@ -208,9 +208,9 @@ function FinanceEditorSession({
                 selected,
               )
             : selected;
-        // Arrays differ by reference; an unchanged image list must not be sent with a notes edit.
+        // Arrays differ by reference: an unchanged image list is not an edit, and a new entry
+        // without images omits the field, so it never depends on the attachment-aware RPC body.
         if (
-          editor.record &&
           editor.entity === "transaction" &&
           JSON.stringify(selected.attachment_paths) ===
             JSON.stringify(defaults.attachment_paths)
