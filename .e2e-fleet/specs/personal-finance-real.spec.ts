@@ -22,9 +22,13 @@ if (new URL(f.url).hostname !== `${f.ref}.supabase.co`) throw new Error('TEST UR
 const base = process.env.FLEET_BASE_URL || '';
 if (!/^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/.test(base)) throw new Error('Local candidate URL required');
 
+// Phone by default; PERSONAL_FINANCE_VIEWPORT=desktop reruns the same flows at 1280x800.
+const desktop = process.env.PERSONAL_FINANCE_VIEWPORT === 'desktop';
+const shot = (name: string) => `${name}-${desktop ? 1280 : 390}.png`;
+
 // Independent accounts: a writer failure must not skip the read-only role proof.
 test.use({
-  viewport: { width: 390, height: 844 }, storageState: { cookies: [], origins: [] },
+  viewport: desktop ? { width: 1280, height: 800 } : { width: 390, height: 844 }, storageState: { cookies: [], origins: [] },
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
 });
 
@@ -90,8 +94,9 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
         if (Object.keys(body ?? {}).length !== 2 || body.p_key !== 'selectedOrganizationId' || body.p_value !== f.org) return deny();
       } else if (target.pathname.startsWith('/rest/v1/rpc/')) {
         const name = target.pathname.split('/').pop() || '';
-        // Existing layout roster RPC is SELECT-only (20260725001000 migration).
-        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1'].includes(name)) return deny();
+        // Existing layout roster RPC is SELECT-only (20260725001000 migration); the desktop dashboard's
+        // revenue_by_month is STABLE SECURITY INVOKER SQL with a single SELECT (20260726132000).
+        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1', 'revenue_by_month'].includes(name)) return deny();
       } else if (!['/auth/v1/token', '/auth/v1/logout'].includes(target.pathname)) return deny();
     }
     await route.continue();
@@ -291,9 +296,9 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await closeSheets(page);
   await expect(page.getByTestId('month-income')).toContainText('200.000');
   await expect(page.getByTestId('month-expense')).toContainText('76.000');
-  await page.screenshot({ path: testInfo.outputPath('real-test-home-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-home')), fullPage: true });
   await navigate(page, 'Báo cáo');
-  await page.screenshot({ path: testInfo.outputPath('real-test-report-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-report')), fullPage: true });
   await page.reload();
   await navigate(page, 'Tổng quan');
   await expect(page.getByTestId('total-balance')).toContainText('1.124.000');
@@ -324,7 +329,7 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   const photoDraft = entrySheet.getByTestId('draft-card').last();
   await expect(photoDraft).toHaveAttribute('data-status', 'draft');
   await expect(photoDraft.getByRole('combobox', { name: 'Ví cá nhân', exact: true })).toContainText('Thẻ SP');
-  await photoDraft.screenshot({ path: testInfo.outputPath('real-test-photo-draft-390.png') });
+  await photoDraft.screenshot({ path: testInfo.outputPath(shot('real-test-photo-draft')) });
   await photoDraft.getByRole('combobox', { name: 'Danh mục dòng 1', exact: true }).click();
   await page.getByRole('option', { name: 'Ăn uống', exact: true }).click();
   network.loseReceiptFor = 'transaction.batch';
@@ -369,7 +374,7 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await page.getByRole('button', { name: 'Xem TEST Ảnh giữ khi sửa', exact: true }).click();
   editor = page.getByRole('dialog', { name: 'Chi tiết giao dịch', exact: true });
   await expect(editor.getByRole('img', { name: 'Ảnh chứng từ 2', exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('real-test-attachments-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-attachments')), fullPage: true });
   await editor.getByRole('button', { name: 'Gỡ ảnh chứng từ 1', exact: true }).click();
   await editor.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
   await expect(editor).toHaveCount(0);
@@ -413,7 +418,7 @@ test('real TEST viewer: own data is visible and write actions are absent', async
     // “Chuyển ví” in the ledger is a read-only filter, not the entry action.
     await expect(page.getByRole('button', { name: /^(?:Thêm hạn mức|Thêm mục tiêu|Ghi thu chi)$/ })).toHaveCount(0);
   }
-  await page.screenshot({ path: testInfo.outputPath('real-test-viewer-report-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-viewer-report')), fullPage: true });
   expect(observed.writes).toEqual([]);
   expect(observed.blocked).toEqual([]);
   expect(observed.errors).toEqual([]);
