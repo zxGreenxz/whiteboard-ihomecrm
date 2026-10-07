@@ -20,6 +20,9 @@
 //   node scripts/promote-to-production.mjs --sha <sha> --wait-seconds 420
 //   node scripts/promote-to-production.mjs --apply         # thật sự fast-forward
 //
+// `--sha` được phân giải thành commit đủ 40 ký tự trước mọi truy vấn. Sau `--apply`
+// script chờ (có giới hạn) Vercel phục vụ đúng commit — xem release-verify.mjs.
+//
 // Thoát 0 đủ điều kiện · 1 có gate đỏ (kể cả bị nuốt) · 3 KHÔNG KIỂM ĐƯỢC.
 // Exit 3 là mặc định khi thiếu GH_TOKEN — "không hỏi được CI" KHÁC "CI xanh".
 
@@ -29,6 +32,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { inKetQua, resolveCommitSha, verifyVercelRelease } from './release-verify.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -273,7 +277,15 @@ function git(args) {
 async function main(argv) {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const iS = argv.indexOf('--sha');
-  const sha = iS >= 0 ? argv[iS + 1] : git(['rev-parse', 'origin/main']);
+  let sha;
+  try {
+    // SHA ngắn làm `head_sha=` không khớp run nào ⇒ chờ vô ích rồi exit 3 gây hiểu lầm.
+    sha = resolveCommitSha(iS >= 0 ? argv[iS + 1] : 'origin/main');
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    process.exitCode = 3;
+    return;
+  }
   const thatSu = argv.includes('--apply');
   const waitIndex = argv.indexOf('--wait-seconds');
   const waitSeconds = waitIndex < 0 ? 0 : Number(argv[waitIndex + 1]);
@@ -366,7 +378,12 @@ async function main(argv) {
     process.exitCode = 1;
     return;
   }
-  console.log(`✅ Đã promote ${sha.slice(0, 12)} lên production.`);
+  console.log(`✅ Đã push ${sha.slice(0, 12)} lên production. Chờ Vercel dựng và phục vụ đúng commit này…`);
+  // Push xong chưa phải phát hành xong: Vercel có thể lỡ webhook hoặc build đỏ.
+  const phatHanh = await verifyVercelRelease({ sha, token: process.env.VERCEL_TOKEN, waitMs: 900_000 });
+  inKetQua(phatHanh);
+  if (phatHanh.code !== 0) console.error(`   Kiểm lại (chỉ đọc): npm run release:verify -- --sha ${sha}`);
+  process.exitCode = phatHanh.code;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main(process.argv);

@@ -8,7 +8,7 @@
 // đây không phải rủi ro lý thuyết: nếu promote đọc mức job thì nó sẽ phát hành
 // một commit có gate đỏ và không ai thấy gì bất thường.
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { danhGiaJobs, evidenceCoversProduction, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
@@ -297,7 +297,17 @@ describe("GitHub evidence readiness", () => {
 
 describe("promotion CLI exit codes", () => {
   const script = fileURLToPath(new URL("../promote-to-production.mjs", import.meta.url));
+  // --sha is resolved through git, so the fixture uses a commit that exists in this clone.
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const successfulJob = job("gate-aggregate", "success", [buoc("aggregate", "success")]);
+  it.each([["short", "abc"], ["unknown", "f".repeat(40)], ["flag", "--apply"]])("%s --sha stops before any API call (exit 3)", (_name, sha) => {
+    const fixture = "globalThis.fetch = async () => { throw new Error('API must not be called'); };";
+    const result = spawnSync(process.execPath, [
+      "--import", `data:text/javascript;base64,${Buffer.from(fixture).toString("base64")}`, script, "--sha", sha,
+    ], { encoding: "utf8", env: { ...process.env, GH_TOKEN: "fixture-only" }, timeout: 10_000 });
+    expect(result.status, result.stderr).toBe(3);
+    expect(result.stderr).toMatch(/40 ký tự|cần một commit/);
+  });
   it.each([
     ["missing jobs", [], 200, 3],
     ["queued job", [job("ci", null, [], "queued")], 200, 3],
@@ -314,7 +324,7 @@ describe("promotion CLI exit codes", () => {
     cp.execFileSync = (command, args, options) => {
       if (command !== 'gh') return originalExec(command, args, options);
       const directory = args[args.indexOf('--dir') + 1];
-      writeFileSync(join(directory, 'aggregate.json'), JSON.stringify(${JSON.stringify(aggregate('a'.repeat(40)))}));
+      writeFileSync(join(directory, 'aggregate.json'), JSON.stringify(${JSON.stringify(aggregate(head))}));
       return Buffer.alloc(0);
     };
     syncBuiltinESMExports();
@@ -322,12 +332,12 @@ describe("promotion CLI exit codes", () => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
-        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', event: 'push', head_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed', conclusion: 'success' }] };
+        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', event: 'push', head_sha: '${head}', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
     const result = spawnSync(process.execPath, [
       "--import", `data:text/javascript;base64,${Buffer.from(fixture).toString("base64")}`,
-      script, "--sha", "a".repeat(40), "--wait-seconds", "0",
+      script, "--sha", head.slice(0, 10), "--wait-seconds", "0",
     ], { encoding: "utf8", env: { ...process.env, GH_TOKEN: "fixture-only", GITHUB_TOKEN: "" }, timeout: 10_000 });
     expect(result.status, result.stderr).toBe(expected);
     if (expected === 0) expect(result.stdout).toContain("dry-run — chạy lại với --apply");
