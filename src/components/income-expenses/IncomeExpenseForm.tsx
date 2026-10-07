@@ -1514,23 +1514,32 @@ const IncomeExpenseFormInner = ({
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {/* Header row */}
-                    <div className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 text-xs text-muted-foreground font-medium px-1">
-                      <span>Hạng mục</span>
-                      <span>Số tiền</span>
-                      <span>Từ tháng</span>
-                      <span>Đến tháng</span>
-                      <span></span>
-                    </div>
+                    {/* Header row — chỉ desktop. Mobile: 3 cột 120px cố định (~400px) đẩy cả
+                        hộp thoại tràn ngang (ô Sổ quỹ, nút Lưu bị cắt) ⇒ mỗi hạng mục thành thẻ
+                        3 dòng, nhãn đi kèm từng ô. */}
+                    {!isMobile && (
+                      <div className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 text-xs text-muted-foreground font-medium px-1">
+                        <span>Hạng mục</span>
+                        <span>Số tiền</span>
+                        <span>Từ tháng</span>
+                        <span>Đến tháng</span>
+                        <span></span>
+                      </div>
+                    )}
                     {itemRows.map((item, index) => (
                       <div
                         key={`${item.income_expense_type_id}-${index}`}
-                        className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 items-center rounded-lg border p-2"
+                        className={
+                          isMobile
+                            ? "grid grid-cols-2 gap-2 items-end rounded-lg border p-2"
+                            : "grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 items-center rounded-lg border p-2"
+                        }
                       >
-                        <p className="text-sm font-medium truncate">
+                        <p className={isMobile ? "text-sm font-medium truncate col-start-1 col-span-2 row-start-1 self-center pr-10" : "text-sm font-medium truncate"}>
                           {item.type_name}
                         </p>
-                        <div data-field-name={`items.${index}.unit_price`}>
+                        <div data-field-name={`items.${index}.unit_price`} className={isMobile ? "col-span-2" : undefined}>
+                        {isMobile && <span className="mb-1 block text-[11px] text-muted-foreground">Số tiền</span>}
                         <CurrencyInput
                           name={`items.${index}.unit_price`}
                           aria-invalid={!!form.formState.errors.items?.[index]?.unit_price}
@@ -1544,6 +1553,7 @@ const IncomeExpenseFormInner = ({
                           {form.formState.errors.items?.[index]?.unit_price && <p id={`ie-item-${index}-unit_price-error`} role="alert" className="text-xs text-destructive">{form.formState.errors.items[index]?.unit_price?.message}</p>}
                         </div>
                         <div data-field-name={`items.${index}.start_date`}>
+                        {isMobile && <span className="mb-1 block text-[11px] text-muted-foreground">Từ tháng</span>}
                         <MonthInput
                           name={`items.${index}.start_date`}
                           aria-invalid={!!form.formState.errors.items?.[index]?.start_date}
@@ -1558,6 +1568,7 @@ const IncomeExpenseFormInner = ({
                           {form.formState.errors.items?.[index]?.start_date && <p id={`ie-item-${index}-start_date-error`} role="alert" className="text-xs text-destructive">{form.formState.errors.items[index]?.start_date?.message}</p>}
                         </div>
                         <div data-field-name={`items.${index}.end_date`}>
+                        {isMobile && <span className="mb-1 block text-[11px] text-muted-foreground">Đến tháng</span>}
                         <MonthInput
                           name={`items.${index}.end_date`}
                           aria-invalid={!!form.formState.errors.items?.[index]?.end_date}
@@ -1576,7 +1587,7 @@ const IncomeExpenseFormInner = ({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="shrink-0 h-8 w-8 text-destructive hover:text-destructive"
+                            className={isMobile ? "shrink-0 h-8 w-8 text-destructive hover:text-destructive col-start-2 row-start-1 self-center justify-self-end" : "shrink-0 h-8 w-8 text-destructive hover:text-destructive"}
                             aria-label={`Xoá hạng mục ${index + 1}`}
                             onClick={() => handleRemoveItem(index)}
                           >

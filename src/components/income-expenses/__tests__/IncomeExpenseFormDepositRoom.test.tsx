@@ -4,10 +4,10 @@ vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrg
 // Phiếu có hạng mục Tiền cọc phải chọn phòng (07/10/2026). Ca thật PT2609155: cọc G03 chỉ chọn toà
 // ⇒ không hợp đồng nào nhận, người lập nhập lại thành PT2610026 ⇒ sổ thừa 1.000.000đ.
 // Chốt điều người dùng thấy: bấm Tạo ⇒ không gọi máy chủ, báo lỗi, ô Phòng đỏ và được focus.
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ create: vi.fn(), toastError: vi.fn() }));
+const h = vi.hoisted(() => ({ create: vi.fn(), toastError: vi.fn(), mobile: false }));
 
 vi.mock('@/hooks/income-expenses/detailRead', () => ({
   useIncomeExpenseDetail: () => ({ data: null, isFetching: false, isError: false, isSuccess: true, isFetchedAfterMount: true, refetch: vi.fn() }),
@@ -31,7 +31,7 @@ vi.mock('@/hooks/income-expenses/financeV2Mutations', () => ({
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'u1' } }) }));
 vi.mock('@/hooks/useIsAdmin', () => ({ useIsAdmin: () => ({ data: false }) }));
 vi.mock('@/hooks/useIsCompanyOwner', () => ({ useIsCompanyOwner: () => ({ data: false }) }));
-vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => h.mobile }));
 vi.mock('@/hooks/useIncomeExpenseFormScope', () => ({
   useIncomeExpenseFormBuildings: () => ({ data: [{ id: 'b1', name: '1392QT', managed: true }] }),
   useIncomeExpenseFormRooms: () => ({ data: [{ id: 'g03', name: 'G03' }] }),
@@ -82,6 +82,7 @@ const oPhong = () => screen.getByRole('combobox', { name: /^Phòng/ });
 beforeEach(() => {
   h.create.mockReset().mockResolvedValue({ id: 'v-moi' });
   h.toastError.mockReset();
+  h.mobile = false;
 });
 afterEach(cleanup);
 
@@ -118,5 +119,23 @@ describe('Phiếu Tiền cọc bắt buộc chọn phòng', () => {
     expect(oPhong().getAttribute('aria-invalid')).toBe('false');
     expect(screen.queryByText(DEPOSIT_ROOM_REQUIRED_MESSAGE)).toBeNull();
     expect(h.toastError).not.toHaveBeenCalled();
+  });
+});
+
+describe('Bố cục dòng hạng mục trên mobile', () => {
+  // 07/10/2026: ba cột 120px cố định (~400px) làm cả hộp thoại tràn ngang trên điện thoại
+  // (ô Sổ quỹ, nút Lưu bị cắt; đưa con trỏ về một ô là trang cuộn ngang). Đo bằng trình duyệt:
+  // sau sửa scrollWidth = clientWidth ở 390/360/320px.
+  it('mobile: không cột cố định, mỗi ô có nhãn riêng; desktop giữ bảng cũ', () => {
+    h.mobile = true;
+    moFormTao('tien-coc', 'Tiền Cọc');
+    const dong = screen.getByRole('button', { name: 'Xoá hạng mục 1' }).parentElement!;
+    expect(dong.className).not.toMatch(/\d+px/);
+    for (const nhan of ['Số tiền', 'Từ tháng', 'Đến tháng']) expect(within(dong).getByText(nhan)).toBeTruthy();
+    cleanup();
+    h.mobile = false;
+    moFormTao('tien-coc', 'Tiền Cọc');
+    const dongDesktop = screen.getByRole('button', { name: 'Xoá hạng mục 1' }).parentElement!;
+    expect(dongDesktop.className).toContain('grid-cols-[1fr_120px_120px_120px_36px]');
   });
 });
