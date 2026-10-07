@@ -796,3 +796,13 @@ it('discarding one split card keeps the shared upload alive for its sibling',asy
  await act(async()=>result.current.saveCard(second.id));
  expect(h.uploadPersonalPhoto).toHaveBeenCalledOnce();expect(h.savePersonal.mock.calls.map(([draft])=>draft.id)).toEqual([second.id]);
 });
+it('a starter card discarded right as its upload finishes sends no money request even before React re-renders',async()=>{
+ const r=refs({personalCategories:[...refs().personalCategories,{...refs().personalCategories[0],id:'33333333-3333-4333-8333-333333333333',type:'INCOME',name:'Lương'}]});
+ h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1',transactionType:'EXPENSE'},{desc:'Lương',amount_vnd:100000,category:'c2',transactionType:'INCOME'}]})));
+ let finish!:(path:string)=>void;h.uploadPersonalPhoto.mockImplementation(()=>new Promise<string>(resolve=>{finish=resolve;}));h.savePersonal.mockResolvedValue({kind:'saved',ids:[],done:1,message:'saved'});
+ const {result}=mount(r);await act(async()=>result.current.submitPhoto(new File(['img'],'bill.png',{type:'image/png'}),'personal'));
+ const [first,second]=cardsOf(result);
+ let pending!:Promise<void>;act(()=>{pending=result.current.saveCard(first.id);});
+ await act(async()=>{finish('11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333.webp');result.current.discardCard(first.id);await pending;});
+ expect(h.savePersonal).not.toHaveBeenCalled();expect(result.current.cards[first.id]).toBeUndefined();expect(result.current.cards[second.id]).toBeDefined();
+});

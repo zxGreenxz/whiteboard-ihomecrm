@@ -94,6 +94,15 @@ describe('personal wallet precedence',()=>{
  it.each(['chuyển khoản: phở 50k, cơm 30k','phở 50k, cơm 30k, tất cả chuyển khoản'])('a method said once applies to every line that names none: %s',text=>{
   expect(draftsFromText(text,ctx()).flatMap(s=>s.draft.lines.map(()=>s.draft.personalWalletId))).toEqual(['bank','bank']);
  });
+ it('a method attached to one line stays on that line without a whole-message marker',()=>{
+  expect(draftsFromText('cà phê 30k, bánh mì 20k, tiền điện 500k chuyển khoản',ctx()).flatMap(s=>s.draft.lines.map(l=>[l.amount,s.draft.personalWalletId]))).toEqual([[30000,'cash'],[20000,'cash'],[500000,'bank']]);
+ });
+ it('brand-like one-word wallet names still match without a lead; a negated "có tiền mặt" is not explicit cash',()=>{
+  const list=[...wallets,wallet('momo','Momo','other'),wallet('tcb','Techcombank','bank')];
+  expect(draftsFromText('tiền điện 500k momo',ctx(list))[0].draft.personalWalletId).toBe('momo');
+  expect(draftsFromText('grab 50k techcombank',ctx(list))[0].draft.personalWalletId).toBe('tcb');
+  expect(draftsFromText('không có tiền mặt nên chuyển khoản 50k',ctx())[0].draft.personalWalletId).toBe('bank');
+ });
  it('conflicting per-line methods are not spread to each other',()=>{
   expect(draftsFromText('phở 50k tiền mặt, cơm 30k chuyển khoản',ctx()).map(s=>s.draft.personalWalletId)).toEqual(['cash','bank']);
  });

@@ -200,6 +200,8 @@ export function useQuickEntryFeed(opts: {
   const failures = useRef({ read: 0, voice: 0 });
   const inflight = useRef(new Set<string>());
   const uploads=useRef(new Map<string,AbortController>());
+  // Discards are recorded at once; feedRef only catches up on the next render.
+  const discarded=useRef(new Set<string>());
   const uploadedPhotos=useRef(new WeakMap<File,Promise<string>>());
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;for(const controller of uploads.current.values())controller.abort();};},[]);
@@ -677,9 +679,9 @@ export function useQuickEntryFeed(opts: {
           feedRef.current={...feedRef.current,cards};
           setFeed(f=>f.scope!==scope?f:{...f,cards:withPath(f.cards)});
           // Persisted synchronously, before prepare writes its durable pending request.
-          try{const raw=serializeCards(Object.values(cards).map(c=>({state:c.state,status:c.status,personalDone:c.personalDone})),Date.now());if(raw)localStorage.setItem(scope!,raw);}catch{/* Pending request storage still guards the actual network mutation. */}
+          try{const raw=serializeCards(Object.values(cards).filter(c=>!discarded.current.has(c.id)).map(c=>({state:c.state,status:c.status,personalDone:c.personalDone})),Date.now());if(raw)localStorage.setItem(scope!,raw);}catch{/* Pending request storage still guards the actual network mutation. */}
           // A discarded starter card still hands the confirmed path to its siblings above.
-          if(!feedRef.current.cards[id])return;
+          if(!feedRef.current.cards[id]||discarded.current.has(id))return;
           draft={...draft,personalAttachmentPaths:[...(draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false};
         }catch(e){
           uploadedPhotos.current.delete(card.photo);
@@ -699,7 +701,7 @@ export function useQuickEntryFeed(opts: {
         }
       }
       // Personal saves stop once the user has left; company saves keep their earlier behaviour and finish.
-      if(personal&&(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||!feedRef.current.cards[id]))return;
+      if(personal&&(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||!feedRef.current.cards[id]||discarded.current.has(id)))return;
       // Atomic personal batch: progress is published only after the complete receipt is confirmed.
       const progress = (done: number) => patchCard(id, (c) => ({ ...c, personalDone: done }));
       const out =
@@ -719,6 +721,7 @@ export function useQuickEntryFeed(opts: {
   );
 
   const discardCard = useCallback((id: string) => {
+    discarded.current.add(id);
     // Split cards share one upload of their photo; a sibling still waiting for it keeps it alive.
     const photo = feedRef.current.cards[id]?.photo;
     if (!photo || !Object.entries(feedRef.current.cards).some(([key, c]) => key !== id && c.photo === photo)) uploads.current.get(id)?.abort();

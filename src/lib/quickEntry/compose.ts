@@ -80,6 +80,14 @@ function walletFor(ctx: ComposeContext, text: string, evidence?: WalletEvidence)
 /** Ví/cách trả nói một lần cho cả tin ("chuyển khoản: phở 50k, cơm 30k") áp cho khoản chỉ rơi về mặc định tiền mặt. */
 const withShared = (own: WalletResolution | undefined, shared: WalletResolution | undefined) =>
   own?.reason === 'cash_default' && shared?.reason === 'explicit' && shared.walletId ? shared : own;
+/** Chỉ phần nói cho CẢ tin: tiền tố trước ":" không có số, hoặc mệnh đề có "tất cả/đều/cả hai/toàn bộ".
+ *  "cà phê 30k, tiền điện 500k chuyển khoản" thì "chuyển khoản" chỉ thuộc tiền điện. */
+function sharedWalletText(text: string): string {
+  const nfc = (text ?? '').normalize('NFC');
+  const prefix = /^([^:\d\n]{1,60}):/.exec(nfc)?.[1];
+  const whole = nfc.split(/[,;.\n]/).filter((clause) => /(?:^|\s)(?:tất cả|tat ca|đều|deu|cả hai|ca hai|toàn bộ|toan bo)(?=\s|$)/i.test(clause));
+  return [...(prefix ? [prefix] : []), ...whole].join('; ');
+}
 const walletKey = (line: DraftLine, fallback?: string | null) => line.personalWalletResolution?.walletId ?? (line.personalWalletResolution ? null : fallback ?? null);
 
 function nameOf(lines: DraftLine[]): string {
@@ -170,7 +178,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
 
   // Như phòng: cách trả nói một lần cho cả tin chỉ áp cho khoản KHÔNG tự nói, và chỉ khi không khoản nào nói khác.
   const ownWallets = company ? [] : segments.map((seg) => walletFor(ctx, casedText(seg)));
-  const messageWallet = company ? undefined : walletFor(ctx, text);
+  const sharedText = company ? '' : sharedWalletText(text);
+  const messageWallet = sharedText ? walletFor(ctx, sharedText) : undefined;
   const sharedWallet = ownWallets.every((own) => own?.reason !== 'explicit' || own.walletId === messageWallet?.walletId) ? messageWallet : undefined;
 
   const items: Item[] = segments.map((seg, index) => {
@@ -525,7 +534,8 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     const next = { ...l };
     if (!company && free('personalWalletId') && ctx.personalWallets && !mixedExpansion && !walletExpansion) {
       const own = walletFor(ctx,lines.length===1?state.sourceText:l.description,{payment_method:item?.payment_method??ai.payment_method,platform:item?.platform??ai.platform});
-      next.personalWalletResolution = lines.length===1 ? own : withShared(own, walletFor(ctx,state.sourceText));
+      const shared = lines.length===1 ? '' : sharedWalletText(state.sourceText);
+      next.personalWalletResolution = shared ? withShared(own, walletFor(ctx,shared)) : own;
     }
     if (item) {
       if(item.transactionType&&free('transactionType')&&free(`lines.${i}.transactionType`))next.transactionType=item.transactionType;
