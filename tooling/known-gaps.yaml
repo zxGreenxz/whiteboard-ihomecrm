@@ -212,6 +212,24 @@ gaps:
       Dựng lại fixture DEMO (hoặc đổi spec sang toà DEMO đang có), chạy 7 spec trên preview đúng
       commit bằng vai thật, đính bằng chứng; spec nào đỏ thì sửa. Chỉ đóng khi có lượt chạy xanh,
       không đóng chỉ vì code đã lên production.
+  - id: e2e-fleet-doc-vault-truc-tiep
+    where: >
+      .e2e-fleet/specs/{accounting-admin,reservation-settlement-admin}.ts ·
+      .e2e-fleet/specs/{invoice-adjustment-repair,payment-collection-regression}.spec.ts ·
+      scripts/check-vault-access.mjs (NGOAI_PHAM_VI loại `.e2e-fleet/`)
+    expires_at: 2026-11-30
+    why: >
+      PR #139 (08/10/2026) đưa mọi script về một cửa đọc vault (`scripts/lib/vault.mjs`) để chạy
+      được trong git worktree, và gate `check-vault-access` chặn đường đọc thẳng. Bốn file fleet
+      trên vẫn đọc `CLAUDE.local.md` theo đường dẫn tương đối nên chỉ chạy được ở checkout chính.
+      Chúng được tách khỏi PR vì đổi spec `.e2e-fleet` mà không chạy thì gate-aggregate đòi bằng
+      chứng E2E thật trên DEMO (ghi fixture) và chặn promote cả phần tooling — bài học của
+      7fa02604. Gate tạm loại `.e2e-fleet/` khỏi phạm vi; mọi mã khác vẫn bị canh.
+    exit_condition: >
+      Một PR riêng chuyển bốn file sang `scripts/lib/vault.mjs` (hoặc helper tương đương trong
+      package fleet), kèm một lượt chạy xanh của các spec bị ảnh hưởng trên DEMO hoặc TEST với vai
+      thật; sau đó bỏ `.e2e-fleet` khỏi NGOAI_PHAM_VI và sửa test của gate. Không đóng chỉ vì
+      typecheck xanh hay `playwright --list` nạp được spec.
   - id: xoa-tam-tru-chua-co-luot-nop-that
     where: >
       extensions/tam-tru/{submit-watch.js,panel.js,background.js} · src/hooks/useTamTruKetQuaSync.ts ·

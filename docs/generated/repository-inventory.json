@@ -2,9 +2,9 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1293,
-  "soFileDocBangFs": 288,
-  "tongLoiGoi": 636,
-  "khongPhanLoaiDuoc": 296,
+  "soFileDocBangFs": 290,
+  "tongLoiGoi": 639,
+  "khongPhanLoaiDuoc": 297,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 11,
+      "soFile": 13,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -157,9 +157,9 @@
     },
     {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
-      "soGoi": 8,
+      "soGoi": 9,
       "loai": {},
-      "khongPhanLoaiDuoc": 8
+      "khongPhanLoaiDuoc": 9
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
@@ -1054,6 +1054,22 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/invoice-adjustment-repair.spec.ts",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/payment-collection-regression.spec.ts",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/personal-finance-demo.spec.ts",

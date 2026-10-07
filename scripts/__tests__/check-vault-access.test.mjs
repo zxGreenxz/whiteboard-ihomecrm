@@ -76,12 +76,19 @@ describe('check-vault-access — không báo nhầm', () => {
 });
 
 describe('check-vault-access — phạm vi', () => {
-  it('chỉ helper được miễn; docs và file không phải mã nằm ngoài', () => {
+  it('chỉ helper được miễn; docs, .e2e-fleet (known-gap riêng) và file không phải mã nằm ngoài', () => {
     expect(MIEN_TRU).toEqual(['scripts/lib/vault.mjs', 'scripts/lib/vault.d.mts']);
     expect(chonFile([
       'scripts/lib/vault.mjs', 'scripts/a.mjs', '.e2e-fleet/specs/b.spec.ts', 'src/c.tsx',
       'docs/audits/x/y.cjs', 'README.md', 'tooling/z.json', 'scripts/d.cjs',
-    ])).toEqual(['scripts/a.mjs', '.e2e-fleet/specs/b.spec.ts', 'src/c.tsx', 'scripts/d.cjs']);
+    ])).toEqual(['scripts/a.mjs', 'src/c.tsx', 'scripts/d.cjs']);
+  });
+
+  it('spec .e2e-fleet đọc thẳng vault không bị bắt; cùng câu đó ở scripts/ vẫn bị bắt', () => {
+    const doc = `const v = readFileSync(new URL('../../${V}', import.meta.url), 'utf8');`;
+    expect(timDocVault(doc)).toHaveLength(1);
+    expect(chonFile(['.e2e-fleet/specs/reservation-settlement-admin.ts'])).toEqual([]);
+    expect(chonFile(['scripts/reservation-settlement-admin.mjs'])).toEqual(['scripts/reservation-settlement-admin.mjs']);
   });
 
   it('đọc dòng khớp của git grep --cached -z -n (gate kiểm INDEX, không kiểm đĩa)', () => {

@@ -43,8 +43,13 @@ export const MIEN_TRU = Object.freeze(['scripts/lib/vault.mjs', 'scripts/lib/vau
 /** Mã chạy được: JS/TS mọi biến thể module. */
 export const DUOI_MA = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
-/** Ngoài phạm vi: tài liệu và bằng chứng audit đóng băng. */
-export const NGOAI_PHAM_VI = /^docs\//;
+/**
+ * Ngoài phạm vi: tài liệu và bằng chứng audit đóng băng; và `.e2e-fleet/` — package
+ * Playwright riêng, chuyển sang helper ở PR riêng kèm bằng chứng E2E trên DEMO/TEST
+ * (known-gap `e2e-fleet-doc-vault-truc-tiep`): sửa spec mà không chạy làm gate-aggregate
+ * đòi bằng chứng fleet và chặn promote cả PR tooling.
+ */
+export const NGOAI_PHAM_VI = /^(?:docs|\.e2e-fleet)\//;
 
 /**
  * Sàn chống xanh rỗng: bộ liệt kê hỏng trả ít file thì "0 vi phạm" vô nghĩa.
@@ -143,7 +148,7 @@ function main() {
   }
 
   // -a: vài file mã có byte NUL (bị coi là nhị phân) vẫn phải được quét.
-  const grep = spawnSync('git', ['grep', '--cached', '-a', '-n', '-z', '-F', '-e', TEN, '--', '.', ':(exclude)docs'], {
+  const grep = spawnSync('git', ['grep', '--cached', '-a', '-n', '-z', '-F', '-e', TEN, '--', '.', ':(exclude)docs', ':(exclude).e2e-fleet'], {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 1e8,
   });
   if (grep.status !== 0 && grep.status !== 1) {
