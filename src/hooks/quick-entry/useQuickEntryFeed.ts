@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { makeCopilotFetch, newTaskId } from "@/copilot/copilotConfig";
 import { compressImage } from "@/lib/imageCompress";
+import { isPersonalAttachmentType } from '@/lib/personalFinance/personalAttachments';
 import { resolvePersonalDraft } from '@/lib/quickEntry/personalRefs';
 import { resolvePersonalWallet } from '@/lib/quickEntry/personalWallet';
 import type { AiResult } from "@/lib/quickEntry/aiSchema";
@@ -621,12 +622,13 @@ export function useQuickEntryFeed(opts: {
       }
     }
 
+    const keepEvidence = mode === 'company' || isPersonalAttachmentType(file.type);
     const newCards: FeedCard[] = draftsFromBill(result, {...ctx,sourceText:caption}).map(state=>({
       id: state.draft.id,
-      state:mode==='personal'?{...state,draft:{...state.draft,personalAttachmentPending:true}}:state,
+      state:mode==='personal'&&keepEvidence?{...state,draft:{...state.draft,personalAttachmentPending:true}}:state,
       status: { kind: "draft" },
       aiModel: model,
-      photo: file,
+      photo: keepEvidence ? file : null,
       previewUrl,
       personalDone: 0,
     }));
@@ -660,15 +662,25 @@ export function useQuickEntryFeed(opts: {
           let uploading=uploadedPhotos.current.get(card.photo);
           if(!uploading){uploading=save.uploadPersonalPhoto(userId!,card.photo,controller.signal);uploadedPhotos.current.set(card.photo,uploading);}
           const path=await uploading;
-          if(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||controller.signal.aborted||!feedRef.current.cards[id])return;
-          draft={...draft,personalAttachmentPaths:[...(draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false};
-          // Persist every sibling sharing this image before prepare writes its durable pending request.
-          const cards={...feedRef.current.cards};
-          for(const [key,c] of Object.entries(cards))if(c.photo===card.photo&&c.state.draft.personalAttachmentPending){
-            cards[key]={...c,photo:null,state:{...c.state,draft:{...c.state.draft,personalAttachmentPaths:[...(c.state.draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false}}};
-          }
-          const next={...feedRef.current,cards};feedRef.current=next;setFeed(next);
+          if(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||controller.signal.aborted)return;
+          // Every sibling sharing this image gets the path; the same patch is replayed on the latest state
+          // so queued updates of other cards are not overwritten.
+          const photo=card.photo;
+          const withPath=(cards:Record<string,FeedCard>)=>{
+            const out={...cards};
+            for(const [key,c] of Object.entries(out))if(c.photo===photo&&c.state.draft.personalAttachmentPending){
+              out[key]={...c,photo:null,state:{...c.state,draft:{...c.state.draft,personalAttachmentPaths:[...(c.state.draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false}}};
+            }
+            return out;
+          };
+          const cards=withPath(feedRef.current.cards);
+          feedRef.current={...feedRef.current,cards};
+          setFeed(f=>f.scope!==scope?f:{...f,cards:withPath(f.cards)});
+          // Persisted synchronously, before prepare writes its durable pending request.
           try{const raw=serializeCards(Object.values(cards).map(c=>({state:c.state,status:c.status,personalDone:c.personalDone})),Date.now());if(raw)localStorage.setItem(scope!,raw);}catch{/* Pending request storage still guards the actual network mutation. */}
+          // A discarded starter card still hands the confirmed path to its siblings above.
+          if(!feedRef.current.cards[id])return;
+          draft={...draft,personalAttachmentPaths:[...(draft.personalAttachmentPaths??[]),path],personalAttachmentPending:false};
         }catch(e){
           uploadedPhotos.current.delete(card.photo);
           if(mounted.current&&scopeRef.current===scope&&!controller.signal.aborted)patchCard(id,c=>({...c,status:{kind:'rejected',message:messageOf(e,'Chưa tải được ảnh chứng từ. Thử lại.')}}));
@@ -686,7 +698,8 @@ export function useQuickEntryFeed(opts: {
           return;
         }
       }
-      if(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||!feedRef.current.cards[id])return;
+      // Personal saves stop once the user has left; company saves keep their earlier behaviour and finish.
+      if(personal&&(!mounted.current||scopeRef.current!==scope||aiScope.current.epoch!==aiEpoch||!feedRef.current.cards[id]))return;
       // Atomic personal batch: progress is published only after the complete receipt is confirmed.
       const progress = (done: number) => patchCard(id, (c) => ({ ...c, personalDone: done }));
       const out =
@@ -706,7 +719,9 @@ export function useQuickEntryFeed(opts: {
   );
 
   const discardCard = useCallback((id: string) => {
-    uploads.current.get(id)?.abort();
+    // Split cards share one upload of their photo; a sibling still waiting for it keeps it alive.
+    const photo = feedRef.current.cards[id]?.photo;
+    if (!photo || !Object.entries(feedRef.current.cards).some(([key, c]) => key !== id && c.photo === photo)) uploads.current.get(id)?.abort();
     setFeed((f) => {
       if (!f.cards[id]) return f;
       const cards = { ...f.cards };

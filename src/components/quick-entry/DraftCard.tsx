@@ -134,9 +134,11 @@ export function DraftCard(props: DraftCardProps) {
   // Cọc không có phòng thì không HĐ nào nhận (depositRoomRule.ts) ⇒ chặn lưu ngay trên thẻ.
   const hasDepositLine = company && needsDepositRoom(d.lines.map((l) => l.categoryId), null, depositTypeIdSet(props.categories));
   const depositNeedsRoom = hasDepositLine && !d.roomId;
-  const canSave = !attachmentBlocked&&validateDraft({...d,...(props.hasLocalPhoto?{personalAttachmentPending:false}:{})}).ok && !depositNeedsRoom;
+  // A local photo uploads on Save and a running upload shows its own status: neither is a "re-attach" issue.
+  const checked = props.hasLocalPhoto || attachmentBlocked ? { ...d, personalAttachmentPending: false } : d;
+  const canSave = !attachmentBlocked && validateDraft(checked).ok && !depositNeedsRoom;
   const noCashbook = company && props.cashbooks.length === 0;
-  const issues = issueTexts({...d,...(props.hasLocalPhoto?{personalAttachmentPending:false}:{})}, noCashbook);
+  const issues = issueTexts(checked, noCashbook);
   const total = d.lines.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
 
   const emit = (draft: QuickDraft, path: string) => {

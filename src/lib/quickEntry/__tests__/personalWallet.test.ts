@@ -91,6 +91,20 @@ describe('personal wallet precedence',()=>{
  it.each(['Grab 50k không có bill','Shopee 100k chưa nhận hàng'])('retains positive platform despite unrelated negation: %s',text=>{
   expect(draftsFromText(text,ctx())[0].draft.personalWalletId).toBe('sp');
  });
+ it.each(['chuyển khoản: phở 50k, cơm 30k','phở 50k, cơm 30k, tất cả chuyển khoản'])('a method said once applies to every line that names none: %s',text=>{
+  expect(draftsFromText(text,ctx()).flatMap(s=>s.draft.lines.map(()=>s.draft.personalWalletId))).toEqual(['bank','bank']);
+ });
+ it('conflicting per-line methods are not spread to each other',()=>{
+  expect(draftsFromText('phở 50k tiền mặt, cơm 30k chuyển khoản',ctx()).map(s=>s.draft.personalWalletId)).toEqual(['cash','bank']);
+ });
+ it.each(['grab 40k không trả bằng tiền mặt','không phải thanh toán tiền mặt, grab 40k','shopee 100k không phải grab'])('negation with several fillers removes only the negated phrase: %s',text=>{
+  expect(draftsFromText(text,ctx())[0].draft.personalWalletId).toBe('sp');
+ });
+ it('one-word wallet names that are ordinary words need a lead such as "ví"',()=>{
+  const list=[...wallets,wallet('home','Nhà','other'),wallet('car','Xe','other')];
+  for (const text of ['ăn sáng 30k nha','tiền nhà 3tr','đổ xăng xe 50k']) expect(draftsFromText(text,ctx(list))[0].draft.personalWalletId).toBe('cash');
+  expect(draftsFromText('gửi 3tr vào ví Nhà',ctx(list))[0].draft.personalWalletId).toBe('home');
+ });
  it('does not treat a negated payment method as explicit cash',()=>{
   expect(draftsFromText('Grab 50k không tiền mặt',ctx())[0].draft.personalWalletId).toBe('sp');
   expect(draftsFromBill(ai({payment_method:'bank_transfer',total_vnd:50000}),{...ctx(),sourceText:'không tiền mặt'})[0].draft.personalWalletId).toBe('bank');

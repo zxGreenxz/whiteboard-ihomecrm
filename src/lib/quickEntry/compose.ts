@@ -77,6 +77,9 @@ const unique = <T,>(xs: T[]): T[] => [...new Set(xs)];
 function walletFor(ctx: ComposeContext, text: string, evidence?: WalletEvidence): WalletResolution | undefined {
   return ctx.personalWallets ? resolvePersonalWallet({wallets:ctx.personalWallets,text,evidence}) : undefined;
 }
+/** Ví/cách trả nói một lần cho cả tin ("chuyển khoản: phở 50k, cơm 30k") áp cho khoản chỉ rơi về mặc định tiền mặt. */
+const withShared = (own: WalletResolution | undefined, shared: WalletResolution | undefined) =>
+  own?.reason === 'cash_default' && shared?.reason === 'explicit' && shared.walletId ? shared : own;
 const walletKey = (line: DraftLine, fallback?: string | null) => line.personalWalletResolution?.walletId ?? (line.personalWalletResolution ? null : fallback ?? null);
 
 function nameOf(lines: DraftLine[]): string {
@@ -165,7 +168,12 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     lockCategory: boolean;
   }
 
-  const items: Item[] = segments.map((seg) => {
+  // Như phòng: cách trả nói một lần cho cả tin chỉ áp cho khoản KHÔNG tự nói, và chỉ khi không khoản nào nói khác.
+  const ownWallets = company ? [] : segments.map((seg) => walletFor(ctx, casedText(seg)));
+  const messageWallet = company ? undefined : walletFor(ctx, text);
+  const sharedWallet = ownWallets.every((own) => own?.reason !== 'explicit' || own.walletId === messageWallet?.walletId) ? messageWallet : undefined;
+
+  const items: Item[] = segments.map((seg, index) => {
     const place = company ? resolveBuildingRoom(seg.text, ctx.refs) : emptyResolve;
     const buildingId = place.building?.id ?? msg.building?.id ?? null;
     // Phòng nói một lần cho cả tin chỉ áp cho khoản KHÔNG tự nhắc phòng nào. (Tin đã ra được
@@ -205,7 +213,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       buildingId: company ? buildingId : null,
       roomId: company ? roomId : null,
       line: {
-        ...(!company ? {personalWalletResolution:walletFor(ctx,segText)} : {}),
+        ...(!company ? {personalWalletResolution:withShared(ownWallets[index],sharedWallet)} : {}),
         transactionType: inferTransactionType(segText),
         personalCategoryId: null,
         description,
@@ -516,7 +524,8 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     const item = pairOf(i);
     const next = { ...l };
     if (!company && free('personalWalletId') && ctx.personalWallets && !mixedExpansion && !walletExpansion) {
-      next.personalWalletResolution = walletFor(ctx,lines.length===1?state.sourceText:l.description,{payment_method:item?.payment_method??ai.payment_method,platform:item?.platform??ai.platform});
+      const own = walletFor(ctx,lines.length===1?state.sourceText:l.description,{payment_method:item?.payment_method??ai.payment_method,platform:item?.platform??ai.platform});
+      next.personalWalletResolution = lines.length===1 ? own : withShared(own, walletFor(ctx,state.sourceText));
     }
     if (item) {
       if(item.transactionType&&free('transactionType')&&free(`lines.${i}.transactionType`))next.transactionType=item.transactionType;

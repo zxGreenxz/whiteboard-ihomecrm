@@ -2,10 +2,14 @@ import { getSessionUser } from '@/lib/authSession';
 import { uploadFileDetailed } from '@/lib/storage';
 import { supabase } from '@/integrations/supabase/client';
 import { personalAttachmentPathSchema } from './contract';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { UploadRejectedError } from '@/lib/uploadDeadline';
 
 export const PERSONAL_ATTACHMENT_BUCKET='personal-finance-attachments';
 export const PERSONAL_ATTACHMENT_LIMIT=20;
 const extensions:Record<string,string>={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+/** Types the private bucket stores; others (HEIC, GIF) stay AI-only rather than blocking a save. */
+export const isPersonalAttachmentType=(type:string)=>Object.prototype.hasOwnProperty.call(extensions,type);
 const attempts=new WeakMap<File,Map<string,string>>();
 function checkPath(ownerId:string,path:string){
  if(!personalAttachmentPathSchema.safeParse(path).success||!path.startsWith(`${ownerId}/`))throw new Error('Ảnh chứng từ không thuộc chủ ví hiện tại.');
@@ -20,7 +24,14 @@ export async function uploadPersonalAttachment(ownerId:string,file:File,signal?:
  await checkOwner(ownerId,signal);
  const prior=attempts.get(file),existing=prior?.get(ownerId),key=existing??`${ownerId}/${crypto.randomUUID()}.${ext}`;
  const owners=prior??new Map<string,string>();owners.set(ownerId,key);attempts.set(file,owners);
- const result=await uploadFileDetailed(PERSONAL_ATTACHMENT_BUCKET,key,file,{imagePolicy:'evidence',maxBytes:5*1024*1024,resilient:{signal,deleteOnFailure:false,resumeExisting:!!existing}});
+ let result;
+ try{result=await uploadFileDetailed(PERSONAL_ATTACHMENT_BUCKET,key,file,{imagePolicy:'evidence',maxBytes:5*1024*1024,resilient:{signal,deleteOnFailure:false,resumeExisting:!!existing}});}
+ catch(error){
+  // The remembered key holds a different object (e.g. a re-compressed size): the next retry starts a new key.
+  const cause=error instanceof FinancialWorkflowError?error.cause:undefined;
+  if([error,cause].some(e=>e instanceof UploadRejectedError&&e.statusCode===409))owners.delete(ownerId);
+  throw error;
+ }
  await checkOwner(ownerId,signal);checkPath(ownerId,result.path);
  return result.path;
 }

@@ -315,7 +315,7 @@ describe("DraftCard — cá nhân", () => {
     const spy=vi.fn();render(<Harness spy={spy} personalWallets={[wallet]} initial={state({mode:'personal',personalWalletId:owner,lines:[{description:'ăn',amount:50000,personalCategoryId:'cat-0',categoryId:null,personalCategory:null,periodStart:null,periodEnd:null}]})}/>);
     fireEvent.change(screen.getByLabelText('Thêm ảnh chứng từ'),{target:{files:[new File(['img'],'bill.png',{type:'image/png'})]}});
     expect(lastOf(spy).draft.personalAttachmentPending).toBe(true);expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',true);
-    expect(screen.queryByText(/đã mất khi tải lại/)).toBeNull();
+    expect(screen.queryByText(/đã mất khi tải lại/)).toBeNull();expect(screen.queryByText(/cần đính lại hoặc gỡ/)).toBeNull();
     finish(path);await waitFor(()=>expect(lastOf(spy).draft.personalAttachmentPending).toBe(false));
     expect(lastOf(spy).draft.personalAttachmentPaths).toEqual([path]);expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',false);
   });

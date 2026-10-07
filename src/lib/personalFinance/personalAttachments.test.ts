@@ -4,7 +4,9 @@ const h=vi.hoisted(()=>({upload:vi.fn(),sign:vi.fn(),actor:vi.fn()}));
 vi.mock('@/lib/storage',()=>({uploadFileDetailed:h.upload}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:h.actor}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{storage:{from:()=>({createSignedUrl:h.sign})}}}));
-import { uploadPersonalAttachment, signPersonalAttachment } from './personalAttachments';
+import { isPersonalAttachmentType, uploadPersonalAttachment, signPersonalAttachment } from './personalAttachments';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
+import { UploadRejectedError } from '@/lib/uploadDeadline';
 const owner='11111111-1111-4111-8111-111111111111';
 const path=`${owner}/22222222-2222-4222-8222-222222222222.webp`;
 beforeEach(()=>{vi.resetAllMocks();h.actor.mockResolvedValue({id:owner});});
@@ -15,6 +17,16 @@ it('retry retains the upload UUID and resumes matching storage without overwriti
  expect(await uploadPersonalAttachment(owner,file)).toBe(path);
  expect(h.upload.mock.calls[1][1]).toBe(h.upload.mock.calls[0][1]);
  expect(h.upload.mock.calls[0][3].resilient.resumeExisting).toBe(false);expect(h.upload.mock.calls[1][3].resilient.resumeExisting).toBe(true);
+});
+it('a key already holding a different object (409 after resume) is dropped so the next retry uses a new key',async()=>{
+ const file=new File(['bill'],'bill.png',{type:'image/png'});
+ h.upload.mockRejectedValueOnce(new Error('connection')).mockRejectedValueOnce(new FinancialWorkflowError('rejected','failure',[],new UploadRejectedError(409,'conflict'))).mockResolvedValueOnce({path});
+ await expect(uploadPersonalAttachment(owner,file)).rejects.toThrow('connection');
+ await expect(uploadPersonalAttachment(owner,file)).rejects.toThrow('rejected');
+ expect(await uploadPersonalAttachment(owner,file)).toBe(path);
+ expect(h.upload.mock.calls[1][1]).toBe(h.upload.mock.calls[0][1]);expect(h.upload.mock.calls[2][1]).not.toBe(h.upload.mock.calls[0][1]);
+ expect(h.upload.mock.calls[2][3].resilient.resumeExisting).toBe(false);
+ expect(isPersonalAttachmentType('image/heic')).toBe(false);expect(isPersonalAttachmentType('image/webp')).toBe(true);
 });
 it('uses private evidence upload, no cleanup, signal and actual returned path',async()=>{
  h.upload.mockResolvedValue({path,url:'https://public.invalid',type:'image/webp',size:4});

@@ -52,6 +52,15 @@ describe("parseAiResult", () => {
     }
   });
 
+  it("bằng chứng ví lạ không làm hỏng cả kết quả: giá trị ngoài danh sách ⇒ null, cách viết khác ⇒ chuẩn hoá", () => {
+    const r = parseAiResult(JSON.stringify({ ...valid, payment_method: "card", platform: "Grab Food", items: [{ ...valid.items[0], payment_method: "Bank Transfer", platform: "momo" }] }), 5);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect([r.value.payment_method, r.value.platform]).toEqual([null, "grab"]);
+      expect([r.value.items[0].payment_method, r.value.items[0].platform]).toEqual(["bank_transfer", null]);
+    }
+  });
+
   it.each([
     ["khoá lạ ở gốc", { ...valid, tool_call: "x" }],
     ["khoá lạ trong dòng", { ...valid, items: [{ ...valid.items[0], hack: 1 }] }],

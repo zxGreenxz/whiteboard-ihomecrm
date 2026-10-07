@@ -18,9 +18,12 @@ const money = z.number().int().positive().max(MAX_AMOUNT_VND);
 const lineMoney = z.number().int().min(-MAX_AMOUNT_VND).max(MAX_AMOUNT_VND);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const cut = (max: number) => z.string().transform((s) => s.slice(0, max));
+// Optional evidence must never void a reading: an unexpected model value ("Grab", "card") becomes null.
+const evidence = <T extends string>(known: Record<string, T>) =>
+  z.unknown().transform((value): T | null => typeof value === 'string' ? known[value.trim().toLowerCase().replace(/[\s_-]+/g, '')] ?? null : null).optional();
 const paymentEvidence = {
-  payment_method: z.enum(['cash','bank_transfer']).nullable().optional(),
-  platform: z.enum(['shopee','grab']).nullable().optional(),
+  payment_method: evidence({ cash: 'cash', banktransfer: 'bank_transfer', transfer: 'bank_transfer' }),
+  platform: evidence({ shopee: 'shopee', shopeefood: 'shopee', shopeepay: 'shopee', grab: 'grab', grabfood: 'grab', grabexpress: 'grab', grabbike: 'grab', grabcar: 'grab', grabmart: 'grab', grabtaxi: 'grab', grabrent: 'grab', grabdelivery: 'grab' }),
 };
 
 const itemSchema = z
