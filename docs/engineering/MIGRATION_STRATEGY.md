@@ -8,6 +8,8 @@ Chỉ đọc trước khi sửa SQL/RPC/quyền/tiền hoặc thao tác schema. 
 - Chỉ `npm run migrate:forward -- <file.sql>` (dry-run mặc định), thêm `--apply` khi đủ điều kiện. Không dùng PAT ghi thẳng Management API để bỏ lane.
 - Dry-run lấy khoá và chạy transaction ROLLBACK trên đích; thử trước trên database dùng một lần. Không suy rằng dry-run không cần kiểm đích.
 - Lane mặc định kiểm idempotency hai lượt, tạo/kiểm backup rồi mới cấp biên nhận apply; không lặp thêm backup thủ công trước lane.
+- Agent tự chạy lane, kể cả `--apply`, khi migration đã qua review chéo và dry-run xanh trên đích. Không giao việc chạy lệnh cho chủ dự án. Chỉ hỏi trước khi dùng `--khong-backup`, hoặc khi migration có phần mà restore không lùi riêng được (DROP COLUMN, đổi kiểu làm mất dữ liệu). Credential nạp từ vault vào env của tiến trình.
+- Dry-run báo `HTTP 429 ThrottlerException` là Management API đang giới hạn tốc độ, không phải migration lỗi: chờ khoảng 90 giây rồi chạy lại.
 - `--khong-backup "<lý do>"` cần `IHOMECRM_PROMOTION_TOKEN` nhập lúc chạy, không lấy từ vault. Thiếu backup/biên nhận hoặc token đúng chế độ thì dừng.
 - Schema/backfill ngoài lane: `node scripts/backup-before-schema.mjs --reason "<thao tác>"` trước khi ghi. Dump/manifest ở `%USERPROFILE%/ihomecrm-backups/`, ngoài Git.
 - Dump phải restore được với role/policy Supabase, không chỉ đủ số bảng. Rủi ro PITR lấy từ [known-gaps](../../tooling/known-gaps.yaml), không suy từ snapshot cũ.
