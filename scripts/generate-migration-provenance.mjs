@@ -29,6 +29,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { lietKeTracked } from "./lib/git-scope.mjs";
+import { layPat } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,13 +53,7 @@ const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence
 const OUT = join(repoRoot, "supabase", "migration-provenance.json");
 
 function readPat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    const m = readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8").match(/sbp_[a-f0-9]+/);
-    return m ? m[0] : null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ["SUPABASE_PAT"] });
 }
 
 function projectRef() {

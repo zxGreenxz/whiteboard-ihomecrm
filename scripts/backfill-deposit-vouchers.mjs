@@ -18,7 +18,8 @@
 //   node scripts/backfill-deposit-vouchers.mjs --rehearse  # ghi thật 1 HĐ rồi rollback
 //   node scripts/backfill-deposit-vouchers.mjs --apply     # ghi thật, tự verify
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
 const MODE = process.argv.includes('--apply')
   ? 'apply'
@@ -34,14 +35,7 @@ const ORG_ID      = 'aaaa0000-0000-4000-8000-000000000001';
 const OWNER_ID    = '90450d5f-29b6-4897-bdef-cdb5fb53f339';
 const MARKER      = '[BACKFILL CỌC ĐẦU KỲ 26/04/2026]';
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch { /* ignore */ }
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT'); process.exit(1); }
 
 const REF = 'tryymsxyyckgbrmmvozx';

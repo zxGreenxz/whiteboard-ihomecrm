@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
+import { TEN_VAULT } from './lib/vault.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTRACT = 'docs/engineering/PROJECT_CONTRACT.md';
@@ -305,7 +306,7 @@ const CONTRACT_INVARIANTS = [
     ['VOLATILE', 'hàm lấy khoá dòng phải khai VOLATILE'],
     ['reconcile-money', 'đối chiếu tiền'],
     ['cap-1000', 'bug tổng chỉ 1000 dòng đầu'],
-    ['CLAUDE.local.md', 'credential vault'],
+    [TEN_VAULT, 'credential vault'],
     ['IHOMECRM_PROMOTION_TOKEN', 'token cho đường bỏ backup; lane mặc định dùng biên nhận backup'],
     ['scripts/run-pinned-gitnexus.mjs', 'wrapper GitNexus được ghim'],
     ['tooling/agent-tools.json', 'nguồn pin GitNexus'],

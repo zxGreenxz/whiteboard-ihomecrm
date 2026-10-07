@@ -3,6 +3,7 @@
 // Dùng: node scripts/apply-sql.mjs <đường-dẫn-file.sql>
 // PAT đọc từ env SUPABASE_PAT hoặc CLAUDE.local.md (không in ra console).
 import { readFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
 const file = process.argv[2];
 if (!file) { console.error('Usage: node scripts/apply-sql.mjs <file.sql>'); process.exit(1); }
@@ -21,14 +22,7 @@ if (!process.env.IHOMECRM_PROMOTION_TOKEN) {
   process.exit(1);
 }
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)'); process.exit(1); }
 
 const ref = 'tryymsxyyckgbrmmvozx';

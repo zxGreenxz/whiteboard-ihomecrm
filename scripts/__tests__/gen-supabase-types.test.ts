@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { TEN_VAULT } from '../lib/vault.mjs';
+
 const temporaryDirectories: string[] = [];
 
 type WrapperModule = typeof import('../gen-supabase-types.mjs');
@@ -159,7 +161,7 @@ describe('gen-supabase-types wrapper', () => {
       'utf8',
     );
     await writeFile(join(repoRoot, 'package.json'), '{"name":"test"}\n', 'utf8');
-    await writeFile(join(repoRoot, 'CLAUDE.local.md'), `Supabase PAT: ${fakePat}\n`, 'utf8');
+    await writeFile(join(repoRoot, TEN_VAULT), `Supabase PAT: ${fakePat}\n`, 'utf8');
 
     let childEnvironment: NodeJS.ProcessEnv | undefined;
     await generateSupabaseTypes({
@@ -208,7 +210,7 @@ describe('gen-supabase-types wrapper', () => {
       'utf8',
     );
     await writeFile(join(repoRoot, 'package.json'), '{}\n', 'utf8');
-    await writeFile(join(repoRoot, 'CLAUDE.local.md'), fakePat, 'utf8');
+    await writeFile(join(repoRoot, TEN_VAULT), fakePat, 'utf8');
     await writeFile(join(targetDirectory, 'types.ts'), 'original\n', 'utf8');
 
     let childEnvironment: NodeJS.ProcessEnv | undefined;

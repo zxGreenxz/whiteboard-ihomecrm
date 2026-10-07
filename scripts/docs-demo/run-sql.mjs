@@ -9,17 +9,16 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { layPat } from '../lib/vault.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(__dirname, '..', '..')
 const REF = JSON.parse(readFileSync(path.join(REPO, 'supabase', '.temp', 'linked-project.json'), 'utf8')).ref
 
 function getPat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT
-  const local = readFileSync(path.join(REPO, 'CLAUDE.local.md'), 'utf8')
-  const m = local.match(/sbp_[a-f0-9]{40}/)
-  if (!m) throw new Error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)')
-  return m[0]
+  const pat = layPat({ bien: ['SUPABASE_PAT'] })
+  if (!pat) throw new Error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)')
+  return pat
 }
 
 const file = process.argv[2]

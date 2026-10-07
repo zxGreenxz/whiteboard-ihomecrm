@@ -27,6 +27,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { layPat } from './lib/vault.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -179,12 +180,7 @@ export async function docTrangThaiExecutionPlanDemo({ token, projectRef, fetchIm
 }
 
 function docPat() {
-  if (process.env.SUPABASE_PAT?.trim()) return process.env.SUPABASE_PAT.trim();
-  try {
-    return readFileSync(join(repoRoot, 'CLAUDE.local.md'), 'utf8').match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ['SUPABASE_PAT'] });
 }
 
 function docProjectRef() {

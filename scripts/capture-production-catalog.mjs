@@ -20,19 +20,15 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { layPat } from './lib/vault.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(repoRoot, 'docs', 'generated');
 const OUT_JSON = join(OUT_DIR, 'database-inventory.json');
 
 export function readPat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    const local = readFileSync(join(repoRoot, 'CLAUDE.local.md'), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) return m[0];
-  } catch { /* không có file local — sẽ báo lỗi bên dưới */ }
-  return null;
+  // Không có vault — người gọi báo lỗi.
+  return layPat({ bien: ['SUPABASE_PAT'] });
 }
 
 export function readProjectRef() {

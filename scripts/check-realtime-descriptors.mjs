@@ -19,10 +19,11 @@
 // Thoát 3 khi chưa đủ điều kiện chạy — "không kiểm được" khác "đã kiểm và đạt".
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { worktreeViteLoaderPath } from "./lib/worktree-vite-loader.mjs";
+import { layPat } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -36,12 +37,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOI_THIEU_BANG = 10;
 
 function pat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    return readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8").match(/sbp_[a-f0-9]+/)?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ["SUPABASE_PAT"] });
 }
 
 /** Bảng hub lắng nghe mà publication KHÔNG có ⇒ subscribe câm. */

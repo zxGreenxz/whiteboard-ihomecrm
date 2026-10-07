@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { layPat } from '../lib/vault.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const REPO = path.resolve(__dirname, '..', '..')
@@ -13,11 +14,9 @@ export const REF = JSON.parse(
 export const OWNER_ID = '90450d5f-29b6-4897-bdef-cdb5fb53f339' // nguyentamca165@gmail.com (super admin)
 
 export function getPat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT
-  const local = readFileSync(path.join(REPO, 'CLAUDE.local.md'), 'utf8')
-  const m = local.match(/sbp_[a-f0-9]{40}/)
-  if (!m) throw new Error('Không tìm thấy PAT')
-  return m[0]
+  const pat = layPat({ bien: ['SUPABASE_PAT'] })
+  if (!pat) throw new Error('Không tìm thấy PAT')
+  return pat
 }
 
 export async function runSql(sql) {

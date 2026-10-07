@@ -17,16 +17,9 @@
 //   7. >1000 phòng → total ĐỦ 1100 (không cap-1000)
 //
 // Chạy: node scripts/test-occupancy-v2.mjs   (exit 0 = PASS, 1 = FAIL)
-import { readFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)'); process.exit(1); }
 const ref = process.env.SUPABASE_PROJECT_REF || 'tryymsxyyckgbrmmvozx';
 

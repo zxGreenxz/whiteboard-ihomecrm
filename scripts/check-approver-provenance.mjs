@@ -18,18 +18,14 @@
 // Exit:  0 sạch · 1 có dòng vi phạm hoặc không query được
 // =============================================================================
 import { readFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
 // Mốc chốt: 23/07 là ngày finance-v2 writer nhận toàn bộ đường tạo phiếu.
 // Dòng trước mốc là nợ lịch sử đã biết, không thuộc phạm vi gate.
 const CUTOFF = '2026-07-23';
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    pat = local.match(/sbp_[a-f0-9]+/)?.[0];
-  } catch { /* CI không có file này — đã có SUPABASE_PAT */ }
-}
+// CI không có vault — đã có SUPABASE_PAT trong env.
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) {
   console.error('❌ Thiếu SUPABASE_PAT (hoặc CLAUDE.local.md khi chạy local).');
   process.exit(1);

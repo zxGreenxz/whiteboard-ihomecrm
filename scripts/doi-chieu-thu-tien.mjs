@@ -4,10 +4,11 @@
 //   - file.xlsx : mặc định "dataexcel/danh sách thu tiền v2.xlsx"
 //   - YYYY-MM-DD: ngày chốt — chỉ lấy phiếu web đến hết ngày này (Excel thường nhập trễ hơn web)
 // PAT đọc từ env SUPABASE_PAT hoặc CLAUDE.local.md (không in ra console).
-import { readFileSync, copyFileSync, mkdtempSync } from 'node:fs';
+import { copyFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import XLSX from 'xlsx';
+import { layPat } from './lib/vault.mjs';
 
 // ===== Cấu hình =====
 const REF = 'tryymsxyyckgbrmmvozx';
@@ -25,14 +26,7 @@ const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const num = (v) => (typeof v === 'number' ? v : 0);
 
 // ===== PAT =====
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)'); process.exit(1); }
 
 // ===== 1. Đọc Excel (copy ra temp trước — file hay bị Excel lock) =====

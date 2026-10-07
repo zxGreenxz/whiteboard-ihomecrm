@@ -3,6 +3,7 @@
 // tat ca trong MOT transaction roi ROLLBACK — khong de lai dau vet tren DB.
 // Pattern ke thua scripts/test-v5-streak-recompute-alias.mjs.
 import { readFileSync } from "node:fs";
+import { docPatVault } from "./lib/vault.mjs";
 
 const migrationFiles = [
   "supabase/migrations/20260826120000_v5_1_khien_3_lop_phep_nam_moc_2tr5.sql",
@@ -12,8 +13,7 @@ const migrationFiles = [
 const projectRef = JSON.parse(
   readFileSync("supabase/.temp/linked-project.json", "utf8"),
 ).ref;
-const localConfig = readFileSync("CLAUDE.local.md", "utf8");
-const pat = (localConfig.match(/sbp_[a-z0-9]+/) || [])[0];
+const pat = docPatVault();
 
 if (!pat) {
   console.error("Missing Supabase PAT in CLAUDE.local.md");

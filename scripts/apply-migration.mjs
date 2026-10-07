@@ -15,6 +15,7 @@
 //
 // Cách dùng: IHOMECRM_PROMOTION_TOKEN=<token> node scripts/apply-migration.mjs <file.sql>
 import { readFileSync } from 'node:fs';
+import { docPatVault } from './lib/vault.mjs';
 
 const file = process.argv[2];
 if (!file) {
@@ -30,8 +31,11 @@ if (!process.env.IHOMECRM_PROMOTION_TOKEN) {
   process.exit(1);
 }
 const sql = readFileSync(file, 'utf8');
-const localMd = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-const pat = localMd.match(/sbp_[a-f0-9]+/)[0];
+const pat = docPatVault();
+if (!pat) {
+  console.error('❌ Không tìm thấy PAT trong CLAUDE.local.md.');
+  process.exit(1);
+}
 const configToml = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
 const ref = configToml.match(/project_id\s*=\s*"([^"]+)"/)[1];
 

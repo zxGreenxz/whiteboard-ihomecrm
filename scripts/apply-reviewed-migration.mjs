@@ -42,6 +42,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { layPat } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const POLICY = join(repoRoot, "supabase", "migration-policy.json");
@@ -212,13 +213,7 @@ const LOCK_TIMEOUT = "5s";
 const STATEMENT_TIMEOUT = "120s";
 
 function readPat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    const m = readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8").match(/sbp_[a-f0-9]+/);
-    return m ? m[0] : null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ["SUPABASE_PAT"] });
 }
 
 function projectRef() {

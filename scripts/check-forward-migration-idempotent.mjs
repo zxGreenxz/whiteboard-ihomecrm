@@ -36,6 +36,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildTransaction } from "./apply-reviewed-migration.mjs";
+import { layPat } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = join(repoRoot, "supabase", "migrations");
@@ -45,12 +46,7 @@ const SO = join(repoRoot, "tooling", "idempotent-verified.json");
 export const TOI_THIEU_FILE = 1;
 
 export function pat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    return readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8").match(/sbp_[a-f0-9]+/)?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ["SUPABASE_PAT"] });
 }
 
 /**

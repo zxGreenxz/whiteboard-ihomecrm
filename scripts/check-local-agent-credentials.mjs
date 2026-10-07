@@ -22,6 +22,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { docVault, duongDanVault } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const HOP_DONG = join("tooling", "local-credential-contract.json");
@@ -64,8 +65,9 @@ function main() {
     process.exit(3);
   }
 
-  const kho = join(repoRoot, hopDong.vaultPath ?? "CLAUDE.local.md");
-  if (!existsSync(kho)) {
+  // Helper chung dò cả checkout chính khi preflight chạy trong git worktree.
+  const kho = duongDanVault();
+  if (!kho) {
     console.error(`=== ⚠ KHÔNG KIỂM ĐƯỢC — KHÔNG PHẢI PASS ===`);
     console.error(`  Không thấy ${hopDong.vaultPath}. Đây là bình thường trên CI cloud (file bị gitignore`);
     console.error(`  theo đúng thiết kế) — preflight này chỉ dành cho máy dev.`);
@@ -81,7 +83,7 @@ function main() {
     process.exit(1);
   }
 
-  const noiDung = readFileSync(kho, "utf8");
+  const noiDung = docVault();
   const { thieuBatBuoc, thieuTuyChon, regexHong } = soatKho(noiDung, creds);
 
   console.log(`Preflight credential: ${creds.length} entry trong hợp đồng · kho ${hopDong.vaultPath} (đã gitignore)`);
