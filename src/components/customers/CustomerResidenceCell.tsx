@@ -33,7 +33,6 @@ export function CustomerResidenceCell({ summary, loading, error, onOpen, onRetry
       aria-label={`${label} · Xem lịch sử lưu trú`}
     >
       {label}
-      {summary.incomplete && <span className="block text-xs text-muted-foreground">Lịch sử chưa đầy đủ</span>}
     </button>
   );
 }

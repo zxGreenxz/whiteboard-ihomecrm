@@ -14,6 +14,12 @@ function chain(result:{data:unknown;error:unknown}){
  for(const method of ['insert','update','eq','is','in','select'] as const)writer[method].mockReturnValue(writer);return writer;
 }
 beforeEach(()=>{vi.clearAllMocks();io.from.mockReset();localStorage.clear();localStorage.setItem('ihomecrm.selectedOrganizationId','org-a');});
+it('new customer without a contract is a walk-in, not an asserted current renter',async()=>{
+ const core=chain({data:{id:'c1',full_name:'An',status_v2:'WALK_IN'},error:null});io.from.mockReturnValue(core);
+ await (useCreateCustomer() as unknown as Mutation).mutationFn({full_name:'An',phone:'0900000000'});
+ expect(core.insert).toHaveBeenCalledWith(expect.objectContaining({status_v2:'WALK_IN',organization_id:'org-a'}));
+ expect(io.from).toHaveBeenCalledTimes(1);
+});
 it.each([['customer',useCreateCustomer,{full_name:'An',phone:'0900000000'}],['building',useCreateBuilding,{name:'Tòa A'}]])('%s create needs an ID and blocks uncertain repeat across remount',async(_label,hook,input)=>{
  const writer=chain({data:null,error:null});io.from.mockReturnValue(writer);
  await expect((hook() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'unknown'});

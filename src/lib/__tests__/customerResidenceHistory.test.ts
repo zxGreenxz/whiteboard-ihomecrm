@@ -7,7 +7,9 @@ const base = {
   state: 'DEPARTED' as const,
   current_accommodations: [],
   departure_date: '2026-10-06',
-  incomplete: false
+  departure_kind: 'EARLY_RETURN',
+  incomplete: false,
+  last_contract_end: null
 };
 describe('residence boundary', () => {
   it('shows actual date, current rooms on return, unknown date and no residence honestly', () => {
@@ -24,9 +26,39 @@ describe('residence boundary', () => {
       }],
       departure_date: null
     })).toBe('A · Phòng 101');
-    expect(residenceSummaryLabel({ ...base, departure_date: null })).toBe('Đã rời · Chưa rõ ngày');
-    expect(residenceSummaryLabel({ ...base, state: 'NONE' })).toBe('Chưa có lưu trú');
+    expect(residenceSummaryLabel({ ...base, departure_date: null })).toBe('Không còn HĐ đang ở');
+    expect(residenceSummaryLabel({ ...base, state: 'NONE' })).toBe('Chưa liên kết hợp đồng');
     expect(residenceSummaryLabel({ ...base, state: 'UNKNOWN' })).toBe('Chưa đủ quyền xác định lưu trú');
+  });
+  it.each([
+    ['MEMBER_REMOVED', 'Gỡ khỏi HĐ · 06/10/2026'],
+    ['TENANT_TRANSFER_OUT', 'Nhượng HĐ · 06/10/2026'],
+    ['TERMINATED', 'Kết thúc HĐ · 06/10/2026'],
+    ['FORFEIT', 'Bỏ cọc HĐ · 06/10/2026'],
+    ['CONTRACT_DELETED', 'Hợp đồng đã xóa'],
+    [null, 'Không còn HĐ đang ở']
+  ])('does not describe administrative %s as physical departure', (departure_kind, expected) => {
+    expect(residenceSummaryLabel({ ...base, departure_kind })).toBe(expected);
+  });
+  it('labels a known contract end separately from a confirmed personal departure', () => {
+    const [row] = parseResidenceSummaries([{ ...base, departure_date: null, last_contract_end: { contract_id: customer, date: '2026-06-27' } }], [customer]);
+    expect(residenceSummaryLabel(row)).toBe('Kết thúc HĐ · 27/06/2026');
+    expect(parseResidenceSummaries([{ ...base, last_contract_end: undefined }], [customer])[0].last_contract_end).toBeNull();
+    expect(() => parseResidenceSummaries([{ ...base, last_contract_end: { contract_id: customer, date: '2026-06-27' } }], [customer])).toThrow();
+  });
+  it('preserves separately labelled contract dates and validates calendar dates in contract rooms', () => {
+    const context = {
+      contract_id: customer, contract_number: 'HD-2026-00387', status: 'ACTIVE',
+      building_id: customer, room_id: customer, building_name: '1392QT', room_name: '203',
+      signed_date: '2026-10-03', start_date: '2026-10-03', end_date: '2027-08-30', actual_end_date: null,
+      room_segments: [{ room_id: customer, room_name: '203', building_name: '1392QT', from_date: '2026-10-03', to_date: null, source_path: 'CONTRACT', trusted: true, diagnostic: null }],
+    };
+    const page = { events: [], next_before_id: null, contract_contexts: [context] };
+    expect(parseResidenceHistory(page, customer, customer).contract_contexts).toEqual([context]);
+    expect(parseResidenceHistory({ events: [], next_before_id: null }, customer, customer).contract_contexts).toEqual([]);
+    expect(() => parseResidenceHistory({ ...page, contract_contexts: [{ ...context, end_date: '2026-02-30' }] }, customer, customer)).toThrow();
+    expect(() => parseResidenceHistory({ ...page, contract_contexts: [{ ...context, room_segments: [{ ...context.room_segments[0], from_date: 'infinity' }] }] }, customer, customer)).toThrow();
+    expect(() => parseResidenceHistory({ ...page, contract_contexts: [context, context] }, customer, customer)).toThrow();
   });
   it.each([null, {}, [], [{ ...base, customer_id: 'wrong' }], [{ ...base, departure_date: '2026-99-88' }], [base, base]])('rejects malformed/incomplete subject responses', value => {
     expect(() => parseResidenceSummaries(value, [customer])).toThrow();

@@ -369,7 +369,7 @@ export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
       const user=await getSessionUser(); if(!user)throw new Error('Not authenticated');
       const {vehicles,...customerData}=formData;
       vehicles?.forEach(vehicle=>validatedVehicleType(vehicle.vehicle_type));
-      const payload=withOrg({...customerData,user_id:user.id,status_v2:'RENTING'} as any,selectedOrganizationId);
+      const payload=withOrg({...customerData,user_id:user.id,status_v2:'WALK_IN'} as any,selectedOrganizationId);
       let saved:Customer|undefined;
       try{return await guard.run('create','tạo khách hàng',async progress=>{
         const {data,error}=await supabase.from('customers').insert(withOrg(payload,selectedOrganizationId)).select().single();

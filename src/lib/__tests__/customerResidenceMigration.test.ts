@@ -30,8 +30,19 @@ beforeAll(async () => {
  INSERT INTO rooms VALUES('${room}','${building}','101'),('${room2}','${building}','102');
  INSERT INTO contracts(id,organization_id,room_id,status,contract_number,start_date,end_date,created_at) VALUES('${contract}','${org}','${room}','ACTIVE','HD1','2020-01-01','2026-01-01','2020-01-01');
  INSERT INTO contract_customers(contract_id,customer_id,organization_id) VALUES('${contract}','${customer}','${org}');`);
+  await db.exec(`ALTER TABLE contracts ADD COLUMN signed_date date, ADD COLUMN parent_contract_id uuid;
+    ALTER TABLE contract_extensions ADD COLUMN extension_type text, ADD COLUMN new_contract_id uuid;
+    ALTER TABLE contract_transfers ADD COLUMN approved_at timestamptz, ADD COLUMN move_out_date date, ADD COLUMN move_in_date date;
+    CREATE FUNCTION public.ie_all_buildings_scope(uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;
+    CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;`);
+  const segmentSource = readFileSync('supabase/migrations/20260921085952_restore_before_contract_settlement.sql', 'utf8');
+  const segmentStart = segmentSource.indexOf('CREATE OR REPLACE FUNCTION public.get_room_residence_segments_v1(');
+  const segmentEnd = segmentSource.indexOf('$function$\n;', segmentStart) + '$function$\n;'.length;
+  await db.exec(segmentSource.slice(segmentStart, segmentEnd));
   await db.exec(readFileSync(migration, 'utf8'));
   await db.exec(readFileSync(migration, 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261007160000_customer_residence_evidence.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261007160000_customer_residence_evidence.sql', 'utf8'));
 }, 30000);
 afterAll(() => db.close());
 beforeEach(() => db.exec('BEGIN'));
@@ -115,7 +126,7 @@ it('deleted contracts preserve evidence but deletion never invents physical exit
   expect((await history())[0]).toMatchObject({ kind: 'CONTRACT_DELETED', effective_date: null });
 });
 it('room transfer uses audit date and renewal records once without a fake exit', async () => {
-  await db.exec(`INSERT INTO contract_transfers VALUES('${id(21)}','${contract}','ROOM_CHANGE','COMPLETED','2026-10-05','${room}','${room2}','Move','${actor}',now());UPDATE contracts SET room_id='${room2}' WHERE id='${contract}';INSERT INTO contract_extensions VALUES('${id(22)}','${contract}','COMPLETED','2026-10-07','Renew','${actor}',now())`);
+  await db.exec(`INSERT INTO contract_transfers(id,contract_id,transfer_type,status,transfer_date,old_room_id,new_room_id,reason,approved_by,created_at) VALUES('${id(21)}','${contract}','ROOM_CHANGE','COMPLETED','2026-10-05','${room}','${room2}','Move','${actor}',now());UPDATE contracts SET room_id='${room2}' WHERE id='${contract}';INSERT INTO contract_extensions(id,contract_id,status,extension_date,notes,approved_by,created_at) VALUES('${id(22)}','${contract}','COMPLETED','2026-10-07','Renew','${actor}',now())`);
   await flush();
   expect((await history()).filter(x => x.kind === 'ROOM_CHANGED')).toHaveLength(1);
   expect((await history()).find(x => x.kind === 'ROOM_CHANGED')).toMatchObject({ effective_date: '2026-10-05', room_name: '102' });
@@ -206,13 +217,13 @@ it('legacy termination following its contract status update creates one actual e
   await flush();
   expect(await summary()).toMatchObject({ departure_date: '2026-10-06' });
 });
-it('draft membership is not residence until activation; activation records the known observation date', async () => {
+it('draft membership is not residence until activation; generic activation is administrative', async () => {
   await db.exec(`UPDATE contracts SET status='DRAFT' WHERE id='${contract}';INSERT INTO contract_customers(contract_id,customer_id,organization_id) VALUES('${contract}','${other}','${org}')`);
   await flush();
   expect(await history(other)).toEqual([]);
   await db.exec(`UPDATE contracts SET status='ACTIVE' WHERE id='${contract}'`);
   await flush();
-  expect((await history(other))[0]).toMatchObject({ kind: 'CHECKED_IN', effective_date: '2026-10-07' });
+  expect((await history(other))[0]).toMatchObject({ kind: 'CONTRACT_ACTIVATED', effective_date: '2026-10-07' });
 });
 it('legacy same-contract customer identity update records old departure and new arrival atomically', async () => {
   await db.exec(`UPDATE contract_customers SET customer_id='${other}' WHERE contract_id='${contract}' AND customer_id='${customer}'`);

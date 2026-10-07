@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1287,
-  "soFileDocBangFs": 288,
-  "tongLoiGoi": 621,
+  "tongSoFileTest": 1288,
+  "soFileDocBangFs": 289,
+  "tongLoiGoi": 628,
   "khongPhanLoaiDuoc": 286,
   "theoLoai": {
     "ma-nguon": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 98,
+      "soFile": 99,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -263,6 +263,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/rentSupportDraftMigration.test.ts",
       "soGoi": 5,
       "loai": {
@@ -370,6 +378,14 @@
       "loai": {
         "sql": 2,
         "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/customerResidenceEvidenceMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 4
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -893,14 +909,6 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/customerResidenceMigration.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/forfeitVoucherKqkdMigration.test.ts",
