@@ -218,7 +218,7 @@ describe('actual sign/check-in SQL, existing core and authority stubbed',()=>{
     await db.exec("RESET ROLE;SELECT set_config('test.deny','contracts.print',false);SET ROLE authenticated");expect((await db.query('SELECT * FROM storage.objects')).rows).toHaveLength(0);await db.exec('RESET ROLE');
   });
   it('registration refuses outsiders before taking the org lock (20261007003604); the 28/09 body locked first',async()=>{
-    const signingId=(await sign()).rows[0].result.id;
+    const signingId=String((await sign()).rows[0].result.id);
     const register=(organization:string,signing:string)=>db.query('SELECT public.register_contract_signed_document_v1($1,$2,$3)',[organization,signing,'c'.repeat(64)]);
     // Khoá giả ném LK001: lỗi đó còn nguyên dù transaction ROLLBACK, nên đo được hàm có TỚI bước khoá hay không.
     await db.exec(`CREATE OR REPLACE FUNCTION app_private.lock_org_for_decision_v1(uuid) RETURNS void LANGUAGE plpgsql VOLATILE AS $$ BEGIN RAISE EXCEPTION 'lock reached' USING ERRCODE='LK001';END $$`);
