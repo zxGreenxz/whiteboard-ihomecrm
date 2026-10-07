@@ -13,7 +13,10 @@ import {
   GATE_TAM_HOAN,
   TU_CHUA,
   chayGioiHan,
+  credentialLive,
   danhGiaLock,
+  goiYLive,
+  selectLocalGates,
   danhSachChay,
   dungMigration,
   quyetDinhDoRoOrg,
@@ -226,6 +229,45 @@ describe("danhSachChay", () => {
   it("kiểm kiểu (typecheck:baseline) nằm trong nhóm nặng — CI có chạy nó, gate máy phải có", () => {
     expect(GATE_NANG).toContain("check-ts-baseline");
     expect(GATE_NHANH).not.toContain("check-ts-baseline");
+  });
+});
+
+describe("--live: gate cần credential chạy được ở máy", () => {
+  const plan = { gateIds: ["check-docs", "app-build", "check-definer-acl", "reconcile-money"], snapshot: { base: "b", head: "h", tree: "t", source: "index" }, suiteSelections: [] };
+  const ids = (options) => selectLocalGates(plan, options).map((gate) => gate.id).sort();
+
+  it("mặc định chỉ chạy gate local; --live thêm gate live mà plan chọn", () => {
+    expect(ids({})).toEqual(["check-docs"]);
+    expect(ids({ live: true })).toEqual(["check-definer-acl", "check-docs", "reconcile-money"]);
+  });
+
+  it("--live --full thêm mọi gate live đang hoạt động, không đụng gate DEFERRED", () => {
+    const all = ids({ live: true, full: true });
+    for (const id of ["test-cross-tenant", "generated-types-drift", "measure-org-leak", "check-realtime-descriptors"]) expect(all).toContain(id);
+    expect(all.filter((id) => GATE_TAM_HOAN.includes(id))).toEqual([]);
+    expect(all).not.toContain("app-build");
+  });
+
+  it("credential: env thắng vault; PAT dùng cho SUPABASE_ACCESS_TOKEN; thiếu thì bỏ trống", () => {
+    const vault = ["x sbp_" + "1".repeat(40) + " y", "- Email: `fixture@example.test`", "- Password: `fixture-pass`"].join("\n");
+    expect(credentialLive({}, vault)).toEqual({
+      SUPABASE_PAT: "sbp_" + "1".repeat(40), SUPABASE_ACCESS_TOKEN: "sbp_" + "1".repeat(40),
+      SUPABASE_TEST_EMAIL: "fixture@example.test", SUPABASE_TEST_PASSWORD: "fixture-pass",
+    });
+    expect(credentialLive({ SUPABASE_PAT: "env-pat", SUPABASE_ACCESS_TOKEN: "env-token" }, vault)).toMatchObject({ SUPABASE_PAT: "env-pat", SUPABASE_ACCESS_TOKEN: "env-token" });
+    // PAT TEST (sbp_v0_…) không bị nhận nhầm làm PAT production.
+    expect(credentialLive({}, "TEST_SUPABASE_PAT=sbp_v0_" + "a".repeat(40))).toEqual({});
+    expect(credentialLive({}, "")).toEqual({});
+  });
+
+  it("gợi ý --live khi diff đụng migration, bề mặt RPC, file phân quyền hoặc plan có gate live", () => {
+    const riskMap = { tiers: { authorization: { paths: ["src/lib/permissions.ts"] } } };
+    const goiY = (changedPaths, gateIds = ["check-docs"]) => goiYLive({ changedPaths, gateIds }, riskMap);
+    expect(goiY(["supabase/migrations/20261007000000_x.sql"]).paths).toHaveLength(1);
+    expect(goiY(["contracts/surfaces/rpc-surface.json"]).paths).toHaveLength(1);
+    expect(goiY(["src/lib/permissions.ts"]).paths).toHaveLength(1);
+    expect(goiY(["docs/x.md"], ["check-docs", "check-definer-acl"]).gates).toEqual(["check-definer-acl"]);
+    expect(goiY(["docs/x.md", "supabase/migrations-archive/old.sql"])).toBeNull();
   });
 });
 
