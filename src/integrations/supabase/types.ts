@@ -22947,6 +22947,16 @@ export type Database = {
         Args: { _customer_id: string; _owner: string }
         Returns: boolean
       }
+      customer_residence_matches_location_v1: {
+        Args: {
+          p_building: string
+          p_customer: string
+          p_history: boolean
+          p_org: string
+          p_room: string
+        }
+        Returns: boolean
+      }
       decide_financial_request_v2: {
         Args: { p_decision: string; p_reason?: string; p_request_id: string }
         Returns: Json
@@ -23399,6 +23409,30 @@ export type Database = {
       get_customer_credit_balance_v1: {
         Args: { p_contract_id: string }
         Returns: number
+      }
+      get_customer_residence_history_v1: {
+        Args: {
+          p_before_id?: number
+          p_customer_id: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      get_customer_residence_location_ids_v1: {
+        Args: {
+          p_after_id?: string
+          p_building_id?: string
+          p_include_history?: boolean
+          p_limit?: number
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: Json
+      }
+      get_customer_residence_summaries_v1: {
+        Args: { p_customer_ids: string[]; p_organization_id: string }
+        Returns: Json
       }
       get_customer_stats: {
         Args: {
@@ -25352,6 +25386,15 @@ export type Database = {
       recompute_room_reservation: {
         Args: { p_room_id: string }
         Returns: undefined
+      }
+      reconcile_contract_customers_v1: {
+        Args: {
+          p_contract_id: string
+          p_customers: Json
+          p_expected: Json
+          p_organization_id: string
+        }
+        Returns: Json
       }
       record_contract_commission_event_v1: {
         Args: {

@@ -7,6 +7,9 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
     table: "contracts",
     keys: [
       ["contracts"],
+      ["customer-residence"],
+      ["customers"],
+      ["customer-stats"],
       ["contracts-legacy"],
       // deposit-dashboard đọc contracts + contract_terminations (KHÔNG phải
       // income_expenses) → phải gắn vào ĐÂY mới live theo thay đổi HĐ.
@@ -43,6 +46,9 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["pending-terminations"], // useContracts — hàng chờ duyệt
       ["contract-history"], // lịch sử HĐ gộp extensions + transfers + terminations
       ["contracts"],
+      ["customer-residence"],
+      ["customers"],
+      ["customer-stats"],
     ],
     domain: "contracts",
   },
@@ -64,6 +70,9 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["contract-history"], // useContractHistory đọc thẳng contract_transfers
       ["reports"], // báo cáo gia hạn/chuyển nhượng: ["reports","renewals-transfers",…]
       ["contracts"],
+      ["customer-residence"],
+      ["customers"],
+      ["customer-stats"],
       ["rooms"],
     ],
     domain: "contracts",

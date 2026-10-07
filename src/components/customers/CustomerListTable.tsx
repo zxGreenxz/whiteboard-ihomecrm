@@ -1,3 +1,7 @@
+import {useState} from 'react';
+import {useCustomerResidenceSummaries} from '@/hooks/useCustomerResidenceHistory';
+import {CustomerResidenceCell} from './CustomerResidenceCell';
+import {CustomerResidenceHistoryDialog} from './CustomerResidenceHistoryDialog';
 import { Eye, Pencil, Trash2, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -67,6 +71,9 @@ export default function CustomerListTable({
   isLoading,
 }: CustomerListTableProps) {
   const { canManageBuilding, canManageAll } = useMyBuildingScope();
+  const residence=useCustomerResidenceSummaries(customers.map(customer=>customer.id));
+  const residenceMap=new Map(residence.data?.map(row=>[row.customer_id,row]));
+  const [historyCustomer,setHistoryCustomer]=useState<Customer|null>(null);
   // Customer "thuộc scope" khi: caller quản tất cả, customer chưa có hợp đồng
   // (current_building_id null = chưa thuê), hoặc tòa hiện tại thuộc scope.
   const canManageCustomer = (customer: Customer) => {
@@ -148,18 +155,7 @@ export default function CustomerListTable({
                 </div>
               </TableCell>
               <TableCell className="text-sm">
-                {(customer as any).current_building_name ? (
-                  <div className="flex flex-col leading-tight">
-                    <span>{(customer as any).current_building_name}</span>
-                    {(customer as any).current_room_name && (
-                      <span className="text-xs text-muted-foreground">
-                        Phòng {(customer as any).current_room_name}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  '—'
-                )}
+                <CustomerResidenceCell summary={residenceMap.get(customer.id)} loading={residence.isPending} error={residence.isError} onRetry={()=>void residence.refetch()} onOpen={()=>setHistoryCustomer(customer)}/>
               </TableCell>
               <TableCell className="text-sm">{customer.id_number || '—'}</TableCell>
               <TableCell className="text-sm">{formatDate(customer.date_of_birth) || '—'}</TableCell>
@@ -202,6 +198,7 @@ export default function CustomerListTable({
           ))}
         </TableBody>
       </Table>
+      <CustomerResidenceHistoryDialog customerId={historyCustomer?.id??null} customerName={historyCustomer?.full_name??''} open={!!historyCustomer} onOpenChange={open=>{if(!open)setHistoryCustomer(null);}}/>
     </div>
   );
 }

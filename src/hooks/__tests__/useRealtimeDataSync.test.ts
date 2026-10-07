@@ -646,6 +646,9 @@ describe("useRealtimeDataSync report invalidation", () => {
 
     expect(invalidatedRoots()).toEqual([
       "contracts",
+      "customer-residence",
+      "customers",
+      "customer-stats",
       "contracts-legacy",
       "deposit-dashboard",
       "unpaid-invoices",
@@ -663,7 +666,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(800);
 
     expect(invalidatedRoots()).not.toContain("business-performance");
-    expect(originalInvalidations()).toHaveLength(8);
+    expect(originalInvalidations()).toHaveLength(11);
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
   });
 
@@ -713,10 +716,11 @@ describe("useRealtimeDataSync report invalidation", () => {
     }
     vi.advanceTimersByTime(800);
 
-    // Entry "customers" có 2 key (["customers"], ["customer-stats"]) ⇒ một lần
-    // flush là đúng 2 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
+    // Entry customers có 3 key: customers, customer-stats, customer-residence.
+    // Một lần flush là đúng 3 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
     // nhiều lần, tức trần chờ đã ăn mất tác dụng gộp.
-    expect(originalInvalidations()).toHaveLength(2);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
   });
 
   it("starts a fresh ceiling for the next burst after a flush", () => {
@@ -725,16 +729,19 @@ describe("useRealtimeDataSync report invalidation", () => {
 
     handler();
     vi.advanceTimersByTime(800);
-    expect(originalInvalidations()).toHaveLength(2);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
 
     // Cụm thứ hai phải được hưởng trọn 800ms debounce của riêng nó. Nếu mốc
     // đầu cụm không được đặt lại, cụm này sẽ bị tính là đã quá hạn và flush
     // ngay lập tức — gộp bão hỏng từ cụm thứ hai trở đi.
     handler();
     vi.advanceTimersByTime(799);
-    expect(originalInvalidations()).toHaveLength(2);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
     vi.advanceTimersByTime(1);
-    expect(originalInvalidations()).toHaveLength(4);
+    expect(originalInvalidations()).toHaveLength(6);
+    expect(invalidatedRoots().filter(key => key === "customer-residence")).toHaveLength(2);
   });
 
   it("cancels pending invalidation during cleanup", () => {
@@ -776,7 +783,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     markLocalWrite(["customers"]);
     triggerTable("customers");
 
-    // Entry `customers` có 2 key ⇒ đường cũ là 2 lượt. Gộp còn 1.
+    // Entry customers có 3 key; cửa sổ vừa tự ghi gộp còn 1 lượt.
     expect(originalInvalidations()).toHaveLength(1);
     const [filters] = originalInvalidations()[0] as [
       {
@@ -789,15 +796,16 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(filters.refetchType).toBe("active");
     expect(filters.predicate({ queryKey: ["customers", "building-a"] })).toBe(true);
     expect(filters.predicate({ queryKey: ["customer-stats"] })).toBe(true);
+    expect(filters.predicate({ queryKey: ["customer-residence", "summary", "org-a"] })).toBe(true);
     expect(filters.predicate({ queryKey: ["invoices"] })).toBe(false);
   });
 
-  it("hợp đồng vừa tự ghi: 9 lượt invalidate còn 2 (entry gộp + báo cáo)", () => {
+  it("hợp đồng vừa tự ghi: 12 lượt invalidate còn 2 (entry gộp + báo cáo)", () => {
     useRealtimeDataSync();
     markLocalWrite(["contracts"]);
     triggerTable("contracts");
 
-    // Đường cũ: 8 key ngoài business-performance + 1 lượt gom báo cáo = 9.
+    // 11 key ngoài business-performance + 1 lượt gom báo cáo = 12.
     expect(originalInvalidations()).toHaveLength(2);
   });
 
@@ -806,8 +814,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     markLocalWrite(["contracts"]);
     triggerTable("customers");
 
-    expect(originalInvalidations()).toHaveLength(2);
-    expect(invalidatedRoots()).toEqual(["customers", "customer-stats"]);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
   });
 
   it("quá 3 giây thì trở lại đường đầy đủ — cửa sổ không dính vĩnh viễn", () => {
@@ -816,7 +824,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(3001);
     triggerTable("customers");
 
-    expect(originalInvalidations()).toHaveLength(2);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
   });
 
   it("một event ngoài cửa sổ trong cùng cụm kéo cả cụm về đường đầy đủ", () => {
@@ -829,7 +838,8 @@ describe("useRealtimeDataSync report invalidation", () => {
     handler(); // đã ngoài cửa sổ ⇒ có thể là thay đổi của MÁY KHÁC
     vi.advanceTimersByTime(800);
 
-    expect(originalInvalidations()).toHaveLength(2);
+    expect(originalInvalidations()).toHaveLength(3);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats", "customer-residence"]);
   });
 
   // ── CỬA CHẶN PREFETCH (plan con B, mục 2) ────────────────────────────────

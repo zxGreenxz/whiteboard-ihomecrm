@@ -1,7 +1,10 @@
+import {useCustomerResidenceSummaries} from '@/hooks/useCustomerResidenceHistory';
+import {CustomerResidenceCell} from '@/components/customers/CustomerResidenceCell';
+import {CustomerResidenceHistoryDialog} from '@/components/customers/CustomerResidenceHistoryDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Search, Home, DoorOpen, Phone, MessageCircle, Copy, Car } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Home, Phone, MessageCircle, Copy, Car } from 'lucide-react';
 import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
 import '@/styles/mobileApp.css';
 import { useCustomers } from '@/hooks/useCustomers';
@@ -84,6 +87,9 @@ export default function CustomersMobilePage() {
 
   const allRows = (paged?.data ?? []) as Customer[];
   const rows = allRows;
+  const residence=useCustomerResidenceSummaries(rows.map(customer=>customer.id));
+  const residenceMap=new Map(residence.data?.map(row=>[row.customer_id,row]));
+  const [historyCustomer,setHistoryCustomer]=useState<Customer|null>(null);
   const totalCount = paged?.count ?? 0;
 
   // Lấy phương tiện (loại + biển số) của các KH trên trang hiện tại — 1 truy vấn
@@ -123,6 +129,7 @@ export default function CustomersMobilePage() {
 
   return (
     <div className="cm-stage">
+      <CustomerResidenceHistoryDialog customerId={historyCustomer?.id??null} customerName={historyCustomer?.full_name??''} open={!!historyCustomer} onOpenChange={open=>{if(!open)setHistoryCustomer(null);}}/>
       <div className="cm-app">
         <div className="route route-anim">
           <div className="mtop">
@@ -219,8 +226,6 @@ export default function CustomersMobilePage() {
             ) : (
               <div className="rowlist">
                 {rows.map((c) => {
-                  const room = (c as any).current_room_name as string | null;
-                  const bld = (c as any).current_building_name as string | null;
                   const addr = c.detailed_address || c.current_residence || c.permanent_address;
                   const veh = vehMap?.get(c.id);
                   return (
@@ -275,14 +280,9 @@ export default function CustomersMobilePage() {
                             <span>{addr}</span>
                           </div>
                         )}
-                        {(room || bld || veh?.plate || veh?.type || vehPending) && (
+                        {(
                           <div className="cust-l3">
-                            {(room || bld) && (
-                              <span className="cust-room">
-                                <DoorOpen size={12} />
-                                {room ? `P.${room}` : ''}{room && bld ? ' · ' : ''}{bld || ''}
-                              </span>
-                            )}
+                            <CustomerResidenceCell summary={residenceMap.get(c.id)} loading={residence.isPending} error={residence.isError} onRetry={()=>void residence.refetch()} onOpen={()=>setHistoryCustomer(c)}/>
                             {vehPending && (
                               <span className="ld-appear" aria-hidden="true">
                                 <SkeletonBar className="h-3" style={{ width: '5.5rem' }} />

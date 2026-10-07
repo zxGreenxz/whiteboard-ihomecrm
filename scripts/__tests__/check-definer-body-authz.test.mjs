@@ -268,3 +268,34 @@ describe('hằng số không được rỗng', () => {
     expect(SAN_SO_HAM_DEFINER).toBeGreaterThan(100);
   });
 });
+
+
+describe('residence scope audited primitives', () => {
+  const reader = body => chay(dinhNghia('public.residence_reader', body) + cap('public.residence_reader'));
+
+  it('treats the private residence ledger as sensitive without another business table', () => {
+    expect(reader('begin select * from app_private.customer_residence_events; end').dat).toBe(false);
+  });
+
+  it('accepts the boolean scope only when used in a row predicate', () => {
+    expect(reader('begin select * from app_private.customer_residence_events where app_private.residence_scope_v1(org, building); end').dat).toBe(true);
+    expect(reader('begin perform app_private.residence_scope_v1(org, building); select * from app_private.customer_residence_events; end').dat).toBe(false);
+    expect(reader('begin perform not app_private.residence_scope_v1(org, building); select * from app_private.customer_residence_events; end').dat).toBe(false);
+    expect(reader('begin select not app_private.residence_scope_v1(org, building), e.* from app_private.customer_residence_events e; end').dat).toBe(false);
+  });
+
+  it('accepts the raising reader assertion and ignores literal or comment mentions', () => {
+    expect(reader('begin perform app_private.assert_residence_reader_v1(org, ids); select * from app_private.customer_residence_events; end').dat).toBe(true);
+    expect(reader("begin perform 'app_private.assert_residence_reader_v1(org, ids)'; select * from app_private.customer_residence_events; end").dat).toBe(false);
+    expect(reader('-- app_private.residence_scope_v1(org, building)\nbegin select * from app_private.customer_residence_events; end').dat).toBe(false);
+  });
+
+  it('recognizes both public location readers from the applied migration', () => {
+    const sql = readFileSync('supabase/migrations/20261007064802_customer_residence_history.sql', 'utf8');
+    const events = docSuKien(sql);
+    for (const name of ['public.get_customer_residence_location_ids_v1', 'public.customer_residence_matches_location_v1']) {
+      expect(events.some(event => event.ham === name && event.loai === 'cap' && event.chamAuthenticated)).toBe(true);
+      expect(phanTichThanHam({ suKien: events }).viPham.map(item => item.ham)).not.toContain(name);
+    }
+  });
+});

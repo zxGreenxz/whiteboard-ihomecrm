@@ -14,5 +14,5 @@ export const OPERATIONS_SYNC_ENTRIES: readonly SyncEntry[] = [
     keys: [["business-performance"]],
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
-  { table: "customers", keys: [["customers"], ["customer-stats"]] },
+  { table: "customers", keys: [["customers"], ["customer-stats"], ["customer-residence"]] },
 ];

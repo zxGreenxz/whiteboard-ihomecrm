@@ -25,6 +25,7 @@ const io = vi.hoisted(() => ({
   /** Dữ liệu trả về cho `.single()` theo bảng. */
   single: {} as Record<string, unknown>,
   goiRpc: vi.fn(),
+  goiBang: vi.fn(),
 }));
 
 function builder(table: string) {
@@ -52,7 +53,7 @@ function builder(table: string) {
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: (table: string) => builder(table),
+    from: (table: string) => { io.goiBang(table); return builder(table); },
     // Tham số VIẾT RÕ thay vì `...args`: check-rpc-name-literal quét src/ tìm
     // lời gọi `rpc(` có tên đi qua biến, và `io.goiRpc(...args)` đọc ra đúng hình
     // dạng nó canh. Đây chỉ là mock chuyển tiếp nên viết rõ không mất gì.
@@ -148,13 +149,20 @@ beforeEach(() => {
 });
 
 describe("useContracts", () => {
-  it("useSyncContractCustomers gửi organization_id cho từng dòng contract_customers", async () => {
-    await run(useSyncContractCustomers, {
-      contractId: "c1",
-      customers: [{ customer_id: "k1", is_representative: true }, { customer_id: "k2", is_representative: false }],
+  it("useSyncContractCustomers gửi tổ chức, bản đối chiếu và danh sách mới qua RPC nguyên tử", async () => {
+    const expectedCustomers = [{ customer_id: "k1", is_representative: true, notes: null }];
+    const customers = [...expectedCustomers, { customer_id: "k2", is_representative: false, notes: null }];
+    io.goiRpc.mockResolvedValueOnce({ data: customers, error: null });
+    await run(useSyncContractCustomers, { contractId: "c1", expectedCustomers, customers });
+    expect(io.goiRpc).toHaveBeenCalledTimes(1);
+    expect(io.goiRpc).toHaveBeenCalledWith("reconcile_contract_customers_v1", {
+      p_organization_id: ORG,
+      p_contract_id: "c1",
+      p_expected: expectedCustomers,
+      p_customers: customers,
     });
-    expectOrg("contract_customers");
-    expect((insertsOf("contract_customers")[0]?.payload as unknown[]).length).toBe(2);
+    expect(io.goiBang).not.toHaveBeenCalled();
+    expect(io.inserts).toEqual([]);
   });
 
   it("useSyncContractServices gửi organization_id cho từng dòng contract_services", async () => {
@@ -208,12 +216,14 @@ describe("useCustomers", () => {
     expect(io.inserts).toEqual([]);
   });
 
-  it("chưa chọn công ty ⇒ đường mảng cũng ném trước khi insert", async () => {
+  it("chưa chọn công ty ⇒ không gọi RPC hay ghi bảng thành viên", async () => {
     io.org = null;
     await expect(
-      run(useSyncContractCustomers, { contractId: "c1", customers: [{ customer_id: "k1", is_representative: true }] }),
-    ).rejects.toThrow("Chưa chọn công ty");
-    expect(insertsOf("contract_customers")).toEqual([]);
+      run(useSyncContractCustomers, { contractId: "c1", expectedCustomers: [], customers: [{ customer_id: "k1", is_representative: true }] }),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(io.goiRpc).not.toHaveBeenCalled();
+    expect(io.goiBang).not.toHaveBeenCalled();
+    expect(io.inserts).toEqual([]);
   });
 });
 

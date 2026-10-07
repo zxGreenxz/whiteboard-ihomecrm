@@ -16,6 +16,10 @@
   },
   "include": [],
   "files": [
+    "src/components/customers/CustomerResidenceCell.tsx",
+    "src/components/customers/CustomerResidenceHistoryDialog.tsx",
+    "src/hooks/useCustomerResidenceHistory.ts",
+    "src/lib/customerResidenceHistory.ts",
     "src/lib/personalFinance/contract.ts",
     "src/lib/personalFinance/service.ts",
     "src/lib/personalFinance/pendingRequests.ts",

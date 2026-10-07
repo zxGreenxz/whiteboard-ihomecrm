@@ -1,7 +1,8 @@
+import {reconcileResidenceMembers} from '@/lib/customerResidenceHistory';
 import {matchesContractMoneyReceipt} from '@/lib/contractMoneyReceipt';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {sameContractFields,type ContractRelationWriteProgress} from '@/lib/contractEditWorkflow';
-import {sameContractCustomers,sameContractServices} from '@/lib/contractRelationReconcile';
+import {sameContractServices} from '@/lib/contractRelationReconcile';
 import {financialReadRows,financialReadNumber} from '@/lib/financialReadValidation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -734,56 +735,26 @@ export const useUpdateContract = () => {
 };
 
 // =============================================
-// useSyncContractCustomers — replace contract_customers for a contract.
-// Dùng cho luồng Cập nhật hợp đồng: xoá hết các bản ghi cũ rồi insert lại
-// theo danh sách trong form (đại diện, ghi chú, …).
+// useSyncContractCustomers — atomic differential reconciliation with original baseline.
 // =============================================
-
 export const useSyncContractCustomers = () => {
   const queryClient = useQueryClient();
   const { selectedOrganizationId } = useOrganization();
-
   return useMutation({
-    mutationFn: async ({
-      contractId,
-      customers,
-      organizationId,skipDelete,onPhase,
-    }: {
-      contractId: string;
-      customers: Array<{
-        customer_id: string;
-        is_representative: boolean;
-        notes?: string | null;
-      }>;
+    mutationFn: async ({contractId,customers,expectedCustomers,organizationId,onPhase}: {
+      contractId:string;customers:Array<{customer_id:string;is_representative:boolean;notes?:string|null}>;
     } & ContractRelationWriteProgress) => {
-      if(!skipDelete){
-      onPhase?.("deleting");
-      const { data: deleted,error: delErr } = await supabase
-        .from("contract_customers")
-        .delete()
-        .eq("contract_id", contractId).select("customer_id,is_representative,notes");
-      if (delErr) throw delErr;
-      financialReadRows(deleted);onPhase?.("deleted");
-      }
-      if (customers.length === 0) {onPhase?.("done");return;}
-
-      const rows = customers.map((c) => ({
-        contract_id: contractId,
-        customer_id: c.customer_id,
-        is_representative: c.is_representative,
-        notes: c.notes ?? null,
-      }));
-
-      onPhase?.("inserting");
-      const {data:inserted,error: insErr } = await supabase
-        .from("contract_customers")
-        .insert(withOrgAll(rows, organizationId??selectedOrganizationId)).select("customer_id,is_representative,notes");
-      if (insErr) throw insErr;
-      if(!sameContractCustomers(financialReadRows(inserted),customers))throw new TypeError("Chưa xác nhận được đầy đủ khách hàng của hợp đồng.");onPhase?.("done");
+      const org=organizationId??selectedOrganizationId;
+      if(!org||!expectedCustomers)throw new TypeError('Chưa có bản đối chiếu khách hàng của hợp đồng.');
+      onPhase?.('reconciling');
+      await reconcileResidenceMembers(org,contractId,expectedCustomers,customers);
+      onPhase?.('done');
     },
     onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      queryClient.invalidateQueries({ queryKey: ["contracts", vars.contractId] });
+      queryClient.invalidateQueries({queryKey:['contracts']});
+      queryClient.invalidateQueries({queryKey:['contracts',vars.contractId]});
+      queryClient.invalidateQueries({queryKey:['customers']});
+      queryClient.invalidateQueries({queryKey:['customer-residence']});
     },
   });
 };
