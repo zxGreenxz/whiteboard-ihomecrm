@@ -29,8 +29,8 @@ import { fileURLToPath } from "node:url";
 import { docMatKhauPooler, layMatKhauDb } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
-const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở transaction mode (6543)
+export const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
+export const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở transaction mode (6543)
 
 /**
  * Bảng chỉ chứa dữ liệu PHÙ DU — bỏ phần DỮ LIỆU, vẫn giữ nguyên CẤU TRÚC.

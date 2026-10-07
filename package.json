@@ -121,6 +121,7 @@
     "gate:realtime-key-ownership": "node scripts/check-realtime-key-ownership.mjs",
     "gate:vault-access": "node scripts/check-vault-access.mjs",
     "with-cred": "node scripts/with-cred.mjs",
+    "db:query": "node scripts/db-query.mjs",
     "gate:copilot-routes": "node scripts/check-copilot-routes.mjs",
     "gate:copilot-tools": "node scripts/check-copilot-tool-inventory.mjs",
     "gate:copilot-pages": "node scripts/check-copilot-page-contracts.mjs",
