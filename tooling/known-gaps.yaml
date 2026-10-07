@@ -182,3 +182,23 @@ gaps:
       (b) trạng thái streak được materialize (bảng/cột tăng dần + đường replay đầy đủ giữ
       lại để tự chữa) VÀ `v_sunday` có trần tường minh, kèm bài so ngang khẳng định mọi kỳ
       đã chốt cho ra đúng con số cũ. Không đóng chỉ vì "chưa thấy ai kêu chậm".
+
+  - id: e2e-fleet-coc-bat-buoc-phong-chua-chay
+    where: >
+      .e2e-fleet/specs/ie-income-auto-approve · income-voucher-cancel · ie-deposit-all-buildings ·
+      finance-v2 · finance-v2-mobile-cancel · income-cancel-permission-matrix ·
+      chung-tu-la-anh-dinh-kem (.spec.ts)
+    expires_at: 2026-11-30
+    why: >
+      Commit 0aeabb0c (07/10/2026) sửa 7 spec fleet theo luật "phiếu có hạng mục cọc phải chọn
+      phòng" (migration 20261006173923): chọn phòng sau khi thêm Tiền cọc; và khi gọi API với
+      p_room_id null thì tra hạng mục thu kèm is_deposit=is.false. Các spec này CHƯA CHẠY: fixture
+      DEMO của chúng đã cũ từ trước (toà "Tòa DEMO A/B", "Chung (Demo)" không còn; org DEMO hiện có
+      "DEMO Toà A–D"), và phần fleet chưa có job CI. Vì vậy gate-aggregate của 7fa02604 đỏ với
+      "Unverifiable required obligation: e2e-fleet", dù cả 10 job kiểm đều xanh (run 37558040395,
+      lần 2). Chủ dự án chọn phát hành qua commit kế tiếp và ghi khoảng trống này, thay vì chờ
+      dựng lại fixture.
+    exit_condition: >
+      Dựng lại fixture DEMO (hoặc đổi spec sang toà DEMO đang có), chạy 7 spec trên preview đúng
+      commit bằng vai thật, đính bằng chứng; spec nào đỏ thì sửa. Chỉ đóng khi có lượt chạy xanh,
+      không đóng chỉ vì code đã lên production.
