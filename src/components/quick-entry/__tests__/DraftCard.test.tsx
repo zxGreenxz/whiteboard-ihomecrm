@@ -92,6 +92,17 @@ const lastOf = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls[spy.mock.calls.
 /** Ô bị khoá qua <fieldset disabled> cha — thuộc tính `disabled` của chính ô không phản ánh điều này. */
 const fieldsetLocked = (label: string) => screen.getByLabelText(label).closest("fieldset")?.disabled ?? false;
 
+it('explains the inferred wallet and clears stale explanation after manual selection',()=>{
+ const list=[{id:'sp',user_id:'u',name:'Thẻ SP',kind:'other',icon:'wallet',hidden:false,is_default:false,opening_balance:0,balance:0,version:1},{id:'cash',user_id:'u',name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:false,opening_balance:0,balance:0,version:1}] as Wallet[];
+ const initial=state({mode:'personal',personalWalletId:'sp',personalWalletResolution:{walletId:'sp',reason:'platform'}});
+ const props={status:{kind:'draft'} as CardStatus,today,buildings,rooms,categories,cashbooks,personalCategories:[],personalWallets:list,defaultAccountFor:()=>null,onChange:vi.fn(),onSave:vi.fn(),onDiscard:vi.fn()};
+ const {rerender}=render(<MemoryRouter><DraftCard {...props} state={initial}/></MemoryRouter>);
+ expect(screen.getByText('Shopee/Grab')).toBeTruthy();
+ rerender(<MemoryRouter><DraftCard {...props} state={{...initial,touched:['personalWalletId'],draft:{...initial.draft,personalWalletId:'cash'}}}/></MemoryRouter>);
+ expect(screen.getByRole('combobox',{name:'Ví cá nhân'}).textContent).toContain('Tiền mặt');
+ expect(screen.queryByText('Shopee/Grab')).toBeNull();
+});
+
 afterEach(() => {
   cleanup();
   slot.data = [];

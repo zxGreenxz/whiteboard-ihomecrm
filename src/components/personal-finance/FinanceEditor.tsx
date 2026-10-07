@@ -10,6 +10,7 @@ import {
 import { PersonalFinanceError } from "@/lib/personalFinance/service";
 import type { PendingRequest } from "@/lib/personalFinance/pendingRequests";
 import { usePersonalFinanceMutation } from "@/hooks/personal-finance/usePersonalFinance";
+import { defaultPersonalWallet } from '@/lib/quickEntry/personalWallet';
 import {
   changedFields,
   deleteReason,
@@ -38,7 +39,7 @@ function initial(editor: Editor, s: Snapshot): Values {
     note: "",
     target_date: "",
     wallet_id:
-      s.wallets.find((w) => w.is_default)?.id ?? s.wallets[0]?.id ?? "",
+      editor.entity === 'transaction' ? defaultPersonalWallet(s.wallets) ?? '' : s.wallets.find((w) => w.is_default)?.id ?? s.wallets[0]?.id ?? "",
     source_wallet_id: s.wallets[0]?.id ?? "",
     target_wallet_id: s.wallets[1]?.id ?? "",
     category_id:
@@ -427,7 +428,7 @@ export function FinanceEditor({
             )}
             {editor.entity === "transaction" && (
               <div className="pf-two-cols">
-                {select("wallet_id", "Ví thanh toán", wallets)}
+                {select("wallet_id", "Ví thanh toán", [["", "Chọn ví"], ...wallets])}
                 {input("txn_date", "Ngày giao dịch", "date")}
               </div>
             )}

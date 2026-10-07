@@ -26,6 +26,10 @@ import type { Wallet } from '@/lib/personalFinance/contract';
 
 const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
+const WALLET_REASON = {
+  manual:'Bạn đã chọn', explicit:'Theo nội dung', platform:'Shopee/Grab',
+  bank_transfer:'Bill chuyển khoản', cash_default:'Mặc định tiền mặt', unresolved:'Chọn ví cá nhân',
+};
 
 const FLAG_TEXT: Record<DraftFlag, string> = {
   ai_direction_conflict: "AI tìm thấy cả Thu và Chi khác lựa chọn bạn đã chốt. Đã giữ nguyên nháp; các khoản AI bổ sung chưa được thêm. Hãy kiểm lại nội dung và thêm riêng khoản còn thiếu.",
@@ -216,7 +220,7 @@ export function DraftCard(props: DraftCardProps) {
           <div className="flex gap-2" role="group" aria-label="Loại giao dịch">
             {(['INCOME','EXPENSE'] as const).map(type=><Button key={type} type="button" variant={(d.transactionType??'EXPENSE')===type?'default':'outline'} aria-pressed={(d.transactionType??'EXPENSE')===type} onClick={()=>update('transactionType',{transactionType:type,lines:d.lines.map(l=>({...l,transactionType:type,categoryId:null,personalCategoryId:null,personalCategory:null}))})}>{type==='INCOME'?'Thu':'Chi'}</Button>)}
           </div>
-          {!company&&<Field label="Ví cá nhân"><SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined} aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value})}/></Field>}
+          {!company&&<Field label="Ví cá nhân"><SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined} aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value,personalWalletResolution:{walletId:value,reason:'manual'}})}/>{d.personalWalletResolution&&!state.touched.includes('personalWalletId')&&<span className="mt-1 block text-xs text-muted-foreground">{WALLET_REASON[d.personalWalletResolution.reason]}</span>}</Field>}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Field label="Ngày giao dịch">
               {props.inDialog ? <input type="date" className="h-11 w-full rounded-md border bg-background px-3" value={d.date} aria-label="Ngày chi" onChange={e=>update("date",{date:e.target.value})}/> : <DateInput value={d.date} aria-label="Ngày chi" onChange={(iso) => update("date", { date: iso })} />}

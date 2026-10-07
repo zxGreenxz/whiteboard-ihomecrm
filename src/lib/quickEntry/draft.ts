@@ -7,11 +7,15 @@
 
 import { MAX_AMOUNT_VND } from "./amount";
 import { z } from 'zod';
+import type { WalletResolution } from './personalWallet';
+
+const walletResolutionSchema = z.object({walletId:z.string().nullable(),reason:z.enum(['manual','explicit','platform','bank_transfer','cash_default','unresolved'])});
 
 export type DraftMode = "company" | "personal";
 export type TransactionType = 'INCOME' | 'EXPENSE';
 
 export interface DraftLine {
+  personalWalletResolution?: WalletResolution;
   transactionType?: TransactionType;
   personalCategoryId?: string | null;
   description: string;
@@ -27,6 +31,7 @@ export interface DraftLine {
 }
 
 export interface QuickDraft {
+  personalWalletResolution?: WalletResolution;
   transactionType?: TransactionType;
   personalWalletId?: string | null;
   /** New drafts use the atomic RPC; missing on historic pending cards means manual reconciliation. */
@@ -52,8 +57,8 @@ export interface QuickDraft {
 export const quickDraftSchema=z.object({
  id:z.string().min(1),mode:z.enum(['company','personal']),date:z.string(),name:z.string(),vendor:z.string().nullable(),
  buildingId:z.string().nullable(),roomId:z.string().nullable(),accountId:z.string().nullable(),attachmentUrls:z.array(z.string()),
- transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
- lines:z.array(z.object({description:z.string(),amount:z.number().finite(),categoryId:z.string().nullable(),personalCategory:z.string().nullable(),periodStart:z.string().nullable(),periodEnd:z.string().nullable(),transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalCategoryId:z.string().nullable().optional()})).max(200),
+ transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalWalletResolution:walletResolutionSchema.optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
+ lines:z.array(z.object({description:z.string(),amount:z.number().finite(),categoryId:z.string().nullable(),personalCategory:z.string().nullable(),periodStart:z.string().nullable(),periodEnd:z.string().nullable(),transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalCategoryId:z.string().nullable().optional(),personalWalletResolution:walletResolutionSchema.optional()})).max(200),
 });
 
 export const MAX_NAME = 500;

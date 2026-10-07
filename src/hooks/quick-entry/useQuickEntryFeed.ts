@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { makeCopilotFetch, newTaskId } from "@/copilot/copilotConfig";
 import { compressImage } from "@/lib/imageCompress";
 import { resolvePersonalDraft } from '@/lib/quickEntry/personalRefs';
+import { resolvePersonalWallet } from '@/lib/quickEntry/personalWallet';
 import type { AiResult } from "@/lib/quickEntry/aiSchema";
 import { encodeWithinBudget } from "@/lib/quickEntry/billImage";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
@@ -334,10 +335,8 @@ export function useQuickEntryFeed(opts: {
         transactionType: "EXPENSE",
         ...(mode === "personal"
           ? {
-              personalWalletId:
-                refs.personalWallets.find((w) => w.is_default)?.id ??
-                refs.personalWallets[0]?.id ??
-                null,
+              personalWalletId:resolvePersonalWallet({wallets:refs.personalWallets}).walletId,
+              personalWalletResolution:resolvePersonalWallet({wallets:refs.personalWallets}),
               personalProtocol: 1 as const,
               personalRequestKey: crypto.randomUUID(),
             }
@@ -425,6 +424,7 @@ export function useQuickEntryFeed(opts: {
     categories: refs.categories,
     personalCategoryRefs:(refs.personalCategories??[]).filter(c=>!c.hidden),
     personalWalletId:(refs.personalWallets??[]).find(w=>w.is_default)?.id??null,
+    personalWallets:refs.personalWallets??[],
     newId: () => crypto.randomUUID(),
     defaultAccountFor: refs.defaultAccountFor,
   });
@@ -615,7 +615,7 @@ export function useQuickEntryFeed(opts: {
       }
     }
 
-    const newCards: FeedCard[] = draftsFromBill(result, ctx).map(state=>({
+    const newCards: FeedCard[] = draftsFromBill(result, {...ctx,sourceText:caption}).map(state=>({
       id: state.draft.id,
       state,
       status: { kind: "draft" },

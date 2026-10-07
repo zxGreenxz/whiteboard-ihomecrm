@@ -170,12 +170,44 @@ it("rejects manual company drafts when company create permission is unavailable"
   expect(cardsOf(result)).toHaveLength(0);
 });
 
-it('new personal cards keep the default wallet even when hidden on home',async()=>{
+it('new personal cards require selection when all cash wallets are hidden',async()=>{
  const r=refs();r.personalWallets[0].hidden=true;
  h.readWithAi.mockResolvedValue(ok(ai()));
  const {result}=mount(r);
  await act(async()=>{await result.current.submitText('cà phê 25k','personal');});
- expect(cardsOf(result)[0].state.draft.personalWalletId).toBe(r.personalWallets[0].id);
+ expect(cardsOf(result)[0].state.draft.personalWalletId).toBeNull();
+});
+
+describe('wallet resolution through the feed',()=>{
+ const walletRefs=()=>{const r=refs();const cash=r.personalWallets[0];r.personalWallets=[{...cash,id:'bank',name:'Tk939',kind:'bank',is_default:true},{...cash,is_default:false},{...cash,id:'sp',name:'Thẻ SP',kind:'other',is_default:false}];return r;};
+ it('uses cash for a manual draft despite a bank default',()=>{
+  const {result}=mount(walletRefs());act(()=>{result.current.addManual('personal');});
+  expect(cardsOf(result)[0].state.draft.personalWalletId).toBe('11111111-1111-4111-8111-111111111111');
+ });
+ it('keeps caption and explicit wallet when the image says Grab',async()=>{
+  h.readWithAi.mockResolvedValue(ok(ai({platform:'grab',items:[{desc:'GrabBike',amount_vnd:50000,category:'c1',confidence:1}]})));
+  const {result}=mount(walletRefs());await act(async()=>result.current.submitPhoto(new File(['bill'],'grab.jpg',{type:'image/jpeg'}),'personal','ví Tk939'));
+  expect(cardsOf(result)[0].state.sourceText).toBe('ví Tk939');
+  expect(cardsOf(result)[0].state.draft.personalWalletId).toBe('bank');
+ });
+ it('late AI splitting retains manual wallet and gives every new card a separate request',async()=>{
+  let finish!:(result:AiRead)=>void;h.readWithAi.mockReturnValue(new Promise<AiRead>(r=>{finish=r;}));
+  const {result}=mount(walletRefs());let pending!:Promise<void>;
+  act(()=>{pending=result.current.submitText('nhận tiền rồi đi xe','personal');});
+  const card=cardsOf(result)[0];
+  act(()=>result.current.changeCard(card.id,{...card.state,touched:['personalWalletId'],draft:{...card.state.draft,personalRequestKey:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',personalWalletId:'bank'}}));
+  await act(async()=>{finish(ok(ai({items:[{desc:'nhận tiền',transactionType:'INCOME',amount_vnd:100000,category:null,confidence:1},{desc:'Grab',transactionType:'EXPENSE',platform:'grab',amount_vnd:50000,category:'c1',confidence:1}]})));await pending;});
+  expect(cardsOf(result)).toHaveLength(2);
+  expect(cardsOf(result).every(c=>c.state.draft.personalWalletId==='bank')).toBe(true);
+  expect(new Set(cardsOf(result).map(c=>c.state.draft.personalRequestKey??c.id)).size).toBe(2);
+ });
+ it('does not refill an intentional null when wallet refs reload or a card was saved',async()=>{
+  h.readWithAi.mockResolvedValue(ok(ai()));const r=walletRefs();r.personalWallets=r.personalWallets.filter(w=>w.id!=='sp');
+  const {result,rerender}=mount(r);await act(async()=>result.current.submitText('Grab 50k','personal'));
+  const card=cardsOf(result)[0];expect(card.state.draft.personalWalletId).toBeNull();
+  rerender({r:{...r,personalWallets:[...r.personalWallets]}});
+  expect(result.current.cards[card.id].state.draft.personalWalletId).toBeNull();
+ });
 });
 
 describe("mô hình người dùng chọn trên trang", () => {

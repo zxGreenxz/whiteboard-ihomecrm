@@ -23,6 +23,7 @@ import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from
 import { MAX_PROMPT_CATEGORIES } from "./prompt";
 import type { AiItem, AiResult } from "./aiSchema";
 import { inferTransactionType, type PersonalCategoryRef } from './personalRefs';
+import { platformFromText, resolvePersonalWallet, type PersonalWalletRef, type WalletEvidence, type WalletResolution } from './personalWallet';
 
 export type DraftFlag =
   | "ai_direction_conflict"
@@ -61,6 +62,9 @@ export interface ComposeContext {
   personalCategories?: string[];
   personalCategoryRefs?: PersonalCategoryRef[];
   personalWalletId?: string | null;
+  personalWallets?: readonly PersonalWalletRef[];
+  /** Caption supplied with a photo; explicit wallet/method takes precedence over image evidence. */
+  sourceText?: string;
   newId: () => string;
   defaultAccountFor: (buildingId: string | null) => string | null;
 }
@@ -69,6 +73,11 @@ const EDGE_PUNCT = /^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g;
 const tidy = (s: string): string => s.replace(/\s+/g, " ").replace(EDGE_PUNCT, "").trim();
 
 const unique = <T,>(xs: T[]): T[] => [...new Set(xs)];
+
+function walletFor(ctx: ComposeContext, text: string, evidence?: WalletEvidence): WalletResolution | undefined {
+  return ctx.personalWallets ? resolvePersonalWallet({wallets:ctx.personalWallets,text,evidence}) : undefined;
+}
+const walletKey = (line: DraftLine, fallback?: string | null) => line.personalWalletResolution?.walletId ?? (line.personalWalletResolution ? null : fallback ?? null);
 
 function nameOf(lines: DraftLine[]): string {
   return lines
@@ -108,17 +117,23 @@ function personalCategory(item:AiItem|undefined,ctx:ComposeContext){
 
 /** A company voucher has one transaction type; personal cards also remain easy to review. */
 export function splitDraftTypes(state:DraftState,newId:()=>string):DraftState[]{
- const groups=[...new Set(state.draft.lines.map(l=>l.transactionType??state.draft.transactionType??'EXPENSE'))];
- return groups.map((type,index)=>{
-  const positions=state.draft.lines.map((l,i)=>(l.transactionType??state.draft.transactionType??'EXPENSE')===type?i:-1).filter(i=>i>=0);
+ const personal = state.draft.mode === 'personal';
+ const manual = state.touched.includes('personalWalletId') || state.locked.includes('personalWalletId');
+ const key = (line:DraftLine) => JSON.stringify([line.transactionType??state.draft.transactionType??'EXPENSE',personal&&!manual?walletKey(line,state.draft.personalWalletId):null]);
+ const groups=unique(state.draft.lines.map(key));
+ return groups.map((group,index)=>{
+  const positions=state.draft.lines.map((l,i)=>key(l)===group?i:-1).filter(i=>i>=0);
+  const lines=positions.map(i=>state.draft.lines[i]);
+  const type=lines[0].transactionType??state.draft.transactionType??'EXPENSE';
+  const resolution=personal&&!manual?lines[0].personalWalletResolution:undefined;
   const paths=(values:string[])=>values.flatMap(p=>{const match=/^lines\.(\d+)(.*)$/.exec(p);if(!match)return[p];const i=positions.indexOf(Number(match[1]));return i<0?[]:[`lines.${i}${match[2]}`];});
-  return syncName({...state,touched:paths(state.touched),locked:paths(state.locked),draft:{...state.draft,id:index?newId():state.draft.id,transactionType:type,lines:positions.map(i=>state.draft.lines[i])}});
+  return syncName({...state,touched:paths(state.touched),locked:paths(state.locked),draft:{...state.draft,id:index?newId():state.draft.id,...(index&&personal?{personalRequestKey:newId()}:{}),...(resolution?{personalWalletId:resolution.walletId,personalWalletResolution:resolution}:{}),transactionType:type,lines}});
  });
 }
 export function draftsFromBill(ai:AiResult,ctx:ComposeContext):DraftState[]{
  const types=new Set(ai.items.filter(i=>(i.amount_vnd??0)>0).map(i=>i.transactionType??'EXPENSE'));
- if(types.size<2)return[draftFromBill(ai,ctx)];
- return [...types].map(type=>draftFromBill({...ai,total_vnd:null,items:ai.items.filter(i=>(i.transactionType??'EXPENSE')===type)},ctx));
+ const states=types.size<2?[draftFromBill(ai,ctx)]:[...types].map(type=>draftFromBill({...ai,total_vnd:null,items:ai.items.filter(i=>(i.transactionType??'EXPENSE')===type)},ctx));
+ return states.flatMap(state=>splitDraftTypes(state,ctx.newId));
 }
 
 export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] {
@@ -190,6 +205,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       buildingId: company ? buildingId : null,
       roomId: company ? roomId : null,
       line: {
+        ...(!company ? {personalWalletResolution:walletFor(ctx,segText)} : {}),
         transactionType: inferTransactionType(segText),
         personalCategoryId: null,
         description,
@@ -212,7 +228,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
   const placeGroups = company
     ? groupByPlace(items.map((it) => ({ buildingId: it.buildingId, roomId: it.roomId, line: it.line })))
     : [{ buildingId: null, roomId: null, lines: items.map((it) => it.line) }];
-  const groups=placeGroups.flatMap(g=>[...new Set(g.lines.map(l=>l.transactionType??'EXPENSE'))].map(type=>({...g,lines:g.lines.filter(l=>(l.transactionType??'EXPENSE')===type)})));
+  const key = (line:DraftLine) => JSON.stringify([line.transactionType??'EXPENSE',company?null:walletKey(line,ctx.personalWalletId)]);
+  const groups=placeGroups.flatMap(g=>unique(g.lines.map(key)).map(group=>({...g,lines:g.lines.filter(l=>key(l)===group)})));
   // Tổng gõ là tổng CẢ TIN (mọi thẻ) — lệch thì mọi thẻ của tin đều nhắc kiểm lại.
   const sumAll = items.reduce((s, it) => s + it.line.amount, 0);
   const totalMismatch = declaredTotal !== null && sumAll !== declaredTotal;
@@ -245,7 +262,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
         id: ctx.newId(),
         mode: ctx.mode,
         transactionType: g.lines[0]?.transactionType ?? 'EXPENSE',
-        ...(company ? {} : {personalWalletId:ctx.personalWalletId??null,personalProtocol:1 as const}),
+        ...(company ? {} : {personalWalletId:g.lines[0].personalWalletResolution?.walletId??(g.lines[0].personalWalletResolution?null:ctx.personalWalletId??null),personalWalletResolution:g.lines[0].personalWalletResolution,personalProtocol:1 as const}),
         date: date?.date ?? ctx.today,
         name: nameOf(g.lines),
         vendor: null,
@@ -295,7 +312,11 @@ function aiPeriod(ai: AiResult, company: boolean): { periodStart: string; period
 function mergedItem(ai: AiResult): AiItem {
   const sum = ai.items.reduce((s, i) => s + (i.amount_vnd ?? 0), 0);
   const cats = unique(ai.items.filter((i) => (i.amount_vnd ?? 0) > 0).map((i) => i.category));
+  const platforms = unique(ai.items.filter(i=>(i.amount_vnd??0)>0).map(i=>i.platform));
+  const methods = unique(ai.items.filter(i=>(i.amount_vnd??0)>0).map(i=>i.payment_method));
   return {
+    platform:platforms.length===1?platforms[0]:undefined,
+    payment_method:methods.length===1?methods[0]:undefined,
     transactionType: ai.items.find(item => item.transactionType)?.transactionType,
     desc: ai.items.map((i) => i.desc).join("; "),
     amount_vnd: ai.total_vnd ?? (sum > 0 ? sum : null),
@@ -324,6 +345,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
   const build = (description: string, amount: number, item: AiItem | undefined): DraftLine => {
     const typedItem: AiItem = { desc: description, amount_vnd: amount, category: null, confidence: 0.5, ...item, transactionType: item?.transactionType ?? groupType };
     return {
+      ...(!company ? {personalWalletResolution:walletFor(ctx,ctx.sourceText??'',{payment_method:item?.payment_method??ai.payment_method,platform:item?.platform??ai.platform??platformFromText(`${ai.vendor??''}; ${description}`)})} : {}),
       transactionType: typedItem.transactionType,
       personalCategoryId: company ? null : personalCategory(typedItem,ctx)?.id??null,
       description: description.slice(0, MAX_DESCRIPTION),
@@ -354,7 +376,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
       id: ctx.newId(),
       mode: ctx.mode,
       transactionType:lines[0]?.transactionType??'EXPENSE',
-      ...(company?{}:{personalWalletId:ctx.personalWalletId??null,personalProtocol:1 as const}),
+      ...(company?{}:{personalWalletId:lines[0].personalWalletResolution?.walletId??(lines[0].personalWalletResolution?null:ctx.personalWalletId??null),personalWalletResolution:lines[0].personalWalletResolution,personalProtocol:1 as const}),
       date: ai.date && ai.date <= ctx.today ? ai.date : ctx.today,
       name: nameFor("photo", ai.vendor, lines),
       vendor: ai.vendor,
@@ -369,7 +391,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     flags,
     buildingCandidates: [],
     source: "photo",
-    sourceText: "",
+    sourceText: ctx.sourceText ?? "",
   };
 }
 
@@ -434,7 +456,7 @@ export function applyAiCategories(state: DraftState, codes: ReadonlyArray<string
 function expandMixedLine(state: DraftState, ai: AiResult, ctx: ComposeContext): DraftState {
   const original = state.draft.lines[0];
   const type = original.transactionType ?? state.draft.transactionType ?? 'EXPENSE';
-  const groups = draftsFromBill(ai, { ...ctx, newId: () => state.draft.id });
+  const groups = draftsFromBill(ai, { ...ctx, sourceText:state.sourceText, newId: () => state.draft.id });
   let lines = groups.flatMap(group => group.draft.lines);
   const candidates = lines.filter(line => line.transactionType === type);
   const changedPaths = [...state.touched, ...state.locked];
@@ -474,22 +496,28 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
   if (state.touched.includes(LINES_EDITED)) return state;
   const mixedExpansion = state.draft.lines.length === 1 &&
     new Set(ai.items.filter(item => (item.amount_vnd ?? 0) > 0).map(item => item.transactionType ?? 'EXPENSE')).size > 1;
+  const walletExpansion = state.draft.mode === 'personal' && !!ctx.personalWallets && state.draft.lines.length === 1 &&
+    ai.items.filter(item => (item.amount_vnd ?? 0) > 0).length > 1 &&
+    unique(ai.items.filter(item => (item.amount_vnd ?? 0) > 0).map(item => walletFor(ctx,state.sourceText,item)?.walletId)).length > 1;
   // The card's explicit direction binds every line. Mixed AI cannot be mapped to this
   // edited aggregate safely: keep it intact and ask for review rather than cloning edits.
   const directionEdited = state.touched.includes('transactionType') || state.locked.includes('transactionType');
   if (mixedExpansion && directionEdited) return { ...state, flags: unique([...state.flags, 'ai_direction_conflict']) };
-  if (mixedExpansion) state = expandMixedLine(state, ai, ctx);
+  if (mixedExpansion || walletExpansion) state = expandMixedLine(state, ai, ctx);
   const company = state.draft.mode === "company";
   const free = (path: string) => !state.touched.includes(path) && !state.locked.includes(path);
   const lines = state.draft.lines;
   const merged = lines.length === 1 && ai.items.length > 1 ? mergedItem(ai) : undefined;
   const pairOf = (i: number): AiItem | undefined =>
-    mixedExpansion ? undefined : ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? merged : undefined;
+    mixedExpansion || walletExpansion ? undefined : ai.items.length === lines.length ? ai.items[i] : lines.length === 1 ? merged : undefined;
   const period = aiPeriod(ai, company);
 
   const nextLines = lines.map((l, i) => {
     const item = pairOf(i);
     const next = { ...l };
+    if (!company && free('personalWalletId') && ctx.personalWallets && !mixedExpansion && !walletExpansion) {
+      next.personalWalletResolution = walletFor(ctx,lines.length===1?state.sourceText:l.description,{payment_method:item?.payment_method??ai.payment_method,platform:item?.platform??ai.platform});
+    }
     if (item) {
       if(item.transactionType&&free('transactionType')&&free(`lines.${i}.transactionType`))next.transactionType=item.transactionType;
       // Chỉ nhận số DƯƠNG: dòng âm của AI (giảm giá) không bao giờ thành tiền của một dòng chi.
@@ -512,6 +540,10 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
   });
 
   const draft: QuickDraft = { ...state.draft, lines: nextLines, transactionType:free('transactionType') ? nextLines[0]?.transactionType??state.draft.transactionType : state.draft.transactionType };
+  if (!company && free('personalWalletId') && nextLines[0]?.personalWalletResolution) {
+    draft.personalWalletResolution = nextLines[0].personalWalletResolution;
+    draft.personalWalletId = draft.personalWalletResolution.walletId;
+  }
   if (company && !draft.buildingId && free("buildingId")) {
     const id =
       resolveBuildingMention(ai.building_mention, ctx.refs.buildings) ??

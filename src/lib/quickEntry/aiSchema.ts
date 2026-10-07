@@ -18,9 +18,14 @@ const money = z.number().int().positive().max(MAX_AMOUNT_VND);
 const lineMoney = z.number().int().min(-MAX_AMOUNT_VND).max(MAX_AMOUNT_VND);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const cut = (max: number) => z.string().transform((s) => s.slice(0, max));
+const paymentEvidence = {
+  payment_method: z.enum(['cash','bank_transfer']).nullable().optional(),
+  platform: z.enum(['shopee','grab']).nullable().optional(),
+};
 
 const itemSchema = z
   .object({
+    ...paymentEvidence,
     transactionType: z.enum(['INCOME','EXPENSE']).optional(),
     desc: cut(120).default(""),
     amount_vnd: lineMoney.nullable().default(null),
@@ -31,6 +36,7 @@ const itemSchema = z
 
 const resultSchema = z
   .object({
+    ...paymentEvidence,
     items: z.array(itemSchema).max(AI_MAX_ITEMS).default([]),
     total_vnd: money.nullable().default(null),
     date: isoDate.nullable().default(null),
