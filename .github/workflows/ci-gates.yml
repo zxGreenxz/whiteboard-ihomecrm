@@ -431,11 +431,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # Aggregation imports only Node builtins (pinned by check-workflow-paths test): no npm ci.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: npm
-      - run: npm ci
       - name: Download plan
         if: always()
         env:

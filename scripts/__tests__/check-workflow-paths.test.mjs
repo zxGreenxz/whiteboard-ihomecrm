@@ -93,6 +93,32 @@ describe("trạng thái thật của repo", () => {
     }
   });
 
+  it('gate-aggregate skips npm ci because every module it loads is a Node builtin', () => {
+    const steps = wf('.github/workflows/ci-gates.yml').jobs['gate-aggregate'].steps;
+    const runs = steps.map((step) => String(step.run ?? '').trim());
+    expect(runs).not.toContain('npm ci');
+    expect(steps.find((step) => step.uses?.startsWith('actions/setup-node@')).with.cache).toBeUndefined();
+    const entries = runs.flatMap((run) => [...run.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]));
+    expect(entries).toEqual(expect.arrayContaining(['scripts/ci-download-plan.mjs', 'scripts/ci-aggregate-gates.mjs']));
+    const seen = new Set();
+    const external = [];
+    const visit = (url) => {
+      if (seen.has(url.href)) return;
+      seen.add(url.href);
+      const text = readFileSync(url, 'utf8');
+      // Static, dynamic and side-effect imports; a bare specifier would need node_modules.
+      const specifiers = /(?:^|\n)\s*(?:import|export)\b[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g;
+      for (const match of text.matchAll(specifiers)) {
+        const spec = match[1] ?? match[2] ?? match[3];
+        if (spec.startsWith('.')) visit(new URL(spec, url));
+        else if (!spec.startsWith('node:')) external.push(`${spec} <- ${url.pathname.split('/scripts/')[1]}`);
+      }
+    };
+    for (const entry of entries) visit(new URL(`../../${entry}`, import.meta.url));
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+    expect(external).toEqual([]);
+  });
+
   it('credentials the PR plan defers are exactly those mapped only to main push/dispatch', () => {
     const mapped = new Set();
     for (const job of Object.values(wf('.github/workflows/ci-gates.yml').jobs)) {

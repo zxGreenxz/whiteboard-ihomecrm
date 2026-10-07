@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1292,
   "soFileDocBangFs": 289,
-  "tongLoiGoi": 630,
-  "khongPhanLoaiDuoc": 288,
+  "tongLoiGoi": 631,
+  "khongPhanLoaiDuoc": 289,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -664,6 +664,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-workflow-paths.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1134,12 +1140,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/check-workflow-paths.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/copilot-golden-real-cli.test.mjs",
