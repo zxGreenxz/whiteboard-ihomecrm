@@ -44,6 +44,8 @@ export function useTamTruKetQuaSync(): void {
           await ghiHoSoTamTru({
             customerId: k.customerId, buildingId: k.buildingId, organizationId: k.organizationId,
             contractId: k.contractId ?? null, submCode: k.submCode, receiveOrg: k.receiveOrg,
+            // Chỉ nhận đúng hai mã đã biết; thứ khác coi như đăng ký như extension đời cũ.
+            procedureCode: k.procedureCode === 'TAMTRU_06' ? 'TAMTRU_06' : 'TAMTRU_01',
             tempResidentFrom: k.tempResidentFrom, tempResidentTo: k.tempResidentTo, submittedAt: k.submittedAt,
           });
           daBaoLoi.current.delete(k.submCode);

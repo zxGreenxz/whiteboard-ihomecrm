@@ -1,5 +1,6 @@
-// Tệp hồ sơ đăng ký tạm trú: ảnh CT01/hợp đồng đã ký (theo khách) và giấy tờ
-// chứng minh chỗ ở hợp pháp (theo toà). Lưu ở bucket private residence-docs,
+// Tệp hồ sơ tạm trú: ảnh CT01/hợp đồng đã ký khi đăng ký và ảnh CT01 huỷ/biên bản
+// thanh lý đã ký khi xoá đăng ký (theo khách), cùng giấy tờ chứng minh chỗ ở hợp
+// pháp (theo toà). Lưu ở bucket private residence-docs,
 // đọc qua signed URL; quyền do RLS quyết định (customers.print / buildings.edit).
 import { supabase } from '@/integrations/supabase/client';
 import { deleteFile, getPublicUrl, parseStorageRef, sanitizeStorageFileName, uploadFile } from '@/lib/storage';
@@ -9,12 +10,17 @@ import { FinancialWorkflowError, isConfirmedFinancialRejection } from './financi
 import { confirmedRecordId } from './recordWriteOutcome';
 import type { Database } from '@/integrations/supabase/types';
 
-export type DossierKind = 'CT01' | 'LEASE' | 'OWNERSHIP';
+export type DossierKind = 'CT01' | 'LEASE' | 'OWNERSHIP' | 'CT01_XOA' | 'THANH_LY';
 export const RESIDENCE_DOCS_BUCKET = 'residence-docs';
 export const DOSSIER_KIND_LABEL: Record<DossierKind, string> = {
   CT01: 'Tờ khai CT01 đã ký',
   LEASE: 'Hợp đồng thuê đã ký',
   OWNERSHIP: 'Giấy tờ chứng minh chỗ ở hợp pháp',
+  CT01_XOA: 'Tờ khai CT01 huỷ tạm trú đã ký',
+  THANH_LY: 'Biên bản thanh lý đã ký',
+};
+const TEN_THEO_LOAI: Record<Exclude<DossierKind, 'OWNERSHIP'>, string> = {
+  CT01: 'ct01', LEASE: 'hopdong', CT01_XOA: 'ct01huy', THANH_LY: 'thanhly',
 };
 type Row = Database['public']['Tables']['residence_dossier_files']['Row'];
 export type ResidenceDossierFile = Pick<Row, 'id' | 'organization_id' | 'building_id' | 'customer_id' | 'contract_id'
@@ -46,7 +52,8 @@ export function slugTen(raw: string): string {
  * VÌ SAO: tên này đi thẳng lên Cổng DVC ở cột "Đính kèm". Với ảnh chủ quyền của
  * toà thì "IMG_20260915.jpg" không cho biết là của toà nào, còn hai ảnh cùng tên
  * thì không biết ảnh nào là ảnh nào. Quy ước: chuquyen950nk1.jpg,
- * nguyengiabinhct01.jpg, nguyengiabinhhopdong1.jpg.
+ * nguyengiabinhct01.jpg, nguyengiabinhhopdong1.jpg, nguyengiabinhct01huy1.jpg,
+ * nguyengiabinhthanhly1.jpg.
  */
 export function tenTepHoSo(input: {
   kind: DossierKind; buildingName?: string; customerName?: string; index: number; ext: string;
@@ -57,7 +64,7 @@ export function tenTepHoSo(input: {
     return `chuquyen${slugTen(input.buildingName ?? '') || 'toanha'}${stt}.${ext}`;
   }
   const khach = slugTen(input.customerName ?? '') || 'khach';
-  return `${khach}${input.kind === 'CT01' ? 'ct01' : 'hopdong'}${stt}.${ext}`;
+  return `${khach}${TEN_THEO_LOAI[input.kind]}${stt}.${ext}`;
 }
 
 /** Giá trị để StorageImage / createSignedUrlFromStored ký lúc đọc. */
@@ -171,6 +178,16 @@ export function pickDossierFilesForContract(
     return ofContract.length > 0 ? ofContract : ofKind;
   };
   return [...perKind('CT01'), ...perKind('LEASE'), ...ownershipFiles.filter(f => f.kind === 'OWNERSHIP')];
+}
+
+/** Ảnh nộp kèm hồ sơ xoá đăng ký: CT01 huỷ + biên bản thanh lý, ưu tiên đúng hợp đồng đang chọn. */
+export function pickDeregistrationFiles(customerFiles: ResidenceDossierFile[], contractId: string): ResidenceDossierFile[] {
+  const perKind = (kind: 'CT01_XOA' | 'THANH_LY') => {
+    const ofKind = customerFiles.filter(f => f.kind === kind);
+    const ofContract = ofKind.filter(f => f.contract_id === contractId);
+    return ofContract.length > 0 ? ofContract : ofKind;
+  };
+  return [...perKind('CT01_XOA'), ...perKind('THANH_LY')];
 }
 
 /** dd/mm/yyyy → yyyy-mm-dd cho cột date của Postgres. */

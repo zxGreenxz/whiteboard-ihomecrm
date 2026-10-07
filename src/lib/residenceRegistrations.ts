@@ -1,19 +1,23 @@
-// Sổ hồ sơ Đăng ký tạm trú đã nộp: mã hồ sơ extension đọc được lúc chủ bấm Nộp
-// trên Cổng DVC. Một khách có thể nộp nhiều lần (gia hạn, nộp lại sau khi bị trả),
-// nên giữ đủ lịch sử và lấy dòng mới nhất để hiển thị.
+// Sổ hồ sơ tạm trú đã nộp: mã hồ sơ extension đọc được lúc chủ bấm Nộp trên Cổng
+// DVC, cho cả Đăng ký (TAMTRU_01) lẫn Xóa đăng ký (TAMTRU_06). Một khách có thể nộp
+// nhiều lần (gia hạn, nộp lại sau khi bị trả), nên giữ đủ lịch sử và lấy dòng mới
+// nhất của từng thủ tục để hiển thị.
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
 import { FinancialWorkflowError } from './financialWorkflowError';
 import type { Database } from '@/integrations/supabase/types';
 
 type Row = Database['public']['Tables']['residence_registrations']['Row'];
+/** Mã thủ tục trên cổng: TAMTRU_01 đăng ký, TAMTRU_06 xoá đăng ký tạm trú. */
+export type ResidenceProcedureCode = 'TAMTRU_01' | 'TAMTRU_06';
 export type ResidenceRegistration = Pick<Row, 'id' | 'organization_id' | 'building_id' | 'customer_id' | 'contract_id'
-  | 'subm_code' | 'receive_org' | 'temp_resident_from' | 'temp_resident_to' | 'submitted_at' | 'created_at'>;
+  | 'subm_code' | 'receive_org' | 'temp_resident_from' | 'temp_resident_to' | 'submitted_at' | 'created_at'>
+  & { procedure_code: ResidenceProcedureCode };
 
 import { RegistrationError, maHoSoHopLe } from './residenceRegistrationValidation';
 export { RegistrationError, maHoSoHopLe } from './residenceRegistrationValidation';
 
-const COLUMNS = 'id,organization_id,building_id,customer_id,contract_id,subm_code,receive_org,temp_resident_from,temp_resident_to,submitted_at,created_at';
+const COLUMNS = 'id,organization_id,building_id,customer_id,contract_id,subm_code,receive_org,temp_resident_from,temp_resident_to,submitted_at,created_at,procedure_code';
 
 
 /** dd/mm/yyyy → yyyy-mm-dd; trả null nếu không đúng dạng (cột date không nhận rác). */
@@ -31,12 +35,19 @@ export async function listCustomerRegistrations(customerId: string): Promise<Res
   return data as ResidenceRegistration[];
 }
 
+/** Lượt nộp của đúng một thủ tục, giữ thứ tự mới nhất trước. */
+export function theoThuTuc(registrations: ResidenceRegistration[], procedure: ResidenceProcedureCode): ResidenceRegistration[] {
+  return registrations.filter(r => r.procedure_code === procedure);
+}
+
 export interface GhiHoSoInput {
   customerId: string;
   buildingId: string;
   organizationId: string;
   contractId?: string | null;
   submCode: string;
+  /** Thiếu thì là đăng ký — mọi lượt nộp trước khi có xoá đăng ký đều là TAMTRU_01. */
+  procedureCode?: ResidenceProcedureCode;
   receiveOrg?: string | null;
   /** dd/mm/yyyy như hiện trên cổng. */
   tempResidentFrom?: string | null;
@@ -53,7 +64,10 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
   if (!maHoSoHopLe(input.submCode)) throw new RegistrationError('Mã hồ sơ không hợp lệ.');
   const user = await getSessionUser();
   if (!user) throw new RegistrationError('Bạn cần đăng nhập lại.');
-  const matches = (row: ResidenceRegistration | null): row is ResidenceRegistration => !!row?.id
+  const procedure: ResidenceProcedureCode = input.procedureCode ?? 'TAMTRU_01';
+  // Dòng PostgREST trả về mang procedure_code kiểu string; khớp đúng thủ tục mới thu hẹp được.
+  const matches = (row: (Omit<ResidenceRegistration, 'procedure_code'> & { procedure_code: string }) | null): row is ResidenceRegistration => !!row?.id
+    && row.procedure_code === procedure
     && row.organization_id === input.organizationId && row.customer_id === input.customerId && row.building_id === input.buildingId
     && row.subm_code === input.submCode.trim() && row.contract_id === (input.contractId ?? null)
     && row.receive_org === (input.receiveOrg ?? '').slice(0,200)
@@ -67,6 +81,7 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
     customer_id: input.customerId,
     contract_id: input.contractId ?? null,
     subm_code: input.submCode.trim(),
+    procedure_code: procedure,
     receive_org: (input.receiveOrg ?? '').slice(0, 200),
     temp_resident_from: ngayIso(input.tempResidentFrom),
     temp_resident_to: ngayIso(input.tempResidentTo),

@@ -20,7 +20,11 @@
   let pending = null;
   let panel, body, steps, actions, fillBtn, anhBox;
 
-  const NHAN_LOAI = { CT01: 'Tờ khai CT01', LEASE: 'Hợp đồng thuê', OWNERSHIP: 'Chỗ ở hợp pháp' };
+  const NHAN_LOAI = {
+    CT01: 'Tờ khai CT01', LEASE: 'Hợp đồng thuê', OWNERSHIP: 'Chỗ ở hợp pháp',
+    CT01_XOA: 'Tờ khai CT01 huỷ tạm trú', THANH_LY: 'Biên bản thanh lý',
+  };
+  const laXoa = (p) => !!p && p.procedure === 'TAMTRU_06';
 
   /** Ảnh thu nhỏ để người dùng nhìn thấy ĐÚNG ảnh nào sắp đính kèm, không chỉ tên tệp. */
   function veAnh(files) {
@@ -28,7 +32,7 @@
     if (!files || files.length === 0) return;
     const theoLoai = {};
     files.forEach((f) => { (theoLoai[f.kind] = theoLoai[f.kind] || []).push(f); });
-    for (const kind of ['CT01', 'LEASE', 'OWNERSHIP']) {
+    for (const kind of ['CT01', 'LEASE', 'OWNERSHIP', 'CT01_XOA', 'THANH_LY']) {
       const nhom = theoLoai[kind];
       if (!nhom) continue;
       const khoi = el('div', 'ihome-tamtru-nhom');
@@ -123,6 +127,8 @@
         contractId: p.contractId,
         buildingName: p.buildingName,
         fullName: p.person && p.person.fullName,
+        // CRM phân biệt mã hồ sơ đăng ký với mã hồ sơ xoá đăng ký khi ghi sổ.
+        procedureCode: p.procedure || 'TAMTRU_01',
       },
     });
     if (panel && body) {
@@ -146,7 +152,7 @@
     panel = el('div');
     panel.id = 'ihome-tamtru-panel';
     const head = el('div', 'ihome-tamtru-head');
-    head.appendChild(el('strong', null, 'iHome Tạm trú'));
+    head.appendChild(el('strong', null, laXoa(p) ? 'iHome Tạm trú · Huỷ đăng ký' : 'iHome Tạm trú'));
     const close = el('button', 'ihome-tamtru-close', '×');
     close.type = 'button';
     close.title = 'Ẩn bảng';
@@ -157,7 +163,8 @@
     const info = el('div', 'ihome-tamtru-info');
     info.appendChild(el('div', null, 'Khách: ' + p.person.fullName + ' · CCCD ' + p.person.idNumber));
     info.appendChild(el('div', null, 'Toà ' + p.buildingName + ' · Phòng ' + p.roomNumber + ' · ' + p.receive.wardName));
-    info.appendChild(el('div', null, 'Hạn tạm trú đến ' + p.tempResidentTo + ' · ' + p.attachments.length + ' ảnh đính kèm'));
+    info.appendChild(el('div', null, (laXoa(p) ? 'Huỷ đăng ký tạm trú (cả hộ, không còn chỗ ở hợp pháp)' : 'Hạn tạm trú đến ' + p.tempResidentTo)
+      + ' · ' + p.attachments.length + ' ảnh đính kèm'));
     panel.appendChild(info);
 
     body = el('div', 'ihome-tamtru-body');

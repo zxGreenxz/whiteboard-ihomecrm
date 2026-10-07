@@ -16206,6 +16206,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           organization_id: string
+          procedure_code: string
           receive_org: string
           subm_code: string
           submitted_at: string
@@ -16221,6 +16222,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           organization_id: string
+          procedure_code?: string
           receive_org?: string
           subm_code: string
           submitted_at?: string
@@ -16236,6 +16238,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           organization_id?: string
+          procedure_code?: string
           receive_org?: string
           subm_code?: string
           submitted_at?: string

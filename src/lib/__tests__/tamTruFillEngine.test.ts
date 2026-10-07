@@ -13,6 +13,7 @@ interface Engine {
   findOption: (select: HTMLSelectElement, text: string) => HTMLOptionElement | undefined;
   formObject: (p: unknown) => Record<string, string>;
   run: (payload: unknown, files: unknown[], onProgress?: (p: { step: string; ok: boolean; message?: string; partial?: boolean }) => void) => Promise<void>;
+  STEPS: [string, unknown][];
 }
 
 const payload = {
@@ -204,6 +205,8 @@ describe('fill-engine run', () => {
     expect(val('lblFILE_TYPE_NAME2')).toBe('Giấy tờ, tài liệu chứng minh chỗ ở hợp pháp');
     expect(fx.fileCounts).toEqual({ fileUpload0: 1, fileUpload1: 1, fileUpload2: 2 });
     expect(progress.filter(p => !p.partial).map(p => p.ok)).toEqual([true, true, true, true, true, true]);
+    // Gói version 1 (không có procedure) đi đúng các bước ĐĂNG KÝ, không lạc sang luồng xoá.
+    expect(progress.filter(p => !p.partial).map(p => p.step)).toEqual(e.STEPS.map(([n]) => n));
     // Người dùng phải đọc được TÊN ảnh nào đã gắn vào đâu, không chỉ số lượng.
     const loi = progress.map(p => p.message || '').join(' | ');
     expect(loi).toContain('chuquyen950nk1.jpg, chuquyen950nk2.jpg');

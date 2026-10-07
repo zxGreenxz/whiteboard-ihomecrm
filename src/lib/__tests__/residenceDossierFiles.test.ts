@@ -23,7 +23,8 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: boundary.fr
 
 import {
   DossierFileError, dossierStorageValue, listCustomerDossierFiles, removeDossierFile,
-  slugTen, tenTepHoSo, uploadDossierFile,
+  pickDeregistrationFiles, slugTen, tenTepHoSo, uploadDossierFile,
+  type ResidenceDossierFile,
 } from '../residenceDossierFiles';
 
 beforeEach(() => { localStorage.clear(); });
@@ -46,6 +47,8 @@ describe('tenTepHoSo', () => {
   it('ảnh của khách mang tên khách, bỏ dấu', () => {
     expect(tenTepHoSo({ kind: 'CT01', customerName: 'Nguyễn Gia Bình', index: 1, ext: 'jpg' })).toBe('nguyengiabinhct011.jpg');
     expect(tenTepHoSo({ kind: 'LEASE', customerName: 'Nguyễn Gia Bình', index: 3, ext: 'jpg' })).toBe('nguyengiabinhhopdong3.jpg');
+    expect(tenTepHoSo({ kind: 'CT01_XOA', customerName: 'Lê Quốc Duy', index: 1, ext: 'jpg' })).toBe('lequocduyct01huy1.jpg');
+    expect(tenTepHoSo({ kind: 'THANH_LY', customerName: 'Lê Quốc Duy', index: 2, ext: 'png' })).toBe('lequocduythanhly2.png');
   });
   it('thiếu tên thì vẫn ra tên dùng được, không có ký tự lạ', () => {
     const t = tenTepHoSo({ kind: 'OWNERSHIP', index: 0, ext: '' });
@@ -174,5 +177,16 @@ describe('dossierStorageValue', () => {
   it('dựng URL public để StorageImage ký lúc đọc', () => {
     expect(dossierStorageValue({ bucket_id: 'residence-docs', object_name: 'u/x.webp' }))
       .toBe('https://x.supabase.co/storage/v1/object/public/residence-docs/u/x.webp');
+  });
+});
+
+describe('pickDeregistrationFiles', () => {
+  const f = (id: string, kind: ResidenceDossierFile['kind'], contract_id: string | null) => ({ id, kind, contract_id }) as ResidenceDossierFile;
+  it('chỉ lấy CT01 huỷ và biên bản, ưu tiên ảnh của đúng hợp đồng', () => {
+    const files = [f('a', 'CT01', 'k1'), f('b', 'CT01_XOA', 'k0'), f('c', 'CT01_XOA', 'k1'), f('d', 'THANH_LY', 'k0'), f('e', 'LEASE', 'k1')];
+    expect(pickDeregistrationFiles(files, 'k1').map(x => x.id)).toEqual(['c', 'd']);
+  });
+  it('không có ảnh nào thì trả rỗng để gói xoá báo thiếu', () => {
+    expect(pickDeregistrationFiles([f('a', 'CT01', 'k1')], 'k1')).toEqual([]);
   });
 });

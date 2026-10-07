@@ -21,6 +21,8 @@ import LeaseTermBadge from './LeaseTermBadge';
 import RegistrationHistory from './RegistrationHistory';
 import RegistrationManualEntry from './RegistrationManualEntry';
 import TamTruDvcButton from './TamTruDvcButton';
+import ResidenceDeregistrationSection from './ResidenceDeregistrationSection';
+import { theoThuTuc } from '@/lib/residenceRegistrations';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 
 // Khối cần đủ dữ liệu cho cả gói gửi Cổng DVC lẫn tờ khai CT01 tải về.
@@ -104,6 +106,8 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
     organizationId: tenancy.building.organization_id ?? '', contractId: tenancy.contractId,
   } : null;
   const ghiMa = useGhiHoSoTamTru(customer.id);
+  // Sổ chung cho đăng ký và xoá đăng ký; khối này chỉ hiện các lượt đăng ký.
+  const daDangKy = theoThuTuc(dangKy.data ?? [], 'TAMTRU_01');
 
   // Số tháng: lấy lại từ hạn đã lưu trên ảnh (chủ chốt lần trước), mặc định 24.
   const [thangChon, setThangChon] = useState<12 | 24 | null>(null);
@@ -165,7 +169,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
           <DossierImageUploader kind="CT01" files={files.filter(f => f.kind === 'CT01')} canEdit contractId={tenancy.contractId}
             onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
             hint="Chụp hoặc tải ảnh tờ khai CT01 đã ký. Có thể tải ngay từ điện thoại." />
-          {dangKy.data && dangKy.data.length > 0 && <RegistrationHistory registrations={dangKy.data} />}
+          {daDangKy.length > 0 && <RegistrationHistory registrations={daDangKy} />}
           <p className="flex items-center gap-1.5 text-xs">
             {ownership.length > 0
               ? <><CheckCircle2 className="h-4 w-4 text-green-600" /> Giấy tờ chỗ ở hợp pháp của toà {tenancy.building.name}: {ownership.length} ảnh.</>
@@ -196,6 +200,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
         </>
       )}
       </QueryRegion>
+      <ResidenceDeregistrationSection customer={customer} />
     </section>
   );
 }

@@ -2,6 +2,7 @@ import type PizZip from 'pizzip';
 import type { Customer } from '@/types/customer';
 import type { Building } from '@/types/building';
 import type { BuildingLegalOwner } from './buildingLegalOwner';
+import { normalizeProvinceName } from './tamTruPayload';
 
 export type CT01Customer = Pick<Customer, 'full_name' | 'date_of_birth' | 'gender' | 'id_number' | 'phone' | 'email'
   | 'id_issue_date' | 'id_issue_place' | 'detailed_address'>;
@@ -81,12 +82,72 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
   return data;
 }
 
-/** Tải mẫu một lần, trả hàm điền dữ liệu; mỗi lần gọi dựng một bản Word riêng từ cùng byte mẫu. */
-export async function createCT01Renderer(): Promise<(data: Record<string, string>) => PizZip> {
+export interface CT01HuyDetails {
+  roomNumber: string;
+  owner: BuildingLegalOwner;
+  /** yyyy-mm-dd ngày chấm dứt (hệ thống quyết); null thì lấy ngày tải (now). */
+  endDate: string | null;
+}
+
+/** Chỗ trống để viết tay khi hồ sơ chưa có dữ liệu. */
+const HANDWRITE_BLANK = '……………';
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isCalendarDate(value: string): boolean {
+  const parts = value.match(DATE_ONLY);
+  if (!parts) return false;
+  const date = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+  return date.toISOString().slice(0, 10) === value;
+}
+
+/** Kiểm chung của giấy hủy tạm trú (không có thời hạn như đăng ký). */
+export function assertCT01HuyInput(building: CT01Building, details: CT01HuyDetails): void {
+  if (!building.street_address?.trim()) throw new CT01InputError('Tòa nhà chưa có địa chỉ chi tiết. Vui lòng cập nhật tòa nhà trước khi tải giấy hủy tạm trú.');
+  if (!details.roomNumber.trim()) throw new CT01InputError('Hợp đồng chưa có số phòng. Vui lòng kiểm tra phòng trước khi tải giấy hủy tạm trú.');
+  if (!details.owner.full_name.trim() || !details.owner.id_number.trim()) {
+    throw new CT01InputError('Tòa nhà chưa đủ họ tên và CCCD của người đứng tên chủ quyền. Vui lòng bổ sung trong chỉnh sửa tòa nhà trước khi tải giấy hủy tạm trú.');
+  }
+  // Chỉ nhận ngày thuần: một mốc giờ UTC cắt lấy ngày có thể lệch một ngày so với giờ Việt Nam.
+  if (details.endDate !== null && !isCalendarDate(details.endDate)) {
+    throw new CT01InputError('Ngày chấm dứt hợp đồng không hợp lệ nên không lập được biên bản thanh lý. Vui lòng kiểm tra hợp đồng.');
+  }
+}
+
+/**
+ * Dữ liệu mẫu templates/ct01-huy.docx: tờ khai CT01 hủy tạm trú + biên bản thanh lý hợp đồng thuê nhà.
+ * Dùng lại buildCT01Data cho phần CT01; thời hạn 12 tháng chỉ để qua kiểm của hàm đó — mẫu hủy
+ * không in duration_months/lease_end_date/download_date.
+ */
+export function buildCT01HuyData(customer: CT01Customer, building: CT01Building, details: CT01HuyDetails, now = new Date()): Record<string, string> {
+  assertCT01HuyInput(building, details);
+  const data = buildCT01Data(customer, building, { durationMonths: 12, roomNumber: details.roomNumber, owner: details.owner }, now);
+  const orBlank = (value: string | null | undefined) => value?.trim() || HANDWRITE_BLANK;
+  const end = details.endDate?.match(DATE_ONLY);
+  const province = building.province?.trim();
+  return {
+    ...data,
+    registration_request: `Hủy tạm trú tại ${data.building_address}`,
+    tl_city: province ? normalizeProvinceName(province) : HANDWRITE_BLANK,
+    // Ngày thanh lý do hệ thống quyết, không bao giờ để trống: thiếu ngày chấm dứt thì lấy ngày tải.
+    tl_end_date: end ? `ngày ${end[3]} tháng ${end[2]} năm ${end[1]}` : data.signature_date ?? '',
+    tl_owner_birth_year: orBlank(data.owner_birth_year),
+    tl_owner_id_issue_date: orBlank(data.owner_id_issue_date),
+    tl_owner_id_issue_place: orBlank(data.owner_id_issue_place),
+    tl_owner_permanent_address: orBlank(data.owner_permanent_address),
+    tl_customer_birth: orBlank(data.date_of_birth),
+    // Trong mẫu hủy, customer_id_number chỉ in ở biên bản (CT01 dùng id_1…id_12).
+    customer_id_number: orBlank(data.customer_id_number),
+    tl_customer_id_issue_date: orBlank(data.customer_id_issue_date),
+    tl_customer_id_issue_place: orBlank(data.customer_id_issue_place),
+    tl_customer_permanent_address: orBlank(data.customer_permanent_address),
+  };
+}
+
+async function createTemplateRenderer(fileName: string, missingMessage: string): Promise<(data: Record<string, string>) => PizZip> {
   const [{ default: Docxtemplater }, { default: PizZipClass }, response] = await Promise.all([
-    import('docxtemplater'), import('pizzip'), fetch(`${import.meta.env.BASE_URL}templates/ct01.docx`),
+    import('docxtemplater'), import('pizzip'), fetch(`${import.meta.env.BASE_URL}templates/${fileName}`),
   ]);
-  if (!response.ok) throw new Error('Không tải được mẫu CT01. Vui lòng thử lại.');
+  if (!response.ok) throw new Error(missingMessage);
   const template = await response.arrayBuffer();
   return data => {
     const document = new Docxtemplater(new PizZipClass(template), {
@@ -95,6 +156,11 @@ export async function createCT01Renderer(): Promise<(data: Record<string, string
     document.render(data);
     return document.getZip();
   };
+}
+
+/** Tải mẫu một lần, trả hàm điền dữ liệu; mỗi lần gọi dựng một bản Word riêng từ cùng byte mẫu. */
+export async function createCT01Renderer(): Promise<(data: Record<string, string>) => PizZip> {
+  return createTemplateRenderer('ct01.docx', 'Không tải được mẫu CT01. Vui lòng thử lại.');
 }
 
 export function wordBlob(zip: PizZip): Blob {
@@ -130,4 +196,15 @@ export function downloadWordBlob(blob: Blob, fileName: string): void {
 export async function downloadCT01Document(customer: CT01Customer, building: CT01Building, lease: CT01LeaseDetails, requestedAt = new Date()): Promise<void> {
   const blob = await renderCT01Document(customer, building, lease, requestedAt);
   downloadWordBlob(blob, `CT01 - ${safeFileName(customer.full_name) || 'Khach hang'}.docx`);
+}
+
+export async function renderCT01HuyDocument(customer: CT01Customer, building: CT01Building, details: CT01HuyDetails, now = new Date()): Promise<Blob> {
+  const data = buildCT01HuyData(customer, building, details, now);
+  const render = await createTemplateRenderer('ct01-huy.docx', 'Không tải được mẫu CT01 hủy tạm trú. Vui lòng thử lại.');
+  return wordBlob(render(data));
+}
+
+export async function downloadCT01HuyDocument(customer: CT01Customer, building: CT01Building, details: CT01HuyDetails, requestedAt = new Date()): Promise<void> {
+  const blob = await renderCT01HuyDocument(customer, building, details, requestedAt);
+  downloadWordBlob(blob, `CT01 huy tam tru - ${safeFileName(customer.full_name) || 'Khach hang'}.docx`);
 }

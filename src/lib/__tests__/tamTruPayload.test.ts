@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildTamTruPayload, genderCode, normalizeProvinceName, splitBuildingAddress, tempResidentTo, TamTruInputError,
+  buildTamTruPayload, buildTamTruXoaPayload, genderCode, normalizeProvinceName, splitBuildingAddress, tempResidentTo, TamTruInputError,
   type TamTruAttachment,
 } from '../tamTruPayload';
 
@@ -93,5 +93,45 @@ describe('buildTamTruPayload', () => {
     const run = () => buildTamTruPayload({ customer: c, building: b, roomNumber: 'P1', durationMonths: 24, attachments: a });
     expect(run).toThrowError(re);
     expect(run).toThrow(TamTruInputError);
+  });
+});
+
+describe('buildTamTruXoaPayload', () => {
+  const xoa: TamTruAttachment[] = [
+    { kind: 'THANH_LY', fileName: 'nguyengiabinhthanhly1.jpg', contentType: 'image/jpeg', url: 'https://s/5' },
+    { kind: 'CT01', fileName: 'cu.jpg', contentType: 'image/jpeg', url: 'https://s/1' },
+    { kind: 'CT01_XOA', fileName: 'nguyengiabinhct01huy1.jpg', contentType: 'image/jpeg', url: 'https://s/4' },
+  ];
+
+  it('dựng gói xoá version 2, cố định trường hợp TAT-XOA-14, chỉ mang ảnh CT01 huỷ + biên bản', () => {
+    const p = buildTamTruXoaPayload({
+      customer, building, roomNumber: 'P1', buildingId: 'b1', organizationId: 'o1', contractId: 'ct1',
+      attachments: xoa, now: new Date('2026-10-07T03:00:00Z'),
+    });
+    expect(p).toMatchObject({
+      version: 2, procedure: 'TAMTRU_06', caseCode: 'TAT-XOA-14', customerId: 'c1',
+      buildingId: 'b1', organizationId: 'o1', contractId: 'ct1', roomNumber: 'P1',
+      receive: { provinceName: 'Thành phố Hồ Chí Minh', wardName: 'Phường Hạnh Thông' },
+      person: { fullName: 'Nguyễn Gia Bình', dob: '18/10/2008', genderCode: '2', idNumber: '034208012538' },
+      household: { relationshipCode: 'CH01' },
+    });
+    expect(p).not.toHaveProperty('tempResidentTo');
+    expect(p.attachments.map(a => a.kind)).toEqual(['CT01_XOA', 'THANH_LY']);
+  });
+
+  it.each([
+    ['CT01_XOA', /CT01 huỷ/],
+    ['THANH_LY', /biên bản thanh lý/],
+  ] as const)('thiếu ảnh %s thì báo rõ', (thieu, re) => {
+    const run = () => buildTamTruXoaPayload({ customer, building, roomNumber: 'P1', attachments: xoa.filter(a => a.kind !== thieu) });
+    expect(run).toThrowError(re);
+    expect(run).toThrow(TamTruInputError);
+  });
+
+  it('dùng chung luật kiểm khách và toà với đăng ký', () => {
+    expect(() => buildTamTruXoaPayload({ customer: { ...customer, id_number: '123' }, building, roomNumber: 'P1', attachments: xoa }))
+      .toThrowError(/12 số/);
+    expect(() => buildTamTruXoaPayload({ customer, building: { ...building, street_address: '950 Nguyễn Kiệm' }, roomNumber: 'P1', attachments: xoa }))
+      .toThrowError(/phường\/xã mới/);
   });
 });

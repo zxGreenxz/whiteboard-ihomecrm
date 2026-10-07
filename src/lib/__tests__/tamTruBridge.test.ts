@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  banExtensionDu,
   detectTamTruExtension, sendTamTruPayload, tamTruExtensionId,
   TAM_TRU_EXT_ATTR, TAM_TRU_EXT_ID, TAM_TRU_EXT_ID_ATTR,
 } from '../tamTruBridge';
@@ -84,5 +85,18 @@ describe('sendTamTruPayload', () => {
   it('extension im lặng thì hết giờ báo không phản hồi', async () => {
     installChrome({ sendMessage: () => { /* không gọi callback */ } });
     await expect(sendTamTruPayload(payload, window, 60)).rejects.toThrow(/không phản hồi/i);
+  });
+});
+
+describe('banExtensionDu', () => {
+  it('so theo từng số, không theo chữ', () => {
+    expect(banExtensionDu('1.1.0', '1.1.0')).toBe(true);
+    expect(banExtensionDu('1.10.0', '1.9.0')).toBe(true);
+    expect(banExtensionDu('1.2', '1.1.0')).toBe(true);
+    expect(banExtensionDu('1.0.0', '1.1.0')).toBe(false);
+    expect(banExtensionDu('0.9.9', '1.1.0')).toBe(false);
+  });
+  it('chưa cài thì chưa đủ', () => {
+    expect(banExtensionDu(null, '1.1.0')).toBe(false);
   });
 });

@@ -9,7 +9,8 @@
 //   chrome.runtime.sendMessage(<id>, …) nhờ externally_connectable trong manifest
 //   của extension. Chrome chuyển thẳng cho đúng extension đó, không ai nghe ké.
 //   Id cố định nhờ khoá "key" trong manifest.
-import type { TamTruPayload } from './tamTruPayload';
+import type { TamTruPayload, TamTruXoaPayload } from './tamTruPayload';
+import type { ResidenceProcedureCode } from './residenceRegistrations';
 
 export const TAM_TRU_EXT_ATTR = 'data-ihome-tamtru-ext';
 export const TAM_TRU_EXT_ID_ATTR = 'data-ihome-tamtru-id';
@@ -17,6 +18,20 @@ export const TAM_TRU_EXT_ID_ATTR = 'data-ihome-tamtru-id';
 export const TAM_TRU_EXT_ID = 'kaleeijefebjdhcmkfdbbffmielfjjgf';
 /** Thư mục extension trong repo, hiện trong hướng dẫn cài. */
 export const TAM_TRU_EXT_FOLDER = 'extensions/tam-tru';
+/** Bản extension đầu tiên biết điền thủ tục Xóa đăng ký tạm trú (gói version 2). */
+export const TAM_TRU_EXT_XOA_TU_BAN = '1.1.0';
+
+/** So hai số phiên bản dạng a.b.c; bản cài thấp hơn mức cần thì phải tải lại extension. */
+export function banExtensionDu(dangCai: string | null, canToiThieu: string): boolean {
+  if (!dangCai) return false;
+  const a = dangCai.split('.').map(n => Number.parseInt(n, 10) || 0);
+  const b = canToiThieu.split('.').map(n => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0; const y = b[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return true;
+}
 
 interface AckMessage { ok?: boolean; error?: string }
 
@@ -24,6 +39,8 @@ interface AckMessage { ok?: boolean; error?: string }
 export interface KetQuaNopTamTru {
   submCode: string;
   customerId: string;
+  /** Thủ tục của lượt nộp; extension đời cũ không gửi — khi đó là đăng ký (TAMTRU_01). */
+  procedureCode?: ResidenceProcedureCode;
   /** Khoá ghi sổ, do CRM gửi kèm trong gói và extension trả lại nguyên vẹn. */
   buildingId?: string;
   organizationId?: string;
@@ -88,7 +105,7 @@ export async function xacNhanDaGhiSo(maDaLuu: string[], win: Window = window): P
 }
 
 /** Gửi gói cho extension và chờ xác nhận; từ chối nếu extension im lặng hoặc báo lỗi. */
-export function sendTamTruPayload(payload: TamTruPayload, win: Window = window, timeoutMs = 5000): Promise<void> {
+export function sendTamTruPayload(payload: TamTruPayload | TamTruXoaPayload, win: Window = window, timeoutMs = 5000): Promise<void> {
   const runtime = (win as WindowWithChrome).chrome?.runtime;
   const chuaCai = 'Extension iHome Tạm trú chưa sẵn sàng. Kiểm tra extension đã bật chưa rồi tải lại trang.';
   return new Promise<void>((resolve, reject) => {

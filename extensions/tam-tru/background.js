@@ -1,7 +1,10 @@
-// Service worker: giữ gói dữ liệu đang chờ (storage.session), mở tab form Đăng ký
-// tạm trú, và tải ảnh từ signed URL của CRM giúp content script (tránh CORS).
+// Service worker: giữ gói dữ liệu đang chờ (storage.session), mở tab form Đăng ký /
+// Xoá đăng ký tạm trú, và tải ảnh từ signed URL của CRM giúp content script (tránh CORS).
 const FORM_URL = 'https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html'
   + '?ma_thu_tuc=1.004194&TT=TAMTRU_01&TT_NAME=%C4%90%C4%83ng%20k%C3%BD%20t%E1%BA%A1m%20tr%C3%BA';
+// Xoá đăng ký tạm trú dùng CÙNG trang, chỉ khác TT (đo thật 07/10/2026).
+const FORM_URL_XOA = 'https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html'
+  + '?ma_thu_tuc=1.004194&TT=TAMTRU_06&TT_NAME=X%C3%B3a%20%C4%91%C4%83ng%20k%C3%BD%20t%E1%BA%A1m%20tr%C3%BA';
 const PENDING_TTL_MS = 60 * 60 * 1000;
 
 function toBase64(bytes) {
@@ -49,9 +52,18 @@ function senderAllowed(sender) {
   return ALLOWED_SENDER_ORIGINS.has(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin);
 }
 
+/** Thủ tục của gói: version 1 là đăng ký (không mang procedure); version 2 là xoá đăng ký,
+ * mang procedure TAMTRU_06 và trường hợp cố định TAT-XOA-14. Hình dạng khác → null. */
+function procedureOf(payload) {
+  if (!payload) return null;
+  if (payload.version === 1) return payload.procedure === undefined || payload.procedure === 'TAMTRU_01' ? 'TAMTRU_01' : null;
+  if (payload.version === 2) return payload.procedure === 'TAMTRU_06' && payload.caseCode === 'TAT-XOA-14' ? 'TAMTRU_06' : null;
+  return null;
+}
+
 /** Gói từ trang CRM: chỉ nhận đúng hình dạng đã biết và URL ảnh thuộc host Supabase của dự án. */
 function payloadProblem(payload) {
-  if (!payload || payload.version !== 1 || !payload.person || !payload.receive) return 'Gói dữ liệu không hợp lệ.';
+  if (!procedureOf(payload) || !payload.person || !payload.receive) return 'Gói dữ liệu không hợp lệ.';
   if (!Array.isArray(payload.attachments) || payload.attachments.length === 0) return 'Gói dữ liệu thiếu ảnh đính kèm.';
   if (payload.attachments.length > 30) return 'Gói dữ liệu có quá nhiều ảnh.';
   if (!payload.attachments.every((a) => a && allowedFileUrl(a.url))) return 'Đường dẫn ảnh không thuộc kho của CRM.';
@@ -75,7 +87,8 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   if (problem) { sendResponse({ ok: false, error: problem }); return false; }
   (async () => {
     await chrome.storage.session.set({ pending: { payload: msg.payload, receivedAt: Date.now() } });
-    const tab = await chrome.tabs.create({ url: FORM_URL, active: true });
+    const url = procedureOf(msg.payload) === 'TAMTRU_06' ? FORM_URL_XOA : FORM_URL;
+    const tab = await chrome.tabs.create({ url, active: true });
     sendResponse({ ok: true, tabId: tab.id });
   })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
   return true;

@@ -5,7 +5,12 @@ import { BadgeCheck, ChevronDown, ChevronRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { ngayVn, type ResidenceRegistration } from '@/lib/residenceRegistrations';
 
-export interface RegistrationHistoryProps { registrations: ResidenceRegistration[] }
+export interface RegistrationHistoryProps {
+  registrations: ResidenceRegistration[];
+  /** Nhãn của lượt nộp gần nhất; mặc định cho đăng ký, khối xoá truyền "Đã huỷ tạm trú". */
+  nhan?: string;
+  nhanLichSu?: string;
+}
 
 function dongMoTa(r: ResidenceRegistration): string {
   const han = r.temp_resident_to ? `hạn đến ${ngayVn(r.temp_resident_to)}` : '';
@@ -13,7 +18,7 @@ function dongMoTa(r: ResidenceRegistration): string {
   return [tu, han].filter(Boolean).join(' · ');
 }
 
-export default function RegistrationHistory({ registrations }: RegistrationHistoryProps) {
+export default function RegistrationHistory({ registrations, nhan = 'Đã đăng ký tạm trú', nhanLichSu = 'Lịch sử đăng ký tạm trú' }: RegistrationHistoryProps) {
   const [moLichSu, setMoLichSu] = useState(false);
   const moiNhat = registrations[0];
   if (!moiNhat) return null;
@@ -27,10 +32,10 @@ export default function RegistrationHistory({ registrations }: RegistrationHisto
   };
 
   return (
-    <div className="space-y-1 rounded-md border border-green-200 bg-green-50/60 p-2" aria-label="Đã đăng ký tạm trú">
+    <div className="space-y-1 rounded-md border border-green-200 bg-green-50/60 p-2" aria-label={nhan}>
       <p className="flex flex-wrap items-center gap-1.5 text-sm">
         <BadgeCheck className="h-4 w-4 text-green-600" />
-        <span className="font-medium">Đã đăng ký tạm trú</span>
+        <span className="font-medium">{nhan}</span>
         <span className="font-mono text-xs">{moiNhat.subm_code}</span>
         <button type="button" aria-label="Sao chép mã hồ sơ" onClick={() => chep(moiNhat.subm_code)}
           className="rounded p-0.5 text-muted-foreground hover:text-foreground">
@@ -51,7 +56,7 @@ export default function RegistrationHistory({ registrations }: RegistrationHisto
             {cu.length} lần nộp trước
           </button>
           {moLichSu && (
-            <ul className="space-y-0.5 pl-4 text-xs text-muted-foreground" aria-label="Lịch sử đăng ký tạm trú">
+            <ul className="space-y-0.5 pl-4 text-xs text-muted-foreground" aria-label={nhanLichSu}>
               {cu.map(r => (
                 <li key={r.id}>
                   <span className="font-mono">{r.subm_code}</span>

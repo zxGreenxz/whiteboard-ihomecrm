@@ -25,6 +25,30 @@ export interface TamTruPayload {
   attachments: TamTruAttachment[];
 }
 
+/**
+ * Gói cho thủ tục "Xóa đăng ký tạm trú" (TAMTRU_06) — cùng trang form với đăng ký,
+ * khác thủ tục. version 2 để extension đời cũ (chỉ biết đăng ký) từ chối thẳng thay
+ * vì điền nhầm sang form đăng ký.
+ */
+export interface TamTruXoaPayload {
+  version: 2;
+  procedure: 'TAMTRU_06';
+  /** Chủ dự án chốt: luôn "Cả hộ do không còn chỗ ở hợp pháp" — mỗi khách là một hộ riêng. */
+  caseCode: 'TAT-XOA-14';
+  createdAt: string;
+  customerId: string;
+  buildingId?: string;
+  organizationId?: string;
+  contractId?: string;
+  buildingName: string;
+  roomNumber: string;
+  receive: TamTruPayload['receive'];
+  person: TamTruPayload['person'];
+  address: string;
+  household: TamTruPayload['household'];
+  attachments: TamTruAttachment[];
+}
+
 export class TamTruInputError extends Error {}
 
 export interface TamTruCustomerInput {
@@ -35,7 +59,7 @@ export interface TamTruBuildingInput { name: string; street_address: string | nu
 
 const CENTRAL_CITIES = ['hồ chí minh', 'hà nội', 'đà nẵng', 'hải phòng', 'cần thơ', 'huế'];
 const LOCALITY = /^(phường|xã|thị trấn|đặc khu)\s+\S/i;
-const KIND_ORDER: DossierKind[] = ['CT01', 'LEASE', 'OWNERSHIP'];
+const KIND_ORDER: DossierKind[] = ['CT01', 'LEASE', 'OWNERSHIP', 'CT01_XOA', 'THANH_LY'];
 
 function stripProvincePrefix(raw: string): string {
   return raw.trim().replace(/^(thành phố|tp\.?|tỉnh)\s+/i, '').trim();
@@ -112,6 +136,32 @@ export function ngayHanHopLe(value: string | null | undefined, now: Date = new D
   return d.getTime() > Date.UTC(t.year, t.month - 1, t.day);
 }
 
+/** Người khai và nơi nhận hồ sơ — chung cho đăng ký và xoá đăng ký: cùng ô trên cổng, cùng luật. */
+function nguoiVaNoiNhan(customer: TamTruCustomerInput, building: TamTruBuildingInput) {
+  const fullName = customer.full_name.trim();
+  if (!fullName) throw new TamTruInputError('Khách chưa có họ tên.');
+  const dob = dobOf(customer.date_of_birth);
+  if (!dob) throw new TamTruInputError('Khách chưa có ngày sinh. Vui lòng cập nhật hồ sơ khách.');
+  const gender = genderCode(customer.gender);
+  if (!gender) throw new TamTruInputError('Khách chưa có giới tính. Vui lòng cập nhật hồ sơ khách.');
+  const idNumber = (customer.id_number ?? '').trim();
+  if (!/^\d{12}$/.test(idNumber)) throw new TamTruInputError('Số CCCD của khách phải đủ 12 số. Vui lòng kiểm tra hồ sơ khách.');
+  if (!building.street_address?.trim()) throw new TamTruInputError('Toà nhà chưa có địa chỉ chi tiết. Vui lòng cập nhật toà nhà.');
+  const { address, wardName } = splitBuildingAddress(building.street_address);
+  if (!wardName) {
+    throw new TamTruInputError('Địa chỉ chi tiết của toà chưa có phường/xã mới (ví dụ "…, Phường Hạnh Thông, …"). Vui lòng cập nhật toà nhà.');
+  }
+  if (!address) throw new TamTruInputError('Địa chỉ chi tiết của toà thiếu số nhà, đường phố trước phần phường.');
+  return {
+    receive: { provinceName: normalizeProvinceName(building.province), wardName },
+    person: {
+      fullName, dob, genderCode: gender, idNumber,
+      phone: (customer.phone ?? '').trim(), email: (customer.email ?? '').trim(),
+    },
+    address,
+  };
+}
+
 export function buildTamTruPayload(input: {
   customer: TamTruCustomerInput;
   building: TamTruBuildingInput;
@@ -130,20 +180,7 @@ export function buildTamTruPayload(input: {
 }): TamTruPayload {
   const { customer, building, attachments } = input;
   const now = input.now ?? new Date();
-  const fullName = customer.full_name.trim();
-  if (!fullName) throw new TamTruInputError('Khách chưa có họ tên.');
-  const dob = dobOf(customer.date_of_birth);
-  if (!dob) throw new TamTruInputError('Khách chưa có ngày sinh. Vui lòng cập nhật hồ sơ khách.');
-  const gender = genderCode(customer.gender);
-  if (!gender) throw new TamTruInputError('Khách chưa có giới tính. Vui lòng cập nhật hồ sơ khách.');
-  const idNumber = (customer.id_number ?? '').trim();
-  if (!/^\d{12}$/.test(idNumber)) throw new TamTruInputError('Số CCCD của khách phải đủ 12 số. Vui lòng kiểm tra hồ sơ khách.');
-  if (!building.street_address?.trim()) throw new TamTruInputError('Toà nhà chưa có địa chỉ chi tiết. Vui lòng cập nhật toà nhà.');
-  const { address, wardName } = splitBuildingAddress(building.street_address);
-  if (!wardName) {
-    throw new TamTruInputError('Địa chỉ chi tiết của toà chưa có phường/xã mới (ví dụ "…, Phường Hạnh Thông, …"). Vui lòng cập nhật toà nhà.');
-  }
-  if (!address) throw new TamTruInputError('Địa chỉ chi tiết của toà thiếu số nhà, đường phố trước phần phường.');
+  const { receive, person, address } = nguoiVaNoiNhan(customer, building);
   const has = (k: DossierKind) => attachments.some(a => a.kind === k);
   if (!has('CT01')) throw new TamTruInputError('Chưa có ảnh tờ khai CT01 đã ký của khách.');
   if (!has('LEASE')) throw new TamTruInputError('Chưa có ảnh hợp đồng thuê đã ký của khách.');
@@ -157,11 +194,8 @@ export function buildTamTruPayload(input: {
     ...(input.contractId ? { contractId: input.contractId } : {}),
     buildingName: building.name,
     roomNumber: input.roomNumber,
-    receive: { provinceName: normalizeProvinceName(building.province), wardName },
-    person: {
-      fullName, dob, genderCode: gender, idNumber,
-      phone: (customer.phone ?? '').trim(), email: (customer.email ?? '').trim(),
-    },
+    receive,
+    person,
     address,
     household: { relationshipCode: 'CH01' },
     // Hạn trên hợp đồng là nguồn đúng: tờ khai CT01 và hợp đồng đều ghi theo ngày
@@ -169,5 +203,41 @@ export function buildTamTruPayload(input: {
     ...(ngayHopLeDinhDang(input.tempResidentFrom) ? { tempResidentFrom: input.tempResidentFrom } : {}),
     tempResidentTo: ngayHanHopLe(input.tempResidentTo, now) ? input.tempResidentTo : tempResidentTo(now, input.durationMonths),
     attachments: [...attachments].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)),
+  };
+}
+
+/** Gói "Xóa đăng ký tạm trú": cùng người khai/nơi nhận như đăng ký, đính kèm CT01 huỷ + biên bản thanh lý. */
+export function buildTamTruXoaPayload(input: {
+  customer: TamTruCustomerInput;
+  building: TamTruBuildingInput;
+  roomNumber: string;
+  buildingId?: string;
+  organizationId?: string;
+  contractId?: string;
+  attachments: TamTruAttachment[];
+  now?: Date;
+}): TamTruXoaPayload {
+  const { customer, building, attachments } = input;
+  const { receive, person, address } = nguoiVaNoiNhan(customer, building);
+  const has = (k: DossierKind) => attachments.some(a => a.kind === k);
+  if (!has('CT01_XOA')) throw new TamTruInputError('Chưa có ảnh tờ khai CT01 huỷ tạm trú đã ký của khách.');
+  if (!has('THANH_LY')) throw new TamTruInputError('Chưa có ảnh biên bản thanh lý đã ký của khách.');
+  return {
+    version: 2,
+    procedure: 'TAMTRU_06',
+    caseCode: 'TAT-XOA-14',
+    createdAt: (input.now ?? new Date()).toISOString(),
+    customerId: customer.id,
+    ...(input.buildingId ? { buildingId: input.buildingId } : {}),
+    ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+    ...(input.contractId ? { contractId: input.contractId } : {}),
+    buildingName: building.name,
+    roomNumber: input.roomNumber,
+    receive,
+    person,
+    address,
+    household: { relationshipCode: 'CH01' },
+    attachments: attachments.filter(a => a.kind === 'CT01_XOA' || a.kind === 'THANH_LY')
+      .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)),
   };
 }

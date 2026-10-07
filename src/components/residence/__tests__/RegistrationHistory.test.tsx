@@ -16,7 +16,7 @@ const ho = (over: Partial<ResidenceRegistration>): ResidenceRegistration => ({
   id: 'r1', organization_id: 'o', building_id: 'b', customer_id: 'c', contract_id: 'ct',
   subm_code: 'G01.899.909-260916-890028', receive_org: 'Công an Phường Hạnh Thông',
   temp_resident_from: '2026-09-16', temp_resident_to: '2028-09-14',
-  submitted_at: '2026-09-16T02:25:16.000Z', created_at: '2026-09-16T02:25:16.000Z', ...over,
+  submitted_at: '2026-09-16T02:25:16.000Z', created_at: '2026-09-16T02:25:16.000Z', procedure_code: 'TAMTRU_01', ...over,
 });
 
 afterEach(cleanup);

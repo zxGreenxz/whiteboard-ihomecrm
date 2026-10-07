@@ -8,9 +8,36 @@ export interface TamTruInstallDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
+  /** Có giá trị khi extension đã cài nhưng là bản cũ chưa biết việc cần làm (vd huỷ đăng ký). */
+  banCu?: string | null;
+  /** Tên nút gọi lại ở bước cuối, vd "Huỷ đăng ký tạm trú trên DVC". */
+  tenNut?: string;
 }
 
-export default function TamTruInstallDialog({ open, onOpenChange, onRetry }: TamTruInstallDialogProps) {
+export default function TamTruInstallDialog({ open, onOpenChange, onRetry, banCu, tenNut = 'Đăng ký tạm trú' }: TamTruInstallDialogProps) {
+  if (banCu) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cập nhật extension iHome Tạm trú</DialogTitle>
+            <DialogDescription>
+              Extension đang cài là bản {banCu}, chưa biết điền thủ tục này. Mã nguồn CRM đã có bản mới, chỉ cần nạp lại.
+            </DialogDescription>
+          </DialogHeader>
+          <ol className="list-decimal space-y-2 pl-5 text-sm">
+            <li>Mở Chrome, vào địa chỉ <code className="rounded bg-muted px-1">chrome://extensions</code>.</li>
+            <li>Ở thẻ <strong>iHome Tạm trú</strong>, bấm nút tải lại (↻). Thư mục vẫn là <code className="rounded bg-muted px-1">{TAM_TRU_EXT_FOLDER}</code>.</li>
+            <li>Tải lại trang CRM này rồi bấm lại nút {tenNut}.</li>
+          </ol>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
+            <Button type="button" onClick={onRetry}>Tôi đã cập nhật, thử lại</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -24,7 +51,7 @@ export default function TamTruInstallDialog({ open, onOpenChange, onRetry }: Tam
           <li>Mở Chrome, vào địa chỉ <code className="rounded bg-muted px-1">chrome://extensions</code>.</li>
           <li>Bật <strong>Developer mode</strong> (góc phải trên).</li>
           <li>Bấm <strong>Load unpacked</strong> và chọn thư mục <code className="rounded bg-muted px-1">{TAM_TRU_EXT_FOLDER}</code> trong mã nguồn CRM.</li>
-          <li>Tải lại trang CRM này rồi bấm lại nút Đăng ký tạm trú.</li>
+          <li>Tải lại trang CRM này rồi bấm lại nút {tenNut}.</li>
         </ol>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>

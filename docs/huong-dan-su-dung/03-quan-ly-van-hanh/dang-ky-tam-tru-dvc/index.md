@@ -73,6 +73,17 @@ Hệ thống bỏ tên gốc của máy ảnh và đặt lại theo đối tư�
 | Đính kèm | Ảnh hợp đồng, CT01 của khách; ảnh chỗ ở hợp pháp của toà; hình thức "Bản gốc" |
 | Bảng xin ý kiến VNeID, thành viên cùng thay đổi, ô chịu trách nhiệm, nút Nộp | **Không điền** — bạn tự làm nếu cần |
 
+## Huỷ đăng ký tạm trú khi khách trả phòng
+
+Ngay dưới khối đăng ký có khối **Huỷ đăng ký tạm trú (Cổng DVC Bộ Công an)**, mặc định thu gọn — bấm mũi tên để mở. Khối liệt kê cả hợp đồng đã thanh lý, hết hạn hoặc chuyển phòng (khách ở nhiều phòng thì chọn ở ô **Phòng huỷ tạm trú**) và không có ô thời hạn.
+
+1. Bấm **Tải CT01+BBTL**: file Word gồm tờ khai CT01 ghi "Hủy tạm trú tại <địa chỉ toà>" và **biên bản thanh lý hợp đồng thuê nhà** (Bên A là chủ sở hữu pháp lý của toà, Bên B là khách). Ngày thanh lý do hệ thống lấy theo hợp đồng (ngày thanh lý thực tế, không có thì ngày dự kiến chuyển đi, không có nữa thì ngày tải giấy) — dòng trong khối ghi rõ ngày sẽ in. In ra, hai bên ký.
+2. Tải ảnh hai giấy đã ký vào **Tờ khai CT01 huỷ tạm trú đã ký** và **Biên bản thanh lý đã ký** (Chụp ảnh / Chọn tệp / Ctrl+V như trên).
+3. Đăng nhập Cổng DVC trước, rồi bấm **Huỷ đăng ký tạm trú trên DVC**. Extension mở trang Xoá đăng ký tạm trú; bảng nổi **iHome Tạm trú · Huỷ đăng ký** → **Điền ngay**. Extension chọn tỉnh, phường theo toà, thủ tục **Xóa đăng ký tạm trú**, trường hợp **Cả hộ do không còn chỗ ở hợp pháp** (cố định), khai hộ, điền người đề nghị và chủ hộ là chính khách, gắn CT01 huỷ vào dòng "Tờ khai thay đổi thông tin cư trú" và biên bản vào dòng "Giấy tờ chứng minh về việc không còn chỗ ở hợp pháp". Extension chỉ thao tác như người dùng trên các ô đang hiện, không đụng ô ẩn.
+4. Bạn tự rà lại, tick **Tôi xin chịu trách nhiệm…** và bấm **Nộp hồ sơ**. Mã hồ sơ về CRM thành dải **Đã huỷ tạm trú**, tách riêng với lịch sử đăng ký; nộp theo cách khác thì dùng **Ghi mã hồ sơ đã nộp** trong chính khối này.
+
+Cần extension **từ bản 1.1.0**; bản cũ chỉ biết đăng ký nên CRM hiện hướng dẫn bấm tải lại extension thay vì gửi.
+
 ## Cài extension iHome Tạm trú (một lần mỗi máy)
 
 1. Mở Chrome, vào `chrome://extensions`, bật **Developer mode**.
