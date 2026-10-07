@@ -114,7 +114,7 @@ export function danhGiaJobs(jobs) {
   return { doGate, nuot, dangChay, datDieuKien: doGate.length === 0 && nuot.length === 0 && dangChay.length === 0 };
 }
 
-async function goiGitHub(duong, token) {
+export async function goiGitHub(duong, token) {
   const res = await fetch(`https://api.github.com${duong}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(15_000),
