@@ -11,13 +11,13 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { danhGiaJobs, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
+import { danhGiaJobs, evidenceCoversProduction, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
 
 const buoc = (name, conclusion, status = "completed") => ({ name, conclusion, status });
 // `status` mặc định "completed": phần lớn ca nói về job đã xong. Ca job đang
 // chạy khai status tường minh — chính ca đó đã bắt được lỗi xếp nhầm loại.
 const job = (name, conclusion, steps, status = "completed") => ({ name, conclusion, steps, status });
-const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
+const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha, base: null, source: 'unknown-base' }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
 
 describe('external workflow obligations', () => {
   const required = [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'], suiteIds: ['network-center-worker'] }];
@@ -139,6 +139,56 @@ describe("GitHub evidence readiness", () => {
       : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
     expect(result.verdict.datDieuKien).toBe(false);
     expect(result.verdict.dangChay.join(' ')).toContain('network-center-validation.yml / validate');
+  });
+
+  describe('aggregate base must cover production..target', () => {
+    const tip = 'b'.repeat(40);
+    const base = 'c'.repeat(40);
+    const coverage = (status, calls = []) => ({
+      productionTip: async () => { calls.push('tip'); return tip; },
+      compare: async (from, to) => { calls.push(`${from.slice(0, 1)}...${to.slice(0, 1)}`); return { status }; },
+    });
+    it('full plan covers without asking GitHub; base equal to or behind production covers', async () => {
+      const calls = [];
+      expect(await evidenceCoversProduction({ base: null, source: 'unknown-base' }, coverage('diverged', calls))).toBe(true);
+      expect(calls).toEqual([]);
+      expect(await evidenceCoversProduction({ base: tip }, coverage('diverged'))).toBe(true);
+      for (const status of ['ahead', 'identical']) expect(await evidenceCoversProduction({ base }, coverage(status, calls))).toBe(true);
+      expect(calls).toContain('c...b');
+    });
+    it.each(['behind', 'diverged', undefined])('compare %s means evidence misses part of the release', async (status) => {
+      expect(await evidenceCoversProduction({ base }, coverage(status))).toBe(false);
+    });
+    it.each([{}, { base: undefined }, { base: null, source: 'commit-range' }, { base: 'short' }])('malformed snapshot %j fails closed', async (snapshot) => {
+      expect(await evidenceCoversProduction(snapshot, coverage('ahead'))).toBe(false);
+    });
+
+    const readWithBase = (compareStatus, aggregates = [{ ...aggregate(), snapshot: { head: 'abc123', base, source: 'commit-range' } }]) =>
+      readGateEvidence('owner/repo', 'abc123', 'fixture', async (path) => {
+        if (path.includes('/jobs?')) return { total_count: 1, jobs: greenJobs() };
+        if (path === '/repos/owner/repo/git/ref/heads/production') return { object: { sha: tip } };
+        if (path === `/repos/owner/repo/compare/${base}...${tip}?per_page=1`) return { status: compareStatus };
+        if (path.startsWith('/repos/owner/repo/actions/runs?')) return { total_count: aggregates.length, workflow_runs: aggregates.map((_, i) => run({ id: i + 1 })) };
+        throw new Error(`Unexpected API request: ${path}`);
+      }, async (_repo, r) => ({ ...aggregates[r.id - 1], runId: `${r.id}:1` }));
+
+    it('accepts a push plan whose base is the production tip ancestor', async () => {
+      expect((await readWithBase('ahead')).verdict.datDieuKien).toBe(true);
+    });
+    it('refuses evidence whose base is newer than production, with a coverage message and no pending wait', async () => {
+      const { verdict } = await readWithBase('behind');
+      expect(verdict.datDieuKien).toBe(false);
+      expect(verdict.khongPhu.join(' ')).toMatch(/không phủ production bbbbbbbbbbbb\.\.abc123/);
+      expect(verdict.dangChay).toEqual([]);
+      const options = { waitMs: 30, pollMs: 10, now: () => 0, sleep: async () => { throw new Error('must not wait'); } };
+      expect((await waitForGateEvidence(async () => ({ jobs: [], verdict }), options)).verdict.khongPhu.length).toBe(1);
+    });
+    it('one covering aggregate (e.g. a full dispatch run) is enough', async () => {
+      const narrow = { ...aggregate(), snapshot: { head: 'abc123', base, source: 'commit-range' } };
+      const { verdict } = await readWithBase('behind', [narrow, aggregate()]);
+      expect(verdict.datDieuKien).toBe(true);
+      expect(verdict.khongPhu).toEqual([]);
+    });
   });
 
   it.each([

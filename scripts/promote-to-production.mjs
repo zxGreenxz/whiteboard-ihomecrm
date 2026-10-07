@@ -136,6 +136,20 @@ export function validateExternalWorkflowEvidence(required, observations, sha) {
   return missing;
 }
 
+/**
+ * Aggregate chỉ chứng minh dải base..sha của plan. Promote phát hành cả dải
+ * production..sha, nên base phải là tổ tiên (hoặc chính) đầu production hiện tại.
+ * Plan full (không base) phủ mọi thứ. Audit 07/10/2026: nhiều lần promote mang
+ * theo commit đỏ/huỷ ở giữa vì lượt sau chỉ plan diff của chính nó.
+ */
+export async function evidenceCoversProduction(snapshot, { productionTip, compare }) {
+  if (snapshot?.base === null && snapshot?.source === 'unknown-base') return true;
+  const base = snapshot?.base;
+  if (typeof base !== 'string' || !/^[0-9a-f]{40}$/.test(base)) return false;
+  const tip = await productionTip();
+  return base === tip || ['ahead', 'identical'].includes((await compare(base, tip))?.status);
+}
+
 function readAggregateArtifact(repo, run, token) {
   if (!Number.isInteger(run.id) || !Number.isInteger(run.run_attempt)) throw new Error('Incomplete run artifact identity');
   const temporaryRoot = resolve(tmpdir());
@@ -165,7 +179,17 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
 
   const pendingRuns = [];
   const failedRuns = [];
+  const uncovered = [];
   let hasCompletedMainCi = false;
+  let productionTip;
+  const coverage = {
+    productionTip: async () => {
+      productionTip ??= (await request(`/repos/${repo}/git/ref/heads/production`, token))?.object?.sha;
+      if (!/^[0-9a-f]{40}$/.test(productionTip ?? '')) throw new Error('Không đọc được đầu nhánh production');
+      return productionTip;
+    },
+    compare: (base, tip) => request(`/repos/${repo}/compare/${base}...${tip}?per_page=1`, token),
+  };
   if (!selected.length) pendingRuns.push('Chưa có workflow run ngoài nhánh production');
   for (const run of selected) {
     if (run.status !== 'completed') pendingRuns.push(`${run.name} (run ${run.status})`);
@@ -193,7 +217,10 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
     ) {
       const aggregate = await readAggregate(repo, run, token);
       if (!validAggregateForRun(aggregate, run, sha)) pendingRuns.push(`CI Gates / ${run.id}: aggregate artifact is incomplete or mismatched`);
-      else {
+      else if (!(await evidenceCoversProduction(aggregate.snapshot, coverage))) {
+        const base = String(aggregate.snapshot?.base ?? 'không rõ').slice(0, 12);
+        uncovered.push(`CI Gates / run ${run.id}: plan chỉ phủ ${base}..${sha.slice(0, 12)}, không phủ production ${String(productionTip ?? '?').slice(0, 12)}..${sha.slice(0, 12)}`);
+      } else {
         hasCompletedMainCi = true;
         requiredExternal.push(...aggregate.requiredExternalWorkflows);
       }
@@ -202,13 +229,15 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
     observations.push({ run, jobs: result.jobs });
     jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
   }
-  if (!hasCompletedMainCi) pendingRuns.push('Chưa có gate-aggregate trên main hoàn tất cho đúng SHA với bằng chứng bước đã chạy');
+  if (!hasCompletedMainCi && !uncovered.length) pendingRuns.push('Chưa có gate-aggregate trên main hoàn tất cho đúng SHA với bằng chứng bước đã chạy');
   pendingRuns.push(...validateExternalWorkflowEvidence(requiredExternal, observations, sha));
 
   const verdict = danhGiaJobs(jobs);
   verdict.dangChay.push(...pendingRuns);
   verdict.doGate.push(...failedRuns);
-  verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length;
+  // Một aggregate phủ đủ là đủ; aggregate hẹp hơn của lượt khác không chặn.
+  verdict.khongPhu = hasCompletedMainCi ? [] : uncovered;
+  verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length && !verdict.khongPhu.length;
   return { jobs, verdict };
 }
 
@@ -221,7 +250,9 @@ export async function waitForGateEvidence(readEvidence, {
     const evidence = await readEvidence();
     const { verdict } = evidence;
     const remaining = deadline - now();
-    if (verdict.datDieuKien || verdict.doGate.length || verdict.nuot.length || remaining <= 0) return evidence;
+    // Thiếu phủ mà không còn gì chạy thì chờ thêm cũng không đổi kết luận.
+    const hetHyVong = verdict.khongPhu?.length > 0 && !verdict.dangChay.length;
+    if (verdict.datDieuKien || verdict.doGate.length || verdict.nuot.length || hetHyVong || remaining <= 0) return evidence;
     onPending(evidence, remaining);
     await sleep(Math.min(pollMs, remaining));
   }
@@ -293,6 +324,12 @@ async function main(argv) {
   if (kq.dangChay.length > 0) {
     console.error(`\n❌ ${kq.dangChay.length} bằng chứng CI CHƯA XONG — chưa kết luận được, không phải xanh:`);
     for (const b of kq.dangChay.slice(0, 10)) console.error(`  - ${b}`);
+  }
+  if (kq.khongPhu?.length > 0) {
+    console.error('\n❌ Bằng chứng gate KHÔNG PHỦ hết các commit sẽ lên production:');
+    for (const b of kq.khongPhu) console.error(`  - ${b}`);
+    console.error('  Commit ở giữa có thể đỏ/bị huỷ mà chưa ai kiểm lại. Cần một lượt CI Gates trên main');
+    console.error('  có plan phủ từ production (push kế tiếp, hoặc chủ chạy workflow_dispatch = plan full).');
   }
 
   if (!kq.datDieuKien) {

@@ -3,10 +3,33 @@ import assert from 'node:assert/strict';
 import { executeGateJob, selectEventSnapshot, trustedReuseRun } from '../lib/ci-gate-execution.mjs';
 
 test('event diff uses event base and actual checkout SHA; dispatch never invents HEAD~1', () => {
-  assert.deepEqual(selectEventSnapshot({ eventName: 'pull_request', event: { pull_request: { base: { sha: 'base' }, head: { sha: 'pr-head' } } }, checkoutSha: 'merge-sha' }), { base: 'base', head: 'merge-sha', full: false });
-  assert.deepEqual(selectEventSnapshot({ eventName: 'push', event: { before: 'before' }, checkoutSha: 'pushed' }), { base: 'before', head: 'pushed', full: false });
-  assert.deepEqual(selectEventSnapshot({ eventName: 'workflow_dispatch', event: {}, checkoutSha: 'actual' }), { base: null, head: 'actual', full: true });
+  const pick = ({ base, head, full }) => ({ base, head, full });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'pull_request', event: { pull_request: { base: { sha: 'base' }, head: { sha: 'pr-head' } } }, checkoutSha: 'merge-sha' })), { base: 'base', head: 'merge-sha', full: false });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'push', event: { before: 'before' }, checkoutSha: 'pushed' })), { base: 'before', head: 'pushed', full: false });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'workflow_dispatch', event: {}, checkoutSha: 'actual' })), { base: null, head: 'actual', full: true });
   assert.equal(selectEventSnapshot({ eventName: 'push', event: { before: '0'.repeat(40) }, checkoutSha: 'actual' }).full, true);
+});
+
+test('main push plans from the production tip so evidence covers every commit promotion ships', () => {
+  const main = { eventName: 'push', event: { before: 'before' }, checkoutSha: 'head', ref: 'refs/heads/main' };
+  const covered = selectEventSnapshot({ ...main, productionTip: 'prod', productionIsAncestor: true });
+  assert.deepEqual([covered.base, covered.full], ['prod', false]);
+  assert.match(covered.reason, /production\.\.HEAD/);
+  for (const [patch, why] of [
+    [{ productionTip: null }, /không có origin\/production/],
+    [{ productionTip: 'prod', productionIsAncestor: false }, /không phải tổ tiên/],
+    [{ productionTip: 'head', productionIsAncestor: true }, /đã ở đúng HEAD/],
+  ]) {
+    const fallback = selectEventSnapshot({ ...main, ...patch });
+    assert.deepEqual([fallback.base, fallback.full], ['before', false]);
+    assert.match(fallback.reason, why);
+    assert.match(fallback.reason, /event\.before/);
+  }
+  const full = selectEventSnapshot({ ...main, event: { before: '0'.repeat(40) }, productionTip: null });
+  assert.deepEqual([full.base, full.full], [null, true]);
+  assert.match(full.reason, /chạy full/);
+  // Other branches keep their own push diff even when production is an ancestor.
+  assert.equal(selectEventSnapshot({ ...main, ref: 'refs/heads/release/x', productionTip: 'prod', productionIsAncestor: true }).base, 'before');
 });
 
 test('cross-run trust requires exact tested SHA and successful same-repo PR into main within 24h', () => {

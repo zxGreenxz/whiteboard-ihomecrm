@@ -1,10 +1,28 @@
 import { spawnSync } from 'node:child_process';
 import { canReuseGateReceipt, createGateReceipt, STATIC_EVIDENCE_MAX_AGE_MS } from './gate-evidence.mjs';
 
-export function selectEventSnapshot({ eventName, event = {}, checkoutSha }) {
+const usableSha = (sha) => typeof sha === 'string' && sha.length > 0 && !/^0+$/.test(sha);
+
+/**
+ * A push to main plans from the production tip, so one aggregate covers every
+ * commit promotion would ship — not only this push. A red or cancelled earlier
+ * push can no longer drop out of release evidence. Fallback: event.before, then full.
+ */
+export function selectEventSnapshot({ eventName, event = {}, checkoutSha, ref, productionTip = null, productionIsAncestor = false }) {
+  let fallback = null;
+  if (eventName === 'push' && ref === 'refs/heads/main') {
+    if (usableSha(productionTip) && productionTip !== checkoutSha && productionIsAncestor) {
+      return { base: productionTip, head: checkoutSha, full: false, reason: 'origin/production là tổ tiên của HEAD: plan phủ cả dải production..HEAD' };
+    }
+    fallback = !usableSha(productionTip) ? 'checkout không có origin/production'
+      : productionTip === checkoutSha ? 'origin/production đã ở đúng HEAD' : 'origin/production không phải tổ tiên của HEAD';
+  }
   const base = eventName === 'pull_request' ? event.pull_request?.base?.sha : eventName === 'push' ? event.before : null;
-  const usable = typeof base === 'string' && base.length > 0 && !/^0+$/.test(base);
-  return { base: usable ? base : null, head: checkoutSha, full: !usable };
+  const usable = usableSha(base);
+  const source = eventName === 'pull_request' ? 'base của pull request' : 'event.before';
+  const reason = usable ? (fallback ? `${fallback}; dùng ${source}` : `Dùng ${source}`)
+    : `${fallback ? `${fallback}; ` : ''}không có base kiểm được: chạy full`;
+  return { base: usable ? base : null, head: checkoutSha, full: !usable, reason };
 }
 
 export function trustedReuseRun(run, { repository, sha, now = Date.now() }) {

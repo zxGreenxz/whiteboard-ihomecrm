@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { planFromGit } from './lib/gate-plan.mjs';
@@ -12,8 +12,16 @@ mkdirSync(output, { recursive: true });
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 if (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== head) throw new Error('Checkout SHA differs from workflow SHA');
 const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : {};
-const selection = selectEventSnapshot({ eventName: process.env.GITHUB_EVENT_NAME, event, checkoutSha: head });
-const plan = await planFromGit({ root, mode: 'commit', ...selection, environment: 'ci' });
+// fetch-depth: 0 checks out every branch, so origin/production is local here.
+let productionTip = null;
+let productionIsAncestor = false;
+if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs/heads/main') {
+  try { productionTip = execFileSync('git', ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/production^{commit}'], { cwd: root, encoding: 'utf8' }).trim(); } catch { productionTip = null; }
+  if (productionTip) productionIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', productionTip, head], { cwd: root }).status === 0;
+}
+const selection = selectEventSnapshot({ eventName: process.env.GITHUB_EVENT_NAME, event, checkoutSha: head, ref: process.env.GITHUB_REF, productionTip, productionIsAncestor });
+const plan = await planFromGit({ root, mode: 'commit', base: selection.base, head: selection.head, full: selection.full, environment: 'ci' });
+plan.snapshot.baseReason = selection.reason;
 plan.runId = `${process.env.GITHUB_RUN_ID}:${process.env.GITHUB_RUN_ATTEMPT}`;
 plan.trustedRunIds = [];
 plan.reusableReceipts = [];
