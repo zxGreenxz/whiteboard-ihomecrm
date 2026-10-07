@@ -49,6 +49,9 @@ export default function ResidenceDeregistrationSection({ customer }: ResidenceDe
     buildingName: tenancy?.building.name, customerName: customer.full_name,
   });
   const files = useMemo(() => customerFiles.data ?? [], [customerFiles.data]);
+  // Ảnh huỷ gắn với một hợp đồng cụ thể (địa chỉ toà, ngày thanh lý): chỉ hiện và gửi ảnh của
+  // hợp đồng đang chọn, để khách từng ở hai toà không thấy ảnh toà cũ như thể đã đủ giấy.
+  const anhHopDong = useMemo(() => files.filter(f => f.contract_id === tenancy?.contractId), [files, tenancy?.contractId]);
   const dangKy = useCustomerRegistrations(mo ? customer.id : undefined);
   const daXoa = theoThuTuc(dangKy.data ?? [], 'TAMTRU_06');
   const ghiMa = useGhiHoSoTamTru(customer.id);
@@ -84,16 +87,16 @@ export default function ResidenceDeregistrationSection({ customer }: ResidenceDe
                 <p className="text-xs text-muted-foreground">
                   Toà {tenancy.building.name} · Phòng {tenancy.roomNumber} · ngày thanh lý ghi trên biên bản: {ngayThanhLy(tenancy)}
                 </p>
-                <DossierImageUploader kind="CT01_XOA" files={files.filter(f => f.kind === 'CT01_XOA')} canEdit contractId={tenancy.contractId}
+                <DossierImageUploader kind="CT01_XOA" files={anhHopDong.filter(f => f.kind === 'CT01_XOA')} canEdit contractId={tenancy.contractId}
                   onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
                   hint="Chụp hoặc tải ảnh tờ khai CT01 huỷ tạm trú đã ký." />
-                <DossierImageUploader kind="THANH_LY" files={files.filter(f => f.kind === 'THANH_LY')} canEdit contractId={tenancy.contractId}
+                <DossierImageUploader kind="THANH_LY" files={anhHopDong.filter(f => f.kind === 'THANH_LY')} canEdit contractId={tenancy.contractId}
                   onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
                   hint="Chụp hoặc tải ảnh biên bản thanh lý đã có đủ chữ ký hai bên." />
                 {daXoa.length > 0 && <RegistrationHistory registrations={daXoa} nhan="Đã huỷ tạm trú" nhanLichSu="Lịch sử huỷ tạm trú" />}
                 <div className="flex flex-wrap items-center gap-3 border-t pt-3">
                   <CT01HuyDownloadButton customer={customer} tenancy={tenancy} />
-                  <TamTruXoaDvcButton customer={customer} tenancy={tenancy} customerFiles={files} />
+                  <TamTruXoaDvcButton customer={customer} tenancy={tenancy} customerFiles={anhHopDong} />
                   <RegistrationManualEntry dangGhi={ghiMa.isPending} onGhi={(submCode) => ghiMa.mutateAsync({
                     customerId: customer.id, buildingId: tenancy.building.id,
                     organizationId: tenancy.building.organization_id ?? '', contractId: tenancy.contractId,

@@ -18,13 +18,42 @@
   };
 
   let pending = null;
-  let panel, body, steps, actions, fillBtn, anhBox;
+  let panel, body, steps, actions, fillBtn, anhBox, canhBaoBox;
+  let daXacNhanLech = false;
 
   const NHAN_LOAI = {
     CT01: 'Tờ khai CT01', LEASE: 'Hợp đồng thuê', OWNERSHIP: 'Chỗ ở hợp pháp',
     CT01_XOA: 'Tờ khai CT01 huỷ tạm trú', THANH_LY: 'Biên bản thanh lý',
   };
+  const TEN_GOI = { TAMTRU_01: 'Đăng ký tạm trú', TAMTRU_06: 'Huỷ (xoá) đăng ký tạm trú' };
   const laXoa = (p) => !!p && p.procedure === 'TAMTRU_06';
+  const thuTucGoi = (p) => (laXoa(p) ? 'TAMTRU_06' : 'TAMTRU_01');
+
+  /** Thủ tục trang cổng ĐANG chọn — chỉ ĐỌC ô Thủ tục. '' nếu chưa chọn / không phải hai
+   * thủ tục extension biết. */
+  function thuTucTrang() {
+    const s = document.getElementById('cboBPROC_TYPE_CODE');
+    const v = s ? String(s.value || '') : '';
+    return v === 'TAMTRU_01' || v === 'TAMTRU_06' ? v : '';
+  }
+  function tenThuTucTrang() {
+    const s = document.getElementById('cboBPROC_TYPE_CODE');
+    return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text : '';
+  }
+
+  /** Gói đang chờ khác thủ tục trang đang mở (vd gói đăng ký bị mở ở tab xoá): báo rõ đây là
+   * gói gì. Trả true nếu lệch. */
+  function baoLech() {
+    if (!canhBaoBox || !pending || !pending.payload) return false;
+    const p = pending.payload;
+    const trang = thuTucTrang();
+    canhBaoBox.textContent = '';
+    if (!trang || trang === thuTucGoi(p)) return false;
+    canhBaoBox.appendChild(el('p', 'ihome-tamtru-status error',
+      'Gói đang chờ là "' + TEN_GOI[thuTucGoi(p)] + '" cho khách ' + p.person.fullName
+      + ', nhưng trang này đang mở thủ tục "' + tenThuTucTrang() + '". Nên mở lại từ nút trên CRM để vào đúng trang.'));
+    return true;
+  }
 
   /** Ảnh thu nhỏ để người dùng nhìn thấy ĐÚNG ảnh nào sắp đính kèm, không chỉ tên tệp. */
   function veAnh(files) {
@@ -93,6 +122,12 @@
 
   async function fill() {
     const payload = pending.payload;
+    // Lệch thủ tục: lần bấm đầu chỉ báo cho người dùng thấy đây là gói gì; bấm lần nữa mới điền.
+    if (baoLech() && !daXacNhanLech) {
+      daXacNhanLech = true;
+      fillBtn.textContent = 'Vẫn điền gói này';
+      return;
+    }
     fillBtn.disabled = true;
     steps.textContent = '';
     setStatus('Đang tải ' + payload.attachments.length + ' ảnh đính kèm…', 'info');
@@ -113,13 +148,18 @@
   function daNop(d) {
     const p = pending && pending.payload;
     if (!p || !d.submCode) return;
+    // Ghi sổ theo thủ tục THẬT vừa nộp trên trang (đọc ô Thủ tục), không theo gói đang chờ:
+    // gói chờ có thể đã bị dùng ở tab khác. Không đọc được mới rơi về gói.
+    const procedureCode = thuTucTrang() || p.procedure || 'TAMTRU_01';
+    const xoa = procedureCode === 'TAMTRU_06';
     send({
       type: 'TAM_TRU_DA_NOP',
       ketQua: {
         submCode: d.submCode,
         receiveOrg: d.receiveOrg || '',
-        tempResidentFrom: d.tempResidentFrom || '',
-        tempResidentTo: d.tempResidentTo || p.tempResidentTo || '',
+        // Xoá đăng ký không có thời hạn tạm trú: không lấy ngày từ request hay từ gói.
+        tempResidentFrom: xoa ? '' : d.tempResidentFrom || '',
+        tempResidentTo: xoa ? '' : d.tempResidentTo || p.tempResidentTo || '',
         submittedAt: d.submittedAt || new Date().toISOString(),
         customerId: p.customerId,
         buildingId: p.buildingId,
@@ -128,7 +168,7 @@
         buildingName: p.buildingName,
         fullName: p.person && p.person.fullName,
         // CRM phân biệt mã hồ sơ đăng ký với mã hồ sơ xoá đăng ký khi ghi sổ.
-        procedureCode: p.procedure || 'TAMTRU_01',
+        procedureCode,
       },
     });
     if (panel && body) {
@@ -143,6 +183,7 @@
       fillBtn.textContent = 'Điền lại';
     } else {
       setStatus('Dừng ở một bước: ' + (d.message || 'lỗi không rõ') + '. Phần đã điền vẫn giữ nguyên, bạn có thể tự bổ sung.', 'error');
+      fillBtn.textContent = 'Điền lại'; // thông báo lỗi chỉ "chọn tay rồi bấm Điền lại"
     }
     fillBtn.disabled = false;
   }
@@ -167,6 +208,9 @@
       + ' · ' + p.attachments.length + ' ảnh đính kèm'));
     panel.appendChild(info);
 
+    canhBaoBox = el('div', 'ihome-tamtru-canhbao');
+    panel.appendChild(canhBaoBox);
+
     body = el('div', 'ihome-tamtru-body');
     setStatus('Bấm "Điền ngay" để tool điền toàn bộ form. Bạn vẫn tự kiểm tra và bấm Nộp.', 'info');
     panel.appendChild(body);
@@ -188,6 +232,7 @@
     actions.appendChild(dismiss);
     panel.appendChild(actions);
     document.body.appendChild(panel);
+    baoLech();
   }
 
   window.addEventListener('message', (ev) => {

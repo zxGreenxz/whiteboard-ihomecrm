@@ -180,14 +180,16 @@ export function pickDossierFilesForContract(
   return [...perKind('CT01'), ...perKind('LEASE'), ...ownershipFiles.filter(f => f.kind === 'OWNERSHIP')];
 }
 
-/** Ảnh nộp kèm hồ sơ xoá đăng ký: CT01 huỷ + biên bản thanh lý, ưu tiên đúng hợp đồng đang chọn. */
+/**
+ * Ảnh nộp kèm hồ sơ xoá đăng ký: CT01 huỷ + biên bản thanh lý của ĐÚNG hợp đồng đang chọn.
+ *
+ * Khác ảnh đăng ký, ở đây không lùi về ảnh của hợp đồng khác: CT01 huỷ ghi địa chỉ toà và
+ * biên bản ghi ngày thanh lý của một hợp đồng cụ thể, nên khách từng ở hai toà mà dùng ảnh
+ * của toà cũ là nộp nhầm giấy sang phường khác. Hai loại ảnh này luôn được tải kèm contract_id.
+ */
 export function pickDeregistrationFiles(customerFiles: ResidenceDossierFile[], contractId: string): ResidenceDossierFile[] {
-  const perKind = (kind: 'CT01_XOA' | 'THANH_LY') => {
-    const ofKind = customerFiles.filter(f => f.kind === kind);
-    const ofContract = ofKind.filter(f => f.contract_id === contractId);
-    return ofContract.length > 0 ? ofContract : ofKind;
-  };
-  return [...perKind('CT01_XOA'), ...perKind('THANH_LY')];
+  const ofContract = (kind: 'CT01_XOA' | 'THANH_LY') => customerFiles.filter(f => f.kind === kind && f.contract_id === contractId);
+  return [...ofContract('CT01_XOA'), ...ofContract('THANH_LY')];
 }
 
 /** dd/mm/yyyy → yyyy-mm-dd cho cột date của Postgres. */

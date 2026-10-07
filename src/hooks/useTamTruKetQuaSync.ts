@@ -41,12 +41,14 @@ export function useTamTruKetQuaSync(): void {
       for (const k of ds.filter(duDeGhi)) {
         try {
           const { ghiHoSoTamTru } = await import('@/lib/residenceRegistrations');
+          const xoa = k.procedureCode === 'TAMTRU_06';
           await ghiHoSoTamTru({
             customerId: k.customerId, buildingId: k.buildingId, organizationId: k.organizationId,
             contractId: k.contractId ?? null, submCode: k.submCode, receiveOrg: k.receiveOrg,
             // Chỉ nhận đúng hai mã đã biết; thứ khác coi như đăng ký như extension đời cũ.
-            procedureCode: k.procedureCode === 'TAMTRU_06' ? 'TAMTRU_06' : 'TAMTRU_01',
-            tempResidentFrom: k.tempResidentFrom, tempResidentTo: k.tempResidentTo, submittedAt: k.submittedAt,
+            procedureCode: xoa ? 'TAMTRU_06' : 'TAMTRU_01',
+            // Hồ sơ xoá không có thời hạn: form dùng chung có thể vẫn gửi ngày mặc định.
+            tempResidentFrom: xoa ? null : k.tempResidentFrom, tempResidentTo: xoa ? null : k.tempResidentTo, submittedAt: k.submittedAt,
           });
           daBaoLoi.current.delete(k.submCode);
           daGhi.push(k.submCode);

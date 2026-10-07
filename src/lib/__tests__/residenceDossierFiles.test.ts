@@ -182,9 +182,11 @@ describe('dossierStorageValue', () => {
 
 describe('pickDeregistrationFiles', () => {
   const f = (id: string, kind: ResidenceDossierFile['kind'], contract_id: string | null) => ({ id, kind, contract_id }) as ResidenceDossierFile;
-  it('chỉ lấy CT01 huỷ và biên bản, ưu tiên ảnh của đúng hợp đồng', () => {
+  it('chỉ lấy CT01 huỷ và biên bản của ĐÚNG hợp đồng, không lùi về ảnh của hợp đồng khác', () => {
     const files = [f('a', 'CT01', 'k1'), f('b', 'CT01_XOA', 'k0'), f('c', 'CT01_XOA', 'k1'), f('d', 'THANH_LY', 'k0'), f('e', 'LEASE', 'k1')];
-    expect(pickDeregistrationFiles(files, 'k1').map(x => x.id)).toEqual(['c', 'd']);
+    // Biên bản d thuộc hợp đồng k0 (toà cũ): gửi kèm hồ sơ k1 là nộp nhầm giấy sang phường khác.
+    expect(pickDeregistrationFiles(files, 'k1').map(x => x.id)).toEqual(['c']);
+    expect(pickDeregistrationFiles(files, 'k0').map(x => x.id)).toEqual(['b', 'd']);
   });
   it('không có ảnh nào thì trả rỗng để gói xoá báo thiếu', () => {
     expect(pickDeregistrationFiles([f('a', 'CT01', 'k1')], 'k1')).toEqual([]);

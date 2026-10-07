@@ -500,7 +500,6 @@
     return true;
   }
 
-  const chonDuPhong = [];
   /** Chọn một mục (theo value) của ô chọn như người dùng chọn trong danh sách thả xuống. */
   async function chonO(sel, value, what) {
     const ten = what || sel.id;
@@ -511,25 +510,23 @@
     const khung = khungSelect2(sel);
     if (khung) {
       if (!hien(khung)) throw new Error(ten + ' không hiện trên trang');
+      // <select> gốc đã bị select2 giấu khỏi màn hình: CHỈ chọn qua danh sách hiện ra (gõ không
+      // dấu vào ô tìm, rồi duyệt cả danh sách). Không chọn được thì dừng để người dùng chọn tay —
+      // TUYỆT ĐỐI không gán thẳng vào <select> ẩn (luật của chủ: không gán vào ô ẩn).
       if (await chonQuaSelect2(sel, khung, opt)) return;
-      // DỰ PHÒNG (chủ dự án chấp nhận): không bấm được mục trong danh sách select2 thì chọn
-      // thẳng trên chính <select> mà select2 bọc, rồi phát input + change — đúng hai sự kiện
-      // select2 tự phát khi người dùng chọn. Không gọi API nào của select2/jQuery.
       dongSelect2();
-      chonDuPhong.push(ten);
-      sel.value = value;
-      sel.dispatchEvent(new Event('input', { bubbles: true }));
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-      if (!hien(sel)) throw new Error(ten + ' không hiện trên trang');
-      // <select> thường: người dùng bấm vào ô, chọn trong danh sách của trình duyệt (trình duyệt
-      // đặt value rồi phát input + change), rồi rời ô.
-      vaoO(sel);
-      sel.value = value;
-      sel.dispatchEvent(new Event('input', { bubbles: true }));
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-      boFocus(sel);
+      throw new Error('Không chọn được "' + opt.text.normalize('NFC') + '" trong ô ' + ten.replace(/^Ô\s+/, '')
+        + '; hãy chọn tay rồi bấm Điền lại');
     }
+    if (!hien(sel)) throw new Error(ten + ' không hiện trên trang');
+    // <select> THƯỜNG đang hiện trên trang (vd ô Thủ tục khi mở URL trơn) — không phải ô ẩn:
+    // người dùng bấm vào ô, chọn trong danh sách của chính trình duyệt (trình duyệt đặt value
+    // rồi phát input + change), rồi rời ô. Ta làm đúng chuỗi đó.
+    vaoO(sel);
+    sel.value = value;
+    sel.dispatchEvent(new Event('input', { bubbles: true }));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    boFocus(sel);
     if (sel.value !== value) throw new Error('Cổng không nhận lựa chọn "' + opt.text + '" ở ' + ten);
     await sleep(200);
   }
@@ -547,7 +544,6 @@
     return s && Array.from(s.options).some((o) => o.value === value) ? s : null;
   };
   const chuChon = (s) => (s && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text : '');
-  const ghiChuDuPhong = () => (chonDuPhong.length ? ' · chọn thẳng ô <select> (select2 không mở được): ' + chonDuPhong.splice(0).join(', ') : '');
 
   // Hai dòng giấy tờ CÓ SẴN trên trang xoá (không phải bấm link chọn trường hợp như đăng ký).
   // Tìm theo NHÃN chữ chứ không theo chỉ số: cổng đổi thứ tự dòng là ảnh vẫn vào đúng chỗ.
@@ -577,7 +573,7 @@
         const el = document.getElementById('txtRECEIVE_ORG_ADDRESS');
         return el && el.value ? el.value : null;
       }, 'cơ quan Công an phường');
-      report('Cơ quan thực hiện: ' + org + ghiChuDuPhong());
+      report('Cơ quan thực hiện: ' + org);
     }],
     ['Chọn thủ tục xoá đăng ký tạm trú, cả hộ, khai hộ', async (p, report) => {
       const truongHop = p.caseCode || TRUONG_HOP_XOA;
@@ -597,7 +593,7 @@
       if (!khaiHo.checked) { bamO(khaiHo, 'Lựa chọn khai hộ'); await sleep(200); }
       if (!khaiHo.checked) throw new Error('Cổng không nhận lựa chọn khai hộ');
       await waitFor(() => hien(document.getElementById('txtFULLNAME')), 'khối người đề nghị');
-      report(chuChon(loai) + ' · ' + chuChon(th) + ' · khai hộ' + ghiChuDuPhong());
+      report(chuChon(loai) + ' · ' + chuChon(th) + ' · khai hộ');
     }],
     ['Điền thông tin người đề nghị xoá', async (p, report) => {
       const ng = p.person;
@@ -639,7 +635,7 @@
       if (khongDien.length) throw new Error('Không điền được: ' + khongDien.join('; '));
       if (thieu.length) throw new Error('Cổng không nhận các ô: ' + thieu.join(', '));
       report('Ngày sinh ' + document.getElementById('txtDOB').value + ' · chủ hộ '
-        + chuChon(document.getElementById('cboHH_PERSON_RELATIONSHIP_CODE')) + ghiChuDuPhong());
+        + chuChon(document.getElementById('cboHH_PERSON_RELATIONSHIP_CODE')));
     }],
     ['Gắn tờ khai CT01 huỷ và biên bản thanh lý', async (p, report, files) => {
       const can = DONG_XOA.map(([kind, nhan, mau]) => ({ kind, nhan, mau, picked: filesOf(files, kind) }));
@@ -680,7 +676,7 @@
         const chuaHien = c.picked.filter((f) => !(tr && tr.textContent.includes(f.name)));
         if (chuaHien.length) canhBao.push('chưa thấy ' + chuaHien.map((f) => f.name).join(', ') + ' hiện ở dòng ' + c.nhan);
       }
-      report(daGan.join(' · ') + (canhBao.length ? ' · CẦN KIỂM LẠI: ' + canhBao.join('; ') : '') + ghiChuDuPhong());
+      report(daGan.join(' · ') + (canhBao.length ? ' · CẦN KIỂM LẠI: ' + canhBao.join('; ') : ''));
     }],
   ];
 

@@ -72,6 +72,16 @@ export async function ghiHoSoTamTru(input: GhiHoSoInput): Promise<ResidenceRegis
     && row.subm_code === input.submCode.trim() && row.contract_id === (input.contractId ?? null)
     && row.receive_org === (input.receiveOrg ?? '').slice(0,200)
     && row.temp_resident_from === ngayIso(input.tempResidentFrom) && row.temp_resident_to === ngayIso(input.tempResidentTo);
+  // Sổ chốt trùng theo (công ty, mã) cho CẢ hai thủ tục, nên dán nhầm mã đăng ký vào ô của khối
+  // huỷ (hay ngược lại) sẽ ghi đè dòng cũ sang thủ tục kia và mất lịch sử. Đọc trước, khác thì từ chối.
+  const { data: daCo, error: loiDoc } = await supabase.from('residence_registrations').select('procedure_code')
+    .eq('organization_id', input.organizationId).eq('subm_code', input.submCode.trim()).maybeSingle();
+  if (loiDoc) throw new RegistrationError('Chưa kiểm được mã hồ sơ này trong sổ. Vui lòng thử lại.');
+  if (daCo && daCo.procedure_code !== procedure) {
+    throw new RegistrationError(daCo.procedure_code === 'TAMTRU_06'
+      ? 'Mã này đã ghi là hồ sơ huỷ tạm trú, không ghi thành hồ sơ đăng ký được.'
+      : 'Mã này đã ghi là hồ sơ đăng ký tạm trú, không ghi thành hồ sơ huỷ được.');
+  }
   // Load the feedback receipt coordinator only when saving; the guard still precedes every writer.
   const { persistentFinancialWorkflow } = await import('./persistentFinancialWorkflow');
   return persistentFinancialWorkflow('residence-registration-save', {scope:'target'}).run(input.submCode.trim(), 'lưu mã hồ sơ tạm trú', async (progress) => {

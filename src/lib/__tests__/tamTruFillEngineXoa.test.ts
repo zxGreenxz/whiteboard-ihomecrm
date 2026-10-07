@@ -326,6 +326,29 @@ describe('fill-engine — xoá đăng ký tạm trú (TAMTRU_06)', () => {
     expect(byId('txtPHONE_NUMBER').value).toBe('');
   });
 
+  it('select2 không chọn được thì dừng với lỗi rõ, KHÔNG gán thẳng vào <select> ẩn', async () => {
+    const e = loadEngine();
+    const gioiTinh = byId<HTMLSelectElement>('cboGENDER_CODE');
+    let soChange = 0;
+    gioiTinh.addEventListener('change', () => { soChange += 1; });
+    // Giả lập danh sách giới tính "kẹt": nhả chuột lên mục không chọn được gì.
+    const chan = (ev: Event) => {
+      if ((ev.target as Element).closest?.('#select2-cboGENDER_CODE-results')) ev.stopPropagation();
+    };
+    document.addEventListener('mouseup', chan, true);
+    try {
+      await expect(chay(e.run(payload, files)))
+        .rejects.toThrow(/Không chọn được "Nam" trong ô Giới tính; hãy chọn tay rồi bấm Điền lại/);
+    } finally {
+      document.removeEventListener('mouseup', chan, true);
+    }
+    expect(fx.moSelect2.cboGENDER_CODE).toBeGreaterThanOrEqual(1); // đã thử qua giao diện
+    expect(gioiTinh.value).toBe(''); // không gán vào <select> bị select2 giấu
+    expect(soChange).toBe(0);
+    expect(document.querySelector('.select2-container--open')).toBeNull(); // danh sách đã đóng lại
+    expect(fx.tempTotalFileArr).toEqual({}); // dừng trước bước gắn ảnh
+  });
+
   it('cổng không nhận ngày sinh thì báo đỏ ô txtDOB', async () => {
     const e = loadEngine();
     // Giả lập lịch của cổng từ chối mọi lượt dán.

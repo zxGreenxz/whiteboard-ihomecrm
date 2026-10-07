@@ -53,6 +53,15 @@ describe('TamTruKetQuaSync', () => {
     expect(boundary.toast).toHaveBeenCalled();
   });
 
+  it('mã của lượt nộp không mang thủ tục thì ghi là đăng ký; lượt xoá ghi TAMTRU_06 và bỏ ngày tạm trú', async () => {
+    boundary.lay.mockResolvedValue([ketQua(), ketQua({ submCode: 'G01.899.909-261008-000123', procedureCode: 'TAMTRU_06' })]);
+    dung();
+    goCua();
+    await waitFor(() => expect(boundary.ghi).toHaveBeenCalledTimes(2));
+    expect(boundary.ghi.mock.calls[0][0]).toMatchObject({ procedureCode: 'TAMTRU_01', tempResidentTo: '14/09/2028' });
+    expect(boundary.ghi.mock.calls[1][0]).toMatchObject({ procedureCode: 'TAMTRU_06', tempResidentFrom: null, tempResidentTo: null });
+  });
+
   it('ghi hụt thì KHÔNG báo xoá — mã phải còn để lần sau ghi lại', async () => {
     boundary.lay.mockResolvedValue([ketQua()]);
     boundary.ghi.mockRejectedValue(new Error('mất mạng'));

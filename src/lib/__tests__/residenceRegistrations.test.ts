@@ -40,11 +40,15 @@ describe('đổi ngày', () => {
 });
 
 describe('ghiHoSoTamTru', () => {
-  const dungChuoi = (ket: { data?: unknown; error?: { code?: string } | null }) => {
+  // daCo = dòng đã có cùng (công ty, mã) mà bước đọc trước thấy; mặc định chưa có.
+  const dungChuoi = (ket: { data?: unknown; error?: { code?: string } | null }, daCo: { procedure_code: string } | null = null) => {
     const single = vi.fn().mockResolvedValue(ket);
     const select = vi.fn().mockReturnValue({ single });
     const upsert = vi.fn().mockReturnValue({ select });
-    boundary.from.mockReturnValue({ upsert });
+    const doc: Record<string, unknown> = {};
+    doc.eq = vi.fn(() => doc);
+    doc.maybeSingle = vi.fn().mockResolvedValue({ data: daCo, error: null });
+    boundary.from.mockReturnValue({ upsert, select: vi.fn(() => doc) });
     return { upsert, select, single };
   };
 
@@ -75,6 +79,14 @@ describe('ghiHoSoTamTru', () => {
     dungChuoi({ data: { ...row, procedure_code: 'TAMTRU_01' }, error: null });
     await expect(ghiHoSoTamTru({ customerId: 'c1', buildingId: 'b1', organizationId: 'o1', contractId: 'ct1', submCode: 'G01.899.909-261008-000123', procedureCode: 'TAMTRU_06' }))
       .rejects.toThrow(/Chưa xác nhận/);
+  });
+
+  it('dán nhầm mã đăng ký vào khối huỷ thì từ chối, không ghi đè dòng đăng ký', async () => {
+    boundary.user.mockResolvedValue({ id: 'u1' });
+    const { upsert } = dungChuoi({ data: null, error: null }, { procedure_code: 'TAMTRU_01' });
+    await expect(ghiHoSoTamTru({ customerId: 'c1', buildingId: 'b1', organizationId: 'o1', submCode: 'G01.899.909-260916-890028', procedureCode: 'TAMTRU_06' }))
+      .rejects.toThrow(/đã ghi là hồ sơ đăng ký/);
+    expect(upsert).not.toHaveBeenCalled();
   });
 
   it('theoThuTuc tách lịch sử đăng ký khỏi lịch sử xoá', () => {

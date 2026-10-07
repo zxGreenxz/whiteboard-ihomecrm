@@ -40,6 +40,21 @@ select2 rồi bấm chọn, dán ngày sinh, chọn tệp. Không gọi hàm n�
 `datepicker('update')`), không gán vào ô ẩn hay ô khoá — ô nào không hiện thì báo lỗi.
 CRM chặn gửi gói xoá cho extension bản dưới 1.1.0 và chỉ cách bấm tải lại (↻).
 
+- **Ô chọn select2** (tỉnh, phường, trường hợp, giới tính, quan hệ chủ hộ): `<select>` gốc bị
+  select2 giấu khỏi màn hình, nên engine chỉ chọn qua danh sách hiện ra — gõ tên không dấu vào ô
+  tìm, không ra thì xoá ô tìm và tìm trong cả danh sách. Vẫn không chọn được thì **dừng** với lỗi
+  "Không chọn được "…" trong ô …; hãy chọn tay rồi bấm Điền lại". Không có đường gán thẳng vào
+  `<select>` ẩn.
+- **`<select>` thường** (ô Thủ tục khi trang mở URL trơn): đây là ô **đang hiện** trên trang,
+  không phải ô ẩn. Engine bấm vào ô, đặt mục được chọn rồi phát `input` + `change` — đúng chuỗi
+  sự kiện trình duyệt phát khi người dùng chọn trong danh sách thả xuống của chính trình duyệt.
+- **Ngoại lệ ô chọn tệp**: `input[type=file]` của cổng có thể bị CSS giấu sau nút "Chọn tệp".
+  Engine kiểm **dòng đính kèm** (`#tblGiayToDinhKem tbody tr`, tìm theo nhãn) đang hiện, rồi gán
+  tệp vào ô `fileUpload{i}` của dòng đó bằng `DataTransfer` và phát `change` — tương đương người
+  dùng chọn tệp qua hộp thoại, vì content script không mở được hộp thoại chọn tệp của hệ điều
+  hành. Cổng tự đọc tệp trong `changeFileNew` như bình thường (và tự từ chối tệp sai định dạng).
+  Ô `#FileUpload` ngoài bảng không bị đụng.
+
 ## Cách hoạt động
 
 - `bridge.js` (trang CRM): chỉ đặt `data-ihome-tamtru-ext` và `data-ihome-tamtru-id` lên
@@ -53,9 +68,10 @@ CRM chặn gửi gói xoá cho extension bản dưới 1.1.0 và chỉ cách b�
   dự án, giữ gói trong `chrome.storage.session` (hết hạn sau 1 giờ), mở tab form, tải ảnh
   từ signed URL (1 giờ) của CRM.
 - `panel.js` + `panel.css` (trang cổng, isolated world): bảng nổi, tiến độ từng bước.
-- `fill-engine.js` (trang cổng, MAIN world): điền bằng chính `FormUtil.setObjectToFormV2`,
-  jQuery/select2 của cổng; gắn ảnh vào `input[type=file]` bằng `DataTransfer` rồi phát
-  `change` để trang tự đưa vào hàng đợi upload.
+- `fill-engine.js` (trang cổng, MAIN world): luồng **đăng ký** (`STEPS`) điền bằng chính
+  `FormUtil.setObjectToFormV2`, jQuery/select2 của cổng; luồng **xoá** (`STEPS_XOA`) chỉ thao
+  tác như người dùng (xem trên). Cả hai gắn ảnh vào `input[type=file]` bằng `DataTransfer`
+  rồi phát `change` để trang tự đưa vào hàng đợi upload.
 
 ## Bẫy của cổng đã xử
 
@@ -85,9 +101,11 @@ Khi bạn bấm **Nộp hồ sơ**, cổng gọi service `add_subm_info_v2` và 
 trong chính gói gửi đi (khoá `SUBM_CODE`, kèm `is_send=1` để phân biệt với Lưu nháp).
 `submit-watch.js` đọc gói đó — chỉ đọc, không sửa, không chặn — rồi chuyển mã cho
 background giữ hộ. Lần sau bạn mở chi tiết khách trên CRM, CRM hỏi lấy mã về, ghi vào
-sổ `residence_registrations` (kèm `procedure_code`: `TAMTRU_01` đăng ký / `TAMTRU_06` xoá, do
-panel gửi theo gói — cổng ghi cứng `PROC_NAME = "Đăng ký tạm trú"` cho cả hồ sơ xoá) rồi mới
-báo extension xoá. Lượt nộp xoá đi cùng `saveDataNew(isSend)` → `add_subm_info_v2` (đọc mã
+sổ `residence_registrations` (kèm `procedure_code`: `TAMTRU_01` đăng ký / `TAMTRU_06` xoá —
+panel ĐỌC ô Thủ tục đang chọn trên trang lúc cổng nhận hồ sơ, chỉ khi không đọc được mới lấy
+theo gói; cổng ghi cứng `PROC_NAME = "Đăng ký tạm trú"` cho cả hồ sơ xoá nên không dùng được
+tên đó. Hồ sơ xoá gửi ngày tạm trú rỗng) rồi mới báo extension xoá. Gói đang chờ khác thủ tục
+trang đang mở thì bảng nổi báo rõ đây là gói gì; bấm "Điền ngay" lần nữa mới điền. Lượt nộp xoá đi cùng `saveDataNew(isSend)` → `add_subm_info_v2` (đọc mã
 trang 07/10/2026; chưa có lượt nộp xoá thật nào để đối chiếu). Ghi hụt thì mã vẫn còn, lần
 sau ghi tiếp.
 
@@ -107,7 +125,9 @@ Hồ sơ nộp lúc extension chưa bật, hoặc nộp trên máy khác, thì d
 
 ## Kiểm thử
 
-- Đơn vị: `npx vitest run src/lib/__tests__/tamTruFillEngine.test.ts src/lib/__tests__/tamTruFillEngineXoa.test.ts`
-  (nạp `fill-engine.js` vào jsdom với form giả lập).
+- Đơn vị: `npx vitest run src/lib/__tests__/tamTru*.test.ts --exclude "outputs/**"` — nạp
+  `fill-engine.js` vào jsdom với form giả lập (đăng ký và xoá), `background.js` với `chrome`
+  giả (kiểm gói v1/v2, origin, host ảnh), `panel.js` (mã thủ tục ghi sổ, cảnh báo lệch gói),
+  `submit-watch.js`.
 - Sống trên cổng thật (không lưu): `node extensions/tam-tru/test/live-fill.mjs` — cần Chrome
   đã đăng nhập VNeID do `~/tamtru-recorder/recorder.cjs` mở (cổng CDP 9333).
