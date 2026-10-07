@@ -1,11 +1,47 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-30T03:07:38.290Z",
+  "checkedAt": "2026-10-07T16:18:18.580Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
-    "githubBranchProtection": {
-      "status": "absent",
-      "note": "Nhánh không có branch protection. Repo private trên GitHub Free không dùng được tính năng này — lớp chặn phải nằm ở Vercel (xem kiểm soát vercel-production-branch)."
+    "githubRepoVisibility": {
+      "status": "checked",
+      "visibility": "public",
+      "note": "Repo PUBLIC: mã, lịch sử commit, log Actions và artifact ai cũng đọc được. Không đưa secret, số tiền production hay dữ liệu cá nhân vào đó. Ruleset dùng được cho repo public ở gói Free."
+    },
+    "githubSecretScanning": {
+      "status": "unverified",
+      "visibility": "public",
+      "secretScanning": null,
+      "pushProtection": null,
+      "note": "Phản hồi không có security_and_analysis — GitHub chỉ trả khối này cho người có quyền admin (GITHUB_TOKEN của Actions không có). Chưa xác minh ≠ đang bật."
+    },
+    "githubBranchMain": {
+      "status": "present",
+      "branch": "main",
+      "rules": [
+        "deletion",
+        "non_fast_forward"
+      ],
+      "rulesetIds": [
+        24662897
+      ],
+      "requiredChecks": [],
+      "classicProtection": "absent",
+      "note": "main: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc. bypass_actors không đọc được với token này (cần quyền admin) — chưa xác minh ai được đi vòng."
+    },
+    "githubBranchProduction": {
+      "status": "present",
+      "branch": "production",
+      "rules": [
+        "deletion",
+        "non_fast_forward"
+      ],
+      "rulesetIds": [
+        24662897
+      ],
+      "requiredChecks": [],
+      "classicProtection": "absent",
+      "note": "production: chặn xoá nhánh + force-push. Chưa có required status check — khoảng trống ở known-gap required-checks-khong-cuong-che-duoc. bypass_actors không đọc được với token này (cần quyền admin) — chưa xác minh ai được đi vòng."
     },
     "vercelProductionBranch": {
       "status": "checked",
@@ -83,12 +119,12 @@
         }
       ],
       "productionDeployment": {
-        "sha": "f854e75aac29e187088ad2ebefdd6d42e79685c4",
+        "sha": "1c616829e50bcbf96f9cff958cf714760d35bf5b",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "7 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy f854e75aac29 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "7 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 1c616829e50b từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -96,8 +132,8 @@
     }
   },
   "localHead": {
-    "head": "a47f0f99c92b8fbb8ec803f5ba8ba7eeeae6a656",
-    "branch": "chore/cat-kho-voice-lab",
+    "head": "d1d07690de9fc17a94cd69e1fb4b784d1015b92e",
+    "branch": "chore/public-repo-controls",
     "hasProductionBranch": true
   }
 }

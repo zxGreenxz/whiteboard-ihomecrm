@@ -4,13 +4,24 @@
 schemaVersion: 1
 gaps:
   - id: required-checks-khong-cuong-che-duoc
-    loai: chap-nhan-vinh-vien
-    where: GitHub repository settings (branch protection cho `main` và `production`)
-    expires_at: 2027-02-06
+    where: GitHub repository ruleset `bao-ve-main-production` (nhánh `main` và `production`)
+    expires_at: 2026-11-30
     why: >
-      Repo private trên GitHub Free KHÔNG có branch protection, nên không thể đặt gate nào
-      thành "required check". Nghĩa là mọi cửa chặn của repo này đều kêu SAU KHI push, không
-      chặn được lúc push. Đây là giới hạn của gói dịch vụ, không phải thiếu sót thiết kế.
+      Tiền đề cũ ("repo private trên GitHub Free nên không có branch protection") đã HẾT
+      ĐÚNG: repo public từ 07/10/2026 (cố ý, để có phút Actions miễn phí), và repo public
+      dùng được ruleset ở gói Free. Từ 07/10/2026 một ruleset active chặn XOÁ nhánh và
+      FORCE-PUSH (deletion + non_fast_forward) trên cả `main` lẫn `production`, không có
+      bypass actor — `check-external-controls.mjs` đo được ở `githubBranchMain` /
+      `githubBranchProduction` (status present).
+
+      Còn THIẾU đúng một thứ: required status check. Chưa bật vì hai tương tác chưa đo:
+      (a) lượt PR trên CÙNG SHA cũng báo check `gate-aggregate`, nên một required check theo
+          tên có thể được thoả bởi lượt PR thay vì lượt push của chính nhánh đó;
+      (b) push thẳng vào `main` (Contract §3: `git push origin HEAD:main` sau kiểm ancestor)
+          không thể thoả required check — check chỉ có SAU khi commit đã lên nhánh, nên
+          bật trên `main` là chặn luôn đường tích hợp đang dùng.
+      Nghĩa là các cửa chặn vẫn kêu SAU KHI push với nội dung commit, chỉ việc xoá/ghi đè
+      lịch sử là bị chặn lúc push.
 
       BIỆN PHÁP THAY THẾ ĐANG CHẠY (11/08/2026), và nó có thật chứ không phải lời hứa:
       (1) job `production-promotion` chạy trên MỌI push vào nhánh `production`;
@@ -21,14 +32,13 @@ gaps:
           mà là lớp phòng thân — nếu sau này có ai thêm một cái, job vẫn success và trang
           Checks vẫn xanh, nhưng promote vẫn bị chặn; thiếu token thì exit 3 chứ không phải xanh.
       Kêu sau vẫn hơn không biết: nó biến một sự kiện vô hình thành một dòng đỏ có người đọc.
-
-      Script kiểm control đọc metadata nhánh để xác minh absence khi protection API bị 403.
-      Xác minh không có protection không thay thế việc cưỡng chế required checks.
     exit_condition: >
-      Nâng gói (Team/Pro) hoặc chuyển repo sang public ⇒ bật branch protection với required
-      checks cho main và production, rồi chạy `check-external-controls.mjs` KÈM GH_TOKEN để
-      `githubBranchProtection` chuyển sang `present`. Đóng mục này khi
-      bằng chứng đó tồn tại — KHÔNG đóng chỉ vì đã có biện pháp thay thế.
+      Đo tương tác (a) và (b) trên một nhánh thử, rồi QUYẾT ĐỊNH ghi lại: bật một required
+      status check trên `production` (nhánh chỉ nhận fast-forward từ promote, nên không
+      vướng (b)) mà lượt PR cùng SHA không thoả hộ được; `main` giữ không có required check
+      nếu đường push thẳng vẫn là quy trình. Đóng khi `check-external-controls.mjs` ghi
+      `requiredChecks` không rỗng cho `githubBranchProduction` và bằng chứng commit kèm
+      lần promote thật đi qua check đó — KHÔNG đóng chỉ vì đã có biện pháp thay thế.
 
   - id: management-api-ghi-khong-cua
     where: >

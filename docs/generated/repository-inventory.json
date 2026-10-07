@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1292,
+  "tongSoFileTest": 1293,
   "soFileDocBangFs": 288,
-  "tongLoiGoi": 634,
-  "khongPhanLoaiDuoc": 294,
+  "tongLoiGoi": 636,
+  "khongPhanLoaiDuoc": 296,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
@@ -109,6 +109,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "scripts/__tests__/check-external-controls.test.mjs",
+      "soGoi": 13,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 12
+    },
+    {
       "file": "scripts/__tests__/run-pinned-gitnexus.test.mjs",
       "soGoi": 13,
       "loai": {
@@ -129,14 +137,6 @@
       "soGoi": 11,
       "loai": {},
       "khongPhanLoaiDuoc": 11
-    },
-    {
-      "file": "scripts/__tests__/check-external-controls.test.mjs",
-      "soGoi": 11,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 10
     },
     {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
