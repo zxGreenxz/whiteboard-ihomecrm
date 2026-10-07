@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   ACCOUNTING_MIGRATIONS,
   buildRolloutSql,
   executeManagementQuery,
   loadMigrationBodies,
+  loadSupabaseAdminConfig,
   main as applyMain,
   parseApplyArgs,
   ROLLOUT_CATALOG_SCOPE_NOTICE,
@@ -396,5 +401,23 @@ describe("read-only accounting rollout audit", () => {
     expect(messages).toContain(
       "Read-only accounting rollout audit completed; production data is unchanged.",
     );
+  });
+});
+
+describe("accounting rollout admin config", () => {
+  it("IHOMECRM_SECRET_FILE thay vault khi đọc PAT; env SUPABASE_PAT vẫn thắng", () => {
+    const d = mkdtempSync(join(tmpdir(), "admin-config-"));
+    try {
+      const fakePat = "sbp_" + "d".repeat(40);
+      const file = join(d, "pat.txt");
+      writeFileSync(file, fakePat);
+      const ref = "tryymsxyyckgbrmmvozx";
+      expect(loadSupabaseAdminConfig({ env: { IHOMECRM_SECRET_FILE: file, SUPABASE_PROJECT_REF: ref } }))
+        .toEqual({ pat: fakePat, projectRef: ref });
+      expect(loadSupabaseAdminConfig({ env: { IHOMECRM_SECRET_FILE: file, SUPABASE_PAT: "env-pat", SUPABASE_PROJECT_REF: ref } }).pat)
+        .toBe("env-pat");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
   });
 });

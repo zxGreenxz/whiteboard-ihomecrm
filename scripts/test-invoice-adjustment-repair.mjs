@@ -13,7 +13,7 @@ const conflictSource=readFileSync(conflictPath,'utf8');
 const conflictBody=stripMigrationTransactionControl(conflictSource,conflictPath);
 const probe=readFileSync('docs/audits/2026-09-12-invoice-adjustment-repair.probe.sql','utf8');
 if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im.test(body)) throw new Error('Embedded migration controls transactions');
-const config=loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
+const config=loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
 const sql=`BEGIN; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='90s';
 ${body}
 ${process.argv.includes('--repeat-migration')?body:''}

@@ -11,9 +11,10 @@
 //
 // THỨ TỰ DÒ (dừng ở file đọc được đầu tiên)
 //   1. `IHOMECRM_VAULT` — đường dẫn tường minh (máy khác, thử nghiệm).
-//   2. `IHOMECRM_SECRET_FILE` — tên cũ của (1) mà vài harness V5 từng dùng.
-//   3. `<repoRoot>/CLAUDE.local.md` — chạy ở checkout chính.
-//   4. Checkout chính của worktree: thư mục cha của `git rev-parse --git-common-dir`.
+//   2. `<repoRoot>/CLAUDE.local.md` — chạy ở checkout chính.
+//   3. Checkout chính của worktree: thư mục cha của `git rev-parse --git-common-dir`.
+//   (`IHOMECRM_SECRET_FILE` của harness V5 chỉ được loadSupabaseAdminConfig nhận, KHÔNG ở
+//   đây: duongDanVault còn là đích GHI của test-env, không được trỏ sang file khác.)
 //   CI không có vault: mọi hàm trả rỗng/null và giá trị phải đến từ biến môi trường.
 //
 // AN TOÀN
@@ -58,7 +59,6 @@ function checkoutChinh(repoRoot) {
 export function ungVienVault({ env = process.env, repoRoot = REPO_ROOT } = {}) {
   const ds = [];
   if (env.IHOMECRM_VAULT) ds.push(resolve(env.IHOMECRM_VAULT));
-  if (env.IHOMECRM_SECRET_FILE) ds.push(resolve(env.IHOMECRM_SECRET_FILE));
   ds.push(join(repoRoot, TEN_VAULT));
   const chinh = checkoutChinh(repoRoot);
   if (chinh) ds.push(join(chinh, TEN_VAULT));
@@ -156,22 +156,31 @@ export const BIEN_TIEN_TRINH_CON = Object.freeze([
 ]);
 
 /**
- * Credential cần THÊM vào env tiến trình con: chỉ biến env hiện tại chưa có (env thắng).
+ * Biến env đã "có sẵn" theo nghĩa của công cụ đọc nó: `gh` dùng GITHUB_TOKEN khi không
+ * có GH_TOKEN, nên nạp GH_TOKEN từ vault lúc đó là ĐÈ lựa chọn của người gọi.
+ */
+const TUONG_DUONG = { GH_TOKEN: ['GH_TOKEN', 'GITHUB_TOKEN'] };
+
+/**
+ * Credential cần THÊM vào env tiến trình con: chỉ biến env hiện tại chưa có (env thắng,
+ * xét TỪNG TÊN). SUPABASE_PAT chỉ lấy từ chính nó rồi vault — không mượn
+ * SUPABASE_ACCESS_TOKEN (có thể là token của project khác), vì các script đọc
+ * SUPABASE_PAT phải nhận cùng giá trị như khi chạy trực tiếp. SUPABASE_ACCESS_TOKEN
+ * theo thứ tự của Supabase CLI wrapper: chính nó → SUPABASE_PAT → vault.
  * Trả `{ them, thieu }` — `them` chứa giá trị (chỉ đưa vào env con, không in), `thieu`
  * chỉ có TÊN biến không tìm thấy ở đâu cả.
  */
 export function credentialChoTienTrinhCon({ env = process.env, ...opts } = {}) {
-  const coSan = (ten) => Boolean(env[ten]?.trim());
+  const coSan = (ten) => Boolean(tuEnv(env, TUONG_DUONG[ten] ?? [ten]));
   let vault;
   const tuVault = (mau) => {
     vault ??= docVault({ env, ...opts });
     const m = vault.match(mau);
     return m ? (m[1] ?? m[0]) : null;
   };
-  const pat = tuEnv(env, ['SUPABASE_PAT', 'SUPABASE_ACCESS_TOKEN']) ?? tuVault(mauNhanDang('SUPABASE_PAT'));
   const nguon = {
-    SUPABASE_PAT: () => pat,
-    SUPABASE_ACCESS_TOKEN: () => pat,
+    SUPABASE_PAT: () => tuVault(mauNhanDang('SUPABASE_PAT')),
+    SUPABASE_ACCESS_TOKEN: () => tuEnv(env, ['SUPABASE_PAT']) ?? tuVault(mauNhanDang('SUPABASE_PAT')),
     SUPABASE_DB_PASSWORD: () => tuVault(mauNhanDang('SUPABASE_DB_PASSWORD')),
     GH_TOKEN: () => tuVault(mauNhanDang('GH_TOKEN')),
     VERCEL_TOKEN: () => tuVault(mauNhanDang('VERCEL_TOKEN')),

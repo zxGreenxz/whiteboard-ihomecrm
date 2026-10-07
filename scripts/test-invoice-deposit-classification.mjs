@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { loadSupabaseAdminConfig, stripMigrationTransactionControl } from './apply-accounting-rollout.mjs';
 import { runQuery } from './lib/v5-collection-harness.mjs';
 
-const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
+const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
 const args = process.argv.slice(2);
 if (args[0] === '--catalog') {
   const rows = await runQuery(`SELECT n.nspname,p.proname,p.oid::regprocedure::text AS signature,

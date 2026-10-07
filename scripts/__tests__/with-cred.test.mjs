@@ -36,7 +36,7 @@ function envThu(vaultText, them = {}) {
   const vault = join(d, 'vault.md');
   writeFileSync(vault, vaultText);
   const env = { ...process.env, IHOMECRM_VAULT: vault, ...them };
-  for (const k of ['SUPABASE_PAT', 'SUPABASE_ACCESS_TOKEN', 'SUPABASE_DB_PASSWORD', 'GH_TOKEN', 'VERCEL_TOKEN', 'IHOMECRM_SECRET_FILE', 'npm_lifecycle_event', 'INIT_CWD']) {
+  for (const k of ['SUPABASE_PAT', 'SUPABASE_ACCESS_TOKEN', 'SUPABASE_DB_PASSWORD', 'GH_TOKEN', 'VERCEL_TOKEN', 'GITHUB_TOKEN', 'npm_lifecycle_event', 'INIT_CWD']) {
     if (!(k in them)) delete env[k];
   }
   return env;
@@ -118,7 +118,8 @@ describe('with-cred — dựng lời gọi', () => {
     // Như thư mục nodejs: script sh `npm` không đuôi nằm cạnh `npm.cmd` — phải chọn .cmd.
     writeFileSync(join(d, 'cong-cu'), '#!/bin/sh\n');
     writeFileSync(join(d, 'chuong-trinh.exe'), '');
-    const env = { PATH: d, PATHEXT: '.EXE;.CMD', ComSpec: 'cmd.exe' };
+    // PATHEXT viết thường để ca giả lập win32 cũng chạy trên hệ file phân biệt hoa thường (CI Linux).
+    const env = { PATH: d, PATHEXT: '.exe;.cmd', ComSpec: 'cmd.exe' };
     expect(timLenh('cong-cu', { env, platform: 'win32' })?.toLowerCase()).toBe(join(d, 'cong-cu.cmd').toLowerCase());
     const goi = dungLoiGoi('cong-cu', ['a b'], { env, platform: 'win32' });
     expect(goi.command).toBe('cmd.exe');

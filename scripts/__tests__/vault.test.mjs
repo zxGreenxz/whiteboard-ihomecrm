@@ -60,10 +60,12 @@ afterEach(() => {
 });
 
 describe('vault — tìm file', () => {
-  it('thứ tự ưu tiên: IHOMECRM_VAULT → IHOMECRM_SECRET_FILE → repo', () => {
+  it('thứ tự ưu tiên: IHOMECRM_VAULT → repo; IHOMECRM_SECRET_FILE KHÔNG đổi đích vault', () => {
+    // duongDanVault còn là đích GHI của test-env ⇒ biến của harness V5 không được lái nó.
     const repoRoot = taoThuMuc();
     const ds = ungVienVault({ env: { IHOMECRM_VAULT: 'a.md', IHOMECRM_SECRET_FILE: 'b.md' }, repoRoot });
-    expect(ds.slice(0, 3)).toEqual([resolve('a.md'), resolve('b.md'), join(repoRoot, TEN_VAULT)]);
+    expect(ds.slice(0, 2)).toEqual([resolve('a.md'), join(repoRoot, TEN_VAULT)]);
+    expect(ds).not.toContain(resolve('b.md'));
   });
 
   it('không có vault ở đâu cả ⇒ rỗng/null, không ném (đúng hành vi CI)', () => {
@@ -153,7 +155,7 @@ describe('vault — credential cho tiến trình con (with-cred)', () => {
   it('chỉ thêm biến env chưa có; SUPABASE_ACCESS_TOKEN = PAT', () => {
     const r = taoThuMuc();
     writeFileSync(join(r, TEN_VAULT), vanBanVault());
-    const { them, thieu } = credentialChoTienTrinhCon({ env: { GH_TOKEN: 'gh-cua-env' }, repoRoot: r });
+    const { them, thieu } = credentialChoTienTrinhCon({ env: { GH_TOKEN: 'gh-env' }, repoRoot: r });
     expect(them).toEqual({
       SUPABASE_PAT: PAT_GIA,
       SUPABASE_ACCESS_TOKEN: PAT_GIA,
@@ -167,6 +169,24 @@ describe('vault — credential cho tiến trình con (with-cred)', () => {
     const r = taoThuMuc();
     const { them } = credentialChoTienTrinhCon({ env: { SUPABASE_PAT: 'env-pat' }, repoRoot: r });
     expect(them).toEqual({ SUPABASE_ACCESS_TOKEN: 'env-pat' });
+  });
+
+  it('SUPABASE_ACCESS_TOKEN có sẵn KHÔNG thành SUPABASE_PAT (xét từng tên)', () => {
+    // Token đó có thể của project khác; script đọc SUPABASE_PAT phải nhận đúng giá trị
+    // như khi chạy trực tiếp (vault).
+    const r = taoThuMuc();
+    writeFileSync(join(r, TEN_VAULT), vanBanVault());
+    const { them } = credentialChoTienTrinhCon({ env: { SUPABASE_ACCESS_TOKEN: 'tok' }, repoRoot: r });
+    expect(them.SUPABASE_PAT).toBe(PAT_GIA);
+    expect(them).not.toHaveProperty('SUPABASE_ACCESS_TOKEN');
+  });
+
+  it('GITHUB_TOKEN có sẵn ⇒ không nạp GH_TOKEN đè lên', () => {
+    const r = taoThuMuc();
+    writeFileSync(join(r, TEN_VAULT), vanBanVault());
+    const { them, thieu } = credentialChoTienTrinhCon({ env: { GITHUB_TOKEN: 'gh-env' }, repoRoot: r });
+    expect(them).not.toHaveProperty('GH_TOKEN');
+    expect(thieu).not.toContain('GH_TOKEN');
   });
 
   it('thiếu hết ⇒ chỉ trả TÊN biến thiếu', () => {

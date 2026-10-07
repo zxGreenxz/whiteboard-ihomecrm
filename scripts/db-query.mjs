@@ -27,25 +27,33 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 import { POOLER_HOST, POOLER_PORT } from './backup-before-schema.mjs';
-import { giaTriVault, layMatKhauDb, layPat } from './lib/vault.mjs';
+import { giaTriVault, layMatKhauDb } from './lib/vault.mjs';
 import { PROD_REF, poolerHost } from './test-env/lib.mjs';
 
 export const TIMEOUT_CAU_LENH = '30s';
 
 const MO_DAU_DUOC_PHEP = new Set(['select', 'with', 'table', 'values', 'show', 'explain']);
 
-/** Từ khoá/hàm có thể GHI hay đổi trạng thái kể cả trong một câu SELECT/WITH. */
+/**
+ * Từ khoá/hàm có thể GHI hay đổi trạng thái kể cả trong một câu SELECT/WITH.
+ * Từ khoá câu lệnh khớp theo từ; HÀM chỉ khớp khi có `(` theo sau, để đọc view cùng họ
+ * tên (`pg_replication_slots`) hay cột `lo_…` không bị chặn nhầm. Cột trùng từ khoá
+ * (`do`, `set`, `rollback`…) thì bọc nháy kép.
+ */
 const TU_GHI = new RegExp(
   '\\b(' + [
-    'insert', 'update', 'delete', 'merge', 'upsert', 'truncate', 'create', 'alter', 'drop',
+    'insert', 'update', 'delete', 'merge', 'truncate', 'create', 'alter', 'drop',
     'grant', 'revoke', 'copy', 'vacuum', 'reindex', 'cluster', 'refresh', 'into', 'call',
     'do', 'lock', 'listen', 'notify', 'unlisten', 'prepare', 'execute', 'deallocate',
     'discard', 'checkpoint', 'reassign', 'commit', 'rollback', 'savepoint', 'begin', 'set',
-    'reset', 'nextval', 'setval', 'set_config', 'pg_terminate_backend', 'pg_cancel_backend',
+    'reset',
+  ].join('|') + ')\\b|\\bcomment\\s+on\\b|\\bsecurity\\s+label\\b|\\b(' + [
+    'nextval', 'setval', 'set_config', 'pg_terminate_backend', 'pg_cancel_backend',
     'pg_reload_conf', 'pg_rotate_logfile', 'pg_switch_wal', 'pg_promote', 'pg_notify',
-    'pg_advisory_\\w+', 'pg_try_advisory_\\w+', 'pg_create_\\w+', 'pg_drop_\\w+',
-    'pg_replication_\\w+', 'pg_logical_\\w+', 'pg_file_\\w+', 'lo_\\w+', 'dblink\\w*',
-  ].join('|') + ')\\b|\\bcomment\\s+on\\b|\\bsecurity\\s+label\\b',
+    'pg_stat_reset\\w*', 'pg_advisory_\\w+', 'pg_try_advisory_\\w+', 'pg_create_\\w+',
+    'pg_drop_\\w+', 'pg_replication_\\w+', 'pg_logical_\\w+', 'pg_file_\\w+', 'lo_\\w+',
+    'dblink\\w*',
+  ].join('|') + ')\\s*\\(',
   'i',
 );
 
@@ -170,9 +178,14 @@ export async function dichKetNoi(moiTruong, { env = process.env } = {}) {
   if (!password) throw Object.assign(new Error('Thiếu TEST_SUPABASE_DB_PASSWORD (env hoặc vault).'), { khongDoDuoc: true });
   let host = tu('TEST_SUPABASE_POOLER_HOST');
   if (!host) {
-    const pat = tu('TEST_SUPABASE_PAT') || layPat({ env });
-    if (!pat) throw Object.assign(new Error('Thiếu TEST_SUPABASE_POOLER_HOST và không có PAT để tra.'), { khongDoDuoc: true });
-    host = await poolerHost(pat, ref);
+    // Chỉ PAT của TEST: PAT production nhận 403 với project TEST (scripts/test-env/lib.mjs).
+    const pat = tu('TEST_SUPABASE_PAT');
+    if (!pat) throw Object.assign(new Error('Thiếu TEST_SUPABASE_POOLER_HOST và TEST_SUPABASE_PAT để tra host.'), { khongDoDuoc: true });
+    try {
+      host = await poolerHost(pat, ref);
+    } catch (e) {
+      throw Object.assign(new Error(`Không tra được host pooler TEST: ${e.message}`), { khongDoDuoc: true });
+    }
   }
   return { ref, host, port: 5432, user: `postgres.${ref}`, password };
 }

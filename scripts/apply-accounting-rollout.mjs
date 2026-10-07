@@ -147,9 +147,13 @@ export function loadSupabaseAdminConfig({
   readFile = readFileSync,
 } = {}) {
   // Vault qua helper chung (tìm được checkout chính khi chạy trong worktree);
-  // readFile giả lập của test vẫn đi qua được.
+  // readFile giả lập của test vẫn đi qua được. IHOMECRM_SECRET_FILE (file PAT riêng
+  // của các harness V5) chỉ có nghĩa ở loader này: nó thay vault khi đọc PAT.
+  const envVault = env.IHOMECRM_SECRET_FILE && !env.IHOMECRM_VAULT
+    ? { ...env, IHOMECRM_VAULT: env.IHOMECRM_SECRET_FILE }
+    : env;
   const pat = layPat({
-    env,
+    env: envVault,
     bien: ["SUPABASE_PAT"],
     readFile: readFile === readFileSync ? undefined : readFile,
   });

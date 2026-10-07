@@ -12,7 +12,7 @@ if (!process.argv.includes('--execute')) {
   console.log('Prepared only. Use --execute after the reviewed adjustment migration is deployed.');
   process.exit(0);
 }
-const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
+const config = loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
 const query = sql => runQuery(sql, config);
 const migration = readFileSync(new URL('../supabase/migrations/20260912065909_invoice_adjustment_atomic_revisions.sql', import.meta.url), 'utf8');
 assert.equal(createHash('sha256').update(migration).digest('hex'),

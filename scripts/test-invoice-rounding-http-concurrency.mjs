@@ -13,7 +13,7 @@ if (!process.argv.includes('--execute')) {
   console.log('Prepared only. Add --execute after confirmed permanent rounding deployment.');
   process.exit(0);
 }
-const config=loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được scripts/lib/vault.mjs nhận
+const config=loadSupabaseAdminConfig(); // IHOMECRM_SECRET_FILE vẫn được loadSupabaseAdminConfig nhận
 const query=sql=>runQuery(sql,config);
 const origin=`https://${config.projectRef}.supabase.co`;
 const localEnv=readFileSync(new URL('../.env',import.meta.url),'utf8');

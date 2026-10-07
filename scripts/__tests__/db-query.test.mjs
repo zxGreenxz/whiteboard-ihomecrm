@@ -38,6 +38,9 @@ describe('db:query — chặn chữ (lớp 1)', () => {
       'show timezone',
       'explain select 1',
       'select updated_at, deleted_at, created_by, last_update from t',
+      'select slot_name from pg_replication_slots',
+      'select lo_owner from t',
+      'select "rollback", "do" from t',
       "select 'delete from t; drop table x' as chu",
       'select "update", "insert" from t',
       "select E'it\\'s; delete'",
@@ -65,6 +68,9 @@ describe('db:query — chặn chữ (lớp 1)', () => {
       "select set_config('transaction_read_only', 'off', true)",
       'select pg_advisory_lock(1)',
       "select dblink_exec('x', 'drop table t')",
+      'select pg_stat_reset()',
+      "select pg_replication_slot_advance('s', '0/0')",
+      "select lo_unlink (1)",
       'begin',
       'commit',
       'set role postgres',
@@ -118,6 +124,11 @@ describe('db:query — đích kết nối', () => {
   it('TEST: từ chối ref trùng production', async () => {
     const env = { IHOMECRM_VAULT: vaultRong(), TEST_SUPABASE_REF: PROD_REF, TEST_SUPABASE_DB_PASSWORD: 'x', TEST_SUPABASE_POOLER_HOST: 'h' };
     await expect(dichKetNoi('test', { env })).rejects.toThrow(/trùng production/);
+  });
+
+  it('TEST: thiếu host và PAT riêng của TEST ⇒ KHÔNG ĐO ĐƯỢC (không mượn PAT production)', async () => {
+    const env = { IHOMECRM_VAULT: vaultRong(), TEST_SUPABASE_REF: 'b'.repeat(20), TEST_SUPABASE_DB_PASSWORD: 'x', SUPABASE_PAT: 'sbp_' + '1'.repeat(40) };
+    await expect(dichKetNoi('test', { env })).rejects.toMatchObject({ khongDoDuoc: true });
   });
 
   it('TEST: đủ env thì không cần gọi mạng', async () => {
