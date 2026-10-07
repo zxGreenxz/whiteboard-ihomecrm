@@ -28,8 +28,7 @@
 //
 // Không cần credential. Thoát 0 đạt · 1 vi phạm · 3 không kiểm được.
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -110,6 +109,22 @@ export function chonFile(danhSach) {
   return danhSach.filter((f) => DUOI_MA.test(f) && !NGOAI_PHAM_VI.test(f) && !MIEN_TRU.includes(f));
 }
 
+/**
+ * Dòng khớp từ `git grep --cached -z -n`: mỗi bản ghi `đường-dẫn\0số-dòng\0nội-dung`.
+ * Đọc INDEX chứ không đọc đĩa: gate kiểm đúng thứ sắp được commit (và đúng commit trên
+ * CI), nên sửa chưa stage — ví dụ spec .e2e-fleet tách commit riêng — không làm sai kết
+ * quả và không cần khai thư mục đó vào inputs của gate.
+ */
+export function phanTichGitGrep(dauRa) {
+  const ra = [];
+  for (const banGhi of String(dauRa).split('\n')) {
+    const [file, so, ...phan] = banGhi.split('\0');
+    if (!file || !/^\d+$/.test(so ?? '')) continue;
+    ra.push({ file, dong: Number(so), noiDung: phan.join('\0') });
+  }
+  return ra;
+}
+
 function main() {
   let files;
   try {
@@ -127,15 +142,19 @@ function main() {
     process.exit(3);
   }
 
+  // -a: vài file mã có byte NUL (bị coi là nhị phân) vẫn phải được quét.
+  const grep = spawnSync('git', ['grep', '--cached', '-a', '-n', '-z', '-F', '-e', TEN, '--', '.', ':(exclude)docs'], {
+    cwd: repoRoot, encoding: 'utf8', maxBuffer: 1e8,
+  });
+  if (grep.status !== 0 && grep.status !== 1) {
+    console.error(`❌ KHÔNG KIỂM ĐƯỢC: git grep lỗi (${grep.status}) — ${grep.stderr}`);
+    process.exit(3);
+  }
+  const trongPhamVi = new Set(files);
   const viPham = [];
-  for (const f of files) {
-    let ma;
-    try {
-      ma = readFileSync(join(repoRoot, f), 'utf8');
-    } catch {
-      continue; // file bị xoá trong cây làm việc nhưng còn trong index
-    }
-    for (const v of timDocVault(ma)) viPham.push({ file: f, ...v });
+  for (const { file, dong, noiDung } of phanTichGitGrep(grep.stdout)) {
+    if (!trongPhamVi.has(file)) continue;
+    for (const v of timDocVault(noiDung)) viPham.push({ file, dong, chuoi: v.chuoi });
   }
 
   if (viPham.length > 0) {

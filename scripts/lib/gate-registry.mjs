@@ -25,8 +25,6 @@ for (const id of [
   'check-realtime-key-ownership', 'check-vault-access',
 ]) nodeGate(id);
 for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths']) gates[id].inputs = docsInputs;
-// Quét mọi file mã được track (ngoài docs/), nên đầu vào rộng hơn broadInputs.
-gates['check-vault-access'].inputs = [...broadInputs, '.e2e-fleet/**', 'api/**', 'worker/**', 'services/**', 'infra/**'];
 nodeGate('normalize-supabase-types', 'quality-gates', { args: ['scripts/normalize-supabase-types.mjs', '--check'] });
 nodeGate('generate-docs-views', 'quality-gates', { args: ['scripts/generate-docs-views.mjs', '--check'], inputs: docsInputs });
 nodeGate('check-dependency-audit', 'quality-gates', { local: false, evidenceClass: 'external' });

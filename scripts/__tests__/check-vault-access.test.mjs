@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { MIEN_TRU, SAN_SO_FILE, chonFile, chuoiTrongDong, laDuongDanVault, timDocVault } from '../check-vault-access.mjs';
+import { MIEN_TRU, SAN_SO_FILE, chonFile, chuoiTrongDong, laDuongDanVault, phanTichGitGrep, timDocVault } from '../check-vault-access.mjs';
 import { TEN_VAULT } from '../lib/vault.mjs';
 
 const V = TEN_VAULT;
@@ -82,6 +82,20 @@ describe('check-vault-access — phạm vi', () => {
       'scripts/lib/vault.mjs', 'scripts/a.mjs', '.e2e-fleet/specs/b.spec.ts', 'src/c.tsx',
       'docs/audits/x/y.cjs', 'README.md', 'tooling/z.json', 'scripts/d.cjs',
     ])).toEqual(['scripts/a.mjs', '.e2e-fleet/specs/b.spec.ts', 'src/c.tsx', 'scripts/d.cjs']);
+  });
+
+  it('đọc dòng khớp của git grep --cached -z -n (gate kiểm INDEX, không kiểm đĩa)', () => {
+    const dauRa = [
+      `scripts/a.mjs\u000012\u0000const p = join(root, '${V}');`,
+      `scripts/b.mjs\u00003\u0000console.error('thiếu ${V}');\r`,
+      '',
+    ].join('\n');
+    expect(phanTichGitGrep(dauRa)).toEqual([
+      { file: 'scripts/a.mjs', dong: 12, noiDung: `const p = join(root, '${V}');` },
+      { file: 'scripts/b.mjs', dong: 3, noiDung: `console.error('thiếu ${V}');\r` },
+    ]);
+    const viPham = phanTichGitGrep(dauRa).flatMap((r) => timDocVault(r.noiDung).map((v) => ({ file: r.file, dong: r.dong, chuoi: v.chuoi })));
+    expect(viPham).toEqual([{ file: 'scripts/a.mjs', dong: 12, chuoi: V }]);
   });
 
   it('sàn chống xanh rỗng đủ lớn để bắt bộ liệt kê hỏng', () => {
