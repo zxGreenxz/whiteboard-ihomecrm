@@ -1,3 +1,4 @@
+import type {ContractRelationSnapshot} from '@/lib/contractRelationReconcile';
 import {loadContractEditJob,type ContractEditJob} from '@/lib/contractEditWorkflow';
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
@@ -93,9 +94,18 @@ export function useContractFormState({
 }: UseContractFormStateParams) {
   const isEditMode = !!contract;
   const isDraftMode = !!draft && !contract;
+  // List rows omit service details and member notes; only the detail query can
+  // establish the opening snapshot used by the edit workflow.
+  const isEditDetailReady = !contract || (
+    Array.isArray(contract.contract_services) &&
+    Array.isArray(contract.contract_customers) &&
+    contract.contract_customers.every(member => Object.prototype.hasOwnProperty.call(member, 'notes'))
+  );
   const hasPersistedRentSupport = !!contract && (contract.discounts as unknown as { version?: number })?.version === 2;
   const [readonlySupportSchedule, setReadonlySupportSchedule] = useState<SupportCustomerSchedule | undefined>();
   const hydratedDraftId = useRef<string | null>(null);
+  const hydratedContractId = useRef<string | null>(null);
+  const editCustomerBaselineRef = useRef<ContractRelationSnapshot['customers'] | null>(null);
   const draftInvoiceBaseline = useRef<{ draftId: string; signature: string | null } | null>(null);
   const draftInvoiceEditRevision = useRef(0);
   const partialSyncRef = useRef<ContractEditJob|null>(null);
@@ -117,7 +127,7 @@ export function useContractFormState({
   const syncCustomers = useSyncContractCustomers();
   const syncServices = useSyncContractServices();
   const isPending =
-    editRecoveryLoading || editSubmitting ||
+    !isEditDetailReady || editRecoveryLoading || editSubmitting ||
     createContract.isPending ||
     updateContract.isPending ||
     syncCustomers.isPending ||
@@ -349,7 +359,7 @@ export function useContractFormState({
 
   // ---- Reset form when dialog opens ----
   useEffect(() => {
-    if (!open) { hydratedDraftId.current = null; draftInvoiceBaseline.current = null; draftInvoiceEditRevision.current = 0; return; }
+    if (!open) { hydratedContractId.current=null;editCustomerBaselineRef.current=null;hydratedDraftId.current = null; draftInvoiceBaseline.current = null; draftInvoiceEditRevision.current = 0; return; }
 
     if (isDraftMode && draft) {
       // Background list refresh must not replace edits in an already-open draft.
@@ -379,6 +389,9 @@ export function useContractFormState({
     setSavedDraftDefaultServices(null);
 
     if (contract) {
+      if (!isEditDetailReady || hydratedContractId.current === contract.id) return;
+      hydratedContractId.current=contract.id;
+      editCustomerBaselineRef.current=contract.contract_customers?.map(cc=>({customer_id:cc.customer_id,is_representative:cc.is_representative,notes:cc.notes??null}))??null;
       // Edit mode: pre-populate
       const buildingId = contract.room?.building_id ?? "";
       setSelectedBuildingId(buildingId);
@@ -442,6 +455,8 @@ export function useContractFormState({
       // HĐ đã có dịch vụ riêng → bật nút gạt; chưa có → dùng mặc định toà.
       setUseCustomServices(services.length > 0);
     } else {
+      hydratedContractId.current=null;
+      editCustomerBaselineRef.current=null;
       // Create mode: reset (áp prefill nếu mở từ flow Cọc giữ chỗ / Building map)
       setSelectedBuildingId(prefill?.buildingId ?? "");
       setSelectedRoomId(prefill?.roomId ?? "");
@@ -476,7 +491,7 @@ export function useContractFormState({
         deposit_topup_due_date: "",
       });
     }
-  }, [open, contract, form, prefill, draft, isDraftMode]);
+  }, [open, contract, form, prefill, draft, isDraftMode, isEditDetailReady]);
 
   // Hai effect "bám mặc định" phải khai báo SAU effect reset ở trên: React chạy
   // effect theo thứ tự khai báo, nên nếu đặt trước thì trong cùng một commit
@@ -932,6 +947,8 @@ export function useContractFormState({
     selectedBuildingId,
     selectedRoomId,
     selectedCustomers,
+    editCustomerBaselineRef,
+    isEditDetailReady,
     setSelectedCustomers,
     selectedServices,
     setSelectedServices,

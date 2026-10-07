@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-07T05:47:08.444Z",
+  "generatedAt": "2026-10-07T07:37:31.580Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 656,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11076,6 +11076,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-07T05:46:51.289Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261007064802_customer_residence_history.sql",
+      "version": "20261007064802",
+      "name": "customer_residence_history",
+      "scheme": "timestamp14",
+      "sha256": "4b453eb478b0e3c65d86b61306526d80a0cbca866dbc2d6ed46f8f6475aa4877",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.customer_residence_events",
+        "function:app_private.guard_customer_residence_events_v1",
+        "function:app_private.residence_scope_v1",
+        "function:app_private.append_customer_residence_v1",
+        "function:app_private.guard_residence_membership_v1"
       ]
     },
     {

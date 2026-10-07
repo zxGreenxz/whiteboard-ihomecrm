@@ -7,15 +7,15 @@ import {supabase} from '@/integrations/supabase/client';
 import {financialReadNumber} from './financialReadValidation';
 import type {UpdateContractPayload} from '@/hooks/useContracts';
 
-type RelationPhase='not-started'|'deleting'|'deleted'|'inserting'|'done'|'rejected';
+type RelationPhase='reconciling'|'not-started'|'deleting'|'deleted'|'inserting'|'done'|'rejected';
 type CorePhase='not-started'|'sending'|'done'|'rejected';
-export interface ContractEditRequest extends ContractRelationSnapshot {contractId:string;updates:UpdateContractPayload;fieldsFingerprint:string}
+export interface ContractEditRequest extends ContractRelationSnapshot {contractId:string;updates:UpdateContractPayload;fieldsFingerprint:string;expectedCustomers?:ContractRelationSnapshot['customers']}
 export interface ContractEditJob extends ContractEditRequest {
  version:1;actorId:string;attemptId:string;organizationId:string;corePhase:CorePhase;customersPhase:RelationPhase;servicesPhase:RelationPhase;
  baseline:ContractRelationSnapshot;startedAt:string;
 }
 export interface ContractEditSnapshot extends ContractRelationSnapshot {contract:Record<string,unknown>&{id:string;organization_id?:string|null}}
-export interface ContractRelationWriteProgress {skipDelete?:boolean;organizationId?:string;onPhase?:(phase:'deleting'|'deleted'|'inserting'|'done')=>void}
+export interface ContractRelationWriteProgress {skipDelete?:boolean;organizationId?:string;expectedCustomers?:ContractRelationSnapshot['customers'];onPhase?:(phase:'reconciling'|'deleting'|'deleted'|'inserting'|'done')=>void}
 export interface ContractEditPorts {
  read:(contractId:string)=>Promise<ContractEditSnapshot>;
  update:(input:{id:string;updates:UpdateContractPayload;suppressSuccessToast:true})=>Promise<unknown>;
@@ -27,7 +27,7 @@ const customer=z.object({customer_id:z.string().min(1),is_representative:z.boole
 const service=z.object({service_id:z.string().min(1),unit_price:z.number().finite().nonnegative(),initial_reading:z.number().finite().nullable().optional()});
 const relations=z.object({customers:z.array(customer),services:z.array(service)});
 const updatesSchema=z.object({room_id:z.string().optional(),signed_date:z.string().optional(),start_date:z.string().optional(),end_date:z.string().optional(),rent_price:z.number().finite().nonnegative().optional(),total_deposit:z.number().finite().nonnegative().optional(),payment_cycle:z.enum(['MONTHLY','QUARTERLY','SEMI_ANNUAL','ANNUAL']).optional(),start_billing_date:z.string().nullable().optional(),end_billing_date:z.string().nullable().optional(),contract_template_id:z.string().nullable().optional(),invoice_template_id:z.string().nullable().optional(),notes:z.string().nullable().optional(),discounts:z.object({months:z.number().finite(),amount_per_month:z.number().finite()}).nullable().optional()}).strict();
-const phase=z.enum(['not-started','deleting','deleted','inserting','done','rejected']);
+const phase=z.enum(['reconciling','not-started','deleting','deleted','inserting','done','rejected']);
 const jobSchema=relations.extend({version:z.literal(1),actorId:z.string().min(1),attemptId:z.string().min(1),contractId:z.string().min(1),organizationId:z.string().min(1),fieldsFingerprint:z.string(),updates:updatesSchema,corePhase:z.enum(['not-started','sending','done','rejected']),customersPhase:phase,servicesPhase:phase,baseline:relations,startedAt:z.string().refine(value=>Number.isFinite(Date.parse(value)))});
 const key=(actorId:string,id:string)=>`ihome:contract-edit-pending:v1:${encodeURIComponent(actorId)}:${encodeURIComponent(id)}`;
 const active=new Set<string>();
@@ -53,7 +53,7 @@ export async function readContractEditSnapshot(contractId:string):Promise<Contra
 const issue=(job:ContractEditJob,part:string,cause?:unknown)=>new FinancialWorkflowError(`Hợp đồng ${job.contractId} chưa xác nhận xong phần ${part}. Tải lại và đối chiếu dữ liệu trước khi tiếp tục; không lưu lại toàn bộ hợp đồng.`,job.corePhase==='done'?'partial':'unknown',job.corePhase==='done'?[{id:job.contractId,label:`Đã lưu thông tin hợp đồng ${job.contractId}`}]:[],cause);
 
 /** UI invokes recovery explicitly. A mismatched read after an unknown write is never proof of rollback. */
-export async function runContractEdit(request:ContractEditRequest,ports:ContractEditPorts):Promise<{contractId:string;fieldsFingerprint:string;customersFingerprint:string;servicesFingerprint:string}>{
+export async function runContractEdit(request:ContractEditRequest,ports:ContractEditPorts):Promise<{contractId:string;fieldsFingerprint:string;customersFingerprint:string;servicesFingerprint:string;confirmedCustomers:ContractRelationSnapshot['customers']}>{
  const actor=await getSessionUser();if(!actor)throw {code:'PGRST301'};const scope=key(actor.id,request.contractId);
  if(active.has(scope))throw new FinancialWorkflowError('Yêu cầu cập nhật hợp đồng đang được xử lý. Chờ kết quả trước khi tiếp tục.','unknown',[]);
  active.add(scope);let job:ContractEditJob|null=null;
@@ -62,9 +62,12 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
   try{actual=await ports.read(request.contractId);}catch(error){if(job)throw issue(job,'đọc dữ liệu hợp đồng/khách hàng/dịch vụ',error);throw error;}
   if(!actual.contract||actual.contract.id!==request.contractId)throw new TypeError('Chưa đọc được đúng hợp đồng.');
   if(!job){
+   if(!request.expectedCustomers)throw new FinancialWorkflowError('Chưa đọc được danh sách khách hàng lúc mở form. Đóng và mở lại hợp đồng trước khi lưu.','failure',[]);
+   const expectedCustomers=z.array(customer).parse(request.expectedCustomers);
+   if(!sameContractCustomers(actual.customers,expectedCustomers as ContractRelationSnapshot['customers']))throw new FinancialWorkflowError('Danh sách khách hàng đã thay đổi từ lúc mở form. Đóng và mở lại hợp đồng để đối chiếu.','failure',[]);
    const parsed=updatesSchema.parse(request.updates) as UpdateContractPayload;const selected=relations.parse(request) as ContractRelationSnapshot;
    if(typeof actual.contract.organization_id!=='string'||!actual.contract.organization_id)throw new FinancialWorkflowError('Chưa đọc được tổ chức của hợp đồng. Tải lại hợp đồng trước khi cập nhật.','failure',[]);
-   job={...request,...selected,updates:parsed,version:1,actorId:actor.id,attemptId:crypto.randomUUID(),organizationId:actual.contract.organization_id,corePhase:'not-started',customersPhase:'not-started',servicesPhase:'not-started',baseline:{customers:actual.customers,services:actual.services},startedAt:new Date().toISOString()};saveJob(job);
+   job={...request,...selected,updates:parsed,version:1,actorId:actor.id,attemptId:crypto.randomUUID(),organizationId:actual.contract.organization_id,corePhase:'not-started',customersPhase:'not-started',servicesPhase:'not-started',baseline:{customers:expectedCustomers as ContractRelationSnapshot['customers'],services:actual.services},startedAt:new Date().toISOString()};saveJob(job);
   } else if(actual.contract.organization_id!==job.organizationId)throw issue(job,'tổ chức đã thay đổi');
   ports.onJob?.(job);
   const current=job;
@@ -94,20 +97,20 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
    if(['deleting','inserting','done'].includes(relationPhase))throw issue(current,relation==='customers'?'khách hàng':'dịch vụ');
    if(relationPhase==='deleted'&&actual[relation].length)throw issue(current,'quan hệ đã có thay đổi khác');
    const baselineMatches=relation==='customers'?sameContractCustomers(actual.customers,current.baseline.customers):sameContractServices(actual.services,current.baseline.services);
-   if((relationPhase==='not-started'||relationPhase==='rejected')&&!baselineMatches)throw issue(current,'quan hệ đã có thay đổi khác');
+   if((relationPhase==='not-started'||relationPhase==='rejected'||relationPhase==='reconciling')&&!baselineMatches)throw issue(current,'quan hệ đã có thay đổi khác');
    const onPhase:ContractRelationWriteProgress['onPhase']=phase=>{current[phaseName]=phase;persist();};
    try{
     const common={contractId:current.contractId,organizationId:current.organizationId,skipDelete:relationPhase==='deleted',onPhase};
-    if(relation==='customers')await ports.customers({...common,customers:current.customers});else await ports.services({...common,services:current.services});
+    if(relation==='customers')await ports.customers({...common,expectedCustomers:relationPhase==='deleted'?[]:current.baseline.customers,customers:current.customers});else await ports.services({...common,services:current.services});
     const confirmed=await ports.read(current.contractId);
     const matches=relation==='customers'?sameContractCustomers(confirmed.customers,current.customers):sameContractServices(confirmed.services,current.services);
     if(!matches)throw new TypeError('Chưa xác nhận được đầy đủ các dòng liên kết.');
     current[phaseName]='done';persist();actual=confirmed;
-   }catch(error){if(isConfirmedFinancialRejection(error)){if(current[phaseName]==='inserting')current[phaseName]='deleted';else if(current[phaseName]==='deleting')current[phaseName]='rejected';}persist();throw issue(current,relation==='customers'?'khách hàng':'dịch vụ',error);}
+   }catch(error){if(isConfirmedFinancialRejection(error)){if(current[phaseName]==='inserting')current[phaseName]='deleted';else if(current[phaseName]==='deleting'||current[phaseName]==='reconciling')current[phaseName]='rejected';}persist();throw issue(current,relation==='customers'?'khách hàng':'dịch vụ',error);}
   }
   const final=await ports.read(current.contractId);
   if(!sameContractFields(final.contract,current.updates)||!sameContractCustomers(final.customers,current.customers)||!sameContractServices(final.services,current.services))throw issue(current,'đối chiếu cuối');
   try{localStorage.removeItem(scope);}catch{throw new FinancialPendingStorageError();}ports.onJob?.(null);
-  return {contractId:current.contractId,fieldsFingerprint:current.fieldsFingerprint,customersFingerprint:JSON.stringify(current.customers),servicesFingerprint:JSON.stringify(current.services)};
+  return {contractId:current.contractId,fieldsFingerprint:current.fieldsFingerprint,customersFingerprint:JSON.stringify(current.customers),servicesFingerprint:JSON.stringify(current.services),confirmedCustomers:current.customers};
  }catch(error){if(job&&!(error instanceof FinancialWorkflowError))throw issue(job,'đọc/ghi dữ liệu liên quan',error);throw error;}finally{active.delete(scope);}
 }

@@ -1,3 +1,4 @@
+import type {ContractWithRelations} from '@/types/contract';
 import {runContractEdit} from '@/lib/contractEditWorkflow';
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
@@ -176,9 +177,37 @@ it('keeps manual invoice row edits after generation when only notes or the same-
 
 it('B15 tải lại form khôi phục issue/contract ID từ storage, đổi selector không mất pending',async()=>{
  localStorage.clear();const saved={contract:{id:'edit-c1',organization_id:'actual-a',rent_price:100},customers:[],services:[]};
- await expect(runContractEdit({contractId:'edit-c1',updates:{rent_price:200},fieldsFingerprint:'intent',customers:[{customer_id:'customer1',is_representative:true}],services:[]},{read:async()=>saved,update:async()=>null,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
+ await expect(runContractEdit({contractId:'edit-c1',expectedCustomers:[],updates:{rent_price:200},fieldsFingerprint:'intent',customers:[{customer_id:'customer1',is_representative:true}],services:[]},{read:async()=>saved,update:async()=>null,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
  localStorage.setItem('ihomecrm.selectedOrganizationId','selected-b');
  const contract={id:'edit-c1',room_id:room,room:{building_id:building},signed_date:'2026-09-01',start_date:'2026-09-01',end_date:'2027-09-01',rent_price:100,total_deposit:0,contract_customers:[],contract_services:[]} as never;
  const first=renderHook(()=>useContractFormState({open:true,contract}));await waitFor(()=>expect(first.result.current.partialSyncIssue).toContain('edit-c1'));expect(first.result.current.partialSyncRef.current).toMatchObject({corePhase:'sending',organizationId:'actual-a'});first.unmount();
  const reopened=renderHook(()=>useContractFormState({open:true,contract}));await waitFor(()=>expect(reopened.result.current.partialSyncIssue).toContain('edit-c1'));expect(reopened.result.current.partialSyncRef.current).toMatchObject({contractId:'edit-c1',updates:{rent_price:200}});expect(reopened.result.current.isPending).toBe(false);localStorage.clear();
+});
+it('keeps the opening membership baseline through background refresh and refreshes it only after reopening',async()=>{
+ localStorage.clear();
+ const original={id:'baseline-contract',room_id:room,room:{building_id:building},signed_date:'2026-09-01',start_date:'2026-09-01',end_date:'2027-09-01',rent_price:100,total_deposit:0,contract_customers:[{customer_id:'member-a',is_representative:true,notes:null}],contract_services:[]} as unknown as ContractWithRelations;
+ const refreshed={...original,contract_customers:[{customer_id:'member-a',is_representative:true,notes:null},{customer_id:'member-b',is_representative:false,notes:null}]} as never;
+ const {result,rerender}=renderHook(({open,contract})=>useContractFormState({open,contract}),{initialProps:{open:true,contract:original}});
+ await waitFor(()=>expect(result.current.editCustomerBaselineRef.current).toEqual([{customer_id:'member-a',is_representative:true,notes:null}]));
+ rerender({open:true,contract:refreshed});
+ expect(result.current.selectedCustomers.map(c=>c.id)).toEqual(['member-a']);
+ expect(result.current.editCustomerBaselineRef.current).toHaveLength(1);
+ rerender({open:false,contract:refreshed});rerender({open:true,contract:refreshed});
+ await waitFor(()=>expect(result.current.editCustomerBaselineRef.current).toHaveLength(2));
+});
+
+it('waits for full edit detail before freezing notes, services and membership', async () => {
+  const reduced = { id: 'detail-contract', room_id: room, room: { building_id: building }, contract_customers: [{ customer_id: 'member-a', is_representative: true }] } as unknown as ContractWithRelations;
+  const full = { ...reduced, notes: 'Contract note', contract_customers: [{ customer_id: 'member-a', is_representative: true, notes: 'Member note' }], contract_services: [{ service_id: 'water', unit_price: 42, initial_reading: 7, service: { name: 'Water' } }] } as unknown as ContractWithRelations;
+  const { result, rerender } = renderHook(({ contract }) => useContractFormState({ open: true, contract }), { initialProps: { contract: reduced } });
+  expect(result.current.editCustomerBaselineRef.current).toBeNull();
+  expect(result.current.isPending).toBe(true);
+  rerender({ contract: full });
+  await waitFor(() => expect(result.current.selectedServices).toMatchObject([{ id: 'water', unit_price: 42 }]));
+  expect(result.current.form.getValues('notes')).toBe('Contract note');
+  expect(result.current.editCustomerBaselineRef.current).toMatchObject([{ notes: 'Member note' }]);
+  act(() => result.current.form.setValue('notes', 'My edit'));
+  rerender({ contract: { ...full, notes: 'Background note', contract_services: [] } });
+  expect(result.current.form.getValues('notes')).toBe('My edit');
+  expect(result.current.selectedServices).toHaveLength(1);
 });

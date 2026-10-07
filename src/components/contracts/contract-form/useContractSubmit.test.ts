@@ -23,6 +23,12 @@ vi.mock("sonner", () => ({
 }));
 
 describe("useContractSubmit", () => {
+  it('blocks edit submission until full detail has loaded', () => {
+    const setError = vi.fn();
+    const state = { isEditMode: true, isEditDetailReady: false, form: { setError } } as unknown as ContractFormState;
+    useContractSubmit({ state, onOpenChange: vi.fn() })({} as ContractFormData);
+    expect(setError).toHaveBeenCalledWith('root.server', expect.objectContaining({ message: expect.stringContaining('đầy đủ') }));
+  });
   it('không gửi tạo hợp đồng khi dịch vụ tòa chưa tải; giữ nguyên form để tải lại', () => {
     const createContract = { mutate: vi.fn() };
     const setError = vi.fn();
@@ -100,7 +106,7 @@ describe("useContractSubmit", () => {
     const updateContract = {mutateAsync:vi.fn(async ({updates})=>{Object.assign(actual.contract,updates);return actual.contract;})};
     const syncCustomers={mutateAsync:vi.fn(async input=>{input.onPhase('deleting');actual.customers=[];input.onPhase('deleted');input.onPhase('inserting');actual.customers=input.customers;input.onPhase('done');})};
     const syncServices={mutateAsync:vi.fn().mockImplementationOnce(async input=>{input.onPhase('deleting');actual.services=[];input.onPhase('deleted');input.onPhase('inserting');throw {code:'23514',message:'bad service'};}).mockImplementation(async input=>{expect(input.skipDelete).toBe(true);actual.services=input.services;input.onPhase('done');})};
-    const partialSyncRef={current:null};const state={isEditMode:true,form:{setError:vi.fn()},partialSyncRef,
+    const partialSyncRef={current:null};const state={isEditMode:true,editCustomerBaselineRef:{current:[]},form:{setError:vi.fn()},partialSyncRef,
       selectedCustomers:[{id:'22222222-2222-4222-8222-222222222222',is_representative:true}],
       selectedServices:[{id:'44444444-4444-4444-8444-444444444444',name:'Điện',unit_price:10000,initial_reading:0,quantity:1}],useCustomServices:true,updateContract,syncCustomers,syncServices} as unknown as ContractFormState;
     const contract={id:actual.contract.id} as NonNullable<Parameters<typeof useContractSubmit>[0]['contract']>;const close=vi.fn();const submit=useContractSubmit({state,contract,onOpenChange:close});
@@ -112,7 +118,7 @@ describe("useContractSubmit", () => {
   it('blocks recovery on authoritative read failure and retains contract ID/draft after reload', async () => {
     const snapshot={contract:{id:'contract-1',organization_id:'o1',rent_price:100},customers:[],services:[]};
     const read=vi.fn().mockResolvedValueOnce(snapshot);const update=vi.fn().mockResolvedValue(null);
-    await expect(runContractEdit({contractId:'contract-1',updates:{rent_price:200},fieldsFingerprint:'{}',customers:[],services:[]},{read,update,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
+    await expect(runContractEdit({contractId:'contract-1',expectedCustomers:[],updates:{rent_price:200},fieldsFingerprint:'{}',customers:[],services:[]},{read,update,customers:vi.fn(),services:vi.fn()})).rejects.toThrow();
     vi.mocked(readContractEditSnapshot).mockRejectedValueOnce(new Error('offline'));
     const syncCustomers={mutateAsync:vi.fn()},syncServices={mutateAsync:vi.fn()},setPartialSyncIssue=vi.fn(),setError=vi.fn();
     const state={isEditMode:true,form:{setError},setPartialSyncIssue,partialSyncRef:{current:null},selectedCustomers:[{id:'customer-1',is_representative:true}],selectedServices:[],useCustomServices:false,syncCustomers,syncServices,updateContract:{mutateAsync:vi.fn()}} as unknown as ContractFormState;
@@ -126,7 +132,7 @@ describe("useContractSubmit", () => {
     vi.mocked(readContractEditSnapshot).mockImplementation(async () => structuredClone(actual) as never);
     const update = vi.fn(async ({ updates }: { updates: Record<string, unknown> }) => { Object.assign(actual.contract, updates); return actual.contract; });
     const close = vi.fn();
-    const state = { isEditMode: true, hasPersistedRentSupport: true, form: { setError: vi.fn() }, partialSyncRef: { current: null },
+    const state = { isEditMode: true, editCustomerBaselineRef:{current:structuredClone(actual.customers)},hasPersistedRentSupport: true, form: { setError: vi.fn() }, partialSyncRef: { current: null },
       selectedCustomers: [{ id: customer, is_representative: true }], selectedServices: [], useCustomServices: false,
       updateContract: { mutateAsync: update }, syncCustomers: { mutateAsync: vi.fn() }, syncServices: { mutateAsync: vi.fn() } } as unknown as ContractFormState;
     useContractSubmit({ state, contract: { id } as never, onOpenChange: close })({ room_id: '33333333-3333-4333-8333-333333333333',

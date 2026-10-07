@@ -114,3 +114,4 @@ describe("insertCustomerIntoPickerCache", () => {
     expect(truoc.data).toHaveLength(1);
   });
 });
+it('customer page cache separates organization-scoped location results',()=>{expect(customersQueryKey({status:'MOVED_OUT'},{page:1,pageSize:20},false,'org-a')).not.toEqual(customersQueryKey({status:'MOVED_OUT'},{page:1,pageSize:20},false,'org-b'));});

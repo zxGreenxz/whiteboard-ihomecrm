@@ -87,6 +87,12 @@ export function useContractSubmit({
   const onSubmit = (data: ContractFormData) => {
     const root=formRoot?.()??(typeof document==='undefined'?null:document.querySelector<HTMLElement>('[data-slot="dialog-content"]'));
     if(!validateInputDrafts(root))return;
+    if (isEditMode && state.isEditDetailReady === false) {
+      const message = 'Chưa tải đầy đủ thông tin hợp đồng. Vui lòng đợi tải xong trước khi cập nhật.';
+      form.setError('root.server', { type: 'server', message });
+      toast.error('Chưa thể cập nhật hợp đồng', { description: message });
+      return;
+    }
     if (state.sourceIssues?.length) {
       const labels = state.sourceIssues.map(issue => issue.label).join(', ');
       form.setError('root.server', { type: 'server', message: `Chưa tải được ${labels}. Tải lại nguồn trước khi lưu hợp đồng.` });
@@ -182,13 +188,14 @@ export function useContractSubmit({
       };
 
       state.setEditSubmitting?.(true);
-      void runContractEdit({contractId:contract.id,updates,fieldsFingerprint:JSON.stringify(data),customers,services},{
+      void runContractEdit({contractId:contract.id,expectedCustomers:state.editCustomerBaselineRef?.current??undefined,updates,fieldsFingerprint:JSON.stringify(data),customers,services},{
         read:readContractEditSnapshot,
         update:input=>updateContract.mutateAsync(input),
         customers:input=>syncCustomers.mutateAsync(input),
         services:input=>syncServices.mutateAsync(input),
         onJob:job=>{partialSyncRef.current=job;setPartialSyncIssue?.(job?`Hợp đồng ${job.contractId} có yêu cầu cập nhật cần đối chiếu. Bấm “Kiểm tra và hoàn tất đồng bộ” để đọc dữ liệu hiện có trước khi tiếp tục.`:null);},
       }).then(saved=>{
+        if(state.editCustomerBaselineRef)state.editCustomerBaselineRef.current=saved.confirmedCustomers;
         setPartialSyncIssue?.(null);form.clearErrors?.('root.server');
         if(saved.fieldsFingerprint===JSON.stringify(data)&&saved.customersFingerprint===JSON.stringify(customers)&&saved.servicesFingerprint===JSON.stringify(services)){
           toast.success('Đã cập nhật hợp đồng và đồng bộ khách hàng, dịch vụ');onOpenChange(false);

@@ -1,3 +1,4 @@
+import {readResidenceLocationIds} from '@/lib/customerResidenceHistory';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
@@ -18,58 +19,6 @@ import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import { friendlyError } from '@/lib/friendlyError';
-
-// Resolve building/room filter → customer IDs.
-// contracts has no customer_id (link is via contract_customers) and no
-// building_id (building is reached via rooms.building_id). Chỉ tính HĐ đang
-// hiệu lực (khớp cột "Căn hộ đang ở" enrich phía dưới). Returns [] when
-// nothing matches so callers can short-circuit.
-async function resolveCustomerIdsByLocation(filters: {
-  building_id?: string;
-  room_id?: string;
-}): Promise<string[]> {
-  const sb = supabase as any;
-
-  let contractQuery = sb
-    .from("contracts")
-    .select("id, room:rooms!contracts_room_id_fkey!inner(building_id)")
-    .in("status", ACTIVE_CONTRACT_STATUSES)
-    .is("deleted_at", null);
-  if (filters.room_id) {
-    contractQuery = contractQuery.eq("room_id", filters.room_id);
-  }
-  if (filters.building_id) {
-    contractQuery = contractQuery.eq("room.building_id", filters.building_id);
-  }
-
-  const { data: contracts, error } = await contractQuery;
-  if (error) {
-    console.error("resolveCustomerIdsByLocation contracts error:", error);
-    throw error;
-  }
-  const contractIds = ((contracts || []) as any[])
-    .map((c) => c.id)
-    .filter(Boolean) as string[];
-  if (contractIds.length === 0) return [];
-
-  // Chunk để URL .in() không phình quá dài khi toà có nhiều HĐ.
-  const CHUNK = 100;
-  const customerIds = new Set<string>();
-  for (let i = 0; i < contractIds.length; i += CHUNK) {
-    const { data: links, error: linkError } = await sb
-      .from("contract_customers")
-      .select("customer_id")
-      .in("contract_id", contractIds.slice(i, i + CHUNK));
-    if (linkError) {
-      console.error("resolveCustomerIdsByLocation links error:", linkError);
-      throw linkError;
-    }
-    for (const l of (links || []) as any[]) {
-      if (l.customer_id) customerIds.add(l.customer_id);
-    }
-  }
-  return [...customerIds];
-}
 
 // =============================================
 // useCustomers - Query customers with filters and pagination
@@ -98,10 +47,12 @@ export const customersQueryKey = (
   filters?: CustomerFilters,
   pagination?: { page: number; pageSize: number },
   skipLocationEnrichment?: boolean,
-): readonly unknown[] =>
-  skipLocationEnrichment
-    ? ["customers", filters, pagination, "no-loc"]
-    : ["customers", filters, pagination];
+  organizationId?: string | null,
+): readonly unknown[] => [
+  "customers", filters, pagination,
+  ...(skipLocationEnrichment ? ["no-loc"] : []),
+  ...(organizationId ? [organizationId] : []),
+];
 
 /** Ô cache của picker khách trong màn hợp đồng — xem `useSeedCustomerIntoPickerCache`. */
 export const CUSTOMER_PICKER_QUERY_KEY = customersQueryKey(
@@ -125,14 +76,16 @@ export const useCustomers = (
   // ai mount trước quyết định — và bên còn lại đọc thiếu trường mà không biết.
   options?: { enabled?: boolean; skipLocationEnrichment?: boolean }
 ) => {
+  const {selectedOrganizationId}=useOrganization();
   return useQuery({
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && !!selectedOrganizationId,
     // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về "Đang tải".
-    placeholderData: keepPreviousData,
+    placeholderData: (previous,query)=>query?.queryKey.at(-1)===selectedOrganizationId?previous:undefined,
     queryKey: customersQueryKey(
       filters,
       pagination,
       options?.skipLocationEnrichment,
+      selectedOrganizationId,
     ),
     queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
@@ -150,6 +103,8 @@ export const useCustomers = (
         .select("*", wantsPage ? { count: "exact" } : undefined) as any)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
+
+      if(selectedOrganizationId)query=query.eq("organization_id",selectedOrganizationId);
 
       // Filter by status_v2
       if (filters?.status) {
@@ -179,10 +134,8 @@ export const useCustomers = (
 
       // Filter by building/room via contract_customers junction table
       if (filters?.building_id || filters?.room_id ) {
-        const customerIds = await resolveCustomerIdsByLocation({
-          building_id: filters.building_id,
-          room_id: filters.room_id,
-        });
+        if(!selectedOrganizationId)throw new Error("Chưa chọn tổ chức.");
+        const customerIds = await readResidenceLocationIds(selectedOrganizationId,filters.building_id,filters.room_id,filters.status!=="RENTING");
         if (customerIds.length === 0) return { data: [], count: 0 };
         query = query.in("id", customerIds);
       }
@@ -214,7 +167,7 @@ export const useCustomers = (
         >();
         for (let i = 0; i < ids.length; i += CHUNK) {
           const slice = ids.slice(i, i + CHUNK).join(',');
-          const { data: links } = await (supabase
+          const { data: links, error: locationError } = await (supabase
             .from("contract_customers")
             .select(
               `customer_id,
@@ -227,6 +180,7 @@ export const useCustomers = (
                )`
             ) as any)
             .in('customer_id', slice.split(','));
+          if(locationError)throw locationError;
           for (const l of (links || []) as any[]) {
             if (!l.contract || !isContractInEffect(l.contract.status)) continue;
             const bid = l.contract.room?.building?.id || null;
@@ -292,14 +246,15 @@ export function insertCustomerIntoPickerCache(
  */
 export const useSeedCustomerIntoPickerCache = () => {
   const queryClient = useQueryClient();
+  const {selectedOrganizationId}=useOrganization();
   return useCallback(
     (customer: Customer) => {
       queryClient.setQueryData<PaginatedData<Customer>>(
-        CUSTOMER_PICKER_QUERY_KEY,
+        customersQueryKey(undefined,undefined,true,selectedOrganizationId),
         (prev) => insertCustomerIntoPickerCache(prev, customer),
       );
     },
-    [queryClient],
+    [queryClient,selectedOrganizationId],
   );
 };
 
