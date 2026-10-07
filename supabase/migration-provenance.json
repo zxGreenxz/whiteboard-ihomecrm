@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-05T02:04:36.769Z",
+  "generatedAt": "2026-10-07T00:12:18.841Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 653,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11043,6 +11043,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-05T02:02:15.923Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261007000825_sale_bonus_deposit_authorize_before_lock.sql",
+      "version": "20261007000825",
+      "name": "sale_bonus_deposit_authorize_before_lock",
+      "scheme": "timestamp14",
+      "sha256": "9d14e70c29ae3a109defb6eeb5b16389a2d525b35c5f2c6d1e6e36b8e56e4c0b",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.create_sale_bonus_from_deposit_v1"
       ]
     },
     {

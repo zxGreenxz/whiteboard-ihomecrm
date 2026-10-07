@@ -136,6 +136,12 @@ export const PRIMITIVE_PHAM_VI = [
   // 20260921015956; public wrappers chỉ gọi chúng, không tự cấp thêm phạm vi.
   'authorize_income_expense_review_v1',
   'income_expense_action_scope_v1',
+  // Ba helper dưới đây MỞ RA ĐỌC ngày 07/10/2026 khi gate đỏ lần đầu với ký hợp
+  // đồng nháp (20260928024559) và hỗ trợ tiền thuê (20260930101338). Mỗi cái tự
+  // hỏi danh tính người gọi rồi RAISE 42501 TRƯỚC khi đọc/khoá dữ liệu:
+  'contract_draft_scope_allowed', //  → auth.uid + my_org_ids + can_access_building + authorized_scope_v3 (20260928013253)
+  'rent_support_subject_v1', //       → rent_support_scope_v1 (auth.uid + my_org_ids + can_access_building + authorized_scope_v3), RAISE 42501
+  'rent_support_payout_lock_v1', //   → câu đầu là authorize_commission_request_v1: auth.uid + my_org_ids RAISE 42501 trước mọi khoá
 ];
 
 /**

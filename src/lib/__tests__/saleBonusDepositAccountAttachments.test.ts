@@ -54,20 +54,25 @@ function canonicalDelegate(fnName: string, helper: string, corpus = migrationCor
   const open = rest.indexOf(tag[1]) + tag[1].length;
   const body = rest.slice(0, rest.indexOf(tag[1], open));
   if (!body.includes(`RETURN ${helper}(`)) return wrapper;
+  // The wrapper may be revised later (20261007000825 moved its authorization
+  // ahead of the locks) while the canonical copy stays in the migration that made
+  // it: resolve the copy by its pair, not by the latest wrapper file.
+  const copyIndex = corpus.slice(0, wrapperIndex + 1).map(m => m.sql.includes(`','${helper}']`)).lastIndexOf(true);
+  const copy = corpus[copyIndex];
+  if (!copy) throw new Error(`Missing canonical copy for ${helper}`);
   // The copy must read the prior live catalog definition, rename that exact
   // source, execute it and revoke direct access; a historical body alone is insufficient.
-  expect(wrapper.sql).toContain(`ARRAY['public.${fnName}(`);
-  expect(wrapper.sql).toContain(`','${helper}']`);
+  expect(copy.sql).toContain(`ARRAY['public.${fnName}(`);
   for (const mark of ["f:=pg_get_functiondef(pair[1]::regprocedure)",
     "f:=replace(f,split_part(pair[1],'(',1)||'(',pair[2]||'(')",
     "EXECUTE f;", "REVOKE ALL ON FUNCTION ", "FROM PUBLIC,anon,authenticated,service_role"]) {
-    expect(wrapper.sql, `${wrapper.file}: canonical copy contract`).toContain(mark);
+    expect(copy.sql, `${copy.file}: canonical copy contract`).toContain(mark);
   }
   const helperDeclaration = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${helper.replace(".", "\\.")}\\s*\\(`, "i");
-  const replacedHelper = [...corpus.slice(wrapperIndex)].reverse().find(m => helperDeclaration.test(m.sql));
+  const replacedHelper = [...corpus.slice(copyIndex)].reverse().find(m => helperDeclaration.test(m.sql));
   if (replacedHelper) return { file: replacedHelper.file, sql: replacedHelper.sql.replace(helperDeclaration,
     `CREATE FUNCTION public.${fnName}(`) };
-  const prior = [...corpus.slice(0, wrapperIndex)].reverse().find(m => declaration.test(m.sql));
+  const prior = [...corpus.slice(0, copyIndex)].reverse().find(m => declaration.test(m.sql));
   if (!prior) throw new Error(`Missing canonical source ${fnName}`);
   return prior;
 }

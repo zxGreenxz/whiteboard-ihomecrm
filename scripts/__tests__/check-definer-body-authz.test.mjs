@@ -235,6 +235,32 @@ describe('phép đo trên VẬT THẬT — bài canh lỗi backspace', () => {
   });
 });
 
+describe('helper miền hợp đồng nháp / hỗ trợ tiền thuê (đọc thân 07/10/2026)', () => {
+  // Nạp cả các migration chứa GRANT authenticated của từng hàm: thiếu GRANT thì
+  // hàm nằm ngoài phạm vi gate và ca "không còn bị báo" xanh rỗng.
+  const suKien = ['20260902100049_ten_phieu_hoa_hong_theo_phong_va_ghi_chu_luc_xem', '20260801020000_sale_bonus_from_deposit',
+    '20260820090000_sale_bonus_deposit_account_attachments', '20260928024559_contract_draft_sign_checkin',
+    '20260930101338_rent_support_upfront_payouts', '20261007000825_sale_bonus_deposit_authorize_before_lock']
+    .flatMap((file) => docSuKien(readFileSync(`supabase/migrations/${file}.sql`, 'utf8')).map((s) => ({ ...s, file })));
+  const truocBanVa = suKien.filter((s) => !s.file.startsWith('20261007000825'));
+  const viPham = phanTichThanHam({ suKien: truocBanVa }).viPham.map((v) => v.ham);
+
+  it('năm hàm gác bằng helper đã đọc thân không còn bị báo', () => {
+    for (const ham of ['app_private.contract_signed_storage_allowed_v1', 'public.read_contract_draft_signing_v1',
+      'public.register_contract_signed_document_v1', 'public.create_commission_voucher', 'public.sale_bonus_status_v1']) {
+      expect(viPham, ham).not.toContain(ham);
+    }
+  });
+
+  it('bản 30/09 của create_sale_bonus_from_deposit_v1 (khoá trước khi kiểm quyền) vẫn bị bắt', () => {
+    expect(viPham).toContain('public.create_sale_bonus_from_deposit_v1');
+  });
+
+  it('bản vá 20261007000825 làm hàm đó xanh', () => {
+    expect(phanTichThanHam({ suKien }).viPham.map((v) => v.ham)).not.toContain('public.create_sale_bonus_from_deposit_v1');
+  });
+});
+
 describe('hằng số không được rỗng', () => {
   it('danh sách bảng và primitive đều có nội dung', () => {
     expect(DANH_SACH_NHAY_CAM.length).toBeGreaterThan(20);
