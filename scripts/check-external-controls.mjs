@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Kiểm các kiểm soát nằm NGOÀI repo: Vercel production branch, branch protection
-// GitHub, và scope env var.
+// Kiểm các kiểm soát nằm NGOÀI repo: visibility + secret scanning/push protection
+// của repo GitHub, ruleset + classic protection của `main` và `production`, Vercel
+// production branch, và scope env var.
 //
 // Vì sao cần script thay vì ảnh chụp màn hình: một control có thể bị TẮT VỀ SAU.
 // Ảnh chụp chứng minh "lúc đó đã bật", không chứng minh "bây giờ vẫn bật" — mà
@@ -14,6 +15,9 @@
 // Credential: GH_TOKEN/GITHUB_TOKEN (hoặc `gh auth login`), VERCEL_TOKEN.
 // THIẾU credential KHÔNG phải là pass — kết quả sẽ là "unverified", và
 // unverified được đối xử như chưa an toàn (§0.4 của plan kiến trúc).
+// Repo public (từ 07/10/2026): không có token thì vẫn đọc ẩn danh được visibility
+// và ruleset; secret scanning/push protection và bypass_actors chỉ hiện với quyền
+// admin, nên GITHUB_TOKEN của Actions chỉ cho "unverified" ở hai chỗ đó.
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -28,18 +32,47 @@ const REPO = 'zxGreenxz/whiteboard-ihomecrm';
 /**
  * Nhánh mà Vercel ĐƯỢC PHÉP deploy production.
  *
- * Ở tier GitHub Free repo private không dùng được branch protection, nên việc
- * tách nhánh phát hành khỏi `main` là lớp chặn cứng duy nhất còn lại: push vào
- * `main` chỉ ra preview, muốn ra sản phẩm phải promote riêng. Nếu ai đó gạt
- * production branch về `main` trong dashboard Vercel thì lớp chặn đó biến mất
- * lặng lẽ — và đó chính là biến thể gate này từng bỏ lọt.
+ * Tách nhánh phát hành khỏi `main` là lớp chặn phát hành: push vào `main` chỉ ra
+ * preview, muốn ra sản phẩm phải promote riêng. Ruleset GitHub chặn xoá và ghi đè
+ * lịch sử, nhưng KHÔNG chặn một lần fast-forward vào `production` — nên nếu ai đó
+ * gạt production branch về `main` trong dashboard Vercel thì lớp chặn phát hành
+ * biến mất lặng lẽ, và đó chính là biến thể gate này từng bỏ lọt.
  */
 const NHANH_PHAT_HANH = 'production';
+
+/**
+ * Nhánh phải được chặn xoá + chặn force-push (ruleset hoặc classic protection).
+ * Mỗi nhánh là MỘT control riêng: gộp lại thì `production` hỏng vẫn có thể bị
+ * `main` còn tốt che mất trong một dòng ✅.
+ */
+export const NHANH_CAN_BAO_VE = ['main', NHANH_PHAT_HANH];
+const TEN_CONTROL_NHANH = { main: 'githubBranchMain', [NHANH_PHAT_HANH]: 'githubBranchProduction' };
+
+/** Known-gap giữ phần "chưa có required status check" — note dẫn về đó. */
+const GAP_REQUIRED_CHECKS = 'required-checks-khong-cuong-che-duoc';
 
 export const UNVERIFIED = 'unverified';
 
 function ghToken() {
   return process.env.GH_TOKEN || process.env.GITHUB_TOKEN || null;
+}
+
+/**
+ * Lý do thất bại từ mã HTTP. 404 ẨN DANH KHÔNG phải "không có": GitHub trả 404 cho
+ * mọi thứ người lạ không được thấy (repo private, endpoint cần quyền). Đọc 404 ẩn
+ * danh thành `not-found` là biến "không nhìn được" thành "đã tắt".
+ */
+export function lyDoTuHttp(status, anDanh) {
+  if (status === 404) return anDanh ? 'an-danh-khong-thay' : 'not-found';
+  return `http-${status}`;
+}
+
+async function ghFetch(path, token) {
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`https://api.github.com/${path.replace(/^\//, '')}`, { headers });
+  if (!res.ok) return { ok: false, reason: lyDoTuHttp(res.status, !token) };
+  return { ok: true, data: await res.json() };
 }
 
 async function ghApi(path) {
@@ -50,28 +83,34 @@ async function ghApi(path) {
       const out = execFileSync('gh', ['api', path], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
       return { ok: true, data: JSON.parse(out) };
     } catch {
-      return { ok: false, reason: 'no-credential' };
+      // Repo public: visibility, ruleset và metadata nhánh đọc được không cần
+      // token. Phần cần quyền admin vẫn ra unverified ở bước phán quyết.
+      return ghFetch(path, null);
     }
   }
-  const res = await fetch(`https://api.github.com/${path.replace(/^\//, '')}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-  });
-  if (res.status === 404) return { ok: false, reason: 'not-found' };
-  if (!res.ok) return { ok: false, reason: `http-${res.status}` };
-  return { ok: true, data: await res.json() };
+  return ghFetch(path, token);
 }
 
-export async function readBranchProtection(request = ghApi) {
-  const detail = await request(`repos/${REPO}/branches/main/protection`);
-  if (!detail.ok && detail.reason === 'http-403') {
-    // GITHUB_TOKEN has contents:read but cannot request Administration:read.
-    // The branch endpoint needs only contents:read and can prove ABSENCE.
+/** Classic branch protection của một nhánh (ruleset đọc riêng ở readBranchControl). */
+export async function readBranchProtection(request = ghApi, nhanh = 'main') {
+  const detail = await request(`repos/${REPO}/branches/${nhanh}/protection`);
+  if (!detail.ok && (detail.reason === 'http-403' || detail.reason === 'http-401')) {
+    // GITHUB_TOKEN has contents:read but cannot request Administration:read;
+    // anonymous callers get 401. The branch endpoint needs only metadata and can
+    // prove ABSENCE of classic protection: protected:false, or protection.enabled
+    // false (protected:true alone may come from a ruleset, not classic rules).
     // protected:true cannot prove effective checks; details remain unverified.
-    const branch = await request(`repos/${REPO}/branches/main`);
-    if (branch.ok && branch.data?.name === 'main' && branch.data.protected === false) {
+    const branch = await request(`repos/${REPO}/branches/${nhanh}`);
+    if (branch.ok && branch.data?.name === nhanh && branch.data.protected === false) {
       return {
         status: 'absent',
-        note: 'GitHub branch metadata xác nhận main protected=false. Token không đọc được chi tiết protection (HTTP 403); không cần quyền quản trị để xác minh nhánh chưa được bảo vệ.',
+        note: `GitHub branch metadata xác nhận ${nhanh} protected=false. Token không đọc được chi tiết protection (${detail.reason}); không cần quyền quản trị để xác minh nhánh chưa được bảo vệ.`,
+      };
+    }
+    if (branch.ok && branch.data?.name === nhanh && branch.data.protection?.enabled === false) {
+      return {
+        status: 'absent',
+        note: `Metadata nhánh ${nhanh}: classic protection enabled=false (protected=true nếu có là do ruleset). Token không đọc được chi tiết protection (${detail.reason}).`,
       };
     }
   }
@@ -83,11 +122,12 @@ export function interpretProtection(result) {
     return { status: UNVERIFIED, note: 'Không có GH_TOKEN/GITHUB_TOKEN và `gh` chưa đăng nhập.' };
   }
   if (!result.ok && result.reason === 'not-found') {
-    // 404 ở endpoint protection nghĩa là KHÔNG có protection — hoặc repo private
-    // trên gói Free (nơi tính năng này không khả dụng). Cả hai đều là "không có".
+    // 404 có token ở endpoint protection nghĩa là nhánh KHÔNG có classic branch
+    // protection. Lớp chặn xoá/ghi đè lịch sử có thể nằm ở ruleset — phần đó
+    // readBranchControl đọc và phán riêng.
     return {
       status: 'absent',
-      note: 'Nhánh không có branch protection. Repo private trên GitHub Free không dùng được tính năng này — lớp chặn phải nằm ở Vercel (xem kiểm soát vercel-production-branch).',
+      note: 'Nhánh không có classic branch protection (endpoint 404). Chặn xoá/force-push phải đến từ ruleset — xem trường rules.',
     };
   }
   if (!result.ok) return { status: UNVERIFIED, note: `Gọi API thất bại: ${result.reason}` };
@@ -121,12 +161,212 @@ export function interpretProtection(result) {
   };
 }
 
+/**
+ * Visibility + secret scanning/push protection từ `GET repos/{repo}`.
+ *
+ * Repo PUBLIC mà secret scanning hoặc push protection TẮT ⇒ `failed`: mọi commit,
+ * log Actions và artifact đều ai cũng đọc, một secret lỡ tay là lộ ngay, và push
+ * protection là lớp duy nhất chặn TRƯỚC khi nó lên. Khối `security_and_analysis`
+ * chỉ trả cho người có quyền admin; thiếu khối đó là CHƯA XÁC MINH, không phải tắt.
+ */
+export function danhGiaRepo(result) {
+  if (!result.ok) {
+    const note = `Không đọc được repo (${result.reason}). Chưa xác minh ≠ đang bật.`;
+    return {
+      visibility: { status: UNVERIFIED, visibility: null, note },
+      secretScanning: { status: UNVERIFIED, visibility: null, secretScanning: null, pushProtection: null, note },
+    };
+  }
+  const d = result.data ?? {};
+  const visibility =
+    typeof d.visibility === 'string' ? d.visibility : d.private === true ? 'private' : d.private === false ? 'public' : null;
+  if (!visibility) {
+    const note = 'Phản hồi repo không có visibility/private — không phán được.';
+    return {
+      visibility: { status: UNVERIFIED, visibility: null, note },
+      secretScanning: { status: UNVERIFIED, visibility: null, secretScanning: null, pushProtection: null, note },
+    };
+  }
+  const congKhai = visibility === 'public';
+  const visibilityControl = {
+    status: 'checked',
+    visibility,
+    note: congKhai
+      ? 'Repo PUBLIC: mã, lịch sử commit, log Actions và artifact ai cũng đọc được. Không đưa secret, số tiền production hay dữ liệu cá nhân vào đó. Ruleset dùng được cho repo public ở gói Free.'
+      : `Repo ${visibility}.`,
+  };
+
+  const saa = d.security_and_analysis;
+  if (!saa || typeof saa !== 'object') {
+    return {
+      visibility: visibilityControl,
+      secretScanning: {
+        status: UNVERIFIED,
+        visibility,
+        secretScanning: null,
+        pushProtection: null,
+        note: 'Phản hồi không có security_and_analysis — GitHub chỉ trả khối này cho người có quyền admin (GITHUB_TOKEN của Actions không có). Chưa xác minh ≠ đang bật.',
+      },
+    };
+  }
+  const doc = (k) => {
+    const s = saa[k]?.status;
+    return s === 'enabled' || s === 'disabled' ? s : null;
+  };
+  const secretScanning = doc('secret_scanning');
+  const pushProtection = doc('secret_scanning_push_protection');
+  const base = { visibility, secretScanning, pushProtection };
+  const tat = [
+    secretScanning === 'disabled' && 'secret scanning',
+    pushProtection === 'disabled' && 'push protection',
+  ].filter(Boolean);
+
+  if (congKhai && tat.length > 0) {
+    return {
+      visibility: visibilityControl,
+      secretScanning: {
+        status: 'failed',
+        ...base,
+        note: `Repo PUBLIC nhưng ${tat.join(' + ')} đang TẮT — secret lỡ commit sẽ lên công khai mà không ai chặn.`,
+      },
+    };
+  }
+  if (secretScanning === 'enabled' && pushProtection === 'enabled') {
+    return {
+      visibility: visibilityControl,
+      secretScanning: { status: 'present', ...base, note: 'Secret scanning và push protection đều bật.' },
+    };
+  }
+  if (secretScanning === null || pushProtection === null) {
+    return {
+      visibility: visibilityControl,
+      secretScanning: {
+        status: UNVERIFIED,
+        ...base,
+        note: 'security_and_analysis thiếu hoặc có giá trị lạ cho secret scanning/push protection — không phán được.',
+      },
+    };
+  }
+  return {
+    visibility: visibilityControl,
+    secretScanning: {
+      status: 'absent',
+      ...base,
+      note: `Repo ${visibility}: ${tat.join(' + ')} tắt. Chưa công khai nên không tính là control hỏng; đổi sang public thì phải bật trước.`,
+    },
+  };
+}
+
+async function readRepoSecurity(request = ghApi) {
+  return danhGiaRepo(await request(`repos/${REPO}`));
+}
+
+const docTapChuoi = (xs) => [...new Set(xs.filter((x) => typeof x === 'string' && x))].sort();
+
+/**
+ * Phán quyết cho MỘT nhánh từ ruleset (`GET rules/branches/{nhanh}`, chỉ trả rule
+ * đang active) và classic protection.
+ *
+ * `present` = chặn được CẢ xoá nhánh lẫn force-push, và không actor nào bypass
+ * được ngoài đường PR. Required status check KHÔNG nằm trong điều kiện: chưa bật
+ * là khoảng trống có hồ sơ riêng (known-gap), và một control đỏ vĩnh viễn vì thứ
+ * đã biết sẽ bị ngừng đọc. Nó vẫn được ghi vào `requiredChecks` để so drift.
+ *
+ * Không đọc được ruleset thì classic `absent` KHÔNG chứng minh được nhánh trống
+ * trơn — ruleset là đường bảo vệ chính của repo này.
+ */
+export function danhGiaNhanh(nhanh, rulesResult, classic, bypassTheoRuleset = {}) {
+  const docDuocRules = rulesResult?.ok === true && Array.isArray(rulesResult.data);
+  const rules = docDuocRules ? rulesResult.data : [];
+  const loai = docTapChuoi(rules.map((r) => r?.type));
+  const rulesetIds = [...new Set(rules.map((r) => r?.ruleset_id).filter(Number.isInteger))].sort((a, b) => a - b);
+  const requiredChecks = docTapChuoi([
+    ...rules
+      .filter((r) => r?.type === 'required_status_checks')
+      .flatMap((r) => r.parameters?.required_status_checks ?? [])
+      .map((c) => c?.context),
+    ...(classic?.requiredChecks ?? []),
+  ]);
+  const classicStatus = classic?.status ?? UNVERIFIED;
+  const classicDuManh = classicStatus === 'present';
+  const chanXoa = loai.includes('deletion') || classicDuManh;
+  const chanGhiDe = loai.includes('non_fast_forward') || classicDuManh;
+
+  const bypassDocDuoc = rulesetIds.length > 0 && rulesetIds.every((id) => Array.isArray(bypassTheoRuleset[id]));
+  const bypassActors = bypassDocDuoc
+    ? rulesetIds.flatMap((id) =>
+        bypassTheoRuleset[id].map((a) => ({ type: a?.actor_type ?? null, id: a?.actor_id ?? null, mode: a?.bypass_mode ?? null })),
+      )
+    : undefined;
+  // `pull_request` chỉ cho bypass qua merge PR — merge không force-push, không xoá
+  // nhánh. Mọi chế độ khác (always, exempt, …) là một actor đi vòng qua rule.
+  const vuotRao = (bypassActors ?? []).filter((a) => a.mode !== 'pull_request');
+
+  const base = { branch: nhanh, rules: loai, rulesetIds, requiredChecks, classicProtection: classicStatus };
+  if (bypassActors) base.bypassActors = bypassActors;
+  const ghiChuBypass = rulesetIds.length > 0 && !bypassDocDuoc
+    ? ' bypass_actors không đọc được với token này (cần quyền admin) — chưa xác minh ai được đi vòng.'
+    : '';
+  const ghiChuChecks = requiredChecks.length > 0
+    ? ` Required checks: ${requiredChecks.join(', ')}.`
+    : ` Chưa có required status check — khoảng trống ở known-gap ${GAP_REQUIRED_CHECKS}.`;
+
+  if (!docDuocRules) {
+    if (classicDuManh) {
+      return { status: 'present', ...base, note: `Không đọc được ruleset (${rulesResult?.reason}); classic protection của ${nhanh} đủ chặn xoá + force-push.${ghiChuChecks}` };
+    }
+    return {
+      status: UNVERIFIED,
+      ...base,
+      note: `Không đọc được ruleset của ${nhanh} (${rulesResult?.reason}); classic protection: ${classicStatus}. Chưa xác minh ≠ không có.`,
+    };
+  }
+  if (loai.length === 0 && classicStatus === 'absent') {
+    return {
+      status: 'absent',
+      ...base,
+      note: `${nhanh} không có ruleset active và không có classic protection — xoá nhánh hay force-push đều không bị chặn.`,
+    };
+  }
+  if (loai.length === 0 && classicStatus === UNVERIFIED) {
+    return { status: UNVERIFIED, ...base, note: `${nhanh} không có ruleset active; classic protection chưa xác minh được.` };
+  }
+  if (chanXoa && chanGhiDe && vuotRao.length === 0) {
+    return { status: 'present', ...base, note: `${nhanh}: chặn xoá nhánh + force-push.${ghiChuChecks}${ghiChuBypass}` };
+  }
+  const thieu = [
+    !chanXoa && 'không chặn xoá nhánh',
+    !chanGhiDe && 'không chặn force-push',
+    vuotRao.length > 0 && `${vuotRao.length} bypass actor đi vòng được rule (${vuotRao.map((a) => `${a.type}:${a.mode}`).join(', ')})`,
+  ].filter(Boolean);
+  return {
+    status: 'hollow',
+    ...base,
+    note: `${nhanh} có bảo vệ nhưng RỖNG RUỘT: ${thieu.join('; ')} — lịch sử nhánh vẫn ghi đè/xoá được.${ghiChuBypass}`,
+  };
+}
+
+/** Đọc ruleset + classic protection + bypass actors của một nhánh rồi phán. */
+export async function readBranchControl(nhanh, request = ghApi) {
+  const rules = await request(`repos/${REPO}/rules/branches/${nhanh}`);
+  const classic = await readBranchProtection(request, nhanh);
+  const bypass = {};
+  if (rules.ok && Array.isArray(rules.data)) {
+    const ids = [...new Set(rules.data.map((r) => r?.ruleset_id).filter(Number.isInteger))];
+    for (const id of ids) {
+      const rs = await request(`repos/${REPO}/rulesets/${id}`);
+      bypass[id] = rs.ok && Array.isArray(rs.data?.bypass_actors) ? rs.data.bypass_actors : null;
+    }
+  }
+  return danhGiaNhanh(nhanh, rules, classic, bypass);
+}
+
 async function vercelProductionBranch() {
   const token = process.env.VERCEL_TOKEN;
   if (!token) {
     return {
       status: UNVERIFIED,
-      note: 'Không có VERCEL_TOKEN. Đây là kiểm soát cứng DUY NHẤT khả thi ở tier GitHub Free, nên chưa xác minh được nghĩa là chưa yên tâm.',
+      note: 'Không có VERCEL_TOKEN. Production branch trên Vercel là lớp chặn phát hành (push vào main chỉ ra preview), nên chưa xác minh được nghĩa là chưa yên tâm.',
     };
   }
   const res = await fetch('https://api.vercel.com/v9/projects', {
@@ -230,8 +470,8 @@ export function danhGiaVercel(projects) {
   // ĐÂY mới là phép kiểm. Bản đầu chấm 'checked' cho mọi phản hồi 200 rồi tự tay
   // in ra "ihomecrm → production branch: main" như thể bình thường — trong khi
   // đó chính là kịch bản control BỊ TẮT: mọi push vào main lại là một lần phát
-  // hành, đúng thứ script tự gọi là "kiểm soát cứng DUY NHẤT khả thi ở tier
-  // GitHub Free". Vì 'checked' được xếp vào ✅ và phần tổng kết chỉ đếm
+  // hành, đúng lớp chặn phát hành mà script này canh. Vì 'checked' được xếp
+  // vào ✅ và phần tổng kết chỉ đếm
   // 'unverified'/'absent', thế giới nơi control bị tắt cho ra báo cáo SẠCH HƠN
   // thế giới hiện tại.
   // CHỈ phán trên project deploy TỪ REPO NÀY.
@@ -363,6 +603,10 @@ export function locPhanOnDinh(report) {
   // `note` là văn xuôi sinh kèm số liệu deployment nên nó cũng trôi; phần kết luận
   // đã nằm ở `status`, vốn được giữ lại.
   if (c.controls) for (const k of Object.keys(c.controls)) delete c.controls[k].note;
+  // `bypassActors` chỉ hiện với token có quyền admin; GITHUB_TOKEN của lượt định
+  // kỳ không thấy. Giữ lại thì cùng một cấu hình cho hai bản khác nhau tuỳ ai đo.
+  // Hệ quả của nó (actor đi vòng ⇒ `hollow`) đã nằm ở `status`, vốn được so.
+  if (c.controls) for (const k of Object.keys(c.controls)) delete c.controls[k].bypassActors;
   // `localHead` là NGỮ CẢNH phép đo (commit mà runner đang checkout), không phải
   // control ngoài repo — nó đổi theo TỪNG commit trên main, giữ lại thì
   // --so-ban-commit đỏ lại ngay ở push kế tiếp dù không ai bấm gì (đã dính:
@@ -395,7 +639,9 @@ async function main(argv) {
     return 3;
   }
 
-  const protection = await readBranchProtection();
+  const repoSecurity = await readRepoSecurity();
+  const nhanh = {};
+  for (const ten of NHANH_CAN_BAO_VE) nhanh[TEN_CONTROL_NHANH[ten]] = await readBranchControl(ten);
   const vercel = await vercelProductionBranch();
   const chiTiet = process.env.VERCEL_TOKEN
     ? await vercelChiTiet(process.env.VERCEL_TOKEN, vercel.projects ?? [])
@@ -408,7 +654,9 @@ async function main(argv) {
     checkedAt: new Date().toISOString(),
     repo: REPO,
     controls: {
-      githubBranchProtection: protection,
+      githubRepoVisibility: repoSecurity.visibility,
+      githubSecretScanning: repoSecurity.secretScanning,
+      ...nhanh,
       vercelProductionBranch: vercel,
       vercelEnvAndDeployment: chiTiet,
       productionBranchExists: trangThaiNhanhPhatHanh(local.hasProductionBranch),
@@ -424,6 +672,7 @@ async function main(argv) {
     if (c.projects) {
       for (const p of c.projects) console.log(`       ${p.name} → production branch: ${p.productionBranch ?? '(mặc định: main)'}`);
     }
+    if (c.rules) console.log(`       rules: ${c.rules.join(', ') || '(không có)'}`);
     if (c.requiredChecks) console.log(`       required checks: ${c.requiredChecks.join(', ') || '(không có)'}`);
   }
 

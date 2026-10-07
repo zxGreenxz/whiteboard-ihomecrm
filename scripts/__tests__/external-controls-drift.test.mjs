@@ -95,10 +95,43 @@ describe("lechSoVoiCommit — cái gì được bỏ qua, cái gì phải kêu",
     expect(lechSoVoiCommit(a, GOC).length).toBeGreaterThan(0);
   });
 
-  it("đổi status branch protection ⇒ kêu", () => {
+  it.each(["githubBranchMain", "githubBranchProduction"])("đổi status bảo vệ nhánh %s ⇒ kêu", (key) => {
     const a = ban();
-    a.controls.githubBranchProtection.status = "failed";
+    a.controls[key].status = "hollow";
     expect(lechSoVoiCommit(a, GOC).length).toBeGreaterThan(0);
+  });
+
+  it.each(["githubBranchMain", "githubBranchProduction"])("mất rule non_fast_forward ở %s ⇒ kêu", (key) => {
+    const a = ban();
+    a.controls[key].rules = a.controls[key].rules.filter((r) => r !== "non_fast_forward");
+    expect(lechSoVoiCommit(a, GOC).length).toBeGreaterThan(0);
+  });
+
+  it("đổi visibility repo ⇒ kêu", () => {
+    const a = ban();
+    a.controls.githubRepoVisibility.visibility = "private";
+    expect(lechSoVoiCommit(a, GOC).length).toBeGreaterThan(0);
+  });
+
+  it("đổi trạng thái secret scanning ⇒ kêu", () => {
+    const a = ban();
+    a.controls.githubSecretScanning.status = "failed";
+    a.controls.githubSecretScanning.pushProtection = "disabled";
+    expect(lechSoVoiCommit(a, GOC).length).toBeGreaterThan(0);
+  });
+
+  it("bypassActors chỉ hiện với token admin ⇒ KHÔNG kêu (hệ quả đã nằm ở status)", () => {
+    const a = ban();
+    a.controls.githubBranchMain.bypassActors = [];
+    expect(lechSoVoiCommit(a, GOC)).toEqual([]);
+  });
+
+  it("bằng chứng đã commit đo cả main lẫn production, có rule chặn xoá + force-push", () => {
+    for (const key of ["githubBranchMain", "githubBranchProduction"]) {
+      expect(GOC.controls[key].status).toBe("present");
+      expect(GOC.controls[key].rules).toEqual(expect.arrayContaining(["deletion", "non_fast_forward"]));
+    }
+    expect(GOC.controls.githubRepoVisibility.visibility).toBe("public");
   });
 
   it("XOÁ hẳn một control ⇒ kêu — mất control không được đọc thành 'không đổi'", () => {
