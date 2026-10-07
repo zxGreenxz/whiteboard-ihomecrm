@@ -80,6 +80,19 @@ describe("trạng thái thật của repo", () => {
     expect(concurrency.group).toContain('${{ github.ref }}');
   });
 
+  it('every plan consumer fetches its own attempt through the fail-fast helper before npm ci', () => {
+    const jobs = wf('.github/workflows/ci-gates.yml').jobs;
+    const consumers = Object.entries(jobs).filter(([, job]) => job.steps?.some((step) => /ci-(run|aggregate)-gates\.mjs/.test(step.run ?? '')));
+    expect(consumers.length).toBeGreaterThanOrEqual(11);
+    for (const [id, job] of consumers) {
+      const runs = job.steps.map((step) => String(step.run ?? '').trim());
+      const download = runs.indexOf('node scripts/ci-download-plan.mjs');
+      expect(download, id).toBeGreaterThan(-1);
+      if (id !== 'gate-aggregate') expect(download, id).toBeLessThan(runs.indexOf('npm ci'));
+      expect(runs.join('\n'), id).not.toContain('--name "gate-plan-attempt-');
+    }
+  });
+
   it('credentials the PR plan defers are exactly those mapped only to main push/dispatch', () => {
     const mapped = new Set();
     for (const job of Object.values(wf('.github/workflows/ci-gates.yml').jobs)) {
