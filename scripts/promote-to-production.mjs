@@ -56,9 +56,17 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
  * khác (Migration Restore Drill…) trên nhánh đó — loại mỗi run hiện tại là chưa
  * đủ. Phán quyết phải đến từ các run đã chạy trên main trước khi promote; luật
  * "commit phát hành phải qua main" đã có check-production-promotion đứng gác.
+ *
+ * Chỉ run push/workflow_dispatch trên main là có thẩm quyền: run pull_request
+ * không có credential live (gate chờ main), run schedule đo trạng thái hạ tầng
+ * chứ không đo commit. Run bị huỷ mà đã có run SAU của cùng workflow, cùng SHA
+ * thì run sau quyết định; run sau còn chạy thì vẫn là "chưa xong", không phải xanh.
  */
+const SU_KIEN_THAM_QUYEN = ['push', 'workflow_dispatch'];
 export function locRunsDanhGia(workflowRuns) {
-  return (workflowRuns ?? []).filter((r) => r.head_branch !== 'production');
+  const mainRuns = (workflowRuns ?? []).filter((r) => r.head_branch === 'main' && SU_KIEN_THAM_QUYEN.includes(r.event));
+  return mainRuns.filter((r) => !(r.status === 'completed' && r.conclusion === 'cancelled' &&
+    mainRuns.some((sau) => sau.path === r.path && sau.head_sha === r.head_sha && sau.id > r.id)));
 }
 
 export function danhGiaJobs(jobs) {
@@ -112,7 +120,7 @@ async function goiGitHub(duong, token) {
 }
 
 export function validAggregateForRun(aggregate, run, sha) {
-  return aggregate?.schemaVersion === 1 && aggregate.status === 'passed' &&
+  return aggregate?.schemaVersion === 1 && aggregate.status === 'passed' && !aggregate.pendingMainGates?.length &&
     aggregate.snapshot?.head === sha && aggregate.runId === `${run.id}:${run.run_attempt}` &&
     Array.isArray(aggregate.gateIds) && aggregate.gateIds.length > 0 &&
     ['policyDigest', 'runtimeDigest', 'inputDigest'].every((key) => typeof aggregate[key] === 'string' && aggregate[key].length > 0) &&
@@ -190,7 +198,7 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
     },
     compare: (base, tip) => request(`/repos/${repo}/compare/${base}...${tip}?per_page=1`, token),
   };
-  if (!selected.length) pendingRuns.push('Chưa có workflow run ngoài nhánh production');
+  if (!selected.length) pendingRuns.push('Chưa có run push/workflow_dispatch trên main cho đúng SHA');
   for (const run of selected) {
     if (run.status !== 'completed') pendingRuns.push(`${run.name} (run ${run.status})`);
     else if (!['success', 'skipped'].includes(run.conclusion)) failedRuns.push(`${run.name} (run ${run.conclusion})`);

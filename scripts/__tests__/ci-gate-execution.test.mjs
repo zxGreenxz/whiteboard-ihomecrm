@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executeGateJob, selectEventSnapshot, trustedReuseRun } from '../lib/ci-gate-execution.mjs';
+import { deferMainOnlyGates, executeGateJob, MAIN_ONLY_CREDENTIALS, PENDING_MAIN_STATUS, selectEventSnapshot, trustedReuseRun } from '../lib/ci-gate-execution.mjs';
+import { GATE_REGISTRY } from '../lib/gate-registry.mjs';
 
 test('event diff uses event base and actual checkout SHA; dispatch never invents HEAD~1', () => {
   const pick = ({ base, head, full }) => ({ base, head, full });
@@ -53,6 +54,33 @@ test('required credentials block without executing; a failed gate does not hide 
   assert.deepEqual(calls, ['bad', 'good']);
   assert.deepEqual(result.receipts.map((r) => r.status), ['blocked', 'failed', 'passed']);
   assert.equal(result.exitCode, 1);
+});
+
+test('pull_request defers only main-only credential gates; main and other gates are unchanged', () => {
+  const registry = {
+    'secret-scan': { job: 'secret-scan', requires: [] },
+    'check-docs': { job: 'quality-gates', requires: [] },
+    'check-definer-acl': { job: 'security-gates', requires: ['SUPABASE_PAT'] },
+    'reconcile-money': { job: 'reconcile-money', requires: ['SUPABASE_PAT', 'SUPABASE_TEST_EMAIL', 'SUPABASE_TEST_PASSWORD'] },
+    'generated-types-drift': { job: 'generated-types-drift', requires: ['SUPABASE_ACCESS_TOKEN'] },
+    'other-secret': { job: 'quality-gates', requires: ['SOME_PR_TOKEN'] },
+  };
+  const plan = { gateIds: Object.keys(registry).sort(), requiredJobs: ['generated-types-drift', 'quality-gates', 'reconcile-money', 'secret-scan', 'security-gates'] };
+  for (const eventName of ['push', 'workflow_dispatch', 'schedule']) assert.equal(deferMainOnlyGates(plan, { eventName, registry }), plan);
+  const pr = deferMainOnlyGates(plan, { eventName: 'pull_request', registry });
+  assert.deepEqual(pr.gateIds, ['check-docs', 'other-secret', 'secret-scan']);
+  assert.deepEqual(pr.requiredJobs, ['quality-gates', 'secret-scan']);
+  assert.deepEqual(pr.pendingMainGates.map((item) => item.gateId), ['check-definer-acl', 'generated-types-drift', 'reconcile-money']);
+  assert.ok(pr.pendingMainGates.every((item) => item.status === PENDING_MAIN_STATUS && item.requires.length > 0));
+  assert.equal(plan.gateIds.length, 6, 'input plan is not mutated');
+  const quiet = { gateIds: ['check-docs'], requiredJobs: ['quality-gates'] };
+  assert.equal(deferMainOnlyGates(quiet, { eventName: 'pull_request', registry }), quiet);
+});
+
+test('every credentialed registry gate needs only secrets the workflow maps to main', () => {
+  const live = Object.values(GATE_REGISTRY).filter((gate) => gate.requires?.length);
+  assert.ok(live.length >= 15, 'anti-vacuous: registry still declares credentialed gates');
+  for (const gate of live) assert.ok(gate.requires.every((name) => MAIN_ONLY_CREDENTIALS.includes(name)), `${gate.id}: ${gate.requires}`);
 });
 
 test('unselected job and unresolved registry entry cannot report green', () => {

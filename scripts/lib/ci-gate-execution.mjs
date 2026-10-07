@@ -25,6 +25,28 @@ export function selectEventSnapshot({ eventName, event = {}, checkoutSha, ref, p
   return { base: usable ? base : null, head: checkoutSha, full: !usable, reason };
 }
 
+// ci-gates.yml passes these only to push/workflow_dispatch on main, never to PRs.
+export const MAIN_ONLY_CREDENTIALS = Object.freeze(['SUPABASE_PAT', 'SUPABASE_ACCESS_TOKEN', 'SUPABASE_TEST_EMAIL', 'SUPABASE_TEST_PASSWORD']);
+export const PENDING_MAIN_STATUS = 'CHƯA KIỂM — chờ main';
+
+/**
+ * A pull_request run can only end such gates `blocked`, which turns the PR red
+ * and buries real failures. They leave the PR plan as explicit pending
+ * obligations; every other gate still runs and fails normally. Main is unchanged.
+ */
+export function deferMainOnlyGates(plan, { eventName, registry }) {
+  if (eventName !== 'pull_request') return plan;
+  const needsMain = (id) => (registry[id]?.requires ?? []).some((name) => MAIN_ONLY_CREDENTIALS.includes(name));
+  const pending = plan.gateIds.filter(needsMain);
+  if (!pending.length) return plan;
+  const gateIds = plan.gateIds.filter((id) => !needsMain(id));
+  return {
+    ...plan, gateIds,
+    requiredJobs: [...new Set(gateIds.map((id) => registry[id].job).filter(Boolean))].sort(),
+    pendingMainGates: pending.map((id) => ({ gateId: id, job: registry[id].job, requires: [...registry[id].requires], status: PENDING_MAIN_STATUS })),
+  };
+}
+
 export function trustedReuseRun(run, { repository, sha, now = Date.now() }) {
   const age = now - Date.parse(run.created_at);
   return run.path === '.github/workflows/ci-gates.yml' && run.event === 'pull_request' &&

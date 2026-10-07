@@ -66,3 +66,13 @@ test('aggregate fails closed for missing plan, missing/duplicate receipt and all
   }
   assert.equal(aggregateGateEvidence({ ...input, jobs: {} }).status, 'failed');
 });
+
+test('PR aggregate with pending main-only gates passes its own checks but is never release-ready', () => {
+  const input = { plan, receipts: [receipt()], jobs: { 'quality-gates': { result: 'success' } }, registry: { [gate.id]: gate }, runId: '42:1', now, runtime };
+  assert.equal(aggregateGateEvidence(input).releaseReady, true);
+  const pendingMainGates = [{ gateId: 'check-definer-acl', job: 'security-gates', requires: ['SUPABASE_PAT'], status: 'pending' }];
+  const pr = aggregateGateEvidence({ ...input, plan: { ...plan, pendingMainGates } });
+  assert.equal(pr.status, 'passed');
+  assert.equal(pr.releaseReady, false);
+  assert.deepEqual(pr.pendingMainGates, pendingMainGates);
+});

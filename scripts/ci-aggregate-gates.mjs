@@ -25,10 +25,11 @@ for (const id of plan?.gateIds ?? []) {
 const aggregate = aggregateGateEvidence({ plan, receipts, jobs, registry, runId, trustedRunIds: plan?.trustedRunIds, runtime: { node: process.version } });
 aggregate.failures.push(...extraFailures);
 aggregate.status = aggregate.failures.length ? 'failed' : 'passed';
-aggregate.releaseReady = aggregate.status === 'passed' && aggregate.requiredExternalWorkflows.length === 0;
+aggregate.releaseReady = aggregate.status === 'passed' && aggregate.requiredExternalWorkflows.length === 0 && aggregate.pendingMainGates.length === 0;
 mkdirSync('.gate-evidence', { recursive: true });
 writeFileSync('.gate-evidence/aggregate.json', JSON.stringify(aggregate, null, 2) + '\n');
-if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Gate aggregate: **${aggregate.status}**\n\nTested SHA: \`${head}\`\n\n${aggregate.failures.map((failure) => `- ${failure}`).join('\n')}\n\nExternal workflow evidence still required at promotion: ${JSON.stringify(aggregate.requiredExternalWorkflows)}\n`);
+const pendingMain = aggregate.pendingMainGates.map((item) => `- ${item.status}: ${item.gateId} (${item.job}; cần ${item.requires.join(', ')})`).join('\n');
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Gate aggregate: **${aggregate.status}** (releaseReady: ${aggregate.releaseReady})\n\nTested SHA: \`${head}\`\n\n${aggregate.failures.map((failure) => `- ${failure}`).join('\n')}\n\nExternal workflow evidence still required at promotion: ${JSON.stringify(aggregate.requiredExternalWorkflows)}\n${pendingMain ? `\nGate cần credential chỉ main có — PR không chạy, KHÔNG tính là đạt:\n\n${pendingMain}\n` : ''}`);
 console.log(JSON.stringify(aggregate, null, 2));
 if (process.env.GITHUB_STEP_SUMMARY && aggregate.browserRequirements.length) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nCI xác nhận kiểm kỹ thuật. Kiểm UI/viewport/console ở local cần bằng chứng riêng:\n\n${aggregate.browserRequirements.map((item) => `- ${item.reason}; viewport: ${item.viewports.join(', ')}`).join('\n')}\n`);
 process.exitCode = aggregate.status === 'passed' ? 0 : 1;

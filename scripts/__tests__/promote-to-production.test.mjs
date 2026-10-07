@@ -21,7 +21,7 @@ const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status
 
 describe('external workflow obligations', () => {
   const required = [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'], suiteIds: ['network-center-worker'] }];
-  const observation = { run: { path: required[0].workflow, head_sha: 'sha', status: 'completed', conclusion: 'success', head_branch: 'main' }, jobs: [job('validate', 'success', [buoc('test', 'success')])] };
+  const observation = { run: { path: required[0].workflow, head_sha: 'sha', status: 'completed', conclusion: 'success', head_branch: 'main', event: 'push' }, jobs: [job('validate', 'success', [buoc('test', 'success')])] };
   it('requires named jobs from the exact candidate, never absence or a different workflow', () => {
     expect(validateExternalWorkflowEvidence(required, [observation], 'sha')).toEqual([]);
     expect(validateExternalWorkflowEvidence(required, [], 'sha').length).toBeGreaterThan(0);
@@ -35,7 +35,7 @@ describe('external workflow obligations', () => {
   it('aggregate artifact binds exact run attempt/SHA and contains external obligations', () => {
     const run = { id: 1, run_attempt: 1 };
     expect(validAggregateForRun(aggregate(), run, 'abc123')).toBe(true);
-    for (const patch of [{ status: 'failed' }, { runId: '1:2' }, { snapshot: { head: 'other' } }, { gateIds: [] }, { requiredExternalWorkflows: undefined }, { policyDigest: '' }]) {
+    for (const patch of [{ status: 'failed' }, { runId: '1:2' }, { snapshot: { head: 'other' } }, { gateIds: [] }, { requiredExternalWorkflows: undefined }, { policyDigest: '' }, { pendingMainGates: [{ gateId: 'check-definer-acl' }] }]) {
       expect(validAggregateForRun({ ...aggregate(), ...patch }, run, 'abc123')).toBe(false);
     }
   });
@@ -49,21 +49,45 @@ describe("locRunsDanhGia", () => {
   // trên main mà job này đỏ vì 51 bước "chưa xong" toàn của các run tiếng-vọng.
   it("loại run trên nhánh production — kể cả run đang chạy chính script này", () => {
     const runs = [
-      { id: 1, head_branch: "main", status: "completed" },
-      { id: 2, head_branch: "production", status: "in_progress" },
-      { id: 3, head_branch: "production", status: "completed" },
+      { id: 1, head_branch: "main", event: "push", status: "completed" },
+      { id: 2, head_branch: "production", event: "push", status: "in_progress" },
+      { id: 3, head_branch: "production", event: "push", status: "completed" },
     ];
     expect(locRunsDanhGia(runs).map((r) => r.id)).toEqual([1]);
   });
 
   it("không còn run nào sau khi lọc ⇒ trả rỗng để main() fail closed (exit 3)", () => {
-    expect(locRunsDanhGia([{ id: 2, head_branch: "production" }])).toEqual([]);
+    expect(locRunsDanhGia([{ id: 2, head_branch: "production", event: "push" }])).toEqual([]);
     expect(locRunsDanhGia(undefined)).toEqual([]);
+  });
+
+  it("chỉ push/workflow_dispatch trên main có thẩm quyền; PR và schedule không chặn, không thay", () => {
+    const runs = [
+      { id: 1, head_branch: "main", event: "push", status: "completed", conclusion: "success" },
+      { id: 2, head_branch: "main", event: "workflow_dispatch", status: "completed", conclusion: "success" },
+      { id: 3, head_branch: "feature/x", event: "pull_request", status: "completed", conclusion: "failure" },
+      { id: 4, head_branch: "main", event: "schedule", status: "completed", conclusion: "failure" },
+      { id: 5, head_branch: "main", event: "pull_request", status: "completed", conclusion: "failure" },
+      { id: 6, head_branch: "main", status: "completed", conclusion: "success" },
+    ];
+    expect(locRunsDanhGia(runs).map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("run huỷ chỉ bị bỏ khi đã có run SAU của cùng workflow, cùng SHA", () => {
+    const run = (id, conclusion, extra = {}) => ({ id, head_branch: "main", event: "push", path: "ci.yml", head_sha: "s", status: "completed", conclusion, ...extra });
+    expect(locRunsDanhGia([run(1, "cancelled"), run(2, "success")]).map((r) => r.id)).toEqual([2]);
+    // Run sau còn chạy: run huỷ nhường chỗ, kết luận chờ run sau (không xanh giả).
+    expect(locRunsDanhGia([run(1, "cancelled"), run(2, null, { status: "in_progress" })]).map((r) => r.id)).toEqual([2]);
+    for (const other of [run(2, "success", { path: "other.yml" }), run(2, "success", { head_sha: "t" }), run(0, "success")]) {
+      expect(locRunsDanhGia([run(1, "cancelled"), other]).map((r) => r.id)).toContain(1);
+    }
+    // Run đỏ thật không bao giờ bị run sau che.
+    expect(locRunsDanhGia([run(1, "failure"), run(2, "success")]).map((r) => r.id)).toEqual([1, 2]);
   });
 });
 
 describe("GitHub evidence readiness", () => {
-  const run = (overrides = {}) => ({ id: 1, run_attempt: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", head_sha: "abc123", status: "completed", conclusion: "success", ...overrides });
+  const run = (overrides = {}) => ({ id: 1, run_attempt: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", event: "push", head_sha: "abc123", status: "completed", conclusion: "success", ...overrides });
   const greenJobs = () => [job("gate-aggregate", "success", [buoc("aggregate", "success")])];
   const read = (runs, jobs = greenJobs()) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
     if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") {
@@ -298,7 +322,7 @@ describe("promotion CLI exit codes", () => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
-        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', head_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed', conclusion: 'success' }] };
+        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', event: 'push', head_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
     const result = spawnSync(process.execPath, [

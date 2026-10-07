@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 
 import { duocPhu, globSangRegex, layOn, scriptDuocGoi } from "../check-workflow-paths.mjs";
+import { MAIN_ONLY_CREDENTIALS } from "../lib/ci-gate-execution.mjs";
 
 describe("globSangRegex", () => {
   it("`**` vượt qua dấu gạch chéo", () => {
@@ -77,6 +78,20 @@ describe("trạng thái thật của repo", () => {
     expect(cancels('refs/heads/main')).toBe(false);
     expect(cancels('refs/pull/1/merge')).toBe(true);
     expect(concurrency.group).toContain('${{ github.ref }}');
+  });
+
+  it('credentials the PR plan defers are exactly those mapped only to main push/dispatch', () => {
+    const mapped = new Set();
+    for (const job of Object.values(wf('.github/workflows/ci-gates.yml').jobs)) {
+      for (const step of job.steps ?? []) {
+        for (const [name, value] of Object.entries(step.env ?? {})) {
+          if (!String(value).includes('secrets.') || name === 'GH_TOKEN') continue;
+          mapped.add(name);
+          expect(value, name).toMatch(/^\$\{\{ github\.ref == 'refs\/heads\/main' && \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && secrets\./);
+        }
+      }
+    }
+    expect([...mapped].sort()).toEqual([...MAIN_ONLY_CREDENTIALS].sort());
   });
 
   it('aggregate runs after failed preflight and waits for every execution job', () => {
