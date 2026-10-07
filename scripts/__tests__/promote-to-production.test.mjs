@@ -8,20 +8,22 @@
 // đây không phải rủi ro lý thuyết: nếu promote đọc mức job thì nó sẽ phát hành
 // một commit có gate đỏ và không ai thấy gì bất thường.
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { danhGiaJobs, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
+import { danhGiaJobs, evidenceCoversProduction, locRunsDanhGia, readGateEvidence, waitForGateEvidence, validateExternalWorkflowEvidence, validAggregateForRun } from "../promote-to-production.mjs";
 
 const buoc = (name, conclusion, status = "completed") => ({ name, conclusion, status });
 // `status` mặc định "completed": phần lớn ca nói về job đã xong. Ca job đang
 // chạy khai status tường minh — chính ca đó đã bắt được lỗi xếp nhầm loại.
 const job = (name, conclusion, steps, status = "completed") => ({ name, conclusion, steps, status });
-const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
+// Default evidence is a main plan whose base IS the current production tip.
+const PROD_TIP = 'b'.repeat(40);
+const aggregate = (sha = 'abc123', runId = '1:1') => ({ schemaVersion: 1, status: 'passed', runId, snapshot: { head: sha, base: PROD_TIP, source: 'commit-range' }, gateIds: ['check-docs'], policyDigest: 'p', runtimeDigest: 'r', inputDigest: 'i', requiredExternalWorkflows: [] });
 
 describe('external workflow obligations', () => {
   const required = [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'], suiteIds: ['network-center-worker'] }];
-  const observation = { run: { path: required[0].workflow, head_sha: 'sha', status: 'completed', conclusion: 'success', head_branch: 'main' }, jobs: [job('validate', 'success', [buoc('test', 'success')])] };
+  const observation = { run: { path: required[0].workflow, head_sha: 'sha', status: 'completed', conclusion: 'success', head_branch: 'main', event: 'push' }, jobs: [job('validate', 'success', [buoc('test', 'success')])] };
   it('requires named jobs from the exact candidate, never absence or a different workflow', () => {
     expect(validateExternalWorkflowEvidence(required, [observation], 'sha')).toEqual([]);
     expect(validateExternalWorkflowEvidence(required, [], 'sha').length).toBeGreaterThan(0);
@@ -35,7 +37,7 @@ describe('external workflow obligations', () => {
   it('aggregate artifact binds exact run attempt/SHA and contains external obligations', () => {
     const run = { id: 1, run_attempt: 1 };
     expect(validAggregateForRun(aggregate(), run, 'abc123')).toBe(true);
-    for (const patch of [{ status: 'failed' }, { runId: '1:2' }, { snapshot: { head: 'other' } }, { gateIds: [] }, { requiredExternalWorkflows: undefined }, { policyDigest: '' }]) {
+    for (const patch of [{ status: 'failed' }, { runId: '1:2' }, { snapshot: { head: 'other' } }, { gateIds: [] }, { requiredExternalWorkflows: undefined }, { policyDigest: '' }, { pendingMainGates: [{ gateId: 'check-definer-acl' }] }]) {
       expect(validAggregateForRun({ ...aggregate(), ...patch }, run, 'abc123')).toBe(false);
     }
   });
@@ -49,21 +51,45 @@ describe("locRunsDanhGia", () => {
   // trên main mà job này đỏ vì 51 bước "chưa xong" toàn của các run tiếng-vọng.
   it("loại run trên nhánh production — kể cả run đang chạy chính script này", () => {
     const runs = [
-      { id: 1, head_branch: "main", status: "completed" },
-      { id: 2, head_branch: "production", status: "in_progress" },
-      { id: 3, head_branch: "production", status: "completed" },
+      { id: 1, head_branch: "main", event: "push", status: "completed" },
+      { id: 2, head_branch: "production", event: "push", status: "in_progress" },
+      { id: 3, head_branch: "production", event: "push", status: "completed" },
     ];
     expect(locRunsDanhGia(runs).map((r) => r.id)).toEqual([1]);
   });
 
   it("không còn run nào sau khi lọc ⇒ trả rỗng để main() fail closed (exit 3)", () => {
-    expect(locRunsDanhGia([{ id: 2, head_branch: "production" }])).toEqual([]);
+    expect(locRunsDanhGia([{ id: 2, head_branch: "production", event: "push" }])).toEqual([]);
     expect(locRunsDanhGia(undefined)).toEqual([]);
+  });
+
+  it("chỉ push/workflow_dispatch trên main có thẩm quyền; PR và schedule không chặn, không thay", () => {
+    const runs = [
+      { id: 1, head_branch: "main", event: "push", status: "completed", conclusion: "success" },
+      { id: 2, head_branch: "main", event: "workflow_dispatch", status: "completed", conclusion: "success" },
+      { id: 3, head_branch: "feature/x", event: "pull_request", status: "completed", conclusion: "failure" },
+      { id: 4, head_branch: "main", event: "schedule", status: "completed", conclusion: "failure" },
+      { id: 5, head_branch: "main", event: "pull_request", status: "completed", conclusion: "failure" },
+      { id: 6, head_branch: "main", status: "completed", conclusion: "success" },
+    ];
+    expect(locRunsDanhGia(runs).map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("run huỷ chỉ bị bỏ khi đã có run SAU của cùng workflow, cùng SHA", () => {
+    const run = (id, conclusion, extra = {}) => ({ id, head_branch: "main", event: "push", path: "ci.yml", head_sha: "s", status: "completed", conclusion, ...extra });
+    expect(locRunsDanhGia([run(1, "cancelled"), run(2, "success")]).map((r) => r.id)).toEqual([2]);
+    // Run sau còn chạy: run huỷ nhường chỗ, kết luận chờ run sau (không xanh giả).
+    expect(locRunsDanhGia([run(1, "cancelled"), run(2, null, { status: "in_progress" })]).map((r) => r.id)).toEqual([2]);
+    for (const other of [run(2, "success", { path: "other.yml" }), run(2, "success", { head_sha: "t" }), run(0, "success")]) {
+      expect(locRunsDanhGia([run(1, "cancelled"), other]).map((r) => r.id)).toContain(1);
+    }
+    // Run đỏ thật không bao giờ bị run sau che.
+    expect(locRunsDanhGia([run(1, "failure"), run(2, "success")]).map((r) => r.id)).toEqual([1, 2]);
   });
 });
 
 describe("GitHub evidence readiness", () => {
-  const run = (overrides = {}) => ({ id: 1, run_attempt: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", head_sha: "abc123", status: "completed", conclusion: "success", ...overrides });
+  const run = (overrides = {}) => ({ id: 1, run_attempt: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", event: "push", head_sha: "abc123", status: "completed", conclusion: "success", ...overrides });
   const greenJobs = () => [job("gate-aggregate", "success", [buoc("aggregate", "success")])];
   const read = (runs, jobs = greenJobs()) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
     if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") {
@@ -72,6 +98,7 @@ describe("GitHub evidence readiness", () => {
     if (path === "/repos/owner/repo/actions/runs/1/jobs?per_page=100") {
       return { total_count: jobs.length, jobs };
     }
+    if (path === "/repos/owner/repo/git/ref/heads/production") return { object: { sha: PROD_TIP } };
     throw new Error(`Unexpected API request: ${path}`);
   }, async () => aggregate());
 
@@ -136,9 +163,67 @@ describe("GitHub evidence readiness", () => {
   it('a green main aggregate with unresolved external obligations remains unverified', async () => {
     const result = await readGateEvidence('owner/repo', 'abc123', 'fixture', async (path) => path.includes('/jobs?')
       ? { total_count: 1, jobs: greenJobs() }
-      : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
+      : path.endsWith('/git/ref/heads/production') ? { object: { sha: PROD_TIP } }
+        : { total_count: 1, workflow_runs: [run()] }, async () => ({ ...aggregate(), requiredExternalWorkflows: [{ workflow: '.github/workflows/network-center-validation.yml', jobs: ['validate'] }] }));
     expect(result.verdict.datDieuKien).toBe(false);
     expect(result.verdict.dangChay.join(' ')).toContain('network-center-validation.yml / validate');
+  });
+
+  describe('aggregate base must cover production..target', () => {
+    const tip = PROD_TIP;
+    const base = 'c'.repeat(40);
+    const coverage = (status, calls = []) => ({
+      productionTip: async () => { calls.push('tip'); return tip; },
+      compare: async (from, to) => { calls.push(`${from.slice(0, 1)}...${to.slice(0, 1)}`); return { status }; },
+    });
+    it('a full plan without base never covers (it selects no live gate); base equal to or behind production covers', async () => {
+      const calls = [];
+      expect(await evidenceCoversProduction({ base: null, source: 'unknown-base' }, coverage('identical', calls))).toBe(false);
+      expect(calls).toEqual([]);
+      expect(await evidenceCoversProduction({ base: tip }, coverage('diverged'))).toBe(true);
+      for (const status of ['ahead', 'identical']) expect(await evidenceCoversProduction({ base }, coverage(status, calls))).toBe(true);
+      expect(calls).toContain('c...b');
+    });
+    it.each(['behind', 'diverged', undefined])('compare %s means evidence misses part of the release', async (status) => {
+      expect(await evidenceCoversProduction({ base }, coverage(status))).toBe(false);
+    });
+    it.each([{}, { base: undefined }, { base: null, source: 'commit-range' }, { base: 'short' }])('malformed snapshot %j fails closed', async (snapshot) => {
+      expect(await evidenceCoversProduction(snapshot, coverage('ahead'))).toBe(false);
+    });
+
+    const readWithBase = (compareStatus, aggregates = [{ ...aggregate(), snapshot: { head: 'abc123', base, source: 'commit-range' } }]) =>
+      readGateEvidence('owner/repo', 'abc123', 'fixture', async (path) => {
+        if (path.includes('/jobs?')) return { total_count: 1, jobs: greenJobs() };
+        if (path === '/repos/owner/repo/git/ref/heads/production') return { object: { sha: tip } };
+        if (path === `/repos/owner/repo/compare/${base}...${tip}?per_page=1`) return { status: compareStatus };
+        if (path.startsWith('/repos/owner/repo/actions/runs?')) return { total_count: aggregates.length, workflow_runs: aggregates.map((_, i) => run({ id: i + 1 })) };
+        throw new Error(`Unexpected API request: ${path}`);
+      }, async (_repo, r) => ({ ...aggregates[r.id - 1], runId: `${r.id}:1` }));
+
+    it('accepts a push plan whose base is the production tip ancestor', async () => {
+      expect((await readWithBase('ahead')).verdict.datDieuKien).toBe(true);
+    });
+    it('refuses evidence whose base is newer than production, with a coverage message and no pending wait', async () => {
+      const { verdict } = await readWithBase('behind');
+      expect(verdict.datDieuKien).toBe(false);
+      expect(verdict.khongPhu.join(' ')).toMatch(/không phủ production bbbbbbbbbbbb\.\.abc123/);
+      expect(verdict.dangChay).toEqual([]);
+      const options = { waitMs: 30, pollMs: 10, now: () => 0, sleep: async () => { throw new Error('must not wait'); } };
+      expect((await waitForGateEvidence(async () => ({ jobs: [], verdict }), options)).verdict.khongPhu.length).toBe(1);
+    });
+    it('one covering aggregate (e.g. a main dispatch planned from production) is enough', async () => {
+      const narrow = { ...aggregate(), snapshot: { head: 'abc123', base, source: 'commit-range' } };
+      const { verdict } = await readWithBase('behind', [narrow, aggregate()]);
+      expect(verdict.datDieuKien).toBe(true);
+      expect(verdict.khongPhu).toEqual([]);
+    });
+    it('a dispatch without a production ancestor (full, no live gate) is refused, not waited on', async () => {
+      const full = { ...aggregate(), snapshot: { head: 'abc123', base: null, source: 'unknown-base' } };
+      const { verdict } = await readWithBase('ahead', [full]);
+      expect(verdict.datDieuKien).toBe(false);
+      expect(verdict.khongPhu.join(' ')).toMatch(/không có base .*không gate live/);
+      expect(verdict.dangChay).toEqual([]);
+    });
   });
 
   it.each([
@@ -223,7 +308,17 @@ describe("GitHub evidence readiness", () => {
 
 describe("promotion CLI exit codes", () => {
   const script = fileURLToPath(new URL("../promote-to-production.mjs", import.meta.url));
+  // --sha is resolved through git, so the fixture uses a commit that exists in this clone.
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const successfulJob = job("gate-aggregate", "success", [buoc("aggregate", "success")]);
+  it.each([["short", "abc"], ["unknown", "f".repeat(40)], ["flag", "--apply"]])("%s --sha stops before any API call (exit 3)", (_name, sha) => {
+    const fixture = "globalThis.fetch = async () => { throw new Error('API must not be called'); };";
+    const result = spawnSync(process.execPath, [
+      "--import", `data:text/javascript;base64,${Buffer.from(fixture).toString("base64")}`, script, "--sha", sha,
+    ], { encoding: "utf8", env: { ...process.env, GH_TOKEN: "fixture-only" }, timeout: 10_000 });
+    expect(result.status, result.stderr).toBe(3);
+    expect(result.stderr).toMatch(/40 ký tự|cần một commit/);
+  });
   it.each([
     ["missing jobs", [], 200, 3],
     ["queued job", [job("ci", null, [], "queued")], 200, 3],
@@ -240,7 +335,7 @@ describe("promotion CLI exit codes", () => {
     cp.execFileSync = (command, args, options) => {
       if (command !== 'gh') return originalExec(command, args, options);
       const directory = args[args.indexOf('--dir') + 1];
-      writeFileSync(join(directory, 'aggregate.json'), JSON.stringify(${JSON.stringify(aggregate('a'.repeat(40)))}));
+      writeFileSync(join(directory, 'aggregate.json'), JSON.stringify(${JSON.stringify(aggregate(head))}));
       return Buffer.alloc(0);
     };
     syncBuiltinESMExports();
@@ -248,12 +343,13 @@ describe("promotion CLI exit codes", () => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
-        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', head_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed', conclusion: 'success' }] };
+        : url.endsWith('/git/ref/heads/production') ? { object: { sha: '${PROD_TIP}' } }
+        : { total_count: 1, workflow_runs: [{ id: 1, run_attempt: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', event: 'push', head_sha: '${head}', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
     const result = spawnSync(process.execPath, [
       "--import", `data:text/javascript;base64,${Buffer.from(fixture).toString("base64")}`,
-      script, "--sha", "a".repeat(40), "--wait-seconds", "0",
+      script, "--sha", head.slice(0, 10), "--wait-seconds", "0",
     ], { encoding: "utf8", env: { ...process.env, GH_TOKEN: "fixture-only", GITHUB_TOKEN: "" }, timeout: 10_000 });
     expect(result.status, result.stderr).toBe(expected);
     if (expected === 0) expect(result.stdout).toContain("dry-run — chạy lại với --apply");

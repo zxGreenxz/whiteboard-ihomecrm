@@ -20,6 +20,9 @@
 //   node scripts/promote-to-production.mjs --sha <sha> --wait-seconds 420
 //   node scripts/promote-to-production.mjs --apply         # thật sự fast-forward
 //
+// `--sha` được phân giải thành commit đủ 40 ký tự trước mọi truy vấn. Sau `--apply`
+// script chờ (có giới hạn) Vercel phục vụ đúng commit — xem release-verify.mjs.
+//
 // Thoát 0 đủ điều kiện · 1 có gate đỏ (kể cả bị nuốt) · 3 KHÔNG KIỂM ĐƯỢC.
 // Exit 3 là mặc định khi thiếu GH_TOKEN — "không hỏi được CI" KHÁC "CI xanh".
 
@@ -29,6 +32,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { inKetQua, resolveCommitSha, verifyVercelRelease } from './release-verify.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,9 +60,17 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
  * khác (Migration Restore Drill…) trên nhánh đó — loại mỗi run hiện tại là chưa
  * đủ. Phán quyết phải đến từ các run đã chạy trên main trước khi promote; luật
  * "commit phát hành phải qua main" đã có check-production-promotion đứng gác.
+ *
+ * Chỉ run push/workflow_dispatch trên main là có thẩm quyền: run pull_request
+ * không có credential live (gate chờ main), run schedule đo trạng thái hạ tầng
+ * chứ không đo commit. Run bị huỷ mà đã có run SAU của cùng workflow, cùng SHA
+ * thì run sau quyết định; run sau còn chạy thì vẫn là "chưa xong", không phải xanh.
  */
+const SU_KIEN_THAM_QUYEN = ['push', 'workflow_dispatch'];
 export function locRunsDanhGia(workflowRuns) {
-  return (workflowRuns ?? []).filter((r) => r.head_branch !== 'production');
+  const mainRuns = (workflowRuns ?? []).filter((r) => r.head_branch === 'main' && SU_KIEN_THAM_QUYEN.includes(r.event));
+  return mainRuns.filter((r) => !(r.status === 'completed' && r.conclusion === 'cancelled' &&
+    mainRuns.some((sau) => sau.path === r.path && sau.head_sha === r.head_sha && sau.id > r.id)));
 }
 
 export function danhGiaJobs(jobs) {
@@ -102,7 +114,7 @@ export function danhGiaJobs(jobs) {
   return { doGate, nuot, dangChay, datDieuKien: doGate.length === 0 && nuot.length === 0 && dangChay.length === 0 };
 }
 
-async function goiGitHub(duong, token) {
+export async function goiGitHub(duong, token) {
   const res = await fetch(`https://api.github.com${duong}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(15_000),
@@ -112,7 +124,7 @@ async function goiGitHub(duong, token) {
 }
 
 export function validAggregateForRun(aggregate, run, sha) {
-  return aggregate?.schemaVersion === 1 && aggregate.status === 'passed' &&
+  return aggregate?.schemaVersion === 1 && aggregate.status === 'passed' && !aggregate.pendingMainGates?.length &&
     aggregate.snapshot?.head === sha && aggregate.runId === `${run.id}:${run.run_attempt}` &&
     Array.isArray(aggregate.gateIds) && aggregate.gateIds.length > 0 &&
     ['policyDigest', 'runtimeDigest', 'inputDigest'].every((key) => typeof aggregate[key] === 'string' && aggregate[key].length > 0) &&
@@ -134,6 +146,21 @@ export function validateExternalWorkflowEvidence(required, observations, sha) {
     }
   }
   return missing;
+}
+
+/**
+ * Aggregate chỉ chứng minh dải base..sha của plan. Promote phát hành cả dải
+ * production..sha, nên base phải là tổ tiên (hoặc chính) đầu production hiện tại.
+ * Plan không base (unknown-base) KHÔNG phủ: full fallback chỉ thêm gate tĩnh, không
+ * chọn gate live nào, nên dải có migration/tiền sẽ lọt với 0 gate live.
+ * Audit 07/10/2026: nhiều lần promote mang theo commit đỏ/huỷ ở giữa vì lượt sau
+ * chỉ plan diff của chính nó.
+ */
+export async function evidenceCoversProduction(snapshot, { productionTip, compare }) {
+  const base = snapshot?.base;
+  if (typeof base !== 'string' || !/^[0-9a-f]{40}$/.test(base)) return false;
+  const tip = await productionTip();
+  return base === tip || ['ahead', 'identical'].includes((await compare(base, tip))?.status);
 }
 
 function readAggregateArtifact(repo, run, token) {
@@ -165,8 +192,18 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
 
   const pendingRuns = [];
   const failedRuns = [];
+  const uncovered = [];
   let hasCompletedMainCi = false;
-  if (!selected.length) pendingRuns.push('Chưa có workflow run ngoài nhánh production');
+  let productionTip;
+  const coverage = {
+    productionTip: async () => {
+      productionTip ??= (await request(`/repos/${repo}/git/ref/heads/production`, token))?.object?.sha;
+      if (!/^[0-9a-f]{40}$/.test(productionTip ?? '')) throw new Error('Không đọc được đầu nhánh production');
+      return productionTip;
+    },
+    compare: (base, tip) => request(`/repos/${repo}/compare/${base}...${tip}?per_page=1`, token),
+  };
+  if (!selected.length) pendingRuns.push('Chưa có run push/workflow_dispatch trên main cho đúng SHA');
   for (const run of selected) {
     if (run.status !== 'completed') pendingRuns.push(`${run.name} (run ${run.status})`);
     else if (!['success', 'skipped'].includes(run.conclusion)) failedRuns.push(`${run.name} (run ${run.conclusion})`);
@@ -193,7 +230,12 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
     ) {
       const aggregate = await readAggregate(repo, run, token);
       if (!validAggregateForRun(aggregate, run, sha)) pendingRuns.push(`CI Gates / ${run.id}: aggregate artifact is incomplete or mismatched`);
-      else {
+      else if (!(await evidenceCoversProduction(aggregate.snapshot, coverage))) {
+        const base = aggregate.snapshot?.base;
+        uncovered.push(typeof base === 'string'
+          ? `CI Gates / run ${run.id}: plan chỉ phủ ${base.slice(0, 12)}..${sha.slice(0, 12)}, không phủ production ${String(productionTip ?? '?').slice(0, 12)}..${sha.slice(0, 12)}`
+          : `CI Gates / run ${run.id}: plan không có base (full chỉ gồm gate tĩnh, không gate live) — không phủ production..${sha.slice(0, 12)}`);
+      } else {
         hasCompletedMainCi = true;
         requiredExternal.push(...aggregate.requiredExternalWorkflows);
       }
@@ -202,13 +244,15 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
     observations.push({ run, jobs: result.jobs });
     jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
   }
-  if (!hasCompletedMainCi) pendingRuns.push('Chưa có gate-aggregate trên main hoàn tất cho đúng SHA với bằng chứng bước đã chạy');
+  if (!hasCompletedMainCi && !uncovered.length) pendingRuns.push('Chưa có gate-aggregate trên main hoàn tất cho đúng SHA với bằng chứng bước đã chạy');
   pendingRuns.push(...validateExternalWorkflowEvidence(requiredExternal, observations, sha));
 
   const verdict = danhGiaJobs(jobs);
   verdict.dangChay.push(...pendingRuns);
   verdict.doGate.push(...failedRuns);
-  verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length;
+  // Một aggregate phủ đủ là đủ; aggregate hẹp hơn của lượt khác không chặn.
+  verdict.khongPhu = hasCompletedMainCi ? [] : uncovered;
+  verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length && !verdict.khongPhu.length;
   return { jobs, verdict };
 }
 
@@ -221,7 +265,9 @@ export async function waitForGateEvidence(readEvidence, {
     const evidence = await readEvidence();
     const { verdict } = evidence;
     const remaining = deadline - now();
-    if (verdict.datDieuKien || verdict.doGate.length || verdict.nuot.length || remaining <= 0) return evidence;
+    // Thiếu phủ mà không còn gì chạy thì chờ thêm cũng không đổi kết luận.
+    const hetHyVong = verdict.khongPhu?.length > 0 && !verdict.dangChay.length;
+    if (verdict.datDieuKien || verdict.doGate.length || verdict.nuot.length || hetHyVong || remaining <= 0) return evidence;
     onPending(evidence, remaining);
     await sleep(Math.min(pollMs, remaining));
   }
@@ -234,7 +280,15 @@ function git(args) {
 async function main(argv) {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const iS = argv.indexOf('--sha');
-  const sha = iS >= 0 ? argv[iS + 1] : git(['rev-parse', 'origin/main']);
+  let sha;
+  try {
+    // SHA ngắn làm `head_sha=` không khớp run nào ⇒ chờ vô ích rồi exit 3 gây hiểu lầm.
+    sha = resolveCommitSha(iS >= 0 ? argv[iS + 1] : 'origin/main');
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    process.exitCode = 3;
+    return;
+  }
   const thatSu = argv.includes('--apply');
   const waitIndex = argv.indexOf('--wait-seconds');
   const waitSeconds = waitIndex < 0 ? 0 : Number(argv[waitIndex + 1]);
@@ -294,6 +348,12 @@ async function main(argv) {
     console.error(`\n❌ ${kq.dangChay.length} bằng chứng CI CHƯA XONG — chưa kết luận được, không phải xanh:`);
     for (const b of kq.dangChay.slice(0, 10)) console.error(`  - ${b}`);
   }
+  if (kq.khongPhu?.length > 0) {
+    console.error('\n❌ Bằng chứng gate KHÔNG PHỦ hết các commit sẽ lên production:');
+    for (const b of kq.khongPhu) console.error(`  - ${b}`);
+    console.error('  Commit ở giữa có thể đỏ/bị huỷ mà chưa ai kiểm lại. Cần một lượt CI Gates trên main');
+    console.error('  có plan từ đầu production: push kế tiếp, hoặc workflow_dispatch trên main (nay cũng plan từ production).');
+  }
 
   if (!kq.datDieuKien) {
     const failed = kq.doGate.length > 0 || kq.nuot.length > 0;
@@ -321,7 +381,12 @@ async function main(argv) {
     process.exitCode = 1;
     return;
   }
-  console.log(`✅ Đã promote ${sha.slice(0, 12)} lên production.`);
+  console.log(`✅ Đã push ${sha.slice(0, 12)} lên production. Chờ Vercel dựng và phục vụ đúng commit này…`);
+  // Push xong chưa phải phát hành xong: Vercel có thể lỡ webhook hoặc build đỏ.
+  const phatHanh = await verifyVercelRelease({ sha, token: process.env.VERCEL_TOKEN, waitMs: 900_000 });
+  inKetQua(phatHanh);
+  if (phatHanh.code !== 0) console.error(`   Kiểm lại (chỉ đọc): npm run release:verify -- --sha ${sha}`);
+  process.exitCode = phatHanh.code;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main(process.argv);

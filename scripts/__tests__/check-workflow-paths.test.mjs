@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 
 import { duocPhu, globSangRegex, layOn, scriptDuocGoi } from "../check-workflow-paths.mjs";
+import { MAIN_ONLY_CREDENTIALS } from "../lib/ci-gate-execution.mjs";
 
 describe("globSangRegex", () => {
   it("`**` vượt qua dấu gạch chéo", () => {
@@ -69,6 +70,67 @@ describe("trạng thái thật của repo", () => {
   const active = (job, needs, ref = 'refs/heads/main') => runInNewContext(job.if, {
     github: { ref, event_name: 'push' }, needs, cancelled: () => false, always: () => true,
     fromJSON: JSON.parse, contains: (values, value) => values.includes(value),
+  });
+
+  it('main runs are never cancelled by a newer push; PR runs still are', () => {
+    const { concurrency } = wf('.github/workflows/ci-gates.yml');
+    const cancels = (ref) => runInNewContext(String(concurrency['cancel-in-progress']).replace(/^\$\{\{\s*|\s*\}\}$/g, ''), { github: { ref } });
+    expect(cancels('refs/heads/main')).toBe(false);
+    expect(cancels('refs/pull/1/merge')).toBe(true);
+    expect(concurrency.group).toContain('${{ github.ref }}');
+  });
+
+  it('every plan consumer fetches its own attempt through the fail-fast helper before npm ci', () => {
+    const jobs = wf('.github/workflows/ci-gates.yml').jobs;
+    const consumers = Object.entries(jobs).filter(([, job]) => job.steps?.some((step) => /ci-(run|aggregate)-gates\.mjs/.test(step.run ?? '')));
+    expect(consumers.length).toBeGreaterThanOrEqual(11);
+    for (const [id, job] of consumers) {
+      const runs = job.steps.map((step) => String(step.run ?? '').trim());
+      const download = runs.indexOf('node scripts/ci-download-plan.mjs');
+      expect(download, id).toBeGreaterThan(-1);
+      if (id !== 'gate-aggregate') expect(download, id).toBeLessThan(runs.indexOf('npm ci'));
+      expect(runs.join('\n'), id).not.toContain('--name "gate-plan-attempt-');
+    }
+  });
+
+  it('gate-aggregate skips npm ci because every module it loads is a Node builtin', () => {
+    const steps = wf('.github/workflows/ci-gates.yml').jobs['gate-aggregate'].steps;
+    const runs = steps.map((step) => String(step.run ?? '').trim());
+    expect(runs).not.toContain('npm ci');
+    expect(steps.find((step) => step.uses?.startsWith('actions/setup-node@')).with.cache).toBeUndefined();
+    const entries = runs.flatMap((run) => [...run.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]));
+    expect(entries).toEqual(expect.arrayContaining(['scripts/ci-download-plan.mjs', 'scripts/ci-aggregate-gates.mjs']));
+    const seen = new Set();
+    const external = [];
+    const visit = (url) => {
+      if (seen.has(url.href)) return;
+      seen.add(url.href);
+      const text = readFileSync(url, 'utf8');
+      // Static, dynamic and side-effect imports; a bare specifier would need node_modules.
+      const specifiers = /(?:^|\n)\s*(?:import|export)\b[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g;
+      for (const match of text.matchAll(specifiers)) {
+        const spec = match[1] ?? match[2] ?? match[3];
+        if (spec.startsWith('.')) visit(new URL(spec, url));
+        else if (!spec.startsWith('node:')) external.push(`${spec} <- ${url.pathname.split('/scripts/')[1]}`);
+      }
+    };
+    for (const entry of entries) visit(new URL(`../../${entry}`, import.meta.url));
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+    expect(external).toEqual([]);
+  });
+
+  it('credentials the PR plan defers are exactly those mapped only to main push/dispatch', () => {
+    const mapped = new Set();
+    for (const job of Object.values(wf('.github/workflows/ci-gates.yml').jobs)) {
+      for (const step of job.steps ?? []) {
+        for (const [name, value] of Object.entries(step.env ?? {})) {
+          if (!String(value).includes('secrets.') || name === 'GH_TOKEN') continue;
+          mapped.add(name);
+          expect(value, name).toMatch(/^\$\{\{ github\.ref == 'refs\/heads\/main' && \(github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'\) && secrets\./);
+        }
+      }
+    }
+    expect([...mapped].sort()).toEqual([...MAIN_ONLY_CREDENTIALS].sort());
   });
 
   it('aggregate runs after failed preflight and waits for every execution job', () => {

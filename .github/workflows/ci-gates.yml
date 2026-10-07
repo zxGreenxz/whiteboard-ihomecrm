@@ -1,5 +1,7 @@
 # Scope and commands have one owner: gate-plan + gate-registry.
 # Only the always-running aggregate is release evidence; missing checks fail closed.
+# Jobs fetch this attempt's plan before npm ci, so "Re-run failed jobs" (no new
+# preflight plan) stops fast and asks for "Re-run all jobs".
 name: CI Gates
 on:
   pull_request:
@@ -11,7 +13,9 @@ permissions:
   actions: read
 concurrency:
   group: ci-gates-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # main never cancels: a cancelled push run leaves that commit's gates unproven
+  # while a later push only plans its own diff. PR runs may still cancel.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   preflight:
     if: github.ref != 'refs/heads/production'
@@ -66,11 +70,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
       - uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
         if: needs.preflight.outputs.needs_deno == 'true'
         with:
@@ -109,11 +113,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         run: node scripts/ci-run-gates.mjs --job vitest-tests
@@ -143,11 +147,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         run: node scripts/ci-run-gates.mjs --job strict-islands-gate
@@ -177,11 +181,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         run: node scripts/ci-run-gates.mjs --job timezone-gate
@@ -211,11 +215,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         env:
@@ -247,11 +251,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         env:
@@ -283,11 +287,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         env:
@@ -321,11 +325,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         env:
@@ -357,11 +361,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
       - name: Install pinned gitleaks with checksum
         run: |
           set -euo pipefail
@@ -398,11 +402,11 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-      - run: npm ci
       - name: Download exact-run plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
 
       - name: Execute selected gates and write receipts
         env:
@@ -427,16 +431,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # Aggregation imports only Node builtins (pinned by check-workflow-paths test): no npm ci.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-          cache: npm
-      - run: npm ci
       - name: Download plan
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --name "gate-plan-attempt-$GITHUB_RUN_ATTEMPT" --dir .gate-evidence
+        run: node scripts/ci-download-plan.mjs
       - name: Download current attempt receipts
         if: always()
         env:

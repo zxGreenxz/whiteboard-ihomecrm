@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1293,
-  "soFileDocBangFs": 290,
-  "tongLoiGoi": 639,
-  "khongPhanLoaiDuoc": 297,
+  "tongSoFileTest": 1297,
+  "soFileDocBangFs": 291,
+  "tongLoiGoi": 641,
+  "khongPhanLoaiDuoc": 298,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 50,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 35,
+      "soFile": 36,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -670,6 +670,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-workflow-paths.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1142,12 +1148,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/__tests__/check-workflow-paths.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "scripts/__tests__/copilot-golden-real-cli.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1256,6 +1256,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/run-related-vitest.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/app/capabilities/__tests__/riskMapCoverage.test.ts",

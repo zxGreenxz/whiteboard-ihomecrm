@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Kiểm staged snapshot bằng kế hoạch dùng chung với CI.
 // --plan chỉ in lựa chọn; --full mở rộng bộ active, vẫn giữ module DEFERRED.
+// --live thêm gate cần credential (env/vault); luôn chạy Vitest liên quan tới diff.
 // Generator chỉ chạy khi đầu vào liên quan đổi, chỉ stage artifact thuộc sở hữu.
 // Receipt local không thay bằng chứng CI. Exit 1 = lỗi, 3 = chưa đủ đầu vào.
 
@@ -10,7 +11,9 @@ import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { khopGlob } from "./check-risk-classifier.mjs";
 import { DAO } from "./check-strict-islands.mjs";
+import { isDeferredGate } from "./lib/deferred-modules.mjs";
 import { GATE_REGISTRY, GENERATOR_REGISTRY, getGate } from "./lib/gate-registry.mjs";
 import { createGateReceipt, canReuseGateReceipt } from "./lib/gate-evidence.mjs";
 import { indexInputConflicts } from "./lib/local-gate-snapshot.mjs";
@@ -175,8 +178,38 @@ function chiemLock() {
   }
 }
 
-export function selectLocalGates(plan, { full = false } = {}) {
-  return plan.gateIds.map((id) => getGate(id, plan)).filter((gate) => gate.local || (full && gate.id.startsWith('suite:') && gate.evidenceClass === 'static'));
+const laLive = (gate) => gate?.evidenceClass === 'live';
+
+/** `--live` thêm gate cần credential mà plan chọn; `--live --full` thêm mọi gate live đang hoạt động. */
+export function selectLocalGates(plan, { full = false, live = false } = {}) {
+  const tatCaLive = live && full ? Object.keys(GATE_REGISTRY).filter((id) => laLive(GATE_REGISTRY[id]) && !isDeferredGate(id)) : [];
+  return [...new Set([...plan.gateIds, ...tatCaLive])].map((id) => getGate(id, plan))
+    .filter((gate) => gate.local || (full && gate.id.startsWith('suite:') && gate.evidenceClass === 'static') || (live && laLive(gate)));
+}
+
+/**
+ * Env cho gate live chạy ở máy: env có sẵn thắng, thiếu thì đọc vault qua resolver
+ * của test-env (Contract §9). Giá trị chỉ vào env của tiến trình gate; thiếu thì
+ * chỉ báo TÊN — không bao giờ in giá trị.
+ */
+export function credentialLive(env, vaultText = '') {
+  const tuVault = (re) => re.exec(vaultText)?.[1] ?? null;
+  const pat = env.SUPABASE_PAT || tuVault(/\b(sbp_[a-f0-9]{40})\b/);
+  const them = {
+    SUPABASE_PAT: pat,
+    SUPABASE_ACCESS_TOKEN: env.SUPABASE_ACCESS_TOKEN || pat,
+    SUPABASE_TEST_EMAIL: env.SUPABASE_TEST_EMAIL || tuVault(/Email:\s*`([^`]+)`/),
+    SUPABASE_TEST_PASSWORD: env.SUPABASE_TEST_PASSWORD || tuVault(/Password:\s*`([^`]+)`/),
+  };
+  return Object.fromEntries(Object.entries(them).filter(([, value]) => value));
+}
+
+/** Diff đụng migration, bề mặt RPC hay file phân quyền ⇒ gợi ý `--live` trước khi lên main. */
+export function goiYLive(plan, riskMap) {
+  const mau = ['supabase/migrations/**', 'contracts/surfaces/**', ...(riskMap?.tiers?.authorization?.paths ?? [])];
+  const paths = (plan.changedPaths ?? []).filter((path) => mau.some((glob) => khopGlob(path, glob)));
+  const gates = plan.gateIds.filter((id) => laLive(GATE_REGISTRY[id]));
+  return paths.length || gates.length ? { paths, gates } : null;
 }
 
 // Default preview is for a human/agent. The complete snapshot stays in JSON evidence.
@@ -193,10 +226,10 @@ export function summarizeGatePlan(plan) {
   };
 }
 
-function execute(gate) {
+function execute(gate, env = process.env) {
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
-    const child = spawn(gate.command, gate.args, { cwd: repoRoot, env: process.env });
+    const child = spawn(gate.command, gate.args, { cwd: repoRoot, env });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', (data) => { stdout += data; });
     child.stderr.setEncoding('utf8').on('data', (data) => { stderr += data; });
@@ -209,8 +242,10 @@ async function main() {
   const { planFromGit } = await import('./lib/gate-plan.mjs');
   const full = process.argv.includes('--full');
   const dry = process.argv.includes('--plan');
+  const live = process.argv.includes('--live');
+  const riskMap = JSON.parse(readFileSync(join(repoRoot, 'tooling/risk-map.json'), 'utf8'));
   let plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
-  if (dry) { console.log(JSON.stringify(process.argv.includes('--json') ? plan : summarizeGatePlan(plan), null, 2)); return; }
+  if (dry) { console.log(JSON.stringify(process.argv.includes('--json') ? plan : { ...summarizeGatePlan(plan), goiYLive: goiYLive(plan, riskMap) }, null, 2)); return; }
   if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
   const lock = chiemLock();
   if (lock.loi) { console.error(lock.loi); process.exitCode = 3; return; }
@@ -221,7 +256,7 @@ async function main() {
     if (process.argv.includes('--khong-dao-strict') || process.argv.includes('--khong-do-ro-org')) {
       console.warn('Cờ cũ không hạ nghĩa vụ: bộ chọn quyết định gate cần chạy; phép kiểm CI chưa chạy không tính là đạt.');
     }
-    let selected = selectLocalGates(plan, { full });
+    let selected = selectLocalGates(plan, { full, live });
     const inputs = [...new Set([...selected.flatMap((gate) => gate.inputs), ...(plan.inputPaths ?? []), ...(plan.inputPatterns ?? [])])];
     const conflicts = indexInputConflicts(repoRoot, inputs);
     if (conflicts.length) { console.error('Đầu vào khác INDEX; stage đúng phần dự định trước khi kiểm:\n' + conflicts.join('\n')); process.exitCode = 3; return; }
@@ -248,7 +283,7 @@ async function main() {
     // Generated inputs belong to this snapshot, not the plan from before preparation.
     plan = planFromGit({ root: repoRoot, mode: 'staged', environment: 'local', full });
     if (plan.unavailable?.length) { console.error('CHƯA KIỂM: ' + JSON.stringify(plan.unavailable)); process.exitCode = 3; return; }
-    selected = selectLocalGates(plan, { full });
+    selected = selectLocalGates(plan, { full, live });
     const finalInputs = [...new Set([...selected.flatMap((gate) => gate.inputs), ...(plan.inputPaths ?? []), ...(plan.inputPatterns ?? [])])];
     const afterConflicts = indexInputConflicts(repoRoot, finalInputs);
     if (afterConflicts.length) { console.error('Đầu vào vẫn khác INDEX: ' + afterConflicts.join(', ')); process.exitCode = 3; return; }
@@ -257,13 +292,20 @@ async function main() {
     writeFileSync(join(cache, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
     console.log('Phạm vi: ' + plan.profiles.join(', ') + '; ' + selected.length + ' gate local; DEFERRED không tính pass.');
     const started = Date.now();
-    const results = await chayGioiHan(selected.map((gate) => async () => {
+    let envLive = process.env;
+    if (live) {
+      const { docVault } = await import('./test-env/lib.mjs');
+      envLive = { ...process.env, ...credentialLive(process.env, docVault()) };
+    }
+    const chayGate = (gate, env) => async () => {
       const receiptPath = join(cache, gate.id.replace(/[^a-z0-9-]/gi, '_') + '.json');
       let previous; try { previous = JSON.parse(readFileSync(receiptPath, 'utf8')); } catch { /* no receipt */ }
       if (previous && canReuseGateReceipt(previous, { gate, plan, runId, trustedRunIds: [previous.runId], runtime: { node: process.version } })) {
         return { id: gate.id, status: 'passed', reused: true };
       }
-      const result = await execute(gate);
+      const thieu = (gate.requires ?? []).filter((name) => !env[name]);
+      if (thieu.length) return { id: gate.id, status: 'blocked', exitCode: 3, stdout: '', stderr: 'CHƯA KIỂM: thiếu credential ' + thieu.join(', ') + ' (env hoặc vault).\n' };
+      const result = await execute(gate, env);
       const changedWhileRunning = indexInputConflicts(repoRoot, gate.inputs);
       if (changedWhileRunning.length) { result.status = 'blocked'; result.exitCode = 3; result.stderr += '\nInput changed during execution: ' + changedWhileRunning.join(', '); }
       const currentTree = spawnSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim();
@@ -271,7 +313,12 @@ async function main() {
       const receipt = createGateReceipt({ gate, plan, runId, ...result });
       writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
       return { id: gate.id, ...result };
-    }), soLuongSongSong(availableParallelism()));
+    };
+    const results = await chayGioiHan(selected.filter((gate) => !laLive(gate)).map((gate) => chayGate(gate, process.env)), soLuongSongSong(availableParallelism()));
+    // Gate live gọi Management API: từng gate một để không chạm giới hạn tốc độ.
+    results.push(...await chayGioiHan(selected.filter(laLive).map((gate) => chayGate(gate, envLive)), 1));
+    // Chạy sau, một mình: test DOM hết giờ khi chạy chen với các gate song song.
+    results.push({ id: 'vitest-related', ...await execute({ command: process.execPath, args: ['scripts/run-related-vitest.mjs', '--plan', join(cache, 'plan.json')] }) });
     const finalTree = spawnSync('git', ['write-tree'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim();
     const finalConflicts = indexInputConflicts(repoRoot, finalInputs);
     if (finalTree !== plan.snapshot.tree || finalConflicts.length) {
@@ -279,12 +326,19 @@ async function main() {
       process.exitCode = 3;
     }
     for (const result of results) {
-      console.log((result.status === 'passed' ? '✅ ' : '❌ ') + result.id + (result.reused ? ' (dùng lại biên nhận đúng đầu vào)' : ''));
+      // Vitest liên quan có thể không có gì để chạy — in phạm vi để "xanh" không bị đọc nhầm.
+      const phamVi = result.id === 'vitest-related' ? (String(result.stdout ?? '').replace(/\x1b\[[0-9;]*m/g, '').match(/Vitest liên quan[^\n]*|Test Files[^\n]*/g) ?? []).map((s) => s.trim()).join('; ') : '';
+      console.log((result.status === 'passed' ? '✅ ' : '❌ ') + result.id + (result.reused ? ' (dùng lại biên nhận đúng đầu vào)' : '') + (phamVi ? ` (${phamVi})` : ''));
       if (result.status !== 'passed') console.error(result.stdout + result.stderr);
     }
     const requiredOnCi = plan.gateIds.filter((id) => !selected.some((gate) => gate.id === id));
     if (plan.browserRequirements?.length) console.log('KIỂM UI CẦN BẰNG CHỨNG RIÊNG (gate kỹ thuật không xác nhận giao diện): ' + JSON.stringify(plan.browserRequirements));
     if (requiredOnCi.length) console.log('CHƯA KIỂM ở local — CI chịu trách nhiệm: ' + requiredOnCi.join(', '));
+    const goiY = live ? null : goiYLive(plan, riskMap);
+    if (goiY) {
+      console.log('GỢI Ý: diff đụng ' + (goiY.paths.length ? goiY.paths.join(', ') : 'phạm vi cần gate live') + '.');
+      console.log('   `npm run gate:truoc-push -- --live` chạy ' + (goiY.gates.length || 'các') + ' gate cần credential ngay trên máy (credential từ env/vault), thay vì chờ main đỏ.');
+    }
     console.log('Local: ' + results.filter((r) => r.status === 'passed').length + '/' + results.length + ' đạt, ' + Math.round((Date.now() - started) / 1000) + 's. Phát hành vẫn cần CI của đúng commit.');
     if (results.some((r) => r.status !== 'passed')) process.exitCode = results.some((r) => r.status === 'failed') ? 1 : 3;
   } finally { release(); process.removeListener('exit', release); }

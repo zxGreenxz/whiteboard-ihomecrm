@@ -88,7 +88,9 @@ export function aggregateGateEvidence({ plan, receipts = [], jobs = {}, registry
     evidenceScope: 'ci-technical', browserRequirements: plan?.browserRequirements ?? [],
     manualUiValidation: 'not-attested-by-ci',
     requiredExternalWorkflows: plan?.requiredExternalWorkflows ?? [],
-    releaseReady: failures.length === 0 && !(plan?.requiredExternalWorkflows?.length),
+    // PR-only: live gates that main must still run. Never release evidence.
+    pendingMainGates: plan?.pendingMainGates ?? [],
+    releaseReady: failures.length === 0 && !(plan?.requiredExternalWorkflows?.length) && !(plan?.pendingMainGates?.length),
     gateIds: plan?.gateIds ?? [], snapshot: plan?.snapshot ?? null,
     policyDigest: plan?.policyDigest ?? null, runtimeDigest: plan?.runtimeDigest ?? null,
     inputDigest: plan?.inputDigest ?? null, runId: String(runId), completedAt: new Date(now).toISOString(),

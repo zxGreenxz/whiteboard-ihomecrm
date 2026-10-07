@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { planFromGit } from './lib/gate-plan.mjs';
 import { GATE_REGISTRY } from './lib/gate-registry.mjs';
-import { selectEventSnapshot, trustedReuseRun } from './lib/ci-gate-execution.mjs';
+import { deferMainOnlyGates, selectEventSnapshot, trustedReuseRun } from './lib/ci-gate-execution.mjs';
 
 const root = process.cwd();
 const output = '.gate-evidence';
@@ -12,8 +12,17 @@ mkdirSync(output, { recursive: true });
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 if (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== head) throw new Error('Checkout SHA differs from workflow SHA');
 const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')) : {};
-const selection = selectEventSnapshot({ eventName: process.env.GITHUB_EVENT_NAME, event, checkoutSha: head });
-const plan = await planFromGit({ root, mode: 'commit', ...selection, environment: 'ci' });
+// fetch-depth: 0 checks out every branch, so origin/production is local here.
+let productionTip = null;
+let productionIsAncestor = false;
+if (['push', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME) && process.env.GITHUB_REF === 'refs/heads/main') {
+  try { productionTip = execFileSync('git', ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/production^{commit}'], { cwd: root, encoding: 'utf8' }).trim(); } catch { productionTip = null; }
+  if (productionTip) productionIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', productionTip, head], { cwd: root }).status === 0;
+}
+const selection = selectEventSnapshot({ eventName: process.env.GITHUB_EVENT_NAME, event, checkoutSha: head, ref: process.env.GITHUB_REF, productionTip, productionIsAncestor });
+const planned = await planFromGit({ root, mode: 'commit', base: selection.base, head: selection.head, full: selection.full, environment: 'ci' });
+planned.snapshot.baseReason = selection.reason;
+const plan = deferMainOnlyGates(planned, { eventName: process.env.GITHUB_EVENT_NAME, registry: GATE_REGISTRY });
 plan.runId = `${process.env.GITHUB_RUN_ID}:${process.env.GITHUB_RUN_ATTEMPT}`;
 plan.trustedRunIds = [];
 plan.reusableReceipts = [];
@@ -37,4 +46,4 @@ writeFileSync(join(output, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(process.env.GITHUB_OUTPUT, `required_jobs=${JSON.stringify(plan.requiredJobs)}\nneeds_demo_browser=${plan.gateIds.includes('suite:e2e-personal-finance-demo')}\nneeds_docs_build=${plan.gateIds.includes('docs-build')}\nneeds_deno=${plan.gateIds.some((id) => GATE_REGISTRY[id]?.command === 'deno')}\n`);
 }
-console.log(JSON.stringify({ snapshot: plan.snapshot, profiles: plan.profiles, reasons: plan.reasons, gateIds: plan.gateIds, requiredJobs: plan.requiredJobs, fullFallback: plan.fullFallback, deferred: plan.deferred }, null, 2));
+console.log(JSON.stringify({ snapshot: plan.snapshot, profiles: plan.profiles, reasons: plan.reasons, gateIds: plan.gateIds, requiredJobs: plan.requiredJobs, pendingMainGates: plan.pendingMainGates ?? [], fullFallback: plan.fullFallback, deferred: plan.deferred }, null, 2));

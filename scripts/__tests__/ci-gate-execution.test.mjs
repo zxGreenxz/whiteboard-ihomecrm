@@ -1,12 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executeGateJob, selectEventSnapshot, trustedReuseRun } from '../lib/ci-gate-execution.mjs';
+import { deferMainOnlyGates, executeGateJob, MAIN_ONLY_CREDENTIALS, PENDING_MAIN_STATUS, selectEventSnapshot, trustedReuseRun } from '../lib/ci-gate-execution.mjs';
+import { GATE_REGISTRY } from '../lib/gate-registry.mjs';
 
 test('event diff uses event base and actual checkout SHA; dispatch never invents HEAD~1', () => {
-  assert.deepEqual(selectEventSnapshot({ eventName: 'pull_request', event: { pull_request: { base: { sha: 'base' }, head: { sha: 'pr-head' } } }, checkoutSha: 'merge-sha' }), { base: 'base', head: 'merge-sha', full: false });
-  assert.deepEqual(selectEventSnapshot({ eventName: 'push', event: { before: 'before' }, checkoutSha: 'pushed' }), { base: 'before', head: 'pushed', full: false });
-  assert.deepEqual(selectEventSnapshot({ eventName: 'workflow_dispatch', event: {}, checkoutSha: 'actual' }), { base: null, head: 'actual', full: true });
+  const pick = ({ base, head, full }) => ({ base, head, full });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'pull_request', event: { pull_request: { base: { sha: 'base' }, head: { sha: 'pr-head' } } }, checkoutSha: 'merge-sha' })), { base: 'base', head: 'merge-sha', full: false });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'push', event: { before: 'before' }, checkoutSha: 'pushed' })), { base: 'before', head: 'pushed', full: false });
+  assert.deepEqual(pick(selectEventSnapshot({ eventName: 'workflow_dispatch', event: {}, checkoutSha: 'actual' })), { base: null, head: 'actual', full: true });
   assert.equal(selectEventSnapshot({ eventName: 'push', event: { before: '0'.repeat(40) }, checkoutSha: 'actual' }).full, true);
+});
+
+test('main push plans from the production tip so evidence covers every commit promotion ships', () => {
+  const main = { eventName: 'push', event: { before: 'before' }, checkoutSha: 'head', ref: 'refs/heads/main' };
+  const covered = selectEventSnapshot({ ...main, productionTip: 'prod', productionIsAncestor: true });
+  assert.deepEqual([covered.base, covered.full], ['prod', false]);
+  assert.match(covered.reason, /production\.\.HEAD/);
+  for (const [patch, why] of [
+    [{ productionTip: null }, /không có origin\/production/],
+    [{ productionTip: 'prod', productionIsAncestor: false }, /không phải tổ tiên/],
+    [{ productionTip: 'head', productionIsAncestor: true }, /đã ở đúng HEAD/],
+  ]) {
+    const fallback = selectEventSnapshot({ ...main, ...patch });
+    assert.deepEqual([fallback.base, fallback.full], ['before', false]);
+    assert.match(fallback.reason, why);
+    assert.match(fallback.reason, /event\.before/);
+  }
+  const full = selectEventSnapshot({ ...main, event: { before: '0'.repeat(40) }, productionTip: null });
+  assert.deepEqual([full.base, full.full], [null, true]);
+  assert.match(full.reason, /chạy full/);
+  // Other branches keep their own push diff even when production is an ancestor.
+  assert.equal(selectEventSnapshot({ ...main, ref: 'refs/heads/release/x', productionTip: 'prod', productionIsAncestor: true }).base, 'before');
+});
+
+test('workflow_dispatch on main also plans from production; without it the plan is full and marked unaccepted', () => {
+  const dispatch = { eventName: 'workflow_dispatch', event: {}, checkoutSha: 'head', ref: 'refs/heads/main' };
+  const covered = selectEventSnapshot({ ...dispatch, productionTip: 'prod', productionIsAncestor: true });
+  assert.deepEqual([covered.base, covered.full], ['prod', false]);
+  assert.match(covered.reason, /production\.\.HEAD/);
+  for (const patch of [{ productionTip: null }, { productionTip: 'prod', productionIsAncestor: false }, { productionTip: 'head', productionIsAncestor: true }]) {
+    const full = selectEventSnapshot({ ...dispatch, ...patch });
+    assert.deepEqual([full.base, full.full], [null, true]);
+    assert.match(full.reason, /không gate live; promote không nhận/);
+  }
+  // Dispatch on another branch never borrows the production base.
+  assert.equal(selectEventSnapshot({ ...dispatch, ref: 'refs/heads/feature/x', productionTip: 'prod', productionIsAncestor: true }).base, null);
 });
 
 test('cross-run trust requires exact tested SHA and successful same-repo PR into main within 24h', () => {
@@ -30,6 +68,33 @@ test('required credentials block without executing; a failed gate does not hide 
   assert.deepEqual(calls, ['bad', 'good']);
   assert.deepEqual(result.receipts.map((r) => r.status), ['blocked', 'failed', 'passed']);
   assert.equal(result.exitCode, 1);
+});
+
+test('pull_request defers only main-only credential gates; main and other gates are unchanged', () => {
+  const registry = {
+    'secret-scan': { job: 'secret-scan', requires: [] },
+    'check-docs': { job: 'quality-gates', requires: [] },
+    'check-definer-acl': { job: 'security-gates', requires: ['SUPABASE_PAT'] },
+    'reconcile-money': { job: 'reconcile-money', requires: ['SUPABASE_PAT', 'SUPABASE_TEST_EMAIL', 'SUPABASE_TEST_PASSWORD'] },
+    'generated-types-drift': { job: 'generated-types-drift', requires: ['SUPABASE_ACCESS_TOKEN'] },
+    'other-secret': { job: 'quality-gates', requires: ['SOME_PR_TOKEN'] },
+  };
+  const plan = { gateIds: Object.keys(registry).sort(), requiredJobs: ['generated-types-drift', 'quality-gates', 'reconcile-money', 'secret-scan', 'security-gates'] };
+  for (const eventName of ['push', 'workflow_dispatch', 'schedule']) assert.equal(deferMainOnlyGates(plan, { eventName, registry }), plan);
+  const pr = deferMainOnlyGates(plan, { eventName: 'pull_request', registry });
+  assert.deepEqual(pr.gateIds, ['check-docs', 'other-secret', 'secret-scan']);
+  assert.deepEqual(pr.requiredJobs, ['quality-gates', 'secret-scan']);
+  assert.deepEqual(pr.pendingMainGates.map((item) => item.gateId), ['check-definer-acl', 'generated-types-drift', 'reconcile-money']);
+  assert.ok(pr.pendingMainGates.every((item) => item.status === PENDING_MAIN_STATUS && item.requires.length > 0));
+  assert.equal(plan.gateIds.length, 6, 'input plan is not mutated');
+  const quiet = { gateIds: ['check-docs'], requiredJobs: ['quality-gates'] };
+  assert.equal(deferMainOnlyGates(quiet, { eventName: 'pull_request', registry }), quiet);
+});
+
+test('every credentialed registry gate needs only secrets the workflow maps to main', () => {
+  const live = Object.values(GATE_REGISTRY).filter((gate) => gate.requires?.length);
+  assert.ok(live.length >= 15, 'anti-vacuous: registry still declares credentialed gates');
+  for (const gate of live) assert.ok(gate.requires.every((name) => MAIN_ONLY_CREDENTIALS.includes(name)), `${gate.id}: ${gate.requires}`);
 });
 
 test('unselected job and unresolved registry entry cannot report green', () => {
