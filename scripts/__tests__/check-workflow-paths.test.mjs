@@ -71,6 +71,14 @@ describe("trạng thái thật của repo", () => {
     fromJSON: JSON.parse, contains: (values, value) => values.includes(value),
   });
 
+  it('main runs are never cancelled by a newer push; PR runs still are', () => {
+    const { concurrency } = wf('.github/workflows/ci-gates.yml');
+    const cancels = (ref) => runInNewContext(String(concurrency['cancel-in-progress']).replace(/^\$\{\{\s*|\s*\}\}$/g, ''), { github: { ref } });
+    expect(cancels('refs/heads/main')).toBe(false);
+    expect(cancels('refs/pull/1/merge')).toBe(true);
+    expect(concurrency.group).toContain('${{ github.ref }}');
+  });
+
   it('aggregate runs after failed preflight and waits for every execution job', () => {
     const jobs = wf('.github/workflows/ci-gates.yml').jobs;
     const aggregate = jobs['gate-aggregate'];
