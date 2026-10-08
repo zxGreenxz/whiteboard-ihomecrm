@@ -12,12 +12,12 @@
 --    nhượng phòng). Chỉ số tháng cùng ngày không tính: nó không phải số đã lên hoá đơn quyết toán.
 --    Chỉ ghi bảng mốc, không đụng tiền.
 -- 2. Sửa mốc trả phòng: khớp đúng số chốt đã tính tiền ⇒ VERIFIED; bỏ cọc chưa từng chốt số ⇒
---    VERIFIED (cọc đã cấn mọi khoản); còn lại theo luật cũ (có hoá đơn ⇒ REVIEW, vì phần điện cuối
---    chưa tính hoặc tính khác). Xác nhận lại đúng số đang ghi lúc REVIEW = đã đối soát (trước đây
---    REVIEW không có đường ra). Gửi MISSING thì về MISSING, không REVIEW.
+--    VERIFIED (cọc đã cấn mọi khoản); phòng không có đồng hồ ⇒ VERIFIED; còn lại theo luật cũ (có hoá
+--    đơn ⇒ REVIEW, vì phần cuối chưa tính hoặc tính khác). Xác nhận lại đúng số đang ghi lúc REVIEW =
+--    đã đối soát (trước đây REVIEW không có đường ra). Gửi MISSING thì về MISSING, không REVIEW.
 -- 3. Khung chờ chỉ còn việc thật: REVIEW, hoặc đã quyết toán mà chưa có số chốt (trừ bỏ cọc: cọc cấn
---    mọi khoản, số đầu khách sau do quản lý nhập — chủ chốt 08/10/2026). Hồ sơ còn chờ quyết toán đã
---    nằm ở tab "Chờ quyết toán", số chốt nhập lúc quyết toán.
+--    mọi khoản, số đầu khách sau do quản lý nhập — chủ chốt 08/10/2026; trừ phòng không có đồng hồ).
+--    Hồ sơ còn chờ quyết toán đã nằm ở tab "Chờ quyết toán", số chốt nhập lúc quyết toán.
 -- 4. Đổ lại các mốc MISSING của hồ sơ đã quyết toán có chỉ số chốt; người ghi lịch sử là người đã
 --    quyết toán, lý do ghi rõ là đồng bộ lại.
 
@@ -159,6 +159,8 @@ BEGIN
   END IF;
   IF v_reconfirm
     OR (s.kind='MOVE_OUT' AND p_payload->>'state'='MISSING')
+    -- VERIFIED rỗng chỉ qua được validate khi phòng không có đồng hồ ACTIVE: không có số nào để lệch.
+    OR (s.kind='MOVE_OUT' AND p_payload->>'state'='VERIFIED' AND v_submitted=0)
     OR (s.kind='MOVE_OUT' AND v_submitted>0 AND v_billed=v_submitted AND v_all_match)
     OR (s.kind='MOVE_OUT' AND v_billed=0 AND v_exit_kind='FORFEIT') THEN
     v_ids:=ARRAY[]::uuid[];
@@ -200,7 +202,10 @@ BEGIN
     JOIN public.buildings b ON b.id=s.building_id AND b.organization_id=s.organization_id AND b.deleted_at IS NULL
     LEFT JOIN public.contract_exit_cases e ON e.contract_id=s.contract_id AND e.organization_id=s.organization_id
     WHERE s.organization_id=p_organization_id AND s.kind='MOVE_OUT'
-      AND (s.state='REVIEW' OR (s.state='MISSING' AND e.state='FINALIZED' AND COALESCE(e.current_kind,'')<>'FORFEIT'))
+      AND (s.state='REVIEW' OR (s.state='MISSING' AND e.state='FINALIZED' AND COALESCE(e.current_kind,'')<>'FORFEIT'
+        -- Phòng không có đồng hồ đang chạy thì không có số nào để thiếu.
+        AND EXISTS(SELECT 1 FROM public.meters m WHERE m.organization_id=s.organization_id AND m.room_id=s.room_id
+          AND m.building_id=s.building_id AND m.status='ACTIVE' AND m.deleted_at IS NULL)))
       AND (COALESCE(cardinality(p_building_ids),0)=0 OR s.building_id=ANY(p_building_ids))
       AND public.can_access_building(s.building_id)
       AND NOT COALESCE(public.is_super_admin() AND s.organization_id=ANY(public.sandbox_org_ids()),false)

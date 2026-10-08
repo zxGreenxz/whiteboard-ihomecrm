@@ -34,6 +34,8 @@ describe('chỉ số lúc trả phòng trong hồ sơ', () => {
     show({ state: 'PENDING', current_kind: 'EARLY_RETURN' });
     expect(screen.getByRole('heading', { name: 'Chỉ số lúc trả phòng · Chờ bổ sung' })).toBeTruthy();
     expect(screen.getByText(/Số điện cuối nhập ở bước quyết toán/)).toBeTruthy();
+    // Số cuối chỉ nhập một lần ở bước quyết toán: không cho sửa mốc tay khi còn chờ.
+    expect(screen.queryByRole('button', { name: 'Bổ sung / sửa chỉ số' })).toBeNull();
   });
   it('đã quyết toán mà chưa có số chốt: yêu cầu bổ sung', () => {
     state.set = set({});
@@ -55,7 +57,7 @@ describe('chỉ số lúc trả phòng trong hồ sơ', () => {
       reading: 1890, measured_at: '2026-10-01T03:00:00+00:00', evidence: null }] });
     show({ state: 'FINALIZED', current_kind: 'EARLY_RETURN' });
     expect(screen.getByRole('heading', { name: 'Chỉ số lúc trả phòng · Cần đối soát' })).toBeTruthy();
-    expect(screen.getByText(/chưa khớp tiền điện đã tính khi quyết toán/)).toBeTruthy();
+    expect(screen.getByText(/chưa khớp số đã tính tiền khi quyết toán/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Đã đối soát, giữ số này' })).toBeTruthy();
   });
   it('REVIEW: "Đã đối soát" gửi lại đúng số đang ghi kèm lý do', async () => {

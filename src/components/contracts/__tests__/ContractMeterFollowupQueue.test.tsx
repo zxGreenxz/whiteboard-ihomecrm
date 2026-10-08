@@ -24,7 +24,7 @@ describe('khung chờ chỉ số trả phòng', () => {
     const region = screen.getByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' });
     expect(within(region).getByRole('heading', { name: 'Chờ bổ sung / kiểm tra chỉ số (2)' })).toBeTruthy();
     expect(within(region).getByText('01/10/2026 · Đã quyết toán, chưa có chỉ số chốt')).toBeTruthy();
-    expect(within(region).getByText('01/10/2026 · Số bổ sung chưa khớp tiền điện đã tính, cần đối soát')).toBeTruthy();
+    expect(within(region).getByText('01/10/2026 · Số bổ sung chưa khớp số đã tính tiền, cần đối soát')).toBeTruthy();
     const links = within(region).getAllByRole('link', { name: 'Mở mốc bàn giao' });
     expect(links.map(link => link.getAttribute('href'))).toEqual(['/contracts/contract-1', '/contracts/contract-2']);
     expect(screen.queryByText(/kể cả hồ sơ đã quyết toán/)).toBeNull();

@@ -54,13 +54,14 @@ export function ContractMeterBoundaryPanel({ contractId, roomId, canEdit, exit }
   return <div className="space-y-2 border-t pt-3 text-sm">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-medium">Chỉ số lúc trả phòng · {value.state === 'VERIFIED' ? 'Đã kiểm tra' : forfeitWithoutReading ? 'Không cần số chốt' : value.state === 'MISSING' ? 'Chờ bổ sung' : 'Cần đối soát'}</h3>
-      {canEdit && mode === 'idle' && <div className="flex flex-wrap gap-2">
+      {/* Còn chờ quyết toán: số cuối nhập một lần ở bước quyết toán, mốc tự lấy số đó. */}
+      {canEdit && mode === 'idle' && exit?.state !== 'PENDING' && <div className="flex flex-wrap gap-2">
         {value.state === 'REVIEW' && !!currentReadings(value) && <Button size="sm" onClick={() => open('reconcile')}>Đã đối soát, giữ số này</Button>}
         <Button size="sm" variant="outline" onClick={() => open('edit')}>Bổ sung / sửa chỉ số</Button>
       </div>}
     </div>
     {value.state === 'MISSING' && <p className="text-muted-foreground">{missingNote(exit)}</p>}
-    {value.state === 'REVIEW' && <p className="text-amber-700">Số bổ sung chưa khớp tiền điện đã tính khi quyết toán (khác số chốt, hoặc phần điện cuối chưa tính). Kiểm tra lại hoá đơn quyết toán; xong thì bấm “Đã đối soát”, hoặc sửa về đúng số đã tính tiền.</p>}
+    {value.state === 'REVIEW' && <p className="text-amber-700">Số bổ sung chưa khớp số đã tính tiền khi quyết toán (khác số chốt, hoặc phần cuối chưa tính). Kiểm tra lại hoá đơn quyết toán; xong thì bấm “Đã đối soát”, hoặc sửa về đúng số đã tính tiền.</p>}
     <ul className="space-y-1">{value.readings.map(row => <li key={row.id}>
       {row.meter_type === 'ELECTRICITY' ? 'Điện' : row.meter_type === 'WATER' ? 'Nước' : 'Đồng hồ'} · {row.meter_code || row.meter_id.slice(0, 8)}:
       {' '}<strong>{row.reading === null ? 'Chưa có số' : row.reading.toLocaleString('vi-VN')}</strong>

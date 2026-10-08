@@ -170,6 +170,19 @@ describe('đồng bộ khi quyết toán', () => {
     } finally { await asActor(actor); }
     expect(await read(s)).toMatchObject({ state: 'MISSING', revision: 1 });
   }));
+  it('phòng không có đồng hồ đang chạy: không vào khung chờ; xác nhận "đã kiểm tra" rỗng thì VERIFIED, không kẹt REVIEW', () => tx(async () => {
+    const s = scene(17);
+    await seedScene(s, '2026-10-01');
+    await db.query("UPDATE meters SET status='INACTIVE' WHERE id=$1", [s.meter]);
+    await exitCase(s, 'FINALIZED');
+    await db.query("INSERT INTO invoices VALUES($1,$2,$3,'2026-10','PAID',now(),NULL)", [id(517), org, s.contract]);
+    const set = await record(s, '2026-10-01');
+    expect(set).toMatchObject({ state: 'MISSING', readings: [] });
+    expect((await followups()).items.some(i => i.contract_id === s.contract)).toBe(false);
+    const verified = (await db.query<{ r: Row }>('SELECT revise_contract_meter_boundary_set_v1($1,$2,$3,$4,$5,$6::jsonb) r',
+      [org, set.id, set.revision, 'no-meter-key-0001', 'Phòng không có đồng hồ', JSON.stringify({ state: 'VERIFIED', reason: null, readings: [] })])).rows[0].r;
+    expect(verified).toMatchObject({ state: 'VERIFIED', affected_invoice_ids: [] });
+  }));
   it('khoá lịch sử của đồng bộ không chiếm được bằng revise (regex khoá của revise không nhận "~")', () => tx(async () => {
     const s = scene(16);
     await seedScene(s, '2026-10-01');
