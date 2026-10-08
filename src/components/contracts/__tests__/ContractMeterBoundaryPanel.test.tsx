@@ -12,7 +12,7 @@ vi.mock('@/hooks/useContractMeterBoundaries', () => ({
 vi.mock('../ContractMeterBoundaryFields', () => ({ ContractMeterBoundaryFields: () => null }));
 
 const set = (overrides: Record<string, unknown>) => ({
-  id: '00000000-0000-4000-8000-000000000009', revision: 3, state: 'MISSING', history: [],
+  id: '00000000-0000-4000-8000-000000000009', revision: 3, state: 'MISSING', history: [], effective_on: '2026-09-28',
   readings: [{ id: 'r1', meter_id: meter, meter_code: 'E1', meter_type: 'ELECTRICITY', reading: null, measured_at: null, evidence: null }],
   ...overrides,
 });
@@ -38,16 +38,25 @@ describe('chỉ số lúc trả phòng trong hồ sơ', () => {
   it('đã quyết toán mà chưa có số chốt: yêu cầu bổ sung', () => {
     state.set = set({});
     show({ state: 'FINALIZED', current_kind: 'NATURAL_EXPIRY' });
-    expect(screen.getByText(/Đã quyết toán nhưng chưa có số điện chốt/)).toBeTruthy();
+    expect(screen.getByText(/Đã quyết toán nhưng chưa có chỉ số chốt/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Đã đối soát, giữ số này' })).toBeNull();
   });
-  it('số lấy từ chỉ số chốt hiện ngày chốt, không hiện giờ đo (giờ thật không biết)', () => {
+  it('số lấy từ chỉ số chốt hiện ngày trả phòng, không hiện giờ đo (giờ thật không biết, không theo múi giờ máy)', () => {
+    // 23:59:59 giờ VN = 00:59:59 hôm sau ở UTC+8: hiện theo múi giờ máy sẽ lệch sang 29/09.
     state.set = set({ state: 'VERIFIED', readings: [{ id: 'r1', meter_id: meter, meter_code: 'E1', meter_type: 'ELECTRICITY',
       reading: 1890, measured_at: '2026-09-28T16:59:59+00:00', evidence: 'Chỉ số chốt khi quyết toán TLY-1' }] });
     show({ state: 'FINALIZED', current_kind: 'EARLY_RETURN' });
     expect(screen.getByRole('heading', { name: 'Chỉ số lúc trả phòng · Đã kiểm tra' })).toBeTruthy();
-    expect(screen.getByText(/chốt khi quyết toán, ngày 28\/9\/2026/)).toBeTruthy();
+    expect(screen.getByText(/chốt khi quyết toán, ngày 28\/09\/2026/)).toBeTruthy();
     expect(screen.queryByText(/đo \d/)).toBeNull();
+  });
+  it('REVIEW: nói rõ chưa khớp tiền điện đã tính và chỉ đường đối soát', () => {
+    state.set = set({ state: 'REVIEW', readings: [{ id: 'r1', meter_id: meter, meter_code: 'E1', meter_type: 'ELECTRICITY',
+      reading: 1890, measured_at: '2026-10-01T03:00:00+00:00', evidence: null }] });
+    show({ state: 'FINALIZED', current_kind: 'EARLY_RETURN' });
+    expect(screen.getByRole('heading', { name: 'Chỉ số lúc trả phòng · Cần đối soát' })).toBeTruthy();
+    expect(screen.getByText(/chưa khớp tiền điện đã tính khi quyết toán/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Đã đối soát, giữ số này' })).toBeTruthy();
   });
   it('REVIEW: "Đã đối soát" gửi lại đúng số đang ghi kèm lý do', async () => {
     state.set = set({ state: 'REVIEW', readings: [{ id: 'r1', meter_id: meter, meter_code: 'E1', meter_type: 'ELECTRICITY',

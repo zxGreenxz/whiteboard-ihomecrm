@@ -162,6 +162,7 @@
     "src/components/contracts/ContractMeterBoundaryPanel.tsx",
     "src/components/contracts/__tests__/ContractMeterBoundaryPanel.test.tsx",
     "src/components/contracts/ContractMeterFollowupQueue.tsx",
+    "src/components/contracts/__tests__/ContractMeterFollowupQueue.test.tsx",
     "src/components/contracts/ContractQRDialog.tsx",
     "src/components/contracts/ContractReturnStep.tsx",
     "src/components/contracts/ContractStatsCards.tsx",

@@ -247,3 +247,19 @@ gaps:
       residence_registrations có procedure_code TAMTRU_06, temp_resident_from/to NULL, hiện
       "Đã huỷ tạm trú" trong chi tiết khách và không lẫn vào lịch sử đăng ký. Đính mã hồ sơ
       và SUBM_ID làm bằng chứng; sai ở đâu thì sửa trước khi đóng.
+  - id: e2e-fleet-contract-workspace-tabs-luu-cong-ty
+    where: >
+      .e2e-fleet/specs/contract-workspace-tabs.spec.ts
+    expires_at: 2026-11-30
+    why: >
+      Từ 05/10/2026 (356eddd2) app gọi RPC ghi set_my_ui_preference để nhớ công ty đã chọn; spec
+      chỉ-đọc này chặn mọi RPC ghi nên đỏ ở `audit.blocked` dù mọi khẳng định giao diện đạt (chạy
+      thật 08/10/2026 trên dev server worktree trỏ TEST, vai demo.chunha và demo.quanly). Bản vá
+      spec (trả lời giả RPC đó đúng org DEMO, giá trị khác vẫn chặn) đã chạy xanh 2/2 ở PR #143
+      (commit 8dd5bb18) nhưng không đưa lên main: đổi spec fleet tạo nghĩa vụ "Live browser
+      evidence" mà gate-aggregate không nhận, và từ 15d0e2ed CI main lập plan trên dải
+      production..HEAD nên spec đã đổi nằm trong mọi plan, chặn promote tới khi production vượt
+      qua nó. PR #143 vì vậy giữ nguyên nhãn mà spec khẳng định.
+    exit_condition: >
+      Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản
+      vá spec ở 8dd5bb18 lên main và chạy xanh trên preview đúng commit với vai thật.

@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label';
 import { ContractMeterBoundaryFields } from './ContractMeterBoundaryFields';
 
 type ExitContext = Pick<ContractExitCase, 'state' | 'current_kind'>;
-// Bằng chứng server ghi khi lấy số từ chỉ số chốt (20261008025958): giờ đo không biết, chỉ ghi
-// giới hạn cuối ngày trả phòng ⇒ hiện ngày, không hiện giờ.
+// Bằng chứng chỉ hàm đồng bộ của server ghi (20261008025958; form nhập tay không có ô bằng chứng):
+// giờ đo không biết, server chỉ ghi giới hạn cuối ngày trả phòng ⇒ hiện ngày trả phòng, không hiện giờ.
 const SETTLEMENT_EVIDENCE = 'Chỉ số chốt khi quyết toán';
+const dayOf = (iso: string) => iso.split('-').reverse().join('/');
 
 /** Số đang ghi ở mốc REVIEW, gửi lại nguyên văn: server coi là đã đối soát. */
 function currentReadings(value: ContractMeterBoundarySet): MeterBoundaryInput | null {
@@ -23,7 +24,7 @@ function currentReadings(value: ContractMeterBoundarySet): MeterBoundaryInput | 
 function missingNote(exit?: ExitContext) {
   if (exit?.current_kind === 'FORFEIT') return 'Bỏ cọc: cọc đã cấn mọi khoản nên không cần số điện chốt. Số đầu của khách sau do quản lý nhập khi làm hợp đồng mới.';
   if (exit?.state === 'PENDING') return 'Số điện cuối nhập ở bước quyết toán (Tiền điện chốt số). Quyết toán xong, mốc này tự lấy số đó.';
-  return 'Đã quyết toán nhưng chưa có số điện chốt. Bấm “Bổ sung / sửa chỉ số” để nhập số đồng hồ lúc khách trả phòng.';
+  return 'Đã quyết toán nhưng chưa có chỉ số chốt. Bấm “Bổ sung / sửa chỉ số” để nhập số đồng hồ lúc khách trả phòng.';
 }
 
 export function ContractMeterBoundaryPanel({ contractId, roomId, canEdit, exit }: { contractId: string; roomId: string; canEdit: boolean; exit?: ExitContext }) {
@@ -59,12 +60,12 @@ export function ContractMeterBoundaryPanel({ contractId, roomId, canEdit, exit }
       </div>}
     </div>
     {value.state === 'MISSING' && <p className="text-muted-foreground">{missingNote(exit)}</p>}
-    {value.state === 'REVIEW' && <p className="text-amber-700">Số bổ sung khác số điện chốt đã tính tiền khi quyết toán. Kiểm tra lại hoá đơn quyết toán; xong thì bấm “Đã đối soát”, hoặc sửa về đúng số đã tính tiền.</p>}
+    {value.state === 'REVIEW' && <p className="text-amber-700">Số bổ sung chưa khớp tiền điện đã tính khi quyết toán (khác số chốt, hoặc phần điện cuối chưa tính). Kiểm tra lại hoá đơn quyết toán; xong thì bấm “Đã đối soát”, hoặc sửa về đúng số đã tính tiền.</p>}
     <ul className="space-y-1">{value.readings.map(row => <li key={row.id}>
       {row.meter_type === 'ELECTRICITY' ? 'Điện' : row.meter_type === 'WATER' ? 'Nước' : 'Đồng hồ'} · {row.meter_code || row.meter_id.slice(0, 8)}:
       {' '}<strong>{row.reading === null ? 'Chưa có số' : row.reading.toLocaleString('vi-VN')}</strong>
       {row.measured_at && <span className="text-muted-foreground"> · {row.evidence?.startsWith(SETTLEMENT_EVIDENCE)
-        ? `chốt khi quyết toán, ngày ${new Date(row.measured_at).toLocaleDateString('vi-VN')}`
+        ? `chốt khi quyết toán, ngày ${dayOf(value.effective_on)}`
         : `đo ${new Date(row.measured_at).toLocaleString('vi-VN')}`}</span>}
     </li>)}</ul>
     {mode !== 'idle' && <div className="space-y-3">

@@ -5,19 +5,26 @@
 -- meter_readings mã TLY… và dòng điện của hoá đơn quyết toán). Người dùng nhập ở bước 2,
 -- không gì chép sang bảng mốc ⇒ 13/14 mốc trả phòng báo "chưa đủ chỉ số" dù 9 hồ sơ đã có số.
 --
--- 1. Mốc trả phòng còn MISSING mà mọi đồng hồ đang chạy đã có chỉ số chốt APPROVED của chính
---    hợp đồng, đúng ngày trả phòng ⇒ ghi thành VERIFIED bằng chính số đó (một bản sửa có lịch sử).
---    Gọi lúc tạo mốc (quyết toán ngay: chỉ số chốt ghi trước mốc trong cùng giao dịch) và khi hồ sơ
---    trả phòng chuyển FINALIZED (quyết toán sau, nhượng phòng). Chỉ ghi bảng mốc, không đụng tiền.
--- 2. Sửa mốc trả phòng chỉ thành REVIEW khi số mới khác số chốt đã tính tiền; xác nhận lại đúng
---    số đang ghi lúc REVIEW = đã đối soát (trước đây REVIEW không có đường ra).
--- 3. Khung chờ chỉ còn việc thật: đã quyết toán mà chưa có số chốt, hoặc REVIEW. Bỏ cọc không vào
---    khung (cọc cấn mọi khoản; số đầu khách sau do quản lý nhập). Hồ sơ còn chờ quyết toán đã nằm
---    ở tab "Chờ quyết toán", số chốt nhập lúc quyết toán.
--- 4. Đổ lại các mốc MISSING của hồ sơ đã quyết toán có chỉ số chốt; người ghi lịch sử là người
---    đã quyết toán hồ sơ đó.
+-- 1. Hồ sơ trả phòng đã quyết toán, mốc trả phòng còn MISSING, mọi đồng hồ đang chạy có chỉ số chốt
+--    khi quyết toán (mã TLY…, APPROVED, của chính hợp đồng, đúng ngày trả phòng) ⇒ ghi mốc VERIFIED
+--    bằng chính số đó (một bản sửa có lịch sử). Gọi lúc tạo mốc (quyết toán ngay: chỉ số chốt và
+--    FINALIZED có trước mốc trong cùng giao dịch) và khi hồ sơ chuyển FINALIZED (quyết toán sau,
+--    nhượng phòng). Chỉ số tháng cùng ngày không tính: nó không phải số đã lên hoá đơn quyết toán.
+--    Chỉ ghi bảng mốc, không đụng tiền.
+-- 2. Sửa mốc trả phòng: khớp đúng số chốt đã tính tiền ⇒ VERIFIED; bỏ cọc chưa từng chốt số ⇒
+--    VERIFIED (cọc đã cấn mọi khoản); còn lại theo luật cũ (có hoá đơn ⇒ REVIEW, vì phần điện cuối
+--    chưa tính hoặc tính khác). Xác nhận lại đúng số đang ghi lúc REVIEW = đã đối soát (trước đây
+--    REVIEW không có đường ra). Gửi MISSING thì về MISSING, không REVIEW.
+-- 3. Khung chờ chỉ còn việc thật: REVIEW, hoặc đã quyết toán mà chưa có số chốt (trừ bỏ cọc: cọc cấn
+--    mọi khoản, số đầu khách sau do quản lý nhập — chủ chốt 08/10/2026). Hồ sơ còn chờ quyết toán đã
+--    nằm ở tab "Chờ quyết toán", số chốt nhập lúc quyết toán.
+-- 4. Đổ lại các mốc MISSING của hồ sơ đã quyết toán có chỉ số chốt; người ghi lịch sử là người đã
+--    quyết toán, lý do ghi rõ là đồng bộ lại.
 
-CREATE OR REPLACE FUNCTION app_private.sync_move_out_boundary_from_final_reading_v1(p_set_id uuid)
+-- Bản thử trên TEST từng có chữ ký một tham số; chưa từng lên production.
+DROP FUNCTION IF EXISTS app_private.sync_move_out_boundary_from_final_reading_v1(uuid);
+CREATE OR REPLACE FUNCTION app_private.sync_move_out_boundary_from_final_reading_v1(p_set_id uuid,
+  p_reason text DEFAULT 'Lấy từ chỉ số chốt khi quyết toán')
 RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE s public.contract_meter_boundary_sets%ROWTYPE; v_actor uuid:=auth.uid(); v_payload jsonb;
   v_meters bigint; v_covered bigint; v_day_end timestamptz;
@@ -26,6 +33,9 @@ BEGIN
   IF v_actor IS NULL THEN RETURN false; END IF;
   SELECT * INTO s FROM public.contract_meter_boundary_sets WHERE id=p_set_id FOR UPDATE;
   IF NOT FOUND OR s.kind<>'MOVE_OUT' OR s.state<>'MISSING' THEN RETURN false; END IF;
+  -- Chỉ số chốt chỉ là số đã tính tiền khi hồ sơ đã quyết toán; còn chờ thì để quyết toán quyết.
+  IF NOT EXISTS(SELECT 1 FROM public.contract_exit_cases e
+    WHERE e.organization_id=s.organization_id AND e.contract_id=s.contract_id AND e.state='FINALIZED') THEN RETURN false; END IF;
   -- Giờ đo không biết chính xác: lấy lúc ghi chỉ số chốt, không muộn hơn cuối ngày trả phòng.
   v_day_end:=LEAST(clock_timestamp(),((s.effective_on+1)::timestamp AT TIME ZONE app_private.org_timezone_v1(s.organization_id))-interval '1 second');
   WITH active AS (
@@ -33,11 +43,13 @@ BEGIN
     WHERE m.organization_id=s.organization_id AND m.room_id=s.room_id AND m.building_id=s.building_id
       AND m.status='ACTIVE' AND m.deleted_at IS NULL
   ), final_readings AS (
+    -- TLY… = chỉ số chốt do _termination_apply_extra_charges ghi cùng dòng điện của hoá đơn quyết toán.
     SELECT DISTINCT ON (r.meter_id) r.meter_id,r.current_reading,r.reading_code,r.created_at
     FROM public.meter_readings r JOIN active a ON a.id=r.meter_id
     WHERE r.contract_id=s.contract_id AND r.reading_date=s.effective_on AND r.status='APPROVED' AND r.deleted_at IS NULL
+      AND r.reading_code LIKE 'TLY%'
       AND r.current_reading IS NOT NULL AND r.current_reading>=0 AND r.current_reading<>'NaN'::numeric
-    ORDER BY r.meter_id,r.created_at DESC,r.id DESC
+    ORDER BY r.meter_id,r.created_at DESC,r.current_reading DESC,r.id DESC
   )
   SELECT (SELECT count(*) FROM active),count(f.meter_id),
     jsonb_build_object('state','VERIFIED','reason',NULL,'readings',COALESCE(jsonb_agg(jsonb_build_object(
@@ -45,8 +57,10 @@ BEGIN
       'evidence','Chỉ số chốt khi quyết toán '||COALESCE(f.reading_code,'')) ORDER BY f.meter_id),'[]'::jsonb))
   INTO v_meters,v_covered,v_payload FROM final_readings f;
   IF v_meters=0 OR v_covered<>v_meters THEN RETURN false; END IF;
+  -- Khoá bắt đầu bằng "~": regex khoá của revise không cho, nên không ai chiếm trước được.
   INSERT INTO app_private.contract_meter_boundary_history(set_id,revision,actor_id,reason,idempotency_key,payload_hash,before_snapshot,requested_payload)
-    VALUES(s.id,s.revision+1,v_actor,'Lấy từ chỉ số chốt khi quyết toán','final-reading-sync:'||s.id::text||':'||(s.revision+1)::text,
+    VALUES(s.id,s.revision+1,v_actor,COALESCE(NULLIF(btrim(p_reason),''),'Lấy từ chỉ số chốt khi quyết toán'),
+      '~final-reading-sync:'||s.id::text||':'||(s.revision+1)::text,
       md5(v_payload::text),app_private.meter_boundary_set_response_v1(s.id),v_payload);
   UPDATE public.contract_meter_boundary_sets SET revision=revision+1,state='VERIFIED',reason=NULL,updated_at=clock_timestamp() WHERE id=s.id;
   PERFORM app_private.insert_meter_boundary_revision_v1(s.id,v_payload);
@@ -104,12 +118,12 @@ BEGIN
   RETURN app_private.meter_boundary_set_response_v1(s.id);
 END $fn$;
 
--- Như 20260928023413, đổi cách tính REVIEW: mốc trả phòng chỉ lệch tiền khi khác số chốt đã tính
--- trên hoá đơn quyết toán; xác nhận lại đúng số đang ghi lúc REVIEW là đã đối soát.
+-- Như 20260928023413, đổi cách tính REVIEW cho mốc trả phòng (xem mục 2 ở đầu file); xác nhận lại
+-- đúng số đang ghi lúc REVIEW là đã đối soát.
 CREATE OR REPLACE FUNCTION public.revise_contract_meter_boundary_set_v1(p_organization_id uuid,p_set_id uuid,p_expected_revision bigint,p_idempotency_key text,p_reason text,p_payload jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE s public.contract_meter_boundary_sets%ROWTYPE;h app_private.contract_meter_boundary_history%ROWTYPE;v_hash text;v_ids uuid[];v_state text;
-  v_reconfirm boolean:=false;v_conflict boolean:=false;
+  v_reconfirm boolean:=false;v_submitted bigint:=0;v_billed bigint:=0;v_all_match boolean:=false;v_exit_kind text;
 BEGIN
   IF auth.uid() IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN RAISE EXCEPTION 'Wrong handover organization' USING ERRCODE='42501'; END IF;
   IF NULLIF(btrim(p_reason),'') IS NULL OR p_idempotency_key IS NULL OR p_idempotency_key!~'^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$' THEN RAISE EXCEPTION 'Correction needs a reason and request key' USING ERRCODE='22023'; END IF;
@@ -132,14 +146,21 @@ BEGIN
     v_reconfirm:=COALESCE(v_reconfirm,false);
   END IF;
   IF s.kind='MOVE_OUT' THEN
-    SELECT EXISTS(SELECT 1 FROM jsonb_array_elements(p_payload->'readings') x
-      JOIN LATERAL (SELECT r.current_reading FROM public.meter_readings r
+    SELECT e.current_kind INTO v_exit_kind FROM public.contract_exit_cases e
+      WHERE e.organization_id=s.organization_id AND e.contract_id=s.contract_id;
+    -- Số đã tính tiền = chỉ số chốt TLY… (cùng định nghĩa với hàm đồng bộ ở trên).
+    SELECT count(*),count(billed.current_reading),COALESCE(bool_and(billed.current_reading=(x->>'reading')::numeric),false)
+      INTO v_submitted,v_billed,v_all_match
+      FROM jsonb_array_elements(p_payload->'readings') x
+      LEFT JOIN LATERAL (SELECT r.current_reading FROM public.meter_readings r
         WHERE r.meter_id=(x->>'meter_id')::uuid AND r.contract_id=s.contract_id AND r.reading_date=s.effective_on
-          AND r.status='APPROVED' AND r.deleted_at IS NULL AND r.current_reading IS NOT NULL
-        ORDER BY r.created_at DESC,r.id DESC LIMIT 1) billed ON true
-      WHERE billed.current_reading<>(x->>'reading')::numeric) INTO v_conflict;
+          AND r.status='APPROVED' AND r.deleted_at IS NULL AND r.current_reading IS NOT NULL AND r.reading_code LIKE 'TLY%'
+        ORDER BY r.created_at DESC,r.current_reading DESC,r.id DESC LIMIT 1) billed ON true;
   END IF;
-  IF v_reconfirm OR (s.kind='MOVE_OUT' AND NOT v_conflict) THEN
+  IF v_reconfirm
+    OR (s.kind='MOVE_OUT' AND p_payload->>'state'='MISSING')
+    OR (s.kind='MOVE_OUT' AND v_submitted>0 AND v_billed=v_submitted AND v_all_match)
+    OR (s.kind='MOVE_OUT' AND v_billed=0 AND v_exit_kind='FORFEIT') THEN
     v_ids:=ARRAY[]::uuid[];
     v_state:=p_payload->>'state';
   ELSE
@@ -179,8 +200,7 @@ BEGIN
     JOIN public.buildings b ON b.id=s.building_id AND b.organization_id=s.organization_id AND b.deleted_at IS NULL
     LEFT JOIN public.contract_exit_cases e ON e.contract_id=s.contract_id AND e.organization_id=s.organization_id
     WHERE s.organization_id=p_organization_id AND s.kind='MOVE_OUT'
-      AND COALESCE(e.current_kind,'')<>'FORFEIT'
-      AND (s.state='REVIEW' OR (s.state='MISSING' AND e.state='FINALIZED'))
+      AND (s.state='REVIEW' OR (s.state='MISSING' AND e.state='FINALIZED' AND COALESCE(e.current_kind,'')<>'FORFEIT'))
       AND (COALESCE(cardinality(p_building_ids),0)=0 OR s.building_id=ANY(p_building_ids))
       AND public.can_access_building(s.building_id)
       AND NOT COALESCE(public.is_super_admin() AND s.organization_id=ANY(public.sandbox_org_ids()),false)
@@ -205,13 +225,13 @@ BEGIN
   LOOP
     PERFORM set_config('request.jwt.claim.sub',r.actor::text,true);
     PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',r.actor,'role','authenticated')::text,true);
-    PERFORM app_private.sync_move_out_boundary_from_final_reading_v1(r.id);
+    PERFORM app_private.sync_move_out_boundary_from_final_reading_v1(r.id,'Lấy từ chỉ số chốt khi quyết toán (đồng bộ lại 08/10/2026)');
   END LOOP;
   PERFORM set_config('request.jwt.claim.sub',COALESCE(v_claim_sub,''),true);
   PERFORM set_config('request.jwt.claims',COALESCE(v_claims,''),true);
 END $backfill$;
 
-REVOKE ALL ON FUNCTION app_private.sync_move_out_boundary_from_final_reading_v1(uuid),app_private.sync_move_out_boundary_on_exit_finalized_v1(),
+REVOKE ALL ON FUNCTION app_private.sync_move_out_boundary_from_final_reading_v1(uuid,text),app_private.sync_move_out_boundary_on_exit_finalized_v1(),
   app_private.record_contract_meter_boundary_set_v1(uuid,uuid,uuid,text,date,jsonb,text)
   FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION public.revise_contract_meter_boundary_set_v1(uuid,uuid,bigint,text,text,jsonb) FROM PUBLIC,anon,service_role;

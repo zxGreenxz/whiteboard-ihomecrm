@@ -25,7 +25,8 @@ export function useContractTransferLinks(filter:TransferFilter,enabled=true){
 }
 function useTransferMutation<T,R>(run:(input:T,org:string)=>Promise<R>,message:string){
   const {selectedOrganizationId}=useOrganization();const client=useQueryClient();
-  const refresh=()=>{for(const key of [['contract-transfer-links'],['contract-exit-cases'],['contract-drafts'],['contracts'],['income-expenses']])void client.invalidateQueries({queryKey:key});};
+  // Quyết toán nhượng chuyển hồ sơ sang FINALIZED ⇒ server tự ghi mốc chỉ số trả phòng (20261008025958).
+  const refresh=()=>{for(const key of [['contract-transfer-links'],['contract-exit-cases'],['contract-exit-case'],['contract-meter-boundaries'],['contract-meter-followups'],['contract-drafts'],['contracts'],['income-expenses']])void client.invalidateQueries({queryKey:key});};
   return useMutation({retry:false,mutationFn:(input:T)=>{if(!selectedOrganizationId)throw new Error('Chưa chọn tổ chức');return run(input,selectedOrganizationId);},
     onSuccess:()=>{refresh();toast.success(message);},onError:(error)=>{refresh();toast.error(transferErrorMessage(error));}});
 }
