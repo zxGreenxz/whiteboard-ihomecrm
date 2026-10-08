@@ -5,10 +5,11 @@
 //   - T6/T7: net = cột "khách đưa" − cột "thối lại" (phiếu web đã net tiền thối — xem memory).
 //   - T5: cột "khách đưa TM" ĐÃ là số ròng → dùng thẳng, KHÔNG trừ thối lần nữa.
 //   - Web Hiệp Thu có phiếu CHI (bàn giao tiền cho chủ) — Excel TM không theo dõi → chỉ liệt kê tham khảo.
-import { readFileSync, copyFileSync, mkdtempSync } from 'node:fs';
+import { copyFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import XLSX from 'xlsx';
+import { layPat } from './lib/vault.mjs';
 
 const REF = 'tryymsxyyckgbrmmvozx';
 const HIEPTHU_ID = 'e564eb1e-e47c-4c8f-92a1-76873b5bfb0e'; // Hiệp Thu (TK000032)
@@ -17,14 +18,7 @@ const FIRST_MONTH = 5;
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
 const num = (v) => (typeof v === 'number' ? v : 0);
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT'); process.exit(1); }
 
 // ===== 1. Đọc Excel (copy ra temp — file hay bị Excel lock) =====

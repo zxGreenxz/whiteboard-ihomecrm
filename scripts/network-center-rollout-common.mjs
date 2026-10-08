@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { docVault } from "./lib/vault.mjs";
 
 export const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const MANIFEST_PATH = join(REPO_ROOT, "scripts", "network-center-rollout-manifest.json");
@@ -62,15 +63,8 @@ export async function readOptional(path) {
 }
 
 export async function loadLocalRuntimeConfig(repoRoot = REPO_ROOT) {
-  const primary = join(repoRoot, "CLAUDE.local.md");
-  const worktreeParent = resolve(repoRoot, "..", "..", "..", "CLAUDE.local.md");
-  const primaryContents = await readOptional(primary);
-  if (primaryContents) return primaryContents;
-  const normalizedRoot = resolve(repoRoot).replaceAll("\\", "/");
-  if (normalizedRoot.includes("/.claude/worktrees/") && worktreeParent !== primary) {
-    return readOptional(worktreeParent);
-  }
-  return "";
+  // Helper chung: repo này trước, rồi checkout chính của git worktree.
+  return docVault({ repoRoot });
 }
 
 export function parseProjectRef(configToml) {

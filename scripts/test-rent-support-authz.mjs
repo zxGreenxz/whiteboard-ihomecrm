@@ -8,9 +8,9 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { signInTest, request } from './test-voucher-detail-read-authz.mjs';
 import { batBuocDichTest, credential, ketNoi, lit, psqlJson, repoRoot } from './test-env/lib.mjs';
+import { docVault } from './lib/vault.mjs';
 
 const TEST_REF = 'hzulujxgonszuleqticb';
-const VAULT = 'C:/Users/Nguyen Tam/whiteboard-ihomecrm-main/CLAUDE.local.md';
 const ROLES = ['owner', 'manager', 'accountant', 'contracts_only', 'other_recipient', 'expired'];
 const uuid = value => assert.match(value, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -40,8 +40,7 @@ for (const role of ROLES) {
 assert.equal(passwordVars.size, ROLES.length, 'distinct role credential variables required');
 assert.equal(new Set(ROLES.map(role => f.actors[role].id)).size, ROLES.length);
 // credential() can generate a missing seed. Refuse that path before calling it.
-process.env.IHOMECRM_VAULT = VAULT;
-assert(process.env.TEST_ENV_PASSWORD_SEED || /^TEST_ENV_PASSWORD_SEED=\S+\s*$/m.test(readFileSync(VAULT, 'utf8')), 'TEST seed must already exist; this runner never changes vault');
+assert(process.env.TEST_ENV_PASSWORD_SEED || /^TEST_ENV_PASSWORD_SEED=\S+\s*$/m.test(docVault()), 'TEST seed must already exist; this runner never changes vault');
 assert(!process.env.TEST_SUPABASE_REF || process.env.TEST_SUPABASE_REF === TEST_REF);
 const cred = credential();
 assert.equal(cred.testRef, TEST_REF);

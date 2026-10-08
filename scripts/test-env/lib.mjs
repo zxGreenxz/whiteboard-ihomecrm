@@ -14,14 +14,15 @@
 //   3. Mật khẩu chỉ đi qua PGPASSFILE tạm (xoá khi thoát) hoặc biến môi trường —
 //      không bao giờ lên dòng lệnh hay stdout.
 
-import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pgPassLine, readPoolerPassword } from "../backup-before-schema.mjs";
+import { pgPassLine } from "../backup-before-schema.mjs";
+import { docVault, duongDanVault, layMatKhauDb, layPat, quenVault, timTrongVault } from "../lib/vault.mjs";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -48,41 +49,15 @@ export const CRON_BO_QUA = {
 // Credential
 // ---------------------------------------------------------------------------
 
-/**
- * Vault duy nhất là CLAUDE.local.md ở CHECKOUT CHÍNH (Contract §9). Worktree không có
- * bản sao, nên dò: biến IHOMECRM_VAULT → repo hiện tại → checkout chính (thư mục cha
- * của git common dir). Trên CI không có vault: mọi thứ đến từ biến môi trường.
- */
-export function duongDanVault() {
-  const ungVien = [];
-  if (process.env.IHOMECRM_VAULT) ungVien.push(process.env.IHOMECRM_VAULT);
-  ungVien.push(join(repoRoot, "CLAUDE.local.md"));
-  try {
-    const common = execFileSync("git", ["-C", repoRoot, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    ungVien.push(join(dirname(common), "CLAUDE.local.md"));
-  } catch { /* không phải git checkout */ }
-  return ungVien.find((p) => existsSync(p)) ?? null;
-}
+// Vault: scripts/lib/vault.mjs là cửa đọc duy nhất (IHOMECRM_VAULT → repo → checkout
+// chính). Giữ hai export cũ để mã đang import từ đây không phải đổi.
+export { docVault, duongDanVault };
 
-let _vault;
-export function docVault() {
-  if (_vault !== undefined) return _vault;
-  const p = duongDanVault();
-  _vault = p ? readFileSync(p, "utf8") : "";
-  return _vault;
-}
-
-function tuVault(re) {
-  const m = docVault().match(re);
-  return m ? m[1] : null;
-}
+const tuVault = (re) => timTrongVault(re);
 
 export function credential() {
-  const pat = process.env.SUPABASE_PAT || tuVault(/(sbp_[A-Za-z0-9]+)/);
-  const prodDbPassword = process.env.SUPABASE_DB_PASSWORD || readPoolerPassword(docVault());
+  const pat = layPat({ bien: ["SUPABASE_PAT"] });
+  const prodDbPassword = layMatKhauDb();
   const testRef = process.env.TEST_SUPABASE_REF || tuVault(/^TEST_SUPABASE_REF=([a-z0-9]{20})\s*$/m);
   const testDbPassword = process.env.TEST_SUPABASE_DB_PASSWORD || tuVault(/^TEST_SUPABASE_DB_PASSWORD=(\S+)\s*$/m);
   // Project TEST do tài khoản khác tạo ⇒ PAT production không thấy nó (403). PAT riêng
@@ -100,7 +75,7 @@ export function credential() {
   if (!passwordSeed && vaultPath && !process.env.CI) {
     passwordSeed = randomBytes(32).toString("base64url");
     appendFileSync(vaultPath, `\nTEST_ENV_PASSWORD_SEED=${passwordSeed}\n`);
-    _vault = undefined;
+    quenVault();
   }
   const thieu = [];
   if (!pat) thieu.push("SUPABASE_PAT");

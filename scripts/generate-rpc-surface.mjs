@@ -30,6 +30,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { layPat } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const DUONG_DAN = join("contracts", "surfaces", "rpc-surface.json");
@@ -38,12 +39,7 @@ export const DUONG_DAN = join("contracts", "surfaces", "rpc-surface.json");
 const SCHEMA_PHOI = ["public", "api"];
 
 export function pat() {
-  if (process.env.SUPABASE_PAT) return process.env.SUPABASE_PAT;
-  try {
-    return readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8").match(/sbp_[a-f0-9]+/)?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  return layPat({ bien: ["SUPABASE_PAT"] });
 }
 
 export async function hoiCatalog(sql) {

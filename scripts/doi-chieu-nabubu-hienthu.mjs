@@ -5,10 +5,11 @@
 //   - YYYY-MM-DD: ngày chốt — chỉ lấy phiếu web đến hết ngày này (mặc định: hôm nay)
 // Kỳ đối chiếu tự xác định = sau lần "Bàn giao tiền mặt" gần nhất trong sổ Hiển Thu.
 // PAT đọc từ env SUPABASE_PAT hoặc CLAUDE.local.md (không in ra console).
-import { readFileSync, copyFileSync, mkdtempSync } from 'node:fs';
+import { copyFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import XLSX from 'xlsx';
+import { layPat } from './lib/vault.mjs';
 
 const REF = 'tryymsxyyckgbrmmvozx';
 const HIENTHU_ID = 'dc45114c-734f-45aa-9946-bed05e0c9051'; // sổ quỹ Hiển Thu (TK000031)
@@ -17,14 +18,7 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const num = (v) => (typeof v === 'number' ? v : 0);
 
 // ===== PAT =====
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md)'); process.exit(1); }
 async function q(query) {
   const res = await fetch(`https://api.supabase.com/v1/projects/${REF}/database/query`, {

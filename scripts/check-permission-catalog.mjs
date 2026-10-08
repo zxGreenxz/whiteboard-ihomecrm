@@ -17,16 +17,13 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { permissionLoaderPath } from './lib/permission-catalog-loader.mjs';
+import { layPat } from './lib/vault.mjs';
 
 const root = new URL('..', import.meta.url);
 const repoRoot = fileURLToPath(root);
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    pat = readFileSync(new URL('CLAUDE.local.md', root), 'utf8').match(/sbp_[a-f0-9]+/)?.[0];
-  } catch { /* không có file cục bộ — CI truyền qua env */ }
-}
+// Không có vault cục bộ (CI) thì PAT đến qua env.
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) {
   console.error('=== ⚠ KHÔNG KIỂM ĐƯỢC — KHÔNG PHẢI PASS ===');
   console.error('  Thiếu SUPABASE_PAT (env) hoặc CLAUDE.local.md.');

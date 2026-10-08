@@ -30,6 +30,7 @@
 // Dùng: node scripts/check-definer-acl.mjs   → exit 1 nếu drift.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { layPat } from './lib/vault.mjs';
 
 const baselinePath = new URL('./definer-acl-baseline.json', import.meta.url);
 
@@ -93,8 +94,7 @@ async function docTrangThaiSong(pat, ref) {
 }
 
 async function main(argv) {
-  const pat = process.env.SUPABASE_PAT
-    || readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8').match(/sbp_[a-f0-9]+/)?.[0];
+  const pat = layPat({ bien: ['SUPABASE_PAT'] });
   if (!pat) { console.error('Không tìm thấy PAT'); return 1; }
   const ref = 'tryymsxyyckgbrmmvozx';
 

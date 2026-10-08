@@ -6,16 +6,9 @@
 //
 // SQL này có bản psql chạy trên đích diễn tập ở kiem-bao-mat-sau-khoi-phuc.mjs
 // — đổi luật ở đây thì đổi cả đó, hai phép kiểm phải cùng một định nghĩa "hở".
-import { readFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch {}
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('Không tìm thấy PAT'); process.exit(1); }
 const ref = 'tryymsxyyckgbrmmvozx';
 

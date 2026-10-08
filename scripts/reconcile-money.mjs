@@ -34,6 +34,7 @@
 // Exit: 0 khớp · 1 lệch · 2 lỗi · 3 inconclusive (thiếu >1000 dòng để chứng minh).
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
+import { docVault } from './lib/vault.mjs';
 
 import { dinhDangTien, GHI_CHU_CI, laLogCongKhai } from './lib/che-so-lieu-ci.mjs';
 
@@ -49,7 +50,7 @@ const readRel = (rel) => {
     return '';
   }
 };
-const local = readRel('../CLAUDE.local.md');
+const local = docVault(); // vault qua helper chung — tìm được checkout chính từ worktree
 const env = readRel('../.env');
 const pick = (src, re) => (src.match(re)?.[1] ?? '').trim();
 

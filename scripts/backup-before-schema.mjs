@@ -26,9 +26,11 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { docMatKhauPooler, layMatKhauDb } from "./lib/vault.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
-const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở transaction mode (6543)
+export const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
+export const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở transaction mode (6543)
 
 /**
  * Bảng chỉ chứa dữ liệu PHÙ DU — bỏ phần DỮ LIỆU, vẫn giữ nguyên CẤU TRÚC.
@@ -99,11 +101,10 @@ export function readProjectRef() {
  * Đọc password pooler từ CLAUDE.local.md.
  *
  * CLAUDE.local.md là nguồn credential DUY NHẤT — cố ý KHÔNG tạo chỗ
- * lưu credential thứ hai.
+ * lưu credential thứ hai. Mẫu nhận dạng thuộc tooling/local-credential-contract.json.
  */
 export function readPoolerPassword(localMd) {
-  const m = localMd.match(/verify pooler login\)[^`]*`([^`]+)`/u);
-  return m ? m[1] : null;
+  return docMatKhauPooler(localMd);
 }
 
 /**
@@ -187,16 +188,9 @@ function main(argv) {
 
   // Worktrees intentionally do not carry a second vault.  CI/automation may
   // pass the already-authorized password through the process environment for
-  // this one invocation; keep the existing vault fallback for the primary
-  // checkout and never write the value to disk or stdout.
-  let localMd = "";
-  try {
-    localMd = readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8");
-  } catch {
-    localMd = "";
-  }
-
-  const password = process.env.SUPABASE_DB_PASSWORD || readPoolerPassword(localMd);
+  // this one invocation; otherwise the shared vault helper finds the primary
+  // checkout's vault. Never write the value to disk or stdout.
+  const password = layMatKhauDb();
   if (!password) {
     console.error("❌ Không tìm thấy password pooler (SUPABASE_DB_PASSWORD hoặc CLAUDE.local.md).");
     return 1;

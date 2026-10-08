@@ -1,16 +1,13 @@
 // Parity check: SQL public.vn_workdays ≡ TS workdaysInMonth trên 24 tháng liên tiếp
 // (DoD S1 — chạy sau mỗi lần sửa calendar ở 1 trong 2 phía).
 // Dùng: node scripts/v5-calendar-parity.mjs
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { layPat } from "./lib/vault.mjs";
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  const local = readFileSync(new URL("../CLAUDE.local.md", import.meta.url), "utf8");
-  pat = local.match(/sbp_[a-f0-9]+/)?.[0];
-}
+const pat = layPat({ bien: ["SUPABASE_PAT"] });
 const ref = "tryymsxyyckgbrmmvozx";
 
 async function sql(query) {

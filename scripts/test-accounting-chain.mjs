@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Run the full accounting chain against the live catalog, then roll everything back.
 import { readFileSync } from "node:fs";
+import { docPatVault } from "./lib/vault.mjs";
 
 const migrationFiles = [
   "supabase/migrations/20260721070000_accounting_rollout_prerequisites.sql",
@@ -20,8 +21,7 @@ const migrationFiles = [
 ];
 
 const projectRef = readFileSync("supabase/.temp/project-ref", "utf8").trim();
-const localConfig = readFileSync("CLAUDE.local.md", "utf8");
-const pat = (localConfig.match(/sbp_[a-z0-9]+/) || [])[0];
+const pat = docPatVault();
 
 if (!pat) {
   console.error("Missing Supabase PAT in CLAUDE.local.md");

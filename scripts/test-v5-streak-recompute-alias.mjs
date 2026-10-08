@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Reapply the alias hotfix, exercise the full attendance path, then rollback.
 import { readFileSync } from "node:fs";
+import { docPatVault } from "./lib/vault.mjs";
 
 const migrationFile =
   "supabase/migrations/20260721150000_v5_streak_recompute_alias_fix.sql";
 const projectRef = readFileSync("supabase/.temp/project-ref", "utf8").trim();
-const localConfig = readFileSync("CLAUDE.local.md", "utf8");
-const pat = (localConfig.match(/sbp_[a-z0-9]+/) || [])[0];
+const pat = docPatVault();
 
 if (!pat) {
   console.error("Missing Supabase PAT in CLAUDE.local.md");

@@ -19,6 +19,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { docMatKhauPooler, docVault } from "./lib/vault.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(repoRoot, "supabase", "baseline");
@@ -64,11 +65,6 @@ const PG_DUMP = ["C:/Program Files/PostgreSQL/17/bin/pg_dump.exe", "pg_dump"].fi
 // ngay sau 8 chữ số nên bỏ sót 84 câu `ALTER INDEX … ATTACH PARTITION`, và
 // baseline vẫn kéo theo partition ngày cũ dù báo "đã loại 84 partition".
 const RUNTIME_PARTITION = /^network_(device|interface)_samples_\d{8}(_[a-z0-9_]+)?$/;
-
-function readPoolerPassword(localMd) {
-  const m = localMd.match(/verify pooler login\)[^`]*`([^`]+)`/u);
-  return m ? m[1] : null;
-}
 
 function projectRef() {
   try {
@@ -141,14 +137,12 @@ function main(argv) {
     console.error("❌ Không tìm thấy pg_dump.");
     return 1;
   }
-  let localMd;
-  try {
-    localMd = readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8");
-  } catch {
+  const localMd = docVault();
+  if (!localMd) {
     console.error("❌ Không đọc được CLAUDE.local.md.");
     return 1;
   }
-  const password = readPoolerPassword(localMd);
+  const password = docMatKhauPooler(localMd);
   if (!password) {
     console.error("❌ Không tìm thấy password pooler trong CLAUDE.local.md.");
     return 1;

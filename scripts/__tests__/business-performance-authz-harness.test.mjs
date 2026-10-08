@@ -10,6 +10,7 @@ import {
   PROD_ORG_ID,
   REQUIRED_CASE_IDS,
 } from "../test-business-performance-authz.mjs";
+import { TEN_VAULT } from "../lib/vault.mjs";
 
 const ACTOR_ID = "11111111-1111-4111-8111-111111111111";
 const DEMO_BUILDING_ID = "22222222-2222-4222-8222-222222222222";
@@ -126,15 +127,17 @@ describe("business-performance authz harness runner", () => {
     expect(PROD_ORG_ID).toBe("aaaa0000-0000-4000-8000-000000000001");
     expect(EXPECTED_PROJECT_REF).toBe("tryymsxyyckgbrmmvozx");
 
+    // PAT giả đúng hình dạng hợp đồng (sbp_ + 40 hex), ghép lúc chạy.
+    const fakePat = "sbp_" + "e".repeat(40);
     const readFile = vi.fn((url) => {
       const path = String(url).replaceAll("\\", "/");
-      if (path.endsWith("CLAUDE.local.md")) return "SUPABASE_PAT=sbp_test_secret";
+      if (path.endsWith(TEN_VAULT)) return `SUPABASE_PAT=${fakePat}`;
       if (path.endsWith("supabase/.temp/project-ref")) return `${EXPECTED_PROJECT_REF}\n`;
       throw new Error(`unexpected read: ${path}`);
     });
 
     expect(loadAdminConfig({ env: {}, readFile })).toEqual({
-      pat: "sbp_test_secret",
+      pat: fakePat,
       projectRef: EXPECTED_PROJECT_REF,
     });
     expect(() =>

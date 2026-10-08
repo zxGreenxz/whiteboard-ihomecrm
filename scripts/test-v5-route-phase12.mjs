@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Compile the route migration against live schema, assert invariants, then rollback.
 import { readFileSync } from "node:fs";
+import { docPatVault } from "./lib/vault.mjs";
 
 const migrationFile =
   "supabase/migrations/20260721140000_v5_route_planning_phase12.sql";
 const liveOnly = process.argv.includes("--live");
 const projectRef = readFileSync("supabase/.temp/project-ref", "utf8").trim();
-const localConfig = readFileSync("CLAUDE.local.md", "utf8");
-const pat = (localConfig.match(/sbp_[a-z0-9]+/) || [])[0];
+const pat = docPatVault();
 
 if (!pat) {
   console.error("Missing Supabase PAT in CLAUDE.local.md");

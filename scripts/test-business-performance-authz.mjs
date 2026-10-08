@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { layPat } from "./lib/vault.mjs";
 
 export const EXPECTED_PROJECT_REF = "tryymsxyyckgbrmmvozx";
 export const DEMO_ORG_ID = "dddd0000-0000-4000-8000-000000000001";
@@ -128,14 +129,13 @@ export function loadAdminConfig({
   env = process.env,
   readFile = readFileSync,
 } = {}) {
-  let pat = env.SUPABASE_PAT?.trim();
-  if (!pat) {
-    const local = readOptionalFile(
-      new URL("../CLAUDE.local.md", import.meta.url),
-      readFile,
-    );
-    pat = local?.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
-  }
+  // Vault qua helper chung (tìm được checkout chính khi chạy trong worktree);
+  // readFile giả lập của test vẫn đi qua được.
+  const pat = layPat({
+    env,
+    bien: ["SUPABASE_PAT"],
+    readFile: readFile === readFileSync ? undefined : readFile,
+  });
   if (!pat) {
     throw new Error(
       "Missing Supabase PAT (set SUPABASE_PAT or configure CLAUDE.local.md)",

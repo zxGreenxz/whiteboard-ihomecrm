@@ -16,16 +16,9 @@
 //   node scripts/check-residence-dossier-rls.mjs
 //
 // Cần PAT (env SUPABASE_PAT hoặc CLAUDE.local.md). Exit 0 đạt · 1 có ca sai · 3 không đo được.
-import { readFileSync } from 'node:fs';
+import { layPat } from './lib/vault.mjs';
 
-let pat = process.env.SUPABASE_PAT;
-if (!pat) {
-  try {
-    const local = readFileSync(new URL('../CLAUDE.local.md', import.meta.url), 'utf8');
-    const m = local.match(/sbp_[a-f0-9]+/);
-    if (m) pat = m[0];
-  } catch { /* không có vault ở checkout này */ }
-}
+let pat = layPat({ bien: ['SUPABASE_PAT'] });
 if (!pat) { console.error('KHÔNG ĐO ĐƯỢC: thiếu PAT (env SUPABASE_PAT hoặc CLAUDE.local.md).'); process.exit(3); }
 
 const ref = 'tryymsxyyckgbrmmvozx';

@@ -9,6 +9,7 @@
 | Project TEST `ihomecrm-test` | Project Supabase riêng; ref trong vault, được thử dữ liệu/schema theo lane |
 
 Mật khẩu TEST riêng; web Preview nhánh `test-env`. Bản sao có dữ liệu/tài khoản/vai trò, không có byte ảnh/file. Thử SQL bằng `npm run test-env:thu-sql -- <file>`.
+Chỉ đọc nhanh: `npm run db:query -- --sql "<select…>" [--env test]` (READ ONLY, 30s, chặn từ khoá ghi); lệnh cần credential chạy qua `npm run with-cred -- <lệnh>` (nạp vault vào env con, không in).
 Không dựng lại clone-org trong production. `sandbox_org_ids()` còn trả org TEST cũ `cccc0000-0000-4000-8000-000000000001` đã xoá; tới khi gỡ helper, bảng mới có `organization_id` cần policy `<bảng>_hide_sandbox_admin`, bọc phép so bằng `COALESCE(…, false)` để xử lý NULL.
 
 Production có hai org (THẬT, DEMO) dùng chung database. Môi trường TEST là project Supabase

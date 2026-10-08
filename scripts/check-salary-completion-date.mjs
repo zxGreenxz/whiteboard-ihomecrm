@@ -20,9 +20,10 @@
  * Exit 1 nếu bất biến bị phá.
  */
 import { readFileSync } from "node:fs";
+import { docPatVault } from "./lib/vault.mjs";
 
 const REF = readFileSync("supabase/.temp/project-ref", "utf8").trim();
-const PAT = (readFileSync("CLAUDE.local.md", "utf8").match(/sbp_[a-z0-9]+/) || [])[0];
+const PAT = docPatVault();
 if (!PAT) {
   console.error("❌ Không đọc được Supabase PAT từ CLAUDE.local.md");
   process.exit(1);

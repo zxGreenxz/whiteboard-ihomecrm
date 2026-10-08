@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { layPat } from "./lib/vault.mjs";
 
 export const ACCOUNTING_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260721070000_accounting_rollout_prerequisites.sql",
@@ -145,14 +146,17 @@ export function loadSupabaseAdminConfig({
   env = process.env,
   readFile = readFileSync,
 } = {}) {
-  let pat = env.SUPABASE_PAT?.trim();
-  if (!pat) {
-    const localConfig = readOptionalFile(
-      new URL("../CLAUDE.local.md", import.meta.url),
-      readFile,
-    );
-    pat = localConfig?.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
-  }
+  // Vault qua helper chung (tìm được checkout chính khi chạy trong worktree);
+  // readFile giả lập của test vẫn đi qua được. IHOMECRM_SECRET_FILE (file PAT riêng
+  // của các harness V5) chỉ có nghĩa ở loader này: nó thay vault khi đọc PAT.
+  const envVault = env.IHOMECRM_SECRET_FILE && !env.IHOMECRM_VAULT
+    ? { ...env, IHOMECRM_VAULT: env.IHOMECRM_SECRET_FILE }
+    : env;
+  const pat = layPat({
+    env: envVault,
+    bien: ["SUPABASE_PAT"],
+    readFile: readFile === readFileSync ? undefined : readFile,
+  });
   if (!pat) {
     throw new Error(
       "Missing Supabase PAT (set SUPABASE_PAT or configure CLAUDE.local.md)",
