@@ -14369,6 +14369,7 @@ export type Database = {
       personal_transactions: {
         Row: {
           amount: number
+          attachment_paths: string[]
           category: string | null
           category_id: string | null
           created_at: string
@@ -14385,6 +14386,7 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          attachment_paths?: string[]
           category?: string | null
           category_id?: string | null
           created_at?: string
@@ -14401,6 +14403,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          attachment_paths?: string[]
           category?: string | null
           category_id?: string | null
           created_at?: string

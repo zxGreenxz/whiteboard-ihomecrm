@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-07T15:53:19.209Z",
+  "generatedAt": "2026-10-08T03:13:10.070Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 659,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11109,6 +11109,20 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-07T15:52:19.290Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261008025958_contract_meter_boundary_final_reading_sync.sql",
+      "version": "20261008025958",
+      "name": "contract_meter_boundary_final_reading_sync",
+      "scheme": "timestamp14",
+      "sha256": "abd64643e1ac0bad7424bb13e2b45f6373ff3a7a83629ad269419ed2bc08e1e0",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.sync_move_out_boundary_from_final_reading_v1",
+        "function:app_private.sync_move_out_boundary_on_exit_finalized_v1",
+        "trigger:public.contract_exit_cases.sync_move_out_boundary_on_finalize"
       ]
     },
     {

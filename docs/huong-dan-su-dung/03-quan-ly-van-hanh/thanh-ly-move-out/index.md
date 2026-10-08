@@ -81,7 +81,7 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 1. Hợp đồng ở **Đã thanh lý**, đúng ngày trả thực tế; khối **Hồ sơ trả phòng** ghi **Đã chốt quyết toán**; phòng thực sự trống.
 2. Hoá đơn còn nợ và hoá đơn thanh lý có trạng thái và số dư đúng.
 3. Phiếu hoàn cọc / trả khách tồn tại đúng một lần, đúng số, có **nội dung thanh lý**; đã chọn sổ quỹ, đã duyệt và đã ghi sổ.
-4. Chỉ số bàn giao: nếu đã chọn bổ sung sau, hồ sơ nằm trong khối **Chờ bổ sung chỉ số bàn giao** (tab Chờ quyết toán) — bấm **Mở mốc bàn giao** để nhập.
+4. Chỉ số bàn giao: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán, mốc trả phòng tự lấy số đó. Hồ sơ đã quyết toán mà chưa có số chốt nằm trong khối **Chỉ số trả phòng cần xử lý** (tab Chờ quyết toán) — bấm **Mở hồ sơ trả phòng** rồi **Bổ sung / sửa chỉ số**. Bỏ cọc không cần số chốt.
 5. Credit còn treo (nếu cảnh báo có nhắc) được xử lý riêng.
 
 ## Các tính năng khác trên màn hình
@@ -108,7 +108,7 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 | **Tiền cọc hoàn trả = 0** dù hợp đồng ghi cọc | Khách chưa thực nộp cọc (đã thu 0 đ). Hệ thống không hoàn một nghĩa vụ cọc khách chưa nộp. |
 | **Tiền hoàn trả nhỏ hơn** tổng cọc | Đúng thiết kế: cọc cấn vào công nợ + thu thêm trước, chỉ phần dư mới hoàn khách. |
 | Khách có credit nhưng không được tính | Ô credit mặc định 0. Nhập số muốn cấn (tối đa bằng credit); phần không nhập vẫn treo trên hợp đồng và hộp xác nhận sẽ nhắc. |
-| Chưa biết chỉ số điện cuối | Giữ tích **bổ sung sau** khi ghi nhận trả phòng; bổ sung ở khối **Chờ bổ sung chỉ số bàn giao**. Tiền điện cuối kỳ có thể nhập ở khu Thu thêm nếu đã biết số. |
+| Chưa biết chỉ số điện cuối | Giữ tích **bổ sung sau** và chọn **Trả phòng, quyết toán sau**. Khi quyết toán, nhập số cuối ở ô **Tiền điện (chốt số)** (khu Thu thêm); mốc trả phòng tự lấy số đó, không nhập lại. |
 | Đổi loại thanh lý khi quyết toán sau | Phải nhập **Lý do đổi loại thanh lý**; loại ban đầu vẫn được giữ để đối soát. |
 | Lỡ thanh lý nhầm | Không thể hoàn tác vì phiếu đã tạo và phòng đã giải phóng. Liên hệ chủ nhà / kế toán; đừng tự sửa lẻ tẻ. |
 

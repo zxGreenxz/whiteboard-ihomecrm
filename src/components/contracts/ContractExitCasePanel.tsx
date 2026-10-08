@@ -42,7 +42,7 @@ export function ContractExitCasePanel({ contract }: { contract: ContractWithRela
     {exitCase.state === 'FINALIZED' && <p className="text-xs text-muted-foreground">Theo dõi tiền khách trả và tiền hoàn trên các chứng từ hiện có của hợp đồng.</p>}
     <Suspense fallback={<LoadingState label="liên kết nhượng" variant="none" />}><TransferPanel exitCase={exitCase} /></Suspense>
     <ContractMeterBoundaryPanel key={contract.id} contractId={contract.id} roomId={exitCase.room_at_handover_id}
-      canEdit={canUse(permissions, 'contracts', 'edit')} />
+      canEdit={canUse(permissions, 'contracts', 'edit')} exit={exitCase} />
     {open && exitCase.state === 'PENDING' && <TerminateDialog open={open} onOpenChange={setOpen} contract={contract} exitCase={exitCase} />}
   </section>;
 }

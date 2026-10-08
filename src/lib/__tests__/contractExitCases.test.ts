@@ -90,6 +90,11 @@ describe('contract return request boundary', () => {
     expect(invoke).toHaveBeenLastCalledWith('get_contract_exit_case_v1',{p_organization_id:contractId,p_case_id:caseId});
     await expect(getContractExitCase(invoke,caseId,'')).rejects.toThrow();
   });
+  it('"Tất cả toà nhà" (mảng rỗng) gửi NULL — mảng rỗng làm SQL lọc ANY(\'{}\') ra 0 hồ sơ',async()=>{
+    const invoke=vi.fn<ContractExitRpcInvoker>().mockResolvedValue({data:{items:[],total:0,limit:10,offset:0},error:null});
+    await listContractExitCases(invoke,{buildingIds:[],state:'PENDING',limit:10,offset:0},contractId);
+    expect(invoke).toHaveBeenCalledWith('list_contract_exit_cases_v1',expect.objectContaining({p_building_ids:null,p_state:'PENDING'}));
+  });
   it('gives a concise actionable CAS/permission error and retains unknown canonical messages',()=>{
     expect(contractExitErrorMessage({code:'PT409'})).toContain('tải lại');
     expect(contractExitErrorMessage({code:'40001'})).toContain('tải lại');

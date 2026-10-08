@@ -24,7 +24,7 @@ export function ContractWorkspaceTabList({ buildingIds }: { buildingIds: string[
   const draftTitle = drafts.isError ? 'Không tải được bản nháp chưa ký' : 'Bản nháp chưa ký';
   // Ô "Chỉ số" chỉ hiện khi có hồ sơ chờ chỉ số (hoặc đọc lỗi) — đang chờ thì chưa hiện.
   const meterBadge = meters.isError ? '!' : !meters.data ? null : meters.data.total > 0 ? String(meters.data.total) : null;
-  const meterTitle = meters.isError ? 'Không tải được hồ sơ chờ chỉ số' : 'Chờ bổ sung / kiểm tra chỉ số bàn giao';
+  const meterTitle = meters.isError ? 'Không tải được hồ sơ chờ chỉ số' : 'Chỉ số trả phòng cần xử lý';
 
   return <TabsList aria-label="Các mục hợp đồng" className="h-auto max-w-full flex-wrap justify-start gap-1">
     <TabsTrigger value="contracts" className="h-8 px-2.5 text-xs sm:text-sm">Danh sách</TabsTrigger>

@@ -5,7 +5,10 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 
 const pageSchema=z.object({items:z.array(z.object({id:z.string().uuid(),contract_id:z.string().uuid(),
   contract_number:z.string().nullable(),building_name:z.string(),room_name:z.string(),effective_on:z.string(),
-  state:z.enum(['MISSING','REVIEW'])})),total:z.number().int().nonnegative(),limit:z.number().int(),offset:z.number().int()});
+  state:z.enum(['MISSING','REVIEW']),
+  exit_state:z.enum(['PENDING','FINALIZED']).nullable().optional(),
+  exit_kind:z.enum(['NATURAL_EXPIRY','EARLY_RETURN','FORFEIT']).nullable().optional()})),
+  total:z.number().int().nonnegative(),limit:z.number().int(),offset:z.number().int()});
 export function useContractMeterFollowups(buildingIds:string[],page:number){
   const {selectedOrganizationId}=useOrganization();
   return useQuery({queryKey:['contract-meter-followups',selectedOrganizationId,[...buildingIds].sort(),page],

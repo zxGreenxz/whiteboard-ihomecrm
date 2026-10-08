@@ -299,10 +299,15 @@ describe('actual return / old canonical settlement SQL seam',()=>{
   it('pairs the actual exit and meter migrations: A missing still returns, B requires its own verified reading',async()=>{
     await db.exec(`ALTER TABLE contracts ADD COLUMN created_at timestamptz DEFAULT now();
       CREATE TABLE meters(id uuid PRIMARY KEY,organization_id uuid,room_id uuid,building_id uuid,status text,deleted_at timestamptz,code text,meter_type text);
-      CREATE TABLE meter_readings(id uuid PRIMARY KEY,meter_id uuid,contract_id uuid,organization_id uuid,room_id uuid,building_id uuid);
-      CREATE TABLE invoices(id uuid PRIMARY KEY,organization_id uuid,contract_id uuid,billing_month text,status text,approved_at timestamptz,deleted_at timestamptz);`);
+      CREATE TABLE meter_readings(id uuid PRIMARY KEY,meter_id uuid,contract_id uuid,organization_id uuid,room_id uuid,building_id uuid,
+        reading_code text,reading_date date,current_reading numeric,status text,deleted_at timestamptz,created_at timestamptz DEFAULT now());
+      CREATE TABLE invoices(id uuid PRIMARY KEY,organization_id uuid,contract_id uuid,billing_month text,status text,approved_at timestamptz,deleted_at timestamptz);
+      CREATE FUNCTION app_private.org_timezone_v1(uuid) RETURNS text LANGUAGE sql AS $$ SELECT 'Asia/Ho_Chi_Minh' $$;`);
     const meterMigration=readFileSync('supabase/migrations/20260928023413_contract_meter_boundaries.sql','utf8');
     await db.exec(meterMigration);await db.exec(meterMigration);
+    // Định nghĩa đang sống của record_contract_meter_boundary_set_v1 (đồng bộ mốc từ số chốt khi quyết toán).
+    const liveMeterMigration=readFileSync('supabase/migrations/20261008025958_contract_meter_boundary_final_reading_sync.sql','utf8');
+    await db.exec(liveMeterMigration);await db.exec(liveMeterMigration);
     await scenario(async()=>{
       const meter='00000000-0000-4000-8000-000000000099';
       const next='00000000-0000-4000-8000-000000000098';
