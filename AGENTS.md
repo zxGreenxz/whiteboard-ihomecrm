@@ -8,6 +8,8 @@ Không tự đọc audit/plan lịch sử hoặc mọi liên kết trong index.
 - Dùng công cụ sẵn có; thiếu browser thì ghi phần UI/E2E chưa kiểm.
 - Tra source/GitNexus theo [Contract §12](docs/engineering/PROJECT_CONTRACT.md#12-tra-cứu-mã-nguồn-và-gitnexus).
 - Chọn kiểm, review và phát hành theo Contract; kết quả đầu vào không đổi được dùng lại.
+- Chỉ đọc skill liên quan; Contract sở hữu phép kiểm/review, không thêm vòng kiểm từ skill cá nhân.
+- Sandbox chặn push/production thì dừng, báo đúng lệnh bị chặn; không lách.
 
 Trailer commit:
 

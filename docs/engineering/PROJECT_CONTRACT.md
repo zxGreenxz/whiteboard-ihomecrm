@@ -20,8 +20,8 @@ Trước thao tác dữ liệu/quyền, đọc [DATA_ENVIRONMENTS](DATA_ENVIRONM
 - Kiểm status, giữ WIP; việc độc lập dùng git worktree. Chỉ stage file cụ thể; cấm `git add -A` / `git add .`.
 - Fetch/rebase `origin/main` trước tích hợp; conflict source sửa tay, file máy sinh lấy bản của main rồi chạy lại generator.
 - Commit nêu lý do/kiểm chứng; trailer theo adapter. Push `git push origin HEAD:main` sau kiểm ancestor; không force-push né conflict.
-- Tiền, quyền, lịch sử migration cần draft PR. Theo `crossReview`: review một lần trên diff cuối và receipts, không chạy lại gate; sửa xong chỉ re-review phần sửa.
-- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng. Không push trực tiếp bỏ lane.
+- Tiền, quyền, lịch sử migration và bộ kiểm (workflow, gate, promote, risk-map) cần draft PR. Theo `crossReview`: review một lần trên diff cuối và receipts, ghi base/head/kết luận vào PR, không chạy lại gate; sửa xong chỉ re-review phần sửa.
+- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng (tự chờ Vercel; kiểm lại bằng `npm run release:verify`). Không push trực tiếp bỏ lane.
 - Đổi phát hành phải kiểm `npm run check:external-controls`. Gate đỏ/skip/thiếu bằng chứng không phải đạt; rollback app bằng deployment đã xác minh, không tự rollback schema phá huỷ.
 
 ## 4. Ghi schema production và backup
@@ -53,13 +53,13 @@ Module mới strict-clean; không tăng baseline né lỗi. Chi tiết auth/dead
 
 ## 9. Credential
 
-Vault duy nhất `CLAUDE.local.md` ở checkout chính, bị ignore. Chỉ nạp khóa cần dùng vào process env, không sao chép/in/commit secret; VITE công khai không chứa secret.
+Vault duy nhất `CLAUDE.local.md` ở checkout chính, bị ignore. Chỉ nạp khóa cần dùng vào process env (`npm run with-cred -- <lệnh>`; đọc DB bằng `npm run db:query`), không sao chép/in/commit secret; VITE công khai không chứa secret. Repo public: không đưa số tiền production hay tài khoản thật vào code, docs, test, log.
 Tên khóa ở [local-credential-contract](../../tooling/local-credential-contract.json); preflight local chỉ khi thao tác cần, không chạy vault preflight trên CI. Thiếu/hết hạn thì báo đúng khả năng bị chặn; nghi lộ phải rotate.
 
 ## 10. Hoàn tất thay đổi
 
 1. Stage đúng file sau focused tests; xem `npm run gate:truoc-push -- --plan` để biết scope, lệnh và lý do chọn. Mặc định đọc staged diff; fallback bảo thủ khi không phân loại được.
-2. Chạy `npm run gate:truoc-push` cho kế hoạch đó; `--full` chỉ khi cần toàn bộ active gates. Không chạy riêng typecheck/strict/lint rồi lặp lại cùng phép kiểm trong gate.
+2. Chạy `npm run gate:truoc-push` cho kế hoạch đó; `--full` chỉ khi cần toàn bộ active gates. Không chạy riêng typecheck/strict/lint rồi lặp lại cùng phép kiểm trong gate. Chờ CI bằng `npm run ci:wait -- --sha <sha>`, không vòng sleep/dispatch.
 3. Cửa đỏ: sửa và chạy đúng kiểm bị ảnh hưởng. Giữ receipt xanh của đầu vào không đổi; chỉ kiểm lại khi source/dependency thay, có lỗi mới hoặc nghi vấn cụ thể. Không mặc định full rerun.
 4. Báo kết quả, phạm vi, phần chưa kiểm; review/phát hành theo §3. Gate lock thuộc worktree: không xoá lock của tiến trình sống; xử lý untracked của mình trước stage.
 
