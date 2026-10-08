@@ -81,7 +81,7 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 1. Hợp đồng ở **Đã thanh lý**, đúng ngày trả thực tế; khối **Hồ sơ trả phòng** ghi **Đã chốt quyết toán**; phòng thực sự trống.
 2. Hoá đơn còn nợ và hoá đơn thanh lý có trạng thái và số dư đúng.
 3. Phiếu hoàn cọc / trả khách tồn tại đúng một lần, đúng số, có **nội dung thanh lý**; đã chọn sổ quỹ, đã duyệt và đã ghi sổ.
-4. Chỉ số bàn giao: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán, mốc trả phòng tự lấy số đó. Hồ sơ đã quyết toán mà chưa có số chốt nằm trong khối **Chỉ số trả phòng cần xử lý** (tab Chờ quyết toán) — bấm **Mở hồ sơ trả phòng** rồi **Bổ sung / sửa chỉ số**. Bỏ cọc không cần số chốt.
+4. Chỉ số bàn giao: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán, mốc trả phòng tự lấy số đó. Hồ sơ đã quyết toán mà chưa có số chốt nằm trong khối **Chờ bổ sung chỉ số bàn giao** (tab Chờ quyết toán) — bấm **Mở mốc bàn giao** rồi **Bổ sung / sửa chỉ số**. Bỏ cọc không cần số chốt.
 5. Credit còn treo (nếu cảnh báo có nhắc) được xử lý riêng.
 
 ## Các tính năng khác trên màn hình

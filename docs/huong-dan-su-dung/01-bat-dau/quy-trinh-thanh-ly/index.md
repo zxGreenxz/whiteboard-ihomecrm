@@ -79,7 +79,7 @@ Từ 23/09/2026, đường hoàn khách thứ hai (lập phiếu hoàn cọc ri�
 1. Hợp đồng **Đã thanh lý** đúng ngày trả thực tế; khối **Hồ sơ trả phòng** ghi **Đã chốt quyết toán**; phòng thực sự trống.
 2. Hoá đơn còn nợ: đã quyết toán (rời phòng) hoặc đã huỷ phần nợ (bỏ cọc); hoá đơn thanh lý đúng số và trạng thái.
 3. Rời phòng: phiếu **Trả khách thanh lý** tồn tại đúng một lần, đúng số, có nội dung thanh lý, đã chọn sổ, đã duyệt và đã ghi sổ. Bỏ cọc: phiếu **Doanh thu bỏ cọc** đã duyệt; hoá đơn **Thu thêm** (nếu có) đang chờ thu ở [Thu tiền tại hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/).
-4. Chỉ số: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán; mốc trả phòng tự lấy số đó. Nếu đã quyết toán mà chưa có số chốt, hồ sơ nằm trong khối **Chỉ số trả phòng cần xử lý** (tab Chờ quyết toán) — bấm **Mở hồ sơ trả phòng** để bổ sung. Bỏ cọc không cần số chốt.
+4. Chỉ số: số điện cuối nhập ở ô **Tiền điện (chốt số)** lúc quyết toán; mốc trả phòng tự lấy số đó. Nếu đã quyết toán mà chưa có số chốt, hồ sơ nằm trong khối **Chờ bổ sung chỉ số bàn giao** (tab Chờ quyết toán) — bấm **Mở mốc bàn giao** để bổ sung. Bỏ cọc không cần số chốt.
 5. Tab **Hoàn / Bỏ cọc** của **Sổ cọc đầy đủ** (màn Đặt cọc) có dòng của hợp đồng; cột **Tiền đã ra khỏi két** chỉ ghi đã hoàn khi phiếu hoàn đã duyệt và đã vào sổ.
 
 ## So sánh hai kịch bản

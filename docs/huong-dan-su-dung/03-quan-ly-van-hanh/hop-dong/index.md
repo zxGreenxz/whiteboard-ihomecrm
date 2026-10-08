@@ -84,7 +84,7 @@ Trên mỗi dòng: badge trạng thái (**Còn hạn** / **Sắp hết hạn** /
 **Bước 9**: Theo dõi báo trả phòng và quyết toán:
 
 - Đầu tab **Danh sách**, khối **Cần xác nhận ngày trả phòng** liệt kê hợp đồng đã đến ngày khách hẹn trả: **Xem hợp đồng** hoặc **Cập nhật ngày trả** (xác nhận thực tế, đổi ngày hoặc hủy báo trả nếu khách ở tiếp).
-- Tab **Chờ quyết toán** liệt kê hồ sơ khách đã trả phòng nhưng chưa quyết toán (chọn **Trả phòng, quyết toán sau** khi thanh lý); bấm **Quyết toán** để mở đúng hồ sơ. Khi có hồ sơ đã quyết toán mà chưa có số điện chốt (hoặc số bổ sung khác số đã tính tiền), tab hiện thêm ô vàng **Chỉ số N** và khối **Chỉ số trả phòng cần xử lý** với nút **Mở hồ sơ trả phòng**. Bỏ cọc không vào khối này.
+- Tab **Chờ quyết toán** liệt kê hồ sơ khách đã trả phòng nhưng chưa quyết toán (chọn **Trả phòng, quyết toán sau** khi thanh lý); bấm **Quyết toán** để mở đúng hồ sơ. Khi có hồ sơ đã quyết toán mà chưa có số điện chốt (hoặc số bổ sung khác số đã tính tiền), tab hiện thêm ô vàng **Chỉ số N** và khối **Chờ bổ sung chỉ số bàn giao** với nút **Mở mốc bàn giao**. Bỏ cọc không vào khối này.
 
 ![Tab Chờ quyết toán trên DEMO: dòng Không có hợp đồng chờ quyết toán](./images/buoc-05-cho-quyet-toan.webp)
 
