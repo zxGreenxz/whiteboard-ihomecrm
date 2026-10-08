@@ -873,27 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261008025958_contract_meter_boundary_final_reading_sync.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261008025958_contract_meter_boundary_final_reading_sync.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.sync_move_out_boundary_from_final_reading_v1(uuid); CREATE OR REPLACE FUNCTION app_private.sync_move_out_boundary_on_exit_finalized_v1(); CREATE TRIGGER sync_move_out_boundary_on_finalize AFTER UPDATE OF state ON public.contract_exit_cases"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 3 object trên — sinh 08/10/2026 ngay sau khi tạo file"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 08/10/2026 — mốc chỉ số trả phòng lấy từ chỉ số chốt (TLY) khi hồ sơ đã quyết toán, khung chờ chỉ giữ việc thật, REVIEW có đường ra; chưa đi qua lane apply — 3 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Sửa theo review chéo PR #143 (chỉ lấy TLY, đòi FINALIZED, luật REVIEW khi phần điện cuối chưa tính). Trên TEST, đưa dữ liệu về trạng thái như production (13 MISSING + 1 VERIFIED) trong giao dịch ROLLBACK rồi chạy HAI lượt: lượt hai không lỗi; 9 mốc thành VERIFIED đúng số chốt TLY, 3 bỏ cọc không chốt + 1 chờ quyết toán giữ MISSING, khung chờ còn 0. E2E bằng hàm thật trên TEST (ROLLBACK): quyết toán ngay, quyết toán sau có chỉ số tháng cùng ngày, quyết toán không nhập điện đều đúng. Test PGlite 16 ca + 21 đột biến đều bị bắt; review chéo vòng 2 APPROVE, sửa thêm ca phòng không có đồng hồ. Sẽ áp qua npm run migrate:forward (agent chạy, có backup) sau review chéo; khi đó provenance chuyển ledger-applied và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "function:app_private.sync_move_out_boundary_from_final_reading_v1",
-        "function:app_private.sync_move_out_boundary_on_exit_finalized_v1",
-        "trigger:public.contract_exit_cases.sync_move_out_boundary_on_finalize"
-      ],
-      "raSoatBoi": "Claude Code — chỉ số bàn giao đồng bộ từ quyết toán 08/10/2026",
-      "sha256": "7ce41fb6ec11c74d53937f271ebd0ec84d62632d3451268d0e4dcc2aaf9d5f38"
     }
   }
 }

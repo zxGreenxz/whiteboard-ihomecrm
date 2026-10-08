@@ -52,7 +52,7 @@ describe('chỉ số lúc trả phòng trong hồ sơ', () => {
     expect(screen.getByText(/chốt khi quyết toán, ngày 28\/09\/2026/)).toBeTruthy();
     expect(screen.queryByText(/đo \d/)).toBeNull();
   });
-  it('REVIEW: nói rõ chưa khớp tiền điện đã tính và chỉ đường đối soát', () => {
+  it('REVIEW: nói rõ chưa khớp số đã tính tiền và chỉ đường đối soát', () => {
     state.set = set({ state: 'REVIEW', readings: [{ id: 'r1', meter_id: meter, meter_code: 'E1', meter_type: 'ELECTRICITY',
       reading: 1890, measured_at: '2026-10-01T03:00:00+00:00', evidence: null }] });
     show({ state: 'FINALIZED', current_kind: 'EARLY_RETURN' });

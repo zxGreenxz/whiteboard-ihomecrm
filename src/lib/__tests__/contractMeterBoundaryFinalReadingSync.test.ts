@@ -196,7 +196,7 @@ describe('đồng bộ khi quyết toán', () => {
   }));
 });
 
-describe('sửa mốc trả phòng: REVIEW khi chưa khớp tiền điện đã tính, có đường ra', () => {
+describe('sửa mốc trả phòng: REVIEW khi chưa khớp số đã tính tiền, có đường ra', () => {
   it('chưa từng chốt số mà đã có hoá đơn ⇒ REVIEW (phần điện cuối chưa tính); đối soát xong ⇒ VERIFIED; khớp số chốt ⇒ VERIFIED; lệch ⇒ REVIEW', () => tx(async () => {
     const s = scene(20);
     await seedScene(s, '2026-10-01');
