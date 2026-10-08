@@ -8,7 +8,7 @@ const METER_CONTRACT_ID = 'e2e00000-0000-4000-8000-000000000001';
 const METER_FOLLOWUP = {
   items: [{ id: 'e2e00000-0000-4000-8000-000000000002', contract_id: METER_CONTRACT_ID,
     contract_number: 'E2E-CHISO', building_name: 'Toà kiểm thử UI', room_name: 'Phòng mẫu',
-    effective_on: '2026-09-28', state: 'MISSING' }],
+    effective_on: '2026-09-28', state: 'MISSING', exit_state: 'FINALIZED', exit_kind: 'EARLY_RETURN' }],
   total: 1, limit: 10, offset: 0,
 };
 const READ_RPC = new Set([
@@ -101,6 +101,12 @@ async function readonlyDemo(page: Page, email: string) {
         meterResponsesMocked++;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(METER_FOLLOWUP) });
       }
+      if (rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ (từ 05/10/2026). Trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const body = request.postDataJSON();
+        if (body?.p_value !== DEMO_ORG) return block();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ [body.p_key]: body.p_value }) });
+      }
       if (rpc && READ_RPC.has(rpc) && method === 'POST') {
         const body = request.postDataJSON();
         if (body?.p_organization_id && body.p_organization_id !== DEMO_ORG) return block();
@@ -165,7 +171,7 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(list).toHaveAttribute('data-state', 'active');
     await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Hợp đồng nháp' })).toHaveCount(0);
-    const meterRegion = page.getByRole('region', { name: 'Chờ bổ sung chỉ số bàn giao' });
+    const meterRegion = page.getByRole('region', { name: 'Chỉ số trả phòng cần xử lý' });
     await expect(meterRegion).toHaveCount(0);
     await expect(exits).toContainText('Chỉ số 1');
     // Khối xám từ 02/10/2026; câu chờ chỉ còn sr-only trong role="status".
@@ -180,8 +186,9 @@ for (const role of ['chunha', 'quanly'] as const) {
     await expect(search).toBeDisabled();
     await expect(page.getByRole('region', { name: 'Hợp đồng nháp' })).toHaveCount(0);
     await expect(meterRegion).toBeVisible();
-    await expect(meterRegion.getByRole('heading', { name: 'Chờ bổ sung / kiểm tra chỉ số (1)' })).toBeVisible();
-    await expect(meterRegion.getByRole('link', { name: 'Mở mốc bàn giao' })).toHaveAttribute('href', `/contracts/${METER_CONTRACT_ID}`);
+    await expect(meterRegion.getByRole('heading', { name: 'Chỉ số trả phòng cần xử lý (1)' })).toBeVisible();
+    await expect(meterRegion.getByText('28/09/2026 · Đã quyết toán, chưa có số điện chốt', { exact: true })).toBeVisible();
+    await expect(meterRegion.getByRole('link', { name: 'Mở hồ sơ trả phòng' })).toHaveAttribute('href', `/contracts/${METER_CONTRACT_ID}`);
     await expect(page.getByText('Đang tải hồ sơ chờ quyết toán…')).toHaveCount(0);
     await expect(page.getByRole('alert').filter({ hasText: 'Không tải được hồ sơ chờ quyết toán' })).toHaveCount(0);
     if (exitCount) await expect(page.getByRole('region', { name: 'Hồ sơ chờ quyết toán' })).toBeVisible();
