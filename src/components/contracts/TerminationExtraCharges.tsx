@@ -96,7 +96,8 @@ export function TerminationExtraCharges({
   // hồ điện duy nhất đã ngừng: vẫn lấy số đầu từ đồng hồ đó để tiền điện không tính từ số nhận phòng,
   // nhưng không gửi meter_id (không ghi số chốt vào đồng hồ đã ngừng).
   const [meterId, setMeterId] = useState<string | null>(null);
-  const [meterLookup, setMeterLookup] = useState<"loading" | "ready" | "error">("loading");
+  // error: không đọc được đồng hồ (không ghi số chốt); reading-error: có đồng hồ nhưng không đọc được số đầu.
+  const [meterLookup, setMeterLookup] = useState<"loading" | "ready" | "error" | "reading-error">("loading");
   const [previousReading, setPreviousReading] = useState<number>(0);
   useEffect(() => {
     const roomId = contract.room_id;
@@ -134,7 +135,7 @@ export function TerminationExtraCharges({
           .order("reading_date", { ascending: false })
           .limit(1);
         if (cancelled) return;
-        if (readingsError) { setPreviousReading(Number(contract.initial_electricity_reading) || 0); setMeterLookup("error"); return; }
+        if (readingsError) { setPreviousReading(Number(contract.initial_electricity_reading) || 0); setMeterLookup("reading-error"); return; }
         const prev = Number((readings as { current_reading: number | string | null }[] | null)?.[0]?.current_reading);
         setPreviousReading(
           Number.isFinite(prev) && prev > 0
@@ -178,6 +179,9 @@ export function TerminationExtraCharges({
   // Server chỉ ghi số chốt (và tự khép mốc trả phòng) khi có dòng tiền điện > 0 gắn đồng hồ đang chạy.
   const electricReadingNote = meterLookup === "error"
     ? "Không tải được đồng hồ điện: kiểm tra lại số đầu; số cuối sẽ không ghi làm chỉ số lúc trả phòng."
+    : meterLookup === "reading-error"
+    ? (meterId ? "Không tải được số đầu: kiểm tra lại số đầu; số cuối vẫn ghi làm chỉ số lúc trả phòng."
+      : "Không tải được số đầu: kiểm tra lại số đầu; số cuối không ghi làm chỉ số lúc trả phòng.")
     : !meterId
     ? "Phòng chưa có đồng hồ điện đang dùng: số cuối không ghi làm chỉ số lúc trả phòng."
     : currentReading != null && electricAmount <= 0
@@ -359,8 +363,8 @@ export function TerminationExtraCharges({
         {/* Chỗ DUY NHẤT nhập số điện cuối khi thanh lý (chủ chốt 08/10/2026): server ghi số chốt và mốc
             trả phòng từ dòng tiền điện. Không có dòng tiền điện thì số không được ghi — nói thật điều đó. */}
         {/* Đang tìm đồng hồ: khối xám, không chữ (chủ chốt 02/10/2026). */}
-        <p className={`-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs ${meterLookup === "error" ? "text-destructive" : "text-muted-foreground"}`}
-          role={meterLookup === "error" ? "alert" : undefined}>
+        <p className={`-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs ${meterLookup === "error" || meterLookup === "reading-error" ? "text-destructive" : "text-muted-foreground"}`}
+          role={meterLookup === "error" || meterLookup === "reading-error" ? "alert" : undefined}>
           {meterLookup === "loading" ? <InlineSkeleton label="đồng hồ điện của phòng" width="16rem" /> : electricReadingNote}
         </p>
         </div>

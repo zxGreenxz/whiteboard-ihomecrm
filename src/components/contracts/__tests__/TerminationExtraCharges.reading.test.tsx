@@ -5,7 +5,8 @@ import type { ContractWithRelations } from '@/types/contract';
 import type { ExtraChargeItem } from '@/lib/contractValidation';
 
 const db = vi.hoisted(() => ({ meters: [] as { id: string; status: string | null }[], lastReading: 0, readingMeter: '',
-  metersError: null as null | { message: string }, hold: false, release: null as null | (() => void) }));
+  metersError: null as null | { message: string }, readingsError: null as null | { message: string },
+  hold: false, release: null as null | (() => void) }));
 vi.mock('@/integrations/supabase/client', () => {
   const builder = (table: string) => {
     const filters: Record<string, unknown> = {};
@@ -20,6 +21,7 @@ vi.mock('@/integrations/supabase/client', () => {
           return answer();
         }
         db.readingMeter = String(filters.meter_id);
+        if (db.readingsError) return resolve({ data: null, error: db.readingsError });
         return resolve({ data: [{ current_reading: db.lastReading }], error: null });
       },
     };
@@ -39,7 +41,7 @@ const show = () => render(<TerminationExtraCharges contract={contract} chargeDat
 const electric = () => items.find(item => item.kind === 'ELECTRIC');
 
 beforeEach(() => { items = []; db.meters = [{ id: 'm-active', status: 'ACTIVE' }]; db.lastReading = 5000; db.readingMeter = '';
-  db.metersError = null; db.hold = false; db.release = null; });
+  db.metersError = null; db.readingsError = null; db.hold = false; db.release = null; });
 afterEach(cleanup);
 
 describe('Tiền điện khi thanh lý: dòng nhắc chỉ hứa ghi số khi thật sự có dòng tiền điện', () => {
@@ -73,6 +75,14 @@ describe('Tiền điện khi thanh lý: dòng nhắc chỉ hứa ghi số khi th
     expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('100');
     fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '150' } });
     await waitFor(() => expect(electric()).toMatchObject({ meter_id: null, current_reading: 150 }));
+  });
+  it('có đồng hồ đang chạy nhưng lỗi đọc số đầu: báo kiểm tra số đầu, số cuối VẪN ghi (gửi mã đồng hồ)', async () => {
+    db.readingsError = { message: 'network' };
+    show();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Không tải được số đầu.*số cuối vẫn ghi/));
+    expect((screen.getByTitle('Số điện đầu') as HTMLInputElement).value).toBe('100');
+    fireEvent.change(screen.getByTitle('Số điện cuối'), { target: { value: '150' } });
+    await waitFor(() => expect(electric()).toMatchObject({ meter_id: 'm-active', current_reading: 150 }));
   });
   it('đồng hồ điện duy nhất đã ngừng ⇒ số đầu vẫn lấy từ đồng hồ đó, không gửi mã đồng hồ, nói rõ không ghi', async () => {
     db.meters = [{ id: 'm-gone', status: 'REMOVED' }, { id: 'm-old', status: 'INACTIVE' }];
