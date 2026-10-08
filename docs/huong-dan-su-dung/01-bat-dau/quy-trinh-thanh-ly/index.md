@@ -20,7 +20,7 @@ Khi một hợp đồng kết thúc — hết hạn, trả trước hạn hay kh
 - Quyền **Hợp đồng => Thanh lý** (`contracts.terminate`) trên toà của hợp đồng — nút **Đăng ký chuyển đi** và **Thanh lý** chỉ hiện khi có quyền này. `contracts.edit` không thay được quyền thanh lý.
 - Hợp đồng đang hiệu lực (hoặc đã có hồ sơ ở tab **Chờ quyết toán**).
 - Tiền cọc đã thu nằm trên các phiếu cọc của hợp đồng — kiểm ở khối **Tài chính** của [Trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) và màn [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/).
-- Nên có **chỉ số điện/nước khi bàn giao**; chưa có thì chọn bổ sung sau.
+- Nên có **số điện cuối** của đồng hồ; số này nhập ở mục **Tiền điện** khi quyết toán (ngay hoặc sau).
 :::
 
 ## Bản đồ thanh lý
@@ -47,7 +47,6 @@ flowchart TD
 - **Ngày khách thực tế trả phòng** (mặc định hôm nay).
 - **Loại thanh lý**: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc** — quyết định kịch bản quyết toán.
 - **Nội dung thanh lý** — bắt buộc, dùng để đối chiếu và in trên phiếu hoàn cọc; có nút **Dùng nội dung mẫu**.
-- **Chỉ số điện, nước khi bàn giao** — mặc định tích **Chưa đủ chỉ số, bổ sung sau. Vẫn ghi nhận khách đã trả phòng.**; bỏ tích để nhập số đã kiểm tra trên từng đồng hồ và **Thời điểm đo thực tế**.
 
 **Bước 3**: **Chọn quyết toán ngay hay để sau.**
 
@@ -123,7 +122,7 @@ Số quyết toán = (Cọc hoàn trả + Tiền thừa áp vào + Hoàn lại k
 | Tình huống | Nguyên nhân & cách xử lý |
 | --- | --- |
 | Không thấy nút **Thanh lý** / **Đăng ký chuyển đi** | Thiếu quyền `contracts.terminate`, hoặc hợp đồng đã **Thanh lý**. |
-| Nút **Trả phòng, quyết toán sau** / **Tiếp tục quyết toán ngay** mờ | Chưa chọn loại thanh lý, chưa nhập **Nội dung thanh lý**, hoặc bỏ tích "bổ sung sau" mà chưa nhập đủ chỉ số. |
+| Nút **Trả phòng, quyết toán sau** / **Tiếp tục quyết toán ngay** mờ | Chưa chọn loại thanh lý hoặc chưa nhập **Nội dung thanh lý**. |
 | Form báo "Không tải được công nợ và số dư khách hàng" | Không quyết toán khi số nợ chưa tải được. Đóng hộp, tải lại trang rồi làm lại. |
 | **Tiền cọc hoàn trả = 0** dù hợp đồng ghi cọc | Khách chưa thực nộp cọc (đã thu 0 đ). |
 | Đã quyết toán nhưng khách chưa nhận tiền | Phiếu **Trả khách thanh lý** còn chờ duyệt, chưa có sổ quỹ. Chọn sổ, duyệt/chi; kiểm phiếu thành **Đã Chi**. |

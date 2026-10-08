@@ -23,7 +23,7 @@ Bấm **Lập hoá đơn & Thanh lý** rồi **Xác nhận thanh lý** sẽ **gh
 ::: info Điều kiện tiên quyết
 - Quyền **Hợp đồng => Thanh lý** (module `contracts`, action `terminate`) — nút **Đăng ký chuyển đi** và **Thanh lý** chỉ hiện khi bạn có quyền này.
 - Hợp đồng đang hiệu lực và còn gắn phòng/toà nhà.
-- Nên biết **chỉ số điện/nước khi bàn giao**; nếu chưa có, chọn **bổ sung sau** (hồ sơ sẽ vào hàng chờ bổ sung chỉ số).
+- Nên biết **số điện cuối** của đồng hồ; số này nhập ở mục **Tiền điện (chốt số)** khi quyết toán (ngay hoặc sau).
 - Tiền cọc đã thu nằm trên các phiếu cọc của hợp đồng — xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) và [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/).
 :::
 
@@ -40,9 +40,9 @@ Sau khi lưu: trang chi tiết hiện dải **Khách dự kiến trả phòng: d
 - **Ngày khách thực tế trả phòng \*** (mặc định hôm nay).
 - **Loại thanh lý \***: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc** (bỏ cọc xem trang [Khách bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/)).
 - **Nội dung thanh lý \*** — bắt buộc, dùng để đối chiếu và **in trên phiếu hoàn cọc**. Có thể bấm **Dùng nội dung mẫu** rồi bổ sung.
-- **Chỉ số điện, nước khi bàn giao**: mặc định tích **Chưa đủ chỉ số, bổ sung sau. Vẫn ghi nhận khách đã trả phòng.** Bỏ tích để nhập số trên từng đồng hồ đã kiểm tra và **Thời điểm đo thực tế** (số 0 chỉ dùng khi đồng hồ thực sự bằng 0).
+- Bước này **không hỏi chỉ số**: số điện cuối nhập một lần ở mục **Tiền điện** khi quyết toán, và mốc trả phòng tự lấy số đó.
 
-![Hộp Thanh lý hợp đồng: Ngày khách thực tế trả phòng, Loại thanh lý chọn Trả phòng trước hạn, Nội dung thanh lý điền mẫu, khối chỉ số bàn giao](./images/buoc-02-tra-phong.webp)
+![Hộp Thanh lý hợp đồng: Ngày khách thực tế trả phòng, Loại thanh lý chọn Trả phòng trước hạn, Nội dung thanh lý điền mẫu, ghi chú số điện cuối nhập khi quyết toán](./images/buoc-02-tra-phong.webp)
 
 **Bước 3 — Chọn quyết toán ngay hay để sau**:
 
@@ -103,12 +103,12 @@ Khi xác nhận, hệ thống: tạo **hoá đơn thanh lý** kèm các khoản 
 | Tình huống | Cách hiểu / xử lý |
 | --- | --- |
 | Không thấy nút **Thanh lý** / **Đăng ký chuyển đi** | Thiếu quyền `contracts.terminate`, hoặc hợp đồng đã **Thanh lý**. |
-| Nút **Trả phòng, quyết toán sau** / **Tiếp tục quyết toán ngay** bị mờ | Chưa chọn loại thanh lý, chưa nhập **Nội dung thanh lý**, hoặc chưa nhập đủ chỉ số khi đã bỏ tích "bổ sung sau". |
+| Nút **Trả phòng, quyết toán sau** / **Tiếp tục quyết toán ngay** bị mờ | Chưa chọn loại thanh lý hoặc chưa nhập **Nội dung thanh lý**. |
 | Form báo "Không tải được công nợ và số dư khách hàng" | Không quyết toán khi số nợ chưa tải được — tổng có thể sai. Đóng hộp, tải lại trang rồi làm lại. |
 | **Tiền cọc hoàn trả = 0** dù hợp đồng ghi cọc | Khách chưa thực nộp cọc (đã thu 0 đ). Hệ thống không hoàn một nghĩa vụ cọc khách chưa nộp. |
 | **Tiền hoàn trả nhỏ hơn** tổng cọc | Đúng thiết kế: cọc cấn vào công nợ + thu thêm trước, chỉ phần dư mới hoàn khách. |
 | Khách có credit nhưng không được tính | Ô credit mặc định 0. Nhập số muốn cấn (tối đa bằng credit); phần không nhập vẫn treo trên hợp đồng và hộp xác nhận sẽ nhắc. |
-| Chưa biết chỉ số điện cuối | Giữ tích **bổ sung sau** và chọn **Trả phòng, quyết toán sau**. Khi quyết toán, nhập số cuối ở ô **Tiền điện (chốt số)** (khu Thu thêm); mốc trả phòng tự lấy số đó, không nhập lại. |
+| Chưa biết chỉ số điện cuối | Chọn **Trả phòng, quyết toán sau**. Khi quyết toán, nhập số cuối ở ô **Tiền điện (chốt số)** (khu Thu thêm); mốc trả phòng tự lấy số đó. |
 | Đổi loại thanh lý khi quyết toán sau | Phải nhập **Lý do đổi loại thanh lý**; loại ban đầu vẫn được giữ để đối soát. |
 | Lỡ thanh lý nhầm | Không thể hoàn tác vì phiếu đã tạo và phòng đã giải phóng. Liên hệ chủ nhà / kế toán; đừng tự sửa lẻ tẻ. |
 

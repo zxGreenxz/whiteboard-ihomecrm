@@ -397,7 +397,7 @@ Chi tiết các bước mới so với mô tả cũ (luồng legacy):
 
 #### Luồng trả phòng và quyết toán
 
-Trong **Thanh lý**, chọn **Ngày khách thực tế trả phòng** đã bàn giao và loại **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc**. Không chọn ngày tương lai. Ghi chỉ số đã kiểm tra hoặc chọn bổ sung sau nếu thiếu.
+Trong **Thanh lý**, chọn **Ngày khách thực tế trả phòng** đã bàn giao và loại **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc**. Không chọn ngày tương lai. Số điện cuối nhập một lần ở mục **Tiền điện** khi quyết toán (ngay hoặc sau); mốc trả phòng tự lấy số đó.
 
 - **Trả phòng, quyết toán sau:** kết thúc lượt ở, giải phóng phòng và lưu **Chờ quyết toán**; chưa phát sinh thu/chi, khấu trừ hay hoàn cọc.
 - **Tiếp tục quyết toán ngay:** mở form tiền hiện hành theo loại đã chọn; ngày thực trả giữ cố định.

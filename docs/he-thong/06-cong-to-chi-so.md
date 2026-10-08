@@ -4,9 +4,9 @@
 
 ## Chỉ số bàn giao giữa hai lượt khách (cập nhật 28/09/2026)
 
-Khi trả phòng hoặc ký/nhận phòng, dùng **Chỉ số điện, nước khi bàn giao** để nhập số thực tế của đúng đồng hồ và thời điểm đo. **Số 0 là số đã đọc**, không dùng thay cho số chưa biết.
+Khi ký/nhận phòng, dùng **Chỉ số điện, nước khi bàn giao** để nhập số thực tế của đúng đồng hồ và thời điểm đo. **Số 0 là số đã đọc**, không dùng thay cho số chưa biết.
 
-- **Khách cũ trả:** thiếu số thì chọn **Chưa đủ chỉ số, bổ sung sau**. Vẫn nhận bàn giao và đưa phòng lên sale. Số điện cuối nhập ở ô **Tiền điện (chốt số)** khi quyết toán; quyết toán xong, mốc trả phòng tự lấy đúng số đó (chủ chốt 08/10/2026).
+- **Khách cũ trả:** bước trả phòng không hỏi chỉ số. Số điện cuối nhập một lần ở ô **Tiền điện (chốt số)** khi quyết toán (ngay hoặc sau); quyết toán xong, mốc trả phòng tự lấy đúng số đó (chủ chốt 08/10/2026). Chưa quyết toán vẫn nhận bàn giao và đưa phòng lên sale.
 - **Phần thiếu/cần kiểm tra:** danh sách **Chờ bổ sung / kiểm tra chỉ số** chỉ còn hồ sơ đã quyết toán mà chưa có chỉ số chốt, hoặc số bổ sung chưa khớp số đã tính tiền — khác số chốt, hoặc phần cuối chưa tính (**Cần đối soát**: kiểm hoá đơn quyết toán rồi bấm **Đã đối soát, giữ số này**, hoặc sửa về đúng số). Hồ sơ còn chờ quyết toán nằm ở danh sách Chờ quyết toán và không sửa mốc tay được: số cuối nhập ở bước quyết toán. Bỏ cọc không cần số chốt; số đầu của khách sau do quản lý nhập khi làm hợp đồng mới.
 - **Khách mới nhận:** cần chỉ số đầu vào riêng đã xác minh cho các đồng hồ đang dùng; không lấy số chưa biết hoặc số khách cũ làm mặc định. Mỗi lượt giữ mốc riêng.
 

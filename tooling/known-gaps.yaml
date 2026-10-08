@@ -263,3 +263,19 @@ gaps:
     exit_condition: >
       Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản
       vá spec ở 8dd5bb18 lên main và chạy xanh trên preview đúng commit với vai thật.
+  - id: e2e-fleet-contract-moveout-deferred-o-chi-so
+    where: >
+      .e2e-fleet/specs/contract-moveout-deferred.spec.ts
+    expires_at: 2026-11-30
+    why: >
+      PR #143 (08/10/2026) bỏ khối "Chỉ số điện, nước khi bàn giao" ở bước trả phòng (chủ chốt:
+      số điện cuối nhập một lần ở mục Tiền điện khi quyết toán, mốc trả phòng tự lấy số đó).
+      Spec còn khẳng định ô "Chưa đủ chỉ số, bổ sung sau" được tích, và vốn đã đỏ từ trước vì
+      không nhập "Nội dung thanh lý" (bắt buộc từ 20260929123356) nên nút trả phòng không bật.
+      Phần còn lại (ghi trả phòng DEFERRED, "Chỉ số lúc trả phòng · Chờ bổ sung") vẫn đúng với
+      giao diện mới. Chưa sửa spec vì cùng lý do với mục e2e-fleet-contract-workspace-tabs-luu-cong-ty:
+      đổi spec fleet chặn promote khi CI main lập plan trên dải production..HEAD.
+    exit_condition: >
+      Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); trong spec
+      nhập Nội dung thanh lý, bỏ khẳng định ô "bổ sung sau", rồi chạy xanh trên TEST với fixture
+      vòng đời hợp đồng.

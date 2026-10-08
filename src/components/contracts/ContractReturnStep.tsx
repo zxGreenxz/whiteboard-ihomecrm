@@ -79,7 +79,8 @@ export function ContractReturnStep(props: Props) {
     {props.children}
     {!props.exitCase && <p className="rounded-md bg-muted p-3 text-sm">
       Chọn quyết toán sau: xác nhận khách đã đi, phòng trống để sale và hồ sơ chuyển sang <strong>Chờ quyết toán</strong>.
-      Tiền cọc, khấu trừ và tiền hoàn sẽ xử lý khi quyết toán theo cách đang dùng.
+      Tiền cọc, khấu trừ và tiền hoàn sẽ xử lý khi quyết toán theo cách đang dùng. Số điện cuối nhập một lần
+      ở mục <strong>Tiền điện</strong> khi quyết toán.
     </p>}
     <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
       {!props.exitCase && <Button disabled={!valid || props.pending} variant="outline" onClick={props.onDefer}>

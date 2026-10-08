@@ -107,6 +107,7 @@ export function TerminationExtraCharges({
         .select("id")
         .eq("room_id", roomId)
         .eq("meter_type", "ELECTRICITY")
+        .eq("status", "ACTIVE")
         .is("deleted_at", null)
         .limit(1);
       const mid = (meters as any)?.[0]?.id ?? null;
@@ -291,7 +292,8 @@ export function TerminationExtraCharges({
           </div>
         </div>
 
-        {/* Dòng 2: Tiền điện (chốt số) */}
+        {/* Dòng 2: Tiền điện (chốt số) — bọc cùng dòng nhắc để divide-y không kẻ vạch giữa hai dòng */}
+        <div>
         <div className="flex items-center gap-2 px-3.5 py-3">
           <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-sm font-medium shrink-0">Tiền điện</span>
@@ -332,6 +334,9 @@ export function TerminationExtraCharges({
             <span className="ml-1 font-normal text-muted-foreground">đ</span>
           </div>
           <div className="w-9 shrink-0" />
+        </div>
+        {/* Chỗ DUY NHẤT nhập số điện cuối khi thanh lý (chủ chốt 08/10/2026): server ghi số chốt và mốc trả phòng từ đây. */}
+        <p className="-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs text-muted-foreground">Số cuối ghi luôn làm chỉ số lúc trả phòng.</p>
         </div>
 
         {/* Dòng 3: Tiền vệ sinh */}

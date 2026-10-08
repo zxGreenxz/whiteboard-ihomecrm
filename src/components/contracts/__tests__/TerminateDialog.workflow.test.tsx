@@ -56,6 +56,12 @@ describe('thanh lý tách bước trả phòng', () => {
     expect(spies.finalize).not.toHaveBeenCalled();
     expect(transfers.finalize).not.toHaveBeenCalled();
   });
+  it('bước trả phòng không hỏi chỉ số: số điện cuối nhập một lần ở bước quyết toán', () => {
+    render(<TerminateDialog open onOpenChange={vi.fn()} contract={contract} />);
+    expect(screen.queryByText('Chỉ số điện, nước khi bàn giao')).toBeNull();
+    expect(screen.queryByLabelText(/Chưa đủ chỉ số, bổ sung sau/)).toBeNull();
+    expect(screen.getByText(/Số điện cuối nhập một lần/)).toBeTruthy();
+  });
   it('nhánh quyết toán sau gửi ghi chú đã trim cùng ngày/loại, không mở form tiền', async () => {
     const close = vi.fn();
     render(<TerminateDialog open onOpenChange={close} contract={contract} />);

@@ -26,7 +26,7 @@ Khi khách **bỏ ngang, chịu mất cọc**, bạn thanh lý hợp đồng v�
 
 **Bước 1**: Mở [trang chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) cần xử lý và ấn nút đỏ **Thanh lý**. Hộp **Thanh lý hợp đồng** mở ra.
 
-**Bước 2**: Điền **Ngày khách thực tế trả phòng \***, chọn **Loại thanh lý** = **Bỏ cọc**, nhập **Nội dung thanh lý \*** (có nút **Dùng nội dung mẫu**: "Khách trả phòng và bỏ cọc."), và khai **Chỉ số điện, nước khi bàn giao** (hoặc giữ tích **Chưa đủ chỉ số, bổ sung sau**). Các bước này giống luồng rời phòng — xem chi tiết ở [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/).
+**Bước 2**: Điền **Ngày khách thực tế trả phòng \***, chọn **Loại thanh lý** = **Bỏ cọc**, nhập **Nội dung thanh lý \*** (có nút **Dùng nội dung mẫu**: "Khách trả phòng và bỏ cọc."). Bỏ cọc không cần số điện chốt; nếu thu thêm tiền điện thì nhập số cuối ở mục **Tiền điện** khi quyết toán. Các bước này giống luồng rời phòng — xem chi tiết ở [Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/).
 
 **Bước 3**: Chọn **Trả phòng, quyết toán sau** (hồ sơ vào tab **Chờ quyết toán**, chưa ghi tiền) hoặc **Tiếp tục quyết toán ngay**. Hồ sơ để sau thì quyết toán bằng nút **Quyết toán** ở tab **Chờ quyết toán** hoặc **Quyết toán hồ sơ này** ở trang chi tiết.
 

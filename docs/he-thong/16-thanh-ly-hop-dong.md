@@ -3,7 +3,7 @@
 ## Quy trình thao tác hiện tại (cập nhật 28/09/2026)
 
 1. Mở **Thanh lý** đúng hợp đồng. Nhập **Ngày khách thực tế trả phòng** đã bàn giao (không ngày tương lai) và loại bắt buộc: **Hết hạn hợp đồng**, **Trả phòng trước hạn** hoặc **Bỏ cọc**. Báo ngày dự kiến trả là thao tác riêng, khách vẫn ở.
-2. Ghi chỉ số điện/nước đã kiểm tra; thiếu thì chọn bổ sung sau. Thiếu số khách cũ không chặn xác nhận khách cũ đã trả phòng hoặc đưa lên sale; bàn giao khách mới vẫn cần mốc nhận đã xác minh.
+2. Bước trả phòng không hỏi chỉ số: số điện cuối nhập một lần ở mục **Tiền điện (chốt số)** khi quyết toán (ngay hoặc sau), và mốc trả phòng tự lấy số đó. Chưa quyết toán vẫn xác nhận được khách cũ đã trả phòng và đưa lên sale; bàn giao khách mới vẫn cần mốc nhận đã xác minh.
 3. **Trả phòng, quyết toán sau:** giải phóng phòng, hồ sơ thành **Chờ quyết toán**; chưa thu/chi, khấu trừ, hoàn cọc hay xử lý nợ.
 4. **Tiếp tục quyết toán ngay:** nhập form tiền đang dùng và xác nhận. Ngày thực trả cố định; cách xử lý cọc, nợ, credit, thu/hoàn và duyệt phiếu giữ nguyên.
 5. Hồ sơ chờ mở tại **Quyết toán hồ sơ này** trong chi tiết hợp đồng cũ hoặc danh sách **Chờ quyết toán**. Đổi loại phải ghi lý do; lịch sử giữ loại ban đầu, loại mới, người đổi và thời điểm. Không sửa ngày bàn giao đã ghi.

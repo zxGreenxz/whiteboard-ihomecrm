@@ -56,7 +56,6 @@ import type { ContractWithRelations } from "@/types/contract";
 import { useConfirmContractReturn, useFinalizeContractExitCase } from '@/hooks/useContractExitCases';
 import type { ContractExitCase, ExitKind, ExitSettlementInput } from '@/lib/contractExitCases';
 import { ContractReturnStep } from './ContractReturnStep';
-import { ContractMeterBoundaryFields } from './ContractMeterBoundaryFields';
 import type { MeterBoundaryInput } from '@/lib/contractMeterBoundaries';
 import { useUnpaidInvoices } from "@/hooks/useContracts";
 import { useExcessAmount } from "@/hooks/useInvoices";
@@ -83,6 +82,10 @@ interface TerminateDialogProps {
   exitCase?: ContractExitCase;
 }
 
+// Số điện cuối chỉ nhập MỘT lần ở bước quyết toán ("Tiền điện (chốt số)"): server ghi số chốt rồi tự
+// ghi mốc trả phòng từ số đó (20261008025958). Bước trả phòng không hỏi lại (chủ chốt 08/10/2026).
+const MOVE_OUT_BOUNDARY: MeterBoundaryInput = { state: 'MISSING', reason: 'Số cuối nhập ở bước quyết toán (Tiền điện chốt số)' };
+
 // Format number as VND
 function formatVND(value: number): string {
   return new Intl.NumberFormat("vi-VN").format(value);
@@ -99,7 +102,6 @@ export function TerminateDialog({
   const [actualDate, setActualDate] = useState('');
   const [changeReason, setChangeReason] = useState('');
   const [returnNote, setReturnNote] = useState('');
-  const [meterBoundary, setMeterBoundary] = useState<MeterBoundaryInput | null>({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
   const requestKeys = useRef(new Map<string, string>());
   const confirmReturn = useConfirmContractReturn();
   const finalizeExit = useFinalizeContractExitCase();
@@ -136,7 +138,6 @@ export function TerminateDialog({
       setActualDate(exitCase?.actual_move_out_on ?? todayISO());
       setChangeReason('');
       setReturnNote(exitCase?.return_note ?? '');
-      setMeterBoundary({ state: 'MISSING', reason: 'Chưa đủ chỉ số khi nhận bàn giao, bổ sung sau' });
       requestKeys.current.clear();
     }
   }, [open, contract.id, exitCase?.id]);
@@ -153,9 +154,9 @@ export function TerminateDialog({
     return key;
   };
   const deferSettlement = async () => {
-    if (!kind || !actualDate || exitCase || !meterBoundary || !returnNote.trim()) return;
+    if (!kind || !actualDate || exitCase || !returnNote.trim()) return;
     const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-      actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'DEFERRED' as const, meterBoundary };
+      actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'DEFERRED' as const, meterBoundary: MOVE_OUT_BOUNDARY };
     try {
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
       onOpenChange(false);
@@ -176,9 +177,8 @@ export function TerminateDialog({
       }
     } else {
       if (!returnNote.trim()) throw new Error('Vui lòng ghi nội dung thanh lý để đối chiếu');
-      if (!meterBoundary) throw new Error('Kiểm tra chỉ số bàn giao hoặc chọn bổ sung sau');
       const intent = { contractId: contract.id, expectedContractUpdatedAt: contract.updated_at,
-        actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary };
+        actualMoveOutOn: actualDate, initialKind: kind, returnNote: returnNote.trim(), settlementMode: 'IMMEDIATE' as const, settlement, meterBoundary: MOVE_OUT_BOUNDARY };
       await confirmReturn.mutateAsync({ ...intent, idempotencyKey: requestKey(intent) });
     }
   };
@@ -225,11 +225,8 @@ export function TerminateDialog({
             kind={kind} onKindChange={setKind} exitCase={exitCase}
             changeReason={changeReason} onReasonChange={setChangeReason}
             returnNote={returnNote} onReturnNoteChange={setReturnNote}
-            pending={isPending || transferUnavailable} physicalReady={!!exitCase || (!!contract.room_id && !!meterBoundary)}
-            onDefer={() => void deferSettlement()} onContinue={() => setStep(2)}>
-            {!exitCase && !!contract.room_id && <ContractMeterBoundaryFields key={contract.room_id} roomId={contract.room_id}
-              allowMissing disabled={isPending} initialValue={meterBoundary} onChange={setMeterBoundary} />}
-          </ContractReturnStep>
+            pending={isPending || transferUnavailable} physicalReady={!!exitCase || !!contract.room_id}
+            onDefer={() => void deferSettlement()} onContinue={() => setStep(2)} />
         )}
 
         {step === 2 && !financeUnavailable && kind === "FORFEIT" && (
