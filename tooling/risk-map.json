@@ -92,7 +92,7 @@
     },
     "infrastructure": {
       "label": "Hạ tầng / vận hành",
-      "why": "Chạm vào máy thật, mạng thật, và các thao tác không idempotent (reboot router, xoay secret).",
+      "why": "Chạm vào máy thật, mạng thật, và các thao tác không idempotent (reboot router, xoay secret). Gồm cả bộ kiểm phát hành (gate plan/registry, CI, promote, risk-map, test-matrix): đổi chúng là đổi chính cửa chặn.",
       "crossReview": true,
       "gates": [
         "verifier của subsystem",
@@ -105,7 +105,17 @@
         ".github/workflows/**",
         "vercel.json",
         "scripts/apply-*.mjs",
-        "scripts/*rollout*.mjs"
+        "scripts/*rollout*.mjs",
+        "scripts/lib/gate-*.mjs",
+        "scripts/lib/ci-gate-*.mjs",
+        "scripts/ci-*.mjs",
+        "scripts/kiem-nhanh-truoc-push.mjs",
+        "scripts/promote-to-production.mjs",
+        "scripts/release-verify.mjs",
+        "scripts/check-production-promotion.mjs",
+        "tooling/risk-map.json",
+        "tooling/test-matrix.json",
+        "tooling/deferred-modules.json"
       ]
     },
     "agent-contract": {
