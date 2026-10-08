@@ -9,6 +9,9 @@ import { Label } from '@/components/ui/label';
 import { ContractMeterBoundaryFields } from './ContractMeterBoundaryFields';
 
 type ExitContext = Pick<ContractExitCase, 'state' | 'current_kind'>;
+// Bằng chứng server ghi khi lấy số từ chỉ số chốt (20261008025958): giờ đo không biết, chỉ ghi
+// giới hạn cuối ngày trả phòng ⇒ hiện ngày, không hiện giờ.
+const SETTLEMENT_EVIDENCE = 'Chỉ số chốt khi quyết toán';
 
 /** Số đang ghi ở mốc REVIEW, gửi lại nguyên văn: server coi là đã đối soát. */
 function currentReadings(value: ContractMeterBoundarySet): MeterBoundaryInput | null {
@@ -60,7 +63,9 @@ export function ContractMeterBoundaryPanel({ contractId, roomId, canEdit, exit }
     <ul className="space-y-1">{value.readings.map(row => <li key={row.id}>
       {row.meter_type === 'ELECTRICITY' ? 'Điện' : row.meter_type === 'WATER' ? 'Nước' : 'Đồng hồ'} · {row.meter_code || row.meter_id.slice(0, 8)}:
       {' '}<strong>{row.reading === null ? 'Chưa có số' : row.reading.toLocaleString('vi-VN')}</strong>
-      {row.measured_at && <span className="text-muted-foreground"> · đo {new Date(row.measured_at).toLocaleString('vi-VN')}</span>}
+      {row.measured_at && <span className="text-muted-foreground"> · {row.evidence?.startsWith(SETTLEMENT_EVIDENCE)
+        ? `chốt khi quyết toán, ngày ${new Date(row.measured_at).toLocaleDateString('vi-VN')}`
+        : `đo ${new Date(row.measured_at).toLocaleString('vi-VN')}`}</span>}
     </li>)}</ul>
     {mode !== 'idle' && <div className="space-y-3">
       {mode === 'edit' && <ContractMeterBoundaryFields roomId={roomId} disabled={revise.isPending} onChange={setBoundary} />}
