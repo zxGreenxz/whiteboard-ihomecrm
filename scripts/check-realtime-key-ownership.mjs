@@ -41,6 +41,7 @@
 
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -185,17 +186,32 @@ export function gocKeyBiBanVao(vanBanTheoFile) {
   return ra;
 }
 
+/** Lấy mọi root từ descriptor đã được thực thi, không bỏ qua key sai hình dạng. */
+export function queryRootNames(entries) {
+  if (!Array.isArray(entries)) throw new Error('SYNC_ENTRIES không phải mảng');
+  const roots = new Set();
+  for (const entry of entries) {
+    if (!entry || !Array.isArray(entry.keys)) throw new Error('descriptor không có mảng keys');
+    for (const key of entry.keys) {
+      if (!Array.isArray(key) || typeof key[0] !== 'string' || !key[0].trim()) {
+        throw new Error('query key không có root hợp lệ');
+      }
+      roots.add(key[0]);
+    }
+  }
+  return [...roots];
+}
+
 /** Nạp descriptor thật qua vite-node và trả tập gốc key nó bắn vào. */
-function docKeyTuHub() {
-  const tmp = worktreeViteLoaderPath(repoRoot, '__realtime-keys.mts');
+export function docKeyTuHub() {
+  const tmp = worktreeViteLoaderPath(repoRoot, `__realtime-keys-${process.pid}-${randomUUID()}.mts`);
   mkdirSync(dirname(tmp), { recursive: true });
   writeFileSync(
     tmp,
     [
       'import { SYNC_ENTRIES } from "../src/hooks/realtime";',
-      'const goc = new Set<string>();',
-      'for (const e of SYNC_ENTRIES) for (const k of e.keys) if (typeof k[0] === "string") goc.add(k[0] as string);',
-      'console.log(JSON.stringify([...goc]));',
+      'import { queryRootNames } from "../scripts/check-realtime-key-ownership.mjs";',
+      'console.log(JSON.stringify(queryRootNames(SYNC_ENTRIES)));',
     ].join('\n'),
     'utf8',
   );
@@ -203,7 +219,7 @@ function docKeyTuHub() {
     // Đường dẫn TƯƠNG ĐỐI + shell:true: npx trên Windows là npx.cmd (Node từ
     // chối spawn .cmd khi shell:false), mà shell:true lại không bọc nháy đối số
     // — đường dẫn tuyệt đối "C:\Users\Nguyen Tam\…" sẽ bị cắt ở dấu cách.
-    return spawnSync('npx', ['vite-node', '.tmp-vite-loaders/__realtime-keys.mts'], {
+    return spawnSync('npx', ['vite-node', relative(repoRoot, tmp).replace(/\\/g, '/')], {
       cwd: repoRoot,
       encoding: 'utf8',
       shell: true,
@@ -212,6 +228,21 @@ function docKeyTuHub() {
   } finally {
     rmSync(tmp, { force: true });
   }
+}
+
+/** Không được kết luận sạch từ stdout một tiến trình đã lỗi hoặc bộ nạp bị thiếu. */
+export function keyTuKetQuaNap(dump, minimum) {
+  if (dump.error || dump.signal || dump.status !== 0) {
+    throw new Error(`bộ nạp lỗi: ${dump.error?.message ?? dump.signal ?? `exit ${dump.status}`}`);
+  }
+  const line = String(dump.stdout ?? '').trim().split(/\r?\n/).filter(Boolean).pop();
+  const roots = JSON.parse(line);
+  if (!Array.isArray(roots) || roots.some((root) => typeof root !== 'string' || !root.trim())) {
+    throw new Error('kết quả không phải mảng gốc key hợp lệ');
+  }
+  const unique = [...new Set(roots)];
+  if (unique.length < minimum) throw new Error(`chỉ đọc được ${unique.length} gốc key (sàn ${minimum})`);
+  return unique;
 }
 
 function docSrc() {
@@ -231,20 +262,14 @@ function docSrc() {
 }
 
 function main() {
-  const dump = docKeyTuHub();
-  const dong = String(dump.stdout ?? '').trim().split(/\r?\n/).filter(Boolean).pop();
+  let dump;
   let banRa;
   try {
-    banRa = JSON.parse(dong);
-    if (!Array.isArray(banRa)) throw new Error('không phải mảng');
+    dump = docKeyTuHub();
+    banRa = keyTuKetQuaNap(dump, SAN_SO_KEY);
   } catch (e) {
     console.error(`❌ KHÔNG ĐO ĐƯỢC: không nạp được descriptor qua vite-node — ${e.message}`);
-    console.error(String(dump.stderr ?? '').split(/\r?\n/).slice(0, 8).join('\n'));
-    process.exit(3);
-  }
-  if (banRa.length < SAN_SO_KEY) {
-    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ đọc được ${banRa.length} gốc key (sàn ${SAN_SO_KEY}).`);
-    console.error('   Descriptor đổi hình dạng hoặc bộ nạp hỏng — đừng đọc thành "không có key nào sai".');
+    console.error(String(dump?.stderr ?? '').split(/\r?\n/).slice(0, 8).join('\n'));
     process.exit(3);
   }
 

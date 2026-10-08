@@ -30,28 +30,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { boChuThichJs } from './lib/bo-chu-thich.mjs';
+import { docKeyTuHub, keyTuKetQuaNap } from './check-realtime-key-ownership.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESCRIPTOR_DIR = 'src/hooks/realtime';
 
-/**
- * Phần tử đầu của mỗi query key trong một file descriptor.
- *
- * BỎ COMMENT TRƯỚC KHI BÓC. Bản đầu không bỏ, và nó lập tức báo sai: chú thích
- * giải thích `thay cho ["contract-terminations"] chết` bị đọc thành một key đang
- * dùng. Cùng lớp lỗi đã ghi ở check-copilot-docs-manifest.mjs — so chuỗi trên
- * TOÀN VĂN file thì không phân biệt được code với văn kể lại về code, và ở đây
- * nó khiến gate đòi sửa đúng dòng vừa sửa xong.
- */
-export function keyTrongDescriptor(nguon) {
-  const code = boChuThichJs(nguon);
-  const out = new Set();
-  for (const k of code.matchAll(/keys:\s*\[([\s\S]*?)\n\s*\]/g)) {
-    for (const m of k[1].matchAll(/\[\s*["'`]([^"'`]+)["'`]/g)) out.add(m[1]);
-  }
-  return out;
-}
+// Đọc đúng SYNC_ENTRIES mà hub dùng: helper, spread và key thêm ở index.ts đều
+// phải được kiểm. Regex chỉ thấy keys: [[...]] sẽ bỏ sót các cách khai báo đó.
+export const SAN_SO_KEY = 20;
 
 /** Chuỗi có xuất hiện ở file nào KHÁC thư mục descriptor không. */
 export function noiDungKhac(key, files, doc) {
@@ -62,62 +48,67 @@ export function noiDungKhac(key, files, doc) {
   });
 }
 
-function main() {
+export function main({
+  listTracked = () => execFileSync('git', ['ls-files', 'src'], { cwd: repoRoot, encoding: 'utf8' }),
+  loadDescriptors = docKeyTuHub,
+  readSource = (path) => readFileSync(join(repoRoot, path), 'utf8'),
+  logger = console,
+} = {}) {
   let tracked;
   try {
-    tracked = execFileSync('git', ['ls-files', 'src'], { cwd: repoRoot, encoding: 'utf8' })
+    tracked = listTracked()
       .split('\n')
       .filter((p) => /\.tsx?$/.test(p));
   } catch (error) {
-    console.error(`❌ KHÔNG ĐO ĐƯỢC: ${error.message}`);
-    process.exit(3);
+    logger.error(`❌ KHÔNG ĐO ĐƯỢC: ${error.message}`);
+    return 3;
   }
 
   const descriptorFiles = tracked.filter((p) => p.startsWith(`${DESCRIPTOR_DIR}/`) && !p.endsWith('index.ts') && !p.endsWith('types.ts'));
   if (descriptorFiles.length < 3) {
-    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ thấy ${descriptorFiles.length} file descriptor (đo 11/08/2026: 3).`);
-    process.exit(3);
+    logger.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ thấy ${descriptorFiles.length} file descriptor (đo 11/08/2026: 3).`);
+    return 3;
   }
 
   const cache = new Map();
   const doc = (p) => {
-    if (!cache.has(p)) cache.set(p, readFileSync(join(repoRoot, p), 'utf8'));
+    if (!cache.has(p)) cache.set(p, readSource(p));
     return cache.get(p);
   };
 
-  const khai = new Map();
-  for (const p of descriptorFiles) {
-    for (const k of keyTrongDescriptor(doc(p))) {
-      if (!khai.has(k)) khai.set(k, []);
-      khai.get(k).push(p);
-    }
-  }
-  if (khai.size < 20) {
-    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ bóc được ${khai.size} key từ descriptor (đo 11/08/2026: 59).`);
-    console.error('   Bộ bóc hỏng thì "không key nào mồ côi" là kết luận rỗng.');
-    process.exit(3);
+  let khai;
+  try {
+    khai = keyTuKetQuaNap(loadDescriptors(), SAN_SO_KEY);
+  } catch (error) {
+    logger.error(`❌ KHÔNG ĐO ĐƯỢC: không nạp được descriptor qua vite-node — ${error.message}`);
+    return 3;
   }
 
   // Loại chính thư mục descriptor: key chỉ xuất hiện ở đó nghĩa là không ai dùng.
   const ngoai = tracked.filter((p) => !p.startsWith(`${DESCRIPTOR_DIR}/`) && !p.includes('__tests__'));
 
   const moCoi = [];
-  for (const [k, nguon] of khai) {
-    if (noiDungKhac(k, ngoai, doc).length === 0) moCoi.push({ key: k, nguon });
+  try {
+    for (const k of khai) {
+      if (noiDungKhac(k, ngoai, doc).length === 0) moCoi.push(k);
+    }
+  } catch (error) {
+    logger.error(`❌ KHÔNG ĐO ĐƯỢC: không đọc được nguồn dùng query key — ${error.message}`);
+    return 3;
   }
 
   if (moCoi.length > 0) {
-    console.error(`❌ ${moCoi.length} query key được invalidate nhưng KHÔNG query nào dùng:\n`);
-    for (const m of moCoi) console.error(`  - ["${m.key}"]   khai ở ${m.nguon.join(', ')}`);
-    console.error('\n  invalidateQueries với prefix không ai dùng khớp 0 query rồi trả về — không lỗi,');
-    console.error('  không cảnh báo. Descriptor trông như đã phủ một màn hình mà màn đó không bao giờ');
-    console.error('  tự cập nhật.');
-    console.error('\n  → sửa key cho khớp queryKey THẬT của hook, hoặc bỏ nếu đã thừa.');
-    process.exitCode = 1;
-    return;
+    logger.error(`❌ ${moCoi.length} query key được invalidate nhưng KHÔNG query nào dùng:\n`);
+    for (const key of moCoi) logger.error(`  - ["${key}"]   khai ở ${DESCRIPTOR_DIR} (SYNC_ENTRIES runtime)`);
+    logger.error('\n  invalidateQueries với prefix không ai dùng khớp 0 query rồi trả về — không lỗi,');
+    logger.error('  không cảnh báo. Descriptor trông như đã phủ một màn hình mà màn đó không bao giờ');
+    logger.error('  tự cập nhật.');
+    logger.error('\n  → sửa key cho khớp queryKey THẬT của hook, hoặc bỏ nếu đã thừa.');
+    return 1;
   }
 
-  console.log(`✅ ${khai.size} query key trong descriptor realtime đều có query thật dùng.`);
+  logger.log(`✅ ${khai.length} query key trong descriptor realtime đều có query thật dùng.`);
+  return 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = main();

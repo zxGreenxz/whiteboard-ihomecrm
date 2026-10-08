@@ -873,6 +873,38 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261008164757_company_wallets_and_payment_kinds.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261008164757_company_wallets_and_payment_kinds.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS public.company_wallets / public.company_wallet_requests / public.company_wallet_voucher_origins; CREATE OR REPLACE FUNCTION public.company_wallet_snapshot / public.company_wallet_mutate / public.create_company_wallet_voucher. Writer mới gọi public.create_income_expense_v1 và ghi nguồn nhập trong cùng transaction."
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "Entry 20261008164757 có state unknown, sha256 f86c35c3275e35231faf46ec95787e6f296cdb6b0f863bb1a60b3d7f9ce87fc8 và missingObjects gồm ba bảng company_wallets, company_wallet_requests, company_wallet_voucher_origins cùng hai hàm company_wallet_snapshot, company_wallet_mutate."
+        },
+        {
+          "duong_dan": "src/lib/companyWallet/migration.test.ts",
+          "trich_doan": "await db.exec(sql); await db.exec(sql); Các ca kiểm authenticated actor RLS, canonical replay rechecks, rollback khi ghi origin lỗi, số dư sổ quỹ, hơn 1000 dòng và ba đột biến tiền/quyền/công ty đều nằm trong transaction dùng một lần."
+        },
+        {
+          "duong_dan": "scripts/test-env/thu-sql.mjs",
+          "trich_doan": "await batBuocDichTest(cred, test); script mặc định bọc SQL bằng BEGIN rồi ROLLBACK; chỉ --ghi mới COMMIT. Các lần kiểm của migration này chỉ dùng chế độ mặc định."
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới ngày 08/10/2026 cho ví Công ty và hai loại thẻ riêng, chưa chạy lane apply production; các object vắng mặt vì CHƯA TRIỂN KHAI, không phải đã bị DROP. Ngày 09/10/2026 đã đạt 15 kiểm thử migration PGlite, gồm apply hai lượt và ba đột biến được bắt. Đã chạy lane test-env:thu-sql trên TEST, luôn ROLLBACK: wrapper gọi create_income_expense_v1 thật cho THU và CHI APPROVED/POSTED, replay không tạo trùng, khóa đổi nội dung bị từ chối, lỗi origin hoàn tác phiếu và bút toán, authenticated role/claims chặn actor khác, hủy phiếu thu trả số dư đúng và không ghi giao dịch cá nhân. Một lượt TEST riêng kiểm personal_finance_mutate thật: sp_card/credit_card, ưu tiên theo loại và phiên bản, dữ liệu sai, cách ly chủ ví, ẩn ví bỏ ưu tiên. Digest SQL kiểm canonical: 7e21cc28f6ae0cd340cc362924f35d953e28e99f3756e0ea61b1895ebdd80403; SQL kiểm preference: 622dc7c2d617a5d2bffa88913647569b6f06b82ffc1e9d3b98a33884eb1e2db0. Review độc lập final_review trên draft PR #144, head c7b42b6656fa980a65a59f1f4574c2fb6e8f6965, báo không có P1/P2; đây không phải phê duyệt triển khai. Chưa có bằng chứng HTTP PostgREST/JWT, concurrency nhiều kết nối hoặc vòng duyệt phiếu chờ sau committed birth. Hồ sơ chỉ giải thích trạng thái chưa áp dụng; không nâng provenance và không cho phép bỏ lane migration, backup, gate hoặc release. Chỉ triển khai qua forward lane sau khi đủ điều kiện của Project Contract.",
+      "missingObjects": [
+        "table:public.company_wallets",
+        "table:public.company_wallet_requests",
+        "table:public.company_wallet_voucher_origins",
+        "function:public.company_wallet_snapshot",
+        "function:public.company_wallet_mutate"
+      ],
+      "raSoatBoi": "Codex — backend ví Công ty, đối chiếu digest, TEST rollback và review độc lập do agent final_review cung cấp",
+      "reviewedAt": "2026-10-09",
+      "sha256": "f86c35c3275e35231faf46ec95787e6f296cdb6b0f863bb1a60b3d7f9ce87fc8"
     }
   }
 }
