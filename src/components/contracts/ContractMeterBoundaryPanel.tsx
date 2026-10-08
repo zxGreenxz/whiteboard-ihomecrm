@@ -23,7 +23,7 @@ function currentReadings(value: ContractMeterBoundarySet): MeterBoundaryInput | 
 
 function missingNote(exit?: ExitContext) {
   if (exit?.current_kind === 'FORFEIT') return 'Bỏ cọc: cọc đã cấn mọi khoản nên không cần số điện chốt. Số đầu của khách sau do quản lý nhập khi làm hợp đồng mới.';
-  if (exit?.state === 'PENDING') return 'Số điện cuối nhập ở bước quyết toán (Tiền điện chốt số). Quyết toán xong, mốc này tự lấy số đó.';
+  if (exit?.state === 'PENDING') return 'Số điện cuối nhập ở bước quyết toán (Tiền điện chốt số). Có tiền điện thì quyết toán xong mốc này tự lấy số đó; không thì bổ sung ở đây sau khi quyết toán.';
   return 'Đã quyết toán nhưng chưa có chỉ số chốt. Bấm “Bổ sung / sửa chỉ số” để nhập số đồng hồ lúc khách trả phòng.';
 }
 

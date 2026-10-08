@@ -91,6 +91,9 @@ export function TerminationExtraCharges({
   );
 
   // ── Meter điện: lấy meter_id + chỉ số đầu (latest APPROVED) ──────────────
+  // Số chốt chỉ ghi vào đồng hồ ACTIVE (mốc trả phòng chỉ khép theo đồng hồ đang chạy). Phòng mà đồng
+  // hồ điện duy nhất đã ngừng: vẫn lấy số đầu từ đồng hồ đó để tiền điện không tính từ số nhận phòng,
+  // nhưng không gửi meter_id (không ghi số chốt vào đồng hồ đã ngừng).
   const [meterId, setMeterId] = useState<string | null>(null);
   const [previousReading, setPreviousReading] = useState<number>(0);
   useEffect(() => {
@@ -104,20 +107,21 @@ export function TerminationExtraCharges({
     (async () => {
       const { data: meters } = await supabase
         .from("meters")
-        .select("id")
+        .select("id, status")
         .eq("room_id", roomId)
         .eq("meter_type", "ELECTRICITY")
-        .eq("status", "ACTIVE")
         .is("deleted_at", null)
-        .limit(1);
-      const mid = (meters as any)?.[0]?.id ?? null;
+        .limit(5);
+      const rows = (meters as { id: string; status: string | null }[] | null) ?? [];
+      const active = rows.find((row) => row.status === "ACTIVE") ?? null;
+      const source = active ?? rows[0] ?? null;
       if (cancelled) return;
-      setMeterId(mid);
-      if (mid) {
+      setMeterId(active?.id ?? null);
+      if (source) {
         const { data: readings } = await supabase
           .from("meter_readings")
           .select("current_reading")
-          .eq("meter_id", mid)
+          .eq("meter_id", source.id)
           .eq("status", "APPROVED")
           .is("deleted_at", null)
           .order("reading_date", { ascending: false })
@@ -162,6 +166,12 @@ export function TerminationExtraCharges({
       ? currentReading - previousReading
       : 0;
   const electricAmount = Math.round(consumption * (pricing.elec || 0));
+  // Server chỉ ghi số chốt (và tự khép mốc trả phòng) khi có dòng tiền điện > 0 gắn đồng hồ đang chạy.
+  const electricReadingNote = !meterId
+    ? "Phòng chưa có đồng hồ điện đang dùng: số cuối không ghi làm chỉ số lúc trả phòng."
+    : currentReading != null && electricAmount <= 0
+      ? "Không phát sinh tiền điện nên số này không được ghi; sau khi quyết toán, bổ sung ở mục Chỉ số lúc trả phòng."
+      : "Số cuối ghi luôn làm chỉ số lúc trả phòng.";
 
   // ── Emit mảng ExtraChargeItem chuẩn hoá lên cha ─────────────────────────
   useEffect(() => {
@@ -335,8 +345,9 @@ export function TerminationExtraCharges({
           </div>
           <div className="w-9 shrink-0" />
         </div>
-        {/* Chỗ DUY NHẤT nhập số điện cuối khi thanh lý (chủ chốt 08/10/2026): server ghi số chốt và mốc trả phòng từ đây. */}
-        <p className="-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs text-muted-foreground">Số cuối ghi luôn làm chỉ số lúc trả phòng.</p>
+        {/* Chỗ DUY NHẤT nhập số điện cuối khi thanh lý (chủ chốt 08/10/2026): server ghi số chốt và mốc
+            trả phòng từ dòng tiền điện. Không có dòng tiền điện thì số không được ghi — nói thật điều đó. */}
+        <p className="-mt-1.5 pb-2.5 pl-[52px] pr-3.5 text-xs text-muted-foreground">{electricReadingNote}</p>
         </div>
 
         {/* Dòng 3: Tiền vệ sinh */}
