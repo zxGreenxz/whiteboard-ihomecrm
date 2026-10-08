@@ -19,13 +19,20 @@ const wallet = "22222222-2222-4222-8222-222222222222";
 const category = "33333333-3333-4333-8333-333333333333";
 const income = "44444444-4444-4444-8444-444444444444";
 const saving = "55555555-5555-4555-8555-555555555555";
+const companyOrg = "66666666-6666-4666-8666-666666666666";
+const companyAccount = "77777777-7777-4777-8777-777777777777";
+const companyWallet = "88888888-8888-4888-8888-888888888888";
 let server: ViteDevServer, base: string;
 const entry = `import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';import Page from '@/pages/finance/PersonalWalletPage';import '@/index.css';createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})}><MemoryRouter future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Page/></MemoryRouter></QueryClientProvider>);`;
 test.describe.configure({ mode: "default" });
 test.use({ storageState: { cookies: [], origins: [] }, launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] } });
 test.beforeAll(async () => {
   const virtual = new Map([
-    ["virtual:pf-org", "export const useOrganization=()=>({selectedOrganizationId:'demo',preferenceError:null});"],
+    ["virtual:pf-org", `export const useOrganization=()=>({selectedOrganizationId:'${companyOrg}',organization:{name:'Công ty DEMO'},preferenceError:null});`],
+    ["virtual:pf-company-transport", `import {supabase} from '@/integrations/supabase/client';export const createCompanyWalletTransport=()=>({rpc:(name,args)=>supabase.rpc(name,args)});`],
+    ["virtual:pf-company-perms", `export const useMyPermissions=()=>({data:{income_expenses:{view:true,create:!location.search.includes('readonly')},cashbooks:{create:false}},isLoading:false,error:null});`],
+    ["virtual:pf-company-accounts", `export const useAccounts=()=>({data:[{id:'${companyAccount}',organization_id:'${companyOrg}',name:'Sổ ngân hàng DEMO',is_virtual:false}],isLoading:false,error:null});`],
+    ["virtual:pf-company-custodians", `export const useCustodianCashbooksV2=()=>({data:[{id:'${companyAccount}',name:'Sổ ngân hàng DEMO'}],isLoading:false,error:null});`],
     [
       "virtual:pf-auth",
       `export const useAuth=()=>({data:{id:'${owner}'},isLoading:false});`,
@@ -105,6 +112,10 @@ test.beforeAll(async () => {
     },
     resolve: {
       alias: [
+        { find: "@/lib/companyWallet/transport", replacement: "virtual:pf-company-transport" },
+        { find: "@/hooks/useMyPermissions", replacement: "virtual:pf-company-perms" },
+        { find: "@/hooks/useAccounts", replacement: "virtual:pf-company-accounts" },
+        { find: "@/hooks/income-expenses/financeV2Mutations", replacement: "virtual:pf-company-custodians" },
         { find: "@/hooks/useAuth", replacement: "virtual:pf-auth" },
         { find: "@/contexts/OrganizationContext", replacement: "virtual:pf-org" },
         { find: "@/lib/authSession", replacement: "virtual:pf-session" },
@@ -358,6 +369,11 @@ function approvedDesignFixture(): Snapshot {
 }
 async function open(page: Page, mode = "") {
   const state = {
+    company: {
+      owner_id:owner, organization_id:companyOrg, schema_version:1,
+      wallets:[{id:companyWallet,user_id:owner,organization_id:companyOrg,version:1,name:'Ví ngân hàng Công ty',kind:'bank',icon:'🏦',account_id:companyAccount,is_preferred:true,hidden:false,balance:1800000,balance_visible:true,can_use:true,account_name:'Sổ ngân hàng DEMO'}],
+      transactions:[{id:'99999999-9999-4999-8999-999999999999',wallet_id:companyWallet,user_id:owner,organization_id:companyOrg,type:'EXPENSE',name:'Vật tư công ty DEMO',total_amount:200000,voucher_date:new Date().toISOString().slice(0,10),approval_status:'APPROVED',posting_status:'POSTED',review_state:null,attachments:[],created_at:new Date().toISOString(),deleted_at:null,code:'PC-DEMO'}],
+    },
     snapshot: mode.includes("design") ? approvedDesignFixture() : fixture(),
     lose: false,
     conflict: false,
@@ -411,6 +427,7 @@ async function open(page: Page, mode = "") {
       });
     if (url.pathname.startsWith("/__rpc/")) {
       const name = url.pathname.split("/").pop();
+      if(name === 'company_wallet_snapshot') return route.fulfill({json:{data:state.company,error:null}});
       if (name === "personal_finance_bootstrap")
         return route.fulfill({ json: { data: {}, error: null } });
       if (name === "personal_finance_snapshot") {
@@ -580,6 +597,31 @@ async function removeCategory(page: Page, name: string) {
   await page.getByRole("button", { name: `Sửa danh mục ${name}`, exact: true }).click();
   await page.getByRole("dialog").last().getByRole("button", { name: "Xóa danh mục", exact: true }).click();
 }
+
+for (const width of [390, 1280]) test(`company wallets separate balances, ledger, reports and four payment kinds ${width}`,async({page},info)=>{
+  await page.setViewportSize({width,height:844});
+  const o=await open(page,'company');
+  await page.getByRole('group',{name:'Nhóm ví',exact:true}).getByRole('button',{name:'Công ty',exact:true}).click();
+  await expect(page.getByTestId('company-total-balance')).toContainText('1.800.000');
+  await expect(page.getByTestId('company-month-totals')).toContainText('200.000');
+  await page.screenshot({path:info.outputPath(`company-overview-${width}.png`),fullPage:true});
+  await nav(page,'Giao dịch');
+  await page.locator('.pf-type-chips').getByRole('button',{name:'Công ty',exact:true}).click();
+  await expect(page.getByText('Vật tư công ty DEMO', {exact:true})).toBeVisible();
+  await expect(page.getByLabel('Ví công ty',{exact:true})).toBeVisible();
+  await page.screenshot({path:info.outputPath(`company-ledger-${width}.png`),fullPage:true});
+  await nav(page,'Báo cáo');
+  await page.getByRole('group',{name:'Nhóm ví',exact:true}).getByRole('button',{name:'Công ty',exact:true}).click();
+  await expect(page.getByTestId('company-month-totals')).toContainText('200.000');
+  await page.getByRole('button',{name:'Cài đặt ví công ty',exact:true}).click();
+  await page.getByRole('button',{name:'Sửa ví công ty Ví ngân hàng Công ty'}).click();
+  await expect(page.getByLabel('Loại ví công ty')).toHaveText(/Ngân hàng.*Thẻ SP.*Thẻ tín dụng.*Tiền mặt/);
+  await page.screenshot({path:info.outputPath(`company-settings-${width}.png`)});
+  await close(page);
+  await page.getByRole('group',{name:'Nhóm ví',exact:true}).getByRole('button',{name:'Cá nhân',exact:true}).click();
+  await expect(page.getByTestId('company-finance')).toHaveCount(0);
+  expect(o.errors).toEqual([]);expect(o.blocked).toEqual([]);expect(o.writes).toEqual([]);
+});
 
 test("filter sheets apply wallet/category and filtered totals; transfer is discoverable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

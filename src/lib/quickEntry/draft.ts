@@ -7,6 +7,7 @@
 
 import { MAX_AMOUNT_VND } from "./amount";
 import { z } from 'zod';
+import type { BillPayment, PaymentKind } from './payment';
 
 export type DraftMode = "company" | "personal";
 export type TransactionType = 'INCOME' | 'EXPENSE';
@@ -27,6 +28,14 @@ export interface DraftLine {
 }
 
 export interface QuickDraft {
+  /** Wallet page drafts must never fall back to an unconfigured cashbook. */
+  entrySource?: 'personal_wallet';
+  companyWalletId?: string | null;
+  companyOrganizationId?: string;
+  createdAt?: number;
+  paymentKind?: PaymentKind | null;
+  paymentEvidence?: BillPayment;
+  paymentPlatform?: 'shopee' | null;
   transactionType?: TransactionType;
   personalWalletId?: string | null;
   /** New drafts use the atomic RPC; missing on historic pending cards means manual reconciliation. */
@@ -53,6 +62,8 @@ export const quickDraftSchema=z.object({
  id:z.string().min(1),mode:z.enum(['company','personal']),date:z.string(),name:z.string(),vendor:z.string().nullable(),
  buildingId:z.string().nullable(),roomId:z.string().nullable(),accountId:z.string().nullable(),attachmentUrls:z.array(z.string()),
  transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalWalletId:z.string().nullable().optional(),personalRequestKey:z.string().uuid().optional(),personalProtocol:z.literal(1).optional(),
+ entrySource:z.literal('personal_wallet').optional(),companyWalletId:z.string().nullable().optional(),companyOrganizationId:z.string().optional(),createdAt:z.number().finite().nonnegative().optional(),
+ paymentKind:z.enum(['bank','cash','sp_card','credit_card']).nullable().optional(),paymentEvidence:z.enum(['bank_transfer','cash']).nullable().optional(),paymentPlatform:z.literal('shopee').nullable().optional(),
  lines:z.array(z.object({description:z.string(),amount:z.number().finite(),categoryId:z.string().nullable(),personalCategory:z.string().nullable(),periodStart:z.string().nullable(),periodEnd:z.string().nullable(),transactionType:z.enum(['INCOME','EXPENSE']).optional(),personalCategoryId:z.string().nullable().optional()})).max(200),
 });
 
@@ -102,6 +113,7 @@ export function validateDraft(d: QuickDraft): DraftValidation {
   });
 
   if (d.mode === "company") {
+    if (d.entrySource === 'personal_wallet' && !d.companyWalletId) add('companyWalletId', 'Chọn ví Công ty đã cài đặt.');
     if (!d.buildingId) add("buildingId", "Chọn toà nhà cho khoản chi.");
     if (!d.accountId) add("accountId", "Chọn sổ quỹ chi tiền.");
     if (d.attachmentUrls.length > MAX_ATTACHMENTS) add("attachmentUrls", `Tối đa ${MAX_ATTACHMENTS} ảnh chứng từ.`);

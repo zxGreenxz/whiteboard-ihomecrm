@@ -7,7 +7,8 @@ const icon = z.string().trim().min(1).max(32);
 const amount = z.number().int().positive().max(1e12);
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(s => s >= '1900-01-01' && s <= '9999-12-31' && Number.isFinite(Date.parse(`${s}T12:00:00Z`)) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s, 'Ngày không hợp lệ');
 const type = z.enum(['INCOME', 'EXPENSE']);
-const walletData = z.object({ name, kind: z.enum(['cash', 'bank', 'ewallet', 'saving', 'other']).optional(), icon: icon.optional(), opening_balance: z.number().int().min(-1e12).max(1e12).optional(), hidden: z.boolean().optional() }).strict();
+const walletKind = z.enum(['cash', 'bank', 'sp_card', 'credit_card', 'ewallet', 'saving', 'other']);
+const walletData = z.object({ name, kind: walletKind.optional(), icon: icon.optional(), opening_balance: z.number().int().min(-1e12).max(1e12).optional(), hidden: z.boolean().optional(), is_preferred: z.boolean().optional() }).strict();
 const categoryData = z.object({ type, name, icon: icon.optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), hidden: z.boolean().optional() }).strict();
 const budgetData = z.object({ category_id: uuid.nullable().optional(), amount }).strict();
 const goalData = z.object({ name, icon: icon.optional(), target: amount, target_date: dateSchema.nullable().optional(), wallet_id: uuid }).strict();
@@ -44,7 +45,7 @@ export const mutationSchema = z.object({
 });
 export const normalizeMutation = (input: unknown): Mutation => mutationSchema.parse(input);
 const base = z.object({ id: uuid, user_id: uuid, version });
-export const walletSchema = base.extend({ name, kind: z.enum(['cash', 'bank', 'ewallet', 'saving', 'other']), icon, opening_balance: z.number().finite(), hidden: z.boolean(), is_default: z.boolean(), balance: z.number().finite() });
+export const walletSchema = base.extend({ name, kind: walletKind, icon, opening_balance: z.number().finite(), hidden: z.boolean(), is_default: z.boolean(), is_preferred: z.boolean().optional(), balance: z.number().finite() });
 // Legacy labels use PostgreSQL character/space rules; output must not trim or apply new-input UTF-16 limits.
 export const categorySchema = base.extend({ type, name: z.string().min(1), icon, color: z.string(), hidden: z.boolean(), seed_key: z.string().nullable(), legacy_name: z.string().nullable() });
 export const transactionSchema = base.extend({ type, amount: z.number().finite().nonnegative(), txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().nullable(), category: z.string().nullable(), wallet_id: uuid.nullable(), category_id: uuid.nullable(), resolved_wallet_id: uuid, resolved_category_id: uuid.nullable(), created_at: z.string().datetime({ offset: true }), updated_at: z.string().datetime({ offset: true }), deleted_at: z.string().datetime({ offset: true }).nullable() });

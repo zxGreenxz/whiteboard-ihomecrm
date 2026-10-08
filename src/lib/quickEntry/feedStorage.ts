@@ -79,6 +79,7 @@ function isStoredCard(x: unknown): x is StoredCard {
     Array.isArray(s?.flags) &&
     isStringArray(s?.buildingCandidates) &&
     typeof s?.sourceText === "string"
+    && (s.paymentSourceText === undefined || typeof s.paymentSourceText === 'string')
   );
 }
 
@@ -92,7 +93,7 @@ export function deserializeCards(raw: string | null, now: number): StoredCard[] 
     // mọi thẻ đã gửi máy chủ đều có khoá chống trùng riêng, mất nháp không sinh phiếu sai.
   }
   if (!parsed || parsed.v !== 1 || typeof parsed.savedAt !== "number" || !Array.isArray(parsed.cards)) return [];
-  return parsed.cards.filter(isStoredCard).filter(c=>now-parsed.savedAt!<=DRAFT_TTL_MS||['unknown','maybe_saved','saving'].includes(c.status.kind)).map(c=>({...c,status:onReload(c),state:{...c.state,draft:{...c.state.draft,transactionType:c.state.draft.transactionType??'EXPENSE',...(c.state.draft.mode==='personal'&&c.personalDone===0&&['draft','rejected'].includes(c.status.kind)?{personalProtocol:1 as const}:{})}}}));
+  return parsed.cards.filter(isStoredCard).filter(c=>now-parsed.savedAt!<=DRAFT_TTL_MS||['unknown','maybe_saved','saving'].includes(c.status.kind)).map(c=>({...c,status:onReload(c),state:{...c.state,draft:{...c.state.draft,transactionType:c.state.draft.transactionType??'EXPENSE',...(c.state.draft.mode==='personal'&&c.personalDone===0&&['draft','rejected'].includes(c.status.kind)?{personalProtocol:1 as const}:{})}}})).sort((a,b)=>(b.state.draft.createdAt??0)-(a.state.draft.createdAt??0));
 }
 
 /** Khoá nháp của người dùng KHÁC trên cùng máy — dọn khi mở trang. */

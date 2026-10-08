@@ -23,6 +23,7 @@ import { MAX_DESCRIPTION, type DraftLine, type DraftMode, type QuickDraft } from
 import { MAX_PROMPT_CATEGORIES } from "./prompt";
 import type { AiItem, AiResult } from "./aiSchema";
 import { inferTransactionType, type PersonalCategoryRef } from './personalRefs';
+import { inferPaymentKind, selectPaymentWallet, type PaymentWalletCandidate } from './payment';
 
 export type DraftFlag =
   | "ai_direction_conflict"
@@ -48,6 +49,8 @@ export interface DraftState {
   /** Đoạn câu dựng nên thẻ (rỗng với thẻ ảnh) — AI bổ sung gọi RIÊNG từng thẻ bằng chuỗi này, vì thẻ
    *  gom theo toà/phòng nên thứ tự dòng giữa các thẻ không trùng thứ tự câu. */
   sourceText: string;
+  /** Original user wording used for wallet choice; separate from per-card AI category input. */
+  paymentSourceText?: string;
 }
 
 export interface ComposeContext {
@@ -61,6 +64,13 @@ export interface ComposeContext {
   personalCategories?: string[];
   personalCategoryRefs?: PersonalCategoryRef[];
   personalWalletId?: string | null;
+  entrySource?: 'personal_wallet';
+  companyOrganizationId?: string;
+  paymentWallets?: PaymentWalletCandidate[];
+  /** Original typed text / voice transcript / bill caption, never OCR text. */
+  sourceText?: string;
+  /** One submission timestamp shared by all its cards, including delayed image results. */
+  createdAt?: number;
   newId: () => string;
   defaultAccountFor: (buildingId: string | null) => string | null;
 }
@@ -69,6 +79,40 @@ const EDGE_PUNCT = /^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g;
 const tidy = (s: string): string => s.replace(/\s+/g, " ").replace(EDGE_PUNCT, "").trim();
 
 const unique = <T,>(xs: T[]): T[] => [...new Set(xs)];
+
+function entryMetadata(ctx: ComposeContext): Partial<QuickDraft> {
+  return {
+    ...(ctx.entrySource ? { entrySource: ctx.entrySource } : {}),
+    ...(ctx.entrySource && ctx.mode === 'company' && ctx.companyOrganizationId ? { companyOrganizationId: ctx.companyOrganizationId } : {}),
+    ...(ctx.createdAt === undefined ? {} : { createdAt: ctx.createdAt }),
+  };
+}
+
+/** Both text and bill enrichment use the same scoped, deterministic wallet policy. */
+export function applyPaymentSelection(state: DraftState, ctx: ComposeContext, ai?: AiResult): DraftState {
+  if (state.draft.entrySource !== 'personal_wallet') return state;
+  if (state.draft.mode === 'company' && state.draft.companyOrganizationId && state.draft.companyOrganizationId !== ctx.companyOrganizationId) return state;
+  const changed = [...state.touched, ...state.locked];
+  if (['personalWalletId', 'companyWalletId', 'accountId'].some(path => changed.includes(path))) return state;
+  const billPayment = ai?.payment_method ?? state.draft.paymentEvidence ?? null;
+  const platform = ai?.platform ?? state.draft.paymentPlatform ?? null;
+  const candidates = (ctx.paymentWallets ?? []).filter(wallet => state.draft.mode !== 'company' || !!wallet.accountId);
+  const selected = selectPaymentWallet({
+    userText: state.paymentSourceText ?? state.sourceText,
+    billPayment,
+    platform,
+    merchant: ai?.vendor ?? state.draft.vendor,
+  }, candidates);
+  return { ...state, draft: {
+    ...state.draft,
+    paymentKind: selected.kind,
+    paymentEvidence: billPayment,
+    paymentPlatform: platform,
+    ...(state.draft.mode === 'company'
+      ? { companyWalletId: selected.wallet?.id ?? null, accountId: selected.wallet?.accountId ?? null }
+      : { personalWalletId: selected.wallet?.id ?? null }),
+  } };
+}
 
 function nameOf(lines: DraftLine[]): string {
   return lines
@@ -212,7 +256,20 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
   const placeGroups = company
     ? groupByPlace(items.map((it) => ({ buildingId: it.buildingId, roomId: it.roomId, line: it.line })))
     : [{ buildingId: null, roomId: null, lines: items.map((it) => it.line) }];
-  const groups=placeGroups.flatMap(g=>[...new Set(g.lines.map(l=>l.transactionType??'EXPENSE'))].map(type=>({...g,lines:g.lines.filter(l=>(l.transactionType??'EXPENSE')===type)})));
+  const byDirection=placeGroups.flatMap(g=>[...new Set(g.lines.map(l=>l.transactionType??'EXPENSE'))].map(type=>({...g,lines:g.lines.filter(l=>(l.transactionType??'EXPENSE')===type)})));
+  const userText = ctx.sourceText ?? text;
+  const localKinds = new Map(items.map(item => [item.line, inferPaymentKind({ userText: item.text })]));
+  // A common header ("dùng thẻ: …") can apply to the whole submission. Distinct explicit
+  // methods belong to separate cards so one Shopee line cannot charge unrelated lines to SP.
+  const explicitKinds = unique([...localKinds.values()].filter(kind => kind !== null));
+  const wholeKind = inferPaymentKind({ userText });
+  // Shopee mentioned on one item is not a shared payment header for unrelated items.
+  const sharedShopee = /^\s*(?:(?:mua|đặt)(?:\s+hàng)?\s+)?(?:shopee|thẻ\s+sp|spaylater)\s*:/iu.test(userText);
+  const commonKind = explicitKinds.length <= 1 && (wholeKind !== 'sp_card' || sharedShopee || items.length === 1) ? wholeKind : null;
+  const groups = ctx.entrySource !== 'personal_wallet' ? byDirection : byDirection.flatMap(group => {
+    const kinds = unique(group.lines.map(line => localKinds.get(line) ?? commonKind));
+    return kinds.map(kind => ({ ...group, lines: group.lines.filter(line => (localKinds.get(line) ?? commonKind) === kind) }));
+  });
   // Tổng gõ là tổng CẢ TIN (mọi thẻ) — lệch thì mọi thẻ của tin đều nhắc kiểm lại.
   const sumAll = items.reduce((s, it) => s + it.line.amount, 0);
   const totalMismatch = declaredTotal !== null && sumAll !== declaredTotal;
@@ -240,8 +297,10 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
     g.lines.forEach((l, i) => {
       if (members.find((m) => m.line === l)?.lockCategory) locked.push(`lines.${i}.categoryId`);
     });
-    return {
+    const paymentSourceText = commonKind !== null || items.length === 1 ? userText : members.map(member => member.text).join('; ');
+    return applyPaymentSelection({
       draft: {
+        ...entryMetadata(ctx),
         id: ctx.newId(),
         mode: ctx.mode,
         transactionType: g.lines[0]?.transactionType ?? 'EXPENSE',
@@ -251,7 +310,7 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
         vendor: null,
         buildingId: g.buildingId,
         roomId: g.roomId,
-        accountId: company ? ctx.defaultAccountFor(g.buildingId) : null,
+        accountId: company && ctx.entrySource !== 'personal_wallet' ? ctx.defaultAccountFor(g.buildingId) : null,
         attachmentUrls: [],
         lines: g.lines,
       },
@@ -261,7 +320,8 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
       buildingCandidates: g.buildingId ? [] : candidates,
       source: "text" as const,
       sourceText: members.map((m) => m.text).join("; "),
-    };
+      ...(ctx.entrySource ? { paymentSourceText } : {}),
+    }, ctx);
   });
 }
 
@@ -349,8 +409,9 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     lines = priced.map((i) => build(i.desc, i.amount_vnd ?? 0, i));
   }
 
-  return {
+  return applyPaymentSelection({
     draft: {
+      ...entryMetadata(ctx),
       id: ctx.newId(),
       mode: ctx.mode,
       transactionType:lines[0]?.transactionType??'EXPENSE',
@@ -360,7 +421,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
       vendor: ai.vendor,
       buildingId,
       roomId: buildingId ? roomFromMention(ai.room_mention, buildingId, ctx.refs) : null,
-      accountId: company ? ctx.defaultAccountFor(buildingId) : null,
+      accountId: company && ctx.entrySource !== 'personal_wallet' ? ctx.defaultAccountFor(buildingId) : null,
       attachmentUrls: [],
       lines,
     },
@@ -369,8 +430,9 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     flags,
     buildingCandidates: [],
     source: "photo",
-    sourceText: "",
-  };
+    sourceText: ctx.sourceText ?? "",
+    ...(ctx.entrySource ? { paymentSourceText: ctx.sourceText ?? '' } : {}),
+  }, ctx, ai);
 }
 
 export function markTouched(state: DraftState, path: string): DraftState {
@@ -518,7 +580,7 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
       (ai.customer_code ? resolveBuildingRoom(ai.customer_code, ctx.refs).building?.id ?? null : null);
     if (id) {
       draft.buildingId = id;
-      if (!draft.accountId && free("accountId")) draft.accountId = ctx.defaultAccountFor(id);
+      if (draft.entrySource !== 'personal_wallet' && !draft.accountId && free("accountId")) draft.accountId = ctx.defaultAccountFor(id);
       if (!draft.roomId) draft.roomId = roomFromMention(ai.room_mention, id, ctx.refs);
     }
   }
@@ -529,5 +591,5 @@ export function enrichFromAi(state: DraftState, ai: AiResult, ctx: ComposeContex
     (f) => f !== "missing_amount" && !((f === "building_choice" || f === "building_guess") && draft.buildingId),
   );
   if (nextLines.some((l) => l.amount <= 0)) flags.push("missing_amount");
-  return { ...state, draft, flags, buildingCandidates: draft.buildingId ? [] : state.buildingCandidates };
+  return applyPaymentSelection({ ...state, draft, flags, buildingCandidates: draft.buildingId ? [] : state.buildingCandidates }, ctx, ai);
 }

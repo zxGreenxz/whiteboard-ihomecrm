@@ -31,6 +31,7 @@ function initial(editor: Editor, s: Snapshot): Values {
     kind: "cash",
     opening_balance: 0,
     hidden: false,
+    is_preferred: false,
     amount: "",
     target: "",
     txn_date: today,
@@ -61,7 +62,7 @@ function initial(editor: Editor, s: Snapshot): Values {
   );
 }
 const fields = {
-  wallet: ["name", "kind", "icon", "opening_balance", "hidden"],
+  wallet: ["name", "kind", "icon", "opening_balance", "hidden", "is_preferred"],
   category: ["type", "name", "icon", "hidden"],
   transaction: [
     "type",
@@ -310,6 +311,8 @@ export function FinanceEditor({
               select("kind", "Loại ví", [
                 ["cash", "Tiền mặt"],
                 ["bank", "Ngân hàng"],
+                ["sp_card", "Thẻ SP"],
+                ["credit_card", "Thẻ tín dụng"],
                 ["ewallet", "Ví điện tử"],
                 ["saving", "Tiết kiệm"],
                 ["other", "Khác"],
@@ -357,6 +360,10 @@ export function FinanceEditor({
                 <p className="pf-muted">
                   Số dư ban đầu không tính vào thu nhập.
                 </p>
+                <label className="pf-check">
+                  <input type="checkbox" {...form.register("is_preferred")} />
+                  Ưu tiên ví này khi nhận diện cùng loại thanh toán
+                </label>
               </>
             )}
             {hasField("amount") &&

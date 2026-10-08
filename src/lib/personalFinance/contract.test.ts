@@ -32,6 +32,13 @@ describe('personal finance boundary', () => {
   it('accepts ewallet and trims entity names', () => {
     expect(normalizeMutation({ action: 'wallet.create', data: { name: ' Ví điện tử ', kind: 'ewallet' } }).data?.name).toBe('Ví điện tử');
   });
+  it.each(['sp_card', 'credit_card'])('accepts preferred %s wallets and keeps old snapshot compatibility', kind => {
+    expect(normalizeMutation({ action: 'wallet.create', data: { name: 'Thẻ', kind, is_preferred: true } }).data).toMatchObject({ kind, is_preferred: true });
+    const wallet = { id, user_id: id, version: 1, name: 'Thẻ', kind, icon: '💳', opening_balance: 0, balance: 0, hidden: false, is_default: false };
+    const snapshot = { owner_id: id, schema_version: 1, wallets: [wallet], categories: [], transactions: [], transfers: [], budgets: [], goals: [] };
+    expect(parseSnapshot(snapshot, id).wallets[0].kind).toBe(kind);
+    expect(parseSnapshot({ ...snapshot, wallets: [{ ...wallet, is_preferred: true }] }, id).wallets[0].is_preferred).toBe(true);
+  });
   it('validates receipt contents, owner, key, action and deleted marker', () => {
     const receipt = { owner_id: id, request_key: id, action: 'wallet.delete', entities: [{ id, user_id: id, version: 2, deleted: true }] };
     expect(parseReceipt(receipt, id, id, 'wallet.delete').entities).toHaveLength(1);

@@ -39,6 +39,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expenses",
     keys: [
+      ["company-wallets"],
       ["contract-commission-followups"],
       ["existing-commission-vouchers"],
       ["sale-bonus-status"],
@@ -147,6 +148,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expense_items",
     keys: [
+      ["company-wallets"],
       ["income-expenses"],
       ["income-expense-batches"],
       ["income-expense"],
@@ -160,6 +162,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "accounts",
     keys: [
+      ["company-wallets"],
       ["accounts"],
       ["accounts-with-balance"],
       ["cashbook-closings"],

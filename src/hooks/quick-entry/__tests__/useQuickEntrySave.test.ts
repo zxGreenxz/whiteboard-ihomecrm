@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 
-const h = vi.hoisted(() => ({ createIE: vi.fn(), createPersonal: vi.fn(), prepare: vi.fn(), upload: vi.fn() }));
+const h = vi.hoisted(() => ({ createWalletVoucher:vi.fn(), createIE: vi.fn(), createPersonal: vi.fn(), prepare: vi.fn(), upload: vi.fn() }));
+vi.mock('@/hooks/company-wallet/useCompanyWallets',()=>({useCreateCompanyWalletVoucher:()=>({mutateAsync:h.createWalletVoucher})}));
 vi.mock("@/hooks/income-expenses/mutations", () => ({ useCreateIncomeExpense: () => ({ mutateAsync: h.createIE }) }));
 vi.mock("@/hooks/personal-finance/usePersonalFinance", () => ({ usePersonalFinanceMutation: () => ({ mutateAsync: h.createPersonal, prepare:h.prepare, pending:[] }) }));
 vi.mock("@/lib/storage", () => ({ uploadFileDetailed: h.upload }));
@@ -10,6 +11,7 @@ vi.mock("@/lib/authSession", () => ({ getSessionUser: async () => ({ id: "u1" })
 
 import { useQuickEntrySave } from "../useQuickEntrySave";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
+import { CompanyWalletError } from '@/lib/companyWallet/service';
 
 const ID = "0f1e2d3c-4b5a-4987-8765-43210fedcba9";
 const company: QuickDraft = {
@@ -38,6 +40,7 @@ const personal: QuickDraft = {
 };
 
 beforeEach(() => {
+  h.createWalletVoucher.mockReset();
   h.createIE.mockReset();
   h.createPersonal.mockReset(); h.prepare.mockImplementation((payload,requestKey)=>({ownerId:ID,payload,requestKey}));
   h.upload.mockReset();
@@ -46,6 +49,27 @@ beforeEach(() => {
 const save = () => renderHook(() => useQuickEntrySave()).result.current;
 
 describe("useQuickEntrySave — công ty", () => {
+  it('receipt chưa xác nhận giữ khóa gửi lại của writer ví công ty',async()=>{
+    h.createWalletVoucher.mockRejectedValueOnce(new CompanyWalletError('internal','receipt mismatch',undefined,true));
+    const writer=renderHook(()=>useQuickEntrySave('org-demo')).result.current;
+    expect(await writer.saveCompany({...company,entrySource:'personal_wallet',companyOrganizationId:'org-demo',companyWalletId:'wallet-demo'})).toMatchObject({kind:'unknown'});
+    expect(h.createIE).not.toHaveBeenCalled();
+  });
+  it('phiếu từ trang ví dùng writer atomic với ví và khóa chống trùng, không gọi writer thường',async()=>{
+    h.createWalletVoucher.mockResolvedValueOnce({id:'v-wallet',code:'PC-DEMO',approval_status:'UNAPPROVED'});
+    const writer=renderHook(()=>useQuickEntrySave('org-demo')).result.current;
+    const out=await writer.saveCompany({...company,entrySource:'personal_wallet',companyOrganizationId:'org-demo',companyWalletId:'wallet-demo'});
+    expect(out).toMatchObject({kind:'saved',ids:['v-wallet']});
+    expect(h.createWalletVoucher).toHaveBeenCalledWith(expect.objectContaining({walletId:'wallet-demo',idempotencyKey:`qe-${ID}`}));
+    expect(h.createIE).not.toHaveBeenCalled();
+    expect(h.createPersonal).not.toHaveBeenCalled();
+  });
+  it('đổi công ty không gửi nháp sang công ty mới',async()=>{
+    const writer=renderHook(()=>useQuickEntrySave('org-other')).result.current;
+    expect(await writer.saveCompany({...company,entrySource:'personal_wallet',companyOrganizationId:'org-demo',companyWalletId:'wallet-demo'})).toMatchObject({kind:'rejected'});
+    expect(h.createWalletVoucher).not.toHaveBeenCalled();
+    expect(h.createIE).not.toHaveBeenCalled();
+  });
   it("gửi đúng hình phiếu với khoá chống trùng của thẻ; trả mã + trạng thái máy chủ quyết", async () => {
     h.createIE.mockResolvedValueOnce({ id: "v1", code: "PC2610001", approval_status: "UNAPPROVED" });
     const out = await save().saveCompany(company);

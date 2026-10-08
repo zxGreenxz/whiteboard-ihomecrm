@@ -35,6 +35,9 @@ const resultSchema = z
     total_vnd: money.nullable().default(null),
     date: isoDate.nullable().default(null),
     vendor: cut(200).nullable().default(null),
+    // Older replies omit these fields. No wallet IDs or inferred credit-card kind are accepted.
+    payment_method: z.enum(['bank_transfer', 'cash']).nullable().optional(),
+    platform: z.literal('shopee').nullable().optional(),
     building_mention: cut(120).nullable().default(null),
     room_mention: cut(40).nullable().default(null),
     customer_code: cut(40).nullable().default(null),

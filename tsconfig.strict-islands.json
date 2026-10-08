@@ -16,6 +16,12 @@
   },
   "include": [],
   "files": [
+    "src/components/personal-finance/CompanyFinance.tsx",
+    "src/hooks/company-wallet/useCompanyWallets.ts",
+    "src/lib/companyWallet/contract.ts",
+    "src/lib/companyWallet/service.ts",
+    "src/lib/companyWallet/transport.ts",
+    "src/lib/quickEntry/payment.ts",
     "src/components/customers/CustomerResidenceCell.tsx",
     "src/components/customers/CustomerResidenceHistoryDialog.tsx",
     "src/hooks/useCustomerResidenceHistory.ts",

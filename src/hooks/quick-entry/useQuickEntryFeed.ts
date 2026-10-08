@@ -20,6 +20,7 @@ import { encodeWithinBudget } from "@/lib/quickEntry/billImage";
 import type { CardStatus } from "@/lib/quickEntry/cardStatus";
 import {
   applyAiCategories,
+  applyPaymentSelection,
   draftsFromBill,
   splitDraftTypes,
   draftsFromText,
@@ -111,6 +112,7 @@ export function needsAi(s: DraftState): boolean {
   // Đã bỏ dòng ⇒ câu gốc không còn khớp các dòng, AI không ghép vào thẻ nữa (enrichFromAi) — đừng gọi.
   if (s.touched.includes(LINES_EDITED)) return false;
   const d = s.draft;
+  if(d.entrySource === 'personal_wallet' && !d.paymentKind) return true;
   if (d.lines.some((l) => !(l.amount > 0))) return true;
   if (d.mode === "company") {
     const settled = (i: number) => s.locked.includes(`lines.${i}.categoryId`) || s.touched.includes(`lines.${i}.categoryId`);
@@ -129,6 +131,7 @@ export function onlyCategoriesMissing(s: DraftState): boolean {
   // sai khuôn ⇒ dùng câu lệnh đầy đủ.
   return (
     d.mode === "company" &&
+    (d.entrySource !== 'personal_wallet' || !!d.paymentKind) &&
     !!d.buildingId &&
     d.lines.length > 0 &&
     d.lines.length <= MAX_CATEGORY_LINES &&
@@ -173,17 +176,18 @@ export function useQuickEntryFeed(opts: {
   refs: QuickEntryRefs;
   userId: string | null;
   today: string;
+  entrySource?: 'personal_wallet';
   /** Mô hình người dùng TỰ chọn trên trang (id gửi máy chủ); vắng ⇒ máy chủ dùng chuỗi vận hành đặt. */
   models?: { stt?: string; read?: string };
 }) {
   const { refs, userId, today } = opts;
   const orgId = refs.orgId;
-  const scope = userId ? draftsKey(userId, orgId??'personal') : null;
+  const scope = userId ? draftsKey(userId, `${orgId??'personal'}${opts.entrySource === 'personal_wallet' ? ':wallet' : ''}`) : null;
   const scopeRef=useRef(scope);scopeRef.current=scope;
   const aiScope = useRef({ scope, epoch: 0 });
   if (aiScope.current.scope !== scope) aiScope.current = { scope, epoch: aiScope.current.epoch + 1 };
   const aiEpoch = aiScope.current.epoch;
-  const save = useQuickEntrySave();
+  const save = useQuickEntrySave(orgId);
   // Đọc lựa chọn MỚI NHẤT lúc gọi (đổi ô chọn giữa chừng thì lần gọi kế dùng ngay, không dựng lại hàm).
   const modelsRef = useRef(opts.models);
   modelsRef.current = opts.models;
@@ -256,6 +260,22 @@ export function useQuickEntryFeed(opts: {
     });
   },[scope,refs.personalReady,refs.personalWallets,refs.personalCategories]);
 
+  // Restored drafts are resolved against the currently loaded configuration; manual choices stay locked.
+  useEffect(()=>{
+    if(opts.entrySource !== 'personal_wallet')return;
+    setFeed(f=>{
+      if(f.scope!==scope)return f;
+      let changed=false;const cards={...f.cards};
+      for(const [id,card] of Object.entries(cards)){
+        if(!editable(card)||(card.state.draft.mode==='personal'?!refs.personalReady:!refs.companyReady))continue;
+        const state=applyPaymentSelection(card.state,ctxFor(card.state.draft.mode));
+        if(JSON.stringify(state)===JSON.stringify(card.state))continue;
+        changed=true;cards[id]={...card,state};
+      }
+      return changed?{...f,cards}:f;
+    });
+  },[scope,opts.entrySource,refs.personalReady,refs.companyReady,refs.personalWallets,refs.companyWallets,refs.cashbooks]);
+
   // Storage of the request precedes the network call. A reload may happen before React persists
   // the card's saving status: recover the exact pending rows and lock that card as well.
   const pendingPersonal=save.pendingPersonalRequests;
@@ -278,7 +298,8 @@ export function useQuickEntryFeed(opts: {
   // Ghi nháp sau mỗi thay đổi (chỉ khi nháp đang hiện đúng là của người + công ty hiện tại).
   useEffect(() => {
     if (!feed.scope || feed.scope !== scope) return;
-    const list = Object.values(feed.cards).map((c) => ({ state: c.state, status: c.status, personalDone: c.personalDone }));
+    const list = feed.messages.flatMap(m => m.cardIds).map(id => feed.cards[id]).filter((c): c is FeedCard => !!c)
+      .map((c) => ({ state: c.state, status: c.status, personalDone: c.personalDone }));
     try {
       const raw = serializeCards(list, Date.now());
       if (raw) localStorage.setItem(feed.scope, raw);
@@ -304,7 +325,7 @@ export function useQuickEntryFeed(opts: {
   const addEntry = useCallback((message: FeedMessage, cards: FeedCard[]) => {
     setFeed((f) => f.scope!==scope?f:({
       ...f,
-      messages: [...f.messages, message],
+      messages: [message, ...f.messages],
       cards: { ...f.cards, ...Object.fromEntries(cards.map((c) => [c.id, c])) },
     }));
   }, [scope]);
@@ -324,6 +345,8 @@ export function useQuickEntryFeed(opts: {
       draft: {
         id,
         mode,
+        createdAt: Date.now(),
+        ...(opts.entrySource ? {entrySource:opts.entrySource, ...(mode === 'company' ? {companyOrganizationId:orgId ?? undefined, companyWalletId:null} : {})} : {}),
         date: today,
         name: "",
         vendor: null,
@@ -335,7 +358,7 @@ export function useQuickEntryFeed(opts: {
         ...(mode === "personal"
           ? {
               personalWalletId:
-                refs.personalWallets.find((w) => w.is_default)?.id ??
+                opts.entrySource === 'personal_wallet' ? null : refs.personalWallets.find((w) => w.is_default)?.id ??
                 refs.personalWallets[0]?.id ??
                 null,
               personalProtocol: 1 as const,
@@ -421,6 +444,13 @@ export function useQuickEntryFeed(opts: {
   const ctxFor = (mode: DraftMode): ComposeContext => ({
     today,
     mode,
+    entrySource:opts.entrySource,
+    companyOrganizationId:orgId ?? undefined,
+    createdAt:Date.now(),
+    paymentWallets: mode === 'company'
+      ? (refs.companyWallets ?? []).filter(w => w.can_use && refs.cashbooks.some(c => c.id === w.account_id))
+          .map(w => ({id:w.id,kind:w.kind,accountId:w.account_id,hidden:w.hidden,isPreferred:w.is_preferred}))
+      : refs.personalWallets.map(w => ({id:w.id,kind:w.kind,hidden:w.hidden,isPreferred:w.is_preferred})),
     refs: refs.resolveRefs,
     categories: refs.categories,
     personalCategoryRefs:(refs.personalCategories??[]).filter(c=>!c.hidden),
@@ -486,7 +516,7 @@ export function useQuickEntryFeed(opts: {
 
   const submitText = async (text: string, mode: DraftMode): Promise<void> => {
     if(!userId||scopeRef.current!==scope||mode==='company'&&!refs.canCompany||mode==='personal'&&!refs.canPersonal)return;
-    const ctx = ctxFor(mode);
+    const ctx = {...ctxFor(mode),sourceText:text};
     const states = draftsFromText(text, ctx);
     const messageId = crypto.randomUUID();
     const mentionsBuilding =
@@ -582,7 +612,7 @@ export function useQuickEntryFeed(opts: {
 
   const submitPhoto = async (file: File, mode: DraftMode, text = ""): Promise<void> => {
     if(!userId||scopeRef.current!==scope||mode==='company'&&!refs.canCompany||mode==='personal'&&!refs.canPersonal)return;
-    const ctx = ctxFor(mode);
+    const ctx = {...ctxFor(mode),sourceText:text};
     const caption = text.trim();
     const messageId = crypto.randomUUID();
     const previewUrl = objectUrl(file);
@@ -638,6 +668,14 @@ export function useQuickEntryFeed(opts: {
     if (!card) return;
     const personal=card.state.draft.mode==='personal';
     if(personal&&!refs.canPersonal||!personal&&!refs.canCompany)return;
+    const draftScope = card.state.draft;
+    if (!personal && draftScope.entrySource === 'personal_wallet' && (
+      draftScope.companyOrganizationId !== orgId ||
+      !(refs.companyWallets ?? []).some(w => w.id === draftScope.companyWalletId && w.account_id === draftScope.accountId && w.can_use)
+    )) {
+      if(editable(card))patchCard(id,c=>({...c,status:{kind:'rejected',message:'Ví Công ty không còn hợp lệ trong công ty đang chọn. Kiểm tra lại cài đặt ví.'}}));
+      return;
+    }
     if(personal&&(!refs.personalReady||refs.personalError)||!personal&&(!refs.companyReady||refs.companyError)){
       if(editable(card))patchCard(id,c=>({...c,status:{kind:'rejected',message:'Chưa tải được dữ liệu để xác nhận khoản này. Thử lại khi kết nối sẵn sàng.'}}));return;
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   Home,
   List,
@@ -59,6 +59,9 @@ import {
 } from "@/components/personal-finance/presentation";
 import "@/components/personal-finance/personal-finance.css";
 
+const CompanyFinance = lazy(() => import("@/components/personal-finance/CompanyFinance"));
+const CashbookForm = lazy(() => import("@/components/cashbooks/CashbookForm"));
+
 function ShareholderNotice() {
   const me = useMyShareholder();
   const allocations = useProfitAllocations();
@@ -107,7 +110,7 @@ export default function PersonalWalletPage() {
     edit: permissionQuery.data?.edit === true,
     delete: permissionQuery.data?.delete === true,
   };
-  const controller = useQuickEntryController("personal");
+  const controller = useQuickEntryController("personal", { entrySource: "personal_wallet" });
   const [tab, setTab] = useState("home");
   const [month, setMonth] = useState(localMonth);
   const [hidden, setHidden] = useState(false);
@@ -123,6 +126,8 @@ export default function PersonalWalletPage() {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
   const [budgetTab, setBudgetTab] = useState("budget");
+  const [walletScope, setWalletScope] = useState<"personal" | "company">("personal");
+  const [cashbookFormOpen, setCashbookFormOpen] = useState(false);
   useEffect(() => {
     if (
       sheet !== "entry" ||
@@ -154,6 +159,19 @@ export default function PersonalWalletPage() {
     moneyError = error.message;
   }
   const props = s ? { snapshot: s, permissions, edit: setEditor } : null;
+  const scopePicker = (
+    <div className="pf-pills pf-entry-tabs" role="group" aria-label="Nhóm ví">
+      {(["personal", "company"] as const).map(scope => <button key={scope} type="button" className={walletScope === scope ? "active" : ""} aria-pressed={walletScope === scope} onClick={() => setWalletScope(scope)}>{scope === "personal" ? "Cá nhân" : "Công ty"}</button>)}
+    </div>
+  );
+  const companyPanel = (view: "overview" | "ledger" | "reports" | "settings") => (
+    <Suspense fallback={<p role="status">Đang tải ví công ty…</p>}>
+      <CompanyFinance view={view} month={month} onMonth={setMonth} hidden={hidden} search={view === "ledger" ? filters.search : ""}
+        onManage={() => { setWalletScope("company"); setSheet("wallet"); }}
+        onEntry={() => { controller.setMode("company"); setEntryMode("quick"); setSheet("entry"); }}
+        onCreateCashbook={() => { setSheet(null); setCashbookFormOpen(true); }} />
+    </Suspense>
+  );
   const manualDestination = (
     <div className="pf-manual-destination">
       <span className="pf-destination-caption">Gửi thu chi vào</span>
@@ -217,7 +235,9 @@ export default function PersonalWalletPage() {
                 </Button>
               </div>
             )}
-            {tab === "home" && (
+            {(tab === "home" || tab === "reports") && scopePicker}
+            {tab === "home" && walletScope === "company" && companyPanel("overview")}
+            {tab === "home" && walletScope === "personal" && (
               <div className="pf-dashboard">
                 <section className="pf-balance">
                   <div className="pf-between">
@@ -324,7 +344,7 @@ export default function PersonalWalletPage() {
                 )}
               </div>
             )}
-            {tab === "home" && (
+            {tab === "home" && walletScope === "personal" && (
               <>
                 <div className="pf-wallet-strip">
                   {s.wallets
@@ -409,6 +429,7 @@ export default function PersonalWalletPage() {
                   onFilters={setFilters}
                   manage={() => setSheet("wallet")}
                   categories={() => setSheet("category")}
+                  company={companyPanel("ledger")}
                 />
               </>
             )}
@@ -442,7 +463,7 @@ export default function PersonalWalletPage() {
             )}
             {tab === "reports" && (
               <>
-                <Reports
+                {walletScope === "company" ? companyPanel("reports") : <Reports
                   snapshot={s}
                   month={month}
                   onMonth={setMonth}
@@ -450,7 +471,7 @@ export default function PersonalWalletPage() {
                     setFilters({ ...emptyFilters, category, type });
                     setTab("transactions");
                   }}
-                />
+                />}
               </>
             )}
             <PersonalPendingRequests
@@ -469,7 +490,8 @@ export default function PersonalWalletPage() {
               title={sheet === "wallet" ? "Quản lý ví" : "Quản lý danh mục"}
               onClose={() => setSheet(null)}
             >
-              {(sheet === "wallet" || sheet === "category") && (
+              {sheet === "wallet" && scopePicker}
+              {sheet === "wallet" && walletScope === "company" ? companyPanel("settings") : (sheet === "wallet" || sheet === "category") && (
                 <Management
                   {...props}
                   kind={sheet}
@@ -556,6 +578,7 @@ export default function PersonalWalletPage() {
                 onClose={() => setEditor(null)}
               />
             )}
+            {cashbookFormOpen && <Suspense fallback={<p role="status">Đang tải cài đặt sổ quỹ…</p>}><CashbookForm open account={null} onOpenChange={open => { setCashbookFormOpen(open); if (!open) { setWalletScope("company"); setSheet("wallet"); } }} /></Suspense>}
           </>
         ) : (
           <p role="status">Đăng nhập để xem ví cá nhân.</p>

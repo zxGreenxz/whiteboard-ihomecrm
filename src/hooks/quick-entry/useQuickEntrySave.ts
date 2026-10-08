@@ -17,6 +17,8 @@ import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
 import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { toCreateIncomeExpenseInput, toPersonalBatch } from "@/lib/quickEntry/convert";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
+import { useCreateCompanyWalletVoucher } from '@/hooks/company-wallet/useCompanyWallets';
+import { CompanyWalletError } from '@/lib/companyWallet/service';
 
 export const ATTACHMENT_BUCKET = "income-expense-attachments";
 
@@ -40,9 +42,10 @@ const codeOf = (e: unknown) => String((e as { code?: unknown } | null)?.code ?? 
 // phải đúng loại ảnh ngay từ đầu.
 const EXT: Record<string, string> = { "image/png": ".png", "image/webp": ".webp" };
 
-export function useQuickEntrySave() {
+export function useQuickEntrySave(organizationId: string | null = null) {
   const createIE = useCreateIncomeExpense();
   const personal = usePersonalFinanceMutation();
+  const createWalletVoucher = useCreateCompanyWalletVoucher(organizationId);
 
   const uploadPhoto = async (file: File, draftId: string): Promise<string> => {
     const user = await getSessionUser();
@@ -56,7 +59,13 @@ export function useQuickEntrySave() {
     try {
       // Hình CompanyVoucherInput khớp CreateIncomeExpenseInput — TypeScript so ở dòng này.
       const input: CreateIncomeExpenseInput = toCreateIncomeExpenseInput(draft);
-      const row = (await createIE.mutateAsync(input)) as { id?: string; code?: string; approval_status?: string } | null;
+      if(draft.entrySource === 'personal_wallet' && (!organizationId || draft.companyOrganizationId !== organizationId || !draft.companyWalletId)) {
+        throw new Error('Chọn ví Công ty hợp lệ trong công ty đang nhập trước khi lưu.');
+      }
+      const row = (draft.entrySource === 'personal_wallet'
+        ? await createWalletVoucher.mutateAsync({walletId:draft.companyWalletId!,idempotencyKey:input.idempotency_key!,input})
+        : await createIE.mutateAsync(input)) as { id?: string; code?: string; approval_status?: string } | null;
+      if(!row?.id) throw new TypeError('Chưa nhận được xác nhận tạo phiếu. Kiểm tra kết quả trước khi thử lại.');
       return {
         kind: "saved",
         code: row?.code ?? null,
@@ -67,7 +76,7 @@ export function useQuickEntrySave() {
       };
     } catch (e) {
       if (codeOf(e) === "23505") return { kind: "maybe_saved", ids: [], done: 0, message: MAYBE_SAVED_MESSAGE };
-      if (hasUnconfirmedResponse(e)) {
+      if (hasUnconfirmedResponse(e) || e instanceof CompanyWalletError && e.outcomeUnknown) {
         // Đường compat không có khoá chống trùng ⇒ gửi lại y nguyên có thể ra phiếu đôi: chỉ cho kiểm tra.
         if ((e as { ieCreatePath?: string } | null)?.ieCreatePath === "compat") {
           return { kind: "maybe_saved", ids: [], done: 0, message: COMPAT_UNKNOWN_MESSAGE };

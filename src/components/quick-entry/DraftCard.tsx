@@ -23,6 +23,7 @@ import { primaryCode } from "@/lib/quickEntry/spokenBuilding";
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom } from "@/lib/depositRoomRule";
 import type { PersonalCategoryRef } from '@/lib/quickEntry/personalRefs';
 import type { Wallet } from '@/lib/personalFinance/contract';
+import type { CompanyWallet } from '@/lib/companyWallet/contract';
 
 const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
@@ -52,6 +53,7 @@ export interface DraftCardProps {
   cashbooks: PickerOption[];
   personalCategories: readonly PersonalCategoryRef[];
   personalWallets?: readonly Wallet[];
+  companyWallets?: readonly Pick<CompanyWallet, 'id' | 'account_id' | 'name' | 'hidden' | 'can_use'>[];
   photoUrl?: string | null;
   /** Có giá trị khi AI đã đọc thẻ này — hiện nhãn "AI đọc" để người dùng soát kỹ. */
   aiModel?: string | null;
@@ -148,7 +150,7 @@ export function DraftCard(props: DraftCardProps) {
   const clearPeriod = (i: number) =>
     emit({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, periodStart: null, periodEnd: null } : l)) }, `lines.${i}.period`);
   const chooseBuilding = (buildingId: string) => {
-    const keepAccount = state.touched.includes("accountId");
+    const keepAccount = state.touched.includes("accountId") || d.entrySource === 'personal_wallet';
     emit(
       { ...d, buildingId, roomId: null, accountId: keepAccount ? d.accountId : props.defaultAccountFor(buildingId) },
       "buildingId",
@@ -283,13 +285,13 @@ export function DraftCard(props: DraftCardProps) {
                   aria-invalid={depositNeedsRoom || undefined}
                 />
               </Field>
-              <Field label="Sổ quỹ chi tiền">
+              <Field label={d.entrySource === 'personal_wallet' ? 'Ví Công ty' : 'Sổ quỹ chi tiền'}>
                 <SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined}
                   value={d.accountId ?? undefined}
-                  onValueChange={(v) => update("accountId", { accountId: v })}
+                  onValueChange={(v) => update("accountId", { accountId: v, ...(d.entrySource === 'personal_wallet' ? {companyWalletId:props.companyWallets?.find(w => w.account_id === v)?.id ?? null} : {}) })}
                   options={cashbookOptions}
-                  placeholder={cashbookOptions.length ? "Chọn sổ" : "Bạn chưa giữ sổ nào"}
-                  aria-label="Sổ quỹ"
+                  placeholder={d.entrySource === 'personal_wallet' ? 'Chọn ví Công ty đã cài đặt' : cashbookOptions.length ? "Chọn sổ" : "Bạn chưa giữ sổ nào"}
+                  aria-label={d.entrySource === 'personal_wallet' ? 'Ví Công ty' : 'Sổ quỹ'}
                 />
               </Field>
             </div>
@@ -383,7 +385,7 @@ export function DraftCard(props: DraftCardProps) {
           )}
           {noCashbook && (
             <p className="flex items-start gap-1 text-xs text-amber-700" data-testid="no-cashbook">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {NO_CASHBOOK}
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {d.entrySource === 'personal_wallet' ? 'Chưa có ví Công ty dùng được. Mở Quản lý ví → Công ty để gắn sổ quỹ bạn được phép sử dụng.' : NO_CASHBOOK}
             </p>
           )}
           {status.kind === "rejected" && status.message && (

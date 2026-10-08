@@ -6,9 +6,9 @@ import { useQuickEntryRefs } from './useQuickEntryRefs';
 import { useQuickEntryFeed } from './useQuickEntryFeed';
 
 /** Mount once in the home screen; share this controller between inline composer and review sheet. */
-export function useQuickEntryController(initialMode:DraftMode='personal'){
- const {data:user}=useAuth();const refs=useQuickEntryRefs();const today=vnTodayISO();
- const feed=useQuickEntryFeed({refs,userId:user?.id??null,today});
+export function useQuickEntryController(initialMode:DraftMode='personal', options?: {entrySource?:'personal_wallet'}){
+ const {data:user}=useAuth();const refs=useQuickEntryRefs(options);const today=vnTodayISO();
+ const feed=useQuickEntryFeed({refs,userId:user?.id??null,today,entrySource:options?.entrySource});
  const [chosen,setMode]=useState<DraftMode>(initialMode);
  const modes:DraftMode[]=[...(refs.canPersonal?['personal' as const]:[]),...(refs.canCompany?['company' as const]:[])];
  const mode=modes.includes(chosen)?chosen:modes[0]??'personal';

@@ -18,6 +18,7 @@ import { expenseCashbooksForOrg, pickDefaultAccount } from "@/lib/quickEntry/cas
 import type { FeeAccountRef, ResolveRefs } from "@/lib/quickEntry/resolve";
 import { usePersonalFinance } from '@/hooks/personal-finance/usePersonalFinance';
 import { usePersonalFinancePermissions } from '@/hooks/personal-finance/usePersonalFinancePermissions';
+import { useCompanyWallets } from '@/hooks/company-wallet/useCompanyWallets';
 
 const lastAccountKey = (orgId: string) => `ihome:quick-entry:last-account:${orgId}`;
 
@@ -48,7 +49,7 @@ export interface PickerOption {
   label: string;
 }
 
-export function useQuickEntryRefs() {
+export function useQuickEntryRefs(options?: {entrySource?:'personal_wallet'}) {
   const { selectedOrganizationId: orgId } = useOrganization();
   const permsQ = useMyPermissions();
   const personalPermsQ = usePersonalFinancePermissions();
@@ -59,6 +60,9 @@ export function useQuickEntryRefs() {
   const personalQ=usePersonalFinance();
   const personalWallets=useMemo(()=>personalQ.data?.wallets??[],[personalQ.data]);
   const personalCategories=useMemo(()=>personalQ.data?.categories??[],[personalQ.data]);
+  const walletScoped = options?.entrySource === 'personal_wallet';
+  const companyWalletQ = useCompanyWallets(orgId, walletScoped && canCompany);
+  const companyWallets = useMemo(() => companyWalletQ.data?.wallets ?? [], [companyWalletQ.data]);
 
   const buildingsQ = useIncomeExpenseFormBuildings({ enabled: canCompany });
   const roomsQ = useIncomeExpenseFormRooms(undefined, { allWhenEmpty: canCompany });
@@ -76,9 +80,11 @@ export function useQuickEntryRefs() {
   const cashbooks = useMemo<PickerOption[]>(
     () =>
       canCompany
-        ? expenseCashbooksForOrg(cashbooksQ.data ?? [], accountsQ.data, orgId).map((c) => ({ id: c.id, label: c.name }))
+        ? expenseCashbooksForOrg(cashbooksQ.data ?? [], accountsQ.data, orgId)
+            .filter(c => !walletScoped || companyWallets.some(w => w.account_id === c.id && !w.hidden && w.can_use))
+            .map((c) => ({ id: c.id, label: walletScoped ? companyWallets.find(w => w.account_id === c.id)?.name ?? c.name : c.name }))
         : [],
-    [canCompany, cashbooksQ.data, accountsQ.data, orgId],
+    [canCompany, cashbooksQ.data, accountsQ.data, orgId, walletScoped, companyWallets],
   );
 
   const categories = useMemo<CategoryRef[]>(() => {
@@ -127,7 +133,7 @@ export function useQuickEntryRefs() {
   const accounts = accountsQ.data;
   const defaultAccountFor = useCallback(
     (buildingId: string | null) =>
-      pickDefaultAccount({
+      walletScoped ? null : pickDefaultAccount({
         buildingId,
         usableIds: cashbooks.map((c) => c.id),
         accounts: (accounts ?? []).map((a) => ({
@@ -137,7 +143,7 @@ export function useQuickEntryRefs() {
         })),
         lastUsedId: lastAccount(orgId),
       }),
-    [cashbooks, accounts, orgId],
+    [cashbooks, accounts, orgId, walletScoped],
   );
 
   const loading =
@@ -158,9 +164,10 @@ export function useQuickEntryRefs() {
     personalReady:!!personalQ.data&&!personalQ.error,
     personalWallets,
     personalCategories,
-    companyLoading:canCompany&&(buildingsQ.isLoading||typesQ.isLoading||cashbooksQ.isLoading||accountsQ.isLoading),
-    companyError:buildingsQ.error??typesQ.error??cashbooksQ.error??accountsQ.error,
-    companyReady:canCompany&&!!buildingsQ.data&&!!typesQ.data&&!!cashbooksQ.data&&!!accountsQ.data,
+    companyWallets,
+    companyLoading:canCompany&&(buildingsQ.isLoading||typesQ.isLoading||cashbooksQ.isLoading||accountsQ.isLoading||(walletScoped&&companyWalletQ.isLoading)),
+    companyError:buildingsQ.error??typesQ.error??cashbooksQ.error??accountsQ.error??(walletScoped?companyWalletQ.error:null),
+    companyReady:canCompany&&!!buildingsQ.data&&!!typesQ.data&&!!cashbooksQ.data&&!!accountsQ.data&&(!walletScoped||!!companyWalletQ.data&&!companyWalletQ.error),
     canCompany,
     canPersonal,
     buildings,

@@ -111,6 +111,7 @@ export function QuickEntryDraftFeed({
                     cashbooks={c.refs.cashbooks}
                     personalCategories={c.refs.personalCategories}
                     personalWallets={c.refs.personalWallets}
+                    companyWallets={c.refs.companyWallets}
                     defaultAccountFor={c.refs.defaultAccountFor}
                     aiModel={card.aiModel}
                     photoUrl={card.previewUrl}

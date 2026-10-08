@@ -54,6 +54,9 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
   useShareholderDistributions: () => ({}),
   computeShareholderSummary: vi.fn(),
 }));
+vi.mock("@/components/personal-finance/CompanyFinance", () => ({
+  default: ({ view }: { view: string }) => <div data-testid="company-panel">Công ty · {view}</div>,
+}));
 afterEach(() => {
   cleanup();
   data.create = false;
@@ -193,3 +196,20 @@ it.each(["wallet", "month", "older report month", "goal"])(
     expect(screen.getByTestId("total-balance").textContent).toBe("0 ₫");
   },
 );
+it("keeps personal totals separate and puts the company filter immediately after transfers", async () => {
+  data.snapshot.wallets = [{ id: "personal", name: "Ví riêng", balance: 123000, hidden: false }] as Snapshot["wallets"];
+  render(<PersonalWalletPage />);
+  expect(screen.getByTestId("total-balance").textContent).toBe("123.000 ₫");
+  const group = within(screen.getByRole("group", { name: "Nhóm ví" }));
+  fireEvent.click(group.getByRole("button", { name: "Công ty" }));
+  expect((await screen.findByTestId("company-panel")).textContent).toContain("overview");
+  expect(screen.queryByTestId("total-balance")).toBeNull();
+  fireEvent.click(group.getByRole("button", { name: "Cá nhân" }));
+  expect(screen.getByTestId("total-balance").textContent).toBe("123.000 ₫");
+  fireEvent.click(screen.getByRole("button", { name: "Giao dịch" }));
+  const transferChip = screen.getByRole("button", { name: "Chuyển ví" });
+  expect(transferChip.nextElementSibling?.textContent).toBe("Công ty");
+  fireEvent.click(screen.getByRole("button", { name: "Công ty" }));
+  expect((await screen.findByTestId("company-panel")).textContent).toContain("ledger");
+  expect(screen.queryByRole("button", { name: "Chuyển tiền giữa ví" })).toBeNull();
+});

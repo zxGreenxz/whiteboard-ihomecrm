@@ -332,6 +332,13 @@ describe("useRealtimeDataSync report invalidation", () => {
   // 31/08 (audit /thanh-toan P2-01): C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
   // 3 sổ theo dõi (SettlementPanels) + biểu đồ Điện & Nước. Chốt cả cụm ở đây
   // để lần "vá thiếu khoá" sau không tái diễn im lặng.
+  it.each(['income_expenses','income_expense_items','accounts'])('%s refreshes company wallet balances and reports',table=>{
+    useRealtimeDataSync();
+    harness.queryClient.setQueryData(['company-wallets','actor','organization'],{wallets:[],transactions:[]});
+    triggerTable(table);
+    expect(harness.queryClient.getQueryState(['company-wallets','actor','organization'])?.isInvalidated).toBe(true);
+  });
+
   it("income_expenses invalidates 3 khoá lưới phí (C-INFRA-7) + sổ cọc tt-* + utility-chart (P2-01)", () => {
     useRealtimeDataSync();
     triggerTable("income_expenses");

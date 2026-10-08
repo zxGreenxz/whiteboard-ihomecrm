@@ -237,6 +237,7 @@ export function Management({
                 <strong>{r.name}</strong>
                 <small>
                   {kind === "wallet" && "balance" in r ? money(r.balance) : ""}
+                  {kind === "wallet" && "is_preferred" in r && r.is_preferred ? " · Ưu tiên" : ""}
                   {r.hidden ? " · Đang ẩn" : ""}
                 </small>
               </span>
@@ -283,6 +284,7 @@ export function Ledger(
     categories: () => void;
     recent?: boolean;
     entry?: () => void;
+    company?: ReactNode;
   },
 ) {
   const { snapshot: s, filters: f } = p;
@@ -354,12 +356,13 @@ export function Ledger(
     <>
       {!p.recent && (
         <>
-          <div className="pf-pills pf-type-chips">
+          <div className={`pf-pills pf-type-chips${p.company ? " pf-has-company" : ""}`}>
             {[
               ["all", "Tất cả"],
               ["EXPENSE", "Chi tiêu"],
               ["INCOME", "Thu nhập"],
               ["transfer", "Chuyển ví"],
+              ...(p.company ? [["company", "Công ty"]] : []),
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -378,7 +381,7 @@ export function Ledger(
               <Settings size={18} />
             </button>
           </div>
-          <div className="pf-tools pf-filter-triggers">
+          {f.type !== "company" && <div className="pf-tools pf-filter-triggers">
             <button aria-label="Lọc ví" onClick={() => setPicker("wallet")}>
               <Wallet size={18} />
               {s.wallets.find((w) => w.id === f.wallet)?.name ?? "Mọi ví"}
@@ -394,7 +397,7 @@ export function Ledger(
               )?.label ?? "Mọi danh mục"}
               <ChevronDown size={16} />
             </button>
-          </div>
+          </div>}
         </>
       )}
       <FinanceSheet
@@ -513,7 +516,7 @@ export function Ledger(
           </>
         )}
       </FinanceSheet>
-      <section className="pf-card">
+      {f.type === "company" && p.company ? p.company : <section className="pf-card">
         {!p.recent && (
           <div className="pf-between pf-muted">
             <span>{rows.length} giao dịch</span>
@@ -632,8 +635,8 @@ export function Ledger(
               })}
           </section>
         ))}
-      </section>
-      {!p.recent && p.permissions.create && (
+      </section>}
+      {!p.recent && f.type !== "company" && p.permissions.create && (
         <Button
           className="pf-transfer-cta"
           variant="outline"

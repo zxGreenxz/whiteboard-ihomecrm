@@ -40,6 +40,7 @@ const refs = (over: Partial<QuickEntryRefs> = {}): QuickEntryRefs => ({
   personalWallets:[{id:'11111111-1111-4111-8111-111111111111',user_id:'user-1',version:1,name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:true,opening_balance:0,balance:0}],
   personalCategories:[{id:'22222222-2222-4222-8222-222222222222',user_id:'user-1',version:1,name:'Ăn uống',type:'EXPENSE',hidden:false,icon:'utensils',color:'#123456',seed_key:null,legacy_name:null}],
   companyLoading:false,companyError:null,companyReady:true,
+  companyWallets:[],
   canCompany: true,
   canPersonal: true,
   buildings: [{ id: "b102", name: "Toà 102", code: "102LVT", is_virtual: false, user_id: "u", managed: true }],
@@ -68,11 +69,45 @@ const ai = (over: Partial<AiResult> = {}): AiResult => ({
 });
 const ok = (value: AiResult): AiRead => ({ ok: true, value, model: "9router:cx/gpt-6-luna(low)" });
 
-const mount = (r: QuickEntryRefs = refs()) =>
-  renderHook((p: { r: QuickEntryRefs }) => useQuickEntryFeed({ refs: p.r, userId: USER, today: "2026-10-01" }), {
+const mount = (r: QuickEntryRefs = refs(), entrySource?:'personal_wallet') =>
+  renderHook((p: { r: QuickEntryRefs }) => useQuickEntryFeed({ refs: p.r, userId: USER, today: "2026-10-01",entrySource }), {
     initialProps: { r },
   });
 const cardsOf = (result: { current: ReturnType<typeof useQuickEntryFeed> }) => Object.values(result.current.cards);
+
+describe('nguồn trang ví và thứ tự gợi ý',()=>{
+  it('nháp mới đứng trên cùng và giữ thứ tự sau tải lại',async()=>{
+    const first=mount();let oldId:string|null=null;let newId:string|null=null;
+    act(()=>{oldId=first.result.current.addManual('company');});
+    act(()=>{newId=first.result.current.addManual('company');});
+    expect(first.result.current.messages.flatMap(m=>m.cardIds)).toEqual([newId,oldId]);
+    await waitFor(()=>expect(localStorage.getItem(draftsKey(USER,ORG))).toContain(newId!));
+    first.unmount();
+    const restored=mount();
+    expect(restored.result.current.messages.flatMap(m=>m.cardIds)).toEqual([newId,oldId]);
+  });
+  it('nháp ở trang ví không trộn với nguồn nhập nhanh thường',()=>{
+    const normal=mount();act(()=>{normal.result.current.addManual('company');});normal.unmount();
+    const wallet=mount(refs(),'personal_wallet');
+    expect(wallet.result.current.messages).toHaveLength(0);
+    let id:string|null=null;act(()=>{id=wallet.result.current.addManual('company');});
+    expect(wallet.result.current.cards[id!].state.draft).toMatchObject({entrySource:'personal_wallet',companyOrganizationId:ORG,companyWalletId:null,accountId:null});
+  });
+  it('bill chuyển khoản có lời dùng thẻ chọn thẻ tín dụng đúng nhóm',async()=>{
+    const bank={...refs().personalWallets[0],id:'33333333-3333-4333-8333-333333333333',kind:'bank' as const};
+    const card={...bank,id:'44444444-4444-4444-8444-444444444444',kind:'credit_card' as const};
+    h.readWithAi.mockResolvedValue(ok(ai({items:[{desc:'Ăn uống',amount_vnd:50000,category:'c1',confidence:.9}],total_vnd:50000,payment_method:'bank_transfer'})));
+    const {result}=mount(refs({personalWallets:[bank,card]}),'personal_wallet');
+    await act(async()=>result.current.submitPhoto(new File(['bill'],'bill.jpg',{type:'image/jpeg'}),'personal','dùng thẻ'));
+    expect(cardsOf(result)[0].state.draft.personalWalletId).toBe(card.id);
+  });
+  it('không lấy ví mặc định khi chưa xác định được phương thức',async()=>{
+    const {result}=mount(refs(),'personal_wallet');
+    let id:string|null=null;act(()=>{id=result.current.addManual('personal');});
+    await act(async()=>Promise.resolve());
+    expect(result.current.cards[id!].state.draft.personalWalletId).toBeNull();
+  });
+});
 
 describe("AI organization recovery", () => {
   it("missing company remains retryable after repeated attempts", async () => {
