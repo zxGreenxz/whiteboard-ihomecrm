@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useState } from "react";
 
 const slot = vi.hoisted(() => ({ data: [] as Array<{ code: string; totalAmount: number }> }));
+const images=vi.hoisted(()=>({upload:vi.fn(),sign:vi.fn()}));
+vi.mock('@/lib/personalFinance/personalAttachments',()=>({PERSONAL_ATTACHMENT_LIMIT:20,uploadPersonalAttachment:images.upload,signPersonalAttachment:images.sign}));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/hooks/useVoucherSlotWarning", () => ({ useVoucherSlotWarning: () => ({ data: slot.data }) }));
 
@@ -52,6 +54,7 @@ function Harness(p: {
   initial: DraftState;
   status?: CardStatus;
   photoUrl?: string;
+  hasLocalPhoto?: boolean;
   cashbookList?: typeof cashbooks;
   buildingList?: typeof buildings;
   onSave?: () => void;
@@ -75,6 +78,7 @@ function Harness(p: {
         personalCategories={PERSONAL_CATEGORIES.map((name,i)=>({id:'cat-'+i,name,type:'EXPENSE',hidden:false}))}
         personalWallets={p.personalWallets}
         photoUrl={p.photoUrl}
+        hasLocalPhoto={p.hasLocalPhoto}
         aiModel={p.aiModel}
         defaultAccountFor={(b) => (b ? `acc-${b}` : null)}
         onChange={(n) => {
@@ -91,6 +95,17 @@ function Harness(p: {
 const lastOf = (spy: ReturnType<typeof vi.fn>) => spy.mock.calls[spy.mock.calls.length - 1][0] as DraftState;
 /** Ô bị khoá qua <fieldset disabled> cha — thuộc tính `disabled` của chính ô không phản ánh điều này. */
 const fieldsetLocked = (label: string) => screen.getByLabelText(label).closest("fieldset")?.disabled ?? false;
+
+it('explains the inferred wallet and clears stale explanation after manual selection',()=>{
+ const list=[{id:'sp',user_id:'u',name:'Thẻ SP',kind:'other',icon:'wallet',hidden:false,is_default:false,opening_balance:0,balance:0,version:1},{id:'cash',user_id:'u',name:'Tiền mặt',kind:'cash',icon:'wallet',hidden:false,is_default:false,opening_balance:0,balance:0,version:1}] as Wallet[];
+ const initial=state({mode:'personal',personalWalletId:'sp',personalWalletResolution:{walletId:'sp',reason:'platform'}});
+ const props={status:{kind:'draft'} as CardStatus,today,buildings,rooms,categories,cashbooks,personalCategories:[],personalWallets:list,defaultAccountFor:()=>null,onChange:vi.fn(),onSave:vi.fn(),onDiscard:vi.fn()};
+ const {rerender}=render(<MemoryRouter><DraftCard {...props} state={initial}/></MemoryRouter>);
+ expect(screen.getByText('Shopee/Grab')).toBeTruthy();
+ rerender(<MemoryRouter><DraftCard {...props} state={{...initial,touched:['personalWalletId'],draft:{...initial.draft,personalWalletId:'cash'}}}/></MemoryRouter>);
+ expect(screen.getByRole('combobox',{name:'Ví cá nhân'}).textContent).toContain('Tiền mặt');
+ expect(screen.queryByText('Shopee/Grab')).toBeNull();
+});
 
 afterEach(() => {
   cleanup();
@@ -293,22 +308,39 @@ describe("DraftCard — trạng thái máy chủ", () => {
 });
 
 describe("DraftCard — cá nhân", () => {
+  it('adding evidence keeps a persisted pending marker until upload completes, then preserves the new path',async()=>{
+    const owner='11111111-1111-4111-8111-111111111111',path=`${owner}/22222222-2222-4222-8222-222222222222.webp`;
+    const wallet={id:owner,user_id:owner,name:'cash',kind:'cash',icon:'',hidden:false,is_default:true,opening_balance:0,balance:0,version:1} as Wallet;
+    let finish!:(path:string)=>void;images.upload.mockImplementationOnce(()=>new Promise<string>(r=>{finish=r;}));images.sign.mockResolvedValue('https://signed.test/bill');
+    const spy=vi.fn();render(<Harness spy={spy} personalWallets={[wallet]} initial={state({mode:'personal',personalWalletId:owner,lines:[{description:'ăn',amount:50000,personalCategoryId:'cat-0',categoryId:null,personalCategory:null,periodStart:null,periodEnd:null}]})}/>);
+    fireEvent.change(screen.getByLabelText('Thêm ảnh chứng từ'),{target:{files:[new File(['img'],'bill.png',{type:'image/png'})]}});
+    expect(lastOf(spy).draft.personalAttachmentPending).toBe(true);expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',true);
+    expect(screen.queryByText(/đã mất khi tải lại/)).toBeNull();expect(screen.queryByText(/cần đính lại hoặc gỡ/)).toBeNull();
+    finish(path);await waitFor(()=>expect(lastOf(spy).draft.personalAttachmentPending).toBe(false));
+    expect(lastOf(spy).draft.personalAttachmentPaths).toEqual([path]);expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',false);
+  });
+  it('missing photo after reload blocks save until the user explicitly removes evidence',()=>{
+    render(<Harness initial={state({mode:'personal',personalWalletId:'wallet',personalAttachmentPending:true,lines:[{description:'ăn',amount:50000,personalCategoryId:'cat-0',categoryId:null,personalCategory:null,periodStart:null,periodEnd:null}]})}/>);
+    expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',true);expect(screen.getByText(/đã mất khi tải lại/)).toBeTruthy();fireEvent.click(screen.getByText('Gỡ ảnh chưa tải'));
+    expect(screen.getByRole('button',{name:'Lưu vào ví'})).toHaveProperty('disabled',false);
+  });
   it('keeps a selected hidden wallet readable',()=>{
     const hidden={id:'hidden',user_id:'u',name:'Ví ẩn',kind:'cash',icon:'wallet',hidden:true,is_default:false,opening_balance:0,balance:0,version:1} as Wallet;
     render(<Harness initial={state({mode:'personal',personalWalletId:'hidden'})} personalWallets={[hidden]}/>);
     expect(screen.getByRole('combobox',{name:'Ví cá nhân'}).textContent).toContain('Ví ẩn');
   });
-  it("không có toà/sổ quỹ; ảnh chỉ để AI đọc, không lưu", () => {
+  it("không có toà/sổ quỹ; ảnh cá nhân giữ để tải khi lưu", () => {
     const s = state({
-      mode: "personal", personalWalletId:"wallet",
+      mode: "personal", personalWalletId:"wallet",personalAttachmentPending:true,
       buildingId: null,
       accountId: null,
       lines: [{ description: "bún bò", amount: 50_000, categoryId: null, personalCategoryId:"cat-0", personalCategory: "Ăn uống", periodStart: null, periodEnd: null }],
     });
-    render(<Harness initial={s} photoUrl="blob:anh" />);
+    render(<Harness initial={s} photoUrl="blob:anh" hasLocalPhoto />);
     expect(screen.queryByLabelText("Toà")).toBeNull();
     expect(screen.queryByLabelText("Sổ quỹ")).toBeNull();
-    expect(screen.getByText("Ảnh chỉ để AI đọc — không lưu.")).toBeTruthy();
+    expect(screen.getByText("Ảnh sẽ tải lên làm chứng từ cá nhân khi lưu.")).toBeTruthy();
+    expect(screen.queryByText(/đã mất khi tải lại/)).toBeNull();
     expect(screen.getByRole("button", { name: "Lưu vào ví" })).toHaveProperty("disabled", false);
   });
 });

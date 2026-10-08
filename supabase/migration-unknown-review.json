@@ -873,6 +873,29 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261007155311_personal_transaction_attachments.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261007155311_personal_transaction_attachments.sql",
+          "trich_doan": "ALTER TABLE public.personal_transactions ADD COLUMN IF NOT EXISTS attachment_paths text[]; bucket personal-finance-attachments (private, 5 MiB, JPG/PNG/WebP); CREATE POLICY personal_attachment_read / _insert / _read_fence / _insert_fence / _no_replace / _no_delete ON storage.objects; CREATE OR REPLACE FUNCTION public.personal_finance_apply (chỉ thêm attachment_paths vào whitelist + kiểm đường dẫn/chủ object)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 policy storage trên — sinh 07/10/2026 ngay sau khi đặt nhánh lên origin/main"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 07/10/2026 — ảnh chứng từ riêng tư cho giao dịch ví cá nhân, chưa đi qua lane apply — các policy storage vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Thân personal_finance_apply so với 20261004212309 chỉ khác phần attachment_paths (khai báo biến, whitelist, vòng kiểm). Đã áp lên TEST qua test-env:thu-sql (ROLLBACK rồi --ghi); scripts/test-personal-finance.mjs 16 nhóm đạt với 5 JWT thật (upload/ký/cách ly chủ, replay, sửa giữ ảnh, gỡ không xoá vật lý); check-personal-finance-catalog đạt; personal-attachments.test.mjs (PGlite) bắt 2 đột biến; browser thật trên TEST 2/2. Sẽ áp qua npm run migrate:forward sau khi PR được review; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "policy:storage.objects.personal_attachment_read",
+        "policy:storage.objects.personal_attachment_insert",
+        "policy:storage.objects.personal_attachment_read_fence",
+        "policy:storage.objects.personal_attachment_insert_fence",
+        "policy:storage.objects.personal_attachment_no_replace"
+      ],
+      "raSoatBoi": "Claude Code — ảnh chứng từ ví cá nhân 07/10/2026",
+      "sha256": "18597fefd8b9605871ca5c47f039c9f80346406c8115d8cd74c60333f824be5f"
     }
   }
 }

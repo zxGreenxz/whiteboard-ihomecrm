@@ -2,7 +2,7 @@
 // Thẻ không tự gọi máy chủ để ghi — trang cha lo lưu; thẻ chỉ báo thay đổi (đánh dấu ô người dùng đã
 // sửa để AI không đè, dựng lại tên phiếu theo nội dung) và hiện đúng trạng thái máy chủ trả về.
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Loader2, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,14 @@ import { primaryCode } from "@/lib/quickEntry/spokenBuilding";
 import { DEPOSIT_ROOM_REQUIRED_MESSAGE, depositTypeIdSet, needsDepositRoom } from "@/lib/depositRoomRule";
 import type { PersonalCategoryRef } from '@/lib/quickEntry/personalRefs';
 import type { Wallet } from '@/lib/personalFinance/contract';
+import { PersonalAttachments } from '@/components/personal-finance/PersonalAttachments';
 
 const WHOLE_BUILDING = "__ca_toa__";
 const AMOUNT_PATH = /^lines\.(\d+)\.amount$/;
+const WALLET_REASON = {
+  manual:'Bạn đã chọn', explicit:'Theo nội dung', platform:'Shopee/Grab',
+  bank_transfer:'Bill chuyển khoản', cash_default:'Mặc định tiền mặt', unresolved:'Chọn ví cá nhân',
+};
 
 const FLAG_TEXT: Record<DraftFlag, string> = {
   ai_direction_conflict: "AI tìm thấy cả Thu và Chi khác lựa chọn bạn đã chốt. Đã giữ nguyên nháp; các khoản AI bổ sung chưa được thêm. Hãy kiểm lại nội dung và thêm riêng khoản còn thiếu.",
@@ -53,6 +58,7 @@ export interface DraftCardProps {
   personalCategories: readonly PersonalCategoryRef[];
   personalWallets?: readonly Wallet[];
   photoUrl?: string | null;
+  hasLocalPhoto?: boolean;
   /** Có giá trị khi AI đã đọc thẻ này — hiện nhãn "AI đọc" để người dùng soát kỹ. */
   aiModel?: string | null;
   defaultAccountFor: (buildingId: string | null) => string | null;
@@ -119,20 +125,27 @@ function Field({ label, className, children }: { label: string; className?: stri
 export function DraftCard(props: DraftCardProps) {
   const { state, status, today } = props;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [attachmentBlocked,setAttachmentBlocked]=useState(false);
+  const attachmentBlockedRef=useRef(false);
+  const stateRef=useRef(state);stateRef.current=state;
   const d = state.draft;
   const company = d.mode === "company";
   const locked = isLocked(status);
   // Cọc không có phòng thì không HĐ nào nhận (depositRoomRule.ts) ⇒ chặn lưu ngay trên thẻ.
   const hasDepositLine = company && needsDepositRoom(d.lines.map((l) => l.categoryId), null, depositTypeIdSet(props.categories));
   const depositNeedsRoom = hasDepositLine && !d.roomId;
-  const canSave = validateDraft(d).ok && !depositNeedsRoom;
+  // A local photo uploads on Save and a running upload shows its own status: neither is a "re-attach" issue.
+  const checked = props.hasLocalPhoto || attachmentBlocked ? { ...d, personalAttachmentPending: false } : d;
+  const canSave = !attachmentBlocked && validateDraft(checked).ok && !depositNeedsRoom;
   const noCashbook = company && props.cashbooks.length === 0;
-  const issues = issueTexts(d, noCashbook);
+  const issues = issueTexts(checked, noCashbook);
   const total = d.lines.reduce((s, l) => s + (l.amount > 0 ? l.amount : 0), 0);
 
-  const emit = (draft: QuickDraft, path: string) =>
-    props.onChange(syncName(markTouched({ ...state, draft }, path)));
-  const update = (path: string, next: Partial<QuickDraft>) => emit({ ...d, ...next }, path);
+  const emit = (draft: QuickDraft, path: string) => {
+    const next=syncName(markTouched({ ...stateRef.current, draft }, path));stateRef.current=next;props.onChange(next);
+  };
+  const update = (path: string, next: Partial<QuickDraft>) => emit({ ...stateRef.current.draft, ...next }, path);
+  const dropPendingPhoto = () => update("personalAttachmentPaths", { personalAttachmentPending: false });
   const updateLine = <K extends keyof DraftLine>(i: number, key: K, value: DraftLine[K]) =>
     emit({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, [key]: value } : l)) }, `lines.${i}.${String(key)}`);
   const addLine = () =>
@@ -216,7 +229,7 @@ export function DraftCard(props: DraftCardProps) {
           <div className="flex gap-2" role="group" aria-label="Loại giao dịch">
             {(['INCOME','EXPENSE'] as const).map(type=><Button key={type} type="button" variant={(d.transactionType??'EXPENSE')===type?'default':'outline'} aria-pressed={(d.transactionType??'EXPENSE')===type} onClick={()=>update('transactionType',{transactionType:type,lines:d.lines.map(l=>({...l,transactionType:type,categoryId:null,personalCategoryId:null,personalCategory:null}))})}>{type==='INCOME'?'Thu':'Chi'}</Button>)}
           </div>
-          {!company&&<Field label="Ví cá nhân"><SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined} aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value})}/></Field>}
+          {!company&&<Field label="Ví cá nhân"><SearchableSelect modal={props.inDialog} contentClassName={props.inDialog ? "z-[70]" : undefined} aria-label="Ví cá nhân" value={d.personalWalletId??undefined} options={walletOptions} placeholder="Chọn ví" onValueChange={value=>update('personalWalletId',{personalWalletId:value,personalWalletResolution:{walletId:value,reason:'manual'}})}/>{d.personalWalletResolution&&!state.touched.includes('personalWalletId')&&<span className="mt-1 block text-xs text-muted-foreground">{WALLET_REASON[d.personalWalletResolution.reason]}</span>}</Field>}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Field label="Ngày giao dịch">
               {props.inDialog ? <input type="date" className="h-11 w-full rounded-md border bg-background px-3" value={d.date} aria-label="Ngày chi" onChange={e=>update("date",{date:e.target.value})}/> : <DateInput value={d.date} aria-label="Ngày chi" onChange={(iso) => update("date", { date: iso })} />}
@@ -360,12 +373,21 @@ export function DraftCard(props: DraftCardProps) {
         </fieldset>
       )}
 
-      {props.photoUrl && (
+      {props.photoUrl && (company || (props.hasLocalPhoto && d.personalAttachmentPending)) && (
         <figure className="flex items-center gap-2 text-xs text-muted-foreground">
           <img src={props.photoUrl} alt="Ảnh bill" className="h-16 w-16 rounded object-cover" />
-          <figcaption>{company ? "Ảnh sẽ lưu làm chứng từ của phiếu." : "Ảnh chỉ để AI đọc — không lưu."}</figcaption>
+          <figcaption className="flex-1">{company ? "Ảnh sẽ lưu làm chứng từ của phiếu." : "Ảnh sẽ tải lên làm chứng từ cá nhân khi lưu."}</figcaption>
+          {!company && !locked && <Button type="button" variant="ghost" size="sm" onClick={dropPendingPhoto}>Gỡ ảnh chưa tải</Button>}
         </figure>
       )}
+      {/* Marker without a File and without a running upload: the picked image was lost by a page reload. */}
+      {!company && d.personalAttachmentPending && !props.hasLocalPhoto && !attachmentBlocked && !locked && (
+        <div className="flex items-center gap-2 text-xs text-destructive">
+          <span className="flex-1">Ảnh chưa tải xong đã mất khi tải lại trang. Đính lại ảnh hoặc gỡ để tiếp tục.</span>
+          <Button type="button" variant="ghost" size="sm" onClick={dropPendingPhoto}>Gỡ ảnh chưa tải</Button>
+        </div>
+      )}
+      {!company&&props.personalWallets?.[0]?.user_id&&<PersonalAttachments ownerId={props.personalWallets[0].user_id} instanceKey={d.id} paths={d.personalAttachmentPaths??[]} reservedCount={props.hasLocalPhoto&&d.personalAttachmentPending?1:0} editable={!locked} onChange={paths=>update('personalAttachmentPaths',{personalAttachmentPaths:paths,personalAttachmentPending:!!props.hasLocalPhoto||attachmentBlockedRef.current})} onBlockedChange={value=>{const previous=attachmentBlockedRef.current;attachmentBlockedRef.current=value;setAttachmentBlocked(value);if(value)update('personalAttachmentPaths',{personalAttachmentPending:true});else if(previous&&!props.hasLocalPhoto)update('personalAttachmentPaths',{personalAttachmentPending:false});}}/>}
 
       {(status.kind === "draft" || status.kind === "rejected") && (
         <>

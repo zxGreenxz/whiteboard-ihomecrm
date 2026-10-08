@@ -114,6 +114,7 @@ export function QuickEntryDraftFeed({
                     defaultAccountFor={c.refs.defaultAccountFor}
                     aiModel={card.aiModel}
                     photoUrl={card.previewUrl}
+                    hasLocalPhoto={!!card.photo}
                     onChange={(state) => c.feed.changeCard(id, state)}
                     onSave={() => void c.feed.saveCard(id)}
                     onDiscard={() => c.feed.discardCard(id)}

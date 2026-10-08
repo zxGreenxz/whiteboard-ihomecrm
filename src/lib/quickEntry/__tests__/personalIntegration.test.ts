@@ -4,9 +4,20 @@ import { toPersonalBatch,toCreateIncomeExpenseInput } from '../convert';
 import { parseAiResult } from '../aiSchema';
 import { deserializeCards,serializeCards } from '../feedStorage';
 import {inferTransactionType} from '../personalRefs';
+import { validateDraft } from '../draft';
 const id='11111111-1111-4111-8111-111111111111';
 const context:ComposeContext={today:'2026-09-30',mode:'personal',refs:{buildings:[],rooms:[]},categories:[],personalWalletId:id,personalCategoryRefs:[{id:'income',name:'Lương',type:'INCOME',hidden:false},{id:'expense',name:'Ăn uống',type:'EXPENSE',hidden:false}],newId:()=>crypto.randomUUID(),defaultAccountFor:()=>null};
 describe('real personal QuickEntry',()=>{
+ it('carries one uploaded image to every batch row and blocks missing local evidence after reload',()=>{
+  const [s]=draftsFromText('ăn sáng 50k; ăn trưa 60k',context);
+  const path=`${id}/22222222-2222-4222-8222-222222222222.webp`;
+  const draft={...s.draft,personalAttachmentPaths:[path],lines:s.draft.lines.map(l=>({...l,personalCategoryId:id}))};
+  expect(toPersonalBatch(draft).rows?.every(row=>JSON.stringify(row.attachment_paths)===JSON.stringify([path]))).toBe(true);
+  const local={...s,draft:{...draft,personalAttachmentPaths:[],personalAttachmentPending:true}};
+  const [restored]=deserializeCards(serializeCards([{state:local,status:{kind:'draft'},personalDone:0}],100),101);
+  expect(restored.state.draft.personalAttachmentPending).toBe(true);
+  expect(validateDraft(restored.state.draft).ok).toBe(false);
+ });
  it('distinguishes received salary from paying wages and medicine',()=>{
   expect(inferTransactionType('nhận lương 10 triệu')).toBe('INCOME');
   expect(inferTransactionType('102LVT trả lương thợ 3 triệu')).toBe('EXPENSE');

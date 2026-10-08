@@ -120,6 +120,9 @@ try {
     const ids = psqlJson(db, `select id from auth.users where email in (${emails.map(lit).join(',')})`).map(row => row.id);
     if (ids.length) {
       const list = ids.map(lit).join(',');
+      // Unlinking intentionally leaves private objects; fixture teardown is the only physical deletion.
+      const images = psqlJson(db, `select name from storage.objects where bucket_id='personal-finance-attachments' and owner_id in (${list})`).map(row => row.name);
+      if (images.length) assert((await fetch(`${url}/storage/v1/object/personal-finance-attachments`, { method: 'DELETE', headers: adminHeaders, body: JSON.stringify({ prefixes: images }), signal: AbortSignal.timeout(45000) })).ok, 'fixture image cleanup failed');
       psql(db, `BEGIN;SET LOCAL session_replication_role=replica;
         DELETE FROM public.member_override_scopes WHERE override_id IN (SELECT id FROM public.member_permission_overrides WHERE membership_id IN (SELECT id FROM public.organization_memberships WHERE user_id IN (${list})));
         DELETE FROM public.member_permission_overrides WHERE membership_id IN (SELECT id FROM public.organization_memberships WHERE user_id IN (${list}));

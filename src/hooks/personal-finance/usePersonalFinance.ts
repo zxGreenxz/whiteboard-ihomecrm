@@ -20,11 +20,12 @@ function serviceFor(ownerId:string){
     case 'personal_finance_mutate': {
      if(!args)throw new PersonalFinanceError('validation','Thiếu yêu cầu ghi ví cá nhân.');
      const {data,...payload}=args.p_payload;
-     // Entity schemas accept only scalar fields; narrow the service's unknown record
+     // Entity schemas accept scalar fields plus transaction attachment_paths (string[]); narrow the service's unknown record
      // at the generated JSON boundary without disabling RPC name/argument types.
-     const fields:Record<string,string|number|boolean|null|undefined>={};
+     const fields:Record<string,string|number|boolean|null|undefined|string[]>={};
      for(const [key,value] of Object.entries(data??{})){
-      if(value===null)fields[key]=null;
+      if(key==='attachment_paths'&&Array.isArray(value)&&value.every(v=>typeof v==='string'))fields[key]=[...value];
+      else if(value===null)fields[key]=null;
       else if(value===undefined)fields[key]=undefined;
       else if(typeof value==='string'||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value))fields[key]=value;
       else throw new PersonalFinanceError('validation','Dữ liệu ghi ví cá nhân không hợp lệ.');

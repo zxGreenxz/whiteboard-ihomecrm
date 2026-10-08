@@ -17,6 +17,7 @@ import { hasUnconfirmedResponse } from "@/lib/operationOutcome";
 import { createdVoucherFeedback, voucherFailureMessage } from "@/lib/voucherFeedback";
 import { toCreateIncomeExpenseInput, toPersonalBatch } from "@/lib/quickEntry/convert";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
+import { uploadPersonalAttachment } from '@/lib/personalFinance/personalAttachments';
 
 export const ATTACHMENT_BUCKET = "income-expense-attachments";
 
@@ -93,5 +94,5 @@ export function useQuickEntrySave() {
       return {kind:unknown?'unknown':'rejected',ids:[],done:0,message:unknown?'Chưa xác nhận kết quả. Gửi lại y nguyên; máy chủ chống trùng theo mã yêu cầu của Ví cá nhân.':error instanceof Error?error.message:'Không lưu được khoản vào Ví cá nhân.'};
     }
   };
-  return { uploadPhoto, saveCompany, savePersonal, pendingPersonalRequests:personal.pending };
+  return { uploadPhoto, uploadPersonalPhoto:uploadPersonalAttachment, saveCompany, savePersonal, pendingPersonalRequests:personal.pending };
 }

@@ -3,7 +3,7 @@ import { transactionInput } from "@/lib/personalFinance/transactionInput";
 import { resolvePersonalDraft } from "@/lib/quickEntry/personalRefs";
 import type { Snapshot } from "@/lib/personalFinance/contract";
 import type { QuickDraft } from "@/lib/quickEntry/draft";
-it("hidden wallets remain usable for new transactions and default quick drafts", () => {
+it("explicitly selected hidden wallets remain usable but are not automatic defaults", () => {
   const snapshot = {
     wallets: [{ id: "hidden", hidden: true, is_default: true }],
     categories: [{ id: "food", type: "EXPENSE", hidden: false }],
@@ -25,5 +25,5 @@ it("hidden wallets remain usable for new transactions and default quick drafts",
       snapshot.wallets,
       [],
     ).personalWalletId,
-  ).toBe("hidden");
+  ).toBeNull();
 });

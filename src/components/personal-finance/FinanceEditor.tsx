@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { PersonalAttachments } from "./PersonalAttachments";
 import { FinanceSheet } from "./FinanceViews";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import {
 import { PersonalFinanceError } from "@/lib/personalFinance/service";
 import type { PendingRequest } from "@/lib/personalFinance/pendingRequests";
 import { usePersonalFinanceMutation } from "@/hooks/personal-finance/usePersonalFinance";
+import { defaultPersonalWallet } from '@/lib/quickEntry/personalWallet';
 import {
   changedFields,
   deleteReason,
@@ -18,7 +20,7 @@ import {
   type Permissions,
 } from "./presentation";
 
-type Values = Record<string, string | boolean>;
+type Values = Record<string, string | boolean | string[]>;
 const numeric = new Set(["amount", "target", "opening_balance"]);
 function initial(editor: Editor, s: Snapshot): Values {
   const d = new Date();
@@ -35,10 +37,11 @@ function initial(editor: Editor, s: Snapshot): Values {
     target: "",
     txn_date: today,
     description: "",
+    attachment_paths: [],
     note: "",
     target_date: "",
     wallet_id:
-      s.wallets.find((w) => w.is_default)?.id ?? s.wallets[0]?.id ?? "",
+      editor.entity === 'transaction' ? defaultPersonalWallet(s.wallets) ?? '' : s.wallets.find((w) => w.is_default)?.id ?? s.wallets[0]?.id ?? "",
     source_wallet_id: s.wallets[0]?.id ?? "",
     target_wallet_id: s.wallets[1]?.id ?? "",
     category_id:
@@ -56,7 +59,11 @@ function initial(editor: Editor, s: Snapshot): Values {
   return Object.fromEntries(
     Object.entries(values).map(([k, v]) => [
       k,
-      typeof v === "boolean" ? v : String(v ?? ""),
+      Array.isArray(v) && k === "attachment_paths"
+        ? v.filter((item): item is string => typeof item === "string")
+        : typeof v === "boolean"
+          ? v
+          : String(v ?? ""),
     ]),
   );
 }
@@ -70,6 +77,7 @@ const fields = {
     "wallet_id",
     "category_id",
     "description",
+    "attachment_paths",
   ],
   budget: ["category_id", "amount"],
   goal: ["name", "icon", "target", "target_date", "wallet_id"],
@@ -83,7 +91,7 @@ const fields = {
   ],
 } as const;
 
-export function FinanceEditor({
+function FinanceEditorSession({
   editor: incomingEditor,
   snapshot: s,
   permissions,
@@ -101,11 +109,29 @@ export function FinanceEditor({
   footerAddon?: ReactNode;
 }) {
   const [removing, setRemoving] = useState(false);
+  const [closed, setClosed] = useState(false);
   const editor = {
     ...incomingEditor,
     remove: incomingEditor.remove || removing,
   };
   const writer = usePersonalFinanceMutation();
+  const [attachmentBlocked, setAttachmentBlocked] = useState(false);
+  const attachmentBlockedRef = useRef(false);
+  const ownerRef = useRef(s.owner_id);
+  ownerRef.current = s.owner_id;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  // Closing tears down the uploader at once (abort) and ignores any late save completion.
+  const close = () => {
+    alive.current = false;
+    setClosed(true);
+    onClose();
+  };
   const [held, setHeld] = useState<PendingRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inline, setInline] = useState(false);
@@ -113,6 +139,8 @@ export function FinanceEditor({
   const [defaults] = useState(() => initial(editor, s));
   const form = useForm<Values>({ defaultValues: defaults });
   const type = String(form.watch("type"));
+  const watchedPaths = form.watch("attachment_paths");
+  const attachmentPaths = Array.isArray(watchedPaths) ? watchedPaths : [];
   const hasField = (key: string) =>
     fields[editor.entity].some((field) => field === key);
   const title = editor.remove
@@ -136,7 +164,15 @@ export function FinanceEditor({
   const busy = writer.isPending;
   const locked = busy || !!held;
   async function submit(values: Values) {
-    if (!allowed || blocked) return;
+    if (
+      closed ||
+      !allowed ||
+      blocked ||
+      attachmentBlockedRef.current ||
+      (writer.ownerId && writer.ownerId !== s.owner_id)
+    )
+      return;
+    const submittedOwner = s.owner_id;
     setError(null);
     let request = held;
     try {
@@ -172,8 +208,16 @@ export function FinanceEditor({
                 selected,
               )
             : selected;
+        // Arrays differ by reference: an unchanged image list is not an edit, and a new entry
+        // without images omits the field, so it never depends on the attachment-aware RPC body.
+        if (
+          editor.entity === "transaction" &&
+          JSON.stringify(selected.attachment_paths) ===
+            JSON.stringify(defaults.attachment_paths)
+        )
+          delete data.attachment_paths;
         if (!editor.remove && editor.record && !Object.keys(data).length) {
-          onClose();
+          close();
           return;
         }
         const parsed = mutationSchema.safeParse({
@@ -192,10 +236,12 @@ export function FinanceEditor({
         request = writer.prepare(parsed.data);
       }
       const receipt = await writer.mutateAsync(request);
+      if (!alive.current || ownerRef.current !== submittedOwner) return;
       setHeld(null);
       onSaved?.(receipt);
-      onClose();
+      close();
     } catch (e) {
+      if (!alive.current || ownerRef.current !== submittedOwner) return;
       if (e instanceof PersonalFinanceError && e.outcomeUnknown && request)
         setHeld(request);
       else setHeld(null);
@@ -427,7 +473,7 @@ export function FinanceEditor({
             )}
             {editor.entity === "transaction" && (
               <div className="pf-two-cols">
-                {select("wallet_id", "Ví thanh toán", wallets)}
+                {select("wallet_id", "Ví thanh toán", [["", "Chọn ví"], ...wallets])}
                 {input("txn_date", "Ngày giao dịch", "date")}
               </div>
             )}
@@ -444,6 +490,20 @@ export function FinanceEditor({
           </>
         )}
       </fieldset>
+      {editor.entity === "transaction" && !editor.remove && !closed && (
+        <PersonalAttachments
+          key={`${s.owner_id}/${editor.record?.id ?? "new"}`}
+          ownerId={s.owner_id}
+          instanceKey={String(editor.record?.id ?? "new")}
+          paths={attachmentPaths}
+          editable={allowed && !locked}
+          onChange={(paths) => form.setValue("attachment_paths", paths)}
+          onBlockedChange={(value) => {
+            attachmentBlockedRef.current = value;
+            setAttachmentBlocked(value);
+          }}
+        />
+      )}
       {editor.record &&
         !editor.remove &&
         deleteReason(editor.entity, editor.record, s) && (
@@ -476,12 +536,12 @@ export function FinanceEditor({
           type="button"
           variant="outline"
           disabled={busy}
-          onClick={onClose}
+          onClick={close}
         >
           Hủy
         </Button>
         {allowed && !blocked && (
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={closed || busy || attachmentBlocked}>
             {busy
               ? "Đang lưu…"
               : held
@@ -569,11 +629,23 @@ export function FinanceEditor({
         if (!busy) {
           if (inline) setInline(false);
           else if (categoryPicker) setCategoryPicker(false);
-          else onClose();
+          else close();
         }
       }}
     >
       {editorContent}
     </FinanceSheet>
+  );
+}
+
+// Owner/entity/record changes start a fresh session: uploads, held requests and closing state never carry over.
+export function FinanceEditor(
+  props: ComponentProps<typeof FinanceEditorSession>,
+) {
+  return (
+    <FinanceEditorSession
+      key={`${props.snapshot.owner_id}:${props.editor.entity}:${props.editor.record?.id ?? "new"}`}
+      {...props}
+    />
   );
 }

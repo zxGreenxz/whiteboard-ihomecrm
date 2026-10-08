@@ -7,12 +7,12 @@ type LedgerSnapshot = {
   owner_id: string;
   wallets: Array<{ id: string; name: string; balance: number; version: number; hidden: boolean }>;
   categories: Array<{ id: string; name: string; type: string; version: number }>;
-  transactions: Array<{ id: string; description: string | null; amount: number; type: string; version: number; deleted_at: string | null }>;
+  transactions: Array<{ id: string; description: string | null; amount: number; type: string; version: number; deleted_at: string | null; attachment_paths: string[]; wallet_id: string | null }>;
   transfers: Array<{ id: string; amount: number; goal_id: string | null; deleted_at: string | null }>;
   goals: Array<{ id: string; name: string; saved: number }>;
   budgets: Array<{ id: string; amount: number; category_id: string | null }>;
 };
-type NetworkControl = { loseReceiptFor?: string; lostReceipts: number; sttCalls: number; aiReads: number; snapshot?: LedgerSnapshot };
+type NetworkControl = { loseReceiptFor?: string; lostReceipts: number; sttCalls: number; aiReads: number; nextAI?: {desc: string; amount_vnd: number; platform?: 'grab' | 'shopee'}; snapshot?: LedgerSnapshot };
 const fixture = JSON.parse(process.env.PERSONAL_FINANCE_TEST_FIXTURES || 'null') as Fixtures | null;
 if (!fixture || fixture.ref === 'tryymsxyyckgbrmmvozx' || fixture.org !== 'dddd0000-0000-4000-8000-000000000001') {
   throw new Error('Run scripts/test-personal-finance-browser.mjs; guarded TEST fixtures are required');
@@ -22,9 +22,13 @@ if (new URL(f.url).hostname !== `${f.ref}.supabase.co`) throw new Error('TEST UR
 const base = process.env.FLEET_BASE_URL || '';
 if (!/^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/.test(base)) throw new Error('Local candidate URL required');
 
+// Phone by default; PERSONAL_FINANCE_VIEWPORT=desktop reruns the same flows at 1280x800.
+const desktop = process.env.PERSONAL_FINANCE_VIEWPORT === 'desktop';
+const shot = (name: string) => `${name}-${desktop ? 1280 : 390}.png`;
+
 // Independent accounts: a writer failure must not skip the read-only role proof.
 test.use({
-  viewport: { width: 390, height: 844 }, storageState: { cookies: [], origins: [] },
+  viewport: desktop ? { width: 1280, height: 800 } : { width: 390, height: 844 }, storageState: { cookies: [], origins: [] },
   launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
 });
 
@@ -61,9 +65,14 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
         }
         if (target.pathname.endsWith('/chat/completions')) {
           network.aiReads += 1;
-          return route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ items: [{ desc: 'TEST Cà phê giọng nói', amount_vnd: 1000, transactionType: 'EXPENSE', category: null, confidence: 0.9 }], total_vnd: 1000, date: null, vendor: null, building_mention: null, room_mention: null, customer_code: null, period_start: null, period_end: null }) } }] } });
+          const next = network.nextAI; network.nextAI = undefined;
+          return route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ items: [{ desc: next?.desc ?? 'TEST Cà phê giọng nói', amount_vnd: next?.amount_vnd ?? 1000, platform: next?.platform ?? null, transactionType: 'EXPENSE', category: null, confidence: 0.9 }], total_vnd: next?.amount_vnd ?? 1000, date: null, vendor: null, building_mention: null, room_mention: null, customer_code: null, period_start: null, period_end: null }) } }] } });
         }
         return deny();
+      } else if (target.pathname.startsWith('/storage/v1/')) {
+        const ownImage = new RegExp(`^/storage/v1/object/(?:sign/|info/)?personal-finance-attachments/${actor.id}/[a-f0-9-]+\\.(?:jpg|jpeg|png|webp)$`);
+        if (request.method() !== 'POST' || !ownImage.test(target.pathname)) return deny();
+        if (!canWrite && !target.pathname.includes('/object/sign/')) return deny();
       } else if (target.pathname === '/rest/v1/rpc/personal_finance_mutate') {
         if (!canWrite) return deny();
         const body = request.postDataJSON();
@@ -79,10 +88,15 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
           await route.fulfill({ status: 200, contentType: 'application/json', json: { receiptUnavailable: true } });
           return;
         }
+      } else if (target.pathname === '/rest/v1/rpc/set_my_ui_preference') {
+        // The app remembers the selected company on the signed-in fixture's own profile; nothing else.
+        const body = request.postDataJSON();
+        if (Object.keys(body ?? {}).length !== 2 || body.p_key !== 'selectedOrganizationId' || body.p_value !== f.org) return deny();
       } else if (target.pathname.startsWith('/rest/v1/rpc/')) {
         const name = target.pathname.split('/').pop() || '';
-        // Existing layout roster RPC is SELECT-only (20260725001000 migration).
-        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1'].includes(name)) return deny();
+        // Existing layout roster RPC is SELECT-only (20260725001000 migration); the desktop dashboard's
+        // revenue_by_month is STABLE SECURITY INVOKER SQL with a single SELECT (20260726132000).
+        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1', 'revenue_by_month'].includes(name)) return deny();
       } else if (!['/auth/v1/token', '/auth/v1/logout'].includes(target.pathname)) return deny();
     }
     await route.continue();
@@ -282,13 +296,104 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await closeSheets(page);
   await expect(page.getByTestId('month-income')).toContainText('200.000');
   await expect(page.getByTestId('month-expense')).toContainText('76.000');
-  await page.screenshot({ path: testInfo.outputPath('real-test-home-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-home')), fullPage: true });
   await navigate(page, 'Báo cáo');
-  await page.screenshot({ path: testInfo.outputPath('real-test-report-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-report')), fullPage: true });
   await page.reload();
   await navigate(page, 'Tổng quan');
   await expect(page.getByTestId('total-balance')).toContainText('1.124.000');
   await expect.poll(() => total(network)).toBe(1_124_000);
+  // Regression: named platform wallet and photo survive the entire quick-entry -> detail flow.
+  await page.getByRole('button', { name: 'Quản lý ví', exact: true }).click();
+  await page.getByRole('button', { name: 'Thêm ví', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Thêm ví', exact: true });
+  await editor.getByLabel('Tên ví', { exact: true }).fill('Thẻ SP');
+  await editor.getByRole('combobox', { name: 'Loại ví', exact: true }).selectOption('bank');
+  await editor.getByRole('button', { name: /^Lưu/ }).click();
+  await expect(editor).toHaveCount(0); await closeSheets(page);
+  await expect.poll(() => network.snapshot?.wallets.some(wallet => wallet.name === 'Thẻ SP')).toBe(true);
+  const spId = network.snapshot?.wallets.find(wallet => wallet.name === 'Thẻ SP')?.id;
+  const cashId = network.snapshot?.wallets.find(wallet => wallet.name === 'Ví chính')?.id;
+  expect(spId).toBeTruthy(); expect(cashId).toBeTruthy();
+  const png = { name: 'grab-food.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jL1kAAAAASUVORK5CYII=', 'base64') };
+  network.nextAI = { desc: 'TEST GrabFood có ảnh', amount_vnd: 2000, platform: 'grab' };
+  // The gallery launcher opens the entry sheet and native picker; a personal photo then waits for typed content.
+  // (The paperclip pairs the photo with voice and starts recording instead.)
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Chọn ảnh', exact: true }).click();
+  await (await chooser).setFiles(png);
+  const entrySheet = page.getByRole('dialog', { name: 'Ghi thu chi', exact: true });
+  await expect(entrySheet.getByRole('img', { name: 'Ảnh chờ gửi', exact: true })).toBeVisible();
+  await entrySheet.getByRole('textbox', { name: 'Nội dung khoản chi', exact: true }).fill('GrabFood 2000 TEST có ảnh');
+  await entrySheet.getByRole('button', { name: 'Gửi', exact: true }).click();
+  const photoDraft = entrySheet.getByTestId('draft-card').last();
+  await expect(photoDraft).toHaveAttribute('data-status', 'draft');
+  await expect(photoDraft.getByRole('combobox', { name: 'Ví cá nhân', exact: true })).toContainText('Thẻ SP');
+  await photoDraft.screenshot({ path: testInfo.outputPath(shot('real-test-photo-draft')) });
+  await photoDraft.getByRole('combobox', { name: 'Danh mục dòng 1', exact: true }).click();
+  await page.getByRole('option', { name: 'Ăn uống', exact: true }).click();
+  network.loseReceiptFor = 'transaction.batch';
+  await photoDraft.getByRole('button', { name: 'Lưu vào ví', exact: true }).click();
+  await expect(photoDraft).toHaveAttribute('data-status', 'unknown');
+  await photoDraft.getByRole('button', { name: /Gửi lại y nguyên/ }).click();
+  await expect.poll(() => network.snapshot?.transactions.find(row => row.description === 'TEST GrabFood có ảnh')?.attachment_paths?.length).toBe(1);
+  const photographed = network.snapshot!.transactions.find(row => row.description === 'TEST GrabFood có ảnh')!;
+  expect(photographed.wallet_id).toBe(spId);
+  const originalPaths = [...photographed.attachment_paths];
+  expect(originalPaths[0]).toMatch(new RegExp(`^${f.writer.id}/[a-f0-9-]+\\.(jpg|jpeg|png|webp)$`));
+  const imageWrites = observed.writes.filter(write => (write.payload.rows as Array<{description?:string}> | undefined)?.some(row => row.description === 'TEST GrabFood có ảnh'));
+  expect(imageWrites).toHaveLength(2); expect(imageWrites[0]).toEqual(imageWrites[1]);
+  await closeSheets(page); await navigate(page, 'Giao dịch');
+  await page.getByRole('button', { name: 'Xem TEST GrabFood có ảnh', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Chi tiết giao dịch', exact: true });
+  const thumbnail = editor.getByRole('img', { name: 'Ảnh chứng từ 1', exact: true });
+  await expect(thumbnail).toBeVisible();
+  await expect.poll(() => thumbnail.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await editor.getByRole('button', { name: 'Xem ảnh chứng từ 1', exact: true }).click();
+  const lightbox = page.getByRole('dialog', { name: 'Ảnh chứng từ 1', exact: true });
+  await expect(lightbox.getByRole('img', { name: 'Ảnh chứng từ phóng lớn', exact: true })).toBeVisible();
+  await lightbox.getByRole('button', { name: /^(Đóng|Close)$/ }).last().click();
+  await editor.getByLabel('Ghi chú', { exact: true }).fill('TEST Ảnh giữ khi sửa');
+  await editor.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect.poll(() => network.snapshot?.transactions.find(row => row.id === photographed.id)?.description).toBe('TEST Ảnh giữ khi sửa');
+  expect(network.snapshot!.transactions.find(row => row.id === photographed.id)!.attachment_paths).toEqual(originalPaths);
+  await page.getByRole('button', { name: 'Xem TEST Ảnh giữ khi sửa', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Chi tiết giao dịch', exact: true });
+  await editor.getByRole('button', { name: 'Gỡ ảnh chứng từ 1', exact: true }).click();
+  await editor.getByRole('button', { name: 'Hủy', exact: true }).click();
+  await page.getByRole('button', { name: 'Xem TEST Ảnh giữ khi sửa', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Chi tiết giao dịch', exact: true });
+  await expect(editor.getByRole('img', { name: 'Ảnh chứng từ 1', exact: true })).toBeVisible();
+  await editor.getByLabel('Thêm ảnh chứng từ', { exact: true }).setInputFiles(png);
+  await expect(editor.getByRole('img', { name: 'Ảnh chứng từ 2', exact: true })).toBeVisible();
+  await editor.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect.poll(() => network.snapshot?.transactions.find(row => row.id === photographed.id)?.attachment_paths.length).toBe(2);
+  await page.reload();
+  await page.getByRole('button', { name: 'Xem TEST Ảnh giữ khi sửa', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Chi tiết giao dịch', exact: true });
+  await expect(editor.getByRole('img', { name: 'Ảnh chứng từ 2', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-attachments')), fullPage: true });
+  await editor.getByRole('button', { name: 'Gỡ ảnh chứng từ 1', exact: true }).click();
+  await editor.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect.poll(() => network.snapshot?.transactions.find(row => row.id === photographed.id)?.attachment_paths.length).toBe(1);
+  await navigate(page, 'Tổng quan');
+  network.nextAI = { desc: 'TEST Grab tiền mặt', amount_vnd: 1000, platform: 'grab' };
+  await page.getByRole('button', { name: 'Hôm nay bạn chi gì?', exact: true }).click();
+  await entrySheet.getByRole('textbox', { name: 'Nội dung khoản chi', exact: true }).fill('Grab 1000 tiền mặt');
+  await entrySheet.getByRole('button', { name: 'Gửi', exact: true }).click();
+  const cashDraft = entrySheet.getByTestId('draft-card').last();
+  await expect(cashDraft).toHaveAttribute('data-status', 'draft');
+  await expect(cashDraft.getByRole('combobox', { name: 'Ví cá nhân', exact: true })).toContainText('Ví chính');
+  await cashDraft.getByRole('combobox', { name: 'Danh mục dòng 1', exact: true }).click();
+  await page.getByRole('option', { name: 'Ăn uống', exact: true }).click();
+  await cashDraft.getByRole('button', { name: 'Lưu vào ví', exact: true }).click();
+  // The text parser already built this line, so the late AI description does not overwrite it.
+  await expect(cashDraft.getByText('Đã ghi vào Ví cá nhân')).toBeVisible();
+  await expect.poll(() => network.snapshot?.transactions.filter(row => row.description === 'Grab tiền mặt').map(row => row.wallet_id)).toEqual([cashId]);
+  await closeSheets(page);
   expect(observed.blocked).toEqual([]);
   expect(observed.errors).toEqual([]);
 });
@@ -313,7 +418,7 @@ test('real TEST viewer: own data is visible and write actions are absent', async
     // “Chuyển ví” in the ledger is a read-only filter, not the entry action.
     await expect(page.getByRole('button', { name: /^(?:Thêm hạn mức|Thêm mục tiêu|Ghi thu chi)$/ })).toHaveCount(0);
   }
-  await page.screenshot({ path: testInfo.outputPath('real-test-viewer-report-390.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath(shot('real-test-viewer-report')), fullPage: true });
   expect(observed.writes).toEqual([]);
   expect(observed.blocked).toEqual([]);
   expect(observed.errors).toEqual([]);

@@ -12,7 +12,9 @@ const categoryData = z.object({ type, name, icon: icon.optional(), color: z.stri
 const budgetData = z.object({ category_id: uuid.nullable().optional(), amount }).strict();
 const goalData = z.object({ name, icon: icon.optional(), target: amount, target_date: dateSchema.nullable().optional(), wallet_id: uuid }).strict();
 const transferData = z.object({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().trim().max(500).nullable().optional(), goal_id: uuid.nullable().optional() }).strict();
-export const transactionDataSchema = z.object({ type, amount, txn_date: dateSchema, description: z.string().trim().max(500).nullable().optional(), wallet_id: uuid, category_id: uuid }).strict();
+export const personalAttachmentPathSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)$/);
+export const personalAttachmentPathsSchema = z.array(personalAttachmentPathSchema).max(20);
+export const transactionDataSchema = z.object({ type, amount, txn_date: dateSchema, description: z.string().trim().max(500).nullable().optional(), wallet_id: uuid, category_id: uuid, attachment_paths: personalAttachmentPathsSchema.optional() }).strict();
 const definitions = { wallet: walletData, category: categoryData, budget: budgetData, goal: goalData, transfer: transferData, transaction: transactionDataSchema };
 export type Entity = keyof typeof definitions;
 export type Mutation = {
@@ -47,7 +49,7 @@ const base = z.object({ id: uuid, user_id: uuid, version });
 export const walletSchema = base.extend({ name, kind: z.enum(['cash', 'bank', 'ewallet', 'saving', 'other']), icon, opening_balance: z.number().finite(), hidden: z.boolean(), is_default: z.boolean(), balance: z.number().finite() });
 // Legacy labels use PostgreSQL character/space rules; output must not trim or apply new-input UTF-16 limits.
 export const categorySchema = base.extend({ type, name: z.string().min(1), icon, color: z.string(), hidden: z.boolean(), seed_key: z.string().nullable(), legacy_name: z.string().nullable() });
-export const transactionSchema = base.extend({ type, amount: z.number().finite().nonnegative(), txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().nullable(), category: z.string().nullable(), wallet_id: uuid.nullable(), category_id: uuid.nullable(), resolved_wallet_id: uuid, resolved_category_id: uuid.nullable(), created_at: z.string().datetime({ offset: true }), updated_at: z.string().datetime({ offset: true }), deleted_at: z.string().datetime({ offset: true }).nullable() });
+export const transactionSchema = base.extend({ type, amount: z.number().finite().nonnegative(), txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().nullable(), category: z.string().nullable(), wallet_id: uuid.nullable(), category_id: uuid.nullable(), resolved_wallet_id: uuid, resolved_category_id: uuid.nullable(), attachment_paths: personalAttachmentPathsSchema.default([]), created_at: z.string().datetime({ offset: true }), updated_at: z.string().datetime({ offset: true }), deleted_at: z.string().datetime({ offset: true }).nullable() });
 export const transferSchema = base.extend({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().nullable(), goal_id: uuid.nullable(), deleted_at: z.string().nullable() });
 export const budgetSchema = base.extend({ category_id: uuid.nullable(), amount, type: z.literal('EXPENSE') });
 export const goalSchema = base.extend({ name, icon, target: amount, target_date: dateSchema.nullable(), wallet_id: uuid, saved: z.number().finite().nonnegative() });
@@ -75,7 +77,10 @@ export function parseReceipt(input: unknown, owner: string, key: string, action:
  if (op !== 'batch' && result.entities.length !== 1) throw new Error('Unexpected receipt count');
  for (const row of result.entities) {
   if (op === 'delete') base.extend({ deleted: z.literal(true) }).parse(row);
-  else schemas[entity as Entity].parse(row);
+  else {
+   schemas[entity as Entity].parse(row);
+   if(entity==='transaction'&&row.attachment_paths===undefined)row.attachment_paths=[];
+  }
  }
  return result;
 }

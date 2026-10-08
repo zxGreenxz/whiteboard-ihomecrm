@@ -41,9 +41,11 @@ const DialogContent = React.forwardRef<
     closeClassName?: string;
     /** Ẩn hẳn nút X mặc định (khi muốn tự render nút đóng riêng). */
     hideClose?: boolean;
+    /** Native modal sheets (top layer) must host the portal; default stays document.body. */
+    container?: HTMLElement;
   }
->(({ className, children, closeClassName, hideClose, ...props }, ref) => (
-  <DialogPortal>
+>(({ className, children, closeClassName, hideClose, container, ...props }, ref) => (
+  <DialogPortal container={container}>
     <DialogOverlay />
     <DialogPrimitive.Content
       data-slot="dialog-content"

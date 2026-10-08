@@ -38,6 +38,12 @@ const card = (over: { status?: CardStatus; source?: "text" | "photo"; mode?: "co
 };
 
 describe("feedStorage — giữ thẻ qua lần tải lại trang", () => {
+  it('reload during personal image upload keeps a missing-file marker in an editable card',()=>{
+    const c=card({mode:'personal',source:'photo',status:{kind:'saving'}});c.state.draft.personalProtocol=1;c.state.draft.personalAttachmentPending=true;
+    const [restored]=deserializeCards(serializeCards([c],NOW),NOW+1);
+    expect(restored.status.kind).toBe('draft');expect(restored.state.draft.personalAttachmentPending).toBe(true);
+    expect(JSON.parse(serializeCards([c],NOW)!).cards[0]).not.toHaveProperty('photo');
+  });
   it("thẻ đang sửa: lưu rồi đọc lại y nguyên (kể cả ô đã sửa)", () => {
     const c = card();
     expect(deserializeCards(serializeCards([c], NOW), NOW + 60_000)).toEqual([c]);

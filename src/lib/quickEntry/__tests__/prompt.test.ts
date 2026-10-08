@@ -24,6 +24,14 @@ const textOf = (content: unknown): string =>
     : (content as Array<{ type: string; text?: string }>).filter((p) => p.type === "text").map((p) => p.text).join("\n");
 
 describe("buildQuickEntryMessages", () => {
+  it("bằng chứng ví (payment_method/platform) chỉ hỏi ở chế độ cá nhân; prompt công ty không đổi", () => {
+    const company = textOf(buildQuickEntryMessages(base)[0].content);
+    const personal = textOf(buildQuickEntryMessages({ ...base, mode: "personal" })[0].content);
+    expect(company).not.toMatch(/payment_method|platform/);
+    expect(personal.match(/"payment_method"/g)).toHaveLength(2);
+    expect(personal).toContain("- platform: shopee");
+  });
+
   it("đúng hai message: system rồi user", () => {
     expect(buildQuickEntryMessages(base).map((m) => m.role)).toEqual(["system", "user"]);
   });
