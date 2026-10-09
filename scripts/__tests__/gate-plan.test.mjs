@@ -45,6 +45,29 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     expect(plan([changed("docs/huong-dan-su-dung/test.md", "a", "b")]).gateIds).toContain("docs-build");
     expect(plan([changed("scripts/__tests__/gate-plan.test.mjs", "a", "b")], { testFiles: ["scripts/__tests__/gate-plan.test.mjs"] }).generatorIds).toContain("generate-repository-inventory");
   });
+  it("CI runs a large app-unit selection and the timezone check as required parallel parts", () => {
+    const many = Array.from({ length: 250 }, (_, i) => `src/lib/__tests__/part${String(i).padStart(3, "0")}.test.ts`);
+    const ci = plan([], { full: true, environment: "ci", testFiles: many });
+    const parts = ["suite:app-unit-shard-1", "suite:app-unit-shard-2", "suite:app-unit-shard-3"];
+    expect(ci.gateIds).toEqual(expect.arrayContaining([...parts, "check-timezone-shard-1", "check-timezone-shard-4"]));
+    expect(ci.gateIds).not.toContain("suite:app-unit");
+    expect(ci.requiredJobs).toEqual(expect.arrayContaining(["vitest-tests", "vitest-tests-2", "vitest-tests-3", "timezone-gate", "timezone-gate-4"]));
+    // Every part resolves to its own job; no job runs two parts of the same selection.
+    expect(new Set(parts.map((id) => getGate(id, ci).job)).size).toBe(3);
+    const local = plan([], { full: true, environment: "local", testFiles: many });
+    expect(local.gateIds).toContain("suite:app-unit");
+    expect(local.gateIds.filter((id) => id.startsWith("suite:app-unit-shard"))).toEqual([]);
+    const small = plan([], { full: true, environment: "ci", testFiles: many.slice(0, 199) });
+    expect(small.gateIds).toContain("suite:app-unit");
+    expect(small.requiredJobs).not.toContain("vitest-tests-2");
+  });
+  it("a policy that names a single part still requires every part of its group", () => {
+    const riskMap = JSON.parse(readFileSync(new URL("../../tooling/risk-map.json", import.meta.url), "utf8"));
+    const narrowed = { ...riskMap, gateProfiles: { ...riskMap.gateProfiles, "docs-only": [...riskMap.gateProfiles["docs-only"], "check-timezone-shard-2"] } };
+    const p = plan([changed("docs/he-thong/24-platform-delivery.md", "a", "b")], { riskMap: narrowed });
+    expect(p.gateIds.filter((id) => id.startsWith("check-timezone-shard-"))).toEqual(["check-timezone-shard-1", "check-timezone-shard-2", "check-timezone-shard-3", "check-timezone-shard-4"]);
+    expect(p.requiredJobs).toEqual(expect.arrayContaining(["timezone-gate", "timezone-gate-2", "timezone-gate-3", "timezone-gate-4"]));
+  });
   it("new app modules retain strict checks regardless of UI scope", () => {
     const p = plan([changed("src/components/quick-entry/NewView.tsx", "", button, { status: "A" })]);
     expect(p.gateIds).toEqual(expect.arrayContaining(["check-new-modules-strict", "check-strict-islands"]));

@@ -60,17 +60,21 @@ Docs có project riêng, lấy nội dung từ `docs/huong-dan-su-dung/`; quy t�
 [ci-gates.yml](../../.github/workflows/ci-gates.yml) quy định trigger/điều kiện thực thi;
 [test-matrix.json](../../tooling/test-matrix.json) quy định test thuộc runner/job nào.
 
-- `quality-gates` chạy gate tĩnh, Deno, typecheck, lint, build/bundle và Node tests.
-  `vitest-tests` chạy toàn bộ root Vitest song song với job đó.
+- `quality-gates` chạy gate tĩnh, typecheck và lint; `build-gates` chạy build/bundle/docs;
+  `suite-tests` chạy Node, Deno và e2e offline. Ba job chạy song song cùng `vitest-tests`.
+- Lệnh dài chia phần (`SHARD_COUNTS` trong gate-registry): phần k chạy ở job `<job>-k`, mỗi phần
+  một biên nhận, aggregate đòi đủ mọi phần. Timezone luôn 4 phần, mỗi phần đủ mọi múi giờ và
+  vẫn đòi kết quả giống hệt; root Vitest chia 3 phần khi CI chọn từ 200 file trở lên.
 - Strict, timezone và secret scan vẫn độc lập. Timezone kiểm cùng tập test dưới các múi giờ đã khai.
-- `realtime-gates` kiểm publication thật ngoài nhánh production, gồm cả PR; cần PAT hợp lệ.
-  Nhóm security, types, cross-tenant và reconcile trên main còn phụ thuộc preflight/credential.
-  Job bị skip vì thiếu credential không phải bằng chứng đã kiểm database.
-- Push main một SHA đã có lượt PR xanh trong 24 giờ (cùng repo, PR vào main): lượt main đầu tiên
-  bỏ vitest, strict, timezone và secret scan; quality-gates, realtime và nhóm database vẫn chạy.
-  Chạy lại lượt main thì chạy đủ.
-- Production dùng kết quả CI của đúng SHA (main, và lượt PR cho phần main đã bỏ); promote đòi
-  bằng chứng xanh của quality-gates, vitest và secret scan, không chạy lại toàn bộ test của main.
+- Gate cần credential (realtime, security, types, cross-tenant, reconcile) chỉ chạy ở push/dispatch
+  trên main. Lượt PR ghi chúng là "CHƯA KIỂM — chờ main", không tính là đạt; job bị skip vì thiếu
+  credential không phải bằng chứng đã kiểm database.
+- Lượt push main đầu tiên của SHA đã có lượt PR xanh trong 24 giờ (cùng repo, PR vào main) chỉ dùng
+  lại biên nhận `static` khớp gate, lệnh, cây file, base của plan, digest policy/runtime và Node.
+  Base lượt PR là đầu main, base lượt main là đầu production, nên ít khi khớp. Gate `external`/`live`
+  (gồm timezone) luôn chạy; chạy lại lượt main thì không dùng lại.
+- Promote đòi artifact `gate-aggregate` của lượt main đúng SHA có plan phủ dải production..SHA, các
+  workflow ngoài mà plan đòi, và mọi lượt main khác của SHA đó đã xong, không bước nào đỏ.
 - Network Center có [workflow riêng](../../.github/workflows/network-center-validation.yml).
   Chọn runner và môi trường theo manifest, không chạy lại suite bằng runner khác.
 

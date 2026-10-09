@@ -260,7 +260,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "node --test",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "node --test scripts/org-context-repair/sealed-artifact.test.mjs",
       "risk": "normal",
       "includes": [
@@ -269,7 +269,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "ciCommandStep": "Organization backup envelope regressions (no credentials)",
@@ -307,7 +307,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "vitest",
-      "ciJob": "vitest-tests",
+      "ciJob": "vitest-tests (selection ≥ 200 file: vitest-tests, vitest-tests-2, vitest-tests-3 song song)",
       "command": "npx vitest run src scripts/__tests__ worker/__tests__",
       "runtime": "node 24.18.0 (CI)",
       "risk": "normal",
@@ -381,6 +381,14 @@
         {
           "workflow": ".github/workflows/ci-gates.yml",
           "job": "vitest-tests"
+        },
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "vitest-tests-2"
+        },
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "vitest-tests-3"
         }
       ],
       "environment": "ci",
@@ -414,7 +422,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "deno",
-      "ciJob": "ci-gates / quality-gates",
+      "ciJob": "ci-gates / suite-tests",
       "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env  (CI dùng denoland/setup-deno 2.9.4; máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
       "runtime": "deno 2.9.4",
       "risk": "normal",
@@ -426,7 +434,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -437,7 +445,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "deno",
-      "ciJob": "ci-gates / quality-gates",
+      "ciJob": "ci-gates / suite-tests",
       "command": "deno test --config supabase/functions/quick-entry/deno.json supabase/functions/quick-entry/index.test.ts --allow-env  (máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
       "runtime": "deno 2.9.4",
       "risk": "normal",
@@ -448,7 +456,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -520,7 +528,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "playwright",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.config.ts .e2e-fleet/specs/personal-finance-demo.spec.ts --workers=1 --reporter=list",
       "includes": [
         ".e2e-fleet/specs/personal-finance-demo.spec.ts"
@@ -528,7 +536,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -541,7 +549,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "playwright",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.config.ts .e2e-fleet/specs/personal-finance-product.spec.ts --workers=1 --reporter=list",
       "includes": [
         ".e2e-fleet/specs/personal-finance-product.spec.ts"
@@ -549,7 +557,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -618,7 +626,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "node --test",
-      "ciJob": "quality-gates (ci-gates) / validate (network-center-validation)",
+      "ciJob": "suite-tests (ci-gates) / validate (network-center-validation)",
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
@@ -685,7 +693,7 @@
         },
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -697,7 +705,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "node --test",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "node --test infra/bank-event-gateway/server.test.mjs extensions/sms-webhook/receiver/server.test.mjs",
       "runtime": "node 24.18.0",
       "risk": "infrastructure",
@@ -708,7 +716,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -719,7 +727,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "deno",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "deno test --config supabase/functions/bank-event-ingest/deno.json supabase/functions/bank-event-ingest/index.test.ts supabase/functions/bank-event-ingest/gmail-script.test.ts supabase/functions/bank-event-admin/index.test.ts supabase/functions/bank-event-admin/parse.test.ts --allow-env",
       "runtime": "deno 2.9.4",
       "risk": "authorization",
@@ -730,7 +738,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",
@@ -763,7 +771,7 @@
       "workflowOwner": ".github/workflows/ci-gates.yml",
       "ciExecutor": "gate-registry",
       "runner": "playwright",
-      "ciJob": "quality-gates",
+      "ciJob": "suite-tests",
       "command": "node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.config.ts .e2e-fleet/specs/bank-events.spec.ts --workers=1 --reporter=list",
       "includes": [
         ".e2e-fleet/specs/bank-events.spec.ts"
@@ -771,7 +779,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "suite-tests"
         }
       ],
       "environment": "ci",

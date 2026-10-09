@@ -11,6 +11,7 @@ import yaml from "js-yaml";
 
 import { duocPhu, globSangRegex, layOn, scriptDuocGoi } from "../check-workflow-paths.mjs";
 import { MAIN_ONLY_CREDENTIALS } from "../lib/ci-gate-execution.mjs";
+import { GATE_REGISTRY, SHARD_COUNTS } from "../lib/gate-registry.mjs";
 
 describe("globSangRegex", () => {
   it("`**` vượt qua dấu gạch chéo", () => {
@@ -144,7 +145,23 @@ describe("trạng thái thật của repo", () => {
     }
   });
 
-  it.each(['quality-gates', 'vitest-tests', 'secret-scan', 'strict-islands-gate', 'timezone-gate', 'realtime-gates', 'security-gates', 'generated-types-drift', 'reconcile-money', 'cross-tenant-isolation'])('%s executes only from a successful explicit plan', (id) => {
+  it('every registry job, shard parts included, has its executor and is awaited by the aggregate', () => {
+    const jobs = wf('.github/workflows/ci-gates.yml').jobs;
+    const declared = [...new Set(Object.values(GATE_REGISTRY).map((gate) => gate.job))].sort();
+    for (const id of declared) {
+      expect(jobs[id]?.steps?.some((step) => step.run === `node scripts/ci-run-gates.mjs --job ${id}`), id).toBe(true);
+      expect(jobs['gate-aggregate'].needs, id).toContain(id);
+    }
+    const executors = Object.entries(jobs).filter(([, job]) => job.steps?.some((step) => step.run?.includes('ci-run-gates.mjs'))).map(([id]) => id).sort();
+    expect(executors).toEqual(declared);
+    for (const [base, count] of Object.entries(SHARD_COUNTS)) {
+      const parts = Object.values(GATE_REGISTRY).filter((gate) => gate.shardOf === base);
+      expect(parts.map((gate) => gate.shard.index), base).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+      expect(new Set(parts.map((gate) => gate.job)).size, `${base}: one job per part`).toBe(count);
+    }
+  });
+
+  it.each(['quality-gates', 'build-gates', 'suite-tests', 'vitest-tests', 'vitest-tests-2', 'vitest-tests-3', 'secret-scan', 'strict-islands-gate', 'timezone-gate', 'timezone-gate-2', 'timezone-gate-3', 'timezone-gate-4', 'realtime-gates', 'security-gates', 'generated-types-drift', 'reconcile-money', 'cross-tenant-isolation'])('%s executes only from a successful explicit plan', (id) => {
     const job = wf('.github/workflows/ci-gates.yml').jobs[id];
     const needs = (result, ids) => ({ preflight: { result, outputs: { required_jobs: JSON.stringify(ids) } } });
     expect(active(job, needs('success', [id]))).toBe(true);
@@ -165,8 +182,15 @@ describe("trạng thái thật của repo", () => {
   });
 
   it('deferred workflow stays off and shared Deno setup stays pinned', () => {
-    const quality = wf('.github/workflows/ci-gates.yml').jobs['quality-gates'];
-    expect(quality.steps.find((step) => step.uses?.startsWith('denoland/setup-deno@')).with['deno-version']).toBe('2.9.4');
+    const jobs = wf('.github/workflows/ci-gates.yml').jobs;
+    const suites = jobs['suite-tests'];
+    expect(suites.steps.find((step) => step.uses?.startsWith('denoland/setup-deno@')).with['deno-version']).toBe('2.9.4');
+    // Each conditional install lives in the job that runs the gates needing it.
+    const jobOf = (predicate) => [...new Set(Object.values(GATE_REGISTRY).filter(predicate).map((gate) => gate.job))];
+    for (const id of jobOf((gate) => gate.command === 'deno')) expect(jobs[id].steps.some((step) => step.uses?.startsWith('denoland/setup-deno@')), id).toBe(true);
+    for (const id of jobOf((gate) => gate.id.startsWith('suite:e2e-'))) expect(jobs[id].steps.some((step) => step.run === 'npx playwright install --with-deps chromium'), id).toBe(true);
+    for (const id of jobOf((gate) => gate.id === 'docs-build')) expect(jobs[id].steps.some((step) => step.run === 'npm ci --prefix docs-site'), id).toBe(true);
+    expect(jobOf((gate) => ['app-build', 'bundle-inventory'].includes(gate.id)), 'bundle-inventory reads the dist of app-build').toHaveLength(1);
     const dormant = wf('.github/workflows/copilot-e2e.yml');
     expect(layOn(dormant).schedule).toBeUndefined();
     expect(dormant.jobs['copilot-e2e'].if).toBe('${{ false }}');

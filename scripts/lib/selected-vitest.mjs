@@ -20,6 +20,21 @@ export function selectedVitestFiles(plan, expectedDigest) {
   return [...files].sort();
 }
 
+/**
+ * Part `index` of `count` over the sorted selection. Round-robin keeps the parts the
+ * same size and spreads slow directories; each file lands in exactly one part.
+ */
+export function shardSelection(files, shard) {
+  if (shard === null || shard === undefined) return files;
+  const match = /^(\d+)\/(\d+)$/.exec(String(shard));
+  const index = Number(match?.[1]);
+  const count = Number(match?.[2]);
+  if (!match || count < 2 || index < 1 || index > count) throw new Error(`Invalid --shard ${shard}; expected <index>/<count>`);
+  const part = [...files].sort().filter((_, position) => position % count === index - 1);
+  if (!part.length) throw new Error(`Shard ${shard} has no files; the plan must not split a selection this small`);
+  return part;
+}
+
 export function assertCollectedSelection(selected, collected, root) {
   const actual = collected.map((file) => relative(root, file.filepath).replaceAll('\\', '/')).sort();
   const missing = selected.filter((file) => !actual.includes(file));

@@ -26,7 +26,23 @@ describe('command registry boundaries', () => {
   it('does not turn a full run into browser access to live product data', () => {
     expect(() => getGate('suite:e2e-fleet', { suiteSelections: [{ id: 'e2e-fleet', files: ['.e2e-fleet/specs/voucher-detail-read-scope.spec.ts'] }] })).toThrow('approved offline');
     expect(() => getGate('suite:e2e-fleet', { suiteSelections: [{ id: 'e2e-fleet', files: ['.e2e-fleet/specs/personal-finance-demo.spec.ts'] }] })).toThrow('approved offline');
-    expect(getGate('suite:e2e-personal-finance-demo', { suiteSelections: [{ id: 'e2e-personal-finance-demo', files: ['.e2e-fleet/specs/personal-finance-demo.spec.ts'] }] }).job).toBe('quality-gates');
+    expect(getGate('suite:e2e-personal-finance-demo', { suiteSelections: [{ id: 'e2e-personal-finance-demo', files: ['.e2e-fleet/specs/personal-finance-demo.spec.ts'] }] }).job).toBe('suite-tests');
+  });
+  it('splits long commands into CI-only parts, each with its own job and an exact part argument', () => {
+    expect(GATE_REGISTRY['check-timezone']).toBeUndefined();
+    expect(['1', '2', '3', '4'].map((k) => GATE_REGISTRY[`check-timezone-shard-${k}`]).map((g) => [g.job, g.args.join(' '), g.local])).toEqual([
+      ['timezone-gate', 'scripts/check-timezone-stability.mjs --shard 1/4', false],
+      ['timezone-gate-2', 'scripts/check-timezone-stability.mjs --shard 2/4', false],
+      ['timezone-gate-3', 'scripts/check-timezone-stability.mjs --shard 3/4', false],
+      ['timezone-gate-4', 'scripts/check-timezone-stability.mjs --shard 4/4', false],
+    ]);
+    const plan = { environment: 'ci', suiteSelections: [{ id: 'app-unit', files: ['src/lib/a.test.ts', 'src/lib/b.test.ts'], mode: 'all' }] };
+    const whole = getGate('suite:app-unit', plan);
+    const second = getGate('suite:app-unit-shard-2', plan);
+    expect(second).toMatchObject({ job: 'vitest-tests-2', local: false, shardOf: 'suite:app-unit' });
+    expect(second.args).toEqual([...whole.args, '--shard', '2/3']);
+    expect(getGate('suite:app-unit-shard-1', plan).job).toBe('vitest-tests');
+    expect(() => getGate('suite:app-unit-shard-3', { suiteSelections: [] })).toThrow('Missing selected tests: app-unit');
   });
   it('preserves build lifecycle, normalizer mode and generated ownership', () => {
     expect(getGate('app-build', {})).toMatchObject({ command: 'npm', args: ['run', 'build'] });

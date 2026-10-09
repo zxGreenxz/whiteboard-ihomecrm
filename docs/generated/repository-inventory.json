@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1320,
+  "tongSoFileTest": 1321,
   "soFileDocBangFs": 296,
-  "tongLoiGoi": 651,
-  "khongPhanLoaiDuoc": 300,
+  "tongLoiGoi": 653,
+  "khongPhanLoaiDuoc": 301,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 51,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 36,
+      "soFile": 37,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -201,6 +201,14 @@
       "khongPhanLoaiDuoc": 6
     },
     {
+      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 4
+    },
+    {
       "file": "scripts/__tests__/network-center-disposable-supabase.test.mjs",
       "soGoi": 6,
       "loai": {
@@ -246,14 +254,6 @@
       "soGoi": 5,
       "loai": {},
       "khongPhanLoaiDuoc": 5
-    },
-    {
-      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
-      "soGoi": 5,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/network-center-admin-credential-reconciliation.test.mjs",
@@ -733,6 +733,14 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/gate-plan.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/network-center-ingest-domains.test.mjs",
@@ -1215,12 +1223,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gate-plan.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/generate-bundle-inventory.test.mjs",

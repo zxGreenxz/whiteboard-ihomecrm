@@ -5,7 +5,7 @@ import ts from "typescript";
 import yaml from "js-yaml";
 import { khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
-import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
+import { GATE_REGISTRY, GENERATOR_REGISTRY, SHARD_MIN_FILES, isOfflineBrowserSelection } from "./gate-registry.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
 
 const riskDefault = JSON.parse(readFileSync(new URL("../../tooling/risk-map.json", import.meta.url), "utf8"));
@@ -199,7 +199,10 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
       if (!isOfflineBrowserSelection(suite.id, files)) { unavailable.push({ suiteId: suite.id, reason: "Live browser evidence requires affected preview/role; not default CI pass" }); continue; }
     }
     const id = `suite:${suite.id}`;
-    if (registry[id]) gates.add(id); else unavailable.push({ suiteId: suite.id, reason: "Runner belongs to a separate workflow" });
+    // CI only: parallel parts of one large selection; every part stays a required gate.
+    const shards = environment === "ci" && files.length >= SHARD_MIN_FILES ? Object.values(registry).filter((gate) => gate.shardOf === id) : [];
+    if (shards.length) for (const gate of shards) gates.add(gate.id);
+    else if (registry[id]) gates.add(id); else unavailable.push({ suiteId: suite.id, reason: "Runner belongs to a separate workflow" });
   }
   const manualUiPaths = unique(reasons.filter((r) => r.path && !offlinePaths.has(r.path) &&
     (["cosmetic-ui", "ui-behavior"].includes(r.profile) || (r.profile === "shared-tooling" && matches(r.path, riskMap.scope.uiPaths))))
@@ -207,6 +210,11 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
   if (manualUiPaths.length) {
     const responsive = changes.some((c) => manualUiPaths.includes(c.path) && (c.path.startsWith('src/components/ui/') || /(?:sm|md|lg|xl|2xl):|@media/.test((c.before ?? '') + (c.after ?? ''))));
     browserRequirements.push({ status: "required", suiteId: null, files: [], paths: manualUiPaths, viewports: responsive ? ["desktop", "mobile"] : ["affected"], reason: "Verify the affected UI viewport and console; no automatic browser spec mapped for these paths" });
+  }
+  // One part proves only its own files: whatever selected a part requires the whole group.
+  for (const id of [...gates]) {
+    const group = registry[id]?.shardOf;
+    if (group) for (const part of Object.values(registry)) if (part.shardOf === group) gates.add(part.id);
   }
   const gateIds = unique([...gates].filter((id) => !isDeferredGate(id)));
   for (const id of gateIds) if (!registry[id]) throw new Error(`Gate policy refers to unknown command: ${id}`);

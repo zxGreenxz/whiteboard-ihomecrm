@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { selectionDigest, selectedVitestFiles, assertCollectedSelection } from '../lib/selected-vitest.mjs';
+import { selectionDigest, selectedVitestFiles, assertCollectedSelection, shardSelection } from '../lib/selected-vitest.mjs';
 import { getGate } from '../lib/gate-registry.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -21,6 +21,18 @@ test('selection digest is order independent and rejects changed/empty/duplicate/
   }
   assert.throws(() => assertCollectedSelection(['src/a.test.ts'], [], root), /not collected/);
   assert.throws(() => assertCollectedSelection(['src/a.test.ts'], [{ filepath: join(root, 'src/a.test.ts') }, { filepath: join(root, 'src/extra.test.ts') }], root), /unexpected/i);
+});
+
+test('parts are disjoint, balanced and together exactly the selection; a bad or empty part fails', () => {
+  const files = Array.from({ length: 1023 }, (_, i) => `src/dir-${i % 7}/f${i}.test.ts`).reverse();
+  const parts = [1, 2, 3].map((k) => shardSelection(files, `${k}/3`));
+  assert.deepEqual(parts.flat().sort(), [...files].sort());
+  assert.equal(new Set(parts.flat()).size, files.length);
+  assert.deepEqual(parts.map((part) => part.length), [341, 341, 341]);
+  assert.deepEqual(shardSelection(files, `2/3`), shardSelection([...files].reverse(), '2/3'));
+  assert.equal(shardSelection(files, null), files);
+  for (const invalid of ['0/3', '4/3', '1/1', '1', 'undefined', '1/x']) assert.throws(() => shardSelection(files, invalid), /Invalid --shard/);
+  assert.throws(() => shardSelection(['src/a.test.ts'], '2/2'), /no files/);
 });
 
 test('full app suite launches with bounded argv and binds the complete selection', () => {
@@ -46,11 +58,28 @@ test('real installed Vitest runs exact selected file, retains failure and reject
   writeFileSync(join(fixture, 'src/chosen.test.mjs'), `const { test, expect } = await import('vitest'); test('selected pass', () => expect(1).toBe(1));`);
   writeFileSync(join(fixture, 'src/chosen-other.test.mjs'), `const { test, expect } = await import('vitest'); test('unselected failure', () => expect(1).toBe(2));`);
   writeFileSync(join(fixture, 'src/excluded.test.mjs'), `const { test } = await import('vitest'); test('excluded', () => {});`);
-  const run = (files) => {
+  const run = (files, extra = []) => {
     const path = join(fixture, 'plan.json');
     writeFileSync(path, JSON.stringify(planFor(files)));
-    return spawnSync(process.execPath, [launcher, '--plan', path, '--selection-digest', selectionDigest(files)], { cwd: fixture, encoding: 'utf8', timeout: 20_000 });
+    return spawnSync(process.execPath, [launcher, '--plan', path, '--selection-digest', selectionDigest(files), ...extra], { cwd: fixture, encoding: 'utf8', timeout: 20_000 });
   };
+  // Sorted: chosen-other (fails) is part 1/2, chosen (passes) is part 2/2.
+  const both = ['src/chosen.test.mjs', 'src/chosen-other.test.mjs'];
+  const secondPart = run(both, ['--shard', '2/2']);
+  assert.equal(secondPart.status, 0, secondPart.stdout + secondPart.stderr);
+  assert.doesNotMatch(secondPart.stdout + secondPart.stderr, /unselected failure/);
+  const firstPart = run(both, ['--shard', '1/2']);
+  assert.equal(firstPart.status, 1, firstPart.stdout + firstPart.stderr);
+  const noValue = run(both, ['--shard']);
+  assert.equal(noValue.status, 1, noValue.stdout + noValue.stderr);
+  assert.match(noValue.stderr, /Invalid --shard/);
+  // The joined spelling selects the same part; it never falls back to the whole selection.
+  const joined = run(both, ['--shard=2/2']);
+  assert.equal(joined.status, 0, joined.stdout + joined.stderr);
+  assert.doesNotMatch(joined.stdout + joined.stderr, /unselected failure/);
+  const joinedBad = run(both, ['--shard=3/2']);
+  assert.equal(joinedBad.status, 1, joinedBad.stdout + joinedBad.stderr);
+  assert.match(joinedBad.stderr, /Invalid --shard/);
   const passed = run(['src/chosen.test.mjs']);
   assert.equal(passed.status, 0, passed.stdout + passed.stderr);
   assert.doesNotMatch(passed.stdout + passed.stderr, /unselected failure/);
