@@ -81,42 +81,49 @@ function quetGmail() {
   var s = p.getProperties();
   if (!s.maThietBi) s.maThietBi = Utilities.getUuid();
   var luu = function () { p.setProperties(s); };
+  var loi = null;
+  try { guiThuMoi_(s, batDau, luu); } catch (e) { loi = e; }
   try {
-    guiThuMoi_(s, batDau, luu);
+    var giay = thoiGianDaDung_(s) + (Date.now() - batDau) / 1000;
+    // Lỗi mạng khi báo sống không được chặn việc đổi nhịp: đổi nhịp xong mới ném lại.
+    try { baoSong_(s, giay); } catch (e) { loi = loi || e; }
+    dieuChinhNhip_(s, giay);
   } finally {
-    try {
-      var giay = thoiGianDaDung_(s) + (Date.now() - batDau) / 1000;
-      baoSong_(s, giay);
-      dieuChinhNhip_(s, giay);
-    } finally {
-      var tong = thoiGianDaDung_(s) + (Date.now() - batDau) / 1000 + 0.5;
-      s.thoiGian = JSON.stringify({ ngay: ngayVN_(Date.now()), giay: Math.round(tong * 10) / 10 });
-      luu();
-      khoa.releaseLock();
-    }
+    var tong = thoiGianDaDung_(s) + (Date.now() - batDau) / 1000 + 0.5;
+    s.thoiGian = JSON.stringify({ ngay: ngayVN_(Date.now()), giay: Math.round(tong * 10) / 10 });
+    luu();
+    khoa.releaseLock();
   }
+  if (loi) throw loi;
+}
+
+// Gmail trả luồng mới nhất trước, mỗi trang 50: lật hết trang (tối đa 1000 luồng) trong khoảng [tu, den).
+function timLuong_(tu, den) {
+  var truyVan = CAU_HINH.truyVan + ' after:' + Math.floor(tu / 1000) + (den ? ' before:' + Math.ceil(den / 1000) : '');
+  var luong = [];
+  for (var trang = 0; trang < TOI_DA_TRANG; trang++) {
+    var mot = GmailApp.search(truyVan, trang * TRANG, TRANG);
+    luong = luong.concat(mot);
+    if (mot.length < TRANG) return { luong: luong, du: true };
+  }
+  return { luong: luong, du: false };
 }
 
 function guiThuMoi_(s, batDau, luu) {
   var conTro = Number(s.conTro || Date.now() - 24 * 3600 * 1000);
   var luc = Date.now();
   var tu = conTro - CHONG_LECH_MS;
-  var truyVan = CAU_HINH.truyVan + ' after:' + Math.floor(tu / 1000);
-  var luong = [], du = true;
-  // Gmail trả luồng mới nhất trước: lật hết các trang để thư cũ trong cửa sổ không bị bỏ lại.
-  for (var trang = 0; trang < TOI_DA_TRANG; trang++) {
-    var mot = GmailApp.search(truyVan, trang * TRANG, TRANG);
-    luong = luong.concat(mot);
-    if (mot.length < TRANG) break;
-    if (trang === TOI_DA_TRANG - 1) { du = false; console.warn('Quá ' + TRANG * TOI_DA_TRANG + ' luồng thư trong một lượt; giữ nguyên con trỏ.'); }
-  }
+  // Quá 1000 luồng thì thu hẹp về lát thời gian cũ nhất để luôn đi từ cũ tới mới, không bỏ lại luồng cũ.
+  var den = luc, kq = timLuong_(tu, null);
+  while (!kq.du && den - tu > 2 * CHONG_LECH_MS) { den = tu + Math.floor((den - tu) / 2); kq = timLuong_(tu, den); }
+  if (!kq.du) console.warn('Quá ' + TRANG * TOI_DA_TRANG + ' luồng thư trong 20 phút; có thể bỏ sót thư cũ nhất.');
   var daGui = docDaGui_(s);
   var thu = [];
-  GmailApp.getMessagesForThreads(luong).forEach(function (ds) {
+  GmailApp.getMessagesForThreads(kq.luong).forEach(function (ds) {
     ds.forEach(function (m) { if (m.getDate().getTime() >= tu - THU_TRE_MS && !daGui[m.getId()]) thu.push(m); });
   });
   thu.sort(function (a, b) { return a.getDate().getTime() - b.getDate().getTime(); });
-  var xong = du, moc = conTro, thietBi = null;
+  var xong = kq.du, moc = conTro, thietBi = null;
   try {
     for (var i = 0; i < thu.length; i++) {
       if (Date.now() - batDau > NGAN_SACH_MS) { xong = false; break; }
@@ -126,13 +133,14 @@ function guiThuMoi_(s, batDau, luu) {
       // 409 có hai nghĩa: thư này đã lưu với nội dung khác (giữ bản đã lưu) hoặc khóa đang gắn bản script khác.
       if (ketQua === 'xung-dot') {
         if (thietBi === null) thietBi = guiBaoSong_(s, thoiGianDaDung_(s)) === 'xong';
-        if (!thietBi) throw new Error(LOI_THIET_BI);
+        if (!thietBi) { s.khoaLoi = String(Date.now()); throw new Error(LOI_THIET_BI); }
       }
       if (ketQua === 'thu-lai') { xong = false; break; }
       if (ketQua === 'qua-lon') console.warn('Thư ' + m.getId() + ' quá lớn, CRM không nhận.');
       s.khoaLoi = ''; // setProperties chỉ ghi gộp: xoá cờ bằng chuỗi rỗng, không bằng delete
       daGui[m.getId()] = m.getDate().getTime();
-      moc = Math.max(moc, m.getDate().getTime());
+      // Thư ghi giờ tương lai không được kéo con trỏ vượt quá khoảng đã quét.
+      moc = Math.max(moc, Math.min(m.getDate().getTime(), den));
       if (i % 20 === 19) { ghiDaGui_(s, daGui, tu); luu(); }
     }
   } catch (loi) {
@@ -140,7 +148,7 @@ function guiThuMoi_(s, batDau, luu) {
     throw loi;
   } finally {
     ghiDaGui_(s, daGui, tu);
-    s.conTro = String(xong ? Math.max(conTro, luc) : moc);
+    s.conTro = String(xong ? Math.max(conTro, den) : moc);
   }
 }
 

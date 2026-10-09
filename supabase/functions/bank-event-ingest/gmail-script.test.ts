@@ -37,11 +37,12 @@ function google(options:{now:number;mails?:Mail[];elapsed?:number;respond?:(json
     Date:FakeDate,console:{warn(){}},
     GmailApp:{
       search(query:string,start:number,max:number){
-        queries.push(query);const after=Number(/after:(\d+)$/.exec(query)?.[1])*1000;
+        queries.push(query);const after=Number(/ after:(\d+)/.exec(query)?.[1])*1000;
+        const beforeMatch=/ before:(\d+)/.exec(query),before=beforeMatch?Number(beforeMatch[1])*1000:Infinity;
         const threads=new Map<string,Mail[]>();
         for(const item of mails)threads.set(item.thread??item.id,[...(threads.get(item.thread??item.id)??[]),item]);
         const latest=(thread:Mail[])=>Math.max(...thread.map(arrival));
-        return [...threads.values()].filter(thread=>thread.some(item=>arrival(item)>=after))
+        return [...threads.values()].filter(thread=>thread.some(item=>arrival(item)>=after&&arrival(item)<before))
           .sort((a,b)=>latest(b)-latest(a)).slice(start,start+max).map(thread=>thread.map(message));
       },
       getMessagesForThreads:(threads:unknown[])=>threads,
@@ -137,6 +138,40 @@ Deno.test('a dense burst (600 emails in 2 hours, real-length Gmail ids) still fi
   assert.equal(new Set(g.emails().map(emailId)).size,600);assert.equal(g.emails().length,600);
   for(const value of Object.values(g.properties))assert.ok(new TextEncoder().encode(value).length<=MAX_PROPERTY_BYTES);
   g.clock.now=now+60_000;g.api.quetGmail();assert.equal(g.emails().length,600);
+});
+
+Deno.test('more than 1000 threads in the window are taken oldest slice first, none lost',()=>{
+  const now=vn('2026-10-09T10:00:00');
+  const mails=Array.from({length:1100},(_,i)=>mail(`w-${String(i).padStart(4,'0')}`,now-23*3600_000+i*75_000));
+  const g=google({now,mails});
+  g.api.caiDat();
+  assert.ok(g.queries.some(query=>/ before:\d+$/.test(query)),'phải thu hẹp bằng before:');
+  for(let run=0;run<20&&g.emails().length<1100;run++){g.clock.now+=60_000;g.api.quetGmail();}
+  const ids=g.emails().map(emailId);
+  assert.equal(new Set(ids).size,1100);assert.equal(ids.length,1100);
+});
+
+Deno.test('a future-dated email cannot push the cursor past the scanned range',()=>{
+  const now=vn('2026-10-09T10:00:00');let failing=true;
+  const g=google({now,mails:[mail('future',now+86400_000,{arrival:now-120_000}),mail('next',now+86400_000+1,{arrival:now-60_000})],
+    respond:json=>json.id===idOf('next')&&failing?503:201});
+  g.api.caiDat();
+  assert.ok(Number(g.properties.conTro)<=now,'con trỏ không được vượt hiện tại');
+  failing=false;g.mails.push(mail('later',now+30_000));g.clock.now=now+60_000;g.api.quetGmail();
+  assert.ok(g.emails().map(emailId).includes(idOf('later')));assert.ok(g.emails().map(emailId).includes(idOf('next')));
+});
+
+Deno.test('a network error while sending the heartbeat does not block scheduling; it is rethrown afterwards',()=>{
+  const g=google({now:vn('2026-10-09T10:00:00'),respond:json=>{if(json.event==='gateway.heartbeat')throw new Error('Address unavailable');return 201;}});
+  assert.throws(()=>g.api.caiDat(),/Address unavailable/);
+  assert.deepEqual(g.shape(),[{handler:'quetGmail',minutes:1}]);assert.equal(g.properties.nhip,'day-1m');
+});
+
+Deno.test('a script bound to another installation also slows down to 30 minutes',()=>{
+  const now=vn('2026-10-09T10:00:00');
+  const g=google({now,mails:[mail('m-1',now-60_000)],respond:()=>409});
+  assert.throws(()=>g.api.caiDat(),/đang gắn với một bản script khác/);
+  assert.deepEqual(g.shape(),[{handler:'quetGmail',minutes:30}]);
 });
 
 Deno.test('night window runs every 10 minutes with an exact 06:30 return; heavy days fall back to 5 minutes',async()=>{
