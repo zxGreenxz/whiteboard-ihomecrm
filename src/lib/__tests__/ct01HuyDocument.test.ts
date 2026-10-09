@@ -142,6 +142,8 @@ describe('mẫu ct01-huy.docx', () => {
       `Điều 3. Bên B đã rời khỏi nhà và chấm dứt tạm trú, cư trú tại địa chỉ ${address} kể từ ngày 05 tháng 10 năm 2026. `
         + 'Biên bản này là căn cứ để làm thủ tục xóa đăng ký tạm trú của Bên B tại địa chỉ trên.',
     ]));
+    const ct01Names = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)![3].match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)![1];
+    expect(paragraphs(ct01Names)).toEqual(['Lê Quốc Duy', 'Nguyễn Thị Thu Thảo', '', 'Lê Quốc Duy']);
     const signatures = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)!.at(-1)!;
     expect(paragraphs(signatures)).toEqual([
       'BÊN CHO THUÊ', '(ký và ghi rõ họ tên)', 'Nguyễn Thị Thu Thảo', 'BÊN THUÊ', '(ký và ghi rõ họ tên)', 'Lê Quốc Duy',

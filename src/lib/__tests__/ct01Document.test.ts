@@ -165,7 +165,16 @@ describe('CT01 theo mẫu người dùng', () => {
     expect(xml).not.toContain('Cambria');
     expect(xml).toMatch(/<w:rPr>[^]*?w:ascii="Times New Roman"[^]*?w:sz w:val="28"[^]*?HỢP ĐỒNG CHO THUÊ, MƯỢN, Ở NHỜ/);
     const signatures = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)![3];
-    const signatureCells = signatures.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g)!;
+    const [signatureRow, nameRow] = signatures.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)!;
+    const signatureCells = signatureRow.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g)!;
+    // Printed names under each signing space; the parent/guardian column stays blank.
+    expect(nameRow.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g)!.map(cell => cell.replace(/<[^>]+>/g, '').trim()))
+      .toEqual([customer.full_name, lease.owner.full_name, '', customer.full_name]);
+    const leaseSignatures = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)!.at(-1)!;
+    expect(leaseSignatures.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!.map(paragraph => paragraph.replace(/<[^>]+>/g, '').trim())).toEqual([
+      'Bên cho thuê, mượn nhà ở', '(Bên A)', '(ký và ghi rõ họ tên)', lease.owner.full_name,
+      'Bên thuê, mượn nhà ở nhờ', '(Bên B)', '(ký và ghi rõ họ tên)', customer.full_name,
+    ]);
     const originalCT01 = new PizZip(readFileSync(new URL('../../../scripts/fixtures/ct01/ct01-source.docx', import.meta.url)))
       .file('word/document.xml')!.asText();
     const originalSignatures = originalCT01.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)![3];

@@ -119,8 +119,27 @@ trpr = row.find('w:trPr', NS)
 if trpr is None:
     trpr = ET.SubElement(row, W + 'trPr')
 height = ET.SubElement(trpr, W + 'trHeight')
-height.set(W + 'val', '1400')
+height.set(W + 'val', '2600')
 height.set(W + 'hRule', 'atLeast')
+# Printed names on their own row so the four columns align; only signatures are handwritten.
+# The parent/guardian column stays blank because it applies to minors only.
+name_row = ET.SubElement(tables[3], W + 'tr')
+for cell, value in zip(row.findall('w:tc', NS), ['{household_head_name}', '{owner_name}', '', '{full_name}']):
+    name_cell = ET.SubElement(name_row, W + 'tc')
+    name_cell.append(deepcopy(cell.find('w:tcPr', NS)))
+    paragraph = ET.SubElement(name_cell, W + 'p')
+    properties = ET.SubElement(paragraph, W + 'pPr')
+    ET.SubElement(properties, W + 'spacing', {W + 'after': '0', W + 'line': '240', W + 'lineRule': 'auto'})
+    ET.SubElement(properties, W + 'jc', {W + 'val': 'center'})
+    if value:
+        run = ET.SubElement(paragraph, W + 'r')
+        rp = ET.SubElement(run, W + 'rPr')
+        ET.SubElement(rp, W + 'rFonts', {W + 'ascii': 'Times New Roman', W + 'eastAsia': 'Times New Roman', W + 'hAnsi': 'Times New Roman'})
+        ET.SubElement(rp, W + 'b')
+        ET.SubElement(rp, W + 'sz', {W + 'val': '24'})
+        ET.SubElement(rp, W + 'szCs', {W + 'val': '24'})
+        ET.SubElement(rp, W + 'lang', {W + 'val': 'vi-VN'})
+        ET.SubElement(run, W + 't').text = value
 
 lease_doc = xml(lease_parts['word/document.xml'])
 lease_body = lease_doc.find('w:body', NS)
@@ -184,12 +203,14 @@ grid = ET.SubElement(signatures, W + 'tblGrid')
 for _ in range(2):
     ET.SubElement(grid, W + 'gridCol', {W + 'w': '4680'})
 row = ET.SubElement(signatures, W + 'tr')
-for heading, party in [('Bên cho thuê, mượn nhà ở', '(Bên A)'), ('Bên thuê, mượn nhà ở nhờ', '(Bên B)')]:
+for heading, party, name in [('Bên cho thuê, mượn nhà ở', '(Bên A)', '{owner_name}'), ('Bên thuê, mượn nhà ở nhờ', '(Bên B)', '{full_name}')]:
     cell = ET.SubElement(row, W + 'tc')
     cp = ET.SubElement(cell, W + 'tcPr')
     ET.SubElement(cp, W + 'tcW', {W + 'w': '4680', W + 'type': 'dxa'})
     for value in [heading, party, '(ký và ghi rõ họ tên)']:
         cell.append(lease_paragraph(value, center=True, after=160))
+    # Printed name below the signing space.
+    cell.append(lease_paragraph(name, center=True, bold=True, size=24, before=1500, after=160))
 lease_paragraph('')
 lease_body.append(lease_section_source)
 
@@ -288,3 +309,22 @@ with ZipFile(target, 'w', ZIP_DEFLATED) as z:
     for name, data in parts.items():
         z.writestr(name, data)
 print(target)
+
+
+def ct01_part(document):
+    """CT01 runs through the paragraph holding the first sectPr (the break to page 2)."""
+    return document[:document.index('</w:p>', document.index('<w:sectPr')) + len('</w:p>')]
+
+
+# ct01-huy.docx reuses this CT01 verbatim and keeps its own liquidation minutes after it.
+huy_target = ROOT / 'public/templates/ct01-huy.docx'
+with ZipFile(huy_target) as z:
+    huy_entries = [(info, z.read(info.filename)) for info in z.infolist()]
+ct01_xml = parts['word/document.xml'].decode('utf-8')
+with ZipFile(huy_target, 'w', ZIP_DEFLATED) as z:
+    for info, data in huy_entries:
+        if info.filename == 'word/document.xml':
+            huy_xml = data.decode('utf-8')
+            data = (ct01_part(ct01_xml) + huy_xml[len(ct01_part(huy_xml)):]).encode('utf-8')
+        z.writestr(info, data, compress_type=ZIP_DEFLATED)
+print(huy_target)

@@ -7,6 +7,6 @@ Chạy script bằng Python thuộc bộ công cụ documents (có lxml), từ b
 
 CT01 giữ khổ A4, bảng số định danh, bảng thành viên và bốn cột ký. Hợp đồng giữ khổ Letter, danh sách và cỡ chữ 11pt/12pt/14pt của bản gốc, bắt đầu bằng section mới. Chỉ xóa dòng chấm tiếp địa chỉ đã được thay bằng nội dung tự xuống dòng và các đoạn trống dư ở ô ký; không thu nhỏ chữ. Ngày ký không kèm địa danh vì không có dữ liệu này. Header của hợp đồng được tách khỏi CT01.
 
-Ngày tải tính theo giờ Việt Nam. Cả hai văn bản dùng cùng lựa chọn 12/24 tháng. Các ô chữ ký và thành viên gia đình không tự điền. Không còn các ghi chú hướng dẫn điền trong file xuất.
+Ngày tải tính theo giờ Việt Nam. Cả hai văn bản dùng cùng lựa chọn 12/24 tháng. Bảng thành viên gia đình không tự điền. Dưới mỗi chỗ ký in sẵn họ tên (CT01: chủ hộ, chủ sở hữu, người kê khai, cột cha mẹ/người giám hộ để trống; hợp đồng: bên A, bên B), in ra chỉ còn ký tay. Script cũng chép nguyên phần CT01 sang `public/templates/ct01-huy.docx`, giữ biên bản thanh lý phía sau. Không còn các ghi chú hướng dẫn điền trong file xuất.
 
 Sau khi sửa script/mẫu cần chạy `ct01Document.test.ts`, browser `ct01-download.spec.ts`, xuất mẫu có dữ liệu bằng Word/LibreOffice và xem toàn bộ các trang. Kiểm tra CT01 ở trang 1, hợp đồng bắt đầu trang 2, không cắt chữ hoặc đổi cỡ chữ để vừa trang.
