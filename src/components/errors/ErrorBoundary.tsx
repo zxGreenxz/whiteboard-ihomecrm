@@ -7,6 +7,7 @@ import {
   reloadOnceForStaleChunk,
   hasAutoReloadBudget,
   isReloadPending,
+  reloadBustingChunkCache,
 } from "@/lib/chunkReload";
 import { reportBoundaryError } from "./boundaryReporter";
 
@@ -81,6 +82,13 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  // Thẻ lỗi chunk: reload trần dùng lại 404/HTML độc còn trong cache → bust trước.
+  // Hiện vạch "Đang tải…" trong lúc chờ, như lượt tự động.
+  private handleChunkRefresh = () => {
+    reloadBustingChunkCache(this.state.error);
+    this.setState({ willAutoReload: true });
+  };
+
   private handleGoHome = () => {
     window.location.href = "/";
   };
@@ -118,7 +126,7 @@ class ErrorBoundary extends Component<Props, State> {
                 Chưa tải đủ nội dung để mở trang. Bạn có thể tải lại để tiếp tục.
               </p>
               <div className="flex justify-center">
-                <Button onClick={this.handleRefresh}>
+                <Button onClick={this.handleChunkRefresh}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Tải lại
                 </Button>

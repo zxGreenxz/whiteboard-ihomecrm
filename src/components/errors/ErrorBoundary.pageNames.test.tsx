@@ -3,15 +3,16 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ALL_PAGES } from '@/lib/permissionPages';
 
-const recovery = vi.hoisted(() => ({ budget: false, pending: false, reload: vi.fn(() => false), report: vi.fn() }));
+const recovery = vi.hoisted(() => ({ budget: false, pending: false, reload: vi.fn(() => false), bust: vi.fn(), report: vi.fn() }));
 vi.mock('@/lib/chunkReload', () => ({
   isChunkLoadError: (error: Error) => error.message.includes('Failed to fetch dynamically imported module'),
   reloadOnceForStaleChunk: recovery.reload,
   hasAutoReloadBudget: () => recovery.budget,
   isReloadPending: () => recovery.pending,
+  reloadBustingChunkCache: recovery.bust,
 }));
 vi.mock('./boundaryReporter', () => ({ reportBoundaryError: recovery.report }));
 import ErrorBoundary from './ErrorBoundary';
@@ -42,6 +43,7 @@ beforeEach(() => {
   recovery.pending = false;
   recovery.reload.mockClear();
   recovery.reload.mockReturnValue(false);
+  recovery.bust.mockClear();
   recovery.report.mockClear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   window.addEventListener('error', suppressExpectedRenderError);
@@ -143,6 +145,16 @@ describe('lightweight page names for boot error feedback', () => {
     expect(screen.getByRole('button', { name: 'Tải lại' })).toBeTruthy();
     expect(recovery.reload).toHaveBeenCalledOnce();
     expect(recovery.report).toHaveBeenCalledOnce();
+  });
+
+  it('busts the poisoned chunk cache when the reload button is pressed after the budget is spent', async () => {
+    const message = 'Failed to fetch dynamically imported module: https://ptcrm.vercel.app/assets/CopilotLauncher-X.js';
+    render(<ErrorBoundary><Broken message={message} /></ErrorBoundary>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Tải lại' }));
+    expect(recovery.bust).toHaveBeenCalledOnce();
+    expect((recovery.bust.mock.calls[0] as unknown[])[0]).toMatchObject({ message });
+    expect(screen.getByText('Đang tải…')).toBeTruthy();
+    expect(screen.queryByRole('heading')).toBeNull();
   });
 
   it('keeps automatic recovery and reporting ahead of page name loading', async () => {

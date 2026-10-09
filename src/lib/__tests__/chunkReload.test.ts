@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   isChunkLoadError,
   extractChunkUrl,
   hasAutoReloadBudget,
   isReloadPending,
+  reloadBustingChunkCache,
 } from '../chunkReload';
 
 // Message THẬT lấy từ console prod khi mở /contracts sau deploy (2026-07-01).
@@ -106,5 +107,46 @@ describe('hasAutoReloadBudget', () => {
 describe('isReloadPending', () => {
   it('mặc định false khi chưa lên lịch reload nào', () => {
     expect(isReloadPending()).toBe(false);
+  });
+});
+
+// Đặt SAU describe isReloadPending: hàm này bật cờ pending ở mức module.
+describe('reloadBustingChunkCache (nút "Tải lại" thủ công)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(globalThis, 'sessionStorage');
+  });
+
+  it('ghi đè cache chunk hỏng + modulepreload cùng origin RỒI mới reload, kể cả khi hết lượt tự động', async () => {
+    const exhausted = JSON.stringify({ at: Date.now(), count: 2 });
+    stubSessionStorage({ seed: { 'chunk-reload': exhausted } });
+    const order: string[] = [];
+    const reload = vi.fn(() => { order.push('reload'); });
+    vi.stubGlobal('window', {
+      location: { origin: 'https://ptcrm.vercel.app', reload },
+      setTimeout: () => 0, // trần thời gian không nổ: reload phải đợi bust xong
+    });
+    vi.stubGlobal('document', {
+      querySelectorAll: () => [
+        { href: 'https://ptcrm.vercel.app/assets/copilotConfig-B2Wn.js' },
+        { href: 'https://cdn.example.com/other.js' },
+      ],
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      order.push(`${init.cache} ${url}`);
+      return new Response('');
+    }));
+
+    reloadBustingChunkCache(new Error(REAL_FETCH_ERR));
+
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(order).toEqual([
+      'reload https://ptcrm.vercel.app/assets/ContractsPage-Bn7e08OO.js',
+      'reload https://ptcrm.vercel.app/assets/copilotConfig-B2Wn.js',
+      'reload',
+    ]);
+    expect(isReloadPending()).toBe(true);
+    // Bấm tay không tiêu lượt tự động.
+    expect(sessionStorage.getItem('chunk-reload')).toBe(exhausted);
   });
 });

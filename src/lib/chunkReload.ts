@@ -18,6 +18,13 @@
 // tiếp import thành công. Nếu chunk mất hẳn (deploy cũ) thì reload lấy index.html
 // mới → main bundle mới không còn trỏ tới chunk cũ nữa.
 //
+// BIẾN THỂ HIỆN NAY (đo 09/10/2026): rewrite đã chừa `assets/` nên chunk thiếu
+// trả **404 text/plain** — nhưng VẪN mang `immutable, max-age=1 năm` (header của
+// vercel.json áp cho mọi status). Android mở /login đúng lúc production đổi bản
+// (READY 15:39:55) dính 404 đó; thử bằng Chromium: `reload()` trần không xin lại
+// file lần nào, `fetch(cache:'reload')` rồi reload thì khỏi. Nên nút "Tải lại"
+// thủ công cũng phải bust (`reloadBustingChunkCache`), không chỉ lượt tự động.
+//
 // Guard sessionStorage để KHÔNG bao giờ lặp reload vô hạn (tối đa MAX_ATTEMPTS
 // lần trong WINDOW_MS). Hết lượt (hoặc privacy mode chặn sessionStorage) → trả
 // về false để ErrorBoundary hiện thẻ "có phiên bản mới" + nút "Tải lại" thủ công.
@@ -130,6 +137,20 @@ export function reloadOnceForStaleChunk(err?: unknown): boolean {
     // user vẫn có nút "Tải lại" thủ công ở ErrorBoundary.
     return false;
   }
+  bustThenReload(err);
+  return true;
+}
+
+/**
+ * Nút "Tải lại" thủ công của thẻ lỗi chunk. `location.reload()` trần dùng lại
+ * entry độc còn fresh nên bấm bao nhiêu lần cũng hỏng; phải bust như lượt tự
+ * động. Không tính ngân sách: người dùng bấm tay thì không thành vòng lặp.
+ */
+export function reloadBustingChunkCache(err?: unknown): void {
+  bustThenReload(err);
+}
+
+function bustThenReload(err?: unknown): void {
   reloadPending = true; // ErrorBoundary đọc để hiện spinner thay thẻ lỗi.
   const failingUrl = extractChunkUrl(err);
   // Bust cache (có trần thời gian) RỒI reload — không bao giờ treo trước reload.
@@ -137,7 +158,6 @@ export function reloadOnceForStaleChunk(err?: unknown): boolean {
     bustPoisonedCache(failingUrl),
     new Promise<void>((resolve) => window.setTimeout(resolve, BUST_TIMEOUT_MS)),
   ]).finally(() => window.location.reload());
-  return true;
 }
 
 /** Nhận diện lỗi load chunk động trên Chrome / Firefox / Safari. */

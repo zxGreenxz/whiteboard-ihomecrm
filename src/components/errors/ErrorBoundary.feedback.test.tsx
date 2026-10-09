@@ -5,6 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 vi.mock('@/lib/chunkReload', () => ({
   isChunkLoadError: (error: Error) => error.message.includes('Failed to fetch dynamically imported module'),
   reloadOnceForStaleChunk: () => false, hasAutoReloadBudget: () => false, isReloadPending: () => false,
+  reloadBustingChunkCache: () => {},
 }));
 vi.mock('./boundaryReporter', () => ({ reportBoundaryError: vi.fn() }));
 import ErrorBoundary from './ErrorBoundary';
