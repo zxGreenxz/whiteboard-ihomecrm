@@ -15,12 +15,13 @@ risk: normal
 
 ## Capability khai trong registry
 
-Registry hiện phủ **28** capability. Toàn app có ~146 route —
+Registry hiện phủ **29** capability. Toàn app có ~146 route —
 phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt
 đầu từ hai capability đã drift thật, mở rộng là việc riêng.
 
 | Capability | Route | Quyền | Rủi ro | Tài liệu |
 |---|---|---|---|---|
+| Biến động số dư | `/bien-dong-so-du` | `?.?` | an ninh | docs/he-thong/25-bien-dong-so-du.md |
 | Trung tâm mạng | `/network-center` | `network_center.view` | hạ tầng | docs/he-thong/22-network-center.md |
 | Hoá đơn | `/invoices` | `invoices.view` | tiền | docs/he-thong/07-hoa-don-thanh-toan.md |
 | Thu chi | `/income-expense` | `income_expenses.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
@@ -54,10 +55,10 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 
 | Chỉ số | Giá trị |
 |---|---|
-| Thư mục mã nguồn | 9 |
-| ĐANG CHẠY trên server | 8 |
+| Thư mục mã nguồn | 11 |
+| ĐANG CHẠY trên server | 10 |
 | Có mã mà **chưa deploy** | 1 — network-watchdog |
-| `verify_jwt = false` (ai cũng gọi được) | 3 — demo-reset, network-center-worker, salary-v5-jobs |
+| `verify_jwt = false` (ai cũng gọi được) | 4 — bank-event-ingest, demo-reset, network-center-worker, salary-v5-jobs |
 
 Thư mục trong repo **không** có nghĩa là hàm đang chạy: deploy là thao tác riêng,
 không gắn với `git push`.

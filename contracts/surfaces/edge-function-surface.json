@@ -1,10 +1,10 @@
 {
   "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
   "counts": {
-    "source": 9,
-    "deployed": 8,
-    "invoked": 1,
-    "publiclyCallable": 3
+    "source": 11,
+    "deployed": 10,
+    "invoked": 2,
+    "publiclyCallable": 4
   },
   "sourceWithoutDeployment": [
     "network-watchdog"
@@ -16,15 +16,33 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 27,
+      "version": 29,
       "verifyJwt": true,
+      "callers": []
+    },
+    "bank-event-admin": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": true,
+      "callers": [
+        "src/lib/bank-events/service.ts"
+      ]
+    },
+    "bank-event-ingest": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": false,
       "callers": []
     },
     "demo-reset": {
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 23,
+      "version": 25,
       "verifyJwt": false,
       "callers": []
     },
@@ -32,7 +50,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 5,
       "verifyJwt": true,
       "callers": []
     },
@@ -40,7 +58,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 37,
+      "version": 39,
       "verifyJwt": true,
       "callers": []
     },
@@ -48,7 +66,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 12,
+      "version": 14,
       "verifyJwt": false,
       "callers": []
     },
@@ -64,7 +82,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 5,
+      "version": 7,
       "verifyJwt": true,
       "callers": []
     },
@@ -72,7 +90,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 26,
+      "version": 28,
       "verifyJwt": false,
       "callers": []
     },
@@ -80,7 +98,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 28,
+      "version": 30,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",

@@ -1,0 +1,62 @@
+name: Android Gateway
+on:
+  pull_request:
+    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml', 'tooling/test-matrix.json', 'tooling/runtime-matrix.json']
+  push:
+    branches: [main, 'release/*']
+    paths: ['extensions/sms-webhook/android/**', '.github/workflows/android-gateway.yml', 'tooling/test-matrix.json', 'tooling/runtime-matrix.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-gateway-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  build:
+    name: Android APK and native tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build APK and run Android unit and lint checks
+        run: bash extensions/sms-webhook/android/ci-build.sh
+      - name: Prepare disposable Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$ANDROID_HOME/licenses/android-sdk-license"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64' < /dev/null
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+      - name: Verify Android encrypted queue and setup screen on device
+        run: bash extensions/sms-webhook/android/ci-device.sh
+      - name: Sign installable APK on the reviewed main branch
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          IHOME_BANK_ANDROID_KEYSTORE_B64: ${{ secrets.IHOME_BANK_ANDROID_KEYSTORE_B64 }}
+          IHOME_BANK_ANDROID_PASSWORD: ${{ secrets.IHOME_BANK_ANDROID_PASSWORD }}
+        run: bash extensions/sms-webhook/android/ci-release.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: ihome-bank-gateway-${{ github.sha }}
+          path: |
+            extensions/sms-webhook/android/app/build/outputs/apk/debug/app-debug.apk
+            extensions/sms-webhook/android/app/build/reports/tests/testDebugUnitTest/
+            extensions/sms-webhook/android/app/build/reports/lint-results-debug.html
+            extensions/sms-webhook/android/app/build/outputs/androidTest-results/connected/
+            extensions/sms-webhook/android/build/ci-evidence/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish verified release APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: ihome-bank-gateway-release-${{ github.sha }}
+          path: |
+            extensions/sms-webhook/android/app/build/outputs/apk/release/app-release.apk
+            extensions/sms-webhook/android/build/release-evidence/
+          if-no-files-found: error
+          retention-days: 30

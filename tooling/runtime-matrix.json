@@ -76,6 +76,12 @@
       "node": "24.18.0",
       "deno": null,
       "note": "Dien tap khoi phuc: restore baseline + replay forward lane + kiem bao mat len postgres:17.6 Docker dung-mot-lan. Node theo ci-gates vi ba script chi dung node core; Postgres pin 17.6 khop otherRuntimes.postgres — dien tap tren major khac la do moi truong khac."
+    },
+    {
+      "path": ".github/workflows/android-gateway.yml",
+      "node": null,
+      "deno": null,
+      "note": "Uses preinstalled JDK17/Android35; Gradle8.11.1 distribution checksum is pinned in the wrapper. No Node or Deno setup."
     }
   ],
   "otherRuntimes": {

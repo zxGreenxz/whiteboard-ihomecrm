@@ -1,4 +1,11 @@
 project_id = "tryymsxyyckgbrmmvozx"
 
+[functions.bank-event-ingest]
+# Device bearer credentials are verified inside the handler and database.
+verify_jwt = false
+
+[functions.bank-event-admin]
+verify_jwt = true
+
 [functions.lifecycle-reminders]
 verify_jwt = true

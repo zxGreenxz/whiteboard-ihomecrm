@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1307,
-  "soFileDocBangFs": 293,
-  "tongLoiGoi": 647,
+  "tongSoFileTest": 1316,
+  "soFileDocBangFs": 295,
+  "tongLoiGoi": 650,
   "khongPhanLoaiDuoc": 299,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 50,
+      "soFile": 51,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 101,
+      "soFile": 102,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -41,6 +41,7 @@
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/qr-csp-bindings.test.mjs",
+    "scripts/__tests__/super-admin-route-contract.test.mjs",
     "scripts/org-context-repair/sealed-artifact.test.mjs",
     "src/components/errors/ErrorBoundary.pageNames.test.tsx",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
@@ -777,6 +778,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/super-admin-route-contract.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/termination-refund-return-note.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1124,6 +1133,14 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/bank-event-inbox-sql.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },

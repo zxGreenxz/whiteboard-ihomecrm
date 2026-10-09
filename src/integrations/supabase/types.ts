@@ -21238,6 +21238,25 @@ export type Database = {
           time_context: string
         }[]
       }
+      bank_event_admin_v1: {
+        Args: { p_action: string; p_input?: Json }
+        Returns: Json
+      }
+      bank_event_ingest_v1: {
+        Args: {
+          p_ciphertext: string
+          p_device_id: string
+          p_digest: string
+          p_event_type: string
+          p_external_id: string
+          p_heartbeat: Json
+          p_key_id: string
+          p_nonce: string
+          p_occurred_at: string
+          p_payload_hash: string
+        }
+        Returns: Json
+      }
       building_of_contract: { Args: { _id: string }; Returns: string }
       building_of_invoice: { Args: { _id: string }; Returns: string }
       building_of_payment: { Args: { _id: string }; Returns: string }

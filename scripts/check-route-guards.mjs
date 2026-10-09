@@ -129,6 +129,7 @@ function fileCoRouteNgoaiTamQuet(daQuet) {
 export const GUARDS = new Set([
   "ProtectedRoute", // cổng ĐĂNG NHẬP — bọc ngoài cùng ở hầu hết route
   "RequirePermission", // cổng QUYỀN theo module/action
+  "RequireSuperAdmin", // tier hệ thống; được kiểm riêng bởi check-route-permission-drift
   "RequireAuth",
   "ProfitDistributionRouteGuard",
 ]);

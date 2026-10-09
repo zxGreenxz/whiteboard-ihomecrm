@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+def releaseStorePath = System.getenv('IHOME_SIGNING_STORE')
+def releasePassword = System.getenv('IHOME_SIGNING_PASSWORD')
+def validateReleaseSigning = tasks.register('validateReleaseSigning') {
+    doLast {
+        if (!releaseStorePath || !releasePassword || !file(releaseStorePath).isFile()) {
+            throw new GradleException('Release signing requires IHOME_SIGNING_STORE and IHOME_SIGNING_PASSWORD.')
+        }
+    }
+}
+
+android {
+    namespace 'vn.ihome.smsgateway'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'vn.ihome.smsgateway'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '0.2.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            if (releaseStorePath) storeFile file(releaseStorePath)
+            storePassword releasePassword
+            keyAlias 'ihome-gateway'
+            keyPassword releasePassword
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == 'preReleaseBuild') dependsOn validateReleaseSigning
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime:2.10.5'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

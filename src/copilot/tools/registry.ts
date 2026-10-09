@@ -347,7 +347,7 @@ export function trangHuongDanChoPhep(): DocTopic[] {
   const ra: DocTopic[] = [];
   for (const cap of CAPABILITIES) {
     const doc = cap.docs.userDoc;
-    if (!doc || cap.docs.visibility !== 'public') continue;
+    if (!doc || cap.docs.visibility !== 'public' || cap.superAdminOnly) continue;
     const path = doc.startsWith('/') ? doc : `/${doc}`;
     if (!USER_DOC_MODULES[path]) continue; // trang đã khai nhưng file không còn
     ra.push({

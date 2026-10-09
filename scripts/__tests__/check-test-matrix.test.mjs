@@ -26,6 +26,16 @@ describe('globToRegExp', () => {
 });
 
 describe('assignSuites — excludes', () => {
+  it('assigns native Android tests to Gradle without routing them into JavaScript runners', () => {
+    const file = 'extensions/sms-webhook/android/app/src/androidTest/java/vn/ihome/smsgateway/GatewayInstrumentedTest.java';
+    const result = assignSuites([file], [
+      { id: 'app-unit', runner: 'vitest', includes: ['src/**/*.test.ts'] },
+      { id: 'android-gateway', runner: 'gradle', includes: ['extensions/sms-webhook/android/app/src/androidTest/**/*.java'] },
+    ]);
+    expect(result.bySuite.get('android-gateway')).toEqual([file]);
+    expect(result.bySuite.get('app-unit')).toEqual([]);
+    expect(result.orphans).toEqual([]);
+  });
   const suites = [
     { id: 'app-unit', runner: 'vitest', includes: ['scripts/__tests__/**/*.test.mjs'] },
     { id: 'node-native', runner: 'node --test', includes: ['scripts/__tests__/network-center-*.test.mjs'] },

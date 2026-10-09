@@ -16,6 +16,8 @@ import {
   SIDEBAR_TRANSITION_MS,
 } from './useSidebarState';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { canShowSurface } from '@/lib/superAdminSurface';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
@@ -88,6 +90,7 @@ interface NavItem {
   module?: string;
   /** Action cần — mặc định "view". */
   action?: ActionKey;
+  superAdminOnly?: boolean;
   /** Business Performance chỉ hiện sau khi roster tổ chức tải thành công và không rỗng. */
   requiresBusinessPerformanceOrganization?: boolean;
   /**
@@ -179,6 +182,7 @@ export const navigationGroups: NavGroup[] = [
           // phải bước duyệt nào chỉ thấy danh sách rỗng.
           { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
           ...navFieldsFor('funds').map((x) => ({ ...x, icon: Wallet }) satisfies NavItem),
+          ...navFieldsFor('bank-events').map((x) => ({ ...x, icon: Landmark }) satisfies NavItem),
           // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
           { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
           // Cam kết chi — một bộ máy duyệt chi; chỉ chủ công ty đọc/sửa được (server chặn người khác).
@@ -313,6 +317,7 @@ const Sidebar = ({
   };
 
   const businessPerformanceOrganizations = useBusinessPerformanceOrganizations();
+  const superAdmin = useIsSuperAdmin();
   const canShowBusinessPerformance =
     businessPerformanceOrganizations.isSuccess &&
     (businessPerformanceOrganizations.data?.length ?? 0) > 0;
@@ -331,7 +336,7 @@ const Sidebar = ({
     if (item.requiresBusinessPerformanceOrganization) {
       return canShowBusinessPerformance;
     }
-    return !item.module || canUse(perms, item.module, item.action ?? 'view');
+    return canShowSurface(item, perms, !superAdmin.isError && !superAdmin.isLoading && !superAdmin.isPending && superAdmin.data === true);
   };
 
   // Lọc cây điều hướng theo quyền: ẩn mục thiếu quyền, ẩn luôn section/nhóm

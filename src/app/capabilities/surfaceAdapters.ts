@@ -41,8 +41,9 @@ import { capabilityById } from "./registry";
 export interface CapabilitySurfaceFields {
   title: string;
   href: string;
-  module: string;
-  action: ActionKey;
+  module?: string;
+  action?: ActionKey;
+  superAdminOnly?: boolean;
 }
 
 /** Thêm `id` — launcher dùng nó làm khoá React và test đối chiếu theo id. */
@@ -59,8 +60,10 @@ function truong(id: string): CapabilitySurfaceFields | null {
   return {
     title: c.label,
     href: c.primaryRoute,
-    module: c.permission.module,
-    action: c.permission.action,
+    ...(c.superAdminOnly ? { superAdminOnly: true } : {
+      module: c.permission.module,
+      action: c.permission.action,
+    }),
   };
 }
 

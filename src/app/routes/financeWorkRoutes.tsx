@@ -9,6 +9,7 @@
 import { Route, Navigate } from "react-router-dom";
 import {
   ApprovalsPage,
+  BankEventsPage,
   IncomeExpensePage,
   IncomeExpensePrintPage,
   InvoiceDetailPage,
@@ -27,12 +28,14 @@ import {
 } from "../lazyPages";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
+import { RequireSuperAdmin } from "../../components/auth/RequireSuperAdmin";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { AdminOnlyRoute } from "../../components/auth/AdminOnlyRoute";
 
 export const financeWorkRoutes = (
   <>
     {/* === TÀI CHÍNH === */}
+    <Route path="/bien-dong-so-du" element={<ProtectedRoute><RequireSuperAdmin><BankEventsPage /></RequireSuperAdmin></ProtectedRoute>} />
     <Route path="/meter-readings" element={<ProtectedRoute><RequirePermission module="meter_readings"><MeterReadingsPage /></RequirePermission></ProtectedRoute>} />
     <Route path="/thu-tien" element={<ProtectedRoute><RequirePermission module="thu_tien"><Suspense fallback={null}><ThuTien /></Suspense></RequirePermission></ProtectedRoute>} />
     {/* Gate `thu_tien.collect` (không phải `view`) — giữ NGUYÊN tầm với cũ:
