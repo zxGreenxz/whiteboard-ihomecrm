@@ -38,6 +38,10 @@ export function docRegistry(nguon) {
     const id = /id:\s*"([^"]+)"/.exec(khoi)?.[1];
     const route = /primaryRoute:\s*"([^"]+)"/.exec(khoi)?.[1];
     const p = /permission:\s*\{\s*module:\s*"([^"]+)",\s*action:\s*"([^"]+)"/.exec(khoi);
+    if (id && route && /superAdminOnly:\s*true/.test(khoi)) {
+      ra.push({ id, primaryRoute: route, superAdminOnly: true, permissionNull: /permission:\s*null/.test(khoi) });
+      continue;
+    }
     // Miễn trừ guard phải nằm TRONG khối `permission` của chính capability đó.
     // Bóc trên cả khối sẽ nhận nhầm một `mienTruVi` của `e2e` hay `docs` — ba
     // trường miễn trừ khác nhau, và lẫn chúng thì một lý do viết cho E2E sẽ âm
@@ -72,6 +76,7 @@ export function quyenCuaRoute(nguonRoute, duongRoute) {
   // động giả kiểu tệ nhất: gate nói `/invoices` gác bằng `invoices.print` trong
   // khi route đó gác bằng `invoices` — con số nó đọc là của route KHÁC.
   const doan = m[1].split(/path=\s*["']/)[0];
+  if (/<RequireSuperAdmin\s*>/.test(doan) && /<ProtectedRoute\s*>/.test(doan)) return { loai: 'super-admin' };
 
   // `action` là TUỲ CHỌN. `RequirePermission` khai `action = "view"` làm mặc định
   // (xem src/components/auth/RequirePermission.tsx), và phần lớn route trong repo
@@ -94,6 +99,16 @@ export function quyenCuaGuard(nguonGuard) {
   const code = boChuThichJs(nguonGuard);
   const m = /["']([a-z0-9_]+)\.([a-z0-9_]+)["']/.exec(code.match(/VIEW_PERMISSION\s*=\s*["'][^"']+["']/)?.[0] ?? '');
   return m ? { module: m[1], action: m[2] } : null;
+}
+
+/** Recognize the explicit strict gate, rejecting owner sentinels and broad admin hooks. */
+export function superAdminGuardValid(source) {
+  const code = boChuThichJs(source);
+  return /const\s+permission\s*=\s*useIsSuperAdmin\(\)/.test(code)
+    && /if\s*\(permission\.data\s*!==\s*true\)\s*return\s*<Navigate\b/.test(code)
+    && /if\s*\(permission\.isError\)/.test(code)
+    && /permission\.isLoading\s*\|\|\s*permission\.isPending/.test(code)
+    && !/useIsAdmin\(|useMyPermissions\(|__superadmin|canUse\(/.test(code);
 }
 
 function main() {
@@ -128,6 +143,16 @@ function main() {
 
   for (const c of caps) {
     const q = quyenCuaRoute(nguonRoute, c.primaryRoute);
+    if (c.superAdminOnly) {
+      if (!c.permissionNull || q.loai !== 'super-admin' || !superAdminGuardValid(doc('src/components/auth/RequireSuperAdmin.tsx'))) {
+        lech.push(`${c.id}: bề mặt superAdminOnly phải dùng ProtectedRoute + RequireSuperAdmin và RPC tier thật, không dùng quyền owner/Admin.`);
+      }
+      continue;
+    }
+    if (q.loai === 'super-admin') {
+      lech.push(`${c.id}: route super admin chưa được khai superAdminOnly trong registry.`);
+      continue;
+    }
 
     if (q.loai === 'khong-thay-route') {
       khongDoc.push(`${c.id}: không tìm thấy route \`${c.primaryRoute}\` trong src/app/routes/.`);

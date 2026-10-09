@@ -188,6 +188,23 @@ export function copilotRouteForKey(key: string): string | undefined {
  */
 export const CAPABILITIES: readonly CapabilityDefinition[] = [
   {
+    id: "bank-events",
+    primaryRoute: "/bien-dong-so-du",
+    label: "Biến động số dư",
+    release: { enabled: true, runtimeModule: null },
+    superAdminOnly: true,
+    permission: null,
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: null },
+    docs: {
+      systemDoc: "docs/he-thong/25-bien-dong-so-du.md",
+      userDoc: null,
+      userDocMienTruVi: "Bề mặt vận hành chỉ super admin; hướng dẫn nằm trong tài liệu hệ thống.",
+      visibility: "internal",
+    },
+    e2e: { spec: ".e2e-fleet/specs/bank-events.spec.ts" },
+    risk: "security",
+  },
+  {
     id: "network-center",
     primaryRoute: "/network-center",
     label: "Trung tâm mạng",

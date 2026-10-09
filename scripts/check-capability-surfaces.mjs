@@ -63,6 +63,8 @@ export function bocRegistry(nguon) {
       label: k.match(/label:\s*"([^"]+)"/)?.[1] ?? null,
       module: k.match(/module:\s*"([^"]+)"/)?.[1] ?? null,
       action: k.match(/action:\s*"([^"]+)"/)?.[1] ?? null,
+      superAdminOnly: /superAdminOnly:\s*true/.test(k),
+      permissionNull: /permission:\s*null/.test(k),
       permissionPage: k.match(/permissionPage:\s*"([^"]+)"/)?.[1] ?? null,
       systemDoc: k.match(/systemDoc:\s*"([^"]+)"/)?.[1] ?? null,
       e2eSpec: k.match(/e2e:\s*\{\s*spec:\s*"([^"]+)"/)?.[1] ?? null,
@@ -179,6 +181,15 @@ function main() {
   // (3) Trang trong permission picker vẫn khai tay.
   const pp = doc("src/lib/permissionPages.ts");
   for (const c of caps) {
+    if (c.superAdminOnly) {
+      if (!c.permissionNull || c.permissionPage || c.module || c.action) {
+        viPham.push(`${c.id}: superAdminOnly phải có permission:null và permissionPage:null, không cấp qua quyền tổ chức.`);
+      }
+      if (new RegExp(`["']${c.route.replace(/\//g, "\\/")}["']`).test(pp)) {
+        viPham.push(`${c.id}: trang chỉ super admin không được nằm trong permission picker.`);
+      }
+      continue;
+    }
     if (!c.permissionPage) continue;
     if (!new RegExp(`["']${c.permissionPage.replace(/\//g, "\\/")}["']`).test(pp)) {
       viPham.push(

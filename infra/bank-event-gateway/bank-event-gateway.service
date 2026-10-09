@@ -1,0 +1,35 @@
+[Unit]
+Description=iHome CRM bank notification gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ihome-bank-gateway
+Group=ihome-bank-gateway
+WorkingDirectory=/opt/ihome-bank-gateway/current
+EnvironmentFile=/etc/ihome-bank-gateway.env
+ExecStart=/opt/ihome-bank-gateway/runtime/bin/node server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=true
+UMask=0077
+MemoryMax=160M
+TasksMax=48
+CPUQuota=50%
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

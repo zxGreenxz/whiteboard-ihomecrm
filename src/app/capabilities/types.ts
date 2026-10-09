@@ -61,7 +61,7 @@ export interface CopilotPageContract {
  * ở mức thao tác) — gộp cả hai trong một đợt sẽ biến một lát nhỏ thành refactor
  * xuyên hệ thống. Ở đây chỉ tham chiếu tới trang tương ứng bằng `permissionPage`.
  */
-export interface CapabilityDefinition {
+interface CapabilityBase {
   /** Khớp id tile ở launcher để đối chiếu được. */
   id: string;
   primaryRoute: string;
@@ -97,7 +97,6 @@ export interface CapabilityDefinition {
    * Cùng khuôn với `docs.userDocMienTruVi` và `e2e.mienTruVi`: miễn trừ phải
    * TƯỜNG MINH và có lý do, không bao giờ là một trường bỏ trống.
    */
-  permission: { module: string; action: ActionKey; guardMienTruVi?: string };
 
   /** Explicit page surfaces Copilot may access; omitted means no Copilot access. */
   copilot?: { pages: readonly CopilotPageContract[] };
@@ -106,7 +105,7 @@ export interface CapabilityDefinition {
     desktopNav: boolean;
     mobileLauncher: boolean;
     /** Route của trang tương ứng trong permission picker. */
-    permissionPage: string;
+    permissionPage: string | null;
   };
 
   docs: {
@@ -201,3 +200,9 @@ export interface CapabilityDefinition {
    * tới một người có thật, chứ đừng thêm trường trước rồi hy vọng nó được giữ đúng.
    */
 }
+
+/** System-only surfaces never inherit the organization-owner permission sentinel. */
+export type CapabilityDefinition = CapabilityBase & (
+  | { superAdminOnly: true; permission: null }
+  | { superAdminOnly?: false; permission: { module: string; action: ActionKey; guardMienTruVi?: string } }
+);

@@ -28,7 +28,7 @@ import { selectionDigest } from './lib/selected-vitest.mjs';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
 
-const TEST_FILE = /\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/;
+const TEST_FILE = /(?:\.(test|spec)\.(ts|tsx|mjs|js|cjs)|Test\.java)$/;
 
 /**
  * Chuyển glob sang RegExp. Chỉ hỗ trợ `**` và `*` — đủ cho các pattern trong

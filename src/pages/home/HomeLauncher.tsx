@@ -9,7 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
-import { canUse } from '@/lib/permissionPages';
+import { canShowSurface } from '@/lib/superAdminSurface';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { LAUNCHER_SECTIONS, type LauncherTile } from './launcherTiles';
 import InstallHint from '@/components/pwa/InstallHint';
 import { usePrefetchHeavyPages } from '@/hooks/usePrefetchHeavyPages';
@@ -86,6 +87,7 @@ const HomeLauncher = () => {
   const { data: stats } = useDashboardStats(null);
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const [animateIn] = useState(() => !enteredOnce());
+  const superAdmin = useIsSuperAdmin();
 
   // Ẩn splash tức thì ngay khi launcher mount (skeleton bên dưới lo phần dữ liệu).
   useEffect(() => {
@@ -100,7 +102,7 @@ const HomeLauncher = () => {
   const name = profile?.full_name || user?.email || 'Bạn';
 
   // Ô chỉ hiện khi có quyền XEM tương ứng (khớp đúng route guard). Section rỗng → ẩn.
-  const canShow = (t: LauncherTile) => !t.module || canUse(perms, t.module, t.action ?? 'view');
+  const canShow = (t: LauncherTile) => canShowSurface(t, perms, !superAdmin.isError && !superAdmin.isLoading && !superAdmin.isPending && superAdmin.data === true);
   const sections = LAUNCHER_SECTIONS
     .map((s) => ({ ...s, items: s.items.filter(canShow) }))
     .filter((s) => s.items.length > 0);

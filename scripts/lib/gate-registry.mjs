@@ -53,11 +53,14 @@ for (const [id, job, command, args] of [
   ['app-unit', 'vitest-tests', 'node', ['node_modules/vitest/vitest.mjs', 'run']],
   ['node-native', 'quality-gates', 'node', ['--test']],
   ['organization-backup-envelope', 'quality-gates', 'node', ['--test']],
+  ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
+  ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
   ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['e2e-bank-events', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
 ]) {
   gates[`suite:${id}`] = { id: `suite:${id}`, command, args, job, local: command !== 'deno', evidenceClass: 'static', inputs: broadInputs, requires: [] };
 }
@@ -68,6 +71,7 @@ export function isOfflineBrowserSelection(suiteId, files) {
   const approved = {
     'e2e-personal-finance-demo': '.e2e-fleet/specs/personal-finance-demo.spec.ts',
     'e2e-personal-finance-product': '.e2e-fleet/specs/personal-finance-product.spec.ts',
+    'e2e-bank-events': '.e2e-fleet/specs/bank-events.spec.ts',
   };
   return Array.isArray(files) && files.length === 1 && approved[suiteId] === files[0];
 }

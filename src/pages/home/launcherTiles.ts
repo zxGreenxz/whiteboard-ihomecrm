@@ -52,6 +52,7 @@ export interface LauncherTile {
   /** Quyền cần để THẤY ô — khớp đúng (module, action) route guard kiểm. Bỏ trống = luôn hiện. */
   module?: string;
   action?: ActionKey;
+  superAdminOnly?: boolean;
   /** Ô "nổi bật" (Thu tiền) — nhãn tô màu brand. */
   hot?: boolean;
   /** Nguồn số badge (tuỳ chọn). */
@@ -123,6 +124,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
   {
     label: 'Hệ thống',
     items: [
+      ...launcherFieldsFor('bank-events').map((x) => ({ ...x, icon: Banknote, accent: '#0f766e' }) satisfies LauncherTile),
       ...launcherFieldsFor('settings').map((x) => ({ ...x, icon: Settings, accent: '#6b7280' }) satisfies LauncherTile),
       { id: 'account', title: 'Tài khoản', href: '/account/profile', icon: UserCircle, accent: '#6b7280' },
     ],

@@ -37,7 +37,7 @@ const { navigationGroups } = await import("@/components/layout/Sidebar");
 const { LAUNCHER_SECTIONS } = await import("@/pages/home/launcherTiles");
 const { ALL_PAGES } = await import("@/lib/permissionPages");
 
-type FlatNavItem = { title: string; href?: string; module?: string; action?: string };
+type FlatNavItem = { title: string; href?: string; module?: string; action?: string; superAdminOnly?: boolean };
 
 function flattenNav(): FlatNavItem[] {
   const out: FlatNavItem[] = [];
@@ -76,6 +76,14 @@ describe("capability registry ↔ bề mặt thật (cờ BẬT)", () => {
   it.each(cases)("%s: nav và launcher gác đúng CÙNG (module, action) như registry", (_id, capability) => {
     const nav = navItems.find((i) => i.href === capability.primaryRoute);
     const tile = tiles.find((t) => t.href === capability.primaryRoute);
+    if (capability.superAdminOnly) {
+      for (const surface of [nav, tile].filter(Boolean)) {
+        expect(surface?.superAdminOnly).toBe(true);
+        expect(surface?.module).toBeUndefined();
+      }
+      expect(capability.permission).toBeNull();
+      return;
+    }
 
     // Chỉ đòi bề mặt nào capability KHAI là có. Bản đầu đòi cả hai vì lúc đó cả
     // hai capability đều bật cả nav lẫn launcher; từ 12/08/2026 có bề mặt chỉ nằm
@@ -104,6 +112,11 @@ describe("capability registry ↔ bề mặt thật (cờ BẬT)", () => {
   });
 
   it.each(cases)("%s: có trang trong permission picker, và action gác route tồn tại ở đó", (_id, capability) => {
+    if (capability.superAdminOnly) {
+      expect(capability.surfaces.permissionPage).toBeNull();
+      expect(ALL_PAGES.some(page => page.route === capability.primaryRoute)).toBe(false);
+      return;
+    }
     const page = ALL_PAGES.find((p) => p.route === capability.surfaces.permissionPage);
     expect(page, `thiếu trang quyền cho ${capability.primaryRoute}`).toBeDefined();
     expect(page?.key).toBe(capability.permission.module);
@@ -121,7 +134,7 @@ describe("capability registry ↔ bề mặt thật (cờ BẬT)", () => {
     // diện phân quyền hiện hai dòng cho cùng một bề mặt, và không ai biết cấp dòng
     // nào thì mở được trang. Đây cũng chính là cái bẫy §7 mô tả cho alias.
     const trung = ALL_PAGES.filter((p) => p.route === capability.surfaces.permissionPage);
-    expect(trung.length, `${capability.surfaces.permissionPage} có ${trung.length} entry`).toBe(1);
+    expect(trung.length, `${capability.surfaces.permissionPage} có ${trung.length} entry`).toBe(capability.superAdminOnly ? 0 : 1);
   });
 
   it("không capability nào trùng route hoặc trùng id", () => {

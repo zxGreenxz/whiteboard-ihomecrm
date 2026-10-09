@@ -12,6 +12,18 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it('requires Android build/native evidence and keeps bank inbox browser fixtures bounded', () => {
+    const android = plan([changed('extensions/sms-webhook/android/app/src/main/java/vn/ihome/smsgateway/GatewayWork.java', 'before', 'after')]);
+    expect(android.requiredExternalWorkflows).toContainEqual(expect.objectContaining({
+      workflow: '.github/workflows/android-gateway.yml', jobs: ['build'], suiteIds: expect.arrayContaining(['android-gateway', 'android-device']),
+    }));
+    const fixture = '.e2e-fleet/specs/bank-events.spec.ts';
+    const browser = plan([changed(fixture, 'before', 'after')], { testFiles: [fixture] });
+    expect(browser.gateIds).toContain('suite:e2e-bank-events');
+    expect(isOfflineBrowserSelection('e2e-bank-events', [fixture])).toBe(true);
+    expect(isOfflineBrowserSelection('e2e-bank-events', [fixture, '.e2e-fleet/specs/real-bank.spec.ts'])).toBe(false);
+    expect(isOfflineBrowserSelection('e2e-fleet', [fixture])).toBe(false);
+  });
   it("executes the exact offline product suite without substituting it for money or live UI evidence", () => {
     const file = '.e2e-fleet/specs/personal-finance-product.spec.ts';
     const p = plan([changed(file, 'old test', 'new test'), changed('src/components/personal-finance/CompanyFinance.tsx', button, button.replace('openDialog', 'savePayment'))], { testFiles: [file] });
