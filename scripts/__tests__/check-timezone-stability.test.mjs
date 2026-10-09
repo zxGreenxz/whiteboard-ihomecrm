@@ -12,15 +12,18 @@ describe('parseShard', () => {
     expect(parseShard(['node', 'script'])).toBeNull();
   });
 
-  it('nhận đúng dạng k/n', () => {
+  it('nhận đúng dạng k/n, viết tách hay viết liền', () => {
     expect(parseShard(['node', 'script', '--shard', '3/4'])).toBe('3/4');
+    expect(parseShard(['node', 'script', '--shard=2/4'])).toBe('2/4');
   });
 
   it('dạng sai hoặc thiếu giá trị làm gate đỏ, không rơi về toàn bộ', () => {
     for (const value of ['0/4', '5/4', '1/1', '2', 'a/b']) {
       expect(() => parseShard(['--shard', value]), value).toThrow(/--shard/);
+      expect(() => parseShard([`--shard=${value}`]), value).toThrow(/--shard/);
     }
     expect(() => parseShard(['--shard'])).toThrow(/--shard/);
+    expect(() => parseShard(['--shard='])).toThrow(/--shard/);
   });
 });
 

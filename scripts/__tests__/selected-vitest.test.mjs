@@ -73,6 +73,13 @@ test('real installed Vitest runs exact selected file, retains failure and reject
   const noValue = run(both, ['--shard']);
   assert.equal(noValue.status, 1, noValue.stdout + noValue.stderr);
   assert.match(noValue.stderr, /Invalid --shard/);
+  // The joined spelling selects the same part; it never falls back to the whole selection.
+  const joined = run(both, ['--shard=2/2']);
+  assert.equal(joined.status, 0, joined.stdout + joined.stderr);
+  assert.doesNotMatch(joined.stdout + joined.stderr, /unselected failure/);
+  const joinedBad = run(both, ['--shard=3/2']);
+  assert.equal(joinedBad.status, 1, joinedBad.stdout + joinedBad.stderr);
+  assert.match(joinedBad.stderr, /Invalid --shard/);
   const passed = run(['src/chosen.test.mjs']);
   assert.equal(passed.status, 0, passed.stdout + passed.stderr);
   assert.doesNotMatch(passed.stdout + passed.stderr, /unselected failure/);

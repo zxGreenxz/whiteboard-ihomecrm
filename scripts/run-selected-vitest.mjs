@@ -9,8 +9,10 @@ export async function runSelectedVitest(argv) {
   const digest = argument('--selection-digest');
   if (!path || !digest) throw new Error('Required --plan <json> --selection-digest <sha256>');
   // The digest binds the whole selection; a shard runs and proves only its own part.
-  const files = shardSelection(selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest), argv.includes('--shard') ? String(argument('--shard')) : null);
-  if (argv.includes('--shard')) console.log(`Vitest phần ${argument('--shard')}: ${files.length} file`);
+  const joined = argv.find((arg) => arg.startsWith('--shard='));
+  const shard = joined ? joined.slice('--shard='.length) : argv.includes('--shard') ? String(argument('--shard')) : null;
+  const files = shardSelection(selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest), shard);
+  if (shard !== null) console.log(`Vitest phần ${shard}: ${files.length} file`);
   const { startVitest } = await import('vitest/node');
   let context;
   try {

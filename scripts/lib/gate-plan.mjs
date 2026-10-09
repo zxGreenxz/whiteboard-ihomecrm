@@ -211,6 +211,11 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     const responsive = changes.some((c) => manualUiPaths.includes(c.path) && (c.path.startsWith('src/components/ui/') || /(?:sm|md|lg|xl|2xl):|@media/.test((c.before ?? '') + (c.after ?? ''))));
     browserRequirements.push({ status: "required", suiteId: null, files: [], paths: manualUiPaths, viewports: responsive ? ["desktop", "mobile"] : ["affected"], reason: "Verify the affected UI viewport and console; no automatic browser spec mapped for these paths" });
   }
+  // One part proves only its own files: whatever selected a part requires the whole group.
+  for (const id of [...gates]) {
+    const group = registry[id]?.shardOf;
+    if (group) for (const part of Object.values(registry)) if (part.shardOf === group) gates.add(part.id);
+  }
   const gateIds = unique([...gates].filter((id) => !isDeferredGate(id)));
   for (const id of gateIds) if (!registry[id]) throw new Error(`Gate policy refers to unknown command: ${id}`);
   const inputPatterns = unique(gateIds.flatMap((id) => registry[id].inputs ?? []));

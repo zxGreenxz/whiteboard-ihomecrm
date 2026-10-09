@@ -62,10 +62,11 @@ export function parseVitestSummary(output) {
   };
 }
 
-/** `--shard k/n` ⇒ `k/n`; vắng ⇒ null; sai dạng ⇒ ném lỗi, không lặng lẽ chạy toàn bộ. */
+/** `--shard k/n` hoặc `--shard=k/n` ⇒ `k/n`; vắng ⇒ null; sai dạng ⇒ ném lỗi, không lặng lẽ chạy toàn bộ. */
 export function parseShard(argv) {
-  if (!argv.includes('--shard')) return null;
-  const value = String(argv[argv.indexOf('--shard') + 1]);
+  const joined = argv.find((arg) => String(arg).startsWith('--shard='));
+  if (!argv.includes('--shard') && !joined) return null;
+  const value = joined ? joined.slice('--shard='.length) : String(argv[argv.indexOf('--shard') + 1]);
   const m = /^(\d+)\/(\d+)$/.exec(value);
   if (!m || Number(m[2]) < 2 || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) {
     throw new Error(`--shard phải có dạng k/n với 1 ≤ k ≤ n, n ≥ 2 (nhận: ${value})`);

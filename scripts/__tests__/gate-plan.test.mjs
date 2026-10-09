@@ -61,6 +61,13 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     expect(small.gateIds).toContain("suite:app-unit");
     expect(small.requiredJobs).not.toContain("vitest-tests-2");
   });
+  it("a policy that names a single part still requires every part of its group", () => {
+    const riskMap = JSON.parse(readFileSync(new URL("../../tooling/risk-map.json", import.meta.url), "utf8"));
+    const narrowed = { ...riskMap, gateProfiles: { ...riskMap.gateProfiles, "docs-only": [...riskMap.gateProfiles["docs-only"], "check-timezone-shard-2"] } };
+    const p = plan([changed("docs/he-thong/24-platform-delivery.md", "a", "b")], { riskMap: narrowed });
+    expect(p.gateIds.filter((id) => id.startsWith("check-timezone-shard-"))).toEqual(["check-timezone-shard-1", "check-timezone-shard-2", "check-timezone-shard-3", "check-timezone-shard-4"]);
+    expect(p.requiredJobs).toEqual(expect.arrayContaining(["timezone-gate", "timezone-gate-2", "timezone-gate-3", "timezone-gate-4"]));
+  });
   it("new app modules retain strict checks regardless of UI scope", () => {
     const p = plan([changed("src/components/quick-entry/NewView.tsx", "", button, { status: "A" })]);
     expect(p.gateIds).toEqual(expect.arrayContaining(["check-new-modules-strict", "check-strict-islands"]));

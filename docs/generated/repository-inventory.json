@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1321,
   "soFileDocBangFs": 296,
-  "tongLoiGoi": 652,
+  "tongLoiGoi": 653,
   "khongPhanLoaiDuoc": 301,
   "theoLoai": {
     "ma-nguon": {
@@ -11,7 +11,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 36,
+      "soFile": 37,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -735,6 +735,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/gate-plan.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/network-center-ingest-domains.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -1215,12 +1223,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gate-plan.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/generate-bundle-inventory.test.mjs",
