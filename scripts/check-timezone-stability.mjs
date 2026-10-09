@@ -21,6 +21,12 @@
 //
 //   node scripts/check-timezone-stability.mjs
 //   node scripts/check-timezone-stability.mjs --quick   # chỉ UTC vs Asia/Ho_Chi_Minh
+//   node scripts/check-timezone-stability.mjs --shard 2/4
+//
+// `--shard k/n`: CI chia file thành n phần chạy song song (vitest --shard, chia theo
+// hash đường dẫn nên mọi múi giờ nhận ĐÚNG cùng tập file). Mỗi phần vẫn chạy đủ mọi
+// múi giờ và đòi kết quả giống hệt; n phần cùng đạt ⇒ toàn bộ đạt, vì tổng các phần
+// bằng nhau khi từng phần bằng nhau. Aggregate đòi đủ biên nhận của cả n phần.
 //
 // Không cần credential, không đọc database.
 
@@ -56,14 +62,25 @@ export function parseVitestSummary(output) {
   };
 }
 
-function runUnder(tz) {
+/** `--shard k/n` ⇒ `k/n`; vắng ⇒ null; sai dạng ⇒ ném lỗi, không lặng lẽ chạy toàn bộ. */
+export function parseShard(argv) {
+  if (!argv.includes('--shard')) return null;
+  const value = String(argv[argv.indexOf('--shard') + 1]);
+  const m = /^(\d+)\/(\d+)$/.exec(value);
+  if (!m || Number(m[2]) < 2 || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) {
+    throw new Error(`--shard phải có dạng k/n với 1 ≤ k ≤ n, n ≥ 2 (nhận: ${value})`);
+  }
+  return value;
+}
+
+function runUnder(tz, shard) {
   // Gọi thẳng entry JS của vitest bằng process.execPath, KHÔNG qua npx: Node trên
   // Windows từ chối spawn file .cmd khi shell:false (EINVAL, bản vá bảo mật), còn bật
   // shell:true thì đường dẫn có dấu cách lại thành nguồn lỗi mới. Cách này không
   // đụng shell nên chạy giống nhau ở mọi nền tảng.
   const r = spawnSync(
     process.execPath,
-    [join(repoRoot, "node_modules/vitest/vitest.mjs"), "run", ...TARGETS],
+    [join(repoRoot, "node_modules/vitest/vitest.mjs"), "run", ...TARGETS, ...(shard ? [`--shard=${shard}`] : [])],
     { cwd: repoRoot, encoding: "utf8", env: { ...process.env, TZ: tz } },
   );
   return { tz, code: r.status, summary: parseVitestSummary(`${r.stdout ?? ''}${r.stderr ?? ''}`) };
@@ -71,11 +88,13 @@ function runUnder(tz) {
 
 function main(argv) {
   const zones = argv.includes('--quick') ? ZONES.slice(0, 2) : ZONES;
+  const shard = parseShard(argv);
   const results = [];
+  if (shard) console.log(`  phần ${shard} của tập file`);
 
   for (const tz of zones) {
     process.stdout.write(`  chạy dưới TZ=${tz} … `);
-    const r = runUnder(tz);
+    const r = runUnder(tz, shard);
     if (!r.summary) {
       console.log('KHÔNG ĐỌC ĐƯỢC KẾT QUẢ');
       console.error(`\n❌ Không parse được output vitest dưới TZ=${tz}. Gate này vô nghĩa nếu không đọc được kết quả, nên coi là đỏ.`);
@@ -90,7 +109,7 @@ function main(argv) {
   if (failing.length > 0) {
     console.error(`\n❌ Test ĐỎ dưới ${failing.length}/${results.length} múi giờ: ${failing.map((r) => r.tz).join(', ')}`);
     console.error('  → chạy lại tay để xem chi tiết:');
-    console.error(`     TZ=${failing[0].tz} npx vitest run ${TARGETS.join(' ')}`);
+    console.error(`     TZ=${failing[0].tz} npx vitest run ${TARGETS.join(' ')}${shard ? ` --shard=${shard}` : ''}`);
     process.exitCode = 1;
     return;
   }
@@ -108,7 +127,7 @@ function main(argv) {
 
   const [{ summary }] = results;
   console.log(
-    `\n✅ ${summary.testsPassed} test (${summary.filesPassed} file) cho kết quả GIỐNG HỆT dưới ${results.length} múi giờ: ${zones.join(', ')}.`,
+    `\n✅ ${summary.testsPassed} test (${summary.filesPassed} file${shard ? `, phần ${shard}` : ''}) cho kết quả GIỐNG HỆT dưới ${results.length} múi giờ: ${zones.join(', ')}.`,
   );
   console.log('   Khoảng cách UTC+14 ↔ UTC-11 là 25 giờ, nên mọi thời điểm trong ngày đều đã được thử ở hai "ngày" khác nhau.');
 }

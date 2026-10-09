@@ -60,8 +60,11 @@ Docs có project riêng, lấy nội dung từ `docs/huong-dan-su-dung/`; quy t�
 [ci-gates.yml](../../.github/workflows/ci-gates.yml) quy định trigger/điều kiện thực thi;
 [test-matrix.json](../../tooling/test-matrix.json) quy định test thuộc runner/job nào.
 
-- `quality-gates` chạy gate tĩnh, Deno, typecheck, lint, build/bundle và Node tests.
-  `vitest-tests` chạy toàn bộ root Vitest song song với job đó.
+- `quality-gates` chạy gate tĩnh, typecheck và lint; `build-gates` chạy build/bundle/docs;
+  `suite-tests` chạy Node, Deno và e2e offline. Ba job chạy song song cùng `vitest-tests`.
+- Lệnh dài chia phần (`SHARD_COUNTS` trong gate-registry): phần k chạy ở job `<job>-k`, mỗi phần
+  một biên nhận, aggregate đòi đủ mọi phần. Timezone luôn 4 phần, mỗi phần đủ mọi múi giờ và
+  vẫn đòi kết quả giống hệt; root Vitest chia 3 phần khi CI chọn từ 200 file trở lên.
 - Strict, timezone và secret scan vẫn độc lập. Timezone kiểm cùng tập test dưới các múi giờ đã khai.
 - `realtime-gates` kiểm publication thật ngoài nhánh production, gồm cả PR; cần PAT hợp lệ.
   Nhóm security, types, cross-tenant và reconcile trên main còn phụ thuộc preflight/credential.

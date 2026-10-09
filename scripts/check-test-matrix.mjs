@@ -22,7 +22,7 @@ import yaml from 'js-yaml';
 
 import { laCI, lietKeUntracked, phanCap } from './lib/git-scope.mjs';
 import { isDeferredTest } from './lib/deferred-modules.mjs';
-import { getGate } from './lib/gate-registry.mjs';
+import { GATE_REGISTRY, getGate } from './lib/gate-registry.mjs';
 import { selectionDigest } from './lib/selected-vitest.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -172,16 +172,28 @@ export function lenhCuaBuoc(doc, tenJob, tenBuoc) {
   return String(step.run ?? '').trim();
 }
 
+const hasExecutor = (doc, job) => doc?.jobs?.[job]?.steps?.some((step) => step.run?.trim() === `node scripts/ci-run-gates.mjs --job ${job}`);
+
 /** Registry executors bind exact file lists directly or through the selected-plan digest. */
-export function validateRegistrySuite({ suite, doc, files, resolveGate = getGate }) {
+export function validateRegistrySuite({ suite, doc, files, resolveGate = getGate, registry = GATE_REGISTRY }) {
   const problems = [];
   if (!files?.length) return [`${suite.id}: registry suite has no files`];
   let gate;
-  try { gate = resolveGate(`suite:${suite.id}`, { environment: 'ci', suiteSelections: [{ id: suite.id, mode: 'all', files }] }); }
+  const plan = { environment: 'ci', suiteSelections: [{ id: suite.id, mode: 'all', files }] };
+  try { gate = resolveGate(`suite:${suite.id}`, plan); }
   catch (error) { return [`${suite.id}: ${error.message}`]; }
   const target = suite.ciJobs?.find((entry) => entry.workflow === '.github/workflows/ci-gates.yml');
   if (!gate || !target || gate.job !== target.job) problems.push(`${suite.id}: registry job differs from matrix`);
-  if (!doc?.jobs?.[target?.job]?.steps?.some((step) => step.run?.trim() === `node scripts/ci-run-gates.mjs --job ${target.job}`)) problems.push(`${suite.id}: missing registry executor in declared job`);
+  if (!hasExecutor(doc, target?.job)) problems.push(`${suite.id}: missing registry executor in declared job`);
+  // A CI part that is not declared, or whose job cannot execute it, is a part nobody runs.
+  for (const part of Object.values(registry).filter((entry) => entry.shardOf === `suite:${suite.id}`)) {
+    let resolved;
+    try { resolved = resolveGate(part.id, plan); } catch (error) { problems.push(`${suite.id}: ${error.message}`); continue; }
+    if (!suite.ciJobs?.some((entry) => entry.workflow === '.github/workflows/ci-gates.yml' && entry.job === resolved.job)) problems.push(`${suite.id}: shard job ${resolved.job} is not declared in ciJobs`);
+    if (!hasExecutor(doc, resolved.job)) problems.push(`${suite.id}: missing registry executor in shard job ${resolved.job}`);
+    const expected = [...(gate?.args ?? []), '--shard', `${part.shard.index}/${part.shard.count}`];
+    if (JSON.stringify(resolved.args) !== JSON.stringify(expected)) problems.push(`${suite.id}: shard ${part.shard.index}/${part.shard.count} runs a different command`);
+  }
   const args = gate?.args ?? [];
   const boundedVitest = suite.id === 'app-unit' && args[0] === 'scripts/run-selected-vitest.mjs';
   const correctRunner = suite.runner === 'node --test' ? gate?.command === 'node' && args.includes('--test')

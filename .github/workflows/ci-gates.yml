@@ -75,16 +75,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-download-plan.mjs
       - run: npm ci
-      - uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
-        if: needs.preflight.outputs.needs_deno == 'true'
-        with:
-          deno-version: 2.9.4
-      - name: Install docs dependencies only for a selected docs build
-        if: needs.preflight.outputs.needs_docs_build == 'true'
-        run: npm ci --prefix docs-site
-      - name: Install browser for the selected offline suite only
-        if: needs.preflight.outputs.needs_demo_browser == 'true'
-        run: npx playwright install --with-deps chromium
       - name: Execute selected gates and write receipts
         run: node scripts/ci-run-gates.mjs --job quality-gates
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -92,6 +82,82 @@ jobs:
         with:
           name: gate-receipts-quality-gates-attempt-${{ github.run_attempt }}
           path: .gate-evidence/quality-gates/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  build-gates:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'build-gates')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Install docs dependencies only for a selected docs build
+        if: needs.preflight.outputs.needs_docs_build == 'true'
+        run: npm ci --prefix docs-site
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job build-gates
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-build-gates-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/build-gates/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  suite-tests:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'suite-tests')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        if: needs.preflight.outputs.needs_deno == 'true'
+        with:
+          deno-version: 2.9.4
+      - name: Install browser for the selected offline suite only
+        if: needs.preflight.outputs.needs_demo_browser == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job suite-tests
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-suite-tests-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/suite-tests/receipts.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 2
@@ -126,6 +192,74 @@ jobs:
         with:
           name: gate-receipts-vitest-tests-attempt-${{ github.run_attempt }}
           path: .gate-evidence/vitest-tests/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  # Parts 2..n of a sharded gate (gate-registry SHARD_COUNTS). The plan selects them
+  # only when it splits, and the aggregate needs one receipt per part.
+  vitest-tests-2:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'vitest-tests-2')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job vitest-tests-2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-vitest-tests-2-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/vitest-tests-2/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  vitest-tests-3:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'vitest-tests-3')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job vitest-tests-3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-vitest-tests-3-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/vitest-tests-3/receipts.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 2
@@ -194,6 +328,105 @@ jobs:
         with:
           name: gate-receipts-timezone-gate-attempt-${{ github.run_attempt }}
           path: .gate-evidence/timezone-gate/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  timezone-gate-2:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'timezone-gate-2')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job timezone-gate-2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-timezone-gate-2-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/timezone-gate-2/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  timezone-gate-3:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'timezone-gate-3')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job timezone-gate-3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-timezone-gate-3-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/timezone-gate-3/receipts.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
+
+  timezone-gate-4:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      !cancelled() && github.ref != 'refs/heads/production' &&
+      needs.preflight.result == 'success' &&
+      contains(fromJSON(needs.preflight.outputs.required_jobs || '[]'), 'timezone-gate-4')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+      - name: Download exact-run plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-download-plan.mjs
+      - run: npm ci
+      - name: Execute selected gates and write receipts
+        run: node scripts/ci-run-gates.mjs --job timezone-gate-4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-receipts-timezone-gate-4-attempt-${{ github.run_attempt }}
+          path: .gate-evidence/timezone-gate-4/receipts.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 2
@@ -423,7 +656,7 @@ jobs:
 
   gate-aggregate:
     if: always() && github.ref != 'refs/heads/production'
-    needs: [preflight, quality-gates, vitest-tests, strict-islands-gate, timezone-gate, security-gates, generated-types-drift, reconcile-money, cross-tenant-isolation, secret-scan, realtime-gates]
+    needs: [preflight, quality-gates, build-gates, suite-tests, vitest-tests, vitest-tests-2, vitest-tests-3, strict-islands-gate, timezone-gate, timezone-gate-2, timezone-gate-3, timezone-gate-4, security-gates, generated-types-drift, reconcile-money, cross-tenant-isolation, secret-scan, realtime-gates]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

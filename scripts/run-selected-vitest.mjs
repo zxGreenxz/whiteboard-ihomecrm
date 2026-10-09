@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { selectedVitestFiles, assertCollectedSelection } from './lib/selected-vitest.mjs';
+import { selectedVitestFiles, assertCollectedSelection, shardSelection } from './lib/selected-vitest.mjs';
 
 export async function runSelectedVitest(argv) {
   const argument = (name) => argv.includes(name) ? argv[argv.indexOf(name) + 1] : null;
   const path = argument('--plan');
   const digest = argument('--selection-digest');
   if (!path || !digest) throw new Error('Required --plan <json> --selection-digest <sha256>');
-  const files = selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest);
+  // The digest binds the whole selection; a shard runs and proves only its own part.
+  const files = shardSelection(selectedVitestFiles(JSON.parse(readFileSync(path, 'utf8')), digest), argv.includes('--shard') ? String(argument('--shard')) : null);
+  if (argv.includes('--shard')) console.log(`Vitest phần ${argument('--shard')}: ${files.length} file`);
   const { startVitest } = await import('vitest/node');
   let context;
   try {

@@ -10,6 +10,18 @@ function nodeGate(id, job = 'quality-gates', options = {}) {
   gates[id] = { id, command: 'node', args: [`scripts/${id}.mjs`], job, local: true,
     evidenceClass: 'static', inputs: broadInputs, requires: [], ...options };
 }
+// A long command split into disjoint parts: one gate id, one job and one receipt per
+// part, so the aggregate still needs every part. Part 1 stays in the original job;
+// part k runs in parallel as `<job>-k`. Partition and per-part checks belong to the command.
+export const SHARD_COUNTS = Object.freeze({ 'check-timezone': 4, 'suite:app-unit': 3 });
+function shardGates(baseId, job, gate) {
+  const count = SHARD_COUNTS[baseId];
+  for (let index = 1; index <= count; index += 1) {
+    const id = `${baseId}-shard-${index}`;
+    gates[id] = { ...gate, id, job: index === 1 ? job : `${job}-${index}`, local: false, shardOf: baseId, shard: { index, count },
+      args: [...gate.args, '--shard', `${index}/${count}`] };
+  }
+}
 
 for (const id of [
   'check-agent-contract', 'check-runtime-matrix', 'check-known-gaps',
@@ -30,11 +42,13 @@ nodeGate('generate-docs-views', 'quality-gates', { args: ['scripts/generate-docs
 nodeGate('check-dependency-audit', 'quality-gates', { local: false, evidenceClass: 'external' });
 gates['check-known-gaps'].evidenceClass = 'external';
 nodeGate('check-strict-islands', 'strict-islands-gate');
-nodeGate('check-timezone', 'timezone-gate', { args: ['scripts/check-timezone-stability.mjs'], local: false, evidenceClass: 'external' });
+// Each part runs every zone over its own files and still demands identical counts.
+shardGates('check-timezone', 'timezone-gate', { command: 'node', args: ['scripts/check-timezone-stability.mjs'], evidenceClass: 'external', inputs: broadInputs, requires: [] });
 nodeGate('check-realtime-descriptors', 'realtime-gates', { local: false, evidenceClass: 'live', requires: ['SUPABASE_PAT'] });
-nodeGate('app-build', 'quality-gates', { command: 'npm', args: ['run', 'build'], local: false });
-nodeGate('bundle-inventory', 'quality-gates', { args: ['scripts/generate-bundle-inventory.mjs'], local: false });
-nodeGate('docs-build', 'quality-gates', { command: 'npm', args: ['--prefix', 'docs-site', 'run', 'build'], local: false, inputs: ['docs/**', 'docs-site/**', 'scripts/**', 'tooling/**'] });
+// Builds run beside the static checks; bundle-inventory reads the dist that app-build writes in the same job.
+nodeGate('app-build', 'build-gates', { command: 'npm', args: ['run', 'build'], local: false });
+nodeGate('bundle-inventory', 'build-gates', { args: ['scripts/generate-bundle-inventory.mjs'], local: false });
+nodeGate('docs-build', 'build-gates', { command: 'npm', args: ['--prefix', 'docs-site', 'run', 'build'], local: false, inputs: ['docs/**', 'docs-site/**', 'scripts/**', 'tooling/**'] });
 
 for (const id of ['check-definer-acl', 'check-definer-body-authz', 'check-view-invoker', 'check-approver-provenance',
   'check-permission-catalog', 'check-migration-ledger-frozen', 'check-residence-dossier-rls',
@@ -51,19 +65,22 @@ nodeGate('secret-scan', 'secret-scan', { args: ['scripts/ci-secret-scan.mjs'], l
 
 for (const [id, job, command, args] of [
   ['app-unit', 'vitest-tests', 'node', ['node_modules/vitest/vitest.mjs', 'run']],
-  ['node-native', 'quality-gates', 'node', ['--test']],
-  ['organization-backup-envelope', 'quality-gates', 'node', ['--test']],
-  ['bank-event-gateway', 'quality-gates', 'node', ['--test']],
-  ['edge-deno-bank-events', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
-  ['edge-deno-llm-proxy', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
-  ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
-  ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
-  ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
-  ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
-  ['e2e-bank-events', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['node-native', 'suite-tests', 'node', ['--test']],
+  ['organization-backup-envelope', 'suite-tests', 'node', ['--test']],
+  ['bank-event-gateway', 'suite-tests', 'node', ['--test']],
+  ['edge-deno-bank-events', 'suite-tests', 'deno', ['test', '--config', 'supabase/functions/bank-event-ingest/deno.json']],
+  ['edge-deno-llm-proxy', 'suite-tests', 'deno', ['test', '--config', 'supabase/functions/llm-proxy/deno.json']],
+  ['edge-deno-quick-entry', 'suite-tests', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
+  ['e2e-fleet', 'suite-tests', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['e2e-personal-finance-demo', 'suite-tests', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['e2e-personal-finance-product', 'suite-tests', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['e2e-bank-events', 'suite-tests', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
 ]) {
   gates[`suite:${id}`] = { id: `suite:${id}`, command, args, job, local: command !== 'deno', evidenceClass: 'static', inputs: broadInputs, requires: [] };
 }
+// CI splits a large app-unit selection; local runs and small selections keep the single gate.
+shardGates('suite:app-unit', 'vitest-tests', { ...gates['suite:app-unit'], suiteId: 'app-unit' });
+export const SHARD_MIN_FILES = 200;
 
 export const GATE_REGISTRY = Object.freeze(gates);
 // Exact suite/file pairs only. Real TEST/preview specs remain outside default CI.
@@ -97,7 +114,7 @@ export function getGate(id, plan) {
     gate.args.push('--tu-moc', plan.snapshot.base);
   }
   if (id.startsWith('suite:')) {
-    const suiteId = id.slice(6);
+    const suiteId = original.suiteId ?? id.slice(6);
     const selection = plan?.suiteSelections?.find((s) => s.id === suiteId);
     if (!selection || !selection.files?.length) throw new Error(`Missing selected tests: ${suiteId}`);
     if (selection.files.some(isDeferredTest)) throw new Error(`DEFERRED test selected: ${suiteId}`);
@@ -106,6 +123,7 @@ export function getGate(id, plan) {
     }
     if (suiteId === 'app-unit') {
       gate.args = ['scripts/run-selected-vitest.mjs', '--plan', plan.environment === 'ci' ? '.gate-evidence/plan.json' : '.cache/gate-receipts/plan.json', '--selection-digest', selectionDigest(selection.files)];
+      if (original.shard) gate.args.push('--shard', `${original.shard.index}/${original.shard.count}`);
     } else gate.args.push(...selection.files);
     if (gate.command === 'deno') gate.args.push('--allow-env');
     if (suiteId.startsWith('e2e-')) gate.args.push('--workers=1', '--reporter=list');
