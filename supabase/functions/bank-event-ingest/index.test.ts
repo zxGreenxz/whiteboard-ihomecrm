@@ -56,6 +56,14 @@ Deno.test('heartbeat has a durable source receipt and never contains a stored ci
  assert.equal((await handler(request(beat))).status,200);assert.equal(saved.p_ciphertext,null);
  assert.deepEqual(saved.p_heartbeat,{smsEnabled:true,notificationsEnabled:false,notificationAccess:false,smsPermission:true,appVersion:'1.0',receivedAt:event().receivedAt});
 });
+Deno.test('receipt time from PostgreSQL (+00:00, microseconds) is returned as UTC Z for Android Instant.parse',async()=>{
+ for(const status of ['accepted','duplicate','heartbeat']) {
+  const handler=createHandler({env,rpc:async()=>({data:{...receipt(status),acceptedAt:'2026-10-09T09:29:31.432663+00:00'},error:null})});
+  const payload=status==='heartbeat'?{schemaVersion:1,event:'gateway.heartbeat',id:'a'.repeat(64),deviceId:event().deviceId,receivedAt:event().receivedAt,smsEnabled:true,notificationsEnabled:false,notificationAccess:false,smsPermission:true,appVersion:'1.0'}:event();
+  const body=await (await handler(request(payload))).json();
+  assert.equal(body.data.acceptedAt,'2026-10-09T09:29:31.432Z');
+ }
+});
 Deno.test('revocation, collision and storage errors are not acknowledged; malformed receipts fail closed',async()=>{
  for(const [code,status] of [['28000',401],['PT409',409],['XX000',503]] as const) {
   const handler=createHandler({env,rpc:async()=>({data:null,error:{code}})});

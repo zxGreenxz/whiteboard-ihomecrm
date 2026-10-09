@@ -26,7 +26,8 @@ export function createHandler(deps: Dependencies={}) {
         ||typeof receipt.sourceId!=='string'||!UUID.test(receipt.sourceId)||receipt.externalId!==event.id||!validTimestamp(receipt.acceptedAt)
         ||(heartbeat?receipt.status!=='heartbeat'||receipt.eventId!==null:
           receipt.status==='heartbeat'||typeof receipt.eventId!=='string'||!UUID.test(receipt.eventId)))throw new RequestError(502,'invalid_storage_receipt');
-      return reply(receipt.status==='accepted'?201:200,{schemaVersion:1,ok:true,data:receipt});
+      // PostgreSQL trả giờ dạng +00:00; Instant.parse trên Android 8–13 chỉ nhận đuôi Z nên app từ chối biên nhận.
+      return reply(receipt.status==='accepted'?201:200,{schemaVersion:1,ok:true,data:{...receipt,acceptedAt:new Date(String(receipt.acceptedAt)).toISOString()}});
     }catch(error){return failed(error);}
   };
 }
