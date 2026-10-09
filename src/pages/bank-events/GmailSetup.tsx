@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { buildGmailScript, GMAIL_BANK_DOMAINS, gmailLabelQuery, gmailSearchQuery } from '@/lib/bank-events/gmailScript';
 
 /** Script chứa khóa nguồn: chỉ sống trong hộp thoại này, không lưu vào storage hay cache truy vấn. */
-export function GmailSetup({ name, token, ingestUrl, onClose }: { name: string; token: string; ingestUrl: string | null; onClose: () => void }) {
+export function GmailSetup({ name, token, ingestUrl, rotated = false, onClose }: { name: string; token: string; ingestUrl: string | null; rotated?: boolean; onClose: () => void }) {
   const [includeBanks, setIncludeBanks] = useState(true);
   const [label, setLabel] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
@@ -36,13 +36,15 @@ export function GmailSetup({ name, token, ingestUrl, onClose }: { name: string; 
       {problem && <p role="alert" className="text-sm text-destructive">{problem}</p>}
     </div>
     <ol className="list-decimal space-y-1.5 pl-5 text-sm leading-6">
-      <li>Mở <a href="https://script.google.com/" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">script.google.com</a> bằng đúng tài khoản Gmail nhận email ngân hàng, bấm <strong>Dự án mới</strong>.</li>
-      <li>Xoá đoạn mã có sẵn, dán toàn bộ script bên dưới rồi bấm <strong>Lưu</strong>.</li>
+      {rotated
+        ? <li>Mở <a href="https://script.google.com/" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">script.google.com</a>, vào <strong>đúng dự án đang chạy script cũ</strong> (khóa cũ đã ngừng). Nếu đã xoá dự án đó thì bấm <strong>Dự án mới</strong>; còn dự án cũ ở chỗ khác thì chạy hàm <code className="rounded bg-muted px-1">goCaiDat</code> ở đó để không tốn hạn mức.</li>
+        : <li>Mở <a href="https://script.google.com/" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">script.google.com</a> bằng đúng tài khoản Gmail nhận email ngân hàng, bấm <strong>Dự án mới</strong>.</li>}
+      <li>Xoá toàn bộ mã đang có, dán toàn bộ script bên dưới rồi bấm <strong>Lưu</strong>.</li>
       <li>Ở thanh trên chọn hàm <code className="rounded bg-muted px-1">caiDat</code> rồi bấm <strong>Chạy</strong>.</li>
-      <li>Google hỏi quyền: <strong>Xem xét quyền</strong> → chọn tài khoản → <strong>Nâng cao</strong> → <strong>Đi tới dự án (không an toàn)</strong> → <strong>Cho phép</strong>. Đây là script của chính bạn. Google ghi quyền “đọc, soạn, gửi và xoá email” vì mọi script dùng Gmail đều phải xin quyền đầy đủ; script này chỉ đọc thư và gửi email ngân hàng về CRM, bạn xem được toàn bộ mã ở trên.</li>
+      <li>Google hỏi quyền: <strong>Xem xét quyền</strong> → chọn tài khoản → <strong>Nâng cao</strong> → <strong>Đi tới dự án (không an toàn)</strong> → <strong>Cho phép</strong>. Đây là script của chính bạn. Google ghi quyền “đọc, soạn, gửi và xoá email” vì mọi script dùng Gmail đều phải xin quyền đầy đủ; script này chỉ đọc thư và gửi email ngân hàng về CRM, bạn xem được toàn bộ mã ở ô bên dưới.</li>
       <li>Quay lại tab Nguồn kết nối: trong vài phút nguồn này hiện “Script đã kết nối”.</li>
     </ol>
-    <p className="text-xs leading-5 text-muted-foreground">Ban ngày quét 1 phút/lần; 00:30–06:30 quét 10 phút/lần. Google cho script chạy 90 phút mỗi ngày: nếu đã dùng quá 60 phút thì script tự giãn 5 phút/lần tới hết ngày.</p>
+    <p className="text-xs leading-5 text-muted-foreground">Ban ngày quét 1 phút/lần; 00:30–06:30 quét 10 phút/lần. Google cho mọi script của một tài khoản chạy tổng 90 phút mỗi ngày: nếu script này đã dùng quá 60 phút thì tự giãn 5 phút/lần tới hết ngày. Khóa bị tạm dừng hay thu hồi thì script giãn 30 phút/lần và Google gửi mail báo lỗi cho bạn.</p>
     <Label htmlFor="gmail-script">Script Apps Script</Label>
     {script
       ? <textarea id="gmail-script" readOnly spellCheck={false} value={script} className="h-40 w-full resize-y rounded-md border bg-muted p-3 font-mono text-xs" />

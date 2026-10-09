@@ -28,19 +28,26 @@ Gmail được nối bằng **Google Apps Script chạy trong chính tài khoả
 4. Chọn hàm `caiDat` → **Chạy** → cấp quyền (Nâng cao → Đi tới dự án → Cho phép; đây là script của chính chủ tài khoản). Google mô tả quyền là "đọc, soạn, gửi và xoá email" vì dịch vụ `GmailApp` chỉ có một mức quyền đầy đủ; script chỉ đọc thư và gửi email ngân hàng về CRM.
 5. Trong vài phút nguồn hiện "Gmail · script đã kết nối" kèm nhịp quét và số phút đã dùng trong ngày.
 
-Nhịp quét: ban ngày **1 phút/lần**, **00:30–06:30 là 10 phút/lần** (hẹn giờ quay lại 1 phút đúng 06:30). Tài khoản Google thường chỉ được chạy script tự động **90 phút/ngày** (gói Google One/Gemini không nâng hạn mức này; chỉ Google Workspace mới được 6 giờ). Khi trong ngày đã dùng khoảng 60 phút, script tự giãn **5 phút/lần** tới hết ngày để không bị Google dừng. Lần đầu chạy lấy thư của 24 giờ trước; thư đã gửi được ghi nhớ nên không gửi trùng, CRM lỗi tạm thời thì lần sau gửi bù.
+Nhịp quét: ban ngày **1 phút/lần**, **00:30–06:30 là 10 phút/lần** (hẹn giờ quay lại 1 phút đúng 06:30). Tài khoản Google thường chỉ được chạy script tự động **90 phút/ngày cho mọi script của tài khoản** (gói Google One/Gemini không nâng hạn mức này; chỉ Google Workspace mới được 6 giờ). Khi script này đã dùng khoảng 60 phút trong ngày, nó tự giãn **5 phút/lần** tới hết ngày; script khác trong cùng tài khoản cũng ăn vào 90 phút đó. Khóa bị tạm dừng/thu hồi (CRM trả 401/403) thì script giãn **30 phút/lần**, ném lỗi để Google gửi mail báo chủ, và tự quay lại nhịp thường khi khóa dùng lại được.
 
-Gỡ: chạy hàm `goCaiDat` trong Apps Script và **Thu hồi** nguồn trên CRM. Cấp lại khóa thì phải dán script mới thay toàn bộ script cũ rồi chạy lại `caiDat`. Script chứa khóa: không chia sẻ.
+Cách script không làm mất hoặc gửi trùng thư:
+
+- Lần đầu chạy lấy thư của 24 giờ trước. Mỗi lượt lật hết các trang kết quả Gmail (50 luồng/trang), gửi thư cũ trước, dừng sau 4 phút (Google cắt cứng ở 6 phút) và lưu tiến độ giữa chừng; lượt sau gửi tiếp.
+- Con trỏ chỉ tiến tới thư cuối đã gửi xong; CRM lỗi tạm thời (5xx) thì lượt sau gửi bù. Thư có giờ gửi sớm hơn giờ tới hộp thư tối đa 6 giờ vẫn được lấy.
+- Danh sách thư đã gửi chỉ giữ thư còn trong cửa sổ quét, chia 5 ô nhớ (mỗi ô Google cho 9 KB).
+- CRM trả 400 (lệch định dạng) thì script dừng và báo lỗi, không bỏ qua thư. 409 thì script gửi thử một tin báo sống: báo sống được nghĩa là thư đó đã lưu từ trước (bỏ qua); không được nghĩa là khóa đang gắn với bản script khác (dừng và hướng dẫn cấp lại khóa).
+
+Gỡ: chạy hàm `goCaiDat` trong Apps Script (giữ mã thiết bị để cài lại trong cùng dự án) và **Thu hồi** nguồn trên CRM. **Cấp lại khóa** nguồn Gmail đồng thời gỡ gắn bản script cũ: dán script mới vào đúng dự án đang chạy rồi chạy lại `caiDat`; nếu dán vào dự án mới thì chạy `goCaiDat` ở dự án cũ để không tốn hạn mức. Thẻ nguồn Gmail báo khi hơn 30 phút không nhận tin từ script. Script chứa khóa: không chia sẻ.
 
 ## Tách số tiền
 
-Máy chủ (`bank-event-admin`) giải mã từng tin của trang danh sách và tách chiều tiền, số tiền, số dư, 4 số cuối tài khoản, nội dung và thời điểm theo mẫu chung của tin ngân hàng Việt Nam (`supabase/functions/_shared/bank-events-parse.ts`). Bộ tách chạy lúc đọc nên sửa bộ tách là áp dụng cho cả tin cũ. Mẫu lạ có thể tách sai hoặc không tách được: đối chiếu với nội dung nguyên văn ở chi tiết. Đây chỉ là hiển thị để theo dõi, chưa dùng để xác nhận thanh toán hay ghi sổ.
+Máy chủ (`bank-event-admin`) giải mã từng tin của trang danh sách và tách chiều tiền, số tiền, số dư, 4 số cuối tài khoản, nội dung và thời điểm theo mẫu chung của tin ngân hàng Việt Nam (`supabase/functions/_shared/bank-events-parse.ts`). Bộ tách chạy lúc đọc nên sửa bộ tách là áp dụng cho cả tin cũ. Bộ tách chỉ đọc 3.000 ký tự đầu của tin; khi tin vừa có từ khoá tiền vào vừa tiền ra mà không có dấu +/− thì để trống chiều tiền thay vì đoán. Mẫu lạ có thể tách sai hoặc không tách được: đối chiếu với nội dung nguyên văn ở chi tiết. Đây chỉ là hiển thị để theo dõi, chưa dùng để xác nhận thanh toán hay ghi sổ.
 
 ## Giới hạn và dữ liệu nhạy cảm
 
-SMS có thể bao gồm OTP và tin cá nhân. Danh sách chỉ nhận phần đã tách (số tiền, số dư, nội dung chuyển khoản, 4 số cuối tài khoản), không nhận nội dung nguyên văn; bản mã không rời Edge. Mỗi người xem danh sách có tóm tắt được ghi dấu vết đọc tối đa một lần mỗi 10 phút; mở chi tiết ghi dấu vết từng lần. Chỉ mở chi tiết qua API đã xác thực. Khóa cấp nguồn và script Gmail nằm trong bộ nhớ màn hình trong thời gian hộp thoại mở, không lưu vào localStorage hoặc cache mutation. Đổi tài khoản hoặc rời trang phải bỏ dữ liệu cũ; các query có mã người dùng trong khóa cache.
+SMS có thể bao gồm OTP và tin cá nhân. Danh sách chỉ nhận phần đã tách (số tiền, số dư, nội dung chuyển khoản, 4 số cuối tài khoản), không nhận nội dung nguyên văn; bản mã không rời Edge. Mỗi lần xem danh sách có tóm tắt được ghi dấu vết đọc kèm bộ lọc/trang và số tin; cùng người, cùng bộ lọc chỉ ghi một lần mỗi 10 phút (danh sách tự làm mới 15 giây/lần). Mở chi tiết ghi dấu vết từng lần. Chỉ mở chi tiết qua API đã xác thực. Khóa cấp nguồn và script Gmail nằm trong bộ nhớ màn hình trong thời gian hộp thoại mở, không lưu vào localStorage hoặc cache mutation. Đổi tài khoản hoặc rời trang phải bỏ dữ liệu cũ; các query có mã người dùng trong khóa cache.
 
-Khóa của nguồn điện thoại không gửi được email và khóa của nguồn Gmail không gửi được SMS/thông báo; máy chủ từ chối loại tin không đúng loại nguồn.
+Khóa của nguồn điện thoại không gửi được email và khóa của nguồn Gmail không gửi được SMS/thông báo; máy chủ từ chối (403) loại tin không đúng loại nguồn.
 
 Nguồn giữ dấu vết thiết bị và công ty nếu đã được xác minh để có thể phân quyền tổ chức sau. Giai đoạn này chưa cấp ACL nhân viên, chưa tự gắn tin chưa phân loại vào công ty đang chọn, chưa tự hạch toán, xác nhận thanh toán hoặc cộng tin nhắn thành doanh thu/số dư. Tìm kiếm chỉ dựa trên tên nguồn/mã sự kiện, không tìm trong nội dung mã hóa. Android hoặc ngân hàng có thể ẩn nội dung thông báo; không phải ngân hàng nào cũng gửi email cho từng giao dịch.
 

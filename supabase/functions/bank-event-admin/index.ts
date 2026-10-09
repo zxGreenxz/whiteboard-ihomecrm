@@ -35,12 +35,15 @@ function validatedInput(value:unknown):{action:string;input:JsonObject;limit:num
 async function summarized(env:Environment,row:unknown):Promise<JsonObject> {
   if(!object(row))throw new RequestError(502,'invalid_admin_receipt');
   const {ciphertext,nonce,keyId,payloadHash,...event}=row;
-  let summary:unknown=null,summaryStatus='unavailable';
-  try {
-    const payload=await decryptPayload(env,{event,ciphertext,nonce,keyId,payloadHash});
-    summary=object(payload)?summarizeBankPayload(payload):null;summaryStatus=summary?'parsed':'unparsed';
-  }catch{/* Một tin không giải mã được không che cả danh sách; trạng thái báo đúng là không đọc được. */}
-  return {...event,summary,summaryStatus};
+  let payload:unknown;
+  // Một tin không giải mã được không che cả danh sách; trạng thái báo đúng là không đọc được.
+  try {payload=await decryptPayload(env,{event,ciphertext,nonce,keyId,payloadHash});}
+  catch {return {...event,summary:null,summaryStatus:'unavailable'};}
+  // Bộ tách không được ném lỗi; nếu có thì tin vẫn hiện là chưa tách được và log chỉ có mã tin, không có nội dung.
+  let summary:unknown=null;
+  try {summary=object(payload)?summarizeBankPayload(payload):null;}
+  catch {console.error('bank-event summary parser failed',{eventId:event.id});}
+  return {...event,summary,summaryStatus:summary?'parsed':'unparsed'};
 }
 export function createHandler(deps:Dependencies={}) {
   const {env,rpc,authorizeAdmin}=runtimeDependencies(deps);

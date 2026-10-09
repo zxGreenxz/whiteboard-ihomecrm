@@ -183,6 +183,56 @@ Deno.test('nhận ngân hàng theo sender / package / appName / tên miền emai
  for(const [payload,bank] of cases)assert.equal(summarizeBankPayload(payload)?.bank,bank,JSON.stringify(payload));
 });
 
+// --- Chiều khi không có dấu +/- ---
+Deno.test('"nhận (được) thanh toán" / "nhận tiền" là tiền vào, không bị "thanh toán" kéo thành tiền ra',()=>{
+ for(const body of['TK xxxx5847: Quý khách đã nhận thanh toán 500,000 VND từ NGUYEN VAN A. SD: 1,500,000 VND',
+  'TK xxxx5847: Quý khách nhận được thanh toán 500,000 VND. SD: 1,500,000 VND',
+  'TK xxxx5847: Quý khách nhận tiền 500,000 VND từ NGUYEN VAN A. SD: 1,500,000 VND'])
+  assert.equal(summarizeBankPayload(sms('VCB',body))?.direction,'in',body);
+});
+
+Deno.test('"… đã chuyển <tiền> cho bạn / quý khách / QK" là tiền vào; "chuyển … cho <người khác>" vẫn là tiền ra',()=>{
+ for(const who of['bạn','quý khách','QK'])
+  assert.equal(summarizeBankPayload(sms('VCB',`NGUYEN VAN A đã chuyển 500,000 VND cho ${who}. TK xxxx5847. SD: 2,000,000 VND`))?.direction,'in',who);
+ assert.equal(summarizeBankPayload(sms('VCB','TK xxxx5847: Quý khách đã chuyển 500,000 VND cho NGUYEN VAN B. SD: 1,000,000 VND'))?.direction,'out');
+});
+
+Deno.test('không dấu +/- mà có từ khoá vào lẫn ra ngang nhau → direction null, không đoán',()=>{
+ const weak=summarizeBankPayload(sms('VCB','TK xxxx5847 thanh toan hoan tien 200,000 VND. SD: 1,200,000 VND'));
+ assert.equal(weak?.amount,200000);assert.equal(weak?.direction,null);
+ const strong=summarizeBankPayload(sms('VCB','TK xxxx5847 ghi no/ghi co 200,000 VND. SD: 1,200,000 VND'));
+ assert.equal(strong?.amount,200000);assert.equal(strong?.direction,null);
+});
+
+// --- Hiệu năng & an toàn ---
+Deno.test('8 KB mẫu xấu (ref/nd:/tk/số/otp lặp) mỗi tin < 20 ms',()=>{
+ const bad=['ref ','nd: x ','gd: a ','tk 1234 ','1.','so du ','otp 1234 ','noi dung\n','x'.repeat(7)+'1234 '];
+ for(const unit of bad)for(const prefix of['','TK xxxx5847 +500,000VND '])for(const make of[sms,(_s:string,b:string)=>email('a@acb.com.vn','s',b)]){
+  const payload=make('ACB',prefix+unit.repeat(Math.ceil(8192/unit.length)));
+  let best=Infinity;
+  for(let i=0;i<5;i++){const t0=performance.now();summarizeBankPayload(payload);best=Math.min(best,performance.now()-t0);}
+  assert.ok(best<20,`${JSON.stringify(unit)} ${prefix?'+tx':''}: ${best.toFixed(1)} ms`);
+ }
+});
+
+Deno.test('"mã bảo mật / passcode / mật khẩu / PIN" trong nội dung: mã không lọt vào description',()=>{
+ const cases:[string,string][]=[['ND: ma bao mat 654321 THANH TOAN DON HANG','654321'],['ND: THANH TOAN DON HANG. Mã bảo mật 654321','654321'],
+  ['ND: THANH TOAN DON HANG. Passcode 778899','778899'],['ND: CK tien phong. Mat khau: 445566','445566'],['ND: NAP TIEN. PIN 9081','9081']];
+ for(const [nd,code] of cases){
+  const out=summarizeBankPayload(sms('MBBANK',`TK 0xxx5847|GD: -150,000VND 09/10/26 12:00|SD: 850,000VND|${nd}`));
+  assert.equal(out?.amount,150000,nd);
+  assert.ok(!(out?.description??'').includes(code),`${nd} → ${out?.description}`);
+  assert.ok(!/bao mat|bảo mật|passcode|mat khau|pin/i.test(out?.description??''),`${nd} → ${out?.description}`);
+ }
+});
+
+Deno.test('payload bất kỳ (getter/Proxy ném lỗi, chuỗi hỏng UTF-16) → null hoặc kết quả, không bao giờ ném',()=>{
+ const throwing=new Proxy({},{get(){throw new Error('boom');},has(){throw new Error('boom');},ownKeys(){throw new Error('boom');}});
+ const getter=Object.defineProperty({event:'sms.received'},'body',{get(){throw new Error('boom');}});
+ for(const p of[throwing,getter])assert.equal(summarizeBankPayload(p as Record<string,unknown>),null);
+ assert.doesNotThrow(()=>summarizeBankPayload(sms('VCB','\ud800 TK xxxx5847 +500,000VND \udfff ND: \ud83d')));
+});
+
 // --- Không phải biến động → null ---
 Deno.test('OTP thuần → null',()=>assert.equal(summarizeBankPayload(
  sms('Vietcombank','Ma OTP cua Quy khach la 123456, hieu luc trong 3 phut. Tuyet doi KHONG cung cap OTP cho bat ky ai.')),null));

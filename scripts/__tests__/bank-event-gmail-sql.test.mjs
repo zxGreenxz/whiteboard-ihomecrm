@@ -57,18 +57,18 @@ test('Gmail sources, kind-bound ingest and admin summaries on top of the raw inb
   const mail=(overrides={})=>args({digest:'9'.repeat(64),deviceId:SCRIPT,type:'email.received',externalId:'f'.repeat(64),...overrides});
   email=await ingest(mail());assert.equal(email.status,'accepted');assert.equal(email.sourceId,mailbox.id);
   assert.equal((await ingest(mail())).status,'duplicate');
-  await assert.rejects(ingest(mail({type:'sms.received',externalId:'1'.repeat(64)})),e=>e.code==='22023');
-  await assert.rejects(ingest(mail({type:'notification.received',externalId:'1'.repeat(64)})),e=>e.code==='22023');
+  await assert.rejects(ingest(mail({type:'sms.received',externalId:'1'.repeat(64)})),e=>e.code==='42501');
+  await assert.rejects(ingest(mail({type:'notification.received',externalId:'1'.repeat(64)})),e=>e.code==='42501');
   assert.equal((await ingest(mail({type:'gateway.test',externalId:'2'.repeat(64)}))).status,'accepted');
   const heartbeat={channel:'gmail',appVersion:'gmail-script-1',schedule:'day-1m',usedSecondsToday:12,receivedAt:'2026-10-09T01:02:03Z'};
   assert.equal((await ingest(mail({type:'gateway.heartbeat',externalId:'3'.repeat(64),heartbeat}))).status,'heartbeat');
-  await assert.rejects(ingest(mail({type:'gateway.heartbeat',externalId:'4'.repeat(64),heartbeat:{smsEnabled:true,receivedAt:'2026-10-09T01:02:04Z'}})),e=>e.code==='22023');
+  await assert.rejects(ingest(mail({type:'gateway.heartbeat',externalId:'4'.repeat(64),heartbeat:{smsEnabled:true,receivedAt:'2026-10-09T01:02:04Z'}})),e=>e.code==='42501');
   const listed=(await admin('list_sources')).sources.find(source=>source.id===mailbox.id);
   assert.equal(listed.deviceId,SCRIPT);assert.equal(listed.heartbeat.schedule,'day-1m');
  });
  await t.test('android credentials cannot submit email or gmail heartbeats',async()=>{
-  await assert.rejects(ingest(args({type:'email.received',externalId:'5'.repeat(64)})),e=>e.code==='22023');
-  await assert.rejects(ingest(args({type:'gateway.heartbeat',externalId:'6'.repeat(64),heartbeat:{channel:'gmail',receivedAt:'2026-10-09T01:02:03Z'}})),e=>e.code==='22023');
+  await assert.rejects(ingest(args({type:'email.received',externalId:'5'.repeat(64)})),e=>e.code==='42501');
+  await assert.rejects(ingest(args({type:'gateway.heartbeat',externalId:'6'.repeat(64),heartbeat:{channel:'gmail',receivedAt:'2026-10-09T01:02:03Z'}})),e=>e.code==='42501');
   assert.equal((await ingest(args({type:'gateway.heartbeat',externalId:'7'.repeat(64),heartbeat:{smsEnabled:true,receivedAt:'2026-10-09T01:02:03Z'}}))).status,'heartbeat');
  });
  await t.test('ciphertext enters the list only on explicit request and is audited at most every 10 minutes',async()=>{
@@ -77,12 +77,29 @@ test('Gmail sources, kind-bound ingest and admin summaries on top of the raw inb
   const withPayload=(await admin('list_events',{withPayload:true})).events;
   assert.ok(withPayload.every(row=>row.ciphertext==='X'.repeat(40)&&row.nonce==='a'.repeat(16)&&row.keyId==='v1'&&row.payloadHash==='c'.repeat(64)));
   await admin('list_events',{withPayload:true});
-  const audits=await db.query("SELECT count(*)::int AS n FROM app_private.bank_event_audit WHERE action='list_event_summaries'");
-  assert.equal(audits.rows[0].n,1);
+  const audits=async()=>(await db.query("SELECT detail FROM app_private.bank_event_audit WHERE action='list_event_summaries' ORDER BY id")).rows.map(row=>row.detail);
+  assert.deepEqual(await audits(),[{filters:{limit:25},count:3}]);
+  // Bộ lọc hay trang khác là một lần đọc khác: phải để lại dấu vết riêng kèm số tin.
+  const last=withPayload.at(-1);
+  await admin('list_events',{withPayload:true,eventType:'email.received'});
+  await admin('list_events',{withPayload:true,beforeTime:last.receivedAt,beforeId:last.id});
+  const trail=await audits();
+  assert.equal(trail.length,3);assert.deepEqual(trail[1],{filters:{limit:25,eventType:'email.received'},count:1});
+  assert.equal(trail[2].filters.beforeId,last.id);assert.equal(trail[2].count,0);
   await assert.rejects(admin('list_events',{withPayload:'yes'}),e=>e.code==='22023');
   await assert.rejects(admin('list_events',{withPayload:true},OWNER),e=>e.code==='42501');
   const emails=(await admin('list_events',{eventType:'email.received'})).events;
   assert.deepEqual(emails.map(row=>row.id),[email.eventId]);
+ });
+ await t.test('rotating a gmail key unbinds the old script; rotating a phone key keeps its device',async()=>{
+  await admin('rotate_source',{sourceId:mailbox.id,...credential('8')});
+  assert.equal((await admin('list_sources')).sources.find(source=>source.id===mailbox.id).deviceId,null);
+  const NEW_SCRIPT='20000000-0000-4000-8000-000000000003';
+  const fresh=await ingest(args({digest:'8'.repeat(64),deviceId:NEW_SCRIPT,type:'email.received',externalId:'0'.repeat(64)}));
+  assert.equal(fresh.status,'accepted');
+  await assert.rejects(ingest(args({digest:'9'.repeat(64),deviceId:SCRIPT,type:'email.received',externalId:'1'.repeat(64)})),e=>e.code==='28000');
+  await admin('rotate_source',{sourceId:phone.id,...credential('7')});
+  assert.equal((await admin('list_sources')).sources.find(source=>source.id===phone.id).deviceId,PHONE);
  });
  await t.test('anonymous and service roles still cannot call the admin surface',async()=>{
   await assert.rejects(roleCall('anon',null,()=>db.query("SELECT public.bank_event_admin_v1('list_events','{\"withPayload\":true}')")),e=>e.code==='42501');

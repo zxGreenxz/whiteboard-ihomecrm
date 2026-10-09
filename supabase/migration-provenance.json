@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-09T11:01:46.958Z",
+  "generatedAt": "2026-10-09T11:42:18.737Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -11149,7 +11149,7 @@
       "version": "20261009103855",
       "name": "bank_event_gmail_nguon_va_tom_tat",
       "scheme": "timestamp14",
-      "sha256": "6fb08c5144b46dee6eaccd7bf45a0b3f0a6bb5f7b42d27e4437b8368a89f09fb",
+      "sha256": "ab0b3a88c1ca9e10c7bc13928746dc42ec90fb651c22540fcfb81bde444ca6af",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

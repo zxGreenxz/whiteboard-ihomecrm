@@ -22,6 +22,16 @@ it('builds the script with the source key, ingest address and both mail filters'
   expect(script()).toContain('"truyVan": "label:crm-ngân-hàng"');
 });
 
+it('after a key rotation it sends the owner back to the existing Apps Script project', () => {
+  render(<Dialog open><DialogContent><GmailSetup name="Gmail chủ" token={token} ingestUrl={ingestUrl} rotated onClose={vi.fn()} /></DialogContent></Dialog>);
+  const steps = screen.getByRole('list').textContent ?? '';
+  expect(steps).toContain('đúng dự án đang chạy script cũ');
+  expect(steps).toContain('goCaiDat');
+  cleanup();
+  mount();
+  expect(screen.getByRole('list').textContent).not.toContain('script cũ');
+});
+
 it('does not offer a script that would read nothing or inject search syntax', () => {
   mount();
   fireEvent.click(screen.getByRole('checkbox', { name: /Email từ các ngân hàng/ }));

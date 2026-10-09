@@ -64,6 +64,8 @@ const BANKS: readonly Bank[] = [
   ['CIMB', ['cimb'], ['cimb.com.vn'], ['com.cimb']],
 ];
 
+const MAX_TEXT = 3000;  // tin biến động nằm ở đầu; phần sau (chân trang email) chỉ làm chậm
+const MAX_LABELS = 20;  // số nhãn nội dung tối đa xét trong một tin
 const LB = '(?<![a-z0-9])';
 const rx = (source: string, flags = '') => new RegExp(source, flags);
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -99,13 +101,21 @@ const DESC_STOP = /[\s.,;]\s{0,3}(?:sdc?|so du(?: (?:cuoi|hien tai|kha dung))?|b
 const FIELD_START = /^(?:sdc?|so du|so tk|stk|tk|tai khoan|so tien|thoi gian|ngay|loai|ma|so gd|phi|vao luc|luc|time|date|balance|amount|ref|nd|noi dung|cam on|xin cam on|tran trong|kinh gui|quy khach|hotline|vui long|luu y|chi tiet|lien he|day la)(?![a-z])|^\d{1,2}[/.:h-]\d{1,2}|^[^:\n]{1,25}:\s/;
 
 // --- Chiều, loại tin ---
-const IN_NEAR = rx(`${LB}(?:ghi co|bao co|nhan duoc|da nhan|(?<!(?:nguoi|khoan|tk|hang|vi|ben) )nhan|cong(?! ty)|tang|credit|tien vao|hoan tien)(?![a-z])`, 'g');
-const OUT_NEAR = rx(`${LB}(?:ghi no|bao no|tru(?! so)|giam(?! doc)|(?<!dia )chi(?! (?:tiet|nhanh))|thanh toan|debit|tien ra|rut tien|chuyen di|da chuyen)(?![a-z])`, 'g');
+// Từ khoá chiều ngay trước số tiền, chia hai bậc; "người nhận", "TK nhận"… là bên kia nên không tính.
+const NOT_PAYEE = '(?<!(?:nguoi|khoan|tk|hang|vi|ben) )';
+const IN_STRONG = rx(`${LB}(?:ghi co|bao co|credit|tien vao|so du tang|tang so du|${NOT_PAYEE}(?:da )?nhan(?: duoc)? (?:thanh toan|tien|chuyen khoan|ck))(?![a-z])`, 'g');
+const OUT_STRONG = rx(`${LB}(?:ghi no|bao no|debit|tien ra|so du giam|giam so du)(?![a-z])`, 'g');
+const IN_WEAK = rx(`${LB}(?:nhan duoc|da nhan|${NOT_PAYEE}nhan|cong(?! ty)|tang|hoan tien)(?![a-z])`, 'g');
+const OUT_WEAK = rx(`${LB}(?:tru(?! so)|giam(?! doc)|(?<!dia )chi(?! (?:tiet|nhanh))|thanh toan|rut tien|chuyen di|da chuyen)(?![a-z])`, 'g');
+// "NGUYEN VAN A đã chuyển 500.000đ cho bạn": người khác chuyển cho chủ tin ⇒ tiền vào.
+const TO_YOU = /chuyen(?: tien| khoan)?[^\n]{0,80}?cho (?:ban(?! be)|quy khach|qk)(?![a-z])/;
 const STRONG_IN = rx(`${LB}(?:ghi co|bao co|tien vao|so du tang|tang so du|da nhan|nhan duoc)(?![a-z])`);
 const STRONG_OUT = rx(`${LB}(?:ghi no|bao no|tien ra|so du giam|giam so du|da tru|bi tru)(?![a-z])`);
 const STRONG_TX = rx(`${LB}(?:bien dong so du|ghi co|ghi no|bao co|bao no|so du (?:tk|tai khoan)|thay doi so du|so du thay doi|tien vao|tien ra)(?![a-z])`);
-const OTP_RE = rx(`${LB}(?:otp|ma xac (?:thuc|nhan)|mat khau mot lan|ma kich hoat|verification code|one[- ]time)(?![a-z])`);
-const OTP_CODE = rx(`${LB}(?:otp|ma xac (?:thuc|nhan))[^\\d\\n]{0,30}(\\d{4,8})(?!\\d)|(?<!\\d)(\\d{4,8})\\s+(?:la\\s+)?(?:ma\\s+)?(?:otp|xac thuc)`, 'g');
+// "pin" chỉ tính khi có mã số theo sau, để "MUA PIN DIEN THOAI" không bị coi là OTP.
+const OTP_WORDS = 'otp|ma xac (?:thuc|nhan)|ma bao mat|mat khau|passcode|pin(?=[^\\d\\n]{0,10}\\d{4,8}(?!\\d))';
+const OTP_RE = rx(`${LB}(?:${OTP_WORDS}|ma kich hoat|verification code|one[- ]time)(?![a-z])`);
+const OTP_CODE = rx(`${LB}(?:${OTP_WORDS})[^\\d\\n]{0,30}(\\d{4,8})(?!\\d)|(?<!\\d)(\\d{4,8})\\s+(?:la\\s+)?(?:ma\\s+)?(?:otp|xac thuc|bao mat|passcode)`, 'g');
 const PROMO_RE = rx(`${LB}(?:khuyen mai|uu dai|giam gia|qua tang|voucher|mien phi|dang ky ngay|quang cao|cashback|hoan tien|tri an|chuong trinh)(?![a-z])`);
 
 // --- Thời gian ---
@@ -134,7 +144,7 @@ function fold(text: string): string {
 }
 
 function bankByAlias(text: string): string | null {
-  const f = fold(text);
+  const f = fold(text.slice(0, 200));
   let best: { at: number; length: number; name: string } | null = null;
   for (const { name, length, re } of ALIASES) {
     const at = re.exec(f)?.index;
@@ -151,7 +161,7 @@ function bankByPackage(packageName: string): string | null {
 }
 
 function bankByDomain(from: string): string | null {
-  const domain = /@([a-z0-9.-]+)/i.exec(from)?.[1].toLowerCase();
+  const domain = /@([a-z0-9.-]+)/i.exec(from.slice(0, 320))?.[1].toLowerCase();
   if (!domain) return null;
   for (const [name, , domains] of BANKS) if (domains.some((d) => domain === d || domain.endsWith(`.${d}`))) return name;
   return null;
@@ -227,12 +237,12 @@ function findAccount(f: string): string | null {
   return null;
 }
 
-function otpCodes(f: string): string[] {
-  return [...f.matchAll(OTP_CODE)].map((m) => m[1] ?? m[2] ?? '').filter(Boolean);
+function otpCodes(f: string): Set<string> {
+  return new Set([...f.matchAll(OTP_CODE)].map((m) => m[1] ?? m[2] ?? '').filter(Boolean));
 }
 
 /** Gọn khoảng trắng, tối đa 300 ký tự, bỏ phần OTP. */
-function tidy(raw: string, codes: readonly string[]): string | null {
+function tidy(raw: string, codes: ReadonlySet<string>): string | null {
   // Cắt độ dài trước mọi regex khác để chi phí luôn bị chặn trên.
   let v = Array.from(raw.replace(/\s+/g, ' ').trim()).slice(0, 300).join('');
   const fv = fold(v);
@@ -243,7 +253,7 @@ function tidy(raw: string, codes: readonly string[]): string | null {
     v = cut > 0 ? v.slice(0, cut) : '';
   }
   v = v.replace(/^[\s:.,;|–-]+|[\s:.,;|–-]+$/g, '');
-  if (codes.some((code) => rx(`(?<!\\d)${code}(?!\\d)`).test(v))) return null;
+  if ((v.match(/\d+/g) ?? []).some((run) => codes.has(run))) return null;
   return /[\p{L}\p{N}]/u.test(v) ? v : null;
 }
 
@@ -257,9 +267,10 @@ function fieldEnd(f: string, from: number): number {
   return stop ? from + stop.index : end;
 }
 
-function labelledDescription(t: string, f: string, codes: readonly string[], regions: Region[]): string | null {
-  let best: { rank: number; value: string } | null = null;
+function labelledDescription(t: string, f: string, codes: ReadonlySet<string>, regions: Region[]): string | null {
+  let best: { rank: number; value: string } | null = null, seen = 0;
   for (const m of f.matchAll(DESC_LABEL)) {
+    if (++seen > MAX_LABELS) break; // chặn chi phí bậc hai khi tin lặp nhãn hàng nghìn lần
     const label = m[1], at = m.index ?? 0;
     let from = at + m[0].length;
     let lineEnd = f.indexOf('\n', from);
@@ -285,7 +296,7 @@ function labelledDescription(t: string, f: string, codes: readonly string[], reg
   return best?.value ?? null;
 }
 
-function fallbackDescription(t: string, f: string, amount: Money, balance: Money | undefined, codes: readonly string[]): string | null {
+function fallbackDescription(t: string, f: string, amount: Money, balance: Money | undefined, codes: ReadonlySet<string>): string | null {
   // Nội dung trong ngoặc ngay sau số tiền (kiểu Agribank).
   const paren = /^\s*\(([^()\n]{2,})\)/.exec(f.slice(amount.end));
   if (paren && !/^\s*(?:vnd|usd)\s*$/.test(paren[1])) {
@@ -314,19 +325,26 @@ function fallbackDescription(t: string, f: string, amount: Money, balance: Money
   return null;
 }
 
-/** Vị trí khớp cuối trong [from, to); chạy trên cả văn bản để lookbehind ("người nhận") thấy đủ ngữ cảnh. */
-function lastMatch(re: RegExp, text: string, from: number, to: number): number {
-  let at = -1;
-  for (const m of text.slice(0, to).matchAll(re)) if ((m.index ?? 0) >= from) at = m.index ?? at;
-  return at;
+/** Có khớp bắt đầu trong [from, to) không; chạy trên cả văn bản để lookbehind ("người nhận") thấy đủ ngữ cảnh. */
+function hasMatch(re: RegExp, text: string, from: number, to: number): boolean {
+  re.lastIndex = from;
+  const m = re.exec(text);
+  return m !== null && m.index < to;
 }
 
 function direction(plain: string, amount: Money): BankDirection | null {
   if (amount.sign === '+') return 'in';
   if (amount.sign === '-') return 'out';
-  const from = Math.max(0, amount.start - 60);
-  const i = lastMatch(IN_NEAR, plain, from, amount.start), o = lastMatch(OUT_NEAR, plain, from, amount.start);
-  if (i !== o) return i > o ? 'in' : 'out';
+  const from = Math.max(0, amount.start - 60), to = amount.start;
+  // Mỗi bậc (mạnh rồi yếu): chỉ một phía có từ khoá thì theo phía đó; cả hai phía ⇒ không đoán.
+  const tiers: [boolean, boolean][] = [
+    [hasMatch(IN_STRONG, plain, from, to) || TO_YOU.test(plain.slice(from, amount.end + 40)), hasMatch(OUT_STRONG, plain, from, to)],
+    [hasMatch(IN_WEAK, plain, from, to), hasMatch(OUT_WEAK, plain, from, to)],
+  ];
+  for (const [i, o] of tiers) {
+    if (i !== o) return i ? 'in' : 'out';
+    if (i) return null;
+  }
   const si = STRONG_IN.test(plain), so = STRONG_OUT.test(plain);
   return si === so ? null : si ? 'in' : 'out';
 }
@@ -347,8 +365,25 @@ function timestamp(f: string): string | null {
   return `${year}-${p2(mo)}-${p2(d)}T${p2(h)}:${p2(mi)}:${p2(s)}+07:00`;
 }
 
+/** Gọn khoảng trắng ngang và dòng trống liên tiếp, rồi giữ MAX_TEXT ký tự đầu (không cắt đôi cặp surrogate). */
+function clip(text: string): string {
+  const t = text.replace(/[^\S\n\t]+/g, ' ').replace(/\n\s*\n/g, '\n\n');
+  if (t.length <= MAX_TEXT) return t;
+  const c = t.charCodeAt(MAX_TEXT - 1);
+  return t.slice(0, c >= 0xd800 && c <= 0xdbff ? MAX_TEXT - 1 : MAX_TEXT);
+}
+
 /** payload là JSON đã giải mã của một sự kiện. Trả null nếu KHÔNG phải tin biến động số dư. */
 export function summarizeBankPayload(payload: Record<string, unknown>): BankSummary | null {
+  // Không bao giờ ném, kể cả với payload lạ (Proxy, getter…): lỗi coi như không phải tin biến động.
+  try {
+    return summarize(payload);
+  } catch {
+    return null;
+  }
+}
+
+function summarize(payload: Record<string, unknown>): BankSummary | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
   const event = str(payload.event), body = str(payload.body);
   let parts: string[], findBank: () => string | null;
@@ -365,7 +400,7 @@ export function summarizeBankPayload(payload: Record<string, unknown>): BankSumm
       ?? bankByAlias(str(payload.subject)) ?? bankByAlias(body.slice(0, 200));
   } else return null; // gateway.test, heartbeat, sự kiện lạ
 
-  const t = parts.filter((p) => p.trim() !== '').join('\n').normalize('NFC');
+  const t = clip(parts.filter((p) => p.trim() !== '').join('\n').normalize('NFC'));
   const f = fold(t);
   const codes = otpCodes(f);
   const regions: Region[] = [];

@@ -11,6 +11,7 @@ END $kind$;
 ALTER TABLE app_private.bank_inbound_events DROP CONSTRAINT IF EXISTS bank_inbound_events_event_type_check;
 ALTER TABLE app_private.bank_inbound_events ADD CONSTRAINT bank_inbound_events_event_type_check
  CHECK (event_type IN ('sms.received','notification.received','gateway.test','email.received'));
+ALTER TABLE app_private.bank_event_audit ADD COLUMN IF NOT EXISTS detail jsonb CHECK (detail IS NULL OR jsonb_typeof(detail)='object');
 CREATE INDEX IF NOT EXISTS bank_event_audit_actor_action ON app_private.bank_event_audit(actor_id,action,created_at DESC);
 
 CREATE OR REPLACE FUNCTION app_private.bank_event_source_json_v1(p_source app_private.bank_event_sources)
@@ -43,10 +44,11 @@ BEGIN
   OR p_event_type IS NULL OR p_event_type NOT IN ('sms.received','notification.received','gateway.test','gateway.heartbeat','email.received')
   OR p_occurred_at IS NULL OR NOT isfinite(p_occurred_at) THEN RAISE EXCEPTION 'Invalid event' USING ERRCODE='22023'; END IF;
  -- Khóa của điện thoại không gửi được email và ngược lại: lộ một khóa không giả được loại nguồn kia.
+ -- Mã quyền (403) chứ không phải 400: script/app coi đây là lỗi khóa và báo to, không bỏ qua thư.
  IF (s.kind='gmail' AND p_event_type NOT IN ('email.received','gateway.heartbeat','gateway.test'))
   OR (s.kind='android' AND p_event_type='email.received')
   OR (p_event_type='gateway.heartbeat' AND (COALESCE(p_heartbeat->>'channel','android')='gmail')<>(s.kind='gmail')) THEN
-  RAISE EXCEPTION 'Event not allowed for source kind' USING ERRCODE='22023'; END IF;
+  RAISE EXCEPTION 'Event not allowed for source kind' USING ERRCODE='42501'; END IF;
  IF s.device_id IS NOT NULL AND s.device_id<>p_device_id THEN RAISE EXCEPTION 'Device binding conflict' USING ERRCODE='PT409'; END IF;
  IF p_event_type='gateway.heartbeat' THEN
   IF p_heartbeat IS NULL OR jsonb_typeof(p_heartbeat)<>'object' OR length(p_heartbeat::text)>2048 THEN
@@ -78,7 +80,7 @@ CREATE OR REPLACE FUNCTION public.bank_event_admin_v1(p_action text,p_input json
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
 DECLARE actor uuid:=auth.uid(); s app_private.bank_event_sources; e app_private.bank_inbound_events; v_source_filter uuid;
  rows_json jsonb; before_time timestamptz; before_id uuid; from_time timestamptz; to_time timestamptz;
- lim integer; query_text text; event_filter text; v_kind text; with_payload boolean;
+ lim integer; query_text text; event_filter text; v_kind text; with_payload boolean; v_filters jsonb;
 BEGIN
  -- This is an explicit global super-admin surface, independent from company-admin permissions.
  IF actor IS NULL OR NOT COALESCE(public.is_super_admin(),false) THEN RAISE EXCEPTION 'Super admin only' USING ERRCODE='42501'; END IF;
@@ -109,6 +111,10 @@ BEGIN
     RAISE EXCEPTION 'Invalid credential' USING ERRCODE='22023'; END IF;
    UPDATE app_private.bank_event_credentials SET revoked_at=clock_timestamp() WHERE source_id=s.id AND revoked_at IS NULL;
    INSERT INTO app_private.bank_event_credentials(source_id,digest,fingerprint) VALUES(s.id,p_input->>'credentialDigest',p_input->>'fingerprint');
+   -- Gmail: mã thiết bị là của từng dự án Apps Script. Cấp lại khóa gỡ gắn để script mới (kể cả dự án mới) nhận được.
+   IF p_action='rotate_source' AND s.kind='gmail' THEN
+    UPDATE app_private.bank_event_sources SET device_id=NULL WHERE id=s.id RETURNING * INTO s;
+   END IF;
   ELSIF p_action='set_source_enabled' THEN
    IF jsonb_typeof(p_input->'enabled') IS DISTINCT FROM 'boolean' THEN RAISE EXCEPTION 'Invalid enabled flag' USING ERRCODE='22023'; END IF;
    UPDATE app_private.bank_event_sources SET enabled=(p_input->>'enabled')::boolean WHERE id=s.id RETURNING * INTO s;
@@ -139,10 +145,16 @@ BEGIN
     AND (before_time IS NULL OR (ev.received_at,ev.id)<(before_time,before_id))
    ORDER BY ev.received_at DESC,ev.id DESC LIMIT lim+1
   ) x;
-  -- Danh sách tự làm mới 15 giây/lần: ghi một dấu vết đọc tóm tắt mỗi 10 phút cho mỗi người, không ghi mỗi lượt.
-  IF with_payload AND NOT EXISTS (SELECT 1 FROM app_private.bank_event_audit WHERE actor_id=actor
-   AND action='list_event_summaries' AND created_at>clock_timestamp()-interval '10 minutes') THEN
-   INSERT INTO app_private.bank_event_audit(actor_id,action) VALUES(actor,'list_event_summaries');
+  -- Danh sách tự làm mới 15 giây/lần: mỗi người, mỗi bộ lọc/trang chỉ ghi một dấu vết trong 10 phút.
+  -- Lật trang hay đổi bộ lọc là bộ lọc khác nên vẫn để lại dấu vết kèm số tin đã xem.
+  IF with_payload THEN
+   v_filters:=jsonb_strip_nulls(jsonb_build_object('sourceId',v_source_filter,'eventType',event_filter,'query',query_text,
+    'from',from_time,'to',to_time,'beforeTime',before_time,'beforeId',before_id,'limit',lim));
+   IF NOT EXISTS (SELECT 1 FROM app_private.bank_event_audit WHERE actor_id=actor AND action='list_event_summaries'
+    AND detail->'filters'=v_filters AND created_at>clock_timestamp()-interval '10 minutes') THEN
+    INSERT INTO app_private.bank_event_audit(actor_id,action,detail)
+    VALUES(actor,'list_event_summaries',jsonb_build_object('filters',v_filters,'count',LEAST(jsonb_array_length(rows_json),lim)));
+   END IF;
   END IF;
   RETURN jsonb_build_object('events',rows_json);
  ELSIF p_action='get_event' THEN
