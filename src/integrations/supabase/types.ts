@@ -2823,6 +2823,178 @@ export type Database = {
           },
         ]
       }
+      company_wallet_requests: {
+        Row: {
+          created_at: string
+          organization_id: string
+          payload: Json
+          request_key: string
+          result: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          payload: Json
+          request_key: string
+          result: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          payload?: Json
+          request_key?: string
+          result?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_wallet_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_wallet_voucher_origins: {
+        Row: {
+          created_at: string
+          idempotency_key: string
+          organization_id: string
+          payload: Json
+          source: string
+          user_id: string
+          voucher_id: string
+          wallet_id: string
+        }
+        Insert: {
+          created_at?: string
+          idempotency_key: string
+          organization_id: string
+          payload: Json
+          source?: string
+          user_id: string
+          voucher_id: string
+          wallet_id: string
+        }
+        Update: {
+          created_at?: string
+          idempotency_key?: string
+          organization_id?: string
+          payload?: Json
+          source?: string
+          user_id?: string
+          voucher_id?: string
+          wallet_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_wallet_voucher_origin_wallet_id_user_id_organizati_fkey"
+            columns: ["wallet_id", "user_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "company_wallets"
+            referencedColumns: ["id", "user_id", "organization_id"]
+          },
+          {
+            foreignKeyName: "company_wallet_voucher_origins_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallet_voucher_origins_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallet_voucher_origins_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallet_voucher_origins_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      company_wallets: {
+        Row: {
+          account_id: string
+          hidden: boolean
+          icon: string
+          id: string
+          is_preferred: boolean
+          kind: string
+          name: string
+          organization_id: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          account_id: string
+          hidden?: boolean
+          icon?: string
+          id?: string
+          is_preferred?: boolean
+          kind: string
+          name: string
+          organization_id: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          account_id?: string
+          hidden?: boolean
+          icon?: string
+          id?: string
+          is_preferred?: boolean
+          kind?: string
+          name?: string
+          organization_id?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_wallets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_wallets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_commission_events: {
         Row: {
           action: string
@@ -14509,6 +14681,7 @@ export type Database = {
           icon: string
           id: string
           is_default: boolean
+          is_preferred: boolean
           kind: string
           name: string
           opening_balance: number
@@ -14520,6 +14693,7 @@ export type Database = {
           icon?: string
           id?: string
           is_default?: boolean
+          is_preferred?: boolean
           kind?: string
           name: string
           opening_balance?: number
@@ -14531,6 +14705,7 @@ export type Database = {
           icon?: string
           id?: string
           is_default?: boolean
+          is_preferred?: boolean
           kind?: string
           name?: string
           opening_balance?: number
@@ -21667,6 +21842,18 @@ export type Database = {
           staff_id: string
         }[]
       }
+      company_wallet_mutate: {
+        Args: {
+          p_organization_id: string
+          p_payload: Json
+          p_request_key: string
+        }
+        Returns: Json
+      }
+      company_wallet_snapshot: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
         Returns: Json
@@ -22565,6 +22752,15 @@ export type Database = {
           p_recipient_bank?: string
           p_recipient_name?: string
           p_voucher_date: string
+        }
+        Returns: Json
+      }
+      create_company_wallet_voucher: {
+        Args: {
+          p_idempotency_key: string
+          p_input: Json
+          p_organization_id: string
+          p_wallet_id: string
         }
         Returns: Json
       }

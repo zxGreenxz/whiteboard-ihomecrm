@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-08T17:09:08.442Z",
+  "generatedAt": "2026-10-09T01:21:00.507Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 660,
-    "unknown": 81,
+    "ledger-applied": 661,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11128,14 +11128,9 @@
       "name": "company_wallets_and_payment_kinds",
       "scheme": "timestamp14",
       "sha256": "f86c35c3275e35231faf46ec95787e6f296cdb6b0f863bb1a60b3d7f9ce87fc8",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.company_wallets",
-        "table:public.company_wallet_requests",
-        "table:public.company_wallet_voucher_origins",
-        "function:public.company_wallet_snapshot",
-        "function:public.company_wallet_mutate"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-09T01:20:34.608Z|bien-nhan-backup"
       ]
     },
     {
