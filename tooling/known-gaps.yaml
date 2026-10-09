@@ -279,3 +279,19 @@ gaps:
       Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); trong spec
       nhập Nội dung thanh lý, bỏ khẳng định ô "bổ sung sau", rồi chạy xanh trên TEST với fixture
       vòng đời hợp đồng.
+  - id: zalo-canh-gac-push-khong-gui-lai
+    where: >
+      supabase/migrations/20261009171352_zalo_canh_gac_worker.sql (app_private.zalo_canh_gac_tick_v1)
+    expires_at: 2026-12-31
+    why: >
+      Bộ canh gác worker Zalo (10/10/2026) báo chủ công ty qua chuông trong app và gọi send-push
+      qua pg_net. Ba chỗ chưa tự báo lỗi: (1) pg_net chỉ XẾP yêu cầu — send-push trả lỗi thì không
+      gửi lại, vì khoá idempotency đã dùng; request_id nằm ở push_request_ids của sổ sự cố để đối
+      chiếu net._http_response bằng tay; (2) khe Vault của bộ nhắc hợp đồng bị đổi/xoá thì chỉ còn
+      chuông, lý do ghi ở cột loi_push chứ không ai được báo; (3) chính lượt cron lỗi lặp lại thì
+      chỉ thấy trong cron.job_run_details. Đo 10/10/2026: 2 chủ công ty nhận cảnh báo, 0 thiết bị
+      đã bật push — cảnh báo điện thoại chỉ tới khi chủ bấm "Bật thông báo" trong CRM.
+    exit_condition: >
+      Có đường soát định kỳ (verifier hoặc báo cáo) đọc net._http_response theo push_request_ids,
+      loi_push và cron.job_run_details của job zalo-canh-gac-5m, và báo khi có lỗi; hoặc chuyển
+      cảnh báo sang một edge function tự thử lại có nhật ký.

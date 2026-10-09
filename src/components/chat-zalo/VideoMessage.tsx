@@ -35,10 +35,11 @@ export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: Zal
           />
         ) : err ? (
           // Video nhận về chỉ nằm trên máy chủ Zalo; link chết thì ảnh bìa cũng chết, đừng vẽ ảnh vỡ.
-          <div style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textAlign: 'center', padding: '0 10px' }}>
+          // Vẫn giữ link mở tab mới: lỗi phát tại chỗ chưa chắc là video đã mất.
+          <a href={urlVideo || '#'} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textAlign: 'center', padding: '0 10px', textDecoration: 'none' }}>
             <VideoOff size={28} strokeWidth={1.6} />
             <span style={{ fontSize: 11, fontWeight: 600 }}>{nhanMediaLoi('video', m.mediaUrl)}</span>
-          </div>
+          </a>
         ) : m.videoThumb ? (
           <a href={urlVideo || m.videoThumb} target="_blank" rel="noreferrer" style={{ display: 'block', position: 'relative', width: 206, borderRadius: radius, overflow: 'hidden', border: '1px solid hsl(210 20% 86%)' }}>
             <img src={m.videoThumb} alt="Video" referrerPolicy="no-referrer" loading="lazy" style={{ width: '100%', display: 'block', objectFit: 'cover' }} />

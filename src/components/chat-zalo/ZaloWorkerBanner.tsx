@@ -29,7 +29,8 @@ export default function ZaloWorkerBanner({ status, accounts, onReconnect }: Prop
         <Unplug size={15} style={{ flex: 'none', marginTop: 1 }} />
         <span>
           <b>Zalo đang mất kết nối{canhBao.tu ? ` từ ${gioNgay(canhBao.tu)}` : ''}.</b>{' '}
-          Tin mới chưa về CRM; tin bạn gửi sẽ đi khi kết nối lại.
+          {/* Worker lên lại xử lý hàng đợi trước khi kịp nối phiên, nên tin xếp lúc này sẽ báo lỗi (queue.js). */}
+          Tin mới chưa về CRM; tin gửi lúc này sẽ không đi được.
         </span>
       </div>
     );

@@ -60,10 +60,10 @@ describe('laLinkZalo / nhanMediaLoi', () => {
     }
   });
 
-  it('link Zalo chết ghi "đã hết hạn trên Zalo", lỗi khác ghi "không tải được"', () => {
-    expect(nhanMediaLoi('image', 'https://photo-stal-1.zdn.vn/a.jpg')).toBe('Ảnh đã hết hạn trên Zalo');
-    expect(nhanMediaLoi('video', 'https://video-stal-1.dlmd.me/a.mp4')).toBe('Video đã hết hạn trên Zalo');
-    expect(nhanMediaLoi('voice', 'https://file-stal-1.dlfl.vn/a.aac')).toBe('Tin thoại đã hết hạn trên Zalo');
+  it('link Zalo lỗi ghi "có thể đã hết hạn trên Zalo", lỗi khác ghi "không tải được"', () => {
+    expect(nhanMediaLoi('image', 'https://photo-stal-1.zdn.vn/a.jpg')).toBe('Ảnh không mở được — có thể đã hết hạn trên Zalo');
+    expect(nhanMediaLoi('video', 'https://video-stal-1.dlmd.me/a.mp4')).toBe('Video không mở được — có thể đã hết hạn trên Zalo');
+    expect(nhanMediaLoi('voice', 'https://file-stal-1.dlfl.vn/a.aac')).toBe('Tin thoại không mở được — có thể đã hết hạn trên Zalo');
     expect(nhanMediaLoi('image', 'stored:zalo-media/a/b.jpg')).toBe('Không tải được ảnh');
   });
 
@@ -103,5 +103,10 @@ describe('canhBaoKetNoi', () => {
 
   it('bình thường thì không báo gì', () => {
     expect(canhBaoKetNoi(song, [acc('a', 'connected'), acc('c', 'connecting')])).toBeNull();
+  });
+
+  it('tài khoản OA không đi qua worker: không làm bật cảnh báo, như phía SQL canh gác', () => {
+    expect(canhBaoKetNoi(chet, [acc('oa', 'connected', { kind: 'oa' }), acc('a', 'disconnected')])).toBeNull();
+    expect(canhBaoKetNoi(song, [acc('oa', 'error', { kind: 'oa' })])).toBeNull();
   });
 });

@@ -69,10 +69,13 @@ export function laLinkZalo(url: string | null | undefined): boolean {
 
 const TEN_MEDIA = { image: 'Ảnh', video: 'Video', voice: 'Tin thoại' } as const;
 
-/** Nhãn khi media không tải được: link Zalo đã hết hạn, hay chỉ là lỗi tải. */
+/**
+ * Nhãn khi media không tải được. Link máy chủ Zalo hỏng thì gần như luôn do hết hạn (đo 09/10/2026:
+ * mọi link thử đều 404), nhưng mạng chập chờn cũng cho cùng lỗi — nên nói "có thể".
+ */
 export function nhanMediaLoi(loai: keyof typeof TEN_MEDIA, url: string | null | undefined): string {
   const ten = TEN_MEDIA[loai];
-  return laLinkZalo(url) ? `${ten} đã hết hạn trên Zalo` : `Không tải được ${ten.toLowerCase()}`;
+  return laLinkZalo(url) ? `${ten} không mở được — có thể đã hết hạn trên Zalo` : `Không tải được ${ten.toLowerCase()}`;
 }
 
 export type CanhBaoKetNoi =
@@ -89,12 +92,14 @@ export function canhBaoKetNoi(
   status: { online: boolean; heartbeatAt: string | null } | undefined,
   accounts: readonly ZaloAccount[],
 ): CanhBaoKetNoi | null {
-  const canWorker = accounts.some((a) => a.status !== 'disconnected');
+  // Chỉ nick cá nhân đi qua worker; tài khoản OA không phụ thuộc nó (khớp phía SQL canh gác).
+  const caNhan = accounts.filter((a) => a.kind === 'personal');
+  const canWorker = caNhan.some((a) => a.status !== 'disconnected');
   if (status && !status.online && canWorker) {
     const tu = status.heartbeatAt && Date.parse(status.heartbeatAt) > 0 ? status.heartbeatAt : null;
     return { loai: 'worker', tu };
   }
-  const hong = accounts.find((a) => a.status === 'error');
+  const hong = caNhan.find((a) => a.status === 'error');
   return hong ? { loai: 'phien', accountId: hong.id, ten: hong.name, loi: hong.lastError ?? null } : null;
 }
 

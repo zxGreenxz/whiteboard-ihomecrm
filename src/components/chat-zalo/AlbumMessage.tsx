@@ -83,7 +83,8 @@ function AlbumCell({ m, onClick, overlay, style }: { m: ZaloMessage; onClick: ()
         <img src={url} alt={m.label || 'Ảnh'} referrerPolicy="no-referrer" loading="lazy" onError={() => setErr(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : url && err ? (
         <span title={nhanMediaLoi('image', m.mediaUrl)} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 50%)', fontSize: 10.5, fontWeight: 600, textAlign: 'center', padding: '0 6px' }}>
-          <ImageOff size={20} strokeWidth={1.5} />{!overlay && nhanMediaLoi('image', m.mediaUrl)}
+          {/* Ô album nhỏ: chữ ngắn, câu đầy đủ ở tooltip. */}
+          <ImageOff size={20} strokeWidth={1.5} />{!overlay && 'Không mở được'}
         </span>
       ) : (
         <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 55%)' }}><ImageIcon size={22} strokeWidth={1.5} /></span>

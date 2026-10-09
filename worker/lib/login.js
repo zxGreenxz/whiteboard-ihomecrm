@@ -168,7 +168,8 @@ export async function tryRelogin(account) {
     // nguyên 'connected' thì web hiện chấm xanh dù không ai giữ phiên: báo thật, một lần.
     if (account.status === 'connected') {
       stateOf(id).gaveUp = true;
-      await setAccount(id, { status: 'error', last_error: 'Máy chạy worker chưa có phiên của tài khoản này — bấm "Kết nối lại" để quét QR.' });
+      // loadSession trả null cả khi không đọc được file (EACCES…), nên câu này nói cả hai khả năng.
+      await setAccount(id, { status: 'error', last_error: 'Máy chạy worker chưa có (hoặc không đọc được) phiên của tài khoản này — bấm "Kết nối lại" để quét QR.' });
       log('chưa có phiên trên máy này', id);
     }
     return;
