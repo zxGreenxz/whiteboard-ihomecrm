@@ -1,0 +1,12 @@
+# Chỉ mã nguồn vào image. Phiên Zalo, .env và font tải sẵn trên máy dev tuyệt đối không lọt vào.
+node_modules
+sessions
+fonts
+.env
+.env.*
+*.log
+*.png
+__tests__
+deploy
+Dockerfile
+.dockerignore
