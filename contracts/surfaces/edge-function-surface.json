@@ -24,7 +24,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 4,
       "verifyJwt": true,
       "callers": [
         "src/lib/bank-events/service.ts"
@@ -34,7 +34,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 4,
+      "version": 5,
       "verifyJwt": false,
       "callers": []
     },
