@@ -1,5 +1,7 @@
-import {bearer,boundedText,decryptPayload,Dependencies,failed,JsonObject,newToken,object,readJson,reply,RequestError,rpcError,runtimeDependencies,sha256,UUID,validTimestamp} from '../_shared/bank-events.ts';
-const fields:Record<string,string[]>={list_sources:[],status:[],create_source:['name'],rotate_source:['sourceId'],set_source_enabled:['sourceId','enabled'],revoke_source:['sourceId'],get_event:['eventId'],list_events:['limit','cursor','sourceId','eventType','query','from','to']};
+import {bearer,boundedText,decryptPayload,Dependencies,Environment,failed,JsonObject,newToken,object,readJson,reply,RequestError,rpcError,runtimeDependencies,sha256,UUID,validTimestamp} from '../_shared/bank-events.ts';
+import {summarizeBankPayload} from '../_shared/bank-events-parse.ts';
+const EVENT_TYPES=['sms.received','notification.received','gateway.test','email.received'];
+const fields:Record<string,string[]>={list_sources:[],status:[],create_source:['name','kind'],rotate_source:['sourceId'],set_source_enabled:['sourceId','enabled'],revoke_source:['sourceId'],get_event:['eventId'],list_events:['limit','cursor','sourceId','eventType','query','from','to']};
 function validatedInput(value:unknown):{action:string;input:JsonObject;limit:number} {
   if(!object(value)||typeof value.action!=='string'||!Object.hasOwn(fields,value.action))throw new RequestError(400,'invalid_action');
   const action=value.action;
@@ -11,11 +13,12 @@ function validatedInput(value:unknown):{action:string;input:JsonObject;limit:num
   if(['rotate_source','set_source_enabled','revoke_source'].includes(action)&&!input.sourceId)throw new RequestError(400,'invalid_request');
   if(action==='get_event'&&!input.eventId)throw new RequestError(400,'invalid_request');
   if(action==='create_source'&&(!boundedText(input.name,480,true)||(input.name as string).trim().length<1||(input.name as string).trim().length>120))throw new RequestError(400,'invalid_request');
+  if('kind'in input&&!['android','gmail'].includes(String(input.kind)))throw new RequestError(400,'invalid_request');
   if(action==='set_source_enabled'&&typeof input.enabled!=='boolean')throw new RequestError(400,'invalid_request');
   const limit=input.limit===undefined?25:input.limit;
   if(typeof limit!=='number'||!Number.isInteger(limit)||limit<1||limit>100)throw new RequestError(400,'invalid_request');
   if('query'in input&&!boundedText(input.query,120))throw new RequestError(400,'invalid_request');
-  if('eventType'in input&&!['sms.received','notification.received','gateway.test'].includes(String(input.eventType)))throw new RequestError(400,'invalid_request');
+  if('eventType'in input&&!EVENT_TYPES.includes(String(input.eventType)))throw new RequestError(400,'invalid_request');
   for(const field of ['from','to'])if(field in input&&!validTimestamp(input[field]))throw new RequestError(400,'invalid_request');
   if(typeof input.from==='string'&&typeof input.to==='string'&&Date.parse(input.from)>=Date.parse(input.to))throw new RequestError(400,'invalid_request');
   if('cursor'in input) {
@@ -27,6 +30,17 @@ function validatedInput(value:unknown):{action:string;input:JsonObject;limit:num
     }catch{throw new RequestError(400,'invalid_cursor');}
   }
   return {action,input,limit};
+}
+/** Bản mã chỉ ở lại trong Edge: danh sách trả siêu dữ liệu + tóm tắt số tiền, không trả nội dung nguyên văn. */
+async function summarized(env:Environment,row:unknown):Promise<JsonObject> {
+  if(!object(row))throw new RequestError(502,'invalid_admin_receipt');
+  const {ciphertext,nonce,keyId,payloadHash,...event}=row;
+  let summary:unknown=null,summaryStatus='unavailable';
+  try {
+    const payload=await decryptPayload(env,{event,ciphertext,nonce,keyId,payloadHash});
+    summary=object(payload)?summarizeBankPayload(payload):null;summaryStatus=summary?'parsed':'unparsed';
+  }catch{/* Một tin không giải mã được không che cả danh sách; trạng thái báo đúng là không đọc được. */}
+  return {...event,summary,summaryStatus};
 }
 export function createHandler(deps:Dependencies={}) {
   const {env,rpc,authorizeAdmin}=runtimeDependencies(deps);
@@ -41,13 +55,14 @@ export function createHandler(deps:Dependencies={}) {
       if(action==='create_source'||action==='rotate_source') {
         token=newToken();const digest=await sha256(token);input.credentialDigest=digest;input.fingerprint=`sha256:${digest.slice(0,12)}`;
       }
+      if(action==='list_events')input.withPayload=true;
       const result=await rpc('bank_event_admin_v1',{p_action:action,p_input:input},authorization);
       if(result.error)throw rpcError(result.error.code);
       if(!object(result.data))throw new RequestError(502,'invalid_admin_receipt');
       const data={...result.data};
       if(action==='list_events') {
         if(!Array.isArray(data.events))throw new RequestError(502,'invalid_admin_receipt');
-        const hasMore=data.events.length>limit;data.events=data.events.slice(0,limit);
+        const hasMore=data.events.length>limit;data.events=await Promise.all((data.events as unknown[]).slice(0,limit).map(row=>summarized(env,row)));
         const last=(data.events as unknown[]).at(-1);
         data.nextCursor=hasMore&&object(last)?btoa(JSON.stringify({time:last.receivedAt,id:last.id})):null;
       }else if(action==='get_event') {

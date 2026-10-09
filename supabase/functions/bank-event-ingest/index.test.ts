@@ -74,3 +74,16 @@ Deno.test('revocation, collision and storage errors are not acknowledged; malfor
  const duplicate=createHandler({env,rpc:async()=>({data:receipt('duplicate'),error:null})});
  assert.equal((await duplicate(request())).status,200);
 });
+Deno.test('email events and gmail heartbeats have their own exact shape; android fields cannot be mixed in',async()=>{
+ const saved:JsonObject[]=[];const handler=createHandler({env,rpc:async(_name,args)=>{saved.push(args);return {data:receipt(args.p_event_type==='gateway.heartbeat'?'heartbeat':'accepted'),error:null};}});
+ const email={schemaVersion:1,event:'email.received',id:'a'.repeat(64),deviceId:event().deviceId,receivedAt:event().receivedAt,from:'"DEMO" <alert@example.test>',subject:'Thử',body:'Ghi có +1,000 VND'};
+ assert.equal((await handler(request(email))).status,201);assert.equal(saved[0].p_event_type,'email.received');
+ for(const bad of [{...email,sender:'extra'},{...email,subject:'x'.repeat(1025)},{...email,body:'😊'.repeat(2049)},{...email,from:undefined}])
+  assert.equal((await handler(request(bad))).status,400);
+ const beat={schemaVersion:1,event:'gateway.heartbeat',id:'a'.repeat(64),deviceId:event().deviceId,receivedAt:event().receivedAt,channel:'gmail',appVersion:'gmail-script-1',schedule:'night-10m',usedSecondsToday:42};
+ assert.equal((await handler(request(beat))).status,200);
+ assert.deepEqual(saved.at(-1)?.p_heartbeat,{channel:'gmail',appVersion:'gmail-script-1',schedule:'night-10m',usedSecondsToday:42,receivedAt:event().receivedAt});
+ for(const bad of [{...beat,schedule:'every-second'},{...beat,usedSecondsToday:86401},{...beat,usedSecondsToday:1.5},{...beat,smsEnabled:true},{...beat,channel:'imap'}])
+  assert.equal((await handler(request(bad))).status,400);
+ assert.equal(saved.length,2);
+});

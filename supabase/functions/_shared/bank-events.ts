@@ -31,6 +31,14 @@ export function validTimestamp(value: unknown): value is string {
     && (offset === 'Z' || (Number(offset.slice(1,3)) < 24 && Number(offset.slice(4)) < 60));
 }
 const commonKeys = ['schemaVersion','event','id','deviceId','receivedAt'];
+/** Nhịp của script Gmail: ban ngày 1 phút, đêm 10 phút, tiết kiệm 5 phút khi gần trần 90 phút/ngày của Google. */
+export const GMAIL_SCHEDULES = ['day-1m','night-10m','saver-5m'];
+/** Trường heartbeat được lưu, theo loại nguồn. */
+export function heartbeatFields(event: JsonObject): string[] {
+  return event.channel === 'gmail'
+    ? ['channel','appVersion','schedule','usedSecondsToday','receivedAt']
+    : ['smsEnabled','notificationsEnabled','notificationAccess','smsPermission','appVersion','receivedAt'];
+}
 export function validateEvent(value: unknown, key: string | null): JsonObject {
   if (!object(value)) throw new RequestError(400,'invalid_payload');
   let keys: string[];
@@ -42,6 +50,13 @@ export function validateEvent(value: unknown, key: string | null): JsonObject {
     keys = [...commonKeys,'packageName','appName','title','body'];
     if (!boundedText(value.packageName,255,true) || !boundedText(value.appName,512)
       || !boundedText(value.title,512) || !boundedText(value.body,8192)) throw new RequestError(400,'invalid_payload');
+  } else if (value.event === 'email.received') {
+    keys = [...commonKeys,'from','subject','body'];
+    if (!boundedText(value.from,512) || !boundedText(value.subject,1024) || !boundedText(value.body,8192)) throw new RequestError(400,'invalid_payload');
+  } else if (value.event === 'gateway.heartbeat' && value.channel === 'gmail') {
+    keys = [...commonKeys,'channel','appVersion','schedule','usedSecondsToday'];
+    if (!boundedText(value.appVersion,64,true) || !GMAIL_SCHEDULES.includes(value.schedule as string)
+      || !Number.isSafeInteger(value.usedSecondsToday) || (value.usedSecondsToday as number) < 0 || (value.usedSecondsToday as number) > 86400) throw new RequestError(400,'invalid_payload');
   } else if (value.event === 'gateway.heartbeat') {
     keys = [...commonKeys,'smsEnabled','notificationsEnabled','notificationAccess','smsPermission','appVersion'];
     if (!['smsEnabled','notificationsEnabled','notificationAccess','smsPermission'].every(k=>typeof value[k]==='boolean')

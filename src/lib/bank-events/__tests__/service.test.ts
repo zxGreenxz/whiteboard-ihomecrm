@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bankEventService } from '../service';
+import { bankEventService, isGmailHeartbeat } from '../service';
 import { fixtureActor, fixtureEvent, fixtureSource } from './fixtures';
 const calls = vi.hoisted(() => ({ session: vi.fn(), invoke: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: { getSession: calls.session }, functions: { invoke: calls.invoke } } }));
@@ -33,6 +33,31 @@ describe('bank admin transport boundary', () => {
     calls.invoke.mockRejectedValue(new Error('raw private SMS and token'));
     await expect(bankEventService(fixtureActor).create('Nguồn thử')).rejects.toMatchObject({ outcomeUnknown: true, message: expect.not.stringContaining('private') });
     expect(calls.invoke).toHaveBeenCalledOnce();
+  });
+  it('keeps parsed money summaries but never raw text in the list', async () => {
+    const summary = { direction: 'in', amount: 1500000, balance: -20000, account: '••5847', description: 'NGUYEN VAN A CHUYEN TIEN', bank: 'ACB', transactedAt: '2026-10-09T10:20:30+07:00' };
+    calls.invoke.mockResolvedValue({ data: { ok: true, data: { events: [{ ...fixtureEvent, eventType: 'email.received', summary, summaryStatus: 'parsed', body: 'raw' }, { ...fixtureEvent, id: 'second', summary: null, summaryStatus: 'unavailable' }], nextCursor: null } }, error: null });
+    const result = await bankEventService(fixtureActor).events({ eventType: 'email.received' });
+    expect(result.events[0]).toMatchObject({ eventType: 'email.received', summary, summaryStatus: 'parsed' });
+    expect(result.events[0]).not.toHaveProperty('body');
+    expect(result.events[1]).toMatchObject({ summary: null, summaryStatus: 'unavailable' });
+  });
+  it('rejects a malformed summary instead of showing a wrong amount', async () => {
+    calls.invoke.mockResolvedValue({ data: { ok: true, data: { events: [{ ...fixtureEvent, summary: { direction: 'sideways', amount: '1.000' } }], nextCursor: null } }, error: null });
+    await expect(bankEventService(fixtureActor).events({})).rejects.toThrow('chưa hợp lệ');
+  });
+  it('creates gmail sources and reads gmail heartbeats; legacy rows default to android', async () => {
+    const gmail = { ...fixtureSource, kind: 'gmail', heartbeat: { channel: 'gmail', appVersion: 'gmail-script-1', schedule: 'night-10m', usedSecondsToday: 600, receivedAt: '2026-10-09T02:00:00Z' } };
+    calls.invoke.mockResolvedValueOnce({ data: { ok: true, data: { source: gmail, token: 'a'.repeat(64) } }, error: null });
+    const created = await bankEventService(fixtureActor).create('Gmail chủ', 'gmail');
+    expect(calls.invoke).toHaveBeenCalledWith('bank-event-admin', expect.objectContaining({ body: { action: 'create_source', name: 'Gmail chủ', kind: 'gmail' } }));
+    expect(created.source.kind).toBe('gmail');
+    expect(isGmailHeartbeat(created.source.heartbeat!)).toBe(true);
+    const { kind: _kind, ...legacy } = fixtureSource;
+    calls.invoke.mockResolvedValueOnce({ data: { ok: true, data: { sources: [legacy] } }, error: null });
+    const listed = await bankEventService(fixtureActor).sources();
+    expect(listed.sources[0].kind).toBe('android');
+    expect(isGmailHeartbeat(listed.sources[0].heartbeat!)).toBe(false);
   });
   it('accepts revoked sources without an active credential', async () => {
     const revoked = { ...fixtureSource, enabled: false, revokedAt: fixtureSource.createdAt, credentialFingerprint: null, credentialCreatedAt: null };

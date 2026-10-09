@@ -181,7 +181,8 @@
       "sourcePaths": [
         "supabase/functions/bank-event-ingest/**",
         "supabase/functions/bank-event-admin/**",
-        "supabase/functions/_shared/bank-events*"
+        "supabase/functions/_shared/bank-events*",
+        "src/lib/bank-events/gmailScript.ts"
       ],
       "suiteId": "edge-deno-bank-events",
       "testPatterns": [
@@ -373,7 +374,8 @@
         "scripts/__tests__/network-center-*.test.mjs",
         "services/**",
         "scripts/__tests__/check-ts-baseline.test.mjs",
-        "scripts/__tests__/bank-event-inbox-sql.test.mjs"
+        "scripts/__tests__/bank-event-inbox-sql.test.mjs",
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
       ],
       "ciJobs": [
         {
@@ -671,7 +673,8 @@
         "scripts/__tests__/generate-bundle-inventory.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
         "scripts/__tests__/check-ts-baseline.test.mjs",
-        "scripts/__tests__/bank-event-inbox-sql.test.mjs"
+        "scripts/__tests__/bank-event-inbox-sql.test.mjs",
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
@@ -717,7 +720,7 @@
       "ciExecutor": "gate-registry",
       "runner": "deno",
       "ciJob": "quality-gates",
-      "command": "deno test --config supabase/functions/bank-event-ingest/deno.json supabase/functions/bank-event-ingest/index.test.ts supabase/functions/bank-event-admin/index.test.ts --allow-env",
+      "command": "deno test --config supabase/functions/bank-event-ingest/deno.json supabase/functions/bank-event-ingest/index.test.ts supabase/functions/bank-event-ingest/gmail-script.test.ts supabase/functions/bank-event-admin/index.test.ts supabase/functions/bank-event-admin/parse.test.ts --allow-env",
       "runtime": "deno 2.9.4",
       "risk": "authorization",
       "includes": [
