@@ -42,7 +42,7 @@ Script chạy build APK debug, unit tests và Android lint. File cài thử nằ
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-APK debug dùng để cài thử. Khóa ký phát hành ổn định đã được lưu riêng; CI trên `main` dùng `android/ci-release.sh` để tạo và xác minh APK release. Lấy APK cùng bằng chứng chữ ký từ artifact của đúng commit sau khi bước phát hành đạt. Chưa phân phối qua Google Play. Không đưa token, khóa ký riêng hoặc mật khẩu vào mã nguồn, APK hay kho Git.
+APK debug dùng để cài thử. Khóa ký phát hành ổn định đã được lưu riêng; CI trên `main` dùng `android/ci-release.sh` để tạo và xác minh APK release. Lấy APK cùng bằng chứng chữ ký từ artifact của đúng commit sau khi bước phát hành đạt. Bản dùng thật được đăng lên GitHub Release (`v<versionName>`, file `app-release.apk`, SHA-256 trùng `apk-sha256.txt` của artifact); nút **Tải app Android** trên trang Biến động số dư trỏ tới bản đó qua hằng `gatewayApk` trong `src/pages/bank-events/BankEventsPage.tsx`, nên đăng bản mới phải đổi hằng này. Chưa phân phối qua Google Play. Không đưa token, khóa ký riêng hoặc mật khẩu vào mã nguồn, APK hay kho Git.
 
 Có thể kiểm riêng logic Java không cần SDK:
 
@@ -55,7 +55,7 @@ Kiểm logic Java **không thay thế** compile Android, kiểm quyền hệ th�
 ## Cài và kết nối điện thoại
 
 1. Trong CRM, mở **Biến động số dư → Nguồn kết nối → Thêm nguồn**. Tạo nguồn riêng cho điện thoại và sao chép địa chỉ webhook cùng khóa chỉ hiện một lần.
-2. Cài APK đã build trên điện thoại Android của bạn; mở **iHome Gateway**.
+2. Bấm **Tải app Android** ở đầu trang Biến động số dư (hoặc dùng APK đã build), cài trên điện thoại Android của bạn; mở **iHome Gateway**.
 3. Dán URL đầy đủ và khóa do CRM vừa cấp vào app. Không dùng khóa dịch vụ Supabase hoặc mật khẩu tài khoản CRM.
 4. Bật nguồn SMS nếu cần. Khi bật chuyển tiếp, chấp nhận quyền nhận SMS.
 5. Bật nguồn thông báo nếu cần; chọn chính xác app ngân hàng và mở **Cấp quyền truy cập thông báo** để cấp quyền cho iHome Gateway trong Android Settings.

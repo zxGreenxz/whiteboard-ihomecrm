@@ -12,10 +12,11 @@ Khi trang đang được xem, danh sách ở trang đầu cùng thông tin ngu�
 
 ## Kết nối điện thoại
 
-1. Mở **Nguồn kết nối → Thêm nguồn**, nhập tên dễ nhận diện.
-2. Sao chép địa chỉ webhook và khóa một lần vào iHome Gateway. Nếu chưa thấy địa chỉ webhook được xác nhận, hoàn tất cấu hình máy chủ trước.
-3. Chọn SMS hoặc các ứng dụng được phép chuyển thông báo; cấp quyền trên Android và bật chuyển tiếp.
-4. Gửi tin thử, làm mới trang tổng và mở chi tiết để xác nhận nguồn nhận đúng. Tin thử được ghi rõ là dữ liệu giả lập.
+1. Bấm **Tải app Android** ở đầu trang để tải APK iHome Gateway (bản release đã ký) rồi cài trên điện thoại Android 8 trở lên.
+2. Mở **Nguồn kết nối → Thêm nguồn**, nhập tên dễ nhận diện.
+3. Sao chép địa chỉ webhook và khóa một lần vào iHome Gateway. Nếu chưa thấy địa chỉ webhook được xác nhận, hoàn tất cấu hình máy chủ trước.
+4. Chọn SMS hoặc các ứng dụng được phép chuyển thông báo; cấp quyền trên Android và bật chuyển tiếp.
+5. Gửi tin thử, làm mới trang tổng và mở chi tiết để xác nhận nguồn nhận đúng. Tin thử được ghi rõ là dữ liệu giả lập.
 
 ## Giới hạn và dữ liệu nhạy cảm
 
@@ -25,7 +26,7 @@ Nguồn giữ dấu vết thiết bị và công ty nếu đã được xác min
 
 ## Nguồn triển khai và kiểm chứng
 
-- Giao diện: `src/pages/bank-events/BankEventsPage.tsx`.
+- Giao diện: `src/pages/bank-events/BankEventsPage.tsx`. Nút tải trỏ tới APK ở GitHub Release theo hằng `gatewayApk`; phát hành bản mới thì đăng release từ artifact ký của CI rồi đổi hằng này.
 - Service/validation: `src/lib/bank-events/service.ts`; truy vấn theo tài khoản: `src/hooks/bank-events/useBankEvents.ts`.
 - Guard: `src/components/auth/RequireSuperAdmin.tsx`; navigation dùng `superAdminOnly` trong capability registry.
 - API quản trị: `bank-event-admin`; API kiểm lại JWT và tier super admin ở mỗi yêu cầu.

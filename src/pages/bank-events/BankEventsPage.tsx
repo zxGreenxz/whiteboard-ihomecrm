@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, ArrowRight, Check, ChevronLeft, ChevronRight, Copy, Inbox, KeyRound, Mail, Pause, Play, Plus, RefreshCw, Search, ShieldCheck, Smartphone, Wifi } from 'lucide-react';
+import { Activity, ArrowRight, Check, ChevronLeft, ChevronRight, Copy, Download, Inbox, KeyRound, Mail, Pause, Play, Plus, RefreshCw, Search, ShieldCheck, Smartphone, Wifi } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,6 +15,8 @@ const eventLabels = { 'sms.received': 'SMS', 'notification.received': 'Thông b�
 const time = (value: string | null | undefined) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(value)) : 'Chưa ghi nhận';
 const shortId = (value: string) => value.length > 18 ? `${value.slice(0, 9)}…${value.slice(-6)}` : value;
 const selectClass = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
+// APK release do CI ký trên main, đăng ở GitHub Release (repo public nên tải không cần đăng nhập). Bản mới: đăng release từ artifact ihome-bank-gateway-release-<sha> rồi đổi hằng này.
+const gatewayApk = { version: '0.2.0', url: 'https://github.com/zxGreenxz/whiteboard-ihomecrm/releases/download/v0.2.0/app-release.apk' } as const;
 type Secret = { actorId: string; name: string; token: string };
 type Detail = { actorId: string; event: BankEvent; payload: Record<string, unknown> };
 
@@ -84,7 +86,7 @@ export default function BankEventsPage() {
   return <MainLayout><main className="mx-auto w-full max-w-7xl space-y-6 p-4 pb-12 md:p-6 lg:p-8">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400"><Activity className="h-4 w-4" /> Trung tâm tiếp nhận</div><h1 className="text-2xl font-bold tracking-tight md:text-3xl">Biến động số dư</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Theo dõi tin từ điện thoại và kiểm tra các nguồn kết nối tại một nơi.</p></div>
-      <Button variant="outline" onClick={reload} disabled={events.isFetching || sources.isFetching || status.isFetching}><RefreshCw className="mr-2 h-4 w-4" />Làm mới</Button>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" asChild><a href={gatewayApk.url} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4" />Tải app Android<span className="ml-1.5 text-xs text-muted-foreground">v{gatewayApk.version}</span></a></Button><Button variant="outline" onClick={reload} disabled={events.isFetching || sources.isFetching || status.isFetching}><RefreshCw className="mr-2 h-4 w-4" />Làm mới</Button></div>
     </header>
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30"><ShieldCheck className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" /><p><strong>Toàn hệ thống · Chỉ super admin</strong><span className="ml-2 text-muted-foreground">Không giới hạn theo công ty đang chọn.</span></p></div>
     <section aria-label="Tổng quan tiếp nhận" className="grid gap-3 sm:grid-cols-3">
