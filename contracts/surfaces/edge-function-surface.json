@@ -34,7 +34,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 4,
       "verifyJwt": false,
       "callers": []
     },
