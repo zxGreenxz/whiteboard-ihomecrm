@@ -8,6 +8,8 @@ Trang `/bien-dong-so-du` là hộp tiếp nhận toàn hệ thống dành riêng
 - **Nguồn kết nối:** tạo nguồn riêng cho từng điện thoại, cấp lại khóa, tạm dừng hoặc thu hồi. Khóa chỉ hiện sau lần tạo/cấp lại và phải sao chép vào iHome Gateway trước khi đóng. Khóa cũ mất hiệu lực khi cấp lại; thu hồi là vĩnh viễn, không xóa tin đã nhận.
 - **Vận hành:** trạng thái tiếp nhận, địa chỉ webhook đã cấu hình và thông tin điện thoại gửi gần nhất. Email chưa được kết nối trong giai đoạn này.
 
+Khi trang đang được xem, danh sách ở trang đầu cùng thông tin nguồn và vận hành tự cập nhật mỗi 15 giây; các trang tin cũ và nội dung chi tiết không được tải lại định kỳ.
+
 ## Kết nối điện thoại
 
 1. Mở **Nguồn kết nối → Thêm nguồn**, nhập tên dễ nhận diện.

@@ -95,6 +95,7 @@ export default function BankEventsPage() {
     <Tabs defaultValue="events" className="space-y-5">
       <TabsList className="grid h-auto w-full grid-cols-3 p-1 md:w-fit"><TabsTrigger value="events" className="px-3 py-2">Tin nhận được</TabsTrigger><TabsTrigger value="sources" className="px-3 py-2">Nguồn kết nối</TabsTrigger><TabsTrigger value="operations" className="px-3 py-2">Vận hành</TabsTrigger></TabsList>
       <TabsContent value="events" className="space-y-4">
+        <p className="text-xs text-muted-foreground">Tự cập nhật mỗi 15 giây ở trang đầu.</p>
         <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">
           <div className="sm:col-span-2"><Label htmlFor="bank-query">Tìm theo thông tin nguồn</Label><div className="relative mt-1.5"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="bank-query" className="pl-9" placeholder="Tên nguồn hoặc mã sự kiện" value={query} onChange={event => setQuery(event.target.value)} maxLength={120} /></div></div>
           <div><Label htmlFor="bank-source">Nguồn</Label><select id="bank-source" className={`${selectClass} mt-1.5`} value={sourceId} onChange={event => setSourceId(event.target.value)}><option value="">Tất cả nguồn</option>{sourceList.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}</select></div>

@@ -18,8 +18,8 @@ export function useBankEvents(filters: EventFilters) {
     return () => { void client.cancelQueries({ queryKey: bankEventKey(actorId) }); client.removeQueries({ queryKey: bankEventKey(actorId) }); };
   }, [actorId, allowed, client]);
   const key = bankEventKey(actorId);
-  const common = { enabled: allowed, retry: false, gcTime: 0, staleTime: 15_000, meta: { errorDisplay: 'inline' } } as const;
-  const events = useQuery({ ...common, queryKey: [...key, 'events', filters], queryFn: () => bankEventService(actorId!).events(filters) });
+  const common = { enabled: allowed, retry: false, gcTime: 0, staleTime: 15_000, refetchInterval: 15_000, refetchIntervalInBackground: false, meta: { errorDisplay: 'inline' } } as const;
+  const events = useQuery({ ...common, refetchInterval: filters.cursor ? false : 15_000, queryKey: [...key, 'events', filters], queryFn: () => bankEventService(actorId!).events(filters) });
   const sources = useQuery({ ...common, queryKey: [...key, 'sources'], queryFn: () => bankEventService(actorId!).sources() });
   const status = useQuery({ ...common, queryKey: [...key, 'status'], queryFn: () => bankEventService(actorId!).status() });
   const refresh = () => client.invalidateQueries({ queryKey: key });

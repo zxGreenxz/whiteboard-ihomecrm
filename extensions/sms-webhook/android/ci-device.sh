@@ -23,8 +23,18 @@ if [[ ! -x "$avdmanager" ]]; then
   printf 'Preinstalled avdmanager not found.\n' >&2
   exit 1
 fi
+# The Java AVD manager and native emulator must share one explicit user/AVD home.
+# Runner defaults can otherwise create the .ini outside the emulator's search path.
+export ANDROID_USER_HOME="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ihome-android-user"
+export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+mkdir -p "$ANDROID_AVD_HOME"
 printf 'no\n' | "$avdmanager" create avd --force --name ihome-fixture \
-  --package 'system-images;android-35;google_apis;x86_64' --device pixel_5
+  --package 'system-images;android-35;google_apis;x86_64' --device pixel_5 \
+  --path "$ANDROID_AVD_HOME/ihome-fixture.avd"
+test -s "$ANDROID_AVD_HOME/ihome-fixture.ini"
+emulator -list-avds > build/ci-evidence/avd-list.txt
+grep -Fxq 'ihome-fixture' build/ci-evidence/avd-list.txt
 emulator -avd ihome-fixture -no-window -no-audio -no-boot-anim -no-snapshot \
   -gpu swiftshader_indirect -wipe-data > build/ci-evidence/emulator.log 2>&1 &
 emulator_pid=$!

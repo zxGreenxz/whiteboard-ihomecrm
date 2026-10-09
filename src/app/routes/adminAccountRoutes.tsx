@@ -20,8 +20,10 @@ import {
   SubscriptionPage,
 } from "../lazyPages";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
-import { AdminOnlyRoute } from "../../components/auth/AdminOnlyRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
+
+const AdminOnlyRoute = lazyWithRetry(() => import("../../components/auth/AdminOnlyRoute").then(module => ({ default: module.AdminOnlyRoute })));
 
 export const adminAccountRoutes = (
   <>

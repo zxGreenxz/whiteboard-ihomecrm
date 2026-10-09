@@ -28,9 +28,11 @@ import {
 } from "../lazyPages";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
-import { RequireSuperAdmin } from "../../components/auth/RequireSuperAdmin";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
-import { AdminOnlyRoute } from "../../components/auth/AdminOnlyRoute";
+
+const RequireSuperAdmin = lazyWithRetry(() => import("../../components/auth/RequireSuperAdmin").then(module => ({ default: module.RequireSuperAdmin })));
+const AdminOnlyRoute = lazyWithRetry(() => import("../../components/auth/AdminOnlyRoute").then(module => ({ default: module.AdminOnlyRoute })));
 
 export const financeWorkRoutes = (
   <>
