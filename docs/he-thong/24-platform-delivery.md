@@ -69,11 +69,12 @@ Docs có project riêng, lấy nội dung từ `docs/huong-dan-su-dung/`; quy t�
 - Gate cần credential (realtime, security, types, cross-tenant, reconcile) chỉ chạy ở push/dispatch
   trên main. Lượt PR ghi chúng là "CHƯA KIỂM — chờ main", không tính là đạt; job bị skip vì thiếu
   credential không phải bằng chứng đã kiểm database.
-- Lượt push main đầu tiên của SHA đã có lượt PR xanh trong 24 giờ (cùng repo, PR vào main) dùng lại
-  biên nhận `static` khớp đúng gate, lệnh và cây file; gate `external`/`live` (gồm timezone) luôn chạy.
-  Chạy lại lượt main thì không dùng lại.
-- Promote chỉ nhận artifact `gate-aggregate` của lượt main đúng SHA có plan phủ dải
-  production..SHA, cùng các workflow ngoài mà plan đòi.
+- Lượt push main đầu tiên của SHA đã có lượt PR xanh trong 24 giờ (cùng repo, PR vào main) chỉ dùng
+  lại biên nhận `static` khớp gate, lệnh, cây file, base của plan, digest policy/runtime và Node.
+  Base lượt PR là đầu main, base lượt main là đầu production, nên ít khi khớp. Gate `external`/`live`
+  (gồm timezone) luôn chạy; chạy lại lượt main thì không dùng lại.
+- Promote đòi artifact `gate-aggregate` của lượt main đúng SHA có plan phủ dải production..SHA, các
+  workflow ngoài mà plan đòi, và mọi lượt main khác của SHA đó đã xong, không bước nào đỏ.
 - Network Center có [workflow riêng](../../.github/workflows/network-center-validation.yml).
   Chọn runner và môi trường theo manifest, không chạy lại suite bằng runner khác.
 
