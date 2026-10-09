@@ -13,6 +13,7 @@
 import { ThreadType } from 'zca-js';
 import { sb, log, chunk, orgOf, notifyPush, sessions } from './ctx.js';
 import { xuLyTinDen } from './auto-reply.js';
+import { laChuoiMay, phanLoaiTinThe } from './message-card.js';
 
 // ── Map event message zca-js → row inbound ──
 const MSGTYPE_LABEL = {
@@ -26,9 +27,10 @@ function pickText(m) {
   const c = d.content;
   if (typeof c === 'string' && c.trim()) return c;
   if (c && typeof c === 'object') {
-    if (c.title && String(c.title).trim()) return String(c.title);
-    if (c.description && String(c.description).trim()) return String(c.description);
-    if (c.text && String(c.text).trim()) return String(c.text);
+    // Bỏ chuỗi máy kiểu "sendBubbleMessage": Zalo đặt tên hàm vào title của vài loại tin.
+    for (const v of [c.title, c.description, c.text]) {
+      if (v && String(v).trim() && !laChuoiMay(v)) return String(v);
+    }
   }
   const lbl = MSGTYPE_LABEL[String(d.msgType || '')];
   if (lbl) return lbl;
@@ -59,6 +61,9 @@ export function classifyMessage(m) {
     const name = c.title && String(c.title).trim() ? String(c.title) : 'Tệp tin';
     return { msg_type: 'file', body: name, media_url: c.href || null, media_label: name, media_meta: null };
   }
+  // Link có ảnh xem trước, danh thiếp, "bubble": giữ tiêu đề/mô tả/link/ảnh nhỏ cho web vẽ thẻ.
+  const the = phanLoaiTinThe(m);
+  if (the) return the;
   return { msg_type: 'text', body: pickText(m), media_url: null, media_label: null, media_meta: null };
 }
 

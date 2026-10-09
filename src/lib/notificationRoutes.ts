@@ -139,6 +139,9 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/contracts", module: "contracts" },
   { path: "/rooms", module: "rooms" },
   { path: "/rooms", idSegment: true, module: "rooms" },
+  // capabilities/registry.ts — trang `chat-zalo.list`, quyền chat_zalo.view. Đích của cảnh báo
+  // "Zalo mất kết nối" do bộ canh gác worker gửi chủ công ty (10/2026).
+  { path: "/chat-zalo", module: "chat_zalo" },
 ];
 
 /** Cắt hash + query, chuẩn hoá `/` thừa ở cuối. Trả null nếu chuỗi đáng ngờ. */

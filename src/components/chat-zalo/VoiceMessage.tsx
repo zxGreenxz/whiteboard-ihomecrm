@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Mic } from 'lucide-react';
+import { Play, Pause, Mic, MicOff } from 'lucide-react';
+import { nhanMediaLoi } from '@/lib/zaloContent';
 import { EMERALD } from './zaloTheme';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
@@ -18,6 +19,8 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
   const [hover, setHover] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  // Tin thoại nhận về chỉ nằm trên máy chủ Zalo; link hết hạn thì phát lỗi, báo rõ thay vì im lặng.
+  const [loi, setLoi] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
   const durMs = Number(m.mediaMeta?.duration_ms) || undefined;
@@ -25,15 +28,22 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   const toggle = () => {
-    if (!url) return;
+    if (!url || loi) return;
     if (!audioRef.current) {
       const a = new Audio(url);
       a.addEventListener('timeupdate', () => setProgress(a.duration ? a.currentTime / a.duration : 0));
       a.addEventListener('ended', () => { setPlaying(false); setProgress(0); });
+      a.addEventListener('error', () => { setPlaying(false); setLoi(true); });
       audioRef.current = a;
     }
     if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { audioRef.current.play().catch(() => setPlaying(false)); setPlaying(true); }
+    else {
+      audioRef.current.play().catch((e: unknown) => {
+        setPlaying(false);
+        if (e instanceof DOMException && e.name === 'NotSupportedError') setLoi(true);
+      });
+      setPlaying(true);
+    }
   };
 
   return (
@@ -50,13 +60,17 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
           />
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: out ? EMERALD : '#fff', border: out ? 'none' : '1px solid hsl(210 20% 88%)', color: out ? '#fff' : 'hsl(160 30% 14%)', borderRadius: 14, padding: '9px 14px', minWidth: 190 }}>
-          <button onClick={toggle} disabled={!url} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: out ? 'rgba(255,255,255,.22)' : 'hsl(152 40% 94%)', color: out ? '#fff' : 'hsl(152 69% 30%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: url ? 'pointer' : 'default', flex: 'none' }}>
-            {playing ? <Pause size={14} /> : <Play size={14} style={{ marginLeft: 2 }} />}
+          <button onClick={toggle} disabled={!url || loi} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: out ? 'rgba(255,255,255,.22)' : 'hsl(152 40% 94%)', color: out ? '#fff' : 'hsl(152 69% 30%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: url && !loi ? 'pointer' : 'default', flex: 'none' }}>
+            {loi ? <MicOff size={14} /> : playing ? <Pause size={14} /> : <Play size={14} style={{ marginLeft: 2 }} />}
           </button>
           <div style={{ flex: 1 }}>
-            <div style={{ height: 4, borderRadius: 2, background: out ? 'rgba(255,255,255,.3)' : 'hsl(210 20% 92%)', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: out ? '#fff' : EMERALD, transition: 'width .2s' }} />
-            </div>
+            {loi ? (
+              <span style={{ fontSize: 11.5, fontWeight: 600 }}>{nhanMediaLoi('voice', m.mediaUrl)}</span>
+            ) : (
+              <div style={{ height: 4, borderRadius: 2, background: out ? 'rgba(255,255,255,.3)' : 'hsl(210 20% 92%)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: out ? '#fff' : EMERALD, transition: 'width .2s' }} />
+              </div>
+            )}
           </div>
           <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.9, display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
             <Mic size={12} />{fmtDur(durMs)}

@@ -1,5 +1,6 @@
 import { ZaloActionUnknownError, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
 import { notifyActionError } from '@/lib/actionFeedback';
+import { chuHienThi, docThe } from '@/lib/zaloContent';
 // Hooks dữ liệu cho trang Chat Zalo (Supabase + Realtime).
 // Map row DB → shape ZaloConversation/ZaloMessage mà các component dùng.
 //
@@ -70,7 +71,7 @@ function mapConv(r: any): ZaloConversation {
     time: fmtListTime(r.last_message_at),
     sub: r.sub_label || '',
     subTone: (r.sub_tone as ToneKey) || null,
-    preview: r.last_message_text || '',
+    preview: chuHienThi(r.last_message_text || ''),
     unread: r.unread_count || 0,
     listTag: r.list_tag || null,
     online: !!r.is_online,
@@ -109,7 +110,9 @@ export function mapMsg(r: any): ZaloMessage {
     id: r.id,
     type,
     dir: r.direction,
-    text: body,
+    // Tin chữ: chuỗi máy kiểu "sendBubbleMessage" (tin thẻ ghi trước 10/2026) thành câu đọc được.
+    text: body !== undefined && !isMedia ? chuHienThi(String(body)) : body,
+    card: isMedia ? null : docThe(r.media_meta),
     label: r.media_label || undefined,
     mediaUrl: r.media_url || undefined,
     videoThumb: r.media_meta?.thumb || undefined,
@@ -611,6 +614,37 @@ export function useZaloAccounts() {
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data || []).map(mapAccount);
+    },
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
+  });
+}
+
+// ── Nhịp tim worker: worker chết đột ngột thì `zalo_accounts.status` vẫn 'connected' ──
+// (05/09–10/10/2026 không ai biết worker đã dừng). RPC chỉ trả thời điểm, không lộ máy chạy.
+export interface ZaloWorkerStatus {
+  online: boolean;
+  heartbeatAt: string | null;
+  secondsSince: number | null;
+}
+
+export function mapWorkerStatus(raw: unknown): ZaloWorkerStatus {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    online: r.online === true,
+    heartbeatAt: typeof r.heartbeat_at === 'string' ? r.heartbeat_at : null,
+    secondsSince: typeof r.seconds_since === 'number' ? r.seconds_since : null,
+  };
+}
+
+export function useZaloWorkerStatus() {
+  return useQuery({
+    queryKey: ['zalo', 'worker-status'],
+    retry: 1,
+    queryFn: async (): Promise<ZaloWorkerStatus> => {
+      const { data, error } = await db.rpc('zalo_worker_status_v1');
+      if (error) throw error;
+      return mapWorkerStatus(data);
     },
     refetchInterval: 60000,
     refetchIntervalInBackground: false,

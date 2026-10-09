@@ -88,3 +88,12 @@ describe("resolveNotificationUrl — PA4 (E6a/E6b/E6c)", () => {
     );
   });
 });
+
+describe("resolveNotificationUrl — cảnh báo Zalo mất kết nối", () => {
+  it("/chat-zalo đi qua, bỏ param lạ; thiếu quyền chat_zalo thì về đích dự phòng", () => {
+    expect(resolveNotificationUrl("/chat-zalo", ALL)).toBe("/chat-zalo");
+    expect(resolveNotificationUrl("/chat-zalo?x=1", ALL)).toBe("/chat-zalo");
+    expect(resolveNotificationUrl("/chat-zalo", NONE)).toBe(NOTIFICATION_FALLBACK_URL);
+    expect(resolveNotificationUrl(`/chat-zalo/${REQ}`, ALL)).toBeNull();
+  });
+});

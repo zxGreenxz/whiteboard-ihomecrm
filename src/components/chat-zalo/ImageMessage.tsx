@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, ImageOff } from 'lucide-react';
+import { nhanMediaLoi } from '@/lib/zaloContent';
 import { IMG_GRADS } from './zaloTheme';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
@@ -55,11 +56,15 @@ export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, o
           )
         ) : (
           <div style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS[m.imgTone || 'neutral'] || IMG_GRADS.neutral, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)' }}>
-            <ImageIcon size={28} strokeWidth={1.6} />
-            <span style={{ fontSize: 11, fontWeight: 600 }}>{m.label || 'Hình ảnh'}</span>
+            {/* Có link mà tải lỗi: ảnh nhận về chỉ nằm trên máy chủ Zalo, và Zalo xoá sau một thời gian. */}
+            {url && err ? <ImageOff size={28} strokeWidth={1.6} /> : <ImageIcon size={28} strokeWidth={1.6} />}
+            <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: '0 10px' }}>
+              {url && err ? nhanMediaLoi('image', m.mediaUrl) : (m.label || 'Hình ảnh')}
+            </span>
           </div>
         )}
-        {m.text && m.text.trim() && (
+        {/* "[Hình ảnh]" là nhãn worker ghi thay chú thích, không phải chữ người gửi: đừng lặp dưới ô ảnh. */}
+        {m.text && m.text.trim() && m.text.trim() !== '[Hình ảnh]' && (
           <div style={{ marginTop: 4, fontSize: 13, color: 'hsl(160 30% 14%)', background: '#fff', border: '1px solid hsl(210 20% 89%)', borderRadius: 10, padding: '6px 10px', maxWidth: 240 }}>{m.text}</div>
         )}
         {m.react && (
