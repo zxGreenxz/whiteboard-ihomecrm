@@ -44,16 +44,17 @@ function Box({ on }: { on: boolean }) {
 /** Thanh chọn/kết nối tài khoản Zalo — CHỌN NHIỀU tài khoản cùng lúc. */
 export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnly, onAll, onConnectNew, onReconnect, onDisconnect, workerOffline = false }: Props) {
   const [open, setOpen] = useState(false);
-  const hienThi = (status: AccountStatus) =>
-    workerOffline && status === 'connected' ? MAT_KET_NOI : (STATUS[status] || STATUS.disconnected);
-  const connectedCount = workerOffline ? 0 : accounts.filter((a) => a.status === 'connected').length;
+  // Chỉ nick cá nhân đi qua worker; tài khoản OA không phụ thuộc nó.
+  const hienThi = (a: ZaloAccount) =>
+    workerOffline && a.kind === 'personal' && a.status === 'connected' ? MAT_KET_NOI : (STATUS[a.status] || STATUS.disconnected);
+  const connectedCount = accounts.filter((a) => a.status === 'connected' && !(workerOffline && a.kind === 'personal')).length;
   const allSelected = accounts.length > 0 && selectedIds.length >= accounts.length;
   const single = selectedIds.length === 1 ? accounts.find((a) => a.id === selectedIds[0]) : null;
 
   const summaryTop = allSelected ? 'Tất cả tài khoản Zalo' : single ? single.name : `Đang xem ${selectedIds.length}/${accounts.length} tài khoản`;
   const summarySub = allSelected
     ? (workerOffline ? 'Zalo đang mất kết nối' : `${connectedCount} tài khoản kết nối`)
-    : single ? hienThi(single.status).label : 'đã chọn';
+    : single ? hienThi(single).label : 'đã chọn';
 
   return (
     <div style={{ padding: '10px 12px', borderBottom: '1px solid hsl(210 20% 93%)', background: 'hsl(152 35% 98%)' }}>
@@ -76,7 +77,7 @@ export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnl
 
           <div className="wz-scroll" style={{ maxHeight: 320, overflowY: 'auto' }}>
             {accounts.map((a) => {
-              const s = hienThi(a.status);
+              const s = hienThi(a);
               const on = selectedIds.includes(a.id);
               return (
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8 }}>
