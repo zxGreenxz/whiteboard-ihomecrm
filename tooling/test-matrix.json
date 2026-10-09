@@ -287,6 +287,20 @@
       "note": "Offline demo tự dựng HTTP fixture; không gọi Supabase, không đọc credential. Planner chọn riêng spec này khi source demo đổi; fleet live vẫn do suite local sở hữu."
     },
     {
+      "id": "e2e-personal-finance-product",
+      "workflowOwner": ".github/workflows/ci-gates.yml",
+      "ciExecutor": "gate-registry",
+      "runner": "playwright",
+      "ciJob": "quality-gates",
+      "command": "node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.config.ts .e2e-fleet/specs/personal-finance-product.spec.ts --workers=1 --reporter=list",
+      "includes": [".e2e-fleet/specs/personal-finance-product.spec.ts"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "environment": "ci",
+      "risk": "normal",
+      "timeoutMinutes": 15,
+      "note": "React product page on a loopback Vite fixture, synthetic auth and in-memory finance RPCs; external writes blocked. CI executes the entire file. Does not attest live JWT/RLS, real TEST lifecycle or deployment UI."
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
       "ciJob": "(local — phần fleet còn lại chưa có job CI)",
@@ -297,6 +311,7 @@
       ],
       "excludes": [
         ".e2e-fleet/specs/personal-finance-demo.spec.ts",
+        ".e2e-fleet/specs/personal-finance-product.spec.ts",
         ".e2e-fleet/specs/voucher-detail-read-scope.spec.ts",
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",

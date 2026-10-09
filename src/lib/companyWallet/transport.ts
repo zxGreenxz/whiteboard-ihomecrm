@@ -14,7 +14,7 @@ export function createCompanyWalletTransport(ownerId: string, organizationId: st
   if (error || session?.user.id !== ownerId) throw new CompanyWalletError('permission', 'Phiên đăng nhập đã thay đổi.', error);
   checkScope();
   const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/${name}`, {
-   method: 'POST', headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+   method: 'POST', headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', 'Accept-Profile': 'public', 'Content-Profile': 'public', 'x-organization-id': organizationId },
    body: JSON.stringify(args),
   });
   const data: unknown = await response.json();

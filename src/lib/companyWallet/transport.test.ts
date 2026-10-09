@@ -19,7 +19,7 @@ describe('company wallet pinned identity transport', () => {
  it('pins the verified JWT in the one POST rather than the clients later session', async () => {
   const { transport } = setup(), fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })); vi.stubGlobal('fetch', fetch);
   await expect(transport.rpc('company_wallet_snapshot', { p_organization_id: org })).resolves.toEqual({ data: { ok: true }, error: null });
-  expect(fetch).toHaveBeenCalledWith('https://example.test/rest/v1/rpc/company_wallet_snapshot', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer pinned-jwt', apikey: 'public-key' }), body: JSON.stringify({ p_organization_id: org }) }));
+  expect(fetch).toHaveBeenCalledWith('https://example.test/rest/v1/rpc/company_wallet_snapshot', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer pinned-jwt', apikey: 'public-key', 'Accept-Profile': 'public', 'Content-Profile': 'public', 'x-organization-id': org }), body: JSON.stringify({ p_organization_id: org }) }));
  });
  it('blocks a company switch before sending and drops late responses after sending', async () => {
   const { scope, transport } = setup(), fetch = vi.fn(async () => { scope.organizationId = other; return new Response('{}'); }); vi.stubGlobal('fetch', fetch);

@@ -5,7 +5,7 @@ import ts from "typescript";
 import yaml from "js-yaml";
 import { khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
-import { GATE_REGISTRY, GENERATOR_REGISTRY } from "./gate-registry.mjs";
+import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
 
 const riskDefault = JSON.parse(readFileSync(new URL("../../tooling/risk-map.json", import.meta.url), "utf8"));
@@ -196,7 +196,7 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     suiteSelections.push(selection);
     if (suite.runner === "playwright") {
       browserRequirements.push({ suiteId: suite.id, files, viewports: selection.viewports.length ? selection.viewports : ["affected"], reason: selection.reason });
-      if (files.some((f) => f !== ".e2e-fleet/specs/personal-finance-demo.spec.ts")) { unavailable.push({ suiteId: suite.id, reason: "Live browser evidence requires affected preview/role; not default CI pass" }); continue; }
+      if (!isOfflineBrowserSelection(suite.id, files)) { unavailable.push({ suiteId: suite.id, reason: "Live browser evidence requires affected preview/role; not default CI pass" }); continue; }
     }
     const id = `suite:${suite.id}`;
     if (registry[id]) gates.add(id); else unavailable.push({ suiteId: suite.id, reason: "Runner belongs to a separate workflow" });

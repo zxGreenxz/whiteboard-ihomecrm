@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createGatePlan, planFromGit, isCosmeticChange } from "../lib/gate-plan.mjs";
-import { GATE_REGISTRY } from "../lib/gate-registry.mjs";
+import { GATE_REGISTRY, getGate, isOfflineBrowserSelection } from "../lib/gate-registry.mjs";
 
 const snapshot = { base: "base", head: "head", tree: "tree", source: "fixture" };
 const changed = (path, before, after, extra = {}) => ({ path, before, after, status: "M", ...extra });
@@ -12,6 +12,22 @@ const plan = (changes, extra = {}) => createGatePlan({ changes, snapshot, ...ext
 const button = 'export const Button = () => <button onClick={openDialog} className="p-2">Mở</button>;';
 
 describe("scope is a conservative proof, never a filename shortcut", () => {
+  it("executes the exact offline product suite without substituting it for money or live UI evidence", () => {
+    const file = '.e2e-fleet/specs/personal-finance-product.spec.ts';
+    const p = plan([changed(file, 'old test', 'new test'), changed('src/components/personal-finance/CompanyFinance.tsx', button, button.replace('openDialog', 'savePayment'))], { testFiles: [file] });
+    expect(p.unavailable.filter((item) => item.suiteId.startsWith('e2e-'))).toEqual([]);
+    expect(p.gateIds).toEqual(expect.arrayContaining(['suite:e2e-personal-finance-product', 'reconcile-money', 'reconcile-money-v2']));
+    expect(p.browserRequirements).toContainEqual(expect.objectContaining({ status: 'required', paths: ['src/components/personal-finance/CompanyFinance.tsx'] }));
+    const gate = getGate('suite:e2e-personal-finance-product', p);
+    expect(gate.args).toContain(file);
+    expect(gate.args).not.toContain('--grep');
+    const real = '.e2e-fleet/specs/personal-finance-real.spec.ts';
+    expect(plan([changed(real, 'old test', 'new test')], { testFiles: [real] }).unavailable).toContainEqual(expect.objectContaining({ suiteId: 'e2e-fleet' }));
+    for (const [id, files] of [['e2e-fleet', [file]], ['e2e-personal-finance-product', [real]], ['e2e-personal-finance-product', [file, real]], ['e2e-personal-finance-product', []]]) {
+      expect(isOfflineBrowserSelection(id, files)).toBe(false);
+    }
+    expect(() => getGate('suite:e2e-personal-finance-product', { suiteSelections: [{ id: 'e2e-personal-finance-product', files: [file, real] }] })).toThrow(/approved offline/);
+  });
   it("retains infrastructure review, published-doc build and changed-test inventory obligations", () => {
     expect(plan([changed("infra/network-center-worker/src/index.ts", "a", "b")]).crossReview).toBe(true);
     expect(plan([changed("docs/huong-dan-su-dung/test.md", "a", "b")]).gateIds).toContain("docs-build");

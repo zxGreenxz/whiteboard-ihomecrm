@@ -82,7 +82,7 @@ jobs:
       - name: Install docs dependencies only for a selected docs build
         if: needs.preflight.outputs.needs_docs_build == 'true'
         run: npm ci --prefix docs-site
-      - name: Install browser for the selected offline demo only
+      - name: Install browser for the selected offline suite only
         if: needs.preflight.outputs.needs_demo_browser == 'true'
         run: npx playwright install --with-deps chromium
       - name: Execute selected gates and write receipts

@@ -44,6 +44,6 @@ if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs
 }
 writeFileSync(join(output, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
 if (process.env.GITHUB_OUTPUT) {
-  appendFileSync(process.env.GITHUB_OUTPUT, `required_jobs=${JSON.stringify(plan.requiredJobs)}\nneeds_demo_browser=${plan.gateIds.includes('suite:e2e-personal-finance-demo')}\nneeds_docs_build=${plan.gateIds.includes('docs-build')}\nneeds_deno=${plan.gateIds.some((id) => GATE_REGISTRY[id]?.command === 'deno')}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `required_jobs=${JSON.stringify(plan.requiredJobs)}\nneeds_demo_browser=${plan.suiteSelections.some((s) => s.runner === 'playwright' && plan.gateIds.includes(`suite:${s.id}`))}\nneeds_docs_build=${plan.gateIds.includes('docs-build')}\nneeds_deno=${plan.gateIds.some((id) => GATE_REGISTRY[id]?.command === 'deno')}\n`);
 }
 console.log(JSON.stringify({ snapshot: plan.snapshot, profiles: plan.profiles, reasons: plan.reasons, gateIds: plan.gateIds, requiredJobs: plan.requiredJobs, pendingMainGates: plan.pendingMainGates ?? [], fullFallback: plan.fullFallback, deferred: plan.deferred }, null, 2));

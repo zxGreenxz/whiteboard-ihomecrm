@@ -57,11 +57,20 @@ for (const [id, job, command, args] of [
   ['edge-deno-quick-entry', 'quality-gates', 'deno', ['test', '--config', 'supabase/functions/quick-entry/deno.json']],
   ['e2e-fleet', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
   ['e2e-personal-finance-demo', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
+  ['e2e-personal-finance-product', 'quality-gates', 'node', ['node_modules/@playwright/test/cli.js', 'test', '--config', '.e2e-fleet/playwright.config.ts']],
 ]) {
   gates[`suite:${id}`] = { id: `suite:${id}`, command, args, job, local: command !== 'deno', evidenceClass: 'static', inputs: broadInputs, requires: [] };
 }
 
 export const GATE_REGISTRY = Object.freeze(gates);
+// Exact suite/file pairs only. Real TEST/preview specs remain outside default CI.
+export function isOfflineBrowserSelection(suiteId, files) {
+  const approved = {
+    'e2e-personal-finance-demo': '.e2e-fleet/specs/personal-finance-demo.spec.ts',
+    'e2e-personal-finance-product': '.e2e-fleet/specs/personal-finance-product.spec.ts',
+  };
+  return Array.isArray(files) && files.length === 1 && approved[suiteId] === files[0];
+}
 export const GENERATOR_REGISTRY = Object.freeze({
   'gen-supabase-types': { id: 'gen-supabase-types', command: 'node', args: ['scripts/gen-supabase-types.mjs'], requires: ['SUPABASE_ACCESS_TOKEN'], owns: ['src/integrations/supabase/types.ts'], external: true },
   'normalize-supabase-types': { id: 'normalize-supabase-types', command: 'node', args: ['scripts/normalize-supabase-types.mjs', '--write'], owns: ['src/integrations/supabase/types.ts'] },
@@ -88,8 +97,8 @@ export function getGate(id, plan) {
     const selection = plan?.suiteSelections?.find((s) => s.id === suiteId);
     if (!selection || !selection.files?.length) throw new Error(`Missing selected tests: ${suiteId}`);
     if (selection.files.some(isDeferredTest)) throw new Error(`DEFERRED test selected: ${suiteId}`);
-    if (suiteId.startsWith('e2e-') && selection.files.some((file) => file !== '.e2e-fleet/specs/personal-finance-demo.spec.ts')) {
-      throw new Error('Only explicitly approved offline demos may run through the default browser gate');
+    if (suiteId.startsWith('e2e-') && !isOfflineBrowserSelection(suiteId, selection.files)) {
+      throw new Error('Only explicitly approved offline browser suites may run through the default browser gate');
     }
     if (suiteId === 'app-unit') {
       gate.args = ['scripts/run-selected-vitest.mjs', '--plan', plan.environment === 'ci' ? '.gate-evidence/plan.json' : '.cache/gate-receipts/plan.json', '--selection-digest', selectionDigest(selection.files)];
