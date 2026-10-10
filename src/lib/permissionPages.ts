@@ -182,9 +182,8 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("sale_phong", "create_deposit", "Tạo cọc nhanh trên trang công khai", "elevated", {
             desc: "Nút 'Tạo cọc giữ phòng' trên /r/:token khi đăng nhập — phòng tự chuyển ĐÃ CỌC.",
           }),
-          f("sale_phong", "lock_room", "Lock tạm phòng (6/12/24 giờ)", "elevated", {
-            desc: "Nút 'Lock tạm' trên danh sách phòng trống: ẩn phòng khỏi danh sách sale vài giờ để chờ quản lý tạo phiếu cọc, không thu tiền.",
-          }),
+          // Không kèm desc: file này nằm trong chunk entry đang sát ngưỡng ratchet; hướng dẫn ở docs sale-phong.
+          f("sale_phong", "lock_room", "Lock tạm phòng (6/12/24 giờ)", "elevated"),
           f("sale_phong", "view_analytics", "Xem tab Thống kê truy cập", "view", {
             desc: "Tab 'Thống kê' — đo đếm lượt xem, thời gian, phòng được xem nhiều, lỗi của trang /r/:token.",
           }),
