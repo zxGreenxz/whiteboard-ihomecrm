@@ -8,6 +8,8 @@ const sql = readFileSync('supabase/migrations/20260928021213_room_sale_workflow_
 const salePolicySql = readFileSync('supabase/migrations/20261010022101_public_room_sale_policy.sql', 'utf8');
 // Định nghĩa sống của fact/reader trong app (lock tạm 10/10): mọi ca dưới đây chạy trên bản này.
 const saleLockSql = readFileSync('supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql', 'utf8');
+// Reader trong app hiện hành: bản lock tạm + cột Tình trạng gõ tay (sale_status_note).
+const statusNoteSql = readFileSync('supabase/migrations/20261010160612_room_sale_status_note.sql', 'utf8');
 const db = new PGlite();
 const owner = '00000000-0000-4000-8000-000000000010';
 const org = '00000000-0000-4000-8000-000000000001';
@@ -96,6 +98,8 @@ beforeAll(async () => {
   `);
   await db.exec(saleLockSql);
   await db.exec(saleLockSql);
+  await db.exec(statusNoteSql);
+  await db.exec(statusNoteSql);
   await db.exec('RESET check_function_bodies');
 }, 20000);
 beforeEach(async () => {
@@ -197,6 +201,51 @@ describe('actual sale reader SQL', () => {
     expect(await read()).toHaveProperty('sale_policy', null);
     await expect(db.query(`UPDATE public.public_room_settings SET sale_policy=repeat('x',2001)`)).rejects.toMatchObject({ code: '23514' });
     await db.exec(`UPDATE public.public_room_settings SET sale_policy=NULL,organization_id=NULL;`);
+  });
+  it('returns the typed status note only in-app and only while the computed status still matches', async () => {
+    const key = (await roomFact('app'))?.sale_fact_key as string;
+    expect(key).toMatch(/^[0-9a-f]{32}$/);
+    await db.query(`UPDATE public.rooms SET sale_status_note='1/8 trống', sale_status_note_key=$1`, [key]);
+    expect(await roomFact('app')).toMatchObject({ sale_status_note: '1/8 trống', sale_fact_key: key });
+    for (const kind of ['public', 'copilot', 'zalo']) {
+      expect(await roomFact(kind)).not.toHaveProperty('sale_status_note');
+      expect(await roomFact(kind)).not.toHaveProperty('sale_fact_key');
+    }
+    // Chữ không kèm khoá (hoặc khoá của tình trạng khác) không bao giờ in.
+    await db.exec(`UPDATE public.rooms SET sale_status_note_key=NULL;`);
+    expect(await roomFact('app')).toMatchObject({ sale_status_note: null });
+    await db.query(`UPDATE public.rooms SET sale_status_note_key=$1`, [key]);
+    // Phòng chuyển sang đang chuẩn bị ⇒ tình trạng tự tính đổi ⇒ chữ cũ ẩn; quay lại đúng như lúc gõ thì hiện lại.
+    await db.exec(`INSERT INTO public.room_turnovers VALUES('${contract}','${org}','${room}','PENDING','2026-10-02',1,NULL);`);
+    expect(await roomFact('app')).toMatchObject({ sale_state: 'PREPARING', sale_status_note: null });
+    await db.exec(`DELETE FROM public.room_turnovers;`);
+    expect(await roomFact('app')).toMatchObject({ sale_state: 'READY', sale_status_note: '1/8 trống' });
+    // Phòng sắp trống: gia hạn/đổi ngày trả phòng (rooms.status không đổi) ⇒ chữ gõ cho ngày cũ không in nữa.
+    await db.exec(`UPDATE public.rooms SET status='OCCUPIED';INSERT INTO public.contracts VALUES('${contract}','${org}','${room}','ACTIVE','2026-09-01','2026-10-01','2026-10-31',NULL,NULL,NULL);`);
+    const soonKey = (await roomFact('app'))?.sale_fact_key as string;
+    await db.query(`UPDATE public.rooms SET sale_status_note='Trống 1/10', sale_status_note_key=$1`, [soonKey]);
+    expect(await roomFact('app')).toMatchObject({ status_public: 'soon', sale_status_note: 'Trống 1/10' });
+    await db.exec(`UPDATE public.contracts SET expected_move_out_date='2026-10-20';`);
+    expect(await roomFact('app')).toMatchObject({ status_public: 'soon', avail_date: '2026-10-20', sale_status_note: null });
+    await expect(db.query(`UPDATE public.rooms SET sale_status_note=repeat('x',121)`)).rejects.toMatchObject({ code: '23514' });
+  });
+  it('clears the typed status note after a full rental cycle even though the computed key repeats', async () => {
+    const stored = async () => (await db.query<{ n: string | null; k: string | null }>(
+      `SELECT sale_status_note n, sale_status_note_key k FROM public.rooms WHERE id='${room}'`)).rows[0];
+    const key = (await roomFact('app'))?.sale_fact_key as string;
+    await db.query(`UPDATE public.rooms SET sale_status_note='Nhận khách từ 15/10', sale_status_note_key=$1`, [key]);
+    // Sửa cột khác (status không đổi) giữ nguyên chữ.
+    await db.exec(`UPDATE public.rooms SET sale_bonus_note='Thưởng mới', status='AVAILABLE';`);
+    expect(await stored()).toEqual({ n: 'Nhận khách từ 15/10', k: key });
+    // Khách vào rồi trả phòng (người dùng thường, không có quyền EXECUTE hàm trigger): khoá tự tính y như cũ nhưng chữ đã xoá.
+    await db.exec(`GRANT SELECT,UPDATE ON public.rooms TO authenticated;SET ROLE authenticated;
+      UPDATE public.rooms SET status='OCCUPIED';UPDATE public.rooms SET status='AVAILABLE';RESET ROLE;
+      REVOKE SELECT,UPDATE ON public.rooms FROM authenticated;`);
+    expect(await stored()).toEqual({ n: null, k: null });
+    expect(await roomFact('app')).toMatchObject({ sale_fact_key: key, sale_status_note: null });
+    // Một lệnh tự ghi chữ mới cùng lúc đổi status thì giữ chữ được ghi.
+    await db.query(`UPDATE public.rooms SET status='OCCUPIED', sale_status_note='Giữ', sale_status_note_key=$1`, [key]);
+    expect(await stored()).toEqual({ n: 'Giữ', k: key });
   });
   it('hides a pure next-customer hold on every sale channel until explicitly released', async () => {
     await db.exec(`INSERT INTO public.room_next_claims VALUES('${org}','${room}','LIVE');`);

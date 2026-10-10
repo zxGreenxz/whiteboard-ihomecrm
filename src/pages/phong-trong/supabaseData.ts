@@ -52,6 +52,8 @@ export interface RpcRoom {
   sale_note?: string | null;        // ô "Khuyến mãi" (promo riêng phòng, gửi khách được)
   sale_bonus_note?: string | null;  // ô "Thưởng sale" (nội bộ — KHÔNG gửi khách)
   room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
+  sale_status_note?: string | null; // chỉ get_my_available_rooms: TÌNH TRẠNG gõ tay còn hiệu lực
+  sale_fact_key?: string | null;    // chỉ get_my_available_rooms: khoá tình trạng tự tính hiện tại
   status_public: Exclude<RoomStatus, "locked">; // 'free' | 'soon' | 'rented' | 'pass' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
   sale_state?: string | null;
@@ -105,7 +107,7 @@ const payloadSchema = z.object({
     id: z.string(), building_id: z.string(), floor: z.number(), name: z.string(), code: nullableText,
     area: z.number().nullable(), rent_price: z.number().nullable(), deposit_amount: z.number().nullable().optional(),
     max_occupants: z.number().nullable(), amenities: z.unknown(), images: z.unknown(), description: nullableText,
-    sale_note: optionalText, sale_bonus_note: optionalText, room_type: optionalText,
+    sale_note: optionalText, sale_bonus_note: optionalText, room_type: optionalText, sale_status_note: optionalText, sale_fact_key: optionalText,
     status_public: z.enum(['free', 'soon', 'rented', 'pass']), avail_date: nullableText,
     sale_state: z.enum(['READY', 'NOTICE', 'NOTICE_OVERDUE', 'PREPARING', 'RENTED', 'PASS']).nullable().optional(),
     sale_today: optionalText, expected_ready_on: optionalText,
@@ -229,6 +231,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         description: rr.description || null,
         saleNote: rr.sale_note || null,
         saleBonus: options.includeInternal ? rr.sale_bonus_note || null : null,
+        saleStatusNote: options.includeInternal ? rr.sale_status_note?.trim() || null : null,
+        saleFactKey: options.includeInternal ? rr.sale_fact_key || null : null,
         passContactName: rr.pass_contact_name || null,
         passContactPhone: rr.pass_contact_phone || null,
         passSalePolicy: rr.pass_sale_policy || null,

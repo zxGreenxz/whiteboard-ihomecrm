@@ -17,7 +17,7 @@ import {EditRoomDialog} from '../EditRoomDialog';
 import {DeleteRoomDialog} from '../DeleteRoomDialog';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 import {toast} from 'sonner';
-const room:RoomWithRelations & Database['public']['Tables']['rooms']['Row']={id:'r1',building_id:'11111111-1111-4111-8111-111111111111',name:'P101',floor:1,rent_price:100,deposit_amount:100,status:'AVAILABLE',area:null,max_occupants:null,code:null,description:null,images:null,amenities:null,invoice_template_id:null,lease_template_id:null,created_at:'2026-09-30T00:00:00Z',updated_at:'2026-09-30T00:00:00Z',deleted_at:null,name_sort:null,organization_id:'org-a',room_type:null,sale_note:null,sale_bonus_note:null};
+const room:RoomWithRelations & Database['public']['Tables']['rooms']['Row']={id:'r1',building_id:'11111111-1111-4111-8111-111111111111',name:'P101',floor:1,rent_price:100,deposit_amount:100,status:'AVAILABLE',area:null,max_occupants:null,code:null,description:null,images:null,amenities:null,invoice_template_id:null,lease_template_id:null,created_at:'2026-09-30T00:00:00Z',updated_at:'2026-09-30T00:00:00Z',deleted_at:null,name_sort:null,organization_id:'org-a',room_type:null,sale_note:null,sale_bonus_note:null,sale_status_note:null,sale_status_note_key:null};
 vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}});
 afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();io.sourceError=false;});
 it('delete failure keeps the alert dialog open and never emits a second success',async()=>{

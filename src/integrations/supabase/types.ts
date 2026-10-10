@@ -17274,6 +17274,8 @@ export type Database = {
           room_type: string | null
           sale_bonus_note: string | null
           sale_note: string | null
+          sale_status_note: string | null
+          sale_status_note_key: string | null
           status: Database["public"]["Enums"]["room_status"]
           updated_at: string
         }
@@ -17299,6 +17301,8 @@ export type Database = {
           room_type?: string | null
           sale_bonus_note?: string | null
           sale_note?: string | null
+          sale_status_note?: string | null
+          sale_status_note_key?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
         }
@@ -17324,6 +17328,8 @@ export type Database = {
           room_type?: string | null
           sale_bonus_note?: string | null
           sale_note?: string | null
+          sale_status_note?: string | null
+          sale_status_note_key?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
         }
@@ -24246,6 +24252,8 @@ export type Database = {
           room_type: string | null
           sale_bonus_note: string | null
           sale_note: string | null
+          sale_status_note: string | null
+          sale_status_note_key: string | null
           status: Database["public"]["Enums"]["room_status"]
           updated_at: string
         }[]

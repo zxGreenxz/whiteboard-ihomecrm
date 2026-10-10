@@ -76,8 +76,15 @@ function trimDate(d: string): string {
     .join("/");
 }
 
-/** Cột TÌNH TRẠNG. Phòng khách pass mang thêm dòng liên hệ của khách. */
+/** Cột TÌNH TRẠNG. Chữ gõ tay ở Cài đặt hiển thị thắng chữ tự tính; phòng khách pass mang thêm dòng liên hệ của khách. */
 export function statusLines(r: Room): string[] {
+  const typed = salePolicyLines(r.saleStatusNote);
+  if (typed.length) return typed.map((l) => l.toLocaleUpperCase("vi-VN"));
+  return autoStatusLines(r);
+}
+
+/** Cột TÌNH TRẠNG tự tính từ hợp đồng/sale facts — gợi ý khi ô gõ tay để trống. */
+export function autoStatusLines(r: Room): string[] {
   if (r.saleFact && r.status !== 'pass') return [r.saleFact.label.toLocaleUpperCase('vi-VN')];
   if (r.status === "soon") {
     return [r.availDate ? `${trimDate(r.availDate)} TRỐNG` : "SẮP TRỐNG"];

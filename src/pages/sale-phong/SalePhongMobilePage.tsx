@@ -111,9 +111,15 @@ export default function SalePhongMobilePage() {
             </div>
             {openTab && headerAction && (
               <div className="mtop-act">
-                <button className="mtop-btn solid" onClick={headerAction.onClick}>
-                  <Plus />{headerAction.label}
-                </button>
+                {headerAction.iconOnly ? (
+                  <button className="mback" aria-label={headerAction.label} title={headerAction.label} onClick={headerAction.onClick}>
+                    {headerAction.icon ? <headerAction.icon /> : <Plus />}
+                  </button>
+                ) : (
+                  <button className="mtop-btn solid" onClick={headerAction.onClick}>
+                    {headerAction.icon ? <headerAction.icon /> : <Plus />}{headerAction.label}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -200,7 +206,7 @@ function renderTab(key: TabKey, setHeaderAction: (a: HeaderAction | null) => voi
     case 'tokens':
       return <MobileShareTokens onHeaderAction={setHeaderAction} />;
     case 'settings':
-      return <MobileDisplaySettings />;
+      return <MobileDisplaySettings onHeaderAction={setHeaderAction} />;
     case 'images':
       return <MobileSaleInfo />;
     case 'pass':

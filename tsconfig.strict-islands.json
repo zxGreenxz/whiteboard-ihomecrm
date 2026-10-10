@@ -543,6 +543,7 @@
     "src/components/sale-phong/mobile/types.ts",
     "src/components/sale-phong/roomListSheetDraft.ts",
     "src/components/sale-phong/usePublicRoomSettingsDraft.ts",
+    "src/components/sale-phong/useRoomListSheetDraft.ts",
     "src/components/service-quotas/CreateQuotaDialog.tsx",
     "src/components/service-quotas/DeleteQuotaDialog.tsx",
     "src/components/service-quotas/EditQuotaDialog.tsx",

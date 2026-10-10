@@ -12,6 +12,8 @@ const files = [
 const lockSql = readFileSync('supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql', 'utf8');
 // Nối tiếp: chỉ đổi câu báo của list_room_sale_locks_v1 (gate khoá-trong-hàm-STABLE báo nhầm).
 const lockListMessageSql = readFileSync('supabase/migrations/20261010124153_list_room_sale_locks_cau_bao.sql', 'utf8');
+// Reader trong app hiện hành: chép nguyên bản lock tạm, chỉ thêm cột Tình trạng gõ tay.
+const statusNoteSql = readFileSync('supabase/migrations/20261010160612_room_sale_status_note.sql', 'utf8');
 const org = '00000000-0000-4000-8000-000000000001';
 const actor = '00000000-0000-4000-8000-000000000002';
 const room = '00000000-0000-4000-8000-000000000003';
@@ -113,6 +115,7 @@ beforeAll(async () => {
   await db.exec(lockListMessageSql);
   await db.exec(lockSql);
   await db.exec(lockListMessageSql);
+  await db.exec(statusNoteSql);
 }, 30000);
 beforeEach(async () => {
   await db.exec(`RESET ROLE;SELECT set_config('test.actor','',false);SELECT set_config('test.deny_keys','',false);SELECT set_config('test.denied','',false);

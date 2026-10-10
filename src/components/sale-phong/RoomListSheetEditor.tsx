@@ -4,13 +4,14 @@ import { Smartphone } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { buildRoomListTable, GROUP_BG, samePhone, type LiftKind } from "@/pages/phong-trong/roomListTable";
+import { autoStatusLines, buildRoomListTable, GROUP_BG, samePhone, type LiftKind } from "@/pages/phong-trong/roomListTable";
 import type { Building, Room } from "@/pages/phong-trong/sampleData";
 import { SALE_POLICY_MAX } from "@/lib/publicRoomFeedback";
 import { sheetKey } from "@/hooks/useSaveRoomListSheet";
 import {
-  applySheetDraft, ownPhone, ROOM_POLICY_MAX,
-  type HotlineOption, type SheetEdits,
+  amenitiesFallback, formatPriceInput, ownPhone, parseTypeCell, priceEditable, roomCellValue,
+  ROOM_AMENITIES_MAX, ROOM_POLICY_MAX, ROOM_STATUS_MAX, ROOM_TYPE_MAX,
+  type HotlineOption, type RoomField, type SheetEdits,
 } from "./roomListSheetDraft";
 
 const NONE = "__none__"; // Select không nhận value="" → sentinel cho "Mặc định"
@@ -22,6 +23,13 @@ const CELL = "px-2 py-1.5 text-center align-middle";
 const INPUT =
   "w-full rounded-sm border border-dashed border-neutral-400 bg-white px-1.5 py-1 text-center text-[13px] text-neutral-900 " +
   "placeholder:font-normal placeholder:text-neutral-400 focus:border-solid focus:border-primary focus:outline-none aria-[invalid=true]:border-destructive";
+
+const FIELD_SPEC: Record<RoomField, { label: string; placeholder: string; max: number; className: string }> = {
+  price: { label: "Giá", placeholder: "Giá (VND)", max: 13, className: "font-bold" },
+  type: { label: "Loại phòng", placeholder: "VD: Phòng 20m², ban công", max: ROOM_TYPE_MAX + 20, className: "" },
+  amenities: { label: "Nội thất", placeholder: "VD: máy lạnh, tủ lạnh", max: ROOM_AMENITIES_MAX, className: "" },
+  status: { label: "Tình trạng", placeholder: "", max: ROOM_STATUS_MAX, className: "font-bold" },
+};
 
 /** Icon thang — cùng hình với icon vẽ trên ảnh. */
 function LiftGlyph({ kind }: { kind: LiftKind }) {
@@ -40,6 +48,8 @@ function LiftGlyph({ kind }: { kind: LiftKind }) {
 export interface RoomListSheetEditorProps {
   /** Dữ liệu đang lưu (get_my_available_rooms) — nguồn giá trị ban đầu của các ô. */
   buildings: Building[];
+  /** Building[] như thể các ô đang gõ đã lưu (applySheetDraft) — bảng dựng từ đây như ảnh. */
+  preview: Building[];
   hotlines: HotlineOption[];
   hotlineId: string | null;
   onHotlineChange: (id: string | null) => void;
@@ -51,7 +61,9 @@ export interface RoomListSheetEditorProps {
   edits: SheetEdits;
   onPhoneChange: (buildingId: string, value: string) => void;
   onPolicyChange: (roomId: string, value: string) => void;
-  /** Lỗi theo name ô: hotline_phone, hotline_id, sale_policy, phone:<id>, policy:<id>. */
+  /** Ô giá / loại phòng / nội thất / tình trạng của phòng. */
+  onRoomFieldChange: (field: RoomField, roomId: string, value: string) => void;
+  /** Lỗi theo name ô: hotline_phone, hotline_id, sale_policy, phone:<id>, policy|price|type|amenities|status:<id>. */
   errors: Record<string, string>;
   disabled?: boolean;
 }
@@ -62,13 +74,9 @@ export interface RoomListSheetEditorProps {
  * Bảng dựng bằng chính buildRoomListTable của ảnh nên thấy gì ở đây thì ảnh ra đúng thế.
  */
 export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
-  const { buildings, hotlines, hotlineId, salePolicy, edits, errors, disabled } = props;
+  const { buildings, preview, hotlines, hotlineId, salePolicy, edits, errors, disabled } = props;
   const hotlinePhone = props.hotlinePhone.trim();
 
-  const preview = useMemo(
-    () => applySheetDraft(buildings, { hotline: hotlinePhone, salePolicy, edits }),
-    [buildings, hotlinePhone, salePolicy, edits],
-  );
   const table = useMemo(() => buildRoomListTable(preview), [preview]);
   const byBuilding = useMemo(() => new Map(buildings.map((b) => [b.id, b])), [buildings]);
   const byRoom = useMemo(() => new Map<string, Room>(buildings.flatMap((b) => b.rooms.map((r) => [r.id, r]))), [buildings]);
@@ -76,6 +84,33 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
 
   const errorText = (name: string) =>
     errors[name] ? <p id={`${name}-error`} role="alert" className="mt-1 text-xs font-normal text-destructive">{errors[name]}</p> : null;
+
+  /** Ô giá / loại phòng / nội thất / tình trạng — lưu thẳng vào phòng. */
+  const fieldInput = (room: Room, code: string, field: RoomField) => {
+    const spec = FIELD_SPEC[field];
+    const name = sheetKey.field(field, room.id);
+    const value = roomCellValue(room, field, edits);
+    const typed = field === "type" && edits.types[room.id] !== undefined;
+    return (
+      <>
+        <input
+          name={name} type="text" inputMode={field === "price" ? "numeric" : undefined} disabled={disabled}
+          aria-label={`${spec.label} phòng ${code}`} maxLength={spec.max}
+          value={value}
+          onChange={(e) => props.onRoomFieldChange(field, room.id, field === "price" ? formatPriceInput(e.target.value) : e.target.value)}
+          placeholder={field === "status" ? autoStatusLines(room).join(" · ")
+            : field === "amenities" && amenitiesFallback(room) ? `Đang in mô tả: ${amenitiesFallback(room)}` : spec.placeholder}
+          title={field === "status" ? "Để trống thì tự tính theo hợp đồng" : undefined}
+          aria-invalid={!!errors[name]} aria-describedby={errors[name] ? `${name}-error` : undefined}
+          className={`${INPUT} ${spec.className}`}
+        />
+        {typed && room.area > 0 && parseTypeCell(value).area === null && (
+          <p className="mt-0.5 text-[11px] font-normal text-neutral-600">Không thấy "Phòng Nm²" — giữ diện tích {room.area}m²</p>
+        )}
+        {errorText(name)}
+      </>
+    );
+  };
 
   return (
     <div className="overflow-x-auto rounded-md border" data-testid="room-list-sheet">
@@ -198,7 +233,14 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                     </td>
                   )}
                   <td className={`${CELL} font-bold`} style={{ border: LINE }}>{row.code}</td>
-                  <td className={`${CELL} font-bold`} style={{ border: LINE }}>{row.price}</td>
+                  <td className={`${CELL} font-bold`} style={{ border: LINE }}>
+                    {room && priceEditable(room) ? fieldInput(room, row.code, "price") : (
+                      <>
+                        {row.price}
+                        {room?.status === "pass" && <p className="mt-0.5 text-[11px] font-normal text-neutral-600">Giá khách pass — sửa ở Khách nhờ sale</p>}
+                      </>
+                    )}
+                  </td>
                   <td className={CELL} style={{ border: LINE }}>
                     <label className="sr-only" htmlFor={`sheet-${policyName}`}>Chính sách sale phòng {row.code}</label>
                     <textarea
@@ -211,10 +253,10 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                     />
                     {errorText(policyName)}
                   </td>
-                  <td className={CELL} style={{ border: LINE }}>{row.type}</td>
-                  <td className={CELL} style={{ border: LINE }}>{row.amenities}</td>
+                  <td className={CELL} style={{ border: LINE }}>{room ? fieldInput(room, row.code, "type") : row.type}</td>
+                  <td className={CELL} style={{ border: LINE }}>{room ? fieldInput(room, row.code, "amenities") : row.amenities}</td>
                   <td className={`${CELL} font-bold`} style={{ border: LINE }}>
-                    {row.status.map((s) => <div key={s}>{s}</div>)}
+                    {room ? fieldInput(room, row.code, "status") : row.status.map((s) => <div key={s}>{s}</div>)}
                   </td>
                 </tr>
               );

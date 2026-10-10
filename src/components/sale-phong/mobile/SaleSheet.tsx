@@ -7,11 +7,13 @@ import { createPortal } from "react-dom";
  * chạm backdrop hoặc nhấn Escape.
  */
 export default function SaleSheet({
-  open, onClose, children,
+  open, onClose, children, footer,
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** Vùng nút dính đáy sheet, không cuộn theo nội dung. */
+  footer?: React.ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -28,9 +30,10 @@ export default function SaleSheet({
   return createPortal(
     <>
       <div className="sp-backdrop" onClick={onClose} />
-      <div className="sp-sheet" role="dialog" aria-modal="true">
+      <div className={"sp-sheet" + (footer ? " has-foot" : "")} role="dialog" aria-modal="true">
         <div className="grip"><span /></div>
         <div className="sp-sheet-body">{children}</div>
+        {footer && <div className="sp-sheet-foot">{footer}</div>}
       </div>
     </>,
     host,

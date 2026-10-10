@@ -46,9 +46,13 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
   - **Chính sách sale chung** (khối trên đầu): mỗi dòng một ý — tự ghi cả giá điện, nước, phí dịch vụ, nội quy; ảnh in đúng các dòng này.
   - **SĐT riêng** trong ô địa chỉ của từng nhà: chỉ điền khi nhà đó dùng số khác hotline — ảnh sẽ in số này kèm icon điện thoại trong ô địa chỉ. Để trống là dùng hotline chung.
   - **Chính sách sale** từng phòng đang trống: in chữ đỏ ở cột **CHÍNH SÁCH SALE** và hiện thành dòng **Khuyến mãi** trên trang công khai.
+  - **Giá**, **Loại phòng**, **Nội thất** từng phòng: lưu là sửa thẳng dữ liệu phòng (cùng chỗ với màn sửa phòng). Ô **Loại phòng** gõ như ảnh in, ví dụ `Phòng 20m², ban công` — phần `Phòng 20m²` thành diện tích, phần còn lại thành loại phòng; không có cụm `Phòng …m²` thì diện tích giữ nguyên. Ô **Nội thất** phân cách bằng dấu phẩy; để trống thì ảnh in mô tả phòng (hiện mờ trong ô). Phòng **khách pass** lấy giá khách đặt, sửa ở tab **Khách nhờ sale**.
+  - **Tình trạng** từng phòng: để trống thì tự tính theo hợp đồng (**TRỐNG SẴN**, **1/8 TRỐNG**…); gõ chữ thì ảnh in đúng chữ đó (viết hoa). Chữ gõ tay chỉ còn hiệu lực khi tình trạng tự tính vẫn như lúc gõ: khách vào/ra hay giữ chỗ cọc thì chữ tự xoá; gia hạn hay đổi ngày trả phòng, bật/tắt tin pass, phòng sửa xong… thì chữ cũ tự ẩn — ảnh quay về chữ tự tính. Chỉ ảnh và bảng dùng chữ này; trang công khai vẫn hiện trạng thái tự tính.
   - Địa chỉ trong ảnh tự rút tới phường (phường đánh số giữ thêm quận), bỏ thành phố; loại thang in cùng dòng kèm icon.
 
 Ấn **Tải ảnh xem trước** để tải ảnh theo đúng nội dung đang nhập (chưa cần lưu). Ấn **Lưu cài đặt** để lưu tất cả.
+
+Trên điện thoại (màn **Quản lý** => **Cài đặt hiển thị**), bảng này là danh sách thẻ theo từng nhà: nút điện thoại ở mỗi nhà đặt **SĐT riêng**; mỗi phòng có giá (**chạm 2 lần** để sửa) và 4 tab **Chính sách / Loại phòng / Nội thất / Tình trạng** (chấm xanh là tab đã điền). Nút sao chép cạnh ô chính sách chép chính sách sang các phòng khác — mặc định bổ sung xuống dòng dưới, bật **Thay thế chính sách cũ** thì ghi đè. Số ngày "sắp trống", hotline chung, chính sách chung và công tắc phòng đã thuê nằm sau **nút bánh răng** trên thanh tiêu đề.
 
 ![Tab Cài đặt hiển thị: Số ngày báo sắp trống, Hotline hiển thị, công tắc Hiển thị phòng đã thuê và nút Lưu cài đặt](./images/buoc-02-cai-dat-hien-thi.webp)
 

@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1332,
+  "tongSoFileTest": 1334,
   "soFileDocBangFs": 299,
-  "tongLoiGoi": 660,
+  "tongLoiGoi": 662,
   "khongPhanLoaiDuoc": 302,
   "theoLoai": {
     "ma-nguon": {
@@ -416,6 +416,22 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/roomSaleLockMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/salaryCompletionDate.test.ts",
       "soGoi": 4,
       "loai": {
@@ -603,22 +619,6 @@
     },
     {
       "file": "src/lib/__tests__/rentSupportPayoutMigration.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/roomSaleLockMigration.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/roomSaleMigration.test.ts",
       "soGoi": 3,
       "loai": {
         "sql": 3

@@ -29,14 +29,16 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 
 import DisplaySettingsTab from "../DisplaySettingsTab";
 import { RoomListSheetSaveError } from "@/hooks/useSaveRoomListSheet";
-import { applySheetDraft, effectiveHotline, ownPhone, sheetChanges, sheetErrors } from "../roomListSheetDraft";
+import {
+  applySheetDraft, effectiveHotline, EMPTY_SHEET_EDITS, formatPriceInput, ownPhone, parseTypeCell, sheetChanges, sheetErrors,
+} from "../roomListSheetDraft";
 import { buildRoomListTable } from "@/pages/phong-trong/roomListTable";
 
 const HOT = "0923 889 880";
 const room = (over: Partial<Room>): Room => ({
   id: "r1", no: 502, code: "502", buildingId: "b1", buildingName: "102LVT", buildingArea: "", buildingAddr: "",
   floor: 5, type: "", price: 4, area: 20, status: "free", amenities: [], availDate: null, imgCount: 0, phClass: "",
-  x: 0, y: 0, w: 0, h: 0, ...over,
+  saleFactKey: "fact-key", x: 0, y: 0, w: 0, h: 0, ...over,
 });
 const building = (over: Partial<Building>): Building => ({
   id: "b1", code: "", name: "102LVT", area: "", district: "", manager: "admin ihome+", phone: HOT, hotline: HOT, salePolicy: "",
@@ -72,7 +74,7 @@ describe("roomListSheetDraft (thuần)", () => {
 
   it("đổi hotline: tòa đang lưu số = hotline cũ thì ảnh in số đó (khớp ảnh thật sau khi lưu)", () => {
     const t = buildRoomListTable(applySheetDraft([building({ phone: HOT, contactPhone: HOT })], {
-      hotline: "0999 999 999", salePolicy: "", edits: { phones: {}, policies: {} },
+      hotline: "0999 999 999", salePolicy: "", edits: { ...EMPTY_SHEET_EDITS },
     }));
     expect(t.groups[0].phone).toBe(HOT);
   });
@@ -80,7 +82,7 @@ describe("roomListSheetDraft (thuần)", () => {
   it("bản nháp chạy qua đúng bảng của ảnh: hotline mới, SĐT riêng, chính sách", () => {
     const preview = applySheetDraft(data(), {
       hotline: "0999 999 999", salePolicy: "Nước 100k/người",
-      edits: { phones: { b2: "" }, policies: { r1: " Giảm 300k " } },
+      edits: { ...EMPTY_SHEET_EDITS, phones: { b2: "" }, policies: { r1: " Giảm 300k " } },
     });
     const t = buildRoomListTable(preview);
     expect(t.contactLines).toEqual(["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", "0999 999 999"]);
@@ -90,9 +92,9 @@ describe("roomListSheetDraft (thuần)", () => {
   });
 
   it("chỉ ghi ô khác giá trị đang lưu; gõ lại như cũ thì không ghi", () => {
-    const changes = sheetChanges(data(), { phones: { b1: "", b2: " 0708 882 357 " }, policies: { r1: "", r2: "Giảm 500k" } });
+    const changes = sheetChanges(data(), { ...EMPTY_SHEET_EDITS, phones: { b1: "", b2: " 0708 882 357 " }, policies: { r1: "", r2: "Giảm 500k" } });
     expect(changes).toEqual({ buildings: [], rooms: [{ id: "r2", saleNote: "Giảm 500k" }] });
-    expect(sheetChanges(data(), { phones: { b2: "" }, policies: { r2: "" } }))
+    expect(sheetChanges(data(), { ...EMPTY_SHEET_EDITS, phones: { b2: "" }, policies: { r2: "" } }))
       .toEqual({ buildings: [{ id: "b2", phone: null }], rooms: [{ id: "r2", saleNote: null }] });
   });
 
@@ -101,6 +103,53 @@ describe("roomListSheetDraft (thuần)", () => {
     expect(sheetErrors({ buildings: [{ id: "b1", phone: "((((....))))" }], rooms: [] })).toHaveProperty("phone:b1");
     expect(sheetErrors({ buildings: [{ id: "b1", phone: "(028) 3812 3456" }], rooms: [] })).toEqual({});
     expect(sheetErrors({ buildings: [{ id: "b1", phone: "+84 901.234.567" }, { id: "b2", phone: null }], rooms: [] })).toEqual({});
+  });
+
+  it("ô Loại phòng: tách \"Nm²\" ra diện tích, phần còn lại là loại phòng; không có thì giữ diện tích", () => {
+    expect(parseTypeCell("Phòng 20m², Ban công")).toEqual({ area: 20, roomType: "Ban công" });
+    expect(parseTypeCell("Gác, phòng 25,5 m2 , cửa sổ")).toEqual({ area: 25.5, roomType: "Gác, cửa sổ" });
+    expect(parseTypeCell("Gác 6m2")).toEqual({ area: null, roomType: "Gác 6m2" }); // m² đứng riêng là chữ của loại phòng
+    expect(parseTypeCell("Studio")).toEqual({ area: null, roomType: "Studio" });
+    expect(parseTypeCell("Phòng 30m²")).toEqual({ area: 30, roomType: "" });
+    expect(formatPriceInput("4500000đ")).toBe("4.500.000");
+    expect(formatPriceInput("abc")).toBe("");
+  });
+
+  it("giá/loại/nội thất/tình trạng: chỉ ghi cột đổi thật, phòng khách pass không sửa giá", () => {
+    const rooms = [
+      building({ rooms: [room({ type: "Ban công", amenities: ["Máy lạnh"] }), room({ id: "rp", code: "P9", status: "pass", price: 3 })] }),
+    ];
+    const edits = {
+      ...EMPTY_SHEET_EDITS,
+      prices: { r1: "4.800.000", rp: "9.000.000" },
+      types: { r1: "Phòng 20m², Gác" },          // diện tích giữ nguyên 20 → chỉ ghi loại phòng
+      amenities: { r1: "Máy lạnh, Tủ lạnh" },
+      statuses: { r1: " 1/11 trống " },
+    };
+    expect(sheetChanges(rooms, edits).rooms).toEqual([
+      { id: "r1", rentPrice: 4800000, roomType: "Gác", amenities: ["Máy lạnh", "Tủ lạnh"], saleStatusNote: "1/11 trống", saleStatusKey: "fact-key" },
+    ]);
+    // Gõ lại đúng chữ đang in thì không ghi gì.
+    expect(sheetChanges(rooms, { ...EMPTY_SHEET_EDITS, prices: { r1: "4.000.000" }, types: { r1: "Phòng 20m², Ban công" },
+      amenities: { r1: "Máy lạnh" }, statuses: { r1: "" } }).rooms).toEqual([]);
+    // Xoá trống giá bị chặn; diện tích đổi thì ghi diện tích.
+    const cleared = sheetChanges(rooms, { ...EMPTY_SHEET_EDITS, prices: { r1: "" }, types: { r1: "Phòng 22m², Ban công" } });
+    expect(cleared.rooms).toEqual([{ id: "r1", rentPrice: null, area: 22 }]);
+    expect(sheetErrors(cleared)).toHaveProperty("price:r1");
+  });
+
+  it("ảnh in đúng ô đang gõ: giá mới, loại phòng, nội thất, tình trạng gõ tay viết hoa", () => {
+    const preview = applySheetDraft([building({ rooms: [room({ status: "soon", availDate: "01/11" })] })], {
+      hotline: HOT, salePolicy: "",
+      edits: { ...EMPTY_SHEET_EDITS, prices: { r1: "4.800.000" }, types: { r1: "Gác, Phòng 25m2" }, amenities: { r1: "Tủ lạnh" }, statuses: { r1: "Trống từ 5/11" } },
+    });
+    const [row] = buildRoomListTable(preview).groups[0].rows;
+    expect(row).toMatchObject({ price: "4.800.000", type: "Phòng 25m², Gác", amenities: "Tủ lạnh", status: ["TRỐNG TỪ 5/11"] });
+    // Để trống tình trạng → quay về chữ tự tính.
+    const auto = applySheetDraft([building({ rooms: [room({ status: "soon", availDate: "01/11", saleStatusNote: "Cũ" })] })], {
+      hotline: HOT, salePolicy: "", edits: { ...EMPTY_SHEET_EDITS, statuses: { r1: "" } },
+    });
+    expect(buildRoomListTable(auto).groups[0].rows[0].status).toEqual(["1/11 TRỐNG"]);
   });
 });
 
@@ -214,5 +263,38 @@ describe("DisplaySettingsTab — bảng phòng trống", () => {
     expect((policy as HTMLTextAreaElement).value).toBe("Giảm 300k");
     expect((screen.getByRole("textbox", { name: /SĐT riêng của nhà 102\/30/ }) as HTMLInputElement).value).toBe("");
     expect(document.body.textContent).not.toContain("SQL_PRIVATE");
+  });
+
+  it("sửa giá, loại phòng, nội thất, tình trạng ngay trên bảng rồi Lưu → ghi thẳng vào phòng", async () => {
+    view();
+    const price = screen.getByRole("textbox", { name: "Giá phòng 502" }) as HTMLInputElement;
+    expect(price.value).toBe("4.000.000");
+    fireEvent.change(price, { target: { value: "4800000" } });
+    expect(price.value).toBe("4.800.000");
+    fireEvent.change(screen.getByRole("textbox", { name: "Loại phòng phòng 502" }), { target: { value: "Phòng 25m², Gác" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Nội thất phòng 502" }), { target: { value: "Máy lạnh, tủ lạnh" } });
+    const status = screen.getByRole("textbox", { name: "Tình trạng phòng 502" }) as HTMLInputElement;
+    expect(status.value).toBe("");
+    expect(status.placeholder).toBe("TRỐNG SẴN");
+    expect(status.title).toBe("Để trống thì tự tính theo hợp đồng");
+    fireEvent.change(status, { target: { value: "Trống từ 5/11" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
+    await waitFor(() => expect(m.sheetSave).toHaveBeenCalledOnce());
+    expect(m.sheetSave).toHaveBeenCalledWith({ buildings: [], rooms: [
+      { id: "r1", rentPrice: 4800000, area: 25, roomType: "Gác", amenities: ["Máy lạnh", "tủ lạnh"], saleStatusNote: "Trống từ 5/11", saleStatusKey: "fact-key" },
+    ] });
+  });
+
+  it("xoá trống giá → báo tại ô, không ghi; phòng khách pass không có ô giá", async () => {
+    m.rooms = query([building({ rooms: [room({}), room({ id: "rp", code: "P9", status: "pass", price: 3 })] })]);
+    view();
+    expect(screen.queryByRole("textbox", { name: "Giá phòng P9" })).toBeNull();
+    expect(screen.getByText("Giá khách pass — sửa ở Khách nhờ sale")).toBeTruthy();
+    const price = screen.getByRole("textbox", { name: "Giá phòng 502" });
+    fireEvent.change(price, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu cài đặt" }));
+    await waitFor(() => expect(price.getAttribute("aria-invalid")).toBe("true"));
+    expect(m.save).not.toHaveBeenCalled();
+    expect(m.sheetSave).not.toHaveBeenCalled();
   });
 });

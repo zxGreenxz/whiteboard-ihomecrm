@@ -42,6 +42,8 @@ export interface Room extends Box {
   description?: string | null; // mô tả/ghi chú phòng (vd "cửa sổ hành lang", "ban công")
   saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng, gửi khách được)
   saleBonus?: string | null;   // ô "Thưởng sale" (nội bộ — KHÔNG đưa vào text gửi khách)
+  saleStatusNote?: string | null; // TÌNH TRẠNG gõ tay cho ảnh "Danh sách phòng trống" (null = tự tính; chỉ reader trong app)
+  saleFactKey?: string | null;    // khoá tình trạng tự tính hiện tại — lưu kèm chữ gõ tay để chữ tự hết hiệu lực khi tình trạng đổi
   // Phòng "khách nhờ sale / pass" (status === "pass"): liên hệ + chính sách là CỦA KHÁCH
   passContactName?: string | null;
   passContactPhone?: string | null;
