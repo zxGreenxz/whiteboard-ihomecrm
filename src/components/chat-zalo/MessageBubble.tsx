@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
 import { EMERALD } from './zaloTheme';
 import MessageActions from './MessageActions';
+import ZaloCardView from './ZaloCardView';
 import type { ZaloMessage, MsgTick } from './types';
 
 export interface MsgActionProps {
@@ -52,7 +53,10 @@ export default function MessageBubble({ m, onReact, onRecall, onShare, onReply, 
   const out = m.dir === 'out';
   const [hover, setHover] = useState(false);
   const canAct = (!!m.id && (!!onReact || !!onRecall || !!onReply || !!onDelete)) || !!onShare;
-  const bubbleStyle = out
+  const bubbleStyle = m.card
+    // Thẻ luôn nền trắng kể cả tin gửi đi: ảnh xem trước và chữ xám không đọc được trên nền xanh.
+    ? { background: '#fff', border: '1px solid hsl(210 20% 86%)', borderRadius: out ? '16px 16px 4px 16px' : '16px 16px 16px 4px', overflow: 'hidden', maxWidth: 300 }
+    : out
     ? { background: EMERALD, color: '#fff', padding: '10px 14px', borderRadius: '16px 16px 4px 16px', fontSize: 13.5, lineHeight: 1.5, boxShadow: '0 1px 2px rgba(16,40,30,.12)' as const }
     : { background: '#fff', border: '1px solid hsl(210 20% 89%)', color: 'hsl(160 30% 14%)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 13.5, lineHeight: 1.5 };
 
@@ -77,7 +81,7 @@ export default function MessageBubble({ m, onReact, onRecall, onShare, onReply, 
               <div style={{ fontSize: 12, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reply.text}</div>
             </div>
           )}
-          {highlightText(m.text || '', highlightTerm)}
+          {m.card ? <ZaloCardView card={m.card} /> : highlightText(m.text || '', highlightTerm)}
         </div>
         {m.react && (
           <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', margin: out ? '4px 8px 0 0' : '4px 0 0 8px' }}>

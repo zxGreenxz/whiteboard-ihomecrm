@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2507,
-    "catalogFunctions": 1266,
+    "sourceCallSites": 2513,
+    "catalogFunctions": 1267,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 369,
+    "calledRpcs": 370,
     "byRisk": {
-      "normal": 267,
+      "normal": 268,
       "financial": 102
     },
-    "securityDefiner": 351
+    "securityDefiner": 352
   },
   "missingOnServer": [],
   "rpcs": {
@@ -7261,6 +7261,26 @@
       ],
       "callers": [
         "src/hooks/chat-zalo/useZaloCrmProfile.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_worker_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
       ],
       "risk": "normal"
     }

@@ -23,11 +23,14 @@ interface Props {
   onConnectNew: () => void;
   onReconnect: (id: string) => void;
   onDisconnect: (id: string) => void;
+  /** Worker không còn nhịp tim: tài khoản 'connected' thực ra không ai giữ phiên. */
+  workerOffline?: boolean;
 }
 
-function Dot({ status }: { status: AccountStatus }) {
-  const s = STATUS[status] || STATUS.disconnected;
-  return <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.dot, flex: 'none' }} />;
+const MAT_KET_NOI = { dot: 'hsl(0 84% 60%)', label: 'Mất kết nối (worker dừng)' };
+
+function Dot({ color }: { color: string }) {
+  return <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, flex: 'none' }} />;
 }
 
 function Box({ on }: { on: boolean }) {
@@ -39,14 +42,19 @@ function Box({ on }: { on: boolean }) {
 }
 
 /** Thanh chọn/kết nối tài khoản Zalo — CHỌN NHIỀU tài khoản cùng lúc. */
-export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnly, onAll, onConnectNew, onReconnect, onDisconnect }: Props) {
+export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnly, onAll, onConnectNew, onReconnect, onDisconnect, workerOffline = false }: Props) {
   const [open, setOpen] = useState(false);
-  const connectedCount = accounts.filter((a) => a.status === 'connected').length;
+  // Chỉ nick cá nhân đi qua worker; tài khoản OA không phụ thuộc nó.
+  const hienThi = (a: ZaloAccount) =>
+    workerOffline && a.kind === 'personal' && a.status === 'connected' ? MAT_KET_NOI : (STATUS[a.status] || STATUS.disconnected);
+  const connectedCount = accounts.filter((a) => a.status === 'connected' && !(workerOffline && a.kind === 'personal')).length;
   const allSelected = accounts.length > 0 && selectedIds.length >= accounts.length;
   const single = selectedIds.length === 1 ? accounts.find((a) => a.id === selectedIds[0]) : null;
 
   const summaryTop = allSelected ? 'Tất cả tài khoản Zalo' : single ? single.name : `Đang xem ${selectedIds.length}/${accounts.length} tài khoản`;
-  const summarySub = allSelected ? `${connectedCount} tài khoản kết nối` : single ? (STATUS[single.status]?.label || '') : 'đã chọn';
+  const summarySub = allSelected
+    ? (workerOffline ? 'Zalo đang mất kết nối' : `${connectedCount} tài khoản kết nối`)
+    : single ? hienThi(single).label : 'đã chọn';
 
   return (
     <div style={{ padding: '10px 12px', borderBottom: '1px solid hsl(210 20% 93%)', background: 'hsl(152 35% 98%)' }}>
@@ -69,7 +77,7 @@ export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnl
 
           <div className="wz-scroll" style={{ maxHeight: 320, overflowY: 'auto' }}>
             {accounts.map((a) => {
-              const s = STATUS[a.status] || STATUS.disconnected;
+              const s = hienThi(a);
               const on = selectedIds.includes(a.id);
               return (
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8 }}>
@@ -79,7 +87,7 @@ export default function AccountSwitcher({ accounts, selectedIds, onToggle, onOnl
                   <ZaloAvatar url={a.avatarUrl} initials={(a.name || 'Z').slice(0, 2)} tone="emerald" size={30} fontSize={12} />
                   <button onClick={() => { onOnly(a.id); setOpen(false); }} title="Chỉ xem tài khoản này" style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                    <span style={{ fontSize: 11, color: 'hsl(210 10% 45%)', display: 'flex', alignItems: 'center', gap: 5 }}><Dot status={a.status} />{s.label}</span>
+                    <span style={{ fontSize: 11, color: 'hsl(210 10% 45%)', display: 'flex', alignItems: 'center', gap: 5 }}><Dot color={s.dot} />{s.label}</span>
                   </button>
                   {a.status === 'connected' ? (
                     <button title="Ngắt kết nối" onClick={() => onDisconnect(a.id)} style={{ flex: 'none', width: 28, height: 28, borderRadius: 7, border: '1px solid hsl(210 20% 88%)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'hsl(0 70% 50%)' }}>

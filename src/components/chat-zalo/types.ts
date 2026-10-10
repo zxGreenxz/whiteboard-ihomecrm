@@ -49,6 +49,16 @@ export interface ZaloProfile {
   tags?: ZaloTag[];
 }
 
+/** Thẻ Zalo (link có ảnh xem trước, danh thiếp) — worker ghi ở `media_meta.card` từ 10/2026. */
+export interface ZaloCard {
+  kind: 'link' | 'contact' | 'card';
+  title: string | null;
+  description: string | null;
+  /** chỉ http(s) — đã lọc ở worker lẫn web */
+  href: string | null;
+  thumb: string | null;
+}
+
 export interface ZaloMessage {
   /** id dòng DB (để thả reaction / thu hồi). Tin lạc quan chưa có id. */
   id?: string;
@@ -66,6 +76,8 @@ export interface ZaloMessage {
   imgTone?: string;
   /** metadata media: {duration_ms,size,mime,filename,width,height,...} */
   mediaMeta?: Record<string, unknown> | null;
+  /** tin dạng thẻ (đọc từ `mediaMeta.card`); null = tin chữ thường */
+  card?: ZaloCard | null;
   /** giờ HH:MM — tin hệ thống (type='sys') có thể bỏ trống */
   time?: string;
   /** ISO timestamp gốc — cho divider ngày + gom nhóm tin liên tiếp */

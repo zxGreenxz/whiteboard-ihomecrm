@@ -3,6 +3,18 @@
 > Tạm ngưng theo yêu cầu ngày 06/10/2026. Chỉ đọc khi người dùng yêu cầu mở lại
 > Zalo/Copilot; đây không phải context hoặc backlog phải xử lý của các tác vụ khác.
 
+## Zalo mở lại (10/10/2026)
+
+Chủ dự án yêu cầu chạy lại Chat Zalo: worker chuyển sang Docker trên VPS Minh
+([worker/README.md](../../worker/README.md)), thêm cảnh báo mất kết nối và hiển thị thẻ link,
+ảnh hết hạn. Chủ chốt không tải ảnh/video/file về, để máy chủ Zalo giữ.
+
+- Test đơn vị Zalo (`src/**/chat-zalo`, `worker/__tests__`) đã rút khỏi
+  `tooling/deferred-modules.json` và chạy lại trong runner thường.
+- `.e2e-fleet/specs/chat-zalo.spec.ts` vẫn hoãn: spec fleet cần fixture DEMO/TEST riêng,
+  và đổi spec fleet chặn promote.
+- Copilot (mục dưới) vẫn tạm ngưng nguyên trạng.
+
 Phát triển, tối ưu và các phép kiểm chuyên biệt được đưa ra khỏi luồng mặc định.
 Phần không chạy phải ghi là **tạm ngưng/chưa kiểm**, không tính là pass hoặc đủ bằng chứng phát hành.
 Việc này không xác nhận tình trạng production và không tắt tính năng đang chạy.

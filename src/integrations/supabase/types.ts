@@ -27756,6 +27756,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      zalo_worker_status_v1: { Args: never; Returns: Json }
     }
     Enums: {
       ai_message_role: "user" | "assistant" | "system"

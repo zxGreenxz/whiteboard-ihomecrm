@@ -144,12 +144,14 @@ describe("danh sách gate", () => {
   it("hoãn test chuyên biệt kể cả đường Windows, không mở rộng sang file kế bên", () => {
     for (const path of [
       "src/copilot/model.test.ts", "src/copilot/ui/chat.test.tsx",
-      "src\\hooks\\chat-zalo\\__tests__\\chat.test.ts",
-      "worker/__tests__/automation-runner.test.js",
+      "src\\copilot\\ui\\chat.test.tsx",
       "scripts/__tests__/check-copilot-routes.test.mjs",
       ".e2e-fleet/specs/chat-zalo.spec.ts",
     ]) expect(isDeferredTest(path), path).toBe(true);
     for (const path of [
+      // Zalo mở lại 10/10/2026: test đơn vị chạy lại, chỉ spec fleet chat-zalo còn hoãn.
+      "src\\hooks\\chat-zalo\\__tests__\\chat.test.ts",
+      "worker/__tests__/automation-runner.test.js",
       "src/copilot-other/chat.test.ts", "src/hooks/chat-zalo-other/chat.test.ts",
       "src/hooks/__tests__/OrganizationContext.test.ts",
       "src/lib/__tests__/copilotAuthorizedScopeRevocationMigration.test.ts",

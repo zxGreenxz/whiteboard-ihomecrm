@@ -36,14 +36,6 @@
     {
       "id": "zalo",
       "testPatterns": [
-        "src/components/chat-zalo/**/*.test.ts",
-        "src/components/chat-zalo/**/*.test.tsx",
-        "src/hooks/chat-zalo/**/*.test.ts",
-        "src/hooks/__tests__/zaloMediaFeedback.test.ts",
-        "src/hooks/__tests__/zaloActions.feedback.test.ts",
-        "worker/__tests__/auto-reply-*.test.js",
-        "worker/__tests__/automation-*.test.js",
-        "worker/__tests__/scope-guard.test.js",
         ".e2e-fleet/specs/chat-zalo.spec.ts"
       ],
       "gates": []

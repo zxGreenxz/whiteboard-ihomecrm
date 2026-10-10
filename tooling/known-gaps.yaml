@@ -279,3 +279,33 @@ gaps:
       Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); trong spec
       nhập Nội dung thanh lý, bỏ khẳng định ô "bổ sung sau", rồi chạy xanh trên TEST với fixture
       vòng đời hợp đồng.
+  - id: zalo-canh-gac-push-khong-gui-lai
+    where: >
+      supabase/migrations/20261009171352_zalo_canh_gac_worker.sql (app_private.zalo_canh_gac_tick_v1)
+    expires_at: 2026-12-31
+    why: >
+      Bộ canh gác worker Zalo (10/10/2026) báo chủ công ty qua chuông trong app và gọi send-push
+      qua pg_net. Ba chỗ chưa tự báo lỗi: (1) pg_net chỉ XẾP yêu cầu — send-push trả lỗi thì không
+      gửi lại, vì khoá idempotency đã dùng; request_id của lượt BÁO MỞ nằm ở push_request_ids của
+      sổ sự cố (lượt báo đóng không lưu) để đối chiếu net._http_response bằng tay — phải soát trong
+      thời gian pg_net còn giữ dòng phản hồi (pg_net.ttl, chưa đo trên project); (2) khe Vault của bộ nhắc hợp đồng bị đổi/xoá thì chỉ còn
+      chuông, lý do ghi ở cột loi_push chứ không ai được báo; (3) chính lượt cron lỗi lặp lại thì
+      chỉ thấy trong cron.job_run_details. Đo 10/10/2026: 2 chủ công ty nhận cảnh báo, 0 thiết bị
+      đã bật push — cảnh báo điện thoại chỉ tới khi chủ bấm "Bật thông báo" trong CRM.
+    exit_condition: >
+      Có đường soát định kỳ (verifier hoặc báo cáo) đọc net._http_response theo push_request_ids,
+      loi_push và cron.job_run_details của job zalo-canh-gac-5m, và báo khi có lỗi; hoặc chuyển
+      cảnh báo sang một edge function tự thử lại có nhật ký.
+  - id: zalo-tin-xep-hang-loi-khi-worker-khoi-dong
+    where: >
+      worker/lib/queue.js (nhánh "Tài khoản chưa kết nối") · worker/index.js (tick đầu sau khi khởi động)
+    expires_at: 2026-12-31
+    why: >
+      Review chéo PR #148 (10/10/2026): khi worker vừa khởi động lại (deploy, reboot, chuyển máy),
+      tick đầu gọi tryRelogin không chờ rồi xử lý hàng đợi ngay; job của tài khoản chưa kịp nối phiên
+      bị đánh FAILED "Tài khoản chưa kết nối". Tin người dùng xếp trong khe restart vì vậy thất bại
+      thay vì chờ. Băng cảnh báo trên web đã nói đúng "tin gửi lúc này sẽ không đi được", nhưng lỗi
+      gốc ở worker còn nguyên, kể cả khi restart nhanh không có băng nào hiện.
+    exit_condition: >
+      Worker trả job về hàng đợi kèm not_before (có trần số lần) khi tài khoản chưa disconnected mà
+      đang đăng nhập lại, chỉ đánh FAILED khi hết hạn chờ; có test cho cả hai nhánh.

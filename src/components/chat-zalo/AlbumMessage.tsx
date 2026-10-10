@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, ImageOff } from 'lucide-react';
+import { nhanMediaLoi } from '@/lib/zaloContent';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
@@ -21,7 +22,8 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
   const shown = items.slice(0, 4);
   const [s0, s1, s2] = shown;
   const extra = items.length - shown.length;
-  const caption = items.map((m) => m.text).find((t) => t && t.trim());
+  // "[Hình ảnh]" là nhãn worker ghi thay chú thích, không phải chữ người gửi.
+  const caption = items.map((m) => m.text).find((t) => t && t.trim() && t.trim() !== '[Hình ảnh]');
 
   const cell = (m: ZaloMessage, i: number, style: React.CSSProperties = {}) => (
     <AlbumCell key={m.id || i} m={m} onClick={() => m.id && onOpenLightbox?.(m.id)} overlay={i === 3 && extra > 0 ? `+${extra}` : undefined} style={style} />
@@ -79,6 +81,11 @@ function AlbumCell({ m, onClick, overlay, style }: { m: ZaloMessage; onClick: ()
     <button onClick={onClick} style={{ position: 'relative', border: '1px solid hsl(210 20% 86%)', borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer', background: 'hsl(210 20% 95%)', ...style }}>
       {url && !err ? (
         <img src={url} alt={m.label || 'Ảnh'} referrerPolicy="no-referrer" loading="lazy" onError={() => setErr(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : url && err ? (
+        <span title={nhanMediaLoi('image', m.mediaUrl)} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 50%)', fontSize: 10.5, fontWeight: 600, textAlign: 'center', padding: '0 6px' }}>
+          {/* Ô album nhỏ: chữ ngắn, câu đầy đủ ở tooltip. */}
+          <ImageOff size={20} strokeWidth={1.5} />{!overlay && 'Không mở được'}
+        </span>
       ) : (
         <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 55%)' }}><ImageIcon size={22} strokeWidth={1.5} /></span>
       )}

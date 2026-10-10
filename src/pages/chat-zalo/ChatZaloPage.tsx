@@ -12,6 +12,7 @@ import ConversationList from '@/components/chat-zalo/ConversationList';
 import ChatThread from '@/components/chat-zalo/ChatThread';
 import InfoPanel from '@/components/chat-zalo/InfoPanel';
 import AccountSwitcher from '@/components/chat-zalo/AccountSwitcher';
+import ZaloWorkerBanner from '@/components/chat-zalo/ZaloWorkerBanner';
 import ConnectZaloDialog from '@/components/chat-zalo/ConnectZaloDialog';
 import BroadcastDialog from '@/components/chat-zalo/BroadcastDialog';
 import ComposeNewDialog from '@/components/chat-zalo/ComposeNewDialog';
@@ -22,7 +23,7 @@ import type { FilterKey, RightTab, ZaloConversation, ZaloMessage } from '@/compo
 import {
   useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
-  useZaloAccounts, useRequestConnect, useDisconnectAccount,
+  useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
   useZaloLabels, useBroadcast,
 } from '@/hooks/useZaloChat';
@@ -42,6 +43,8 @@ export default function ChatZaloPage() {
   const { data: templates = [] } = useZaloTemplates();
   const accountsQuery = useZaloAccounts();
   const { data: accounts = [] } = accountsQuery;
+  // Nhịp tim worker: lỗi đọc (vd chưa áp migration) thì để undefined, không kết luận worker chết.
+  const { data: workerStatus } = useZaloWorkerStatus();
   const { data: labels = [] } = useZaloLabels();
   const { data: perms } = useMyPermissions();
   const broadcastMut = useBroadcast();
@@ -252,7 +255,9 @@ export default function ChatZaloPage() {
       onConnectNew={onConnectNew}
       onReconnect={onReconnect}
       onDisconnect={(id) => disconnect.mutate(id)}
+      workerOffline={workerStatus ? !workerStatus.online : false}
     />
+    <ZaloWorkerBanner status={workerStatus} accounts={accounts} onReconnect={(id) => { void onReconnect(id); }} />
     </QueryRegion>
   );
 

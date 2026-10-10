@@ -163,7 +163,17 @@ export async function tryRelogin(account) {
   const id = account.id;
   if (sessions.has(id) || loggingIn.has(id)) return;
   const payload = loadSession(id);
-  if (!payload) return; // chưa từng login trên máy này
+  if (!payload) {
+    // Máy này chưa từng đăng nhập nick này, vd vừa chuyển worker sang VPS mới. Để
+    // nguyên 'connected' thì web hiện chấm xanh dù không ai giữ phiên: báo thật, một lần.
+    if (account.status === 'connected') {
+      stateOf(id).gaveUp = true;
+      // loadSession trả null cả khi không đọc được file (EACCES…), nên câu này nói cả hai khả năng.
+      await setAccount(id, { status: 'error', last_error: 'Máy chạy worker chưa có (hoặc không đọc được) phiên của tài khoản này — bấm "Kết nối lại" để quét QR.' });
+      log('chưa có phiên trên máy này', id);
+    }
+    return;
+  }
   if (payload.corrupt) {
     // FAIL-CLOSED: không giải mã được (đổi key / hỏng file) — không đoán.
     stateOf(id).gaveUp = true;
