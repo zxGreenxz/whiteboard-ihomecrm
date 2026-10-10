@@ -10,7 +10,7 @@ import type { Building } from "./sampleData";
 
 /* ---- khung bảng (px @ scale 1; canvas render ở DPR 2 cho nét chữ) ---- */
 const COLS: readonly number[] = [320, 100, 130, 250, 190, 310, 220]; // ĐỊA CHỈ · MÃ · GIÁ · CHÍNH SÁCH · LOẠI · NỘI THẤT · TÌNH TRẠNG
-const colW = (i: number): number => colW(i) ?? 0;
+const colW = (i: number): number => COLS[i] ?? 0;
 const ADDR_W = colW(0);
 const HEADERS = ["ĐỊA CHỈ", "MÃ PHÒNG", "GIÁ", "CHÍNH SÁCH SALE", "LOẠI PHÒNG", "NỘI THẤT", "TÌNH TRẠNG"];
 const WIDTH = COLS.reduce((a, b) => a + b, 0);

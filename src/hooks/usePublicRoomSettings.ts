@@ -3,7 +3,7 @@ import {supabase} from '@/integrations/supabase/client';
 import {getSessionUser} from '@/lib/authSession';
 import {notifyActionError} from '@/lib/actionFeedback';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
-import {FinancialWorkflowError} from '@/lib/financialWorkflow';
+import {FinancialWorkflowError,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import {validPublicRoomSettings,unconfirmedPublicRoomReceipt} from '@/lib/publicRoomFeedback';
 import {toast} from 'sonner';
 /** sale_policy: chính sách sale chung in ở khối đầu ảnh "DANH SÁCH PHÒNG TRỐNG" (NULL = không in). */
@@ -17,10 +17,14 @@ export function usePublicRoomSettings(){return useQuery({queryKey:KEY,meta:{erro
 export function useUpsertPublicRoomSettings(options:{inlineError?:boolean}={}){const qc=useQueryClient();return useMutation({mutationFn:async(values:PublicRoomSettings)=>{
  if(!validPublicRoomSettings(values))throw new FinancialWorkflowError('Cài đặt chưa hợp lệ: số ngày sắp trống là số nguyên 0–365, chính sách sale tối đa 2000 ký tự.','failure',[]);
  const user=await getSessionUser();if(!user)throw {code:'PGRST301',message:'Not authenticated'};
- return persistentFinancialWorkflow('public-room-admin',{scope:'actor'}).run('settings','lưu cài đặt hiển thị',async progress=>{
+ const write=async(progress:FinancialWorkflowProgress)=>{
   const patch={owner_id:user.id,...values,updated_at:new Date().toISOString()};
   const {data,error}=await supabase.from('public_room_settings').upsert(patch,{onConflict:'owner_id'}).select('*').single();if(error)throw error;
   if(data&&typeof data.owner_id==='string'&&data.owner_id)progress.completed.push({id:data.owner_id,label:'Cài đặt tài khoản cần đối chiếu'});
-  if(!validPublicRoomSettings(data)||data.owner_id!==user.id||data.soon_days!==values.soon_days||data.show_rented!==values.show_rented||data.hotline_id!==values.hotline_id||(data.sale_policy??null)!==(values.sale_policy??null)||data.updated_at!==patch.updated_at)unconfirmedPublicRoomReceipt();return data;
- });
+  // updated_at so theo THỜI ĐIỂM: PostgREST trả "…+00:00", toISOString là "…Z" — so chuỗi thì không bao giờ khớp.
+  if(!validPublicRoomSettings(data)||data.owner_id!==user.id||data.soon_days!==values.soon_days||data.show_rented!==values.show_rented||data.hotline_id!==values.hotline_id||(data.sale_policy??null)!==(values.sale_policy??null)||Date.parse(String(data.updated_at))!==Date.parse(patch.updated_at))unconfirmedPublicRoomReceipt();return data;
+ };
+ // Một dòng cài đặt/tài khoản, upsert ghi đè ⇒ làm lại an toàn: lần lưu còn dấu "chờ đối chiếu" ghi lại rồi
+ // kiểm biên nhận; đủ biên nhận mới gỡ dấu (không thì vẫn khoá như cũ).
+ return persistentFinancialWorkflow('public-room-admin',{scope:'actor'}).run('settings','lưu cài đặt hiển thị',write,async(_prior,progress)=>({result:await write(progress)}));
 },onSuccess:()=>{qc.invalidateQueries({queryKey:KEY});toast.success('Đã lưu cài đặt hiển thị');},onError:error=>{if(!options.inlineError)notifyActionError(error,'Chưa lưu được cài đặt hiển thị.');}});}
