@@ -122,7 +122,7 @@ export function salePolicyLines(text) {
 }
 
 /* --------------------------------------------------------------------------
- * Khối thông tin chung — dòng điện tính theo tòa thật
+ * Số liên hệ phổ biến nhất (khi chưa chọn hotline)
  * ------------------------------------------------------------------------ */
 
 /** Giá trị xuất hiện nhiều nhất (mode); rỗng → undefined. */
@@ -136,37 +136,6 @@ function modeOf(values) {
   let bestN = 0;
   for (const [v, n] of count) if (n > bestN) { best = v; bestN = n; }
   return best;
-}
-
-/**
- * Dòng "Điện …" cho khối thông tin chung. Cùng một giá thì 1 dòng; lệch nhau
- * thì lấy giá phổ biến làm chuẩn và liệt kê tòa ngoại lệ (đúng cách file Excel
- * đang ghi: "3800đ/số với nhà thang máy (102/30 Lê Văn Thọ … 3900đ/số)").
- */
-export function elecLines(buildings) {
-  const rated = buildings.filter((b) => typeof b.elecRate === 'number' && b.elecRate > 0);
-  if (!rated.length) return [];
-
-  const fmt = (n) => `${Math.round(n).toLocaleString('vi-VN')}đ/số`;
-  const main = Number(modeOf(rated.map((b) => String(b.elecRate))));
-  const others = rated.filter((b) => b.elecRate !== main);
-  const lines = [`Điện ${fmt(main)}`];
-  for (const [rate, names] of groupExceptions(others)) {
-    lines.push(`Riêng ${names.join(', ')}: điện ${fmt(rate)}`);
-  }
-  return lines;
-}
-
-/** Gom tòa ngoại lệ theo mức giá điện → [rate, [tên tòa…]]. */
-function groupExceptions(buildings) {
-  const byRate = new Map();
-  for (const b of buildings) {
-    const rate = Number(b.elecRate);
-    const arr = byRate.get(rate) ?? [];
-    arr.push(b.name || b.address);
-    byRate.set(rate, arr);
-  }
-  return [...byRate.entries()].sort((a, z) => a[0] - z[0]);
 }
 
 /* --------------------------------------------------------------------------
@@ -216,7 +185,8 @@ export function buildRoomListTable(buildings) {
   return {
     title: 'DANH SÁCH PHÒNG TRỐNG',
     contactLines: hotline ? ['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', hotline] : ['Chưa có số liên hệ'],
-    infoLines: [...elecLines(buildings), ...salePolicyLines(salePolicy)],
+    // Chỉ chữ chủ tự gõ (giá điện, nước, nội quy…) — chủ bỏ dòng điện tự tính 10/10/2026.
+    infoLines: salePolicyLines(salePolicy),
     groups,
     totalRooms: groups.reduce((n, g) => n + g.rows.length, 0),
   };

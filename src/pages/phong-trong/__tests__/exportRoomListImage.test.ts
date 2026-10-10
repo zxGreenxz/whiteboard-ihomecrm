@@ -55,6 +55,8 @@ describe("drawRoomListImage", () => {
     // Toàn bộ chữ ô địa chỉ cùng một màu mực.
     expect(new Set(drawn.filter((d) => /Lê Văn Thọ|Thông Tây Hội|Tân Bình/.test(d.text)).map((d) => d.fill))).toEqual(new Set(["#111111"]));
     expect(texts.join(" ")).not.toMatch(/admin ihome|Thành phố|Hồ Chí Minh/i);
+    // Khối đầu chỉ in chữ chủ gõ — không tự sinh "Điện 3.500đ/số" từ giá điện tòa.
+    expect(texts.some((t) => /đ\/số/.test(t))).toBe(false);
   });
 
   it("ô rỗng/ít dữ liệu vẫn vẽ được (không địa chỉ, không thang, không hotline)", () => {

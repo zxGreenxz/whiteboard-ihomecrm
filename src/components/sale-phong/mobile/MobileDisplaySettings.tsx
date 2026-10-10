@@ -60,7 +60,7 @@ export default function MobileDisplaySettings() {
       <div className="sp-card">
         <label htmlFor="mobile-sale-policy" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Chính sách sale chung (in đầu ảnh)</label>
         <p className="sp-hint" style={{ margin: "6px 0 10px" }}>
-          Mỗi dòng một ý, in ngay dưới dòng giá điện. SĐT riêng từng nhà và chính sách từng phòng điền ở bảng trên máy tính.
+          Mỗi dòng một ý (giá điện, nước, phí dịch vụ…), in ở khối trên đầu ảnh. SĐT riêng từng nhà và chính sách từng phòng điền ở bảng trên máy tính.
         </p>
         <textarea
           id="mobile-sale-policy" name="sale_policy" rows={4} maxLength={SALE_POLICY_MAX}

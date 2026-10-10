@@ -4,7 +4,6 @@ import {
   EXPORT_STATUSES,
   amenitiesCell,
   buildRoomListTable,
-  elecLines,
   exportFileName,
   fmtVndFull,
   liftCell,
@@ -165,26 +164,6 @@ describe("liftCell / samePhone / policyCell", () => {
   });
 });
 
-describe("elecLines (khối thông tin chung)", () => {
-  it("chưa tòa nào khai giá điện → câu mặc định", () => {
-    expect(elecLines([building({ elecRate: null })])).toEqual([]);
-  });
-
-  it("mọi tòa cùng giá → đúng 1 dòng", () => {
-    const bs = [building({ id: "b1", elecRate: 3800 }), building({ id: "b2", elecRate: 3800 })];
-    expect(elecLines(bs)).toEqual(["Điện 3.800đ/số"]);
-  });
-
-  it("lệch giá → lấy giá phổ biến làm chuẩn, liệt kê tòa ngoại lệ", () => {
-    const bs = [
-      building({ id: "b1", name: "Toà A", elecRate: 3800 }),
-      building({ id: "b2", name: "Toà B", elecRate: 3800 }),
-      building({ id: "b3", name: "102LVT", elecRate: 3900 }),
-    ];
-    expect(elecLines(bs)).toEqual(["Điện 3.800đ/số", "Riêng 102LVT: điện 3.900đ/số"]);
-  });
-});
-
 describe("buildRoomListTable", () => {
   const passRoom = room({ id: "r2", no: 201, code: "201", floor: 2, status: "pass" });
   const rentedRoom = room({ id: "r3", no: 101, code: "101", floor: 1, status: "rented" });
@@ -231,9 +210,10 @@ describe("buildRoomListTable", () => {
     expect(buildRoomListTable(bs).contactLines).toEqual(["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", "0923 889 880"]);
   });
 
-  it("chính sách sale chung xuống dưới dòng giá điện, mỗi dòng một ý", () => {
-    const t = buildRoomListTable([building({ elecRate: 3500, salePolicy: "Nước 100k/người\n\n Xe free, Wifi free " })]);
-    expect(t.infoLines).toEqual(["Điện 3.500đ/số", "Nước 100k/người", "Xe free, Wifi free"]);
+  it("khối đầu chỉ in chính sách chung chủ tự gõ, mỗi dòng một ý — không tự sinh dòng giá điện", () => {
+    const t = buildRoomListTable([building({ elecRate: 3500, salePolicy: "Điện 3.800đ/số nhà thang máy\n\n Nước 100k/người " })]);
+    expect(t.infoLines).toEqual(["Điện 3.800đ/số nhà thang máy", "Nước 100k/người"]);
+    expect(buildRoomListTable([building({ elecRate: 3500, salePolicy: "" })]).infoLines).toEqual([]);
   });
 
   it("ô địa chỉ không còn tên quản lý/admin", () => {

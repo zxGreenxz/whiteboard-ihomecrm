@@ -4,7 +4,7 @@
  * dữ liệu phải nằm ở đây.
  *
  * Bảng bám đúng file Excel mà Sale vẫn gửi Zalo: tiêu đề, ô liên hệ admin
- * (hotline), khối thông tin chung (giá điện + chính sách sale chung), rồi 7 cột
+ * (hotline), khối thông tin chung (chính sách sale chung chủ tự gõ), rồi 7 cột
  * ĐỊA CHỈ / MÃ PHÒNG / GIÁ / CHÍNH SÁCH SALE / LOẠI PHÒNG / NỘI THẤT /
  * TÌNH TRẠNG, mỗi tòa một khối nền màu riêng.
  */
@@ -54,7 +54,7 @@ export interface RoomListTable {
   title: string;
   /** Ô đỏ bên trái khối đầu: "LIÊN HỆ ADMIN ĐỂ MỞ CỬA" + số hotline. */
   contactLines: string[];
-  /** Khối thông tin chung bên phải: dòng giá điện tự tính, rồi chính sách sale chung. */
+  /** Khối thông tin chung bên phải: chính sách sale chung (mỗi dòng một ý, chủ tự gõ cả giá điện). */
   infoLines: string[];
   groups: TableGroup[];
   totalRooms: number;
@@ -170,37 +170,6 @@ function modeOf(values: (string | null | undefined)[]): string | undefined {
 }
 
 /**
- * Dòng "Điện …" cho khối thông tin chung. Cùng một giá thì 1 dòng; lệch nhau
- * thì lấy giá phổ biến làm chuẩn và liệt kê tòa ngoại lệ (đúng cách file Excel
- * đang ghi: "3800đ/số với nhà thang máy (102/30 Lê Văn Thọ … 3900đ/số)").
- */
-export function elecLines(buildings: Building[]): string[] {
-  const rated = buildings.filter((b) => typeof b.elecRate === "number" && b.elecRate! > 0);
-  if (!rated.length) return [];
-
-  const fmt = (n: number) => `${Math.round(n).toLocaleString("vi-VN")}đ/số`;
-  const main = Number(modeOf(rated.map((b) => String(b.elecRate))));
-  const others = rated.filter((b) => b.elecRate !== main);
-  const lines = [`Điện ${fmt(main)}`];
-  for (const [rate, names] of groupExceptions(others)) {
-    lines.push(`Riêng ${names.join(", ")}: điện ${fmt(rate)}`);
-  }
-  return lines;
-}
-
-/** Gom tòa ngoại lệ theo mức giá điện → [rate, [tên tòa…]]. */
-function groupExceptions(buildings: Building[]): [number, string[]][] {
-  const byRate = new Map<number, string[]>();
-  for (const b of buildings) {
-    const rate = Number(b.elecRate);
-    const arr = byRate.get(rate) ?? [];
-    arr.push(b.name || b.address);
-    byRate.set(rate, arr);
-  }
-  return [...byRate.entries()].sort((a, z) => a[0] - z[0]);
-}
-
-/**
  * Dựng toàn bộ bảng từ danh sách tòa. KHÔNG áp bộ lọc quận/tòa/giá đang chọn
  * trên màn hình — ảnh gửi khách luôn là bảng đầy đủ mọi phòng còn chào được.
  */
@@ -236,7 +205,8 @@ export function buildRoomListTable(buildings: Building[]): RoomListTable {
   return {
     title: "DANH SÁCH PHÒNG TRỐNG",
     contactLines: hotline ? ["LIÊN HỆ ADMIN ĐỂ MỞ CỬA", hotline] : ['Chưa có số liên hệ'],
-    infoLines: [...elecLines(buildings), ...salePolicyLines(salePolicy)],
+    // Chỉ chữ chủ tự gõ (giá điện, nước, nội quy…) — chủ bỏ dòng điện tự tính 10/10/2026.
+    infoLines: salePolicyLines(salePolicy),
     groups,
     totalRooms: groups.reduce((n, g) => n + g.rows.length, 0),
   };

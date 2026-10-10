@@ -31,9 +31,8 @@ import * as TS from '../../src/pages/phong-trong/roomListTable.ts';
  * Bộ này cố ý phủ hết các nhánh của cả hai bản:
  *   • ba trạng thái xuất được (free/soon/pass) + `rented` phải bị loại;
  *   • cả ba dạng ô TÌNH TRẠNG của phòng pass (ẩn SĐT / có SĐT+tên / trống trơn);
- *   • giá điện KHÁC NHAU giữa các toà → nhánh "Riêng <toà>: điện …" của elecLines;
- *   • một toà không còn phòng nào chào được → nhóm bị bỏ, nhưng vẫn tính vào
- *     giá điện và vào SĐT liên hệ;
+ *   • giá điện khác nhau giữa các toà mà ảnh KHÔNG được tự sinh dòng điện (chủ tự gõ);
+ *   • một toà không còn phòng nào chào được → nhóm bị bỏ;
  *   • sắp xếp tầng giảm dần rồi số phòng tăng dần;
  *   • mã phòng rỗng → rơi về số phòng; giá 0 / diện tích 0 / loại rỗng;
  *   • nội thất DÀI (bản vẽ ảnh phải xuống dòng) và nội thất rỗng → rơi về mô tả;
@@ -189,10 +188,11 @@ describe('buildRoomListTable — bản JS của worker KHỚP bản TS của web
     expect(t.title).toBe('DANH SÁCH PHÒNG TRỐNG');
     // Ô liên hệ in đúng hotline đã chọn (nguyên văn), không lấy SĐT toà.
     expect(t.contactLines).toEqual(['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', '0909111111']);
-    expect(t.infoLines).toEqual(['Điện 3.800đ/số', 'Riêng Toà B: điện 3.900đ/số', 'Nước 100k/người', 'Xe free']);
+    // Chỉ chính sách chủ tự gõ — không tự sinh dòng giá điện (chủ bỏ 10/10/2026).
+    expect(t.infoLines).toEqual(['Nước 100k/người', 'Xe free']);
     expect(t.totalRooms).toBe(7);
 
-    // Toà C không còn phòng chào được → không có nhóm, dù vẫn tính giá điện.
+    // Toà C không còn phòng chào được → không có nhóm.
     expect(t.groups.map((g) => g.buildingId)).toEqual(['b1', 'b2']);
 
     // Tầng giảm dần, cùng tầng thì số phòng tăng dần.
@@ -290,36 +290,6 @@ describe('statusLines', () => {
     expect(JS.statusLines({ status: 'pass', passContactPhone: '0938 111 222', passContactName: 'Chị Mai' }))
       .toEqual(['KHÁCH PASS PHÒNG:', '0938 111 222 (Chị Mai)']);
     expect(JS.statusLines({ status: 'pass' })).toEqual(['KHÁCH PASS PHÒNG']);
-  });
-});
-
-describe('elecLines', () => {
-  const bo = (...rates) => rates.map((elecRate, i) => ({
-    id: `b${i}`, name: `Toà ${i}`, address: `Địa chỉ ${i}`, elecRate, rooms: [],
-  }));
-
-  const truongHop = [
-    ['không toà nào khai giá', bo(null, undefined)],
-    ['một toà, một giá', bo(3800)],
-    ['nhiều toà cùng giá', bo(3800, 3800, 3800)],
-    ['một toà lệch giá', bo(3800, 3800, 3900)],
-    ['hai mức ngoại lệ khác nhau → sắp theo giá tăng dần', bo(3800, 3800, 4200, 3900)],
-    ['hai toà cùng mức ngoại lệ → gom chung một dòng', bo(3800, 3800, 3900, 3900)],
-    ['hoà phiếu (mỗi giá một toà) → toà đầu tiên làm chuẩn', bo(3900, 3800)],
-    ['giá 0 và giá âm bị loại khỏi thống kê', bo(0, -100, 3800)],
-    ['giá lẻ được làm tròn', bo(3800.4, 3800.6)],
-  ];
-  for (const [ten, buildings] of truongHop) {
-    it(`${ten}: hai bản ra cùng các dòng`, () => {
-      expect(JS.elecLines(buildings)).toEqual(TS.elecLines(buildings));
-    });
-  }
-
-  it('giá trị neo', () => {
-    expect(JS.elecLines(bo(null))).toEqual([]);
-    expect(JS.elecLines(bo(3800, 3800))).toEqual(['Điện 3.800đ/số']);
-    expect(JS.elecLines(bo(3800, 3800, 3900)))
-      .toEqual(['Điện 3.800đ/số', 'Riêng Toà 2: điện 3.900đ/số']);
   });
 });
 

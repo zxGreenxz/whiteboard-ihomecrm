@@ -43,7 +43,7 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
 - Công tắc **Hiển thị phòng đã thuê (trên sơ đồ)**: hiện chỉ lưu cấu hình cho lần cập nhật sau — trang công khai luôn vẽ phòng đã thuê (làm mờ) để giữ đủ sơ đồ tầng.
 - **Bảng phòng trống — điền như Excel**: bảng có bố cục y như ảnh **Danh sách phòng trống** (nút **Tải ảnh** và tin gửi Zalo). Ô nền trắng viền đứt là ô điền:
   - **Hotline chung cho tất cả nhà** (ô đỏ góc trên trái): chọn số in ở dòng **LIÊN HỆ ADMIN ĐỂ MỞ CỬA** và cho nút **Gọi / Zalo**; để **Mặc định (hotline đầu tiên)** thì lấy hotline đang bật tạo sớm nhất. Chưa có số thì bấm **Thêm / sửa số hotline**.
-  - **Chính sách sale chung** (khối trên đầu): mỗi dòng một ý, in ngay dưới các dòng giá điện (giá điện tự lấy theo từng toà).
+  - **Chính sách sale chung** (khối trên đầu): mỗi dòng một ý — tự ghi cả giá điện, nước, phí dịch vụ, nội quy; ảnh in đúng các dòng này.
   - **SĐT riêng** trong ô địa chỉ của từng nhà: chỉ điền khi nhà đó dùng số khác hotline — ảnh sẽ in số này kèm icon điện thoại trong ô địa chỉ. Để trống là dùng hotline chung.
   - **Chính sách sale** từng phòng đang trống: in chữ đỏ ở cột **CHÍNH SÁCH SALE** và hiện thành dòng **Khuyến mãi** trên trang công khai.
   - Địa chỉ trong ảnh tự rút tới phường (phường đánh số giữ thêm quận), bỏ thành phố; loại thang in cùng dòng kèm icon.

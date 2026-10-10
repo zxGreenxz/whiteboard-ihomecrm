@@ -4,7 +4,7 @@ import { Smartphone } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { buildRoomListTable, elecLines, GROUP_BG, samePhone, type LiftKind } from "@/pages/phong-trong/roomListTable";
+import { buildRoomListTable, GROUP_BG, samePhone, type LiftKind } from "@/pages/phong-trong/roomListTable";
 import type { Building, Room } from "@/pages/phong-trong/sampleData";
 import { SALE_POLICY_MAX } from "@/lib/publicRoomFeedback";
 import { sheetKey } from "@/hooks/useSaveRoomListSheet";
@@ -70,7 +70,6 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
     [buildings, hotlinePhone, salePolicy, edits],
   );
   const table = useMemo(() => buildRoomListTable(preview), [preview]);
-  const elec = useMemo(() => elecLines(preview), [preview]);
   const byBuilding = useMemo(() => new Map(buildings.map((b) => [b.id, b])), [buildings]);
   const byRoom = useMemo(() => new Map<string, Room>(buildings.flatMap((b) => b.rooms.map((r) => [r.id, r]))), [buildings]);
   const printedPhone = table.contactLines[1];
@@ -137,15 +136,14 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                 Quản lý danh sách hotline
               </Link>
             </td>
-            {/* Khối thông tin chung: giá điện tự tính + CHỖ ĐIỀN chính sách sale chung. */}
+            {/* Khối thông tin chung: CHỖ ĐIỀN chính sách sale chung (chủ tự gõ cả giá điện). */}
             <td colSpan={6} className={`${CELL} space-y-1`} style={{ border: LINE }}>
-              {elec.map((l) => <div key={l}>{l}</div>)}
               <label htmlFor="sheet-sale-policy" className="sr-only">Chính sách sale chung</label>
               <textarea
                 id="sheet-sale-policy" name="sale_policy" rows={Math.max(3, salePolicy.split("\n").length + 1)}
                 value={salePolicy} disabled={disabled} maxLength={SALE_POLICY_MAX}
                 onChange={(e) => props.onSalePolicyChange(e.target.value)}
-                placeholder={"Chính sách sale chung — mỗi dòng một ý, in ngay dưới dòng giá điện. Ví dụ:\nNước 100k/người, phí dịch vụ 150k/phòng\nXe free, Wifi free, có máy giặt chung"}
+                placeholder={"Chính sách sale chung — mỗi dòng một ý, in ở khối trên đầu ảnh. Ví dụ:\nĐiện 3.800đ/số với nhà thang máy\nNước 100k/người, phí dịch vụ 150k/phòng\nXe free, Wifi free, có máy giặt chung"}
                 aria-invalid={!!errors.sale_policy} aria-describedby={errors.sale_policy ? "sale_policy-error" : undefined}
                 className={`${INPUT} resize-y`}
               />
