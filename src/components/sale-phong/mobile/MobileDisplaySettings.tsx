@@ -3,6 +3,7 @@ import { Calendar, Phone, Check, ChevronRight } from "lucide-react";
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import {usePublicRoomSettingsDraft} from '../usePublicRoomSettingsDraft';
 import SaleSheet from "./SaleSheet";
+import { SALE_POLICY_MAX } from "@/lib/publicRoomFeedback";
 
 export default function MobileDisplaySettings() {
   const {settings,hotlines:hotlineQuery,mutation:upsertMut,root,form,days,errors,writeError,canSave,set,changeDays,save}=usePublicRoomSettingsDraft();
@@ -47,13 +48,29 @@ export default function MobileDisplaySettings() {
       <button className="sp-rowcard" data-field-name="hotline_id" aria-invalid={!!errors.hotline_id} aria-describedby={errors.hotline_id?"mobile-hotline-error":undefined} onClick={() => setHotlineSheet(true)}>
         <span className="ic brand"><Phone size={18} /></span>
         <span style={{ flex: 1, minWidth: 0 }}>
-          <span className="gv">Hotline hiển thị</span>
+          <span className="gv">Hotline chung cho tất cả nhà</span>
           <span className="gn">{hotlineName} · {hotlinePhone}</span>
         </span>
         <ChevronRight className="chev" size={20} />
       </button>
 
       {errors.hotline_id&&<p id="mobile-hotline-error" role="alert" className="text-destructive">{errors.hotline_id}</p>}
+
+      {/* Chính sách sale chung — khối đầu ảnh "Danh sách phòng trống" */}
+      <div className="sp-card">
+        <label htmlFor="mobile-sale-policy" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.2px" }}>Chính sách sale chung (in đầu ảnh)</label>
+        <p className="sp-hint" style={{ margin: "6px 0 10px" }}>
+          Mỗi dòng một ý, in ngay dưới dòng giá điện. SĐT riêng từng nhà và chính sách từng phòng điền ở bảng trên máy tính.
+        </p>
+        <textarea
+          id="mobile-sale-policy" name="sale_policy" rows={4} maxLength={SALE_POLICY_MAX}
+          value={form.sale_policy ?? ""} onChange={(e) => set("sale_policy", e.target.value)}
+          placeholder={"Nước 100k/người, phí dịch vụ 150k/phòng\nXe free, Wifi free"}
+          aria-invalid={!!errors.sale_policy} aria-describedby={errors.sale_policy ? "mobile-sale-policy-error" : undefined}
+          style={{ width: "100%", boxSizing: "border-box", borderRadius: 10, border: `1px solid ${errors.sale_policy ? "var(--bad, #dc2626)" : "var(--line, #d4d4d8)"}`, padding: "9px 11px", fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
+        />
+        {errors.sale_policy && <p id="mobile-sale-policy-error" role="alert" className="text-destructive">{errors.sale_policy}</p>}
+      </div>
 
       {/* show_rented toggle */}
       <div className="sp-rowcard">
@@ -88,8 +105,8 @@ export default function MobileDisplaySettings() {
       <button className="sp-save" onClick={()=>void save()} disabled={upsertMut.isPending||!canSave}>Lưu cài đặt</button>
 
       <SaleSheet open={hotlineSheet} onClose={() => setHotlineSheet(false)}>
-        <h3>Hotline hiển thị</h3>
-        <p className="desc">Số hiển thị trên trang công khai khi phòng/toà không có liên hệ riêng.</p>
+        <h3>Hotline chung cho tất cả nhà</h3>
+        <p className="desc">Số in ở ô "Liên hệ admin" đầu ảnh và trên trang công khai. Nhà nào có số riêng thì điền ở bảng phòng trống trên máy tính.</p>
         <div className="sp-picklist">
           {list.length === 0 && <p className="desc">Chưa có hotline. Thêm ở mục Danh mục → Hotline.</p>}
           {list.map((h) => {

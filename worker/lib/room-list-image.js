@@ -24,8 +24,8 @@ import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import { exportFileName } from './room-list-table.js';
 
 /* ---- khung bảng (px @ scale 1; canvas render ở DPR 2 cho nét chữ) ---- */
-const COLS = [300, 110, 150, 230, 340, 270]; // ĐỊA CHỈ · MÃ · GIÁ · LOẠI · NỘI THẤT · TÌNH TRẠNG
-const HEADERS = ['ĐỊA CHỈ', 'MÃ PHÒNG', 'GIÁ', 'LOẠI PHÒNG', 'NỘI THẤT', 'TÌNH TRẠNG'];
+const COLS = [320, 100, 130, 250, 190, 310, 220]; // ĐỊA CHỈ · MÃ · GIÁ · CHÍNH SÁCH · LOẠI · NỘI THẤT · TÌNH TRẠNG
+const HEADERS = ['ĐỊA CHỈ', 'MÃ PHÒNG', 'GIÁ', 'CHÍNH SÁCH SALE', 'LOẠI PHÒNG', 'NỘI THẤT', 'TÌNH TRẠNG'];
 const WIDTH = COLS.reduce((a, b) => a + b, 0);
 const PAD_X = 12;
 const PAD_Y = 11;
@@ -34,6 +34,9 @@ const H_TITLE = 54;
 const H_HEAD = 46;
 const MIN_ROW = 52;
 const SCALE = 2;
+const ICON = 14;    // cạnh icon thang/điện thoại trong ô địa chỉ
+const ICON_GAP = 5; // icon → chữ
+const SEG_GAP = 6;  // giữa hai cụm cùng dòng (địa chỉ → "(thang máy)")
 
 /* Bảng màu Excel quen thuộc của file cũ — mỗi tòa một nền. */
 const GROUP_BG = [
@@ -43,7 +46,7 @@ const GROUP_BG = [
 const C_LINE = '#548235';
 const C_HEAD_BG = '#70ad47';
 const C_INK = '#111111';
-const C_ADDR = '#1f4e79';
+const C_POLICY = '#c00000';
 const C_CONTACT = '#e00000';
 const C_PAPER = '#ffffff';
 
@@ -134,11 +137,11 @@ function wrap(ctx, text, maxW) {
   for (const para of text.split('\n')) {
     const words = para.split(/\s+/).filter(Boolean);
     if (!words.length) { out.push(''); continue; }
-    let line = words[0];
-    for (let i = 1; i < words.length; i++) {
-      const next = `${line} ${words[i]}`;
-      if (ctx.measureText(next).width <= maxW) line = next;
-      else { out.push(line); line = words[i]; }
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (!line || ctx.measureText(next).width <= maxW) line = next;
+      else { out.push(line); line = word; }
     }
     out.push(line);
   }
@@ -150,20 +153,124 @@ function drawLines(ctx, lines, cx, top) {
   lines.forEach((l, i) => ctx.fillText(l, cx, top + i * LINE_H + LINE_H / 2));
 }
 
+/** Độ đậm chữ từng cột thân bảng: mã, giá, chính sách, tình trạng in đậm. */
+const cellWeight = (c) => (c === 1 || c === 2 || c === 3 || c === 6 ? 700 : 500);
+
+/* ---- Ô địa chỉ: chữ + icon trên cùng dòng ----
+ * Một dòng là mảng cụm `{ text, weight, icon? }`, icon ∈ elevator|stairs|phone. */
+
+function segWidth(ctx, s) {
+  ctx.font = font(s.weight, 15);
+  return (s.icon ? ICON + ICON_GAP : 0) + ctx.measureText(s.text).width;
+}
+function richWidth(ctx, line) {
+  return line.reduce((w, s, i) => w + segWidth(ctx, s) + (i ? SEG_GAP : 0), 0);
+}
+
+/**
+ * Dòng của ô ĐỊA CHỈ: địa chỉ xuống dòng theo từ; cụm "(thang máy)" kèm icon
+ * không bị tách, nối vào dòng cuối nếu còn chỗ; SĐT riêng tòa đứng dòng riêng.
+ */
+function addressLines(ctx, g, maxW) {
+  ctx.font = font(700, 15);
+  const lines = wrap(ctx, g.address, maxW).map((text) => [{ text, weight: 700 }]);
+  if (g.lift) {
+    const chip = { text: g.lift.label, weight: 600, icon: g.lift.kind };
+    const last = lines[lines.length - 1];
+    if (!last?.[0]?.text) lines[Math.max(0, lines.length - 1)] = [chip];
+    else if (richWidth(ctx, [...last, chip]) <= maxW) last.push(chip);
+    else lines.push([chip]);
+  }
+  if (g.phone) lines.push([{ text: g.phone, weight: 700, icon: 'phone' }]);
+  return lines;
+}
+
+/** Đường viền bo góc — tự dựng bằng arcTo vì roundRect chưa có ở mọi canvas. */
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** Icon vẽ bằng nét (không dùng emoji: worker Node không chắc có font emoji). */
+function drawGlyph(ctx, glyph, x, cy) {
+  ctx.save();
+  ctx.fillStyle = C_INK;
+  ctx.strokeStyle = C_INK;
+  ctx.lineWidth = 1.6;
+  const top = cy - ICON / 2;
+  if (glyph === 'elevator') {
+    // Buồng thang + mũi tên lên/xuống.
+    roundedRect(ctx, x + 1, top, ICON - 2, ICON, 2);
+    ctx.stroke();
+    const mx = x + ICON / 2;
+    ctx.beginPath();
+    ctx.moveTo(mx, top + 2.5); ctx.lineTo(mx - 3.5, cy - 1); ctx.lineTo(mx + 3.5, cy - 1);
+    ctx.closePath();
+    ctx.moveTo(mx, top + ICON - 2.5); ctx.lineTo(mx - 3.5, cy + 1); ctx.lineTo(mx + 3.5, cy + 1);
+    ctx.closePath();
+    ctx.fill();
+  } else if (glyph === 'stairs') {
+    // Ba bậc thang đặc.
+    const s = (ICON - 2) / 3;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, top + ICON);
+    ctx.lineTo(x + 1, top + ICON - s);
+    ctx.lineTo(x + 1 + s, top + ICON - s);
+    ctx.lineTo(x + 1 + s, top + ICON - 2 * s);
+    ctx.lineTo(x + 1 + 2 * s, top + ICON - 2 * s);
+    ctx.lineTo(x + 1 + 2 * s, top + ICON - 3 * s);
+    ctx.lineTo(x + ICON - 1, top + ICON - 3 * s);
+    ctx.lineTo(x + ICON - 1, top + ICON);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // Điện thoại di động: thân bo góc + vạch loa dưới.
+    roundedRect(ctx, x + 3, top, ICON - 6, ICON, 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + ICON / 2 - 1.5, top + ICON - 3);
+    ctx.lineTo(x + ICON / 2 + 1.5, top + ICON - 3);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Vẽ một dòng nhiều cụm, canh giữa quanh `cx`. */
+function drawRich(ctx, line, cx, cy) {
+  let x = cx - richWidth(ctx, line) / 2;
+  ctx.textAlign = 'left';
+  line.forEach((s, i) => {
+    if (i) x += SEG_GAP;
+    if (s.icon) { drawGlyph(ctx, s.icon, x, cy); x += ICON + ICON_GAP; }
+    ctx.font = font(s.weight, 15);
+    ctx.fillStyle = C_INK;
+    ctx.fillText(s.text, x, cy);
+    x += ctx.measureText(s.text).width;
+  });
+  ctx.textAlign = 'center';
+}
+
 /** Pass 1 — đo chữ để biết chiều cao từng hàng (ô nội thất hay tràn 2–3 dòng). */
 function measure(ctx, table) {
   const groups = table.groups.map((g) => {
-    ctx.font = font(700, 15);
-    const addrLines = g.addressLines.flatMap((l) => wrap(ctx, l, COLS[0] - PAD_X * 2));
+    const addrLines = addressLines(ctx, g, COLS[0] - PAD_X * 2);
 
     const rows = g.rows.map((r) => {
-      ctx.font = font(500, 15);
-      const cells = [r.code, r.price, r.type, r.amenities];
+      const cells = [r.code, r.price, r.policy, r.type, r.amenities];
       const lines = [
         [], // cột ĐỊA CHỈ gộp ô — không vẽ theo hàng
-        ...cells.map((c, i) => wrap(ctx, c, COLS[i + 1] - PAD_X * 2)),
-        r.status.flatMap((s) => wrap(ctx, s, COLS[5] - PAD_X * 2)),
+        ...cells.map((cell, i) => {
+          ctx.font = font(cellWeight(i + 1), 15);
+          return wrap(ctx, cell, COLS[i + 1] - PAD_X * 2);
+        }),
       ];
+      ctx.font = font(cellWeight(6), 15);
+      lines.push(r.status.flatMap((s) => wrap(ctx, s, COLS[6] - PAD_X * 2)));
       const maxLines = Math.max(...lines.map((l) => l.length), 1);
       return { lines, height: Math.max(MIN_ROW, maxLines * LINE_H + PAD_Y * 2) };
     });
@@ -260,26 +367,21 @@ export function veBangRaCanvas(table) {
   // --- Thân bảng: mỗi tòa một khối nền ---
   m.groups.forEach((mg, gi) => {
     const top = y;
-    ctx.fillStyle = GROUP_BG[gi % GROUP_BG.length];
+    ctx.fillStyle = GROUP_BG[gi % GROUP_BG.length] ?? C_PAPER;
     ctx.fillRect(0, top, WIDTH, mg.height);
 
-    // Ô ĐỊA CHỈ gộp — canh giữa theo chiều dọc cả khối.
+    // Ô ĐỊA CHỈ gộp — canh giữa theo chiều dọc cả khối, toàn bộ một màu mực.
     const aTop = top + (mg.height - mg.addrLines.length * LINE_H) / 2;
-    mg.addrLines.forEach((l, i) => {
-      const isAddr = i === 0;
-      ctx.fillStyle = isAddr ? C_ADDR : C_INK;
-      ctx.font = font(isAddr ? 700 : 600, isAddr ? 15 : 14);
-      ctx.fillText(l, COLS[0] / 2, aTop + i * LINE_H + LINE_H / 2);
-    });
+    mg.addrLines.forEach((l, i) => drawRich(ctx, l, COLS[0] / 2, aTop + i * LINE_H + LINE_H / 2));
 
     // Các cột còn lại, kẻ vạch ngăn giữa từng phòng.
     let ry = top;
     mg.rows.forEach((row, ri) => {
       for (let c = 1; c < COLS.length; c++) {
-        const cellLines = row.lines[c];
+        const cellLines = row.lines[c] ?? [];
         const cTopY = ry + (row.height - cellLines.length * LINE_H) / 2;
-        ctx.fillStyle = C_INK;
-        ctx.font = font(c === 1 || c === 2 || c === 5 ? 700 : 500, 15);
+        ctx.fillStyle = c === 3 ? C_POLICY : C_INK;
+        ctx.font = font(cellWeight(c), 15);
         drawLines(ctx, cellLines, colX(c) + COLS[c] / 2, cTopY);
       }
       ry += row.height;

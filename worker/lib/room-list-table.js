@@ -73,12 +73,52 @@ export function amenitiesCell(r) {
   return amen || r.description?.trim() || '';
 }
 
-/** Cột ĐỊA CHỈ (ô gộp): địa chỉ tòa, loại thang, quản lý phụ trách. */
-export function addressLines(b) {
-  const out = [b.address || b.name];
-  if (b.liftLabel?.trim()) out.push(`(${b.liftLabel.trim().toLowerCase()})`);
-  if (b.manager?.trim()) out.push(`(${b.manager.trim()})`);
-  return out;
+/** Cột CHÍNH SÁCH SALE — ô "Khuyến mãi" riêng phòng; phòng khách pass chưa ghi
+ * thì lấy chính sách khách pass đã khai. */
+export function policyCell(r) {
+  return r.saleNote?.trim() || (r.status === 'pass' ? r.passSalePolicy?.trim() : '') || '';
+}
+
+// Phường: "Phường …"/"Xã …"/"Thị trấn …", "P.…", hoặc "P15" (1–2 chữ số — "P305" là số phòng).
+const WARD_RE = /^(?:(?:phường|xã|thị trấn)(?=\s|$)|p\.|p\s*\d{1,2}$)/i;
+// Chỉ thành phố trực thuộc trung ương / tỉnh / quốc gia — "TP Thủ Đức" ở giữa là cấp quận, giữ lại.
+const CITY_RE = /^(?:(?:thành phố|tp\.?|t\.p\.?)\s*)?(?:hồ chí minh|ho chi minh|hcm|sài gòn|hà nội|ha noi|đà nẵng|cần thơ|hải phòng|huế)$|^tphcm$|^tỉnh\s|^việt nam$/i;
+
+/**
+ * Địa chỉ tới phường, bỏ thành phố/tỉnh. Phường đánh số ("Phường 15", "P.11")
+ * không tự đứng được nên giữ thêm đoạn ngay sau (quận) — đúng cách file Excel
+ * Sale vẫn ghi ("403 Phạm Văn Bạch, P15, Tân Bình"). Không thấy phường thì chỉ
+ * cắt các đoạn cuối là thành phố trực thuộc trung ương/tỉnh.
+ */
+export function shortAddress(address) {
+  const parts = address.normalize('NFC').split(',').map((p) => p.trim()).filter(Boolean);
+  const ward = parts.findIndex((p, i) => i > 0 && WARD_RE.test(p));
+  if (ward > 0) {
+    const next = parts[ward + 1];
+    const keepDistrict = /\d/.test(parts[ward] ?? '') && !!next && !CITY_RE.test(next);
+    return parts.slice(0, ward + (keepDistrict ? 2 : 1)).join(', ');
+  }
+  while (parts.length > 1 && CITY_RE.test(parts[parts.length - 1] ?? '')) parts.pop();
+  return parts.join(', ');
+}
+
+/** Loại thang của tòa → nhãn "(thang máy)"/"(thang bộ)" kèm loại icon. */
+export function liftCell(b) {
+  const label = b.liftLabel?.trim().toLowerCase();
+  if (!label) return null;
+  return { kind: /máy/.test(label) ? 'elevator' : 'stairs', label: `(${label})` };
+}
+
+/** Hai số điện thoại là một khi trùng chữ số (bỏ khoảng trắng/dấu, +84 ≡ 0084 ≡ 0). */
+export function samePhone(a, b) {
+  const digits = (v) =>
+    (v ?? '').replace(/\D/g, '').replace(/^00(?=84\d{9}$)/, '').replace(/^84(?=\d{9}$)/, '0');
+  return digits(a) === digits(b);
+}
+
+/** Chính sách sale chung (chữ tự do nhiều dòng) → mỗi dòng một ý, bỏ dòng trống. */
+export function salePolicyLines(text) {
+  return (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
 
 /* --------------------------------------------------------------------------
@@ -138,11 +178,15 @@ function groupExceptions(buildings) {
  * trên màn hình — ảnh gửi khách luôn là bảng đầy đủ mọi phòng còn chào được.
  *
  * Trả về `{ title, contactLines, infoLines, groups, totalRooms }`; `groups` là
- * `{ buildingId, addressLines, rows }` với `rows` là
- * `{ code, price, type, amenities, status[] }`. Đây chính là hình dạng mà
- * `room-list-image.js` chờ nhận.
+ * `{ buildingId, address, lift, phone, rows }` với `rows` là
+ * `{ roomId, code, price, policy, type, amenities, status[] }`. Đây chính là
+ * hình dạng mà `room-list-image.js` chờ nhận.
  */
 export function buildRoomListTable(buildings) {
+  // Hotline/chính sách chung là cấp tài khoản, chép sẵn trên mọi tòa (xem
+  // vacant-rooms.js). Chưa chọn hotline → lấy SĐT phổ biến nhất giữa các tòa.
+  const hotline = buildings.find((b) => b.hotline?.trim())?.hotline?.trim() || modeOf(buildings.map((b) => b.phone));
+  const salePolicy = buildings.find((b) => b.salePolicy?.trim())?.salePolicy;
   const groups = [];
   for (const b of buildings) {
     // Sắp xếp: tầng cao xuống thấp, cùng tầng thì số phòng tăng dần — đúng
@@ -151,12 +195,17 @@ export function buildRoomListTable(buildings) {
       .filter((r) => EXPORTABLE.has(r.status))
       .sort((a, z) => z.floor - a.floor || a.no - z.no);
     if (!rooms.length) continue;
+    const phone = b.phone?.trim() || '';
     groups.push({
       buildingId: b.id,
-      addressLines: addressLines(b),
+      address: shortAddress(b.address || b.name),
+      lift: liftCell(b),
+      phone: phone && !samePhone(phone, hotline) ? phone : null,
       rows: rooms.map((r) => ({
+        roomId: r.id,
         code: r.code || String(r.no),
         price: fmtVndFull(r.price),
+        policy: policyCell(r),
         type: typeCell(r),
         amenities: amenitiesCell(r),
         status: statusLines(r),
@@ -164,12 +213,10 @@ export function buildRoomListTable(buildings) {
     });
   }
 
-  const phone = modeOf(buildings.map((b) => b.phone));
-
   return {
     title: 'DANH SÁCH PHÒNG TRỐNG',
-    contactLines: phone ? ['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', phone] : ['Chưa có số liên hệ'],
-    infoLines: elecLines(buildings),
+    contactLines: hotline ? ['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', hotline] : ['Chưa có số liên hệ'],
+    infoLines: [...elecLines(buildings), ...salePolicyLines(salePolicy)],
     groups,
     totalRooms: groups.reduce((n, g) => n + g.rows.length, 0),
   };

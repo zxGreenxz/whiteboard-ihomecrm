@@ -65,6 +65,7 @@ export function mapPayloadSangToa(payload) {
 
   const tenLienHe = payload.contact?.name || 'Quản lý hệ thống';
   const sdtLienHe = payload.contact?.phone || '';
+  const chinhSachChung = (payload.sale_policy || '').trim();
 
   const phongTheoToa = new Map();
   for (const r of payload.rooms ?? []) {
@@ -122,6 +123,10 @@ export function mapPayloadSangToa(payload) {
       address: diaChi,
       manager: (b.public_contact_name || '').trim() || tenLienHe,
       phone: (b.public_contact_phone || '').trim() || sdtLienHe,
+      // Cấp tài khoản, chép giống nhau trên mọi toà (khớp supabaseData.ts):
+      // bảng ảnh đọc để in ô liên hệ và khối chính sách sale chung.
+      hotline: sdtLienHe.trim(),
+      salePolicy: chinhSachChung,
       mapUrl: (b.public_map_url || '').trim() || null,
       elecRate: typeof b.elec_rate === 'number' ? b.elec_rate : (b.elec_rate ? Number(b.elec_rate) : null),
       liftLabel: (b.public_lift_type || '').trim() || null,

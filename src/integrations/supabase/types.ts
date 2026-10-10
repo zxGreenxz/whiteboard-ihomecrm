@@ -15745,6 +15745,7 @@ export type Database = {
           hotline_id: string | null
           organization_id: string | null
           owner_id: string
+          sale_policy: string | null
           show_rented: boolean
           soon_days: number
           updated_at: string
@@ -15753,6 +15754,7 @@ export type Database = {
           hotline_id?: string | null
           organization_id?: string | null
           owner_id: string
+          sale_policy?: string | null
           show_rented?: boolean
           soon_days?: number
           updated_at?: string
@@ -15761,6 +15763,7 @@ export type Database = {
           hotline_id?: string | null
           organization_id?: string | null
           owner_id?: string
+          sale_policy?: string | null
           show_rented?: boolean
           soon_days?: number
           updated_at?: string

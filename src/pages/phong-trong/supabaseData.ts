@@ -71,6 +71,7 @@ export interface RpcPayload {
   buildings: RpcBuilding[];
   rooms: RpcRoom[];
   contact?: RpcContact | null;
+  sale_policy?: string | null;  // chính sách sale chung (public_room_settings) — RPC cũ không trả
 }
 
 export class PublicRoomLinkError extends Error {
@@ -109,6 +110,7 @@ const payloadSchema = z.object({
     pass_price: z.number().nullable().optional(), pass_avail_date: optionalText, pass_contact_manager: z.boolean().nullable().optional(),
   })),
   contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
+  sale_policy: optionalText,
 });
 
 function isRoomSalePayload(value: unknown): value is RpcPayload {
@@ -168,6 +170,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
   // Chỉ dùng liên hệ đã cấu hình; thiếu thì giữ rỗng.
   const contactName = payload.contact?.name?.trim() || '';
   const contactPhone = payload.contact?.phone?.trim() || '';
+  const salePolicy = payload.sale_policy?.trim() || '';
 
   // gom phòng theo tòa
   const roomsByB = new Map<string, RpcRoom[]>();
@@ -251,6 +254,9 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
       // Liên hệ riêng từng tòa nếu có; chưa set -> dùng hotline/owner chung.
       manager: b.public_contact_name?.trim() || contactName,
       phone: b.public_contact_phone?.trim() || contactPhone,
+      contactPhone: b.public_contact_phone?.trim() || '',
+      hotline: contactPhone,
+      salePolicy,
       mapUrl: b.public_map_url?.trim() || null,
       elecRate: typeof b.elec_rate === "number" ? b.elec_rate : (b.elec_rate ? Number(b.elec_rate) : null),
       liftLabel: b.public_lift_type?.trim() || null,

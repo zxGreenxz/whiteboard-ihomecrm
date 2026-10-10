@@ -3,6 +3,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 const sql = readFileSync('supabase/migrations/20260928021213_room_sale_workflow_facts.sql', 'utf8');
+// Reader hiện hành = 0928 + chính sách sale chung (thêm khoá sale_policy, thân hàm giữ nguyên):
+// mọi ca dưới đây chạy trên bản sau cùng để chứng minh migration sau không làm trôi sale facts.
+const salePolicySql = readFileSync('supabase/migrations/20261010022101_public_room_sale_policy.sql', 'utf8');
 const db = new PGlite();
 const owner = '00000000-0000-4000-8000-000000000010';
 const org = '00000000-0000-4000-8000-000000000001';
@@ -73,8 +76,10 @@ beforeAll(async () => {
       SELECT coalesce(array_agg(id),ARRAY[]::uuid[]) FROM public.buildings WHERE organization_id=$2 AND user_id=auth.uid() $$;
   `);
   await db.exec(sql);
+  await db.exec(salePolicySql);
   // Replay verifies idempotent function/ACL replacement.
   await db.exec(sql);
+  await db.exec(salePolicySql);
 }, 20000);
 beforeEach(async () => {
   await db.exec(`RESET ROLE;SELECT set_config('test.actor','${owner}',false);
@@ -164,6 +169,17 @@ describe('actual sale reader SQL', () => {
     expect((await read('copilot'))?.rooms).toEqual([]);
     await db.exec('SET ROLE authenticated;');
     await expect(read('zalo')).rejects.toMatchObject({ code: '42501' });
+  });
+  it('returns the trimmed general sale policy on public, app and Zalo readers only', async () => {
+    await db.exec(`RESET ROLE;UPDATE public.public_room_settings SET organization_id='${org}',sale_policy=NULL;`);
+    for (const kind of ['public', 'app', 'zalo']) expect(await read(kind)).toHaveProperty('sale_policy', null);
+    await db.exec(`UPDATE public.public_room_settings SET sale_policy=E'  Nước 100k/người\\nXe free  ';`);
+    for (const kind of ['public', 'app', 'zalo']) expect(await read(kind)).toHaveProperty('sale_policy', 'Nước 100k/người\nXe free');
+    expect(await read('copilot')).not.toHaveProperty('sale_policy');
+    await db.exec(`UPDATE public.public_room_settings SET sale_policy='   ';`);
+    expect(await read()).toHaveProperty('sale_policy', null);
+    await expect(db.query(`UPDATE public.public_room_settings SET sale_policy=repeat('x',2001)`)).rejects.toMatchObject({ code: '23514' });
+    await db.exec(`UPDATE public.public_room_settings SET sale_policy=NULL,organization_id=NULL;`);
   });
   it('hides a pure next-customer hold on every sale channel until explicitly released', async () => {
     await db.exec(`INSERT INTO public.room_next_claims VALUES('${org}','${room}','LIVE');`);

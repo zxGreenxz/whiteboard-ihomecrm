@@ -60,7 +60,12 @@ export interface Building {
   district: string;    // nhóm lọc "Quận" ở header (map từ buildings.district khi nối Supabase)
   address: string;
   manager: string;
-  phone: string;
+  phone: string;            // SĐT riêng tòa; chưa khai → hotline chung
+  contactPhone?: string;    // đúng public_contact_phone đang lưu ('' = chưa khai) — ô nhập ở Cài đặt hiển thị
+  // Hai trường cấp TÀI KHOẢN, chép giống nhau trên mọi tòa (như phone rơi về hotline):
+  // bảng ảnh "DANH SÁCH PHÒNG TRỐNG" đọc để in ô liên hệ và khối chính sách chung.
+  hotline?: string;         // hotline đang chọn ở Cài đặt hiển thị ('' = chưa có)
+  salePolicy?: string;      // chính sách sale chung, nhiều dòng ('' = không in)
   mapUrl?: string | null;   // link Google Maps "Chỉ đường" riêng từng tòa
   elecRate?: number | null; // điện mặc định của tòa (đ/số) — lấy từ building_services
   liftLabel?: string | null; // "Thang máy" | "Thang bộ" — đặc điểm tòa
@@ -103,7 +108,7 @@ const colX = (c: number) => M + c * (RW + GAP);
 
 /* ---- generator ---- */
 const STATUSES: RoomStatus[] = ["free", "free", "free", "free", "soon", "soon", "rented", "rented", "rented"];
-const TYPES = [
+const TYPES: { name: string; area: readonly [number, number]; base: number }[] = [
   { name: "Studio", area: [26, 34], base: 7.5 },
   { name: "1PN",    area: [36, 46], base: 10.5 },
   { name: "1PN+",   area: [44, 52], base: 12.5 },
@@ -125,6 +130,12 @@ function seeded(seed: number) {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+/** Bốc một phần tử theo số ngẫu nhiên [0,1) — mảng hằng không rỗng nên luôn có. */
+function pick<T>(arr: readonly T[], r: number): T {
+  const v = arr[Math.min(arr.length - 1, Math.floor(r * arr.length))];
+  if (v === undefined) throw new Error("pick: mảng rỗng");
+  return v;
 }
 function fmtDate(d: Date) {
   return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
@@ -148,8 +159,10 @@ export function layoutFloor(floor: number, rooms: Room[]): FloorPlan {
   for (let c = 0; c < cols; c++) {
     if (c === coreCol) continue;
     const x = colX(c);
-    if (ti < topRooms.length) placed.push({ ...topRooms[ti++], x, y: topY, w: RW, h: RH });
-    if (bi < botRooms.length) placed.push({ ...botRooms[bi++], x, y: botY, w: RW, h: RH });
+    const top = topRooms[ti];
+    if (top) { placed.push({ ...top, x, y: topY, w: RW, h: RH }); ti++; }
+    const bot = botRooms[bi];
+    if (bot) { placed.push({ ...bot, x, y: botY, w: RW, h: RH }); bi++; }
   }
   const fixtures: Fixture[] = [
     { id: `fx-tm-${floor}`, kind: "elevator", x: colX(coreCol), y: topY, w: RW, h: RH },
@@ -168,11 +181,11 @@ function build(): Building[] {
     for (let f = p.floors; f >= 1; f--) {
       const rooms: Room[] = [];
       for (let r = 1; r <= p.perFloor; r++) {
-        const t = TYPES[Math.floor(rnd() * TYPES.length)];
+        const t = pick(TYPES, rnd());
         const area = Math.round(t.area[0] + rnd() * (t.area[1] - t.area[0]));
         const priceM = t.base + f * 0.18 + (rnd() - 0.5) * 1.4;
         const price = Math.round(priceM * 2) / 2;
-        const status = STATUSES[Math.floor(rnd() * STATUSES.length)];
+        const status = pick(STATUSES, rnd());
         const no = f * 100 + r;
         const amenN = 4 + Math.floor(rnd() * 4);
         const amenities = [...AMENITIES].sort(() => rnd() - 0.5).slice(0, amenN);
@@ -183,7 +196,7 @@ function build(): Building[] {
           buildingId: p.id, buildingName: p.name, buildingArea: p.area, buildingAddr: p.address,
           floor: f, type: t.name, area, price, status, amenities, availDate,
           imgCount: 4 + Math.floor(rnd() * 6),
-          phClass: ["ph-a", "ph-b", "ph-c", "ph-d"][Math.floor(rnd() * 4)],
+          phClass: pick(["ph-a", "ph-b", "ph-c", "ph-d"], rnd()),
           x: 0, y: 0, w: RW, h: RH,
         };
         rooms.push(room);

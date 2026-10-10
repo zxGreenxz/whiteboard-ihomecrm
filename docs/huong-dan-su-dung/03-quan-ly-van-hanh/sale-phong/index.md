@@ -14,7 +14,7 @@ status: published
 
 # Sale Phòng (đăng phòng cho thuê)
 
-Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai — một trang web mà **khách xem không cần đăng nhập**. Bạn tạo **link chia sẻ** để gửi cho sale/khách, chỉnh **cách hiển thị** (số ngày báo "sắp trống", hotline), đăng **ảnh và thông tin sale** cho từng phòng/toà, đăng lại **phòng khách nhờ sale**, vẽ **sơ đồ tầng** bằng kéo-thả và xem **thống kê** người xem đã bấm gì. Trang công khai luôn hiển thị **đúng phòng đang trống tại thời điểm hiện tại** vì hệ thống suy trạng thái từ hợp đồng thật, giữ chỗ và lịch dọn/sửa phòng, không phụ thuộc bạn có nhớ cập nhật hay không.
+Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai — một trang web mà **khách xem không cần đăng nhập**. Bạn tạo **link chia sẻ** để gửi cho sale/khách, chỉnh **cách hiển thị** (số ngày báo "sắp trống", hotline, chính sách sale trên ảnh danh sách phòng trống), đăng **ảnh và thông tin sale** cho từng phòng/toà, đăng lại **phòng khách nhờ sale**, vẽ **sơ đồ tầng** bằng kéo-thả và xem **thống kê** người xem đã bấm gì. Trang công khai luôn hiển thị **đúng phòng đang trống tại thời điểm hiện tại** vì hệ thống suy trạng thái từ hợp đồng thật, giữ chỗ và lịch dọn/sửa phòng, không phụ thuộc bạn có nhớ cập nhật hay không.
 
 ::: info Điều kiện tiên quyết
 - Quyền **Sale Phòng => Xem** (module `sale_phong`, action `view`) để mở màn.
@@ -40,10 +40,15 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
 **Bước 4**: Chỉnh cách hiển thị — sang tab **Cài đặt hiển thị** (khối **Cài đặt hiển thị trang "Phòng trống"**, áp chung cho mọi link của tài khoản):
 
 - **Số ngày báo "sắp trống"** (mặc định 30): phòng có hợp đồng còn hiệu lực sẽ hết hạn trong vòng số ngày này được đánh dấu **Sắp trống** trên trang công khai.
-- **Hotline hiển thị**: số điện thoại/người liên hệ khách bấm **Gọi / Zalo**; để **Mặc định (hotline đầu tiên)** thì lấy hotline đang hoạt động đầu tiên.
 - Công tắc **Hiển thị phòng đã thuê (trên sơ đồ)**: hiện chỉ lưu cấu hình cho lần cập nhật sau — trang công khai luôn vẽ phòng đã thuê (làm mờ) để giữ đủ sơ đồ tầng.
+- **Bảng phòng trống — điền như Excel**: bảng có bố cục y như ảnh **Danh sách phòng trống** (nút **Tải ảnh** và tin gửi Zalo). Ô nền trắng viền đứt là ô điền:
+  - **Hotline chung cho tất cả nhà** (ô đỏ góc trên trái): chọn số in ở dòng **LIÊN HỆ ADMIN ĐỂ MỞ CỬA** và cho nút **Gọi / Zalo**; để **Mặc định (hotline đầu tiên)** thì lấy hotline đang bật tạo sớm nhất. Chưa có số thì bấm **Thêm / sửa số hotline**.
+  - **Chính sách sale chung** (khối trên đầu): mỗi dòng một ý, in ngay dưới các dòng giá điện (giá điện tự lấy theo từng toà).
+  - **SĐT riêng** trong ô địa chỉ của từng nhà: chỉ điền khi nhà đó dùng số khác hotline — ảnh sẽ in số này kèm icon điện thoại trong ô địa chỉ. Để trống là dùng hotline chung.
+  - **Chính sách sale** từng phòng đang trống: in chữ đỏ ở cột **CHÍNH SÁCH SALE** và hiện thành dòng **Khuyến mãi** trên trang công khai.
+  - Địa chỉ trong ảnh tự rút tới phường (phường đánh số giữ thêm quận), bỏ thành phố; loại thang in cùng dòng kèm icon.
 
-Ấn **Lưu cài đặt** để áp dụng.
+Ấn **Tải ảnh xem trước** để tải ảnh theo đúng nội dung đang nhập (chưa cần lưu). Ấn **Lưu cài đặt** để lưu tất cả.
 
 ![Tab Cài đặt hiển thị: Số ngày báo sắp trống, Hotline hiển thị, công tắc Hiển thị phòng đã thuê và nút Lưu cài đặt](./images/buoc-02-cai-dat-hien-thi.webp)
 

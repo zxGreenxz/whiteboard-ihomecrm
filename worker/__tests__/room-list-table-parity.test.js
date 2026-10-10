@@ -36,7 +36,10 @@ import * as TS from '../../src/pages/phong-trong/roomListTable.ts';
  *     giá điện và vào SĐT liên hệ;
  *   • sắp xếp tầng giảm dần rồi số phòng tăng dần;
  *   • mã phòng rỗng → rơi về số phòng; giá 0 / diện tích 0 / loại rỗng;
- *   • nội thất DÀI (bản vẽ ảnh phải xuống dòng) và nội thất rỗng → rơi về mô tả.
+ *   • nội thất DÀI (bản vẽ ảnh phải xuống dòng) và nội thất rỗng → rơi về mô tả;
+ *   • hotline + chính sách chung chỉ nằm trên MỘT toà (bản dựng phải tự tìm);
+ *   • SĐT toà trùng hotline (khác cách viết) → ẩn; SĐT riêng khác → in ở ô địa chỉ;
+ *   • chính sách sale riêng: ô khuyến mãi, rơi về chính sách khách pass, bỏ chỗ trắng.
  */
 function duLieu() {
   return [
@@ -46,9 +49,11 @@ function duLieu() {
       name: 'Toà A',
       area: 'Gò Vấp',
       district: 'Gò Vấp',
-      address: '102/30 Lê Văn Thọ, P.11, Gò Vấp',
+      address: '102/30 Lê Văn Thọ, P.11, Gò Vấp, Thành phố Hồ Chí Minh',
       manager: 'A. Hiển',
       phone: '0909 111 111',
+      hotline: '0909111111',
+      salePolicy: '  Nước 100k/người\n\n  Xe free  ',
       elecRate: 3800,
       liftLabel: 'Thang máy',
       lift: true,
@@ -61,7 +66,7 @@ function duLieu() {
           id: 'r1', no: 402, code: 'A-402', floor: 4, status: 'free',
           price: 4.5, area: 25, type: 'Studio',
           amenities: ['Máy lạnh', 'Ban công', 'Gác lửng', 'Bếp riêng', 'Máy giặt', 'Cửa sổ lớn', 'Tủ lạnh', 'Full nội thất'],
-          description: null, availDate: null,
+          description: null, availDate: null, saleNote: ' Ký 1 năm giảm 200k suốt HĐ ',
         },
         {
           id: 'r2', no: 401, code: 'A-401', floor: 4, status: 'soon',
@@ -73,11 +78,12 @@ function duLieu() {
           price: 6.25, area: 32, type: '1PN',
           amenities: ['Máy lạnh', ''], description: null, availDate: null,
           passContactManager: true, passContactName: 'Chị Mai', passContactPhone: '0938 000 000',
+          passSalePolicy: 'Giảm 300k tháng đầu',
         },
         {
           id: 'r4', no: 301, code: '', floor: 3, status: 'free',
           price: 3.2, area: 18, type: 'Studio',
-          amenities: [], description: null, availDate: null,
+          amenities: [], description: null, availDate: null, saleNote: '   ',
         },
         {
           id: 'r5', no: 302, code: 'A-302', floor: 3, status: 'rented',
@@ -92,9 +98,10 @@ function duLieu() {
       name: 'Toà B',
       area: 'Quận 4',
       district: 'Quận 4',
-      address: '',                       // trống → addressLines rơi về tên toà
-      manager: '',                       // rỗng → không thêm dòng "(QL)"
-      phone: '0909 111 111',             // trùng toà A → mode chọn số này
+      address: '',                       // trống → ô địa chỉ rơi về tên toà
+      manager: '',
+      phone: '0912 345 678',             // SĐT riêng khác hotline → in ở ô địa chỉ
+      hotline: '',                       // hotline chỉ chép trên toà A — bản dựng tự tìm
       elecRate: 3900,                    // lệch toà A → nhánh ngoại lệ
       liftLabel: null,
       lift: false,
@@ -108,11 +115,13 @@ function duLieu() {
           price: 5, area: 28, type: '2PN',
           amenities: ['Tủ lạnh'], description: null, availDate: null,
           passContactPhone: '0938 111 222', passContactName: 'Chị Mai',
+          saleNote: 'Giảm 500k', passSalePolicy: 'Khách tự thoả thuận',   // ô khuyến mãi thắng
         },
         {
           id: 'r7', no: 202, code: 'B-202', floor: 2, status: 'soon',
           price: 4, area: 22, type: 'Studio',
           amenities: ['Máy giặt'], description: null, availDate: null,   // không có ngày
+          passSalePolicy: 'Không phải phòng pass',                        // không được rò vào ô
         },
         {
           id: 'r8', no: 101, code: 'B-101', floor: 1, status: 'pass',
@@ -178,9 +187,9 @@ describe('buildRoomListTable — bản JS của worker KHỚP bản TS của web
     const t = JS.buildRoomListTable(duLieu());
 
     expect(t.title).toBe('DANH SÁCH PHÒNG TRỐNG');
-    expect(t.contactLines).toEqual(['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', '0909 111 111']);
-    expect(t.infoLines[0]).toBe('Điện 3.800đ/số');
-    expect(t.infoLines[1]).toBe('Riêng Toà B: điện 3.900đ/số');
+    // Ô liên hệ in đúng hotline đã chọn (nguyên văn), không lấy SĐT toà.
+    expect(t.contactLines).toEqual(['LIÊN HỆ ADMIN ĐỂ MỞ CỬA', '0909111111']);
+    expect(t.infoLines).toEqual(['Điện 3.800đ/số', 'Riêng Toà B: điện 3.900đ/số', 'Nước 100k/người', 'Xe free']);
     expect(t.totalRooms).toBe(7);
 
     // Toà C không còn phòng chào được → không có nhóm, dù vẫn tính giá điện.
@@ -190,8 +199,17 @@ describe('buildRoomListTable — bản JS của worker KHỚP bản TS của web
     expect(t.groups[0].rows.map((r) => r.code)).toEqual(['A-501', 'A-401', 'A-402', '301']);
     expect(t.groups[1].rows.map((r) => r.code)).toEqual(['B-201', 'B-202', 'B-101']);
 
-    expect(t.groups[0].addressLines).toEqual(['102/30 Lê Văn Thọ, P.11, Gò Vấp', '(thang máy)', '(A. Hiển)']);
-    expect(t.groups[1].addressLines).toEqual(['Toà B']);
+    // Địa chỉ tới phường (phường số giữ quận), bỏ thành phố; không còn dòng quản lý.
+    expect(t.groups[0]).toMatchObject({
+      address: '102/30 Lê Văn Thọ, P.11, Gò Vấp',
+      lift: { kind: 'elevator', label: '(thang máy)' },
+      phone: null, // "0909 111 111" là hotline viết khác → không in lặp
+    });
+    expect(t.groups[1]).toMatchObject({ address: 'Toà B', lift: null, phone: '0912 345 678' });
+
+    expect(t.groups[0].rows.map((r) => r.policy)).toEqual(['Giảm 300k tháng đầu', '', 'Ký 1 năm giảm 200k suốt HĐ', '']);
+    expect(t.groups[1].rows.map((r) => r.policy)).toEqual(['Giảm 500k', '', '']);
+    expect(t.groups[0].rows.map((r) => r.roomId)).toEqual(['r3', 'r2', 'r1', 'r4']);
   });
 
   it('bộ thiếu giá điện / thiếu SĐT: hai bản cùng không bịa dữ liệu', () => {
@@ -305,7 +323,7 @@ describe('elecLines', () => {
   });
 });
 
-describe('typeCell / amenitiesCell / addressLines / exportFileName', () => {
+describe('typeCell / amenitiesCell / ô địa chỉ / chính sách / exportFileName', () => {
   const phong = [
     { area: 25, type: 'Studio', amenities: ['Máy lạnh', 'Ban công'], description: null },
     { area: 0, type: 'Studio', amenities: [], description: 'Cửa sổ hành lang' },
@@ -324,12 +342,48 @@ describe('typeCell / amenitiesCell / addressLines / exportFileName', () => {
     { name: 'Toà A', address: '102/30 Lê Văn Thọ', liftLabel: 'Thang máy', manager: 'A. Hiển' },
     { name: 'Toà B', address: '', liftLabel: null, manager: '' },
     { name: 'Toà C', address: '5 Bến Vân Đồn', liftLabel: '  ', manager: '  C. Lan  ' },
+    { name: 'Toà D', address: '', liftLabel: ' THANG BỘ ', manager: '' },
   ];
   for (const [i, b] of toa.entries()) {
-    it(`toà #${i}: addressLines khớp`, () => {
-      expect(JS.addressLines(b)).toEqual(TS.addressLines(b));
+    it(`toà #${i}: liftCell khớp`, () => {
+      expect(JS.liftCell(b)).toEqual(TS.liftCell(b));
     });
   }
+
+  const diaChi = [
+    '102/30 Lê Văn Thọ, khu phố 6, Phường Thông Tây Hội, Thành phố Hồ Chí Minh',
+    '403PVB, Phường 15, Quận Tân Bình, Hồ Chí Minh',
+    '44/8 Trung Lang, khu phố 33, phường Bảy Hiền, TP. Hồ Chí Minh',
+    '403 Phạm Văn Bạch, P15, Tân Bình',
+    '37 Tôn Đức Thắng, Q.1, TP.HCM',
+    '12 Lê Lợi, Phường Bến Nghé, Quận 1, Thành phố Hồ Chí Minh',
+    'Phường'.normalize('NFD') + ' 3, đầu chuỗi không tính, Phường 7, TP HCM',
+    'Số 1 Đường X',
+    '',
+    '12 Võ Văn Ngân, TP Thủ Đức, TP HCM',
+    '12 ABC, Phường 7, TP Vũng Tàu, Bà Rịa - Vũng Tàu',
+    'Block B, P305, Phường Bến Nghé, TPHCM',
+    '5 Lê Lợi, Q.1, Ho Chi Minh',
+    '5 Lê Lợi, XÃ BÌNH HƯNG, TỈNH LONG AN',
+  ];
+  for (const [i, a] of diaChi.entries()) {
+    it(`địa chỉ #${i}: shortAddress khớp`, () => {
+      expect(JS.shortAddress(a)).toBe(TS.shortAddress(a));
+    });
+  }
+
+  it('samePhone / salePolicyLines / policyCell khớp', () => {
+    for (const [a, b] of [['0909 111 111', '0909111111'], ['+84 909 111 111', '0909.111.111'], ['0909111111', '0909111112'], ['', null], ['0084 909 111 111', '0909111111']]) {
+      expect(JS.samePhone(a, b)).toBe(TS.samePhone(a, b));
+    }
+    for (const s of ['', null, ' a \r\n\r\n b ', 'một dòng']) expect(JS.salePolicyLines(s)).toEqual(TS.salePolicyLines(s));
+    for (const r of [
+      { status: 'free', saleNote: ' x ', passSalePolicy: 'y' },
+      { status: 'pass', saleNote: '', passSalePolicy: ' y ' },
+      { status: 'soon', saleNote: null, passSalePolicy: 'y' },
+      { status: 'pass' },
+    ]) expect(JS.policyCell(r)).toBe(TS.policyCell(r));
+  });
 
   it('exportFileName khớp', () => {
     const d = new Date(2026, 7, 31, 10, 0, 0);   // 31/08/2026 giờ máy
