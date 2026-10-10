@@ -65,7 +65,8 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
           </button>
           <div style={{ flex: 1 }}>
             {loi ? (
-              <span style={{ fontSize: 11.5, fontWeight: 600 }}>{nhanMediaLoi('voice', m.mediaUrl)}</span>
+              // Phát tại chỗ lỗi thì vẫn cho mở link ở tab mới (tin mới thường còn sống).
+              <a href={url || undefined} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 600, color: 'inherit' }}>{nhanMediaLoi('voice', m.mediaUrl, m.createdAt)}</a>
             ) : (
               <div style={{ height: 4, borderRadius: 2, background: out ? 'rgba(255,255,255,.3)' : 'hsl(210 20% 92%)', overflow: 'hidden' }}>
                 <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: out ? '#fff' : EMERALD, transition: 'width .2s' }} />

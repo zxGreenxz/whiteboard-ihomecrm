@@ -58,8 +58,9 @@ export function docThe(meta: unknown): ZaloCard | null {
   };
 }
 
-// Máy chủ file của Zalo: ảnh (zdn.vn, zadn.vn), video (dlmd.me), tệp (dlfl.vn).
-const MAY_CHU_ZALO = /(^|\.)(zdn\.vn|zadn\.vn|dlmd\.me|dlfl\.vn)$/i;
+// Máy chủ file của Zalo: ảnh (zdn.vn, zadn.vn), video (dlmd.me, chuyển hướng sang mdchat.me),
+// tệp (dlfl.vn). Đo 10/10/2026: video *.dlmd.me 301 → *.mdchat.me, ảnh bìa *.zdn.vn 301 → *.zadn.vn.
+const MAY_CHU_ZALO = /(^|\.)(zdn\.vn|zadn\.vn|dlmd\.me|mdchat\.me|dlfl\.vn)$/i;
 
 /** URL nằm trên máy chủ file của Zalo — loại link tự hết hạn sau một thời gian. */
 export function laLinkZalo(url: string | null | undefined): boolean {
@@ -69,13 +70,24 @@ export function laLinkZalo(url: string | null | undefined): boolean {
 
 const TEN_MEDIA = { image: 'Ảnh', video: 'Video', voice: 'Tin thoại' } as const;
 
+/** Tin cũ hơn mốc này mà link Zalo hỏng thì nhiều khả năng đã hết hạn (đo 09/10/2026: link 1 tháng 404). */
+const NGAY_CO_THE_HET_HAN = 7;
+
 /**
- * Nhãn khi media không tải được. Link máy chủ Zalo hỏng thì gần như luôn do hết hạn (đo 09/10/2026:
- * mọi link thử đều 404), nhưng mạng chập chờn cũng cho cùng lỗi — nên nói "có thể".
+ * Nhãn khi media không tải được tại chỗ. Tin cũ: nói "có thể đã hết hạn". Tin mới: link vẫn sống
+ * (lỗi thường do mạng hoặc trình duyệt chặn), nên mời bấm mở ở tab mới thay vì kết luận đã mất.
  */
-export function nhanMediaLoi(loai: keyof typeof TEN_MEDIA, url: string | null | undefined): string {
+export function nhanMediaLoi(
+  loai: keyof typeof TEN_MEDIA,
+  url: string | null | undefined,
+  createdAt?: string | null,
+  bayGio: number = Date.now(),
+): string {
   const ten = TEN_MEDIA[loai];
-  return laLinkZalo(url) ? `${ten} không mở được — có thể đã hết hạn trên Zalo` : `Không tải được ${ten.toLowerCase()}`;
+  if (!laLinkZalo(url)) return `Không tải được ${ten.toLowerCase()}`;
+  const luc = createdAt ? Date.parse(createdAt) : NaN;
+  const cu = Number.isFinite(luc) && bayGio - luc > NGAY_CO_THE_HET_HAN * 86_400_000;
+  return cu ? `${ten} không mở được — có thể đã hết hạn trên Zalo` : `${ten} không mở được tại đây — bấm để mở`;
 }
 
 export type CanhBaoKetNoi =

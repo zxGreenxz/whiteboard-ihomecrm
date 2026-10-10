@@ -6,6 +6,7 @@ import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
 import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
+import { useMediaThuLai } from '@/hooks/chat-zalo/useMediaThuLai';
 
 interface Props extends MsgActionProps {
   items: ZaloMessage[];
@@ -75,16 +76,18 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
 }
 
 function AlbumCell({ m, onClick, overlay, style }: { m: ZaloMessage; onClick: () => void; overlay?: string; style?: React.CSSProperties }) {
-  const [err, setErr] = useState(false);
   const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
+  const { src, loi: err, onError } = useMediaThuLai(url);
+  // Ô lỗi: mở thẳng link ở tab mới (lightbox cũng chỉ nạp lại đúng link đó trong trang).
+  const bam = () => { if (url && err) window.open(url, '_blank', 'noopener,noreferrer'); else onClick(); };
   return (
-    <button onClick={onClick} style={{ position: 'relative', border: '1px solid hsl(210 20% 86%)', borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer', background: 'hsl(210 20% 95%)', ...style }}>
+    <button onClick={bam} style={{ position: 'relative', border: '1px solid hsl(210 20% 86%)', borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer', background: 'hsl(210 20% 95%)', ...style }}>
       {url && !err ? (
-        <img src={url} alt={m.label || 'Ảnh'} referrerPolicy="no-referrer" loading="lazy" onError={() => setErr(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        <img src={src} alt={m.label || 'Ảnh'} referrerPolicy="no-referrer" loading="lazy" onError={onError} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       ) : url && err ? (
-        <span title={nhanMediaLoi('image', m.mediaUrl)} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 50%)', fontSize: 10.5, fontWeight: 600, textAlign: 'center', padding: '0 6px' }}>
+        <span title={nhanMediaLoi('image', m.mediaUrl, m.createdAt)} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 50%)', fontSize: 10.5, fontWeight: 600, textAlign: 'center', padding: '0 6px' }}>
           {/* Ô album nhỏ: chữ ngắn, câu đầy đủ ở tooltip. */}
-          <ImageOff size={20} strokeWidth={1.5} />{!overlay && 'Không mở được'}
+          <ImageOff size={20} strokeWidth={1.5} />{!overlay && 'Bấm để mở'}
         </span>
       ) : (
         <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'hsl(210 10% 55%)' }}><ImageIcon size={22} strokeWidth={1.5} /></span>

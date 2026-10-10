@@ -7,6 +7,7 @@ import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
 import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
+import { useMediaThuLai } from '@/hooks/chat-zalo/useMediaThuLai';
 
 interface Props extends MsgActionProps {
   m: ZaloMessage;
@@ -17,20 +18,20 @@ interface Props extends MsgActionProps {
 /** Tin nhắn ảnh — hiện ảnh thật (no-referrer) nếu có URL, lỗi/không có thì tile gradient. */
 export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, onDelete, onOpenLightbox }: Props) {
   const out = m.dir === 'out';
-  const [err, setErr] = useState(false);
   const [hover, setHover] = useState(false);
   const canAct = (!!m.id && (!!onReact || !!onRecall || !!onReply || !!onDelete)) || !!onShare;
   const radius = out ? '14px 4px 14px 14px' : '14px 14px 14px 4px';
   // Ảnh SHOP gửi nằm trong bucket private `zalo-media` — phải ký mới xem được.
   const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
+  const { src, loi: err, onError } = useMediaThuLai(url);
 
   const img = (
     <img
-      src={url || undefined}
+      src={src}
       alt={m.label || 'Ảnh'}
       referrerPolicy="no-referrer"
       loading="lazy"
-      onError={() => setErr(true)}
+      onError={onError}
       style={{ maxWidth: 240, maxHeight: 280, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', display: 'block', objectFit: 'cover' }}
     />
   );
@@ -54,13 +55,18 @@ export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, o
           ) : (
             <a href={url} target="_blank" rel="noreferrer">{img}</a>
           )
+        ) : url && err ? (
+          // Có link mà tải lỗi: vẫn cho mở ở tab mới — link mới thường còn sống, link cũ thì Zalo đã xoá.
+          <a href={url} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS[m.imgTone || 'neutral'] || IMG_GRADS.neutral, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textDecoration: 'none' }}>
+            <ImageOff size={28} strokeWidth={1.6} />
+            <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: '0 10px' }}>
+              {nhanMediaLoi('image', m.mediaUrl, m.createdAt)}
+            </span>
+          </a>
         ) : (
           <div style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS[m.imgTone || 'neutral'] || IMG_GRADS.neutral, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)' }}>
-            {/* Có link mà tải lỗi: ảnh nhận về chỉ nằm trên máy chủ Zalo, và Zalo xoá sau một thời gian. */}
-            {url && err ? <ImageOff size={28} strokeWidth={1.6} /> : <ImageIcon size={28} strokeWidth={1.6} />}
-            <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: '0 10px' }}>
-              {url && err ? nhanMediaLoi('image', m.mediaUrl) : (m.label || 'Hình ảnh')}
-            </span>
+            <ImageIcon size={28} strokeWidth={1.6} />
+            <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: '0 10px' }}>{m.label || 'Hình ảnh'}</span>
           </div>
         )}
         {/* "[Hình ảnh]" là nhãn worker ghi thay chú thích, không phải chữ người gửi: đừng lặp dưới ô ảnh. */}
