@@ -3,10 +3,22 @@
  * Tọa độ phòng (x,y,w,h) sau này lấy từ editor sơ đồ kéo-thả (layout_x/y/w/h).
  */
 
-export type RoomStatus = "free" | "soon" | "rented" | "pass";
+// "locked" chỉ có ở dữ liệu trong app (get_my_available_rooms): phòng bị lock tạm, reader công khai vẫn trả "rented".
+export type RoomStatus = "free" | "soon" | "rented" | "pass" | "locked";
 import type { RoomSaleFact } from '@/lib/roomSaleFacts';
 
 export interface Box { x: number; y: number; w: number; h: number; }
+
+/** Lock tạm còn hạn (6/12/24 giờ) — chỉ nhân viên trong app thấy. */
+export interface RoomSaleLockInfo {
+  id: string;
+  hours: number;
+  note: string | null;
+  lockedAt: string;
+  expiresAt: string;
+  lockedByName: string;
+  lockedByMe: boolean;
+}
 
 export interface Room extends Box {
   id: string;
@@ -36,6 +48,7 @@ export interface Room extends Box {
   passSalePolicy?: string | null;
   passAvailDate?: string | null;  // "dd/mm" — ngày dự kiến trống (tuỳ chọn)
   passContactManager?: boolean;   // true = khách ẩn SĐT, chỉ "Liên hệ quản lý" (dùng SĐT QL tòa)
+  saleLock?: RoomSaleLockInfo | null; // status === "locked"
 }
 
 export interface Fixture extends Box {
@@ -97,6 +110,7 @@ export const STATUS_META: Record<RoomStatus, { label: string; short: string }> =
   soon:   { label: "Sắp trống", short: "Sắp trống" },
   rented: { label: "Đã thuê",   short: "Đã thuê" },
   pass:   { label: "Khách pass phòng", short: "Khách pass" },
+  locked: { label: "Đã chốt tạm", short: "Chốt tạm" },
 };
 
 export const fmtPrice = (p: number): string =>

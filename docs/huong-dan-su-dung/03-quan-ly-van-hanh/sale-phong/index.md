@@ -86,7 +86,15 @@ Bảng liệt kê **Phòng**, **Liên hệ khách**, **Chính sách sale**, **Gi
 
 ### Trang công khai khách nhìn thấy gì
 
-Xem chi tiết ở trang [Trang phòng trống công khai](/03-quan-ly-van-hanh/trang-phong-trong/): danh sách/sơ đồ phòng, lọc theo quận, toà, khoảng giá, bảng chi tiết phòng với các nút **Gọi / Zalo / Chỉ đường / Chia sẻ / Tải ảnh**. Riêng nút **Tạo cọc giữ phòng** chỉ hiện khi **người mở đang đăng nhập và có quyền tạo cọc nhanh** (`create_deposit`) — khách vãng lai không bao giờ thấy.
+Xem chi tiết ở trang [Trang phòng trống công khai](/03-quan-ly-van-hanh/trang-phong-trong/): danh sách/sơ đồ phòng, lọc theo quận, toà, khoảng giá, bảng chi tiết phòng với các nút **Gọi / Zalo / Chỉ đường / Chia sẻ / Tải ảnh**. Riêng nút **Tạo cọc giữ phòng** chỉ hiện khi **người mở đang đăng nhập và có quyền tạo cọc nhanh** (`create_deposit`), và nút **Lock tạm** chỉ hiện khi có quyền **Lock tạm phòng** (`lock_room`) — khách vãng lai không bao giờ thấy.
+
+### Lock tạm phòng
+
+Quyền **Lock tạm phòng** (`sale_phong.lock_room`, nhóm Sale Phòng) mặc định chỉ vai Chủ sở hữu tổ chức có; chủ tự gán cho người cần trong [Phân quyền](/05-cai-dat/phan-quyen/). Người có quyền mở thẻ phòng đang **Trống** / **Sắp trống** trong danh sách phòng trống của app (bản điện thoại `/sale-phong`, hoặc link `/r/...` khi đã đăng nhập), ấn **Lock tạm**, chọn 6, 12 hoặc 24 giờ (mặc định 24) và ghi chú tuỳ chọn. Không tạo phiếu, không thu tiền, không cần khách.
+
+- Phòng biến khỏi link công khai, ảnh **Danh sách phòng trống** và tin Zalo ngay; trong app nhân viên vẫn thấy phòng với nhãn **Đã chốt tạm · còn X giờ · bởi …**.
+- Hết giờ mà chưa ai tạo phiếu cọc thì phòng tự hiện lại, không cần ai bấm. Phòng hiện lại được coi như phòng mới với worker gửi tin Zalo phòng trống.
+- Gỡ lock sớm: người đã lock (còn quyền) hoặc người có quyền tạo cọc ở toà đó, có bước xác nhận. Quản lý tạo phiếu cọc cho phòng đang lock thì lock tự gỡ trong cùng lần lưu (xem [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/)).
 
 ### Phiên bản điện thoại
 
@@ -101,6 +109,7 @@ Mở `/sale-phong` trên điện thoại, màn chuyển sang bản mobile: xem n
 | Phòng **còn hợp đồng nhưng vẫn hiện trống** trên trang | Trang suy trạng thái từ **hợp đồng thật**, không từ công tắc phòng. Kiểm tra hợp đồng của phòng còn **hiệu lực** không; nếu hợp đồng đã kết thúc thì phòng đúng là trống. |
 | Phòng hiện **"Cần xác nhận ngày trống"** hoặc **"Đang chuẩn bị"** | Khách đã báo trả nhưng ngày trống đã qua mà chưa ghi trả phòng, hoặc phòng đang dọn/sửa. Cập nhật trả phòng ở [hợp đồng](/03-quan-ly-van-hanh/thanh-ly-move-out/) hoặc **Cập nhật dọn/sửa** ở màn [Căn hộ](/03-quan-ly-van-hanh/can-ho-phong/). |
 | Ô **Thưởng sale** khách có nhìn thấy không | Không. **Thưởng sale** chỉ hiện cho người đang đăng nhập; khách vãng lai không thấy. **Khuyến mãi** (nếu có) thì hiện cho khách. |
+| Phòng trống **biến mất** khỏi link, ảnh và tin Zalo dù chưa có hợp đồng hay cọc | Phòng có thể đang bị **Lock tạm**. Trong app (danh sách phòng trống đăng nhập) phòng vẫn hiện với nhãn **Đã chốt tạm · còn X giờ · bởi …**; hết giờ phòng tự hiện lại, hoặc người đã lock / người có quyền tạo cọc gỡ lock sớm. |
 | Không thấy một số tab | Mỗi tab cần quyền chi tiết riêng (xem Điều kiện tiên quyết). Nhờ quản trị bật quyền `sale_phong.*` tương ứng ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 | Tab **Lỗi** có hàng nghìn dòng | Mặc định chỉ xem **Lỗi ứng dụng**. Lỗi **Ngoài app** chủ yếu do trình duyệt trong Zalo chèn script, không cần xử lý. |
 

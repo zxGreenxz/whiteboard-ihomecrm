@@ -6,15 +6,18 @@ import {
   type Room, type Building, type FloorPlan as FloorPlanData, type RoomStatus,
 } from "./sampleData";
 import { useRoomImpression } from "./useTracking";
+import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
 
 const SM = STATUS_META;
 const stColor = (s: RoomStatus | string) => `var(--st-${s})`;
 
 /* ===== Summary strip ===== */
 export function Summary({ rooms }: { rooms: Room[] }) {
-  const c: Record<string, number> = { free: 0, soon: 0, rented: 0, pass: 0 };
+  const c: Record<string, number> = { free: 0, soon: 0, rented: 0, pass: 0, locked: 0 };
   rooms.forEach((r) => { c[r.status]++; });
   const items: [RoomStatus, string][] = [["free", "Trống sẵn"], ["soon", "Sắp trống"], ["pass", "Khách pass"], ["rented", "Đã thuê"]];
+  // Chốt tạm chỉ có trong app; trang công khai không bao giờ có ô này.
+  if (c.locked) items.splice(3, 0, ["locked", "Chốt tạm"]);
   return (
     <div className="summary">
       {items.map(([k, lbl]) => (
@@ -82,6 +85,9 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
         {r.saleFact && r.saleFact.kind !== 'ready' && r.status !== 'pass' && r.status !== 'rented' && (
           <div className="rc-avail"><Icon.Calendar />{r.saleFact.label}</div>
         )}
+        {r.status === 'locked' && r.saleLock && (
+          <div className="ovr-lock"><Icon.Lock />Chốt tạm · {saleLockRemaining(r.saleLock.expiresAt)} · bởi {r.saleLock.lockedByMe ? 'bạn' : r.saleLock.lockedByName}</div>
+        )}
       </div>
     </div>
   );
@@ -127,7 +133,7 @@ export function OverviewView({
     .map((b) => ({
       b,
       rooms: b.rooms
-        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || (showRented && r.status === "rented")) && bandTest(r.price))
+        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked" || (showRented && r.status === "rented")) && bandTest(r.price))
         .sort((a, z) => z.floor - a.floor || a.no - z.no),
     }))
     .filter((g) => g.rooms.length);
@@ -217,7 +223,7 @@ export function OverviewView({
 function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
   const impRef = useRoomImpression<HTMLDivElement>(r);
   return (
-                  <div className={"ov-row" + (r.status === "pass" ? " pass" : "")} ref={impRef} onClick={() => onOpen(r)}>
+                  <div className={"ov-row" + (r.status === "pass" || r.status === "locked" ? " " + r.status : "")} ref={impRef} onClick={() => onOpen(r)}>
                     <span className="ovr-bar" style={{ background: stColor(r.status) }} />
                     <div className="ovr-body">
                       <div className="ovr-l1">
@@ -231,6 +237,11 @@ function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
                           <i style={{ background: stColor(r.status) }} />{r.saleFact?.label || SM[r.status].label}
                         </span>
                       </div>
+                      {r.status === "locked" && r.saleLock && (
+                        <div className="ovr-lock">
+                          <Icon.Lock />Chốt tạm · {saleLockRemaining(r.saleLock.expiresAt)} · bởi {r.saleLock.lockedByMe ? "bạn" : r.saleLock.lockedByName}
+                        </div>
+                      )}
                       {r.status === "pass" && (r.passContactManager || r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
                         <div className="ovr-pass">
                           {r.passContactManager ? (
@@ -347,7 +358,7 @@ export function FloorPlan({
         })}
       </div>
       <div className="legend">
-        {(Object.keys(SM) as RoomStatus[]).map((k) => (
+        {(Object.keys(SM) as RoomStatus[]).filter((k) => k !== "locked" || building.rooms.some((r) => r.status === "locked")).map((k) => (
           <div className="lg-item" key={k}>
             <i className="lg-sw" style={{ background: stColor(k), borderColor: stColor(k) }} />
             {SM[k].label}

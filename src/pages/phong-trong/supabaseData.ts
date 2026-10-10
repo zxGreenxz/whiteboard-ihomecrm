@@ -52,7 +52,7 @@ export interface RpcRoom {
   sale_note?: string | null;        // ô "Khuyến mãi" (promo riêng phòng, gửi khách được)
   sale_bonus_note?: string | null;  // ô "Thưởng sale" (nội bộ — KHÔNG gửi khách)
   room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
-  status_public: RoomStatus;    // 'free' | 'soon' | 'rented' | 'pass' (RPC tính sẵn)
+  status_public: Exclude<RoomStatus, "locked">; // 'free' | 'soon' | 'rented' | 'pass' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
   sale_state?: string | null;
   sale_today?: string | null;
@@ -64,6 +64,9 @@ export interface RpcRoom {
   pass_price?: number | null;       // giá pass (VND) — override rent_price nếu có
   pass_avail_date?: string | null;  // 'YYYY-MM-DD' — ngày dự kiến trống (pass)
   pass_contact_manager?: boolean | null; // true = ẩn SĐT khách, chỉ "Liên hệ quản lý"
+  // Chỉ get_my_available_rooms (trong app): lock tạm còn hạn của phòng bị ẩn vì lock.
+  sale_lock?: { id: string; hours: number; note: string | null; locked_at: string; expires_at: string;
+    locked_by_name: string; locked_by_me: boolean } | null;
 }
 export interface RpcContact { name: string | null; phone: string | null }
 export interface RpcPayload {
@@ -108,6 +111,8 @@ const payloadSchema = z.object({
     sale_today: optionalText, expected_ready_on: optionalText,
     pass_contact_name: optionalText, pass_contact_phone: optionalText, pass_sale_policy: optionalText,
     pass_price: z.number().nullable().optional(), pass_avail_date: optionalText, pass_contact_manager: z.boolean().nullable().optional(),
+    sale_lock: z.object({ id: z.string(), hours: z.number(), note: nullableText, locked_at: z.string(), expires_at: z.string(),
+      locked_by_name: z.string(), locked_by_me: z.boolean() }).nullable().optional(),
   })),
   contact: z.object({ name: nullableText, phone: nullableText }).nullable().optional(),
   sale_policy: optionalText,
@@ -195,8 +200,10 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
 
     const rooms: Room[] = rawRooms.map((rr, i) => {
       const imgs = toImages(rr.images);
-      const status = rr.status_public;
-      const saleFact = roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
+      // Lock tạm chỉ hiện cho nhân viên trong app; ngoài app phòng vẫn là "đã thuê" và bị ẩn.
+      const lock = options.includeInternal && rr.status_public === "rented" ? rr.sale_lock ?? null : null;
+      const status: RoomStatus = lock ? "locked" : rr.status_public;
+      const saleFact = lock ? undefined : roomSaleFacts({ status, state: rr.sale_state, today: rr.sale_today,
         availableOn: rr.avail_date, expectedReadyOn: rr.expected_ready_on });
       return {
         id: rr.id,
@@ -213,7 +220,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         area: Math.round(rr.area ?? 0),
         status,
         amenities: toAmenities(rr.amenities),
-        availDate: status === "soon" ? fmtAvail(saleFact.availableOn) : null,
+        availDate: status === "soon" ? fmtAvail(saleFact?.availableOn) : null,
         saleFact,
         // Thiếu ảnh không tự thêm ảnh mẫu.
         imgCount: imgs.length,
@@ -227,6 +234,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         passSalePolicy: rr.pass_sale_policy || null,
         passAvailDate: status === "pass" ? fmtAvail(rr.pass_avail_date) : null,
         passContactManager: !!rr.pass_contact_manager,
+        saleLock: lock ? { id: lock.id, hours: lock.hours, note: lock.note, lockedAt: lock.locked_at, expiresAt: lock.expires_at,
+          lockedByName: lock.locked_by_name, lockedByMe: lock.locked_by_me } : null,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
@@ -236,7 +245,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
     const stored = b.floor_layouts ?? null;
     // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ).
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
-      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass")))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass" || r.status === "locked")))
       .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);

@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2517,
-    "catalogFunctions": 1267,
+    "sourceCallSites": 2528,
+    "catalogFunctions": 1271,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 370,
+    "calledRpcs": 374,
     "byRisk": {
-      "normal": 268,
+      "normal": 272,
       "financial": 102
     },
-    "securityDefiner": 352
+    "securityDefiner": 356
   },
   "missingOnServer": [],
   "rpcs": {
@@ -250,6 +250,25 @@
         "src/hooks/useCommissionManager.ts"
       ],
       "risk": "financial"
+    },
+    "assign_room_reservation_customer_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_reservation_id uuid, p_expected_revision bigint, p_customer_id uuid, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomReservations.ts"
+      ],
+      "risk": "normal"
     },
     "award_job_bonus": {
       "definitions": [
@@ -3817,6 +3836,25 @@
       ],
       "risk": "normal"
     },
+    "list_room_sale_locks_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomSaleLocks.ts"
+      ],
+      "risk": "normal"
+    },
     "list_room_turnover_queue_v1": {
       "definitions": [
         {
@@ -3893,6 +3931,25 @@
       ],
       "callers": [
         "src/hooks/useSpendEngine.ts"
+      ],
+      "risk": "normal"
+    },
+    "lock_room_for_sale_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_room_id uuid, p_hours integer, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomSaleLocks.ts"
       ],
       "risk": "normal"
     },
@@ -5212,6 +5269,25 @@
       ],
       "callers": [
         "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "release_room_sale_lock_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_lock_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomSaleLocks.ts"
       ],
       "risk": "normal"
     },

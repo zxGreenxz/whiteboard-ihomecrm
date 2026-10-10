@@ -78,6 +78,7 @@ import { ReservationSettlementDialog } from "@/components/deposits/ReservationSe
 import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
 
 const RoomReservationPanel = lazy(() => import('@/components/deposits/RoomReservationPanel').then(module => ({ default: module.RoomReservationPanel })));
+const RoomSaleLocksPanel = lazy(() => import('@/components/deposits/RoomSaleLocksPanel').then(module => ({ default: module.RoomSaleLocksPanel })));
 
 // Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
 const RESV_STATUS = {
@@ -689,6 +690,10 @@ const DepositsDesktop = () => {
             Sổ cọc đầy đủ · {ledgerCount}
           </button>
         </div>
+
+        <Suspense fallback={null}>
+          <RoomSaleLocksPanel />
+        </Suspense>
 
         <Suspense fallback={<LoadingState label="hồ sơ giữ chỗ" rows={2} />}>
           <RoomReservationPanel />

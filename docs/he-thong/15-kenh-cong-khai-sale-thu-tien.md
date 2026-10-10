@@ -20,7 +20,7 @@
 - Trang hiển thị **mọi toà của owner đang có ≥1 phòng trống/sắp trống**, 2 chế độ xem: **Danh sách** (card ảnh + giá + tiện ích) và **Sơ đồ** (canvas toạ độ từng tầng, scale-to-fit). Chip "Tổng hợp" xem gộp tất cả toà; lọc theo Quận.
 - Bottom-sheet chi tiết phòng: gallery ảnh, giá/cọc/điện, khuyến mãi (`sale_note`), thưởng sale (`sale_bonus_note` — nội bộ), nút **Gọi / Zalo / Chỉ đường / Chia sẻ (kèm toàn bộ ảnh qua Web Share API) / Tải ảnh**.
 - Route đăng ký **ngoài `ProtectedRoute`** và lazy-load để cô lập [phongTrong.css](src/pages/phong-trong/phongTrong.css) (CSS đặt style cho `body`, ngoài `@layer` — không được rò sang phần còn lại của CRM). Xem comment trong [App.tsx](src/App.tsx).
-- Sale **đang đăng nhập** mở chính link này và có quyền `sale_phong.create_deposit` sẽ thấy nút "Tạo cọc giữ phòng" → tạo phiếu thu cọc 1 chạm → phòng bị khoá realtime, biến mất khỏi danh sách trống. Phòng **đang trống** khoá qua cờ `rooms.status='RESERVED'`; phòng **"Sắp trống"** (còn HĐ hiệu lực nên không thể mang cờ `RESERVED`) khoá qua predicate `room_has_holding_deposit` ngay trong RPC (§2.4, vá `20260727120000`). Đã live từ `4b4f1cd`.
+- Sale **đang đăng nhập** mở chính link này và có quyền `sale_phong.lock_room` còn thấy nút "Lock tạm" (§4.6.1). Sale **đang đăng nhập** mở chính link này và có quyền `sale_phong.create_deposit` sẽ thấy nút "Tạo cọc giữ phòng" → tạo phiếu thu cọc 1 chạm → phòng bị khoá realtime, biến mất khỏi danh sách trống. Phòng **đang trống** khoá qua cờ `rooms.status='RESERVED'`; phòng **"Sắp trống"** (còn HĐ hiệu lực nên không thể mang cờ `RESERVED`) khoá qua predicate `room_has_holding_deposit` ngay trong RPC (§2.4, vá `20260727120000`). Đã live từ `4b4f1cd`.
 - **Mọi hành vi của khách được đo đếm ẩn danh** (page view, thời gian xem, phòng hiện ra/mở chi tiết, bấm Gọi/Zalo/Chia sẻ/Tải…) qua tracker FE + RPC `log_public_room_events` — xem §2.8/§4.8. Owner xem báo cáo ở tab "Thống kê" của `/sale-phong`.
 - **Ảnh phòng/toà trên trang này đọc từ Cloudflare R2** (custom domain `img.chillhome.io.vn`, egress $0) sau đợt migrate 2026-06-27 — không còn đọc từ Supabase Storage (§2.5).
 - Cùng UI này còn được **nhúng in-app** cho user đã đăng nhập: `SalePhongMobilePage` truyền `buildings` từ hook [useMyAvailableRooms.ts](src/hooks/useMyAvailableRooms.ts) (RPC `get_my_available_rooms`, không cần token) — xem §2.4 và §5.3.
@@ -278,6 +278,7 @@ Quan hệ "ảo" quan trọng (không FK): RPC `get_public_available_rooms` **đ
 | Cần xác nhận ngày trống | Báo trả đã quá hẹn; hỏi lại khách và cập nhật ngày hoặc xác nhận trả phòng. |
 | Đang dọn/sửa | Có thể đưa lên sale, kèm ngày dự kiến sẵn sàng nếu biết. Chưa biết hoặc quá hẹn thì cần xác nhận lại; chưa nhận khách mới cho đến khi xác nhận sẵn sàng. |
 | Đã thuê / giữ chỗ | Phòng đang có khách hoặc đã có người giữ lượt nhận tiếp theo; không nhận thêm một giữ chỗ khác. |
+| Đã chốt tạm | Phòng Trống / Sắp trống đang có Lock tạm (§4.6.1). Kênh công khai, ảnh danh sách và tin Zalo coi như `rented`; chỉ danh sách trong app có thêm nhãn "Đã chốt tạm · còn X giờ · bởi …". |
 
 Phòng đang ở có hồ sơ nhờ sale/nhượng riêng phải đọc điều kiện hồ sơ đó; không coi là phòng đã trống. Người phụ trách dọn/sửa có thể bổ sung sau, nhưng trạng thái sẵn sàng phải được xác nhận trước khi khách mới nhận phòng.
 
@@ -300,9 +301,18 @@ Gọi `supabase.rpc(...)` **như method** (giữ `this`) hoặc `supabase.rpc.bi
 
 ### 4.6. Giữ chỗ / Tạo cọc nhanh trên trang công khai
 
-Nút chỉ dành cho người đã đăng nhập và có quyền hiện hữu. Chọn phòng, khách giữ chỗ và **Giữ chỗ chưa nhận tiền** hoặc nhập khoản cọc dương. Giữ chỗ thuần cần hạn do người dùng chọn, không tạo phiếu tiền và không dùng số tiền giả 1đ. Khoản chưa duyệt chưa được coi là tiền đã nhận để ký hợp đồng; luồng thu và duyệt cọc vẫn theo cơ chế hiện hữu.
+Nút chỉ dành cho người đã đăng nhập và có quyền hiện hữu. Từ 10/10/2026 giao diện không còn lựa chọn giữ chỗ 0 đồng: phải nhập khoản cọc dương, và ô khách nhận một khách trong danh bạ **hoặc** tên khách gợi nhớ (`customer_hint`, tối đa 120 ký tự; xem [04 §5.4](04-coc-giu-cho.md)). Giữ phòng không thu tiền dùng Lock tạm (§4.6.1). Giữ chỗ 0 đồng đã tạo từ trước vẫn hợp lệ. Khoản chưa duyệt chưa được coi là tiền đã nhận để ký hợp đồng; luồng thu và duyệt cọc vẫn theo cơ chế hiện hữu.
 
 Với phòng sắp trống, chọn ngày dự kiến nhận không sớm hơn ngày khách cũ đã báo trả. Hết hạn giữ chỗ vẫn giữ lượt đó để người quản lý điều chỉnh hạn, bổ sung cọc hoặc hủy; không tự đưa phòng trở lại sale. Khi ký phải chọn đúng khách và hồ sơ giữ/cọc, đồng thời phòng đã được trả và sẵn sàng nhận khách. Xem [04 Cọc và giữ chỗ](04-coc-giu-cho.md).
+
+### 4.6.1. Lock tạm: danh sách sale ẩn phòng đang lock (10/10/2026)
+
+Quyền `sale_phong.lock_room` (nhóm Sale Phòng, mặc định chỉ vai Chủ sở hữu tổ chức) cho phép khoá bán một phòng Trống / Sắp trống 6, 12 hoặc 24 giờ, không khách, không tiền, không phiếu. Migration [20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql](supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql); mô hình dữ liệu và RPC xem [04 §4.19](04-coc-giu-cho.md).
+
+- Hàm dùng chung `app_private.room_sale_workflow_fact_v1` đổi `status_public` `free`/`soon` thành `rented` (`sale_state='RENTED'`) khi phòng có lock còn hiệu lực. Vì trang công khai `/r/:token`, ảnh "Danh sách phòng trống" và tin Zalo cùng đọc thông tin sale này, phòng biến khỏi cả ba ngay khi lock; không đổi `rooms.status`.
+- `get_my_available_rooms` (danh sách trong app) là reader duy nhất giữ phòng lock trong payload, kèm đối tượng `sale_lock` (`hours`, `note`, `locked_at`, `expires_at`, người lock) để hiện nhãn "Đã chốt tạm". Toà chỉ còn phòng đang lock vẫn được liệt kê trong app.
+- Lock hết hạn khi `expires_at <= now()`; reader tự so giờ, không có cron nhả. Hết hạn phòng hiện lại, nên với worker Zalo phòng trống đó là một phòng mới xuất hiện.
+- Tạo giữ chỗ cho phòng đang lock gỡ lock trong cùng giao dịch.
 
 ### 4.7. Thu tiền tạo dữ liệu gì (đọc từ code, không đoán)
 

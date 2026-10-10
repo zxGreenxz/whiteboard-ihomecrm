@@ -34,6 +34,8 @@ export type ActionKey =
   | "restricted_view"
   // sale_phong: tạo nhanh phiếu cọc trên trang công khai /r/:token.
   | "create_deposit"
+  // sale_phong: lock tạm phòng 6/12/24 giờ khỏi danh sách sale, không cần phiếu.
+  | "lock_room"
   // sale_phong: xem tab "Thống kê" (đo đếm trang công khai /r/:token).
   | "view_analytics"
   // ===== Action chi tiết theo chức năng (2026-06-11) =====
@@ -178,7 +180,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "sale_phong",
         label: "Sale Phòng",
         core: ["view", "edit"],
-        extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings", "create_deposit", "view_analytics"],
+        extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings", "create_deposit", "lock_room", "view_analytics"],
       },
     ],
   },
@@ -306,6 +308,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   restricted_create: "Tạo phiếu hạng mục hạn chế",
   restricted_view:   "Xem/sửa phiếu hạng mục hạn chế",
   create_deposit: "Tạo cọc nhanh",
+  lock_room:      "Lock tạm phòng",
   view_analytics: "Xem thống kê truy cập",
   view_finance:   "Xem số liệu tài chính",
   manage_tokens:  "Link chia sẻ",

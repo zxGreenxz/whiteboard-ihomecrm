@@ -32,6 +32,7 @@ Màn **Quản lý Cọc** là trung tâm theo dõi tiền cọc toàn hệ thố
 - **Khối giữ chỗ**: **Doanh thu bỏ cọc giữ chỗ**, **Phải hoàn khách**, **Đã hoàn khách**.
 - **Chờ hoàn cọc**: các khoản phải trả lại khách (sau khi xử lý bỏ cọc chọn "Hoàn sau"), mỗi khoản có nút **Hoàn tiền**.
 - Hai nút chuyển chế độ: **Cần xử lý · N** và **Sổ cọc đầy đủ · N**.
+- Khối **Phòng đang lock chờ tạo phiếu · N**: chỉ hiện khi có phòng đang bị [Lock tạm](/03-quan-ly-van-hanh/trang-phong-trong/). Ấn **Tạo phiếu cọc** ở dòng phòng để mở sẵn hộp **Giữ chỗ / Tạo phiếu cọc** đúng phòng đó; lưu xong, lock tự gỡ.
 
 ![Màn Quản lý Cọc trên DEMO: dải số liệu (Cần thu theo HĐ 64.000.000 đ, Còn thiếu 16 HĐ), khối giữ chỗ, Chờ hoàn cọc và hai nút Cần xử lý / Sổ cọc đầy đủ](./images/buoc-01-tong-quan.webp)
 
@@ -52,21 +53,25 @@ Mỗi dòng có nút phù hợp: **Mở hợp đồng**, **Duyệt**, **Đặt k
 
 **Bước 3**: Giữ chỗ hoặc nhận cọc mới — ấn **Tạo đặt cọc**. Hộp thoại **Giữ chỗ / Tạo phiếu cọc** mở ra:
 
-- **Khách hàng \***: ấn **Chọn khách hàng** để chọn đúng một khách (giữ chỗ luôn gắn với một khách cụ thể).
-- **Căn hộ \***, **Giá phòng / tháng** (tự lấy giá niêm yết; sửa nếu đã thoả thuận giá khác — phần chênh được ghi vào phiếu để người ký hợp đồng thấy).
-- **Số tiền cọc \***: để **0** nếu chỉ giữ chỗ chưa nhận tiền; **Ngày đặt cọc \***; **Giữ phòng đến** (hạn phải làm hợp đồng).
+- **Khách hàng \***: chọn một khách trong danh bạ (ấn **Chọn từ danh bạ**), **hoặc** gõ **tên khách gợi nhớ** (tối đa 120 ký tự) — không cần tạo khách mới. Xem lưu ý về khách gợi nhớ bên dưới.
+- **Căn hộ \***, **Giá phòng / tháng** (tự lấy giá niêm yết; sửa nếu đã thoả thuận giá khác — phần chênh được ghi vào phiếu để người ký hợp đồng thấy). Nếu bạn vào từ khối **Phòng đang lock chờ tạo phiếu** thì căn hộ đã được chọn sẵn đúng phòng.
+- **Số tiền cọc \***: phải lớn hơn 0 (không còn giữ chỗ 0 đồng); **Ngày đặt cọc \***; **Giữ phòng đến** (hạn phải làm hợp đồng).
 - **Ngày dự kiến vào** — bắt buộc nếu phòng đang **sắp trống**.
 - Khối **Cọc cần đủ & hạn bổ sung** (để trống nếu khách đã cọc đủ ngay): **Cọc cần đủ** (mặc định = giá phòng) và **Hạn bổ sung cho đủ**.
 - **Sổ quỹ ghi cọc \***: bạn tự chọn sổ nhận tiền — hệ thống không tự đoán.
 - **CTV (cộng tác viên)**, **Ghi chú**, **Ảnh chứng từ** (ảnh chuyển khoản, uỷ nhiệm chi…).
 - Khối **Thưởng nóng Sale** (tuỳ chọn): số tiền thưởng, người nhận, STK, ngân hàng, sổ quỹ chi thưởng, ảnh chứng từ — tạo một phiếu thưởng **chờ duyệt** gắn với phiếu cọc.
 
-Ấn **Giữ chỗ 0 đồng** (khi số tiền = 0) hoặc **Tạo cọc & giữ chỗ**.
+Ấn **Tạo cọc & giữ chỗ**. Muốn giữ phòng mà chưa thu tiền, dùng **Lock tạm** ở danh sách phòng trống (xem [Trang phòng trống công khai](/03-quan-ly-van-hanh/trang-phong-trong/)); các giữ chỗ 0 đồng tạo từ trước vẫn còn hiệu lực và vẫn hiện trong màn này.
 
 ![Hộp thoại Giữ chỗ / Tạo phiếu cọc: Khách hàng, Căn hộ, Giá phòng, Số tiền cọc, Ngày đặt cọc, Giữ phòng đến, Cọc cần đủ & hạn bổ sung, Sổ quỹ ghi cọc](./images/buoc-03-form-giu-cho.webp)
 
 ::: danger Tạo phiếu cọc chưa phải là đã thu tiền
 Giữ chỗ và phiếu cọc nguồn được tạo **trong cùng một lần ghi** ở máy chủ; phòng tự chuyển sang **Đã đặt cọc**. Nhưng phiếu cọc vẫn đi theo luồng duyệt hiện hành: thông báo sau khi lưu nói rõ "đã xác nhận khoản cọc đã thu" hay "Chưa xác nhận tiền vào quỹ". Phiếu **chờ duyệt** chưa tính là đã nhận; chỉ phiếu đã ghi sổ (**POSTED**) trên sổ quỹ thật mới chứng minh tiền đã vào quỹ. Kỳ hạn và thưởng Sale là các bước phụ chạy sau — nếu một bước phụ lỗi, hộp thoại báo phần nào chưa xong và cho mở hồ sơ đã tạo; **không tạo lại cọc**.
+:::
+
+::: warning Khách gợi nhớ: phải gắn khách thật trước khi ký hợp đồng
+Tên gợi nhớ được ghi làm **người nộp** và vào ghi chú của phiếu thu cọc ("Khách gợi nhớ lúc nhận cọc: …"); hồ sơ giữ chỗ hiện "{tên} (tên gợi nhớ)". Trước khi ký hợp đồng, mở hồ sơ giữ chỗ trong khối **Giữ chỗ / Cọc trước hợp đồng** và ấn **Gắn khách** (cần quyền sửa đặt cọc, `deposits.edit`) để chọn khách trong danh bạ. Màn ký hợp đồng cảnh báo và từ chối ký nếu chưa gắn. Hoàn cọc vẫn hoạt động theo người nộp trên phiếu.
 :::
 
 ::: warning Hạn chỉ để nhắc, không tự nhả phòng
@@ -75,6 +80,7 @@ Giữ chỗ và phiếu cọc nguồn được tạo **trong cùng một lần g
 
 **Bước 4**: Quản lý một giữ chỗ đang giữ — trong khối **Giữ chỗ / Cọc trước hợp đồng**, mỗi hồ sơ hiện khách, phòng, hạn, số đã nhận theo phiếu nguồn và các nút:
 
+- **Gắn khách** — chỉ hiện ở hồ sơ mới có tên gợi nhớ: chọn khách trong danh bạ để thay cho tên gợi nhớ (cần `deposits.edit`).
 - **Điều chỉnh hạn** → nhập **Hạn giữ chỗ** → **Lưu hạn**. (Ở hàng việc, **Đặt kỳ hạn / Sửa kỳ hạn** mở hộp **Kỳ hạn phiếu cọc giữ chỗ** với **Hạn bổ sung cọc cho đủ**, **Cọc cần đủ**, **Hạn phải làm hợp đồng** → **Lưu kỳ hạn**.)
 - **Bổ sung cọc** → **Số tiền bổ sung**, **Sổ quỹ**, **Ngày phiếu** → **Tạo phiếu bổ sung cọc**.
 - **Hủy giữ chỗ** — chỉ dùng được khi giữ chỗ chưa có tiền đang hiệu lực; đã nhận tiền thì phải xử lý cọc trước.
@@ -126,7 +132,9 @@ Số cọc **Đã thu** của hợp đồng được tính lại từ các phi�
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Hộp **Giữ chỗ / Tạo phiếu cọc** báo "Chưa chọn sổ quỹ ghi cọc." | Cọc dương phải chọn **Sổ quỹ ghi cọc**. Giữ chỗ 0 đồng thì không cần sổ. |
+| Hộp **Giữ chỗ / Tạo phiếu cọc** báo "Chưa chọn sổ quỹ ghi cọc." | Phải chọn **Sổ quỹ ghi cọc** vì số tiền cọc luôn lớn hơn 0. |
+| Hộp báo "Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ" | Chọn khách bằng **Chọn từ danh bạ** hoặc gõ tên gợi nhớ (tối đa 120 ký tự). |
+| Ký hợp đồng bị từ chối vì giữ chỗ chưa có khách | Hồ sơ giữ chỗ chỉ có tên gợi nhớ. Mở hồ sơ ở khối **Giữ chỗ / Cọc trước hợp đồng** và ấn **Gắn khách**; nếu không thấy nút thì bạn thiếu quyền `deposits.edit`. |
 | Báo "Ngày dự kiến vào" bắt buộc | Phòng đang **sắp trống** (khách cũ đã báo trả). Nhập ngày khách mới dự kiến vào, sau ngày phòng trống. |
 | Hộp báo "Hồ sơ đã tạo. Kiểm tra trước khi bổ sung bước còn thiếu." | Giữ chỗ/phiếu cọc đã lưu nhưng kỳ hạn hoặc thưởng Sale chưa xong. Mở các liên kết trong hộp để kiểm tra, rồi đặt lại kỳ hạn bằng **Đặt kỳ hạn**; không tạo lại cọc. |
 | Giữ chỗ **quá hạn** mà phòng vẫn **Đã đặt cọc** | Đúng thiết kế: hạn chỉ để nhắc. Liên hệ khách rồi **Điều chỉnh hạn**, **Hủy giữ chỗ** (chưa nhận tiền) hoặc **Xử lý bỏ cọc** (đã nhận tiền). |

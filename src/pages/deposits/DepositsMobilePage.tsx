@@ -21,6 +21,7 @@ import { useReservationDeposits } from "@/hooks/useDeposits";
 import { useReservationHoldDeadlines } from "@/hooks/useReservationHoldDeadlines";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
 import { RoomReservationPanel } from "@/components/deposits/RoomReservationPanel";
+import { RoomSaleLocksPanel } from "@/components/deposits/RoomSaleLocksPanel";
 import {
   HoldDeadlineDialog,
   type HoldDeadlineTarget,
@@ -276,6 +277,7 @@ export default function DepositsMobilePage() {
           </div>
 
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            <RoomSaleLocksPanel enabled={view === 'work'} />
             <RoomReservationPanel enabled={view === 'work'} />
             {/* Màn tiền: dải KPI cộng từ nhiều nguồn nên vẫn chờ đủ nguồn (thiếu một nguồn
                 không được thành số 0); lúc chờ là khối xám dạng thẻ (chủ chốt 02/10/2026). */}

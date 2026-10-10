@@ -3,7 +3,7 @@ import {useOrganization} from '@/contexts/OrganizationContext';
 import {VoucherPartialError} from '@/lib/voucherFeedback';
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { focusFirstError } from "@/lib/formErrors";
-import { reservationErrorMessage } from "@/lib/reservationIdentityRpc";
+import { CUSTOMER_HINT_MAX, reservationErrorMessage } from "@/lib/reservationIdentityRpc";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -80,11 +80,15 @@ function fmtVNDate(iso: string): string {
 const AGREED_PRICE_PREFIX = "Giá thoả thuận: ";
 
 const depositSchema = z.object({
-  customer_id: z.string().min(1, "Phải chọn khách hàng cụ thể"),
+  // Khách trong danh bạ HOẶC tên gợi nhớ gõ tay (chủ chốt 10/10/2026): tên gợi nhớ thành
+  // người nộp + ghi chú phiếu; gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.
+  customer_id: z.string(),
+  customer_hint: z.string().trim().max(CUSTOMER_HINT_MAX, `Tên khách gợi nhớ tối đa ${CUSTOMER_HINT_MAX} ký tự`),
   room_id: z.string().min(1, "Chọn phòng giữ chỗ"),
   /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
   room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
-  amount: z.number().min(0, "Số tiền phải >= 0"),
+  // Bỏ "giữ chỗ 0 đồng" (chủ chốt 10/10/2026): giữ phòng không thu tiền là Lock tạm.
+  amount: z.number().positive("Nhập số tiền cọc lớn hơn 0. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống."),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until: z.string().optional(),
   intended_move_in_on: z.string().optional(),
@@ -111,9 +115,8 @@ const depositSchema = z.object({
   sale_bonus_account_number: z.string().optional(),
   sale_bonus_bank: z.string().optional(),
 }).superRefine((value,ctx)=>{
-  if(value.amount===0&&!value.hold_until)ctx.addIssue({code:'custom',path:['hold_until'],message:'Giữ chỗ chưa nhận tiền phải chọn hạn giữ chỗ'});
-  if(value.amount>0&&!value.account_id)ctx.addIssue({code:'custom',path:['account_id'],message:'Phải chọn sổ quỹ ghi cọc'});
-  if(value.amount===0&&(value.sale_bonus_amount??0)>0)ctx.addIssue({code:'custom',path:['sale_bonus_amount'],message:'Giữ chỗ 0 đồng chưa có phiếu cọc để thưởng Sale'});
+  if(!value.customer_id&&!value.customer_hint)ctx.addIssue({code:'custom',path:['customer_id'],message:'Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ'});
+  if(!value.account_id)ctx.addIssue({code:'custom',path:['account_id'],message:'Phải chọn sổ quỹ ghi cọc'});
 });
 
 type DepositFormValues = z.infer<typeof depositSchema>;
@@ -121,9 +124,11 @@ type DepositFormValues = z.infer<typeof depositSchema>;
 interface CreateDepositDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Mở sẵn cho một phòng (vd. phòng đang lock tạm chờ tạo phiếu). */
+  initialRoomId?: string | null;
 }
 
-export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogProps) {
+export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: CreateDepositDialogProps) {
   const queryClient = useQueryClient();
   const {selectedOrganizationId}=useOrganization();
   const [customer, setCustomer] = useState<CustomerBasic | null>(null);
@@ -171,6 +176,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
     resolver: zodResolver(depositSchema),
     defaultValues: {
       customer_id: "",
+      customer_hint: "",
       room_id: "",
       room_price: 0,
       amount: 0,
@@ -189,6 +195,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       sale_bonus_bank: "",
     },
   });
+
+  useEffect(() => {
+    if (open && initialRoomId) form.setValue("room_id", initialRoomId, { shouldDirty: false });
+  }, [open, initialRoomId, form]);
 
   // ── Giá phòng: mặc định hệ thống, sửa tay thì đánh dấu ────────────────────
   const selectedRoomId = form.watch("room_id");
@@ -244,9 +254,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       if (!buildingId) throw new Error("Căn hộ chưa gắn toà nhà");
 
       // Sổ quỹ do người tạo CHỌN (quyết định chủ 20/08/2026) — không còn đường
-      // tự lấy sổ mặc định / sổ CỌC ảo ngầm. Giữ chỗ 0 đồng không cần sổ.
+      // tự lấy sổ mặc định / sổ CỌC ảo ngầm.
       const accId: string = data.account_id;
-      if (data.amount>0&&!accId) {
+      if (!accId) {
         throw new Error("Chưa chọn sổ quỹ ghi cọc.");
       }
 
@@ -271,9 +281,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       const itemDesc = extras.length ? extras.join(" · ") : null;
 
       const input:Omit<CreateRoomReservationInput,'idempotencyKey'>={
-        roomId:data.room_id,customerId:data.customer_id,holdUntil:data.hold_until||null,
+        roomId:data.room_id,...(data.customer_id?{customerId:data.customer_id}:{customerHint:data.customer_hint}),holdUntil:data.hold_until||null,
         intendedMoveInOn:data.intended_move_in_on||null,topupDueOn:data.topup_due_date||null,depositTarget:data.deposit_target??null,notes:data.notes||null,
-        ...(data.amount>0?{receipt:{amount:data.amount,accountId:accId,voucherDate:data.deposit_date,name,description:itemDesc,attachments:depositAttachments}}:{}),
+        receipt:{amount:data.amount,accountId:accId,voucherDate:data.deposit_date,name,description:itemDesc,attachments:depositAttachments},
       };
       const fingerprint=JSON.stringify(input);
       if(intent.current?.fingerprint!==fingerprint)intent.current={fingerprint,key:`room-reservation-${crypto.randomUUID()}`};
@@ -350,7 +360,8 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         const message = partialMessages.join(" "); throw new VoucherPartialError(message,[completedReceipt.reservationId,...completedReceipt.voucherIds]);
       }
       const received = createdReservation.receipts.some(r => r.received);
-      toast.success(received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : createdReservation.receipts.length ? "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn." : "Đã giữ chỗ. Chưa thu tiền cọc.");
+      const assignLater = createdReservation.customer_id ? "" : " Nhớ gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.";
+      toast.success((received ? "Đã lưu giữ chỗ và xác nhận khoản cọc đã thu. Mở phiếu nguồn để xem số tiền và sổ quỹ." : "Đã lưu giữ chỗ và tạo phiếu cọc. Chưa xác nhận tiền vào quỹ; xem trạng thái phiếu nguồn.") + assignLater);
       });
       setCompleted(null);
       form.reset();
@@ -371,9 +382,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Giữ chỗ / Tạo phiếu cọc</DialogTitle>
+          <DialogTitle>Tạo phiếu cọc</DialogTitle>
           <DialogDescription>
-            Chọn khách cụ thể. Số tiền 0 chỉ giữ chỗ; cọc dương tạo phiếu nguồn theo luồng hiện tại. Quá hạn nhắc xử lý, không tự nhả phòng.
+            Chọn khách trong danh bạ hoặc gõ tên gợi nhớ. Cọc tạo phiếu nguồn theo luồng hiện tại; quá hạn nhắc xử lý, không tự nhả phòng. Giữ phòng không thu tiền thì dùng Lock tạm ở danh sách phòng trống.
           </DialogDescription>
         </DialogHeader>
 
@@ -383,11 +394,14 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
               {submitError && <div role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">{submitError}</div>}
               {completed && <div className="rounded-md border p-3 text-sm"><p>Hồ sơ đã tạo. Kiểm tra trước khi bổ sung bước còn thiếu.</p><a className="underline" href="/deposits">Mở Quản lý cọc</a>{completed.voucherIds.map(id=><a key={id} className="block underline" href={`/income-expense/voucher/${id}`}>Mở phiếu {id}</a>)}</div>}
               <FormField control={form.control} name="customer_id" render={()=> (
-                <FormItem><FormLabel>Khách hàng *</FormLabel><FormControl>
-                  <Button type="button" variant="outline" onClick={()=>setCustomerPicker(true)} disabled={submitting}>
-                    {customer?`${customer.full_name} · ${customer.phone}`:'Chọn khách hàng'}
-                  </Button>
-                </FormControl><FormMessage/></FormItem>
+                <FormItem><FormLabel>Khách hàng *</FormLabel>
+                  {customer?<div className="flex items-center gap-2"><span className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{customer.full_name} · {customer.phone}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={()=>{setCustomer(null);form.setValue('customer_id','');}} disabled={submitting}>Bỏ chọn</Button></div>
+                  :<div className="flex gap-2"><FormControl><Input aria-label="Tên khách gợi nhớ" placeholder="Gõ tên gợi nhớ, vd: anh Tuấn xem 18h" maxLength={CUSTOMER_HINT_MAX} disabled={submitting}
+                      {...form.register('customer_hint',{onChange:()=>form.clearErrors('customer_id')})}/></FormControl>
+                    <Button type="button" variant="outline" onClick={()=>setCustomerPicker(true)} disabled={submitting}>Chọn từ danh bạ</Button></div>}
+                  {!customer&&<p className="text-[11px] text-muted-foreground">Chưa cần tạo khách: tên gợi nhớ ghi vào người nộp và ghi chú phiếu. Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.</p>}
+                <FormMessage/></FormItem>
               )}/>
 
               <QueryRegion label="phòng và sổ quỹ nhận cọc" queries={[roomsQuery,accountsQuery]} skeleton="none">{null}</QueryRegion>
@@ -874,7 +888,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   Hủy
                 </Button>
                 <Button type="submit" disabled={submitting || !!completed || uncertain || roomsQuery.isError || roomsQuery.isLoading || accountsQuery.isError || accountsQuery.isLoading}>
-                  {submitting ? "Đang tạo..." : amountNow>0 ? "Tạo cọc & giữ chỗ" : "Giữ chỗ 0 đồng"}
+                  {submitting ? "Đang tạo..." : "Tạo cọc & giữ chỗ"}
                 </Button>
               </div>
             </form>
@@ -883,7 +897,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         <CustomerSelectionDialog open={customerPicker} onOpenChange={setCustomerPicker}
           selectedCustomerIds={customer?[customer.id]:[]} onSelect={values=>{
             if(values.length!==1){toast.error('Phải chọn đúng một khách hàng.');return;}
-            setCustomer(values[0]);form.setValue('customer_id',values[0].id,{shouldValidate:true});setCustomerPicker(false);
+            setCustomer(values[0]);form.setValue('customer_id',values[0].id,{shouldValidate:true});form.setValue('customer_hint','');setCustomerPicker(false);
           }}/>
       </DialogContent>
     </Dialog>

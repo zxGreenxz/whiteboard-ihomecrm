@@ -81,6 +81,8 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
   const pending = signingMutation.isPending || documentMutation.isPending;
   const unresolved=unconfirmed||!!signingMutation.pendingRequestId;
   const reservations = matchingSigningReservations(draft, (reservationsQuery.data?.reservations ?? []).filter(hasSigningIdentity));
+  // Giữ chỗ chỉ có tên gợi nhớ (chưa gắn khách thật) không chọn được làm nguồn ký; nhắc gắn khách ở Quản lý cọc.
+  const hintOnlyHold = (reservationsQuery.data?.reservations ?? []).find(row => row.status === 'HOLD' && row.customer_id === null);
   const currentReservation = selectedReservation && reservations.find(row => row.id === selectedReservation.id);
   const reservationValid = !selectedReservation || (!reservationsQuery.isError && !reservationsQuery.isPending && !reservationsQuery.isFetching
     && !!currentReservation && signingReservationReady(currentReservation) && currentReservation.revision === selectedReservation.revision
@@ -145,6 +147,7 @@ export function ConfirmContractSigningDialog({ open, onOpenChange, draft, canSig
           <p>Tiền thuê: {draft.payload.form.rent_price.toLocaleString('vi-VN')} đ · Cọc thoả thuận: {draft.payload.form.total_deposit.toLocaleString('vi-VN')} đ</p>
         </div>
         {!document && <p role="alert" className="text-sm text-destructive">Lưu và xuất đúng phiên bản nháp trước khi ký.</p>}
+        {hintOnlyHold && <Alert><AlertDescription>Phòng đang giữ chỗ cho “{hintOnlyHold.customer_hint ?? hintOnlyHold.customer_name}” (tên gợi nhớ). Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.</AlertDescription></Alert>}
         <fieldset disabled={pending || !canSign} className="space-y-4">
           <div className="space-y-1"><Label htmlFor="signing-received-date">Ngày nhận phòng thực tế</Label><DateInput id="signing-received-date" name="receivedOn" value={receivedOn} onChange={setReceivedOn}/><p className="text-xs text-muted-foreground">Nếu ngày nhận khác ngày bắt đầu trên tài liệu, sửa và xuất lại nháp trước khi xác nhận.</p></div>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={termsConfirmed} onChange={event => setTermsConfirmed(event.target.checked)}/><span>Khách đã ký đúng tài liệu nháp phiên bản {draft.revision} đã xuất.</span></label>

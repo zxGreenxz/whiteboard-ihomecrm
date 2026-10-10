@@ -4,6 +4,7 @@ import { STATUS_META, fmtPrice, genInfoLines, type Room, type Building } from ".
 import { useTrack } from "./useTracking";
 import { corsFetchUrl } from "@/lib/storage/r2Config";
 import { isUnavailableTestMedia, TEST_MEDIA_MESSAGE, testMediaSource } from '@/lib/storage/testMedia';
+import { saleLockRemaining } from "@/lib/roomSaleLockRpc";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -138,7 +139,7 @@ async function fetchImageFiles(r: Room): Promise<File[]> {
 type FilesCacheEntry = { key: string; promise: Promise<File[]>; done: boolean };
 
 export function DetailSheet({
-  room, show, onClose, onToast, saved, toggleSave, onGo, buildings, onQuickDeposit,
+  room, show, onClose, onToast, saved, toggleSave, onGo, buildings, onQuickDeposit, onLock, onReleaseLock, canReleaseLock,
 }: {
   room: Room | null;
   show: boolean;
@@ -150,6 +151,11 @@ export function DetailSheet({
   buildings: Building[];
   /** Có quyền tạo cọc nhanh → hiện nút "Tạo cọc giữ phòng" (phòng chưa thuê). */
   onQuickDeposit?: (r: Room) => void;
+  /** Có quyền lock tạm → nút "Lock tạm" cho phòng đang bán (trống/sắp trống). */
+  onLock?: (r: Room) => void;
+  /** Gỡ lock: hiện khi phòng đang chốt tạm và canReleaseLock(r) đúng (người lock hoặc người tạo cọc). */
+  onReleaseLock?: (r: Room) => void;
+  canReleaseLock?: (r: Room) => boolean;
 }) {
   const track = useTrack();
   const [lb, setLb] = useState<number | null>(null);
@@ -329,9 +335,27 @@ export function DetailSheet({
               </span>
             </div>
 
+            {r.status === "locked" && r.saleLock && (
+              <div className="ql-banner" role="status">
+                <b>Đã chốt tạm · {saleLockRemaining(r.saleLock.expiresAt)}</b>
+                <span>Lock bởi {r.saleLock.lockedByMe ? "bạn" : r.saleLock.lockedByName} · {r.saleLock.hours} giờ · chờ quản lý tạo phiếu cọc</span>
+                {r.saleLock.note && <span>Ghi chú: {r.saleLock.note}</span>}
+              </div>
+            )}
+
             {onQuickDeposit && r.status !== "rented" && r.status !== "pass" && (
               <button className="qd-trigger" onClick={() => onQuickDeposit(r)}>
-                <Icon.Money />Tạo cọc giữ phòng
+                <Icon.Money />{r.status === "locked" ? "Tạo phiếu cọc" : "Tạo cọc giữ phòng"}
+              </button>
+            )}
+            {onLock && (r.status === "free" || r.status === "soon") && (
+              <button className="ql-trigger" onClick={() => onLock(r)}>
+                <Icon.Lock />Lock tạm
+              </button>
+            )}
+            {onReleaseLock && r.status === "locked" && r.saleLock && canReleaseLock?.(r) && (
+              <button className="ql-trigger" onClick={() => onReleaseLock(r)}>
+                <Icon.Lock />Gỡ lock
               </button>
             )}
 

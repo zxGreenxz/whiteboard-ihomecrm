@@ -16139,7 +16139,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
-          customer_id: string
+          customer_id: string | null
           id: string
           organization_id: string
           reservation_id: string
@@ -16149,7 +16149,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
-          customer_id: string
+          customer_id?: string | null
           id?: string
           organization_id: string
           reservation_id: string
@@ -16159,7 +16159,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
-          customer_id?: string
+          customer_id?: string | null
           id?: string
           organization_id?: string
           reservation_id?: string
@@ -16931,7 +16931,8 @@ export type Database = {
           converted_contract_id: string | null
           created_at: string
           created_by: string
-          customer_id: string
+          customer_hint: string | null
+          customer_id: string | null
           deposit_target: number | null
           hold_until: string | null
           id: string
@@ -16952,7 +16953,8 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by: string
-          customer_id: string
+          customer_hint?: string | null
+          customer_id?: string | null
           deposit_target?: number | null
           hold_until?: string | null
           id?: string
@@ -16973,7 +16975,8 @@ export type Database = {
           converted_contract_id?: string | null
           created_at?: string
           created_by?: string
-          customer_id?: string
+          customer_hint?: string | null
+          customer_id?: string | null
           deposit_target?: number | null
           hold_until?: string | null
           id?: string
@@ -17027,6 +17030,90 @@ export type Database = {
           },
           {
             foreignKeyName: "room_reservations_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_sale_locks: {
+        Row: {
+          building_id: string
+          expires_at: string
+          hours: number
+          id: string
+          locked_at: string
+          locked_by: string
+          note: string | null
+          organization_id: string
+          release_reason: string | null
+          released_at: string | null
+          released_by: string | null
+          reservation_id: string | null
+          room_id: string
+        }
+        Insert: {
+          building_id: string
+          expires_at: string
+          hours: number
+          id?: string
+          locked_at?: string
+          locked_by: string
+          note?: string | null
+          organization_id: string
+          release_reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          reservation_id?: string | null
+          room_id: string
+        }
+        Update: {
+          building_id?: string
+          expires_at?: string
+          hours?: number
+          id?: string
+          locked_at?: string
+          locked_by?: string
+          note?: string | null
+          organization_id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          reservation_id?: string | null
+          room_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_sale_locks_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "room_sale_locks_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_sale_locks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_sale_locks_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "room_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_sale_locks_room_id_fkey"
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
@@ -21214,6 +21301,16 @@ export type Database = {
         }
         Returns: Json
       }
+      assign_room_reservation_customer_v1: {
+        Args: {
+          p_customer_id: string
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_organization_id: string
+          p_reservation_id: string
+        }
+        Returns: Json
+      }
       attach_payment_receipt_v1: {
         Args: { p_payment_id: string; p_receipt_url: string }
         Returns: Json
@@ -24488,6 +24585,10 @@ export type Database = {
         }
         Returns: Json
       }
+      list_room_sale_locks_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       list_room_turnover_queue_v1: {
         Args: {
           p_building_ids?: string[]
@@ -24545,6 +24646,15 @@ export type Database = {
       }
       lock_cashbook_period_v1: {
         Args: { p_cashbook_id: string; p_lock_date: string; p_unlock?: boolean }
+        Returns: Json
+      }
+      lock_room_for_sale_v1: {
+        Args: {
+          p_hours: number
+          p_note?: string
+          p_organization_id: string
+          p_room_id: string
+        }
         Returns: Json
       }
       lock_salary_month_v1: {
@@ -25741,6 +25851,10 @@ export type Database = {
           p_reason: string
           p_voucher: string
         }
+        Returns: Json
+      }
+      release_room_sale_lock_v1: {
+        Args: { p_lock_id: string; p_organization_id: string }
         Returns: Json
       }
       renew_contract: {

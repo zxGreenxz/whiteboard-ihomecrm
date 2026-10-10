@@ -8,6 +8,7 @@ import { type Building, type Room } from "./sampleData";
 import { PublicRoomLinkError } from "./supabaseData";
 import { usePhongTrong } from "./usePhongTrong";
 import { QuickDepositModal } from "./QuickDepositModal";
+import { LockRoomModal, type SaleLockAction } from "./LockRoomModal";
 import { useSession } from "@/hooks/useAuth";
 import { useMyPermissions, can } from "@/hooks/useMyPermissions";
 import { useTracking, TrackingProvider } from "./useTracking";
@@ -66,6 +67,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const { data: session } = useSession();
   const { data: perms } = useMyPermissions();
   const canQuickDeposit = !!session?.user && can(perms, "sale_phong", "create_deposit");
+  // "Lock tạm": ẩn phòng khỏi danh sách sale 6/12/24 giờ. Gỡ lock: người đã lock hoặc người
+  // được tạo cọc (máy chủ kiểm lại cả hai). Lock chỉ hiện trên dữ liệu trong app.
+  const canLock = !!session?.user && can(perms, "sale_phong", "lock_room");
+  const canCreateDeposit = !!session?.user && can(perms, "deposits", "create");
+  const canReleaseLock = (r: Room) => (!!r.saleLock?.lockedByMe && canLock) || canCreateDeposit;
+  const [lockAction, setLockAction] = useState<SaleLockAction | null>(null);
   // Bộ đo đếm: no-op khi không có token; is_staff = đang đăng nhập (cờ boolean, KHÔNG id/email).
   const tracker = useTracking(token, !!session?.user);
   const [depositRoom, setDepositRoom] = useState<Room | null>(null);
@@ -342,13 +349,19 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
-        <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
+        <DetailSheet room={currentRoom} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined}
+          onLock={canLock ? (r) => { closeSheet(); setLockAction({ room: r, mode: "lock" }); } : undefined}
+          onReleaseLock={canLock || canCreateDeposit ? (r) => { closeSheet(); setLockAction({ room: r, mode: "release" }); } : undefined}
+          canReleaseLock={canReleaseLock} />
         {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
             khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
             danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom
             luôn null nên bỏ mount cũng không mất chức năng gì. */}
         {canQuickDeposit && (
           <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
+        )}
+        {(canLock || canCreateDeposit) && (
+          <LockRoomModal action={lockAction} onClose={() => setLockAction(null)} onDone={showToast} />
         )}
         <Toast msg={toast.msg} show={toast.show} />
       </div>

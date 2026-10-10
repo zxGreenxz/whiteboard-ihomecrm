@@ -25,6 +25,7 @@ export const Icon = {
   Heart: (p: P) => <Svg {...p}><path d="M12 20s-7-4.5-9.2-9C1.3 8 2.6 4.5 6 4.5c2 0 3.3 1.3 4 2.5.7-1.2 2-2.5 4-2.5 3.4 0 4.7 3.5 3.2 6.5C19 15.5 12 20 12 20Z"/></Svg>,
   HeartFill: (p: P) => <Svg {...p} fill="currentColor" stroke="none"><path d="M12 20s-7-4.5-9.2-9C1.3 8 2.6 4.5 6 4.5c2 0 3.3 1.3 4 2.5.7-1.2 2-2.5 4-2.5 3.4 0 4.7 3.5 3.2 6.5C19 15.5 12 20 12 20Z"/></Svg>,
   Close: (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18"/></Svg>,
+  Lock:  (p: P) => <Svg {...p}><rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></Svg>,
   Layers: (p: P) => <Svg {...p}><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></Svg>,
   Snow:  (p: P) => <Svg {...p}><path d="M12 2v20M4 6l16 12M20 6 4 18M2 12h20"/></Svg>,
   Bell:  (p: P) => <Svg {...p}><path d="M18 8a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 14 18 8ZM10 19a2 2 0 0 0 4 0"/></Svg>,

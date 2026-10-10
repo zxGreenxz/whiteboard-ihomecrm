@@ -4,7 +4,7 @@
 
 Domain này phục vụ **toàn bộ vòng đời tiền cọc** trong CRM cho thuê:
 
-- **Giữ chỗ trước hợp đồng**: lập hồ sơ riêng cho đúng khách và phòng. Có thể giữ chỗ chưa nhận tiền (0đ, không tạo phiếu thu) hoặc nhận cọc bằng phiếu thu hiện hành. Hạn giữ chỗ là ngày cần liên hệ xử lý, không tự nhả phòng. Nháp hợp đồng không thay thế hồ sơ giữ chỗ (§5.4).
+- **Giữ chỗ trước hợp đồng**: lập hồ sơ riêng cho khách và phòng. Từ 10/10/2026 giao diện chỉ còn nhận cọc bằng phiếu thu hiện hành (số tiền > 0), không còn giữ chỗ 0đ; hồ sơ giữ chỗ 0đ tạo từ trước vẫn hợp lệ. Khách là khách trong danh bạ **hoặc** tên gợi nhớ `customer_hint` (§4.19, §5.4); phải gắn khách thật trước khi ký. Giữ phòng không thu tiền dùng Lock tạm (§4.19). Hạn giữ chỗ là ngày cần liên hệ xử lý, không tự nhả phòng. Nháp hợp đồng không thay thế hồ sơ giữ chỗ (§5.4).
 - **Tự khoá phòng `RESERVED` khi có cọc giữ chỗ** (2026-06-07, commit b3e69db): phiếu giữ chỗ `PENDING/CONFIRMED` chưa link HĐ HOẶC phiếu thu cọc (IE có item `is_deposit`, **kể cả chưa duyệt**) chưa link HĐ → `rooms.status` tự chuyển `AVAILABLE ↔ RESERVED` qua `recompute_room_reservation` (§4.11) → phòng rời bucket "Còn trống" toàn hệ thống (Danh mục căn hộ, Dashboard, Sơ đồ toà nhà, trang công khai `/r/:token`).
 - **Cọc còn thiếu GỘP vào hoá đơn tháng đầu** (2026-06-21, c09eda2): phần cọc khách chưa đưa = item OTHER "Tiền cọc" **TRONG** hoá đơn cọc + tháng đầu (là khoản phải thu của HĐ). Khi thu hoá đơn, phần cọc tách thành **hạng mục `is_deposit` trên CÙNG phiếu thu** và tự loại khỏi KQKD qua cột `kqkd_amount` (hạch toán item-level — migration 20260702120000, §4.13).
 - **Theo dõi đủ/thiếu cọc của HĐ đang hiệu lực**: mỗi HĐ có `total_deposit` (cần thu) và `deposit_paid` (đã thu). Hệ thống chốt **đủ / thiếu cọc** và cảnh báo khoản còn nợ.
@@ -402,6 +402,27 @@ Chuỗi migration `terminate_contract_forfeit_impl`: `20260530000001` → bản 
 - **Thu thêm khi thanh lý (20260627000001)**: forfeit nhận `p_extra_charges` — các khoản thu thêm tạo **hoá đơn AR riêng thu khách** (tháng kế), TÁCH khỏi hoá đơn thanh lý cọc.
 - Audit `contract_terminations`: `termination_type='FORFEIT'`, `total_deposit = v_deposit` (cọc thực thu), `status='COMPLETED'` → nguồn tab Hoàn/Bỏ cọc (§4.10, §5.3).
 
+### 4.19. Tên khách gợi nhớ và Lock tạm phòng (10/10/2026)
+
+Migration [20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql](supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql) (chủ chốt 10/10/2026) gồm ba phần.
+
+**Tên khách gợi nhớ (`room_reservations.customer_hint`).**
+
+- `room_reservations.customer_id` và `reservation_receipts.customer_id` cho phép NULL; cột `customer_hint` dài tối đa 120 ký tự. Ràng buộc `room_reservations_party_or_hint`: phải có `customer_id` **hoặc** `customer_hint` không rỗng (1–120 ký tự).
+- `create_room_reservation_v1` nhận thêm khoá `customer_hint` trong payload. Khi chỉ có tên gợi nhớ, phiếu thu cọc nguồn lấy tên đó làm người nộp (`payer_name`) và ghi chú "Khách gợi nhớ lúc nhận cọc: …". Hoàn cọc đọc `payer_name` nên vẫn hoạt động.
+- **Ký hợp đồng vẫn đòi khách thật**: `assert_room_next_claim_for_signing_v1` từ chối khi hồ sơ chưa gắn `customer_id` (thông báo chứa "chưa gắn khách trong danh bạ"); màn ký cảnh báo và không cho chọn giữ chỗ đó làm nguồn.
+- `assign_room_reservation_customer_v1(p_organization_id, p_reservation_id, p_expected_revision, p_customer_id, p_idempotency_key)` gắn khách danh bạ cho hồ sơ `HOLD` còn hiệu lực và chưa có `customer_id`; cần `deposits.edit` ở toà, khoá lạc quan theo `revision`, ghi lịch sử `ASSIGN_CUSTOMER`. Giao diện: nút **Gắn khách** ở hồ sơ giữ chỗ.
+- Giao diện (trang Phòng trống "Nhận cọc giữ phòng" và Quản lý cọc "Tạo phiếu cọc") bỏ giữ chỗ 0đ: số tiền cọc phải > 0.
+
+**Lock tạm (`room_sale_locks`).**
+
+- Quyền mới `sale_phong.lock_room` (nhóm Sale Phòng, mức ELEVATED, phạm vi toà); mặc định chỉ vai Chủ sở hữu tổ chức, chủ gán thêm trong Phân quyền.
+- Bảng `room_sale_locks`: `hours` ∈ {6, 12, 24}, `locked_at`, `expires_at = locked_at + hours`, `note`, `locked_by`, `released_at`/`released_by`, `release_reason` ∈ {`MANUAL`, `RESERVED`, `EXPIRED`}, `reservation_id` (chỉ khi `RESERVED`). Chỉ một lock mở cho mỗi phòng (unique index theo `room_id` khi `released_at IS NULL`). RLS bật, thu hồi mọi quyền trực tiếp; chỉ đi qua RPC.
+- Không có job nhả: lock hết hạn khi `expires_at <= now()`, reader tự so giờ; lần ghi kế tiếp mới đóng dòng thành `EXPIRED`.
+- RPC: `lock_room_for_sale_v1(p_organization_id, p_room_id, p_hours, p_note)` (cần `sale_phong.lock_room`; chỉ phòng đang bán Trống / Sắp trống; lặp lại cùng yêu cầu trong 2 phút là idempotent), `release_room_sale_lock_v1(p_organization_id, p_lock_id)` (người đã lock còn quyền `lock_room`, hoặc người có `deposits.create` ở toà; ghi `MANUAL`), `list_room_sale_locks_v1(p_organization_id)` (lock còn hiệu lực của phòng còn bán được, cho người có `deposits.view` hoặc `lock_room` ở toà; nuôi khối "Phòng đang lock chờ tạo phiếu" ở Quản lý cọc).
+- `create_room_reservation_v1` đóng lock mở của phòng trong cùng giao dịch với `release_reason='RESERVED'`, `reservation_id` = hồ sơ vừa tạo.
+- Ảnh hưởng tới kênh sale: `room_sale_workflow_fact_v1` đổi phòng Trống / Sắp trống đang lock thành `rented`; trang công khai, ảnh danh sách và tin Zalo ẩn phòng. Chỉ `get_my_available_rooms` trả thêm `sale_lock` để app hiện "Đã chốt tạm". Xem [15 §4.6.1](15-kenh-cong-khai-sale-thu-tien.md). Lock hết hạn khiến phòng xuất hiện lại như phòng mới với worker gửi tin Zalo phòng trống.
+
 ---
 
 ## 5. Quy trình theo từng trang
@@ -438,12 +459,13 @@ Bảng từ `contract_terminations` (sort theo `termination_date` desc) — cộ
 
 ### 5.4. Giữ chỗ / Cọc trước hợp đồng (cập nhật 28/09/2026)
 
-Khung **Giữ chỗ / Cọc trước hợp đồng** có tại trang Cọc và chi tiết phòng. Chọn đúng khách; mỗi phòng chỉ có một hồ sơ giữ chỗ cho lượt khách tiếp theo.
+Khung **Giữ chỗ / Cọc trước hợp đồng** có tại trang Cọc và chi tiết phòng. Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ (§4.19); mỗi phòng chỉ có một hồ sơ giữ chỗ cho lượt khách tiếp theo.
 
-- **Giữ chỗ chưa nhận tiền:** chọn phòng, khách và hạn bắt buộc. Số tiền là 0đ; không tạo phiếu 1đ tượng trưng hoặc ghi nhận đã thu cọc.
-- **Nhận cọc:** nhập tiền thực nhận, sổ quỹ và ngày phiếu theo luồng hiện hành. Phiếu chưa duyệt/chưa nhận không cộng vào tiền đã nhận; phiếu gốc vẫn quản lý tại Thu chi.
+- **Giữ chỗ chưa nhận tiền (không còn trên giao diện từ 10/10/2026):** hồ sơ 0đ tạo từ trước vẫn hợp lệ và vẫn hiện, hủy được bằng **Hủy giữ chỗ**. Không tạo phiếu 1đ tượng trưng hoặc ghi nhận đã thu cọc. Giữ phòng không thu tiền dùng Lock tạm (§4.19).
+- **Nhận cọc:** nhập tiền thực nhận (> 0), sổ quỹ và ngày phiếu theo luồng hiện hành. Phiếu chưa duyệt/chưa nhận không cộng vào tiền đã nhận; phiếu gốc vẫn quản lý tại Thu chi.
 - **Phòng sắp trống:** phải có báo ngày dự kiến trả của khách đang ở; ngày dự kiến vào không được sớm hơn ngày đó. Giữ chỗ không kết thúc lượt ở hiện tại, chưa cho phép nhận phòng trước bàn giao thực tế.
 - **Quá hạn:** vẫn giữ cho khách này. Dùng **Điều chỉnh hạn**, **Bổ sung cọc** hoặc **Hủy giữ chỗ**; có phiếu cọc còn hiệu lực thì xử lý/đối soát phiếu theo luồng hiện hành trước khi hủy.
+- **Khách gợi nhớ:** hồ sơ chỉ có tên gợi nhớ hiện "{tên} (tên gợi nhớ)"; phải **Gắn khách** (cần quyền sửa đặt cọc) trước khi ký, nếu không màn ký cảnh báo và máy chủ từ chối.
 - **Khi ký từ nháp:** chọn đúng nguồn khớp phòng/khách. Chỉ phiếu nguồn hợp lệ đã duyệt được dùng; ký thành công chuyển hồ sơ sang **Đã ký hợp đồng**, không thu lại cùng khoản cọc.
 
 Thao tác theo quyền hiện hành. Xem [05 — Nháp và ký](05-hop-dong.md).
@@ -478,7 +500,7 @@ stateDiagram-v2
 
 ### 5.7. Giữ chỗ / Nhận cọc trên trang công khai
 
-Nhân viên đang đăng nhập và có quyền mở **Giữ chỗ / Nhận cọc** tại phòng đang xem; khách xem link không tự tạo hồ sơ này. Chọn khách, giữ chỗ chưa nhận tiền hoặc nhận cọc và nhập ngày theo §5.4. Để trống tiền không tự thành phiếu 1đ. Phòng sắp trống phải có ngày dự kiến vào phù hợp báo trả hiện tại.
+Nhân viên đang đăng nhập và có quyền mở **Giữ chỗ / Nhận cọc** tại phòng đang xem; khách xem link không tự tạo hồ sơ này. Chọn khách (danh bạ hoặc tên gợi nhớ), nhập khoản cọc dương và ngày theo §5.4; không còn giữ chỗ 0đ. Nhân viên có quyền `sale_phong.lock_room` còn thấy nút **Lock tạm** (§4.19). Phòng sắp trống phải có ngày dự kiến vào phù hợp báo trả hiện tại.
 
 Giữ thành công thì phòng không được chào như phòng chưa ai giữ. Ký/nhận phòng vẫn cần bàn giao thực tế, dọn/sửa xong và chỉ số đầu vào.
 

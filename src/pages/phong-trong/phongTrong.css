@@ -32,6 +32,9 @@
   --st-pass:        #d6336c;  /* khach nho sale / pass phong */
   --st-pass-bg:     #fce8ef;
   --st-pass-line:   #f3c2d4;
+  --st-locked:      #4c5fd5;  /* chot tam (lock) — chi nhan vien trong app thay */
+  --st-locked-bg:   #eceffd;
+  --st-locked-line: #c9d0f6;
 
   /* Type */
   --font: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
@@ -288,6 +291,7 @@ body {
   background: var(--st-soon); box-shadow: 0 0 0 2px var(--st-soon-bg);
 }
 .cell.rented { background: var(--st-rented-bg);  border-color: var(--st-rented-line);  color: var(--st-rented); }
+.cell.locked { background: var(--st-locked-bg);  border-color: var(--st-locked-line);  color: var(--st-locked); }
 .cell.dim { opacity: .42; filter: grayscale(.5); }
 
 /* Legend */
@@ -570,6 +574,7 @@ body {
   background: var(--st-soon); box-shadow: 0 0 0 3px var(--st-soon-bg);
 }
 .fp-room.rented { background: var(--st-rented-bg); border-color: var(--st-rented-line); color: var(--st-rented); }
+.fp-room.locked { background: var(--st-locked-bg); border-color: var(--st-locked-line); color: var(--st-locked); }
 .fp-room.dim    { opacity: .4; filter: grayscale(.5); cursor: default; }
 .fp-fixture {
   position: absolute; border: 1.5px dashed var(--line); border-radius: 11px; background: var(--surface);
@@ -767,3 +772,53 @@ body {
 .qd-submit { background: var(--brand); color: #fff; }
 .qd-submit:hover { background: var(--brand-600); }
 .qd-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ===== Lock tạm (6/12/24 giờ) — chỉ người đăng nhập có quyền ===== */
+.ov-row.locked { background: var(--st-locked-bg); }
+.ovr-lock {
+  display: flex; align-items: center; gap: 5px; margin-top: 5px;
+  font-size: 11.5px; font-weight: 700; color: var(--st-locked);
+}
+.ovr-lock svg { width: 12px; height: 12px; flex-shrink: 0; }
+/* Nút phụ "Lock tạm" đứng dưới nút tạo cọc. */
+.ql-trigger {
+  width: 100%; margin: 8px 0 2px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--surface); color: var(--st-locked); border: 1px solid var(--st-locked-line); border-radius: var(--r);
+  padding: 11px 14px; font-family: var(--font); font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s;
+}
+.ql-trigger:hover { background: var(--st-locked-bg); }
+.ql-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.ql-trigger svg { width: 16px; height: 16px; }
+/* Thẻ thông tin lock trong bottom-sheet phòng đang chốt tạm. */
+.ql-banner {
+  margin: 12px 0 2px; padding: 10px 12px; border-radius: var(--r);
+  background: var(--st-locked-bg); border: 1px solid var(--st-locked-line); color: var(--st-locked);
+  display: flex; flex-direction: column; gap: 3px; font-size: 13px;
+}
+.ql-banner b { font-size: 14px; }
+.ql-banner span { color: var(--ink-2); }
+/* Chọn số giờ lock: ba ô bấm như radio. */
+.qd-hours { display: flex; gap: 8px; }
+.qd-hour {
+  flex: 1; padding: 10px 0; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface);
+  font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink-2); cursor: pointer;
+}
+.qd-hour[aria-checked="true"] { border-color: var(--st-locked); background: var(--st-locked-bg); color: var(--st-locked); }
+.qd-hour:focus-visible { outline: 2px solid var(--st-locked); outline-offset: 2px; }
+/* Ô khách: gõ tên gợi nhớ hoặc chọn từ danh bạ. */
+.qd-customer { display: flex; gap: 8px; }
+.qd-customer .qd-input { flex: 1; min-width: 0; }
+.qd-pick {
+  flex-shrink: 0; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-2);
+  padding: 0 12px; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-2); cursor: pointer;
+}
+.qd-pick:hover { background: var(--line-2); }
+.qd-chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--brand-100); background: var(--brand-50); border-radius: var(--r-sm);
+  padding: 9px 12px; font-size: 14px; font-weight: 600; color: var(--brand-600);
+}
+.qd-chip button { border: 0; background: transparent; color: var(--ink-3); font-family: var(--font); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.qd-hint { font-size: 12px; color: var(--ink-3); }
+.qd-err { font-size: 12.5px; color: #c92a2a; }
+

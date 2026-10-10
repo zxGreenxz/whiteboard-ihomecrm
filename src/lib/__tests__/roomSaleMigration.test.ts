@@ -6,6 +6,8 @@ const sql = readFileSync('supabase/migrations/20260928021213_room_sale_workflow_
 // Reader hiện hành = 0928 + chính sách sale chung (thêm khoá sale_policy, thân hàm giữ nguyên):
 // mọi ca dưới đây chạy trên bản sau cùng để chứng minh migration sau không làm trôi sale facts.
 const salePolicySql = readFileSync('supabase/migrations/20261010022101_public_room_sale_policy.sql', 'utf8');
+// Định nghĩa sống của fact/reader trong app (lock tạm 10/10): mọi ca dưới đây chạy trên bản này.
+const saleLockSql = readFileSync('supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql', 'utf8');
 const db = new PGlite();
 const owner = '00000000-0000-4000-8000-000000000010';
 const org = '00000000-0000-4000-8000-000000000001';
@@ -39,10 +41,10 @@ beforeAll(async () => {
     CREATE TABLE public.staff_assignments(staff_id uuid,user_id uuid);
     CREATE TABLE public.public_room_settings(owner_id uuid,soon_days integer,hotline_id uuid);
     CREATE TABLE public.public_room_share_tokens(owner_id uuid,token text,revoked boolean);
-    CREATE TABLE public.buildings(id uuid,organization_id uuid,user_id uuid,name text,code text,district text,ward text,
+    CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,name text,code text,district text,ward text,
       street_address text,province text,total_floors integer,floor_layouts jsonb,images jsonb,
       public_contact_name text,public_contact_phone text,public_map_url text,public_lift_type text,is_virtual boolean,deleted_at timestamptz);
-    CREATE TABLE public.rooms(id uuid,organization_id uuid,building_id uuid,floor integer,name text,code text,area numeric,
+    CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,floor integer,name text,code text,area numeric,
       rent_price numeric,deposit_amount numeric,max_occupants integer,amenities jsonb,images jsonb,description text,
       sale_note text,sale_bonus_note text,room_type text,status text,deleted_at timestamptz);
     CREATE TABLE public.contracts(id uuid,organization_id uuid,room_id uuid,status text,start_date date,
@@ -80,6 +82,21 @@ beforeAll(async () => {
   // Replay verifies idempotent function/ACL replacement.
   await db.exec(sql);
   await db.exec(salePolicySql);
+  // Lock tạm cần các bảng giữ chỗ/quyền tối thiểu; thân hàm giữ chỗ không chạy trong file này
+  // (roomSaleLockMigration.test.ts thử chúng trên đủ chuỗi) nên tắt kiểm thân hàm lúc tạo.
+  await db.exec(`
+    CREATE TABLE auth.users(id uuid PRIMARY KEY);CREATE TABLE public.organizations(id uuid PRIMARY KEY);
+    CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text);
+    CREATE TABLE public.permission_definitions(key text PRIMARY KEY,resource text,action text,sensitivity text,permission_domain text,scope_kinds text[],is_active boolean);
+    CREATE TABLE public.organization_roles(id uuid PRIMARY KEY,organization_id uuid,name text,system_key text);
+    CREATE TABLE public.role_permissions(organization_id uuid,role_id uuid,permission_key text,effect text,UNIQUE(organization_id,role_id,permission_key));
+    CREATE TABLE public.room_reservations(id uuid PRIMARY KEY,customer_id uuid NOT NULL);
+    CREATE TABLE public.reservation_receipts(id uuid PRIMARY KEY,customer_id uuid NOT NULL);
+    SET check_function_bodies = off;
+  `);
+  await db.exec(saleLockSql);
+  await db.exec(saleLockSql);
+  await db.exec('RESET check_function_bodies');
 }, 20000);
 beforeEach(async () => {
   await db.exec(`RESET ROLE;SELECT set_config('test.actor','${owner}',false);

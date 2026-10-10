@@ -2,7 +2,7 @@ import {useRef,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {LoadingState} from '@/components/loading/LoadingState';
-import {useRoomReservations,useUpdateRoomReservation} from '@/hooks/useRoomReservations';
+import {useAssignRoomReservationCustomer,useRoomReservations,useUpdateRoomReservation} from '@/hooks/useRoomReservations';
 import {useMyPermissions} from '@/hooks/useMyPermissions';
 import {useAccounts} from '@/hooks/useAccounts';
 import {canUse} from '@/lib/permissionPages';
@@ -10,6 +10,7 @@ import {todayISO} from '@/lib/collect';
 import {formatCurrency} from '@/lib/utils';
 import {reservationErrorMessage,type RoomReservation,type UpdateRoomReservationInput} from '@/lib/reservationIdentityRpc';
 import {ReservationSettlementDialog} from './ReservationSettlementDialog';
+import {CustomerSelectionDialog,type CustomerBasic} from '@/components/contracts/CustomerSelectionDialog';
 
 export function RoomReservationPanel({roomId,buildingId,enabled=true}:{roomId?:string;buildingId?:string;enabled?:boolean}){
  const[status,setStatus]=useState<'HOLD'|'CONVERTED'|'CANCELLED'|''>('HOLD');
@@ -25,11 +26,18 @@ export function RoomReservationPanel({roomId,buildingId,enabled=true}:{roomId?:s
  </section>;
 }
 function ReservationRow({reservation:r,onMoneyClosed}:{reservation:RoomReservation;onMoneyClosed:()=>void}){
- const{data:permissions}=useMyPermissions();const mutation=useUpdateRoomReservation();
+ const{data:permissions}=useMyPermissions();const mutation=useUpdateRoomReservation();const assignMutation=useAssignRoomReservationCustomer();const[pickerOpen,setPickerOpen]=useState(false);const assignIntent=useRef<{fingerprint:string;key:string}|null>(null);
  const[edit,setEdit]=useState<'deadline'|'topup'|null>(null);const[deadline,setDeadline]=useState(r.hold_until??'');const[amount,setAmount]=useState('');const[accountId,setAccountId]=useState('');const[voucherDate,setVoucherDate]=useState(todayISO());const[error,setError]=useState('');const[settlementVoucher,setSettlementVoucher]=useState<string|null>(null);
  const{data:accounts=[]}=useAccounts({enabled:edit==='topup'});const intent=useRef<{fingerprint:string;key:string}|null>(null);
  const canEdit=canUse(permissions,'deposits','edit',r.building_id),canTopup=canUse(permissions,'deposits','create',r.building_id),canCancel=canUse(permissions,'deposits','delete',r.building_id);
- const moneyActive=r.receipts.some(p=>!p.released);
+ const moneyActive=r.receipts.some(p=>!p.released);const hintOnly=r.customer_id===null;
+ async function assign(picked:CustomerBasic[]){
+  if(picked.length!==1){setError('Chọn đúng một khách để gắn vào giữ chỗ.');return;}
+  const input={reservationId:r.id,expectedRevision:r.revision,customerId:picked[0].id};
+  // Cùng hồ sơ + khách + phiên bản thì giữ nguyên khoá để thử lại không gắn hai lần.
+  const fingerprint=JSON.stringify(input);if(assignIntent.current?.fingerprint!==fingerprint)assignIntent.current={fingerprint,key:`assign-customer-${crypto.randomUUID()}`};setError('');
+  try{await assignMutation.mutateAsync({...input,idempotencyKey:assignIntent.current.key});}catch(e){setError(reservationErrorMessage(e));}
+ }
  async function submit(action:UpdateRoomReservationInput['action']){
   const input:Omit<UpdateRoomReservationInput,'idempotencyKey'>={reservationId:r.id,expectedRevision:r.revision,action};
   if(action==='UPDATE'){if(!deadline&&!r.receipts.length){setError('Giữ chỗ chưa nhận tiền phải chọn hạn.');return;}input.changes={holdUntil:deadline||null};}
@@ -39,19 +47,21 @@ function ReservationRow({reservation:r,onMoneyClosed}:{reservation:RoomReservati
  }
  const sources=[...new Map(r.receipts.map(p=>[p.source_voucher_id,p])).values()];
  return<article className="space-y-2 rounded border p-3">
-  <div><strong>{r.customer_name}</strong> · {r.customer_phone}<p className="text-sm">Phòng {r.room_name} · Tòa {r.building_name}</p></div>
+  <div>{hintOnly?<><strong>{r.customer_hint??r.customer_name}</strong> <span className="text-sm text-muted-foreground">(tên gợi nhớ)</span></>:<><strong>{r.customer_name}</strong>{r.customer_phone?<> · {r.customer_phone}</>:null}</>}<p className="text-sm">Phòng {r.room_name} · Tòa {r.building_name}</p></div>
   <p className="text-sm">{r.status==='HOLD'?'Đang giữ chỗ':r.status==='CONVERTED'?'Đã ký hợp đồng':'Đã hủy'} · Hạn: {r.hold_until??'Chưa đặt hạn'}</p>
   {r.overdue&&<p className="text-sm font-medium text-amber-700">Quá hạn · vẫn giữ chỗ cho khách này, cần điều chỉnh hoặc hủy thủ công.</p>}
   <p className="text-sm">{r.status==='CONVERTED'?'Nguồn cọc đã chuyển sang hợp đồng':`Đã nhận theo phiếu nguồn: ${formatCurrency(r.received_amount)}`}{!r.receipts.length?' · Giữ chỗ 0 đồng':''}</p>
   {sources.map(p=><div key={p.source_voucher_id} className="text-sm"><span>{p.code??p.source_voucher_id} · {r.status==='CONVERTED'?'Đã chuyển hợp đồng':p.released?'Đã xử lý/hủy':p.received?'Đã nhận':'Chờ duyệt/chưa nhận'} · {formatCurrency(p.amount)}</span>
     {r.status==='HOLD'&&p.received&&!p.released&&canUse(permissions,'deposits','refund',r.building_id)&&canUse(permissions,'income_expenses','approve',r.building_id)&&<Button size="sm" variant="link" onClick={()=>setSettlementVoucher(p.source_voucher_id)}>Xử lý cọc hiện tại</Button>}
   </div>)}
-  {r.status==='HOLD'&&<div className="flex flex-wrap gap-2">{canEdit&&<Button size="sm" variant="outline" onClick={()=>{setEdit('deadline');setError('');}} disabled={mutation.isPending}>Điều chỉnh hạn</Button>}{canTopup&&<Button size="sm" variant="outline" onClick={()=>{setEdit('topup');setError('');}} disabled={mutation.isPending}>Bổ sung cọc</Button>}{canCancel&&<Button size="sm" variant="outline" disabled={mutation.isPending||moneyActive} onClick={()=>void submit('CANCEL')}>Hủy giữ chỗ</Button>}</div>}
+  {r.status==='HOLD'&&<div className="flex flex-wrap gap-2">{canEdit&&<Button size="sm" variant="outline" onClick={()=>{setEdit('deadline');setError('');}} disabled={mutation.isPending}>Điều chỉnh hạn</Button>}{canTopup&&<Button size="sm" variant="outline" onClick={()=>{setEdit('topup');setError('');}} disabled={mutation.isPending}>Bổ sung cọc</Button>}{canCancel&&<Button size="sm" variant="outline" disabled={mutation.isPending||moneyActive} onClick={()=>void submit('CANCEL')}>Hủy giữ chỗ</Button>}{hintOnly&&canEdit&&<Button size="sm" variant="outline" onClick={()=>{setPickerOpen(true);setError('');}} disabled={mutation.isPending||assignMutation.isPending}>Gắn khách</Button>}</div>}
+  {r.status==='HOLD'&&hintOnly&&<p className="text-xs text-amber-700">Giữ chỗ chỉ có tên gợi nhớ. Gắn khách thật trước khi ký hợp đồng.</p>}
   {r.status==='HOLD'&&moneyActive&&<p className="text-xs text-muted-foreground">Hủy/đối soát phiếu cọc theo luồng hiện tại trước khi hủy giữ chỗ. Phiếu chờ duyệt/chưa nhận không cộng vào tiền đã nhận.</p>}
   {edit==='deadline'&&<div className="flex flex-wrap items-end gap-2"><label className="text-sm">Hạn giữ chỗ<Input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} disabled={mutation.isPending}/></label><Button size="sm" onClick={()=>void submit('UPDATE')} disabled={mutation.isPending}>Lưu hạn</Button></div>}
   {edit==='topup'&&<div className="grid gap-2 sm:grid-cols-2"><label className="text-sm">Số tiền bổ sung<Input inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,''))} disabled={mutation.isPending}/></label><label className="text-sm">Sổ quỹ<select aria-label="Sổ quỹ bổ sung cọc" className="block w-full rounded border p-2" value={accountId} onChange={e=>setAccountId(e.target.value)} disabled={mutation.isPending}><option value="">Chọn sổ quỹ</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label className="text-sm">Ngày phiếu<Input type="date" value={voucherDate} onChange={e=>setVoucherDate(e.target.value)} disabled={mutation.isPending}/></label><Button className="self-end" onClick={()=>void submit('TOPUP')} disabled={mutation.isPending}>Tạo phiếu bổ sung cọc</Button></div>}
   {edit&&<Button size="sm" variant="ghost" onClick={()=>setEdit(null)} disabled={mutation.isPending}>Đóng thao tác</Button>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {!!r.history.length&&<details className="text-xs"><summary>Lịch sử giữ chỗ ({r.history.length})</summary><ol>{r.history.map(h=><li key={h.revision}>{h.action} · {new Date(h.changed_at).toLocaleString('vi-VN')} · {h.changed_by}</li>)}</ol></details>}
+  {pickerOpen&&<CustomerSelectionDialog open onOpenChange={setPickerOpen} selectedCustomerIds={[]} onSelect={picked=>void assign(picked)}/>}
   {settlementVoucher&&<ReservationSettlementDialog voucherId={settlementVoucher} open onOpenChange={open=>{if(!open){setSettlementVoucher(null);onMoneyClosed();}}}/>}
  </article>;
 }

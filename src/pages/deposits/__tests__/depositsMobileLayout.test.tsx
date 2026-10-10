@@ -84,6 +84,10 @@ vi.mock("@/components/deposits/ReservationPendingRefundList", () => ({
     createElement("section", { "data-probe": "pending-refund" }),
 }));
 
+vi.mock("@/components/deposits/RoomSaleLocksPanel", () => ({
+  RoomSaleLocksPanel: () => createElement("section", { "data-probe": "room-sale-locks" }),
+}));
+
 vi.mock("@/components/deposits/RoomReservationPanel", () => ({
   RoomReservationPanel: () =>
     createElement("section", { "data-probe": "room-reservations" }),

@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-10T02:50:33.976Z",
+  "generatedAt": "2026-10-10T12:49:44.934Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 665,
+    "ledger-applied": 667,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -11175,6 +11175,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-10T02:50:18.766Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql",
+      "version": "20261010114500",
+      "name": "giu_cho_ten_goi_nho_va_lock_tam_phong",
+      "scheme": "timestamp14",
+      "sha256": "fcad7859aae9ad252aa23d192580c82ab3566d7de4235ac8243bdb409a42595e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-10T12:34:14.870Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261010124153_list_room_sale_locks_cau_bao.sql",
+      "version": "20261010124153",
+      "name": "list_room_sale_locks_cau_bao",
+      "scheme": "timestamp14",
+      "sha256": "888178076c325852d3d590feb18918b7e8e10f45a2a3c892bf6a9baef3aeae7a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-10T12:48:53.161Z|bien-nhan-backup"
       ]
     },
     {

@@ -83,6 +83,16 @@ describe('confirm persisted document signing',()=>{
     expect(screen.getByText(/Không tải được nguồn giữ chỗ/)).toBeTruthy();expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByLabelText(/Không chuyển nguồn giữ chỗ/));expect(screen.getByRole('button',{name:'Xác nhận đã ký và nhận phòng'}).hasAttribute('disabled')).toBe(false);
   });
+  it('warns when the room only has a hint-name hold and does not offer it as a signing source',()=>{
+    mocks.reservations.data.reservations=[{id,organization_id:id,building_id:id,room_id:id,customer_id:null,customer_hint:'Anh Hùng xe máy',customer_name:'Anh Hùng xe máy',status:'HOLD',claim_status:'LIVE',revision:2,received_amount:0,source_voucher_ids:[],receipts:[]}];
+    render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);
+    expect(screen.getByText('Phòng đang giữ chỗ cho “Anh Hùng xe máy” (tên gợi nhớ). Gắn khách thật ở Quản lý cọc trước khi ký hợp đồng.')).toBeTruthy();
+    expect(screen.queryByLabelText(/Anh Hùng xe máy.*Đã nhận/)).toBeNull();
+  });
+  it('shows no hint-name warning when every hold has a real customer',()=>{
+    mocks.reservations.data.reservations=[];render(<ConfirmContractSigningDialog open onOpenChange={vi.fn()} draft={draft}/>);
+    expect(screen.queryByText(/tên gợi nhớ/)).toBeNull();
+  });
   it('uses prepared official money and invoice inputs without asking or rebuilding them',async()=>{
     const options={deposit_debt_mode:'DEBT' as const,deposit_debt_reason:'Đã xác nhận tại form',deposit_topup_due_date:'2026-10-02',
       deposit_receipts:[{amount:400000,account_id:id,received_date:'2026-09-28',attachments:['proof/1']}],
