@@ -1,9 +1,10 @@
 # Image chạy worker Zalo trên VPS. Cách dựng và chạy: worker/README.md, mục "Chạy bằng Docker".
 #
-# Ghim đúng image gốc mà worker Network Center đang dùng trên VPS Minh (có sẵn, khỏi tải lại).
+# Node 22, ghim digest: supabase-js hiện hành dựng Realtime ngay trong createClient và đòi WebSocket
+# có sẵn của Node ≥22 — Node 20 làm worker chết lúc khởi động (đo 10/10/2026 trên VPS Minh).
 # Font không nằm trong git (worker/.gitignore) nên tải lúc dựng, rồi so mã băm: tải nhầm trang
 # lỗi hay font đổi upstream thì bản dựng dừng, không để ảnh phòng trống ra ô vuông âm thầm.
-FROM node:20.20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS deps
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -11,7 +12,7 @@ RUN npm ci --omit=dev --no-audit --no-fund
 COPY tai-font.mjs fonts.sha256 ./
 RUN node tai-font.mjs && sha256sum -c fonts.sha256
 
-FROM node:20.20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
 ARG ZALO_WORKER_RELEASE_SHA=0000000000000000000000000000000000000000
 

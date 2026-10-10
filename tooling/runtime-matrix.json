@@ -18,8 +18,8 @@
     },
     {
       "path": "worker/package.json",
-      "node": ">=20",
-      "note": "Worker Zalo thế hệ cũ chạy pm2 trên VPS (node index.js). Khai >=20 khớp root; supabase-js 2.x chạy tốt từ mức này. Không có test nào."
+      "node": ">=22",
+      "note": "Worker Zalo chạy Docker trên VPS Minh (worker/Dockerfile, node:22-bookworm-slim ghim digest). supabase-js hiện hành dựng Realtime ngay trong createClient và đòi WebSocket có sẵn của Node ≥22 — Node 20 chết lúc khởi động (đo 10/10/2026). Test ở worker/__tests__ chạy bằng vitest của root."
     },
     {
       "path": "infra/cloudflare-worker/package.json",
