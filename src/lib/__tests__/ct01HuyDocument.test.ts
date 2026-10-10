@@ -55,6 +55,11 @@ describe('buildCT01HuyData', () => {
     expect(buildCT01HuyData(customer, { ...building, province: 'TP. Hồ Chí Minh' }, details, now).tl_city).toBe('Thành phố Hồ Chí Minh');
   });
 
+  it('tên chủ quyền lưu in hoa toàn bộ vẫn in hoa chữ đầu như tên khách', () => {
+    const capsOwner = { ...details, owner: { ...details.owner, full_name: 'NGUYỄN THỊ THU THẢO' } };
+    expect(buildCT01HuyData(customer, building, capsOwner, now).owner_name).toBe('Nguyễn Thị Thu Thảo');
+  });
+
   it('không có ngày chấm dứt thì lấy ngày tải theo giờ Việt Nam, không để trống', () => {
     const data = buildCT01HuyData(customer, building, { ...details, endDate: null }, new Date('2026-10-06T18:30:00Z'));
     expect(data.tl_end_date).toBe('ngày 07 tháng 10 năm 2026');

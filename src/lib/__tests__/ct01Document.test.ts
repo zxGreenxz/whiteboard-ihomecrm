@@ -139,9 +139,13 @@ describe('CT01 theo mẫu người dùng', () => {
     const source = readFileSync(new URL('../../../public/templates/ct01.docx', import.meta.url));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(source)));
     const customerWithAddress = { ...customer, permanent_address: permanentAddress };
-    const blob = await renderCT01Document(customerWithAddress, building, lease, new Date('2026-09-13T18:01:00Z'));
+    // Tòa lưu tên chủ quyền in hoa toàn bộ; mọi chỗ in phải ra "Trần Thị Chủ Quyền" như tên khách.
+    const capsLease = { ...lease, owner: { ...lease.owner, full_name: ' TRẦN THỊ  CHỦ QUYỀN ' } };
+    const blob = await renderCT01Document(customerWithAddress, building, capsLease, new Date('2026-09-13T18:01:00Z'));
     const zip = new PizZip(await blob.arrayBuffer());
     const xml = zip.file('word/document.xml')!.asText();
+    expect(xml).not.toContain('CHỦ QUYỀN');
+    expect(xml.split(lease.owner.full_name)).toHaveLength(4);
     expect(xml).toContain(customer.full_name);
     expect(xml).toContain('Công an Phường Bình Thạnh');
     expect(xml).toContain('123 Đường Kiểm Thử');

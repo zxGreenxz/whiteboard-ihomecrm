@@ -2,7 +2,7 @@ import type PizZip from 'pizzip';
 import type { Customer } from '@/types/customer';
 import type { Building } from '@/types/building';
 import type { BuildingLegalOwner } from './buildingLegalOwner';
-import { normalizeProvinceName } from './tamTruPayload';
+import { normalizeProvinceName, titleCaseVi } from './tamTruPayload';
 
 export type CT01Customer = Pick<Customer, 'full_name' | 'date_of_birth' | 'gender' | 'id_number' | 'phone' | 'email'
   | 'id_issue_date' | 'id_issue_place' | 'detailed_address'>;
@@ -65,7 +65,8 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
     building_address: address, building_locality: locality,
     registration_request: `Đăng ký tạm trú ${lease.durationMonths} tháng tại ${address}`,
     duration_months: String(lease.durationMonths), room_number: lease.roomNumber.trim(),
-    owner_name: lease.owner.full_name.trim(), owner_birth_year: lease.owner.birth_year?.toString() ?? '',
+    // Tòa thường lưu tên chủ quyền in hoa toàn bộ; in cùng kiểu với tên khách (hoa chữ đầu).
+    owner_name: titleCaseVi(lease.owner.full_name), owner_birth_year: lease.owner.birth_year?.toString() ?? '',
     owner_id_number: lease.owner.id_number.trim(), owner_id_issue_date: formatDate(lease.owner.id_issue_date),
     owner_id_issue_place: lease.owner.id_issue_place.trim(), owner_permanent_address: lease.owner.permanent_address.trim(),
     customer_birth_year: birth?.[1] ?? '', customer_id_number: id,

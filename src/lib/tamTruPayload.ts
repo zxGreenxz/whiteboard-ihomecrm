@@ -65,7 +65,8 @@ function stripProvincePrefix(raw: string): string {
   return raw.trim().replace(/^(thành phố|tp\.?|tỉnh)\s+/i, '').trim();
 }
 
-function titleCaseVi(s: string): string {
+/** "NGUYỄN  VĂN AN" → "Nguyễn Văn An": hoa chữ đầu mỗi từ, gộp khoảng trắng. */
+export function titleCaseVi(s: string): string {
   return s.split(/\s+/).filter(Boolean)
     .map(w => w.charAt(0).toLocaleUpperCase('vi') + w.slice(1).toLocaleLowerCase('vi')).join(' ');
 }
