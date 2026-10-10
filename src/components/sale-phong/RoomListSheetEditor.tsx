@@ -140,7 +140,6 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
             {/* Khối thông tin chung: giá điện tự tính + CHỖ ĐIỀN chính sách sale chung. */}
             <td colSpan={6} className={`${CELL} space-y-1`} style={{ border: LINE }}>
               {elec.map((l) => <div key={l}>{l}</div>)}
-              {elec.length > 0 && <div className="text-[11px] text-neutral-500">(Dòng giá điện tự lấy theo từng tòa)</div>}
               <label htmlFor="sheet-sale-policy" className="sr-only">Chính sách sale chung</label>
               <textarea
                 id="sheet-sale-policy" name="sale_policy" rows={Math.max(3, salePolicy.split("\n").length + 1)}
