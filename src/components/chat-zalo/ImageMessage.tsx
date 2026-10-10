@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image as ImageIcon, ImageOff } from 'lucide-react';
-import { nhanMediaLoi } from '@/lib/zaloContent';
+import { linkMediaAnToan, nhanMediaLoi } from '@/lib/zaloContent';
 import { IMG_GRADS } from './zaloTheme';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
@@ -57,7 +57,7 @@ export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, o
           )
         ) : url && err ? (
           // Có link mà tải lỗi: vẫn cho mở ở tab mới — link mới thường còn sống, link cũ thì Zalo đã xoá.
-          <a href={url} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS[m.imgTone || 'neutral'] || IMG_GRADS.neutral, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textDecoration: 'none' }}>
+          <a href={linkMediaAnToan(url)} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS[m.imgTone || 'neutral'] || IMG_GRADS.neutral, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textDecoration: 'none' }}>
             <ImageOff size={28} strokeWidth={1.6} />
             <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: '0 10px' }}>
               {nhanMediaLoi('image', m.mediaUrl, m.createdAt)}

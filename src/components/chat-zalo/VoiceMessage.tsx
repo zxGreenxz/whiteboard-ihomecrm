@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Play, Pause, Mic, MicOff } from 'lucide-react';
-import { nhanMediaLoi } from '@/lib/zaloContent';
+import { linkMediaAnToan, nhanMediaLoi } from '@/lib/zaloContent';
 import { EMERALD } from './zaloTheme';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
@@ -66,7 +66,7 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
           <div style={{ flex: 1 }}>
             {loi ? (
               // Phát tại chỗ lỗi thì vẫn cho mở link ở tab mới (tin mới thường còn sống).
-              <a href={url || undefined} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 600, color: 'inherit' }}>{nhanMediaLoi('voice', m.mediaUrl, m.createdAt)}</a>
+              <a href={linkMediaAnToan(url)} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 600, color: 'inherit' }}>{nhanMediaLoi('voice', m.mediaUrl, m.createdAt)}</a>
             ) : (
               <div style={{ height: 4, borderRadius: 2, background: out ? 'rgba(255,255,255,.3)' : 'hsl(210 20% 92%)', overflow: 'hidden' }}>
                 <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: out ? '#fff' : EMERALD, transition: 'width .2s' }} />

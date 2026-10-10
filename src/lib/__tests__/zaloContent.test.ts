@@ -9,6 +9,8 @@ import {
   chuHienThi,
   docThe,
   laLinkZalo,
+  laTinCu,
+  linkMediaAnToan,
   nhanMediaLoi,
   tenTrang,
 } from '@/lib/zaloContent';
@@ -74,6 +76,22 @@ describe('laLinkZalo / nhanMediaLoi', () => {
 
   it('nhận cả host chuyển hướng video *.mdchat.me (đo 10/10/2026)', () => {
     expect(laLinkZalo('https://video-stal-9-te-vnso-cm-17.mdchat.me/gr/abc')).toBe(true);
+  });
+
+  it('linkMediaAnToan chỉ cho http(s) và blob mở/nhúng', () => {
+    expect(linkMediaAnToan('https://photo-stal-1.zdn.vn/a.jpg')).toBe('https://photo-stal-1.zdn.vn/a.jpg');
+    expect(linkMediaAnToan('blob:https://crm.vn/1')).toBe('blob:https://crm.vn/1');
+    for (const u of ['javascript:alert(1)', 'data:text/html,x', 'stored:zalo-media/a.jpg', '', null, undefined]) {
+      expect(linkMediaAnToan(u)).toBeUndefined();
+    }
+  });
+
+  it('laTinCu: quá 7 ngày mới là cũ; thiếu/sai giờ thì không kết luận cũ', () => {
+    const bayGio = Date.parse('2026-10-10T02:00:00Z');
+    expect(laTinCu('2026-10-02T01:00:00Z', bayGio)).toBe(true);
+    expect(laTinCu('2026-10-04T01:00:00Z', bayGio)).toBe(false);
+    expect(laTinCu(null, bayGio)).toBe(false);
+    expect(laTinCu('không phải giờ', bayGio)).toBe(false);
   });
 
   it('tenTrang lấy tên miền ngắn', () => {

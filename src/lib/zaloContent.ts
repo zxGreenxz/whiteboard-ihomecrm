@@ -70,8 +70,25 @@ export function laLinkZalo(url: string | null | undefined): boolean {
 
 const TEN_MEDIA = { image: 'Ảnh', video: 'Video', voice: 'Tin thoại' } as const;
 
+/**
+ * Link media được phép mở/nhúng: chỉ http(s) và blob (ảnh lạc quan lúc đang tải lên). `media_url`
+ * do worker ghi từ dữ liệu Zalo, không tin hình dạng của nó.
+ */
+export function linkMediaAnToan(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('blob:')) return url;
+  const u = phanTichUrl(url);
+  return u && (u.protocol === 'https:' || u.protocol === 'http:') ? url : undefined;
+}
+
 /** Tin cũ hơn mốc này mà link Zalo hỏng thì nhiều khả năng đã hết hạn (đo 09/10/2026: link 1 tháng 404). */
 const NGAY_CO_THE_HET_HAN = 7;
+
+/** Tin đủ cũ để link Zalo hỏng được coi là "có thể đã hết hạn" thay vì lỗi tải tại chỗ. */
+export function laTinCu(createdAt: string | null | undefined, bayGio: number = Date.now()): boolean {
+  const luc = createdAt ? Date.parse(createdAt) : NaN;
+  return Number.isFinite(luc) && bayGio - luc > NGAY_CO_THE_HET_HAN * 86_400_000;
+}
 
 /**
  * Nhãn khi media không tải được tại chỗ. Tin cũ: nói "có thể đã hết hạn". Tin mới: link vẫn sống
@@ -85,9 +102,9 @@ export function nhanMediaLoi(
 ): string {
   const ten = TEN_MEDIA[loai];
   if (!laLinkZalo(url)) return `Không tải được ${ten.toLowerCase()}`;
-  const luc = createdAt ? Date.parse(createdAt) : NaN;
-  const cu = Number.isFinite(luc) && bayGio - luc > NGAY_CO_THE_HET_HAN * 86_400_000;
-  return cu ? `${ten} không mở được — có thể đã hết hạn trên Zalo` : `${ten} không mở được tại đây — bấm để mở`;
+  return laTinCu(createdAt, bayGio)
+    ? `${ten} không mở được — có thể đã hết hạn trên Zalo`
+    : `${ten} không mở được tại đây — bấm để mở`;
 }
 
 export type CanhBaoKetNoi =

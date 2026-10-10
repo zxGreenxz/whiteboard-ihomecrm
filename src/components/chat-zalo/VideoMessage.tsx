@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Play, Video as VideoIcon, VideoOff } from 'lucide-react';
-import { nhanMediaLoi } from '@/lib/zaloContent';
+import { linkMediaAnToan, nhanMediaLoi } from '@/lib/zaloContent';
 import { IMG_GRADS } from './zaloTheme';
 import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
@@ -36,7 +36,7 @@ export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: Zal
         ) : err ? (
           // Video nhận về chỉ nằm trên máy chủ Zalo; link chết thì ảnh bìa cũng chết, đừng vẽ ảnh vỡ.
           // Vẫn giữ link mở tab mới: lỗi phát tại chỗ chưa chắc là video đã mất.
-          <a href={urlVideo || '#'} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textAlign: 'center', padding: '0 10px', textDecoration: 'none' }}>
+          <a href={linkMediaAnToan(urlVideo)} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textAlign: 'center', padding: '0 10px', textDecoration: 'none' }}>
             <VideoOff size={28} strokeWidth={1.6} />
             <span style={{ fontSize: 11, fontWeight: 600 }}>{nhanMediaLoi('video', m.mediaUrl, m.createdAt)}</span>
           </a>

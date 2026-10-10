@@ -28,6 +28,9 @@ describe('useMediaThuLai', () => {
     expect(result.current.loi).toBe(true);
     rerender({ u: 'https://a.zdn.vn/2.jpg' });
     expect(result.current).toMatchObject({ src: 'https://a.zdn.vn/2.jpg', loi: false });
+    // Lỗi của link mới đếm từ 0, không cộng dồn lượt của link cũ.
+    act(() => result.current.onError());
+    expect(result.current).toMatchObject({ src: 'https://a.zdn.vn/2.jpg#thu-lai', loi: false });
   });
 
   it('không có link thì không có src', () => {
