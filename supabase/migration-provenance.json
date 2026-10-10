@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-10T12:49:44.934Z",
+  "generatedAt": "2026-10-10T14:27:32.111Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 667,
+    "ledger-applied": 669,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -11197,6 +11197,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-10T12:48:53.161Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261010141134_public_room_settings_dien_to_chuc.sql",
+      "version": "20261010141134",
+      "name": "public_room_settings_dien_to_chuc",
+      "scheme": "timestamp14",
+      "sha256": "26809e76042478208edcdaac17f2f74dbb690d7b3fe13e257d9e2ddafdeb8239",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-10T14:20:08.663Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261010142330_public_room_settings_bo_not_null_to_chuc.sql",
+      "version": "20261010142330",
+      "name": "public_room_settings_bo_not_null_to_chuc",
+      "scheme": "timestamp14",
+      "sha256": "5ca8c04acf07432c2a83e44922c59abb2ec27d8660897d1f90d3e1c031bbf55e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-10T14:27:25.163Z|bien-nhan-backup"
       ]
     },
     {
