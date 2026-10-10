@@ -9,6 +9,8 @@ import {
   chuHienThi,
   docThe,
   laLinkZalo,
+  laTinCu,
+  linkMediaAnToan,
   nhanMediaLoi,
   tenTrang,
 } from '@/lib/zaloContent';
@@ -60,11 +62,36 @@ describe('laLinkZalo / nhanMediaLoi', () => {
     }
   });
 
-  it('link Zalo lỗi ghi "có thể đã hết hạn trên Zalo", lỗi khác ghi "không tải được"', () => {
-    expect(nhanMediaLoi('image', 'https://photo-stal-1.zdn.vn/a.jpg')).toBe('Ảnh không mở được — có thể đã hết hạn trên Zalo');
-    expect(nhanMediaLoi('video', 'https://video-stal-1.dlmd.me/a.mp4')).toBe('Video không mở được — có thể đã hết hạn trên Zalo');
-    expect(nhanMediaLoi('voice', 'https://file-stal-1.dlfl.vn/a.aac')).toBe('Tin thoại không mở được — có thể đã hết hạn trên Zalo');
-    expect(nhanMediaLoi('image', 'stored:zalo-media/a/b.jpg')).toBe('Không tải được ảnh');
+  it('tin cũ hơn 7 ngày: "có thể đã hết hạn"; tin mới: mời bấm mở, không kết luận đã mất', () => {
+    const bayGio = Date.parse('2026-10-10T02:00:00Z');
+    const cu = '2026-09-05T07:00:00Z';
+    const moi = '2026-10-10T01:55:00Z';
+    expect(nhanMediaLoi('image', 'https://photo-stal-1.zdn.vn/a.jpg', cu, bayGio)).toBe('Ảnh không mở được — có thể đã hết hạn trên Zalo');
+    expect(nhanMediaLoi('video', 'https://video-stal-1.dlmd.me/a.mp4', cu, bayGio)).toBe('Video không mở được — có thể đã hết hạn trên Zalo');
+    expect(nhanMediaLoi('voice', 'https://file-stal-1.dlfl.vn/a.aac', cu, bayGio)).toBe('Tin thoại không mở được — có thể đã hết hạn trên Zalo');
+    expect(nhanMediaLoi('video', 'https://video-stal-9.dlmd.me/a.mp4', moi, bayGio)).toBe('Video không mở được tại đây — bấm để mở');
+    expect(nhanMediaLoi('image', 'https://photo-stal-1.zdn.vn/a.jpg', undefined, bayGio)).toBe('Ảnh không mở được tại đây — bấm để mở');
+    expect(nhanMediaLoi('image', 'stored:zalo-media/a/b.jpg', cu, bayGio)).toBe('Không tải được ảnh');
+  });
+
+  it('nhận cả host chuyển hướng video *.mdchat.me (đo 10/10/2026)', () => {
+    expect(laLinkZalo('https://video-stal-9-te-vnso-cm-17.mdchat.me/gr/abc')).toBe(true);
+  });
+
+  it('linkMediaAnToan chỉ cho http(s) và blob mở/nhúng', () => {
+    expect(linkMediaAnToan('https://photo-stal-1.zdn.vn/a.jpg')).toBe('https://photo-stal-1.zdn.vn/a.jpg');
+    expect(linkMediaAnToan('blob:https://crm.vn/1')).toBe('blob:https://crm.vn/1');
+    for (const u of ['javascript:alert(1)', 'data:text/html,x', 'stored:zalo-media/a.jpg', '', null, undefined]) {
+      expect(linkMediaAnToan(u)).toBeUndefined();
+    }
+  });
+
+  it('laTinCu: quá 7 ngày mới là cũ; thiếu/sai giờ thì không kết luận cũ', () => {
+    const bayGio = Date.parse('2026-10-10T02:00:00Z');
+    expect(laTinCu('2026-10-02T01:00:00Z', bayGio)).toBe(true);
+    expect(laTinCu('2026-10-04T01:00:00Z', bayGio)).toBe(false);
+    expect(laTinCu(null, bayGio)).toBe(false);
+    expect(laTinCu('không phải giờ', bayGio)).toBe(false);
   });
 
   it('tenTrang lấy tên miền ngắn', () => {
