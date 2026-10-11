@@ -220,7 +220,7 @@ function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock
           style={{ backgroundImage: "radial-gradient(rgba(255,210,63,.10) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
         <div className="relative flex items-center gap-2 text-[12.5px] text-[#EDEAF7]/85">
           <BarChart3 size={15} style={{ color: "#FFD23F" }} />
-          Tổng quỹ thực chi · {N} nhân sự
+          Tổng quỹ thực chi (sau khấu trừ) · {N} nhân sự
           <span className="ml-auto inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wide px-[7px] py-[2px] rounded-full"
             style={locked ? { background: "rgba(52,211,153,.16)", color: "#7BE7AC" } : { background: "rgba(255,210,63,.16)", color: "#FFD23F" }}>
             {locked ? <><Lock size={10} />Đã chốt</> : <><span className="w-[5px] h-[5px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />Chưa chốt</>}

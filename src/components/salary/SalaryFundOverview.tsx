@@ -75,7 +75,9 @@ export default function SalaryFundOverview({ periods, feeBuildings, feeUnpublish
     { label: "Nguồn lương tháng", val: salFmt(cur.fee + (cur.owner ?? 0)), bar: "#9fcfb6", fg: undefined,
       sub: `Phí quản lý ${feeBuildings} tòa` + (cur.owner ? ` + chủ cấp ${salFmt(cur.owner)}` : " · chi ngày 1 hàng tháng") + (feeUnpublished ? ` · ${feeUnpublished} tòa chưa công bố giá` : ""), onClick: () => onOpenFund("funding") },
     { label: "Tổng lương vận hành", val: salFmt(opTotal), bar: "hsl(var(--foreground))", fg: undefined,
-      sub: `${mgrs.length} người · ${cur.locked ? "đã chốt kỳ" : "tạm tính, chưa chốt kỳ"}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
+      // K11-61 (C-11): số này TRƯỚC khấu trừ ứng/tiền phòng; "Tổng quỹ thực chi" ở tab Tháng
+      // và bản điện thoại là thực nhận SAU khấu trừ — ghi rõ để hai con số không bị đọc lệch.
+      sub: `${mgrs.length} người · trước khấu trừ ứng/tiền phòng · ${cur.locked ? "đã chốt kỳ" : "tạm tính, chưa chốt kỳ"}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
     { label: "Đã trả", val: salFmt(paid + adv), bar: "hsl(var(--status-neutral-strong))", fg: undefined,
       sub: `Phiếu chi đã duyệt ${salFmt(paid)}${adv ? " · ứng " + salFmt(adv) : ""}`, onClick: () => mgrs[0] && onOpenPerson(mgrs[0].id) },
     { label: "Đang chờ chi", val: salFmt(pendingSum), bar: "hsl(var(--status-info))", fg: "hsl(var(--status-info-fg))",

@@ -265,7 +265,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
             )}
           </div>
 
-          <div className="sal-cmd-cap"><I.BarChart size={16} />Tổng quỹ thực chi tháng này · {N} nhân sự</div>
+          <div className="sal-cmd-cap"><I.BarChart size={16} />Tổng quỹ thực chi tháng này (sau khấu trừ) · {N} nhân sự</div>
           <div className="sal-cmd-num">{Math.round(treasury).toLocaleString("vi-VN")}<span className="u">₫</span></div>
 
           <div className="sal-cmd-chips">
