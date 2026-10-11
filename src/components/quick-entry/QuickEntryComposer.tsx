@@ -70,8 +70,9 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   /** Mô hình máy chủ báo ĐÃ chép lần nói gần nhất — hiện để so sánh các mô hình. */
   const [heardBy, setHeardBy] = useState<string | null>(null);
-  /** Đã bấm gửi lúc dữ liệu còn tải ⇒ gửi nội dung đang có ngay khi tải xong. */
-  const [queued, setQueued] = useState(false);
+  /** Bấm gửi lúc dữ liệu còn tải ⇒ nhớ công ty|đích lúc bấm; tải xong mà vẫn đúng nơi đó thì tự gửi. */
+  const [queuedFor, setQueuedFor] = useState<string | null>(null);
+  const target = `${p.contextKey ?? ""}|${p.mode}`;
   const box = useRef<HTMLTextAreaElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
@@ -85,7 +86,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const companyHint = "Chọn công ty để dùng AI. Khoản cá nhân vẫn lưu vào ví cá nhân.";
   useEffect(() => { setNote(null); setHeardBy(null); }, [p.contextKey]);
   // Lượt gửi đang giữ chỉ dành cho đúng công ty/đích lúc bấm; đổi thì huỷ, chữ vẫn nằm trong ô.
-  useEffect(() => setQueued(false), [p.contextKey, p.mode]);
+  useEffect(() => setQueuedFor((q) => (q === target ? q : null)), [target]);
 
   useEffect(() => {
     mounted.current = true;
@@ -114,7 +115,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     if (p.waiting) {
       if (!content.trim() && !pendingPhoto) return;
       setText(content);
-      setQueued(true);
+      setQueuedFor(target);
       return;
     }
     if (p.aiContextRequired) { setNote(companyHint); return; }
@@ -126,15 +127,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     setPendingPhoto(null);
     setNote(null);
     setHeardBy(null);
+    setQueuedFor(null);
   };
-
-  useEffect(() => {
-    if (!queued || p.waiting) return;
-    setQueued(false);
-    submit(text);
-    // Chỉ chạy khi hết chờ; submit và text lấy đúng bản của lần render này (gồm chữ gõ thêm sau khi bấm gửi).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queued, p.waiting]);
 
   const recorder = useVoiceRecorder((audio) => {
     const transcribe = p.transcribe;
@@ -176,6 +170,15 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const recording = recorder.state === "recording" || recorder.state === "requesting";
   const busy = recording || transcribing;
   const voiceError = recorder.error;
+
+  useEffect(() => {
+    // Đang ghi âm/chép lời thì đợi: phần nói sẽ gửi chung, không tách thành hai thẻ.
+    if (queuedFor === null || p.waiting || busy || voicePending.current) return;
+    setQueuedFor(null);
+    if (queuedFor === target) submit(text);
+    // submit và text lấy đúng bản của lần render này (gồm chữ gõ thêm sau khi bấm gửi).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queuedFor, target, p.waiting, busy]);
 
   const send = () => {
     if (busy || voicePending.current) return;
@@ -223,7 +226,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     if (!image) return;
     e.preventDefault();
     if (pendingPhoto || p.aiContextRequired || p.appearance === 'personal') setPendingPhoto(image);
-    else if (p.waiting) { setPendingPhoto(image); setQueued(true); }
+    else if (p.waiting) { setPendingPhoto(image); setQueuedFor(target); }
     else p.onPhoto(image);
   };
 
@@ -242,7 +245,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
       setPendingPhoto(file);
       setNote(null);
       box.current?.focus();
-    } else if (p.waiting) { setPendingPhoto(file); setQueued(true); }
+    } else if (p.waiting) { setPendingPhoto(file); setQueuedFor(target); }
     else p.onPhoto(file);
   };
 
@@ -343,7 +346,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
           {note ?? voiceError}
         </p>
       )}
-      {queued && (
+      {queuedFor !== null && (
         <p className="text-xs text-muted-foreground" role="status">
           Đang tải dữ liệu, sẽ tự gửi ngay khi xong…
         </p>

@@ -13,6 +13,11 @@ import PersonalWalletPage from "./PersonalWalletPage";
 import { localMonth } from "@/lib/personalFinance/selectors";
 import { shiftMonth } from "@/components/personal-finance/presentation";
 
+const nav = vi.hoisted(() => ({ type: "POP" as "POP" | "PUSH" | "REPLACE" }));
+vi.mock("react-router-dom", async (original) => ({
+  ...(await original<object>()),
+  useNavigationType: () => nav.type,
+}));
 const data = vi.hoisted(() => ({
   create: false,
   controller: null as Record<string, unknown> | null,
@@ -58,13 +63,26 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
 vi.mock("@/components/personal-finance/CompanyFinance", () => ({
   default: ({ view }: { view: string }) => <div data-testid="company-panel">Công ty · {view}</div>,
 }));
-const launchAsApp = (standalone: boolean) => {
+/** jsdom không có PerformanceNavigationTiming ⇒ trang lấy đường dẫn hiện tại làm nơi tài liệu được mở. */
+const launchAsApp = (standalone: boolean, openedAt = "/finance/personal-wallet") => {
   window.matchMedia = ((query: string) => ({ matches: standalone && query === "(display-mode: standalone)" })) as unknown as typeof window.matchMedia;
+  window.history.replaceState(null, "", openedAt);
+};
+let visibility: DocumentVisibilityState = "visible";
+Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+const switchApp = (state: DocumentVisibilityState) => {
+  visibility = state;
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
 };
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   Reflect.deleteProperty(window, "matchMedia");
+  window.history.replaceState(null, "", "/");
+  nav.type = "POP";
+  visibility = "visible";
   data.create = false;
   data.controller = null;
   data.snapshot = {
@@ -108,15 +126,35 @@ it("closing the auto-opened sheet shows the overview at once", () => {
   expect(screen.getByTestId("total-balance")).toBeTruthy();
 });
 it.each([
-  ["a normal browser tab", false, true],
-  ["an app launch without create permission", true, false],
-])("%s keeps the overview first", (_case, standalone, create) => {
-  launchAsApp(standalone);
+  ["a normal browser tab", false, true, "/finance/personal-wallet", "POP"],
+  ["an app launch without create permission", true, false, "/finance/personal-wallet", "POP"],
+  ["the CRM app opened at / then the wallet menu", true, true, "/", "PUSH"],
+  ["a link inside the wallet app back to the wallet", true, true, "/finance/personal-wallet", "PUSH"],
+] as const)("%s keeps the overview first", (_case, standalone, create, openedAt, type) => {
+  launchAsApp(standalone, openedAt);
+  nav.type = type;
   data.create = create;
   data.controller = personalController();
   render(<PersonalWalletPage />);
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByTestId("total-balance")).toBeTruthy();
+});
+it("returning to the wallet app after a minute opens the entry sheet again; a quick switch does not", () => {
+  vi.useFakeTimers();
+  launchAsApp(true);
+  data.create = true;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Ghi thu chi" })).getByRole("button", { name: "Đóng" }));
+  switchApp("hidden");
+  vi.advanceTimersByTime(20_000);
+  switchApp("visible");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  switchApp("hidden");
+  vi.advanceTimersByTime(61_000);
+  switchApp("visible");
+  const sheet = screen.getByRole("dialog", { name: "Ghi thu chi" });
+  expect(document.activeElement).toBe(within(sheet).getByLabelText("Nội dung khoản chi"));
 });
 it("reopening a saved manual company entry creates a fresh company draft", () => {
   data.create = true;

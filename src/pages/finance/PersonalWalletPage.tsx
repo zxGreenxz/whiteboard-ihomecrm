@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, lazy, Suspense, startTransition } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, startTransition } from "react";
+import { useNavigationType } from "react-router-dom";
 import {
   Home,
   List,
@@ -69,13 +70,21 @@ const MANUAL_AMOUNT = 'input[name="amount"]';
 const focusInSheet = (selector: string) =>
   requestAnimationFrame(() => document.querySelector<HTMLElement>(`dialog[open] ${selector}:not(:disabled)`)?.focus());
 
-/** Mở bằng biểu tượng app trên màn hình chính (PWA) ⇒ vào thẳng khung ghi thu chi. Trình duyệt thường giữ tổng quan. */
-function launchedAsApp() {
+/** Rời app ít nhất chừng này rồi quay lại thì coi như mở lại app ⇒ vào thẳng khung nhập. */
+const RESUME_ENTRY_MS = 60_000;
+
+/**
+ * App "Ví cá nhân" trên màn hình chính: PWA standalone mà tài liệu mở thẳng vào ví (start_url của
+ * personal-wallet.webmanifest). App CRM mở ở "/" rồi bấm menu sang ví thì không tính; trình duyệt thường cũng không.
+ */
+function walletAppLaunch() {
   try {
-    return (
+    const standalone =
       window.matchMedia?.("(display-mode: standalone)").matches === true ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true
-    );
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (!standalone) return false;
+    const entry = performance.getEntriesByType?.("navigation")[0];
+    return (entry ? new URL(entry.name).pathname : location.pathname).startsWith("/finance/personal-wallet");
   } catch {
     return false;
   }
@@ -133,13 +142,17 @@ export default function PersonalWalletPage() {
   const [tab, setTab] = useState("home");
   const [month, setMonth] = useState(localMonth);
   const [hidden, setHidden] = useState(false);
-  const [appLaunch] = useState(launchedAsApp);
+  const [walletApp] = useState(walletAppLaunch);
+  // Chỉ lượt mở/tải lại/quay lui (POP); bấm link sang ví (PUSH) thì giữ tổng quan.
+  const navigationType = useNavigationType();
+  const [autoEntry] = useState(() => walletApp && navigationType === "POP");
   const [sheet, setSheet] = useState<"entry" | "wallet" | "category" | null>(
-    () => (appLaunch && permissions.create ? "entry" : null),
+    () => (autoEntry && permissions.create ? "entry" : null),
   );
-  const [autoEntryDone, setAutoEntryDone] = useState(sheet === "entry");
+  const [autoEntryDone, setAutoEntryDone] = useState(!autoEntry || sheet === "entry");
   // Vào thẳng khung nhập thì chưa dựng tổng quan để không tranh CPU lúc gõ: dựng nền khi rảnh, hoặc ngay khi đóng khung.
-  const [dashboardShown, setDashboardShown] = useState(!appLaunch);
+  const [dashboardShown, setDashboardShown] = useState(!autoEntry);
+  const hiddenAt = useRef(0);
   const [entryFocus, setEntryFocus] = useState(true);
   const [launchAction, setLaunchAction] = useState<{
     id: number;
@@ -168,10 +181,10 @@ export default function PersonalWalletPage() {
   }, [sheet, entryMode, controller.mode, controller.feed, manualCompanyId]);
   // Quyền ghi về sau lượt dựng đầu (chưa có trong bộ đệm) thì vẫn mở khung một lần.
   useEffect(() => {
-    if (!appLaunch || autoEntryDone || permissionQuery.isPending) return;
+    if (autoEntryDone || permissionQuery.isPending) return;
     setAutoEntryDone(true);
     if (permissions.create) setSheet((current) => current ?? "entry");
-  }, [appLaunch, autoEntryDone, permissionQuery.isPending, permissions.create]);
+  }, [autoEntryDone, permissionQuery.isPending, permissions.create]);
   const s = query.data;
   useEffect(() => {
     if (dashboardShown) return;
@@ -215,6 +228,23 @@ export default function PersonalWalletPage() {
     setSheet(null);
     setDashboardShown(true);
   };
+  // Điện thoại thường giữ app chạy nền: quay lại app Ví sau một lúc cũng là "bật lên" ⇒ mở khung nhập nếu đang rảnh tay.
+  useEffect(() => {
+    if (!walletApp) return;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt.current = Date.now();
+        return;
+      }
+      const away = hiddenAt.current ? Date.now() - hiddenAt.current : 0;
+      hiddenAt.current = 0;
+      if (away < RESUME_ENTRY_MS || !permissions.create || sheet !== null || editor || cashbookFormOpen) return;
+      setEntryFocus(true);
+      setSheet("entry");
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [walletApp, permissions.create, sheet, editor, cashbookFormOpen]);
   const scopePicker = (
     <div className="pf-pills pf-entry-tabs" role="group" aria-label="Nhóm ví">
       {(["personal", "company"] as const).map(scope => <button key={scope} type="button" className={walletScope === scope ? "active" : ""} aria-pressed={walletScope === scope} onClick={() => setWalletScope(scope)}>{scope === "personal" ? "Cá nhân" : "Công ty"}</button>)}
@@ -652,11 +682,14 @@ export default function PersonalWalletPage() {
                     footerAddon={manualDestination}
                     onClose={closeSheet}
                   />
-                ) : !s ? (
+                ) : (
                   <p className="pf-muted" role="status">
-                    Đang tải ví cá nhân…
+                    {moneyError ??
+                      (query.error && !s
+                        ? "Không tải được ví cá nhân. Đóng hộp để thử lại."
+                        : "Đang tải ví cá nhân…")}
                   </p>
-                ) : null)}
+                ))}
             </div>
           </div>
         </FinanceSheet>

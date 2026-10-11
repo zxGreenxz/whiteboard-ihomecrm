@@ -4,6 +4,14 @@ import type { ActionKey } from '@/lib/permissions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 
+// App "Ví cá nhân" mở thẳng trang ví ⇒ tải chunk trang song song lúc còn chờ RPC kiểm quyền. Đặt ở chunk
+// lazy này, không ở lazyPages: chunk entry đang sát ngưỡng bundle-inventory. Dùng import.meta.glob thay vì
+// import(): Vite vẫn trỏ đúng chunk, còn đảo strict (file này nằm trong đảo) không kéo cả cây trang vào kiểm.
+const walletPage = import.meta.glob('/src/pages/finance/PersonalWalletPage.tsx');
+if (typeof location !== 'undefined' && location.pathname.startsWith('/finance/personal-wallet')) {
+  Object.values(walletPage)[0]?.().catch(() => { /* chỉ tải trước; lỗi thật do lazy() của route tự thử lại và báo */ });
+}
+
 /** No organization is selected on behalf of a user entering their own wallet. */
 export function RequirePersonalFinancePermission({ children, action = 'view', fallbackPath = '/' }: { children: React.ReactNode; action?: ActionKey; fallbackPath?: string }) {
   const permission = usePersonalFinancePermissions();

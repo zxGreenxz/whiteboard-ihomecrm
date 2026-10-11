@@ -476,6 +476,28 @@ describe("QuickEntryComposer — dữ liệu nền còn đang tải", () => {
     expect(h.box.value).toBe("102LVT sơn 300k");
   });
 
+  it("đổi đích đúng lượt dữ liệu vừa về ⇒ không tự gửi sang đích mới", () => {
+    const h = setup({ waiting: true, mode: "personal", contextKey: "org-a" });
+    fireEvent.change(h.box, { target: { value: "bún bò 50k" } });
+    fireEvent.keyDown(h.box, { key: "Enter" });
+    h.rerender(<QuickEntryComposer {...h.props} mode="company" contextKey="org-a" waiting={false} />);
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    expect(h.box.value).toBe("bún bò 50k");
+  });
+
+  it("đang ghi âm lúc dữ liệu về ⇒ đợi nói xong rồi gửi chung một lần", async () => {
+    const h = setup({ waiting: true });
+    fireEvent.change(h.box, { target: { value: "bún bò 50k" } });
+    fireEvent.keyDown(h.box, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Nói" }));
+    rec.state = "recording";
+    h.rerender(<QuickEntryComposer {...h.props} waiting={false} />);
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    rec.state = "idle";
+    await act(async () => rec.onDone?.(audio));
+    expect(h.props.onSubmitText).toHaveBeenCalledExactlyOnceWith("bún bò 50k sơn ba trăm nghìn");
+  });
+
   it("ảnh bill chọn lúc đang tải được giữ, tải xong mới gửi", () => {
     const h = setup({ waiting: true });
     const bill = new File(["img"], "bill.png", { type: "image/png" });
