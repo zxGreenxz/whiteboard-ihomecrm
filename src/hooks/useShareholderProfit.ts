@@ -18,7 +18,7 @@ import {
   normalizeUnallocatedDisposition,
   type ProfitCloseAdjustmentPayload,
   type TotalGroupPeerMap,
-  type ProfitUnallocatedDisposition,
+  type ProfitStoredUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
@@ -45,7 +45,7 @@ export interface ProfitMonthly {
   shareholder_percent_total?: number;
   shareholder_allocated_amount?: number;
   unallocated_profit?: number;
-  unallocated_disposition?: ProfitUnallocatedDisposition | null;
+  unallocated_disposition?: ProfitStoredUnallocatedDisposition | null;
   unallocated_disposition_reason?: string | null;
   status: "DRAFT" | "LOCKED";
   note: string | null;
@@ -65,7 +65,7 @@ export interface ProfitCloseSnapshot {
   shareholder_percent_total: number;
   shareholder_allocated_amount: number;
   unallocated_profit: number;
-  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition: ProfitStoredUnallocatedDisposition | null;
   unallocated_disposition_reason: string | null;
   source_hash: string | null;
   locked_at: string | null;
@@ -83,7 +83,7 @@ export interface ProfitClosePreviewRow {
   shareholder_percent_total: number;
   shareholder_allocated_amount: number;
   unallocated_profit: number;
-  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition: ProfitStoredUnallocatedDisposition | null;
   unallocated_disposition_reason: string | null;
   source_hash: string;
   is_stale: boolean;
@@ -379,7 +379,7 @@ export interface ProfitCloseStateRow {
   shareholder_percent_total: number;
   shareholder_allocated_amount: number;
   unallocated_profit: number;
-  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition: ProfitStoredUnallocatedDisposition | null;
   unallocated_disposition_reason: string | null;
   source_revenue: number;
   source_expense: number;

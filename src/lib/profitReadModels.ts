@@ -1,5 +1,5 @@
 import type {ProfitClosePreview,ProfitClosePreviewRow,ProfitCloseSnapshot,ProfitCloseState,ProfitCloseStateRow,ProfitMonthly,ProfitAllocation,ProfitManagerAllocation,ShareholderDistribution,ManagerSalaryPayout,MonthlyBuildingProfit,ProfitCloseOrganizationScope} from '@/hooks/useShareholderProfit';
-import type {ProfitUnallocatedDisposition,TotalGroupPeerMap} from './profitClose';
+import {LEGACY_UNALLOCATED_DISPOSITION,type ProfitStoredUnallocatedDisposition,type TotalGroupPeerMap} from './profitClose';
 type Row=Record<string,unknown>;
 const invalid=():never=>{throw new TypeError('Invalid profit read payload');};
 export const profitObject=(value:unknown):Row=>value&&typeof value==='object'&&!Array.isArray(value)?value as Row:invalid();
@@ -15,7 +15,8 @@ const date=(value:unknown,month=false):string=>{const result=profitString(value)
 const nullableDate=(value:unknown):string|null=>value===null?null:typeof value==='string'&&Number.isFinite(Date.parse(value))?value:invalid();
 const hash=(value:unknown):string=>typeof value==='string'&&/^[a-f0-9]{32}$/i.test(value)?value:invalid();
 const status=(value:unknown):'DRAFT'|'LOCKED'=>value==='DRAFT'||value==='LOCKED'?value:invalid();
-const disposition=(value:unknown):ProfitUnallocatedDisposition|null=>{if(value===null)return null;if(value==='RETAINED_EARNINGS'||value==='CARRY_FORWARD')return value;return invalid();};
+// N-A3-01: tháng chốt trước V3 mang LEGACY_RETAINED_UNALLOCATED; ném ở đây làm hỏng cả báo cáo.
+const disposition=(value:unknown):ProfitStoredUnallocatedDisposition|null=>{if(value===null)return null;if(value==='RETAINED_EARNINGS'||value==='CARRY_FORWARD'||value===LEGACY_UNALLOCATED_DISPOSITION)return value;return invalid();};
 export function profitRows<T>(value:unknown,map:(row:Row)=>T):T[]{if(!Array.isArray(value))return invalid();return value.map(item=>map(profitObject(item)));}
 const unique=<T,>(rows:T[],get:(row:T)=>string):T[]=>{if(new Set(rows.map(get)).size!==rows.length)return invalid();return rows;};
 export function readProfitMonthly(value:unknown):ProfitMonthly[]{return unique(profitRows(value,r=>({...r,id:profitString(r.id),user_id:profitString(r.user_id),building_id:profitString(r.building_id),period_month:date(r.period_month,true),computed_profit:profitNumber(r.computed_profit),adjusted_profit:profitNumber(r.adjusted_profit),management_salary:profitNumber(r.management_salary),shareholder_percent_total:profitNumber(r.shareholder_percent_total),shareholder_allocated_amount:profitNumber(r.shareholder_allocated_amount),unallocated_profit:profitNumber(r.unallocated_profit),unallocated_disposition:disposition(r.unallocated_disposition),unallocated_disposition_reason:nullableString(r.unallocated_disposition_reason),status:status(r.status),note:nullableString(r.note),locked_at:nullableDate(r.locked_at),locked_by:nullableString(r.locked_by)})),r=>r.id);}

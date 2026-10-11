@@ -68,6 +68,7 @@ import {
   normalizeUnallocatedDisposition,
   resolveCloseAction,
   resolveProfitCloseOrganizationId,
+  unallocatedDispositionLabel,
   validateProfitCloseDrafts,
   type ProfitCloseDraftMap,
   type ProfitUnallocatedDisposition,
@@ -142,14 +143,6 @@ function SignedAdjustmentInput({
 
 function shortHash(hash: string | null | undefined): string {
   return hash ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : "—";
-}
-
-function dispositionLabel(
-  disposition: ProfitUnallocatedDisposition | null | undefined,
-): string {
-  if (disposition === "RETAINED_EARNINGS") return "Giữ lại lợi nhuận";
-  if (disposition === "CARRY_FORWARD") return "Chuyển kỳ sau";
-  return "Chưa chọn";
 }
 
 export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
@@ -796,7 +789,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     .filter((row) => hasUnallocatedProfitResidual(row.unallocated_profit))
     .map(
       (row) =>
-        `${dispositionLabel(
+        `${unallocatedDispositionLabel(
           row.unallocated_disposition ?? row.current_snapshot?.unallocated_disposition ?? null,
         )} · ${row.building_name}`,
     );
@@ -1264,10 +1257,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   const draft = activeDrafts[row.building_id] ?? {
                     adjustmentAmount: row.current_snapshot?.adjustment_amount ?? 0,
                     adjustmentReason: row.current_snapshot?.adjustment_reason ?? "",
-                    unallocatedDisposition:
+                    unallocatedDisposition: normalizeUnallocatedDisposition(
                       row.unallocated_disposition ??
-                      row.current_snapshot?.unallocated_disposition ??
-                      null,
+                      row.current_snapshot?.unallocated_disposition,
+                    ),
                     unallocatedDispositionReason:
                       row.unallocated_disposition_reason ??
                       row.current_snapshot?.unallocated_disposition_reason ??
@@ -1462,7 +1455,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                           ) : (
                             <div className="space-y-1 text-xs">
                               <Badge variant={draft.unallocatedDisposition ? "secondary" : "destructive"}>
-                                {dispositionLabel(draft.unallocatedDisposition)}
+                                {unallocatedDispositionLabel(draft.unallocatedDisposition)}
                               </Badge>
                               {draft.unallocatedDispositionReason && (
                                 <p className="text-muted-foreground">{draft.unallocatedDispositionReason}</p>
@@ -1491,7 +1484,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                             </p>
                             {hasUnallocatedProfitResidual(row.current_snapshot.unallocated_profit) && (
                               <p className="text-xs text-amber-700">
-                                Còn {formatCurrency(row.current_snapshot.unallocated_profit)} · {dispositionLabel(row.current_snapshot.unallocated_disposition)}
+                                Còn {formatCurrency(row.current_snapshot.unallocated_profit)} · {unallocatedDispositionLabel(row.current_snapshot.unallocated_disposition)}
                               </p>
                             )}
                             <p className="text-[11px] text-muted-foreground">

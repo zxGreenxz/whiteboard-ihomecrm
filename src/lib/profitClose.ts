@@ -2,6 +2,23 @@ export type ProfitUnallocatedDisposition =
   | "RETAINED_EARNINGS"
   | "CARRY_FORWARD";
 
+// Tháng chốt TRƯỚC V3 được migration 20260721110000 đánh dấu giá trị này (CHECK
+// của profit_monthly cho phép). Chỉ để ĐỌC: lượt chốt mới/chốt lại phải chọn một
+// trong hai giá trị trên (normalizeUnallocatedDisposition trả null cho giá trị cũ).
+export const LEGACY_UNALLOCATED_DISPOSITION = "LEGACY_RETAINED_UNALLOCATED";
+export type ProfitStoredUnallocatedDisposition =
+  | ProfitUnallocatedDisposition
+  | typeof LEGACY_UNALLOCATED_DISPOSITION;
+
+export function unallocatedDispositionLabel(
+  disposition: ProfitStoredUnallocatedDisposition | null | undefined,
+): string {
+  if (disposition === "RETAINED_EARNINGS") return "Giữ lại lợi nhuận";
+  if (disposition === "CARRY_FORWARD") return "Chuyển kỳ sau";
+  if (disposition === LEGACY_UNALLOCATED_DISPOSITION) return "Giữ lại (chốt kiểu cũ)";
+  return "Chưa chọn";
+}
+
 export const UNALLOCATED_PROFIT_TOLERANCE = 0.01;
 
 export interface ProfitCloseDraft {
