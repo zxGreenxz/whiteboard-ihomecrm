@@ -71,7 +71,7 @@ export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, o
         )}
         {/* "[Hình ảnh]" là nhãn worker ghi thay chú thích, không phải chữ người gửi: đừng lặp dưới ô ảnh. */}
         {m.text && m.text.trim() && m.text.trim() !== '[Hình ảnh]' && (
-          <div style={{ marginTop: 4, fontSize: 13, color: 'hsl(160 30% 14%)', background: '#fff', border: '1px solid hsl(210 20% 89%)', borderRadius: 10, padding: '6px 10px', maxWidth: 240 }}>{m.text}</div>
+          <div style={{ marginTop: 4, fontSize: 13, color: 'hsl(160 30% 14%)', background: '#fff', border: '1px solid hsl(210 20% 89%)', borderRadius: 10, padding: '6px 10px', maxWidth: 240, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{m.text}</div>
         )}
         {m.react && (
           <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', margin: out ? '4px 8px 0 0' : '4px 0 0 8px' }}>
