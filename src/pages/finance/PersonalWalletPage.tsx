@@ -143,9 +143,9 @@ export default function PersonalWalletPage() {
   const [month, setMonth] = useState(localMonth);
   const [hidden, setHidden] = useState(false);
   const [walletApp] = useState(walletAppLaunch);
-  // Chỉ lượt mở/tải lại/quay lui (POP); bấm link sang ví (PUSH) thì giữ tổng quan.
+  // Lượt mở/tải lại/quay lui (POP) hoặc chuyển về sau đăng nhập (REPLACE); bấm link sang ví (PUSH) thì giữ tổng quan.
   const navigationType = useNavigationType();
-  const [autoEntry] = useState(() => walletApp && navigationType === "POP");
+  const [autoEntry] = useState(() => walletApp && navigationType !== "PUSH");
   const [sheet, setSheet] = useState<"entry" | "wallet" | "category" | null>(
     () => (autoEntry && permissions.create ? "entry" : null),
   );
@@ -239,6 +239,8 @@ export default function PersonalWalletPage() {
       const away = hiddenAt.current ? Date.now() - hiddenAt.current : 0;
       hiddenAt.current = 0;
       if (away < RESUME_ENTRY_MS || !permissions.create || sheet !== null || editor || cashbookFormOpen) return;
+      // Hộp thoại khác đang mở (vd. chi tiết phiếu công ty của Radix giữ focus/pointer) ⇒ không đè lên.
+      if (document.querySelector('dialog[open], [role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
       setEntryFocus(true);
       setSheet("entry");
     };

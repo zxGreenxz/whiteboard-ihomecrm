@@ -156,6 +156,30 @@ it("returning to the wallet app after a minute opens the entry sheet again; a qu
   const sheet = screen.getByRole("dialog", { name: "Ghi thu chi" });
   expect(document.activeElement).toBe(within(sheet).getByLabelText("Nội dung khoản chi"));
 });
+it("returning to the app while another dialog is open does not cover it", () => {
+  vi.useFakeTimers();
+  launchAsApp(true);
+  data.create = true;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Ghi thu chi" })).getByRole("button", { name: "Đóng" }));
+  const other = document.body.appendChild(Object.assign(document.createElement("div"), { role: "dialog" }));
+  other.setAttribute("role", "dialog");
+  other.setAttribute("data-state", "open");
+  switchApp("hidden");
+  vi.advanceTimersByTime(61_000);
+  switchApp("visible");
+  expect(screen.queryByRole("dialog", { name: "Ghi thu chi" })).toBeNull();
+  other.remove();
+});
+it("coming back from login (REPLACE) inside the wallet app still opens the entry sheet", () => {
+  launchAsApp(true);
+  nav.type = "REPLACE";
+  data.create = true;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  expect(screen.getByRole("dialog", { name: "Ghi thu chi" })).toBeTruthy();
+});
 it("reopening a saved manual company entry creates a fresh company draft", () => {
   data.create = true;
   const cards: Record<string, { status: { kind: string } }> = {};
