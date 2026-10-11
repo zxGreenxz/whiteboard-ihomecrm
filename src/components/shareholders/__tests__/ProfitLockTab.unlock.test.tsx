@@ -238,6 +238,23 @@ describe("ProfitLockTab — lỗi chốt tháng", () => {
   });
 });
 
+describe("ProfitLockTab — tháng chốt kiểu cũ (N-A3-01)", () => {
+  it("lúc xem hiện 'Giữ lại (chốt kiểu cũ)', không gắn đỏ 'Chưa chọn'", async () => {
+    const cu = {
+      ...dong(B1, "15KV"),
+      unallocated_profit: 100_000,
+      shareholder_percent_total: 90,
+      shareholder_allocated_amount: 900_000,
+      unallocated_disposition: "LEGACY_RETAINED_UNALLOCATED",
+      unallocated_disposition_reason: "Chốt trước V3",
+    } as unknown as ProfitCloseStateRow;
+    state.profitState = { ...TRANG_THAI, rows: [cu], snapshot_ids: ["snap-15KV"], snapshot_count: 1, locked_count: 1, real_building_count: 1, active_real_snapshot_count: 1 };
+    render(<ProfitLockTab organizations={ORGS} />);
+    expect((await screen.findAllByText(/Giữ lại \(chốt kiểu cũ\)/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Chưa chọn")).toBeNull();
+  });
+});
+
 const CLOSE_ORGS = [{ ...ORGS[0], can_lock: true }];
 const previewRow = (): ProfitClosePreview['rows'][number] => ({
  building_id: B1, building_name: '15KV', revenue: 2000000, expense: 1000000, computed_profit: 1000000, adjustment_amount: 0,

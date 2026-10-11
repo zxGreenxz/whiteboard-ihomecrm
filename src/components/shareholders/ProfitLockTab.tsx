@@ -1266,6 +1266,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       row.current_snapshot?.unallocated_disposition_reason ??
                       "",
                   };
+                  const viewDisposition =
+                    activeDrafts[row.building_id]?.unallocatedDisposition ??
+                    row.unallocated_disposition ??
+                    row.current_snapshot?.unallocated_disposition ??
+                    null;
                   const rowError = rowErrors[row.building_id];
                   const dispositionError = rowError?.includes("chưa phân bổ");
                   const amountError = rowError?.startsWith('Số điều chỉnh') ? rowError : undefined;
@@ -1454,8 +1459,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                             </>
                           ) : (
                             <div className="space-y-1 text-xs">
-                              <Badge variant={draft.unallocatedDisposition ? "secondary" : "destructive"}>
-                                {unallocatedDispositionLabel(draft.unallocatedDisposition)}
+                              {/* Lúc xem hiện giá trị đã lưu (kể cả chốt kiểu cũ LEGACY_RETAINED_UNALLOCATED);
+                                  draft chuẩn hoá giá trị cũ thành null chỉ để buộc chọn lại khi SỬA. */}
+                              <Badge variant={viewDisposition ? "secondary" : "destructive"}>
+                                {unallocatedDispositionLabel(viewDisposition)}
                               </Badge>
                               {draft.unallocatedDispositionReason && (
                                 <p className="text-muted-foreground">{draft.unallocatedDispositionReason}</p>
