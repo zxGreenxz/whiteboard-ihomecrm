@@ -22,7 +22,10 @@ export function useCompanyWallets(organizationId: string | null, enabled = true)
   const predicate = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] === 'company-wallets' && (q.queryKey[1] !== ownerId || q.queryKey[2] !== organizationId);
   void qc.cancelQueries({ predicate }); qc.removeQueries({ predicate });
  }, [qc, ownerId, organizationId]);
- const query = useQuery({ queryKey: companyWalletKey(ownerId, organizationId), enabled: enabled && !!ownerId && !!organizationId, queryFn: () => service().snapshot(), retry: false });
+ // K11-37: lỗi hiện tại chỗ (CompanyFinance / companyError của khung nhập), không bắn toast toàn cục
+ // mỗi lần mở trang Ví — tab Cá nhân cũng nạp truy vấn này cho khung nhập phiếu công ty.
+ const query = useQuery({ queryKey: companyWalletKey(ownerId, organizationId), enabled: enabled && !!ownerId && !!organizationId, queryFn: () => service().snapshot(), retry: false,
+  meta: { label: 'ví công ty', errorDisplay: 'inline' } });
  return { ...query, ownerId, isLoading: enabled && (auth.isLoading || !!ownerId && !!organizationId && query.isLoading), error: auth.error ?? query.error,
   data: query.data?.owner_id === ownerId && query.data?.organization_id === organizationId ? query.data : undefined };
 }

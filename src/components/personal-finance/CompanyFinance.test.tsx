@@ -133,3 +133,15 @@ it("reports a cashbook read failure instead of treating it as an empty usable li
   expect(screen.getByRole("alert").textContent).toContain("Chưa tải được sổ quỹ");
   expect(screen.getByRole("button", { name: "Lưu ví công ty" })).toHaveProperty("disabled", true);
 });
+
+it("K11-37: tells a permission refusal apart from a load failure when there is no snapshot", async () => {
+  const { CompanyWalletError } = await import("@/lib/companyWallet/service");
+  state.snapshot = undefined as unknown as typeof state.snapshot;
+  state.error = new CompanyWalletError("permission", "company_wallet_permission: organization");
+  render(<CompanyFinance {...props} view="overview" />);
+  expect(screen.getByRole("alert").textContent).toContain("Bạn chưa dùng được ví công ty của công ty đang chọn.");
+  cleanup();
+  state.error = new Error("Failed to fetch");
+  render(<CompanyFinance {...props} view="overview" />);
+  expect(screen.getByRole("alert").textContent).toContain("Chưa tải được ví công ty.");
+});

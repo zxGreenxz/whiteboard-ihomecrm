@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const path = 'supabase/migrations/20261008164757_company_wallets_and_payment_kinds.sql';
 const sql = readFileSync(path, 'utf8');
+// K11-37: cửa thành viên qua my_org_ids() (20261011090950) chạy SAU migration gốc, hai lượt.
+const memberFix = readFileSync('supabase/migrations/20261011090950_vi_cong_ty_thanh_vien_doc_qua_my_org_ids.sql', 'utf8');
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [owner, other, org, foreignOrg, account, secondAccount, foreignAccount, building, foreignBuilding] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(id);
 const db = new PGlite();
@@ -19,7 +21,10 @@ beforeAll(async () => {
   CREATE TABLE organizations(id uuid PRIMARY KEY); INSERT INTO organizations VALUES('${org}'),('${foreignOrg}');
   CREATE TABLE organization_memberships(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,organization_id uuid,status text);
   INSERT INTO organization_memberships(user_id,organization_id,status) VALUES('${owner}','${org}','ACTIVE'),('${owner}','${foreignOrg}','ACTIVE'),('${other}','${org}','ACTIVE');
-  ALTER TABLE organization_memberships ENABLE ROW LEVEL SECURITY; CREATE POLICY own_membership ON organization_memberships FOR SELECT TO authenticated USING(user_id=auth.uid());
+  -- Giống production: người dùng thường KHÔNG đọc được organization_memberships (chỉ policy super admin);
+  -- cửa thành viên phải đi qua my_org_ids() SECURITY DEFINER. Policy own_membership cũ che lỗi K11-37.
+  ALTER TABLE organization_memberships ENABLE ROW LEVEL SECURITY; CREATE POLICY organization_memberships_select_super ON organization_memberships FOR SELECT TO authenticated USING(is_super_admin());
+  CREATE FUNCTION my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT COALESCE(array_agg(organization_id),'{}'::uuid[]) FROM organization_memberships WHERE user_id=auth.uid() AND status='ACTIVE' $$;
   CREATE TABLE accounts(id uuid PRIMARY KEY,user_id uuid,organization_id uuid,name text,initial_amount numeric,deleted_at timestamptz,is_virtual boolean DEFAULT false);
   INSERT INTO accounts VALUES('${account}','${owner}','${org}','Main',1000,NULL,false),('${secondAccount}','${owner}','${org}','Second',0,NULL,false),('${foreignAccount}','${owner}','${foreignOrg}','Foreign',999,NULL,false);
   CREATE TABLE fixture_cashbook_rights(cashbook_id uuid,user_id uuid,can_use boolean,balance_visible boolean,can_read boolean);
@@ -54,7 +59,7 @@ beforeAll(async () => {
   GRANT SELECT ON organization_memberships,accounts,fixture_cashbook_rights,buildings,income_expenses,fixture_postings,accounts_with_balance_v2 TO authenticated;
  `);
  await db.exec(readFileSync('supabase/migrations/20261004212309_personal_finance_wallets.sql', 'utf8'));
- await db.exec(sql); await db.exec(sql);
+ await db.exec(sql); await db.exec(sql); await db.exec(memberFix); await db.exec(memberFix);
  await db.exec(`CREATE FUNCTION fixture_fail_origin() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF coalesce(current_setting('test.fail_origin',true),'')='yes' THEN RAISE EXCEPTION 'origin write failed' USING ERRCODE='23514'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER fixture_origin_failure BEFORE INSERT ON company_wallet_voucher_origins FOR EACH ROW EXECUTE FUNCTION fixture_fail_origin();`);
 }, 30000);
@@ -86,6 +91,13 @@ describe('company wallet migration with authenticated actor RLS', () => {
   await denied(() => mutate({ action: 'create', data: { name: 'X', kind: 'bank', account_id: foreignAccount } }, id(104)), '42501');
   await denied(() => mutate({ action: 'create', data: { name: 'X', kind: 'bank', account_id: account, user_id: other } }, id(105)), '22023');
   await denied(() => db.exec(`INSERT INTO company_wallets(user_id,organization_id,account_id,name,kind) VALUES('${owner}','${org}','${account}','Bypass','cash')`), '42501');
+ }));
+ it('K11-37: an ACTIVE member who is not super admin reads own wallets although memberships stay hidden by RLS', () => tx(async () => {
+  await asActor(); const wallet = await createWallet();
+  expect(await count('organization_memberships')).toBe(0);
+  const state = await snapshot(); expect(state.wallets.map(w => w.id)).toEqual([wallet.id]);
+  expect(await count('company_wallets')).toBe(1);
+  await db.exec('RESET ROLE'); await asActor(other); expect((await snapshot()).wallets).toEqual([]); expect(await count('company_wallets')).toBe(0);
  }));
  it('separates actor/org configuration and denies departed membership, even replay', () => tx(async () => {
   await asActor(); const wallet = await createWallet();
@@ -183,7 +195,7 @@ describe('company wallet migration with authenticated actor RLS', () => {
  }));
  it('kills removal of actor isolation with an authenticated raw-table read assertion', () => tx(async () => {
   await createWallet();
-  await db.exec(`ALTER POLICY company_wallet_owner ON company_wallets USING(EXISTS(SELECT 1 FROM organization_memberships m WHERE m.user_id=auth.uid() AND m.organization_id=company_wallets.organization_id AND m.status='ACTIVE'))`);
+  await db.exec(`ALTER POLICY company_wallet_owner ON company_wallets USING(organization_id=ANY(my_org_ids()))`);
   await asActor(other); const observed = await count('company_wallets');
   expect(() => expect(observed).toBe(0)).toThrow();
  }));

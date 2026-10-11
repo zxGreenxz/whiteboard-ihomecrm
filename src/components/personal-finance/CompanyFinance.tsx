@@ -7,6 +7,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCustodianCashbooksV2 } from "@/hooks/income-expenses/financeV2Mutations";
 import { useCompanyWallets, useCompanyWalletMutation } from "@/hooks/company-wallet/useCompanyWallets";
 import { canUse } from "@/lib/permissionPages";
+import { CompanyWalletError } from "@/lib/companyWallet/service";
 import { expenseCashbooksForOrg } from "@/lib/quickEntry/cashbook";
 import { MoneyRangeError, sumMoney } from "@/lib/personalFinance/money";
 import { money } from "./presentation";
@@ -46,7 +47,7 @@ export default function CompanyFinance({ view, month, onMonth, search = "", hidd
   const snapshot = query.data;
   if (!selectedOrganizationId) return <p className="pf-card">Chọn công ty để xem ví chi cho công ty.</p>;
   if (query.isLoading) return <p className="pf-card" role="status">Đang tải ví công ty…</p>;
-  if (!snapshot) return <div className="pf-card" role="alert">Chưa tải được ví công ty. <Button variant="outline" onClick={() => void query.refetch()}>Thử lại</Button></div>;
+  if (!snapshot) return <div className="pf-card" role="alert">{query.error instanceof CompanyWalletError && query.error.kind === "permission" ? "Bạn chưa dùng được ví công ty của công ty đang chọn." : "Chưa tải được ví công ty."} <Button variant="outline" onClick={() => void query.refetch()}>Thử lại</Button></div>;
   const canWrite = !permissions.error && canUse(permissions.data, "income_expenses", "create");
   const canViewDetail = !permissions.error && canUse(permissions.data, "income_expenses", "view");
   return <div className="pf-stack pf-company" data-testid="company-finance">
