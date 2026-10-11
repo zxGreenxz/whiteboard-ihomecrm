@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { differenceInMonths } from 'date-fns';
+import { differenceInMonths, parseISO } from 'date-fns';
 
 const path='supabase/migrations/20261011074456_commission_reason_audit_flow.sql';
 const originalSql=readFileSync(path,'utf8');
@@ -286,7 +286,10 @@ describe('server-enforced commission explanations and evidence',()=>{
   expect(event?.after).toMatchObject({room_name:'Phòng nhận',building_name:'Tòa nhà kiểm tra'});
  }));
  it('matches calendar-month arithmetic at month ends, leap years and partial months',async()=>{
-  for(const [s,e] of [['2026-01-31','2026-02-28'],['2025-01-31','2026-02-28'],['2024-01-31','2024-02-29'],['2026-01-30','2026-03-29'],['2026-01-01','2026-11-30'],['2026-04-30','2026-05-31']]){
-   const result=(await db.query<{n:number}>('SELECT app_private.commission_months_v1($1,$2) n',[s,e])).rows[0].n;expect(result).toBe(differenceInMonths(new Date(e),new Date(s)));}
+  // SQL DATE contains calendar fields, not a UTC instant. parseISO preserves
+  // those fields locally; new Date(date-only) shifts them back in negative TZs.
+  for(const [s,e,months] of [['2026-01-31','2026-02-28',1],['2025-01-31','2026-02-28',13],['2024-01-31','2024-02-29',1],['2026-01-30','2026-03-29',1],['2026-01-01','2026-11-30',10],['2026-04-30','2026-05-31',1]] as const){
+   const result=(await db.query<{n:number}>('SELECT app_private.commission_months_v1($1,$2) n',[s,e])).rows[0].n;
+   expect(result).toBe(months);expect(differenceInMonths(parseISO(e),parseISO(s))).toBe(months);}
  });
 });

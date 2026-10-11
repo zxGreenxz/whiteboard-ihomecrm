@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { InlineSkeleton } from "@/components/loading/LoadingState";
-import { useCommissionVoucherFacts } from "@/hooks/useCommissionVoucher";
+import { useCommissionVoucherFacts } from "@/hooks/useCommissionVoucherFacts";
 import { buildCommissionNoteLines } from "@/lib/commissionVoucherNote";
 import { CommissionAuditHistory } from './CommissionAuditHistory';
 

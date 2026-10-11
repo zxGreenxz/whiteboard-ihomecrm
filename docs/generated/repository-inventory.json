@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1356,
   "soFileDocBangFs": 301,
-  "tongLoiGoi": 664,
-  "khongPhanLoaiDuoc": 302,
+  "tongLoiGoi": 663,
+  "khongPhanLoaiDuoc": 301,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 52,
@@ -626,12 +626,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/suaPhieuDot1Migrations.test.ts",
-      "soGoi": 3,
-      "loai": {},
-      "khongPhanLoaiDuoc": 3
-    },
-    {
       "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1040,6 +1034,12 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/suaPhieuDot1Migrations.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/terminationCustomerRefundMigration.test.ts",

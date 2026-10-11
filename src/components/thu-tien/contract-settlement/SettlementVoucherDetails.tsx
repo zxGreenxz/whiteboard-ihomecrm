@@ -44,7 +44,7 @@ import {
   TERMINATION_REFUND_SOURCE,
 } from '@/components/income-expenses/TerminationRefundNote';
 import { useTerminationRefundFacts } from '@/hooks/useTerminationRefundFacts';
-import { useCommissionVoucherFacts } from '@/hooks/useCommissionVoucher';
+import { useCommissionVoucherFacts } from '@/hooks/useCommissionVoucherFacts';
 import {
   CAN_CU_HOAN_TRA_KHI_MO_PHIEU,
   type SettlementRow, type SettlementRowKind,

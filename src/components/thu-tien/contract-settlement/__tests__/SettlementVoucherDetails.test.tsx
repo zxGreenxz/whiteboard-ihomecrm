@@ -35,7 +35,7 @@ vi.mock('@/hooks/useTerminationRefundFacts', () => ({
   useTerminationRefundFacts: (...a: unknown[]) => { H.goiHoan.push(a); return H.hoan; },
 }));
 
-vi.mock('@/hooks/useCommissionVoucher', () => ({
+vi.mock('@/hooks/useCommissionVoucherFacts', () => ({
   useCommissionVoucherFacts: (...a: unknown[]) => { H.goiHoaHong.push(a); return H.hoaHong; },
 }));
 

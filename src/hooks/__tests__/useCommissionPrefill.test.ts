@@ -43,7 +43,7 @@ vi.mock("@/integrations/supabase/client", () => {
   return { supabase: { from: (t: string) => { db.tables.push(t); return chain(); } } };
 });
 
-import { useCommissionPrefill } from "@/hooks/useCommissionVoucher";
+import { calcContractMonths, useCommissionPrefill } from "@/hooks/useCommissionVoucher";
 import { FINANCE_SYNC_ENTRIES } from "@/hooks/realtime/finance";
 
 const CONTRACT = {
@@ -66,6 +66,17 @@ function harness() {
 
 beforeEach(() => { db.tables = []; db.contract = CONTRACT; db.contractError = null; });
 afterEach(() => vi.clearAllMocks());
+
+it.each([
+  ['2026-01-31', '2026-02-28', 1],
+  ['2025-01-31', '2026-02-28', 13],
+  ['2024-01-31', '2024-02-29', 1],
+  ['2026-01-30', '2026-03-29', 1],
+  ['2026-01-01', '2026-11-30', 10],
+  ['2026-04-30', '2026-05-31', 1],
+] as const)('ngày hợp đồng %s → %s giữ %i tháng lịch, không dịch theo UTC', (start, end, months) => {
+  expect(calcContractMonths(start, end)).toBe(months);
+});
 
 it("ném lỗi khi PostgREST trả {error} thay vì trả null trong trạng thái success", async () => {
   db.contract = null;

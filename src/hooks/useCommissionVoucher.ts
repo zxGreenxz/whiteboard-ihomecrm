@@ -1,7 +1,7 @@
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import {voucherFailureMessage} from '@/lib/voucherFeedback';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { differenceInMonths } from "date-fns";
+import { differenceInMonths, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -10,41 +10,6 @@ import { CONTRACT_COMMISSION_FOLLOWUP_KEY } from "@/hooks/useContractCommissionF
 import type { CommissionTier } from "@/types/building";
 import { isJsonObject, jsonArray } from "@/lib/jsonValue";
 import { batBuoc } from "@/lib/queryGuard";
-import {
-  parseCommissionVoucherFacts,
-  type CommissionVoucherFacts,
-} from "@/lib/commissionVoucherNote";
-
-// =============================================
-// Facts HĐ của một phiếu hoa hồng — dựng ghi chú LÚC XEM
-// =============================================
-
-/**
- * Gọi RPC get_commission_voucher_facts_v1 cho MỘT phiếu. RPC gate quyền theo
- * toà và bỏ qua im lặng phiếu không quyền / khác org ⇒ mảng rỗng là "không có
- * gì để hiện", không phải lỗi. `supabase.rpc` không bao giờ ném — lỗi nằm ở
- * `error`.
- */
-export const useCommissionVoucherFacts = (
-  voucherId: string | null | undefined,
-  enabled = true
-) => {
-  return useQuery({
-    queryKey: ["commission-voucher-facts", voucherId ?? null],
-    enabled: enabled && !!voucherId,
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-    queryFn: async (): Promise<CommissionVoucherFacts | null> => {
-      const { data, error } = await supabase.rpc(
-        "get_commission_voucher_facts_v1",
-        { p_voucher_ids: [batBuoc(voucherId, "voucherId")] }
-      );
-      if (error) throw error;
-      const row = financialReadRows(data)[0];
-      return row ? parseCommissionVoucherFacts(row.facts) : null;
-    },
-  });
-};
 
 // =============================================
 // Utils
@@ -57,8 +22,10 @@ export const useCommissionVoucherFacts = (
  */
 export function calcContractMonths(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  // Hợp đồng lưu DATE: giữ nguyên ngày lịch ở mọi múi giờ. new Date(date-only)
+  // đọc nửa đêm UTC rồi lùi ngày tại UTC âm, làm sai quy tắc cuối tháng.
+  const start = parseISO(startDate);
+  const end = parseISO(endDate);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
   if (end < start) return 0;
   return differenceInMonths(end, start);

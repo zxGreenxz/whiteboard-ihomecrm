@@ -19,7 +19,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|
 | RPC được gọi từ mã nguồn | 375 |
 | Hàm trong catalog (public + api) | 1283 |
-| File mã nguồn đã quét | 2559 |
+| File mã nguồn đã quét | 2560 |
 | SECURITY DEFINER | 356 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
@@ -67,7 +67,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `distribute_shareholder_profit_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `execute_commission_request_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `generate_recurring_vouchers_v2` | ✔ | hooks/income-expenses/recurring.ts |
-| `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucher.ts |
+| `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucherFacts.ts |
 | `get_customer_credit_balance_v1` | ✔ | hooks/useInvoices.ts |
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
