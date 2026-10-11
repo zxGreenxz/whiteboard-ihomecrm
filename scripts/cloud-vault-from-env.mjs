@@ -11,17 +11,24 @@
 //   đặt environment thành một vault đúng mẫu, đặt NGOÀI repo, để mọi script chạy như
 //   ở máy dev mà không phải sửa từng script.
 //
+//   Chỉ nhận BIẾN MÔI TRƯỜNG thật. Network secrets của environment do proxy gắn vào
+//   request, không có trong process.env, nên không dùng được làm đầu vào ở đây.
+//
 // CÁCH CHẠY
-//   Hook SessionStart trong .claude/settings.json gọi script khi CLAUDE_CODE_REMOTE=true.
-//   Vault ghi vào IHOMECRM_VAULT nếu có, mặc định ~/.ihomecrm/vault.md; hook ghi
-//   `export IHOMECRM_VAULT=…` vào CLAUDE_ENV_FILE để các lệnh sau dò được nó.
+//   Hook SessionStart gọi script khi CLAUDE_CODE_REMOTE=true. Vault ghi vào
+//   IHOMECRM_VAULT nếu có, mặc định ~/.ihomecrm/vault.md; có CLAUDE_ENV_FILE thì ghi
+//   `export IHOMECRM_VAULT=…` vào đó để các lệnh sau dò được vault.
 //
 // AN TOÀN
 //   - Chỉ in TÊN biến; không in giá trị.
 //   - Không ghi vào trong repo; không ghi đè file không do script này tạo (thiếu dòng
 //     đánh dấu ở đầu) — vault thật ở máy dev không bao giờ bị thay.
 //   - Không ghi GH_TOKEN: harness cloud tự cấp token phiên, không đưa nó ra đĩa.
-//   - Lỗi nào cũng thoát 0 kèm thông báo: hook không được chặn phiên khởi động.
+//   - Giá trị không khớp mẫu nhận dạng của hợp đồng thì không ghi và báo TÊN: một dòng
+//     sai mẫu nằm trong vault là "có khóa" giả, script đọc vault vẫn hỏng.
+//
+// Thoát 0 vault đủ mọi biến đã khai · 1 có biến sai dạng/lệch mẫu hoặc không ghi được ·
+// 3 environment chưa khai biến nào, không tạo vault.
 
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -35,6 +42,7 @@ export const DANH_DAU = '<!-- sinh tự động bởi scripts/cloud-vault-from-e
 const HOP_DONG = JSON.parse(
   readFileSync(new URL('../tooling/local-credential-contract.json', import.meta.url), 'utf8'),
 );
+const MAU = new Map((HOP_DONG.credentials ?? []).map((c) => [c.name, c.detect]));
 
 /** Biến đọc qua `^TEN=(\S+)$` ngoài hợp đồng (scripts/test-env/lib.mjs, edge.mjs). */
 const BIEN_BO_SUNG = Object.freeze([
@@ -46,71 +54,85 @@ const BIEN_BO_SUNG = Object.freeze([
   'OPENROUTER_API_KEY',
 ]);
 
-/** Biến có định dạng riêng trong vault (không phải `TEN=giá trị`) hoặc không được ghi. */
-const BIEN_DINH_DANG_RIENG = new Set(['TEST_ACCOUNT_EMAIL', 'TEST_ACCOUNT_PASSWORD', 'TEST_PASS', 'GH_TOKEN']);
+/** Biến do harness cloud cấp — không bao giờ ghi ra vault. */
+const BIEN_HARNESS = new Set(['GH_TOKEN']);
 
-const motDong = (v) => typeof v === 'string' && /^\S+$/.test(v.trim());
-const trongBacktick = (v) => typeof v === 'string' && v.trim() !== '' && !/[`\r\n]/.test(v.trim());
-
-/** Mọi tên biến script này đọc, theo thứ tự ghi. */
+/** Mọi tên biến script này nhận, theo thứ tự ghi. */
 export function danhSachBien(env = process.env) {
   const tuHopDong = (HOP_DONG.credentials ?? []).map((c) => c.name);
   const fleetThem = Object.keys(env).filter((k) => /^FLEET_PASS_[A-Z0-9_]+$/.test(k)).sort();
-  return [...new Set([...tuHopDong, ...BIEN_BO_SUNG, ...fleetThem])];
+  return [...new Set([...tuHopDong, ...BIEN_BO_SUNG, ...fleetThem])].filter((t) => !BIEN_HARNESS.has(t));
+}
+
+const motDong = (v) => /^\S+$/.test(v);
+const trongBacktick = (v) => !/[`\r\n]/.test(v);
+
+/**
+ * Dòng vault của một biến, hoặc null khi giá trị sai dạng cho định dạng của nó.
+ * SUPABASE_DB_PASSWORD có cả dòng `TEN=` (db-query) lẫn mẫu "Persistent database password".
+ */
+function dongCua(ten, v) {
+  switch (ten) {
+    case 'TEST_ACCOUNT_EMAIL':
+      return trongBacktick(v) ? [`- Email: \`${v}\``] : null;
+    case 'TEST_ACCOUNT_PASSWORD':
+      return trongBacktick(v) ? [`- Password: \`${v}\``] : null;
+    case 'SUPABASE_DB_PASSWORD':
+      if (!trongBacktick(v)) return null;
+      return [...(motDong(v) ? [`SUPABASE_DB_PASSWORD=${v}`] : []), `- Persistent database password: \`${v}\``];
+    case 'TEST_PASS': {
+      // Nhiều cặp "email mật-khẩu", ngăn bằng `;` hoặc xuống dòng; một cặp hỏng là hỏng cả biến.
+      const cap = v.split(/[;\n]/).map((s) => s.trim()).filter(Boolean);
+      if (cap.length === 0 || !cap.every((s) => /^\S+@\S+ \S+$/.test(s))) return null;
+      return cap.map((s) => `TEST_PASS ${s}`);
+    }
+    default:
+      return motDong(v) ? [`${ten}=${v}`] : null;
+  }
 }
 
 /**
- * Văn bản vault từ env. Trả `{ vanBan, co, thieu, boQua }` — `co`/`thieu`/`boQua` chỉ
- * chứa TÊN; `boQua` là biến có giá trị nhưng sai dạng (khoảng trắng, xuống dòng, backtick).
+ * Mẫu nhận dạng của hợp đồng có lấy lại ĐÚNG giá trị từ các dòng không. Mẫu có nhóm bắt
+ * thì so nhóm; mẫu neo vào tên biến (`TEN=`, `TEST_PASS …`) chỉ cần khớp; còn lại (mẫu
+ * token như `sbp_…`) phải khớp trọn giá trị — reader lấy đúng chuỗi khớp làm khóa.
+ */
+function khopMau(ten, dong, v) {
+  const detect = MAU.get(ten);
+  if (!detect) return true;
+  const m = dong.join('\n').match(new RegExp(detect));
+  if (!m) return false;
+  if (m[1] !== undefined) return m[1] === v;
+  if (m[0].startsWith(ten)) return true;
+  return m[0] === v;
+}
+
+/**
+ * Văn bản vault từ env. Trả `{ vanBan, co, thieu, saiDang }` — ba danh sách chỉ chứa TÊN.
+ * `saiDang`: có giá trị nhưng không ghi được đúng định dạng hoặc lệch mẫu hợp đồng.
  */
 export function dungVault(env = process.env) {
-  const dong = [DANH_DAU, '', '# Vault phiên cloud (ghép từ biến môi trường environment)', ''];
+  const dau = [DANH_DAU, '', '# Vault phiên cloud (ghép từ biến môi trường environment)', ''];
+  const than = [];
   const co = [];
   const thieu = [];
-  const boQua = [];
-  const lay = (ten) => env[ten]?.trim() ?? '';
-
-  // Tài khoản test — mẫu `Email: \`…\`` / `Password: \`…\`` của hợp đồng.
-  for (const [ten, nhan] of [['TEST_ACCOUNT_EMAIL', 'Email'], ['TEST_ACCOUNT_PASSWORD', 'Password']]) {
-    const v = lay(ten);
-    if (!v) thieu.push(ten);
-    else if (!trongBacktick(v)) boQua.push(ten);
-    else {
-      dong.push(`- ${nhan}: \`${v}\``);
-      co.push(ten);
+  const saiDang = [];
+  // Tài khoản test đứng đầu: mẫu `Password:` khớp dòng đầu tiên chứa nó.
+  const thuTu = ['TEST_ACCOUNT_EMAIL', 'TEST_ACCOUNT_PASSWORD', ...danhSachBien(env)];
+  for (const ten of [...new Set(thuTu)]) {
+    const v = env[ten]?.trim() ?? '';
+    if (!v) {
+      thieu.push(ten);
+      continue;
     }
-  }
-
-  // Mật khẩu pooler: cả dòng `TEN=` (db-query) lẫn mẫu "Persistent database password".
-  const mkDb = lay('SUPABASE_DB_PASSWORD');
-  if (mkDb && trongBacktick(mkDb)) dong.push(`- Persistent database password: \`${mkDb}\``);
-
-  // TEST_PASS: nhiều cặp "email mật-khẩu", ngăn bằng `;` hoặc xuống dòng.
-  const testPass = lay('TEST_PASS');
-  if (!testPass) thieu.push('TEST_PASS');
-  else {
-    const cap = testPass.split(/[;\n]/).map((s) => s.trim()).filter(Boolean);
-    const hopLe = cap.filter((s) => /^\S+@\S+ \S+$/.test(s));
-    if (hopLe.length === 0 || hopLe.length !== cap.length) boQua.push('TEST_PASS');
-    if (hopLe.length > 0) {
-      for (const s of hopLe) dong.push(`TEST_PASS ${s}`);
-      co.push('TEST_PASS');
+    const dong = dongCua(ten, v);
+    if (!dong || !khopMau(ten, dong, v)) {
+      saiDang.push(ten);
+      continue;
     }
+    than.push(...dong);
+    co.push(ten);
   }
-
-  dong.push('');
-  for (const ten of danhSachBien(env)) {
-    if (BIEN_DINH_DANG_RIENG.has(ten)) continue;
-    const v = lay(ten);
-    if (!v) thieu.push(ten);
-    else if (!motDong(v)) boQua.push(ten);
-    else {
-      dong.push(`${ten}=${v}`);
-      co.push(ten);
-    }
-  }
-  dong.push('');
-  return { vanBan: dong.join('\n'), co, thieu, boQua };
+  return { vanBan: [...dau, ...than, ''].join('\n'), co, thieu, saiDang };
 }
 
 /** Đường dẫn đích: IHOMECRM_VAULT hoặc ~/.ihomecrm/vault.md. Ném nếu nằm trong repo. */
@@ -133,35 +155,45 @@ export function ghiVault(dich, vanBan) {
   chmodSync(dich, 0o600);
 }
 
-function main() {
-  const { vanBan, co, thieu, boQua } = dungVault();
+/** Chạy trọn một lượt; trả mã thoát. `log`/`loi` nhận từng dòng (chỉ TÊN, không giá trị). */
+export function chay({ env = process.env, repoRoot = REPO_ROOT, home = homedir(), log = console.log, loi = console.error } = {}) {
+  const { vanBan, co, thieu, saiDang } = dungVault(env);
   if (co.length === 0) {
-    console.log('cloud-vault: environment chưa khai credential nào — bỏ qua, không tạo vault.');
-    console.log(`  Tên biến nhận: ${danhSachBien().filter((t) => t !== 'GH_TOKEN').join(', ')}`);
-    return;
+    loi('cloud-vault: KHÔNG tạo vault — environment chưa có biến credential hợp lệ nào.');
+    if (saiDang.length) loi(`  Sai dạng/lệch mẫu hợp đồng: ${saiDang.join(', ')}`);
+    loi(`  Tên biến nhận: ${danhSachBien(env).join(', ')}`);
+    loi('  Network secrets không vào process.env nên không dùng được ở đây; khai ở Environment variables.');
+    return saiDang.length ? 1 : 3;
   }
   let dich;
   try {
-    dich = duongDanDich();
+    dich = duongDanDich({ env, repoRoot, home });
     ghiVault(dich, vanBan);
   } catch (e) {
-    console.log(`cloud-vault: ${e.message}`);
-    return;
+    loi(`cloud-vault: KHÔNG ghi được vault — ${e.message}`);
+    return 1;
   }
-  const envFile = process.env.CLAUDE_ENV_FILE;
+  const envFile = env.CLAUDE_ENV_FILE;
   if (envFile) appendFileSync(envFile, `export IHOMECRM_VAULT=${JSON.stringify(dich)}\n`);
-  console.log(`cloud-vault: đã dựng vault ${dich} (${co.length} biến: ${co.join(', ')}).`);
-  if (!envFile && !process.env.IHOMECRM_VAULT) {
-    console.log('  Không có CLAUDE_ENV_FILE: đặt IHOMECRM_VAULT trỏ tới file trên để script dò được vault.');
+  log(`cloud-vault: đã dựng vault ${dich} (quyền 600) với ${co.length} biến: ${co.join(', ')}.`);
+  if (!envFile && env.IHOMECRM_VAULT?.trim() !== dich) {
+    log(`  Không có CLAUDE_ENV_FILE: đặt IHOMECRM_VAULT=${dich} để script dò được vault.`);
   }
-  if (boQua.length) console.log(`  Bỏ qua vì sai dạng (khoảng trắng/xuống dòng/backtick): ${boQua.join(', ')}`);
-  if (thieu.length) console.log(`  Chưa khai: ${thieu.join(', ')}`);
+  if (thieu.length) log(`  Chưa khai (tuỳ việc mới cần): ${thieu.join(', ')}`);
+  if (saiDang.length) {
+    loi(`cloud-vault: ${saiDang.length} biến KHÔNG được ghi vì sai dạng hoặc lệch mẫu hợp đồng: ${saiDang.join(', ')}`);
+    return 1;
+  }
+  return 0;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  let ma;
   try {
-    main();
+    ma = chay();
   } catch (e) {
-    console.log(`cloud-vault: lỗi không mong đợi — ${e?.message ?? e}`);
+    console.error(`cloud-vault: lỗi không mong đợi — ${e?.message ?? e}`);
+    ma = 1;
   }
+  process.exitCode = ma;
 }

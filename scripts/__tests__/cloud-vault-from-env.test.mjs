@@ -1,16 +1,17 @@
 // Test cho scripts/cloud-vault-from-env.mjs — vault phiên cloud ghép từ env.
 //
 // Ca quan trọng: vault sinh ra phải đọc được bằng CHÍNH các mẫu của hợp đồng và các
-// hàm của scripts/lib/vault.mjs, nếu không script chỉ đọc vault vẫn báo thiếu khóa.
+// hàm của scripts/lib/vault.mjs, và giá trị sai dạng không được lọt vào như "có khóa".
 // Giá trị giả được ghép lúc chạy để không có chuỗi giống secret nằm trong mã nguồn.
+// Test này chứng minh parser, KHÔNG chứng minh key thật dùng được.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { DANH_DAU, dungVault, duongDanDich, ghiVault } from '../cloud-vault-from-env.mjs';
+import { DANH_DAU, chay, dungVault, duongDanDich, ghiVault } from '../cloud-vault-from-env.mjs';
 import { docMatKhauPooler, docTaiKhoanTest, giaTriVault, layPat, quenVault } from '../lib/vault.mjs';
 
 const lap = (kyTu, n) => kyTu.repeat(n);
@@ -48,9 +49,17 @@ afterEach(() => {
   for (const d of thuMucTam.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
+function chayThu(env) {
+  const home = taoThuMuc();
+  const repoRoot = taoThuMuc();
+  const ra = [];
+  const ma = chay({ env, home, repoRoot, log: (s) => ra.push(s), loi: (s) => ra.push(s) });
+  return { ma, ra: ra.join('\n'), dich: join(home, '.ihomecrm', 'vault.md') };
+}
+
 describe('dungVault', () => {
-  it('khớp mọi mẫu nhận dạng của hợp đồng trừ GH_TOKEN (không ghi token phiên)', () => {
-    const { vanBan, co } = dungVault(envDayDu());
+  it('khớp mọi mẫu nhận dạng của hợp đồng trừ GH_TOKEN (không ghi token harness)', () => {
+    const { vanBan, co, saiDang } = dungVault(envDayDu());
     for (const c of HOP_DONG.credentials) {
       if (c.name === 'GH_TOKEN') {
         expect(vanBan).not.toMatch(new RegExp(c.detect));
@@ -60,6 +69,7 @@ describe('dungVault', () => {
     }
     expect(co).not.toContain('GH_TOKEN');
     expect(co).toContain('FLEET_PASS_QUANLY2');
+    expect(saiDang).toEqual([]);
   });
 
   it('các hàm đọc vault lấy lại đúng giá trị', () => {
@@ -76,17 +86,70 @@ describe('dungVault', () => {
     expect(readFileSync(p, 'utf8')).toMatch(/^TEST_PASS b@vi-du\.test mk2$/m);
   });
 
-  it('chỉ trả TÊN; bỏ qua giá trị sai dạng; báo thiếu', () => {
-    const { vanBan, co, thieu, boQua } = dungVault({
-      SUPABASE_PAT: 'sbp_' + lap('a', 40),
-      VERCEL_TOKEN: 'co khoang trang',
+  it('không ghi giá trị sai dạng hoặc lệch mẫu hợp đồng; chỉ trả TÊN', () => {
+    const { vanBan, co, thieu, saiDang } = dungVault({
+      SUPABASE_PAT: 'sbp_' + lap('a', 40) + 'thua',
+      VERCEL_TOKEN: 'khong-dung-tien-to-' + lap('v', 20),
+      GOONG_API_KEY: 'co khoang trang',
       TEST_ACCOUNT_PASSWORD: 'co`backtick',
+      TEST_PASS: 'a@vi-du.test mk1; hong',
+      FLEET_PASS_CHUNHA: 'f1',
     });
-    expect(co).toEqual(['SUPABASE_PAT']);
-    expect(boQua).toEqual(expect.arrayContaining(['VERCEL_TOKEN', 'TEST_ACCOUNT_PASSWORD']));
+    expect(co).toEqual(['FLEET_PASS_CHUNHA']);
+    expect(saiDang.sort()).toEqual(['GOONG_API_KEY', 'SUPABASE_PAT', 'TEST_ACCOUNT_PASSWORD', 'TEST_PASS', 'VERCEL_TOKEN']);
     expect(thieu).toContain('SUPABASE_DB_PASSWORD');
-    expect(vanBan).not.toContain('co khoang trang');
-    expect(vanBan).not.toContain('backtick');
+    for (const lo of ['thua', 'khong-dung', 'khoang trang', 'backtick', 'mk1']) expect(vanBan).not.toContain(lo);
+  });
+
+  it('mật khẩu có dấu cách vẫn đọc được qua mẫu pooler', () => {
+    const { vanBan, co } = dungVault({ SUPABASE_DB_PASSWORD: 'mk co cach' });
+    expect(co).toEqual(['SUPABASE_DB_PASSWORD']);
+    expect(docMatKhauPooler(vanBan)).toBe('mk co cach');
+  });
+});
+
+describe('chay — không báo thành công giả', () => {
+  it('0 khi mọi biến đã khai đều ghi được; quyền 600; xuất IHOMECRM_VAULT ra CLAUDE_ENV_FILE', () => {
+    const envFile = join(taoThuMuc(), 'env');
+    writeFileSync(envFile, '');
+    const { ma, ra, dich } = chayThu({ ...envDayDu(), CLAUDE_ENV_FILE: envFile });
+    expect(ma).toBe(0);
+    expect(statSync(dich).mode & 0o777).toBe(0o600);
+    expect(readFileSync(envFile, 'utf8')).toBe(`export IHOMECRM_VAULT=${JSON.stringify(dich)}\n`);
+    expect(ra).not.toContain(envDayDu().SUPABASE_PAT);
+  });
+
+  it('1 khi có biến sai dạng dù vault vẫn được dựng', () => {
+    const { ma, ra } = chayThu({ SUPABASE_PAT: 'sbp_' + lap('a', 40), VERCEL_TOKEN: 'sai' });
+    expect(ma).toBe(1);
+    expect(ra).toMatch(/KHÔNG được ghi.*VERCEL_TOKEN/);
+  });
+
+  it('3 khi environment chưa khai biến nào; không tạo vault, không xuất env', () => {
+    const envFile = join(taoThuMuc(), 'env');
+    writeFileSync(envFile, '');
+    const { ma, ra, dich } = chayThu({ GH_TOKEN: 'ghp_' + lap('G', 36), CLAUDE_ENV_FILE: envFile });
+    expect(ma).toBe(3);
+    expect(ra).toMatch(/KHÔNG tạo vault/);
+    expect(() => statSync(dich)).toThrow();
+    expect(readFileSync(envFile, 'utf8')).toBe('');
+  });
+
+  it('1 khi đích có vault không do script tạo — không đè', () => {
+    const home = taoThuMuc();
+    const that = join(home, 'that.md');
+    writeFileSync(that, '# vault thật\n');
+    const ra = [];
+    const ma = chay({
+      env: { SUPABASE_PAT: 'sbp_' + lap('a', 40), IHOMECRM_VAULT: that },
+      home,
+      repoRoot: taoThuMuc(),
+      log: (s) => ra.push(s),
+      loi: (s) => ra.push(s),
+    });
+    expect(ma).toBe(1);
+    expect(ra.join('\n')).toMatch(/KHÔNG ghi được vault/);
+    expect(readFileSync(that, 'utf8')).toBe('# vault thật\n');
   });
 });
 
@@ -98,18 +161,11 @@ describe('duongDanDich / ghiVault', () => {
     expect(() => duongDanDich({ env: { IHOMECRM_VAULT: join(repo, 'x.md') }, repoRoot: repo, home })).toThrow();
   });
 
-  it('ghi quyền 600 và không đè vault không do script tạo', () => {
-    const d = taoThuMuc();
-    const p = join(d, 'sub', 'vault.md');
+  it('ghi đè được vault do chính script tạo (phiên resume)', () => {
+    const p = join(taoThuMuc(), 'sub', 'vault.md');
     ghiVault(p, DANH_DAU + '\nA=1\n');
-    expect(statSync(p).mode & 0o777).toBe(0o600);
     ghiVault(p, DANH_DAU + '\nA=2\n');
     expect(readFileSync(p, 'utf8')).toContain('A=2');
-
-    const that = join(d, 'that.md');
-    writeFileSync(that, '# vault thật\n');
-    expect(() => ghiVault(that, DANH_DAU + '\n')).toThrow();
-    expect(readFileSync(that, 'utf8')).toBe('# vault thật\n');
-    expect(existsSync(that)).toBe(true);
+    expect(statSync(p).mode & 0o777).toBe(0o600);
   });
 });

@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1366,
   "soFileDocBangFs": 303,
-  "tongLoiGoi": 671,
-  "khongPhanLoaiDuoc": 301,
+  "tongLoiGoi": 673,
+  "khongPhanLoaiDuoc": 303,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 52,
@@ -182,6 +182,15 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/cloud-vault-from-env.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "manifest": 1,
+        "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
       "soGoi": 7,
       "loai": {},
@@ -255,15 +264,6 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "scripts/__tests__/cloud-vault-from-env.test.mjs",
-      "soGoi": 5,
-      "loai": {
-        "manifest": 1,
-        "tai-lieu": 4
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/network-center-admin-credential-reconciliation.test.mjs",
