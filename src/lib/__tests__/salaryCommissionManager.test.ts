@@ -147,4 +147,16 @@ describe('rent support payroll source identity',()=>{
  it('does not silently recalculate a stale part from net proportions',()=>{
  expect(()=>chia([row('v-rent',{amount:1000000,itemIds:['item'],support})],[meta('v-rent',{manager_id:NATHAN,on_manager_book:true})])).toThrow();
  });
+ // K11-34: máy chủ trả NEEDS_REVIEW (không part) cho phiếu toà ngoài phạm vi của người
+ // KHÔNG có trong bảng lương đang xem ⇒ bỏ qua phiếu đó, không làm hỏng cả bảng.
+ const review=(staffId:string|null)=>({voucher_id:'v-rent',state:'NEEDS_REVIEW' as const,source_id:null,staff_id:staffId,part:null,issue:'Phiếu ở toà ngoài phạm vi của bạn'});
+ it('skips a review-only source of a staff not on this payroll instead of failing the whole payroll',()=>{
+ const result=chia([row('v-rent',{payerName:'joey',support:review(NGOAI)}),row('v-joey',{payerName:'joey'})],[meta('v-rent'),meta('v-joey')]);
+ expect(result.get(JOEY)?.items.map(i=>i.voucherId)).toEqual(['v-joey']);
+ });
+ it('still fails closed when the review-only source belongs to a staff on this payroll, is linked to one, or names nobody',()=>{
+ expect(()=>chia([row('v-rent',{support:review(NATHAN)})],[meta('v-rent')])).toThrow();
+ expect(()=>chia([row('v-rent',{support:review(NGOAI)})],[meta('v-rent',{manager_id:JOEY})])).toThrow();
+ expect(()=>chia([row('v-rent',{support:review(null)})],[meta('v-rent')])).toThrow();
+ });
 });

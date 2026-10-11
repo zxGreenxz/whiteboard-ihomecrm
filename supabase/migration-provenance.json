@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-11T10:01:53.118Z",
+  "generatedAt": "2026-10-11T12:36:24.986Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 675,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11285,6 +11285,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-11T09:50:04.828Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261011085727_luong_nguon_hoa_hong_ngoai_pham_vi_khong_nem_ca_lo.sql",
+      "version": "20261011085727",
+      "name": "luong_nguon_hoa_hong_ngoai_pham_vi_khong_nem_ca_lo",
+      "scheme": "timestamp14",
+      "sha256": "47db545896d8e260334a282e78b5474befae7768c8a9105826dd4035f7d8b916",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.read_rent_support_salary_parts_v1"
       ]
     },
     {

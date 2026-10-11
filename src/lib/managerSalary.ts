@@ -377,7 +377,11 @@ export function classifyCommissionVouchers(
     const linked = mt?.manager_id && staffIds.has(mt.manager_id) ? mt.manager_id : null;
     // Phiếu đã gán cho một quản lý KHÁC (ngoài danh sách tháng này) thì không được
     // rơi về khớp tên — liên kết thắng tên.
-    if(v.support && (v.support.state!=='READY' || !v.support.part || v.support.part.period_month!==periodMonth || Number(v.support.part.net)!==v.amount || v.itemIds?.length!==1 || v.itemIds[0]!==v.support.part.item_id || (linked && linked!==v.support.staff_id))) throw new Error('Nguồn hoa hồng đã đổi hoặc cần đối chiếu trước khi tính lương.');
+    // K11-34: nguồn có người nhận XÁC ĐỊNH không nằm trong bảng lương này và không
+    // liên kết tới ai trong bảng ⇒ không thuộc bảng này, bỏ qua (máy chủ trả NEEDS_REVIEW
+    // không part cho phiếu toà ngoài phạm vi của người khác). Không rõ người nhận ⇒ vẫn chặn.
+    if(v.support && v.support.staff_id && !staffIds.has(v.support.staff_id) && !linked) continue;
+    if(v.support &&(v.support.state!=='READY' || !v.support.part || v.support.part.period_month!==periodMonth || Number(v.support.part.net)!==v.amount || v.itemIds?.length!==1 || v.itemIds[0]!==v.support.part.item_id || (linked && linked!==v.support.staff_id))) throw new Error('Nguồn hoa hồng đã đổi hoặc cần đối chiếu trước khi tính lương.');
     const staff = v.support ? (v.support.staff_id && staffIds.has(v.support.staff_id) ? v.support.staff_id : null) : linked ?? (mt?.manager_id ? null : aliasToStaff.get(v.payerName.trim().toLowerCase()) ?? null);
     if (!staff) continue;
     const entry = out.get(staff) || { items: [], flagged: [] };

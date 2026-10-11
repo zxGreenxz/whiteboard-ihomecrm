@@ -287,3 +287,41 @@ it('preserves legacy payroll review while the salary adapter accepts the exact m
  const bridge=(await db.query<{r:unknown}>('SELECT app_private.rent_support_source_quote_salary_v1($1,$2,NULL,$3,1800000,$4) r',args)).rows[0].r;
  expect(bridge).toMatchObject({state:'READY',sources:[{current_withheld:'1800000',net_this_operation:'1200000',route:'MANAGER_PAYROLL'}]});
 });
+
+// K11-34 / G7 (migration 20261011085727): phiếu nguồn ở toà NGOÀI phạm vi (người giữ sổ thấy
+// qua nhánh RLS select_fund_member) không được làm hỏng CẢ lô của bảng lương.
+const khongNemCaLo='supabase/migrations/20261011085727_luong_nguon_hoa_hong_ngoai_pham_vi_khong_nem_ca_lo.sql';
+const OUT=uuid(703); // toà ảo của fixture: can_access_building = false
+async function apDungKhongNemCaLo(){
+ await db.exec(`CREATE OR REPLACE FUNCTION app_private.v5_can_view_salary_v1(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT $1=auth.uid() $$;
+ CREATE OR REPLACE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql STABLE AS $$ SELECT false,CASE WHEN current_setting('test.deny',true) IS DISTINCT FROM 'yes' AND NOT (current_setting('test.noadmin',true)='yes' AND $1 LIKE 'salary.%') THEN ARRAY['${building}'::uuid] ELSE '{}'::uuid[] END,'{}'::uuid[] $$;`);
+ for(let i=0;i<2;i++)await db.exec(readFileSync(khongNemCaLo,'utf8'));
+}
+async function docNguon(ids:string[]){return (await db.query<{r:Array<Record<string,unknown>>}>('SELECT public.read_rent_support_salary_parts_v1($1,$2) r',[ids,'2026-09-01'])).rows[0].r;}
+async function nguonNgoaiPhamVi(){const f=await fixture();await db.query('UPDATE public.income_expenses SET building_id=$1 WHERE id=$2',[OUT,f.voucher_id]);return f;}
+it('K11-34: own source voucher outside building scope returns its salary part; plain out-of-scope vouchers are skipped, not fatal',async()=>{
+ await apDungKhongNemCaLo();
+ const inScope=await fixture(),out=await nguonNgoaiPhamVi();
+ const plain=(await db.query<{id:string}>("INSERT INTO public.income_expenses(organization_id,building_id,type,approval_status,total_amount) VALUES($1,$2,'EXPENSE','APPROVED',500000) RETURNING id",[org,OUT])).rows[0].id;
+ const rows=await docNguon([inScope.voucher_id,out.voucher_id,plain]);
+ expect(rows.map(r=>r.voucher_id)).toEqual([inScope.voucher_id,out.voucher_id]);
+ expect(rows[0]).toMatchObject({state:'READY',staff_id:actor});
+ expect(rows[1]).toMatchObject({state:'READY',staff_id:actor,source_id:out.source_id,part:{net:'1200000',withheld:'1800000',gross:'3000000'}});
+});
+it('K11-34: a viewer without payroll rights gets a review-only row (no source, no part) for someone else\'s out-of-scope source',async()=>{
+ await apDungKhongNemCaLo();
+ const out=await nguonNgoaiPhamVi();
+ await db.exec(`SET test.actor='${uuid(104)}'; SET test.noadmin='yes'`);
+ try{
+  expect(await docNguon([out.voucher_id])).toEqual([{voucher_id:out.voucher_id,state:'NEEDS_REVIEW',source_id:null,staff_id:actor,part:null,issue:expect.stringContaining('ngoài phạm vi')}]);
+  await db.exec("SET test.noadmin='no'");
+  expect((await docNguon([out.voucher_id]))[0]).toMatchObject({state:'READY',source_id:out.source_id,part:{net:'1200000'}});
+ }finally{await db.exec("SET test.actor=''; SET test.noadmin='no'");}
+});
+it('K11-34: unreadable or unknown voucher ids still reject the call',async()=>{
+ await apDungKhongNemCaLo();
+ const out=await nguonNgoaiPhamVi();
+ await expect(docNguon([uuid(9999)])).rejects.toMatchObject({code:'42501'});
+ await db.exec("SET test.deny='yes'");
+ try{await expect(docNguon([out.voucher_id])).rejects.toMatchObject({code:'42501'});}finally{await db.exec("SET test.deny='no'");}
+});
