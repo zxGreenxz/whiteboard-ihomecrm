@@ -431,3 +431,57 @@ describe("QuickEntryComposer — chọn mô hình AI để so sánh", () => {
     expect(screen.queryByRole("button", { name: /Mô hình AI/ })).toBeNull();
   });
 });
+
+describe("QuickEntryComposer — dữ liệu nền còn đang tải", () => {
+  it("gõ được ngay; bấm gửi thì giữ lại, tải xong tự gửi cả chữ gõ thêm", () => {
+    const h = setup({ waiting: true });
+    expect(h.box.disabled).toBe(false);
+    fireEvent.change(h.box, { target: { value: "bún bò 50k" } });
+    fireEvent.keyDown(h.box, { key: "Enter" });
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toMatch(/sẽ tự gửi/);
+    fireEvent.change(h.box, { target: { value: "bún bò 50k, trà đá 5k" } });
+    h.rerender(<QuickEntryComposer {...h.props} waiting={false} />);
+    expect(h.props.onSubmitText).toHaveBeenCalledExactlyOnceWith("bún bò 50k, trà đá 5k");
+    expect(h.box.value).toBe("");
+  });
+
+  it("chưa bấm gửi thì tải xong không tự gửi", () => {
+    const h = setup({ waiting: true });
+    fireEvent.change(h.box, { target: { value: "xăng 100k" } });
+    h.rerender(<QuickEntryComposer {...h.props} waiting={false} />);
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    expect(h.box.value).toBe("xăng 100k");
+  });
+
+  it("tải hỏng (bị khoá) thì không gửi, giữ nguyên nội dung", () => {
+    const h = setup({ waiting: true });
+    fireEvent.change(h.box, { target: { value: "xăng 100k" } });
+    fireEvent.keyDown(h.box, { key: "Enter" });
+    h.rerender(<QuickEntryComposer {...h.props} waiting={false} disabled />);
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    expect(h.box.value).toBe("xăng 100k");
+  });
+
+  it.each([
+    ["đổi công ty", { contextKey: "org-b" }],
+    ["đổi đích ghi", { mode: "personal" as const }],
+  ])("%s trước khi tải xong ⇒ huỷ lượt gửi đang giữ, chữ vẫn còn", (_case, change) => {
+    const h = setup({ waiting: true, contextKey: "org-a" });
+    fireEvent.change(h.box, { target: { value: "102LVT sơn 300k" } });
+    fireEvent.keyDown(h.box, { key: "Enter" });
+    h.rerender(<QuickEntryComposer {...h.props} {...change} waiting />);
+    h.rerender(<QuickEntryComposer {...h.props} {...change} waiting={false} />);
+    expect(h.props.onSubmitText).not.toHaveBeenCalled();
+    expect(h.box.value).toBe("102LVT sơn 300k");
+  });
+
+  it("ảnh bill chọn lúc đang tải được giữ, tải xong mới gửi", () => {
+    const h = setup({ waiting: true });
+    const bill = new File(["img"], "bill.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Chọn ảnh bill"), { target: { files: [bill] } });
+    expect(h.props.onPhoto).not.toHaveBeenCalled();
+    h.rerender(<QuickEntryComposer {...h.props} waiting={false} />);
+    expect(h.props.onPhoto).toHaveBeenCalledExactlyOnceWith(bill, "");
+  });
+});

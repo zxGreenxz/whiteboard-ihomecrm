@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -39,7 +40,7 @@ vi.mock("@/hooks/quick-entry/useQuickEntryController", () => ({
   useQuickEntryController: () => data.controller ?? {},
 }));
 vi.mock("@/components/quick-entry/EmbeddedQuickEntry", () => ({
-  QuickEntryInput: () => null,
+  QuickEntryInput: () => <textarea aria-label="Nội dung khoản chi" />,
   QuickEntryDraftFeed: () => null,
   PersonalPendingRequests: () => null,
 }));
@@ -57,8 +58,13 @@ vi.mock("@/hooks/useShareholderProfit", () => ({
 vi.mock("@/components/personal-finance/CompanyFinance", () => ({
   default: ({ view }: { view: string }) => <div data-testid="company-panel">Công ty · {view}</div>,
 }));
+const launchAsApp = (standalone: boolean) => {
+  window.matchMedia = ((query: string) => ({ matches: standalone && query === "(display-mode: standalone)" })) as unknown as typeof window.matchMedia;
+};
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  Reflect.deleteProperty(window, "matchMedia");
   data.create = false;
   data.controller = null;
   data.snapshot = {
@@ -71,6 +77,46 @@ afterEach(() => {
     budgets: [],
     goals: [],
   };
+});
+const personalController = () => ({
+  mode: "personal",
+  modes: ["personal"],
+  setMode: vi.fn(),
+  feed: { cards: {}, addManual: vi.fn() },
+});
+it("opened from the home-screen app: entry sheet is up with the cursor in the composer, overview renders behind later", () => {
+  vi.useFakeTimers();
+  launchAsApp(true);
+  data.create = true;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  const sheet = screen.getByRole("dialog", { name: "Ghi thu chi" });
+  expect(document.activeElement).toBe(within(sheet).getByLabelText("Nội dung khoản chi"));
+  expect(screen.queryByTestId("total-balance")).toBeNull();
+  act(() => vi.advanceTimersByTime(2000));
+  expect(screen.getByTestId("total-balance")).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Ghi thu chi" })).toBe(sheet);
+});
+it("closing the auto-opened sheet shows the overview at once", () => {
+  launchAsApp(true);
+  data.create = true;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  const sheet = screen.getByRole("dialog", { name: "Ghi thu chi" });
+  fireEvent.click(within(sheet).getByRole("button", { name: "Đóng" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByTestId("total-balance")).toBeTruthy();
+});
+it.each([
+  ["a normal browser tab", false, true],
+  ["an app launch without create permission", true, false],
+])("%s keeps the overview first", (_case, standalone, create) => {
+  launchAsApp(standalone);
+  data.create = create;
+  data.controller = personalController();
+  render(<PersonalWalletPage />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByTestId("total-balance")).toBeTruthy();
 });
 it("reopening a saved manual company entry creates a fresh company draft", () => {
   data.create = true;

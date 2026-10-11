@@ -25,7 +25,7 @@ export function QuickEntryInput({
 }) {
   return (
     <div>
-      {c.loading && <p role="status">Đang tải dữ liệu nhập khoản…</p>}
+      {c.loading && <p role="status">Đang tải dữ liệu nhập khoản, cứ gõ trước…</p>}
       {c.error && (
         <p role="alert">
           Không tải được dữ liệu{" "}
@@ -42,7 +42,8 @@ export function QuickEntryInput({
         aiContextRequired={!c.refs.orgId}
         launchAction={launchAction}
         appearance={appearance}
-        disabled={!c.ready}
+        disabled={!c.ready && !c.loading}
+        waiting={c.loading}
         placeholder="Nhập nội dung thu hoặc chi…"
         mode={c.mode}
         modes={c.modes}

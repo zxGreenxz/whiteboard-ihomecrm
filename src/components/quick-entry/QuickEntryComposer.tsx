@@ -43,6 +43,8 @@ export interface QuickEntryComposerProps {
 
   appearance?: 'personal';
   disabled?: boolean;
+  /** Dữ liệu nền còn đang tải: vẫn soạn được (gõ, ảnh, ghi âm); bấm gửi thì giữ lại, tải xong tự gửi. */
+  waiting?: boolean;
   placeholder?: string;
   mode: DraftMode;
   /** Chế độ người dùng có quyền — một chế độ thì không hiện công tắc. */
@@ -68,6 +70,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   /** Mô hình máy chủ báo ĐÃ chép lần nói gần nhất — hiện để so sánh các mô hình. */
   const [heardBy, setHeardBy] = useState<string | null>(null);
+  /** Đã bấm gửi lúc dữ liệu còn tải ⇒ gửi nội dung đang có ngay khi tải xong. */
+  const [queued, setQueued] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
@@ -80,6 +84,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
   const recordingEpoch = useRef(contextEpoch);
   const companyHint = "Chọn công ty để dùng AI. Khoản cá nhân vẫn lưu vào ví cá nhân.";
   useEffect(() => { setNote(null); setHeardBy(null); }, [p.contextKey]);
+  // Lượt gửi đang giữ chỉ dành cho đúng công ty/đích lúc bấm; đổi thì huỷ, chữ vẫn nằm trong ô.
+  useEffect(() => setQueued(false), [p.contextKey, p.mode]);
 
   useEffect(() => {
     mounted.current = true;
@@ -105,6 +111,12 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
 
   const submit = (content: string) => {
     if(p.disabled)return;
+    if (p.waiting) {
+      if (!content.trim() && !pendingPhoto) return;
+      setText(content);
+      setQueued(true);
+      return;
+    }
     if (p.aiContextRequired) { setNote(companyHint); return; }
     const t = content.trim();
     if (!t && !pendingPhoto) return;
@@ -115,6 +127,14 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     setNote(null);
     setHeardBy(null);
   };
+
+  useEffect(() => {
+    if (!queued || p.waiting) return;
+    setQueued(false);
+    submit(text);
+    // Chỉ chạy khi hết chờ; submit và text lấy đúng bản của lần render này (gồm chữ gõ thêm sau khi bấm gửi).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queued, p.waiting]);
 
   const recorder = useVoiceRecorder((audio) => {
     const transcribe = p.transcribe;
@@ -203,6 +223,7 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
     if (!image) return;
     e.preventDefault();
     if (pendingPhoto || p.aiContextRequired || p.appearance === 'personal') setPendingPhoto(image);
+    else if (p.waiting) { setPendingPhoto(image); setQueued(true); }
     else p.onPhoto(image);
   };
 
@@ -221,7 +242,8 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
       setPendingPhoto(file);
       setNote(null);
       box.current?.focus();
-    } else p.onPhoto(file);
+    } else if (p.waiting) { setPendingPhoto(file); setQueued(true); }
+    else p.onPhoto(file);
   };
 
   return (
@@ -319,6 +341,11 @@ export function QuickEntryComposer(p: QuickEntryComposerProps) {
       {(note || voiceError) && (
         <p className="text-xs text-amber-800" role="status">
           {note ?? voiceError}
+        </p>
+      )}
+      {queued && (
+        <p className="text-xs text-muted-foreground" role="status">
+          Đang tải dữ liệu, sẽ tự gửi ngay khi xong…
         </p>
       )}
       {heardBy && !note && !voiceError && (

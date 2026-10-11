@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense, startTransition } from "react";
 import {
   Home,
   List,
@@ -62,6 +62,25 @@ import "@/components/personal-finance/personal-finance.css";
 const CompanyFinance = lazy(() => import("@/components/personal-finance/CompanyFinance"));
 const CashbookForm = lazy(() => import("@/components/cashbooks/CashbookForm"));
 
+const COMPOSER_BOX = 'textarea[aria-label="Nội dung khoản chi"]';
+const MANUAL_AMOUNT = 'input[name="amount"]';
+
+/** Đổi tab trong khung nhập ⇒ con trỏ vào ô chính của tab, sau khi tab hiện ra. */
+const focusInSheet = (selector: string) =>
+  requestAnimationFrame(() => document.querySelector<HTMLElement>(`dialog[open] ${selector}:not(:disabled)`)?.focus());
+
+/** Mở bằng biểu tượng app trên màn hình chính (PWA) ⇒ vào thẳng khung ghi thu chi. Trình duyệt thường giữ tổng quan. */
+function launchedAsApp() {
+  try {
+    return (
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
+  } catch {
+    return false;
+  }
+}
+
 function ShareholderNotice() {
   const me = useMyShareholder();
   const allocations = useProfitAllocations();
@@ -114,9 +133,14 @@ export default function PersonalWalletPage() {
   const [tab, setTab] = useState("home");
   const [month, setMonth] = useState(localMonth);
   const [hidden, setHidden] = useState(false);
+  const [appLaunch] = useState(launchedAsApp);
   const [sheet, setSheet] = useState<"entry" | "wallet" | "category" | null>(
-    null,
+    () => (appLaunch && permissions.create ? "entry" : null),
   );
+  const [autoEntryDone, setAutoEntryDone] = useState(sheet === "entry");
+  // Vào thẳng khung nhập thì chưa dựng tổng quan để không tranh CPU lúc gõ: dựng nền khi rảnh, hoặc ngay khi đóng khung.
+  const [dashboardShown, setDashboardShown] = useState(!appLaunch);
+  const [entryFocus, setEntryFocus] = useState(true);
   const [launchAction, setLaunchAction] = useState<{
     id: number;
     action: "attachment" | "camera" | "gallery" | "voice";
@@ -142,23 +166,55 @@ export default function PersonalWalletPage() {
     if (!card || card.status.kind === "saved")
       setManualCompanyId(controller.feed.addManual("company"));
   }, [sheet, entryMode, controller.mode, controller.feed, manualCompanyId]);
+  // Quyền ghi về sau lượt dựng đầu (chưa có trong bộ đệm) thì vẫn mở khung một lần.
+  useEffect(() => {
+    if (!appLaunch || autoEntryDone || permissionQuery.isPending) return;
+    setAutoEntryDone(true);
+    if (permissions.create) setSheet((current) => current ?? "entry");
+  }, [appLaunch, autoEntryDone, permissionQuery.isPending, permissions.create]);
   const s = query.data;
-  let m: ReturnType<typeof selectMonth> | null = null;
-  let balance = 0;
-  let moneyError: string | null = null;
-  try {
-    if (s) {
-      balance = selectBalance(s);
-      m = selectMonth(s, month);
+  useEffect(() => {
+    if (dashboardShown) return;
+    if (sheet !== "entry") {
+      setDashboardShown(true);
+      return;
+    }
+    if (!s) return;
+    const show = () => startTransition(() => setDashboardShown(true));
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(show, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(show, 1000);
+    return () => window.clearTimeout(timer);
+  }, [dashboardShown, sheet, s]);
+  const { m, balance, moneyError } = useMemo<{
+    m: ReturnType<typeof selectMonth> | null;
+    balance: number;
+    moneyError: string | null;
+  }>(() => {
+    if (!s) return { m: null, balance: 0, moneyError: null };
+    try {
+      const balance = selectBalance(s);
+      const m = selectMonth(s, month);
       // Preflight every aggregate used by the mounted tabs, including older report months.
       selectGoals(s);
       for (let i = 1; i < 6; i++) selectMonth(s, shiftMonth(month, -i));
+      return { m, balance, moneyError: null };
+    } catch (error) {
+      if (!(error instanceof MoneyRangeError)) throw error;
+      return { m: null, balance: 0, moneyError: error.message };
     }
-  } catch (error) {
-    if (!(error instanceof MoneyRangeError)) throw error;
-    moneyError = error.message;
-  }
+  }, [s, month]);
   const props = s ? { snapshot: s, permissions, edit: setEditor } : null;
+  const openEntry = (focus: boolean) => {
+    setEntryFocus(focus);
+    setSheet("entry");
+  };
+  const closeSheet = () => {
+    setSheet(null);
+    setDashboardShown(true);
+  };
   const scopePicker = (
     <div className="pf-pills pf-entry-tabs" role="group" aria-label="Nhóm ví">
       {(["personal", "company"] as const).map(scope => <button key={scope} type="button" className={walletScope === scope ? "active" : ""} aria-pressed={walletScope === scope} onClick={() => setWalletScope(scope)}>{scope === "personal" ? "Cá nhân" : "Công ty"}</button>)}
@@ -168,7 +224,7 @@ export default function PersonalWalletPage() {
     <Suspense fallback={<p role="status">Đang tải ví công ty…</p>}>
       <CompanyFinance view={view} month={month} onMonth={setMonth} hidden={hidden} search={view === "ledger" ? filters.search : ""}
         onManage={() => { setWalletScope("company"); setSheet("wallet"); }}
-        onEntry={() => { controller.setMode("company"); setEntryMode("quick"); setSheet("entry"); }}
+        onEntry={() => { controller.setMode("company"); setEntryMode("quick"); openEntry(true); }}
         onCreateCashbook={() => { setSheet(null); setCashbookFormOpen(true); }} />
     </Suspense>
   );
@@ -235,6 +291,7 @@ export default function PersonalWalletPage() {
                 </Button>
               </div>
             )}
+            {dashboardShown && (<>
             {(tab === "home" || tab === "reports") && scopePicker}
             {tab === "home" && walletScope === "company" && companyPanel("overview")}
             {tab === "home" && walletScope === "personal" && (
@@ -284,7 +341,7 @@ export default function PersonalWalletPage() {
                         className="pf-prompt"
                         onClick={() => {
                           setEntryMode("quick");
-                          setSheet("entry");
+                          openEntry(true);
                         }}
                       >
                         Hôm nay bạn chi gì?
@@ -303,7 +360,7 @@ export default function PersonalWalletPage() {
                               aria-label={String(label)}
                               onClick={() => {
                                 setEntryMode("quick");
-                                setSheet("entry");
+                                openEntry(false);
                                 setLaunchAction({
                                   id: Date.now(),
                                   action: action as
@@ -389,7 +446,7 @@ export default function PersonalWalletPage() {
                       recent
                       entry={() => {
                         setEntryMode("quick");
-                        setSheet("entry");
+                        openEntry(true);
                       }}
                     />
                   </section>
@@ -474,6 +531,7 @@ export default function PersonalWalletPage() {
                 />}
               </>
             )}
+            </>)}
             <PersonalPendingRequests
               mayRetry={(action) =>
                 permissions[
@@ -503,72 +561,6 @@ export default function PersonalWalletPage() {
                 />
               )}
             </FinanceSheet>
-            <FinanceSheet
-              open={sheet === "entry"}
-              title="Ghi thu chi"
-              onClose={() => setSheet(null)}
-            >
-              <div className="pf-pills pf-entry-tabs">
-                <button
-                  className={entryMode === "quick" ? "active" : ""}
-                  onClick={() => setEntryMode("quick")}
-                >
-                  Ghi nhanh
-                </button>
-                <button
-                  className={entryMode === "manual" ? "active" : ""}
-                  onClick={() => {
-                    setEntryMode("manual");
-                    if (
-                      controller.mode === "company" &&
-                      (!manualCompanyId ||
-                        !controller.feed.cards[manualCompanyId] ||
-                        controller.feed.cards[manualCompanyId].status.kind ===
-                          "saved")
-                    )
-                      setManualCompanyId(controller.feed.addManual("company"));
-                  }}
-                >
-                  Nhập tay
-                </button>
-              </div>
-              <div hidden={entryMode !== "quick"}>
-                <p className="pf-muted pf-entry-hint">
-                  Nhập nội dung, thêm ảnh hoặc ghi âm.
-                </p>
-                <QuickEntryInput
-                  controller={controller}
-                  appearance="personal"
-                  launchAction={launchAction}
-                />
-                <QuickEntryDraftFeed controller={controller} inDialog />
-              </div>
-              <div hidden={entryMode !== "manual"}>
-                <div hidden={controller.mode !== "company"}>
-                  <p className="pf-muted">Sổ thu chi công ty</p>
-                  {manualCompanyId && (
-                    <QuickEntryDraftFeed
-                      controller={controller}
-                      onlyCardId={manualCompanyId}
-                      inDialog
-                    />
-                  )}
-                  {manualDestination}
-                </div>
-                <div hidden={controller.mode !== "personal"}>
-                  {sheet === "entry" && (
-                    <FinanceEditor
-                      editor={{ entity: "transaction" }}
-                      snapshot={s}
-                      permissions={permissions}
-                      embedded
-                      footerAddon={manualDestination}
-                      onClose={() => setSheet(null)}
-                    />
-                  )}
-                </div>
-              </div>
-            </FinanceSheet>
             {editor && (
               <FinanceEditor
                 key={`${editor.entity}-${editor.record?.id ?? "new"}-${editor.remove ?? false}`}
@@ -583,6 +575,91 @@ export default function PersonalWalletPage() {
         ) : (
           <p role="status">Đăng nhập để xem ví cá nhân.</p>
         )}
+        {/* Không chờ tải ví: ô nhập gõ được ngay, dữ liệu về sau mới gửi. */}
+        <FinanceSheet
+          open={sheet === "entry"}
+          title="Ghi thu chi"
+          onClose={closeSheet}
+          initialFocus={
+            !entryFocus
+              ? undefined
+              : entryMode === "quick"
+                ? COMPOSER_BOX
+                : controller.mode === "personal"
+                  ? MANUAL_AMOUNT
+                  : undefined
+          }
+        >
+          <div className="pf-pills pf-entry-tabs">
+            <button
+              className={entryMode === "quick" ? "active" : ""}
+              onClick={() => {
+                setEntryMode("quick");
+                focusInSheet(COMPOSER_BOX);
+              }}
+            >
+              Ghi nhanh
+            </button>
+            <button
+              className={entryMode === "manual" ? "active" : ""}
+              onClick={() => {
+                setEntryMode("manual");
+                if (controller.mode === "personal") focusInSheet(MANUAL_AMOUNT);
+                if (
+                  controller.mode === "company" &&
+                  (!manualCompanyId ||
+                    !controller.feed.cards[manualCompanyId] ||
+                    controller.feed.cards[manualCompanyId].status.kind ===
+                      "saved")
+                )
+                  setManualCompanyId(controller.feed.addManual("company"));
+              }}
+            >
+              Nhập tay
+            </button>
+          </div>
+          <div hidden={entryMode !== "quick"}>
+            <p className="pf-muted pf-entry-hint">
+              Nhập nội dung, thêm ảnh hoặc ghi âm.
+            </p>
+            <QuickEntryInput
+              controller={controller}
+              appearance="personal"
+              launchAction={launchAction}
+            />
+            <QuickEntryDraftFeed controller={controller} inDialog />
+          </div>
+          <div hidden={entryMode !== "manual"}>
+            <div hidden={controller.mode !== "company"}>
+              <p className="pf-muted">Sổ thu chi công ty</p>
+              {manualCompanyId && (
+                <QuickEntryDraftFeed
+                  controller={controller}
+                  onlyCardId={manualCompanyId}
+                  inDialog
+                />
+              )}
+              {manualDestination}
+            </div>
+            <div hidden={controller.mode !== "personal"}>
+              {sheet === "entry" &&
+                (s && !moneyError ? (
+                  <FinanceEditor
+                    editor={{ entity: "transaction" }}
+                    snapshot={s}
+                    permissions={permissions}
+                    embedded
+                    footerAddon={manualDestination}
+                    onClose={closeSheet}
+                  />
+                ) : !s ? (
+                  <p className="pf-muted" role="status">
+                    Đang tải ví cá nhân…
+                  </p>
+                ) : null)}
+            </div>
+          </div>
+        </FinanceSheet>
         <nav className="pf-nav" aria-label="Điều hướng ví cá nhân">
           {[
             { id: "home", label: "Tổng quan", Icon: Home },
@@ -599,7 +676,7 @@ export default function PersonalWalletPage() {
                 aria-current={tab === id ? "page" : undefined}
                 disabled={!s || !!moneyError}
                 onClick={() =>
-                  id === "entry" ? setSheet("entry") : setTab(id)
+                  id === "entry" ? openEntry(true) : setTab(id)
                 }
               >
                 <Icon size={id === "entry" ? 26 : 20} />

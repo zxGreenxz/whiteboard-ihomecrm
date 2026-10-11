@@ -108,7 +108,11 @@ export const IncomeExpenseTemplatesPage = lazy(() => import("../pages/settings/I
 export const CashbooksPage = lazy(() => import("../pages/settings/finance/CashbooksPage"));
 export const FixedFeesPage = lazy(() => import("../pages/settings/finance/FixedFeesPage"));
 export const SpendEnginePage = lazy(() => import("../pages/settings/finance/SpendEnginePage"));
-export const PersonalWalletPage = lazy(() => import("../pages/finance/PersonalWalletPage"));
+const personalWallet = () => import("../pages/finance/PersonalWalletPage");
+// App "Ví cá nhân" mở thẳng trang này ⇒ tải chunk song song lúc còn kiểm phiên/quyền.
+if (typeof location !== "undefined" && location.pathname.startsWith("/finance/personal-wallet"))
+  personalWallet().catch(() => { /* chỉ tải trước; lỗi thật do lazy() tự thử lại và báo khi dựng trang */ });
+export const PersonalWalletPage = lazy(personalWallet);
 export const QuickEntryPage = lazy(() => import("../pages/quick-entry/QuickEntryPage"));
 export const ManagerSalaryPage = lazy(() => import("../pages/finance/ManagerSalaryPage"));
 export const MySalaryPage = lazy(() => import("../pages/finance/MySalaryPage"));

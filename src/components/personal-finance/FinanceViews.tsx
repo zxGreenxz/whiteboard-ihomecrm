@@ -44,11 +44,14 @@ export function FinanceSheet({
   open,
   title,
   onClose,
+  initialFocus,
   children,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
+  /** Selector ô nhận con trỏ khi mở; vắng thì trình duyệt chọn ô đầu tiên (nút Đóng). */
+  initialFocus?: string;
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -61,11 +64,13 @@ export function FinanceSheet({
     if (open && !node.open) {
       if (node.showModal) node.showModal();
       else node.setAttribute("open", "");
+      const target = initialFocus ? node.querySelector<HTMLElement>(initialFocus) : null;
+      if (target && !target.matches(":disabled")) target.focus();
     } else if (!open && node.open) {
       if (node.close) node.close();
       else node.removeAttribute("open");
     }
-  }, [open]);
+  }, [open, initialFocus]);
   return (
     <dialog
       ref={dialog}
