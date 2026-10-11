@@ -172,6 +172,12 @@
       "thongDiep": "relation \"public.zalo_automation_runs\" does not exist",
       "why": "File nay ALTER bang zalo_automation_runs (them mode stopped) va tao RPC dung khan cap tren do. Bang ay do 20260830163815 tao, ma file do da cascade-dung vi helper quyen v3 cua 20260813100000 chua ra doi tren ban dung lai — day la mat xich thu ba cua cung mot day chuyen. Chet theo, khong phai loi doc lap: tren production ca ba da apply sach (bien nhan ce4b201a92a8cc19 ngay 31/08), va nut da duoc kiem chung bang dry-run dong vai nguoi dung that."
     },
+    "20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql": {
+      "kyVong": "cascade",
+      "tu": "20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql",
+      "thongDiep": "relation \"public.zalo_automation_runs\" does not exist",
+      "why": "Đọc log drill thật run 38116988339 ngày 11/10/2026: ALTER TABLE public.zalo_automation_runs ADD COLUMN source_zalo_msg_id dừng vì bảng chưa tồn tại. Bảng do 20260830163815 tạo, nhưng migration đó đã rollback trong baseline schema-only vì thiếu helper zalo_authorized_org_ids do 20260813100000 tạo; migration gốc dừng vì không có người dùng DEMO. Cùng chuỗi cascade đã khai cho 20260831015222, không phải lỗi schema độc lập. Chỉ chấp nhận đúng thông báo thiếu bảng này; lỗi khác hoặc replay chạy sạch vẫn phải bị đối chiếu hai chiều đánh trượt."
+    },
     "20260829070000_restore_demo_organization_metadata.sql": {
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "canonical DEMO organization identity is missing",
