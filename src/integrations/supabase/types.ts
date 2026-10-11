@@ -1098,21 +1098,21 @@ export type Database = {
           area_id: string
           building_id: string
           created_at: string
-          organization_id: string | null
+          organization_id: string
           user_id: string
         }
         Insert: {
           area_id: string
           building_id: string
           created_at?: string
-          organization_id?: string | null
+          organization_id: string
           user_id: string
         }
         Update: {
           area_id?: string
           building_id?: string
           created_at?: string
-          organization_id?: string | null
+          organization_id?: string
           user_id?: string
         }
         Relationships: [
@@ -1154,7 +1154,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
-          organization_id: string | null
+          organization_id: string
           status: string
           updated_at: string
           user_id: string
@@ -1166,7 +1166,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
-          organization_id?: string | null
+          organization_id: string
           status?: string
           updated_at?: string
           user_id: string
@@ -1178,7 +1178,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           status?: string
           updated_at?: string
           user_id?: string
@@ -1240,7 +1240,7 @@ export type Database = {
           items: Json
           landlord_signature: string | null
           notes: string | null
-          organization_id: string | null
+          organization_id: string
           tenant_signature: string | null
           type: string
           user_id: string
@@ -1253,7 +1253,7 @@ export type Database = {
           items: Json
           landlord_signature?: string | null
           notes?: string | null
-          organization_id?: string | null
+          organization_id: string
           tenant_signature?: string | null
           type: string
           user_id: string
@@ -1266,7 +1266,7 @@ export type Database = {
           items?: Json
           landlord_signature?: string | null
           notes?: string | null
-          organization_id?: string | null
+          organization_id?: string
           tenant_signature?: string | null
           type?: string
           user_id?: string
@@ -1298,7 +1298,7 @@ export type Database = {
           issue_description: string
           maintenance_date: string
           notes: string | null
-          organization_id: string | null
+          organization_id: string
           status: string | null
           user_id: string
         }
@@ -1311,7 +1311,7 @@ export type Database = {
           issue_description: string
           maintenance_date: string
           notes?: string | null
-          organization_id?: string | null
+          organization_id: string
           status?: string | null
           user_id: string
         }
@@ -1324,7 +1324,7 @@ export type Database = {
           issue_description?: string
           maintenance_date?: string
           notes?: string | null
-          organization_id?: string | null
+          organization_id?: string
           status?: string | null
           user_id?: string
         }
@@ -1360,7 +1360,7 @@ export type Database = {
           from_room_id: string | null
           id: string
           movement_date: string
-          organization_id: string | null
+          organization_id: string
           quantity: number
           reason: string | null
           to_location: string | null
@@ -1374,7 +1374,7 @@ export type Database = {
           from_room_id?: string | null
           id?: string
           movement_date: string
-          organization_id?: string | null
+          organization_id: string
           quantity: number
           reason?: string | null
           to_location?: string | null
@@ -1388,7 +1388,7 @@ export type Database = {
           from_room_id?: string | null
           id?: string
           movement_date?: string
-          organization_id?: string | null
+          organization_id?: string
           quantity?: number
           reason?: string | null
           to_location?: string | null
@@ -1433,7 +1433,7 @@ export type Database = {
           id: string
           location: string | null
           name: string
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -1443,7 +1443,7 @@ export type Database = {
           id?: string
           location?: string | null
           name: string
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -1453,7 +1453,7 @@ export type Database = {
           id?: string
           location?: string | null
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -1735,7 +1735,7 @@ export type Database = {
           id: string
           is_enabled: boolean | null
           matching_rules: Json | null
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -1746,7 +1746,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean | null
           matching_rules?: Json | null
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -1757,7 +1757,7 @@ export type Database = {
           id?: string
           is_enabled?: boolean | null
           matching_rules?: Json | null
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -2050,7 +2050,7 @@ export type Database = {
           building_id: string
           created_at: string
           id: string
-          organization_id: string | null
+          organization_id: string
           percent: number
           shareholder_id: string
           updated_at: string
@@ -2060,7 +2060,7 @@ export type Database = {
           building_id: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id: string
           percent?: number
           shareholder_id: string
           updated_at?: string
@@ -2070,7 +2070,7 @@ export type Database = {
           building_id?: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           percent?: number
           shareholder_id?: string
           updated_at?: string
@@ -5136,7 +5136,7 @@ export type Database = {
           id: string
           id_number: string
           occupation_workplace: string | null
-          organization_id: string | null
+          organization_id: string
           permanent_address: string | null
           phone: string | null
           registration_authority: string
@@ -5160,7 +5160,7 @@ export type Database = {
           id?: string
           id_number: string
           occupation_workplace?: string | null
-          organization_id?: string | null
+          organization_id: string
           permanent_address?: string | null
           phone?: string | null
           registration_authority: string
@@ -5184,7 +5184,7 @@ export type Database = {
           id?: string
           id_number?: string
           occupation_workplace?: string | null
-          organization_id?: string | null
+          organization_id?: string
           permanent_address?: string | null
           phone?: string | null
           registration_authority?: string
@@ -6783,7 +6783,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
-          organization_id: string | null
+          organization_id: string
           phone_number: string
           updated_at: string
           user_id: string
@@ -6794,7 +6794,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          organization_id?: string | null
+          organization_id: string
           phone_number: string
           updated_at?: string
           user_id: string
@@ -6805,7 +6805,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           phone_number?: string
           updated_at?: string
           user_id?: string
@@ -7576,7 +7576,7 @@ export type Database = {
           is_default: boolean
           is_income_template: boolean
           name: string
-          organization_id: string | null
+          organization_id: string
           template_file_url: string | null
           updated_at: string
           user_id: string
@@ -7591,7 +7591,7 @@ export type Database = {
           is_default?: boolean
           is_income_template?: boolean
           name: string
-          organization_id?: string | null
+          organization_id: string
           template_file_url?: string | null
           updated_at?: string
           user_id: string
@@ -7606,7 +7606,7 @@ export type Database = {
           is_default?: boolean
           is_income_template?: boolean
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           template_file_url?: string | null
           updated_at?: string
           user_id?: string
@@ -8641,7 +8641,7 @@ export type Database = {
           generation_day: number | null
           id: string
           include_previous_debt: boolean | null
-          organization_id: string | null
+          organization_id: string
           updated_at: string | null
           user_id: string
         }
@@ -8653,7 +8653,7 @@ export type Database = {
           generation_day?: number | null
           id?: string
           include_previous_debt?: boolean | null
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string | null
           user_id: string
         }
@@ -8665,7 +8665,7 @@ export type Database = {
           generation_day?: number | null
           id?: string
           include_previous_debt?: boolean | null
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -9751,7 +9751,7 @@ export type Database = {
           icon: string | null
           id: string
           name: string
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -9762,7 +9762,7 @@ export type Database = {
           icon?: string | null
           id?: string
           name: string
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -9773,7 +9773,7 @@ export type Database = {
           icon?: string | null
           id?: string
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -10044,7 +10044,7 @@ export type Database = {
           new_value: Json | null
           notes: string | null
           old_value: Json | null
-          organization_id: string | null
+          organization_id: string
           performed_by: string | null
           scheduled_at: string | null
           user_id: string
@@ -10059,7 +10059,7 @@ export type Database = {
           new_value?: Json | null
           notes?: string | null
           old_value?: Json | null
-          organization_id?: string | null
+          organization_id: string
           performed_by?: string | null
           scheduled_at?: string | null
           user_id: string
@@ -10074,7 +10074,7 @@ export type Database = {
           new_value?: Json | null
           notes?: string | null
           old_value?: Json | null
-          organization_id?: string | null
+          organization_id?: string
           performed_by?: string | null
           scheduled_at?: string | null
           user_id?: string
@@ -10496,7 +10496,7 @@ export type Database = {
           income_goal: number
           is_active: boolean
           note: string | null
-          organization_id: string | null
+          organization_id: string
           role_title: string
           room_id: string | null
           staff_id: string
@@ -10514,7 +10514,7 @@ export type Database = {
           income_goal?: number
           is_active?: boolean
           note?: string | null
-          organization_id?: string | null
+          organization_id: string
           role_title?: string
           room_id?: string | null
           staff_id: string
@@ -10532,7 +10532,7 @@ export type Database = {
           income_goal?: number
           is_active?: boolean
           note?: string | null
-          organization_id?: string | null
+          organization_id?: string
           role_title?: string
           room_id?: string | null
           staff_id?: string
@@ -10561,21 +10561,21 @@ export type Database = {
           adjustment_id: string
           id: string
           material_id: string
-          organization_id: string | null
+          organization_id: string
           quantity: number
         }
         Insert: {
           adjustment_id: string
           id?: string
           material_id: string
-          organization_id?: string | null
+          organization_id: string
           quantity: number
         }
         Update: {
           adjustment_id?: string
           id?: string
           material_id?: string
-          organization_id?: string | null
+          organization_id?: string
           quantity?: number
         }
         Relationships: [
@@ -10608,7 +10608,7 @@ export type Database = {
           code: string
           created_at: string
           id: string
-          organization_id: string | null
+          organization_id: string
           reason: string | null
           type: string
           user_id: string
@@ -10618,7 +10618,7 @@ export type Database = {
           code: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id: string
           reason?: string | null
           type: string
           user_id: string
@@ -10628,7 +10628,7 @@ export type Database = {
           code?: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           reason?: string | null
           type?: string
           user_id?: string
@@ -10649,7 +10649,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -10658,7 +10658,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -10667,7 +10667,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -10686,7 +10686,7 @@ export type Database = {
           id: string
           line_total: number | null
           material_id: string
-          organization_id: string | null
+          organization_id: string
           purchase_id: string
           quantity: number
           unit_price: number
@@ -10695,7 +10695,7 @@ export type Database = {
           id?: string
           line_total?: number | null
           material_id: string
-          organization_id?: string | null
+          organization_id: string
           purchase_id: string
           quantity: number
           unit_price: number
@@ -10704,7 +10704,7 @@ export type Database = {
           id?: string
           line_total?: number | null
           material_id?: string
-          organization_id?: string | null
+          organization_id?: string
           purchase_id?: string
           quantity?: number
           unit_price?: number
@@ -10739,7 +10739,7 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
-          organization_id: string | null
+          organization_id: string
           purchase_date: string
           supplier_id: string | null
           total: number
@@ -10751,7 +10751,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
-          organization_id?: string | null
+          organization_id: string
           purchase_date?: string
           supplier_id?: string | null
           total?: number
@@ -10763,7 +10763,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
-          organization_id?: string | null
+          organization_id?: string
           purchase_date?: string
           supplier_id?: string | null
           total?: number
@@ -10791,7 +10791,7 @@ export type Database = {
         Row: {
           id: string
           material_id: string
-          organization_id: string | null
+          organization_id: string
           quantity: number
           unit_cost_at_usage: number
           usage_id: string
@@ -10799,7 +10799,7 @@ export type Database = {
         Insert: {
           id?: string
           material_id: string
-          organization_id?: string | null
+          organization_id: string
           quantity: number
           unit_cost_at_usage?: number
           usage_id: string
@@ -10807,7 +10807,7 @@ export type Database = {
         Update: {
           id?: string
           material_id?: string
-          organization_id?: string | null
+          organization_id?: string
           quantity?: number
           unit_cost_at_usage?: number
           usage_id?: string
@@ -10843,7 +10843,7 @@ export type Database = {
           id: string
           job_id: string | null
           notes: string | null
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           usage_date: string
           user_id: string
@@ -10854,7 +10854,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           usage_date?: string
           user_id: string
@@ -10865,7 +10865,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           usage_date?: string
           user_id?: string
@@ -10899,7 +10899,7 @@ export type Database = {
           image_url: string | null
           name: string
           on_hand: number
-          organization_id: string | null
+          organization_id: string
           reorder_level: number
           unit: string
           updated_at: string
@@ -10916,7 +10916,7 @@ export type Database = {
           image_url?: string | null
           name: string
           on_hand?: number
-          organization_id?: string | null
+          organization_id: string
           reorder_level?: number
           unit?: string
           updated_at?: string
@@ -10933,7 +10933,7 @@ export type Database = {
           image_url?: string | null
           name?: string
           on_hand?: number
-          organization_id?: string | null
+          organization_id?: string
           reorder_level?: number
           unit?: string
           updated_at?: string
@@ -15132,7 +15132,7 @@ export type Database = {
           is_active: boolean
           label: string | null
           manager_id: string
-          organization_id: string | null
+          organization_id: string
           percent: number
           updated_at: string
           user_id: string
@@ -15146,7 +15146,7 @@ export type Database = {
           is_active?: boolean
           label?: string | null
           manager_id: string
-          organization_id?: string | null
+          organization_id: string
           percent?: number
           updated_at?: string
           user_id: string
@@ -15160,7 +15160,7 @@ export type Database = {
           is_active?: boolean
           label?: string | null
           manager_id?: string
-          organization_id?: string | null
+          organization_id?: string
           percent?: number
           updated_at?: string
           user_id?: string
@@ -15187,7 +15187,7 @@ export type Database = {
           building_id: string
           created_at: string
           id: string
-          organization_id: string | null
+          organization_id: string
           salary_id: string
           user_id: string
         }
@@ -15195,7 +15195,7 @@ export type Database = {
           building_id: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id: string
           salary_id: string
           user_id: string
         }
@@ -15203,7 +15203,7 @@ export type Database = {
           building_id?: string
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           salary_id?: string
           user_id?: string
         }
@@ -15247,7 +15247,7 @@ export type Database = {
           is_active: boolean
           name: string
           note: string | null
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -15259,7 +15259,7 @@ export type Database = {
           is_active?: boolean
           name: string
           note?: string | null
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -15271,7 +15271,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           note?: string | null
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -15844,7 +15844,7 @@ export type Database = {
           endpoint: string
           id: string
           is_active: boolean
-          organization_id: string | null
+          organization_id: string
           p256dh: string
           updated_at: string
           user_agent: string | null
@@ -15856,7 +15856,7 @@ export type Database = {
           endpoint: string
           id?: string
           is_active?: boolean
-          organization_id?: string | null
+          organization_id: string
           p256dh: string
           updated_at?: string
           user_agent?: string | null
@@ -15868,7 +15868,7 @@ export type Database = {
           endpoint?: string
           id?: string
           is_active?: boolean
-          organization_id?: string | null
+          organization_id?: string
           p256dh?: string
           updated_at?: string
           user_agent?: string | null
@@ -17547,7 +17547,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          organization_id: string | null
+          organization_id: string
           rules: Json
           updated_at: string
           user_id: string
@@ -17555,7 +17555,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id: string
           rules?: Json
           updated_at?: string
           user_id: string
@@ -17563,7 +17563,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           rules?: Json
           updated_at?: string
           user_id?: string
@@ -17660,7 +17660,7 @@ export type Database = {
           holiday_date: string
           id: string
           name: string | null
-          organization_id: string | null
+          organization_id: string
           user_id: string
         }
         Insert: {
@@ -17668,7 +17668,7 @@ export type Database = {
           holiday_date: string
           id?: string
           name?: string | null
-          organization_id?: string | null
+          organization_id: string
           user_id: string
         }
         Update: {
@@ -17676,7 +17676,7 @@ export type Database = {
           holiday_date?: string
           id?: string
           name?: string | null
-          organization_id?: string | null
+          organization_id?: string
           user_id?: string
         }
         Relationships: [
@@ -18040,7 +18040,7 @@ export type Database = {
           item_type: string
           job_type_name: string | null
           occurred_date: string | null
-          organization_id: string | null
+          organization_id: string
           place: string | null
           reason: string | null
           salary_monthly_id: string
@@ -18064,7 +18064,7 @@ export type Database = {
           item_type: string
           job_type_name?: string | null
           occurred_date?: string | null
-          organization_id?: string | null
+          organization_id: string
           place?: string | null
           reason?: string | null
           salary_monthly_id: string
@@ -18088,7 +18088,7 @@ export type Database = {
           item_type?: string
           job_type_name?: string | null
           occurred_date?: string | null
-          organization_id?: string | null
+          organization_id?: string
           place?: string | null
           reason?: string | null
           salary_monthly_id?: string
@@ -18169,7 +18169,7 @@ export type Database = {
           created_at: string
           from_value: number
           id: string
-          organization_id: string | null
+          organization_id: string
           quota_id: string
           tier_number: number
           to_value: number | null
@@ -18179,7 +18179,7 @@ export type Database = {
           created_at?: string
           from_value?: number
           id?: string
-          organization_id?: string | null
+          organization_id: string
           quota_id: string
           tier_number: number
           to_value?: number | null
@@ -18189,7 +18189,7 @@ export type Database = {
           created_at?: string
           from_value?: number
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           quota_id?: string
           tier_number?: number
           to_value?: number | null
@@ -18219,7 +18219,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -18229,7 +18229,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -18239,7 +18239,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -18333,7 +18333,7 @@ export type Database = {
           created_at: string
           id: string
           key: string
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
           value: Json
@@ -18342,7 +18342,7 @@ export type Database = {
           created_at?: string
           id?: string
           key: string
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
           value: Json
@@ -18351,7 +18351,7 @@ export type Database = {
           created_at?: string
           id?: string
           key?: string
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
           value?: Json
@@ -18375,7 +18375,7 @@ export type Database = {
           is_active: boolean
           name: string
           note: string | null
-          organization_id: string | null
+          organization_id: string
           updated_at: string
           user_id: string
         }
@@ -18387,7 +18387,7 @@ export type Database = {
           is_active?: boolean
           name: string
           note?: string | null
-          organization_id?: string | null
+          organization_id: string
           updated_at?: string
           user_id: string
         }
@@ -18399,7 +18399,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           note?: string | null
-          organization_id?: string | null
+          organization_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -19436,7 +19436,7 @@ export type Database = {
           created_at: string
           end_date: string
           id: string
-          organization_id: string | null
+          organization_id: string
           plan_id: string
           start_date: string
           status: string | null
@@ -19447,7 +19447,7 @@ export type Database = {
           created_at?: string
           end_date: string
           id?: string
-          organization_id?: string | null
+          organization_id: string
           plan_id: string
           start_date: string
           status?: string | null
@@ -19458,7 +19458,7 @@ export type Database = {
           created_at?: string
           end_date?: string
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           plan_id?: string
           start_date?: string
           status?: string | null
