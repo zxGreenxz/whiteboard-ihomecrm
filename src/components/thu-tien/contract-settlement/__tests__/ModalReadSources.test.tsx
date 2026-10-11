@@ -10,7 +10,7 @@ const H = vi.hoisted(() => ({
 }));
 vi.mock('@/hooks/useContractLifecycle', () => ({ useContractLifecycle: () => H.lifecycle }));
 vi.mock('@/hooks/useTerminationRefundFacts', () => ({ useTerminationRefundFacts: () => H.refund }));
-vi.mock('@/hooks/useCommissionVoucher', () => ({ useCommissionVoucherFacts: () => H.commission }));
+vi.mock('@/hooks/useCommissionVoucherFacts', () => ({ useCommissionVoucherFacts: () => H.commission }));
 import { ContractLifecycleBand } from '../ContractLifecycleBand';
 import { SettlementVoucherDetails } from '../SettlementVoucherDetails';
 

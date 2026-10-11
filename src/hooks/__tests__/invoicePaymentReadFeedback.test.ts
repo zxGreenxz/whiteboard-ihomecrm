@@ -21,7 +21,8 @@ import {incomeExpensesListQuery,useIncomeExpenseBatches} from '../income-expense
 import {useCollectionReversalEligibility} from '../useDeletePayment';
 import {useFeeConfigMatrix,useSaveFeeConfig} from '../useFeeConfigMatrix';
 import {useSpecialFeePrices,useSetSpecialFeePrice} from '../useSpecialFeePrices';
-import {useCommissionVoucherFacts,useExistingCommissionVouchers} from '../useCommissionVoucher';
+import {useExistingCommissionVouchers} from '../useCommissionVoucher';
+import {useCommissionVoucherFacts} from '../useCommissionVoucherFacts';
 import {useCancelPeriodFee,useAppendFeeAttachment,useUpdatePeriodFee,useFeeAccounts,usePeriodMaintenance,useUpsertFeeAccount} from '../usePeriodFees';
 import {useSetReservationHoldTerms,useReservationHoldDeadlines} from '../useReservationHoldDeadlines';
 import {useReservationDeposits,useCreateDeposit,useDeposits} from '../useDeposits';

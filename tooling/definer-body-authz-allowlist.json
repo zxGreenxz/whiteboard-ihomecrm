@@ -11,6 +11,10 @@
     {
       "function": "public.get_public_latest_invoice_by_code",
       "reason": "Trang tra hoá đơn bằng MÃ HỢP ĐỒNG cho khách thuê chưa có tài khoản. Hàng rào là mã bí mật cộng chặn tần suất theo IP (app_private.public_code_probe, 60 mã sai mỗi 10 phút rồi RAISE rate_limited — migration 20260808130000/20260808140000). Cùng lý do với dòng trên: đây là đường cố ý mở."
+    },
+    {
+      "function": "public.reverse_posted_income_expense_v2",
+      "reason": "Wrapper của migration 20261011074456_commission_reason_audit_flow (sha256 0d88d7bbb8235ca6afb520c2fa0228b774786c93a8a6f513addfef3575106cfd). Trước SELECT income_expenses, begin_existing_commission_reason_v1 kiểm auth.uid và ie_supplement_can_read_v1 cho phiếu hoa hồng; SELECT chỉ chạy khi context khác NULL. Phiếu thường không tạo context, không vào SELECT này, và đi thẳng canonical commission_reason_reverse_before_v1. Canonical giữ nguyên resolve_finance_actor_v2, quyền income_expenses.reverse theo tổ chức/toà, CUSTODIAN của đúng sổ quỹ, source owner, trạng thái và idempotency trước bút toán. Đã đọc catalog sau apply: private canonical chỉ postgres gọi được; đổi tên về public cho md5 9fcc9d100dd7fd3a858038a10dc6e701 khớp witness trước thay đổi; wrapper md5 172864298949f72dd8272728072a0bec, ACL chỉ postgres/authenticated. Pin trước/sau cùng biên nhận apply nằm ở forwardSuccessions trong migration-policy.json. Cho phép riêng hàm này vì gate không theo lời gọi lồng; không coi begin_existing_commission_reason_v1 là primitive chung vì nó trả NULL cho phiếu thường."
     }
   ],
   "chuaVa": [

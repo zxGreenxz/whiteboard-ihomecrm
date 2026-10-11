@@ -1,3 +1,6 @@
+import { isCommissionVoucher } from "@/lib/commissionIntervention";
+import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
+import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
@@ -268,6 +271,10 @@ export default function IncomeExpenseMobilePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [blockedVoucherId, setBlockedVoucherId] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
+  const [lifecycleReason, setLifecycleReason] = useState("");
+  const [batchCancelReason, setBatchCancelReason] = useState("");
+  useEffect(() => { setLifecycleReason(""); setActionError(null); }, [restoreTarget]);
+  useEffect(() => { setBatchCancelReason(""); setActionError(null); }, [cancelBatchTarget]);
 
   // Nạp giá trị hiện tại của phiếu mỗi khi mở hộp thoại duyệt.
   useEffect(() => {
@@ -278,8 +285,10 @@ export default function IncomeExpenseMobilePage() {
       setActionError(null); setReasonError(null);
     }
   }, [approveTarget]);
-  const approveNeedsReason =
-    !!approveTarget && accountChangeNeedsReason(approveTarget.account_id, approveAccountId);
+  const approveNeedsReason = !!approveTarget && (
+    accountChangeNeedsReason(approveTarget.account_id, approveAccountId) ||
+    (isCommissionVoucher(approveTarget) && Object.keys(approvalEditPatch(approveTarget, { account_id: approveAccountId, attachments: approveAttachments })).length > 0)
+  );
   const approveReasonOk = approveReason.trim().length >= REVISION_REASON_MIN;
 
   // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
@@ -561,6 +570,8 @@ export default function IncomeExpenseMobilePage() {
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((x) => x.id === cancelTarget) ?? null
     : null;
+  const restoreTargetVoucher = vouchers.find(v => v.id === restoreTarget);
+  const restoreNeedsReason = !!restoreTarget && (!restoreTargetVoucher || isCommissionVoucher(restoreTargetVoucher));
   const cancelTargetPosted =
     (cancelTargetVoucher as { posting_status?: string | null } | null)
       ?.posting_status === "POSTED";
@@ -583,7 +594,7 @@ export default function IncomeExpenseMobilePage() {
     if (blockedVoucherId === target.id||approveHistoryBlocked) return;
     if (!v2ApproveOnly && approveNeedsReason && !approveReasonOk) {
       setReasonError("approveReason");
-      void focusFirstError({approveReason: "Nhập lý do đổi sổ có ít nhất 8 ký tự."});
+      void focusFirstError({approveReason: "Nhập lý do thay đổi có ít nhất 8 ký tự."});
       return;
     }
     setActionError(null);
@@ -1334,12 +1345,17 @@ export default function IncomeExpenseMobilePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+          {restoreNeedsReason && <CommissionReasonField id="restore-reason" label="Lý do khôi phục phiếu" value={lifecycleReason} onChange={setLifecycleReason} />}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (restoreTarget) restoreMutation.mutate(restoreTarget);
-                setRestoreTarget(null);
+              disabled={restoreMutation.isPending}
+              onClick={async event => {
+                event.preventDefault();
+                if (!restoreTarget || restoreMutation.isPending) return;
+                if (restoreNeedsReason && !isCommissionReasonValid(lifecycleReason)) { setActionError("Nhập lý do khôi phục từ 8 đến 2.000 ký tự."); return; }
+                try { await restoreMutation.mutateAsync({ id: restoreTarget, reason: restoreNeedsReason ? lifecycleReason : undefined }); setRestoreTarget(null); }
+                catch (error) { setActionError(voucherFailureMessage(error, "khôi phục phiếu")); }
               }}
               className="bg-green-600 hover:bg-green-700"
             >
@@ -1403,7 +1419,7 @@ export default function IncomeExpenseMobilePage() {
 
             {approveNeedsReason && (
               <div className="space-y-2">
-                <Label htmlFor="approve-reason">Lý do đổi sổ quỹ *</Label>
+                <Label htmlFor="approve-reason">Lý do thay đổi trước duyệt *</Label>
                 <Textarea
                   id="approve-reason"
                   name="approveReason"
@@ -1411,10 +1427,10 @@ export default function IncomeExpenseMobilePage() {
                   value={approveReason}
                   onChange={(e) => { setApproveReason(e.target.value); setReasonError(null); }}
                   rows={2}
-                  placeholder="Vì sao đổi sang sổ khác?"
+                  placeholder="Vì sao cần thay đổi nội dung phiếu?"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {reasonError === "approveReason" && <span role="alert" className="text-destructive">Nhập lý do đổi sổ có ít nhất 8 ký tự. </span>}
+                  {reasonError === "approveReason" && <span role="alert" className="text-destructive">Nhập lý do thay đổi có ít nhất 8 ký tự. </span>}
                   Đổi sổ được lưu thành một lần sửa phiếu (ít nhất {REVISION_REASON_MIN} ký tự).
                 </p>
               </div>
@@ -1493,6 +1509,7 @@ export default function IncomeExpenseMobilePage() {
             name: approveTarget.name ?? undefined,
             defaultCashbookId: approveTarget.account_id ?? null,
             attachments: approveTarget.attachments ?? null,
+            isCommission: isCommissionVoucher(approveTarget),
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
           cashbookOptions={custodianBooks}
@@ -1556,12 +1573,12 @@ export default function IncomeExpenseMobilePage() {
               <b>Huỷ</b>. Bút toán gốc giữ nguyên trong lịch sử.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Textarea
+          {isCommissionVoucher(reverseTarget) ? <CommissionReasonField id="reverse-reason" label="Lý do hoàn tác hoa hồng" value={reverseReason} onChange={setReverseReason} /> : <Textarea
             value={reverseReason}
             onChange={(e) => setReverseReason(e.target.value)}
             placeholder="Lý do hoàn tác (ghi vào bút toán — nên nhập)"
             rows={2}
-          />
+          />}
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={reversePostingV2Mutation.isPending}>
@@ -1573,9 +1590,10 @@ export default function IncomeExpenseMobilePage() {
               onClick={async (event) => {
                 event.preventDefault();
                 if (!reverseTarget?.account_id || blockedVoucherId === reverseTarget.id) return;
+                if (isCommissionVoucher(reverseTarget) && !isCommissionReasonValid(reverseReason)) { setActionError("Nhập lý do hoàn tác hoa hồng từ 8 đến 2.000 ký tự."); return; }
                 setActionError(null);
                 try {
-                  await reversePostingV2Mutation.mutateAsync({voucherId:reverseTarget.id,cashbookId:reverseTarget.account_id,reason:reverseReason.trim() || null});
+                  await reversePostingV2Mutation.mutateAsync({voucherId:reverseTarget.id,cashbookId:reverseTarget.account_id,reason:reverseReason.trim() || null,isCommission:isCommissionVoucher(reverseTarget)});
                   setReverseTarget(null); setReverseReason("");
                 } catch(error) {
                   setActionError(voucherFailureMessage(error,"hoàn tác thu/chi"));
@@ -1605,6 +1623,7 @@ export default function IncomeExpenseMobilePage() {
             name: postApprovedTarget.name ?? undefined,
             defaultCashbookId: postApprovedTarget.account_id ?? null,
             attachments: postApprovedTarget.attachments ?? null,
+            isCommission: isCommissionVoucher(postApprovedTarget),
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
           cashbookOptions={custodianBooks}
@@ -1656,15 +1675,17 @@ export default function IncomeExpenseMobilePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+          <CommissionReasonField id="cancel-batch-reason" label="Lý do huỷ cả đợt" value={batchCancelReason} onChange={setBatchCancelReason} />
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               onClick={async (event) => {
                 event.preventDefault();
                 if (!cancelBatchTarget || blockedVoucherId === cancelBatchTarget) return;
+                if (!isCommissionReasonValid(batchCancelReason)) { setActionError("Nhập lý do huỷ cả đợt từ 8 đến 2.000 ký tự."); return; }
                 setActionError(null);
                 try {
-                  const result = await cancelBatchMutation.mutateAsync(cancelBatchTarget);
+                  const result = await cancelBatchMutation.mutateAsync({ batchId: cancelBatchTarget, reason: batchCancelReason });
                   if (result.failures?.length) {
                     setActionError(`Đã huỷ ${result.count} phiếu; ${result.failures.length} phiếu chưa hoàn tất. Kiểm tra từng phiếu trước khi thao tác tiếp.`);
                     setBlockedVoucherId(cancelBatchTarget); return;

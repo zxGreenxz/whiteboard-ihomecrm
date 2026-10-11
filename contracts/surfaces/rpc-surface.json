@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2544,
-    "catalogFunctions": 1280,
+    "sourceCallSites": 2564,
+    "catalogFunctions": 1283,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 374,
+    "calledRpcs": 375,
     "byRisk": {
       "normal": 272,
-      "financial": 102
+      "financial": 103
     },
-    "securityDefiner": 355
+    "securityDefiner": 356
   },
   "missingOnServer": [],
   "rpcs": {
@@ -231,25 +231,6 @@
         "src/hooks/useAccounts.ts"
       ],
       "risk": "normal"
-    },
-    "assign_commission_manager_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_voucher_id uuid, p_manager_id uuid, p_expected_approval_version bigint, p_idempotency_key text",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCommissionManager.ts"
-      ],
-      "risk": "financial"
     },
     "assign_room_reservation_customer_v1": {
       "definitions": [
@@ -701,7 +682,7 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, app_private, public",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]
@@ -721,10 +702,9 @@
           "returns": "void",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -1832,18 +1812,17 @@
       ],
       "risk": "normal"
     },
-    "create_sale_bonus_from_deposit_v1": {
+    "create_sale_bonus_from_deposit_with_reason_v1": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_deposit_voucher_id uuid, p_amount numeric, p_recipient text DEFAULT NULL::text, p_account_number text DEFAULT NULL::text, p_bank text DEFAULT NULL::text, p_voucher_date date DEFAULT NULL::date, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT '[]'::jsonb",
+          "args": "p_deposit_voucher_id uuid, p_amount numeric, p_commission_reason text, p_recipient text DEFAULT NULL::text, p_account_number text DEFAULT NULL::text, p_bank text DEFAULT NULL::text, p_voucher_date date DEFAULT NULL::date, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT '[]'::jsonb",
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -2363,7 +2342,7 @@
         }
       ],
       "callers": [
-        "src/hooks/useCommissionVoucher.ts"
+        "src/hooks/useCommissionVoucherFacts.ts"
       ],
       "risk": "financial"
     },
@@ -3384,6 +3363,25 @@
       ],
       "risk": "financial"
     },
+    "intervene_commission_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_stage text, p_reason text, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/commissionIntervention.ts"
+      ],
+      "risk": "financial"
+    },
     "invite_organization_member_v1": {
       "definitions": [
         {
@@ -3591,7 +3589,7 @@
           "returns": "jsonb",
           "volatility": "STABLE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]
@@ -4870,6 +4868,25 @@
       ],
       "risk": "financial"
     },
+    "read_commission_interventions_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionAudit.ts"
+      ],
+      "risk": "financial"
+    },
     "read_contract_draft_signing_v1": {
       "definitions": [
         {
@@ -5144,7 +5161,7 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]
@@ -5434,10 +5451,9 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -5511,7 +5527,7 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
+          "searchPath": "search_path=pg_catalog",
           "execRoles": [
             "authenticated"
           ]

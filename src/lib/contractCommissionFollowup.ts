@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { payoutSourceReceiptSchema } from '@/lib/rentSupportFunding';
+import { commissionReasonSchema, commissionReasonValid } from '@/lib/commissionCreationPolicy';
 
 export const safeCommissionReason = (reason: string) => /\b(?:insert|update|delete|constraint|foreign key|SQLSTATE|relation|column|public\.|app_private\.)\b/i.test(reason)
   || /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(reason)
@@ -12,6 +13,11 @@ const eventSchema = z.object({
   reason: z.string().nullable(), amount: z.number().finite().nonnegative().nullable(),
   actor_name: z.string().nullable(), created_at: z.string(),
 });
+export const commissionPreparationSchema = z.object({
+  request_id: z.string().uuid(), reason: z.string().max(2000).nullable(),
+  actor_name: z.string().nullable(), created_at: z.string().datetime({ offset: true }),
+  stage: z.enum(['PREPARE', 'REPREPARE']),
+});
 export const commissionFollowupSchema = z.object({
   contract_id: z.string().uuid(), contract_number: z.string().nullable(),
   building_id: z.string().uuid(), building_name: z.string(), room_name: z.string(), kind: kindSchema,
@@ -21,7 +27,9 @@ export const commissionFollowupSchema = z.object({
   voucher_id: z.string().uuid().nullable(), voucher_code: z.string().nullable(), voucher_status: z.string().nullable(),
   events: z.array(eventSchema),
   request_id: z.string().uuid().nullable().optional(), attempted_at: z.string().nullable().optional(), can_retry: z.boolean().optional(),
-});
+  preparation: commissionPreparationSchema.nullable().optional(),
+}).refine(row => !row.preparation || row.preparation.request_id === row.request_id,
+  'Lịch sử lập yêu cầu không khớp yêu cầu đang theo dõi.');
 export const commissionFollowupCountsSchema = z.object({
   all: z.number().int().nonnegative(), broker: z.number().int().nonnegative(), sale: z.number().int().nonnegative(),
 }).refine(counts => counts.all === counts.broker + counts.sale, 'Tổng số lượng theo loại không khớp.');
@@ -31,6 +39,11 @@ export const commissionFollowupPageSchema = z.object({
 });
 export type ContractCommissionFollowup = z.infer<typeof commissionFollowupSchema>;
 export type CommissionKind = z.infer<typeof kindSchema>;
+export interface CommissionReplacement { kind: CommissionKind; requestId: string }
+export function matchesCommissionReplacement(row: ContractCommissionFollowup | undefined, replacement: CommissionReplacement | null | undefined): boolean {
+  return !!row && !!replacement && row.kind === replacement.kind && row.request_id === replacement.requestId
+    && (row.state === 'FAILED' || row.state === 'UNKNOWN');
+}
 export interface CommissionEventInput {
   contractId: string; kind: CommissionKind;
   action: 'ATTEMPTED' | 'FAILED' | 'NOT_APPLICABLE' | 'REOPENED';
@@ -62,6 +75,8 @@ export async function recordContractCommissionEvent(organizationId: string, inpu
   kindSchema.parse(input.kind); eventSchema.shape.action.parse(input.action);
   if (input.amount !== undefined) z.number().finite().nonnegative().parse(input.amount);
   if ((input.action === 'FAILED' || input.action === 'NOT_APPLICABLE') && !input.reason?.trim()) throw new Error('Vui lòng nhập lý do.');
+  if ((input.action === 'NOT_APPLICABLE' || input.action === 'REOPENED') && !commissionReasonValid(input.reason ?? ''))
+    throw new Error('Nhập lý do từ 8 đến 2000 ký tự.');
   const { data, error } = await supabase.rpc('record_contract_commission_event_v1', {
     p_organization_id: organizationId, p_contract_id: input.contractId, p_kind: input.kind,
     p_action: input.action, p_request_id: input.requestId, p_amount: input.amount,
@@ -102,6 +117,7 @@ const creationPayloadSchema = z.object({
   payer_name: z.string().nullable().optional(), recipient_name: z.string().nullable().optional(),
   recipient_bank: z.string().nullable().optional(), recipient_account: z.string().nullable().optional(),
   item_description: z.string().nullable().optional(), attachments: z.array(z.string()).optional(),
+  commission_reason: commissionReasonSchema,
 }).strict();
 const preparedRequestSchema = z.object({ contract_id: z.string().uuid(), kind: kindSchema, request_id: z.string().uuid() }).strict();
 // Exact-request execute authenticates creation and may redact both voucher fields after COMPLETED.

@@ -46,6 +46,7 @@ import { useCreateRoomReservation } from "@/hooks/useRoomReservations";
 import { CustomerSelectionDialog, type CustomerBasic } from "@/components/contracts/CustomerSelectionDialog";
 import type { CreateRoomReservationInput } from "@/lib/reservationIdentityRpc";
 import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
 import { useSetReservationHoldTerms } from "@/hooks/useReservationHoldDeadlines";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -114,7 +115,9 @@ const depositSchema = z.object({
   sale_bonus_account_id: z.string().optional(),
   sale_bonus_account_number: z.string().optional(),
   sale_bonus_bank: z.string().optional(),
+  sale_bonus_reason: z.string().max(COMMISSION_REASON_MAX).optional(),
 }).superRefine((value,ctx)=>{
+  if ((value.sale_bonus_amount ?? 0)>0 && !isCommissionReasonValid(value.sale_bonus_reason)) ctx.addIssue({code:'custom',path:['sale_bonus_reason'],message:COMMISSION_REASON_MESSAGE});
   if(!value.customer_id&&!value.customer_hint)ctx.addIssue({code:'custom',path:['customer_id'],message:'Chọn khách trong danh bạ hoặc gõ tên khách gợi nhớ'});
   if(!value.account_id)ctx.addIssue({code:'custom',path:['account_id'],message:'Phải chọn sổ quỹ ghi cọc'});
 });
@@ -193,6 +196,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
       sale_bonus_account_id: "",
       sale_bonus_account_number: "",
       sale_bonus_bank: "",
+      sale_bonus_reason: "",
     },
   });
 
@@ -335,6 +339,7 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
           const r = await createSaleBonus.mutateAsync({
             depositVoucherId: depositId,
             amount: bonusAmt,
+            commissionReason: data.sale_bonus_reason!.trim(),
             recipient: data.sale_bonus_recipient || undefined,
             accountNumber: data.sale_bonus_account_number || undefined,
             bank: data.sale_bonus_bank || undefined,
@@ -750,6 +755,11 @@ export function CreateDepositDialog({ open, onOpenChange, initialRoomId }: Creat
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(Number(form.watch('sale_bonus_amount')) || 0)>0 && <FormField control={form.control} name="sale_bonus_reason" render={({field})=>(
+                    <FormItem className="sm:col-span-2"><FormLabel>Lý do / căn cứ số tiền thưởng Sale *</FormLabel><FormControl>
+                      <Textarea {...field} value={field.value??''} maxLength={COMMISSION_REASON_MAX} placeholder="Ghi rõ thỏa thuận thưởng Sale cho cọc này." />
+                    </FormControl><p className="text-xs text-muted-foreground">Lưu cùng số tiền, người lập và ngày giờ. Chưa có mức mặc định để tự suy ra tiền thưởng.</p><FormMessage /></FormItem>
+                  )}/>}
                   <FormField
                     control={form.control}
                     name="sale_bonus_amount"

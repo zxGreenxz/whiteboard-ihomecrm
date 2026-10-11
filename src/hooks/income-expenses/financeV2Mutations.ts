@@ -1,3 +1,5 @@
+import { interveneCommission } from './commissionIntervention';
+import { COMMISSION_REASON_MESSAGE, isCommissionReasonValid } from '@/lib/commissionAudit';
 import {useOrganization} from '@/contexts/OrganizationContext';
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage} from '@/lib/financialWorkflow';
@@ -19,7 +21,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { VoucherPartialError, voucherFailureMessage, voucherLifecycleFeedback } from "@/lib/voucherFeedback";
+import { VoucherPartialError, voucherFailureMessage, voucherLifecycleFeedback, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { useAuth } from "@/hooks/useAuth";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
@@ -49,6 +51,7 @@ function requireSubjectId(value:unknown):asserts value is string {
 export type FinancePostingInput=PostFinanceExecutionInput & {organizationId?:string|null};
 
 const INVALIDATE_KEYS = [
+  ["commission-interventions"],
   ["income-expenses"],
   ["income-expense"],
   ["income-expense-batches"],
@@ -114,7 +117,7 @@ export function useApproveIncomeExpenseV2(options:{scope?:'target'}={}) {
     onError: (e: Error) => {
       // Phiếu vừa bị sửa khi đang mở hộp Duyệt (đợt 1 sửa phiếu): nói bằng lời
       // người đọc được và kéo bản mới về, thay cho "approval_version mismatch".
-      if (isStaleVersionError(e)) invalidate();
+      if (isStaleVersionError(e) || voucherOutcomeUnknown(e)) invalidate();
       toast.error(workflowErrorMessage(e,'duyệt phiếu'));
     },
   });
@@ -142,7 +145,7 @@ export function usePostApprovedIncomeExpenseV2() {
       const feedback = voucherLifecycleFeedback(data, "post");
       toast[feedback.kind](feedback.message);
     },
-    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'ghi nhận thu/chi')),
+    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'ghi nhận thu/chi')); },
   });
 }
 
@@ -169,7 +172,7 @@ export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
       const feedback = voucherLifecycleFeedback(data, "approvePost");
       toast[feedback.kind](feedback.message);
     },
-    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')),
+    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); },
   });
 }
 
@@ -184,14 +187,16 @@ export function useReversePostingV2() {
       voucherId: string;
       cashbookId: string;
       reason?: string | null;
+      isCommission?: boolean;
     }) => {
       requireSubjectId(args.voucherId);
+      if (args.isCommission && !isCommissionReasonValid(args.reason)) throw new Error(COMMISSION_REASON_MESSAGE);
       return workflow.current.run(args.voucherId,'hoàn tác thu/chi',async progress=>{
       const { data, error } = await rpc("reverse_posted_income_expense_v2", {
         p_voucher: args.voucherId,
         p_cashbook: args.cashbookId,
         p_posted_on: todayISO(),
-        p_reason: args.reason || "Hoàn tác thủ công",
+        p_reason: args.reason?.trim() || "Hoàn tác thủ công",
         p_idempotency_key: progress.requestKey,
       });
       if (error) throw error;
@@ -205,7 +210,7 @@ export function useReversePostingV2() {
       const feedback = voucherLifecycleFeedback(data, "reverse");
       toast[feedback.kind](feedback.message);
     },
-    onError: (e: unknown) => toast.error(workflowErrorMessage(e,'hoàn tác thu/chi')),
+    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'hoàn tác thu/chi')); },
   });
 }
 
@@ -365,6 +370,7 @@ export interface AttachPostingEvidenceOptions {
   voucherId: string;
   userId: string;
   organizationId?: string | null;
+  commissionReason?: string;
 }
 
 /** Kho ảnh đính kèm của phiếu thu chi — cũng là kho mà adopt nhận làm chứng từ (7ai). */
@@ -489,14 +495,33 @@ export function useAttachPostingEvidence() {
       file: File,
       opts: AttachPostingEvidenceOptions,
     ): Promise<AttachPostingEvidenceResult | null> => {
+      if (opts.commissionReason !== undefined && !isCommissionReasonValid(opts.commissionReason)) {
+        toast.error(COMMISSION_REASON_MESSAGE); return null;
+      }
       const bucket = POSTING_ATTACHMENT_BUCKET;
       const url = (await uploadPostingAttachmentFile(file, opts.userId))?.url;
       if (!url) return null;
 
-      const ann = await rpc("annotate_income_expense_v1", {
-        p_voucher: opts.voucherId,
-        p_add_attachments: [url],
-      });
+      let ann: RpcResult;
+      if (opts.commissionReason !== undefined) {
+        try {
+          const data=await interveneCommission(opts.voucherId,'ANNOTATE',opts.commissionReason,{add_attachments:[url],idempotency_key:crypto.randomUUID()});
+          ann={data,error:null};
+        } catch(error) {
+          if (voucherOutcomeUnknown(error)) {
+            qc.invalidateQueries({queryKey:['commission-interventions']});
+            throw error;
+          }
+          await cleanupOrphanUpload(bucket,url);
+          toast.error(voucherFailureMessage(error,'bổ sung chứng từ hoa hồng'));
+          return null;
+        }
+      } else {
+        ann = await rpc("annotate_income_expense_v1", {
+          p_voucher: opts.voucherId,
+          p_add_attachments: [url],
+        });
+      }
 
       if (ann.error) {
         // Kỳ đã đóng là lỗi THẬT — chi cũng sẽ hỏng, nói thẳng thay vì lùi âm thầm.
@@ -523,6 +548,7 @@ export function useAttachPostingEvidence() {
       }
 
       // Dòng thu chi phải thấy ảnh NGAY, kể cả khi người dùng bấm Huỷ bỏ sau đó.
+      qc.invalidateQueries({ queryKey: ["commission-interventions"] });
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
       qc.invalidateQueries({ queryKey: ["income-expense"] });
@@ -579,6 +605,7 @@ export function useRemovePostingAttachment() {
         toast.error(voucherFailureMessage(res.error, "gỡ chứng từ khỏi phiếu"));
         return null;
       }
+      qc.invalidateQueries({ queryKey: ["commission-interventions"] });
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
       qc.invalidateQueries({ queryKey: ["income-expense"] });
@@ -609,6 +636,8 @@ export function useRemovePostingAttachment() {
 
 /** Thay đổi ảnh đã gom trong hộp Thu/Chi, chờ ghi lên phiếu. */
 export interface PostingAttachmentChanges {
+  /** Lý do do người thêm hoặc gỡ chứng từ hoa hồng nhập. */
+  commissionReason?: string;
   /** Ảnh vừa tải lên kho trong lần mở hộp này. */
   add: string[];
   /** Ảnh đang có trên phiếu mà người dùng bấm X. */
@@ -647,11 +676,23 @@ export async function commitPostingAttachmentChanges(
   voucherId: string,
   changes: PostingAttachmentChanges,
 ): Promise<CommitPostingAttachmentsResult> {
-  const ann = await rpc("annotate_income_expense_v1", {
-    p_voucher: voucherId,
-    p_add_attachments: changes.add,
-    p_remove_attachments: changes.remove,
-  });
+  let ann: { data?: unknown; error: { message?: string } | null };
+  if (changes.commissionReason !== undefined) {
+    try {
+      const data = await interveneCommission(voucherId, 'ANNOTATE', changes.commissionReason, {
+        add_attachments: changes.add, remove_attachments: changes.remove,
+        idempotency_key: crypto.randomUUID(),
+      });
+      ann = { data, error: null };
+    } catch (error) {
+      if (voucherOutcomeUnknown(error)) throw error;
+      return { ok: false, evidenceIds: [], skipped: [], message: voucherFailureMessage(error, 'thay đổi chứng từ hoa hồng'), periodBlocked: false };
+    }
+  } else {
+    ann = await rpc("annotate_income_expense_v1", {
+      p_voucher: voucherId, p_add_attachments: changes.add, p_remove_attachments: changes.remove,
+    });
+  }
   if (ann.error) {
     const blocked = periodBlockMessage(ann.error.message);
     return {
@@ -707,6 +748,7 @@ export function usePostingAttachmentDraft() {
       const res = await commitPostingAttachmentChanges(voucherId, changes);
       if (res.ok) {
         // Ảnh đã nằm trên phiếu — dòng thu chi phải thấy ngay, kể cả khi lệnh ghi sổ sau đó lỗi.
+        qc.invalidateQueries({ queryKey: ["commission-interventions"] });
         qc.invalidateQueries({ queryKey: ["income-expenses"] });
         qc.invalidateQueries({ queryKey: ["income-expense-batches"] });
         qc.invalidateQueries({ queryKey: ["income-expense"] });

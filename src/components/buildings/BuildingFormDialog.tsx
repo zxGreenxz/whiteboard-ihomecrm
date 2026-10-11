@@ -54,6 +54,8 @@ import { useBuildingSavePending } from '@/hooks/useBuildingSavePending';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { BuildingLegalOwner } from '@/lib/buildingLegalOwner';
+import { hasCommissionTierChange, isCommissionReasonValid } from '@/lib/commissionAudit';
+import { CommissionReasonField } from '@/components/income-expenses/CommissionReasonField';
 
 interface BuildingFormDialogProps {
   open: boolean;
@@ -67,6 +69,9 @@ export default function BuildingFormDialog({
   building,
 }: BuildingFormDialogProps) {
   const isEditMode = !!building;
+  const [commissionChangeReason, setCommissionChangeReason] = useState('');
+  const [commissionReasonError, setCommissionReasonError] = useState(false);
+  useEffect(() => { setCommissionChangeReason(''); setCommissionReasonError(false); }, [open, building?.id]);
   const {selectedOrganizationId}=useOrganization();
   const priorSave=useBuildingSavePending(building?`edit:${building.id}`:'create',selectedOrganizationId,open);
   const saveGuard=useMemo(()=>persistentFinancialWorkflow('building-form-save'),[]);
@@ -193,6 +198,12 @@ export default function BuildingFormDialog({
 
   const onSubmit = async (data: BuildingFormData) => {
     if (coreBlocked || sourceBlocked) return;
+    const tiersChanged = !!building && hasCommissionTierChange(building.commission_tiers, data.commission_tiers);
+    if (!createdBuildingId && !updatedBuildingId && tiersChanged && !isCommissionReasonValid(commissionChangeReason)) {
+      setCommissionReasonError(true);
+      void focusFirstError({'building-commission-reason':'Nhập lý do thay đổi cấu hình hoa hồng.'});
+      return;
+    }
     if (!await owner.validate()) return;
     form.clearErrors('root.server');
     setPartialMessage(null); setCoreFailure(undefined);
@@ -209,7 +220,7 @@ export default function BuildingFormDialog({
       if(!selectedOrganizationId)throw new Error('Chọn tổ chức trước khi lưu tòa.');
       await runBuildingSaveWorkflow(saveGuard,{
         key:building?`edit:${building.id}`:'create',organizationId:selectedOrganizationId,expectedCore:corePayload,
-        writeCore:()=>building?updateBuilding.mutateAsync({id:building.id,updates:corePayload}):createBuilding.mutateAsync(corePayload),
+        writeCore:()=>building?updateBuilding.mutateAsync({id:building.id,updates:corePayload,commissionChangeReason:tiersChanged?commissionChangeReason:undefined}):createBuilding.mutateAsync(corePayload),
         readCore:async ids=>{const {data:rows,error}=await supabase.from('buildings').select('*').in('id',[...ids]).eq('organization_id',selectedOrganizationId).is('deleted_at',null);if(error)throw error;return rows;},
         onCoreConfirmed:id=>{savedId=id;savedOwner.current=ownerSnapshot;setSavedServicesPayload(servicesPayload);if(building)setUpdatedBuildingId(id);else setCreatedBuildingId(id);},
         saveRelated:async(id,progress,recovering)=>{
@@ -460,6 +471,9 @@ export default function BuildingFormDialog({
                       </FormItem>
                     )}
                   />
+                  {building && hasCommissionTierChange(building.commission_tiers, form.watch('commission_tiers')) && <CommissionReasonField
+                    id="building-commission-reason" value={commissionChangeReason} error={commissionReasonError}
+                    label="Lý do đổi cấu hình hoa hồng" onChange={value => {setCommissionChangeReason(value);setCommissionReasonError(false);}} />}
                 </CardContent>
               </Card>
 

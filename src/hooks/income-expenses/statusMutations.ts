@@ -1,4 +1,6 @@
 import {useRef} from 'react';
+import { interveneCommission } from './commissionIntervention';
+type LifecycleInterventionInput = string | { id: string; reason?: string };
 import {persistentFinancialWorkflow} from '@/lib/persistentFinancialWorkflow';
 import {FinancialWorkflowError,workflowErrorMessage,type FinancialWorkflowGuard,type FinancialWorkflowProgress} from '@/lib/financialWorkflow';
 import { VoucherPartialError, voucherFailureMessage } from "@/lib/voucherFeedback";
@@ -188,6 +190,7 @@ export const useApproveVoucher = () => {
       return result;
     }),
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense"] });
@@ -215,7 +218,14 @@ export const useUnapproveVoucher = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => runVoucherLifecycle(workflow,id,'bỏ duyệt phiếu',async progress=>{
+    mutationFn: async (input: LifecycleInterventionInput) => {
+      const id = typeof input === 'string' ? input : input.id;
+      return runVoucherLifecycle(workflow,id,'bỏ duyệt phiếu',async progress=>{
+      if (typeof input !== 'string' && input.reason !== undefined) {
+        const expected = await readApprovalVersion(id);
+        await interveneCommission(id, 'UNAPPROVE', input.reason, { expected_approval_version: expected });
+        await readStatusReceipt(id,'UNAPPROVED'); completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`); return false;
+      }
       if (await trySetTerminationForfeitStatus(id, "UNAPPROVED")) {
         await readStatusReceipt(id,'UNAPPROVED');completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`);return true;
       }
@@ -249,8 +259,10 @@ export const useUnapproveVoucher = () => {
       }
       await readStatusReceipt(id,'UNAPPROVED');completedVoucher(progress,id,`Đã bỏ duyệt phiếu ${id}`);
       return false;
-    }),
+    });
+    },
     onSuccess: (isTerminationForfeit) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
@@ -461,6 +473,7 @@ export const useCancelIncomeExpense = () => {
       });
     },
     onSuccess: (isTerminationForfeit) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
@@ -482,7 +495,7 @@ export const useCancelIncomeExpense = () => {
     },
     onError: (error) => {
       if (error instanceof VoucherPartialError) {
-        for (const key of ["income-expenses", "income-expense", "accounts-with-balance", "invoices", "payments"]) queryClient.invalidateQueries({ queryKey: [key] });
+        for (const key of ["commission-interventions", "income-expenses", "income-expense", "accounts-with-balance", "invoices", "payments"]) queryClient.invalidateQueries({ queryKey: [key] });
       }
       console.error("Error cancelling income expense:", error);
       toast.error(error instanceof FinancialWorkflowError?workflowErrorMessage(error,"huỷ phiếu") : voucherFailureMessage(error,"huỷ phiếu"));
@@ -515,20 +528,24 @@ export const useRestoreIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => runVoucherLifecycle(workflow,id,'khôi phục phiếu',async progress=>{
-      const { error } = await supabase.rpc("restore_income_expense", {
-        p_id: id,
-      });
-      if (error) {
+    mutationFn: async (input: LifecycleInterventionInput) => {
+      const id = typeof input === 'string' ? input : input.id;
+      return runVoucherLifecycle(workflow,id,'khôi phục phiếu',async progress=>{
+      if (typeof input !== 'string' && input.reason !== undefined) {
+        await interveneCommission(id, 'RESTORE', input.reason, {});
+      } else {
+        const { error } = await supabase.rpc("restore_income_expense", { p_id: id });
         // Phiếu canonical đã huỷ là terminal (Phương án A) → dùng Tạo bản sao.
-
-        throw error;
+        if (error) throw error;
       }
       const receipt=await readStatusReceipt(id);
       if(!['UNAPPROVED','APPROVED'].includes(String(receipt.approval_status)))throw new TypeError('Chưa xác nhận trạng thái khôi phục phiếu.');
       completedVoucher(progress,id,`Đã khôi phục phiếu ${id}`);return receipt;
-    }),
-    onSuccess: (data, id) => {
+    });
+    },
+    onSuccess: (data, input) => {
+      const id = typeof input === 'string' ? input : input.id;
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
@@ -589,6 +606,7 @@ export const useVerifyIncomeExpense = () => {
       completedVoucher(progress,input.id,`Đã cập nhật trạng thái đã kiểm phiếu ${input.id}`);return receipt;
     }),
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["voucher-with-batch"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense"] });

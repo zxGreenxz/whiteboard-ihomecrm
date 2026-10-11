@@ -66,6 +66,7 @@ const KHONG_CO_GI: SettlementAvailability = {
 };
 
 const KEYS_LAM_MOI = [
+  ['commission-interventions'],
   ['income-expenses'], ['income-expense-stats'], ['accounts-with-balance'],
   ['contract-settlement'], ['pending-approvals'],
   ['income-expense-supplements'],
@@ -228,6 +229,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
     payerName?: string | null;
     bankName?: string | null;
     bankAccount?: string | null;
+    reason?: string;
   }) => {
     // Chỉ ba khoá người nhận; khoá nào không truyền thì không gửi (máy chủ giữ nguyên).
     const patch: Record<string, string | null> = {};
@@ -244,6 +246,7 @@ export function useSettlementActions(rows: SettlementRow[]) {
         voucherId: a.voucherId,
         expectedApprovalVersion: row.approvalVersion,
         patch,
+        reason: a.reason,
       });
       toast.success('Đã cập nhật thông tin người nhận');
       await lamMoi();

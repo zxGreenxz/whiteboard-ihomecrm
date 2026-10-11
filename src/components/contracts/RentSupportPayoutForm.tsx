@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { registerRentSupportParty, quoteContractRentSupport, readRentSupportDepositCandidate, verifyRentSupportDepositPayee, type SupportRead, type VerifyDepositPayeeInput } from '@/lib/rentSupportApi';
 import { payoutContextSchema, type PayoutContext } from '@/lib/rentSupportFunding';
 import { buildSupportMonths } from '@/lib/rentSupport';
-import { safeCommissionReason, type CommissionKind, type ContractCommissionFollowup } from '@/lib/contractCommissionFollowup';
+import { safeCommissionReason, matchesCommissionReplacement, type CommissionKind, type ContractCommissionFollowup, type CommissionReplacement } from '@/lib/contractCommissionFollowup';
 import { useRentSupportPayout } from '@/hooks/useRentSupportPayout';
 import { useRentSupportParties } from '@/hooks/useRentSupportParties';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -15,11 +15,15 @@ import { Button } from '@/components/ui/button';
 import { LoadingState, RefreshBar } from '@/components/loading/LoadingState';
 import { QlManagerSelectForBuilding } from '@/components/income-expenses/QlManagerSelect';
 import AttachmentUpload from '@/components/income-expenses/AttachmentUpload';
+import { CommissionAmountReview } from './CommissionAmountReview';
+import { CommissionRequestEvidence } from './CommissionRequestEvidence';
+import { commissionItemDescription, commissionNeedsReason, commissionReasonValid, defaultCommissionAmount } from '@/lib/commissionCreationPolicy';
 
-interface SourceForm { partyId: string; managerId: string; amount: number; route: 'CASHBOOK' | 'MANAGER_PAYROLL'; accountId: string; payer: string; recipient: string; bank: string; accountNumber: string; attachments: string[] }
+interface SourceForm { partyId: string; managerId: string; amount: number; reason: string; route: 'CASHBOOK' | 'MANAGER_PAYROLL'; accountId: string; payer: string; recipient: string; bank: string; accountNumber: string; attachments: string[] }
 interface Props { organizationId: string; contractId: string; plan: SupportRead['rows'][number]; prefill: CommissionPrefillData;
   rows: ContractCommissionFollowup[]; refetchRows: () => Promise<{ data?: { rows?: ContractCommissionFollowup[] }; isError: boolean }>;
-  onlyKind?: CommissionKind; userId?: string }
+  onlyKind?: CommissionKind; userId?: string; replacement?: CommissionReplacement | null;
+  onReplaceRequest?: (row: ContractCommissionFollowup) => void }
 const labels = { broker: 'hoa hồng', sale: 'thưởng' } as const;
 const vnd = (money: string | number) => new Intl.NumberFormat('vi-VN').format(Number(money)) + ' đ';
 const issues: Record<string, string> = {
@@ -38,7 +42,7 @@ const issues: Record<string, string> = {
   SOURCE_ALREADY_ISSUED: 'Nguồn thưởng đã được xử lý; đối chiếu kết quả hiện có, không tạo nguồn thay thế.',
 };
 
-export function RentSupportPayoutForm({ organizationId, contractId, plan, prefill, rows, refetchRows, onlyKind, userId }: Props) {
+export function RentSupportPayoutForm({ organizationId, contractId, plan, prefill, rows, refetchRows, onlyKind, userId, replacement, onReplaceRequest }: Props) {
   const financial = plan.financial;
   const contractVouchers = financial?.payload.sale_party_id === null;
   const { data: accounts = [] } = useAccounts();
@@ -68,8 +72,9 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     setVerificationParty(''); setVerificationName(''); pendingDepositRecipient.current = null; setVerificationReason(''); setVerificationConfirmed(false); confirmedVerification.current = null;
     return () => { mounted.current = false; active.current = null; };
   }, [organizationId, contractId]);
-  const initial = (amount: number): SourceForm => ({ partyId: '', managerId: '', amount, route: 'CASHBOOK', accountId: '', payer: '', recipient: '', bank: '', accountNumber: '', attachments: [] });
-  const [forms, setForms] = useState({ broker: initial(prefill.matched_tier ? Math.round(prefill.rent_price * prefill.matched_tier.rate_percent / 100) : 0), sale: initial(0) });
+  const defaultBrokerAmount = defaultCommissionAmount(prefill.rent_price, prefill.matched_tier?.rate_percent);
+  const initial = (amount: number): SourceForm => ({ partyId: '', managerId: '', amount, reason: '', route: 'CASHBOOK', accountId: '', payer: '', recipient: '', bank: '', accountNumber: '', attachments: [] });
+  const [forms, setForms] = useState({ broker: initial(defaultBrokerAmount ?? 0), sale: initial(0) });
   const update = (kind: CommissionKind, patch: Partial<SourceForm>) => setForms(current => ({ ...current, [kind]: {
     ...current[kind], ...patch,
     ...(contractVouchers && ('recipient' in patch || 'managerId' in patch || 'route' in patch) ? { partyId: '' } : {}),
@@ -107,7 +112,7 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     finally { if (current()) { active.current = null; setResolvingRecipients(false); } }
   };
   const done = (row: ContractCommissionFollowup) => ['VOUCHER_CREATED', 'SETTLED_BY_SUPPORT', 'NOT_APPLICABLE'].includes(row.state);
-  const savedRows = rows.filter(row => row.request_id && (row.can_retry || row.state === 'PROCESSING') && !done(row));
+  const savedRows = rows.filter(row => row.request_id && (row.can_retry || row.state === 'PROCESSING') && !done(row) && !matchesCommissionReplacement(row, replacement));
   const deposit = useQuery({ queryKey: ['rent-support-deposit-candidate', organizationId, contractId, plan.revision],
     queryFn: () => readRentSupportDepositCandidate(organizationId, contractId), enabled: !!financial, retry: false, staleTime: 0 });
   const parties = useRentSupportParties(prefill.building_id, !contractVouchers || !!deposit.data?.verification);
@@ -120,6 +125,9 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
   const selected = (['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker')
     && rows.some(row => row.kind === kind && row.can_manage && (kind === 'sale' && adopting || !done(row))) && !savedRows.some(row => row.kind === kind)
     && (kind === 'sale' ? adopting || deposit.data?.state === 'NO_CANDIDATE' && forms.sale.amount > 0 : forms.broker.amount > 0));
+  const reasonsValid = selected.every(kind => kind === 'sale' && adopting
+    || replacement?.kind !== kind && !commissionNeedsReason(forms[kind].amount, kind === 'broker' ? defaultBrokerAmount : null)
+    || commissionReasonValid(forms[kind].reason));
   const parsed = payoutContextSchema.safeParse({ version: 3, intents: selected.map(kind => {
     if (kind === 'sale' && adopting && candidate) return { ...candidate.intent_template, intent_id: intentIds.current.sale, reason: adoptionReason.trim() };
     const form = forms[kind], party = parties.data?.find(party => party.party_id === form.partyId);
@@ -127,7 +135,10 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
       gross_amount: String(form.amount), route: form.route, manager_id: form.route === 'MANAGER_PAYROLL' ? (contractVouchers ? form.managerId || null : party?.profile_id ?? null) : null,
       account_id: form.route === 'MANAGER_PAYROLL' ? null : form.accountId || null, voucher_date: date, payer_name: form.payer || null,
       recipient_name: form.recipient || null, recipient_bank: form.bank || null, recipient_account: form.accountNumber || null,
-      item_description: `${kind === 'broker' ? 'Hoa hồng' : 'Thưởng Sale'} HĐ ${prefill.contract_number ?? ''}`, attachments: form.attachments };
+      commission_reason: replacement?.kind === kind || commissionNeedsReason(form.amount, kind === 'broker' ? defaultBrokerAmount : null) ? form.reason.trim() || null : null,
+      item_description: kind === 'broker'
+        ? commissionItemDescription({ amount: form.amount, rentPrice: prefill.rent_price, months: prefill.months, ratePercent: prefill.matched_tier?.rate_percent, gross: true })
+        : `Quyền lợi thưởng Sale ${vnd(form.amount)}; HĐ ${prefill.contract_number ?? ''}`, attachments: form.attachments };
   }) });
   const context: PayoutContext | null = parsed.success ? parsed.data : null;
   const query = useQuery({ queryKey: ['support-payout-quote', organizationId, contractId, plan.revision, financial?.payload, context],
@@ -136,10 +147,10 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
       if (!context || !financial) throw new Error('context');
       return quoteContractRentSupport(organizationId, { contractId, payload: financial.payload, payoutContext: context });
     }, retry: false, staleTime: 0 });
-  const ready = !resolvingRecipients && !!context && !!financial && !financial.review && candidateCurrent && !verificationPending && !(adopt && !adopting) && (contractVouchers || !parties.isFetching && !parties.isError) && !query.isFetching && !query.isError && query.data?.state === 'READY'
+  const ready = reasonsValid && !resolvingRecipients && !!context && !!financial && !financial.review && candidateCurrent && !verificationPending && !(adopt && !adopting) && (contractVouchers || !parties.isFetching && !parties.isError) && !query.isFetching && !query.isError && query.data?.state === 'READY'
     && query.data.plan_revision === plan.revision && selected.every(kind => query.data?.sources.some(source => source.intent_id === intentIds.current[kind]));
   const depositFingerprint = JSON.stringify(deposit.data);
-  const fingerprint = JSON.stringify([organizationId, contractId, onlyKind, plan.revision, financial, context, deposit.data, query.data?.quote_hash, query.data?.payload_hash]);
+  const fingerprint = JSON.stringify([organizationId, contractId, onlyKind, replacement, plan.revision, financial, context, deposit.data, query.data?.quote_hash, query.data?.payload_hash]);
   const latest = useRef({ fingerprint, ready, revision: plan.revision, depositFingerprint, verificationFingerprint }); latest.current = { fingerprint, ready, revision: plan.revision, depositFingerprint, verificationFingerprint };
   const run = async (action: 'submit' | 'retry' | 'read') => {
     if (active.current || payout.isPending || retrying || verificationPending) return;
@@ -159,7 +170,9 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
         if (!current()) return;
         if (freshDeposit.isError || JSON.stringify(freshDeposit.data) !== depositFingerprint || latest.current.fingerprint !== confirmedFingerprint)
           throw new Error('Nguồn thưởng cọc đã thay đổi hoặc chưa đọc được. Đối chiếu lại nguồn trước khi tạo phiếu.');
-        if (fresh.isError || !fresh.data?.rows || selected.some(kind => !fresh.data?.rows?.some(row => row.kind === kind && row.can_manage && (kind === 'sale' && adopting || !done(row)) && !(row.request_id && (row.can_retry || row.state === 'PROCESSING')))))
+        if (replacement && !matchesCommissionReplacement(fresh.data?.rows?.find(row => row.kind === replacement.kind), replacement))
+          throw new Error('Yêu cầu cần lập lại đã thay đổi. Đối chiếu yêu cầu mới nhất trước khi tiếp tục.');
+        if (fresh.isError || !fresh.data?.rows || selected.some(kind => !fresh.data?.rows?.some(row => row.kind === kind && row.can_manage && (kind === 'sale' && adopting || !done(row)) && (!(row.request_id && (row.can_retry || row.state === 'PROCESSING')) || matchesCommissionReplacement(row, replacement)))))
           throw new Error('Trạng thái tạo phiếu đã thay đổi. Đối chiếu yêu cầu đã lưu trước khi tiếp tục.');
         const result = await payout.submit({ contractId, planRevision: plan.revision, quoteHash: query.data.quote_hash, payload: context });
         if (!current()) return;
@@ -271,11 +284,16 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
     </fieldset>}
     {savedRows.map(row => <div key={row.kind} className="rounded border p-3 text-sm space-y-2">
       <p>Yêu cầu {labels[row.kind]} đã lưu. Tạo lại sử dụng đúng nội dung trước đó.</p>
+      <CommissionRequestEvidence row={row} />
       {row.last_reason && <p>{safeCommissionReason(row.last_reason)}</p>}
+      {onReplaceRequest && row.request_id && row.can_manage && ['FAILED', 'UNKNOWN'].includes(row.state) && <Button variant="outline" disabled={preflighting || payout.isPending || retrying} onClick={() => onReplaceRequest(row)}>Lập lại yêu cầu {labels[row.kind]}</Button>}
       {row.can_retry && ['FAILED', 'UNKNOWN'].includes(row.state) ? <Button disabled={preflighting || verificationPending || retrying || payout.isPending} onClick={() => void retrySaved(row)}>Tạo lại {labels[row.kind]}</Button>
         : <Button onClick={() => void refetchRows()}>Đối chiếu lại yêu cầu</Button>}
     </div>)}
     <fieldset disabled={resolvingRecipients || preflighting || verificationPending || retrying || payout.isPending || !!payout.pending || !!payout.receipt} className="space-y-4">
+      {replacement && <div className="rounded border border-amber-200 p-3 text-sm space-y-2"><p>Lập yêu cầu mới theo lịch hỗ trợ hiện tại. Nhập lý do lập lại; lịch sử yêu cầu cũ được giữ nguyên.</p>
+        <CommissionRequestEvidence row={rows.find(row => matchesCommissionReplacement(row, replacement))} />
+      </div>}
       <label className="block text-sm">Ngày phiếu<DateInput value={date} onChange={setDate} /></label>
       {(['broker', 'sale'] as const).filter(kind => onlyKind !== (kind === 'broker' ? 'sale' : 'broker') && (kind !== 'sale' || candidateCurrent && deposit.data?.state === 'NO_CANDIDATE') && rows.some(row => row.kind === kind && row.can_manage && !done(row)) && !savedRows.some(row => row.kind === kind)).map(kind => {
         const form = forms[kind];
@@ -296,6 +314,8 @@ export function RentSupportPayoutForm({ organizationId, contractId, plan, prefil
               : <p className="text-sm">Khoản ròng chuyển sang sổ ảo chờ trả lương; duyệt không đồng nghĩa đã trả.</p>}
             {(['payer', 'recipient', 'bank', 'accountNumber'] as const).filter(field => !(contractVouchers && form.route === 'MANAGER_PAYROLL' && field === 'recipient')).map(field => <label key={field} className="text-sm">{{ payer: 'Tên đơn vị / Sale', recipient: 'Tên người nhận', bank: 'Ngân hàng', accountNumber: 'Số tài khoản' }[field]}<Input aria-label={`${field} ${kind}`} value={form[field]} onChange={event => update(kind, { [field]: event.target.value })} /></label>)}
           </div>
+          <CommissionAmountReview kind={kind} amount={form.amount} defaultAmount={kind === 'broker' ? defaultBrokerAmount : null}
+            reason={form.reason} onReason={reason => update(kind, { reason })} gross requireReason={replacement?.kind === kind} />
           {userId && <AttachmentUpload userId={userId} attachments={form.attachments} onChange={attachments => update(kind, { attachments })} />}
         </section>;
       })}

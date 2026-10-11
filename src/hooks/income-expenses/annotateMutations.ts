@@ -1,4 +1,5 @@
-import { voucherFailureMessage } from "@/lib/voucherFeedback";
+import { interveneCommission } from './commissionIntervention';
+import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 // Đợt 2 — bổ sung ảnh chứng từ / ghi chú cho phiếu thu chi ở MỌI trạng thái.
 //
 // Thay cho `update_income_expense_quick` (chỉ người tạo dùng được, không ghi
@@ -18,9 +19,11 @@ export interface AnnotateIncomeExpenseInput {
   /** null = không đụng ghi chú. Chuỗi rỗng = xoá trắng ghi chú. */
   notes?: string | null;
   noteMode?: "REPLACE" | "APPEND";
+  commissionReason?: string;
 }
 
 const INVALIDATE_KEYS = [
+  ["commission-interventions"],
   ["income-expenses"],
   ["income-expense-batches"],
   // Tên key của màn chi tiết phiếu là `voucher-with-batch` (xem useVoucherDetail).
@@ -43,7 +46,7 @@ export const useAnnotateIncomeExpense = () => {
       // compiler kiểm được cả tên RPC lẫn tên tham số. Cast `as any` ở đây là di
       // sản từ thời types.ts chưa mô tả hàm này — giữ lại chỉ để lại một chỗ mà
       // gõ sai `p_voucher` vẫn biên dịch sạch.
-      const { data, error } = await supabase.rpc(
+      const { data, error } = input.commissionReason !== undefined ? { data: await interveneCommission(input.voucherId, 'ANNOTATE', input.commissionReason, { add_attachments: input.addAttachments ?? [], remove_attachments: input.removeAttachments ?? [], notes: input.notes ?? null, note_mode: input.noteMode ?? 'REPLACE' }), error: null } : await supabase.rpc(
         "annotate_income_expense_v1",
         {
           p_voucher: input.voucherId,
@@ -79,6 +82,7 @@ export const useAnnotateIncomeExpense = () => {
       else toast.success("Đã lưu chứng từ và ghi chú.");
     },
     onError: (error) => {
+      if (voucherOutcomeUnknown(error)) for (const key of INVALIDATE_KEYS) queryClient.invalidateQueries({ queryKey: key });
       toast.error(voucherFailureMessage(error, "lưu chứng từ và ghi chú"));
       console.error("Error annotating income expense:", error);
     },

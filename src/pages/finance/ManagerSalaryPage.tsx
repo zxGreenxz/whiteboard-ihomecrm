@@ -26,6 +26,10 @@ import SalaryIncomePay from "@/components/salary/SalaryIncomePay";
 import SalaryFundModal from "@/components/salary/SalaryFundModal";
 import { useSalaryFeeFund, useSalaryPendingPayouts } from "@/hooks/useSalaryFund";
 import { useSalaryCanEditAmounts } from "@/hooks/useSalaryExtras";
+import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
+import { isCommissionReasonValid } from "@/lib/commissionAudit";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAssignCommissionManager } from "@/hooks/useCommissionManager";
 import SalaryAmountEditDialog, { type EditableLine } from "@/components/salary/SalaryAmountEditDialog";
 import type { SalAdjustment, SalManager } from "@/lib/managerSalary";
@@ -173,6 +177,8 @@ export default function ManagerSalaryPage() {
   const payout = useSalaryPayout({silent: true});
   const toggleExcluded = useToggleJobExcluded();
   const assignCommission = useAssignCommissionManager();
+  const [assignTarget, setAssignTarget] = useState<{ voucherId: string; managerId: string; managerName: string; expectedVersion: number | null } | null>(null);
+  const [assignReason, setAssignReason] = useState("");
   const onToggleExclude = (jobId: string, next: boolean) =>
     toggleExcluded.mutate({ jobId, excluded: next });
 
@@ -403,7 +409,7 @@ export default function ManagerSalaryPage() {
                 onPayout={onPayout} payBusy={payout.isPending} onOpenLedger={openLedger}
                 onAdjust={(m, edit) => setAdjDialog({ m, edit })} onRemoveAdjustment={onRemoveAdjustment}
                 canEditAmounts={canEditAmounts} onEditAmount={(m, line) => setAmountEdit({ m, line })}
-                onAssignCommission={isAdmin ? (m, voucherId, expectedVersion) => assignCommission.mutate({ voucherId, managerId: m.id, expectedVersion: expectedVersion ?? null }) : undefined}
+                onAssignCommission={isAdmin ? (m, voucherId, expectedVersion) => { setAssignReason(""); setAssignTarget({ voucherId, managerId: m.id, managerName: m.name, expectedVersion: expectedVersion ?? null }); } : undefined}
                 assignBusy={assignCommission.isPending}
               />
             ) : (
@@ -433,6 +439,15 @@ export default function ManagerSalaryPage() {
             periodMonth={periodMonth} locked={monthLocked} fee={fee0} managers={managers}
             recurring={data?.extras.recurring ?? []} extrasAvailable={data?.extras.available ?? false} canEdit={canEditAmounts} />
         </QueryRegion>)}
+        <Dialog open={!!assignTarget} onOpenChange={open => { if (!open && !assignCommission.isPending) setAssignTarget(null); }}>
+          <DialogContent><DialogHeader><DialogTitle>Gán hoa hồng vào lương</DialogTitle><DialogDescription>Gán phiếu cho {assignTarget?.managerName}. Ghi rõ lý do chuyển khoản hoa hồng này sang trả qua lương.</DialogDescription></DialogHeader>
+            <CommissionReasonField id="salary-commission-reason" value={assignReason} onChange={setAssignReason} />
+            <DialogFooter><Button variant="outline" onClick={() => setAssignTarget(null)} disabled={assignCommission.isPending}>Đóng</Button>
+              <Button disabled={!assignTarget || !isCommissionReasonValid(assignReason) || assignCommission.isPending} onClick={() => {
+                if (assignTarget) assignCommission.mutate({ ...assignTarget, reason: assignReason }, { onSuccess: () => setAssignTarget(null) });
+              }}>Gán quản lý</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
         {amountEdit && <SalaryAmountEditDialog m={amountEdit.m} line={amountEdit.line} periodMonth={periodMonth} onClose={() => setAmountEdit(null)} />}
         {adjDialog && <AdjustDialog m={adjDialog.m} edit={adjDialog.edit} onClose={() => setAdjDialog(null)}
           onSave={(p) => onSaveAdjustment(adjDialog.m.id, p)} />}

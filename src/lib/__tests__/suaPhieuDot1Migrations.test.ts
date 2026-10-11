@@ -2,12 +2,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { boChuThichSql } from "../../../scripts/lib/bo-chu-thich.mjs";
 
 // =============================================================================
 // Đợt 1 "sửa phiếu thu chi" (25/09/2026) — kiểm tĩnh các migration.
 //
 // Khẳng định VỀ HÀNH VI hàm đọc thân ĐANG CHẠY = lần CREATE cuối cùng trên toàn
-// bộ thư mục migration (khuôn thanHamDangChay, xem
+// bộ thư mục migration, hoặc bản private được wrapper cuối cùng thật sự gọi
+// sau khi đã chứng minh bước copy và truyền nguyên tham số (khuôn thanHamDangChay, xem
 // scripts/check-migration-test-liveness.mjs); khẳng định về CẤU TRÚC một file
 // thì đọc đúng file đó.
 // =============================================================================
@@ -15,27 +17,117 @@ import { describe, expect, it } from "vitest";
 const MIG_DIR = join(process.cwd(), "supabase", "migrations");
 
 function docFile(ten: string): string {
-  const f = readdirSync(MIG_DIR).find((x) => x.endsWith(`_${ten}.sql`));
+  const f = migrationCorpus.find((migration) => migration.file.endsWith(`_${ten}.sql`));
   expect(f, `không thấy migration *_${ten}.sql`).toBeTruthy();
-  return readFileSync(join(MIG_DIR, f as string), "utf8");
+  return f!.sql;
 }
 
 /** Bỏ chú thích `--` để chữ trong comment không làm test báo đạt. */
 const boChuThich = (s: string) => s.replace(/--[^\n]*/g, "");
 
+type MigrationSql = { file: string; sql: string };
+const migrationCorpus: MigrationSql[] = readdirSync(MIG_DIR)
+  .filter((file) => file.endsWith(".sql"))
+  .sort()
+  .map((file) => ({ file, sql: readFileSync(join(MIG_DIR, file), "utf8") }));
+
+// Cache by immutable SQL text, not corpus/object identity: a mutated body must
+// always be parsed again, while unchanged migrations can share comment removal.
+const strippedSqlCache = new Map<string, string>();
+function sqlWithoutComments(sql: string): string {
+  const cached = strippedSqlCache.get(sql);
+  if (cached !== undefined) return cached;
+  const stripped = boChuThichSql(sql);
+  strippedSqlCache.set(sql, stripped);
+  return stripped;
+}
+const staticFunctionBodies = new Map<string, string>();
+
+function liveDefinition(name: string, corpus: MigrationSql[]): { sql: string; body: string } | undefined {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^[ \\t]*CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${escaped}\\s*\\([\\s\\S]*?\\bAS\\s+(\\$[A-Za-z0-9_]*\\$)([\\s\\S]*?)\\1\\s*;`, "gim");
+  let latest: { sql: string; body: string } | undefined;
+  for (const migration of [...corpus].sort((a, b) => a.file.localeCompare(b.file))) {
+    for (const match of sqlWithoutComments(migration.sql).matchAll(pattern)) latest = { sql: match[0], body: match[2] };
+  }
+  return latest;
+}
+
+/** Resolve the actual copied delegate, never a hard-coded historical migration. */
+function thanHamSuaPhieuDelegated(corpus: MigrationSql[]): string {
+  const publicName = "public.revise_pending_income_expense_v1";
+  const privateName = "app_private.commission_reason_revise_before_v1";
+  const compact = (text: string) => text.replace(/\s/g, "");
+  const wrapper = liveDefinition(publicName, corpus);
+  expect(wrapper, "latest public revise wrapper must exist").toBeDefined();
+  // Fail closed if a future wrapper skips the delegate, changes arguments, adds
+  // a bypass, or returns a fabricated receipt. Comments do not count as calls.
+  expect(compact(wrapper!.body), "revise wrapper must delegate unchanged arguments and return its receipt").toBe(compact(`
+    DECLARE ctx uuid;r jsonb;BEGIN
+      ctx:=app_private.begin_existing_commission_reason_v1(p_voucher,'EDIT_PENDING',p_reason);
+      r:=app_private.commission_reason_revise_before_v1(p_voucher,p_expected_approval_version,p_patch,p_items,p_reason,p_idempotency_key);
+      DELETE FROM app_private.commission_reason_contexts WHERE context_id=ctx;RETURN r;
+    END
+  `));
+
+  const ordered = [...corpus].sort((a, b) => a.file.localeCompare(b.file));
+  const pair = `ARRAY['${publicName}(uuid,bigint,jsonb,jsonb,text,text)','${privateName}']`;
+  const copies = ordered.flatMap((migration, index) => {
+    const sql = sqlWithoutComments(migration.sql);
+    return [...sql.matchAll(/DO\s+\$copy\$[\s\S]*?\$copy\$;/gi)]
+      .filter((match) => compact(match[0]).includes(pair))
+      .map((match) => ({ index, sql, start: match.index!, block: match[0] }));
+  });
+  expect(copies, "exact source-signature/delegate copy must exist once").toHaveLength(1);
+  const copy = copies[0];
+  // Model only the proven copy engine: capture the then-current definition if
+  // the delegate is absent, rename only its function name, then revoke clients.
+  const engine = copy.block.replace(/FOREACH pair SLICE 1 IN ARRAY ARRAY\[[\s\S]*?\]\s*LOOP/i, "FOREACH <pairs> LOOP");
+  expect(compact(engine), "delegate must preserve the captured function body").toBe(compact(String.raw`
+    DO $copy$ DECLARE pair text[];f text;BEGIN
+      FOREACH <pairs> LOOP
+        IF to_regprocedure(pair[2]||substring(pair[1] FROM '\(.*$')) IS NULL THEN
+          IF to_regprocedure(pair[1]) IS NULL THEN RAISE EXCEPTION 'Thiếu writer phụ thuộc: %',pair[1]; END IF;
+          f:=pg_get_functiondef(pair[1]::regprocedure);
+          f:=replace(f,split_part(pair[1],'(',1)||'(',pair[2]||'(');
+          EXECUTE f;
+        END IF;
+        EXECUTE 'ALTER FUNCTION '||pair[2]||substring(pair[1] FROM '\(.*$')||' OWNER TO postgres';
+        EXECUTE 'REVOKE ALL ON FUNCTION '||pair[2]||substring(pair[1] FROM '\(.*$')||' FROM PUBLIC,anon,authenticated,service_role';
+      END LOOP;
+    END $copy$;
+  `));
+  // A later explicit private replacement is live. If one existed before the
+  // copy, its IF-ABSENT guard also preserves it. Otherwise capture exactly the
+  // public definition preceding the copy, including earlier changes in its file.
+  const explicitDelegate = liveDefinition(privateName, ordered);
+  if (explicitDelegate) return explicitDelegate.sql;
+  const beforeCopy = [...ordered.slice(0, copy.index), { file: ordered[copy.index].file, sql: copy.sql.slice(0, copy.start) }];
+  const captured = liveDefinition(publicName, beforeCopy);
+  expect(captured, "copy must capture an existing canonical implementation").toBeDefined();
+  return captured!.sql.replace(`${publicName}(`, `${privateName}(`);
+}
+
 function thanHamDangChay(tenHam: string, schema = "public"): string {
+  const key = `${schema}.${tenHam}`;
+  const cached = staticFunctionBodies.get(key);
+  if (cached !== undefined) return cached;
+  // Only the fixed on-disk snapshot uses this result cache. Mutation tests call
+  // thanHamSuaPhieuDelegated directly and re-resolve every supplied corpus.
+  if (schema === "public" && tenHam === "revise_pending_income_expense_v1") {
+    const delegated = thanHamSuaPhieuDelegated(migrationCorpus);
+    staticFunctionBodies.set(key, delegated);
+    return delegated;
+  }
   // Chỉ tính file có CREATE thật ở đầu dòng: GRANT/DROP/chú thích nhắc tên hàm
   // không phải định nghĩa.
   const create = new RegExp(
     `^[ \\t]*CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${tenHam}\\(`,
     "gim",
   );
-  const files = readdirSync(MIG_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
   let hit: string | null = null;
-  for (const f of files) {
-    const body = readFileSync(join(MIG_DIR, f), "utf8");
+  for (const migration of migrationCorpus) {
+    const body = migration.sql;
     create.lastIndex = 0;
     if (create.test(body)) hit = body;
   }
@@ -49,7 +141,9 @@ function thanHamDangChay(tenHam: string, schema = "public"): string {
   const open = body.indexOf(tag, start);
   const close = body.indexOf(tag, open + tag.length);
   expect(close, `${schema}.${tenHam}`).toBeGreaterThan(open);
-  return boChuThich(body.slice(start, close + tag.length));
+  const definition = boChuThich(body.slice(start, close + tag.length));
+  staticFunctionBodies.set(key, definition);
+  return definition;
 }
 
 /**
@@ -72,6 +166,31 @@ function kiemKhungFile(sql: string) {
   );
   expect(code).not.toMatch(/ALTER\s+TABLE\s+public\.income_expenses\s+ADD\s+COLUMN/i);
 }
+
+describe("revise delegate resolver remains live", () => {
+  const delegateCall = "r:=app_private.commission_reason_revise_before_v1(p_voucher,p_expected_approval_version,p_patch,p_items,p_reason,p_idempotency_key);";
+
+  it.each([
+    ["removed delegation", delegateCall, "r:='{}'::jsonb;"],
+    ["changed forwarded reason", delegateCall, delegateCall.replace(",p_reason,", ",NULL,")],
+    ["copy mutates the canonical body", "f:=pg_get_functiondef(pair[1]::regprocedure);", "f:=pg_get_functiondef(pair[1]::regprocedure); f:=replace(f,'FOR UPDATE','');"],
+  ])("rejects %s instead of silently testing an older body", (_name, from, to) => {
+    const mutated = migrationCorpus.map((migration) => ({ ...migration, sql: migration.sql.replace(from, to) }));
+    expect(mutated.some((migration, index) => migration.sql !== migrationCorpus[index].sql)).toBe(true);
+    expect(() => thanHamSuaPhieuDelegated(mutated)).toThrow();
+  });
+
+  it("a new private implementation without CAS fails the existing business assertion", () => {
+    const canonical = thanHamSuaPhieuDelegated(migrationCorpus);
+    const withoutCas = canonical.replace("v_row.approval_version IS DISTINCT FROM p_expected_approval_version", "false");
+    expect(withoutCas).not.toBe(canonical);
+    const mutated = [...migrationCorpus, { file: "99999999999999_private_revise_probe.sql", sql: withoutCas }];
+    expect(thanHamSuaPhieuDelegated(mutated)).toBe(withoutCas);
+    expect(() => expect(thanHamSuaPhieuDelegated(mutated)).toMatch(
+      /v_row\.approval_version IS DISTINCT FROM p_expected_approval_version THEN\s+RAISE EXCEPTION '[^']*' USING ERRCODE = 'PT409'/,
+    )).toThrow();
+  });
+});
 
 // ── M1: mã phiếu duy nhất ────────────────────────────────────────────────────
 

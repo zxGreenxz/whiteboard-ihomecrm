@@ -1,7 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 const rpcMock = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: rpcMock } }));
-import { commissionFollowupPageSchema, runTrackedCommissionCreation, prepareCommissionCreations, executeCommissionCreation } from '../contractCommissionFollowup';
+import { commissionFollowupPageSchema, commissionFollowupSchema, runTrackedCommissionCreation, prepareCommissionCreations, executeCommissionCreation } from '../contractCommissionFollowup';
+
+it('retains preparation evidence without a voucher and rejects evidence from another request', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const preparation = { request_id: id, reason: 'Thỏa thuận tiền hoa hồng riêng', actor_name: 'Người lập thử', created_at: '2026-10-11T03:00:00+00:00', stage: 'REPREPARE' };
+  const row = { contract_id: id, contract_number: null, building_id: id, building_name: 'Tòa thử', room_name: 'Phòng thử', kind: 'broker',
+    state: 'FAILED', last_reason: 'Sổ quỹ chưa khả dụng.', last_at: null, last_actor: null, attempted_amount: 100,
+    can_manage: true, voucher_id: null, voucher_code: null, voucher_status: null, events: [], request_id: id, preparation };
+  expect(commissionFollowupSchema.parse(row).preparation).toEqual(preparation);
+  expect(() => commissionFollowupSchema.parse({ ...row, request_id: '22222222-2222-4222-8222-222222222222' })).toThrow(/không khớp/);
+  expect(commissionFollowupSchema.parse({ ...row, preparation: null }).preparation).toBeNull();
+});
 
 describe('commission creation retains a server-side recovery trail', () => {
   const input = { contractId: '11111111-1111-4111-8111-111111111111', kind: 'sale' as const, amount: 500000 };
@@ -51,6 +62,11 @@ describe('commission creation retains a server-side recovery trail', () => {
 describe('durable creation boundary',()=>{
  const org='11111111-1111-4111-8111-111111111111', contract='22222222-2222-4222-8222-222222222222';
  const payload={contract_id:contract,kind:'broker' as const,amount:100,voucher_date:'2026-09-29'};
+ it('persists an intervention reason with the immutable prepared request',async()=>{
+  rpcMock.mockImplementationOnce(async(_name,args)=>({data:args.p_intents.map((i:{contract_id:string;kind:string;request_id:string})=>({contract_id:i.contract_id,kind:i.kind,request_id:i.request_id})),error:null}));
+  await prepareCommissionCreations(org,[{...payload,commission_reason:'  Theo thỏa thuận môi giới  '}]);
+  expect(rpcMock.mock.lastCall?.[1].p_intents[0]).toMatchObject({amount:100,commission_reason:'Theo thỏa thuận môi giới'});
+ });
  it('keeps a linked canonical FAILED envelope as a safe failure, never a receipt',async()=>{
   rpcMock.mockResolvedValueOnce({data:{status:'FAILED',id:null,code:null,operation_id:contract},error:null} as never);
   await expect(executeCommissionCreation(org,{contract_id:contract,kind:'sale',request_id:org})).rejects.toThrow(/chưa tạo/i);

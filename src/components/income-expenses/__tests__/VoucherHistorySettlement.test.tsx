@@ -31,3 +31,4 @@ describe("VoucherHistoryDialog settlement history", () => {
     expect(screen.getByRole("link", { name: "Phiếu hoàn tiền" }).getAttribute("href")).toContain("000000000005");
   });
 });
+vi.mock('@/hooks/useCommissionAudit',()=>({useCommissionAudit:()=>({data:[],isLoading:false,isError:false,refetch:vi.fn()})}));

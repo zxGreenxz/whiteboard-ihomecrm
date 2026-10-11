@@ -9,7 +9,7 @@ import type {UpdateContractPayload} from '@/hooks/useContracts';
 
 type RelationPhase='reconciling'|'not-started'|'deleting'|'deleted'|'inserting'|'done'|'rejected';
 type CorePhase='not-started'|'sending'|'done'|'rejected';
-export interface ContractEditRequest extends ContractRelationSnapshot {contractId:string;updates:UpdateContractPayload;fieldsFingerprint:string;expectedCustomers?:ContractRelationSnapshot['customers']}
+export interface ContractEditRequest extends ContractRelationSnapshot {contractId:string;updates:UpdateContractPayload;fieldsFingerprint:string;expectedCustomers?:ContractRelationSnapshot['customers'];commissionChangeReason?:string}
 export interface ContractEditJob extends ContractEditRequest {
  version:1;actorId:string;attemptId:string;organizationId:string;corePhase:CorePhase;customersPhase:RelationPhase;servicesPhase:RelationPhase;
  baseline:ContractRelationSnapshot;startedAt:string;
@@ -18,7 +18,7 @@ export interface ContractEditSnapshot extends ContractRelationSnapshot {contract
 export interface ContractRelationWriteProgress {skipDelete?:boolean;organizationId?:string;expectedCustomers?:ContractRelationSnapshot['customers'];onPhase?:(phase:'reconciling'|'deleting'|'deleted'|'inserting'|'done')=>void}
 export interface ContractEditPorts {
  read:(contractId:string)=>Promise<ContractEditSnapshot>;
- update:(input:{id:string;updates:UpdateContractPayload;suppressSuccessToast:true})=>Promise<unknown>;
+ update:(input:{id:string;updates:UpdateContractPayload;suppressSuccessToast:true;commissionChangeReason?:string})=>Promise<unknown>;
  customers:(input:{contractId:string;customers:ContractRelationSnapshot['customers']}&ContractRelationWriteProgress)=>Promise<unknown>;
  services:(input:{contractId:string;services:ContractRelationSnapshot['services']}&ContractRelationWriteProgress)=>Promise<unknown>;
  onJob?:(job:ContractEditJob|null)=>void;
@@ -28,7 +28,7 @@ const service=z.object({service_id:z.string().min(1),unit_price:z.number().finit
 const relations=z.object({customers:z.array(customer),services:z.array(service)});
 const updatesSchema=z.object({room_id:z.string().optional(),signed_date:z.string().optional(),start_date:z.string().optional(),end_date:z.string().optional(),rent_price:z.number().finite().nonnegative().optional(),total_deposit:z.number().finite().nonnegative().optional(),payment_cycle:z.enum(['MONTHLY','QUARTERLY','SEMI_ANNUAL','ANNUAL']).optional(),start_billing_date:z.string().nullable().optional(),end_billing_date:z.string().nullable().optional(),contract_template_id:z.string().nullable().optional(),invoice_template_id:z.string().nullable().optional(),notes:z.string().nullable().optional(),discounts:z.object({months:z.number().finite(),amount_per_month:z.number().finite()}).nullable().optional()}).strict();
 const phase=z.enum(['reconciling','not-started','deleting','deleted','inserting','done','rejected']);
-const jobSchema=relations.extend({version:z.literal(1),actorId:z.string().min(1),attemptId:z.string().min(1),contractId:z.string().min(1),organizationId:z.string().min(1),fieldsFingerprint:z.string(),updates:updatesSchema,corePhase:z.enum(['not-started','sending','done','rejected']),customersPhase:phase,servicesPhase:phase,baseline:relations,startedAt:z.string().refine(value=>Number.isFinite(Date.parse(value)))});
+const jobSchema=relations.extend({version:z.literal(1),actorId:z.string().min(1),attemptId:z.string().min(1),contractId:z.string().min(1),organizationId:z.string().min(1),fieldsFingerprint:z.string(),updates:updatesSchema,commissionChangeReason:z.string().trim().min(8).max(2000).optional(),corePhase:z.enum(['not-started','sending','done','rejected']),customersPhase:phase,servicesPhase:phase,baseline:relations,startedAt:z.string().refine(value=>Number.isFinite(Date.parse(value)))});
 const key=(actorId:string,id:string)=>`ihome:contract-edit-pending:v1:${encodeURIComponent(actorId)}:${encodeURIComponent(id)}`;
 const active=new Set<string>();
 function readJob(actorId:string,id:string):ContractEditJob|null {
@@ -76,7 +76,7 @@ export async function runContractEdit(request:ContractEditRequest,ports:Contract
   else if(current.corePhase==='sending'||current.corePhase==='done')throw issue(current,'thông tin hợp đồng');
   else {
    current.corePhase='sending';persist();
-   try{const receipt=await ports.update({id:current.contractId,updates:current.updates,suppressSuccessToast:true});
+   try{const receipt=await ports.update({id:current.contractId,updates:current.updates,suppressSuccessToast:true,...(current.commissionChangeReason?{commissionChangeReason:current.commissionChangeReason}:{})});
     if(!receipt||typeof receipt!=='object'||(receipt as {id?:unknown}).id!==current.contractId||!sameContractFields(receipt as Record<string,unknown>,current.updates))throw new TypeError('Chưa xác nhận được thông tin hợp đồng vừa cập nhật.');
     current.corePhase='done';persist();
    }catch(error){if(isConfirmedFinancialRejection(error)){

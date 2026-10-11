@@ -114,11 +114,12 @@ export const useUpdateBuilding = (options:{silentSuccess?:boolean}={}) => {
   const queryClient=useQueryClient();const refresh=()=>queryClient.invalidateQueries({queryKey:['buildings']});
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn:async({id,updates}:{id:string;updates:BuildingUpdate})=>{
-      const {data,error}=await supabase.from('buildings').update(updates).eq('id',id).select().single();
+    mutationFn:async({id,updates,commissionChangeReason}:{id:string;updates:BuildingUpdate;commissionChangeReason?:string})=>{
+      const payload = commissionChangeReason ? {...updates,commission_change_reason:commissionChangeReason.trim()} : updates;
+      const {data,error}=await supabase.from('buildings').update(payload).eq('id',id).select().single();
       if(error)throw error;confirmedRecordId(data,'cập nhật tòa nhà',id);return data;
     },
-    onSuccess:data=>{refresh();if(!options.silentSuccess)toast.success(`Đã cập nhật tòa nhà ${data.name || data.id}`);},
+    onSuccess:data=>{refresh();queryClient.invalidateQueries({queryKey:['commission-prefill']});queryClient.invalidateQueries({queryKey:['commission-interventions']});if(!options.silentSuccess)toast.success(`Đã cập nhật tòa nhà ${data.name || data.id}`);},
     onError:error=>{refresh();toast.error('Chưa cập nhật được tòa nhà',{description:recordWriteMessage(error,'cập nhật tòa nhà')});},
   });
 };

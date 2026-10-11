@@ -10,7 +10,7 @@ vi.mock('@/hooks/useDocumentTemplates',()=>({useDocumentTemplatesByType:()=>({})
 vi.mock('../BuildingAddressSection',()=>({default:({setValue}:{setValue:(key:string,value:string)=>void})=><button type="button" onClick={()=>{for(const key of ['province','district','ward','street_address'])setValue(key,'Fixture');}}>Địa chỉ thử</button>}));
 vi.mock('../BuildingGeoSection',()=>({default:()=>null}));
 vi.mock('../BuildingServicesSection',()=>({default:()=>null}));
-vi.mock('../CommissionTiersField',()=>({CommissionTiersField:()=>null}));
+vi.mock('../CommissionTiersField',()=>({CommissionTiersField:({onChange}:{onChange:(value:{min_months:number;max_months:number;rate_percent:number}[])=>void})=><button type="button" onClick={()=>onChange([{min_months:5,max_months:6,rate_percent:55}])}>Đổi mức hoa hồng thử</button>}));
 vi.mock('@/components/residence/BuildingOwnershipDocs',()=>({default:()=>null}));
 vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
@@ -24,6 +24,19 @@ beforeEach(()=>{localStorage.clear();localStorage.setItem('ihomecrm.selectedOrga
 afterEach(()=>{cleanup();vi.resetAllMocks();});
 // Sổ nhận TK/TT của toà chỉ cài ở màn "Sổ nhận tiền" (đợt 1 sửa phiếu): form toà không được gửi hai cột này, kể cả null.
 const COT_SO_NHAN = ['default_account_id_tk','default_account_id_tt'];
+it('đổi cấu hình hoa hồng phải nhập lý do trước mọi bước ghi và gửi lý do cùng thay đổi',async()=>{
+ io.load.mockResolvedValue(null);io.update.mockResolvedValue({id:'toa-sua'});io.services.mockResolvedValue(undefined);
+ const toa={id:'toa-sua',name:'Toà sửa',code:'TS',province:'Tỉnh',district:'Quận',ward:'Phường',street_address:'1 Đường',status:'ACTIVE',has_elevator:false,commission_tiers:[{min_months:5,max_months:6,rate_percent:50}]} as unknown as BuildingWithRelations;
+ render(<BuildingFormDialog open onOpenChange={vi.fn()} building={toa}/>);
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Lưu'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Đổi mức hoa hồng thử'}));
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));
+ await screen.findByText('Nhập lý do cụ thể từ 8 đến 2.000 ký tự để lưu lịch sử hoa hồng.');
+ expect(io.update).not.toHaveBeenCalled();expect(io.save).not.toHaveBeenCalled();expect(io.services).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByLabelText(/Lý do/),{target:{value:'Áp dụng mức mới theo thỏa thuận'}});
+ fireEvent.click(screen.getByRole('button',{name:'Lưu'}));
+ await waitFor(()=>expect(io.update).toHaveBeenCalledWith(expect.objectContaining({commissionChangeReason:'Áp dụng mức mới theo thỏa thuận',updates:expect.objectContaining({commission_tiers:[{min_months:5,max_months:6,rate_percent:55}]})})));
+});
 it('retries a failed owner save against the created building without creating a duplicate',async()=>{
  io.create.mockResolvedValue({id:'created-once'});io.services.mockResolvedValue(undefined);io.load.mockResolvedValue(null);
  io.save.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);

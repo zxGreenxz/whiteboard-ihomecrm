@@ -23,11 +23,13 @@ import {runContractEdit,readContractEditSnapshot} from '@/lib/contractEditWorkfl
 import {workflowErrorMessage} from '@/lib/financialWorkflow';
 import { supportPlanInputSchema } from '@/lib/rentSupport';
 import type { ContractFormState } from "./useContractFormState";
+import { hasCommissionBasisChange, isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
 
 interface UseContractSubmitParams {
   state: ContractFormState;
   formRoot?:()=>HTMLElement|null;
   contract?: ContractWithRelations;
+  commissionChangeReason?: string;
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
@@ -57,6 +59,7 @@ export function useContractSubmit({
   state,
   formRoot,
   contract,
+  commissionChangeReason,
   onOpenChange,
   onCreated,
   onCreateRequest,
@@ -156,6 +159,12 @@ export function useContractSubmit({
     );
 
     if (isEditMode && contract) {
+      const basisChanged = hasCommissionBasisChange(contract, data);
+      if (!recoveringEdit && basisChanged && !isCommissionReasonValid(commissionChangeReason)) {
+        form.setError('root.server', {type:'validation',message:COMMISSION_REASON_MESSAGE});
+        toast.error('Chưa lưu thay đổi căn cứ hoa hồng', {description:COMMISSION_REASON_MESSAGE});
+        focusField('contract-commission-reason');return;
+      }
       if (data.rent_support) {
         toast.error('Lịch hỗ trợ đã ký cần điều chỉnh có phiên bản và lý do. Dùng luồng điều chỉnh lịch hỗ trợ để tiếp tục.');
         return;
@@ -188,7 +197,7 @@ export function useContractSubmit({
       };
 
       state.setEditSubmitting?.(true);
-      void runContractEdit({contractId:contract.id,expectedCustomers:state.editCustomerBaselineRef?.current??undefined,updates,fieldsFingerprint:JSON.stringify(data),customers,services},{
+      void runContractEdit({contractId:contract.id,expectedCustomers:state.editCustomerBaselineRef?.current??undefined,updates,fieldsFingerprint:JSON.stringify(data),customers,services,commissionChangeReason:basisChanged?commissionChangeReason?.trim():undefined},{
         read:readContractEditSnapshot,
         update:input=>updateContract.mutateAsync(input),
         customers:input=>syncCustomers.mutateAsync(input),

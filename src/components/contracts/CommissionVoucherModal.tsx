@@ -39,8 +39,11 @@ import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
 import { useContractCommissionFollowups } from "@/hooks/useContractCommissionFollowup";
 import { useContractRentSupport } from '@/hooks/useContractRentSupport';
 import { RentSupportPayoutForm } from './RentSupportPayoutForm';
-import { safeCommissionReason } from '@/lib/contractCommissionFollowup';
-import type { CommissionKind, PreparedCommissionRequest, ContractCommissionFollowup } from '@/lib/contractCommissionFollowup';
+import { CommissionAmountReview } from './CommissionAmountReview';
+import { CommissionRequestEvidence } from './CommissionRequestEvidence';
+import { commissionItemDescription, commissionNeedsReason, commissionReasonValid, defaultCommissionAmount } from '@/lib/commissionCreationPolicy';
+import { safeCommissionReason, matchesCommissionReplacement } from '@/lib/contractCommissionFollowup';
+import type { CommissionKind, PreparedCommissionRequest, ContractCommissionFollowup, CommissionReplacement } from '@/lib/contractCommissionFollowup';
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/contexts/OrganizationContext";
@@ -54,6 +57,7 @@ interface CommissionVoucherModalProps {
   contractId: string | null;
   onOpenChange: (open: boolean) => void;
   onlyKind?: CommissionKind;
+  replacementRequestId?: string;
 }
 
 function formatVND(n: number): string {
@@ -165,6 +169,7 @@ export function CommissionVoucherModal({
   contractId,
   onOpenChange,
   onlyKind,
+  replacementRequestId,
 }: CommissionVoucherModalProps) {
   const { selectedOrganizationId } = useOrganization();
   const {
@@ -203,6 +208,10 @@ export function CommissionVoucherModal({
   const modalRef=useRef<HTMLDivElement>(null);
   const [managerErrors,setManagerErrors]=useState<Record<string,string>>({});
   const [createdKinds, setCreatedKinds] = useState<string[]>([]);
+  const [localReplacement, setLocalReplacement] = useState<CommissionReplacement | null>(null);
+  const replacement = localReplacement ?? (replacementRequestId && onlyKind ? { kind: onlyKind, requestId: replacementRequestId } : null);
+  const activeKind = replacement?.kind ?? onlyKind;
+  const [replacementLoaded, setReplacementLoaded] = useState<string | null>(null);
   const [observedRows, setObservedRows] = useState<ContractCommissionFollowup[]>();
   const [savedRequests, setSavedRequests] = useState<Partial<Record<CommissionKind, PreparedCommissionRequest>>>({});
   useEffect(() => { setObservedRows(undefined); }, [followups.data?.rows]);
@@ -210,16 +219,16 @@ export function CommissionVoucherModal({
   const brokerFollowup = rows?.find(row => row.kind === 'broker');
   const saleFollowup = rows?.find(row => row.kind === 'sale');
   const hasSavedIntent = (row: ContractCommissionFollowup | undefined) => !!row?.request_id && (!!row.can_retry || row.state === 'PROCESSING');
-  const brokerSaved = !!savedRequests.broker || hasSavedIntent(brokerFollowup);
-  const saleSaved = !!savedRequests.sale || hasSavedIntent(saleFollowup);
+  const brokerSaved = !!savedRequests.broker || hasSavedIntent(brokerFollowup) && !matchesCommissionReplacement(brokerFollowup, replacement);
+  const saleSaved = !!savedRequests.sale || hasSavedIntent(saleFollowup) && !matchesCommissionReplacement(saleFollowup, replacement);
   const resolved = (row: typeof brokerFollowup) => row?.state === 'VOUCHER_CREATED' || row?.state === 'NOT_APPLICABLE' || row?.state === 'SETTLED_BY_SUPPORT';
   const brokerDone = !!existingBroker || resolved(brokerFollowup) || createdKinds.includes('broker');
   const saleDone = !!existingSale || salePaidElsewhere || saleBonus?.settledBySupport || resolved(saleFollowup) || createdKinds.includes('sale');
-  const brokerEditable = onlyKind !== 'sale' && !brokerDone && !brokerSaved;
-  const saleEditable = onlyKind !== 'broker' && !saleDone && !saleSaved;
+  const brokerEditable = activeKind !== 'sale' && !brokerDone && !brokerSaved;
+  const saleEditable = activeKind !== 'broker' && !saleDone && !saleSaved;
   const checkingVouchers = vouchersQuery.isLoading || saleQuery.isLoading || followups.isLoading;
   const checkFailed = vouchersQuery.isError || saleQuery.isError || followups.isError;
-  const canCreate = onlyKind === 'broker' ? !!brokerFollowup?.can_manage : onlyKind === 'sale' ? !!saleFollowup?.can_manage
+  const canCreate = activeKind === 'broker' ? !!brokerFollowup?.can_manage : activeKind === 'sale' ? !!saleFollowup?.can_manage
     : !!brokerFollowup?.can_manage && !!saleFollowup?.can_manage;
   const supportRead = useContractRentSupport({ contractIds: contractId ? [contractId] : [], enabled: open && !!contractId && canCreate });
   const supportPlan = supportRead.data?.rows.find(row => row.contract_id === contractId);
@@ -239,6 +248,8 @@ export function CommissionVoucherModal({
 
   // Mục 2 — Đơn vị MG
   const [brokerAmount, setBrokerAmount] = useState<number>(0);
+  const [brokerReason, setBrokerReason] = useState('');
+  const [showReasonErrors, setShowReasonErrors] = useState(false);
   const [brokerName, setBrokerName] = useState<string>("");
   const [brokerAccountNumber, setBrokerAccountNumber] = useState<string>("");
   const [brokerBank, setBrokerBank] = useState<string>("");
@@ -250,6 +261,7 @@ export function CommissionVoucherModal({
   // Mục 3 — Sale (optional). Sổ quỹ riêng: mặc định theo sổ quỹ chung (mục 1),
   // đổi được độc lập để chi thưởng nóng từ quỹ khác quỹ chi hoa hồng MG.
   const [saleAmount, setSaleAmount] = useState<number | "">("");
+  const [saleReason, setSaleReason] = useState('');
   const [saleName, setSaleName] = useState<string>("");
   const [saleAccountNumber, setSaleAccountNumber] = useState<string>("");
   const [saleBank, setSaleBank] = useState<string>("");
@@ -314,6 +326,7 @@ export function CommissionVoucherModal({
     }
 
     setBrokerName("");
+    setBrokerReason(''); setSaleReason(''); setShowReasonErrors(false);
     setBrokerAccountNumber("");
     setBrokerBank("");
     setBrokerRecipient("");
@@ -355,14 +368,9 @@ export function CommissionVoucherModal({
       : `${t.rate_percent}% tiền phòng (vượt mốc, áp dụng mốc cao nhất ${t.min_months}-${t.max_months} tháng)`;
   }, [prefill]);
 
-  // % hoa hồng hiển thị (owner decision 23/07): ưu tiên mốc cấu hình khớp;
-  // nếu không có mốc thì suy từ số tiền HH đang nhập / giá phòng.
-  const commissionPercent =
-    prefill?.matched_tier != null
-      ? Number(prefill.matched_tier.rate_percent)
-      : prefill && prefill.rent_price > 0 && brokerAmount > 0
-      ? (brokerAmount / prefill.rent_price) * 100
-      : null;
+  const commissionPercent = prefill?.matched_tier?.rate_percent ?? null;
+
+  const defaultBrokerAmount = prefill ? defaultCommissionAmount(prefill.rent_price, prefill.matched_tier?.rate_percent) : null;
 
   const [submitting, setSubmitting] = useState(false);
   const activeSubmission = useRef<symbol>();
@@ -370,16 +378,47 @@ export function CommissionVoucherModal({
     activeSubmission.current = undefined;
     setSubmitting(false);
     setSavedRequests({});
+    setLocalReplacement(null); setReplacementLoaded(null);
     setObservedRows(undefined);
     setSubmitError(null); setReceipts([]); setManagerErrors({});
     return () => { activeSubmission.current = undefined; };
   }, [open, contractId, selectedOrganizationId]);
+
+  // A replacement is an explicit new request with fresh contract/config facts.
+  // Never turn a transport failure into an automatic retry or erase its old request.
+  const replacementSources = useRef({ refetchPrefill, followups });
+  replacementSources.current = { refetchPrefill, followups };
+  useEffect(() => {
+    if (!open || !replacement || !contractId) return;
+    let current = true;
+    const request = replacement;
+    setReplacementLoaded(null); setSubmitError(null);
+    void Promise.all([replacementSources.current.refetchPrefill(), replacementSources.current.followups.refetch()]).then(([facts, fresh]) => {
+      if (!current) return;
+      const row = fresh.data?.rows.find(item => item.kind === request.kind);
+      if (facts.isError || !facts.data || facts.data.contract_id !== contractId || fresh.isError || !row?.can_manage || !matchesCommissionReplacement(row, request))
+        throw new Error('Yêu cầu cũ hoặc cấu hình đã thay đổi. Đóng form và đối chiếu lại trước khi lập yêu cầu mới.');
+      setObservedRows(fresh.data?.rows);
+      setBrokerAmount(defaultCommissionAmount(facts.data.rent_price, facts.data.matched_tier?.rate_percent) ?? 0);
+      setSaleAmount(''); setBrokerReason(''); setSaleReason(''); setShowReasonErrors(false);
+      setVoucherDate(facts.data.signed_date);
+      setReplacementLoaded(request.requestId);
+    }).catch(cause => { if (current) setSubmitError(voucherFailureMessage(cause, 'đối chiếu yêu cầu cần lập lại')); });
+    return () => { current = false; };
+  }, [open, contractId, replacement?.kind, replacement?.requestId]);
+
+  const startReplacement = (row: ContractCommissionFollowup) => {
+    if (!row.request_id || !row.can_manage || !['FAILED', 'UNKNOWN'].includes(row.state) || submitting) return;
+    setSavedRequests(current => { const next = { ...current }; delete next[row.kind]; return next; });
+    setLocalReplacement({ kind: row.kind, requestId: row.request_id });
+  };
 
   const handleSubmit = async () => {
     if (!validateInputDrafts(modalRef.current)) return;
     if (!prefill) return;
     if (submitting || activeSubmission.current) return;
     if (checkingVouchers || checkFailed || !canCreate || supportUnavailable || supportPlan?.kind === 'V2') return;
+    if (replacement && replacementLoaded !== replacement.requestId) return;
 
     const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
     // Loại đã có phiếu sống → skip (RPC + unique index vẫn chặn nếu lách)
@@ -406,6 +445,15 @@ export function CommissionVoucherModal({
       return;
     }
 
+    const reasonErrors: Record<string, string> = {};
+    if (willCreateBroker && (replacement?.kind === 'broker' || commissionNeedsReason(brokerAmount, defaultBrokerAmount)) && !commissionReasonValid(brokerReason))
+      reasonErrors['commission-reason-broker'] = 'Nhập lý do điều chỉnh hoa hồng từ 8 đến 2000 ký tự.';
+    if (willCreateSale && !commissionReasonValid(saleReason))
+      reasonErrors['commission-reason-sale'] = 'Nhập lý do thưởng Sale từ 8 đến 2000 ký tự.';
+    if (Object.keys(reasonErrors).length) {
+      setShowReasonErrors(true); void focusFirstError(reasonErrors, { root: modalRef.current }); return;
+    }
+
     setSubmitting(true);
     const submission = Symbol('commission submission');
     activeSubmission.current = submission;
@@ -425,7 +473,9 @@ export function CommissionVoucherModal({
       const liveSaleRow = liveRows.find(row => row.kind === 'sale');
       if ((willCreateBroker && !liveBroker) || (willCreateSale && !liveSaleRow))
         throw new Error('Chưa đọc đủ trạng thái hoa hồng của hợp đồng. Hãy đối chiếu lại trước khi tạo.');
-      if ((willCreateBroker && hasSavedIntent(liveBroker)) || (willCreateSale && hasSavedIntent(liveSaleRow))) {
+      if (replacement && !matchesCommissionReplacement(replacement.kind === 'broker' ? liveBroker : liveSaleRow, replacement))
+        throw new Error('Yêu cầu cần lập lại đã thay đổi. Đối chiếu yêu cầu mới nhất trước khi tiếp tục.');
+      if ((willCreateBroker && hasSavedIntent(liveBroker) && !matchesCommissionReplacement(liveBroker, replacement)) || (willCreateSale && hasSavedIntent(liveSaleRow) && !matchesCommissionReplacement(liveSaleRow, replacement))) {
         throw new Error('Yêu cầu đã được lưu ở lần xử lý khác. Dữ liệu đang nhập chưa được gửi; hãy dùng Tạo lại cho yêu cầu đã lưu.');
       }
       willCreateBroker = willCreateBroker && !!liveBroker?.can_manage && !resolved(liveBroker)
@@ -443,12 +493,13 @@ export function CommissionVoucherModal({
       if (willCreateBroker) selected.push({ ...common, kind: 'broker', account_id: accountId || null, amount: brokerAmount,
         payer_name: brokerName || null, recipient_name: brokerRecipient || null, recipient_bank: brokerBank || null,
         recipient_account_number: brokerAccountNumber || null, attachments: brokerAttachments, manager_id: brokerQl ? brokerManagerId : null,
-        item_description: prefill.matched_tier ? `Hoa hồng MG (${prefill.matched_tier.rate_percent}% tiền phòng × ${prefill.months} tháng HĐ)`
-          : `Hoa hồng MG (HĐ ${prefill.months} tháng — không khớp mốc cấu hình)` });
+        commission_reason: replacement?.kind === 'broker' || commissionNeedsReason(brokerAmount, defaultBrokerAmount) ? brokerReason.trim() : null,
+        item_description: commissionItemDescription({ amount: brokerAmount, rentPrice: prefill.rent_price, months: prefill.months, ratePercent: prefill.matched_tier?.rate_percent }) });
       if (willCreateSale) selected.push({ ...common, kind: 'sale', account_id: saleAccountId || null, amount: saleAmt,
         payer_name: saleName || null, recipient_name: saleRecipient || null, recipient_bank: saleBank || null,
         recipient_account_number: saleAccountNumber || null, attachments: saleAttachments, manager_id: saleQl ? saleManagerId : null,
-        item_description: `Thưởng nóng Sale HĐ ${prefill.months} tháng` });
+        commission_reason: saleReason.trim(),
+        item_description: `Thưởng nóng Sale ${formatVND(saleAmt)}; HĐ ${prefill.months} tháng` });
       // Prepare only newly entered kinds. From this point the accepted intent
       // is immutable and hidden form values cannot affect execute/retry.
       const prepared = await prepareVouchers.mutateAsync(selected);
@@ -525,7 +576,9 @@ export function CommissionVoucherModal({
     <div className="rounded-md border bg-muted/40 p-3 space-y-2 text-sm">
       <p>Yêu cầu đã được lưu. Tạo lại dùng đúng nội dung đã lưu, gồm lựa chọn quản lý trả qua lương nếu có.</p>
       {row?.attempted_amount != null && <p>Số tiền đã ghi nhận: {formatVND(row.attempted_amount)}</p>}
+      <CommissionRequestEvidence row={row} />
       {row?.last_reason && <p>{safeCommissionReason(row.last_reason)}</p>}
+      {row?.can_manage && row.request_id && ['FAILED', 'UNKNOWN'].includes(row.state) && <Button type="button" variant="outline" disabled={isPending} onClick={() => startReplacement(row)}>Lập lại yêu cầu {kind === 'broker' ? 'hoa hồng môi giới' : 'thưởng Sale'}</Button>}
       {row?.can_retry && row.request_id && ['FAILED', 'UNKNOWN'].includes(row.state)
         ? <Button type="button" variant="outline" disabled={isPending} onClick={() => void handleRetry(row)}>
           Tạo lại {kind === 'broker' ? 'hoa hồng môi giới' : 'thưởng Sale'}
@@ -547,8 +600,9 @@ export function CommissionVoucherModal({
         ? <LoadingState label="lịch hỗ trợ" rows={3} onRetry={() => void supportRead.refetch()} />
         : <><p role="alert">Chưa đọc được lịch hỗ trợ; tải lại trước khi lập phiếu.</p>
           <Button variant="outline" onClick={() => void supportRead.refetch()}>Tải lại lịch hỗ trợ</Button></>}</div>
-        : supportPlan && selectedOrganizationId && contractId && <RentSupportPayoutForm key={`${selectedOrganizationId}:${contractId}`} organizationId={selectedOrganizationId} contractId={contractId}
-          plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={onlyKind} userId={authUser?.id} />}
+        : replacement && replacementLoaded !== replacement.requestId ? <div className="p-6 text-sm" role="status">{submitError || 'Đang đối chiếu yêu cầu cũ và cấu hình hiện tại…'}</div>
+        : supportPlan && selectedOrganizationId && contractId && <RentSupportPayoutForm key={`${selectedOrganizationId}:${contractId}:${replacement?.requestId ?? ''}`} organizationId={selectedOrganizationId} contractId={contractId}
+          plan={supportPlan} prefill={prefill} rows={rows ?? []} refetchRows={followups.refetch} onlyKind={activeKind} userId={authUser?.id} replacement={replacement} onReplaceRequest={startReplacement} />}
       <DialogFooter className="px-6 pb-6"><Button variant="outline" onClick={() => onOpenChange(false)}>Để xử lý sau</Button></DialogFooter>
     </DialogContent></Dialog>
   );
@@ -601,6 +655,9 @@ export function CommissionVoucherModal({
                 </div> : !canCreate ? <p role="alert" className="text-sm text-muted-foreground">Bạn chưa có quyền xử lý hoa hồng của hợp đồng này.</p> : null}
               {/* Metadata HĐ (owner decision 2026-07-23): Phòng/Tòa, thời hạn
                   HĐ, giá phòng, % hoa hồng — read-only, không đổi logic tạo. */}
+              {replacement && <div className="rounded border border-amber-200 p-3 text-sm space-y-2"><p>Đang lập yêu cầu mới thay cho lần chưa hoàn tất. Nhập lý do lập lại; lịch sử yêu cầu cũ được giữ nguyên.</p>
+                <CommissionRequestEvidence row={replacement.kind === 'broker' ? brokerFollowup : saleFollowup} />
+              </div>}
               <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">Phòng / Tòa</span>
@@ -625,7 +682,7 @@ export function CommissionVoucherModal({
                 </div>
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">
-                    % hoa hồng (tính theo giá phòng)
+                    Tỷ lệ cấu hình hoa hồng
                   </span>
                   <span className="font-medium text-right">
                     {commissionPercent != null
@@ -702,7 +759,7 @@ export function CommissionVoucherModal({
               <Separator />
 
               {/* Mục 2: Đơn vị MG */}
-              {onlyKind !== 'sale' && <div className="space-y-3">
+              {activeKind !== 'sale' && <div className="space-y-3">
                 <h3 className="font-medium">2. ĐƠN VỊ MÔI GIỚI</h3>
                 {existingBroker ? (
                   <ExistingVoucherBanner
@@ -714,6 +771,7 @@ export function CommissionVoucherModal({
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền hoa hồng *</Label>
                     <CurrencyInput
+                      aria-label="Số tiền hoa hồng"
                       value={brokerAmount}
                       onChange={(v) => setBrokerAmount(v || 0)}
                     />
@@ -723,6 +781,8 @@ export function CommissionVoucherModal({
                       </p>
                     )}
                   </div>
+                  <CommissionAmountReview kind="broker" amount={brokerAmount} defaultAmount={defaultBrokerAmount}
+                    reason={brokerReason} onReason={setBrokerReason} showError={showReasonErrors} requireReason={replacement?.kind === 'broker'} />
                   <div className="space-y-1">
                     <Label className="text-xs">Tên đơn vị MG</Label>
                     <Input
@@ -784,7 +844,7 @@ export function CommissionVoucherModal({
               <Separator />
 
               {/* Mục 3: Sale optional */}
-              {onlyKind !== 'broker' && <div className="space-y-3">
+              {activeKind !== 'broker' && <div className="space-y-3">
                 <h3 className="font-medium">
                   3. THƯỞNG NÓNG SALE{" "}
                   <span className="text-xs text-muted-foreground font-normal">
@@ -824,6 +884,8 @@ export function CommissionVoucherModal({
                       </p>
                     )}
                   </div>
+                  <CommissionAmountReview kind="sale" amount={typeof saleAmount === 'number' ? saleAmount : 0} defaultAmount={null}
+                    reason={saleReason} onReason={setSaleReason} showError={showReasonErrors} requireReason={replacement?.kind === 'sale'} />
                   <div className="space-y-1">
                     <Label className="text-xs">Tên Sale</Label>
                     <Input
@@ -922,7 +984,7 @@ export function CommissionVoucherModal({
             className="bg-green-600 hover:bg-green-700"
             onClick={handleSubmit}
             disabled={
-              isPending || !prefill || checkingVouchers || checkFailed || !canCreate || supportUnavailable || (!brokerEditable && !saleEditable)
+              isPending || !prefill || checkingVouchers || checkFailed || !canCreate || supportUnavailable || (replacement != null && replacementLoaded !== replacement.requestId) || (!brokerEditable && !saleEditable)
             }
           >
             {isPending

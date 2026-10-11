@@ -19,13 +19,26 @@ import { useAnnotateIncomeExpense } from '../annotateMutations';
 import { useGenerateRecurringVouchers } from '../recurring';
 import { VoucherPartialError } from '@/lib/voucherFeedback';
 import {useIncomeExpenseFormBuildings,useIncomeExpenseFormRooms} from '@/hooks/useIncomeExpenseFormScope';
-import {assignCommissionManager} from '@/hooks/useCommissionManager';
+import {assignCommissionManager,useAssignCommissionManager} from '@/hooks/useCommissionManager';
+import {useReviseIncomeExpense} from '../revisions';
 type Mutation<T=unknown> = { mutationFn: (input: unknown) => Promise<T>; onSuccess: (data: unknown, input?: unknown) => unknown; onError: (error: unknown) => unknown };
 type ImportMutation=Mutation<Awaited<ReturnType<ReturnType<typeof useImportIncomeExpenses>['mutateAsync']>>>;
 type ReadResponse={data?:unknown;error:unknown};
 interface VoucherQuery {select:()=>VoucherQuery;eq:()=>VoucherQuery;maybeSingle:()=>Promise<ReadResponse>}
 const input = {type:'EXPENSE',name:'Sửa nước', shared_name:'Sửa nước',building_id:'b1',account_id:'a1',voucher_date:'2026-09-30',items:[{income_expense_type_id:'t1',quantity:1,unit_price:100,building_id:'b1',start_date:'2026-09-01',end_date:'2026-09-30'}]};
 beforeEach(() => { const values=new Map<string,string>();vi.stubGlobal("localStorage",{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>{values.set(k,v)},removeItem:(k:string)=>{values.delete(k)}}); localStorage.setItem("ihomecrm.selectedOrganizationId","o1"); vi.clearAllMocks(); h.rpc.mockReset(); h.from.mockReset(); });
+it.each([
+  ['sửa ghi chú',useAnnotateIncomeExpense,{id:'v1',changed:true}],
+  ['gán quản lý',useAssignCommissionManager,{voucher_id:'v1',moved:true}],
+  ['sửa phiếu',useReviseIncomeExpense,{id:'v1',changed:true,revision_no:2}],
+])('%s làm mới lịch sử hoa hồng sau lưu và khi chưa rõ kết quả',async(_label,hook,receipt)=>{
+  const mutation=renderHook(()=>hook()).result.current as unknown as Mutation;
+  await mutation.onSuccess(receipt,{silent:true});
+  expect(h.invalidate).toHaveBeenCalledWith({queryKey:['commission-interventions']});
+  h.invalidate.mockClear();
+  await mutation.onError(new TypeError('Failed to fetch'));
+  expect(h.invalidate).toHaveBeenCalledWith({queryKey:['commission-interventions']});
+});
 it('danh mục riêng của form phải giữ lỗi đọc để UI chặn lưu',async()=>{const error={code:'42501',message:'denied'};h.rpc.mockResolvedValue({data:null,error});for(const hook of [useIncomeExpenseFormBuildings,useIncomeExpenseFormRooms])await expect((hook() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toBe(error);});
 it('sinh phiếu định kỳ null không phải không có phiếu mới',async()=>{h.rpc.mockResolvedValue({data:null,error:null});await expect((useGenerateRecurringVouchers() as unknown as Mutation).mutationFn(null)).rejects.toThrow(/Chưa xác nhận/);});
 it('gán QL trả sai phiếu không được thành công',async()=>{
@@ -34,7 +47,7 @@ it('gán QL trả sai phiếu không được thành công',async()=>{
   const managerId='33333333-3333-4333-8333-333333333333';
   const accountId='44444444-4444-4444-8444-444444444444';
   h.rpc.mockResolvedValue({data:{voucher_id:wrongVoucherId,manager_id:managerId,account_id:accountId,approval_version:1,lap_lai:false,moved:true},error:null});
-  await expect(assignCommissionManager({voucherId,managerId})).rejects.toBeInstanceOf(TypeError);
+  await expect(assignCommissionManager({voucherId,managerId,reason:'Đối chiếu quản lý hưởng'})).rejects.toBeInstanceOf(TypeError);
 });
 
 describe('C01/C02/C09 — một thông báo đúng kết quả', () => {

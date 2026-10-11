@@ -192,6 +192,7 @@ export const useImportIncomeExpenses = () => {
       }
     },
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       if (result.failedCount > 0) {
         toast.warning(`Đã tạo ${result.successCount} phiếu${result.createdVouchers.length?": "+result.createdVouchers.map(v=>v.code??v.id).join(", "):""}; ${result.failedCount} dòng chưa hoàn tất. Xem lỗi từng dòng và đối chiếu trước khi nhập lại.`);
@@ -328,12 +329,14 @@ export const useCreateIncomeExpenseBatch = (options: {silent?:boolean} = {}) => 
       });
     },
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       if (!options.silent) toast.success(`Đã tạo ${result.voucherCount} phiếu trong một đợt. Xem trạng thái từng phiếu trong danh sách thu chi.`);
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       console.error("Error creating income expense batch:", error);
@@ -352,7 +355,9 @@ export const useCancelIncomeExpenseBatch = () => {
   const workflow=persistentFinancialWorkflow('voucher-batch-cancel');
 
   return useMutation({
-    mutationFn: async (batchId: string) => {
+    mutationFn: async (input: { batchId: string; reason: string }) => {
+      const { batchId, reason } = input;
+      if (reason.trim().length < 8 || reason.trim().length > 2000) throw new Error("Nhập lý do huỷ cả đợt từ 8 đến 2.000 ký tự.");
       try {return await workflow.run(batchId,'huỷ đợt phiếu',async progress=>{
       // 1. Lấy danh sách voucher_id thuộc batch
       const { data: links, error: linkError } = await supabase
@@ -382,7 +387,7 @@ export const useCancelIncomeExpenseBatch = () => {
 
       const { cancelled, failures, completedIds } = await cancelVouchersSplitByType(
         activeVouchers,
-        "Huỷ cả đợt phiếu",
+        reason.trim(),
         ids=>progress.completed.push(...ids.map(id=>({id,label:`Đã huỷ phiếu ${id}`}))),
       );
 
@@ -417,6 +422,7 @@ export const useCancelIncomeExpenseBatch = () => {
       }
     },
     onSuccess: ({ count, failures }) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
@@ -430,6 +436,7 @@ export const useCancelIncomeExpenseBatch = () => {
       else toast.success(`Đã huỷ ${count} phiếu trong đợt.`);
     },
     onError: (error) => {
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });

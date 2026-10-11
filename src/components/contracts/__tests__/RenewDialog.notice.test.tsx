@@ -15,6 +15,10 @@ it('requires an explicit notice choice and reuses the request identity for the s
   fireEvent.change(screen.getByRole('combobox',{name:'Giữ hoặc hủy báo dọn khi gia hạn'}),{target:{value:'CANCEL'}});
   fireEvent.change(screen.getByLabelText(/Ngày kết thúc mới/),{target:{value:'2027-12-31'}});
   fireEvent.click(submit);
+  await screen.findByText(/Nhập lý do cụ thể/);
+  expect(actions.renew).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(/Lý do gia hạn/),{target:{value:'Gia hạn theo thỏa thuận của khách thuê'}});
+  fireEvent.click(submit);
   await waitFor(()=>expect(actions.renew).toHaveBeenCalledTimes(1));
   expect(actions.renew.mock.calls[0][0]).toMatchObject({noticeChoice:'CANCEL',expectedUpdatedAt:contract.updated_at,newDeposit:4000000,newRentPrice:4000000});
   fireEvent.click(submit);await waitFor(()=>expect(actions.renew).toHaveBeenCalledTimes(2));

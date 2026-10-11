@@ -7,6 +7,13 @@ const context={version:2 as const,intents:[{intent_id:id,source_id:null,kind:'CO
 const plan={version:2 as const,start_billing_month:'2026-09',payer:'SALE' as const,sale_party_id:id,deduction_policy:'COMMISSION_ONLY' as const,collection_mode:'UPFRONT_COMMITTED' as const,segments:[{month_count:3,monthly_amount:'300000'},{month_count:9,monthly_amount:'100000'}]};
 const source={source_id:id,operation_id:id,kind:'broker',gross:'1800000',withheld:'1800000',net:'0',status:'SETTLED_BY_SUPPORT',id:null,voucher_id:null,code:null};
 beforeEach(()=>rpc.mockReset());
+it.each([2,3])('preserves the intervention reason in both quote and prepare for context v%s',version=>{
+ const changed={version,intents:[{...context.intents[0],...(version===3?{action:'ISSUE_NEW'}:{}),commission_reason:'Điều chỉnh theo thỏa thuận đã ký'}]};
+ const parsed=payoutContextSchema.parse(changed);
+ expect(buildSupportQuoteArgs(id,{contractId:id,payload:plan,payoutContext:parsed}).p_payout_context).toEqual(changed);
+ expect(buildSupportPayoutArgs(id,{contractId:id,planRevision:1,quoteHash:'hash',payload:parsed,requestId:other}).p_payload).toEqual(changed);
+ expect(payoutContextSchema.safeParse({...changed,intents:[{...changed.intents[0],commission_reason:'ngắn'}]}).success).toBe(false);
+});
 it('requires full actionable payload and preserves bank/attachment values in quote and prepare args',()=>{
  expect(payoutContextSchema.parse(context)).toEqual(context);
  expect(payoutContextSchema.safeParse({...context,intents:[{...context.intents[0],attachments:undefined}]}).success).toBe(false);

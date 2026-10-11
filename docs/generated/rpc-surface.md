@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 374 |
-| Hàm trong catalog (public + api) | 1280 |
-| File mã nguồn đã quét | 2544 |
-| SECURITY DEFINER | 355 |
+| RPC được gọi từ mã nguồn | 375 |
+| Hàm trong catalog (public + api) | 1283 |
+| File mã nguồn đã quét | 2564 |
+| SECURITY DEFINER | 356 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,9 +28,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 272 | còn lại |
-| tiền | 102 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 103 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 102 RPC chạm TIỀN
+## 103 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -42,7 +42,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `append_income_expense_supplement_v1` | ✔ | hooks/income-expenses/supplements.ts |
 | `approve_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `approve_pending_income_expense_checked_v1` | ✔ | hooks/income-expenses/revisions.ts |
-| `assign_commission_manager_v1` | ✔ | hooks/useCommissionManager.ts |
 | `award_job_bonus` | ✔ | lib/salaryBonusNotify.ts |
 | `bulk_approve_invoices_v1` | ✔ | hooks/useInvoices.ts |
 | `can_cancel_income_voucher_v1` | ✔ | hooks/income-expenses/incomeVoucherCancel.ts |
@@ -68,7 +67,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `distribute_shareholder_profit_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `execute_commission_request_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `generate_recurring_vouchers_v2` | ✔ | hooks/income-expenses/recurring.ts |
-| `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucher.ts |
+| `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucherFacts.ts |
 | `get_customer_credit_balance_v1` | ✔ | hooks/useInvoices.ts |
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
@@ -83,6 +82,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_voucher_slot_warning_v1` | ✔ | hooks/useVoucherSlotWarning.ts |
 | `ie_compat_update_pending_v2` | ✔ | hooks/useUploadPaymentReceipt.ts |
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
+| `intervene_commission_v1` | ✔ | hooks/income-expenses/commissionIntervention.ts |
 | `invoice_active_payment_methods` |  | hooks/useInvoices.ts |
 | `invoice_payment_method_drilldown` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |
@@ -101,6 +101,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `prepare_commission_requests_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `propose_cashbook_closing_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `quote_contract_rent_support_v1` | ✔ | lib/invoiceRentSupport.ts, lib/rentSupportApi.ts |
+| `read_commission_interventions_v1` | ✔ | hooks/useCommissionAudit.ts |
 | `read_rent_support_salary_parts_v1` | ✔ | lib/rentSupportSalary.ts |
 | `record_contract_commission_event_v1` | ✔ | lib/contractCommissionFollowup.ts |
 | `record_payment_gps` | ✔ | lib/v5PaymentGps.ts |

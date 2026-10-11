@@ -2,7 +2,7 @@
 // đăng nhập. Server (list_my_pending_approvals_v1) đã lọc theo auth.uid() nên
 // route không cần gate quyền: ai vào cũng chỉ thấy phần việc của mình.
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,10 @@ import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpen
 import { AiSubmittedBadge } from "@/components/approvals/AiSubmittedBadge";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
+import { loadIncomeExpenseDetails } from '@/lib/incomeExpenseDetailRpc';
+import { hasCompleteVoucherDetail } from '@/lib/incomeExpenseDetailRead';
+import { withDetailReadDeadline } from '@/hooks/income-expenses/detailRead';
+import { isCommissionVoucher } from '@/lib/commissionIntervention';
 
 const typeLabel = (type: string | null) => {
   if (type === "INCOME") return { text: "Phiếu thu", className: "bg-emerald-100 text-emerald-700" };
@@ -95,7 +99,13 @@ const ApprovalsPage = () => {
   const approveV2 = useApproveIncomeExpenseV2({scope:'target'});
   const approveAndPostV2 = useApproveAndPostIncomeExpenseV2({scope:'target'});
   // "Duyệt và Thu/Chi…" mở Posting dialog cho request này (chỉ org CANONICAL).
-  const [postTarget, setPostTarget] = useState<PendingApproval | null>(null);
+  const [postTarget, setPostTarget] = useState<(PendingApproval & { isCommission: boolean }) | null>(null);
+  const [openingPosting, setOpeningPosting] = useState(false);
+  const postingRead = useRef<symbol | null>(null);
+  useEffect(() => {
+    postingRead.current = null; setOpeningPosting(false); setPostTarget(null);
+    return () => { postingRead.current = null; };
+  }, [authUser?.id]);
   // Chỉ hỏi sổ CUSTODIAN khi có ít nhất 1 request thuộc org posting-CANONICAL.
   const anyV2Posting = rows.some((r) => {
     const or = v2Routes.getOrg(r.organization_id);
@@ -111,6 +121,25 @@ const ApprovalsPage = () => {
     v2WorkflowFor(row) &&
     canWritePosting(v2Routes.getOrg(row.organization_id)) &&
     custodianBooks.length > 0;
+
+  const openPosting = async (row: PendingApproval) => {
+    if (postingRead.current || !row.organization_id || !row.voucher_id || blockedRequests.has(row.request_id) || !v2PostOptionFor(row)) return;
+    const token = Symbol('approval voucher detail'); postingRead.current = token;
+    setOpeningPosting(true); setActionError(null);
+    try {
+      const [detail] = await withDetailReadDeadline(loadIncomeExpenseDetails(row.organization_id, [row.voucher_id]));
+      if (postingRead.current !== token) return;
+      if (!detail || detail.id !== row.voucher_id || detail.organization_id !== row.organization_id || !hasCompleteVoucherDetail(detail)
+        || detail.approval_status !== 'UNAPPROVED' || detail.posting_status !== 'UNPOSTED')
+        throw new Error('Chưa xác định được đầy đủ phiếu đang chờ duyệt. Vui lòng tải lại trước khi duyệt và thu/chi.');
+      setPostTarget({ ...row, isCommission: isCommissionVoucher(detail), voucher_type: detail.type,
+        voucher_name: detail.name, amount: detail.total_amount, approval_version: detail.approval_version, posting_version: detail.posting_version });
+    } catch (error) {
+      if (postingRead.current === token) setActionError(voucherFailureMessage(error, 'đọc chi tiết phiếu trước khi duyệt và thu/chi'));
+    } finally {
+      if (postingRead.current === token) { postingRead.current = null; setOpeningPosting(false); }
+    }
+  };
 
   const closeReject = () => {
     setRejecting(null);
@@ -180,6 +209,7 @@ const ApprovalsPage = () => {
         </div>
 
         {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+        {openingPosting && <p role="status" className="text-sm text-muted-foreground">Đang đối chiếu chi tiết phiếu trước khi duyệt và thu/chi…</p>}
         <QueryRegion label="yêu cầu chờ duyệt" queries={[pendingQuery]} skeleton={isMobile ? "list" : "table"} rows={isMobile ? 4 : 6}>
         {isLoading ? (
           <div className="space-y-2">
@@ -239,9 +269,9 @@ const ApprovalsPage = () => {
                         disabled={
                           decide.isPending ||
                           approveV2.isPending ||
-                          approveAndPostV2.isPending
+                          approveAndPostV2.isPending || openingPosting
                         }
-                        onClick={() => setPostTarget(r)}
+                        onClick={() => void openPosting(r)}
                       >
                         {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
                       </Button>
@@ -323,9 +353,9 @@ const ApprovalsPage = () => {
                               disabled={
                                 decide.isPending ||
                                 approveV2.isPending ||
-                                approveAndPostV2.isPending
+                                approveAndPostV2.isPending || openingPosting
                               }
-                              onClick={() => setPostTarget(r)}
+                              onClick={() => void openPosting(r)}
                             >
                               {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
                             </Button>
@@ -362,6 +392,7 @@ const ApprovalsPage = () => {
           voucher={{
             subjectKind: "VOUCHER",
             subjectId: postTarget.voucher_id,
+            isCommission: postTarget.isCommission,
             type: postTarget.voucher_type === "INCOME" ? "INCOME" : "EXPENSE",
             approvedTotal: postTarget.amount ?? 0,
             name: postTarget.voucher_name ?? undefined,

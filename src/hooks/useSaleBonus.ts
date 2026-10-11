@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
 import { parseSaleBonusStatus } from '@/lib/rentSupportFunding';
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
 
 /**
  * THƯỞNG NÓNG SALE — trạng thái theo hợp đồng, và đường tạo từ PHIẾU CỌC.
@@ -58,6 +59,7 @@ export const useSaleBonusStatus = (contractId?: string | null, enabled = true) =
 export interface CreateSaleBonusFromDepositArgs {
   depositVoucherId: string;
   amount: number;
+  commissionReason: string;
   recipient?: string;
   accountNumber?: string;
   bank?: string;
@@ -76,7 +78,8 @@ export const useCreateSaleBonusFromDeposit = () => {
   return useMutation({
     meta: {handlesFeedback: true},
     mutationFn: async (a: CreateSaleBonusFromDepositArgs) => {
-      const { data, error } = await supabase.rpc('create_sale_bonus_from_deposit_v1', {
+      if (!isCommissionReasonValid(a.commissionReason)) throw new Error(COMMISSION_REASON_MESSAGE);
+      const { data, error } = await supabase.rpc('create_sale_bonus_from_deposit_with_reason_v1', {
         p_deposit_voucher_id: a.depositVoucherId,
         p_amount: a.amount,
         p_recipient: a.recipient ?? undefined,
@@ -85,6 +88,7 @@ export const useCreateSaleBonusFromDeposit = () => {
         p_voucher_date: undefined,
         p_account_id: a.accountId ?? undefined,
         p_attachments: a.attachments ?? [],
+        p_commission_reason: a.commissionReason.trim(),
       });
       if (error) throw error;
       const receipt=data as {voucherId?:unknown;code?:unknown;amount?:unknown;note?:unknown}|null;

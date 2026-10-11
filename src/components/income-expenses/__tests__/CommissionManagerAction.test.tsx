@@ -5,11 +5,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const h = vi.hoisted(() => ({ assign: vi.fn() }));
 vi.mock('@/hooks/useCommissionManager', () => ({
-  useAssignCommissionManager: () => ({ mutate: vi.fn(), isPending: false }),
+  useAssignCommissionManager: () => ({ mutate: h.assign, isPending: false }),
   useCommissionSupport: () => ({ data: null, isLoading: false, isError: false }),
 }));
-vi.mock('../QlManagerSelect', () => ({ QlManagerSelect: () => <div>chon-quan-ly</div> }));
+vi.mock('../QlManagerSelect', () => ({ QlManagerSelect: ({onPick}: {onPick: (manager: {staffId:string}) => void}) => <button onClick={() => onPick({staffId:'m1'})}>Chọn quản lý mẫu</button> }));
 
 import { CommissionManagerAction } from '../CommissionManagerAction';
 
@@ -22,9 +23,23 @@ const khung = (locked: boolean) => (
   <CommissionManagerAction voucher={phieuHoaHong} row={(label, value) => <div><span>{label}</span>{value}</div>} locked={locked} />
 );
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Gán QL nhận hoa hồng khi chi tiết phiếu đang đọc lại', () => {
+  it('phải nhập lý do và chuyển đúng lý do, phiếu, phiên bản đến lệnh gán', () => {
+    render(khung(false));
+    fireEvent.click(screen.getByTestId('ie-assign-commission-manager'));
+    fireEvent.click(screen.getByText('Chọn quản lý mẫu'));
+    const save = screen.getByRole('button', {name:'Gán quản lý'}) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Lý do gán hoặc đổi quản lý/), {target:{value:'   '}});
+    fireEvent.click(save);
+    expect(h.assign).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/Lý do gán hoặc đổi quản lý/), {target:{value:'Chuyển qua lương theo đề nghị'}});
+    fireEvent.click(save);
+    expect(h.assign).toHaveBeenCalledWith({voucherId:'v1',managerId:'m1',expectedVersion:1,reason:'Chuyển qua lương theo đề nghị'}, expect.any(Object));
+  });
+
   it('phiếu đọc lại (locked) ⇒ hộp gán đóng, bản mới về cũng không tự mở lại', () => {
     const view = render(khung(false));
     fireEvent.click(screen.getByTestId('ie-assign-commission-manager'));
