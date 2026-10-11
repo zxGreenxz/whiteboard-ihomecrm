@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1350,
   "soFileDocBangFs": 300,
-  "tongLoiGoi": 664,
-  "khongPhanLoaiDuoc": 303,
+  "tongLoiGoi": 663,
+  "khongPhanLoaiDuoc": 302,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 52,
@@ -111,20 +111,20 @@
       "khongPhanLoaiDuoc": 4
     },
     {
-      "file": "scripts/__tests__/run-pinned-gitnexus.test.mjs",
-      "soGoi": 14,
-      "loai": {
-        "manifest": 6
-      },
-      "khongPhanLoaiDuoc": 8
-    },
-    {
       "file": "scripts/__tests__/check-external-controls.test.mjs",
       "soGoi": 13,
       "loai": {
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 12
+    },
+    {
+      "file": "scripts/__tests__/run-pinned-gitnexus.test.mjs",
+      "soGoi": 13,
+      "loai": {
+        "manifest": 6
+      },
+      "khongPhanLoaiDuoc": 7
     },
     {
       "file": "src/lib/__tests__/contractExitCaseMigration.test.ts",

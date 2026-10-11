@@ -2,7 +2,7 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 2544,
-    "catalogFunctions": 1272,
+    "catalogFunctions": 1280,
     "schemas": [
       "public",
       "api"
@@ -14,7 +14,7 @@
       "normal": 272,
       "financial": 102
     },
-    "securityDefiner": 356
+    "securityDefiner": 355
   },
   "missingOnServer": [],
   "rpcs": {
@@ -6968,10 +6968,9 @@
           "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -6987,11 +6986,10 @@
           "args": "p_conversation_id uuid",
           "returns": "jsonb",
           "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],
@@ -7008,10 +7006,9 @@
           "returns": "zalo_conversations",
           "volatility": "VOLATILE",
           "securityDefiner": true,
-          "searchPath": "search_path=public",
+          "searchPath": "search_path=pg_catalog, public",
           "execRoles": [
-            "authenticated",
-            "service_role"
+            "authenticated"
           ]
         }
       ],

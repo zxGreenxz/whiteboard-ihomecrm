@@ -873,60 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql": {
-      "sha256": "2b3c8502062e033c1c28c2b5120f346fe87056fd4adb033cddfa883fa556cc26",
-      "missingObjects": [
-        "function:public.zalo_worker_attachment_allowed_v1",
-        "function:app_private.zalo_assert_attachment_v1",
-        "function:app_private.zalo_guard_relations_v1",
-        "function:app_private.zalo_config_int_v1",
-        "function:app_private.zalo_in_allowed_hours_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward migration mới cho Zalo; chưa áp vào production. Catalog production được đọc để xác nhận quyền ghi trực tiếp quá rộng và thiếu guard CRM. Candidate đã kiểm trong transaction rollback trên TEST với role authenticated/JWT, service_role, actor giới hạn tòa; mutation bỏ CRM org guard bị bắt. Migration chỉ áp vào project TEST qua lane có guard để kiểm hai backend chạy đồng thời; fixtures đã dọn. Trạng thái unknown trên production là đúng và có chủ ý.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql",
-          "trich_doan": "REVOKE ALL ON FUNCTION public.zalo_enqueue_auto_reply_v1(uuid,text,text,jsonb) FROM PUBLIC,anon,authenticated;"
-        },
-        {
-          "duong_dan": "scripts/test-zalo-security-atomic.mjs",
-          "trich_doan": "was caught by the behavior test; transaction rolled back."
-        },
-        {
-          "duong_dan": "scripts/test-zalo-atomic-race.mjs",
-          "trich_doan": "assert.equal(results[0].job_id, results[1].job_id);"
-        }
-      ],
-      "anhHuongThat": "Worker mới cần migration này trước khi phát hành. Production hiện vẫn chạy worker cũ; hai tin live baseline được kiểm riêng, không dùng làm bằng chứng candidate đã deploy."
-    },
-    "supabase/migrations/20261011073522_zalo_chuyen_tiep_media_theo_tin_nguon.sql": {
-      "sha256": "454c5ce5de5f1a8931741e4c4d002a13be4d2e89f275ecae10fef4043cfad5b7",
-      "missingObjects": [
-        "function:app_private.zalo_forward_sources_v1",
-        "function:public.zalo_forward_media_v1",
-        "function:app_private.zalo_guard_forward_media_v1",
-        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_media",
-        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_provider"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration bổ sung chuyển tiếp media theo ID nguồn; catalog production xác nhận chưa áp. PostgreSQL TEST kiểm trong transaction ROLLBACK, overlay đúng hai migration Zalo vì TEST chưa đồng bộ prerequisite. JWT/org, giữ loại media/chú thích, rollback từng người nhận, dedup, replay nguồn ẩn và provider/finalize đã đạt; hai mutation bỏ fingerprint/source-org bị bắt đúng assertion. Không ghi production hoặc gửi Zalo thật từ candidate.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261011073522_zalo_chuyen_tiep_media_theo_tin_nguon.sql",
-          "trich_doan": "GRANT EXECUTE ON FUNCTION public.zalo_forward_media_v1(uuid[],uuid[],uuid) TO authenticated;"
-        },
-        {
-          "duong_dan": "scripts/test-zalo-forward-media.mjs",
-          "trich_doan": "Mutation did not die at its intended behavioral assertion."
-        },
-        {
-          "duong_dan": "scripts/tests/zalo-forward-media.sql",
-          "trich_doan": "FORWARD_SQL_PASS: role/JWT scope, all media kinds, album/file captions, partial atomicity, request collisions, hidden replay, worker boundary and receipts"
-        }
-      ],
-      "anhHuongThat": "Chưa phát hành: migration security/receipt trước, worker hỗ trợ forward_media tiếp theo, sau đó migration chuyển tiếp và UI qua lane đã review/backup. Chưa kiểm race hai session hoặc chuyển tiếp media Zalo thật. Giữ biên nhận chưa xác nhận, không tự gửi lại."
     }
   }
 }

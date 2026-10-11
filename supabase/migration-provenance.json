@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-11T07:54:30.476Z",
+  "generatedAt": "2026-10-11T08:54:26.510Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 672,
-    "unknown": 82,
+    "ledger-applied": 674,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11260,14 +11260,9 @@
       "name": "zalo_rpc_only_scope_va_atomic_queue",
       "scheme": "timestamp14",
       "sha256": "2b3c8502062e033c1c28c2b5120f346fe87056fd4adb033cddfa883fa556cc26",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.zalo_worker_attachment_allowed_v1",
-        "function:app_private.zalo_assert_attachment_v1",
-        "function:app_private.zalo_guard_relations_v1",
-        "function:app_private.zalo_config_int_v1",
-        "function:app_private.zalo_in_allowed_hours_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-11T08:50:33.850Z|bien-nhan-backup"
       ]
     },
     {
@@ -11276,14 +11271,9 @@
       "name": "zalo_chuyen_tiep_media_theo_tin_nguon",
       "scheme": "timestamp14",
       "sha256": "454c5ce5de5f1a8931741e4c4d002a13be4d2e89f275ecae10fef4043cfad5b7",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.zalo_forward_sources_v1",
-        "function:public.zalo_forward_media_v1",
-        "function:app_private.zalo_guard_forward_media_v1",
-        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_media",
-        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_provider"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-11T08:53:57.276Z|bien-nhan-backup"
       ]
     },
     {

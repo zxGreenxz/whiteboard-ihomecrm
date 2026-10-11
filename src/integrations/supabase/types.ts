@@ -19688,6 +19688,7 @@ export type Database = {
           organization_id: string
           reason: string | null
           recipients_count: number
+          source_zalo_msg_id: string | null
         }
         Insert: {
           account_id?: string | null
@@ -19701,6 +19702,7 @@ export type Database = {
           organization_id: string
           reason?: string | null
           recipients_count?: number
+          source_zalo_msg_id?: string | null
         }
         Update: {
           account_id?: string | null
@@ -19714,6 +19716,7 @@ export type Database = {
           organization_id?: string
           reason?: string | null
           recipients_count?: number
+          source_zalo_msg_id?: string | null
         }
         Relationships: [
           {
@@ -20173,6 +20176,9 @@ export type Database = {
           organization_id: string
           payload: Json
           processed_at: string | null
+          processing_instance_id: string | null
+          processing_started_at: string | null
+          provider_started_at: string | null
           result: Json | null
           status: string
           user_id: string
@@ -20190,6 +20196,9 @@ export type Database = {
           organization_id: string
           payload?: Json
           processed_at?: string | null
+          processing_instance_id?: string | null
+          processing_started_at?: string | null
+          provider_started_at?: string | null
           result?: Json | null
           status?: string
           user_id: string
@@ -20207,6 +20216,9 @@ export type Database = {
           organization_id?: string
           payload?: Json
           processed_at?: string | null
+          processing_instance_id?: string | null
+          processing_started_at?: string | null
+          provider_started_at?: string | null
           result?: Json | null
           status?: string
           user_id?: string
@@ -27492,6 +27504,33 @@ export type Database = {
         Args: { p_organization_id?: string }
         Returns: Json
       }
+      zalo_enqueue_auto_reply_v1: {
+        Args: {
+          p_body: string
+          p_conversation_id: string
+          p_detail?: Json
+          p_source_zalo_msg_id: string
+        }
+        Returns: Json
+      }
+      zalo_enqueue_broadcast_v1: {
+        Args: {
+          p_attachment?: Json
+          p_body: string
+          p_conversation_id: string
+          p_not_before: string
+          p_request_key: string
+        }
+        Returns: Json
+      }
+      zalo_forward_media_v1: {
+        Args: {
+          p_client_request_id: string
+          p_conversation_ids: string[]
+          p_source_message_ids: string[]
+        }
+        Returns: Json
+      }
       zalo_get_crm_summary: {
         Args: { p_conversation_id: string }
         Returns: Json
@@ -27880,6 +27919,31 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      zalo_worker_attachment_allowed_v1: {
+        Args: {
+          p_account: string
+          p_bucket: string
+          p_org: string
+          p_path: string
+        }
+        Returns: boolean
+      }
+      zalo_worker_begin_provider_v1: {
+        Args: { p_instance_id: string; p_job_id: string }
+        Returns: boolean
+      }
+      zalo_worker_claim_job_v1: {
+        Args: { p_instance_id: string; p_job_id: string }
+        Returns: Json
+      }
+      zalo_worker_finalize_send_v1: {
+        Args: { p_instance_id: string; p_job_id: string; p_receipts: Json }
+        Returns: Json
+      }
+      zalo_worker_recover_jobs_v1: {
+        Args: { p_instance_id: string }
+        Returns: Json
       }
       zalo_worker_status_v1: { Args: never; Returns: Json }
     }

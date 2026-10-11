@@ -142,6 +142,8 @@ test('query rejects a locator stamped for another pin even if target package exi
 import fs from 'node:fs';
 import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
+import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
 import {captureSnapshot} from '../lib/gitnexus-state.mjs';
 
 test('snapshot rejects Promise lstat failures swallowed by the native glob walker', async t => {
@@ -166,27 +168,44 @@ test('snapshot rejects Promise lstat failures swallowed by the native glob walke
 });
 
 test('slow successful Windows tree cleanup confirms termination before releasing its lock', {skip:process.platform !== 'win32'}, async t => {
-  const f = await fixture(t);
-  await f.control({sleep:true});
   const originalSpawn = childProcess.spawn;
-  const children = [];
+  const child = Object.assign(new EventEmitter(), {pid:123456, stdout:new PassThrough(), stderr:new PassThrough(), unref(){}});
+  const killer = Object.assign(new EventEmitter(), {kill(){}, unref(){}});
+  let outcome;
+  let killRequested = false;
+  t.mock.timers.enable({apis:['setTimeout']});
   childProcess.spawn = (command, args, options) => {
-    const child = command === 'taskkill.exe'
-      ? originalSpawn(process.execPath, ['-e', "setTimeout(()=>{const {spawn}=require('node:child_process');const p=spawn('taskkill.exe',process.argv.slice(1),{windowsHide:true,stdio:'ignore'});p.on('error',()=>process.exit(1));p.on('close',code=>process.exit(code??1));},650)", ...args], options)
-      : originalSpawn(command,args,options);
-    if (child.pid) children.push(child.pid);
+    if (command === 'taskkill.exe') {
+      assert.deepEqual(args,['/PID','123456','/T','/F']);
+      killRequested = true;
+      setTimeout(()=>child.emit('close',1),650);
+      setTimeout(()=>killer.emit('close',0),700);
+      return killer;
+    }
     return child;
   };
   syncBuiltinESMExports();
   try {
-    const result = await f.execute(['analyze','--timeout-ms','1000']);
-    assert.equal(result.code,2);
-    assert.doesNotMatch(result.err,/termination unconfirmed/);
-    await assert.rejects(readFile(join(f.root,'.gitnexus/wrapper.lock')), {code:'ENOENT'});
+    const pending = wrapper.runProcess('fixture-writer',[],{cwd:project,deadline:performance.now()+100})
+      .then(value=>{outcome={value};},error=>{outcome={error};});
+    t.mock.timers.tick(101);
+    assert.equal(killRequested,true);
+    t.mock.timers.tick(600);
+    await Promise.resolve();
+    assert.equal(outcome,undefined,'cleanup must not give up at the old 500ms boundary');
+    t.mock.timers.tick(50);
+    await Promise.resolve();
+    assert.equal(outcome,undefined,'child close alone cannot release ownership');
+    t.mock.timers.tick(50);
+    await pending;
+    assert.match(outcome.error.message,/timeout/);
+    assert.equal(outcome.error.retainLock,undefined,'confirmed cleanup permits lock release');
   } finally {
     childProcess.spawn=originalSpawn;
     syncBuiltinESMExports();
-    for (const pid of children) spawnSync('taskkill.exe',['/PID',String(pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
+    t.mock.timers.reset();
+    child.stdout.destroy();
+    child.stderr.destroy();
   }
 });
 
