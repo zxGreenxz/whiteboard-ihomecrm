@@ -34,21 +34,18 @@ export function ProfitHubSlot({
 export interface ProfitHubTabDef {
   value: string;
   label: string;
-  /** Tab nhạy cảm được mở bằng easter egg → gắn chấm nhắc như bản thiết kế. */
-  secret?: boolean;
 }
 
 interface ProfitHubShellProps {
   tabs: ProfitHubTabDef[];
   value?: string;
   onValueChange?: (value: string) => void;
-  /** Nhấp 3 lần vào logo → hiện/ẩn tab nhạy cảm (giữ nguyên hành vi cũ). */
-  onIconClick?: () => void;
   children: ReactNode;
 }
 
-const Logo = ({ onClick }: { onClick?: () => void }) => (
-  <button type="button" className="ph-brand__icon" onClick={onClick} aria-label="Báo cáo Lợi Nhuận">
+// Q9: logo chỉ là hình — không còn là nút bí mật mở tab.
+const Logo = () => (
+  <span className="ph-brand__icon" aria-hidden="true">
     <span
       style={{
         width: 17,
@@ -59,14 +56,13 @@ const Logo = ({ onClick }: { onClick?: () => void }) => (
         display: "block",
       }}
     />
-  </button>
+  </span>
 );
 
 export function ProfitHubShell({
   tabs,
   value,
   onValueChange,
-  onIconClick,
   children,
 }: ProfitHubShellProps) {
   const [actions, setActions] = useState<HTMLElement | null>(null);
@@ -77,7 +73,7 @@ export function ProfitHubShell({
     <div className="ph-hero">
       <div className="ph-hero__inner">
         <div className="ph-hero__top">
-          <Logo onClick={onIconClick} />
+          <Logo />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="ph-brand__title">Báo cáo Lợi Nhuận</div>
             <div className="ph-brand__sub">Báo cáo Tài chính → Lợi nhuận</div>
@@ -90,7 +86,6 @@ export function ProfitHubShell({
             {tabs.map((t) => (
               <TabsPrimitive.Trigger key={t.value} value={t.value} className="ph-tab">
                 {t.label}
-                {t.secret && <span aria-hidden> •</span>}
               </TabsPrimitive.Trigger>
             ))}
           </TabsPrimitive.List>

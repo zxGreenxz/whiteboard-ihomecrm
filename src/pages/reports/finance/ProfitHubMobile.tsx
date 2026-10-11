@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, PieChart, CircleUserRound } from "lucide-react";
+import { BarChart3, PieChart, CircleUserRound, Wallet } from "lucide-react";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { LoadingState, SkeletonBar } from "@/components/loading/LoadingState";
 import type { Shareholder } from "@/hooks/useShareholders";
@@ -14,11 +14,12 @@ import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfVi
 
 // Shell MOBILE của trang Báo cáo Lợi Nhuận (/reports/finance/profit-distribution):
 // header + bottom tab bar 3 tab (BC Thu Chi · Tổng quan · Của tôi) theo thiết kế
-// ProfitMobileC. Tab hiện theo QUYỀN — cùng logic với ProfitHubPage desktop; các
-// tab "bí mật" desktop (Chốt LN, Cổ đông & tỷ lệ…) không đưa lên mobile.
+// ProfitMobileC. Tab hiện theo QUYỀN — cùng logic với ProfitHubPage desktop; tab
+// quản trị desktop (Chốt LN, Cổ đông & tỷ lệ) không đưa lên mobile. Q9: quản lý
+// điều hành luôn có tab "Lương" (tự xem lương) kể cả khi còn tab khác.
 // Tab BC Thu Chi tự render header riêng (pill tháng + nút toà + nút lọc — kiểu 1b).
 
-type TabKey = "report" | "overview" | "my";
+type TabKey = "report" | "overview" | "my" | "salary";
 
 // Shell nền kem dùng cho cả màn chờ (tránh nháy MainLayout desktop lúc chưa biết quyền).
 // z-40 CHỦ Ý: dialog Radix (z-50, portal cuối body) phải nổi LÊN TRÊN shell.
@@ -67,6 +68,7 @@ export default function ProfitHubMobile({
   if (canReport) tabs.push({ key: "report", label: "BC Thu Chi", icon: BarChart3 });
   if (isManager) tabs.push({ key: "overview", label: "Tổng quan", icon: PieChart });
   if (canSeeOwnShare) tabs.push({ key: "my", label: "Của tôi", icon: CircleUserRound });
+  if (myManager && tabs.length > 0) tabs.push({ key: "salary", label: "Lương", icon: Wallet });
 
   const defaultTab: TabKey = canSeeOwnShare ? "my" : tabs[0]?.key ?? "report";
   const [tabRaw, setTab] = usePersistedState<TabKey>("flt:profit-hub-mb:tab", defaultTab);
@@ -94,7 +96,7 @@ export default function ProfitHubMobile({
         <>
           <MobileHeader
             onBack={goBack}
-            right={!managerOnly && tabs.length > 0 ? yearPill : undefined}
+            right={!managerOnly && tabs.length > 0 && tab !== "salary" ? yearPill : undefined}
           />
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
             <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-2">
@@ -104,6 +106,8 @@ export default function ProfitHubMobile({
                 <p className="text-[13px] font-semibold text-[#8d8678] text-center pt-16 px-6">
                   Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
                 </p>
+              ) : tab === "salary" && myManager ? (
+                <ProfitManagerSelfView me={myManager} />
               ) : tab === "overview" ? (
                 <ProfitOverviewMobile year={oYear} onYearChange={setOYear} />
               ) : (

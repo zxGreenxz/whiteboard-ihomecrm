@@ -137,6 +137,16 @@ describe("ProfitHubMobile legacy tab behavior", () => {
     expect(harness.reportRender).not.toHaveBeenCalled();
   });
 
+  it("Q9: an executive manager who also has report tabs still gets an always-visible salary tab", () => {
+    const html = renderMobile({ canReport: true, isManager: true, me: null, myManager: manager });
+    expect(html).toContain("Lương");
+    harness.persistedTab = "salary";
+    harness.managerRender.mockReset();
+    const salary = renderMobile({ canReport: true, isManager: true, me: null, myManager: manager });
+    expect(salary).toContain('data-probe="manager-self"');
+    expect(harness.managerRender).toHaveBeenCalledWith(manager);
+  });
+
   it("keeps the legacy denial message when no tab or self view is available", () => {
     const html = renderMobile({
       canReport: false,

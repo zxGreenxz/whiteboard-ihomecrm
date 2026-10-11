@@ -14,7 +14,7 @@ Domain này trả lời bốn câu hỏi:
 
 Trang chính là `/reports/finance/profit-distribution` (`ProfitHubPage`). Cổ đông/quản lý được gắn tài khoản chỉ xem phần của mình; người có quyền quản trị thấy các tab Tổng quan, Chốt LN tháng và Cổ đông & tỷ lệ.
 
-Trên desktop, các tab nhạy cảm **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** bị ẩn mặc định; nhấp nhanh 3 lần vào icon xanh bên trái tiêu đề để hiện/ẩn. Bản mobile hiện không render tab chốt/cấu hình, nên thao tác quản trị phải mở bằng desktop hoặc chuyển trình duyệt sang chế độ desktop.
+Từ 11/10/2026 (Q9) tab **Chốt LN tháng** và **Cổ đông & tỷ lệ** hiện theo quyền (chốt/mở chốt; `shareholder_profit.manage_shareholders`), **Lương của tôi** luôn hiện với quản lý điều hành; bỏ cơ chế nhấp 3 lần vào logo. Bản mobile không render tab chốt/cấu hình (thao tác quản trị dùng desktop) nhưng có tab **Lương** cho quản lý điều hành.
 
 ## 2. Bất biến hiện hành
 

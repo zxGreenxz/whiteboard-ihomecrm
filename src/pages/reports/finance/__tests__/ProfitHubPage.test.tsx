@@ -207,6 +207,35 @@ describe("ProfitHubPage legacy permission behavior", () => {
     expect(harness.overviewRender).not.toHaveBeenCalled();
   });
 
+  it("Q9: lock, shareholder config and own-salary tabs show by permission without the 3-click reveal", () => {
+    harness.permissionHook.mockReturnValue({
+      data: { shareholder_profit: { view: true, manage_shareholders: true } },
+      isLoading: false,
+    });
+    harness.profitCloseHook.mockReturnValue({
+      data: [{ organization_id: "org-a", organization_name: "Org A", organization_slug: "org-a", can_lock: true, can_unlock: false }],
+      isLoading: false,
+    });
+    harness.managerHook.mockReturnValue({ data: manager, isLoading: false });
+
+    const html = renderPage();
+
+    expect(html).toContain('data-tab="overview"');
+    expect(html).toContain('data-tab="lock"');
+    expect(html).toContain('data-tab="config"');
+    expect(html).toContain('data-tab="my-salary"');
+    expect(html).toContain('data-probe="manager-self"');
+  });
+
+  it("Q9: without lock/manage permissions those tabs stay absent (permission, not a hidden toggle)", () => {
+    harness.permissionHook.mockReturnValue({ data: { shareholder_profit: { view: true, distribute: true } }, isLoading: false });
+    const html = renderPage();
+    expect(html).toContain('data-tab="overview"');
+    expect(html).not.toContain('data-tab="lock"');
+    expect(html).not.toContain('data-tab="config"');
+    expect(html).not.toContain('data-tab="my-salary"');
+  });
+
   it("passes the legacy permission results to the mobile hub", () => {
     harness.phone = true;
     harness.permissionHook.mockReturnValue({

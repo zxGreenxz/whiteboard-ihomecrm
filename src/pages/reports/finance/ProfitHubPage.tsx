@@ -1,6 +1,6 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import ProfitHubShell, { ProfitHubTabPanel } from "@/pages/reports/finance/ProfitHubShell";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
@@ -56,26 +56,9 @@ export default function ProfitHubPage() {
   // lý (ProfitOverviewTab) nên loại trừ (!isManager) để khỏi trùng.
   const canSeeOwnShare = !!me && canReport && !isManager;
 
-  // Các tab nhạy cảm (Chốt LN tháng, Cổ đông & tỷ lệ, Lương của tôi) MẶC ĐỊNH ẨN.
-  // Nhấp 3 lần vào icon xanh bên trái tiêu đề để hiện ra (easter egg).
-  const [revealSecret, setRevealSecret] = useState(false);
-  const clickCount = useRef(0);
-  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleIconClick = () => {
-    clickCount.current += 1;
-    if (clickTimer.current) clearTimeout(clickTimer.current);
-    if (clickCount.current >= 3) {
-      clickCount.current = 0;
-      setRevealSecret((prev) => !prev); // nhấp lại 3 lần để ẩn đi
-      return;
-    }
-    // reset chuỗi nhấp nếu chậm quá (mỗi nhịp cách nhau tối đa 600ms)
-    clickTimer.current = setTimeout(() => {
-      clickCount.current = 0;
-    }, 600);
-  };
-
-  const tabs: { value: string; label: string; node: ReactNode; secret?: boolean }[] = [];
+  // Q9 (chủ chốt 11/10/2026): "Chốt LN tháng", "Cổ đông & tỷ lệ" hiện THEO QUYỀN,
+  // "Lương của tôi" luôn hiện với quản lý điều hành — bỏ cơ chế nhấp 3 lần vào logo.
+  const tabs: { value: string; label: string; node: ReactNode }[] = [];
   // Tab tự-xem của cổ đông-partner ĐỨNG ĐẦU (mặc định) — xem [[canSeeOwnShare]].
   if (canSeeOwnShare && me) tabs.push({ value: "my-overview", label: "Tổng quan", node: <ShareholderSelfView me={me} /> });
   if (canReport) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
@@ -85,18 +68,17 @@ export default function ProfitHubPage() {
       value: "lock",
       label: "Chốt LN tháng",
       node: <ProfitLockTab organizations={profitCloseOrganizations} />,
-      secret: true,
     });
-    if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab />, secret: true });
+    if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab /> });
   }
   // Quản lý điều hành đang đăng nhập: thêm tab tự xem lương của mình.
   if (myManager) {
-    tabs.push({ value: "my-salary", label: "Lương của tôi", node: <ProfitManagerSelfView me={myManager} />, secret: true });
+    tabs.push({ value: "my-salary", label: "Lương của tôi", node: <ProfitManagerSelfView me={myManager} /> });
   }
 
-  const visibleTabs = tabs.filter((t) => revealSecret || !t.secret);
-  // Tab đang mở — tự rơi về tab đầu khi danh sách đổi (bật/tắt easter egg, quyền
-  // tải xong) để không kẹt ở value không còn tồn tại.
+  const visibleTabs = tabs;
+  // Tab đang mở — tự rơi về tab đầu khi danh sách đổi (quyền tải xong) để không kẹt
+  // ở value không còn tồn tại.
   const [tabValue, setTabValue] = useState<string | null>(null);
   const activeTab =
     tabValue && visibleTabs.some((t) => t.value === tabValue)
@@ -130,11 +112,10 @@ export default function ProfitHubPage() {
         // Chờ đủ quyền rồi mới dựng thanh tab — nếu không tab sẽ "mọc" dần theo
         // từng query (vd "Chốt LN tháng" chỉ có sau khi profitCloseOrganizations về).
         tabs={
-          loading ? [] : visibleTabs.map((t) => ({ value: t.value, label: t.label, secret: t.secret }))
+          loading ? [] : visibleTabs.map((t) => ({ value: t.value, label: t.label }))
         }
         value={activeTab}
         onValueChange={setTabValue}
-        onIconClick={handleIconClick}
       >
         {loading ? (
           <LoadingState label="báo cáo lợi nhuận" variant="table" rows={6} />

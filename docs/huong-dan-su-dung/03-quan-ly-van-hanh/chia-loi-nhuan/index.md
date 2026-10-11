@@ -33,7 +33,7 @@ Route chuẩn là `/reports/finance/profit-distribution`. Các địa chỉ cũ 
 
 ![Bước 1 - Trang Báo cáo Lợi Nhuận mở ở tab BC Doanh Thu Chi Phí, có tab Tổng quan bên cạnh](./images/buoc-01-man-hinh.webp)
 
-**Bước 2**: Hiện các tab quản trị. Các tab **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** mặc định ẩn. Nhấp nhanh **3 lần** vào biểu tượng tròn bên trái tiêu đề **Báo cáo Lợi Nhuận**; tab ẩn hiện ra, có dấu **•** sau tên. Nhấp 3 lần nữa để ẩn lại.
+**Bước 2**: Các tab quản trị hiện sẵn theo quyền của bạn: **Chốt LN tháng** khi được chốt/mở chốt lợi nhuận, **Cổ đông & tỷ lệ** khi được quản lý cổ đông. Quản lý điều hành luôn thấy tab **Lương của tôi** (trên điện thoại là tab **Lương** ở thanh dưới). Không thấy tab nào thì hỏi người quản trị cấp quyền.
 
 **Bước 3**: Mở tab **Cổ đông & tỷ lệ** để kiểm tra cổ đông, tỷ lệ theo toà và quản lý điều hành. Dải trên cùng đếm **Cổ đông**, **Quản lý điều hành**, **Tòa nhà** và **Tỷ lệ gán đủ 100%**. Dùng **+ Thêm cổ đông** để gán tài khoản đăng nhập và chọn toà kèm tỷ lệ; dùng **+ Thêm quản lý** để khai quy tắc **Lương điều hành** — khoản này bị trừ khỏi lợi nhuận từng nhà **trước** khi chia cho cổ đông.
 
