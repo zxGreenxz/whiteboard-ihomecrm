@@ -391,7 +391,7 @@ export default function VoucherDetailPage() {
               <ArrowLeft className="h-4 w-4" />
             </button>
             <h1 className="text-base font-semibold truncate">
-              Chi tiết phiếu thu {voucher?.code ? `— ${voucher.code}` : ''}
+              {voucher?.type === 'EXPENSE' ? 'Chi tiết phiếu chi' : voucher?.type === 'INCOME' ? 'Chi tiết phiếu thu' : 'Chi tiết phiếu'} {voucher?.code ? `— ${voucher.code}` : ''}
             </h1>
           </div>
           {voucher && (
