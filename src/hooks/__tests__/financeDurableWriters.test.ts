@@ -58,6 +58,13 @@ it('hoàn trả gửi đúng key đã lưu trước RPC và thành công chờ d
 it.each([NaN,Infinity,-1,0])('hoàn trả số tiền sai %s chặn trước writer',async amount=>{await expect(mount(useRecordRefundRPC).mutation.mutationFn({...refund,amount})).rejects.toThrow();expect(h.rpc).not.toHaveBeenCalled();});
 const posting={subjectKind:'VOUCHER',subjectId:'v1',cashbookId:'a1',postedOn:'2026-09-30',evidenceIds:[],expectedApprovalVersion:1,expectedPostingVersion:1,idempotencyKey:'ui-key'};
 const v2Cases=[['voucher-v2-approve',useApproveIncomeExpenseV2,{voucherId:'v1'}],['voucher-v2-post',usePostApprovedIncomeExpenseV2,posting],['voucher-v2-approve-post',useApproveAndPostIncomeExpenseV2,posting],['voucher-v2-reverse',useReversePostingV2,{voucherId:'v1',cashbookId:'a1'}]] as const;
+it('hoàn tác hoa hồng không được tự sinh lý do thay cho người dùng',async()=>{
+ h.rpc.mockResolvedValue({data:{voucherId:'v1',approvalStatus:'APPROVED',postingStatus:'REVERSED'},error:null});
+ await expect(mount(useReversePostingV2).mutation.mutationFn({voucherId:'v1',cashbookId:'a1',isCommission:true,reason:'  '})).rejects.toThrow(/lý do/);
+ expect(h.rpc).not.toHaveBeenCalled();
+ await mount(useReversePostingV2).mutation.mutationFn({voucherId:'v1',cashbookId:'a1',isCommission:true,reason:'  Hoàn tác do chuyển sai sổ quỹ  '});
+ expect(h.rpc).toHaveBeenCalledWith('reverse_posted_income_expense_v2',expect.objectContaining({p_reason:'Hoàn tác do chuyển sai sổ quỹ'}));
+});
 it.each(v2Cases)('%s: timeout giữ key và chặn gửi lại qua remount',async(namespace,hook,input)=>{
  h.rpc.mockRejectedValueOnce(new TypeError('Failed to fetch'));const first=mount(hook);await expect(first.mutation.mutationFn(input)).rejects.toThrow();const prior=financialPending.read(scope(namespace,'v1'));expect(prior?.requestKey).toEqual(expect.any(String));first.unmount();await expect(mount(hook).mutation.mutationFn(input)).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(1);expect(financialPending.read(scope(namespace,'v1'))?.requestKey).toBe(prior?.requestKey);
 });
@@ -99,8 +106,8 @@ it('hoàn tác receipt đúng source/state/mode dùng pkey lưu trước RPC',as
 it('hủy đợt dòng một thành công dòng hai timeout giữ ID và khóa cả đợt qua remount',async()=>{
  h.tables={income_expense_batch_items:[{income_expense_id:'v1'},{income_expense_id:'v2'}],income_expenses:[{id:'v1',type:'INCOME',payment_id:null},{id:'v2',type:'INCOME',payment_id:null}]};
  h.rpc.mockResolvedValueOnce({data:{id:'v1',changed:true},error:null}).mockRejectedValueOnce(new TypeError('Failed to fetch'));
- const result=await mount(useCancelIncomeExpenseBatch).mutation.mutationFn('b1');expect(result).toMatchObject({count:1,completedIds:['v1'],failures:[{id:'v2'}]});expect(financialPending.read(scope('voucher-batch-cancel','b1'))?.completedIds).toEqual(['v1']);
- await expect(mount(useCancelIncomeExpenseBatch).mutation.mutationFn('b1')).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
+ const result=await mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'});expect(result).toMatchObject({count:1,completedIds:['v1'],failures:[{id:'v2'}]});expect(financialPending.read(scope('voucher-batch-cancel','b1'))?.completedIds).toEqual(['v1']);
+ await expect(mount(useCancelIncomeExpenseBatch).mutation.mutationFn({batchId:'b1',reason:'Huỷ đợt phiếu lập nhầm'})).rejects.toThrow(/đối chiếu/);expect(h.rpc).toHaveBeenCalledTimes(2);
 });
 it('đổi sổ đợt giữ ID đổi xong và cùng requestKey qua timeout/remount',async()=>{
  h.tables={income_expense_batch_items:[{income_expense_id:'v1'},{income_expense_id:'v2'}],income_expenses:[{id:'v1',code:'PC01',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'},{id:'v2',code:'PC02',approval_status:'UNAPPROVED',approval_version:1,account_id:'old'}]};

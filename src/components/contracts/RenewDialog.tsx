@@ -28,6 +28,7 @@ import { renewFormSchema } from "@/lib/contractValidation";
 import type { RenewFormData } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
 import { useRenewContract } from "@/hooks/useContractOperations";
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
 
 interface RenewDialogProps {
   open: boolean;
@@ -66,9 +67,10 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
 
   const onSubmit = (data: RenewFormData) => {
     if(!noticeChoice) return;
+    if(!isCommissionReasonValid(data.notes)){form.setError('notes',{type:'validation',message:COMMISSION_REASON_MESSAGE});form.setFocus('notes');return;}
     const params={contractId:contract.id,expectedUpdatedAt:contract.updated_at,newEndDate:data.new_end_date,
       newRentPrice:data.new_rent_price,newDeposit:data.new_deposit,notes:data.notes,noticeChoice,
-      noticeReason:data.notes?.trim()||(noticeChoice==='KEEP'?'Giữ báo dọn khi gia hạn hợp đồng':'Hủy báo dọn khi gia hạn hợp đồng')};
+      noticeReason:data.notes!.trim()};
     const intent=JSON.stringify(params);if(noticeRequest.current?.intent!==intent)noticeRequest.current={intent,id:crypto.randomUUID()};
     renewContract.mutate(
       {...params,requestId:noticeRequest.current!.id},
@@ -175,14 +177,16 @@ export function RenewDialog({ open, onOpenChange, contract }: RenewDialogProps) 
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ghi chú</FormLabel>
+                  <FormLabel>Lý do gia hạn / thay đổi căn cứ hoa hồng *</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Ghi chú gia hạn..."
+                      maxLength={COMMISSION_REASON_MAX}
                       rows={3}
                       {...field}
                     />
                   </FormControl>
+                  <p className="text-xs text-muted-foreground">Ghi rõ nội dung đã thống nhất; lưu cùng người thực hiện, ngày giờ và giá trị trước/sau.</p>
                   <FormMessage />
                 </FormItem>
               )}

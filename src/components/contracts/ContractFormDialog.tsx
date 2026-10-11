@@ -31,6 +31,8 @@ import { ServicesSection } from "./contract-form/ServicesSection";
 import { FirstInvoicePreview } from "./contract-form/FirstInvoicePreview";
 import { ContractFormFooter } from "./contract-form/ContractFormFooter";
 import { useContractDraftEditor } from './contract-form/useContractDraftEditor';
+import { CommissionReasonField } from '@/components/income-expenses/CommissionReasonField';
+import { hasCommissionBasisChange } from '@/lib/commissionAudit';
 
 const SigningDialog = lazy(() => import('./ConfirmContractSigningDialog').then(module => ({ default: module.ConfirmContractSigningDialog })));
 const PrintDraftDialog = lazy(() => import('./PrintContractDraftDialog').then(module => ({ default: module.PrintContractDraftDialog })));
@@ -66,6 +68,8 @@ export function ContractFormDialog({
   onSaved,
 }: ContractFormDialogProps) {
   const formRoot=useRef<HTMLFormElement>(null);
+  const [commissionChangeReason, setCommissionChangeReason] = useState('');
+  useEffect(() => {setCommissionChangeReason('');}, [open, contract?.id]);
   const [savedDraft, setSavedDraft] = useState(draft);
   const draftSession = useRef({ open, draftId: draft?.id });
   const changedSession = draftSession.current.open !== open || draftSession.current.draftId !== draft?.id;
@@ -101,6 +105,7 @@ export function ContractFormDialog({
     state,
     formRoot:()=>formRoot.current,
     contract,
+    commissionChangeReason,
     onOpenChange,
     onCreated,
     onCreateRequest: editor.current ? async request => {
@@ -170,6 +175,11 @@ export function ContractFormDialog({
 
               {/* ===== Section 3: Tiền thuê & Tiền cọc ===== */}
               <RentDepositSection {...state} />
+              {isEditMode && contract && hasCommissionBasisChange(contract, {
+                room_id: form.watch('room_id'), rent_price: form.watch('rent_price'),
+                start_date: form.watch('start_date'), end_date: form.watch('end_date'),
+              }) && <CommissionReasonField id="contract-commission-reason" value={commissionChangeReason}
+                label="Lý do đổi giá thuê, thời hạn hoặc phòng" onChange={setCommissionChangeReason} />}
 
               {/* ===== Section 4: Tiền phí dịch vụ ===== */}
               <ServicesSection {...state} />

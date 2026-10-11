@@ -35,6 +35,52 @@ beforeEach(() => { vi.clearAllMocks(); api.quote.mockReset(); api.prepare.mockRe
   api.quote.mockImplementation(quote); api.prepare.mockResolvedValue({ operation_id: operation, status: 'READY' }); api.execute.mockResolvedValue(receipt()); api.read.mockResolvedValue(receipt());
   api.refresh.mockResolvedValue({ data: { rows }, isError: false }); });
 afterEach(cleanup);
+
+it('keeps a configured support deduction separate from a manual gross adjustment reason', async () => {
+  setup(); await selectParty();
+  expect(screen.queryByLabelText('Lý do điều chỉnh hoa hồng *')).toBeNull();
+  expect(screen.getByText('1.200.000 đ')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Gross hoa hồng'), { target: { value: '1800000' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  expect(api.prepare).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Lý do điều chỉnh hoa hồng *'), { target: { value: 'Thỏa thuận giảm hoa hồng trước khấu trừ' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.prepare).toHaveBeenCalledTimes(1));
+  expect(api.prepare.mock.calls[0][1].payload.intents[0]).toMatchObject({ gross_amount: '1800000', commission_reason: 'Thỏa thuận giảm hoa hồng trước khấu trừ' });
+});
+it('keeps saved preparation evidence visible when retrying a failed support source by exact identity', async () => {
+  const saved = [{ ...rows[0], state: 'FAILED', request_id: 'saved-support', can_retry: true,
+    preparation: { request_id: 'saved-support', reason: 'Thỏa thuận quyền lợi gốc đã lưu', actor_name: 'Người lập ban đầu', created_at: '2026-10-11T03:00:00Z', stage: 'REPREPARE' } }];
+  api.refresh.mockResolvedValue({ data: { rows: saved }, isError: false });
+  api.retry.mockRejectedValue(new Error('Chưa xác nhận kết quả'));
+  setup(saved);
+  expect(screen.getByLabelText('Thông tin lập yêu cầu đã lưu').textContent).toContain('Thỏa thuận quyền lợi gốc đã lưu');
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo lại hoa hồng' }));
+  await waitFor(() => expect(api.retry).toHaveBeenCalledWith({ contract_id: contract, kind: 'broker', request_id: 'saved-support' }));
+  await screen.findByText(/Chưa xác minh được kết quả Tạo lại/);
+  expect(screen.getByLabelText('Thông tin lập yêu cầu đã lưu').textContent).toContain('Người lập ban đầu');
+  expect(api.prepare).not.toHaveBeenCalled(); expect(api.execute).not.toHaveBeenCalled();
+});
+it('replaces only a reconciled saved source with a new reason-bearing operation', async () => {
+  const oldRows = [{ ...rows[0], state: 'FAILED', request_id: 'old-request', can_retry: true,
+    preparation: { request_id: 'old-request', reason: 'Lý do cũ trước khấu trừ', actor_name: 'Người lập trước', created_at: '2026-10-11T03:00:00Z', stage: 'PREPARE' } }];
+  api.refresh.mockResolvedValue({ data: { rows: oldRows }, isError: false });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RentSupportPayoutForm organizationId="org1" contractId={contract}
+    plan={plan} prefill={prefill} rows={oldRows as never} onlyKind="broker" replacement={{ kind: 'broker', requestId: 'old-request' }} refetchRows={api.refresh} /></QueryClientProvider>);
+  expect(screen.getByLabelText('Thông tin lập yêu cầu đã lưu').textContent).toContain('Lý do cũ trước khấu trừ');
+  expect(screen.getByLabelText('Thông tin lập yêu cầu đã lưu').textContent).toContain('Người lập trước');
+  fireEvent.change(screen.getByLabelText('Người hưởng hoa hồng'), { target: { value: party } });
+  await waitFor(() => expect(api.quote).toHaveBeenCalled());
+  expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Lý do điều chỉnh hoa hồng *'), { target: { value: 'Lập lại theo lịch hỗ trợ hiện tại' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
+  await waitFor(() => expect(api.prepare).toHaveBeenCalledTimes(1));
+  expect(api.prepare.mock.calls[0][1].payload.intents[0]).toMatchObject({ gross_amount: '3000000', commission_reason: 'Lập lại theo lịch hỗ trợ hiện tại' });
+  expect(api.retry).not.toHaveBeenCalled();
+});
 it.each(['amount', 'party'])('does not submit an old %s intent after a deferred preflight and locks duplicate clicks', async field => {
   const refreshed = deferred<{ data: { rows: typeof rows }; isError: boolean }>(); api.refresh.mockReturnValue(refreshed.promise);
   setup(); await selectParty(); fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
@@ -83,7 +129,9 @@ it('blocks a stale quote after changing revenue intent until the matching quote 
   first();
   await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(true));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' })); expect(api.prepare).not.toHaveBeenCalled();
-  second(); await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
+  second();
+  fireEvent.change(screen.getByLabelText('Lý do điều chỉnh hoa hồng *'), { target: { value: 'Thỏa thuận giảm quyền lợi môi giới' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo phiếu ròng' }) as HTMLButtonElement).disabled).toBe(false));
 });
 it('requires explicit registered payee selection and shows the full upfront commitment and monthly schedule with gross/held/net', async () => {
   setup(); expect((screen.getByLabelText('Người hưởng hoa hồng') as HTMLSelectElement).value).toBe('');
@@ -104,7 +152,8 @@ it('blocks review or quote errors and never records an attempt for preview alone
 });
 it('shows net zero as settled by support and never asks the legacy writer to create a zero voucher', async () => {
   api.execute.mockResolvedValue(receipt('0'));
-  setup(); fireEvent.change(screen.getByLabelText('Gross hoa hồng'), { target: { value: '1800000' } }); await selectParty();
+  setup(); fireEvent.change(screen.getByLabelText('Gross hoa hồng'), { target: { value: '1800000' } });
+  fireEvent.change(screen.getByLabelText('Lý do điều chỉnh hoa hồng *'), { target: { value: 'Thỏa thuận giảm quyền lợi môi giới' } }); await selectParty();
   fireEvent.click(screen.getByRole('button', { name: 'Tạo phiếu ròng' }));
   await screen.findByText(/Đã xử lý bằng hỗ trợ tiền thuê/); expect(api.prepare).toHaveBeenCalledTimes(1); expect(api.retry).not.toHaveBeenCalled();
 });

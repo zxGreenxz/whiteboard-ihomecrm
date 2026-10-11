@@ -31,6 +31,7 @@ import {
 import { useReservationSettlementAudit, useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { Link } from "react-router-dom";
 import { ReservationSettlementStatus } from "@/components/deposits/ReservationSettlementStatus";
+import { CommissionAuditHistory } from './CommissionAuditHistory';
 
 export interface VoucherHistoryTarget {
   id: string;
@@ -177,6 +178,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
         </section>
 
         {/* ── Nhật ký thay đổi trước / sau ────────────────────────────────── */}
+        {voucherId && <CommissionAuditHistory voucherId={voucherId} enabled={open} />}
         {reservationSettlement && <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
           <h3 className="text-sm font-semibold">Xử lý cọc giữ chỗ liên quan</h3>
           <ReservationSettlementStatus settlement={reservationSettlement} />

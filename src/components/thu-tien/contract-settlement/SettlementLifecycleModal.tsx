@@ -1,3 +1,5 @@
+import { CommissionReasonField } from '@/components/income-expenses/CommissionReasonField';
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
 // =============================================================================
 // SettlementLifecycleModal — hồ sơ một khoản chi, theo bản thiết kế 03.
 //
@@ -130,6 +132,9 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
   const [soTk, setSoTk] = useState(row.bankAccount ?? '');
   const [loiLuu, setLoiLuu] = useState<string | null>(null);
   const [dangLuuNhan, setDangLuuNhan] = useState(false);
+  const [recipientReason, setRecipientReason] = useState('');
+  const [evidenceReason, setEvidenceReason] = useState('');
+  const isCommission = row.kind === 'commission' || row.kind === 'bonus' || row.commissionKind === 'broker' || row.commissionKind === 'sale';
   /** URL ảnh QR tải hỏng; so theo URL nên đổi tài khoản là tự hết lỗi cũ. */
   const [qrHong, setQrHong] = useState<string | null>(null);
   /** Đổi để React dựng lại <img> — thử lại mà KHÔNG bịa thêm tham số vào URL. */
@@ -293,6 +298,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
    * phiếu mới mở lên đã kẹt sẵn ở "Đang tải…" với nút xác nhận khoá cứng.
    */
   const xoaChungTu = useCallback(() => {
+    setEvidenceReason('');
     setIdTuAnhPhieu([]);
     setIdDuongLui([]);
     setBoQua([]);
@@ -387,6 +393,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
    */
   const themAnh = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
+    if (isCommission && !isCommissionReasonValid(evidenceReason)) { toast.error(COMMISSION_REASON_MESSAGE); return; }
     const idPhieu = phieuHienTai.current;
     setDangTaiAnh(true);
     let coThem = false;
@@ -396,6 +403,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
           voucherId: idPhieu,
           userId: authUser?.id ?? '',
           organizationId: row.organizationId,
+          ...(isCommission ? {commissionReason:evidenceReason.trim()} : {}),
         });
         if (!conDungPhieu(idPhieu)) return;
         // Hook đã toast lý do khi trả null — đừng toast đè lên nó.
@@ -425,7 +433,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
       if (conDungPhieu(idPhieu)) setDangTaiAnh(false);
     }
     if (coThem) lamMoiHoSo();
-  }, [dinhChungTu, authUser?.id, row.organizationId, conDungPhieu, lamMoiHoSo]);
+  }, [dinhChungTu, authUser?.id, row.organizationId, conDungPhieu, lamMoiHoSo, isCommission, evidenceReason]);
 
   const nhanTepDan = useCallback((files: File[]) => { void themAnh(files); }, [themAnh]);
   const tayDan = useClipboardImagePaste({
@@ -561,6 +569,8 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
     if (nh !== nhanTien.nganHang) patch.bankName = nh || null;
     if (tk !== nhanTien.soTk) patch.bankAccount = tk || null;
     if (Object.keys(patch).length === 1) return true;
+    if (isCommission && !isCommissionReasonValid(recipientReason)) { setLoiLuu(COMMISSION_REASON_MESSAGE); return false; }
+    if (isCommission) patch.reason = recipientReason.trim();
 
     dangLuuRef.current = true;
     setDangLuuNhan(true);
@@ -726,6 +736,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                     onChange={(e) => setSoTk(e.target.value)} />
                   {/* Nút chỉ hiện khi CÓ THỨ ĐỂ LƯU — so với bản đã lưu đã chuẩn
                       hoá, không phải "ô ngân hàng khác rỗng". */}
+                  {doiNguoiNhan && isCommission && <CommissionReasonField id="settlement-recipient-reason" value={recipientReason} onChange={setRecipientReason} label="Lý do đổi thông tin nhận hoa hồng" />}
                   {doiNguoiNhan && (
                     <button type="button" className="cs-btn primary sm"
                       disabled={!daXacMinh || actions.isBusy || dangPhatLenh || dangLuuNhan}
@@ -932,6 +943,7 @@ function SettlementLifecycleModalContent({ row, view, actions, onClose, onRetryS
                       </div>
                     ))}
                     <div className="cs-tai" {...tayDan}>
+                      {isCommission && <CommissionReasonField id="settlement-evidence-reason" value={evidenceReason} onChange={setEvidenceReason} label="Lý do bổ sung chứng từ hoa hồng" disabled={dangTaiAnh} />}
                       <div className="cs-note-s">
                         Tải thêm ảnh, hoặc đưa chuột vào đây rồi bấm Ctrl/Cmd+V để dán ảnh.
                       </div>

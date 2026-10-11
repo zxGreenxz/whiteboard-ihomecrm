@@ -217,6 +217,19 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
+it('bổ sung chứng từ hoa hồng yêu cầu lý do trước khi tải ảnh',async()=>{
+  dungMan(phieu({kind:'commission',commissionKind:'broker'}));
+  moFormChi();
+  const file=tepAnh();
+  const input=document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input,{target:{files:[file]}});
+  expect(H.attach).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText(/Lý do bổ sung chứng từ hoa hồng/),{target:{value:'Bổ sung ảnh đối chiếu hoa hồng đã nhận'}});
+  fireEvent.change(input,{target:{files:[file]}});
+  await waitFor(()=>expect(H.attach).toHaveBeenCalledOnce());
+  expect(H.attach).toHaveBeenCalledWith(file,expect.objectContaining({voucherId:V_A,commissionReason:'Bổ sung ảnh đối chiếu hoa hồng đã nhận'}));
+});
+
 it('oversized supplement reason stays inline, keeps draft, focuses field and never calls writer',async()=>{
  const man=dungMan(phieu(),'pending',{requestSupplement:true});const field=screen.getByPlaceholderText('Cần bổ sung gì…');
  fireEvent.change(field,{target:{value:'x'.repeat(5000)}});fireEvent.click(screen.getByRole('button',{name:'Cần bổ sung'}));

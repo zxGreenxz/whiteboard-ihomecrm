@@ -58,7 +58,7 @@ function view() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><CreateDepositDialog open onOpenChange={h.close} /></QueryClientProvider>);
 }
-async function prepare(bonus = false, amount = '500000', hint?: string) {
+async function prepare(bonus = false, amount = '500000', hint?: string, bonusReason = 'Thưởng theo thỏa thuận cho giao dịch cọc') {
   view();
   if (hint) fireEvent.change(screen.getByRole('textbox', { name: 'Tên khách gợi nhớ' }), { target: { value: hint } });
   else {
@@ -71,7 +71,10 @@ async function prepare(bonus = false, amount = '500000', hint?: string) {
   fireEvent.change(date, { target: { value: '02102026' } }); fireEvent.blur(date);
   fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: bookId } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Ghi chú' }), { target: { value: 'Giữ lại nội dung cọc' } });
-  if (bonus) fireEvent.change(document.querySelector('input[name="sale_bonus_amount"]')!, { target: { value: '200000' } });
+  if (bonus) {
+    fireEvent.change(document.querySelector('input[name="sale_bonus_amount"]')!, { target: { value: '200000' } });
+    fireEvent.change(screen.getByRole('textbox',{name:/Lý do \/ căn cứ số tiền thưởng Sale/}),{target:{value:bonusReason}});
+  }
   // User identity is read asynchronously and required by the durable scope.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', false));
   fireEvent.click(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' }));
@@ -99,10 +102,16 @@ it('kỳ hạn lỗi giữ draft và cả phiếu cọc/thưởng đã tạo, kh
   expect(screen.getByRole('textbox', { name: 'Ghi chú' })).toHaveProperty('value', 'Giữ lại nội dung cọc');
   expect(screen.getByRole('button', { name: 'Tạo cọc & giữ chỗ' })).toHaveProperty('disabled', true);
   expect(h.close).not.toHaveBeenCalled(); expect(h.success).not.toHaveBeenCalled();
+  expect(h.bonus).toHaveBeenCalledWith(expect.objectContaining({commissionReason:'Thưởng theo thỏa thuận cho giao dịch cọc'}));
   const pending = financialPending.read({ namespace: 'deposit-create', userId, organizationId, businessKey: roomId });
   expect(pending?.completedIds).toEqual([reservationId, voucherId, bonusId]);
   fireEvent.submit(document.querySelector('form')!);
   await waitFor(() => expect(h.create).toHaveBeenCalledOnce());
+});
+it('thưởng Sale thiếu lý do chặn trước khi tạo cọc hoặc phiếu thưởng',async()=>{
+  await prepare(true,'500000',undefined,'   ');
+  expect(await screen.findByText(/Nhập lý do cụ thể/)).toBeTruthy();
+  expect(h.create).not.toHaveBeenCalled();expect(h.bonus).not.toHaveBeenCalled();
 });
 it('thưởng timeout giữ phiếu cọc và chặn gửi lại sau đóng/mở DOM mới', async () => {
   h.bonus.mockRejectedValue(new TypeError('Failed to fetch')); await prepare(true); await screen.findByRole('alert');

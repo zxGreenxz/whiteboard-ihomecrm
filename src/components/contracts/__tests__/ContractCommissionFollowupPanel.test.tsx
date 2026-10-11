@@ -5,17 +5,17 @@ import type { ContractCommissionFollowup } from '@/lib/contractCommissionFollowu
 
 const mocks = vi.hoisted(() => ({
   query: { data: undefined as { rows: ContractCommissionFollowup[]; total: number } | undefined, isPending: false, isError: false, refetch: vi.fn() },
-  retry: vi.fn(), read: vi.fn(),
+  retry: vi.fn(), read: vi.fn(), record: vi.fn(),
 }));
 vi.mock('@/lib/contractCommissionFollowup', async original => ({ ...await original<typeof import('@/lib/contractCommissionFollowup')>(), readContractCommissionFollowups: (...args: unknown[]) => mocks.read(...args) }));
 vi.mock('@/hooks/useContractCommissionFollowup', () => ({ useContractCommissionFollowups: () => mocks.query,
-  useRecordContractCommissionEvent: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
+  useRecordContractCommissionEvent: () => ({ mutateAsync: mocks.record, isPending: false }) }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-1' }) }));
 vi.mock('@/hooks/useCommissionVoucher', () => ({ useRetryCommissionVoucher: () => ({ mutateAsync: mocks.retry, isPending: false }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/contracts/CommissionVoucherModal', () => ({
-  CommissionVoucherModal: ({ open, contractId, onlyKind, onOpenChange }: { open: boolean; contractId: string; onlyKind?: string; onOpenChange: (open: boolean) => void }) =>
-    open ? <div role="dialog" aria-label="Tạo phiếu hoa hồng">{contractId} {onlyKind}<button onClick={() => onOpenChange(false)}>Đóng popup</button></div> : null,
+  CommissionVoucherModal: ({ open, contractId, onlyKind, replacementRequestId, onOpenChange }: { open: boolean; contractId: string; onlyKind?: string; replacementRequestId?: string; onOpenChange: (open: boolean) => void }) =>
+    open ? <div role="dialog" aria-label="Tạo phiếu hoa hồng">{contractId} {onlyKind} {replacementRequestId}<button onClick={() => onOpenChange(false)}>Đóng popup</button></div> : null,
 }));
 import { ContractCommissionFollowupPanel } from '../ContractCommissionFollowupPanel';
 it('shows a zero-net completed support outcome without a voucher or failure retry', () => {
@@ -28,6 +28,58 @@ const row = (overrides: Partial<ContractCommissionFollowup> = {}): ContractCommi
   contract_id: 'contract-1', contract_number: 'HD-001', building_id: 'building-1', building_name: 'Toà A', room_name: '101',
   kind: 'broker', state: 'PENDING', last_reason: null, last_actor: null, last_at: null, attempted_amount: null,
   voucher_id: null, voucher_code: null, voucher_status: null, can_manage: true, events: [], ...overrides,
+});
+it.each(['FAILED', 'UNKNOWN', 'PROCESSING'] as const)('shows saved reason and original actor/time for %s without a voucher', async state => {
+  mocks.query.data = { rows: [row({ state, request_id: 'saved-request', can_retry: state !== 'PROCESSING', last_reason: 'Lần tạo phiếu chưa hoàn tất',
+    preparation: { request_id: 'saved-request', reason: 'Hai bên thống nhất mức hoa hồng riêng', actor_name: 'Người lập ban đầu', created_at: '2026-10-11T03:00:00Z', stage: 'PREPARE' } })], total: 1 };
+  const { rerender } = render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  const evidence = screen.getByLabelText('Thông tin lập yêu cầu đã lưu');
+  expect(evidence.textContent).toContain('Hai bên thống nhất mức hoa hồng riêng');
+  expect(evidence.textContent).toContain('Người lập ban đầu'); expect(evidence.textContent).toContain('11/10/2026');
+  if (state !== 'PROCESSING') {
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo lại' }));
+    await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith({ contract_id: 'contract-1', kind: 'broker', request_id: 'saved-request' }));
+    expect(screen.getByLabelText('Thông tin lập yêu cầu đã lưu').textContent).toContain('Người lập ban đầu');
+  }
+  mocks.query.data.rows[0].can_manage = false;
+  rerender(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  expect(screen.queryByLabelText('Thông tin lập yêu cầu đã lưu')).toBeNull();
+  expect(screen.queryByText(/Hai bên thống nhất mức hoa hồng riêng|Người lập ban đầu/)).toBeNull();
+});
+it.each(['NOT_APPLICABLE', 'REOPENED'] as const)('requires an explicit reason and saves %s after checking current state', async action => {
+  mocks.query.data = { rows: [row({ state: action === 'REOPENED' ? 'NOT_APPLICABLE' : 'PENDING' })], total: 1 };
+  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  fireEvent.click(screen.getByRole('button', { name: `${action === 'REOPENED' ? 'Mở lại' : 'Không phát sinh'} hoa hồng môi giới` }));
+  const save = screen.getByRole('button', { name: 'Lưu quyết định' }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Lý do quyết định *'), { target: { value: 'ngắn' } });
+  expect(save.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Lý do quyết định *'), { target: { value: '  Hai bên xác nhận quyết định này  ' } });
+  fireEvent.click(save);
+  await waitFor(() => expect(mocks.record).toHaveBeenCalledWith({ contractId: 'contract-1', kind: 'broker', action, reason: 'Hai bên xác nhận quyết định này' }));
+  expect(mocks.retry).not.toHaveBeenCalled();
+});
+it('does not record a no-commission decision after a voucher appears during preflight', async () => {
+  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Không phát sinh hoa hồng môi giới' }));
+  fireEvent.change(screen.getByLabelText('Lý do quyết định *'), { target: { value: 'Hai bên không yêu cầu hoa hồng' } });
+  mocks.query.refetch.mockResolvedValue({ data: { rows: [row({ state: 'VOUCHER_CREATED' })] }, isError: false });
+  fireEvent.click(screen.getByRole('button', { name: 'Lưu quyết định' }));
+  await screen.findByRole('alert'); expect(mocks.record).not.toHaveBeenCalled();
+});
+it('opens replacement only for the reconciled failed request and does not retry it automatically', async () => {
+  mocks.query.data = { rows: [row({ state: 'UNKNOWN', request_id: 'old-request', can_retry: true })], total: 1 };
+  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Lập lại yêu cầu' }));
+  expect((await screen.findByRole('dialog')).textContent).toContain('old-request');
+  expect(mocks.retry).not.toHaveBeenCalled(); expect(mocks.record).not.toHaveBeenCalled();
+});
+it('shows who made a decision, when, and why', () => {
+  mocks.query.data = { rows: [row({ state: 'NOT_APPLICABLE', events: [{ action: 'NOT_APPLICABLE', reason: 'Không có đơn vị môi giới', amount: null, actor_name: 'Người kiểm thử', created_at: '2026-10-10T05:00:00Z' }] })], total: 1 };
+  render(<ContractCommissionFollowupPanel contractId="contract-1" />);
+  expect(screen.getByText(/Người kiểm thử/)).toBeTruthy();
+  expect(screen.getByText(/Không có đơn vị môi giới/)).toBeTruthy();
+  expect(screen.getByText(/10\/10\/2026/)).toBeTruthy();
 });
 beforeEach(() => { vi.clearAllMocks(); mocks.query.isPending = false; mocks.query.isError = false;
   mocks.query.data = { rows: [row(), row({ kind: 'sale' })], total: 2 };

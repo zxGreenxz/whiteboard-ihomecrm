@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const USER = '00000000-0000-4000-8000-0000000000aa';
@@ -69,7 +69,7 @@ vi.mock('sonner', () => ({
 }));
 
 import IncomeExpensePostingDialog from '../IncomeExpensePostingDialog';
-import { adoptVoucherAttachmentsAsEvidence } from '@/hooks/income-expenses/financeV2Mutations';
+import { adoptVoucherAttachmentsAsEvidence, commitPostingAttachmentChanges, useAttachPostingEvidence } from '@/hooks/income-expenses/financeV2Mutations';
 
 const PHIEU = '0f0f0f0f-0000-4000-8000-00000000000a';
 const SO = '0d0d0d0d-0000-4000-8000-000000000001';
@@ -92,6 +92,10 @@ function goiMayChuGia(fn: string, args: Record<string, unknown>) {
       error: null,
     });
   }
+  if (fn === 'intervene_commission_v1') {
+    const payload = args.p_payload as {add_attachments:string[];remove_attachments:string[]};
+    return goiMayChuGia('annotate_income_expense_v1', {p_add_attachments:payload.add_attachments,p_remove_attachments:payload.remove_attachments});
+  }
   if (fn === 'annotate_income_expense_v1') {
     if (may.loiGhiAnh) return Promise.resolve({ data: null, error: may.loiGhiAnh });
     const go = (args.p_remove_attachments as string[] | null) ?? [];
@@ -110,8 +114,10 @@ function Khung({
   loai = 'EXPENSE',
   che = 'POST_APPROVED',
   dangGhiSo = false,
+  hoaHong = false,
 }: {
   giuKhiDong?: boolean;
+  hoaHong?: boolean;
   loai?: 'INCOME' | 'EXPENSE';
   che?: 'POST_APPROVED' | 'APPROVE_AND_POST';
   /** Như trang truyền `isPending` của lệnh ghi sổ. */
@@ -123,6 +129,7 @@ function Khung({
   const [phieu] = useState(() => ({
     subjectKind: 'VOUCHER' as const,
     subjectId: PHIEU,
+    isCommission: hoaHong,
     type: loai,
     approvedTotal: 1_500_000,
     name: 'Sửa máy bơm',
@@ -776,4 +783,71 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
     await waitFor(() => expect(H.taiLen).toHaveBeenCalledTimes(4));
     expect((H.taiLen.mock.calls[3][2] as File).name).toBe('d.png');
   });
+});
+
+it('thêm chứng từ hoa hồng: chặn lý do trống trước ghi và lưu lý do khi chỉ thêm ảnh', async () => {
+  render(<Khung hoaHong />);
+  const {url}=await themAnh('bo-sung-chung-tu.png');
+  fireEvent.click(screen.getByRole('button',{name:'Chi'}));
+  await screen.findByText(/Nhập lý do cụ thể từ 8/);
+  expect(H.ghiSo).not.toHaveBeenCalled();
+  expect(H.goiMayChu.mock.calls.some(([name])=>name==='intervene_commission_v1'||name==='annotate_income_expense_v1')).toBe(false);
+  fireEvent.change(screen.getByLabelText(/Lý do thay đổi chứng từ hoa hồng/),{target:{value:'Bổ sung xác nhận chuyển khoản đã đối chiếu'}});
+  fireEvent.click(screen.getByRole('button',{name:'Chi'}));
+  await waitFor(()=>expect(H.ghiSo).toHaveBeenCalledOnce());
+  expect(H.goiMayChu).toHaveBeenCalledWith('intervene_commission_v1',expect.objectContaining({
+    p_stage:'ANNOTATE',p_reason:'Bổ sung xác nhận chuyển khoản đã đối chiếu',p_payload:expect.objectContaining({add_attachments:[url],remove_attachments:[]}),
+  }));
+});
+
+it('commit add-only của hoa hồng giữ lý do đúng và không gọi writer thiếu lý do',async()=>{
+  const url=`${KHO}nguoi-lap/anh-moi.png`;
+  const invalid=await commitPostingAttachmentChanges(PHIEU,{add:[url],remove:[],commissionReason:'   '});
+  expect(invalid.ok).toBe(false);expect(H.goiMayChu).not.toHaveBeenCalled();
+  const result=await commitPostingAttachmentChanges(PHIEU,{add:[url],remove:[],commissionReason:'  Bổ sung bằng chứng đúng kỳ  '});
+  expect(result.ok).toBe(true);
+  expect(H.goiMayChu).toHaveBeenCalledWith('intervene_commission_v1',expect.objectContaining({p_stage:'ANNOTATE',p_reason:'Bổ sung bằng chứng đúng kỳ',p_payload:expect.objectContaining({add_attachments:[url],remove_attachments:[]})}));
+  expect(lenhGhiAnh()).toHaveLength(0);
+});
+
+it('đính chứng từ ngay của hoa hồng chặn trước upload và truyền lý do vào ANNOTATE',async()=>{
+  const client=new QueryClient();
+  const {result}=renderHook(()=>useAttachPostingEvidence(),{wrapper:({children})=><QueryClientProvider client={client}>{children}</QueryClientProvider>});
+  const file=new File(['anh'],'chung-tu.png',{type:'image/png'});
+  await result.current(file,{voucherId:PHIEU,userId:USER,commissionReason:''});
+  expect(H.taiLen).not.toHaveBeenCalled();expect(H.goiMayChu).not.toHaveBeenCalled();
+  const receipt=await result.current(file,{voucherId:PHIEU,userId:USER,commissionReason:'Bổ sung bằng chứng chuyển khoản đúng'});
+  expect(receipt?.attachedToVoucher).toBe(true);
+  expect(H.goiMayChu).toHaveBeenCalledWith('intervene_commission_v1',expect.objectContaining({p_stage:'ANNOTATE',p_reason:'Bổ sung bằng chứng chuyển khoản đúng'}));
+  expect(lenhGhiAnh()).toHaveLength(0);
+});
+
+it('lỗi can thiệp chứng từ hoa hồng không đi đường lùi để ghi sổ',async()=>{
+  render(<Khung hoaHong />);
+  await themAnh('chung-tu-bi-tu-choi.png');
+  fireEvent.change(screen.getByLabelText(/Lý do thay đổi chứng từ hoa hồng/),{target:{value:'Bổ sung theo đối chiếu kỳ hoa hồng'}});
+  may.loiGhiAnh={message:'permission denied'};
+  fireEvent.click(screen.getByRole('button',{name:'Chi'}));
+  await waitFor(()=>expect(H.goiMayChu.mock.calls.some(([name])=>name==='intervene_commission_v1')).toBe(true));
+  await screen.findByRole('alert');
+  expect(H.ghiSo).not.toHaveBeenCalled();expect(H.khoChungTu).not.toHaveBeenCalled();
+});
+
+it('gỡ chứng từ hoa hồng: lý do bắt buộc trước mọi lệnh ghi và lưu đúng giai đoạn', async () => {
+  may.anh = [ANH_CU];
+  render(<Khung hoaHong />);
+  await waitFor(() => expect(oAnh(ANH_CU)).not.toBeNull());
+  const {url} = await themAnh('thay-chung-tu.png');
+  fireEvent.click(within(oAnh(ANH_CU)!).getByRole('button', {name:/Gỡ/}));
+  fireEvent.click(screen.getByRole('button', {name:'Chi'}));
+  await screen.findByText(/Nhập lý do cụ thể từ 8/);
+  expect(H.ghiSo).not.toHaveBeenCalled();
+  expect(H.goiMayChu.mock.calls.some(([name]) => name === 'intervene_commission_v1')).toBe(false);
+  fireEvent.change(screen.getByLabelText(/Lý do thay đổi chứng từ hoa hồng/), {target:{value:'Thay chứng từ đính nhầm bằng bản đúng'}});
+  fireEvent.click(screen.getByRole('button', {name:'Chi'}));
+  await waitFor(() => expect(H.ghiSo).toHaveBeenCalledOnce());
+  expect(H.goiMayChu).toHaveBeenCalledWith('intervene_commission_v1', expect.objectContaining({
+    p_voucher_id:PHIEU,p_stage:'ANNOTATE',p_reason:'Thay chứng từ đính nhầm bằng bản đúng',
+    p_payload:expect.objectContaining({add_attachments:[url],remove_attachments:[ANH_CU]}),
+  }));
 });

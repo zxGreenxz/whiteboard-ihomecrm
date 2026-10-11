@@ -53,7 +53,7 @@ export interface UpdateContractPayload {
   notes?: string | null;
   discounts?: { months: number; amount_per_month: number } | null;
   expected_move_out_date?: string | null;
-  status?: string;
+  status?: ContractUpdate['status'];
 }
 
 // Re-export types for backward compatibility
@@ -699,17 +699,21 @@ export const useUpdateContract = () => {
     mutationFn: async ({
       id,
       updates,
+      commissionChangeReason,
     }: {
       id: string;
       updates: UpdateContractPayload;
+      commissionChangeReason?: string;
       suppressSuccessToast?: boolean;
     }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      const patch: ContractUpdate = { ...updates };
+      if (commissionChangeReason) patch.commission_change_reason = commissionChangeReason.trim();
       const { data, error } = await supabase
         .from("contracts")
-        .update(updates as any)
+        .update(patch)
         .eq("id", id)
         .select()
         .single();
@@ -720,6 +724,8 @@ export const useUpdateContract = () => {
     },
     onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["commission-prefill"] });
+      queryClient.invalidateQueries({ queryKey: ["commission-interventions"] });
       if (data?.id) {
         queryClient.invalidateQueries({ queryKey: ["contracts", data.id] });
       }

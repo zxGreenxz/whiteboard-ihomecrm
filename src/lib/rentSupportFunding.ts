@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { commissionReasonSchema } from '@/lib/commissionCreationPolicy';
 const uuid = z.string().uuid();
 const money = z.string().regex(/^\d+(?:\.\d+)?$/);
 export const fundingSourceQuoteSchema = z.object({
@@ -36,6 +37,7 @@ export type PayoutPreviewContext = z.infer<typeof payoutPreviewContextSchema>;
 const payoutIntentFieldsSchema = payoutPreviewIntentSchema.innerType().extend({
  source_id:uuid.nullable(),payer_name:z.string().nullable(),recipient_name:z.string().nullable(),
  recipient_bank:z.string().nullable(),recipient_account:z.string().nullable(),item_description:z.string().nullable(),attachments:z.array(z.string()),
+ commission_reason:commissionReasonSchema,
 }).strict();
 const routeMatches=(value:{route?:string;manager_id?:string|null})=>(value.route==='MANAGER_PAYROLL')===(value.manager_id!=null);
 const uniqueIntents=(value:{intents?:Array<{kind?:string;intent_id?:string}>})=>{const intents=value.intents??[];return new Set(intents.map(x=>x.kind)).size===intents.length && new Set(intents.map(x=>x.intent_id)).size===intents.length;};

@@ -10,6 +10,7 @@
 import { InlineSkeleton } from "@/components/loading/LoadingState";
 import { useCommissionVoucherFacts } from "@/hooks/useCommissionVoucher";
 import { buildCommissionNoteLines } from "@/lib/commissionVoucherNote";
+import { CommissionAuditHistory } from './CommissionAuditHistory';
 
 export interface CommissionVoucherRef {
   id: string;
@@ -57,6 +58,10 @@ export function CommissionVoucherNote({ voucher, fallbackNotes, enabled = true }
       {notes ? (
         <div className="whitespace-pre-line text-muted-foreground">{notes}</div>
       ) : null}
+      <details className="pt-2 text-sm">
+        <summary className="cursor-pointer font-medium">Căn cứ và lý do điều chỉnh hoa hồng</summary>
+        <div className="mt-2"><CommissionAuditHistory voucherId={voucher.id} enabled={enabled} showLegacyNotice /></div>
+      </details>
     </div>
   );
 }

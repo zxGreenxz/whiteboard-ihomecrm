@@ -3,6 +3,7 @@
   "generatedBy": "node scripts/check-raw-rpc-callers.mjs --write",
   "fingerprints": [
     "src/hooks/income-expenses/annotateMutations.ts::annotate_income_expense_v1",
+    "src/hooks/income-expenses/commissionIntervention.ts::intervene_commission_v1",
     "src/hooks/income-expenses/flexMutations.ts::can_flex_cancel_v1",
     "src/hooks/income-expenses/flexMutations.ts::cancel_income_expense_flex_v1",
     "src/hooks/income-expenses/flexMutations.ts::get_voucher_cancellation_v1",

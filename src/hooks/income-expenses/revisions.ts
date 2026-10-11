@@ -1,4 +1,5 @@
 import {financialReadRows} from '@/lib/financialReadValidation';
+import { voucherOutcomeUnknown } from '@/lib/voucherFeedback';
 // Sửa phiếu thu chi Chờ duyệt có lưu vết + duyệt có kiểm phiên bản (đợt 1, 25/09/2026).
 //
 //   revise_pending_income_expense_v1   — mọi lần sửa phiếu Chờ duyệt (form Sửa, hộp
@@ -33,6 +34,7 @@ const REVISION_COLUMNS =
  * ["income-expenses"] đã phủ cả danh sách lẫn thống kê (["income-expenses","stats",…]).
  */
 export const VOUCHER_QUERY_KEYS = [
+  ["commission-interventions"],
   ["income-expenses"],
   ["income-expense-batches"],
   ["voucher-with-batch"],
@@ -164,7 +166,7 @@ export function useReviseIncomeExpense() {
     },
     onError: (error) => {
       // Phiếu vừa bị người khác sửa/duyệt: kéo bản mới về cho mọi màn đang mở.
-      if (isStaleVersionError(error)) {
+      if (isStaleVersionError(error) || voucherOutcomeUnknown(error)) {
         void Promise.all(VOUCHER_QUERY_KEYS.map((key) => client.invalidateQueries({ queryKey: key })));
       }
       toast.error(revisionErrorMessage(error));

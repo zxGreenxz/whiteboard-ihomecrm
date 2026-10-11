@@ -20,6 +20,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { useAssignCommissionManager, useCommissionSupport } from "@/hooks/useCommissionManager";
 import { isCommissionType } from "@/lib/managerSalary";
+import { CommissionReasonField } from "./CommissionReasonField";
+import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import { QlManagerSelect } from "./QlManagerSelect";
 
 /** Tên sổ ảo do salary_commission_book_v1 tạo — phiếu nằm đây là đã gán QL. */
@@ -56,6 +58,7 @@ export function CommissionManagerAction({ voucher, row, locked = false }: Props)
     !!voucher.organization_id;
   const [open, setOpen] = useState(false);
   const [managerId, setManagerId] = useState("");
+  const [reason, setReason] = useState("");
   const assign = useAssignCommissionManager();
   // Hộp gán render qua portal nên fieldset khoá nút của tấm phiếu không chạm tới nó.
   // Phiếu đọc lại (realtime, Thử lại) ⇒ đóng hộp, mở lại theo bản mới — trước 30/09
@@ -81,7 +84,7 @@ export function CommissionManagerAction({ voucher, row, locked = false }: Props)
               size="sm"
               variant="outline"
               className="h-7 px-2 text-xs"
-              onClick={() => setOpen(true)}
+              onClick={() => { setReason(""); setOpen(true); }}
               data-testid="ie-assign-commission-manager"
             >
               {onBook ? "Đổi QL" : "Gán QL"}
@@ -113,16 +116,17 @@ export function CommissionManagerAction({ voucher, row, locked = false }: Props)
               )}
             </div>
             {support.data?.staff_id && managerId && support.data.staff_id!==managerId && <p className="text-sm text-destructive">Quản lý phải đúng người hưởng đã xác nhận của nguồn hoa hồng.</p>}
+            <CommissionReasonField id="hhql-reason" value={reason} onChange={setReason} label="Lý do gán hoặc đổi quản lý nhận hoa hồng" />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Huỷ
               </Button>
               <Button
                 type="button"
-                disabled={!managerId || assign.isPending || supportBlocked || (!!support.data && support.data.staff_id!==managerId)}
+                disabled={!managerId || !isCommissionReasonValid(reason) || assign.isPending || supportBlocked || (!!support.data && support.data.staff_id!==managerId)}
                 onClick={() =>
                   assign.mutate(
-                    { voucherId: voucher.id, managerId, expectedVersion: voucher.approval_version },
+                    { voucherId: voucher.id, managerId, expectedVersion: voucher.approval_version, reason },
                     { onSuccess: () => setOpen(false) },
                   )
                 }

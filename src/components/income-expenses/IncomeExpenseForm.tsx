@@ -97,13 +97,8 @@ import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { todayISO } from '@/lib/collect';
 import { toast } from 'sonner';
-import {
-  assignCommissionManager,
-  invalidateAfterCommissionAssign,
-  useOptionalQueryClient,
-} from '@/hooks/useCommissionManager';
-import { QlManagerSelectForBuilding } from './QlManagerSelect';
 import { isCommissionType } from '@/lib/managerSalary';
+import { isCommissionVoucher } from '@/lib/commissionIntervention';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -268,10 +263,6 @@ const IncomeExpenseFormInner = ({
   // Ô QL (migration 20260927155251): phiếu chi hoa hồng TẠO MỚI cho quản lý → sau khi
   // tạo, gán quản lý và chuyển sang sổ ảo "Hoa hồng QL chờ trả lương" (trả qua lương).
   // Không phải trường của phiếu nên ở ngoài zod schema, như forfeitReason.
-  const [qlOn, setQlOn] = useState(false);
-  const [qlManagerError,setQlManagerError]=useState<string|null>(null);
-  const [qlManagerId, setQlManagerId] = useState('');
-  const queryClient = useOptionalQueryClient();
   const isMobile = useIsMobile();
 
   // Cascade dropdown state
@@ -574,21 +565,14 @@ const IncomeExpenseFormInner = ({
     autoLinkedContractIdRef.current = null;
   };
 
-  // Phiếu chi có hạng mục hoa hồng (cùng luật server ie_has_commission_item_v1) → hiện
-  // ô QL, chỉ khi TẠO MỚI (phiếu đang có thì gán ở chi tiết phiếu: nút "Gán QL").
+  // Hoa hồng phải lập từ Hợp đồng để có căn cứ tính và lịch sử điều chỉnh.
   const commissionTypeIds = new Set(
     expenseTypes.filter((t) => isCommissionType(t)).map((t) => t.id),
   );
-  const showQl =
+  const manualCommissionCreate =
     !isEditing &&
     voucherType === 'EXPENSE' &&
     itemRows.some((r) => commissionTypeIds.has(r.income_expense_type_id));
-  useEffect(() => {
-    if (!open) {
-      setQlOn(false);
-      setQlManagerId('');
-    }
-  }, [open]);
 
   // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
   const hasDepositItem = itemRows.some((r) =>
@@ -737,6 +721,7 @@ const IncomeExpenseFormInner = ({
   const onSubmit = async (data: IncomeExpenseFormValues) => {
     if (detailBlocked || detailConflict || reconcileRequired || cashbookAccessError || sourceUnavailable) return;
     setSubmitError(null);
+    if (!isEditing && manualCommissionCreate) { setSubmitError("Lập hoa hồng từ Hợp đồng để lưu cấu hình tính tiền và lý do nếu có điều chỉnh."); return; }
     if ((revisionNeedsReason && !revisionReasonOk) || (forfeitKqkdMode && forfeitKqkdChanged && !forfeitReasonOk)) {
       setReasonError(true);
       void focusFirstError({ [forfeitKqkdMode ? 'forfeitReason' : 'revisionReason']: 'Nhập lý do có ít nhất 8 ký tự.' }, { root: formRef.current });
@@ -779,28 +764,12 @@ const IncomeExpenseFormInner = ({
           reason: revisionReason.trim() || null,
         });
       } else {
-        const giaoQl = showQl && qlOn;
-        if (giaoQl && !qlManagerId) {
-          setQlManagerError('Chọn quản lý nhận hoa hồng.');
-          void focusFirstError({qlManagerId:'Chọn quản lý nhận hoa hồng.'},{root:formRef.current});
-          return;
-        }
         await runFinancialPending({namespace:"voucher-form-create",userId:authUser?.id??"",organizationId:selectedOrganizationId??"",businessKey:[data.type,data.building_id,data.room_id??""].join(":")},async progress=>{
         // Cả hai đường ghi (create_income_expense_v1 / ie_compat_insert_v2) trả về phiếu có id.
         const created = (await createMutation.mutateAsync(data)) as { id?: string } | null | undefined;
         if(!created?.id)throw new TypeError("Chưa xác nhận mã phiếu vừa tạo");
         progress.recordCompleted([created.id]);
-        if (giaoQl) {
-          // Lỗi gán không huỷ phiếu vừa tạo: phiếu ở lại sổ đã chọn, gán lại ở chi
-          // tiết phiếu (nút "Gán QL") hoặc màn Lương.
-          try {
-            await assignCommissionManager({ voucherId: created.id, managerId: qlManagerId });
-            await invalidateAfterCommissionAssign(queryClient);
-          } catch (e) {
-            const message = `Đã tạo phiếu nhưng chưa gán được quản lý. ${voucherFailureMessage(e, 'gán quản lý nhận hoa hồng')} Mở chi tiết phiếu ${created.id} để gán bổ sung; không tạo lại phiếu.`;
-            setReconcileRequired(true); toast.warning(message); throw new VoucherPartialError(message,[created.id]);
-          }
-        }
+
         });
         // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
         // bao nhiêu để cập nhật field "Đã đặt cọc" ngay tại form HĐ.
@@ -867,10 +836,15 @@ const IncomeExpenseFormInner = ({
   // lúc mở form, không so với giá trị đang gõ dở ở lần trước.
   const watchedBuildingId = form.watch('building_id');
   const watchedAccountId = form.watch('account_id');
+  const watchedRevisionValues = form.watch();
+  const commissionRevisionChanged = isCommissionVoucher(voucher) && !!editBaseline && (
+    Object.keys(buildRevisionPatch(editBaseline.values, watchedRevisionValues)).length > 0 ||
+    revisionItemsChanged(toRevisableItems(editBaseline.rows), toRevisableItems(itemRows))
+  );
   const revisionNeedsReason =
     isRevising &&
     !!editBaseline &&
-    requiresRevisionReason(
+    (commissionRevisionChanged || requiresRevisionReason(
       {
         type: editBaseline.values.type,
         building_id: editBaseline.values.building_id,
@@ -885,7 +859,7 @@ const IncomeExpenseFormInner = ({
         business_result_accounting: forfeitKqkdWatched ?? null,
         items: toRevisableItems(itemRows),
       },
-    );
+    ));
   const revisionReasonOk = revisionReason.trim().length >= REVISION_REASON_MIN;
 
   const totalAmount = itemRows.reduce(
@@ -1224,39 +1198,7 @@ const IncomeExpenseFormInner = ({
                         <FormLabel>
                           {voucherType === 'EXPENSE' ? 'Tên người nhận' : 'Người gửi'}
                         </FormLabel>
-                        {showQl && (
-                          <label className="flex items-center gap-1 text-xs font-medium cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={qlOn}
-                              onChange={(e) => {
-                                setQlOn(e.target.checked);
-                                if (!e.target.checked) setQlManagerId('');
-                              }}
-                              aria-label="Người nhận là quản lý (QL)"
-                            />
-                            QL
-                          </label>
-                        )}
                       </div>
-                      {showQl && qlOn ? (
-                        <>
-                          <QlManagerSelectForBuilding
-                            name="qlManagerId"
-                            error={qlManagerError??undefined}
-                            buildingId={watchedBuildingId}
-                            value={qlManagerId}
-                            onPick={(m) => {
-                              setQlManagerId(m.staffId);setQlManagerError(null);
-                              field.onChange(m.displayName);
-                            }}
-                          />
-                          <p className="text-xs text-violet-700">
-                            Phiếu sẽ chuyển sang sổ ảo "Hoa hồng QL chờ trả lương": duyệt vẫn tính chi phí tòa
-                            nhưng không chi từ sổ quỹ — tiền trả qua lương.
-                          </p>
-                        </>
-                      ) : (
                         <FormControl>
                           <Input
                             placeholder={
@@ -1269,7 +1211,6 @@ const IncomeExpenseFormInner = ({
                             disabled={!canEdit}
                           />
                         </FormControl>
-                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1783,6 +1724,7 @@ const IncomeExpenseFormInner = ({
               />
 
               {/* Lý do sửa — chỉ hiện khi đổi trục tiền; máy chủ bắt cùng ngưỡng. */}
+              {!isEditing && manualCommissionCreate && <p role="alert" className="text-sm text-destructive">Lập hoa hồng từ Hợp đồng để lưu cấu hình tính tiền và lý do nếu có điều chỉnh.</p>}
               {revisionNeedsReason && (
                 <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
                   <label htmlFor="revision-reason" className="text-sm font-medium">

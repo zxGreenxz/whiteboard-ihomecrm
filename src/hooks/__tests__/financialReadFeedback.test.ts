@@ -30,7 +30,7 @@ it.each([null,{}])('tổng cọc thiếu dữ liệu không thành zero %s',asyn
 it('trạng thái phí không biến tiền đã đóng lỗi thành chưa đóng',async()=>{io.rpc.mockResolvedValue({data:[{building_id:'b1',category_key:'wifi',paid_amount:'invalid',draft_amount:0}],error:null});const {result}=renderHook(()=>usePeriodFeeStatus('2026-09',['wifi'],['b1']));await expect((result.current as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();});
 
 it.each([null,{}, {contractId:'c1',alreadyPaid:null}, {contractId:'c1',alreadyPaid:true}])('thưởng Sale chưa xác minh không thành chưa trả %s',async data=>{io.rpc.mockResolvedValue({data,error:null});const query=useSaleBonusStatus('c1') as unknown as {queryFn:()=>Promise<unknown>};await expect(query.queryFn()).rejects.toThrow();});
-it('thiếu mã phiếu thưởng vừa tạo là chưa xác nhận',async()=>{io.rpc.mockResolvedValue({data:{amount:1000},error:null});const hook=useCreateSaleBonusFromDeposit() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>};await expect(hook.mutationFn({depositVoucherId:'d1',amount:1000})).rejects.toThrow('Chưa xác nhận');});
+it('thiếu mã phiếu thưởng vừa tạo là chưa xác nhận',async()=>{io.rpc.mockResolvedValue({data:{amount:1000},error:null});const hook=useCreateSaleBonusFromDeposit() as unknown as {mutationFn:(input:unknown)=>Promise<unknown>};await expect(hook.mutationFn({depositVoucherId:'d1',amount:1000,commissionReason:'Thưởng Sale theo biên bản đã xác nhận'})).rejects.toThrow('Chưa xác nhận');});
 
 it.each([null,{}, {total_amount:'not-a-number'}])('thống kê hoá đơn không biến dữ liệu thiếu thành zero %s',async data=>{io.rpc.mockResolvedValue({data,error:null});await expect(invoiceStatisticsQuery().queryFn()).rejects.toThrow();});
 

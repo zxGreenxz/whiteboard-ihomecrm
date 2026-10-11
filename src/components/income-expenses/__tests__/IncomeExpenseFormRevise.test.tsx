@@ -147,6 +147,10 @@ describe('Form sửa phiếu Chờ duyệt', () => {
     expect(screen.getByText('Sổ quỹ (chọn lúc duyệt)')).toBeTruthy();
     fireEvent.change(screen.getByDisplayValue('Chi sửa ống nước'), { target: { value: 'Hoa hồng P101' } });
     fireEvent.click(nutLuu());
+    await waitFor(() => expect(screen.getByTestId('revision-reason').getAttribute('aria-invalid')).toBe('true'));
+    expect(h.revise).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('revision-reason'), { target: { value: 'Ghi rõ phòng hưởng hoa hồng' } });
+    fireEvent.click(nutLuu());
     await waitFor(() => expect(h.revise).toHaveBeenCalledOnce());
     expect(h.revise.mock.calls[0][0].patch).toEqual({ name: 'Hoa hồng P101' });
   });

@@ -20,7 +20,7 @@ beforeEach(()=>{
 it.each([()=>useIncomeExpenseRevisions('v1'),()=>useRevisionCounts(['v1']),()=>useIncomeExpenseHistory('v1'),()=>useFlexCancelEligibility(['v1']),()=>useIncomeCancelEligibility(['v1']),()=>useVoucherChangeLog('v1')])('nguồn lịch sử/điều kiện hủy null phải lỗi để UI không đọc như trống',async hook=>{
  await expect((hook() as unknown as {queryFn:()=>Promise<unknown>}).queryFn()).rejects.toThrow();
 });
-it.each([()=>({hook:useCancelIncomeExpenseBatch(),input:'batch1'}),()=>({hook:useUpdateBatchAccount(),input:{batchId:'batch1',accountId:'a1',reason:'đổi sổ'}})])('đợt phiếu có nguồn links null không thành không có thay đổi',async entry=>{
+it.each([()=>({hook:useCancelIncomeExpenseBatch(),input:{batchId:'batch1',reason:'Huỷ đợt bị lập trùng'}}),()=>({hook:useUpdateBatchAccount(),input:{batchId:'batch1',accountId:'a1',reason:'đổi sổ'}})])('đợt phiếu có nguồn links null không thành không có thay đổi',async entry=>{
  const {hook,input}=entry();await expect((hook as unknown as {mutationFn:(value:unknown)=>Promise<unknown>}).mutationFn(input)).rejects.toThrow();expect(h.rpc).not.toHaveBeenCalled();
 });
 it.each([null,{evidence_ids:[null],skipped:[]}])('nhận chứng từ thiếu receipt không được đi tiếp với []/ID sai %s',async data=>{

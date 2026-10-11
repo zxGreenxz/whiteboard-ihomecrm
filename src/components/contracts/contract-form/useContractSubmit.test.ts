@@ -23,6 +23,15 @@ vi.mock("sonner", () => ({
 }));
 
 describe("useContractSubmit", () => {
+  it('chặn sửa căn cứ hoa hồng khi thiếu lý do trước khi ghi hợp đồng hoặc quan hệ', () => {
+    const update=vi.fn(),customers=vi.fn(),services=vi.fn(),setError=vi.fn();
+    const contract={id:'11111111-1111-4111-8111-111111111111',room_id:'22222222-2222-4222-8222-222222222222',rent_price:4000000,start_date:'2026-09-01',end_date:'2027-08-31'};
+    const state={isEditMode:true,isEditDetailReady:true,form:{setError},partialSyncRef:{current:null},selectedCustomers:[{id:'33333333-3333-4333-8333-333333333333',is_representative:true}],updateContract:{mutateAsync:update},syncCustomers:{mutateAsync:customers},syncServices:{mutateAsync:services}} as unknown as ContractFormState;
+    const values: ContractFormData = {...contract,rent_price:4100000,signed_date:contract.start_date,total_deposit:4000000,payment_cycle:'MONTHLY'};
+    useContractSubmit({state,contract:contract as never,onOpenChange:vi.fn()})(values);
+    expect(setError).toHaveBeenCalledWith('root.server',expect.objectContaining({message:expect.stringContaining('lý do')}));
+    expect(update).not.toHaveBeenCalled();expect(customers).not.toHaveBeenCalled();expect(services).not.toHaveBeenCalled();
+  });
   it('blocks edit submission until full detail has loaded', () => {
     const setError = vi.fn();
     const state = { isEditMode: true, isEditDetailReady: false, form: { setError } } as unknown as ContractFormState;
@@ -109,7 +118,7 @@ describe("useContractSubmit", () => {
     const partialSyncRef={current:null};const state={isEditMode:true,editCustomerBaselineRef:{current:[]},form:{setError:vi.fn()},partialSyncRef,
       selectedCustomers:[{id:'22222222-2222-4222-8222-222222222222',is_representative:true}],
       selectedServices:[{id:'44444444-4444-4444-8444-444444444444',name:'Điện',unit_price:10000,initial_reading:0,quantity:1}],useCustomServices:true,updateContract,syncCustomers,syncServices} as unknown as ContractFormState;
-    const contract={id:actual.contract.id} as NonNullable<Parameters<typeof useContractSubmit>[0]['contract']>;const close=vi.fn();const submit=useContractSubmit({state,contract,onOpenChange:close});
+    const contract={id:actual.contract.id} as NonNullable<Parameters<typeof useContractSubmit>[0]['contract']>;const close=vi.fn();const submit=useContractSubmit({state,contract,onOpenChange:close,commissionChangeReason:'Cập nhật hợp đồng theo thỏa thuận'});
     const data={room_id:'11111111-1111-4111-8111-111111111111',signed_date:'2026-09-01',start_date:'2026-09-01',end_date:'2027-08-31',rent_price:4000000,total_deposit:4000000,payment_cycle:'MONTHLY'} as ContractFormData;
     submit(data);await vi.waitFor(()=>expect(syncServices.mutateAsync).toHaveBeenCalledOnce());expect(close).not.toHaveBeenCalled();expect(partialSyncRef.current).not.toBeNull();
     const revised={...data,notes:'Ghi chú sửa sau lỗi'};submit(revised);await vi.waitFor(()=>expect(partialSyncRef.current).toBeNull());expect(readContractEditSnapshot).toHaveBeenCalledWith(contract.id);expect(close).not.toHaveBeenCalled();expect(updateContract.mutateAsync).toHaveBeenCalledOnce();expect(syncCustomers.mutateAsync).toHaveBeenCalledOnce();
@@ -135,7 +144,7 @@ describe("useContractSubmit", () => {
     const state = { isEditMode: true, editCustomerBaselineRef:{current:structuredClone(actual.customers)},hasPersistedRentSupport: true, form: { setError: vi.fn() }, partialSyncRef: { current: null },
       selectedCustomers: [{ id: customer, is_representative: true }], selectedServices: [], useCustomServices: false,
       updateContract: { mutateAsync: update }, syncCustomers: { mutateAsync: vi.fn() }, syncServices: { mutateAsync: vi.fn() } } as unknown as ContractFormState;
-    useContractSubmit({ state, contract: { id } as never, onOpenChange: close })({ room_id: '33333333-3333-4333-8333-333333333333',
+    useContractSubmit({ state, contract: { id, room_id: '33333333-3333-4333-8333-333333333333',start_date:'2026-09-01',end_date:'2027-08-31',rent_price:4000000 } as never, onOpenChange: close })({ room_id: '33333333-3333-4333-8333-333333333333',
       signed_date: '2026-09-01', start_date: '2026-09-01', end_date: '2027-08-31', payment_cycle: 'MONTHLY',
       notes: 'Ghi chú mới', rent_price: 4000000, total_deposit: 0 } as ContractFormData);
     await vi.waitFor(() => expect(close).toHaveBeenCalledWith(false));

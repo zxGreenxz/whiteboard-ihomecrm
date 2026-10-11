@@ -1,3 +1,5 @@
+import { CommissionReasonField } from './CommissionReasonField';
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { FinancialWorkflowError } from "@/lib/financialWorkflowError";
@@ -61,6 +63,7 @@ export interface PostingCashbookOption {
 export interface PostingVoucherSummary {
   subjectKind: PostingSubjectKind;
   subjectId: string;
+  isCommission?: boolean;
   /** Chọn cặp nhãn Chi/Thu. */
   type: 'INCOME' | 'EXPENSE';
   /** Tổng đã duyệt — số tiền read-only cho phiếu VOUCHER. */
@@ -638,6 +641,7 @@ export default function IncomeExpensePostingDialog({
 
   const formRef = useRef<HTMLFormElement>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [commissionReason, setCommissionReason] = useState('');
   const [adoptError, setAdoptError] = useState(false);
   const [reconcileRequired, setReconcileRequired] = useState(false);
   const form = useForm<IncomeExpensePostingFormValues>({
@@ -863,6 +867,7 @@ export default function IncomeExpensePostingDialog({
   useEffect(() => {
     if (!open) return;
     sessionRef.current += 1;
+    setCommissionReason('');
     // Mở hộp là sắp chọn ảnh: chuẩn bị phiên + kết nối ngay từ bây giờ.
     warmUploadConnection();
     return () => {
@@ -1157,7 +1162,7 @@ export default function IncomeExpensePostingDialog({
         ? `duyệt và ${isExpense ? 'chi' : 'thu'}`
         : isExpense ? 'chi tiền' : 'ghi nhận thu';
       const res = await withCommitDeadline(
-        commitDraft(voucher.subjectId, { add, remove }),
+        commitDraft(voucher.subjectId, { add, remove, ...(voucher.isCommission && (add.length || remove.length) ? { commissionReason: commissionReason.trim() } : {}) }),
         `Chưa gửi lệnh ${lenh}`,
       );
       if (sessionRef.current !== session) {
@@ -1192,6 +1197,7 @@ export default function IncomeExpensePostingDialog({
         );
         return null;
       }
+      if (voucher.isCommission) { setSubmitError(loi); return null; }
       return await fallbackToEvidenceStore(add, loi, session);
     } catch (error) {
       if (voucherOutcomeUnknown(error)) {
@@ -1213,6 +1219,7 @@ export default function IncomeExpensePostingDialog({
 
   const submit = form.handleSubmit(async (values) => {
     const session = sessionRef.current;
+    if (voucher.isCommission && hasPendingAttachmentChanges && !isCommissionReasonValid(commissionReason)) { setSubmitError(COMMISSION_REASON_MESSAGE); return; }
     if (reconcileRequired || cashbookError || submitLockRef.current === session) return;
     submitLockRef.current = session;
     setSubmitError(null);
@@ -1480,6 +1487,7 @@ export default function IncomeExpensePostingDialog({
               )}
             />
 
+            {voucher.isCommission && hasPendingAttachmentChanges && <CommissionReasonField id="posting-commission-reason" label="Lý do thay đổi chứng từ hoa hồng" value={commissionReason} onChange={setCommissionReason} />}
             {adoptError && <p role="alert" className="text-sm text-destructive">Chưa kiểm tra được chứng từ đã đính kèm. Đóng và mở lại phiếu để tải lại, hoặc thêm chứng từ mới.</p>}
             {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
             {!capabilityOk && (

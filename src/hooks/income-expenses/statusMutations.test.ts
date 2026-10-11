@@ -490,3 +490,21 @@ describe("duyệt phiếu — luôn kèm phiên bản đang xem (đợt 1 sửa 
     );
   });
 });
+
+describe('Can thiệp vòng đời hoa hồng có lý do', () => {
+  it.each([
+    ['UNAPPROVE', useUnapproveVoucher],
+    ['RESTORE', useRestoreIncomeExpense],
+  ] as const)('gửi %s đúng phiếu và lý do tới dispatcher, không gọi writer cũ', async (stage, hook) => {
+    mockVoucherRead({data:{approval_version:7},error:null});
+    mocks.rpc.mockResolvedValue({data:{changed:true},error:null});
+    const {result}=renderHook(() => hook());
+    const mutation=result.current as unknown as {mutationFn:(input:{id:string;reason:string})=>Promise<unknown>};
+    await mutation.mutationFn({id:'commission-v1',reason:'Sửa lại theo biên bản đối chiếu'});
+    expect(mocks.rpc).toHaveBeenCalledWith('intervene_commission_v1', {
+      p_voucher_id:'commission-v1',p_stage:stage,p_reason:'Sửa lại theo biên bản đối chiếu',
+      p_payload:stage==='UNAPPROVE'?{expected_approval_version:7}:{},
+    });
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+});

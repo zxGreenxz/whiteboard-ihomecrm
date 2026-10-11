@@ -2173,6 +2173,7 @@ export type Database = {
           amenities: Json | null
           cluster_id: string | null
           code: string | null
+          commission_change_reason: string | null
           commission_tiers: Json
           contract_template_id: string | null
           created_at: string
@@ -2211,6 +2212,7 @@ export type Database = {
           amenities?: Json | null
           cluster_id?: string | null
           code?: string | null
+          commission_change_reason?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
           created_at?: string
@@ -2249,6 +2251,7 @@ export type Database = {
           amenities?: Json | null
           cluster_id?: string | null
           code?: string | null
+          commission_change_reason?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
           created_at?: string
@@ -4806,6 +4809,7 @@ export type Database = {
       contracts: {
         Row: {
           actual_end_date: string | null
+          commission_change_reason: string | null
           contract_file_url: string | null
           contract_number: string | null
           contract_template_id: string | null
@@ -4843,6 +4847,7 @@ export type Database = {
         }
         Insert: {
           actual_end_date?: string | null
+          commission_change_reason?: string | null
           contract_file_url?: string | null
           contract_number?: string | null
           contract_template_id?: string | null
@@ -4880,6 +4885,7 @@ export type Database = {
         }
         Update: {
           actual_end_date?: string | null
+          commission_change_reason?: string | null
           contract_file_url?: string | null
           contract_number?: string | null
           contract_template_id?: string | null
@@ -23258,6 +23264,20 @@ export type Database = {
         }
         Returns: Json
       }
+      create_sale_bonus_from_deposit_with_reason_v1: {
+        Args: {
+          p_account_id?: string
+          p_account_number?: string
+          p_amount: number
+          p_attachments?: Json
+          p_bank?: string
+          p_commission_reason: string
+          p_deposit_voucher_id: string
+          p_recipient?: string
+          p_voucher_date?: string
+        }
+        Returns: Json
+      }
       create_simple_extension: {
         Args: {
           p_contract_id: string
@@ -24286,6 +24306,15 @@ export type Database = {
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
       ie_type_rule_editor_ok_v1: { Args: { p_org: string }; Returns: boolean }
+      intervene_commission_v1: {
+        Args: {
+          p_payload: Json
+          p_reason: string
+          p_stage: string
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
       invite_organization_member_v1: {
         Args: {
           p_email: string
@@ -25640,6 +25669,10 @@ export type Database = {
           p_payload: Json
           p_payout_context: Json
         }
+        Returns: Json
+      }
+      read_commission_interventions_v1: {
+        Args: { p_voucher_id: string }
         Returns: Json
       }
       read_contract_draft_signing_v1: {

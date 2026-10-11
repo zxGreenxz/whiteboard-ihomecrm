@@ -341,7 +341,7 @@
         "removedFunctions": 30,
         "removedTriggers": 3,
         "retainedTriggers": 2,
-        "forwardSuccessions": 3
+        "forwardSuccessions": 4
       },
       "witness": {
         "functions": [
@@ -825,6 +825,29 @@
                 "md5": "5c120cb4a699f4520cbd68cc75ee4071",
                 "owner": "postgres",
                 "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              }
+            }
+          ]
+        },
+        {
+          "file": "20261011074456_commission_reason_audit_flow.sql",
+          "sha256": "0d88d7bbb8235ca6afb520c2fa0228b774786c93a8a6f513addfef3575106cfd",
+          "appliedEvidencePath": "docs/generated/schema-change-evidence/20261011074456_commission_reason_audit_flow.json",
+          "expectedCounts": {
+            "functions": 1
+          },
+          "functions": [
+            {
+              "signature": "public.reverse_posted_income_expense_v2(uuid,uuid,date,text,text)",
+              "before": {
+                "md5": "9fcc9d100dd7fd3a858038a10dc6e701",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+              },
+              "after": {
+                "md5": "172864298949f72dd8272728072a0bec",
+                "owner": "postgres",
+                "acl": "{postgres=X/postgres,authenticated=X/postgres}"
               }
             }
           ]

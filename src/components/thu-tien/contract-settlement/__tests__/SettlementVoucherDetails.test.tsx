@@ -39,6 +39,10 @@ vi.mock('@/hooks/useCommissionVoucher', () => ({
   useCommissionVoucherFacts: (...a: unknown[]) => { H.goiHoaHong.push(a); return H.hoaHong; },
 }));
 
+vi.mock('@/hooks/useCommissionAudit', () => ({
+  useCommissionAudit: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
 import { SettlementVoucherDetails, basisReadState } from '../SettlementVoucherDetails';
 import { VoucherNote } from '@/components/income-expenses/VoucherNote';
 import {

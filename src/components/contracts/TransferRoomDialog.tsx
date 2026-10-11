@@ -37,6 +37,7 @@ import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { todayISO } from '@/lib/collect';
 import { locPhongChuyenDuoc, type PhongCoTheChuyen } from "@/lib/contractRoomFilter";
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_REASON_MAX } from '@/lib/commissionAudit';
 
 interface TransferRoomDialogProps {
   open: boolean;
@@ -113,9 +114,10 @@ export function TransferRoomDialog({
   };
 
   const onSubmit = (data: TransferRoomFormData) => {
+    if(!isCommissionReasonValid(data.notes)){form.setError('notes',{type:'validation',message:COMMISSION_REASON_MESSAGE});form.setFocus('notes');return;}
     const params={contractId:contract.id,expectedUpdatedAt:contract.updated_at,newRoomId:data.new_room_id,
       newRentPrice:data.new_rent_price,transferDate:data.transfer_date,notes:data.notes,
-      noticeReason:data.notes?.trim()||'Hủy báo dọn phòng cũ khi chuyển phòng'};
+      noticeReason:data.notes!.trim()};
     const intent=JSON.stringify(params);if(noticeRequest.current?.intent!==intent)noticeRequest.current={intent,id:crypto.randomUUID()};
     transferRoom.mutate(
       {...params,requestId:noticeRequest.current!.id},
@@ -270,10 +272,11 @@ export function TransferRoomDialog({
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ghi chú</FormLabel>
+                  <FormLabel>Lý do chuyển phòng / thay đổi căn cứ hoa hồng *</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Ghi chú chuyển phòng..."
+                      maxLength={COMMISSION_REASON_MAX}
                       rows={3}
                       {...field}
                     />

@@ -229,8 +229,9 @@ export interface CreateCommissionVoucherInput {
   recipient_name: string | null; // tên người nhận tiền
   recipient_bank: string | null;
   recipient_account_number: string | null;
-  /** Mô tả item — vd "Hoa hồng MG (50% × 6 tháng tiền phòng)" */
+  /** Mô tả số tiền thực tế và tỷ lệ cấu hình; số tháng chỉ chọn bậc. */
   item_description: string;
+  commission_reason?: string | null;
   /** Ảnh chứng từ riêng của phiếu (URL đã upload bucket income-expense-attachments) */
   attachments?: string[];
   /** Explicit salary manager selection, saved with the creation intent. */
@@ -243,6 +244,7 @@ export function commissionCreationPayload(input: CreateCommissionVoucherInput) {
     account_id: input.account_id, payer_name: input.payer_name, recipient_name: input.recipient_name,
     recipient_bank: input.recipient_bank, recipient_account: input.recipient_account_number,
     item_description: input.item_description, attachments: input.attachments ?? [], manager_id: input.manager_id ?? null,
+    commission_reason: input.commission_reason?.trim() || null,
   };
 }
 

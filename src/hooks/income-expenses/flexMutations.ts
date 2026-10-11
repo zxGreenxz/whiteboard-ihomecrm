@@ -169,6 +169,7 @@ export const useCancelVoucherFlex = () => {
     }),
     onSuccess: (data) => {
       for (const key of [
+        ["commission-interventions"],
         ["income-expenses"],
         ["income-expense-batches"],
         ["accounts-with-balance"],
