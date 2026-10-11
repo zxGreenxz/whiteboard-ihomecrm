@@ -20,11 +20,7 @@
 // =============================================================================
 import { sb, log, orgOf } from './ctx.js';
 import { chuanHoaAutoReply } from './automation-config.js';
-import { gioVietNam } from './automation-scenario.js';
 import { docPhongTrong } from './vacant-rooms.js';
-
-/** Trễ trước khi tin trả lời được gửi — người thật không trả lời trong 0 giây. */
-const TRE_TU_NHIEN_GIAY = 8;
 
 /** Tin quá ngắn (["ok","hi"]) không mang câu hỏi nào để trả lời. */
 const DAI_TOI_THIEU = 2;
@@ -63,26 +59,6 @@ export function soanDanhSachPhong(rooms, link) {
   return phan.join('\n\n');
 }
 
-/** Hội thoại này được trả lời tự động lần cuối lúc nào. */
-async function lanTraLoiCuoi(conversationId) {
-  const { data } = await sb.from('zalo_automation_runs')
-    .select('created_at')
-    .eq('conversation_id', conversationId)
-    .eq('kind', 'auto_reply').eq('mode', 'reply')
-    .order('created_at', { ascending: false }).limit(1).maybeSingle();
-  return data?.created_at ? Date.parse(data.created_at) : null;
-}
-
-/** Số tin auto-reply đã gửi hôm nay (giờ VN) trong công ty. */
-async function daTraLoiHomNay(orgId, ngayVN) {
-  const dau = new Date(`${ngayVN}T00:00:00+07:00`).toISOString();
-  const { count } = await sb.from('zalo_automation_runs')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', orgId).eq('kind', 'auto_reply').eq('mode', 'reply')
-    .gte('created_at', dau);
-  return count || 0;
-}
-
 async function ghiNhatKy(row) {
   const { error } = await sb.from('zalo_automation_runs').insert(row);
   if (error) log('auto-reply: ghi nhật ký lỗi', error.message);
@@ -96,20 +72,23 @@ async function ghiNhatKy(row) {
  * @param {string} p.accountId
  * @param {object} p.conv     dòng zalo_conversations (cần id, account_id, organization_id, is_sale_partner)
  * @param {string} p.body     nội dung tin đến
+ * @param {string} p.zaloMsgId mã tin đến đã lưu, dùng chống xử lý trùng
  */
-export async function xuLyTinDen({ accountId, conv, body }) {
+export async function xuLyTinDen({ accountId, conv, body, zaloMsgId }) {
   try {
     if (!conv?.id) return;
     if (!conv.is_sale_partner) return;                 // cửa 1 — rẻ nhất, chặn 99% lưu lượng
+    if (!String(zaloMsgId || '').trim()) return;        // không gửi nếu thiếu khóa chống trùng
     const noiDung = String(body || '').trim();
     if (noiDung.length < DAI_TOI_THIEU) return;
 
     const orgId = conv.organization_id || orgOf(accountId);
     if (!orgId) return;
 
-    const { data: auto } = await sb.from('zalo_automations')
+    const { data: auto, error: configError } = await sb.from('zalo_automations')
       .select('id, config, enabled')
       .eq('organization_id', orgId).eq('kind', 'auto_reply').maybeSingle();
+    if (configError) throw new Error(configError.message);
     if (!auto?.enabled) return;
 
     const cfg = chuanHoaAutoReply(auto.config);
@@ -127,27 +106,8 @@ export async function xuLyTinDen({ accountId, conv, body }) {
     const khop = timTuKhoa(noiDung, cfg.keywords);          // cửa 3
     if (!khop) return;                                      // không khớp: im lặng, không cần ghi sổ
 
-    const cuoi = await lanTraLoiCuoi(conv.id);              // cửa 4
-    if (cuoi && Date.now() - cuoi < cfg.cooldownMinutes * 60_000) {
-      const conLai = Math.ceil((cfg.cooldownMinutes * 60_000 - (Date.now() - cuoi)) / 60_000);
-      await ghiNhatKy({
-        organization_id: orgId, account_id: accountId, conversation_id: conv.id,
-        kind: 'auto_reply', mode: 'skipped',
-        reason: `Vừa trả lời hội thoại này — im lặng thêm ${conLai} phút (chống lặp).`,
-      });
-      return;
-    }
-
-    const t = gioVietNam(new Date());
-    const daGui = await daTraLoiHomNay(orgId, t.ngay);
-    if (daGui >= cfg.dailyCap) {
-      await ghiNhatKy({
-        organization_id: orgId, account_id: accountId, conversation_id: conv.id,
-        kind: 'auto_reply', mode: 'skipped',
-        reason: `Đã chạm trần ${cfg.dailyCap} tin trả lời tự động trong ngày.`,
-      });
-      return;
-    }
+    // Cửa 4 được kiểm trong cùng transaction xếp hàng tại DB. Đọc cooldown/cap
+    // rồi insert riêng ở worker có thể cho hai tin đến đồng thời vượt giới hạn.
 
     // Nội dung: lời chào người dùng soạn + số liệu lấy thẳng từ CSDL lúc này.
     let than = cfg.replyIntro;
@@ -162,32 +122,15 @@ export async function xuLyTinDen({ accountId, conv, body }) {
       than = `${cfg.replyIntro}\n\n${soanDanhSachPhong(rooms, link)}`;
     }
 
-    const { data: msg, error: eMsg } = await sb.from('zalo_messages').insert({
-      user_id: conv.user_id, organization_id: orgId,
-      conversation_id: conv.id, account_id: accountId,
-      direction: 'out', msg_type: 'text', body: than,
-      status: 'pending', sent_at: new Date().toISOString(),
-    }).select('id').single();
-    if (eMsg) throw new Error(eMsg.message);
-
-    const { error: eJob } = await sb.from('zalo_send_queue').insert({
-      user_id: conv.user_id, organization_id: orgId,
-      conversation_id: conv.id, account_id: accountId, message_id: msg.id,
-      channel: 'personal',
-      payload: { body: than, tu_dong: true, auto_reply: true },
-      status: 'queued',
-      not_before: new Date(Date.now() + TRE_TU_NHIEN_GIAY * 1000).toISOString(),
+    const { data: result, error } = await sb.rpc('zalo_enqueue_auto_reply_v1', {
+      p_conversation_id: conv.id,
+      p_body: than,
+      p_source_zalo_msg_id: String(zaloMsgId),
+      p_detail: { tu_khoa: khop, so_phong: soPhong },
     });
-    if (eJob) throw new Error(eJob.message);
-
-    await ghiNhatKy({
-      organization_id: orgId, account_id: accountId, conversation_id: conv.id,
-      kind: 'auto_reply', mode: 'reply',
-      reason: `Khớp từ khoá "${khop}" — đã gửi danh sách phòng trống.`,
-      recipients_count: 1, messages_count: 1,
-      detail: { tu_khoa: khop, so_phong: soPhong, tin_den: noiDung.slice(0, 200) },
-    });
-    log('auto-reply →', conv.id, `(khớp "${khop}")`);
+    if (error) throw new Error(error.message);
+    if (!['queued', 'skipped'].includes(result?.status)) throw new Error('Kết quả xếp hàng tự động không xác định');
+    log('auto-reply', result.status, conv.id, result.reused ? '(nguồn đã xếp hàng)' : result.reason || '');
   } catch (e) {
     log('auto-reply lỗi', e?.message || e);
   }

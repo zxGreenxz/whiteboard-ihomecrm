@@ -3,6 +3,7 @@ import { ChevronDown, Check, Tag } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EMERALD } from './zaloTheme';
 import type { ZaloLabel } from './types';
+import { zaloLabelKey } from './conversationState';
 
 export function labelColor(c?: string | null): string {
   if (c && /^(#|rgb|hsl)/i.test(c)) return c;
@@ -11,28 +12,28 @@ export function labelColor(c?: string | null): string {
 
 interface Props {
   labels: ZaloLabel[];
-  selectedLabel: number | null;
-  onSelect: (labelId: number | null) => void;
+  selectedLabel: string | null;
+  onSelect: (labelKey: string | null) => void;
 }
 
 /** Dropdown "Phân loại" — lọc hội thoại theo nhãn Zalo. */
 export default function LabelFilter({ labels, selectedLabel, onSelect }: Props) {
   const [open, setOpen] = useState(false);
-  const active = labels.find((l) => l.labelId === selectedLabel);
+  const active = labels.find((l) => zaloLabelKey(l) === selectedLabel);
   const on = !!active;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+            display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', maxWidth: '100%', minWidth: 0,
             background: on ? EMERALD : '#fff', border: on ? 'none' : '1px solid hsl(210 20% 88%)',
             color: on ? '#fff' : 'hsl(160 20% 30%)', fontSize: 12, fontWeight: on ? 600 : 500,
             padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
           }}
         >
           <Tag size={13} />
-          {active ? `${active.emoji || ''} ${active.name}`.trim() : 'Phân loại'}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{active ? `${active.emoji || ''} ${active.name} · ${active.accountName || active.accountId.slice(0, 8)}`.trim() : 'Phân loại'}</span>
           <ChevronDown size={13} />
         </button>
       </PopoverTrigger>
@@ -46,11 +47,12 @@ export default function LabelFilter({ labels, selectedLabel, onSelect }: Props) 
             <div style={{ padding: '10px 8px', fontSize: 12, color: 'hsl(210 10% 50%)' }}>Chưa có nhãn — sẽ đồng bộ khi worker kết nối.</div>
           )}
           {labels.map((l) => {
-            const sel = l.labelId === selectedLabel;
+            const key = zaloLabelKey(l);
+            const sel = key === selectedLabel;
             return (
-              <button key={l.labelId} onClick={() => { onSelect(l.labelId); setOpen(false); }} className="w-full" style={rowStyle(sel)}>
+              <button key={key} onClick={() => { onSelect(key); setOpen(false); }} className="w-full" style={rowStyle(sel)}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: labelColor(l.color), flex: 'none' }} />
-                <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.emoji ? `${l.emoji} ` : ''}{l.name}</span>
+                <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.emoji ? `${l.emoji} ` : ''}{l.name}<small className="block text-muted-foreground">{l.accountName || l.accountId.slice(0, 8)}</small></span>
                 {sel && <Check size={15} color={EMERALD} />}
               </button>
             );

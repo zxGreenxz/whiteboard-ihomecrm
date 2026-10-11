@@ -33,16 +33,19 @@ export default function VoiceRecorder({ onDone, onCancel, sending, blocked }: Pr
   const mimeRef = useRef('');
 
   useEffect(() => {
+    let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
     let stream: MediaStream | null = null;
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         const mime = pickMime();
         mimeRef.current = mime || 'audio/webm';
         const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
         rec.addEventListener('dataavailable', (e) => { if (e.data.size) chunksRef.current.push(e.data); });
         rec.addEventListener('stop', () => {
+          if (cancelled) { stream?.getTracks().forEach(t => t.stop()); return; }
           durationRef.current = Date.now() - startedAt.current;
           const b = new Blob(chunksRef.current, { type: mimeRef.current });
           setBlob(b);
@@ -55,11 +58,13 @@ export default function VoiceRecorder({ onDone, onCancel, sending, blocked }: Pr
         setRecording(true);
         timer = setInterval(() => setElapsed(Date.now() - startedAt.current), 250);
       } catch {
+        if (cancelled) return;
         toast.error('Không truy cập được micro — kiểm tra quyền trình duyệt');
         onCancel();
       }
     })();
     return () => {
+      cancelled = true;
       if (timer) clearInterval(timer);
       try { if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop(); } catch { /* */ }
       stream?.getTracks().forEach((t) => t.stop());

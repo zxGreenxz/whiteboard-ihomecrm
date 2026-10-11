@@ -18,6 +18,7 @@
 // đều kiểm TRƯỚC khi xếp hàng, và trần ngày được trừ dần theo số tin thật sự
 // xếp được chứ không phải theo số tin dự định.
 // =============================================================================
+import { createHash } from 'node:crypto';
 import { sb, log, orgOf, sessions } from './ctx.js';
 import { chuanHoaBroadcast } from './automation-config.js';
 import {
@@ -81,46 +82,24 @@ export function soanTinPhong(room, mau, hotline) {
  * Chèn 1 dòng zalo_messages (pending) + 1 job zalo_send_queue hẹn giờ.
  * Trả về true nếu xếp được.
  */
-async function xepMotTin({ conv, khiNao, body, anh }) {
-  const chung = {
-    user_id: conv.user_id,
-    organization_id: conv.organization_id,
-    conversation_id: conv.id,
-    account_id: conv.account_id,
-  };
+async function xepMotTin({ conv, khiNao, body, anh, requestKey }) {
   try {
-    const { data: msg, error: eMsg } = await sb.from('zalo_messages').insert({
-      ...chung,
-      direction: 'out',
-      msg_type: anh ? 'image' : 'text',
-      body: anh ? (body || null) : body,
-      media_url: anh ? anh.url : null,
-      media_meta: anh ? { filename: anh.filename, bucket: anh.bucket, path: anh.path, tu_dong: true } : null,
-      status: 'pending',
-      sent_at: new Date().toISOString(),
-    }).select('id').single();
-    if (eMsg) throw new Error(eMsg.message);
-
-    const payload = anh
-      ? {
-          type: 'image',
-          body: body || null,
-          attachments: [{ bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename }],
-          message_ids: [msg.id],
-          tu_dong: true,
-        }
-      : { body, tu_dong: true };
-
-    const { error: eJob } = await sb.from('zalo_send_queue').insert({
-      ...chung,
-      message_id: msg.id,
-      channel: 'personal',
-      payload,
-      status: 'queued',
-      not_before: khiNao.toISOString(),
+    // One transaction reserves quota and creates both rows. Retrying the same
+    // logical run after a lost response reuses its message/job, never resends it.
+    const { data, error } = await sb.rpc('zalo_enqueue_broadcast_v1', {
+      p_conversation_id: conv.id,
+      p_body: body || '',
+      p_not_before: khiNao.toISOString(),
+      p_request_key: requestKey,
+      p_attachment: anh ? { bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename } : null,
     });
-    if (eJob) throw new Error(eJob.message);
-    return true;
+    if (error) throw new Error(error.message);
+    if (data?.status === 'queued') return true;
+    if (data?.status === 'skipped') {
+      log('automation: không xếp tin', conv.id, data.reason);
+      return false;
+    }
+    throw new Error('Không xác nhận được kết quả xếp tin tự động');
   } catch (e) {
     log('automation: xếp tin lỗi', conv.id, e?.message || e);
     return false;
@@ -146,12 +125,17 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai }) {
+async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
   const bayGio = Date.now();
   let soTin = 0;
   let soNguoiNhan = 0;
+  let soBoQuaKhungGio = 0;
+  let soKhongXepDuoc = 0;
+  const ngayLuot = gioVietNam(now).ngay;
+  const duKien = convs.length * ((khoi.includes('link') && vanBanMoDau ? 1 : 0)
+    + (khoi.includes('table_image') ? 1 : 0) + (khoi.includes('room_details') ? tinPhong.length : 0));
 
   for (let i = 0; i < convs.length; i++) {
     const conv = convs[i];
@@ -160,30 +144,42 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
     // "một con bot" dưới mắt hệ thống chống spam.
     let offset = i * gapNguoi;
     let daGuiChoNguoiNay = false;
+    const xep = async (logicalKey, content) => {
+      const khiNao = new Date(bayGio + offset * 1000);
+      // Identity follows the content's purpose, never its current display
+      // position. Room reorder/config reorder during retry cannot swap receipts.
+      const requestKey = `${runKey}:${conv.id}:${logicalKey}`;
+      offset += gapTin;
+      // No stale room broadcast on the next day, even for an overnight window.
+      if (gioVietNam(khiNao).ngay !== ngayLuot || !trongKhungGio(khiNao, config.antiSpam).trong) {
+        soBoQuaKhungGio++;
+        return;
+      }
+      if (await xepMotTin({ conv, khiNao, requestKey, ...content })) {
+        soTin++; daGuiChoNguoiNay = true;
+      } else soKhongXepDuoc++;
+    };
 
     for (const k of khoi) {
       if (soTin >= tranConLai) break;
 
       if (k === 'link' && vanBanMoDau) {
-        if (await xepMotTin({ conv, khiNao: new Date(bayGio + offset * 1000), body: vanBanMoDau })) {
-          soTin++; offset += gapTin; daGuiChoNguoiNay = true;
-        }
-      } else if (k === 'table_image' && anhBang) {
-        if (await xepMotTin({ conv, khiNao: new Date(bayGio + offset * 1000), anh: anhBang })) {
-          soTin++; offset += gapTin; daGuiChoNguoiNay = true;
-        }
+        await xep('link', { body: vanBanMoDau });
+      } else if (k === 'table_image') {
+        if (anhBang) await xep('table_image', { anh: anhBang });
+        else soKhongXepDuoc++;
       } else if (k === 'room_details') {
         for (const t of tinPhong) {
           if (soTin >= tranConLai) break;
-          if (await xepMotTin({ conv, khiNao: new Date(bayGio + offset * 1000), body: t.body, anh: t.anh })) {
-            soTin++; offset += gapTin; daGuiChoNguoiNay = true;
-          }
+          await xep(`room:${t.roomId}`, { body: t.body, anh: t.anh });
         }
       }
     }
     if (daGuiChoNguoiNay) soNguoiNhan++;
   }
-  return { soTin, soNguoiNhan };
+  return { soTin, soNguoiNhan, soBoQuaKhungGio, soKhongXepDuoc,
+    soChuaXep: Math.max(0, duKien - soTin),
+    soBoQuaTran: Math.max(0, duKien - soTin - soBoQuaKhungGio - soKhongXepDuoc) };
 }
 
 /** Render ảnh bảng + upload lên bucket zalo-media. Trả null nếu không dựng được. */
@@ -302,8 +298,22 @@ async function xuLyMotCongTy(auto, now) {
 
     const ketQua = await guiLo({
       convs, config, phong, accountId, orgId, now,
+      runKey: `scheduled:${t.ngay}`,
       day: qd.mode === 'full', tranConLai: conLai,
     });
+
+    if (ketQua.soTin === 0 && ketQua.soKhongXepDuoc > 0) {
+      // No positive enqueue receipts: leave lastScheduledDate/knownRoomIds and
+      // quota unchanged. Stable keys reconcile a lost response on the next tick.
+      await ghiNhatKy({
+        organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
+        mode: 'failed', reason: 'Chưa xác nhận được tin nào được xếp hàng. Lượt chưa hoàn tất; sẽ xét lại trong khung giờ hợp lệ.',
+        recipients_count: 0, messages_count: 0,
+        detail: { che_do_dinh_gui: qd.mode, retry_pending: true, partial: false,
+          khong_xep_duoc: ketQua.soKhongXepDuoc, bo_qua_khung_gio: ketQua.soBoQuaKhungGio },
+      });
+      return;
+    }
 
     stats.knownRoomIds = qd.roomIds;
     stats.lastRoomsHash = qd.hash;
@@ -314,13 +324,22 @@ async function xuLyMotCongTy(auto, now) {
 
     await ghiNhatKy({
       organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
-      mode: qd.mode, reason: qd.reason,
+      mode: ketQua.soChuaXep > 0 ? 'failed' : qd.mode,
+      reason: ketQua.soChuaXep > 0
+        ? `Chỉ xếp hàng được một phần (${ketQua.soTin} tin); còn ${ketQua.soChuaXep} tin chưa xếp. Không tự chạy lại phần còn thiếu.`
+        : `Đã xếp hàng ${ketQua.soTin} tin. ${qd.reason}`,
       recipients_count: ketQua.soNguoiNhan, messages_count: ketQua.soTin,
       detail: {
         so_phong: phong.rooms.length,
         phong_moi: qd.phongMoi.length,
         co_anh_bang: !!ketQua.anhBang,
         so_phong_gui_chi_tiet: ketQua.soPhongChiTiet,
+        bo_qua_khung_gio: ketQua.soBoQuaKhungGio,
+        khong_xep_duoc: ketQua.soKhongXepDuoc,
+        bo_qua_tran: ketQua.soBoQuaTran,
+        partial: ketQua.soTin > 0 && ketQua.soChuaXep > 0,
+        retry_pending: false,
+        che_do_dinh_gui: qd.mode,
       },
     });
     return;
@@ -344,8 +363,21 @@ async function xuLyMotCongTy(auto, now) {
   const phongMoi = phong.rooms.filter((r) => idMoi.has(r.id));
   const ketQua = await guiLo({
     convs, config, phong: { ...phong, rooms: phongMoi }, accountId, orgId, now,
+    runKey: `event:${t.ngay}:${createHash('sha256').update([...idMoi].sort().join(',')).digest('hex')}`,
     day: true, chiChiTiet: true, tranConLai: conLai,
   });
+
+  if (ketQua.soTin === 0 && ketQua.soKhongXepDuoc > 0) {
+    // Preserve pendingSince and knownRoomIds so this same event can be retried.
+    await ghiNhatKy({
+      organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
+      mode: 'failed', reason: 'Chưa xác nhận được tin bổ sung nào được xếp hàng. Giữ lượt để xét lại trong khung giờ hợp lệ.',
+      recipients_count: 0, messages_count: 0,
+      detail: { phong_moi: phongMoi.map(r => r.code), retry_pending: true, partial: false,
+        khong_xep_duoc: ketQua.soKhongXepDuoc, bo_qua_khung_gio: ketQua.soBoQuaKhungGio },
+    });
+    return;
+  }
 
   stats.pendingSince = null;
   stats.knownRoomIds = phong.rooms.map((r) => r.id);
@@ -355,9 +387,14 @@ async function xuLyMotCongTy(auto, now) {
 
   await ghiNhatKy({
     organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
-    mode: 'event', reason: bs.reason,
+    mode: ketQua.soChuaXep > 0 ? 'failed' : 'event',
+    reason: ketQua.soChuaXep > 0
+      ? `Chỉ xếp hàng được một phần lượt bổ sung (${ketQua.soTin} tin); còn ${ketQua.soChuaXep} tin chưa xếp. Không tự chạy lại phần còn thiếu.`
+      : `Đã xếp hàng ${ketQua.soTin} tin bổ sung. ${bs.reason}`,
     recipients_count: ketQua.soNguoiNhan, messages_count: ketQua.soTin,
-    detail: { phong_moi: phongMoi.map((r) => r.code) },
+    detail: { phong_moi: phongMoi.map((r) => r.code), bo_qua_khung_gio: ketQua.soBoQuaKhungGio,
+      khong_xep_duoc: ketQua.soKhongXepDuoc, bo_qua_tran: ketQua.soBoQuaTran,
+      partial: ketQua.soTin > 0 && ketQua.soChuaXep > 0, retry_pending: false },
   });
 }
 
@@ -371,7 +408,7 @@ function congSoTin(stats, ngay, them) {
  * @param {boolean} p.day        chế độ ĐẦY ĐỦ (kèm chi tiết từng phòng)
  * @param {boolean} p.chiChiTiet lượt bổ sung: chỉ gửi chi tiết phòng mới
  */
-async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai }) {
+async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey }) {
   const khoiCai = config.template.blocks;
   const khoi = chiChiTiet
     ? khoiCai.filter((k) => k === 'room_details')
@@ -395,13 +432,14 @@ async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiT
   let tinPhong = [];
   if (khoi.includes('room_details')) {
     tinPhong = phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun).map((r) => ({
+      roomId: r.id,
       body: soanTinPhong(r, config.template.roomTemplate, phong.hotline),
       anh: anhCuaPhong(r),
     }));
   }
 
-  const { soTin, soNguoiNhan } = await xepLo({
-    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai,
+  const ketQua = await xepLo({
+    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now,
   });
 
   const boSot = khoi.includes('room_details') ? Math.max(0, phong.rooms.length - tinPhong.length) : 0;
@@ -409,7 +447,7 @@ async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiT
     // Cắt bớt mà im lặng thì người dùng đọc nhật ký sẽ tưởng đã gửi đủ.
     log(`automation: bỏ ${boSot} phòng khỏi phần chi tiết (trần ${config.antiSpam.maxRoomsPerRun}/lượt)`);
   }
-  return { soTin, soNguoiNhan, anhBang, soPhongChiTiet: tinPhong.length, boSot };
+  return { ...ketQua, anhBang, soPhongChiTiet: tinPhong.length, boSot };
 }
 
 /* ------------------------------------------------------------------- tick */

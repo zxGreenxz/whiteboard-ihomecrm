@@ -13,6 +13,8 @@ import { sb, log } from './ctx.js';
 
 export const INSTANCE_ID = crypto.randomUUID();
 const LEASE_TTL_MS = 30_000;
+let active = false;
+export const isLeaseActive = () => active;
 
 // Trả true nếu giành/giữ được lease.
 // ⚠ CỐ Ý không dùng .or(): PostgREST của project này trả 42703 ("column …
@@ -32,17 +34,17 @@ export async function claimLease() {
   const own = await sb.from('zalo_worker_lease').update(patch)
     .eq('id', 'singleton').eq('instance_id', INSTANCE_ID).select('instance_id');
   if (own.error) { log('claimLease error', own.error.message); return false; }
-  if (own.data?.length) return true;
+  if (own.data?.length) { active = true; return true; }
 
   // (2) chủ cũ im hơi quá TTL → tiếp quản (UPDATE nguyên tử: chỉ 1 kẻ thắng)
   const take = await sb.from('zalo_worker_lease').update(patch)
     .eq('id', 'singleton').lt('heartbeat_at', cutoff).select('instance_id');
   if (take.error) { log('claimLease error', take.error.message); return false; }
-  if (take.data?.length) return true;
+  if (take.data?.length) { active = true; return true; }
 
   // (3) chưa có dòng nào → insert (thua cuộc đua insert = chưa giành được)
   const ins = await sb.from('zalo_worker_lease').insert({ id: 'singleton', ...patch }).select('instance_id');
-  if (!ins.error && ins.data?.length) return true;
+  if (!ins.error && ins.data?.length) { active = true; return true; }
   return false;
 }
 
@@ -53,11 +55,45 @@ export async function heartbeatLease() {
     .eq('id', 'singleton')
     .eq('instance_id', INSTANCE_ID)
     .select('instance_id');
-  if (error) { log('heartbeatLease error', error.message); return true; } // lỗi mạng ≠ mất lease
+  if (error) { log('heartbeatLease error', error.message); return null; } // unknown; deadline below closes the session
   return !!(data && data.length);
 }
 
+// Separate from the send loop: a slow media upload must not starve lease
+// renewal. On uncertain DB connectivity, stop once the last known lease expires.
+export function startLeaseHeartbeat({ onLost, heartbeat = heartbeatLease, intervalMs = 5000, ttlMs = LEASE_TTL_MS, timeoutMs = 8000 } = {}) {
+  let lastSuccess = Date.now();
+  let running = false;
+  let stopped = false;
+  const timer = setInterval(async () => {
+    if (running || stopped) return;
+    running = true;
+    let deadline;
+    try {
+      const result = await Promise.race([
+        heartbeat(),
+        new Promise(resolve => { deadline = setTimeout(() => resolve(null), timeoutMs); }),
+      ]);
+      if (stopped) return;
+      if (result === true) lastSuccess = Date.now();
+      if (result === false || Date.now() - lastSuccess >= ttlMs) {
+        stopped = true;
+        active = false;
+        clearInterval(timer);
+        await onLost?.();
+      }
+    } catch (error) {
+      log('lease heartbeat', error?.message || error);
+      if (!stopped && Date.now() - lastSuccess >= ttlMs) {
+        stopped = true; active = false; clearInterval(timer); await onLost?.();
+      }
+    } finally { clearTimeout(deadline); running = false; }
+  }, intervalMs);
+  return () => { stopped = true; active = false; clearInterval(timer); };
+}
+
 export async function releaseLease() {
+  active = false;
   try {
     await sb.from('zalo_worker_lease')
       .update({ heartbeat_at: new Date(0).toISOString() })

@@ -85,7 +85,7 @@ function mapConv(r: any): ZaloConversation {
     muted: !!r.is_muted,
     markedUnread: !!r.marked_unread,
     hasMessages: !!r.last_message_at,
-    isGroup: r.thread_type === 'group' || !!(r.profile && r.profile.isGroup),
+    isGroup: r.thread_type ? r.thread_type === 'group' : !!(r.profile && r.profile.isGroup),
     isSalePartner: !!r.is_sale_partner,
     customerId: r.customer_id || null,
     leadId: r.lead_id || null,
@@ -180,6 +180,7 @@ export function useZaloConversations() {
 export function useZaloMessages(convId?: string) {
   return useQuery({
     queryKey: QK.messages(convId || ''),
+    meta: { label: 'tin nhắn Zalo', errorDisplay: 'inline' },
     enabled: !!convId,
     retry: 1,
     queryFn: async (): Promise<ZaloMessage[]> => {
@@ -564,12 +565,15 @@ export function useZaloLabels() {
     retry: 1,
     queryFn: async (): Promise<ZaloLabel[]> => {
       const { data, error } = await db.from('zalo_labels')
-        .select('label_id, name, color, emoji, sort_order')
+        .select('account_id, label_id, name, color, emoji, sort_order')
         .eq('organization_id', orgId)
         .order('sort_order', { ascending: true });
       if (error) throw error;
-      const seen = new Map<number, ZaloLabel>();
-      for (const r of (data || [])) if (!seen.has(r.label_id)) seen.set(r.label_id, { labelId: r.label_id, name: r.name, color: r.color, emoji: r.emoji });
+      const seen = new Map<string, ZaloLabel>();
+      for (const r of (data || [])) {
+        const key = `${r.account_id}:${r.label_id}`;
+        if (!seen.has(key)) seen.set(key, { accountId: r.account_id, labelId: r.label_id, name: r.name, color: r.color, emoji: r.emoji });
+      }
       return [...seen.values()];
     },
   });

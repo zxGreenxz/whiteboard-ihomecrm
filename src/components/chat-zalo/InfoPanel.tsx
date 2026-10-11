@@ -10,6 +10,7 @@ import CrmInfoCard from './CrmInfoCard';
 import AutomationPanel from './AutomationPanel';
 import { useMarkSalePartner } from '@/hooks/useZaloChat';
 import type { ZaloConversation, ZaloAutomations, RightTab } from './types';
+import { hasCrmLink } from './conversationState';
 
 interface Props {
   conv: ZaloConversation;
@@ -25,6 +26,8 @@ interface Props {
   className?: string;
   /** mở dialog gắn/tháo hồ sơ CRM */
   onLinkCrm?: (c: ZaloConversation) => void;
+  onManageTemplates?: () => void;
+  canManageAutomation?: boolean;
 }
 
 /** Công tắc "hội thoại này là sale/môi giới".
@@ -71,11 +74,11 @@ function tabBtn(on: boolean, hasText: boolean): React.CSSProperties {
 }
 
 /** Cột 3: tabs Thông tin / Tự động hoá. */
-export default function InfoPanel({ conv, tab, onTab, automations, onToggle, templates, conversations, onOpenSettings, className, onLinkCrm }: Props) {
+export default function InfoPanel({ conv, tab, onTab, automations, onToggle, templates, conversations, onOpenSettings, className, onLinkCrm, onManageTemplates, canManageAutomation = false }: Props) {
   const p = conv.profile;
   // Rẽ nhánh theo FK LIVE (customer_id/lead_id do matcher/gắn tay set) — snapshot
   // profile.kind chỉ còn cho 'broker' (legacy) và nhóm/danh bạ chưa gắn.
-  const linkedCrm = !!(conv.customerId || conv.leadId);
+  const linkedCrm = hasCrmLink(conv);
   return (
     <section className={cn('flex-col flex-none bg-white border-l overflow-hidden', className)}>
       {/* Tabs header */}
@@ -122,6 +125,8 @@ export default function InfoPanel({ conv, tab, onTab, automations, onToggle, tem
           templates={templates}
           conversations={conversations}
           onOpenSettings={onOpenSettings}
+          canManage={canManageAutomation}
+          onManageTemplates={onManageTemplates}
         />
       )}
     </section>

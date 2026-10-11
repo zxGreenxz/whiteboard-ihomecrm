@@ -8,6 +8,7 @@ import { labelColor } from './LabelFilter';
 import LabelFilter from './LabelFilter';
 import ZaloAvatar from './ZaloAvatar';
 import type { ZaloConversation, ZaloLabel } from './types';
+import { conversationHasLabel, zaloLabelKey } from './conversationState';
 
 interface Props {
   open: boolean;
@@ -23,7 +24,7 @@ interface Props {
 export default function BroadcastDialog({ open, onOpenChange, conversations, labels, initialMessage, sending, onSend }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
-  const [labelFilter, setLabelFilter] = useState<number | null>(null);
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<Record<string,string>>({});
   const [outcome, setOutcome] = useState('');
@@ -37,7 +38,7 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
-      if (labelFilter != null && !(c.labelIds || []).includes(labelFilter)) return false;
+      if (!conversationHasLabel(c, labelFilter)) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q);
     });
@@ -47,7 +48,7 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
   const selectAllVisible = () => setSelected((p) => { const n = new Set(p); filtered.forEach((c) => n.add(c.id)); return n; });
   const clearAll = () => setSelected(new Set());
 
-  const labelDots = (ids?: number[]) => (ids || []).slice(0, 3).map((id) => labels.find((l) => l.labelId === id)).filter(Boolean) as ZaloLabel[];
+  const labelDots = (conversation: ZaloConversation) => (conversation.labelIds || []).slice(0, 3).map((id) => labels.find((l) => l.accountId === conversation.accountId && l.labelId === id)).filter(Boolean) as ZaloLabel[];
 
   const submit = async () => {
     if (outcome || sending) return;
@@ -68,17 +69,17 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5" style={{ color: EMERALD }} /> Chia sẻ / Gửi hàng loạt</DialogTitle>
           <DialogDescription>Chọn hội thoại (lọc theo nhãn phân loại) rồi gửi cùng một nội dung tới tất cả.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <LabelFilter labels={labels} selectedLabel={labelFilter} onSelect={setLabelFilter} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, height: 34, padding: '0 10px', background: 'hsl(210 20% 96%)', borderRadius: 8, color: 'hsl(210 10% 50%)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: '1 1 160px', minWidth: 0, height: 34, padding: '0 10px', background: 'hsl(210 20% 96%)', borderRadius: 8, color: 'hsl(210 10% 50%)' }}>
             <Search size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm hội thoại…" style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm hội thoại…" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
           </div>
           <button disabled={sending || !!outcome} onClick={selectAllVisible} style={{ fontSize: 12, fontWeight: 600, color: EMERALD, background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Chọn tất cả</button>
         </div>
@@ -96,7 +97,7 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
                   <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                   <span style={{ fontSize: 11, color: 'hsl(210 10% 50%)' }}>{c.sub || c.phone}</span>
                 </span>
-                <span style={{ display: 'flex', gap: 3, flex: 'none' }}>{labelDots(c.labelIds).map((l) => <span key={l.labelId} title={l.name} style={{ width: 8, height: 8, borderRadius: 2, background: labelColor(l.color) }} />)}</span>
+                <span style={{ display: 'flex', gap: 3, flex: 'none' }}>{labelDots(c).map((l) => <span key={zaloLabelKey(l)} title={l.name} style={{ width: 8, height: 8, borderRadius: 2, background: labelColor(l.color) }} />)}</span>
               </button>
             );
           })}

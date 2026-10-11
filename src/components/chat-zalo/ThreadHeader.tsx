@@ -23,7 +23,7 @@ export default function ThreadHeader({ conv, onBack, onOpenInfo, onSearch }: Pro
   return (
     <div style={{ height: 64, flex: 'none', padding: '0 18px', background: '#fff', borderBottom: '1px solid hsl(210 20% 90%)', display: 'flex', alignItems: 'center', gap: 12 }}>
       {onBack && (
-        <button onClick={onBack} className="lg:hidden" style={{ ...actBtn, width: 34, height: 34 }} title="Quay lại">
+        <button onClick={onBack} className="flex lg:hidden" style={{ ...actBtn, display: undefined, width: 34, height: 34 }} title="Quay lại">
           <ArrowLeft size={18} />
         </button>
       )}
@@ -41,7 +41,7 @@ export default function ThreadHeader({ conv, onBack, onOpenInfo, onSearch }: Pro
           <a href={`tel:${conv.phone}`} style={{ ...actBtn, textDecoration: 'none' }} title={`Gọi ${conv.phone}`}><Phone size={17} /></a>
         )}
         {onOpenInfo && (
-          <button onClick={onOpenInfo} className="lg:hidden" style={actBtn} title="Thông tin"><PanelRightOpen size={17} /></button>
+          <button onClick={onOpenInfo} className="flex lg:hidden" style={{ ...actBtn, display: undefined }} title="Thông tin"><PanelRightOpen size={17} /></button>
         )}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { X, FileText, Loader2, Send } from 'lucide-react';
 import { EMERALD } from '../zaloTheme';
 
@@ -28,8 +28,7 @@ function fmtSize(b: number): string {
 export default function AttachmentTray({ items, caption, onCaption, onRemove, onSend, onCancel, uploading, blocked }: Props) {
   const allImages = useMemo(() => items.every((i) => i.file.type.startsWith('image/')), [items]);
 
-  // revoke objectURL khi unmount (tránh leak)
-  useEffect(() => () => { items.forEach((i) => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl); }); }, [items]);
+  // Composer sở hữu vòng đời objectURL vì bản nháp vẫn được giữ khi chuyển hội thoại.
 
   if (!items.length) return null;
   return (

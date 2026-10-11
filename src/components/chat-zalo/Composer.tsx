@@ -15,6 +15,7 @@ import type { ZaloTemplateItem } from '@/hooks/useZaloChat';
 import type { StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
 
 interface Props {
+  conversationId: string;
   draft: string;
   onDraft: (v: string) => void;
   onSend: () => void;
@@ -51,26 +52,56 @@ const iconBtn = {
   color: 'hsl(210 10% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
 } as const;
 
-/** Ô soạn tin: textarea auto-grow + emoji/ảnh/tệp/voice/sticker/mẫu tin + khay media + reply bar. */
-export default function Composer({
+interface MediaDraft {
+  pending: PendingFile[];
+  pendingKind: 'image' | 'file';
+  caption: string;
+  mediaError: string;
+  mediaBlocked: boolean;
+  sending: boolean;
+}
+const EMPTY_MEDIA_DRAFT: MediaDraft = { pending: [], pendingKind: 'image', caption: '', mediaError: '', mediaBlocked: false, sending: false };
+type UpdateMediaDraft = (update: (previous: MediaDraft) => MediaDraft) => void;
+
+/** Tệp và kết quả chưa xác nhận thuộc đúng hội thoại, kể cả khi một lần gửi hoàn tất ở nền. */
+export default function Composer(props: Props) {
+  const [drafts, setDrafts] = useState<Record<string, MediaDraft>>({});
+  const urls = useRef(new Set<string>());
+  useEffect(() => {
+    const current = new Set(Object.values(drafts).flatMap(d => d.pending.flatMap(p => p.previewUrl ? [p.previewUrl] : [])));
+    urls.current.forEach(url => { if (!current.has(url)) URL.revokeObjectURL(url); });
+    urls.current = current;
+  }, [drafts]);
+  useEffect(() => () => { urls.current.forEach(url => URL.revokeObjectURL(url)); }, []);
+  const id = props.conversationId;
+  const update: UpdateMediaDraft = change => setDrafts(previous => ({ ...previous, [id]: change(previous[id] ?? EMPTY_MEDIA_DRAFT) }));
+  return <ComposerSession key={id} {...props} mediaDraft={drafts[id] ?? EMPTY_MEDIA_DRAFT} updateMediaDraft={update} />;
+}
+
+/** Phiên ghi âm/ô soạn được ngắt khi đổi hội thoại; bản nháp tệp vẫn nằm trong kho theo hội thoại. */
+function ComposerSession({
   draft, onDraft, onSend, sending, sendBlocked, sendError, onClearUnconfirmed, templates, onPickTemplate,
   replyTo, onCancelReply,
-  onSendMedia, mediaSending, onSendVoice, voiceSending,
+  onSendMedia, mediaSending: parentMediaSending, onSendVoice, voiceSending,
   accountId, onSendSticker,
   externalFiles, onExternalConsumed, onTyping, onManageTemplates,
-}: Props) {
+  mediaDraft, updateMediaDraft,
+}: Props & { mediaDraft: MediaDraft; updateMediaDraft: UpdateMediaDraft }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Busy-lock: khoá NGAY trong keydown, thả khi mutation xong — double-Enter
   // sinh 2 cli id khác nhau nên server không dedup được (bài học WEB2 §13.16).
   const sendLock = useRef(false);
-  const [pending, setPending] = useState<PendingFile[]>([]);
-  const [pendingKind, setPendingKind] = useState<'image' | 'file'>('image');
-  const [caption, setCaption] = useState('');
+  const { pending, pendingKind, caption, mediaError, mediaBlocked } = mediaDraft;
+  const mediaSending = parentMediaSending || mediaDraft.sending;
+  const setPending = (value: PendingFile[] | ((previous: PendingFile[]) => PendingFile[])) => updateMediaDraft(previous => ({ ...previous, pending: typeof value === 'function' ? value(previous.pending) : value }));
+  const setPendingKind = (value: 'image' | 'file') => updateMediaDraft(previous => ({ ...previous, pendingKind: value }));
+  const setCaption = (value: string) => updateMediaDraft(previous => ({ ...previous, caption: value }));
+  const setMediaError = (value: string) => updateMediaDraft(previous => ({ ...previous, mediaError: value }));
+  const setMediaBlocked = (value: boolean) => updateMediaDraft(previous => ({ ...previous, mediaBlocked: value }));
   const [recording, setRecording] = useState(false);
-  const [mediaError,setMediaError] = useState('');
-  const [mediaBlocked,setMediaBlocked] = useState(false);
+  const mediaLock = useRef(false);
   const [suggestIdx, setSuggestIdx] = useState(0);
 
   useEffect(() => { if (!sending) sendLock.current = false; }, [sending]);
@@ -95,7 +126,7 @@ export default function Composer({
   useEffect(() => { setSuggestIdx(0); }, [slashItems.length]);
 
   const addFiles = (files: File[], kind?: 'image' | 'file') => {
-    if (!files.length || !onSendMedia) return;
+    if (!files.length || !onSendMedia || mediaSending || mediaBlocked || mediaLock.current) return;
     const allImages = files.every((f) => f.type.startsWith('image/'));
     const k = kind || (allImages ? 'image' : 'file');
     if (k === 'file' && files.length > 1) {
@@ -105,7 +136,8 @@ export default function Composer({
     setPendingKind(k);
     setPending((prev) => {
       const base = k === 'file' ? [] : prev.filter((p) => p.file.type.startsWith('image/'));
-      const next = [...base, ...files.map((f) => ({
+      const remaining = Math.max(0, 12 - base.length);
+      const next = [...base, ...files.slice(0, remaining).map((f) => ({
         file: f,
         previewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
       }))];
@@ -123,13 +155,16 @@ export default function Composer({
   }, [externalFiles]);
 
   const sendMedia = async () => {
-    if (!pending.length || !onSendMedia || mediaSending || mediaBlocked) return;
+    if (!pending.length || !onSendMedia || mediaSending || mediaBlocked || mediaLock.current) return;
+    mediaLock.current = true;
+    updateMediaDraft(previous => ({ ...previous, sending: true }));
     setMediaError('');
     try {
       await onSendMedia(pendingKind, pending.map((p) => p.file), caption);
       setPending([]);
       setCaption('');
     } catch (error) { setMediaError(error instanceof ZaloMediaSendError ? error.message : actionErrorMessage(error,'Chưa gửi được tệp Zalo')); if(error instanceof ZaloMediaSendError && error.outcomeUnknown) setMediaBlocked(true); }
+    finally { mediaLock.current = false; updateMediaDraft(previous => ({ ...previous, sending: false })); }
   };
 
   const pickSuggest = (item: SuggestItem) => {
@@ -202,13 +237,17 @@ export default function Composer({
       />
       {recording && onSendVoice ? (
         <VoiceRecorder
-          sending={voiceSending} blocked={mediaBlocked}
+          sending={voiceSending || mediaDraft.sending} blocked={mediaBlocked}
           onCancel={() => setRecording(false)}
           onDone={async (blob, dur, mime) => {
+            if (mediaLock.current || mediaDraft.sending) return;
+            mediaLock.current = true;
+            updateMediaDraft(previous => ({ ...previous, sending: true }));
             try {
               await onSendVoice(blob, dur, mime);
               setRecording(false);
             } catch (error) { setMediaError(error instanceof ZaloMediaSendError ? error.message : actionErrorMessage(error,'Chưa gửi được bản ghi âm')); if(error instanceof ZaloMediaSendError && error.outcomeUnknown) setMediaBlocked(true); }
+            finally { mediaLock.current = false; updateMediaDraft(previous => ({ ...previous, sending: false })); }
           }}
         />
       ) : (

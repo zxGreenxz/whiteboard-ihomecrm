@@ -177,62 +177,6 @@ async function upsertConversation(accountId, ownerId, m, api) {
   return conv;
 }
 
-/**
- * Echo của tin mình vừa gửi từ web: gắn vào đúng dòng đang chờ thay vì đẻ dòng mới.
- *
- * VÌ SAO CẦN — lỗi đã cắn thật 31/08/2026: mỗi tin gửi từ web hiện HAI lần trong
- * khung chat (chủ dự án gửi một dấu chấm, thấy một tin "đang gửi" và một tin đã
- * gửi; máy bên kia chỉ nhận MỘT). Dòng thứ nhất do web tạo (`pending`), dòng thứ
- * hai là echo `selfListen` từ Zalo. Cơ chế chống trùng sẵn có dựa hoàn toàn vào
- * `zalo_msg_id`, mà zca **không phải lúc nào cũng trả msgId** — chính `media.js`
- * đã ghi chú điều đó và trông cậy vào "unique sẽ tự vá". Không có id chung thì
- * unique không vá được gì, và ta còn lại hai dòng.
- *
- * Áp cho CẢ tin chữ lẫn media: đo trên dữ liệu thật cho thấy cả hai cùng bệnh.
- *
- * Ghép theo (hội thoại + loại media + đang chờ + trong 5 phút), lấy dòng CŨ NHẤT
- * để khớp thứ tự gửi khi có nhiều ảnh liên tiếp. Giữ `media_url` tự host của dòng
- * cũ — người dùng xem lại được vĩnh viễn, không phụ thuộc CDN Zalo hết hạn.
- *
- * @returns true nếu đã gắn vào dòng có sẵn (chỗ gọi khỏi chèn dòng mới).
- */
-async function gopVaoTinDangCho(accountId, convId, cm, msgId, m) {
-  if (!msgId) return false;
-  if (!['image', 'file', 'voice', 'video', 'text'].includes(cm.msg_type)) return false;
-  const tuLuc = new Date(Date.now() - 5 * 60_000).toISOString();
-
-  let truyVan = sb.from('zalo_messages')
-    .select('id')
-    .eq('conversation_id', convId).eq('account_id', accountId)
-    .eq('direction', 'out').eq('status', 'pending').eq('msg_type', cm.msg_type)
-    .is('zalo_msg_id', null)
-    .gte('created_at', tuLuc);
-
-  // TIN CHỮ ghép chặt hơn media: có sẵn nội dung để đối chiếu, dùng luôn. Media
-  // không có gì so ngoài loại, nên chỉ ghép được theo thứ tự thời gian.
-  if (cm.msg_type === 'text') {
-    const noiDung = cm.body ?? '';
-    if (!noiDung) return false;      // tin rỗng thì không đủ căn cứ để ghép
-    truyVan = truyVan.eq('body', noiDung);
-  }
-
-  const { data: cho } = await truyVan
-    .order('created_at', { ascending: true })
-    .limit(1).maybeSingle();
-  if (!cho) return false;
-
-  const { error } = await sb.from('zalo_messages').update({
-    status: 'sent',
-    zalo_msg_id: msgId,
-    cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
-    zalo_raw: rawSubset(m),
-    // media_url GIỮ NGUYÊN bản tự host — xem mục trên.
-  }).eq('id', cho.id);
-  if (error) { log('gộp echo media lỗi', error.message); return false; }
-  log('gộp echo media vào dòng đang chờ', cho.id);
-  return true;
-}
-
 export async function handleInbound(accountId, ownerId, m, api) {
   try {
     // isSelf = tin do CHÍNH tài khoản gửi (kể cả từ điện thoại) → lưu là 'out'.
@@ -243,8 +187,9 @@ export async function handleInbound(accountId, ownerId, m, api) {
     const body = cm.body;
     const msgId = m?.data?.msgId ? String(m.data.msgId) : null;
 
-    // Tin media do CHÍNH MÌNH gửi: thử gắn vào dòng đang chờ trước đã.
-    if (out && await gopVaoTinDangCho(accountId, conv.id, cm, msgId, m)) return;
+    // Echo identity comes only from the provider ID. Matching pending messages
+    // by body/type/time can attach phone sends or reordered album echoes to the
+    // wrong row. The atomic send finalizer merges the exact echo into canonical.
     const { data: insData } = await sb.from('zalo_messages').upsert({
       user_id: ownerId, organization_id: orgOf(accountId),
       conversation_id: conv.id, account_id: accountId,
@@ -279,7 +224,7 @@ export async function handleInbound(accountId, ownerId, m, api) {
       // Tự động trả lời sale — fire & forget. Hàm tự nuốt mọi lỗi: đường NHẬN
       // tin không được hỏng vì một tính năng phụ, và người dùng thà mất một tin
       // trả lời tự động còn hơn mất một tin của khách.
-      xuLyTinDen({ accountId, conv: { ...conv, user_id: conv.user_id || ownerId }, body })
+      xuLyTinDen({ accountId, conv: { ...conv, user_id: conv.user_id || ownerId }, body, zaloMsgId: msgId })
         .catch((e) => log('auto-reply (nuốt)', e?.message || e));
     }
   } catch (e) { log('handleInbound error', e.message); }
@@ -320,7 +265,12 @@ export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, 
       created_at: m?.data?.ts ? new Date(Number(m.data.ts)).toISOString() : new Date().toISOString(),
     };
   }).filter((r) => r.zalo_msg_id);
-  if (rows.length) await sb.from('zalo_messages').upsert(rows, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: false });
+  // History fills gaps only. Replaying an existing row must not replace owned
+  // Storage media with an expiring CDN URL, undo a recall, or regress seen→sent.
+  if (rows.length) {
+    const { error } = await sb.from('zalo_messages').upsert(rows, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: true });
+    if (error) throw new Error(`Không ghi được lịch sử: ${error.message}`);
+  }
   // cập nhật preview từ tin mới nhất (chỉ khi mới hơn)
   const last = msgs[msgs.length - 1];
   const lastTs = last?.data?.ts ? new Date(Number(last.data.ts)).toISOString() : null;
@@ -500,20 +450,23 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
     sessionSavedAt: sessionSavedAt || Date.now(),
   });
   try {
-    api.listener.on('message', (m) => handleInbound(accountId, ownerId, m, api));
-    api.listener.on('old_messages', (msgs, type) => handleOldMessages(accountId, ownerId, msgs, type, api));
-    api.listener.on('reaction', (e) => handleReaction(accountId, e));
-    api.listener.on('undo', (e) => handleUndo(accountId, e));
-    api.listener.on('seen_messages', (e) => handleSeen(accountId, e));
+    const active = () => sessions.get(accountId)?.api === api;
+    api.listener.on('message', (m) => active() && handleInbound(accountId, ownerId, m, api));
+    api.listener.on('old_messages', (msgs, type) => active() && handleOldMessages(accountId, ownerId, msgs, type, api));
+    api.listener.on('reaction', (e) => active() && handleReaction(accountId, e));
+    api.listener.on('undo', (e) => active() && handleUndo(accountId, e));
+    api.listener.on('seen_messages', (e) => active() && handleSeen(accountId, e));
     api.listener.on('error', (e) => {
+      if (!active()) return;
       log('listener error', accountId, e?.message || e);
       onClosed?.(1006);
     });
     // zca-js phát 'closed' kèm CloseReason (3000 DuplicateConnection / 3003 Kick).
-    try { api.listener.on('closed', (code) => onClosed?.(Number(code) || 1006)); } catch { /* phiên bản không có event này → watchdog lo */ }
+    try { api.listener.on('closed', (code) => active() && onClosed?.(Number(code) || 1006)); } catch { /* phiên bản không có event này → watchdog lo */ }
     api.listener.start();
     // Yêu cầu Zalo đẩy TIN GẦN ĐÂY (1-1 + nhóm); tin về qua event 'old_messages'.
     setTimeout(() => {
+      if (!active()) return;
       try { api.listener.requestOldMessages(ThreadType.User); } catch (e) { log('reqOld user', e?.message || e); }
       try { api.listener.requestOldMessages(ThreadType.Group); } catch (e) { log('reqOld group', e?.message || e); }
     }, 2000);

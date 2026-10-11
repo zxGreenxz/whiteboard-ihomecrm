@@ -9,11 +9,11 @@ import type { MsgActionProps } from './MessageBubble';
 import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 /** Tin video Zalo — phát inline (poster = thumbnail). Lỗi tải thì hiện poster + nút mở. */
-export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: ZaloMessage } & MsgActionProps) {
+export default function VideoMessage({ m, onReact, onRecall, onShare, onReply, onDelete }: { m: ZaloMessage } & MsgActionProps) {
   const out = m.dir === 'out';
   const [err, setErr] = useState(false);
   const [hover, setHover] = useState(false);
-  const canAct = (!!m.id && (!!onReact || !!onRecall)) || !!onShare;
+  const canAct = (!!m.id && (!!onReact || !!onRecall || !!onReply || !!onDelete)) || !!onShare;
   const radius = out ? '14px 4px 14px 14px' : '14px 14px 14px 4px';
   // Video SHOP gửi nằm trong bucket private `zalo-media` — phải ký mới phát được.
   const urlVideo = useSignedMediaUrl(m.mediaUrl);
@@ -22,7 +22,7 @@ export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: Zal
     <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div style={{ position: 'relative' }}>
         {hover && canAct && (
-          <MessageActions out={out} canRecall={out && !!onRecall && !!m.id} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} onShare={onShare ? () => onShare(m) : undefined} />
+          <MessageActions out={out} canRecall={out && !!onRecall && !!m.id} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} onShare={onShare ? () => onShare(m) : undefined} onReply={onReply ? () => onReply(m) : undefined} onDelete={m.id && onDelete ? () => onDelete(m.id!) : undefined} />
         )}
         {urlVideo && !err ? (
           <video

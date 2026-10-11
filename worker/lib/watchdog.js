@@ -12,6 +12,8 @@ import { Zalo } from 'zca-js';
 import { log, sessions, loggingIn } from './ctx.js';
 import { loadSession } from './session-store.js';
 import { noteDisconnect, tryRelogin } from './login.js';
+import { reconcileAccountSessions, stopAccountSession } from './session-lifecycle.js';
+import { isLeaseActive } from './lease.js';
 
 export const WATCHDOG_MS = 90_000;
 const PROBE_TIMEOUT_MS = 8_000;
@@ -26,6 +28,7 @@ async function probe(accountId, s) {
     await Promise.race([s.api.keepAlive(), timeout(PROBE_TIMEOUT_MS)]);
     s.probeFails = 0;
   } catch (e) {
+    if (sessions.get(accountId) !== s) return;
     s.probeFails = (s.probeFails || 0) + 1;
     log('watchdog probe fail', accountId, s.probeFails + '/' + PROBE_FAIL_CAP, e?.message || e);
     if (s.probeFails >= PROBE_FAIL_CAP) {
@@ -37,7 +40,7 @@ async function probe(accountId, s) {
 
 // Login phiên MỚI trước, thành công mới đóng phiên cũ (không có cửa sổ rớt tin dài).
 async function proactiveRelogin(accountId, s, accountRow) {
-  if (loggingIn.has(accountId)) return;
+  if (!isLeaseActive() || loggingIn.has(accountId)) return;
   const payload = loadSession(accountId);
   if (!payload || payload.corrupt) return;
   loggingIn.add(accountId);
@@ -49,8 +52,8 @@ async function proactiveRelogin(accountId, s, accountRow) {
     // lẫn phiên thăm dò, rồi login lại qua đường chuẩn tryRelogin (có guard
     // WRONG_ACCOUNT + lưu phiên mới). Hai phiên song song lâu sẽ tự đá nhau.
     try { api.listener?.stop?.(); } catch { /* phiên thăm dò chưa start listener */ }
-    try { s.api.listener.stop(); } catch { /* */ }
-    sessions.delete(accountId);
+    if (sessions.get(accountId) !== s) return;
+    stopAccountSession(accountId, sessions);
     loggingIn.delete(accountId);
     await tryRelogin(accountRow);
   } catch (e) {
@@ -63,6 +66,7 @@ async function proactiveRelogin(accountId, s, accountRow) {
 
 // accountRows: dòng zalo_accounts mới nhất (tick truyền vào — khỏi query lại).
 export async function watchdogTick(accountRows) {
+  reconcileAccountSessions(accountRows || [], sessions);
   const rowById = new Map((accountRows || []).map((a) => [a.id, a]));
   for (const [accountId, s] of sessions) {
     // proactive trước — phiên sắp hết hạn thì probe cũng vô ích

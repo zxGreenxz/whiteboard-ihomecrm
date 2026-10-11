@@ -48,10 +48,10 @@ export async function validateZaloCommandScope(job, db = sb) {
   if (!job?.account_id) return bad('job thiếu account_id');
 
   const { data: account, error: accErr } = await db.from('zalo_accounts')
-    .select('id, organization_id').eq('id', job.account_id).maybeSingle();
+    .select('id, organization_id, status').eq('id', job.account_id).maybeSingle();
   if (accErr) return bad('không đọc được account', accErr.message);
   if (!account) return bad('account không tồn tại', job.account_id);
-  if (job.organization_id && account.organization_id !== job.organization_id) {
+  if (!job.organization_id || account.organization_id !== job.organization_id) {
     return bad('account khác org với job', { account: account.organization_id, job: job.organization_id });
   }
 
@@ -93,6 +93,44 @@ export async function validateZaloCommandScope(job, db = sb) {
     if (action === 'recall') {
       if (msg.direction !== 'out') return bad('chỉ thu hồi được tin đi', msg.direction);
       if (msg.sent_by && job.user_id && msg.sent_by !== job.user_id) return bad('chỉ thu hồi được tin do chính mình gửi', msg.sent_by);
+    }
+  }
+
+  // Every writable row identifier is checked, including IDs nested in media
+  // payloads. Never let service-role persistence touch an unrelated message.
+  if (p.message_ids != null && !Array.isArray(p.message_ids)) return bad('message_ids phải là mảng');
+  const ids = [...new Set([job.message_id, ...(p.message_ids || [])].filter(Boolean))];
+  if (ids.length) {
+    if (!conv) return bad('message_ids cần hội thoại đã biết');
+    for (const id of ids) {
+      const { data: msg, error } = await db.from('zalo_messages')
+        .select('id, account_id, organization_id, conversation_id, direction')
+        .eq('id', id).maybeSingle();
+      if (error) return bad('không đọc được message_ids', error.message);
+      if (!msg || msg.account_id !== job.account_id || msg.organization_id !== job.organization_id
+        || msg.conversation_id !== conv.id || msg.direction !== 'out') return bad('message_ids ngoài phạm vi', id);
+    }
+  }
+
+  if (['image', 'file', 'voice', 'sticker'].includes(String(p.type))) {
+    if (!conv || !ids.length) return bad('job media cần hội thoại và message_ids hợp lệ');
+    if (p.type !== 'sticker') {
+      if (!Array.isArray(p.attachments) || !p.attachments.length || p.attachments.length > 12) return bad('attachments không hợp lệ');
+      for (const attachment of p.attachments) {
+        const bucket = attachment?.bucket || 'zalo-media';
+        const path = attachment?.path;
+        if (!['zalo-media', 'room-sale-images'].includes(bucket) || typeof path !== 'string'
+          || !path || path.startsWith('/') || /[\\\x00]/.test(path)
+          || path.split('/').some(segment => segment === '.' || segment === '..')) return bad('attachment bucket/path không hợp lệ');
+        // Sale images have user-based paths, not org-based paths. The DB checks
+        // their reference in rooms/buildings of this organization. Table images
+        // may belong to another account in the same org (shared broadcast).
+        const { data: allowed, error } = await db.rpc('zalo_worker_attachment_allowed_v1', {
+          p_org: job.organization_id, p_account: job.account_id, p_bucket: bucket, p_path: path,
+        });
+        if (error) return bad('không đọc được phạm vi attachment', error.message);
+        if (allowed !== true) return bad('attachment ngoài phạm vi', path);
+      }
     }
   }
 

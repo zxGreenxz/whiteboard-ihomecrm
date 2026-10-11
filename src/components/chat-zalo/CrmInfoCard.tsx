@@ -3,6 +3,7 @@ import { Loader2, Link2, UserRound, FileSignature, DoorOpen, Target } from 'luci
 import { EMERALD } from './zaloTheme';
 import { useZaloCrmSummary } from '@/hooks/chat-zalo/useZaloCrmProfile';
 import type { ZaloConversation } from './types';
+import { hasCrmLink } from './conversationState';
 
 interface Props {
   conv: ZaloConversation;
@@ -39,7 +40,7 @@ function Card({ icon, title, children }: { icon: React.ReactNode; title: string;
 
 /** Hồ sơ CRM LIVE của hội thoại (khách hàng/lead/HĐ/phòng) — dữ liệu thật, không snapshot. */
 export default function CrmInfoCard({ conv, onLinkCrm }: Props) {
-  const linked = !!(conv.customerId || conv.leadId);
+  const linked = hasCrmLink(conv);
   const crmQuery = useZaloCrmSummary(conv.id, linked);
   const { data } = crmQuery;
 

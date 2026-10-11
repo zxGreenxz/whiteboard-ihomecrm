@@ -18,15 +18,16 @@ const bang = {
     { id: 'conv-B', account_id: ACC_B, organization_id: 'org-B', thread_id: 'th-B', thread_type: 'user' },
   ],
   zalo_messages: [
-    { id: 'm-out', account_id: ACC_A, conversation_id: 'conv-1', zalo_msg_id: '111', direction: 'out', sent_by: 'user-1' },
+    { id: 'm-out', account_id: ACC_A, organization_id: 'org-A', conversation_id: 'conv-1', zalo_msg_id: '111', direction: 'out', sent_by: 'user-1' },
     { id: 'm-in', account_id: ACC_A, conversation_id: 'conv-1', zalo_msg_id: '222', direction: 'in', sent_by: null },
     { id: 'm-other', account_id: ACC_A, conversation_id: 'conv-g', zalo_msg_id: '333', direction: 'out', sent_by: 'user-2' },
   ],
 };
 
 /** Query builder giả: select().eq()...maybeSingle() lọc bằng AND trên các eq. */
-function db() {
+function db(attachmentAllowed = true) {
   return {
+    rpc: () => Promise.resolve({ data: attachmentAllowed, error: null }),
     from(table) {
       const loc = [];
       const q = {
@@ -105,5 +106,42 @@ describe('validateZaloCommandScope', () => {
     const r = await validateZaloCommandScope(jobA({ payload: { action: 'find_user', phone: '0900' } }), db());
     expect(r.ok).toBe(true);
     expect(r.conv).toBeNull();
+  });
+
+  it('rejects media message IDs from another conversation before storage access', async () => {
+    const mocked = db();
+    mocked.rpc = vi.fn(mocked.rpc);
+    const result = await validateZaloCommandScope(jobA({ conversation_id: 'conv-1', message_id: 'm-out',
+      payload: { type: 'image', message_ids: ['m-other'], attachments: [{ bucket: 'zalo-media', path: 'acc-A/image.png' }] },
+    }), mocked);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/message_ids ngoài phạm vi/);
+    expect(mocked.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(['customer-id-cards', 'document-templates'])('rejects private bucket %s', async bucket => {
+    const result = await validateZaloCommandScope(jobA({ conversation_id: 'conv-1', message_id: 'm-out',
+      payload: { type: 'image', attachments: [{ bucket, path: 'acc-A/x.png' }] },
+    }), db());
+    expect(result.ok).toBe(false);
+  });
+
+  it('requires DB ownership for sale images and shared-org table images', async () => {
+    const media = jobA({ conversation_id: 'conv-1', message_id: 'm-out',
+      payload: { type: 'image', attachments: [{ bucket: 'room-sale-images', path: 'actor/photo.png' }] },
+    });
+    expect((await validateZaloCommandScope(media, db(false))).ok).toBe(false);
+    expect((await validateZaloCommandScope(media, db(true))).ok).toBe(true);
+    media.payload.attachments = [{ bucket: 'zalo-media', path: 'other-account/automation/table.png' }];
+    expect((await validateZaloCommandScope(media, db(true))).ok).toBe(true);
+  });
+  it('distinguishes unavailable storage ownership evidence from a scope violation', async () => {
+    const mocked = db();
+    mocked.rpc = async () => ({ data: null, error: { message: 'database offline' } });
+    const result = await validateZaloCommandScope(jobA({ conversation_id: 'conv-1', message_id: 'm-out',
+      payload: { type: 'image', attachments: [{ bucket: 'zalo-media', path: 'acc-A/image.png' }] },
+    }), mocked);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/^không đọc được/);
   });
 });

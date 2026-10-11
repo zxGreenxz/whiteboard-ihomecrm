@@ -11,8 +11,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const daChen = { messages: [], queue: [], runs: [] };
 let dongAutomation = { id: 'a1', enabled: true, config: {} };
 let dongBroadcast = { config: { template: { shareUrl: 'https://ptcrm.test/r/abc' } } };
-let lanTraLoiCuoi = null;      // ISO string hoặc null
-let soDaTraLoiHomNay = 0;
+let rpcCalls = [];
+let rpcError = null;
+let rpcResult = { status: 'queued', message_id: 'm1', job_id: 'j1' };
 
 function bang(ten) {
   const ctx = { ten, loc: {} };
@@ -34,15 +35,14 @@ function traVe(ctx, don) {
     const d = kind === 'auto_reply' ? dongAutomation : dongBroadcast;
     return { data: don ? d : [d], error: null };
   }
-  if (ctx.ten === 'zalo_automation_runs') {
-    if (ctx.head) return { count: soDaTraLoiHomNay, error: null };
-    const d = lanTraLoiCuoi ? { created_at: lanTraLoiCuoi } : null;
-    return { data: don ? d : (d ? [d] : []), count: soDaTraLoiHomNay, error: null };
-  }
   return { data: don ? null : [], error: null, count: 0 };
 }
 
 const sbGia = {
+  async rpc(name, args) {
+    rpcCalls.push({ name, args });
+    return { data: rpcResult, error: rpcError };
+  },
   from(ten) {
     if (ten === 'zalo_messages') {
       return { insert: (row) => ({ select: () => ({ single: () => {
@@ -79,13 +79,35 @@ const { xuLyTinDen } = await import('../lib/auto-reply.js');
 const hoiThoai = (over = {}) => ({
   id: 'c1', user_id: 'u1', organization_id: 'org-1', is_sale_partner: true, ...over,
 });
-const goi = (body, conv = hoiThoai()) => xuLyTinDen({ accountId: 'acc-1', conv, body });
+const goi = (body, conv = hoiThoai()) => xuLyTinDen({ accountId: 'acc-1', conv, body, zaloMsgId: 'source-default' });
 
 beforeEach(() => {
   daChen.messages = []; daChen.queue = []; daChen.runs = [];
   dongAutomation = { id: 'a1', enabled: true, config: {} };
-  lanTraLoiCuoi = null;
-  soDaTraLoiHomNay = 0;
+  rpcCalls = []; rpcError = null;
+  rpcResult = { status: 'queued', message_id: 'm1', job_id: 'j1' };
+});
+
+describe('auto-reply — atomic enqueue contract', () => {
+  it('uses the incoming provider ID as the atomic deduplication key', async () => {
+    await xuLyTinDen({ accountId: 'acc-1', conv: hoiThoai(), body: 'còn phòng ko', zaloMsgId: 'source-1' });
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]).toMatchObject({ name: 'zalo_enqueue_auto_reply_v1', args: { p_conversation_id: 'c1', p_source_zalo_msg_id: 'source-1' } });
+    expect(daChen.messages).toHaveLength(0);
+    expect(daChen.queue).toHaveLength(0);
+  });
+  it('never falls back to non-atomic writes when the RPC fails', async () => {
+    rpcError = { message: 'database unavailable' };
+    await xuLyTinDen({ accountId: 'acc-1', conv: hoiThoai(), body: 'còn phòng ko', zaloMsgId: 'source-2' });
+    expect(rpcCalls).toHaveLength(1);
+    expect(daChen.messages).toHaveLength(0);
+    expect(daChen.queue).toHaveLength(0);
+  });
+  it('does not enqueue without a stable incoming ID', async () => {
+    await xuLyTinDen({ accountId: 'acc-1', conv: hoiThoai(), body: 'còn phòng ko' });
+    expect(rpcCalls).toHaveLength(0);
+    expect(daChen.queue).toHaveLength(0);
+  });
 });
 
 describe('auto-reply — bốn cửa an toàn', () => {
@@ -116,44 +138,42 @@ describe('auto-reply — bốn cửa an toàn', () => {
     expect(daChen.runs).toHaveLength(0);
   });
 
-  it('CỬA 4: còn trong cooldown thì im lặng và nói rõ còn bao lâu', async () => {
-    lanTraLoiCuoi = new Date(Date.now() - 5 * 60_000).toISOString();   // 5 phút trước, cooldown 30
+  it('CỬA 4: tôn trọng DB từ chối vì cooldown, không ghi thêm tin hoặc nhật ký thành công', async () => {
+    rpcResult = { status: 'skipped', reason: 'Hội thoại còn trong thời gian chờ chống lặp' };
+    await goi('còn phòng ko b');
+    expect(rpcCalls).toHaveLength(1);
+    expect(daChen.queue).toHaveLength(0);
+    expect(daChen.runs).toHaveLength(0);
+  });
+
+  it('CỬA 4: dùng một RPC để kiểm cooldown/cap cùng lúc xếp hàng', async () => {
+    await goi('còn phòng ko b');
+    expect(rpcCalls).toHaveLength(1);
+    expect(daChen.queue).toHaveLength(0);
+  });
+
+  it('CỬA 4: tôn trọng DB từ chối vì trần ngày', async () => {
+    rpcResult = { status: 'skipped', reason: 'Đã chạm trần trả lời tự động trong ngày' };
     await goi('còn phòng ko b');
     expect(daChen.queue).toHaveLength(0);
-    expect(daChen.runs[0].reason).toMatch(/im lặng thêm \d+ phút/);
+    expect(daChen.runs).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(1);
   });
 
-  it('CỬA 4: hết cooldown thì trả lời lại', async () => {
-    lanTraLoiCuoi = new Date(Date.now() - 60 * 60_000).toISOString();  // 1 giờ trước
-    await goi('còn phòng ko b');
-    expect(daChen.queue).toHaveLength(1);
-  });
-
-  it('CỬA 4: chạm trần ngày thì dừng', async () => {
-    soDaTraLoiHomNay = 50;   // dailyCap mặc định 50
-    await goi('còn phòng ko b');
-    expect(daChen.queue).toHaveLength(0);
-    expect(daChen.runs[0].reason).toContain('trần');
-  });
-
-  it('QUA HẾT: gửi danh sách phòng sống, có trễ tự nhiên, ghi sổ đủ', async () => {
+  it('QUA HẾT: truyền danh sách phòng sống và metadata vào RPC atomic', async () => {
     await goi('bên m còn phòng nào trống ko');
-    expect(daChen.queue).toHaveLength(1);
-    expect(daChen.messages).toHaveLength(1);
+    expect(rpcCalls).toHaveLength(1);
 
-    const than = daChen.messages[0].body;
+    const than = rpcCalls[0].args.p_body;
     expect(than).toContain('TRỐNG NGAY');
     expect(than).toContain('P.402');
     expect(than).toContain('SẮP TRỐNG');
     expect(than).toContain('trống 5/9');
     expect(than).toContain('https://ptcrm.test/r/abc');   // link tổng lấy từ cấu hình broadcast
 
-    // Trả lời tức thì trong 0 giây là dấu hiệu bot rõ nhất.
-    const tre = Date.parse(daChen.queue[0].not_before) - Date.now();
-    expect(tre).toBeGreaterThan(3000);
-
-    expect(daChen.runs[0]).toMatchObject({ mode: 'reply', messages_count: 1, conversation_id: 'c1' });
-    expect(daChen.runs[0].detail.tu_khoa).toBeTruthy();
+    // Delay/cooldown/cap/transaction được xác minh bằng DB behavior harness thật.
+    expect(rpcCalls[0].args.p_detail).toMatchObject({ so_phong: 2 });
+    expect(rpcCalls[0].args.p_detail.tu_khoa).toBeTruthy();
   });
 
   it('automation TẮT thì không trả lời', async () => {

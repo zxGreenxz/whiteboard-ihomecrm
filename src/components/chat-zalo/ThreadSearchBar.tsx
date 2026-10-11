@@ -26,12 +26,11 @@ export default function ThreadSearchBar({ messages, onNavigate, onTerm, onClose 
       .map((m) => m.id!) ;
   }, [messages, term]);
 
-  useEffect(() => { setPos(hits.length ? hits.length - 1 : 0); }, [hits.length]);
+  useEffect(() => { setPos(hits.length ? hits.length - 1 : 0); }, [hits]);
   useEffect(() => { onTerm(term.trim()); }, [term, onTerm]);
   useEffect(() => {
     if (hits.length && hits[pos]) onNavigate(hits[pos]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pos, hits.length]);
+  }, [pos, hits, onNavigate]);
 
   const step = (d: number) => {
     if (!hits.length) return;

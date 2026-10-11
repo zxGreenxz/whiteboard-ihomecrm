@@ -131,7 +131,7 @@ export default function MessageList({
         );
         if (m.type === 'sys') return wrap(<SystemMessage text={m.text || ''} />);
         if (m.type === 'image') return wrap(<ImageMessage m={m} onOpenLightbox={openLightbox} {...actionProps} />);
-        if (m.type === 'video') return wrap(<VideoMessage m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />);
+        if (m.type === 'video') return wrap(<VideoMessage m={m} {...actionProps} />);
         if (m.type === 'voice') return wrap(<VoiceMessage m={m} {...actionProps} />);
         if (m.type === 'file') return wrap(<FileMessage m={m} {...actionProps} />);
         if (m.type === 'sticker') return wrap(<StickerMessage m={m} {...actionProps} />);

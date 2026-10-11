@@ -22,7 +22,7 @@ interface Props {
   filter: FilterKey;
   search: string;
   automationActive: number;
-  automationRuns: number;
+  automationRuns?: number;
   onFilter: (f: FilterKey) => void;
   onSearch: (s: string) => void;
   onSelect: (id: string) => void;
@@ -30,8 +30,8 @@ interface Props {
   /** Thanh chọn/kết nối tài khoản Zalo render trên cùng. */
   topSlot?: ReactNode;
   labels?: ZaloLabel[];
-  selectedLabel?: number | null;
-  onSelectLabel?: (id: number | null) => void;
+  selectedLabel?: string | null;
+  onSelectLabel?: (id: string | null) => void;
   onBroadcast?: () => void;
   onComposeNew?: () => void;
   onTogglePin?: (c: ZaloConversation) => void;
@@ -68,12 +68,12 @@ export default function ConversationList({
             )}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={onBroadcast} title="Chia sẻ / Gửi hàng loạt" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            {onBroadcast && <button onClick={onBroadcast} title="Chia sẻ / Gửi hàng loạt" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Megaphone size={17} />
-            </button>
-            <button onClick={onComposeNew} title="Soạn tin mới theo SĐT" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            </button>}
+            {onComposeNew && <button onClick={onComposeNew} title="Soạn tin mới theo SĐT" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <MessageSquarePlus size={17} />
-            </button>
+            </button>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 11px', background: 'hsl(210 20% 96%)', borderRadius: 8, color: 'hsl(210 10% 50%)', marginBottom: 11 }}>
@@ -140,7 +140,7 @@ export default function ConversationList({
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'hsl(152 69% 28%)' }}>Tự động hoá: {automationActive} luồng bật</div>
-          <div style={{ fontSize: 11, color: 'hsl(210 10% 45%)' }}>Đã chạy {automationRuns} lượt hôm nay</div>
+          <div style={{ fontSize: 11, color: 'hsl(210 10% 45%)' }}>{automationRuns === undefined ? 'Xem nhật ký trong mục Tự động hoá' : `Đã chạy ${automationRuns} lượt hôm nay`}</div>
         </div>
       </div>
     </section>

@@ -38,6 +38,8 @@ import { nhanCuaNgay, nhanCuaLuot } from './automation/nhanCheDo';
 import type { ZaloAutomations, ZaloConversation } from './types';
 
 interface Props {
+  canManage?: boolean;
+  onManageTemplates?: () => void;
   automations: ZaloAutomations;
   onToggle: (key: 'broadcastOn' | 'autoReplyOn') => void;
   templates: { title: string; color: string }[];
@@ -107,7 +109,7 @@ const CHIP: React.CSSProperties = {
 };
 
 /** Tab "Tự động hoá": tóm tắt broadcast + auto-reply (số liệu THẬT) + thư viện mẫu tin. */
-export default function AutomationPanel({ automations, onToggle, templates, conversations, onOpenSettings }: Props) {
+export default function AutomationPanel({ automations, onToggle, templates, conversations, onOpenSettings, canManage = false, onManageTemplates }: Props) {
   const cfgQuery = useZaloAutomationConfigs();
   const runsQuery = useZaloAutomationRuns();
 
@@ -165,7 +167,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               <div style={{ fontSize: 11, color: 'hsl(152 50% 35%)', fontWeight: 600 }}>{trangThaiBatTat(automations.broadcastOn)}</div>
             </div>
           </div>
-          <Toggle on={automations.broadcastOn} disabled={!daBietBatTat} onClick={() => onToggle('broadcastOn')} />
+          <Toggle on={automations.broadcastOn} disabled={!daBietBatTat || !canManage} onClick={() => onToggle('broadcastOn')} />
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
@@ -212,7 +214,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
               <div style={{ fontSize: 11, color: 'hsl(210 10% 45%)' }}>Chỉ hội thoại đã đánh dấu sale</div>
             </div>
           </div>
-          <Toggle on={automations.autoReplyOn} disabled={!daBietBatTat} onClick={() => onToggle('autoReplyOn')} />
+          <Toggle on={automations.autoReplyOn} disabled={!daBietBatTat || !canManage} onClick={() => onToggle('autoReplyOn')} />
         </div>
 
         <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12.5 }}>
@@ -288,22 +290,22 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
       </div>
 
       {/* ------------------------------------------------ Dừng khẩn cấp */}
-      <NutDungKhanCap dangBat={automations.broadcastOn || automations.autoReplyOn} />
+      {canManage && <NutDungKhanCap dangBat={automations.broadcastOn || automations.autoReplyOn} />}
 
       {/* -------------------------------------------------- Cài đặt chi tiết */}
-      <button
+      {canManage && <button
         onClick={onOpenSettings}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', padding: '9px 0', borderRadius: 10, border: '1px solid hsl(152 40% 82%)', background: 'hsl(152 40% 96%)', color: EMERALD, fontWeight: 600, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
       >
         <SlidersHorizontal size={14} />
         Cài đặt chi tiết
-      </button>
+      </button>}
 
       {/* ------------------------------------------------- Thư viện mẫu tin */}
       <div style={{ border: '1px solid hsl(210 20% 90%)', borderRadius: 12, padding: '13px 14px 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
           <span style={{ fontSize: 13.5, fontWeight: 700 }}>Thư viện mẫu tin</span>
-          <span style={{ fontSize: 11.5, color: EMERALD, fontWeight: 600, cursor: 'pointer' }}>+ Thêm</span>
+          {onManageTemplates && <button type="button" onClick={onManageTemplates} style={{ border: 0, background: 'transparent', fontSize: 11.5, color: EMERALD, fontWeight: 600, cursor: 'pointer' }}>+ Thêm</button>}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {templates.map((t) => (

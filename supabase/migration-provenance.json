@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-11T05:37:42.218Z",
+  "generatedAt": "2026-10-11T05:57:49.799Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 672,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11252,6 +11252,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-11T05:37:21.699Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql",
+      "version": "20261011052259",
+      "name": "zalo_rpc_only_scope_va_atomic_queue",
+      "scheme": "timestamp14",
+      "sha256": "2b3c8502062e033c1c28c2b5120f346fe87056fd4adb033cddfa883fa556cc26",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.zalo_worker_attachment_allowed_v1",
+        "function:app_private.zalo_assert_attachment_v1",
+        "function:app_private.zalo_guard_relations_v1",
+        "function:app_private.zalo_config_int_v1",
+        "function:app_private.zalo_in_allowed_hours_v1"
       ]
     },
     {

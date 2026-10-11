@@ -15,6 +15,10 @@ const daChen = { messages: [], queue: [], runs: [] };
 let capNhatAutomations = [];
 let duLieuAutomations = [];
 let duLieuConversations = [];
+let rpcError = null;
+let rpcCalls = [];
+let rpcFailureFor = () => null;
+let uploadError = null;
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -38,6 +42,16 @@ function ketQua(ctx) {
 }
 
 const sbGia = {
+  rpc: async (name, args) => {
+    rpcCalls.push({ name, args });
+    const failure = rpcError || rpcFailureFor(args);
+    if (failure) return { data: null, error: failure };
+    const id = `msg-${daChen.messages.length + 1}`;
+    daChen.messages.push({ id, body: args.p_body });
+    daChen.queue.push({ conversation_id: args.p_conversation_id, not_before: args.p_not_before,
+      payload: args.p_attachment ? { type: 'image', attachments: [args.p_attachment] } : { body: args.p_body } });
+    return { data: { status: 'queued', message_id: id, job_id: `job-${id}` }, error: null };
+  },
   from(bang) {
     if (bang === 'zalo_messages') {
       return {
@@ -67,7 +81,7 @@ const sbGia = {
   },
   storage: {
     from: () => ({
-      upload: () => Promise.resolve({ error: null }),
+      upload: () => Promise.resolve({ error: uploadError }),
       getPublicUrl: (p) => ({ data: { publicUrl: `https://x.test/storage/v1/object/public/zalo-media/${p}` } }),
     }),
   },
@@ -130,6 +144,9 @@ function datCauHinh(over = {}, stats = {}) {
 beforeEach(() => {
   daChen.messages = []; daChen.queue = []; daChen.runs = [];
   capNhatAutomations = [];
+  rpcCalls = []; rpcError = null;
+  rpcFailureFor = () => null;
+  uploadError = null;
   duLieuConversations = [conv('c1'), conv('c2')];
   phienDangSong.clear();
   phienDangSong.set('acc-1', { api: {}, ownId: 'own' });
@@ -141,6 +158,113 @@ beforeEach(() => {
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('enqueues atomically with stable keys if the schedule state was not saved', async () => {
+    datCauHinh();
+    await tickTuDongHoa();
+    const first = rpcCalls.map(call => call.args.p_request_key);
+    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
+    expect(new Set(first).size).toBe(4);
+    rpcCalls = [];
+    // Same schedule/stats after a lost response or worker restart.
+    await tickTuDongHoa();
+    expect(rpcCalls.map(call => call.args.p_request_key)).toEqual(first);
+  });
+
+  it('reports enqueue failure without leaving an orphan pending message', async () => {
+    datCauHinh(); rpcError = { message: 'database unavailable' };
+    await tickTuDongHoa();
+    expect(daChen.messages).toHaveLength(0);
+    expect(daChen.queue).toHaveLength(0);
+    expect(daChen.runs[0].detail.khong_xep_duoc).toBe(4);
+    expect(daChen.runs[0].mode).toBe('failed');
+    expect(capNhatAutomations).toHaveLength(0);
+    // The next tick still owns the same unfinished logical run.
+    const firstKeys = rpcCalls.map(call => call.args.p_request_key);
+    rpcError = null; rpcCalls = [];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(call => call.args.p_request_key)).toEqual(firstKeys);
+    expect(daChen.queue).toHaveLength(4);
+    expect(capNhatAutomations.at(-1).stats.lastScheduledDate).toBe('2026-08-31');
+  });
+
+  it('keeps room and block idempotency keys stable when their display order changes', async () => {
+    datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } },
+      template: { blocks: ['link', 'room_details', 'table_image'], shareUrl: 'https://ptcrm.test/r/abc' } });
+    await tickTuDongHoa();
+    const keysByContent = () => Object.fromEntries(rpcCalls.map(({ args }) => [
+      `${args.p_conversation_id}:${args.p_attachment ? 'table_image' : args.p_body}`, args.p_request_key,
+    ]));
+    const first = keysByContent();
+    rpcCalls = []; phongGia.reverse();
+    duLieuAutomations[0].config.template.blocks = ['table_image', 'room_details', 'link'];
+    await tickTuDongHoa();
+    expect(keysByContent()).toEqual(first);
+  });
+
+  it('reports a partially queued run explicitly and does not retry it implicitly', async () => {
+    datCauHinh();
+    rpcFailureFor = args => args.p_conversation_id === 'c2' ? { message: 'lost response' } : null;
+    await tickTuDongHoa();
+    expect(daChen.queue).toHaveLength(2);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2,
+      detail: { partial: true, khong_xep_duoc: 2 } });
+    expect(daChen.runs[0].reason).toMatch(/một phần/);
+    // Mirror the successful stats save, then verify the schedule is closed.
+    duLieuAutomations[0].stats = capNhatAutomations.at(-1).stats;
+    rpcCalls = []; rpcFailureFor = () => null;
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('keeps an all-failed supplemental room event pending until enqueue succeeds', async () => {
+    const previous = { lastScheduledDate: '2026-08-31', knownRoomIds: ['r1'],
+      pendingSince: '2026-08-31T01:00:00Z', sentDate: '2026-08-31', sentToday: 4 };
+    datCauHinh({ template: { blocks: ['room_details'] }, eventDriven: { enabled: true, debounceMinutes: 5 } }, previous);
+    rpcError = { message: 'database unavailable' };
+    await tickTuDongHoa();
+    const firstKeys = rpcCalls.map(call => call.args.p_request_key);
+    expect(capNhatAutomations).toHaveLength(0);
+    expect(duLieuAutomations[0].stats).toEqual(previous);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { retry_pending: true } });
+    rpcError = null; rpcCalls = [];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(call => call.args.p_request_key)).toEqual(firstKeys);
+    expect(capNhatAutomations.at(-1).stats).toMatchObject({ knownRoomIds: ['r1', 'r2'], pendingSince: null, sentToday: 6 });
+  });
+
+  it('does not finish an image-only run when the table image failed to upload', async () => {
+    datCauHinh({ template: { blocks: ['table_image'] } });
+    uploadError = { message: 'storage unavailable' };
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(capNhatAutomations).toHaveLength(0);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { retry_pending: true, khong_xep_duoc: 2 } });
+  });
+
+  it('không xếp người nhận sau giờ đóng cửa dù lượt bắt đầu còn trong giờ', async () => {
+    vi.setSystemTime(new Date('2026-08-31T12:59:00Z'));
+    datCauHinh({
+      schedule: { time: '19:59', days: { mon: 'compact' } },
+      template: { blocks: ['link'], shareUrl: 'https://ptcrm.test/r/abc' },
+      antiSpam: { allowedHours: { from: '08:00', to: '20:00' }, gapBetweenRecipientsSec: 180 },
+    });
+    await tickTuDongHoa();
+    expect(daChen.queue.map(j => j.conversation_id)).toEqual(['c1']);
+    expect(daChen.runs[0].detail.bo_qua_khung_gio).toBe(1);
+  });
+
+  it('không trừ quota hôm nay cho tin hẹn sang ngày mai trong khung xuyên đêm', async () => {
+    vi.setSystemTime(new Date('2026-08-31T16:59:00Z'));
+    datCauHinh({
+      schedule: { time: '23:59', days: { mon: 'compact' } },
+      template: { blocks: ['link'], shareUrl: 'https://ptcrm.test/r/abc' },
+      antiSpam: { allowedHours: { from: '20:00', to: '08:00' }, gapBetweenRecipientsSec: 180 },
+    });
+    await tickTuDongHoa();
+    expect(daChen.queue.map(j => j.conversation_id)).toEqual(['c1']);
+    expect(capNhatAutomations.at(-1).stats.sentToday).toBe(1);
+  });
+
   it('xếp đủ 2 khối × 2 người nhận và ghi nhật ký', async () => {
     datCauHinh();
     await tickTuDongHoa();

@@ -26,11 +26,12 @@ import {
   sessions, orgCache,
 } from './lib/ctx.js';
 import { sessionKeyReady } from './lib/session-store.js';
-import { claimLease, heartbeatLease, releaseLease, INSTANCE_ID } from './lib/lease.js';
+import { claimLease, startLeaseHeartbeat, releaseLease, INSTANCE_ID } from './lib/lease.js';
 import { startLoginQR, tryRelogin, shouldRelogin } from './lib/login.js';
 import { watchdogTick, WATCHDOG_MS } from './lib/watchdog.js';
-import { processJob } from './lib/queue.js';
+import { processJob, recoverInterruptedJobs } from './lib/queue.js';
 import { tickTuDongHoa, AUTOMATION_MS } from './lib/automation.js';
+import { reconcileAccountSessions, stopAccountSession } from './lib/session-lifecycle.js';
 
 // ── Fail-closed từ boot: thiếu credential/khoá là DỪNG, không chạy nửa vời ──
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -45,7 +46,6 @@ if (!sessionKeyReady()) {
   process.exit(1);
 }
 
-let booted = false;
 let ticking = false;
 let shuttingDown = false;
 
@@ -53,19 +53,14 @@ async function tick() {
   if (ticking || shuttingDown) return;   // CHỐNG tick chồng nhau
   ticking = true;
   try {
-    // Lease đơn-instance: mất lease = instance mới đã lên → tự thoát êm.
-    if (!(await heartbeatLease())) {
-      log('lease đã đổi chủ — instance này tự thoát.');
-      await shutdown(false);
-      return;
-    }
-
     // accounts: nạp org cache + luồng đăng nhập / re-login
     let accQ = sb.from('zalo_accounts')
-      .select('id, user_id, organization_id, name, status, meta, zalo_uid')
+      .select('id, user_id, organization_id, name, status, meta, zalo_uid, login_requested_at')
       .eq('kind', 'personal');
     if (ORG_FILTER.length) accQ = accQ.in('organization_id', ORG_FILTER);
-    const { data: accounts } = await accQ;
+    const { data: accounts, error: accountsError } = await accQ;
+    if (accountsError) throw new Error(`Không đọc được tài khoản: ${accountsError.message}`);
+    reconcileAccountSessions(accounts || [], sessions);
     for (const a of accounts || []) orgCache.set(a.id, a.organization_id);
     for (const a of accounts || []) {
       if (a.status === 'connecting' || a.status === 'waiting_scan') {
@@ -78,7 +73,6 @@ async function tick() {
         tryRelogin(a);
       }
     }
-    booted = true;
 
     // hàng đợi gửi — RẢI NHỊP giữa các job (chống Zalo coi broadcast là spam)
     let jobQ = sb.from('zalo_send_queue')
@@ -98,6 +92,7 @@ async function tick() {
 let tickTimer = null;
 let watchdogTimer = null;
 let automationTimer = null;
+let stopHeartbeat = null;
 
 async function main() {
   log('Zalo worker khởi động →', SUPABASE_URL, '· instance', INSTANCE_ID.slice(0, 8));
@@ -112,11 +107,17 @@ async function main() {
   }
   log('đã giữ lease đơn-instance.');
 
+  stopHeartbeat = startLeaseHeartbeat({ onLost: async () => {
+    log('không còn lease hợp lệ — dừng phiên.');
+    await shutdown(false);
+  } });
+  await recoverInterruptedJobs();
+
   await tick();
   tickTimer = setInterval(() => { tick().catch((e) => log('tick error', e.message)); }, POLL_MS);
   watchdogTimer = setInterval(() => {
-    sb.from('zalo_accounts').select('id, user_id, organization_id, name, status, meta, zalo_uid').eq('kind', 'personal')
-      .then(({ data }) => watchdogTick(data || []))
+    sb.from('zalo_accounts').select('id, user_id, organization_id, name, status, meta, zalo_uid, login_requested_at').eq('kind', 'personal')
+      .then(({ data, error }) => { if (error) throw error; return watchdogTick(data || []); })
       .then(() => {}, (e) => log('watchdog error', e?.message || e));
   }, WATCHDOG_MS);
 
@@ -138,12 +139,15 @@ async function shutdown(fromSignal = true) {
   clearInterval(tickTimer);
   clearInterval(watchdogTimer);
   clearInterval(automationTimer);
-  // đợi job đang processing xong (tối đa 10s)
-  for (let i = 0; i < 20 && ticking; i++) await sleep(500);
-  for (const [id, s] of sessions) {
-    try { s.api.listener.stop(); } catch { /* */ }
+  stopHeartbeat?.();
+  // Close listeners immediately so disconnect/shutdown cannot keep ingesting
+  // events while an in-flight provider call is waiting for its response.
+  for (const [id] of sessions) {
+    stopAccountSession(id, sessions);
     log('stopped', id);
   }
+  // đợi job đang processing xong (tối đa 10s)
+  for (let i = 0; i < 20 && ticking; i++) await sleep(500);
   await releaseLease();
   if (fromSignal) process.exit(0);
 }

@@ -12,9 +12,11 @@
 // =============================================================
 import { Zalo } from 'zca-js';
 import QRCode from 'qrcode';
-import { sb, log, sessions, loggingIn, reloginState, setAccount, uaFor } from './ctx.js';
+import { sb, log, sessions, loggingIn, reloginState, uaFor } from './ctx.js';
 import { saveSession, loadSession } from './session-store.js';
 import { attachSession } from './inbound.js';
+import { isCurrentLogin, stopAccountSession } from './session-lifecycle.js';
+import { isLeaseActive } from './lease.js';
 
 const BACKOFF_MS = [5000, 15000, 30000, 60000, 120000];
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -23,6 +25,13 @@ const KICK_RECONNECT_MS = 30_000;
 const KICK_CAP = 4;
 const KICK_COOLDOWN_MS = 10 * 60_000;
 const RECONNECT_COOLDOWN_MS = 3000; // chờ WS cũ đóng hẳn — tránh tự-kick
+
+async function connectionError(id, last_error) {
+  if (!isLeaseActive()) return;
+  const { error } = await sb.from('zalo_accounts').update({ status: 'error', last_error, updated_at: new Date().toISOString() })
+    .eq('id', id).in('status', ['connected', 'error']);
+  if (error) log('connectionError', id, error.message);
+}
 
 function stateOf(id) {
   if (!reloginState.has(id)) reloginState.set(id, { attempts: 0, nextAt: 0, kicks: 0, gaveUp: false });
@@ -34,21 +43,17 @@ export function resetReloginState(id) {
 
 // Gọi khi listener báo closed/error. Quyết định lịch thử lại.
 export function noteDisconnect(accountId, code) {
-  const s = sessions.get(accountId);
-  if (s) {
-    try { s.api.listener.stop(); } catch { /* */ }
-    sessions.delete(accountId);
-  }
+  stopAccountSession(accountId, sessions);
   const st = stateOf(accountId);
   if (KICK_CODES.has(Number(code))) {
     st.kicks += 1;
     if (st.kicks >= KICK_CAP) {
       st.nextAt = Date.now() + KICK_COOLDOWN_MS;
-      setAccount(accountId, { status: 'error', last_error: 'Bị đá phiên liên tục (nick đang mở Zalo Web nơi khác?) — tạm nghỉ 10 phút rồi tự thử lại.' });
+      connectionError(accountId, 'Bị đá phiên liên tục (nick đang mở Zalo Web nơi khác?) — tạm nghỉ 10 phút rồi tự thử lại.');
       log('kick cap', accountId, '→ nghỉ 10 phút');
     } else {
       st.nextAt = Date.now() + KICK_RECONNECT_MS;
-      setAccount(accountId, { status: 'error', last_error: `Bị đá phiên (lần ${st.kicks}) — tự kết nối lại sau 30s.` });
+      connectionError(accountId, `Bị đá phiên (lần ${st.kicks}) — tự kết nối lại sau 30s.`);
       log('kicked', accountId, 'lần', st.kicks);
     }
     return;
@@ -56,7 +61,7 @@ export function noteDisconnect(accountId, code) {
   st.attempts += 1;
   if (st.attempts > MAX_RECONNECT_ATTEMPTS) {
     st.gaveUp = true;
-    setAccount(accountId, { status: 'error', last_error: 'Mất kết nối quá 10 lần liên tiếp — bấm "Đăng nhập lại" để nối lại.' });
+    connectionError(accountId, 'Mất kết nối quá 10 lần liên tiếp — bấm "Đăng nhập lại" để nối lại.');
     log('gave up relogin', accountId);
     return;
   }
@@ -76,13 +81,20 @@ export function shouldRelogin(accountId) {
 // Sau khi login OK: lưu phiên MỚI (cookie xoay theo mỗi login) + reset counters.
 async function afterLogin(account, api, { viaQR = false } = {}) {
   const id = account.id;
+  const { data: latest, error: latestError } = await sb.from('zalo_accounts')
+    .select('id, organization_id, status, login_requested_at').eq('id', id).maybeSingle();
+  if (!isLeaseActive() || latestError || !isCurrentLogin(account, latest, viaQR)) {
+    try { api.listener?.stop?.(); } catch { /* cancelled login */ }
+    log('bỏ phiên đăng nhập đã bị huỷ/thay thế', id);
+    return null;
+  }
   let uid = '';
   try { uid = String((await api.getOwnId?.()) || ''); } catch { /* */ }
 
   // Guard WRONG_ACCOUNT — chỉ áp khi slot ĐÃ gắn một uid trước đó.
   const expected = String(account.zalo_uid || '').trim();
   if (!viaQR && expected && uid && uid !== expected) {
-    await setAccount(id, { status: 'error', last_error: `WRONG_ACCOUNT: phiên trả về uid ${uid}, slot này thuộc uid ${expected}. Không gắn.` });
+    await updateLoginAccount(account, { status: 'error', last_error: `WRONG_ACCOUNT: phiên trả về uid ${uid}, slot này thuộc uid ${expected}. Không gắn.` });
     stateOf(id).gaveUp = true;
     log('WRONG_ACCOUNT', id, uid, '≠', expected);
     return null;
@@ -109,10 +121,14 @@ async function afterLogin(account, api, { viaQR = false } = {}) {
     }
   } catch (e) { log('save ctx error', e.message); }
 
-  await setAccount(id, {
+  const attached = await updateLoginAccount(account, {
     status: 'connected', qr_data: null, qr_expires_at: null, last_error: null,
     name, zalo_uid: uid || expected || '', ...(avatar ? { avatar_url: avatar } : {}),
-  });
+  }, viaQR);
+  if (!attached || !isLeaseActive()) {
+    try { api.listener?.stop?.(); } catch { /* user disconnected meanwhile */ }
+    return null;
+  }
   await attachSession(id, account.user_id, api, {
     onClosed: (code) => noteDisconnect(id, code),
     sessionSavedAt: savedAt,
@@ -121,10 +137,24 @@ async function afterLogin(account, api, { viaQR = false } = {}) {
   return api;
 }
 
+// Conditional write: a delayed QR/login callback cannot undo a user's latest
+// disconnect or a newer connection request.
+async function updateLoginAccount(account, patch, viaQR = false) {
+  if (!isLeaseActive()) return false;
+  let query = sb.from('zalo_accounts').update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', account.id).in('status', viaQR ? ['connecting', 'waiting_scan'] : ['connected', 'error']);
+  query = account.login_requested_at
+    ? query.eq('login_requested_at', account.login_requested_at)
+    : query.is('login_requested_at', null);
+  const { data, error } = await query.select('id');
+  if (error) log('updateLoginAccount', account.id, error.message);
+  return !error && !!data?.length;
+}
+
 // ── Đăng nhập QR cho account đang 'connecting' ──
 export async function startLoginQR(account) {
   const id = account.id;
-  if (loggingIn.has(id) || sessions.has(id)) return;
+  if (!isLeaseActive() || loggingIn.has(id) || sessions.has(id)) return;
   loggingIn.add(id);
   log('loginQR start', id);
 
@@ -142,17 +172,17 @@ export async function startLoginQR(account) {
         if (img) dataUrl = String(img).startsWith('data:') ? img : `data:image/png;base64,${img}`;
         else if (codeStr) dataUrl = await QRCode.toDataURL(String(codeStr));
         if (dataUrl) {
-          await setAccount(id, { status: 'waiting_scan', qr_data: dataUrl, qr_expires_at: new Date(Date.now() + 4 * 60000).toISOString() });
+          await updateLoginAccount(account, { status: 'waiting_scan', qr_data: dataUrl, qr_expires_at: new Date(Date.now() + 4 * 60000).toISOString() }, true);
           log('QR ready', id);
         }
       }
     });
-    await setAccount(id, { meta: { ...(account.meta || {}), userAgent: ua } });
+    await updateLoginAccount(account, { meta: { ...(account.meta || {}), userAgent: ua } }, true);
     await afterLogin(account, api, { viaQR: true });
     log('connected (QR)', id);
   } catch (e) {
     log('loginQR error', id, e?.message || e);
-    await setAccount(id, { status: 'error', qr_data: null, last_error: String(e?.message || e).slice(0, 300) });
+    await updateLoginAccount(account, { status: 'error', qr_data: null, last_error: String(e?.message || e).slice(0, 300) }, true);
   } finally {
     loggingIn.delete(id);
   }
@@ -161,7 +191,7 @@ export async function startLoginQR(account) {
 // ── Re-login từ phiên đã lưu (boot / rớt mạng / proactive) ──
 export async function tryRelogin(account) {
   const id = account.id;
-  if (sessions.has(id) || loggingIn.has(id)) return;
+  if (!isLeaseActive() || sessions.has(id) || loggingIn.has(id)) return;
   const payload = loadSession(id);
   if (!payload) {
     // Máy này chưa từng đăng nhập nick này, vd vừa chuyển worker sang VPS mới. Để
@@ -169,7 +199,7 @@ export async function tryRelogin(account) {
     if (account.status === 'connected') {
       stateOf(id).gaveUp = true;
       // loadSession trả null cả khi không đọc được file (EACCES…), nên câu này nói cả hai khả năng.
-      await setAccount(id, { status: 'error', last_error: 'Máy chạy worker chưa có (hoặc không đọc được) phiên của tài khoản này — bấm "Kết nối lại" để quét QR.' });
+      await updateLoginAccount(account, { status: 'error', last_error: 'Máy chạy worker chưa có (hoặc không đọc được) phiên của tài khoản này — bấm "Kết nối lại" để quét QR.' });
       log('chưa có phiên trên máy này', id);
     }
     return;
@@ -177,12 +207,13 @@ export async function tryRelogin(account) {
   if (payload.corrupt) {
     // FAIL-CLOSED: không giải mã được (đổi key / hỏng file) — không đoán.
     stateOf(id).gaveUp = true;
-    await setAccount(id, { status: 'error', last_error: 'Không giải mã được phiên đã lưu — kiểm tra ZALO_SESSION_KEY hoặc bấm "Đăng nhập lại".' });
+    await updateLoginAccount(account, { status: 'error', last_error: 'Không giải mã được phiên đã lưu — kiểm tra ZALO_SESSION_KEY hoặc bấm "Đăng nhập lại".' });
     return;
   }
   loggingIn.add(id);
   try {
     await new Promise((r) => setTimeout(r, RECONNECT_COOLDOWN_MS));
+    if (!isLeaseActive()) return;
     const zalo = new Zalo({ selfListen: true });
     const api = await zalo.login(payload.creds);
     // expectedUid trong file phiên ưu tiên hơn cột DB (file đi cùng cookie).
@@ -194,6 +225,6 @@ export async function tryRelogin(account) {
     noteDisconnect(id, 1006);
     // Cookie hết hạn thật sự thì mọi lần thử đều fail → sau MAX attempts sẽ
     // gaveUp với hướng dẫn quét QR lại.
-    await setAccount(id, { status: 'error', last_error: 'Phiên Zalo lỗi/hết hạn — đang tự thử lại; nếu không được hãy bấm "Đăng nhập lại" để quét QR.' });
+    await updateLoginAccount(account, { status: 'error', last_error: 'Phiên Zalo lỗi/hết hạn — đang tự thử lại; nếu không được hãy bấm "Đăng nhập lại" để quét QR.' });
   } finally { loggingIn.delete(id); }
 }

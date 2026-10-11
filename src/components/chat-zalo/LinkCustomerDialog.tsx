@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useSearchCustomers, useLinkConversation, useUnlinkConversation } from '@/hooks/chat-zalo/useZaloCrmProfile';
 import { useZaloOrgId } from '@/hooks/useZaloChat';
 import type { ZaloConversation } from './types';
+import { hasCrmLink } from './conversationState';
 
 interface Props {
   open: boolean;
@@ -81,7 +82,7 @@ export default function LinkCustomerDialog({ open, onOpenChange, conv }: Props) 
             ))}
           </div>
           </QueryRegion>
-          {(conv.customerId || conv.leadId) && (
+          {hasCrmLink(conv) && (
             <Button
               variant="outline"
               className="w-full"

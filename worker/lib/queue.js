@@ -7,8 +7,8 @@
 //   • RẢI NHỊP anti-spam giữa các job do vòng tick lo (700–1500ms).
 //
 // Mới:
-//   • Gửi tin text: dựng QUOTE THÔ từ payload.target_raw (bài học WEB2
-//     §13.17) — Zalo từ chối quote thì gửi lại KHÔNG quote, không fail cả tin.
+//   • Gửi tin text: dựng QUOTE THÔ từ payload.target_raw; lỗi provider không
+//     tự gửi lại vì phản hồi mất không chứng minh tin chưa tới Zalo.
 //   • mentions [{pos,uid,len}] truyền thẳng zca.
 //   • Job media (image/file/voice/sticker) → media.js.
 //   • Job async: find_user (soạn tin theo SĐT), sticker_list — ghi kết quả
@@ -21,15 +21,77 @@ import { sb, log, sessions, orgOf } from './ctx.js';
 import { upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
+import { INSTANCE_ID } from './lease.js';
+import { validateAutomationDelivery } from './automation-delivery.js';
+import { finalizeSend, sendReceipt } from './send-finalization.js';
 
 async function jobDone(jobId, extra = {}) {
-  await sb.from('zalo_send_queue').update({ status: 'sent', processed_at: new Date().toISOString(), ...extra }).eq('id', jobId);
+  const { data, error } = await sb.from('zalo_send_queue')
+    .update({ status: 'sent', last_error: null, processed_at: new Date().toISOString(), ...extra })
+    .eq('id', jobId).eq('status', 'processing').eq('processing_instance_id', INSTANCE_ID).select('id');
+  if (error || !data?.length) throw new Error(`Không ghi nhận được kết quả job: ${error?.message || 'claim đã đổi chủ'}`);
 }
-async function jobFail(job, message) {
-  await sb.from('zalo_send_queue').update({
+async function jobFail(job, message, { claimed = true, unknown = false, receiptIds = [] } = {}) {
+  let query = sb.from('zalo_send_queue').update({
     status: 'failed', last_error: String(message).slice(0, 300), attempts: (job.attempts || 0) + 1,
-  }).eq('id', job.id);
-  if (job.message_id) await sb.from('zalo_messages').update({ status: 'failed' }).eq('id', job.message_id);
+    processed_at: new Date().toISOString(),
+    ...(unknown ? { result: { outcome: 'unknown', requires_reconciliation: true, provider_message_ids: receiptIds } } : {}),
+  }).eq('id', job.id).eq('status', claimed ? 'processing' : 'queued');
+  if (claimed) query = query.eq('processing_instance_id', INSTANCE_ID);
+  const { data, error } = await query.select('id');
+  if (error || !data?.length) { log('jobFail chưa ghi nhận được', job.id, error?.message || 'claim đã đổi chủ'); return; }
+  const ids = [...new Set([job.message_id, ...(Array.isArray(job.payload?.message_ids) ? job.payload.message_ids : [])].filter(Boolean))];
+  if (ids.length) {
+    const { error: messageError } = await sb.from('zalo_messages').update({ status: 'failed' })
+      .in('id', ids).eq('account_id', job.account_id).eq('organization_id', job.organization_id)
+      .eq('conversation_id', job.conversation_id).eq('status', 'pending');
+    if (messageError) log('jobFail message', job.id, messageError.message);
+  }
+}
+
+async function deferJob(job, reason) {
+  const { error } = await sb.from('zalo_send_queue').update({
+    not_before: new Date(Date.now() + 15_000).toISOString(), last_error: reason,
+  }).eq('id', job.id).eq('status', 'queued');
+  if (error) log('deferJob', job.id, error.message);
+}
+
+export async function recoverInterruptedJobs() {
+  const { data, error } = await sb.rpc('zalo_worker_recover_jobs_v1', { p_instance_id: INSTANCE_ID });
+  if (error) throw new Error(`Không đối soát được hàng đợi sau khởi động: ${error.message}`);
+  if (data?.reason === 'lease_lost') throw new Error('Không còn lease để đối soát hàng đợi');
+  log('queue recovery', data);
+  return data;
+}
+
+// Fence every provider request against the database lease and latest user
+// intent. Once admitted, an error is an unknown effect; never resend blindly.
+function fencedSession(session, job, delivery) {
+  return { ...session, api: new Proxy(session.api, {
+    get(target, key) {
+      const method = target[key];
+      if (typeof method !== 'function') return method;
+      return async (...args) => {
+        if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
+        const automation = await validateAutomationDelivery(job);
+        if (!automation.ok) throw new Error(automation.reason);
+        const { data, error } = await sb.rpc('zalo_worker_begin_provider_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
+        if (error || data !== true) throw new Error(`PROVIDER_NOT_ADMITTED: ${error?.message || 'lease, tài khoản hoặc job đã thay đổi'}`);
+        delivery.started = true;
+        let deadline;
+        let result;
+        try {
+          result = await Promise.race([
+            method.apply(target, args),
+            new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT: chưa xác nhận kết quả sau 60 giây')), 60_000); }),
+          ]);
+        } finally { clearTimeout(deadline); }
+        const ids = [result?.msgId, result?.message?.msgId, ...(Array.isArray(result?.attachment) ? result.attachment.map(row => row?.msgId) : [])].filter(Boolean).map(String);
+        delivery.receiptIds.push(...ids);
+        return result;
+      };
+    },
+  }) };
 }
 
 // Dựng quote THÔ đúng shape SendMessageQuote của zca — thiếu nguyên liệu thì
@@ -57,30 +119,8 @@ async function sendText(s, job, p, threadId, type) {
       .map((m) => ({ pos: Number(m.pos) || 0, uid: String(m.uid), len: Number(m.len) || 0 }));
   }
   const quote = buildQuote(p);
-  let res;
-  try {
-    res = await s.api.sendMessage(quote ? { ...content, quote } : content, threadId, type);
-  } catch (e) {
-    if (!quote) throw e;
-    // Zalo từ chối quote (tin gốc quá cũ / shape lạ) → gửi KHÔNG quote.
-    log('quote bị từ chối → gửi không quote', job.id, e?.message || e);
-    res = await s.api.sendMessage(content, threadId, type);
-  }
-  const zid = res?.message?.msgId || res?.msgId || '';
-  const cid = res?.message?.cliMsgId || res?.cliMsgId || '';
-  if (job.message_id) {
-    if (zid) {
-      // selfListen có thể đã chèn echo của chính tin này → tránh trùng:
-      const { data: dup } = await sb.from('zalo_messages').select('id').eq('account_id', job.account_id).eq('zalo_msg_id', String(zid)).maybeSingle();
-      if (dup && dup.id !== job.message_id) {
-        await sb.from('zalo_messages').delete().eq('id', job.message_id);   // bỏ row pending, giữ echo
-      } else {
-        await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: String(zid), cli_msg_id: cid ? String(cid) : null }).eq('id', job.message_id);
-      }
-    } else {
-      await sb.from('zalo_messages').update({ status: 'sent' }).eq('id', job.message_id);
-    }
-  }
+  const res = await s.api.sendMessage(quote ? { ...content, quote } : content, threadId, type);
+  await finalizeSend(job, job.message_id ? [sendReceipt(job.message_id, res?.message || res)] : []);
   log('sent', job.id);
 }
 
@@ -126,45 +166,49 @@ async function stickerListJob(s, job, p) {
 
 // Seen best-effort: cần params thô của tin inbound cuối (đã lưu ở zalo_raw).
 async function seenJob(s, job, p, type) {
-  try {
-    const { data: msg } = await sb.from('zalo_messages')
-      .select('zalo_msg_id, cli_msg_id, zalo_raw')
-      .eq('account_id', job.account_id).eq('zalo_msg_id', String(p.target_msg_id || '')).maybeSingle();
-    const r = msg?.zalo_raw;
-    if (!msg || !r || !r.uidFrom) { await jobDone(job.id); return; } // thiếu nguyên liệu → bỏ qua êm
-    await s.api.sendSeenEvent({
-      msgId: String(msg.zalo_msg_id), cliMsgId: String(msg.cli_msg_id || ''),
-      uidFrom: String(r.uidFrom), idTo: String(r.idTo || ''),
-      msgType: String(r.msgType || 'webchat'),
-      st: Number(r.st) || 0, at: Number(r.at) || 0, cmd: Number(r.cmd) || 0,
-      ts: String(r.ts || ''),
-    }, type);
-  } catch (e) { log('seen best-effort fail (bỏ qua)', e?.message || e); }
+  const { data: msg, error } = await sb.from('zalo_messages')
+    .select('zalo_msg_id, cli_msg_id, zalo_raw')
+    .eq('account_id', job.account_id).eq('zalo_msg_id', String(p.target_msg_id || '')).maybeSingle();
+  if (error) throw new Error(error.message);
+  const r = msg?.zalo_raw;
+  if (!msg || !r || !r.uidFrom) { await jobDone(job.id); return; } // thiếu nguyên liệu → bỏ qua êm
+  await s.api.sendSeenEvent({
+    msgId: String(msg.zalo_msg_id), cliMsgId: String(msg.cli_msg_id || ''),
+    uidFrom: String(r.uidFrom), idTo: String(r.idTo || ''),
+    msgType: String(r.msgType || 'webchat'),
+    st: Number(r.st) || 0, at: Number(r.at) || 0, cmd: Number(r.cmd) || 0,
+    ts: String(r.ts || ''),
+  }, type);
   await jobDone(job.id);
 }
 
 export async function processJob(job) {
-  // CLAIM NGUYÊN TỬ — chống gửi trùng giữa tick chồng / 2 instance.
-  const { data: claimed, error: claimErr } = await sb.from('zalo_send_queue')
-    .update({ status: 'processing' }).eq('id', job.id).eq('status', 'queued').select('id');
-  if (claimErr || !claimed || !claimed.length) return;
-
-  // GUARD PHẠM VI (PZALO-C01, re-anchor 02/09/2026): SAU claim, TRƯỚC mọi lời gọi
-  // provider. Job forge (thread/msg/account không thuộc hội thoại của account)
-  // bị fail với REJECTED_SCOPE và KHÔNG chạm Zalo.
-  const scope = await validateZaloCommandScope(job);
-  if (!scope.ok) {
-    logScopeRejection(job, scope);
-    await jobFail(job, formatScopeRejection(scope));
-    return;
-  }
-
-  const s = sessions.get(job.account_id);
-  if (!s) {
-    await jobFail(job, 'Tài khoản chưa kết nối');
-    return;
-  }
+  let claimed = false;
+  const delivery = { started: false, receiptIds: [] };
   try {
+    const scope = await validateZaloCommandScope(job);
+    if (!scope.ok) {
+      logScopeRejection(job, scope);
+      if (scope.reason.startsWith('không đọc được')) await deferJob(job, 'WAITING_DATABASE: chưa xác minh được phạm vi');
+      else await jobFail(job, formatScopeRejection(scope), { claimed: false });
+      return;
+    }
+    if (scope.account.status === 'disconnected') {
+      await jobFail(job, 'ACCOUNT_DISCONNECTED: người dùng đã ngắt kết nối', { claimed: false });
+      return;
+    }
+    const session = sessions.get(job.account_id);
+    if (!session || scope.account.status !== 'connected') {
+      await deferJob(job, 'WAITING_SESSION: đang chờ tài khoản kết nối');
+      return;
+    }
+    const automation = await validateAutomationDelivery(job);
+    if (!automation.ok) { await jobFail(job, automation.reason, { claimed: false }); return; }
+    const { data: claim, error: claimError } = await sb.rpc('zalo_worker_claim_job_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
+    if (claimError) throw new Error(claimError.message);
+    if (!claim?.ok) return;
+    claimed = true;
+    const s = fencedSession(session, job, delivery);
     const p = job.payload || {};
     // thread/type lấy từ hội thoại ĐÃ KIỂM (scope.conv), không tin payload.
     const threadId = scope.conv ? String(scope.conv.thread_id) : (p.thread_id ? String(p.thread_id) : null);
@@ -198,7 +242,7 @@ export async function processJob(job) {
     } else if (p.action === 'seen') {
       await seenJob(s, job, p, type);
     } else if (p.action === 'typing') {
-      try { await s.api.sendTypingEvent(threadId, type); } catch (e) { log('typing best-effort', e?.message || e); }
+      await s.api.sendTypingEvent(threadId, type);
       await jobDone(job.id);
     } else if (p.action === 'find_user') {
       await findUserJob(s, job, p);
@@ -207,14 +251,14 @@ export async function processJob(job) {
     } else if (['image', 'file', 'voice', 'sticker'].includes(String(p.type))) {
       if (!threadId) throw new Error('Không tìm thấy hội thoại của job media');
       await sendMediaJob(s, job, p, threadId, type);
-      await jobDone(job.id);
     } else {
       if (!threadId) throw new Error('Không tìm thấy hội thoại của job');
       await sendText(s, job, p, threadId, type);
-      await jobDone(job.id);
     }
   } catch (e) {
     log('job error', job.id, e?.message || e);
-    await jobFail(job, e?.message || e);
+    if (claimed) await jobFail(job, `${delivery.started ? 'UNKNOWN_EFFECT: cần đối soát, không tự gửi lại. ' : ''}${e?.message || e}`, {
+      claimed, unknown: delivery.started, receiptIds: delivery.receiptIds,
+    });
   }
 }

@@ -93,6 +93,8 @@ export interface ZaloMessage {
 }
 
 export interface ZaloLabel {
+  accountId: string;
+  accountName?: string;
   labelId: number;
   name: string;
   color?: string | null;

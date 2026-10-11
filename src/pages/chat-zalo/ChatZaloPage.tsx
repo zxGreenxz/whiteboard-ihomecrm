@@ -30,6 +30,7 @@ import {
 import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
+import { conversationHasLabel, isTenantConversation } from '@/components/chat-zalo/conversationState';
 
 /**
  * Trang Chat Zalo — workspace 3 cột (danh sách · khung chat · panel thông tin).
@@ -45,8 +46,12 @@ export default function ChatZaloPage() {
   const { data: accounts = [] } = accountsQuery;
   // Nhịp tim worker: lỗi đọc (vd chưa áp migration) thì để undefined, không kết luận worker chết.
   const { data: workerStatus } = useZaloWorkerStatus();
-  const { data: labels = [] } = useZaloLabels();
+  const { data: rawLabels = [] } = useZaloLabels();
+  const labels = useMemo(() => rawLabels.map(label => ({ ...label, accountName: accounts.find(account => account.id === label.accountId)?.name })), [rawLabels, accounts]);
   const { data: perms } = useMyPermissions();
+  const canSend = can(perms, 'chat_zalo', 'send');
+  const canManageAutomation = can(perms, 'chat_zalo', 'manage_automation');
+  const canManageTemplates = can(perms, 'chat_zalo', 'manage_templates');
   const broadcastMut = useBroadcast();
   const sendMut = useSendZaloMessage();
   const sendMediaMut = useSendZaloMedia();
@@ -78,7 +83,7 @@ export default function ChatZaloPage() {
   const [recallNotices,setRecallNotices] = useState<Record<string,string>>({});
   const [recallBlocked,setRecallBlocked] = useState<Record<string,boolean>>({});
   const [connectOpen, setConnectOpen] = useState(false);
-  const [selectedLabel, setSelectedLabel] = useState<number | null>(null);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcastInitial, setBroadcastInitial] = useState('');
   const [composeOpen, setComposeOpen] = useState(false);
@@ -112,19 +117,20 @@ export default function ChatZaloPage() {
   const base = conversations.find((c) => c.id === effectiveId);
   const active = base ? { ...base, messages } : undefined;
 
-  useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: selIds, label_id: selectedLabel }, active);
+  const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
+  useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: activeLabel ? selIds.filter(id => id === activeLabel.accountId) : selIds, label_id: activeLabel?.labelId ?? null }, active);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const selSet = new Set(selIds);
-    const allSelected = selIds.length >= accounts.length;
+    const allSelected = accounts.every(account => selSet.has(account.id));
     return conversations.filter((c) => {
       if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
-      if (selectedLabel != null && !(c.labelIds || []).includes(selectedLabel)) return false;
+      if (!conversationHasLabel(c, selectedLabel)) return false;
       // 'Danh bạ' = đã sync từ bạn bè nhưng CHƯA từng có tin nhắn; các chip khác ẩn nhóm này
       if (filter === 'contacts') { if (c.hasMessages) return false; }
       else if (!c.hasMessages && !q) return false;
       if (filter === 'unread' && c.unread <= 0 && !c.markedUnread) return false;
-      if (filter === 'tenant' && !c.customerId) return false;
+      if (filter === 'tenant' && !isTenantConversation(c)) return false;
       if (filter === 'lead' && !c.leadId) return false;
       if (!q) return true;
       return (
@@ -134,7 +140,7 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search, selIds, accounts.length, selectedLabel]);
+  }, [conversations, filter, search, selIds, accounts, selectedLabel]);
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
@@ -168,7 +174,7 @@ export default function ChatZaloPage() {
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !active || sendErrors[active.id]) return;
+    if (!text || !active || sendErrors[active.id] || !canSend) return;
     const reply = replyTarget && replyTarget.id
       ? {
           replyToMessageId: replyTarget.id,
@@ -182,7 +188,7 @@ export default function ChatZaloPage() {
     sendMut.mutate({ conversationId, body: text, ...reply }, {
       onSuccess: () => {
         setDrafts(previous => previous[conversationId]?.trim() === text ? {...previous,[conversationId]:''} : previous);
-        setReplyTarget(null);
+        setReplyTarget(previous => previous === replyTarget ? null : previous);
       },
       onError: error => setSendErrors(previous=>({...previous,[conversationId]:actionErrorMessage(error,'Chưa xác nhận được kết quả tiếp nhận tin nhắn. Bản soạn được giữ; kiểm tra cuộc trò chuyện trước khi gửi thêm.')})),
     });
@@ -273,7 +279,6 @@ export default function ChatZaloPage() {
           filter={filter}
           search={search}
           automationActive={automationActive}
-          automationRuns={0}
           onFilter={setFilter}
           onSearch={setSearch}
           onSelect={select}
@@ -281,8 +286,8 @@ export default function ChatZaloPage() {
           labels={labels}
           selectedLabel={selectedLabel}
           onSelectLabel={setSelectedLabel}
-          onBroadcast={() => { setBroadcastInitial(''); setBroadcastOpen(true); }}
-          onComposeNew={() => setComposeOpen(true)}
+          onBroadcast={canSend ? () => { setBroadcastInitial(''); setBroadcastOpen(true); } : undefined}
+          onComposeNew={canSend ? () => setComposeOpen(true) : undefined}
           onTogglePin={(c) => flagsMut.mutate({ conversationId: c.id, pinned: !c.pinned })}
           onToggleMute={(c) => flagsMut.mutate({ conversationId: c.id, muted: !c.muted })}
           onToggleUnread={(c) => flagsMut.mutate({ conversationId: c.id, markedUnread: !c.markedUnread })}
@@ -296,6 +301,8 @@ export default function ChatZaloPage() {
           <ChatThread
             className={cn('lg:flex', mobileView === 'thread' ? 'flex' : 'hidden')}
             conv={active}
+            messagesQuery={msgQuery}
+            canSend={canSend}
             draft={draft}
             templates={templates}
             onDraft={setDraft}
@@ -334,13 +341,13 @@ export default function ChatZaloPage() {
             } : null}
             onCancelReply={() => setReplyTarget(null)}
             onSendMedia={sendMedia}
-            mediaSending={sendMediaMut.isPending}
+            mediaSending={sendMediaMut.isPending && sendMediaMut.variables?.conversationId === active.id}
             onSendVoice={sendVoice}
-            voiceSending={sendMediaMut.isPending}
+            voiceSending={sendMediaMut.isPending && sendMediaMut.variables?.conversationId === active.id}
             onSendSticker={sendSticker}
             unreadAtOpen={unreadAtOpen[active.id] || 0}
             onTyping={() => sendTyping(active.id)}
-            onManageTemplates={can(perms, 'chat_zalo', 'manage_templates') ? () => setTemplateManagerOpen(true) : undefined}
+            onManageTemplates={canManageTemplates ? () => setTemplateManagerOpen(true) : undefined}
           />
         ) : (
           <section className="flex-1 min-w-0 hidden lg:flex items-center justify-center text-muted-foreground" style={{ background: 'hsl(160 20% 98.5%)' }}>
@@ -364,6 +371,8 @@ export default function ChatZaloPage() {
               conversations={conversations}
               onOpenSettings={() => setSettingsOpen(true)}
               onLinkCrm={setLinkConv}
+              canManageAutomation={canManageAutomation}
+              onManageTemplates={canManageTemplates ? () => setTemplateManagerOpen(true) : undefined}
             />
             <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
               <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]">
@@ -383,6 +392,8 @@ export default function ChatZaloPage() {
                     // không đọc được.
                     onOpenSettings={() => { setInfoOpen(false); setSettingsOpen(true); }}
                     onLinkCrm={setLinkConv}
+                    canManageAutomation={canManageAutomation}
+                    onManageTemplates={canManageTemplates ? () => { setInfoOpen(false); setTemplateManagerOpen(true); } : undefined}
                   />
                 </div>
               </SheetContent>
@@ -432,12 +443,12 @@ export default function ChatZaloPage() {
       {/* Cấu hình tự động hoá theo TỔ CHỨC — không phụ thuộc hội thoại đang mở,
           nên render ở cấp trang và không nằm trong nhánh `active &&`. */}
       <AutomationSettingsDialog
-        open={settingsOpen}
+        open={settingsOpen && canManageAutomation}
         onOpenChange={setSettingsOpen}
         conversations={conversations}
       />
 
-      {can(perms, 'chat_zalo', 'manage_templates') && (
+      {canManageTemplates && (
         <TemplateManagerDialog open={templateManagerOpen} onOpenChange={setTemplateManagerOpen} />
       )}
     </MainLayout>
