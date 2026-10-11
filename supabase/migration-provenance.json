@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-11T05:57:49.799Z",
+  "generatedAt": "2026-10-11T07:54:30.476Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 672,
-    "unknown": 81,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11268,6 +11268,22 @@
         "function:app_private.zalo_guard_relations_v1",
         "function:app_private.zalo_config_int_v1",
         "function:app_private.zalo_in_allowed_hours_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261011073522_zalo_chuyen_tiep_media_theo_tin_nguon.sql",
+      "version": "20261011073522",
+      "name": "zalo_chuyen_tiep_media_theo_tin_nguon",
+      "scheme": "timestamp14",
+      "sha256": "454c5ce5de5f1a8931741e4c4d002a13be4d2e89f275ecae10fef4043cfad5b7",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.zalo_forward_sources_v1",
+        "function:public.zalo_forward_media_v1",
+        "function:app_private.zalo_guard_forward_media_v1",
+        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_media",
+        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_provider"
       ]
     },
     {

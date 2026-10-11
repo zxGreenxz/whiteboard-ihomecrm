@@ -38,7 +38,7 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
             out={out} canRecall={out && !!onRecall && !!first.id}
             onReact={(e) => first.id && onReact?.(first.id, e)}
             onRecall={() => first.id && onRecall?.(first.id)}
-            onShare={onShare ? () => onShare(first) : undefined}
+            onShare={onShare ? () => onShare(first, items) : undefined}
             onReply={onReply && first.id ? () => onReply(first) : undefined}
             onDelete={onDelete && first.id ? () => onDelete(first.id!) : undefined}
           />

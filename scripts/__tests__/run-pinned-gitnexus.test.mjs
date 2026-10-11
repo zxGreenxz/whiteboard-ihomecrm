@@ -165,6 +165,31 @@ test('snapshot rejects Promise lstat failures swallowed by the native glob walke
   }
 });
 
+test('slow successful Windows tree cleanup confirms termination before releasing its lock', {skip:process.platform !== 'win32'}, async t => {
+  const f = await fixture(t);
+  await f.control({sleep:true});
+  const originalSpawn = childProcess.spawn;
+  const children = [];
+  childProcess.spawn = (command, args, options) => {
+    const child = command === 'taskkill.exe'
+      ? originalSpawn(process.execPath, ['-e', "setTimeout(()=>{const {spawn}=require('node:child_process');const p=spawn('taskkill.exe',process.argv.slice(1),{windowsHide:true,stdio:'ignore'});p.on('error',()=>process.exit(1));p.on('close',code=>process.exit(code??1));},650)", ...args], options)
+      : originalSpawn(command,args,options);
+    if (child.pid) children.push(child.pid);
+    return child;
+  };
+  syncBuiltinESMExports();
+  try {
+    const result = await f.execute(['analyze','--timeout-ms','1000']);
+    assert.equal(result.code,2);
+    assert.doesNotMatch(result.err,/termination unconfirmed/);
+    await assert.rejects(readFile(join(f.root,'.gitnexus/wrapper.lock')), {code:'ENOENT'});
+  } finally {
+    childProcess.spawn=originalSpawn;
+    syncBuiltinESMExports();
+    for (const pid of children) spawnSync('taskkill.exe',['/PID',String(pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
+  }
+});
+
 for (const mode of ['error','nonzero','hang']) {
   test(`failed Windows tree killer ${mode} returns promptly and retains writer lock`, {skip:process.platform !== 'win32'}, async t => {
     const f = await fixture(t);
@@ -191,7 +216,7 @@ for (const mode of ['error','nonzero','hang']) {
       const start = performance.now();
       result = await Promise.race([
         f.execute(['analyze','--timeout-ms','1000']),
-        new Promise(resolve => setTimeout(() => resolve({pending:true}), 2300)),
+        new Promise(resolve => setTimeout(() => resolve({pending:true}), 3500)),
       ]);
       elapsed = performance.now() - start;
       lockExists = JSON.parse(await readFile(join(f.root,'.gitnexus/wrapper.lock'),'utf8'));
@@ -202,7 +227,7 @@ for (const mode of ['error','nonzero','hang']) {
       for (const pid of children) spawnSync('taskkill.exe', ['/PID',String(pid),'/T','/F'], {stdio:'ignore',windowsHide:true,shell:false});
     }
     assert.equal(result.code, 2, 'operation must settle without waiting for the live writer to close');
-    assert.ok(elapsed < 2100, `termination failure exceeded bounded cleanup: ${elapsed}ms`);
+    assert.ok(elapsed < 3300, `termination failure exceeded bounded cleanup: ${elapsed}ms`);
     assert.equal(lockExists.pid, process.pid, 'unconfirmed writer lock must remain owned');
     assert.match(result.err, /termination unconfirmed/);
   });

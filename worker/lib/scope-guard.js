@@ -23,6 +23,7 @@
 //   6. Job không đụng thread (find_user, sticker_list) chỉ cần luật 1.
 // =============================================================
 import { sb, log } from './ctx.js';
+import { readForwardSources } from './forward-source.js';
 
 export const MAX_HISTORY_COUNT = 200;
 const KHONG_DUNG_THREAD = new Set(['find_user', 'sticker_list']);
@@ -110,6 +111,12 @@ export async function validateZaloCommandScope(job, db = sb) {
       if (!msg || msg.account_id !== job.account_id || msg.organization_id !== job.organization_id
         || msg.conversation_id !== conv.id || msg.direction !== 'out') return bad('message_ids ngoài phạm vi', id);
     }
+  }
+
+  if (p.kind === 'forward_media') {
+    if (!conv || !ids.length) return bad('chuyển tiếp cần hội thoại và message_ids hợp lệ');
+    try { await readForwardSources(job, db); }
+    catch (error) { return bad(error.message.startsWith('FORWARD_DATABASE:') ? 'không đọc được nguồn chuyển tiếp' : error.message); }
   }
 
   if (['image', 'file', 'voice', 'sticker'].includes(String(p.type))) {

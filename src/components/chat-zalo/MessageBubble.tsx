@@ -8,7 +8,7 @@ import type { ZaloMessage, MsgTick } from './types';
 export interface MsgActionProps {
   onReact?: (id: string, emoji: string) => void;
   onRecall?: (id: string) => void;
-  onShare?: (m: ZaloMessage) => void;
+  onShare?: (m: ZaloMessage, album?: ZaloMessage[]) => void;
   onReply?: (m: ZaloMessage) => void;
   onDelete?: (id: string) => void;
   /** Tìm trong hội thoại: từ khoá đang highlight */

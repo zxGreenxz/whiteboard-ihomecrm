@@ -4,9 +4,10 @@ const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
   claimAllowed: true, fenceAllowed: true, autoAllowed: true,
   echoFirst: false, queueExists: true,
+  forwardSource: null,
 }));
 vi.mock('../lib/ctx.js', () => ({
-  sessions: state.sessions, log: () => {}, orgOf: () => 'org',
+  sessions: state.sessions, log: () => {}, orgOf: () => 'org', SUPABASE_URL: 'https://storage.example.test',
   sb: {
     rpc: async (name, args) => {
       state.calls.push({ name, args });
@@ -32,7 +33,14 @@ vi.mock('../lib/ctx.js', () => ({
         delete: () => { deleting = true; return q; }, select: () => q,
         eq: (column, value) => { filters.push([column, value]); return q; },
         in: (column, value) => { filters.push([column, value]); return q; },
-        maybeSingle: async () => ({ data: state.echoFirst && table === 'zalo_messages' ? { id: 'echo' } : null, error: null }),
+        maybeSingle: async () => {
+          if (state.forwardSource) {
+            if (table === 'zalo_messages') return { data: state.forwardSource, error: null };
+            if (table === 'zalo_accounts') return { data: { id: 'source-account', organization_id: 'org' }, error: null };
+            if (table === 'zalo_conversations') return { data: { id: 'source-conv', account_id: 'source-account', organization_id: 'org' }, error: null };
+          }
+          return { data: state.echoFirst && table === 'zalo_messages' ? { id: 'echo' } : null, error: null };
+        },
         then: (resolve, reject) => Promise.resolve(result()).then(resolve, reject),
       };
       return q;
@@ -60,10 +68,24 @@ beforeEach(() => {
   state.status = 'connected'; state.persistError = null;
   state.claimAllowed = true; state.fenceAllowed = true; state.autoAllowed = true;
   state.echoFirst = false; state.queueExists = true;
+  state.forwardSource = null;
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('queue admission and delivery outcomes', () => {
+  it('routes a forward-media job through the same provider fence and retains unknown send receipts', async () => {
+    const api = connect(); state.persistError = { message: 'finalize unavailable' };
+    state.forwardSource = { id: 'source', account_id: 'source-account', organization_id: 'org', conversation_id: 'source-conv', msg_type: 'file',
+      media_url: 'https://file.dlfl.vn/example', media_label: 'document.pdf', status: 'delivered' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('pdf bytes')));
+    api.sendMessage.mockResolvedValue({ attachment: [{ msgId: 'forward-receipt' }] });
+    await processJob(makeJob({ kind: 'forward_media', source_message_ids: ['source'], message_ids: ['message'] }));
+    expect(api.sendMessage).toHaveBeenCalledOnce();
+    expect(api.sendMessage.mock.calls[0][0]).toMatchObject({ msg: '', attachments: [{ filename: 'document.pdf' }] });
+    expect(state.calls.filter(row => row.name === 'zalo_worker_begin_provider_v1')).toHaveLength(1);
+    const failed = state.writes.find(row => row.table === 'zalo_send_queue' && row.patch.status === 'failed');
+    expect(failed.patch).toMatchObject({ last_error: expect.stringMatching(/^UNKNOWN_EFFECT/), result: { provider_message_ids: ['forward-receipt'] } });
+  });
   it('preserves the delayed text queue receipt when self-listen inserted an echo first', async () => {
     const api = connect(); state.echoFirst = true;
     await processJob({ ...makeJob(), created_at: '2026-10-11T01:00:00Z', not_before: '2026-10-11T01:20:00Z' });

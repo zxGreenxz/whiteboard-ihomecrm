@@ -34,7 +34,7 @@ interface Props {
   onLoadHistory?: () => void;
   onReact?: (id: string, emoji: string) => void;
   onRecall?: (id: string) => void;
-  onShare?: (m: ZaloMessage) => void;
+  onShare?: (m: ZaloMessage, album?: ZaloMessage[]) => void;
   onReply?: (m: ZaloMessage) => void;
   onDelete?: (id: string) => void;
   replyTo?: { name: string; text: string } | null;

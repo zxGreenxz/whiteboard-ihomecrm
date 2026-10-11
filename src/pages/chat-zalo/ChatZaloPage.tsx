@@ -15,6 +15,7 @@ import AccountSwitcher from '@/components/chat-zalo/AccountSwitcher';
 import ZaloWorkerBanner from '@/components/chat-zalo/ZaloWorkerBanner';
 import ConnectZaloDialog from '@/components/chat-zalo/ConnectZaloDialog';
 import BroadcastDialog from '@/components/chat-zalo/BroadcastDialog';
+import ForwardMediaDialog from '@/components/chat-zalo/ForwardMediaDialog';
 import ComposeNewDialog from '@/components/chat-zalo/ComposeNewDialog';
 import LinkCustomerDialog from '@/components/chat-zalo/LinkCustomerDialog';
 import TemplateManagerDialog from '@/components/chat-zalo/TemplateManagerDialog';
@@ -28,6 +29,7 @@ import {
   useZaloLabels, useBroadcast,
 } from '@/hooks/useZaloChat';
 import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/chat-zalo/useZaloMedia';
+import { useForwardZaloMedia } from '@/hooks/chat-zalo/useForwardZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
 import { conversationHasLabel, isTenantConversation } from '@/components/chat-zalo/conversationState';
@@ -53,6 +55,7 @@ export default function ChatZaloPage() {
   const canManageAutomation = can(perms, 'chat_zalo', 'manage_automation');
   const canManageTemplates = can(perms, 'chat_zalo', 'manage_templates');
   const broadcastMut = useBroadcast();
+  const forwardMediaMut = useForwardZaloMedia();
   const sendMut = useSendZaloMessage();
   const sendMediaMut = useSendZaloMedia();
   const sendStickerMut = useSendZaloSticker();
@@ -86,6 +89,8 @@ export default function ChatZaloPage() {
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcastInitial, setBroadcastInitial] = useState('');
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwardMessages, setForwardMessages] = useState<ZaloMessage[]>([]);
   const [composeOpen, setComposeOpen] = useState(false);
   const [linkConv, setLinkConv] = useState<ZaloConversation | null>(null);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
@@ -328,7 +333,12 @@ export default function ChatZaloPage() {
                 onError:error=>{setRecallNotices(previous=>({...previous,[conversationId]:zaloActionErrorMessage(error,'thu hồi tin nhắn')}));if(!isZaloActionUnconfirmed(error))setRecallBlocked(previous=>({...previous,[id]:false}));},
               });
             }}
-            onShare={(m) => {
+            onShare={(m, album) => {
+              if (m.type && ['image', 'video', 'voice', 'file'].includes(m.type)) {
+                setForwardMessages(album?.length ? album : [m]);
+                setForwardOpen(true);
+                return;
+              }
               const content = m.text && m.text.trim() ? m.text : (m.mediaUrl || m.label || '[Nội dung]');
               setBroadcastInitial(content);
               setBroadcastOpen(true);
@@ -409,6 +419,21 @@ export default function ChatZaloPage() {
         requestError={connectFailure} pending={requestConnect.isPending}
         onRefresh={() => void accountsQuery.refetch()}
         onRetry={() => connectingId ? void onReconnect(connectingId) : void onConnectNew()}
+      />
+
+      <ForwardMediaDialog
+        open={forwardOpen && canSend}
+        onOpenChange={setForwardOpen}
+        messages={forwardMessages}
+        conversations={conversations}
+        labels={labels}
+        accountNames={Object.fromEntries(accounts.map(account => [account.id, account.name]))}
+        sending={forwardMediaMut.isPending}
+        onSend={(ids, requestId) => forwardMediaMut.mutateAsync({
+          conversationIds: ids,
+          sourceMessageIds: forwardMessages.map(message => message.id ?? ''),
+          requestId,
+        })}
       />
 
       <BroadcastDialog

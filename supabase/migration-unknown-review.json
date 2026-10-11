@@ -900,6 +900,33 @@
         }
       ],
       "anhHuongThat": "Worker mới cần migration này trước khi phát hành. Production hiện vẫn chạy worker cũ; hai tin live baseline được kiểm riêng, không dùng làm bằng chứng candidate đã deploy."
+    },
+    "supabase/migrations/20261011073522_zalo_chuyen_tiep_media_theo_tin_nguon.sql": {
+      "sha256": "454c5ce5de5f1a8931741e4c4d002a13be4d2e89f275ecae10fef4043cfad5b7",
+      "missingObjects": [
+        "function:app_private.zalo_forward_sources_v1",
+        "function:public.zalo_forward_media_v1",
+        "function:app_private.zalo_guard_forward_media_v1",
+        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_media",
+        "trigger:public.zalo_send_queue.zz_zalo_guard_forward_provider"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration bổ sung chuyển tiếp media theo ID nguồn; catalog production xác nhận chưa áp. PostgreSQL TEST kiểm trong transaction ROLLBACK, overlay đúng hai migration Zalo vì TEST chưa đồng bộ prerequisite. JWT/org, giữ loại media/chú thích, rollback từng người nhận, dedup, replay nguồn ẩn và provider/finalize đã đạt; hai mutation bỏ fingerprint/source-org bị bắt đúng assertion. Không ghi production hoặc gửi Zalo thật từ candidate.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261011073522_zalo_chuyen_tiep_media_theo_tin_nguon.sql",
+          "trich_doan": "GRANT EXECUTE ON FUNCTION public.zalo_forward_media_v1(uuid[],uuid[],uuid) TO authenticated;"
+        },
+        {
+          "duong_dan": "scripts/test-zalo-forward-media.mjs",
+          "trich_doan": "Mutation did not die at its intended behavioral assertion."
+        },
+        {
+          "duong_dan": "scripts/tests/zalo-forward-media.sql",
+          "trich_doan": "FORWARD_SQL_PASS: role/JWT scope, all media kinds, album/file captions, partial atomicity, request collisions, hidden replay, worker boundary and receipts"
+        }
+      ],
+      "anhHuongThat": "Chưa phát hành: migration security/receipt trước, worker hỗ trợ forward_media tiếp theo, sau đó migration chuyển tiếp và UI qua lane đã review/backup. Chưa kiểm race hai session hoặc chuyển tiếp media Zalo thật. Giữ biên nhận chưa xác nhận, không tự gửi lại."
     }
   }
 }

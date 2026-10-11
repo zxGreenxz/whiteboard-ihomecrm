@@ -89,13 +89,14 @@ export function runProcess(command, args, {cwd, env, deadline, outputLimit=16*10
       failure = reason;
       // A bounded OS cleanup grace includes taskkill itself AND child close.
       // Failure to confirm either must retain ownership without hanging the CLI.
+      // Windows taskkill can take over 500ms to enumerate/stop descendants.
       cleanupTimer = setTimeout(() => {
         if (killer) {
           try { killer.kill('SIGKILL'); } catch { /* ownership stays retained */ }
           killer.unref();
         }
         unconfirmed();
-      }, 500);
+      }, 1500);
       if (!child.pid) {
         finish(failure);
         return;

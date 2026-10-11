@@ -20,6 +20,7 @@ import { ThreadType } from 'zca-js';
 import { sb, log, sessions, orgOf } from './ctx.js';
 import { upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
+import { sendForwardMediaJob } from './forward-media.js';
 import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 import { INSTANCE_ID } from './lease.js';
 import { validateAutomationDelivery } from './automation-delivery.js';
@@ -215,7 +216,10 @@ export async function processJob(job) {
     const ttype = scope.conv ? scope.conv.thread_type : (p.thread_type || null);
     const type = ttype === 'group' ? ThreadType.Group : ThreadType.User;
 
-    if (p.action === 'react') {
+    if (p.kind === 'forward_media') {
+      if (!threadId) throw new Error('Không tìm thấy hội thoại chuyển tiếp');
+      await sendForwardMediaJob(s, job, threadId, type);
+    } else if (p.action === 'react') {
       await s.api.addReaction(emojiToZca(p.emoji), { data: { msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, threadId, type });
       log('reacted', job.id, p.emoji);
       await jobDone(job.id);
