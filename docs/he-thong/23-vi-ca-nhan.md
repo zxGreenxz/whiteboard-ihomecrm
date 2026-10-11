@@ -47,11 +47,14 @@ chọn ảnh hoặc ghi âm. Dừng ghi âm tự gửi để xử lý thành th�
 và bấm Lưu mới ghi sổ. Một câu có Thu và Chi được tách đúng loại. Chọn Cá nhân
 hoặc Công ty trước khi gửi; nơi nhận của thẻ đã gửi không đổi theo nút gạt sau đó.
 
-Mở bằng PWA (`display-mode: standalone`) và có `personal_finance.create` thì hộp
-Ghi thu chi mở ngay, con trỏ ở ô nhập; Tổng quan dựng nền khi rảnh hoặc khi đóng
-hộp. Ô nhập không chờ snapshot: Gửi lúc còn tải được giữ lại và tự gửi khi dữ liệu
-nền sẵn sàng; đổi công ty hoặc nơi nhận trước đó thì huỷ lượt giữ, chữ còn trong ô.
-Trình duyệt thường giữ Tổng quan làm màn đầu.
+App "Ví cá nhân" (PWA `display-mode: standalone` mà tài liệu mở thẳng vào
+`/finance/personal-wallet`) có `personal_finance.create` thì hộp Ghi thu chi mở ngay
+ở lượt mở/tải lại/quay lui và khi quay lại app sau ≥ 60 giây; con trỏ ở ô nhập.
+Tổng quan dựng nền khi rảnh hoặc khi đóng hộp. Ô nhập không chờ snapshot: Gửi lúc
+còn tải được giữ cho đúng công ty|nơi nhận lúc bấm và tự gửi khi dữ liệu nền sẵn
+sàng (đang ghi âm thì đợi gửi chung); đổi nơi nhận thì huỷ lượt giữ, chữ còn trong
+ô. App CRM vào ví bằng menu và trình duyệt thường giữ Tổng quan làm màn đầu. Chunk
+trang được tải trước trong chunk cổng quyền, không ở chunk entry.
 
 Ảnh cá nhân chỉ dùng để đọc; không tải lên R2. Ảnh công ty đi theo luồng chứng từ
 hiện có. Nút Công ty chỉ hiện khi có `income_expenses.create`; lỗi tải dữ liệu
