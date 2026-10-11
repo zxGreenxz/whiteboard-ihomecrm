@@ -6,7 +6,7 @@
 // `not_before` không, trần tin có chặn giữa chừng không, hội thoại của tài
 // khoản đã rớt phiên có bị bỏ qua không. Đó đều là những thứ chỉ lộ ra khi
 // chạy, và khi chạy thật thì hậu quả là tin gửi nhầm cho khách.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /* ---------------------------------------------------------------- giả lập */
 
@@ -154,10 +154,42 @@ beforeEach(() => {
   phongGia.push(phong('r1'), phong('r2'));
   vi.setSystemTime(THU_HAI_0830);
 });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('sends each photographed room as one image with information; empty rooms explicitly await photos, with separators', async () => {
+    vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
+    const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+    bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
+    const request = vi.fn(async () => new Response(bytes)); vi.stubGlobal('fetch', request);
+    phongGia[0].images = ['https://images.example.test/room-sale-images/u/one.jpg', 'https://images.example.test/room-sale-images/u/two.jpg'];
+    datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
+    await tickTuDongHoa();
+    const rooms = rpcCalls.map(c => c.args);
+    expect(rooms).toHaveLength(4); // two rooms, two recipients; still one job per room
+    expect(request).toHaveBeenCalledOnce(); // representative reused for this organization's recipients
+    expect(rooms[0]).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1',
+      p_attachment: { bucket: 'zalo-media', width: 640, height: 480 } });
+    expect(rooms[0].p_body).toContain('PHÒNG r1');
+    expect(rooms[0].p_body).not.toContain('Chờ cập nhật ảnh');
+    expect(rooms[1].p_attachment).toBeNull();
+    expect(rooms[1].p_body).toContain('PHÒNG r2');
+    expect(rooms[1].p_body).toContain('\nChờ cập nhật ảnh\n');
+    expect(rooms.every(r => r.p_body.endsWith('\n────────────────'))).toBe(true);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 4 });
+  });
+  it('marks a partial run when an existing room photo fails, instead of sending a misleading text-only room', async () => {
+    vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })));
+    phongGia[0].images = ['https://images.example.test/room-sale-images/u/one.jpg'];
+    datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(2);
+    expect(rpcCalls.every(c => c.args.p_request_key.endsWith(':room:r2'))).toBe(true);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2, detail: { partial: true, khong_xep_duoc: 2 } });
+  });
   it('enqueues atomically with stable keys if the schedule state was not saved', async () => {
     datCauHinh();
     await tickTuDongHoa();

@@ -28,6 +28,7 @@ import {
 import { docPhongTrong } from './vacant-rooms.js';
 import { buildRoomListTable } from './room-list-table.js';
 import { veAnhDanhSach } from './room-list-image.js';
+import { chuanBiAnhPhong } from './automation-room-image.js';
 
 /** Nhịp chạy engine. Lịch tính theo phút nên 60s là đủ mịn. */
 export const AUTOMATION_MS = 60_000;
@@ -91,7 +92,8 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey }) {
       p_body: body || '',
       p_not_before: khiNao.toISOString(),
       p_request_key: requestKey,
-      p_attachment: anh ? { bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename } : null,
+      p_attachment: anh ? { bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename,
+        width: anh.width, height: anh.height, mime: anh.mime, size: anh.size } : null,
     });
     if (error) throw new Error(error.message);
     if (data?.status === 'queued') return true;
@@ -171,6 +173,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
       } else if (k === 'room_details') {
         for (const t of tinPhong) {
           if (soTin >= tranConLai) break;
+          if (t.loiAnh) { soKhongXepDuoc++; continue; }
           await xep(`room:${t.roomId}`, { body: t.body, anh: t.anh });
         }
       }
@@ -208,15 +211,6 @@ async function dungAnhBang(buildings, accountId, now) {
   }
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
   return { bucket: BUCKET, path, filename, url: pub?.publicUrl || '', soPhong: table.totalRooms };
-}
-
-/** Ảnh phòng (nếu có và nằm trong Storage của chính project). */
-function anhCuaPhong(room) {
-  for (const u of room.images || []) {
-    const ref = tachRefStorage(u);
-    if (ref) return { ...ref, url: u, filename: ref.path.split('/').pop() || 'anh-phong.jpg' };
-  }
-  return null;
 }
 
 /* -------------------------------------------------------------- một công ty */
@@ -431,11 +425,19 @@ async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiT
 
   let tinPhong = [];
   if (khoi.includes('room_details')) {
-    tinPhong = phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun).map((r) => ({
-      roomId: r.id,
-      body: soanTinPhong(r, config.template.roomTemplate, phong.hotline),
-      anh: anhCuaPhong(r),
-    }));
+    // Prepare once per room, then reuse the account-scoped copy for recipients
+    // in this organization. One image + its caption remains one logical job.
+    for (const r of phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
+      try {
+        const anh = await chuanBiAnhPhong(r, { accountId, orgId });
+        const body = [soanTinPhong(r, config.template.roomTemplate, phong.hotline),
+          ...(!anh ? ['Chờ cập nhật ảnh'] : []), '────────────────'].filter(Boolean).join('\n');
+        tinPhong.push({ roomId: r.id, body, anh });
+      } catch (e) {
+        log('automation: chuẩn bị ảnh phòng lỗi', r.id, e?.message || e);
+        tinPhong.push({ roomId: r.id, loiAnh: true });
+      }
+    }
   }
 
   const ketQua = await xepLo({

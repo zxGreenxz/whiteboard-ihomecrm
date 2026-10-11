@@ -81,7 +81,7 @@ export default function MessageBubble({ m, onReact, onRecall, onShare, onReply, 
               <div style={{ fontSize: 12, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reply.text}</div>
             </div>
           )}
-          {m.card ? <ZaloCardView card={m.card} /> : highlightText(m.text || '', highlightTerm)}
+          {m.card ? <ZaloCardView card={m.card} /> : <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{highlightText(m.text || '', highlightTerm)}</span>}
         </div>
         {m.react && (
           <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', margin: out ? '4px 8px 0 0' : '4px 0 0 8px' }}>
