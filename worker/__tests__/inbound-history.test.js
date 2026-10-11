@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('zca-js', () => ({ ThreadType: { User: 0, Group: 1 } }));
 const state = vi.hoisted(() => ({ rows: new Map() }));
 vi.mock('../lib/ctx.js', () => ({
   log: () => {}, orgOf: () => 'org', notifyPush: vi.fn(), sessions: new Map(),

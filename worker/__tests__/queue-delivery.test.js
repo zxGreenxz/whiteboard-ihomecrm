@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('zca-js', () => ({ ThreadType: { User: 0, Group: 1 } }));
 const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
   claimAllowed: true, fenceAllowed: true, autoAllowed: true,
