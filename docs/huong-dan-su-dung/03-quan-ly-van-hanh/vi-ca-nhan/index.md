@@ -42,7 +42,9 @@ Tháng hiển thị ngắn như **9.2026**. Đổi tháng để xem thu/chi và 
 
 ![Hộp Ghi thu chi mở ở tab Ghi nhanh với ô Nhập nội dung thu hoặc chi, bốn nút ảnh, chụp, chọn ảnh, micro, nút Gửi và phần Gửi thu chi vào Cá nhân hoặc Công ty](./images/buoc-03-ghi-thu-chi.webp)
 
-Muốn điền tay, bấm nút **+** (**Ghi thu chi**) rồi chọn tab **Nhập tay**. Số tiền mới phải là số nguyên VND dương; số dư ban đầu của ví có thể bằng 0 hoặc âm. Thẻ nháp chưa lưu từ [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) trên cùng máy cũng hiện lại ở đây với dòng **Các thẻ chưa lưu từ lần trước.**
+Mở Ví cá nhân từ **biểu tượng app trên màn hình chính** (đã thêm Ví cá nhân hoặc CRM vào màn hình chính) thì hộp **Ghi thu chi** mở sẵn ở tab **Ghi nhanh**, con trỏ nằm trong ô nhập để gõ ngay, không phải chờ ví tải xong. Bấm **Gửi** khi ví còn đang tải thì máy báo **Đang tải dữ liệu, sẽ tự gửi ngay khi xong…** rồi tự gửi. Bấm **X** để đóng hộp và xem Tổng quan. Mở bằng trình duyệt thường thì vẫn vào Tổng quan như trước.
+
+Muốn điền tay, bấm nút **+** (**Ghi thu chi**) rồi chọn tab **Nhập tay**; con trỏ vào sẵn ô **Số tiền**. Số tiền mới phải là số nguyên VND dương; số dư ban đầu của ví có thể bằng 0 hoặc âm. Thẻ nháp chưa lưu từ [Báo chi nhanh](/03-quan-ly-van-hanh/bao-chi-nhanh/) trên cùng máy cũng hiện lại ở đây với dòng **Các thẻ chưa lưu từ lần trước.**
 
 ```mermaid
 flowchart TD
