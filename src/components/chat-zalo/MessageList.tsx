@@ -8,6 +8,7 @@ import VoiceMessage from './VoiceMessage';
 import FileMessage from './FileMessage';
 import StickerMessage from './StickerMessage';
 import AlbumMessage from './AlbumMessage';
+import MessageSender from './MessageSender';
 import ZaloLightbox from './ZaloLightbox';
 import TypingIndicator from './TypingIndicator';
 import { buildThreadItems } from './threadItems';
@@ -119,14 +120,16 @@ export default function MessageList({
           const head = it.items[0];
           return (
             <div key={it.key} ref={(el) => { if (head?.id) msgRefs.current[head.id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
-              <AlbumMessage items={it.items} onOpenLightbox={openLightbox} {...actionProps} />
+              {head && <MessageSender message={head} grouped={it.grouped} isGroup={conv.isGroup}>
+                <AlbumMessage items={it.items} onOpenLightbox={openLightbox} {...actionProps} />
+              </MessageSender>}
             </div>
           );
         }
         const m = it.m;
         const wrap = (node: React.ReactNode) => (
           <div key={it.key} ref={(el) => { if (m.id) msgRefs.current[m.id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
-            {node}
+            <MessageSender message={m} grouped={it.grouped} isGroup={conv.isGroup}>{node}</MessageSender>
           </div>
         );
         if (m.type === 'sys') return wrap(<SystemMessage text={m.text || ''} />);

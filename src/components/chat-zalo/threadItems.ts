@@ -39,6 +39,7 @@ function tsOf(m: ZaloMessage): number {
 
 function sameGroup(a: ZaloMessage, b: ZaloMessage): boolean {
   if (a.dir !== b.dir) return false;
+  if (!sameSender(a, b)) return false;
   if (a.type === 'sys' || b.type === 'sys') return false;
   const ta = tsOf(a); const tb = tsOf(b);
   if (!ta || !tb) return false;
@@ -48,9 +49,14 @@ function sameGroup(a: ZaloMessage, b: ZaloMessage): boolean {
 function canAlbum(a: ZaloMessage, b: ZaloMessage): boolean {
   if (a.type !== 'image' || b.type !== 'image') return false;
   if (a.dir !== b.dir) return false;
+  if (!sameSender(a, b)) return false;
   const ta = tsOf(a); const tb = tsOf(b);
   if (!ta || !tb) return false;
   return Math.abs(tb - ta) <= ALBUM_WINDOW_MS;
+}
+
+function sameSender(a: ZaloMessage, b: ZaloMessage): boolean {
+  return (a.sender?.id || a.senderId) === (b.sender?.id || b.senderId);
 }
 
 /**

@@ -4,6 +4,7 @@ import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError
 import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { withMessageSenders } from '@/components/chat-zalo/messageSenders';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -120,7 +121,9 @@ export default function ChatZaloPage() {
   const messages = msgQuery.data ?? [];
 
   const base = conversations.find((c) => c.id === effectiveId);
-  const active = base ? { ...base, messages } : undefined;
+  const active = useMemo(() => base ? {
+    ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId)),
+  } : undefined, [base, messages, conversations, accounts]);
 
   const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
   useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: activeLabel ? selIds.filter(id => id === activeLabel.accountId) : selIds, label_id: activeLabel?.labelId ?? null }, active);
