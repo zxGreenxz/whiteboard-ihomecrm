@@ -14,6 +14,13 @@ import { ThreadType } from 'zca-js';
 import { sb, log, chunk, orgOf, notifyPush, sessions } from './ctx.js';
 import { xuLyTinDen } from './auto-reply.js';
 import { laChuoiMay, phanLoaiTinThe } from './message-card.js';
+import { createGroupMemberSync } from './group-members.js';
+
+const syncGroupMembers = createGroupMemberSync({ db: sb });
+function refreshGroupMembers(api, accountId, conversationId, options = {}) {
+  return syncGroupMembers({ api, accountId, conversationId, orgId: orgOf(accountId), ...options })
+    .catch(e => log('group member sync failed', conversationId, e.message));
+}
 
 // ── Map event message zca-js → row inbound ──
 const MSGTYPE_LABEL = {
@@ -76,6 +83,7 @@ export function rawSubset(m) {
   if (typeof d.content === 'string') content = d.content.slice(0, 2000);
   return {
     uidFrom: d.uidFrom != null ? String(d.uidFrom) : null,
+    senderName: typeof (d.dName || d.fromName) === 'string' ? (d.dName || d.fromName).trim().slice(0, 160) : null,
     idTo: d.idTo != null ? String(d.idTo) : null,
     ts: d.ts ?? null,
     msgType: d.msgType ?? null,
@@ -107,7 +115,7 @@ export function threadIdOf(m) {
 // tên nhóm — `dName` trong đó là tên NGƯỜI GỬI. Không có hàm này thì nhóm nằm
 // trong danh sách dưới cái tên "Nhóm Zalo", và người dùng không thể chọn nó làm
 // nơi nhận tin phòng trống định kỳ vì không biết nó là nhóm nào.
-async function fillGroupInfo(api, convId, groupId) {
+async function fillGroupInfo(api, accountId, convId, groupId) {
   try {
     const info = await api.getGroupInfo([String(groupId)]);
     const g = Object.values(info?.gridInfoMap || {}).find((x) => x && x.groupId);
@@ -115,13 +123,8 @@ async function fillGroupInfo(api, convId, groupId) {
     await sb.from('zalo_conversations').update({
       ...(g.name ? { peer_name: g.name } : {}),
       ...(g.fullAvt || g.avt ? { peer_avatar_url: g.fullAvt || g.avt } : {}),
-      profile: {
-        kind: 'unknown', isGroup: true,
-        members: g.totalMember || (Array.isArray(g.memberIds) ? g.memberIds.length : null),
-        desc: g.desc || null,
-        memberIds: Array.isArray(g.memberIds) ? g.memberIds.slice(0, 500) : null,
-      },
-    }).eq('id', convId);
+    }).eq('id', convId).eq('account_id', accountId).eq('organization_id', orgOf(accountId));
+    await refreshGroupMembers(api, accountId, convId, { group: g, includeHistory: true });
     log('điền tên nhóm →', convId, g.name);
   } catch (e) { log('fillGroupInfo', e?.message || e); }
 }
@@ -170,7 +173,7 @@ async function upsertConversation(accountId, ownerId, m, api) {
     }).select(COT_CONV).single();
     conv = ins.data;
     if (conv && api) {
-      if (ttype === 'group') fillGroupInfo(api, conv.id, threadId);
+      if (ttype === 'group') fillGroupInfo(api, accountId, conv.id, threadId);
       else if (isSelf) fillPeerInfo(api, conv.id, threadId);
     }
   }
@@ -211,6 +214,9 @@ export async function handleInbound(accountId, ownerId, m, api) {
       unread_count: out ? 0 : (conv.unread_count || 0) + (bump ? 1 : 0),
     }).eq('id', conv.id);
     log(out ? 'self →' : 'inbound →', conv.id, (body || '').slice(0, 40));
+    if (api && threadTypeOf(m) === 'group' && !out) {
+      void refreshGroupMembers(api, accountId, conv.id, { senderIds: [String(m?.data?.uidFrom || '')] });
+    }
 
     if (!out && isNew) {
       const peerName = m?.data?.dName || m?.data?.fromName || 'Zalo';
@@ -248,7 +254,7 @@ export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, 
       peer_zalo_uid: tt === 'user' ? (isSelf ? threadId : String(f?.data?.uidFrom || threadId)) : String(f?.data?.uidFrom || ''),
     }).select('id').single();
     conv = ins.data;
-    if (conv && tt === 'group' && api) fillGroupInfo(api, conv.id, threadId);
+    if (conv && tt === 'group' && api) fillGroupInfo(api, accountId, conv.id, threadId);
   }
   if (!conv) return 0;
   const rows = msgs.map((m) => {
@@ -278,6 +284,9 @@ export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, 
     const cmLast = classifyMessage(last);
     await sb.from('zalo_conversations').update({ last_message_text: cmLast.body || '[Tin nhắn]', last_message_at: lastTs, last_message_dir: last.isSelf ? 'out' : 'in' }).eq('id', conv.id).lt('last_message_at', lastTs);
   }
+  if (tt === 'group' && api) await refreshGroupMembers(api, accountId, conv.id, {
+    senderIds: msgs.filter(m => !m.isSelf).map(m => String(m?.data?.uidFrom || '')),
+  });
   return rows.length;
 }
 
@@ -332,9 +341,14 @@ export async function syncContacts(api, accountId, ownerId) {
         user_id: ownerId, organization_id: orgId,
         account_id: accountId, thread_id: String(g.groupId), thread_type: 'group',
         peer_name: g.name || 'Nhóm Zalo', peer_avatar_url: g.fullAvt || g.avt || null,
-        profile: { kind: 'unknown', isGroup: true, members: g.totalMember || (Array.isArray(g.memberIds) ? g.memberIds.length : null), desc: g.desc || null, memberIds: Array.isArray(g.memberIds) ? g.memberIds.slice(0, 500) : null },
       }));
       if (rows.length) { await upsertConvRows(rows); groupCount += rows.length; }
+      for (const g of Object.values(map).filter(g => g?.groupId)) {
+        const { data: conv, error } = await sb.from('zalo_conversations').select('id')
+          .eq('account_id', accountId).eq('organization_id', orgId).eq('thread_id', String(g.groupId)).eq('thread_type', 'group').maybeSingle();
+        if (error) throw error;
+        if (conv) await refreshGroupMembers(api, accountId, conv.id, { group: g, includeHistory: true });
+      }
     } catch (e) { log('getGroupInfo', e?.message || e); }
   }
   log('synced', friendRows.length, 'bạn,', groupCount, 'nhóm →', accountId);

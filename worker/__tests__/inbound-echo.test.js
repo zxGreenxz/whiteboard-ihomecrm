@@ -32,7 +32,7 @@ vi.mock('../lib/ctx.js', () => ({
   } },
 }));
 vi.mock('../lib/auto-reply.js', () => ({ xuLyTinDen: vi.fn() }));
-import { handleInbound } from '../lib/inbound.js';
+import { handleInbound, rawSubset } from '../lib/inbound.js';
 
 const pending = (id, extra = {}) => ({
   id, account_id: 'account', organization_id: 'org', conversation_id: 'conv',
@@ -42,6 +42,9 @@ const pending = (id, extra = {}) => ({
 beforeEach(() => { state.messages.length = 0; });
 
 describe('self-listen echoes use exact provider identity', () => {
+  it('preserves the provider display name for group senders outside the friends list', () => {
+    expect(rawSubset({ data: { msgId: 'm', uidFrom: '42', dName: ' An ' } })).toMatchObject({ uidFrom: '42', senderName: 'An' });
+  });
   it('does not attach the second album echo to the oldest pending image', async () => {
     state.messages.push(pending('first'), pending('second'));
     await handleInbound('account', 'owner', { isSelf: true, threadId: 'thread', data: {

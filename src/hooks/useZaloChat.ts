@@ -1,6 +1,6 @@
 import { ZaloActionUnknownError, zaloActionErrorMessage } from '@/lib/zaloActionFeedback';
 import { notifyActionError } from '@/lib/actionFeedback';
-import { chuHienThi, docThe } from '@/lib/zaloContent';
+import { chuHienThi, docThe, linkMediaAnToan } from '@/lib/zaloContent';
 // Hooks dữ liệu cho trang Chat Zalo (Supabase + Realtime).
 // Map row DB → shape ZaloConversation/ZaloMessage mà các component dùng.
 //
@@ -20,15 +20,17 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type {
-  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey,
+  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey, ZaloProfile, ZaloGroupMembers,
 } from '@/components/chat-zalo/types';
 
 // Cast một chỗ cho các bảng zalo_* (types sinh tự động có đủ nhưng shape query
 // động ở đây tồn tại từ trước ratchet rpc-cast — KHÔNG thêm cast mới ngoài dòng này).
 const db = supabase as any;
 
-const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner';
-const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
+// Member maps can be large. The list only reads the small profile fields it displays.
+const PROFILE_FIELDS = ['kind', 'room', 'roomSub', 'price', 'contractCode', 'contractTerm', 'contractStatus', 'debt', 'issue', 'stage', 'source', 'company', 'phone', 'rooms', 'stats', 'isGroup', 'members', 'desc', 'staff', 'tags'] as const satisfies readonly (keyof ZaloProfile)[];
+export const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner,' + PROFILE_FIELDS.map(key => `profile_${key}:profile->${key}`).join(',');
+const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, sender_name:zalo_raw->>senderName, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
 const CONV_LIMIT = 5000;
 const MSG_LIMIT = 1000;
 
@@ -59,7 +61,8 @@ function initialsFrom(name: string): string {
 }
 
 // ── mappers ──
-function mapConv(r: any): ZaloConversation {
+export function mapConv(r: any): ZaloConversation {
+  const profile = r.profile || { kind: 'unknown', ...Object.fromEntries(PROFILE_FIELDS.filter(key => r[`profile_${key}`] != null).map(key => [key, r[`profile_${key}`]])) };
   return {
     id: r.id,
     peerUid: r.peer_zalo_uid,
@@ -80,13 +83,13 @@ function mapConv(r: any): ZaloConversation {
     headerSub: r.header_sub || '',
     phone: r.peer_phone || '',
     day: fmtDay(r.last_message_at),
-    profile: r.profile || { kind: 'unknown' },
+    profile,
     messages: [],
     pinned: !!r.is_pinned,
     muted: !!r.is_muted,
     markedUnread: !!r.marked_unread,
     hasMessages: !!r.last_message_at,
-    isGroup: r.thread_type ? r.thread_type === 'group' : !!(r.profile && r.profile.isGroup),
+    isGroup: r.thread_type ? r.thread_type === 'group' : !!profile.isGroup,
     isSalePartner: !!r.is_sale_partner,
     customerId: r.customer_id || null,
     leadId: r.lead_id || null,
@@ -110,6 +113,7 @@ export function mapMsg(r: any): ZaloMessage {
   return {
     id: r.id,
     senderId: typeof r.sender_uid === 'string' && r.sender_uid ? r.sender_uid : undefined,
+    senderName: typeof r.sender_name === 'string' && r.sender_name.trim() ? r.sender_name.trim() : undefined,
     type,
     dir: r.direction,
     // Tin chữ: chuỗi máy kiểu "sendBubbleMessage" (tin thẻ ghi trước 10/2026) thành câu đọc được.
@@ -197,6 +201,36 @@ export function useZaloMessages(convId?: string) {
         .limit(MSG_LIMIT);
       if (error) throw error;
       return (data || []).slice().reverse().map(mapMsg);
+    },
+  });
+}
+
+export function mapGroupMembers(value: unknown): ZaloGroupMembers {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const members: ZaloGroupMembers = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!/^[1-9]\d*$/.test(id) || !raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const name = typeof entry.name === 'string' ? entry.name.trim().slice(0, 160) : undefined;
+    const avatarUrl = typeof entry.avatarUrl === 'string' ? linkMediaAnToan(entry.avatarUrl) : undefined;
+    if (name || avatarUrl) members[id] = { name, avatarUrl };
+  }
+  return members;
+}
+
+export function useZaloGroupMembers(conversation?: ZaloConversation) {
+  const orgId = useZaloOrgId();
+  return useQuery({
+    queryKey: [...QK.conversations, orgId, 'members', conversation?.accountId, conversation?.id],
+    enabled: !!orgId && !!conversation?.isGroup && !!conversation.accountId,
+    meta: { label: 'thành viên nhóm Zalo', errorDisplay: 'inline' },
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async (): Promise<ZaloGroupMembers> => {
+      const { data, error } = await db.from('zalo_conversations').select('member_profiles:profile->memberProfiles')
+        .eq('id', conversation?.id).eq('account_id', conversation?.accountId).eq('organization_id', orgId).eq('thread_type', 'group').single();
+      if (error) throw error;
+      return mapGroupMembers(data?.member_profiles);
     },
   });
 }

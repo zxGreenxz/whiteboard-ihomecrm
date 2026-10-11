@@ -8,6 +8,18 @@ const account = { id: 'a', name: 'Tài khoản A', avatarUrl: 'https://example.t
 const contact = conversation({ id: 'friend', isGroup: false, peerUid: 'member-1', name: 'An', avatarUrl: 'https://example.test/an.png' });
 const message = (values: Partial<ZaloMessage> = {}): ZaloMessage => ({ id: 'm1', dir: 'in', createdAt: '2026-10-11T10:00:00Z', ...values });
 
+it('shows provider group members outside the friends list, including historical messages', () => {
+  const [resolved] = withMessageSenders([message({ senderId: '42' })], conversation({}), [], account, {
+    '42': { name: 'Người trong nhóm', avatarUrl: 'https://example.test/member.jpg' },
+  });
+  expect(resolved?.sender).toMatchObject({ id: 'member:42', name: 'Người trong nhóm', avatarUrl: 'https://example.test/member.jpg' });
+});
+
+it('keeps the provider sender name from new messages while member pictures sync', () => {
+  const [resolved] = withMessageSenders([message({ senderId: '42', senderName: 'Tên từ Zalo' })], conversation({}), [], account);
+  expect(resolved?.sender?.name).toBe('Tên từ Zalo');
+});
+
 it('resolves private incoming and own outgoing avatars from the correct conversation/account', () => {
   const [incoming, outgoing] = withMessageSenders([message(), message({ dir: 'out' })], contact, [], account);
   expect(incoming?.sender).toMatchObject({ name: 'An', avatarUrl: contact.avatarUrl });

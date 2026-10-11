@@ -23,7 +23,7 @@ import TemplateManagerDialog from '@/components/chat-zalo/TemplateManagerDialog'
 import AutomationSettingsDialog from '@/components/chat-zalo/automation/AutomationSettingsDialog';
 import type { FilterKey, RightTab, ZaloConversation, ZaloMessage } from '@/components/chat-zalo/types';
 import {
-  useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
+  useZaloConversations, useZaloMessages, useZaloGroupMembers, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
@@ -121,9 +121,10 @@ export default function ChatZaloPage() {
   const messages = msgQuery.data ?? [];
 
   const base = conversations.find((c) => c.id === effectiveId);
+  const memberQuery = useZaloGroupMembers(base);
   const active = useMemo(() => base ? {
-    ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId)),
-  } : undefined, [base, messages, conversations, accounts]);
+    ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId), memberQuery.data),
+  } : undefined, [base, messages, conversations, accounts, memberQuery.data]);
 
   const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
   useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: activeLabel ? selIds.filter(id => id === activeLabel.accountId) : selIds, label_id: activeLabel?.labelId ?? null }, active);
@@ -326,7 +327,7 @@ export default function ChatZaloPage() {
             loadingHistory={loadHistoryMut.isPending}
             onLoadHistory={() => loadHistoryMut.mutate({ conversationId: active.id })}
             onReact={(id, emoji) => reactMut.mutate({ messageId: id, emoji, conversationId: active.id })}
-            actionNotice={recallNotices[active.id]}
+            actionNotice={[recallNotices[active.id], active.isGroup && memberQuery.isError ? 'Chưa tải được thông tin thành viên nhóm. Hãy tải lại trang để thử lại.' : ''].filter(Boolean).join(' ')}
             onRecall={(id) => {
               if(recallMut.isPending || recallBlocked[id]) return;
               const conversationId=active.id;

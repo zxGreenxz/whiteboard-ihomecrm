@@ -1,10 +1,10 @@
 import { linkMediaAnToan } from '@/lib/zaloContent';
-import type { ZaloAccount, ZaloConversation, ZaloMessage } from './types';
+import type { ZaloAccount, ZaloConversation, ZaloMessage, ZaloGroupMembers } from './types';
 
 /** Resolve only within the active account. A group's picture never identifies its members. */
 export function withMessageSenders(
   messages: ZaloMessage[], conversation: ZaloConversation,
-  contacts: ZaloConversation[], account?: ZaloAccount,
+  contacts: ZaloConversation[], account?: ZaloAccount, members: ZaloGroupMembers = {},
 ): ZaloMessage[] {
   const own = account?.id === conversation.accountId ? account : undefined;
   const peers = new Map<string, ZaloConversation>();
@@ -24,11 +24,12 @@ export function withMessageSenders(
       avatarUrl: linkMediaAnToan(conversation.avatarUrl),
     } };
     const peer = message.senderId ? peers.get(message.senderId) : undefined;
+    const member = message.senderId ? members[message.senderId] : undefined;
     return { ...message, sender: {
       // Unknown identities must not merge two different members into one album.
       id: message.senderId ? `member:${message.senderId}` : `unknown:${message.id || message.cliId || index}`,
-      name: peer?.name || (message.senderId ? `Thành viên · ${message.senderId.slice(-4)}` : 'Thành viên chưa xác định'),
-      avatarUrl: linkMediaAnToan(peer?.avatarUrl),
+      name: member?.name || peer?.name || message.senderName || (message.senderId ? `Thành viên · ${message.senderId.slice(-4)}` : 'Thành viên chưa xác định'),
+      avatarUrl: linkMediaAnToan(member?.avatarUrl) || linkMediaAnToan(peer?.avatarUrl),
     } };
   });
 }

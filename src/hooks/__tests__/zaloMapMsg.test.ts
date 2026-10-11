@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ organization: null }) }));
 
-import { mapMsg, mapWorkerStatus } from '@/hooks/useZaloChat';
+import { CONV_COLS, mapConv, mapGroupMembers, mapMsg, mapWorkerStatus } from '@/hooks/useZaloChat';
 import { CHU_TIN_THE_CU } from '@/lib/zaloContent';
 
 const dong = (over: Record<string, unknown>) => ({
@@ -15,6 +15,9 @@ const dong = (over: Record<string, unknown>) => ({
 });
 
 describe('mapMsg — tin dạng thẻ', () => {
+  it('keeps the sender name projected from new provider messages', () => {
+    expect(mapMsg(dong({ sender_name: '  An  ' })).senderName).toBe('An');
+  });
   it('giữ UID người gửi từ JSON projection, không cần tải toàn bộ zalo_raw', () => {
     expect(mapMsg(dong({ sender_uid: 'member-42' })).senderId).toBe('member-42');
     expect(mapMsg(dong({ sender_uid: null })).senderId).toBeUndefined();
@@ -39,6 +42,19 @@ describe('mapMsg — tin dạng thẻ', () => {
     expect(m.type).toBe('image');
     expect(m.card).toBeNull();
     expect(m.text).toBe('[Hình ảnh]');
+  });
+});
+
+describe('group member projection', () => {
+  it('does not load member maps with the conversation list and preserves small profile fields', () => {
+    expect(CONV_COLS.split(',').map(s => s.trim())).not.toContain('profile');
+    expect(CONV_COLS).not.toContain('memberProfiles');
+    expect(mapConv({ id: 'c', peer_name: 'Nhóm', thread_type: 'group', profile_kind: 'broker', profile_members: 30, profile_tags: [{ l: 'T', t: 'info' }], profile_room: 'P1' }).profile)
+      .toEqual({ kind: 'broker', members: 30, tags: [{ l: 'T', t: 'info' }], room: 'P1' });
+  });
+  it('validates member maps and refuses unsafe avatars', () => {
+    expect(mapGroupMembers({ '42': { name: ' An ', avatarUrl: 'https://example.test/an.jpg' }, '43': { name: 'Bình', avatarUrl: 'javascript:bad' }, bad: 'broken' }))
+      .toEqual({ '42': { name: 'An', avatarUrl: 'https://example.test/an.jpg' }, '43': { name: 'Bình', avatarUrl: undefined } });
   });
 });
 

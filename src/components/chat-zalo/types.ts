@@ -62,6 +62,7 @@ export interface ZaloCard {
 export interface ZaloMessage {
   /** UID từ Zalo; không dùng tên hiển thị để nhận diện/gom người gửi. */
   senderId?: string;
+  senderName?: string;
   sender?: { id: string; name: string; avatarUrl?: string };
   /** id dòng DB (để thả reaction / thu hồi). Tin lạc quan chưa có id. */
   id?: string;
@@ -94,6 +95,8 @@ export interface ZaloMessage {
   /** URL objectURL cục bộ khi đang upload (bubble lạc quan media) */
   localUrl?: string;
 }
+
+export type ZaloGroupMembers = Record<string, { name?: string; avatarUrl?: string }>;
 
 export interface ZaloLabel {
   accountId: string;
