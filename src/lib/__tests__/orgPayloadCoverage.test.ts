@@ -3,11 +3,13 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Cửa chặn: MỌI lệnh ghi thẳng (`.insert(` / `.upsert(`) phía client vào 33
+ * Cửa chặn: MỌI lệnh ghi thẳng (`.insert(` / `.upsert(`) phía client vào các
  * bảng có trigger autofill_org_strict phải gửi `organization_id`.
  *
  * Migration 20260915144656 (plan I3) làm trigger fail-closed: người thuộc hai
- * tổ chức mà payload thiếu organization_id thì INSERT nổ 23502. Test này quét
+ * tổ chức mà payload thiếu organization_id thì INSERT nổ 23502. Migration chặn
+ * NULL org ngày 11/10/2026 thêm 33 bảng nữa vào danh sách (vật tư, hotline,
+ * nhóm việc, cổ đông, quản lý lợi nhuận, cấu hình lương, đăng ký push…). Test này quét
  * mã nguồn thay vì tin từng hook nhớ bọc — một chỗ mới quên là cả màn đó chết
  * với tài khoản hệ thống, mà unit test của hook mới thì chưa chắc có.
  *
@@ -24,6 +26,18 @@ const BANG = [
   "income_expense_types", "income_expenses", "invoice_items", "invoices", "jobs",
   "leads", "meter_readings", "meters", "payments", "rooms", "salary_streak_state",
   "services", "tenants", "vehicles",
+  // Thêm bởi migration chặn NULL org 11/10/2026 (33 bảng).
+  "area_buildings", "areas", "asset_handovers", "asset_maintenance",
+  "asset_movements", "asset_warehouses", "auto_debt_config",
+  "building_shareholders", "ct01_declarations", "hotlines",
+  "income_expense_templates", "invoice_generation_settings", "job_groups",
+  "lead_activities", "manager_salary_config", "material_adjustment_items",
+  "material_adjustments", "material_categories", "material_purchase_items",
+  "material_purchases", "materials", "profit_manager_salaries",
+  "profit_manager_salary_buildings", "profit_managers", "push_subscriptions",
+  "salary_bonus_rules", "salary_holidays", "salary_work_ledger_snapshot",
+  "service_quota_tiers", "service_quotas", "settings", "shareholders",
+  "user_subscriptions",
 ] as const;
 
 /**
@@ -34,7 +48,7 @@ const MIEN_TRU: ReadonlyArray<{ file: string; ly_do: string }> = [
 ];
 
 const SRC = join(process.cwd(), "src");
-const FROM_RE = new RegExp(`\\.from\\(\\s*['"](${BANG.join("|")})['"]\\s*\\)`, "g");
+const FROM_RE = new RegExp(`\\.from\\(\\s*['"](${BANG.join("|")})['"](?:\\s+as\\s+any)?\\s*\\)`, "g");
 
 function* duyetTs(dir: string): Generator<string> {
   for (const ten of readdirSync(dir)) {
@@ -93,7 +107,7 @@ export function daGuiOrg(doiSo: string): boolean {
   return /^withOrg(All)?\(/.test(doiSo) || /\borganization_id\b/.test(doiSo);
 }
 
-describe("mọi insert/upsert client vào 33 bảng có trigger autofill_org_strict phải gửi organization_id", () => {
+describe("mọi insert/upsert client vào 66 bảng có trigger autofill_org_strict phải gửi organization_id", () => {
   const diem = quetDiemGhi();
 
   it("bộ quét còn thấy đường ghi (chống xanh-rỗng)", () => {

@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { taoTaiKhoanQuanTri } from "@/lib/edgeFunctions";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 // --- Types ---
 export interface Shareholder {
@@ -126,6 +128,7 @@ export const useBuildingShareholders = () => {
 
 export const useCreateShareholder = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     meta: { handlesFeedback: true },
     mutationFn: async (values: ShareholderFormValues) => {
@@ -133,13 +136,13 @@ export const useCreateShareholder = () => {
       if (!auth.user) throw new Error("User not authenticated");
       const { data, error } = await supabase
         .from("shareholders" as any)
-        .insert({
+        .insert(withOrg({
           user_id: auth.user.id,
           name: values.name,
           note: values.note ?? null,
           is_active: values.is_active ?? true,
           auth_user_id: values.auth_user_id ?? null,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
       if (error) {
@@ -209,6 +212,7 @@ export const useDeleteShareholder = () => {
 // Upsert 1 ô tỷ lệ (building × shareholder).
 export const useUpsertBuildingShare = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async (input: { building_id: string; shareholder_id: string; percent: number }) => {
       const auth = { user: await getSessionUser() };
@@ -216,12 +220,12 @@ export const useUpsertBuildingShare = () => {
       const { data, error } = await supabase
         .from("building_shareholders" as any)
         .upsert(
-          {
+          withOrg({
             user_id: auth.user.id,
             building_id: input.building_id,
             shareholder_id: input.shareholder_id,
             percent: input.percent,
-          },
+          }, selectedOrganizationId),
           { onConflict: "building_id,shareholder_id" }
         ).select('*');
       if (error) throw error;
@@ -238,6 +242,7 @@ export const useUpsertBuildingShare = () => {
 // (xoá tòa không còn, upsert tòa mới/đổi %).
 export const useSyncShareholderBuildings = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const workflow = useRef(persistentFinancialWorkflow('shareholder-sync'));
   return useMutation({
     meta: { handlesFeedback: true },
@@ -262,7 +267,7 @@ export const useSyncShareholderBuildings = () => {
         progress.stage = 'lưu tỷ lệ tòa nhà';
         if (input.rows.length) {
           const payload = input.rows.map(row => ({ ...row, user_id: user.id, shareholder_id: input.shareholder_id }));
-          const { data, error } = await supabase.from('building_shareholders' as any).upsert(payload, {onConflict:'building_id,shareholder_id'}).select('*');
+          const { data, error } = await supabase.from('building_shareholders' as any).upsert(withOrgAll(payload, selectedOrganizationId), {onConflict:'building_id,shareholder_id'}).select('*');
           if (error) throw error;
           const savedRows = requireProfitRows(data);
           for (const row of savedRows) progress.completed.push({id:row.id as string,label:'Đã nhận dòng tỷ lệ cần đối chiếu'});

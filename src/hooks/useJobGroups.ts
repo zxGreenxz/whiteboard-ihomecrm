@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 export const useJobGroups = () => {
   return useQuery({
@@ -27,6 +29,7 @@ export const useJobGroups = () => {
 
 export const useCreateJobGroup = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (name: string) => {
@@ -36,7 +39,7 @@ export const useCreateJobGroup = () => {
 
       const { data, error } = await supabase
         .from("job_groups")
-        .insert({ name, user_id: user.id })
+        .insert(withOrg({ name, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 /** Xuất ra để trang không phải tự suy kiểu gói cước từ `typeof plans`. */
 export type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
@@ -68,16 +70,17 @@ export const useUserSubscription = () => {
 
 export const useCreateUserSubscription = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (subscription: Omit<UserSubscriptionInsert, "user_id">) => {
+    mutationFn: async (subscription: Omit<UserSubscriptionInsert, "user_id" | "organization_id">) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("user_subscriptions")
-        .insert({ ...subscription, user_id: user.id })
+        .insert(withOrg({ ...subscription, user_id: user.id }, selectedOrganizationId))
         .select("*, plan:subscription_plans(name)")
         .single();
 

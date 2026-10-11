@@ -21,7 +21,7 @@ it('service follows main removal before insertion; failure preserves removed IDs
  const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers[0].completedIds).toEqual(['s1','old']);
  await expect((useUpdateService() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial'});expect(core.update).toHaveBeenCalledOnce();expect(links.delete).toHaveBeenCalledOnce();
 });
-it('quota tiers null retains core ID and blocks remount retry',async()=>{const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor'},error:null});const tiers=chain({data:null,error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);const input={name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({quotaId:'q1'});await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'q1'}]});expect(core.insert).toHaveBeenCalledTimes(1);});
+it('quota tiers null retains core ID and blocks remount retry',async()=>{const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor',organization_id:'org-a'},error:null});const tiers=chain({data:null,error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);const input={name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({quotaId:'q1'});await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({outcome:'partial',completed:[{id:'q1'}]});expect(core.insert).toHaveBeenCalledTimes(1);});
 it('quota missing delete receipt keeps core ID, blocks insert and never replays after remount',async()=>{
  const core=chain({data:{id:'q1',name:'Điện',description:null},error:null}),tiers=chain({data:null,error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
  const input={id:'q1',name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};
@@ -31,15 +31,15 @@ it('quota missing delete receipt keeps core ID, blocks insert and never replays 
 });
 
 it('quota create keeps the main header three fields and tier five fields; selected org remains marker-only',async()=>{
- const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor'},error:null});const tiers=chain({data:[{id:'t1',quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100}],error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
+ const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor',organization_id:'org-a'},error:null});const tiers=chain({data:[{id:'t1',quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100}],error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
  tiers.insert.mockImplementation(()=>{const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers).toHaveLength(1);expect(markers[0].organizationId).toBe('org-a');return tiers;});
  await (useCreateServiceQuota() as unknown as Mutation).mutationFn({name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]});
- expect(core.insert).toHaveBeenCalledWith({name:'Điện',description:null,user_id:'actor'});expect(tiers.insert).toHaveBeenCalledWith([{quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100}]);
+ expect(core.insert).toHaveBeenCalledWith({name:'Điện',description:null,user_id:'actor',organization_id:'org-a'});expect(tiers.insert).toHaveBeenCalledWith([{quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100,organization_id:'org-a'}]);
 });
 
 type UpdateQuotaInput=Parameters<ReturnType<typeof useUpdateServiceQuota>['mutateAsync']>[0];
 const updateInput:UpdateQuotaInput={id:'q1',name:'Điện',description:'Giá điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};
-const header={id:'q1',name:'Điện',description:'Giá điện'};
+const header={id:'q1',name:'Điện',description:'Giá điện',organization_id:'org-a'};
 const oldTier={id:'old-tier',quota_id:'q1',tier_number:2};
 const newTier={id:'new-tier',quota_id:'q1',...updateInput.tiers[0]};
 const useUpdateConfig=()=>useUpdateServiceQuota() as unknown as Mutation;
@@ -48,7 +48,7 @@ it('quota update follows main UPDATE then DELETE-all then INSERT with only origi
  await expect(useUpdateConfig().mutationFn(updateInput)).resolves.toEqual(header);
  expect(core.update).toHaveBeenCalledWith({name:'Điện',description:'Giá điện'});expect(core.eq.mock.calls).toEqual([['id','q1']]);
  expect(del.delete).toHaveBeenCalledOnce();expect(del.eq.mock.calls).toEqual([['quota_id','q1']]);expect(del.in).not.toHaveBeenCalled();
- expect(insert.insert).toHaveBeenCalledWith([{quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100}]);expect(insert.upsert).not.toHaveBeenCalled();
+ expect(insert.insert).toHaveBeenCalledWith([{quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:100,organization_id:'org-a'}]);expect(insert.upsert).not.toHaveBeenCalled();
  expect(core.update.mock.invocationCallOrder[0]).toBeLessThan(del.delete.mock.invocationCallOrder[0]);expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(insert.insert.mock.invocationCallOrder[0]);
  expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(del.select.mock.invocationCallOrder[0]);
 });
@@ -81,10 +81,10 @@ it('quota empty tiers still delete all old tiers then complete without inserting
 
 it.each([{name:'',tiers:[]},{name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:-1.5}]},{name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100},{tier_number:1,from_value:0,to_value:null,unit_price:100}]}])('quota create delegates original input rules to the existing server/form: %j',async input=>{
  const error={code:'42501',message:'SQL refusal'};const core=chain({data:null,error});io.from.mockReturnValue(core);
- await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toBe(error);expect(core.insert).toHaveBeenCalledWith({name:input.name,description:null,user_id:'actor'});
+ await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toBe(error);expect(core.insert).toHaveBeenCalledWith({name:input.name,description:null,user_id:'actor',organization_id:'org-a'});
 });
 it('quota create wrong tier values retain positive header/tier IDs and never recreate the header',async()=>{
- const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor'},error:null}),tiers=chain({data:[{id:'t1',quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:999}],error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
+ const core=chain({data:{id:'q1',name:'Điện',description:null,user_id:'actor',organization_id:'org-a'},error:null}),tiers=chain({data:[{id:'t1',quota_id:'q1',tier_number:1,from_value:0,to_value:null,unit_price:999}],error:null});io.from.mockImplementation(table=>table==='service_quotas'?core:tiers);
  const input={name:'Điện',tiers:[{tier_number:1,from_value:0,to_value:null,unit_price:100}]};
  await expect((useCreateServiceQuota() as unknown as Mutation).mutationFn(input)).rejects.toMatchObject({quotaId:'q1'});
  const markers=Object.keys(localStorage).filter(key=>key.startsWith('ihome:financial-pending:')).map(key=>JSON.parse(localStorage.getItem(key)!));expect(markers).toHaveLength(1);expect(markers[0].completedIds).toEqual(['q1','t1']);

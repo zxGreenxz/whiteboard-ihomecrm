@@ -6,6 +6,8 @@ import { FinancialWorkflowError, isConfirmedFinancialRejection } from '@/lib/fin
 import { confirmedRecordBatch } from '@/lib/recordWriteOutcome';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { confirmedMaterialVoucherId, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg, withOrgAll } from '@/lib/orgPayload';
 export interface MaterialUsageWithItems extends MaterialUsage {
   items: (MaterialUsageItem & { material: Pick<Material, 'id' | 'name' | 'unit'> | null })[];
 }
@@ -98,19 +100,21 @@ export const useUpsertJobMaterialUsage = (options: { silent?: boolean } = {}) =>
 };
 export const useCreateMaterialUsage = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow('material-manual-usage');
   const refresh = () => { qc.invalidateQueries({ queryKey: ['material-usages', 'list'] }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async (input: UsageInput) => {
       if (input.items.length === 0) throw new Error('Cần ít nhất 1 dòng vật tư');
       return guard.run('create', 'tạo phiếu xuất', async progress => {
-        const { data: header, error } = await supabase.from('material_usages' as any).insert({ job_id: null, usage_date: input.usage_date, notes: input.notes }).select('id').single();
+        const { data: header, error } = await supabase.from('material_usages' as any).insert(withOrg({ job_id: null, usage_date: input.usage_date, notes: input.notes }, selectedOrganizationId)).select('id, organization_id').single();
         if (error) throw error;
         const id = confirmedMaterialVoucherId(header);
         progress.completed.push({ id, label: `Phiếu xuất ID ${id} đã tạo` });
         progress.stage = 'lưu các dòng vật tư';
         const lines = input.items.map(row => ({ usage_id: id, material_id: row.material_id, quantity: row.quantity, unit_cost_at_usage: row.unit_cost_at_usage }));
-        const { data, error: lineError } = await supabase.from('material_usage_items' as any).insert(lines).select('id');
+        const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
+        const { data, error: lineError } = await supabase.from('material_usage_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
         if (lineError) {
           progress.stage = 'gỡ phiếu tạm sau lỗi lưu dòng vật tư';
           const { data: removedHeader, error: cleanupError } = await supabase.from('material_usages' as any).delete().eq('id', id).select('id').single();

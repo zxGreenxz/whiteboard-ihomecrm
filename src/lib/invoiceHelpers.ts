@@ -12,6 +12,7 @@ import { generateInvoiceNumber } from './codeGenerator';
 import type { PreviousDebtSource } from '@/types/invoice';
 import { readInvoiceRentSupportPlan } from './invoiceRentSupport';
 import { buildCustomerSupportMonths } from './rentSupport';
+import { withOrg } from './orgPayload';
 
 /**
  * Generate invoice number if auto-generation is enabled
@@ -594,15 +595,16 @@ export async function getInvoiceSettings(userId: string): Promise<InvoiceGenerat
  */
 export async function saveInvoiceSettings(
   userId: string,
-  settings: Partial<InvoiceGenerationSettings>
+  settings: Partial<InvoiceGenerationSettings>,
+  organizationId: string | null | undefined
 ): Promise<void> {
   const { error } = await supabase
     .from('invoice_generation_settings')
-    .upsert({
+    .upsert(withOrg({
       user_id: userId,
       ...settings,
       updated_at: new Date().toISOString(),
-    });
+    }, organizationId));
 
   if (error) throw error;
 }

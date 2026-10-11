@@ -925,10 +925,11 @@ export const useLockSalaryMonth = () => {
             },
             { onConflict: "staff_id,period_month" }
           )
-          .select("id")
+          .select("id, organization_id")
           .single();
         if (error) throw error;
         const monthlyId = row?.id;
+        const monthlyOrg = row?.organization_id;
         if (!monthlyId) throw new TypeError('Unconfirmed salary month write');
         progress.completed.push({id: monthlyId, label: `Đã chốt số lương của ${m.name}`});
         progress.stage = `lưu bảng kê của ${m.name}`;
@@ -936,7 +937,7 @@ export const useLockSalaryMonth = () => {
         if (removeError) throw removeError;
         if (m.ledger.length) {
           const {error: snapshotError} = await supabase.from("salary_work_ledger_snapshot").insert(
-            m.ledger.map((r) => ({
+            withOrgAll(m.ledger.map((r) => ({
               user_id: ownerId,
               salary_monthly_id: monthlyId,
               staff_id: m.id,
@@ -956,7 +957,7 @@ export const useLockSalaryMonth = () => {
               has_photo: r.has_photo,
               bonus_amount: r.bonus_amount,
               reason: r.reason,
-            }))
+            })), monthlyOrg)
           );
           if (snapshotError) throw snapshotError;
         }

@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import type { CT01Declaration, CT01FormData } from "@/types/customer";
 import { persistentFinancialWorkflow } from "@/lib/persistentFinancialWorkflow";
 import { confirmedRecordId, recordWriteMessage } from "@/lib/recordWriteOutcome";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 // =============================================
 // useCT01Declarations - Query declarations for a customer
@@ -43,6 +45,7 @@ export const useCT01Declarations = (customerId: string) => {
 
 export const useCreateCT01Declaration = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow("ct01-declaration-create", { scope: "actor" });
 
   return useMutation({
@@ -59,11 +62,11 @@ export const useCreateCT01Declaration = () => {
       return guard.run(customerId, "lưu tờ khai CT01", async (progress) => {
       const { data, error } = await (supabase
         .from("ct01_declarations") as any)
-        .insert({
+        .insert(withOrg({
           ...formData,
           user_id: user.id,
           customer_id: customerId,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 

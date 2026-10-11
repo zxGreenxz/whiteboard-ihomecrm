@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 export class TemplateDefaultPartialError extends Error {
   constructor(public readonly templateId: string, public readonly previousDefaultIds: readonly string[], public readonly cause: unknown) {
@@ -68,6 +70,7 @@ export const useIncomeExpenseTemplates = (filterIsIncome?: boolean) => {
 
 export const useCreateIncomeExpenseTemplate = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (input: {
@@ -85,7 +88,7 @@ export const useCreateIncomeExpenseTemplate = () => {
       return persistentFinancialWorkflow('income-expense-template-create').run('create', 'tạo mẫu in thu chi', async () => {
       const { data, error } = await supabase
         .from("income_expense_templates")
-        .insert({
+        .insert(withOrg({
           user_id: user.id,
           name: input.name,
           description: input.description ?? null,
@@ -93,7 +96,7 @@ export const useCreateIncomeExpenseTemplate = () => {
           is_default: input.is_default ?? false,
           is_income_template: input.is_income_template ?? false,
           field_mappings: input.field_mappings ?? null,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 

@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { toast } from 'sonner';
 import { friendlyError } from '@/lib/friendlyError';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 import type { Material, MaterialWithCategory } from '@/types/material';
 import type { MaterialFormValues } from '@/lib/materialValidation';
 
@@ -82,11 +84,12 @@ export const useMaterial = (id: string | null | undefined) => {
 
 export const useCreateMaterial = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async (input: MaterialFormValues): Promise<Material> => {
       const { data, error } = await supabase
         .from('materials' as any)
-        .insert({
+        .insert(withOrg({
           code: input.code?.trim() || null,
           name: input.name.trim(),
           category_id: input.category_id || null,
@@ -94,7 +97,7 @@ export const useCreateMaterial = () => {
           image_url: input.image_url?.trim() || null,
           description: input.description?.trim() || null,
           reorder_level: input.reorder_level ?? 0,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
       if (error) {

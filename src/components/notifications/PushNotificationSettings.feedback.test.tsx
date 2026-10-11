@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({ send: vi.fn(), subscribed: vi.fn(), success: vi.fn(), warning: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/push', () => ({ isPushSupported:()=>true,isIOS:()=>false,isStandalone:()=>true,getPermission:()=> 'granted',isSubscribed:mocks.subscribed,enablePush:vi.fn(),disablePush:vi.fn(),sendTestPush:mocks.send }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('sonner', () => ({ toast: {success:mocks.success,warning:mocks.warning,error:mocks.error} }));
 import PushNotificationSettings from './PushNotificationSettings';
 describe('phản hồi gửi thử push', () => {

@@ -8,6 +8,8 @@ import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, isConfirmedFinancialRejection, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordBatch } from '@/lib/recordWriteOutcome';
 import { confirmedMaterialVoucherId, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg, withOrgAll } from '@/lib/orgPayload';
 export interface MaterialAdjustmentWithItems extends MaterialAdjustment {
   items: (MaterialAdjustmentItem & { material: Pick<Material, 'id' | 'name' | 'unit'> | null })[];
 }
@@ -27,15 +29,17 @@ interface AdjustmentInput {
   reason: string | null;
   items: Array<{ material_id: string; quantity: number }>;
 }
-async function createAdjustment(input: AdjustmentInput, progress: { completed: CompletedFinancialStep[]; stage: string }, singleItem = false): Promise<MaterialAdjustment> {
-  const { data: header, error } = await supabase.from('material_adjustments' as any).insert({ adjustment_date: input.adjustment_date, type: input.type, reason: input.reason }).select().single();
+async function createAdjustment(input: AdjustmentInput, organizationId: string | null | undefined, progress: { completed: CompletedFinancialStep[]; stage: string }, singleItem = false): Promise<MaterialAdjustment> {
+  const { data: header, error } = await supabase.from('material_adjustments' as any).insert(withOrg({ adjustment_date: input.adjustment_date, type: input.type, reason: input.reason }, organizationId)).select().single();
   if (error) throw error;
   const id = confirmedMaterialVoucherId(header);
   progress.completed.push({ id, label: `Phiếu kiểm kê ID ${id} đã tạo` });
   if (input.items.length > 0) {
     progress.stage = 'lưu các dòng vật tư';
     const lines = input.items.map(row => ({ adjustment_id: id, material_id: row.material_id, quantity: row.quantity }));
-    const { data, error: lineError } = await supabase.from('material_adjustment_items' as any).insert(singleItem ? lines[0] : lines).select('id');
+    const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
+    const lineQuery = singleItem ? supabase.from('material_adjustment_items' as any).insert(withOrg(lines[0], headerOrg)) : supabase.from('material_adjustment_items' as any).insert(withOrgAll(lines, headerOrg));
+    const { data, error: lineError } = await lineQuery.select('id');
     if (lineError) {
       progress.stage = 'gỡ phiếu tạm sau lỗi lưu dòng vật tư';
       const { data: removedHeader, error: cleanupError } = await supabase.from('material_adjustments').delete().eq('id', id).select('id').single();
@@ -56,11 +60,12 @@ async function createAdjustment(input: AdjustmentInput, progress: { completed: C
 }
 export const useCreateMaterialAdjustment = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow('material-adjustment');
   const refresh = () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async (input: AdjustmentInput) => {
-      return guard.run('create', 'tạo phiếu kiểm kê', progress => createAdjustment(input, progress));
+      return guard.run('create', 'tạo phiếu kiểm kê', progress => createAdjustment(input, selectedOrganizationId, progress));
     },
     onSuccess: () => { refresh(); toast.success('Đã tạo phiếu kiểm kê'); },
     onError: error => { refresh(); toast.error('Chưa hoàn tất tạo phiếu kiểm kê', { description: materialVoucherFailureMessage(error, 'tạo phiếu kiểm kê') }); },
@@ -69,12 +74,13 @@ export const useCreateMaterialAdjustment = () => {
 /** SET derives one delta from the supplied inventory snapshot. Partial/unknown writes require reconciliation. */
 export const useSetMaterialStock = (options: { silent?: boolean } = {}) => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow('material-adjustment');
   const refresh = () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async (input: { material_id: string; target_quantity: number; current_quantity: number; reason?: string }) => {
       const delta = input.target_quantity - input.current_quantity;
-      return guard.run<MaterialAdjustment | null>('create', 'điều chỉnh tồn kho', progress => delta === 0 ? Promise.resolve(null) : createAdjustment({ adjustment_date: todayISO(), type: delta > 0 ? 'IN' : 'OUT', reason: input.reason ?? 'Kiểm kê — đặt lại tồn', items: [{ material_id: input.material_id, quantity: Math.abs(delta) }] }, progress, true));
+      return guard.run<MaterialAdjustment | null>('create', 'điều chỉnh tồn kho', progress => delta === 0 ? Promise.resolve(null) : createAdjustment({ adjustment_date: todayISO(), type: delta > 0 ? 'IN' : 'OUT', reason: input.reason ?? 'Kiểm kê — đặt lại tồn', items: [{ material_id: input.material_id, quantity: Math.abs(delta) }] }, selectedOrganizationId, progress, true));
     },
     onSuccess: data => { refresh(); if (!options.silent) { if (data) toast.success('Đã cập nhật tồn kho theo kiểm kê'); else toast.info('Tồn đã khớp — không cần điều chỉnh'); } },
     onError: error => { refresh(); if (!options.silent) toast.error('Chưa hoàn tất điều chỉnh tồn kho', { description: materialVoucherFailureMessage(error, 'điều chỉnh tồn kho') }); },

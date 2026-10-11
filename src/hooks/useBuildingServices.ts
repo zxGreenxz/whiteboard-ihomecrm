@@ -7,6 +7,8 @@ import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { readRecord, readString } from "@/lib/accountProfitReadModels";
 import { FinancialWorkflowError } from "@/lib/financialWorkflowError";
 import { persistentFinancialWorkflow } from "@/lib/persistentFinancialWorkflow";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrgAll } from "@/lib/orgPayload";
 
 type RemovedServiceReceipt = Pick<Tables<"building_services">, "id" | "building_id" | "service_id">;
 type SavedServiceReceipt = Pick<Tables<"building_services">, "id" | "building_id" | "service_id" | "is_active" | "unit_price_override">;
@@ -63,6 +65,7 @@ export const useBuildingServices = (buildingId: string) => {
 // Keep the original workflow: delete all existing links, then insert the new set.
 export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean } = {}) => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow("building-services-replace", { scope: "actor" });
 
   return useMutation({
@@ -99,7 +102,7 @@ export const useUpsertBuildingServices = ({ silent = false }: { silent?: boolean
       }));
       const { data: inserted, error: insertError }: ServiceWriteReply = await (supabase
         .from("building_services" as any)
-        .insert(rows)
+        .insert(withOrgAll(rows, selectedOrganizationId))
         .select("id,building_id,service_id,is_active,unit_price_override") as any);
       if (insertError) throw insertError;
       progress.completed.push(...receivedIds(inserted).map(id => ({ id, label: "Đã nhận mã liên kết dịch vụ mới; chưa xác nhận đủ danh sách" })));

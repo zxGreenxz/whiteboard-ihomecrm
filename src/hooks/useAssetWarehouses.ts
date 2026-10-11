@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type AssetWarehouse = Database["public"]["Tables"]["asset_warehouses"]["Row"];
 type AssetWarehouseInsert = Database["public"]["Tables"]["asset_warehouses"]["Insert"];
@@ -37,16 +39,17 @@ export const useAssetWarehouses = (buildingId?: string) => {
 
 export const useCreateAssetWarehouse = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (warehouse: Omit<AssetWarehouseInsert, "user_id">) => {
+    mutationFn: async (warehouse: Omit<AssetWarehouseInsert, "user_id" | "organization_id">) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("asset_warehouses")
-        .insert({ ...warehouse, user_id: user.id })
+        .insert(withOrg({ ...warehouse, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

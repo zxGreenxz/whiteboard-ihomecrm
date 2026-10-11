@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Bell, BellOff, Loader2, Send, Smartphone, Info } from "lucide-react";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import {
   isPushSupported,
   isSubscribed,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/push";
 
 export default function PushNotificationSettings() {
+  const { selectedOrganizationId } = useOrganization();
   const supported = isPushSupported();
   const ios = isIOS();
   const standalone = isStandalone();
@@ -67,7 +69,7 @@ export default function PushNotificationSettings() {
     setToggleError(null);
     try {
       if (next) {
-        const res = await enablePush();
+        const res = await enablePush(selectedOrganizationId);
         if (res === "granted") {
           setSubscribed(true);
           setPermission("granted");

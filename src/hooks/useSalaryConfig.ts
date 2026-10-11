@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 export interface ManagerConfigRow {
   id: string;
@@ -88,6 +90,7 @@ export interface SaveManagerConfigInput {
 
 export const useSaveManagerConfig = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async (input: SaveManagerConfigInput) => {
       const user = await getSessionUser();
@@ -108,7 +111,7 @@ export const useSaveManagerConfig = () => {
         if (!data?.id) throw new TypeError("Unconfirmed salary config result");
       } else {
         if (!input.staff_id) throw new Error("Chưa chọn nhân viên");
-        const { data, error } = await supabase.from("manager_salary_config").insert({
+        const { data, error } = await supabase.from("manager_salary_config").insert(withOrg({
           user_id: user.id,
           staff_id: input.staff_id,
           base_salary: input.base_salary,
@@ -117,7 +120,7 @@ export const useSaveManagerConfig = () => {
           role_title: input.role_title,
           alias: input.alias ?? null,
           room_id: input.room_id ?? null,
-        }).select("id").single();
+        }, selectedOrganizationId)).select("id").single();
         if (error) throw error;
         if (!data?.id) throw new TypeError("Unconfirmed salary config result");
       }
@@ -150,6 +153,7 @@ export const useBonusRules = () => {
 
 export const useSaveBonusRules = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async (rules: SalaryRules) => {
       const user = await getSessionUser();
@@ -164,7 +168,7 @@ export const useSaveBonusRules = () => {
         if (error) throw error;
         if (!saved?.id) throw new TypeError("Unconfirmed salary rules result");
       } else {
-        const { data: saved, error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules: merged }).select("id").single();
+        const { data: saved, error } = await supabase.from("salary_bonus_rules").insert(withOrg({ user_id: user.id, rules: merged }, selectedOrganizationId)).select("id").single();
         if (error) throw error;
         if (!saved?.id) throw new TypeError("Unconfirmed salary rules result");
       }
@@ -196,12 +200,13 @@ export const useSalaryHolidays = () => {
 
 export const useAddHoliday = (options: {silent?:boolean} = {}) => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     meta:{silent:options.silent},
     mutationFn: async ({ holiday_date, name }: { holiday_date: string; name?: string }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data, error } = await supabase.from("salary_holidays").insert({ user_id: user.id, holiday_date, name: name ?? null }).select("id").single();
+      const { data, error } = await supabase.from("salary_holidays").insert(withOrg({ user_id: user.id, holiday_date, name: name ?? null }, selectedOrganizationId)).select("id").single();
       if (error) throw error;
       if (!data?.id) throw new TypeError("Unconfirmed holiday result");
       return data;
@@ -251,6 +256,7 @@ export const useStaffMonthOverrides = () => {
 // Đặt/huỷ override 1 tháng. value=null → xoá override (về mặc định lùi-tháng).
 export const useSaveStaffMonthOverride = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async ({ ym, value }: { ym: string; value: boolean | null }) => {
       const user = await getSessionUser();
@@ -266,7 +272,7 @@ export const useSaveStaffMonthOverride = () => {
         if (error) throw error;
         if (!saved?.id) throw new TypeError("Unconfirmed salary rules result");
       } else {
-        const { data: saved, error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules }).select("id").single();
+        const { data: saved, error } = await supabase.from("salary_bonus_rules").insert(withOrg({ user_id: user.id, rules }, selectedOrganizationId)).select("id").single();
         if (error) throw error;
         if (!saved?.id) throw new TypeError("Unconfirmed salary rules result");
       }

@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type AutoDebtConfig = Database["public"]["Tables"]["auto_debt_config"]["Row"];
 type AutoDebtConfigInsert = Database["public"]["Tables"]["auto_debt_config"]["Insert"];
@@ -37,16 +39,17 @@ export const useAutoDebtConfigs = (buildingId?: string) => {
 
 export const useCreateAutoDebtConfig = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (config: Omit<AutoDebtConfigInsert, "user_id">) => {
+    mutationFn: async (config: Omit<AutoDebtConfigInsert, "user_id" | "organization_id">) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("auto_debt_config")
-        .insert({ ...config, user_id: user.id })
+        .insert(withOrg({ ...config, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

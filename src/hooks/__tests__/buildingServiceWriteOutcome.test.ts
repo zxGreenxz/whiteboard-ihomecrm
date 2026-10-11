@@ -3,6 +3,7 @@ import {beforeEach,expect,it,vi,type Mock} from 'vitest';
 import type {Tables,TablesInsert} from '@/integrations/supabase/types';
 const io=vi.hoisted(()=>({from:vi.fn(),toastError:vi.fn(),toastSuccess:vi.fn(),invalidate:vi.fn()}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(config:unknown)=>config,useQuery:(config:unknown)=>config,useQueryClient:()=>({invalidateQueries:io.invalidate})}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor-a'})}));
 vi.mock('sonner',()=>({toast:{error:io.toastError,success:io.toastSuccess}}));
@@ -49,7 +50,7 @@ it('a matching old row still follows original delete-all then insert with only o
  const del=chain({data:[{...deleted,service_id:'s1'}],error:null}),write=chain({data:[inserted],error:null});io.from.mockReturnValueOnce(del).mockReturnValue(write);
  await expect(useMutationConfig().mutationFn(input)).resolves.toEqual(['new']);
  expect(del.delete).toHaveBeenCalledOnce();expect(del.eq).toHaveBeenCalledWith('building_id','b1');
- expect(write.insert).toHaveBeenCalledWith([{building_id:'b1',service_id:'s1',is_active:true,unit_price_override:12}]);
+ expect(write.insert).toHaveBeenCalledWith([{building_id:'b1',service_id:'s1',is_active:true,unit_price_override:12,organization_id:'org-a'}]);
  expect(del.delete.mock.invocationCallOrder[0]).toBeLessThan(write.insert.mock.invocationCallOrder[0]);expect(write.upsert).not.toHaveBeenCalled();
 });
 it('incomplete insert preserves positive new and removed IDs before blocking a remounted retry',async()=>{
@@ -69,7 +70,7 @@ it('a genuinely empty delete receipt allows the original empty-set completion wi
 it('original signed decimal payload is forwarded unchanged without a new client business limit',async()=>{
  const negative:Input={...input,services:[{...input.services[0],unit_price_override:-1.5}]};
  const del=chain({data:[],error:null}),write=chain({data:[{...inserted,unit_price_override:-1.5}],error:null});io.from.mockReturnValueOnce(del).mockReturnValue(write);
- await expect(useMutationConfig().mutationFn(negative)).resolves.toEqual(['new']);expect(write.insert).toHaveBeenCalledWith([{building_id:'b1',...negative.services[0]}]);
+ await expect(useMutationConfig().mutationFn(negative)).resolves.toEqual(['new']);expect(write.insert).toHaveBeenCalledWith([{building_id:'b1',...negative.services[0],organization_id:'org-a'}]);
 });
 it('known delete refusal preserves original cause and does not perform insert',async()=>{
  const error={code:'42501',message:'PRIVATE SQL DETAIL'};const del=chain({data:null,error});io.from.mockReturnValue(del);

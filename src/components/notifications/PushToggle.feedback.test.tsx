@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 const io=vi.hoisted(()=>({subscribed:vi.fn(),enable:vi.fn(),disable:vi.fn(),error:vi.fn(),success:vi.fn(),info:vi.fn(),warning:vi.fn(),profile:{id:'actor-a',full_name:'User',email:'user@example.com'}}));
 vi.mock('@/lib/push',()=>({isPushSupported:()=>true,isSubscribed:io.subscribed,enablePush:io.enable,disablePush:io.disable,isIOS:()=>false,isStandalone:()=>true,getPermission:()=>'granted',sendTestPush:vi.fn()}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('sonner',()=>({toast:{error:io.error,success:io.success,info:io.info,warning:io.warning}}));
 vi.mock('@/hooks/useProfile',()=>({useProfile:()=>({data:io.profile,status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()}),useUpdateProfile:()=>({mutate:vi.fn(),isPending:false}),useUploadAvatar:()=>({mutate:vi.fn(),isPending:false}),useChangePassword:()=>({mutate:vi.fn(),isPending:false})}));
 vi.mock('@/hooks/useAuth',()=>({useAuth:()=>({data:{id:'actor-a'}}),useLogout:()=>({mutate:vi.fn(),isPending:false})}));

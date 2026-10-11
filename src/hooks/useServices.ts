@@ -199,7 +199,7 @@ export const useCreateServiceQuota=()=>{
   const user=await getSessionUser();if(!user)throw new Error('Not authenticated');let coreId:string|undefined;
   try{return await guard.run('create','tạo định mức dịch vụ',async progress=>{
    const {data,error}=await supabase.from('service_quotas')
-    .insert({name:params.name,description:params.description||null,user_id:user.id}).select().single();
+    .insert(withOrg({name:params.name,description:params.description||null,user_id:user.id},selectedOrganizationId)).select().single();
    if(error)throw error;
    coreId=confirmedRecordId(data,'tạo định mức');progress.completed.push({id:coreId,label:'Định mức đã nhận mã; cần đối chiếu nội dung'});
    if(data.name!==params.name||data.description!==(params.description||null)||data.user_id!==user.id)throw new FinancialWorkflowError('Chưa xác nhận đúng định mức đã tạo; chưa gửi các bậc giá.','unknown',[],new TypeError('Mismatched created quota receipt'));
@@ -207,13 +207,13 @@ export const useCreateServiceQuota=()=>{
    if(params.tiers.length>0){
     progress.stage='lưu các bậc giá';
     const {data:inserted,error:tierError}=await supabase.from('service_quota_tiers')
-     .insert(params.tiers.map((t)=>({
+     .insert(withOrgAll(params.tiers.map((t)=>({
       quota_id:data.id,
       tier_number:t.tier_number,
       from_value:t.from_value,
       to_value:t.to_value,
       unit_price:t.unit_price,
-     }))).select('id,quota_id,tier_number,from_value,to_value,unit_price');
+     })),data.organization_id)).select('id,quota_id,tier_number,from_value,to_value,unit_price');
     if(tierError)throw tierError;
     if(Array.isArray(inserted)){const rows:unknown[]=inserted;const ids=[...new Set(rows.flatMap(row=>record(row)&&typeof row.id==='string'&&row.id?[row.id]:[]))];progress.completed.push(...ids.map(id=>({id,label:'Đã nhận mã bậc giá; chưa xác nhận đủ danh sách'})));}
     if(!Array.isArray(inserted))throw new FinancialWorkflowError('Chưa xác nhận được các bậc giá đã lưu. Giữ mã định mức và đối chiếu trước khi thực hiện tiếp.','unknown',[],new TypeError('Unconfirmed created quota tier receipt'));
@@ -241,7 +241,7 @@ export const useUpdateServiceQuota=()=>{
    // Main sequence and payload: UPDATE header, DELETE all old tiers, INSERT the new set.
    const {data,error}=await supabase.from('service_quotas')
     .update({name:params.name,description:params.description||null}).eq('id',params.id)
-    .select('id,name,description').single();
+    .select('id,name,description,organization_id').single();
    if(error)throw error;
    coreId=confirmedRecordId(data,'cập nhật định mức',params.id);
    progress.completed.push({id:coreId,label:'Định mức đã nhận mã; cần đối chiếu nội dung'});
@@ -261,13 +261,13 @@ export const useUpdateServiceQuota=()=>{
    if(params.tiers.length>0){
     progress.stage='lưu các bậc giá mới';
     const {data:inserted,error:tierError}=await supabase.from('service_quota_tiers')
-     .insert(params.tiers.map((t)=>({
+     .insert(withOrgAll(params.tiers.map((t)=>({
       quota_id:params.id,
       tier_number:t.tier_number,
       from_value:t.from_value,
       to_value:t.to_value,
       unit_price:t.unit_price,
-     }))).select('id,quota_id,tier_number,from_value,to_value,unit_price');
+     })),data.organization_id)).select('id,quota_id,tier_number,from_value,to_value,unit_price');
     if(tierError)throw tierError;
     progress.completed.push(...ids(inserted).map(id=>({id,label:'Đã nhận mã bậc giá mới; chưa xác nhận đủ danh sách'})));
     if(!Array.isArray(inserted))throw new FinancialWorkflowError('Chưa xác nhận được các bậc giá mới đã lưu. Giữ mã đã nhận và đối chiếu trước khi thực hiện tiếp.','unknown',[],new TypeError('Unconfirmed quota tier insert receipt'));

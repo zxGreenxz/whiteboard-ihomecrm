@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { MaterialCategory } from '@/types/material';
 import { friendlyError } from '@/lib/friendlyError';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 
 const KEY = ['material-categories'] as const;
 
@@ -27,11 +29,12 @@ export const useMaterialCategories = () => {
 
 export const useCreateMaterialCategory = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   return useMutation({
     mutationFn: async (input: { name: string; description?: string | null }) => {
       const { data, error } = await supabase
         .from('material_categories' as any)
-        .insert({ name: input.name, description: input.description ?? null })
+        .insert(withOrg({ name: input.name, description: input.description ?? null }, selectedOrganizationId))
         .select()
         .single();
       if (error) {

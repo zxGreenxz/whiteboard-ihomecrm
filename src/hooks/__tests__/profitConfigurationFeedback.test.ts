@@ -5,6 +5,7 @@ vi.mock('react',()=>({useRef:(value:unknown)=>({current:value})}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(options:unknown)=>options,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'u'})}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:m.success}}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:m.from}}));
 import {useSaveManagerWithSalaries} from '../useProfitManagers';
 import {useSyncShareholderBuildings} from '../useShareholders';

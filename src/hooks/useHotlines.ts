@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Hotline = Database["public"]["Tables"]["hotlines"]["Row"];
 type HotlineInsert = Database["public"]["Tables"]["hotlines"]["Insert"];
@@ -31,16 +33,17 @@ export const useHotlines = () => {
 
 export const useCreateHotline = (options?: {inlineError?:boolean}) => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
-    mutationFn: async (hotline: Omit<HotlineInsert, "user_id">) => {
+    mutationFn: async (hotline: Omit<HotlineInsert, "user_id" | "organization_id">) => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase
         .from("hotlines")
-        .insert({ ...hotline, user_id: user.id })
+        .insert(withOrg({ ...hotline, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

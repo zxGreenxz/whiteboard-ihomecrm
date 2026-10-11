@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 
 // Setting Keys
 export type SettingKey =
@@ -173,6 +175,7 @@ function useSetting<T>(key: SettingKey, defaultValue: T) {
 function useUpdateSetting<T>(key: SettingKey, options: { silent?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (value: T) => {
@@ -181,11 +184,11 @@ function useUpdateSetting<T>(key: SettingKey, options: { silent?: boolean } = {}
       const { data, error } = await supabase
         .from('settings')
         .upsert(
-          {
+          withOrg({
             user_id: user.id,
             key,
             value: value as any,
-          },
+          }, selectedOrganizationId),
           {
             onConflict: 'user_id,key',
           }
@@ -356,6 +359,7 @@ export function useIndividualSetting(key: string, defaultValue: IndividualSettin
 export function useUpdateIndividualSetting(key: string) {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (value: IndividualSettingValue) => {
@@ -364,7 +368,7 @@ export function useUpdateIndividualSetting(key: string) {
       const { data, error } = await supabase
         .from('settings')
         .upsert(
-          { user_id: user.id, key, value: value as any },
+          withOrg({ user_id: user.id, key, value: value as any }, selectedOrganizationId),
           { onConflict: 'user_id,key' }
         )
         .select()
@@ -460,6 +464,7 @@ export function useGeneralSettings() {
 export function useUpdateGeneralSetting() {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({ key, value }: { key: string; value: IndividualSettingValue; label?: string }) => {
@@ -468,7 +473,7 @@ export function useUpdateGeneralSetting() {
       const { data, error } = await supabase
         .from('settings')
         .upsert(
-          { user_id: user.id, key, value: value as any },
+          withOrg({ user_id: user.id, key, value: value as any }, selectedOrganizationId),
           { onConflict: 'user_id,key' }
         )
         .select()

@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1334,
-  "soFileDocBangFs": 299,
-  "tongLoiGoi": 662,
+  "tongSoFileTest": 1335,
+  "soFileDocBangFs": 300,
+  "tongLoiGoi": 663,
   "khongPhanLoaiDuoc": 302,
   "theoLoai": {
     "ma-nguon": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 104,
+      "soFile": 105,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -1574,6 +1574,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/chanNullOrgKhoaDauCongTyMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/chuCongTyDocSoQuyMigration.test.ts",

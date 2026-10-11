@@ -7,6 +7,8 @@ import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { LeadActivityType } from "@/lib/leadHelpers";
 import { friendlyError } from '@/lib/friendlyError';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 
 export interface LeadActivity {
   id: string;
@@ -69,6 +71,7 @@ export const useLeadActivities = (leadId?: string) => {
 // Create lead activity
 export const useCreateLeadActivity = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (data: CreateLeadActivityData) => {
@@ -78,11 +81,11 @@ export const useCreateLeadActivity = () => {
       return persistentFinancialWorkflow('lead-activity-create',{scope:'actor'}).run(data.lead_id,'thêm hoạt động khách hẹn',async()=>{
       const { data: activity, error } = await supabase
         .from("lead_activities")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
           performed_by: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 
@@ -136,12 +139,13 @@ export const useDeleteLeadActivity = () => {
 export const logLeadStatusChange = async (
   leadId: string,
   oldStatus: string,
-  newStatus: string
+  newStatus: string,
+  organizationId: string | null | undefined
 ) => {
   const user = await getSessionUser();
   if (!user) return;
 
-  await supabase.from("lead_activities").insert({
+  await supabase.from("lead_activities").insert(withOrg({
     lead_id: leadId,
     user_id: user.id,
     activity_type: "STATUS_CHANGE",
@@ -150,5 +154,5 @@ export const logLeadStatusChange = async (
     new_value: { status: newStatus },
     performed_by: user.id,
     completed_at: new Date().toISOString(),
-  });
+  }, organizationId));
 };

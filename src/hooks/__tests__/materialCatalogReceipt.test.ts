@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const io=vi.hoisted(()=>({from:vi.fn()}));vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));vi.mock('@tanstack/react-query',()=>({useMutation:(v:unknown)=>v,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
+const io=vi.hoisted(()=>({from:vi.fn()}));vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));vi.mock('@/integrations/supabase/client',()=>({supabase:{from:io.from}}));vi.mock('@tanstack/react-query',()=>({useMutation:(v:unknown)=>v,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
 import {useCreateMaterial,useUpdateMaterial} from '../useMaterials';
 import {FinancialWorkflowError} from '@/lib/financialWorkflow';
 beforeEach(()=>vi.resetAllMocks());

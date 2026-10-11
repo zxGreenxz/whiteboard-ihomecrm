@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUserId } from '@/lib/authSession';
 import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
 import { requireAccountWriteReceipt } from '@/lib/accountSettingsWriteReceipt';
+import { withOrg } from '@/lib/orgPayload';
 
 export class PushOperationError extends FinancialWorkflowError {
   constructor(message: string, outcome: 'partial' | 'unknown', cause: unknown,
@@ -154,13 +155,13 @@ function extractKeys(sub: PushSubscription): { p256dh: string; auth: string } {
   };
 }
 
-async function saveSubscription(sub: PushSubscription, actorId: string): Promise<void> {
+async function saveSubscription(sub: PushSubscription, actorId: string, organizationId: string | null | undefined): Promise<void> {
   if (await getSessionUserId() !== actorId) throw { code: 'PGRST301', message: 'User session changed' };
   const { p256dh, auth } = extractKeys(sub);
   if (!sub.endpoint || !p256dh || !auth) throw new TypeError('Malformed browser push subscription');
   const expected = { user_id: actorId, endpoint: sub.endpoint, p256dh, auth, is_active: true };
   const { data, error } = await supabase.from('push_subscriptions').upsert(
-    { ...expected, user_agent: navigator.userAgent }, { onConflict: 'endpoint' },
+    withOrg({ ...expected, user_agent: navigator.userAgent }, organizationId), { onConflict: 'endpoint' },
   ).select('id,user_id,endpoint,p256dh,auth,is_active').single();
   if (error) throw error;
   requireAccountWriteReceipt(data, expected);
@@ -177,7 +178,7 @@ async function unsubscribeConfirmed(sub: PushSubscription, operation: 'enable' |
 }
 
 /** Permission -> native subscription -> exact own server receipt; no provider delivery claim. */
-export async function enablePush(): Promise<NotificationPermission | 'unsupported'> {
+export async function enablePush(organizationId: string | null | undefined): Promise<NotificationPermission | 'unsupported'> {
   if (!isPushSupported()) return 'unsupported';
   const actorId = await getSessionUserId();
   if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
@@ -197,7 +198,7 @@ export async function enablePush(): Promise<NotificationPermission | 'unsupporte
   try {
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
     if (!sub || !sameApplicationServerKey(sub, wantKey)) throw new TypeError('Unconfirmed application server key');
-    await saveSubscription(sub, actorId);
+    await saveSubscription(sub, actorId, organizationId);
   } catch (cause) {
     throw new PushOperationError(sub
       ? 'Trình duyệt đã tạo đăng ký; chưa xác nhận lưu đúng đăng ký trên máy chủ. Giữ trạng thái chưa xác định và kiểm tra lại.'

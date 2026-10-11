@@ -8,6 +8,8 @@ import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { nullIfNotFound } from "@/hooks/readErrors";
 import { friendlyError } from "@/lib/friendlyError";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 export class AreaMembershipPartialError extends Error {
   constructor(public readonly areaId: string, public readonly removedBuildingIds: readonly string[], public readonly cause: unknown) {
@@ -77,11 +79,12 @@ export const useArea = (id: string) => {
 // Create new area
 export const useCreateArea = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard=persistentFinancialWorkflow('area-write',{scope:'actor'});
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (area: Omit<AreaInsert, "user_id">) => {
+    mutationFn: async (area: Omit<AreaInsert, "user_id" | "organization_id">) => {
       const user = await getSessionUser();
 
       if (!user) {
@@ -91,10 +94,10 @@ export const useCreateArea = () => {
       return guard.run('new','tạo khu vực',async(progress)=>{
       const { data, error } = await supabase
         .from("areas")
-        .insert({
+        .insert(withOrg({
           ...area,
           user_id: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 
@@ -161,6 +164,7 @@ export const useUpdateArea = () => {
 // 1 toà có thể thuộc nhiều khu, gán/gỡ chỉ chạm join rows của khu đang sửa.
 export const useAssignBuildingsToArea = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -198,7 +202,7 @@ export const useAssignBuildingsToArea = () => {
         }
         const missing=[...new Set(toAddIds)].filter(id=>removed.includes(id)||!current.some(row=>row.building_id===id));
         if(toAddIds.length){
-          const {data:rows,error}=await supabase.from('area_buildings').upsert(toAddIds.map(building_id=>({area_id:areaId,building_id,user_id:user.id})),{onConflict:'area_id,building_id',ignoreDuplicates:true}).select('area_id,building_id');
+          const {data:rows,error}=await supabase.from('area_buildings').upsert(withOrgAll(toAddIds.map(building_id=>({area_id:areaId,building_id,user_id:user.id})),selectedOrganizationId),{onConflict:'area_id,building_id',ignoreDuplicates:true}).select('area_id,building_id');
           if(error)throw error;confirmPairs(rows,missing,'Đã gán tòa vào khu vực');
         }
       });

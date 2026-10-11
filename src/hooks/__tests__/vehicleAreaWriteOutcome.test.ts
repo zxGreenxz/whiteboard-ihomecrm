@@ -25,7 +25,7 @@ it('area main removal precedes addition; partial keeps removed pair and cannot r
 it('area writer retains main removal/addition overlap and original projection',async()=>{
  const read=chain([{area_id:'a1',building_id:'b1'}]),deleted=chain([{area_id:'a1',building_id:'b1'}]),added=chain([{area_id:'a1',building_id:'b1'}]);io.from.mockReturnValueOnce(read).mockReturnValueOnce(deleted).mockReturnValue(added);
  await mutation(useAssignBuildingsToArea).mutationFn({areaId:'a1',toAddIds:['b1','b1'],toRemoveIds:['b1']});
- expect(deleted.in).toHaveBeenCalledWith('building_id',['b1']);expect(added.upsert).toHaveBeenCalledWith([{area_id:'a1',building_id:'b1',user_id:'actor'},{area_id:'a1',building_id:'b1',user_id:'actor'}],{onConflict:'area_id,building_id',ignoreDuplicates:true});
+ expect(deleted.in).toHaveBeenCalledWith('building_id',['b1']);expect(added.upsert).toHaveBeenCalledWith([{area_id:'a1',building_id:'b1',user_id:'actor',organization_id:'o1'},{area_id:'a1',building_id:'b1',user_id:'actor',organization_id:'o1'}],{onConflict:'area_id,building_id',ignoreDuplicates:true});
  if(!vi.isMockFunction(deleted.delete)||!vi.isMockFunction(added.upsert))throw new Error('Expected writer mocks');expect(deleted.delete.mock.invocationCallOrder[0]).toBeLessThan(added.upsert.mock.invocationCallOrder[0]);
 });
 

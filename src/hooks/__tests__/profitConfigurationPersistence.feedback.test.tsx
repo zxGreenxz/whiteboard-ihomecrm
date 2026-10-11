@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ reply: vi.fn(), success: vi.fn(), calls: [] as {table: string; operation: string; patch: unknown}[] }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'actor-a' }) }));
 vi.mock('sonner', () => ({ toast: { success: m.success, info: vi.fn(), error: vi.fn() } }));
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'org-a' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: (table: string) => {
  let operation = 'read'; let patch: unknown; const builder = { select: () => builder, eq: () => builder, in: () => builder, update: (v: unknown) => { operation = 'update'; patch = v; return builder; }, insert: (v: unknown) => { operation = 'insert'; patch = v; return builder; }, upsert: (v: unknown) => { operation = 'upsert'; patch = v; return builder; }, delete: () => { operation = 'delete'; return builder; },
  single: async () => { m.calls.push({ table, operation, patch }); return m.reply(table, operation, patch); }, then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve().then(() => { m.calls.push({ table, operation, patch }); return m.reply(table, operation, patch); }).then(resolve, reject) }; return builder;

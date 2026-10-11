@@ -10,6 +10,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import type { SalaryForm, SalaryBasis } from "@/lib/managementSalary";
 
 // --- Types ---
@@ -133,6 +135,7 @@ export const useManagerSalaries = () => {
 // nếu bước sau lỗi, giữ mã/bước đã xác nhận và chặn chạy lại toàn bộ.
 export const useSaveManagerWithSalaries = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const workflow = useRef(persistentFinancialWorkflow('profit-manager-save'));
   return useMutation({
     meta: { handlesFeedback: true },
@@ -148,6 +151,8 @@ export const useSaveManagerWithSalaries = () => {
 
       // 1) Upsert quản lý
       let managerId = input.id;
+      // Công ty của hồ sơ quản lý vừa ghi/sửa — quy tắc lương và liên kết nhà dùng đúng công ty này.
+      let managerOrg: string | null | undefined;
       if (input.id) {
         const patch: any = {
           name: input.values.name,
@@ -162,22 +167,24 @@ export const useSaveManagerWithSalaries = () => {
           .select('*');
         if (error) throw error;
         requireProfitRows(data, [{ ...patch, id: input.id }]);
+        managerOrg = (data as unknown as Array<{ organization_id?: string | null }> | null)?.[0]?.organization_id;
       } else {
         const { data, error } = await supabase
           .from("profit_managers")
-          .insert({
+          .insert(withOrg({
             user_id: uid,
             name: input.values.name,
             note: input.values.note ?? null,
             is_active: input.values.is_active ?? true,
             auth_user_id: input.values.auth_user_id ?? null,
-          })
-          .select("id")
+          }, selectedOrganizationId))
+          .select("id, organization_id")
           .single();
         if (error) {
           throw error;
         }
         managerId = requireAccountWriteReceipt(data, {}).id as string;
+        managerOrg = (data as { organization_id?: string | null } | null)?.organization_id;
       }
       if (!managerId) throw new TypeError("Unconfirmed manager result");
       progress.completed.push({id:managerId,label:'Đã lưu hồ sơ quản lý'});
@@ -203,7 +210,7 @@ export const useSaveManagerWithSalaries = () => {
         if (buildings.length === 0) throw new Error("Quy tắc chưa chọn nhà");
         const { data: ruleRow, error: rErr } = await supabase
           .from("profit_manager_salaries" as any)
-          .insert({
+          .insert(withOrg({
             user_id: uid,
             manager_id: managerId,
             label: rule.label?.trim() || null,
@@ -212,7 +219,7 @@ export const useSaveManagerWithSalaries = () => {
             amount: rule.form === "FIXED" ? Math.max(0, rule.amount || 0) : 0,
             percent: rule.form === "PERCENT" ? Math.max(0, Math.min(100, rule.percent || 0)) : 0,
             is_active: true,
-          })
+          }, managerOrg))
           .select("id")
           .single();
         if (rErr) throw rErr;
@@ -223,7 +230,7 @@ export const useSaveManagerWithSalaries = () => {
         const links = buildings.map((building_id) => ({ user_id: uid, salary_id: salaryId, building_id }));
         const { data: savedLinks, error: bErr } = await supabase
           .from('profit_manager_salary_buildings' as any)
-          .insert(links)
+          .insert(withOrgAll(links, managerOrg))
           .select('id, user_id, salary_id, building_id');
         if (bErr) throw bErr;
         const linkRows = requireProfitRows(savedLinks);

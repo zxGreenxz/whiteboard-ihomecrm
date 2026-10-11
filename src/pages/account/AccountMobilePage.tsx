@@ -17,6 +17,7 @@ import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/pu
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { testMediaSource } from '@/lib/storage/testMedia';
 
 const APP_VERSION = "5.2.0";
@@ -42,6 +43,7 @@ export default function AccountMobilePage() {
   const { data: profile } = profileQuery;
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
+  const { selectedOrganizationId } = useOrganization();
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
   const changePassword = useChangePassword();
@@ -138,7 +140,7 @@ export default function AccountMobilePage() {
     setPushError("");
     try {
       if (next) {
-        const res = await enablePush();
+        const res = await enablePush(selectedOrganizationId);
         if (res === "granted") {
           setPushOn(true);
           toast.success("Đã bật thông báo đẩy trên thiết bị này");

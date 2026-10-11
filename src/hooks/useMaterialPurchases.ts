@@ -7,6 +7,8 @@ import { FinancialWorkflowError, isConfirmedFinancialRejection } from '@/lib/fin
 import { confirmedRecordBatch } from '@/lib/recordWriteOutcome';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { confirmedMaterialVoucherId, materialVoucherFailureMessage } from '@/lib/materialVoucherOutcome';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg, withOrgAll } from '@/lib/orgPayload';
 
 export interface MaterialPurchaseWithItems extends MaterialPurchase {
   supplier: { id: string; name: string } | null;
@@ -33,19 +35,21 @@ export const useMaterialPurchases = (filters: { from?: string; to?: string } = {
 });
 export const useCreateMaterialPurchase = () => {
   const qc = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
   const guard = persistentFinancialWorkflow('material-purchase');
   const refresh = () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['materials'] }); };
   return useMutation({
     mutationFn: async (input: PurchaseInput) => {
       return guard.run('create', 'tạo phiếu nhập', async progress => {
-        const { data: header, error } = await supabase.from('material_purchases' as any).insert({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).select().single();
+        const { data: header, error } = await supabase.from('material_purchases' as any).insert(withOrg({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }, selectedOrganizationId)).select().single();
         if (error) throw error;
         const id = confirmedMaterialVoucherId(header);
         progress.completed.push({ id, label: `Phiếu nhập ID ${id} đã tạo` });
         if (input.items.length > 0) {
           progress.stage = 'lưu các dòng vật tư';
           const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
-          const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(lines).select('id');
+          const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
+          const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
           if (lineError) {
             progress.stage = 'gỡ phiếu tạm sau lỗi lưu dòng vật tư';
             const { data: removedHeader, error: cleanupError } = await supabase.from('material_purchases' as any).delete().eq('id', id).select('id').single();
@@ -76,7 +80,7 @@ export const useUpdateMaterialPurchase = () => {
   return useMutation({
     mutationFn: async ({ id, input }: { id: string; input: PurchaseInput }) => {
       return guard.run(`update:${id}`, 'cập nhật phiếu nhập', async progress => {
-        const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id').single();
+        const { data: header, error } = await supabase.from('material_purchases' as any).update({ purchase_date: input.purchase_date, supplier_id: input.supplier_id, notes: input.notes }).eq('id', id).select('id, organization_id').single();
         if (error) throw error;
         confirmedMaterialVoucherId(header, id);
         progress.completed.push({ id, label: `Thông tin phiếu nhập ID ${id} đã cập nhật` });
@@ -88,7 +92,8 @@ export const useUpdateMaterialPurchase = () => {
         if (input.items.length > 0) {
           progress.stage = 'lưu các dòng vật tư mới';
           const lines = input.items.map(row => ({ purchase_id: id, material_id: row.material_id, quantity: row.quantity, unit_price: row.unit_price }));
-          const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(lines).select('id');
+          const headerOrg = (header as unknown as { organization_id?: string | null } | null)?.organization_id;
+          const { data, error: lineError } = await supabase.from('material_purchase_items' as any).insert(withOrgAll(lines, headerOrg)).select('id');
           if (lineError) throw lineError;
           const lineIds = confirmedRecordBatch(data, input.items.length, 'lưu dòng phiếu nhập mới');
           progress.completed.push(...lineIds.map(lineId => ({ id: lineId, label: 'Dòng phiếu nhập mới đã lưu' })));

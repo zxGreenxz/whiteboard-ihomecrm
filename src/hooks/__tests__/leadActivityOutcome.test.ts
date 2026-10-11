@@ -2,6 +2,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const io=vi.hoisted(()=>({from:vi.fn()}));
 vi.mock('@tanstack/react-query',()=>({useMutation:(config:unknown)=>config,useQuery:(config:unknown)=>config,useQueryClient:()=>({invalidateQueries:vi.fn()})}));
+vi.mock('@/contexts/OrganizationContext',()=>({useOrganization:()=>({selectedOrganizationId:'org-a'})}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:io}));
 vi.mock('@/lib/authSession',()=>({getSessionUser:async()=>({id:'actor'})}));
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn()}}));

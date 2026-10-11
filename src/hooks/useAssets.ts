@@ -378,7 +378,7 @@ export const useCreateAssetHandover = () => {
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: AssetHandoverInsert) => {
+    mutationFn: async (data: Omit<AssetHandoverInsert, "organization_id">) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -463,7 +463,7 @@ export const useCreateAssetMovement = () => {
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: AssetMovementInsert) => {
+    mutationFn: async (data: Omit<AssetMovementInsert, "organization_id">) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -545,7 +545,7 @@ export const useCreateAssetMaintenance = () => {
 
   return useMutation({
     meta:{handlesFeedback:true},
-    mutationFn: async (data: AssetMaintenanceInsert) => {
+    mutationFn: async (data: Omit<AssetMaintenanceInsert, "organization_id">) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 

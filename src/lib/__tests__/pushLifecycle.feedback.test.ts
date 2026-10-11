@@ -40,7 +40,7 @@ describe('push lifecycle truthful receipts',()=>{
  it('enable registration failure does not replace it with another ready failure',async()=>{
   const failure=new Error('PRIVATE_SW_ERROR');io.getReg.mockRejectedValue(failure);
   Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{getRegistration:io.getReg,register:io.register,ready:Promise.resolve(registration)}});
-  await expect(enablePush()).rejects.toBe(failure);
+  await expect(enablePush('org-a')).rejects.toBe(failure);
   expect(io.db).not.toHaveBeenCalled();
  });
  it('a browser without a worker returns no existing subscription without awaiting ready',async()=>{
@@ -51,7 +51,7 @@ describe('push lifecycle truthful receipts',()=>{
  it('worker activation waiting is bounded and never claims enabled',async()=>{
   vi.useFakeTimers();registration={active:null,pushManager:{getSubscription:io.getSub,subscribe:io.subscribe}} as unknown as ServiceWorkerRegistration;
   Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{getRegistration:io.getReg,register:io.register,ready:new Promise(()=>{})}});
-  const assertion=expect(enablePush()).rejects.toBeInstanceOf(Error);
+  const assertion=expect(enablePush('org-a')).rejects.toBeInstanceOf(Error);
   await vi.advanceTimersByTimeAsync(10000);await assertion;
   expect(io.subscribe).not.toHaveBeenCalled();expect(io.db).not.toHaveBeenCalled();
  });
@@ -59,29 +59,29 @@ describe('push lifecycle truthful receipts',()=>{
   current=subscription(new Uint8Array([9]).buffer);
   const failure=new Error('PRIVATE_UNSUBSCRIBE');
   if(mode==='throw')io.unsubscribe.mockRejectedValue(failure);else io.unsubscribe.mockResolvedValue(false);
-  await expect(enablePush()).rejects.toBeInstanceOf(FinancialWorkflowError);
+  await expect(enablePush('org-a')).rejects.toBeInstanceOf(FinancialWorkflowError);
   expect(io.subscribe).not.toHaveBeenCalled();expect(io.db).not.toHaveBeenCalled();
  });
  it('does not save a replacement subscription that still has the wrong key',async()=>{
   current=null;io.subscribe.mockResolvedValue(subscription(new Uint8Array([9]).buffer));
-  await expect(enablePush()).rejects.toBeInstanceOf(FinancialWorkflowError);
+  await expect(enablePush('org-a')).rejects.toBeInstanceOf(FinancialWorkflowError);
   expect(io.db).not.toHaveBeenCalled();
  });
  it('known rotation uses the unchanged configured key and only then persists the matching subscription',async()=>{
   current=subscription(new Uint8Array([9]).buffer);
-  await expect(enablePush()).resolves.toBe('granted');
+  await expect(enablePush('org-a')).resolves.toBe('granted');
   expect(io.unsubscribe).toHaveBeenCalledOnce();expect(io.subscribe).toHaveBeenCalledOnce();
   expect(new Uint8Array(io.subscribe.mock.calls[0][0].applicationServerKey)).toEqual(new Uint8Array(keyBytes()));
-  expect(io.db).toHaveBeenCalledWith(expect.objectContaining({mode:'upsert'}));
+  expect(io.db).toHaveBeenCalledWith(expect.objectContaining({mode:'upsert',input:expect.objectContaining({organization_id:'org-a'})}));
  });
  it('browser subscribed but database save fails is partial with original cause',async()=>{
   current=null;const failure={code:'42501',message:'PRIVATE_DB_ERROR'};io.db.mockResolvedValue({data:null,error:failure});
-  await expect(enablePush()).rejects.toMatchObject({outcome:'partial',cause:failure});
+  await expect(enablePush('org-a')).rejects.toMatchObject({outcome:'partial',cause:failure});
   expect(io.subscribe).toHaveBeenCalledOnce();
  });
  it.each([null,{id:'device-a',user_id:'wrong'},{id:'device-a',is_active:false}])('missing or wrong save receipt %j cannot report enabled',async data=>{
   io.db.mockResolvedValue({data,error:null});
-  await expect(enablePush()).rejects.toMatchObject({outcome:'partial'});
+  await expect(enablePush('org-a')).rejects.toMatchObject({outcome:'partial'});
  });
  it.each(['false','throw'])('disable never deletes server registration after failed native unsubscribe %s',async mode=>{
   if(mode==='false')io.unsubscribe.mockResolvedValue(false);else io.unsubscribe.mockRejectedValue(new Error('PRIVATE_UNSUBSCRIBE'));

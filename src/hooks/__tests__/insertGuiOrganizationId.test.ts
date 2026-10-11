@@ -111,6 +111,10 @@ import { useCreateJob } from "../useJobs";
 import { useCreateLead } from "../useLeads";
 import { useBulkCreateMeterReadings, useCreateMeterReading } from "../useMeterReadings";
 import { useCreateMeter } from "../useMeters";
+import { useCreateMaterial } from "../useMaterials";
+import { useCreateMaterialPurchase } from "../useMaterialPurchases";
+import { useCreateHotline } from "../useHotlines";
+import { useCreateJobGroup } from "../useJobGroups";
 import { useCreatePayment } from "../usePayments";
 import { useBulkCreateRooms, useCreateRoom } from "../useRooms";
 import { useCreateService, useUpdateService } from "../useServices";
@@ -317,6 +321,46 @@ describe("hook tạo một dòng", () => {
   it("useCreateVehicle → vehicles", async () => {
     await run(useCreateVehicle, { vehicle_type: "MOTORBIKE", license_plate: "59A1-00002" });
     expectOrg("vehicles");
+  });
+});
+
+describe("migration chặn NULL org 11/10/2026 — hook ghi thẳng", () => {
+  it("useCreateMaterial → materials", async () => {
+    await run(useCreateMaterial, { name: "Ống nước", unit: "cái", reorder_level: 2 });
+    expectOrg("materials");
+  });
+
+  it("useCreateHotline → hotlines", async () => {
+    await run(useCreateHotline, { name: "Hotline A", phone: "0900000009" });
+    expectOrg("hotlines");
+  });
+
+  it("useCreateJobGroup → job_groups", async () => {
+    io.single.job_groups = { id: "jg-1", name: "Điện nước", user_id: "user-1", organization_id: ORG };
+    await run(useCreateJobGroup, "Điện nước");
+    expectOrg("job_groups");
+  });
+
+  it("useCreateMaterialPurchase: dòng phiếu nhập mang org của HEADER vừa ghi, không phải công ty đang chọn", async () => {
+    const HEADER_ORG = "dddd0000-0000-4000-8000-000000000002";
+    io.single.material_purchases = { id: "mp-1", organization_id: HEADER_ORG };
+    io.rows.material_purchase_items = [{ id: "line-1" }];
+    await run(useCreateMaterialPurchase, {
+      purchase_date: "2026-10-11", supplier_id: null, notes: null,
+      items: [{ material_id: "m1", quantity: 2, unit_price: 100 }],
+    });
+    expect(insertsOf("material_purchases")[0]?.payload).toEqual(expect.objectContaining({ organization_id: ORG }));
+    expect(insertsOf("material_purchase_items")[0]?.payload).toEqual([
+      expect.objectContaining({ purchase_id: "mp-1", organization_id: HEADER_ORG }),
+    ]);
+  });
+
+  it("chưa chọn công ty ⇒ ném 'Chưa chọn công ty' và KHÔNG insert gì", async () => {
+    io.org = null;
+    await expect(run(useCreateHotline, { name: "Hotline A", phone: "0900000009" })).rejects.toThrow("Chưa chọn công ty");
+    await expect(run(useCreateMaterial, { name: "Ống nước", unit: "cái", reorder_level: 2 })).rejects.toThrow("Chưa chọn công ty");
+    await expect(run(useCreateJobGroup, "Điện nước")).rejects.toThrow("Chưa chọn công ty");
+    expect(io.inserts).toEqual([]);
   });
 });
 
