@@ -218,6 +218,11 @@
       "kyVong": "dung-vi-moi-truong",
       "thongDiep": "extension \"pg_cron\" is not available",
       "why": "Đo trực tiếp Restore Drill run 36378698513, job 108789731987, candidate 73d0fdd3: image postgres:17.6 trần không có native extension pg_cron của Supabase nên dừng ngay CREATE EXTENSION đầu file. Không giả cron/Vault hoặc bỏ guard để replay xanh; hai private helper và lịch P5 không được dựng lại bởi drill local này. Kiểm riêng trên native TEST hzulujxgonszuleqticb trong ROLLBACK, migration SHA256 9bd7d15828e87e05cdd7eac55caee4badf4b36ff9404b1ac9fc474e5d667ceb3: apply hai lần, marker TEST chặn credential/dispatch trước Vault và HTTP, ACL/owner/search_path/volatility đúng, lịch hiện hữu giữ nguyên. Bằng chứng TEST không thay thế nghiệm thu lịch/JWT production trong lane phát hành sau SHA review và backup. Entry chỉ nhận đúng lỗi nền tảng đã đo; lỗi khác hoặc replay sạch đều phải đỏ."
+    },
+    "20261010160612_room_sale_status_note.sql": {
+      "kyVong": "dung-vi-moi-truong",
+      "thongDiep": "ACL hàm mở quá rộng cho anon",
+      "why": "Cùng loại entry 20260831162000: selfcheck cuối file đòi anon KHÔNG chạy được public.get_my_available_rooms() — hàm ra đời trước cutoff (20260624000000, nằm trong baseline) mà file này chỉ CREATE OR REPLACE (giữ nguyên ACL sẵn có), không đặt ACL. Trên bản dựng lại, baseline chụp --no-acl và platform-shim đặt default privileges GRANT ALL ON FUNCTIONS TO anon, nên hàm mang EXECUTE cho anon và selfcheck dừng đúng câu này — artifact môi trường diễn tập. Hàm trigger mới rooms_clear_sale_status_note thì file tự REVOKE FROM PUBLIC, anon nên không dính. Đọc từ log Restore Drill thật run 38071079422 (PR #153, head 49efe0f0): 'psql:<stdin>:247: ERROR: ACL hàm mở quá rộng cho anon'. Diễn tập chạy psql -f tự commit từng câu nên cột sale_status_note/sale_status_note_key, CHECK, trigger và thân get_my_available_rooms mới ĐÃ được tạo trước khối selfcheck — không mất object. Production apply sạch 10/10/2026 qua lane (backup ihomecrm-full-2026-10-10T16-58-47-965Z, digest 38d06c29…); đọc catalog prod sau apply: anon KHÔNG có EXECUTE get_my_available_rooms, authenticated có. File đã áp nên bất biến — khai kỳ vọng thay vì sửa selfcheck."
     }
   }
 }
