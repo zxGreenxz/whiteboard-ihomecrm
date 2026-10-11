@@ -60,6 +60,9 @@ export interface ZaloCard {
 }
 
 export interface ZaloMessage {
+  /** UID từ Zalo; không dùng tên hiển thị để nhận diện/gom người gửi. */
+  senderId?: string;
+  sender?: { id: string; name: string; avatarUrl?: string };
   /** id dòng DB (để thả reaction / thu hồi). Tin lạc quan chưa có id. */
   id?: string;
   /** 'sys' = hệ thống; media theo loại; bỏ trống = text */
@@ -103,6 +106,7 @@ export interface ZaloLabel {
 
 export interface ZaloConversation {
   id: string;
+  peerUid?: string | null;
   accountId?: string | null;
   labelIds?: number[];
   name: string;

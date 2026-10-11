@@ -15,6 +15,10 @@ const dong = (over: Record<string, unknown>) => ({
 });
 
 describe('mapMsg — tin dạng thẻ', () => {
+  it('giữ UID người gửi từ JSON projection, không cần tải toàn bộ zalo_raw', () => {
+    expect(mapMsg(dong({ sender_uid: 'member-42' })).senderId).toBe('member-42');
+    expect(mapMsg(dong({ sender_uid: null })).senderId).toBeUndefined();
+  });
   it('tin thẻ cũ chỉ có tên hàm Zalo thì hiện câu đọc được, không có thẻ', () => {
     const m = mapMsg(dong({ body: 'sendBubbleMessage' }));
     expect(m.text).toBe(CHU_TIN_THE_CU);

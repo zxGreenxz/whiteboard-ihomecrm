@@ -27,8 +27,8 @@ import type {
 // động ở đây tồn tại từ trước ratchet rpc-cast — KHÔNG thêm cast mới ngoài dòng này).
 const db = supabase as any;
 
-const CONV_COLS = 'id, account_id, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner';
-const MSG_COLS = 'id, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
+const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner';
+const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
 const CONV_LIMIT = 5000;
 const MSG_LIMIT = 1000;
 
@@ -62,6 +62,7 @@ function initialsFrom(name: string): string {
 function mapConv(r: any): ZaloConversation {
   return {
     id: r.id,
+    peerUid: r.peer_zalo_uid,
     accountId: r.account_id,
     labelIds: Array.isArray(r.label_ids) ? r.label_ids.map(Number) : [],
     name: r.peer_name,
@@ -108,6 +109,7 @@ export function mapMsg(r: any): ZaloMessage {
     : (r.body && String(r.body).trim()) ? r.body : (isMedia ? undefined : '[Tin nhắn]');
   return {
     id: r.id,
+    senderId: typeof r.sender_uid === 'string' && r.sender_uid ? r.sender_uid : undefined,
     type,
     dir: r.direction,
     // Tin chữ: chuỗi máy kiểu "sendBubbleMessage" (tin thẻ ghi trước 10/2026) thành câu đọc được.
