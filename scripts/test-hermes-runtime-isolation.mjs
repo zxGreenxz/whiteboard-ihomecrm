@@ -4,10 +4,11 @@ import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { assertEgressProof, assertFixtureInspection, assertImageProvenance, assertInputsUnchanged, assertInside, assertIsolatedNetwork,
-  assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTool, DNS_OPTIONS,
+  assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTool, controlBridgeAddresses, DNS_OPTIONS,
   HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, isolatedNetworkArgs, RESULT_PREFIX, runtimeArgs,
   runtimeUser, sourceHashes } from '../infra/hermes-runtime/runtime-contract.mjs';
 import { ProfileLeaseStore } from '../infra/hermes-runtime/profile-lease.mjs';
@@ -159,9 +160,11 @@ try {
     await command(['network', 'create', '--internal', '--ipv6', '--subnet', `${ula}:3::/64`,
       '--label', 'ihome.fixture=hermes-p1', controlNetwork]); createdNetworks.push(controlNetwork);
     const [controlInspection] = JSON.parse(await command(['network', 'inspect', controlNetwork]));
-    const gateway4 = controlInspection.IPAM.Config.find(value => value.Subnet.includes('.'))?.Gateway;
-    const gateway6 = controlInspection.IPAM.Config.find(value => value.Subnet.includes(':'))?.Gateway;
-    assert.ok(gateway4 && gateway6, 'Both live host gateways are required');
+    receipt.egressControlNetwork = { id: controlInspection.Id, driver: controlInspection.Driver,
+      internal: controlInspection.Internal, options: controlInspection.Options, ipam: controlInspection.IPAM };
+    const bridge = controlBridgeAddresses(controlInspection, networkInterfaces());
+    receipt.egressControlBridge = bridge;
+    const gateway4 = bridge.ipv4, gateway6 = bridge.ipv6;
     hostCanary = await startHostCanary({ ipv4: gateway4, ipv6: gateway6 });
     const canaryOutput = assertInside(out, path.join(out, 'canary-output')); await mkdir(canaryOutput);
     const canaryName = `${id}-canary`, dnsName = `canary.${id}.test`;
