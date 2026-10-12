@@ -2,7 +2,7 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** P0 đủ nội dung/focused evidence, delta mới chờ gate/review; P1 đang hiện thực broker/runtime/JWT TEST; P2–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
+**Trạng thái:** P0 có inventory/catalog và local gate; P1 có JWT TEST, MCP và AIAgent với dữ liệu giả; P2 đang xây nền credential/refresh và migration TEST. P3–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
@@ -351,7 +351,7 @@ Phụ thuộc: Sau khi chủ dự án chốt super plan. Chủ trì: Lead + QA.
 - [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI draft PR #165 tại head `386296cb` đã xanh. Delta inventory/catalog mới vẫn cần gate/review riêng.
 - [x] P0.05 Ghi baseline câu hỏi/nghiệp vụ, lỗi đã biết và phạm vi public projection gửi nhóm. Bộ B01–B10 bên dưới là tiêu chí cần kiểm, không phải kết quả đã đạt.
 
-Tiến độ 12/10/2026: P0 đã có đủ nội dung và focused evidence; delta mới chờ gate/review trước tích hợp. Inventory v2 có metadata từng mục, 47 page contracts, 6 safe controls; comparator TEST có 23 test bao gồm ca sai/mất dữ liệu. Sáu callsite RPC động được ghi rõ, không coi tên biến là hàm đã xác minh. P1 đang hiện thực broker và thử runtime; [STATUS.md](STATUS.md) giữ bằng chứng và phần chưa đạt.
+Tiến độ 12/10/2026: P0 có inventory v2, comparator TEST, review và local gate 47/47 tại commit `6ecdc399`; PR còn draft. Inventory có metadata từng mục, 47 page contracts, 6 safe controls; comparator có 23 test bao gồm ca sai/mất dữ liệu. Sáu callsite RPC động được ghi rõ, không coi tên biến là hàm đã xác minh. [STATUS.md](STATUS.md) giữ bằng chứng và phần chưa đạt.
 
 **Đầu ra:** Manifest chuyển đổi + baseline source/runtime + kế hoạch kiểm theo Contract.
 
@@ -387,7 +387,7 @@ Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 - [ ] P1.05 Chốt ADR auth, tool transport, network boundary, model/quota integration và phương án rollback.
 - [ ] P1.06 Chứng minh cách ly runtime/context/credential và bộ quota, audit, kill switch tối thiểu trước khi mở dữ liệu.
 
-Tiến độ 12/10/2026: broker có 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client của upstream ghim đã chạy 4/4 transport checks; chưa phải container AIAgent. Đã ghi [ADR P1](P1-ARCHITECTURE.md). Các ô P1 vẫn mở vì refresh/lưu bền, network isolation, model quota và context invalidation đầy đủ chưa đạt; container chuyển sang Linux CI do Docker local lỗi. Evidence và hash ở STATUS.
+Tiến độ 12/10/2026: broker 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client upstream ghim đạt 4/4 transport checks. CI tại `005e0d26` đã chạy AIAgent thật trong container với broker/model giả: 12/12 checks đạt. Digest image khớp, nhưng image thiếu revision label nên chưa xác minh provenance source commit. Các ô P1 vẫn mở vì mạng từng user, một owner profile, refresh/lưu bền, model quota và invalidation memory đầy đủ chưa đạt. [ADR P1](P1-ARCHITECTURE.md) và STATUS ghi giới hạn.
 
 **Đầu ra:** ADR có bằng chứng chạy thật và contract xác thực được duyệt kỹ thuật.
 
@@ -397,13 +397,15 @@ Tiến độ 12/10/2026: broker có 28/28 unit/HTTP; harness 11/11 và JWT TEST 
 
 ### P2 · Kết nối, quyền và quản trị vòng đời
 
-Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend.
+Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend. Có thể chuẩn bị code nền song song; không mở dữ liệu/nghiệm thu P2 khi các ranh giới P1 chưa đạt.
 
 - [ ] P2.01 Bổ sung connection, restrictions, trần org, channel binding và audit bằng forward migration.
 - [ ] P2.02 Triển khai cấp/rotate/expire/revoke credential và effective-permission API.
 - [ ] P2.03 Tái dùng PermissionPicker/ScopePicker cho hai nhóm Đọc và Thao tác; không sửa overrides của user.
 - [ ] P2.04 Chặn AI tự sửa grant/quyền; capability mới mặc định tắt; giới hạn quyền bật lại của user theo trần org.
 - [ ] P2.05 Tích hợp khóa thành viên, disconnect và policy invalidation; khóa org của user thường, chỉ cho superadmin chuyển context có xác thực.
+
+Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh (25/25 tests) và relay dùng lại model proxy CRM (15/15 tests). Review code nền không còn P1/P2; checkpoint gate đang hoàn thiện. Chưa sửa schema/apply DB, chưa nối durable store hoặc cấp kết nối sản phẩm. Không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
 
 **Đầu ra:** Cấu hình quyền trợ lý dùng được từ UI và được kiểm ở server.
 

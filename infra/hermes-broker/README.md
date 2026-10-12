@@ -31,3 +31,17 @@ node --test infra/hermes-broker/broker.test.mjs infra/hermes-broker/mcp-http.tes
 ```
 
 Các phép kiểm offline không chứng minh catalog/RLS live, Hermes upstream thật, isolation container hay triển khai production. Harness JWT TEST và runtime isolation do các lane riêng cung cấp bằng chứng.
+
+## Nền P2 chưa nối vào broker
+
+`session-crypto.mjs` mã hóa AES-256-GCM; AAD gắn assistant/user/org/session và phiên bản khóa. Khóa được cấp từ backend tin cậy, không đọc môi trường hoặc ghi đĩa trong module. Có kiểm envelope, giới hạn kích thước, rotation/rewrap và hủy bản sao khóa. Không truyền khóa hoặc ciphertext sang runtime Hermes.
+
+`refresh-manager.mjs` yêu cầu store tuyến tính hóa sáu thao tác acquire/markDispatched/commitRefresh/requireReconnect/release/revoke. Lease, fence và revision phải được bảo đảm bởi kho thật; mock test không thay cho transaction database. Phải ghi trạng thái dispatched trước khi gọi provider. Refresh không rõ kết quả không được dùng lại token cũ. Nếu commit có thể đã thành công nhưng không xác nhận được việc vô hiệu hóa, caller/store phải cách ly connection và dừng tác vụ cho đến khi đối soát; module đơn lẻ không bảo đảm phục hồi bền vững.
+
+`model-relay.mjs` là transport nội bộ đến `llm-proxy`, mặc định không cho model nào. Caller phải cung cấp context đã xác minh; module không có HTTP route hoặc quyền tự chọn actor/org. Chỉ nhận publishable key dạng `sb_publishable_`, không nhận service key hoặc anon JWT cũ. JWT user chỉ được dùng ở backend. Proxy hiện có giữ provider key, kiểm entitlement và tính usage; relay không tạo ngân sách khác. Request có giới hạn, không stream, không tự retry khi phản hồi mất; response được project và tool phải thuộc request đã gửi. Đây chưa phải bằng chứng quota đồng thời hoặc settlement đúng một lần của proxy.
+
+```powershell
+node --test infra/hermes-broker/session-crypto.test.mjs infra/hermes-broker/refresh-manager.test.mjs infra/hermes-broker/model-relay.test.mjs
+```
+
+Chưa có durable SQL store, refresh provider thật, model route tích hợp, UI kết nối hoặc business tool trong các module này.

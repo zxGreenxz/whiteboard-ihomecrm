@@ -141,6 +141,49 @@
       ]
     },
     {
+      "id": "migration-target-native",
+      "sourcePaths": [
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/capture-production-catalog.mjs",
+        "scripts/generate-migration-provenance.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/backup-luu-tru.test.mjs",
+        "scripts/__tests__/check-migration-provenance.test.mjs"
+      ]
+    },
+    {
+      "id": "migration-target-existing-contracts",
+      "sourcePaths": [
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/capture-production-catalog.mjs",
+        "scripts/generate-migration-provenance.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/apply-reviewed-migration.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-preflight.test.mjs",
+        "scripts/__tests__/generate-migration-provenance-scope.test.mjs",
+        "scripts/__tests__/provenance-bien-nhan.test.mjs"
+      ]
+    },
+    {
       "id": "money-and-schema-invariants",
       "profiles": [
         "schema",
@@ -500,6 +543,7 @@
         "infra/**",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",
@@ -805,6 +849,7 @@
       "includes": [
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",

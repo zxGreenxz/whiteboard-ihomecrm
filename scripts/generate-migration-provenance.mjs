@@ -24,12 +24,13 @@
 // 25-30 giờ và sẽ thành ký hình thức — lúc đó trường reviewedBy mất hết ý nghĩa.
 
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { lietKeTracked } from "./lib/git-scope.mjs";
-import { layPat } from "./lib/vault.mjs";
+import { PRODUCTION_REF, parseMigrationTargetArgs, resolveMigrationTarget, migrationTargetPaths,
+  assertMigrationArtifactTarget, verifyTestMigrationMarker } from './lib/migration-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,12 +50,6 @@ export function locSqlTrucTiep(paths, relPrefix) {
 }
 const MIGRATIONS_DIR = join(repoRoot, "supabase", "migrations");
 const ARCHIVE_DIR = join(repoRoot, "supabase", "migrations-archive");
-const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence");
-const OUT = join(repoRoot, "supabase", "migration-provenance.json");
-
-function readPat() {
-  return layPat({ bien: ["SUPABASE_PAT"] });
-}
 
 function projectRef() {
   try {
@@ -218,9 +213,11 @@ export function extractAddedColumns(sql) {
  * Khớp theo sha256, KHÔNG theo tên file: tên đổi thì bằng chứng vẫn đúng, còn
  * nội dung đổi thì bằng chứng phải mất hiệu lực — đó chính là điều ta muốn.
  */
-export function bienNhanTheoSha(receipts) {
+export function bienNhanTheoSha(receipts, target = { environment: 'prod', projectRef: PRODUCTION_REF }) {
   const m = new Map();
   for (const r of receipts) {
+    try { assertMigrationArtifactTarget(r, target); }
+    catch { continue; }
     if (r?.sha256 && r?.file) m.set(r.sha256, r);
   }
   return m;
@@ -323,12 +320,13 @@ export function classify(entry, { ledgerIndex, catalog, bienNhan = new Map() }) 
 }
 
 async function main(argv) {
-  const pat = readPat();
-  if (!pat) {
-    console.error("❌ Không tìm thấy PAT.");
-    return 1;
-  }
-  const ref = projectRef();
+  const target = await resolveMigrationTarget(parseMigrationTargetArgs(argv), { readProdRef: projectRef });
+  const { pat, projectRef: ref } = target;
+  const paths = migrationTargetPaths(target, repoRoot);
+  const out = paths.provenance;
+  if (target.environment === 'test') await verifyTestMigrationMarker(target, {
+    query: sql => runSql(sql, { pat, ref }),
+  });
 
   const ledgerRows = await runSql(
     "SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version",
@@ -417,13 +415,13 @@ async function main(argv) {
   const bienNhan = bienNhanTheoSha(
     (() => {
       try {
-        return readdirSync(EVIDENCE_DIR)
+        return readdirSync(paths.evidence)
           .filter((f) => f.endsWith(".json"))
-          .map((f) => JSON.parse(readFileSync(join(EVIDENCE_DIR, f), "utf8")));
+          .map((f) => JSON.parse(readFileSync(join(paths.evidence, f), "utf8")));
       } catch {
         return [];
       }
-    })(),
+    })(), target,
   );
   if (bienNhan.size > 0) console.log(`  ${bienNhan.size} biên nhận rollout dùng làm bằng chứng`);
 
@@ -460,6 +458,7 @@ async function main(argv) {
         "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
       generatedAt: new Date().toISOString(),
       projectRef: ref,
+      environment: target.environment,
       ledgerRows: ledgerRows.length,
       ledgerMaxVersion: ledgerRows.at(-1)?.version ?? null,
       counts,
@@ -486,8 +485,9 @@ async function main(argv) {
         "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file. Mọi file 'unknown' và mọi file đụng tiền/RLS/SECURITY DEFINER phải được xem 100%.",
       entries,
     };
-    writeFileSync(OUT, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    console.log(`✅ Đã ghi ${OUT.replace(repoRoot, ".")}`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    console.log(`✅ Đã ghi ${out.replace(repoRoot, ".")}`);
   } else {
     console.log("\nChạy với --write để ghi manifest.");
   }

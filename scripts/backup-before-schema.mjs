@@ -26,7 +26,9 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { docMatKhauPooler, layMatKhauDb } from "./lib/vault.mjs";
+import { docMatKhauPooler } from "./lib/vault.mjs";
+import { parseMigrationTargetArgs, resolveMigrationTarget, verifyTestMigrationMarker } from './lib/migration-target.mjs';
+import { runSql } from './capture-production-catalog.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
@@ -170,7 +172,8 @@ function parseArgs(argv) {
   return args;
 }
 
-function main(argv) {
+async function main(argv) {
+  const targetOptions = parseMigrationTargetArgs(argv);
   const args = parseArgs(argv);
 
   if (!args.reason) {
@@ -190,15 +193,17 @@ function main(argv) {
   // pass the already-authorized password through the process environment for
   // this one invocation; otherwise the shared vault helper finds the primary
   // checkout's vault. Never write the value to disk or stdout.
-  const password = layMatKhauDb();
-  if (!password) {
-    console.error("❌ Không tìm thấy password pooler (SUPABASE_DB_PASSWORD hoặc CLAUDE.local.md).");
-    return 1;
-  }
-
-  const ref = readProjectRef();
-  const user = `postgres.${ref}`;
-  const outDir = args.out ?? join(homedir(), "ihomecrm-backups");
+  const target = await resolveMigrationTarget(targetOptions, {
+    needsPat: targetOptions.environment === 'test', needsDatabase: true, readProdRef: readProjectRef,
+  });
+  if (target.environment === 'test') await verifyTestMigrationMarker(target, {
+    query: sql => runSql(sql, { pat: target.pat, ref: target.projectRef }),
+  });
+  const { projectRef: ref } = target;
+  const { user, password, host, port } = target.database;
+  // TEST retention can never delete production backups, even with --out.
+  const baseOutDir = args.out ?? join(homedir(), "ihomecrm-backups");
+  const outDir = target.environment === 'test' ? join(baseOutDir, 'test', ref) : baseOutDir;
   mkdirSync(outDir, { recursive: true });
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -208,12 +213,12 @@ function main(argv) {
   // PGPASSFILE tạm: password KHÔNG bao giờ lên command line (mọi tiến trình
   // trên máy đọc được danh sách process kèm tham số).
   const passFile = join(tmpdir(), `.pgpass-ihomecrm-${process.pid}`);
-  writeFileSync(passFile, pgPassLine(POOLER_HOST, POOLER_PORT, "postgres", user, password), {
+  writeFileSync(passFile, pgPassLine(host, port, "postgres", user, password), {
     encoding: "utf8",
     mode: 0o600,
   });
 
-  console.log(`Backup production → ${outFile}`);
+  console.log(`Backup ${target.environment} (${ref}) → ${outFile}`);
   console.log(`  lý do: ${args.reason}`);
   console.log(`  chế độ: ${kind}${args.schemaOnly ? " (KHÔNG có dữ liệu — không dùng làm đường lùi)" : ""}`);
 
@@ -231,7 +236,7 @@ function main(argv) {
   //
   // keepalives_idle=30: cứ 30 giây gửi một gói giữ nhịp khi đường im lặng.
   const uri =
-    `postgresql://${encodeURIComponent(user)}@${POOLER_HOST}:${POOLER_PORT}/postgres` +
+    `postgresql://${encodeURIComponent(user)}@${host}:${port}/postgres` +
     `?keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=6`;
 
   const dumpArgs = [
@@ -318,6 +323,7 @@ function main(argv) {
     kind,
     reason: args.reason,
     projectRef: ref,
+    environment: target.environment,
     createdAt: new Date().toISOString(),
     durationSeconds: Math.round((Date.now() - started) / 1000),
     bytes: stat.size,
@@ -364,5 +370,8 @@ function main(argv) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  process.exit(main(process.argv));
+  main(process.argv).then(code => { process.exitCode = code; }).catch(error => {
+    console.error(`❌ ${error.message}`);
+    process.exitCode = 1;
+  });
 }

@@ -32,7 +32,7 @@ Token opaque chỉ dùng với broker, được lưu dạng hash, gắn connecti
 
 ## Runtime ghim và cách ly
 
-Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. Image Linux amd64 đã quan sát trên registry: `nousresearch/hermes-agent@sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22`. Đọc registry chưa thay cho pull/run/kiểm label thực tế.
+Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. Image Linux amd64 `nousresearch/hermes-agent@sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22` đã pull/run trong CI tại `005e0d26`. Digest khớp nhưng image thiếu revision label; chưa chứng minh image đúng source commit. AIAgent đạt 12 checks tổng hợp, chưa nghiệm thu toàn bộ ranh giới P1.
 
 Mỗi assistant có runtime/home/credential riêng trên image dùng chung. Không mount home người vận hành, vault, Docker socket hoặc thư mục assistant khác. Dùng network riêng; chỉ broker và model gateway được duyệt có thể nhận lưu lượng. Một runtime owner giữ profile tại một thời điểm. Profile multiplexer/chia thư mục cùng process chưa được chấp nhận làm bằng chứng cách ly tenant.
 
@@ -43,6 +43,8 @@ Native memory được nạp đầu phiên; revoke/reset phải bỏ context đa
 ## Quota, test và rollout
 
 Fixture P1 dùng model giả, dữ liệu giả, không tính đó là bằng chứng model provider/quota sản phẩm. Lát đầu cần giới hạn request bytes, timeout, tool calls/concurrency, audit không chứa secret và kill switch. Integration model phải dùng chung ngân sách CRM (proxy hiện có hoặc adapter reservation/finalization đã kiểm), chưa chọn hai ngân sách riêng.
+
+Relay nội bộ P2 đã được viết để dùng lại `llm-proxy`, chưa nối HTTP route hoặc broker. Nó mặc định đóng model, giới hạn request/response, lọc phản hồi và không tự retry. Proxy hiện tại có reserve/finalize nhưng chưa chứng minh hard budget đồng thời hoặc exactly-once settlement; phải kiểm và hoàn thiện tại lớp dùng chung trước khi mở dữ liệu/model thật. Crypto/refresh cũng mới là primitive; chưa thay store RAM của P1.
 
 Ba lớp bằng chứng tách riêng:
 
