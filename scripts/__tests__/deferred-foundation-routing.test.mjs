@@ -9,7 +9,7 @@ const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json',
 // Exercise real files in the restored domains without repeatedly planning
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
-  /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.))/.test(file));
+  /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|migration-target\.|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
 const planFor = (path, testMatrix = matrix, files = testFiles) => createGatePlan({
   snapshot, changes: [{ path, status: 'M', before: 'before', after: 'after' }],
@@ -150,6 +150,52 @@ describe('P0 shared CRM foundation routing', () => {
     expect(plan.gateIds).not.toContain('check-copilot-negative-proofs');
     expect(plan.gateIds).not.toContain('check-copilot-golden-eval');
     expect(plan.browserRequirements).toEqual([]);
+  });
+
+  it.each([
+    'scripts/lib/migration-target.mjs',
+    'scripts/apply-reviewed-migration.mjs',
+    'scripts/backup-before-schema.mjs',
+    'scripts/capture-production-catalog.mjs',
+    'scripts/generate-migration-provenance.mjs',
+    'scripts/db-query.mjs',
+    'scripts/lib/vault.mjs',
+    'scripts/test-env/lib.mjs',
+    'scripts/test-env/lock.mjs',
+  ])('routes migration target dependency %s to offline contracts and the correct runners', (source) => {
+    const plan = planFor(source);
+    const native = plan.suiteSelections.find(s => s.id === 'node-native').files;
+    const app = plan.suiteSelections.find(s => s.id === 'app-unit').files;
+    expect(native).toEqual(expect.arrayContaining([
+      'scripts/__tests__/migration-target.test.mjs',
+      'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs',
+      'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs',
+      'scripts/__tests__/backup-luu-tru.test.mjs',
+    ]));
+    expect(app).not.toContain('scripts/__tests__/migration-target.test.mjs');
+    expect(app).toEqual(expect.arrayContaining([
+      'scripts/__tests__/apply-reviewed-migration-preflight.test.mjs',
+      'scripts/__tests__/generate-migration-provenance-scope.test.mjs',
+      'scripts/__tests__/provenance-bien-nhan.test.mjs',
+    ]));
+    const args = getGate('suite:node-native', plan).args;
+    expect(args[0]).toBe('--test');
+    expect(args).not.toContain('--apply');
+    expect(args).not.toContain('--env');
+    expect(plan.gateIds).not.toContain('apply-reviewed-migration');
+    if (source.includes('migration-') || source.includes('backup-before') || source.includes('capture-production')) {
+      expect(plan.crossReview).toBe(true);
+    }
+  });
+
+  it('assigns the migration-target test only to node:test, never Vitest or deferred coverage', () => {
+    const file = 'scripts/__tests__/migration-target.test.mjs';
+    expect(testFiles).toContain(file);
+    const assigned = assignSuites([file], matrix.suites);
+    expect(assigned.orphans).toEqual([]);
+    expect(assigned.deferred).toEqual([]);
+    expect(assigned.bySuite.get('node-native')).toEqual([file]);
+    expect(assigned.bySuite.get('app-unit')).toEqual([]);
   });
 
   it('a public-to-internal capability change selects corpus checks as well as inventory', () => {

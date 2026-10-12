@@ -21,10 +21,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { layPat } from './lib/vault.mjs';
+import { parseMigrationTargetArgs, resolveMigrationTarget, migrationTargetPaths, assertMigrationArtifactTarget,
+  verifyTestMigrationMarker } from './lib/migration-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_DIR = join(repoRoot, 'docs', 'generated');
-const OUT_JSON = join(OUT_DIR, 'database-inventory.json');
 
 export function readPat() {
   // Không có vault — người gọi báo lỗi.
@@ -165,12 +165,12 @@ export function catalogFingerprint(raw) {
 
 async function main(argv) {
   const args = new Set(argv.slice(2));
-  const pat = readPat();
-  if (!pat) {
-    console.error('❌ Không tìm thấy PAT (env SUPABASE_PAT hoặc CLAUDE.local.md).');
-    return 1;
-  }
-  const ref = readProjectRef();
+  const target = await resolveMigrationTarget(parseMigrationTargetArgs(argv), { readProdRef: readProjectRef });
+  const { pat, projectRef: ref } = target;
+  const paths = migrationTargetPaths(target, repoRoot);
+  if (target.environment === 'test') await verifyTestMigrationMarker(target, {
+    query: sql => runSql(sql, { pat, ref }),
+  });
 
   const raw = {};
   for (const [key, sql] of Object.entries(QUERIES)) {
@@ -185,6 +185,7 @@ async function main(argv) {
     $comment:
       'SINH BỞI scripts/capture-production-catalog.mjs — không sửa tay. Tài liệu cần số đếm thì đọc file này.',
     projectRef: ref,
+    environment: target.environment,
     serverVersion,
     capturedAt: new Date().toISOString(),
     catalogFingerprint: fingerprint,
@@ -214,9 +215,10 @@ async function main(argv) {
   if (args.has('--check')) {
     let previous;
     try {
-      previous = JSON.parse(readFileSync(OUT_JSON, 'utf8'));
+      previous = JSON.parse(readFileSync(paths.inventory, 'utf8'));
+      assertMigrationArtifactTarget(previous, target);
     } catch {
-      console.error(`❌ Chưa có ${OUT_JSON}. Chạy với --write trước.`);
+      console.error(`❌ Thiếu hoặc sai đích inventory ${paths.inventory}. Chạy với --write trước.`);
       return 1;
     }
     if (previous.catalogFingerprint !== fingerprint) {
@@ -231,9 +233,9 @@ async function main(argv) {
   }
 
   if (args.has('--write')) {
-    mkdirSync(OUT_DIR, { recursive: true });
-    writeFileSync(OUT_JSON, `${JSON.stringify(inventory, null, 2)}\n`, 'utf8');
-    console.log(`✅ Đã ghi ${OUT_JSON.replace(repoRoot, '.')}`);
+    mkdirSync(paths.directory, { recursive: true });
+    writeFileSync(paths.inventory, `${JSON.stringify(inventory, null, 2)}\n`, 'utf8');
+    console.log(`✅ Đã ghi ${paths.inventory.replace(repoRoot, '.')}`);
   }
 
   return failed ? 1 : 0;
