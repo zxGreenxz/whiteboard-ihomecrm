@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1369,
-  "soFileDocBangFs": 304,
-  "tongLoiGoi": 674,
-  "khongPhanLoaiDuoc": 303,
+  "tongSoFileTest": 1376,
+  "soFileDocBangFs": 307,
+  "tongLoiGoi": 677,
+  "khongPhanLoaiDuoc": 304,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 52,
+      "soFile": 53,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 38,
+      "soFile": 39,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -42,6 +42,7 @@
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/qr-csp-bindings.test.mjs",
     "scripts/__tests__/super-admin-route-contract.test.mjs",
+    "scripts/__tests__/test-hermes-broker-authz.test.mjs",
     "scripts/org-context-repair/sealed-artifact.test.mjs",
     "src/components/errors/ErrorBoundary.pageNames.test.tsx",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
@@ -1157,6 +1158,20 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-runtime/fixture-server.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-runtime/runtime-contract.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",
       "soGoi": 1,
       "loai": {
@@ -1351,6 +1366,14 @@
       "soGoi": 1,
       "loai": {
         "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },

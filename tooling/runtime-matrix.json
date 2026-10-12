@@ -29,6 +29,12 @@
   ],
   "workflows": [
     {
+      "path": ".github/workflows/hermes-runtime.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "P1 synthetic Hermes container experiment on Ubuntu 24.04; no CRM credentials, paid model or deployment. Runtime image digest and fixture limits live in infra/hermes-runtime/runtime-contract.mjs."
+    },
+    {
       "path": ".github/workflows/test-env-sync.yml",
       "node": "24.18.0",
       "deno": null,

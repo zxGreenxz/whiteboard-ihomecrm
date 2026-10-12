@@ -1,0 +1,244 @@
+#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { execFile, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { assertFixtureInspection, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
+  assertUnavailableTerminal, HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, RESULT_PREFIX, runtimeArgs,
+  runtimeUser, sourceHashes } from '../infra/hermes-runtime/runtime-contract.mjs';
+
+const exec = promisify(execFile);
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const mode = process.argv[2];
+if (!['--preflight', '--run'].includes(mode) || process.argv.length !== 3) {
+  console.error('Usage: node scripts/test-hermes-runtime-isolation.mjs --preflight|--run');
+  process.exit(1);
+}
+const docker = process.env.HERMES_FIXTURE_DOCKER ?? (process.platform === 'win32'
+  ? path.join(process.env.LOCALAPPDATA, 'Programs', 'DockerDesktop', 'resources', 'bin', 'docker.exe') : 'docker');
+const id = `hermes-p1-${Date.now()}-${randomBytes(3).toString('hex')}`;
+const cacheRoot = path.join(root, '.cache', 'hermes-p1');
+const out = assertInside(cacheRoot, path.join(cacheRoot, id));
+await mkdir(out, { recursive: true });
+const receiptPath = path.join(out, 'receipt.json');
+const inputFiles = ['infra/hermes-runtime/runtime-contract.mjs', 'infra/hermes-runtime/runtime-probe.py',
+  'infra/hermes-runtime/fake-model.mjs', 'infra/hermes-runtime/fixture-server.mjs', 'infra/hermes-runtime/control.mjs',
+  'scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-broker/broker.mjs', 'infra/hermes-broker/stores.mjs',
+  'infra/hermes-broker/mcp-http.mjs', 'infra/hermes-broker/fixture.mjs', '.github/workflows/hermes-runtime.yml'];
+const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), status: 'BLOCKED', mode,
+  image: HERMES_IMAGE, release: HERMES_RELEASE, sourceCommit: HERMES_COMMIT, checks: [],
+  inputSha256: await sourceHashes(root, inputFiles),
+  limitations: ['Synthetic users, model and broker authorization only; no live CRM/RLS, TLS/OAuth, Zalo or paid model.',
+    'Admission wrapper is a spike, not the production session supervisor.',
+    'External egress probes do not prove every host port is unreachable.'] };
+const containers = [];
+const drivers = [];
+const privateFixtureValues = [];
+let networkCreated = false;
+const command = async (args, timeout = 30_000) => {
+  const { stdout } = await exec(docker, args, { timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+  return stdout.trim();
+};
+const removeContainer = async (name) => {
+  try { await command(['rm', '-f', name]); }
+  catch (error) { if (!/No such container/i.test(String(error.stderr))) throw error; }
+};
+const save = async () => {
+  let serialized = JSON.stringify(receipt, null, 2);
+  for (const value of privateFixtureValues) serialized = serialized.replaceAll(value, '[fixture-private-value]');
+  await writeFile(receiptPath, serialized + '\n');
+};
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const check = (name, details = {}) => { receipt.checks.push({ name, passed: true, ...details }); console.log(`PASS ${name}`); };
+
+class RuntimeDriver {
+  constructor(spec) {
+    this.spec = spec; this.pending = new Map(); this.sequence = 0; this.logs = '';
+    this.child = spawn(docker, runtimeArgs(spec), { cwd: root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    this.closed = new Promise((resolve) => this.child.once('close', resolve));
+    this.child.on('error', (error) => this.rejectAll(error));
+    this.child.on('close', (code) => this.rejectAll(new Error(`Runtime ${spec.actor} exited (${code})`)));
+    let buffer = '';
+    this.child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString();
+      while (buffer.includes('\n')) {
+        const index = buffer.indexOf('\n'); const line = buffer.slice(0, index).replace(/\r$/, ''); buffer = buffer.slice(index + 1);
+        if (!line.startsWith(RESULT_PREFIX)) { this.logs = (this.logs + line + '\n').slice(-100_000); continue; }
+        try {
+          const result = JSON.parse(line.slice(RESULT_PREFIX.length));
+          const pending = this.pending.get(result.id);
+          if (pending) { clearTimeout(pending.timer); this.pending.delete(result.id); result.ok ? pending.resolve(result.result) : pending.reject(new Error(result.error)); }
+        } catch (error) { this.rejectAll(error); }
+      }
+    });
+    this.child.stderr.on('data', (chunk) => { this.logs = (this.logs + chunk.toString()).slice(-100_000); });
+  }
+  rejectAll(error) { for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error); } this.pending.clear(); }
+  send(op, args = {}) {
+    const id = ++this.sequence;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Runtime ${this.spec.actor} command ${op} timed out`)); }, 90_000);
+      this.pending.set(id, { resolve, reject, timer });
+      this.child.stdin.write(JSON.stringify({ id, op, ...args }) + '\n', (error) => {
+        if (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }
+      });
+    });
+  }
+  async stop() {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.child.stdin.end();
+    await removeContainer(this.spec.name);
+    await this.closed;
+    await writeFile(path.join(out, `${this.spec.name}.log`), this.logs);
+  }
+}
+
+try {
+  const user = runtimeUser(); receipt.runtimeUser = user;
+  receipt.stage = 'daemon';
+  receipt.docker = JSON.parse(await command(['version', '--format', '{{json .}}'], 15_000));
+  if (!receipt.docker.Server) throw new Error('Docker daemon unavailable');
+  if (receipt.docker.Server.Os !== 'linux') throw new Error('Linux Docker engine is required');
+  check('linux-daemon');
+  if (mode === '--preflight') {
+    receipt.status = 'PREFLIGHT_ONLY';
+  } else {
+    receipt.stage = 'image';
+    console.log(`Pulling pinned ${HERMES_RELEASE} image (no installation scripts).`);
+    await command(['pull', '--platform', 'linux/amd64', HERMES_IMAGE], 8 * 60_000);
+    const [image] = JSON.parse(await command(['image', 'inspect', HERMES_IMAGE]));
+    receipt.imageInspection = { id: image.Id, repoDigests: image.RepoDigests, architecture: image.Architecture, os: image.Os, labels: image.Config.Labels };
+    assert.equal(image.Os, 'linux'); assert.equal(image.Architecture, 'amd64');
+    const revision = image.Config.Labels?.['org.opencontainers.image.revision'];
+    if (revision) assert.equal(revision, HERMES_COMMIT, 'Image revision differs from pinned source');
+    receipt.sourceRevisionLabelVerified = revision === HERMES_COMMIT;
+    check('pinned-image');
+    await command(['network', 'create', '--internal', '--label', 'ihome.fixture=hermes-p1', id]);
+    networkCreated = true;
+    const [network] = JSON.parse(await command(['network', 'inspect', id]));
+    assert.equal(network.Internal, true); receipt.network = { id: network.Id, internal: network.Internal, ipam: network.IPAM };
+    check('internal-network');
+    const source = path.join(root, 'infra', 'hermes-runtime');
+    const brokerSource = path.join(root, 'infra', 'hermes-broker');
+    const fixtureOutput = assertInside(out, path.join(out, 'fixture-output'));
+    await mkdir(fixtureOutput);
+    const fixtureName = `${id}-fixture`;
+    containers.push(fixtureName);
+    receipt.stage = 'fixture';
+    await command(['run', '-d', '--name', fixtureName, '--network', id, '--network-alias', 'fixture',
+      '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL',
+      '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '512m', '--cpus', '1',
+      '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=67108864',
+      '--mount', `type=bind,src=${source},dst=/fixture,readonly`,
+      '--mount', `type=bind,src=${brokerSource},dst=/broker,readonly`,
+      '--mount', `type=bind,src=${fixtureOutput},dst=/output`,
+      '--env', 'HOME=/tmp', '--env', 'HERMES_HOME=/tmp/hermes-fixture',
+      '--env', 'HERMES_FIXTURE_BROKER_DIR=/broker', '--entrypoint', '/usr/local/bin/node',
+      HERMES_IMAGE, '/fixture/fixture-server.mjs', '--output', '/output']);
+    const [fixtureInspection] = JSON.parse(await command(['inspect', fixtureName]));
+    assertFixtureInspection(fixtureInspection, { network: id, user, source, brokerSource, output: fixtureOutput });
+    check('fixture-hardening-and-exact-mounts');
+    const control = async (op, actor) => JSON.parse(await command(['exec', fixtureName, '/usr/local/bin/node', '/fixture/control.mjs', op, ...(actor ? [actor] : [])]));
+    let ready = false;
+    for (let attempt = 0; attempt < 20 && !ready; attempt++) {
+      try { await control('health'); ready = true; } catch { await delay(500); }
+    }
+    assert.equal(ready, true, 'Fixture service did not become ready');
+    const bootstrap = Object.fromEntries(await Promise.all(['a', 'b'].map(async (actor) => [actor,
+      JSON.parse(await readFile(path.join(fixtureOutput, `${actor}.json`), 'utf8'))])));
+    for (const value of Object.values(bootstrap)) privateFixtureValues.push(value.token, value.sentinel);
+    const specifications = {};
+    const launch = async (actor, suffix) => {
+      const name = `${id}-${actor}${suffix ?? ''}`;
+      containers.push(name);
+      const home = assertInside(out, path.join(out, `home-${actor}`)); await mkdir(home, { recursive: true, mode: 0o700 });
+      const spec = { name, actor, network: id, source, home, user, bootstrap: path.join(fixtureOutput, `${actor}.json`) };
+      specifications[actor] = spec;
+      const driver = new RuntimeDriver(spec); drivers.push(driver); return driver;
+    };
+    const inspectDriver = async (driver) => {
+      const [container] = JSON.parse(await command(['inspect', driver.spec.name]));
+      assertRuntimeInspection(container, driver.spec);
+      return { name: container.Name, image: container.Image, hostConfig: container.HostConfig, mounts: container.Mounts };
+    };
+    receipt.stage = 'hermes';
+    let a = await launch('a'); const b = await launch('b');
+    for (const [actor, driver] of [['a', a], ['b', b]]) {
+      const result = await driver.send('turn', { text: 'FIXTURE_CONTEXT' });
+      assert.equal(result.denied, false); assert.ok(result.final.includes(bootstrap[actor].userId));
+      assert.ok(result.final.includes(bootstrap[actor].organizationId));
+      await driver.send('seed_token');
+      check(`hermes-mcp-model-turn-${actor}`, { toolNames: result.toolNames, apiCalls: result.apiCalls });
+    }
+    receipt.runtimeInspection = [await inspectDriver(a), await inspectDriver(b)];
+    check('runtime-hardening-and-exact-mounts');
+    for (const [actor, driver] of [['a', a], ['b', b]]) {
+      const snapshot = await driver.send('snapshot');
+      assert.ok(snapshot.memory.join('\n').includes(bootstrap[actor].sentinel));
+      assert.ok(!snapshot.memory.join('\n').includes(bootstrap[actor === 'a' ? 'b' : 'a'].sentinel));
+      assert.equal(snapshot.ownSession, true); assert.equal(snapshot.otherSession, false);
+      assert.equal(snapshot.token, `synthetic-${actor}`);
+      const egress = await driver.send('egress');
+      for (const value of Object.values(egress)) assert.equal(value, true);
+      check(`memory-session-token-and-egress-${actor}`, egress);
+    }
+    const forbidden = await a.send('turn', { text: 'FIXTURE_FORBIDDEN_TOOL' });
+    assertUnavailableTerminal(forbidden.final);
+    assert.equal((await a.send('snapshot')).forbiddenExecution, false);
+    const unknown = await a.send('direct_rpc', { method: 'tools/call', params: { name: 'fixture_write', arguments: {} } });
+    assertMcpDenial(unknown, 'tool_not_available');
+    const spoof = await a.send('direct_rpc', { method: 'tools/call', params: { name: 'crm_auth_context', arguments: { userId: bootstrap.b.userId, organizationId: bootstrap.b.organizationId } } });
+    assertMcpDenial(spoof, 'invalid_request');
+    check('unavailable-tool-and-spoofed-identity-denied');
+    await a.stop(); a = await launch('a', '-restart');
+    const resumed = await a.send('snapshot');
+    assert.equal(resumed.ownSession, true); assert.equal(resumed.otherSession, false); assert.equal(resumed.token, 'synthetic-a');
+    assert.ok(resumed.memory.join('\n').includes(bootstrap.a.sentinel));
+    await a.send('turn', { text: 'FIXTURE_CONTEXT' });
+    check('restart-preserves-only-own-state');
+    const beforeRevoke = await control('stats');
+    await control('revoke', 'a');
+    assertMcpDenial(await a.send('direct_rpc', { method: 'tools/call', params: { name: 'crm_auth_context', arguments: {} } }), 'unauthorized');
+    const revoked = await a.send('turn', { text: 'FIXTURE_CONTEXT' });
+    assert.equal(revoked.denied, true); assert.equal(revoked.contextDiscarded, true);
+    assert.equal((await a.send('snapshot')).contextAlive, false);
+    const afterRevoke = await control('stats');
+    assert.equal(afterRevoke.modelCalls.length, beforeRevoke.modelCalls.length);
+    assert.equal((await b.send('turn', { text: 'FIXTURE_CONTEXT' })).denied, false);
+    check('revocation-discards-context-before-model-other-user-unaffected');
+    receipt.fixtureStats = await control('stats');
+    for (const actor of ['a', 'b']) assert.ok(receipt.fixtureStats.modelCalls.some((v) => v.actor === actor && v.ownMemorySeen));
+    assert.equal(receipt.fixtureStats.failures.length, 0);
+    receipt.status = receipt.sourceRevisionLabelVerified ? 'PASSED_SYNTHETIC_RUNTIME' : 'PASSED_SYNTHETIC_RUNTIME_PROVENANCE_UNVERIFIED';
+    receipt.stage = 'completed';
+  }
+} catch (error) {
+  receipt.status = receipt.stage === 'daemon' ? 'BLOCKED' : 'FAILED';
+  receipt.error = String(error.message).slice(0, 4000);
+  if (error.stderr && receipt.stage === 'daemon') receipt.daemonError = String(error.stderr).slice(0, 4000);
+  process.exitCode = receipt.status === 'BLOCKED' ? 2 : 1;
+  console.error(`${receipt.status} at ${receipt.stage}: ${receipt.error}`);
+} finally {
+  for (const driver of drivers) await driver.stop().catch((error) => { receipt.cleanupError = error.message; });
+  for (const name of [...containers].reverse()) {
+    // Names originate only from this unique fixture run; never remove existing resources by enumeration.
+    await removeContainer(name).catch((error) => { receipt.cleanupError = error.message; });
+  }
+  if (networkCreated) await command(['network', 'rm', id]).catch((error) => { receipt.cleanupError = error.message; });
+  if (receipt.cleanupError) { receipt.status = 'FAILED'; process.exitCode = 1; }
+  try {
+    receipt.inputSha256After = await sourceHashes(root, inputFiles);
+    assertInputsUnchanged(receipt.inputSha256, receipt.inputSha256After);
+    receipt.inputsUnchanged = true;
+  } catch {
+    receipt.inputsUnchanged = false; receipt.status = 'FAILED'; process.exitCode = 1;
+    receipt.inputError = 'Fixture source changed or became unreadable during the run';
+  }
+  receipt.finishedAt = new Date().toISOString();
+  await save();
+  console.log(`Receipt: ${path.relative(root, receiptPath)}`);
+}

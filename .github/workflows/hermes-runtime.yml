@@ -1,0 +1,44 @@
+name: Hermes synthetic runtime
+
+# No environment, repository secrets, CRM, Zalo or paid-model credentials.
+# This proves the pinned upstream runtime against disposable synthetic fixtures.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/hermes-runtime.yml'
+      - 'infra/hermes-runtime/**'
+      - 'infra/hermes-broker/**'
+      - 'scripts/test-hermes-runtime-isolation.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Check fixture controls and verifier failure cases
+        run: node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs
+      - name: Run pinned Hermes AIAgent with separate A and B containers
+        run: node scripts/test-hermes-runtime-isolation.mjs --run
+      - name: Preserve bounded JSON evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hermes-runtime-receipts-${{ github.run_attempt }}
+          path: .cache/hermes-p1/hermes-p1-*/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

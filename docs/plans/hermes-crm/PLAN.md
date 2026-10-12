@@ -2,7 +2,7 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** đang thực hiện P0; P1–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
+**Trạng thái:** P0 đủ nội dung/focused evidence, delta mới chờ gate/review; P1 đang hiện thực broker/runtime/JWT TEST; P2–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
@@ -346,12 +346,12 @@ Tình trạng thực tế được duy trì ở STATUS.md; các checkbox dưới
 Phụ thuộc: Sau khi chủ dự án chốt super plan. Chủ trì: Lead + QA.
 
 - [x] P0.01 Tạo worktree riêng, giữ WIP; ghi SHA, dependency/runtime và cờ liên quan. Evidence ở STATUS: source/flags tĩnh đã ghi, trạng thái cờ runtime chưa xác minh.
-- [ ] P0.02 Sinh manifest toàn bộ tool/action/UI-control; đánh dấu chuyển, giữ UI, hoãn hoặc bỏ có lý do.
-- [ ] P0.03 Kiểm inventory RPC/migration đã triển khai và môi trường TEST bằng đường đọc phù hợp; không suy từ file migration.
-- [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI/merge chưa xác nhận tại checkpoint này.
+- [x] P0.02 Sinh manifest tool/action/UI-control của ứng dụng, disposition và metadata từng mục. Snapshot v2 + 28 focused tests đạt; không suy các builtin ngoài adapter thành capability CRM được cấp.
+- [x] P0.03 Đối chiếu catalog TEST chỉ đọc: 32/32 registry khớp, 135/135 tên hàm có ở đúng schema (134 public + 1 helper private); ghi ACL/digest/flags. Ledger legacy đóng băng không phải schema thiếu. JWT/RLS/body parity kiểm ở P1 trở đi.
+- [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI draft PR #165 tại head `386296cb` đã xanh. Delta inventory/catalog mới vẫn cần gate/review riêng.
 - [x] P0.05 Ghi baseline câu hỏi/nghiệp vụ, lỗi đã biết và phạm vi public projection gửi nhóm. Bộ B01–B10 bên dưới là tiêu chí cần kiểm, không phải kết quả đã đạt.
 
-Tiến độ 12/10/2026: đã có generator/snapshot inventory tĩnh và 15 test kiểm parser/drift. Manifest chi tiết từng năng lực/UI control và catalog TEST còn thiếu; P0.02–P0.03 chưa đóng. Bộ kiểm core đã được mở lại có chọn lọc và kiểm local/review; [STATUS.md](STATUS.md) ghi bằng chứng, giới hạn và bước tiếp tục.
+Tiến độ 12/10/2026: P0 đã có đủ nội dung và focused evidence; delta mới chờ gate/review trước tích hợp. Inventory v2 có metadata từng mục, 47 page contracts, 6 safe controls; comparator TEST có 23 test bao gồm ca sai/mất dữ liệu. Sáu callsite RPC động được ghi rõ, không coi tên biến là hàm đã xác minh. P1 đang hiện thực broker và thử runtime; [STATUS.md](STATUS.md) giữ bằng chứng và phần chưa đạt.
 
 **Đầu ra:** Manifest chuyển đổi + baseline source/runtime + kế hoạch kiểm theo Contract.
 
@@ -386,6 +386,8 @@ Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 - [ ] P1.04 Thử hai user thường thuộc hai org và một superadmin nhiều org; kiểm revoke/expiry/refresh, giả actor/org và chọn công ty đích.
 - [ ] P1.05 Chốt ADR auth, tool transport, network boundary, model/quota integration và phương án rollback.
 - [ ] P1.06 Chứng minh cách ly runtime/context/credential và bộ quota, audit, kill switch tối thiểu trước khi mở dữ liệu.
+
+Tiến độ 12/10/2026: broker có 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client của upstream ghim đã chạy 4/4 transport checks; chưa phải container AIAgent. Đã ghi [ADR P1](P1-ARCHITECTURE.md). Các ô P1 vẫn mở vì refresh/lưu bền, network isolation, model quota và context invalidation đầy đủ chưa đạt; container chuyển sang Linux CI do Docker local lỗi. Evidence và hash ở STATUS.
 
 **Đầu ra:** ADR có bằng chứng chạy thật và contract xác thực được duyệt kỹ thuật.
 
