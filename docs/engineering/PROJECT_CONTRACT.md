@@ -2,7 +2,7 @@
 
 Đọc adapter của agent và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần, rồi tra source.
 Không tự đọc audit mới nhất, plan cũ hoặc lần theo toàn bộ liên kết. Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
-Copilot vẫn tạm ngưng theo [hồ sơ riêng](../deferred/zalo-copilot.md); chỉ mở khi user yêu cầu. Zalo mở lại từ 10/10/2026 (cùng hồ sơ): test đơn vị chạy lại, e2e fleet `chat-zalo` còn hoãn.
+Copilot mở lại core cho Hermes (12/10/2026); UI/model/live còn hoãn. Zalo unit mở lại (10/10/2026), fleet còn hoãn. Chi tiết: [hồ sơ riêng](../deferred/zalo-copilot.md).
 
 ## 1. Dự án và nguồn tra cứu
 

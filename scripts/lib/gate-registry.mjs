@@ -25,6 +25,17 @@ for (const id of [
   'check-realtime-key-ownership', 'check-vault-access',
 ]) nodeGate(id);
 for (const id of ['check-agent-contract', 'check-capability-docs', 'check-baseline-doc', 'check-doc-counts', 'check-docs', 'check-test-matrix', 'check-workflow-paths']) gates[id].inputs = docsInputs;
+// P0 restores only offline checks for the CRM core reused by Hermes.
+// Live/model/browser checks remain deferred and are not runtime evidence.
+for (const id of ['check-copilot-docs-manifest', 'check-copilot-tool-inventory', 'check-copilot-forbidden-actions']) {
+  nodeGate(id, 'quality-gates', { inputs: docsInputs });
+}
+nodeGate('generate-copilot-guide-corpus', 'quality-gates', {
+  args: ['scripts/generate-copilot-guide-corpus.mjs', '--check'], inputs: docsInputs,
+});
+nodeGate('generate-hermes-crm-inventory', 'quality-gates', {
+  args: ['scripts/generate-hermes-crm-inventory.mjs', '--check'],
+});
 nodeGate('normalize-supabase-types', 'quality-gates', { args: ['scripts/normalize-supabase-types.mjs', '--check'] });
 nodeGate('generate-docs-views', 'quality-gates', { args: ['scripts/generate-docs-views.mjs', '--check'], inputs: docsInputs });
 nodeGate('check-dependency-audit', 'quality-gates', { local: false, evidenceClass: 'external' });
