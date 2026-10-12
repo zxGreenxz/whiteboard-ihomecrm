@@ -162,10 +162,6 @@ try {
     const [controlInspection] = JSON.parse(await command(['network', 'inspect', controlNetwork]));
     receipt.egressControlNetwork = { id: controlInspection.Id, driver: controlInspection.Driver,
       internal: controlInspection.Internal, options: controlInspection.Options, ipam: controlInspection.IPAM };
-    const bridge = controlBridgeAddresses(controlInspection, networkInterfaces());
-    receipt.egressControlBridge = bridge;
-    const gateway4 = bridge.ipv4, gateway6 = bridge.ipv6;
-    hostCanary = await startHostCanary({ ipv4: gateway4, ipv6: gateway6 });
     const canaryOutput = assertInside(out, path.join(out, 'canary-output')); await mkdir(canaryOutput);
     const canaryName = `${id}-canary`, dnsName = `canary.${id}.test`;
     containers.push(canaryName);
@@ -181,15 +177,24 @@ try {
     assert.deepEqual(Object.keys(canaryInspection.NetworkSettings.Networks), [controlNetwork]);
     assert.ok(!Object.keys(canaryInspection.HostConfig.PortBindings ?? {}).length);
     const external = canaryInspection.NetworkSettings.Networks[controlNetwork];
-    const egressSpec = { external4: { host: external.IPAddress, port: 19090 }, external6: { host: external.GlobalIPv6Address, port: 19090 },
-      host4: { host: gateway4, port: hostCanary.ports.ipv4 }, host6: { host: gateway6, port: hostCanary.ports.ipv6 }, name: dnsName };
-    assert.ok(egressSpec.external4.host && egressSpec.external6.host);
+    assert.ok(external.IPAddress && external.GlobalIPv6Address);
     const canaryCounts = async () => JSON.parse(await readFile(path.join(canaryOutput, 'egress-counts.json'), 'utf8'));
     let canaryReady = false;
     for (let attempt = 0; attempt < 20 && !canaryReady; attempt++) {
       try { await canaryCounts(); canaryReady = true; } catch { await delay(250); }
     }
     assert.equal(canaryReady, true, 'IPv4/IPv6 TCP and DNS canary must be live');
+    // Linux libuv filters out interfaces without IFF_UP + IFF_RUNNING. An
+    // empty Docker bridge may have no carrier until its first endpoint joins.
+    // Start and verify the control canary before observing the host bridge;
+    // never guess gateway addresses or treat a missing interface as isolation.
+    // https://github.com/libuv/libuv/blob/v1.51.0/src/unix/linux.c#L1832-L1834
+    const bridge = controlBridgeAddresses(controlInspection, networkInterfaces());
+    receipt.egressControlBridge = bridge;
+    const gateway4 = bridge.ipv4, gateway6 = bridge.ipv6;
+    hostCanary = await startHostCanary({ ipv4: gateway4, ipv6: gateway6 });
+    const egressSpec = { external4: { host: external.IPAddress, port: 19090 }, external6: { host: external.GlobalIPv6Address, port: 19090 },
+      host4: { host: gateway4, port: hostCanary.ports.ipv4 }, host6: { host: gateway6, port: hostCanary.ports.ipv6 }, name: dnsName };
     const resolv = path.join(out, 'control-resolv.conf');
     await writeFile(resolv, `nameserver ${external.IPAddress}\nnameserver ${external.GlobalIPv6Address}\noptions timeout:1 attempts:1\n`);
     const positiveEgress = async suffix => {
