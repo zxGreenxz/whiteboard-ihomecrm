@@ -63,6 +63,10 @@ def initialize(identity):
     config = {
         'model': {'default': 'fixture-model', 'provider': 'openai', 'base_url': 'http://fixture:8080/v1'},
         'security': {'allow_lazy_installs': False},
+        # Upstream progressive disclosure defaults to auto and replaces even a
+        # single MCP tool with its tool_search/tool_describe/tool_call bridge.
+        # Keep this fixture's exact, directly advertised MCP allowlist instead.
+        'tools': {'tool_search': {'enabled': 'off'}},
         'memory': {'memory_enabled': True, 'user_profile_enabled': False, 'nudge_interval': 0},
         'agent': {'max_turns': 4, 'disabled_toolsets': ['terminal', 'file', 'browser', 'web', 'cronjob', 'messaging', 'skills', 'delegation', 'session_search', 'catalog']},
         'mcp_servers': {'crm': {'url': 'http://fixture:8080/mcp',
