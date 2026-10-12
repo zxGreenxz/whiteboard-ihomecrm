@@ -26,7 +26,21 @@ vi.mock('../lib/room-list-image.js', () => ({
   veAnhDanhSach: () => Promise.resolve(Buffer.from('')),
 }));
 
-const { tachRefStorage, dienMau, soanTinPhong } = await import('../lib/automation.js');
+const { tachRefStorage, dienMau, soanTinPhong, diaChiSoVaDuong } = await import('../lib/automation.js');
+
+describe('địa chỉ gửi Zalo chỉ có số nhà và đường', () => {
+  it.each([
+    ['12/3 Đường A, Phường B, Quận C, Thành phố D', '12/3 Đường A'],
+    ['12, Đường A, P. 1, Q. 3', '12 Đường A'],
+    ['12 Đường A Phường B', '12 Đường A'],
+    ['12 Đường A P.1 Q.3', '12 Đường A'],
+    ['12 Đường A; Khu phố 2; Phường B', '12 Đường A'],
+    ['12DA', '12DA'],
+    ['12DA, Khu dân cư B', '12DA'],
+    ['12A, Đường B, Phường C', '12A Đường B'],
+    [null, ''],
+  ])('%s → %s', (input, expected) => expect(diaChiSoVaDuong(input)).toBe(expected));
+});
 
 /* ========================================================== tachRefStorage */
 
@@ -164,6 +178,10 @@ const phong = (over = {}) => ({
 });
 
 describe('soanTinPhong — một tin chi tiết phòng', () => {
+  it('removes ward, district and city from the outgoing address', () => {
+    expect(soanTinPhong(phong({ buildingAddr: '12 Đường A, Phường B, Quận C, Thành phố D' }), '{dia_chi}', ''))
+      .toBe('12 Đường A');
+  });
   it('phòng TRỐNG SẴN mang chữ "Trống sẵn"', () => {
     const t = soanTinPhong(phong(), MAU, '0909 123 456');
     expect(t).toContain('Tình trạng: Trống sẵn');

@@ -17,7 +17,7 @@ function sourceUrl(value, base, prefix) {
   return { url, path };
 }
 
-/** One representative photo with a native Zalo caption, using the existing media queue.
+/** All room photos, in their stored order, using the existing media queue.
  * Only call with a room from docPhongTrong(orgId), never with an arbitrary client URL.
  * Copy public R2 bytes into account-scoped zalo-media so the enqueue RPC still checks
  * the stored attachment's organization. Never treat a failed download as "no photo".
@@ -26,8 +26,22 @@ export async function chuanBiAnhPhong(room, {
   accountId, orgId, db = sb, fetchImpl = fetch,
   r2Base = process.env.R2_PUBLIC_BASE || '', storageBase = SUPABASE_URL,
 } = {}) {
-  const original = room.images?.find(u => typeof u === 'string' && u.trim());
-  if (!original) return null;
+  const photos = [];
+  const occurrences = new Map();
+  for (const original of (room.images || []).filter(u => typeof u === 'string' && u.trim())) {
+    const photo = await chuanBiMotAnh(original, { accountId, orgId, db, fetchImpl, r2Base, storageBase });
+    // The source, not its display position or temporary signing token, owns
+    // the receipt. Distinct source photos may legitimately have identical bytes.
+    const source = new URL(original);
+    const key = createHash('sha256').update(source.origin + source.pathname).digest('hex');
+    const occurrence = occurrences.get(key) || 0;
+    occurrences.set(key, occurrence + 1);
+    photos.push({ ...photo, sourceKey: `${key}:${occurrence}` });
+  }
+  return photos;
+}
+
+async function chuanBiMotAnh(original, { accountId, orgId, db, fetchImpl, r2Base, storageBase }) {
   let url; let prefix;
   const supabasePrefix = `/storage/v1/object/`;
   if (storageBase && new URL(original).origin === new URL(storageBase).origin) {

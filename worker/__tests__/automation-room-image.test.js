@@ -16,17 +16,33 @@ function fixture(url = 'https://images.example.test/room-sale-images/u/photo.web
 
 describe('automation room photo goes through guarded existing media storage', () => {
   it('copies a public R2 photo once under the sending account with the actual image format', async () => {
-    const f = fixture(); const photo = await f.run();
+    const f = fixture(); const [photo] = await f.run();
     expect(photo).toMatchObject({ bucket: 'zalo-media', mime: 'image/png', width: 640, height: 480, size: 32 });
     expect(photo.path).toMatch(/^account\/automation\/phong-[a-f0-9]{64}\.png$/);
     expect(f.storage.upload).toHaveBeenCalledWith(photo.path, png(), { contentType: 'image/png', upsert: true });
     expect(f.fetchImpl.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
     expect(f.fetchImpl.mock.calls[0][1].headers).toBeUndefined();
-    expect(await f.run()).toEqual(photo); // retry keeps the content-addressed storage key
+    expect(await f.run()).toEqual([photo]); // retry keeps the content-addressed storage key
   });
   it('does not substitute building photos or fetch anything when the room has no photo', async () => {
-    const f = fixture(null); expect(await f.run()).toBeNull();
+    const f = fixture(null); expect(await f.run()).toEqual([]);
     expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.storage.upload).not.toHaveBeenCalled();
+  });
+  it('prepares every source in order and preserves receipt identity after reordering or refreshing signed query parameters', async () => {
+    const f = fixture();
+    f.room.images = Array.from({ length: 8 }, (_, i) => `https://images.example.test/room-sale-images/u/${i}.jpg?token=old`);
+    const first = await f.run();
+    expect(first).toHaveLength(8);
+    expect(f.fetchImpl.mock.calls.map(c => c[0])).toEqual(f.room.images);
+    expect(new Set(first.map(p => p.sourceKey)).size).toBe(8); // even when bytes are identical
+    f.room.images = f.room.images.reverse().map(u => u.replace('token=old', 'token=new'));
+    expect((await f.run()).map(p => p.sourceKey)).toEqual(first.map(p => p.sourceKey).reverse());
+  });
+  it('rejects the room if a later photo fails instead of returning an incomplete set', async () => {
+    const f = fixture(); f.room.images.push('https://images.example.test/room-sale-images/u/missing.jpg');
+    f.fetchImpl.mockImplementation(async url => url.includes('missing') ? new Response(null, { status: 404 }) : new Response(png()));
+    await expect(f.run()).rejects.toThrow();
+    expect(f.fetchImpl).toHaveBeenCalledTimes(2);
   });
   it.each([
     'http://images.example.test/room-sale-images/u/a.jpg',

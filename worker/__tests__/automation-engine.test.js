@@ -19,6 +19,7 @@ let rpcError = null;
 let rpcCalls = [];
 let rpcFailureFor = () => null;
 let uploadError = null;
+let tableInputs = [];
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -100,13 +101,13 @@ vi.mock('../lib/ctx.js', () => ({
 // Không gọi DB thật để lấy phòng, và không vẽ ảnh thật (chậm + cần font).
 const phongGia = [];
 vi.mock('../lib/vacant-rooms.js', () => ({
-  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', rooms: phongGia }], rooms: phongGia, hotline: '0900' }),
+  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', address: '12 Đường A, Phường B, Quận C', rooms: phongGia }], rooms: phongGia, hotline: '0900' }),
 }));
 vi.mock('../lib/room-list-image.js', () => ({
   veAnhDanhSach: () => Promise.resolve(Buffer.from('png-gia')),
 }));
 vi.mock('../lib/room-list-table.js', () => ({
-  buildRoomListTable: () => ({ totalRooms: phongGia.length, groups: [], title: '', contactLines: [], infoLines: [] }),
+  buildRoomListTable: buildings => { tableInputs.push(buildings); return { totalRooms: phongGia.length, groups: [], title: '', contactLines: [], infoLines: [] }; },
 }));
 
 const { tickTuDongHoa } = await import('../lib/automation.js');
@@ -147,6 +148,7 @@ beforeEach(() => {
   rpcCalls = []; rpcError = null;
   rpcFailureFor = () => null;
   uploadError = null;
+  tableInputs = [];
   duLieuConversations = [conv('c1'), conv('c2')];
   phienDangSong.clear();
   phienDangSong.set('acc-1', { api: {}, ownId: 'own' });
@@ -159,7 +161,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
-  it('sends each photographed room as one image with information; empty rooms explicitly await photos, with separators', async () => {
+  it('sends every room photo, then information and separator, then the next room; empty rooms explicitly await photos', async () => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
     const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
     bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
@@ -168,17 +170,26 @@ describe('engine broadcast — xếp hàng', () => {
     datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
     await tickTuDongHoa();
     const rooms = rpcCalls.map(c => c.args);
-    expect(rooms).toHaveLength(4); // two rooms, two recipients; still one job per room
-    expect(request).toHaveBeenCalledOnce(); // representative reused for this organization's recipients
-    expect(rooms[0]).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1',
+    expect(rooms).toHaveLength(8); // (2 photos + information + empty room) × 2 recipients
+    expect(request).toHaveBeenCalledTimes(2); // all photos reused for this organization's recipients
+    expect(rooms[0]).toMatchObject({
       p_attachment: { bucket: 'zalo-media', width: 640, height: 480 } });
-    expect(rooms[0].p_body).toContain('PHÒNG r1');
-    expect(rooms[0].p_body).not.toContain('Chờ cập nhật ảnh');
-    expect(rooms[1].p_attachment).toBeNull();
-    expect(rooms[1].p_body).toContain('PHÒNG r2');
-    expect(rooms[1].p_body).toContain('\nChờ cập nhật ảnh\n');
-    expect(rooms.every(r => r.p_body.endsWith('\n────────────────'))).toBe(true);
-    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 4 });
+    expect(rooms[1].p_attachment).not.toBeNull();
+    expect(rooms[0].p_body).toBe(''); expect(rooms[1].p_body).toBe('');
+    expect(new Set(rooms.map(r => r.p_request_key)).size).toBe(8);
+    expect(rooms[2]).toMatchObject({ p_request_key: 'scheduled:2026-08-31:c1:room:r1', p_attachment: null });
+    expect(rooms[2].p_body).toContain('PHÒNG r1');
+    expect(rooms[2].p_body).not.toContain('Chờ cập nhật ảnh');
+    expect(rooms[3].p_attachment).toBeNull();
+    expect(rooms[3].p_body).toContain('PHÒNG r2');
+    expect(rooms[3].p_body).toContain('\nChờ cập nhật ảnh\n');
+    expect(rooms.filter(r => !r.p_attachment).every(r => r.p_body.endsWith('\n────────────────'))).toBe(true);
+    expect(rooms.slice(0, 4).map(r => (Date.parse(r.p_not_before) - THU_HAI_0830.getTime()) / 1000)).toEqual([0, 20, 40, 60]);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 8 });
+    const first = rooms.filter(r => r.p_attachment).map(r => r.p_request_key);
+    rpcCalls = []; phongGia[0].images.reverse();
+    await tickTuDongHoa();
+    expect(rpcCalls.filter(c => c.args.p_attachment).map(c => c.args.p_request_key)).toEqual([first[1], first[0], first[3], first[2]]);
   });
   it('marks a partial run when an existing room photo fails, instead of sending a misleading text-only room', async () => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
@@ -188,7 +199,43 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa();
     expect(rpcCalls).toHaveLength(2);
     expect(rpcCalls.every(c => c.args.p_request_key.endsWith(':room:r2'))).toBe(true);
-    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2, detail: { partial: true, khong_xep_duoc: 2 } });
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 2, detail: { partial: true, khong_xep_duoc: 4 } });
+  });
+  it.each(['quota', 'window'])('does not start a photographed room that cannot fit wholly within the %s', async boundary => {
+    vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
+    const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+    bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes)));
+    phongGia.splice(1); phongGia[0].images = ['https://images.example.test/room-sale-images/u/one.jpg'];
+    duLieuConversations = [conv('c1')];
+    if (boundary === 'window') vi.setSystemTime(new Date('2026-08-31T13:00:50Z'));
+    datCauHinh({ schedule: { time: boundary === 'window' ? '20:00' : '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } },
+      boundary === 'quota' ? { sentDate: '2026-08-31', sentToday: 119 } : {});
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 0 });
+    expect(daChen.runs[0].detail[boundary === 'quota' ? 'bo_qua_tran' : 'bo_qua_khung_gio']).toBe(2);
+  });
+  it.each(['download', 'enqueue'])('does not claim complete room information after a later photo %s fails', async failure => {
+    vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
+    const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+    bytes.writeUInt32BE(640,16); bytes.writeUInt32BE(480,20);
+    vi.stubGlobal('fetch', vi.fn(async url => failure === 'download' && url.includes('two')
+      ? new Response(null, { status: 404 }) : new Response(bytes)));
+    phongGia[0].images = ['https://images.example.test/room-sale-images/u/one.jpg', 'https://images.example.test/room-sale-images/u/two.jpg'];
+    duLieuConversations = [conv('c1')];
+    let photos = 0;
+    if (failure === 'enqueue') rpcFailureFor = args => args.p_attachment && ++photos === 2 ? { message: 'unavailable' } : null;
+    datCauHinh({ schedule: { time: '08:30', days: { mon: 'full' } }, template: { blocks: ['room_details'] } });
+    await tickTuDongHoa();
+    expect(rpcCalls.some(c => c.args.p_request_key.endsWith(':room:r1'))).toBe(false);
+    expect(rpcCalls.at(-1).args.p_request_key).toBe('scheduled:2026-08-31:c1:room:r2');
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { partial: true,
+      khong_xep_duoc: failure === 'download' ? 3 : 2, bo_qua_tran: 0 } });
+  });
+  it('shortens addresses before rendering the outgoing table without changing the room data', async () => {
+    datCauHinh(); await tickTuDongHoa();
+    expect(tableInputs[0][0].address).toBe('12 Đường A');
   });
   it('enqueues atomically with stable keys if the schedule state was not saved', async () => {
     datCauHinh();

@@ -58,6 +58,18 @@ const dinhDangTien = (trieu) => (trieu > 0 ? (Math.round(trieu * 1000) * 1000).t
 
 const TEN_TRANG_THAI = { free: 'Trống sẵn', soon: 'Sắp trống', pass: 'Khách pass phòng' };
 
+/** Địa chỉ gửi Zalo chỉ giữ số nhà và tên đường đã lưu, không đoán tên đầy đủ. */
+export function diaChiSoVaDuong(value) {
+  const parts = String(value || '').trim().split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  let address = parts[0] || '';
+  // Some records separate the house number and street with a comma.
+  if (/^(?:số\s+)?\d[\d/.\-]*\p{L}?$/iu.test(address) && parts[1]
+      && !/^(?:phường|xã|quận|huyện|tỉnh|thành phố|khu phố|p\.|q\.|tp\.)\s*/iu.test(parts[1])) {
+    address += ` ${parts[1]}`;
+  }
+  return address.replace(/\s+(?:phường|xã|quận|huyện|tỉnh|thành phố|khu phố|p\.|q\.|tp\.)(?:\s|\d).*$/iu, '').trim();
+}
+
 /** Một tin chi tiết phòng (chế độ ĐẦY ĐỦ / lượt bổ sung). */
 export function soanTinPhong(room, mau, hotline) {
   const tinhTrang = room.saleFact?.label || (room.status === 'soon' && room.availDate
@@ -65,7 +77,7 @@ export function soanTinPhong(room, mau, hotline) {
     : (TEN_TRANG_THAI[room.status] || room.status));
   return dienMau(mau, {
     ma_phong: room.code,
-    dia_chi: room.buildingAddr || room.buildingName,
+    dia_chi: diaChiSoVaDuong(room.buildingAddr || room.buildingName),
     toa: room.buildingName,
     gia: dinhDangTien(room.price),
     dien_tich: room.area > 0 ? `${room.area}m²` : '',
@@ -137,7 +149,8 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
   let soKhongXepDuoc = 0;
   const ngayLuot = gioVietNam(now).ngay;
   const duKien = convs.length * ((khoi.includes('link') && vanBanMoDau ? 1 : 0)
-    + (khoi.includes('table_image') ? 1 : 0) + (khoi.includes('room_details') ? tinPhong.length : 0));
+    + (khoi.includes('table_image') ? 1 : 0)
+    + (khoi.includes('room_details') ? tinPhong.reduce((sum, t) => sum + t.soTinDuKien, 0) : 0));
 
   for (let i = 0; i < convs.length; i++) {
     const conv = convs[i];
@@ -155,11 +168,14 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
       // No stale room broadcast on the next day, even for an overnight window.
       if (gioVietNam(khiNao).ngay !== ngayLuot || !trongKhungGio(khiNao, config.antiSpam).trong) {
         soBoQuaKhungGio++;
-        return;
+        return false;
       }
       if (await xepMotTin({ conv, khiNao, requestKey, ...content })) {
         soTin++; daGuiChoNguoiNay = true;
-      } else soKhongXepDuoc++;
+        return true;
+      }
+      soKhongXepDuoc++;
+      return false;
     };
 
     for (const k of khoi) {
@@ -172,9 +188,29 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
         else soKhongXepDuoc++;
       } else if (k === 'room_details') {
         for (const t of tinPhong) {
-          if (soTin >= tranConLai) break;
-          if (t.loiAnh) { soKhongXepDuoc++; continue; }
-          await xep(`room:${t.roomId}`, { body: t.body, anh: t.anh });
+          if (t.loiAnh) { soKhongXepDuoc += t.soTinDuKien; continue; }
+          // Reserve room-sized space before starting: never deliberately cut
+          // off its photos or final information/separator at a quota boundary.
+          if (soTin + t.soTinDuKien > tranConLai) break;
+          const messages = [
+            ...t.anh.map(anh => ({ key: `room:${t.roomId}:photo:${anh.sourceKey}`, anh })),
+            { key: `room:${t.roomId}`, body: t.body },
+          ];
+          if (messages.some((_, index) => {
+            const due = new Date(bayGio + (offset + index * gapTin) * 1000);
+            return gioVietNam(due).ngay !== ngayLuot || !trongKhungGio(due, config.antiSpam).trong;
+          })) {
+            soBoQuaKhungGio += messages.length;
+            offset += messages.length * gapTin;
+            continue;
+          }
+          for (let j = 0; j < messages.length; j++) {
+            const { key, ...content } = messages[j];
+            if (!await xep(key, content)) {
+              soKhongXepDuoc += messages.length - j - 1;
+              break;
+            }
+          }
         }
       }
     }
@@ -187,7 +223,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
 
 /** Render ảnh bảng + upload lên bucket zalo-media. Trả null nếu không dựng được. */
 async function dungAnhBang(buildings, accountId, now) {
-  const table = buildRoomListTable(buildings);
+  const table = buildRoomListTable(buildings.map(b => ({ ...b, address: diaChiSoVaDuong(b.address || b.name) })));
   if (!table.totalRooms) return null;
   let buf;
   try {
@@ -402,7 +438,7 @@ function congSoTin(stats, ngay, them) {
  * @param {boolean} p.day        chế độ ĐẦY ĐỦ (kèm chi tiết từng phòng)
  * @param {boolean} p.chiChiTiet lượt bổ sung: chỉ gửi chi tiết phòng mới
  */
-async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey }) {
+export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey }) {
   const khoiCai = config.template.blocks;
   const khoi = chiChiTiet
     ? khoiCai.filter((k) => k === 'room_details')
@@ -426,16 +462,18 @@ async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiT
   let tinPhong = [];
   if (khoi.includes('room_details')) {
     // Prepare once per room, then reuse the account-scoped copy for recipients
-    // in this organization. One image + its caption remains one logical job.
+    // in this organization. Each photo uses the existing one-attachment RPC;
+    // information and the separator follow all photos, before the next room.
     for (const r of phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
       try {
         const anh = await chuanBiAnhPhong(r, { accountId, orgId });
         const body = [soanTinPhong(r, config.template.roomTemplate, phong.hotline),
-          ...(!anh ? ['Chờ cập nhật ảnh'] : []), '────────────────'].filter(Boolean).join('\n');
-        tinPhong.push({ roomId: r.id, body, anh });
+          ...(!anh.length ? ['Chờ cập nhật ảnh'] : []), '────────────────'].filter(Boolean).join('\n');
+        tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length + 1 });
       } catch (e) {
         log('automation: chuẩn bị ảnh phòng lỗi', r.id, e?.message || e);
-        tinPhong.push({ roomId: r.id, loiAnh: true });
+        tinPhong.push({ roomId: r.id, loiAnh: true,
+          soTinDuKien: (r.images || []).filter(u => typeof u === 'string' && u.trim()).length + 1 });
       }
     }
   }
