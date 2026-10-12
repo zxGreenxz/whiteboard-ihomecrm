@@ -42,7 +42,7 @@ export function dnsReply(packet, name) {
   const header = Buffer.alloc(12); packet.copy(header, 0, 0, 2);
   header.writeUInt16BE(exists ? 0x8180 : 0x8183, 2); header.writeUInt16BE(1, 4); header.writeUInt16BE(exists ? 1 : 0, 6);
   if (!exists) return Buffer.concat([header, packet.subarray(12)]);
-  const data = type === 1 ? Buffer.from([198, 18, 0, 10]) : Buffer.from('20010db800000000000000000000000010', 'hex');
+  const data = type === 1 ? Buffer.from([198, 18, 0, 10]) : Buffer.from('20010db8000000000000000000000010', 'hex');
   const answer = Buffer.alloc(12); answer.writeUInt16BE(0xc00c, 0); answer.writeUInt16BE(type, 2);
   answer.writeUInt16BE(1, 4); answer.writeUInt32BE(0, 6); answer.writeUInt16BE(data.length, 10);
   return Buffer.concat([header, packet.subarray(12), answer, data]);

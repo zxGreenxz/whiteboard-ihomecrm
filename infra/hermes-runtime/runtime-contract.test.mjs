@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import net from 'node:net';
 import dgram from 'node:dgram';
+import { Resolver } from 'node:dns/promises';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -325,9 +326,12 @@ test('DNS canary answers only the synthetic name, validates packets and never fo
     const tail = Buffer.alloc(5); tail.writeUInt16BE(type, 1); tail.writeUInt16BE(1, 3);
     return Buffer.concat([header, ...requested.split('.').map(label => Buffer.concat([Buffer.from([label.length]), Buffer.from(label)])), tail]);
   };
-  for (const [type, expected] of [[1, 'c612000a'], [28, '20010db800000000000000000000000010']]) {
+  for (const [type, expected] of [[1, 'c612000a'], [28, '20010db8000000000000000000000010']]) {
     const response = dnsReply(query(name, type), name);
     assert.equal(response.readUInt16BE(0), 0x6412); assert.equal(response.readUInt16BE(6), 1);
+    const bytes = type === 1 ? 4 : 16;
+    assert.equal(response.length, query(name, type).length + 12 + bytes);
+    assert.equal(response.readUInt16BE(query(name, type).length + 10), bytes);
     assert.ok(response.toString('hex').endsWith(expected));
   }
   for (const packet of [query('public.example', 1), query(name, 15)]) {
@@ -336,6 +340,18 @@ test('DNS canary answers only the synthetic name, validates packets and never fo
   for (const packet of [Buffer.alloc(0), Buffer.alloc(513), query(name, 1).subarray(0, 18), Buffer.from('641201000002000000000000', 'hex')]) {
     assert.throws(() => dnsReply(packet, name));
   }
+});
+
+test('a real DNS resolver accepts the canary A and AAAA wire records', async t => {
+  await mkdir(root, { recursive: true });
+  const output = await mkdtemp(path.join(root, 'dns-wire-'));
+  const name = 'canary.hermes-p1-wire.test';
+  const service = await startEgressCanary({ name, output, tcpPort: 0, dnsPort: 0 });
+  t.after(() => service.close());
+  const resolver = new Resolver({ timeout: 1000, tries: 1 });
+  resolver.setServers([`127.0.0.1:${service.endpoints.udpDns4}`]);
+  assert.deepEqual(await resolver.resolve4(name), ['198.18.0.10']);
+  assert.deepEqual(await resolver.resolve6(name), ['2001:db8::10']);
 });
 
 test('live local canary serves/counts TCP and UDP DNS independently on both address families', async t => {
