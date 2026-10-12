@@ -111,7 +111,8 @@ try {
     console.log(`Pulling pinned ${HERMES_RELEASE} image (no installation scripts).`);
     await command(['pull', '--platform', 'linux/amd64', HERMES_IMAGE], 8 * 60_000);
     const [image] = JSON.parse(await command(['image', 'inspect', HERMES_IMAGE]));
-    receipt.imageInspection = { id: image.Id, repoDigests: image.RepoDigests, architecture: image.Architecture, os: image.Os, labels: image.Config.Labels };
+    receipt.imageInspection = { id: image.Id, repoDigests: image.RepoDigests, architecture: image.Architecture, os: image.Os,
+      labels: image.Config.Labels, declaredVolumes: image.Config.Volumes };
     assert.equal(image.Os, 'linux'); assert.equal(image.Architecture, 'amd64');
     const revision = image.Config.Labels?.['org.opencontainers.image.revision'];
     if (revision) assert.equal(revision, HERMES_COMMIT, 'Image revision differs from pinned source');
@@ -133,6 +134,9 @@ try {
       '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL',
       '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '512m', '--cpus', '1',
       '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=67108864',
+      // Upstream declares VOLUME /opt/data. Override it explicitly so Docker
+      // cannot allocate an uninspected anonymous volume for the fixture.
+      '--tmpfs', '/opt/data:ro,nosuid,nodev,noexec,size=1048576',
       '--mount', `type=bind,src=${source},dst=/fixture,readonly`,
       '--mount', `type=bind,src=${brokerSource},dst=/broker,readonly`,
       '--mount', `type=bind,src=${fixtureOutput},dst=/output`,
@@ -140,6 +144,7 @@ try {
       '--env', 'HERMES_FIXTURE_BROKER_DIR=/broker', '--entrypoint', '/usr/local/bin/node',
       HERMES_IMAGE, '/fixture/fixture-server.mjs', '--output', '/output']);
     const [fixtureInspection] = JSON.parse(await command(['inspect', fixtureName]));
+    receipt.fixtureInspection = { image: fixtureInspection.Image, hostConfig: fixtureInspection.HostConfig, mounts: fixtureInspection.Mounts };
     assertFixtureInspection(fixtureInspection, { network: id, user, source, brokerSource, output: fixtureOutput });
     check('fixture-hardening-and-exact-mounts');
     const control = async (op, actor) => JSON.parse(await command(['exec', fixtureName, '/usr/local/bin/node', '/fixture/control.mjs', op, ...(actor ? [actor] : [])]));
