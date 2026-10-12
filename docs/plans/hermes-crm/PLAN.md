@@ -348,10 +348,10 @@ Phụ thuộc: Sau khi chủ dự án chốt super plan. Chủ trì: Lead + QA.
 - [x] P0.01 Tạo worktree riêng, giữ WIP; ghi SHA, dependency/runtime và cờ liên quan. Evidence ở STATUS: source/flags tĩnh đã ghi, trạng thái cờ runtime chưa xác minh.
 - [ ] P0.02 Sinh manifest toàn bộ tool/action/UI-control; đánh dấu chuyển, giữ UI, hoãn hoặc bỏ có lý do.
 - [ ] P0.03 Kiểm inventory RPC/migration đã triển khai và môi trường TEST bằng đường đọc phù hợp; không suy từ file migration.
-- [ ] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review.
+- [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI/merge chưa xác nhận tại checkpoint này.
 - [x] P0.05 Ghi baseline câu hỏi/nghiệp vụ, lỗi đã biết và phạm vi public projection gửi nhóm. Bộ B01–B10 bên dưới là tiêu chí cần kiểm, không phải kết quả đã đạt.
 
-Tiến độ 12/10/2026: đã có generator/snapshot inventory tĩnh và 15 test kiểm parser/drift. Manifest chi tiết từng năng lực/UI control và catalog TEST còn thiếu; P0.02–P0.03 chưa đóng. Bộ kiểm core đang được mở lại có chọn lọc; kết quả gate và review được ghi trong [STATUS.md](STATUS.md), không đánh hoàn tất chỉ vì đã có code.
+Tiến độ 12/10/2026: đã có generator/snapshot inventory tĩnh và 15 test kiểm parser/drift. Manifest chi tiết từng năng lực/UI control và catalog TEST còn thiếu; P0.02–P0.03 chưa đóng. Bộ kiểm core đã được mở lại có chọn lọc và kiểm local/review; [STATUS.md](STATUS.md) ghi bằng chứng, giới hạn và bước tiếp tục.
 
 **Đầu ra:** Manifest chuyển đổi + baseline source/runtime + kế hoạch kiểm theo Contract.
 
