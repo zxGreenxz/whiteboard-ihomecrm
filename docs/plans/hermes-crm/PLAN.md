@@ -387,7 +387,7 @@ Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 - [ ] P1.05 Chốt ADR auth, tool transport, network boundary, model/quota integration và phương án rollback.
 - [ ] P1.06 Chứng minh cách ly runtime/context/credential và bộ quota, audit, kill switch tối thiểu trước khi mở dữ liệu.
 
-Tiến độ 12/10/2026: broker 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client upstream ghim đạt 4/4 transport checks. CI tại `005e0d26` đã chạy AIAgent thật trong container với broker/model giả: 12/12 checks đạt. Digest image khớp, nhưng image thiếu revision label nên chưa xác minh provenance source commit. Các ô P1 vẫn mở vì mạng từng user, một owner profile, refresh/lưu bền, model quota và invalidation memory đầy đủ chưa đạt. [ADR P1](P1-ARCHITECTURE.md) và STATUS ghi giới hạn.
+Tiến độ 12/10/2026: broker 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client upstream ghim đạt 4/4 transport checks. CI tại `9ad5ca42` chạy AIAgent thật với broker/model giả: 17/17, gồm mạng A/B riêng, single-host profile owner, restart và revoke. Digest image khớp; revision label trống nên provenance source commit chưa xác minh. Các ô P1 vẫn mở vì egress đầy đủ, refresh/lưu bền, model quota và invalidation memory chưa đạt. [ADR P1](P1-ARCHITECTURE.md) và STATUS ghi giới hạn.
 
 **Đầu ra:** ADR có bằng chứng chạy thật và contract xác thực được duyệt kỹ thuật.
 

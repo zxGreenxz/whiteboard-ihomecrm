@@ -4,13 +4,13 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 
 ## Điểm tiếp tục
 
-- **Đang làm:** Hoàn thiện mạng riêng từng user, khóa một owner profile và invalidation P1; song song chuẩn bị durable store P2 trên target TEST. Broker/JWT thật và AIAgent với dữ liệu giả đã có evidence; runtime cách ly đầy đủ còn mở.
+- **Đang làm:** Hoàn thiện egress và invalidation còn thiếu ở P1; song song chuẩn bị durable store P2 trên target TEST. Broker/JWT thật, AIAgent, mạng A/B và một owner profile với dữ liệu giả đã có evidence; ranh giới sản phẩm đầy đủ còn mở.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI của delta mới còn chờ; bản ghi review cuối ở PR.
 - **Chưa hoàn thành:** Mạng cách ly đầy đủ, refresh/lưu bền/quota model, schema/kết nối/user memory sản phẩm, Hermes tổng, UI hoặc gửi tin thật. P2 đang xây code nền; P3–P11 chưa triển khai.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Commit checkpoint:** `8bfc0682e4ae23a335da6ae77e459bdb42539f85`, tree `b8ee37ac477c899ccd691f03cee8669030035462`: P2 primitive/target lane local 47/47, review không còn P1/P2 trong phạm vi, đã push draft. Runtime CI 12/12 tại head trước `005e0d26`; delta mạng/profile mới chờ CI. Chưa merge/phát hành.
+- **Commit checkpoint:** `9ad5ca42276e394568541451425226347cdb8636`, tree `d5998263ce7292d99db8b8a1c9084194be301309`: mạng/profile local 47/47 và CI runtime 17/17 với dữ liệu giả. Nền P2 trước đó `8bfc0682` local 47/47. Review không còn P1/P2 trong phạm vi checkpoint. Chưa merge/phát hành.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
@@ -56,13 +56,15 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 | 12/10/2026 | Target lane P2.0 | 33/33 Node + 10/10 backup Node + 30/30 Vitest; review source không còn P1/P2. TEST credentials/evidence riêng, marker/lease, giữ khóa khi write chưa rõ; chưa backup/dry-run/apply TEST thật |
 | 12/10/2026 | Gate checkpoint nền P2 | `8bfc0682`, tree `b8ee37ac`: local 47/47, 343 giây; Vitest related 25/25 file, còn 18 nghĩa vụ CI/live chưa kiểm local. Review crypto/relay/target/routing/docs đã khép trong phạm vi. Hai dòng tiến độ docs cũ được sửa ở checkpoint tiếp theo |
 | 12/10/2026 | Delta mạng/profile | 23/23 focused, native transport 4/4; mạng riêng A/B và single-host profile lease đã viết, chưa có container CI cho delta. Review sửa race inspect trước container restart sẵn sàng; không coi local tests là runtime pass |
+| 12/10/2026 | Gate và CI mạng/profile | `9ad5ca42`, tree `d5998263`: local 47/47, 102 giây; CI run `38212601959` đạt 17/17, 12/12 hash khớp. Peer listener bị chặn qua IPv4/Docker DNS hai chiều; duplicate/đổi chủ/revoke restart bị chặn. Chưa chứng minh mọi host/IPv6 egress |
+| 12/10/2026 | Backend transport P2 | Provider refresh 19/19, private store transport 10/10, pool 5/5. Review đã đóng thiếu kiểm session_user, PGOPTIONS ambient và async observer rejection; chưa kết nối PostgreSQL/Auth thật hoặc dựng package triển khai broker |
 
 ## Bảng tiến độ
 
 | Gói | Trạng thái | Còn thiếu để đóng |
 | --- | --- | --- |
 | P0 | Nội dung + focused + local gate đạt | CI/review snapshot cuối và tích hợp PR; không suy inventory thành runtime parity |
-| P1 | Đang hiện thực | JWT/broker, MCP và AIAgent/container với dữ liệu giả đã đạt; còn mạng từng user, một owner profile, provenance, refresh, model quota và context invalidation đầy đủ |
+| P1 | Đang hiện thực | JWT/broker, MCP, AIAgent, mạng A/B và single-host profile owner với dữ liệu giả đã đạt; còn egress đầy đủ, provenance, refresh, model quota và context invalidation đầy đủ |
 | P2 | Đang chuẩn bị nền, chưa tích hợp | Target TEST an toàn, schema/store bền vững, quyền Đọc/Thao tác và refresh; chưa đủ điều kiện nghiệm thu khi P1 còn mở. |
 | P3 | Chưa bắt đầu | Đọc đúng dữ liệu; deny không trả rỗng giả; không lộ trường nội bộ/cross-tenant. Dữ liệu không vào context dùng chung; ngân sách, timeout và dừng khẩn cấp đã có hiệu lực. |
 | P4 | Chưa bắt đầu | Người khác/nhóm/forward không giả danh chủ; không trả lời lặp; một account chỉ có một chủ session. |
@@ -124,12 +126,14 @@ node scripts/compare-hermes-crm-catalog.mjs tooling/hermes-crm-inventory.generat
 - Gate P0/P1 cuối lưu ở `.cache/hermes-p1/gate-final-passed/`, tree `e894e37e6fef3d2769f6070c4cf9473b7f5458b0`. Có 46 receipts và Vitest related 1/1 file; không coi đó là 18 nghĩa vụ CI/live đã đạt. Lượt trước giữ ở `gate-code-passed/`, không đổi nhãn.
 - Docker local: `.cache/hermes-p1/hermes-p1-1791782870130-8575bb/receipt.json` ghi BLOCKED khi daemon timeout. Chưa pull/run container. Không sửa/reset Windows để thay bằng chứng này.
 - Container receipt: `.cache/hermes-p1/ci-38210992537/hermes-p1-1791785241203-4c40eb/receipt.json`, status `PASSED_SYNTHETIC_RUNTIME_PROVENANCE_UNVERIFIED`, 12/12 checks; [CI đúng head 005e0d26](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/38210992537). Kiểm A/B MCP/model turns, mount/tool allowlist, memory/session/token, restart riêng và revoke trước model. Không dùng kết quả này chứng minh live CRM/model/Zalo.
-- Mạng bridge nội bộ dùng chung và probe một IP/port chưa chứng minh chặn peer, DNS/IPv6 hoặc mọi đường đi vòng. Native memory purge/regrant, một owner profile và quota provider còn cần kiểm; không gọi tất cả P1 đã hoàn tất.
+- Receipt 12 checks trên dùng bridge chung, nên không chứng minh chặn peer. Delta sau đó có receipt `.cache/hermes-p1/ci-38212601959/hermes-runtime-receipts-1/hermes-p1-1791786459120-7f9436/receipt.json`: [CI head 9ad5ca42](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/38212601959), 17/17, 12/12 hash khớp, `PASSED_SYNTHETIC_RUNTIME_PROVENANCE_UNVERIFIED`. Hai mạng riêng và single-host owner đã được đo; chưa chứng minh mọi host/IPv6 egress, native CRM-memory purge/regrant, distributed supervisor hoặc quota provider.
 
 ## Nền P2 đã viết, chưa nối sản phẩm
 
 - `infra/hermes-broker/session-crypto.mjs`, `refresh-manager.mjs`: mã hóa và điều phối refresh với adapter store/provider được inject. Durable backend phải bảo đảm atomic fence/CAS; kết quả commit không rõ và invalidation lỗi phải cách ly connection/jobs cho tới đối soát. Chưa có bảng hoặc adapter lưu bền.
 - `infra/hermes-broker/model-relay.mjs`: transport nội bộ dùng `llm-proxy`, server cung cấp user JWT/org/request ID; allowlist model mặc định rỗng. Response chỉ project trường hợp lệ. Proxy hiện tại chưa được chứng minh hard concurrent budget hoặc settlement đúng một lần; không gọi relay test là bằng chứng ngân sách.
+- `supabase-refresh-provider.mjs` dùng endpoint Auth cố định, xác minh qua adapter hiện có với byte/deadline cap; không retry provider. `store-transport.mjs` chỉ gọi 11 hàm private đã định danh và kiểm cả login/session principal; write ACK mất trả unknown, không retry ngầm. `store-pool.mjs` bắt TLS verification, role/project binding, giới hạn kết nối/statement và không nhận PGOPTIONS môi trường. Các adapter chưa nối vào broker hoặc DB thật.
+- Hai forward migration identity/policy và encrypted store đang là WIP riêng, chưa apply. Refresh primitive sẽ chuyển sang STAGED → publish với đối soát cùng claim trong lát kế tiếp; checkpoint 25/25 cũ không chứng nhận giao thức mới này. DB mất liên lạc thì caller/jobs phải dừng; chưa có durable pending journal tự phục hồi sau crash.
 - `scripts/lib/migration-target.mjs` và bốn runner migration/backup/catalog/provenance: `--env test --expected-project-ref <TEST_REF>` ràng buộc cùng đích. Evidence TEST ở `.cache/migration-targets/test/<ref>/`, không thay production inventory/provenance. Không đổi `.temp/project-ref` hoặc alias TEST credential vào tên production.
 - Gate nền P2 lưu tại worktree kiểm riêng `C:/Users/Nguyen Tam/codex-worktrees/hermes-runtime-ci-20261012/.cache/hermes-p2/gate-foundation-passed/`; primary đã fast-forward giữ WIP của các phần tiếp theo. Hai repository inventory được generator cập nhật theo bốn test mới, không sửa tay.
 - Node backup test phải chạy bằng `node --test`; một lần chọn nhầm Vitest báo no-suite đã được chạy lại đúng runner. Không có DB thật bị thay đổi trong checkpoint code này.
@@ -147,7 +151,7 @@ flowchart LR
 
 1. Gate/review checkpoint code nền P2, push draft và đọc CI đúng head; giữ receipt cũ nếu đầu vào không đổi. CI xanh của head cũ không chứng minh WIP mới.
 2. Giữ JWT receipt cuối khi đầu vào không đổi; không chạy lại TEST chỉ để đếm thêm pass. Chưa bật business tools hoặc gửi Zalo.
-3. Hoàn thiện mạng từng user, một owner profile, invalidation/regrant trên Linux CI. Fixture model/MCP không được báo thành CRM/model trả phí đã tích hợp.
+3. Giữ runtime receipt 17/17 khi hash nguồn còn khớp; tiếp tục invalidation/regrant và egress còn thiếu. Fixture model/MCP không được báo thành CRM/model trả phí đã tích hợp.
 4. Chốt ADR auth/network/quota dựa bằng chứng P1, giữ P1 checkbox mở nếu refresh/context invalidation hoặc isolation chưa đạt.
 
 Lưu ý kiểm CI: `npm run ci:wait -- --sha <sha>` chỉ kết luận cho push/workflow_dispatch trên main, không tính run pull_request. Với draft PR dùng `gh pr checks 165 --watch` để đọc checks của PR, không dispatch/rerun main; kết quả PR vẫn chưa phải evidence promote production. `ci:wait` yêu cầu GH_TOKEN trong env; chỉ nạp khóa cần thiết bằng helper vault hiện có, không in token.

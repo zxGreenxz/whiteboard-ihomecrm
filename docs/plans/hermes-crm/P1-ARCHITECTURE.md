@@ -32,7 +32,7 @@ Token opaque chỉ dùng với broker, được lưu dạng hash, gắn connecti
 
 ## Runtime ghim và cách ly
 
-Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. Image Linux amd64 `nousresearch/hermes-agent@sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22` đã pull/run trong CI tại `005e0d26`. Digest khớp nhưng image thiếu revision label; chưa chứng minh image đúng source commit. AIAgent đạt 12 checks tổng hợp, chưa nghiệm thu toàn bộ ranh giới P1.
+Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. Image Linux amd64 `nousresearch/hermes-agent@sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22` đã pull/run trong CI tại `9ad5ca42`. Digest khớp nhưng image thiếu revision label; chưa chứng minh image đúng source commit. AIAgent đạt 17 checks tổng hợp gồm mạng riêng A/B và single-host profile owner, chưa nghiệm thu toàn bộ ranh giới P1.
 
 Mỗi assistant có runtime/home/credential riêng trên image dùng chung. Không mount home người vận hành, vault, Docker socket hoặc thư mục assistant khác. Dùng network riêng; chỉ broker và model gateway được duyệt có thể nhận lưu lượng. Một runtime owner giữ profile tại một thời điểm. Profile multiplexer/chia thư mục cùng process chưa được chấp nhận làm bằng chứng cách ly tenant.
 
