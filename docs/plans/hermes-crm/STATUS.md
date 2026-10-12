@@ -11,6 +11,7 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
 - **Commit code:** `c833d379e6f83b1d0a44ca4964f2cbf7e3831ae6` (tree trùng snapshot local đã kiểm). Chưa merge/phát hành; CI còn phải xác nhận đúng head của draft PR.
+- **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
 
@@ -31,6 +32,7 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 | 12/10/2026 | Gate local sau sửa | 47/47 đạt, exit 0, 76 giây. Có 46 receipts static/suite và output Vitest related 7/7 file; 10 nghĩa vụ CI chưa kiểm local |
 | 12/10/2026 | Cross-review kết thúc | Reviewer kiểm source + delta + receipts cùng snapshot, không còn finding P1/P2; không xác nhận runtime/TEST/CI/production |
 | 12/10/2026 | Lưu commit code | `c833d379e6f83b1d0a44ca4964f2cbf7e3831ae6`; tree `a05a740f2fc2819f679bbc0795e468567380106b` |
+| 12/10/2026 | Lưu checkpoint và mở draft PR | `053b3eca` cập nhật PLAN/STATUS; docs gate 5/5 (không JS/TS để Vitest), reviewer không thấy claim sai; draft PR #165 đã tạo |
 
 ## Bảng tiến độ
 
@@ -81,6 +83,8 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 2. Hoàn thiện P0.02: metadata chi tiết từng năng lực/UI control; ghi disposition đề xuất hai tool kế hoạch và công việc chứng minh adapter P1/P3, không bật chỉ vì có trong snapshot.
 3. Hoàn thiện P0.03: đọc DATA_ENVIRONMENTS rồi đối chiếu TEST/catalog và runtime flags theo lane đọc. Không dùng helper tự ghi fixture khi định làm kiểm chỉ đọc.
 4. Chuyển P1 khi cửa P0 đạt; P1 preflight vừa qua chưa phải thực thi tích hợp. P1 sẽ chứng minh auth/cách ly trước khi mở dữ liệu và công cụ thực thi.
+
+Lưu ý kiểm CI: `npm run ci:wait -- --sha <sha>` chỉ kết luận cho push/workflow_dispatch trên main, không tính run pull_request. Với draft PR dùng `gh pr checks 165 --watch` để đọc checks của PR, không dispatch/rerun main; kết quả PR vẫn chưa phải evidence promote production. `ci:wait` yêu cầu GH_TOKEN trong env; chỉ nạp khóa cần thiết bằng helper vault hiện có, không in token.
 
 ## Bàn giao session / agent
 
