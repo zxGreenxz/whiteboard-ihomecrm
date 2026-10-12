@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1383,
-  "soFileDocBangFs": 307,
-  "tongLoiGoi": 672,
-  "khongPhanLoaiDuoc": 302,
+  "tongSoFileTest": 1394,
+  "soFileDocBangFs": 311,
+  "tongLoiGoi": 689,
+  "khongPhanLoaiDuoc": 310,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 53,
+      "soFile": 54,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 39,
+      "soFile": 41,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -37,6 +37,7 @@
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
+    "scripts/__tests__/hermes-durable-store.test.mjs",
     "scripts/__tests__/lifecycle-reminder-edge-auth.test.ts",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
@@ -183,6 +184,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/hermes-durable-store.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 6
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
       "soGoi": 7,
       "loai": {},
@@ -318,6 +327,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-runtime/runtime-contract.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
       "soGoi": 4,
       "loai": {},
@@ -346,6 +363,14 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/measure-org-leak-target.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/pwa-manifest.test.ts",
@@ -740,6 +765,14 @@
     },
     {
       "file": "scripts/__tests__/copilot-g3-voucher-lifecycle.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/deferred-foundation-routing.test.mjs",
       "soGoi": 2,
       "loai": {
         "manifest": 2
@@ -1157,18 +1190,18 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/connection-control-plane.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-runtime/fixture-server.test.mjs",
       "soGoi": 1,
       "loai": {
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-runtime/runtime-contract.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/network-center-worker/test/h196aHienTruong.test.ts",
@@ -1257,14 +1290,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "scripts/__tests__/deferred-foundation-routing.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/dien-tap-forward-lane.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1293,6 +1318,12 @@
         "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/lifecycle-reminder-cron-migration.test.ts",

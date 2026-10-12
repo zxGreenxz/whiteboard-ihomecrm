@@ -26,7 +26,7 @@ export async function startRuntimeFixture({ fixture, createMcpHttpServer, output
   const { broker, connections } = fixture;
   if (!connections?.a?.token || !connections?.b?.token) throw new Error('Synthetic fixture requires exactly A/B connection bindings');
   const sentinels = Object.fromEntries(['a', 'b'].map((actor) => [actor, `PRIVATE_${actor.toUpperCase()}_${randomBytes(16).toString('hex')}`]));
-  const stats = { modelCalls: [], mcpCalls: [], failures: [] };
+  const stats = { modelCalls: [], mcpCalls: [], failures: [], forbiddenNetworkRequests: 0 };
   const mcp = createMcpHttpServer({ broker, allowedHosts: ['fixture', 'localhost', '127.0.0.1'], allowedOrigins: [] });
   await mkdir(outputDir, { recursive: true });
   for (const actor of ['a', 'b']) {
@@ -36,6 +36,7 @@ export async function startRuntimeFixture({ fixture, createMcpHttpServer, output
       sentinel: sentinels[actor] }) + '\n', { mode: 0o600 });
   }
   const server = http.createServer(async (request, response) => {
+    if (request.url === '/forbidden-network-tool') { stats.forbiddenNetworkRequests++; send(response, 200, { fixture: 'forbidden-tool-reached-network' }); return; }
     if (request.url === '/mcp') {
       const actor = ['a', 'b'].find((key) => request.headers.authorization === `Bearer ${connections[key].token}`) ?? null;
       // Record status only, never bearer material or tool/result content.

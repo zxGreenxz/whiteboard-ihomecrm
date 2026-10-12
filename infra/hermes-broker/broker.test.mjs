@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createBroker } from './broker.mjs';
+import { BrokerError, createBroker } from './broker.mjs';
 import { MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 
 const USER_A = '10000000-0000-4000-8000-000000000001';
@@ -235,4 +235,118 @@ test('late storage completion after timeout cleans credentials and connection', 
   release(); await new Promise((resolve) => setImmediate(resolve));
   assert.equal(await connections.get(stored.id), null);
   assert.equal(await sessions.get(credential), null);
+});
+
+function authorityFixture(options = {}) {
+  const now = 1_000_000, calls = [], branded = new WeakSet();
+  const connectionId = '30000000-0000-4000-8000-000000000001';
+  const state = {
+    row: { id: connectionId, assistantId: '40000000-0000-4000-8000-000000000001', userId: USER_A,
+      organizationId: ORG_A, state: 'active', epoch: 2, expiresAt: now + 60_000, restrictions: clone(rights) },
+    effective: clone(rights), policyEpoch: '1'.repeat(64), isSuperadmin: false, assistantScopeIds: [],
+    scopesByPermission: Object.fromEntries([...rights.read, ...rights.action].map(key => [key, { buildingIds: [], cashbookIds: [] }])),
+    contextVersion: '2'.repeat(64),
+  };
+  const authority = {
+    async identifyConnection(value, { signal }) {
+      calls.push({ operation: 'identify', value, signal });
+      return options.identify ? options.identify(state, signal) : { connectionId };
+    },
+    async resolve(value, { signal }) {
+      calls.push({ operation: 'resolve', value, signal }); await options.beforeResolve?.(state, signal);
+      const result = clone(state); options.mutate?.(result); branded.add(result); return result;
+    },
+    async checkUnchanged(value, before, { signal }) {
+      calls.push({ operation: 'check', value, signal });
+      if (!branded.has(before) || before.contextVersion !== state.contextVersion) throw new BrokerError('context_changed');
+      return options.check?.(before);
+    },
+  };
+  const broker = createBroker({ authority, clock: () => now, ...options.broker });
+  return { state, calls, authority, broker, token: `hc_${'a'.repeat(43)}`, connectionId };
+}
+
+test('injected authority reuses dispatcher and forwards branded receipt; P1 stores and controls are unused', async () => {
+  const unreachable = new Proxy({}, { get() { throw new Error('legacy dependency must not run'); } });
+  const f = authorityFixture({ broker: { auth: unreachable, sessionStore: unreachable, connectionStore: unreachable, assistantStore: unreachable } });
+  const result = context(await f.broker.callTool(f.token, 'crm_auth_context', {}));
+  assert.equal(result.contextVersion, f.state.contextVersion);
+  assert.deepEqual(result.permissions, rights);
+  assert.deepEqual(f.calls.map(call => call.operation), ['identify', 'resolve', 'check']);
+  assert(f.calls.every(call => call.value === f.token && call.signal instanceof AbortSignal));
+  assert.deepEqual(Object.keys(result).sort(), ['assistantId', 'contextVersion', 'organizationId', 'permissions', 'userId']);
+  assert.equal((await f.broker.authenticate(f.token)).id, f.connectionId);
+  assert.equal((await f.broker.listTools(f.token)).tools[0].name, 'crm_auth_context');
+  for (const call of [() => f.broker.issueConnection({}), () => f.broker.revokeConnection(f.connectionId),
+    () => f.broker.restrictConnection(f.connectionId, {})]) await assert.rejects(call(), error('forbidden'));
+  await assert.rejects(f.broker.callTool(f.token, 'copilot_available_rooms_v1', {}), error('tool_not_available'));
+  for (const bad of [null, {}, { resolve() {}, checkUnchanged() {} }]) {
+    assert.throws(() => createBroker({ authority: bad }), /trusted_authority_adapter_required/);
+  }
+});
+
+test('injected identity shape and scopes are checked before any handler prepares data', async () => {
+  for (const mutate of [
+    value => { value.accessToken = 'PRIVATE'; }, value => { value.row.credentialRef = USER_B; },
+    value => { value.row.userId = 'wrong'; }, value => { value.row.epoch = NaN; },
+    value => { value.row.state = 'revoked'; }, value => { value.contextVersion = 'not-an-attestation'; },
+    value => { value.effective.read = new Array(1); }, value => { value.effective.read.push('rooms.view'); },
+    value => { value.effective.action.push('outside.restrictions'); }, value => { value.effective.extra = []; },
+    value => { delete value.policyEpoch; }, value => { value.isSuperadmin = 'true'; },
+    value => { value.assistantScopeIds = ['*']; }, value => { value.scopesByPermission = {}; },
+    value => { value.scopesByPermission['rooms.view'].buildingIds = new Array(1); },
+    value => { value.scopesByPermission['rooms.view'].scopeIds = []; },
+  ]) {
+    const f = authorityFixture({ mutate });
+    await assert.rejects(f.broker.callTool(f.token, 'crm_auth_context', {}), error('backend_unavailable'));
+    assert.deepEqual(f.calls.map(call => call.operation), ['identify', 'resolve']);
+    assert(!f.broker.auditReceipts().some(receipt => receipt.outcome === 'prepared'));
+  }
+  const expired = authorityFixture({ mutate: value => { value.row.expiresAt = 1_000_000; } });
+  await assert.rejects(expired.broker.authenticate(expired.token), error('unauthorized'));
+  for (const identified of [null, {}, { connectionId: 'wrong' }, { connectionId: USER_A, accessToken: 'PRIVATE' }]) {
+    const f = authorityFixture({ identify: () => identified });
+    await assert.rejects(f.broker.listTools(f.token), error('backend_unavailable'));
+    assert.deepEqual(f.calls.map(call => call.operation), ['identify']);
+  }
+});
+
+test('resolved connection cannot switch away from the id whose quota was reserved', async () => {
+  const f = authorityFixture({ mutate: value => { value.row.id = USER_B; }, broker: { limits: { maxRequestsPerMinute: 1 } } });
+  await assert.rejects(f.broker.callTool(f.token, 'crm_auth_context', {}), error('context_changed'));
+  assert(!f.broker.auditReceipts().some(receipt => receipt.outcome === 'prepared'));
+  await assert.rejects(f.broker.listTools(f.token), error('rate_limited'));
+  assert.equal(f.calls.filter(call => call.operation === 'resolve').length, 1);
+});
+
+test('injected quota reservation blocks expensive resolve before rate and concurrent overrun', async () => {
+  const f = authorityFixture({ broker: { limits: { maxRequestsPerMinute: 1 } } });
+  await f.broker.listTools(f.token);
+  await assert.rejects(f.broker.listTools(f.token), error('rate_limited'));
+  assert.equal(f.calls.filter(call => call.operation === 'resolve').length, 1);
+  let release, entered;
+  const ready = new Promise(resolve => { entered = resolve; });
+  const blocked = new Promise(resolve => { release = resolve; });
+  const g = authorityFixture({ broker: { limits: { maxConcurrentCalls: 1 } }, beforeResolve: async () => { entered(); await blocked; } });
+  const first = g.broker.listTools(g.token); await ready;
+  await assert.rejects(g.broker.listTools(g.token), error('busy'));
+  assert.equal(g.calls.filter(call => call.operation === 'resolve').length, 1);
+  release(); await first;
+});
+
+test('injected timeout aborts resolve, prevents late audit, and releases admission', async () => {
+  let settle, slow = true;
+  const f = authorityFixture({ broker: { limits: { timeoutMs: 20, maxConcurrentCalls: 1 } },
+    beforeResolve: async () => { if (slow) await new Promise(resolve => { settle = resolve; }); } });
+  await assert.rejects(f.broker.listTools(f.token), error('timeout'));
+  assert(f.calls.every(call => call.signal.aborted));
+  slow = false; settle(); await new Promise(resolve => setImmediate(resolve));
+  assert(!f.broker.auditReceipts().some(receipt => receipt.outcome === 'prepared'));
+  assert.equal((await f.broker.listTools(f.token)).tools.length, 1);
+});
+
+test('injected postcheck cannot signal denial as a successful false result', async () => {
+  const f = authorityFixture({ check: () => false });
+  await assert.rejects(f.broker.callTool(f.token, 'crm_auth_context', {}), error('backend_unavailable'));
+  assert.equal(f.broker.auditReceipts().at(-1).outcome, 'denied');
 });

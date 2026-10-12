@@ -18,13 +18,17 @@ const sameBinding = (a, b) => Object.keys(b).every((key) => a?.[key] === b[key])
  *   {status:'busy'|'reconnect_required'|'revoked'|'missing'}.
  * An acquired row is reserved/refreshing. A nonexpired lease is busy. An expired
  * RESERVED lease may be reclaimed with a higher fence; an expired DISPATCHED
- * lease must atomically become reconnect_required, NEVER issue the old token.
+ * or STAGED lease must atomically become reconnect_required, NEVER issue the old token.
  *
  * markDispatched(claim) -> bool: CAS revision+owner+fence, reserved/live lease;
  * persist DISPATCHED before contacting the provider. False dispatches nothing.
- * commitRefresh({...claim,envelope,expiresAt}) -> bool: CAS same revision/fence,
- * binding, DISPATCHED state and live lease, increment revision, activate new
- * envelope. Retain the fence so uncertainty can still invalidate this commit.
+ * stageRefresh({...claim,envelope,expiresAt}) -> bool: CAS same revision/fence,
+ * binding, DISPATCHED state and live lease. Clear old material; STAGED material
+ * is unreadable. Replay succeeds only for the SAME envelope and expiry.
+ * publishRefresh(claim) -> {ok:true,status:'published'|'already_published',
+ *   revision:claim.revision+1,fence:claim.fence} or false. First publish needs
+ * STAGED/live lease; exact replay may acknowledge already-ACTIVE live material.
+ * Both calls recheck current authorization. Retain owner/fence for reconciliation.
  * requireReconnect(claim) -> bool: same fence/owner, invalidate both pending
  * and just-committed output of that refresh. Clear material, increment revision.
  * It must never overwrite revoked state or another/newer operation's fence.
@@ -32,89 +36,151 @@ const sameBinding = (a, b) => Object.keys(b).every((key) => a?.[key] === b[key])
  * revoke({credentialRef}) -> bool: terminal tombstone, fence/revision increment,
  * clear material; all pending commits and release attempts must then fail.
  *
- * Store reads for broker use must exclude reserved/dispatched/reconnect/revoked
+ * Store methods receive (input,{signal}); adapter transport remains bounded.
+ * ONLY a store_outcome_unknown error permits one additional stage/publish call,
+ * using identical input. No automatic retry of acquire, dispatch or provider.
+ * False/denied/malformed replies are not retried. A second unknown outcome gets
+ * one bounded requireReconnect, never an unbounded publish/ACK loop.
+ *
+ * Store reads for broker use must exclude reserved/dispatched/staged/reconnect/revoked
  * rows. Never delete a tombstone and reuse the same credential reference.
  * There must be one credential owner for each independent provider session.
  * A store error/timeout may have committed: no unsafe compensating token reuse.
- * On session_reconnect_required the caller must disable its connection/jobs and
- * never fall back to cached access material. If storage also fails during
- * invalidation, durable quarantine/reconciliation is a backend responsibility;
- * this primitive cannot certify recovery or cross-process safety without it.
+ * session_reconnect_required means the store acknowledged quarantine (or an
+ * acquisition read confirmed that state). After dispatch, false/malformed/lost
+ * quarantine ACK or timeout instead returns refresh_outcome_unknown. Both stop
+ * this caller/jobs; neither permits cached material or replaying the provider.
+ * A caller's unknown outcome is NOT a global revoke. Publication may already be
+ * ACTIVE with NEW verified material, and another broker may admit it only after
+ * fresh joined-state/Auth/CRM checks. Pending states remain unreadable. The DB
+ * decision, not whether this caller received its ACK, owns global admission.
+ * The session row retains state/owner/fence/revision for recovery; this primitive
+ * does not resume a lost in-memory claim or certify restart recovery. A fresh
+ * authoritative read must resolve unknown status before the caller resumes.
+ * Two-phase publication is not an exactly-once promise.
  * Provider refresh returns {accessToken,refreshToken}; verifySession separately
  * verifies the actual access token's {userId,sessionId,expiresAt}.
+ * refresh(ref,binding,{signal}={}) optionally follows a caller cancellation.
+ * Already-aborted calls do nothing. Cancellation of an in-flight acquisition
+ * without a confirmed claim is unknown, not proof that no reservation exists.
+ * Known RESERVED claims receive one independent bounded release; after dispatch
+ * one independent bounded quarantine still runs even when the caller is gone.
  */
 export function createRefreshManager({ store, provider, crypto, clock = Date.now,
   timeoutMs = 10_000, leaseMs = 30_000 } = {}) {
-  const methods = ['acquire', 'markDispatched', 'commitRefresh', 'requireReconnect', 'release', 'revoke'];
+  const methods = ['acquire', 'markDispatched', 'stageRefresh', 'publishRefresh', 'requireReconnect', 'release', 'revoke'];
   if (methods.some((key) => typeof store?.[key] !== 'function') ||
       typeof provider?.refresh !== 'function' || typeof provider?.verifySession !== 'function' ||
       typeof crypto?.open !== 'function' || typeof crypto?.seal !== 'function' || typeof clock !== 'function' ||
       !integer(timeoutMs) || timeoutMs > 30_000 || !integer(leaseMs) || leaseMs > 120_000 || leaseMs < timeoutMs * 2) {
     fail('refresh_config_invalid');
   }
-  const bounded = async (operation, code) => {
-    const controller = new AbortController(); let timer;
+  const bounded = async (operation, code, preserveUnknown = false, callerSignal) => {
+    if (callerSignal?.aborted) fail('refresh_cancelled');
+    const controller = new AbortController(); let timer, rejectAbort;
+    const aborted = new Promise((_, reject) => { rejectAbort = reject; });
+    const onAbort = () => { controller.abort(); rejectAbort(new SessionRefreshError('refresh_cancelled')); };
+    callerSignal?.addEventListener('abort', onAbort, { once: true });
     try {
-      return await Promise.race([Promise.resolve().then(() => operation(controller.signal)), new Promise((_, reject) => {
+      const result = await Promise.race([Promise.resolve().then(() => {
+        if (callerSignal?.aborted) fail('refresh_cancelled');
+        return operation(controller.signal);
+      }), aborted, new Promise((_, reject) => {
         timer = setTimeout(() => { controller.abort(); reject(new SessionRefreshError(code)); }, timeoutMs);
       })]);
-    } catch { fail(code); }
-    finally { clearTimeout(timer); controller.abort(); }
+      if (callerSignal?.aborted) fail('refresh_cancelled');
+      return result;
+    } catch (error) {
+      if (callerSignal?.aborted) fail('refresh_cancelled');
+      if (preserveUnknown && error?.code === 'store_outcome_unknown') fail('store_outcome_unknown');
+      fail(code);
+    }
+    finally { clearTimeout(timer); callerSignal?.removeEventListener('abort', onAbort); controller.abort(); }
   };
-  const stored = (name, input) => bounded(() => store[name](input), 'refresh_storage_unavailable');
+  const stored = (name, input, callerSignal, onDispatch) => {
+    const snapshot = structuredClone(input);
+    return bounded((signal) => { onDispatch?.(); return store[name](snapshot, { signal }); },
+      'refresh_storage_unavailable', name === 'stageRefresh' || name === 'publishRefresh', callerSignal);
+  };
+  const reconciled = async (name, input, callerSignal) => {
+    const snapshot = structuredClone(input);
+    try { return await stored(name, snapshot, callerSignal); }
+    catch (error) {
+      if (error.code !== 'store_outcome_unknown') throw error;
+      // Exactly one extra fixed-name call. Reuse the snapshot, including the
+      // original ciphertext nonce. Never reacquire or contact the provider here.
+      return stored(name, snapshot, callerSignal);
+    }
+  };
   const now = () => { const value = clock(); if (!integer(value)) fail('refresh_clock_invalid'); return value; };
 
   return Object.freeze({
-    async refresh(credentialRef, suppliedBinding) {
-      if (!reference(credentialRef)) fail('refresh_invalid_request');
+    async refresh(credentialRef, suppliedBinding, { signal: callerSignal } = {}) {
+      if (!reference(credentialRef) || (callerSignal !== undefined && !(callerSignal instanceof AbortSignal))) fail('refresh_invalid_request');
+      if (callerSignal?.aborted) fail('refresh_cancelled');
       let binding;
       try { binding = validateSessionBinding(suppliedBinding); } catch { fail('refresh_invalid_request'); }
       const ownerId = randomUUID();
       now();
-      const acquisition = await stored('acquire', { credentialRef, binding, ownerId, leaseMs });
+      let acquisition, acquireDispatched = false;
+      try { acquisition = await stored('acquire', { credentialRef, binding, ownerId, leaseMs }, callerSignal,
+        () => { acquireDispatched = true; }); }
+      catch (error) {
+        // No trustworthy claim is available for cleanup. The server may have
+        // reserved it before a cancelled/late ACK; never report an unchanged DB.
+        if (callerSignal?.aborted) fail(acquireDispatched ? 'refresh_outcome_unknown' : 'refresh_cancelled');
+        throw error;
+      }
       if (acquisition?.status !== 'acquired') {
         const codes = { busy: 'refresh_busy', reconnect_required: 'session_reconnect_required',
           revoked: 'session_revoked', missing: 'session_revoked' };
         fail(Object.hasOwn(codes, acquisition?.status) ? codes[acquisition.status] : 'refresh_storage_unavailable');
       }
       const { credential, lease } = acquisition;
-      if (!integer(credential?.revision) || !integer(lease?.fence) || !integer(lease?.expiresAt) ||
+      if (!integer(credential?.revision) || credential.revision >= Number.MAX_SAFE_INTEGER ||
+          !integer(lease?.fence) || !integer(lease?.expiresAt) ||
           lease.expiresAt <= now() || !sameBinding(credential.binding, binding)) fail('refresh_storage_unavailable');
       const claim = { credentialRef, binding, ownerId, revision: credential.revision, fence: lease.fence };
       let dispatched = false;
       try {
+        if (callerSignal?.aborted) fail('refresh_cancelled');
         const previous = validateSessionMaterial(crypto.open(credential.envelope, binding));
         // Treat even an ambiguous markDispatched acknowledgement as dispatched.
         // It may have committed on a remote store before the connection failed.
-        dispatched = true;
-        if (await stored('markDispatched', claim) !== true) fail('session_reconnect_required');
+        if (await stored('markDispatched', claim, callerSignal, () => { dispatched = true; }) !== true) fail('session_reconnect_required');
         if (lease.expiresAt <= now()) fail('session_reconnect_required');
         const material = await bounded(async (signal) => {
-          const tokens = await provider.refresh({ refreshToken: previous.refreshToken, signal });
+          const suppliedTokens = await provider.refresh({ refreshToken: previous.refreshToken, signal });
           if (signal.aborted) fail('session_reconnect_required');
           // Validate size and shape before allowing provider material into verification.
-          validateSessionMaterial({ accessToken: tokens?.accessToken, refreshToken: tokens?.refreshToken, expiresAt: 1 });
+          const tokens = validateSessionMaterial({ accessToken: suppliedTokens?.accessToken, refreshToken: suppliedTokens?.refreshToken, expiresAt: 1 });
           const verified = await provider.verifySession({ accessToken: tokens.accessToken, signal });
           if (signal.aborted || !sameBinding(verified, { userId: binding.userId, sessionId: binding.sessionId }) ||
               !integer(verified?.expiresAt) || verified.expiresAt <= now()) fail('session_reconnect_required');
           return validateSessionMaterial({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: verified.expiresAt });
-        }, 'session_reconnect_required');
+        }, 'session_reconnect_required', false, callerSignal);
         if (lease.expiresAt <= now() || material.expiresAt <= now()) fail('session_reconnect_required');
         const envelope = crypto.seal(material, binding);
-        if (await stored('commitRefresh', { ...claim, envelope, expiresAt: material.expiresAt }) !== true) fail('session_reconnect_required');
+        if (await reconciled('stageRefresh', { ...claim, envelope, expiresAt: material.expiresAt }, callerSignal) !== true) fail('session_reconnect_required');
+        const receipt = await reconciled('publishRefresh', claim, callerSignal);
+        if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) ||
+            Object.keys(receipt).length !== 4 || !['ok', 'status', 'revision', 'fence'].every(key => Object.hasOwn(receipt, key)) ||
+            receipt.ok !== true || !['published', 'already_published'].includes(receipt.status) ||
+            receipt.revision !== claim.revision + 1 || receipt.fence !== claim.fence) fail('session_reconnect_required');
         // No credentials leave this control-plane result. Broker reads must
         // independently recheck live store state and current CRM authorization.
         return { credentialRef, expiresAt: material.expiresAt };
       } catch {
         if (dispatched) {
-          // Never reuse the previous token when a provider or commit outcome is
-          // uncertain. Pending DISPATCHED rows stay fail-closed even after lease
-          // expiry. Ambiguous COMMIT plus unavailable invalidation also requires
-          // caller quarantine/reconciliation; there is no safe automatic fallback.
-          await stored('requireReconnect', claim).catch(() => {});
-          fail('session_reconnect_required');
+          // Attempt quarantine once, with the original claim. A false or lost
+          // ACK is not evidence of a global state change; SQL may still contain
+          // an unreadable pending row or a newly published ACTIVE candidate.
+          const confirmed = await stored('requireReconnect', claim).catch(() => false);
+          if (confirmed === true) fail('session_reconnect_required');
+          fail('refresh_outcome_unknown');
         }
-        await stored('release', claim).catch(() => {});
+        const released = await stored('release', claim).catch(() => false);
+        if (callerSignal?.aborted) fail(released === true ? 'refresh_cancelled' : 'refresh_outcome_unknown');
         fail('refresh_material_unavailable');
       }
     },

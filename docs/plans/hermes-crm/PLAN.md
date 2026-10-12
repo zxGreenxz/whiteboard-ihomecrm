@@ -2,7 +2,7 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** P0 có inventory/catalog và local gate; P1 có JWT TEST, MCP và AIAgent với dữ liệu giả; P2 đang xây nền credential/refresh và migration TEST. P3–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
+**Trạng thái:** P0 có inventory/catalog và local gate; P1 có JWT TEST, MCP và AIAgent với dữ liệu giả; P2 đã kiểm store/broker/cấp phiên độc lập trên TEST (18/18), còn vòng đời/HTTP/UI. P3 đã chuẩn bị projection phòng trống, chưa mở tool; P4–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
@@ -389,6 +389,8 @@ Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 
 Tiến độ 12/10/2026: broker 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client upstream ghim đạt 4/4 transport checks. CI tại `9ad5ca42` chạy AIAgent thật với broker/model giả: 17/17, gồm mạng A/B riêng, single-host profile owner, restart và revoke. Digest image khớp; revision label trống nên provenance source commit chưa xác minh. Các ô P1 vẫn mở vì egress đầy đủ, refresh/lưu bền, model quota và invalidation memory chưa đạt. [ADR P1](P1-ARCHITECTURE.md) và STATUS ghi giới hạn.
 
+Cập nhật provenance: receipt upstream đã xác định image amd64 đúng release là `ffa4fbb4…`, khác pin cũ `32d095e8…`. Đang đổi pin và kiểm runtime lại cùng các canary mạng IPv4/IPv6/DNS; không dùng 17 checks cũ thay kết quả image mới. Chuỗi digest được kiểm nhưng receipt chưa ký, image không có revision label.
+
 **Đầu ra:** ADR có bằng chứng chạy thật và contract xác thực được duyệt kỹ thuật.
 
 **Đạt khi:** Cho phép đúng ca hợp lệ; mọi ca giả danh/cross-org bị chặn; không có đường gọi vòng qua gateway.
@@ -405,7 +407,9 @@ Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend. Có thể chu�
 - [ ] P2.04 Chặn AI tự sửa grant/quyền; capability mới mặc định tắt; giới hạn quyền bật lại của user theo trần org.
 - [ ] P2.05 Tích hợp khóa thành viên, disconnect và policy invalidation; khóa org của user thường, chỉ cho superadmin chuyển context có xác thực.
 
-Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh (25/25 tests) và relay dùng lại model proxy CRM (15/15 tests). Review code nền không còn P1/P2; local gate 47/47 tại `8bfc0682`. Chưa apply DB, chưa nối durable store hoặc cấp kết nối sản phẩm; migration riêng đang được chuẩn bị ở phần kế tiếp. Không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
+Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh và relay dùng lại model proxy CRM. Nền đã commit tại `8bfc0682`; transport backend tại `494d306a`, mỗi checkpoint local 47/47. Chưa cấp kết nối sản phẩm; không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
+
+Cập nhật tiếp ngày 12/10: Auth TEST thật xác minh 5/5 cho hai phiên trình duyệt/Hermes độc lập và cleanup. Identity/policy, encrypted store và migration sửa giới hạn regex đã apply đúng TEST với backup/evidence riêng; kiểm schema 26/26 và private store thật 12/12 đạt. Lượt tích hợp mới đạt 18/18, bao gồm broker, resolver quyền, adapter Auth và cấp phiên độc lập; cleanup và hash đầu vào đã xác minh. Kiểm hiện tuần tự, chưa chứng minh cạnh tranh nhiều transaction hoặc refresh provider trong cùng luồng. HTTP/giao diện cấp quyền và các ranh giới P1 vẫn chưa hoàn tất; xem receipt, hash và phần chưa kiểm trong [STATUS](STATUS.md).
 
 **Đầu ra:** Cấu hình quyền trợ lý dùng được từ UI và được kiểm ở server.
 
@@ -422,6 +426,8 @@ Phụ thuộc: P1-P2. Chủ trì: Backend/domain + adapter.
 - [ ] P3.03 Mở đọc phòng trống, chính sách, nhóm nhận và kết quả công việc; trả nguồn/lúc lấy.
 - [ ] P3.04 Lọc field nội bộ bằng projection; không dùng memory để trả giá hay phòng hiện tại.
 - [ ] P3.05 Lập bộ parity và ca gọi trực tiếp tool bị ẩn để kiểm server.
+
+Tiến độ 12/10/2026: đã viết projection phòng trống tái dùng sale facts của CRM, lọc bằng ID tòa, loại field nội bộ, giữ VND/null và báo giới hạn nguồn. 10/10 focused tests đạt; ba mutation bỏ scope/lộ field/bỏ deny scope rỗng đều bị bắt, source không đổi. Đây chỉ là hàm lọc dữ liệu; chưa có mapping scope, reader JWT hoặc business tool nối broker. Các ô P3 vẫn mở.
 
 **Đầu ra:** Hermes truy vấn CRM đúng phạm vi qua công cụ thật.
 

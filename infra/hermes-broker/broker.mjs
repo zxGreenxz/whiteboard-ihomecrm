@@ -39,6 +39,51 @@ const hash = (value) => createHash('sha256').update(value).digest('hex');
 const token = () => `hc_${randomBytes(32).toString('base64url')}`;
 const exactKeys = (value, allowed) => object(value) && Object.keys(value).every((key) => allowed.includes(key));
 const validId = (value) => typeof value === 'string' && UUID.test(value);
+const record = (value) => object(value) &&
+  (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+const exactRecord = (value, keys) => record(value) && Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.hasOwn(value, key));
+const canonicalId = (value) => validId(value) && value === value.toLowerCase();
+const positive = (value) => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
+
+function authorityList(value, predicate) {
+  if (!Array.isArray(value) || value.length > 256 || Array.from(value).some((item) => !predicate(item)) ||
+      new Set(value).size !== value.length) fail('backend_unavailable');
+}
+
+function authorityPermissions(value) {
+  if (!exactRecord(value, ['read', 'action'])) fail('backend_unavailable');
+  for (const kind of ['read', 'action']) authorityList(value[kind], (key) => typeof key === 'string' && KEY.test(key));
+}
+
+// The injected authority is a trusted backend dependency. Still validate its
+// complete result before any handler or audit sees it, and detach the projection
+// from its branded comparison receipt. Credential fields are never accepted here.
+function authorityIdentity(value, now) {
+  if (!exactRecord(value, ['row', 'effective', 'policyEpoch', 'isSuperadmin', 'assistantScopeIds', 'scopesByPermission', 'contextVersion']) ||
+      !exactRecord(value.row, ['id', 'assistantId', 'userId', 'organizationId', 'expiresAt', 'epoch', 'state', 'restrictions']) ||
+      ['id', 'assistantId', 'userId', 'organizationId'].some((key) => !canonicalId(value.row[key])) ||
+      value.row.state !== 'active' || !positive(value.row.epoch) || !positive(value.row.expiresAt) ||
+      typeof value.isSuperadmin !== 'boolean' ||
+      ![value.policyEpoch, value.contextVersion].every((version) => typeof version === 'string' && /^[a-f0-9]{64}$/.test(version))) {
+    fail('backend_unavailable');
+  }
+  if (value.row.expiresAt <= now) fail('unauthorized');
+  authorityPermissions(value.row.restrictions); authorityPermissions(value.effective);
+  for (const kind of ['read', 'action']) {
+    if (value.effective[kind].some((key) => !value.row.restrictions[kind].includes(key))) fail('backend_unavailable');
+  }
+  authorityList(value.assistantScopeIds, canonicalId);
+  const scopes = value.scopesByPermission;
+  if (!record(scopes) || Object.keys(scopes).length > 256 ||
+      [...value.effective.read, ...value.effective.action].some((key) => !Object.hasOwn(scopes, key))) fail('backend_unavailable');
+  for (const [key, scope] of Object.entries(scopes)) {
+    if (!KEY.test(key) || !exactRecord(scope, ['buildingIds', 'cashbookIds'])) fail('backend_unavailable');
+    authorityList(scope.buildingIds, canonicalId); authorityList(scope.cashbookIds, canonicalId);
+  }
+  if (Buffer.byteLength(JSON.stringify(value)) > 131_072) fail('backend_unavailable');
+  return structuredClone(value);
+}
 
 function permissions(value, error = 'invalid_request') {
   if (!exactKeys(value, ['read', 'action'])) fail(error);
@@ -100,18 +145,37 @@ function validAuthorization(value, userId, organizationId, now) {
  * {userId,isSuperadmin,activeOrganizationIds,membership,epoch,permissions,companyCeilings}.
  * The adapter must independently verify current CRM authority, not echo client claims.
  * No service-role, raw RPC forwarding, password input, token minting, or refresh exists here.
+ * Alternatively inject authority.{identifyConnection,resolve,checkUnchanged}.
+ * identifyConnection binds the opaque token to a current connection id before
+ * per-connection admission; resolve supplies the branded authority receipt.
+ * This mode disables all P1 control-plane methods and never falls back to memory.
+ * Only crm_auth_context is dispatched; resource-scope metadata grants no new tools.
  */
 export function createBroker({
   auth,
+  authority,
   clock = Date.now,
   limits: suppliedLimits = {},
-  sessionStore = new MemorySessionStore(),
-  connectionStore = new MemoryConnectionStore(),
-  assistantStore = new MemoryAssistantStore(),
+  sessionStore,
+  connectionStore,
+  assistantStore,
   audit,
 } = {}) {
-  if (typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function') {
-    throw new TypeError('trusted_auth_adapter_required');
+  let injectedAuthority;
+  if (authority !== undefined) {
+    if (!authority || ['identifyConnection', 'resolve', 'checkUnchanged'].some((key) => typeof authority[key] !== 'function')) {
+      throw new TypeError('trusted_authority_adapter_required');
+    }
+    // Capture one adapter instance, including its comparison-receipt brand.
+    injectedAuthority = Object.fromEntries(['identifyConnection', 'resolve', 'checkUnchanged']
+      .map((key) => [key, authority[key].bind(authority)]));
+  } else {
+    if (typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function') {
+      throw new TypeError('trusted_auth_adapter_required');
+    }
+    sessionStore ??= new MemorySessionStore();
+    connectionStore ??= new MemoryConnectionStore();
+    assistantStore ??= new MemoryAssistantStore();
   }
   if (!exactKeys(suppliedLimits, Object.keys(DEFAULT_LIMITS))) throw new TypeError('invalid_limits');
   const limits = { ...DEFAULT_LIMITS, ...suppliedLimits };
@@ -177,7 +241,9 @@ export function createBroker({
     const effective = effectivePermissions(current.authorization.permissions,
       current.authorization.companyCeilings, row.restrictions);
     return { row, effective, policyEpoch: current.authorization.epoch,
-      isSuperadmin: current.authorization.isSuperadmin };
+      isSuperadmin: current.authorization.isSuperadmin,
+      contextVersion: hash(JSON.stringify({ connectionEpoch: row.epoch,
+        authorizationEpoch: current.authorization.epoch, isSuperadmin: current.authorization.isSuperadmin, effective })) };
   }
 
   async function checkUnchanged(presentedToken, before, signal) {
@@ -202,23 +268,42 @@ export function createBroker({
   async function invoke(presentedToken, operation, handler) {
     let release;
     let identity;
+    let comparisonReceipt;
     const requestId = randomUUID();
     try {
       return await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
-        const cheap = await connectionStore.getByDigest(hash(presentedToken));
+        let connectionId;
+        if (injectedAuthority) {
+          const identified = await injectedAuthority.identifyConnection(presentedToken, { signal });
+          if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
+          connectionId = identified.connectionId;
+        } else {
+          const cheap = await connectionStore.getByDigest(hash(presentedToken));
+          if (!cheap || cheap.state !== 'active' || cheap.expiresAt <= clock()) fail('unauthorized');
+          connectionId = cheap.id;
+        }
         if (signal.aborted) fail('timeout');
-        if (!cheap || cheap.state !== 'active' || cheap.expiresAt <= clock()) fail('unauthorized');
-        // Reserve before any network auth read, so concurrent callers cannot outrun quotas.
-        release = enter(cheap.id);
-        identity = await authorize(presentedToken, signal);
+        // The joined identify read precedes admission; expensive Auth/crypto does not.
+        release = enter(connectionId);
+        if (injectedAuthority) {
+          comparisonReceipt = await injectedAuthority.resolve(presentedToken, { signal });
+          identity = authorityIdentity(comparisonReceipt, clock());
+        } else identity = await authorize(presentedToken, signal);
+        if (signal.aborted) fail('timeout');
+        // A token cannot switch actors after reserving another connection's quota.
+        if (identity.row.id !== connectionId) fail('context_changed');
         const result = await handler(identity);
         if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
         // This receipt means a response was prepared, not delivered. An async
         // audit sink can wait while DB authority changes, so the authoritative
         // post-read check must be the LAST awaited step before releasing data.
         await writeAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
-        await checkUnchanged(presentedToken, identity, signal);
+        if (injectedAuthority) {
+          const checked = await injectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal });
+          if (checked !== undefined) fail('backend_unavailable');
+          if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
+        } else await checkUnchanged(presentedToken, identity, signal);
         if (signal.aborted) fail('timeout');
         return result;
       });
@@ -236,6 +321,7 @@ export function createBroker({
   return Object.freeze({
     auditReceipts() { return structuredClone(receipts); },
     async issueConnection(input) {
+      if (injectedAuthority) fail('forbidden');
       if (!exactKeys(input, ['accessToken', 'organizationId', 'restrictions']) ||
           typeof input.accessToken !== 'string' || input.accessToken.length < 1 || input.accessToken.length > 16_384 ||
           !validId(input.organizationId)) fail('invalid_request');
@@ -266,6 +352,7 @@ export function createBroker({
     },
     // Trusted control-plane methods. They are intentionally absent from MCP.
     async revokeConnection(id) {
+      if (injectedAuthority) fail('forbidden');
       const row = await connectionStore.get(id);
       if (!row) fail('unauthorized');
       if (row.state === 'revoked') return;
@@ -273,6 +360,7 @@ export function createBroker({
       await sessionStore.delete(row.credentialRef);
     },
     async restrictConnection(id, nextRestrictions) {
+      if (injectedAuthority) fail('forbidden');
       const restrictions = permissions(nextRestrictions);
       const row = await connectionStore.get(id);
       if (!row || row.state !== 'active') fail('unauthorized');
@@ -297,9 +385,7 @@ export function createBroker({
         const result = {
           assistantId: identity.row.assistantId, userId: identity.row.userId,
           organizationId: identity.row.organizationId, permissions: identity.effective,
-          contextVersion: hash(JSON.stringify({ connectionEpoch: identity.row.epoch,
-            authorizationEpoch: identity.policyEpoch, isSuperadmin: identity.isSuperadmin,
-            effective: identity.effective })),
+          contextVersion: identity.contextVersion,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
       });

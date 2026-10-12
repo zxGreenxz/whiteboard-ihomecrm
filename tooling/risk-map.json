@@ -75,6 +75,9 @@
         "src/pages/auth/**",
         "infra/hermes-broker/**",
         "scripts/test-hermes-broker-authz.mjs",
+        "scripts/test-hermes-refresh-auth.mjs",
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/measure-org-leak.mjs",
         "supabase/functions/_shared/**"
       ]
     },
@@ -111,6 +114,9 @@
         "scripts/backup-before-schema.mjs",
         "scripts/capture-production-catalog.mjs",
         "scripts/generate-migration-provenance.mjs",
+        "scripts/test-hermes-refresh-auth.mjs",
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/measure-org-leak.mjs",
         "scripts/*rollout*.mjs",
         "scripts/lib/gate-*.mjs",
         "scripts/lib/ci-gate-*.mjs",
