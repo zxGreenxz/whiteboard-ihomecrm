@@ -45,3 +45,15 @@ node --test infra/hermes-broker/session-crypto.test.mjs infra/hermes-broker/refr
 ```
 
 Chưa có durable SQL store, refresh provider thật, model route tích hợp, UI kết nối hoặc business tool trong các module này.
+
+## Transport backend cho kho phiên
+
+`supabase-refresh-provider.mjs` gọi đúng Auth refresh endpoint một lần, lọc token candidate và tái dùng `supabase-adapter` để xác minh bearer thật. Transport mặc định giới hạn byte và thời gian ở cả refresh và `/auth/v1/user`; verifier inject phải tự bảo đảm cùng hợp đồng. Manager vẫn phải đối chiếu user/session trước mã hóa. Module này không cấp phiên đăng nhập độc lập hoặc bảo đảm storage bền vững.
+
+`store-transport.mjs` chỉ gọi 11 hàm private đã định danh bằng tham số JSON. Database login và current role phải cùng dedicated principal; từ chối postgres/service-role, đặc quyền và membership rộng. Mọi write ACK không rõ trả `store_outcome_unknown`; caller phải đối soát bằng cùng operation/claim, không gọi lại provider. Các migration tương ứng đang được chuẩn bị riêng; chưa có DB integration proof.
+
+`store-pool.mjs` cố định TLS certificate verification, cổng session 5432, user/project binding, số kết nối và timeout. Không fallback credential, endpoint hoặc PGOPTIONS từ môi trường. Idle failure chỉ phát mã lỗi cố định. Hiện dùng `pg` 8.16.3 ở dependency phát triển của repo; package/container triển khai broker còn phải khai dependency runtime và kiểm TLS với DB thật.
+
+```powershell
+node --test infra/hermes-broker/supabase-refresh-provider.test.mjs infra/hermes-broker/store-transport.test.mjs infra/hermes-broker/store-pool.test.mjs
+```
