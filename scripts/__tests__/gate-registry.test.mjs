@@ -13,7 +13,7 @@ describe('command registry boundaries', () => {
   });
   it('rejects absent, empty or deferred test selections', () => {
     expect(() => getGate('suite:app-unit', { suiteSelections: [] })).toThrow('Missing selected tests');
-    expect(() => getGate('suite:app-unit', { suiteSelections: [{ id: 'app-unit', files: ['src/copilot/model.test.ts'] }] })).toThrow('DEFERRED');
+    expect(() => getGate('suite:app-unit', { suiteSelections: [{ id: 'app-unit', files: ['src/copilot/__tests__/llmClient.test.ts'] }] })).toThrow('DEFERRED');
     expect(() => getGate('check-copilot-routes', {})).toThrow('DEFERRED');
     expect(() => getGate('not-a-gate', {})).toThrow('Unknown gate');
   });

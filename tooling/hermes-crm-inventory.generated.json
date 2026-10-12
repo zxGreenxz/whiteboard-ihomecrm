@@ -1,0 +1,3125 @@
+{
+  "schemaVersion": 1,
+  "purpose": "P0 inventory chuyển Copilot sang nền công cụ CRM dùng chung cho Hermes; không phải cấu hình quyền.",
+  "authority": {
+    "grantsRuntimeAccess": false,
+    "databaseReadPerformed": false,
+    "runtimeDispatch": "not_verified",
+    "dispositionStatus": "migration_proposal_only",
+    "actionAuthority": "app_private.copilot_action_registry và gate/RLS phía server; snapshot lấy từ TypeScript mirror.",
+    "capabilityAuthority": "src/app/capabilities/registry.ts mô tả bề mặt UI; không tự cấp công cụ hay quyền.",
+    "userPermissionAuthority": "Quyền user đang có hiệu lực tại CRM; snapshot không chứa quyền của user thật."
+  },
+  "generator": "scripts/generate-hermes-crm-inventory.mjs",
+  "regenerate": "node scripts/generate-hermes-crm-inventory.mjs --write",
+  "check": "node scripts/generate-hermes-crm-inventory.mjs --check",
+  "sources": [
+    {
+      "path": "scripts/check-copilot-forbidden-actions.mjs",
+      "sha256": "d57c458c34bb74783dc66d7687f89a354f7c1db391952611c27ee6ce849fe4a2"
+    },
+    {
+      "path": "scripts/check-copilot-tool-inventory.mjs",
+      "sha256": "445d8f531c344956fa5f55cc36a33f9396e670216ee04c17c28652034b02b1a9"
+    },
+    {
+      "path": "scripts/generate-hermes-crm-inventory.mjs",
+      "sha256": "aa416eecf3f7754d1282edab9730c7e56c645f6122bd4eb4c750ae0ccf15d9ca"
+    },
+    {
+      "path": "src/app/capabilities/registry.ts",
+      "sha256": "c8fa44957e1640e51cebd416fb84e89ecab9372c9ec8cbefb48950208e9c1f12"
+    },
+    {
+      "path": "src/copilot/featureFlags.ts",
+      "sha256": "592a0260783c2a75723c87e2b74edc72df2c03374d16b6d92f2446af99a092e5"
+    },
+    {
+      "path": "src/copilot/plan/actionCatalog.ts",
+      "sha256": "236cb4cb7717a88907a035eadcabdb99196a895f67f189496984be62666e0a53"
+    },
+    {
+      "path": "src/copilot/plan/planClient.ts",
+      "sha256": "927da59c1d0bfef29f7ee3f80b2d3ce1fa70b07a26a33beb1e4d1bd34293df44"
+    },
+    {
+      "path": "src/copilot/plan/standingGrantClient.ts",
+      "sha256": "9487d49ca2e4c1c18d8e8e4704ced76cec53c3c0d18c08c4f0e4235252b6c5eb"
+    },
+    {
+      "path": "src/copilot/plan/stepUpClient.ts",
+      "sha256": "970b05f052f57287847e52649a8a0496b2f71f7e63528b47eb82c945b3c7ff90"
+    },
+    {
+      "path": "src/copilot/tools/guideCorpus.generated.ts",
+      "sha256": "e83465fc2d121fd11b2ec6230f04cc8d8f355fd7b12da1bc4c98582c07ee1c41"
+    },
+    {
+      "path": "src/copilot/tools/memoryTools.ts",
+      "sha256": "9f54012cc24c2083d01aedb177e04431ad129791f072d5b4d7cb15f19c52d397"
+    },
+    {
+      "path": "src/copilot/tools/nghiepVuTools.ts",
+      "sha256": "070a75e750e01e43a07f79650ae0675f66343941d7a8b5005b3a99faaacdbe42"
+    },
+    {
+      "path": "src/copilot/tools/planTools.ts",
+      "sha256": "8efc7b5a61bdec173257e2c574f50ebb7a3f8806643c22c70ae2a5a365ab145d"
+    },
+    {
+      "path": "src/copilot/tools/registry.ts",
+      "sha256": "e33929d0e465a257968b03ac6c07bb67f0579a10ddb4e55ab6bf7819d2c25bf9"
+    },
+    {
+      "path": "src/copilot/tools/writeTools.ts",
+      "sha256": "22d791a323a96f3c3f8ef63c4fc899c5777725ce4a156f6e6a1d5b0075e0e61f"
+    }
+  ],
+  "summary": {
+    "toolCount": 67,
+    "toolsByLegacyCategory": {
+      "navigate": 1,
+      "read": 55,
+      "write": 11
+    },
+    "toolsBySemanticCategory": {
+      "memory_mutation": 2,
+      "navigation": 1,
+      "plan_orchestration": 2,
+      "read": 55,
+      "write_proposal": 7
+    },
+    "actionCount": 32,
+    "retiredActionCount": 1,
+    "actionsByRisk": {
+      "L3": 4,
+      "L4": 3,
+      "L5": 25
+    },
+    "capabilityCount": 29,
+    "toolDispositions": {
+      "migrate_to_gateway": 64,
+      "retain_ui": 1,
+      "undecided": 2
+    }
+  },
+  "limitations": [
+    "Phân tích khai báo tĩnh, không import registry vào Node và không chứng minh tool được lắp/bật ở runtime.",
+    "Không đối chiếu catalog/RLS/rollout trên database đang chạy; không phải bằng chứng production.",
+    "Quyền literal chỉ là metadata: cần kiểm server RPC, phạm vi tổ chức/tòa và projection dữ liệu từng tool.",
+    "Capability liên quan chỉ so cùng khóa quyền, không phải ánh xạ thực thi hoặc chứng cứ công cụ đã bao phủ UI.",
+    "Disposition là đề xuất chuyển đổi P0; không tự bật quyền hoặc thay thế Copilot.",
+    "Memory công việc dùng chung có quyền CRM, điều phối Hermes tổng và giao việc chưa có trong các tool memory hiện tại.",
+    "Không liệt kê đầy đủ dependency/helper/RPC đọc và mọi điểm gọi trực tiếp DB; phải rà từng lát trước khi mở gateway.",
+    "Mọi capability/handler mới vẫn cần kiểm quyền user giao với giới hạn kết nối; snapshot không thay cơ chế đó."
+  ],
+  "tools": [
+    {
+      "id": "ban_do_he_thong",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1539
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": null,
+      "permissionEvidence": "unresolved_or_absent_review_required",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bang_luong_ky",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2290
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "salary.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.sensitive.salary",
+        "symbol": "KHOA_ROLLOUT_LUONG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "salary",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_ban_giao",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2715
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.handover_report",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_chu_ky_thu",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2743
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.collection_cycle",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_dat_coc",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2173
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.deposits_report",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_dong_tien",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2013
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.cash_flow",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_gia_han",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1725
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.renewals_transfers",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_hop_dong_moi",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1826
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.new_leases",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_khuyen_mai",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2689
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.promotions",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_lich_thu_tien",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2078
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.payment_schedule",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_phong_trong",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1677
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.vacant_rooms",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_thanh_ly",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1773
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.terminations",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_thu_chi_theo_ngay",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1947
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.daily_cashbook",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_thu_thua",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2134
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.overpayment",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.finance",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "overpayment",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "bao_cao_ty_le_chi_phi",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1876
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.expense_ratio",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "reports.real-estate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "chi_so_cong_to",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1126
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "meter_readings.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "meter-readings.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "meters",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "chi_tiet_hop_dong",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 753
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "contracts.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "contracts.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "contracts",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "coc_dang_giu",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 440
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "deposits.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "deposits",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "cong_no_tong_quan",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 384
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "invoices.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "invoices",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "cong_viec",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1310
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "tasks.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "tasks.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "tasks",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_bao_tri_tai_san",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1284
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "assets.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.assets.maintenance.directory",
+        "symbol": "KHOA_ROLLOUT_BAO_TRI_TAI_SAN",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "assets",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_cong_to",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 813
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "meters.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.meters.directory",
+        "symbol": "KHOA_ROLLOUT_CONG_TO",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_dich_vu",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1267
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "services.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "services.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "services",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_dinh_muc_dich_vu",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1167
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "service_quotas.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.service-quotas.directory",
+        "symbol": "KHOA_ROLLOUT_DINH_MUC_DICH_VU",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_hotline",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1137
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "hotline.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.hotlines.directory",
+        "symbol": "KHOA_ROLLOUT_DANH_SACH_HOTLINE",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_kho_tai_san",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 987
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "warehouses.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.warehouses.directory",
+        "symbol": "KHOA_ROLLOUT_KHO_TAI_SAN",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_khu_vuc",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 782
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "areas.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.areas.directory",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_loai_cong_viec",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1072
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "task_types.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.job-types.directory",
+        "symbol": "KHOA_ROLLOUT_LOAI_CONG_VIEC",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_loai_tai_san",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1045
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "asset_types.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.asset-types.directory",
+        "symbol": "KHOA_ROLLOUT_LOAI_TAI_SAN",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_nha_cung_cap",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1018
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "suppliers.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.suppliers.directory",
+        "symbol": "KHOA_ROLLOUT_NHA_CUNG_CAP",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_phong_sale",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 896
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "sale_phong.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.sale-listings.directory",
+        "symbol": "KHOA_ROLLOUT_DANH_SACH_SALE",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "sale-phong",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_tai_san",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1224
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "assets.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "assets.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "assets",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_tang",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1105
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "categories.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.floors.directory",
+        "symbol": "KHOA_ROLLOUT_DANH_SACH_TANG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_thanh_vien_vai_tro",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 936
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "users.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.members-roles.directory",
+        "symbol": "KHOA_ROLLOUT_THANH_VIEN_VAI_TRO",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "danh_sach_toa_nha",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1204
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "buildings.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.buildings.directory",
+        "symbol": "KHOA_ROLLOUT_DANH_SACH_TOA_NHA",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "buildings",
+          "match": "same_permission_only"
+        },
+        {
+          "id": "map",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "dat_co_hoi_thoai_zalo",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 348
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "chat_zalo.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "zalo.set_conversation_flags",
+      "rollout": {
+        "key": "action:zalo.set_conversation_flags",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "chat-zalo",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "dat_han_giu_cho",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 338
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "deposits.edit",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "reservation.set_hold_terms",
+      "rollout": {
+        "key": "action:reservation.set_hold_terms",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "doanh_thu_thang",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1469
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_finance.analysis",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "doi_trang_thai_tin_phong_nho_sale",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 318
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "sale_phong.manage_pass_listings",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "room_pass.set_active",
+      "rollout": {
+        "key": "action:room_pass.set_active",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "ghi_chi_so_cong_to",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 358
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "meter_readings.create",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "meter_reading.create",
+      "rollout": {
+        "key": "action:meter_reading.create",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "ghi_chu_phieu_thu_chi",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 328
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "income_expenses.edit",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "income_expense.annotate",
+      "rollout": {
+        "key": "action:income_expense.annotate",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "ghi_nho",
+      "source": {
+        "path": "src/copilot/tools/memoryTools.ts",
+        "line": 65
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "memory_mutation",
+      "permission": "ai_copilot.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Cần tách memory riêng từng user và memory công việc có quyền CRM; tool hiện có chỉ là own-row, chưa có Hermes tổng.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "hoi_thoai_zalo",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2511
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "chat_zalo.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "chat-zalo.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "chat-zalo",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "hop_cho_duyet",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 875
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "income_expenses.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "income-expenses.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "cashbook",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "hop_dong_sap_het_han",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1429
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.expiring",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "huong_dan",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1515
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": null,
+      "permissionEvidence": "unresolved_or_absent_review_required",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "lap_ke_hoach",
+      "source": {
+        "path": "src/copilot/tools/planTools.ts",
+        "line": 293
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "plan_orchestration",
+      "permission": "ai_copilot.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": "KHOA_ROLLOUT_KE_HOACH",
+        "exempt": false,
+        "resolution": "expression_unresolved"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": true
+      },
+      "relatedCapabilities": [],
+      "disposition": "undecided",
+      "migrationNote": "Chưa quyết định adapter; tái dùng nghiệp vụ nhưng không nhân đôi vòng điều phối AI.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "liet_ke_chu_de",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1564
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": null,
+      "permissionEvidence": "unresolved_or_absent_review_required",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "loi_nhuan_co_dong",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2401
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "shareholder_profit.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.sensitive.shareholder-profit",
+        "symbol": "KHOA_ROLLOUT_LOI_NHUAN_CO_DONG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "mo_trang",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1613
+      },
+      "legacyCategory": "navigate",
+      "semanticCategory": "navigation",
+      "permission": null,
+      "permissionEvidence": "unresolved_or_absent_review_required",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.navigation",
+        "symbol": "KHOA_ROLLOUT_DIEU_HUONG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": true,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "retain_ui",
+      "migrationNote": "Giữ điều hướng/deep link ở UI; không tự chuyển quyền điều khiển DOM sang Hermes.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "phong_trong",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1319
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "rooms.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "rooms.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "rooms",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "quen",
+      "source": {
+        "path": "src/copilot/tools/memoryTools.ts",
+        "line": 92
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "memory_mutation",
+      "permission": "ai_copilot.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Cần tách memory riêng từng user và memory công việc có quyền CRM; tool hiện có chỉ là own-row, chưa có Hermes tổng.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "so_quy",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 467
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "cashbooks.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "funds",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tao_phieu_giu_cho",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 371
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "deposits.create",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "reservation_deposit.create",
+      "rollout": {
+        "key": "action:reservation_deposit.create",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tao_phieu_thu_chi_nhap",
+      "source": {
+        "path": "src/copilot/tools/writeTools.ts",
+        "line": 135
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "write_proposal",
+      "permission": "income_expenses.create",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": "income_expense.create_draft",
+      "rollout": {
+        "key": "action:income_expense.create_draft",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "chi-tieu",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "thong_bao_gan_day",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 856
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "notifications.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.notifications.feed",
+        "symbol": "KHOA_ROLLOUT_THONG_BAO",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "notifications",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "thuc_thi_buoc",
+      "source": {
+        "path": "src/copilot/tools/planTools.ts",
+        "line": 314
+      },
+      "legacyCategory": "write",
+      "semanticCategory": "plan_orchestration",
+      "permission": "ai_copilot.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": "KHOA_ROLLOUT_KE_HOACH",
+        "exempt": false,
+        "resolution": "expression_unresolved"
+      },
+      "flags": {
+        "chatOnly": true,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": true
+      },
+      "relatedCapabilities": [],
+      "disposition": "undecided",
+      "migrationNote": "Chưa quyết định adapter; tái dùng nghiệp vụ nhưng không nhân đôi vòng điều phối AI.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_hoa_don",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1397
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "invoices.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "invoices.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "invoices",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_hop_dong",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 700
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "contracts.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "contracts.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "contracts",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_khach_hang",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1358
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "customers.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "customers.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "customers",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_khach_hen",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1072
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "leads.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "leads.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "leads",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_phieu_thu_chi",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 811
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "income_expenses.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "income-expenses.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "cashbook",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "tim_xe",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1180
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "vehicles.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "vehicles.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "vehicles",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "ton_kho_vat_tu",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 1358
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "materials.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "materials.list",
+        "symbol": null,
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "materials",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "trang_thai_gach_no_tu_dong",
+      "source": {
+        "path": "src/copilot/tools/registry.ts",
+        "line": 1249
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "auto_debt.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.auto-debt.status",
+        "symbol": "KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "trang_thai_mang",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 2608
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "network_center.view",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": "copilot.sensitive.network",
+        "symbol": "KHOA_ROLLOUT_MANG",
+        "exempt": false,
+        "resolution": "static"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [
+        {
+          "id": "network-center",
+          "match": "same_permission_only"
+        }
+      ],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    },
+    {
+      "id": "ty_le_lap_day",
+      "source": {
+        "path": "src/copilot/tools/nghiepVuTools.ts",
+        "line": 283
+      },
+      "legacyCategory": "read",
+      "semanticCategory": "read",
+      "permission": "reports_real_estate.occupancy",
+      "permissionEvidence": "literal_metadata_only",
+      "actionId": null,
+      "rollout": {
+        "key": null,
+        "symbol": null,
+        "exempt": true,
+        "resolution": "no_literal_key"
+      },
+      "flags": {
+        "chatOnly": false,
+        "navigationOnly": false,
+        "uiControlOnly": false,
+        "superAdminOnly": false
+      },
+      "relatedCapabilities": [],
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.",
+      "hermesExposure": "not_implemented"
+    }
+  ],
+  "actions": [
+    {
+      "id": "cashbook.chot_so",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1094
+      },
+      "version": 1,
+      "label": "Xác nhận chốt sổ quỹ & bàn giao",
+      "permission": "cashbooks.close_confirm",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_cashbook_chot_so_v1",
+      "executeRpc": "copilot_execute_cashbook_chot_so_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "contract.chuyen_nhuong",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1059
+      },
+      "version": 1,
+      "label": "Nhượng hợp đồng cho khách hàng khác",
+      "permission": "contracts.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_contract_chuyen_nhuong_v1",
+      "executeRpc": "copilot_execute_contract_chuyen_nhuong_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "contract.duyet_thanh_ly",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 875
+      },
+      "version": 1,
+      "label": "Duyệt thanh lý hợp đồng",
+      "permission": "contracts.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_contract_duyet_thanh_ly_v1",
+      "executeRpc": "copilot_execute_contract_duyet_thanh_ly_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "contract.gia_han",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1046
+      },
+      "version": 1,
+      "label": "Gia hạn hợp đồng",
+      "permission": "contracts.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_contract_gia_han_v1",
+      "executeRpc": "copilot_execute_contract_gia_han_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "customer.xoa_mem",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 896
+      },
+      "version": 1,
+      "label": "Xoá mềm khách hàng",
+      "permission": "customers.delete",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_customer_xoa_mem_v1",
+      "executeRpc": "copilot_execute_customer_xoa_mem_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.annotate",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 620
+      },
+      "version": 1,
+      "label": "Sửa ghi chú phiếu thu/chi",
+      "permission": "income_expenses.edit",
+      "risk": "L3",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_income_expense_annotate_v1",
+      "executeRpc": "copilot_execute_income_expense_annotate_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.create_draft",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 599
+      },
+      "version": 1,
+      "label": "Tạo phiếu thu/chi nháp",
+      "permission": "income_expenses.create",
+      "risk": "L4",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_income_expense_v1",
+      "executeRpc": "copilot_execute_income_expense_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.duyet",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 785
+      },
+      "version": 1,
+      "label": "Duyệt phiếu thu/chi",
+      "permission": "income_expenses.approve",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_ie_duyet_v1",
+      "executeRpc": "copilot_execute_ie_duyet_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.duyet_vao_so",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 798
+      },
+      "version": 1,
+      "label": "Duyệt và vào sổ phiếu thu/chi",
+      "permission": "income_expenses.approve",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_ie_duyet_vao_so_v1",
+      "executeRpc": "copilot_execute_ie_duyet_vao_so_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.nop_ho_so",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 750
+      },
+      "version": 1,
+      "label": "Nộp phiếu thu/chi vào hộp chờ duyệt",
+      "permission": "income_expenses.create",
+      "risk": "L5",
+      "consentRequired": "click",
+      "executorKind": "maker_submit_v1",
+      "previewRpc": "copilot_plan_submit_voucher_v1",
+      "executeRpc": "copilot_plan_submit_voucher_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "income_expense.vao_so",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 811
+      },
+      "version": 1,
+      "label": "Vào sổ phiếu thu/chi đã duyệt",
+      "permission": "income_expenses.approve",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_ie_vao_so_v1",
+      "executeRpc": "copilot_execute_ie_vao_so_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "invoice.duyet",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 824
+      },
+      "version": 1,
+      "label": "Duyệt hoá đơn",
+      "permission": "invoices.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_invoice_duyet_v1",
+      "executeRpc": "copilot_execute_invoice_duyet_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "invoice.duyet_hang_loat",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1030
+      },
+      "version": 1,
+      "label": "Duyệt hàng loạt hoá đơn",
+      "permission": "invoices.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_invoice_duyet_hang_loat_v1",
+      "executeRpc": "copilot_execute_invoice_duyet_hang_loat_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "invoice.xoa_mem",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 840
+      },
+      "version": 1,
+      "label": "Xoá mềm hoá đơn",
+      "permission": "invoices.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_invoice_xoa_mem_v1",
+      "executeRpc": "copilot_execute_invoice_xoa_mem_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "member.invite",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 946
+      },
+      "version": 1,
+      "label": "Mời thành viên",
+      "permission": "users.create",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_member_moi_v1",
+      "executeRpc": "copilot_execute_member_moi_v1",
+      "retired": false,
+      "pinAlways": true,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "member.set_status",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 960
+      },
+      "version": 1,
+      "label": "Đổi trạng thái thành viên",
+      "permission": "users.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_member_trang_thai_v1",
+      "executeRpc": "copilot_execute_member_trang_thai_v1",
+      "retired": false,
+      "pinAlways": true,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "member.update_authorization",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 918
+      },
+      "version": 1,
+      "label": "Sửa phân quyền thành viên",
+      "permission": "users.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_member_cap_quyen_v1",
+      "executeRpc": "copilot_execute_member_cap_quyen_v1",
+      "retired": false,
+      "pinAlways": true,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "meter_reading.create",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 696
+      },
+      "version": 1,
+      "label": "Ghi chỉ số công tơ",
+      "permission": "meter_readings.create",
+      "risk": "L4",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_meter_reading_v1",
+      "executeRpc": "copilot_execute_meter_reading_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "meter_reading.duyet",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 853
+      },
+      "version": 1,
+      "label": "Duyệt chỉ số công tơ",
+      "permission": "meter_readings.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_meter_reading_duyet_v1",
+      "executeRpc": "copilot_execute_meter_reading_duyet_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "meter_reading.xoa_hang_loat",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1146
+      },
+      "version": 1,
+      "label": "Xoá hàng loạt chỉ số công tơ",
+      "permission": "meter_readings.delete",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_meter_reading_xoa_hang_loat_v1",
+      "executeRpc": "copilot_execute_meter_reading_xoa_hang_loat_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "network.execute_action",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1009
+      },
+      "version": 1,
+      "label": "Thực thi lệnh Network Center",
+      "permission": "network_center.execute",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_network_thuc_thi_v1",
+      "executeRpc": "copilot_execute_network_thuc_thi_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": true,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "reservation_deposit.create",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 723
+      },
+      "version": 1,
+      "label": "Tạo phiếu giữ chỗ chờ duyệt",
+      "permission": "deposits.create",
+      "risk": "L4",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_reservation_deposit_v1",
+      "executeRpc": "copilot_execute_reservation_deposit_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "reservation.set_hold_terms",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 646
+      },
+      "version": 1,
+      "label": "Đặt kỳ hạn giữ chỗ cho phiếu cọc",
+      "permission": "deposits.edit",
+      "risk": "L3",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_reservation_hold_terms_v1",
+      "executeRpc": "copilot_execute_reservation_hold_terms_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "role.upsert",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 932
+      },
+      "version": 1,
+      "label": "Tạo/sửa vai trò",
+      "permission": "users.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_role_cap_nhat_v1",
+      "executeRpc": "copilot_execute_role_cap_nhat_v1",
+      "retired": false,
+      "pinAlways": true,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "room_pass.set_active",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 633
+      },
+      "version": 1,
+      "label": "Đổi trạng thái công khai tin phòng nhờ sale",
+      "permission": "sale_phong.manage_pass_listings",
+      "risk": "L3",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_room_pass_active_v1",
+      "executeRpc": "copilot_execute_room_pass_active_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "room.chuyen_phong",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1133
+      },
+      "version": 1,
+      "label": "Chuyển phòng cho hợp đồng",
+      "permission": "contracts.edit",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_room_chuyen_phong_v1",
+      "executeRpc": "copilot_execute_room_chuyen_phong_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "salary.chi_luong",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1107
+      },
+      "version": 1,
+      "label": "Nộp hồ sơ chi lương chờ duyệt",
+      "permission": "salary.distribute",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_salary_chi_luong_v1",
+      "executeRpc": "copilot_execute_salary_chi_luong_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "salary.khoa_thang",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1120
+      },
+      "version": 1,
+      "label": "Chốt khoá bảng lương tháng",
+      "permission": "salary.lock",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_salary_khoa_thang_v1",
+      "executeRpc": "copilot_execute_salary_khoa_thang_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "termination.hoan_coc",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 1080
+      },
+      "version": 1,
+      "label": "Sinh phiếu hoàn cọc thanh lý",
+      "permission": "income_expenses.create",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_termination_hoan_coc_v1",
+      "executeRpc": "copilot_execute_termination_hoan_coc_v1",
+      "retired": true,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "retired",
+      "migrationNote": "Đã gỡ trong catalog; không mở lại qua Hermes."
+    },
+    {
+      "id": "zalo.broadcast",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 981
+      },
+      "version": 1,
+      "label": "Gửi tin Zalo",
+      "permission": "chat_zalo.send",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_zalo_phat_song_v1",
+      "executeRpc": "copilot_execute_zalo_phat_song_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": true,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "zalo.recall_message",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 995
+      },
+      "version": 1,
+      "label": "Thu hồi tin Zalo",
+      "permission": "chat_zalo.send",
+      "risk": "L5",
+      "consentRequired": "step_up",
+      "executorKind": "direct_l5_v1",
+      "previewRpc": "copilot_preview_zalo_thu_hoi_tin_v1",
+      "executeRpc": "copilot_execute_zalo_thu_hoi_tin_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": true,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    },
+    {
+      "id": "zalo.set_conversation_flags",
+      "source": {
+        "path": "src/copilot/plan/actionCatalog.ts",
+        "line": 668
+      },
+      "version": 1,
+      "label": "Đặt cờ hội thoại Zalo (ghim / tắt tiếng / chưa đọc)",
+      "permission": "chat_zalo.view",
+      "risk": "L3",
+      "consentRequired": "click",
+      "executorKind": "nonce_abi_v1",
+      "previewRpc": "copilot_preview_zalo_conversation_flags_v1",
+      "executeRpc": "copilot_execute_zalo_conversation_flags_v1",
+      "retired": false,
+      "pinAlways": false,
+      "externalEffect": false,
+      "disposition": "migrate_to_gateway",
+      "migrationNote": "Tái sử dụng hợp đồng server sau khi kiểm connector, quyền và xác nhận; chưa cấp cho Hermes."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "assets",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 402
+      },
+      "route": "/assets",
+      "permission": "assets.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "bank-events",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 191
+      },
+      "route": "/bien-dong-so-du",
+      "permission": null,
+      "superAdminOnly": true,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "buildings",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 372
+      },
+      "route": "/buildings",
+      "permission": "buildings.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "cashbook",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 271
+      },
+      "route": "/income-expense",
+      "permission": "income_expenses.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "chat-zalo",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 523
+      },
+      "route": "/chat-zalo",
+      "permission": "chat_zalo.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "chi-tieu",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 286
+      },
+      "route": "/chi-tieu",
+      "permission": "income_expenses.create",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "contracts",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 447
+      },
+      "route": "/contracts",
+      "permission": "contracts.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "customers",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 462
+      },
+      "route": "/customers",
+      "permission": "customers.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "deposits",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 432
+      },
+      "route": "/deposits",
+      "permission": "deposits.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "funds",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 328
+      },
+      "route": "/finance/cashbooks",
+      "permission": "cashbooks.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "invoices",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 255
+      },
+      "route": "/invoices",
+      "permission": "invoices.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "leads",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 417
+      },
+      "route": "/leads",
+      "permission": "leads.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "map",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 673
+      },
+      "route": "/building-map",
+      "permission": "buildings.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "materials",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 585
+      },
+      "route": "/materials",
+      "permission": "materials.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "meters",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 493
+      },
+      "route": "/meter-readings",
+      "permission": "meter_readings.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "network-center",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 208
+      },
+      "route": "/network-center",
+      "permission": "network_center.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "notifications",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 538
+      },
+      "route": "/notifications",
+      "permission": "notifications.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "overpayment",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 698
+      },
+      "route": "/reports/finance/overpayment",
+      "permission": "reports_finance.overpayment",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "personal-wallet",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 313
+      },
+      "route": "/finance/personal-wallet",
+      "permission": "personal_finance.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "reports",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 635
+      },
+      "route": "/reports/real-estate",
+      "permission": "reports_real_estate.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "rooms",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 569
+      },
+      "route": "/apartments",
+      "permission": "rooms.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "salary",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 343
+      },
+      "route": "/finance/salary",
+      "permission": "salary.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "sale-phong",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 616
+      },
+      "route": "/sale-phong",
+      "permission": "sale_phong.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "services",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 387
+      },
+      "route": "/services",
+      "permission": "services.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "settings",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 654
+      },
+      "route": "/settings/general",
+      "permission": "settings.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "tasks",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 508
+      },
+      "route": "/tasks",
+      "permission": "tasks.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "templates",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 553
+      },
+      "route": "/settings/templates",
+      "permission": "templates.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "thu-tien",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 600
+      },
+      "route": "/thu-tien",
+      "permission": "thu_tien.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    },
+    {
+      "id": "vehicles",
+      "source": {
+        "path": "src/app/capabilities/registry.ts",
+        "line": 478
+      },
+      "route": "/vehicles",
+      "permission": "vehicles.view",
+      "superAdminOnly": false,
+      "disposition": "retain_ui",
+      "migrationNote": "Bề mặt UI được giữ; trùng khóa quyền không chứng minh đã có công cụ Hermes."
+    }
+  ]
+}

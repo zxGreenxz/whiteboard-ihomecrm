@@ -130,25 +130,32 @@ describe("quyetDinhDoRoOrg", () => {
 });
 
 describe("danh sách gate", () => {
-  it("hoãn gate và generator chuyên biệt nhưng vẫn kiểm tiền, quyền, migration", () => {
-    expect(GATE_TAM_HOAN).toContain("check-copilot-tool-inventory");
-    expect(GATE_TAM_HOAN).toContain("check-doc-freshness");
-    expect(GATE_NHANH).not.toContain("check-copilot-tool-inventory");
-    expect(GATE_NHANH).not.toContain("check-doc-freshness");
+  it("mở core offline có chọn lọc, giữ live deferred và kiểm tiền, quyền, migration", () => {
+    for (const gate of ["check-copilot-tool-inventory", "check-copilot-docs-manifest", "check-copilot-forbidden-actions", "generate-copilot-guide-corpus"]) {
+      expect(GATE_TAM_HOAN).not.toContain(gate);
+      expect(GATE_NHANH).toContain(gate);
+    }
+    for (const gate of ["check-doc-freshness", "check-copilot-golden-eval", "check-copilot-negative-proofs"]) {
+      expect(GATE_TAM_HOAN).toContain(gate);
+      expect(GATE_NHANH).not.toContain(gate);
+    }
     expect(TU_CHUA.some(([, args]) => args[0] === "scripts/generate-copilot-guide-corpus.mjs")).toBe(false);
     for (const gate of ["check-money-table-dml", "check-route-permission-drift", "check-migration-provenance", "check-test-matrix"]) {
       expect(GATE_NHANH).toContain(gate);
     }
   });
 
-  it("hoãn test chuyên biệt kể cả đường Windows, không mở rộng sang file kế bên", () => {
+  it("hoãn UI/model và fleet kể cả đường Windows, core và file kế bên vẫn hoạt động", () => {
     for (const path of [
-      "src/copilot/model.test.ts", "src/copilot/ui/chat.test.tsx",
-      "src\\copilot\\ui\\chat.test.tsx",
+      "src/copilot/__tests__/llmClient.test.ts", "src/copilot/__tests__/ChatPanel.test.tsx",
+      "src\\copilot\\__tests__\\ChatPanel.test.tsx",
       "scripts/__tests__/check-copilot-routes.test.mjs",
       ".e2e-fleet/specs/chat-zalo.spec.ts",
     ]) expect(isDeferredTest(path), path).toBe(true);
     for (const path of [
+      "src/copilot/__tests__/toolOrgScope.test.ts",
+      "src\\copilot\\plan\\__tests__\\actionCatalog.test.ts",
+      "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
       // Zalo mở lại 10/10/2026: test đơn vị chạy lại, chỉ spec fleet chat-zalo còn hoãn.
       "src\\hooks\\chat-zalo\\__tests__\\chat.test.ts",
       "worker/__tests__/automation-runner.test.js",

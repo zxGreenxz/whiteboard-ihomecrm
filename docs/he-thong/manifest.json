@@ -204,6 +204,12 @@
       "file": "realtime-sync.md",
       "copilotIngest": false,
       "why": "bản đồ bảo trì kỹ thuật (bảng -> query key), dành cho lập trình viên"
+    },
+    {
+      "file": "25-bien-dong-so-du.md",
+      "copilotIngest": false,
+      "reviewed": null,
+      "why": "Bề mặt superadmin chứa nghiệp vụ SMS/OTP nhạy cảm; cần ánh xạ và kiểm quyền superadmin trước khi cho AI đọc. Chỉ phân loại tài liệu, chưa đưa vào corpus."
     }
   ]
 }

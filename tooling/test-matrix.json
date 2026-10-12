@@ -246,13 +246,144 @@
       "testPatterns": [
         "extensions/sms-webhook/android/app/src/androidTest/**/*.java"
       ]
+    },
+    {
+      "id": "copilot-shared-core",
+      "sourcePaths": [
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/docs/**",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/maskPii.ts",
+        "src/copilot/anToanVanBan.ts",
+        "src/copilot/featureFlags.ts",
+        "tooling/copilot-action-policy.json"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/copilot/__tests__/actionRollout.test.ts",
+        "src/copilot/__tests__/availabilityAdapters.test.ts",
+        "src/copilot/__tests__/availabilityGate.test.ts",
+        "src/copilot/__tests__/banDoHeThong.test.ts",
+        "src/copilot/__tests__/chatErrors.test.ts",
+        "src/copilot/__tests__/confirmationPersistence.feedback.test.ts",
+        "src/copilot/__tests__/confirmationRace.test.ts",
+        "src/copilot/__tests__/confirmationStore.test.ts",
+        "src/copilot/__tests__/copilot.test.ts",
+        "src/copilot/__tests__/docIngestFreshness.test.ts",
+        "src/copilot/__tests__/docSearch.test.ts",
+        "src/copilot/__tests__/featureFlags.test.ts",
+        "src/copilot/__tests__/financialReadGolden.test.ts",
+        "src/copilot/__tests__/guideCorpus.test.ts",
+        "src/copilot/__tests__/invoiceStatsTool.test.ts",
+        "src/copilot/__tests__/ledgerAuditCoverage.test.ts",
+        "src/copilot/__tests__/memory.test.ts",
+        "src/copilot/__tests__/memoryReceipts.feedback.test.ts",
+        "src/copilot/__tests__/nghiepVuTools.test.ts",
+        "src/copilot/__tests__/phaseDWriteMatrix.test.ts",
+        "src/copilot/__tests__/planTools.test.ts",
+        "src/copilot/__tests__/readonlyQueryContracts.test.ts",
+        "src/copilot/__tests__/toolOrgScope.test.ts",
+        "src/copilot/__tests__/writeToolsHanhDong.test.ts",
+        "src/copilot/plan/**/*.test.ts"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "check-copilot-tool-inventory",
+        "check-copilot-forbidden-actions",
+        "generate-copilot-guide-corpus"
+      ]
+    },
+    {
+      "id": "copilot-shared-core-verifiers",
+      "sourcePaths": [
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/docs/**",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/maskPii.ts",
+        "src/copilot/anToanVanBan.ts",
+        "src/copilot/featureFlags.ts",
+        "tooling/copilot-action-policy.json",
+        "scripts/check-copilot-docs-manifest.mjs",
+        "scripts/check-copilot-tool-inventory.mjs",
+        "scripts/check-copilot-forbidden-actions.mjs",
+        "scripts/generate-copilot-guide-corpus.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+        "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
+        "scripts/__tests__/check-copilot-forbidden-actions.test.mjs"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "check-copilot-tool-inventory",
+        "check-copilot-forbidden-actions",
+        "generate-copilot-guide-corpus"
+      ]
+    },
+    {
+      "id": "zalo-worker-foundation",
+      "sourcePaths": [
+        "worker/index.js",
+        "worker/lib/**"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "worker/__tests__/**/*.test.js"
+      ]
+    },
+    {
+      "id": "hermes-foundation-inventory",
+      "sourcePaths": [
+        "scripts/generate-hermes-crm-inventory.mjs",
+        "tooling/hermes-crm-inventory.generated.json",
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/featureFlags.ts",
+        "src/app/capabilities/registry.ts",
+        "scripts/check-copilot-tool-inventory.mjs",
+        "scripts/check-copilot-forbidden-actions.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
+      ],
+      "gates": [
+        "generate-hermes-crm-inventory"
+      ]
+    },
+    {
+      "id": "copilot-corpus-inputs",
+      "includeDocumentation": true,
+      "sourcePaths": [
+        "docs/he-thong/manifest.json",
+        "docs/he-thong/*.md",
+        "docs/ai-copilot/README.md",
+        "docs/huong-dan-su-dung/**/index.md",
+        "src/app/capabilities/registry.ts"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+        "scripts/__tests__/check-copilot-tool-inventory.test.mjs"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "generate-copilot-guide-corpus",
+        "check-copilot-tool-inventory"
+      ]
     }
   ],
   "notes": [
     "deferredModules loại test được tạm hoãn khỏi mọi suite đang hoạt động. status=deferred giữ metadata để khôi phục, không khai test đã chạy hay pass.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json.",
-    "Lane local npm run test-env:check (thêm -- --sync để làm mới TEST) điều phối JWT harness + scripts/test-env/chrome.mjs dưới cùng khoá, build đúng worktree và ghi biên nhận ngoài Git. Chưa có job CI cho lane live này; các unit test scripts/__tests__/test-env*.test.mjs thuộc app-unit."
+    "Lane local npm run test-env:check (thêm -- --sync để làm mới TEST) điều phối JWT harness + scripts/test-env/chrome.mjs dưới cùng khoá, build đúng worktree và ghi biên nhận ngoài Git. Chưa có job CI cho lane live này; các unit test scripts/__tests__/test-env*.test.mjs thuộc app-unit.",
+    "sourceSelectionRules.includeDocumentation=true chỉ mở suite/gate cho các nguồn tài liệu được liệt kê tường minh; tài liệu thường không tự kích hoạt runner nghiệp vụ."
   ],
   "suites": [
     {
@@ -375,7 +506,8 @@
         "services/**",
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
-        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs",
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
       ],
       "ciJobs": [
         {
@@ -674,7 +806,8 @@
         "scripts/__tests__/network-center-*.test.mjs",
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
-        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs",
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
