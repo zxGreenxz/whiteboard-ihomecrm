@@ -10,7 +10,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { assertEgressProof, assertFixtureInspection, assertHermesDenial, assertImageProvenance, assertInputsUnchanged, assertInside,
   assertIsolatedNetwork, assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTerminal, assertUnavailableTool,
   DNS_OPTIONS, HERMES_COMMIT, HERMES_IMAGE, ISOLATED_GATEWAY_OPTIONS, NO_FORWARDING, PRIVATE_DNS,
-  isolatedNetworkArgs, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
+  controlBridgeAddresses, isolatedNetworkArgs, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
 import { modelReply, sseReply } from './fake-model.mjs';
 import { CANARY_REPLY, dnsReply, startEgressCanary, startHostCanary } from './egress-canary.mjs';
 
@@ -21,6 +21,30 @@ const modelContext = { actor: 'a', sentinels: { a: 'PRIVATE_SENTINEL_A', b: 'PRI
 const body = { messages: [{ role: 'system', content: 'PRIVATE_SENTINEL_A' }, { role: 'user', content: 'FIXTURE_CONTEXT' }],
   tools: [{ type: 'function', function: { name: 'mcp__crm__crm_auth_context' } }] };
 const imageProvenance = JSON.parse(readFileSync(new URL('./image-provenance.json', import.meta.url), 'utf8'));
+
+test('host canary binds observed bridge addresses when automatic IPAM Gateway fields are absent', () => {
+  const network = { Id: 'a'.repeat(64), Driver: 'bridge', Internal: true, EnableIPv6: true, Options: {},
+    IPAM: { Config: [{ Subnet: '172.22.0.0/16' }, { Subnet: 'fd01:2:3:4::/64' }] } };
+  const entries = [{ address: '172.22.0.1', internal: false }, { address: 'fd01:2:3:4::1', internal: false },
+    { address: 'fe80::1', internal: false }];
+  assert.deepEqual(controlBridgeAddresses(network, { 'br-aaaaaaaaaaaa': entries }),
+    { interface: 'br-aaaaaaaaaaaa', ipv4: '172.22.0.1', ipv6: 'fd01:2:3:4::1' });
+  network.Options['com.docker.network.bridge.name'] = 'control-proof';
+  assert.equal(controlBridgeAddresses(network, { 'control-proof': entries }).interface, 'control-proof');
+  for (const mutate of [
+    n => { n.Internal = false; }, n => { n.EnableIPv6 = false; },
+    n => { n.Options['com.docker.network.bridge.gateway_mode_ipv6'] = 'isolated'; },
+    n => { n.IPAM.Config[0].Gateway = '172.22.0.99'; },
+    n => { n.IPAM.Config[1].Subnet = 'fd01:2:3:5::/64'; },
+  ]) {
+    const changed = structuredClone(network); mutate(changed);
+    assert.throws(() => controlBridgeAddresses(changed, { 'control-proof': entries }));
+  }
+  assert.throws(() => controlBridgeAddresses(network, {}));
+  assert.throws(() => controlBridgeAddresses(network, { 'control-proof': entries.slice(0, 1) }));
+  assert.throws(() => controlBridgeAddresses(network, { 'control-proof': [...entries, { address: '172.22.0.2', internal: false }] }));
+  assert.throws(() => controlBridgeAddresses(network, { 'control-proof': entries.map(row => ({ ...row, internal: true })) }));
+});
 
 test('reviewed release receipt binds the pinned amd64 image without claiming a signature or revision label', () => {
   const value = assertImageProvenance(imageProvenance);

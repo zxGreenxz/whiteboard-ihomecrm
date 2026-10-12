@@ -2,6 +2,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { BlockList, isIP } from 'node:net';
 
 export const HERMES_IMAGE = 'nousresearch/hermes-agent@sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95';
 export const HERMES_RELEASE = 'v0.21.6';
@@ -10,6 +11,34 @@ const HERMES_TAG_OBJECT = 'f27cdbce5ab63eafe8633b293a75151409da5769';
 const REGISTRY_MANIFESTS = 'https://registry-1.docker.io/v2/nousresearch/hermes-agent/manifests/';
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const sha256 = raw => `sha256:${createHash('sha256').update(raw).digest('hex')}`;
+
+// IPAM.Config describes requested configuration and need not include automatically
+// allocated gateway fields. The native Linux bridge's actual addresses are the
+// host listener targets. Never guess a subnet's first address or bind wildcard.
+export function controlBridgeAddresses(network, interfaces) {
+  assert.equal(network?.Driver, 'bridge'); assert.equal(network.Internal, true);
+  assert.equal(network.EnableIPv6, true); assert.match(network.Id, /^[a-f0-9]{64}$/);
+  for (const family of ['ipv4', 'ipv6']) {
+    assert.notEqual(network.Options?.[`com.docker.network.bridge.gateway_mode_${family}`], 'isolated');
+  }
+  const name = network.Options?.['com.docker.network.bridge.name'] || `br-${network.Id.slice(0, 12)}`;
+  assert.match(name, /^[a-zA-Z0-9_.:-]{1,15}$/);
+  const entries = interfaces?.[name]; assert.ok(Array.isArray(entries), 'Actual control bridge is missing');
+  const result = { interface: name };
+  for (const family of [4, 6]) {
+    const type = family === 4 ? 'ipv4' : 'ipv6';
+    const ranges = (network.IPAM?.Config ?? []).filter(row => isIP(row.Subnet?.split('/')[0]) === family);
+    assert.equal(ranges.length, 1, `Expected one control IPv${family} subnet`);
+    const [address, prefix] = ranges[0].Subnet.split('/');
+    assert.match(prefix ?? '', /^\d+$/);
+    const subnet = new BlockList(); subnet.addSubnet(address, Number(prefix), type);
+    const matches = entries.filter(row => row.internal === false && isIP(row.address) === family && subnet.check(row.address, type));
+    assert.equal(matches.length, 1, `Expected one actual control bridge IPv${family} address`);
+    if (ranges[0].Gateway) assert.equal(ranges[0].Gateway, matches[0].address, 'Configured gateway differs from live bridge');
+    result[type] = matches[0].address;
+  }
+  return result;
+}
 
 // Offline verification of the reviewed upstream receipt and content-addressed
 // manifest chain. This is NOT a signed attestation or reproducible-build proof.
