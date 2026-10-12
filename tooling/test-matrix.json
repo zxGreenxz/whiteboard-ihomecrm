@@ -184,6 +184,40 @@
       ]
     },
     {
+      "id": "org-leak-target-native",
+      "sourcePaths": [
+        "scripts/measure-org-leak.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs"
+      ]
+    },
+    {
+      "id": "org-leak-existing-contracts",
+      "sourcePaths": [
+        "scripts/measure-org-leak.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/lib/che-so-lieu-ci.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/measure-org-leak.test.mjs"
+      ]
+    },
+    {
       "id": "money-and-schema-invariants",
       "profiles": [
         "schema",
@@ -425,12 +459,98 @@
       "id": "hermes-broker-spike",
       "sourcePaths": [
         "infra/hermes-broker/**",
-        "scripts/test-hermes-broker-authz.mjs"
+        "scripts/test-hermes-broker-authz.mjs",
+        "src/lib/roomSaleFacts.ts"
       ],
       "suiteId": "node-native",
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-refresh-auth-native",
+      "sourcePaths": [
+        "scripts/test-hermes-refresh-auth.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/supabase-adapter.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.test.mjs",
+        "infra/hermes-broker/supabase-adapter.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-durable-schema-native",
+      "sourcePaths": [
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/lib/migration-target.mjs",
+        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-durable-store-native",
+      "sourcePaths": [
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/network-center-rollout-common.mjs",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+        "infra/hermes-broker/session-crypto.mjs",
+        "infra/hermes-broker/refresh-manager.mjs",
+        "infra/hermes-broker/durable-refresh-store.mjs",
+        "infra/hermes-broker/store-transport.mjs",
+        "infra/hermes-broker/store-pool.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/stores.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/supabase-adapter.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs",
+        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+        "infra/hermes-broker/durable-connection-store.mjs",
+        "infra/hermes-broker/durable-authority.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/certs/supabase-ca-2021.crt"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "infra/hermes-broker/session-crypto.test.mjs",
+        "infra/hermes-broker/refresh-manager.test.mjs",
+        "infra/hermes-broker/durable-refresh-store.test.mjs",
+        "infra/hermes-broker/store-transport.test.mjs",
+        "infra/hermes-broker/store-pool.test.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.test.mjs",
+        "infra/hermes-broker/supabase-adapter.test.mjs",
+        "infra/hermes-broker/durable-connection-store.test.mjs",
+        "infra/hermes-broker/durable-authority.test.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.test.mjs",
+        "infra/hermes-broker/connection-control-plane.test.mjs"
       ]
     },
     {
@@ -544,6 +664,7 @@
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",
@@ -600,7 +721,10 @@
         "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
         "infra/hermes-broker/**/*.test.mjs",
         "infra/hermes-runtime/**/*.test.mjs",
-        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-durable-store.test.mjs"
       ],
       "ciJobs": [
         {
@@ -850,6 +974,7 @@
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",
@@ -905,7 +1030,10 @@
         "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
         "infra/hermes-broker/**/*.test.mjs",
         "infra/hermes-runtime/**/*.test.mjs",
-        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-durable-store.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

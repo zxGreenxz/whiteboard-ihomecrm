@@ -6,10 +6,12 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { assertFixtureInspection, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
-  assertUnavailableTerminal, HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, RESULT_PREFIX, runtimeArgs,
+import { assertEgressProof, assertFixtureInspection, assertImageProvenance, assertInputsUnchanged, assertInside, assertIsolatedNetwork,
+  assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTool, DNS_OPTIONS,
+  HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, isolatedNetworkArgs, RESULT_PREFIX, runtimeArgs,
   runtimeUser, sourceHashes } from '../infra/hermes-runtime/runtime-contract.mjs';
 import { ProfileLeaseStore } from '../infra/hermes-runtime/profile-lease.mjs';
+import { startHostCanary } from '../infra/hermes-runtime/egress-canary.mjs';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,6 +28,8 @@ const out = assertInside(cacheRoot, path.join(cacheRoot, id));
 await mkdir(out, { recursive: true });
 const receiptPath = path.join(out, 'receipt.json');
 const inputFiles = ['infra/hermes-runtime/runtime-contract.mjs', 'infra/hermes-runtime/runtime-probe.py',
+  'infra/hermes-runtime/image-provenance.json',
+  'infra/hermes-runtime/egress-canary.mjs', 'infra/hermes-runtime/egress_probe.py',
   'infra/hermes-runtime/profile-lease.mjs',
   'infra/hermes-runtime/fake-model.mjs', 'infra/hermes-runtime/fixture-server.mjs', 'infra/hermes-runtime/control.mjs',
   'scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-broker/broker.mjs', 'infra/hermes-broker/stores.mjs',
@@ -35,11 +39,13 @@ const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), status:
   inputSha256: await sourceHashes(root, inputFiles),
   limitations: ['Synthetic users, model and broker authorization only; no live CRM/RLS, TLS/OAuth, Zalo or paid model.',
     'Admission wrapper is a spike, not the production session supervisor.',
-    'External egress probes do not prove every host port is unreachable.'] };
+    'Source binding uses a reviewed unsigned upstream release receipt and manifest hashes, not a signed attestation or reproducible-build proof.',
+    'TCP/DNS/host probes use live synthetic IPv4/IPv6 canaries, not every possible port/protocol or a production firewall proof.'] };
 const containers = [];
 const drivers = [];
 const privateFixtureValues = [];
 const createdNetworks = [];
+let hostCanary;
 const command = async (args, timeout = 30_000) => {
   const { stdout } = await exec(docker, args, { timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
   return stdout.trim();
@@ -101,6 +107,9 @@ class RuntimeDriver {
 }
 
 try {
+  receipt.stage = 'provenance';
+  const provenanceArtifact = JSON.parse(await readFile(path.join(root, 'infra/hermes-runtime/image-provenance.json'), 'utf8'));
+  receipt.sourceProvenance = assertImageProvenance(provenanceArtifact);
   const user = runtimeUser(); receipt.runtimeUser = user;
   receipt.stage = 'daemon';
   receipt.docker = JSON.parse(await command(['version', '--format', '{{json .}}'], 15_000));
@@ -110,25 +119,32 @@ try {
   if (mode === '--preflight') {
     receipt.status = 'PREFLIGHT_ONLY';
   } else {
+    receipt.stage = 'capabilities';
+    // Docker Desktop routes through a VM; these host listeners would not be the
+    // engine host. Do not silently turn that mismatch into a blocked-network pass.
+    if (process.platform !== 'linux') throw new Error('Egress proof requires a native Linux supervisor/engine host');
+    if (Number.parseInt(receipt.docker.Server.Version, 10) < 28) throw new Error('Docker Engine 28+ isolated gateway mode is required');
     receipt.stage = 'image';
     console.log(`Pulling pinned ${HERMES_RELEASE} image (no installation scripts).`);
     await command(['pull', '--platform', 'linux/amd64', HERMES_IMAGE], 8 * 60_000);
     const [image] = JSON.parse(await command(['image', 'inspect', HERMES_IMAGE]));
     receipt.imageInspection = { id: image.Id, repoDigests: image.RepoDigests, architecture: image.Architecture, os: image.Os,
       labels: image.Config.Labels, declaredVolumes: image.Config.Volumes };
-    assert.equal(image.Os, 'linux'); assert.equal(image.Architecture, 'amd64');
-    const revision = image.Config.Labels?.['org.opencontainers.image.revision'];
-    if (revision) assert.equal(revision, HERMES_COMMIT, 'Image revision differs from pinned source');
-    receipt.sourceRevisionLabelVerified = revision === HERMES_COMMIT;
+    receipt.sourceProvenance = assertPinnedImageInspection(image, provenanceArtifact);
+    receipt.sourceRevisionLabelVerified = receipt.sourceProvenance.revisionLabelVerified;
     check('pinned-image');
     const networks = { a: `${id}-net-a`, b: `${id}-net-b` };
+    receipt.stage = 'network';
+    const prefix = randomBytes(5).toString('hex');
+    const ula = `fd${prefix.slice(0, 2)}:${prefix.slice(2, 6)}:${prefix.slice(6, 10)}`;
     receipt.networks = {};
     for (const actor of ['a', 'b']) {
-      await command(['network', 'create', '--internal', '--label', 'ihome.fixture=hermes-p1', networks[actor]]);
+      await command(isolatedNetworkArgs(networks[actor], `${ula}:${actor === 'a' ? 1 : 2}::/64`));
       createdNetworks.push(networks[actor]);
       const [network] = JSON.parse(await command(['network', 'inspect', networks[actor]]));
-      assert.equal(network.Internal, true);
-      receipt.networks[actor] = { id: network.Id, internal: network.Internal, ipam: network.IPAM };
+      assertIsolatedNetwork(network);
+      receipt.networks[actor] = { id: network.Id, internal: network.Internal, ipv6: network.EnableIPv6,
+        options: network.Options, ipam: network.IPAM };
     }
     assert.notEqual(receipt.networks.a.id, receipt.networks.b.id);
     check('separate-internal-networks');
@@ -136,11 +152,66 @@ try {
     const brokerSource = path.join(root, 'infra', 'hermes-broker');
     const fixtureOutput = assertInside(out, path.join(out, 'fixture-output'));
     await mkdir(fixtureOutput);
+    // This third network intentionally has a host bridge gateway. It is never
+    // attached to either actor or the CRM/model fixture. No public egress needed.
+    const controlNetwork = `${id}-control`;
+    receipt.stage = 'egress-control';
+    await command(['network', 'create', '--internal', '--ipv6', '--subnet', `${ula}:3::/64`,
+      '--label', 'ihome.fixture=hermes-p1', controlNetwork]); createdNetworks.push(controlNetwork);
+    const [controlInspection] = JSON.parse(await command(['network', 'inspect', controlNetwork]));
+    const gateway4 = controlInspection.IPAM.Config.find(value => value.Subnet.includes('.'))?.Gateway;
+    const gateway6 = controlInspection.IPAM.Config.find(value => value.Subnet.includes(':'))?.Gateway;
+    assert.ok(gateway4 && gateway6, 'Both live host gateways are required');
+    hostCanary = await startHostCanary({ ipv4: gateway4, ipv6: gateway6 });
+    const canaryOutput = assertInside(out, path.join(out, 'canary-output')); await mkdir(canaryOutput);
+    const canaryName = `${id}-canary`, dnsName = `canary.${id}.test`;
+    containers.push(canaryName);
+    await command(['run', '-d', '--name', canaryName, '--network', controlNetwork,
+      '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL',
+      '--security-opt', 'no-new-privileges', '--pids-limit', '64', '--memory', '256m', '--cpus', '0.5',
+      '--sysctl', 'net.ipv4.ip_forward=0', '--sysctl', 'net.ipv6.conf.all.forwarding=0',
+      '--sysctl', 'net.ipv4.ip_unprivileged_port_start=0',
+      '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=16777216', '--tmpfs', '/opt/data:ro,nosuid,nodev,noexec,size=1048576',
+      '--mount', `type=bind,src=${source},dst=/fixture,readonly`, '--mount', `type=bind,src=${canaryOutput},dst=/output`,
+      '--entrypoint', '/usr/local/bin/node', HERMES_IMAGE, '/fixture/egress-canary.mjs', dnsName, '/output']);
+    const [canaryInspection] = JSON.parse(await command(['inspect', canaryName]));
+    assert.deepEqual(Object.keys(canaryInspection.NetworkSettings.Networks), [controlNetwork]);
+    assert.ok(!Object.keys(canaryInspection.HostConfig.PortBindings ?? {}).length);
+    const external = canaryInspection.NetworkSettings.Networks[controlNetwork];
+    const egressSpec = { external4: { host: external.IPAddress, port: 19090 }, external6: { host: external.GlobalIPv6Address, port: 19090 },
+      host4: { host: gateway4, port: hostCanary.ports.ipv4 }, host6: { host: gateway6, port: hostCanary.ports.ipv6 }, name: dnsName };
+    assert.ok(egressSpec.external4.host && egressSpec.external6.host);
+    const canaryCounts = async () => JSON.parse(await readFile(path.join(canaryOutput, 'egress-counts.json'), 'utf8'));
+    let canaryReady = false;
+    for (let attempt = 0; attempt < 20 && !canaryReady; attempt++) {
+      try { await canaryCounts(); canaryReady = true; } catch { await delay(250); }
+    }
+    assert.equal(canaryReady, true, 'IPv4/IPv6 TCP and DNS canary must be live');
+    const resolv = path.join(out, 'control-resolv.conf');
+    await writeFile(resolv, `nameserver ${external.IPAddress}\nnameserver ${external.GlobalIPv6Address}\noptions timeout:1 attempts:1\n`);
+    const positiveEgress = async suffix => {
+      const countsBefore = await canaryCounts(), hostCountsBefore = hostCanary.counts();
+      const name = `${id}-positive-${suffix}`; containers.push(name);
+      const result = JSON.parse(await command(['run', '--rm', '--name', name, '--network', controlNetwork,
+        '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+        '--pids-limit', '64', '--memory', '256m', '--cpus', '0.5',
+        '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=16777216', '--tmpfs', '/opt/data:ro,nosuid,nodev,noexec,size=1048576',
+        '--mount', `type=bind,src=${source},dst=/fixture,readonly`, '--mount', `type=bind,src=${resolv},dst=/etc/resolv.conf,readonly`,
+        '--env', 'PYTHONDONTWRITEBYTECODE=1', '--entrypoint', '/opt/hermes/.venv/bin/python', HERMES_IMAGE,
+        '/fixture/egress_probe.py', JSON.stringify(egressSpec)]));
+      assertEgressProof(result, true);
+      const countsAfter = await canaryCounts(), hostCountsAfter = hostCanary.counts();
+      for (const key of Object.keys(countsBefore)) assert.ok(countsAfter[key] > countsBefore[key], `Missing actual positive canary hit: ${key}`);
+      for (const key of ['ipv4', 'ipv6']) assert.ok(hostCountsAfter[key] > hostCountsBefore[key], `Control reached a different host: ${key}`);
+      check(`egress-positive-controls-${suffix}`, result);
+    };
+    await positiveEgress('before');
     const fixtureName = `${id}-fixture`;
     containers.push(fixtureName);
     receipt.stage = 'fixture';
     await command(['run', '-d', '--name', fixtureName, '--network', networks.a, '--network-alias', 'fixture',
       '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL',
+      '--dns', '127.0.0.1', ...DNS_OPTIONS.flatMap(option => ['--dns-option', option]),
       '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '512m', '--cpus', '1',
       '--sysctl', 'net.ipv4.ip_forward=0', '--sysctl', 'net.ipv6.conf.all.forwarding=0',
       '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=67108864',
@@ -183,7 +254,8 @@ try {
       const [container] = JSON.parse(await command(['inspect', driver.spec.name]));
       assertRuntimeInspection(container, driver.spec);
       return { name: container.Name, image: container.Image, hostConfig: container.HostConfig, mounts: container.Mounts,
-        network: driver.spec.network, ip: container.NetworkSettings.Networks[driver.spec.network].IPAddress };
+        network: driver.spec.network, ip: container.NetworkSettings.Networks[driver.spec.network].IPAddress,
+        ipv6: container.NetworkSettings.Networks[driver.spec.network].GlobalIPv6Address };
     };
     receipt.stage = 'hermes';
     let a = await launch('a'); const b = await launch('b');
@@ -201,22 +273,35 @@ try {
     for (const driver of [a, b]) assert.equal((await driver.send('start_peer_listener')).selfReachable, true);
     for (const [driver, peer, peerInspection] of [[a, b, receipt.runtimeInspection[1]], [b, a, receipt.runtimeInspection[0]]]) {
       const direct = await driver.send('probe_peer', { host: peerInspection.ip });
+      assert.ok(peerInspection.ipv6);
+      const ipv6 = await driver.send('probe_peer', { host: peerInspection.ipv6 });
       const dns = await driver.send('probe_peer', { host: peer.spec.name });
-      assert.equal(direct.blocked, true); assert.equal(dns.blocked, true);
-      check(`peer-listener-blocked-${driver.spec.actor}`, { directIpBlocked: direct.blocked, dnsBlocked: dns.blocked });
+      assert.equal(direct.blocked, true); assert.equal(dns.blocked, true); assert.equal(ipv6.blocked, true);
+      check(`peer-listener-blocked-${driver.spec.actor}`, { directIpBlocked: direct.blocked, ipv6Blocked: ipv6.blocked, dnsBlocked: dns.blocked });
     }
+    const canaryBefore = await canaryCounts(), hostBefore = hostCanary.counts(), egressResults = {};
+    for (const driver of [a, b]) {
+      const result = await driver.send('egress_matrix', { spec: egressSpec });
+      egressResults[driver.spec.actor] = result;
+      assertEgressProof(result, false); check(`host-ipv6-dns-egress-blocked-${driver.spec.actor}`, result);
+    }
+    assert.deepEqual(await canaryCounts(), canaryBefore, 'Blocked probes reached the external canary');
+    assert.deepEqual(hostCanary.counts(), hostBefore, 'Blocked probes reached the host');
+    await positiveEgress('after');
     for (const [actor, driver] of [['a', a], ['b', b]]) {
       const snapshot = await driver.send('snapshot');
       assert.ok(snapshot.memory.join('\n').includes(bootstrap[actor].sentinel));
       assert.ok(!snapshot.memory.join('\n').includes(bootstrap[actor === 'a' ? 'b' : 'a'].sentinel));
       assert.equal(snapshot.ownSession, true); assert.equal(snapshot.otherSession, false);
       assert.equal(snapshot.token, `synthetic-${actor}`);
-      const egress = await driver.send('egress');
+      const egress = { ...(await driver.send('egress')), externalIpBlocked: !egressResults[actor].external4.connected };
       for (const value of Object.values(egress)) assert.equal(value, true);
       check(`memory-session-token-and-egress-${actor}`, egress);
     }
-    const forbidden = await a.send('turn', { text: 'FIXTURE_FORBIDDEN_TOOL' });
-    assertUnavailableTerminal(forbidden.final);
+    for (const [suffix, tool] of [['', 'terminal'], ['_BROWSER', 'browser_navigate'], ['_HTTP', 'web_extract']]) {
+      const forbidden = await a.send('turn', { text: `FIXTURE_FORBIDDEN_TOOL${suffix}` });
+      assertUnavailableTool(forbidden.final, tool);
+    }
     assert.equal((await a.send('snapshot')).forbiddenExecution, false);
     const unknown = await a.send('direct_rpc', { method: 'tools/call', params: { name: 'fixture_write', arguments: {} } });
     assertMcpDenial(unknown, 'tool_not_available');
@@ -249,13 +334,14 @@ try {
     await assert.rejects(launch('a', '-revoked'), /profile_revoked/);
     check('revoked-profile-cannot-restart');
     receipt.fixtureStats = await control('stats');
+    assert.equal(receipt.fixtureStats.forbiddenNetworkRequests, 0);
     for (const actor of ['a', 'b']) assert.ok(receipt.fixtureStats.modelCalls.some((v) => v.actor === actor && v.ownMemorySeen));
     assert.equal(receipt.fixtureStats.failures.length, 0);
-    receipt.status = receipt.sourceRevisionLabelVerified ? 'PASSED_SYNTHETIC_RUNTIME' : 'PASSED_SYNTHETIC_RUNTIME_PROVENANCE_UNVERIFIED';
+    receipt.status = 'PASSED_SYNTHETIC_RUNTIME_UNSIGNED_RELEASE_RECEIPT';
     receipt.stage = 'completed';
   }
 } catch (error) {
-  receipt.status = receipt.stage === 'daemon' ? 'BLOCKED' : 'FAILED';
+  receipt.status = ['daemon', 'capabilities'].includes(receipt.stage) ? 'BLOCKED' : 'FAILED';
   receipt.error = String(error.message).slice(0, 4000);
   if (error.stderr && receipt.stage === 'daemon') receipt.daemonError = String(error.stderr).slice(0, 4000);
   process.exitCode = receipt.status === 'BLOCKED' ? 2 : 1;
@@ -266,6 +352,7 @@ try {
     // Names originate only from this unique fixture run; never remove existing resources by enumeration.
     await removeContainer(name).catch((error) => { receipt.cleanupError = error.message; });
   }
+  await hostCanary?.close().catch(error => { receipt.cleanupError = error.message; });
   for (const network of [...createdNetworks].reverse()) {
     await command(['network', 'rm', network]).catch((error) => { receipt.cleanupError = error.message; });
   }

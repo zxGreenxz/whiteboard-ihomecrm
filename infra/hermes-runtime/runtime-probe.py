@@ -18,6 +18,7 @@ import threading
 import traceback
 import urllib.error
 import urllib.request
+from egress_probe import probe as egress_probe
 
 sys.path.insert(0, '/opt/hermes')
 PREFIX = 'HERMES_RUNTIME_RESULT '
@@ -29,22 +30,28 @@ agent = None
 history = None
 generation = 1
 admitted_identity = None
-peer_listener = None
+peer_listeners = []
 
 
 def start_peer_listener():
-    global peer_listener
-    if peer_listener is None:
+    if not peer_listeners:
         class PeerHandler(socketserver.BaseRequestHandler):
             def handle(self):
                 self.request.sendall(('FIXTURE_PEER_' + ACTOR).encode())
-        peer_listener = socketserver.ThreadingTCPServer(('0.0.0.0', 18080), PeerHandler)
-        peer_listener.daemon_threads = True
-        threading.Thread(target=peer_listener.serve_forever, daemon=True).start()
-    with socket.create_connection(('127.0.0.1', 18080), timeout=2) as client:
-        client.settimeout(2)
-        reachable = client.recv(128) == ('FIXTURE_PEER_' + ACTOR).encode()
-    return {'selfReachable': reachable}
+        class Peer6(socketserver.ThreadingTCPServer):
+            address_family = socket.AF_INET6
+            def server_bind(self):
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                super().server_bind()
+        for cls, host in [(socketserver.ThreadingTCPServer, '0.0.0.0'), (Peer6, '::')]:
+            listener = cls((host, 18080), PeerHandler); listener.daemon_threads = True
+            peer_listeners.append(listener)
+            threading.Thread(target=listener.serve_forever, daemon=True).start()
+    reachable = []
+    for host in ['127.0.0.1', '::1']:
+        with socket.create_connection((host, 18080), timeout=2) as client:
+            client.settimeout(2); reachable.append(client.recv(128) == ('FIXTURE_PEER_' + ACTOR).encode())
+    return {'selfReachable': all(reachable), 'ipv6Reachable': reachable[1]}
 
 
 def probe_peer(host):
@@ -203,15 +210,17 @@ def handle(command):
         return {'status': status, 'body': body}
     if op == 'egress':
         blocked = []
-        for host, port in [('1.1.1.1', 443), ('fixture', 8081)]:
+        for host, port in [('fixture', 8081)]:
             try:
                 with socket.create_connection((host, port), timeout=2):
                     blocked.append(False)
             except OSError:
                 blocked.append(True)
-        return {'externalIpBlocked': blocked[0], 'fixtureAdminBlocked': blocked[1],
+        return {'fixtureAdminBlocked': blocked[0],
             'dockerSocketAbsent': not Path('/var/run/docker.sock').exists(),
             'hostVaultAbsent': not Path('/host/CLAUDE.local.md').exists()}
+    if op == 'egress_matrix':
+        return egress_probe(command['spec'])
     raise ValueError('Unknown supervisor command')
 
 

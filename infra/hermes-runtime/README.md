@@ -5,9 +5,15 @@ It is not a production gateway, credential store or memory service.
 
 The runtime image is pinned to Hermes `v0.21.6`, source commit
 `818c13be1dc4fd28987e1e881a9408224afd4535`, Linux amd64 manifest digest
-`sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22`.
-The runner records image labels after pulling and rejects a conflicting revision.
-An absent revision label remains explicitly unverified in the receipt.
+`sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95`.
+The upstream annotated tag's release receipt binds that commit to index digest
+`sha256:9774f4f39a9bb8c2f68ce728ed5e99ddbad282163be56764afacf88ed952b784`;
+the Linux amd64 member and its config are checked by content digest. This is an
+unsigned upstream release receipt, not a signed build attestation or a reproducible
+build proof. The runner still records image labels and rejects a conflicting revision.
+An absent revision label stays unverified independently of the release receipt.
+Earlier runtime receipts for `32d095e8…` used an image outside this release receipt
+and do not certify the current image. The current image needs a new runtime run.
 
 ## Commands
 
@@ -17,7 +23,9 @@ node scripts/test-hermes-runtime-isolation.mjs --preflight
 node scripts/test-hermes-runtime-isolation.mjs --run
 ```
 
-`--run` pulls only the pinned image and uses the installed Docker Linux engine.
+`--run` pulls only the pinned image and requires a native Linux supervisor with
+Docker Engine 28 or later for isolated IPv4/IPv6 bridge gateways. Docker Desktop
+host/VM mismatch is blocked rather than counted as a network isolation success.
 It does not install Docker, start services or change OS settings. To use a
 nondefault Docker CLI path, set `HERMES_FIXTURE_DOCKER` in the invoking process.
 Daemon absence produces a `BLOCKED` receipt and a nonzero exit. A preflight or
@@ -33,7 +41,7 @@ Ubuntu 24.04 runner with Node 24.18.0. It requests no repository secrets and
 uploads only `receipt.json` files, never bootstrap files, homes or logs. The
 host supervisor selects its own nonzero numeric UID/GID on Linux so private
 bind mounts remain writable without `chmod 777`, root or an ownership change.
-Windows uses UID/GID 10000. The runner verifies the selected user and exact
+Windows preflight/tests use UID/GID 10000. The runner verifies the selected user and exact
 mounts on the live fixture and Hermes containers. No actor can select that UID.
 Input hashes are captured before execution and compared again after cleanup;
 changed or unreadable input invalidates the receipt.
@@ -69,7 +77,7 @@ that same actor's call; a generic error or a 500/503 cannot pass as revocation.
    JWT or the Docker socket. The root filesystem is read-only and processes run
    as the supervisor-selected nonroot UID/GID with capabilities dropped.
 3. The real Hermes `AIAgent` discovers and calls only `crm_auth_context`. The
-   fake model also emits an unavailable terminal tool. Direct attempts to call
+   fake model also emits unavailable terminal, browser and HTTP tools. Direct attempts to call
    an unknown MCP tool or provide a different actor/org must be rejected.
    These assertions require the exact policy error, including a missing shell
    execution marker. Generic errors or backend outages fail the verifier.
@@ -81,13 +89,15 @@ that same actor's call; a generic error or a 500/503 cannot pass as revocation.
    model and before releasing the answer. A revoked connection must discard its
    retained agent/history and make no further model call; B remains usable.
 
-Each actor attaches to its own internal Docker network. The fixture joins both,
-with IPv4/IPv6 forwarding disabled and capabilities dropped. The harness starts
-a real listener in each actor, confirms loopback reachability, then checks that
-the peer cannot reach it by direct IP or Docker DNS name. Inspection verifies the
-exact network membership and no host ports. External IP and fixture-management
-probes remain narrow checks, not proof that every host service or every IPv6/DNS
-path is blocked. Production egress and gateway routing still need evidence.
+Each actor attaches to its own internal Docker network with isolated IPv4/IPv6
+gateways and no inherited external DNS. The fixture joins both, with forwarding
+disabled and capabilities dropped. Live peer listeners must be blocked through
+IPv4, IPv6 and Docker DNS. A separate disposable control network provides TCP and
+UDP/TCP DNS canaries; host canaries bind only its exact gateway addresses. Positive
+controls run before and after negative actor probes and must increment counters;
+actor probes must leave those counters unchanged. Unit listeners default to loopback.
+This covers representative protocols/ports, not every host service or a production
+firewall. Inspection verifies exact network membership and no host port publication.
 
 `ProfileLeaseStore` keeps immutable assistant/user/org/home bindings and an atomic
 exclusive lock outside every mounted home. It refuses duplicate holders, owner

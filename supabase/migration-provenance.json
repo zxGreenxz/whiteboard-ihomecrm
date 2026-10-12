@@ -1,12 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-12T01:39:07.338Z",
+  "generatedAt": "2026-10-12T07:47:50.981Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
+  "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 679,
-    "unknown": 80,
+    "unknown": 83,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11329,6 +11330,50 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-12T01:37:59.308Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+      "version": "20261012061447",
+      "name": "hermes_assistant_identity_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "ae88a8523c00c4b92deb659ea9cb9a06edfe40ca10f2f3160a90865b820f64a4",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_capabilities",
+        "table:app_private.hermes_assistants",
+        "table:app_private.hermes_org_policies",
+        "table:app_private.hermes_sessions",
+        "table:app_private.hermes_connections"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+      "version": "20261012062043",
+      "name": "hermes_encrypted_session_store_v1",
+      "scheme": "timestamp14",
+      "sha256": "1d5708a6a4a3d319719b7dd78aa81bc0a9db75a66914d4f047a1ec2137f5bbfd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_request_v1",
+        "function:app_private.hermes_uuid_v1",
+        "function:app_private.hermes_integer_v1",
+        "function:app_private.hermes_envelope_v1",
+        "function:app_private.hermes_binding_matches_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+      "version": "20261012074002",
+      "name": "hermes_envelope_length_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "0f0b4b039fc6af6596df5e0816d3b9c057689979dce2c3fbdb45dcd89141b74d",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_envelope_v1"
       ]
     },
     {

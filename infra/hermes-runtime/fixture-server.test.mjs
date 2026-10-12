@@ -43,6 +43,12 @@ test('combined fixture uses the actual broker, isolates actors and rejects model
     assertMcpDenial(await rpc('a', 'crm_auth_context', { userId: bootstrap.b.userId }), 'invalid_request');
     assert.equal((await fetch(`${base}/control`, { method: 'POST' })).status, 404);
   });
+  await t.test('forbidden browser/http canary is live and counts an actual request', async () => {
+    assert.equal(service.stats.forbiddenNetworkRequests, 0);
+    const response = await fetch(`${base}/forbidden-network-tool`);
+    assert.deepEqual(await response.json(), { fixture: 'forbidden-tool-reached-network' });
+    assert.equal(service.stats.forbiddenNetworkRequests, 1);
+  });
   await t.test('an injected broker outage fails the policy-denial verifier over real HTTP', async () => {
     injectBackendFailure = true;
     try {

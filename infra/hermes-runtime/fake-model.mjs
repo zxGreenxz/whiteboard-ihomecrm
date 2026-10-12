@@ -19,12 +19,16 @@ export function modelReply(body, { actor, sentinels, connectionTokens = [] }) {
     const prompt = [...body.messages].reverse().find((m) => m.role === 'user')?.content;
     if (typeof prompt !== 'string' || !prompt.startsWith('FIXTURE_')) throw new Error('Only fixture prompts are accepted');
     const forbidden = prompt.startsWith('FIXTURE_FORBIDDEN_TOOL');
+    const forbiddenName = prompt.endsWith('_BROWSER') ? 'browser_navigate' : prompt.endsWith('_HTTP') ? 'web_extract' : 'terminal';
     const spoof = prompt.startsWith('FIXTURE_SPOOF_IDENTITY');
     message = {
       role: 'assistant', content: null,
       tool_calls: [{ id: `fixture-call-${actor}`, type: 'function', function: {
-        name: forbidden ? 'terminal' : 'mcp__crm__crm_auth_context',
-        arguments: JSON.stringify(forbidden ? { command: 'printf FIXTURE_FORBIDDEN_EXECUTION > /opt/data/forbidden-executed' }
+        name: forbidden ? forbiddenName : 'mcp__crm__crm_auth_context',
+        arguments: JSON.stringify(forbidden ? (forbiddenName === 'terminal'
+          ? { command: 'printf FIXTURE_FORBIDDEN_EXECUTION > /opt/data/forbidden-executed' }
+          : forbiddenName === 'browser_navigate' ? { url: 'http://fixture:8080/forbidden-network-tool' }
+            : { urls: ['http://fixture:8080/forbidden-network-tool'] })
           : spoof ? { userId: 'synthetic-other-user', organizationId: 'synthetic-other-org' } : {}),
       } }],
     };

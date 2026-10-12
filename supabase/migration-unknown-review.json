@@ -873,6 +873,86 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql": {
+      "sha256": "ae88a8523c00c4b92deb659ea9cb9a06edfe40ca10f2f3160a90865b820f64a4",
+      "missingObjects": [
+        "table:app_private.hermes_capabilities",
+        "table:app_private.hermes_assistants",
+        "table:app_private.hermes_org_policies",
+        "table:app_private.hermes_sessions",
+        "table:app_private.hermes_connections"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới thuộc nền Hermes P2, chủ ý chưa áp dụng production. Đã review và apply trên project TEST hzulujxgonszuleqticb qua forward lane, có backup và hai lượt ROLLBACK. Kiểm tích hợp TEST ngày 12/10/2026 đạt 18/18, cleanup và hash đầu vào đã xác minh. Sự vắng mặt trong catalog production không phải bằng chứng bị DROP và không được nâng thành catalog-proven dựa trên TEST. Chỉ triển khai production sau khi các cửa nghiệm thu của plan đạt và đi đúng forward lane.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_capabilities (\nCREATE TABLE IF NOT EXISTS app_private.hermes_assistants (\nCREATE TABLE IF NOT EXISTS app_private.hermes_org_policies (\nCREATE TABLE IF NOT EXISTS app_private.hermes_sessions (\nCREATE TABLE IF NOT EXISTS app_private.hermes_connections (\nCREATE TABLE IF NOT EXISTS app_private.hermes_connection_tokens (\nCREATE OR REPLACE FUNCTION app_private.hermes_member_v1(p_user uuid,p_org uuid)\nCREATE OR REPLACE FUNCTION app_private.hermes_validate_limits_v1(p_org uuid,p_read text[],p_action text[],p_scopes uuid[])\nCREATE OR REPLACE FUNCTION app_private.hermes_connection_json_v1(p_row app_private.hermes_connections)\nCREATE OR REPLACE FUNCTION public.hermes_set_org_policy_v1(p_org uuid,p_expected_version bigint,\nCREATE OR REPLACE FUNCTION public.hermes_prepare_connection_v1(p_org uuid,p_read text[],p_action text[],p_scope_ids uuid[])\nCREATE OR REPLACE FUNCTION public.hermes_my_connections_v1(p_org uuid)\nCREATE OR REPLACE FUNCTION public.hermes_connection_context_v1(p_connection_id uuid)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"table:app_private.hermes_capabilities\",\"table:app_private.hermes_assistants\",\"table:app_private.hermes_org_policies\",\"table:app_private.hermes_sessions\",\"table:app_private.hermes_connections\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Lượt cuối 247ce314-8e53-4cc2-a62f-01dff37802fc: 18/18 đạt trên TEST; cleanupVerified=true, inputsUnchanged=true. Chưa tích hợp hoặc phát hành production."
+        }
+      ],
+      "anhHuongThat": "App production hiện tại chưa được nối tới broker Hermes và không gọi các RPC mới này. Nền Hermes trên production chưa khả dụng; không mở UI, business tools hoặc gửi Zalo trước khi schema và toàn tuyến được nghiệm thu. Không thay đổi nghiệp vụ Copilot hiện có.",
+      "raSoatBoi": "Codex — đối chiếu source, provenance production và evidence TEST 12/10/2026"
+    },
+    "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql": {
+      "sha256": "1d5708a6a4a3d319719b7dd78aa81bc0a9db75a66914d4f047a1ec2137f5bbfd",
+      "missingObjects": [
+        "function:app_private.hermes_request_v1",
+        "function:app_private.hermes_uuid_v1",
+        "function:app_private.hermes_integer_v1",
+        "function:app_private.hermes_envelope_v1",
+        "function:app_private.hermes_binding_matches_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới thuộc nền Hermes P2, chủ ý chưa áp dụng production. Đã review và apply trên project TEST hzulujxgonszuleqticb qua forward lane, có backup và hai lượt ROLLBACK. Kiểm tích hợp TEST ngày 12/10/2026 đạt 18/18, cleanup và hash đầu vào đã xác minh. Sự vắng mặt trong catalog production không phải bằng chứng bị DROP và không được nâng thành catalog-proven dựa trên TEST. Chỉ triển khai production sau khi các cửa nghiệm thu của plan đạt và đi đúng forward lane.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_request_v1(p jsonb,p_keys text[])\nCREATE OR REPLACE FUNCTION app_private.hermes_uuid_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_integer_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_envelope_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_binding_matches_v1(s app_private.hermes_sessions,p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_session_json_v1(s app_private.hermes_sessions)\nCREATE OR REPLACE FUNCTION app_private.hermes_session_gate_v1(s app_private.hermes_sessions)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_activate_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_read_connection_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_restrict_connection_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_revoke_connection_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_acquire_refresh_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_claim_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_dispatch_refresh_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_stage_refresh_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_publish_refresh_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_reconnect_session_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_revoke_session_v1(p jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_store_release_refresh_v1(p jsonb)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:app_private.hermes_request_v1\",\"function:app_private.hermes_uuid_v1\",\"function:app_private.hermes_integer_v1\",\"function:app_private.hermes_envelope_v1\",\"function:app_private.hermes_binding_matches_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Lượt cuối 247ce314-8e53-4cc2-a62f-01dff37802fc: 18/18 đạt trên TEST; cleanupVerified=true, inputsUnchanged=true. Chưa tích hợp hoặc phát hành production."
+        }
+      ],
+      "anhHuongThat": "App production hiện tại chưa được nối tới broker Hermes và không gọi các RPC mới này. Nền Hermes trên production chưa khả dụng; không mở UI, business tools hoặc gửi Zalo trước khi schema và toàn tuyến được nghiệm thu. Không thay đổi nghiệp vụ Copilot hiện có.",
+      "raSoatBoi": "Codex — đối chiếu source, provenance production và evidence TEST 12/10/2026"
+    },
+    "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql": {
+      "sha256": "0f0b4b039fc6af6596df5e0816d3b9c057689979dce2c3fbdb45dcd89141b74d",
+      "missingObjects": [
+        "function:app_private.hermes_envelope_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới thuộc nền Hermes P2, chủ ý chưa áp dụng production. Đã review và apply trên project TEST hzulujxgonszuleqticb qua forward lane, có backup và hai lượt ROLLBACK. Kiểm tích hợp TEST ngày 12/10/2026 đạt 18/18, cleanup và hash đầu vào đã xác minh. Sự vắng mặt trong catalog production không phải bằng chứng bị DROP và không được nâng thành catalog-proven dựa trên TEST. Chỉ triển khai production sau khi các cửa nghiệm thu của plan đạt và đi đúng forward lane.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_envelope_v1(p jsonb)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:app_private.hermes_envelope_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Lượt cuối 247ce314-8e53-4cc2-a62f-01dff37802fc: 18/18 đạt trên TEST; cleanupVerified=true, inputsUnchanged=true. Chưa tích hợp hoặc phát hành production."
+        }
+      ],
+      "anhHuongThat": "App production hiện tại chưa được nối tới broker Hermes và không gọi các RPC mới này. Nền Hermes trên production chưa khả dụng; không mở UI, business tools hoặc gửi Zalo trước khi schema và toàn tuyến được nghiệm thu. Không thay đổi nghiệp vụ Copilot hiện có.",
+      "raSoatBoi": "Codex — đối chiếu source, provenance production và evidence TEST 12/10/2026"
     }
   }
 }

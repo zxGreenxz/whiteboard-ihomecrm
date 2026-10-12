@@ -32,7 +32,9 @@ Token opaque chỉ dùng với broker, được lưu dạng hash, gắn connecti
 
 ## Runtime ghim và cách ly
 
-Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. Image Linux amd64 `nousresearch/hermes-agent@sha256:32d095e84190ae7266afbb361579e6921f2c633e899f5eacfb88111b9c851a22` đã pull/run trong CI tại `9ad5ca42`. Digest khớp nhưng image thiếu revision label; chưa chứng minh image đúng source commit. AIAgent đạt 17 checks tổng hợp gồm mạng riêng A/B và single-host profile owner, chưa nghiệm thu toàn bộ ranh giới P1.
+Nguồn kiểm: [Hermes v0.21.6](https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.6), commit `818c13be1dc4fd28987e1e881a9408224afd4535`, giấy phép MIT. [Receipt trong annotated tag chính thức](https://api.github.com/repos/NousResearch/hermes-agent/git/tags/f27cdbce5ab63eafe8633b293a75151409da5769) gắn commit với index `9774f4f3…`; image Linux amd64 đúng chuỗi digest là `nousresearch/hermes-agent@sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95`. Receipt chưa ký và image thiếu revision label: không coi đây là signed attestation hay build tái lập. Đang kiểm runtime cho image mới.
+
+Image cũ `32d095e8…` từng đạt 17 checks tổng hợp tại `9ad5ca42`, nhưng không thuộc receipt phát hành này. Kết quả cũ chỉ chứng minh image cũ với fixture tương ứng, không dùng để nghiệm thu image mới hoặc toàn bộ P1.
 
 Mỗi assistant có runtime/home/credential riêng trên image dùng chung. Không mount home người vận hành, vault, Docker socket hoặc thư mục assistant khác. Dùng network riêng; chỉ broker và model gateway được duyệt có thể nhận lưu lượng. Một runtime owner giữ profile tại một thời điểm. Profile multiplexer/chia thư mục cùng process chưa được chấp nhận làm bằng chứng cách ly tenant.
 
