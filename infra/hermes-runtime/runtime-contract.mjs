@@ -101,24 +101,33 @@ export function runtimeArgs({ name, network, actor, home, bootstrap, source, use
 }
 
 export function assertRuntimeInspection(container, { network, home, bootstrap, source, user = '10000:10000' }) {
-  return assertContainerInspection(container, { network, user, expected: new Map([
+  return assertContainerInspection(container, { network, user, tmpfs: {
+    '/tmp': 'rw,nosuid,nodev,noexec,size=134217728',
+  }, expected: new Map([
     ['/opt/data', [home, true]], ['/run/bootstrap.json', [bootstrap, false]], ['/fixture', [source, false]],
   ]) });
 }
 
 export function assertFixtureInspection(container, { network, source, brokerSource, output, user }) {
-  return assertContainerInspection(container, { network, user, expected: new Map([
+  return assertContainerInspection(container, { network, user, tmpfs: {
+    '/tmp': 'rw,nosuid,nodev,noexec,size=67108864',
+    '/opt/data': 'ro,nosuid,nodev,noexec,size=1048576',
+  }, expected: new Map([
     ['/fixture', [source, false]], ['/broker', [brokerSource, false]], ['/output', [output, true]],
   ]) });
 }
 
-function assertContainerInspection(container, { network, user, expected }) {
+function assertContainerInspection(container, { network, user, tmpfs, expected }) {
   const cfg = container.HostConfig;
   assertRuntimeUser(user);
   if (!cfg.ReadonlyRootfs || cfg.Privileged || container.Config.User !== user) throw new Error('Unsafe runtime privilege/rootfs');
   if (!cfg.CapDrop?.includes('ALL') || !cfg.SecurityOpt?.includes('no-new-privileges')) throw new Error('Missing process hardening');
   if (cfg.PortBindings && Object.keys(cfg.PortBindings).length) throw new Error('Runtime must not publish ports');
   if (cfg.NetworkMode !== network || Object.keys(container.NetworkSettings.Networks).length !== 1) throw new Error('Unexpected network');
+  assert.deepEqual(cfg.Tmpfs, tmpfs, 'Unexpected runtime tmpfs');
+  for (const mount of container.Mounts.filter((m) => m.Type === 'tmpfs')) {
+    if (!Object.hasOwn(tmpfs, mount.Destination)) throw new Error('Unexpected tmpfs mount');
+  }
   const mounts = container.Mounts.filter((m) => m.Type !== 'tmpfs');
   if (mounts.length !== expected.size) throw new Error('Unexpected runtime mount count');
   for (const mount of mounts) {

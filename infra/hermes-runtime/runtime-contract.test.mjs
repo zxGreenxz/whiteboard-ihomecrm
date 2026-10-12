@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { assertHermesDenial, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
+import { assertFixtureInspection, assertHermesDenial, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
   assertUnavailableTerminal, HERMES_IMAGE, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
 import { modelReply, sseReply } from './fake-model.mjs';
 
@@ -102,7 +102,8 @@ test('cache path check rejects root itself and escape paths before any cleanup',
 
 function inspection() {
   return { Config: { User: '10000:10000' }, HostConfig: { ReadonlyRootfs: true, Privileged: false,
-    CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges'], PortBindings: {}, NetworkMode: spec.network },
+    CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges'], PortBindings: {}, NetworkMode: spec.network,
+    Tmpfs: { '/tmp': 'rw,nosuid,nodev,noexec,size=134217728' } },
   NetworkSettings: { Networks: { [spec.network]: {} } }, Mounts: [
     { Type: 'bind', Source: spec.home, Destination: '/opt/data', RW: true },
     { Type: 'bind', Source: spec.bootstrap, Destination: '/run/bootstrap.json', RW: false },
@@ -125,6 +126,29 @@ test('inspection fails when isolation controls are removed', () => {
     const value = inspection(); mutate(value);
     assert.throws(() => assertRuntimeInspection(value, spec));
   }
+});
+
+test('fixture explicitly overrides the image volume and rejects anonymous or extra tmpfs mounts', () => {
+  const fixtureSpec = { network: spec.network, user: '10000:10000', source: spec.source,
+    brokerSource: path.resolve('infra/hermes-broker'), output: path.join(root, 'output') };
+  const value = inspection();
+  value.HostConfig.Tmpfs = { '/tmp': 'rw,nosuid,nodev,noexec,size=67108864',
+    '/opt/data': 'ro,nosuid,nodev,noexec,size=1048576' };
+  value.Mounts = [
+    { Type: 'bind', Source: fixtureSpec.source, Destination: '/fixture', RW: false },
+    { Type: 'bind', Source: fixtureSpec.brokerSource, Destination: '/broker', RW: false },
+    { Type: 'bind', Source: fixtureSpec.output, Destination: '/output', RW: true },
+  ];
+  assert.equal(assertFixtureInspection(value, fixtureSpec), true);
+  const anonymous = structuredClone(value);
+  anonymous.Mounts.push({ Type: 'volume', Source: '/var/lib/docker/volumes/unexpected', Destination: '/opt/data', RW: true });
+  assert.throws(() => assertFixtureInspection(anonymous, fixtureSpec), /mount count/);
+  const extraTmpfs = structuredClone(value);
+  extraTmpfs.HostConfig.Tmpfs['/unexpected'] = 'rw';
+  assert.throws(() => assertFixtureInspection(extraTmpfs, fixtureSpec), /tmpfs/);
+  const writableOverride = structuredClone(value);
+  writableOverride.HostConfig.Tmpfs['/opt/data'] = 'rw';
+  assert.throws(() => assertFixtureInspection(writableOverride, fixtureSpec), /tmpfs/);
 });
 
 test('model forces a real MCP call and records only sanitized evidence', () => {
