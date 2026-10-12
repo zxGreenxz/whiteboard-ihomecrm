@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { assertFixtureInspection, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
   assertUnavailableTerminal, HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, RESULT_PREFIX, runtimeArgs,
   runtimeUser, sourceHashes } from '../infra/hermes-runtime/runtime-contract.mjs';
+import { ProfileLeaseStore } from '../infra/hermes-runtime/profile-lease.mjs';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,6 +26,7 @@ const out = assertInside(cacheRoot, path.join(cacheRoot, id));
 await mkdir(out, { recursive: true });
 const receiptPath = path.join(out, 'receipt.json');
 const inputFiles = ['infra/hermes-runtime/runtime-contract.mjs', 'infra/hermes-runtime/runtime-probe.py',
+  'infra/hermes-runtime/profile-lease.mjs',
   'infra/hermes-runtime/fake-model.mjs', 'infra/hermes-runtime/fixture-server.mjs', 'infra/hermes-runtime/control.mjs',
   'scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-broker/broker.mjs', 'infra/hermes-broker/stores.mjs',
   'infra/hermes-broker/mcp-http.mjs', 'infra/hermes-broker/fixture.mjs', '.github/workflows/hermes-runtime.yml'];
@@ -37,7 +39,7 @@ const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), status:
 const containers = [];
 const drivers = [];
 const privateFixtureValues = [];
-let networkCreated = false;
+const createdNetworks = [];
 const command = async (args, timeout = 30_000) => {
   const { stdout } = await exec(docker, args, { timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
   return stdout.trim();
@@ -55,8 +57,8 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const check = (name, details = {}) => { receipt.checks.push({ name, passed: true, ...details }); console.log(`PASS ${name}`); };
 
 class RuntimeDriver {
-  constructor(spec) {
-    this.spec = spec; this.pending = new Map(); this.sequence = 0; this.logs = '';
+  constructor(spec, lease) {
+    this.spec = spec; this.lease = lease; this.pending = new Map(); this.sequence = 0; this.logs = '';
     this.child = spawn(docker, runtimeArgs(spec), { cwd: root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     this.closed = new Promise((resolve) => this.child.once('close', resolve));
     this.child.on('error', (error) => this.rejectAll(error));
@@ -93,6 +95,7 @@ class RuntimeDriver {
     this.child.stdin.end();
     await removeContainer(this.spec.name);
     await this.closed;
+    await this.lease.release();
     await writeFile(path.join(out, `${this.spec.name}.log`), this.logs);
   }
 }
@@ -118,11 +121,17 @@ try {
     if (revision) assert.equal(revision, HERMES_COMMIT, 'Image revision differs from pinned source');
     receipt.sourceRevisionLabelVerified = revision === HERMES_COMMIT;
     check('pinned-image');
-    await command(['network', 'create', '--internal', '--label', 'ihome.fixture=hermes-p1', id]);
-    networkCreated = true;
-    const [network] = JSON.parse(await command(['network', 'inspect', id]));
-    assert.equal(network.Internal, true); receipt.network = { id: network.Id, internal: network.Internal, ipam: network.IPAM };
-    check('internal-network');
+    const networks = { a: `${id}-net-a`, b: `${id}-net-b` };
+    receipt.networks = {};
+    for (const actor of ['a', 'b']) {
+      await command(['network', 'create', '--internal', '--label', 'ihome.fixture=hermes-p1', networks[actor]]);
+      createdNetworks.push(networks[actor]);
+      const [network] = JSON.parse(await command(['network', 'inspect', networks[actor]]));
+      assert.equal(network.Internal, true);
+      receipt.networks[actor] = { id: network.Id, internal: network.Internal, ipam: network.IPAM };
+    }
+    assert.notEqual(receipt.networks.a.id, receipt.networks.b.id);
+    check('separate-internal-networks');
     const source = path.join(root, 'infra', 'hermes-runtime');
     const brokerSource = path.join(root, 'infra', 'hermes-broker');
     const fixtureOutput = assertInside(out, path.join(out, 'fixture-output'));
@@ -130,9 +139,10 @@ try {
     const fixtureName = `${id}-fixture`;
     containers.push(fixtureName);
     receipt.stage = 'fixture';
-    await command(['run', '-d', '--name', fixtureName, '--network', id, '--network-alias', 'fixture',
+    await command(['run', '-d', '--name', fixtureName, '--network', networks.a, '--network-alias', 'fixture',
       '--label', 'ihome.fixture=hermes-p1', '--user', user, '--read-only', '--cap-drop', 'ALL',
       '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '512m', '--cpus', '1',
+      '--sysctl', 'net.ipv4.ip_forward=0', '--sysctl', 'net.ipv6.conf.all.forwarding=0',
       '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=67108864',
       // Upstream declares VOLUME /opt/data. Override it explicitly so Docker
       // cannot allocate an uninspected anonymous volume for the fixture.
@@ -143,9 +153,10 @@ try {
       '--env', 'HOME=/tmp', '--env', 'HERMES_HOME=/tmp/hermes-fixture',
       '--env', 'HERMES_FIXTURE_BROKER_DIR=/broker', '--entrypoint', '/usr/local/bin/node',
       HERMES_IMAGE, '/fixture/fixture-server.mjs', '--output', '/output']);
+    await command(['network', 'connect', '--alias', 'fixture', networks.b, fixtureName]);
     const [fixtureInspection] = JSON.parse(await command(['inspect', fixtureName]));
     receipt.fixtureInspection = { image: fixtureInspection.Image, hostConfig: fixtureInspection.HostConfig, mounts: fixtureInspection.Mounts };
-    assertFixtureInspection(fixtureInspection, { network: id, user, source, brokerSource, output: fixtureOutput });
+    assertFixtureInspection(fixtureInspection, { networks: Object.values(networks), user, source, brokerSource, output: fixtureOutput });
     check('fixture-hardening-and-exact-mounts');
     const control = async (op, actor) => JSON.parse(await command(['exec', fixtureName, '/usr/local/bin/node', '/fixture/control.mjs', op, ...(actor ? [actor] : [])]));
     let ready = false;
@@ -156,22 +167,28 @@ try {
     const bootstrap = Object.fromEntries(await Promise.all(['a', 'b'].map(async (actor) => [actor,
       JSON.parse(await readFile(path.join(fixtureOutput, `${actor}.json`), 'utf8'))])));
     for (const value of Object.values(bootstrap)) privateFixtureValues.push(value.token, value.sentinel);
-    const specifications = {};
+    const profiles = new ProfileLeaseStore({ directory: path.join(out, 'profile-leases'), homeRoot: out });
     const launch = async (actor, suffix) => {
       const name = `${id}-${actor}${suffix ?? ''}`;
-      containers.push(name);
       const home = assertInside(out, path.join(out, `home-${actor}`)); await mkdir(home, { recursive: true, mode: 0o700 });
-      const spec = { name, actor, network: id, source, home, user, bootstrap: path.join(fixtureOutput, `${actor}.json`) };
-      specifications[actor] = spec;
-      const driver = new RuntimeDriver(spec); drivers.push(driver); return driver;
+      const lease = await profiles.acquire({ home, assistantId: bootstrap[actor].assistantId,
+        userId: bootstrap[actor].userId, organizationId: bootstrap[actor].organizationId });
+      const spec = { name, actor, network: networks[actor], source, home: lease.binding.home, user,
+        bootstrap: path.join(fixtureOutput, `${actor}.json`) };
+      try {
+        const driver = new RuntimeDriver(spec, lease); containers.push(name); drivers.push(driver); return driver;
+      } catch (error) { await lease.release(); throw error; }
     };
     const inspectDriver = async (driver) => {
       const [container] = JSON.parse(await command(['inspect', driver.spec.name]));
       assertRuntimeInspection(container, driver.spec);
-      return { name: container.Name, image: container.Image, hostConfig: container.HostConfig, mounts: container.Mounts };
+      return { name: container.Name, image: container.Image, hostConfig: container.HostConfig, mounts: container.Mounts,
+        network: driver.spec.network, ip: container.NetworkSettings.Networks[driver.spec.network].IPAddress };
     };
     receipt.stage = 'hermes';
     let a = await launch('a'); const b = await launch('b');
+    await assert.rejects(launch('a', '-duplicate'), /profile_in_use/);
+    check('duplicate-profile-holder-denied-before-container-launch');
     for (const [actor, driver] of [['a', a], ['b', b]]) {
       const result = await driver.send('turn', { text: 'FIXTURE_CONTEXT' });
       assert.equal(result.denied, false); assert.ok(result.final.includes(bootstrap[actor].userId));
@@ -181,6 +198,13 @@ try {
     }
     receipt.runtimeInspection = [await inspectDriver(a), await inspectDriver(b)];
     check('runtime-hardening-and-exact-mounts');
+    for (const driver of [a, b]) assert.equal((await driver.send('start_peer_listener')).selfReachable, true);
+    for (const [driver, peer, peerInspection] of [[a, b, receipt.runtimeInspection[1]], [b, a, receipt.runtimeInspection[0]]]) {
+      const direct = await driver.send('probe_peer', { host: peerInspection.ip });
+      const dns = await driver.send('probe_peer', { host: peer.spec.name });
+      assert.equal(direct.blocked, true); assert.equal(dns.blocked, true);
+      check(`peer-listener-blocked-${driver.spec.actor}`, { directIpBlocked: direct.blocked, dnsBlocked: dns.blocked });
+    }
     for (const [actor, driver] of [['a', a], ['b', b]]) {
       const snapshot = await driver.send('snapshot');
       assert.ok(snapshot.memory.join('\n').includes(bootstrap[actor].sentinel));
@@ -199,14 +223,20 @@ try {
     const spoof = await a.send('direct_rpc', { method: 'tools/call', params: { name: 'crm_auth_context', arguments: { userId: bootstrap.b.userId, organizationId: bootstrap.b.organizationId } } });
     assertMcpDenial(spoof, 'invalid_request');
     check('unavailable-tool-and-spoofed-identity-denied');
-    await a.stop(); a = await launch('a', '-restart');
+    const bindingA = a.lease.binding;
+    await a.stop();
+    await assert.rejects(profiles.acquire({ ...bindingA, userId: bootstrap.b.userId }), /profile_owner_mismatch/);
+    check('profile-owner-reassignment-denied');
+    a = await launch('a', '-restart');
     const resumed = await a.send('snapshot');
+    receipt.runtimeInspection.push(await inspectDriver(a));
     assert.equal(resumed.ownSession, true); assert.equal(resumed.otherSession, false); assert.equal(resumed.token, 'synthetic-a');
     assert.ok(resumed.memory.join('\n').includes(bootstrap.a.sentinel));
     await a.send('turn', { text: 'FIXTURE_CONTEXT' });
     check('restart-preserves-only-own-state');
     const beforeRevoke = await control('stats');
     await control('revoke', 'a');
+    await profiles.revoke(bootstrap.a.assistantId);
     assertMcpDenial(await a.send('direct_rpc', { method: 'tools/call', params: { name: 'crm_auth_context', arguments: {} } }), 'unauthorized');
     const revoked = await a.send('turn', { text: 'FIXTURE_CONTEXT' });
     assert.equal(revoked.denied, true); assert.equal(revoked.contextDiscarded, true);
@@ -215,6 +245,9 @@ try {
     assert.equal(afterRevoke.modelCalls.length, beforeRevoke.modelCalls.length);
     assert.equal((await b.send('turn', { text: 'FIXTURE_CONTEXT' })).denied, false);
     check('revocation-discards-context-before-model-other-user-unaffected');
+    await a.stop();
+    await assert.rejects(launch('a', '-revoked'), /profile_revoked/);
+    check('revoked-profile-cannot-restart');
     receipt.fixtureStats = await control('stats');
     for (const actor of ['a', 'b']) assert.ok(receipt.fixtureStats.modelCalls.some((v) => v.actor === actor && v.ownMemorySeen));
     assert.equal(receipt.fixtureStats.failures.length, 0);
@@ -233,7 +266,9 @@ try {
     // Names originate only from this unique fixture run; never remove existing resources by enumeration.
     await removeContainer(name).catch((error) => { receipt.cleanupError = error.message; });
   }
-  if (networkCreated) await command(['network', 'rm', id]).catch((error) => { receipt.cleanupError = error.message; });
+  for (const network of [...createdNetworks].reverse()) {
+    await command(['network', 'rm', network]).catch((error) => { receipt.cleanupError = error.message; });
+  }
   if (receipt.cleanupError) { receipt.status = 'FAILED'; process.exitCode = 1; }
   try {
     receipt.inputSha256After = await sourceHashes(root, inputFiles);

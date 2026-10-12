@@ -4,13 +4,13 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 
 ## Điểm tiếp tục
 
-- **Đang làm:** Sửa lỗi mount phát hiện trên Linux CI để hoàn tất spike runtime P1; song song chuẩn bị target migration TEST và crypto/refresh primitive P2. Broker/JWT thật đã có evidence; runtime cách ly đầy đủ còn mở.
+- **Đang làm:** Hoàn thiện mạng riêng từng user, khóa một owner profile và invalidation P1; song song chuẩn bị durable store P2 trên target TEST. Broker/JWT thật và AIAgent với dữ liệu giả đã có evidence; runtime cách ly đầy đủ còn mở.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI của delta mới còn chờ; bản ghi review cuối ở PR.
-- **Chưa hoàn thành:** AIAgent trong container, mạng cách ly đầy đủ, refresh/lưu bền/quota model, schema/kết nối/user memory, Hermes tổng, UI hoặc gửi tin thật. P2 mới bắt đầu code nền; P3–P11 chưa triển khai.
+- **Chưa hoàn thành:** Mạng cách ly đầy đủ, refresh/lưu bền/quota model, schema/kết nối/user memory sản phẩm, Hermes tổng, UI hoặc gửi tin thật. P2 đang xây code nền; P3–P11 chưa triển khai.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Commit checkpoint:** `005e0d2678d9852407dc4cfac200ddff811f1667`, tree `6c4b57c6dda7c254cbe2d34b25a6ce8867a55718`: fix discovery local 8/8; CI runtime 12/12 với dữ liệu giả. Nền trước đó `6ecdc399` local 47/47, fix mount `9691e3b9` local 12/12. P2 code nền còn chờ gate checkpoint; chưa merge/phát hành.
+- **Commit checkpoint:** `8bfc0682e4ae23a335da6ae77e459bdb42539f85`, tree `b8ee37ac477c899ccd691f03cee8669030035462`: P2 primitive/target lane local 47/47, review không còn P1/P2 trong phạm vi, đã push draft. Runtime CI 12/12 tại head trước `005e0d26`; delta mạng/profile mới chờ CI. Chưa merge/phát hành.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
@@ -54,6 +54,8 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 | 12/10/2026 | Primitive credential P2 | Crypto/refresh 25/25; review độc lập không còn P1/P2 trong phạm vi module. AES-GCM binding và fence/CAS/lease đã kiểm với store/provider giả; chưa durable storage hoặc refresh thật |
 | 12/10/2026 | Model relay P2 | 15/15, review đóng lỗi HTTP200 chứa error/debug bằng response projection. Chỉ gọi proxy hiện có, không retry, request snapshot chống mutation. Chưa route/broker integration hoặc quota live |
 | 12/10/2026 | Target lane P2.0 | 33/33 Node + 10/10 backup Node + 30/30 Vitest; review source không còn P1/P2. TEST credentials/evidence riêng, marker/lease, giữ khóa khi write chưa rõ; chưa backup/dry-run/apply TEST thật |
+| 12/10/2026 | Gate checkpoint nền P2 | `8bfc0682`, tree `b8ee37ac`: local 47/47, 343 giây; Vitest related 25/25 file, còn 18 nghĩa vụ CI/live chưa kiểm local. Review crypto/relay/target/routing/docs đã khép trong phạm vi. Hai dòng tiến độ docs cũ được sửa ở checkpoint tiếp theo |
+| 12/10/2026 | Delta mạng/profile | 23/23 focused, native transport 4/4; mạng riêng A/B và single-host profile lease đã viết, chưa có container CI cho delta. Review sửa race inspect trước container restart sẵn sàng; không coi local tests là runtime pass |
 
 ## Bảng tiến độ
 
@@ -129,6 +131,7 @@ node scripts/compare-hermes-crm-catalog.mjs tooling/hermes-crm-inventory.generat
 - `infra/hermes-broker/session-crypto.mjs`, `refresh-manager.mjs`: mã hóa và điều phối refresh với adapter store/provider được inject. Durable backend phải bảo đảm atomic fence/CAS; kết quả commit không rõ và invalidation lỗi phải cách ly connection/jobs cho tới đối soát. Chưa có bảng hoặc adapter lưu bền.
 - `infra/hermes-broker/model-relay.mjs`: transport nội bộ dùng `llm-proxy`, server cung cấp user JWT/org/request ID; allowlist model mặc định rỗng. Response chỉ project trường hợp lệ. Proxy hiện tại chưa được chứng minh hard concurrent budget hoặc settlement đúng một lần; không gọi relay test là bằng chứng ngân sách.
 - `scripts/lib/migration-target.mjs` và bốn runner migration/backup/catalog/provenance: `--env test --expected-project-ref <TEST_REF>` ràng buộc cùng đích. Evidence TEST ở `.cache/migration-targets/test/<ref>/`, không thay production inventory/provenance. Không đổi `.temp/project-ref` hoặc alias TEST credential vào tên production.
+- Gate nền P2 lưu tại worktree kiểm riêng `C:/Users/Nguyen Tam/codex-worktrees/hermes-runtime-ci-20261012/.cache/hermes-p2/gate-foundation-passed/`; primary đã fast-forward giữ WIP của các phần tiếp theo. Hai repository inventory được generator cập nhật theo bốn test mới, không sửa tay.
 - Node backup test phải chạy bằng `node --test`; một lần chọn nhầm Vitest báo no-suite đã được chạy lại đúng runner. Không có DB thật bị thay đổi trong checkpoint code này.
 
 ```mermaid

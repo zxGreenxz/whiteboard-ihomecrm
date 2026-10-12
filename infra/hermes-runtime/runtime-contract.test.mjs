@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { assertFixtureInspection, assertHermesDenial, assertInputsUnchanged, assertInside, assertMcpDenial, assertRuntimeInspection,
-  assertUnavailableTerminal, HERMES_IMAGE, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
+  assertUnavailableTerminal, HERMES_IMAGE, NO_FORWARDING, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
 import { modelReply, sseReply } from './fake-model.mjs';
 
 const root = path.resolve('.cache/hermes-p1/test-root');
@@ -103,6 +103,7 @@ test('cache path check rejects root itself and escape paths before any cleanup',
 function inspection() {
   return { Config: { User: '10000:10000' }, HostConfig: { ReadonlyRootfs: true, Privileged: false,
     CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges'], PortBindings: {}, NetworkMode: spec.network,
+    Sysctls: { ...NO_FORWARDING },
     Tmpfs: { '/tmp': 'rw,nosuid,nodev,noexec,size=134217728' } },
   NetworkSettings: { Networks: { [spec.network]: {} } }, Mounts: [
     { Type: 'bind', Source: spec.home, Destination: '/opt/data', RW: true },
@@ -118,6 +119,8 @@ test('inspection fails when isolation controls are removed', () => {
     (v) => { v.HostConfig.ReadonlyRootfs = false; },
     (v) => { v.HostConfig.CapDrop = []; },
     (v) => { v.HostConfig.NetworkMode = 'host'; },
+    (v) => { v.HostConfig.Sysctls['net.ipv4.ip_forward'] = '1'; },
+    (v) => { v.NetworkSettings.Networks['hermes-p1-foreign'] = {}; },
     (v) => { v.Mounts.push({ Type: 'bind', Destination: '/var/run/docker.sock', RW: true }); },
     (v) => { v.Mounts[1].RW = true; },
     (v) => { v.Mounts[0].Source = path.join(root, 'foreign-home'); },
@@ -129,9 +132,10 @@ test('inspection fails when isolation controls are removed', () => {
 });
 
 test('fixture explicitly overrides the image volume and rejects anonymous or extra tmpfs mounts', () => {
-  const fixtureSpec = { network: spec.network, user: '10000:10000', source: spec.source,
+  const fixtureSpec = { networks: [spec.network, 'hermes-p1-peer-network'], user: '10000:10000', source: spec.source,
     brokerSource: path.resolve('infra/hermes-broker'), output: path.join(root, 'output') };
   const value = inspection();
+  value.NetworkSettings.Networks[fixtureSpec.networks[1]] = {};
   value.HostConfig.Tmpfs = { '/tmp': 'rw,nosuid,nodev,noexec,size=67108864',
     '/opt/data': 'ro,nosuid,nodev,noexec,size=1048576' };
   value.Mounts = [
@@ -149,6 +153,11 @@ test('fixture explicitly overrides the image volume and rejects anonymous or ext
   const writableOverride = structuredClone(value);
   writableOverride.HostConfig.Tmpfs['/opt/data'] = 'rw';
   assert.throws(() => assertFixtureInspection(writableOverride, fixtureSpec), /tmpfs/);
+  const shared = { ...fixtureSpec, networks: [spec.network, spec.network] };
+  assert.throws(() => assertFixtureInspection(value, shared), /distinct actor networks/);
+  const forwarding = structuredClone(value);
+  forwarding.HostConfig.Sysctls['net.ipv4.ip_forward'] = '1';
+  assert.throws(() => assertFixtureInspection(forwarding, fixtureSpec), /route between networks/);
 });
 
 test('model forces a real MCP call and records only sanitized evidence', () => {

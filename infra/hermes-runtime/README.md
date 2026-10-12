@@ -12,7 +12,7 @@ An absent revision label remains explicitly unverified in the receipt.
 ## Commands
 
 ```powershell
-node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs
+node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs infra/hermes-runtime/profile-lease.test.mjs
 node scripts/test-hermes-runtime-isolation.mjs --preflight
 node scripts/test-hermes-runtime-isolation.mjs --run
 ```
@@ -81,13 +81,21 @@ that same actor's call; a generic error or a 500/503 cannot pass as revocation.
    model and before releasing the answer. A revoked connection must discard its
    retained agent/history and make no further model call; B remains usable.
 
-All containers attach to one internal Docker network. The harness inspects
-mounts/privileges and probes an external IP and the fixture's management port.
-Those probes do not prove that every host service is unreachable. Production
-egress policy, DNS/IPv6/host-boundary coverage and broker/model gateway routing
-need their own evidence before opening real data.
-The shared internal bridge is not a per-user network policy: it does not prove
-that an arbitrary new listener in a peer container could never be reached.
+Each actor attaches to its own internal Docker network. The fixture joins both,
+with IPv4/IPv6 forwarding disabled and capabilities dropped. The harness starts
+a real listener in each actor, confirms loopback reachability, then checks that
+the peer cannot reach it by direct IP or Docker DNS name. Inspection verifies the
+exact network membership and no host ports. External IP and fixture-management
+probes remain narrow checks, not proof that every host service or every IPv6/DNS
+path is blocked. Production egress and gateway routing still need evidence.
+
+`ProfileLeaseStore` keeps immutable assistant/user/org/home bindings and an atomic
+exclusive lock outside every mounted home. It refuses duplicate holders, owner
+reassignment, nested homes, path/symlink escape and restart after profile revoke.
+The lock is released only after the container has stopped. A crashed holder is
+never reclaimed by age or PID automatically; operator reconciliation is required.
+This is a single-host supervisor primitive, not a distributed lease or a service
+that removes CRM-derived memory from disk. It does not implement regrant yet.
 
 ## Deliberate limits
 

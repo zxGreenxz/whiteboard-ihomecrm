@@ -348,7 +348,7 @@ Phụ thuộc: Sau khi chủ dự án chốt super plan. Chủ trì: Lead + QA.
 - [x] P0.01 Tạo worktree riêng, giữ WIP; ghi SHA, dependency/runtime và cờ liên quan. Evidence ở STATUS: source/flags tĩnh đã ghi, trạng thái cờ runtime chưa xác minh.
 - [x] P0.02 Sinh manifest tool/action/UI-control của ứng dụng, disposition và metadata từng mục. Snapshot v2 + 28 focused tests đạt; không suy các builtin ngoài adapter thành capability CRM được cấp.
 - [x] P0.03 Đối chiếu catalog TEST chỉ đọc: 32/32 registry khớp, 135/135 tên hàm có ở đúng schema (134 public + 1 helper private); ghi ACL/digest/flags. Ledger legacy đóng băng không phải schema thiếu. JWT/RLS/body parity kiểm ở P1 trở đi.
-- [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI draft PR #165 tại head `386296cb` đã xanh. Delta inventory/catalog mới vẫn cần gate/review riêng.
+- [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI draft PR #165 tại head `386296cb` đã xanh. Delta inventory/catalog có gate 47/47 và review tại `6ecdc399`; không dùng CI cũ thay evidence của head mới.
 - [x] P0.05 Ghi baseline câu hỏi/nghiệp vụ, lỗi đã biết và phạm vi public projection gửi nhóm. Bộ B01–B10 bên dưới là tiêu chí cần kiểm, không phải kết quả đã đạt.
 
 Tiến độ 12/10/2026: P0 có inventory v2, comparator TEST, review và local gate 47/47 tại commit `6ecdc399`; PR còn draft. Inventory có metadata từng mục, 47 page contracts, 6 safe controls; comparator có 23 test bao gồm ca sai/mất dữ liệu. Sáu callsite RPC động được ghi rõ, không coi tên biến là hàm đã xác minh. [STATUS.md](STATUS.md) giữ bằng chứng và phần chưa đạt.
@@ -405,7 +405,7 @@ Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend. Có thể chu�
 - [ ] P2.04 Chặn AI tự sửa grant/quyền; capability mới mặc định tắt; giới hạn quyền bật lại của user theo trần org.
 - [ ] P2.05 Tích hợp khóa thành viên, disconnect và policy invalidation; khóa org của user thường, chỉ cho superadmin chuyển context có xác thực.
 
-Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh (25/25 tests) và relay dùng lại model proxy CRM (15/15 tests). Review code nền không còn P1/P2; checkpoint gate đang hoàn thiện. Chưa sửa schema/apply DB, chưa nối durable store hoặc cấp kết nối sản phẩm. Không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
+Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh (25/25 tests) và relay dùng lại model proxy CRM (15/15 tests). Review code nền không còn P1/P2; local gate 47/47 tại `8bfc0682`. Chưa apply DB, chưa nối durable store hoặc cấp kết nối sản phẩm; migration riêng đang được chuẩn bị ở phần kế tiếp. Không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
 
 **Đầu ra:** Cấu hình quyền trợ lý dùng được từ UI và được kiểm ở server.
 

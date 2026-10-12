@@ -32,7 +32,8 @@ export async function startRuntimeFixture({ fixture, createMcpHttpServer, output
   for (const actor of ['a', 'b']) {
     const { token, connection } = connections[actor];
     await writeFile(path.join(outputDir, `${actor}.json`), JSON.stringify({ actor, token,
-      userId: connection.userId, organizationId: connection.organizationId, sentinel: sentinels[actor] }) + '\n', { mode: 0o600 });
+      userId: connection.userId, organizationId: connection.organizationId, assistantId: connection.assistantId,
+      sentinel: sentinels[actor] }) + '\n', { mode: 0o600 });
   }
   const server = http.createServer(async (request, response) => {
     if (request.url === '/mcp') {
