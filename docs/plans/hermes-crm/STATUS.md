@@ -4,12 +4,13 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 
 ## Điểm tiếp tục
 
-- **Đang làm:** P0 — baseline, inventory chuyển đổi và khôi phục bộ kiểm có chọn lọc.
+- **Đang làm:** P0 — còn P0.02 inventory chi tiết và P0.03 đối chiếu catalog TEST.
+- **Đã có code + kiểm local + review:** P0.01 baseline, phần inventory tĩnh, P0.04 runner có chọn lọc, P0.05 câu hỏi/projection dự kiến.
 - **Chưa làm:** tích hợp runtime/auth Hermes, schema/kết nối/user memory, Hermes tổng, UI hoặc gửi tin thật.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- Không có commit/PR/phát hành cho phần Hermes ở thời điểm cập nhật này.
+- **Commit code:** `c833d379e6f83b1d0a44ca4964f2cbf7e3831ae6` (tree trùng snapshot local đã kiểm). Chưa merge/phát hành; CI còn phải xác nhận đúng head của draft PR.
 
 ## Nhật ký đã xác minh
 
@@ -27,12 +28,15 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 | 12/10/2026 | Gate local lượt đầu | 46/47 đạt; Vitest related lỗi 2 assertion vẫn kỳ vọng Copilot core bị hoãn. Giữ kết quả lỗi, sửa policy regression trước khi chạy lại |
 | 12/10/2026 | Review độc lập lượt đầu | Một P2: gate corpus chưa được chọn khi capability visibility/tài liệu nguồn đổi; cần thêm mapping và regression. Chưa kết luận review đạt |
 | 12/10/2026 | Sửa delta sau review | 5 ca routing lỗi trước sửa đã đạt sau sửa; focused 76/76 gồm regression 29, routing 13, gate-plan 34. Matrix: 1.295 file active / 16 suite / 0 mồ côi / 75 deferred. Gate cuối và re-review delta đang chờ |
+| 12/10/2026 | Gate local sau sửa | 47/47 đạt, exit 0, 76 giây. Có 46 receipts static/suite và output Vitest related 7/7 file; 10 nghĩa vụ CI chưa kiểm local |
+| 12/10/2026 | Cross-review kết thúc | Reviewer kiểm source + delta + receipts cùng snapshot, không còn finding P1/P2; không xác nhận runtime/TEST/CI/production |
+| 12/10/2026 | Lưu commit code | `c833d379e6f83b1d0a44ca4964f2cbf7e3831ae6`; tree `a05a740f2fc2819f679bbc0795e468567380106b` |
 
 ## Bảng tiến độ
 
 | Gói | Trạng thái | Còn thiếu để đóng |
 | --- | --- | --- |
-| P0 | Đang làm | Bổ sung manifest chi tiết/UI controls; đối chiếu catalog TEST; hoàn tất gate/review runner |
+| P0 | Đã xong một phần | P0.02: manifest chi tiết/UI controls; P0.03: đối chiếu catalog TEST. P0.04 đã có code, local và review; CI/merge còn chờ |
 | P1 | Chưa bắt đầu | Cho phép đúng ca hợp lệ; mọi ca giả danh/cross-org bị chặn; không có đường gọi vòng qua gateway. |
 | P2 | Chưa bắt đầu | Tắt Hermes không ảnh hưởng user; không cấp quá quyền; revoke chặn request mới và invalidates context. |
 | P3 | Chưa bắt đầu | Đọc đúng dữ liệu; deny không trả rỗng giả; không lộ trường nội bộ/cross-tenant. Dữ liệu không vào context dùng chung; ngân sách, timeout và dừng khẩn cấp đã có hiệu lực. |
@@ -73,10 +77,10 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 
 ## Việc tiếp theo
 
-1. Delta P2/routing và assertion deferred đã có focused regression đạt; stage đúng file, xem plan và chạy gate cho snapshot mới.
-2. Reviewer kiểm delta sửa và receipts; chỉ đánh P0.04 khi đủ bằng chứng. Không lặp review phần không đổi.
-3. Hoàn thiện P0.02: metadata chi tiết từng năng lực/UI control; chốt adapter hai tool điều phối theo chứng minh P1/P3, không bật chỉ vì có trong snapshot.
-4. Hoàn thiện P0.03: đối chiếu TEST/catalog và runtime flags theo lane đọc. Chuyển P1 khi cửa P0 đạt; P1 preflight vừa qua chưa phải thực thi tích hợp.
+1. Kiểm CI đúng head của draft PR trên nhánh đã ghi; CI chưa xanh thì không merge/phát hành. Không chạy lại các phép kiểm có đầu vào không đổi chỉ để tạo thêm evidence.
+2. Hoàn thiện P0.02: metadata chi tiết từng năng lực/UI control; ghi disposition đề xuất hai tool kế hoạch và công việc chứng minh adapter P1/P3, không bật chỉ vì có trong snapshot.
+3. Hoàn thiện P0.03: đọc DATA_ENVIRONMENTS rồi đối chiếu TEST/catalog và runtime flags theo lane đọc. Không dùng helper tự ghi fixture khi định làm kiểm chỉ đọc.
+4. Chuyển P1 khi cửa P0 đạt; P1 preflight vừa qua chưa phải thực thi tích hợp. P1 sẽ chứng minh auth/cách ly trước khi mở dữ liệu và công cụ thực thi.
 
 ## Bàn giao session / agent
 
@@ -84,7 +88,13 @@ Cập nhật: 12/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 
 Evidence local nằm ở `.cache/gate-receipts/` (plan và receipt theo gate) và `.cache/hermes-p0/` trong worktree này. Đây là cache chưa commit; không giả định có khi clone sang máy khác. `focused-summary.json` là bản tổng hợp do agent ghi, không phải receipt gốc của runner. Lượt gate đầu: snapshot tree `ae8744095db7fb65d834aa869b10a2d5cc189047`, kết quả 46/47, lưu tại `.cache/hermes-p0/gate-first-failed/`; snapshot mới phải được kiểm theo Contract.
 
+Lượt code đạt: `.cache/hermes-p0/gate-code-passed/`, tree `a05a740f2fc2819f679bbc0795e468567380106b`, base/head khi chạy là `7367b7007f096f20471bf1309bc51e0b971439b6`. Commit code trên có đúng tree này; không đổi nhãn receipt thành CI hoặc runtime evidence. Tài liệu checkpoint cập nhật sau commit code được kiểm theo phạm vi docs riêng.
+
+10 nghĩa vụ chưa kiểm local: app-build, bundle-inventory, check-dependency-audit, check-timezone, docs-build, secret-scan, suite:app-unit và 3 suite edge-deno (bank-events, llm-proxy, quick-entry). UI/E2E, TEST/JWT/RLS và gửi Zalo thật chưa kiểm trong đợt này.
+
 Không `npm install`/`npm ci` qua node_modules junction hiện tại. Không stage toàn bộ worktree: migration EOL và cache nằm ngoài thay đổi. Khi chuyển worktree/máy, lấy đúng branch/commit đã ghi và cài dependency riêng nếu cần.
+
+Prompt tiếp tục gợi ý: “Đọc docs/plans/hermes-crm/PLAN.md và STATUS.md trên nhánh codex/hermes-crm-foundation-20261012. Giữ WIP, xác minh CI hiện tại, tiếp tục P0.02/P0.03; cập nhật hai file sau mỗi phần, không làm lại phần đã có bằng chứng còn hiệu lực.”
 
 ## Quy tắc evidence
 
