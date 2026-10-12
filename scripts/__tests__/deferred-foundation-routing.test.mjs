@@ -9,7 +9,7 @@ const matrix = JSON.parse(readFileSync(new URL('../../tooling/test-matrix.json',
 // Exercise real files in the restored domains without repeatedly planning
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
-  /^(?:src\/copilot\/|worker\/__tests__\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.))/.test(file));
+  /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
 const planFor = (path, testMatrix = matrix, files = testFiles) => createGatePlan({
   snapshot, changes: [{ path, status: 'M', before: 'before', after: 'after' }],
@@ -91,6 +91,43 @@ describe('P0 shared CRM foundation routing', () => {
         .toEqual(['scripts/generate-hermes-crm-inventory.mjs', '--check']);
       expect(plan.generatorIds).not.toContain('generate-hermes-crm-inventory');
     }
+  });
+
+  it.each([
+    'src/copilot/safeControls.ts', 'src/copilot/memoryClient.ts',
+    'src/pages/rooms/NewSafeControlPage.tsx',
+  ])('routes expanded inventory input %s including a newly added marker file', (source) => {
+    const plan = planFor(source);
+    expect(plan.gateIds).toContain('generate-hermes-crm-inventory');
+    expect(plan.suiteSelections.find(s => s.id === 'node-native').files)
+      .toContain('scripts/__tests__/generate-hermes-crm-inventory.test.mjs');
+  });
+
+  it.each([
+    'scripts/compare-hermes-crm-catalog.mjs', 'tooling/hermes-crm/catalog-test.sql',
+  ])('routes catalog observation %s to offline verifier tests without querying DB', (source) => {
+    const plan = planFor(source);
+    expect(plan.suiteSelections.find(s => s.id === 'node-native').files)
+      .toContain('scripts/__tests__/compare-hermes-crm-catalog.test.mjs');
+    expect(plan.suiteSelections.find(s => s.id === 'app-unit')?.files ?? [])
+      .not.toContain('scripts/__tests__/compare-hermes-crm-catalog.test.mjs');
+    expect(plan.gateIds).not.toContain('compare-hermes-crm-catalog');
+  });
+
+  it.each([
+    ['infra/hermes-broker/broker.mjs', 'infra/hermes-broker/broker.test.mjs'],
+    ['scripts/test-hermes-broker-authz.mjs', 'scripts/__tests__/test-hermes-broker-authz.test.mjs'],
+    ['infra/hermes-runtime/runtime-probe.py', 'infra/hermes-runtime/runtime-contract.test.mjs'],
+    ['scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-runtime/fixture-server.test.mjs'],
+  ])('routes P1 %s to offline contracts without executing its live harness', (source, testFile) => {
+    const plan = planFor(source);
+    expect(plan.suiteSelections.find(s => s.id === 'node-native').files).toContain(testFile);
+    expect(plan.suiteSelections.find(s => s.id === 'app-unit')?.files ?? []).not.toContain(testFile);
+    const args = getGate('suite:node-native', plan).args;
+    expect(args[0]).toBe('--test');
+    expect(args).not.toContain('--env');
+    expect(args).not.toContain('--run');
+    if (source.includes('broker')) expect(plan.profiles).toContain('money-auth');
   });
 
   it.each([

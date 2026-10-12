@@ -344,6 +344,16 @@
         "src/copilot/tools/**",
         "src/copilot/plan/**",
         "src/copilot/featureFlags.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/createAgent.ts",
+        "src/copilot/pageAgentCompatibility.ts",
+        "src/copilot/pageScope.ts",
+        "src/copilot/safeControls.ts",
+        "src/copilot/safetyGuard.ts",
+        "src/copilot/uiControlAvailability.ts",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/useHangDoiSauDuyet.ts",
+        "src/**/*.tsx",
         "src/app/capabilities/registry.ts",
         "scripts/check-copilot-tool-inventory.mjs",
         "scripts/check-copilot-forbidden-actions.mjs"
@@ -354,6 +364,41 @@
       ],
       "gates": [
         "generate-hermes-crm-inventory"
+      ]
+    },
+    {
+      "id": "hermes-test-catalog-observation",
+      "sourcePaths": [
+        "scripts/compare-hermes-crm-catalog.mjs",
+        "tooling/hermes-crm/catalog-test.sql",
+        "tooling/hermes-crm-inventory.generated.json"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-broker-spike",
+      "sourcePaths": [
+        "infra/hermes-broker/**",
+        "scripts/test-hermes-broker-authz.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-runtime-spike",
+      "sourcePaths": [
+        "infra/hermes-runtime/**",
+        "scripts/test-hermes-runtime-isolation.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-runtime/**/*.test.mjs"
       ]
     },
     {
@@ -507,7 +552,11 @@
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
         "scripts/__tests__/bank-event-gmail-sql.test.mjs",
-        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
       ],
       "ciJobs": [
         {
@@ -807,7 +856,11 @@
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
         "scripts/__tests__/bank-event-gmail-sql.test.mjs",
-        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
