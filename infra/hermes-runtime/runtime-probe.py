@@ -7,10 +7,14 @@ This proves the wrapper's boundary; it is not a production session supervisor.
 """
 import asyncio
 import json
+import ipaddress
 import os
 from pathlib import Path
+import re
 import socket
+import socketserver
 import sys
+import threading
 import traceback
 import urllib.error
 import urllib.request
@@ -25,6 +29,37 @@ agent = None
 history = None
 generation = 1
 admitted_identity = None
+peer_listener = None
+
+
+def start_peer_listener():
+    global peer_listener
+    if peer_listener is None:
+        class PeerHandler(socketserver.BaseRequestHandler):
+            def handle(self):
+                self.request.sendall(('FIXTURE_PEER_' + ACTOR).encode())
+        peer_listener = socketserver.ThreadingTCPServer(('0.0.0.0', 18080), PeerHandler)
+        peer_listener.daemon_threads = True
+        threading.Thread(target=peer_listener.serve_forever, daemon=True).start()
+    with socket.create_connection(('127.0.0.1', 18080), timeout=2) as client:
+        client.settimeout(2)
+        reachable = client.recv(128) == ('FIXTURE_PEER_' + ACTOR).encode()
+    return {'selfReachable': reachable}
+
+
+def probe_peer(host):
+    # Only a trusted supervisor calls this operation; it is not an agent tool.
+    try:
+        valid = ipaddress.ip_address(host).is_private
+    except ValueError:
+        valid = isinstance(host, str) and re.fullmatch(r'hermes-p1-[a-z0-9-]{1,40}', host)
+    if not valid:
+        raise ValueError('Invalid fixture peer address')
+    try:
+        with socket.create_connection((host, 18080), timeout=2):
+            return {'blocked': False}
+    except OSError:
+        return {'blocked': True}
 
 
 def rpc(method, params=None):
@@ -159,6 +194,10 @@ def handle(command):
         return {'path': token_storage()}
     if op == 'snapshot':
         return snapshot()
+    if op == 'start_peer_listener':
+        return start_peer_listener()
+    if op == 'probe_peer':
+        return probe_peer(command['host'])
     if op == 'direct_rpc':
         status, body = rpc(command['method'], command.get('params'))
         return {'status': status, 'body': body}

@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: '24.18.0'
       - name: Check fixture controls and verifier failure cases
-        run: node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs
+        run: node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs infra/hermes-runtime/profile-lease.test.mjs
       - name: Run pinned Hermes AIAgent with separate A and B containers
         run: node scripts/test-hermes-runtime-isolation.mjs --run
       - name: Preserve bounded JSON evidence only
