@@ -24,6 +24,17 @@ const apiFor = () => ({
 
 beforeEach(() => { fixture.persistError = null; fixture.result = { ok: true, status: 'sent' }; fixture.writes.length = 0; });
 describe('voice delivery keeps provider effects separate from persistence', () => {
+  it.each([5, 8])('sends all %i room images in ONE native album call and maps every receipt in order', async count => {
+    const api = apiFor();
+    const ids = Array.from({ length: count }, (_, i) => i ? `image-${i}` : job.message_id);
+    const attachments = ids.map((_, i) => ({ path: `account/${i}.jpg`, filename: `${i}.jpg`, width: 640, height: 480 }));
+    api.sendMessage.mockResolvedValue({ attachment: ids.map((_, i) => ({ msgId: `provider-${i}`, cliMsgId: `client-${i}` })) });
+    await sendMediaJob({ api }, job, { type: 'image', body: '', message_ids: ids, attachments }, 'room-group', 1);
+    expect(api.sendMessage).toHaveBeenCalledOnce();
+    expect(api.sendMessage.mock.calls[0][0].attachments.map(a => a.filename)).toEqual(attachments.map(a => a.filename));
+    expect(api.sendMessage.mock.calls[0]).toMatchObject([{ msg: '' }, 'room-group', 1]);
+    expect(fixture.writes[0].args.p_receipts).toEqual(ids.map((id, i) => ({ message_id: id, zalo_msg_id: `provider-${i}`, cli_msg_id: `client-${i}` })));
+  });
   it('does not send a second file after voice succeeds but DB persistence fails', async () => {
     fixture.persistError = { message: 'database unavailable' };
     const api = apiFor();

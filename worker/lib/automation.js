@@ -104,8 +104,7 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey }) {
       p_body: body || '',
       p_not_before: khiNao.toISOString(),
       p_request_key: requestKey,
-      p_attachment: anh ? { bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename,
-        width: anh.width, height: anh.height, mime: anh.mime, size: anh.size } : null,
+      p_attachment: anh ? (Array.isArray(anh) ? anh.map(refAnh) : refAnh(anh)) : null,
     });
     if (error) throw new Error(error.message);
     if (data?.status === 'queued') return true;
@@ -119,6 +118,9 @@ async function xepMotTin({ conv, khiNao, body, anh, requestKey }) {
     return false;
   }
 }
+
+const refAnh = anh => ({ bucket: anh.bucket, path: anh.path, url: anh.url, filename: anh.filename,
+  width: anh.width, height: anh.height, mime: anh.mime, size: anh.size });
 
 /* ------------------------------------------------------------ ghi nhật ký */
 
@@ -193,7 +195,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
           // off its photos or final information/separator at a quota boundary.
           if (soTin + t.soTinDuKien > tranConLai) break;
           const messages = [
-            ...t.anh.map(anh => ({ key: `room:${t.roomId}:photo:${anh.sourceKey}`, anh })),
+            ...(t.anh.length ? [{ key: `room:${t.roomId}:album`, anh: t.anh }] : []),
             { key: `room:${t.roomId}`, body: t.body },
           ];
           if (messages.some((_, index) => {
@@ -462,18 +464,19 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
   let tinPhong = [];
   if (khoi.includes('room_details')) {
     // Prepare once per room, then reuse the account-scoped copy for recipients
-    // in this organization. Each photo uses the existing one-attachment RPC;
-    // information and the separator follow all photos, before the next room.
+    // in this organization. All room photos share one native Zalo album job;
+    // information and the separator follow it, before the next room.
     for (const r of phong.rooms.slice(0, config.antiSpam.maxRoomsPerRun)) {
       try {
         const anh = await chuanBiAnhPhong(r, { accountId, orgId });
+        if (anh.length > 12) throw new Error('Album vượt giới hạn 12 ảnh của hàng đợi; chưa gửi phòng, không cắt bớt ảnh');
         const body = [soanTinPhong(r, config.template.roomTemplate, phong.hotline),
           ...(!anh.length ? ['Chờ cập nhật ảnh'] : []), '────────────────'].filter(Boolean).join('\n');
-        tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length + 1 });
+        tinPhong.push({ roomId: r.id, body, anh, soTinDuKien: anh.length ? 2 : 1 });
       } catch (e) {
         log('automation: chuẩn bị ảnh phòng lỗi', r.id, e?.message || e);
         tinPhong.push({ roomId: r.id, loiAnh: true,
-          soTinDuKien: (r.images || []).filter(u => typeof u === 'string' && u.trim()).length + 1 });
+          soTinDuKien: (r.images || []).some(u => typeof u === 'string' && u.trim()) ? 2 : 1 });
       }
     }
   }
