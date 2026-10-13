@@ -68,6 +68,9 @@ export function createPrivateCommandRunner({ store, resolveConnection, superviso
   }
   const ports = Object.fromEntries(METHODS.map(key => [key, store[key].bind(store)]));
   const execute = supervisor.executePrivateCommand.bind(supervisor), status = supervisor.status.bind(supervisor);
+  // Host-only upgrade: the legacy port cannot grant a trusted preview context.
+  const executeDispatched = typeof supervisor.executeDispatchedPrivateCommand === 'function'
+    ? supervisor.executeDispatchedPrivateCommand.bind(supervisor) : undefined;
   const pending = new Set(), tokens = new Set(); let closing = false, closePromise;
   const now = () => { const value = clock(); if (!positive(value)) fail('authority_unavailable'); return value; };
   const signalFrom = options => {
@@ -159,7 +162,13 @@ export function createPrivateCommandRunner({ store, resolveConnection, superviso
         context.check(); if (dispatched.status !== 'dispatched') fail('private_command_outcome_unknown');
         let response;
         try {
-          context.check(); response = snapshot(await execute(handle, item, { signal: operationOptions.signal, timeoutMs: context.remaining() }), ['text']);
+          context.check();
+          const runtimeOptions = { signal: operationOptions.signal, timeoutMs: context.remaining() };
+          // This branch is reachable only after the first definite dispatch ACK.
+          // The claim remains in the host; it is never part of item or prompt.
+          response = snapshot(await (executeDispatched
+            ? executeDispatched(handle, item, Object.freeze({ token, claimId }), runtimeOptions)
+            : execute(handle, item, runtimeOptions)), ['text']);
           context.check(); if (!text(response.text, 32768)) fail('private_command_outcome_unknown');
         } catch {
           // Only a settled runtime failure enters this path. Never compensate an

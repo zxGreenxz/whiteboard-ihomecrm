@@ -252,7 +252,11 @@ export function createHermesBackend(configuration = {}) {
       const models = createRuntimeModelService({ authority, connectionStore, crypto, auth, relay, clock, dependencyScope });
       try {
         const gateway = createRuntimeGateway({ backend: { resolveConnection }, broker, modelService: models,
-          transport: options.transport, clock, dependencyScope });
+          transport: options.transport, clock, dependencyScope,
+          resolvePrivateCommandContext: (handle, scope) => {
+            if (!ownedSupervisor) throw new BrokerError('backend_unavailable');
+            return ownedSupervisor.readPrivateCommandContext(handle, scope);
+          } });
         runtimeOptions = options; runtimeModels = models; runtimeGateway = gateway; return gateway;
       } catch (error) { void models.close().catch(() => {}); throw error; }
     };

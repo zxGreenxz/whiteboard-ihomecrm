@@ -2,13 +2,15 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint 9e3abd58 đã push và các workflow CI đạt, gồm Hermes native với backend giả. Cả sáu migration P4 đã apply TEST qua forward lane có backup; tổng 12 migration Hermes đã apply và bất biến. Runner live xác minh schema/ACL nhưng dừng trước fixture/JWT vì worker singleton đã tồn tại. Chưa deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
+**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint 03dfbd10 đã push và các workflow CI đạt, gồm Hermes native với backend giả. Cả sáu migration P4 đã apply TEST qua forward lane có backup; tổng 12 migration Hermes đã apply và bất biến. WIP đã đạt lane JWT quản trị bằng Auth/PostgREST và dedicated executor thật trên TEST; full private flow vẫn chặn bởi worker singleton có sẵn. Chưa deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
-**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Runner TEST đã sửa kiểm recovery dump và blob lịch sử, review sạch và gate local đạt. Lượt live đầu không tạo fixture, không gọi Auth/PostgREST và đã nhả TEST lock; không chiếm khóa worker có sẵn. P5 preview/authority đã qua joint review offline; thẻ duyệt, trusted turn bridge và xử lý kết quả gửi chưa rõ có draft, chưa mount/mở gửi. Xem phạm vi bằng chứng ở STATUS.
+**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. WIP trusted turn bridge đã mount, giữ claim/token trong host. P5 preview/authority/composition đã qua review offline; lỗi audit và hai race PIN đã có bản sửa kiểm chứng ở cache. Chưa mount đầy đủ P5 hoặc mở gửi. Runner JWT riêng đã đạt và dọn sạch fixture; không chiếm khóa worker có sẵn. Xem phạm vi bằng chứng ở STATUS.
 
 ## Quyết định đã chốt — không hỏi lại
+
+- Ưu tiên thực thi hiện tại: hoàn thành luồng riêng **Zalo → Hermes hỏi phòng trống trong quyền user → trả lời riêng** trước khi mở gửi nhóm, lịch hoặc memory nâng cao. Giữ toàn bộ phạm vi đã duyệt, nhưng dừng mở thêm nhánh P5 trong lúc luồng core chưa dùng được. Chỉ kiểm delta cần thiết, dùng lại kết quả đầu vào không đổi; không báo thống kê định kỳ.
 
 - Agent triển khai/review dùng cấu hình mặc định của hệ thống. Không ép model, provider hoặc mức suy luận; không hỏi lại chủ dự án về cấu hình agent. Agent mới kế thừa effort đang bật của phiên, không giao lại việc cho agent đã tạo bằng effort cũ. Quyết định này thay thế yêu cầu ép cấu hình trước đây.
 

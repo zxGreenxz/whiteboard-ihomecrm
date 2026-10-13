@@ -385,3 +385,16 @@ test('Linux startup requires the runtime UID/GID to own private bind files; defa
   assert.deepEqual((await nativeHarness(t,'uid-mismatch')).result.events,[]);
   assert.deepEqual((await nativeHarness(t,'uid-default')).result.events,['image']);
 });
+
+test('trusted context bridge remains host-only while real child receives only the original command frame', async t => {
+  const f = await fixture(t); await f.start();
+  const opaque = Object.freeze(Object.create(null)), frames = [], turns = [];
+  const begin = f.gateway.beginTurn; f.gateway.beginTurn = (handle, input) => { turns.push(input); return begin(handle, input); };
+  const stdin = f.child().stdin, write = stdin.write.bind(stdin);
+  stdin.write = (...args) => { frames.push(JSON.parse(args[0].toString())); return write(...args); };
+  const input = command(), operation = f.runtime.beginExecutePrivateCommand(f.handle, input, { signal: new AbortController().signal, commandContext: opaque });
+  assert.deepEqual(await operation.result, { text: 'Echo Phòng trống?' }); await operation.drained;
+  assert.equal(turns.length, 1); assert.equal(turns[0].commandContext, opaque);
+  assert.deepEqual(frames, [{ op: 'turn', ...input }]);
+  assert(!JSON.stringify(frames).includes('commandContext')); assert(!JSON.stringify(frames).includes('claimId')); assert(!JSON.stringify(frames).includes('token'));
+});
