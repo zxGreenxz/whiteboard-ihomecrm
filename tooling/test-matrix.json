@@ -141,6 +141,83 @@
       ]
     },
     {
+      "id": "migration-target-native",
+      "sourcePaths": [
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/capture-production-catalog.mjs",
+        "scripts/generate-migration-provenance.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/backup-luu-tru.test.mjs",
+        "scripts/__tests__/check-migration-provenance.test.mjs"
+      ]
+    },
+    {
+      "id": "migration-target-existing-contracts",
+      "sourcePaths": [
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/capture-production-catalog.mjs",
+        "scripts/generate-migration-provenance.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/apply-reviewed-migration.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-preflight.test.mjs",
+        "scripts/__tests__/generate-migration-provenance-scope.test.mjs",
+        "scripts/__tests__/provenance-bien-nhan.test.mjs"
+      ]
+    },
+    {
+      "id": "org-leak-target-native",
+      "sourcePaths": [
+        "scripts/measure-org-leak.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs"
+      ]
+    },
+    {
+      "id": "org-leak-existing-contracts",
+      "sourcePaths": [
+        "scripts/measure-org-leak.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/lib/che-so-lieu-ci.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/measure-org-leak.test.mjs"
+      ]
+    },
+    {
       "id": "money-and-schema-invariants",
       "profiles": [
         "schema",
@@ -246,13 +323,451 @@
       "testPatterns": [
         "extensions/sms-webhook/android/app/src/androidTest/**/*.java"
       ]
+    },
+    {
+      "id": "copilot-shared-core",
+      "sourcePaths": [
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/docs/**",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/maskPii.ts",
+        "src/copilot/anToanVanBan.ts",
+        "src/copilot/featureFlags.ts",
+        "tooling/copilot-action-policy.json"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/copilot/__tests__/actionRollout.test.ts",
+        "src/copilot/__tests__/availabilityAdapters.test.ts",
+        "src/copilot/__tests__/availabilityGate.test.ts",
+        "src/copilot/__tests__/banDoHeThong.test.ts",
+        "src/copilot/__tests__/chatErrors.test.ts",
+        "src/copilot/__tests__/confirmationPersistence.feedback.test.ts",
+        "src/copilot/__tests__/confirmationRace.test.ts",
+        "src/copilot/__tests__/confirmationStore.test.ts",
+        "src/copilot/__tests__/copilot.test.ts",
+        "src/copilot/__tests__/docIngestFreshness.test.ts",
+        "src/copilot/__tests__/docSearch.test.ts",
+        "src/copilot/__tests__/featureFlags.test.ts",
+        "src/copilot/__tests__/financialReadGolden.test.ts",
+        "src/copilot/__tests__/guideCorpus.test.ts",
+        "src/copilot/__tests__/invoiceStatsTool.test.ts",
+        "src/copilot/__tests__/ledgerAuditCoverage.test.ts",
+        "src/copilot/__tests__/memory.test.ts",
+        "src/copilot/__tests__/memoryReceipts.feedback.test.ts",
+        "src/copilot/__tests__/nghiepVuTools.test.ts",
+        "src/copilot/__tests__/phaseDWriteMatrix.test.ts",
+        "src/copilot/__tests__/planTools.test.ts",
+        "src/copilot/__tests__/readonlyQueryContracts.test.ts",
+        "src/copilot/__tests__/toolOrgScope.test.ts",
+        "src/copilot/__tests__/writeToolsHanhDong.test.ts",
+        "src/copilot/plan/**/*.test.ts"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "check-copilot-tool-inventory",
+        "check-copilot-forbidden-actions",
+        "generate-copilot-guide-corpus"
+      ]
+    },
+    {
+      "id": "copilot-shared-core-verifiers",
+      "sourcePaths": [
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/docs/**",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/maskPii.ts",
+        "src/copilot/anToanVanBan.ts",
+        "src/copilot/featureFlags.ts",
+        "tooling/copilot-action-policy.json",
+        "scripts/check-copilot-docs-manifest.mjs",
+        "scripts/check-copilot-tool-inventory.mjs",
+        "scripts/check-copilot-forbidden-actions.mjs",
+        "scripts/generate-copilot-guide-corpus.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+        "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
+        "scripts/__tests__/check-copilot-forbidden-actions.test.mjs"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "check-copilot-tool-inventory",
+        "check-copilot-forbidden-actions",
+        "generate-copilot-guide-corpus"
+      ]
+    },
+    {
+      "id": "zalo-worker-foundation",
+      "sourcePaths": [
+        "worker/index.js",
+        "worker/lib/**"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "worker/__tests__/**/*.test.js"
+      ]
+    },
+    {
+      "id": "hermes-foundation-inventory",
+      "sourcePaths": [
+        "scripts/generate-hermes-crm-inventory.mjs",
+        "tooling/hermes-crm-inventory.generated.json",
+        "src/copilot/tools/**",
+        "src/copilot/plan/**",
+        "src/copilot/featureFlags.ts",
+        "src/copilot/memoryClient.ts",
+        "src/copilot/createAgent.ts",
+        "src/copilot/pageAgentCompatibility.ts",
+        "src/copilot/pageScope.ts",
+        "src/copilot/safeControls.ts",
+        "src/copilot/safetyGuard.ts",
+        "src/copilot/uiControlAvailability.ts",
+        "src/copilot/confirmationStore.ts",
+        "src/copilot/useHangDoiSauDuyet.ts",
+        "src/**/*.tsx",
+        "src/app/capabilities/registry.ts",
+        "scripts/check-copilot-tool-inventory.mjs",
+        "scripts/check-copilot-forbidden-actions.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs"
+      ],
+      "gates": [
+        "generate-hermes-crm-inventory"
+      ]
+    },
+    {
+      "id": "hermes-test-catalog-observation",
+      "sourcePaths": [
+        "scripts/compare-hermes-crm-catalog.mjs",
+        "tooling/hermes-crm/catalog-test.sql",
+        "tooling/hermes-crm-inventory.generated.json"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-broker-spike",
+      "sourcePaths": [
+        "infra/hermes-broker/**",
+        "scripts/test-hermes-broker-authz.mjs",
+        "src/lib/roomSaleFacts.ts"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-refresh-auth-native",
+      "sourcePaths": [
+        "scripts/test-hermes-refresh-auth.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/supabase-adapter.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.test.mjs",
+        "infra/hermes-broker/supabase-adapter.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-durable-schema-native",
+      "sourcePaths": [
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/lib/migration-target.mjs",
+        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+        "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+        "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+        "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+        "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-durable-store-native",
+      "sourcePaths": [
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "scripts/apply-reviewed-migration.mjs",
+        "scripts/backup-before-schema.mjs",
+        "scripts/lib/migration-target.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/network-center-rollout-common.mjs",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql",
+        "infra/hermes-broker/session-crypto.mjs",
+        "infra/hermes-broker/refresh-manager.mjs",
+        "infra/hermes-broker/durable-refresh-store.mjs",
+        "infra/hermes-broker/store-transport.mjs",
+        "infra/hermes-broker/store-pool.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/stores.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/supabase-adapter.mjs",
+        "scripts/db-query.mjs",
+        "scripts/lib/vault.mjs",
+        "scripts/test-env/lib.mjs",
+        "scripts/test-env/lock.mjs",
+        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+        "infra/hermes-broker/durable-connection-store.mjs",
+        "infra/hermes-broker/durable-authority.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/certs/supabase-ca-2021.crt",
+        "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+        "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+        "infra/hermes-broker/room-read-service.mjs",
+        "infra/hermes-broker/room-read-projection.mjs",
+        "src/lib/roomSaleFacts.ts",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "infra/hermes-broker/session-crypto.test.mjs",
+        "infra/hermes-broker/refresh-manager.test.mjs",
+        "infra/hermes-broker/durable-refresh-store.test.mjs",
+        "infra/hermes-broker/store-transport.test.mjs",
+        "infra/hermes-broker/store-pool.test.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.test.mjs",
+        "infra/hermes-broker/supabase-adapter.test.mjs",
+        "infra/hermes-broker/durable-connection-store.test.mjs",
+        "infra/hermes-broker/durable-authority.test.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.test.mjs",
+        "infra/hermes-broker/connection-control-plane.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "infra/hermes-broker/room-read-service.test.mjs",
+        "infra/hermes-broker/room-read-projection.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-private-flow-native",
+      "sourcePaths": [
+        "scripts/test-hermes-private-flow.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/db-query.mjs",
+        "scripts/test-env/**",
+        "scripts/lib/vault.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/network-center-rollout-common.mjs",
+        "infra/hermes-broker/session-crypto.mjs",
+        "infra/hermes-broker/durable-connection-store.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/certs/supabase-ca-2021.crt",
+        "supabase/migrations/*_hermes_*.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-connection-options-native",
+      "sourcePaths": [
+        "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "infra/hermes-broker/connection-options.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/connection-management.mjs",
+        "infra/hermes-broker/connection-http.mjs",
+        "infra/hermes-broker/server.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/connection-options.test.mjs",
+        "infra/hermes-broker/connection-options-sql.test.mjs",
+        "infra/hermes-broker/connection-control-plane.test.mjs",
+        "infra/hermes-broker/connection-management.test.mjs",
+        "infra/hermes-broker/connection-http.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-org-policy-native",
+      "sourcePaths": [
+        "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/org-policy-sql.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-org-policy-ui",
+      "sourcePaths": [
+        "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+        "src/hermes/orgPolicyClient.ts",
+        "src/hermes/HermesOrgPolicySettings.tsx",
+        "src/hermes/useHermesConnections.ts",
+        "src/pages/settings/HermesConnectionsPage.tsx",
+        "src/components/authorization/PermissionPicker.tsx",
+        "src/components/authorization/ScopePicker.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/orgPolicyClient.test.ts",
+        "src/hermes/HermesOrgPolicySettings.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ]
+    },
+    {
+      "id": "hermes-connection-permissions-ui",
+      "sourcePaths": [
+        "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
+        "infra/hermes-broker/connection-options.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/connection-management.mjs",
+        "infra/hermes-broker/connection-http.mjs",
+        "src/hermes/connectionClient.ts",
+        "src/hermes/useHermesConnections.ts",
+        "src/hermes/HermesPermissionFields.tsx",
+        "src/pages/settings/HermesConnectionsPage.tsx",
+        "src/components/authorization/PermissionPicker.tsx",
+        "src/components/authorization/ScopePicker.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/connectionClient.test.ts",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ]
+    },
+    {
+      "id": "hermes-private-runtime-composition",
+      "sourcePaths": [
+        "infra/hermes-runtime/host-*",
+        "infra/hermes-runtime/hermes-host.service",
+        "scripts/test-hermes-product-runtime.mjs",
+        "infra/hermes-broker/connection-handoff.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-runtime/handoff-reconciler.mjs",
+        "infra/hermes-runtime/runtime-orchestrator.mjs",
+        "infra/hermes-runtime/profile-homes.mjs",
+        "infra/hermes-runtime/connection-supervisor.mjs",
+        "infra/hermes-broker/private-command-runner.mjs",
+        "infra/hermes-runtime/runtime-gateway.mjs",
+        "infra/hermes-runtime/gateway-relay.mjs",
+        "infra/hermes-runtime/gateway-transport.mjs",
+        "infra/hermes-runtime/container-driver.mjs",
+        "infra/hermes-runtime/container-contract.mjs",
+        "infra/hermes-broker/dependency-scope.mjs",
+        "infra/hermes-broker/runtime-model-service.mjs",
+        "infra/hermes-broker/model-relay.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-broker/store-transport.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
+        "infra/hermes-broker/room-read-service.mjs",
+        "infra/hermes-broker/connection-maintenance.mjs",
+        "infra/hermes-broker/connection-renewal.mjs",
+        "infra/hermes-broker/refresh-manager.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/durable-refresh-store.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/test-hermes-product-runtime.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-runtime-spike",
+      "sourcePaths": [
+        "infra/hermes-runtime/**",
+        "scripts/test-hermes-runtime-isolation.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-runtime/**/*.test.mjs"
+      ]
+    },
+    {
+      "id": "copilot-corpus-inputs",
+      "includeDocumentation": true,
+      "sourcePaths": [
+        "docs/he-thong/manifest.json",
+        "docs/he-thong/*.md",
+        "docs/ai-copilot/README.md",
+        "docs/huong-dan-su-dung/**/index.md",
+        "src/app/capabilities/registry.ts"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+        "scripts/__tests__/check-copilot-tool-inventory.test.mjs"
+      ],
+      "gates": [
+        "check-copilot-docs-manifest",
+        "generate-copilot-guide-corpus",
+        "check-copilot-tool-inventory"
+      ]
+    },
+    {
+      "id": "hermes-zalo-binding-native",
+      "sourcePaths": [
+        "infra/hermes-zalo-router/**",
+        "worker/lib/hermes-link.js",
+        "worker/lib/hermes-command.js",
+        "worker/lib/hermes-reply.js",
+        "worker/lib/watchdog.js",
+        "worker/lib/inbound.js",
+        "worker/lib/login.js",
+        "worker/lib/session-lifecycle.js",
+        "supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql",
+        "supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql",
+        "infra/hermes-broker/server.mjs",
+        "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+        "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-zalo-router/**/*.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
+      ]
     }
   ],
   "notes": [
     "deferredModules loại test được tạm hoãn khỏi mọi suite đang hoạt động. status=deferred giữ metadata để khôi phục, không khai test đã chạy hay pass.",
     "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json.",
-    "Lane local npm run test-env:check (thêm -- --sync để làm mới TEST) điều phối JWT harness + scripts/test-env/chrome.mjs dưới cùng khoá, build đúng worktree và ghi biên nhận ngoài Git. Chưa có job CI cho lane live này; các unit test scripts/__tests__/test-env*.test.mjs thuộc app-unit."
+    "Lane local npm run test-env:check (thêm -- --sync để làm mới TEST) điều phối JWT harness + scripts/test-env/chrome.mjs dưới cùng khoá, build đúng worktree và ghi biên nhận ngoài Git. Chưa có job CI cho lane live này; các unit test scripts/__tests__/test-env*.test.mjs thuộc app-unit.",
+    "sourceSelectionRules.includeDocumentation=true chỉ mở suite/gate cho các nguồn tài liệu được liệt kê tường minh; tài liệu thường không tự kích hoạt runner nghiệp vụ."
   ],
   "suites": [
     {
@@ -324,6 +839,8 @@
         "infra/**",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",
@@ -375,7 +892,20 @@
         "services/**",
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
-        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs",
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs",
+        "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "ciJobs": [
         {
@@ -622,8 +1152,11 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "scripts/test-hermes-product-runtime.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/migration-target.test.mjs",
+        "scripts/__tests__/measure-org-leak-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",
         "scripts/__tests__/check-agent-contract.test.mjs",
         "scripts/__tests__/gate-evidence.test.mjs",
@@ -674,7 +1207,20 @@
         "scripts/__tests__/network-center-*.test.mjs",
         "scripts/__tests__/check-ts-baseline.test.mjs",
         "scripts/__tests__/bank-event-inbox-sql.test.mjs",
-        "scripts/__tests__/bank-event-gmail-sql.test.mjs"
+        "scripts/__tests__/bank-event-gmail-sql.test.mjs",
+        "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
+        "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/__tests__/test-hermes-broker-authz.test.mjs",
+        "scripts/__tests__/hermes-refresh-auth.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs",
+        "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

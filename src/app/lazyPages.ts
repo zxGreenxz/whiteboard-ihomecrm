@@ -14,6 +14,7 @@
 import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 
 // Password recovery is only needed when its route is opened.
+export const ForgotPassword = lazy(() => import("../pages/auth/ForgotPassword"));
 export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 
 // ===== Lazy imports — code-split theo route =====
@@ -91,6 +92,7 @@ export const BanGiaoCycleReport = lazy(() => import("../pages/reports/finance/Ba
 
 // Cài đặt
 export const GeneralSettingsPage = lazy(() => import("../pages/settings/GeneralSettingsPage"));
+export const HermesConnectionsPage = lazy(() => import("../pages/settings/HermesConnectionsPage"));
 export const CategoriesPage = lazy(() => import("../pages/settings/CategoriesPage"));
 export const TemplatesPage = lazy(() => import("../pages/settings/TemplatesPage"));
 export const SignaturesPage = lazy(() => import("../pages/settings/SignaturesPage"));

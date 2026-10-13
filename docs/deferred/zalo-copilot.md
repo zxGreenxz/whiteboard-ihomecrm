@@ -13,11 +13,29 @@ Chủ dự án yêu cầu chạy lại Chat Zalo: worker chuyển sang Docker tr
   `tooling/deferred-modules.json` và chạy lại trong runner thường.
 - `.e2e-fleet/specs/chat-zalo.spec.ts` vẫn hoãn: spec fleet cần fixture DEMO/TEST riêng,
   và đổi spec fleet chặn promote.
-- Copilot (mục dưới) vẫn tạm ngưng nguyên trạng.
+- Copilot được mở lại có chọn lọc từ 12/10/2026 cho nền dùng chung với Hermes, như mục dưới.
 
-Phát triển, tối ưu và các phép kiểm chuyên biệt được đưa ra khỏi luồng mặc định.
+Ở mốc tạm ngưng ban đầu, phát triển, tối ưu và các phép kiểm chuyên biệt được đưa ra khỏi luồng mặc định.
 Phần không chạy phải ghi là **tạm ngưng/chưa kiểm**, không tính là pass hoặc đủ bằng chứng phát hành.
 Việc này không xác nhận tình trạng production và không tắt tính năng đang chạy.
+
+## Nền Copilot dùng chung cho Hermes mở lại (12/10/2026)
+
+Chủ dự án chốt kế hoạch Hermes và bắt đầu P0: kiểm kê, khôi phục routing và kiểm offline
+cho phần CRM dự kiến tái sử dụng. Đây chưa phải triển khai Hermes hay mở quyền runtime.
+
+- Test core tools, phạm vi quyền, kế hoạch, xác nhận và bộ nhớ chạy lại bằng runner
+  trong `tooling/test-matrix.json`; test worker Zalo tiếp tục hoạt động.
+- Khôi phục các gate static: `check-copilot-docs-manifest`, `check-copilot-tool-inventory`,
+  `check-copilot-forbidden-actions` và `generate-copilot-guide-corpus --check`.
+  Khối inventory trong [README Copilot](../ai-copilot/README.md) được sinh lại từ source.
+- Inventory Hermes dùng `generate-hermes-crm-inventory --check`; snapshot chỉ mô tả
+  mã nguồn và đề xuất chuyển đổi, không cấp quyền hoặc xác nhận catalog database.
+- Các test Copilot UI/model còn liệt kê trong `tooling/deferred-modules.json`, live
+  negative proofs, golden eval, browser fleet và các suite `status: deferred` vẫn hoãn
+  tới khi đủ điều kiện nghiệm thu ở bước tiếp theo. Không mở workflow live/production.
+- Bằng chứng focused chỉ áp dụng đúng file và đầu vào đã kiểm. Không suy ra UI/E2E,
+  chất lượng mô hình, TEST catalog hay production đã đạt từ việc khôi phục runner.
 
 ## Nguồn giữ lại
 
@@ -51,8 +69,8 @@ frontmatter không lặp hai khoá này. File mới phải khai manifest; file b
 `requiredPermission` áp dụng cả kết quả và gợi ý; khi chưa load quyền, chỉ trả tài liệu không gắn quyền.
 Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 
-Đoạn trên áp dụng khi phạm vi này được mở lại, không yêu cầu chạy gate chuyên biệt
-cho công việc khác trong thời gian tạm ngưng.
+Đoạn trên áp dụng cho corpus/core đã mở lại. Phạm vi ngoài đó vẫn theo danh sách hoãn,
+không tự mở các lane live khi làm công việc khác.
 
 ## Gap chuyên biệt tạm ngưng
 
@@ -78,8 +96,8 @@ khi mở lại. Gap `e2e-copilot-khong-co-trace` vẫn hoạt động: rủi ro 
   phiên worker đang chạy cần xác minh riêng, không suy từ bản web.
 - `worker/README.md` chưa nêu đủ khóa phiên bắt buộc; `worker/index.js` từ chối chạy
   khi thiếu/sai `ZALO_SESSION_KEY`. Runbook và `.env.example` có hướng dẫn hiện có.
-- README Copilot cũ có khối `COPILOT_TOOL_INVENTORY` do máy sinh. Khi mở lại,
-  khôi phục hoặc chọn lại đích tài liệu của generator trước khi bật kiểm inventory.
+- Khối `COPILOT_TOOL_INVENTORY` trong README Copilot đã được khôi phục bằng generator
+  ở P0 ngày 12/10/2026; kiểm tĩnh không thay bằng chứng runtime còn thiếu.
 
 ## Khi người dùng mở lại
 

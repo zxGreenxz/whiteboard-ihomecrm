@@ -46,7 +46,7 @@ async function proactiveRelogin(accountId, s, accountRow) {
   loggingIn.add(accountId);
   log('proactive re-login (phiên sắp hết hạn) →', accountId);
   try {
-    const zalo = new Zalo({ selfListen: true });
+    const zalo = new Zalo({ selfListen: true, logging: false });
     const api = await zalo.login(payload.creds);
     // Phiên mới OK (chứng minh creds còn dùng được) → đóng cả hai: phiên cũ
     // lẫn phiên thăm dò, rồi login lại qua đường chuẩn tryRelogin (có guard
