@@ -1161,6 +1161,30 @@
       ],
       "anhHuongThat": "API danh sách không cấp quyền. Runtime vẫn kiểm quyền hiện tại. Còn schema lane, JWT/Supabase và E2E thật trước apply/deploy.",
       "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; review độc lập ở STATUS không thay schema lane."
+    },
+    "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql": {
+      "sha256": "67aa0a792195a380be24798c29e7a9fed41c972508422049dd3210c738290b6c",
+      "missingObjects": [
+        "function:public.hermes_org_policy_options_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate đọc cấu hình policy công ty cho người có users.edit; chưa apply TEST hoặc production. Catalog thiếu object có chủ ý, không phải giấy phép apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_org_policy_options_v1(p_org uuid)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:public.hermes_org_policy_options_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "13/10/2026 — policy công ty và sửa socket Docker"
+        }
+      ],
+      "anhHuongThat": "Getter không cấp quyền. Runtime và setter giữ kiểm quyền CRM hiện tại. Còn forward lane/JWT/PostgREST thật trước apply/deploy.",
+      "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; review độc lập integration/ACL có ở STATUS, không thay schema lane."
     }
   }
 }

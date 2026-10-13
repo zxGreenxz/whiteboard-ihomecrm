@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1443,
-  "soFileDocBangFs": 328,
-  "tongLoiGoi": 759,
-  "khongPhanLoaiDuoc": 347,
+  "tongSoFileTest": 1446,
+  "soFileDocBangFs": 329,
+  "tongLoiGoi": 764,
+  "khongPhanLoaiDuoc": 348,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 55,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 48,
+      "soFile": 49,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 111,
+      "soFile": 112,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -421,6 +421,15 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "scripts/test-hermes-product-runtime.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 1,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",
       "soGoi": 4,
       "loai": {
@@ -512,6 +521,14 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/org-policy-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-runtime/agent-process.test.mjs",
@@ -956,14 +973,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/test-hermes-product-runtime.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/components/__tests__/dialogGateFetchKhiDong.test.ts",

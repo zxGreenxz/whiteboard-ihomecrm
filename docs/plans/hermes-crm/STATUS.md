@@ -5,23 +5,37 @@
 - Theo yêu cầu mới nhất của chủ dự án: dùng cấu hình agent mặc định của hệ thống, không ép model/provider/mức suy luận và không hỏi lại cấu hình agent. Agent mới kế thừa effort đang bật của phiên; không giao lại việc cho subagent đã tạo bằng effort cũ. Các lệnh hoặc giới hạn agent trong logs cũ chỉ là lịch sử, không còn là yêu cầu thực thi. Chủ dự án yêu cầu tập trung core, dùng subagent song song và chỉ báo tiến độ khi được hỏi; cập nhật plan ngắn tại mốc thực hiện có ý nghĩa.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint đã push: `7ee90820a69e5a269f209b4ac9169d434154e6db`, CI Gates/Hermes synthetic/Android/Restore Drill đều SUCCESS. Delta host và UI quyền mới đang khóa checkpoint; chưa apply/deploy hoặc kiểm Zalo thật.
+- Checkpoint đã push: `0a08917e5beef4a06f47f3ed7c1ccfd65167417c`. Hermes product Docker phát hiện đường dẫn socket quá dài trước cấp tài nguyên; bản sửa harness và policy UI đang khóa checkpoint tiếp theo. Chưa apply/deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì tại [PLAN.md](PLAN.md).
 
 ## Điểm tiếp tục
 
-- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Chưa apply candidate mới hoặc nghiệm thu dịch vụ thật. Product Docker harness sẽ chạy ở CI kế tiếp; máy local không có Docker daemon.
+- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; bản sửa socket harness cần CI Linux. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI checkpoint `494d306a` đã đạt; WIP có gate local ghi ở nhật ký mới nhất, chưa có CI cho candidate mới; bản ghi review checkpoint ở PR.
-- **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, quản trị policy công ty, Supabase/Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
+- **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, policy qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Checkpoint đã push:** `7ee90820a69e5a269f209b4ac9169d434154e6db`; local gate 47/47 và CI PR đúng head SUCCESS. Delta host/options đang kiểm riêng; CI PR không phải authority merge/phát hành.
+- **Checkpoint đã push:** `0a08917e5beef4a06f47f3ed7c1ccfd65167417c`; local gate 47/47. CI Gates/Android/Restore Drill SUCCESS; Hermes product Docker CI FAIL. CI PR không phải authority merge/phát hành; lịch sử 7ee90820 vẫn giữ riêng.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
+
+### 13/10/2026 — policy công ty và sửa socket Docker
+
+Policy đã mount trong trang Hermes, dùng PermissionPicker/ScopePicker và getter mới `hermes_org_policy_options_v1`; setter hiện hữu vẫn là cửa ghi duy nhất. User JWT phải có `users.edit` trong công ty đang chọn. Lưu policy làm mất hiệu lực ngữ cảnh cũ ngay khi dispatch, hủy continuations, xóa password/handoff/grant/challenge; sau ACK hoặc lỗi chỉ đọc lại dữ liệu, không tự gửi lại thao tác. Giữ rõ quyền/phạm vi cũ chưa hỗ trợ để người quản trị chủ động bỏ. Candidate SQL `20261013115741` SHA 67aa0a792195a380be24798c29e7a9fed41c972508422049dd3210c738290b6c chưa apply.
+
+Evidence policy: `.cache/hermes-policy-mounted-receipt.json` (Vitest 57/57, PGlite 19/19, 4 mutation, baseline/strict và browser 1440/390 với Auth/HTTP giả). Routing 105/105, ACL 36/36; lần đầu routing có một assertion nhầm profile SQL thành money-auth, đã sửa assertion theo risk-map, không thay gate. Review routing/ACL/strict: `.cache/hermes-policy-routing-review.md`; mounted integration: `.cache/hermes-policy-mounted-review.md`, không có P1/P2 đã xác minh. Root đã xem ảnh mobile; không suy PGlite thành JWT/RLS hoặc concurrency thật.
+
+CI `0a08917e`: Hermes 38393593802 FAIL ở start-A trước createNetwork; relative socket suffix cũ đã 137 byte, vượt guard 100 byte. Harness dùng workspace mkdtemp riêng, ngắn và private, receipt vẫn trong checkout; cleanup chỉ xóa thư mục thuộc lượt chạy sau actual drain. Giữ nguyên guard runtime. Bổ sung hash dependency .js/.ts còn thiếu. Focused 7/7 và 4 mutation đạt; review root `.cache/hermes-product-path-root-review.json`, report `.cache/hermes-product-runtime-path-fix-report.json`. Chưa kiểm Docker thật cho bản sửa. CI Gates 38393593922, Android 38393593886 và Restore Drill 38393593818 SUCCESS; không dùng các job skipped làm pass.
+
+Runner P4 trên TEST đã soạn tại `.cache/hermes-test-next/private-flow-draft/`, đang review trước khi tích hợp/thực thi. Nó yêu cầu đúng TEST, evidence/digest và worker lease hoàn toàn vắng mặt, không takeover; Auth JWT thật tách khỏi SQL executor role probe. Local 29/29 và 6 mutation chỉ chứng minh helper/guard. Chưa lấy TEST lease, dry-run/apply schema, chạy fixture, gọi Zalo hoặc triển khai dịch vụ trong checkpoint này.
+
+Gate checkpoint policy/harness **47/47 local**, 9/9 file Vitest liên quan, 177 giây; tree ff957170d5fca1bdbcc7dd6f979989afb742dc47, run local-3e7bf092-08ee-499f-9ca9-52d536ee8d8c. Log .cache/hermes-policy-gate.txt, receipts .cache/hermes-policy-gate-receipts/. Browser/source hashes khớp freeze, reviews không còn P1/P2 đã xác minh trong delta. Generator chỉ cập nhật inventory/catalog metadata đã kiểm. Sau gate chỉ thêm ghi chú này; CI của commit mới còn phải chạy. Target TEST provenance đã làm tươi cho 12 migration; catalog chỉ đọc cho thấy 6 applied bất biến/28 body khớp, 6 candidate vắng, không thiếu dependency/cột. Runner TEST draft có một P2 unknown activation ACK đang sửa, chưa thực thi.
+
+Phần tiếp: commit/push policy + harness → CI Docker đúng head → schema lane và kiểm tích hợp P4 có cleanup → tiếp tục toàn P0–P11. Không tự đóng các mục nghiệm thu từ code hoặc kiểm component.
 
 ### 13/10/2026 — ghép dịch vụ Hermes
 

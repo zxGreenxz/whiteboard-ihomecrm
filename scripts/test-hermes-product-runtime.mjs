@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { request } from 'node:http';
-import { chmod, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rmdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHermesBackend } from '../infra/hermes-broker/server.mjs';
 import { createDockerEngine, createContainerRuntime } from '../infra/hermes-runtime/container-driver.mjs';
@@ -21,7 +22,32 @@ const limits = () => ({ read: ['assistant.context.read'], action: [] });
 const metadata = row => Object.fromEntries(['id', 'assistantId', 'organizationId', 'userId', 'state', 'epoch', 'restrictions', 'scopeIds'].map(key => [key, structuredClone(row[key])]));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const toolName = name => `mcp__crm__${name}`;
-const safeFailure = error => /^[a-z][a-z_]{1,70}$/.test(error?.code ?? '') ? error.code : 'synthetic_check_failed';
+const FAILURE_CODES = new Set(['runtime_start_failed', 'runtime_start_timeout', 'runtime_stopped', 'runtime_stop_unproven',
+  'runtime_command_failed', 'runtime_command_cancelled', 'runtime_drain_failed', 'gateway_open_failed', 'gateway_cleanup_unproven',
+  'native_linux_engine_required', 'engine_inspection_failed', 'engine_operation_unknown', 'workspace_socket_path_too_long']);
+export const productFailureCode = error => FAILURE_CODES.has(error?.code) ? error.code :
+  FAILURE_CODES.has(error?.message) ? error.message : 'synthetic_check_failed';
+
+// Receipt paths may be arbitrarily deep. The actual Unix socket must fit the
+// unchanged product transport's 100-byte bound, so allocate its private working
+// tree directly below the OS temp directory instead of inside the checkout.
+export async function createProductWorkspace({ temporaryRoot = os.tmpdir(), platform = process.platform } = {}) {
+  const parent = await realpath(temporaryRoot), prefix = path.join(parent, 'hp-');
+  const socketPath = directory => path.join(directory, 'g', '00000000-0000-4000-8000-000000000000', 's', 'gateway.sock');
+  if (platform !== 'win32' && Buffer.byteLength(socketPath(prefix + 'XXXXXX')) > 100) throw Error('workspace_socket_path_too_long');
+  const directory = await mkdtemp(prefix);
+  const gatewayRoot = path.join(directory, 'g'), runtimeRoot = path.join(directory, 'r');
+  try {
+    await chmod(directory, 0o700);
+    await mkdir(gatewayRoot, { mode: 0o700 }); await mkdir(runtimeRoot, { mode: 0o700 });
+    return Object.freeze({ directory, gatewayRoot, runtimeRoot });
+  } catch (error) {
+    // Only empty owned directories can be removed. Never recursively erase an
+    // unexpected partial workspace or claim cleanup from a guessed path.
+    await rmdir(gatewayRoot).catch(() => {}); await rmdir(runtimeRoot).catch(() => {});
+    await rmdir(directory).catch(() => {}); throw error;
+  }
+}
 
 /** In-memory DB/Auth/model wire fixtures. Real backend adapters validate, encrypt,
  * decrypt and recheck these responses. Deliberately does not claim real SQL/RLS. */
@@ -168,7 +194,7 @@ export async function productInputFiles(root = ROOT) {
   const visit = async relative => {
     if (files.has(relative)) return; files.add(relative);
     const source = await readFile(path.join(root, relative), 'utf8');
-    for (const match of source.matchAll(/(?:from\s+|import\s*)['"](\.[^'"]+\.mjs)['"]/g)) {
+    for (const match of source.matchAll(/(?:from\s+|import\s*)['"](\.[^'"]+\.(?:mjs|js|ts))['"]/g)) {
       const next = path.relative(root, path.resolve(root, path.dirname(relative), match[1])).replaceAll('\\', '/');
       assert(!next.startsWith('..')); await visit(next);
     }
@@ -201,7 +227,7 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
       'Uses actual pinned AIAgent through product wrapper, container driver, private gateway and relay. Persistent user memory and host-service orchestration are outside this check.'] };
   const save = () => writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n', { mode: 0o600 });
   const check = name => { receipt.checks.push({ name, passed: true }); console.log(`PASS ${name}`); };
-  let fixture, backend, gateway, runtime; const entries = [];
+  let fixture, backend, gateway, runtime, workspace; const entries = [];
   // A bounded process failure never claims drain. CI runner resources are
   // disposable; leave exact allocated IDs in the receipt for explicit recovery.
   const watchdog = setTimeout(() => { receipt.status = 'FAIL'; receipt.failure = 'harness_deadline'; receipt.cleanup.proven = false;
@@ -213,10 +239,11 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
     const provenance = JSON.parse(await readFile(path.join(root, 'infra/hermes-runtime/image-provenance.json')));
     receipt.provenance = assertPinnedImageInspection(await engine.inspectImage(HERMES_IMAGE, {}), provenance); check('pinned-image-provenance');
     if (mode === '--preflight') { receipt.status = 'PREFLIGHT_ONLY'; return receipt; }
-    receipt.stage = 'factories'; fixture = createSyntheticFixture(); backend = createHermesBackend(fixture.configuration);
+    receipt.stage = 'factories'; workspace = await createProductWorkspace();
+    receipt.resources.workspace = workspace.directory;
+    fixture = createSyntheticFixture(); backend = createHermesBackend(fixture.configuration);
     await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
-    const gatewayRoot = path.join(directory, 'gateways'), runtimeRoot = path.join(directory, 'runtimes');
-    await mkdir(gatewayRoot, { mode: 0o700 }); await mkdir(runtimeRoot, { mode: 0o700 });
+    const { gatewayRoot, runtimeRoot } = workspace;
     const relayPath = path.join(root, 'infra/hermes-runtime/gateway-relay.mjs'), wrapperPath = path.join(root, 'infra/hermes-runtime/agent-process.py');
     const transport = createGatewayTransport({ engine, gatewayRoot, relayPath, relaySha256: hash(await readFile(relayPath)), startupTimeoutMs: 120000 });
     gateway = backend.createRuntimeGateway({ transport, allowedModels: [MODEL] });
@@ -224,7 +251,7 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
       maxTokens: 256, maxIterations: 4, startupTimeoutMs: 120000 });
     for (const actor of fixture.actors) {
       receipt.stage = `start-${actor.name}`; const token = await connectSynthetic(backend, actor); fixture.grantRooms(actor);
-      const home = path.join(directory, `logical-home-${actor.name}`), controller = new AbortController();
+      const home = path.join(workspace.directory, `logical-home-${actor.name}`), controller = new AbortController();
       const ticket = await gateway.register(token, { home, signal: controller.signal });
       let handle;
       try { handle = runtime.prepare({ binding: { assistantId: actor.assistant, userId: actor.user, organizationId: actor.org, home }, admission: false, signal: controller.signal }); }
@@ -250,7 +277,7 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
     const answer = await turn(entries[1]); assert.equal(answer.text, 'SYNTHETIC_B_ROOM_101_VERIFIED'); assert.equal(fixture.actors[1].modelCalls, 4); assert.equal(fixture.actors[1].toolPairs, 2);
     check('B-remains-usable-after-A-revoked');
     receipt.status = 'PASS';
-  } catch (error) { receipt.status = 'FAIL'; receipt.failure = safeFailure(error); }
+  } catch (error) { receipt.status = 'FAIL'; receipt.failure = productFailureCode(error); }
   finally {
     if (fixture) {
       receipt.synthetic = fixture.actors.map(actor => ({ actor: actor.name, modelCalls: actor.modelCalls, toolPairs: actor.toolPairs, roomReads: actor.roomReads }));
@@ -266,7 +293,8 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
           assert.deepEqual([...receipt.resources.removedContainers].sort(), [...receipt.resources.containers].sort());
           assert.deepEqual([...receipt.resources.removedNetworks].sort(), [...receipt.resources.networks].sort());
           assert.equal(receipt.resources.childCloses, receipt.resources.attaches);
-          assert.deepEqual(await readdir(path.join(directory, 'gateways')), []); assert.deepEqual(await readdir(path.join(directory, 'runtimes')), []);
+          assert.deepEqual(await readdir(workspace.gatewayRoot), []); assert.deepEqual(await readdir(workspace.runtimeRoot), []);
+          await rmdir(workspace.gatewayRoot); await rmdir(workspace.runtimeRoot); await rmdir(workspace.directory);
           receipt.cleanup.proven = true; check('actual-exit-owned-container-network-directory-cleanup');
         } catch { receipt.status = 'FAIL'; receipt.cleanup.failure = 'cleanup_unproven'; }
       } else { receipt.status = 'FAIL'; receipt.cleanup.failure = 'runtime_stop_unproven'; }

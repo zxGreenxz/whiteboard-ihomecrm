@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { HermesPermissionFields } from '@/hermes/HermesPermissionFields';
+import { HermesOrgPolicySettings } from '@/hermes/HermesOrgPolicySettings';
 import { useHermesConnections } from '@/hermes/useHermesConnections';
 import { HermesZaloBindings } from '@/hermes/HermesZaloBindings';
 import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
@@ -35,6 +36,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   const password = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [botGeneration, setBotGeneration] = useState(0);
+  const [policyBusy, setPolicyBusy] = useState(false);
   const [grant, setGrant] = useState<HermesConnectionRestrictions>({ read: ['assistant.context.read'], action: [] });
   const [grantScopes, setGrantScopes] = useState<string[]>([]);
   useEffect(() => {
@@ -50,7 +52,20 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     const value = lifetime.current; value.alive = true;
     return () => { value.alive = false; value.generation++; handoffId.current = null; if (password.current) password.current.value = ''; };
   }, []);
-  const disabled = Boolean(model.busy) || model.needsReload || model.connections === null;
+  const clearPolicyAuthority = () => {
+    lifetime.current.generation++; handoffId.current = null;
+    if (password.current) password.current.value = '';
+    setCopied(null); setGrant({ read: [], action: [] }); setGrantScopes([]);
+    setBotGeneration(value => value + 1);
+  };
+  const policyChanging = () => {
+    setPolicyBusy(true); clearPolicyAuthority(); model.invalidatePolicy();
+  };
+  const policyChanged = () => {
+    setPolicyBusy(false); clearPolicyAuthority();
+    void model.policyChanged();
+  };
+  const disabled = policyBusy || Boolean(model.busy) || model.needsReload || model.connections === null;
   const grantReady = Boolean(model.options?.enabled) && grant.read.length > 0 &&
     grant.read.every(key => model.options?.read.some(allowed => allowed === key)) &&
     (!grant.read.includes('rooms.view') || grantScopes.length > 0) && grantScopes.every(id => model.options?.scopes.some(scope => scope.scopeId === id));
@@ -78,7 +93,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   return <div className="max-w-4xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">Trạng thái dưới đây là hồ sơ đã lưu; chưa xác nhận Hermes đang chạy.</p>
-      <Button variant="outline" disabled={Boolean(model.busy)} onClick={() => { setCopied(null); void model.reload(); }}><RefreshCw className="h-4 w-4" />Tải lại danh sách</Button>
+      <Button variant="outline" disabled={policyBusy || Boolean(model.busy)} onClick={() => { setCopied(null); void model.reload(); }}><RefreshCw className="h-4 w-4" />Tải lại danh sách</Button>
     </div>
     {model.message && <p role="status" className="rounded-lg border bg-muted/50 p-3 text-sm">{model.message}</p>}
     {model.needsReload && <p className="text-sm font-medium">Các thao tác đang tạm dừng đến khi bạn tải lại danh sách thành công.</p>}
@@ -106,6 +121,8 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
         <Button variant="outline" onClick={() => { model.clearHandoff(); setCopied(null); }}>Đã lưu, ẩn mã</Button></div>
       {copied && <p role="status" className="text-sm">{copied}</p>}
     </section>}
+    <HermesOrgPolicySettings userId={userId} organizationId={organizationId} currentScope={currentScope}
+      onPolicyChanging={policyChanging} onPolicyChanged={policyChanged} />
     <HermesZaloBotSettings userId={userId} organizationId={organizationId} currentScope={currentScope} onConfigurationChanged={botConfigurationChanged} />
     {model.connections && <HermesZaloBindings key={botGeneration} userId={userId} organizationId={organizationId} currentScope={currentScope}
       connections={model.connections} disabled={disabled} />}

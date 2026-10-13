@@ -594,6 +594,38 @@
       ]
     },
     {
+      "id": "hermes-org-policy-native",
+      "sourcePaths": [
+        "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/org-policy-sql.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-org-policy-ui",
+      "sourcePaths": [
+        "supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+        "src/hermes/orgPolicyClient.ts",
+        "src/hermes/HermesOrgPolicySettings.tsx",
+        "src/hermes/useHermesConnections.ts",
+        "src/pages/settings/HermesConnectionsPage.tsx",
+        "src/components/authorization/PermissionPicker.tsx",
+        "src/components/authorization/ScopePicker.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/orgPolicyClient.test.ts",
+        "src/hermes/HermesOrgPolicySettings.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ]
+    },
+    {
       "id": "hermes-connection-permissions-ui",
       "sourcePaths": [
         "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
