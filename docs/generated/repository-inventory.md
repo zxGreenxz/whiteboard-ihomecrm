@@ -15,7 +15,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **1446** file test, **329** file đọc file bằng fs (764 lời gọi)
+- **1447** file test, **330** file đọc file bằng fs (766 lời gọi)
 - **348** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
@@ -25,12 +25,12 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
 | sql | 112 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 55 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| ma-nguon | 56 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | manifest | 49 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
 | tai-lieu | 15 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 55 file đọc MÃ NGUỒN
+## 56 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -44,6 +44,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `scripts/__tests__/gen-supabase-types.test.ts`
 - `scripts/__tests__/generate-repository-inventory.test.mjs`
 - `scripts/__tests__/hermes-durable-store.test.mjs`
+- `scripts/__tests__/hermes-private-flow.test.mjs`
 - `scripts/__tests__/lifecycle-reminder-edge-auth.test.ts`
 - `scripts/__tests__/network-center-worker-release-readback.test.mjs`
 - `scripts/__tests__/network-center-worker-scope-verifier.test.mjs`

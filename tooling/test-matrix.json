@@ -573,6 +573,28 @@
       ]
     },
     {
+      "id": "hermes-private-flow-native",
+      "sourcePaths": [
+        "scripts/test-hermes-private-flow.mjs",
+        "scripts/test-hermes-broker-authz.mjs",
+        "scripts/test-hermes-durable-store.mjs",
+        "scripts/db-query.mjs",
+        "scripts/test-env/**",
+        "scripts/lib/vault.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/network-center-rollout-common.mjs",
+        "infra/hermes-broker/session-crypto.mjs",
+        "infra/hermes-broker/durable-connection-store.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/certs/supabase-ca-2021.crt",
+        "supabase/migrations/*_hermes_*.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/hermes-private-flow.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-connection-options-native",
       "sourcePaths": [
         "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
@@ -882,6 +904,7 @@
         "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
         "scripts/__tests__/hermes-room-scope-schema.test.mjs",
         "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs",
         "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "ciJobs": [
@@ -1196,6 +1219,7 @@
         "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
         "scripts/__tests__/hermes-room-scope-schema.test.mjs",
         "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "scripts/__tests__/hermes-private-flow.test.mjs",
         "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",

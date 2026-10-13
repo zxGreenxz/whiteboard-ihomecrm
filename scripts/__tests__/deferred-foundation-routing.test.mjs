@@ -11,6 +11,7 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
   file === 'scripts/test-hermes-product-runtime.test.mjs' ||
+  file === 'scripts/__tests__/hermes-private-flow.test.mjs' ||
   file === 'src/hermes/connectionClient.test.ts' ||
   file === 'src/hermes/orgPolicyClient.test.ts' ||
   file === 'src/hermes/HermesOrgPolicySettings.test.tsx' ||
@@ -263,6 +264,33 @@ describe('P0 shared CRM foundation routing', () => {
     mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns =
       mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns.filter(pattern => pattern !== file);
     expect(planFor(source, mutant).suiteSelections.find(selection => selection.id === 'node-native').files).not.toContain(file);
+  });
+
+  it('private TEST runner selects offline helper tests with review and never schedules its live command', () => {
+    const runner = 'scripts/test-hermes-private-flow.mjs', testFile = 'scripts/__tests__/hermes-private-flow.test.mjs';
+    expect(testFiles).toContain(testFile); assertNativeOwner(testFile);
+    const assertRule = (source, testMatrix = matrix) => {
+      expect(testMatrix.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern =>
+        globToRegExp(pattern).test(source))).map(rule => rule.id)).toContain('hermes-private-flow-native');
+      const plan = planFor(source, testMatrix);
+      const selected = plan.suiteSelections.find(item => item.id === 'node-native');
+      expect(selected.files).toContain(testFile);
+      expect(selected.files).not.toContain(runner);
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...selected.files]);
+      expect(plan.suiteSelections.find(item => item.id === 'app-unit')?.files ?? []).not.toContain(testFile);
+      return plan;
+    };
+    for (const source of [runner, 'scripts/test-env/lock.mjs', 'scripts/test-hermes-durable-store.mjs',
+      'scripts/network-center-rollout-common.mjs',
+      'infra/hermes-broker/durable-connection-store.mjs', 'supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql',
+      'supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql']) assertRule(source);
+    const plan = assertRule(runner);
+    expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    expect(pkg.scripts['test:hermes-private-flow']).toBe('node scripts/test-hermes-private-flow.mjs');
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-flow-native');
+    expect(() => assertRule(runner, mutant)).toThrow();
   });
 
   it('connection options SQL and API select their actual native contracts and browser client contracts', () => {

@@ -5,23 +5,35 @@
 - Theo yêu cầu mới nhất của chủ dự án: dùng cấu hình agent mặc định của hệ thống, không ép model/provider/mức suy luận và không hỏi lại cấu hình agent. Agent mới kế thừa effort đang bật của phiên; không giao lại việc cho subagent đã tạo bằng effort cũ. Các lệnh hoặc giới hạn agent trong logs cũ chỉ là lịch sử, không còn là yêu cầu thực thi. Chủ dự án yêu cầu tập trung core, dùng subagent song song và chỉ báo tiến độ khi được hỏi; cập nhật plan ngắn tại mốc thực hiện có ý nghĩa.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint đã push: `0a08917e5beef4a06f47f3ed7c1ccfd65167417c`. Hermes product Docker phát hiện đường dẫn socket quá dài trước cấp tài nguyên; bản sửa harness và policy UI đang khóa checkpoint tiếp theo. Chưa apply/deploy hoặc kiểm Zalo thật.
+- Checkpoint đã push: `7a6147b10e94b1be9f28f72cf992adcae96f4aa8`. Policy UI và socket fix đã vào PR. Docker qua socket, còn startup gateway; bản sửa readiness và runner TEST đang kiểm. Chưa apply/deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì tại [PLAN.md](PLAN.md).
 
 ## Điểm tiếp tục
 
-- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; bản sửa socket harness cần CI Linux. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
+- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; bản sửa readiness gateway cần CI Linux. Runner TEST đã mount nhưng chưa thực thi. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI checkpoint `494d306a` đã đạt; WIP có gate local ghi ở nhật ký mới nhất, chưa có CI cho candidate mới; bản ghi review checkpoint ở PR.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, policy qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Checkpoint đã push:** `0a08917e5beef4a06f47f3ed7c1ccfd65167417c`; local gate 47/47. CI Gates/Android/Restore Drill SUCCESS; Hermes product Docker CI FAIL. CI PR không phải authority merge/phát hành; lịch sử 7ee90820 vẫn giữ riêng.
+- **Checkpoint đã push:** `7a6147b10e94b1be9f28f72cf992adcae96f4aa8`; local gate 47/47. Hermes product Docker FAIL trong startup gateway; Android FAIL khi tải image giả lập; Restore Drill và CI Gates SUCCESS. CI PR không phải authority merge/phát hành; lịch sử các checkpoint trước giữ riêng.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
+
+### 13/10/2026 — chờ gateway sẵn sàng và runner TEST P4
+
+CI 7a6147b1 đã tạo gateway sidecar/network rồi đóng/xóa, chưa tạo runtime container. Run Hermes 38396598432 chỉ localize startup gateway, chưa ghi daemon state đủ để kết luận nguyên nhân duy nhất. Source có race thật: attach Docker bất đồng bộ nhưng inspect chạy ngay; regression đỏ rồi sửa relay phát frame cố định sau listen, transport chờ frame dưới deadline/cancellation cũ rồi giữ nguyên full inspection. Không retry create/start. Thêm lifecycle receipt giới hạn trường cho CI. Report `.cache/hermes-gateway-native-failure-report.md`; gateway/relay 29 PASS, 2 Linux-only SKIP; harness 8/8, 2 mutation caught/khôi phục đúng hash. Native Docker của bản sửa còn phải kiểm.
+
+Đã mount `scripts/test-hermes-private-flow.mjs` và native helper test; alias `npm run test:hermes-private-flow` mặc định chỉ in plan offline. Live cần đúng `--run --env test --expected-project-ref hzulujxgonszuleqticb`, đủ 12 apply receipts và 6 candidate digest, TEST lease cùng worker singleton vắng. Review phát hiện unknown activation ACK có thể nhả TEST marker; đã có regression đỏ, sửa cờ uncertain và re-review sạch. Tracked helper 40/40, 11 mutation; `.cache/hermes-test-next/private-flow-final/FINAL.md` và `independent-review-final.md`. JWT cases dự kiến gồm policy/binding/intake/reply self/cross-actor/cross-org; executor ghi rõ role probe, không giả dedicated login hoặc provider send. Chưa chạy live.
+
+Routing helper dùng node:test, không đưa runner live vào gate. Review phát hiện thiếu digest-helper dependency; đã thêm đúng mapping/regression, targeted test xanh và re-review sạch tại `.cache/hermes-private-flow-routing-review.md`. Browser policy giữ nguyên source nên dùng lại receipt. Android run 38396598302 lỗi tải `x86_64-35_r09.zip` (ZipFile unknown archive), không sửa Android ngoài scope; Restore Drill 38396598410 và CI Gates 38396598394 SUCCESS. Không dùng run PR làm release authority; security-gates skipped nên chưa chứng minh phép đo org-leak bắt buộc trước apply.
+
+Gate readiness/runner **47/47 local**, 1/1 file Vitest liên quan, 184 giây; tree `c9800af3d880476b7a3112e821d656d5b62c1b8c`, run `local-7c344f70-9f12-47a9-a910-d7f7ba6f9f95`. Log `.cache/hermes-ready-gate.txt`, receipts `.cache/hermes-ready-gate-receipts/`; generator chỉ đổi inventory đã kiểm. Review readiness độc lập tại `.cache/hermes-gateway-ready-independent-review.md` không có P1/P2 đã xác minh, cùng hai review runner/routing kể trên. Sau gate chỉ cập nhật ghi chú; CI native cho commit mới còn phải chạy. Phần TEST tiếp tục yêu cầu org-leak đúng target, forward lane có backup/biên nhận và cleanup; chưa chạy live hoặc apply.
+
+Phần tiếp: chốt review/gate readiness + TEST runner → CI runtime đúng head → reviewed TEST schema lane và gọi RPC/JWT thật với cleanup → tiếp tục toàn plan. Chưa apply schema, tạo fixture live, deploy hoặc tự nghiệm thu thêm.
 
 ### 13/10/2026 — policy công ty và sửa socket Docker
 

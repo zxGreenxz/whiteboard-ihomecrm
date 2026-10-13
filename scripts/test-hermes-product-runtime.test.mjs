@@ -6,11 +6,31 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, rmdir } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { createSyntheticFixture, connectSynthetic, createProductWorkspace, productFailureCode, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
+import { EventEmitter } from 'node:events';
+import { createSyntheticFixture, connectSynthetic, createProductWorkspace, observedEngine, productFailureCode, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
 import { createHermesBackend } from '../infra/hermes-broker/server.mjs';
 import { createContainerRuntime } from '../infra/hermes-runtime/container-driver.mjs';
 import { createGatewayTransport } from '../infra/hermes-runtime/gateway-transport.mjs';
 import { HERMES_IMAGE } from '../infra/hermes-runtime/runtime-contract.mjs';
+
+test('engine lifecycle receipt preserves bounded safe state diagnostics without inspection payloads or stderr', async () => {
+  const child = new EventEmitter(), id = 'a'.repeat(64), evidence = { attaches: 0, childCloses: 0 };
+  const inspection = { State: { Status: 'created', Running: false, Dead: false, Restarting: false, OOMKilled: false, ExitCode: 0,
+    Error: 'PRIVATE-ENGINE-ERROR' }, Config: { Env: ['TOKEN=PRIVATE-TOKEN'], Labels: { 'ihome.hermes.role': 'gateway' } } };
+  const engine = observedEngine({ inspectContainer: async () => inspection, attachStart: () => child }, evidence);
+  assert.equal(await engine.inspectContainer(id), inspection);
+  assert.deepEqual(evidence.lifecycle[0], { operation: 'inspect', containerId: id, role: 'gateway', status: 'created', running: false,
+    dead: false, restarting: false, oomKilled: false, exitCode: 0 });
+  assert.equal(engine.attachStart(id), child); child.emit('close', 1, null);
+  assert.equal(evidence.attaches, 1); assert.equal(evidence.childCloses, 1);
+  assert.deepEqual(evidence.lifecycle[1], { operation: 'attach-close', containerId: id, exitCode: 1, signal: null });
+  inspection.State = { Status: 'PRIVATE-STATUS', Running: 'PRIVATE-RUNNING', ExitCode: 1000 };
+  inspection.Config.Labels['ihome.hermes.role'] = 'PRIVATE-ROLE';
+  for (let index = 0; index < 30; index++) await engine.inspectContainer('PRIVATE-ID');
+  assert.equal(evidence.lifecycle.length, 24); assert(!JSON.stringify(evidence).includes('PRIVATE'));
+  assert.deepEqual(evidence.lifecycle[0], { operation: 'inspect', containerId: null, role: null, status: 'unknown', running: null,
+    dead: null, restarting: null, oomKilled: null, exitCode: null });
+});
 
 test('product workspace keeps native socket below the product limit independently of checkout depth', async t => {
   const workspace = await createProductWorkspace();

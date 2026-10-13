@@ -17,7 +17,16 @@ const wait = async predicate => { const deadline = Date.now() + 3000; while (!pr
   if (Date.now() >= deadline) throw Error('condition not reached'); await new Promise(resolve => setTimeout(resolve, 5)); } };
 const linuxNonroot = process.platform === 'linux' && process.getuid() !== 0 && process.getgid() !== 0;
 const user = process.platform === 'linux' ? runtimeUser() : '10000:10000';
-const childCode = `process.stdin.resume(); if(process.argv[1]==='flood')process.stdout.write('x'.repeat(65537));setInterval(()=>{},1000);`;
+const childCode = `process.stdin.resume();
+const ready=()=>process.stdout.write('gateway_ready_v1\\n');
+if(process.argv[1]==='deferred-ready')process.stdin.once('data',ready);
+else if(process.argv[1]==='flood')process.stdout.write('x'.repeat(65537));
+else if(process.argv[1]==='fragment-ready'){process.stdout.write('gateway_');setTimeout(()=>process.stdout.write('ready_v1\\n'),10);}
+else if(process.argv[1]==='duplicate-ready')process.stdout.write('gateway_ready_v1\\ngateway_ready_v1\\n');
+else if(process.argv[1]==='invalid-ready')process.stdout.write('PRIVATE-INVALID-READY\\n');
+else if(process.argv[1]==='exit-before-ready')process.exit(3);
+else if(process.argv[1]!=='no-ready')ready();
+setInterval(()=>{},1000);`;
 const hostRequest = (socketPath, body = 'hello') => new Promise((resolve, reject) => {
   const req = request({ socketPath, path: '/mcp', method: 'POST', headers: { host: 'hermes-gateway:8787', 'content-length': Buffer.byteLength(body) } }, res => {
     const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString() })); res.on('error', reject);
@@ -90,15 +99,17 @@ async function fixture(t, changes = {}) {
       await changes.createWait?.promise; if (changes.createFailure) throw Error('PRIVATE-CREATE'); return changes.containerId ?? containerId;
     },
     attachStart(id) { events.push('attach'); assert.equal(id, containerId); attached = true;
-      if (changes.attachFailure) throw Error('PRIVATE-ATTACH'); running = true;
+      if (changes.attachFailure) throw Error('PRIVATE-ATTACH'); running = changes.mode !== 'deferred-ready';
       child = spawn(process.execPath, ['-e', childCode, changes.mode ?? 'normal'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); children.push(child);
       if (changes.mode === 'flood') {
         let received = 0;
         child.stdout.on('data', chunk => { received += chunk.length; if (received > 65536) events.push('relay-output-over-limit'); });
       }
+      child.stdout.on('data', chunk => { if (chunk.toString().includes('gateway_ready_v1')) { running = true; events.push('relay-ready'); } });
       child.once('close', () => { running = false; events.push('child-close'); }); return child;
     },
     async inspectContainer(id) { events.push('inspect'); assert.equal(id, containerId); await changes.inspectWait?.promise;
+      if (changes.mode === 'deferred-ready' && !running) events.push('inspected-before-ready');
       const result = structuredClone(inspection()); changes.mutateInspection?.(result); return result; },
     async kill(id) { events.push('kill'); assert.equal(id, containerId); if (changes.killFailure) throw Error('PRIVATE-KILL');
       if (changes.lingeringTransport) { running = false; return; } child?.kill(); },
@@ -121,6 +132,50 @@ async function fixture(t, changes = {}) {
   return { transport, engine, config, controller, events, directory, gatewayRoot, relayPath, relay, image, spec: () => spec, child: () => child,
     socketPath, handler, created: () => created, async open(input = { handler, signal: controller.signal }) { const channel = await transport.open(input); channels.push(channel); return channel; } };
 }
+
+test('gateway waits for relay readiness before inspecting an asynchronously started sidecar', async t => {
+  const f = await fixture(t, { mode: 'deferred-ready' }); let settled = false;
+  const opening = f.open().finally(() => { settled = true; }); void opening.catch(() => {});
+  await wait(() => f.events.includes('attach'));
+  await new Promise(resolve => setTimeout(resolve, 30));
+  // Docker start --attach returns a child immediately, before the daemon or
+  // relay is ready. Inspection must wait for the bounded relay handshake.
+  const earlyInspection = f.events.includes('inspected-before-ready');
+  f.child().stdin.write('ready\n');
+  assert.equal(earlyInspection, false);
+  assert.equal(settled, false);
+  const channel = await opening;
+  assert(f.events.indexOf('relay-ready') < f.events.indexOf('inspect'));
+  assert.equal(f.events.filter(event => event === 'attach').length, 1);
+  assert.equal(f.events.filter(event => event === 'create').length, 1);
+  await channel.close();
+});
+
+test('fragmented fixed readiness is accepted but duplicate, malformed or exited relay cannot open a gateway', async t => {
+  const f = await fixture(t, { mode: 'fragment-ready' }), channel = await f.open();
+  await channel.close();
+  for (const mode of ['duplicate-ready', 'invalid-ready', 'exit-before-ready']) {
+    const rejected = await fixture(t, { mode });
+    await assert.rejects(rejected.open(), error => error.code === 'gateway_open_failed' && !error.message.includes('PRIVATE'));
+    assert.equal(rejected.events.filter(event => event === 'attach').length, 1);
+    assert(rejected.events.includes('remove-network'));
+  }
+});
+
+test('missing relay readiness stays fenced until deadline or caller cancellation, with no restart', async t => {
+  for (const cancellation of ['deadline', 'caller']) {
+    let expire;
+    const timers = { setTimeout(fn, ms) { assert.equal(ms, 2000); expire = fn; return fn; }, clearTimeout() {} };
+    const f = await fixture(t, { mode: 'no-ready', timers }), opening = f.open(); void opening.catch(() => {});
+    await wait(() => f.events.includes('attach'));
+    assert(!f.events.includes('inspect'));
+    if (cancellation === 'deadline') expire(); else f.controller.abort();
+    await assert.rejects(opening, /gateway_open_failed/);
+    assert.equal(f.events.filter(event => event === 'attach').length, 1);
+    assert.equal(f.events.filter(event => event === 'create').length, 1);
+    assert(f.events.includes('child-close')); assert(f.events.includes('remove-network'));
+  }
+});
 
 test('factory is inert; fixed pinned sidecar exposes only its private host handler; close proves child exit before deleting owned resources', async t => {
   const f = await fixture(t); assert.deepEqual(f.events, []); await assert.rejects(lstat(f.gatewayRoot), /ENOENT/);

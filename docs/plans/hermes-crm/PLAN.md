@@ -2,11 +2,11 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint dịch vụ/quyền đọc phòng 0a08917e đã push; CI phát hiện đường dẫn socket của bộ kiểm Docker quá dài. Đã sửa harness và tích hợp giao diện policy công ty, đang khóa checkpoint kế tiếp. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
+**Trạng thái:** Đang triển khai toàn P0–P11. Policy công ty và bản sửa socket đã push ở 7a6147b1. CI đã qua socket, còn lỗi startup gateway; đã sửa race chờ relay sẵn sàng và đưa runner TEST P4 vào source, đang kiểm checkpoint kế tiếp. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
-**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Bản sửa đường dẫn Docker đang chờ CI đúng candidate; runner TEST P4 đang được review. Không suy code cục bộ thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
+**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Bản sửa readiness gateway cần CI đúng candidate; runner TEST P4 đã qua review hẹp sau sửa unknown ACK, chưa chạy live. Không suy code cục bộ thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
 
 ## Quyết định đã chốt — không hỏi lại
 

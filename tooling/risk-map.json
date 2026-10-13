@@ -102,6 +102,7 @@
         "scripts/test-hermes-broker-authz.mjs",
         "scripts/test-hermes-refresh-auth.mjs",
         "scripts/test-hermes-durable-store.mjs",
+        "scripts/test-hermes-private-flow.mjs",
         "scripts/measure-org-leak.mjs",
         "supabase/functions/_shared/**"
       ]
@@ -141,6 +142,7 @@
         "scripts/generate-migration-provenance.mjs",
         "scripts/test-hermes-refresh-auth.mjs",
         "scripts/test-hermes-durable-store.mjs",
+        "scripts/test-hermes-private-flow.mjs",
         "scripts/measure-org-leak.mjs",
         "scripts/*rollout*.mjs",
         "scripts/lib/gate-*.mjs",
