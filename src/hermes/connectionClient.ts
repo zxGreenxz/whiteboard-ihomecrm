@@ -8,6 +8,21 @@ const unique = <T extends z.ZodTypeAny>(item: T) => z.array(item).max(256)
 const ids = unique(uuid);
 const capabilities = unique(z.string().regex(/^[a-z][a-z0-9_.:-]{0,127}$/));
 const restrictions = z.object({ read: capabilities, action: capabilities }).strict();
+const scopeChoice = z.object({ scopeId: uuid, scopeType: z.enum(['ORGANIZATION', 'AREA', 'BUILDING']),
+  label: z.string().min(1).refine(value => value.trim().length > 0 && !value.includes('\0') && new TextEncoder().encode(value).byteLength <= 1024),
+  buildingId: uuid.nullable(), areaId: uuid.nullable(), cashbookId: z.null(),
+}).strict().refine(value => value.scopeType === 'BUILDING' ? value.buildingId !== null && value.areaId === null
+  : value.scopeType === 'AREA' ? value.areaId !== null && value.buildingId === null : value.buildingId === null && value.areaId === null)
+  // Keep required output keys in both strict islands and the non-strict app
+  // compiler; Zod's object inference otherwise makes them optional in the latter.
+  .transform(value => ({ scopeId: value.scopeId, scopeType: value.scopeType, label: value.label,
+    buildingId: value.buildingId, areaId: value.areaId, cashbookId: value.cashbookId }));
+const grantOptions = z.object({ userId: uuid, organizationId: uuid, membershipId: uuid, authorizationVersion: positive,
+  isSuperadmin: z.boolean(), policyVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1), enabled: z.boolean(),
+  read: unique(z.enum(['assistant.context.read', 'rooms.view'])), action: z.array(z.never()).length(0),
+  scopes: z.array(scopeChoice).max(256).refine(value => new Set(value.map(scope => scope.scopeId)).size === value.length),
+}).strict().refine(value => (!value.enabled || value.policyVersion > 0) &&
+  (value.enabled || value.read.length === 0 && value.scopes.length === 0) && value.read.includes('rooms.view') === (value.scopes.length > 0));
 const row = z.object({
   id: uuid, assistantId: uuid, organizationId: uuid, userId: uuid,
   state: z.enum(['pending', 'active', 'revoked']), epoch: positive, restrictions, scopeIds: ids,
@@ -27,10 +42,11 @@ const connectInput = z.object({
   password: z.string().min(1).refine(value => new TextEncoder().encode(value).byteLength <= 4096),
   restrictions, scopeIds: ids,
 }).strict().refine(value => value.restrictions.action.length === 0 &&
-  value.restrictions.read.every(key => key === 'assistant.context.read'));
+  value.restrictions.read.every(key => ['assistant.context.read', 'rooms.view'].includes(key)));
 const listResult = z.object({ connections: z.array(row).max(256)
   .refine(values => new Set(values.map(value => value.id)).size === values.length) }).strict();
 const contextResult = z.object({ context }).strict();
+const optionsResult = z.object({ options: grantOptions }).strict();
 const connectResult = z.object({ status: z.literal('active'), connection: row.extend({ state: z.literal('active') }),
   token: z.string().regex(/^hc_[A-Za-z0-9_-]{43}$/), tokenExpiresAt: positive }).strict();
 const restrictResult = z.object({ ok: z.literal(true), connection: row.extend({ state: z.literal('active') }) }).strict();
@@ -40,6 +56,7 @@ const revokeResult = z.object({ ok: z.literal(true), status: z.enum(['revoked', 
 export type HermesConnectionMetadata = z.infer<typeof row>;
 export type HermesConnectionContext = z.infer<typeof context>;
 export type HermesConnectionRestrictions = z.infer<typeof restrictions>;
+export type HermesGrantOptions = z.infer<typeof grantOptions>;
 export type HermesConnectInput = z.infer<typeof connectInput>;
 export type HermesRestrictInput = z.infer<typeof restrictInput>;
 export type HermesRevokeInput = z.infer<typeof revokeInput>;
@@ -56,7 +73,7 @@ const statuses = {
 } as const;
 type ServerCode = keyof typeof statuses;
 export type HermesConnectionErrorCode = ServerCode | 'invalid_response';
-type Operation = 'list' | 'context' | 'connect' | 'restrict' | 'revoke';
+type Operation = 'list' | 'context' | 'options' | 'connect' | 'restrict' | 'revoke';
 type WriteOperation = 'connect' | 'restrict' | 'revoke';
 type Outcome = 'not_dispatched' | 'rejected' | 'unknown';
 const serverCode = z.custom<ServerCode>(value => typeof value === 'string' && Object.prototype.hasOwnProperty.call(statuses, value));
@@ -104,7 +121,7 @@ export interface HermesRequestOptions { signal?: AbortSignal }
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(value => b.includes(value));
 const sameRestrictions = (a: HermesConnectionRestrictions, b: HermesConnectionRestrictions) =>
   sameSet(a.read, b.read) && sameSet(a.action, b.action);
-const writeOperation = (operation: Operation): operation is WriteOperation => !['list', 'context'].includes(operation);
+const writeOperation = (operation: Operation): operation is WriteOperation => !['list', 'context', 'options'].includes(operation);
 const MAX_REQUEST_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
 
@@ -143,7 +160,7 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
   }
 }
 
-/** Five fixed, same-origin POST routes. The server verifies Auth and CRM rights.
+/** Fixed, same-origin POST routes. The server verifies Auth and CRM rights.
  * This client adds stale-screen fences only; local session checks are not authority.
  * No retries, cookie fallback, arbitrary URL/RPC, password sign-in in the browser,
  * result cache, token persistence, or claims of durable one-time-token delivery.
@@ -160,7 +177,7 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
   const ownRow = (value: HermesConnectionMetadata) => value.userId === userId && value.organizationId === organizationId;
 
   async function invoke<Input, Result>(operation: Operation, input: Input, inputSchema: z.ZodType<Input>,
-    resultSchema: z.ZodType<Result>, matches: (result: Result, request: Input) => boolean,
+    resultSchema: z.ZodType<Result, z.ZodTypeDef, unknown>, matches: (result: Result, request: Input) => boolean,
     { signal }: HermesRequestOptions = {}): Promise<Result> {
     let dispatched = false;
     const write = writeOperation(operation);
@@ -270,6 +287,8 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
   return {
     list: (requestOptions?: HermesRequestOptions) => invoke('list', {}, emptyInput, listResult,
       value => value.connections.every(ownRow), requestOptions),
+    options: (requestOptions?: HermesRequestOptions) => invoke('options', {}, emptyInput, optionsResult,
+      value => value.options.userId === userId && value.options.organizationId === organizationId, requestOptions),
     context: (input: z.infer<typeof contextInput>, requestOptions?: HermesRequestOptions) => invoke('context', input, contextInput, contextResult,
       (value, request) => ownRow(value.context) && value.context.id === request.connectionId, requestOptions),
     connect: (input: HermesConnectInput, requestOptions?: HermesRequestOptions) => invoke('connect', input, connectInput, connectResult,

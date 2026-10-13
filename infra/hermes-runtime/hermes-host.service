@@ -1,0 +1,40 @@
+[Unit]
+Description=iHomeCRM Hermes host
+Wants=network-online.target
+Requires=docker.service
+After=network-online.target docker.service
+ConditionPathExists=/etc/ihome-hermes/host.json
+ConditionPathIsDirectory=/var/lib/ihome-hermes
+
+[Service]
+Type=simple
+User=ihome-hermes
+Group=ihome-hermes
+SupplementaryGroups=docker
+WorkingDirectory=/opt/ihome-hermes/current
+Environment=DOCKER_HOST=unix:///run/docker.sock
+UnsetEnvironment=DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CUSTOM_HEADERS DOCKER_API_VERSION
+ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes/current/infra/hermes-runtime/host-cli.mjs --config /etc/ihome-hermes/host.json
+Restart=no
+KillSignal=SIGTERM
+# Only signal Node; its driver must drain the attached Docker CLI children.
+KillMode=process
+TimeoutStopSec=infinity
+SendSIGKILL=no
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ihome-hermes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

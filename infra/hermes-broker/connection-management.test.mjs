@@ -15,6 +15,7 @@ const row = () => ({ id: ids.connection, assistantId: ids.assistant, organizatio
   state: 'active', epoch: 2, restrictions: limits(), scopeIds: [ids.scope] });
 const context = () => ({ ...row(), membershipId: ids.membership, authorizationVersion: 1,
   isSuperadmin: false, policyVersion: 1, companyCeilings: limits(), effective: limits() });
+const grantOptions = () => ({ userId: ids.user, organizationId: ids.org, membershipId: ids.membership, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1, enabled: true, read: ['assistant.context.read'], action: [], scopes: [] });
 const session = () => ({ userId: ids.user, sessionId: ids.session, expiresAt: now + 60_000 });
 const authorization = () => ({ userId: ids.user, isSuperadmin: false, activeOrganizationIds: [ids.org],
   epoch: 'authorization-epoch-1',
@@ -22,7 +23,7 @@ const authorization = () => ({ userId: ids.user, isSuperadmin: false, activeOrga
     membershipId: ids.membership, authorizationVersion: 1 },
   permissions: limits(), companyCeilings: limits() });
 const request = operation => ({ browserAccessToken: 'browser.jwt.token', organizationId: ids.org,
-  ...(operation === 'list' ? {} : { connectionId: ids.connection }),
+  ...(['list', 'options'].includes(operation) ? {} : { connectionId: ids.connection }),
   ...(['restrict', 'revoke'].includes(operation) ? { expectedEpoch: 2 } : {}),
   ...(operation === 'restrict' ? { restrictions: { read: [], action: [] }, scopeIds: [] } : {}) });
 const code = expected => error => error.code === expected && error.message === expected && error.cause === undefined;
@@ -36,6 +37,7 @@ function fixture(options = {}) {
   };
   const reads = {
     async listConnections(input, options) { events.push(['list', input, options]); return [row()]; },
+    async connectionOptions(input, options) { events.push(['options', input, options]); return grantOptions(); },
     async connectionContext(input, options) { events.push(['context', input, options]); return context(); },
   };
   const connectionStore = {
@@ -50,7 +52,7 @@ function fixture(options = {}) {
 
 test('read operations use the same verified browser bearer and project exact secret-free metadata', async () => {
   const f = fixture(), api = f.create();
-  assert.deepEqual(Object.keys(api), ['list', 'context', 'restrict', 'revoke']);
+  assert.deepEqual(Object.keys(api), ['list', 'context', 'options', 'restrict', 'revoke']);
   assert.deepEqual(await api.list(request('list'), f.options), { connections: [row()] });
   assert.deepEqual(await api.context(request('context'), f.options), { context: context() });
   assert.deepEqual(f.events.map(e => e[0]), ['verify', 'authz', 'list', 'verify', 'authz', 'verify', 'authz', 'context', 'verify', 'authz', 'context']);
@@ -79,7 +81,7 @@ test('revoke remains available for self-owned pending/expired/revoked metadata w
   }
 });
 test('forged actor, arbitrary RPC/DB and caller-supplied connection objects are rejected before authentication', async () => {
-  for (const operation of ['list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['list', 'context', 'options', 'restrict', 'revoke']) {
     for (const extra of [{ actorId: ids.foreign }, { userId: ids.foreign }, { role: 'service_role' },
       { rpc: 'delete_all' }, { url: 'https://foreign.invalid' }, { connection: row() }, { sql: 'SELECT private' }]) {
       const f = fixture(); await assert.rejects(f.create()[operation]({ ...request(operation), ...extra }, f.options), code('invalid_request'));
@@ -208,11 +210,11 @@ test('request and read reply mutation cannot alter later write identity or grant
 });
 
 const origin = 'https://fixture.supabase.co', key = 'sb_publishable_fixture';
-test('fixed reads adapter uses exactly two public RPCs, pins bearer/body and accepts no endpoint/role injection', async () => {
+test('fixed reads adapter uses exactly three public RPCs, pins bearer/body and accepts no endpoint/role injection', async () => {
   const calls = [], controller = new AbortController();
   const adapter = createSupabaseConnectionManagementReads({ url: origin, publishableKey: key,
     fetch: async (url, options) => { calls.push({ url, ...options }); return Response.json([]); } });
-  assert.deepEqual(Object.keys(adapter), ['listConnections', 'connectionContext']);
+  assert.deepEqual(Object.keys(adapter), ['listConnections', 'connectionOptions', 'connectionContext']);
   await adapter.listConnections({ accessToken: 'browser.token', organizationId: ids.org }, { signal: controller.signal });
   await adapter.connectionContext({ accessToken: 'browser.token', connectionId: ids.connection }, { signal: controller.signal });
   assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_my_connections_v1', origin + '/rest/v1/rpc/hermes_connection_context_v1']);
@@ -265,7 +267,7 @@ test('authority identity/version/role and canonical permission changes after rea
     value => { value.membership.authorizationVersion++; }, value => { value.isSuperadmin = true; },
     value => { value.epoch = 'authorization-epoch-2'; }, value => { value.permissions.read = []; },
     value => { value.companyCeilings.read = []; }];
-  for (const operation of ['list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['list', 'context', 'options', 'restrict', 'revoke']) {
     for (const mutate of mutations) {
       const f = fixture(); let calls = 0;
       f.auth.readAuthorization = async () => { const value = authorization(); if (++calls === 2) mutate(value); return value; };
@@ -347,7 +349,7 @@ test('session or membership expiry during the final context fence cannot return 
 });
 
 test('a session expiring while either Authz read is pending prevents all four operations from using its result', async () => {
-  for (const operation of ['list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['list', 'context', 'options', 'restrict', 'revoke']) {
     for (const expiryRead of [1, 2]) {
       const f = fixture(); let time = now, calls = 0;
       f.auth.readAuthorization = async () => {
@@ -373,4 +375,39 @@ test('expiry after write dispatch remains unknown with a safe receipt and never 
     });
     assert.equal(calls, 1); assert.equal(f.writes.length, 1);
   }
+});
+
+test('self options use the verified browser identity and reread the fixed choices after final authority check',async()=>{
+ const f=fixture(),result=await f.create().options(request('options'),f.options);
+ assert.deepEqual(result,{options:grantOptions()});assert.equal(f.writes.length,0);
+ assert.deepEqual(f.events.map(e=>e[0]),['verify','authz','options','verify','authz','options']);
+ for(const [,input] of f.events)assert.equal(input.accessToken,'browser.jwt.token');
+});
+test('options reject wrong owner, changed membership, policy/scope drift and removed current rights',async()=>{
+ for(const delta of [{userId:ids.foreign},{organizationId:ids.foreign},{membershipId:ids.foreign},{authorizationVersion:2},{isSuperadmin:true}]) {
+  const f=fixture();f.reads.connectionOptions=async()=>({...grantOptions(),...delta});
+  await assert.rejects(f.create().options(request('options'),f.options));assert.equal(f.writes.length,0);
+ }
+ for(const field of ['policyVersion','enabled']) {
+  const f=fixture();let calls=0;
+  f.reads.connectionOptions=async()=>{const value=grantOptions();if(++calls===2){if(field==='policyVersion')value.policyVersion++;else{value.enabled=false;value.read=[];}}return value;};
+  await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));assert.equal(calls,2);
+ }
+ const f=fixture();f.auth.readAuthorization=async()=>({...authorization(),permissions:{read:[],action:[]}});
+ await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));
+});
+test('options are snapshots, cannot trust changed earlier objects or accept arbitrary RPC inputs',async()=>{
+ const f=fixture(),source=grantOptions();f.reads.connectionOptions=async()=>source;
+ let count=0;f.auth.readAuthorization=async()=>{if(++count===2)source.policyVersion++;return authorization();};
+ await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));
+});
+test('fixed options read uses selected organization and never a caller-selected admin catalog',async()=>{
+ const calls=[],controller=new AbortController();
+ const api=createSupabaseConnectionManagementReads({url:'https://project.example',publishableKey:'sb_publishable_test',fetch:async(url,init)=>{
+ calls.push({url,init});return new Response(JSON.stringify(grantOptions()),{headers:{'content-type':'application/json'}});}});
+ await api.connectionOptions({accessToken:'browser.jwt.token',organizationId:ids.org},{signal:controller.signal});
+ assert.equal(calls[0].url,'https://project.example/rest/v1/rpc/hermes_connection_options_v1');
+ assert.deepEqual(JSON.parse(calls[0].init.body),{p_org:ids.org});assert.equal(calls[0].init.headers.authorization,'Bearer browser.jwt.token');
+ await assert.rejects(api.connectionOptions({accessToken:'browser.jwt.token',organizationId:ids.org,rpc:'admin_catalog'},{signal:controller.signal}),code('invalid_request'));
+ assert.equal(calls.length,1);
 });

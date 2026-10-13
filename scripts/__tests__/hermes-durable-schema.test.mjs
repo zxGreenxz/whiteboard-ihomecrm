@@ -33,7 +33,7 @@ const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_conn
 const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
-  'hermes_zalo_binding_v1(jsonb)'];
+  'hermes_zalo_binding_v1(jsonb)', 'hermes_connection_options_v1(uuid)'];
 const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'];
 
 // Intentionally a small fail-closed grammar for these reviewed SQL signatures,
@@ -234,6 +234,15 @@ function revokeContract(registry = functions) {
 }
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
+
+test('self-owned connection choices are caller-only and cannot be opened to worker or executor', () => {
+  const target = 'public.hermes_connection_options_v1(uuid)';
+  for (const role of ['anon', 'service_role', 'hermes_store_executor']) {
+    assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO ${role};`),
+      role === 'anon' ? /supported recipient/ : /cannot execute/);
+  }
+  assert.throws(() => securityContract(all + `; REVOKE EXECUTE ON FUNCTION ${target} FROM authenticated;`), /effective execute ACL/);
+});
 
 test('Zalo worker can execute only link ingress and private intake, while linking stays on the authenticated caller', () => {
   for (const [role, target] of [

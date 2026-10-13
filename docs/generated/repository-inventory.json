@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1435,
-  "soFileDocBangFs": 322,
-  "tongLoiGoi": 733,
-  "khongPhanLoaiDuoc": 330,
+  "tongSoFileTest": 1442,
+  "soFileDocBangFs": 327,
+  "tongLoiGoi": 752,
+  "khongPhanLoaiDuoc": 345,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 54,
+      "soFile": 55,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 46,
+      "soFile": 47,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 110,
+      "soFile": 111,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -45,6 +45,7 @@
     "scripts/__tests__/super-admin-route-contract.test.mjs",
     "scripts/__tests__/test-hermes-broker-authz.test.mjs",
     "scripts/org-context-repair/sealed-artifact.test.mjs",
+    "scripts/test-hermes-product-runtime.test.mjs",
     "src/components/errors/ErrorBoundary.pageNames.test.tsx",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
@@ -111,6 +112,12 @@
         "powershell": 1
       },
       "khongPhanLoaiDuoc": 4
+    },
+    {
+      "file": "infra/hermes-runtime/host-ownership.test.mjs",
+      "soGoi": 13,
+      "loai": {},
+      "khongPhanLoaiDuoc": 13
     },
     {
       "file": "scripts/__tests__/check-external-controls.test.mjs",
@@ -730,6 +737,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/connection-options-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-runtime/profile-homes.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -932,6 +947,14 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/test-hermes-product-runtime.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/components/__tests__/dialogGateFetchKhiDong.test.ts",
@@ -1268,6 +1291,20 @@
     },
     {
       "file": "infra/hermes-runtime/fixture-server.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-runtime/host-config.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-runtime/host-service.test.mjs",
       "soGoi": 1,
       "loai": {
         "manifest": 1

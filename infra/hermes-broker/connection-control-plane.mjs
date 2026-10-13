@@ -44,7 +44,8 @@ function ids(value, code) {
 }
 function restrictions(value, code) {
   if (!exact(value, ['read', 'action']) || !Array.isArray(value.read) || !Array.isArray(value.action) ||
-      value.read.length > 1 || value.action.length !== 0 || Array.from(value.read).some(key => key !== CONTEXT)) fail(code);
+      value.read.length > 2 || new Set(value.read).size !== value.read.length || value.action.length !== 0 ||
+      Array.from(value.read).some(key => ![CONTEXT, 'rooms.view'].includes(key))) fail(code);
   return { read: [...value.read], action: [] };
 }
 function credentials(value) {
@@ -128,7 +129,7 @@ async function bounded(signal, timeoutMs, operation, abortedError) {
   finally { clearTimeout(timer); signal.removeEventListener('abort', stop); controller.abort(); }
 }
 
-/** Server-only, context-only connection creation. Not an HTTP/MCP endpoint.
+/** Server-only connection creation for the two implemented read capabilities. Not an HTTP/MCP endpoint.
  * The caller supplies a primary browser bearer and explicit password reauth over
  * the trusted backend's TLS route. A fixed Auth provider creates a NEW session;
  * callers cannot hand off an existing session/token pair or select an Auth URL.

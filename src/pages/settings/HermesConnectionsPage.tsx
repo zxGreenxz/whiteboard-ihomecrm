@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Bot, Copy, RefreshCw, ShieldCheck } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -6,38 +6,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
+import { HermesPermissionFields } from '@/hermes/HermesPermissionFields';
 import { useHermesConnections } from '@/hermes/useHermesConnections';
 import { HermesZaloBindings } from '@/hermes/HermesZaloBindings';
 import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
-import type { HermesCallerScope, HermesConnectionContext, HermesConnectionRestrictions } from '@/hermes/connectionClient';
+import type { HermesCallerScope, HermesConnectionContext, HermesConnectionRestrictions, HermesGrantOptions } from '@/hermes/connectionClient';
 
-const labels = new Map<string, string>(VISIBLE_PAGE_GROUPS.flatMap(group => group.pages.flatMap(page =>
-  page.features.map(feature => [featureKey(feature), `${page.label} · ${feature.label}`] as const))));
-labels.set('assistant.context.read', 'Xem thông tin phiên và quyền của tôi');
-const name = (capability: string) => labels.get(capability) ?? capability;
 const states = { pending: 'Chờ hoàn tất', active: 'Đã cấp kết nối', revoked: 'Đã thu hồi' } as const;
 
-function Restrictions({ context, disabled, onSave }: { context: HermesConnectionContext; disabled: boolean;
-  onSave: (value: HermesConnectionRestrictions) => void }) {
+function Restrictions({ context, options, disabled, onSave }: { context: HermesConnectionContext; options: HermesGrantOptions | null; disabled: boolean;
+  onSave: (value: HermesConnectionRestrictions, scopeIds: string[]) => void }) {
   const [selected, setSelected] = useState<HermesConnectionRestrictions>(() => ({ read: [...context.restrictions.read], action: [...context.restrictions.action] }));
-  const changed = (['read', 'action'] as const).some(kind => selected[kind].length !== context.restrictions[kind].length);
+  const [scopeIds, setScopeIds] = useState([...context.scopeIds]);
+  const changed = (['read', 'action'] as const).some(kind => selected[kind].length !== context.restrictions[kind].length) || scopeIds.length !== context.scopeIds.length;
   return <section aria-label="Quyền kết nối" className="space-y-4 rounded-xl border bg-card p-4">
     <h2 className="font-semibold">Quyền của kết nối …{context.id.slice(-8)}</h2>
-    <p className="text-sm text-muted-foreground">Bạn có thể tắt bớt quyền đang cấp. Quyền hiệu lực còn phụ thuộc quyền CRM và giới hạn của công ty.</p>
-    <div className="grid gap-4 sm:grid-cols-2">
-      {(['read', 'action'] as const).map(kind => <fieldset disabled={disabled} key={kind} className="space-y-2 rounded-lg border p-3">
-        <legend className="px-1 font-medium">{kind === 'read' ? 'Đọc dữ liệu' : 'Thao tác dữ liệu'}</legend>
-        {context.restrictions[kind].length === 0 && <p className="text-sm text-muted-foreground">Chưa cấp quyền.</p>}
-        {context.restrictions[kind].map(key => <label key={key} className="flex items-start gap-2 text-sm">
-          <input type="checkbox" checked={selected[kind].includes(key)} onChange={event => setSelected(previous => ({ ...previous,
-            [kind]: event.target.checked ? [...previous[kind], key] : previous[kind].filter(value => value !== key) }))} />
-          <span>{name(key)} <span className="block text-xs text-muted-foreground">{context.effective[kind].includes(key) ? 'Đang có hiệu lực' : 'Hiện chưa có hiệu lực'}</span></span>
-        </label>)}
-      </fieldset>)}
-    </div>
-    <p className="text-sm text-muted-foreground">{context.scopeIds.length ? `${context.scopeIds.length} phạm vi đã cấp được giữ nguyên.` : 'Chưa cấp phạm vi dữ liệu phòng.'} Màn hình này chưa thay đổi phạm vi.</p>
-    <Button disabled={disabled || !changed} onClick={() => onSave(selected)}>Lưu giới hạn</Button>
+    <p className="text-sm text-muted-foreground">Chỉ tắt bớt quyền hoặc bỏ phạm vi đã cấp. Để cấp lại quyền đã tắt, hãy tạo kết nối mới và xác nhận mật khẩu ở bên dưới.</p>
+    <HermesPermissionFields value={selected} scopeIds={scopeIds} readChoices={context.restrictions.read} actionChoices={context.restrictions.action}
+      scopes={(options?.scopes ?? []).filter(scope => context.scopeIds.includes(scope.scopeId))} effective={context.effective} disabled={disabled}
+      onChange={(value, scopes) => { setSelected(value); setScopeIds(scopes); }} />
+    <Button disabled={disabled || !changed} onClick={() => onSave(selected, scopeIds)}>Lưu giới hạn</Button>
   </section>;
 }
 
@@ -47,6 +35,13 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   const password = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [botGeneration, setBotGeneration] = useState(0);
+  const [grant, setGrant] = useState<HermesConnectionRestrictions>({ read: ['assistant.context.read'], action: [] });
+  const [grantScopes, setGrantScopes] = useState<string[]>([]);
+  useEffect(() => {
+    if (!model.options) return;
+    setGrant(previous => ({ read: previous.read.filter(key => model.options?.read.some(allowed => allowed === key)), action: [] }));
+    setGrantScopes(previous => previous.filter(id => model.options?.scopes.some(scope => scope.scopeId === id)));
+  }, [model.options]);
   const botConfigurationChanged = useCallback(() => setBotGeneration(value => value + 1), []);
   const lifetime = useRef({ alive: true, generation: 0 });
   const handoffId = useRef<string | null>(null);
@@ -56,12 +51,15 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     return () => { value.alive = false; value.generation++; handoffId.current = null; if (password.current) password.current.value = ''; };
   }, []);
   const disabled = Boolean(model.busy) || model.needsReload || model.connections === null;
+  const grantReady = Boolean(model.options?.enabled) && grant.read.length > 0 &&
+    grant.read.every(key => model.options?.read.some(allowed => allowed === key)) &&
+    (!grant.read.includes('rooms.view') || grantScopes.length > 0) && grantScopes.every(id => model.options?.scopes.some(scope => scope.scopeId === id));
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (disabled || !email || !password.current?.value) return;
+    if (disabled || !grantReady || !email || !password.current?.value) return;
     const value = password.current.value;
     password.current.value = ''; setCopied(null);
-    void model.connect({ email, password: value, restrictions: { read: ['assistant.context.read'], action: [] }, scopeIds: [] });
+    void model.connect({ email, password: value, restrictions: { read: [...grant.read], action: [] }, scopeIds: grant.read.includes('rooms.view') ? [...grantScopes] : [] });
   };
   const copyHandoff = async () => {
     const handoff = model.handoff, scope = { ...currentScope() }, generation = lifetime.current.generation;
@@ -96,8 +94,8 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
         </div>
       </article>)}
     </section>}
-    {model.context && <Restrictions key={`${model.context.id}:${model.context.epoch}`} context={model.context} disabled={disabled}
-      onSave={value => { if (model.context) void model.restrict(model.context, value); }} />}
+    {model.context && <Restrictions key={`${model.context.id}:${model.context.epoch}`} context={model.context} options={model.options} disabled={disabled}
+      onSave={(value, scopes) => { if (model.context) void model.restrict(model.context, value, scopes); }} />}
     {model.handoff && <section aria-label="Mã kết nối một lần" className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4">
       <h2 className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-5 w-5" />Mã kết nối chỉ hiển thị lần này</h2>
       <p className="text-sm">Dùng mã để cấu hình Hermes của bạn. Chỉ sao chép vào nơi bạn quản lý; mã không được lưu trong trình duyệt và không thể xem lại ở đây.</p>
@@ -111,17 +109,24 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     <HermesZaloBotSettings userId={userId} organizationId={organizationId} currentScope={currentScope} onConfigurationChanged={botConfigurationChanged} />
     {model.connections && <HermesZaloBindings key={botGeneration} userId={userId} organizationId={organizationId} currentScope={currentScope}
       connections={model.connections} disabled={disabled} />}
-    <form aria-label="Tạo kết nối Hermes" onSubmit={submit} className="space-y-3 rounded-xl border bg-card p-4">
+    <section aria-label="Cấp quyền Hermes mới" className="space-y-3 rounded-xl border bg-card p-4">
       <h2 className="font-semibold">Kết nối Hermes của tôi</h2>
-      <p className="text-sm text-muted-foreground">Kết nối mới hiện chỉ cho xem thông tin phiên và quyền của bạn. Chưa cấp đọc phòng hay thao tác CRM; công ty phải cho phép kết nối này.</p>
+      <p className="text-sm text-muted-foreground">Chọn quyền và phạm vi cho Hermes, rồi xác nhận mật khẩu CRM. Kết nối mới không thay đổi quyền của bạn.</p>
+      {model.options ? model.options.enabled ? <HermesPermissionFields value={grant} scopeIds={grantScopes} readChoices={model.options.read}
+        scopes={model.options.scopes} disabled={disabled} onChange={(value, scopes) => { setGrant(value); setGrantScopes(scopes); }} />
+        : <p role="status" className="text-sm">Công ty chưa bật kết nối Hermes. Cần người quản trị cấu hình chính sách trước.</p>
+        : <p role="status" className="text-sm">Chưa đọc được danh sách quyền và phạm vi được phép cấp. Tải lại danh sách trước khi tạo kết nối.</p>}
+      {grant.read.includes('rooms.view') && !grantScopes.length && <p className="text-sm">Chọn ít nhất một phạm vi để cho Hermes đọc phòng.</p>}
+      <form aria-label="Tạo kết nối Hermes" onSubmit={submit} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1"><Label htmlFor="hermes-email">Tài khoản CRM</Label>
         <Input id="hermes-email" value={email} readOnly autoComplete="username" /></div>
         <div className="space-y-1"><Label htmlFor="hermes-password">Xác nhận mật khẩu CRM</Label>
           <Input ref={password} id="hermes-password" type="password" required maxLength={4096} autoComplete="off" disabled={disabled || !email} /></div></div>
       {!email && <p className="text-sm text-muted-foreground">Phiên hiện tại chưa có email đăng nhập để xác minh kết nối.</p>}
       <p className="text-xs text-muted-foreground">Mật khẩu chỉ dùng cho yêu cầu xác minh này và được xóa khỏi ô nhập ngay khi gửi.</p>
-      <Button type="submit" disabled={disabled || !email}><Bot className="h-4 w-4" />Tạo kết nối</Button>
-    </form>
+      <Button type="submit" disabled={disabled || !email || !grantReady}><Bot className="h-4 w-4" />Tạo kết nối</Button>
+      </form>
+    </section>
   </div>;
 }
 

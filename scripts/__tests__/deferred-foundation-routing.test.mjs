@@ -10,6 +10,9 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 // Exercise real files in the restored domains without repeatedly planning
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
+  file === 'scripts/test-hermes-product-runtime.test.mjs' ||
+  file === 'src/hermes/connectionClient.test.ts' ||
+  file === 'src/pages/settings/HermesConnectionsPage.test.tsx' ||
   /^infra\/hermes-zalo-router\//.test(file) ||
   /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store|connection-renewal-schema|room-scope-schema|public-conflict-schema)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
@@ -230,6 +233,82 @@ describe('P0 shared CRM foundation routing', () => {
     mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule=>rule.id!=='hermes-private-runtime-composition');
     expect(planFor('infra/hermes-runtime/handoff-reconciler.mjs',mutant,files).suiteSelections.find(selection=>selection.id==='node-native')?.files ?? [])
       .not.toContain('infra/hermes-broker/server.test.mjs');
+  });
+
+  it('host service/config/ownership and executable deployment require authorization and composed runtime checks', () => {
+    const required = ['infra/hermes-runtime/host-service.test.mjs', 'infra/hermes-runtime/host-config.test.mjs',
+      'infra/hermes-runtime/host-ownership.test.mjs', 'infra/hermes-runtime/host-cli.test.mjs', 'infra/hermes-broker/server.test.mjs'];
+    const files = [...new Set([...testFiles, ...required])];
+    for (const name of ['host-service.mjs', 'host-config.mjs', 'host-ownership.mjs', 'host-cli.mjs', 'host-config.example.json', 'hermes-host.service']) {
+      const plan = planFor(`infra/hermes-runtime/${name}`, matrix, files);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
+      expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
+    }
+  });
+
+  it('product runtime harness owns its native test and selects it with the real Node runner', () => {
+    const source = 'scripts/test-hermes-product-runtime.mjs', file = 'scripts/test-hermes-product-runtime.test.mjs';
+    expect(testFiles).toContain(file); assertNativeOwner(file);
+    for (const changed of [source, 'infra/hermes-runtime/container-driver.mjs', 'infra/hermes-runtime/gateway-transport.mjs', 'infra/hermes-broker/server.mjs']) {
+      const plan = planFor(changed), native = plan.suiteSelections.find(selection => selection.id === 'node-native');
+      expect(native.files).toContain(file);
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
+      expect(getGate('suite:node-native', plan).args).not.toContain(source);
+    }
+    const onlyTest = planFor(file), gate = getGate('suite:node-native', onlyTest);
+    expect(gate.args).toEqual(['--test', file]);
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns =
+      mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns.filter(pattern => pattern !== file);
+    expect(planFor(source, mutant).suiteSelections.find(selection => selection.id === 'node-native').files).not.toContain(file);
+  });
+
+  it('connection options SQL and API select their actual native contracts and browser client contracts', () => {
+    const migration = 'supabase/migrations/20261013183000_hermes_connection_options_v1.sql';
+    const nativeFiles = ['connection-options', 'connection-options-sql', 'connection-control-plane',
+      'connection-management', 'connection-http', 'server'].map(name => `infra/hermes-broker/${name}.test.mjs`);
+    const appFiles = ['src/hermes/connectionClient.test.ts', 'src/pages/settings/HermesConnectionsPage.test.tsx'];
+    nativeFiles.forEach(file => { expect(testFiles).toContain(file); assertNativeOwner(file); });
+    for (const path of [migration, 'infra/hermes-broker/connection-options.mjs',
+      'infra/hermes-broker/connection-control-plane.mjs', 'infra/hermes-broker/connection-management.mjs',
+      'infra/hermes-broker/connection-http.mjs']) {
+      const plan = planFor(path), native = plan.suiteSelections.find(selection => selection.id === 'node-native');
+      expect(plan.fullFallback).toBe(false); expect(plan.crossReview).toBe(true);
+      expect(native.files).toEqual(expect.arrayContaining(nativeFiles));
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
+      expect(plan.suiteSelections.find(selection => selection.id === 'app-unit').files).toEqual(expect.arrayContaining(appFiles));
+      expect(getGate('suite:node-native', plan).args).not.toContain(migration);
+    }
+    expect(planFor(migration).profiles).toContain('schema');
+    expect(planFor(migration).gateIds).toContain('check-no-auto-apply');
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-connection-options-native');
+    expect(planFor(migration, mutant).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? [])
+      .not.toContain('infra/hermes-broker/connection-options-sql.test.mjs');
+  });
+
+  it('Hermes permission fields and shared pickers select role-aware page/client tests with authorization review', () => {
+    const expected = ['src/hermes/connectionClient.test.ts', 'src/pages/settings/HermesConnectionsPage.test.tsx'];
+    const assertUiRule = (path, testMatrix = matrix) => {
+      const selection = planFor(path, testMatrix).suiteSelections.find(item => item.id === 'app-unit');
+      expect(selection.reason.split(', ')).toContain('hermes-connection-permissions-ui');
+      expect(selection.files).toEqual(expect.arrayContaining(expected));
+    };
+    for (const path of ['src/hermes/connectionClient.ts', 'src/hermes/useHermesConnections.ts',
+      'src/hermes/HermesPermissionFields.tsx', 'src/pages/settings/HermesConnectionsPage.tsx',
+      'src/components/authorization/PermissionPicker.tsx', 'src/components/authorization/ScopePicker.tsx']) {
+      const plan = planFor(path);
+      expect(plan.fullFallback).toBe(false); expect(plan.crossReview).toBe(true);
+      expect(plan.profiles).toContain('money-auth');
+      assertUiRule(path);
+      expect(plan.suiteSelections.find(selection => selection.id === 'node-native')?.files ?? [])
+        .not.toEqual(expect.arrayContaining(expected));
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-connection-permissions-ui');
+    // The broad money-auth rule is a safety net; it must not hide a missing
+    // explicit UI dependency mapping in this contract.
+    expect(() => assertUiRule('src/hermes/HermesPermissionFields.tsx', mutant)).toThrow();
   });
 
   it('routes inventory drift and generator edits to a check command and native test', () => {

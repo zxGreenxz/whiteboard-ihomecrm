@@ -47,7 +47,7 @@ function fixture(t, options = {}) {
     calls.push({ operation, payload: clone(payload), signal: opts.signal }); state.activation = clone(payload);
     await options.beforeActivate?.(state, payload);
     return { ok: true, status: 'activated', connection: { id: ids.connection, assistantId: ids.assistant, organizationId: ids.org,
-      userId: ids.user, state: 'active', epoch: 2, restrictions: rights(), scopeIds: [ids.scope] }, credentialRef: payload.credentialRef };
+      userId: ids.user, state: 'active', epoch: 2, restrictions: clone(state.prepared.restrictions), scopeIds: [ids.scope] }, credentialRef: payload.credentialRef };
   } } });
   const factory = createConnectionControlPlane({ auth, signInProvider, preparation, connectionStore, crypto,
     clock: () => state.now, ...options.factory });
@@ -78,7 +78,7 @@ test('one backend sign-in creates an independently verified session, then primar
 test('caller cannot submit existing session pairs, actor, endpoint, operation ids, action grants or malformed credentials', async t => {
   for (const mutate of [input => { input.userId = ids.other; }, input => { input.password = ''; },
     input => { input.endpoint = 'https://foreign.invalid'; }, input => { input.operationId = ids.other; },
-    input => { input.restrictions.read.push('rooms.view'); }, input => { input.restrictions.action.push('rooms.edit'); },
+    input => { input.restrictions.read.push('contracts.view'); }, input => { input.restrictions.action.push('rooms.edit'); },
     input => { input.scopeIds = new Array(1); }, input => { input.scopeIds.push(ids.scope); },
     input => { input.assistantSession = { accessToken: 'OWNED_ACCESS', refreshToken: 'OWNED_REFRESH' }; },
     input => { input.refreshToken = 'OWNED_REFRESH'; }, input => { input.email = 'invalid'; },
@@ -479,4 +479,24 @@ test('handoff configuration rejects missing, accessor or unknown methods without
   for (const handoff of [null, {}, { stage: false }, { stage() {}, list() {} }, Object.defineProperty({}, 'stage', { get() { throw Error('PRIVATE'); } })]) {
     assert.throws(() => fixture(t, { factory: { handoff } }), /invalid_connection_control_config/);
   }
+});
+
+test('rooms enrollment is allowed only through both current user permissions and the company ceiling', async t => {
+  const read=['assistant.context.read','rooms.view'];
+  const f=fixture(t); f.state.auth.permissions.read=[...read]; f.state.auth.companyCeilings.read=[...read]; f.state.prepared.restrictions.read=[...read];
+  const result=await f.connect({...request(),restrictions:{read,action:[]}});
+  assert.deepEqual(result.connection.restrictions,{read,action:[]});
+  assert.deepEqual(f.calls.find(c=>c.operation==='prepare').restrictions,{read,action:[]});
+  for(const denied of ['permissions','companyCeilings']) {
+    const g=fixture(t);g.state.auth.permissions.read=[...read];g.state.auth.companyCeilings.read=[...read];g.state.auth[denied].read=['assistant.context.read'];
+    await assert.rejects(g.connect({...request(),restrictions:{read,action:[]}}),code('forbidden'));
+    assert(!g.calls.some(c=>c.operation==='signIn'||c.operation==='prepare'));
+  }
+});
+test('rooms authority revoked during fresh assistant authentication prevents enrollment without replay', async t=>{
+  let reads=0;
+  const f=fixture(t,{beforeRead(state){if(++reads===2)state.auth.permissions.read=['assistant.context.read'];}});
+  f.state.auth.permissions.read=['assistant.context.read','rooms.view'];f.state.auth.companyCeilings.read=['assistant.context.read','rooms.view'];
+  await assert.rejects(f.connect({...request(),restrictions:{read:['rooms.view'],action:[]}}),code('forbidden'));
+  assert.equal(f.calls.filter(c=>c.operation==='signIn').length,1);assert(!f.calls.some(c=>c.operation==='prepare'));
 });
