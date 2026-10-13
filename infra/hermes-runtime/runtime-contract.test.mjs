@@ -394,11 +394,33 @@ test('live local canary serves/counts TCP and UDP DNS independently on both addr
 
 test('partial canary bind failure closes the listeners created earlier', async t => {
   await mkdir(root, { recursive: true }); const output = await mkdtemp(path.join(root, 'canary-failure-'));
-  const occupied = net.createServer();
-  await new Promise(resolve => occupied.listen({ host: '127.0.0.1', port: 0 }, resolve));
-  t.after(() => new Promise(resolve => occupied.close(resolve)));
-  const port = occupied.address().port;
-  await assert.rejects(startEgressCanary({ name: 'canary.hermes-p1-unit.test', output, tcpPort: 0, dnsPort: port }), { code: 'EADDRINUSE' });
+  const createServer = net.createServer, createSocket = dgram.createSocket;
+  const servers = [], sockets = [];
+  let port;
+  t.mock.method(net, 'createServer', (...args) => {
+    const server = createServer(...args); servers.push(server);
+    // Fail TCP DNS only after real TCP and UDP listeners have bound. A port
+    // allocated for TCP may be excluded for UDP on Windows, failing too early.
+    if (servers.length === 2) server.listen = () => {
+      queueMicrotask(() => server.emit('error', Object.assign(new Error('Synthetic TCP DNS bind conflict'), { code: 'EADDRINUSE' })));
+      return server;
+    };
+    return server;
+  });
+  t.mock.method(dgram, 'createSocket', (...args) => {
+    const socket = createSocket(...args); sockets.push(socket);
+    socket.once('listening', () => { port = socket.address().port; });
+    return socket;
+  });
+  t.after(() => {
+    for (const socket of sockets) { try { socket.close(); } catch { /* Already closed by the product path. */ } }
+    for (const server of servers) server.close();
+  });
+  await assert.rejects(startEgressCanary({ name: 'canary.hermes-p1-unit.test', output, tcpPort: 0, dnsPort: 0 }), { code: 'EADDRINUSE' });
+  assert.equal(servers.length, 2); assert.equal(sockets.length, 1);
+  assert.equal(servers[0].listening, false); assert.equal(servers[1].listening, false);
+  assert.throws(() => sockets[0].address(), { code: 'ERR_SOCKET_DGRAM_NOT_RUNNING' });
+  assert(Number.isInteger(port) && port > 0);
   const udp = dgram.createSocket('udp4');
   try { await new Promise((resolve, reject) => { udp.once('error', reject); udp.bind({ address: '127.0.0.1', port }, resolve); }); }
   finally { udp.close(); }

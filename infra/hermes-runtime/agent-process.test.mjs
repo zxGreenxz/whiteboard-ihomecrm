@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createServer } from 'node:http';
 import { HERMES_COMMIT } from './runtime-contract.mjs';
 
 const python = process.env.HERMES_TEST_PYTHON || (process.platform === 'win32'
@@ -163,6 +164,8 @@ test('real subprocess protocol keeps secrets out of bootstrap and initializes th
   assert.deepEqual(config.fallback_providers, []); assert.deepEqual(config.fallback_model, []);
   assert.equal(config.tools.tool_search.enabled, 'off'); assert.equal(config.security.allow_lazy_installs, false);
   assert(!Object.hasOwn(config.mcp_servers.crm, 'headers'));
+  assert.deepEqual(config.mcp_servers.crm.sampling, { enabled: false });
+  assert.deepEqual(config.mcp_servers.crm.elicitation, { enabled: false });
   assert(trace.filter(row => row.event === 'auth').every(row => !Object.keys(row.headers).some(key => key.toLowerCase() === 'authorization')));
   assert(trace.some(row => row.event === 'mcp_shutdown')); assert(trace.some(row => row.event === 'db_close'));
   assert(!trace.find(row => row.event === 'db').path.startsWith(f.home));
@@ -342,4 +345,77 @@ print('PINNED_API_SIGNATURES_PASS')`;
     const checked = spawnSync(python, ['-c', script, source, upstream], { encoding: 'utf8', windowsHide: true });
     assert.equal(checked.status, 0, checked.stderr); assert.match(checked.stdout, /PINNED_API_SIGNATURES_PASS/);
   }
+});
+
+test('actual pinned Hermes registration advertises no sampling or elicitation to the private gateway', async t => {
+  const upstream = process.env.HERMES_TEST_UPSTREAM ?? path.resolve('.cache/hermes-p1/upstream-hermes-agent');
+  const mcpPython = process.env.HERMES_TEST_MCP_PYTHON ?? path.resolve('.cache/hermes-p1/transport-venv/Scripts/python.exe');
+  if (!existsSync(path.join(upstream, 'tools/mcp_tool_discovery.py')) || !existsSync(mcpPython)) {
+    t.skip('Pinned Hermes source/MCP environment unavailable; native product CI verifies the full image'); return;
+  }
+  const revision = spawnSync('git', ['-C', upstream, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
+  assert.equal(revision.status, 0); assert.equal(revision.stdout.trim(), HERMES_COMMIT);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-registration-')), home = path.join(root, 'home');
+  await mkdir(home);
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const input = JSON.parse(Buffer.concat(chunks)); requests.push(input);
+    const send = (status, body) => { res.writeHead(status, { 'content-type': 'application/json', connection: 'close' }); res.end(body ? JSON.stringify(body) : undefined); };
+    let result;
+    if (input.method === 'initialize') {
+      // The actual gateway deliberately accepts no server-to-client features.
+      // A bare SDK session misses the callbacks added by Hermes registration.
+      if (Object.keys(input.params.capabilities).length) { send(400, { error: 'invalid_request' }); return; }
+      result = { protocolVersion: input.params.protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'fixture', version: '1' } };
+    } else if (input.method === 'notifications/initialized') { send(202); return; }
+    else if (input.method === 'tools/list') result = { tools: [{ name: 'crm_auth_context', description: 'Verified context.', inputSchema: { type: 'object', properties: {}, additionalProperties: false } }] };
+    else if (input.method === 'tools/call') result = { isError: false, content: [{ type: 'text', text: JSON.stringify({ assistantId: boot.assistantId,
+      userId: boot.userId, organizationId: boot.organizationId, permissions: { read: ['assistant.context.read'], action: [] }, contextVersion: 'a'.repeat(64) }) }] };
+    else { send(404, { error: 'not_found' }); return; }
+    send(200, { jsonrpc: '2.0', id: input.id, result });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}`, bootstrap = path.join(root, 'bootstrap.json');
+  await writeFile(bootstrap, JSON.stringify({ ...boot, mcpUrl: url + '/mcp', modelBaseUrl: url + '/v1' }));
+  const launcher = String.raw`
+import sys, types, runpy
+from importlib.metadata import version
+assert version('mcp') == '2.0.0'
+sys.path.insert(0, sys.argv[3])
+# Only AIAgent/SQLite are stubbed; use the real pinned Hermes discovery,
+# transport, handlers, registration and MCP SDK against the strict HTTP server.
+class AIAgent:
+ def __init__(self,**kwargs):
+  from tools.mcp_tool_common import _core
+  servers=list(_core._servers.values())
+  assert len(servers)==1
+  assert servers[0]._sampling is None and servers[0]._elicitation is None
+  self.valid_tool_names=['mcp__crm__crm_auth_context']
+ def close(self): pass
+class SessionDB:
+ def __init__(self,*args): pass
+ def create_session(self,*args,**kwargs): pass
+ def close(self): pass
+sys.modules['run_agent']=types.SimpleNamespace(AIAgent=AIAgent)
+sys.modules['hermes_state']=types.SimpleNamespace(SessionDB=SessionDB)
+file=sys.argv[1]; sys.argv=[file,sys.argv[2]]
+runpy.run_path(file,run_name='__main__')
+`;
+  const child = spawn(mcpPython, ['-c', launcher, source, bootstrap, upstream], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+    env: { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH, HERMES_HOME: home, HOME: home,
+      PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' } });
+  let output = '', stderr = '';
+  child.stdout.on('data', bytes => { output += bytes; if (output.includes('"ready"')) child.stdin.end('{"op":"shutdown"}\n'); });
+  child.stderr.on('data', bytes => { stderr += bytes; }); child.stdin.on('error', () => {});
+  const stopped = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
+  const timer = setTimeout(() => child.kill(), 30000);
+  t.after(async () => { clearTimeout(timer); if (child.exitCode === null && child.signalCode === null) { child.kill(); await stopped; }
+    await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); await rm(root, { recursive: true, force: true }); });
+  assert.deepEqual(await stopped, { code: 0, signal: null }, output + stderr);
+  assert.deepEqual(output.trim().split('\n').map(line => JSON.parse(line)), [{ event: 'ready', version: 1 }]);
+  assert.equal(stderr, '');
+  const init = requests.filter(value => value.method === 'initialize'); assert.equal(init.length, 1);
+  assert.deepEqual(init[0].params.capabilities, {});
+  assert(requests.some(value => value.method === 'tools/list'));
 });

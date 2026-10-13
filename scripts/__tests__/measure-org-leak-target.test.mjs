@@ -333,3 +333,68 @@ test('no-org 42501 denial stays explicit in report while a counted leak still bl
   const leak = await noOrgCase(t, [{ ...denied, tong: 1, tu_choi: false }]);
   assert.equal(leak.result, 1); assert.equal(leak.baseline, null);
 });
+
+async function orgColumnBoundaryCase(t, { hasBoundary = true, exempted = false, foreign = 1 } = {}) {
+  const root = temporaryRoot(t), f = fakeLease(), respond = fixtureQuery(), logs = [];
+  const table = 'private_org_table';
+  t.mock.method(console, 'log', (...parts) => logs.push(parts.join(' ')));
+  const result = await main([...ARGS, '--write'], { root, resolveTarget: async () => TARGET, lease: f.lease,
+    queryImpl: async input => {
+      if (input.query.includes('FROM pg_policy')) return ok(hasBoundary ? [{ table_name: table }] : []);
+      if (input.query.includes('SELECT table_name FROM app_private.org_boundary_exemptions')) {
+        return ok(exempted ? [{ table_name: table }] : []);
+      }
+      const response = await respond(input), rows = JSON.parse(response.body);
+      if (input.query.includes('AS ten FROM pg_class')) rows.push({ ten: table });
+      if (input.query.includes('AS doi_chung_duong_tong')) {
+        const synthetic = input.query.includes('INSERT INTO auth.users');
+        rows[0].bang.push({ bang: table, tong: synthetic ? foreign : 1, ngoai: foreign, tu_choi: false });
+      }
+      if (input.query.includes('has_table_privilege')) rows.push({ table_name: table, authenticated_can_select: true });
+      return ok(rows);
+    } });
+  const path = join(root, '.cache', 'migration-targets', 'test', REF, 'org-leak-baseline.json');
+  const baseline = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+  return { result, baseline, row: baseline?.rows.find(row => row.table_name === table), state: f.state, logs };
+}
+
+test('org-column leak remains blocking when a named org boundary exists', async t => {
+  const run = await orgColumnBoundaryCase(t);
+  assert.equal(run.row.visible_foreign, 1);
+  assert.equal(run.row.group, 'LIVE_LEAK');
+  assert.equal(run.result, 1);
+  assert(run.logs.some(log => log.includes('RÒ CHƯA AI KHAI') && log.includes('private_org_table')));
+  assert.equal(run.state.released, true);
+});
+
+test('org-column leak without a named boundary remains blocking', async t => {
+  const run = await orgColumnBoundaryCase(t, { hasBoundary: false });
+  assert.equal(run.row.visible_foreign, 1);
+  assert.equal(run.result, 1);
+  assert.equal(run.state.released, true);
+});
+
+test('clean named boundary is not rejected merely because the table was measured', async t => {
+  const run = await orgColumnBoundaryCase(t, { foreign: 0 });
+  assert.equal(run.row.visible_foreign, 0);
+  assert.equal(run.row.group, 'C_DA_KIN');
+  assert.equal(run.result, 0);
+});
+
+test('unmeasured named boundary fails closed before any baseline is written', async t => {
+  t.mock.method(console, 'error', () => {});
+  const run = await orgColumnBoundaryCase(t, { foreign: null });
+  assert.equal(run.result, MA_THOAT_CHOT_HONG);
+  assert.equal(run.baseline, null);
+  assert.equal(run.state.released, true); // SQL settled; NULL counts are not a clean measurement.
+});
+
+test('existing declared-leak handling remains visible with or without a named boundary', async t => {
+  for (const hasBoundary of [true, false]) {
+    const run = await orgColumnBoundaryCase(t, { hasBoundary, exempted: true });
+    assert.equal(run.row.visible_foreign, 1);
+    assert.equal(run.row.group, 'LIVE_LEAK');
+    assert.equal(run.result, 0);
+    assert(run.logs.some(log => log.includes('Rò ĐÃ KHAI') && log.includes('private_org_table')));
+  }
+});

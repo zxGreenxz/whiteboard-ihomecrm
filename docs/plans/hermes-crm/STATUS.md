@@ -5,23 +5,35 @@
 - Theo yêu cầu mới nhất của chủ dự án: dùng cấu hình agent mặc định của hệ thống, không ép model/provider/mức suy luận và không hỏi lại cấu hình agent. Agent mới kế thừa effort đang bật của phiên; không giao lại việc cho subagent đã tạo bằng effort cũ. Các lệnh hoặc giới hạn agent trong logs cũ chỉ là lịch sử, không còn là yêu cầu thực thi. Chủ dự án yêu cầu tập trung core, dùng subagent song song và chỉ báo tiến độ khi được hỏi; cập nhật plan ngắn tại mốc thực hiện có ý nghĩa.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint đã push: `7a6147b10e94b1be9f28f72cf992adcae96f4aa8`. Policy UI và socket fix đã vào PR. Docker qua socket, còn startup gateway; bản sửa readiness và runner TEST đang kiểm. Chưa apply/deploy hoặc kiểm Zalo thật.
+- Checkpoint đã push: `29df9b9a69e9103556e9429ad813b070126b086b`. Gateway native chạy được, runtime còn lỗi khởi tạo; sửa cấu hình MCP đang kiểm. Phép đo cách ly TEST trước apply đạt; runner JWT chưa chạy. Chưa apply/deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì tại [PLAN.md](PLAN.md).
 
 ## Điểm tiếp tục
 
-- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; bản sửa readiness gateway cần CI Linux. Runner TEST đã mount nhưng chưa thực thi. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
+- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; CI native qua gateway, còn khởi tạo Hermes. Runner TEST đã mount nhưng chưa thực thi. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI checkpoint `494d306a` đã đạt; WIP có gate local ghi ở nhật ký mới nhất, chưa có CI cho candidate mới; bản ghi review checkpoint ở PR.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, policy qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Checkpoint đã push:** `7a6147b10e94b1be9f28f72cf992adcae96f4aa8`; local gate 47/47. Hermes product Docker FAIL trong startup gateway; Android FAIL khi tải image giả lập; Restore Drill và CI Gates SUCCESS. CI PR không phải authority merge/phát hành; lịch sử các checkpoint trước giữ riêng.
+- **Checkpoint đã push:** `29df9b9a69e9103556e9429ad813b070126b086b`; local gate 47/47. Hermes product Docker FAIL khi process runtime thoát1, gateway/cleanup PASS; Android và Restore Drill SUCCESS. CI Gates còn chạy tại thời điểm ghi. CI PR không phải authority merge/phát hành; lịch sử các checkpoint trước giữ riêng.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
+
+### 13/10/2026 — cấu hình MCP và phép đo cách ly TEST
+
+CI Hermes 38399232565 của 29df9b9a xác nhận gateway running, runtime container thoát1 trước model/tool phòng; cả container/network được dọn và actual-exit cleanup PASS. Source pin Hermes mặc định đăng ký sampling/elicitation trong initialize.capabilities, trong khi gateway chỉ nhận capabilities rỗng. Bản sửa tắt đúng hai callbacks bằng config upstream, không nới gateway. Regression dùng registration/discovery/transport SDK thật của đúng commit pin (AIAgent/SQLite giả) đỏ trước sửa và xanh sau; full wrapper 15/15, 2 copy-mutations caught. Native image sau sửa vẫn cần CI; local venv thiếu dependency để chứng minh AIAgent đầy đủ.
+
+Bộ đo org-leak cũ loại bảng đã có tên policy khỏi phán quyết dù đo thấy foreign rows. Đã sửa hai filters xét toàn bộ rows; focused native 24/24, Vitest 61/61 và 2 mutations caught. Independent root review `.cache/hermes-test-next/org-leak-root-review-current.md`; không đổi exemption/lease/transaction. Phép đo thật trên TEST hzulujxgonszuleqticb exit0, không có measured foreign rows; postflight xác nhận active_run=0, actor/org tổng hợp không còn và exemption hiện tại hợp lệ. Receipt `.cache/hermes-test-next/org-leak-assessed-current.json` giữ source hash/thời điểm. Đây là SQL authenticated-role probe trên schema trước apply, không thay Auth JWT/PostgREST hoặc chứng minh candidate SQL.
+
+Android 38399232360, Restore Drill 38399232473 và CI Gates 38399232380 SUCCESS. Local gate MCP/verifier ban đầu đạt 12/13 (tree 977cb5058b67c761369667ba20422504b768980e, run local-e3d2277e-02a7-41b8-860b-02561da28819); app-unit 1131 file đã đạt và được giữ lại. Một test native dùng cổng TCP làm cổng UDP gặp EACCES trên Windows trước tình huống EADDRINUSE cần kiểm. Đã sửa fixture: bind TCP/UDP thật bằng port0 rồi tiêm lỗi ở TCP thứ hai, assert đóng cả listener trước cleanup dự phòng. File runtime-contract 25/25 và hai mutation bỏ cleanup TCP/UDP đều bị bắt bằng assertion. Review mới `.cache/hermes-canary-bind-review-current.md` không có P1/P2; product canary không đổi. Chỉ kiểm lại native/docs liên quan, không chạy lại app-unit đầu vào không đổi.
+
+Kiểm lại native đạt 1001 PASS, 0 FAIL, 7 SKIP; docs/count/baseline cũng đạt. Receipt `.cache/hermes-mcp-affected-receipts/`, tree d7aecbf2c49a30ac66a2f45a92e1328f1371f85c, run local-affected-3bd83d32-b303-4a92-934f-ca35c0cc5933. Giữ riêng gate đầu và app-unit xanh tại `.cache/hermes-mcp-original-gate-receipts/`; không gắn nhãn một full gate mới. Bảy ca skip chưa được kiểm cục bộ. Sau lượt này chỉ thêm ghi chú bàn giao.
+
+Canonical TEST dry-run binding, org-policy-options và connection-options đều rollback thành công. Postflight `.cache/hermes-test-next/schema-dryrun-postflight.json` xác nhận cả ba candidate vẫn vắng và active_run=0. Chưa chạy candidate phụ thuộc trước prerequisite, chưa backup/apply/deploy hoặc gửi Zalo. Tiếp tục kiểm CI runtime của bản sửa MCP, rồi schema TEST theo forward lane và runner JWT riêng; không tự nghiệm thu toàn tuyến.
 
 ### 13/10/2026 — chờ gateway sẵn sàng và runner TEST P4
 

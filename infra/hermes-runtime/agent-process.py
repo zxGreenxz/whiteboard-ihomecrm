@@ -220,6 +220,9 @@ class AgentProcess:
             'memory': {'memory_enabled': False, 'user_profile_enabled': False, 'nudge_interval': 0},
             'agent': {'disabled_toolsets': DISABLED, 'environment_probe': False, 'api_max_retries': 1, 'auto_recovery_cycles': 0},
             'mcp_servers': {'crm': {'url': self.boot['mcpUrl'], 'strict_redirect_headers': True, 'connect_timeout': 10, 'tool_timeout': 10,
+                # Pinned Hermes enables both callbacks by default. This private
+                # gateway exposes tools only; it cannot request models or input.
+                'sampling': {'enabled': False}, 'elicitation': {'enabled': False},
                 'tools': {'include': list(TOOLS), 'resources': False, 'prompts': False}}}}
         private_file(self.home / 'config.yaml', json.dumps(config).encode('utf-8'))
         # The container driver pins the image/source; never accept an import path
