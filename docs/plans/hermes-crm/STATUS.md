@@ -5,23 +5,41 @@
 - Theo yêu cầu mới nhất của chủ dự án: dùng cấu hình agent mặc định của hệ thống, không ép model/provider/mức suy luận và không hỏi lại cấu hình agent. Agent mới kế thừa effort đang bật của phiên; không giao lại việc cho subagent đã tạo bằng effort cũ. Các lệnh hoặc giới hạn agent trong logs cũ chỉ là lịch sử, không còn là yêu cầu thực thi. Chủ dự án yêu cầu tập trung core, dùng subagent song song và chỉ báo tiến độ khi được hỏi; cập nhật plan ngắn tại mốc thực hiện có ý nghĩa.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint đã push: `29df9b9a69e9103556e9429ad813b070126b086b`. Gateway native chạy được, runtime còn lỗi khởi tạo; sửa cấu hình MCP đang kiểm. Phép đo cách ly TEST trước apply đạt; runner JWT chưa chạy. Chưa apply/deploy hoặc kiểm Zalo thật.
+- Checkpoint đã push: `9e3abd582e28b92219db4ae7549e599adbb85e9e`; cả bốn workflow CI đạt. Hermes native dùng Auth/SQL/model giả. Sáu candidate P4 đã apply TEST, tổng 12 migration Hermes bất biến; postflight khớp 45 body hiệu lực. Runner live dừng trước fixture/JWT do worker singleton có sẵn, chưa deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì tại [PLAN.md](PLAN.md).
 
 ## Điểm tiếp tục
 
-- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; CI native qua gateway, còn khởi tạo Hermes. Runner TEST đã mount nhưng chưa thực thi. Máy local không có Docker daemon; chưa apply candidate mới hoặc nghiệm thu dịch vụ thật.
+- **ĐANG TRIỂN KHAI:** live DM → ledger riêng → runner/supervisor → product driver/gateway/wrapper → trả lời riêng đã có code; host entrypoint và WAL/refresh đã ghép. Policy công ty đã mount; native CI đạt với backend giả và schema P4 đã có trên TEST. Kiểm JWT đang vướng worker singleton từ snapshot TEST; không takeover hoặc xóa để vượt kiểm. P5 draft đang ghép, chưa mở gửi.
 - **P0 đã hiện thực:** inventory chi tiết v2 và đối chiếu catalog TEST chỉ đọc; focused tests và gate local 47/47 đạt. CI checkpoint `494d306a` đã đạt; WIP có gate local ghi ở nhật ký mới nhất, chưa có CI cho candidate mới; bản ghi review checkpoint ở PR.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, policy qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Checkpoint đã push:** `29df9b9a69e9103556e9429ad813b070126b086b`; local gate 47/47. Hermes product Docker FAIL khi process runtime thoát1, gateway/cleanup PASS; Android và Restore Drill SUCCESS. CI Gates còn chạy tại thời điểm ghi. CI PR không phải authority merge/phát hành; lịch sử các checkpoint trước giữ riêng.
+- **Checkpoint đã push:** `9e3abd582e28b92219db4ae7549e599adbb85e9e`; Hermes `38404107028`, CI Gates `38404107063`, Android `38404107036`, Restore Drill `38404107155` SUCCESS. CI PR không phải authority merge/phát hành; lỗi checkpoint trước giữ ở nhật ký.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
+
+### 13/10/2026 — schema P4 TEST hoàn tất; kiểm JWT chặn trước fixture
+
+Binding, intake, dispatch, reply, policy-options và connection-options đã apply tuần tự qua canonical lane đúng `hzulujxgonszuleqticb`, mỗi lượt có idempotency rollback, backup và receipt/catalog. Postflight cuối `.cache/hermes-test-next/options-applied-assessed.json`: 12 applied receipt khớp raw SHA/bytes, 45 function bodies khớp, TEST lock đã nhả; target provenance đã làm tươi. Không sửa/apply lại SQL đã dùng. Không apply production.
+
+Runner đã sửa theo retention năm dump: giữ attestation từng lần apply và rehash đúng recovery dump trước migration mới nhất, không fallback dump cũ. Ngoại lệ blob public-conflict được ghim đúng raw SHA và hai Git object CRLF/LF, kiểm bytes thật. Review độc lập root `.cache/hermes-private-flow-retention-fix/root-review.md`; focused 66/66 và 5 mutation caught. Gate local 13/13, 630 giây, tree `cd2aa1c8f06186d6932dcd53f193c536acffd4d5`; receipts `.cache/hermes-retention-gate-receipts/`. Source runner `50d88e3a161d8b07ddc7700d2f82bb2ec4ef3df5f0f404cebc4ad8852275a776`. Native runtime CI của checkpoint trước được dùng lại vì source runtime không đổi.
+
+Lượt live đầu `.cache/hermes-private-flow/receipt-8cdbc11e-34de-42b6-9fe3-943b78aa486e.json` kiểm evidence/recovery dump và schema body/ACL/RLS/triggers trước khi dừng `worker_lease_must_be_absent`. Chưa tạo actor/org/fixture, không Auth/PostgREST/executor/provider/model; `cleanupRequired=false`, `uncertain=false`, source unchanged. Read-only sau lượt xác nhận TEST active_run=0. Singleton có heartbeat từ 11/10/2026; harness chủ động không chiếm/xóa hàng có sẵn. Cần giải quyết mô hình fixture trước lượt JWT tiếp, không suy hết TTL thành quyền takeover.
+
+P5 vẫn là candidate cache: joint preview/authority review không có P1/P2 đã xác minh, 7/7 joint và 2 mutation caught; SQL/crypto/store/room service/formatter thực, Auth/CRM giả. Reports `.cache/hermes-group-joint-review/REVIEW.md`. Draft reconcile UNKNOWN_EFFECT đã review; thẻ duyệt nguyên văn và trusted turn bridge tiếp tục ghép. Chưa mount capability, tạo plan gửi hoặc gọi provider.
+
+### 13/10/2026 — native runtime đạt và bắt đầu schema TEST
+
+Checkpoint `9e3abd582e28b92219db4ae7549e599adbb85e9e`, Hermes CI `38404107028` PASS. Product receipt xác nhận A/B thật chạy context/room tools, mạng/container riêng, revoke A chặn trước model, B tiếp tục và actual-exit cleanup. Root đối chiếu 44 input với Git blob đúng commit; ba file local khác CRLF/LF nhưng Git bytes khớp CI. `.cache/hermes-9e3abd58-runtime-assessed.json`; Auth/SQL/model vẫn synthetic, chưa phải Zalo hoặc deployment. Android `38404107036` và Restore Drill `38404107155` SUCCESS; CI Gates còn chạy tại lúc ghi.
+
+Readiness độc lập mới `.cache/hermes-test-next/apply-readiness-fresh.md` cho phép tiếp tục đúng lane TEST dựa reviewed SQL không đổi. Binding `20261012165523` đã apply lên `hzulujxgonszuleqticb`: hai lượt idempotency rollback, backup đúng TEST, receipt đầy đủ, catalog đổi. Postflight xác nhận bảy migration applied có raw SHA/bytes khớp, 32 body hiệu lực khớp và TEST lease đã nhả. `.cache/hermes-test-next/binding-apply-lane.json` và `binding-applied-assessed.json`. Intake đã dry-run xanh; đang apply tuần tự, không gửi Zalo.
+
+Hai điểm vướng của runner trước JWT đang sửa: retention chỉ giữ năm dump nên không thể yêu cầu mọi backup lịch sử còn trên đĩa; public-conflict đã apply CRLF nhưng reviewedBlob lịch sử là LF do Git clean trước khi thêm `-text`. Raw SHA/bytes SQL vẫn nguyên vẹn. Không sửa migration hoặc receipt để vượt kiểm: tách attestation lịch sử và recovery point còn giữ, đồng thời ghim/kiểm chính xác cặp blob CRLF/LF đã biết. Draft P5 preview/authority/reconcile nằm trong cache, chưa đưa migration mới vào tập P4 đang kiểm.
 
 ### 13/10/2026 — cấu hình MCP và phép đo cách ly TEST
 

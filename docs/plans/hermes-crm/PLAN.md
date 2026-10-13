@@ -2,11 +2,11 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint 29df9b9a đã push: gateway chạy được trên CI, runtime Hermes còn lỗi khởi tạo. Đã xác minh xung đột MCP mặc định và đang kiểm bản sửa; phép đo cách ly TEST trước apply đạt sau sửa lỗi verifier. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
+**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint 9e3abd58 đã push và các workflow CI đạt, gồm Hermes native với backend giả. Cả sáu migration P4 đã apply TEST qua forward lane có backup; tổng 12 migration Hermes đã apply và bất biến. Runner live xác minh schema/ACL nhưng dừng trước fixture/JWT vì worker singleton đã tồn tại. Chưa deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
-**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Native gateway/cleanup đã có bằng chứng; bản sửa cấu hình MCP cần CI mới. Runner TEST P4 đã qua review hẹp sau sửa unknown ACK, chưa chạy JWT thật. Không suy code cục bộ hoặc SQL role probe thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
+**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Runner TEST đã sửa kiểm recovery dump và blob lịch sử, review sạch và gate local đạt. Lượt live đầu không tạo fixture, không gọi Auth/PostgREST và đã nhả TEST lock; không chiếm khóa worker có sẵn. P5 preview/authority đã qua joint review offline; thẻ duyệt, trusted turn bridge và xử lý kết quả gửi chưa rõ có draft, chưa mount/mở gửi. Xem phạm vi bằng chứng ở STATUS.
 
 ## Quyết định đã chốt — không hỏi lại
 
