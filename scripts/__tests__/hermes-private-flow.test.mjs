@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROOT, TEST_REF, CANDIDATES, parseArguments, sha, validateSchemaEvidence, fixturePlan,
+import { ROOT, TEST_REF, CANDIDATES, parseArguments, sha, validateSchemaEvidence, validateRecoveryBackup, fixturePlan,
   channelSetupSql, channelCleanupSql, channelCountsSql, roleProbe, expectSqlDenied, captureSourceIdentity, runHarness,
   activateFixtureConnection, verifyPolicyOptionsFixture, verifyLiveSchema, migrationSources } from '../test-hermes-private-flow.mjs';
 import { createDurableConnectionStore } from '../../infra/hermes-broker/durable-connection-store.mjs';
@@ -36,12 +39,13 @@ test('offline executable preview with network poisoned is self-contained', () =>
 });
 
 const fixtureSource = { path: 'supabase/migrations/fixture.sql', bytes: Buffer.from('select 1;\n') };
+const fixtureBlob = createHash('sha1').update(`blob ${fixtureSource.bytes.length}\0`).update(fixtureSource.bytes).digest('hex');
 const validEvidence = () => ({ environment: 'test', projectRef: TEST_REF, evidenceComplete: true, file: fixtureSource.path,
-  sha256: sha(fixtureSource.bytes), statementBytes: fixtureSource.bytes.length, reviewedBlob: 'a'.repeat(40), appliedAt: '2026-10-01T00:00:00Z',
+  sha256: sha(fixtureSource.bytes), statementBytes: fixtureSource.bytes.length, reviewedBlob: fixtureBlob, appliedAt: '2026-10-01T00:00:00Z',
   catalog: { before: 'b'.repeat(64), after: 'c'.repeat(64) }, authorization: { loai: 'bien-nhan-backup', backupProjectRef: TEST_REF,
     backupEnvironment: 'test', backupSha256: 'd'.repeat(64), backupCreatedAt: '2026-10-01T00:00:00Z', backupTablesWithData: 627, backupFile: '/synthetic.dump' } });
-const evidenceOptions = { reviewedBlob: 'a'.repeat(40), fileExists: () => true };
-test('schema evidence binds target, raw bytes, reviewed blob, catalog and existing TEST backup receipt', () => {
+const evidenceOptions = { reviewedBlob: fixtureBlob, reviewedBlobBytes: fixtureSource.bytes };
+test('schema evidence binds target, raw bytes, reviewed blob, catalog and apply-time TEST backup attestation', () => {
   const result = validateSchemaEvidence(validEvidence(), fixtureSource, evidenceOptions);
   assert.equal(result.sha256, sha(fixtureSource.bytes)); assert.equal(result.backupSha256, 'd'.repeat(64));
   assert.equal(Object.hasOwn(result, 'backupFile'), false);
@@ -59,12 +63,103 @@ for (const [name, mutate, expected] of [
   ['production backup', e => { e.authorization.backupProjectRef = 'tryymsxyyckgbrmmvozx'; }, 'schema_backup_evidence_required'],
   ['backup bypass', e => { e.authorization.loai = 'token-nguoi'; }, 'schema_backup_evidence_required'],
   ['small backup', e => { e.authorization.backupTablesWithData = 1; }, 'schema_backup_evidence_required'],
+  ['backup after apply', e => { e.authorization.backupCreatedAt = '2026-10-01T00:00:01Z'; }, 'schema_backup_evidence_required'],
+  ['relative backup path', e => { e.authorization.backupFile = 'synthetic.dump'; }, 'schema_backup_evidence_required'],
 ]) test(`evidence rejects ${name}`, () => {
   const value = validEvidence(); mutate(value);
   assert.throws(() => validateSchemaEvidence(value, fixtureSource, evidenceOptions), { code: expected });
 });
-test('missing dump cannot be labeled verified backup evidence', () => {
-  assert.throws(() => validateSchemaEvidence(validEvidence(), fixtureSource, { ...evidenceOptions, fileExists: () => false }), { code: 'schema_backup_evidence_required' });
+
+function recoveryFixture(t) {
+  const root = mkdtempSync(join(tmpdir(), 'hermes-backup-retention-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const backupRoot = join(root, 'test', TEST_REF); mkdirSync(backupRoot, { recursive: true });
+  const file = join(backupRoot, 'ihomecrm-full-2026-10-01T00-05-00-000Z.dump');
+  const bytes = Buffer.alloc(2048, 42);
+  const latest = validEvidence(); latest.appliedAt = '2026-10-01T00:06:01Z';
+  Object.assign(latest.authorization, { backupFile: file, backupCreatedAt: '2026-10-01T00:06:00Z', backupSha256: sha(bytes) });
+  const retired = validEvidence(); retired.file = 'supabase/migrations/retired.sql';
+  retired.authorization.backupFile = join(backupRoot, 'ihomecrm-full-2026-09-30T23-59-00-000Z.dump');
+  const manifest = { file, kind: 'full', projectRef: TEST_REF, environment: 'test', reason: `apply ${basename(latest.file)}`,
+    createdAt: latest.authorization.backupCreatedAt, durationSeconds: 60, tablesWithData: 627, excludedTableData: [],
+    bytes: bytes.length, sha256: sha(bytes) };
+  const save = () => writeFileSync(`${file}.json`, JSON.stringify(manifest));
+  writeFileSync(file, bytes); save();
+  return { root, backupRoot, file, bytes, latest, retired, manifest, save, evidence: [latest, retired] };
+}
+
+test('recovery uses latest apply time, verifies real bytes and permits retired historical dumps', t => {
+  const f = recoveryFixture(t);
+  const result = validateRecoveryBackup(f.evidence, f);
+  assert.equal(result.migration, f.latest.file); assert.equal(result.sha256, sha(f.bytes));
+  assert.equal(result.backupNamedAt, '2026-10-01T00:05:00.000Z');
+  assert.equal(result.manifestSha256, sha(readFileSync(`${f.file}.json`)));
+  assert.equal(result.recovery, 'restore_pre_latest_apply_then_replay_reviewed_latest_migration');
+  assert.equal(result.restoredByHarness, false);
+});
+
+for (const [name, mutate, code] of [
+  ['missing latest dump with older dump available', f => { writeFileSync(f.retired.authorization.backupFile, f.bytes); rmSync(f.file); }, 'schema_recovery_file_unavailable'],
+  ['missing latest manifest', f => rmSync(`${f.file}.json`), 'schema_recovery_file_unavailable'],
+  ['malformed manifest', f => writeFileSync(`${f.file}.json`, '{'), 'schema_recovery_manifest_invalid'],
+  ['tampered latest bytes', f => writeFileSync(f.file, Buffer.alloc(f.bytes.length, 43)), 'schema_recovery_dump_mismatch'],
+  ['shortened latest bytes', f => writeFileSync(f.file, f.bytes.subarray(1)), 'schema_recovery_dump_mismatch'],
+  ['wrong project', f => { f.manifest.projectRef = 'tryymsxyyckgbrmmvozx'; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['wrong environment', f => { f.manifest.environment = 'prod'; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['schema-only backup', f => { f.manifest.kind = 'schema'; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['excluded data', f => { f.manifest.excludedTableData = ['private_table']; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['wrong backup digest', f => { f.manifest.sha256 = 'e'.repeat(64); f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['wrong manifest path', f => { f.manifest.file = f.retired.authorization.backupFile; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['wrong migration reason', f => { f.manifest.reason = 'apply another.sql'; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['invalid size attestation', f => { f.manifest.bytes = 1; f.save(); }, 'schema_recovery_dump_mismatch'],
+  ['invalid table count', f => { f.manifest.tablesWithData = 449; f.save(); }, 'schema_recovery_manifest_invalid'],
+  ['snapshot starts before prior apply despite later completion', f => { f.retired.appliedAt = '2026-10-01T00:05:30Z'; }, 'schema_recovery_order_invalid'],
+  ['backup completes after its apply', f => { f.latest.appliedAt = '2026-10-01T00:05:59Z'; }, 'schema_recovery_order_invalid'],
+  ['ambiguous apply order', f => { f.retired.appliedAt = f.latest.appliedAt; }, 'schema_recovery_order_invalid'],
+  ['missing duration', f => { delete f.manifest.durationSeconds; f.save(); }, 'schema_recovery_order_invalid'],
+  ['impossible duration', f => { f.manifest.durationSeconds = 90; f.save(); }, 'schema_recovery_order_invalid'],
+  ['foreign backup path', f => { f.latest.authorization.backupFile = join(f.root, basename(f.file)); }, 'schema_recovery_path_invalid'],
+  ['symlinked backup directory', f => {
+    const link = join(f.root, 'linked'); symlinkSync(f.backupRoot, link, process.platform === 'win32' ? 'junction' : 'dir');
+    f.backupRoot = link; f.latest.authorization.backupFile = join(link, basename(f.file));
+  }, 'schema_recovery_path_invalid'],
+]) test(`recovery rejects ${name}`, t => {
+  const f = recoveryFixture(t); mutate(f);
+  assert.throws(() => validateRecoveryBackup(f.evidence, f), { code });
+});
+test('historical backup attestation survives retention without claiming a current recovery point', () => {
+  let checkedFile = false;
+  const result = validateSchemaEvidence(validEvidence(), fixtureSource, { ...evidenceOptions,
+    fileExists: () => { checkedFile = true; return false; } });
+  assert.equal(checkedFile, false);
+  assert.equal(result.backupSha256, 'd'.repeat(64));
+  assert.equal(Object.hasOwn(result, 'recoveryPoint'), false);
+});
+
+test('pinned historical reviewed Git blob accepts only the actual legacy CRLF clean projection', () => {
+  const migration = migrationSources().find(item => item.name === '20261012165809_hermes_public_conflict_http_v1.sql');
+  const reviewedBlob = '7a42c3c73b224ab31a26575883c455c9a0fd8f15';
+  const bytes = Buffer.from(migration.bytes.toString('utf8').replaceAll('\r\n', '\n'));
+  assert.equal(bytes.length, 12673);
+  assert.equal(sha(migration.bytes), 'b2f087aa089334446dfef3606a6c81ea6ae5b7cf4ec122da0630e30ba4a79e50');
+  const evidence = { ...validEvidence(), file: migration.path, sha256: sha(migration.bytes), statementBytes: migration.bytes.length, reviewedBlob };
+  const options = { reviewedBlob: '4264c3269ca1eee9c1a2990c08629b6df885acc8', reviewedBlobBytes: bytes };
+  const result = validateSchemaEvidence(evidence, migration, options);
+  assert.equal(result.reviewedBlob, reviewedBlob); assert.equal(result.reviewedProjection, 'pinned_legacy_crlf_to_lf');
+  for (const [changedEvidence, changedSource, changedOptions] of [
+    [evidence, migration, { ...options, reviewedBlobBytes: Buffer.from('select 1;\n') }],
+    [{ ...evidence, reviewedBlob: fixtureBlob }, migration, { ...options, reviewedBlobBytes: fixtureSource.bytes }],
+    [evidence, { ...migration, bytes: Buffer.from(migration.bytes.toString().replace('BEGIN', 'BEGIN ')) }, options],
+    [{ ...evidence, file: 'supabase/migrations/other.sql' }, { ...migration, path: 'supabase/migrations/other.sql' }, options],
+    [evidence, migration, { ...options, reviewedBlob: fixtureBlob }],
+  ]) assert.throws(() => validateSchemaEvidence(changedEvidence, changedSource, changedOptions), { code: 'schema_evidence_source_mismatch' });
+});
+
+test('ordinary evidence rejects missing or substituted Git blob bytes', () => {
+  for (const reviewedBlobBytes of [undefined, Buffer.from('select 2;\n')]) {
+    assert.throws(() => validateSchemaEvidence(validEvidence(), fixtureSource, { ...evidenceOptions, reviewedBlobBytes }),
+      { code: 'schema_evidence_source_mismatch' });
+  }
 });
 
 test('fixture worker lease inserts only when absent and never takes over; channels have no login/send instruction', () => {

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1446,
   "soFileDocBangFs": 329,
-  "tongLoiGoi": 760,
+  "tongLoiGoi": 761,
   "khongPhanLoaiDuoc": 346,
   "theoLoai": {
     "ma-nguon": {
@@ -11,7 +11,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 48,
+      "soFile": 49,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -894,6 +894,15 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/hermes-private-flow.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/hermes-room-scope-schema.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -1448,14 +1457,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/hermes-private-flow.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/hermes-public-conflict-schema.test.mjs",

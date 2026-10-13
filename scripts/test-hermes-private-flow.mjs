@@ -3,8 +3,9 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { dichKetNoi } from './db-query.mjs';
@@ -75,34 +76,103 @@ export function captureSourceIdentity() {
   return Object.fromEntries([...inputs].sort().map(file => [file, sha(readFileSync(resolve(ROOT, file)))]));
 }
 
-export function validateSchemaEvidence(evidence, source, { reviewedBlob, fileExists = file => statSync(file).size > 0 } = {}) {
+export function validateSchemaEvidence(evidence, source, { reviewedBlob, reviewedBlobBytes } = {}) {
   demand(evidence?.environment === 'test' && evidence.projectRef === TEST_REF && evidence.evidenceComplete === true,
     'schema_evidence_target_invalid');
   demand(evidence.file === source.path && evidence.sha256 === sha(source.bytes)
-    && evidence.statementBytes === source.bytes.length && evidence.reviewedBlob === reviewedBlob
-    && /^[a-f0-9]{40,64}$/.test(reviewedBlob ?? ''), 'schema_evidence_source_mismatch');
+    && evidence.statementBytes === source.bytes.length && /^[a-f0-9]{40,64}$/.test(reviewedBlob ?? '')
+    && /^[a-f0-9]{40,64}$/.test(evidence.reviewedBlob ?? '') && Buffer.isBuffer(reviewedBlobBytes), 'schema_evidence_source_mismatch');
+  // This one applied CRLF file predates its -text pin. The historical review
+  // blob used Git's LF clean projection, while its receipt SHA/length already
+  // bound the exact CRLF SQL sent to TEST. Do not normalize any other source.
+  const legacyEol = source.path === 'supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql'
+    && evidence.sha256 === 'b2f087aa089334446dfef3606a6c81ea6ae5b7cf4ec122da0630e30ba4a79e50'
+    && evidence.reviewedBlob === '7a42c3c73b224ab31a26575883c455c9a0fd8f15'
+    && reviewedBlob === '4264c3269ca1eee9c1a2990c08629b6df885acc8'
+    && reviewedBlobBytes.equals(Buffer.from(source.bytes.toString('utf8').replaceAll('\r\n', '\n')));
+  const storedBlob = createHash(evidence.reviewedBlob.length === 64 ? 'sha256' : 'sha1')
+    .update(`blob ${reviewedBlobBytes.length}\0`).update(reviewedBlobBytes).digest('hex');
+  demand(storedBlob === evidence.reviewedBlob && (legacyEol
+    || (evidence.reviewedBlob === reviewedBlob && reviewedBlobBytes.equals(source.bytes))), 'schema_evidence_source_mismatch');
   demand(Number.isFinite(Date.parse(evidence.appliedAt)) && Date.parse(evidence.appliedAt) <= Date.now()
     && HASH.test(evidence.catalog?.before ?? '') && HASH.test(evidence.catalog?.after ?? ''), 'schema_evidence_incomplete');
   const backup = evidence.authorization;
   demand(backup?.loai === 'bien-nhan-backup' && backup.backupProjectRef === TEST_REF && backup.backupEnvironment === 'test'
     && HASH.test(backup.backupSha256 ?? '') && Number.isFinite(Date.parse(backup.backupCreatedAt))
-    && backup.backupTablesWithData >= 450 && typeof backup.backupFile === 'string' && fileExists(backup.backupFile),
+    && Date.parse(backup.backupCreatedAt) <= Date.parse(evidence.appliedAt)
+    && Number.isSafeInteger(backup.backupTablesWithData) && backup.backupTablesWithData >= 450
+    && typeof backup.backupFile === 'string' && isAbsolute(backup.backupFile),
   'schema_backup_evidence_required');
-  return { file: source.path, sha256: evidence.sha256, reviewedBlob, appliedAt: evidence.appliedAt,
+  return { file: source.path, sha256: evidence.sha256, reviewedBlob: evidence.reviewedBlob, sourceBlob: reviewedBlob,
+    reviewedProjection: legacyEol ? 'pinned_legacy_crlf_to_lf' : 'exact_bytes', appliedAt: evidence.appliedAt,
     backupSha256: backup.backupSha256, catalogAfter: evidence.catalog.after };
+}
+
+// Historical receipts attest the backup verified by the forward lane at apply
+// time; retention may retire those dumps. The latest apply must still have its
+// own full recovery dump, with no fallback to a surviving older one.
+export function validateRecoveryBackup(evidence, { backupRoot = resolve(homedir(), 'ihomecrm-backups', 'test', TEST_REF) } = {}) {
+  demand(Array.isArray(evidence) && evidence.length > 0, 'schema_recovery_evidence_required');
+  const ordered = [...evidence].sort((a, b) => Date.parse(a.appliedAt) - Date.parse(b.appliedAt));
+  demand(ordered.every((item, index) => Number.isFinite(Date.parse(item.appliedAt))
+    && (!index || Date.parse(ordered[index - 1].appliedAt) < Date.parse(item.appliedAt))), 'schema_recovery_order_invalid');
+  const latest = ordered.at(-1), backup = latest.authorization;
+  const file = backup?.backupFile;
+  demand(typeof file === 'string' && isAbsolute(file) && relative(resolve(backupRoot), dirname(resolve(file))) === '',
+    'schema_recovery_path_invalid');
+  const readRegular = path => {
+    try {
+      const stat = lstatSync(path);
+      demand(stat.isFile() && !stat.isSymbolicLink() && relative(resolve(path), realpathSync(path)) === '', 'schema_recovery_path_invalid');
+      return readFileSync(path);
+    } catch (error) { if (error?.code === 'schema_recovery_path_invalid') throw error; fail('schema_recovery_file_unavailable'); }
+  };
+  let manifest;
+  const manifestBytes = readRegular(`${file}.json`);
+  try { manifest = JSON.parse(manifestBytes.toString('utf8')); } catch { fail('schema_recovery_manifest_invalid'); }
+  demand(manifest?.environment === 'test' && manifest.projectRef === TEST_REF && manifest.kind === 'full'
+    && Array.isArray(manifest.excludedTableData) && manifest.excludedTableData.length === 0
+    && Number.isSafeInteger(manifest.tablesWithData) && manifest.tablesWithData >= 450
+    && manifest.tablesWithData === backup.backupTablesWithData && manifest.sha256 === backup.backupSha256
+    && HASH.test(manifest.sha256 ?? '') && manifest.createdAt === backup.backupCreatedAt
+    && typeof manifest.file === 'string' && isAbsolute(manifest.file) && relative(resolve(file), resolve(manifest.file)) === ''
+    && manifest.reason === `apply ${basename(latest.file)}`, 'schema_recovery_manifest_invalid');
+  // The lane names the dump BEFORE pg_dump and records createdAt AFTER it.
+  // Completion alone cannot prove that earlier applies were in the snapshot.
+  const stamp = basename(file).match(/^ihomecrm-full-(\d{4}-\d{2}-\d{2}T)(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.dump$/);
+  const startedAt = stamp ? `${stamp[1]}${stamp[2]}:${stamp[3]}:${stamp[4]}.${stamp[5]}Z` : '';
+  const start = Date.parse(startedAt), end = Date.parse(manifest.createdAt);
+  demand(Number.isFinite(start) && new Date(start).toISOString() === startedAt && start <= end
+    && end <= Date.parse(latest.appliedAt) && Date.parse(latest.appliedAt) <= Date.now()
+    && Number.isSafeInteger(manifest.durationSeconds) && manifest.durationSeconds >= 0
+    && manifest.durationSeconds * 1000 <= end - start + 1000
+    && ordered.slice(0, -1).every(item => Date.parse(item.appliedAt) <= start), 'schema_recovery_order_invalid');
+  const bytes = readRegular(file);
+  demand(Number.isSafeInteger(manifest.bytes) && manifest.bytes >= 1024 && manifest.bytes === bytes.length
+    && sha(bytes) === backup.backupSha256, 'schema_recovery_dump_mismatch');
+  return { migration: latest.file, sha256: backup.backupSha256, manifestSha256: sha(manifestBytes), bytes: bytes.length,
+    backupNamedAt: startedAt, backupCompletedAt: manifest.createdAt, appliedAt: latest.appliedAt,
+    recovery: 'restore_pre_latest_apply_then_replay_reviewed_latest_migration', restoredByHarness: false };
 }
 
 export function requireSchemaEvidence() {
   const sources = migrationSources();
   demand(Object.keys(CANDIDATES).every(name => sources.some(source => source.name === name)), 'candidate_missing');
-  return sources.map(source => {
+  const applied = [];
+  const migrations = sources.map(source => {
     if (CANDIDATES[source.name]) demand(sha(source.bytes) === CANDIDATES[source.name], 'reviewed_candidate_changed');
     const blob = spawnSync('git', ['hash-object', source.path], { cwd: ROOT, encoding: 'utf8' });
     demand(blob.status === 0, 'source_blob_unavailable');
     const path = resolve(ROOT, '.cache/migration-targets/test', TEST_REF, 'schema-change-evidence', source.name.replace(/\.sql$/, '.json'));
     let evidence; try { evidence = JSON.parse(readFileSync(path, 'utf8')); } catch { fail('schema_apply_evidence_missing'); }
-    return validateSchemaEvidence(evidence, source, { reviewedBlob: blob.stdout.trim() });
+    demand(/^[a-f0-9]{40,64}$/.test(evidence.reviewedBlob ?? ''), 'schema_evidence_source_mismatch');
+    const reviewed = spawnSync('git', ['cat-file', 'blob', evidence.reviewedBlob], { cwd: ROOT });
+    demand(reviewed.status === 0, 'reviewed_blob_unavailable');
+    const validated = validateSchemaEvidence(evidence, source, { reviewedBlob: blob.stdout.trim(), reviewedBlobBytes: reviewed.stdout });
+    applied.push(evidence);
+    return validated;
   });
+  return { migrations, recoveryPoint: validateRecoveryBackup(applied) };
 }
 
 export function fixturePlan() {
@@ -557,7 +627,7 @@ export async function runHarness(options) {
           'Zalo accounts/messages/lease are synthetic database fixtures; no provider or worker delivery is executed.',
           'Unknown/cancelled receipts are explicit synthetic protocol inputs, not observations of provider delivery.',
           'Sequential cases do not prove concurrent PostgreSQL schedules, process-crash recovery, or runtime dispatch.',
-          'Backup evidence binds the existing apply receipt; this runner does not rehash or restore the full dump.'], cases };
+          'Historical backups are apply-time attestations. The latest pre-apply dump is rehashed, but not restored; recovery also needs its reviewed forward migration.'], cases };
       const path = resolve(ROOT, '.cache/hermes-private-flow', `receipt-${plan.run}.json`);
       mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
     }
