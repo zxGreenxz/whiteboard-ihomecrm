@@ -73,16 +73,21 @@ function reply(response, status, error) {
  * keyring. Socket loss/unknown write ACK is NOT rollback or a retry guarantee;
  * Nested adapters own transport cancellation; draining their public promises
  * does not prove an in-flight database write rolled back.
- * there is no durable handoff recovery for a lost one-time connect response.
+ * optional handoff.stage persists an encrypted host WAL before activation. The
+ * product host must inject it and own its close after backend.close; this backend
+ * tracks actual stage I/O but never lists/decrypts WAL or starts profiles itself.
  * Quota/admission remain process-local; this is not a multi-replica deployment.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock'];
+  const optional = ['fetch', 'clock', 'handoff'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
       typeof configuration.audit !== 'function' || (Object.hasOwn(configuration, 'fetch') && typeof configuration.fetch !== 'function') ||
-      (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function')) throw new TypeError('invalid_backend_config');
+      (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
+      (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
+        !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
+        typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
   const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now } = configuration;
   let crypto;
   try {
@@ -100,7 +105,11 @@ export function createHermesBackend(configuration = {}) {
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock,
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     const broker = createBroker({ authority, roomReads, audit, clock, limits: { maxResultBytes: 65_536 } });
-    const controlPlane = createConnectionControlPlane({ auth, connectionStore, crypto, clock,
+    // The host owns the WAL and its keyring. Track the actual filesystem promise
+    // so an HTTP/control timeout cannot let close erase keys while stage is live.
+    const stageHandoff = configuration.handoff?.stage.bind(configuration.handoff);
+    const handoff = stageHandoff ? { stage: (record, options) => dependencyScope.track(() => stageHandoff(record, options)) } : undefined;
+    const controlPlane = createConnectionControlPlane({ auth, connectionStore, crypto, clock, handoff,
       signInProvider: createSupabaseAssistantSignIn({ ...supabase, fetch: request }),
       preparation: createSupabaseConnectionPreparation({ ...supabase, fetch: request }) });
     const management = createConnectionManagement({ auth, connectionStore, clock,

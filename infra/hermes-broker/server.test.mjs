@@ -754,3 +754,49 @@ test('product orchestrator parks the actual runner, refreshes through composed b
   assert.equal(starts, 1); assert.equal(stops, 0); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2);
   await orchestrator.close(); assert.equal(stops, 1); assert.equal(f.read().poolEnds, 1); assert.equal(jobs.size, 0);
 });
+
+
+test('backend handoff persists before activation and returns the same opaque token through the existing browser route', async t => {
+  const f = fakeBackend(), entered = deferred(), hold = deferred(); let captured;
+  f.configuration.handoff = { async stage(record, { signal }) {
+    assert(signal instanceof AbortSignal); assert(Object.isFrozen(record)); captured = structuredClone(record); entered.resolve();
+    await hold.promise; return { status: 'stored', connectionId: record.connectionId, operationId: record.operationId };
+  } };
+  const http = await listening(t, f.configuration), pending = http.connect(); await entered.promise;
+  try { assert.equal(f.read().joined, undefined); assert(!f.sql.some(query => /hermes_store_activate/.test(query.text))); }
+  finally { hold.resolve(); }
+  const response = await pending; assert.equal(response.status, 200); assert.equal(response.body.token, captured.token);
+  assert.deepEqual([captured.connectionId, captured.assistantId, captured.userId, captured.organizationId], [I.connection,I.assistant,I.user,I.org]);
+  for (const secret of [browserJwt, assistantJwt, 'SYNTHETIC-REFRESH-SECRET', 'synthetic-password']) assert(!JSON.stringify(captured).includes(secret));
+  for (const route of ['/api/hermes/connections/handoff', '/internal/hermes/handoffs']) assert.equal((await http.send(route, {})).status, 404);
+});
+
+test('backend close waits actual handoff filesystem work after client disconnect before destroying session keys', async t => {
+  const f = fakeBackend(), entered = deferred(), hold = deferred(); let destroyed = false, observed;
+  f.configuration.handoff = { async stage(record, { signal }) {
+    observed = signal; entered.resolve(); await hold.promise;
+    return { status: 'stored', connectionId: record.connectionId, operationId: record.operationId };
+  } };
+  const fill = Buffer.prototype.fill;
+  t.mock.method(Buffer.prototype, 'fill', function(value,...args) {
+    if (value === 0 && this.length === 32 && this.equals(f.key)) destroyed = true;
+    return Reflect.apply(fill,this,[value,...args]);
+  });
+  const http = await listening(t,f.configuration), response = http.connect().catch(() => null); await entered.promise;
+  let closed = false; const closing = http.close().then(() => { closed = true; }); await response;
+  try {
+    await tick(); assert(observed.aborted); assert.equal(closed,false); assert.equal(destroyed,false);
+    assert.equal(f.read().poolEnds,0); assert(!f.sql.some(query => /hermes_store_activate/.test(query.text)));
+  } finally { hold.resolve(); await closing; }
+  assert.equal(destroyed,true); assert(!f.sql.some(query => /hermes_store_activate/.test(query.text)));
+});
+
+test('unknown host handoff is a sanitized 503 enrollment receipt and never activates', async t => {
+  const f = fakeBackend(); let stored;
+  f.configuration.handoff = { async stage(record) { stored = record; throw Error('PRIVATE_PATH_AND_SECRET'); } };
+  const http = await listening(t,f.configuration), response = await http.connect();
+  assert.equal(response.status,503); assert.equal(response.body.error,'activation_outcome_unknown');
+  assert.deepEqual(response.body.receipt,{connectionId:I.connection,operationId:stored.operationId});
+  for (const secret of [stored.token,browserJwt,assistantJwt,'PRIVATE_PATH_AND_SECRET']) assert(!response.text.includes(secret));
+  assert.equal(f.read().joined,undefined);
+});

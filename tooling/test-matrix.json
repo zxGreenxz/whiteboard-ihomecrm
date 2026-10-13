@@ -575,6 +575,9 @@
     {
       "id": "hermes-private-runtime-composition",
       "sourcePaths": [
+        "infra/hermes-broker/connection-handoff.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-runtime/handoff-reconciler.mjs",
         "infra/hermes-runtime/runtime-orchestrator.mjs",
         "infra/hermes-runtime/profile-homes.mjs",
         "infra/hermes-runtime/connection-supervisor.mjs",

@@ -425,6 +425,8 @@ Cập nhật tiếp 13/10: đã ghép trusted maintenance vào backend, lấy bi
 
 Cập nhật scheduler 13/10: product factory và orchestrator đã nối coordinated maintenance. Park trước hạn 5 phút, chờ toàn runner drain, đóng admission rồi refresh/kiểm lại authority, chỉ mở lại sau actual drain; giữ watchdog hạn cũ, ưu tiên expiry và giới hạn tải chung. Supervisor 75/75, backend + orchestrator 49/49; chưa có host entrypoint/handoff bền vững hoặc kiểm provider/runtime thật. Evidence/review/gate ghi tại STATUS; các ô nghiệm thu P2 vẫn mở.
 
+Cập nhật handoff 13/10: đã nối port lưu token mã hóa trước activation, backend chờ filesystem drain và orchestrator so owner từ bản lưu trước runtime. WAL/scanner đã có kiểm cục bộ và review độc lập (WAL 11 pass/8 native skip, scanner 48/48); còn ghép host entrypoint, expiry/crash recovery và native/live evidence. CI checkpoint 1026910f có hai lỗi EOL/bundle đã sửa cục bộ; xem STATUS cho kết quả và giới hạn, không xem đây là P2 hoàn tất.
+
 **Đạt khi:** Tắt Hermes không ảnh hưởng user; không cấp quá quyền; revoke chặn request mới và invalidates context.
 
 **Nếu chưa đạt:** Tắt connection/feature flag; schema bổ sung để tương thích, không xóa dữ liệu cũ.

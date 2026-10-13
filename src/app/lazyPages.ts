@@ -14,6 +14,7 @@
 import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 
 // Password recovery is only needed when its route is opened.
+export const ForgotPassword = lazy(() => import("../pages/auth/ForgotPassword"));
 export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 
 // ===== Lazy imports — code-split theo route =====

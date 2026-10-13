@@ -82,6 +82,7 @@
         "infra/hermes-runtime/container-driver.mjs",
         "infra/hermes-runtime/container-contract.mjs",
         "infra/hermes-runtime/runtime-orchestrator.mjs",
+        "infra/hermes-runtime/handoff-reconciler.mjs",
         "infra/hermes-runtime/profile-homes.mjs",
         "infra/hermes-zalo-router/**",
         "worker/lib/hermes-link.js",

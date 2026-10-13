@@ -112,7 +112,7 @@ function safeError(error, stage, receipt) {
     const known = { store_denied: 'forbidden', store_conflict: 'context_changed', store_rejected: 'activation_rejected' };
     if (known[error.code]) return new ConnectionControlError(known[error.code], receipt);
   }
-  return new ConnectionControlError(stage === 'activate' ? 'activation_outcome_unknown' : stage === 'prepare' ? 'prepare_outcome_unknown'
+  return new ConnectionControlError(['activate', 'handoff'].includes(stage) ? 'activation_outcome_unknown' : stage === 'prepare' ? 'prepare_outcome_unknown'
     : stage === 'signIn' ? 'sign_in_outcome_unknown' : 'backend_unavailable', receipt);
 }
 
@@ -141,8 +141,12 @@ async function bounded(signal, timeoutMs, operation, abortedError) {
  *
  * One connect makes at most one sign-in, one prepare and one activation call. Unknown outcomes
  * return NO opaque credential and must not be interpreted as permission to retry
- * connect. There is no durable delivery/outbox or automatic orphan cleanup here;
- * a process crash/unknown ACK needs explicit operator reconciliation/reconnection.
+ * connect. A product host supplies handoff.stage: its immutable encrypted WAL
+ * must persist the opaque token and verified owner before activation. No provider
+ * credentials enter that port. Unknown stage prevents activation; unknown DB ACK
+ * preserves the WAL for read-only authority reconciliation, never write replay.
+ * Without a handoff port this legacy primitive alone has no durable delivery.
+ * Expired credentials/crashed runtime leases still need separate recovery.
  * No memory authority fallback, provider logout, destructive compensation, UI or
  * long-lived token rotation is supplied. Activation is not a business-tool grant.
  * Prepare ACK validation permits at most 30s of server-ahead clock skew; this
@@ -150,18 +154,20 @@ async function bounded(signal, timeoutMs, operation, abortedError) {
  * Expiry starts from the earlier of host time and the server's prepare time.
  */
 export function createConnectionControlPlane({ auth, signInProvider, preparation, connectionStore, crypto,
-  clock = Date.now, timeoutMs = 30000, tokenLifetimeMs = MAX_TOKEN_LIFETIME_MS } = {}) {
+  clock = Date.now, timeoutMs = 30000, tokenLifetimeMs = MAX_TOKEN_LIFETIME_MS, handoff } = {}) {
   if ([auth?.verifySession, auth?.readAuthorization, signInProvider?.signIn,
     preparation?.prepareConnection, connectionStore?.activate, crypto?.seal, clock].some(fn => typeof fn !== 'function') ||
+    (handoff !== undefined && (!exact(handoff, ['stage']) || typeof handoff.stage !== 'function')) ||
     !positive(timeoutMs) || timeoutMs > 30000 || !positive(tokenLifetimeMs) || tokenLifetimeMs > MAX_TOKEN_LIFETIME_MS) {
     throw new TypeError('invalid_connection_control_config');
   }
+  const stageHandoff = handoff?.stage.bind(handoff);
   const now = () => { const value = clock(); if (!positive(value)) fail('backend_unavailable'); return value; };
   return Object.freeze({
     async connect(input, { signal } = {}) {
       const requested = request(input, true); // Snapshot before the first await.
       let stage = 'auth', receipt;
-      const abortError = () => new ConnectionControlError(stage === 'activate' ? 'activation_outcome_unknown'
+      const abortError = () => new ConnectionControlError(['activate', 'handoff'].includes(stage) ? 'activation_outcome_unknown'
         : stage === 'prepare' ? 'prepare_outcome_unknown' : stage === 'signIn' ? 'sign_in_outcome_unknown' : 'cancelled', receipt);
       try {
         return await bounded(signal, timeoutMs, async (innerSignal, check) => {
@@ -208,6 +214,15 @@ export function createConnectionControlPlane({ auth, signInProvider, preparation
             sessionExpiresAt: assistant.expiresAt,
             sessionEnvelope: crypto.seal({ accessToken: pair.accessToken, refreshToken: pair.refreshToken, expiresAt: assistant.expiresAt }, binding) };
           check();
+          if (stageHandoff) {
+            stage = 'handoff';
+            const record = Object.freeze({ connectionId: pending.id, assistantId: pending.assistantId,
+              userId: browser.userId, organizationId: pending.organizationId, operationId, token: opaque });
+            const saved = await stageHandoff(record, { signal: innerSignal }); check();
+            if (!exact(saved, ['status', 'connectionId', 'operationId']) || saved.status !== 'stored' ||
+                saved.connectionId !== pending.id || saved.operationId !== operationId) fail('activation_outcome_unknown');
+            if (activation.tokenExpiresAt <= now()) fail('activation_outcome_unknown');
+          }
           stage = 'activate';
           const value = await connectionStore.activate(activation, { signal: innerSignal }); check();
           const connection = activated(value, activation);

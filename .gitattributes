@@ -55,3 +55,8 @@ supabase/functions/** text eol=lf
 
 # Hash-verified WeChat model attribution must retain identical checkout bytes.
 scripts/qr/licenses/*.txt text eol=lf
+
+# Keep the exact CRLF bytes applied to TEST and pinned in provenance (b2f087aa).
+# Generic SQL LF conversion changes the reviewed digest when Git writes a blob.
+# This one immutable file must retain identical bytes on Windows and Linux.
+supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql -text whitespace=trailing-space,space-before-tab,cr-at-eol

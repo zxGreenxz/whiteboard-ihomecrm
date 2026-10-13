@@ -402,3 +402,81 @@ test('fresh sign-in bounds streamed result and late timeout; invalid config cann
     assert.throws(() => signInAdapter({ config }), /invalid_assistant_sign_in_config/);
   }
 });
+
+
+test('host handoff persists exact verified owner and opaque token before activation, without provider secrets', { timeout: 1000 }, async t => {
+  let captured, entered, release;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const hold = new Promise(resolve => { release = resolve; });
+  const f = fixture(t, { factory: { handoff: { async stage(record, { signal }) {
+    captured = structuredClone(record); assert(signal instanceof AbortSignal); entered(); await hold;
+    return { status: 'stored', connectionId: record.connectionId, operationId: record.operationId };
+  } } } });
+  const pending = f.connect(); await waiting;
+  try {
+    assert.equal(f.calls.filter(call => call.operation === 'activate').length, 0);
+    assert.deepEqual(Object.keys(captured).sort(), ['assistantId', 'connectionId', 'operationId', 'organizationId', 'token', 'userId']);
+    assert.deepEqual([captured.connectionId, captured.assistantId, captured.userId, captured.organizationId],
+      [ids.connection, ids.assistant, ids.user, ids.org]);
+    for (const secret of ['BROWSER_ACCESS', 'PRIVATE_PASSWORD', 'FRESH_ACCESS', 'FRESH_REFRESH', 'intentSecret', 'credentialRef']) {
+      assert(!JSON.stringify(captured).includes(secret));
+    }
+  } finally { release(); }
+  const result = await pending;
+  assert.equal(result.token, captured.token);
+  assert.equal(f.state.activation.operationId, captured.operationId);
+  assert.equal(f.state.activation.tokenDigest, createHash('sha256').update(captured.token).digest('hex'));
+});
+
+test('host handoff malformed or foreign ACK prevents activation and returns only an unknown enrollment receipt', async t => {
+  for (const mutate of [ack => null, ack => ({ ...ack, connectionId: ids.other }),
+    ack => ({ ...ack, operationId: ids.other }), ack => ({ ...ack, status: 'pending' }),
+    ack => ({ ...ack, secret: 'PRIVATE' }), ack => Object.defineProperty(ack, 'status', { get() { throw Error('getter invoked'); } })]) {
+    let seen;
+    const f = fixture(t, { factory: { handoff: { async stage(record) {
+      seen = structuredClone(record); return mutate({ status: 'stored', connectionId: record.connectionId, operationId: record.operationId });
+    } } } });
+    await assert.rejects(f.connect(), error => {
+      assert(code('activation_outcome_unknown')(error));
+      assert.deepEqual(error.receipt, { connectionId: ids.connection, operationId: seen.operationId });
+      assert(!JSON.stringify(error).includes(seen.token)); return true;
+    });
+    assert.equal(f.calls.filter(call => call.operation === 'activate').length, 0);
+  }
+});
+
+test('host handoff failure or cancelled late persistence never retries stage, signs in again or activates', async t => {
+  for (const cancel of [false, true]) {
+    let count = 0, finish, entered;
+    const waiting = new Promise(resolve => { entered = resolve; });
+    const f = fixture(t, { factory: { handoff: { async stage(record) {
+      count++; entered();
+      if (!cancel) throw Error('PRIVATE_STORAGE_PATH token-secret');
+      await new Promise(resolve => { finish = resolve; });
+      return { status: 'stored', connectionId: record.connectionId, operationId: record.operationId };
+    } } } });
+    const work = f.connect(), rejected = assert.rejects(work, code('activation_outcome_unknown'));
+    await waiting;
+    if (cancel) f.controller.abort();
+    await rejected;
+    if (cancel) { finish(); await new Promise(resolve => setImmediate(resolve)); }
+    assert.equal(count, 1); assert.equal(f.calls.filter(call => call.operation === 'signIn').length, 1);
+    assert.equal(f.calls.filter(call => call.operation === 'activate').length, 0);
+  }
+});
+
+test('unknown activation leaves pre-staged handoff available for read-only host reconciliation', async t => {
+  const records = [];
+  const f = fixture(t, { factory: { handoff: { async stage(record) {
+    records.push(structuredClone(record)); return { status: 'stored', connectionId: record.connectionId, operationId: record.operationId };
+  } } }, beforeActivate: () => { throw new StoreTransportError('store_outcome_unknown'); } });
+  await assert.rejects(f.connect(), code('activation_outcome_unknown'));
+  assert.equal(records.length, 1); assert.equal(f.calls.filter(call => call.operation === 'activate').length, 1);
+  assert.equal(f.state.activation.tokenDigest, createHash('sha256').update(records[0].token).digest('hex'));
+});
+
+test('handoff configuration rejects missing, accessor or unknown methods without executing them', t => {
+  for (const handoff of [null, {}, { stage: false }, { stage() {}, list() {} }, Object.defineProperty({}, 'stage', { get() { throw Error('PRIVATE'); } })]) {
+    assert.throws(() => fixture(t, { factory: { handoff } }), /invalid_connection_control_config/);
+  }
+});

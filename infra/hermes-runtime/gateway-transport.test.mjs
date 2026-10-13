@@ -92,6 +92,10 @@ async function fixture(t, changes = {}) {
     attachStart(id) { events.push('attach'); assert.equal(id, containerId); attached = true;
       if (changes.attachFailure) throw Error('PRIVATE-ATTACH'); running = true;
       child = spawn(process.execPath, ['-e', childCode, changes.mode ?? 'normal'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); children.push(child);
+      if (changes.mode === 'flood') {
+        let received = 0;
+        child.stdout.on('data', chunk => { received += chunk.length; if (received > 65536) events.push('relay-output-over-limit'); });
+      }
       child.once('close', () => { running = false; events.push('child-close'); }); return child;
     },
     async inspectContainer(id) { events.push('inspect'); assert.equal(id, containerId); await changes.inspectWait?.promise;
@@ -289,7 +293,7 @@ test('unexpected relay exit closes the host listener and does not automatically 
 
 test('relay output is bounded and never exposed in errors', async t => {
   const inspectWait = deferred(), f = await fixture(t, { mode: 'flood', inspectWait }); const opening = f.open(); void opening.catch(() => {});
-  await wait(() => f.events.includes('attach')); await new Promise(resolve => setTimeout(resolve, 150)); inspectWait.resolve();
+  await wait(() => f.events.includes('relay-output-over-limit')); inspectWait.resolve();
   await assert.rejects(opening, error => !error.message.includes('xxx') && /^gateway_/.test(error.message)); assert(f.events.includes('remove-network'));
 });
 
