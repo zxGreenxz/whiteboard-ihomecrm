@@ -823,8 +823,10 @@ async function measureOrgLeak({ ghi, target, runSql, output, inventory }) {
     throw new Error('org_leak_exemptions_unavailable');
   }
   const daKhai = new Set(mienTru.map((r) => r.table_name));
-  const roThat = canXet.filter((r) => r.group === 'LIVE_LEAK' && !daKhai.has(r.table_name));
-  const roDaKhai = canXet.filter((r) => r.group === 'LIVE_LEAK' && daKhai.has(r.table_name));
+  // A policy name is not proof of isolation: measure every table, including ones
+  // already declaring an org boundary. canXet only describes unfinished coverage.
+  const roThat = rows.filter((r) => r.group === 'LIVE_LEAK' && !daKhai.has(r.table_name));
+  const roDaKhai = rows.filter((r) => r.group === 'LIVE_LEAK' && daKhai.has(r.table_name));
 
   console.log('');
   console.log(`Bảng chưa có biên giới: ${canXet.length} · ${Object.entries(dem).sort().map(([k, v]) => `${k}=${v}`).join(' · ')}`);

@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1446,
   "soFileDocBangFs": 329,
-  "tongLoiGoi": 759,
+  "tongLoiGoi": 760,
   "khongPhanLoaiDuoc": 346,
   "theoLoai": {
     "ma-nguon": {
@@ -291,6 +291,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "scripts/__tests__/measure-org-leak-target.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "manifest": 5
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/network-center-admin-credential-reconciliation.test.mjs",
       "soGoi": 5,
       "loai": {},
@@ -395,14 +403,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "scripts/__tests__/measure-org-leak-target.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 4
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/pwa-manifest.test.ts",
