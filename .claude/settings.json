@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then node \"$CLAUDE_PROJECT_DIR/scripts/cloud-vault-from-env.mjs\" 2>&1 || echo \"cloud-vault: THẤT BẠI (mã $?) — vault thiếu hoặc chưa đúng, xem dòng trên.\"; fi; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
