@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-12T07:47:50.981Z",
+  "generatedAt": "2026-10-13T07:17:28.675Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 679,
-    "unknown": 83,
+    "unknown": 90,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11374,6 +11374,106 @@
       "evidence": [],
       "missingObjects": [
         "function:app_private.hermes_envelope_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+      "version": "20261012083047",
+      "name": "hermes_room_scope_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "04c5dd53033220c7398fb0a64944e995663327f84fb20caab1009c7e2191ddf9",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.hermes_room_scope_map_v1",
+        "function:public.hermes_connection_context_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+      "version": "20261012083555",
+      "name": "hermes_connection_renewal_v1",
+      "scheme": "timestamp14",
+      "sha256": "05d5d2961e307cc2c0c18f94e586ca9a8dba33f86da44d6189c8762ed4a542e2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_store_renew_connection_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql",
+      "version": "20261012165523",
+      "name": "hermes_zalo_binding_v1",
+      "scheme": "timestamp14",
+      "sha256": "d57bf2f2f25dd890951c0de64006f89cf478f401b19f1e422c30f7338c224f54",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_zalo_bots",
+        "table:app_private.hermes_zalo_ingress_sessions",
+        "table:app_private.hermes_zalo_link_challenges",
+        "table:app_private.hermes_zalo_bindings",
+        "function:app_private.hermes_zalo_shared_inbox_guard_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+      "version": "20261012165809",
+      "name": "hermes_public_conflict_http_v1",
+      "scheme": "timestamp14",
+      "sha256": "b2f087aa089334446dfef3606a6c81ea6ae5b7cf4ec122da0630e30ba4a79e50",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.hermes_room_scope_map_v1",
+        "function:public.hermes_set_org_policy_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql",
+      "version": "20261013055055",
+      "name": "hermes_zalo_private_command_v1",
+      "scheme": "timestamp14",
+      "sha256": "a03b0abd71b5a44c008f67eac361172f6ee2c07823bd158a165b37b759b38347",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_zalo_private_commands",
+        "function:public.hermes_zalo_private_command_v1",
+        "index:app_private.hermes_zalo_private_pending"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+      "version": "20261013084000",
+      "name": "hermes_private_command_dispatch_v1",
+      "scheme": "timestamp14",
+      "sha256": "a03317beaf250c373e1ccea29a921161979b72e4dc4420eb32d3a46714cdde29",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_private_command_connection_v1",
+        "function:app_private.hermes_private_command_lock_v1",
+        "function:app_private.hermes_store_claim_private_command_v1",
+        "function:app_private.hermes_store_dispatch_private_command_v1",
+        "function:app_private.hermes_store_finish_private_command_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql",
+      "version": "20261013095000",
+      "name": "hermes_zalo_private_reply_v1",
+      "scheme": "timestamp14",
+      "sha256": "db9f4b38f5c7394ca15dfd54c9708def78740b14e4cf5496f7bdab688233369a",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_private_command_authority_guard_v1",
+        "function:app_private.hermes_private_reply_lock_v1",
+        "function:public.hermes_zalo_private_reply_v1",
+        "function:app_private.hermes_store_prune_private_commands_v1",
+        "index:app_private.hermes_private_reply_delivery"
       ]
     },
     {

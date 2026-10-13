@@ -24,6 +24,7 @@ import { createSupabaseDurableAuthAdapter } from '../infra/hermes-broker/supabas
 import { createBroker } from '../infra/hermes-broker/broker.mjs';
 import { createConnectionControlPlane, createSupabaseAssistantSignIn,
   createSupabaseConnectionPreparation } from '../infra/hermes-broker/connection-control-plane.mjs';
+import { createRoomReadService, createSupabaseRoomReads } from '../infra/hermes-broker/room-read-service.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const REPORT = '.cache/hermes-durable-store.json';
@@ -31,7 +32,7 @@ const CA_FILE = 'infra/hermes-broker/certs/supabase-ca-2021.crt';
 const CA_FINGERPRINT = '807025AD50D4ED219D2C9C7D299C004F824EB00CF7F65AFEF607D07B72E6CAFA';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ROLE = /^hermes_store_fixture_[0-9a-f]{32}$/;
-const OPS = ['activate', 'read_connection', 'restrict_connection', 'revoke_connection', 'acquire_refresh',
+const OPS = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh'];
 const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'];
 const RPC_NAMES = new Set(['hermes_set_org_policy_v1', 'hermes_prepare_connection_v1', 'hermes_my_connections_v1',
@@ -47,6 +48,7 @@ const INPUTS = ['scripts/test-hermes-durable-store.mjs', 'scripts/test-hermes-br
   'infra/hermes-broker/durable-connection-store.mjs', 'infra/hermes-broker/durable-authority.mjs',
   'infra/hermes-broker/supabase-durable-auth-adapter.mjs',
   'infra/hermes-broker/connection-control-plane.mjs',
+  'infra/hermes-broker/room-read-service.mjs', 'infra/hermes-broker/room-read-projection.mjs', 'src/lib/roomSaleFacts.ts',
   'infra/hermes-broker/broker.mjs', 'infra/hermes-broker/stores.mjs', CA_FILE];
 const BACKUP_MAX_AGE = 60 * 60_000;
 const verifiedBackups = new WeakSet();
@@ -171,7 +173,8 @@ export function fixturePlan() {
   plan.actors.forEach(actor => { actor.email = actor.email.replace('hermes-p1-', 'hermes-p2-'); });
   plan.orgs.forEach(org => { org.slug = org.slug.replace('hermes-p1-', 'hermes-p2-'); });
   return { ...plan, role: `hermes_store_fixture_${plan.run.replaceAll('-', '')}`,
-    rolePassword: randomBytes(32).toString('base64url'), connectionIds: [] };
+    rolePassword: randomBytes(32).toString('base64url'), connectionIds: [],
+    roomRead: { areaId: randomUUID(), scopeId: randomUUID(), buildingId: randomUUID(), roomId: randomUUID() } };
 }
 export function fixtureSetupSql(plan) {
   // New organizations have no trigger that provisions this scope. users.edit is
@@ -201,8 +204,37 @@ export function privateCleanupSql(plan) {
     delete from app_private.hermes_sessions where organization_id in (${orgs});
     delete from app_private.hermes_assistants where organization_id in (${orgs});
     delete from app_private.hermes_org_policies where organization_id in (${orgs});
+    ${roomReadCleanupSql(plan)}
     delete from public.authorization_audit_events where organization_id in (${orgs});
     COMMIT;`;
+}
+export function roomReadFixtureSql(plan) {
+  const org = plan.orgs[0], owner = plan.actors[2].id, r = plan.roomRead;
+  demand([org.id, owner, r.areaId, r.scopeId, r.buildingId, r.roomId].every(id => UUID.test(id ?? '')), 'fixture_room_ids_required');
+  return `BEGIN;
+    insert into public.buildings(id,user_id,organization_id,name,province,district,ward,public_contact_name)
+      values (${lit(r.buildingId)},${lit(owner)},${lit(org.id)},'Hermes synthetic building','TEST','TEST','TEST','PRIVATE_HERMES_FIXTURE');
+    insert into public.rooms(id,building_id,organization_id,name,rent_price,deposit_amount,status,description)
+      values (${lit(r.roomId)},${lit(r.buildingId)},${lit(org.id)},'Hermes synthetic extra room',200,200,'AVAILABLE','PRIVATE_HERMES_FIXTURE');
+    update public.buildings set public_contact_name='PRIVATE_HERMES_FIXTURE'
+      where id=${lit(org.buildingId)} and organization_id=${lit(org.id)};
+    update public.rooms set description='PRIVATE_HERMES_FIXTURE' where id=${lit(org.roomId)} and organization_id=${lit(org.id)};
+    insert into public.areas(id,user_id,organization_id,name) values (${lit(r.areaId)},${lit(owner)},${lit(org.id)},'Hermes synthetic area');
+    insert into public.area_buildings(area_id,building_id,user_id,organization_id)
+      values (${lit(r.areaId)},${lit(org.buildingId)},${lit(owner)},${lit(org.id)});
+    insert into public.authorization_scopes(id,organization_id,scope_type,area_id)
+      values (${lit(r.scopeId)},${lit(org.id)},'AREA',${lit(r.areaId)});
+    COMMIT;`;
+}
+export function roomReadCleanupSql(plan) {
+  const r = plan.roomRead, org = plan.orgs[0];
+  demand([org.id, r?.areaId, r?.scopeId, r?.buildingId, r?.roomId].every(id => UUID.test(id ?? '')), 'fixture_room_ids_required');
+  return `delete from public.area_buildings where area_id=${lit(r.areaId)} and organization_id=${lit(org.id)};
+    delete from public.authorization_scopes where organization_id=${lit(org.id)}
+      and (id=${lit(r.scopeId)} or (scope_type='BUILDING' and building_id=${lit(r.buildingId)}));
+    delete from public.rooms where id=${lit(r.roomId)} and organization_id=${lit(org.id)};
+    delete from public.buildings where id=${lit(r.buildingId)} and organization_id=${lit(org.id)};
+    delete from public.areas where id=${lit(r.areaId)} and organization_id=${lit(org.id)};`;
 }
 export function roleSetupSql(plan) {
   demand(ROLE.test(plan.role) && /^[A-Za-z0-9_-]{40,64}$/.test(plan.rolePassword), 'fixture_role_invalid');
@@ -223,6 +255,10 @@ export function countsSql(plan) {
       .map(name => [name, `public.${name}`, `${name === 'organizations' ? 'id' : 'organization_id'} in (${orgs})`]),
     ['rooms', 'public.rooms', `id in (${ids(plan.orgs.map(org => org.roomId))})`],
     ['buildings', 'public.buildings', `id in (${ids(plan.orgs.map(org => org.buildingId))})`],
+    ['room_read_rooms', 'public.rooms', `id=${lit(plan.roomRead.roomId)}`],
+    ['room_read_buildings', 'public.buildings', `id=${lit(plan.roomRead.buildingId)}`],
+    ['room_read_areas', 'public.areas', `id=${lit(plan.roomRead.areaId)}`],
+    ['room_read_edges', 'public.area_buildings', `area_id=${lit(plan.roomRead.areaId)}`],
     ['profiles', 'public.profiles', `id in (${actors})`], ['superadmins', 'public.super_admins', `user_id in (${actors})`],
     ['auth_sessions', 'auth.sessions', `user_id in (${actors})`],
     ['auth_users', 'auth.users', `email in (${plan.actors.map(actor => lit(actor.email)).join(',')})`],
@@ -230,10 +266,15 @@ export function countsSql(plan) {
   ];
   return `select ${specs.map(([name, table, where]) => `(select count(*) from ${table} where ${where})::int ${name}`).join(',')}`;
 }
-export async function expectRejection(operation, codes) {
-  let observed;
-  try { await operation(); } catch (error) { observed = error?.code; }
-  demand(codes.includes(observed), 'expected_rejection_missing');
+export async function expectRejection(operation, codes, label = 'unlabelled') {
+  let observed, rejected = false;
+  try { await operation(); } catch (error) { rejected = true; observed = error?.code; }
+  if (!codes.includes(observed)) {
+    const safeCodes = ['timeout', 'forbidden', 'unauthorized', 'context_changed', 'backend_unavailable', 'invalid_request', 'store_denied', 'store_unavailable'];
+    throw Object.assign(new Error('expected_rejection_missing'), { code: 'expected_rejection_missing',
+      rejectionDiagnostics: { label: /^[a-z_]{1,64}$/.test(label) ? label : 'invalid_label', rejected,
+        observed: safeCodes.includes(observed) ? observed : rejected ? 'other_error' : 'no_rejection' } });
+  }
 }
 // All in-flight writes settle before cleanup. Unknown write outcome permanently
 // retains the TEST lease marker, even when the cleanup query currently sees zero.
@@ -294,7 +335,7 @@ export function createGuardedStoreTransport(ctx, transport, { assertLease = ctx.
   }, drain: tracker.drain });
 }
 export async function guardedConnectionCall(ctx, store, operation, input, { signal = ctx.lease.signal } = {}) {
-  demand(['activate', 'readConnection', 'restrictConnection', 'revokeConnection'].includes(operation), 'fixture_store_operation_refused');
+  demand(['activate', 'readConnection', 'restrictConnection', 'renewConnection', 'revokeConnection'].includes(operation), 'fixture_store_operation_refused');
   try { return await store[operation](input, { signal }); }
   catch (error) {
     // The protocol adapter can identify an unknown ACK after the transport has
@@ -303,10 +344,107 @@ export async function guardedConnectionCall(ctx, store, operation, input, { sign
     throw error;
   }
 }
+// Live caller preparation, not a replacement auth implementation. The injected
+// authority is the same DB/AAD/actual-Auth/CRM resolver exercised by the broker.
+export async function prepareFixtureRenewal(authority, connectionStore, token, signal) {
+  demand(/^hc_[A-Za-z0-9_-]{43}$/.test(token ?? '') && signal instanceof AbortSignal, 'fixture_renewal_input_invalid');
+  signal.throwIfAborted();
+  const receipt = await authority.resolve(token, { signal }); signal.throwIfAborted();
+  const tokenDigest = digest(token), joined = await connectionStore.readConnection({ tokenDigest }, { signal }); signal.throwIfAborted();
+  demand(joined?.status === 'active' && joined.connection?.tokenDigest === tokenDigest
+    && ['id', 'assistantId', 'userId', 'organizationId', 'epoch', 'expiresAt'].every(key => joined.connection[key] === receipt?.row?.[key])
+    && UUID.test(joined.session?.credentialRef ?? '') && joined.session.credentialRef === joined.connection.credentialRef
+    && Number.isSafeInteger(joined.session.revision) && joined.session.revision > 0, 'fixture_renewal_context_changed');
+  const input = { tokenDigest, connectionId: joined.connection.id, expectedEpoch: joined.connection.epoch,
+    credentialRef: joined.session.credentialRef, expectedRevision: joined.session.revision,
+    expectedExpiresAt: joined.connection.expiresAt, requestedTtlMs: 900_000 };
+  demand(await authority.checkUnchanged(token, receipt, { signal }) === undefined, 'fixture_renewal_context_changed'); signal.throwIfAborted();
+  return input;
+}
+// Boundary probes mutate only rows belonging to this run's synthetic user/org,
+// selected connection, credential and token. They are fixture data edits under
+// the same TEST lease/backup/uncertainty guard, never authority used in production.
+export function fixtureRenewalBoundaryMutation(plan, item, mode) {
+  demand(['session_cap', 'hard_age_cap', 'expired'].includes(mode)
+    && plan?.connectionIds?.includes(item?.connection?.id)
+    && plan.memberships.some(m => m.actor === item.actorIndex && m.org === item.orgIndex)
+    && plan.actors[item.actorIndex]?.id === item.binding?.userId && plan.orgs[item.orgIndex]?.id === item.binding?.organizationId
+    && [item.connection.id, item.credentialRef, item.binding.assistantId, item.binding.userId, item.binding.organizationId].every(v => UUID.test(v ?? ''))
+    && /^[a-f0-9]{64}$/.test(item.activation?.tokenDigest ?? ''), 'fixture_renewal_owner_required');
+  const values = [item.activation.tokenDigest, item.connection.id, item.credentialRef,
+    item.binding.organizationId, item.binding.userId, item.binding.assistantId];
+  const owned = `WITH owned AS (SELECT c.id,c.credential_ref FROM app_private.hermes_connections c
+    WHERE c.id=$2 AND c.credential_ref=$3 AND c.organization_id=$4 AND c.user_id=$5 AND c.assistant_id=$6),
+    bounds AS (SELECT date_trunc('milliseconds',clock_timestamp()) AS now)`;
+  if (mode === 'session_cap') return { values, text: `${owned},
+    adjusted_session AS (UPDATE app_private.hermes_sessions s SET expires_at=b.now+interval '90 seconds'
+      FROM bounds b WHERE s.id=$3 AND s.organization_id=$4 AND s.user_id=$5 AND s.assistant_id=$6
+        AND EXISTS(SELECT 1 FROM owned) RETURNING s.expires_at),
+    adjusted_token AS (UPDATE app_private.hermes_connection_tokens t SET expires_at=b.now+interval '30 seconds'
+      FROM bounds b WHERE t.token_digest=$1 AND t.connection_id=$2 AND EXISTS(SELECT 1 FROM owned)
+        AND EXISTS(SELECT 1 FROM adjusted_session) RETURNING t.expires_at)
+    SELECT (SELECT count(*)::int FROM adjusted_session) AS session_rows,(SELECT count(*)::int FROM adjusted_token) AS token_rows,
+      (SELECT floor(extract(epoch FROM expires_at)*1000)::bigint FROM adjusted_session) AS cap,
+      (SELECT floor(extract(epoch FROM expires_at)*1000)::bigint FROM adjusted_token) AS expires` };
+  return { values, text: `${owned}, adjusted_token AS (
+    UPDATE app_private.hermes_connection_tokens t SET ${mode === 'hard_age_cap'
+      ? "created_at=b.now-interval '30 days'+interval '120 seconds',expires_at=b.now+interval '30 seconds'"
+      : "expires_at=b.now-interval '1 second'"}
+    FROM bounds b WHERE t.token_digest=$1 AND t.connection_id=$2 AND EXISTS(SELECT 1 FROM owned)
+    RETURNING t.expires_at,t.created_at)
+    SELECT count(*)::int AS token_rows,max(floor(extract(epoch FROM expires_at)*1000))::bigint AS expires,
+      max(floor(extract(epoch FROM created_at+interval '30 days')*1000))::bigint AS cap FROM adjusted_token` };
+}
+// Deterministic request interleaving, NOT a transaction-internal MVCC test. The
+// real read pauses at an explicit JS await, a guarded SQL mutation commits, then
+// the real final RPC runs. Always release and settle the read before cleanup.
+export async function runFixtureReadInterleaving({ read, mutate, signal, timeoutMs = 15000 }) {
+  demand(typeof read === 'function' && typeof mutate === 'function' && signal instanceof AbortSignal
+    && Number.isInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 30000, 'fixture_barrier_invalid');
+  signal.throwIfAborted();
+  const controller = new AbortController(), combined = AbortSignal.any([signal, controller.signal]);
+  let enter, release, entered = false;
+  const reached = new Promise(resolve => { enter = resolve; }), held = new Promise(resolve => { release = resolve; });
+  const barrier = async () => { demand(!entered, 'fixture_barrier_reused'); entered = true; enter(); await held; combined.throwIfAborted(); };
+  const pending = Promise.resolve().then(() => read(barrier, combined));
+  const completed = pending.then(() => { throw Object.assign(new Error('fixture_barrier_missing'), { code: 'fixture_barrier_missing' }); });
+  let rejectAbort;
+  const cancelled = new Promise((_, reject) => { rejectAbort = reject; });
+  // Keep cancellation observed even when a caller is aborted synchronously by
+  // the read before Promise.race is reached, or the mutation itself rejects.
+  void cancelled.catch(() => {});
+  const onAbort = () => rejectAbort(Object.assign(new Error('fixture_barrier_cancelled'), { code: 'fixture_barrier_cancelled' }));
+  combined.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    combined.throwIfAborted(); await Promise.race([reached, completed, cancelled]); combined.throwIfAborted();
+    await mutate(); combined.throwIfAborted(); release();
+    return await pending;
+  } finally {
+    release(); controller.abort(); clearTimeout(timer); combined.removeEventListener('abort', onAbort);
+    await Promise.allSettled([pending, completed, cancelled]);
+  }
+}
+export function assertRoomProjection(result, roomIds, buildingIds) {
+  const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
+  demand(exact(result, ['source', 'readAt', 'currency', 'completeness', 'totalInSnapshot', 'offset', 'nextOffset', 'rooms'])
+    && result.source === 'copilot_available_rooms_v1' && result.currency === 'VND' && result.completeness === 'complete'
+    && Array.isArray(result.rooms) && result.totalInSnapshot === roomIds.length, 'fixture_room_projection_invalid');
+  assert.deepEqual(result.rooms.map(row => row.id).sort(), [...roomIds].sort());
+  assert.deepEqual([...new Set(result.rooms.map(row => row.building?.id))].sort(), [...buildingIds].sort());
+  for (const row of result.rooms) {
+    demand(exact(row, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'rentVnd', 'depositVnd', 'status', 'availability'])
+      && exact(row.building, ['id', 'name', 'code']) && exact(row.availability, ['kind', 'label', 'availableOn']), 'fixture_room_projection_invalid');
+  }
+  demand(!JSON.stringify(result).includes('PRIVATE_HERMES_FIXTURE'), 'fixture_room_projection_contains_private_data');
+  return result;
+}
 export function createLeaseReadFetch(ctx, { assertLease = ctx.assertLease ?? assertTestLease, request = fetch, drainTimeoutMs = 30_000 } = {}) {
   const tracker = fixtureWorkTracker(ctx, drainTimeoutMs);
   const paths = new Map([['/auth/v1/user', 'GET'], ['/rest/v1/rpc/get_authorization_context_v1', 'POST'],
-    ['/rest/v1/rpc/get_my_organizations', 'POST'], ['/rest/v1/rpc/copilot_org_scope_buildings_v1', 'POST']]);
+    ['/rest/v1/rpc/get_my_organizations', 'POST'], ['/rest/v1/rpc/copilot_org_scope_buildings_v1', 'POST'],
+    ['/rest/v1/rpc/hermes_room_scope_map_v1', 'POST'], ['/rest/v1/rpc/copilot_available_rooms_v1', 'POST']]);
   const read = async (url, options) => tracker.track(async () => {
     const parsed = new URL(url);
     demand(parsed.origin === ctx.url && !parsed.search && !parsed.hash && !parsed.username && !parsed.password
@@ -314,7 +452,30 @@ export function createLeaseReadFetch(ctx, { assertLease = ctx.assertLease ?? ass
     demand(options.signal instanceof AbortSignal && ctx.lease.signal instanceof AbortSignal, 'fixture_signal_required');
     const signal = AbortSignal.any([options.signal, ctx.lease.signal]); signal.throwIfAborted();
     await assertLease(ctx.lease, ctx.test); signal.throwIfAborted();
-    return request(url, { ...options, signal });
+    const started = Date.now();
+    try {
+      const response = await request(url, { ...options, signal });
+      if (parsed.pathname === '/rest/v1/rpc/hermes_room_scope_map_v1' && Array.isArray(ctx.rpcDiagnostics) && ctx.rpcDiagnostics.length < 128) {
+        let sqlState = null;
+        // Error bodies only, bounded diagnostics; never record request/JWT/body.
+        if (!response.ok) {
+          const reader = response.clone().body?.getReader();
+          try {
+            const chunks=[]; let size=0;
+            while(reader) { const part=await reader.read(); if(part.done)break; size+=part.value.byteLength;
+              if(size>8192)break; chunks.push(Buffer.from(part.value)); }
+            if(size<=8192) { const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              if(/^[0-9A-Z]{5}$/.test(data?.code??''))sqlState=data.code; }
+          } catch {} finally { reader?.cancel().catch(()=>{}); }
+        }
+        ctx.rpcDiagnostics.push({ endpoint: parsed.pathname, httpStatus: response.status, sqlState, elapsedMs: Date.now() - started });
+      }
+      return response;
+    } catch(error) {
+      if(parsed.pathname === '/rest/v1/rpc/hermes_room_scope_map_v1' && Array.isArray(ctx.rpcDiagnostics) && ctx.rpcDiagnostics.length < 128)
+        ctx.rpcDiagnostics.push({ endpoint: parsed.pathname, httpStatus: null, sqlState: null, elapsedMs: Date.now() - started, aborted: signal.aborted });
+      throw error;
+    }
   });
   return Object.assign(read, { drain: tracker.drain });
 }
@@ -401,7 +562,8 @@ export async function runHarness({ expectedProjectRef, backupManifestPath, verif
   const check = async (name, operation) => {
     await ctx.assertLease(lease, ctx.test);
     try { await operation(); cases.push({ name, status: 'PASS' }); }
-    catch (error) { cases.push({ name, status: 'FAIL', code: safeError(error) }); }
+    catch (error) { cases.push({ name, status: 'FAIL', code: safeError(error),
+      ...(error?.code === 'expected_rejection_missing' ? { rejectionDiagnostics: error.rejectionDiagnostics } : {}) }); }
   };
   const signIn = async actor => {
     await ctx.assertLease(lease, ctx.test);
@@ -499,10 +661,10 @@ export async function runHarness({ expectedProjectRef, backupManifestPath, verif
         p_org: org.id, p_expected_version: 0, p_enabled: true, p_read: ['assistant.context.read'], p_action: [], p_scope_ids: [],
       }, true); demand(result.status === 200 && result.body.version === 1, 'fixture_policy_setup_failed');
     }
-    const issue = async (actorIndex = 0, orgIndex = 0) => {
+    const issue = async (actorIndex = 0, orgIndex = 0, { readCapabilities = ['assistant.context.read'], scopeIds = [] } = {}) => {
       const actor = plan.actors[actorIndex], org = plan.orgs[orgIndex], session = await signIn(actor);
       const result = await rpc(ctx, session.accessToken, 'hermes_prepare_connection_v1', {
-        p_org: org.id, p_read: ['assistant.context.read'], p_action: [], p_scope_ids: [],
+        p_org: org.id, p_read: readCapabilities, p_action: [], p_scope_ids: scopeIds,
       }, true); demand(result.status === 200 && result.body.userId === actor.id && result.body.organizationId === org.id, 'fixture_prepare_failed');
       const prepared = result.body, credentialRef = randomUUID(), token = `hc_${randomBytes(32).toString('base64url')}`;
       plan.connectionIds.push(prepared.id);
@@ -700,6 +862,215 @@ export async function runHarness({ expectedProjectRef, backupManifestPath, verif
       const row = (await query('select state,envelope,staged_envelope,fence from app_private.hermes_sessions where id=$1', [item.credentialRef])).rows[0];
       demand(row.state === 'REVOKED' && row.envelope === null && row.staged_envelope === null && Number(row.fence) > claim.fence, 'session_tombstone_invalid');
     });
+    // Five additive renewal cases. The existing 18 acceptance cases above and
+    // cleanup remain separate; old receipts do not cover this new SQL surface.
+    const renewalInput = item => prepareFixtureRenewal(authority, connectionStore, item.token, lease.signal);
+    const boundary = async (item, mode) => {
+      const { text, values } = fixtureRenewalBoundaryMutation(plan, item, mode);
+      const result = (await query(text, values, { write: true })).rows[0];
+      demand(result?.token_rows === 1 && (mode !== 'session_cap' || result.session_rows === 1)
+        && Number.isSafeInteger(Number(result.expires)) && Number.isSafeInteger(Number(result.cap)), 'fixture_renewal_boundary_failed');
+      return { expiresAt: Number(result.expires), cap: Number(result.cap) };
+    };
+    await check('renewal.server_clock_stable_opaque_and_bounded_ttl', async () => {
+      const item = await issue(), input = await renewalInput(item);
+      const bounds = async () => (await query(`select floor(extract(epoch FROM clock_timestamp())*1000)::bigint as now,
+        floor(extract(epoch FROM s.expires_at)*1000)::bigint as session_cap,
+        floor(extract(epoch FROM t.created_at+interval '30 days')*1000)::bigint as age_cap
+        from app_private.hermes_connection_tokens t join app_private.hermes_connections c on c.id=t.connection_id
+        join app_private.hermes_sessions s on s.id=c.credential_ref
+        where t.token_digest=$1 and c.id=$2 and c.organization_id=$3 and c.user_id=$4`,
+      [input.tokenDigest, input.connectionId, item.binding.organizationId, item.binding.userId])).rows[0];
+      const before = await bounds(); demand(before, 'fixture_renewal_clock_missing');
+      // A deliberately skewed host clock must not choose/refuse the lease. Real
+      // Auth/CRM admission used the normal clock just before this private call.
+      let skewClockCalls = 0;
+      const skewedStore = createDurableConnectionStore({ transport: guardedTransport,
+        clock: () => { skewClockCalls++; return Date.now() + 86_400_000; } });
+      const renewed = await guardedConnectionCall(ctx, skewedStore, 'renewConnection', input);
+      const after = await bounds(); demand(after && skewClockCalls === 0, 'renewal_depended_on_host_clock');
+      const cap = Math.min(Number(before.session_cap), Number(before.age_cap));
+      demand(renewed.expiresAt > input.expectedExpiresAt
+        && renewed.expiresAt >= Math.min(Number(before.now) + input.requestedTtlMs, cap)
+        && renewed.expiresAt <= Math.min(Number(after.now) + input.requestedTtlMs, cap), 'renewal_db_lease_out_of_bounds');
+      const current = await connectionCall('readConnection', { tokenDigest: input.tokenDigest });
+      demand(current?.connection.expiresAt === renewed.expiresAt && current.connection.id === input.connectionId
+        && current.session.revision === input.expectedRevision, 'renewal_joined_ack_mismatch');
+      await contextOf(item); // The same opaque is admitted again via actual Auth.
+    });
+    await check('renewal.stale_expiry_revision_epoch_and_invalid_ttl_denied', async () => {
+      const item = await issue(), input = await renewalInput(item);
+      for (const delta of [{ expectedExpiresAt: input.expectedExpiresAt + 1 }, { expectedRevision: input.expectedRevision + 1 },
+        { expectedEpoch: input.expectedEpoch + 1 }]) {
+        await expectRejection(() => connectionCall('renewConnection', { ...input, ...delta }), ['store_conflict']);
+      }
+      // Bypass only the input adapter, using the same restricted DB principal,
+      // to prove SQL independently rejects malformed/oversized requested TTL.
+      for (const requestedTtlMs of [0, 900001, null]) {
+        await expectRejection(() => store('renewConnection', { ...input, requestedTtlMs }), ['store_rejected']);
+      }
+      const current = await connectionCall('readConnection', { tokenDigest: input.tokenDigest });
+      demand(current?.connection.expiresAt === input.expectedExpiresAt, 'denied_renewal_changed_expiry'); await contextOf(item);
+    });
+    await check('renewal.session_cap_is_enforced_by_sql', async () => {
+      const item = await issue(), input = await renewalInput(item), limited = await boundary(item, 'session_cap');
+      const renewed = await connectionCall('renewConnection', { ...input, expectedExpiresAt: limited.expiresAt });
+      demand(renewed.expiresAt === limited.cap, 'renewal_exceeded_session_cap');
+      // This admin fixture deliberately shortens the DB session metadata only.
+      // It is a SQL boundary probe, not a valid shortened provider JWT. Actual
+      // authority must reject its mismatch with sealed/verified session expiry.
+      await expectRejection(() => authority.resolve(item.token, { signal: lease.signal }), ['unauthorized']);
+    });
+    await check('renewal.hard_age_cap_and_expired_token_denied', async () => {
+      const item = await issue(), initial = await renewalInput(item), limited = await boundary(item, 'hard_age_cap');
+      const input = { ...initial, expectedExpiresAt: limited.expiresAt };
+      const renewed = await connectionCall('renewConnection', input);
+      demand(renewed.expiresAt === limited.cap, 'renewal_exceeded_hard_age'); await contextOf(item);
+      const expired = await boundary(item, 'expired');
+      await expectRejection(() => connectionCall('renewConnection', { ...input, expectedExpiresAt: expired.expiresAt }), ['store_conflict']);
+      demand((await read(item)).status === 'unavailable', 'expired_opaque_readmitted');
+    });
+    await check('renewal.revocation_and_reserved_refresh_block_extension', async () => {
+      const revoked = await issue(), beforeRevoke = await renewalInput(revoked);
+      await connectionCall('revokeConnection', { connectionId: revoked.connection.id, expectedEpoch: revoked.connection.epoch });
+      await expectRejection(() => connectionCall('renewConnection', beforeRevoke), ['store_conflict']);
+      demand((await read(revoked)).status === 'unavailable', 'revoked_opaque_readmitted');
+      const reserved = await issue(), beforeAcquire = await renewalInput(reserved), claim = await acquire(reserved);
+      await expectRejection(() => connectionCall('renewConnection', beforeAcquire), ['store_conflict']);
+      demand((await store('releaseRefresh', claim)).ok === true, 'renewal_probe_reserved_release_failed'); await contextOf(reserved);
+    });
+    // Five additive P3 cases follow the unchanged 18 baseline + 5 renewal
+    // cases. This invokes the trusted service directly with real assistant JWTs;
+    // transport/model exposure is a separate acceptance lane.
+    await sqlWrite(roomReadFixtureSql(plan));
+    const organizationScopes = (await query(`select id,organization_id from public.authorization_scopes
+      where organization_id=any($1::uuid[]) and scope_type='ORGANIZATION'`, [plan.orgs.map(org => org.id)])).rows;
+    demand(organizationScopes.length === 2 && plan.orgs.every(org => organizationScopes.filter(row => row.organization_id === org.id).length === 1),
+      'fixture_room_scope_missing');
+    const roomScopes = [[plan.roomRead.scopeId], [organizationScopes.find(row => row.organization_id === plan.orgs[1].id).id]];
+    const policyVersions = [1, 1], roomCapabilities = ['assistant.context.read', 'rooms.view'];
+    const setRoomPolicy = async (orgIndex, enabled) => {
+      const changed = await rpc(ctx, plan.actors[orgIndex].session.accessToken, 'hermes_set_org_policy_v1', {
+        p_org: plan.orgs[orgIndex].id, p_expected_version: policyVersions[orgIndex], p_enabled: enabled,
+        p_read: roomCapabilities, p_action: [], p_scope_ids: roomScopes[orgIndex],
+      }, true);
+      demand(changed.status === 200 && changed.body.version === policyVersions[orgIndex] + 1, 'fixture_room_policy_failed');
+      policyVersions[orgIndex] = changed.body.version;
+    };
+    await setRoomPolicy(0, true); await setRoomPolicy(1, true);
+    const roomReads = createSupabaseRoomReads({ url: ctx.url, publishableKey: ctx.cred.testPublishableKey, fetch: trackedReads });
+    const roomService = createRoomReadService({ authority, connectionStore, crypto, auth, reads: roomReads });
+    const issueRooms = (actorIndex, orgIndex) => issue(actorIndex, orgIndex,
+      { readCapabilities: roomCapabilities, scopeIds: roomScopes[orgIndex] });
+    const roomOptions = { signal: lease.signal };
+    let roomSubjects;
+    const roomBinding = async item => {
+      const admitted = await authority.resolve(item.token, roomOptions);
+      const joined = await connectionCall('readConnection', { tokenDigest: item.activation.tokenDigest });
+      demand(joined?.status === 'active' && joined.connection.id === admitted.row.id, 'fixture_room_binding_changed');
+      await authority.checkUnchanged(item.token, admitted, roomOptions);
+      return { accessToken: item.material.accessToken, organizationId: admitted.row.organizationId,
+        scopeIds: admitted.assistantScopeIds, connectionId: admitted.row.id, tokenDigest: item.activation.tokenDigest,
+        expectedEpoch: admitted.row.epoch, expectedPolicyVersion: joined.policy.version,
+        expectedMembershipId: joined.membership.membershipId, expectedAuthorizationVersion: joined.membership.authorizationVersion,
+        expectedSessionRevision: joined.session.revision };
+    };
+    await check('rooms.jwt_selected_company_and_assistant_area_projection', async () => {
+      const a = await issueRooms(0, 0), b = await issueRooms(1, 1), sa = await issueRooms(2, 0), sb = await issueRooms(2, 1);
+      roomSubjects = { a, b, sa, sb };
+      demand(sa.binding.assistantId !== sb.binding.assistantId, 'fixture_room_superadmin_namespace_shared');
+      const raw = await roomReads.availableRooms({ accessToken: a.material.accessToken, organizationId: plan.orgs[0].id }, roomOptions);
+      assert.deepEqual(raw.rooms.map(row => row.id).sort(), [plan.orgs[0].roomId, plan.roomRead.roomId].sort());
+      demand(JSON.stringify(raw).includes('PRIVATE_HERMES_FIXTURE'), 'fixture_room_private_negative_control_missing');
+      // Both same-name buildings are visible to the real CRM user. Only the
+      // current AREA edge is admitted to their assistant, including superadmin.
+      assert.deepEqual(raw.buildings.map(row => row.name), ['Hermes synthetic building', 'Hermes synthetic building']);
+      for (const item of [a, b, sa, sb]) {
+        const org = plan.orgs[item.orgIndex];
+        assertRoomProjection(await roomService.availableRooms(item.token, {}, roomOptions), [org.roomId], [org.buildingId]);
+      }
+      await expectRejection(() => roomReads.availableRooms({ accessToken: a.material.accessToken,
+        organizationId: plan.orgs[1].id }, roomOptions), ['forbidden']);
+    });
+    await check('rooms.bound_rpc_rejects_actor_session_scope_and_version_spoofing', async () => {
+      demand(roomSubjects, 'fixture_room_subjects_unavailable');
+      const bound = await roomBinding(roomSubjects.a);
+      const allowed = await roomReads.scopeMap(bound, roomOptions);
+      assert.equal(allowed.organizationId, plan.orgs[0].id);
+      assert.deepEqual(allowed.areaBuildings.map(edge => edge.buildingId), [plan.orgs[0].buildingId]);
+      for (const delta of [{ accessToken: roomSubjects.b.material.accessToken },
+        { accessToken: plan.actors[0].session.accessToken }, { organizationId: plan.orgs[1].id },
+        { tokenDigest: 'f'.repeat(64) }]) {
+        await expectRejection(() => roomReads.scopeMap({ ...bound, ...delta }, roomOptions), ['forbidden'], `spoof_${Object.keys(delta)[0].replace(/[A-Z]/g, c => '_' + c.toLowerCase())}`);
+      }
+      for (const delta of [{ expectedEpoch: bound.expectedEpoch + 1 }, { expectedPolicyVersion: bound.expectedPolicyVersion + 1 },
+        { expectedAuthorizationVersion: bound.expectedAuthorizationVersion + 1 }, { expectedSessionRevision: bound.expectedSessionRevision + 1 },
+        { expectedMembershipId: randomUUID() }, { scopeIds: roomScopes[1] }]) {
+        await expectRejection(() => roomReads.scopeMap({ ...bound, ...delta }, roomOptions), ['context_changed'], `spoof_${Object.keys(delta)[0].replace(/[A-Z]/g, c => '_' + c.toLowerCase())}`);
+      }
+    });
+    await check('rooms.area_commit_after_final_auth_invalidates_old_projection', async () => {
+      demand(roomSubjects, 'fixture_room_subjects_unavailable');
+      const item = roomSubjects.a;
+      await expectRejection(() => runFixtureReadInterleaving({ signal: lease.signal, timeoutMs: 30000,
+        read: async (barrier, signal) => {
+          const pausedAuthority = { ...authority, async checkUnchanged(...args) {
+            await authority.checkUnchanged(...args); await barrier();
+          } };
+          const paused = createRoomReadService({ authority: pausedAuthority, connectionStore, crypto, auth, reads: roomReads });
+          return paused.availableRooms(item.token, {}, { signal });
+        },
+        mutate: async () => {
+          const changed = await query(`update public.area_buildings set building_id=$1
+            where area_id=$2 and organization_id=$3 and building_id=$4`,
+          [plan.roomRead.buildingId, plan.roomRead.areaId, plan.orgs[0].id, plan.orgs[0].buildingId], { write: true });
+          demand(changed.rowCount === 1, 'fixture_area_mutation_missing');
+        },
+      }), ['context_changed']);
+      assertRoomProjection(await roomService.availableRooms(item.token, {}, roomOptions), [plan.roomRead.roomId], [plan.roomRead.buildingId]);
+      assertRoomProjection(await roomService.availableRooms(roomSubjects.b.token, {}, roomOptions), [plan.orgs[1].roomId], [plan.orgs[1].buildingId]);
+    });
+    await check('rooms.policy_revoke_committed_before_final_map_denies_output', async () => {
+      demand(roomSubjects, 'fixture_room_subjects_unavailable');
+      let maps = 0;
+      try {
+        await expectRejection(() => runFixtureReadInterleaving({ signal: lease.signal, timeoutMs: 30000,
+          read: async (barrier, signal) => {
+            const pausedReads = { ...roomReads, async scopeMap(...args) {
+              if (++maps === 2) await barrier();
+              return roomReads.scopeMap(...args);
+            } };
+            const paused = createRoomReadService({ authority, connectionStore, crypto, auth, reads: pausedReads });
+            return paused.availableRooms(roomSubjects.a.token, {}, { signal });
+          }, mutate: () => setRoomPolicy(0, false),
+        }), ['forbidden']);
+        demand(maps === 2, 'fixture_final_map_barrier_missing');
+        assertRoomProjection(await roomService.availableRooms(roomSubjects.b.token, {}, roomOptions), [plan.orgs[1].roomId], [plan.orgs[1].buildingId]);
+      } finally {
+        // Only our exact synthetic policy is restored, using its acknowledged
+        // version. An unknown mutation keeps the lease marker via testFetch.
+        if (policyVersions[0] > 2) await setRoomPolicy(0, true);
+      }
+      assertRoomProjection(await roomService.availableRooms(roomSubjects.a.token, {}, roomOptions), [plan.roomRead.roomId], [plan.roomRead.buildingId]);
+    });
+    await check('rooms.live_crm_permission_and_membership_revocation_denied', async () => {
+      demand(roomSubjects, 'fixture_room_subjects_unavailable');
+      const org = plan.orgs[0], membership = plan.memberships.find(member => member.actor === 0 && member.org === 0);
+      const removed = await query(`delete from public.role_permissions where organization_id=$1 and role_id=$2 and permission_key='rooms.view'`,
+        [org.id, org.roleId], { write: true });
+      demand(removed.rowCount === 1, 'fixture_permission_mutation_missing');
+      await expectRejection(() => roomService.availableRooms(roomSubjects.a.token, {}, roomOptions), ['forbidden'], 'crm_permission_revoked');
+      const restored = await query(`insert into public.role_permissions(organization_id,role_id,permission_key,effect)
+        values($1,$2,'rooms.view','ALLOW')`, [org.id, org.roleId], { write: true });
+      demand(restored.rowCount === 1, 'fixture_permission_restore_missing');
+      assertRoomProjection(await roomService.availableRooms(roomSubjects.a.token, {}, roomOptions), [plan.roomRead.roomId], [plan.roomRead.buildingId]);
+      const revoked = await query(`update public.organization_memberships set revoked_at=clock_timestamp()
+        where id=$1 and user_id=$2 and organization_id=$3 and status='ACTIVE' and revoked_at is null`,
+      [membership.id, plan.actors[0].id, org.id], { write: true });
+      demand(revoked.rowCount === 1, 'fixture_membership_mutation_missing');
+      await expectRejection(() => roomService.availableRooms(roomSubjects.a.token, {}, roomOptions), ['forbidden', 'unauthorized'], 'crm_membership_revoked');
+      assertRoomProjection(await roomService.availableRooms(roomSubjects.b.token, {}, roomOptions), [plan.orgs[1].roomId], [plan.orgs[1].buildingId]);
+    });
   } catch (error) { cases.push({ name: 'fixture_or_schema_setup', status: 'FAIL', code: safeError(error) }); }
   finally {
     // A provider/broker timeout can leave an underlying lease wait or POST in
@@ -746,13 +1117,22 @@ export async function runHarness({ expectedProjectRef, backupManifestPath, verif
       evidence: { restrictedLogin: principalVerified, realJwt: authenticatedActors === 3, schemaAppliedByHarness: false,
         ephemeralRoleChanges: roleCreationConfirmed, ephemeralRoleChangesAttempted: cleanupRequired,
         durableBroker: brokerEvidence,
+        renewal: { existingAcceptanceCases: 18, additionalCases: 5,
+          passed: cases.filter(item => item.name.startsWith('renewal.') && item.status === 'PASS').length,
+          failed: cases.filter(item => item.name.startsWith('renewal.') && item.status === 'FAIL').length },
+        roomReads: { existingAcceptanceCases: 23, additionalCases: 5, interleaving: 'between_requests', internalStatementSnapshot: false,
+          passed: cases.filter(item => item.name.startsWith('rooms.') && item.status === 'PASS').length,
+          failed: cases.filter(item => item.name.startsWith('rooms.') && item.status === 'FAIL').length },
         providerRefresh: false, concurrentTransactions: false, productionWrites: false },
       limitations: ['Sequential SQL-store and in-process injected broker acceptance; no concurrent publish/revoke schedule proof.',
-        'Only context is executable. rooms.view scopes are metadata; empty assistant scope IDs grant no business access.',
+        'Baseline broker is context-only; five P3 cases invoke the trusted room service directly, with actual Auth/CRM reads.',
         'Quota proof is per-connection in-memory with a fixed test clock, not a distributed or durable quota proof.',
-        'No MCP HTTP transport, room business dispatch or Zalo/model traffic in this lane.',
+        'No MCP HTTP room dispatch or Zalo/model traffic in this lane; registered broker/server composition is tested separately.',
         'Control-plane proof uses fresh synthetic accounts without MFA; no challenge flow or token-delivery recovery proof.',
         'No provider refresh request: staged candidate material reuses a verified synthetic Auth session.',
+        'Renewal adds five sequential cases; session/hard-age boundary probes deliberately mutate only synthetic fixture timestamps.',
+        'Session-cap metadata probe is not a provider JWT refresh; verified authority rejects that deliberately inconsistent session.',
+        'P3 AREA/policy writes commit between requests at JS barriers; this does not prove PostgreSQL statement-internal MVCC concurrency.',
         'No scheduler, process-crash recovery, durable pending journal or production rollout certification.'],
       cases };
     finalizeReceipt(report, reportPath);

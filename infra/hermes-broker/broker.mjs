@@ -11,6 +11,17 @@ const TOOL = Object.freeze({
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
+const ROOM_PERMISSION = 'rooms.view';
+const ROOM_TOOL = Object.freeze({
+  name: 'crm_available_rooms',
+  description: 'Read free and soon-available rooms within this connection’s current CRM and assistant building scope. Pagination belongs to one read snapshot.',
+  inputSchema: { type: 'object', properties: {
+    buildingName: { type: 'string', maxLength: 120 },
+    offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
+    limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+  }, additionalProperties: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+});
 const DEFAULT_LIMITS = Object.freeze({
   tokenLifetimeMs: 15 * 60_000,
   maxRequestsPerMinute: 60,
@@ -45,6 +56,47 @@ const exactRecord = (value, keys) => record(value) && Object.keys(value).length 
   keys.every((key) => Object.hasOwn(value, key));
 const canonicalId = (value) => validId(value) && value === value.toLowerCase();
 const positive = (value) => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
+const dataRecord = value => record(value) && Reflect.ownKeys(value).every(key => typeof key === 'string' &&
+  Object.getOwnPropertyDescriptor(value, key)?.enumerable === true && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
+const exactData = (value, keys) => dataRecord(value) && exactRecord(value, keys);
+
+function roomFilters(value) {
+  if (!dataRecord(value) || Object.keys(value).some(key => !['buildingName', 'offset', 'limit'].includes(key))) fail('invalid_request');
+  const { buildingName = '', offset = 0, limit = 50 } = value;
+  if (typeof buildingName !== 'string' || buildingName.length > 120 || !Number.isInteger(offset) || offset < 0 || offset > 2000 ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100) fail('invalid_request');
+  return Object.freeze({ buildingName, offset, limit });
+}
+
+// Protocol validation only. Sale facts and authorization are owned by the shared
+// room service/projection. Never serialize extra fields from a dependency.
+function roomResult(value, request, identity) {
+  const text = (value, cap, nullable = false) => (nullable && value === null) || (typeof value === 'string' && value.length <= cap);
+  const amount = value => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER);
+  const day = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
+  if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'totalInSnapshot', 'offset', 'nextOffset', 'rooms']) ||
+      value.source !== 'copilot_available_rooms_v1' || value.currency !== 'VND' ||
+      !['complete', 'source_capped'].includes(value.completeness) || typeof value.readAt !== 'string' ||
+      !Number.isFinite(Date.parse(value.readAt)) || new Date(value.readAt).toISOString() !== value.readAt ||
+      !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > 2000 ||
+      value.offset !== request.offset || value.nextOffset !== (request.offset + request.limit < value.totalInSnapshot ? request.offset + request.limit : null) ||
+      !Array.isArray(value.rooms) || value.rooms.length !== Math.min(request.limit, Math.max(0, value.totalInSnapshot - request.offset))) fail('backend_unavailable');
+  const seen = new Set(), buildings = identity.scopesByPermission[ROOM_PERMISSION].buildingIds;
+  for (const room of value.rooms) {
+    if (!exactData(room, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'rentVnd', 'depositVnd', 'status', 'availability']) ||
+        !canonicalId(room.id) || seen.has(room.id) || !text(room.code, 256, true) || !text(room.name, 500) ||
+        !exactData(room.building, ['id', 'name', 'code']) || !canonicalId(room.building.id) || !buildings.includes(room.building.id) ||
+        !text(room.building.name, 500) || !room.building.name.toLowerCase().includes(request.buildingName.toLowerCase()) || !text(room.building.code, 256, true) ||
+        !(room.floor === null || (Number.isInteger(room.floor) && room.floor >= -100 && room.floor <= 1000)) ||
+        ![room.areaM2, room.rentVnd, room.depositVnd].every(amount) || !['free', 'soon'].includes(room.status) ||
+        !exactData(room.availability, ['kind', 'label', 'availableOn']) ||
+        !['ready', 'notice', 'confirm_notice', 'preparing'].includes(room.availability.kind) ||
+        !text(room.availability.label, 256) || !day(room.availability.availableOn)) fail('backend_unavailable');
+    seen.add(room.id);
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(structuredClone(value)) }], isError: false };
+}
 
 function authorityList(value, predicate) {
   if (!Array.isArray(value) || value.length > 256 || Array.from(value).some((item) => !predicate(item)) ||
@@ -149,11 +201,13 @@ function validAuthorization(value, userId, organizationId, now) {
  * identifyConnection binds the opaque token to a current connection id before
  * per-connection admission; resolve supplies the branded authority receipt.
  * This mode disables all P1 control-plane methods and never falls back to memory.
- * Only crm_auth_context is dispatched; resource-scope metadata grants no new tools.
+ * crm_available_rooms additionally requires an explicitly injected room service
+ * and nonempty rooms.view + assistant scopes. No generic RPC route is exposed.
  */
 export function createBroker({
   auth,
   authority,
+  roomReads,
   clock = Date.now,
   limits: suppliedLimits = {},
   sessionStore,
@@ -177,6 +231,15 @@ export function createBroker({
     connectionStore ??= new MemoryConnectionStore();
     assistantStore ??= new MemoryAssistantStore();
   }
+  let rooms;
+  if (roomReads !== undefined) {
+    if (!injectedAuthority || !roomReads || ['prepareAvailableRooms', 'finalizeAvailableRooms'].some(key => typeof roomReads[key] !== 'function')) {
+      throw new TypeError('trusted_durable_room_service_required');
+    }
+    rooms = Object.fromEntries(['prepareAvailableRooms', 'finalizeAvailableRooms'].map(key => [key, roomReads[key].bind(roomReads)]));
+  }
+  const mayReadRooms = identity => Boolean(rooms && identity.effective.read.includes(ROOM_PERMISSION) &&
+    identity.assistantScopeIds.length && identity.scopesByPermission[ROOM_PERMISSION]?.buildingIds.length);
   if (!exactKeys(suppliedLimits, Object.keys(DEFAULT_LIMITS))) throw new TypeError('invalid_limits');
   const limits = { ...DEFAULT_LIMITS, ...suppliedLimits };
   for (const value of Object.values(limits)) {
@@ -265,7 +328,7 @@ export function createBroker({
     return () => { entry.active -= 1; };
   }
 
-  async function invoke(presentedToken, operation, handler) {
+  async function invoke(presentedToken, operation, handler, finalize) {
     let release;
     let identity;
     let comparisonReceipt;
@@ -293,8 +356,9 @@ export function createBroker({
         if (signal.aborted) fail('timeout');
         // A token cannot switch actors after reserving another connection's quota.
         if (identity.row.id !== connectionId) fail('context_changed');
-        const result = await handler(identity);
-        if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
+        let result = await handler(identity, signal);
+        if (signal.aborted) fail('timeout');
+        if (!finalize && Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
         // This receipt means a response was prepared, not delivered. An async
         // audit sink can wait while DB authority changes, so the authoritative
         // post-read check must be the LAST awaited step before releasing data.
@@ -305,6 +369,12 @@ export function createBroker({
           if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
         } else await checkUnchanged(presentedToken, identity, signal);
         if (signal.aborted) fail('timeout');
+        // The room service consumes a private receipt after the audit and original
+        // branded authority check. Its bound scope decision is the last I/O here;
+        // only local protocol/byte validation and serialization may follow it.
+        if (finalize) result = await finalize(result, identity, signal);
+        if (signal.aborted) fail('timeout');
+        if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
         return result;
       });
     } catch (error) {
@@ -375,11 +445,23 @@ export function createBroker({
     },
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => ({
-        tools: identity.effective.read.includes(CONTEXT_PERMISSION) ? [structuredClone(TOOL)] : [],
+        tools: [...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [structuredClone(TOOL)] : []),
+          ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : [])],
       }));
     },
     async callTool(presentedToken, name, args) {
-      return invoke(presentedToken, 'tools/call', (identity) => {
+      // Snapshot caller-controlled filters before any awaited admission. Invalid
+      // input still goes through the shared admission/audit path.
+      let request, invalidFilters = false;
+      if (name === ROOM_TOOL.name) { try { request = roomFilters(args); } catch { invalidFilters = true; } }
+      return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        if (name === ROOM_TOOL.name) {
+          if (!mayReadRooms(identity)) fail('tool_not_available');
+          if (invalidFilters) fail('invalid_request');
+          const prepared = await rooms.prepareAvailableRooms(presentedToken, request, { signal });
+          if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable');
+          return prepared;
+        }
         if (name !== TOOL.name || !identity.effective.read.includes(CONTEXT_PERMISSION)) fail('tool_not_available');
         if (!exactKeys(args, []) || Object.keys(args).length !== 0) fail('invalid_request');
         const result = {
@@ -388,7 +470,8 @@ export function createBroker({
           contextVersion: identity.contextVersion,
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-      });
+      }, name === ROOM_TOOL.name && rooms ? async (prepared, identity, signal) =>
+        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal }), request, identity) : undefined);
     },
   });
 }

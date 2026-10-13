@@ -953,6 +953,190 @@
       ],
       "anhHuongThat": "App production hiện tại chưa được nối tới broker Hermes và không gọi các RPC mới này. Nền Hermes trên production chưa khả dụng; không mở UI, business tools hoặc gửi Zalo trước khi schema và toàn tuyến được nghiệm thu. Không thay đổi nghiệp vụ Copilot hiện có.",
       "raSoatBoi": "Codex — đối chiếu source, provenance production và evidence TEST 12/10/2026"
+    },
+    "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql": {
+      "sha256": "04c5dd53033220c7398fb0a64944e995663327f84fb20caab1009c7e2191ddf9",
+      "missingObjects": [
+        "function:public.hermes_room_scope_map_v1",
+        "function:public.hermes_connection_context_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward Hermes chủ ý chưa áp dụng production. Đã review độc lập và apply đúng TEST qua forward lane có ROLLBACK/idempotency/full backup. Lượt TEST ngày 13/10/2026 đạt 28/28, cleanup và hash xác minh; không suy trạng thái production từ TEST.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_room_scope_map_v1(p_organization_id uuid,p_scope_ids uuid[],\nCREATE OR REPLACE FUNCTION public.hermes_connection_context_v1(p_connection_id uuid)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:public.hermes_room_scope_map_v1\",\"function:public.hermes_connection_context_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — TEST 28/28 đã đạt"
+        }
+      ],
+      "anhHuongThat": "Production chưa có schema/forward Hermes tương ứng. Không bật sản phẩm trước khi schema đích và luồng runtime/Zalo được nghiệm thu; giữ quyền CRM hiện có.",
+      "raSoatBoi": "Codex — source, independent review, production provenance và TEST receipt ngày 13/10/2026"
+    },
+    "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql": {
+      "sha256": "05d5d2961e307cc2c0c18f94e586ca9a8dba33f86da44d6189c8762ed4a542e2",
+      "missingObjects": [
+        "function:app_private.hermes_store_renew_connection_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward Hermes chủ ý chưa áp dụng production. Đã review độc lập và apply đúng TEST qua forward lane có ROLLBACK/idempotency/full backup. Lượt TEST ngày 13/10/2026 đạt 28/28, cleanup và hash xác minh; không suy trạng thái production từ TEST.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_store_renew_connection_v1(p jsonb)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:app_private.hermes_store_renew_connection_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — TEST 28/28 đã đạt"
+        }
+      ],
+      "anhHuongThat": "Production chưa có schema/forward Hermes tương ứng. Không bật sản phẩm trước khi schema đích và luồng runtime/Zalo được nghiệm thu; giữ quyền CRM hiện có.",
+      "raSoatBoi": "Codex — source, independent review, production provenance và TEST receipt ngày 13/10/2026"
+    },
+    "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql": {
+      "sha256": "b2f087aa089334446dfef3606a6c81ea6ae5b7cf4ec122da0630e30ba4a79e50",
+      "missingObjects": [
+        "function:public.hermes_room_scope_map_v1",
+        "function:public.hermes_set_org_policy_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward Hermes chủ ý chưa áp dụng production. Đã review độc lập và apply đúng TEST qua forward lane có ROLLBACK/idempotency/full backup. Lượt TEST ngày 13/10/2026 đạt 28/28, cleanup và hash xác minh; không suy trạng thái production từ TEST.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_room_scope_map_v1(p_organization_id uuid,p_scope_ids uuid[],\nCREATE OR REPLACE FUNCTION public.hermes_set_org_policy_v1(p_org uuid,p_expected_version bigint,"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:public.hermes_room_scope_map_v1\",\"function:public.hermes_set_org_policy_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — TEST 28/28 đã đạt"
+        }
+      ],
+      "anhHuongThat": "Production chưa có schema/forward Hermes tương ứng. Không bật sản phẩm trước khi schema đích và luồng runtime/Zalo được nghiệm thu; giữ quyền CRM hiện có.",
+      "raSoatBoi": "Codex — source, independent review, production provenance và TEST receipt ngày 13/10/2026"
+    },
+    "supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql": {
+      "sha256": "d57bf2f2f25dd890951c0de64006f89cf478f401b19f1e422c30f7338c224f54",
+      "missingObjects": [
+        "table:app_private.hermes_zalo_bots",
+        "table:app_private.hermes_zalo_ingress_sessions",
+        "table:app_private.hermes_zalo_link_challenges",
+        "table:app_private.hermes_zalo_bindings",
+        "function:app_private.hermes_zalo_shared_inbox_guard_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate P4 chua apply TEST hoac production. Catalog production chua co cac object nay la trang thai chu y; source/API/UI moi duoc kiem offline. Phan loai nay khong thay review doc lap hoac giay phep apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_zalo_bots"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"table:app_private.hermes_zalo_bots\",\"table:app_private.hermes_zalo_ingress_sessions\",\"table:app_private.hermes_zalo_link_challenges\",\"table:app_private.hermes_zalo_bindings\",\"function:app_private.hermes_zalo_shared_inbox_guard_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "- **SQL candidate:** `20261012165523_hermes_zalo_binding_v1.sql` thêm operation `bots` chỉ trả bot personal đã bật/connected trong org, projection accountId/name/zaloUid và 100 dòng mỗi trang. Không apply hay sửa sáu migration TEST đã áp dụng. `setBot` đã có kiểm `users.edit` + `chat_zalo.manage_automation` trong SQL nhưng chưa có API/UI quản trị. Candidate cần cross-review/compile/live concurrency trước mở."
+        }
+      ],
+      "anhHuongThat": "Khong bat luong P4 truoc review va lane schema dung dich, kiem quyen/clock skew/concurrency va Zalo that. Production chua co cau noi danh tinh nay.",
+      "raSoatBoi": "Codex — classification/source ngày 13/10/2026, fixes đã kiểm offline; re-review delta chưa hoàn tất"
+    },
+    "supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql": {
+      "sha256": "a03b0abd71b5a44c008f67eac361172f6ee2c07823bd158a165b37b759b38347",
+      "missingObjects": [
+        "table:app_private.hermes_zalo_private_commands",
+        "function:public.hermes_zalo_private_command_v1",
+        "index:app_private.hermes_zalo_private_pending"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate P4 private intake chưa apply TEST hoặc production; catalog thiếu object là có chủ ý. Phân loại này không phải review độc lập hoặc quyền apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_zalo_private_commands"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"table:app_private.hermes_zalo_private_commands\",\"function:public.hermes_zalo_private_command_v1\",\"index:app_private.hermes_zalo_private_pending\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — đã nối nhận lệnh riêng vào hàng đợi"
+        }
+      ],
+      "anhHuongThat": "Chưa mở sản phẩm: cần review, dispatcher/runtime, retention, thông báo lỗi/trả lời riêng và kiểm Supabase/JWT/Zalo thật trước apply đúng lane.",
+      "raSoatBoi": "Codex — source/classification và kiểm offline 13/10/2026; review độc lập còn thiếu"
+    },
+    "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql": {
+      "sha256": "a03317beaf250c373e1ccea29a921161979b72e4dc4420eb32d3a46714cdde29",
+      "missingObjects": [
+        "function:app_private.hermes_private_command_connection_v1",
+        "function:app_private.hermes_private_command_lock_v1",
+        "function:app_private.hermes_store_claim_private_command_v1",
+        "function:app_private.hermes_store_dispatch_private_command_v1",
+        "function:app_private.hermes_store_finish_private_command_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate private dispatch chưa apply TEST hoặc production; catalog thiếu object có chủ ý. Phân loại này không phải giấy phép apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_store_claim_private_command_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:app_private.hermes_private_command_connection_v1\",\"function:app_private.hermes_private_command_lock_v1\",\"function:app_private.hermes_store_claim_private_command_v1\",\"function:app_private.hermes_store_dispatch_private_command_v1\",\"function:app_private.hermes_store_finish_private_command_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — nối claim, thực thi và lưu trả lời riêng"
+        }
+      ],
+      "anhHuongThat": "Không mở sản phẩm từ candidate offline. Còn runtime adapter, outbound Zalo, vận hành prune, kiểm concurrent PostgreSQL/JWT/provider và đúng lane trước apply.",
+      "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; independent delta review và receipts ghi tại STATUS, không thay schema-lane evidence"
+    },
+    "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql": {
+      "sha256": "db9f4b38f5c7394ca15dfd54c9708def78740b14e4cf5496f7bdab688233369a",
+      "missingObjects": [
+        "function:app_private.hermes_private_command_authority_guard_v1",
+        "function:app_private.hermes_private_reply_lock_v1",
+        "function:public.hermes_zalo_private_reply_v1",
+        "function:app_private.hermes_store_prune_private_commands_v1",
+        "index:app_private.hermes_private_reply_delivery"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate private reply chưa apply TEST hoặc production; catalog thiếu object có chủ ý. Phân loại không thay review hoặc cấp quyền apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_zalo_private_reply_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:app_private.hermes_private_command_authority_guard_v1\",\"function:app_private.hermes_private_reply_lock_v1\",\"function:public.hermes_zalo_private_reply_v1\",\"function:app_private.hermes_store_prune_private_commands_v1\",\"index:app_private.hermes_private_reply_delivery\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Tiếp tục ngày 13/10/2026 — trả lời riêng và tiến trình Hermes"
+        }
+      ],
+      "anhHuongThat": "Chưa mở sử dụng; còn gateway, container driver, pump/prune, model quota và chứng minh JWT/provider/đa transaction theo lane trước apply.",
+      "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; review và receipts tại STATUS, không thay schema-lane evidence"
     }
   }
 }

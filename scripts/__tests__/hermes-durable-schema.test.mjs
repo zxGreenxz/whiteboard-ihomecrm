@@ -27,9 +27,39 @@ const fn = (name, registry = functions) => {
   return value;
 };
 const all = statements.join(';\n');
-const STORE = ['activate', 'read_connection', 'restrict_connection', 'revoke_connection', 'acquire_refresh',
-  'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh'];
+const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
+  'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
+  'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands'];
+const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
+  'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
+  'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
+  'hermes_zalo_binding_v1(jsonb)'];
 const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'];
+
+// Intentionally a small fail-closed grammar for these reviewed SQL signatures,
+// not a general SQL parser. A new type/default/mode requires explicit review.
+const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
+function signature(name, args, named = false) {
+  const types = args.trim() === '' ? [] : args.split(',').map(arg => {
+    const parts = arg.trim().split(/\s+/);
+    assert.equal(parts.length, named ? 2 : 1, 'only the reviewed argument grammar is accepted');
+    if (named) assert.match(parts[0], /^[a-z_][a-z0-9_]*$/);
+    const type = parts.at(-1); assert.match(type, TYPE); return type;
+  });
+  return `${name}(${types.join(',')})`;
+}
+function aclTargets(text) {
+  const targets = [], next = /\s*((?:app_private|public)\.[a-z_][a-z0-9_]*)\s*\(\s*([^()]*)\s*\)\s*(?:,|$)/gy;
+  let cursor = 0;
+  assert(text.length > 0 && !text.trimEnd().endsWith(','), 'ACL target list is complete');
+  while (cursor < text.length) {
+    next.lastIndex = cursor; const match = next.exec(text);
+    assert(match, 'every ACL target must parse; never ignore mixed or unknown targets');
+    targets.push(signature(match[1], match[2])); cursor = next.lastIndex;
+  }
+  assert.equal(new Set(targets).size, targets.length, 'no duplicate ACL targets');
+  return targets;
+}
 
 function securityContract(sql = all, registry = functions) {
   assert.match(sql, /CREATE ROLE hermes_store_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT/i);
@@ -53,20 +83,53 @@ function securityContract(sql = all, registry = functions) {
     assert.match(sql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`, 'i'), `${name}: revoke default/API execute explicitly`);
     assert.doesNotMatch(definition, /\bEXECUTE\s+(?!ON\b)|set_config\s*\(\s*'request\.jwt|\bSET\s+ROLE\b/i, name);
   }
-  const grants = splitSqlStatements(sql).flatMap(s => s.split('\n')).filter(s => /^GRANT\b/i.test(s.trim()));
-  for (const grant of grants) {
-    if (/GRANT USAGE ON SCHEMA app_private TO hermes_store_executor/i.test(grant)) continue;
-    assert.match(grant, /^GRANT EXECUTE ON FUNCTION /i);
-    if (/\bTO authenticated$/i.test(grant)) {
-      assert.doesNotMatch(grant, /app_private\./i, 'authenticated cannot execute private store helpers');
-      const names = [...grant.matchAll(/public\.(hermes_\w+)\(/g)].map(m => m[1]);
-      assert.deepEqual(names.sort(), ['hermes_set_org_policy_v1', 'hermes_prepare_connection_v1', 'hermes_my_connections_v1', 'hermes_connection_context_v1'].sort());
+  // Forward migrations may grant one new function or replace/revoke/regrant an
+  // existing subset. Replay ACL statements in order, rather than requiring each
+  // historical GRANT to contain the entire future surface (or unioning grants
+  // that a later REVOKE actually removed). CREATE OR REPLACE keeps its old ACL.
+  const acl = new Map();
+  const allowed = new Map([
+    ['authenticated', new Set(PUBLIC.map(name => `public.${name}`))],
+    ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
+    ['service_role', new Set(['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)', 'public.hermes_zalo_private_reply_v1(jsonb)'])],
+  ]);
+  for (const statement of splitSqlStatements(sql).map(clean)) {
+    const definition = /^CREATE (?:OR REPLACE )?FUNCTION ((?:app_private|public)\.hermes_\w+)\(([^)]*)\)/i.exec(statement);
+    if (definition) {
+      const key = signature(definition[1], definition[2], true);
+      if (!acl.has(key)) acl.set(key, new Set(['PUBLIC']));
+    }
+    if (/^GRANT USAGE ON SCHEMA app_private TO hermes_store_executor$/i.test(statement)) continue;
+    if (!/^(?:GRANT|REVOKE)\b/i.test(statement) || !/\bON FUNCTION\b/i.test(statement)) {
+      if (/^GRANT\b/i.test(statement)) assert.fail(`Unexpected grant: ${statement}`);
+      continue;
+    }
+    if (/^GRANT\b/i.test(statement)) {
+      const parsed = /^GRANT EXECUTE ON FUNCTION (.+) TO (authenticated|hermes_store_executor|service_role)$/i.exec(statement);
+      assert(parsed, 'grant has explicit function targets and one supported recipient');
+      const names = aclTargets(parsed[1]), role = parsed[2];
+      assert(allowed.has(role), 'only exact caller, store executor or worker ingress grants may receive execute');
+      for (const name of names) {
+        assert(allowed.get(role).has(name), `${role} cannot execute ${name}`);
+        assert(acl.has(name), 'grant refers to an existing fixed function');
+        acl.get(name).add(role);
+      }
     } else {
-      assert.match(grant, /\bTO hermes_store_executor$/i);
-      const names = [...grant.matchAll(/(?:app_private|public)\.(hermes_\w+)\(/g)].map(m => m[1]);
-      assert.deepEqual(names.sort(), STORE.map(n => `hermes_store_${n}_v1`).sort(), 'executor has exactly the fixed store surface');
+      const parsed = /^REVOKE (?:ALL|EXECUTE) ON FUNCTION (.+) FROM ([A-Za-z_, ]+)$/i.exec(statement);
+      assert(parsed, 'revoke has explicit function targets and recipients');
+      const names = aclTargets(parsed[1]), roles = parsed[2].split(',').map(s => s.trim());
+      for (const role of roles) assert(['PUBLIC', 'anon', 'authenticated', 'service_role', 'hermes_store_executor'].includes(role));
+      for (const name of names) {
+        assert(acl.has(name), 'revoke targets a known signature');
+        for (const role of roles) acl.get(name).delete(role);
+      }
     }
   }
+  for (const [name, privileges] of acl) {
+    const expected = [...allowed].filter(([, names]) => names.has(name)).map(([role]) => role);
+    assert.deepEqual([...privileges].sort(), expected.sort(), `${name}: current effective execute ACL`);
+  }
+  for (const names of allowed.values()) for (const name of names) assert(acl.has(name), `Missing allowed function ${name}`);
   assert.doesNotMatch(sql, /GRANT\s+(?:ALL|SELECT|INSERT|UPDATE|DELETE|CREATE)\b[^;\n]*\bTO\s+[^;\n]*hermes_store_executor/i);
   assert.doesNotMatch(sql, /ALTER TABLE app_private\.hermes_\w+ DISABLE ROW LEVEL SECURITY|DROP (?:TABLE|FUNCTION).*hermes_/i);
 }
@@ -171,6 +234,41 @@ function revokeContract(registry = functions) {
 }
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
+
+test('Zalo worker can execute only link ingress and private intake, while linking stays on the authenticated caller', () => {
+  for (const [role, target] of [
+    ['authenticated', 'public.hermes_zalo_ingress_v1(jsonb)'],
+    ['hermes_store_executor', 'public.hermes_zalo_ingress_v1(jsonb)'],
+    ['authenticated', 'public.hermes_zalo_private_command_v1(jsonb)'],
+    ['hermes_store_executor', 'public.hermes_zalo_private_command_v1(jsonb)'],
+    ['authenticated', 'public.hermes_zalo_private_reply_v1(jsonb)'],
+    ['hermes_store_executor', 'public.hermes_zalo_private_reply_v1(jsonb)'],
+    ['service_role', 'public.hermes_zalo_binding_v1(jsonb)'],
+    ['service_role', 'app_private.hermes_store_read_connection_v1(jsonb)'],
+  ]) assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO ${role};`), /cannot execute/);
+  assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION public.hermes_zalo_ingress_v1(jsonb) FROM service_role;'), /effective execute ACL/);
+  assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION public.hermes_zalo_private_command_v1(jsonb) FROM service_role;'), /effective execute ACL/);
+  assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION public.hermes_zalo_private_reply_v1(jsonb) FROM service_role;'), /effective execute ACL/);
+  for (const statement of [
+    'ALTER TABLE app_private.hermes_zalo_private_commands ENABLE ROW LEVEL SECURITY',
+    'ALTER TABLE app_private.hermes_zalo_private_commands OWNER TO postgres',
+    'REVOKE ALL ON app_private.hermes_zalo_private_commands FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',
+  ]) assert(all.includes(statement), statement);
+});
+test('private ledger consumer remains executor-only, with no helper or table access', () => {
+  for (const operation of ['claim', 'dispatch', 'finish', 'fail']) {
+    const target = `app_private.hermes_store_${operation}_private_command_v1(jsonb)`;
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO ${role};`), role === 'anon' ? /supported recipient/ : /cannot execute/);
+    }
+    assert.throws(() => securityContract(all + `; REVOKE EXECUTE ON FUNCTION ${target} FROM hermes_store_executor;`), /effective execute ACL/);
+  }
+  for (const target of ['app_private.hermes_private_command_connection_v1(text)',
+    'app_private.hermes_private_command_lock_v1(app_private.hermes_connections,uuid,text)']) {
+    assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO hermes_store_executor;`), /cannot execute/);
+  }
+  assert.throws(() => securityContract(all + '; GRANT SELECT ON app_private.hermes_zalo_private_commands TO hermes_store_executor;'), /Unexpected grant/);
+});
 test('current membership is bounded by revocation/time and ordinary one-company rule', () => membershipContract());
 test('stable assistant and session ownership are enforced by composite identity constraints', () => {
   assert.match(all, /UNIQUE\(organization_id,user_id\), UNIQUE\(id,organization_id,user_id\)/);
@@ -199,15 +297,19 @@ test('current envelope uses explicit ciphertext length and a PostgreSQL-compatib
 test('joined read requires current active token, connection, session, membership and company policy', () => readContract());
 test('refresh uses durable lease/fence, hidden staging, publication receipt and no post-dispatch release', () => refreshContract());
 test('connection revocation serializes publication but does not revoke another connection session', () => revokeContract());
-test('public self-context includes no encrypted/session material or business capability', () => {
+function publicContextContract(registry = functions) {
   for (const name of ['hermes_connection_json_v1', 'public.hermes_my_connections_v1', 'public.hermes_connection_context_v1']) {
-    assert.doesNotMatch(fn(name), /'envelope'|'tokenDigest'|'intentSecret'|'refreshToken'|'accessToken'/);
+    assert.doesNotMatch(fn(name, registry), /'envelope'|'tokenDigest'|'intentSecret'|'refreshToken'|'accessToken'/);
   }
-  const context = fn('public.hermes_connection_context_v1');
+  const context = fn('public.hermes_connection_context_v1', registry);
   assert.match(context, /user_id=auth.uid\(\)/);
-  assert.match(context, /cap\.capability='assistant.context.read' AND cap\.mode='read' AND cap\.enabled/);
+  assert.match(context, /cap\.mode='read' AND cap\.enabled/);
+  assert.match(context, /cap\.capability=ANY\(v_c\.read_capabilities\) AND cap\.capability=ANY\(v_p\.read_capabilities\)/);
+  assert.match(context, /v_buildings:=public\.copilot_org_scope_buildings_v1\('rooms.view',v_c\.organization_id\)/);
+  assert.match(context, /cap\.capability='assistant.context.read' OR \(cap\.capability='rooms.view' AND v_auth->'permissions'->'rooms.view'='true'::jsonb AND cardinality\(v_buildings\)>0\)/);
   assert.match(context, /'action','\[\]'::jsonb/);
-});
+}
+test('public self-context includes no encrypted/session material and only current bounded read capabilities', () => publicContextContract());
 test('private inputs have exact keys and JSON null cannot bypass envelope algorithm validation', () => {
   assert.match(fn('hermes_request_v1'), /count\(\*\) FROM jsonb_object_keys\(p\).*cardinality\(p_keys\) OR NOT \(p \?& p_keys\)/);
   assert.match(fn('hermes_envelope_v1'), /p->'v' IS DISTINCT FROM '1'::jsonb OR p->>'algorithm' IS DISTINCT FROM 'A256GCM'/);
@@ -262,6 +364,28 @@ test('mutation is rejected: granting encrypted store to an API role', () => {
 test('mutation is rejected: giving the executor table access', () => {
   assert.throws(() => securityContract(`${all};\nGRANT SELECT ON app_private.hermes_sessions TO hermes_store_executor`));
 });
+test('mutation is rejected: forward migration revokes a required execute grant', () => {
+  assert.throws(() => securityContract(`${all};\nREVOKE ALL ON FUNCTION app_private.hermes_store_renew_connection_v1(jsonb) FROM hermes_store_executor`));
+});
+test('mutation is rejected: granting a private helper outside the fixed executor surface', () => {
+  assert.throws(() => securityContract(`${all};\nGRANT EXECUTE ON FUNCTION app_private.hermes_integer_v1(jsonb) TO hermes_store_executor`));
+});
+test('mutation is rejected: a mixed function grant cannot hide an unrelated target', () => {
+  assert.throws(() => securityContract(`${all};\nGRANT EXECUTE ON FUNCTION public.hermes_my_connections_v1(uuid), public.non_hermes_function(uuid) TO authenticated`));
+});
+test('mutation is rejected: a new overload cannot inherit an older signature ACL in the verifier', () => {
+  const overload = fn('public.hermes_my_connections_v1').replace('(p_org uuid)', '(p_org text)');
+  assert.notEqual(overload, fn('public.hermes_my_connections_v1'));
+  assert.throws(() => securityContract(`${all};\n${overload}`));
+});
+for (const [label, before] of [['CRM room permission', "v_auth->'permissions'->'rooms.view'='true'::jsonb"],
+  ['nonempty room scope', 'cardinality(v_buildings)>0']]) {
+  test(`mutation is rejected: public context skips ${label}`, () => {
+    const registry = new Map(functions), name = 'public.hermes_connection_context_v1', body = fn(name);
+    assert(body.includes(before)); registry.set(name, body.replace(before, 'true'));
+    assert.throws(() => publicContextContract(registry));
+  });
+}
 test('mutation is rejected: leaving default PUBLIC execute on a helper', () => {
   const changed = all.replace(/REVOKE ALL ON FUNCTION app_private\.hermes_request_v1[^;]*;/, '');
   assert.notEqual(changed, all);

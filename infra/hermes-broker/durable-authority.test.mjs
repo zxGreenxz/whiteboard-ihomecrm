@@ -1,3 +1,4 @@
+import { StoreTransportError } from './store-transport.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -287,3 +288,15 @@ test('a storage id switch between quota identification and resolve never release
   assert.equal(f.state.reads, 3);
   assert(!broker.auditReceipts().some(receipt => receipt.outcome === 'prepared'));
 });
+
+ test('known SQL membership denial maps to forbidden on initial and final reads; outages and lookalike errors remain unavailable', async t => {
+  for (const at of [1, 2]) {
+    const f = fixture(t, { read: state => { if(state.reads === at) throw new StoreTransportError('store_denied'); return structuredClone(state.reply); } });
+    await assert.rejects(f.resolve(), code('forbidden', 403));
+  }
+  for (const error of [new StoreTransportError('store_unavailable'), new StoreTransportError('store_outcome_unknown'),
+    new StoreTransportError('store_conflict'), { code: 'store_denied' }]) {
+    const f=fixture(t,{read:()=>{throw error;}});
+    await assert.rejects(f.resolve(),code('backend_unavailable',503));
+  }
+ });

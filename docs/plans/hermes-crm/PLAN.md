@@ -2,11 +2,15 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** P0 có inventory/catalog và local gate; P1 có JWT TEST, MCP và AIAgent với dữ liệu giả; P2 đã kiểm store/broker/cấp phiên độc lập trên TEST (18/18), còn vòng đời/HTTP/UI. P3 đã chuẩn bị projection phòng trống, chưa mở tool; P4–P11 chưa bắt đầu. Chốt plan không có nghĩa đã tích hợp hoặc phát hành.
+**Trạng thái:** Đang tiếp tục triển khai. P0 đã nghiệm thu; P1–P4 có code kết nối, quyền, gia hạn, tool đọc phòng, liên kết Zalo, nhận/xử lý/trả lời riêng và wrapper Hermes. Đã bổ sung gateway theo user, cổng model dùng quyền CRM, relay và bộ chạy container; gate local mới **47/47**, chưa ghép thành dịch vụ vận hành hoàn chỉnh. MCP client 2.0.0 đã thử qua HTTP cho hai user; OpenAI SDK 2.24.0 đi qua relay/gateway thật với model giả lập. Chưa chạy toàn bộ Hermes/model trên Docker/Linux hoặc chat Zalo thật; hai kiểm tra riêng cho Linux còn skip. SQL P4 vẫn chưa apply. P5–P11 chưa triển khai. Checklist đóng **5/65 mục = 7,7% (~8%)**, là tỷ lệ mục nghiệm thu không có trọng số, không phải tỷ lệ code hay ước lượng công sức. Bằng chứng, review và việc tiếp theo ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
+**Checkpoint điều phối 13/10:** đã code orchestrator bật/dừng từng user, pump/prune, logical home theo owner và chờ công việc thực sự kết thúc xuyên runner/supervisor/driver/refresh. Backend sở hữu supervisor dùng cùng cổng kiểm quyền và dependency scope. Ba lỗi phát hiện khi review đã sửa; gate local delta **47/47**, tree `4141eb57`, **20/20 file Vitest**. Còn compose dịch vụ, handoff token bền vững, refresh scheduler và kiểm chạy thật; chưa đóng thêm mục nghiệm thu. Nhật ký và giới hạn bằng chứng ở STATUS.
+
 ## Quyết định đã chốt — không hỏi lại
+
+- Agent triển khai/review dùng cấu hình mặc định của hệ thống. Không ép model, provider hoặc mức suy luận; không hỏi lại chủ dự án về cấu hình agent. Quyết định này thay thế mọi yêu cầu cấu hình agent trước đây.
 
 - Hermes là bộ máy hội thoại và điều phối AI đích. CRM tiếp tục sở hữu dữ liệu, quyền user, nghiệp vụ, phê duyệt, lịch và kết quả thực thi.
 - Không clone bộ quyền user. Thêm cấu hình giới hạn cho từng kết nối trợ lý, tham chiếu quyền và hành động có sẵn. Hai nhóm Đọc / Thao tác dùng chung cổng kiểm quyền.
@@ -337,6 +341,8 @@ flowchart TD
 - P7: memory công việc/cá nhân/chia sẻ; UI biết mức chia sẻ; Hermes tổng tra cứu và giao nhiệm vụ có provenance.
 - P9–P10: quota cho điều phối, chống vòng lặp giao việc, revoke xuyên context, canary và audit nhiều user/công ty.
 
+Cập nhật 13/10/2026: TEST durable đạt 28/28 sau forward conflict; cleanup/hash xác minh. Gate local P2/P3 đạt 47/47 trên snapshot `3d248131`. Supervisor startup 14/14. P4 đã nối handshake vào worker hiện có, che mã và chặn tin trùng/history/phiên cũ; 22 file worker đạt, routing 95/95, binding 30/30 và ba mutation bị bắt. Chưa nghiệm thu toàn tuyến, chưa apply P4 hoặc triển khai VPS. Xem STATUS để tiếp tục đúng bằng chứng.
+
 ## 14 · Kế hoạch công việc và cửa nghiệm thu
 
 Tình trạng thực tế được duy trì ở STATUS.md; các checkbox dưới đây chỉ được đánh khi có evidence tương ứng. Vai trò là trách nhiệm kỹ thuật, chưa phải phân công nhân sự hoặc cam kết thời lượng.
@@ -413,6 +419,12 @@ Cập nhật tiếp ngày 12/10: Auth TEST thật xác minh 5/5 cho hai phiên t
 
 **Đầu ra:** Cấu hình quyền trợ lý dùng được từ UI và được kiểm ở server.
 
+Cập nhật 13/10: đã có HTTP quản lý kết nối, UI `/settings/hermes`, gia hạn và supervisor; TEST durable cuối 28/28, gate local P2/P3 47/47. UI mới chỉ kiểm trên browser synthetic; chưa có PermissionPicker/ScopePicker đầy đủ, provider refresh xuyên runtime, model quota và Docker adapter sản phẩm. Review độc lập delta supervisor đã hoàn tất trên tree `91c12a84`, không phát hiện P1/P2 đã xác minh; P2 chưa nghiệm thu.
+
+Cập nhật tiếp 13/10: đã ghép trusted maintenance vào backend, lấy binding/ref từ token đã xác minh, refresh có fence và actual drain, kiểm Auth/CRM/session revision rồi gia hạn cùng token. Focused 43/43, backend composition 24/24; review đã sửa lỗi thả ownership khi thiếu bằng chứng drain. Chưa có scheduler tạm dừng toàn bộ command pump, handoff/restart, kiểm provider thật hoặc UI scope đầy đủ; chưa đánh dấu P2 hoàn tất. Gate/evidence của delta được ghi ở [STATUS](STATUS.md).
+
+Cập nhật scheduler 13/10: product factory và orchestrator đã nối coordinated maintenance. Park trước hạn 5 phút, chờ toàn runner drain, đóng admission rồi refresh/kiểm lại authority, chỉ mở lại sau actual drain; giữ watchdog hạn cũ, ưu tiên expiry và giới hạn tải chung. Supervisor 75/75, backend + orchestrator 49/49; chưa có host entrypoint/handoff bền vững hoặc kiểm provider/runtime thật. Evidence/review/gate ghi tại STATUS; các ô nghiệm thu P2 vẫn mở.
+
 **Đạt khi:** Tắt Hermes không ảnh hưởng user; không cấp quá quyền; revoke chặn request mới và invalidates context.
 
 **Nếu chưa đạt:** Tắt connection/feature flag; schema bổ sung để tương thích, không xóa dữ liệu cũ.
@@ -431,6 +443,8 @@ Tiến độ 12/10/2026: đã viết projection phòng trống tái dùng sale f
 
 **Đầu ra:** Hermes truy vấn CRM đúng phạm vi qua công cụ thật.
 
+Cập nhật 13/10: tool phòng trống đã nối broker, dùng JWT của phiên Hermes được giữ trong backend, kiểm scope SQL lần cuối sau audit. Năm ca đọc phòng TEST đã đạt trong lượt 28/28; gate local P2/P3 47/47. Chưa có đầy đủ tool chính sách/nhóm/kết quả công việc, parity toàn miền hoặc shared model quota; P3 chưa nghiệm thu.
+
 **Đạt khi:** Đọc đúng dữ liệu; deny không trả rỗng giả; không lộ trường nội bộ/cross-tenant. Dữ liệu không vào context dùng chung; ngân sách, timeout và dừng khẩn cấp đã có hiệu lực.
 
 **Nếu chưa đạt:** Thu hồi công cụ mới; giao diện CRM trực tiếp vẫn hoạt động.
@@ -445,6 +459,33 @@ Phụ thuộc: P2-P3. Chủ trì: Worker + adapter.
 - [ ] P4.04 Trả lời riêng, trạng thái cần làm rõ và lỗi model/connection theo request ID.
 - [ ] P4.05 Thử mất mạng, kick, relogin và sự kiện trùng trên tài khoản/nhóm thử được chỉ định.
 - [ ] P4.06 User thường có org cố định; chốt active-org cho DM superadmin nhiều công ty. Kiểm outbound DM khi quyền đổi giữa lượt.
+
+Cập nhật 13/10: candidate danh tính có challenge CRM → DM sống → CRM xác nhận đúng UID; đã nối bước quan sát DM vào worker duy nhất. Mã được che trước lưu/log/preview; bỏ push/auto-reply cho handshake. Chỉ tin mới được quan sát, giữ generation theo phiên, khóa capacity tới khi RPC thực sự kết thúc, dừng khi thay phiên/mất lease, không retry ghi chưa rõ kết quả. 22 file worker đạt; routing 95/95; ba mutation worker bị bắt và khôi phục đúng hash.
+
+Cập nhật tiếp 13/10: đã mount sáu API `bots/begin/status/confirm/unlink/list` trong backend dùng Auth hiện có và JWT user; có giới hạn body, thời gian, số yêu cầu và chờ dependency kết thúc khi đóng. UI `/settings/hermes` chọn bot công ty, tạo/copy mã tạm, kiểm UID, yêu cầu xác nhận rõ ràng rồi liên kết/ngắt; mất ACK thì chặn ghi đến khi đọc lại, không retry tự động. SQL candidate thêm danh sách bot được quản trị bật, phân trang tối đa 100 dòng. Sửa lỗi tải lần đầu dưới StrictMode và trùng liên kết khi phân trang; regression tái hiện FAIL trước sửa. API 67/67, UI 37/37; ba mutation API bị bắt/khôi phục. Browser 1440×1000 và 390×844 đạt trên Auth/HTTP giả lập, đã xem ảnh, không tràn ngang hoặc lỗi console; giữ cả log các lượt timeout trước đó, không coi đây là kiểm live.
+
+| Phần P4 | Đã có code / bằng chứng | Còn trước nghiệm thu |
+| --- | --- | --- |
+| Xác minh nick chính | Worker handshake, API và UI xác nhận UID; kiểm offline/synthetic | SQL TEST đúng lane, cạnh tranh phiên, lệch đồng hồ worker/DB, Zalo thật |
+| Chọn nick phụ của công ty | API/UI `manageBots/setBot`, xác nhận nick phụ, kiểm quyền và phiên bản; tắt bot thu hồi liên kết | SQL TEST và Auth/quyền quản trị thật chưa kiểm |
+| Hội thoại riêng với Hermes | Có chốt riêng tư ở worker và SQL candidate; kiểm worker/PGlite | Hàng đợi riêng, dispatch runtime và trả lời DM; TEST/JWT/MVCC/Zalo thật |
+| Review/phát hành | WIP giữ trong worktree; PR nháp hiện có | Cross-review đúng cấu hình agent, gate/CI candidate cuối; chưa deploy |
+
+Lượt gate tổng P2/P3/P4 đạt 44/47; các lỗi đã được sửa và kiểm lại đúng phạm vi (baseline, strict, ACL 33/33 và provenance). Giữ nguyên receipt của lượt lỗi, không coi là gate 47/47 cho snapshot cuối. Chi tiết source/hash, ảnh và các lượt kiểm ở STATUS.
+
+Cập nhật quản trị bot 13/10: đã nối `manageBots/setBot` qua JWT caller và UI đóng mặc định; chỉ tải khi mở cấu hình. SQL dùng quyền CRM `users.edit` cùng `chat_zalo.manage_automation`, kiểm org/expectedVersion, bật chỉ khi account connected; tắt được khi disconnected. Đổi cấu hình thu hồi challenge và binding trong cùng transaction, giữ lịch sử. UI yêu cầu xác nhận nick phụ, chặn ghi sau mất ACK đến khi đọc lại và xóa mã liên kết cũ khi cấu hình thay đổi. API 105/105 và backend composition cuối 15/15; UI 46/46, sau bổ sung hai regression thì component/page 24/24. Browser mới desktop/mobile đã kiểm bật bot → liên kết → ngắt → tắt bot; ảnh đã xem, hash không đổi, không lỗi console/tràn ngang. Đây vẫn là dữ liệu/Auth/HTTP giả; SQL chưa compile/apply, không thay cross-review hoặc nghiệm thu live.
+
+Gate local candidate quản trị đã đạt **47/47**, tree `05871d8a1b4d844d2b2be6dec66c289a173dfd1c`, run `local-f082cfa1-6c98-49c6-ba4d-902c37c14e99`; 18 file Vitest liên quan đạt. Đây là lượt mới riêng, không đổi nhãn receipt 44/47 trước đó. Tài liệu cập nhật kết quả sau gate; code không đổi. CI/cross-review và SQL TEST vẫn còn mở. P4.03 tiếp theo phải bảo vệ cả live DM/history/self echo trước inbox chung, giữ riêng tư sau thu hồi và chặn race bật/tắt bot ngay tại DB; chưa có code router trong mốc quản trị này.
+
+Cập nhật P4.03 ngày 13/10: đã thêm RPC `privacy` của worker, chỉ ACK đúng account/org/login/lease mới cho DM thường vào inbox chung. Mọi DM của nick từng cấu hình bot giữ riêng tư sau disable; live/history/self echo/media không đẩy nội dung vào storage/log/preview/push/auto-reply chung. Tin nhóm giữ luồng hiện có; handshake chỉ lưu bản che mã. SQL candidate có trigger chặn ghi, che preview và làm sạch metadata handshake; account lock kết hợp `setBot` đóng cửa ghi sau quyết định phân loại cũ. UI cảnh báo nick phải dành riêng cho Hermes. Worker 57/57, bốn mutation thực bị bắt; PGlite 11/11 trên database bỏ đi kiểm SQL thực với bảng/Auth/quyền giả, gồm đối chứng bỏ trigger; chưa chứng minh Supabase/JWT hoặc hai transaction cạnh tranh. Tin riêng **chưa có hàng đợi/runtime để nhận và trả lời**, vì vậy không deploy worker candidate này. Ô P4.03 vẫn mở; chi tiết ở STATUS.
+
+Cập nhật tiếp 13/10: candidate private đã đạt gate local **47/47**, tree `91c12a84`. Review độc lập qua CLI phát hiện bốn lỗi P2 ở lifecycle linking, burst privacy và khóa conversation; đã có code sửa với worker **94/94**, SQL **33/33** và mutation bị bắt; re-review delta chưa hoàn tất, không coi gate xanh là nghiệm thu. Parser lệnh riêng đã có code và **85/85** test, routing **96/96**, ba mutation bị bắt; chưa gắn inbox/SQL/runtime. Hai agent đã hoàn tất phần code/kiểm worker và SQL; parser review sạch. Re-review chưa có tại checkpoint này; xem kết quả mới nhất trong STATUS.
+
+Cập nhật tiếp phần nhận lệnh riêng 13/10: đã nối live listener với RPC và ledger private, lấy danh tính từ binding CRM, chống trùng theo account/provider ID, kiểm thời gian/phiên/quyền và giới hạn 64 lệnh chờ. Worker **196/196**, SQL **43/43**, routing **96/96**; năm mutation thật bị bắt. Gate delta mới **46/47**, lỗi khai báo RPC ở verifier ACL đã sửa và kiểm lại **33/33**; chưa có tổng gate/CI sau sửa verifier. Gate **47/47** tree `3df945e7` chỉ thuộc bản sửa trước delta nhận lệnh này. Chưa có consumer/runtime, retention và trả lời DM; chưa apply SQL hoặc nghiệm thu P4.03. Xem STATUS cho source/hash/receipts và sơ đồ hiện tại.
+
+Cập nhật dispatcher 13/10: đã có ledger claim/dispatch/finish/fail/prune, runner backend và supervisor cho đúng user; SQL 251/251, supervisor 47/47, store 53/53, runner/backend 49/49. Hai P2 mới về cancel gate và lệnh cũ chặn queue đã sửa và re-review; gate local mới 47/47, tree `0435648b`, CI/live còn thiếu. Xem STATUS/receipts/review delta. READY chỉ là câu trả lời lưu riêng, chưa gửi. Chưa có runtime adapter sản phẩm, outbound Zalo và lịch dọn TTL; chưa apply hoặc nghiệm thu P4 toàn tuyến.
+
+Các ô P4 tiếp tục mở. SQL P4 đã chạy trên PGlite với fixture tối thiểu, chưa apply hoặc kiểm Supabase/JWT/concurrency thật; không bật luồng chat trước khi kiểm quyền và riêng tư toàn tuyến đạt.
 
 **Đầu ra:** Nick chính điều khiển trợ lý qua DM mà không đưa nick chính vào runtime bot.
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSupabaseRefreshProvider, SupabaseRefreshError } from './supabase-refresh-provider.mjs';
 import { createSupabaseAuthAdapter } from './supabase-adapter.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
 
 const USER = '10000000-0000-4000-8000-000000000001';
 const SESSION = '20000000-0000-4000-8000-000000000001';
@@ -11,6 +12,67 @@ const tokens = () => ({ access_token: 'new-access-fixture', refresh_token: 'new-
 const json = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json; charset=utf-8' } });
 const code = expected => error => error.code === expected && error.message === expected && error.cause === undefined;
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+
+test('provider drain includes a late fetch and actual body cancellation after result timeout', async () => {
+  const fetched = deferred(), started = deferred(), cancelling = deferred(), cancelled = deferred(); let calls = 0;
+  const f = setup({ timeoutMs: 15, fetch() { calls++; started.resolve(); return fetched.promise; } });
+  const task = f.provider.beginRefresh(f.input); assert(Object.isFrozen(task)); await started.promise;
+  await assert.rejects(task.result, code('refresh_timeout'));
+  let drained = false, closed = false; void task.drained.then(() => { drained = true; });
+  const closing = f.provider.close(); assert.equal(f.provider.close(), closing); void closing.then(() => { closed = true; });
+  await tick(); assert.equal(drained, false); assert.equal(closed, false);
+  await assert.rejects(f.provider.refresh(f.input), code('refresh_closed'));
+  fetched.resolve(new Response(new ReadableStream({ cancel() { cancelling.resolve(); return cancelled.promise; } })));
+  await cancelling.promise; await tick(); assert.equal(drained, false); assert.equal(closed, false);
+  cancelled.resolve(); await task.drained; await closing; assert.equal(calls, 1);
+});
+
+test('stream reader cancellation is awaited by drain while the public deadline remains bounded', async () => {
+  const cancelled = deferred(), cancelling = deferred(); let cancellations = 0;
+  const f = setup({ timeoutMs: 15, fetch: async () => new Response(new ReadableStream({
+    cancel() { cancellations++; cancelling.resolve(); return cancelled.promise; },
+  }), { headers: { 'content-type': 'application/json' } }) });
+  const task = f.provider.beginRefresh(f.input);
+  await assert.rejects(task.result, code('refresh_timeout')); await cancelling.promise;
+  let drained = false; void task.drained.then(() => { drained = true; }); await tick(); assert.equal(drained, false);
+  cancelled.resolve(); await task.drained; await f.provider.close(); assert.equal(cancellations, 1);
+});
+
+test('HTTP denial body cancellation remains owned until it settles without retry', async () => {
+  const cancelled = deferred(), cancelling = deferred(); let calls = 0;
+  const f = setup({ timeoutMs: 15, fetch: async () => { calls++; return new Response(new ReadableStream({
+    cancel() { cancelling.resolve(); return cancelled.promise; },
+  }), { status: 401 }); } });
+  const task = f.provider.beginRefresh(f.input); await cancelling.promise;
+  await assert.rejects(task.result, code('refresh_timeout'));
+  let drained = false; void task.drained.then(() => { drained = true; }); await tick(); assert.equal(drained, false);
+  cancelled.resolve(); await task.drained; await f.provider.close(); assert.equal(calls, 1);
+});
+
+test('close cancels in-flight verifier and retains actual work without closing shared dependency scope', async () => {
+  const scope = createDependencyScope(), started = deferred(), waiting = deferred(); let signal;
+  const f = setup({ dependencyScope: scope, verifySession(input) { signal = input.signal; started.resolve(); return waiting.promise; } });
+  const task = f.provider.beginVerifySession({ accessToken: 'fixture' }); await started.promise;
+  const closing = f.provider.close(); await assert.rejects(task.result, code('refresh_cancelled')); assert(signal.aborted);
+  let drained = false, closed = false; void task.drained.then(() => { drained = true; }); void closing.then(() => { closed = true; });
+  await tick(); assert.equal(drained, false); assert.equal(closed, false);
+  await assert.rejects(f.provider.verifySession({ accessToken: 'fixture' }), code('refresh_closed'));
+  waiting.resolve(identity()); await task.drained; await closing;
+  assert.equal(await scope.begin(() => 'still open').result, 'still open'); await scope.close();
+});
+
+test('default Auth verifier late fetch and body cancellation participate in the shared caller scope', async () => {
+  const scope = createDependencyScope(), started = deferred(), fetched = deferred(), cancelling = deferred(), cancelled = deferred();
+  const f = setup({ dependencyScope: scope, verifySession: undefined, timeoutMs: 15,
+    fetch() { started.resolve(); return fetched.promise; } });
+  const outer = scope.begin(() => f.provider.verifySession({ accessToken: 'fixture' }));
+  await started.promise; await assert.rejects(outer.result, code('refresh_timeout'));
+  let drained = false; void outer.drained.then(() => { drained = true; }); await tick(); assert.equal(drained, false);
+  fetched.resolve(new Response(new ReadableStream({ cancel() { cancelling.resolve(); return cancelled.promise; } })));
+  await cancelling.promise; await tick(); assert.equal(drained, false);
+  cancelled.resolve(); await outer.drained; await f.provider.close(); await scope.close();
+});
 function setup(overrides = {}) {
   const calls = [], verifications = [];
   const provider = createSupabaseRefreshProvider({ url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture',
@@ -147,9 +209,9 @@ test('pre-cancelled calls never dispatch refresh or verification', async () => {
 });
 
 test('caller cancellation suppresses late refresh and cancels a late response body', async () => {
-  let finish, sentSignal, cancelled = false;
-  const f = setup({ fetch: async (_url, options) => { sentSignal = options.signal; return new Promise(resolve => { finish = resolve; }); } });
-  const pending = f.provider.refresh(f.input); f.controller.abort();
+  let finish, sentSignal, cancelled = false; const started = deferred();
+  const f = setup({ fetch: async (_url, options) => { sentSignal = options.signal; started.resolve(); return new Promise(resolve => { finish = resolve; }); } });
+  const pending = f.provider.refresh(f.input); await started.promise; f.controller.abort();
   await assert.rejects(pending, code('refresh_cancelled')); assert.equal(sentSignal.aborted, true);
   finish(new Response(new ReadableStream({ cancel() { cancelled = true; } })));
   await tick(); assert.equal(cancelled, true);
@@ -174,10 +236,10 @@ test('deadline covers a stalled response stream and cancels its reader', async (
 });
 
 test('cancelled or late verification never releases verified identity', async () => {
-  let finish, verificationSignal;
-  const f = setup({ verifySession: input => { verificationSignal = input.signal; return new Promise(resolve => { finish = resolve; }); } });
+  let finish, verificationSignal; const started = deferred();
+  const f = setup({ verifySession: input => { verificationSignal = input.signal; started.resolve(); return new Promise(resolve => { finish = resolve; }); } });
   const pending = f.provider.verifySession({ accessToken: 'fixture', signal: f.controller.signal });
-  f.controller.abort(); await assert.rejects(pending, code('refresh_cancelled'));
+  await started.promise; f.controller.abort(); await assert.rejects(pending, code('refresh_cancelled'));
   assert.equal(verificationSignal.aborted, true); finish(identity()); await tick();
 });
 
@@ -194,10 +256,10 @@ test('verified identities require valid UUID user/session and live safe-integer 
 });
 
 test('verification receives the original candidate despite caller mutation during the request', async () => {
-  let finish, seen;
-  const f = setup({ verifySession: input => { seen = input.accessToken; return new Promise(resolve => { finish = resolve; }); } });
+  let finish, seen; const started = deferred();
+  const f = setup({ verifySession: input => { seen = input.accessToken; started.resolve(); return new Promise(resolve => { finish = resolve; }); } });
   const input = { accessToken: 'original-candidate' };
-  const pending = f.provider.verifySession(input); input.accessToken = 'replacement'; finish(identity());
+  const pending = f.provider.verifySession(input); input.accessToken = 'replacement'; await started.promise; finish(identity());
   assert.deepEqual(await pending, identity()); assert.equal(seen, 'original-candidate');
 });
 

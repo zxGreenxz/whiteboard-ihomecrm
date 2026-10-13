@@ -13,13 +13,14 @@ const positive = value => Number.isSafeInteger(value) && value > 0 && value < Nu
 const fail = code => { throw new BrokerError(code); };
 const unavailable = () => fail('backend_unavailable');
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const cancel = response => { void response.body?.cancel().catch(() => {}); };
+const cancel = async response => { await response.body?.cancel().catch(() => {}); };
 
 async function readJson(response, limit, signal) {
   if (response.redirected || !response.body || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') ||
-      Number(response.headers.get('content-length')) > limit) { cancel(response); unavailable(); }
+      Number(response.headers.get('content-length')) > limit) { await cancel(response); unavailable(); }
   const reader = response.body.getReader(), chunks = []; let size = 0;
-  const stop = () => { void reader.cancel().catch(() => {}); };
+  let cancellation;
+  const stop = () => cancellation ??= reader.cancel().catch(() => {});
   signal.addEventListener('abort', stop, { once: true });
   try {
     while (true) {
@@ -31,7 +32,7 @@ async function readJson(response, limit, signal) {
     }
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))); }
     catch { unavailable(); }
-  } finally { signal.removeEventListener('abort', stop); stop(); reader.releaseLock(); }
+  } finally { signal.removeEventListener('abort', stop); await stop(); reader.releaseLock(); }
 }
 function ids(value, max = 256) {
   if (!Array.isArray(value) || value.length > max || Array.from(value).some(item => !uuid(item))) unavailable();
@@ -55,13 +56,14 @@ function ids(value, max = 256) {
  * authorization_scopes.id constraints; this adapter never mixes that namespace.
  */
 export function createSupabaseDurableAuthAdapter({ url, publishableKey, fetch: request = globalThis.fetch,
-  clock = Date.now, timeoutMs = 10000, maxResponseBytes = 131072 } = {}) {
+  clock = Date.now, timeoutMs = 10000, maxResponseBytes = 131072, dependencyScope } = {}) {
   let origin;
   try { origin = new URL(url); } catch { throw new TypeError('invalid_durable_auth_config'); }
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash ||
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) ||
       typeof request !== 'function' || typeof clock !== 'function' || !positive(timeoutMs) || timeoutMs > 30000 ||
-      !positive(maxResponseBytes) || maxResponseBytes > 131072) throw new TypeError('invalid_durable_auth_config');
+      !positive(maxResponseBytes) || maxResponseBytes > 131072 ||
+      (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) throw new TypeError('invalid_durable_auth_config');
   const baseUrl = origin.href;
   const checkedClock = () => { const value = clock(); if (!positive(value)) unavailable(); return value; };
   async function bounded(signal, operation) {
@@ -72,9 +74,10 @@ export function createSupabaseDurableAuthAdapter({ url, publishableKey, fetch: r
     signal.addEventListener('abort', stop, { once: true });
     const timer = setTimeout(stop, timeoutMs);
     try {
-      const result = await Promise.race([Promise.resolve().then(() => {
+      const run = () => {
         if (controller.signal.aborted) unavailable(); return operation(controller.signal);
-      }), aborted]);
+      };
+      const result = await Promise.race([dependencyScope ? dependencyScope.track(run) : Promise.resolve().then(run), aborted]);
       if (controller.signal.aborted) unavailable(); return result;
     } catch (error) {
       if (error instanceof BrokerError && ['unauthorized', 'forbidden', 'backend_unavailable'].includes(error.code)) throw error;
@@ -104,7 +107,7 @@ export function createSupabaseDurableAuthAdapter({ url, publishableKey, fetch: r
         headers: { apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
           ...(path !== PATHS.user ? { 'content-profile': 'public', 'accept-profile': 'public' } : {}) },
         ...(args === undefined ? {} : { body: JSON.stringify(args) }) });
-      if (signal.aborted) { cancel(response); unavailable(); }
+      if (signal.aborted) { await cancel(response); unavailable(); }
       const data = await readJson(response, maxResponseBytes, signal);
       if (!response.ok) {
         if (response.status === 401) fail('unauthorized');

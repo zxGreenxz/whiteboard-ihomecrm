@@ -1,3 +1,4 @@
+import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
@@ -142,7 +143,15 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
     const tokenDigest = digest(presentedToken);
     return bounded(signal, async (innerSignal, check) => {
       const read = async () => {
-        const value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); check();
+        let value;
+        try { value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); }
+        catch (error) {
+          // Only a typed, acknowledged SQL authorization rejection is a denial.
+          // Outages, cancellations and uncertain outcomes retain fail-closed 503.
+          if (error instanceof DurableConnectionStoreError && error.code === 'store_denied') fail('forbidden');
+          throw error;
+        }
+        check();
         return snapshot(value, tokenDigest, now());
       };
       const before = await read();
@@ -177,7 +186,15 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
       const tokenDigest = digest(presentedToken);
       return bounded(signal, async (innerSignal, check) => {
-        const value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); check();
+        let value;
+        try { value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); }
+        catch (error) {
+          // Only a typed, acknowledged SQL authorization rejection is a denial.
+          // Outages, cancellations and uncertain outcomes retain fail-closed 503.
+          if (error instanceof DurableConnectionStoreError && error.code === 'store_denied') fail('forbidden');
+          throw error;
+        }
+        check();
         const current = snapshot(value, tokenDigest, now());
         return Object.freeze({ connectionId: current.connection.id });
       });

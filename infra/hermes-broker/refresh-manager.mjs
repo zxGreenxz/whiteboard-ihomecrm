@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { validateSessionBinding, validateSessionMaterial } from './session-crypto.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
 
 export class SessionRefreshError extends Error {
   constructor(code) { super(code); this.name = 'SessionRefreshError'; this.code = code; }
@@ -65,15 +66,51 @@ const sameBinding = (a, b) => Object.keys(b).every((key) => a?.[key] === b[key])
  * without a confirmed claim is unknown, not proof that no reservation exists.
  * Known RESERVED claims receive one independent bounded release; after dispatch
  * one independent bounded quarantine still runs even when the caller is gone.
+ *
+ * beginRefresh has the same arguments and returns {result,drained}. A timeout is
+ * only a public result: same-credential capacity and close() remain owned until
+ * actual dependencies settle. close aborts new work but permits the one bounded
+ * release/quarantine above. It never closes a caller-owned dependencyScope.
+ * Inject the SAME scope into the manager and fixed store transport so queries
+ * below transport deadline races are visible. Provider beginRefresh and
+ * beginVerifySession handles are adopted even when they use a separate scope.
+ * Legacy injected ports must either settle only after real work or track their
+ * inner work in this scope; no wrapper can infer hidden I/O from a raced promise.
+ * Drain is not remote rollback, durable recovery, or permission to retry.
  */
 export function createRefreshManager({ store, provider, crypto, clock = Date.now,
-  timeoutMs = 10_000, leaseMs = 30_000 } = {}) {
+  timeoutMs = 10_000, leaseMs = 30_000, dependencyScope = createDependencyScope() } = {}) {
   const methods = ['acquire', 'markDispatched', 'stageRefresh', 'publishRefresh', 'requireReconnect', 'release', 'revoke'];
   if (methods.some((key) => typeof store?.[key] !== 'function') ||
       typeof provider?.refresh !== 'function' || typeof provider?.verifySession !== 'function' ||
       typeof crypto?.open !== 'function' || typeof crypto?.seal !== 'function' || typeof clock !== 'function' ||
+      typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function' ||
       !integer(timeoutMs) || timeoutMs > 30_000 || !integer(leaseMs) || leaseMs > 120_000 || leaseMs < timeoutMs * 2) {
     fail('refresh_config_invalid');
+  }
+  const active = new Set(), credentials = new Set();
+  let closed = false, closePromise, drainFailed = false;
+  function owned(work, callerSignal, credentialRef) {
+    if (closed || drainFailed) fail('refresh_closed');
+    if (callerSignal !== undefined && !(callerSignal instanceof AbortSignal)) fail('refresh_invalid_request');
+    if (callerSignal?.aborted) fail('refresh_cancelled');
+    if (credentialRef && credentials.has(credentialRef)) fail('refresh_busy');
+    const controller = new AbortController(), entry = { controller };
+    const onAbort = () => controller.abort();
+    callerSignal?.addEventListener('abort', onAbort, { once: true });
+    active.add(entry); if (credentialRef) credentials.add(credentialRef);
+    let task;
+    try { task = dependencyScope.begin(() => work(controller.signal)); }
+    catch { active.delete(entry); credentials.delete(credentialRef); callerSignal?.removeEventListener('abort', onAbort); fail('refresh_closed'); }
+    const result = task.result.finally(() => { callerSignal?.removeEventListener('abort', onAbort); controller.abort(); });
+    const drained = task.drained.then(() => {
+      if (drainFailed) fail('refresh_drain_unknown');
+      active.delete(entry); credentials.delete(credentialRef);
+    }, () => {
+      drainFailed = true; fail('refresh_drain_unknown');
+    });
+    result.catch(() => {}); drained.catch(() => {}); entry.drained = drained;
+    return Object.freeze({ result, drained });
   }
   const bounded = async (operation, code, preserveUnknown = false, callerSignal) => {
     if (callerSignal?.aborted) fail('refresh_cancelled');
@@ -82,7 +119,7 @@ export function createRefreshManager({ store, provider, crypto, clock = Date.now
     const onAbort = () => { controller.abort(); rejectAbort(new SessionRefreshError('refresh_cancelled')); };
     callerSignal?.addEventListener('abort', onAbort, { once: true });
     try {
-      const result = await Promise.race([Promise.resolve().then(() => {
+      const result = await Promise.race([dependencyScope.track(() => {
         if (callerSignal?.aborted) fail('refresh_cancelled');
         return operation(controller.signal);
       }), aborted, new Promise((_, reject) => {
@@ -99,8 +136,36 @@ export function createRefreshManager({ store, provider, crypto, clock = Date.now
   };
   const stored = (name, input, callerSignal, onDispatch) => {
     const snapshot = structuredClone(input);
-    return bounded((signal) => { onDispatch?.(); return store[name](snapshot, { signal }); },
+    return bounded((signal) => {
+      const attempt = dependencyScope.begin(() => { onDispatch?.(); return store[name](snapshot, { signal }); });
+      return attempt.result.catch(async error => {
+        // A transport may report unknown while its query is still running.
+        // Reconciliation must wait for actual work, inside the current deadline.
+        if (error?.code === 'store_outcome_unknown') await attempt.drained;
+        throw error;
+      });
+    },
       'refresh_storage_unavailable', name === 'stageRefresh' || name === 'publishRefresh', callerSignal);
+  };
+  const provided = (name, input) => {
+    const begin = provider[name === 'refresh' ? 'beginRefresh' : 'beginVerifySession'];
+    if (typeof begin !== 'function') return provider[name](input);
+    let task;
+    try { task = begin.call(provider, input); }
+    catch { drainFailed = true; fail('session_reconnect_required'); }
+    if (!(task?.result instanceof Promise) || !(task?.drained instanceof Promise)) {
+      drainFailed = true; fail('session_reconnect_required');
+    }
+    // Also account for a provider with its own dependency-scope instance.
+    void dependencyScope.track(() => task.drained).catch(() => { drainFailed = true; });
+    return task.result.then(async value => {
+      // A successful observer is not proof the provider finished. Do not verify
+      // candidates or publish material while cancellation/work is still pending
+      // or its drain failed. The enclosing bounded lane still owns the deadline.
+      await task.drained;
+      if (drainFailed) fail('session_reconnect_required');
+      return value;
+    });
   };
   const reconciled = async (name, input, callerSignal) => {
     const snapshot = structuredClone(input);
@@ -114,8 +179,7 @@ export function createRefreshManager({ store, provider, crypto, clock = Date.now
   };
   const now = () => { const value = clock(); if (!integer(value)) fail('refresh_clock_invalid'); return value; };
 
-  return Object.freeze({
-    async refresh(credentialRef, suppliedBinding, { signal: callerSignal } = {}) {
+  async function refresh(credentialRef, suppliedBinding, callerSignal) {
       if (!reference(credentialRef) || (callerSignal !== undefined && !(callerSignal instanceof AbortSignal))) fail('refresh_invalid_request');
       if (callerSignal?.aborted) fail('refresh_cancelled');
       let binding;
@@ -150,11 +214,11 @@ export function createRefreshManager({ store, provider, crypto, clock = Date.now
         if (await stored('markDispatched', claim, callerSignal, () => { dispatched = true; }) !== true) fail('session_reconnect_required');
         if (lease.expiresAt <= now()) fail('session_reconnect_required');
         const material = await bounded(async (signal) => {
-          const suppliedTokens = await provider.refresh({ refreshToken: previous.refreshToken, signal });
+          const suppliedTokens = await provided('refresh', { refreshToken: previous.refreshToken, signal });
           if (signal.aborted) fail('session_reconnect_required');
           // Validate size and shape before allowing provider material into verification.
           const tokens = validateSessionMaterial({ accessToken: suppliedTokens?.accessToken, refreshToken: suppliedTokens?.refreshToken, expiresAt: 1 });
-          const verified = await provider.verifySession({ accessToken: tokens.accessToken, signal });
+          const verified = await provided('verifySession', { accessToken: tokens.accessToken, signal });
           if (signal.aborted || !sameBinding(verified, { userId: binding.userId, sessionId: binding.sessionId }) ||
               !integer(verified?.expiresAt) || verified.expiresAt <= now()) fail('session_reconnect_required');
           return validateSessionMaterial({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: verified.expiresAt });
@@ -183,11 +247,32 @@ export function createRefreshManager({ store, provider, crypto, clock = Date.now
         if (callerSignal?.aborted) fail(released === true ? 'refresh_cancelled' : 'refresh_outcome_unknown');
         fail('refresh_material_unavailable');
       }
-    },
+  }
+  function beginRefresh(credentialRef, suppliedBinding, { signal } = {}) {
+    if (!reference(credentialRef)) fail('refresh_invalid_request');
+    let binding; try { binding = validateSessionBinding(suppliedBinding); } catch { fail('refresh_invalid_request'); }
+    return owned(inner => refresh(credentialRef, binding, inner), signal, credentialRef);
+  }
+  return Object.freeze({
+    beginRefresh,
+    async refresh(credentialRef, binding, options) { return beginRefresh(credentialRef, binding, options).result; },
     async revoke(credentialRef) {
       if (!reference(credentialRef)) fail('refresh_invalid_request');
-      if (await stored('revoke', { credentialRef }) !== true) fail('refresh_storage_unavailable');
-      return { revoked: true };
+      return owned(async signal => {
+        if (await stored('revoke', { credentialRef }, signal) !== true) fail('refresh_storage_unavailable');
+        return { revoked: true };
+      }).result;
+    },
+    close() {
+      if (!closePromise) {
+        closed = true;
+        for (const entry of active) entry.controller.abort();
+        closePromise = Promise.all([...active].map(entry => entry.drained)).then(() => {
+          if (drainFailed) fail('refresh_drain_unknown');
+        });
+        closePromise.catch(() => {});
+      }
+      return closePromise;
     },
   });
 }

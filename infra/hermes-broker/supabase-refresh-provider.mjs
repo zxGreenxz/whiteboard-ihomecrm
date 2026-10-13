@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { createSupabaseAuthAdapter } from './supabase-adapter.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN = /^[\x21-\x7e]{1,16384}$/;
@@ -8,28 +9,30 @@ const exact = (value, keys) => object(value) && Object.keys(value).every(key => 
 const positive = value => Number.isSafeInteger(value) && value > 0;
 const CODES = new Set(['refresh_invalid_request', 'refresh_request_too_large', 'refresh_response_too_large',
   'refresh_invalid_response', 'refresh_rejected', 'refresh_provider_unavailable', 'refresh_verification_failed',
-  'refresh_cancelled', 'refresh_timeout']);
+  'refresh_cancelled', 'refresh_timeout', 'refresh_closed']);
 
 export class SupabaseRefreshError extends Error {
   constructor(code) { super(code); this.name = 'SupabaseRefreshError'; this.code = code; }
 }
 const fail = code => { throw new SupabaseRefreshError(code); };
-const cancelBody = response => { void response.body?.cancel().catch(() => {}); };
+const cancelBody = async response => { await response.body?.cancel().catch(() => {}); };
 
 async function readJson(response, maxBytes, signal) {
   if (!response.body || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') ||
-      response.redirected) { cancelBody(response); fail('refresh_invalid_response'); }
+      response.redirected) { await cancelBody(response); fail('refresh_invalid_response'); }
   if (Number(response.headers.get('content-length')) > maxBytes) {
-    cancelBody(response); fail('refresh_response_too_large');
+    await cancelBody(response); fail('refresh_response_too_large');
   }
   const reader = response.body.getReader();
   const chunks = []; let size = 0;
-  const cancel = () => { void reader.cancel().catch(() => {}); };
+  let cancellation;
+  const cancel = () => cancellation ??= reader.cancel().catch(() => {});
   signal.addEventListener('abort', cancel, { once: true });
   try {
     while (true) {
       if (signal.aborted) throw signal.reason;
       const { done, value } = await reader.read();
+      if (signal.aborted) throw signal.reason;
       if (done) break;
       size += value.byteLength;
       if (size > maxBytes) fail('refresh_response_too_large');
@@ -39,7 +42,7 @@ async function readJson(response, maxBytes, signal) {
     catch { fail('refresh_invalid_response'); }
   } finally {
     signal.removeEventListener('abort', cancel);
-    cancel(); // Cancellation itself must not extend a refresh deadline.
+    await cancel(); // Public deadline stays bounded; actual drain owns cancellation.
     reader.releaseLock();
   }
 }
@@ -57,26 +60,34 @@ async function readJson(response, maxBytes, signal) {
  * Provider response user/expiry metadata is never treated as identity evidence.
  * No password, service-role, environment lookup, logging, automatic retry or
  * fallback token reuse. Unknown outcomes require the manager's reconnect path.
+ * beginRefresh/beginVerifySession expose {result,drained}; convenience methods
+ * keep the existing result API. Fetch, body reads and cancellation stay inside
+ * tracked work below deadline races. close blocks new work, aborts active calls
+ * and waits for actual drain without closing a shared dependencyScope. A trusted
+ * verifier with hidden deadline races must track its inner work in that same
+ * scope. The wrapper cannot infer or cancel invisible injected dependencies.
  */
 export function createSupabaseRefreshProvider({ url, publishableKey, verifySession: trustedVerify,
   fetch: request = globalThis.fetch, clock = Date.now, timeoutMs = 10_000,
-  maxRequestBytes = 32_800, maxResponseBytes = 131_072 } = {}) {
+  maxRequestBytes = 32_800, maxResponseBytes = 131_072, dependencyScope = createDependencyScope() } = {}) {
   let origin;
   try { origin = new URL(url); } catch { throw new TypeError('invalid_refresh_provider_config'); }
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash ||
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) ||
       (trustedVerify !== undefined && typeof trustedVerify !== 'function') || typeof request !== 'function' || typeof clock !== 'function' ||
+      typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function' ||
       !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxRequestBytes) || maxRequestBytes > 65_536 ||
       !positive(maxResponseBytes) || maxResponseBytes > 131_072) throw new TypeError('invalid_refresh_provider_config');
   // Capture an immutable string; no supplied request can replace this endpoint.
   const endpoint = new URL('/auth/v1/token?grant_type=refresh_token', origin).href;
   const userEndpoint = new URL('/auth/v1/user', origin).href;
+  const active = new Set(); let closed = false, closePromise, drainFailed = false;
   const verify = trustedVerify ?? createSupabaseAuthAdapter({ url: origin.href, publishableKey, clock,
     fetch: async (target, options) => {
       if (String(target) !== userEndpoint || options.method !== 'GET' || options.body !== undefined) fail('refresh_verification_failed');
       const response = await request(userEndpoint, options);
-      if (options.signal.aborted) { cancelBody(response); throw options.signal.reason; }
-      if (!response.ok) { cancelBody(response); fail('refresh_verification_failed'); }
+      if (options.signal.aborted) { await cancelBody(response); throw options.signal.reason; }
+      if (!response.ok) { await cancelBody(response); fail('refresh_verification_failed'); }
       const value = await readJson(response, maxResponseBytes, options.signal);
       if (!object(value) || ['error', 'error_code', 'error_description'].some(key => Object.hasOwn(value, key))) fail('refresh_verification_failed');
       // Existing adapter owns bearer/claims/user matching. Metadata is discarded
@@ -100,7 +111,10 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
       controller.signal.addEventListener('abort', abortListener, { once: true });
     });
     try {
-      const result = await Promise.race([operation(controller.signal), aborted]);
+      const result = await Promise.race([dependencyScope.track(() => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        return operation(controller.signal);
+      }), aborted]);
       if (controller.signal.aborted) throw controller.signal.reason;
       return result;
     } catch (error) {
@@ -114,19 +128,36 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
     }
   }
 
-  return Object.freeze({
-    async refresh(input) {
+  function begin(signal, operation, fallback) {
+    if (closed || drainFailed) fail('refresh_closed');
+    if (signal !== undefined && !(signal instanceof AbortSignal)) fail('refresh_invalid_request');
+    if (signal?.aborted) fail('refresh_cancelled');
+    const controller = new AbortController(), entry = { controller };
+    const onAbort = () => controller.abort(); signal?.addEventListener('abort', onAbort, { once: true });
+    active.add(entry);
+    let task;
+    try { task = dependencyScope.begin(() => bounded(controller.signal, operation, fallback)); }
+    catch { active.delete(entry); signal?.removeEventListener('abort', onAbort); fail('refresh_closed'); }
+    const result = task.result.finally(() => { signal?.removeEventListener('abort', onAbort); controller.abort(); });
+    const drained = task.drained.then(() => { active.delete(entry); }, () => {
+      drainFailed = true; fail('refresh_drain_unknown');
+    });
+    result.catch(() => {}); drained.catch(() => {}); entry.drained = drained;
+    return Object.freeze({ result, drained });
+  }
+
+  function beginRefresh(input) {
       if (!exact(input, ['refreshToken', 'signal']) || typeof input.refreshToken !== 'string' || !TOKEN.test(input.refreshToken)) {
         fail('refresh_invalid_request');
       }
       const body = JSON.stringify({ refresh_token: input.refreshToken });
       if (Buffer.byteLength(body) > maxRequestBytes) fail('refresh_request_too_large');
-      return bounded(input.signal, async signal => {
+      return begin(input.signal, async signal => {
         const response = await request(endpoint, { method: 'POST', redirect: 'error', signal,
           headers: { apikey: publishableKey, 'content-type': 'application/json', accept: 'application/json' }, body });
-        if (signal.aborted) { cancelBody(response); throw signal.reason; }
+        if (signal.aborted) { await cancelBody(response); throw signal.reason; }
         if (!response.ok) {
-          cancelBody(response);
+          await cancelBody(response);
           fail([400, 401, 403].includes(response.status) ? 'refresh_rejected' : 'refresh_provider_unavailable');
         }
         const value = await readJson(response, maxResponseBytes, signal);
@@ -135,13 +166,13 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
             typeof value.refresh_token !== 'string' || !TOKEN.test(value.refresh_token)) fail('refresh_invalid_response');
         return { accessToken: value.access_token, refreshToken: value.refresh_token };
       }, 'refresh_provider_unavailable');
-    },
-    async verifySession(input) {
+  }
+  function beginVerifySession(input) {
       if (!exact(input, ['accessToken', 'signal']) || typeof input.accessToken !== 'string' || !TOKEN.test(input.accessToken)) {
         fail('refresh_invalid_request');
       }
       const accessToken = input.accessToken;
-      return bounded(input.signal, async signal => {
+      return begin(input.signal, async signal => {
         const result = await verify({ accessToken, signal });
         if (signal.aborted) throw signal.reason;
         const now = clock();
@@ -149,6 +180,20 @@ export function createSupabaseRefreshProvider({ url, publishableKey, verifySessi
             !positive(now) || !positive(result.expiresAt) || result.expiresAt <= now) fail('refresh_verification_failed');
         return { userId: result.userId, sessionId: result.sessionId, expiresAt: result.expiresAt };
       }, 'refresh_verification_failed');
+  }
+  return Object.freeze({ beginRefresh, beginVerifySession,
+    async refresh(input) { return beginRefresh(input).result; },
+    async verifySession(input) { return beginVerifySession(input).result; },
+    close() {
+      if (!closePromise) {
+        closed = true;
+        for (const entry of active) entry.controller.abort();
+        closePromise = Promise.all([...active].map(entry => entry.drained)).then(() => {
+          if (drainFailed) fail('refresh_drain_unknown');
+        });
+        closePromise.catch(() => {});
+      }
+      return closePromise;
     },
   });
 }

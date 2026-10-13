@@ -1,30 +1,30 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1395,
-  "soFileDocBangFs": 312,
-  "tongLoiGoi": 696,
-  "khongPhanLoaiDuoc": 312,
+  "tongSoFileTest": 1434,
+  "soFileDocBangFs": 322,
+  "tongLoiGoi": 728,
+  "khongPhanLoaiDuoc": 328,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 54,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 42,
+      "soFile": 46,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 14,
+      "soFile": 15,
       "moTa": "Đọc tài liệu/asset."
+    },
+    "sql": {
+      "soFile": 110,
+      "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
       "soFile": 3,
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
-    },
-    "sql": {
-      "soFile": 107,
-      "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
   "testDocMaNguon": [
@@ -160,10 +160,26 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-runtime/container-driver.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 8
+    },
+    {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
       "soGoi": 9,
       "loai": {},
       "khongPhanLoaiDuoc": 9
+    },
+    {
+      "file": "scripts/__tests__/hermes-durable-store.test.mjs",
+      "soGoi": 9,
+      "loai": {
+        "ma-nguon": 3
+      },
+      "khongPhanLoaiDuoc": 6
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
@@ -191,14 +207,6 @@
         "tai-lieu": 4
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "scripts/__tests__/hermes-durable-store.test.mjs",
-      "soGoi": 7,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 6
     },
     {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
@@ -334,6 +342,14 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 3
+    },
+    {
+      "file": "infra/hermes-runtime/gateway-transport.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
@@ -481,6 +497,30 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-runtime/agent-process.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-zalo-router/binding-service.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-zalo-router/privacy-sql.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/network-center-worker/test/container.test.ts",
@@ -691,6 +731,23 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-runtime/profile-homes.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1,
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-zalo-router/privacy-schema.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/network-center-worker/test/backupStore.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -803,6 +860,12 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "scripts/__tests__/migration-target.test.mjs",
@@ -1329,7 +1392,19 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

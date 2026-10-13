@@ -10,7 +10,8 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 // Exercise real files in the restored domains without repeatedly planning
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
-  /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
+  /^infra\/hermes-zalo-router\//.test(file) ||
+  /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store|connection-renewal-schema|room-scope-schema|public-conflict-schema)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
 const planFor = (path, testMatrix = matrix, files = testFiles) => createGatePlan({
   snapshot, changes: [{ path, status: 'M', before: 'before', after: 'after' }],
@@ -36,11 +37,17 @@ const p2NativeTests = [
   'scripts/__tests__/hermes-refresh-auth.test.mjs',
   'scripts/__tests__/hermes-durable-schema.test.mjs',
   'scripts/__tests__/hermes-durable-store.test.mjs',
+  'scripts/__tests__/hermes-connection-renewal-schema.test.mjs',
+  'scripts/__tests__/hermes-room-scope-schema.test.mjs',
+  'scripts/__tests__/hermes-public-conflict-schema.test.mjs',
 ];
 const p2Migrations = [
   'supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql',
   'supabase/migrations/20261012062043_hermes_encrypted_session_store_v1.sql',
   'supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql',
+  'supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql',
+  'supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql',
+  'supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql',
 ];
 function assertNativeOwner(file, testMatrix = matrix) {
   const assigned = assignSuites([file], testMatrix.suites);
@@ -118,6 +125,97 @@ describe('P0 shared CRM foundation routing', () => {
     }
   });
 
+  it('keeps Zalo binding policy tests on node and worker integration on Vitest', () => {
+    const bindingTest = 'infra/hermes-zalo-router/binding-service.test.mjs';
+    const privateTests = ['infra/hermes-zalo-router/privacy-schema.test.mjs', 'infra/hermes-zalo-router/privacy-sql.test.mjs',
+      'infra/hermes-zalo-router/private-command-sql.test.mjs', 'infra/hermes-zalo-router/private-dispatch-sql.test.mjs', 'infra/hermes-zalo-router/private-reply-sql.test.mjs'];
+    for (const file of [bindingTest, ...privateTests]) assertNativeOwner(file);
+    for (const source of ['infra/hermes-zalo-router/binding-service.mjs', 'worker/lib/hermes-link.js', 'worker/lib/hermes-command.js',
+      'worker/lib/inbound.js', 'worker/lib/login.js', 'worker/lib/session-lifecycle.js', 'worker/lib/hermes-reply.js', 'worker/lib/watchdog.js',
+      'supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql', 'supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql',
+      'supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql', 'supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql', 'infra/hermes-zalo-router/private-command-fixture.mjs']) {
+      const plan = planFor(source);
+      expect(matrix.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern => globToRegExp(pattern).test(source))).map(rule => rule.id))
+        .toContain('hermes-zalo-binding-native');
+      expect(plan.suiteSelections.find(s => s.id === 'node-native').files).toEqual(expect.arrayContaining([bindingTest, ...privateTests]));
+      expect(plan.suiteSelections.find(s => s.id === 'app-unit')?.files ?? []).not.toContain(bindingTest);
+      if (source.startsWith('worker/')) expect(plan.suiteSelections.find(s => s.id === 'app-unit').files)
+        .toEqual(expect.arrayContaining(['worker/__tests__/hermes-link.test.js', 'worker/__tests__/hermes-command.test.js', 'worker/__tests__/hermes-inbound.test.js', 'worker/__tests__/hermes-reply.test.js']));
+      if (!source.startsWith('supabase/')) expect(riskMap.tiers.authorization.paths.some(pattern => globToRegExp(pattern).test(source))).toBe(true);
+    }
+  });
+
+  it('requires private command authorization review even when its own tests are selected', () => {
+    const source = 'worker/lib/hermes-command.js';
+    const plan = planFor(source);
+    expect(plan.profiles).toContain('money-auth');
+    expect(plan.crossReview).toBe(true);
+    expect(plan.suiteSelections.find(s => s.id === 'app-unit').files)
+      .toContain('worker/__tests__/hermes-command.test.js');
+    const policy = structuredClone(riskMap);
+    policy.tiers.authorization.paths = policy.tiers.authorization.paths.filter(path => path !== source);
+    const withoutAuthorization = createGatePlan({ snapshot, testFiles, testMatrix: matrix, riskMap: policy,
+      changes: [{ path: source, status: 'M', before: 'before', after: 'after' }] });
+    expect(withoutAuthorization.profiles).not.toContain('money-auth');
+    expect(withoutAuthorization.crossReview).toBe(false);
+    const mutant = structuredClone(matrix);
+    const rule = mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-zalo-binding-native');
+    rule.sourcePaths = rule.sourcePaths.filter(path => path !== source);
+    expect(planFor(source, mutant).suiteSelections.find(s => s.id === 'node-native')?.files ?? [])
+      .not.toContain('infra/hermes-zalo-router/privacy-sql.test.mjs');
+  });
+
+  it('routes the product process and private reply through authorization review and their actual runners', () => {
+    for (const [source, suite, file] of [
+      ['infra/hermes-runtime/agent-process.py', 'node-native', 'infra/hermes-runtime/agent-process.test.mjs'],
+      ['worker/lib/hermes-reply.js', 'app-unit', 'worker/__tests__/hermes-reply.test.js'],
+      ['supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql', 'node-native', 'infra/hermes-zalo-router/private-reply-sql.test.mjs'],
+    ]) {
+      const plan = planFor(source);
+      expect(plan.crossReview).toBe(true);
+      expect(plan.suiteSelections.find(selection => selection.id === suite).files).toContain(file);
+    }
+  });
+
+  it('product gateway and container changes require authorization review plus backend/runtime composition tests', () => {
+    const required = ['infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/runtime-model-service.test.mjs',
+      'infra/hermes-broker/dependency-drain.test.mjs', 'infra/hermes-runtime/runtime-gateway.test.mjs',
+      'infra/hermes-runtime/gateway-relay.test.mjs', 'infra/hermes-runtime/gateway-transport.test.mjs',
+      'infra/hermes-runtime/container-driver.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs',
+      'infra/hermes-runtime/profile-homes.test.mjs', 'infra/hermes-runtime/connection-supervisor.test.mjs',
+      'infra/hermes-broker/private-command-runner.test.mjs'];
+    const files = [...new Set([...testFiles, ...required])];
+    for (const source of ['runtime-gateway', 'gateway-relay', 'gateway-transport', 'container-driver', 'container-contract',
+      'runtime-orchestrator', 'profile-homes', 'connection-supervisor']) {
+      const path = `infra/hermes-runtime/${source}.mjs`, plan = planFor(path, matrix, files);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
+      expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
+      expect(riskMap.tiers.authorization.paths).toContain(path);
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-runtime-composition');
+    expect(planFor('infra/hermes-runtime/runtime-gateway.mjs', mutant, files).suiteSelections.find(selection => selection.id === 'node-native').files)
+      .not.toContain('infra/hermes-broker/runtime-model-service.test.mjs');
+    expect(planFor('infra/hermes-broker/private-command-runner.mjs', matrix, files).suiteSelections.find(selection => selection.id === 'node-native').files)
+      .toEqual(expect.arrayContaining(required));
+  });
+
+  it('maintenance and refresh changes include backend/runtime integration and authorization review', () => {
+    const required = ['infra/hermes-broker/connection-maintenance.test.mjs', 'infra/hermes-broker/connection-renewal.test.mjs',
+      'infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/refresh-manager.test.mjs',
+      'infra/hermes-runtime/connection-supervisor.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs'];
+    const files = [...new Set([...testFiles, ...required])];
+    for (const source of ['connection-maintenance', 'connection-renewal', 'refresh-manager', 'supabase-refresh-provider', 'durable-refresh-store']) {
+      const path = 'infra/hermes-broker/' + source + '.mjs', plan = planFor(path, matrix, files);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
+      expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-runtime-composition');
+    expect(planFor('infra/hermes-broker/connection-maintenance.mjs', mutant, files).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? [])
+      .not.toContain('infra/hermes-runtime/connection-supervisor.test.mjs');
+  });
+
   it('routes inventory drift and generator edits to a check command and native test', () => {
     for (const source of ['scripts/generate-hermes-crm-inventory.mjs', 'tooling/hermes-crm-inventory.generated.json']) {
       const plan = planFor(source);
@@ -158,6 +256,7 @@ describe('P0 shared CRM foundation routing', () => {
     ['src/lib/roomSaleFacts.ts', 'infra/hermes-broker/room-read-projection.test.mjs'],
     ['scripts/test-hermes-broker-authz.mjs', 'scripts/__tests__/test-hermes-broker-authz.test.mjs'],
     ['infra/hermes-runtime/runtime-probe.py', 'infra/hermes-runtime/runtime-contract.test.mjs'],
+    ['infra/hermes-runtime/connection-supervisor.mjs', 'infra/hermes-runtime/connection-supervisor.test.mjs'],
     ['scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-runtime/fixture-server.test.mjs'],
   ])('routes P1 %s to offline contracts without executing its live harness', (source, testFile) => {
     const plan = planFor(source);
@@ -167,7 +266,7 @@ describe('P0 shared CRM foundation routing', () => {
     expect(args[0]).toBe('--test');
     expect(args).not.toContain('--env');
     expect(args).not.toContain('--run');
-    if (source.includes('broker')) expect(plan.profiles).toContain('money-auth');
+    if (source.includes('broker') || source.includes('connection-supervisor')) expect(plan.profiles).toContain('money-auth');
   });
 
   it.each([
@@ -268,7 +367,7 @@ describe('P0 shared CRM foundation routing', () => {
     ...p2Migrations, 'scripts/network-center-function-bodies.mjs',
     'scripts/apply-reviewed-migration.mjs', 'scripts/lib/migration-target.mjs',
   ])('selects durable SQL static safety contracts for %s without applying migrations', (source) => {
-    assertP2Rule(source, 'hermes-durable-schema-native', [p2NativeTests[1]]);
+    assertP2Rule(source, 'hermes-durable-schema-native', [p2NativeTests[1], ...p2NativeTests.slice(3)]);
     if (p2Migrations.includes(source)) {
       const plan = planFor(source);
       expect(plan.profiles).toContain('schema');
@@ -290,6 +389,9 @@ describe('P0 shared CRM foundation routing', () => {
     'infra/hermes-broker/durable-authority.mjs',
     'infra/hermes-broker/supabase-durable-auth-adapter.mjs',
     'infra/hermes-broker/connection-control-plane.mjs',
+    'infra/hermes-broker/room-read-service.mjs',
+    'infra/hermes-broker/room-read-projection.mjs',
+    'src/lib/roomSaleFacts.ts',
     'infra/hermes-broker/certs/supabase-ca-2021.crt',
     'infra/hermes-broker/store-transport.mjs',
     'infra/hermes-broker/store-pool.mjs',

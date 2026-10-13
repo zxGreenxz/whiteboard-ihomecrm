@@ -41,9 +41,9 @@ function fixture(handler, clock = () => now) {
   return { store, calls, controller, options: { signal: controller.signal } };
 }
 
-test('only four fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
+test('only five fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
   const f = fixture(), input = activation();
-  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'restrictConnection', 'revokeConnection']);
+  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'renewConnection', 'restrictConnection', 'revokeConnection']);
   assert.deepEqual(await f.store.activate(input, f.options), activationReply());
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0], { operation: 'activate', signal: f.controller.signal, payload: {
@@ -233,4 +233,69 @@ test('caller mutation during await cannot change the projected SQL bundle or val
   assert.deepEqual(await pending, activationReply());
   assert.equal(f.calls[0].payload.userId, ids.user);
   assert.equal(f.calls[0].payload.sessionEnvelope.ciphertext, envelope().ciphertext);
+});
+
+const renewal = () => ({ tokenDigest, connectionId: ids.connection, expectedEpoch: 2,
+  credentialRef: ids.credential, expectedRevision: 3, expectedExpiresAt: now + 300_000, requestedTtlMs: 900_000 });
+const renewalReply = (expiresAt = now + 900_000) => ({ ok: true, status: 'renewed', expiresAt });
+test('renewal sends one exact digest/identity/revision/expiry CAS and requested duration, never a target expiry', async () => {
+  const f = fixture(() => renewalReply()), input = renewal();
+  assert.deepEqual(await f.store.renewConnection(input, f.options), renewalReply());
+  assert.deepEqual(f.calls, [{ operation: 'renewConnection', payload: input, signal: f.controller.signal }]);
+  assert.equal(f.store.rotateToken, undefined); assert.equal(f.calls[0].payload.targetExpiresAt, undefined);
+});
+test('DB-selected expiry may be capped by session or hard age, independently of the host clock', async () => {
+  for (const hostNow of [now - 86_400_000, now + 86_400_000, NaN]) {
+    let clockReads = 0;
+    const response = renewalReply(now + 350_001);
+    const f = fixture(() => response, () => { clockReads++; return hostNow; });
+    assert.deepEqual(await f.store.renewConnection(renewal(), f.options), response);
+    assert.equal(clockReads, 0); assert.equal(f.calls.length, 1);
+  }
+});
+test('renewal rejects invalid duration, identity, CAS or authority fields without SQL', async () => {
+  const f = fixture();
+  for (const delta of [{ tokenDigest: 'hc_raw' }, { connectionId: ids.assistant.toUpperCase() }, { credentialRef: 'other' },
+    { expectedEpoch: 0 }, { expectedRevision: Number.MAX_SAFE_INTEGER }, { expectedRevision: NaN },
+    { expectedExpiresAt: 0 }, { expectedExpiresAt: Number.MAX_SAFE_INTEGER }, { expectedExpiresAt: 1.5 },
+    { requestedTtlMs: 0 }, { requestedTtlMs: -1 }, { requestedTtlMs: 900_001 }, { requestedTtlMs: 0.1 },
+    { requestedTtlMs: '900000' }, { requestedTtlMs: null }, { targetExpiresAt: now + 900_000 },
+    { read: ['rooms.view'] }, { binding: binding() }, { rawToken: 'private' }]) {
+    await assert.rejects(f.store.renewConnection({ ...renewal(), ...delta }, f.options), code('connection_store_request_invalid'));
+  }
+  await assert.rejects(f.store.renewConnection(renewal()), code('connection_store_request_invalid'));
+  f.controller.abort();
+  await assert.rejects(f.store.renewConnection(renewal(), f.options), code('connection_store_cancelled'));
+  assert.equal(f.calls.length, 0);
+});
+test('malformed, nonextending, overlarge or secret-bearing renewal ACK stays unknown', async () => {
+  for (const result of [undefined, false, { ok: false, status: 'unavailable' },
+    { ...renewalReply(), status: 'already_renewed' }, renewalReply(now + 300_000),
+    renewalReply(now + 1_200_001), renewalReply(now + 350_000.5), renewalReply(Infinity),
+    { ...renewalReply(), newToken: 'private' }]) {
+    const f = fixture(() => result);
+    await assert.rejects(f.store.renewConnection(renewal(), f.options), code('store_outcome_unknown'));
+    assert.equal(f.calls.length, 1);
+  }
+});
+test('renewal never retries a lost ACK, stale CAS, SQL denial or safe-redacted backend failure', async () => {
+  for (const expected of ['store_outcome_unknown', 'store_conflict', 'store_denied', 'store_rejected']) {
+    const f = fixture(() => { throw new StoreTransportError(expected); });
+    await assert.rejects(f.store.renewConnection(renewal(), f.options), code(expected)); assert.equal(f.calls.length, 1);
+  }
+  const f = fixture(() => { throw new Error('private credential'); });
+  await assert.rejects(f.store.renewConnection(renewal(), f.options), code('connection_store_unavailable'));
+  assert.equal(f.calls.length, 1);
+});
+test('renewal snapshots its scalar CAS tuple and does not accept success after cancellation', async () => {
+  for (const cancel of [false, true]) {
+    let settle;
+    const f = fixture(() => new Promise(done => { settle = done; })), input = renewal();
+    const pending = f.store.renewConnection(input, f.options);
+    input.tokenDigest = 'b'.repeat(64); input.expectedRevision = 99; input.requestedTtlMs = 1; input.expectedExpiresAt = now + 1;
+    if (cancel) f.controller.abort(); settle(renewalReply());
+    if (cancel) await assert.rejects(pending, code('store_outcome_unknown'));
+    else assert.deepEqual(await pending, renewalReply());
+    assert.deepEqual(f.calls[0].payload, renewal()); assert.equal(f.calls.length, 1);
+  }
 });

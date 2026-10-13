@@ -132,6 +132,7 @@ async function afterLogin(account, api, { viaQR = false } = {}) {
   await attachSession(id, account.user_id, api, {
     onClosed: (code) => noteDisconnect(id, code),
     sessionSavedAt: savedAt,
+    loginRequestedAt: account.login_requested_at || null,
   });
   resetReloginState(id);
   return api;
@@ -160,7 +161,7 @@ export async function startLoginQR(account) {
 
   const ua = account.meta?.userAgent || uaFor(id);
   // selfListen: true → listener phát cả tin MÌNH gửi từ thiết bị khác.
-  const zalo = new Zalo({ selfListen: true });
+  const zalo = new Zalo({ selfListen: true, logging: false });
   try {
     const api = await zalo.loginQR({ userAgent: ua }, async (ev) => {
       const t = String(ev?.type ?? '');
@@ -214,7 +215,7 @@ export async function tryRelogin(account) {
   try {
     await new Promise((r) => setTimeout(r, RECONNECT_COOLDOWN_MS));
     if (!isLeaseActive()) return;
-    const zalo = new Zalo({ selfListen: true });
+    const zalo = new Zalo({ selfListen: true, logging: false });
     const api = await zalo.login(payload.creds);
     // expectedUid trong file phiên ưu tiên hơn cột DB (file đi cùng cookie).
     const acc = { ...account, zalo_uid: payload.expectedUid || account.zalo_uid };
