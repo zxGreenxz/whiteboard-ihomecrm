@@ -1,5 +1,6 @@
 // TEST-only database/JWT integration. Importing or previewing is offline.
-// No provider send, Docker/model process, schema application, login role or JWT fabrication.
+// No provider send, Docker/model process, schema application or JWT fabrication.
+// Only a newly generated, restricted TEST login is provisioned and removed.
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -13,8 +14,10 @@ import { batBuocDichTest, dangKyMatKhau, uri, psqlJson, lit } from './test-env/l
 import { assertTestLease, markTestCleanupRequired, withTestCleanup, withTestLock } from './test-env/lock.mjs';
 import { readTestCredentials, fixtureCleanupSql as baseCleanup, testFetch, writeFixtureSql, validateCleanupEvidence } from './test-hermes-broker-authz.mjs';
 import { fixturePlan as basePlan, fixtureSetupSql as baseSetup, privateCleanupSql as durableCleanup,
-  countsSql as durableCounts, loadFixtureCa, targetMatches, createSerializedLeaseAssertions } from './test-hermes-durable-store.mjs';
+  countsSql as durableCounts, loadFixtureCa, targetMatches, createSerializedLeaseAssertions,
+  roleSetupSql, roleCleanupSql, guardedQuery } from './test-hermes-durable-store.mjs';
 import { extractFunctionDefinitions } from './network-center-function-bodies.mjs';
+import { createStorePool } from '../infra/hermes-broker/store-pool.mjs';
 import { createSessionCrypto } from '../infra/hermes-broker/session-crypto.mjs';
 import { createDurableConnectionStore } from '../infra/hermes-broker/durable-connection-store.mjs';
 import { createSupabaseRefreshProvider } from '../infra/hermes-broker/supabase-refresh-provider.mjs';
@@ -29,6 +32,7 @@ export const CANDIDATES = Object.freeze({
   '20261013115741_hermes_org_policy_options_v1.sql': '67aa0a792195a380be24798c29e7a9fed41c972508422049dd3210c738290b6c',
   '20261013183000_hermes_connection_options_v1.sql': '5ead8ede6928980d83a2df42a4a6e172f15a6d80dc38b73b7a5812aa31db36f1',
 });
+const FIXTURE_ROLE = /^hermes_store_fixture_[0-9a-f]{32}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -43,11 +47,53 @@ const RPCS = new Set(['get_my_organizations', 'hermes_set_org_policy_v1', 'herme
   'hermes_connection_options_v1', 'hermes_org_policy_options_v1', 'hermes_zalo_binding_v1', 'hermes_zalo_ingress_v1',
   'hermes_zalo_private_command_v1', 'hermes_zalo_private_reply_v1']);
 
+export function executionMode(options = {}) {
+  const mode = options.mode ?? 'full';
+  demand(mode === 'full' || mode === 'jwt-management', 'fixture_mode_invalid');
+  return mode;
+}
+
+export function executionPlan(options = {}) {
+  const mode = executionMode(options);
+  return { mode: 'offline-plan', scope: mode, environment: 'test', projectRef: TEST_REF,
+    liveExecuted: false, fullPrivateFlowExecuted: false,
+    requires: ['--run', 'all Hermes apply evidence', 'candidate source digests unchanged', 'exclusive TEST lease',
+      ...(mode === 'full' ? ['empty worker lease'] : [])],
+    proof: mode === 'full'
+      ? ['real Auth JWT + PostgREST binding/options/worker ACL', 'restricted dedicated TEST login and executor ACL', 'intake dedup → claim → dispatch → finish → reply gates → revoke', 'exact fixture cleanup']
+      : ['real Auth JWT for 3 new actors in 2 fixture orgs', 'connection and policy options with actor/org denials', 'bot management and unobserved challenge ownership/version/revocation', 'exact fixture cleanup'],
+    excluded: ['production', 'schema apply', 'real Zalo/model', 'production login deployment proof',
+      ...(mode === 'jwt-management' ? ['worker lease ownership or mutations', 'ingress observe and binding confirm', 'private intake/dispatch/reply'] : [])] };
+}
+
+export async function runChannelScope(mode, { management, full }) {
+  executionMode({ mode });
+  return mode === 'jwt-management' ? management() : full();
+}
+
+export function fixtureRpcDiagnostic(name, status, body) {
+  demand(RPCS.has(name), 'fixture_rpc_refused');
+  const code = body !== null && typeof body === 'object' ? Object.getOwnPropertyDescriptor(body, 'code')?.value : undefined;
+  return { name, status: Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+    code: typeof code === 'string' && /^(?:[0-9A-Z]{5}|PGRST[0-9]{3})$/.test(code) ? code : null };
+}
+
+export function fixtureRequestHeaders(path, key, token) {
+  demand(path.startsWith('/auth/v1/') || /^\/rest\/v1\/rpc\/[a-z0-9_]+$/.test(path), 'fixture_endpoint_refused');
+  return { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json',
+    ...(path.startsWith('/rest/v1/rpc/') ? { 'Content-Profile': 'public' } : {}) };
+}
+
 export function parseArguments(args) {
   if (args.length === 0 || (args.length === 1 && args[0] === '--plan')) return { run: false };
+  let mode;
+  if (args.length >= 3 && args.at(-2) === '--mode') {
+    mode = executionMode({ mode: args.at(-1) }); args = args.slice(0, -2);
+    if (args.length === 1 && args[0] === '--plan') return { run: false, mode };
+  }
   demand(args.length === 5 && args[0] === '--run' && args[1] === '--env' && args[2] === 'test'
     && args[3] === '--expected-project-ref' && args[4] === TEST_REF, 'explicit_test_run_required');
-  return { run: true, environment: 'test', expectedProjectRef: TEST_REF };
+  return { run: true, environment: 'test', expectedProjectRef: TEST_REF, ...(mode ? { mode } : {}) };
 }
 
 export function migrationSources() {
@@ -179,8 +225,6 @@ export function fixturePlan() {
   const plan = basePlan();
   plan.actors.forEach(actor => { actor.email = actor.email.replace('hermes-p2-', 'hermes-p4-'); });
   plan.orgs.forEach(org => { org.slug = org.slug.replace('hermes-p2-', 'hermes-p4-'); });
-  // No login role is created by this harness. Remove unused password immediately.
-  delete plan.rolePassword;
   plan.instanceId = randomUUID();
   plan.channels = plan.orgs.map((org, index) => ({ accountId: randomUUID(), conversationId: randomUUID(), messageId: randomUUID(),
     orgIndex: index, ownUid: `8${BigInt('0x' + randomBytes(7).toString('hex'))}`, senderUid: `7${BigInt('0x' + randomBytes(7).toString('hex'))}`,
@@ -188,19 +232,25 @@ export function fixturePlan() {
   return plan;
 }
 
+
+export function accountSetupSql(plan) {
+  return plan.channels.map(channel => `INSERT INTO public.zalo_accounts(id,user_id,organization_id,kind,name,zalo_uid,status,meta)
+      VALUES(${lit(channel.accountId)},${lit(plan.actors[channel.orgIndex].id)},${lit(plan.orgs[channel.orgIndex].id)},
+      'personal','Hermes P4 synthetic; no provider credentials',${lit(channel.ownUid)},'connected',
+      jsonb_build_object('hermesFixtureRun',${lit(plan.run)},'providerDisabled',true));`).join('\n');
+}
+
 export function channelSetupSql(plan) {
   // Never upsert/take over a previous worker lease, even if expired.
   return `BEGIN;
     INSERT INTO public.zalo_worker_lease(id,instance_id,hostname,heartbeat_at)
       VALUES('singleton',${lit(plan.instanceId)},'hermes-p4-synthetic-no-provider',clock_timestamp());
-    ${plan.channels.map(channel => `INSERT INTO public.zalo_accounts(id,user_id,organization_id,kind,name,zalo_uid,status,meta)
-      VALUES(${lit(channel.accountId)},${lit(plan.actors[channel.orgIndex].id)},${lit(plan.orgs[channel.orgIndex].id)},
-      'personal','Hermes P4 synthetic; no provider credentials',${lit(channel.ownUid)},'connected',
-      jsonb_build_object('hermesFixtureRun',${lit(plan.run)},'providerDisabled',true));`).join('\n')}
+    ${accountSetupSql(plan)}
     COMMIT;`;
 }
 
-export function channelCleanupSql(plan) {
+export function channelCleanupSql(plan, { mode = 'full' } = {}) {
+  executionMode({ mode });
   const accounts = sqlIds(plan.channels.map(channel => channel.accountId));
   const orgs = sqlIds(plan.orgs.map(org => org.id));
   return `BEGIN;
@@ -212,7 +262,7 @@ export function channelCleanupSql(plan) {
     DELETE FROM public.zalo_messages WHERE account_id IN (${accounts}) AND organization_id IN (${orgs});
     DELETE FROM public.zalo_conversations WHERE account_id IN (${accounts}) AND organization_id IN (${orgs});
     DELETE FROM public.zalo_accounts WHERE id IN (${accounts}) AND organization_id IN (${orgs}) AND meta->>'hermesFixtureRun'=${lit(plan.run)};
-    DELETE FROM public.zalo_worker_lease WHERE id='singleton' AND instance_id=${lit(plan.instanceId)};
+    ${mode === 'full' ? `DELETE FROM public.zalo_worker_lease WHERE id='singleton' AND instance_id=${lit(plan.instanceId)};` : ''}
     COMMIT;`;
 }
 
@@ -232,18 +282,88 @@ export async function expectSqlDenied(operation, codes = ['42501']) {
   demand(codes.includes(observed), 'expected_sql_denial_missing');
 }
 
-// No fabricated request.jwt.claims. Only a real PostgreSQL role switch inside
-// the admin fixture transaction. This proves the executor ACL/function branch,
-// not session_user isolation, dedicated LOGIN, pool TLS identity or broker HTTP.
+// Every store call authenticates as the dedicated TEST LOGIN; there is no role
+// switch, admin fallback, caller-supplied identity or fabricated JWT claim.
+export async function createExecutorRole(ctx, pool, plan, state) {
+  demand(state?.attempted === false && state.confirmed === false && state.cleanupRequired === false, 'executor_setup_reused');
+  const sql = roleSetupSql(plan); // validates both generated role name and password
+  state.attempted = true;
+  try {
+    // The extended protocol keeps the password out of shell/psql command text.
+    await guardedQuery(ctx, pool, sql, [], { write: true }); state.confirmed = true; state.cleanupRequired = true;
+  } catch (error) {
+    // A definite CREATE rejection proves no owned role was created. In
+    // particular, never DROP a foreign role after a duplicate-name rejection.
+    state.cleanupRequired = ctx.writeState.uncertain; throw error;
+  }
+  await guardedQuery(ctx, pool, 'GRANT hermes_store_executor TO "' + plan.role + '"', [], { write: true });
+}
+
+const EXECUTOR_IDENTITY_SQL = `SELECT current_user AS role,session_user AS session_role,
+  r.rolcanlogin,r.rolinherit,r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication,
+  pg_catalog.pg_has_role(current_user,'hermes_store_executor','USAGE') AS scoped,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles p WHERE p.rolname IN
+    ('postgres','service_role','authenticated','anon','authenticator','supabase_admin')
+    AND pg_catalog.pg_has_role(current_user,p.oid,'MEMBER')) AS privileged_member
+  FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`;
+
+async function assertExecutorIdentity(ctx, client) {
+  demand(FIXTURE_ROLE.test(ctx.expectedRole ?? ''), 'executor_role_required');
+  const result = await client.query(EXECUTOR_IDENTITY_SQL), who = result.rows?.[0];
+  demand(result.rows?.length === 1 && who?.role === ctx.expectedRole && who.session_role === ctx.expectedRole
+    && who.rolcanlogin === true && who.rolinherit === true && who.scoped === true && who.privileged_member === false
+    && ['rolsuper', 'rolbypassrls', 'rolcreaterole', 'rolcreatedb', 'rolreplication'].every(key => who[key] === false),
+  'executor_role_probe_invalid');
+}
+
+// All queries in this preflight are inside a read-only transaction. It must
+// succeed before any Auth user is created or connection is activated.
+export async function verifyExecutorPrincipal(ctx, pool) {
+  demand(FIXTURE_ROLE.test(ctx.expectedRole ?? ''), 'executor_role_required');
+  await ctx.assertLease(ctx.lease, ctx.test);
+  const client = await pool.connect(); let begun = false, broken = false;
+  try {
+    await client.query('BEGIN READ ONLY'); begun = true;
+    await assertExecutorIdentity(ctx, client);
+    const membership = (await client.query(`SELECT parent.rolname AS role,m.admin_option,m.inherit_option
+      FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles parent ON parent.oid=m.roleid
+      JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE member.rolname=current_user`)).rows;
+    demand(membership.length === 1 && membership[0].role === 'hermes_store_executor'
+      && membership[0].admin_option === false && membership[0].inherit_option === true, 'executor_membership_invalid');
+    const schema = (await client.query(`SELECT has_schema_privilege(current_user,'app_private','USAGE') AS allowed,
+      has_schema_privilege(current_user,'app_private','CREATE') AS can_create`)).rows;
+    demand(schema.length === 1 && schema[0].allowed === true && schema[0].can_create === false, 'executor_schema_acl_invalid');
+    const privateFunctions = Object.values(STORE).map(name => `app_private.hermes_store_${name}_v1(jsonb)`);
+    const publicFunctions = ['public.hermes_zalo_binding_v1(jsonb)', 'public.hermes_connection_options_v1(uuid)',
+      'public.hermes_org_policy_options_v1(uuid)', ...['ingress', 'private_command', 'private_reply'].map(name => `public.hermes_zalo_${name}_v1(jsonb)`)];
+    const functions = (await client.query({ text: `SELECT signature,has_function_privilege(current_user,signature,'EXECUTE') AS allowed
+      FROM unnest($1::text[]) signature`, values: [[...privateFunctions, ...publicFunctions]], queryMode: 'extended' })).rows;
+    demand(functions.length === privateFunctions.length + publicFunctions.length
+      && functions.every(row => row.allowed === privateFunctions.includes(row.signature)), 'executor_function_acl_invalid');
+    const tables = [...['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'].map(name => `app_private.hermes_${name}`),
+      ...['bots', 'ingress_sessions', 'link_challenges', 'bindings', 'private_commands'].map(name => `app_private.hermes_zalo_${name}`)];
+    const tableAcl = (await client.query({ text: `SELECT has_table_privilege(current_user,t.name,p.privilege) AS allowed
+      FROM unnest($1::text[]) t(name) CROSS JOIN unnest($2::text[]) p(privilege)`,
+    values: [tables, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']], queryMode: 'extended' })).rows;
+    demand(tableAcl.length === tables.length * 4 && tableAcl.every(row => row.allowed === false), 'executor_table_acl_invalid');
+    const probe = (await client.query({ text: 'SELECT app_private.hermes_store_read_connection_v1($1::jsonb) AS result',
+      values: [JSON.stringify({ tokenDigest: '0'.repeat(64) })], queryMode: 'extended' })).rows;
+    demand(probe.length === 1 && probe[0].result?.status === 'unavailable', 'executor_read_probe_invalid');
+    await client.query('COMMIT'); begun = false;
+  } catch (error) {
+    if (begun) try { await client.query('ROLLBACK'); } catch { broken = true; ctx.writeState.uncertain = true; }
+    throw error;
+  } finally { client.release(broken); }
+}
+
 export async function roleProbe(ctx, pool, operation, payload) {
   demand(Object.hasOwn(STORE, operation), 'store_operation_invalid');
+  demand(FIXTURE_ROLE.test(ctx.expectedRole ?? ''), 'executor_role_required');
   await ctx.assertLease(ctx.lease, ctx.test);
   const client = await pool.connect(); let begun = false, dispatched = false, committing = false, broken = false;
   try {
     await client.query('BEGIN'); begun = true;
-    await client.query('SET LOCAL ROLE hermes_store_executor');
-    const who = (await client.query('SELECT current_user AS role,session_user AS session_role')).rows[0];
-    demand(who.role === 'hermes_store_executor' && who.session_role === 'postgres', 'executor_role_probe_invalid');
+    await assertExecutorIdentity(ctx, client);
     dispatched = true;
     const result = await client.query({ text: `SELECT app_private.hermes_store_${STORE[operation]}_v1($1::jsonb) AS result`,
       values: [JSON.stringify(payload)], queryMode: 'extended' });
@@ -298,6 +418,57 @@ export async function verifyPolicyOptionsFixture(plan, { okRpc, deniedRpc, write
     VALUES(${lit(org.id)},${lit(org.roleId)},'users.edit','ALLOW'); COMMIT;`);
 }
 
+// This probe deliberately leaves challenges WAITING, then revokes them through
+// the authenticated management API. No worker identity or observed sender is
+// invented. Confirmation belongs exclusively to the full private-flow mode.
+export async function verifyBindingManagementFixture(plan, subjects, { okRpc, deniedRpc, write }) {
+  for (const channel of plan.channels) {
+    const index = channel.orgIndex, actor = plan.actors[index], org = plan.orgs[index];
+    const organizationId = org.id, accountId = channel.accountId;
+    const rpc = p => okRpc(actor, 'hermes_zalo_binding_v1', { p });
+    const configured = await rpc({ operation: 'setBot', organizationId, accountId, expectedVersion: 0, enabled: true });
+    demand(configured.status === 'configured' && configured.accountId === accountId
+      && configured.version === 1 && configured.enabled === true, 'jwt_bot_configuration_invalid');
+    const managed = await rpc({ operation: 'manageBots', organizationId, afterAccountId: null });
+    demand(managed.status === 'listed' && managed.bots?.length === 1 && managed.nextCursor === null
+      && managed.bots[0].accountId === accountId && managed.bots[0].enabled === true
+      && managed.bots[0].version === 1, 'jwt_bot_listing_invalid');
+    const begin = { operation: 'begin', organizationId, accountId, connectionId: subjects[index].connection.id,
+      expectedConnectionEpoch: subjects[index].connection.epoch };
+    const challenge = await rpc(begin);
+    demand(challenge.status === 'waiting' && UUID.test(challenge.challengeId ?? '')
+      && /^hz_[a-f0-9]{64}$/.test(challenge.challenge ?? '') && challenge.accountId === accountId
+      && challenge.connectionId === begin.connectionId, 'jwt_unobserved_challenge_invalid');
+    const statusInput = { operation: 'status', organizationId, challengeId: challenge.challengeId };
+    const status = await rpc(statusInput);
+    demand(status.status === 'waiting' && status.challengeId === challenge.challengeId
+      && status.accountId === accountId && status.connectionId === begin.connectionId
+      && status.candidateVersion === 0 && status.senderUid === null, 'jwt_unobserved_status_invalid');
+    for (const other of [plan.actors[2], plan.actors[1 - index]]) {
+      await deniedRpc(other, 'hermes_zalo_binding_v1', { p: begin });
+      await deniedRpc(other, 'hermes_zalo_binding_v1', { p: statusInput });
+    }
+    // Same actor/selected org with a foreign account must not be sufficient.
+    await deniedRpc(actor, 'hermes_zalo_binding_v1', { p: { operation: 'setBot', organizationId,
+      accountId: plan.channels[1 - index].accountId, expectedVersion: 0, enabled: true } });
+    await deniedRpc(actor, 'hermes_zalo_binding_v1', { p: { operation: 'setBot', organizationId,
+      accountId, expectedVersion: 0, enabled: false } }, [409], ['PT409']);
+    // Exact fixture role only; an unknown mutation is handled by the existing
+    // writeFixtureSql/outer cleanup path and never retried/compensated here.
+    await write(`BEGIN; DELETE FROM public.role_permissions WHERE organization_id=${lit(organizationId)}
+      AND role_id=${lit(org.roleId)} AND permission_key='chat_zalo.manage_automation'; COMMIT;`);
+    await deniedRpc(actor, 'hermes_zalo_binding_v1', { p: { operation: 'manageBots', organizationId, afterAccountId: null } });
+    await deniedRpc(actor, 'hermes_zalo_binding_v1', { p: { operation: 'setBot', organizationId,
+      accountId, expectedVersion: 1, enabled: false } });
+    await write(`BEGIN; INSERT INTO public.role_permissions(organization_id,role_id,permission_key,effect)
+      VALUES(${lit(organizationId)},${lit(org.roleId)},'chat_zalo.manage_automation','ALLOW'); COMMIT;`);
+    const disabled = await rpc({ operation: 'setBot', organizationId, accountId, expectedVersion: 1, enabled: false });
+    demand(disabled.status === 'configured' && disabled.accountId === accountId
+      && disabled.version === 2 && disabled.enabled === false, 'jwt_bot_disable_invalid');
+    await deniedRpc(actor, 'hermes_zalo_binding_v1', { p: statusInput }, [409], ['PT409']);
+  }
+}
+
 async function context() {
   const cred = readTestCredentials(); demand(cred.testRef === TEST_REF, 'test_target_mismatch');
   const db = await dichKetNoi('test'); targetMatches(TEST_REF, cred, db);
@@ -341,14 +512,18 @@ export async function verifyLiveSchema(pool) {
 
 export async function runHarness(options) {
   demand(options?.run === true && options.environment === 'test' && options.expectedProjectRef === TEST_REF, 'explicit_test_run_required');
+  const mode = executionMode(options);
   // Missing unapplied candidate evidence fails here, before credentials/network/lease.
   const sourceIdentity = captureSourceIdentity(); const schemaEvidence = requireSchemaEvidence();
   const connection = await context();
   return withTestLock(connection, async lease => {
-    const plan = fixturePlan(); const cases = []; let cleanupRequired = false, cleanupVerified = false, workerOwned = false;
+    const plan = fixturePlan(); const cases = [], rpcDiagnostics = []; let cleanupRequired = false, cleanupVerified = false, workerOwned = false;
     let authenticatedActors = 0; let postgrestResponses = 0; let executorRoleProbes = 0; let fatal;
-    const ctx = { ...connection, lease, signal: lease.signal, assertLease: createSerializedLeaseAssertions(), writeState: { uncertain: false } };
-    const pool = new pg.Pool({ ...connection.db, database: 'postgres', ssl: loadFixtureCa(), max: 1,
+    let restricted, principalVerified = false;
+    const executorRole = { attempted: false, confirmed: false, cleanupRequired: false };
+    const ctx = { ...connection, lease, signal: lease.signal, expectedRole: plan.role, assertLease: createSerializedLeaseAssertions(), writeState: { uncertain: false } };
+    const tls = loadFixtureCa();
+    const pool = new pg.Pool({ ...connection.db, database: 'postgres', ssl: tls, max: 1,
       connectionTimeoutMillis: 5000, statement_timeout: 12000, lock_timeout: 3000,
       options: '-c statement_timeout=12000 -c lock_timeout=3000 -c idle_in_transaction_session_timeout=15000', application_name: 'hermes-p4-private-fixture' });
     pool.on('error', () => { if (cleanupRequired) ctx.writeState.uncertain = true; });
@@ -367,17 +542,19 @@ export async function runHarness(options) {
       demand(path.startsWith('/auth/v1/') || /^\/rest\/v1\/rpc\/[a-z0-9_]+$/.test(path), 'fixture_endpoint_refused');
       await ctx.assertLease(held, ctx.test);
       const response = await testFetch({ ...ctx, signal: held.signal }, `${ctx.url}${path}`, { method, redirect: 'error',
-        headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
+        headers: fixtureRequestHeaders(path, key, token),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, { write: mutation });
       let value; try { value = await response.json(); } catch { if (mutation) ctx.writeState.uncertain = true; fail('fixture_response_invalid'); }
       return { status: response.status, body: value };
     };
     const rpc = async (actor, name, body, mutation = true) => {
-      demand(RPCS.has(name), 'fixture_rpc_refused'); await refreshWorker();
+      demand(RPCS.has(name), 'fixture_rpc_refused');
+      demand(mode === 'full' || actor !== 'worker', 'fixture_worker_forbidden_in_jwt_mode'); await refreshWorker();
       const service = actor === 'worker';
       const result = await request(`/rest/v1/rpc/${name}`, service ? ctx.cred.testSecretKey : ctx.cred.testPublishableKey,
         service ? ctx.cred.testSecretKey : actor.session.accessToken, body, { write: mutation });
       postgrestResponses += 1;
+      if (rpcDiagnostics.length < 128) rpcDiagnostics.push(fixtureRpcDiagnostic(name, result.status, result.body));
       return result;
     };
     const okRpc = async (actor, name, body, expected = 200) => {
@@ -387,7 +564,8 @@ export async function runHarness(options) {
       const value = await rpc(actor, name, body); demand(statuses.includes(value.status) && codes.includes(value.body?.code), 'expected_rpc_denial_missing');
     };
     const store = async (operation, payload) => {
-      await refreshWorker(); const result = await roleProbe(ctx, pool, operation, payload); executorRoleProbes += 1; return result;
+      demand(mode === 'full' || operation === 'activate' || operation === 'readConnection', 'fixture_command_forbidden_in_jwt_mode');
+      await refreshWorker(); const result = await roleProbe(ctx, restricted, operation, payload); executorRoleProbes += 1; return result;
     };
     const connectionStore = createDurableConnectionStore({ transport: { call: store } });
     const check = async (name, operation) => {
@@ -420,9 +598,18 @@ export async function runHarness(options) {
     try {
       await verifyLiveSchema(pool);
       demand(JSON.stringify(sourceIdentity) === JSON.stringify(captureSourceIdentity()), 'source_changed_before_fixture');
-      demand((await pool.query("SELECT count(*)::int n FROM public.zalo_worker_lease WHERE id='singleton'")).rows[0].n === 0, 'worker_lease_must_be_absent');
+      if (mode === 'full') demand((await pool.query("SELECT count(*)::int n FROM public.zalo_worker_lease WHERE id='singleton'")).rows[0].n === 0, 'worker_lease_must_be_absent');
       cases.push({ name: 'schema.evidence_body_acl_rls_triggers', status: 'PASS' });
+      demand((await guardedQuery(ctx, pool, 'SELECT 1 FROM pg_catalog.pg_roles WHERE rolname=$1', [plan.role])).rowCount === 0,
+        'fixture_role_already_exists');
       markTestCleanupRequired(lease, ctx.test); cleanupRequired = true;
+      await createExecutorRole(ctx, pool, plan, executorRole);
+      restricted = createStorePool({ projectRef: ctx.db.ref, host: ctx.db.host, role: plan.role, password: plan.rolePassword, ca: tls.ca,
+        onIdleFailure: () => { ctx.writeState.uncertain = true; } });
+      delete plan.rolePassword;
+      await check('executor.dedicated_login_identity_acl_before_auth', async () => {
+        await verifyExecutorPrincipal(ctx, restricted); principalVerified = true;
+      });
       for (const actor of plan.actors) {
         const created = await request('/auth/v1/admin/users', ctx.cred.testSecretKey, ctx.cred.testSecretKey,
           { email: actor.email, password: actor.password, email_confirm: true, user_metadata: { full_name: 'Hermes P4 synthetic TEST fixture' } });
@@ -450,6 +637,12 @@ export async function runHarness(options) {
       await check('jwt.org_policy_self_cross_org_superadmin_and_missing_users_edit', async () => {
         await verifyPolicyOptionsFixture(plan, { okRpc, deniedRpc, write });
       });
+      await runChannelScope(mode, { management: async () => {
+        await check('jwt.binding_management_without_worker', async () => {
+          await write(`BEGIN; ${accountSetupSql(plan)} COMMIT;`);
+          await verifyBindingManagementFixture(plan, subjects, { okRpc, deniedRpc, write });
+        });
+      }, full: async () => {
       await write(channelSetupSql(plan)); workerOwned = true;
       for (const channel of plan.channels) {
         const index = channel.orgIndex; const actor = plan.actors[index]; const organizationId = plan.orgs[index].id;
@@ -583,6 +776,7 @@ export async function runHarness(options) {
         demand((await okRpc('worker', 'hermes_zalo_private_reply_v1', { p: { operation: 'ack', ...source, deliveryId,
           outcome: 'cancelled', providerMessageId: null } })).status === 'cancelled', 'revoked_reply_cancel_failed');
       });
+      } });
     } catch (error) { fatal = error; if (!cases.some(item => item.status === 'FAIL')) cases.push({ name: 'fixture_or_schema_setup', status: 'FAIL', code: safeCode(error) }); }
     finally {
       // Each SQL/HTTP mutation is awaited; provider verification also drains its
@@ -590,6 +784,7 @@ export async function runHarness(options) {
       try { await provider.close(); } catch { ctx.writeState.uncertain = true; }
       // No further pool operations are needed by cleanup. End it before the
       // cleanup capability can clear pendingCleanup, including idle failures.
+      if (restricted) await restricted.end().catch(() => { ctx.writeState.uncertain = true; });
       await pool.end().catch(() => { ctx.writeState.uncertain = true; });
       if (cleanupRequired) {
         try {
@@ -599,7 +794,7 @@ export async function runHarness(options) {
             for (const actor of plan.actors) actor.id ??= found.find(row => row.email === actor.email)?.id ?? null;
             const connections = psqlJson(ctx.test, `SELECT id FROM app_private.hermes_connections WHERE organization_id IN (${sqlIds(plan.orgs.map(org => org.id))})`);
             plan.connectionIds = [...new Set([...plan.connectionIds, ...connections.map(row => row.id)])];
-            await write(channelCleanupSql(plan), cleanupLease);
+            await write(channelCleanupSql(plan, { mode }), cleanupLease);
             await write(durableCleanup(plan), cleanupLease);
             await write(baseCleanup(plan), cleanupLease);
             for (const actor of plan.actors.filter(actor => actor.id)) {
@@ -607,23 +802,29 @@ export async function runHarness(options) {
                 { method: 'DELETE', held: cleanupLease });
               demand([200, 404].includes(deleted.status), 'fixture_auth_cleanup_failed');
             }
+            if (executorRole.cleanupRequired) await write(roleCleanupSql(plan), cleanupLease);
             const [baseCounts] = psqlJson(ctx.test, durableCounts(plan)); const [channelCounts] = psqlJson(ctx.test, channelCountsSql(plan));
             validateCleanupEvidence({ ...baseCounts, ...channelCounts }, ctx.writeState); cleanupVerified = true;
           });
           cases.push({ name: 'fixture.cleanup_verified', status: 'PASS' });
         } catch (error) { cases.push({ name: 'fixture.cleanup_verified', status: 'FAIL', code: safeCode(error) }); }
       }
-      crypto.destroy();
+      delete plan.rolePassword; crypto.destroy();
       let finalIdentity; try { finalIdentity = captureSourceIdentity(); } catch { /* recorded below */ }
       const unchanged = JSON.stringify(sourceIdentity) === JSON.stringify(finalIdentity);
       if (!unchanged) cases.push({ name: 'evidence.inputs_unchanged', status: 'FAIL', code: 'source_changed_during_run' });
-      const receipt = { version: 1, observedAt: new Date().toISOString(), environment: 'test', projectRef: TEST_REF,
+      const receipt = { version: 1, scope: mode, observedAt: new Date().toISOString(), environment: 'test', projectRef: TEST_REF,
+        fullPrivateFlowExecuted: mode === 'full' && workerOwned,
+        fullPrivateFlowStatus: mode === 'jwt-management' ? 'not_executed_scope'
+          : (!fatal && cleanupVerified && !ctx.writeState.uncertain && !cases.some(item => item.status === 'FAIL') ? 'passed' : 'failed'),
         node: process.version, fixture: { runId: plan.run, cleanupRequired, cleanupVerified, uncertain: ctx.writeState.uncertain },
-        sourceIdentity: { initial: sourceIdentity, final: finalIdentity, unchanged }, schemaEvidence,
+        sourceIdentity: { initial: sourceIdentity, final: finalIdentity, unchanged }, schemaEvidence, rpcDiagnostics,
         evidence: { realJwtActors: authenticatedActors, realPostgrest: postgrestResponses > 0, postgrestResponses,
           executorRoleProbe: executorRoleProbes > 0, executorRoleProbes,
-          dedicatedLogin: false, providerSend: false, modelExecution: false, schemaAppliedByHarness: false, productionWrites: false },
-        limitations: ['Executor cases use SET LOCAL ROLE under the fixture admin connection; not a dedicated production login.',
+          dedicatedLogin: principalVerified, ephemeralRoleChangesAttempted: executorRole.attempted,
+          ephemeralRoleChanges: executorRole.confirmed, providerSend: false, modelExecution: false, schemaAppliedByHarness: false, productionWrites: false },
+        limitations: [...(mode === 'jwt-management' ? ['JWT management scope only: worker lease, ingress, binding confirm, private intake/dispatch/reply were not executed.'] : []),
+          'Executor cases use a freshly generated restricted TEST login with TLS; no production login is provisioned or validated.',
           'Zalo accounts/messages/lease are synthetic database fixtures; no provider or worker delivery is executed.',
           'Unknown/cancelled receipts are explicit synthetic protocol inputs, not observations of provider delivery.',
           'Sequential cases do not prove concurrent PostgreSQL schedules, process-crash recovery, or runtime dispatch.',
@@ -632,17 +833,14 @@ export async function runHarness(options) {
       mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
     }
     demand(!fatal && (!cleanupRequired || cleanupVerified) && !ctx.writeState.uncertain && !cases.some(item => item.status === 'FAIL'), 'private_flow_harness_failed');
-    return { runId: plan.run, passed: cases.length, cleanupVerified };
+    return { runId: plan.run, scope: mode, fullPrivateFlowExecuted: mode === 'full' && workerOwned, passed: cases.length, cleanupVerified };
   });
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
     const options = parseArguments(process.argv.slice(2));
-    if (!options.run) console.log(JSON.stringify({ mode: 'offline-plan', environment: 'test', projectRef: TEST_REF,
-      liveExecuted: false, requires: ['--run', 'all Hermes apply evidence', 'candidate source digests unchanged', 'empty worker lease', 'exclusive TEST lease'],
-      proof: ['real Auth JWT + PostgREST binding/options/worker ACL', 'executor SQL role probe', 'intake dedup → claim → dispatch → finish → reply gates → revoke', 'exact fixture cleanup'],
-      excluded: ['production', 'schema apply', 'real Zalo/model', 'dedicated login proof'] }));
+    if (!options.run) console.log(JSON.stringify(executionPlan(options)));
     else runHarness(options).then(result => console.log(JSON.stringify(result))).catch(error => { console.error(safeCode(error)); process.exitCode = 1; });
   } catch (error) { console.error(safeCode(error)); process.exitCode = 1; }
 }

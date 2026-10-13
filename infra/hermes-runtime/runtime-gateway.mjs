@@ -164,11 +164,13 @@ const statusFor = code => ({ busy: 429, rate_limited: 429, timeout: 504, model_u
  * register/prepare except register's authority lookup. transport.open owns its
  * resources and may not report cleanup before actual death. dependencyScope must
  * retain nested work hidden behind adapter timeouts; rejected drains retain the
- * profile. No method calls the driver or supervisor, avoiding teardown cycles. */
+ * profile. Teardown never awaits the driver or supervisor. The optional host
+ * context resolver is synchronous and grants no lifecycle ownership. */
 export function createRuntimeGateway({ backend, broker, modelService, transport, dependencyScope, clock = Date.now,
-  maxProfiles = 64, maxConcurrentRequests = 8, maxModelRounds = 16, timeoutMs = 30000, maxBodyBytes = 262144 } = {}) {
+  resolvePrivateCommandContext, maxProfiles = 64, maxConcurrentRequests = 8, maxModelRounds = 16, timeoutMs = 30000, maxBodyBytes = 262144 } = {}) {
   if ([backend?.resolveConnection, broker?.authenticate, broker?.listTools, broker?.callTool, modelService?.beginCompletion,
     transport?.open, dependencyScope?.begin, clock].some(fn => typeof fn !== 'function') ||
+    (resolvePrivateCommandContext !== undefined && typeof resolvePrivateCommandContext !== 'function') ||
     !positive(maxProfiles) || maxProfiles > 256 || !positive(maxConcurrentRequests) || maxConcurrentRequests > 16 ||
     !positive(maxModelRounds) || maxModelRounds > 16 || !positive(timeoutMs) || timeoutMs > 120000 ||
     !positive(maxBodyBytes) || maxBodyBytes > 262144) throw new TypeError('invalid_runtime_gateway_config');
@@ -373,7 +375,36 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
     if (!entry.released) fail('drain_failed');
     tickets.delete(ticket); retiredTickets.add(ticket);
   }
-  return Object.freeze({ register, releaseRegistration, prepare, start, endTurn,
+  const contextFor = (entry, turn) => {
+    if (!admitted(entry, turn) || !turn.commandContext || !resolvePrivateCommandContext) fail('inactive');
+    const value = fields(resolvePrivateCommandContext(turn.commandContext, Object.freeze({ token: entry.token,
+      ...Object.fromEntries(['connectionId', ...OWNER].map(key => [key, entry.identity[key]])),
+      home: entry.home, commandId: turn.commandId })), ['commandId', 'claimId']);
+    if (value.commandId !== turn.commandId || !UUID.test(value.claimId ?? '')) fail('context_changed');
+    return freeze(value);
+  };
+  // Trusted composition seam only. Not registered in MCP, HTTP, tools/list or
+  // model schemas. Caller must supply the existing admission/quota/audit service.
+  // The callback runs inside the same actual dependency scope as normal tools.
+  const withPrivateCommandContext = (handle, raw, invoke) => {
+    const entry = get(handle), input = fields(raw, ['commandId', 'signal']), turn = entry.turn;
+    if (typeof invoke !== 'function' || !(input.signal instanceof AbortSignal) || input.signal.aborted ||
+        !turn || input.commandId !== turn.commandId || !admitted(entry, turn)) fail('inactive');
+    if (turn.handlers.size >= maxConcurrentRequests) fail('busy');
+    const result = bounded(entry, turn, signal => invoke(Object.freeze({ token: entry.token,
+      commandContext: contextFor(entry, turn), signal })), input.signal).then(value => {
+      contextFor(entry, turn); return value;
+    });
+    // An ordinary callback error is not a failed drain. The observer may reject
+    // now; the separate owned promise waits for every tracked dependency.
+    const owned = result.then(() => undefined, () => undefined).then(() => drain(turn.pending));
+    turn.handlers.add(owned); entry.handlers.add(owned);
+    void owned.then(() => { turn.handlers.delete(owned); entry.handlers.delete(owned); }, () => {
+      entry.failedDrain = true; quarantine(entry);
+    });
+    return result;
+  };
+  return Object.freeze({ register, releaseRegistration, prepare, start, endTurn, withPrivateCommandContext,
     unregister(ticket) { const entry = tickets.get(ticket); if (!entry || entry.prepared) fail('unknown_ticket'); tickets.delete(ticket); return closeEntry(entry); },
     setAdmission(handle, allowed) {
       const entry = get(handle); if (typeof allowed !== 'boolean') fail('invalid_request');
@@ -381,15 +412,21 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
       if (!allowed && entry.turn) { entry.turn.active = false; entry.turn.controller.abort(); }
     },
     beginTurn(handle, input) {
-      const entry = get(handle), value = fields(input, ['commandId', 'signal'], ['commandId']);
+      const entry = get(handle), value = fields(input, ['commandId', 'signal', 'commandContext'], ['commandId']);
       if (!UUID.test(value.commandId ?? '') || (value.signal !== undefined && !(value.signal instanceof AbortSignal))) fail('invalid_request');
       if (!live(entry) || !entry.started || !entry.admission || entry.quarantined || value.signal?.aborted) fail('inactive');
       if (entry.turn) fail('busy'); if (entry.commandIds.has(value.commandId)) fail('replay'); if (entry.commandIds.size >= 1024) fail('round_limit');
+      if (value.commandContext !== undefined && (!resolvePrivateCommandContext || value.commandContext === null ||
+          typeof value.commandContext !== 'object' || !Object.isFrozen(value.commandContext) || Reflect.ownKeys(value.commandContext).length)) fail('invalid_request');
       entry.commandIds.add(value.commandId); const controller = new AbortController();
-      const turn = { commandId: value.commandId, controller, active: true, fingerprints: new Set(), pending: new Set(), handlers: new Set(), modelBusy: false };
+      const turn = { commandId: value.commandId, commandContext: value.commandContext, controller, active: true, fingerprints: new Set(), pending: new Set(), handlers: new Set(), modelBusy: false };
       if (value.signal) { const abort = () => { turn.active = false; controller.abort(); }; value.signal.addEventListener('abort', abort, { once: true });
         turn.detach = () => value.signal.removeEventListener('abort', abort); }
       entry.turn = turn;
+      if (value.commandContext !== undefined) {
+        try { contextFor(entry, turn); }
+        catch { turn.active = false; controller.abort(); turn.detach?.(); entry.turn = undefined; fail('context_changed'); }
+      }
     },
     close(handle) { return closeEntry(get(handle)); },
     shutdown() { if (!shutdownWork) { shutting = true; shutdownWork = Promise.all([...entries].map(closeEntry)).then(() => undefined); void shutdownWork.catch(() => {}); } return shutdownWork; },

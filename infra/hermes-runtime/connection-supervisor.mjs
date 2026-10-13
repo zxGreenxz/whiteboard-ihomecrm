@@ -59,6 +59,7 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
       !integer(renewBeforeMs) || renewBeforeMs > 300000 || !integer(maxProfiles) || maxProfiles > 256 ||
       !integer(maxRememberedCommands) || maxRememberedCommands > 4096 ||
       (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) fail('invalid_supervisor_config');
+  const commandContexts = new WeakMap();
   const handles = new WeakMap(), entries = new Set(), connections = new Set(), pending = new Set();
   let closing = false, closePromise;
   const now = () => { const value = clock(); if (!integer(value)) fail('invalid_clock'); return value; };
@@ -278,14 +279,18 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
     void maintenance.work.catch(() => {});
     return Object.freeze({ result, drained: maintenance.work });
   };
-  const executePrivateCommand = async (handle, request, options = {}) => {
+  const executeCommand = async (handle, request, options = {}, dispatched) => {
     const entry = handles.get(handle);
     if (!entry) fail('invalid_handle');
     // Copy scalar data before any await; mutable caller objects never become
     // authority or change the eventual runtime message while lookup is pending.
-    let claim, signal, timeoutMs;
+    let claim, signal, timeoutMs, dispatch;
     try {
       claim = snapshotExact(request, commandKeys);
+      if (dispatched !== undefined) {
+        dispatch = snapshotExact(dispatched, ['token', 'claimId']);
+        if (dispatch.token !== entry.token || typeof dispatch.claimId !== 'string' || !uuid.test(dispatch.claimId)) fail('invalid_private_command');
+      }
       if (![...ownerKeys, 'commandId', 'bindingId'].every(key => typeof claim[key] === 'string' && uuid.test(claim[key])) ||
           !integer(claim.bindingEpoch) || !integer(claim.expiresAt) || !plainText(claim.text, 8192)) fail('invalid_private_command');
       if (!options || Object.getPrototypeOf(options) !== Object.prototype || Reflect.ownKeys(options).some(key =>
@@ -351,11 +356,16 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
       return true;
     };
     const run = async () => {
-      let runtimeDrain;
+      let runtimeDrain, contextDrained = false;
       try {
         if (!live() || !await authorized() || !live()) return;
         const input = Object.freeze({ commandId: claim.commandId, bindingId: claim.bindingId, bindingEpoch: claim.bindingEpoch, text: claim.text });
-        const options = Object.freeze({ signal: command.controller.signal });
+        if (dispatch) {
+          command.context = Object.freeze(Object.create(null));
+          commandContexts.set(command.context, { entry, command, claim, claimId: dispatch.claimId, live });
+        }
+        const options = Object.freeze({ signal: command.controller.signal,
+          ...(command.context ? { commandContext: command.context } : {}) });
         let output;
         if (typeof runtime.beginExecutePrivateCommand === 'function') {
           let operation;
@@ -367,8 +377,8 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
           } catch { abort('private_command_failed'); return; }
           runtimeDrain = operation.drained; void runtimeDrain.catch(() => {});
           output = await operation.result;
-          await runtimeDrain;
-        } else output = await runtime.executePrivateCommand(entry.instance, input, options);
+          await runtimeDrain; contextDrained = true;
+        } else { output = await runtime.executePrivateCommand(entry.instance, input, options); contextDrained = true; }
         if (!live()) return;
         let response;
         try { response = snapshotExact(output, ['text']); }
@@ -381,7 +391,10 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
         // A driver observer can reject on abort while its transport/endTurn is
         // still pending. Neither command ownership nor the enclosing scope may
         // drain until that separate actual-work promise settles.
-        if (runtimeDrain) { try { await runtimeDrain; } catch { abort('private_command_failed'); } }
+        if (runtimeDrain) { try { await runtimeDrain; contextDrained = true; } catch { abort('private_command_failed'); } }
+        // Abort disables reads immediately; only a fulfilled actual drain erases
+        // the host claim. Unknown drain retains the record, unusable, for safety.
+        if (contextDrained && command.context) commandContexts.delete(command.context);
         timers.clearTimeout(timeout);
         signal?.removeEventListener('abort', cancelled);
         entry.controller.signal.removeEventListener('abort', stopped);
@@ -400,7 +413,22 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
     }
     return result;
   };
+  const executePrivateCommand = (handle, request, options) => executeCommand(handle, request, options);
+  const executeDispatchedPrivateCommand = (handle, request, dispatch, options) => executeCommand(handle, request, options, dispatch);
+  const readPrivateCommandContext = (handle, raw) => {
+    const current = commandContexts.get(handle);
+    if (!current) fail('invalid_private_command_context');
+    const { entry, command, claim, claimId } = current;
+    let scope;
+    try { scope = snapshotExact(raw, ['token', ...ownerKeys, 'home', 'commandId']); }
+    catch { fail('invalid_private_command_context'); }
+    if (scope.token !== entry.token || ownerKeys.some(key => scope[key] !== entry.identity[key]) ||
+        scope.home !== entry.lease.binding.home || scope.commandId !== claim.commandId) fail('invalid_private_command_context');
+    if (entry.command !== command || !current.live()) fail('private_command_context_inactive');
+    return Object.freeze({ commandId: claim.commandId, claimId });
+  };
   return Object.freeze({ renewalMode, beginStart, start, beginMaintain, executePrivateCommand,
+    executeDispatchedPrivateCommand, readPrivateCommandContext,
     status(handle) { const entry = handles.get(handle); if (!entry) fail('invalid_handle'); return Object.freeze({ state: entry.state, expiresAt: entry.expiresAt }); },
     stop(handle) { const entry = handles.get(handle); if (!entry) fail('invalid_handle'); return halt(entry, 'stopped'); },
     close() {

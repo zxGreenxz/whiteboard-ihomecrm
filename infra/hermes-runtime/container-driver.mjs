@@ -258,8 +258,14 @@ export function createContainerRuntime({ gateway, engine = createDockerEngine(),
     catch { closeGate(entry); reject('runtime_gate_failed'); }
   };
   const beginExecutePrivateCommand = (handle, raw, options) => {
-    const entry = get(handle); let command, signal;
-    try { command = dataSnapshot(raw, ['commandId', 'bindingId', 'bindingEpoch', 'text']); signal = dataSnapshot(options, ['signal']).signal; }
+    const entry = get(handle); let command, signal, commandContext;
+    try {
+      command = dataSnapshot(raw, ['commandId', 'bindingId', 'bindingEpoch', 'text']);
+      const supplied = dataSnapshot(options, Object.hasOwn(options, 'commandContext') ? ['signal', 'commandContext'] : ['signal']);
+      signal = supplied.signal; commandContext = supplied.commandContext;
+      if (commandContext !== undefined && (commandContext === null || typeof commandContext !== 'object' ||
+          !Object.isFrozen(commandContext) || Reflect.ownKeys(commandContext).length !== 0)) reject('invalid_runtime_command');
+    }
     catch { reject('invalid_runtime_command'); }
     if (![command.commandId, command.bindingId].every(value => typeof value === 'string' && uuidPattern.test(value)) ||
         !positive(command.bindingEpoch) || !safeText(command.text, 8192) || !(signal instanceof AbortSignal)) reject('invalid_runtime_command');
@@ -272,7 +278,9 @@ export function createContainerRuntime({ gateway, engine = createDockerEngine(),
     operation.work = Promise.resolve().then(async () => {
       try {
         live(entry); if (signal.aborted) reject('runtime_command_cancelled');
-        sync(gateway.beginTurn(entry.gateway, Object.freeze({ commandId: command.commandId, signal })));
+        // The opaque context stays on the host. Only command is written below.
+        sync(gateway.beginTurn(entry.gateway, Object.freeze({ commandId: command.commandId, signal,
+          ...(commandContext ? { commandContext } : {}) })));
         operation.opened = true;
         await write(entry, { op: 'turn', ...command });
         const result = await operation.reply.promise;
