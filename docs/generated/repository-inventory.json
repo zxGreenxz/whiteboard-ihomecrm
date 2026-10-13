@@ -1,21 +1,21 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1366,
-  "soFileDocBangFs": 302,
-  "tongLoiGoi": 666,
-  "khongPhanLoaiDuoc": 301,
+  "tongSoFileTest": 1367,
+  "soFileDocBangFs": 303,
+  "tongLoiGoi": 673,
+  "khongPhanLoaiDuoc": 303,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 52,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 36,
+      "soFile": 37,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 13,
+      "soFile": 14,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -180,6 +180,15 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/cloud-vault-from-env.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "manifest": 1,
+        "tai-lieu": 4
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
