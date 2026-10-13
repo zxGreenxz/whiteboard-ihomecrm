@@ -4,8 +4,8 @@
 
 - Theo yêu cầu mới nhất của chủ dự án: dùng cấu hình agent mặc định của hệ thống, không ép model/provider/mức suy luận và không hỏi lại cấu hình agent. Các lệnh hoặc giới hạn agent trong logs cũ chỉ là lịch sử, không còn là yêu cầu thực thi.
 - Đã nối coordinated scheduler: park pump trước hạn, chờ lệnh kết thúc, refresh/kiểm quyền rồi tiếp tục cùng Hermes; giữ watchdog hạn cũ và ownership tới actual drain. Gate local mới **47/47**, tree `a71db4b5`, **20/20 file Vitest**. Còn host entrypoint/handoff bền vững và kiểm dịch vụ thật; native Linux còn thiếu bằng chứng. Tiếp tục toàn bộ P0–P11; xem nhật ký mới nhất.
-- Review độc lập mới `.cache/hermes-p4-intake-independent-review.md`: không có P1/P2 đã xác minh trong bốn fixes và private intake, HEAD `c69cf0d0`, tree `f586a801`, 11 SHA được ghi. Không chạy lại kiểm có input giữ nguyên. SQL/runtime mới ngoài phạm vi review này.
-- Chưa xác minh PostgreSQL nhiều transaction, JWT/Supabase/Zalo thật; chưa apply, commit hoặc deploy candidate.
+- Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
+- Code candidate đã commit tại `e93ee0c47eede137655d1b04a4e21160a1d2d18c`; chưa apply hoặc deploy. Chưa xác minh PostgreSQL nhiều transaction, JWT/Supabase/Zalo thật.
 
 
 Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì tại [PLAN.md](PLAN.md).
@@ -18,7 +18,7 @@ Cập nhật: 13/10/2026 · Asia/Bangkok. Kế hoạch gốc được duy trì t
 - **Worktree:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-foundation-20261012`.
 - **Branch:** `codex/hermes-crm-foundation-20261012`.
 - **Base:** `7367b7007f096f20471bf1309bc51e0b971439b6` (origin/main sau fetch).
-- **Commit checkpoint:** `c69cf0d053edc3347bf45cda459b99f0fde39cc6`, tree `b68d0b82e2fddf70a992bf2e6e09b7cccd163106`: sửa AAAA canary, local gate 12/12, runtime-contract 25/25, review delta sạch; đã push draft PR. CI Gates, runtime, Android và restore drill cùng head SUCCESS; job bị skip không tính pass. WIP P2/P3/P4 chưa commit/push. Chưa merge/phát hành.
+- **Commit code hiện tại:** `e93ee0c47eede137655d1b04a4e21160a1d2d18c`, tree `6652286aa71bd2c3b86cbc8ed28b7996c9330853`: gom candidate P2/P3/P4 và coordinated renewal đã kiểm/review; local gate 47/47 thuộc tree `a71db4b5`, sau đó chỉ cập nhật tài liệu và kiểm 391 Markdown/0 lỗi. CI mới chưa có kết luận tại lúc ghi; CI xanh của checkpoint cũ `c69cf0d0` không được dùng cho code mới. Tài liệu trạng thái có thể có commit riêng sau code checkpoint. Chưa merge/phát hành.
 - **Draft PR:** [#165 — nền CRM dùng chung và plan Hermes](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/165). Đọc checks đúng head hiện tại của PR; trạng thái GitHub có thể mới hơn checkpoint này.
 
 ## Nhật ký đã xác minh
