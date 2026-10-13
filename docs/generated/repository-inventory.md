@@ -15,8 +15,8 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **1436** file test, **323** file đọc file bằng fs (740 lời gọi)
-- **332** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
+- **1443** file test, **328** file đọc file bằng fs (759 lời gọi)
+- **347** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
 
@@ -24,13 +24,13 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
-| sql | 110 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 54 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
-| manifest | 47 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
+| sql | 111 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
+| ma-nguon | 55 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| manifest | 48 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
 | tai-lieu | 15 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 54 file đọc MÃ NGUỒN
+## 55 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -51,6 +51,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `scripts/__tests__/super-admin-route-contract.test.mjs`
 - `scripts/__tests__/test-hermes-broker-authz.test.mjs`
 - `scripts/org-context-repair/sealed-artifact.test.mjs`
+- `scripts/test-hermes-product-runtime.test.mjs`
 - `src/components/errors/ErrorBoundary.pageNames.test.tsx`
 - `src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx`
 - `src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx`

@@ -2,15 +2,15 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** Đang tiếp tục triển khai. P0 đã nghiệm thu; P1–P4 có code kết nối, quyền, gia hạn, tool đọc phòng, liên kết Zalo, nhận/xử lý/trả lời riêng và wrapper Hermes. Đã bổ sung gateway theo user, cổng model dùng quyền CRM, relay và bộ chạy container; gate local mới **47/47**, chưa ghép thành dịch vụ vận hành hoàn chỉnh. MCP client 2.0.0 đã thử qua HTTP cho hai user; OpenAI SDK 2.24.0 đi qua relay/gateway thật với model giả lập. Chưa chạy toàn bộ Hermes/model trên Docker/Linux hoặc chat Zalo thật; hai kiểm tra riêng cho Linux còn skip. SQL P4 vẫn chưa apply. P5–P11 chưa triển khai. Checklist đóng **5/65 mục = 7,7% (~8%)**, là tỷ lệ mục nghiệm thu không có trọng số, không phải tỷ lệ code hay ước lượng công sức. Bằng chứng, review và việc tiếp theo ở [STATUS.md](STATUS.md).
+**Trạng thái:** Đang triển khai toàn P0–P11. Đã ghép code dịch vụ Hermes và giao diện quyền/phạm vi đọc phòng; checkpoint handoff 7ee90820 có CI xanh, delta host/options đang kiểm riêng. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
-**Checkpoint điều phối 13/10:** đã code orchestrator bật/dừng từng user, pump/prune, logical home theo owner và chờ công việc thực sự kết thúc xuyên runner/supervisor/driver/refresh. Backend sở hữu supervisor dùng cùng cổng kiểm quyền và dependency scope. Ba lỗi phát hiện khi review đã sửa; gate local delta **47/47**, tree `4141eb57`, **20/20 file Vitest**. Còn compose dịch vụ, handoff token bền vững, refresh scheduler và kiểm chạy thật; chưa đóng thêm mục nghiệm thu. Nhật ký và giới hạn bằng chứng ở STATUS.
+**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle và bộ chọn quyền/phạm vi. Product Docker harness đã có, còn CI/native/live validation. Không suy code cục bộ thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
 
 ## Quyết định đã chốt — không hỏi lại
 
-- Agent triển khai/review dùng cấu hình mặc định của hệ thống. Không ép model, provider hoặc mức suy luận; không hỏi lại chủ dự án về cấu hình agent. Quyết định này thay thế mọi yêu cầu cấu hình agent trước đây.
+- Agent triển khai/review dùng cấu hình mặc định của hệ thống. Không ép model, provider hoặc mức suy luận; không hỏi lại chủ dự án về cấu hình agent. Agent mới kế thừa effort đang bật của phiên, không giao lại việc cho agent đã tạo bằng effort cũ. Quyết định này thay thế yêu cầu ép cấu hình trước đây.
 
 - Hermes là bộ máy hội thoại và điều phối AI đích. CRM tiếp tục sở hữu dữ liệu, quyền user, nghiệp vụ, phê duyệt, lịch và kết quả thực thi.
 - Không clone bộ quyền user. Thêm cấu hình giới hạn cho từng kết nối trợ lý, tham chiếu quyền và hành động có sẵn. Hai nhóm Đọc / Thao tác dùng chung cổng kiểm quyền.
@@ -426,6 +426,8 @@ Cập nhật tiếp 13/10: đã ghép trusted maintenance vào backend, lấy bi
 Cập nhật scheduler 13/10: product factory và orchestrator đã nối coordinated maintenance. Park trước hạn 5 phút, chờ toàn runner drain, đóng admission rồi refresh/kiểm lại authority, chỉ mở lại sau actual drain; giữ watchdog hạn cũ, ưu tiên expiry và giới hạn tải chung. Supervisor 75/75, backend + orchestrator 49/49; chưa có host entrypoint/handoff bền vững hoặc kiểm provider/runtime thật. Evidence/review/gate ghi tại STATUS; các ô nghiệm thu P2 vẫn mở.
 
 Cập nhật handoff 13/10: đã nối port lưu token mã hóa trước activation, backend chờ filesystem drain và orchestrator so owner từ bản lưu trước runtime. WAL/scanner đã có kiểm cục bộ và review độc lập (WAL 11 pass/8 native skip, scanner 48/48); còn ghép host entrypoint, expiry/crash recovery và native/live evidence. CI checkpoint 1026910f có hai lỗi EOL/bundle đã sửa cục bộ; xem STATUS cho kết quả và giới hạn, không xem đây là P2 hoàn tất.
+
+Cập nhật core 13/10: đã ghép executable/config/ownership/audit/runtime và UI PermissionPicker/ScopePicker với API options tự xác định user/org. Kết nối cũ chỉ thu hẹp, tạo mới chỉ hai quyền đọc đã hỗ trợ. Migration options chưa apply; product Docker harness còn chờ CI. Kiểm/review/giới hạn ở STATUS.
 
 **Đạt khi:** Tắt Hermes không ảnh hưởng user; không cấp quá quyền; revoke chặn request mới và invalidates context.
 

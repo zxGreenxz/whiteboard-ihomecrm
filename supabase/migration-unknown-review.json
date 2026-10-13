@@ -1137,6 +1137,30 @@
       ],
       "anhHuongThat": "Chưa mở sử dụng; còn gateway, container driver, pump/prune, model quota và chứng minh JWT/provider/đa transaction theo lane trước apply.",
       "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; review và receipts tại STATUS, không thay schema-lane evidence"
+    },
+    "supabase/migrations/20261013183000_hermes_connection_options_v1.sql": {
+      "sha256": "5ead8ede6928980d83a2df42a4a6e172f15a6d80dc38b73b7a5812aa31db36f1",
+      "missingObjects": [
+        "function:public.hermes_connection_options_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Candidate danh sách quyền/phạm vi Hermes theo user chưa apply TEST hoặc production; catalog thiếu object có chủ ý. Đây không phải giấy phép apply.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_connection_options_v1(p_org uuid)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "{\"path\":\"supabase/migrations/20261013183000_hermes_connection_options_v1.sql\",\"state\":\"unknown\",\"evidence\":[],\"missingObjects\":[\"function:public.hermes_connection_options_v1\"]}"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "13/10/2026 — ghép dịch vụ Hermes"
+        }
+      ],
+      "anhHuongThat": "API danh sách không cấp quyền. Runtime vẫn kiểm quyền hiện tại. Còn schema lane, JWT/Supabase và E2E thật trước apply/deploy.",
+      "raSoatBoi": "Codex — phân loại source/catalog 13/10/2026; review độc lập ở STATUS không thay schema lane."
     }
   }
 }

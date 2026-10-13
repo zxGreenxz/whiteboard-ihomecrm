@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createHermesConnectionClient, HermesConnectionClientError, type HermesCallerScope,
   type HermesConnectionContext, type HermesConnectionMetadata, type HermesConnectInput,
-  type HermesConnectResult, type HermesConnectionRestrictions } from './connectionClient';
+  type HermesConnectResult, type HermesConnectionRestrictions, type HermesGrantOptions } from './connectionClient';
 
 type Operation = 'list' | 'context' | 'connect' | 'restrict' | 'revoke';
 interface State {
   connections: HermesConnectionMetadata[] | null;
   context: HermesConnectionContext | null;
+  options: HermesGrantOptions | null;
   handoff: HermesConnectResult | null;
   busy: Operation | null;
   message: string | null;
   needsReload: boolean;
 }
-const initial = (): State => ({ connections: null, context: null, handoff: null, busy: null, message: null, needsReload: false });
+const initial = (): State => ({ connections: null, context: null, options: null, handoff: null, busy: null, message: null, needsReload: false });
 const errorMessage = (error: unknown, write: boolean) => {
   if (error instanceof HermesConnectionClientError) {
     if (error.outcomeUnknown) return 'Chưa xác định thao tác đã hoàn tất. Hãy tải lại danh sách để đối chiếu trước khi gửi yêu cầu khác.';
@@ -58,7 +59,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     const write = !['list', 'context'].includes(operation);
     if (operation === 'list') life.ready = false;
     setState(previous => ({ ...previous, busy: operation, message: null,
-      ...(operation === 'list' ? { connections: null, context: null } : {}),
+      ...(operation === 'list' ? { connections: null, context: null, options: null } : {}),
       ...(operation === 'context' || write ? { context: null } : {}),
       ...(write ? { handoff: null } : {}) }));
     try {
@@ -76,8 +77,11 @@ export function useHermesConnections(userId: string, organizationId: string, cur
       if (life.controller === controller) life.controller = null;
     }
   }, [client, currentScope, userId, organizationId]);
-  const reload = useCallback(() => run('list', signal => client.list({ signal }),
-    (result, previous) => ({ ...previous, connections: result.connections })), [client, run]);
+  const reload = useCallback(() => run('list', async signal => {
+    const result = await client.list({ signal });
+    try { return { ...result, options: (await client.options({ signal })).options }; }
+    catch { return { ...result, options: null }; }
+  }, (result, previous) => ({ ...previous, connections: result.connections, options: result.options })), [client, run]);
   useEffect(() => { void reload(); }, [reload]);
 
   // A handoff is intentionally short-lived in this mounted component. Clearing
@@ -97,12 +101,13 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     connect: (input: HermesConnectInput) => run('connect', signal => client.connect(input, { signal }),
       (result, previous) => ({ ...previous, handoff: result, connections: [result.connection,
         ...(previous.connections ?? []).filter(item => item.id !== result.connection.id)] })),
-    restrict: (connection: HermesConnectionContext, restrictions: HermesConnectionRestrictions) => {
+    restrict: (connection: HermesConnectionContext, restrictions: HermesConnectionRestrictions, scopeIds = connection.scopeIds) => {
       // UI may only narrow the last authoritative connection sets. Never infer
       // new rights or an org-wide scope from labels, company ceilings or UUIDs.
       if ((['read', 'action'] as const).some(kind => restrictions[kind].some(key => !connection.restrictions[kind].includes(key)))) return Promise.resolve();
+      if (scopeIds.some(id => !connection.scopeIds.includes(id))) return Promise.resolve();
       return run('restrict', signal => client.restrict({ connectionId: connection.id, expectedEpoch: connection.epoch,
-        restrictions, scopeIds: [...connection.scopeIds] }, { signal }),
+        restrictions, scopeIds: [...scopeIds] }, { signal }),
       (result, previous) => ({ ...previous, connections: (previous.connections ?? []).map(item => item.id === result.connection.id ? result.connection : item),
         message: 'Đã lưu giới hạn mới. Mở lại quyền để xem hiệu lực hiện tại.' }));
     },

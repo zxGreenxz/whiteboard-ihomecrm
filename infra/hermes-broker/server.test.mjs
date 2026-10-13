@@ -800,3 +800,61 @@ test('unknown host handoff is a sanitized 503 enrollment receipt and never activ
   for (const secret of [stored.token,browserJwt,assistantJwt,'PRIVATE_PATH_AND_SECRET']) assert(!response.text.includes(secret));
   assert.equal(f.read().joined,undefined);
 });
+
+test('backend options composes real Auth and management using the fixed self RPC with no new authority or writes', async t=>{
+  const f=fakeBackend(),base=f.configuration.fetch;
+  const choices={userId:I.user,organizationId:I.org,membershipId:I.member,authorizationVersion:1,isSuperadmin:false,
+    policyVersion:1,enabled:true,read:['assistant.context.read'],action:[],scopes:[]};
+  let reads=0;
+  f.configuration.fetch=async(url,options)=>{
+    if(new URL(url).pathname==='/rest/v1/rpc/hermes_connection_options_v1') {
+      reads++;assert.equal(options.headers.authorization,'Bearer '+browserJwt);
+      assert.deepEqual(JSON.parse(options.body),{p_org:I.org});return Response.json(choices);
+    }return base(url,options);
+  };
+  const http=await listening(t,f.configuration),result=await http.browser('options');
+  assert.equal(result.status,200);assert.deepEqual(result.body,{options:choices});assert.equal(reads,2);
+  assert.equal(f.read().signInCount,0);assert.equal(f.sql.length,0);
+  for(const secret of [browserJwt,assistantJwt,'SYNTHETIC-REFRESH-SECRET'])assert(!result.text.includes(secret));
+});
+test('backend close drains ignored-abort options fetch and actual body cancellation before erasing keys',async t=>{
+  const f=fakeBackend(),base=f.configuration.fetch,entered=deferred(),fetchHold=deferred(),cancelEntered=deferred(),cancelHold=deferred();
+  let observed,destroyed=false;
+  f.configuration.fetch=async(url,options)=>{
+    if(new URL(url).pathname==='/rest/v1/rpc/hermes_connection_options_v1'){
+      observed=options.signal;entered.resolve();await fetchHold.promise;
+      return new Response(new ReadableStream({cancel(){cancelEntered.resolve();return cancelHold.promise;}}),{headers:{'content-type':'application/json'}});
+    }return base(url,options);
+  };
+  const fill=Buffer.prototype.fill;
+  t.mock.method(Buffer.prototype,'fill',function(value,...args){if(value===0&&this.length===32&&this.equals(f.key))destroyed=true;return Reflect.apply(fill,this,[value,...args]);});
+  const http=await listening(t,f.configuration),request=http.browser('options').catch(()=>null);await entered.promise;
+  let closed=false;const closing=http.close().then(()=>{closed=true;});await request;
+  try{
+    await tick();assert(observed.aborted);assert.equal(closed,false);assert.equal(destroyed,false);
+    fetchHold.resolve();await cancelEntered.promise;await tick();assert.equal(closed,false);assert.equal(destroyed,false);
+  }finally{fetchHold.resolve();cancelHold.resolve();await closing;}
+  assert.equal(destroyed,true);assert.equal(f.read().poolEnds,0);
+});
+
+test('options disconnect cannot release the global sixteen-request budget before underlying fetches drain', {timeout:10000},async t=>{
+  const f=fakeBackend(),base=f.configuration.fetch,hold=deferred(),entered=Array.from({length:16},deferred);
+  let calls=0,active=0,peak=0;
+  f.configuration.fetch=async(url,options)=>{
+    if(new URL(url).pathname==='/rest/v1/rpc/hermes_connection_options_v1'){
+      const index=calls++;if(index>=16)return Response.json({});
+      active++;peak=Math.max(peak,active);entered[index].resolve();await hold.promise;active--;return Response.json({});
+    }return base(url,options);
+  };
+  const http=await listening(t,f.configuration);
+  try{
+    for(let i=0;i<16;i++){
+      const req=httpRequest(http.address+'/api/hermes/connections/options',{method:'POST',headers:{host:HOST,origin:ORIGIN,
+        authorization:'Bearer '+browserJwt,'content-type':'application/json'}},response=>response.resume());
+      req.on('error',()=>{});req.end(JSON.stringify({organizationId:I.org}));await entered[i].promise;req.destroy();
+      for(let n=0;n<6;n++)await tick();
+    }
+    const rejected=await http.browser('options');assert.equal(rejected.status,429);
+    assert.equal(calls,16);assert.equal(active,16);assert.equal(peak,16);
+  }finally{hold.resolve();await http.close();}
+});

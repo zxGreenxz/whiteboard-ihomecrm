@@ -18,17 +18,17 @@ const context = () => ({ ...row(), membershipId: ids.membership, authorizationVe
   policyVersion: 1, companyCeilings: limits(), effective: limits() });
 const body = operation => ({ organizationId: ids.org,
   ...(operation === 'connect' ? { email: 'synthetic@example.invalid', password: 'synthetic-password', restrictions: limits(), scopeIds: [] } : {}),
-  ...(!['connect', 'list'].includes(operation) ? { connectionId: ids.connection } : {}),
+  ...(!['connect', 'list', 'options'].includes(operation) ? { connectionId: ids.connection } : {}),
   ...(['restrict', 'revoke'].includes(operation) ? { expectedEpoch: 2 } : {}),
   ...(operation === 'restrict' ? { restrictions: { read: [], action: [] }, scopeIds: [] } : {}) });
 const result = operation => operation === 'connect' ? { status: 'active', connection: row(), token: `hc_${'a'.repeat(43)}`, tokenExpiresAt: NOW + 60_000 }
-  : operation === 'list' ? { connections: [row()] } : operation === 'context' ? { context: context() }
+  : operation === 'options' ? { options: { userId: ids.user, organizationId: ids.org, membershipId: ids.membership, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1, enabled: true, read: ['assistant.context.read'], action: [], scopes: [] } } : operation === 'list' ? { connections: [row()] } : operation === 'context' ? { context: context() }
     : operation === 'restrict' ? { ok: true, connection: { ...row(), epoch: 3, restrictions: { read: [], action: [] } } }
       : { ok: true, status: 'revoked', connectionId: ids.connection };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const tick = () => new Promise(done => setImmediate(done));
 function dependencies() {
-  const calls = [], methods = Object.fromEntries(['connect', 'list', 'context', 'restrict', 'revoke'].map(operation => [operation,
+  const calls = [], methods = Object.fromEntries(['connect', 'list', 'context', 'options', 'restrict', 'revoke'].map(operation => [operation,
     async (input, options) => { calls.push({ operation, input: structuredClone(input), signal: options.signal }); return result(operation); }]));
   return { calls, controlPlane: { connect: methods.connect }, management: Object.fromEntries(Object.entries(methods).filter(([key]) => key !== 'connect')) };
 }
@@ -59,9 +59,9 @@ async function fixture(t, options = {}) {
   return { ...deps, send, address, server };
 }
 
-test('all five real HTTP routes forward the browser header and exact primitive fields with safe output headers', async t => {
+test('all six real HTTP routes forward the browser header and exact primitive fields with safe output headers', async t => {
   const f = await fixture(t);
-  for (const operation of ['connect', 'list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['connect', 'list', 'context', 'options', 'restrict', 'revoke']) {
     const response = await f.send(operation);
     assert.equal(response.status, 200); assert.deepEqual(response.body, result(operation));
     assert.equal(response.headers['cache-control'], 'no-store'); assert.equal(response.headers['x-content-type-options'], 'nosniff');
@@ -70,12 +70,12 @@ test('all five real HTTP routes forward the browser header and exact primitive f
     assert.equal(call.operation, operation); assert.deepEqual(call.input, { browserAccessToken: 'browser.jwt.token', ...body(operation) });
     assert(call.signal instanceof AbortSignal); assert(call.signal.aborted);
   }
-  assert.equal(f.calls.length, 5);
+  assert.equal(f.calls.length, 6);
 });
 
 test('exact Host and Origin gates apply to reads too, while writes require Origin and ignore forwarded headers', async t => {
   const f = await fixture(t);
-  for (const operation of ['connect', 'list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['connect', 'list', 'context', 'options', 'restrict', 'revoke']) {
     for (const headers of [{ host: 'broker.example' }, { host: 'broker.example:443' }, { host: 'evil.example', 'x-forwarded-host': HOST },
       { origin: 'https://evil.example' }, { origin: 'null' }, { origin: `${ORIGIN}/` }]) {
       assert.equal((await f.send(operation, { headers })).status, 403);
@@ -141,7 +141,7 @@ test('only a syntactic browser bearer and route-specific body can reach a primit
   for (const authorization of [undefined, 'Basic browser.jwt.token', `Bearer hc_${'a'.repeat(43)}`, 'Bearer a.b', 'Bearer a.b.c,d.e.f', 'Bearer  a.b.c']) {
     assert.equal((await f.send('list', { headers: { authorization } })).status, 401);
   }
-  for (const operation of ['connect', 'list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['connect', 'list', 'context', 'options', 'restrict', 'revoke']) {
     for (const extra of [{ browserAccessToken: 'other.jwt.token' }, { accessToken: 'secret' }, { userId: ids.other },
       { organizationId: 'invalid' }, { rpc: 'execute_sql' }, { url: 'https://evil.example' }, { session: { refreshToken: 'secret' } }]) {
       assert.equal((await f.send(operation, { value: { ...body(operation), ...extra } })).status, 400);
@@ -149,7 +149,7 @@ test('only a syntactic browser bearer and route-specific body can reach a primit
     const missing = body(operation); delete missing.organizationId;
     assert.equal((await f.send(operation, { value: missing })).status, 400);
   }
-  for (const value of [{ ...body('connect'), password: 'x'.repeat(4097) }, { ...body('connect'), restrictions: { read: ['rooms.view'], action: [] } },
+  for (const value of [{ ...body('connect'), password: 'x'.repeat(4097) }, { ...body('connect'), restrictions: { read: ['contracts.view'], action: [] } },
     { ...body('restrict'), scopeIds: [ids.other, ids.other] }, { ...body('revoke'), expectedEpoch: 0 }]) {
     const operation = 'password' in value ? 'connect' : 'scopeIds' in value ? 'restrict' : 'revoke';
     assert.equal((await f.send(operation, { value })).status, 400);
@@ -176,7 +176,7 @@ test('known primitive outcomes keep safe codes and validated receipts without ra
 });
 
 test('generic failures and malformed write ACKs stay unknown; output allowlists reject nested secrets and wrong ownership', async t => {
-  for (const operation of ['connect', 'list', 'context', 'restrict', 'revoke']) {
+  for (const operation of ['connect', 'list', 'context', 'options', 'restrict', 'revoke']) {
     for (const mutation of [() => { throw new Error('PRIVATE provider JWT password'); }, () => ({ ...result(operation), accessToken: 'PRIVATE' }),
       () => operation === 'list' ? { connections: [{ ...row(), refreshToken: 'PRIVATE' }] }
         : operation === 'context' ? { context: { ...context(), organizationId: ids.other } }
@@ -272,4 +272,22 @@ test('real existing control and management primitives compose over HTTP with ver
   assert.equal(writes.length, 3); assert(authCalls.includes('assistant.jwt.token')); assert(authCalls.includes('browser.jwt.token'));
   const bad = await f.send('list', { headers: { authorization: 'Bearer forged.jwt.token' } });
   assert.equal(bad.status, 503); assert(!bad.text.includes('PRIVATE')); assert.equal(writes.length, 3);
+});
+
+test('options HTTP projects only the selected-company choices and rejects forged identity inputs or response secrets',async t=>{
+ const f=await fixture(t);
+ assert.equal((await f.send('options')).status,200);
+ for(const extra of [{userId:ids.other},{rpc:'admin_catalog'},{connectionId:ids.connection}])
+   assert.equal((await f.send('options',{value:{...body('options'),...extra}})).status,400);
+ f.management.options=async()=>({options:{...result('options').options,organizationId:ids.other}});
+ assert.equal((await f.send('options')).status,503);
+ f.management.options=async()=>({options:{...result('options').options,token:'secret'}});
+ const response=await f.send('options');assert.equal(response.status,503);assert(!response.text.includes('secret'));
+});
+test('HTTP connect forwards the two implemented read capabilities but never accepts action grants',async t=>{
+ const f=await fixture(t),input={...body('connect'),restrictions:{read:['assistant.context.read','rooms.view'],action:[]},scopeIds:[ids.other]};
+ f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}};};
+ assert.equal((await f.send('connect',{value:input})).status,200);
+ assert.deepEqual(f.calls.at(-1).restrictions,input.restrictions);
+ assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action:['rooms.edit']}}})).status,400);
 });

@@ -9,6 +9,8 @@ on:
       - 'infra/hermes-runtime/**'
       - 'infra/hermes-broker/**'
       - 'scripts/test-hermes-runtime-isolation.mjs'
+      - 'scripts/test-hermes-product-runtime.mjs'
+      - 'scripts/test-hermes-product-runtime.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +23,7 @@ concurrency:
 jobs:
   synthetic-isolation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -33,12 +35,19 @@ jobs:
         run: node --test infra/hermes-runtime/runtime-contract.test.mjs infra/hermes-runtime/fixture-server.test.mjs infra/hermes-runtime/profile-lease.test.mjs
       - name: Run pinned Hermes AIAgent with separate A and B containers
         run: node scripts/test-hermes-runtime-isolation.mjs --run
+      - name: Check product harness synthetic authority and evidence controls
+        run: node --test scripts/test-hermes-product-runtime.test.mjs
+      - name: Run product wrapper, driver and private gateway with A and B
+        timeout-minutes: 6
+        run: node scripts/test-hermes-product-runtime.mjs --run
       - name: Preserve bounded JSON evidence only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hermes-runtime-receipts-${{ github.run_attempt }}
-          path: .cache/hermes-p1/hermes-p1-*/receipt.json
+          path: |
+            .cache/hermes-p1/hermes-p1-*/receipt.json
+            .cache/hermes-product/run-*/receipt.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7

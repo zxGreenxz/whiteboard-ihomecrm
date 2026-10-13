@@ -1,5 +1,6 @@
 import { BrokerError } from './broker.mjs';
 import { DurableConnectionStoreError } from './durable-connection-store.mjs';
+import { connectionOptions } from './connection-options.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^[A-Za-z0-9._~-]{1,16384}$/;
@@ -52,11 +53,11 @@ function contextMetadata(value, actor, org, id) {
 }
 function inputRequest(input, operation) {
   const keys = ['browserAccessToken', 'organizationId'];
-  if (operation !== 'list') keys.push('connectionId');
+  if (!['list', 'options'].includes(operation)) keys.push('connectionId');
   if (['restrict', 'revoke'].includes(operation)) keys.push('expectedEpoch');
   if (operation === 'restrict') keys.push('restrictions', 'scopeIds');
   if (!exact(input, keys) || typeof input.browserAccessToken !== 'string' || !TOKEN.test(input.browserAccessToken) ||
-      !uuid(input.organizationId) || (operation !== 'list' && !uuid(input.connectionId)) ||
+      !uuid(input.organizationId) || (!['list', 'options'].includes(operation) && !uuid(input.connectionId)) ||
       (keys.includes('expectedEpoch') && (!positive(input.expectedEpoch) || input.expectedEpoch >= Number.MAX_SAFE_INTEGER))) fail('invalid_request');
   const request = { ...input };
   if (operation === 'restrict') {
@@ -104,7 +105,7 @@ function sanitize(error, write, receipt) {
   }
   return new ConnectionManagementError(write ? 'operation_outcome_unknown' : 'backend_unavailable', write ? receipt : undefined);
 }
-async function bounded(signal, timeoutMs, operation, outcome) {
+async function bounded(signal, timeoutMs, operation, outcome, dependencyScope) {
   if (!(signal instanceof AbortSignal)) fail('invalid_request');
   if (signal.aborted) throw outcome('cancelled');
   const controller = new AbortController(); let rejectAbort, reason;
@@ -113,7 +114,8 @@ async function bounded(signal, timeoutMs, operation, outcome) {
   const onAbort = () => stop('cancelled'); signal.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(() => stop('backend_unavailable'), timeoutMs);
   const check = () => { if (signal.aborted || controller.signal.aborted) throw outcome(reason ?? 'cancelled'); };
-  try { return await Promise.race([Promise.resolve().then(() => { check(); return operation(controller.signal, check); }), aborted]); }
+  const work = () => { check(); return operation(controller.signal, check); };
+  try { return await Promise.race([Promise.resolve().then(() => dependencyScope ? dependencyScope.track(work) : work()), aborted]); }
   finally { clearTimeout(timer); signal.removeEventListener('abort', onAbort); controller.abort(); }
 }
 
@@ -173,6 +175,18 @@ export function createConnectionManagement({ auth, reads, connectionStore, clock
           const raw = await reads.connectionContext({ accessToken: request.browserAccessToken, connectionId: request.connectionId }, { signal: innerSignal }); check();
           return contextMetadata(raw, initial.session.userId, request.organizationId, request.connectionId);
         };
+        if (operation === 'options') {
+          const choices = async () => {
+            const raw = await reads.connectionOptions({ accessToken: request.browserAccessToken, organizationId: request.organizationId }, { signal: innerSignal }); check();
+            const value = connectionOptions(raw, request.organizationId, initial.session.userId);
+            if (value.membershipId !== initial.membership.membershipId || value.authorizationVersion !== initial.membership.authorizationVersion ||
+                value.isSuperadmin !== initial.isSuperadmin || value.read.some(key => !initial.permissions.read.includes(key) || !initial.companyCeilings.read.includes(key))) fail('context_changed');
+            return value;
+          };
+          const before = await choices(), current = await recheck(), options = await choices();
+          if (!same(before, options)) fail('context_changed');
+          checkLifetime(current); return { options };
+        }
         if (operation === 'list') {
           const connections = await ownList(); const current = await recheck(); checkLifetime(current);
           return { connections };
@@ -223,35 +237,38 @@ export function createConnectionManagement({ auth, reads, connectionStore, clock
       }, outcome);
     } catch (error) { throw sanitize(error, write, receipt); }
   }
-  return Object.freeze(Object.fromEntries(['list', 'context', 'restrict', 'revoke'].map(operation => [operation,
+  return Object.freeze(Object.fromEntries(['list', 'context', 'options', 'restrict', 'revoke'].map(operation => [operation,
     (input, options) => execute(operation, input, options)])));
 }
 
 async function readJson(response, limit, signal) {
   if (response.redirected || !response.body || !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') ||
-      Number(response.headers.get('content-length')) > limit) { void response.body?.cancel().catch(() => {}); fail('backend_unavailable'); }
+      Number(response.headers.get('content-length')) > limit) { await response.body?.cancel().catch(() => {}); fail('backend_unavailable'); }
   const reader = response.body.getReader(), chunks = []; let bytes = 0;
-  const stop = () => { void reader.cancel().catch(() => {}); }; signal.addEventListener('abort', stop, { once: true });
+  let cancellation;
+  const stop = () => cancellation ??= reader.cancel().catch(() => {}); signal.addEventListener('abort', stop, { once: true });
   try {
     while (true) {
       signal.throwIfAborted(); const part = await reader.read(); signal.throwIfAborted(); if (part.done) break;
       bytes += part.value.byteLength; if (bytes > limit) fail('backend_unavailable'); chunks.push(part.value);
     }
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
-  } finally { signal.removeEventListener('abort', stop); stop(); reader.releaseLock(); }
+  } finally { signal.removeEventListener('abort', stop); await stop(); reader.releaseLock(); }
 }
 
-/** Exactly two public read RPCs. No caller-selected host, RPC, role or SQL.
+/** Fixed public self-owned read RPCs. No caller-selected host, RPC, role or SQL.
  * Response shape/ownership are validated by management before use. No secret
  * columns are selected and no write retry/control operation exists here.
  */
 export function createSupabaseConnectionManagementReads({ url, publishableKey, fetch: transport = globalThis.fetch,
-  timeoutMs = 10_000, maxResponseBytes = 131072 } = {}) {
+  timeoutMs = 10_000, maxResponseBytes = 131072, dependencyScope } = {}) {
   let origin; try { origin = new URL(url); } catch { throw new TypeError('invalid_management_reads_config'); }
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash ||
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) || typeof transport !== 'function' ||
-      !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxResponseBytes) || maxResponseBytes > 131072) throw new TypeError('invalid_management_reads_config');
+      !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxResponseBytes) || maxResponseBytes > 131072 ||
+      (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) throw new TypeError('invalid_management_reads_config');
   const fixed = { listConnections: { path: '/rest/v1/rpc/hermes_my_connections_v1', key: 'organizationId', arg: 'p_org' },
+    connectionOptions: { path: '/rest/v1/rpc/hermes_connection_options_v1', key: 'organizationId', arg: 'p_org' },
     connectionContext: { path: '/rest/v1/rpc/hermes_connection_context_v1', key: 'connectionId', arg: 'p_connection_id' } };
   return Object.freeze(Object.fromEntries(Object.entries(fixed).map(([operation, endpoint]) => [operation, async (input, { signal } = {}) => {
     if (!exact(input, ['accessToken', endpoint.key]) || typeof input.accessToken !== 'string' || !TOKEN.test(input.accessToken) || !uuid(input[endpoint.key])) fail('invalid_request');
@@ -260,13 +277,14 @@ export function createSupabaseConnectionManagementReads({ url, publishableKey, f
       return await bounded(signal, timeoutMs, async (innerSignal, check) => {
         const response = await transport(new URL(endpoint.path, origin).href, { method: 'POST', redirect: 'error', signal: innerSignal,
           headers: { apikey: publishableKey, authorization: `Bearer ${bearer}`, 'content-type': 'application/json',
-            'content-profile': 'public', 'accept-profile': 'public' }, body }); check();
+            'content-profile': 'public', 'accept-profile': 'public' }, body });
+        if (innerSignal.aborted) { await response.body?.cancel().catch(() => {}); check(); }
         const result = await readJson(response, maxResponseBytes, innerSignal); check();
         if (response.status === 401) fail('reauthentication_required');
         if (response.status === 403) fail('forbidden');
         if (!response.ok) fail('backend_unavailable');
         return result;
-      }, code => new ConnectionManagementError(code));
+      }, code => new ConnectionManagementError(code), dependencyScope);
     } catch (error) { throw sanitize(error, false); }
   }])));
 }

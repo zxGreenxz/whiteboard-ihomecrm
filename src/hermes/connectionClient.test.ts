@@ -240,7 +240,7 @@ describe('Hermes connection browser boundary', () => {
       await expect(client.connect({ ...connectInput(), ...extra } as never)).rejects.toMatchObject({ code: 'invalid_request', outcome: 'not_dispatched' });
     }
     await expect(client.connect({ ...connectInput(), password: 'a'.repeat(4097) })).rejects.toMatchObject({ code: 'invalid_request' });
-    await expect(client.connect({ ...connectInput(), restrictions: { read: ['rooms.view'], action: [] } })).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(client.connect({ ...connectInput(), restrictions: { read: ['contracts.view'], action: [] } })).rejects.toMatchObject({ code: 'invalid_request' });
     await expect(client.context({ connectionId: CONNECTION.toUpperCase() + '/' })).rejects.toMatchObject({ code: 'invalid_request' });
     expect(fetch).not.toHaveBeenCalled(); expect(getSession).not.toHaveBeenCalled();
   });
@@ -314,5 +314,32 @@ describe('Hermes connection browser boundary', () => {
     expect(await result).toMatchObject({ outcome: 'unknown' });
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+  });
+});
+
+describe('self-owned grant choices and implemented room enrollment', () => {
+  const options = () => ({ userId: USER, organizationId: ORG, membershipId: OTHER, authorizationVersion: 1, isSuperadmin: false,
+    policyVersion: 2, enabled: true, read: ['assistant.context.read', 'rooms.view'], action: [],
+    scopes: [{ scopeId: SCOPE, scopeType: 'BUILDING', label: 'Nhà A', buildingId: ASSISTANT, areaId: null, cashbookId: null }] });
+  it('uses fixed options route and checks the returned owner/company with no credential in the result', async () => {
+    const { client, fetch } = setup(); fetch.mockResolvedValue(json({ options: options() }));
+    await expect(client.options()).resolves.toEqual({ options: options() });
+    expect(fetch).toHaveBeenCalledWith('/api/hermes/connections/options', expect.objectContaining({ body: JSON.stringify({ organizationId: ORG }) }));
+  });
+  it.each([
+    { userId: OTHER }, { organizationId: OTHER }, { read: ['contracts.view'] }, { action: ['rooms.edit'] },
+    { token: OPAQUE }, { scopes: [] }, { policyVersion: 0 },
+  ])('rejects malformed or foreign choices %j', async delta => {
+    const { client, fetch } = setup(); fetch.mockResolvedValue(json({ options: { ...options(), ...delta } }));
+    await expect(client.options()).rejects.toBeInstanceOf(HermesConnectionClientError);
+  });
+  it('can enroll rooms read in selected scope but retains no ability to submit action grants', async () => {
+    const { client, fetch } = setup(), restrictions = { read: ['assistant.context.read', 'rooms.view'], action: [] };
+    const result = { ...newConnection(), connection: { ...metadata(), restrictions } };
+    fetch.mockResolvedValue(json(result));
+    await expect(client.connect({ ...connectInput(), restrictions })).resolves.toEqual(result);
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).toMatchObject({ restrictions, scopeIds: [SCOPE] });
+    await expect(client.connect({ ...connectInput(), restrictions: { ...restrictions, action: ['rooms.edit'] } })).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

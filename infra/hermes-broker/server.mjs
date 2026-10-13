@@ -113,7 +113,7 @@ export function createHermesBackend(configuration = {}) {
       signInProvider: createSupabaseAssistantSignIn({ ...supabase, fetch: request }),
       preparation: createSupabaseConnectionPreparation({ ...supabase, fetch: request }) });
     const management = createConnectionManagement({ auth, connectionStore, clock,
-      reads: createSupabaseConnectionManagementReads({ ...supabase, fetch: request }) });
+      reads: createSupabaseConnectionManagementReads({ ...supabase, fetch: request, dependencyScope }) });
     const connections = createConnectionHttpHandler({ controlPlane, management, ...http });
     const binding = createZaloBindingService(createZaloBindingPorts({ auth, ...supabase, fetch: request, clock }));
     const zalo = createZaloBindingHttpHandler({ service: binding, ...http });
@@ -157,9 +157,17 @@ export function createHermesBackend(configuration = {}) {
       }
       if (req.headers['content-encoding'] !== undefined) { reply(res, 415, 'unsupported_content_encoding'); return; }
       if (pending.size >= 16) { reply(res, 429, 'busy'); return; }
-      const work = (async () => {
+      // Request observers can finish before ignored-abort Auth/SQL/fetch work.
+      // Retain the shared admission slot until this finite dependency scope
+      // actually drains; no runtime listeners or startup live in this scope.
+      const requestWork = dependencyScope.begin(async () => {
         if (req.url === '/mcp') await mcp(req, res);
         else if (!await connections(req, res) && !await zalo(req, res)) reply(res, 404, 'not_found');
+      });
+      const work = (async () => {
+        try { await requestWork.result; }
+        catch { reply(res, 503, 'backend_unavailable'); }
+        finally { await requestWork.drained; }
       })();
       pending.add(work);
       void work.catch(() => reply(res, 503, 'backend_unavailable')).finally(() => { pending.delete(work); });

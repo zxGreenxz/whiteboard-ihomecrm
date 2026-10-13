@@ -1,8 +1,9 @@
 import { ConnectionControlError } from './connection-control-plane.mjs';
 import { ConnectionManagementError } from './connection-management.mjs';
+import { connectionOptions } from './connection-options.mjs';
 
 const PREFIX = '/api/hermes/connections/';
-const OPERATIONS = ['connect', 'list', 'context', 'restrict', 'revoke'];
+const OPERATIONS = ['connect', 'list', 'context', 'options', 'restrict', 'revoke'];
 const WRITES = new Set(['connect', 'restrict', 'revoke']);
 const MAX_BODY_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
@@ -47,7 +48,7 @@ function allowedConfiguration(values, origin) {
 function inputBody(value, operation) {
   const fields = ['organizationId'];
   if (operation === 'connect') fields.push('email', 'password', 'restrictions', 'scopeIds');
-  if (!['connect', 'list'].includes(operation)) fields.push('connectionId');
+  if (!['connect', 'list', 'options'].includes(operation)) fields.push('connectionId');
   if (['restrict', 'revoke'].includes(operation)) fields.push('expectedEpoch');
   if (operation === 'restrict') fields.push('restrictions', 'scopeIds');
   if (!exact(value, fields) || !id(value.organizationId) ||
@@ -57,7 +58,7 @@ function inputBody(value, operation) {
   if (operation === 'connect' && (typeof value.email !== 'string' || value.email.length > 320 ||
       !/^[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+\.[^\s@\x00-\x1f\x7f]+$/.test(value.email) ||
       typeof value.password !== 'string' || value.password.length < 1 || Buffer.byteLength(value.password) > 4096 ||
-      value.restrictions.action.length !== 0 || value.restrictions.read.some(key => key !== 'assistant.context.read'))) invalid();
+      value.restrictions.action.length !== 0 || value.restrictions.read.some(key => !['assistant.context.read', 'rooms.view'].includes(key)))) invalid();
   return value;
 }
 function row(value, org, fields = ROW) {
@@ -67,6 +68,10 @@ function row(value, org, fields = ROW) {
   return Object.fromEntries(ROW.map(key => [key, structuredClone(value[key])]));
 }
 function output(value, operation, input) {
+  if (operation === 'options') {
+    if (!exact(value, ['options'])) badOutput();
+    return { options: connectionOptions(value.options, input.organizationId) };
+  }
   if (operation === 'connect') {
     if (!exact(value, ['status', 'connection', 'token', 'tokenExpiresAt']) || value.status !== 'active' ||
         typeof value.token !== 'string' || !/^hc_[A-Za-z0-9_-]{43}$/.test(value.token) || !positive(value.tokenExpiresAt)) badOutput();
@@ -156,7 +161,7 @@ function readBody(request, signal) {
 }
 
 /** Embeddable browser control-plane handler; return false for non-owned routes.
- * All five routes are POST /api/hermes/connections/{connect,list,context,restrict,revoke}.
+ * All six routes are POST /api/hermes/connections/{connect,list,context,options,restrict,revoke}.
  * The browser bearer is a syntactic JWT only here; the injected existing control
  * and management primitives MUST perform actual Auth/CRM ownership verification.
  * No cookie, forwarded Host, caller-selected provider, CORS or OPTIONS fallback.

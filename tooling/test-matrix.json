@@ -573,8 +573,53 @@
       ]
     },
     {
+      "id": "hermes-connection-options-native",
+      "sourcePaths": [
+        "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
+        "supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql",
+        "infra/hermes-broker/connection-options.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/connection-management.mjs",
+        "infra/hermes-broker/connection-http.mjs",
+        "infra/hermes-broker/server.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/connection-options.test.mjs",
+        "infra/hermes-broker/connection-options-sql.test.mjs",
+        "infra/hermes-broker/connection-control-plane.test.mjs",
+        "infra/hermes-broker/connection-management.test.mjs",
+        "infra/hermes-broker/connection-http.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-connection-permissions-ui",
+      "sourcePaths": [
+        "supabase/migrations/20261013183000_hermes_connection_options_v1.sql",
+        "infra/hermes-broker/connection-options.mjs",
+        "infra/hermes-broker/connection-control-plane.mjs",
+        "infra/hermes-broker/connection-management.mjs",
+        "infra/hermes-broker/connection-http.mjs",
+        "src/hermes/connectionClient.ts",
+        "src/hermes/useHermesConnections.ts",
+        "src/hermes/HermesPermissionFields.tsx",
+        "src/pages/settings/HermesConnectionsPage.tsx",
+        "src/components/authorization/PermissionPicker.tsx",
+        "src/components/authorization/ScopePicker.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/connectionClient.test.ts",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ]
+    },
+    {
       "id": "hermes-private-runtime-composition",
       "sourcePaths": [
+        "infra/hermes-runtime/host-*",
+        "infra/hermes-runtime/hermes-host.service",
+        "scripts/test-hermes-product-runtime.mjs",
         "infra/hermes-broker/connection-handoff.mjs",
         "infra/hermes-broker/connection-control-plane.mjs",
         "infra/hermes-runtime/handoff-reconciler.mjs",
@@ -603,7 +648,8 @@
       "suiteId": "node-native",
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
-        "infra/hermes-runtime/**/*.test.mjs"
+        "infra/hermes-runtime/**/*.test.mjs",
+        "scripts/test-hermes-product-runtime.test.mjs"
       ]
     },
     {
@@ -1051,6 +1097,7 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
+        "scripts/test-hermes-product-runtime.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
