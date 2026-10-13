@@ -496,11 +496,19 @@
         "scripts/network-center-function-bodies.mjs",
         "scripts/apply-reviewed-migration.mjs",
         "scripts/lib/migration-target.mjs",
-        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql"
+        "supabase/migrations/20261012074002_hermes_envelope_length_guard_v1.sql",
+        "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+        "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql",
+        "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+        "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql"
       ],
       "suiteId": "node-native",
       "testPatterns": [
-        "scripts/__tests__/hermes-durable-schema.test.mjs"
+        "scripts/__tests__/hermes-durable-schema.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs"
       ]
     },
     {
@@ -533,7 +541,13 @@
         "infra/hermes-broker/durable-authority.mjs",
         "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
         "infra/hermes-broker/connection-control-plane.mjs",
-        "infra/hermes-broker/certs/supabase-ca-2021.crt"
+        "infra/hermes-broker/certs/supabase-ca-2021.crt",
+        "supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql",
+        "supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql",
+        "infra/hermes-broker/room-read-service.mjs",
+        "infra/hermes-broker/room-read-projection.mjs",
+        "src/lib/roomSaleFacts.ts",
+        "supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql"
       ],
       "suiteId": "node-native",
       "testPatterns": [
@@ -550,7 +564,43 @@
         "infra/hermes-broker/durable-connection-store.test.mjs",
         "infra/hermes-broker/durable-authority.test.mjs",
         "infra/hermes-broker/supabase-durable-auth-adapter.test.mjs",
-        "infra/hermes-broker/connection-control-plane.test.mjs"
+        "infra/hermes-broker/connection-control-plane.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "infra/hermes-broker/room-read-service.test.mjs",
+        "infra/hermes-broker/room-read-projection.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-private-runtime-composition",
+      "sourcePaths": [
+        "infra/hermes-runtime/runtime-orchestrator.mjs",
+        "infra/hermes-runtime/profile-homes.mjs",
+        "infra/hermes-runtime/connection-supervisor.mjs",
+        "infra/hermes-broker/private-command-runner.mjs",
+        "infra/hermes-runtime/runtime-gateway.mjs",
+        "infra/hermes-runtime/gateway-relay.mjs",
+        "infra/hermes-runtime/gateway-transport.mjs",
+        "infra/hermes-runtime/container-driver.mjs",
+        "infra/hermes-runtime/container-contract.mjs",
+        "infra/hermes-broker/dependency-scope.mjs",
+        "infra/hermes-broker/runtime-model-service.mjs",
+        "infra/hermes-broker/model-relay.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-broker/store-transport.mjs",
+        "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
+        "infra/hermes-broker/room-read-service.mjs",
+        "infra/hermes-broker/connection-maintenance.mjs",
+        "infra/hermes-broker/connection-renewal.mjs",
+        "infra/hermes-broker/refresh-manager.mjs",
+        "infra/hermes-broker/supabase-refresh-provider.mjs",
+        "infra/hermes-broker/durable-refresh-store.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/**/*.test.mjs",
+        "infra/hermes-runtime/**/*.test.mjs"
       ]
     },
     {
@@ -583,6 +633,29 @@
         "check-copilot-docs-manifest",
         "generate-copilot-guide-corpus",
         "check-copilot-tool-inventory"
+      ]
+    },
+    {
+      "id": "hermes-zalo-binding-native",
+      "sourcePaths": [
+        "infra/hermes-zalo-router/**",
+        "worker/lib/hermes-link.js",
+        "worker/lib/hermes-command.js",
+        "worker/lib/hermes-reply.js",
+        "worker/lib/watchdog.js",
+        "worker/lib/inbound.js",
+        "worker/lib/login.js",
+        "worker/lib/session-lifecycle.js",
+        "supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql",
+        "supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql",
+        "infra/hermes-broker/server.mjs",
+        "supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql",
+        "supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-zalo-router/**/*.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
       ]
     }
   ],
@@ -724,7 +797,11 @@
         "scripts/__tests__/test-hermes-broker-authz.test.mjs",
         "scripts/__tests__/hermes-refresh-auth.test.mjs",
         "scripts/__tests__/hermes-durable-schema.test.mjs",
-        "scripts/__tests__/hermes-durable-store.test.mjs"
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "ciJobs": [
         {
@@ -1033,7 +1110,11 @@
         "scripts/__tests__/test-hermes-broker-authz.test.mjs",
         "scripts/__tests__/hermes-refresh-auth.test.mjs",
         "scripts/__tests__/hermes-durable-schema.test.mjs",
-        "scripts/__tests__/hermes-durable-store.test.mjs"
+        "scripts/__tests__/hermes-durable-store.test.mjs",
+        "scripts/__tests__/hermes-connection-renewal-schema.test.mjs",
+        "scripts/__tests__/hermes-room-scope-schema.test.mjs",
+        "scripts/__tests__/hermes-public-conflict-schema.test.mjs",
+        "infra/hermes-zalo-router/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

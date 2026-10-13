@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { randomUUID, X509Certificate } from 'node:crypto';
+import { createHash, randomUUID, X509Certificate } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,9 @@ import { parseArguments, targetMatches, captureSourceIdentity, finalizeReceipt, 
   privateCleanupSql, roleSetupSql, roleCleanupSql, countsSql, expectRejection, guardedQuery, safeError, loadFixtureCa,
   fixtureCleanupOutcome, rpcDiagnostic, captureRpcResponse, fixtureOrganizationScopeCountsSql,
   createGuardedStoreTransport, guardedConnectionCall, createLeaseReadFetch, createTrackedControlFetch,
-  guardedControlConnect, assertBrokerContext, createSerializedLeaseAssertions } from '../test-hermes-durable-store.mjs';
+  guardedControlConnect, assertBrokerContext, createSerializedLeaseAssertions, prepareFixtureRenewal,
+  fixtureRenewalBoundaryMutation, roomReadFixtureSql, roomReadCleanupSql, runFixtureReadInterleaving,
+  assertRoomProjection } from '../test-hermes-durable-store.mjs';
 import { validateCleanupEvidence } from '../test-hermes-broker-authz.mjs';
 import { createDurableConnectionStore } from '../../infra/hermes-broker/durable-connection-store.mjs';
 
@@ -177,6 +179,16 @@ test('denial checks fail on accidental success and unrelated database outage', a
   await expectRejection(async () => { throw { code: 'store_denied' }; }, ['store_denied']);
   await assert.rejects(expectRejection(async () => {}, ['store_denied']), /expected_rejection_missing/);
   await assert.rejects(expectRejection(async () => { throw { code: 'store_unavailable' }; }, ['store_denied']), /expected_rejection_missing/);
+  await assert.rejects(expectRejection(async () => {}, ['forbidden'], 'spoof_session'), error => {
+    assert.deepEqual(error.rejectionDiagnostics, { label: 'spoof_session', rejected: false, observed: 'no_rejection' }); return true;
+  });
+  await assert.rejects(expectRejection(async () => { throw { code: 'backend_unavailable', message: 'SECRET' }; }, ['forbidden'], 'crm_permission_revoked'), error => {
+    assert.deepEqual(error.rejectionDiagnostics, { label: 'crm_permission_revoked', rejected: true, observed: 'backend_unavailable' });
+    assert(!JSON.stringify(error).includes('SECRET')); return true;
+  });
+  await assert.rejects(expectRejection(async () => { throw { code: 'SECRET' }; }, ['forbidden'], 'BAD-SECRET'), error => {
+    assert.deepEqual(error.rejectionDiagnostics, { label: 'invalid_label', rejected: true, observed: 'other_error' }); return true;
+  });
   assert.equal(safeError({ message: 'secret password', code: '28P01' }), 'assertion_or_dependency_failed');
 });
 
@@ -449,4 +461,232 @@ test('harness source keeps actual JWT, restricted transport, source hashes, immu
   const report = source.slice(source.indexOf('const report ='), source.indexOf('finalizeReceipt(report, reportPath);'));
   assert(report.length > 0);
   assert.doesNotMatch(report, /password|accessToken|refreshToken|sessionEnvelope|rolePassword|testSecretKey|testPublishableKey/);
+});
+
+function renewalFixture() {
+  const token = 'hc_' + 'A'.repeat(43), tokenDigest = createHash('sha256').update(token).digest('hex');
+  const row = { id: randomUUID(), assistantId: randomUUID(), userId: randomUUID(), organizationId: randomUUID(), epoch: 2, expiresAt: 1_900_000_000_000 };
+  const credentialRef = randomUUID(), receipt = { row: { ...row } }, events = [], controller = new AbortController();
+  const joined = { status: 'active', connection: { ...row, tokenDigest, credentialRef },
+    session: { credentialRef, revision: 1, envelope: 'PRIVATE', binding: 'PRIVATE' } };
+  const authority = { async resolve(value) { events.push('resolve'); assert.equal(value, token); return receipt; },
+    async checkUnchanged(value, snapshot) { events.push('check'); assert.equal(value, token); assert.equal(snapshot, receipt); } };
+  const store = { async readConnection(input) { events.push('read'); assert.deepEqual(input, { tokenDigest }); return joined; } };
+  return { token, tokenDigest, row, credentialRef, receipt, joined, events, controller, authority, store };
+}
+test('renewal preparation uses the actual authority interface before/after joined read and returns only fixed CAS fields', async () => {
+  const f = renewalFixture();
+  const input = await prepareFixtureRenewal(f.authority, f.store, f.token, f.controller.signal);
+  assert.deepEqual(f.events, ['resolve', 'read', 'check']);
+  assert.deepEqual(input, { tokenDigest: f.tokenDigest, connectionId: f.row.id, expectedEpoch: 2,
+    credentialRef: f.credentialRef, expectedRevision: 1, expectedExpiresAt: f.row.expiresAt, requestedTtlMs: 900_000 });
+  assert(!JSON.stringify(input).includes('PRIVATE')); assert(!JSON.stringify(input).includes(f.token));
+  f.joined.connection.epoch++; f.joined.session.revision++;
+  assert.equal(input.expectedEpoch, 2); assert.equal(input.expectedRevision, 1);
+});
+test('renewal preparation rejects cross-owner/stale joined state and propagates final authority denial before a write', async () => {
+  for (const mutate of [f => { f.joined.connection.userId = randomUUID(); }, f => { f.joined.connection.organizationId = randomUUID(); },
+    f => { f.joined.connection.epoch++; }, f => { f.joined.connection.expiresAt++; },
+    f => { f.joined.connection.tokenDigest = 'b'.repeat(64); }, f => { f.joined.session.credentialRef = randomUUID(); },
+    f => { f.joined.status = 'unavailable'; }]) {
+    const f = renewalFixture(); mutate(f);
+    await assert.rejects(prepareFixtureRenewal(f.authority, f.store, f.token, f.controller.signal), { code: 'fixture_renewal_context_changed' });
+    assert.deepEqual(f.events, ['resolve', 'read']);
+  }
+  const f = renewalFixture(); f.authority.checkUnchanged = async () => { throw Object.assign(new Error('forbidden'), { code: 'forbidden' }); };
+  await assert.rejects(prepareFixtureRenewal(f.authority, f.store, f.token, f.controller.signal), { code: 'forbidden' });
+});
+test('renewal preparation stops on cancellation after an await without advancing to the next dependency', async () => {
+  const f = renewalFixture(); f.authority.resolve = async () => { f.controller.abort(); return f.receipt; };
+  await assert.rejects(prepareFixtureRenewal(f.authority, f.store, f.token, f.controller.signal), { name: 'AbortError' });
+  assert.deepEqual(f.events, []);
+  await assert.rejects(prepareFixtureRenewal(f.authority, f.store, 'raw.jwt.token', f.controller.signal), { code: 'fixture_renewal_input_invalid' });
+});
+test('renewal boundary edits bind all IDs to this run and expose only three fixed timestamp probes', () => {
+  const plan = assigned(), connectionId = randomUUID(); plan.connectionIds.push(connectionId);
+  const item = { connection: { id: connectionId }, credentialRef: randomUUID(), actorIndex: 0, orgIndex: 0,
+    binding: { assistantId: randomUUID(), userId: plan.actors[0].id, organizationId: plan.orgs[0].id }, activation: { tokenDigest: 'a'.repeat(64) } };
+  for (const mode of ['session_cap', 'hard_age_cap', 'expired']) {
+    const probe = fixtureRenewalBoundaryMutation(plan, item, mode);
+    assert.deepEqual(probe.values, [item.activation.tokenDigest, connectionId, item.credentialRef, plan.orgs[0].id, plan.actors[0].id, item.binding.assistantId]);
+    assert.match(probe.text, /c\.id=\$2 AND c\.credential_ref=\$3 AND c\.organization_id=\$4 AND c\.user_id=\$5 AND c\.assistant_id=\$6/);
+    assert.match(probe.text, /t\.token_digest=\$1 AND t\.connection_id=\$2 AND EXISTS\(SELECT 1 FROM owned\)/);
+    assert.doesNotMatch(probe.text, /auth\.users|UPDATE public\.|ALTER|CREATE ROLE|GRANT|DELETE/);
+  }
+  for (const altered of [{ ...item, connection: { id: randomUUID() } }, { ...item, orgIndex: 1 },
+    { ...item, binding: { ...item.binding, userId: randomUUID() } }, { ...item, binding: { ...item.binding, organizationId: randomUUID() } },
+    { ...item, activation: { tokenDigest: 'raw opaque' } }]) {
+    assert.throws(() => fixtureRenewalBoundaryMutation(plan, altered, 'expired'), { code: 'fixture_renewal_owner_required' });
+  }
+  assert.throws(() => fixtureRenewalBoundaryMutation(plan, item, 'arbitrary_update'), { code: 'fixture_renewal_owner_required' });
+});
+test('renewal protocol ACK uncertainty retains the TEST cleanup marker just like activation/revoke', async () => {
+  const context = ctx(); context.lease = { signal: new AbortController().signal };
+  const store = createDurableConnectionStore({ transport: { async call() { return { ok: true, status: 'renewed', expiresAt: 1 }; } } });
+  await assert.rejects(guardedConnectionCall(context, store, 'renewConnection', { tokenDigest: 'a'.repeat(64), connectionId: randomUUID(),
+    expectedEpoch: 1, credentialRef: randomUUID(), expectedRevision: 1, expectedExpiresAt: 1000, requestedTtlMs: 900_000 }), { code: 'store_outcome_unknown' });
+  assert.equal(context.writeState.uncertain, true);
+});
+test('renewal live slice remains five additive cases with input-hashed SQL and no provider refresh or production shortcut', () => {
+  const source = readFileSync(new URL('../test-hermes-durable-store.mjs', import.meta.url), 'utf8');
+  assert.equal([...source.matchAll(/await check\('renewal\./g)].length, 5);
+  assert.match(source, /existingAcceptanceCases: 18, additionalCases: 5/);
+  assert.match(source, /'restrict_connection', 'renew_connection', 'revoke_connection'/);
+  assert.match(source, /prepareFixtureRenewal\(authority, connectionStore, item.token, lease.signal\)/);
+  assert.match(source, /query\(text, values, \{ write: true \}\)/);
+  const inputs = captureSourceIdentity();
+  assert('supabase/migrations/20261012083555_hermes_connection_renewal_v1.sql' in inputs);
+  assert.match(source, /schemaAppliedByHarness: false/); assert.match(source, /providerRefresh: false/);
+});
+
+test('P3 fixtures add only a fresh AREA/edge/building/room in the owned synthetic organization and cleanup counts cover them', () => {
+  const plan = assigned(), other = assigned(), setup = roomReadFixtureSql(plan), cleanup = roomReadCleanupSql(plan), counts = countsSql(plan);
+  for (const key of ['areaId', 'scopeId', 'buildingId', 'roomId']) {
+    assert.notEqual(plan.roomRead[key], other.roomRead[key]);
+    assert(setup.includes(plan.roomRead[key])); assert(cleanup.includes(plan.roomRead[key]));
+  }
+  assert.match(setup, /'Hermes synthetic building'/);
+  assert.match(setup, /'PRIVATE_HERMES_FIXTURE'/);
+  assert.match(setup, /public.area_buildings\(area_id,building_id,user_id,organization_id\)/);
+  assert.match(setup, /'AREA'/); assert(setup.includes(plan.orgs[0].id));
+  assert(!setup.includes(plan.orgs[1].id)); assert(!cleanup.includes(plan.orgs[1].id));
+  assert.doesNotMatch(setup + cleanup, /disable trigger|session_replication_role|truncate|cascade|auth\.users/i);
+  assert(cleanup.indexOf('public.area_buildings') < cleanup.indexOf('public.authorization_scopes'));
+  assert(cleanup.includes("scope_type='BUILDING' and building_id='" + plan.roomRead.buildingId + "'"));
+  assert(cleanup.indexOf('public.authorization_scopes') < cleanup.indexOf('public.buildings'));
+  assert(cleanup.indexOf('public.rooms') < cleanup.indexOf('public.buildings'));
+  assert(cleanup.indexOf('public.authorization_scopes') < cleanup.indexOf('public.areas'));
+  for (const key of ['room_read_rooms', 'room_read_buildings', 'room_read_areas', 'room_read_edges']) assert(counts.includes(key));
+  assert(counts.includes(plan.roomRead.roomId)); assert(counts.includes(plan.roomRead.areaId));
+  assert.throws(() => roomReadFixtureSql({ ...plan, roomRead: { ...plan.roomRead, areaId: 'invalid' } }), /fixture_room_ids_required/);
+  assert.throws(() => roomReadCleanupSql({ ...plan, roomRead: { ...plan.roomRead, roomId: 'invalid' } }), /fixture_room_ids_required/);
+});
+
+test('request interleaving commits the mutation after admission and before final read, and drains before returning', async () => {
+  const signal = new AbortController().signal, events = [];
+  const value = await runFixtureReadInterleaving({ signal,
+    read: async barrier => { events.push('auth'); await barrier(); events.push('final-map'); return 'new-scope'; },
+    mutate: async () => { events.push('commit'); },
+  });
+  assert.equal(value, 'new-scope'); assert.deepEqual(events, ['auth', 'commit', 'final-map']);
+});
+
+test('request interleaving cannot pass if the barrier is missed, reused, or final read denies', async () => {
+  let mutations = 0;
+  const signal = new AbortController().signal;
+  await assert.rejects(runFixtureReadInterleaving({ signal, read: async () => 'stale', mutate: async () => { mutations++; } }),
+    { code: 'fixture_barrier_missing' });
+  assert.equal(mutations, 0);
+  await assert.rejects(runFixtureReadInterleaving({ signal,
+    read: async barrier => { await barrier(); await barrier(); }, mutate: async () => { mutations++; } }),
+  { code: 'fixture_barrier_reused' });
+  assert.equal(mutations, 1);
+  await assert.rejects(runFixtureReadInterleaving({ signal,
+    read: async barrier => { await barrier(); throw Object.assign(new Error('context_changed'), { code: 'context_changed' }); },
+    mutate: async () => { mutations++; },
+  }), { code: 'context_changed' });
+  assert.equal(mutations, 2);
+});
+
+test('failed/unknown mutation releases a paused read and settles it without returning stale data', async () => {
+  const events = [], context = ctx(); let finalRead = false;
+  const unknown = Object.assign(new Error('private unknown body'), { code: 'ETIMEDOUT' });
+  await assert.rejects(runFixtureReadInterleaving({ signal: new AbortController().signal,
+    read: async barrier => { try { await barrier(); finalRead = true; } finally { events.push('read-settled'); } },
+    mutate: () => guardedQuery(context, { query: async () => { throw unknown; } }, 'synthetic mutation', [], { write: true, assertLease: ready }),
+  }), error => error === unknown);
+  assert.equal(context.writeState.uncertain, true); assert.equal(finalRead, false);
+  assert.deepEqual(events, ['read-settled']);
+});
+
+test('barrier cancellation before read starts or while waiting cannot dispatch a mutation', async () => {
+  let reads = 0, mutations = 0;
+  const pre = new AbortController(); pre.abort();
+  await assert.rejects(runFixtureReadInterleaving({ signal: pre.signal,
+    read: async () => { reads++; }, mutate: async () => { mutations++; } }), { name: 'AbortError' });
+  assert.equal(reads, 0); assert.equal(mutations, 0);
+  const caller = new AbortController(), started = deferred(); let settled = false;
+  const pending = runFixtureReadInterleaving({ signal: caller.signal,
+    read: async (_barrier, signal) => {
+      started.resolve(); await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true })); settled = true;
+    }, mutate: async () => { mutations++; },
+  });
+  const rejected = assert.rejects(pending, { code: 'fixture_barrier_cancelled' });
+  await started.promise; caller.abort(); await rejected;
+  assert.equal(mutations, 0); assert.equal(settled, true);
+});
+
+test('barrier timeout bounds waiting, while a started guarded mutation must settle before cleanup', async () => {
+  const write = deferred(), started = deferred(); let settled = false;
+  const pending = runFixtureReadInterleaving({ timeoutMs: 5, signal: new AbortController().signal,
+    read: async barrier => { try { await barrier(); } finally { settled = true; } },
+    mutate: async () => { started.resolve(); await write.promise; },
+  });
+  const rejected = assert.rejects(pending, { name: 'AbortError' });
+  await started.promise; await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(settled, false, 'do not close the guarded write just because a client deadline fired');
+  write.resolve(); await rejected; assert.equal(settled, true);
+});
+
+function roomProjectionFixture() {
+  const buildingId = randomUUID(), roomId = randomUUID();
+  return { buildingId, roomId, result: { source: 'copilot_available_rooms_v1', readAt: '2026-10-12T00:00:00.000Z', currency: 'VND',
+    completeness: 'complete', totalInSnapshot: 1, offset: 0, nextOffset: null,
+    rooms: [{ id: roomId, code: null, name: 'Synthetic', building: { id: buildingId, name: 'Synthetic', code: null },
+      floor: null, areaM2: null, rentVnd: 100, depositVnd: 100, status: 'free',
+      availability: { kind: 'free', label: 'Trống', availableOn: null } }] } };
+}
+test('room assertion rejects cross-scope rooms and every additional output field, including nested private data', () => {
+  const f = roomProjectionFixture();
+  assert.equal(assertRoomProjection(f.result, [f.roomId], [f.buildingId]), f.result);
+  for (const mutate of [r => { r.accessToken = 'private'; }, r => { r.rooms[0].description = 'private'; },
+    r => { r.rooms[0].building.address = 'private'; }, r => { r.rooms[0].availability.note = 'private'; },
+    r => { r.rooms[0].name = 'PRIVATE_HERMES_FIXTURE'; }, r => { r.rooms[0].id = randomUUID(); },
+    r => { r.rooms[0].building.id = randomUUID(); }, r => { r.totalInSnapshot = 2; }, r => { r.completeness = 'source_capped'; }]) {
+    const result = structuredClone(f.result); mutate(result);
+    assert.throws(() => assertRoomProjection(result, [f.roomId], [f.buildingId]));
+  }
+});
+
+test('P3 fetch only adds two fixed read endpoints, retains lease checks, and denies arbitrary methods/origins', async () => {
+  const { context } = transportContext(); let checks = 0, sends = 0;
+  const fetch = createLeaseReadFetch(context, { assertLease: async () => { checks++; }, request: async () => { sends++; return Response.json({}); } });
+  for (const name of ['hermes_room_scope_map_v1', 'copilot_available_rooms_v1']) {
+    await fetch(`${context.url}/rest/v1/rpc/${name}`, { method: 'POST', redirect: 'error', signal: context.lease.signal });
+  }
+  for (const [url, method] of [[`${context.url}/rest/v1/rpc/arbitrary_rpc`, 'POST'],
+    [`${context.url}/rest/v1/rpc/hermes_room_scope_map_v1`, 'GET'],
+    ['https://example.invalid/rest/v1/rpc/hermes_room_scope_map_v1', 'POST']]) {
+    await assert.rejects(fetch(url, { method, redirect: 'error', signal: context.lease.signal }), { code: 'fixture_read_endpoint_refused' });
+  }
+  await fetch.drain(); assert.equal(checks, 2); assert.equal(sends, 2);
+});
+
+test('P3 is exactly five additive real-service cases with guarded mutations and explicit request-level proof limits', () => {
+  const source = readFileSync(new URL('../test-hermes-durable-store.mjs', import.meta.url), 'utf8');
+  assert.equal([...source.matchAll(/await check\('rooms\./g)].length, 5);
+  assert.equal([...source.matchAll(/await check\('renewal\./g)].length, 5);
+  assert.match(source, /roomReads: \{ existingAcceptanceCases: 23, additionalCases: 5, interleaving: 'between_requests', internalStatementSnapshot: false/);
+  assert.match(source, /createSupabaseRoomReads\(\{ url: ctx.url, publishableKey: ctx.cred.testPublishableKey, fetch: trackedReads/);
+  assert.match(source, /createRoomReadService\(\{ authority, connectionStore, crypto, auth, reads: roomReads/);
+  assert.match(source, /await authority.checkUnchanged\(\.\.\.args\); await barrier\(\)/);
+  assert.match(source, /if \(\+\+maps === 2\) await barrier\(\)/);
+  assert.match(source, /where area_id=\$2 and organization_id=\$3 and building_id=\$4/);
+  assert.match(source, /'fixture_area_mutation_missing'/); assert.match(source, /'fixture_permission_mutation_missing'/);
+  assert.match(source, /where id=\$1 and user_id=\$2 and organization_id=\$3/);
+  assert.match(source, /providerRefresh: false, concurrentTransactions: false/);
+  const inputs = captureSourceIdentity();
+  for (const file of ['infra/hermes-broker/room-read-service.mjs', 'infra/hermes-broker/room-read-projection.mjs',
+    'src/lib/roomSaleFacts.ts', 'supabase/migrations/20261012083047_hermes_room_scope_read_v1.sql']) assert(file in inputs);
+});
+
+test('room RPC diagnostics record only safe status/sqlstate and preserve the original denial response', async () => {
+ const {context}=transportContext();context.rpcDiagnostics=[];
+ const read=createLeaseReadFetch(context,{assertLease:async()=>{},request:async()=>Response.json({code:'40001',message:'SECRET_JWT',details:'PRIVATE'}, {status:500})});
+ const response=await read(`${context.url}/rest/v1/rpc/hermes_room_scope_map_v1`,{method:'POST',redirect:'error',signal:context.lease.signal});
+ assert.equal((await response.json()).code,'40001');await read.drain();
+ assert.equal(context.rpcDiagnostics[0].sqlState,'40001');assert.equal(context.rpcDiagnostics[0].httpStatus,500);
+ assert(!JSON.stringify(context.rpcDiagnostics).includes('SECRET'));assert(!JSON.stringify(context.rpcDiagnostics).includes('PRIVATE'));
+ await assert.rejects(expectRejection(async()=>{throw {code:'timeout'};},['context_changed'],'spoof_expected_epoch'),error=>{
+ assert.equal(error.rejectionDiagnostics.observed,'timeout');return true;});
 });

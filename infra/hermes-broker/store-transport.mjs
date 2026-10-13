@@ -5,6 +5,7 @@ const FUNCTIONS = Object.freeze({
   activate: 'app_private.hermes_store_activate_v1',
   readConnection: 'app_private.hermes_store_read_connection_v1',
   restrictConnection: 'app_private.hermes_store_restrict_connection_v1',
+  renewConnection: 'app_private.hermes_store_renew_connection_v1',
   revokeConnection: 'app_private.hermes_store_revoke_connection_v1',
   acquireRefresh: 'app_private.hermes_store_acquire_refresh_v1',
   dispatchRefresh: 'app_private.hermes_store_dispatch_refresh_v1',
@@ -13,6 +14,11 @@ const FUNCTIONS = Object.freeze({
   reconnectSession: 'app_private.hermes_store_reconnect_session_v1',
   revokeSession: 'app_private.hermes_store_revoke_session_v1',
   releaseRefresh: 'app_private.hermes_store_release_refresh_v1',
+  claimPrivateCommand: 'app_private.hermes_store_claim_private_command_v1',
+  dispatchPrivateCommand: 'app_private.hermes_store_dispatch_private_command_v1',
+  finishPrivateCommand: 'app_private.hermes_store_finish_private_command_v1',
+  failPrivateCommand: 'app_private.hermes_store_fail_private_command_v1',
+  prunePrivateCommands: 'app_private.hermes_store_prune_private_commands_v1',
 });
 const PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role, r.rolsuper, r.rolbypassrls,
   r.rolcreaterole, r.rolcreatedb, r.rolreplication,
@@ -45,12 +51,13 @@ function knownRejection(error) {
  * Caller reconciles by the SAME operation/claim; it must not repeat a provider call.
  */
 export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
-  maxRequestBytes = 131_072, maxResponseBytes = 131_072 } = {}) {
+  maxRequestBytes = 131_072, maxResponseBytes = 131_072, dependencyScope } = {}) {
   if (typeof pool?.connect !== 'function' || typeof expectedRole !== 'string' ||
       !/^hermes_store_[a-z0-9_]{1,40}$/.test(expectedRole) || expectedRole === 'hermes_store_executor' ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000 ||
       !Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1 || maxRequestBytes > 131_072 ||
-      !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 131_072) {
+      !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 131_072 ||
+      (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) {
     throw new TypeError('invalid_store_transport_config');
   }
   return Object.freeze({
@@ -102,7 +109,7 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
           }
           return value;
         };
-        const value = await Promise.race([run(), aborted]);
+        const value = await Promise.race([dependencyScope ? dependencyScope.track(run) : run(), aborted]);
         if (stopped) fail('store_cancelled');
         release(false);
         return value;

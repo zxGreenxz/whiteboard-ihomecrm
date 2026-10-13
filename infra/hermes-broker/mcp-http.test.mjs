@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { createFixtureBroker } from './fixture.mjs';
-import { createMcpHttpServer } from './mcp-http.mjs';
+import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -90,4 +90,20 @@ test('HTTP errors redact untrusted backend exception text', async (t) => {
   }, body: JSON.stringify(call()) });
   const text = await result.text();
   assert.ok(text.includes('backend_unavailable')); assert.ok(!text.includes('secret'));
+});
+
+test('extracted handler composes under a caller-owned server without changing legacy MCP result or hostname semantics', async t => {
+  const state = await createFixtureBroker(), handler = createMcpHttpHandler({ broker: state.broker });
+  const server = createServer(async (request, response) => {
+    if (request.url === '/other') { response.end('caller-owned'); return; }
+    await handler(request, response);
+  });
+  assert.equal(server.listening, false);
+  await new Promise(done => server.listen(0, '127.0.0.1', done));
+  t.after(async () => { server.closeAllConnections(); await new Promise(done => server.close(done)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  assert.equal(await (await fetch(base + '/other')).text(), 'caller-owned');
+  const response = await fetch(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json',
+    authorization: `Bearer ${state.connections.a.token}` }, body: JSON.stringify(call()) });
+  assert.equal(response.status, 200); assert.equal((await response.json()).result.isError, false);
 });

@@ -33,13 +33,17 @@ vi.mock('../lib/ctx.js', () => ({
 }));
 vi.mock('../lib/auto-reply.js', () => ({ xuLyTinDen: vi.fn() }));
 import { handleInbound, rawSubset } from '../lib/inbound.js';
+import { sessions } from '../lib/ctx.js';
 
 const pending = (id, extra = {}) => ({
   id, account_id: 'account', organization_id: 'org', conversation_id: 'conv',
   direction: 'out', status: 'pending', msg_type: 'image', zalo_msg_id: null,
   created_at: new Date().toISOString(), media_url: `https://storage.test/${id}`, ...extra,
 });
-beforeEach(() => { state.messages.length = 0; });
+beforeEach(() => {
+  state.messages.length = 0;
+  sessions.set('account', { hermesIngress: { privacy: async () => ({ status: 'shared' }) } });
+});
 
 describe('self-listen echoes use exact provider identity', () => {
   it('preserves the provider display name for group senders outside the friends list', () => {

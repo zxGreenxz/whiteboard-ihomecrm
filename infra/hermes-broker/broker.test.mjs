@@ -350,3 +350,122 @@ test('injected postcheck cannot signal denial as a successful false result', asy
   await assert.rejects(f.broker.callTool(f.token, 'crm_auth_context', {}), error('backend_unavailable'));
   assert.equal(f.broker.auditReceipts().at(-1).outcome, 'denied');
 });
+
+const BUILDING = '50000000-0000-4000-8000-000000000001';
+const ROOM_SCOPE = '60000000-0000-4000-8000-000000000001';
+function roomPayload() {
+  return { source: 'copilot_available_rooms_v1', readAt: new Date(1_000_000).toISOString(), currency: 'VND',
+    completeness: 'complete', totalInSnapshot: 1, offset: 0, nextOffset: null,
+    rooms: [{ id: '70000000-0000-4000-8000-000000000001', code: '101', name: '101',
+      building: { id: BUILDING, name: 'House A', code: 'A' }, floor: 1, areaM2: 20, rentVnd: 3000000,
+      depositVnd: 3000000, status: 'free', availability: { kind: 'ready', label: 'Trống sẵn', availableOn: null } }] };
+}
+function roomsFixture(options = {}) {
+  const events = [], prepared = new WeakSet(); let f, captured;
+  const roomReads = {
+    async prepareAvailableRooms(token, input, { signal }) {
+      assert.equal(token, f.token); assert(signal instanceof AbortSignal); events.push('prepare'); captured = input;
+      await options.prepare?.(f, signal);
+      const value = Object.freeze(options.badReceipt ?? {}); prepared.add(value); return value;
+    },
+    async finalizeAvailableRooms(token, receipt, { signal }) {
+      assert.equal(token, f.token); assert(prepared.has(receipt)); prepared.delete(receipt); events.push('final');
+      assert(signal instanceof AbortSignal); await options.final?.(f, signal);
+      return options.result ? options.result() : roomPayload();
+    },
+  };
+  f = authorityFixture({ beforeResolve: options.beforeResolve, check: () => { events.push('check'); return options.check?.(f); },
+    broker: { roomReads, ...options.broker, audit: async event => {
+      events.push(event.outcome); await options.audit?.(event, f);
+    } } });
+  f.state.assistantScopeIds = [ROOM_SCOPE]; f.state.scopesByPermission['rooms.view'].buildingIds = [BUILDING];
+  return { ...f, roomReads, events, input: () => captured };
+}
+
+test('room discovery requires the explicit durable service, current read capability and both scope namespaces', async () => {
+  const f = roomsFixture();
+  const tools = (await f.broker.listTools(f.token)).tools;
+  assert.deepEqual(tools.map(value => value.name), ['crm_auth_context', 'crm_available_rooms']);
+  assert.equal(tools[1].inputSchema.additionalProperties, false); assert.equal(tools[1].inputSchema.properties.limit.maximum, 100);
+  assert.equal(tools[1].annotations.readOnlyHint, true);
+  for (const change of [value => { value.effective.read = ['assistant.context.read']; },
+    value => { value.assistantScopeIds = []; }, value => { value.scopesByPermission['rooms.view'].buildingIds = []; }]) {
+    const g = roomsFixture(); change(g.state);
+    assert.deepEqual((await g.broker.listTools(g.token)).tools.map(value => value.name), ['crm_auth_context']);
+    await assert.rejects(g.broker.callTool(g.token, 'crm_available_rooms', {}), error('tool_not_available'));
+    assert(!g.events.includes('prepare'));
+  }
+  const p1 = fixture(); assert.throws(() => createBroker({ auth: p1.auth, roomReads: f.roomReads }), /trusted_durable_room_service_required/);
+  const noService = authorityFixture();
+  await assert.rejects(noService.broker.callTool(noService.token, 'crm_available_rooms', {}), error('tool_not_available'));
+});
+
+test('room preparation, awaited audit and original authority precede the final fence; no async check follows it', async () => {
+  const f = roomsFixture();
+  assert.deepEqual(context(await f.broker.callTool(f.token, 'crm_available_rooms', {})), roomPayload());
+  assert.deepEqual(f.events, ['prepare', 'prepared', 'check', 'final']);
+  assert.deepEqual(f.input(), { buildingName: '', offset: 0, limit: 50 }); assert(Object.isFrozen(f.input()));
+  const exposed = JSON.stringify([f.broker.auditReceipts(), roomPayload()]); assert(!exposed.includes(f.token));
+});
+
+test('room arguments reject scope/RPC/field overrides and snapshot filters before admission awaits', async () => {
+  for (const args of [null, [], { organizationId: ORG_B }, { fields: ['*'] }, { rpc: 'arbitrary' }, { buildingIds: [USER_B] },
+    { limit: 101 }, { limit: 0 }, { offset: -1 }, { offset: 2001 }, { offset: 1.5 }, { buildingName: 'x'.repeat(121) },
+    Object.defineProperty({}, 'limit', { enumerable: true, get() { throw new Error('private'); } })]) {
+    const f = roomsFixture(); await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', args), error('invalid_request'));
+    assert(!f.events.includes('prepare')); assert(f.events.includes('denied'));
+  }
+  const args = { buildingName: 'House', limit: 1 };
+  const f = roomsFixture({ beforeResolve: async () => { args.buildingName = 'Other'; args.limit = 100; } });
+  await f.broker.callTool(f.token, 'crm_available_rooms', args);
+  assert.deepEqual(f.input(), { buildingName: 'House', offset: 0, limit: 1 });
+});
+
+test('audit-time authority changes or failed audit suppress final room disclosure', async () => {
+  const changed = roomsFixture({ audit: async (event, f) => { if (event.outcome === 'prepared') f.state.contextVersion = '3'.repeat(64); } });
+  await assert.rejects(changed.broker.callTool(changed.token, 'crm_available_rooms', {}), error('context_changed'));
+  assert(!changed.events.includes('final')); assert.equal(changed.events.at(-1), 'denied');
+  const failed = roomsFixture({ audit: async () => { throw new Error('PRIVATE audit'); } });
+  await assert.rejects(failed.broker.callTool(failed.token, 'crm_available_rooms', {}), error('backend_unavailable'));
+  assert(!failed.events.includes('final'));
+});
+
+test('a final scope/policy denial wins after successful audit and branded broker authority check', async () => {
+  for (const code of ['context_changed', 'forbidden', 'unauthorized']) {
+    const f = roomsFixture({ final: async () => { throw new BrokerError(code); } });
+    await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error(code));
+    assert.deepEqual(f.events, ['prepare', 'prepared', 'check', 'final', 'denied']);
+  }
+});
+
+test('room result rejects fields outside its protocol, foreign buildings and invalid pagination without leaking data', async () => {
+  for (const mutate of [value => { value.accessToken = 'PRIVATE'; }, value => { value.rooms[0].contact = 'PRIVATE'; },
+    value => { value.rooms[0].building.id = USER_B; }, value => { value.rooms[0].availability.note = 'PRIVATE'; },
+    value => { value.rooms[0].status = 'pass'; }, value => { value.rooms[0].availability.availableOn = '2026-02-30'; },
+    value => { value.totalInSnapshot = 2; }, value => { value.nextOffset = 1; },
+    value => { value.rooms.toJSON = () => ({ accessToken: 'PRIVATE' }); }]) {
+    const f = roomsFixture({ result: () => { const value = roomPayload(); mutate(value); return value; } });
+    await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('backend_unavailable'));
+    assert.equal(f.events.at(-1), 'denied');
+  }
+  const f = roomsFixture({ badReceipt: { accessToken: 'PRIVATE' } });
+  await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('backend_unavailable'));
+  assert(!f.events.includes('prepared')); assert(!f.events.includes('final'));
+});
+
+test('room calls share per-connection quota and byte limits with the context dispatcher', async () => {
+  const f = roomsFixture({ broker: { limits: { maxRequestsPerMinute: 1 } } });
+  await f.broker.callTool(f.token, 'crm_available_rooms', {});
+  await assert.rejects(f.broker.callTool(f.token, 'crm_auth_context', {}), error('rate_limited'));
+  assert.equal(f.calls.filter(value => value.operation === 'resolve').length, 1);
+  const capped = roomsFixture({ broker: { limits: { maxResultBytes: 32 } } });
+  await assert.rejects(capped.broker.callTool(capped.token, 'crm_available_rooms', {}), error('response_too_large'));
+  assert(capped.events.includes('final'));
+});
+
+test('timeout while preparing rooms aborts that work and does not later audit or finalize it', async () => {
+  let release; const f = roomsFixture({ broker: { limits: { timeoutMs: 20 } }, prepare: async () => new Promise(done => { release = done; }) });
+  await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('timeout'));
+  release(); await new Promise(done => setImmediate(done));
+  assert.deepEqual(f.events, ['prepare', 'timeout']);
+});

@@ -27,6 +27,53 @@ test('fixed private function and JSON parameter are the only database surface', 
   assert.deepEqual(f.releases, [false]);
 });
 
+test('renewal is one fixed private write and a lost response cannot be reported as a read failure', async () => {
+  const f = setup();
+  await f.transport.call('renewConnection', { requestedTtlMs: 900_000 }, f);
+  assert.equal(f.calls[1].text, 'SELECT app_private.hermes_store_renew_connection_v1($1::jsonb) AS result');
+  assert.deepEqual(f.calls[1].values, ['{"requestedTtlMs":900000}']);
+  const lost = setup({ query: async () => { throw new Error('private'); } });
+  await assert.rejects(lost.transport.call('renewConnection', {}, lost), code('store_outcome_unknown'));
+  assert.equal(lost.calls.length, 2); assert.deepEqual(lost.releases, [true]);
+});
+
+test('private command operations map only to fixed executor functions and every lost ACK is a write outcome unknown', async t => {
+  for (const [operation, suffix] of [['claimPrivateCommand', 'claim_private_command'],
+    ['dispatchPrivateCommand', 'dispatch_private_command'], ['finishPrivateCommand', 'finish_private_command'],
+    ['failPrivateCommand', 'fail_private_command'], ['prunePrivateCommands', 'prune_private_commands']]) {
+    await t.test(operation, async () => {
+      const f = setup();
+      await f.transport.call(operation, { text: "'); SELECT private_secret; --" }, { signal: f.signal });
+      assert.equal(f.calls.length, 2);
+      assert.equal(f.calls[1].text, `SELECT app_private.hermes_store_${suffix}_v1($1::jsonb) AS result`);
+      assert.equal(f.calls[1].queryMode, 'extended');
+      assert.deepEqual(JSON.parse(f.calls[1].values[0]), { text: "'); SELECT private_secret; --" });
+      const lost = setup({ query: () => { throw new Error('private SQL detail'); } });
+      await assert.rejects(lost.transport.call(operation, {}, { signal: lost.signal }), code('store_outcome_unknown'));
+      assert.equal(lost.calls.length, 2); assert.deepEqual(lost.releases, [true]);
+      for (const [sqlCode, expected] of [['42501', 'store_denied'], ['40001', 'store_conflict'], ['22023', 'store_rejected']]) {
+        const denied = setup({ query: () => { throw Object.assign(new Error('private denial'), { code: sqlCode, severity: 'ERROR' }); } });
+        await assert.rejects(denied.transport.call(operation, {}, { signal: denied.signal }), code(expected));
+        assert.equal(denied.calls.length, 2);
+      }
+    });
+  }
+});
+
+test('private command writes retain the dedicated role fence and fixed function names cannot be called directly', async () => {
+  for (const role of ['postgres', 'service_role', 'hermes_store_executor']) {
+    const f = setup({ actor: { ...principal(), role, session_role: role } });
+    await assert.rejects(f.transport.call('claimPrivateCommand', {}, { signal: f.signal }), code('store_principal_refused'));
+    assert.equal(f.calls.length, 1);
+  }
+  const f = setup();
+  for (const operation of ['app_private.hermes_store_claim_private_command_v1', 'hermes_store_claim_private_command_v1',
+    'claimPrivateCommand; SELECT private_secret', 'toString']) {
+    await assert.rejects(f.transport.call(operation, {}, { signal: f.signal }), code('invalid_store_request'));
+  }
+  assert.equal(f.calls.length, 0);
+});
+
 test('arbitrary SQL/function, missing signal and oversized body dispatch nothing', async () => {
   const f = setup({ maxRequestBytes: 20 });
   for (const name of ['rpc', 'constructor', '__proto__', 'public.rooms']) {

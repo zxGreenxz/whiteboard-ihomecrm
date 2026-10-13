@@ -175,6 +175,28 @@ export function createDurableConnectionStore({ transport, clock = Date.now } = {
       sameLimits(row, next, invalidAck);
       return { ok: true, connection: row };
     },
+    // Stable opaque renewal is one CAS write, not secret rotation or a grant.
+    // Caller must freshly verify Auth/CRM before renewal and before admission.
+    // SQL computes the lease using its clock after locks; host time is not an
+    // input. Lost ACK requires a joined read of the SAME opaque, never a retry,
+    // provider refresh or minting a replacement by this adapter.
+    async renewConnection(input, options) {
+      const keys = ['tokenDigest', 'connectionId', 'expectedEpoch', 'credentialRef', 'expectedRevision', 'expectedExpiresAt', 'requestedTtlMs'];
+      if (!exact(input, keys) || !digest(input.tokenDigest) || !uuid(input.connectionId) || !uuid(input.credentialRef) ||
+          ['expectedEpoch', 'expectedRevision', 'expectedExpiresAt', 'requestedTtlMs'].some(key => !positive(input[key])) ||
+          input.expectedEpoch >= Number.MAX_SAFE_INTEGER || input.expectedRevision >= Number.MAX_SAFE_INTEGER ||
+          input.expectedExpiresAt > Number.MAX_SAFE_INTEGER - 900_000 || input.requestedTtlMs > 900_000) invalidRequest();
+      // Copy scalars before awaiting so mutation cannot change CAS or ACK bounds.
+      const payload = Object.fromEntries(keys.map(key => [key, input[key]]));
+      const result = await call('renewConnection', payload, options);
+      // The exact expiry is selected by DB and may be shorter than the requested
+      // TTL (session/hard-age cap). Since the old lease must still be live in DB,
+      // this relative upper bound is valid without trusting the host clock.
+      if (!exact(result, ['ok', 'status', 'expiresAt']) || result.ok !== true || result.status !== 'renewed' ||
+          !positive(result.expiresAt) || result.expiresAt <= payload.expectedExpiresAt ||
+          result.expiresAt > payload.expectedExpiresAt + payload.requestedTtlMs) invalidAck();
+      return { ok: true, status: 'renewed', expiresAt: result.expiresAt };
+    },
     async revokeConnection(input, options) {
       if (!exact(input, ['connectionId', 'expectedEpoch']) || !uuid(input.connectionId) ||
           !positive(input.expectedEpoch) || input.expectedEpoch >= Number.MAX_SAFE_INTEGER) invalidRequest();

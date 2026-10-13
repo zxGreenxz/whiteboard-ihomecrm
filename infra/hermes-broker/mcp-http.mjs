@@ -5,6 +5,7 @@ const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25'
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const keys = (value, allowed) => object(value) && Object.keys(value).every((key) => allowed.includes(key));
 function reply(response, status, value) {
+  if (response.destroyed || response.writableEnded) return;
   response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store',
     'x-content-type-options': 'nosniff' });
   response.end(value === undefined ? undefined : JSON.stringify(value));
@@ -23,12 +24,16 @@ async function readBody(request, cap) {
 
 // Stateless Streamable HTTP JSON subset. No SSE, subscriptions, OAuth issuer,
 // sessions, batch JSON-RPC, or remotely callable connection-management endpoints.
-export function createMcpHttpServer({ broker, allowedHosts = ['127.0.0.1', 'localhost', '[::1]'],
+// Embeddable handler keeps the legacy hostname allowlist semantics. A shared
+// browser/MCP server can enforce an exact authority (including port) outside it.
+// Broker calls retain their own deadlines; this handler does not add a caller
+// AbortSignal to the existing broker API or claim disconnect cancels that work.
+export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'localhost', '[::1]'],
   allowedOrigins = [], maxBodyBytes = 16_384, maxConcurrentRequests = 16 } = {}) {
   if (!broker || !Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 1 || maxBodyBytes > 65_536 ||
       !Number.isSafeInteger(maxConcurrentRequests) || maxConcurrentRequests < 1) throw new TypeError('invalid_http_config');
   let active = 0;
-  const server = createServer(async (request, response) => {
+  return async (request, response) => {
     let host;
     try {
       const parsed = new URL(`http://${request.headers.host ?? ''}`);
@@ -103,7 +108,11 @@ export function createMcpHttpServer({ broker, allowedHosts = ['127.0.0.1', 'loca
         } });
       } else { reply(response, safe.status, { error: safe.code }); }
     } finally { active -= 1; }
-  });
+  };
+}
+
+export function createMcpHttpServer(options = {}) {
+  const server = createServer(createMcpHttpHandler(options));
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.maxHeadersCount = 32;

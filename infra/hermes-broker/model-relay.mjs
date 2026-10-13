@@ -106,7 +106,8 @@ async function boundedJson(response, maxBytes, signal) {
   }
   const reader = response.body.getReader();
   const chunks = []; let size = 0;
-  const cancel = () => { void reader.cancel().catch(() => {}); };
+  let cancellation;
+  const cancel = () => cancellation ??= reader.cancel().catch(() => {});
   signal.addEventListener('abort', cancel, { once: true });
   try {
     while (true) {
@@ -121,7 +122,7 @@ async function boundedJson(response, maxBytes, signal) {
     catch { reject('invalid_proxy_response'); }
   } finally {
     signal.removeEventListener('abort', cancel);
-    await reader.cancel().catch(() => {});
+    await cancel();
     reader.releaseLock();
   }
 }
@@ -137,8 +138,10 @@ export function createModelRelay({ supabaseUrl, publishableKey, allowedModels = 
       !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 131_072) throw new TypeError('invalid_model_relay_config');
   const models = new Set(allowedModels);
   const endpoint = new URL('/functions/v1/llm-proxy/chat/completions', origin);
-  return Object.freeze({
-    async complete({ accessToken, organizationId, requestId, body, signal } = {}) {
+  const beginCompletion = ({ accessToken, organizationId, requestId, body, signal } = {}) => {
+    let started = false, settleDrain;
+    const drained = new Promise(resolve => { settleDrain = resolve; });
+    const result = (async () => {
       if (typeof accessToken !== 'string' || accessToken.length < 1 || accessToken.length > 16_384 || /[\r\n]/.test(accessToken) ||
           !UUID.test(organizationId ?? '') || !UUID.test(requestId ?? '') || !signal || typeof signal.addEventListener !== 'function') reject('invalid_context');
       const serialized = validateRequest(body, models, maxRequestBytes);
@@ -166,7 +169,12 @@ export function createModelRelay({ supabaseUrl, publishableKey, allowedModels = 
           return projectCompletion(value, requestSnapshot);
         };
         // No retry or provider fallback: a lost response may already have cost.
-        const completion = await Promise.race([operation(), aborted]);
+        const work = operation();
+        started = true;
+        // A deadline is a result, not proof that fetch/body cancellation ended.
+        // The trusted caller retains its slot/profile until drained resolves.
+        void work.then(() => settleDrain(), () => settleDrain());
+        const completion = await Promise.race([work, aborted]);
         if (controller.signal.aborted) throw controller.signal.reason;
         return completion;
       } catch (error) {
@@ -178,6 +186,9 @@ export function createModelRelay({ supabaseUrl, publishableKey, allowedModels = 
         controller.signal.removeEventListener('abort', abortListener);
         controller.abort();
       }
-    },
-  });
+    })();
+    void result.then(() => { if (!started) settleDrain(); }, () => { if (!started) settleDrain(); });
+    return Object.freeze({ result, drained: drained.then(() => undefined) });
+  };
+  return Object.freeze({ beginCompletion, complete(input) { return beginCompletion(input).result; } });
 }

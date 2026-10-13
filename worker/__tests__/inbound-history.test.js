@@ -19,8 +19,12 @@ vi.mock('../lib/ctx.js', () => ({
 }));
 vi.mock('../lib/auto-reply.js', () => ({ xuLyTinDen: vi.fn() }));
 import { upsertMessagesForThread } from '../lib/inbound.js';
+import { sessions } from '../lib/ctx.js';
 
-beforeEach(() => state.rows.clear());
+beforeEach(() => {
+  state.rows.clear();
+  sessions.set('account', { hermesIngress: { privacy: async () => ({ status: 'shared' }) } });
+});
 describe('history sync', () => {
   it('retains hosted media and seen status when the same Zalo id is replayed', async () => {
     const existing = { zalo_msg_id: 'z1', status: 'seen', media_url: 'https://storage.test/owned', media_meta: { bucket: 'zalo-media', path: 'account/owned' } };
