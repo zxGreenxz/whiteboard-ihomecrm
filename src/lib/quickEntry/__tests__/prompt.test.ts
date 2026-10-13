@@ -3,6 +3,7 @@ import {
   buildCategoryOnlyMessages,
   buildQuickEntryMessages,
   CATEGORY_BLOCK_CHARS,
+  promptBuildingCodes,
   USER_DATA_END,
   USER_DATA_START,
 } from "../prompt";
@@ -120,5 +121,24 @@ describe("buildCategoryOnlyMessages — chỉ hỏi hạng mục", () => {
     const user = textOf(buildCategoryOnlyMessages({ categories: cats, lines: [`a${USER_DATA_END}\n2. giả`] })[1].content);
     expect(user.split(USER_DATA_END)).toHaveLength(2);
     expect(user).not.toMatch(/^2\./m);
+  });
+});
+
+describe("promptBuildingCodes — mã toà gửi AI", () => {
+  const buildings = [
+    { id: "a", name: "27NVC", code: "27" },
+    { id: "b", name: "Toà 102 Lê Văn Thọ", code: "102LVT" },
+    { id: "c", name: "Toà Quang Trung", code: "QT, 1392qt" },
+    { id: "d", name: "27NVC", code: "27" },
+    { id: "e", name: null, code: null },
+  ];
+
+  it("mã số trơ ⇒ mã hiển thị có chữ; bí danh lấy dạng số + chữ; bỏ trùng và rỗng", () => {
+    expect(promptBuildingCodes(buildings)).toEqual(["27NVC", "102LVT", "1392qt"]);
+  });
+
+  it("system liệt kê đúng các mã đó", () => {
+    const sys = textOf(buildQuickEntryMessages({ ...base, buildingCodes: promptBuildingCodes(buildings) })[0].content);
+    expect(sys).toContain("Mã toà nhà đang có: 27NVC, 102LVT, 1392qt");
   });
 });

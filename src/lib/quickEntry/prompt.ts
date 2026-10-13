@@ -10,6 +10,9 @@
 // (buildCategoryOnlyMessages) với GPT-5.6 Terra low đúng 98,6%, trung vị 2,7 giây — nhanh hơn câu lệnh
 // đầy đủ (3,4 giây) mà không kém chính xác. Thẻ chữ chỉ còn thiếu hạng mục thì dùng câu lệnh rút gọn.
 
+import type { BuildingRef } from "../textMatch";
+import { primaryCode } from "./spokenBuilding";
+
 export const USER_DATA_START = "<<<DU_LIEU_NGUOI_DUNG>>>";
 export const USER_DATA_END = "<<<HET_DU_LIEU>>>";
 export const MAX_PROMPT_CATEGORIES = 150;
@@ -48,6 +51,14 @@ export type ChatPart = { type: "text"; text: string } | { type: "image_url"; ima
 export interface ChatMessage {
   role: "system" | "user";
   content: string | ChatPart[];
+}
+
+/**
+ * Mã toà gửi AI: mã hiển thị (primaryCode) chứ không phải cột `code` trơ — toà mã "32" tên "32PVC" gửi
+ * "32PVC", để AI nhận ra cụm "32pvc" trong ảnh/nội dung chuyển khoản là toà và chép đúng cụm đó.
+ */
+export function promptBuildingCodes(buildings: readonly BuildingRef[]): string[] {
+  return [...new Set(buildings.map((b) => primaryCode(b).trim()).filter(Boolean))];
 }
 
 const neutralize = (s: string): string => s.replace(/<<</g, "‹‹‹").replace(/>>>/g, "›››");
