@@ -12,6 +12,8 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 const testFiles = trackedTestFiles([]).filter(file =>
   file === 'scripts/test-hermes-product-runtime.test.mjs' ||
   file === 'src/hermes/connectionClient.test.ts' ||
+  file === 'src/hermes/orgPolicyClient.test.ts' ||
+  file === 'src/hermes/HermesOrgPolicySettings.test.tsx' ||
   file === 'src/pages/settings/HermesConnectionsPage.test.tsx' ||
   /^infra\/hermes-zalo-router\//.test(file) ||
   /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store|connection-renewal-schema|room-scope-schema|public-conflict-schema)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
@@ -285,6 +287,39 @@ describe('P0 shared CRM foundation routing', () => {
     mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-connection-options-native');
     expect(planFor(migration, mutant).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? [])
       .not.toContain('infra/hermes-broker/connection-options-sql.test.mjs');
+  });
+
+  it('organization policy selects its SQL ACL and mounted UI behavior under authorization review', () => {
+    const migration = 'supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql';
+    const nativeFiles = ['infra/hermes-broker/org-policy-sql.test.mjs', 'scripts/__tests__/hermes-durable-schema.test.mjs'];
+    const appFiles = ['src/hermes/orgPolicyClient.test.ts', 'src/hermes/HermesOrgPolicySettings.test.tsx',
+      'src/pages/settings/HermesConnectionsPage.test.tsx'];
+    nativeFiles.forEach(file => { expect(testFiles).toContain(file); assertNativeOwner(file); });
+    const assertSelection = (source, suite, rule, expected, testMatrix = matrix) => {
+      const plan = planFor(source, testMatrix);
+      expect(plan.crossReview).toBe(true);
+      expect(plan.profiles).toContain(source.endsWith('.sql') ? 'schema' : 'money-auth');
+      const selection = plan.suiteSelections.find(item => item.id === suite);
+      expect(selection.reason.split(', ')).toContain(rule);
+      expect(selection.files).toEqual(expect.arrayContaining(expected));
+    };
+    for (const source of [migration, 'supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql',
+      'supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql']) {
+      assertSelection(source, 'node-native', 'hermes-org-policy-native', nativeFiles);
+    }
+    for (const source of [migration, 'src/hermes/orgPolicyClient.ts', 'src/hermes/HermesOrgPolicySettings.tsx',
+      'src/hermes/useHermesConnections.ts', 'src/pages/settings/HermesConnectionsPage.tsx',
+      'src/components/authorization/PermissionPicker.tsx', 'src/components/authorization/ScopePicker.tsx']) {
+      assertSelection(source, 'app-unit', 'hermes-org-policy-ui', appFiles);
+      const selectedNative = planFor(source).suiteSelections.find(item => item.id === 'node-native')?.files ?? [];
+      appFiles.forEach(file => expect(selectedNative).not.toContain(file));
+    }
+    expect(planFor(migration).profiles).toContain('schema');
+    for (const [suite, rule, expected] of [['node-native', 'hermes-org-policy-native', nativeFiles], ['app-unit', 'hermes-org-policy-ui', appFiles]]) {
+      const mutant = structuredClone(matrix);
+      mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(item => item.id !== rule);
+      expect(() => assertSelection(migration, suite, rule, expected, mutant)).toThrow();
+    }
   });
 
   it('Hermes permission fields and shared pickers select role-aware page/client tests with authorization review', () => {

@@ -84,6 +84,22 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   }, (result, previous) => ({ ...previous, connections: result.connections, options: result.options })), [client, run]);
   useEffect(() => { void reload(); }, [reload]);
 
+  const invalidatePolicy = useCallback(() => {
+    const life = lifecycle.current;
+    if (!life.alive) return;
+    // A policy write may race any read or enrollment. Invalidate their local
+    // authority before aborting; an abort-ignorant late result must stay stale.
+    life.generation++;
+    life.controller?.abort(); life.controller = null;
+    life.ready = false; life.needsReload = true;
+    setState({ ...initial(), needsReload: true });
+  }, []);
+  const policyChanged = useCallback(() => {
+    invalidatePolicy();
+    // Read back current records/options only. Never replay the interrupted write.
+    return reload();
+  }, [invalidatePolicy, reload]);
+
   // A handoff is intentionally short-lived in this mounted component. Clearing
   // it does not revoke the server connection or promise clipboard erasure.
   useEffect(() => {
@@ -94,7 +110,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   }, [state.handoff]);
 
   return {
-    ...state, reload,
+    ...state, reload, invalidatePolicy, policyChanged,
     clearHandoff: () => setState(previous => ({ ...previous, handoff: null })),
     contextFor: (connection: HermesConnectionMetadata) => run('context', signal => client.context({ connectionId: connection.id }, { signal }),
       (result, previous) => ({ ...previous, context: result.context })),

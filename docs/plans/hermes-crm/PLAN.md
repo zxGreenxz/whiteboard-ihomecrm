@@ -2,11 +2,11 @@
 
 Phiên bản 1.1 · Chủ dự án đã duyệt ngày 12/10/2026 (Asia/Bangkok).
 
-**Trạng thái:** Đang triển khai toàn P0–P11. Đã ghép code dịch vụ Hermes và giao diện quyền/phạm vi đọc phòng; checkpoint handoff 7ee90820 có CI xanh, delta host/options đang kiểm riêng. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
+**Trạng thái:** Đang triển khai toàn P0–P11. Checkpoint dịch vụ/quyền đọc phòng 0a08917e đã push; CI phát hiện đường dẫn socket của bộ kiểm Docker quá dài. Đã sửa harness và tích hợp giao diện policy công ty, đang khóa checkpoint kế tiếp. Chưa apply candidate mới, deploy hoặc nghiệm thu chat Zalo thật. Chi tiết bàn giao ở [STATUS.md](STATUS.md).
 
 Đây là kế hoạch được duy trì cho mọi session/agent. [STATUS.md](STATUS.md) là nhật ký thực thi, bằng chứng, điểm dừng và hướng dẫn tiếp tục. Mỗi bước hoàn thành phải cập nhật STATUS; không đánh dấu đạt chỉ vì đã viết code.
 
-**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle và bộ chọn quyền/phạm vi. Product Docker harness đã có, còn CI/native/live validation. Không suy code cục bộ thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
+**Checkpoint core 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. Bản sửa đường dẫn Docker đang chờ CI đúng candidate; runner TEST P4 đang được review. Không suy code cục bộ thành nghiệm thu toàn tuyến; xem nhật ký hiện hành trong STATUS.
 
 ## Quyết định đã chốt — không hỏi lại
 

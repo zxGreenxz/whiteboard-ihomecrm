@@ -2,10 +2,83 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
-import { createSyntheticFixture, connectSynthetic, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, rmdir } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { createSyntheticFixture, connectSynthetic, createProductWorkspace, productFailureCode, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
 import { createHermesBackend } from '../infra/hermes-broker/server.mjs';
+import { createContainerRuntime } from '../infra/hermes-runtime/container-driver.mjs';
+import { createGatewayTransport } from '../infra/hermes-runtime/gateway-transport.mjs';
+import { HERMES_IMAGE } from '../infra/hermes-runtime/runtime-contract.mjs';
+
+test('product workspace keeps native socket below the product limit independently of checkout depth', async t => {
+  const workspace = await createProductWorkspace();
+  t.after(async () => { await rmdir(workspace.gatewayRoot); await rmdir(workspace.runtimeRoot); await rmdir(workspace.directory); });
+  assert.equal(path.dirname(workspace.directory), await realpath(os.tmpdir()));
+  assert(!workspace.directory.includes('hermes-product'));
+  assert.deepEqual(await readdir(workspace.gatewayRoot), []); assert.deepEqual(await readdir(workspace.runtimeRoot), []);
+  if (process.platform !== 'win32') {
+    const socket = path.join(workspace.gatewayRoot, randomUUID(), 's', 'gateway.sock');
+    assert(Buffer.byteLength(socket) <= 100);
+    for (const directory of Object.values(workspace)) assert.equal((await lstat(directory)).mode & 0o777, 0o700);
+  }
+  // This is the old layout's relative suffix alone, before any checkout prefix.
+  const previous = path.posix.join('.cache/hermes-product', `run-1791892609552-${randomUUID()}`, 'gateways', randomUUID(), 's/gateway.sock');
+  assert(Buffer.byteLength(previous) > 100);
+});
+
+test('an oversized OS temp root is rejected before allocating a workspace, with a fixed safe diagnostic', async t => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'hp-test-'));
+  assert.equal(path.dirname(parent), os.tmpdir());
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const long = path.join(parent, 'long-'.repeat(20)); await mkdir(long);
+  await assert.rejects(createProductWorkspace({ temporaryRoot: long, platform: 'linux' }), /workspace_socket_path_too_long/);
+  assert.deepEqual(await readdir(long), []);
+  for (const code of ['workspace_socket_path_too_long', 'runtime_start_failed', 'gateway_cleanup_unproven']) {
+    assert.equal(productFailureCode(Error(code)), code); assert.equal(productFailureCode({ code }), code);
+  }
+  for (const error of [Error('PRIVATE-TOKEN-DO-NOT-LOG'), { code: 'private_token' }, Error('ENOENT /private/runtime'), null]) {
+    assert.equal(productFailureCode(error), 'synthetic_check_failed');
+  }
+});
+
+test('actual driver and gateway transport reach network allocation from the bounded workspace without a logical-home directory', async t => {
+  const workspace = await createProductWorkspace(), data = createSyntheticFixture(), backend = createHermesBackend(data.configuration);
+  const events = [], controller = new AbortController();
+  const provenance = JSON.parse(await readFile(new URL('../infra/hermes-runtime/image-provenance.json', import.meta.url)));
+  const image = { Id: provenance.expectedConfigDigest, RepoDigests: [HERMES_IMAGE], Os: 'linux', Architecture: 'amd64', Config: { Labels: {} } };
+  const engine = {
+    async preflight() { events.push('preflight'); return { os: 'linux', version: '28.0.4', nativeHost: true }; },
+    async inspectImage() { return image; },
+    async createNetwork() { events.push('create-network'); throw Error('synthetic-boundary-reached'); },
+  };
+  for (const key of ['inspectNetwork', 'removeNetwork', 'create', 'attachStart', 'inspectContainer', 'kill', 'wait', 'remove']) {
+    engine[key] = () => assert.fail(`unexpected external operation ${key}`);
+  }
+  const relayPath = new URL('../infra/hermes-runtime/gateway-relay.mjs', import.meta.url), wrapperPath = new URL('../infra/hermes-runtime/agent-process.py', import.meta.url);
+  const digest = async target => createHash('sha256').update(await readFile(target)).digest('hex');
+  const transport = createGatewayTransport({ engine, gatewayRoot: workspace.gatewayRoot, relayPath: fileURLToPath(relayPath),
+    relaySha256: await digest(relayPath), platform: 'linux' });
+  const gateway = backend.createRuntimeGateway({ transport, allowedModels: [MODEL] });
+  const runtime = createContainerRuntime({ gateway, engine, runtimeRoot: workspace.runtimeRoot, wrapperPath: fileURLToPath(wrapperPath), wrapperSha256: await digest(wrapperPath), model: MODEL });
+  await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    controller.abort(); await assert.rejects(gateway.shutdown(), { code: 'drain_failed' });
+    await assert.rejects(backend.close(), { code: 'drain_failed' }); data.dispose();
+    // Engine is synthetic and cannot allocate resources. The real transport has
+    // already closed its listener; its retained receipt is safe to remove here.
+    assert.equal(path.dirname(workspace.directory), await realpath(os.tmpdir()));
+    await rm(workspace.directory, { recursive: true, force: true });
+  });
+  const actor = data.actors[0], token = await connectSynthetic(backend, actor), home = path.join(workspace.directory, 'logical-home'); data.grantRooms(actor);
+  await assert.rejects(lstat(home), { code: 'ENOENT' });
+  await gateway.register(token, { home, signal: controller.signal });
+  const handle = runtime.prepare({ binding: { assistantId: actor.assistant, userId: actor.user, organizationId: actor.org, home }, admission: false, signal: controller.signal });
+  await assert.rejects(runtime.start(handle), /runtime_start_failed/);
+  assert.deepEqual(events, ['preflight', 'preflight', 'create-network']);
+  await assert.rejects(runtime.stop(handle), /runtime_stop_unproven/);
+});
 
 async function fixture(t) {
   const data = createSyntheticFixture(), backend = createHermesBackend(data.configuration), channels = [];
@@ -88,16 +161,19 @@ test('receipt hashes cover actual product dependencies and workflow; harness has
   for (const file of ['infra/hermes-runtime/agent-process.py', 'infra/hermes-runtime/container-driver.mjs', 'infra/hermes-runtime/gateway-transport.mjs',
     'infra/hermes-runtime/runtime-gateway.mjs', 'infra/hermes-runtime/gateway-relay.mjs', 'infra/hermes-runtime/image-provenance.json',
     'infra/hermes-broker/server.mjs', 'infra/hermes-broker/runtime-model-service.mjs', 'infra/hermes-broker/broker.mjs',
-    'infra/hermes-broker/dependency-scope.mjs', '.github/workflows/hermes-runtime.yml']) assert(inputs.includes(file), file);
+    'infra/hermes-broker/dependency-scope.mjs', 'src/lib/roomSaleFacts.ts', 'worker/lib/hermes-link.js', '.github/workflows/hermes-runtime.yml']) assert(inputs.includes(file), file);
   const source = await readFile(new URL('./test-hermes-product-runtime.mjs', import.meta.url), 'utf8');
   assert(!source.includes('execFile(')); assert(!source.includes('spawn(')); assert(!source.includes("['rm', '-f'"));
   assert(source.includes('createContainerRuntime({ gateway, engine'));
   assert(source.includes('backend.createRuntimeGateway({ transport'));
+  assert(source.includes('workspace = await createProductWorkspace()'));
+  assert(source.includes('const { gatewayRoot, runtimeRoot } = workspace'));
+  assert(source.includes('await rmdir(workspace.gatewayRoot); await rmdir(workspace.runtimeRoot); await rmdir(workspace.directory)'));
   assert(source.includes('await pair.drained')); assert(source.includes('await runtime.stop(entry.handle)') || source.includes('return runtime.stop(entry.handle)'));
   assert(source.includes('await gateway.releaseRegistration(ticket)'));
   // Checkout + Node is sufficient for the JS host harness. Python dependencies
   // come exclusively from the pinned image, never npm/uv installation here.
-  for (const file of inputs.filter(file => file.endsWith('.mjs'))) {
+  for (const file of inputs.filter(file => /\.(mjs|js|ts)$/.test(file))) {
     const content = await readFile(file, 'utf8');
     for (const match of content.matchAll(/(?:from\s+|import\s*\(?\s*)['"]([^'"]+)['"]/g)) {
       assert(match[1].startsWith('node:') || match[1].startsWith('.'), `${file}: external dependency ${match[1]}`);
