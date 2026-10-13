@@ -202,15 +202,36 @@ export async function productInputFiles(root = ROOT) {
   await visit('scripts/test-hermes-product-runtime.mjs'); return [...files].sort();
 }
 
-function observedEngine(engine, evidence) {
+export function observedEngine(engine, evidence) {
+  const states = new Set(['created', 'running', 'paused', 'restarting', 'removing', 'exited', 'dead']);
+  const flag = value => typeof value === 'boolean' ? value : null;
+  const safeId = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
+  const record = event => {
+    evidence.lifecycle ??= []; evidence.lifecycle.push(Object.freeze(event));
+    if (evidence.lifecycle.length > 24) evidence.lifecycle.shift();
+  };
   return Object.freeze(Object.fromEntries(Object.entries(engine).map(([key, method]) => [key, (...args) => {
     const work = method(...args);
-    if (key === 'attachStart') { evidence.attaches++; work.once('close', () => { evidence.childCloses++; }); return work; }
+    if (key === 'attachStart') {
+      evidence.attaches++;
+      work.once('close', (code, signal) => {
+        evidence.childCloses++;
+        record({ operation: 'attach-close', containerId: safeId(args[0]),
+          exitCode: Number.isSafeInteger(code) && code >= 0 && code <= 255 ? code : null,
+          signal: ['SIGTERM', 'SIGKILL', 'SIGINT'].includes(signal) ? signal : null });
+      });
+      return work;
+    }
     return Promise.resolve(work).then(value => {
       if (key === 'create') evidence.containers.push(value);
       if (key === 'createNetwork') evidence.networks.push(value);
       if (key === 'remove') evidence.removedContainers.push(args[0]);
       if (key === 'removeNetwork') evidence.removedNetworks.push(args[0]);
+      if (key === 'inspectContainer') record({ operation: 'inspect', containerId: safeId(args[0]),
+        role: ['gateway', 'runtime'].includes(value?.Config?.Labels?.['ihome.hermes.role']) ? value.Config.Labels['ihome.hermes.role'] : null,
+        status: states.has(value?.State?.Status) ? value.State.Status : 'unknown', running: flag(value?.State?.Running),
+        dead: flag(value?.State?.Dead), restarting: flag(value?.State?.Restarting), oomKilled: flag(value?.State?.OOMKilled),
+        exitCode: Number.isSafeInteger(value?.State?.ExitCode) && value.State.ExitCode >= 0 && value.State.ExitCode <= 255 ? value.State.ExitCode : null });
       return value;
     });
   }])));

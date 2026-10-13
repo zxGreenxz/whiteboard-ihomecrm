@@ -22,6 +22,7 @@
     "gate:reconcile-money": "node scripts/reconcile-money.mjs",
     "gate:reconcile-money-v2": "node scripts/reconcile-money-v2.mjs",
     "test:voucher-detail-read": "node scripts/test-voucher-detail-read-authz.mjs --env test",
+    "test:hermes-private-flow": "node scripts/test-hermes-private-flow.mjs",
     "gate:approver-provenance": "node scripts/check-approver-provenance.mjs",
     "gate:definer-acl": "node scripts/check-definer-acl.mjs",
     "gate:residence-dossier-rls": "node scripts/check-residence-dossier-rls.mjs",

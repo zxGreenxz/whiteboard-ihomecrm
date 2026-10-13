@@ -124,7 +124,7 @@ export function createGatewayRelay({ socketPath, listenHost, port = 8787, timeou
 }
 
 // Product sidecar has one explicit socket and discovers its one private IPv4
-// interface. No env lookup, request-configured endpoint, stdout payload or proxy.
+// interface. No env lookup, request-configured endpoint, request logging or proxy.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     if (process.platform !== 'linux' || process.argv.length !== 3 || process.argv[2] !== '/run/hermes-gateway/gateway.sock') throw new Error();
@@ -132,6 +132,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (addresses.length !== 1 || !privateV4(addresses[0].address)) throw new Error();
     const relay = createGatewayRelay({ socketPath: process.argv[2], listenHost: addresses[0].address });
     await relay.start();
+    // One fixed frame lets the host distinguish a spawned docker attach client
+    // from a relay whose private listener is actually ready. Never include data.
+    process.stdout.write('gateway_ready_v1\n');
     for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { void relay.close().then(() => { process.exitCode = 0; }); });
   } catch { process.stderr.write('gateway_relay_failed\n'); process.exitCode = 1; }
 }

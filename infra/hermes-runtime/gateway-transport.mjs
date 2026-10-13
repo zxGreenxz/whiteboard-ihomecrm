@@ -8,6 +8,7 @@ import { HERMES_IMAGE, NO_FORWARDING, PRIVATE_DNS, DNS_OPTIONS, ISOLATED_GATEWAY
 import { dataSnapshot, idPattern, validateRuntimeUser, GATEWAY_URLS } from './container-contract.mjs';
 
 const ENV = Object.freeze({ HOME: '/tmp', PATH: '/usr/local/bin:/usr/bin:/bin' });
+const RELAY_READY = Buffer.from('gateway_ready_v1\n');
 // The pinned image declares VOLUME /opt/data. Override it explicitly so the
 // sidecar cannot acquire an anonymous writable volume containing runtime state.
 const TMPFS = Object.freeze({ '/tmp': 'rw,nosuid,nodev,noexec,size=16777216',
@@ -78,8 +79,8 @@ function inspectContainer(value, spec, image) {
  * No token/owner identity enters this API. Native Linux/nonroot owner is required;
  * platform override exists for fake-engine Windows named-pipe tests only and does
  * not bypass the actual Docker adapter's native preflight. Inspection proves a
- * running pinned Node process, not route readiness: runtime MCP handshake must
- * still complete before the supervisor opens admission.
+ * running pinned Node process after its bounded listener-ready handshake. The
+ * runtime MCP handshake must still complete before supervisor admission opens.
  * Failures retain a private resources.json plus safe error.resources metadata
  * when creation/cleanup cannot be proved. No guessed-name adoption or retry.
  */
@@ -195,16 +196,34 @@ export function createGatewayTransport({ engine, gatewayRoot, relayPath, relaySh
       catch { entry.containerUnknown = true; throw error(entry, 'gateway_container_create_unknown'); }
       await receipt(entry); live(entry);
       entry.attachAttempted = true;
+      let resolveReady, rejectReady;
+      const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+      void ready.catch(() => {});
+      const readyAborted = () => rejectReady(error(entry, 'gateway_transport_stopped'));
+      signal.addEventListener('abort', readyAborted, { once: true });
+      entry.detachReady = () => signal.removeEventListener('abort', readyAborted);
       try {
         entry.child = engine.attachStart(entry.containerId);
         if (!entry.child?.stdin || !entry.child.stdout || !entry.child.stderr || typeof entry.child.once !== 'function') throw Error();
         entry.childClosed = new Promise(resolve => entry.child.once('close', () => { entry.exited = true; controller.abort(); void closeServer(entry); resolve(); }));
         entry.child.once('error', () => { entry.failed = true; controller.abort(); void closeServer(entry); });
         entry.child.stdin.on('error', () => { entry.failed = true; controller.abort(); void closeServer(entry); });
-        let output = 0;
-        const discard = chunk => { output += chunk.length; if (output > 65536) { entry.failed = true; controller.abort(); void closeServer(entry); } };
-        entry.child.stdout.on('data', discard); entry.child.stderr.on('data', discard);
+        let output = 0, readyBytes = Buffer.alloc(0), sawReady = false;
+        const invalid = () => { entry.failed = true; controller.abort(); void closeServer(entry); };
+        const count = chunk => { output += chunk.length; if (output > 65536) { invalid(); return false; } return true; };
+        entry.child.stdout.on('data', chunk => {
+          if (!count(chunk)) return;
+          // docker start --attach is asynchronous. Only the pinned relay may
+          // acknowledge that its listener has bound; a child spawn or an early
+          // inspect of Docker's created state does not establish readiness.
+          if (sawReady || readyBytes.length + chunk.length > RELAY_READY.length) { invalid(); return; }
+          readyBytes = Buffer.concat([readyBytes, chunk]);
+          if (!RELAY_READY.subarray(0, readyBytes.length).equals(readyBytes)) { invalid(); return; }
+          if (readyBytes.length === RELAY_READY.length) { sawReady = true; resolveReady(); }
+        });
+        entry.child.stderr.on('data', count);
       } catch { entry.attachUnknown = true; fail('gateway_attach_unknown'); }
+      await ready; entry.detachReady(); live(entry);
       const inspected = await engine.inspectContainer(entry.containerId, { signal }); live(entry); inspectContainer(inspected, entry, entry.image);
       if (inspected.State?.Running !== true || inspected.State?.Dead === true || inspected.State?.Restarting === true || entry.child.exitCode !== null || entry.child.signalCode !== null) fail('gateway_process_not_running');
       entry.phase = 'opened'; await receipt(entry); live(entry);
@@ -212,7 +231,7 @@ export function createGatewayTransport({ engine, gatewayRoot, relayPath, relaySh
     })();
     try { return await entry.work; }
     catch { await cleanup(entry); throw error(entry, 'gateway_open_failed'); }
-    finally { cancelDeadline(timer); if (entry.phase === 'closed') entry.detach(); }
+    finally { cancelDeadline(timer); entry.detachReady?.(); if (entry.phase === 'closed') entry.detach(); }
   }
   return Object.freeze({ open });
 }
