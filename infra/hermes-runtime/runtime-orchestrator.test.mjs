@@ -307,3 +307,27 @@ for (const kind of ['maintenance', 'pump', 'prune']) {
     held.reject(Error('late private dependency failure')); await pause();
   });
 }
+
+
+test('persisted handoff owner fence rejects every identity change before creating home, registration or runtime', async t => {
+  for (const key of ['connectionId','assistantId','userId','organizationId']) {
+    const f = await fixture(t), expectedOwner = Object.fromEntries(['connectionId','assistantId','userId','organizationId'].map(name => [name,A[name]]));
+    expectedOwner[key] = '90000000-0000-4000-8000-000000000009';
+    await assert.rejects(f.orchestrator.attach({token:TA,signal:new AbortController().signal,expectedOwner}), /orchestrator_attach_failed/);
+    assert.equal(f.tickets.size,0); assert.equal(f.instances.size,0);
+    assert(!f.events.some(value => value.startsWith('register:') || value.startsWith('prepare:')));
+    await f.orchestrator.close();
+  }
+});
+
+test('persisted handoff owner fence snapshots values before await and never executes accessors', async t => {
+  const gate = deferred(), f = await fixture(t,{resolve:()=>gate.promise});
+  const owner = () => Object.fromEntries(['connectionId','assistantId','userId','organizationId'].map(key => [key,A[key]]));
+  for (const expectedOwner of [null,{...owner(),expiresAt:A.expiresAt},Object.defineProperty(owner(),'userId',{get(){throw Error('getter invoked');}})]) {
+    await assert.rejects(f.orchestrator.attach({token:TA,signal:new AbortController().signal,expectedOwner}),/invalid_orchestrator_request/);
+  }
+  assert.equal(f.events.length,0);
+  const expectedOwner = owner(), pending = f.orchestrator.attach({token:TA,signal:new AbortController().signal,expectedOwner});
+  expectedOwner.userId = B.userId; gate.resolve(); const handle = await pending;
+  assert.equal(f.orchestrator.status(handle).userId,A.userId); await f.orchestrator.close();
+});

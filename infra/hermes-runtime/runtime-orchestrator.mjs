@@ -188,7 +188,10 @@ export function createRuntimeOrchestrator({ backend, gateway, supervisor, runner
   };
   return Object.freeze({
     async attach(raw) {
-      const input = exact(raw, ['token', 'signal']);
+      const hasOwner = raw && Object.hasOwn(raw, 'expectedOwner');
+      const input = exact(raw, hasOwner ? ['token', 'signal', 'expectedOwner'] : ['token', 'signal']);
+      const expectedOwner = hasOwner ? exact(input.expectedOwner, OWNER) : undefined;
+      if (expectedOwner && OWNER.some(key => typeof expectedOwner[key] !== 'string' || !UUID.test(expectedOwner[key]))) fail('invalid_orchestrator_request');
       if (typeof input.token !== 'string' || !/^hc_[A-Za-z0-9_-]{43}$/.test(input.token) || !(input.signal instanceof AbortSignal)) fail('invalid_orchestrator_request');
       if (closing || input.signal.aborted) fail('orchestrator_stopped');
       if (entries.size >= maxProfiles || tokens.has(input.token)) fail('orchestrator_busy');
@@ -199,6 +202,9 @@ export function createRuntimeOrchestrator({ backend, gateway, supervisor, runner
       input.signal.addEventListener('abort', abort, { once: true }); entry.detach = () => input.signal.removeEventListener('abort', abort);
       const setup = track((async () => {
         live(entry); entry.owner = identity(await resolve(entry.token, { signal: entry.controller.signal })); live(entry);
+        // A persisted handoff supplies a comparison fence, never authority. Reject
+        // changed immutable identity before any home, ticket, lease or runtime.
+        if (expectedOwner && OWNER.some(key => expectedOwner[key] !== entry.owner[key])) fail('orchestrator_owner_mismatch');
         if (profiles.has(entry.owner.assistantId) || connections.has(entry.owner.connectionId)) fail('orchestrator_profile_in_use');
         profiles.set(entry.owner.assistantId, entry); connections.set(entry.owner.connectionId, entry);
         const owner = Object.freeze(Object.fromEntries(['assistantId', 'userId', 'organizationId'].map(key => [key, entry.owner[key]])));

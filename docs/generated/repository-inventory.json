@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1434,
-  "soFileDocBangFs": 322,
-  "tongLoiGoi": 728,
-  "khongPhanLoaiDuoc": 328,
+  "tongSoFileTest": 1436,
+  "soFileDocBangFs": 323,
+  "tongLoiGoi": 740,
+  "khongPhanLoaiDuoc": 332,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 54,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 46,
+      "soFile": 47,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -135,6 +135,14 @@
         "sql": 12
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/connection-handoff.test.mjs",
+      "soGoi": 12,
+      "loai": {
+        "manifest": 8
+      },
+      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",

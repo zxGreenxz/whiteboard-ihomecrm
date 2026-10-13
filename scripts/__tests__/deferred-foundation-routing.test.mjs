@@ -216,6 +216,22 @@ describe('P0 shared CRM foundation routing', () => {
       .not.toContain('infra/hermes-runtime/connection-supervisor.test.mjs');
   });
 
+  it('durable handoff and reconciliation select owner, crypto and backend integration with authorization review', () => {
+    const required = ['infra/hermes-broker/connection-handoff.test.mjs', 'infra/hermes-broker/connection-control-plane.test.mjs',
+      'infra/hermes-broker/server.test.mjs', 'infra/hermes-runtime/handoff-reconciler.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs'];
+    const files = [...new Set([...testFiles, ...required])];
+    for (const path of ['infra/hermes-broker/connection-handoff.mjs', 'infra/hermes-broker/connection-control-plane.mjs',
+      'infra/hermes-runtime/handoff-reconciler.mjs']) {
+      const plan = planFor(path,matrix,files);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
+      expect(plan.suiteSelections.find(selection=>selection.id==='node-native').files).toEqual(expect.arrayContaining(required));
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule=>rule.id!=='hermes-private-runtime-composition');
+    expect(planFor('infra/hermes-runtime/handoff-reconciler.mjs',mutant,files).suiteSelections.find(selection=>selection.id==='node-native')?.files ?? [])
+      .not.toContain('infra/hermes-broker/server.test.mjs');
+  });
+
   it('routes inventory drift and generator edits to a check command and native test', () => {
     for (const source of ['scripts/generate-hermes-crm-inventory.mjs', 'tooling/hermes-crm-inventory.generated.json']) {
       const plan = planFor(source);

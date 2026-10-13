@@ -21,8 +21,8 @@ import { Route } from "react-router-dom";
 import { Suspense } from "react";
 import PublicRoute from "../../components/auth/PublicRoute";
 import Login from "../../pages/auth/Login";
-import ForgotPassword from "../../pages/auth/ForgotPassword";
 import {
+  ForgotPassword,
   ResetPassword,
   PublicContractInvoicePage,
   PhongTrongPage,
