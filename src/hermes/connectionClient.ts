@@ -1,7 +1,9 @@
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES, requiresBuildingScope } from '../../infra/hermes-broker/capability-contract.mjs';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+const policyVersion = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1);
 const positive = z.number().int().positive().max(Number.MAX_SAFE_INTEGER - 1);
 const unique = <T extends z.ZodTypeAny>(item: T) => z.array(item).max(256)
   .refine(values => new Set(values).size === values.length);
@@ -18,18 +20,18 @@ const scopeChoice = z.object({ scopeId: uuid, scopeType: z.enum(['ORGANIZATION',
   .transform(value => ({ scopeId: value.scopeId, scopeType: value.scopeType, label: value.label,
     buildingId: value.buildingId, areaId: value.areaId, cashbookId: value.cashbookId }));
 const grantOptions = z.object({ userId: uuid, organizationId: uuid, membershipId: uuid, authorizationVersion: positive,
-  isSuperadmin: z.boolean(), policyVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1), enabled: z.boolean(),
-  read: unique(z.enum(['assistant.context.read', 'rooms.view'])), action: z.array(z.never()).length(0),
+  isSuperadmin: z.boolean(), policyVersion, enabled: z.boolean(),
+  read: unique(z.string().refine(key => HERMES_READ_CAPABILITIES.includes(key))), action: unique(z.string().refine(key => HERMES_ACTION_CAPABILITIES.includes(key))),
   scopes: z.array(scopeChoice).max(256).refine(value => new Set(value.map(scope => scope.scopeId)).size === value.length),
-}).strict().refine(value => (!value.enabled || value.policyVersion > 0) &&
-  (value.enabled || value.read.length === 0 && value.scopes.length === 0) && value.read.includes('rooms.view') === (value.scopes.length > 0));
+}).strict().refine(value =>
+  (value.enabled || value.read.length === 0 && value.action.length === 0 && value.scopes.length === 0) && requiresBuildingScope(value.read, value.action) === (value.scopes.length > 0));
 const row = z.object({
   id: uuid, assistantId: uuid, organizationId: uuid, userId: uuid,
   state: z.enum(['pending', 'active', 'revoked']), epoch: positive, restrictions, scopeIds: ids,
 }).strict();
 const context = row.extend({
   state: z.literal('active'), membershipId: uuid, authorizationVersion: positive,
-  isSuperadmin: z.boolean(), policyVersion: positive, companyCeilings: restrictions, effective: restrictions,
+  isSuperadmin: z.boolean(), policyVersion, companyCeilings: restrictions, effective: restrictions,
 }).refine(value => (['read', 'action'] as const).every(kind => value.effective[kind]
   .every(key => value.restrictions[kind].includes(key) && value.companyCeilings[kind].includes(key))));
 const emptyInput = z.object({}).strict();
@@ -41,8 +43,8 @@ const connectInput = z.object({
     .refine(value => [...value].every(char => char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127)),
   password: z.string().min(1).refine(value => new TextEncoder().encode(value).byteLength <= 4096),
   restrictions, scopeIds: ids,
-}).strict().refine(value => value.restrictions.action.length === 0 &&
-  value.restrictions.read.every(key => ['assistant.context.read', 'rooms.view'].includes(key)));
+}).strict().refine(value => value.restrictions.action.every(key => HERMES_ACTION_CAPABILITIES.includes(key)) &&
+  value.restrictions.read.every(key => HERMES_READ_CAPABILITIES.includes(key)));
 const listResult = z.object({ connections: z.array(row).max(256)
   .refine(values => new Set(values.map(value => value.id)).size === values.length) }).strict();
 const contextResult = z.object({ context }).strict();

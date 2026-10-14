@@ -53,6 +53,14 @@ test('Auth failure before dispatch never renews', async t => {
   const f = fixture(t, { verify: () => { throw Error('PRIVATE'); } });
   await assert.rejects(f.run(), error('not_dispatched')); assert.equal(f.state.writes.length, 0);
 });
+
+test('neutral version zero renews but a first explicit policy change prevents dispatch', async t => {
+  const f = fixture(t); f.state.row.policy.version = 0;
+  assert.equal((await f.run()).status, 'renewed'); assert.equal(f.state.writes.length, 1);
+  const changed = fixture(t, { verify: state => { if (state.verifies === 2) state.row.policy.version = 1; } });
+  changed.state.row.policy.version = 0;
+  await assert.rejects(changed.run(), error('not_dispatched')); assert.equal(changed.state.writes.length, 0);
+});
 test('second Auth recheck detects revocation before dispatch', async t => {
   const f = fixture(t, { verify: state => { if (state.verifies === 2) state.row.membership.authorizationVersion++; } });
   await assert.rejects(f.run(), error('not_dispatched')); assert.equal(f.state.writes.length, 0);

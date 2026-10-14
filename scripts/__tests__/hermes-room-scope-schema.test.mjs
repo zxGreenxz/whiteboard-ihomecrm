@@ -24,7 +24,7 @@ function coherentDecision(sql) {
   assert.match(sql, /v_buildings:=public\.copilot_org_scope_buildings_v1\('rooms\.view',p_organization_id\)/);
   assert.match(sql, /cardinality\(v_buildings\)<1 OR cardinality\(v_buildings\)>256/);
 }
-function ownershipFence(sql) {
+function ownershipFence(sql, policy = find('app_private.hermes_effective_org_policy_v1')) {
   for (const value of ["auth.role() IS DISTINCT FROM 'authenticated'", "v_actor uuid:=auth.uid()",
     "id=p_connection_id AND organization_id=p_organization_id AND user_id=v_actor AND state='ACTIVE'",
     'id=v_c.credential_ref AND assistant_id=v_c.assistant_id AND organization_id=p_organization_id',
@@ -32,13 +32,19 @@ function ownershipFence(sql) {
     "state='ACTIVE' AND quarantine_reason IS NULL AND expires_at>v_now",
     'token_digest=p_token_digest AND connection_id=v_c.id AND revoked_at IS NULL AND expires_at>v_now',
     "a.id=v_c.assistant_id AND a.organization_id=p_organization_id AND a.user_id=v_actor AND a.state='ACTIVE'",
-    "organization_id=p_organization_id AND enabled", "'rooms.view'=ANY(v_c.read_capabilities)",
+    'SELECT * INTO v_p FROM app_private.hermes_effective_org_policy_v1(p_organization_id,v_c.read_capabilities,v_c.action_capabilities,v_c.scope_ids) WHERE enabled;',
+    "'rooms.view'=ANY(v_c.read_capabilities)",
     "'rooms.view'=ANY(v_p.read_capabilities)", "cap.capability='rooms.view' AND cap.mode='read' AND cap.enabled",
     'v_c.epoch<>p_expected_epoch', 'v_p.version<>p_expected_policy_version', 'v_s.revision<>p_expected_session_revision',
     "v_auth->>'membershipId' IS DISTINCT FROM p_expected_membership_id::text",
     "v_auth->>'authorizationVersion' IS DISTINCT FROM p_expected_authorization_version::text",
     'v_s.expires_at<=clock_timestamp() OR v_t.expires_at<=clock_timestamp()',
     'v_member.valid_to IS NOT NULL AND v_member.valid_to<=clock_timestamp()']) assert(sql.includes(value), value);
+  assert.match(sql, /WHERE enabled; IF NOT FOUND OR NOT EXISTS\(SELECT 1 FROM app_private\.hermes_assistants.*THEN RAISE EXCEPTION 'hermes_not_permitted' USING ERRCODE='42501'; END IF;/);
+  assert.match(policy, /LANGUAGE plpgsql STABLE SECURITY DEFINER/);
+  assert.match(policy, /SELECT \* INTO v_policy FROM app_private\.hermes_org_policies WHERE organization_id=p_org; IF FOUND THEN RETURN v_policy; END IF;/,
+    'explicit disabled or empty policy must never fall back to neutral');
+  assert.match(policy, /v_policy\.organization_id:=p_org; v_policy\.enabled:=true; v_policy\.version:=0;/);
 }
 function membershipParity(sql) {
   // Match the strict Hermes identity/lifetime rules without cloning permission
@@ -92,10 +98,19 @@ for (const [name, contract, from, to] of [
   ['missing actual provider-session binding', ownershipFence, "AND provider_session_id::text=auth.jwt()->>'session_id'", ''],
   ['missing token-digest binding', ownershipFence, 'token_digest=p_token_digest AND ', ''],
   ['missing policy epoch fence', ownershipFence, ' OR v_p.version<>p_expected_policy_version', ''],
+  ['disabled policy bypass', ownershipFence, 'v_c.scope_ids) WHERE enabled', 'v_c.scope_ids)'],
+  ['unbounded neutral policy', ownershipFence, 'p_organization_id,v_c.read_capabilities,v_c.action_capabilities,v_c.scope_ids', 'p_organization_id,NULL,NULL,NULL'],
   ['missing session revision fence', ownershipFence, ' OR v_s.revision<>p_expected_session_revision', ''],
   ['broadened assistant scope union', mappedScope, 'INTERSECT SELECT unnest(v_p.scope_ids)', 'UNION SELECT unnest(v_p.scope_ids)'],
   ['missing ordinary single-org rule', membershipParity, "IF v_count<>1 THEN RAISE EXCEPTION 'hermes_ordinary_org_ambiguous'", "IF false THEN RAISE EXCEPTION 'hermes_ordinary_org_ambiguous'"],
 ]) test(`mutation witness rejects ${name}`, () => {
   const mutated = source.replace(from, to); assert.notEqual(mutated, source, 'mutation must change the source');
   assert.throws(() => contract(mutated));
+});
+
+test('mutation witness rejects replacing explicit disabled policy with a neutral ceiling', () => {
+  const policy = find('app_private.hermes_effective_org_policy_v1');
+  const changed = policy.replace('IF FOUND THEN RETURN v_policy', 'IF FOUND AND v_policy.enabled THEN RETURN v_policy');
+  assert.notEqual(changed, policy);
+  assert.throws(() => ownershipFence(source, changed), /explicit disabled or empty policy/);
 });

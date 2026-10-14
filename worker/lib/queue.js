@@ -76,9 +76,33 @@ function fencedSession(session, job, delivery) {
         if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
         const automation = await validateAutomationDelivery(job);
         if (!automation.ok) throw new Error(automation.reason);
-        const { data, error } = await sb.rpc('zalo_worker_begin_provider_v1', { p_job_id: job.id, p_instance_id: INSTANCE_ID });
+        const ingress = job.hermes_group_dispatch_id ? session.hermesIngress?.privateReplySource() : null;
+        if (job.hermes_group_dispatch_id && (key !== 'sendMessage' || args.length !== 3 ||
+            !args[0] || Object.keys(args[0]).length !== 1 || typeof args[0].msg !== 'string' ||
+            args[2] !== ThreadType.Group || !ingress || ingress.accountId !== job.account_id ||
+            ingress.organizationId !== job.organization_id || ingress.instanceId !== INSTANCE_ID)) {
+          throw new Error('HERMES_DELIVERY_CHANGED: nội dung hoặc phiên gửi không khớp');
+        }
+        const { data, error } = await sb.rpc(job.hermes_group_dispatch_id ?
+          'zalo_worker_begin_hermes_group_provider_v1' : 'zalo_worker_begin_provider_v1', {
+          p_job_id: job.id, p_instance_id: INSTANCE_ID,
+          ...(job.hermes_group_dispatch_id ? { p_delivery: {
+            method: 'sendMessage', body: args[0].msg, threadId: args[1], threadType: 'group',
+            ownUid: ingress.ownUid, generation: ingress.generation,
+          } } : {}),
+        });
         if (error || data !== true) throw new Error(`PROVIDER_NOT_ADMITTED: ${error?.message || 'lease, tài khoản hoặc job đã thay đổi'}`);
         delivery.started = true;
+        // Admission awaited database/network work. A stop/relogin may have
+        // replaced the RAM session while it was in flight. Keep the admitted
+        // outcome conservative, but never call the stale provider instance.
+        if (sessions.get(job.account_id) !== session) throw new Error('SESSION_CHANGED: phiên đã dừng hoặc thay thế');
+        if (ingress) {
+          const current = session.hermesIngress?.privateReplySource();
+          if (!current || current.generation !== ingress.generation || current.ownUid !== ingress.ownUid) {
+            throw new Error('SESSION_CHANGED: phiên Hermes đã dừng hoặc thay thế');
+          }
+        }
         let deadline;
         let result;
         try {

@@ -353,7 +353,7 @@ test('policy fixture does not retry or continue after permission mutation failur
   assert.equal(m.calls.filter(item => item.kind === 'write').length, 1); assert.equal(m.calls.at(-1).kind, 'write');
 });
 
-function mockSchema({ foreignPolicyGrant = false } = {}) {
+function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
   const sources = migrationSources(); const bodies = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').replace(/\r\n?/g, '\n')
     .matchAll(/(\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\$)([\s\S]*?)\1/g)].map(match => [sha(match[2]), match[2]])));
   const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path))
@@ -361,8 +361,14 @@ function mockSchema({ foreignPolicyGrant = false } = {}) {
   const calls = [];
   return { calls, async query(sql, parameters = []) {
     calls.push({ sql, parameters });
-    if (sql.includes('FROM pg_proc')) return { rows: [...definitions.values()].map(item => ({ name: item.qualifiedName,
-      prosrc: bodies.get(item.bodyDigest), prosecdef: true, owner: 'postgres', proconfig: ['search_path=pg_catalog,public,app_private'] })) };
+    if (sql.includes('FROM pg_proc')) {
+      const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1', 'app_private.hermes_work_memory_settings_json_v1',
+        'app_private.hermes_schedule_immutable_v1', 'app_private.hermes_domain_permission_v1', 'app_private.hermes_domain_text_v1']);
+      const rows = [...definitions.values()].map(item => ({ name: item.qualifiedName, prosrc: bodies.get(item.bodyDigest),
+        prosecdef: item.qualifiedName !== 'app_private.hermes_group_number_vi_v1', owner: 'postgres',
+        proconfig: [pureCatalog.has(item.qualifiedName) ? 'search_path=pg_catalog' : 'search_path=pg_catalog,public,app_private'] }));
+      mutateRows?.(rows); return { rows };
+    }
     if (sql.includes('has_function_privilege')) {
       const [signature, roles] = parameters;
       const allowed = signature.startsWith('app_private.') ? 'hermes_store_executor'
@@ -528,12 +534,12 @@ test('JWT management production orchestration retains full blockers and restrict
   assert.match(source, /mode === 'full' \|\| actor !== 'worker'/);
   assert.match(source, /mode === 'full' \|\| operation === 'activate' \|\| operation === 'readConnection'/);
   assert.match(source, /channelCleanupSql\(plan, \{ mode \}\)/);
-  assert.match(source, /await runChannelScope\(mode, \{ management: async \(\) =>/);
-  assert.match(source, /fullPrivateFlowStatus: mode === 'jwt-management' \? 'not_executed_scope'/);
+  assert.match(source, /await runChannelScope\(mode, \{ cde: async \(\) => runCdeChecks\([\s\S]*?management: async \(\) =>/);
+  assert.match(source, /fullPrivateFlowStatus: mode !== 'full' \? 'not_executed_scope'/);
   assert.match(source, /await write\(baseSetup\(plan\)\)/);
   assert.match(source, /const subjects = \[await issue\(0, 0\), await issue\(1, 1\)\]/);
   assert.match(source, /markTestCleanupRequired\(lease, ctx.test\)/);
-  assert.match(source, /validateCleanupEvidence\(\{ \.\.\.baseCounts, \.\.\.channelCounts \}, ctx.writeState\)/);
+  assert.match(source, /validateCleanupEvidence\(\{ \.\.\.baseCounts, \.\.\.channelCounts, \.\.\.cdeCounts \}, ctx.writeState\)/);
 });
 
 function principal(delta = {}) {
@@ -644,4 +650,56 @@ for (const unknown of [false, true]) test(`GRANT ${unknown ? 'unknown ACK' : 'kn
   const m = executorSetup({ failAt: 'GRANT', error: unknown ? new Error('lost acknowledgement') : { code: '42501', severity: 'ERROR' } });
   await assert.rejects(createExecutorRole(m.ctx, m.pool, m.plan, m.state));
   assert.deepEqual(m.state, { attempted: true, confirmed: true, cleanupRequired: true }); assert.equal(m.writes.length, 2); assert.equal(m.ctx.writeState.uncertain, unknown);
+});
+
+const blob=bytes=>createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+const scheduleSource=migrationSources().find(s=>s.name==='20261014081344_hermes_room_schedule_v1.sql');
+const scheduleEvidence={...validEvidence(),file:scheduleSource.path,sha256:sha(scheduleSource.bytes),statementBytes:scheduleSource.bytes.length,reviewedBlob:'8fe4ed4ea8982e69720b69f668d83edb842ec633'};
+const projected=Buffer.from(scheduleSource.bytes.toString('utf8').replaceAll('\r\n','\n'));
+const options={reviewedBlob:'8fe4ed4ea8982e69720b69f668d83edb842ec633',reviewedBlobBytes:projected};
+const reject=(receipt,input,binding)=>assert.throws(()=>validateSchemaEvidence(receipt,input,binding),{code:'schema_evidence_source_mismatch'});
+
+test('actual applied schedule binds exact raw SHA/length to its pinned historical Git LF projection',()=>{
+  assert.equal(sha(scheduleSource.bytes),'874b4debc81af7b4a004793d8888f96e3eca4f29349b85a8e7e12562602aeca2');
+  assert.equal(scheduleSource.bytes.length,46708);assert.equal(projected.length,46705);
+  assert.equal(blob(projected),options.reviewedBlob);
+  assert.equal(validateSchemaEvidence(scheduleEvidence,scheduleSource,options).reviewedProjection,'pinned_schedule_crlf_to_lf');
+});
+test('same exact applied bytes remain verifiable after byte-preserving -text Git identity',()=>{
+  assert.equal(blob(scheduleSource.bytes),'5e47e86308e2f8ebe3b17234d9734227f27ed8e3');
+  const result=validateSchemaEvidence(scheduleEvidence,scheduleSource,{...options,reviewedBlob:blob(scheduleSource.bytes)});
+  assert.equal(result.sourceBlob,blob(scheduleSource.bytes));assert.equal(result.reviewedProjection,'pinned_schedule_crlf_to_lf');
+});
+test('SQL content mutation is denied even when a claimed raw digest is recomputed',()=>{
+  const bytes=Buffer.from(scheduleSource.bytes.toString('utf8').replace('public.','publix.'));
+  assert.notDeepEqual(bytes,scheduleSource.bytes);assert.equal(bytes.length,scheduleSource.bytes.length);
+  reject(scheduleEvidence,{...scheduleSource,bytes},options);
+  reject({...scheduleEvidence,sha256:sha(bytes)},{...scheduleSource,bytes},{...options,reviewedBlobBytes:Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n'))});
+});
+test('raw applied SHA or byte count mismatch is denied, including harmless EOL rewriting',()=>{
+  reject({...scheduleEvidence,sha256:'a'.repeat(64)},scheduleSource,options);
+  reject({...scheduleEvidence,statementBytes:scheduleEvidence.statementBytes-1},scheduleSource,options);
+  reject(scheduleEvidence,{...scheduleSource,bytes:projected},options);
+});
+test('substituted current Git identity, receipt Git identity or reviewed Git bytes are denied',()=>{
+  reject(scheduleEvidence,scheduleSource,{...options,reviewedBlob:'a'.repeat(40)});
+  reject({...scheduleEvidence,reviewedBlob:'a'.repeat(40)},scheduleSource,options);
+  reject(scheduleEvidence,scheduleSource,{...options,reviewedBlobBytes:Buffer.from(projected.toString('utf8').replace('public.','publix.'))});
+  reject(scheduleEvidence,scheduleSource,{...options,reviewedBlobBytes:scheduleSource.bytes});
+});
+test('the exception cannot transfer to another file or an arbitrary mixed-EOL migration',()=>{
+  const otherPath='supabase/migrations/other.sql';
+  reject({...scheduleEvidence,file:otherPath},{...scheduleSource,path:otherPath},options);
+  const bytes=Buffer.from('SELECT 1;\r\n'),lf=Buffer.from('SELECT 1;\n');
+  reject({...scheduleEvidence,file:otherPath,sha256:sha(bytes),statementBytes:bytes.length,reviewedBlob:blob(lf)},
+    {path:otherPath,bytes},{reviewedBlob:blob(lf),reviewedBlobBytes:lf});
+});
+
+for(const [label,mutateRows] of [
+  ['numeric formatter definer mode',rows=>{rows.find(row=>row.name==='app_private.hermes_group_number_vi_v1').prosecdef=true;}],
+  ['pure helper search path expansion',rows=>{rows.find(row=>row.name==='app_private.hermes_domain_text_v1').proconfig=['search_path=pg_catalog,public'];}],
+  ['pure helper invoker mode',rows=>{rows.find(row=>row.name==='app_private.hermes_work_memory_settings_json_v1').prosecdef=false;}],
+  ['pure helper body change',rows=>{rows.find(row=>row.name==='app_private.hermes_domain_permission_v1').prosrc+=' ';}],
+])test('live schema preflight still rejects '+label,async()=>{
+  await assert.rejects(verifyLiveSchema(mockSchema({mutateRows})),{code:'live_schema_body_mismatch'});
 });

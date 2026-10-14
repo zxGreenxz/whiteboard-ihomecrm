@@ -75,10 +75,10 @@ test('one backend sign-in creates an independently verified session, then primar
   assert.deepEqual(Object.keys(f.factory), ['connect']);
 });
 
-test('caller cannot submit existing session pairs, actor, endpoint, operation ids, action grants or malformed credentials', async t => {
+test('caller cannot submit existing session pairs, actor, endpoint, operation ids, unsupported actions or malformed credentials', async t => {
   for (const mutate of [input => { input.userId = ids.other; }, input => { input.password = ''; },
     input => { input.endpoint = 'https://foreign.invalid'; }, input => { input.operationId = ids.other; },
-    input => { input.restrictions.read.push('contracts.view'); }, input => { input.restrictions.action.push('rooms.edit'); },
+    input => { input.restrictions.read.push('future.unsupported_read'); }, input => { input.restrictions.action.push('rooms.edit'); },
     input => { input.scopeIds = new Array(1); }, input => { input.scopeIds.push(ids.scope); },
     input => { input.assistantSession = { accessToken: 'OWNED_ACCESS', refreshToken: 'OWNED_REFRESH' }; },
     input => { input.refreshToken = 'OWNED_REFRESH'; }, input => { input.email = 'invalid'; },
@@ -499,4 +499,29 @@ test('rooms authority revoked during fresh assistant authentication prevents enr
   f.state.auth.permissions.read=['assistant.context.read','rooms.view'];f.state.auth.companyCeilings.read=['assistant.context.read','rooms.view'];
   await assert.rejects(f.connect({...request(),restrictions:{read:['rooms.view'],action:[]}}),code('forbidden'));
   assert.equal(f.calls.filter(c=>c.operation==='signIn').length,1);assert(!f.calls.some(c=>c.operation==='prepare'));
+});
+
+test('explicit fixed action is preserved through user-policy checks, prepare, activation and opaque result',async t=>{
+ const f=fixture(t),input=request();input.restrictions.action=['chat_zalo.send'];f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];f.state.prepared.restrictions.action=['chat_zalo.send'];
+ const result=await f.connect(input);assert.deepEqual(result.connection.restrictions.action,['chat_zalo.send']);assert.deepEqual(f.calls.find(c=>c.operation==='prepare').restrictions.action,['chat_zalo.send']);assert.equal(f.calls.filter(c=>c.operation==='activate').length,1);
+});
+
+test('group read can enroll with no rooms or send grant',async t=>{
+ const f=fixture(t),input=request();input.restrictions={read:['chat_zalo.view'],action:[]};
+ f.state.auth.permissions=input.restrictions;f.state.auth.companyCeilings=input.restrictions;f.state.prepared.restrictions=input.restrictions;
+ const result=await f.connect(input);assert.deepEqual(result.connection.restrictions,{read:['chat_zalo.view'],action:[]});
+});
+test('fixed action cannot exceed current user or company ceilings and rejects before sign-in',async t=>{
+ for(const kind of ['permissions','companyCeilings']){const f=fixture(t),input=request();input.restrictions.action=['chat_zalo.send'];f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];f.state.auth[kind].action=[];await assert.rejects(f.connect(input),code('forbidden'));assert(!f.calls.some(c=>c.operation==='signIn'));}
+});
+test('prepare action ACK must exactly equal requested action and cannot add or drop one',async t=>{
+ for(const requested of [[],['chat_zalo.send']]){const f=fixture(t),input=request();input.restrictions.action=requested;f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];f.state.prepared.restrictions.action=requested.length?[]:['chat_zalo.send'];await assert.rejects(f.connect(input),code('prepare_outcome_unknown'));assert(!f.calls.some(c=>c.operation==='activate'));}
+});
+test('activation dropping the selected action is an unknown outcome with no returned token',async t=>{
+ const f=fixture(t,{beforeActivate(state){state.prepared.restrictions.action=[]}}),input=request();input.restrictions.action=['chat_zalo.send'];f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];f.state.prepared.restrictions.action=['chat_zalo.send'];await assert.rejects(f.connect(input),code('activation_outcome_unknown'));
+});
+test('control-plane independently rejects an activation port that adds or drops fixed action',async t=>{
+ for(const requested of [[],['chat_zalo.send']]){
+  const f=fixture(t,{factory:{connectionStore:{async activate(input){const p=input.prepared;return {ok:true,status:'activated',credentialRef:input.credentialRef,connection:{id:p.id,assistantId:p.assistantId,organizationId:p.organizationId,userId:p.userId,state:'active',epoch:p.epoch+1,restrictions:{...p.restrictions,action:requested.length?[]:['chat_zalo.send']},scopeIds:p.scopeIds}}}}}}),input=request();input.restrictions.action=requested;f.state.prepared.restrictions.action=requested;f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];await assert.rejects(f.connect(input),code('activation_outcome_unknown'));
+ }
 });

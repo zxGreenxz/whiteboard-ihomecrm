@@ -72,6 +72,17 @@ test('malformed bearer and unavailable/expired joined sessions fail before Auth;
   await assert.rejects(expired.resolve(), code('unauthorized', 401));
 });
 
+test('neutral policy resolves current user permissions and version zero is bound into authority receipts', async t => {
+  const f = fixture(t); f.state.reply.policy.version = 0;
+  const neutral = await f.resolve(); assert.deepEqual(neutral.effective, grants());
+  f.state.reply.policy.version = 1;
+  const explicit = await f.resolve();
+  assert.notEqual(neutral.contextVersion, explicit.contextVersion); assert.notEqual(neutral.policyEpoch, explicit.policyEpoch);
+  await assert.rejects(f.authority.checkUnchanged(token, neutral, { signal: f.controller.signal }), code('context_changed', 409));
+  f.state.reply.policy.version = -1;
+  await assert.rejects(f.resolve(), code('backend_unavailable', 503));
+});
+
 test('real ciphertext with a different provider-session AAD cannot supply a bearer', async t => {
   const f = fixture(t); f.state.reply.session.binding.sessionId = ids.other;
   await assert.rejects(f.resolve(), code('backend_unavailable', 503));

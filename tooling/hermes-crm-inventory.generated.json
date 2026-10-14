@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/generate-hermes-crm-inventory.mjs",
-      "sha256": "76ef8473f1ab5c8d4d0996c5aa131226223ac184ee98c5d5eb6c9895decbe546"
+      "sha256": "94533c19d1d0340dab3f9d3afc947e0186ad6d4245ed30cfd7efd7ea63332f0d"
     },
     {
       "path": "src/app/capabilities/registry.ts",
@@ -297,7 +297,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -464,7 +464,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -652,7 +652,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -840,7 +840,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1018,7 +1018,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1213,7 +1213,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1407,7 +1407,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1601,7 +1601,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1797,7 +1797,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -1975,7 +1975,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -2153,7 +2153,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -2347,7 +2347,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -2542,7 +2542,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -2717,7 +2717,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -2904,7 +2904,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3102,7 +3102,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3270,7 +3270,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3454,7 +3454,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3627,7 +3627,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3804,7 +3804,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -3980,7 +3980,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -4166,7 +4166,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -4349,7 +4349,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -4534,7 +4534,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -4705,7 +4705,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -4883,7 +4883,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5061,7 +5061,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5239,7 +5239,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5410,7 +5410,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5581,7 +5581,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5772,7 +5772,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -5955,7 +5955,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6133,7 +6133,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6327,7 +6327,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6507,7 +6507,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6587,7 +6587,7 @@
         }
       ],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -6671,8 +6671,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6695,7 +6695,7 @@
           "dat_co_hoi_thoai_zalo: thiếu quyền chat_zalo.view hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "dat_co_hoi_thoai_zalo: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "dat_co_hoi_thoai_zalo: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "dat_co_hoi_thoai_zalo: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "dat_co_hoi_thoai_zalo: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -6731,7 +6731,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -6815,8 +6815,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -6839,7 +6839,7 @@
           "dat_han_giu_cho: thiếu quyền deposits.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "dat_han_giu_cho: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "dat_han_giu_cho: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "dat_han_giu_cho: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "dat_han_giu_cho: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -6996,7 +6996,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7065,7 +7065,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -7133,8 +7133,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7157,7 +7157,7 @@
           "doi_trang_thai_tin_phong_nho_sale: thiếu quyền sale_phong.manage_pass_listings hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "doi_trang_thai_tin_phong_nho_sale: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "doi_trang_thai_tin_phong_nho_sale: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "doi_trang_thai_tin_phong_nho_sale: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "doi_trang_thai_tin_phong_nho_sale: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -7193,7 +7193,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -7277,8 +7277,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7301,7 +7301,7 @@
           "ghi_chi_so_cong_to: thiếu quyền meter_readings.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "ghi_chi_so_cong_to: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "ghi_chi_so_cong_to: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "ghi_chi_so_cong_to: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "ghi_chi_so_cong_to: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -7337,7 +7337,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -7405,8 +7405,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7429,7 +7429,7 @@
           "ghi_chu_phieu_thu_chi: thiếu quyền income_expenses.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "ghi_chu_phieu_thu_chi: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "ghi_chu_phieu_thu_chi: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "ghi_chu_phieu_thu_chi: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "ghi_chu_phieu_thu_chi: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -7575,8 +7575,8 @@
       "consent": {
         "evidence": "source_category_and_migration_proposal",
         "current": "explicit_user_memory_request_in_description",
-        "proposed": "Own profile request; work/shared memory needs CRM policy",
-        "superAdminOnlyPreserved": false
+        "proposed": "Own work memory and explicit sharing through CRM; personal Hermes memory stays independent",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7743,7 +7743,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -7918,7 +7918,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -8088,7 +8088,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -8234,7 +8234,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -8293,7 +8293,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "P3/P5: adapter đề xuất kế hoạch dùng schema/preview/RPC hiện có; giữ superAdminOnly đến khi policy thay thế được chứng minh. Hermes không tự duyệt.",
+      "migrationNote": "P3/P5: Hermes upstream điều phối theo ý định user; connector cung cấp schema/RPC và quyền CRM hiện tại giao Read/Action. Chỉ soạn khi được yêu cầu; không sao chép vòng duyệt hoặc cờ superAdminOnly của engine cũ thành quyền Hermes.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -8389,8 +8389,8 @@
       "consent": {
         "evidence": "source_category_and_migration_proposal",
         "current": "per_action_approval_or_standing_grant",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": true
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": true
       },
       "channels": {
         "declaredAdapters": [
@@ -8415,8 +8415,8 @@
           "lap_ke_hoach: thiếu quyền ai_copilot.view hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "lap_ke_hoach: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "lap_ke_hoach: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "lap_ke_hoach: user thường bị chặn khi chưa có policy thay thế superAdminOnly được chứng minh.",
-          "lap_ke_hoach: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "lap_ke_hoach: phân biệt cờ superAdminOnly legacy với quyền nghiệp vụ server; chưa map/xác minh thì không mở capability Hermes.",
+          "lap_ke_hoach: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -8513,7 +8513,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -8675,7 +8675,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -8845,7 +8845,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9015,7 +9015,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9186,8 +9186,8 @@
       "consent": {
         "evidence": "source_category_and_migration_proposal",
         "current": "explicit_user_memory_request_in_description",
-        "proposed": "Own profile request; work/shared memory needs CRM policy",
-        "superAdminOnlyPreserved": false
+        "proposed": "Own work memory and explicit sharing through CRM; personal Hermes memory stays independent",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9365,7 +9365,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9434,7 +9434,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -9502,8 +9502,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9526,7 +9526,7 @@
           "tao_phieu_giu_cho: thiếu quyền deposits.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "tao_phieu_giu_cho: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "tao_phieu_giu_cho: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "tao_phieu_giu_cho: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "tao_phieu_giu_cho: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -9567,7 +9567,7 @@
         }
       ],
       "disposition": "migrate_to_gateway",
-      "migrationNote": "Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.",
+      "migrationNote": "Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -9727,8 +9727,8 @@
       "consent": {
         "evidence": "action_catalog_declaration",
         "current": "click",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": false
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9751,7 +9751,7 @@
           "tao_phieu_thu_chi_nhap: thiếu quyền income_expenses.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "tao_phieu_thu_chi_nhap: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "tao_phieu_thu_chi_nhap: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "tao_phieu_thu_chi_nhap: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "tao_phieu_thu_chi_nhap: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -9905,7 +9905,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -9980,7 +9980,7 @@
       },
       "relatedCapabilities": [],
       "disposition": "retain_backend_executor",
-      "migrationNote": "P5/P8: chuyển trigger hậu duyệt sang executor CRM có queue bền vững; Hermes đọc kết quả, không chọn bước tùy ý. Giữ superAdminOnly, không gọi lại Copilot AI engine; ngừng wrapper cũ ở P11.",
+      "migrationNote": "P5/P8: tái dùng executor/queue và điều kiện nghiệp vụ CRM, thực hiện yêu cầu rõ trong quyền hiệu lực; không gọi engine, giả approve/PIN hoặc sao chép cờ superAdminOnly Copilot. Ngừng wrapper cũ sau khi có luồng thay thế ở P11.",
       "hermesExposure": "not_implemented",
       "scope": {
         "evidence": "source_declarations_not_authority",
@@ -10076,15 +10076,15 @@
       "consent": {
         "evidence": "source_category_and_migration_proposal",
         "current": "per_action_approval_or_standing_grant",
-        "proposed": "CRM validates consent; nonce and step-up remain outside model",
-        "superAdminOnlyPreserved": true
+        "proposed": "Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites",
+        "legacySuperAdminOnly": true
       },
       "channels": {
         "declaredAdapters": [
           "copilot_chat"
         ],
         "proposed": [
-          "crm_internal_executor_after_consent"
+          "crm_executor_with_current_user_and_hermes_action"
         ],
         "groupProjection": "not_approved_for_direct_group_output",
         "runtime": "not_verified"
@@ -10102,8 +10102,8 @@
           "thuc_thi_buoc: thiếu quyền ai_copilot.view hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "thuc_thi_buoc: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "thuc_thi_buoc: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "thuc_thi_buoc: user thường bị chặn khi chưa có policy thay thế superAdminOnly được chứng minh.",
-          "thuc_thi_buoc: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "thuc_thi_buoc: phân biệt cờ superAdminOnly legacy với quyền nghiệp vụ server; chưa map/xác minh thì không mở capability Hermes.",
+          "thuc_thi_buoc: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -10273,7 +10273,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -10458,7 +10458,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -10633,7 +10633,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -10824,7 +10824,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11039,7 +11039,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11222,7 +11222,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11405,7 +11405,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11568,7 +11568,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11758,7 +11758,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -11972,7 +11972,7 @@
         "evidence": "source_category_and_migration_proposal",
         "current": "no_write_consent_declared",
         "proposed": "Read/navigation still requires current permission and connection restriction",
-        "superAdminOnlyPreserved": false
+        "legacySuperAdminOnly": false
       },
       "channels": {
         "declaredAdapters": [
@@ -12103,17 +12103,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12128,7 +12129,7 @@
           "action:cashbook.chot_so: thiếu quyền cashbooks.close_confirm hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:cashbook.chot_so: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:cashbook.chot_so: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:cashbook.chot_so: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:cashbook.chot_so: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12250,17 +12251,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12275,7 +12277,7 @@
           "action:contract.chuyen_nhuong: thiếu quyền contracts.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:contract.chuyen_nhuong: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:contract.chuyen_nhuong: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:contract.chuyen_nhuong: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:contract.chuyen_nhuong: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12362,17 +12364,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12387,7 +12390,7 @@
           "action:contract.duyet_thanh_ly: thiếu quyền contracts.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:contract.duyet_thanh_ly: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:contract.duyet_thanh_ly: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:contract.duyet_thanh_ly: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:contract.duyet_thanh_ly: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12500,17 +12503,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12525,7 +12529,7 @@
           "action:contract.gia_han: thiếu quyền contracts.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:contract.gia_han: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:contract.gia_han: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:contract.gia_han: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:contract.gia_han: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12601,17 +12605,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12626,7 +12631,7 @@
           "action:customer.xoa_mem: thiếu quyền customers.delete hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:customer.xoa_mem: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:customer.xoa_mem: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:customer.xoa_mem: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:customer.xoa_mem: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12710,17 +12715,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12735,7 +12741,7 @@
           "action:income_expense.annotate: thiếu quyền income_expenses.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.annotate: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.annotate: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.annotate: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.annotate: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12854,17 +12860,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12879,7 +12886,7 @@
           "action:income_expense.create_draft: thiếu quyền income_expenses.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.create_draft: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.create_draft: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.create_draft: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.create_draft: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -12958,17 +12965,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -12983,7 +12991,7 @@
           "action:income_expense.duyet: thiếu quyền income_expenses.approve hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.duyet: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.duyet: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.duyet: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.duyet: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13078,17 +13086,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13103,7 +13112,7 @@
           "action:income_expense.duyet_vao_so: thiếu quyền income_expenses.approve hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.duyet_vao_so: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.duyet_vao_so: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.duyet_vao_so: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.duyet_vao_so: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13171,17 +13180,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13196,7 +13206,7 @@
           "action:income_expense.nop_ho_so: thiếu quyền income_expenses.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.nop_ho_so: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.nop_ho_so: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.nop_ho_so: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.nop_ho_so: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13291,17 +13301,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13316,7 +13327,7 @@
           "action:income_expense.vao_so: thiếu quyền income_expenses.approve hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:income_expense.vao_so: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:income_expense.vao_so: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:income_expense.vao_so: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:income_expense.vao_so: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13395,17 +13406,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13420,7 +13432,7 @@
           "action:invoice.duyet: thiếu quyền invoices.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:invoice.duyet: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:invoice.duyet: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:invoice.duyet: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:invoice.duyet: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13495,17 +13507,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13520,7 +13533,7 @@
           "action:invoice.duyet_hang_loat: thiếu quyền invoices.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:invoice.duyet_hang_loat: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:invoice.duyet_hang_loat: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:invoice.duyet_hang_loat: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:invoice.duyet_hang_loat: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13598,17 +13611,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13623,7 +13637,7 @@
           "action:invoice.xoa_mem: thiếu quyền invoices.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:invoice.xoa_mem: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:invoice.xoa_mem: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:invoice.xoa_mem: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:invoice.xoa_mem: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13732,17 +13746,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": true,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13757,7 +13772,7 @@
           "action:member.invite: thiếu quyền users.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:member.invite: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:member.invite: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:member.invite: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:member.invite: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13849,17 +13864,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": true,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -13874,7 +13890,7 @@
           "action:member.set_status: thiếu quyền users.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:member.set_status: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:member.set_status: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:member.set_status: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:member.set_status: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -13981,17 +13997,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": true,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14006,7 +14023,7 @@
           "action:member.update_authorization: thiếu quyền users.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:member.update_authorization: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:member.update_authorization: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:member.update_authorization: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:member.update_authorization: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14112,17 +14129,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14137,7 +14155,7 @@
           "action:meter_reading.create: thiếu quyền meter_readings.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:meter_reading.create: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:meter_reading.create: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:meter_reading.create: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:meter_reading.create: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14217,17 +14235,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14242,7 +14261,7 @@
           "action:meter_reading.duyet: thiếu quyền meter_readings.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:meter_reading.duyet: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:meter_reading.duyet: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:meter_reading.duyet: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:meter_reading.duyet: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14317,17 +14336,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14342,7 +14362,7 @@
           "action:meter_reading.xoa_hang_loat: thiếu quyền meter_readings.delete hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:meter_reading.xoa_hang_loat: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:meter_reading.xoa_hang_loat: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:meter_reading.xoa_hang_loat: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:meter_reading.xoa_hang_loat: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14450,17 +14470,18 @@
         "externalEffectReconcileRequired": true
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14476,7 +14497,7 @@
           "action:network.execute_action: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:network.execute_action: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
           "Provider timeout/crash must retain UNKNOWN_EFFECT until authoritative reconciliation; no blind re-send.",
-          "action:network.execute_action: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:network.execute_action: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14562,17 +14583,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14587,7 +14609,7 @@
           "action:reservation_deposit.create: thiếu quyền deposits.create hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:reservation_deposit.create: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:reservation_deposit.create: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:reservation_deposit.create: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:reservation_deposit.create: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14691,17 +14713,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14716,7 +14739,7 @@
           "action:reservation.set_hold_terms: thiếu quyền deposits.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:reservation.set_hold_terms: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:reservation.set_hold_terms: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:reservation.set_hold_terms: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:reservation.set_hold_terms: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14824,17 +14847,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": true,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14849,7 +14873,7 @@
           "action:role.upsert: thiếu quyền users.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:role.upsert: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:role.upsert: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:role.upsert: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:role.upsert: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -14933,17 +14957,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -14958,7 +14983,7 @@
           "action:room_pass.set_active: thiếu quyền sale_phong.manage_pass_listings hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:room_pass.set_active: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:room_pass.set_active: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:room_pass.set_active: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:room_pass.set_active: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15069,17 +15094,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15094,7 +15120,7 @@
           "action:room.chuyen_phong: thiếu quyền contracts.edit hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:room.chuyen_phong: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:room.chuyen_phong: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:room.chuyen_phong: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:room.chuyen_phong: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15211,17 +15237,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15236,7 +15263,7 @@
           "action:salary.chi_luong: thiếu quyền salary.distribute hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:salary.chi_luong: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:salary.chi_luong: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:salary.chi_luong: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:salary.chi_luong: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15322,17 +15349,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15347,7 +15375,7 @@
           "action:salary.khoa_thang: thiếu quyền salary.lock hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:salary.khoa_thang: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:salary.khoa_thang: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:salary.khoa_thang: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:salary.khoa_thang: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15449,10 +15477,11 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
@@ -15473,7 +15502,7 @@
           "action:termination.hoan_coc: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:termination.hoan_coc: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
           "Retired action remains unavailable in schema/tool list/executor.",
-          "action:termination.hoan_coc: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:termination.hoan_coc: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15557,17 +15586,18 @@
         "externalEffectReconcileRequired": true
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15583,7 +15613,7 @@
           "action:zalo.broadcast: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:zalo.broadcast: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
           "Provider timeout/crash must retain UNKNOWN_EFFECT until authoritative reconciliation; no blind re-send.",
-          "action:zalo.broadcast: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:zalo.broadcast: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15658,17 +15688,18 @@
         "externalEffectReconcileRequired": true
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "step_up",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15684,7 +15715,7 @@
           "action:zalo.recall_message: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:zalo.recall_message: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
           "Provider timeout/crash must retain UNKNOWN_EFFECT until authoritative reconciliation; no blind re-send.",
-          "action:zalo.recall_message: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:zalo.recall_message: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },
@@ -15787,17 +15818,18 @@
         "externalEffectReconcileRequired": false
       },
       "consent": {
-        "evidence": "catalog_declaration",
+        "evidence": "legacy_catalog_declaration",
         "required": "click",
         "pinAlways": false,
-        "neverApproveFromModel": true
+        "neverApproveFromModel": true,
+        "proposed": "Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state"
       },
       "channels": {
         "current": [
           "CRM_preview_consent_executor"
         ],
         "proposed": [
-          "hermes_proposal_through_gateway_then_CRM_executor"
+          "hermes_intent_through_authorized_CRM_executor"
         ],
         "runtime": "not_verified"
       },
@@ -15812,7 +15844,7 @@
           "action:zalo.set_conversation_flags: thiếu quyền chat_zalo.view hoặc sai org/phạm vi bị từ chối tại server/guard phù hợp.",
           "action:zalo.set_conversation_flags: restriction kết nối tắt hoặc bị thu hồi không được thực hiện dù caller giữ danh sách tool cũ.",
           "action:zalo.set_conversation_flags: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.",
-          "action:zalo.set_conversation_flags: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát."
+          "action:zalo.set_conversation_flags: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ."
         ],
         "evidence": []
       },

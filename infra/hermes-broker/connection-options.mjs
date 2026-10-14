@@ -1,3 +1,4 @@
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES, requiresBuildingScope } from './capability-contract.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OWNER = ['userId', 'organizationId', 'membershipId'];
 const KEYS = [...OWNER, 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'enabled', 'read', 'action', 'scopes'];
@@ -27,10 +28,9 @@ export function connectionOptions(raw, organizationId, userId) {
   const value = own(raw, KEYS);
   if (!id(organizationId) || OWNER.some(key => !id(value[key])) || value.organizationId !== organizationId ||
       (userId !== undefined && value.userId !== userId) || !integer(value.authorizationVersion) || value.authorizationVersion < 1 ||
-      !integer(value.policyVersion) || typeof value.enabled !== 'boolean' || typeof value.isSuperadmin !== 'boolean' ||
-      (value.enabled && value.policyVersion < 1)) fail();
-  const read = array(value.read, 2), action = array(value.action, 0);
-  if (read.some(key => !['assistant.context.read', 'rooms.view'].includes(key)) || new Set(read).size !== read.length) fail();
+      !integer(value.policyVersion) || typeof value.enabled !== 'boolean' || typeof value.isSuperadmin !== 'boolean') fail();
+  const read = array(value.read, HERMES_READ_CAPABILITIES.length), action = array(value.action, HERMES_ACTION_CAPABILITIES.length);
+  if (read.some(key => !HERMES_READ_CAPABILITIES.includes(key)) || new Set(read).size !== read.length || new Set(action).size !== action.length || action.some(key => !HERMES_ACTION_CAPABILITIES.includes(key))) fail();
   const scopes = array(value.scopes, 256).map(rawScope => {
     const scope = own(rawScope, SCOPE);
     if (!id(scope.scopeId) || !['ORGANIZATION', 'AREA', 'BUILDING'].includes(scope.scopeType) ||
@@ -41,8 +41,8 @@ export function connectionOptions(raw, organizationId, userId) {
     return Object.freeze(scope);
   });
   if (new Set(scopes.map(scope => scope.scopeId)).size !== scopes.length ||
-      (!value.enabled && (read.length || scopes.length)) ||
-      (read.includes('rooms.view') !== (scopes.length > 0))) fail();
+      (!value.enabled && (read.length || action.length || scopes.length)) ||
+      (requiresBuildingScope(read, action) !== (scopes.length > 0))) fail();
   return Object.freeze({ ...value, read: Object.freeze([...read].sort()), action: Object.freeze(action),
     scopes: Object.freeze(scopes.sort((a, b) => a.scopeId.localeCompare(b.scopeId))) });
 }

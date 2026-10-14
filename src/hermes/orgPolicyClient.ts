@@ -1,3 +1,4 @@
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from '../../infra/hermes-broker/capability-contract.mjs';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import type { HermesCallerScope } from '@/hermes/connectionClient';
@@ -7,7 +8,7 @@ const version = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 2);
 const capability = z.string().regex(/^[a-z][a-z0-9_.:-]{0,127}$/);
 const ids = z.array(uuid).max(256).refine(values => new Set(values).size === values.length);
 const capabilities = z.array(capability).max(256);
-const knownRead = z.array(z.enum(['assistant.context.read', 'rooms.view'])).max(2).refine(values => new Set(values).size === values.length);
+const knownRead = z.array(z.string().refine(key => HERMES_READ_CAPABILITIES.includes(key))).max(HERMES_READ_CAPABILITIES.length).refine(values => new Set(values).size === values.length);
 const scope = z.object({ scopeId: uuid, scopeType: z.enum(['ORGANIZATION','AREA','BUILDING']), label: z.string().min(1).max(1024),
   buildingId: uuid.nullable(), areaId: uuid.nullable(), cashbookId: z.null() }).strict().refine(value =>
   value.scopeType === 'ORGANIZATION' ? value.buildingId === null && value.areaId === null :
@@ -15,10 +16,11 @@ const scope = z.object({ scopeId: uuid, scopeType: z.enum(['ORGANIZATION','AREA'
   // Preserve required picker keys under both the app compiler and strict islands.
   .transform(value => ({ scopeId: value.scopeId, scopeType: value.scopeType, label: value.label,
     buildingId: value.buildingId, areaId: value.areaId, cashbookId: value.cashbookId }));
-const policy = z.object({ organizationId: uuid, version, enabled: z.boolean(), read: capabilities, action: capabilities, scopeIds: ids }).strict()
-  .refine(value => value.version > 0 || !value.enabled && value.read.length === 0 && value.action.length === 0 && value.scopeIds.length === 0);
+// Version 0 is the server's neutral ceiling when no explicit policy exists.
+// It is read metadata only; a successful explicit policy write starts at 1.
+const policy = z.object({ organizationId: uuid, version, enabled: z.boolean(), read: capabilities, action: capabilities, scopeIds: ids }).strict();
 const snapshot = z.object({ userId: uuid, organizationId: uuid, membershipId: uuid, authorizationVersion: version, isSuperadmin: z.boolean(),
-  policy, choices: z.object({ read: knownRead, action: z.array(z.never()).max(0), scopes: z.array(scope).max(256) }).strict(),
+  policy, choices: z.object({ read: knownRead, action: z.array(z.string().refine(key => HERMES_ACTION_CAPABILITIES.includes(key))).max(HERMES_ACTION_CAPABILITIES.length).refine(values => new Set(values).size === values.length), scopes: z.array(scope).max(256) }).strict(),
   storedScopes: z.array(z.object({ scopeId: uuid, label: z.string().min(1).max(1024), available: z.boolean() }).strict()).max(256),
 }).strict().refine(value => {
   const scopeIds = value.choices.scopes.map(item => item.scopeId), stored = value.storedScopes.map(item => item.scopeId);
@@ -94,7 +96,7 @@ export function createHermesOrgPolicyClient({ userId, organizationId, currentSco
       try { parsed = saveInput.safeParse(input); } catch { throw failure('invalid_request'); }
       if (!parsed.success || !observed || observedGeneration !== caller.generation || parsed.data.expectedVersion !== observed.policy.version ||
           !subset(parsed.data.read, [...observed.policy.read, ...observed.choices.read]) ||
-          !subset(parsed.data.action, observed.policy.action) ||
+          !subset(parsed.data.action, [...observed.policy.action, ...observed.choices.action]) ||
           !subset(parsed.data.scopeIds, [...observed.policy.scopeIds, ...observed.choices.scopes.map(item => item.scopeId)])) throw failure('invalid_request');
       target = parsed.data;
     }
@@ -121,12 +123,23 @@ export function createHermesOrgPolicyClient({ userId, organizationId, currentSco
         p_read: target.read, p_action: target.action, p_scope_ids: target.scopeIds } : { p_org: organizationId });
       if (new TextEncoder().encode(body).byteLength > 131072) throw failure('invalid_request');
       dispatched = true;
-      const response = await request(base.replace(/\/$/, '') + '/rest/v1/rpc/' + (write ? 'hermes_set_org_policy_v1' : 'hermes_org_policy_options_v1'), {
-        method: 'POST', mode: 'cors', credentials: 'omit', redirect: 'error', cache: 'no-store',
-        headers: { authorization: 'Bearer ' + token, apikey: apiKey, 'content-type': 'application/json', accept: 'application/json',
-          'accept-profile': 'public', 'content-profile': 'public', 'x-organization-id': organizationId }, body, signal: controller.signal,
-      });
-      check(); const raw = await readJson(response, controller.signal); check(); await session(); check();
+      const send = async (rpc: string) => {
+        const response = await request(base.replace(/\/$/, '') + '/rest/v1/rpc/' + rpc, {
+          method: 'POST', mode: 'cors', credentials: 'omit', redirect: 'error', cache: 'no-store',
+          headers: { authorization: 'Bearer ' + token, apikey: apiKey, 'content-type': 'application/json', accept: 'application/json',
+            'accept-profile': 'public', 'content-profile': 'public', 'x-organization-id': organizationId }, body, signal: controller.signal,
+        });
+        check(); const raw = await readJson(response, controller.signal); check();
+        return { response, raw };
+      };
+      let { response, raw } = await send(write ? 'hermes_set_org_policy_v1' : 'hermes_org_policy_options_v4');
+      const missing = z.object({ code: z.literal('PGRST202'), message: z.string(), details: z.string().nullable(), hint: z.string().nullable() }).strict();
+      for (const legacy of write ? [] : ['hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1']) {
+        if (!(response.status === 404 && missing.safeParse(raw).success)) break;
+        await session(); check();
+        ({ response, raw } = await send(legacy));
+      }
+      await session(); check();
       if (response.status !== 200) {
         const error = z.object({ code: z.string(), message: z.string(), details: z.string().nullable(), hint: z.string().nullable() }).strict().safeParse(raw);
         if (error.success) {

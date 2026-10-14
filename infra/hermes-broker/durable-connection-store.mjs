@@ -145,7 +145,7 @@ export function createDurableConnectionStore({ transport, clock = Date.now } = {
           !positive(session.revision) || session.revision >= Number.MAX_SAFE_INTEGER || !positive(session.expiresAt) ||
           !exact(membership, ['membershipId', 'authorizationVersion', 'isSuperadmin']) || !uuid(membership.membershipId) ||
           !positive(membership.authorizationVersion) || typeof membership.isSuperadmin !== 'boolean' ||
-          !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !positive(policy.version)) invalidResponse();
+          !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !(policy.version === 0 || positive(policy.version))) invalidResponse();
       const owner = binding(session.binding, invalidResponse);
       if (['assistantId', 'userId', 'organizationId'].some(key => owner[key] !== row[key])) invalidResponse();
       const copiedSession = { credentialRef: session.credentialRef, revision: session.revision, envelope: envelope(session.envelope, invalidResponse),

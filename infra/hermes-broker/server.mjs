@@ -1,5 +1,17 @@
 import { createServer } from 'node:http';
+import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
+import { createDomainMount } from './domain-mount.mjs';
+import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
+import { createScheduleMount } from './schedule-mount.mjs';
+import { createScheduleAuthAdapter, createSupabaseScheduleReads } from './schedule-adapter.mjs';
+import { createWorkMemoryAuthAdapter, createSupabaseWorkMemoryReads } from './work-memory-adapter.mjs';
+import { createWorkMemoryService } from './work-memory-service.mjs';
+import { createWorkMemoryRetention } from './work-memory-retention.mjs';
+import { createHash } from 'node:crypto';
 import { BrokerError, createBroker } from './broker.mjs';
+import { createGroupPreviewMount } from './group-preview-mount.mjs';
+import { createExternalGroupMount } from './external-group-mount.mjs';
+import { createHermesCapabilityAuthAdapter, createSupabaseGroupPreviewReads } from './group-preview-adapter.mjs';
 import { createStoreTransport } from './store-transport.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -79,12 +91,13 @@ function reply(response, status, error) {
  * Quota/admission remain process-local; this is not a multi-replica deployment.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
       typeof configuration.audit !== 'function' || (Object.hasOwn(configuration, 'fetch') && typeof configuration.fetch !== 'function') ||
       (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
+      (Object.hasOwn(configuration, 'connectorOnly') && configuration.connectorOnly !== true) ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -93,10 +106,20 @@ export function createHermesBackend(configuration = {}) {
   try {
     const dependencyScope = createDependencyScope();
     const transport = createStoreTransport({ pool: store.pool, expectedRole: store.expectedRole, dependencyScope });
+    const retention = createWorkMemoryRetention({ transport });
     const connectionStore = createDurableConnectionStore({ transport, clock });
     crypto = createSessionCrypto(encryption);
-    const auth = createSupabaseDurableAuthAdapter({ ...supabase, fetch: request, clock, dependencyScope });
+    const baseAuth = createSupabaseDurableAuthAdapter({ ...supabase, fetch: request, clock, dependencyScope });
+    const groupAuth = createHermesCapabilityAuthAdapter({ baseAuth,
+      reads: createSupabaseGroupPreviewReads({ ...supabase, fetch: request, dependencyScope }) });
+    const memoryReads = createSupabaseWorkMemoryReads({ ...supabase, fetch: request, dependencyScope });
+    const memoryAuth = createWorkMemoryAuthAdapter({ baseAuth: groupAuth, reads: memoryReads });
+    const scheduleAuth = createScheduleAuthAdapter({ baseAuth: memoryAuth,
+      reads: createSupabaseScheduleReads({ ...supabase, fetch: request, dependencyScope }) });
+    const domainAuth = createDomainAuthAdapter({ baseAuth: scheduleAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createRoomPassAuth({ baseAuth: domainAuth, reads: createRoomPassReads({ ...supabase, fetch: request, dependencyScope }) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
+    const workMemory = createWorkMemoryService({ authority, connectionStore, crypto, auth, reads: memoryReads, clock });
     const renewal = createConnectionRenewal({ authority, connectionStore, clock });
     const refreshProvider = createSupabaseRefreshProvider({ ...supabase, fetch: request, clock, dependencyScope });
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
@@ -104,7 +127,16 @@ export function createHermesBackend(configuration = {}) {
     const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock,
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
-    const broker = createBroker({ authority, roomReads, audit, clock, limits: { maxResultBytes: 65_536 } });
+    // The concrete preview stack is private to the trusted active-turn gateway.
+    // Construction does not grant a capability, policy or connection action.
+    const groupPreviews = createGroupPreviewMount({ auth, authority, connectionStore, crypto, clock, dependencyScope,
+      supabase, fetch: request });
+    const externalGroups = createExternalGroupMount({ auth, authority, connectionStore, crypto, clock, dependencyScope,
+      supabase, fetch: request });
+    const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
+    const domains = createDomainMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
+    const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
+    const broker = createBroker({ roomPass, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock, limits: { maxResultBytes: 65_536 } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
     const stageHandoff = configuration.handoff?.stage.bind(configuration.handoff);
@@ -123,6 +155,41 @@ export function createHermesBackend(configuration = {}) {
     const mcp = createMcpHttpHandler({ broker, allowedHosts: [...new Set([...hosts].map(host => new URL(`http://${host}`).hostname))],
       allowedOrigins: [...origins] });
     const pending = new Set(), supervisorAbort = new AbortController(); let closing = false, closePromise, privateRunner, privateSupervisor;
+    const externalCalls = new Map();
+    const tokenKey = token => typeof token === 'string' && /^hc_[A-Za-z0-9_-]{43}$/.test(token)
+      ? createHash('sha256').update(token).digest('hex') : null;
+    const releaseExternal = (key, entry) => {
+      if (!entry.parked && entry.active.size === 0 && externalCalls.get(key) === entry) externalCalls.delete(key);
+    };
+    // The external connector has no command pump or runtime supervisor. Park
+    // admission for this token, drain actual HTTP dependencies, then reuse the
+    // existing refresh/renew lane. Socket close alone never frees this fence.
+    const beginExternalConnectionMaintenance = (token, { signal } = {}) => {
+      const key = tokenKey(token);
+      if (!configuration.connectorOnly || !key || !(signal instanceof AbortSignal)) throw new BrokerError('invalid_request');
+      if (closing || signal.aborted) throw new BrokerError('backend_unavailable');
+      if (pending.size >= 16) throw new BrokerError('busy');
+      let entry = externalCalls.get(key);
+      if (entry?.parked) throw new BrokerError('busy');
+      if (!entry) { entry = { active: new Set(), parked: false }; externalCalls.set(key, entry); }
+      entry.parked = true;
+      const combined = AbortSignal.any([signal, supervisorAbort.signal]);
+      let uncertainDrain = false;
+      const work = (async () => {
+        await Promise.allSettled([...entry.active]);
+        if (closing || combined.aborted) throw new BrokerError('backend_unavailable');
+        const operation = maintenance.begin(token, { signal: combined });
+        try { return await operation.result; }
+        finally { try { await operation.drained; } catch (error) { uncertainDrain = true; throw error; } }
+      })();
+      const drained = work.then(() => undefined, error => { if (uncertainDrain) throw error; }).finally(() => {
+        if (!uncertainDrain) { entry.parked = false; releaseExternal(key, entry); }
+      });
+      pending.add(drained);
+      void drained.then(() => pending.delete(drained), () => pending.delete(drained));
+      void work.catch(() => {}); void drained.catch(() => {});
+      return Object.freeze({ result: work, drained });
+    };
     let runtimeGateway, runtimeModels, runtimeOptions, ownedSupervisor, supervisorOptions;
     const resolveConnection = (token, { signal } = {}) => {
       if (!(signal instanceof AbortSignal)) return Promise.reject(new BrokerError('invalid_request'));
@@ -157,6 +224,14 @@ export function createHermesBackend(configuration = {}) {
       }
       if (req.headers['content-encoding'] !== undefined) { reply(res, 415, 'unsupported_content_encoding'); return; }
       if (pending.size >= 16) { reply(res, 429, 'busy'); return; }
+      const externalKey = configuration.connectorOnly && req.url === '/mcp'
+        ? tokenKey(/^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1]) : null;
+      let externalEntry;
+      if (externalKey) {
+        externalEntry = externalCalls.get(externalKey);
+        if (externalEntry?.parked) { reply(res, 503, 'connection_maintenance'); return; }
+        if (!externalEntry) { externalEntry = { active: new Set(), parked: false }; externalCalls.set(externalKey, externalEntry); }
+      }
       // Request observers can finish before ignored-abort Auth/SQL/fetch work.
       // Retain the shared admission slot until this finite dependency scope
       // actually drains; no runtime listeners or startup live in this scope.
@@ -170,6 +245,10 @@ export function createHermesBackend(configuration = {}) {
         finally { await requestWork.drained; }
       })();
       pending.add(work);
+      if (externalEntry) {
+        externalEntry.active.add(work);
+        void work.finally(() => { externalEntry.active.delete(work); releaseExternal(externalKey, externalEntry); }).catch(() => {});
+      }
       void work.catch(() => reply(res, 503, 'backend_unavailable')).finally(() => { pending.delete(work); });
     });
     server.requestTimeout = 15_000; server.headersTimeout = 10_000; server.maxHeadersCount = 32;
@@ -182,6 +261,7 @@ export function createHermesBackend(configuration = {}) {
       if (closePromise) return closePromise;
       closing = true;
       supervisorAbort.abort();
+      const retentionStopped = retention.close();
       const renewalsStopped = renewal.close();
       const refreshStopped = Promise.all([maintenance.close(), refreshManager.close(), refreshProvider.close()]);
       void refreshStopped.catch(() => {});
@@ -199,6 +279,7 @@ export function createHermesBackend(configuration = {}) {
         server.closeAllConnections();
         await stopped;
         await Promise.allSettled([...pending]);
+        await retentionStopped;
         await renewalsStopped;
         await refreshStopped;
         await bindingsStopped;
@@ -212,6 +293,7 @@ export function createHermesBackend(configuration = {}) {
     // Trusted supervisor API only. Never registered as a browser route or MCP
     // tool; the browser JWT and provider credentials cannot renew runtime leases.
     const privateCommandRunner = supervisor => {
+      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
       if (closing) throw new PrivateCommandRunnerError('backend_closed');
       if (ownedSupervisor && supervisor !== ownedSupervisor) throw new TypeError('private_command_supervisor_mismatch');
       if (privateRunner) {
@@ -222,6 +304,7 @@ export function createHermesBackend(configuration = {}) {
       privateSupervisor = supervisor; privateRunner = runner; return runner;
     };
     const runtimeSupervisorFactory = options => {
+      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
       if (closing) throw new BrokerError('backend_unavailable');
       if (!plain(options) || Reflect.ownKeys(options).length !== 2 ||
           ['profileStore', 'runtime'].some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(options, key) ?? {}, 'value'))) {
@@ -241,6 +324,7 @@ export function createHermesBackend(configuration = {}) {
     // token/JWT/store/keyring. HTTP routing remains unchanged; model authority
     // is derived from the registration's opaque connection on the host.
     const runtimeGatewayFactory = options => {
+      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
       if (closing) throw new BrokerError('backend_unavailable');
       if (!exact(options, ['transport', 'allowedModels']) || typeof options.transport?.open !== 'function') throw new TypeError('invalid_runtime_gateway_config');
       if (runtimeGateway) {
@@ -262,7 +346,10 @@ export function createHermesBackend(configuration = {}) {
     };
     return Object.freeze({ server, close, resolveConnection, renewConnection: renewal.renew,
       createPrivateCommandRunner: privateCommandRunner, createRuntimeGateway: runtimeGatewayFactory,
-      createRuntimeSupervisor: runtimeSupervisorFactory, beginConnectionMaintenance: maintenance.begin });
+      createRuntimeSupervisor: runtimeSupervisorFactory, beginConnectionMaintenance: maintenance.begin,
+      beginExternalConnectionMaintenance,
+      startWorkMemoryRetention() { if (closing) throw new BrokerError('backend_unavailable'); retention.start(); },
+      workMemoryRetentionStatus: retention.status });
   } catch {
     crypto?.destroy();
     throw new TypeError('invalid_backend_config');

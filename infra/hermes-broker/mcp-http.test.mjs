@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { createFixtureBroker } from './fixture.mjs';
 import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
+import { BrokerError } from './broker.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -90,6 +91,25 @@ test('HTTP errors redact untrusted backend exception text', async (t) => {
   }, body: JSON.stringify(call()) });
   const text = await result.text();
   assert.ok(text.includes('backend_unavailable')); assert.ok(!text.includes('secret'));
+});
+
+test('unknown send returns only validated dispatch correlation so native Hermes can check status', async t => {
+  const dispatchId = '10000000-0000-4000-8000-000000000099';
+  let problem = Object.assign(new BrokerError('send_outcome_unknown'), { dispatchId, token: 'PRIVATE', cause: 'PRIVATE' });
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw problem; } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const invoke = async () => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}`,
+    }, body: JSON.stringify(call('crm_group_room_send', { requestId: dispatchId })) });
+    const body = await response.json(); assert.equal(body.result.isError, true);
+    return JSON.parse(body.result.content[0].text);
+  };
+  assert.deepEqual(await invoke(), { error: 'send_outcome_unknown', dispatchId });
+  problem.dispatchId = 'PRIVATE'; assert.deepEqual(await invoke(), { error: 'send_outcome_unknown' });
+  problem = Object.assign(new Error('PRIVATE'), { code: 'send_outcome_unknown', dispatchId });
+  assert.deepEqual(await invoke(), { error: 'backend_unavailable' });
 });
 
 test('extracted handler composes under a caller-owned server without changing legacy MCP result or hostname semantics', async t => {

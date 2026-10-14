@@ -4,7 +4,7 @@ const state = vi.hoisted(() => ({
   sessions: new Map(), writes: [], calls: [], status: 'connected', persistError: null,
   claimAllowed: true, fenceAllowed: true, autoAllowed: true,
   echoFirst: false, queueExists: true,
-  forwardSource: null,
+  forwardSource: null, beforeAdmissionReturns: null, threadType: 'user',
 }));
 vi.mock('../lib/ctx.js', () => ({
   sessions: state.sessions, log: () => {}, orgOf: () => 'org', SUPABASE_URL: 'https://storage.example.test',
@@ -12,7 +12,10 @@ vi.mock('../lib/ctx.js', () => ({
     rpc: async (name, args) => {
       state.calls.push({ name, args });
       if (name === 'zalo_worker_claim_job_v1') return { data: { ok: state.claimAllowed }, error: null };
-      if (name === 'zalo_worker_begin_provider_v1') return { data: state.fenceAllowed, error: null };
+      if (['zalo_worker_begin_provider_v1', 'zalo_worker_begin_hermes_group_provider_v1'].includes(name)) {
+        await state.beforeAdmissionReturns?.();
+        return { data: state.fenceAllowed, error: null };
+      }
       if (name === 'zalo_worker_recover_jobs_v1') return { data: { requeued: 1, unknown: 1 }, error: null };
       if (name === 'zalo_worker_finalize_send_v1') return { data: state.persistError ? null : { ok: true, status: 'sent' }, error: state.persistError };
       throw new Error(`Unexpected RPC ${name}`);
@@ -50,7 +53,7 @@ vi.mock('../lib/ctx.js', () => ({
 vi.mock('../lib/lease.js', () => ({ INSTANCE_ID: 'instance' }));
 vi.mock('../lib/inbound.js', () => ({ upsertMessagesForThread: vi.fn(), emojiToZca: value => value }));
 vi.mock('../lib/scope-guard.js', () => ({
-  validateZaloCommandScope: async () => ({ ok: true, account: { status: state.status }, conv: { thread_id: 'thread', thread_type: 'user' } }),
+  validateZaloCommandScope: async () => ({ ok: true, account: { status: state.status }, conv: { thread_id: 'thread', thread_type: state.threadType } }),
   formatScopeRejection: value => value.reason, logScopeRejection: vi.fn(), clampHistoryCount: value => value,
 }));
 vi.mock('../lib/automation-delivery.js', () => ({ validateAutomationDelivery: async () => state.autoAllowed
@@ -68,7 +71,7 @@ beforeEach(() => {
   state.status = 'connected'; state.persistError = null;
   state.claimAllowed = true; state.fenceAllowed = true; state.autoAllowed = true;
   state.echoFirst = false; state.queueExists = true;
-  state.forwardSource = null;
+  state.forwardSource = null; state.beforeAdmissionReturns = null; state.threadType = 'user';
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -139,6 +142,60 @@ describe('queue admission and delivery outcomes', () => {
     expect(api.sendMessage).toHaveBeenCalledOnce();
     const failed = state.writes.find(row => row.table === 'zalo_send_queue' && row.patch.status === 'failed');
     expect(failed.patch).toMatchObject({ last_error: expect.stringMatching(/^UNKNOWN_EFFECT/), result: { outcome: 'unknown', requires_reconciliation: true, provider_message_ids: ['provider-id'] } });
+  });
+  it.each(['stop', 'replace'])('does not use the old RAM session after %s during provider admission', async change => {
+    const api = connect();
+    const replacement = { sendMessage: vi.fn() };
+    state.beforeAdmissionReturns = async () => {
+      if (change === 'stop') state.sessions.delete('account');
+      else state.sessions.set('account', { api: replacement });
+    };
+    await processJob(makeJob());
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(replacement.sendMessage).not.toHaveBeenCalled();
+    expect(state.calls.filter(call => call.name === 'zalo_worker_begin_provider_v1')).toHaveLength(1);
+    expect(state.writes[0].patch).toMatchObject({
+      status: 'failed', last_error: expect.stringMatching(/^UNKNOWN_EFFECT:.*SESSION_CHANGED/),
+      result: { outcome: 'unknown', requires_reconciliation: true },
+    });
+  });
+  it('binds Hermes admission to the actual message, thread and registered session generation', async () => {
+    const api = connect(); state.threadType = 'group';
+    state.sessions.get('account').hermesIngress = { privateReplySource: () => ({
+      accountId: 'account', organizationId: 'org', instanceId: 'instance', ownUid: '123', generation: 'generation',
+    }) };
+    await processJob({ ...makeJob(), hermes_group_dispatch_id: 'proposal' });
+    expect(api.sendMessage).toHaveBeenCalledExactlyOnceWith({ msg: 'hello' }, 'thread', 1);
+    expect(state.calls.filter(call => call.name.includes('begin_'))).toEqual([{
+      name: 'zalo_worker_begin_hermes_group_provider_v1', args: {
+        p_job_id: 'job', p_instance_id: 'instance', p_delivery: {
+          method: 'sendMessage', body: 'hello', threadId: 'thread', threadType: 'group', ownUid: '123', generation: 'generation',
+        },
+      },
+    }]);
+  });
+  it.each(['missing_ingress', 'user_thread', 'quote'])('rejects an unsupported Hermes request before provider: %s', async reason => {
+    const api = connect(); state.threadType = reason === 'user_thread' ? 'user' : 'group';
+    if (reason !== 'missing_ingress') state.sessions.get('account').hermesIngress = { privateReplySource: () => ({
+      accountId: 'account', organizationId: 'org', instanceId: 'instance', ownUid: '123', generation: 'generation',
+    }) };
+    await processJob({ ...makeJob(reason === 'quote' ? { target_msg_id: 'quoted', target_raw: { content: 'old' } } : {}), hermes_group_dispatch_id: 'proposal' });
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(state.calls.some(call => call.name.includes('begin_'))).toBe(false);
+    expect(state.writes[0].patch.last_error).toMatch(/^HERMES_DELIVERY_CHANGED/);
+  });
+  it('does not send when Hermes ingress closes while its provider admission is pending', async () => {
+    const api = connect(); state.threadType = 'group'; let active = true;
+    state.sessions.get('account').hermesIngress = { privateReplySource: () => active ? {
+      accountId: 'account', organizationId: 'org', instanceId: 'instance', ownUid: '123', generation: 'generation',
+    } : null };
+    state.beforeAdmissionReturns = async () => { active = false; };
+    await processJob({ ...makeJob(), hermes_group_dispatch_id: 'proposal' });
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(state.writes[0].patch).toMatchObject({
+      last_error: expect.stringMatching(/^UNKNOWN_EFFECT:.*SESSION_CHANGED/),
+      result: { outcome: 'unknown', requires_reconciliation: true },
+    });
   });
   it('retains known album IDs for reconciliation when another receipt is missing', async () => {
     const api = connect();

@@ -98,10 +98,12 @@ export async function loadHostConfiguration(configPath) {
     const configFile = absolute(configPath), bytes = await privateRead(configFile, 32768);
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
-    exact(input, ['version', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'model', 'listenPort']);
+    const connectorOnly = input?.version === 2 && input?.mode === 'connector';
+    exact(input, ['version', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort', ...(connectorOnly ? ['mode'] : ['model'])]);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
-    exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']); exact(input.model, ['model', 'maxTokens', 'maxIterations']);
-    if (input.version !== 1 || !Number.isSafeInteger(input.listenPort) || input.listenPort < 1 || input.listenPort > 65535) fail();
+    exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
+    if (!connectorOnly) exact(input.model, ['model', 'maxTokens', 'maxIterations']);
+    if ((!connectorOnly && input.version !== 1) || !Number.isSafeInteger(input.listenPort) || input.listenPort < 1 || input.listenPort > 65535) fail();
     const { projectRef, host, role } = input.store;
     if (typeof projectRef !== 'string' || !/^[a-z0-9]{20}$/.test(projectRef) ||
         (host !== `db.${projectRef}.supabase.co` && (typeof host !== 'string' || !/^[a-z0-9-]+\.pooler\.supabase\.com$/.test(host))) ||
@@ -110,16 +112,16 @@ export async function loadHostConfiguration(configPath) {
     if (url.origin !== `https://${projectRef}.supabase.co` || url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
         typeof input.supabase.publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(input.supabase.publishableKey)) fail();
     const http = Object.freeze({ allowedHosts: httpList(input.http.allowedHosts, false), allowedOrigins: httpList(input.http.allowedOrigins, true) });
-    const { model, maxTokens, maxIterations } = input.model;
-    if (typeof model !== 'string' || !/^[a-z][a-z0-9_-]*:[A-Za-z0-9_./:-]{1,128}$/.test(model) || model.length > 128 ||
-        !Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096 || !Number.isSafeInteger(maxIterations) || maxIterations < 1 || maxIterations > 16) fail();
+    const { model, maxTokens, maxIterations } = input.model ?? {};
+    if (!connectorOnly && (typeof model !== 'string' || !/^[a-z][a-z0-9_-]*:[A-Za-z0-9_./:-]{1,128}$/.test(model) || model.length > 128 ||
+        !Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096 || !Number.isSafeInteger(maxIterations) || maxIterations < 1 || maxIterations > 16)) fail();
     const stateRoot = absolute(input.stateRoot); await privateDirectory(stateRoot);
     const homeRoot = path.join(stateRoot, 'homes');
     const paths = Object.freeze({ stateRoot, homeRoot, leaseDirectory: path.join(homeRoot, '.leases'), handoffDirectory: path.join(stateRoot, 'handoff'),
       runtimeRoot: path.join(stateRoot, 'runtime'), gatewayRoot: path.join(stateRoot, 'gateway') });
     // gateway transport already caps native Unix socket names at 100 bytes.
-    if (process.platform !== 'win32' && Buffer.byteLength(path.join(paths.gatewayRoot, '00000000-0000-4000-8000-000000000000', 's', 'gateway.sock')) > 100) fail();
-    for (const directory of Object.values(paths).slice(1)) await privateDirectory(directory, true);
+    if (!connectorOnly && process.platform !== 'win32' && Buffer.byteLength(path.join(paths.gatewayRoot, '00000000-0000-4000-8000-000000000000', 's', 'gateway.sock')) > 100) fail();
+    for (const directory of connectorOnly ? [paths.handoffDirectory] : Object.values(paths).slice(1)) await privateDirectory(directory, true);
     const refs = input.encryption.keys, { activeKeyVersion } = input.encryption;
     if (!Array.isArray(refs) || refs.length < 1 || refs.length > 16 || typeof activeKeyVersion !== 'string' || !VERSION.test(activeKeyVersion)) fail();
     const versions = new Set(), secretFiles = [input.store.passwordFile, ...(input.store.caFile === undefined ? [] : [input.store.caFile])];
@@ -151,7 +153,7 @@ export async function loadHostConfiguration(configPath) {
     return Object.freeze({ supabase: Object.freeze({ url: url.origin, publishableKey: input.supabase.publishableKey }),
       store: Object.freeze({ projectRef, host, role, password, ...(ca === undefined ? {} : { ca }) }),
       encryption: Object.freeze({ activeKeyVersion, keys }), http, paths,
-      model: Object.freeze({ model, maxTokens, maxIterations, allowedModels: Object.freeze([model]) }), listenPort: input.listenPort,
+      ...(connectorOnly ? { mode: 'connector' } : { model: Object.freeze({ model, maxTokens, maxIterations, allowedModels: Object.freeze([model]) }) }), listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

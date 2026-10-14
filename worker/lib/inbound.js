@@ -18,6 +18,7 @@ import { createGroupMemberSync } from './group-members.js';
 import { createHermesIngress, isHermesLinkMessage, redactHermesLinkMessage } from './hermes-link.js';
 import { prepareLivePrivateCommand } from './hermes-command.js';
 import { createHermesReplyRunner } from './hermes-reply.js';
+import { getNativeBridge } from './hermes-native-bridge.js';
 import { INSTANCE_ID, isLeaseActive } from './lease.js';
 
 const syncGroupMembers = createGroupMemberSync({ db: sb });
@@ -193,6 +194,7 @@ async function sharedInboxAllowed(accountId, ingress = sessions.get(accountId)?.
 
 export async function handleInbound(accountId, ownerId, m, api, { ingress = sessions.get(accountId)?.hermesIngress, ticket, privateCommand } = {}) {
   const linkMessage = isHermesLinkMessage(m);
+  if (!linkMessage && threadTypeOf(m) !== 'group' && getNativeBridge()?.isPrivateThread(accountId, threadIdOf(m))) return;
   m = redactHermesLinkMessage(m);
   try {
     if (!linkMessage && threadTypeOf(m) !== 'group') {
@@ -277,6 +279,10 @@ export async function handleInbound(accountId, ownerId, m, api, { ingress = sess
 // nhóm vẫn được tạo, chỉ mang tên tạm "Nhóm Zalo".
 export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs, api = null) {
   if (!Array.isArray(msgs) || !msgs.length) return 0;
+  if (tt !== 'group' && getNativeBridge()?.isPrivateThread(accountId, threadId)) {
+    msgs = msgs.filter(isHermesLinkMessage);
+    if (!msgs.length) return 0;
+  }
   if (tt !== 'group' && !msgs.every(isHermesLinkMessage) && !await sharedInboxAllowed(accountId)) {
     msgs = msgs.filter(isHermesLinkMessage);
     if (!msgs.length) return 0;
@@ -500,6 +506,7 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   try { ownId = await api.getOwnId?.(); } catch { /* ignore */ }
   sessions.get(accountId)?.hermesReply?.close();
   sessions.get(accountId)?.hermesIngress?.close();
+  sessions.get(accountId)?.hermesNative?.close();
   const session = {
     api, ownId,
     connectedAt: Date.now(),
@@ -509,18 +516,31 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   sessions.set(accountId, session);
   const active = () => sessions.get(accountId) === session && isLeaseActive();
   try {
+    session.hermesNative = getNativeBridge()?.attach({ accountId, ownUid: String(ownId), api, isActive: active });
+  } catch {
+    sessions.delete(accountId);
+    try { api.listener.stop(); } catch { /* no listener yet */ }
+    log('native hermes session rejected', accountId);
+    return;
+  }
+  try {
     session.hermesIngress = createHermesIngress({
       source: { accountId, organizationId: orgOf(accountId), instanceId: INSTANCE_ID,
         accountOwnerId: ownerId, ownUid: String(ownId), loginRequestedAt },
       isActive: active,
       rpc: ({ functionName, args, signal }) => sb.rpc(functionName, args).abortSignal(signal),
     });
-    const result = await session.hermesIngress.register();
-    log('hermes ingress', accountId, result.status);
+    const registration = session.hermesIngress.register().then(result => log('hermes ingress', accountId, result.status));
+    if (session.hermesNative) {
+      // The native DM grant does not depend on CRM registration or its token.
+      void registration.catch(() => log('hermes ingress', accountId, 'unavailable'));
+    } else await registration;
   } catch { log('hermes ingress', accountId, 'unavailable'); }
-  if (!active()) { session.hermesIngress?.close(); return; }
+  if (!active()) { session.hermesIngress?.close(); session.hermesNative?.close(); return; }
   try {
     api.listener.on('message', async (m) => {
+      if (!active()) return;
+      if (await session.hermesNative?.capture(m)) return;
       if (!active()) return;
       const ingress = session.hermesIngress;
       const privateSource = ingress?.privateCommandSource();
@@ -537,6 +557,7 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
       if (!active()) return;
       session.hermesReply?.close();
       session.hermesIngress?.close();
+      session.hermesNative?.close();
       log('listener error', accountId, 'transport_error');
       onClosed?.(1006);
     });
@@ -545,16 +566,17 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
       if (!active()) return;
       session.hermesReply?.close();
       session.hermesIngress?.close();
+      session.hermesNative?.close();
       onClosed?.(Number(code) || 1006);
     }); } catch { /* phiên bản không có event này → watchdog lo */ }
     api.listener.start();
-    session.hermesReply = createHermesReplyRunner({
+    if (!session.hermesNative) session.hermesReply = createHermesReplyRunner({
       getSource: () => session.hermesIngress?.privateReplySource(),
       isActive: active,
       rpc: ({ functionName, args, signal }) => sb.rpc(functionName, args).abortSignal(signal),
       sendMessage: (...args) => api.sendMessage(...args),
     });
-    session.hermesReply.start();
+    session.hermesReply?.start();
     // Yêu cầu Zalo đẩy TIN GẦN ĐÂY (1-1 + nhóm); tin về qua event 'old_messages'.
     setTimeout(() => {
       if (!active()) return;

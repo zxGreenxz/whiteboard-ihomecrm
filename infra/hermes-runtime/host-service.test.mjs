@@ -25,12 +25,13 @@ function fixture(t, changes = {}) {
   const configuration = { paths: { stateRoot: '/state', homeRoot: '/state/homes', leaseDirectory: '/state/homes/.leases',
     handoffDirectory: '/state/handoff', runtimeRoot: '/state/runtime', gatewayRoot: '/state/gateway' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
-    http: {}, model: { model: 'fixture', maxTokens: 1024, maxIterations: 4, allowedModels: ['fixture'] }, listenPort: 0,
+    http: {}, ...(changes.connectorOnly ? { mode: 'connector' } : { model: { model: 'fixture', maxTokens: 1024, maxIterations: 4, allowedModels: ['fixture'] } }), listenPort: 0,
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
   const gateway = {}, supervisor = {}, runner = {}, profileHomes = {}, profileStore = {}, transport = {}, engine = {}, runtime = {};
   const backend = { server,
+    startWorkMemoryRetention() { assert(server.listening); events.push('retention-start'); },
     createRuntimeGateway(options) { assert.equal(options.transport, transport); assert.deepEqual(options.allowedModels, ['fixture']); return gateway; },
     createRuntimeSupervisor(options) { assert.equal(options.profileStore, profileStore); assert.equal(options.runtime, runtime); return supervisor; },
     createPrivateCommandRunner(value) { assert.equal(value, supervisor); return runner; },
@@ -39,13 +40,14 @@ function fixture(t, changes = {}) {
     async acquireHostOwnership(options) { assert.deepEqual(options, { stateRoot: '/state' }); events.push('lock'); await changes.lock?.();
       return { async release() { events.push('release'); await changes.release?.(); } }; },
     async prepareState() { events.push('state'); return '/state/audit'; },
-    async artifacts() { return { wrapperPath: '/code/agent.py', wrapperSha256: 'a'.repeat(64), relayPath: '/code/relay.mjs', relaySha256: 'b'.repeat(64) }; },
-    createDockerEngine() { return engine; },
+    async artifacts() { assert(!changes.connectorOnly); return { wrapperPath: '/code/agent.py', wrapperSha256: 'a'.repeat(64), relayPath: '/code/relay.mjs', relaySha256: 'b'.repeat(64) }; },
+    createDockerEngine() { assert(!changes.connectorOnly); return engine; },
     async preflight(value, passedSignal) { assert.equal(value, engine); assert(passedSignal instanceof AbortSignal); events.push('preflight'); await changes.preflight?.(); },
     createHostAudit() { return { write: async () => {}, async close() { events.push('audit-close'); await changes.auditClose?.(); } }; },
     createConnectionHandoff(options) { assert.equal(options.keys.get('k1')[0], 7); events.push('wal-copy'); return handoff; },
     createStorePool() { events.push('pool'); return { async end() { events.push('pool-close'); await changes.poolClose?.(); } }; },
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
+      if (changes.connectorOnly) assert.equal(options.connectorOnly, true);
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createGatewayTransport(options) { assert.equal(options.engine, engine); return transport; },
     createContainerRuntime(options) { assert.equal(options.gateway, gateway); assert.equal(options.engine, engine); return runtime; },
@@ -62,6 +64,9 @@ function fixture(t, changes = {}) {
     createHandoffReconciler(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
       return { start() { events.push('reconciler-start'); assert(server.listening); },
         async close() { events.push('reconciler-stop'); await changes.reconcilerClose?.(); } }; },
+    createConnectorMaintenance(options) { assert(changes.connectorOnly); assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
+      return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
+        async close() { events.push('connector-maintenance-stop'); await changes.reconcilerClose?.(); } }; },
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
@@ -75,10 +80,21 @@ test('product composition is inert until start, requires WAL, binds loopback and
   assert.equal(f.key.every(value => value === 0), true); assert.equal(f.events.filter(value => value === 'dispose').length, 1);
   assert(f.events.indexOf('backend-copy') < f.events.indexOf('dispose')); assert(f.events.indexOf('wal-copy') < f.events.indexOf('dispose'));
   assert(f.events.indexOf('list') < f.events.indexOf('backend-copy'));
+  assert.equal(f.events.filter(value => value === 'retention-start').length, 1);
   assert.equal(f.host.status().state, 'running'); const close = f.host.close(); assert.equal(f.host.close(), close); await close;
   assert.equal(f.server.listening, false); assert.equal(f.host.status().state, 'closed');
   assert.deepEqual(f.events.slice(-5), ['backend-close', 'wal-close', 'pool-close', 'audit-close', 'release']);
   await assert.rejects(f.host.start(), /host_stopped/);
+});
+
+test('connector host starts without a model, Docker, personal homes or runtime and drains maintenance before key cleanup', async t => {
+  const drain = deferred(), entered = deferred();
+  const f = fixture(t, { connectorOnly: true, reconcilerClose: () => { entered.resolve(); return drain.promise; } });
+  await f.host.start(); assert(f.events.includes('connector-maintenance-start'));
+  assert(!f.events.includes('preflight')); assert(!f.events.includes('orchestrator-start'));
+  const close = f.host.close(); await entered.promise;
+  assert(!f.events.includes('backend-close')); assert(!f.events.includes('release')); drain.resolve(); await close;
+  assert.deepEqual(f.events.slice(-5), ['backend-close', 'wal-close', 'pool-close', 'audit-close', 'release']);
 });
 
 test('shutdown starts runtime stop while reconciliation drains, and keeps keys/pool/WAL/lock until that barrier', async t => {

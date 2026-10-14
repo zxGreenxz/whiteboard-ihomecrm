@@ -131,11 +131,11 @@ function semanticCategory(tool) {
 
 function proposedDisposition(category, id) {
   if (category === 'navigation') return ['retain_ui', 'Giữ điều hướng/deep link ở UI; không tự chuyển quyền điều khiển DOM sang Hermes.'];
-  if (id === 'lap_ke_hoach') return ['migrate_to_gateway', 'P3/P5: adapter đề xuất kế hoạch dùng schema/preview/RPC hiện có; giữ superAdminOnly đến khi policy thay thế được chứng minh. Hermes không tự duyệt.'];
-  if (id === 'thuc_thi_buoc') return ['retain_backend_executor', 'P5/P8: chuyển trigger hậu duyệt sang executor CRM có queue bền vững; Hermes đọc kết quả, không chọn bước tùy ý. Giữ superAdminOnly, không gọi lại Copilot AI engine; ngừng wrapper cũ ở P11.'];
+  if (id === 'lap_ke_hoach') return ['migrate_to_gateway', 'P3/P5: Hermes upstream điều phối theo ý định user; connector cung cấp schema/RPC và quyền CRM hiện tại giao Read/Action. Chỉ soạn khi được yêu cầu; không sao chép vòng duyệt hoặc cờ superAdminOnly của engine cũ thành quyền Hermes.'];
+  if (id === 'thuc_thi_buoc') return ['retain_backend_executor', 'P5/P8: tái dùng executor/queue và điều kiện nghiệp vụ CRM, thực hiện yêu cầu rõ trong quyền hiệu lực; không gọi engine, giả approve/PIN hoặc sao chép cờ superAdminOnly Copilot. Ngừng wrapper cũ sau khi có luồng thay thế ở P11.'];
   if (category === 'plan_orchestration' || category === 'unclassified') return ['undecided', 'Chưa quyết định adapter; tái dùng nghiệp vụ nhưng không nhân đôi vòng điều phối AI.'];
   if (category === 'memory_mutation') return ['migrate_to_gateway', 'Cần tách memory riêng từng user và memory công việc có quyền CRM; tool hiện có chỉ là own-row, chưa có Hermes tổng.'];
-  if (category === 'write_proposal') return ['migrate_to_gateway', 'Tái dùng đề xuất/xem trước; quyền ghi và xác nhận phải kiểm ở server.'];
+  if (category === 'write_proposal') return ['migrate_to_gateway', 'Tái dùng schema/validation/nghiệp vụ; yêu cầu rõ được thực hiện trong quyền user giao Action Hermes. Giữ phê duyệt nghiệp vụ mà user trực tiếp cũng phải đáp ứng.'];
   return ['migrate_to_gateway', 'Tách browser dependencies và kiểm projection/phạm vi trước khi cấp qua gateway.'];
 }
 
@@ -285,7 +285,7 @@ function acceptance(id, permissionKey, kind, extra = []) {
     `${id}: input sai schema bị từ chối; output/projection không lộ trường ngoài phạm vi.`,
     ...extra,
   ];
-  if (kind === 'write' || kind === 'action') requiredCases.push(`${id}: không tự duyệt; payload/version/nonce/grant bị sửa phải bị chặn; idempotency và kết quả chưa rõ được đối soát.`);
+  if (kind === 'write' || kind === 'action') requiredCases.push(`${id}: lệnh rõ thực hiện trong quyền user giao Action; yêu cầu chỉ soạn không ghi. Payload/version/grant bị sửa bị chặn; giữ phê duyệt nghiệp vụ thật, idempotency và đối soát kết quả chưa rõ.`);
   return { status: 'proposed_not_run', requiredCases, evidence: [] };
 }
 function contractForTool(tool, object, ast, asts, action) {
@@ -310,16 +310,16 @@ function contractForTool(tool, object, ast, asts, action) {
     consent: {
       evidence: action ? 'action_catalog_declaration' : 'source_category_and_migration_proposal',
       current: action?.consentRequired ?? (memory ? 'explicit_user_memory_request_in_description' : plan ? 'per_action_approval_or_standing_grant' : 'no_write_consent_declared'),
-      proposed: proposal || plan ? 'CRM validates consent; nonce and step-up remain outside model' : memory ? 'Own profile request; work/shared memory needs CRM policy' : 'Read/navigation still requires current permission and connection restriction',
-      superAdminOnlyPreserved: tool.flags.superAdminOnly,
+      proposed: proposal || plan ? 'Clear user intent executes through current CRM rights intersected with Hermes Action; preserve domain business approvals, without Copilot engine consent/PIN prerequisites' : memory ? 'Own work memory and explicit sharing through CRM; personal Hermes memory stays independent' : 'Read/navigation still requires current permission and connection restriction',
+      legacySuperAdminOnly: tool.flags.superAdminOnly,
     },
     channels: {
       declaredAdapters: [!tool.flags.uiControlOnly && 'copilot_chat', !tool.flags.chatOnly && 'page_agent_domain_adapter'].filter(Boolean),
-      proposed: tool.id === 'thuc_thi_buoc' ? ['crm_internal_executor_after_consent'] : tool.disposition === 'retain_ui' ? ['crm_browser_or_deep_link'] : ['hermes_via_crm_gateway'],
+      proposed: tool.id === 'thuc_thi_buoc' ? ['crm_executor_with_current_user_and_hermes_action'] : tool.disposition === 'retain_ui' ? ['crm_browser_or_deep_link'] : ['hermes_via_crm_gateway'],
       groupProjection: 'not_approved_for_direct_group_output', runtime: 'not_verified',
     },
     phase: plan ? ['P3', 'P5', 'P8', 'P11'] : memory ? ['P1', 'P3', 'P7'] : proposal ? ['P5', 'P8'] : tool.semanticCategory === 'navigation' ? ['P7', 'P8'] : ['P3', 'P8'],
-    acceptance: acceptance(tool.id, tool.permission, proposal || plan ? 'write' : 'read', tool.flags.superAdminOnly ? [`${tool.id}: user thường bị chặn khi chưa có policy thay thế superAdminOnly được chứng minh.`] : []),
+    acceptance: acceptance(tool.id, tool.permission, proposal || plan ? 'write' : 'read', tool.flags.superAdminOnly ? [`${tool.id}: phân biệt cờ superAdminOnly legacy với quyền nghiệp vụ server; chưa map/xác minh thì không mở capability Hermes.`] : []),
     completeness: { declarationMetadata: input.declaration ? 'captured' : 'gap', runtimeDispatch: 'not_verified', parity: 'not_run' },
   };
 }
@@ -478,8 +478,9 @@ export function buildInventory(sources) {
       scope: { permission: action.permission, evidence: 'catalog_permission_only', verification: 'server_RPC_scope_not_verified' },
       input: schemaEvidence(required(propValue(object, 'inputSchema'), `${action.id} inputSchema`), asts.get(ACTION_PATH), asts),
       output: { previewFields: stringArray(propValue(object, 'previewFields'), `${action.id} previewFields`), executionReceipt: 'RPC-specific; runtime shape not verified', externalEffectReconcileRequired: action.externalEffect },
-      consent: { evidence: 'catalog_declaration', required: action.consentRequired, pinAlways: action.pinAlways, neverApproveFromModel: true },
-      channels: { current: ['CRM_preview_consent_executor'], proposed: action.retired ? [] : ['hermes_proposal_through_gateway_then_CRM_executor'], runtime: 'not_verified' },
+      consent: { evidence: 'legacy_catalog_declaration', required: action.consentRequired, pinAlways: action.pinAlways, neverApproveFromModel: true,
+        proposed: 'Current user rights intersected with Hermes Action; preserve genuine domain approvals and never manufacture legacy approval/PIN state' },
+      channels: { current: ['CRM_preview_consent_executor'], proposed: action.retired ? [] : ['hermes_intent_through_authorized_CRM_executor'], runtime: 'not_verified' },
       phase: action.retired ? ['P0', 'P11'] : ['P5', 'P8'],
       acceptance: acceptance(`action:${action.id}`, action.permission, 'action', action.retired ? ['Retired action remains unavailable in schema/tool list/executor.'] : action.externalEffect ? ['Provider timeout/crash must retain UNKNOWN_EFFECT until authoritative reconciliation; no blind re-send.'] : []),
       completeness: { declarationMetadata: 'captured', serverScope: 'not_verified', parity: 'not_run' },

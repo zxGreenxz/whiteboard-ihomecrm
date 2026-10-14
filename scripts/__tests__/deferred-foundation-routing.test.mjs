@@ -12,11 +12,14 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 const testFiles = trackedTestFiles([]).filter(file =>
   file === 'scripts/test-hermes-product-runtime.test.mjs' ||
   file === 'scripts/__tests__/hermes-private-flow.test.mjs' ||
+  file === 'scripts/__tests__/hermes-cde-live.test.mjs' ||
   file === 'src/hermes/connectionClient.test.ts' ||
+  file === 'src/hermes/zaloBindingClient.test.ts' ||
   file === 'src/hermes/orgPolicyClient.test.ts' ||
   file === 'src/hermes/HermesOrgPolicySettings.test.tsx' ||
   file === 'src/pages/settings/HermesConnectionsPage.test.tsx' ||
   /^infra\/hermes-zalo-router\//.test(file) ||
+  /^infra\/hermes-zalo-native\//.test(file) ||
   /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store|connection-renewal-schema|room-scope-schema|public-conflict-schema)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
 const planFor = (path, testMatrix = matrix, files = testFiles) => createGatePlan({
@@ -62,8 +65,8 @@ function assertNativeOwner(file, testMatrix = matrix) {
   expect(assigned.bySuite.get('node-native')).toEqual([file]);
   expect(assigned.bySuite.get('app-unit')).toEqual([]);
 }
-function assertP2Rule(source, ruleId, expected, testMatrix = matrix) {
-  const plan = planFor(source, testMatrix);
+function assertP2Rule(source, ruleId, expected, testMatrix = matrix, files = testFiles) {
+  const plan = planFor(source, testMatrix, files);
   const native = plan.suiteSelections.find(s => s.id === 'node-native');
   const shared = riskMap.scope.sharedPaths.some(pattern => globToRegExp(pattern).test(source));
   expect(plan.fullFallback).toBe(shared);
@@ -82,9 +85,87 @@ function assertP2Rule(source, ruleId, expected, testMatrix = matrix) {
   expect(plan.browserRequirements).toEqual([]);
   expect(plan.suiteSelections.some(s => s.runner === 'playwright')).toBe(false);
   expect(plan.gateIds).not.toContain('check-copilot-golden-eval');
+  return plan;
 }
 
 describe('P0 shared CRM foundation routing', () => {
+  it('requires the Linux upstream workflow when native transport or its CI runner changes', () => {
+    const required = { workflow: '.github/workflows/hermes-runtime.yml', jobs: ['native-upstream'], suiteIds: ['node-native'] };
+    for (const source of ['infra/hermes-zalo-native/adapter.py', 'infra/hermes-zalo-native/upstream.test.mjs',
+      'worker/lib/hermes-native-bridge.js', 'scripts/test-hermes-native-ci.mjs', '.github/workflows/hermes-runtime.yml']) {
+      const plan = planFor(source);
+      expect(plan.crossReview).toBe(true);
+      expect(plan.requiredExternalWorkflows).toContainEqual(required);
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-native-zalo-linux-upstream');
+    expect(planFor('infra/hermes-zalo-native/adapter.py', mutant).requiredExternalWorkflows).not.toContainEqual(required);
+  });
+
+  it('routes native Zalo plugin and worker sources to transport and real inbound caller tests', () => {
+    const native = ['infra/hermes-zalo-native/bridge.test.mjs', 'infra/hermes-zalo-native/journal.test.mjs',
+      'infra/hermes-zalo-native/upstream.test.mjs'];
+    for (const file of native) { expect(testFiles).toContain(file); assertNativeOwner(file); }
+    const caller = 'worker/__tests__/hermes-native-inbound.test.js';
+    const files = testFiles.filter(file => [...native, ...p2NativeTests, caller].includes(file));
+    for (const source of ['infra/hermes-zalo-native/adapter.py', 'worker/lib/hermes-native-bridge.js',
+      'worker/lib/hermes-native-config.js', 'worker/lib/hermes-native-files.js', 'worker/lib/hermes-native-journal.js',
+      'worker/lib/hermes-link.js', 'worker/lib/inbound.js', 'worker/lib/session-lifecycle.js', 'worker/index.js']) {
+      const plan = assertP2Rule(source, 'hermes-native-zalo-transport', native, matrix, files);
+      expect(plan.crossReview).toBe(true);
+      const app = plan.suiteSelections.find(s => s.id === 'app-unit');
+      expect(app.reason.split(', ')).toContain('hermes-native-zalo-caller');
+      expect(app.files).toContain(caller);
+      native.forEach(file => expect(app.files).not.toContain(file));
+    }
+    const broken = structuredClone(matrix);
+    broken.sourceSelectionRules = broken.sourceSelectionRules.filter(rule => rule.id !== 'hermes-native-zalo-transport');
+    expect(() => assertP2Rule('infra/hermes-zalo-native/adapter.py', 'hermes-native-zalo-transport', native, broken, files)).toThrow();
+  });
+
+  it('routes standalone connector and external/neutral-policy SQL to actual composition tests', () => {
+    const cases = [
+      ['infra/hermes-runtime/hermes-connector.service', 'hermes-independent-connector',
+        ['infra/hermes-broker/connector-maintenance.test.mjs', 'infra/hermes-runtime/host-service.test.mjs', 'infra/hermes-broker/server.test.mjs']],
+      ['supabase/migrations/20261014000538_hermes_external_group_connector_v1.sql', 'hermes-external-groups',
+        ['infra/hermes-broker/external-group-composition.test.mjs', 'infra/hermes-broker/mcp-http.test.mjs']],
+      ['supabase/migrations/20261014000503_hermes_optional_org_policy_v1.sql', 'hermes-optional-policy-native',
+        ['infra/hermes-broker/optional-org-policy-sql.test.mjs', 'infra/hermes-broker/external-group-composition.test.mjs']],
+    ];
+    for (const [source, rule, expected] of cases) {
+      for (const file of expected) { expect(testFiles).toContain(file); assertNativeOwner(file); }
+      assertP2Rule(source, rule, expected);
+      const broken = structuredClone(matrix);
+      broken.sourceSelectionRules = broken.sourceSelectionRules.filter(item => item.id !== rule);
+      expect(() => assertP2Rule(source, rule, expected, broken)).toThrow();
+    }
+  });
+
+  it('routes deployed Hermes proxy entries through native HTTP contracts and browser clients with authorization review', () => {
+    const proxyTest = 'infra/hermes-broker/frontend-proxy.test.mjs';
+    expect(testFiles).toContain(proxyTest);
+    assertNativeOwner(proxyTest);
+    const assertProxyRule = (source, candidate = matrix) => {
+      const plan = planFor(source, candidate);
+      expect(plan.fullFallback).toBe(false);
+      expect(plan.crossReview).toBe(true);
+      expect(plan.profiles).toContain('money-auth');
+      const native = plan.suiteSelections.find(s => s.id === 'node-native');
+      expect(native.reason.split(', ')).toContain('hermes-frontend-proxy');
+      expect(native.files).toEqual(expect.arrayContaining([proxyTest,
+        'infra/hermes-broker/connection-http.test.mjs', 'infra/hermes-zalo-router/binding-http.test.mjs']));
+      expect(getGate('suite:node-native', plan).args).toContain(proxyTest);
+      const app = plan.suiteSelections.find(s => s.id === 'app-unit');
+      expect(app.files).toEqual(expect.arrayContaining(['src/hermes/connectionClient.test.ts', 'src/hermes/zaloBindingClient.test.ts']));
+      expect(app.files).not.toContain(proxyTest);
+    };
+    for (const source of ['api/hermes/connections/[operation].js', 'api/hermes/zalo/[operation].js',
+      'infra/hermes-broker/frontend-proxy.mjs']) assertProxyRule(source);
+    const withoutRule = structuredClone(matrix);
+    withoutRule.sourceSelectionRules = withoutRule.sourceSelectionRules.filter(rule => rule.id !== 'hermes-frontend-proxy');
+    expect(() => assertProxyRule('api/hermes/connections/[operation].js', withoutRule)).toThrow();
+  });
+
   it('restores real core files to their actual Vitest and node:test owners', () => {
     for (const file of [...coreTests, ...verifierTests]) {
       expect(testFiles, file).toContain(file);
@@ -136,17 +217,20 @@ describe('P0 shared CRM foundation routing', () => {
     const privateTests = ['infra/hermes-zalo-router/privacy-schema.test.mjs', 'infra/hermes-zalo-router/privacy-sql.test.mjs',
       'infra/hermes-zalo-router/private-command-sql.test.mjs', 'infra/hermes-zalo-router/private-dispatch-sql.test.mjs', 'infra/hermes-zalo-router/private-reply-sql.test.mjs'];
     for (const file of [bindingTest, ...privateTests]) assertNativeOwner(file);
+    const callerTests = ['worker/__tests__/hermes-link.test.js', 'worker/__tests__/hermes-command.test.js',
+      'worker/__tests__/hermes-inbound.test.js', 'worker/__tests__/hermes-reply.test.js'];
+    const files = testFiles.filter(file => [bindingTest, ...privateTests, ...callerTests].includes(file));
     for (const source of ['infra/hermes-zalo-router/binding-service.mjs', 'worker/lib/hermes-link.js', 'worker/lib/hermes-command.js',
       'worker/lib/inbound.js', 'worker/lib/login.js', 'worker/lib/session-lifecycle.js', 'worker/lib/hermes-reply.js', 'worker/lib/watchdog.js',
       'supabase/migrations/20261012165523_hermes_zalo_binding_v1.sql', 'supabase/migrations/20261013055055_hermes_zalo_private_command_v1.sql',
       'supabase/migrations/20261013084000_hermes_private_command_dispatch_v1.sql', 'supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql', 'infra/hermes-zalo-router/private-command-fixture.mjs']) {
-      const plan = planFor(source);
+      const plan = planFor(source, matrix, files);
       expect(matrix.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern => globToRegExp(pattern).test(source))).map(rule => rule.id))
         .toContain('hermes-zalo-binding-native');
       expect(plan.suiteSelections.find(s => s.id === 'node-native').files).toEqual(expect.arrayContaining([bindingTest, ...privateTests]));
       expect(plan.suiteSelections.find(s => s.id === 'app-unit')?.files ?? []).not.toContain(bindingTest);
       if (source.startsWith('worker/')) expect(plan.suiteSelections.find(s => s.id === 'app-unit').files)
-        .toEqual(expect.arrayContaining(['worker/__tests__/hermes-link.test.js', 'worker/__tests__/hermes-command.test.js', 'worker/__tests__/hermes-inbound.test.js', 'worker/__tests__/hermes-reply.test.js']));
+        .toEqual(expect.arrayContaining(callerTests));
       if (!source.startsWith('supabase/')) expect(riskMap.tiers.authorization.paths.some(pattern => globToRegExp(pattern).test(source))).toBe(true);
     }
   });
@@ -260,27 +344,47 @@ describe('P0 shared CRM foundation routing', () => {
     }
     const onlyTest = planFor(file), gate = getGate('suite:node-native', onlyTest);
     expect(gate.args).toEqual(['--test', file]);
+    const assertRuntimeRule = candidate => {
+      const rule = candidate.sourceSelectionRules.find(item => item.id === 'hermes-private-runtime-composition');
+      expect(rule.suiteId).toBe('node-native');
+      expect(rule.sourcePaths.some(pattern => globToRegExp(pattern).test(source))).toBe(true);
+      expect(rule.testPatterns.some(pattern => globToRegExp(pattern).test(file))).toBe(true);
+    };
+    assertRuntimeRule(matrix);
     const mutant = structuredClone(matrix);
     mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns =
       mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns.filter(pattern => pattern !== file);
-    expect(planFor(source, mutant).suiteSelections.find(selection => selection.id === 'node-native').files).not.toContain(file);
+    expect(() => assertRuntimeRule(mutant)).toThrow();
+    // Room-pass composition independently needs this same test. Losing one
+    // required rule must be detected even while the other still selects it.
+    expect(planFor(source, mutant).suiteSelections.find(selection => selection.id === 'node-native').files).toContain(file);
+    const unowned = structuredClone(matrix);
+    for (const rule of unowned.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern => globToRegExp(pattern).test(source)))) {
+      rule.testPatterns = rule.testPatterns.filter(pattern => !globToRegExp(pattern).test(file));
+    }
+    expect(planFor(source, unowned).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? []).not.toContain(file);
   });
 
   it('private TEST runner selects offline helper tests with review and never schedules its live command', () => {
     const runner = 'scripts/test-hermes-private-flow.mjs', testFile = 'scripts/__tests__/hermes-private-flow.test.mjs';
+    const cdeTest = 'scripts/__tests__/hermes-cde-live.test.mjs';
     expect(testFiles).toContain(testFile); assertNativeOwner(testFile);
+    expect(testFiles).toContain(cdeTest); assertNativeOwner(cdeTest);
     const assertRule = (source, testMatrix = matrix) => {
       expect(testMatrix.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern =>
         globToRegExp(pattern).test(source))).map(rule => rule.id)).toContain('hermes-private-flow-native');
       const plan = planFor(source, testMatrix);
       const selected = plan.suiteSelections.find(item => item.id === 'node-native');
       expect(selected.files).toContain(testFile);
+      expect(selected.files).toContain(cdeTest);
       expect(selected.files).not.toContain(runner);
       expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...selected.files]);
       expect(plan.suiteSelections.find(item => item.id === 'app-unit')?.files ?? []).not.toContain(testFile);
+      expect(plan.suiteSelections.find(item => item.id === 'app-unit')?.files ?? []).not.toContain(cdeTest);
+      expect(getGate('suite:node-native', plan).args).not.toContain('--run');
       return plan;
     };
-    for (const source of [runner, 'scripts/test-env/lock.mjs', 'scripts/test-hermes-durable-store.mjs',
+    for (const source of [runner, 'scripts/test-hermes-cde-live.mjs', 'scripts/test-env/lock.mjs', 'scripts/test-hermes-durable-store.mjs',
       'scripts/network-center-rollout-common.mjs',
       'infra/hermes-broker/durable-connection-store.mjs', 'supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql',
       'supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql']) assertRule(source);
@@ -291,6 +395,30 @@ describe('P0 shared CRM foundation routing', () => {
     const mutant = structuredClone(matrix);
     mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-flow-native');
     expect(() => assertRule(runner, mutant)).toThrow();
+  });
+
+  it('room-pass actions and v4 metadata select actual caller, SQL and UI contracts', () => {
+    const nativeFiles = ['room-pass-core', 'room-pass-composition', 'room-pass-metadata'].map(name => `infra/hermes-broker/${name}.test.mjs`);
+    nativeFiles.forEach(file => { expect(testFiles).toContain(file); assertNativeOwner(file); });
+    const assertMapped = (source, candidate = matrix) => {
+      const plan = planFor(source, candidate);
+      expect(plan.crossReview).toBe(true);
+      const selected = plan.suiteSelections.find(item => item.id === 'node-native');
+      expect(selected.reason.split(', ')).toContain('hermes-room-pass-actions');
+      expect(selected.files).toEqual(expect.arrayContaining(nativeFiles));
+      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...selected.files]);
+      return plan;
+    };
+    assertMapped('infra/hermes-broker/room-pass-adapter.mjs');
+    const migration = 'supabase/migrations/20261014090957_hermes_assistant_capabilities_v4.sql';
+    const plan = assertMapped(migration);
+    expect(plan.profiles).toContain('schema');
+    const app = plan.suiteSelections.find(item => item.id === 'app-unit');
+    expect(app.reason.split(', ')).toContain('hermes-assistant-capabilities-ui');
+    expect(app.files).toEqual(expect.arrayContaining(['src/hermes/connectionClient.test.ts', 'src/hermes/orgPolicyClient.test.ts', 'src/pages/settings/HermesConnectionsPage.test.tsx']));
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-room-pass-actions');
+    expect(() => assertMapped(migration, mutant)).toThrow();
   });
 
   it('connection options SQL and API select their actual native contracts and browser client contracts', () => {
@@ -317,36 +445,89 @@ describe('P0 shared CRM foundation routing', () => {
       .not.toContain('infra/hermes-broker/connection-options-sql.test.mjs');
   });
 
+  it('additive Hermes action options select native authorization and current browser clients', () => {
+    const source = 'supabase/migrations/20261013164116_hermes_group_capability_options_v2.sql';
+    const expectedNative = 'infra/hermes-broker/group-options-sql.test.mjs';
+    const expectedApp = ['src/hermes/orgPolicyClient.test.ts', 'src/pages/settings/HermesConnectionsPage.test.tsx'];
+    expect(testFiles).toContain(expectedNative); assertNativeOwner(expectedNative);
+    const assertMapped = (candidate = matrix) => {
+      const plan = planFor(source, candidate);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('schema');
+      const native = plan.suiteSelections.find(item => item.id === 'node-native');
+      expect(native.reason.split(', ')).toContain('hermes-group-capability-v2-native');
+      expect(native.files).toContain(expectedNative);
+      const app = plan.suiteSelections.find(item => item.id === 'app-unit');
+      expect(app.reason.split(', ')).toContain('hermes-group-capability-v2-ui');
+      expect(app.files).toEqual(expect.arrayContaining(expectedApp));
+      expect(native.files).not.toEqual(expect.arrayContaining(expectedApp));
+    };
+    assertMapped();
+    for (const missing of ['hermes-group-capability-v2-native', 'hermes-group-capability-v2-ui']) {
+      const mutant = structuredClone(matrix);
+      mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== missing);
+      expect(() => assertMapped(mutant)).toThrow();
+    }
+  });
+
+  it('Hermes direct queue SQL selects the actual SQL authority and provider worker behavior', () => {
+    const source = 'supabase/migrations/20261013170125_hermes_group_authorized_queue_v1.sql';
+    const actualSql = 'infra/hermes-zalo-router/group-send-sql.test.mjs';
+    expect(testFiles).toContain(actualSql); assertNativeOwner(actualSql);
+    const assertMapped = (candidate = matrix) => {
+      const plan = planFor(source, candidate);
+      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('schema');
+      const native = plan.suiteSelections.find(item => item.id === 'node-native');
+      expect(native.reason.split(', ')).toContain('hermes-group-authorized-queue-native');
+      expect(native.files).toContain(actualSql);
+      const app = plan.suiteSelections.find(item => item.id === 'app-unit');
+      expect(app.reason.split(', ')).toContain('hermes-group-authorized-queue-worker');
+      expect(app.files).toContain('worker/__tests__/queue-delivery.test.js');
+      expect(app.files).not.toContain(actualSql);
+    };
+    assertMapped();
+    for (const missing of ['hermes-group-authorized-queue-native', 'hermes-group-authorized-queue-worker']) {
+      const mutant = structuredClone(matrix);
+      mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== missing);
+      expect(() => assertMapped(mutant)).toThrow();
+    }
+  });
+
   it('organization policy selects its SQL ACL and mounted UI behavior under authorization review', () => {
     const migration = 'supabase/migrations/20261013115741_hermes_org_policy_options_v1.sql';
     const nativeFiles = ['infra/hermes-broker/org-policy-sql.test.mjs', 'scripts/__tests__/hermes-durable-schema.test.mjs'];
     const appFiles = ['src/hermes/orgPolicyClient.test.ts', 'src/hermes/HermesOrgPolicySettings.test.tsx',
       'src/pages/settings/HermesConnectionsPage.test.tsx'];
     nativeFiles.forEach(file => { expect(testFiles).toContain(file); assertNativeOwner(file); });
-    const assertSelection = (source, suite, rule, expected, testMatrix = matrix) => {
-      const plan = planFor(source, testMatrix);
+    const assertSelection = (source, plan, suite, rule, expected) => {
       expect(plan.crossReview).toBe(true);
       expect(plan.profiles).toContain(source.endsWith('.sql') ? 'schema' : 'money-auth');
       const selection = plan.suiteSelections.find(item => item.id === suite);
       expect(selection.reason.split(', ')).toContain(rule);
       expect(selection.files).toEqual(expect.arrayContaining(expected));
     };
+    // Inspect both suites from one plan per unchanged input. Mutated matrices
+    // below still receive their own plans so a removed rule cannot be cached away.
+    const nativePlans = new Map();
     for (const source of [migration, 'supabase/migrations/20261012061447_hermes_assistant_identity_policy_v1.sql',
       'supabase/migrations/20261012165809_hermes_public_conflict_http_v1.sql']) {
-      assertSelection(source, 'node-native', 'hermes-org-policy-native', nativeFiles);
+      const plan = planFor(source);
+      nativePlans.set(source, plan);
+      assertSelection(source, plan, 'node-native', 'hermes-org-policy-native', nativeFiles);
     }
     for (const source of [migration, 'src/hermes/orgPolicyClient.ts', 'src/hermes/HermesOrgPolicySettings.tsx',
       'src/hermes/useHermesConnections.ts', 'src/pages/settings/HermesConnectionsPage.tsx',
       'src/components/authorization/PermissionPicker.tsx', 'src/components/authorization/ScopePicker.tsx']) {
-      assertSelection(source, 'app-unit', 'hermes-org-policy-ui', appFiles);
-      const selectedNative = planFor(source).suiteSelections.find(item => item.id === 'node-native')?.files ?? [];
+      const plan = nativePlans.get(source) ?? planFor(source);
+      assertSelection(source, plan, 'app-unit', 'hermes-org-policy-ui', appFiles);
+      const selectedNative = plan.suiteSelections.find(item => item.id === 'node-native')?.files ?? [];
       appFiles.forEach(file => expect(selectedNative).not.toContain(file));
     }
-    expect(planFor(migration).profiles).toContain('schema');
+    expect(nativePlans.get(migration).profiles).toContain('schema');
     for (const [suite, rule, expected] of [['node-native', 'hermes-org-policy-native', nativeFiles], ['app-unit', 'hermes-org-policy-ui', appFiles]]) {
       const mutant = structuredClone(matrix);
       mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(item => item.id !== rule);
-      expect(() => assertSelection(migration, suite, rule, expected, mutant)).toThrow();
+      const plan = planFor(migration, mutant);
+      expect(() => assertSelection(migration, plan, suite, rule, expected)).toThrow();
     }
   });
 

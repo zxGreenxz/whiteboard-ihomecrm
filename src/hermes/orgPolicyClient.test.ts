@@ -22,10 +22,49 @@ function setup(timeoutMs=30000){
 beforeEach(()=>{vi.stubEnv('VITE_SUPABASE_URL',URL);vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY','sb_publishable_fixture');});
 afterEach(()=>{vi.unstubAllEnvs();vi.useRealTimers();vi.restoreAllMocks();});
 describe('human Hermes company policy client',()=>{
+  it('reads the neutral company ceiling without creating policy and only saves an explicit change with version-zero CAS',async()=>{
+    const s=setup(),value=example();
+    value.policy={organizationId:ORG,version:0,enabled:true,read:['assistant.context.read','rooms.view'],action:[],scopeIds:[SCOPE]};
+    value.storedScopes=[{scopeId:SCOPE,label:'Toàn tổ chức',available:true}];
+    s.fetch.mockResolvedValueOnce(json(value));await expect(s.client.load()).resolves.toEqual(value);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+    const narrowed={expectedVersion:0,enabled:true,read:['assistant.context.read'],action:[],scopeIds:[]};
+    const ack={organizationId:ORG,version:1,enabled:true,read:narrowed.read,action:[],scopeIds:[]};
+    s.fetch.mockResolvedValueOnce(json(ack));await expect(s.client.save(narrowed)).resolves.toEqual(ack);
+    expect(JSON.parse(s.fetch.mock.calls[1][1]!.body as string)).toMatchObject({p_expected_version:0,p_read:['assistant.context.read'],p_scope_ids:[]});
+  });
+  it('negotiates read-only v3 only when v4 is definitively absent, with the same organization and bearer',async()=>{
+    const s=setup();s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(json(example()));
+    await expect(s.client.load()).resolves.toEqual(example());
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v4',URL+'/rest/v1/rpc/hermes_org_policy_options_v3']);
+    expect(s.fetch.mock.calls[0][1]!.body).toEqual(s.fetch.mock.calls[1][1]!.body);
+    expect(s.fetch.mock.calls[0][1]!.headers).toEqual(s.fetch.mock.calls[1][1]!.headers);
+  });
+  it('does not fall back on denied or unknown reads and never negotiates policy writes',async()=>{
+    for(const status of [403,503]){
+      const s=setup();s.fetch.mockResolvedValueOnce(denial('PGRST202',status));
+      await expect(s.client.load()).rejects.toMatchObject({code:'backend_unavailable'});expect(s.fetch).toHaveBeenCalledTimes(1);
+    }
+    const s=setup();await s.client.load();s.fetch.mockResolvedValueOnce(denial('PGRST202',404));
+    await expect(s.client.save(s.input())).rejects.toMatchObject({code:'policy_outcome_unknown',outcomeUnknown:true});
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+  });
+  it('keeps v1 compatibility after exact missing v4, v3 and v2 while refusing malformed v3 fallback',async()=>{
+    const s=setup();s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(json(example()));
+    await expect(s.client.load()).resolves.toEqual(example());
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([4,3,2,1].map(version=>URL+`/rest/v1/rpc/hermes_org_policy_options_v${version}`));
+    const malformed=setup();malformed.fetch.mockResolvedValueOnce(denial('PGRST202',404));malformed.fetch.mockResolvedValueOnce(json({code:'PGRST202'},404));
+    await expect(malformed.client.load()).rejects.toMatchObject({code:'backend_unavailable'});expect(malformed.fetch).toHaveBeenCalledTimes(2);
+  });
+  it('accepts all registered memory, schedule and room-pass choices without enabling them automatically',async()=>{
+    const s=setup(),value=example();value.choices.read.push('assistant.memory.read');value.choices.action=['chat_zalo.send','assistant.memory.write','chat_zalo.manage_automation','sale_phong.manage_pass_listings'];
+    s.fetch.mockResolvedValueOnce(json(value));await expect(s.client.load()).resolves.toEqual(value);expect(s.fetch).toHaveBeenCalledTimes(1);
+    expect(value.policy.action).toEqual([]);
+  });
   it('reads selected-org options then writes the existing versioned RPC with the browser JWT and explicit org header',async()=>{
     const s=setup();await expect(s.client.load()).resolves.toEqual(example());s.fetch.mockResolvedValueOnce(json(s.ack()));
     await expect(s.client.save(s.input())).resolves.toEqual(s.ack());
-    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v1',URL+'/rest/v1/rpc/hermes_set_org_policy_v1']);
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v4',URL+'/rest/v1/rpc/hermes_set_org_policy_v1']);
     expect(s.fetch.mock.calls[1][1]).toMatchObject({method:'POST',mode:'cors',credentials:'omit',redirect:'error',cache:'no-store',headers:{
       authorization:'Bearer fixture.browser.jwt',apikey:'sb_publishable_fixture','x-organization-id':ORG,'content-profile':'public'}});
     expect(JSON.parse(s.fetch.mock.calls[1][1]!.body as string)).toEqual({p_org:ORG,p_expected_version:2,p_enabled:true,p_read:s.input().read,p_action:[],p_scope_ids:[SCOPE]});
@@ -47,7 +86,7 @@ describe('human Hermes company policy client',()=>{
     s.fetch.mockResolvedValueOnce(json({...value.policy,version:3,enabled:false}));await expect(s.client.save(input)).resolves.toMatchObject({enabled:false,action:['future.write'],scopeIds:[OTHER]});
     expect(s.fetch).toHaveBeenCalledTimes(2);
   });
-  it.each([{userId:OTHER},{organizationId:OTHER},{choices:{...example().choices,read:['contracts.view']}},
+  it.each([{userId:OTHER},{organizationId:OTHER},{choices:{...example().choices,read:['future.unsupported_read']}},
     {choices:{...example().choices,action:['rooms.edit']}},{storedScopes:[{scopeId:OTHER,label:'Foreign',available:true}]},
     {choices:{...example().choices,scopes:[{...example().choices.scopes[0],cashbookId:OTHER}]}},
     {policy:{...example().policy,organizationId:OTHER}},{token:'PRIVATE'}])('rejects foreign or broadened options %j',async delta=>{
@@ -59,7 +98,7 @@ describe('human Hermes company policy client',()=>{
     await expect(s.client.save(s.input())).rejects.toMatchObject({outcomeUnknown:false});expect(s.fetch).toHaveBeenCalledTimes(1);
   });
   it('snapshots caller arrays before session await',async()=>{
-    const s=setup();await s.client.load();const input=s.input();s.getSession.mockImplementationOnce(async()=>{input.read.push('contracts.view');input.scopeIds[0]=OTHER;return session();});
+    const s=setup();await s.client.load();const input=s.input();s.getSession.mockImplementationOnce(async()=>{input.read.push('future.unsupported_read');input.scopeIds[0]=OTHER;return session();});
     s.fetch.mockResolvedValueOnce(json(s.ack()));await s.client.save(input);
     expect(JSON.parse(s.fetch.mock.calls[1][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','rooms.view'],p_scope_ids:[SCOPE]});
   });
@@ -88,4 +127,23 @@ describe('human Hermes company policy client',()=>{
     resolve(session());await Promise.resolve();await Promise.resolve();expect(s.fetch).not.toHaveBeenCalled();
     await expect(s.client.save(s.input())).rejects.toMatchObject({code:'invalid_request'});
   });
+});
+
+describe('registered action policy choices',()=>{
+ it('accepts group read choices independently from send actions',async()=>{
+  const s=setup(),value=example();value.choices.read=['assistant.context.read','rooms.view','chat_zalo.view'];
+  s.fetch.mockResolvedValueOnce(json(value));expect((await s.client.load()).choices.read).toContain('chat_zalo.view');
+  const input={...s.input(),read:['chat_zalo.view'],action:[],scopeIds:[]};
+  const ack={...s.ack(),read:input.read,action:[],scopeIds:[]};s.fetch.mockResolvedValueOnce(json(ack));
+  await expect(s.client.save(input)).resolves.toEqual(ack);
+ });
+ it('does not add fixed action without an authoritative choice, then persists only explicit selection',async()=>{
+  const s=setup();await s.client.load();await expect(s.client.save({...s.input(),action:['chat_zalo.send']})).rejects.toMatchObject({code:'invalid_request'});expect(s.fetch).toHaveBeenCalledTimes(1);
+  const value=example();value.choices.action=['chat_zalo.send'];s.fetch.mockResolvedValueOnce(json(value));expect((await s.client.load()).policy.action).toEqual([]);
+  const ack={...s.ack(),action:['chat_zalo.send']};s.fetch.mockResolvedValueOnce(json(ack));await expect(s.client.save({...s.input(),action:['chat_zalo.send']})).resolves.toEqual(ack);
+  expect(JSON.parse(s.fetch.mock.calls[2][1]!.body as string).p_action).toEqual(['chat_zalo.send']);
+ });
+ it('rejects duplicated or unknown action choices',async()=>{
+  for(const action of [['chat_zalo.send','chat_zalo.send'],['future.write']]){const s=setup();s.fetch.mockResolvedValueOnce(json({...example(),choices:{...example().choices,action}}));await expect(s.client.load()).rejects.toMatchObject({code:'invalid_response'});}
+ });
 });

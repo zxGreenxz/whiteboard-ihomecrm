@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createStorePool } from '../hermes-broker/store-pool.mjs';
 import { createConnectionHandoff } from '../hermes-broker/connection-handoff.mjs';
 import { createHermesBackend } from '../hermes-broker/server.mjs';
+import { createConnectorMaintenance } from '../hermes-broker/connector-maintenance.mjs';
 import { createDockerEngine, createContainerRuntime } from './container-driver.mjs';
 import { createGatewayTransport } from './gateway-transport.mjs';
 import { createProfileHomes } from './profile-homes.mjs';
@@ -16,9 +17,10 @@ import { acquireHostOwnership, createHostAudit } from './host-ownership.mjs';
 
 const fail = code => { throw new Error(code); };
 const invoke = fn => { try { return Promise.resolve(fn()); } catch (error) { return Promise.reject(error); } };
-async function prepareState(paths) {
+async function prepareState(paths, { connectorOnly = false } = {}) {
   if (process.platform !== 'linux' || process.getuid() === 0 || process.getgid() === 0) fail('host_native_nonroot_linux_required');
-  const expected = { homeRoot: 'homes', handoffDirectory: 'handoff', runtimeRoot: 'runtime', gatewayRoot: 'gateway' };
+  const expected = connectorOnly ? { handoffDirectory: 'handoff' }
+    : { homeRoot: 'homes', handoffDirectory: 'handoff', runtimeRoot: 'runtime', gatewayRoot: 'gateway' };
   const check = async target => {
     const info = await lstat(target);
     if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid() || info.gid !== process.getgid() ||
@@ -51,7 +53,7 @@ export async function preflightHostEngine(engine, signal) {
 const DEFAULTS = Object.freeze({
   acquireHostOwnership, prepareState, artifacts, createHostAudit, createStorePool, createConnectionHandoff, createHermesBackend,
   createDockerEngine, createGatewayTransport, createContainerRuntime, createProfileHomes,
-  createProfileStore: options => new ProfileLeaseStore(options), createRuntimeOrchestrator, createHandoffReconciler,
+  createProfileStore: options => new ProfileLeaseStore(options), createRuntimeOrchestrator, createHandoffReconciler, createConnectorMaintenance,
   preflight: preflightHostEngine,
 });
 
@@ -67,6 +69,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
   if (!configuration || typeof configuration.dispose !== 'function' ||
       Object.keys(overrides).some(key => !Object.hasOwn(DEFAULTS, key)) ||
       Object.keys(DEFAULTS).some(key => typeof factories[key] !== 'function')) fail('invalid_host_configuration');
+  const connectorOnly = configuration.mode === 'connector';
   let ownership, audit, pool, handoff, backend, orchestrator, reconciler;
   let started, startupSettled = Promise.resolve(), closing = false, closePromise, cleanupPromise, reconcileClosed, disposed = false;
   let state = 'idle', failureCode, finishResolve, finishReject;
@@ -120,34 +123,42 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
     try {
       live(); state = 'starting';
       ownership = await factories.acquireHostOwnership({ stateRoot: configuration.paths.stateRoot }); live();
-      const auditDirectory = await factories.prepareState(configuration.paths); live();
-      const files = await factories.artifacts(); live();
-      const engine = factories.createDockerEngine();
-      await factories.preflight(engine, controller.signal); live();
+      const auditDirectory = await factories.prepareState(configuration.paths, { connectorOnly }); live();
+      let files, engine;
+      if (!connectorOnly) {
+        files = await factories.artifacts(); live();
+        engine = factories.createDockerEngine();
+        await factories.preflight(engine, controller.signal); live();
+      }
       audit = factories.createHostAudit({ directory: auditDirectory });
       handoff = factories.createConnectionHandoff({ directory: configuration.paths.handoffDirectory, ...configuration.encryption });
       // Read once before enrollment is exposed: reject unreadable/tampered WAL.
       await handoff.list({ signal: controller.signal }); live();
       pool = factories.createStorePool(configuration.store);
       backend = factories.createHermesBackend({ supabase: configuration.supabase, store: { pool, expectedRole: configuration.store.role },
-        encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage } });
+        encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
+        ...(connectorOnly ? { connectorOnly: true } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass runtime drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });
       dispose();
-      const transport = factories.createGatewayTransport({ engine, gatewayRoot: configuration.paths.gatewayRoot,
-        relayPath: files.relayPath, relaySha256: files.relaySha256 });
-      const gateway = backend.createRuntimeGateway({ transport, allowedModels: configuration.model.allowedModels });
-      const runtime = factories.createContainerRuntime({ gateway, engine, runtimeRoot: configuration.paths.runtimeRoot,
-        wrapperPath: files.wrapperPath, wrapperSha256: files.wrapperSha256, model: configuration.model.model,
-        maxTokens: configuration.model.maxTokens, maxIterations: configuration.model.maxIterations });
-      const profileHomes = factories.createProfileHomes({ homeRoot: configuration.paths.homeRoot });
-      const profileStore = factories.createProfileStore({ directory: configuration.paths.leaseDirectory, homeRoot: configuration.paths.homeRoot });
-      const supervisor = backend.createRuntimeSupervisor({ profileStore, runtime });
-      const runner = backend.createPrivateCommandRunner(supervisor);
-      orchestrator = factories.createRuntimeOrchestrator({ backend, gateway, supervisor, runner, profileHomes,
-        closeIngress, closePool: async () => {} }); // Outer host owns pool teardown.
-      reconciler = factories.createHandoffReconciler({ handoff, backend, orchestrator });
+      if (connectorOnly) {
+        reconciler = factories.createConnectorMaintenance({ handoff, backend });
+      } else {
+        const transport = factories.createGatewayTransport({ engine, gatewayRoot: configuration.paths.gatewayRoot,
+          relayPath: files.relayPath, relaySha256: files.relaySha256 });
+        const gateway = backend.createRuntimeGateway({ transport, allowedModels: configuration.model.allowedModels });
+        const runtime = factories.createContainerRuntime({ gateway, engine, runtimeRoot: configuration.paths.runtimeRoot,
+          wrapperPath: files.wrapperPath, wrapperSha256: files.wrapperSha256, model: configuration.model.model,
+          maxTokens: configuration.model.maxTokens, maxIterations: configuration.model.maxIterations });
+        const profileHomes = factories.createProfileHomes({ homeRoot: configuration.paths.homeRoot });
+        const profileStore = factories.createProfileStore({ directory: configuration.paths.leaseDirectory, homeRoot: configuration.paths.homeRoot });
+        const supervisor = backend.createRuntimeSupervisor({ profileStore, runtime });
+        const runner = backend.createPrivateCommandRunner(supervisor);
+        orchestrator = factories.createRuntimeOrchestrator({ backend, gateway, supervisor, runner, profileHomes,
+          closeIngress, closePool: async () => {} }); // Outer host owns pool teardown.
+        reconciler = factories.createHandoffReconciler({ handoff, backend, orchestrator });
+      }
       live();
       await new Promise((resolve, reject) => {
         const failed = () => { backend.server.off('listening', ready); reject(new Error('host_listener_failed')); };
@@ -155,7 +166,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
         backend.server.once('error', failed); backend.server.once('listening', ready);
         backend.server.listen({ host: '127.0.0.1', port: configuration.listenPort, exclusive: true });
       });
-      live(); orchestrator.start(); reconciler.start(); state = 'running';
+      live(); backend.startWorkMemoryRetention(); orchestrator?.start(); reconciler.start(); state = 'running';
     } catch {
       if (!closing) failureCode = 'host_start_failed';
       await cleanup(); fail('host_start_failed');

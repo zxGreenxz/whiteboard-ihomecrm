@@ -240,7 +240,7 @@ describe('Hermes connection browser boundary', () => {
       await expect(client.connect({ ...connectInput(), ...extra } as never)).rejects.toMatchObject({ code: 'invalid_request', outcome: 'not_dispatched' });
     }
     await expect(client.connect({ ...connectInput(), password: 'a'.repeat(4097) })).rejects.toMatchObject({ code: 'invalid_request' });
-    await expect(client.connect({ ...connectInput(), restrictions: { read: ['contracts.view'], action: [] } })).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(client.connect({ ...connectInput(), restrictions: { read: ['future.unsupported_read'], action: [] } })).rejects.toMatchObject({ code: 'invalid_request' });
     await expect(client.context({ connectionId: CONNECTION.toUpperCase() + '/' })).rejects.toMatchObject({ code: 'invalid_request' });
     expect(fetch).not.toHaveBeenCalled(); expect(getSession).not.toHaveBeenCalled();
   });
@@ -327,11 +327,22 @@ describe('self-owned grant choices and implemented room enrollment', () => {
     expect(fetch).toHaveBeenCalledWith('/api/hermes/connections/options', expect.objectContaining({ body: JSON.stringify({ organizationId: ORG }) }));
   });
   it.each([
-    { userId: OTHER }, { organizationId: OTHER }, { read: ['contracts.view'] }, { action: ['rooms.edit'] },
-    { token: OPAQUE }, { scopes: [] }, { policyVersion: 0 },
+    { userId: OTHER }, { organizationId: OTHER }, { read: ['future.unsupported_read'] }, { action: ['rooms.edit'] },
+    { token: OPAQUE }, { scopes: [] }, { policyVersion: -1 },
   ])('rejects malformed or foreign choices %j', async delta => {
     const { client, fetch } = setup(); fetch.mockResolvedValue(json({ options: { ...options(), ...delta } }));
     await expect(client.options()).rejects.toBeInstanceOf(HermesConnectionClientError);
+  });
+  it('accepts neutral version-zero options without writing organization policy', async () => {
+    const { client, fetch } = setup(); const neutral = { ...options(), policyVersion: 0 };
+    fetch.mockResolvedValue(json({ options: neutral }));
+    await expect(client.options()).resolves.toEqual({ options: neutral });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('accepts domain-only building scope choices from the shared capability catalog', async () => {
+    const { client, fetch } = setup(); const value = { ...options(), read: ['contracts.view'], action: ['assistant.memory.write','chat_zalo.manage_automation'] };
+    fetch.mockResolvedValue(json({ options: value }));await expect(client.options()).resolves.toEqual({ options: value });
+    fetch.mockResolvedValue(json({ options: { ...value, scopes: [] } }));await expect(client.options()).rejects.toBeInstanceOf(HermesConnectionClientError);
   });
   it('can enroll rooms read in selected scope but retains no ability to submit action grants', async () => {
     const { client, fetch } = setup(), restrictions = { read: ['assistant.context.read', 'rooms.view'], action: [] };
@@ -342,4 +353,40 @@ describe('self-owned grant choices and implemented room enrollment', () => {
     await expect(client.connect({ ...connectInput(), restrictions: { ...restrictions, action: ['rooms.edit'] } })).rejects.toMatchObject({ code: 'invalid_request' });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('fixed group action enrollment',()=>{
+ it('accepts group read without room scope or action and preserves independent enrollment',async()=>{
+  const {client,fetch}=setup();
+  const options={userId:USER,organizationId:ORG,membershipId:OTHER,authorizationVersion:1,isSuperadmin:false,policyVersion:1,enabled:true,read:['chat_zalo.view'],action:[],scopes:[]};
+  fetch.mockResolvedValueOnce(json({options}));expect((await client.options()).options).toEqual(options);
+  const input={...connectInput(),restrictions:{read:['chat_zalo.view'],action:[]},scopeIds:[]};
+  const connected=newConnection();connected.connection.restrictions=input.restrictions;connected.connection.scopeIds=[];
+  fetch.mockResolvedValueOnce(json(connected));await expect(client.connect(input)).resolves.toEqual(connected);
+  expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).restrictions).toEqual({read:['chat_zalo.view'],action:[]});
+ });
+ it('accepts only the server-listed fixed action in options and preserves it in explicit connect',async()=>{
+  const {client,fetch}=setup();const options={userId:USER,organizationId:ORG,membershipId:OTHER,authorizationVersion:1,isSuperadmin:false,policyVersion:1,enabled:true,read:[],action:['chat_zalo.send'],scopes:[]};
+  fetch.mockResolvedValueOnce(json({options}));expect((await client.options()).options.action).toEqual(['chat_zalo.send']);
+  const input=connectInput();input.restrictions.action=['chat_zalo.send'];const connected=newConnection();connected.connection.restrictions.action=['chat_zalo.send'];fetch.mockResolvedValueOnce(json(connected));await expect(client.connect(input)).resolves.toEqual(connected);expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).restrictions.action).toEqual(['chat_zalo.send']);
+ });
+ it.each([['rooms.edit'],['chat_zalo.send','chat_zalo.send']])('rejects invalid/duplicate action %j before dispatch',async(...action)=>{
+  const {client,fetch}=setup(),input=connectInput();input.restrictions.action=action;await expect(client.connect(input)).rejects.toMatchObject({code:'invalid_request'});expect(fetch).not.toHaveBeenCalled();
+ });
+ it('rejects action presented by a disabled options response',async()=>{
+  const {client,fetch}=setup();fetch.mockResolvedValueOnce(json({options:{userId:USER,organizationId:ORG,membershipId:OTHER,authorizationVersion:1,isSuperadmin:false,policyVersion:1,enabled:false,read:[],action:['chat_zalo.send'],scopes:[]}}));await expect(client.options()).rejects.toMatchObject({code:'invalid_response'});
+ });
+});
+
+describe('room-pass Action building scope without Read',()=>{
+ it('accepts the offered Action and requires scope choices even with no Read keys',async()=>{
+  const {client,fetch}=setup();const options={userId:USER,organizationId:ORG,membershipId:OTHER,authorizationVersion:1,isSuperadmin:false,policyVersion:1,enabled:true,
+    read:[],action:['sale_phong.manage_pass_listings'],scopes:[{scopeId:SCOPE,scopeType:'BUILDING',label:'Toà: Nhà A',buildingId:ASSISTANT,areaId:null,cashbookId:null}]};
+  fetch.mockResolvedValueOnce(json({options}));await expect(client.options()).resolves.toEqual({options});
+  fetch.mockResolvedValueOnce(json({options:{...options,scopes:[]}}));await expect(client.options()).rejects.toMatchObject({code:'invalid_response'});
+  const input={...connectInput(),restrictions:{read:[],action:['sale_phong.manage_pass_listings']},scopeIds:[SCOPE]};
+  const connected=newConnection();connected.connection.restrictions=input.restrictions;connected.connection.scopeIds=[SCOPE];
+  fetch.mockResolvedValueOnce(json(connected));await expect(client.connect(input)).resolves.toEqual(connected);
+  expect(JSON.parse(fetch.mock.calls[2][1]!.body as string)).toMatchObject({restrictions:input.restrictions,scopeIds:[SCOPE]});
+ });
 });

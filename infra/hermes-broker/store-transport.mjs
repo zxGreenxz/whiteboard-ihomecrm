@@ -19,6 +19,7 @@ const FUNCTIONS = Object.freeze({
   finishPrivateCommand: 'app_private.hermes_store_finish_private_command_v1',
   failPrivateCommand: 'app_private.hermes_store_fail_private_command_v1',
   prunePrivateCommands: 'app_private.hermes_store_prune_private_commands_v1',
+  pruneWorkMemories: 'app_private.hermes_store_prune_work_memories_v1',
 });
 const PRINCIPAL_SQL = `SELECT current_user AS role, session_user AS session_role, r.rolsuper, r.rolbypassrls,
   r.rolcreaterole, r.rolcreatedb, r.rolreplication,

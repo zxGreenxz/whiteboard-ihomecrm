@@ -8,9 +8,9 @@ const AUDIT = 'broker-audit.jsonl';
 const MAX_AUDIT_BYTES = 16 * 1024 * 1024;
 const MAX_PENDING = 32;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const OPERATIONS = new Set(['authenticate', 'tools/list', 'tools/call']);
-const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_request',
-  'tool_not_available', 'rate_limited', 'busy', 'timeout', 'backend_unavailable', 'response_too_large']);
+const OPERATIONS = new Set(['authenticate', 'tools/list', 'tools/call', 'private/group-room-preview', 'private/group-directory', 'private/group-room-send', 'private/group-send-status']);
+const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_request', 'group_recipient_limit', 'group_room_limit',
+  'tool_not_available', 'rate_limited', 'busy', 'timeout', 'backend_unavailable', 'response_too_large', 'send_outcome_unknown']);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
   constructor(code) { super(code); this.name = 'HostOwnershipError'; this.code = code; }

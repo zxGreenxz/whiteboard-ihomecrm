@@ -134,6 +134,20 @@ test('audit writes only the real broker protocol, snapshots callers and remains 
   assert.equal((await fs.readFile(filename, 'utf8')).trim().split('\n').length, 4);
 });
 
+test('group directory and preview audit operations retain the exact private host protocol', async t => {
+  const root = await fixture(t), sink = createHostAudit({ directory: root });
+  const events = ['private/group-directory', 'private/group-room-preview', 'private/group-room-send', 'private/group-send-status'].map(operation => ({ ...EVENT, operation }));
+  events.push({ ...EVENT, operation: 'private/group-room-send', outcome: 'denied', code: 'send_outcome_unknown' });
+  for (const code of ['group_recipient_limit', 'group_room_limit']) events.push({ ...EVENT, operation: 'private/group-room-send', outcome: 'denied', code });
+  for (const event of events) await sink.write(event);
+  for (const extra of ['claimId', 'token', 'body', 'sender', 'conversations'])
+    await assert.rejects(sink.write({ ...events[0], [extra]: 'PRIVATE' }), /host_audit_invalid/);
+  await assert.rejects(sink.write({ ...EVENT, operation: 'private/group-send' }), /host_audit_invalid/);
+  await sink.close();
+  const raw = await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8');
+  assert.deepEqual(raw.trim().split('\n').map(JSON.parse), events); assert(!raw.includes('PRIVATE'));
+});
+
 test('pending fdatasync retains write and close, bounds queue at32, and rejects new writes immediately on close', async t => {
   const root = await fixture(t), blocker = deferred(), entered = deferred(); let syncs = 0, closes = 0;
   wrapOpen(t, (handle, [name]) => {

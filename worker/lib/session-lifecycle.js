@@ -6,6 +6,7 @@ export function stopAccountSession(accountId, sessions) {
   sessions.delete(accountId);
   session.hermesReply?.close();
   session.hermesIngress?.close();
+  session.hermesNative?.close();
   try { session.api.listener.stop(); } catch { /* already closed */ }
   return true;
 }

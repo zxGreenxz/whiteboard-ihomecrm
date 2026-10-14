@@ -1,19 +1,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { RuntimeModelServiceError } from '../hermes-broker/runtime-model-service.mjs';
+import { GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL, groupPreviewIntent } from '../hermes-broker/group-preview-mount.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const TOOLS = new Set(['crm_auth_context', 'crm_available_rooms']);
 const TOOL_NAMES = new Set([...TOOLS].map(name => `mcp__crm__${name}`));
+const GROUP_TOOLS = new Set([GROUP_DIRECTORY_TOOL.name, GROUP_PREVIEW_TOOL.name, GROUP_SEND_TOOL.name, GROUP_SEND_STATUS_TOOL.name]);
 const OWNER = ['assistantId', 'userId', 'organizationId'];
 const IDENTITY = ['connectionId', ...OWNER, 'expiresAt'];
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
 const URLS = Object.freeze({ mcpUrl: 'http://hermes-gateway:8787/mcp', modelBaseUrl: 'http://hermes-gateway:8787/v1' });
-const SAFE = new Set(['invalid_request', 'invalid_json', 'forbidden', 'not_found', 'method_not_allowed', 'body_too_large',
+const SAFE = new Set(['invalid_request', 'group_recipient_limit', 'group_room_limit', 'invalid_json', 'forbidden', 'not_found', 'method_not_allowed', 'body_too_large',
   'busy', 'inactive', 'gateway_closed', 'unknown_handle', 'unknown_ticket', 'registration_in_use', 'invalid_binding', 'invalid_identity',
   'profile_in_use', 'invalid_transport', 'transport_unknown', 'drain_failed', 'timeout', 'cancelled', 'replay',
-  'model_unknown', 'round_limit', 'unauthorized', 'context_changed', 'tool_not_available', 'rate_limited', 'backend_unavailable']);
+  'model_unknown', 'round_limit', 'unauthorized', 'context_changed', 'tool_not_available', 'rate_limited', 'backend_unavailable', 'send_outcome_unknown']);
 export class RuntimeGatewayError extends Error {
   constructor(code) { super(SAFE.has(code) ? code : 'backend_unavailable'); this.name = 'RuntimeGatewayError'; this.code = this.message; }
 }
@@ -72,7 +74,9 @@ function parseJson(buffer) {
   } catch { fail('invalid_json'); }
 }
 function toolArguments(name, input) {
-  if (name === 'crm_auth_context') return fields(input, []);
+  if (name === 'crm_auth_context' || name === GROUP_DIRECTORY_TOOL.name) return fields(input, []);
+  if (name === GROUP_PREVIEW_TOOL.name || name === GROUP_SEND_TOOL.name) return groupPreviewIntent(input);
+  if (name === GROUP_SEND_STATUS_TOOL.name) { const result = fields(input, ['dispatchId']); if (!UUID.test(result.dispatchId ?? '')) fail('invalid_request'); return result; }
   const result = fields(input, ['buildingName', 'offset', 'limit'], []);
   if (result.buildingName !== undefined) text(result.buildingName, 480);
   if (result.offset !== undefined && (!Number.isSafeInteger(result.offset) || result.offset < 0 || result.offset > 2000)) fail('invalid_request');
@@ -80,7 +84,8 @@ function toolArguments(name, input) {
   return result;
 }
 function calls(value, allowed = TOOL_NAMES) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 2) fail('invalid_request');
+  const cap = [...allowed].some(name => GROUP_TOOLS.has(name.slice('mcp__crm__'.length))) ? 6 : 2;
+  if (!Array.isArray(value) || value.length < 1 || value.length > cap) fail('invalid_request');
   const ids = new Set();
   return value.map(raw => {
     const call = fields(raw, ['id', 'type', 'function']);
@@ -91,7 +96,7 @@ function calls(value, allowed = TOOL_NAMES) {
     return { id: call.id, type: 'function', function: fn };
   });
 }
-function projectModel(input) {
+function projectModel(input, allowed = TOOL_NAMES) {
   const body = fields(input, ['model', 'messages', 'max_tokens', 'max_completion_tokens', 'temperature', 'tools', 'tool_choice', 'stream'], ['model', 'messages']);
   // Pinned Hermes selects this OpenAI token alias for some model families.
   // Canonicalize before replay hashing; ambiguity cannot change the paid budget.
@@ -115,7 +120,7 @@ function projectModel(input) {
     } else {
       if (awaiting.size || message.tool_call_id !== undefined) fail('invalid_request');
       if (message.tool_calls !== undefined) {
-        if (message.role !== 'assistant') fail('invalid_request'); message.tool_calls = calls(message.tool_calls);
+        if (message.role !== 'assistant') fail('invalid_request'); message.tool_calls = calls(message.tool_calls, allowed);
         for (const call of message.tool_calls) { if (ids.has(call.id)) fail('invalid_request'); ids.add(call.id); awaiting.add(call.id); }
       }
     }
@@ -123,10 +128,10 @@ function projectModel(input) {
   });
   if (awaiting.size) fail('invalid_request');
   if (body.tools !== undefined) {
-    if (!Array.isArray(body.tools) || body.tools.length > 2) fail('invalid_request'); const names = new Set();
+    if (!Array.isArray(body.tools) || body.tools.length > allowed.size) fail('invalid_request'); const names = new Set();
     body.tools = body.tools.map(raw => {
       const tool = fields(raw, ['type', 'function']); const fn = fields(tool.function, ['name', 'description', 'parameters', 'strict'], ['name', 'description', 'parameters']);
-      if (tool.type !== 'function' || !TOOL_NAMES.has(fn.name) || names.has(fn.name) || (fn.strict !== undefined && typeof fn.strict !== 'boolean')) fail('invalid_request');
+      if (tool.type !== 'function' || !allowed.has(fn.name) || names.has(fn.name) || (fn.strict !== undefined && typeof fn.strict !== 'boolean')) fail('invalid_request');
       names.add(fn.name); text(fn.description, 4096, true);
       const schema = fields(fn.parameters, ['type', 'properties', 'required', 'additionalProperties'], ['type']);
       if (schema.type !== 'object') fail('invalid_request');
@@ -157,7 +162,7 @@ function write(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
   response.end(body === undefined ? undefined : JSON.stringify(body));
 }
-const statusFor = code => ({ busy: 429, rate_limited: 429, timeout: 504, model_unknown: 503, backend_unavailable: 503,
+const statusFor = code => ({ busy: 429, rate_limited: 429, timeout: 504, model_unknown: 503, backend_unavailable: 503, send_outcome_unknown: 503,
   forbidden: 403, inactive: 403, unauthorized: 401, replay: 409, body_too_large: 413, not_found: 404, method_not_allowed: 405 }[code] ?? 400);
 
 /** Host-only per-profile capabilities. No socket, network or filesystem work in
@@ -243,7 +248,7 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
     const home = path.resolve(value.home);
     const entry = [...entries].find(candidate => !candidate.prepared && candidate.identity && candidate.home === home && OWNER.every(key => candidate.identity[key] === value[key]));
     if (!entry || !live(entry) || entry.identity.expiresAt <= now()) fail('invalid_binding');
-    entry.prepared = true; const handle = Object.freeze({}); handles.set(handle, entry); return handle;
+    entry.prepared = true; const handle = Object.freeze({}); handles.set(handle, entry); entry.handle = handle; return handle;
   }
   async function mcp(entry, turn, input, signal) {
     const message = fields(input, ['jsonrpc', 'id', 'method', 'params'], ['jsonrpc', 'method']);
@@ -273,13 +278,30 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
         result = fields(await bounded(entry, turn, () => broker.listTools(entry.token), signal), ['tools']);
         if (!Array.isArray(result.tools) || result.tools.length > 2 || result.tools.some(tool => !TOOLS.has(Object.getOwnPropertyDescriptor(tool, 'name')?.value)) ||
           new Set(result.tools.map(tool => tool.name)).size !== result.tools.length) fail('backend_unavailable');
+        const groupDefinitions = await groupToolDefinitions(entry, turn, signal);
+        result = { tools: [...result.tools, ...groupDefinitions] };
       }
     } else if (message.method === 'tools/call') {
       const params = fields(message.params, ['name', 'arguments'], ['name']);
-      if (!TOOLS.has(params.name)) fail('tool_not_available'); const args = toolArguments(params.name, params.arguments ?? {});
+      if (!TOOLS.has(params.name) && !GROUP_TOOLS.has(params.name)) fail('tool_not_available');
+      if (GROUP_TOOLS.has(params.name)) {
+        const method = params.name === GROUP_DIRECTORY_TOOL.name ? 'groupDirectory' : params.name === GROUP_SEND_TOOL.name ? 'sendGroupRooms'
+          : params.name === GROUP_SEND_STATUS_TOOL.name ? 'groupSendStatus' : 'previewGroupRooms';
+        if (typeof broker[method] !== 'function' || !admitted(entry, turn) || !turn.commandContext) fail('tool_not_available');
+      }
+      const args = toolArguments(params.name, params.arguments ?? {});
+      if (GROUP_TOOLS.has(params.name)) {
+        const options = { commandId: turn.commandId, signal };
+        const value = params.name === GROUP_DIRECTORY_TOOL.name ? await groupDirectory(entry.handle, options)
+          : params.name === GROUP_SEND_TOOL.name ? await sendGroupRooms(entry.handle, options, args)
+            : params.name === GROUP_SEND_STATUS_TOOL.name ? await groupSendStatus(entry.handle, options, args.dispatchId)
+              : await previewGroupRooms(entry.handle, options, args);
+        result = { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false };
+      } else {
       if (params.name === 'crm_available_rooms' && !admitted(entry, turn)) fail('inactive');
       result = await bounded(entry, turn, () => broker.callTool(entry.token, params.name, freeze(args)), signal);
       if (params.name === 'crm_available_rooms' && !admitted(entry, turn)) fail('inactive');
+      }
     } else fail('not_found');
     const encoded = JSON.stringify(result); if (encoded === undefined || Buffer.byteLength(encoded) > 65536) fail('backend_unavailable');
     return { status: 200, body: { jsonrpc: '2.0', id: message.id, result } };
@@ -307,7 +329,10 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
         if (req.url === '/mcp') {
           const result = await mcp(entry, turn, input, requestController.signal); write(res, result.status, result.body); return;
         }
-        if (!admitted(entry, turn)) fail('inactive'); const body = projectModel(input);
+        if (!admitted(entry, turn)) fail('inactive');
+        const groupDefinitions = await groupToolDefinitions(entry, turn, requestController.signal);
+        const allowed = new Set([...TOOL_NAMES, ...groupDefinitions.map(tool => `mcp__crm__${tool.name}`)]);
+        if (!admitted(entry, turn)) fail('inactive'); const body = projectModel(input, allowed);
         const digest = createHash('sha256').update(canonical(body)).digest('hex');
         if (turn.fingerprints.has(digest)) fail('replay'); if (turn.modelBusy) fail('busy');
         if (turn.fingerprints.size >= maxModelRounds) fail('round_limit'); turn.fingerprints.add(digest); turn.modelBusy = true; ownsModel = true;
@@ -383,8 +408,8 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
     if (value.commandId !== turn.commandId || !UUID.test(value.claimId ?? '')) fail('context_changed');
     return freeze(value);
   };
-  // Trusted composition seam only. Not registered in MCP, HTTP, tools/list or
-  // model schemas. Caller must supply the existing admission/quota/audit service.
+  // Trusted host seam. Private model tools below derive their context here;
+  // no request field can provide token, identity or dispatch claim.
   // The callback runs inside the same actual dependency scope as normal tools.
   const withPrivateCommandContext = (handle, raw, invoke) => {
     const entry = get(handle), input = fields(raw, ['commandId', 'signal']), turn = entry.turn;
@@ -404,7 +429,72 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
     });
     return result;
   };
+  function groupDirectory(handle, raw) {
+    if (typeof broker.groupDirectory !== 'function') fail('tool_not_available');
+    return withPrivateCommandContext(handle, raw, ({ token, commandContext, signal }) =>
+      broker.groupDirectory(token, commandContext, { signal }));
+  }
+  function previewGroupRooms(handle, raw, intent) {
+    if (typeof broker.previewGroupRooms !== 'function') fail('tool_not_available');
+    return withPrivateCommandContext(handle, raw, ({ token, commandContext, signal }) =>
+      broker.previewGroupRooms(token, commandContext, intent, { signal }));
+  }
+  function groupSendStatus(handle, raw, dispatchId) {
+    if (typeof broker.groupSendStatus !== 'function') fail('tool_not_available');
+    return withPrivateCommandContext(handle, raw, ({ token, commandContext, signal }) =>
+      broker.groupSendStatus(token, commandContext, dispatchId, { signal }));
+  }
+  async function sendGroupRooms(handle, raw, intent) {
+    if (typeof broker.sendGroupRooms !== 'function') fail('tool_not_available');
+    const entry = get(handle), turn = entry.turn;
+    if (!turn || !admitted(entry, turn)) fail('inactive');
+    const input = fields(raw, ['commandId', 'signal']);
+    if (input.commandId !== turn.commandId || !(input.signal instanceof AbortSignal) || input.signal.aborted) fail('inactive');
+    contextFor(entry, turn);
+    const savedReceipt = status => {
+      contextFor(entry, turn);
+      if (!UUID.test(turn.sendDispatchId ?? '')) fail('send_outcome_unknown');
+      return freeze({ status, dispatchId: turn.sendDispatchId });
+    };
+    if (turn.sendUnknown) return savedReceipt('unknown');
+    if (turn.sendPending) fail('busy');
+    // A successful DB ACK can still be lost on the private MCP response. Keep
+    // its opaque correlation without claiming that a changed selection ran.
+    // The status tool rechecks current authority before releasing any details.
+    if (turn.sendAttempted) return savedReceipt('existing_dispatch');
+    let uncertain = false; turn.sendPending = true;
+    try { return await withPrivateCommandContext(handle, raw, ({ token, commandContext, signal }) =>
+      broker.sendGroupRooms(token, commandContext, intent, { signal,
+        onDispatch(dispatchId) { uncertain = true; turn.sendAttempted = true;
+          if (!UUID.test(dispatchId ?? '')) fail('backend_unavailable'); turn.sendDispatchId = dispatchId; },
+        onRejected() { uncertain = false; if (!turn.sendUnknown) turn.sendAttempted = false; },
+      }));
+    } catch (error) {
+      if (uncertain || error?.code === 'send_outcome_unknown') { turn.sendUnknown = true; return savedReceipt('unknown'); }
+      throw error;
+    } finally { turn.sendPending = false; }
+  }
+  async function groupToolDefinitions(entry, turn, signal) {
+    if (!admitted(entry, turn) || !turn.commandContext || !resolvePrivateCommandContext ||
+        typeof broker.listGroupTools !== 'function') return [];
+    try {
+      const result = fields(await withPrivateCommandContext(entry.handle, { commandId: turn.commandId, signal },
+        ({ token, commandContext, signal: innerSignal }) => broker.listGroupTools(token, commandContext, { signal: innerSignal })), ['tools']);
+      if (!Array.isArray(result.tools) || result.tools.length > GROUP_TOOLS.size ||
+          result.tools.some(tool => !GROUP_TOOLS.has(Object.getOwnPropertyDescriptor(tool ?? {}, 'name')?.value)) ||
+          new Set(result.tools.map(tool => tool.name)).size !== result.tools.length) fail('backend_unavailable');
+      return result.tools;
+    }
+    catch {
+      // Optional rollout, capability or RPC failure never enables group tools.
+      // A removed trusted turn still fails the request instead of falling back.
+      contextFor(entry, turn); return [];
+    }
+  }
   return Object.freeze({ register, releaseRegistration, prepare, start, endTurn, withPrivateCommandContext,
+    // Host-only composition endpoint. It cannot accept a token/claim from model
+    // input. Missing service, inactive turn or unacknowledged claim denies.
+    previewGroupRooms, groupDirectory, sendGroupRooms, groupSendStatus,
     unregister(ticket) { const entry = tickets.get(ticket); if (!entry || entry.prepared) fail('unknown_ticket'); tickets.delete(ticket); return closeEntry(entry); },
     setAdmission(handle, allowed) {
       const entry = get(handle); if (typeof allowed !== 'boolean') fail('invalid_request');

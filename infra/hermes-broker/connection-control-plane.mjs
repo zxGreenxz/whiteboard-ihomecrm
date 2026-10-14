@@ -1,3 +1,4 @@
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { DurableConnectionStoreError } from './durable-connection-store.mjs';
@@ -5,7 +6,6 @@ import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^[\x21-\x7e]{1,16384}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
-const CONTEXT = 'assistant.context.read';
 // hermes_prepare_connection_v1 issues clock_timestamp() + interval '5 minutes'.
 // Its reviewed server timestamp anchors expiry; the source contract is tested.
 const PREPARE_INTENT_LIFETIME_MS = 5 * 60_000;
@@ -44,9 +44,9 @@ function ids(value, code) {
 }
 function restrictions(value, code) {
   if (!exact(value, ['read', 'action']) || !Array.isArray(value.read) || !Array.isArray(value.action) ||
-      value.read.length > 2 || new Set(value.read).size !== value.read.length || value.action.length !== 0 ||
-      Array.from(value.read).some(key => ![CONTEXT, 'rooms.view'].includes(key))) fail(code);
-  return { read: [...value.read], action: [] };
+      value.read.length > HERMES_READ_CAPABILITIES.length || new Set(value.read).size !== value.read.length || value.action.length > HERMES_ACTION_CAPABILITIES.length || new Set(value.action).size !== value.action.length || Array.from(value.action).some(key => !HERMES_ACTION_CAPABILITIES.includes(key)) ||
+      Array.from(value.read).some(key => !HERMES_READ_CAPABILITIES.includes(key))) fail(code);
+  return { read: [...value.read], action: [...value.action] };
 }
 function credentials(value) {
   if (typeof value.email !== 'string' || value.email.length > 320 || !EMAIL.test(value.email) ||
@@ -89,7 +89,7 @@ function prepared(value, expected, now) {
       !positive(value.epoch) || typeof value.intentSecret !== 'string' || !DIGEST.test(value.intentSecret) ||
       !positive(value.intentExpiresAt) || value.intentExpiresAt <= now ||
       value.intentExpiresAt > now + PREPARE_INTENT_LIFETIME_MS + MAX_PREPARE_CLOCK_SKEW_MS ||
-      !sameSet(restrictions(value.restrictions, 'prepare_outcome_unknown').read, expected.restrictions.read) ||
+      ['read', 'action'].some(kind => !sameSet(restrictions(value.restrictions, 'prepare_outcome_unknown')[kind], expected.restrictions[kind])) ||
       !sameSet(ids(value.scopeIds, 'prepare_outcome_unknown'), expected.scopeIds)) fail('prepare_outcome_unknown');
   return structuredClone(value);
 }
@@ -100,7 +100,7 @@ function activated(value, input) {
       !exact(value.connection, ROW)) fail('activation_outcome_unknown');
   const row = value.connection;
   if (ROW.slice(0, 4).some(key => row[key] !== expected[key]) || row.state !== 'active' || row.epoch !== expected.epoch + 1 ||
-      !sameSet(restrictions(row.restrictions, 'activation_outcome_unknown').read, expected.restrictions.read) ||
+      ['read', 'action'].some(kind => !sameSet(restrictions(row.restrictions, 'activation_outcome_unknown')[kind], expected.restrictions[kind])) ||
       !sameSet(ids(row.scopeIds, 'activation_outcome_unknown'), expected.scopeIds)) fail('activation_outcome_unknown');
   return structuredClone(row);
 }
@@ -129,7 +129,7 @@ async function bounded(signal, timeoutMs, operation, abortedError) {
   finally { clearTimeout(timer); signal.removeEventListener('abort', stop); controller.abort(); }
 }
 
-/** Server-only connection creation for the two implemented read capabilities. Not an HTTP/MCP endpoint.
+/** Server-only connection creation for fixed read capabilities and the registered Zalo action. Not an HTTP/MCP endpoint.
  * The caller supplies a primary browser bearer and explicit password reauth over
  * the trusted backend's TLS route. A fixed Auth provider creates a NEW session;
  * callers cannot hand off an existing session/token pair or select an Auth URL.

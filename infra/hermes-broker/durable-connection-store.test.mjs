@@ -116,7 +116,7 @@ test('joined read rejects inconsistent ownership, provider binding, digest and e
     value => { value.session.binding.sessionId = 'provider-unverified'; }, value => { value.session.binding.sessionId = ids.session.toUpperCase(); },
     value => { value.session.revision = 0; }, value => { value.session.envelope.tag = 'bad'; },
     value => { value.membership.isSuperadmin = 'true'; }, value => { value.membership.authorizationVersion = 0; },
-    value => { value.policy.version = 0; }, value => { value.policy.read = new Array(2); },
+    value => { value.policy.version = -1; }, value => { value.policy.read = new Array(2); },
     value => { value.session.accessToken = 'private'; }, value => { value.debug = 'private'; }];
   for (const mutate of variants) {
     const f = fixture(() => { const value = readReply(); mutate(value); return value; });

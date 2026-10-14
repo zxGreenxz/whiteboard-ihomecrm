@@ -28,6 +28,16 @@ const FAILURE_CODES = new Set(['runtime_start_failed', 'runtime_start_timeout', 
 export const productFailureCode = error => FAILURE_CODES.has(error?.code) ? error.code :
   FAILURE_CODES.has(error?.message) ? error.message : 'synthetic_check_failed';
 
+// Always attempt both owners' shutdown, even when the first rejects. Preserve
+// every failure for the receipt/test; disposal does not prove resource cleanup.
+export async function closeProductServices(gateway, backend, fixture) {
+  const errors = [];
+  try { await gateway?.shutdown(); } catch (error) { errors.push(error); }
+  try { await backend?.close(); } catch (error) { errors.push(error); }
+  try { fixture?.dispose(); } catch (error) { errors.push(error); }
+  if (errors.length) throw new AggregateError(errors, 'product_cleanup_unproven');
+}
+
 // Receipt paths may be arbitrarily deep. The actual Unix socket must fit the
 // unchanged product transport's 100-byte bound, so allocate its private working
 // tree directly below the OS temp directory instead of inside the checkout.
@@ -105,6 +115,13 @@ export function createSyntheticFixture() {
     if (!actor) return Response.json({ error: 'synthetic unauthorized' }, { status: 401 });
     events.push({ type: 'fetch', actor: actor.name, path: endpoint.pathname });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: actor.user });
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_room_pass_capabilities_v1'].includes(endpoint.pathname)) {
+      assert.deepEqual(args, { p_organization_id: actor.org });
+      // This synthetic room-only deployment does not install the optional
+      // group-action RPC. Match PostgREST's exact absence response; other paths
+      // remain assertions and authorization failures never become fallback.
+      return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
+    }
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: actor.org,
       membershipId: actor.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
     if (endpoint.pathname === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: actor.user, organizations: [{ id: actor.org }] });
@@ -310,7 +327,7 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
       const stopped = await Promise.allSettled(entries.map(entry => { entry.controller.abort(); return runtime.stop(entry.handle); }));
       if (stopped.every(result => result.status === 'fulfilled')) {
         try {
-          await gateway?.shutdown(); await backend.close(); fixture.dispose();
+          await closeProductServices(gateway, backend, fixture);
           assert.deepEqual([...receipt.resources.removedContainers].sort(), [...receipt.resources.containers].sort());
           assert.deepEqual([...receipt.resources.removedNetworks].sort(), [...receipt.resources.networks].sort());
           assert.equal(receipt.resources.childCloses, receipt.resources.attaches);
@@ -318,7 +335,10 @@ export async function runProductRuntime({ mode = '--run', root = ROOT } = {}) {
           await rmdir(workspace.gatewayRoot); await rmdir(workspace.runtimeRoot); await rmdir(workspace.directory);
           receipt.cleanup.proven = true; check('actual-exit-owned-container-network-directory-cleanup');
         } catch { receipt.status = 'FAIL'; receipt.cleanup.failure = 'cleanup_unproven'; }
-      } else { receipt.status = 'FAIL'; receipt.cleanup.failure = 'runtime_stop_unproven'; }
+      } else {
+        receipt.status = 'FAIL'; receipt.cleanup.failure = 'runtime_stop_unproven';
+        try { await closeProductServices(gateway, backend, fixture); } catch { /* Failure remains unproven above. */ }
+      }
     }
     try { receipt.inputSha256After = await sourceHashes(root, inputs); assertInputsUnchanged(inputSha256, receipt.inputSha256After); check('inputs-unchanged'); }
     catch { receipt.status = 'FAIL'; receipt.failure = 'inputs_changed'; }

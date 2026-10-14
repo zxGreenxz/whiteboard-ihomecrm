@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import pg from 'pg';
+import { CDE_RPCS, cdeExecutionPlan, runCdeChecks, cdeCleanupSql, cdeCountsSql, verifyCdeLiveSurface } from './test-hermes-cde-live.mjs';
 import { dichKetNoi } from './db-query.mjs';
 import { batBuocDichTest, dangKyMatKhau, uri, psqlJson, lit } from './test-env/lib.mjs';
 import { assertTestLease, markTestCleanupRequired, withTestCleanup, withTestLock } from './test-env/lock.mjs';
@@ -43,18 +44,19 @@ const sqlIds = values => values.map(value => { demand(UUID.test(value), 'fixture
 const STORE = Object.freeze({ activate: 'activate', readConnection: 'read_connection',
   claimPrivateCommand: 'claim_private_command', dispatchPrivateCommand: 'dispatch_private_command',
   finishPrivateCommand: 'finish_private_command', failPrivateCommand: 'fail_private_command' });
-const RPCS = new Set(['get_my_organizations', 'hermes_set_org_policy_v1', 'hermes_prepare_connection_v1',
+const RPCS = new Set([...CDE_RPCS, 'get_my_organizations', 'hermes_set_org_policy_v1', 'hermes_prepare_connection_v1',
   'hermes_connection_options_v1', 'hermes_org_policy_options_v1', 'hermes_zalo_binding_v1', 'hermes_zalo_ingress_v1',
   'hermes_zalo_private_command_v1', 'hermes_zalo_private_reply_v1']);
 
 export function executionMode(options = {}) {
   const mode = options.mode ?? 'full';
-  demand(mode === 'full' || mode === 'jwt-management', 'fixture_mode_invalid');
+  demand(mode === 'full' || mode === 'jwt-management' || mode === 'cde', 'fixture_mode_invalid');
   return mode;
 }
 
 export function executionPlan(options = {}) {
   const mode = executionMode(options);
+  if (mode === 'cde') return { mode: 'offline-plan', ...cdeExecutionPlan() };
   return { mode: 'offline-plan', scope: mode, environment: 'test', projectRef: TEST_REF,
     liveExecuted: false, fullPrivateFlowExecuted: false,
     requires: ['--run', 'all Hermes apply evidence', 'candidate source digests unchanged', 'exclusive TEST lease',
@@ -66,9 +68,9 @@ export function executionPlan(options = {}) {
       ...(mode === 'jwt-management' ? ['worker lease ownership or mutations', 'ingress observe and binding confirm', 'private intake/dispatch/reply'] : [])] };
 }
 
-export async function runChannelScope(mode, { management, full }) {
+export async function runChannelScope(mode, { management, full, cde }) {
   executionMode({ mode });
-  return mode === 'jwt-management' ? management() : full();
+  return mode === 'cde' ? cde() : mode === 'jwt-management' ? management() : full();
 }
 
 export function fixtureRpcDiagnostic(name, status, body) {
@@ -117,7 +119,7 @@ export function captureSourceIdentity() {
     }
   };
   visit(fileURLToPath(import.meta.url));
-  inputs.add(relative(ROOT, fileURLToPath(new URL('./__tests__/hermes-private-flow.test.mjs', import.meta.url))).replaceAll('\\', '/'));
+  for (const testFile of ['scripts/__tests__/hermes-private-flow.test.mjs', 'scripts/__tests__/hermes-cde-live.test.mjs']) inputs.add(testFile);
   for (const source of migrationSources()) inputs.add(source.path);
   return Object.fromEntries([...inputs].sort().map(file => [file, sha(readFileSync(resolve(ROOT, file)))]));
 }
@@ -136,9 +138,18 @@ export function validateSchemaEvidence(evidence, source, { reviewedBlob, reviewe
     && evidence.reviewedBlob === '7a42c3c73b224ab31a26575883c455c9a0fd8f15'
     && reviewedBlob === '4264c3269ca1eee9c1a2990c08629b6df885acc8'
     && reviewedBlobBytes.equals(Buffer.from(source.bytes.toString('utf8').replaceAll('\r\n', '\n')));
+  // This exact applied schedule retained three CRLFs. The forward lane bound
+  // its raw SHA/length separately from Git's LF-clean review blob. Permit only
+  // this attested projection, including its byte-preserving -text Git identity.
+  const scheduleEol = source.path === 'supabase/migrations/20261014081344_hermes_room_schedule_v1.sql'
+    && evidence.sha256 === '874b4debc81af7b4a004793d8888f96e3eca4f29349b85a8e7e12562602aeca2'
+    && evidence.statementBytes === 46708
+    && evidence.reviewedBlob === '8fe4ed4ea8982e69720b69f668d83edb842ec633'
+    && ['8fe4ed4ea8982e69720b69f668d83edb842ec633', '5e47e86308e2f8ebe3b17234d9734227f27ed8e3'].includes(reviewedBlob)
+    && reviewedBlobBytes.equals(Buffer.from(source.bytes.toString('utf8').replaceAll('\r\n', '\n')));
   const storedBlob = createHash(evidence.reviewedBlob.length === 64 ? 'sha256' : 'sha1')
     .update(`blob ${reviewedBlobBytes.length}\0`).update(reviewedBlobBytes).digest('hex');
-  demand(storedBlob === evidence.reviewedBlob && (legacyEol
+  demand(storedBlob === evidence.reviewedBlob && (legacyEol || scheduleEol
     || (evidence.reviewedBlob === reviewedBlob && reviewedBlobBytes.equals(source.bytes))), 'schema_evidence_source_mismatch');
   demand(Number.isFinite(Date.parse(evidence.appliedAt)) && Date.parse(evidence.appliedAt) <= Date.now()
     && HASH.test(evidence.catalog?.before ?? '') && HASH.test(evidence.catalog?.after ?? ''), 'schema_evidence_incomplete');
@@ -150,7 +161,7 @@ export function validateSchemaEvidence(evidence, source, { reviewedBlob, reviewe
     && typeof backup.backupFile === 'string' && isAbsolute(backup.backupFile),
   'schema_backup_evidence_required');
   return { file: source.path, sha256: evidence.sha256, reviewedBlob: evidence.reviewedBlob, sourceBlob: reviewedBlob,
-    reviewedProjection: legacyEol ? 'pinned_legacy_crlf_to_lf' : 'exact_bytes', appliedAt: evidence.appliedAt,
+    reviewedProjection: legacyEol ? 'pinned_legacy_crlf_to_lf' : scheduleEol ? 'pinned_schedule_crlf_to_lf' : 'exact_bytes', appliedAt: evidence.appliedAt,
     backupSha256: backup.backupSha256, catalogAfter: evidence.catalog.after };
 }
 
@@ -484,8 +495,9 @@ export async function verifyLiveSchema(pool) {
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item.bodyDigest]));
   const rows = (await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosrc,p.prosecdef,pg_get_userbyid(p.proowner) owner,p.proconfig
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1::text[])`, [[...expected.keys()]])).rows;
-  demand(rows.length === expected.size && rows.every(row => row.prosecdef && row.owner === 'postgres'
-    && row.proconfig?.some(value => value.startsWith('search_path=pg_catalog,'))
+  const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1','app_private.hermes_work_memory_settings_json_v1','app_private.hermes_schedule_immutable_v1','app_private.hermes_domain_permission_v1','app_private.hermes_domain_text_v1']);
+  demand(rows.length === expected.size && rows.every(row => row.prosecdef === (row.name !== 'app_private.hermes_group_number_vi_v1') && row.owner === 'postgres'
+    && row.proconfig?.some(value => pureCatalog.has(row.name) ? value === 'search_path=pg_catalog' : value.startsWith('search_path=pg_catalog,'))
     && sha(row.prosrc.replace(/\r\n?/g, '\n')) === expected.get(row.name)), 'live_schema_body_mismatch');
   const signatures = [
     ['public.hermes_zalo_binding_v1(jsonb)', 'authenticated'], ['public.hermes_connection_options_v1(uuid)', 'authenticated'],
@@ -510,6 +522,16 @@ export async function verifyLiveSchema(pool) {
   demand(triggers.length === 3 && triggers.every(row => row.tgenabled === 'O'), 'live_guard_trigger_missing');
 }
 
+// Nonsecret exact IDs for diagnosing cleanup; never persist passwords, tokens or envelopes.
+export function fixtureCleanupIdentity(plan) {
+  return { runId: plan.run, role: plan.role, instanceId: plan.instanceId,
+    actors: plan.actors.map(({ id, email }) => ({ id: id ?? null, email })),
+    organizations: plan.orgs.map(({ id, slug, roleId, buildingId, roomId }) => ({ id, slug, roleId, buildingId, roomId })),
+    memberships: plan.memberships.map(({ id, bindingId, actor, org }) => ({ id, bindingId, actor, org })),
+    connectionIds: [...plan.connectionIds], channelAccountIds: plan.channels.map(channel => channel.accountId),
+    roomRead: { areaId: plan.roomRead.areaId, scopeId: plan.roomRead.scopeId, buildingId: plan.roomRead.buildingId, roomId: plan.roomRead.roomId } };
+}
+
 export async function runHarness(options) {
   demand(options?.run === true && options.environment === 'test' && options.expectedProjectRef === TEST_REF, 'explicit_test_run_required');
   const mode = executionMode(options);
@@ -517,7 +539,7 @@ export async function runHarness(options) {
   const sourceIdentity = captureSourceIdentity(); const schemaEvidence = requireSchemaEvidence();
   const connection = await context();
   return withTestLock(connection, async lease => {
-    const plan = fixturePlan(); const cases = [], rpcDiagnostics = []; let cleanupRequired = false, cleanupVerified = false, workerOwned = false;
+    const plan = fixturePlan(); const cases = [], rpcDiagnostics = []; const cdeEvidence = {}; let cleanupRequired = false, cleanupVerified = false, workerOwned = false, cleanupPhase = 'not_started';
     let authenticatedActors = 0; let postgrestResponses = 0; let executorRoleProbes = 0; let fatal;
     let restricted, principalVerified = false;
     const executorRole = { attempted: false, confirmed: false, cleanupRequired: false };
@@ -593,10 +615,11 @@ export async function runHarness(options) {
         tokenExpiresAt: Math.min(Date.now() + 10 * 60_000, material.expiresAt), sessionExpiresAt: material.expiresAt,
         sessionEnvelope: crypto.seal(material, binding) }, { signal: lease.signal });
       demand(activated.ok && activated.status === 'activated', 'fixture_activation_failed');
-      return { connection: activated.connection, tokenDigest, actorIndex, orgIndex };
+      return { connection: activated.connection, tokenDigest, actorIndex, orgIndex, session };
     };
     try {
       await verifyLiveSchema(pool);
+      if (mode === 'cde') await verifyCdeLiveSurface(pool);
       demand(JSON.stringify(sourceIdentity) === JSON.stringify(captureSourceIdentity()), 'source_changed_before_fixture');
       if (mode === 'full') demand((await pool.query("SELECT count(*)::int n FROM public.zalo_worker_lease WHERE id='singleton'")).rows[0].n === 0, 'worker_lease_must_be_absent');
       cases.push({ name: 'schema.evidence_body_acl_rls_triggers', status: 'PASS' });
@@ -637,7 +660,7 @@ export async function runHarness(options) {
       await check('jwt.org_policy_self_cross_org_superadmin_and_missing_users_edit', async () => {
         await verifyPolicyOptionsFixture(plan, { okRpc, deniedRpc, write });
       });
-      await runChannelScope(mode, { management: async () => {
+      await runChannelScope(mode, { cde: async () => runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRpc,check,evidence:cdeEvidence}), management: async () => {
         await check('jwt.binding_management_without_worker', async () => {
           await write(`BEGIN; ${accountSetupSql(plan)} COMMIT;`);
           await verifyBindingManagementFixture(plan, subjects, { okRpc, deniedRpc, write });
@@ -788,24 +811,39 @@ export async function runHarness(options) {
       await pool.end().catch(() => { ctx.writeState.uncertain = true; });
       if (cleanupRequired) {
         try {
+            cleanupPhase = 'lease';
           await withTestCleanup(lease, ctx.test, async cleanupLease => {
             await ctx.assertLease(cleanupLease, ctx.test);
+            cleanupPhase = 'recover_actor_ids';
             const found = psqlJson(ctx.test, `SELECT id,email FROM auth.users WHERE email IN (${plan.actors.map(actor => lit(actor.email)).join(',')})`);
             for (const actor of plan.actors) actor.id ??= found.find(row => row.email === actor.email)?.id ?? null;
+            cleanupPhase = 'recover_connection_ids';
             const connections = psqlJson(ctx.test, `SELECT id FROM app_private.hermes_connections WHERE organization_id IN (${sqlIds(plan.orgs.map(org => org.id))})`);
             plan.connectionIds = [...new Set([...plan.connectionIds, ...connections.map(row => row.id)])];
+            cleanupPhase = 'cde_cleanup';
+            if (mode === 'cde') await write(cdeCleanupSql(plan), cleanupLease);
+            cleanupPhase = 'channel_cleanup';
             await write(channelCleanupSql(plan, { mode }), cleanupLease);
+            cleanupPhase = 'durable_cleanup';
             await write(durableCleanup(plan), cleanupLease);
+            cleanupPhase = 'base_cleanup';
             await write(baseCleanup(plan), cleanupLease);
+            cleanupPhase = 'auth_cleanup';
             for (const actor of plan.actors.filter(actor => actor.id)) {
               const deleted = await request(`/auth/v1/admin/users/${actor.id}`, ctx.cred.testSecretKey, ctx.cred.testSecretKey, undefined,
                 { method: 'DELETE', held: cleanupLease });
               demand([200, 404].includes(deleted.status), 'fixture_auth_cleanup_failed');
             }
+            cleanupPhase = 'role_cleanup';
             if (executorRole.cleanupRequired) await write(roleCleanupSql(plan), cleanupLease);
+            cleanupPhase = 'base_channel_counts';
             const [baseCounts] = psqlJson(ctx.test, durableCounts(plan)); const [channelCounts] = psqlJson(ctx.test, channelCountsSql(plan));
-            validateCleanupEvidence({ ...baseCounts, ...channelCounts }, ctx.writeState); cleanupVerified = true;
+            cleanupPhase = 'cde_counts';
+            const cdeCounts = mode === 'cde' ? psqlJson(ctx.test, cdeCountsSql(plan))[0] : {};
+            cleanupPhase = 'validate_counts';
+            validateCleanupEvidence({ ...baseCounts, ...channelCounts, ...cdeCounts }, ctx.writeState); cleanupVerified = true;
           });
+          cleanupPhase = 'verified';
           cases.push({ name: 'fixture.cleanup_verified', status: 'PASS' });
         } catch (error) { cases.push({ name: 'fixture.cleanup_verified', status: 'FAIL', code: safeCode(error) }); }
       }
@@ -815,21 +853,21 @@ export async function runHarness(options) {
       if (!unchanged) cases.push({ name: 'evidence.inputs_unchanged', status: 'FAIL', code: 'source_changed_during_run' });
       const receipt = { version: 1, scope: mode, observedAt: new Date().toISOString(), environment: 'test', projectRef: TEST_REF,
         fullPrivateFlowExecuted: mode === 'full' && workerOwned,
-        fullPrivateFlowStatus: mode === 'jwt-management' ? 'not_executed_scope'
+        fullPrivateFlowStatus: mode !== 'full' ? 'not_executed_scope'
           : (!fatal && cleanupVerified && !ctx.writeState.uncertain && !cases.some(item => item.status === 'FAIL') ? 'passed' : 'failed'),
-        node: process.version, fixture: { runId: plan.run, cleanupRequired, cleanupVerified, uncertain: ctx.writeState.uncertain },
-        sourceIdentity: { initial: sourceIdentity, final: finalIdentity, unchanged }, schemaEvidence, rpcDiagnostics,
+        node: process.version, fixture: { runId: plan.run, cleanupRequired, cleanupVerified, uncertain: ctx.writeState.uncertain, cleanupPhase, cleanupIdentity: fixtureCleanupIdentity(plan) },
+        sourceIdentity: { initial: sourceIdentity, final: finalIdentity, unchanged }, schemaEvidence, rpcDiagnostics, cdeEvidence,
         evidence: { realJwtActors: authenticatedActors, realPostgrest: postgrestResponses > 0, postgrestResponses,
           executorRoleProbe: executorRoleProbes > 0, executorRoleProbes,
           dedicatedLogin: principalVerified, ephemeralRoleChangesAttempted: executorRole.attempted,
           ephemeralRoleChanges: executorRole.confirmed, providerSend: false, modelExecution: false, schemaAppliedByHarness: false, productionWrites: false },
-        limitations: [...(mode === 'jwt-management' ? ['JWT management scope only: worker lease, ingress, binding confirm, private intake/dispatch/reply were not executed.'] : []),
+        limitations: [...(mode === 'cde' ? ['Positive SQL used exact payload claims from verified real Auth JWTs and rolled back; no positive PostgREST data claim.', 'The only concurrent writer changed exact fixture work-memory settings; no production row, worker lease or provider was touched.', 'Schedule revoke used an uncommitted inert grant with a REVOKED fixture binding; no live schedule creation or DM observation was proved.'] : []), ...(mode === 'jwt-management' ? ['JWT management scope only: worker lease, ingress, binding confirm, private intake/dispatch/reply were not executed.'] : []),
           'Executor cases use a freshly generated restricted TEST login with TLS; no production login is provisioned or validated.',
           'Zalo accounts/messages/lease are synthetic database fixtures; no provider or worker delivery is executed.',
           'Unknown/cancelled receipts are explicit synthetic protocol inputs, not observations of provider delivery.',
-          'Sequential cases do not prove concurrent PostgreSQL schedules, process-crash recovery, or runtime dispatch.',
+          'Only the specifically recorded CDE sharing-lock case proves a concurrent PostgreSQL interleaving; other cases do not prove concurrency, process-crash recovery, or runtime dispatch.',
           'Historical backups are apply-time attestations. The latest pre-apply dump is rehashed, but not restored; recovery also needs its reviewed forward migration.'], cases };
-      const path = resolve(ROOT, '.cache/hermes-private-flow', `receipt-${plan.run}.json`);
+      const path = resolve(ROOT, mode === 'cde' ? '.cache/hermes-cde-live' : '.cache/hermes-private-flow', `receipt-${plan.run}.json`);
       mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
     }
     demand(!fatal && (!cleanupRequired || cleanupVerified) && !ctx.writeState.uncertain && !cases.some(item => item.status === 'FAIL'), 'private_flow_harness_failed');

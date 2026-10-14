@@ -73,6 +73,16 @@ test('all six real HTTP routes forward the browser header and exact primitive fi
   assert.equal(f.calls.length, 6);
 });
 
+test('HTTP context and choices preserve neutral policy version zero', async t => {
+  const deps = dependencies();
+  deps.management.options = async () => ({ options: { ...result('options').options, policyVersion: 0 } });
+  deps.management.context = async () => ({ context: { ...context(), policyVersion: 0 } });
+  const f = await fixture(t, deps);
+  for (const operation of ['context', 'options']) {
+    const response = await f.send(operation); assert.equal(response.status, 200); assert.equal(response.body[operation].policyVersion, 0);
+  }
+});
+
 test('exact Host and Origin gates apply to reads too, while writes require Origin and ignore forwarded headers', async t => {
   const f = await fixture(t);
   for (const operation of ['connect', 'list', 'context', 'options', 'restrict', 'revoke']) {
@@ -149,7 +159,7 @@ test('only a syntactic browser bearer and route-specific body can reach a primit
     const missing = body(operation); delete missing.organizationId;
     assert.equal((await f.send(operation, { value: missing })).status, 400);
   }
-  for (const value of [{ ...body('connect'), password: 'x'.repeat(4097) }, { ...body('connect'), restrictions: { read: ['contracts.view'], action: [] } },
+  for (const value of [{ ...body('connect'), password: 'x'.repeat(4097) }, { ...body('connect'), restrictions: { read: ['future.unsupported_read'], action: [] } },
     { ...body('restrict'), scopeIds: [ids.other, ids.other] }, { ...body('revoke'), expectedEpoch: 0 }]) {
     const operation = 'password' in value ? 'connect' : 'scopeIds' in value ? 'restrict' : 'revoke';
     assert.equal((await f.send(operation, { value })).status, 400);
@@ -284,10 +294,24 @@ test('options HTTP projects only the selected-company choices and rejects forged
  f.management.options=async()=>({options:{...result('options').options,token:'secret'}});
  const response=await f.send('options');assert.equal(response.status,503);assert(!response.text.includes('secret'));
 });
-test('HTTP connect forwards the two implemented read capabilities but never accepts action grants',async t=>{
+test('HTTP connect forwards implemented read capabilities and rejects unsupported actions',async t=>{
  const f=await fixture(t),input={...body('connect'),restrictions:{read:['assistant.context.read','rooms.view'],action:[]},scopeIds:[ids.other]};
  f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}};};
  assert.equal((await f.send('connect',{value:input})).status,200);
  assert.deepEqual(f.calls.at(-1).restrictions,input.restrictions);
  assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action:['rooms.edit']}}})).status,400);
+});
+
+test('HTTP forwards exactly the fixed requested action and rejects unknown/duplicate additions',async t=>{
+ const f=await fixture(t),input={...body('connect'),restrictions:{read:['assistant.context.read'],action:['chat_zalo.send']}};
+ f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}}};
+ assert.equal((await f.send('connect',{value:input})).status,200);assert.deepEqual(f.calls.at(-1).restrictions.action,['chat_zalo.send']);
+ for(const action of [['rooms.edit'],['chat_zalo.send','chat_zalo.send'],['chat_zalo.send','future.write']])assert.equal((await f.send('connect',{value:{...input,restrictions:{...input.restrictions,action}}})).status,400);
+ f.controlPlane.connect=async()=>result('connect');assert.equal((await f.send('connect',{value:input})).status,503);
+});
+
+test('HTTP accepts group read without an implicit room/send requirement',async t=>{
+ const f=await fixture(t),input={...body('connect'),restrictions:{read:['chat_zalo.view'],action:[]},scopeIds:[]};
+ f.controlPlane.connect=async value=>{f.calls.push(value);return {...result('connect'),connection:{...row(),restrictions:value.restrictions,scopeIds:value.scopeIds}}};
+ assert.equal((await f.send('connect',{value:input})).status,200);assert.deepEqual(f.calls.at(-1).restrictions,input.restrictions);
 });

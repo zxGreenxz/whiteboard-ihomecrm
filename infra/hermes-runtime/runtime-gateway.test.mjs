@@ -10,6 +10,7 @@ import { PassThrough } from 'node:stream';
 import { createRuntimeGateway } from './runtime-gateway.mjs';
 import { createDependencyScope } from '../hermes-broker/dependency-scope.mjs';
 import { RuntimeModelServiceError } from '../hermes-broker/runtime-model-service.mjs';
+import { GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from '../hermes-broker/group-preview-mount.mjs';
 
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const tokens = { a: `hc_${'a'.repeat(43)}`, b: `hc_${'b'.repeat(43)}` };
@@ -97,6 +98,115 @@ async function fixture(t, limits = {}) {
   const begin = (actor, n = 100, signal) => { gateway.setAdmission(actor.handle, true); gateway.beginTurn(actor.handle, { commandId: id(n), ...(signal ? { signal } : {}) }); return id(n); };
   return { gateway, state, scope, channels, events, add, begin, releases, backend, broker, modelService, transport };
 }
+
+test('group tools require current trusted turn discovery and route through private host context', async t => {
+  const context = Object.freeze({}), commandId = id(401), claimId = id(402); let active = true;
+  const f = await fixture(t, { resolvePrivateCommandContext: (handle, binding) => {
+    assert.equal(handle, context); assert.equal(binding.commandId, commandId);
+    if (!active) throw Object.assign(Error('context_changed'), { code: 'context_changed' });
+    return { commandId, claimId };
+  } });
+  const seen = []; let enabled = true, readOnly = false;
+  f.broker.listGroupTools = async (token, claim) => {
+    seen.push({ token, claim }); if (!enabled) throw Object.assign(Error('forbidden'), { code: 'forbidden' });
+    return { tools: readOnly ? [GROUP_DIRECTORY_TOOL, GROUP_SEND_STATUS_TOOL]
+      : [GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL] };
+  };
+  f.broker.groupDirectory = async (token, claim) => {
+    seen.push({ token, claim }); if (!enabled) throw Object.assign(Error('forbidden'), { code: 'forbidden' });
+    return { sender: 'Bot', conversations: [{ conversationId: id(403), name: 'Group' }], expiresAt: Date.now() + 1000 };
+  };
+  f.broker.previewGroupRooms = async (token, claim, intent) => {
+    seen.push({ token, claim, intent }); return { status: 'preview_only' };
+  };
+  f.broker.sendGroupRooms = async () => { throw Error('not used'); };
+  f.broker.groupSendStatus = async (_token, _claim, dispatchId) => ({ status: 'dispatch_status', dispatchId, recipients: [{ name: 'Group', status: 'unknown' }] });
+  const a = await f.add();
+  const list = () => http(a, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+  assert.equal((await list()).body.result.tools.length, 2);
+  assert.equal((await http(a, rpc('crm_group_directory'))).body.error, 'tool_not_available');
+  f.gateway.setAdmission(a.handle, true); f.gateway.beginTurn(a.handle, { commandId, commandContext: context });
+  assert.deepEqual((await list()).body.result.tools.map(x => x.name), ['crm_auth_context', 'crm_available_rooms', 'crm_group_directory', 'crm_group_room_preview', 'crm_group_room_send', 'crm_group_send_status']);
+  readOnly = true;
+  assert.deepEqual((await list()).body.result.tools.map(x => x.name),
+    ['crm_auth_context', 'crm_available_rooms', 'crm_group_directory', 'crm_group_send_status']);
+  readOnly = false;
+  const directory = await http(a, rpc('crm_group_directory'));
+  assert.equal(JSON.parse(directory.body.result.content[0].text).conversations[0].conversationId, id(403));
+  const selection = { roomIds: [id(404)], conversationIds: [id(403)] };
+  assert.equal((await http(a, rpc('crm_group_room_preview', selection))).status, 200);
+  assert.equal((await http(a, rpc('crm_group_room_preview', { ...selection, claimId }))).status, 400);
+  assert.equal((await http(a, rpc('crm_group_room_send', { ...selection, conversationIds: Array.from({ length: 9 }, (_, n) => id(450 + n)) }))).body.error, 'group_recipient_limit');
+  assert.equal(JSON.parse((await http(a, rpc('crm_group_send_status', { dispatchId: id(405) }))).body.result.content[0].text).status, 'dispatch_status');
+  assert.equal((await http(a, rpc('crm_group_send_status', { dispatchId: id(405), token: tokens.a }))).status, 400);
+  const model = await http(a, { ...body(), tools: [tool('crm_group_directory'), tool('crm_group_room_preview')] }, { url: '/v1/chat/completions' });
+  assert.equal(model.status, 200);
+  assert(seen.every(x => x.token === tokens.a && x.claim.commandId === commandId && x.claim.claimId === claimId));
+  assert(!directory.raw.includes(claimId)); assert(!directory.raw.includes(tokens.a));
+  enabled = false;
+  assert.equal((await list()).body.result.tools.length, 2);
+  assert.equal((await http(a, rpc('crm_available_rooms'))).status, 200);
+  assert.equal((await http(a, { ...body('revoked'), tools: [tool('crm_group_directory')] }, { url: '/v1/chat/completions' })).status, 400);
+  enabled = true; active = false;
+  assert.equal((await list()).body.error, 'context_changed');
+});
+
+test('send dispatch uncertainty returns a status receipt, latches the trusted turn and never retries changed intent', async t => {
+  const context = Object.freeze({}), commandId = id(411), claimId = id(412);
+  const f = await fixture(t, { timeoutMs: 30, resolvePrivateCommandContext: () => ({ commandId, claimId }) });
+  const hold = deferred(); f.releases.push(hold.resolve); let attempts = 0;
+  f.broker.sendGroupRooms = (_token, claim, _intent, options) => {
+    attempts++; assert.equal(claim.claimId, claimId); options.onDispatch(id(416));
+    return f.scope.track(() => hold.promise);
+  };
+  const a = await f.add(); f.gateway.setAdmission(a.handle, true); f.gateway.beginTurn(a.handle, { commandId, commandContext: context });
+  const selection = { roomIds: [id(413)], conversationIds: [id(414)] }, opts = { commandId, signal: new AbortController().signal };
+  assert.deepEqual(await f.gateway.sendGroupRooms(a.handle, opts, selection), { status: 'unknown', dispatchId: id(416) });
+  assert.deepEqual(await f.gateway.sendGroupRooms(a.handle, opts, { ...selection, roomIds: [id(415)] }), { status: 'unknown', dispatchId: id(416) });
+  await assert.rejects(f.gateway.sendGroupRooms(a.handle, { ...opts, commandId: id(417) }, selection), err('inactive'));
+  assert.equal(attempts, 1); const ending = f.gateway.endTurn(a.handle, { commandId }); await stillPending(ending); hold.resolve({}); await ending;
+});
+
+test('definitive send rejection may release attempt while acknowledged sends are limited to one per turn', async t => {
+  const context = Object.freeze({}), commandId = id(421), claimId = id(422);
+  const f = await fixture(t, { resolvePrivateCommandContext: () => ({ commandId, claimId }) }); let attempts = 0;
+  f.broker.sendGroupRooms = async (_token, _claim, _intent, options) => {
+    attempts++; options.onDispatch(id(423)); if (attempts === 1) { options.onRejected(); throw Object.assign(Error('forbidden'), { code: 'forbidden' }); }
+    return { status: 'queued', dispatchId: id(423) };
+  };
+  const a = await f.add(); f.gateway.setAdmission(a.handle, true); f.gateway.beginTurn(a.handle, { commandId, commandContext: context });
+  const opts = { commandId, signal: new AbortController().signal }, selection = { roomIds: [id(424)], conversationIds: [id(425)] };
+  await assert.rejects(f.gateway.sendGroupRooms(a.handle, opts, selection), err('forbidden'));
+  assert.equal((await f.gateway.sendGroupRooms(a.handle, opts, selection)).status, 'queued');
+  assert.deepEqual(await f.gateway.sendGroupRooms(a.handle, opts, selection), { status: 'existing_dispatch', dispatchId: id(423) }); assert.equal(attempts, 2);
+});
+
+test('lost successful MCP response recovers its existing dispatch for same or changed selection without another write', async t => {
+  const context = Object.freeze({}), commandId = id(431), claimId = id(432), dispatchId = id(433);
+  let active = true, attempts = 0;
+  const f = await fixture(t, { resolvePrivateCommandContext: () => {
+    if (!active) throw Object.assign(Error('context_changed'), { code: 'context_changed' });
+    return { commandId, claimId };
+  } });
+  f.broker.sendGroupRooms = async (_token, _claim, _intent, options) => {
+    attempts++; options.onDispatch(dispatchId); return { status: 'queued', dispatchId };
+  };
+  const a = await f.add(); f.gateway.setAdmission(a.handle, true); f.gateway.beginTurn(a.handle, { commandId, commandContext: context });
+  const selection = { roomIds: [id(434)], conversationIds: [id(435)] };
+  const req = new PassThrough(), res = new EventEmitter(), lost = deferred();
+  req.method = 'POST'; req.url = '/mcp'; req.headers = { host: 'hermes-gateway:8787', 'content-type': 'application/json' };
+  req.rawHeaders = ['Host', req.headers.host, 'Content-Type', req.headers['content-type']];
+  res.destroyed = false; res.writableEnded = false; res.writeHead = status => { res.statusCode = status; };
+  res.end = () => { res.writableEnded = true; res.destroyed = true; res.emit('close'); lost.resolve(); };
+  a.channel.input.handler(req, res); req.end(JSON.stringify(rpc('crm_group_room_send', selection))); await lost.promise;
+  assert.equal(res.statusCode, 200);
+  for (const intent of [selection, { ...selection, roomIds: [id(436)] }]) {
+    const recovered = await http(a, rpc('crm_group_room_send', intent)); assert.equal(recovered.status, 200);
+    assert.deepEqual(JSON.parse(recovered.body.result.content[0].text), { status: 'existing_dispatch', dispatchId });
+  }
+  assert.equal(attempts, 1); active = false;
+  assert.equal((await http(a, rpc('crm_group_room_send', selection))).body.error, 'context_changed'); assert.equal(attempts, 1);
+});
 
 test('registration and prepare are inert branded owner/home capabilities; transport never receives a token', async t => {
   const f = await fixture(t), home = path.resolve(os.tmpdir(), 'hermes-gateway-inert');

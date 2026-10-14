@@ -103,8 +103,13 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
     } catch (error) {
       const safe = error instanceof BrokerError ? error : new BrokerError('backend_unavailable');
       if (message?.method === 'tools/call' && !['unauthorized', 'rate_limited', 'busy'].includes(safe.code)) {
+        const receipt = safe.code === 'send_outcome_unknown' && typeof safe.dispatchId === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.dispatchId)
+          ? { dispatchId: safe.dispatchId } : safe.code === 'room_pass_outcome_unknown' && typeof safe.requestId === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
+          ? { requestId: safe.requestId } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
-          content: [{ type: 'text', text: JSON.stringify({ error: safe.code }) }], isError: true,
+          content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });
       } else { reply(response, safe.status, { error: safe.code }); }
     } finally { active -= 1; }

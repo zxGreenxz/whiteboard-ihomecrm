@@ -103,6 +103,16 @@ test('real authority and crypto with fake backend return only the existing room 
   assert.equal(f.events.at(-1), 'map'); // Coherent bound decision follows final Auth/store rechecks.
   assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0); f.crypto.destroy();
 });
+
+test('neutral policy read binds version zero through both room scope checks and rejects stale explicit proof', async t => {
+  const f = fixture(); t.after(() => f.crypto.destroy()); f.joined.policy.version = 0;
+  const versions = [];
+  f.reads.scopeMap = async input => { versions.push(input.expectedPolicyVersion); return { ...proof(), binding: { ...proof().binding, policyVersion: 0 } }; };
+  assert.deepEqual((await f.create().availableRooms(opaque, {}, f.options)).rooms.map(r => r.building.id), [I.a]);
+  assert.deepEqual(versions, [0, 0]);
+  f.reads.scopeMap = async () => proof();
+  await assert.rejects(f.create().availableRooms(opaque, {}, f.options), code('context_changed'));
+});
 test('caller cannot supply org, JWT, resource scopes, RPC, wildcard or arbitrary endpoint', async () => {
   const f = fixture();
   for (const args of [{ organizationId: I.foreign }, { accessToken: jwt() }, { allowedBuildingIds: [I.foreign] },

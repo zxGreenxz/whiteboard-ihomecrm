@@ -159,16 +159,16 @@ test('captures tool input fields and action preview fields from AST without runn
   assert.ok(inventory.actions.find((action) => action.id === 'zalo.broadcast').output.previewFields.length > 0);
 });
 
-test('keeps plan superadmin constraints and distinct proposal/internal execution channels', () => {
+test('records legacy flags separately from the current-user Hermes executor proposal', () => {
   const proposal = inventory.tools.find((tool) => tool.id === 'lap_ke_hoach');
   const executor = inventory.tools.find((tool) => tool.id === 'thuc_thi_buoc');
   for (const tool of [proposal, executor]) {
     assert.equal(tool.flags.superAdminOnly, true);
-    assert.equal(tool.consent.superAdminOnlyPreserved, true);
+    assert.equal(tool.consent.legacySuperAdminOnly, true);
     assert.ok(tool.acceptance.requiredCases.some((text) => text.includes('superAdminOnly')));
   }
   assert.deepEqual(proposal.channels.proposed, ['hermes_via_crm_gateway']);
-  assert.deepEqual(executor.channels.proposed, ['crm_internal_executor_after_consent']);
+  assert.deepEqual(executor.channels.proposed, ['crm_executor_with_current_user_and_hermes_action']);
   assert.ok(executor.phase.includes('P11'));
 });
 

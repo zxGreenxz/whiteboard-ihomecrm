@@ -47,6 +47,20 @@ test('loader accepts bounded explicit rotation and CA with matching session-pool
   assert.ok(config.store.ca.startsWith('-----BEGIN CERTIFICATE-----')); config.dispose();
 });
 
+test('connector config needs no model or personal profile and rejects accidental managed runtime settings', async t => {
+  const f = await fixture(t), input = structuredClone(f.input);
+  delete input.model; input.version = 2; input.mode = 'connector'; await f.save(input);
+  const config = await loadHostConfiguration(f.configPath);
+  try {
+    assert.equal(config.mode, 'connector'); assert.equal(Object.hasOwn(config, 'model'), false);
+    assert.deepEqual(await readdir(f.stateRoot), []); assert.equal(config.listenPort, 8740);
+  } finally { config.dispose(); }
+  for (const change of [x => { x.model = f.input.model; }, x => { x.mode = 'managed'; }, x => { delete x.mode; }]) {
+    const invalid = structuredClone(input); change(invalid); await f.save(invalid);
+    await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
 test('inline secrets, extra/foreign fields, project mismatch, unsafe role/URL and model bounds reject before secret loading', async t => {
   const f = await fixture(t), cases = [
     x => { x.password = 'inline'; }, x => { x.store.password = 'inline'; }, x => { x.encryption.keys[0].secret = 'inline'; },

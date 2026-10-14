@@ -32,7 +32,7 @@ let fetchMock: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 let writeClipboard: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>;
 async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const input = JSON.parse(init!.body as string), operation = String(path).split('/').at(-1);
-  if (operation === 'hermes_org_policy_options_v1') return json(companyPolicy);
+  if (['hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1'].includes(operation ?? '')) return json(companyPolicy);
   if (operation === 'hermes_set_org_policy_v1') {
     companyPolicy.policy = { organizationId: ORG, version: input.p_expected_version + 1,
       enabled: input.p_enabled, read: input.p_read, action: input.p_action, scopeIds: input.p_scope_ids };
@@ -44,8 +44,8 @@ async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Res
   if (operation === 'list') return json({ connections: own });
   if (operation === 'options') return json({ options: { userId: identity.userId, organizationId: input.organizationId, membershipId: OTHER,
     authorizationVersion: 1, isSuperadmin: false, policyVersion: companyPolicy.policy.version, enabled: companyPolicy.policy.enabled,
-    read: companyPolicy.policy.enabled ? companyPolicy.policy.read : [], action: [],
-    scopes: companyPolicy.policy.enabled && companyPolicy.policy.read.includes('rooms.view') ? companyPolicy.choices.scopes.filter(scope => companyPolicy.policy.scopeIds.includes(scope.scopeId)) : [] } });
+    read: companyPolicy.policy.enabled ? companyPolicy.policy.read : [], action: companyPolicy.policy.enabled ? companyPolicy.policy.action : [],
+    scopes: companyPolicy.policy.enabled && (companyPolicy.policy.read.includes('rooms.view') || companyPolicy.policy.action.includes('sale_phong.manage_pass_listings')) ? companyPolicy.choices.scopes.filter(scope => companyPolicy.policy.scopeIds.includes(scope.scopeId)) : [] } });
   if (operation === 'context') {
     const item = own.find(value => value.id === input.connectionId)!;
     return json({ context: { ...item, membershipId: OTHER, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
@@ -89,6 +89,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Hermes self-connection page with the real typed client and fake HTTP', () => {
+  it('creates a connection under neutral policy without opening or writing company settings', async () => {
+    companyPolicy.policy.version = 0;
+    render(<HermesConnectionsPage />); await ready();
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo kết nối' }) as HTMLButtonElement).disabled).toBe(false));
+    submitPassword(); await screen.findByLabelText('Mã kết nối');
+    expect(calls('connect')).toHaveLength(1);
+    expect(fetchMock.mock.calls.some(([path]) => /hermes_(set_org_policy|org_policy_options)_v[12]$/.test(String(path)))).toBe(false);
+    expect(companyPolicy.policy.version).toBe(0);
+  });
   it('withdraws a pending Zalo challenge and reloads available bots after company configuration changes', async () => {
     let enabled = true;
     fetchMock.mockImplementation(async (path, init) => {
@@ -120,7 +129,7 @@ describe('Hermes self-connection page with the real typed client and fake HTTP',
     expect(screen.getByText('Kết nối của tôi tại Công ty A')).toBeTruthy();
     expect(screen.getByText(/Đã cấp kết nối · 2 quyền đọc · 1 quyền thao tác/)).toBeTruthy();
     expect(screen.getByText(/chưa xác nhận Hermes đang chạy/)).toBeTruthy();
-    expect(screen.getByText(/Hermes hiện chưa hỗ trợ thay đổi dữ liệu CRM/)).toBeTruthy();
+    expect(screen.getByText(/Quyền đọc và thao tác được chọn độc lập/)).toBeTruthy();
     expect(screen.queryByText(/^Đang chạy$/)).toBeNull();
     expect(calls('list')).toHaveLength(1);
   });
@@ -403,7 +412,7 @@ describe('mounted company policy invalidates connection authority', () => {
     await act(async () => policyAck.resolve());
     await waitFor(() => expect(calls('options')).toHaveLength(2));
     await act(async () => options.resolve(await respond('/api/hermes/connections/options', { body: JSON.stringify({ organizationId: ORG }) })));
-    await screen.findByText(/Công ty chưa bật kết nối Hermes/);
+    await screen.findByText(/Chính sách công ty đang tắt kết nối Hermes/);
     expect(calls('connect')).toHaveLength(1); expect(policyWrites()).toHaveLength(1);
   });
 
@@ -418,7 +427,7 @@ describe('mounted company policy invalidates connection authority', () => {
     submitPassword(); await waitFor(() => expect(calls('connect')).toHaveLength(1));
     fireEvent.click(editor.getByRole('checkbox', { name: 'Bật Hermes cho công ty' }));
     fireEvent.click(editor.getByRole('button', { name: 'Lưu chính sách Hermes' }));
-    await screen.findByText(/Công ty chưa bật kết nối Hermes/);
+    await screen.findByText(/Chính sách công ty đang tắt kết nối Hermes/);
     expect(signal?.aborted).toBe(true);
     await act(async () => connect.resolve(json({ status: 'active', connection: { ...row(NEW), epoch: 1,
       restrictions: { read: ['assistant.context.read'], action: [] }, scopeIds: [] }, token: OPAQUE, tokenExpiresAt: Date.now() + 900000 })));
@@ -437,7 +446,51 @@ describe('mounted company policy invalidates connection authority', () => {
     fireEvent.click(editor.getByRole('checkbox', { name: 'Bật Hermes cho công ty' }));
     fireEvent.click(editor.getByRole('button', { name: 'Lưu chính sách Hermes' }));
     await editor.findByText(/Chưa xác định kết quả lưu chính sách/);
-    await screen.findByText(/Công ty chưa bật kết nối Hermes/);
+    await screen.findByText(/Chính sách công ty đang tắt kết nối Hermes/);
     expect(screen.queryByLabelText('Mã kết nối')).toBeNull(); expect(policyWrites()).toHaveLength(1); expect(calls('connect')).toHaveLength(1);
   });
+});
+
+describe('fixed action self-enrollment through the existing page and real client',()=>{
+ it('selects chat read independently and leaves send unselected',async()=>{
+  companyPolicy.policy.read.push('chat_zalo.view');companyPolicy.policy.action=['chat_zalo.send'];render(<HermesConnectionsPage/>);await ready();
+  const section=within(screen.getByRole('region',{name:'Cấp quyền Hermes mới'}));
+  const reads=within(section.getByRole('group',{name:'Đọc dữ liệu'}));
+  const actions=within(section.getByRole('group',{name:'Thao tác dữ liệu'}));
+  fireEvent.click(await reads.findByRole('button',{name:/Chat Zalo/}));fireEvent.click(reads.getByRole('checkbox',{name:/Vào trang Chat Zalo/}));
+  fireEvent.click(actions.getByRole('button',{name:/Chat Zalo/}));expect(actions.getByRole('checkbox',{name:/Gửi \/ soạn tin nhắn/}).getAttribute('data-state')).toBe('unchecked');
+  submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});
+  expect(JSON.parse(calls('connect')[0][1]!.body as string).restrictions).toEqual({read:['assistant.context.read','chat_zalo.view'],action:[]});
+ });
+ it('never preselects offered action and sends it only after explicit checkbox selection',async()=>{
+  companyPolicy.policy.action=['chat_zalo.send'];render(<HermesConnectionsPage/>);await ready();
+  const section=within(screen.getByRole('region',{name:'Cấp quyền Hermes mới'}));fireEvent.click(await section.findByRole('button',{name:/Chat Zalo/}));
+  const checkbox=section.getByRole('checkbox',{name:/Gửi \/ soạn tin nhắn/});expect(checkbox.getAttribute('data-state')).toBe('unchecked');expect(calls('connect')).toHaveLength(0);
+  fireEvent.click(checkbox);submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});
+  expect(JSON.parse(calls('connect')[0][1]!.body as string).restrictions).toEqual({read:['assistant.context.read'],action:['chat_zalo.send']});
+ });
+ it('fresh options removing action clear a previous selection instead of retaining an invisible grant',async()=>{
+  companyPolicy.policy.action=['chat_zalo.send'];render(<HermesConnectionsPage/>);await ready();
+  const section=within(screen.getByRole('region',{name:'Cấp quyền Hermes mới'}));fireEvent.click(await section.findByRole('button',{name:/Chat Zalo/}));fireEvent.click(section.getByRole('checkbox',{name:/Gửi \/ soạn tin nhắn/}));
+  companyPolicy.policy.action=[];fireEvent.click(screen.getByRole('button',{name:'Tải lại danh sách'}));await waitFor(()=>expect(calls('options')).toHaveLength(2));await waitFor(()=>expect(section.queryByRole('button',{name:/Chat Zalo/})).toBe(null));
+  submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});expect(JSON.parse(calls('connect')[0][1]!.body as string).restrictions.action).toEqual([]);
+ });
+});
+
+describe('room-pass Action enrollment',()=>{
+ it('uses the existing picker, leaves Action off and requires chosen building scope with Read empty',async()=>{
+  companyPolicy.policy.read=[];companyPolicy.policy.action=['sale_phong.manage_pass_listings'];
+  render(<HermesConnectionsPage/>);await ready();
+  const section=within(screen.getByRole('region',{name:'Cấp quyền Hermes mới'}));
+  const actions=within(section.getByRole('group',{name:'Thao tác dữ liệu'}));
+  fireEvent.click(await actions.findByRole('button',{name:/Sale Phòng/}));
+  const checkbox=actions.getByRole('checkbox',{name:/Quản lý.*pass/i});
+  expect(checkbox.getAttribute('data-state')).toBe('unchecked');expect(calls('connect')).toHaveLength(0);
+  expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(checkbox);expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(section.getByRole('checkbox',{name:'Nhà A'}));
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(false));
+  submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});
+  expect(JSON.parse(calls('connect')[0][1]!.body as string)).toMatchObject({restrictions:{read:[],action:['sale_phong.manage_pass_listings']},scopeIds:[SCOPE]});
+ });
 });

@@ -66,7 +66,7 @@ function joined(value, initial, tokenDigest, now) {
       ['keyVersion', 'nonce', 'ciphertext', 'tag'].some(key => typeof session.envelope[key] !== 'string') ||
       !exact(membership, ['membershipId', 'authorizationVersion', 'isSuperadmin']) || !id(membership.membershipId) ||
       !positive(membership.authorizationVersion) || typeof membership.isSuperadmin !== 'boolean' ||
-      !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !positive(policy.version)) fail('backend_unavailable');
+      !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !(policy.version === 0 || positive(policy.version))) fail('backend_unavailable');
   if (row.expiresAt <= now || session.expiresAt <= now) fail('unauthorized');
   const owner = initial.stable.row;
   if (['id', 'assistantId', 'userId', 'organizationId', 'state', 'epoch'].some(key => row[key] !== owner[key]) ||

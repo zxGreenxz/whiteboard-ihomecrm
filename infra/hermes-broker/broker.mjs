@@ -1,5 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
+import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
+import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
+import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
+  GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
+import { mayUseGroupTool } from './capability-contract.mjs';
+import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -31,8 +39,9 @@ const DEFAULT_LIMITS = Object.freeze({
 });
 const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
+  group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504,
-  backend_unavailable: 503, response_too_large: 502,
+  backend_unavailable: 503, response_too_large: 502, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503,
 });
 
 export class BrokerError extends Error {
@@ -208,6 +217,13 @@ export function createBroker({
   auth,
   authority,
   roomReads,
+  groupPreviews,
+  externalGroups,
+  workMemory,
+  schedules,
+  domains,
+  roomPass,
+  dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
   sessionStore,
@@ -231,12 +247,65 @@ export function createBroker({
     connectionStore ??= new MemoryConnectionStore();
     assistantStore ??= new MemoryAssistantStore();
   }
+  let pass;
+  if (roomPass !== undefined) {
+    if (!injectedAuthority || ['prepareRoomPass', 'finalizeRoomPass'].some(key => typeof roomPass?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_room_pass_service_required');
+    pass = Object.fromEntries(['prepareRoomPass', 'finalizeRoomPass'].map(key => [key, roomPass[key].bind(roomPass)]));
+  }
+  let domain;
+  if (domains !== undefined) {
+    if (!injectedAuthority || ['prepareDomain', 'finalizeDomain'].some(key => typeof domains?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_domain_service_required');
+    domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
+  }
+  let schedule;
+  if (schedules !== undefined) {
+    if (!injectedAuthority || ['prepareSchedule', 'finalizeSchedule'].some(key => typeof schedules?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_schedule_service_required');
+    schedule = Object.fromEntries(['prepareSchedule', 'finalizeSchedule'].map(key => [key, schedules[key].bind(schedules)]));
+  }
+  let memory;
+  if (workMemory !== undefined) {
+    if (!injectedAuthority || ['prepareMemory', 'finalizeMemory'].some(key => typeof workMemory?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_work_memory_service_required');
+    memory = Object.fromEntries(['prepareMemory', 'finalizeMemory'].map(key => [key, workMemory[key].bind(workMemory)]));
+  }
   let rooms;
   if (roomReads !== undefined) {
     if (!injectedAuthority || !roomReads || ['prepareAvailableRooms', 'finalizeAvailableRooms'].some(key => typeof roomReads[key] !== 'function')) {
       throw new TypeError('trusted_durable_room_service_required');
     }
     rooms = Object.fromEntries(['prepareAvailableRooms', 'finalizeAvailableRooms'].map(key => [key, roomReads[key].bind(roomReads)]));
+  }
+  // Trusted host composition only. This port never appears in MCP callTool.
+  // Its authority uses the same persisted store/session/permission intersection.
+  let groups;
+  if (groupPreviews !== undefined) {
+    if (!injectedAuthority || !exactData(groupPreviews, ['authority', 'createService']) ||
+        typeof groupPreviews.createService !== 'function' ||
+        ['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof groupPreviews.authority?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') {
+      throw new TypeError('trusted_group_preview_composition_required');
+    }
+    groups = { createService: groupPreviews.createService.bind(groupPreviews),
+      authority: Object.fromEntries(['identifyConnection', 'resolve', 'checkUnchanged']
+        .map(key => [key, groupPreviews.authority[key].bind(groupPreviews.authority)])) };
+  }
+  let external;
+  if (externalGroups !== undefined) {
+    if (!injectedAuthority || !exactData(externalGroups, ['authority', 'createService']) ||
+        typeof externalGroups.createService !== 'function' ||
+        ['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof externalGroups.authority?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') {
+      throw new TypeError('trusted_external_group_composition_required');
+    }
+    external = { createService: externalGroups.createService.bind(externalGroups),
+      authority: Object.fromEntries(['identifyConnection', 'resolve', 'checkUnchanged']
+        .map(key => [key, externalGroups.authority[key].bind(externalGroups.authority)])) };
+  }
+  if (dependencyScope !== undefined && ['begin', 'track'].some(key => typeof dependencyScope?.[key] !== 'function')) {
+    throw new TypeError('invalid_dependency_scope');
   }
   const mayReadRooms = identity => Boolean(rooms && identity.effective.read.includes(ROOM_PERMISSION) &&
     identity.assistantScopeIds.length && identity.scopesByPermission[ROOM_PERMISSION]?.buildingIds.length);
@@ -255,12 +324,20 @@ export function createBroker({
   });
   if (typeof writeAudit !== 'function') throw new TypeError('invalid_audit_adapter');
 
-  async function bounded(operation) {
+  const recordAudit = event => dependencyScope ? dependencyScope.track(() => writeAudit(event)) : writeAudit(event);
+  async function bounded(operation, externalSignal) {
+    if (externalSignal !== undefined && !(externalSignal instanceof AbortSignal)) fail('invalid_request');
+    if (externalSignal?.aborted) fail('timeout');
     const controller = new AbortController();
-    let timer;
+    let timer, stop;
+    const interrupted = new Promise((_, reject) => {
+      stop = () => { controller.abort(); reject(new BrokerError('timeout')); };
+      externalSignal?.addEventListener('abort', stop, { once: true });
+    });
     try {
       return await Promise.race([
         operation(controller.signal),
+        interrupted,
         new Promise((_, reject) => {
           timer = setTimeout(() => {
             controller.abort();
@@ -273,6 +350,7 @@ export function createBroker({
       throw new BrokerError('backend_unavailable');
     } finally {
       clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', stop);
       controller.abort();
     }
   }
@@ -328,17 +406,18 @@ export function createBroker({
     return () => { entry.active -= 1; };
   }
 
-  async function invoke(presentedToken, operation, handler, finalize) {
+  async function invoke(presentedToken, operation, handler, finalize, context = {}) {
     let release;
     let identity;
     let comparisonReceipt;
     const requestId = randomUUID();
-    try {
+    const selectedAuthority = context.authority ?? injectedAuthority;
+    const work = async () => { try {
       return await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
         let connectionId;
-        if (injectedAuthority) {
-          const identified = await injectedAuthority.identifyConnection(presentedToken, { signal });
+        if (selectedAuthority) {
+          const identified = await selectedAuthority.identifyConnection(presentedToken, { signal });
           if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
           connectionId = identified.connectionId;
         } else {
@@ -349,8 +428,8 @@ export function createBroker({
         if (signal.aborted) fail('timeout');
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId);
-        if (injectedAuthority) {
-          comparisonReceipt = await injectedAuthority.resolve(presentedToken, { signal });
+        if (selectedAuthority) {
+          comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal });
           identity = authorityIdentity(comparisonReceipt, clock());
         } else identity = await authorize(presentedToken, signal);
         if (signal.aborted) fail('timeout');
@@ -362,9 +441,9 @@ export function createBroker({
         // This receipt means a response was prepared, not delivered. An async
         // audit sink can wait while DB authority changes, so the authoritative
         // post-read check must be the LAST awaited step before releasing data.
-        await writeAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
-        if (injectedAuthority) {
-          const checked = await injectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal });
+        await recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
+        if (selectedAuthority) {
+          const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal });
           if (checked !== undefined) fail('backend_unavailable');
           if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
         } else await checkUnchanged(presentedToken, identity, signal);
@@ -376,20 +455,119 @@ export function createBroker({
         if (signal.aborted) fail('timeout');
         if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
         return result;
-      });
+      }, context.signal);
     } catch (error) {
-      const safe = error instanceof BrokerError ? error : new BrokerError('backend_unavailable');
+      const safe = context.mutationUncertain?.() ? new BrokerError(context.mutationCode ?? 'memory_outcome_unknown') : context.sendUncertain?.() ? new BrokerError('send_outcome_unknown') : error instanceof BrokerError ? error : new BrokerError('backend_unavailable');
+      const dispatchId = context.sendDispatchId?.();
+      if (safe.code === 'send_outcome_unknown' && canonicalId(dispatchId)) safe.dispatchId = dispatchId;
+      const mutationRequestId = context.mutationRequestId?.();
+      if (safe.code === 'room_pass_outcome_unknown' && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
-      await bounded(() => writeAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
-        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code }));
+      try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
+        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
+      catch (auditError) { if (!['send_outcome_unknown', 'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown'].includes(safe.code)) throw auditError; }
       throw safe;
-    } finally {
-      release?.();
+    } };
+    if (dependencyScope) {
+      // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
+      // The public timeout remains bounded; release belongs to actual drain.
+      const owned = dependencyScope.begin(work);
+      void owned.drained.then(() => release?.(), () => release?.());
+      return owned.result;
     }
+    try { return await work(); } finally { release?.(); }
   }
 
   return Object.freeze({
     auditReceipts() { return structuredClone(receipts); },
+    async listGroupTools(presentedToken, commandContext, { signal } = {}) {
+      if (!groups) fail('tool_not_available');
+      if (!(signal instanceof AbortSignal) || !exactData(commandContext, ['commandId', 'claimId']) ||
+          !canonicalId(commandContext.commandId) || !canonicalId(commandContext.claimId)) fail('invalid_request');
+      const claim = Object.freeze({ ...commandContext }); let service;
+      return invoke(presentedToken, 'private/group-directory', async (identity, innerSignal) => {
+        if (!mayUseGroupTool(identity.effective, 'directory')) fail('tool_not_available');
+        service = groups.createService(claim);
+        if (!service || ['prepareGroupDirectory', 'finalizeGroupDirectory'].some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+        const prepared = await service.prepareGroupDirectory(presentedToken, { signal: innerSignal });
+        if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable');
+        return prepared;
+      }, async (prepared, identity, innerSignal) => {
+        await service.finalizeGroupDirectory(presentedToken, prepared, { signal: innerSignal });
+        const tools = [[GROUP_DIRECTORY_TOOL, 'directory'], [GROUP_PREVIEW_TOOL, 'preview'],
+          [GROUP_SEND_TOOL, 'send'], [GROUP_SEND_STATUS_TOOL, 'status']]
+          .filter(([, operation]) => mayUseGroupTool(identity.effective, operation) &&
+            (!['preview', 'send'].includes(operation) || mayReadRooms(identity)))
+          .map(([tool]) => tool);
+        return Object.freeze({ tools: Object.freeze(tools) });
+      }, { authority: groups.authority, signal });
+    },
+    async sendGroupRooms(presentedToken, commandContext, suppliedIntent, { signal, onDispatch = () => {}, onRejected = () => {} } = {}) {
+      if (!groups) fail('tool_not_available');
+      if (!(signal instanceof AbortSignal) || [onDispatch, onRejected].some(fn => typeof fn !== 'function') ||
+          !exactData(commandContext, ['commandId', 'claimId']) || !canonicalId(commandContext.commandId) || !canonicalId(commandContext.claimId)) fail('invalid_request');
+      const claim = Object.freeze({ ...commandContext }); let service, uncertain = false, dispatchId, intent, invalid = false;
+      try { intent = groupPreviewIntent(suppliedIntent); } catch (error) { invalid = ['group_recipient_limit', 'group_room_limit'].includes(error?.code) ? error.code : 'invalid_request'; }
+      return invoke(presentedToken, 'private/group-room-send', async (identity, innerSignal) => {
+        if (!mayReadRooms(identity) || !mayUseGroupTool(identity.effective, 'send')) fail('tool_not_available');
+        if (invalid) fail(invalid); service = groups.createService(claim);
+        if (!service || ['prepareGroupRoomPreview', 'finalizeGroupRoomSend'].some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+        const prepared = await service.prepareGroupRoomPreview(presentedToken, intent, { signal: innerSignal });
+        if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable'); return prepared;
+      }, async (prepared, _identity, innerSignal) => groupSendResponse(await service.finalizeGroupRoomSend(presentedToken, prepared, {
+        signal: innerSignal, onDispatch(id) { uncertain = true; if (!canonicalId(id)) fail('backend_unavailable'); dispatchId = id; onDispatch(id); }, onRejected() { uncertain = false; onRejected(); },
+      }), clock()), { authority: groups.authority, signal, sendUncertain: () => uncertain, sendDispatchId: () => dispatchId });
+    },
+    async groupDirectory(presentedToken, commandContext, { signal } = {}) {
+      if (!groups) fail('tool_not_available');
+      if (!(signal instanceof AbortSignal) || !exactData(commandContext, ['commandId', 'claimId']) ||
+          !canonicalId(commandContext.commandId) || !canonicalId(commandContext.claimId)) fail('invalid_request');
+      const claim = Object.freeze({ ...commandContext }); let service;
+      return invoke(presentedToken, 'private/group-directory', async (identity, innerSignal) => {
+        if (!mayUseGroupTool(identity.effective, 'directory')) fail('tool_not_available');
+        service = groups.createService(claim);
+        if (!service || ['prepareGroupDirectory', 'finalizeGroupDirectory'].some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+        const prepared = await service.prepareGroupDirectory(presentedToken, { signal: innerSignal });
+        if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable');
+        return prepared;
+      }, (prepared, _identity, innerSignal) => service.finalizeGroupDirectory(presentedToken, prepared, { signal: innerSignal }),
+      { authority: groups.authority, signal });
+    },
+    async groupSendStatus(presentedToken, commandContext, dispatchId, { signal } = {}) {
+      if (!groups) fail('tool_not_available');
+      if (!(signal instanceof AbortSignal) || !canonicalId(dispatchId) || !exactData(commandContext, ['commandId', 'claimId']) ||
+          !canonicalId(commandContext.commandId) || !canonicalId(commandContext.claimId)) fail('invalid_request');
+      const claim = Object.freeze({ ...commandContext }); let service;
+      return invoke(presentedToken, 'private/group-send-status', async (identity, innerSignal) => {
+        if (!mayUseGroupTool(identity.effective, 'status')) fail('tool_not_available');
+        service = groups.createService(claim);
+        if (!service || ['prepareGroupDirectory', 'finalizeGroupSendStatus'].some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+        const prepared = await service.prepareGroupDirectory(presentedToken, { signal: innerSignal });
+        if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable'); return prepared;
+      }, (prepared, _identity, innerSignal) => service.finalizeGroupSendStatus(presentedToken, prepared, dispatchId, { signal: innerSignal }),
+      { authority: groups.authority, signal });
+    },
+    // Host-only. The runtime gateway supplies commandContext from the active
+    // supervisor WeakMap after a definite dispatch ACK, never model JSON.
+    async previewGroupRooms(presentedToken, commandContext, suppliedIntent, { signal } = {}) {
+      if (!groups) fail('tool_not_available');
+      if (!(signal instanceof AbortSignal) || !exactData(commandContext, ['commandId', 'claimId']) ||
+          !canonicalId(commandContext.commandId) || !canonicalId(commandContext.claimId)) fail('invalid_request');
+      const claim = Object.freeze({ ...commandContext });
+      let intent, invalid = false, service;
+      try { intent = groupPreviewIntent(suppliedIntent); } catch (error) { invalid = ['group_recipient_limit', 'group_room_limit'].includes(error?.code) ? error.code : 'invalid_request'; }
+      return invoke(presentedToken, 'private/group-room-preview', async (identity, innerSignal) => {
+        if (!mayReadRooms(identity) || !mayUseGroupTool(identity.effective, 'preview')) fail('tool_not_available');
+        if (invalid) fail(invalid);
+        service = groups.createService(claim);
+        if (!service || ['prepareGroupRoomPreview', 'finalizeGroupRoomPreview'].some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+        const prepared = await service.prepareGroupRoomPreview(presentedToken, intent, { signal: innerSignal });
+        if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable');
+        return prepared;
+      }, async (prepared, _identity, innerSignal) =>
+        groupPreviewResponse(await service.finalizeGroupRoomPreview(presentedToken, prepared, { signal: innerSignal }), intent, clock()),
+      { authority: groups.authority, signal });
+    },
     async issueConnection(input) {
       if (injectedAuthority) fail('forbidden');
       if (!exactKeys(input, ['accessToken', 'organizationId', 'restrictions']) ||
@@ -446,10 +624,111 @@ export function createBroker({
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => ({
         tools: [...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [structuredClone(TOOL)] : []),
-          ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : [])],
-      }));
+          ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : []),
+          ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(memory ? WORK_MEMORY_TOOLS.filter(tool => mayUseWorkMemory(identity.effective, workMemoryOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(external ? EXTERNAL_GROUP_TOOLS.filter(tool => {
+            const operation = externalGroupOperation(tool.name);
+            return mayUseGroupTool(identity.effective, operation) &&
+              (!['preview', 'send'].includes(operation) || mayReadRooms(identity));
+          }).map(tool => structuredClone(tool)) : [])],
+      }), undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      const passOperation = roomPassOperation(name);
+      if (pass && passOperation) {
+        let input, invalid = false, uncertain = false;
+        try { input = roomPassInput(passOperation, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseRoomPass(identity.effective, passOperation)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await pass.prepareRoomPass(presentedToken, passOperation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await pass.finalizeRoomPass(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'room_pass_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
+      const domainOp = domainOperation(name);
+      if (domain && domainOp) {
+        let input, invalid = false;
+        try { input = domainInput(domainOp, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
+          await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }));
+      }
+      const scheduleOp = scheduleOperation(name);
+      if (schedule && scheduleOp) {
+        let input, invalid = false, uncertain = false;
+        try { input = scheduleInput(scheduleOp, args, clock()); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseSchedule(identity.effective, scheduleOp)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await schedule.prepareSchedule(presentedToken, scheduleOp, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await schedule.finalizeSchedule(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'schedule_outcome_unknown' });
+      }
+      const memoryOperation = workMemoryOperation(name);
+      if (memory && memoryOperation) {
+        let input, invalid = false, uncertain = false;
+        try { input = workMemoryInput(memoryOperation, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseWorkMemory(identity.effective, memoryOperation)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await memory.prepareMemory(presentedToken, memoryOperation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await memory.finalizeMemory(presentedToken, receipt, {
+            signal, onDispatch() { uncertain = true; }, onRejected() { uncertain = false; },
+          });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain });
+      }
+      const operation = externalGroupOperation(name);
+      if (external && operation) {
+        let input, invalid, service, uncertain = false, dispatchId;
+        try { input = externalGroupInput(operation, args); }
+        catch (error) { invalid = ['group_recipient_limit', 'group_room_limit'].includes(error?.code) ? error.code : 'invalid_request'; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseGroupTool(identity.effective, operation) ||
+              ['preview', 'send'].includes(operation) && !mayReadRooms(identity)) fail('tool_not_available');
+          if (invalid) fail(invalid);
+          service = external.createService(operation === 'send' ? { requestId: input.requestId } : {});
+          const methods = ['directory', 'status'].includes(operation) ? ['prepareGroupDirectory',
+            operation === 'directory' ? 'finalizeGroupDirectory' : 'finalizeGroupSendStatus'] :
+            ['prepareGroupRoomPreview', operation === 'preview' ? 'finalizeGroupRoomPreview' : 'finalizeGroupRoomSend'];
+          if (!service || methods.some(key => typeof service[key] !== 'function')) fail('backend_unavailable');
+          const prepared = ['directory', 'status'].includes(operation) ? await service.prepareGroupDirectory(presentedToken, { signal }) :
+            await service.prepareGroupRoomPreview(presentedToken, { roomIds: input.roomIds, conversationIds: input.conversationIds }, { signal });
+          if (!exactData(prepared, []) || !Object.isFrozen(prepared)) fail('backend_unavailable');
+          return prepared;
+        }, async (prepared, _identity, signal) => {
+          let result;
+          if (operation === 'directory') result = await service.finalizeGroupDirectory(presentedToken, prepared, { signal });
+          else if (operation === 'status') result = await service.finalizeGroupSendStatus(presentedToken, prepared, input.dispatchId, { signal });
+          else if (operation === 'preview') result = groupPreviewResponse(await service.finalizeGroupRoomPreview(presentedToken, prepared, { signal }), input, clock());
+          else result = groupSendResponse(await service.finalizeGroupRoomSend(presentedToken, prepared, {
+            signal, onDispatch(id) { uncertain = true; if (id !== input.requestId) fail('backend_unavailable'); dispatchId = id; },
+            onRejected() { uncertain = false; },
+          }), clock());
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { authority: external.authority, sendUncertain: () => uncertain, sendDispatchId: () => dispatchId });
+      }
       // Snapshot caller-controlled filters before any awaited admission. Invalid
       // input still goes through the shared admission/audit path.
       let request, invalidFilters = false;

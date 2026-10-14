@@ -1,3 +1,4 @@
+import { requiresBuildingScope } from '../../../infra/hermes-broker/capability-contract.mjs';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Bot, Copy, RefreshCw, ShieldCheck } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -41,7 +42,8 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   const [grantScopes, setGrantScopes] = useState<string[]>([]);
   useEffect(() => {
     if (!model.options) return;
-    setGrant(previous => ({ read: previous.read.filter(key => model.options?.read.some(allowed => allowed === key)), action: [] }));
+    setGrant(previous => ({ read: previous.read.filter(key => model.options?.read.some(allowed => allowed === key)),
+      action: previous.action.filter(key => model.options?.action.some(allowed => allowed === key)) }));
     setGrantScopes(previous => previous.filter(id => model.options?.scopes.some(scope => scope.scopeId === id)));
   }, [model.options]);
   const botConfigurationChanged = useCallback(() => setBotGeneration(value => value + 1), []);
@@ -66,15 +68,16 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     void model.policyChanged();
   };
   const disabled = policyBusy || Boolean(model.busy) || model.needsReload || model.connections === null;
-  const grantReady = Boolean(model.options?.enabled) && grant.read.length > 0 &&
+  const grantReady = Boolean(model.options?.enabled) && (grant.read.length > 0 || grant.action.length > 0) &&
     grant.read.every(key => model.options?.read.some(allowed => allowed === key)) &&
-    (!grant.read.includes('rooms.view') || grantScopes.length > 0) && grantScopes.every(id => model.options?.scopes.some(scope => scope.scopeId === id));
+    grant.action.every(key => model.options?.action.some(allowed => allowed === key)) &&
+    (!requiresBuildingScope(grant.read, grant.action) || grantScopes.length > 0) && grantScopes.every(id => model.options?.scopes.some(scope => scope.scopeId === id));
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (disabled || !grantReady || !email || !password.current?.value) return;
     const value = password.current.value;
     password.current.value = ''; setCopied(null);
-    void model.connect({ email, password: value, restrictions: { read: [...grant.read], action: [] }, scopeIds: grant.read.includes('rooms.view') ? [...grantScopes] : [] });
+    void model.connect({ email, password: value, restrictions: { read: [...grant.read], action: [...grant.action] }, scopeIds: requiresBuildingScope(grant.read, grant.action) ? [...grantScopes] : [] });
   };
   const copyHandoff = async () => {
     const handoff = model.handoff, scope = { ...currentScope() }, generation = lifetime.current.generation;
@@ -129,9 +132,9 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
     <section aria-label="Cấp quyền Hermes mới" className="space-y-3 rounded-xl border bg-card p-4">
       <h2 className="font-semibold">Kết nối Hermes của tôi</h2>
       <p className="text-sm text-muted-foreground">Chọn quyền và phạm vi cho Hermes, rồi xác nhận mật khẩu CRM. Kết nối mới không thay đổi quyền của bạn.</p>
-      {model.options ? model.options.enabled ? <HermesPermissionFields value={grant} scopeIds={grantScopes} readChoices={model.options.read}
+      {model.options ? model.options.enabled ? <HermesPermissionFields value={grant} scopeIds={grantScopes} readChoices={model.options.read} actionChoices={model.options.action}
         scopes={model.options.scopes} disabled={disabled} onChange={(value, scopes) => { setGrant(value); setGrantScopes(scopes); }} />
-        : <p role="status" className="text-sm">Công ty chưa bật kết nối Hermes. Cần người quản trị cấu hình chính sách trước.</p>
+        : <p role="status" className="text-sm">Chính sách công ty đang tắt kết nối Hermes. Người quản trị cần thay đổi chính sách để cho phép kết nối.</p>
         : <p role="status" className="text-sm">Chưa đọc được danh sách quyền và phạm vi được phép cấp. Tải lại danh sách trước khi tạo kết nối.</p>}
       {grant.read.includes('rooms.view') && !grantScopes.length && <p className="text-sm">Chọn ít nhất một phạm vi để cho Hermes đọc phòng.</p>}
       <form aria-label="Tạo kết nối Hermes" onSubmit={submit} className="space-y-3">

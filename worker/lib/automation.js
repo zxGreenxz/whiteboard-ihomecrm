@@ -29,6 +29,8 @@ import { docPhongTrong } from './vacant-rooms.js';
 import { buildRoomListTable } from './room-list-table.js';
 import { veAnhDanhSach } from './room-list-image.js';
 import { chuanBiAnhPhong } from './automation-room-image.js';
+import { tickHermesSchedules } from './hermes-schedule.js';
+import { INSTANCE_ID } from './lease.js';
 
 /** Nhịp chạy engine. Lịch tính theo phút nên 60s là đủ mịn. */
 export const AUTOMATION_MS = 60_000;
@@ -503,6 +505,8 @@ export async function tickTuDongHoa(orgFilter = []) {
   dangChay = true;
   const now = new Date();
   try {
+    try { await tickHermesSchedules({ db: sb, instanceId: INSTANCE_ID, organizationIds: orgFilter, log }); }
+    catch (error) { log('hermes schedule tick unverified', error?.message || error); }
     let q = sb.from('zalo_automations')
       .select('id, organization_id, kind, enabled, config, stats')
       .eq('kind', 'broadcast_vacant').eq('enabled', true);

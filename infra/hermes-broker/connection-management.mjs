@@ -44,7 +44,7 @@ function metadata(value, actor, org, keys = ROW) {
 function contextMetadata(value, actor, org, id) {
   const row = metadata(value, actor, org, CONTEXT);
   if (row.id !== id || row.state !== 'active' || !uuid(value.membershipId) || !positive(value.authorizationVersion) ||
-      !positive(value.policyVersion) || typeof value.isSuperadmin !== 'boolean') fail('backend_unavailable');
+      !(value.policyVersion === 0 || positive(value.policyVersion)) || typeof value.isSuperadmin !== 'boolean') fail('backend_unavailable');
   const companyCeilings = restrictions(value.companyCeilings, 'backend_unavailable');
   const effective = restrictions(value.effective, 'backend_unavailable');
   if (['read', 'action'].some(kind => !subset(effective[kind], row.restrictions[kind]) || !subset(effective[kind], companyCeilings[kind]))) fail('backend_unavailable');
@@ -180,7 +180,7 @@ export function createConnectionManagement({ auth, reads, connectionStore, clock
             const raw = await reads.connectionOptions({ accessToken: request.browserAccessToken, organizationId: request.organizationId }, { signal: innerSignal }); check();
             const value = connectionOptions(raw, request.organizationId, initial.session.userId);
             if (value.membershipId !== initial.membership.membershipId || value.authorizationVersion !== initial.membership.authorizationVersion ||
-                value.isSuperadmin !== initial.isSuperadmin || value.read.some(key => !initial.permissions.read.includes(key) || !initial.companyCeilings.read.includes(key))) fail('context_changed');
+                value.isSuperadmin !== initial.isSuperadmin || ['read', 'action'].some(kind => value[kind].some(key => !initial.permissions[kind].includes(key) || !initial.companyCeilings[kind].includes(key)))) fail('context_changed');
             return value;
           };
           const before = await choices(), current = await recheck(), options = await choices();
@@ -268,18 +268,30 @@ export function createSupabaseConnectionManagementReads({ url, publishableKey, f
       !positive(timeoutMs) || timeoutMs > 30_000 || !positive(maxResponseBytes) || maxResponseBytes > 131072 ||
       (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) throw new TypeError('invalid_management_reads_config');
   const fixed = { listConnections: { path: '/rest/v1/rpc/hermes_my_connections_v1', key: 'organizationId', arg: 'p_org' },
-    connectionOptions: { path: '/rest/v1/rpc/hermes_connection_options_v1', key: 'organizationId', arg: 'p_org' },
-    connectionContext: { path: '/rest/v1/rpc/hermes_connection_context_v1', key: 'connectionId', arg: 'p_connection_id' } };
+    connectionOptions: { path: '/rest/v1/rpc/hermes_connection_options_v4', legacyPaths: ['/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_options_v1'], key: 'organizationId', arg: 'p_org' },
+    connectionContext: { path: '/rest/v1/rpc/hermes_connection_context_v4', legacyPaths: ['/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_context_v2', '/rest/v1/rpc/hermes_connection_context_v1'], key: 'connectionId', arg: 'p_connection_id' } };
   return Object.freeze(Object.fromEntries(Object.entries(fixed).map(([operation, endpoint]) => [operation, async (input, { signal } = {}) => {
     if (!exact(input, ['accessToken', endpoint.key]) || typeof input.accessToken !== 'string' || !TOKEN.test(input.accessToken) || !uuid(input[endpoint.key])) fail('invalid_request');
     const bearer = input.accessToken, body = JSON.stringify({ [endpoint.arg]: input[endpoint.key] });
     try {
       return await bounded(signal, timeoutMs, async (innerSignal, check) => {
-        const response = await transport(new URL(endpoint.path, origin).href, { method: 'POST', redirect: 'error', signal: innerSignal,
-          headers: { apikey: publishableKey, authorization: `Bearer ${bearer}`, 'content-type': 'application/json',
-            'content-profile': 'public', 'accept-profile': 'public' }, body });
-        if (innerSignal.aborted) { await response.body?.cancel().catch(() => {}); check(); }
-        const result = await readJson(response, maxResponseBytes, innerSignal); check();
+        const read = async path => {
+          const response = await transport(new URL(path, origin).href, { method: 'POST', redirect: 'error', signal: innerSignal,
+            headers: { apikey: publishableKey, authorization: `Bearer ${bearer}`, 'content-type': 'application/json',
+              'content-profile': 'public', 'accept-profile': 'public' }, body });
+          if (innerSignal.aborted) { await response.body?.cancel().catch(() => {}); check(); }
+          const result = await readJson(response, maxResponseBytes, innerSignal); check();
+          return { response, result };
+        };
+        let { response, result } = await read(endpoint.path);
+        // Negotiate only an exact missing read RPC within this same deadline.
+        // Denied, malformed and uncertain responses never downgrade authority.
+        for (const legacyPath of endpoint.legacyPaths ?? []) {
+          if (!(response.status === 404 && exact(result, ['code', 'message', 'details', 'hint']) &&
+            result.code === 'PGRST202' && typeof result.message === 'string' &&
+            [result.details, result.hint].every(value => value === null || typeof value === 'string'))) break;
+          ({ response, result } = await read(legacyPath));
+        }
         if (response.status === 401) fail('reauthentication_required');
         if (response.status === 403) fail('forbidden');
         if (!response.ok) fail('backend_unavailable');

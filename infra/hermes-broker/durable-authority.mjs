@@ -58,7 +58,7 @@ function snapshot(value, tokenDigest, now) {
       OWNER.slice(0, 3).some(key => session.binding[key] !== row[key]) ||
       !exact(membership, ['membershipId', 'authorizationVersion', 'isSuperadmin']) || !uuid(membership.membershipId) ||
       !positive(membership.authorizationVersion) || typeof membership.isSuperadmin !== 'boolean' ||
-      !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !positive(policy.version)) malformed();
+      !exact(policy, ['version', 'read', 'action', 'scopeIds']) || !(policy.version === 0 || positive(policy.version))) malformed();
   if (row.expiresAt <= now || session.expiresAt <= now) fail('unauthorized');
   // The connection-store adapter and crypto validate ciphertext structure. Keep
   // the envelope in this internal comparison only; it never enters the result.

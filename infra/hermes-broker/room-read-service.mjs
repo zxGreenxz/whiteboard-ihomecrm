@@ -114,7 +114,7 @@ export function mapRoomBuildingScope(input, payload) {
 function boundScopeInput(value) {
   if (!id(value.connectionId) || typeof value.tokenDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.tokenDigest) ||
       !id(value.expectedMembershipId) || BOUND_INPUT.filter(key => key.startsWith('expected') && key !== 'expectedMembershipId')
-        .some(key => !positive(value[key]))) fail('invalid_request');
+        .some(key => !(key === 'expectedPolicyVersion' && value[key] === 0) && !positive(value[key]))) fail('invalid_request');
   return Object.fromEntries(BOUND_INPUT.map(key => [key, value[key]]));
 }
 function boundMapping(snapshot, payload) {

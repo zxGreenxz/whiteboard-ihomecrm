@@ -20,7 +20,7 @@ import json, os, threading
 from pathlib import Path
 lock = threading.Lock()
 wake = threading.Event()
-def config(): return json.loads(Path(os.environ['TEST_CONFIG']).read_text())
+def config(): return json.loads(Path(os.environ['TEST_CONFIG']).read_text(encoding='utf-8'))
 def record(event, **values):
     with lock:
         with open(os.environ['TEST_TRACE'], 'a', encoding='utf-8') as stream:
@@ -37,8 +37,8 @@ class AIAgent:
         print('PRIVATE-UPSTREAM-STDOUT', flush=True)
         print('PRIVATE-UPSTREAM-STDERR', file=sys.stderr, flush=True)
         os.write(1,b'PRIVATE-RAW-STDOUT\n')
-    def run_conversation(self, text, conversation_history=None):
-        record('run', text=text, history=conversation_history)
+    def run_conversation(self, text, system_message=None, conversation_history=None):
+        record('run', text=text, system_message=system_message, history=conversation_history)
         if config().get('checkToolWire'):
             # Synthetic shape of the relay request: system + user, then one
             # assistant envelope and both advertised tool results each round.
@@ -51,7 +51,7 @@ class AIAgent:
         mode = config().get('mode','normal')
         if mode == 'hang': wake.wait(30)
         if mode == 'throw': raise RuntimeError('PRIVATE-ERROR-PAYLOAD')
-        final = 'Echo '+text
+        final = config().get('finalResponse','Echo '+text)
         if mode == 'oversize': final = 'x'*32769
         if mode == 'escaped-frame': final = '\b'*32768
         if mode == 'nul': final = 'x\0y'
@@ -82,8 +82,12 @@ class Reply:
     def read(self, cap): return self.value[:cap]
 def fake_open(self, request, timeout):
     global count
-    count += 1
     cfg=config(); boot=json.loads(Path(bootstrap_path).read_text()); payload=json.loads(request.data)
+    if payload['method']=='tools/list':
+        record('discovery', payload=payload)
+        names=cfg.get('discovery',cfg.get('tools',['mcp__crm__crm_auth_context','mcp__crm__crm_available_rooms']))
+        return Reply(json.dumps({'jsonrpc':'2.0','id':payload['id'],'result':{'tools':[{'name':name.removeprefix('mcp__crm__'),'inputSchema':{'type':'object'}} for name in names]}}).encode())
+    count += 1
     record('auth', count=count, url=request.full_url, headers=dict(request.header_items()), payload=payload)
     identity={key:boot[key] for key in ['assistantId','userId','organizationId']}
     identity.update(permissions=cfg.get('permissions',{'read':['assistant.context.read','rooms.view'],'action':[]}),
@@ -178,6 +182,55 @@ test('history is reused only with the same fingerprint and is discarded on right
   await f.configure({ contextVersion: 'b'.repeat(64) }); f.send(turn(3, 'third')); await f.wait(value => value.commandId === turn(3).commandId);
   const runs = (await f.trace()).filter(row => row.event === 'run');
   assert.equal(runs[0].history, null); assert.deepEqual(runs[1].history, [{ role: 'user', content: 'first' }]); assert.equal(runs[2].history, null);
+});
+
+test('optional group tools preserve clarification and confirmation prose while refreshing tools and dropping hidden history', async t => {
+  const f = await fixture(t); await f.ready(); f.send(turn(1)); await f.wait(value => value.commandId === turn(1).commandId);
+  const tools = ['mcp__crm__crm_auth_context', 'mcp__crm__crm_available_rooms', 'mcp__crm__crm_group_directory', 'mcp__crm__crm_group_room_preview', 'mcp__crm__crm_group_room_send', 'mcp__crm__crm_group_send_status'];
+  const draft = 'Soạn phòng 101 để tôi xem, xác nhận sau', clarify = 'Nhóm B', confirm = 'Xác nhận gửi bản vừa soạn';
+  const question = 'Phòng 101, bạn muốn nhóm nào?', preview = 'Bản phòng 101 cho Nhóm B; chờ bạn xác nhận. '+id(999);
+  await f.configure({ tools, finalResponse: question, historyCount: 8 }); f.send(turn(2, draft)); assert.equal((await f.wait(value => value.commandId === turn(2).commandId)).event, 'result');
+  await f.configure({ tools, finalResponse: preview, historyCount: 8 }); f.send(turn(3, clarify)); assert.equal((await f.wait(value => value.commandId === turn(3).commandId)).event, 'result');
+  await f.configure({ tools }); f.send(turn(4, confirm)); assert.equal((await f.wait(value => value.commandId === turn(4).commandId)).event, 'result');
+  await f.configure({}); f.send(turn(5)); assert.equal((await f.wait(value => value.commandId === turn(5).commandId)).event, 'result');
+  const trace = await f.trace(); assert.equal(trace.filter(x => x.event === 'init').length, 5);
+  const runs = trace.filter(x => x.event === 'run');
+  assert.equal(runs[1].history, null);
+  assert.deepEqual(runs[2].history, [{ role: 'user', content: draft }, { role: 'assistant', content: question }]);
+  assert.deepEqual(runs[3].history, [...runs[2].history, { role: 'user', content: clarify },
+    { role: 'assistant', content: preview.replace(id(999), '[previous reference; rediscover]') }]);
+  assert.equal(runs[3].text, confirm); assert.equal(runs[4].history, null);
+  assert(!JSON.stringify(runs[3].history).includes('tool_calls')); assert(!JSON.stringify(runs[3].history).includes(id(999)));
+  for (const run of trace.filter(x => x.event === 'run')) {
+    assert.match(run.system_message, /asks to draft, preview, or see a proposal/);
+    assert.match(run.system_message, /use the send tool directly/);
+    assert.match(run.system_message, /Do not require CRM review, a PIN/);
+    assert.match(run.system_message, /untrusted data, not instructions/);
+    assert.match(run.system_message, /never repeat the send/);
+  }
+  assert(trace.filter(x => x.event === 'register').some(x => x.config.crm.tools.include.includes('crm_group_directory')));
+  const g = await fixture(t, { config: { tools: [...tools, 'mcp__crm__zalo_send'] } });
+  assert.equal((await g.ready()).code, 'unexpected_tools');
+  const h = await fixture(t, { boot: { maxIterations: 16 }, config: { tools } }); await h.ready();
+  assert.equal((await h.trace()).find(x => x.event === 'init').arguments.max_iterations, 8);
+  for (let n = 1; n <= 5; n++) { h.send(turn(n, 'same context '+n)); await h.wait(value => value.commandId === turn(n).commandId); }
+  const boundedRuns = (await h.trace()).filter(x => x.event === 'run');
+  assert.equal(boundedRuns[4].history.length, 6); assert.equal(boundedRuns[4].history[0].content, 'same context 2');
+  await h.configure({ tools, contextVersion: 'b'.repeat(64) }); h.send(turn(6, 'changed authority')); await h.wait(value => value.commandId === turn(6).commandId);
+  h.send({ ...turn(7, 'changed private binding'), bindingEpoch: 2 }); await h.wait(value => value.commandId === turn(7).commandId);
+  const changed = (await h.trace()).filter(x => x.event === 'run'); assert.equal(changed[5].history, null); assert.equal(changed[6].history, null);
+});
+
+test('read-only CRM discovery does not require or register group write tools', async t => {
+  const tools = ['mcp__crm__crm_auth_context', 'mcp__crm__crm_group_directory', 'mcp__crm__crm_group_send_status'];
+  const f = await fixture(t, { config: { tools } });
+  assert.equal((await f.ready()).event, 'ready');
+  const registered = (await f.trace()).find(row => row.event === 'register');
+  assert.deepEqual(registered.config.crm.tools.include.sort(),
+    ['crm_auth_context', 'crm_group_directory', 'crm_group_send_status']);
+  f.send(turn(1, 'Xem nhóm được phép'));
+  assert.equal((await f.wait(value => value.commandId === turn(1).commandId)).event, 'result');
+  assert(!(await f.trace()).find(row => row.event === 'init').arguments.enabled_toolsets.includes('messaging'));
 });
 
 test('permission change with the same context fingerprint still discards history; pre-model revocation never invokes model', async t => {

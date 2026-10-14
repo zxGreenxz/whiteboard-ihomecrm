@@ -1,3 +1,4 @@
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { ConnectionControlError } from './connection-control-plane.mjs';
 import { ConnectionManagementError } from './connection-management.mjs';
 import { connectionOptions } from './connection-options.mjs';
@@ -58,7 +59,7 @@ function inputBody(value, operation) {
   if (operation === 'connect' && (typeof value.email !== 'string' || value.email.length > 320 ||
       !/^[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+\.[^\s@\x00-\x1f\x7f]+$/.test(value.email) ||
       typeof value.password !== 'string' || value.password.length < 1 || Buffer.byteLength(value.password) > 4096 ||
-      value.restrictions.action.length !== 0 || value.restrictions.read.some(key => !['assistant.context.read', 'rooms.view'].includes(key)))) invalid();
+      value.restrictions.action.some(key => !HERMES_ACTION_CAPABILITIES.includes(key)) || value.restrictions.read.some(key => !HERMES_READ_CAPABILITIES.includes(key)))) invalid();
   return value;
 }
 function row(value, org, fields = ROW) {
@@ -91,7 +92,7 @@ function output(value, operation, input) {
     if (!exact(value, ['context'])) badOutput();
     const context = row(value.context, input.organizationId, CONTEXT), raw = value.context;
     if (context.id !== input.connectionId || context.state !== 'active' || !id(raw.membershipId) ||
-        !positive(raw.authorizationVersion) || !positive(raw.policyVersion) || typeof raw.isSuperadmin !== 'boolean' ||
+        !positive(raw.authorizationVersion) || !(raw.policyVersion === 0 || positive(raw.policyVersion)) || typeof raw.isSuperadmin !== 'boolean' ||
         !limits(raw.companyCeilings) || !limits(raw.effective) || ['read', 'action'].some(kind =>
           raw.effective[kind].some(key => !context.restrictions[kind].includes(key) || !raw.companyCeilings[kind].includes(key)))) badOutput();
     return { context: { ...context, ...Object.fromEntries(CONTEXT.slice(ROW.length).map(key => [key, structuredClone(raw[key])])) } };

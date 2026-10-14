@@ -88,6 +88,8 @@ function fakeBackend() {
       return Response.json({ id: 'fixture', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'Synthetic answer' }, finish_reason: 'stop' }] });
     }
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2'].includes(endpoint.pathname))
+      return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
     if (endpoint.pathname === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: I.user, organizations: [{ id: I.org }] });
@@ -200,11 +202,22 @@ test('construction does no I/O, requires explicit audit/config, exposes no priva
     assert.throws(() => createHermesBackend({ ...f.configuration, ...delta }), error => error.message === 'invalid_backend_config' && error.cause === undefined);
   }
   const backend = createHermesBackend(f.configuration);
-  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'createPrivateCommandRunner', 'createRuntimeGateway', 'createRuntimeSupervisor', 'beginConnectionMaintenance']); assert.equal(backend.server.listening, false);
+  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'createPrivateCommandRunner', 'createRuntimeGateway', 'createRuntimeSupervisor', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
   assert.equal(f.calls.length, 0); assert.equal(f.sql.length, 0); assert.equal(f.audits.length, 0);
   assert.equal(backend.server.requestTimeout, 15000); assert.equal(backend.server.headersTimeout, 10000); assert.equal(backend.server.maxHeadersCount, 32);
   const first = backend.close(); assert.equal(backend.close(), first); await first;
   assert.equal(f.read().poolEnds, 0); assert.deepEqual(f.key, original);
+});
+
+test('host-owned retention uses only its fixed executor and backend close waits actual SQL drain', async () => {
+  const f = fakeBackend(), entered = deferred(), held = deferred(); let calls = 0;
+  f.privateOperations.set('prune_work_memories', async input => { calls++; assert.deepEqual(input, { limit: 500 }); entered.resolve(); await held.promise; return { pruned: 0 }; });
+  const backend = createHermesBackend(f.configuration);
+  backend.startWorkMemoryRetention(); backend.startWorkMemoryRetention(); await entered.promise;
+  assert.equal(calls, 1); assert.equal(backend.workMemoryRetentionStatus().state, 'running');
+  let closed = false; const close = backend.close().then(() => { closed = true; }); await tick(); assert.equal(closed, false);
+  held.resolve(); await close; assert.equal(backend.workMemoryRetentionStatus().state, 'closed');
+  assert.equal(f.calls.length, 0); assert.equal(calls, 1); assert.equal(f.read().poolEnds, 0);
 });
 
 test('private gateway composes real model authority and existing llm-proxy without a public model route or runtime credential', async t => {
@@ -688,6 +701,65 @@ test('trusted maintenance composes actual refresh, encrypted publish and same-to
   for (const secret of [token, assistantJwt, refresh.nextJwt, 'SYNTHETIC-REFRESH', 'credentialRef', 'sessionId']) assert(!JSON.stringify(result).includes(secret));
   for (const route of ['/api/hermes/connections/maintain', '/internal/hermes/refresh']) assert.equal((await http.send(route, {})).status, 404);
   assert(!(await http.mcp(token)).body.result.tools.some(tool => /maintain|refresh/i.test(tool.name)));
+});
+
+test('external connector parks only its token, drains an active MCP call and refreshes before admitting another call', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, entered = deferred(), held = deferred(), refreshEntered = deferred(), refreshHeld = deferred();
+  t.after(() => { held.resolve(); refreshHeld.resolve(); });
+  f.nearSessionExpiry(); const refresh = arrangeRefresh(f);
+  // Delay the first SQL read, retaining the real HTTP dependency promise.
+  let holdRead = true;
+  const connect = f.pool.connect;
+  f.pool.connect = async () => {
+    const client = await connect(); const query = client.query;
+    client.query = async statement => {
+      if (holdRead && /hermes_store_read_connection_v1/.test(statement.text)) { holdRead = false; entered.resolve(); await held.promise; }
+      return query(statement);
+    };
+    return client;
+  };
+  const respond = f.providerOperations.refresh;
+  f.providerOperations.refresh = async (...args) => { refreshEntered.resolve(); await refreshHeld.promise; return respond(...args); };
+  const first = http.mcp(token); await entered.promise;
+  const operation = http.beginExternalConnectionMaintenance(token, { signal: new AbortController().signal });
+  assert.throws(() => http.beginExternalConnectionMaintenance(token, { signal: new AbortController().signal }), { code: 'busy' });
+  assert.equal((await http.mcp(token)).body.error, 'connection_maintenance');
+  assert.equal((await http.mcp('hc_' + 'z'.repeat(43))).status, 401);
+  assert.equal(refresh.operations.length, 0);
+  held.resolve(); assert.equal((await first).status, 200); await refreshEntered.promise;
+  assert.equal((await http.mcp(token)).status, 503); refreshHeld.resolve();
+  const result = await operation.result; await operation.drained;
+  assert.equal(result.status, 'renewed'); assert.equal((await http.mcp(token)).status, 200);
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  for (const method of ['createRuntimeGateway', 'createRuntimeSupervisor', 'createPrivateCommandRunner']) {
+    assert.throws(() => http[method]({}), { code: 'tool_not_available' });
+  }
+  assert(!f.calls.some(call => call.path.includes('llm-proxy')));
+});
+
+test('cancelled external maintenance retains the MCP fence until old SQL drains and never dispatches renewal', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true });
+  const token = (await http.connect()).body.token, entered = deferred(), held = deferred(), controller = new AbortController();
+  const connect = f.pool.connect; let once = true;
+  f.pool.connect = async () => {
+    const client = await connect(), query = client.query;
+    client.query = async statement => {
+      if (once && /hermes_store_read_connection_v1/.test(statement.text)) { once = false; entered.resolve(); await held.promise; }
+      return query(statement);
+    };
+    return client;
+  };
+  const active = http.mcp(token); await entered.promise;
+  const maintenance = http.beginExternalConnectionMaintenance(token, { signal: controller.signal });
+  const failed = assert.rejects(maintenance.result, { code: 'backend_unavailable' }); controller.abort();
+  try {
+    assert.equal((await http.mcp(token)).body.error, 'connection_maintenance');
+    assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
+  } finally { held.resolve(); }
+  await active; await failed; await maintenance.drained;
+  assert.equal((await http.mcp(token)).status, 200);
+  assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
 });
 
 test('backend close holds key and maintenance capacity until ignored-abort refresh fetch actually drains', async t => {

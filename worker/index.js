@@ -32,6 +32,7 @@ import { watchdogTick, WATCHDOG_MS } from './lib/watchdog.js';
 import { processJob, recoverInterruptedJobs } from './lib/queue.js';
 import { tickTuDongHoa, AUTOMATION_MS } from './lib/automation.js';
 import { reconcileAccountSessions, stopAccountSession } from './lib/session-lifecycle.js';
+import { startNativeBridge } from './lib/hermes-native-bridge.js';
 
 // ── Fail-closed từ boot: thiếu credential/khoá là DỪNG, không chạy nửa vời ──
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -93,6 +94,7 @@ let tickTimer = null;
 let watchdogTimer = null;
 let automationTimer = null;
 let stopHeartbeat = null;
+let nativeBridge = null;
 
 async function main() {
   log('Zalo worker khởi động →', SUPABASE_URL, '· instance', INSTANCE_ID.slice(0, 8));
@@ -111,6 +113,7 @@ async function main() {
     log('không còn lease hợp lệ — dừng phiên.');
     await shutdown(false);
   } });
+  nativeBridge = await startNativeBridge({ onFault: code => log('native hermes', code) });
   await recoverInterruptedJobs();
 
   await tick();
@@ -139,15 +142,18 @@ async function shutdown(fromSignal = true) {
   clearInterval(tickTimer);
   clearInterval(watchdogTimer);
   clearInterval(automationTimer);
-  stopHeartbeat?.();
   // Close listeners immediately so disconnect/shutdown cannot keep ingesting
   // events while an in-flight provider call is waiting for its response.
   for (const [id] of sessions) {
     stopAccountSession(id, sessions);
     log('stopped', id);
   }
+  await nativeBridge?.close();
   // đợi job đang processing xong (tối đa 10s)
   for (let i = 0; i < 20 && ticking; i++) await sleep(500);
+  // Keep renewing ownership while native sends drain, even after their HTTP
+  // observation timed out. Stop renewing only immediately before release.
+  stopHeartbeat?.();
   await releaseLease();
   if (fromSignal) process.exit(0);
 }

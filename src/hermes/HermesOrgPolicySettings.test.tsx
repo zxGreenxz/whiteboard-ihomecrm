@@ -11,7 +11,8 @@ const scope={userId:USER,organizationId:ORG,generation:0},currentScope=()=>scope
 let value:HermesOrgPolicySnapshot,changed:ReturnType<typeof vi.fn<()=>void>>,fetchMock:ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 const writes=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith('/hermes_set_org_policy_v1'));
 async function respond(url:RequestInfo|URL,init?:RequestInit){
-  if(String(url).endsWith('/hermes_org_policy_options_v1'))return Response.json(value);
+  if(/\/hermes_org_policy_options_v[1234]$/.test(String(url)))return Response.json(value);
+  if(!String(url).endsWith('/hermes_set_org_policy_v1'))throw new Error('unexpected_fixture_rpc');
   const input=JSON.parse(init!.body as string);
   if(input.p_expected_version!==value.policy.version)return Response.json({code:'PT409',message:'PRIVATE',details:null,hint:null},{status:409});
   value.policy={organizationId:ORG,version:value.policy.version+1,enabled:input.p_enabled,read:input.p_read,action:input.p_action,scopeIds:input.p_scope_ids};
@@ -30,6 +31,25 @@ beforeEach(()=>{
 });
 afterEach(()=>{cleanup();vi.unstubAllEnvs();vi.unstubAllGlobals();vi.restoreAllMocks();});
 describe('company Hermes policy administration through the real client',()=>{
+  it('rejects an unknown fixture RPC before it can mutate the company policy',async()=>{
+    const before=structuredClone(value),body=JSON.stringify({p_org:ORG,p_expected_version:value.policy.version,
+      p_enabled:true,p_read:[],p_action:[],p_scope_ids:[]});
+    for(const rpc of ['hermes_org_policy_options_v5','hermes_unexpected_v1']){
+      await expect(respond('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/'+rpc,{method:'POST',body})).rejects.toThrow('unexpected_fixture_rpc');
+      expect(value).toEqual(before);
+    }
+  });
+  it('explains neutral policy is optional and does not persist the displayed ceiling on open',async()=>{
+    value.policy={...value.policy,version:0,enabled:true};render(view());await open();
+    expect(fetchMock.mock.calls[0][0]).toBe('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/hermes_org_policy_options_v4');
+    expect(screen.getByText(/Bạn có thể tạo kết nối mà không cần lưu chính sách này/)).toBeTruthy();
+    expect((screen.getByRole('checkbox',{name:'Bật Hermes cho công ty'}) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('button',{name:'Lưu chính sách Hermes'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(writes()).toHaveLength(0);expect(changed).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('checkbox',{name:'Bật Hermes cho công ty'}));save();
+    await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+    expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_expected_version:0,p_enabled:false});
+  });
   it('requires opening and a deliberate change; applies only the current company policy and then requires readback',async()=>{
     render(<StrictMode>{view()}</StrictMode>);expect(fetchMock).not.toHaveBeenCalled();await open();
     expect((screen.getByRole('button',{name:'Lưu chính sách Hermes'}) as HTMLButtonElement).disabled).toBe(true);
@@ -71,4 +91,33 @@ describe('company Hermes policy administration through the real client',()=>{
     scope.generation+=2;rerender(view('new-generation'));await act(async()=>{resolve(Response.json(value));});
     expect(screen.queryByRole('checkbox',{name:'Bật Hermes cho công ty'})).toBe(null);expect(fetchMock.mock.calls[0][1]!.signal!.aborted).toBe(true);expect(changed).not.toHaveBeenCalled();
   });
+});
+
+describe('shared permission picker for explicit company action ceiling',()=>{
+ it('offers memory and schedule capabilities as explicit unchecked choices',async()=>{
+  value.choices.read.push('assistant.memory.read');value.choices.action=['assistant.memory.write','chat_zalo.manage_automation'];render(view());await open();
+  const read=screen.getByRole('checkbox',{name:'Xem ghi nhớ công việc CRM được phép'}),write=screen.getByRole('checkbox',{name:'Lưu, sửa và quên ghi nhớ công việc CRM của chính người dùng'});
+  expect((read as HTMLInputElement).checked).toBe(false);expect((write as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(read);fireEvent.click(write);fireEvent.click(screen.getByRole('button',{name:/Chat Zalo/}));
+  const schedule=screen.getByRole('checkbox',{name:/Bật\/tắt luồng tự động hoá/});expect(schedule.getAttribute('data-state')).toBe('unchecked');fireEvent.click(schedule);
+  save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+  expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','assistant.memory.read'],p_action:['assistant.memory.write','chat_zalo.manage_automation']});
+ });
+ it('can select group read without automatically selecting send or room data',async()=>{
+  value.choices.read.push('chat_zalo.view');value.choices.action=['chat_zalo.send'];render(view());await open();
+  const groups=screen.getAllByRole('button',{name:/Chat Zalo/});fireEvent.click(groups[0]);
+  fireEvent.click(screen.getByRole('checkbox',{name:/Vào trang Chat Zalo/}));save();
+  await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+  expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','chat_zalo.view'],p_action:[],p_scope_ids:[]});
+ });
+ it('starts unselected and saves only after human checks the offered fixed action',async()=>{
+  value.choices.action=['chat_zalo.send'];render(view());await open();expect(writes()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button',{name:/Chat Zalo/}));const control=screen.getByRole('checkbox',{name:/Gửi \/ soạn tin nhắn/});expect(control.getAttribute('data-state')).toBe('unchecked');
+  fireEvent.click(control);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+  expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_enabled:false,p_action:['chat_zalo.send']});expect(writes()).toHaveLength(1);
+ });
+ it('keeps catalog-disabled stored action visible only for narrowing',async()=>{
+  value.policy.action=['chat_zalo.send'];render(view());await open();expect(screen.queryByRole('button',{name:/Chat Zalo/})).toBe(null);
+  fireEvent.click(screen.getByRole('checkbox',{name:/chat_zalo.send — quyền đã lưu/}));save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');expect(JSON.parse(writes()[0][1]!.body as string).p_action).toEqual([]);
+ });
 });

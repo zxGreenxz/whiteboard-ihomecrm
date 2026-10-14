@@ -87,8 +87,7 @@ async function docTrangThaiSong(pat, ref) {
     body: JSON.stringify({ query: sql }),
   });
   if (!res.ok) {
-    console.error('Query FAILED', res.status, (await res.text()).slice(0, 300));
-    process.exit(1);
+    throw new Error(`Query FAILED ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
   return (await res.json()).map((r) => r.sig);
 }
@@ -152,6 +151,6 @@ async function main(argv) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main(process.argv)
-    .then((c) => process.exit(c))
-    .catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
+    .then((c) => { process.exitCode = c; })
+    .catch((e) => { console.error(`❌ ${e.message}`); process.exitCode = 1; });
 }

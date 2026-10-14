@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, rmdir } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { createSyntheticFixture, connectSynthetic, createProductWorkspace, observedEngine, productFailureCode, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
+import { createSyntheticFixture, connectSynthetic, createProductWorkspace, closeProductServices, observedEngine, productFailureCode, productInputFiles, MODEL } from './test-hermes-product-runtime.mjs';
 import { createHermesBackend } from '../infra/hermes-broker/server.mjs';
 import { createContainerRuntime } from '../infra/hermes-runtime/container-driver.mjs';
 import { createGatewayTransport } from '../infra/hermes-runtime/gateway-transport.mjs';
@@ -84,8 +84,12 @@ test('actual driver and gateway transport reach network allocation from the boun
   const runtime = createContainerRuntime({ gateway, engine, runtimeRoot: workspace.runtimeRoot, wrapperPath: fileURLToPath(wrapperPath), wrapperSha256: await digest(wrapperPath), model: MODEL });
   await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
-    controller.abort(); await assert.rejects(gateway.shutdown(), { code: 'drain_failed' });
-    await assert.rejects(backend.close(), { code: 'drain_failed' }); data.dispose();
+    controller.abort();
+    await assert.rejects(closeProductServices(gateway, backend, data), error => {
+      assert(error instanceof AggregateError); assert.equal(error.errors.length, 2);
+      for (const failure of error.errors) assert.equal(failure.code, 'drain_failed');
+      return true;
+    });
     // Engine is synthetic and cannot allocate resources. The real transport has
     // already closed its listener; its retained receipt is safe to remove here.
     assert.equal(path.dirname(workspace.directory), await realpath(os.tmpdir()));
@@ -109,7 +113,7 @@ async function fixture(t) {
       close: async () => { const closing = new Promise(resolve => server.close(resolve)); server.closeAllConnections(); await closing; } };
   } };
   const gateway = backend.createRuntimeGateway({ transport, allowedModels: [MODEL] });
-  t.after(async () => { await gateway.shutdown(); await backend.close(); data.dispose(); });
+  t.after(() => closeProductServices(gateway, backend, data));
   const actor = data.actors[0], token = await connectSynthetic(backend, actor); data.grantRooms(actor);
   const home = path.resolve('.cache/synthetic-product-home'), signal = new AbortController().signal;
   await gateway.register(token, { home, signal });
@@ -160,10 +164,35 @@ test('synthetic model fails closed on fabricated missing tools, foreign actor da
   assert.equal(f.actor.toolPairs, 0);
 });
 
+test('synthetic optional action RPC is absent with exact PostgREST shape and actor scope', async () => {
+  const f = createSyntheticFixture(), actor = f.actors[0];
+  try {
+    const input = { method: 'POST', headers: { authorization: `Bearer ${actor.browserJwt}` }, signal: new AbortController().signal,
+      redirect: 'error', body: JSON.stringify({ p_organization_id: actor.org }) };
+    const response = await f.configuration.fetch('https://synthetic.supabase.invalid/rest/v1/rpc/hermes_group_action_context_v1', input);
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null });
+    await assert.rejects(f.configuration.fetch('https://synthetic.supabase.invalid/rest/v1/rpc/hermes_group_action_context_v1', {
+      ...input, body: JSON.stringify({ p_organization_id: f.actors[1].org }),
+    }));
+  } finally { f.dispose(); }
+});
+
+test('product cleanup closes the real backend listener after gateway shutdown rejects', async () => {
+  const f = createSyntheticFixture(), backend = createHermesBackend(f.configuration), failure = Error('synthetic shutdown failure');
+  await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
+  let disposed = false;
+  await assert.rejects(closeProductServices({ shutdown: async () => { throw failure; } }, backend,
+    { dispose() { disposed = true; f.dispose(); } }), error => {
+    assert(error instanceof AggregateError); assert.deepEqual(error.errors, [failure]); return true;
+  });
+  assert.equal(backend.server.listening, false); assert.equal(disposed, true);
+});
+
 test('both synthetic users activate distinct encrypted sessions and revoke A leaves live B authority', async t => {
   const f = createSyntheticFixture(), backend = createHermesBackend(f.configuration);
   await new Promise(resolve => backend.server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { await backend.close(); f.dispose(); });
+  t.after(() => closeProductServices(undefined, backend, f));
   const tokens = await Promise.all(f.actors.map(actor => connectSynthetic(backend, actor)));
   assert.notEqual(tokens[0], tokens[1]);
   for (const [index, actor] of f.actors.entries()) {
