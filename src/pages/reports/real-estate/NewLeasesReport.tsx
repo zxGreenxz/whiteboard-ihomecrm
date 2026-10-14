@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import MainLayout from "@/components/layout/MainLayout";
 import { FileCheck, Plus, TrendingUp, DollarSign } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -25,7 +24,6 @@ export default function NewLeasesReport() {
     to: endOfMonth(new Date()),
   });
 
-  useCopilotPageContext('reports.real-estate.new-leases', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
   const buildingsQuery = useBuildings();
   const { data: buildings } = buildingsQuery;
   const reportQuery = useNewLeasesReport(

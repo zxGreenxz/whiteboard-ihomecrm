@@ -3,7 +3,6 @@ import MainLayout from '@/components/layout/MainLayout';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { Receipt, AlertTriangle } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
@@ -140,7 +139,6 @@ const InvoicesDesktopPage = () => {
   };
 
   // Data fetching
-  useCopilotPageContext('invoices.list', effectiveFilters, detailModalOpen ? detailInvoice : null);
 
   const {
     data: invoicesData,
@@ -280,7 +278,6 @@ const InvoicesDesktopPage = () => {
     setDetailInvoice(invoice);
     setDetailModalOpen(true);
   }, []);
-
 
   const handleViewHistory = useCallback(
     (invoice: InvoiceWithRelations) => {

@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { memo, useCallback, useMemo, useState } from "react";
 import { Plus, Search, FileText, ArrowRightLeft, Wrench, Package } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
@@ -161,7 +160,6 @@ const AssetsPage = () => {
   const [roomFilter, setRoomFilter] = usePersistedState<string>("flt:assets:room", "ALL");
   const [searchQuery, setSearchQuery] = usePersistedState("flt:assets:search", "");
 
-  useCopilotPageContext('assets.list', { category_id: categoryFilter, condition: conditionFilter, building_id: buildingFilter, room_id: roomFilter, search: searchQuery });
   const buildingsQuery = useBuildings();
   const roomsQuery = useRooms(buildingFilter !== "ALL" ? buildingFilter : undefined);
   const { data: buildings = [] } = buildingsQuery;

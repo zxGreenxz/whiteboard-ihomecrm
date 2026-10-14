@@ -8,7 +8,6 @@ import MainLayout from '@/components/layout/MainLayout';
 const CustomersMobilePage = lazy(() => import('./CustomersMobilePage'));
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
@@ -102,7 +101,6 @@ function CustomersDesktopPage() {
   );
 
   // Stats filters (same as effective but without statFilter to get all counts)
-  useCopilotPageContext('customers.list', effectiveFilters, detailModalOpen ? selectedCustomer : null);
 
   const statsFilters = useMemo<CustomerFilters>(
     () => ({

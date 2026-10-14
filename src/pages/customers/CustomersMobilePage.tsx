@@ -15,7 +15,6 @@ import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerStatus, CustomerFilters } from '@/types/customer';
 import type { BuildingWithRelations } from '@/types/building';
@@ -83,7 +82,6 @@ export default function CustomersMobilePage() {
 
   const customersQuery = useCustomers(filters, { page: 1, pageSize });
   const { data: paged } = customersQuery;
-  useCopilotPageContext('customers.list', filters);
 
   const allRows = (paged?.data ?? []) as Customer[];
   const rows = allRows;

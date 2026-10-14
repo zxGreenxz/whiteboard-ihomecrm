@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import MainLayout from "@/components/layout/MainLayout";
 import { RefreshCw, ArrowRightLeft, FileCheck } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -25,7 +24,6 @@ export default function RenewalsTransfersReport() {
   const [startDate, setStartDate] = usePersistedState("flt:rpt-renewals:startDate", "");
   const [endDate, setEndDate] = usePersistedState("flt:rpt-renewals:endDate", "");
 
-  useCopilotPageContext('reports.real-estate.renewals', { building_id: buildingId, from: startDate, to: endDate });
   const buildingsQuery = useBuildings();
   const { data: buildings } = buildingsQuery;
   const reportQuery = useRenewalsTransfersReport(

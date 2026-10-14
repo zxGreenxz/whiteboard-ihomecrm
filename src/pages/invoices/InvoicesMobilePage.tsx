@@ -14,7 +14,6 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePagination } from "@/hooks/usePagination";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { uniqueRoomNames } from "@/lib/roomSort";
 import type {
@@ -146,7 +145,6 @@ export default function InvoicesMobilePage() {
     status: stat === "all" ? undefined : (stat as InvoiceStatus),
   };
 
-  useCopilotPageContext('invoices.list', filters);
   const invoicesQuery = useInvoices(filters, {
     page: 1,
     pageSize,

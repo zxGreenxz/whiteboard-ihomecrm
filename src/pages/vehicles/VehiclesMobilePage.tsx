@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, SlidersHorizontal, Car, Phone, MessageCircle, X } from 'lucide-react';
@@ -65,7 +64,6 @@ export default function VehiclesMobilePage() {
     [debounced, vtype, buildingId, roomId],
   );
 
-  useCopilotPageContext('vehicles.list', filters);
   const vehiclesQuery = useVehicles(filters, { page: 1, pageSize });
   const { data: paged } = vehiclesQuery;
   const rows = (paged?.data ?? []) as VehicleWithRelations[];

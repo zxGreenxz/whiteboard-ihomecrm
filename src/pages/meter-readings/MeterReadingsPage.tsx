@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useCallback, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
@@ -44,7 +43,6 @@ const MeterReadingsDesktop = () => {
     status: null,
   });
 
-  useCopilotPageContext('meter-readings.list', filters);
   // --- Selection ---
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 

@@ -7,7 +7,6 @@ import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } fro
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { LoadingState } from "@/components/loading/LoadingState";
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -400,7 +399,6 @@ export default function IncomeExpenseMobilePage() {
     room_ids: parsed.roomIds ?? filters.room_ids,
   };
 
-  useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsed.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để danh sách không
   // nháy skeleton mỗi lần "Tải thêm"/đổi filter (opt-in, xem useIncomeExpenses).
   const listQuery = useIncomeExpenses(

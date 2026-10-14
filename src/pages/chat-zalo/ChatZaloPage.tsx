@@ -2,7 +2,6 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { isZaloActionUnconfirmed, zaloActionErrorMessage, ZaloActionUnknownError } from '@/lib/zaloActionFeedback';
 import { actionErrorMessage } from '@/lib/actionFeedback';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { withMessageSenders } from '@/components/chat-zalo/messageSenders';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -127,7 +126,7 @@ export default function ChatZaloPage() {
   } : undefined, [base, messages, conversations, accounts, memberQuery.data]);
 
   const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
-  useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: activeLabel ? selIds.filter(id => id === activeLabel.accountId) : selIds, label_id: activeLabel?.labelId ?? null }, active);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const selSet = new Set(selIds);
