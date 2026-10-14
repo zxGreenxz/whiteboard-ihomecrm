@@ -120,7 +120,10 @@ jobs:
         run: |
           docker run -d --name pg-dientap -e POSTGRES_PASSWORD=dientap postgres:17.6
           for i in $(seq 1 30); do
-            docker exec pg-dientap pg_isready -U postgres && exit 0
+            # The drill connects through TCP 127.0.0.1 inside the container;
+            # checking the default Unix socket can turn green before TCP is
+            # accepting connections and make the next step fail spuriously.
+            docker exec pg-dientap pg_isready -h 127.0.0.1 -U postgres -d postgres && exit 0
             sleep 1
           done
           echo "PostgreSQL không sẵn sàng sau 30s" >&2
