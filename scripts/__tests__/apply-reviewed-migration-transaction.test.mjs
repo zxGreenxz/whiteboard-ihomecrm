@@ -22,6 +22,7 @@
 //   node --test scripts/__tests__/apply-reviewed-migration-transaction.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PGlite } from "@electric-sql/pglite";
 import { buildTransaction } from "../apply-reviewed-migration.mjs";
 
 /** Migration điển hình của repo: BEGIN/COMMIT thật + hàm plpgsql kết thúc `END;`. */
@@ -126,4 +127,83 @@ COMMIT;`;
   }
   const dong = sql.match(/^(COMMIT|ROLLBACK);$/gm) ?? [];
   assert.ok(!dong.includes("COMMIT;"), "dry-run không được sót COMMIT ở mức câu lệnh");
+});
+
+const SQL_STANDARD = `BEGIN;
+CREATE TABLE IF NOT EXISTS public.atomic_wrapper_probe(value text);
+CREATE OR REPLACE FUNCTION public.atomic_wrapper_value(p_value text)
+RETURNS text LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public
+BEGIN ATOMIC
+ SELECT p_value || '; END; -- literal';
+END;
+INSERT INTO public.atomic_wrapper_probe VALUES(public.atomic_wrapper_value('probe'));
+COMMIT;`;
+
+test('SQL-standard body keeps its END and the actual one/two-run dry-run rolls every effect back', {timeout:60000}, async t => {
+  const db=new PGlite();t.after(()=>db.close());
+  for(const newline of ['\n','\r\n'])for(const lanChay of [1,2]) {
+    const source=SQL_STANDARD.replaceAll('\n',newline),wrapped=buildTransaction(source,{rollback:true,lanChay});
+    assert.equal((wrapped.match(/BEGIN ATOMIC/g)??[]).length,lanChay);
+    assert.equal((wrapped.match(/^END;\r?$/gm)??[]).length,lanChay);
+    assert.doesNotMatch(wrapped,/^COMMIT;\r?$/m);
+    await db.exec(wrapped);
+    assert.deepEqual((await db.query("SELECT to_regclass('public.atomic_wrapper_probe') AS relation,to_regprocedure('public.atomic_wrapper_value(text)') AS routine")).rows,[{relation:null,routine:null}]);
+  }
+});
+
+test('SQL-standard recognition never masks outer transaction escapes or unsupported extra body statements', () => {
+  for(const changed of [SQL_STANDARD.replace('COMMIT;','COMMIT;\nCOMMIT;'),
+    SQL_STANDARD.replace('CREATE TABLE','COMMIT;\nCREATE TABLE'),
+    SQL_STANDARD.replace('END;\nINSERT','END;\nROLLBACK;\nINSERT'),
+    SQL_STANDARD.replace('END;\nINSERT','END;\nBEGIN;\nINSERT')])assert.throws(()=>buildTransaction(changed,{rollback:true}),/kết thúc transaction|BEGIN/);
+  for(const changed of [SQL_STANDARD.replace('END;\nINSERT','SELECT 2;\nEND;\nINSERT'),
+    SQL_STANDARD.replace('END;\nINSERT','COMMIT;\nEND;\nINSERT'),
+    SQL_STANDARD.replace('END;\nINSERT','INSERT'),SQL_STANDARD.replace('LANGUAGE sql VOLATILE','LANGUAGE sql STABLE')])
+    assert.throws(()=>buildTransaction(changed,{rollback:true}),/Unsupported SQL-standard function boundary/);
+});
+
+test('commented or inline outer COMMIT cannot escape the SQL-standard dry-run', () => {
+  for(const close of ['COMMIT; -- outside body', 'COMMIT; /* outside /* nested */ body */',
+    '/* leading */ COMMIT /* before semicolon */;', 'COMMIT -- before semicolon\n;', 'END; -- commit synonym', 'ROLLBACK; -- closes wrapper']) {
+    for(const original of [SQL_STANDARD,CO_HAM_PLPGSQL]) {
+      const source=original.replace('COMMIT;',()=>`${close}\nCREATE TABLE public.after_escape(value text);\nCOMMIT;`);
+      for(const newline of ['\n','\r\n'])assert.throws(()=>buildTransaction(source.replaceAll('\n',newline),{rollback:true}),/kết thúc transaction/);
+    }
+  }
+  assert.throws(()=>buildTransaction(SQL_STANDARD.replace('COMMIT;',"COMMIT; INSERT INTO public.atomic_wrapper_probe VALUES('after'); COMMIT;"),{rollback:true}),/kết thúc transaction/);
+});
+
+test('lexical transaction boundaries preserve quotes/comments and actual rollback removes all effects',{timeout:60000},async t=>{
+  const db=new PGlite();t.after(()=>db.close());
+  const dollarBody=SQL_STANDARD.replace(/BEGIN ATOMIC[\s\S]*?\nEND;/,()=>"AS $fn$ SELECT p_value || '; END; -- literal'; $fn$;");
+  for(const original of [SQL_STANDARD,dollarBody])for(const newline of ['\n','\r\n'])for(const lanChay of [1,2]) {
+    const source=original.replace('BEGIN;', '/* outer /* nested */ header */ BEGIN /* opening */; -- first statement')
+      .replace('CREATE TABLE', () => "SELECT 'COMMIT; /* -- $tag$' AS literal; /* COMMIT; */ CREATE TABLE")
+      .replace(/COMMIT;$/, "/* closing */ COMMIT -- inline comment before terminator\n; -- trailing comment\nNOTIFY /* nested /* token */ comment */ pgrst, /* payload */ 'reload schema' -- before semicolon\n;");
+    const wrapped=buildTransaction(source.replaceAll('\n',newline),{rollback:true,lanChay});
+    assert.ok(wrapped.includes("SELECT 'COMMIT; /* -- $tag$' AS literal;"));
+    assert.equal((wrapped.match(/NOTIFY \/\* nested/g)??[]).length,lanChay);
+    assert.equal((wrapped.match(/BEGIN ATOMIC/g)??[]).length,original===SQL_STANDARD?lanChay:0);
+    await db.exec(wrapped);
+    assert.deepEqual((await db.query("SELECT to_regclass('public.atomic_wrapper_probe') relation,to_regprocedure('public.atomic_wrapper_value(text)') routine")).rows,[{relation:null,routine:null}]);
+  }
+});
+
+test('unsupported transaction commands and a lexically hidden final terminator fail closed',()=>{
+  for(const command of ['COMMIT WORK','COMMIT AND CHAIN','COMMIT PREPARED \'x\'','END WORK','ABORT','ROLLBACK TO SAVEPOINT x',
+    'START TRANSACTION','BEGIN WORK','PREPARE /* nested /* token */ comment */ TRANSACTION \'x\'','SAVEPOINT x','RELEASE SAVEPOINT x']) {
+    assert.throws(()=>buildTransaction(`BEGIN; SELECT 1; ${command}; COMMIT;`,{rollback:true}),/Unsupported transaction command/);
+  }
+  for(const source of ['SELECT 1; COMMIT; SELECT 2;', 'SELECT 1; BEGIN; SELECT 2;',
+    "BEGIN; SELECT 1; COMMIT; NOTIFY pgrst,'reload schema'; SELECT 2;",
+    "BEGIN; SELECT 1; COMMIT; NOTIFY pgrst,'reload schema'; -- tail\nCREATE TABLE public.escape(id int);",
+    "BEGIN; SELECT 1; COMMIT; NOTIFY other_channel,'reload schema';",
+    "BEGIN; SELECT 1; COMMIT; NOTIFY pgrst,'reload schema''; COMMIT; --';",
+    "BEGIN; SELECT 1; COMMIT; NOTIFY pgrst,'reload schema/*;COMMIT;*/';"])
+    assert.throws(()=>buildTransaction(source,{rollback:true}),/đầu\/cuối migration/);
+  // No outer ending can be proved if a malformed quote/comment consumes the
+  // generated terminator. This specifically exercises the final safety pass.
+  for(const source of ["SELECT 'unclosed",'DO $body$ BEGIN NULL;','SELECT 1; /* unclosed']) {
+    assert.throws(()=>buildTransaction(source,{rollback:true}),/Transaction dựng ra|Unclosed SQL block comment/);
+  }
 });

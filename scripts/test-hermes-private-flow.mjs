@@ -17,7 +17,7 @@ import { readTestCredentials, fixtureCleanupSql as baseCleanup, testFetch, write
 import { fixturePlan as basePlan, fixtureSetupSql as baseSetup, privateCleanupSql as durableCleanup,
   countsSql as durableCounts, loadFixtureCa, targetMatches, createSerializedLeaseAssertions,
   roleSetupSql, roleCleanupSql, guardedQuery } from './test-hermes-durable-store.mjs';
-import { extractFunctionDefinitions } from './network-center-function-bodies.mjs';
+import { extractHermesFunctionDefinitions as extractFunctionDefinitions, verifyTaskFunctionCatalog, verifyCustomerFunctionCatalog, TASK_FUNCTIONS, CUSTOMER_FUNCTIONS } from './hermes-task-function-contract.mjs';
 import { createStorePool } from '../infra/hermes-broker/store-pool.mjs';
 import { createSessionCrypto } from '../infra/hermes-broker/session-crypto.mjs';
 import { createDurableConnectionStore } from '../infra/hermes-broker/durable-connection-store.mjs';
@@ -491,14 +491,17 @@ async function context() {
 }
 
 export async function verifyLiveSchema(pool) {
+  const catalogFunctions = new Map([...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].map(spec => [spec.name, spec]));
   const expected = new Map(migrationSources().flatMap(source => extractFunctionDefinitions(source.bytes.toString('utf8'), source.path))
-    .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item.bodyDigest]));
+    .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName) && item.bodyKind !== 'sql-standard' && !catalogFunctions.has(item.qualifiedName)).map(item => [item.qualifiedName, item.bodyDigest]));
   const rows = (await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosrc,p.prosecdef,pg_get_userbyid(p.proowner) owner,p.proconfig
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1::text[])`, [[...expected.keys()]])).rows;
   const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1','app_private.hermes_work_memory_settings_json_v1','app_private.hermes_schedule_immutable_v1','app_private.hermes_domain_permission_v1','app_private.hermes_domain_text_v1']);
-  demand(rows.length === expected.size && rows.every(row => row.prosecdef === (row.name !== 'app_private.hermes_group_number_vi_v1') && row.owner === 'postgres'
+  demand(rows.length === expected.size && rows.every(row => row.prosecdef === (catalogFunctions.get(row.name)?.definer ?? (row.name !== 'app_private.hermes_group_number_vi_v1')) && row.owner === 'postgres'
     && row.proconfig?.some(value => pureCatalog.has(row.name) ? value === 'search_path=pg_catalog' : value.startsWith('search_path=pg_catalog,'))
     && sha(row.prosrc.replace(/\r\n?/g, '\n')) === expected.get(row.name)), 'live_schema_body_mismatch');
+  await verifyTaskFunctionCatalog(pool, migrationSources());
+  await verifyCustomerFunctionCatalog(pool, migrationSources());
   const signatures = [
     ['public.hermes_zalo_binding_v1(jsonb)', 'authenticated'], ['public.hermes_connection_options_v1(uuid)', 'authenticated'],
     ['public.hermes_org_policy_options_v1(uuid)', 'authenticated'],

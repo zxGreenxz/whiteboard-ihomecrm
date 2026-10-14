@@ -1,9 +1,11 @@
+import { TASK_ACTION } from './task-contract.mjs';
 import { ROOM_PASS_ACTION } from './room-pass-contract.mjs';
 import { DOMAIN_READ_CAPABILITIES } from './domain-contract.mjs';
 // Implemented CRM capabilities only. This is a mode/resource contract, never a
 // role grant map. Current grants come exclusively from the CRM resolver; the
 // durable authority intersects them with the persisted Hermes overlay.
 export const HERMES_CAPABILITIES = Object.freeze({
+  [TASK_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   [ROOM_PASS_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   ...Object.fromEntries(DOMAIN_READ_CAPABILITIES.map(key => [key, Object.freeze({ mode: 'read', resource: 'building' })])),
   'assistant.context.read': Object.freeze({ mode: 'read', resource: 'self' }),

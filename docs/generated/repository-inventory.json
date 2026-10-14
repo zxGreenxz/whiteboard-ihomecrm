@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1475,
-  "soFileDocBangFs": 343,
-  "tongLoiGoi": 793,
-  "khongPhanLoaiDuoc": 360,
+  "tongSoFileTest": 1482,
+  "soFileDocBangFs": 348,
+  "tongLoiGoi": 800,
+  "khongPhanLoaiDuoc": 361,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 120,
+      "soFile": 125,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -805,6 +805,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/task-composition.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/work-memory-sql.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -965,6 +973,14 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/hermes-task-function-catalog.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/migration-target.test.mjs",
@@ -1419,6 +1435,22 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/task-input-options.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/task-metadata.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-runtime/fixture-server.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1567,6 +1599,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/hermes-public-conflict-schema.test.mjs",

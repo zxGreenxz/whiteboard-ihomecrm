@@ -1,3 +1,5 @@
+import { TASK_TOOLS } from './task-contract.mjs';
+import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
@@ -41,7 +43,7 @@ const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504,
-  backend_unavailable: 503, response_too_large: 502, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503,
+  backend_unavailable: 503, response_too_large: 502, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
 });
 
 export class BrokerError extends Error {
@@ -223,6 +225,7 @@ export function createBroker({
   schedules,
   domains,
   roomPass,
+  tasks,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -246,6 +249,12 @@ export function createBroker({
     sessionStore ??= new MemorySessionStore();
     connectionStore ??= new MemoryConnectionStore();
     assistantStore ??= new MemoryAssistantStore();
+  }
+  let task;
+  if (tasks !== undefined) {
+    if (!injectedAuthority || ['prepareTask', 'finalizeTask'].some(key => typeof tasks?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_task_service_required');
+    task = Object.fromEntries(['prepareTask', 'finalizeTask'].map(key => [key, tasks[key].bind(tasks)]));
   }
   let pass;
   if (roomPass !== undefined) {
@@ -461,11 +470,11 @@ export function createBroker({
       const dispatchId = context.sendDispatchId?.();
       if (safe.code === 'send_outcome_unknown' && canonicalId(dispatchId)) safe.dispatchId = dispatchId;
       const mutationRequestId = context.mutationRequestId?.();
-      if (safe.code === 'room_pass_outcome_unknown' && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
+      if (['room_pass_outcome_unknown', 'task_outcome_unknown'].includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
         outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
-      catch (auditError) { if (!['send_outcome_unknown', 'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown'].includes(safe.code)) throw auditError; }
+      catch (auditError) { if (!['send_outcome_unknown', 'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown'].includes(safe.code)) throw auditError; }
       throw safe;
     } };
     if (dependencyScope) {
@@ -625,6 +634,7 @@ export function createBroker({
       return invoke(presentedToken, 'tools/list', (identity) => ({
         tools: [...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [structuredClone(TOOL)] : []),
           ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : []),
+          ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))).map(tool => structuredClone(tool)) : []),
@@ -637,6 +647,22 @@ export function createBroker({
       }), undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      const taskOperation = taskActionOperation(name);
+      if (task && taskOperation) {
+        let input, invalid = false, uncertain = false;
+        try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await task.finalizeTask(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {
         let input, invalid = false, uncertain = false;

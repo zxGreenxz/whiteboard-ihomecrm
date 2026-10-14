@@ -1210,6 +1210,8 @@
       "excludes": [
         ".e2e-fleet/**",
         "infra/**",
+        "scripts/__tests__/hermes-task-function-catalog.test.mjs",
+        "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
@@ -1529,6 +1531,8 @@
         "scripts/test-hermes-product-runtime.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/hermes-task-function-catalog.test.mjs",
+        "scripts/__tests__/hermes-customer-function-catalog.test.mjs",
         "scripts/__tests__/migration-target.test.mjs",
         "scripts/__tests__/measure-org-leak-target.test.mjs",
         "scripts/__tests__/backup-luu-tru.test.mjs",

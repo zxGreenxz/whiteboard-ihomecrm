@@ -38,6 +38,7 @@
 //        nó chạm production. Bù lại bằng ba lớp còn nguyên (cutoff, provenance,
 //        digest) — nhưng ba lớp đó kiểm XUẤT XỨ, không kiểm Ý ĐỊNH.
 
+import { splitSqlStatements, normalizeSqlSource } from "./network-center-function-bodies.mjs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -227,32 +228,93 @@ function projectRef() {
   }
 }
 
-// Lệnh điều khiển transaction ở MỨC CÂU LỆNH: đứng một mình trên một dòng, có
-// dấu chấm phẩy. `END;` là từ đồng nghĩa của COMMIT trong SQL nên phải tính,
-// NHƯNG plpgsql cũng đóng khối bằng `END;` — vì thế mọi lần quét đều chạy trên
-// bản đã che thân dollar-quote (xem cheDollarQuote).
-const CAU_LENH_BEGIN = /^[ \t]*BEGIN[ \t]*;[ \t]*$/gm;
-const CAU_LENH_KET_THUC = /^[ \t]*(COMMIT|ROLLBACK|END)[ \t]*;[ \t]*$/gm;
-
-/**
- * Thay mọi ký tự trong thân `$tag$ … $tag$` bằng khoảng trắng, GIỮ NGUYÊN độ
- * dài và các dấu xuống dòng. Nhờ vậy vị trí ký tự trên bản che trùng khít bản
- * gốc, quét trên bản che rồi cắt trên bản gốc vẫn khớp.
- */
-function cheDollarQuote(sql) {
-  return sql.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, (khoi) =>
-    khoi.replace(/[^\n]/g, " "),
-  );
+// Only consume leading lexical noise, never quote contents. Block comments may
+// nest in PostgreSQL. This is also used between transaction-command tokens.
+function boCommentDau(sql) {
+  let cursor = 0;
+  while (cursor < sql.length) {
+    if (/\s/.test(sql[cursor])) { cursor++; continue; }
+    if (sql.startsWith('--', cursor)) {
+      const end = sql.indexOf('\n', cursor); cursor = end < 0 ? sql.length : end + 1; continue;
+    }
+    if (sql.startsWith('/*', cursor)) {
+      let depth = 1; cursor += 2;
+      while (cursor < sql.length && depth) {
+        if (sql.startsWith('/*', cursor)) { depth++; cursor += 2; }
+        else if (sql.startsWith('*/', cursor)) { depth--; cursor += 2; }
+        else cursor++;
+      }
+      if (depth) throw new Error('Unclosed SQL block comment in transaction boundary.');
+      continue;
+    }
+    break;
+  }
+  return sql.slice(cursor);
 }
 
-function timCauLenh(sqlDaChe, re) {
-  const found = [];
-  re.lastIndex = 0;
-  let m;
-  while ((m = re.exec(sqlDaChe)) !== null) {
-    found.push({ start: m.index, end: m.index + m[0].length, text: m[0].trim() });
+function viTriGoc(sql, offset) {
+  let original = 0;
+  for (let n = 0; n < offset; n++, original++) if (sql[original] === '\r' && sql[original + 1] === '\n') original++;
+  return original;
+}
+
+// SQL-standard BEGIN ATOMIC is not dollar-quoted. Support the current bounded
+// form: a SQL function with one SELECT/WITH statement, followed by its own END.
+// The existing lexical splitter skips quoted/comment semicolons. Unsupported
+// multi-statement/malformed bodies fail before a transaction terminator is cut.
+function cheSqlStandard(sql) {
+  const normalized = normalizeSqlSource(sql), parts = splitSqlStatements(normalized), ranges = [];
+  let cursor = 0;
+  const plain = boCommentDau;
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index], start = normalized.indexOf(part, cursor); cursor = start + part.length;
+    const body = plain(part), header = body.split(/\bAS\s+(?:\$|')/i)[0];
+    if (!/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/i.test(header) || !/\bBEGIN\s+ATOMIC\b/i.test(header)) continue;
+    const match = /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:[a-z_]\w*\.)?[a-z_]\w*\s*\([^()'"$;]*\)\s+RETURNS\s+(?:[a-z_]\w*\.)?[a-z_]\w*\s+LANGUAGE\s+sql\s+VOLATILE\s+SECURITY\s+INVOKER\s+SET\s+search_path\s*=\s*pg_catalog\s*,\s*public\s+BEGIN\s+ATOMIC\s+(?:SELECT|WITH)\b/i.exec(header);
+    const next = parts[index + 1];
+    if (!match || !next || plain(next) !== 'END') throw new Error('Unsupported SQL-standard function boundary; expected one SELECT/WITH statement and END.');
+    const endStart = normalized.indexOf(next, cursor);
+    ranges.push({start: start + part.indexOf(body) + body.search(/\bBEGIN\s+ATOMIC\b/i), end: endStart + next.length});
+    cursor = endStart + next.length; index++;
   }
-  return found;
+  // splitSqlStatements normalizes CRLF; map offsets back without rewriting the
+  // source bytes. Masking keeps every newline and all text outside these bodies.
+  let result = sql;
+  for (const range of ranges.reverse()) {
+    const start = viTriGoc(sql, range.start), end = viTriGoc(sql, range.end);
+    result = result.slice(0, start) + result.slice(start, end).replace(/[^\r\n]/g, ' ') + result.slice(end);
+  }
+  return result;
+}
+
+// Inspect complete outer statements, not lines. The existing lexical splitter
+// honours quotes/comments; only the bounded SQL-standard body needs masking.
+// Thus COMMIT; -- comment and inline COMMIT cannot escape either safety pass.
+function transactionStatements(sql) {
+  const masked = normalizeSqlSource(cheSqlStandard(sql)), found = [], statements = [];
+  let cursor = 0, statementIndex = 0;
+  for (const part of splitSqlStatements(masked)) {
+    const start = masked.indexOf(part, cursor), end = start + part.length;
+    cursor = end;
+    const statement = boCommentDau(part);
+    if (!statement) continue;
+    statements.push(statement);
+    const command = /^([a-z]+)\b/i.exec(statement)?.[1].toUpperCase();
+    if (['BEGIN', 'START', 'COMMIT', 'END', 'ROLLBACK', 'ABORT', 'PREPARE', 'SAVEPOINT', 'RELEASE'].includes(command)) {
+      const rest = boCommentDau(statement.slice(command.length));
+      // PREPARE name AS ... is unrelated to transactions. PREPARE TRANSACTION
+      // would end this transaction and is deliberately unsupported.
+      if (command !== 'PREPARE' || /^TRANSACTION\b/i.test(rest)) {
+        const semicolon = end + /^\s*/.exec(masked.slice(end))[0].length;
+        if (!['BEGIN', 'COMMIT', 'END', 'ROLLBACK'].includes(command) || rest || masked[semicolon] !== ';') {
+          throw new Error('Unsupported transaction command: ' + command);
+        }
+        found.push({ start: viTriGoc(sql, start), end: viTriGoc(sql, semicolon + 1), text: command + ';', statementIndex });
+      }
+    }
+    statementIndex++;
+  }
+  return { found, statements, statementCount: statementIndex };
 }
 
 function catRanges(sql, ranges) {
@@ -261,6 +323,17 @@ function catRanges(sql, ranges) {
     out = out.slice(0, r.start) + out.slice(r.end);
   }
   return out;
+}
+
+function laReloadSchema(sql) {
+  let rest = sql;
+  for (const token of [/^NOTIFY\b/i, /^pgrst\b/i, /^,/, /^'reload schema'/]) {
+    rest = boCommentDau(rest);
+    const match = token.exec(rest);
+    if (!match) return false;
+    rest = rest.slice(match[0].length);
+  }
+  return boCommentDau(rest) === '';
 }
 
 /**
@@ -276,22 +349,29 @@ function catRanges(sql, ranges) {
  */
 function goTransactionCuaFile(sql) {
   const body = sql.trim();
-  const che = cheDollarQuote(body);
-
-  const begins = timCauLenh(che, CAU_LENH_BEGIN);
+  const { found, statements } = transactionStatements(body);
+  const begins = found.filter(item => item.text === 'BEGIN;');
   if (begins.length > 1) {
     throw new Error(
       `Migration mở ${begins.length} lệnh BEGIN; ở mức câu lệnh — không gỡ an toàn được. Sửa file để chỉ có đúng một cặp BEGIN/COMMIT.`,
     );
   }
 
-  const ketThuc = timCauLenh(che, CAU_LENH_KET_THUC);
+  const ketThuc = found.filter(item => item.text !== 'BEGIN;');
   if (ketThuc.length > 1) {
     throw new Error(
       `Migration có ${ketThuc.length} lệnh kết thúc transaction ở mức câu lệnh (${ketThuc
         .map((r) => r.text)
         .join(", ")}). Runner chỉ gỡ được đúng một COMMIT; cuối file — sửa file trước.`,
     );
+  }
+
+  // Existing forward files put this exact reload notification after COMMIT.
+  // Keep it inside our wrapper: rollback suppresses it as well as the DDL/DML.
+  const tail = ketThuc.length ? statements.slice(ketThuc[0].statementIndex + 1) : [];
+  const reloadOnly = tail.length === 1 && laReloadSchema(tail[0]);
+  if ((begins.length && begins[0].statementIndex !== 0) || (tail.length && !reloadOnly)) {
+    throw new Error('BEGIN/kết thúc transaction phải ở đầu/cuối migration.');
   }
 
   return catRanges(body, [...begins, ...ketThuc]).trim();
@@ -322,9 +402,12 @@ export function buildTransaction(sql, { rollback = false, lanChay = 1 } = {}) {
 
   // Chốt cuối: sau khi dựng xong, transaction phải đóng đúng MỘT lần và đóng
   // bằng đúng thứ đã hứa với người chạy. Sai ở đây nghĩa là dry-run lại ghi thật.
-  const dongLai = timCauLenh(cheDollarQuote(out), CAU_LENH_KET_THUC);
+  const { found, statementCount } = transactionStatements(out);
+  const dongLai = found.filter(item => item.text !== 'BEGIN;');
+  const mo = found.filter(item => item.text === 'BEGIN;');
   const mongDoi = rollback ? "ROLLBACK;" : "COMMIT;";
-  if (dongLai.length !== 1 || dongLai[0].text !== mongDoi) {
+  if (mo.length !== 1 || mo[0].statementIndex !== 0 || dongLai.length !== 1 ||
+      dongLai[0].text !== mongDoi || dongLai[0].statementIndex !== statementCount - 1) {
     throw new Error(
       `Transaction dựng ra đóng bằng [${dongLai.map((r) => r.text).join(", ")}] thay vì đúng một ${mongDoi}. DỪNG.`,
     );

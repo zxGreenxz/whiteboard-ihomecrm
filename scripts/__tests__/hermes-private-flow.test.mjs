@@ -12,7 +12,7 @@ import { ROOT, TEST_REF, CANDIDATES, parseArguments, sha, validateSchemaEvidence
   activateFixtureConnection, verifyPolicyOptionsFixture, verifyLiveSchema, migrationSources, verifyExecutorPrincipal, createExecutorRole } from '../test-hermes-private-flow.mjs';
 import { createDurableConnectionStore } from '../../infra/hermes-broker/durable-connection-store.mjs';
 import { validateCleanupEvidence } from '../test-hermes-broker-authz.mjs';
-import { extractFunctionDefinitions } from '../network-center-function-bodies.mjs';
+import { extractHermesFunctionDefinitions as extractFunctionDefinitions, TASK_FUNCTIONS, CUSTOMER_FUNCTIONS } from '../hermes-task-function-contract.mjs';
 
 const path = fileURLToPath(new URL('../test-hermes-private-flow.mjs', import.meta.url));
 const source = readFileSync(path, 'utf8');
@@ -359,19 +359,38 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
   const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path))
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item]));
   const calls = [];
-  return { calls, async query(sql, parameters = []) {
+  const mock = { calls, async connect() { return { query: mock.query, release() {} }; }, async query(sql, parameters = []) {
     calls.push({ sql, parameters });
+    if (['BEGIN READ ONLY','SET LOCAL search_path=pg_catalog','ROLLBACK'].includes(sql)) return { rows: [] };
+    if (sql.includes('pg_get_function_identity_arguments')) {
+      const requested = new Set(Array.isArray(parameters[0]) ? parameters[0] : []);
+      return { rows: [...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].filter(spec => requested.size === 0 || requested.has(spec.name)).map(spec => ({
+      name: spec.name, signature: spec.signature, owner: 'postgres', language: spec.language, prosecdef: spec.definer,
+      provolatile: 'v', proparallel: 'u', proleakproof: false, proisstrict: false,
+      proconfig: ['search_path=' + spec.searchPath.replaceAll(',', ', ')],
+      arguments: spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item => item.trim()).join(', '),
+      result: spec.name === 'app_private.hermes_task_assignee_member_v1' ? 'boolean' : 'jsonb',
+      parsed_body: spec.standard, prosrc: spec.standard ? '' : bodies.get(definitions.get(spec.name).bodyDigest), definition: spec.deparsedDefinition,
+      dependencies: spec.dependencies?.map((item,index) => ({...item,bound_oid:1000+index,resolved_oid:1000+index})),
+      acl: ['postgres', ...(spec.authenticated ? ['authenticated'] : [])].map(grantee => ({grantee,privilege:'EXECUTE',grantable:false})),
+      })) };
+    }
+    if (sql.includes('to_regclass')) return { rows: [{relrowsecurity:true,owner:'postgres',private_usage:false,owner_only_acl:true,table_access:false}] };
     if (sql.includes('FROM pg_proc')) {
       const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1', 'app_private.hermes_work_memory_settings_json_v1',
         'app_private.hermes_schedule_immutable_v1', 'app_private.hermes_domain_permission_v1', 'app_private.hermes_domain_text_v1']);
-      const rows = [...definitions.values()].map(item => ({ name: item.qualifiedName, prosrc: bodies.get(item.bodyDigest),
-        prosecdef: item.qualifiedName !== 'app_private.hermes_group_number_vi_v1', owner: 'postgres',
+      const catalog = new Map([...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].map(spec => [spec.name, spec]));
+      const rows = [...definitions.values()].filter(item => item.bodyKind !== 'sql-standard' && !catalog.has(item.qualifiedName)).map(item => ({ name: item.qualifiedName, prosrc: bodies.get(item.bodyDigest),
+        prosecdef: catalog.get(item.qualifiedName)?.definer ?? (item.qualifiedName !== 'app_private.hermes_group_number_vi_v1'), owner: 'postgres',
         proconfig: [pureCatalog.has(item.qualifiedName) ? 'search_path=pg_catalog' : 'search_path=pg_catalog,public,app_private'] }));
       mutateRows?.(rows); return { rows };
     }
     if (sql.includes('has_function_privilege')) {
       const [signature, roles] = parameters;
-      const allowed = signature.startsWith('app_private.') ? 'hermes_store_executor'
+      const task = TASK_FUNCTIONS.find(spec => spec.signature === signature);
+      const customer = CUSTOMER_FUNCTIONS.find(spec => spec.signature === signature);
+      const catalogSpec = task ?? customer;
+      const allowed = catalogSpec ? (catalogSpec.authenticated ? 'authenticated' : null) : signature.startsWith('app_private.') ? 'hermes_store_executor'
         : /hermes_zalo_(?:ingress|private_command|private_reply)_/.test(signature) ? 'service_role' : 'authenticated';
       return { rows: roles.map(role => ({ role, allowed: role === allowed
         || (foreignPolicyGrant && signature === 'public.hermes_org_policy_options_v1(uuid)' && role === 'hermes_store_executor') })) };
@@ -381,6 +400,7 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
     if (sql.includes('FROM pg_trigger')) return { rows: parameters[0].map(tgname => ({ tgname, tgenabled: 'O' })) };
     throw new Error('unexpected schema query');
   } };
+  return mock;
 }
 test('schema preflight includes new policy getter body and authenticated-only ACL', async () => {
   const m = mockSchema(); await verifyLiveSchema(m);

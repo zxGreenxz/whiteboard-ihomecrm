@@ -7,15 +7,18 @@ import pg from 'pg';
 import { lit } from './test-env/lib.mjs';
 import { loadFixtureCa } from './test-hermes-durable-store.mjs';
 import { domainInput, domainResult, DOMAIN_READ_CAPABILITIES } from '../infra/hermes-broker/domain-contract.mjs';
+import { TASK_ACTION, taskResult } from '../infra/hermes-broker/task-contract.mjs';
+import { taskOptionsResult } from '../infra/hermes-broker/task-input-contract.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const demand = (value, code) => { if (!value) throw Object.assign(new Error(code), { code }); };
 const hash = value => createHash('sha256').update(value).digest('hex');
-export const CDE_CAPABILITIES = Object.freeze(['assistant.memory.read','assistant.memory.write','chat_zalo.manage_automation',...DOMAIN_READ_CAPABILITIES]);
+export const CDE_CAPABILITIES = Object.freeze(['assistant.memory.read','assistant.memory.write','chat_zalo.manage_automation',...DOMAIN_READ_CAPABILITIES,TASK_ACTION]);
 export const CDE_RPCS = Object.freeze(['hermes_work_memory_capabilities_v1','hermes_work_memory_status_v1',
   'hermes_work_memory_configure_v1','hermes_work_memory_list_v1','hermes_work_memory_upsert_v1','hermes_work_memory_forget_v1',
   'hermes_domain_capabilities_v1','hermes_domain_read_v1','hermes_room_schedule_capabilities_v1','hermes_room_schedule_manage_v1',
-  'hermes_connection_options_v3','hermes_connection_context_v3','hermes_org_policy_options_v3']);
+  'hermes_connection_options_v3','hermes_connection_context_v3','hermes_org_policy_options_v3',
+  'hermes_task_create_capabilities_v1','hermes_task_create_action_v1','hermes_task_input_options_v1','hermes_connection_options_v5']);
 const SQL = Object.freeze({
   memoryStatus: 'SELECT public.hermes_work_memory_status_v1($1::jsonb) value',
   memoryConfigure: 'SELECT public.hermes_work_memory_configure_v1($1::jsonb,$2::jsonb) value',
@@ -24,9 +27,12 @@ const SQL = Object.freeze({
   memoryForget: 'SELECT public.hermes_work_memory_forget_v1($1::jsonb,$2::jsonb) value',
   domainRead: 'SELECT public.hermes_domain_read_v1($1::jsonb,$2::text,$3::jsonb) value',
   scheduleManage: 'SELECT public.hermes_room_schedule_manage_v1($1::jsonb) value',
+  taskCapabilities: 'SELECT public.hermes_task_create_capabilities_v1($1::uuid) value',
+  taskOptions: 'SELECT public.hermes_task_input_options_v1($1::jsonb,$2::jsonb) value',
+  taskAction: 'SELECT public.hermes_task_create_action_v1($1::jsonb,$2::text,$3::jsonb) value',
 });
 const READ = ['assistant.context.read','assistant.memory.read','reports_real_estate.occupancy','chat_zalo.view'];
-const ACTION = ['assistant.memory.write','chat_zalo.manage_automation'];
+const ACTION = ['assistant.memory.write','chat_zalo.manage_automation',TASK_ACTION];
 const ids = values => values.map(id => { demand(UUID.test(id), 'cde_fixture_id_invalid'); return lit(id); }).join(',');
 const listed = ownerUserId => ({ownerUserId,limit:10,offset:0,updatedSince:null});
 
@@ -34,8 +40,9 @@ export function cdeExecutionPlan() {
   return { scope:'cde', liveExecuted:false, projectRef:'hzulujxgonszuleqticb',
     requires:['all reviewed apply evidence','official exclusive TEST lease','generated verified Auth sessions','all new C/D/E registry keys still disabled'],
     proof:['real JWT/PostgREST identity and disabled-capability denials','transaction-local positive memory CRUD/sharing and fixed occupancy projection',
-      'transaction-local schedule list/revoke using an explicitly revoked inert fixture binding','two-session PostgreSQL sharing revocation lock and next-read denial'],
-    excludes:['global registry rollout','worker lease access or takeover','provider/model/send','positive PostgREST data result','live schedule creation or DM observation'] };
+      'transaction-local schedule list/revoke using an explicitly revoked inert fixture binding','two-session PostgreSQL sharing revocation lock and next-read denial',
+      'transaction-local task selectors/create/status under current CRM role, RLS and saved Action/scope; canonical E4 queued then rolled back'],
+    excludes:['global registry rollout','worker lease access or takeover','provider/model/send','positive PostgREST data result','live schedule creation or DM observation','task network ACK-loss or committed-task recovery'] };
 }
 
 // The parent verified this exact access token with /auth/v1/user. Copy its
@@ -63,7 +70,12 @@ export function cdeCountsSql(plan) {
     (SELECT count(*) FROM app_private.hermes_room_schedules WHERE organization_id IN (${orgs}))::int cde_schedules,
     (SELECT count(*) FROM app_private.hermes_schedule_grants WHERE organization_id IN (${orgs}))::int cde_grants,
     (SELECT count(*) FROM app_private.hermes_schedule_events e JOIN app_private.hermes_room_schedules s ON s.id=e.schedule_id WHERE s.organization_id IN (${orgs}))::int cde_events,
-    (SELECT count(*) FROM public.zalo_send_queue WHERE organization_id IN (${orgs}))::int cde_queue`;
+    (SELECT count(*) FROM public.zalo_send_queue WHERE organization_id IN (${orgs}))::int cde_queue,
+    (SELECT count(*) FROM public.jobs WHERE organization_id IN (${orgs}))::int cde_task_jobs,
+    (SELECT count(*) FROM app_private.hermes_task_create_receipts WHERE organization_id IN (${orgs}))::int cde_task_receipts,
+    (SELECT count(*) FROM public.job_types WHERE organization_id IN (${orgs}))::int cde_task_types,
+    (SELECT count(*) FROM public.notifications WHERE organization_id IN (${orgs}))::int cde_task_notifications,
+    (SELECT count(*) FROM public.notifications WHERE organization_id IN (${orgs}) AND push_state IN ('QUEUED','SENDING','SENT'))::int cde_task_push`;
 }
 
 export async function verifyCdeLiveSurface(pool) {
@@ -73,6 +85,8 @@ export async function verifyCdeLiveSurface(pool) {
     ['public.hermes_room_schedule_manage_v1(jsonb)','authenticated'],['public.hermes_room_schedule_capabilities_v1(uuid)','authenticated'],
     ['public.hermes_room_schedule_due_v1(uuid,uuid[])','service_role'],['public.hermes_room_schedule_run_v1(uuid,bigint,uuid)','service_role'],
     ['public.hermes_connection_options_v3(uuid)','authenticated'],['public.hermes_connection_context_v3(uuid)','authenticated'],['public.hermes_org_policy_options_v3(uuid)','authenticated'],
+    ['public.hermes_task_create_capabilities_v1(uuid)','authenticated'],['public.hermes_task_create_action_v1(jsonb,text,jsonb)','authenticated'],
+    ['public.hermes_task_input_options_v1(jsonb,jsonb)','authenticated'],['public.hermes_connection_options_v5(uuid)','authenticated'],
     ['app_private.hermes_store_prune_work_memories_v1(jsonb)','hermes_store_executor'],
     ['app_private.hermes_domain_extend_options_v1(jsonb,text)',null],['app_private.hermes_domain_permission_v1(text)',null],
     ['app_private.hermes_domain_text_v1(text)',null],['app_private.hermes_work_memory_context_v1(jsonb,boolean)',null],
@@ -82,12 +96,12 @@ export async function verifyCdeLiveSurface(pool) {
     const result=await pool.query('SELECT r,has_function_privilege(r,$1,\'EXECUTE\') allowed FROM unnest($2::text[]) r',[signature,['anon','authenticated','service_role','hermes_store_executor']]);
     assert.equal(result.rows.length,4);assert(result.rows.every(row=>row.allowed===(row.r===role)),signature);
   }
-  const names=['work_memory_settings','work_memories','room_schedules','schedule_grants','schedule_runs','schedule_events'].map(n=>'app_private.hermes_'+n);
+  const names=['work_memory_settings','work_memories','room_schedules','schedule_grants','schedule_runs','schedule_events','task_create_receipts'].map(n=>'app_private.hermes_'+n);
   const rls=await pool.query('SELECT relrowsecurity FROM pg_class WHERE oid=ANY($1::regclass[])',[names]);
-  assert.equal(rls.rows.length,6);assert(rls.rows.every(row=>row.relrowsecurity));
+  assert.equal(rls.rows.length,names.length);assert(rls.rows.every(row=>row.relrowsecurity));
   const acl=await pool.query('SELECT has_table_privilege(r,t,p) allowed FROM unnest($1::text[]) r CROSS JOIN unnest($2::text[]) t CROSS JOIN unnest($3::text[]) p',
     [['anon','authenticated','service_role','hermes_store_executor'],names,['SELECT','INSERT','UPDATE','DELETE']]);
-  assert.equal(acl.rows.length,96);assert(acl.rows.every(row=>row.allowed===false));
+  assert.equal(acl.rows.length,names.length*16);assert(acl.rows.every(row=>row.allowed===false));
   const registry=(await pool.query('SELECT capability,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[])',[CDE_CAPABILITIES])).rows;
   assert.equal(registry.length,CDE_CAPABILITIES.length);assert(registry.every(row=>row.enabled===false),'no CDE rollout is authorized by this fixture');
 }
@@ -165,6 +179,115 @@ async function seedInertSchedule(client, plan, subject) {
   await q("INSERT INTO app_private.hermes_schedule_grants(id,schedule_id,revision,user_id,organization_id,connection_id,binding_id,binding_epoch,account_id,settings,request_id,request_digest,expires_at) VALUES($1,$2,1,$3,$4,$5,$6,1,$7,$8::jsonb,$2,sha256(convert_to('cde-fixture','UTF8')),clock_timestamp()+interval '1 hour')",
     [grant,schedule,actor.id,org.id,c.id,binding,account,JSON.stringify(settings)]);
   return {schedule,grant};
+}
+
+async function seedTaskInputs(client, plan) {
+  // New fixture organizations only; canonical policies/triggers stay intact.
+  // The enclosing rollbackOnly transaction owns every permission/input row.
+  await client.query('RESET ROLE');
+  const [org,foreign]=plan.orgs, [actor,,recipient]=plan.actors;
+  const type=randomUUID(),foreignType=randomUUID(),outsideBuilding=randomUUID();
+  await client.query({text:`INSERT INTO public.role_permissions(organization_id,role_id,permission_key,effect)
+    SELECT $1,$2,key,'ALLOW' FROM unnest($3::text[]) key ON CONFLICT DO NOTHING`,
+    values:[org.id,org.roleId,['buildings.view','tasks.create','task_types.view']],queryMode:'extended'});
+  // An existing same-org superadmin is a selectable recipient under canonical
+  // profiles RLS; the ordinary actor remains the creator, never the recipient.
+  await client.query({text:`INSERT INTO public.job_types(id,user_id,organization_id,name)
+    VALUES($1,$2,$3,'Hermes task rollback type'),($4,$2,$5,'Hermes foreign rollback type')`,
+    values:[type,recipient.id,org.id,foreignType,foreign.id],queryMode:'extended'});
+  await client.query({text:`INSERT INTO public.buildings(id,user_id,organization_id,name,province,district,ward)
+    VALUES($1,$2,$3,'Hermes out-of-role rollback building','TEST','TEST','TEST')`,
+    values:[outsideBuilding,recipient.id,org.id],queryMode:'extended'});
+  const member=plan.memberships.find(m=>m.actor===0&&m.org===0);
+  demand(member?.id && actor.id!==recipient.id,'cde_task_fixture_identity_invalid');
+  const trigger=(await client.query(`SELECT t.tgenabled,p.proname,n.nspname FROM pg_trigger t
+    JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE t.tgrelid='public.jobs'::regclass AND t.tgname='z95_notify_job_assigned_ins' AND NOT t.tgisinternal`)).rows;
+  assert.deepEqual(trigger,[{tgenabled:'O',proname:'notify_job_assigned_v1',nspname:'app_private'}]);
+  return {type,foreignType,outsideBuilding,member,
+    input:{requestId:randomUUID(),title:'Hermes TEST rollback task',description:'Synthetic; never committed',
+      buildingId:org.buildingId,roomId:org.roomId,jobTypeId:type,priority:'NORMAL',assigneeId:recipient.id,deadline:null}};
+}
+
+async function taskChecks(client, plan, owner, foreign, actors, evidence) {
+  const fixture=await seedTaskInputs(client,plan),org=plan.orgs[0],input=fixture.input;
+  const identity={row:{organizationId:org.id,userId:actors[0].id},scopesByPermission:{[TASK_ACTION]:{buildingIds:[org.buildingId]}}};
+  let b=await bindingOf(client,owner);
+  const invoke=(operation,value,binding=b,subject=owner)=>call(client,subject,actors,'taskAction',[binding,operation,value]);
+  const optionsInput=(kind,buildingId=kind==='buildings'?null:org.buildingId)=>({kind,buildingId,query:'',limit:50,cursor:null});
+  const options=async value=>taskOptionsResult('options',await call(client,owner,actors,'taskOptions',[b,value]),identity,value);
+  const caps=await call(client,owner,actors,'taskCapabilities',[org.id]);
+  assert.equal(caps.allowed,true);assert.deepEqual(caps.buildingIds,[org.buildingId]);
+  const current=(await client.query("SELECT public.is_super_admin() superadmin,public.get_authorization_context_v1($1::uuid) context",[org.id])).rows[0];
+  assert.equal(current.superadmin,false);assert.equal(current.context.permissions[TASK_ACTION],true);
+  assert.notEqual(current.context.permissions['tasks.view'],true);
+  const expected={buildings:[org.buildingId],rooms:[org.roomId],jobTypes:[fixture.type]};
+  for(const kind of ['buildings','rooms','jobTypes','assignees']) {
+    const result=await options(optionsInput(kind));
+    if(expected[kind])assert.deepEqual(result.items.map(row=>row.id),expected[kind]);
+    else {assert(result.items.some(row=>row.id===input.assigneeId));assert(!result.items.some(row=>row.id===actors[1].id));}
+  }
+  await denial(client,()=>call(client,foreign,actors,'taskOptions',[b,optionsInput('buildings')]));
+  await denial(client,()=>options(optionsInput('rooms',fixture.outsideBuilding)));
+  await denial(client,()=>invoke('create',input,b,foreign));
+  for(const change of [{assigneeId:actors[1].id},{jobTypeId:fixture.foreignType},
+    {buildingId:plan.orgs[1].buildingId,roomId:null},{buildingId:fixture.outsideBuilding,roomId:null}])
+    await denial(client,()=>invoke('create',{...input,requestId:randomUUID(),...change}));
+
+  // Discard an acknowledged SQL result, then issue ONLY status. This measures
+  // reconciliation in this transaction, not a network ACK loss or a commit.
+  await invoke('create',input);
+  const recovered=taskResult('status',await invoke('status',{requestId:input.requestId}),identity,{requestId:input.requestId});
+  assert.equal(recovered.outcome,'applied');assert.equal(recovered.job.createdBy,actors[0].id);
+  assert.equal(recovered.job.assigneeId,input.assigneeId);assert.equal(recovered.job.buildingId,org.buildingId);
+  // Explicit SQL idempotency probe, separate from the status-only recovery.
+  assert.deepEqual(taskResult('create',await invoke('create',input),identity,input),recovered);
+  await denial(client,()=>invoke('create',{...input,title:'Changed intent'}),['PT409']);
+  const missing=randomUUID();assert.deepEqual(await invoke('status',{requestId:missing}),{organizationId:org.id,requestId:missing,outcome:'not_found',job:null});
+
+  const changed=async (text,values,probe)=>{
+    await client.query('RESET ROLE');await client.query('SAVEPOINT cde_task_change');
+    try { const result=await client.query({text,values,queryMode:'extended'});assert.equal(result.rowCount,1);await probe(); }
+    finally {await client.query('ROLLBACK TO SAVEPOINT cde_task_change');await client.query('RELEASE SAVEPOINT cde_task_change');}
+    b=await bindingOf(client,owner);
+  };
+  const denyAction=async()=>{
+    const fresh=await bindingOf(client,owner);
+    await denial(client,()=>invoke('create',{...input,requestId:randomUUID()},fresh));
+    await denial(client,()=>invoke('status',{requestId:input.requestId},fresh));
+    await denial(client,()=>call(client,owner,actors,'taskOptions',[fresh,optionsInput('buildings')]));
+  };
+  await changed("DELETE FROM public.role_permissions WHERE organization_id=$1 AND role_id=$2 AND permission_key='tasks.create'",[org.id,org.roleId],denyAction);
+  await changed('UPDATE app_private.hermes_connections SET action_capabilities=ARRAY[]::text[] WHERE id=$1',[owner.connection.id],denyAction);
+  await changed('UPDATE app_private.hermes_org_policies SET action_capabilities=ARRAY[]::text[] WHERE organization_id=$1',[org.id],denyAction);
+  // Existing CRM type selection permission is independent of Hermes task Read.
+  await changed("DELETE FROM public.role_permissions WHERE organization_id=$1 AND role_id=$2 AND permission_key='task_types.view'",[org.id,org.roleId],async()=>{
+    b=await bindingOf(client,owner);assert.deepEqual((await options(optionsInput('jobTypes'))).items,[]);
+    await denial(client,()=>invoke('create',{...input,requestId:randomUUID()}));
+  });
+  await changed(`UPDATE app_private.hermes_connections SET scope_ids=ARRAY(SELECT id FROM public.authorization_scopes
+    WHERE organization_id=$2 AND scope_type='BUILDING' AND building_id=$3) WHERE id=$1`,[owner.connection.id,org.id,fixture.outsideBuilding],async()=>{
+    const fresh=await bindingOf(client,owner);
+    await denial(client,()=>invoke('create',{...input,requestId:randomUUID()},fresh));
+    await denial(client,()=>invoke('status',{requestId:input.requestId},fresh));
+    assert.deepEqual((await call(client,owner,actors,'taskOptions',[fresh,optionsInput('buildings')])).items,[]);
+  });
+  await changed('UPDATE public.organization_memberships SET revoked_at=clock_timestamp() WHERE id=$1',[fixture.member.id],async()=>{
+    await denial(client,()=>invoke('status',{requestId:input.requestId}));
+    await denial(client,()=>call(client,owner,actors,'taskOptions',[b,optionsInput('buildings')]));
+  });
+  await client.query('RESET ROLE');
+  const overlays=(await client.query('SELECT read_capabilities FROM app_private.hermes_connections WHERE id=$1',[owner.connection.id])).rows[0];
+  assert(!overlays.read_capabilities.includes('tasks.view'));
+  const jobs=(await client.query('SELECT id,user_id,assignee_id FROM public.jobs WHERE organization_id=$1',[org.id])).rows;
+  assert.deepEqual(jobs,[{id:recovered.job.id,user_id:actors[0].id,assignee_id:input.assigneeId}]);
+  const receipts=(await client.query('SELECT request_id,job_id FROM app_private.hermes_task_create_receipts WHERE organization_id=$1',[org.id])).rows;
+  assert.deepEqual(receipts,[{request_id:input.requestId,job_id:recovered.job.id}]);
+  const notifications=(await client.query(`SELECT user_id,job_id,metadata->>'event' event,metadata->>'actor_id' actor_id,push_state
+    FROM public.notifications WHERE organization_id=$1`,[org.id])).rows;
+  assert.deepEqual(notifications,[{user_id:input.assigneeId,job_id:recovered.job.id,event:'E4',actor_id:actors[0].id,push_state:'QUEUED'}]);
+  evidence.task={ordinaryCrmActor:true,hermesTaskRead:false,selectorsMinimal:true,sqlIdempotency:true,
+    discardedSqlResultStatusOnly:true,networkAckLoss:false,committedRecovery:false,e4QueuedInsideTransaction:true,rollbackVerified:false};
 }
 
 export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRpc,check,evidence}) {

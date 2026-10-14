@@ -35,6 +35,7 @@ export function HermesPermissionFields({ value, scopeIds, readChoices, actionCho
         return <fieldset disabled={disabled} key={kind} className="min-w-0 space-y-3 rounded-lg border p-3">
           <legend className="px-1 font-medium">{kind === 'read' ? 'Đọc dữ liệu' : 'Thao tác dữ liệu'}</legend>
           {kind === 'action' && <p className="text-sm text-muted-foreground">Quyền đọc và thao tác được chọn độc lập. Gửi dữ liệu cần cả quyền đọc dữ liệu đó và quyền gửi tương ứng.</p>}
+          {kind === 'action' && choices.action.has('tasks.create') && <p className="text-sm text-muted-foreground">Tạo và giao công việc được ghi dưới tài khoản của bạn. Người nhận là người thực hiện, không thay người tạo.</p>}
           {choices[kind].size === 0 && <p className="text-sm text-muted-foreground">{kind === 'read' ? 'Chưa có quyền đọc được phép cấp.' : 'Chưa cấp quyền thao tác.'}</p>}
           {[...choices[kind]].filter(key => !catalog.has(key)).map(key => <label key={key} className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={value[kind].includes(key)} disabled={disabled}

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { splitSqlStatements } from '../network-center-function-bodies.mjs';
+import { splitHermesFunctionStatements as splitSqlStatements, TASK_FUNCTIONS } from '../hermes-task-function-contract.mjs';
 import { buildTransaction } from '../apply-reviewed-migration.mjs';
 
 // Static, source-level contracts only. These tests neither compile PL/pgSQL nor
@@ -188,7 +188,34 @@ END $acl$`), targets: [
   ['public.hermes_connection_options_v4(uuid)', null],
   ['public.hermes_connection_context_v4(uuid)', null],
 ] };
-const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL];
+const TASK_OPTIONS_ACL = { name: 'task-v5', sql: clean(`DO $acl$ DECLARE signature text; BEGIN
+  FOREACH signature IN ARRAY ARRAY['app_private.hermes_task_extend_options_v1(jsonb,text)',
+    'public.hermes_org_policy_options_v5(uuid)','public.hermes_connection_options_v5(uuid)','public.hermes_connection_context_v5(uuid)'] LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',signature);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',signature);
+  END LOOP;
+END $acl$`), targets: [
+  ['app_private.hermes_task_extend_options_v1(jsonb,text)', null],
+  ['public.hermes_org_policy_options_v5(uuid)', null], ['public.hermes_connection_options_v5(uuid)', null],
+  ['public.hermes_connection_context_v5(uuid)', null],
+] };
+const CUSTOMER_ACTION_ACL = { name: 'customer-create-v1', sql: clean(`DO $acl$ DECLARE signature text;BEGIN
+ FOREACH signature IN ARRAY ARRAY['app_private.hermes_customer_guard_v1(jsonb,text,text,jsonb,boolean)','app_private.hermes_customer_insert_v1(jsonb)',
+  'app_private.hermes_customer_finish_v1(jsonb,text,text,jsonb)','public.hermes_customer_create_action_v1(jsonb,text,text,jsonb)','public.hermes_customer_create_capabilities_v1(uuid)'] LOOP
+  EXECUTE 'ALTER FUNCTION '||signature||' OWNER TO postgres';
+  EXECUTE 'REVOKE ALL ON FUNCTION '||signature||' FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION '||signature||' TO authenticated';
+ END LOOP;
+END $acl$`), targets: [
+  ['app_private.hermes_customer_guard_v1(jsonb,text,text,jsonb,boolean)', 'authenticated'],
+  ['app_private.hermes_customer_insert_v1(jsonb)', 'authenticated'],
+  ['app_private.hermes_customer_finish_v1(jsonb,text,text,jsonb)', 'authenticated'],
+  ['public.hermes_customer_create_action_v1(jsonb,text,text,jsonb)', 'authenticated'],
+  ['public.hermes_customer_create_capabilities_v1(uuid)', 'authenticated'],
+] };
+const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL];
+const TASK_BY_NAME = new Map(TASK_FUNCTIONS.map(spec => [spec.name, spec]));
+const CUSTOMER_INVOKER = new Set(['app_private.hermes_customer_insert_v1', 'public.hermes_customer_create_action_v1']);
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -280,10 +307,15 @@ function securityContract(sql = all, registry = functions) {
   assert(tableRevoke, 'private tables must revoke every API/runtime role');
   for (const name of TABLES) assert(tableRevoke.includes(`app_private.hermes_${name}`));
   for (const [name, definition] of registry) {
-    const header = definition.split(/\bAS\s+\$/i)[0];
-    if (name === 'app_private.hermes_group_number_vi_v1') formatterContract(definition);
+    const header = definition.split(/\b(?:AS\s+\$|BEGIN ATOMIC)/i)[0].trim();
+    if (TASK_BY_NAME.has(name)) {
+      const spec = TASK_BY_NAME.get(name);
+      assert.equal(header, spec.header, 'exact task signature/security/search path');
+      if (spec.standard) assert.equal(definition, clean(spec.statement), 'exact task SQL-standard body');
+    } else if (name === 'app_private.hermes_group_number_vi_v1') formatterContract(definition);
     else if (CDE_CATALOG_HELPERS.has(name)) assert.equal(definition, CDE_CATALOG_HELPERS.get(name), `${name}: exact private pg_catalog helper`);
     else if (name === 'app_private.hermes_room_pass_revision_v1') assert.equal(definition, ROOM_PASS_REVISION_HELPER, 'exact private room-pass revision helper');
+    else if (CUSTOMER_INVOKER.has(name)) assert.match(header, /SECURITY INVOKER SET search_path=pg_catalog,public/i, name);
     else assert.match(header, /SECURITY DEFINER SET search_path=pg_catalog,(?:public,)?app_private/i, name);
     assert.match(sql, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
     assert.match(sql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`, 'i'), `${name}: revoke default/API execute explicitly`);
@@ -295,7 +327,8 @@ function securityContract(sql = all, registry = functions) {
   // that a later REVOKE actually removed). CREATE OR REPLACE keeps its old ACL.
   const acl = new Map();
   const allowed = new Map([
-    ['authenticated', new Set(PUBLIC.map(name => `public.${name}`))],
+    ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
+      ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target)])],
     ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
     ['service_role', new Set(WORKER)],
   ]);
@@ -771,4 +804,34 @@ test('mutation is rejected: leaving default PUBLIC execute on a helper', () => {
   const changed = all.replace(/REVOKE ALL ON FUNCTION app_private\.hermes_request_v1[^;]*;/, '');
   assert.notEqual(changed, all);
   assert.throws(() => securityContract(changed));
+});
+
+test('task exact signatures retain caller ACL and no worker/service/helper widening', () => {
+  securityContract();
+  for (const spec of TASK_FUNCTIONS) {
+    for (const role of ['hermes_store_executor', 'service_role', ...(spec.authenticated ? [] : ['authenticated'])]) {
+      assert.throws(() => securityContract(all + '; GRANT EXECUTE ON FUNCTION ' + spec.signature + ' TO ' + role), /cannot execute/);
+    }
+    if (spec.authenticated) assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION ' + spec.signature + ' FROM authenticated'), /effective execute ACL/);
+    const registry = new Map(functions), original = registry.get(spec.name);
+    registry.set(spec.name, original.replace(spec.definer ? 'SECURITY DEFINER' : 'SECURITY INVOKER', spec.definer ? 'SECURITY INVOKER' : 'SECURITY DEFINER'));
+    assert.throws(() => securityContract(all, registry), /exact task signature/);
+  }
+});
+test('task-v5 exact dynamic ACL adapter rejects changed recipient or helper namespace', () => {
+  for (const changed of [TASK_OPTIONS_ACL.sql.replace('FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor', 'FROM PUBLIC,anon,authenticated,hermes_store_executor'),
+    TASK_OPTIONS_ACL.sql.replace('app_private.hermes_task_extend_options_v1', 'public.hermes_task_extend_options_v1')]) {
+    assert.throws(() => securityContract(all.replace(TASK_OPTIONS_ACL.sql, () => changed)), /unreviewed function ACL DO block/);
+  }
+});
+test('task SQL-standard source never silently drops or accepts a changed callee/body', () => {
+  for (const spec of TASK_FUNCTIONS.filter(item => item.standard)) {
+    const body = functions.get(spec.name);
+    assert.throws(() => splitSqlStatements(body.replace('BEGIN ATOMIC', 'BEGIN ATOMIC SELECT 1;')), /task_sql_standard_source_mismatch/);
+  }
+});
+test('task receipt stays private, owned and RLS enabled', () => {
+  assert.match(all, /ALTER TABLE app_private.hermes_task_create_receipts OWNER TO postgres/);
+  assert.match(all, /ALTER TABLE app_private.hermes_task_create_receipts ENABLE ROW LEVEL SECURITY/);
+  assert.match(all, /REVOKE ALL ON TABLE app_private.hermes_task_create_receipts FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor/);
 });

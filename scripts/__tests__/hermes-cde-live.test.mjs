@@ -151,10 +151,15 @@ test('CDE cleanup counts compose with psqlJson derived-table wrapper in local Po
       CREATE TABLE app_private.hermes_room_schedules(id uuid,organization_id uuid);
       CREATE TABLE app_private.hermes_schedule_grants(organization_id uuid);
       CREATE TABLE app_private.hermes_schedule_events(schedule_id uuid);
-      CREATE TABLE public.zalo_send_queue(organization_id uuid);`);
+      CREATE TABLE public.zalo_send_queue(organization_id uuid);
+      CREATE TABLE public.jobs(organization_id uuid);
+      CREATE TABLE app_private.hermes_task_create_receipts(organization_id uuid);
+      CREATE TABLE public.job_types(organization_id uuid);
+      CREATE TABLE public.notifications(organization_id uuid,push_state text);`);
     const sql=cdeCountsSql({orgs:[{id:org}]});
     const result=await db.query(`SELECT COALESCE(json_agg(t), '[]'::json) FROM (${sql}\n) t;`);
-    assert.deepEqual(result.rows[0].coalesce,[{cde_memories:0,cde_settings:0,cde_schedules:0,cde_grants:0,cde_events:0,cde_queue:0}]);
+    assert.deepEqual(result.rows[0].coalesce,[{cde_memories:0,cde_settings:0,cde_schedules:0,cde_grants:0,cde_events:0,cde_queue:0,
+      cde_task_jobs:0,cde_task_receipts:0,cde_task_types:0,cde_task_notifications:0,cde_task_push:0}]);
   }finally{await db.close();}
 });
 test('cleanup identity retains exact generated scope but excludes all credential material',()=>{

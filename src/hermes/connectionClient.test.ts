@@ -390,3 +390,16 @@ describe('room-pass Action building scope without Read',()=>{
   expect(JSON.parse(fetch.mock.calls[2][1]!.body as string)).toMatchObject({restrictions:input.restrictions,scopeIds:[SCOPE]});
  });
 });
+
+describe('task-create Action building scope without Read',()=>{
+ it('accepts the offered Action and requires scope choices even with no Read keys',async()=>{
+  const {client,fetch}=setup();const options={userId:USER,organizationId:ORG,membershipId:OTHER,authorizationVersion:1,isSuperadmin:false,policyVersion:1,enabled:true,
+    read:[],action:['tasks.create'],scopes:[{scopeId:SCOPE,scopeType:'BUILDING',label:'Toà: Nhà A',buildingId:ASSISTANT,areaId:null,cashbookId:null}]};
+  fetch.mockResolvedValueOnce(json({options}));await expect(client.options()).resolves.toEqual({options});
+  fetch.mockResolvedValueOnce(json({options:{...options,scopes:[]}}));await expect(client.options()).rejects.toMatchObject({code:'invalid_response'});
+  const input={...connectInput(),restrictions:{read:[],action:['tasks.create']},scopeIds:[SCOPE]};
+  const connected=newConnection();connected.connection.restrictions=input.restrictions;connected.connection.scopeIds=[SCOPE];
+  fetch.mockResolvedValueOnce(json(connected));await expect(client.connect(input)).resolves.toEqual(connected);
+  expect(JSON.parse(fetch.mock.calls[2][1]!.body as string)).toMatchObject({restrictions:input.restrictions,scopeIds:[SCOPE]});
+ });
+});

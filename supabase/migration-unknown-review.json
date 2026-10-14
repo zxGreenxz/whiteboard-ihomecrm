@@ -1487,6 +1487,60 @@
       ],
       "anhHuongThat": "Options v4 bổ sung capability phòng nhờ sale, giữ độc lập Read/Action và không tự mở quyền. Còn nghiệm thu JWT/PostgREST và rollout; focused/source review không thay live acceptance.",
       "raSoatBoi": "Codex 14/10/2026 — review độc lập Astra Extra High hermes-room-pass-action, hermes-room-pass-integration và delta hermes-room-pass-unapplied-eol; không tác giả tự duyệt."
+    },
+    "supabase/migrations/20261014092945_hermes_task_create_action_v1.sql": {
+      "sha256": "361580397cc21ad02d57f03f5e8f9859d988a33967c470c4f27a2c45f5605103",
+      "missingObjects": [
+        "table:app_private.hermes_task_create_receipts",
+        "function:app_private.hermes_task_guard_v1",
+        "function:app_private.hermes_task_insert_v1",
+        "function:app_private.hermes_task_finish_v1",
+        "function:public.hermes_task_create_action_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward mới chưa apply production; object vắng mặt có chủ ý. Cache core/wiring và independent review đã đạt, nhưng migration còn chờ backup, dry-run và TEST17.6 apply receipt. Hồ sơ này không chứng minh file đã chạy.",
+      "bangChung": [
+        { "duong_dan": "supabase/migrations/20261014092945_hermes_task_create_action_v1.sql", "trich_doan": "CREATE TABLE app_private.hermes_task_create_receipts và các RPC task guard/insert/finish/action" },
+        { "duong_dan": "docs/plans/hermes-crm/STATUS.md", "trich_doan": "Ba migration task/customer mới đã có provenance nhưng chưa apply TEST; production chưa apply forward mới." }
+      ],
+      "anhHuongThat": "Không bật registry hoặc thay production. Chức năng task chỉ được mở sau lane backup/dry-run/apply và JWT/RLS/CDE cleanup live.",
+      "raSoatBoi": "Codex 15/10/2026 — schema/runner delta reviewer Astra Extra High approved_with_limitations; task wiring/core reviewer độc lập đã đối chiếu hash."
+    },
+    "supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql": {
+      "sha256": "868ef889ccbbdc1117bf09e88c4c6db10f593b5c389d5a17bafa539652a307ce",
+      "missingObjects": [
+        "function:app_private.hermes_task_extend_options_v1",
+        "function:public.hermes_org_policy_options_v5",
+        "function:public.hermes_connection_options_v5",
+        "function:public.hermes_connection_context_v5",
+        "function:app_private.hermes_task_input_guard_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward mới chưa apply production; object vắng mặt có chủ ý. Source/contract/options review đã đạt; cần TEST catalog và migration receipt trước mở capability.",
+      "bangChung": [
+        { "duong_dan": "supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql", "trich_doan": "CREATE OR REPLACE FUNCTION helper/options/context v5 cho task input" },
+        { "duong_dan": "docs/plans/hermes-crm/STATUS.md", "trich_doan": "Task create/assign đã ghép source WIP; chưa apply TEST hoặc production." }
+      ],
+      "anhHuongThat": "Không bật Action/Read mặc định; overlay vẫn giao cắt quyền user hiện tại. Chỉ nghiệm thu sau TEST JWT/RLS và catalog.",
+      "raSoatBoi": "Codex 15/10/2026 — task wiring reviewer Astra Extra High và schema/runner reviewer độc lập; approved_with_limitations với live apply còn mở."
+    },
+    "supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql": {
+      "sha256": "a3229fce8e4384d072dc7b6784b96e50047dfd74d97894e16e4ca57655ae2065",
+      "missingObjects": [
+        "table:app_private.hermes_customer_create_receipts",
+        "function:app_private.hermes_customer_guard_v1",
+        "function:app_private.hermes_customer_insert_v1",
+        "function:app_private.hermes_customer_finish_v1",
+        "function:public.hermes_customer_create_action_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward mới chưa apply production; object vắng mặt có chủ ý. Customer/lead validator và independent review delta đã đạt; live Auth/PostgREST/MVCC và TEST receipt còn mở.",
+      "bangChung": [
+        { "duong_dan": "supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql", "trich_doan": "CREATE TABLE hermes_customer_create_receipts và caller-bound customer/lead create/status RPC" },
+        { "duong_dan": "docs/plans/hermes-crm/STATUS.md", "trich_doan": "Customer/lead đã review độc lập và ghép source WIP; migration chưa apply TEST." }
+      ],
+      "anhHuongThat": "Không có thay đổi production cho tới khi forward lane hoàn tất. Sau đó chỉ cho phép CRM user permission giao với Hermes Action overlay; không thêm dedupe phone hay quyền org-wide.",
+      "raSoatBoi": "Codex 15/10/2026 — customer/lead reviewer Astra Extra High approved_with_limitations sau manifest delta; live apply vẫn chưa xác minh."
     }
   }
 }

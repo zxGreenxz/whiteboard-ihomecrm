@@ -14,23 +14,51 @@
 - Checkpoint đã push: `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e`; cả bốn workflow CI đạt. Hermes native dùng Auth/SQL/model giả. Sáu candidate P4 đã apply TEST, tổng 12 migration Hermes bất biến. Trusted turn bridge đã commit; lane JWT quản trị đã đạt bằng Auth/PostgREST và dedicated executor thật trên TEST. Full private flow vẫn chặn bởi worker singleton có sẵn; chưa deploy hoặc kiểm Zalo thật.
 
 
-Cập nhật: 14/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [PLAN.md](PLAN.md); nhật ký trước quyết định này là lịch sử.
+Cập nhật: 15/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [PLAN.md](PLAN.md); nhật ký trước quyết định này là lịch sử.
 
 ## Điểm tiếp tục
 
 - **Ưu tiên theo quyết định mới:** thực hiện các gói trong [EXECUTION.md](EXECUTION.md): code luồng hỏi phòng và trả lời riêng trước; Q tập trung cho mốc, rồi code soạn/duyệt/gửi nhóm. Các gói độc lập có thể chuẩn bị code offline khi kiểm môi trường vướng; giữ chức năng mới đóng tới nghiệm thu. Không chạy full kiểm sau từng module hoặc thống kê định kỳ.
 
-- **WIP hiện tại:** host connector riêng, external MCP, plugin Zalo native/operator, lịch CRM, work memory, tám miền đọc và room-pass đã ghép. Missing org policy là neutral; explicit deny giữ nguyên. Tổng 23 migration Hermes đã apply TEST và bất biến. Chưa mở gửi ngoài môi trường kiểm hoặc apply production.
-- **Tiếp tục ngay:** hai lỗi CI của `c038c71f` đã sửa và review đạt; đẩy checkpoint sửa fixture cùng thay đổi ngừng UI Copilot lên CI. Task create/assign core/wiring đã ghép source WIP; gói verifier/runner còn hai finding đang sửa trong cache, chưa apply TEST. Phục hồi vận chuyển, deployment/canary, miền thao tác và điều phối còn việc. Tái dùng receipts đúng hash; không coi source review là nghiệm thu live.
+- **WIP hiện tại:** host connector riêng, external MCP, plugin Zalo native/operator, lịch CRM, work memory, tám miền đọc và room-pass đã ghép. Missing org policy là neutral; explicit deny giữ nguyên. Tổng 26 migration Hermes đã apply TEST và bất biến. Chưa mở gửi ngoài môi trường kiểm hoặc apply production.
+- **Tiếp tục ngay:** checkpoint `81bb6eb0` vẫn là nền đã push; Hermes runtime và Restore Drill đạt CI Linux. Task create/assign, customer/lead và CDE live fixture đã được review độc lập và ghép vào source WIP; ba migration mới đã apply TEST qua official lane và catalog live đã được kiểm bằng JWT-management. Phục hồi vận chuyển, deployment/canary, miền thao tác và điều phối còn việc. Tái dùng receipts đúng hash; không coi source review hoặc management-only run là nghiệm thu full worker/live.
 - **P0 đã có bằng chứng cho inventory trước v1.4:** inventory v2/catalog TEST chỉ đọc, gate/CI theo nhật ký. P0.06 và đối chiếu kiến trúc connector mới chưa hoàn tất; không suy snapshot cũ thành nghiệm thu toàn v1.4.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, intake/dispatch/reply qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree hiện hành:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-integration-20261014`. Worktree `hermes-crm-foundation-20261012` giữ WIP cũ và cache/receipts; không tiếp tục sửa source ở đó.
-- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; candidate đã commit/push `c038c71ff2ecd7be5f4b8625b16209b0835e70ad`, tree `8889870fe8767f677793cd21479b8e131cf1c4ad`.
+- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; commit/push gần nhất `81bb6eb07281ce3b986139829e41e17a0509337f`, tree `a5d505f1bbb1c2413ef0d9385c130f009c824575`. Source WIP hiện đã gồm schema/runner đã sửa, task create/assign, customer/lead và CDE fixture; chưa commit/push checkpoint mới.
 - **Base đã tích hợp:** `origin/main` tại `993fcfed99f48886cc0600b743d939094ded7e5a`; kiểm ancestor đạt. Rebase chỉ xung đột inventory máy sinh, đã chạy lại generator. Nhánh PR #165 vẫn nguyên trạng; không force-push.
 - **Checkpoint đã push:** `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e`; Hermes `38420051975`, CI Gates `38420052012`, Android `38420052201`, Restore Drill `38420051964` SUCCESS. CI này chưa gồm proxy frontend WIP; không phải authority merge/phát hành.
 - **Draft PR hiện hành:** [#166 — tích hợp Hermes độc lập với quyền CRM](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/166). PR #165 giữ checkpoint nền cũ. Đọc checks đúng head; kết quả pull_request không phải authority phát hành production.
 
+### 15/10/2026 — áp dụng task/customer trên TEST và xác minh catalog live
+
+Ba migration mới đã đi đúng official lane trên TEST `hzulujxgonszuleqticb`, mỗi file có dry-run rollback, backup đầy đủ, provenance và schema-change evidence:
+
+- `20261014092945_hermes_task_create_action_v1.sql`: catalog `a3c5fc41b9ee… → 76da6b89242f…`; backup manifest `ihomecrm-full-2026-10-14T18-42-58-179Z.dump.json`.
+- `20261014094913_hermes_assistant_capabilities_v5.sql`: catalog `76da6b89242f… → c3136e26b0af…`; backup manifest `ihomecrm-full-2026-10-14T18-45-44-010Z.dump.json`.
+- `20261014104442_hermes_customer_lead_create_action_v1.sql`: catalog `c3136e26b0af… → 1f4c64d2a020…`; backup manifest `ihomecrm-full-2026-10-14T18-48-27-803Z.dump.json`, SHA backup `622dbcd9615b877f46d7a589edc7e4250f8eae965af6506eaeda3420f08d6212`.
+
+Evidence apply nằm trong `./.cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/`; customer receipt ghi `evidenceComplete:true`, `backupTablesWithData:645` và raw SQL SHA `a3229fce8e4384d072dc7b6784b96e50047dfd74d97894e16e4ca57655ae2065`. Provenance đã sinh lại sau apply. Không apply production.
+
+Verifier live đã mở rộng từ task sang customer catalog, kiểm tra exact signature, owner, language, SECURITY DEFINER/INVOKER, search path, body/deparsed SQL, dependency OID, execute ACL và receipt RLS/owner-only ACL. `test-hermes-private-flow.mjs --run --env test --expected-project-ref hzulujxgonszuleqticb --mode jwt-management` đạt runId `947ca284-7a5d-4806-b8f4-ff2644c23db6`, 6/6 mốc, `cleanupVerified:true`. Focused Node24 đạt **206/206**, gồm 5 customer catalog checks, 13 task catalog checks và durable schema/private flow; ma trận hiện có **1409 test hoạt động, 16 suite, không file mồ côi**.
+
+Review độc lập delta customer catalog đã PASS, P1/P2 = 0 trong `.cache/hermes-customer-live-catalog-review.json` (SHA `00A38C0893301E6FD5F3A95401D6AADB10AE18A7594AE8F1EEC17EF66178DA89`); markdown `.cache/hermes-customer-live-catalog-review.md`. Review chạy pinned Node24, 127/127 + 10/10 + 79/79 và kiểm matrix 1409 active/0 orphan/75 deferred. Gate điều phối với PATH Node24 đạt **47/47**; lần lỗi trước do subprocess Node22 thiếu `fs/promises.link`, không phải lỗi source. Giới hạn còn giữ nguyên: full worker private flow chưa chạy vì TEST đang có singleton lease; chưa có positive worker/provider/Zalo thật, UI/E2E/Auth đa phiên đầy đủ, Linux runtime mới trên candidate, hay production. Review allowlist độc lập `.cache/hermes-task-external-review.json` vẫn `approved_with_limitations`.
+
 ## Nhật ký đã xác minh
+
+### 14/10/2026 — checkpoint ngừng Copilot và sửa CI đã push
+
+Commit `81bb6eb0` gồm 18 file, đã push PR #166, không có migration SQL mới. [Hermes runtime Linux](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/38551267021) và [Migration Restore Drill](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/38551266931) đều SUCCESS trên đúng head; CI Gates `38551267356` và Android `38551267075` còn chạy tại checkpoint. Artifact runtime ở `.cache/hermes-runtime-ci-81bb6eb0/`, log restore `.cache/hermes-restore-ci-81bb6eb0.txt`. Đây là runtime/provider tổng hợp và database diễn tập, không phải model/Zalo hoặc production thật.
+
+Typecheck toàn worktree đạt và direct Vite production bundle đạt với assets hiện có; graph không còn chunk launcher/chat/admin Copilot, vẫn có Hermes và nhập liệu nhanh. Kiểm này có cả WIP task, không thay canonical npm lifecycle/CI của commit. Không có source QR/OCR metadata đổi; browser điều hướng thật chưa kiểm. Receipt `.cache/hermes-copilot-retirement-verification.json`.
+
+### 15/10/2026 — ghép task create/assign và customer/lead sau review độc lập
+
+Schema/runner task đã đóng hai finding metadata có tác động an toàn: guard transaction dùng splitter lexical nên không lọt `COMMIT` có comment, và verifier receipt kiểm toàn bộ quyền bảng, gồm `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN`, owner/PUBLIC/inherited ACL. Delta cache đạt 22/22 kiểm tập trung và 5/5 mutant; review độc lập `.cache/hermes-task-schema-final-review.json` verdict `approved_with_limitations`. Source focused sau khi ghép đạt 214/214 với Node24/PGlite18.3, gồm SQL-standard rollback, catalog 13 hàm và ACL receipt. Chưa chạy delta mới trên TEST17.6.
+
+Task create/assign đã ghép 5 file core, 22 file wiring, 8 file schema/runner và hai SQL `20261014092945_hermes_task_create_action_v1.sql`, `20261014094913_hermes_assistant_capabilities_v5.sql`. Customer/lead đã ghép 5 file và SQL `20261014104442_hermes_customer_lead_create_action_v1.sql`. Review customer/lead sau sửa handoff SHA đạt `approved_with_limitations` trong `.cache/hermes-customer-action-next/final-review-delta.json`; validator 10/10 và 3/3 mutant. CDE live fixture đạt review độc lập 14/14 trên overlay phụ thuộc đầy đủ, `.cache/hermes-task-live-next/review.json` PASS. Các kiểm này chỉ là source/fixture/rollback transaction-local; chưa apply TEST, chưa chứng minh JWT/PostgREST positive live, MVCC, worker, provider, notification thật hoặc ACK/network recovery.
+
+Matrix đã tách `hermes-task-function-catalog.test.mjs` sang Node native và loại khỏi Vitest; provenance đã nhận ba SQL mới ở trạng thái `unknown` cho tới khi có apply receipt. Không mở registry hay gửi thông báo thật. Bước kế tiếp là dry-run/backup/apply đúng thứ tự trên TEST17.6, refresh catalog/types/surfaces, chạy CDE rollback có cleanup, rồi commit/push checkpoint và chờ CI.
 
 ### 14/10/2026 — gỡ điểm vào Copilot, hoàn tất sửa hai fixture CI
 

@@ -1,3 +1,5 @@
+import { createTaskServiceWithOptions } from './task-input-adapter.mjs';
+import { createTaskAuth, createTaskReads } from './task-adapter.mjs';
 import { createServer } from 'node:http';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
@@ -117,7 +119,8 @@ export function createHermesBackend(configuration = {}) {
     const scheduleAuth = createScheduleAuthAdapter({ baseAuth: memoryAuth,
       reads: createSupabaseScheduleReads({ ...supabase, fetch: request, dependencyScope }) });
     const domainAuth = createDomainAuthAdapter({ baseAuth: scheduleAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) });
-    const auth = createRoomPassAuth({ baseAuth: domainAuth, reads: createRoomPassReads({ ...supabase, fetch: request, dependencyScope }) });
+    const roomPassAuth = createRoomPassAuth({ baseAuth: domainAuth, reads: createRoomPassReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createTaskAuth({ baseAuth: roomPassAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const workMemory = createWorkMemoryService({ authority, connectionStore, crypto, auth, reads: memoryReads, clock });
     const renewal = createConnectionRenewal({ authority, connectionStore, clock });
@@ -136,7 +139,8 @@ export function createHermesBackend(configuration = {}) {
     const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
     const domains = createDomainMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const broker = createBroker({ roomPass, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock, limits: { maxResultBytes: 65_536 } });
+    const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
+    const broker = createBroker({ tasks, roomPass, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock, limits: { maxResultBytes: 65_536 } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
     const stageHandoff = configuration.handoff?.stage.bind(configuration.handoff);

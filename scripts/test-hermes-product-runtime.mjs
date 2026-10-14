@@ -115,7 +115,7 @@ export function createSyntheticFixture() {
     if (!actor) return Response.json({ error: 'synthetic unauthorized' }, { status: 401 });
     events.push({ type: 'fetch', actor: actor.name, path: endpoint.pathname });
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: actor.user });
-    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_room_pass_capabilities_v1'].includes(endpoint.pathname)) {
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1'].includes(endpoint.pathname)) {
       assert.deepEqual(args, { p_organization_id: actor.org });
       // This synthetic room-only deployment does not install the optional
       // group-action RPC. Match PostgREST's exact absence response; other paths
