@@ -132,15 +132,15 @@
     },
     {
       "path": "src/pages/customers/CustomersMobilePage.tsx",
-      "sha256": "9bcea242407f4f7df53a638f5416fac4a21352f4c750d91e51dcc45fe01ba853"
+      "sha256": "ecdc736fcad32733a7a8d5966f4afd42f837e38b166eaeeb7a0005101973ca40"
     },
     {
       "path": "src/pages/invoices/InvoicesMobilePage.tsx",
-      "sha256": "55a919d38b22e45589e50cb813039d9bc98cefaf692aba1e026cc21066d73dc8"
+      "sha256": "4eb81df3b97925eaa6720aeceb9574d191c2f0fb00bae2e51b2ac20ac533c879"
     },
     {
       "path": "src/pages/rooms/RoomsMobilePage.tsx",
-      "sha256": "f7da50ac76534a136b242607b420ae990285593d02db20e21f72840e41f5f09d"
+      "sha256": "d768fb75d16250d439ea6dbe15c3ede6eea614aee1d7307628ab6488aed23428"
     }
   ],
   "summary": {
@@ -20210,7 +20210,7 @@
             "id": "customers.list.customer.search",
             "source": {
               "path": "src/pages/customers/CustomersMobilePage.tsx",
-              "line": 209
+              "line": 207
             },
             "element": "input"
           }
@@ -20342,7 +20342,7 @@
             "id": "invoices.list.invoice.search",
             "source": {
               "path": "src/pages/invoices/InvoicesMobilePage.tsx",
-              "line": 248
+              "line": 246
             },
             "element": "input"
           }
@@ -20474,7 +20474,7 @@
             "id": "rooms.list.room.search",
             "source": {
               "path": "src/pages/rooms/RoomsMobilePage.tsx",
-              "line": 198
+              "line": 196
             },
             "element": "input"
           }

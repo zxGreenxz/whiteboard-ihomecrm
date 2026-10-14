@@ -11,10 +11,17 @@
 - Cấu hình chốt mới: code lõi/quyền/lỗi khó và review quan trọng dùng GPT-6 Astra Extra High (`gpt-6-astra`, `xhigh`); đọc file/chạy test sẵn/tổng hợp lỗi đơn giản dùng GPT-6.1 Sol High (`gpt-6.1-sol`, `high`). Tạo agent mới đúng cấu hình gói việc, không tái dùng agent effort cũ; reviewer độc lập. Lệnh kiểm đơn thuần có thể chạy terminal. Các cấu hình mặc định/Light/alias cx trong nhật ký cũ chỉ là lịch sử. Chủ dự án đã yêu cầu thực thi tiếp toàn plan theo phân công này, không hỏi lại từng lần.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint nền `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e` giữ nguyên; head hiện hành `3fd807be` đã push PR #166. CI head này đạt native-upstream, synthetic-isolation, restore-drill, preflight, strict-islands, quality-gates, Vitest, timezone, Android và gate-aggregate. Hermes native dùng Auth/SQL/model giả. Full private flow vẫn chặn bởi worker singleton có sẵn; chưa deploy hoặc kiểm Zalo thật.
+- Checkpoint nền `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e` giữ nguyên; head trước delta đã push PR #166. Delta hiện tại còn chờ commit/CI mới; không dùng kết quả CI của head cũ để gọi head mới xanh. Hermes native dùng Auth/SQL/model giả. Full private flow vẫn chặn bởi worker singleton có sẵn; chưa deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 15/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [PLAN.md](PLAN.md); nhật ký trước quyết định này là lịch sử.
+
+### 15/10/2026 — nối CDE task live và làm sạch generated inventory
+
+- Sửa dead code trong runner: `taskChecks` giờ được gọi trong official CDE lane qua `rollbackOnly`, rồi evidence bắt buộc `pathExecuted`, E4 queued trong transaction và rollback đã được xác nhận. Fixture `outsideBuilding` được chuyển sang tổ chức foreign vì fixture role/policy hiện tại đều có scope ORGANIZATION; không nới production ACL và vẫn giữ denial cross-org.
+- TEST CDE run `13006bcf-16d7-406b-afb3-4ed6bef361c2`: 11/11 đạt, cleanup/uncertain sạch, `cdeEvidence.task.pathExecuted/e4QueuedInsideTransaction/rollbackVerified=true`, registry không đổi, positive SQL rollback đạt, cleanup counts của jobs/receipts/notifications/push về 0. Receipt SHA `988D733A66514FCA960C27A38E60326058783512EBC80A0ACCBBC5106BA205E8`.
+- Focused Node24 sau delta: CDE 15/15, private flow 124/124, inventory test 28/28; gói chạy chung 167/167 đạt. Review độc lập delta CDE không thấy P1/P2; source hash helper `95670ff20fe850086c0cc5c0b2848a4ea5b3bee9a590c848d78fbff10ce4b598`, test `0e82131a39cd900601337d20f7bd5ef5362c35229c091218da41eeddb321d514`.
+- Generator inventory đã chạy lại sau Copilot delta; `--check` đạt 67 tools, 32 actions, 29 UI capabilities, runtime authority none. Chưa commit/push delta này nên CI PR vẫn đang phản ánh head cũ và phải kiểm lại sau commit.
 
 ## Điểm tiếp tục
 

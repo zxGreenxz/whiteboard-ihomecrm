@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {cdeExecutionPlan,cdeCleanupSql,cdeCountsSql,verifiedClaims,rollbackOnly,CDE_RPCS,runCdeChecks,CDE_CAPABILITIES} from '../test-hermes-cde-live.mjs';
+import {cdeExecutionPlan,cdeCleanupSql,cdeCountsSql,verifiedClaims,rollbackOnly,CDE_RPCS,runCdeChecks,CDE_CAPABILITIES,assertCdeTaskEvidence} from '../test-hermes-cde-live.mjs';
 import {captureSourceIdentity,parseArguments,runChannelScope,fixturePlan,fixtureCleanupIdentity} from '../test-hermes-private-flow.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import pg from 'pg';
@@ -13,6 +13,15 @@ const actor='11111111-1111-4111-8111-111111111111',session='22222222-2222-4222-8
 test('CDE has no live default or provider/worker RPC capability',()=>{
   const plan=cdeExecutionPlan();assert.equal(plan.liveExecuted,false);assert.equal(plan.projectRef,'hzulujxgonszuleqticb');
   assert(!CDE_RPCS.some(name=>/due_|run_|send_|ingress|private_command|reply/.test(name)));
+});
+test('CDE task evidence is fail-closed and the official lane wires the task check',()=>{
+  const source=readFileSync(new URL('../test-hermes-cde-live.mjs',import.meta.url),'utf8');
+  assert.match(source,/rollbackOnly\(ctx,pool,plan,subjects,client=>taskChecks\(client,plan,owner,foreign,actors,evidence\)\)/);
+  assert.match(source,/values:\[outsideBuilding,recipient\.id,foreign\.id\]/);
+  assert.throws(()=>assertCdeTaskEvidence({task:{pathExecuted:false,e4QueuedInsideTransaction:true,rollbackVerified:true}}),{code:'cde_task_path_not_executed'});
+  assert.throws(()=>assertCdeTaskEvidence({task:{pathExecuted:true,e4QueuedInsideTransaction:false,rollbackVerified:true}}),{code:'cde_task_e4_not_observed'});
+  assert.throws(()=>assertCdeTaskEvidence({task:{pathExecuted:true,e4QueuedInsideTransaction:true,rollbackVerified:false}}),{code:'cde_task_rollback_not_verified'});
+  assert.deepEqual(assertCdeTaskEvidence({task:{pathExecuted:true,e4QueuedInsideTransaction:true,rollbackVerified:true}}),{pathExecuted:true,e4QueuedInsideTransaction:true,rollbackVerified:true});
 });
 test('payload copying requires the exact already-verified actor/session/expiry; no token is manufactured by the implementation',()=>{
   // Unit-only inert token. Never used with Auth, HTTP, SQL or live fixture.

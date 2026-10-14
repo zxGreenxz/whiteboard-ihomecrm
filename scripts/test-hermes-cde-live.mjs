@@ -196,8 +196,8 @@ async function seedTaskInputs(client, plan) {
     VALUES($1,$2,$3,'Hermes task rollback type'),($4,$2,$5,'Hermes foreign rollback type')`,
     values:[type,recipient.id,org.id,foreignType,foreign.id],queryMode:'extended'});
   await client.query({text:`INSERT INTO public.buildings(id,user_id,organization_id,name,province,district,ward)
-    VALUES($1,$2,$3,'Hermes out-of-role rollback building','TEST','TEST','TEST')`,
-    values:[outsideBuilding,recipient.id,org.id],queryMode:'extended'});
+    VALUES($1,$2,$3,'Hermes foreign rollback building','TEST','TEST','TEST')`,
+    values:[outsideBuilding,recipient.id,foreign.id],queryMode:'extended'});
   const member=plan.memberships.find(m=>m.actor===0&&m.org===0);
   demand(member?.id && actor.id!==recipient.id,'cde_task_fixture_identity_invalid');
   const trigger=(await client.query(`SELECT t.tgenabled,p.proname,n.nspname FROM pg_trigger t
@@ -286,8 +286,16 @@ async function taskChecks(client, plan, owner, foreign, actors, evidence) {
   const notifications=(await client.query(`SELECT user_id,job_id,metadata->>'event' event,metadata->>'actor_id' actor_id,push_state
     FROM public.notifications WHERE organization_id=$1`,[org.id])).rows;
   assert.deepEqual(notifications,[{user_id:input.assigneeId,job_id:recovered.job.id,event:'E4',actor_id:actors[0].id,push_state:'QUEUED'}]);
-  evidence.task={ordinaryCrmActor:true,hermesTaskRead:false,selectorsMinimal:true,sqlIdempotency:true,
+  evidence.task={pathExecuted:true,ordinaryCrmActor:true,hermesTaskRead:false,selectorsMinimal:true,sqlIdempotency:true,
     discardedSqlResultStatusOnly:true,networkAckLoss:false,committedRecovery:false,e4QueuedInsideTransaction:true,rollbackVerified:false};
+}
+
+export function assertCdeTaskEvidence(evidence) {
+  const task=evidence?.task;
+  demand(task?.pathExecuted===true,'cde_task_path_not_executed');
+  demand(task.e4QueuedInsideTransaction===true,'cde_task_e4_not_observed');
+  demand(task.rollbackVerified===true,'cde_task_rollback_not_verified');
+  return task;
 }
 
 export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRpc,check,evidence}) {
@@ -375,6 +383,12 @@ export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRp
       await denial(client,()=>client.query('SELECT app_private.hermes_schedule_current_v1($1::jsonb)',[JSON.stringify({scheduleId:fixture.schedule,grantId:fixture.grant,scheduleRevision:1,connectionId:owner.connection.id})]));
       const count=(await client.query('SELECT count(*)::int n FROM public.zalo_send_queue WHERE organization_id=ANY($1::uuid[])',[plan.orgs.map(o=>o.id)])).rows[0].n;assert.equal(count,0);
     }));
+    await check('cde.sql_transaction_local_task_create_assign_status_e4_rollback',async()=>{
+      await rollbackOnly(ctx,pool,plan,subjects,client=>taskChecks(client,plan,owner,foreign,actors,evidence));
+      demand(evidence.task?.pathExecuted===true,'cde_task_path_not_executed');
+      evidence.task.rollbackVerified=true;
+      assertCdeTaskEvidence(evidence);
+    });
     await check('cde.postgres_mvcc_sharing_revoke_waits_read_then_next_read_denied',async()=>{
       let reader,writer,readerOpen=false,writerOpen=false,committing=false,pending,readerBroken=false,writerBroken=false;
       try {
@@ -411,6 +425,7 @@ export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRp
         const b=await bindingOf(client,owner);assert.equal((await call(client,owner,actors,'memoryList',[b,listed(null)])).items.length,1);
       });evidence.mvcc.nextReadDenied=true;
     });
+    assertCdeTaskEvidence(evidence);
     const after=(await pool.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[]) ORDER BY capability',[[...CDE_CAPABILITIES,'chat_zalo.view']])).rows;
     assert.deepEqual(after,registry);evidence.registryUnchanged=true;evidence.positivePostgrest=false;evidence.positiveSqlRollback=true;
   } finally { await pool.end().catch(error=>{ctx.writeState.uncertain=true;throw error;}); }
