@@ -55,8 +55,18 @@ export interface ResolveResult {
   feeCategory: string | null;
 }
 
+export interface ResolveOptions {
+  /**
+   * false ⇒ mã/tên toà TOÀN SỐ ("32") không tính là nhắc toà: chữ đọc từ ảnh bill đầy số lượng/kích cỡ
+   * ("32 cái ốc", "ống 32"). Số nhà khi đó chỉ còn qua bộ dò lời đọc: kèm chữ của mã ("32 pvc") thì chắc,
+   * số trơ ở đầu câu/sau "nhà" thì chỉ đoán. Mặc định true — người gõ chữ hay gõ mã số trơ.
+   */
+  numericCodes?: boolean;
+}
+
 /** Dạng gọn để so mã: bỏ dấu, chữ thường, chỉ giữ chữ + số. */
 const compact = (s: string | null | undefined): string => normalizeLoose(s).replace(/[^a-z0-9]/g, "");
+const ALL_DIGITS = /^\d+$/;
 
 /** Khoá phòng: "P302", "Phòng 302", "p.302" ⇒ "302"; "A1" ⇒ "a1". */
 const roomKey = (s: string | null | undefined): string => compact(s).replace(/^(phong|ph|p)(?=\d)/, "");
@@ -81,19 +91,25 @@ function looseOf(text: string): string {
   return loose.length === norm.length ? loose : norm;
 }
 
-function buildingsByCode(words: Word[], loose: string, buildings: BuildingRef[]): Map<string, ResolvedBuilding["via"]> {
+function buildingsByCode(
+  words: Word[],
+  loose: string,
+  buildings: BuildingRef[],
+  numericCodes: boolean,
+): Map<string, ResolvedBuilding["via"]> {
   const found = new Map<string, ResolvedBuilding["via"]>();
   const tokens = new Set(words.map((w) => w.s));
   const spaced = ` ${loose.replace(/[^\p{L}\d]+/gu, " ").trim()} `;
+  const usable = (key: string) => !!key && (numericCodes || !ALL_DIGITS.test(key));
   for (const b of buildings) {
-    const aliases = splitAliases(b.code).map(compact).filter(Boolean);
+    const aliases = splitAliases(b.code).map(compact).filter(usable);
     if (aliases.some((a) => tokens.has(a))) {
       found.set(b.id, "code");
       continue;
     }
     const name = normalizeLoose(b.name).replace(/[^\p{L}\d]+/gu, " ").trim();
     // Tên một từ trùng mã đã xét ở trên; tên nhiều từ phải xuất hiện nguyên cụm.
-    if (name && (name.includes(" ") ? spaced.includes(` ${name} `) : tokens.has(compact(name)))) {
+    if (name && (name.includes(" ") ? spaced.includes(` ${name} `) : usable(compact(name)) && tokens.has(compact(name)))) {
       found.set(b.id, "name");
     }
   }
@@ -155,10 +171,10 @@ function roomMentions(words: Word[], loose: string): string[] {
 }
 
 /** Toà/phòng/mã khách hàng nhắc trong câu. Không bao giờ ném lỗi. */
-export function resolveBuildingRoom(text: string, refs: ResolveRefs): ResolveResult {
+export function resolveBuildingRoom(text: string, refs: ResolveRefs, opts: ResolveOptions = {}): ResolveResult {
   const loose = looseOf(text);
   const words = wordsOf(loose);
-  const byCode = buildingsByCode(words, loose, refs.buildings);
+  const byCode = buildingsByCode(words, loose, refs.buildings, opts.numericCodes ?? true);
   // Không gõ mã/tên đúng chữ ⇒ thử cách ĐỌC tên toà ("một lẻ hai Lê Văn Thọ"). Trúng chắc ⇒ coi như
   // nhắc toà đó; chỉ đoán ⇒ để làm ứng viên gợi ý ở dưới.
   const spoken =

@@ -629,3 +629,77 @@ describe("draftsFromText — toà đọc bằng lời (máy chép giọng)", () 
     expect(next.buildingCandidates).toEqual([]);
   });
 });
+
+describe("draftFromBill — toà ghi trong chữ của bill (mã toà chỉ là số, chữ nằm ở tên)", () => {
+  const base = ctx();
+  const c = (over: Partial<ComposeContext> = {}): ComposeContext =>
+    ctx({
+      refs: {
+        ...base.refs,
+        buildings: [...base.refs.buildings, { id: "b27", name: "27NVC", code: "27" }, { id: "b63", name: "63NVC", code: "63" }],
+      },
+      ...over,
+    });
+  const transfer = (desc: string, over: Partial<AiResult> = {}): AiResult =>
+    ai({ items: [{ desc, amount_vnd: 150_000, category: null, confidence: 0.9 }], total_vnd: 150_000, ...over });
+
+  it("nội dung chuyển khoản 'thay phao 27nvc' ⇒ tự nhận toà + sổ của toà", () => {
+    const s = draftFromBill(transfer("thay phao 27nvc"), c());
+    expect(s.draft).toMatchObject({ buildingId: "b27", accountId: "acc-b27" });
+    expect(s.buildingCandidates).toEqual([]);
+    expect(s.flags).toEqual([]);
+  });
+
+  it("AI chép cả cụm vào chuỗi nhắc toà, hoặc toà chỉ có ở lời gõ kèm ảnh ⇒ vẫn nhận", () => {
+    expect(draftFromBill(transfer("Chuyển tiền", { building_mention: "thay phao 27nvc" }), c()).draft.buildingId).toBe("b27");
+    expect(draftFromBill(transfer("Chuyển tiền"), c({ sourceText: "27 nvc thay phao" })).draft.buildingId).toBe("b27");
+  });
+
+  it.each(["mua 27 cái ốc vít", "ống nhựa 27", "27 cái bản lề"])(
+    "số lượng/kích cỡ trùng mã toà toàn số (%s) ⇒ KHÔNG tự điền, không gợi ý",
+    (desc) => {
+      const s = draftFromBill(transfer(desc), c());
+      expect(s.draft.buildingId).toBeNull();
+      expect(s.buildingCandidates).toEqual([]);
+      expect(s.flags).toEqual([]);
+    },
+  );
+
+  it("số trơ sau 'nhà' ⇒ chỉ gợi ý để bấm", () => {
+    const s = draftFromBill(transfer("nhà 27 thay phao"), c());
+    expect(s.draft.buildingId).toBeNull();
+    expect(s.buildingCandidates).toEqual(["b27"]);
+    expect(s.flags).toEqual(["building_guess"]);
+  });
+
+  it("lời gõ kèm và nội dung bill nhắc hai toà khác nhau ⇒ để người dùng chọn", () => {
+    const s = draftFromBill(transfer("thay phao 27nvc"), c({ sourceText: "63nvc" }));
+    expect(s.draft).toMatchObject({ buildingId: null, accountId: null });
+    expect(s.buildingCandidates).toEqual(["b63", "b27"]);
+    expect(s.flags).toEqual(["building_choice"]);
+  });
+
+  it("toà chắc ở một đoạn thắng toà đoán ở đoạn khác", () => {
+    const s = draftFromBill(transfer("thay phao 27nvc"), c({ sourceText: "nhà 63 sửa ống" }));
+    expect(s.draft.buildingId).toBe("b27");
+    expect(s.buildingCandidates).toEqual([]);
+    expect(s.flags).toEqual([]);
+  });
+
+  it("chuỗi nhắc toà khớp đúng vẫn thắng chữ trong mô tả; AI trả mã số trơ đúng toà vẫn nhận như trước", () => {
+    const s = draftFromBill(transfer("thay phao 27nvc", { building_mention: "102LVT" }), c());
+    expect(s.draft.buildingId).toBe("b102");
+    expect(s.buildingCandidates).toEqual([]);
+    expect(draftFromBill(transfer("Chuyển tiền", { building_mention: "27" }), c()).draft.buildingId).toBe("b27");
+  });
+
+  it("phòng nhắc trong mô tả theo toà dò được", () => {
+    expect(draftFromBill(transfer("102LVT p301 thay phao"), c()).draft).toMatchObject({ buildingId: "b102", roomId: "r301" });
+  });
+
+  it("thẻ cá nhân không dò toà", () => {
+    const s = draftFromBill(transfer("thay phao 27nvc"), c({ mode: "personal" }));
+    expect(s.draft.buildingId).toBeNull();
+    expect(s.buildingCandidates).toEqual([]);
+  });
+});
