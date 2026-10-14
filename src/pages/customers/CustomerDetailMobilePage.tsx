@@ -16,8 +16,11 @@ import {
   Car,
   DoorOpen,
   Calendar,
+  IdCard,
 } from 'lucide-react';
 import { copyTextWithFeedback } from '@/lib/clipboardFeedback';
+import { StorageImage } from '@/components/ui/storage-image';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import '@/styles/mobileApp.css';
 import { useCustomer } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -56,6 +59,24 @@ const fmtDate = (s: string | null | undefined) => {
 };
 const fmtNum = (n: number | null | undefined) =>
   n == null ? '—' : new Intl.NumberFormat('vi-VN').format(n);
+/**
+ * Ảnh giấy tờ từ `customers.id_images` (cùng các khoá form sửa khách ghi: front /
+ * back / passport). DB mặc định là `[]` nên phải loại mảng và giá trị rỗng.
+ */
+function anhGiayTo(idImages: unknown, laToChuc: boolean): { key: string; nhan: string; value: string }[] {
+  if (!idImages || typeof idImages !== 'object' || Array.isArray(idImages)) return [];
+  const o = idImages as Record<string, unknown>;
+  const muc: [string, string][] = [
+    ['front', laToChuc ? 'Đăng ký kinh doanh' : 'Mặt trước'],
+    ['back', 'Mặt sau'],
+    ['passport', 'Hộ chiếu'],
+  ];
+  return muc.flatMap(([key, nhan]) => {
+    const v = o[key];
+    return typeof v === 'string' && v.trim() !== '' ? [{ key, nhan, value: v }] : [];
+  });
+}
+
 const telHref = (p?: string | null) => 'tel:' + (p || '').replace(/[^\d+]/g, '');
 const zaloHref = (p?: string | null) => 'https://zalo.me/' + (p || '').replace(/[^\d]/g, '');
 
@@ -87,6 +108,7 @@ function Field({ label, value, mono, accent }: { label: string; value?: string |
 export default function CustomerDetailMobilePage({ id }: { id: string }) {
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [anhDangXem, setAnhDangXem] = useState<number | null>(null);
   const actsRef = useRef<HTMLDivElement>(null);
 
   const customerQuery=useCustomer(id);
@@ -124,6 +146,8 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
   const headerLink =
     (contractLinks as any[]).find((l) => l.contract?.status === 'ACTIVE') || (contractLinks as any[])[0];
   const headerRoom = headerLink?.contract?.room;
+  const giayTo = anhGiayTo(customer.id_images, customer.customer_type === 'ORGANIZATION');
+  const canEdit = canUse(perms, 'customers', 'edit');
 
   const handleCopy = () => {
     const info = [
@@ -141,7 +165,7 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
 
   const acts: { key: string; ic: typeof Copy; label: string; danger?: boolean; href?: string; onClick?: () => void; ext?: boolean }[] = [
     { key: 'copy', ic: Copy, label: 'Sao chép', onClick: handleCopy },
-    ...(canUse(perms, 'customers', 'edit')
+    ...(canEdit
       ? [{ key: 'edit', ic: Pencil, label: 'Sửa', onClick: () => navigate(`/customers/${id}/edit`) }]
       : []),
     ...(canUse(perms, 'customers', 'print')
@@ -223,6 +247,44 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
           <Field label="Nơi cấp" value={customer.id_issue_place} />
         </div>
       </div>
+
+      {/* Ảnh CCCD — ảnh ở bucket private nên đi qua StorageImage; chạm để phóng toàn màn hình. */}
+      <div className="cd-card">
+        <div className="cd-card-h">
+          <span className="cd-card-t"><IdCard size={16} />Ảnh CCCD/CMND</span>
+          {giayTo.length > 0 && <span className="cd-count">{giayTo.length}</span>}
+        </div>
+        {giayTo.length === 0 ? (
+          <div className="cd-idimg-empty">
+            <span className="cd-kv-l">Chưa có ảnh giấy tờ</span>
+            {canEdit && (
+              <button type="button" className="cd-idimg-add" onClick={() => navigate(`/customers/${id}/edit`)}>
+                <Pencil size={14} />Bổ sung ảnh
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="cd-idimg-grid">
+            {giayTo.map((a, i) => (
+              <button
+                type="button"
+                key={a.key}
+                className="cd-idimg"
+                onClick={() => setAnhDangXem(i)}
+                aria-label={`Xem ảnh ${a.nhan}`}
+              >
+                <StorageImage value={a.value} alt={`CCCD ${a.nhan}`} className="cd-idimg-img" />
+                <span className="cd-kv-l">{a.nhan}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <AttachmentLightbox
+        attachments={giayTo.map((a) => a.value)}
+        index={anhDangXem}
+        onIndexChange={setAnhDangXem}
+      />
 
       {/* Địa chỉ */}
       <div className="cd-card">

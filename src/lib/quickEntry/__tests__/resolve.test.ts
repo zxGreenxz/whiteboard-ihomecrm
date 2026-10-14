@@ -187,3 +187,51 @@ describe("resolveBuildingMention — AI chép nguyên văn cách đọc", () => 
     expect(resolveBuildingMention("một lá hai", refs.buildings)).toBeNull();
   });
 });
+
+describe("resolveBuildingRoom — numericCodes:false (chữ đọc từ ảnh bill)", () => {
+  // Kiểu toà làm thẻ ảnh không nhận toà: mã chỉ là số, chữ nằm ở tên ("27" / "27NVC").
+  const bill: ResolveRefs = {
+    ...refs,
+    buildings: [{ id: "b27", name: "27NVC", code: "27" }, { id: "b63", name: "63NVC", code: "63" }, ...refs.buildings],
+  };
+  const strict = { numericCodes: false };
+
+  it("tên toà viết như mã dính trong câu ⇒ chắc", () => {
+    expect(resolveBuildingRoom("thay phao 27nvc", bill, strict).building).toEqual({ id: "b27", via: "name" });
+  });
+
+  it("số nhà tách khỏi chữ của mã ⇒ chắc qua bộ dò lời đọc", () => {
+    expect(resolveBuildingRoom("thay phao 27 NVC", bill, strict).building).toEqual({ id: "b27", via: "spoken" });
+  });
+
+  it("mã có chữ vẫn chắc", () => {
+    expect(resolveBuildingRoom("102lvt sơn", bill, strict).building).toEqual({ id: "b102", via: "code" });
+  });
+
+  it.each(["mua 27 cái ốc", "ống nhựa 27", "27 cái ốc vít"])("%s ⇒ không toà nào", (text) => {
+    const r = resolveBuildingRoom(text, bill, strict);
+    expect(r.building).toBeNull();
+    expect(r.buildingCandidates).toEqual([]);
+  });
+
+  it("số trơ sau chữ báo toà ⇒ chỉ đoán", () => {
+    expect(resolveBuildingRoom("nhà 27 thay phao", bill, strict)).toMatchObject({
+      building: null,
+      buildingCandidates: ["b27"],
+      buildingGuessed: true,
+    });
+  });
+
+  it("bí danh toàn số của toà có mã chữ ('405PVB, 405') cũng bỏ: 'toà 405' chỉ còn là đoán", () => {
+    expect(resolveBuildingRoom("toà 405 tiền rác", bill, strict)).toMatchObject({
+      building: null,
+      buildingCandidates: ["b405"],
+      buildingGuessed: true,
+    });
+  });
+
+  it("mặc định (luồng gõ chữ) vẫn nhận mã số trơ như cũ", () => {
+    expect(resolveBuildingRoom("mua 27 cái ốc", bill).building).toEqual({ id: "b27", via: "code" });
+    expect(resolveBuildingRoom("toà 405 tiền rác", bill).building).toEqual({ id: "b405", via: "code" });
+  });
+});

@@ -215,6 +215,13 @@
 .cm-app .cd-addr-list { display: flex; flex-direction: column; gap: 14px; }
 .cm-app .cd-addr-list .cd-kv-v { font-weight: 600; font-size: 13.5px; }
 
+.cm-app .cd-idimg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cm-app .cd-idimg { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; min-width: 0; }
+.cm-app .cd-idimg:active { transform: scale(.98); }
+.cm-app .cd-idimg-img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-2); }
+.cm-app .cd-idimg-empty { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cm-app .cd-idimg-add { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--brand-100); background: var(--brand-50); color: var(--brand-600); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+
 .cm-app .cd-vtable { display: flex; flex-direction: column; }
 .cm-app .cd-vrow { display: grid; grid-template-columns: 1fr 1.1fr 1.1fr .8fr .9fr; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-2); font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .cm-app .cd-vrow .r { text-align: right; }

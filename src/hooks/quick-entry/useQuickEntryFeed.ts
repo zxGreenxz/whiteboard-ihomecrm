@@ -38,6 +38,7 @@ import {
   buildQuickEntryMessages,
   MAX_CATEGORY_LINES,
   MAX_PROMPT_CATEGORIES,
+  promptBuildingCodes,
   type PromptCategory,
 } from "@/lib/quickEntry/prompt";
 import { resolveBuildingRoom } from "@/lib/quickEntry/resolve";
@@ -469,7 +470,7 @@ export function useQuickEntryFeed(opts: {
       today: ctx.today,
       mode: ctx.mode,
       categories,
-      buildingCodes: company ? refs.buildings.map((b) => b.code).filter((c): c is string => !!c) : [],
+      buildingCodes: company ? promptBuildingCodes(ctx.refs.buildings) : [],
       text: input.text ?? null,
       imageDataUrl: input.imageDataUrl ?? null,
     });

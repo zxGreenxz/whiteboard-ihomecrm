@@ -325,6 +325,42 @@ export function draftsFromText(text: string, ctx: ComposeContext): DraftState[] 
   });
 }
 
+interface BillPlace {
+  buildingId: string | null;
+  roomId: string | null;
+  candidates: string[];
+  flag: DraftFlag | null;
+}
+
+/**
+ * Toà nhắc trong CHỮ của bill khi chuỗi nhắc toà của AI không khớp đúng (AI chép cả cụm, hoặc không thấy
+ * mã toà trong danh sách): nội dung chuyển khoản "thay phao 32pvc" ⇒ toà 32PVC. Dò như luồng gõ chữ trên
+ * từng đoạn — lời gõ kèm ảnh, chuỗi nhắc toà, mô tả các dòng — nhưng KHÔNG tính mã/tên toàn số ("32 cái
+ * ốc"). Đúng một toà chắc ⇒ điền; nhiều toà chắc ⇒ để chọn; không toà nào chắc ⇒ các toà đoán để bấm.
+ */
+function placeFromBillText(texts: ReadonlyArray<string | null | undefined>, refs: ResolveRefs): BillPlace {
+  const sure = new Map<string, string | null>();
+  const guesses: string[] = [];
+  for (const text of texts) {
+    if (!text?.trim()) continue;
+    const r = resolveBuildingRoom(text, refs, { numericCodes: false });
+    if (r.building) {
+      if (!sure.get(r.building.id)) sure.set(r.building.id, r.room?.id ?? null);
+    } else if (r.buildingGuessed) {
+      guesses.push(...r.buildingCandidates);
+    } else {
+      for (const id of r.buildingCandidates) if (!sure.has(id)) sure.set(id, null);
+    }
+  }
+  if (sure.size === 1) {
+    const [[buildingId, roomId]] = [...sure.entries()];
+    return { buildingId, roomId, candidates: [], flag: null };
+  }
+  if (sure.size > 1) return { buildingId: null, roomId: null, candidates: [...sure.keys()], flag: "building_choice" };
+  const guessed = unique(guesses);
+  return { buildingId: null, roomId: null, candidates: guessed, flag: guessed.length > 0 ? "building_guess" : null };
+}
+
 /** Phòng nhắc theo chuỗi AI, chỉ trong toà đã chọn. */
 function roomFromMention(mention: string | null, buildingId: string, refs: ResolveRefs): string | null {
   if (!mention) return null;
@@ -373,11 +409,16 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
   const discount = ai.items.reduce((s, i) => s + Math.min(0, i.amount_vnd ?? 0), 0);
   const paid = ai.total_vnd ?? (discount < 0 ? sum + discount : null);
   const fee = company && ai.customer_code ? resolveBuildingRoom(ai.customer_code, ctx.refs) : emptyResolve;
-  const buildingId = company
+  const mentioned = company
     ? resolveBuildingMention(ai.building_mention, ctx.refs.buildings) ?? fee.building?.id ?? null
     : null;
+  const scanned =
+    company && !mentioned
+      ? placeFromBillText([ctx.sourceText, ai.building_mention, ...ai.items.map((i) => i.desc)], ctx.refs)
+      : null;
+  const buildingId = mentioned ?? scanned?.buildingId ?? null;
   const period = aiPeriod(ai, company) ?? { periodStart: null, periodEnd: null };
-  const flags: DraftFlag[] = [];
+  const flags: DraftFlag[] = scanned?.flag ? [scanned.flag] : [];
   // The group's direction is independent of whether its categories agree.
   const groupType = priced[0]?.transactionType ?? 'EXPENSE';
 
@@ -420,7 +461,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
       name: nameFor("photo", ai.vendor, lines),
       vendor: ai.vendor,
       buildingId,
-      roomId: buildingId ? roomFromMention(ai.room_mention, buildingId, ctx.refs) : null,
+      roomId: buildingId ? roomFromMention(ai.room_mention, buildingId, ctx.refs) ?? scanned?.roomId ?? null : null,
       accountId: company && ctx.entrySource !== 'personal_wallet' ? ctx.defaultAccountFor(buildingId) : null,
       attachmentUrls: [],
       lines,
@@ -428,7 +469,7 @@ export function draftFromBill(ai: AiResult, ctx: ComposeContext): DraftState {
     touched: [],
     locked: [],
     flags,
-    buildingCandidates: [],
+    buildingCandidates: scanned?.candidates ?? [],
     source: "photo",
     sourceText: ctx.sourceText ?? "",
     ...(ctx.entrySource ? { paymentSourceText: ctx.sourceText ?? '' } : {}),
