@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1482,
   "soFileDocBangFs": 348,
-  "tongLoiGoi": 800,
+  "tongLoiGoi": 801,
   "khongPhanLoaiDuoc": 361,
   "theoLoai": {
     "ma-nguon": {
@@ -630,6 +630,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/hermes-cde-live.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -942,14 +950,6 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/hermes-cde-live.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/hermes-durable-schema.test.mjs",
