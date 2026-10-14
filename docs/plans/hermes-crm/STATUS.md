@@ -25,9 +25,9 @@ Cập nhật: 15/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [
 - **P0 đã có bằng chứng cho inventory trước v1.4:** inventory v2/catalog TEST chỉ đọc, gate/CI theo nhật ký. P0.06 và đối chiếu kiến trúc connector mới chưa hoàn tất; không suy snapshot cũ thành nghiệm thu toàn v1.4.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, intake/dispatch/reply qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree hiện hành:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-integration-20261014`. Worktree `hermes-crm-foundation-20261012` giữ WIP cũ và cache/receipts; không tiếp tục sửa source ở đó.
-- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; commit/push gần nhất `3fd807be` sau merge `origin/main`, tree đã được CI kiểm. Source gồm schema/runner đã sửa, task create/assign, customer/lead, customer catalog live, CDE fixture và delta gỡ production Copilot page-context.
+- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; commit/push gần nhất `5b1f2690` sau merge `origin/main`, tree trước delta đã được CI kiểm. Source gồm schema/runner đã sửa, task create/assign, customer/lead, customer catalog live, CDE fixture và delta gỡ production Copilot page-context.
 - **Base đã tích hợp:** `origin/main` tại `993fcfed99f48886cc0600b743d939094ded7e5a`; kiểm ancestor đạt. Rebase chỉ xung đột inventory máy sinh, đã chạy lại generator. Nhánh PR #165 vẫn nguyên trạng; không force-push.
-- **Checkpoint trước:** `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e`; các receipt cũ giữ nguyên và không đại diện head mới. Head `3fd807be` đã có CI đầy đủ ở PR #166; đây vẫn không phải authority phát hành production.
+- **Checkpoint trước:** `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e`; các receipt cũ giữ nguyên và không đại diện head mới. Head `3fd807be` đã có CI đầy đủ trước delta; head `5b1f2690` cần CI riêng và vẫn không phải authority phát hành production.
 - **Draft PR hiện hành:** [#166 — tích hợp Hermes độc lập với quyền CRM](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/166). PR #165 giữ checkpoint nền cũ. Đọc checks đúng head; kết quả pull_request không phải authority phát hành production.
 
 ### 15/10/2026 — áp dụng task/customer trên TEST và xác minh catalog live
