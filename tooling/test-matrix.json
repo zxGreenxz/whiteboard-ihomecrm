@@ -141,6 +141,42 @@
       ]
     },
     {
+      "id": "hermes-restore-prerequisites",
+      "sourcePaths": [
+        "scripts/dien-tap-forward-lane.mjs",
+        "scripts/lib/restore-hermes-prerequisites.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/__tests__/restore-hermes-drill.test.mjs",
+        "supabase/baseline/forward-lane-expectations.json",
+        "supabase/migrations/20260813110000_zalo_gui_media_va_idempotency.sql",
+        "supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql",
+        ".github/workflows/migration-restore-drill.yml"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/restore-hermes-drill.test.mjs",
+        "scripts/__tests__/dien-tap-forward-lane.test.mjs",
+        "scripts/__tests__/restore-settlement-drill.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-restore-linux-workflow",
+      "sourcePaths": [
+        "scripts/dien-tap-forward-lane.mjs",
+        "scripts/lib/restore-hermes-prerequisites.mjs",
+        "scripts/network-center-function-bodies.mjs",
+        "scripts/__tests__/restore-hermes-drill.test.mjs",
+        "supabase/baseline/forward-lane-expectations.json",
+        "supabase/migrations/20260813110000_zalo_gui_media_va_idempotency.sql",
+        "supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql",
+        ".github/workflows/migration-restore-drill.yml"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": ["scripts/__tests__/restore-hermes-drill.test.mjs"],
+      "workflowOwner": ".github/workflows/migration-restore-drill.yml",
+      "jobs": ["restore-drill"]
+    },
+    {
       "id": "migration-target-native",
       "sourcePaths": [
         "scripts/lib/migration-target.mjs",

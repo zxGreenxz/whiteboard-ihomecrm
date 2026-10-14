@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1474,
-  "soFileDocBangFs": 342,
-  "tongLoiGoi": 791,
-  "khongPhanLoaiDuoc": 359,
+  "tongSoFileTest": 1475,
+  "soFileDocBangFs": 343,
+  "tongLoiGoi": 793,
+  "khongPhanLoaiDuoc": 360,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 51,
+      "soFile": 52,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -1006,6 +1006,14 @@
       "soGoi": 2,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/restore-hermes-drill.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
     },

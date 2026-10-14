@@ -24,10 +24,6 @@ export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 // vì có CSS toàn cục cần cô lập).
 export const BuildingMapPage = lazy(() => import("../pages/building-map/BuildingMapPage"));
 export const NetworkCenterApp = lazy(() => import("../pages/network-center/NetworkCenterApp"));
-// AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
-export const CopilotLauncher = lazy(() => import("../copilot/CopilotLauncher"));
-// AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
-export const AiCopilotAdminPage = lazy(() => import("../copilot/admin/AiCopilotAdminPage"));
 export const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
 export const BankEventsPage = lazy(() => import("../pages/bank-events/BankEventsPage"));
 export const PersonalTasksPage = lazy(() => import("../pages/PersonalTasksPage"));

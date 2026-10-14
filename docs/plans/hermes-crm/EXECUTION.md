@@ -2,13 +2,15 @@
 
 Phiên bản 1.4 · Chốt kiến trúc ngày 14/10/2026 · Asia/Bangkok. [PLAN.md](PLAN.md) giữ toàn bộ P0–P11; [STATUS.md](STATUS.md) giữ kết quả thực tế. Tài liệu này giao gói code/kiểm, không thay tiêu chí hoàn tất chương trình.
 
-**Điểm làm việc hiện hành:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-integration-20261014`, nhánh `codex/hermes-crm-integration-20261014`, đã tích hợp `origin/main` `993fcfed`. Source của connector, native operator, lịch, work memory, tám miền đọc và room-pass đã ghép; 23 migration Hermes đã apply TEST. C/D/E mới đạt 10/10, cleanup sạch; lượt cũ FAIL giữ nguyên. Canonical mới 63/64; hai fixture related Vitest đã sửa, kiểm delta 125/125 đạt, giữ receipts xanh không đổi và chờ CI đúng candidate. Chốt candidate/CI tại đây; worktree foundation giữ cache và bằng chứng lịch sử. Task create/assign đã review core và đang ghép v5/MCP/input-options trong cache, chưa nối source. Tiếp tục theo [STATUS.md](STATUS.md), không chạy lại các gói kiểm có đầu vào không đổi.
+**Điểm làm việc hiện hành:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-integration-20261014`, nhánh `codex/hermes-crm-integration-20261014`, đã tích hợp `origin/main` `993fcfed`. Candidate `c038c71f` đã push trong draft PR #166. Connector, native operator, lịch, work memory, tám miền đọc và room-pass đã ghép; 23 migration Hermes đã apply TEST. C/D/E mới 10/10, cleanup sạch; giữ lượt cũ FAIL và canonical 63/64 cùng focused sửa fixture 125/125. Native-upstream Linux đã SUCCESS; đang sửa mount fixture synthetic-isolation và prerequisite Zalo trong diễn tập restore. Task create/assign core và wiring v5/MCP/input-options đã review độc lập đạt trong cache, còn tích hợp/verifier/TEST. Worktree foundation giữ bằng chứng lịch sử. Tiếp tục theo [STATUS.md](STATUS.md), không chạy lại các gói kiểm có đầu vào không đổi.
 
 **Kiến trúc hiện hành:** Hermes upstream độc lập, đầy đủ, do user tự cấu hình/cập nhật model, native tools và memory cá nhân → connector MCP/plugin CRM → gate backend **quyền CRM user hiện tại ∩ Read/Action Hermes** → RPC/queue/worker dùng chung. Không custom kernel; không ép room-only prompt, đóng native tools hoặc giới hạn memory ba cặp lượt. Managed wrapper/image pin/model relay hiện có chỉ là prototype hoặc adapter CRM tùy chọn; không là mặc định trợ lý cá nhân.
 
 ACL trên chỉ quản CRM. Revoke CRM chặn đọc/thao tác/job CRM mới và vô hiệu hóa token/scope/cache connector; personal chat/model/native tools/memory theo cấu hình user vẫn hoạt động. Không hứa xóa nội dung đã hợp lệ đi vào native memory/history. User không cần bật Copilot hoặc dùng model trả phí qua CRM. Relay model CRM nếu dùng phải có admission riêng và quota thật; công việc relay đó không chặn core connector.
 
 **Luồng sản phẩm:** yêu cầu rõ thì tự làm đủ các bước CRM trong quyền, chỉ soạn thì không gửi, thiếu dữ kiện hỏi ngay Zalo và tiếp tục qua nhiều lượt. Không bắt CRM/PIN/approve Copilot. Điều kiện kế toán/hợp đồng/thẩm quyền nghiệp vụ mà user trực tiếp cũng phải đáp ứng vẫn giữ. Chỉ một overlay Read/Action; khóa/trần Hermes công ty nếu cần hợp nhất vào đó, không cấp lại cùng quyền hai lần.
+
+**Copilot đã ngừng sử dụng:** ưu tiên Hermes trực tiếp. Không xây chạy song song hoặc lớp tương thích engine cũ. Gỡ entrypoint/UI chat/approval/scheduler/cấu hình riêng sau khi tra callers; giữ backend/dữ liệu dùng chung. Có thể triển khai phần này trước P8–P10, không chờ toàn bộ tool cũ có bản sao trong Hermes.
 
 ```mermaid
 flowchart LR
@@ -103,7 +105,7 @@ Q2/Q3 cần ca startup không CRM, MCP lỗi, rotate/expiry/revoke rồi phục 
 | C · Lịch và bản tin CRM | Lệnh lịch rõ → standing grant hạn/scope/nhóm/nhịp, dữ liệu mới và quyền mỗi lần chạy, thu hồi; không approve mỗi job. Một owner mỗi lịch CRM; lịch cá nhân Hermes ngoài CRM giữ theo user | P6 + phần lịch của P9–P10 |
 | D · Work memory và Hermes tổng | Native personal memory đầy đủ theo user; work memory chia sẻ rõ qua CRM API. Superadmin đọc/giao việc theo ACL thực tế, không personal filesystem/chat hoặc giả danh; revoke đúng phạm vi connector quản lý | P7 + memory/điều phối P1–P3, P9–P10 |
 | E · Các miền CRM còn lại | Mapping từng capability tới schema/RPC/resource ACL thật; tools generic dùng registry chung; tiền/hợp đồng giữ lifecycle/accounting/approval nghiệp vụ thật/đối soát | P8, kiểm phủ P0/P3/P11 |
-| F · Vận hành và bàn giao | Connector/tool quota/health/backup/restore, protocol tương thích để user update Hermes, canary nhiều user, ngừng Copilot sau coverage; model relay/managed runtime chỉ nếu thực sự chọn dùng | P9–P11 |
+| F · Vận hành và bàn giao | Connector/tool quota/health/backup/restore, protocol tương thích để user update Hermes, canary nhiều user; gỡ engine Copilot đã ngừng dùng theo callers, không chờ chạy song song/coverage cũ. Model relay/managed runtime chỉ nếu thực sự chọn dùng | P9–P11 |
 
 Mỗi mốc C–F cũng có phần code trước và Q tập trung sau. Không tự mở nhiều công ty cho user thường; superadmin vẫn chọn công ty rõ ràng. Mốc A/B hoàn tất không được dùng để đánh dấu toàn chương trình hoàn tất.
 

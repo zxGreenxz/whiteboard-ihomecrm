@@ -1,12 +1,56 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import { createFixtureBroker } from '../hermes-broker/fixture.mjs';
 import { createMcpHttpServer } from '../hermes-broker/mcp-http.mjs';
 import { startRuntimeFixture } from './fixture-server.mjs';
-import { assertInside, assertMcpDenial } from './runtime-contract.mjs';
+import { assertInside, assertMcpDenial, fixtureMounts, FIXTURE_BROKER_PATH } from './runtime-contract.mjs';
+
+test('fixture starts from only the declared mounts; omitting the external fact module fails before readiness', async t => {
+  const sandbox = await mkdtemp(path.join(os.tmpdir(), 'hermes-p1-mounts-'));
+  t.after(() => rm(assertInside(os.tmpdir(), sandbox), { recursive: true }));
+  const resolveMount = destination => assertInside(sandbox, path.join(sandbox, destination.slice(1)));
+  const spec = { source: path.resolve('infra/hermes-runtime'), brokerSource: path.resolve('infra/hermes-broker'),
+    roomSaleFactsSource: path.resolve('src/lib/roomSaleFacts.ts'), output: path.join(sandbox, 'host-output') };
+  await mkdir(spec.output);
+  for (const mount of fixtureMounts(spec)) {
+    const destination = resolveMount(mount.destination);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(mount.source, destination, { recursive: true });
+  }
+  const moduleUrl = destination => pathToFileURL(resolveMount(destination)).href;
+  // Same dynamic imports as the fixture CLI, but ephemeral loopback ports keep
+  // this filesystem/import regression independent of Docker and host services.
+  const probe = `
+    const { startRuntimeFixture } = await import(${JSON.stringify(moduleUrl('/fixture/fixture-server.mjs'))});
+    const { createFixtureBroker } = await import(${JSON.stringify(moduleUrl(`${FIXTURE_BROKER_PATH}/fixture.mjs`))});
+    const { createMcpHttpServer } = await import(${JSON.stringify(moduleUrl(`${FIXTURE_BROKER_PATH}/mcp-http.mjs`))});
+    const service = await startRuntimeFixture({ fixture: await createFixtureBroker(), createMcpHttpServer,
+      outputDir: ${JSON.stringify(resolveMount('/output'))}, port: 0, adminPort: 0, host: '127.0.0.1' });
+    try {
+      const response = await fetch('http://127.0.0.1:' + service.admin.address().port + '/control', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'health' }) });
+      if (!response.ok) throw new Error('Fixture readiness rejected');
+      console.log(JSON.stringify(await response.json()));
+    } finally { await service.close(); }
+  `;
+  const run = () => spawnSync(process.execPath, ['--input-type=module', '--eval', probe],
+    { encoding: 'utf8', timeout: 10_000, windowsHide: true });
+  const good = run();
+  assert.equal(good.status, 0, good.stderr || good.error?.message);
+  assert.deepEqual(JSON.parse(good.stdout), { ready: true });
+  // Fresh process avoids module-cache false positives when a mount is absent.
+  await rm(resolveMount('/src/lib/roomSaleFacts.ts'));
+  const missing = run();
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /ERR_MODULE_NOT_FOUND/);
+  assert.match(missing.stderr, /roomSaleFacts\.ts/);
+  assert.equal(missing.stdout, '');
+});
 
 test('combined fixture uses the actual broker, isolates actors and rejects model leaks', async (t) => {
   const outputDir = await mkdtemp(path.join(os.tmpdir(), 'hermes-p1-fixture-'));

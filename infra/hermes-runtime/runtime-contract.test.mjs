@@ -11,7 +11,8 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { assertEgressProof, assertFixtureInspection, assertHermesDenial, assertImageProvenance, assertInputsUnchanged, assertInside,
   assertIsolatedNetwork, assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTerminal, assertUnavailableTool,
   DNS_OPTIONS, HERMES_COMMIT, HERMES_IMAGE, ISOLATED_GATEWAY_OPTIONS, NO_FORWARDING, PRIVATE_DNS,
-  controlBridgeAddresses, isolatedNetworkArgs, runtimeArgs, runtimeUser, sourceHashes } from './runtime-contract.mjs';
+  controlBridgeAddresses, isolatedNetworkArgs, runtimeArgs, runtimeUser, sourceHashes,
+  fixtureMounts, fixtureFailureDiagnostics, sanitizeFixtureDiagnostic } from './runtime-contract.mjs';
 import { modelReply, sseReply } from './fake-model.mjs';
 import { CANARY_REPLY, dnsReply, startEgressCanary, startHostCanary } from './egress-canary.mjs';
 
@@ -234,17 +235,32 @@ test('inspection fails when isolation controls are removed', () => {
 
 test('fixture explicitly overrides the image volume and rejects anonymous or extra tmpfs mounts', () => {
   const fixtureSpec = { networks: [spec.network, 'hermes-p1-peer-network'], user: '10000:10000', source: spec.source,
-    brokerSource: path.resolve('infra/hermes-broker'), output: path.join(root, 'output') };
+    brokerSource: path.resolve('infra/hermes-broker'), roomSaleFactsSource: path.resolve('src/lib/roomSaleFacts.ts'),
+    output: path.join(root, 'output') };
   const value = inspection();
   value.NetworkSettings.Networks[fixtureSpec.networks[1]] = {};
   value.HostConfig.Tmpfs = { '/tmp': 'rw,nosuid,nodev,noexec,size=67108864',
     '/opt/data': 'ro,nosuid,nodev,noexec,size=1048576' };
-  value.Mounts = [
+  const expected = [
     { Type: 'bind', Source: fixtureSpec.source, Destination: '/fixture', RW: false },
-    { Type: 'bind', Source: fixtureSpec.brokerSource, Destination: '/broker', RW: false },
+    { Type: 'bind', Source: fixtureSpec.brokerSource, Destination: '/infra/hermes-broker', RW: false },
+    { Type: 'bind', Source: fixtureSpec.roomSaleFactsSource, Destination: '/src/lib/roomSaleFacts.ts', RW: false },
     { Type: 'bind', Source: fixtureSpec.output, Destination: '/output', RW: true },
   ];
+  value.Mounts = fixtureMounts(fixtureSpec).map(({ source, destination, writable }) =>
+    ({ Type: 'bind', Source: source, Destination: destination, RW: writable }));
+  assert.deepEqual(value.Mounts, expected);
   assert.equal(assertFixtureInspection(value, fixtureSpec), true);
+  for (const mutate of [
+    v => { v.Mounts.splice(2, 1); },
+    v => { v.Mounts[2].RW = true; },
+    v => { v.Mounts[2].Source = path.resolve('src'); },
+    v => { v.Mounts[2].Destination = '/src'; },
+    v => { v.Mounts[1].Destination = '/broker'; },
+  ]) {
+    const invalid = structuredClone(value); mutate(invalid);
+    assert.throws(() => assertFixtureInspection(invalid, fixtureSpec), /mount/);
+  }
   const anonymous = structuredClone(value);
   anonymous.Mounts.push({ Type: 'volume', Source: '/var/lib/docker/volumes/unexpected', Destination: '/opt/data', RW: true });
   assert.throws(() => assertFixtureInspection(anonymous, fixtureSpec), /mount count/);
@@ -259,6 +275,27 @@ test('fixture explicitly overrides the image volume and rejects anonymous or ext
   const forwarding = structuredClone(value);
   forwarding.HostConfig.Sysctls['net.ipv4.ip_forward'] = '1';
   assert.throws(() => assertFixtureInspection(forwarding, fixtureSpec), /route between networks/);
+});
+
+test('fixture failure diagnostics retain startup errors, redact private values and survive inspection/log failure', async () => {
+  const calls = [];
+  const result = await fixtureFailureDiagnostics(async args => {
+    calls.push(args);
+    return args[0] === 'inspect' ? { stdout: JSON.stringify({ Status: 'exited', Running: false,
+      ExitCode: 1, OOMKilled: false, Error: 'untrusted ignored field', Pid: 123 }) } :
+      { stdout: 'synthetic fixture', stderr: 'ERR_MODULE_NOT_FOUND roomSaleFacts.ts hc_secret PRIVATE_A_secret Bearer arbitrary private-exact' };
+  }, 'hermes-p1-test-fixture', ['private-exact']);
+  assert.deepEqual(calls, [['inspect', '--format', '{{json .State}}', 'hermes-p1-test-fixture'],
+    ['logs', '--tail', '80', 'hermes-p1-test-fixture']]);
+  assert.deepEqual(result.state, { status: 'exited', running: false, exitCode: 1, oomKilled: false });
+  assert.match(result.logs, /ERR_MODULE_NOT_FOUND roomSaleFacts.ts/);
+  for (const secret of ['hc_secret', 'PRIVATE_A_secret', 'arbitrary', 'private-exact']) assert.ok(!result.logs.includes(secret));
+  const unavailable = await fixtureFailureDiagnostics(async () => { throw Object.assign(new Error('untrusted command error'),
+    { stderr: 'partial hzn_secret' }); }, 'hermes-p1-test-fixture');
+  assert.equal(unavailable.stateUnavailable, true); assert.equal(unavailable.logsUnavailable, true);
+  assert.ok(!unavailable.logs.includes('hzn_secret'));
+  const boundary = sanitizeFixtureDiagnostic('x'.repeat(5990) + ' hc_' + 's'.repeat(80));
+  assert.equal(boundary.length, 6000); assert.ok(!boundary.includes('hc_'));
 });
 
 test('model forces a real MCP call and records only sanitized evidence', () => {

@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { assertEgressProof, assertFixtureInspection, assertImageProvenance, assertInputsUnchanged, assertInside, assertIsolatedNetwork,
   assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTool, controlBridgeAddresses, DNS_OPTIONS,
   HERMES_COMMIT, HERMES_IMAGE, HERMES_RELEASE, isolatedNetworkArgs, RESULT_PREFIX, runtimeArgs,
-  runtimeUser, sourceHashes } from '../infra/hermes-runtime/runtime-contract.mjs';
+  runtimeUser, sourceHashes, fixtureMounts, FIXTURE_BROKER_PATH, fixtureFailureDiagnostics } from '../infra/hermes-runtime/runtime-contract.mjs';
 import { ProfileLeaseStore } from '../infra/hermes-runtime/profile-lease.mjs';
 import { startHostCanary } from '../infra/hermes-runtime/egress-canary.mjs';
 
@@ -34,7 +34,13 @@ const inputFiles = ['infra/hermes-runtime/runtime-contract.mjs', 'infra/hermes-r
   'infra/hermes-runtime/profile-lease.mjs',
   'infra/hermes-runtime/fake-model.mjs', 'infra/hermes-runtime/fixture-server.mjs', 'infra/hermes-runtime/control.mjs',
   'scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-broker/broker.mjs', 'infra/hermes-broker/stores.mjs',
-  'infra/hermes-broker/mcp-http.mjs', 'infra/hermes-broker/fixture.mjs', '.github/workflows/hermes-runtime.yml'];
+  'infra/hermes-broker/mcp-http.mjs', 'infra/hermes-broker/fixture.mjs', '.github/workflows/hermes-runtime.yml',
+  // The fixture loads these through the real broker's static import graph.
+  ...['room-pass-contract', 'domain-contract', 'schedule-contract', 'work-memory-contract',
+    'group-preview-mount', 'capability-contract', 'external-group-mount', 'durable-authority',
+    'durable-connection-store', 'room-read-service', 'group-room-preview', 'group-preview-adapter',
+    'session-crypto', 'room-read-projection', 'external-group-adapter', 'store-transport'].map(name => `infra/hermes-broker/${name}.mjs`),
+  'src/lib/roomSaleFacts.ts'];
 const receipt = { schemaVersion: 1, startedAt: new Date().toISOString(), status: 'BLOCKED', mode,
   image: HERMES_IMAGE, release: HERMES_RELEASE, sourceCommit: HERMES_COMMIT, checks: [],
   inputSha256: await sourceHashes(root, inputFiles),
@@ -47,6 +53,7 @@ const drivers = [];
 const privateFixtureValues = [];
 const createdNetworks = [];
 let hostCanary;
+let fixtureName;
 const command = async (args, timeout = 30_000) => {
   const { stdout } = await exec(docker, args, { timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
   return stdout.trim();
@@ -214,7 +221,9 @@ try {
       check(`egress-positive-controls-${suffix}`, result);
     };
     await positiveEgress('before');
-    const fixtureName = `${id}-fixture`;
+    fixtureName = `${id}-fixture`;
+    const fixtureSpec = { networks: Object.values(networks), user, source, brokerSource,
+      roomSaleFactsSource: path.join(root, 'src/lib/roomSaleFacts.ts'), output: fixtureOutput };
     containers.push(fixtureName);
     receipt.stage = 'fixture';
     await command(['run', '-d', '--name', fixtureName, '--network', networks.a, '--network-alias', 'fixture',
@@ -226,16 +235,15 @@ try {
       // Upstream declares VOLUME /opt/data. Override it explicitly so Docker
       // cannot allocate an uninspected anonymous volume for the fixture.
       '--tmpfs', '/opt/data:ro,nosuid,nodev,noexec,size=1048576',
-      '--mount', `type=bind,src=${source},dst=/fixture,readonly`,
-      '--mount', `type=bind,src=${brokerSource},dst=/broker,readonly`,
-      '--mount', `type=bind,src=${fixtureOutput},dst=/output`,
+      ...fixtureMounts(fixtureSpec).flatMap(({ source, destination, writable }) =>
+        ['--mount', `type=bind,src=${source},dst=${destination}${writable ? '' : ',readonly'}`]),
       '--env', 'HOME=/tmp', '--env', 'HERMES_HOME=/tmp/hermes-fixture',
-      '--env', 'HERMES_FIXTURE_BROKER_DIR=/broker', '--entrypoint', '/usr/local/bin/node',
+      '--env', `HERMES_FIXTURE_BROKER_DIR=${FIXTURE_BROKER_PATH}`, '--entrypoint', '/usr/local/bin/node',
       HERMES_IMAGE, '/fixture/fixture-server.mjs', '--output', '/output']);
     await command(['network', 'connect', '--alias', 'fixture', networks.b, fixtureName]);
     const [fixtureInspection] = JSON.parse(await command(['inspect', fixtureName]));
     receipt.fixtureInspection = { image: fixtureInspection.Image, hostConfig: fixtureInspection.HostConfig, mounts: fixtureInspection.Mounts };
-    assertFixtureInspection(fixtureInspection, { networks: Object.values(networks), user, source, brokerSource, output: fixtureOutput });
+    assertFixtureInspection(fixtureInspection, fixtureSpec);
     check('fixture-hardening-and-exact-mounts');
     const control = async (op, actor) => JSON.parse(await command(['exec', fixtureName, '/usr/local/bin/node', '/fixture/control.mjs', op, ...(actor ? [actor] : [])]));
     let ready = false;
@@ -352,6 +360,8 @@ try {
   receipt.status = ['daemon', 'capabilities'].includes(receipt.stage) ? 'BLOCKED' : 'FAILED';
   receipt.error = String(error.message).slice(0, 4000);
   if (error.stderr && receipt.stage === 'daemon') receipt.daemonError = String(error.stderr).slice(0, 4000);
+  if (fixtureName) receipt.fixtureFailure = await fixtureFailureDiagnostics(args =>
+    exec(docker, args, { timeout: 5_000, maxBuffer: 64 * 1024, windowsHide: true }), fixtureName, privateFixtureValues);
   process.exitCode = receipt.status === 'BLOCKED' ? 2 : 1;
   console.error(`${receipt.status} at ${receipt.stage}: ${receipt.error}`);
 } finally {

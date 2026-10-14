@@ -95,7 +95,7 @@ const routeLabels: Record<string, string> = {
   '/settings/organization': 'Tổ chức',
   '/settings/members': 'Thành viên',
   '/settings/roles': 'Mẫu vai trò',
-  '/settings/ai-copilot': 'Trợ lý AI',
+  '/settings/hermes': 'Kết nối Hermes',
 
   // Tài khoản
   '/account': 'Tài khoản',

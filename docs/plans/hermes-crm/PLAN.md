@@ -12,7 +12,7 @@ Phiên bản 1.4 · Phạm vi duyệt ngày 12/10/2026; rà toàn bộ yêu cầ
 
 **Checkpoint tích hợp tiếp theo:** worktree `hermes-crm-integration-20261014` đã rebase trên `origin/main` `993fcfed`, giữ source/receipts của worktree foundation. Đã ghép room-pass theo Action và scope tòa, native operator và runner C/D/E. Source review các gói này đạt; chín ca live C/D/E đạt nhưng cleanup verification cuối lỗi parser nên toàn lượt vẫn FAIL, đã có bản sửa và recovery marker riêng. Task create/assign đang review core, chưa nối broker/v5/UI. Các cửa CI/Linux, JWT/PostgREST positive mới, deployment/model/Zalo thật và phần còn lại của P0–P11 chưa được đánh dấu hoàn tất.
 
-**Cập nhật kiểm chứng:** room-pass và options v4 đã apply TEST, tổng 23 migration Hermes bất biến. Lượt C/D/E source mới đạt 10/10 và cleanup sạch; giữ lượt cũ FAIL như lịch sử. Review tích hợp không có P1/P2. Canonical mới 63/64; hai fixture related Vitest đã sửa, 125/125 focused đạt, 63 receipts static/live đã đạt được giữ nguyên. Không đổi kết quả canonical cũ thành PASS. Task create/assign core đã review đạt, đang nối MCP/v5 và bộ chọn đầu vào có giới hạn. Chưa hoàn tất toàn plan hoặc nghiệm thu production/Zalo thật.
+**Cập nhật kiểm chứng:** candidate `c038c71f` đã push trong [draft PR #166](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/166). Tổng 23 migration Hermes bất biến trên TEST; C/D/E mới 10/10 và cleanup sạch. Review tích hợp không có P1/P2. Giữ canonical cũ 63/64 cùng 125/125 focused sửa hai fixture, không đổi nhãn lượt cũ. CI Gates và Android SUCCESS; native-upstream Linux đã đạt cả bridge/journal/operator/upstream, không skip. Synthetic-isolation và Restore Drill đang sửa hai lỗi fixture. Task create/assign core và wiring MCP/v5/input-options đã review đạt trong cache, còn tích hợp/verifier/TEST. Chưa hoàn tất toàn plan hoặc nghiệm thu production/Zalo thật.
 
 **Checkpoint lịch sử 13/10:** Đã ghép coordinated refresh, handoff mã hóa, host lifecycle, bộ chọn quyền/phạm vi và quản trị policy công ty. WIP trusted turn bridge đã mount, giữ claim/token trong host. P5 preview/authority/composition đã qua review offline; lỗi audit và hai race PIN của hướng cũ đã có bản sửa kiểm chứng ở cache. PIN/web-consent đó không thuộc luồng đích v1.4. Chưa mount đầy đủ P5 hoặc mở gửi tại checkpoint này. Runner JWT riêng đã đạt và dọn sạch fixture; không chiếm khóa worker có sẵn. Xem trạng thái thực thi mới nhất ở STATUS.
 
@@ -33,7 +33,7 @@ Phiên bản 1.4 · Phạm vi duyệt ngày 12/10/2026; rà toàn bộ yêu cầ
 - Trong CRM, user thường chỉ thuộc một công ty; superadmin được chọn nhiều công ty theo quyền. Mỗi context/kết nối/lịch CRM có đích rõ; đổi/revoke công ty không reset personal assistant hoặc bắt personal chat chọn công ty.
 - Worker hiện tại giữ duy nhất phiên nick Zalo phụ. Nick chính của anh chỉ nhắn riêng để điều khiển và nhận kết quả; không đăng nhập nick chính vào bot.
 - Toàn bộ năng lực Copilot được kiểm kê và có quyết định chuyển, giữ giao diện, hoãn có lý do hoặc bỏ có chủ đích. Bản thử một user chỉ là một mốc trong super plan, không phải điểm kết thúc.
-- Không tiếp tục xây hai bộ nghiệp vụ. Engine Copilot cũ chỉ làm đường đối chiếu/quay lại tạm thời; được ngừng sau khi có báo cáo chuyển đổi đầy đủ và luồng thay thế đã đạt.
+- **Chủ dự án xác nhận Copilot đã ngừng sử dụng (14/10):** triển khai Hermes làm trợ lý chính; không cần chạy song song, giữ tương thích engine Copilot hoặc chờ chuyển đủ mọi tính năng cũ mới ngừng engine. Có thể gỡ sớm các entrypoint, UI chat/approval/PIN, scheduler và cấu hình riêng của engine sau khi xác minh callers. Giữ dữ liệu, lịch sử, quyền/RPC/queue/audit và approval nghiệp vụ CRM dùng chung; không xóa theo tên thư mục. Inventory phục vụ chọn năng lực CRM cần giữ/chuyển/bỏ, không bắt tái tạo UX hoặc công cụ AI cũ không còn hữu ích.
 - Mỗi user có một Hermes/workspace/memory cá nhân riêng theo cấu hình của họ; dữ liệu công việc CRM phân theo user/công ty. Không mặc định một VPS mỗi user, không giới hạn memory toàn Hermes thành ba cặp lượt hoặc chỉ cho tool phòng.
 - Hermes tổng của superadmin tra cứu memory công việc và giao nhiệm vụ qua CRM; đọc memory, giao việc và thực hiện thay người khác là các quyền khác nhau. Mặc định không mở toàn bộ chat riêng.
 - Thực hiện theo từng cửa nghiệm thu. Model/hạ tầng/auth cụ thể phải được kiểm chứng; chỉ trình lại nếu kết quả buộc thay đổi quyết định sản phẩm đã chốt.
@@ -658,10 +658,10 @@ Phụ thuộc: P7-P9; các miền đủ nghiệm thu. Chủ trì: Lead + QA + ch
 
 ### P11 · Ngừng engine Copilot và bàn giao
 
-Phụ thuộc: P8-P10; coverage hoàn chỉnh. Chủ trì: Lead + platform + QA.
+Gỡ engine và dependency chết có thể làm sớm song song core sau khi xác minh callers; không phụ thuộc chạy song song Copilot. Bàn giao toàn chương trình vẫn phụ thuộc P8-P10 và quyết định coverage rõ ràng. Chủ trì: Lead + platform + QA.
 
 - [ ] P11.01 Chốt mỗi năng lực trong inventory là đã chuyển, giữ UI, hoãn được chấp thuận hoặc bỏ có chủ đích.
-- [ ] P11.02 Định tuyến chat CRM cần giữ sang Hermes độc lập qua adapter; ngừng engine/lịch Copilot đã thay thế. Không viết hoặc duy trì custom kernel/room-only prompt thay full Hermes.
+- [ ] P11.02 Gỡ entrypoint và lịch riêng của engine Copilot đã ngừng sử dụng; chat CRM chỉ giữ khi có ích và nối Hermes độc lập qua adapter. Không viết hoặc duy trì custom kernel/room-only prompt thay full Hermes, không yêu cầu song song hai engine.
 - [ ] P11.03 Giữ registry/RPC/ACL/quota/audit/lịch sử/component dùng chung và approval nghiệp vụ thật; bỏ coupling engine/UI approval cũ trên đường Hermes, không xóa theo tên thư mục Copilot.
 - [ ] P11.04 Gỡ dependency/cấu hình chết sau khi xác minh callers và build; cập nhật docs/runbooks/manifest.
 - [ ] P11.05 Bàn giao hướng dẫn user/admin, vận hành, backup/rollback, phiên bản và phần còn hoãn.
@@ -670,7 +670,7 @@ Phụ thuộc: P8-P10; coverage hoàn chỉnh. Chủ trì: Lead + platform + QA.
 
 **Đạt khi:** Không còn luồng mồ côi, job trùng, quota tách đôi hay hai nơi sửa nghiệp vụ; rollback đã diễn tập.
 
-**Nếu chưa đạt:** Giữ artifact engine cũ để phục hồi có kiểm soát trong cửa sổ đã chốt; không hồi sinh grant/replay job.
+**Nếu chưa đạt:** Giữ snapshot Git và dữ liệu cần thiết để phục hồi thay đổi connector; không tự khởi động lại engine Copilot, hồi sinh grant hoặc replay job.
 
 ## 15 · Ma trận nghiệm thu
 

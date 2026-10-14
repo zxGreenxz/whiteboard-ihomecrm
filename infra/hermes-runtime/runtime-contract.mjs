@@ -238,14 +238,55 @@ export function assertRuntimeInspection(container, { network, home, bootstrap, s
   ]) });
 }
 
-export function assertFixtureInspection(container, { networks, source, brokerSource, output, user }) {
+export const FIXTURE_BROKER_PATH = '/infra/hermes-broker';
+
+// Preserve the broker's repository-relative imports without exposing the repo.
+// The sole external dependency is an exact read-only file, never the src tree.
+export function fixtureMounts({ source, brokerSource, roomSaleFactsSource, output }) {
+  return [
+    { source, destination: '/fixture', writable: false },
+    { source: brokerSource, destination: FIXTURE_BROKER_PATH, writable: false },
+    { source: roomSaleFactsSource, destination: '/src/lib/roomSaleFacts.ts', writable: false },
+    { source: output, destination: '/output', writable: true },
+  ];
+}
+
+export function assertFixtureInspection(container, { networks, user, ...sources }) {
   if (!Array.isArray(networks) || networks.length !== 2 || networks[0] === networks[1]) throw new Error('Fixture requires distinct actor networks');
   return assertContainerInspection(container, { networks, user, tmpfs: {
     '/tmp': 'rw,nosuid,nodev,noexec,size=67108864',
     '/opt/data': 'ro,nosuid,nodev,noexec,size=1048576',
-  }, expected: new Map([
-    ['/fixture', [source, false]], ['/broker', [brokerSource, false]], ['/output', [output, true]],
-  ]) });
+  }, expected: new Map(fixtureMounts(sources).map(({ source, destination, writable }) =>
+    [destination, [source, writable]])) });
+}
+
+// Only synthetic fixture diagnostics belong in the public receipt. Redact
+// before truncating so a token crossing the output boundary cannot leak.
+export function sanitizeFixtureDiagnostic(value, privateValues = []) {
+  let text = String(value ?? '');
+  for (const secret of privateValues) if (secret) text = text.replaceAll(secret, '[fixture-private-value]');
+  return text.replace(/\b(?:hc_|hzn_)[A-Za-z0-9_-]+/g, '[fixture-token]')
+    .replace(/\bPRIVATE_[A-Za-z0-9_-]+/g, '[fixture-sentinel]')
+    .replace(/Bearer\s+[^\s"'<>]+/gi, 'Bearer [redacted]')
+    .slice(0, 6000);
+}
+
+export async function fixtureFailureDiagnostics(execute, name, privateValues = []) {
+  assertTaskName(name);
+  const result = {};
+  try {
+    const { stdout } = await execute(['inspect', '--format', '{{json .State}}', name]);
+    const state = JSON.parse(stdout);
+    result.state = { status: state.Status, running: state.Running, exitCode: state.ExitCode, oomKilled: state.OOMKilled };
+  } catch { result.stateUnavailable = true; }
+  try {
+    const { stdout, stderr } = await execute(['logs', '--tail', '80', name]);
+    result.logs = sanitizeFixtureDiagnostic(`${stdout ?? ''}\n${stderr ?? ''}`, privateValues);
+  } catch (error) {
+    result.logsUnavailable = true;
+    result.logs = sanitizeFixtureDiagnostic(`${error.stdout ?? ''}\n${error.stderr ?? ''}`, privateValues);
+  }
+  return result;
 }
 
 function assertContainerInspection(container, { networks, user, tmpfs, expected }) {

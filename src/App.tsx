@@ -1,9 +1,8 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { AppProviders } from "@/app/providers/AppProviders";
 import TestEnvironmentBanner from "@/components/layout/TestEnvironmentBanner";
 import { AppRoutes } from "@/app/routes";
-import { CopilotLauncher } from "@/app/lazyPages";
 import { LoadingState } from "@/components/loading/LoadingState";
 
 /**
@@ -30,37 +29,6 @@ const RouteFallback = () => (
   </div>
 );
 
-/**
- * Nút AI Copilot nổi toàn app.
- *
- * Hoãn tới lúc trình duyệt rảnh: nó không thuộc first paint, và nạp sớm sẽ tranh
- * băng thông với chunk của route người dùng đang thật sự mở.
- */
-const DeferredCopilotLauncher = () => {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const idleWindow = window as unknown as {
-      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    if (idleWindow.requestIdleCallback) {
-      const id = idleWindow.requestIdleCallback(() => setReady(true), { timeout: 1_500 });
-      return () => idleWindow.cancelIdleCallback?.(id);
-    }
-
-    const id = window.setTimeout(() => setReady(true), 700);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  if (!ready) return null;
-  return (
-    <Suspense fallback={null}>
-      <CopilotLauncher />
-    </Suspense>
-  );
-};
-
 const App = () => (
   <AppProviders>
     <TestEnvironmentBanner />
@@ -68,9 +36,6 @@ const App = () => (
       <Suspense fallback={<RouteFallback />}>
         <AppRoutes />
       </Suspense>
-      {/* AI Copilot: nút nổi toàn app — tự ẩn trên route public / khi không
-          có session / không entitlement / không quyền ai_copilot.view */}
-      <DeferredCopilotLauncher />
     </BrowserRouter>
   </AppProviders>
 );
