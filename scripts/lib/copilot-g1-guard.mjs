@@ -83,11 +83,10 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
       // CSP and useSignedMediaUrl/ZaloAvatar admit this CDN for rendered media;
       // arbitrary fetches, scripts, documents and other methods remain blocked.
       if (zaloCdn(u)) return method === 'GET' && mediaResource(r);
-      // index.html's four font families and ollama.ts's local discovery endpoint.
-      // No completion/model-management endpoint on localhost is admitted.
+      // index.html's four font families only. The local model discovery read was
+      // removed with ollama.ts (P11); no localhost endpoint is admitted.
       const readEndpoint = (u.origin === 'https://fonts.googleapis.com' && u.pathname === '/css2')
-        || (u.origin === 'https://fonts.gstatic.com' && /^\/s\/(baloo2|bevietnampro|lora|spacemono)\/v\d+\/[A-Za-z0-9_-]+\.(woff2|woff|ttf)$/.test(u.pathname))
-        || (u.origin === 'http://localhost:11434' && u.pathname === '/api/tags');
+        || (u.origin === 'https://fonts.gstatic.com' && /^\/s\/(baloo2|bevietnampro|lora|spacemono)\/v\d+\/[A-Za-z0-9_-]+\.(woff2|woff|ttf)$/.test(u.pathname));
       if (readEndpoint) return method === 'GET'
         || (method === 'OPTIONS' && r.headers?.['access-control-request-method'] === 'GET');
       return u.origin === baseUrl && ['GET', 'HEAD', 'OPTIONS'].includes(method);

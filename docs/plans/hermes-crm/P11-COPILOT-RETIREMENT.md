@@ -1,12 +1,14 @@
 # P11 — Ngừng engine Copilot: callers, phần đã gỡ và phần giữ
 
-Ngày 15/10/2026, nền `origin/main` `dd2ce3da`, commit gỡ `008eab69`. Thuộc P11.02–P11.04 của
+Ngày 15/10/2026, viết trên nền `dd2ce3da`; sau rebase lên `209a5423` commit gỡ là `8d4e4520` (PR #171). Thuộc P11.02–P11.04 của
 [PLAN.md](PLAN.md); trạng thái chương trình ở [STATUS.md](STATUS.md). Quyết định của chủ dự án
 ngày 14/10: Copilot đã ngừng dùng, Hermes là trợ lý chính. Gỡ entrypoint, UI chat/duyệt/PIN,
 scheduler và cấu hình riêng của engine sau khi tra callers. Giữ dữ liệu, lịch sử, RPC/ACL/queue/audit,
 quota và approval nghiệp vụ CRM dùng chung.
 
 Tài liệu chỉ mô tả source. Không đổi database, không xác nhận production.
+
+Khoảng trống đã biết (review PR #171): `financialModelTransport.test.ts` bị xoá cùng `llmClient`, nên chín ca từ chối của `isFinancialModelEndpoint` (`.e2e-fleet/specs/copilotFinancialReadOracle.ts`, chỉ spec E2E Copilot đang hoãn dùng) không còn test đơn vị. Khi mở lại hoặc gỡ hẳn fleet Copilot thì viết lại các ca đó hoặc xoá oracle. Guard G1 đã bỏ endpoint `localhost:11434/api/tags` của `ollama.ts`.
 
 ## 1. Kết luận
 

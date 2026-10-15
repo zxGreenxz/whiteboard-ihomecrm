@@ -43,7 +43,7 @@
         "check-copilot-golden-eval",
         "check-copilot-negative-proofs"
       ],
-      "note": "P0 Hermes: core tools/permissions/plans/confirmations/memory and offline static checks restored; Copilot UI/model, live proofs and fleet remain deferred until P1 evidence. Restoring a runner is not a runtime pass."
+      "note": "P0 Hermes: core tools/permissions/plans/confirmations/memory and offline static checks restored; Copilot chat UI/model client removed in P11 (PR #171); remaining Copilot tests, live proofs and fleet stay deferred. Restoring a runner is not a runtime pass."
     },
     {
       "id": "zalo",
