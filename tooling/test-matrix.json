@@ -1023,6 +1023,19 @@
       ]
     },
     {
+      "id": "hermes-review-fixes",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_review_fixes_v1.sql",
+        "infra/hermes-broker/review-fixes-fixture.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/task-follow*.test.mjs",
+        "infra/hermes-broker/domain-v2.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-work-assistant-ui",
       "sourcePaths": [
         "src/hermes/workAssistantClient.ts",

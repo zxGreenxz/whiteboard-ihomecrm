@@ -16,9 +16,10 @@ const record = value => value !== null && typeof value === 'object' &&
     Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
 const exact = (value, keys) => record(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const fail = () => { throw new TypeError('invalid_schedule_request'); };
-// Same character rule as the SQL ledger: printable text, newline/tab allowed.
-const note = value => typeof value === 'string' && value.length >= 1 && value.length <= 500 && value.trim() !== '' &&
-  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+// Same rule as the SQL ledger: printable text, newline/tab allowed, 1..500
+// characters by char_length (code points, not UTF-16 units).
+const note = value => typeof value === 'string' && value.length >= 1 && value.length <= 1000 && [...value].length <= 500 &&
+  value.trim() !== '' && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 function ids(value, max) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype || value.length < 1 || value.length > max ||
       Reflect.ownKeys(value).length !== value.length + 1 || new Set(value).size !== value.length) fail();

@@ -67,6 +67,11 @@ const checks = {
 
 test('expense contract: fixed tools, exact input, integer VND, no approval/bank/actor fields; result bound to the request', () => {
   assert.deepEqual(EXPENSE_ACTION_TOOLS.map(tool => tool.name), ['crm_expense_input_options', 'crm_expense_create', 'crm_expense_status']);
+  // A lost ACK must never lead the model to a second voucher under a new requestId.
+  const status = EXPENSE_ACTION_TOOLS.find(tool => tool.name === 'crm_expense_status').description;
+  assert.match(status, /not_found hoặc unknown KHÔNG cho phép tạo phiếu bằng requestId mới/);
+  assert.match(status, /CÙNG requestId/);
+  assert.doesNotMatch(status, /not_found nghĩa là chưa có phiếu/);
   assert.deepEqual(EXPENSE_ACTIONS, ['income_expenses.create', 'income_expenses.approve']);
   assert.equal(mayUseExpenseAction({ action: ['income_expenses.approve'] }, 'expense.create'), false, 'approve overlay alone grants no tool');
   assert.equal(mayUseExpenseAction({ action: ['income_expenses.create'] }, expenseActionOperation('crm_expense_create')), true);

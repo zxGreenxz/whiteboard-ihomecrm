@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fixture, id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2 } from './domain-contract.mjs';
+import { applyReviewFixes } from './review-fixes-fixture.mjs';
 export { id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT };
 
 // Real Hermes foundation/binding helpers, the real v1 domain file and the
@@ -27,7 +28,7 @@ const fn = (src, name) => {
   assert.ok(match, `function ${name} exists`); return match[0];
 };
 export const ACTION_KEYS = ['income_expenses.create', 'income_expenses.approve'];
-export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), action = readFileSync(ACTION_PATH, 'utf8'), hook = null } = {}) {
+export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {
   const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'] }), { db } = f;
   await db.exec(`CREATE SCHEMA extensions;
     CREATE FUNCTION extensions.digest(value text,algorithm text) RETURNS bytea LANGUAGE sql IMMUTABLE AS $$SELECT decode(md5(value)||md5(value),'hex')$$;
@@ -112,6 +113,8 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
   await db.exec(source('20261014081902_hermes_domain_reads_v1'));
   // Each candidate file runs twice: forward files must be idempotent.
   for (const sql of [reads, action, ...(hook ? [hook] : [])]) { await db.exec(sql); await db.exec(sql); }
+  // Review-fix forward migration (twice) replaces the hook's options helper.
+  if (fixes !== null) await applyReviewFixes(db, fixes);
   const disabled = (await db.query("SELECT count(*)::int n FROM app_private.hermes_capabilities WHERE capability=ANY($1) AND enabled", [[...DOMAIN_READ_CAPABILITIES_V2, ...ACTION_KEYS]])).rows[0].n;
   assert.equal(disabled, 0, 'new capabilities start disabled');
   await db.exec(`INSERT INTO public.buildings VALUES('${BUILDING}','${ORG}','Toà A',false,null),('${OTHER_BUILDING}','${ORG}','Toà B',false,null),('${FOREIGN}','${FOREIGN}','Ngoài',false,null);

@@ -17,7 +17,10 @@ test('schedule contract: policy template, issues/reconcile inputs and fixed voca
   for (const bad of [{ limit: 21 }, { scheduleId: 'x' }, { scheduleId: A, extra: 1 }]) assert.throws(() => scheduleInput('issues', bad, now));
   const input = { requestId: A, jobId: B, decision: 'sent', note: 'Đã thấy tin trong nhóm\nlúc 9 giờ' };
   assert.deepEqual(scheduleInput('reconcile', input, now), input);
+  // SQL char_length bound: 500 emoji (1000 UTF-16 units) is a valid note.
+  assert.equal(scheduleInput('reconcile', { ...input, note: '✅'.repeat(250) + '🏠'.repeat(250) }, now).note.length, 750);
   for (const bad of [{ ...input, decision: 'resend' }, { ...input, note: '   ' }, { ...input, note: '' }, { ...input, note: 'x'.repeat(501) },
+    { ...input, note: '🏠'.repeat(501) },
     { ...input, note: 'bad\u0000note' }, { ...input, jobId: 'job' }, { ...input, actor: C }, { requestId: A, jobId: B, decision: 'sent' }]) {
     assert.throws(() => scheduleInput('reconcile', bad, now));
   }

@@ -8,10 +8,29 @@ const exact = (value, names) => value !== null && typeof value === 'object' &&
   names.every(key => Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, 'value'));
 const id = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
+const plain = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+// The v1 summary predates the incident ledger and run reasons: it knows no open
+// issue and no skip reason. Only these two absent keys are filled; everything
+// else still goes through the strict broker contract.
+function legacySummary(row) {
+  if (!plain(row)) return row;
+  const lastRuns = Array.isArray(row.lastRuns)
+    ? row.lastRuns.map(run => plain(run) && !Object.hasOwn(run, 'reason') ? { ...run, reason: null } : run) : row.lastRuns;
+  return { ...row, lastRuns, ...(Object.hasOwn(row, 'openIssues') ? {} : { openIssues: [] }) };
+}
+function legacyResult(operation, value) {
+  if (!plain(value)) return value;
+  if (operation === 'list') return Array.isArray(value.schedules) ? { ...value, schedules: value.schedules.map(legacySummary) } : value;
+  return Object.hasOwn(value, 'schedule') ? { ...value, schedule: legacySummary(value.schedule) } : value;
+}
 export function createSupabaseScheduleReads(options) {
-  // manage_v2 keeps v1 validation/actor/grant semantics for mutations and adds
-  // issues/reconcile; it requires the schedule health + reconcile migrations.
-  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: ['hermes_room_schedule_manage_v2', 'hermes_room_schedule_capabilities_v1'] });
+  // manage_v2 (20261015100100) keeps v1 validation/actor/grant semantics for
+  // mutations and adds issues/reconcile. Release order is migrations first, then
+  // connector; if v2 is still absent (PGRST202), create/update/revoke/list fall
+  // back to the deployed manage_v1 with the same input, and issues/reconcile
+  // report backend_unavailable instead of failing every schedule call.
+  const rpc = createBoundUserRpcTransport({ ...options,
+    allowedNames: ['hermes_room_schedule_manage_v2', 'hermes_room_schedule_manage_v1', 'hermes_room_schedule_capabilities_v1'] });
   return Object.freeze({ async capabilities({ accessToken, organizationId }, callOptions) {
     if (!id(organizationId)) throw new BrokerError('invalid_request');
     return rpc('hermes_room_schedule_capabilities_v1', accessToken, { p_organization_id: organizationId }, callOptions, { optional: true });
@@ -22,8 +41,12 @@ export function createSupabaseScheduleReads(options) {
       !(value.binding.expectedPolicyVersion === 0 || positive(value.binding.expectedPolicyVersion))) throw new BrokerError('invalid_request');
     let input; try { input = scheduleInput(operation, value.input); } catch { throw new BrokerError('invalid_request'); }
     const binding = { ...value.binding, requestId: input.requestId ?? randomUUID() };
-    return rpc('hermes_room_schedule_manage_v2', value.accessToken, { p: { binding, operation, input } }, callOptions,
-      { write: !['list', 'issues'].includes(operation) });
+    const args = { p: { binding, operation, input } }, write = !['list', 'issues'].includes(operation);
+    // A PGRST202 refusal is definite (transport reports onRejected): nothing ran.
+    const current = await rpc('hermes_room_schedule_manage_v2', value.accessToken, args, callOptions, { write, optional: true });
+    if (current !== null) return current;
+    if (operation === 'issues' || operation === 'reconcile') throw new BrokerError('backend_unavailable');
+    return legacyResult(operation, await rpc('hermes_room_schedule_manage_v1', value.accessToken, args, callOptions, { write }));
   } });
 }
 

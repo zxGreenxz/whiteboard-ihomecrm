@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { setup, READS_PATH, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
+import { setup, READS_PATH, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
+import { reviewFixesSql } from './review-fixes-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
@@ -96,6 +97,11 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
   const value = { organizationId: ORG, domain: 'income_expenses', items: [row], nextCursor: null, source: 'crm.income_expenses', fetchedAt: '2026-10-15T01:02:03.004Z' };
   const filtered = input('income_expenses', { status: 'UNAPPROVED', fromDate: '2026-10-01', toDate: '2026-10-31' });
   assert.deepEqual(domainResult('income_expenses', value, identity('income_expenses.view'), filtered), value);
+  // Text bound = SQL left(...,200) in code points: 200 emoji (400 UTF-16 units) pass, 201 do not.
+  const emoji = { ...value, items: [{ ...row, name: '🏠'.repeat(200) }] };
+  assert.deepEqual(domainResult('income_expenses', emoji, identity('income_expenses.view'), filtered), emoji);
+  assert.throws(() => domainResult('income_expenses', { ...value, items: [{ ...row, name: '🏠'.repeat(201) }] }, identity('income_expenses.view'), filtered));
+  assert.throws(() => domainResult('income_expenses', { ...value, items: [{ ...row, name: 'x'.repeat(201) }] }, identity('income_expenses.view'), filtered));
   for (const changed of [{ ...value, source: 'crm.other' }, { ...value, fetchedAt: 'now' }, { ...value, items: [{ ...row, approvalStatus: 'APPROVED' }] },
     { ...value, items: [{ ...row, voucherDate: '2026-09-30' }] }, { ...value, items: [{ ...row, notes: 'x' }] }, { ...value, items: [{ ...row, totalAmount: 150000 }] }])
     assert.throws(() => domainResult('income_expenses', changed, identity('income_expenses.view'), filtered));
@@ -183,8 +189,8 @@ test('v2 SQL mutations: removing overlay, CRM scope, org, restricted, permission
   }
 });
 
-test('finance options hook adds only enabled registry choices and permitted scopes; context needs restriction and ceiling', { timeout: 120000 }, async t => {
-  const env = await setup(t, { hook: readFileSync(HOOK_PATH, 'utf8') }), { db, call } = env;
+test('finance options hook adds only enabled registry choices and permitted scopes; context needs restriction, ceiling and connection scope', { timeout: 120000 }, async t => {
+  const env = await setup(t, { hook: readFileSync(HOOK_PATH, 'utf8'), fixes: reviewFixesSql() }), { db, call } = env;
   const extend = (value, kind) => call('SELECT app_private.hermes_finance_extend_options_v1($1::jsonb,$2::text) result', [JSON.stringify(value), kind], { role: 'postgres' });
   const base = { organizationId: ORG, userId: USER, membershipId: USER, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1, enabled: true,
     read: ['assistant.memory.read'], action: [], scopes: [] };
@@ -195,9 +201,14 @@ test('finance options hook adds only enabled registry choices and permitted scop
   await assert.rejects(call('SELECT app_private.hermes_finance_extend_options_v1($1::jsonb,$2::text) result', [JSON.stringify(base), 'connection_options']), /permission denied/);
   const org = await extend({ ...base, choices: { read: [], action: [], scopes: [] } }, 'org_options');
   assert.deepEqual(sorted(org.choices.read), sorted(DOMAIN_READ_CAPABILITIES_V2)); assert.deepEqual(org.choices.action, ['income_expenses.create']);
-  const context = await extend({ ...base, restrictions: { read: ['income_expenses.view'], action: [] }, companyCeilings: { read: DOMAIN_READ_CAPABILITIES_V2, action: [] },
-    effective: { read: [], action: [] } }, 'context');
-  assert.deepEqual(context.effective, { read: ['income_expenses.view'], action: [] });
+  const contextOf = scopeIds => ({ ...base, scopeIds, restrictions: { read: ['income_expenses.view'], action: ['income_expenses.create'] },
+    companyCeilings: { read: DOMAIN_READ_CAPABILITIES_V2, action: ['income_expenses.create'] }, effective: { read: [], action: [] } });
+  const context = await extend(contextOf([SCOPE]), 'context');
+  assert.deepEqual(context.effective, { read: ['income_expenses.view'], action: ['income_expenses.create'] });
+  // Review fix P3b: effective also needs the connection's own saved scope (as the task hooks).
+  for (const scopeIds of [[], [UNSELECTED_ORG_SCOPE]])
+    assert.deepEqual((await extend(contextOf(scopeIds), 'context')).effective, { read: [], action: [] }, JSON.stringify(scopeIds));
+  assert.deepEqual((await extend({ ...contextOf([SCOPE]), scopeIds: undefined }, 'context')).effective, { read: [], action: [] }, 'missing scopeIds fails closed');
   await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='income_expenses.view'");
   assert.equal((await extend(base, 'connection_options')).read.includes('income_expenses.view'), false, 'revoked CRM grant is not offered');
   await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='income_expenses.view'");
@@ -206,6 +217,17 @@ test('finance options hook adds only enabled registry choices and permitted scop
   assert.deepEqual(none.read, base.read); assert.deepEqual(none.action, []); assert.deepEqual(none.scopes, []);
   assert.deepEqual(await extend({ ...base, enabled: false }, 'connection_options'), { ...base, enabled: false });
   await assert.rejects(extend({ ...base, policyVersion: 2 }, 'connection_options'), code('PT409'));
+});
+
+test('review fix P3b mutation: dropping the connection-scope condition lets context grant an unscoped key', { timeout: 120000 }, async t => {
+  const fixes = reviewFixesSql(), anchor = "AND result->'scopeIds' ? scope.id::text AND (";
+  assert.ok(fixes.includes(anchor), 'mutation applies');
+  const env = await setup(t, { hook: readFileSync(HOOK_PATH, 'utf8'), fixes: fixes.replace(anchor, 'AND (') });
+  const context = await env.call('SELECT app_private.hermes_finance_extend_options_v1($1::jsonb,$2::text) result', [JSON.stringify({
+    organizationId: ORG, userId: USER, membershipId: USER, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1, scopeIds: [],
+    restrictions: { read: ['income_expenses.view'], action: [] }, companyCeilings: { read: DOMAIN_READ_CAPABILITIES_V2, action: [] },
+    effective: { read: [], action: [] } }), 'context'], { role: 'postgres' });
+  assert.deepEqual(context.effective.read, ['income_expenses.view'], 'the unmutated fix denies this exact input (test above)');
 });
 
 test('domain mount routes v2 tools to the v2 RPC with the bound user JWT and merges both capability families', { timeout: 120000 }, async t => {

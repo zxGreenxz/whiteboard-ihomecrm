@@ -1051,6 +1051,28 @@
       ],
       "raSoatBoi": "Claude Code — tích hợp Hermes gói C/D/E 15/10/2026",
       "sha256": "d729d84bca7afc8aa2b85961aacf80909f681fab3aec9e72e88ee9382ecfe977"
+    },
+    "supabase/migrations/20261015130000_hermes_review_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261015130000_hermes_review_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_member_v1, hermes_task_follow_grant_v1, hermes_task_follow_tick_v1, hermes_finance_extend_options_v1 (guard đòi 8 file đợt 20261015 có trước)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng các object trên — sinh 15/10/2026 sau khi thêm migration sửa review"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward mới (15/10/2026) sửa review độc lập đợt C/D/E, chưa đi qua lane apply TEST/production — object vắng mặt vì 8 migration 20261015100000…120200 và file này CHƯA CHẠY trên production, không phải bị DROP. Chỉ CREATE OR REPLACE bốn hàm private, giữ chữ ký/owner/search_path/ACL. Kiểm hiện có: PGlite hai lượt sau file gốc (task-follow-review-fixes, task-follow-mutation, domain-v2) và replay ACL tĩnh hermes-durable-schema; chưa có dry-run/biên nhận apply trên TEST hay production. Khi apply qua npm run migrate:forward, provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_task_follow_member_v1",
+        "function:app_private.hermes_task_follow_grant_v1",
+        "function:app_private.hermes_task_follow_tick_v1",
+        "function:app_private.hermes_finance_extend_options_v1"
+      ],
+      "raSoatBoi": "Claude Code — sửa review Hermes đợt 15/10/2026",
+      "sha256": "3067c153f60ebb65bfd9d6a61cf23001ed053cb22c7e50e1ff66a55db687d4ff"
     }
   }
 }

@@ -83,7 +83,7 @@ export const EXPENSE_ACTION_TOOLS = Object.freeze([
       lines: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', additionalProperties: false, required: ['categoryId', 'amount', 'description'], properties: {
         categoryId: uuid, amount: { type: 'integer', minimum: 1, maximum: MAX_VND }, description: { type: ['string', 'null'], maxLength: 200 } } } } } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }),
-  Object.freeze({ name: 'crm_expense_status', description: 'Đối soát requestId đã dùng cho crm_expense_create; not_found nghĩa là chưa có phiếu nào được ghi.',
+  Object.freeze({ name: 'crm_expense_status', description: 'Đối soát requestId đã dùng cho crm_expense_create. not_found hoặc unknown KHÔNG cho phép tạo phiếu bằng requestId mới (yêu cầu cũ có thể vẫn đang ghi); nếu cần thử lại chỉ gọi lại crm_expense_create với CÙNG requestId và cùng nội dung — CRM không ghi trùng một requestId.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
 ]);

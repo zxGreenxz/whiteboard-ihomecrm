@@ -9,11 +9,15 @@ const decision = z.enum(['sent', 'not_sent']);
 // Same printable-text rule as the SQL ledger; newline and tab are allowed.
 // eslint-disable-next-line no-control-regex
 const controls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const note = z.string().min(1).max(500).refine(value => value.trim() !== '' && !controls.test(value));
+// SQL bounds (char_length, left(...,160)) count code points. UTF-16 `.length`
+// would count an emoji twice and turn the whole list into invalid_response.
+const codePoints = (value: string) => Array.from(value).length;
+const bounded = (max: number) => z.string().refine(value => codePoints(value) <= max);
+const note = z.string().refine(value => codePoints(value) >= 1 && codePoints(value) <= 500 && value.trim() !== '' && !controls.test(value));
 const item = z.object({ kind, id: uuid,
   origin: z.enum(['automation', 'hermes_schedule', 'hermes_connector', 'hermes_private_command', 'private_reply']),
-  scheduleId: uuid.nullable(), conversationId: uuid.nullable(), conversationName: z.string().max(160).nullable(),
-  preview: z.string().max(160).nullable(), errorCode: z.string().regex(/^[A-Za-z][A-Za-z_]{0,63}$/).nullable(),
+  scheduleId: uuid.nullable(), conversationId: uuid.nullable(), conversationName: bounded(160).nullable(),
+  preview: bounded(160).nullable(), errorCode: z.string().regex(/^[A-Za-z][A-Za-z_]{0,63}$/).nullable(),
   createdAt: iso, processedAt: iso.nullable() }).strict()
   .refine(value => value.kind === 'private_command'
     ? value.origin === 'private_reply' && value.conversationId === null && value.preview === null && value.scheduleId === null

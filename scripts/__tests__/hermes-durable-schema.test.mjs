@@ -522,10 +522,12 @@ $fn$`)],
 RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
   SELECT CASE WHEN p IS NULL THEN NULL ELSE to_char(p AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END
 $fn$`)],
+  // Latest definition: 20261015130000_hermes_review_fixes_v1 (company ACTIVE too).
   ['app_private.hermes_task_follow_member_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_member_v1(p_org uuid,p_user uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
   SELECT p_org IS NOT NULL AND p_user IS NOT NULL AND EXISTS(SELECT 1 FROM public.organization_memberships m
-    WHERE m.user_id=p_user AND m.organization_id=p_org AND m.status='ACTIVE' AND m.revoked_at IS NULL
+    JOIN public.organizations o ON o.id=m.organization_id
+    WHERE m.user_id=p_user AND m.organization_id=p_org AND o.status='ACTIVE' AND m.status='ACTIVE' AND m.revoked_at IS NULL
       AND (m.valid_from IS NULL OR m.valid_from<=clock_timestamp()) AND (m.valid_to IS NULL OR m.valid_to>clock_timestamp()))
 $fn$`)],
   ['app_private.hermes_work_memory_int_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_work_memory_int_v1(p jsonb,p_min integer,p_max integer)

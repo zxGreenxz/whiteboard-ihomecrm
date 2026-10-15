@@ -11,7 +11,10 @@ export const domainRecord = value => value !== null && typeof value === 'object'
 export const domainExact = (value, keys) => domainRecord(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const fail = () => { throw new TypeError('invalid_domain_contract'); };
 const nullable = check => value => value === null || check(value);
-const text = value => typeof value === 'string' && value.length <= 200 && !/[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(value);
+// SQL hermes_domain_text_v1 keeps left(...,200) characters (code points); an
+// emoji is two UTF-16 units, so `.length` would reject a valid row (and page).
+const text = value => typeof value === 'string' && value.length <= 400 && [...value].length <= 200 &&
+  !/[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u.test(value);
 const amount = value => typeof value === 'string' && /^-?\d{1,18}(?:\.\d{1,6})?$/.test(value);
 const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) &&
   new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;

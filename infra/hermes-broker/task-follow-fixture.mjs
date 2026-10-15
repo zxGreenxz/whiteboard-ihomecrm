@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { setup as taskSetup, BUILDING, TYPE, SCOPE, ASSIGNEE, binding } from './task-fixture.mjs';
 import { USER, ORG, SESSION, CONNECTION, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
+import { applyReviewFixes, reviewFixesSql } from './review-fixes-fixture.mjs';
 export { USER, ORG, SESSION, CONNECTION, FOREIGN, BUILDING, TYPE, SCOPE, ASSIGNEE, binding };
 
 // Version-4 identifiers distinct from the shared fixture's repeated-digit ids.
@@ -12,11 +13,11 @@ export const followPath = 'supabase/migrations/20261015110000_hermes_task_follow
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const policy = (src, name) => src.match(new RegExp(`(?:CREATE|ALTER) POLICY "?${name}"? ON (?:public\\.)?\\w+[\\s\\S]*?;`, 'i'))[0];
 
-/** Real Hermes identity/session/policy SQL, real canonical jobs table, triggers
+/** Real Hermes identity/session/policy SQL (batch file + review fixes), real canonical jobs table, triggers
  * and current jobs RLS policies; the CRM authorization graph behind
  * authorize/scope helpers is a per-user permission table port. Notifications,
  * notify gate, Vault JWT and pg_net are synthetic ports. */
-export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TASK_FOLLOW_SQL ?? followPath, 'utf8') } = {}) {
+export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TASK_FOLLOW_SQL ?? followPath, 'utf8'), fixes = reviewFixesSql() } = {}) {
   const base = await taskSetup(t);
   const { db } = base;
   await db.exec(`
@@ -76,6 +77,9 @@ export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TAS
   for (const name of ['jobs_update_rbac', 'jobs_delete_rbac']) { await db.exec(policy(misc, name)); await db.exec(policy(cutover, name)); }
   await db.exec('GRANT UPDATE,DELETE ON public.jobs TO authenticated');
   await db.exec(sql); await db.exec(sql);
+  // Latest definitions: the review-fix forward migration (applied twice) replaces
+  // grant/tick/member; fixes:null exercises the batch file alone.
+  if (fixes !== null) await applyReviewFixes(db, fixes);
   const installed = (await db.query("SELECT bool_or(enabled) enabled,count(*)::int n FROM app_private.hermes_capabilities WHERE capability IN ('tasks.edit','tasks.delete')")).rows[0];
   if (installed.n !== 2 || installed.enabled !== false) throw new Error('task follow capabilities must install disabled');
   await db.exec("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('tasks.edit','tasks.delete')");

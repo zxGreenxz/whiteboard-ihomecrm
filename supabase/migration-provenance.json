@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-15T05:10:12.261Z",
+  "generatedAt": "2026-10-15T07:43:35.298Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 705,
-    "unknown": 88,
+    "unknown": 89,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11737,6 +11737,21 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
+        "function:app_private.hermes_finance_extend_options_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015130000_hermes_review_fixes_v1.sql",
+      "version": "20261015130000",
+      "name": "hermes_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "3067c153f60ebb65bfd9d6a61cf23001ed053cb22c7e50e1ff66a55db687d4ff",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_follow_member_v1",
+        "function:app_private.hermes_task_follow_grant_v1",
+        "function:app_private.hermes_task_follow_tick_v1",
         "function:app_private.hermes_finance_extend_options_v1"
       ]
     },

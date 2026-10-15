@@ -47,6 +47,22 @@ describe('Hermes delivery reconciliation client (human CRM JWT)', () => {
     s.fetch.mockResolvedValueOnce(json({ ...ack(), reconciliation: { ...ack().reconciliation, decision: 'sent' } }));
     await expect(s.client.resolve(input())).rejects.toMatchObject({ code: 'reconcile_outcome_unknown', outcomeUnknown: true });
   });
+  it('bounds text by code points like SQL char_length/left(): emoji at the 160/500 limit is valid, one more is not', async () => {
+    const emoji = (count: number) => '🏠'.repeat(count);
+    expect(emoji(160).length).toBe(320);
+    const s = setup();
+    const rich = { ...snapshot().items[0], preview: emoji(160), conversationName: 'Nhóm 🏠 ' + emoji(152) };
+    s.fetch.mockResolvedValueOnce(json({ ...snapshot(), items: [rich] }));
+    await expect(s.client.list()).resolves.toEqual({ ...snapshot(), items: [rich] });
+    for (const changed of [{ preview: emoji(161) }, { conversationName: emoji(161) }]) {
+      s.fetch.mockResolvedValueOnce(json({ ...snapshot(), items: [{ ...snapshot().items[0], ...changed }] }));
+      await expect(s.client.list()).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    const note = emoji(500);
+    s.fetch.mockResolvedValueOnce(json({ ...ack(), reconciliation: { ...ack().reconciliation, note } }));
+    await expect(s.client.resolve({ ...input(), note })).resolves.toMatchObject({ note });
+    await expect(s.client.resolve({ ...input(), note: emoji(501) })).rejects.toMatchObject({ code: 'invalid_request', outcomeUnknown: false });
+  });
   it('maps definite refusals as not applied and ambiguous write failures as unknown, never retrying', async () => {
     for (const [status, code, expected] of [[403, '42501', 'forbidden'], [409, 'PT409', 'conflict'], [400, '22023', 'invalid_request'], [404, 'PGRST202', 'backend_unavailable']] as const) {
       const s = setup(); s.fetch.mockResolvedValueOnce(denial(code, status));

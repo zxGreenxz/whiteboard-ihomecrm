@@ -6,6 +6,8 @@ import { setupMount, token } from './group-preview-fixture.mjs';
 import { createHash } from 'node:crypto';
 import { ORG, USER, INSTANCE, SESSION, ACCOUNT, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { scheduleInput } from './schedule-contract.mjs';
+import { createDurableAuthority } from './durable-authority.mjs';
+import { createScheduleMount } from './schedule-mount.mjs';
 import { tickHermesSchedules } from '../../worker/lib/hermes-schedule.js';
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const migrationRoot = new URL('../../supabase/migrations/', import.meta.url);
@@ -242,6 +244,56 @@ test('actual draft SQL: current rights, grant lifecycle, current rooms and provi
     await db.exec("UPDATE public.zalo_send_queue SET result='{}'::jsonb");
     await insert();
   });
-  // The session-bound mount now calls manage_v2; its end-to-end receipt test
-  // lives with the forward migrations in schedule-health-sql.test.mjs.
+  // The session-bound mount calls manage_v2; its end-to-end receipt test lives
+  // with the forward migrations in schedule-health-sql.test.mjs. This database
+  // has only the deployed v1 SQL: a connector released before those migrations
+  // gets PGRST202 for v2 and must fall back, never fail every schedule call.
+  await each('session-bound mount falls back to the real manage_v1 SQL on PGRST202; issues/reconcile are unavailable', async () => {
+    const auth = { verifySession: value => x.auth.verifySession(value), async readAuthorization(value) {
+      const base = await x.auth.readAuthorization(value);
+      return { ...base, permissions: { ...base.permissions, read: [...base.permissions.read, 'chat_zalo.view'], action: [...base.permissions.action, 'chat_zalo.send', 'chat_zalo.manage_automation'] },
+        companyCeilings: { ...base.companyCeilings, read: [...base.companyCeilings.read, 'chat_zalo.view'], action: [...base.companyCeilings.action, 'chat_zalo.send', 'chat_zalo.manage_automation'] },
+        scopesByPermission: { ...base.scopesByPermission, 'chat_zalo.view': { buildingIds: [], cashbookIds: [] }, 'chat_zalo.send': { buildingIds: [], cashbookIds: [] },
+          'chat_zalo.manage_automation': { buildingIds: [], cashbookIds: [] } } };
+    } };
+    const authority = createDurableAuthority({ auth, connectionStore: x.connectionStore, crypto: x.crypto });
+    const calls = [];
+    hooks.beforeFetch = async (url, options) => {
+      const name = new URL(url).pathname.slice('/rest/v1/rpc/'.length);
+      if (!name.startsWith('hermes_room_schedule_manage_')) return;
+      calls.push(name);
+      if (name === 'hermes_room_schedule_manage_v2')
+        return Response.json({ code: 'PGRST202', message: 'Could not find the function public.hermes_room_schedule_manage_v2(p)', details: null, hint: null }, { status: 404 });
+      const { p } = JSON.parse(options.body);
+      assert.deepEqual(Object.keys(p).sort(), ['binding', 'input', 'operation']);
+      await heartbeat();
+      try {
+        await db.query("SELECT set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claim.session',$2,false)", [USER, SESSION]);
+        return Response.json(await f.rpc('public.hermes_room_schedule_manage_v1', p, 'authenticated'));
+      } catch (error) {
+        return Response.json({ code: error.code, message: error.message, details: null, hint: null },
+          { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 });
+      }
+    };
+    try {
+      const mount = createScheduleMount({ authority, auth, connectionStore: x.connectionStore, crypto: x.crypto,
+        supabase: x.config, dependencyScope: x.scope, fetch: x.config.fetch });
+      const service = mount.createService(), signal = new AbortController().signal;
+      const call = async (operation, input, events = {}) => service.finalizeSchedule(token, await service.prepareSchedule(token, operation, input, { signal }), { signal,
+        onDispatch() { events.dispatched = (events.dispatched ?? 0) + 1; }, onRejected() { events.rejected = (events.rejected ?? 0) + 1; } });
+      const events = {};
+      const created = await call('create', { requestId: REQUEST, settings: settings() }, events);
+      assert.deepEqual([created.schedule.scheduleId, created.schedule.state, created.schedule.revision, created.schedule.openIssues], [REQUEST, 'ACTIVE', 1, []]);
+      assert.deepEqual([events.dispatched, events.rejected], [2, 1], 'the v2 refusal is definite; the v1 call is the only write that ran');
+      assert.equal((await run()).status, 'queued');
+      const listed = await call('list', {});
+      assert.deepEqual(listed.schedules.map(row => [row.scheduleId, row.openIssues, row.lastRuns.map(entry => [entry.outcome, entry.reason])]),
+        [[REQUEST, [], [['queued', null]]]]);
+      for (const [operation, input] of [['issues', {}], ['reconcile', { requestId: NEXT, jobId: REQUEST, decision: 'sent', note: 'Đã thấy trong nhóm' }]])
+        await assert.rejects(call(operation, input), error => error.code === 'backend_unavailable', operation);
+      assert.equal((await call('revoke', { requestId: NEXT, scheduleId: REQUEST, expectedRevision: 1 })).schedule.state, 'REVOKED');
+      assert.deepEqual(calls.filter(name => name.endsWith('_v1')).length, 3, 'create, list, revoke ran once each on v1; issues/reconcile never fell back');
+      assert.equal((await db.query('SELECT count(*)::integer n FROM public.zalo_send_queue')).rows[0].n, 1);
+    } finally { hooks.beforeFetch = undefined; }
+  });
 });
