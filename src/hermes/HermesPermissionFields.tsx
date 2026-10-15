@@ -6,7 +6,7 @@ import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
 import type { HermesConnectionRestrictions } from './connectionClient';
 
 const catalog = new Set(VISIBLE_PAGE_GROUPS.flatMap(group => group.pages.flatMap(page => page.features.map(featureKey))));
-const label = (key: string) => ({ 'assistant.context.read': 'Xem thông tin phiên và quyền của tôi', 'assistant.memory.read': 'Xem ghi nhớ công việc CRM được phép', 'assistant.memory.write': 'Lưu, sửa và quên ghi nhớ công việc CRM của tôi' } as Record<string, string>)[key] ?? key;
+const label = (key: string) => ({ 'assistant.context.read': 'Xem thông tin phiên và quyền của tôi', 'assistant.memory.read': 'Xem ghi nhớ công việc CRM được phép', 'assistant.memory.write': 'Lưu, sửa và quên ghi nhớ công việc CRM của tôi', 'assistant.memory.supervise': 'Hermes tổng: tra ghi nhớ công việc được chia sẻ của người khác (theo quyền xem người dùng)' } as Record<string, string>)[key] ?? key;
 interface Props {
   value: HermesConnectionRestrictions; scopeIds: string[];
   readChoices: string[]; actionChoices?: string[]; scopes: AuthorizationScope[];

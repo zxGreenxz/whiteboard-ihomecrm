@@ -11,6 +11,11 @@ export const HERMES_CAPABILITIES = Object.freeze({
   'assistant.context.read': Object.freeze({ mode: 'read', resource: 'self' }),
   'assistant.memory.read': Object.freeze({ mode: 'read', resource: 'self' }),
   'assistant.memory.write': Object.freeze({ mode: 'action', resource: 'self' }),
+  // Gói D: theo dõi/huỷ việc dùng chính quyền CRM tasks.edit/tasks.delete;
+  // Hermes tổng đọc work memory được chia sẻ là một Read riêng (users.view).
+  'tasks.edit': Object.freeze({ mode: 'action', resource: 'building' }),
+  'tasks.delete': Object.freeze({ mode: 'action', resource: 'building' }),
+  'assistant.memory.supervise': Object.freeze({ mode: 'read', resource: 'organization' }),
   'rooms.view': Object.freeze({ mode: 'read', resource: 'building' }),
   'chat_zalo.view': Object.freeze({ mode: 'read', resource: 'organization' }),
   'chat_zalo.manage_automation': Object.freeze({ mode: 'action', resource: 'organization' }),

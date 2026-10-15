@@ -4,11 +4,13 @@ import { domainExact, domainId } from './domain-contract.mjs';
 import { BrokerError } from './broker.mjs';
 import { createHash } from 'node:crypto';
 import { TASK_ACTION, taskInput, taskResult, mayUseTask } from './task-contract.mjs';
+import { createTaskFollowReads, extendTaskFollowAuthorization } from './task-follow-adapter.mjs';
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const keys=['connectionId','tokenDigest','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision'];
 export function createTaskReads(options){
   const rpc=createBoundUserRpcTransport({...options,allowedNames:['hermes_task_create_action_v1','hermes_task_create_capabilities_v1']});
-  return Object.freeze({async capabilities({accessToken,organizationId},callOptions){
+  const follow=createTaskFollowReads(options);
+  return Object.freeze({followCapabilities:follow.capabilities,async capabilities({accessToken,organizationId},callOptions){
     if(!domainId(organizationId))throw new BrokerError('invalid_request');
     return rpc('hermes_task_create_capabilities_v1',accessToken,{p_organization_id:organizationId},callOptions,{optional:true});
   },async execute(operation,value,callOptions){
@@ -30,10 +32,14 @@ export function createTaskAuth({baseAuth,reads}){
       cap.isSuperadmin!==current.isSuperadmin||!(cap.policyVersion===0||positive(cap.policyVersion))||typeof cap.allowed!=='boolean'||typeof cap.companyEnabled!=='boolean'||
       cap.allowed&&!cap.companyEnabled||!Array.isArray(cap.buildingIds)||cap.buildingIds.length>256||cap.buildingIds.some(id=>!domainId(id))||new Set(cap.buildingIds).size!==cap.buildingIds.length||
       !cap.allowed&&cap.buildingIds.length)throw new BrokerError('context_changed');
-    return{...current,permissions:{...current.permissions,action:[...current.permissions.action,...(cap.allowed?[TASK_ACTION]:[])]},
+    const extended={...current,permissions:{...current.permissions,action:[...current.permissions.action,...(cap.allowed?[TASK_ACTION]:[])]},
       companyCeilings:{...current.companyCeilings,action:[...current.companyCeilings.action,...(cap.companyEnabled?[TASK_ACTION]:[])]},
       scopesByPermission:{...current.scopesByPermission,...(cap.allowed?{[TASK_ACTION]:{buildingIds:[...cap.buildingIds],cashbookIds:[]}}:{})},
       epoch:createHash('sha256').update(JSON.stringify({base:current.epoch,cap})).digest('hex')};
+    // Follow/progress/cancel and supervision ride on the task SQL family: when
+    // the task RPC above is absent, their optional RPC is never consulted.
+    if(typeof reads.followCapabilities!=='function')return extended;
+    return extendTaskFollowAuthorization(extended,await reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}),input);
   }});
 }
 export function createTaskService({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch,clock=Date.now}={}){

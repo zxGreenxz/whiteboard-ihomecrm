@@ -5,7 +5,8 @@ import { exact, id, positive, isMemoryWrite, workMemoryInput } from './work-memo
 const fail = code => { throw new BrokerError(code); };
 const bindingKeys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
 const rpcNames = Object.freeze({ status: 'hermes_work_memory_status_v1', list: 'hermes_work_memory_list_v1',
-  configure: 'hermes_work_memory_configure_v1', upsert: 'hermes_work_memory_upsert_v1', forget: 'hermes_work_memory_forget_v1' });
+  configure: 'hermes_work_memory_configure_v1', upsert: 'hermes_work_memory_upsert_v1', forget: 'hermes_work_memory_forget_v1',
+  search: 'hermes_work_memory_search_v1' });
 export function createSupabaseWorkMemoryReads(options = {}) {
   const rpc = createBoundUserRpcTransport({ ...options, allowedNames: [...Object.values(rpcNames), 'hermes_work_memory_capabilities_v1'] });
   return Object.freeze({

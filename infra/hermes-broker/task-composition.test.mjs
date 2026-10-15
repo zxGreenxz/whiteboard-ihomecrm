@@ -35,6 +35,10 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
    assert.equal(new URL(url).origin,'https://example.invalid');assert.equal(options.headers.authorization,'Bearer '+accessToken);
    assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.method,'POST');assert.equal(options.redirect,'error');
    const path=new URL(url).pathname,args=JSON.parse(options.body);
+   // Follow SQL is a separate migration; its exact PostgREST absence keeps this
+   // create-only deployment unchanged (no follow/progress/cancel grant).
+   if(path==='/rest/v1/rpc/hermes_task_follow_capabilities_v1'){assert.deepEqual(args,{p_organization_id:ORG});
+     return Response.json({code:'PGRST202',message:'Synthetic optional RPC absent',details:null,hint:null},{status:404});}
    const capability=path==='/rest/v1/rpc/hermes_task_create_capabilities_v1',metadata=path==='/rest/v1/rpc/hermes_task_input_options_v1';
    assert.ok(capability||metadata||path==='/rest/v1/rpc/hermes_task_create_action_v1');
    if(capability)assert.deepEqual(args,{p_organization_id:ORG});

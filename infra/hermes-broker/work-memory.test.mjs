@@ -30,7 +30,7 @@ function setup() {
   return { service, state, calls, joined };
 }
 test('fixed work-memory schemas have no authority, filesystem or arbitrary RPC input', () => {
-  assert.equal(WORK_MEMORY_TOOLS.length, 5);
+  assert.equal(WORK_MEMORY_TOOLS.length, 6);
   for (const operation of ['status', 'list']) for (const input of [{ organizationId: org }, { userId: user }, { accessToken }, { path: '/personal/history' }]) {
     assert.throws(() => workMemoryInput(operation, input), /invalid_request/);
   }

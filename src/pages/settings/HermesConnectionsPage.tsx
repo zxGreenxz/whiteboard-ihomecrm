@@ -10,6 +10,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { HermesPermissionFields } from '@/hermes/HermesPermissionFields';
 import { HermesOrgPolicySettings } from '@/hermes/HermesOrgPolicySettings';
 import { useHermesConnections } from '@/hermes/useHermesConnections';
+import { HermesWorkAssistant } from '@/hermes/HermesWorkAssistant';
 import { HermesZaloBindings } from '@/hermes/HermesZaloBindings';
 import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
 import { HermesDeliveryReconcile } from '@/hermes/HermesDeliveryReconcile';
@@ -125,6 +126,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
         <Button variant="outline" onClick={() => { model.clearHandoff(); setCopied(null); }}>Đã lưu, ẩn mã</Button></div>
       {copied && <p role="status" className="text-sm">{copied}</p>}
     </section>}
+    <HermesWorkAssistant userId={userId} organizationId={organizationId} currentScope={currentScope} />
     <HermesOrgPolicySettings userId={userId} organizationId={organizationId} currentScope={currentScope}
       onPolicyChanging={policyChanging} onPolicyChanged={policyChanged} />
     <HermesZaloBotSettings userId={userId} organizationId={organizationId} currentScope={currentScope} onConfigurationChanged={botConfigurationChanged} />
