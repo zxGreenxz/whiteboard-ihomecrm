@@ -1034,6 +1034,20 @@
       ]
     },
     {
+      "id": "hermes-notify-retry-digest",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_notify_retry_digest_v1.sql",
+        "infra/hermes-broker/notify-retry-digest-fixture.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/task-follow*.test.mjs",
+        "infra/hermes-broker/schedule-health-sql.test.mjs",
+        "infra/hermes-broker/schedule-notify-digest.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-work-assistant-ui",
       "sourcePaths": [
         "src/hermes/workAssistantClient.ts",

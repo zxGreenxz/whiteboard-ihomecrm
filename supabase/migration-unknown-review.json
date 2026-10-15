@@ -873,6 +873,25 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261015181525_hermes_notify_retry_digest_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261015181525_hermes_notify_retry_digest_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_schedule_notify_v2(p_incidents uuid[],p_phase text) — helper gộp thông báo sự cố lịch theo (công ty, chủ lịch); cùng file thay hermes_task_follow_tick_v1 và hermes_room_schedule_sweep_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đúng function:app_private.hermes_schedule_notify_v2 — sinh 15/10/2026 (UTC) ngay sau khi stage migration"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Forward mới (16/10/2026, trả hai khoản nợ hoãn Hermes: nhắc việc gửi lỗi thì thử lại có trần; thông báo sự cố lịch gộp theo người nhận), CHƯA apply production — helper vắng mặt vì migration chưa chạy, không phải bị DROP. Đã apply TEST (hzulujxgonszuleqticb) qua lane apply-reviewed-migration --env test: hai lượt ROLLBACK đạt, backup đủ tư cách, giấy phép bien-nhan-backup f21bcb63b25d1549, catalog 9a3afa36489a → 19e0e6406d83; đọc lại catalog TEST: đủ hai cột mới, 0 dòng chưa điền overdue_reported_at, sweep gọi notify_v2, ACL helper đóng, sweep chỉ service_role. PGlite: test mới thử lại/bỏ cuộc/không gửi trùng + gộp theo chủ/cô lập lỗi/giữ trễ 15 phút kèm đột biến, cùng bộ cũ của tick/sweep nạp thêm migration này. Khi apply production qua npm run migrate:forward, provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_schedule_notify_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes nợ thông báo 16/10/2026",
+      "sha256": "9cf1a53ce282d2f70bb476b5503c22aa7413855fe045cb4dcd0d56cb284bd5e4"
     }
   }
 }

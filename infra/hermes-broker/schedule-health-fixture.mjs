@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import { installGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
 import { setupMount, token } from './group-preview-fixture.mjs';
 import { ORG, USER, INSTANCE, SESSION } from '../hermes-zalo-router/private-command-fixture.mjs';
+import { applyNotifyRetryDigest, notifyRetryDigestSql } from './notify-retry-digest-fixture.mjs';
 
-// Actual candidate SQL (schedule v1 + health/reconcile forward migrations) on a
+// Actual candidate SQL (schedule v1 + health/reconcile + notify digest forward migrations) on a
 // disposable PGlite fixture. CRM authority, sale facts, timezone, push JWT and
 // pg_net are explicit synthetic ports: NOT Supabase JWT/RLS, MVCC or delivery.
 const root = new URL('../../supabase/migrations/', import.meta.url);
@@ -17,7 +18,7 @@ export const candidate = slug => {
 export const SCHEDULE = '56789012-1234-4567-8123-123456789abc';
 export const NEXT = '67890123-1234-4567-8123-123456789abc';
 
-export async function setupScheduleHealth(t, { reconcile = false, hooks = {} } = {}) {
+export async function setupScheduleHealth(t, { reconcile = false, hooks = {}, digest = notifyRetryDigestSql() } = {}) {
   const x = await setupMount(t, hooks), { f, BUILDING } = x, db = f.db;
   Object.assign(x, await installGroupSendSql(x));
   await db.exec(migration('20261013095000_hermes_zalo_private_reply_v1'));
@@ -56,6 +57,9 @@ export async function setupScheduleHealth(t, { reconcile = false, hooks = {} } =
   const health = candidate('hermes_schedule_health_v1');
   await db.exec(health); await db.exec(health);
   if (reconcile) { const sql = candidate('hermes_delivery_reconcile_v1'); await db.exec(sql); await db.exec(sql); }
+  // Latest sweep: 20261015181525 groups owner notices (applied twice);
+  // digest:null keeps the health migration's per-incident sweep.
+  if (digest !== null) await applyNotifyRetryDigest(db, digest);
   const binding = { ...x.baseline, tokenDigest: createHash('sha256').update(token).digest('hex') };
   delete binding.commandId; delete binding.claimId;
   const temporal = (await db.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI') time,
