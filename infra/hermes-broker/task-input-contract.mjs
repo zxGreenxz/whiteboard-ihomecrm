@@ -14,8 +14,8 @@ export function taskActionInput(operation,input){
   (input.kind==='buildings'?!(input.buildingId===null||typeof input.buildingId==='string'):!domainId(input.buildingId))||
   typeof input.query!=='string'||[...input.query].length>100||input.query.includes('\0')||
   !Number.isSafeInteger(input.limit)||input.limit<1||input.limit>50||!(input.cursor===null||domainId(input.cursor)))fail();
- // kind=buildings has no parent: any string the model puts there (16/10: an
- // invented well-formed UUID) is dropped to the null that SQL and the result check require.
+ // kind=buildings has no parent: any string the model puts there (16/10: the
+ // company organizationId) is dropped to the null that SQL and the result check require.
  return input.kind==='buildings'?{...input,buildingId:null}:{...input};
 }
 export function taskOptionsResult(operation,value,identity,input){

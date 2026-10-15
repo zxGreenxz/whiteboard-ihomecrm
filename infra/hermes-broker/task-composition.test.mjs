@@ -84,18 +84,19 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
    const placeholder=await call('crm_task_input_options',args);assert.equal(placeholder.isError,false);assert.deepEqual(placeholder.value.items,[{id:BUILDING,label:'Nhà A'}]);
  }
  assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:NIL,query:'',limit:50,cursor:NIL})).value.error,'invalid_request');
- // 16/10 19:38Z production (after #176): an invented well-formed buildingId for kind=buildings; SQL must receive null.
- const INVENTED='aaaa0000-0000-4000-8000-000000000001';
+ // 16/10 19:38Z production (after #176): the model put the company id (organizationId) into buildingId for
+ // kind=buildings; any string there is dropped and SQL must receive null.
+ const COMPANY_ID='aaaa0000-0000-4000-8000-000000000001';
  assert.match(listedOptions.inputSchema.properties.buildingId.description,/kind=buildings: không cần buildingId/);
  await db.exec("UPDATE public.buildings SET name='Toà 417LVT'");sent.length=0;
- const invented=await call('crm_task_input_options',{kind:'buildings',buildingId:INVENTED,query:'417LVT',limit:20,cursor:NIL});
- assert.equal(invented.isError,false);assert.deepEqual(invented.value,{organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Toà 417LVT'}],nextCursor:null});
+ const misplaced=await call('crm_task_input_options',{kind:'buildings',buildingId:COMPANY_ID,query:'417LVT',limit:20,cursor:NIL});
+ assert.equal(misplaced.isError,false);assert.deepEqual(misplaced.value,{organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Toà 417LVT'}],nextCursor:null});
  assert.deepEqual(sent,[{kind:'buildings',buildingId:null,query:'417LVT',limit:20,cursor:null}]);
  await db.exec("UPDATE public.buildings SET name='Nhà A'");sent.length=0;
- // Child kinds are not loosened: the invented id reaches SQL, which denies it.
- assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:INVENTED,query:'',limit:20,cursor:null})).value.error,'forbidden');
- assert.deepEqual(sent.map(value=>value.buildingId),[INVENTED]);sent.length=0;
- for(const buildingId of [7,{},[INVENTED],true])assert.equal((await call('crm_task_input_options',{kind:'buildings',buildingId,query:'',limit:20,cursor:null})).value.error,'invalid_request');
+ // Child kinds are not loosened: the company id is not a building; it reaches SQL, which denies it.
+ assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:COMPANY_ID,query:'',limit:20,cursor:null})).value.error,'forbidden');
+ assert.deepEqual(sent.map(value=>value.buildingId),[COMPANY_ID]);sent.length=0;
+ for(const buildingId of [7,{},[COMPANY_ID],true])assert.equal((await call('crm_task_input_options',{kind:'buildings',buildingId,query:'',limit:20,cursor:null})).value.error,'invalid_request');
  assert.deepEqual(sent,[],'non-string buildingId never reaches SQL');
  assert.equal((await call('crm_read_tasks',{})).value.error,'tool_not_available');
  assert.equal((await call('crm_read_customers',{})).value.error,'tool_not_available');
