@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { splitHermesFunctionStatements as splitSqlStatements, TASK_FUNCTIONS } from '../hermes-task-function-contract.mjs';
+import { splitHermesFunctionStatements as splitSqlStatements, TASK_FUNCTIONS, extractHermesFunctionDefinitions } from '../hermes-task-function-contract.mjs';
 import { buildTransaction } from '../apply-reviewed-migration.mjs';
 
 // Static, source-level contracts only. These tests neither compile PL/pgSQL nor
@@ -57,21 +57,42 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_expense_action_v1(jsonb,text,jsonb)', 'hermes_expense_capabilities_v1(uuid)',
   'hermes_org_policy_options_v3(uuid)', 'hermes_connection_options_v3(uuid)', 'hermes_connection_context_v3(uuid)',
   'hermes_room_pass_action_v1(jsonb,text,jsonb)', 'hermes_room_pass_capabilities_v1(uuid)',
-  'hermes_org_policy_options_v4(uuid)', 'hermes_connection_options_v4(uuid)', 'hermes_connection_context_v4(uuid)'];
+  'hermes_org_policy_options_v4(uuid)', 'hermes_connection_options_v4(uuid)', 'hermes_connection_context_v4(uuid)',
+  // Package C reconciliation/manage v2 (20261015100100) and package D task follow,
+  // supervised/own memory and v6 options (20261015110000–20261015110200).
+  'hermes_room_schedule_manage_v2(jsonb)', 'hermes_delivery_reconcile_list_v1(uuid)', 'hermes_delivery_reconcile_resolve_v1(jsonb)',
+  'hermes_task_follow_read_v1(jsonb,jsonb)', 'hermes_task_follow_action_v1(jsonb,text,jsonb)', 'hermes_task_follow_capabilities_v1(uuid)',
+  'hermes_my_task_follows_v1(uuid,jsonb)', 'hermes_my_task_follow_stop_v1(uuid,jsonb)',
+  'hermes_work_memory_search_v1(jsonb,jsonb)', 'hermes_my_work_memory_v1(uuid,integer)', 'hermes_my_work_memory_configure_v1(uuid,jsonb)',
+  'hermes_my_work_memory_edit_v1(uuid,jsonb)', 'hermes_my_work_memory_forget_v1(uuid,jsonb)',
+  'hermes_org_policy_options_v6(uuid)', 'hermes_connection_options_v6(uuid)', 'hermes_connection_context_v6(uuid)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
-  'public.hermes_room_schedule_due_v1(uuid,uuid[])', 'public.hermes_room_schedule_run_v1(uuid,bigint,uuid)'];
+  'public.hermes_room_schedule_due_v1(uuid,uuid[])', 'public.hermes_room_schedule_run_v1(uuid,bigint,uuid)',
+  // Package C schedule health worker ports (20261015100000).
+  'public.hermes_room_schedule_run_v2(uuid,bigint,uuid)', 'public.hermes_room_schedule_probe_v1(uuid,uuid)',
+  'public.hermes_room_schedule_sweep_v1(uuid,uuid[])'];
+// The package D SQL-standard invoker wrapper reaches exactly these three
+// private steps by bound OID (same shape as the task/customer create wrappers).
+const TASK_FOLLOW_STEPS = ['app_private.hermes_task_follow_guard_v1(jsonb,text,jsonb)',
+  'app_private.hermes_task_follow_apply_v1(jsonb)', 'app_private.hermes_task_follow_finish_v1(jsonb,text,jsonb,jsonb)'];
 const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'];
 
 // Intentionally a small fail-closed grammar for these reviewed SQL signatures,
-// not a general SQL parser. NULL defaults and the schedule due port's exact
-// empty organization-list default are reviewed; other expressions/modes fail.
+// not a general SQL parser. NULL defaults and these exact worker-port defaults
+// (pinned by function name and full argument text) are reviewed; other
+// expressions/modes fail.
 const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
+const REVIEWED_DEFAULTS = new Map([
+  ['public.hermes_room_schedule_due_v1', ["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']],
+  ['public.hermes_room_schedule_sweep_v1', ["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']],
+  ['app_private.hermes_task_follow_tick_v1', ['p_limit integer DEFAULT 500', 'p_limit integer']],
+]);
 function signature(name, args, named = false) {
+  const reviewed = named ? REVIEWED_DEFAULTS.get(name) : undefined;
   const types = args.trim() === '' ? [] : args.split(',').map(arg => {
-    const argument = named && name === 'public.hermes_room_schedule_due_v1'
-      && arg.trim() === "p_organization_ids uuid[] DEFAULT '{}'" ? 'p_organization_ids uuid[]' : arg.trim();
+    const argument = reviewed && arg.trim() === reviewed[0] ? reviewed[1] : arg.trim();
     const parts = (named ? argument.replace(/\s+DEFAULT NULL$/i, '') : argument).split(/\s+/);
     assert.equal(parts.length, named ? 2 : 1, 'only the reviewed argument grammar is accepted');
     if (named) assert.match(parts[0], /^[a-z_][a-z0-9_]*$/);
@@ -216,7 +237,129 @@ END $acl$`), targets: [
   ['public.hermes_customer_create_action_v1(jsonb,text,text,jsonb)', 'authenticated'],
   ['public.hermes_customer_create_capabilities_v1(uuid)', 'authenticated'],
 ] };
-const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL];
+// Package C/D forward ACL blocks (20261015100000–20261015110200), pinned in
+// full like the blocks above. The two `catalog` loops select pg_proc by
+// namespace and proname, so replay also refuses any extra overload. The three
+// FOREACH blocks only revoke; their explicit GRANT statements replay normally.
+const CD_FORWARD_ACL_BLOCKS = [
+  { name: 'schedule-health', catalog: true, sql: clean(`DO $permissions$
+DECLARE signature text; name text;
+BEGIN
+  FOR signature,name IN SELECT p.oid::regprocedure::text,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE (n.nspname='app_private' AND p.proname IN ('hermes_schedule_incident_guard_v1','hermes_schedule_settings_v1','hermes_schedule_building_allowed_v1',
+      'hermes_schedule_scope_v2','hermes_schedule_owner_state_v1','hermes_schedule_owner_v1','hermes_schedule_legacy_owner_v1',
+      'hermes_schedule_policy_projection_v1','hermes_schedule_policy_body_v1','hermes_schedule_policy_snapshot_v1','hermes_schedule_current_v1',
+      'hermes_schedule_diagnose_v1','hermes_schedule_incident_open_v1','hermes_schedule_incident_close_v1','hermes_schedule_observe_v1',
+      'hermes_schedule_message_v1','hermes_schedule_notify_v1','hermes_schedule_close_blocked_day_v1'))
+      OR (n.nspname='public' AND p.proname IN ('hermes_room_schedule_run_v1','hermes_room_schedule_run_v2','hermes_room_schedule_probe_v1',
+        'hermes_room_schedule_sweep_v1')) LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',signature);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',signature);
+    IF name IN ('hermes_room_schedule_run_v1','hermes_room_schedule_run_v2','hermes_room_schedule_probe_v1','hermes_room_schedule_sweep_v1')
+      THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role',signature); END IF;
+  END LOOP;
+END $permissions$`), targets: [
+    ...['hermes_schedule_incident_guard_v1()', 'hermes_schedule_settings_v1(jsonb,uuid)',
+      'hermes_schedule_building_allowed_v1(uuid,uuid,uuid,uuid[])', 'hermes_schedule_scope_v2(uuid,jsonb,jsonb,jsonb)',
+      'hermes_schedule_owner_state_v1(uuid,uuid,jsonb)', 'hermes_schedule_owner_v1(uuid,uuid,jsonb)', 'hermes_schedule_legacy_owner_v1()',
+      'hermes_schedule_policy_projection_v1(uuid,jsonb)', 'hermes_schedule_policy_body_v1(jsonb)',
+      'hermes_schedule_policy_snapshot_v1(jsonb,app_private.hermes_schedule_grants,jsonb)', 'hermes_schedule_current_v1(jsonb)',
+      'hermes_schedule_diagnose_v1(uuid)', 'hermes_schedule_incident_open_v1(uuid,text,text,jsonb)',
+      'hermes_schedule_incident_close_v1(uuid,text[],text[],text)', 'hermes_schedule_observe_v1(uuid,jsonb)',
+      'hermes_schedule_message_v1(text,text,jsonb,text,timestamptz)', 'hermes_schedule_notify_v1(uuid,text)',
+      'hermes_schedule_close_blocked_day_v1(uuid,text)'].map(target => [`app_private.${target}`, null]),
+    ['public.hermes_room_schedule_run_v1(uuid,bigint,uuid)', 'service_role'],
+    ['public.hermes_room_schedule_run_v2(uuid,bigint,uuid)', 'service_role'],
+    ['public.hermes_room_schedule_probe_v1(uuid,uuid)', 'service_role'],
+    ['public.hermes_room_schedule_sweep_v1(uuid,uuid[])', 'service_role'],
+  ] },
+  { name: 'delivery-reconcile', catalog: true, sql: clean(`DO $permissions$
+DECLARE signature text; name text;
+BEGIN
+  FOR signature,name IN SELECT p.oid::regprocedure::text,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE (n.nspname='app_private' AND p.proname IN ('hermes_delivery_reconciliation_json_v1','hermes_delivery_reconcile_apply_v1',
+      'hermes_delivery_reconcile_caller_v1','hermes_delivery_job_allowed_v1','hermes_delivery_reconcile_connector_v1','hermes_schedule_summary_v2'))
+      OR (n.nspname='public' AND p.proname IN ('hermes_delivery_reconcile_list_v1','hermes_delivery_reconcile_resolve_v1','hermes_room_schedule_manage_v2')) LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',signature);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',signature);
+    IF name IN ('hermes_delivery_reconcile_list_v1','hermes_delivery_reconcile_resolve_v1','hermes_room_schedule_manage_v2')
+      THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated',signature); END IF;
+  END LOOP;
+END $permissions$`), targets: [
+    ['app_private.hermes_delivery_reconciliation_json_v1(app_private.hermes_delivery_reconciliations)', null],
+    ['app_private.hermes_delivery_reconcile_apply_v1(uuid,uuid,text,uuid,text,text,uuid,text,uuid)', null],
+    ['app_private.hermes_delivery_reconcile_caller_v1(uuid)', null],
+    ['app_private.hermes_delivery_job_allowed_v1(uuid,uuid,jsonb)', null],
+    ['app_private.hermes_delivery_reconcile_connector_v1(app_private.hermes_connections,jsonb)', null],
+    ['app_private.hermes_schedule_summary_v2(uuid)', null],
+    ['public.hermes_delivery_reconcile_list_v1(uuid)', 'authenticated'],
+    ['public.hermes_delivery_reconcile_resolve_v1(jsonb)', 'authenticated'],
+    ['public.hermes_room_schedule_manage_v2(jsonb)', 'authenticated'],
+  ] },
+  { name: 'task-follow', sql: clean(`DO $acl$ DECLARE sig text; BEGIN
+  FOREACH sig IN ARRAY ARRAY[
+    'app_private.hermes_task_dispatch_quota_v1()','app_private.hermes_task_follow_int_v1(jsonb,integer,integer)',
+    'app_private.hermes_task_follow_text_v1(jsonb,integer,boolean)','app_private.hermes_task_follow_label_v1(text,integer)',
+    'app_private.hermes_task_follow_iso_v1(timestamptz)','app_private.hermes_task_follow_member_v1(uuid,uuid)',
+    'app_private.hermes_task_follow_name_v1(uuid)','app_private.hermes_task_follow_json_v1(app_private.hermes_task_follows)',
+    'app_private.hermes_task_follow_connection_v1(jsonb)','app_private.hermes_task_follow_capable_v1(app_private.hermes_connections,text,text,text)',
+    'app_private.hermes_task_follow_buildings_v1(app_private.hermes_connections,text)',
+    'app_private.hermes_task_follow_building_v1(app_private.hermes_connections,text,uuid)',
+    'app_private.hermes_task_follow_grant_v1(app_private.hermes_task_follows)',
+    'app_private.hermes_task_follow_notify_v1(uuid,uuid,text,jsonb,text,uuid)',
+    'app_private.hermes_task_follow_guard_v1(jsonb,text,jsonb)','app_private.hermes_task_follow_apply_v1(jsonb)',
+    'app_private.hermes_task_follow_finish_v1(jsonb,text,jsonb,jsonb)','app_private.hermes_task_follow_tick_v1(integer)',
+    'public.hermes_task_follow_read_v1(jsonb,jsonb)','public.hermes_task_follow_action_v1(jsonb,text,jsonb)',
+    'public.hermes_task_follow_capabilities_v1(uuid)','public.hermes_my_task_follows_v1(uuid,jsonb)',
+    'public.hermes_my_task_follow_stop_v1(uuid,jsonb)'] LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',sig);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',sig);
+  END LOOP;
+END $acl$`), targets: [
+    'app_private.hermes_task_dispatch_quota_v1()', 'app_private.hermes_task_follow_int_v1(jsonb,integer,integer)',
+    'app_private.hermes_task_follow_text_v1(jsonb,integer,boolean)', 'app_private.hermes_task_follow_label_v1(text,integer)',
+    'app_private.hermes_task_follow_iso_v1(timestamptz)', 'app_private.hermes_task_follow_member_v1(uuid,uuid)',
+    'app_private.hermes_task_follow_name_v1(uuid)', 'app_private.hermes_task_follow_json_v1(app_private.hermes_task_follows)',
+    'app_private.hermes_task_follow_connection_v1(jsonb)', 'app_private.hermes_task_follow_capable_v1(app_private.hermes_connections,text,text,text)',
+    'app_private.hermes_task_follow_buildings_v1(app_private.hermes_connections,text)',
+    'app_private.hermes_task_follow_building_v1(app_private.hermes_connections,text,uuid)',
+    'app_private.hermes_task_follow_grant_v1(app_private.hermes_task_follows)',
+    'app_private.hermes_task_follow_notify_v1(uuid,uuid,text,jsonb,text,uuid)',
+    'app_private.hermes_task_follow_guard_v1(jsonb,text,jsonb)', 'app_private.hermes_task_follow_apply_v1(jsonb)',
+    'app_private.hermes_task_follow_finish_v1(jsonb,text,jsonb,jsonb)', 'app_private.hermes_task_follow_tick_v1(integer)',
+    'public.hermes_task_follow_read_v1(jsonb,jsonb)', 'public.hermes_task_follow_action_v1(jsonb,text,jsonb)',
+    'public.hermes_task_follow_capabilities_v1(uuid)', 'public.hermes_my_task_follows_v1(uuid,jsonb)',
+    'public.hermes_my_task_follow_stop_v1(uuid,jsonb)'].map(target => [target, null]) },
+  { name: 'memory-supervise', sql: clean(`DO $acl$ DECLARE sig text; BEGIN
+  FOREACH sig IN ARRAY ARRAY['app_private.hermes_work_memory_int_v1(jsonb,integer,integer)',
+    'app_private.hermes_memory_supervisor_v1(app_private.hermes_connections)','app_private.hermes_memory_shared_with_v1(text,jsonb)',
+    'app_private.hermes_memory_owner_name_v1(uuid)','app_private.hermes_my_memory_owner_v1(uuid)',
+    'app_private.hermes_my_memory_status_v1(uuid,uuid)','public.hermes_work_memory_configure_v1(jsonb,jsonb)',
+    'public.hermes_work_memory_list_v1(jsonb,jsonb)','public.hermes_work_memory_search_v1(jsonb,jsonb)',
+    'public.hermes_my_work_memory_v1(uuid,integer)','public.hermes_my_work_memory_configure_v1(uuid,jsonb)',
+    'public.hermes_my_work_memory_edit_v1(uuid,jsonb)','public.hermes_my_work_memory_forget_v1(uuid,jsonb)'] LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',sig);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',sig);
+  END LOOP;
+END $acl$`), targets: [
+    'app_private.hermes_work_memory_int_v1(jsonb,integer,integer)', 'app_private.hermes_memory_supervisor_v1(app_private.hermes_connections)',
+    'app_private.hermes_memory_shared_with_v1(text,jsonb)', 'app_private.hermes_memory_owner_name_v1(uuid)',
+    'app_private.hermes_my_memory_owner_v1(uuid)', 'app_private.hermes_my_memory_status_v1(uuid,uuid)',
+    'public.hermes_work_memory_configure_v1(jsonb,jsonb)', 'public.hermes_work_memory_list_v1(jsonb,jsonb)',
+    'public.hermes_work_memory_search_v1(jsonb,jsonb)', 'public.hermes_my_work_memory_v1(uuid,integer)',
+    'public.hermes_my_work_memory_configure_v1(uuid,jsonb)', 'public.hermes_my_work_memory_edit_v1(uuid,jsonb)',
+    'public.hermes_my_work_memory_forget_v1(uuid,jsonb)'].map(target => [target, null]) },
+  { name: 'task-follow-v6', sql: clean(`DO $acl$ DECLARE signature text; BEGIN
+  FOREACH signature IN ARRAY ARRAY['app_private.hermes_task_follow_extend_options_v1(jsonb,text)',
+    'public.hermes_org_policy_options_v6(uuid)','public.hermes_connection_options_v6(uuid)','public.hermes_connection_context_v6(uuid)'] LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',signature);
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor',signature);
+  END LOOP;
+END $acl$`), targets: [
+    'app_private.hermes_task_follow_extend_options_v1(jsonb,text)', 'public.hermes_org_policy_options_v6(uuid)',
+    'public.hermes_connection_options_v6(uuid)', 'public.hermes_connection_context_v6(uuid)'].map(target => [target, null]) },
+];
+const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL, ...CD_FORWARD_ACL_BLOCKS];
 const TASK_BY_NAME = new Map(TASK_FUNCTIONS.map(spec => [spec.name, spec]));
 const CUSTOMER_INVOKER = new Set(['app_private.hermes_customer_insert_v1', 'public.hermes_customer_create_action_v1']);
 
@@ -235,7 +378,7 @@ function expandReviewedFunctionAcl(sql) {
     }
     const targets = block.targets.map(([target]) => target);
     for (const target of targets) assert(declared.has(target), 'ACL loop targets a declared exact signature');
-    if (block.name === 'schedule') {
+    if (block.name === 'schedule' || block.catalog) {
       // Unlike the other fixed signature arrays, pg_proc selects by namespace
       // and proname. Refuse additional overloads instead of silently replaying
       // a smaller set than PostgreSQL would mutate.
@@ -273,6 +416,148 @@ RETURNS text LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog 
  SELECT left(regexp_replace(translate(p_text,chr(8232)||chr(8233),'  '),'[[:cntrl:]]','','g'),200)
 $fn$`)],
 ]);
+
+// Package C/D private helpers outside the common DEFINER + app_private path rule:
+// pg_catalog-only formatters/validators (DEFINER, or INVOKER with no mode) and
+// two DEFINER readers with pg_catalog,public that read one fixed relation each.
+// Pin every definition in full so no exception can admit another relation,
+// statement, mode or path.
+const CD_NARROW_PATH_HELPERS = new Map([
+  ['app_private.hermes_schedule_incident_guard_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_schedule_incident_guard_v1()
+RETURNS trigger LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+  IF TG_OP='DELETE' OR NEW.id IS DISTINCT FROM OLD.id OR NEW.schedule_id IS DISTINCT FROM OLD.schedule_id
+    OR NEW.user_id IS DISTINCT FROM OLD.user_id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+    OR NEW.kind IS DISTINCT FROM OLD.kind OR NEW.reason IS DISTINCT FROM OLD.reason OR NEW.opened_at IS DISTINCT FROM OLD.opened_at
+    OR NEW.occurrences<OLD.occurrences
+    OR (OLD.closed_at IS NOT NULL AND (NEW.closed_at IS DISTINCT FROM OLD.closed_at OR NEW.close_reason IS DISTINCT FROM OLD.close_reason
+      OR NEW.detail IS DISTINCT FROM OLD.detail OR NEW.occurrences IS DISTINCT FROM OLD.occurrences OR NEW.last_seen_at IS DISTINCT FROM OLD.last_seen_at))
+    OR (OLD.notified_at IS NOT NULL AND (NEW.notified_at IS DISTINCT FROM OLD.notified_at OR NEW.notify_result IS DISTINCT FROM OLD.notify_result))
+    OR (OLD.closed_notified_at IS NOT NULL AND NEW.closed_notified_at IS DISTINCT FROM OLD.closed_notified_at)
+  THEN RAISE EXCEPTION 'hermes_schedule_incident_immutable' USING ERRCODE='42501'; END IF;
+  RETURN NEW;
+END $fn$`)],
+  ['app_private.hermes_schedule_policy_body_v1', clean(String.raw`CREATE OR REPLACE FUNCTION app_private.hermes_schedule_policy_body_v1(p jsonb)
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $fn$
+  SELECT 'CẬP NHẬT CHÍNH SÁCH SALE'
+    ||COALESCE(E'\n'||(SELECT string_agg(v,E'\n' ORDER BY ord) FROM jsonb_array_elements_text(p->'commonPolicies') WITH ORDINALITY x(v,ord)),'')
+    ||COALESCE(E'\nChính sách riêng từng phòng:\n'||(SELECT string_agg(ord::text||'. '||(f->>'buildingLabel')||' · '||(f->>'roomLabel')||': '||(f->>'note'),E'\n' ORDER BY ord)
+      FROM jsonb_array_elements(p->'roomNotes') WITH ORDINALITY x(f,ord)),'')
+    ||CASE WHEN jsonb_array_length(p->'commonPolicies')=0 AND jsonb_array_length(p->'roomNotes')=0
+      THEN E'\nHiện không còn chính sách sale công khai trong phạm vi tòa đã chọn.' ELSE '' END
+$fn$`)],
+  ['app_private.hermes_schedule_message_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_schedule_message_v1(p_reason text,p_phase text,p_detail jsonb,p_label text,p_expires timestamptz)
+RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog AS $fn$
+  SELECT CASE WHEN p_phase='recovered' THEN jsonb_build_object('title','Lịch Hermes đã chạy lại',
+      'body',p_label||' không còn lỗi đã báo; lịch tiếp tục theo nhịp đã đặt. Kết quả từng tin xem trong danh sách lịch.')
+    ELSE jsonb_build_object('title',CASE p_reason WHEN 'grant_expiring' THEN 'Lịch Hermes sắp hết hạn' WHEN 'grant_expired' THEN 'Lịch Hermes đã hết hạn'
+        WHEN 'delivery_unknown' THEN 'Tin của lịch Hermes chưa rõ kết quả' WHEN 'delivery_failed' THEN 'Tin của lịch Hermes chưa gửi được'
+        ELSE 'Lịch Hermes đang bị chặn' END,
+      'body',p_label||': '||CASE p_reason
+        WHEN 'user_permission_revoked' THEN 'tài khoản không còn quyền CRM cần cho lịch ('||COALESCE(p_detail->>'permission','')||'). Nhờ quản trị cấp lại quyền hoặc thu hồi lịch.'
+        WHEN 'hermes_overlay_revoked' THEN 'kết nối Hermes đã tắt quyền cần cho lịch ('||COALESCE(p_detail->>'capability','')||'). Tạo kết nối mới có đủ quyền rồi tạo lại lịch.'
+        WHEN 'company_policy_revoked' THEN 'chính sách Hermes của công ty không còn cho phép quyền lịch đang dùng. Quản trị công ty cần bật lại; lịch tạm dừng đến khi đó.'
+        WHEN 'company_policy_disabled' THEN 'công ty đang tắt Hermes. Lịch tạm dừng đến khi quản trị bật lại.'
+        WHEN 'capability_disabled' THEN 'tính năng này đang tắt trên hệ thống. Lịch tạm dừng đến khi được bật lại.'
+        WHEN 'template_disabled' THEN 'chế độ lịch này đang tắt trên hệ thống. Lịch tạm dừng đến khi được bật lại.'
+        WHEN 'connection_revoked' THEN 'kết nối Hermes của lịch đã bị thu hồi. Kết nối lại Hermes và tạo lại lịch nếu vẫn cần.'
+        WHEN 'connection_token_expired' THEN 'mã kết nối Hermes của lịch đã hết hạn. Kết nối lại Hermes và tạo lại lịch nếu vẫn cần.'
+        WHEN 'session_expired' THEN 'phiên CRM của kết nối Hermes đã hết hạn. Kết nối lại Hermes và tạo lại lịch nếu vẫn cần.'
+        WHEN 'membership_inactive' THEN 'tài khoản không còn là thành viên đang hoạt động của công ty.'
+        WHEN 'scope_narrowed' THEN 'phạm vi tòa nhà của bạn hoặc của kết nối đã bị thu hẹp. Sửa lịch bỏ tòa không còn quyền, hoặc nhờ cấp lại phạm vi.'
+        WHEN 'target_denied' THEN 'một số nhóm nhận không còn trong phạm vi được gửi. Các nhóm còn quyền vẫn chạy; sửa lịch để bỏ nhóm này.'
+        WHEN 'timezone_changed' THEN 'múi giờ công ty đã đổi. Sửa lịch theo múi giờ mới.'
+        WHEN 'zalo_binding_changed' THEN 'liên kết Zalo của Hermes đã đổi. Liên kết lại Zalo rồi tạo lại lịch.'
+        WHEN 'zalo_sender_unavailable' THEN 'nick Zalo gửi hoặc worker Zalo chưa sẵn sàng. Kiểm tra kết nối Zalo trong CRM.'
+        WHEN 'zalo_directory_too_large' THEN 'nick Zalo gửi có quá nhiều nhóm để kiểm phạm vi an toàn.'
+        WHEN 'legacy_owner_active' THEN 'tự động hóa cũ đang gửi phòng trống cho cùng nhóm. Tắt tự động hóa cũ cho nhóm này hoặc bỏ nhóm khỏi lịch.'
+        WHEN 'blocked_by_unknown_delivery' THEN 'còn tin trước đó chưa rõ đã tới nhóm hay chưa. Kiểm tra trên Zalo rồi xác nhận ở mục Đối soát trong Trợ lý Hermes; hệ thống không gửi lại tự động.'
+        WHEN 'other_owner_delivery_pending' THEN 'tin của lịch khác cho cùng nhóm vẫn đang chờ gửi quá lâu. Kiểm tra hàng chờ Zalo.'
+        WHEN 'owner_conflict' THEN 'đã có lịch khác cùng nghiệp vụ cho nhóm và tòa này. Thu hồi một trong hai lịch.'
+        WHEN 'queue_capacity' THEN 'hàng chờ gửi Zalo của công ty đang đầy. Lịch sẽ thử lại trong khung giờ cho phép.'
+        WHEN 'room_limit' THEN 'số phòng vượt giới hạn của lịch nên chưa gửi, không cắt bớt. Tăng giới hạn phòng hoặc thu hẹp tòa.'
+        WHEN 'daily_limit' THEN 'đã chạm trần số tin mỗi ngày của lịch.'
+        WHEN 'message_too_large' THEN 'nội dung vượt giới hạn một tin nên chưa gửi, không cắt bớt. Thu hẹp phạm vi lịch.'
+        WHEN 'missed_window' THEN 'lịch hôm nay đã quá 180 phút sau giờ hẹn mà chưa xếp hàng được cho mọi nhóm; không gửi bù. Kiểm tra worker Zalo và các báo lỗi khác của lịch.'
+        WHEN 'membership_ambiguous' THEN 'tài khoản đang thuộc nhiều công ty nên Hermes tạm dừng truy cập CRM. Nhờ quản trị kiểm tra tư cách thành viên.'
+        WHEN 'room_data_changed' THEN 'dữ liệu phòng công khai chưa hợp lệ để lập bản tin. Kiểm tra tên tòa, mã phòng và trạng thái phòng.'
+        WHEN 'context_changed' THEN 'quyền hoặc kết nối thay đổi liên tục trong lúc chạy.'
+        WHEN 'delivery_failed' THEN 'một tin của lịch chưa gửi được ('||COALESCE(p_detail->>'errorCode','không rõ mã')||'). Không gửi lại tự động; lượt sau chạy theo nhịp.'
+        WHEN 'delivery_unknown' THEN 'một tin của lịch chưa rõ đã tới nhóm hay chưa. Kiểm tra trên Zalo rồi xác nhận ở mục Đối soát trong Trợ lý Hermes; hệ thống không gửi lại tự động.'
+        WHEN 'grant_expiring' THEN 'ủy quyền lịch hết hạn lúc '||to_char(p_expires AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI DD/MM')||'. Sửa lịch để gia hạn nếu vẫn cần.'
+        WHEN 'grant_expired' THEN 'ủy quyền lịch đã hết hạn nên lịch đã dừng. Tạo hoặc sửa lịch nếu muốn tiếp tục.'
+        ELSE 'lịch không chạy được (mã '||p_reason||'). Kiểm tra lại cấu hình lịch.' END)
+    END
+$fn$`)],
+  ['app_private.hermes_delivery_reconciliation_json_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_delivery_reconciliation_json_v1(r app_private.hermes_delivery_reconciliations)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $fn$
+  SELECT jsonb_build_object('id',r.id,'kind',r.target_kind,'targetId',COALESCE(r.job_id,r.command_id),'decision',r.decision,
+    'note',r.note,'via',r.via,'createdAt',to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+$fn$`)],
+  ['app_private.hermes_task_follow_int_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_int_v1(p jsonb,p_min integer,p_max integer)
+RETURNS integer LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p)<>'number' OR (p#>>'{}') !~ '^[0-9]{1,6}$' OR (p#>>'{}')::integer NOT BETWEEN p_min AND p_max
+    THEN RAISE EXCEPTION 'hermes_task_invalid' USING ERRCODE='22023'; END IF;
+  RETURN (p#>>'{}')::integer;
+END $fn$`)],
+  ['app_private.hermes_task_follow_text_v1', clean(String.raw`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_text_v1(p jsonb,p_max integer,p_multiline boolean)
+RETURNS text LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+DECLARE v text;
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p)<>'string' THEN RAISE EXCEPTION 'hermes_task_invalid' USING ERRCODE='22023'; END IF;
+  v:=p#>>'{}';
+  IF char_length(btrim(v,E' \n'))<1 OR char_length(v)>p_max OR btrim(v,E' \n')<>v
+    OR (CASE WHEN p_multiline THEN replace(v,E'\n','') ELSE v END) ~ '[\x01-\x1F\x7F-\x9F]'
+    OR position(chr(8232) IN v)>0 OR position(chr(8233) IN v)>0
+    OR v ~ '(hc_[A-Za-z0-9_-]{43}|hzn_[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)'
+    THEN RAISE EXCEPTION 'hermes_task_invalid' USING ERRCODE='22023'; END IF;
+  RETURN v;
+END $fn$`)],
+  ['app_private.hermes_task_follow_label_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_label_v1(p text,p_max integer)
+RETURNS text LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT NULLIF(left(btrim(regexp_replace(translate(COALESCE(p,''),chr(8232)||chr(8233),'  '),'[[:cntrl:]]',' ','g')),p_max),'')
+$fn$`)],
+  ['app_private.hermes_task_follow_iso_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_iso_v1(p timestamptz)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT CASE WHEN p IS NULL THEN NULL ELSE to_char(p AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END
+$fn$`)],
+  ['app_private.hermes_task_follow_member_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_member_v1(p_org uuid,p_user uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
+  SELECT p_org IS NOT NULL AND p_user IS NOT NULL AND EXISTS(SELECT 1 FROM public.organization_memberships m
+    WHERE m.user_id=p_user AND m.organization_id=p_org AND m.status='ACTIVE' AND m.revoked_at IS NULL
+      AND (m.valid_from IS NULL OR m.valid_from<=clock_timestamp()) AND (m.valid_to IS NULL OR m.valid_to>clock_timestamp()))
+$fn$`)],
+  ['app_private.hermes_work_memory_int_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_work_memory_int_v1(p jsonb,p_min integer,p_max integer)
+RETURNS integer LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+BEGIN
+  IF p IS NULL OR jsonb_typeof(p)<>'number' OR (p#>>'{}') !~ '^[0-9]{1,6}$' OR (p#>>'{}')::integer NOT BETWEEN p_min AND p_max
+    THEN RAISE EXCEPTION 'hermes_memory_invalid' USING ERRCODE='22023'; END IF;
+  RETURN (p#>>'{}')::integer;
+END $fn$`)],
+  ['app_private.hermes_memory_shared_with_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_memory_shared_with_v1(p_sharing text,p_member jsonb)
+RETURNS boolean LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog AS $fn$
+  SELECT p_sharing='managers' OR (p_sharing='superadmin' AND p_member->'isSuperadmin'='true'::jsonb)
+$fn$`)],
+  ['app_private.hermes_memory_owner_name_v1', clean(`CREATE OR REPLACE FUNCTION app_private.hermes_memory_owner_name_v1(p_user uuid)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
+  SELECT NULLIF(left(btrim(regexp_replace(translate(COALESCE(p.full_name,''),chr(8232)||chr(8233),'  '),'[[:cntrl:]]',' ','g')),120),'')
+    FROM public.profiles p WHERE p.id=p_user
+$fn$`)],
+]);
+
+// Package D invoker pair: the private apply step writes canonical jobs under the
+// caller's RLS; the SQL-standard public wrapper binds the three private steps by
+// OID. The step header and whole wrapper are exact here; the wrapper bytes are
+// also pinned by the source extractor (externalStandard sha256).
+const TASK_FOLLOW_APPLY_HEADER = 'CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_apply_v1(p_step jsonb) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public';
+const TASK_FOLLOW_ACTION = clean(`CREATE OR REPLACE FUNCTION public.hermes_task_follow_action_v1(p_binding jsonb,p_operation text,p_input jsonb)
+RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public
+BEGIN ATOMIC
+ SELECT app_private.hermes_task_follow_finish_v1(p_binding,p_operation,p_input,
+  app_private.hermes_task_follow_apply_v1(app_private.hermes_task_follow_guard_v1(p_binding,p_operation,p_input)));
+END`);
+const TASK_FOLLOW_PATH = 'supabase/migrations/20261015110000_hermes_task_follow_v1.sql';
 
 // This is not a pure formatter: it reads one canonical listing's tuple revision
 // and uses extensions.digest. Pin its entire reviewed definition, including
@@ -318,6 +603,9 @@ function securityContract(sql = all, registry = functions) {
     } else if (name === 'app_private.hermes_group_number_vi_v1') formatterContract(definition);
     else if (CDE_CATALOG_HELPERS.has(name)) assert.equal(definition, CDE_CATALOG_HELPERS.get(name), `${name}: exact private pg_catalog helper`);
     else if (name === 'app_private.hermes_room_pass_revision_v1') assert.equal(definition, ROOM_PASS_REVISION_HELPER, 'exact private room-pass revision helper');
+    else if (CD_NARROW_PATH_HELPERS.has(name)) assert.equal(definition, CD_NARROW_PATH_HELPERS.get(name), `${name}: exact private narrow-path helper`);
+    else if (name === 'app_private.hermes_task_follow_apply_v1') assert.equal(header, TASK_FOLLOW_APPLY_HEADER, 'exact task-follow invoker step');
+    else if (name === 'public.hermes_task_follow_action_v1') assert.equal(definition, TASK_FOLLOW_ACTION, 'exact task-follow SQL-standard wrapper');
     else if (CUSTOMER_INVOKER.has(name)) assert.match(header, /SECURITY INVOKER SET search_path=pg_catalog,public/i, name);
     else assert.match(header, /SECURITY DEFINER SET search_path=pg_catalog,(?:public,)?app_private/i, name);
     assert.match(sql, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
@@ -331,7 +619,7 @@ function securityContract(sql = all, registry = functions) {
   const acl = new Map();
   const allowed = new Map([
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
-      ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target)])],
+      ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS])],
     ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
     ['service_role', new Set(WORKER)],
   ]);
@@ -851,4 +1139,134 @@ test('expense receipt stays private, owned and RLS enabled; finance helpers have
     assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO service_role;`), /cannot execute/);
     assert.throws(() => securityContract(all + `; REVOKE EXECUTE ON FUNCTION ${target} FROM authenticated;`), /effective execute ACL/);
   }
+});
+
+// Package C/D (20261015100000–20261015110200) forward ACL witnesses.
+test('package C/D ACL adapters replay exactly the signatures, names and recipients written in their pinned SQL', () => {
+  const quoted = text => [...text.matchAll(/'([a-z0-9_]+)'/g)].map(match => match[1]);
+  for (const block of CD_FORWARD_ACL_BLOCKS) {
+    assert(all.includes(block.sql), `${block.name}: current reviewed ACL block`);
+    const targets = block.targets.map(([target]) => target);
+    if (block.catalog) {
+      const selected = ['app_private', 'public'].flatMap(schema =>
+        quoted(new RegExp(`n\\.nspname='${schema}' AND p\\.proname IN \\(([^)]*)\\)`).exec(block.sql)[1]).map(name => `${schema}.${name}`));
+      assert.deepEqual(selected.sort(), targets.map(target => target.split('(')[0]).sort(), `${block.name}: catalog names`);
+      const grant = /IF name IN \(([^)]*)\) THEN EXECUTE format\('GRANT EXECUTE ON FUNCTION %s TO (\w+)',signature\); END IF;/.exec(block.sql);
+      assert.deepEqual(quoted(grant[1]).map(name => `public.${name}`).sort(),
+        block.targets.filter(([, role]) => role).map(([target]) => target.split('(')[0]).sort(), `${block.name}: granted names`);
+      assert(block.targets.every(([, role]) => role === null || role === grant[2]), `${block.name}: one recipient`);
+    } else {
+      assert.doesNotMatch(block.sql, /\bGRANT\b/, `${block.name}: revoke-only loop`);
+      assert.deepEqual([...block.sql.matchAll(/'((?:app_private|public)\.[a-z0-9_]+\([^']*\))'/g)].map(match => match[1]), targets);
+      assert(block.targets.every(([, role]) => role === null));
+    }
+  }
+});
+
+test('package C/D caller, worker and private-step ports keep exact execute; private helpers stay closed', () => {
+  const targets = [...new Set(CD_FORWARD_ACL_BLOCKS.flatMap(block => block.targets.map(([target]) => target)))];
+  for (const target of targets) {
+    const expected = WORKER.includes(target) ? 'service_role'
+      : TASK_FOLLOW_STEPS.includes(target) || PUBLIC.includes(target.replace(/^public\./, '')) ? 'authenticated' : null;
+    const wrong = expected === 'authenticated' ? 'service_role' : 'authenticated';
+    assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO ${wrong}`), /cannot execute/, `${target} to ${wrong}`);
+    if (expected) assert.throws(() => securityContract(`${all}; REVOKE EXECUTE ON FUNCTION ${target} FROM ${expected}`), /effective execute ACL/, target);
+  }
+});
+
+for (const [label, blockName, before, after] of [
+  ['health PUBLIC execute survives', 'schedule-health', 'FROM PUBLIC,anon,authenticated', 'FROM anon,authenticated'],
+  ['health worker port gains caller execute', 'schedule-health', 'TO service_role', 'TO authenticated'],
+  ['health catalog namespace broadens', 'schedule-health', "n.nspname='app_private'", "n.nspname IN ('app_private','public')"],
+  ['reconcile caller port gains worker execute', 'delivery-reconcile', 'TO authenticated', 'TO service_role'],
+  ['reconcile private helper gains caller execute', 'delivery-reconcile', "IF name IN ('hermes_delivery_reconcile_list_v1'",
+    "IF name IN ('hermes_delivery_reconcile_apply_v1','hermes_delivery_reconcile_list_v1'"],
+  ['reconcile owner changes', 'delivery-reconcile', 'OWNER TO postgres', 'OWNER TO authenticated'],
+  ['task-follow PUBLIC execute survives', 'task-follow', 'FROM PUBLIC,anon,authenticated', 'FROM anon,authenticated'],
+  ['task-follow cron tick omitted', 'task-follow', ",'app_private.hermes_task_follow_tick_v1(integer)'", ''],
+  ['memory supervisor helper omitted', 'memory-supervise', "'app_private.hermes_memory_supervisor_v1(app_private.hermes_connections)',", ''],
+  ['memory executor execute survives', 'memory-supervise', 'service_role,hermes_store_executor', 'service_role'],
+  ['v6 options helper omitted', 'task-follow-v6', "'app_private.hermes_task_follow_extend_options_v1(jsonb,text)',", ''],
+  ['v6 PUBLIC execute survives', 'task-follow-v6', 'FROM PUBLIC,anon,authenticated', 'FROM anon,authenticated'],
+]) test(`package C/D ACL mutation rejected: ${label}`, () => {
+  const block = CD_FORWARD_ACL_BLOCKS.find(candidate => candidate.name === blockName);
+  assert(all.includes(block.sql), 'mutation targets the current reviewed ACL block');
+  const changed = block.sql.replace(before, after); assert.notEqual(changed, block.sql);
+  assert.throws(() => securityContract(all.replace(block.sql, () => changed)), /unreviewed function ACL DO block/);
+});
+
+for (const [blockName, name, before, after] of [
+  ['schedule-health', 'public.hermes_room_schedule_sweep_v1', 'p_instance_id uuid', 'p_instance_id text'],
+  ['delivery-reconcile', 'public.hermes_room_schedule_manage_v2', '(p jsonb)', '(p text)'],
+]) test(`package C/D ACL mutation rejects an extra ${name} overload selected by the ${blockName} catalog loop`, () => {
+  const block = CD_FORWARD_ACL_BLOCKS.find(candidate => candidate.name === blockName);
+  const current = fn(name), overload = current.replace(before, after);
+  assert.notEqual(overload, current); assert(all.includes(block.sql));
+  assert.throws(() => securityContract(all.replace(block.sql, () => `${overload}; ${block.sql}`)),
+    /catalog ACL loop must resolve only the reviewed signatures/);
+});
+
+test('package D explicit grants: a widened private-step grant or a dropped caller grant is rejected', () => {
+  const statement = prefix => statements.find(sql => sql.startsWith(prefix));
+  const steps = statement('GRANT EXECUTE ON FUNCTION app_private.hermes_task_follow_guard_v1(');
+  const memory = statement('GRANT EXECUTE ON FUNCTION public.hermes_work_memory_configure_v1(jsonb,jsonb),public.hermes_work_memory_list_v1(');
+  const v6 = statement('GRANT EXECUTE ON FUNCTION public.hermes_org_policy_options_v6(');
+  assert(steps && memory && v6);
+  for (const [current, changed, message] of [
+    [steps, steps.replace('app_private.hermes_task_follow_apply_v1(jsonb),', 'app_private.hermes_task_follow_apply_v1(jsonb),app_private.hermes_task_follow_tick_v1(integer),'), /cannot execute/],
+    [steps, steps.replace('TO authenticated', 'TO service_role'), /cannot execute/],
+    [memory, memory.replace('public.hermes_work_memory_search_v1(jsonb,jsonb),', ''), /effective execute ACL/],
+    [v6, v6.replace('public.hermes_org_policy_options_v6(uuid),', ''), /effective execute ACL/],
+  ]) {
+    assert.notEqual(changed, current); assert(all.includes(current));
+    assert.throws(() => securityContract(all.replace(current, () => changed)), message);
+  }
+});
+
+test('package C/D narrow-path helper exceptions reject mode, path, relation and body changes', () => {
+  for (const [name, current] of CD_NARROW_PATH_HELPERS) {
+    assert.equal(functions.get(name), current, `${name}: the current source is the pinned helper`);
+    const mode = current.includes(' SECURITY DEFINER ') ? ['SECURITY DEFINER', 'SECURITY INVOKER'] : [' SET search_path', ' SECURITY DEFINER SET search_path'];
+    for (const [before, after] of [mode, ['search_path=pg_catalog', 'search_path=pg_catalog,app_private'],
+      ['AS $fn$', 'AS $fn$ SELECT * FROM public.rooms;']]) {
+      const changed = current.replace(before, after); assert.notEqual(changed, current);
+      const registry = new Map(functions); registry.set(name, changed);
+      assert.throws(() => securityContract(all, registry), /exact private narrow-path helper/);
+    }
+  }
+});
+
+test('task-follow invoker pair keeps the exact INVOKER step, wrapper body and extractor byte pin', () => {
+  const source = readFileSync(join(directory, '20261015110000_hermes_task_follow_v1.sql'), 'utf8');
+  const action = extractHermesFunctionDefinitions(source, TASK_FOLLOW_PATH).find(item => item.qualifiedName === 'public.hermes_task_follow_action_v1');
+  assert.equal(action?.bodyKind, 'sql-standard');
+  assert.throws(() => extractHermesFunctionDefinitions(source, 'migration.sql'), /task_sql_standard_source_mismatch/);
+  assert.throws(() => extractHermesFunctionDefinitions(source.replace('app_private.hermes_task_follow_apply_v1(app_private',
+    'app_private.hermes_task_follow_finish_v1(app_private'), TASK_FOLLOW_PATH), /task_sql_standard_source_mismatch/);
+  for (const [name, before, after, message] of [
+    ['app_private.hermes_task_follow_apply_v1', 'SECURITY INVOKER', 'SECURITY DEFINER', /exact task-follow invoker step/],
+    ['app_private.hermes_task_follow_apply_v1', 'search_path=pg_catalog,public', 'search_path=pg_catalog,public,app_private', /exact task-follow invoker step/],
+    ['public.hermes_task_follow_action_v1', 'SECURITY INVOKER', 'SECURITY DEFINER', /exact task-follow SQL-standard wrapper/],
+    ['public.hermes_task_follow_action_v1', 'app_private.hermes_task_follow_apply_v1(', 'app_private.hermes_task_follow_tick_v1(', /exact task-follow SQL-standard wrapper/],
+  ]) {
+    const current = functions.get(name), changed = current.replace(before, after); assert.notEqual(changed, current);
+    const registry = new Map(functions); registry.set(name, changed);
+    assert.throws(() => securityContract(all, registry), message);
+  }
+});
+
+test('signature grammar accepts only the exact sweep empty-list and tick limit defaults', () => {
+  assert.equal(signature('public.hermes_room_schedule_sweep_v1', "p_instance_id uuid,p_organization_ids uuid[] DEFAULT '{}'", true),
+    'public.hermes_room_schedule_sweep_v1(uuid,uuid[])');
+  assert.equal(signature('app_private.hermes_task_follow_tick_v1', 'p_limit integer DEFAULT 500', true), 'app_private.hermes_task_follow_tick_v1(integer)');
+  for (const [name, args] of [
+    ['public.hermes_room_schedule_sweep_v1', "p_organization_ids uuid[] DEFAULT '{}'::uuid[]"],
+    ['public.hermes_room_schedule_sweep_v1', "p_instance_id uuid DEFAULT '{}'"],
+    ['public.hermes_room_schedule_sweep_v1', 'p_limit integer DEFAULT 500'],
+    ['app_private.hermes_task_follow_tick_v1', 'p_limit integer DEFAULT 5000'],
+    ['app_private.hermes_task_follow_tick_v1', 'p_limit bigint DEFAULT 500'],
+    ['app_private.hermes_task_follow_tick_v1', 'p_other integer DEFAULT 500'],
+    ['app_private.hermes_task_follow_tick_v1', "p_organization_ids uuid[] DEFAULT '{}'"],
+    ['public.hermes_room_schedule_run_v2', 'p_limit integer DEFAULT 500'],
+  ]) assert.throws(() => signature(name, args, true), /reviewed argument grammar/, `${name}(${args})`);
 });
