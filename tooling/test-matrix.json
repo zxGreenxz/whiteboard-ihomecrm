@@ -948,12 +948,38 @@
         "supabase/migrations/*_hermes_expense_create_action_v1.sql",
         "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
         "infra/hermes-broker/expense-action-*.mjs",
-        "infra/hermes-broker/finance-fixture.mjs"
+        "infra/hermes-broker/finance-fixture.mjs",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-broker/mcp-http.mjs"
       ],
       "suiteId": "node-native",
       "testPatterns": [
         "infra/hermes-broker/expense-action.test.mjs",
+        "infra/hermes-broker/expense-composition.test.mjs",
         "infra/hermes-broker/domain-v2.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-customer-actions",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_customer_lead_create_action_v1.sql",
+        "infra/hermes-broker/customer-action-*.mjs",
+        "infra/hermes-broker/bound-user-*.mjs",
+        "infra/hermes-broker/capability-contract.*",
+        "infra/hermes-broker/broker.mjs",
+        "infra/hermes-broker/server.mjs",
+        "infra/hermes-broker/mcp-http.mjs",
+        "scripts/hermes-task-function-contract.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/customer-action.test.mjs",
+        "infra/hermes-broker/customer-composition.test.mjs",
+        "infra/hermes-broker/server.test.mjs",
+        "scripts/__tests__/hermes-task-function-catalog.test.mjs",
         "scripts/__tests__/hermes-durable-schema.test.mjs"
       ]
     },
@@ -1073,12 +1099,21 @@
         "supabase/migrations/*_hermes_room_pass_action_v1.sql",
         "infra/hermes-broker/room-pass-contract.mjs",
         "infra/hermes-broker/capability-contract.mjs",
-        "infra/hermes-broker/connection-management.mjs"
+        "infra/hermes-broker/connection-management.mjs",
+        "infra/hermes-broker/customer-action-contract.mjs",
+        "infra/hermes-broker/expense-action-contract.mjs",
+        "supabase/migrations/*_hermes_task_follow_capabilities_hook.sql",
+        "supabase/migrations/*_hermes_finance_capabilities_hook.sql",
+        "src/hermes/capabilityLabels.ts",
+        "src/hermes/HermesPermissionFields.tsx",
+        "src/hermes/HermesOrgPolicySettings.tsx",
+        "src/hermes/orgPolicyClient.ts"
       ],
       "suiteId": "app-unit",
       "testPatterns": [
         "src/hermes/connectionClient.test.ts",
         "src/hermes/orgPolicyClient.test.ts",
+        "src/hermes/capabilityLabels.test.ts",
         "src/hermes/HermesOrgPolicySettings.test.tsx",
         "src/pages/settings/HermesConnectionsPage.test.tsx"
       ],

@@ -4,9 +4,10 @@ import { ScopePicker } from '@/components/authorization/ScopePicker';
 import type { AuthorizationScope } from '@/hooks/useOrganizationAuthorization';
 import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
 import type { HermesConnectionRestrictions } from './connectionClient';
+import { hermesCapabilityHint, hermesCapabilityLabel } from './capabilityLabels';
 
 const catalog = new Set(VISIBLE_PAGE_GROUPS.flatMap(group => group.pages.flatMap(page => page.features.map(featureKey))));
-const label = (key: string) => ({ 'assistant.context.read': 'Xem thông tin phiên và quyền của tôi', 'assistant.memory.read': 'Xem ghi nhớ công việc CRM được phép', 'assistant.memory.write': 'Lưu, sửa và quên ghi nhớ công việc CRM của tôi', 'assistant.memory.supervise': 'Hermes tổng: tra ghi nhớ công việc được chia sẻ của người khác (theo quyền xem người dùng)' } as Record<string, string>)[key] ?? key;
+const label = hermesCapabilityLabel;
 interface Props {
   value: HermesConnectionRestrictions; scopeIds: string[];
   readChoices: string[]; actionChoices?: string[]; scopes: AuthorizationScope[];
@@ -31,7 +32,14 @@ export function HermesPermissionFields({ value, scopeIds, readChoices, actionCho
     <div className="grid gap-4 md:grid-cols-2">
       {(['read', 'action'] as const).map(kind => {
         const visible = new Set([...choices[kind]].filter(key => catalog.has(key)));
-        const trailing = (key: string) => effective && <span className="text-xs text-muted-foreground">{effective[kind].includes(key) ? 'Đang có hiệu lực' : 'Hiện chưa có hiệu lực'}</span>;
+        const trailing = (key: string) => {
+          const hint = hermesCapabilityHint(key);
+          if (!hint && !effective) return null;
+          return <span className="max-w-[50%] space-y-0.5 text-xs text-muted-foreground">
+            {hint && <span className="block">{hint}</span>}
+            {effective && <span className="block">{effective[kind].includes(key) ? 'Đang có hiệu lực' : 'Hiện chưa có hiệu lực'}</span>}
+          </span>;
+        };
         return <fieldset disabled={disabled} key={kind} className="min-w-0 space-y-3 rounded-lg border p-3">
           <legend className="px-1 font-medium">{kind === 'read' ? 'Đọc dữ liệu' : 'Thao tác dữ liệu'}</legend>
           {kind === 'action' && <p className="text-sm text-muted-foreground">Quyền đọc và thao tác được chọn độc lập. Gửi dữ liệu cần cả quyền đọc dữ liệu đó và quyền gửi tương ứng.</p>}

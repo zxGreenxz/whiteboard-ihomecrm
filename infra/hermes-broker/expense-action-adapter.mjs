@@ -49,8 +49,8 @@ export function createExpenseActionAuth({ baseAuth, reads } = {}) {
       scopesByPermission: { ...current.scopesByPermission, ...scopes }, epoch: createHash('sha256').update(JSON.stringify({ base: current.epoch, cap })).digest('hex') };
   } });
 }
-/** Broker port for the integrator: prepareExpenseAction/finalizeExpenseAction,
- * same shape as task/room-pass. Not mounted by server.mjs in this change. */
+/** Broker port prepareExpenseAction/finalizeExpenseAction, same shape as
+ * task/room-pass; server.mjs mounts it behind createExpenseActionAuth. */
 export function createExpenseActionService({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, clock = Date.now } = {}) {
   const reads = createExpenseActionReads({ ...supabase, dependencyScope, fetch });
   const service = createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads, mayUse: mayUseExpenseAction,

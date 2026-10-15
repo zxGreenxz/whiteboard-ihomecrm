@@ -132,9 +132,10 @@ export function createHermesOrgPolicyClient({ userId, organizationId, currentSco
         check(); const raw = await readJson(response, controller.signal); check();
         return { response, raw };
       };
-      let { response, raw } = await send(write ? 'hermes_set_org_policy_v1' : 'hermes_org_policy_options_v5');
+      // v6 = task-follow(v5), v5 = finance(task(v4)); older names only on exact PGRST202.
+      let { response, raw } = await send(write ? 'hermes_set_org_policy_v1' : 'hermes_org_policy_options_v6');
       const missing = z.object({ code: z.literal('PGRST202'), message: z.string(), details: z.string().nullable(), hint: z.string().nullable() }).strict();
-      for (const legacy of write ? [] : ['hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1']) {
+      for (const legacy of write ? [] : ['hermes_org_policy_options_v5', 'hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1']) {
         if (!(response.status === 404 && missing.safeParse(raw).success)) break;
         await session(); check();
         ({ response, raw } = await send(legacy));

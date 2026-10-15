@@ -37,11 +37,17 @@ export function customerActionResult(operation, value, identity, input) {
   return { ...value, record: { ...row } };
 }
 const uuid = { type: 'string', format: 'uuid' };
+// Fixed tool name -> operation map; the model never names a kind or RPC.
+const TOOL_OPERATIONS = Object.freeze({ crm_customer_create: 'customer.create', crm_customer_status: 'customer.status',
+  crm_lead_create: 'lead.create', crm_lead_status: 'lead.status' });
+export const customerActionOperation = name => Object.hasOwn(TOOL_OPERATIONS, name) ? TOOL_OPERATIONS[name] : undefined;
 export const CUSTOMER_ACTION_TOOLS = Object.freeze(['customer', 'lead'].flatMap(kind => [
-  { name: `crm_${kind}_create`, description: `${kind === 'customer' ? 'Tạo khách hàng cá nhân WALK_IN' : 'Tạo lead B1_LEAD'} chưa gắn tòa, theo quyền CRM của người kết nối và phạm vi tổ chức Hermes Action. requestId UUID ổn định; mất phản hồi chỉ đối soát status. CRM cho phép trùng số điện thoại; không tự coi cùng số là cùng khách.`,
+  Object.freeze({ name: `crm_${kind}_create`, description: `${kind === 'customer' ? 'Tạo khách hàng cá nhân WALK_IN' : 'Tạo lead B1_LEAD'} chưa gắn tòa, theo quyền CRM của người kết nối và phạm vi tổ chức Hermes Action. requestId UUID ổn định; mất phản hồi chỉ đối soát status. CRM cho phép trùng số điện thoại; không tự coi cùng số là cùng khách. Chỉ gọi khi người dùng yêu cầu tạo rõ ràng.`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId', 'name', 'phone', 'email', 'notes', ...(kind === 'lead' ? ['source'] : [])],
       properties: { requestId: uuid, name: { type: 'string', minLength: 1, maxLength: 200 }, phone: { type: 'string', pattern: '^[0-9]{10,11}$' },
-        email: { type: ['string', 'null'], maxLength: 254 }, notes: { type: ['string', 'null'], maxLength: 4000 }, ...(kind === 'lead' ? { source: { enum: sources } } : {}) } } },
-  { name: `crm_${kind}_status`, description: 'Đối soát requestId đã dùng; not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } } },
+        email: { type: ['string', 'null'], maxLength: 254 }, notes: { type: ['string', 'null'], maxLength: 4000 }, ...(kind === 'lead' ? { source: { enum: sources } } : {}) } },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }),
+  Object.freeze({ name: `crm_${kind}_status`, description: 'Đối soát requestId đã dùng; not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
 ]));
