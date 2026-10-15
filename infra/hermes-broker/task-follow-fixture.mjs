@@ -82,7 +82,7 @@ export async function setupFollow(t, { sql = readFileSync(process.env.HERMES_TAS
   await db.exec(sql); await db.exec(sql);
   // Latest definitions: the review-fix forward migration (applied twice) replaces
   // grant/tick/member; fixes:null exercises the batch file alone. The notify
-  // retry forward (20261015181525, applied twice) then replaces the tick again;
+  // retry forward (20261015185559, applied twice) then replaces the tick again;
   // retry:null stops at the review fixes.
   if (fixes !== null) await applyReviewFixes(db, fixes);
   if (retry !== null) await applyNotifyRetryDigest(db, retry);

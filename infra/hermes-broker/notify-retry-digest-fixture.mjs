@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-export const NOTIFY_RETRY_DIGEST_PATH = 'supabase/migrations/20261015181525_hermes_notify_retry_digest_v1.sql';
+export const NOTIFY_RETRY_DIGEST_PATH = 'supabase/migrations/20261015185559_hermes_notify_retry_digest_v1.sql';
 export const notifyRetryDigestSql = () => readFileSync(process.env.HERMES_NOTIFY_RETRY_DIGEST_SQL ?? NOTIFY_RETRY_DIGEST_PATH, 'utf8');
 
 /** Applies the WHOLE notify retry/digest forward migration twice (idempotency)

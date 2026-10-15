@@ -1,24 +1,32 @@
 -- Trả hai khoản nợ hoãn của đợt Hermes 15/10 (các file 20261015100000,
--- 20261015110000, 20261015130000 giữ nguyên). Chỉ thêm hai cột cho bảng theo dõi,
+-- 20261015110000, 20261015130000 giữ nguyên). Chỉ thêm cột cho bảng theo dõi,
 -- CREATE OR REPLACE hai hàm cũ giữ chữ ký, kiểu trả về, owner, search_path và ACL,
--- cộng một helper riêng tư mới; chạy lại an toàn.
+-- cộng một helper riêng tư mới; chạy lại an toàn. Thay bản nháp 20261015181525
+-- (chỉ từng áp TEST, chưa merge/production): bộ đếm chung notify_failures của bản
+-- nháp được bỏ, thay bằng bộ đếm riêng theo loại.
 --  (1) hermes_task_follow_tick_v1: nhóm thông báo (người nhận, loại) gửi lỗi thì
 --      dấu của đúng loại đó được trả về NULL cho các theo dõi trong nhóm để lượt
---      sau gửi lại; notify_failures đếm số lượt lỗi liên tiếp, lỗi lần thứ 4 thì
---      giữ dấu (bỏ cuộc), ghi audit HERMES_TASK_FOLLOW_NOTICE_ABANDONED + WARNING
---      rồi đặt lại bộ đếm cho thông báo sau. Gửi xong không lỗi thì bộ đếm về 0.
+--      sau gửi lại. Mỗi loại có bộ đếm lỗi liên tiếp RIÊNG (due_failures,
+--      overdue_failures, report_failures): lỗi lần thứ 4 của loại đó thì giữ dấu
+--      (bỏ cuộc), ghi WARNING + audit HERMES_TASK_FOLLOW_NOTICE_ABANDONED (audit
+--      trong subtransaction riêng) rồi đặt lại bộ đếm của loại đó; gửi xong thì
+--      bộ đếm của loại đó về 0. Nhắc trước hạn còn chờ gửi lại mà cửa sổ đã đóng
+--      (tới hạn) cũng bỏ cuộc có audit, không bỏ lặng lẽ.
 --      Lựa chọn cho theo dõi nằm trong hai nhóm (overdue cho người làm,
 --      overdue_report cho người giao): TÁCH DẤU. overdue_reported_at là dấu riêng
 --      của báo cáo người giao, nên nhóm nào lỗi chỉ trả dấu của nhóm đó; người đã
 --      nhận thành công không bị gửi trùng, người bị lỗi không mất thông báo. Theo
 --      dõi đã báo quá hạn trước migration được điền overdue_reported_at bằng dấu
---      chung cũ (báo cáo người giao đã đi cùng lượt đó).
+--      chung cũ (báo cáo người giao đã đi cùng lượt đó); theo dõi chưa báo giữ
+--      nguyên NULL nên thông báo chưa gửi vẫn còn.
 --  (2) hermes_room_schedule_sweep_v1 bước (f): sự cố đủ điều kiện của một lượt
 --      được gom theo (công ty, chủ lịch) thành MỘT thông báo tóm tắt qua
 --      hermes_schedule_notify_v2 (một sự cố thì dùng nguyên hermes_schedule_notify_v1);
 --      từng sự cố vẫn ghi notified_at/notify_result (hoặc closed_notified_at) như
 --      cũ. Mỗi nhóm một subtransaction: một chủ lỗi ghi không chặn chủ khác. Giữ
---      LIMIT 20/lượt và trễ 15 phút cho nguyên nhân thoáng qua.
+--      LIMIT 20/lượt và trễ 15 phút cho nguyên nhân thoáng qua. Báo "đã chạy lại"
+--      chỉ cho sự cố mà thông báo mở đã ghi được chuông (chủ chưa từng được báo
+--      lỗi thì không nhận tin khôi phục); tag push theo từng bản gộp.
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
@@ -44,18 +52,28 @@ BEGIN
     UPDATE app_private.hermes_task_follows SET overdue_reported_at=overdue_notified_at WHERE overdue_notified_at IS NOT NULL;
   END IF;
 END $columns$;
--- Số lượt gửi lỗi liên tiếp của thông báo đang chờ; lần thứ 4 là bỏ cuộc nên giá
--- trị lưu không vượt 3.
-ALTER TABLE app_private.hermes_task_follows ADD COLUMN IF NOT EXISTS notify_failures integer NOT NULL DEFAULT 0
-  CHECK(notify_failures BETWEEN 0 AND 3);
+-- Số lượt gửi lỗi liên tiếp, riêng cho nhắc trước hạn, quá hạn (người làm) và báo
+-- cáo (người giao); lần thứ 4 là bỏ cuộc nên giá trị lưu không vượt 3. Cột chung
+-- notify_failures chỉ có trên TEST (bản nháp 20261015181525) — bỏ đi; production
+-- chưa từng có cột này nên lệnh dưới là no-op ở đó.
+ALTER TABLE app_private.hermes_task_follows DROP COLUMN IF EXISTS notify_failures;
+ALTER TABLE app_private.hermes_task_follows ADD COLUMN IF NOT EXISTS due_failures integer NOT NULL DEFAULT 0
+  CHECK(due_failures BETWEEN 0 AND 3);
+ALTER TABLE app_private.hermes_task_follows ADD COLUMN IF NOT EXISTS overdue_failures integer NOT NULL DEFAULT 0
+  CHECK(overdue_failures BETWEEN 0 AND 3);
+ALTER TABLE app_private.hermes_task_follows ADD COLUMN IF NOT EXISTS report_failures integer NOT NULL DEFAULT 0
+  CHECK(report_failures BETWEEN 0 AND 3);
 
 -- (1) Lượt nhắc/báo cáo (pg_cron hiện có, 15 phút). Như 20261015130000, thêm: dấu
--- riêng overdue_reported_at, nhớ theo dõi nào nằm trong nhóm nào, và xử lý nhóm lỗi.
+-- riêng overdue_reported_at, bộ đếm lỗi theo loại, nhớ theo dõi nào nằm trong nhóm
+-- nào, xử lý nhóm lỗi, và bỏ cuộc có audit khi nhắc trước hạn còn chờ gửi lại mà
+-- cửa sổ đã đóng.
 CREATE OR REPLACE FUNCTION app_private.hermes_task_follow_tick_v1(p_limit integer DEFAULT 500)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private SET lock_timeout='2s' AS $fn$
 DECLARE v_org uuid; f app_private.hermes_task_follows; j public.jobs; v_now timestamptz; v_reason text; v_found boolean;
-  v_groups jsonb:='{}'; v_members jsonb:='{}'; v_lost jsonb:='{}'; v_sent jsonb:='[]'; v_pending jsonb; v_close integer;
-  v_item jsonb; v_locked boolean; g record; p record; r record; v_parts text[]; v_prior integer; v_job uuid;
+  v_groups jsonb:='{}'; v_members jsonb:='{}'; v_lost jsonb:='{}'; v_ok jsonb:='{}'; v_abandon jsonb:='[]';
+  v_pending jsonb; v_gaveup jsonb; v_given jsonb; v_close integer; v_item jsonb; v_locked boolean;
+  g record; p record; r record; v_parts text[]; v_job uuid; v_due integer; v_over integer; v_report integer;
   v_checked integer:=0; v_closed integer:=0; v_notified integer:=0; v_failed integer:=0; v_skipped integer:=0;
   v_retrying integer:=0; v_abandoned integer:=0;
 BEGIN
@@ -75,7 +93,7 @@ BEGIN
     -- Least recently checked first, so a large company is covered across ticks.
     FOR f IN SELECT * FROM app_private.hermes_task_follows WHERE organization_id=v_org AND state='ACTIVE'
         ORDER BY checked_at NULLS FIRST,id LIMIT p_limit FOR UPDATE SKIP LOCKED LOOP
-      v_checked:=v_checked+1; v_pending:='[]'::jsonb; v_close:=0;
+      v_checked:=v_checked+1; v_pending:='[]'::jsonb; v_gaveup:='[]'::jsonb; v_close:=0;
       BEGIN
         UPDATE app_private.hermes_task_follows SET checked_at=v_now WHERE id=f.id;
         v_reason:=app_private.hermes_task_follow_grant_v1(f);
@@ -103,13 +121,21 @@ BEGIN
               UPDATE app_private.hermes_task_follows SET executor_user_id=j.assignee_id,version=version+1,updated_at=v_now WHERE id=f.id;
             END IF;
             IF j.status='IN_PROGRESS' AND j.deadline IS NOT NULL THEN
+              -- A reminder still waiting for a retry when its window closes is given
+              -- up and audited (kept mark), never dropped silently; the overdue
+              -- notice below has its own count.
+              IF f.due_failures>0 AND f.due_notified_at IS NULL AND v_now>=j.deadline THEN
+                UPDATE app_private.hermes_task_follows SET due_notified_at=v_now,due_failures=0,updated_at=v_now WHERE id=f.id;
+                v_gaveup:=jsonb_build_array(jsonb_build_object('id',f.id,'org',f.organization_id,'jobId',f.job_id,
+                  'kinds',jsonb_build_array('due'),'failures',f.due_failures,'reason','window_closed'));
+              END IF;
               IF f.remind_before_minutes IS NOT NULL AND f.due_notified_at IS NULL AND j.assignee_id IS NOT NULL
                 AND v_now>=j.deadline-make_interval(mins=>f.remind_before_minutes) AND v_now<j.deadline THEN
                 UPDATE app_private.hermes_task_follows SET due_notified_at=v_now,updated_at=v_now WHERE id=f.id;
                 v_pending:=v_pending||jsonb_build_array(jsonb_build_array(f.organization_id::text||'|'||j.assignee_id::text||'|due',v_item,f.id));
               END IF;
-              -- The executor's notice and the assigner's report keep separate marks,
-              -- so retrying one side never repeats the other.
+              -- The executor's notice and the assigner's report keep separate marks
+              -- and counts, so retrying one side never repeats the other.
               IF v_now>=j.deadline AND f.overdue_notified_at IS NULL THEN
                 UPDATE app_private.hermes_task_follows SET overdue_notified_at=v_now,updated_at=v_now WHERE id=f.id;
                 IF j.assignee_id IS NOT NULL THEN
@@ -126,27 +152,34 @@ BEGIN
           END IF;
         END IF;
       EXCEPTION WHEN OTHERS THEN
-        v_pending:='[]'::jsonb; v_close:=0; v_failed:=v_failed+1;
+        v_pending:='[]'::jsonb; v_gaveup:='[]'::jsonb; v_close:=0; v_failed:=v_failed+1;
         RAISE WARNING 'hermes_task_follow_tick_v1: follow % skipped (%)',f.id,SQLSTATE;
         -- Rotate the failing follow behind the others; it is retried next tick.
         UPDATE app_private.hermes_task_follows SET checked_at=v_now WHERE id=f.id;
       END;
       v_closed:=v_closed+v_close;
+      v_abandon:=v_abandon||v_gaveup;
       FOR p IN SELECT x.e->>0 AS k,x.e->1 AS item,x.e->2 AS follow FROM jsonb_array_elements(v_pending) AS x(e) LOOP
         v_groups:=jsonb_set(v_groups,ARRAY[p.k],COALESCE(v_groups->p.k,'[]'::jsonb)||jsonb_build_array(p.item),true);
         v_members:=jsonb_set(v_members,ARRAY[p.k],COALESCE(v_members->p.k,'[]'::jsonb)||jsonb_build_array(p.follow),true);
       END LOOP;
     END LOOP;
   END LOOP;
-  -- A failing notice does not stop the other recipients. Its follows are
-  -- remembered with the kind that failed; done/deleted notices close their follow
-  -- and have no mark to return.
+  -- A failing notice does not stop the other recipients. Each follow remembers,
+  -- per kind, whether its notice went through or failed. Only a failed bell write
+  -- counts as a failure: hermes_task_follow_notify_v1 records a failed push on the
+  -- bell row and returns normally. done/deleted notices close their follow and are
+  -- not retried (by design: no open follow, no mark to return).
   FOR g IN SELECT key,value FROM jsonb_each(v_groups) ORDER BY key LOOP
     v_parts:=string_to_array(g.key,'|');
     BEGIN
       IF app_private.hermes_task_follow_notify_v1(v_parts[1]::uuid,v_parts[2]::uuid,v_parts[3],g.value,NULL,NULL) IS NOT NULL THEN
         v_notified:=v_notified+1; END IF;
-      v_sent:=v_sent||(v_members->g.key);
+      IF v_parts[3] IN ('due','overdue','overdue_report') THEN
+        FOR r IN SELECT x.value#>>'{}' AS id FROM jsonb_array_elements(v_members->g.key) AS x(value) LOOP
+          v_ok:=jsonb_set(v_ok,ARRAY[r.id],COALESCE(v_ok->r.id,'[]'::jsonb)||to_jsonb(v_parts[3]),true);
+        END LOOP;
+      END IF;
     EXCEPTION WHEN OTHERS THEN v_failed:=v_failed+1;
       RAISE WARNING 'hermes_task_follow_tick_v1: % notice skipped (%)',v_parts[3],SQLSTATE;
       IF v_parts[3] IN ('due','overdue','overdue_report') THEN
@@ -156,38 +189,56 @@ BEGIN
       END IF;
     END;
   END LOOP;
-  -- Return exactly the failed kinds' marks so the next tick sends them again, at
-  -- most three consecutive failures; the fourth keeps the marks (gives up), is
-  -- audited and resets the counter for the follow's next notice.
+  -- A kind that went through starts a new count for that kind only.
+  BEGIN
+    UPDATE app_private.hermes_task_follows t SET
+      due_failures=CASE WHEN o.kinds ? 'due' THEN 0 ELSE t.due_failures END,
+      overdue_failures=CASE WHEN o.kinds ? 'overdue' THEN 0 ELSE t.overdue_failures END,
+      report_failures=CASE WHEN o.kinds ? 'overdue_report' THEN 0 ELSE t.report_failures END
+      FROM (SELECT x.key::uuid AS id,x.value AS kinds FROM jsonb_each(v_ok) AS x) o
+      WHERE t.id=o.id AND (t.due_failures<>0 OR t.overdue_failures<>0 OR t.report_failures<>0);
+  EXCEPTION WHEN OTHERS THEN v_failed:=v_failed+1;
+    RAISE WARNING 'hermes_task_follow_tick_v1: failure counters kept (%)',SQLSTATE;
+  END;
+  -- A failed kind returns exactly its own mark so the next tick sends it again,
+  -- at most three consecutive failures of that kind; the fourth keeps the mark
+  -- (gives up) and resets that kind's count for its next notice.
   FOR r IN SELECT x.key::uuid AS id,x.value AS kinds FROM jsonb_each(v_lost) AS x ORDER BY x.key LOOP
     BEGIN
-      SELECT t.notify_failures,t.organization_id,t.job_id INTO v_prior,v_org,v_job FROM app_private.hermes_task_follows t WHERE t.id=r.id;
-      IF v_prior<3 THEN
-        UPDATE app_private.hermes_task_follows SET notify_failures=v_prior+1,
-          due_notified_at=CASE WHEN r.kinds ? 'due' THEN NULL ELSE due_notified_at END,
-          overdue_notified_at=CASE WHEN r.kinds ? 'overdue' THEN NULL ELSE overdue_notified_at END,
-          overdue_reported_at=CASE WHEN r.kinds ? 'overdue_report' THEN NULL ELSE overdue_reported_at END,
-          updated_at=clock_timestamp() WHERE id=r.id;
-        v_retrying:=v_retrying+1;
-      ELSE
-        UPDATE app_private.hermes_task_follows SET notify_failures=0,updated_at=clock_timestamp() WHERE id=r.id;
-        PERFORM app_private.append_authz_audit_v1(v_org,'HERMES_TASK_FOLLOW_NOTICE_ABANDONED','hermes_task_follow',r.id,NULL,
-          jsonb_build_object('jobId',v_job,'kinds',r.kinds,'failures',v_prior+1),'Task follow notice abandoned after repeated delivery failures');
-        RAISE WARNING 'hermes_task_follow_tick_v1: follow % notice % abandoned after % failures',r.id,r.kinds,v_prior+1;
-        v_abandoned:=v_abandoned+1;
+      SELECT t.organization_id,t.job_id,t.due_failures,t.overdue_failures,t.report_failures INTO v_org,v_job,v_due,v_over,v_report
+        FROM app_private.hermes_task_follows t WHERE t.id=r.id;
+      v_given:=COALESCE((SELECT jsonb_agg(k.kind ORDER BY k.kind) FROM jsonb_array_elements_text(r.kinds) AS k(kind)
+        WHERE (k.kind='due' AND v_due>=3) OR (k.kind='overdue' AND v_over>=3) OR (k.kind='overdue_report' AND v_report>=3)),'[]'::jsonb);
+      UPDATE app_private.hermes_task_follows SET
+        due_failures=CASE WHEN NOT(r.kinds ? 'due') THEN due_failures WHEN v_due<3 THEN v_due+1 ELSE 0 END,
+        due_notified_at=CASE WHEN r.kinds ? 'due' AND v_due<3 THEN NULL ELSE due_notified_at END,
+        overdue_failures=CASE WHEN NOT(r.kinds ? 'overdue') THEN overdue_failures WHEN v_over<3 THEN v_over+1 ELSE 0 END,
+        overdue_notified_at=CASE WHEN r.kinds ? 'overdue' AND v_over<3 THEN NULL ELSE overdue_notified_at END,
+        report_failures=CASE WHEN NOT(r.kinds ? 'overdue_report') THEN report_failures WHEN v_report<3 THEN v_report+1 ELSE 0 END,
+        overdue_reported_at=CASE WHEN r.kinds ? 'overdue_report' AND v_report<3 THEN NULL ELSE overdue_reported_at END,
+        updated_at=clock_timestamp() WHERE id=r.id;
+      v_retrying:=v_retrying+jsonb_array_length(r.kinds)-jsonb_array_length(v_given);
+      IF jsonb_array_length(v_given)>0 THEN
+        v_abandon:=v_abandon||jsonb_build_array(jsonb_build_object('id',r.id,'org',v_org,'jobId',v_job,'kinds',v_given,
+          'failures',4,'reason','retry_limit'));
       END IF;
     EXCEPTION WHEN OTHERS THEN v_failed:=v_failed+1;
       RAISE WARNING 'hermes_task_follow_tick_v1: follow % notice state kept (%)',r.id,SQLSTATE;
     END;
   END LOOP;
-  -- A follow whose every notice of this tick went through starts a new count.
-  BEGIN
-    UPDATE app_private.hermes_task_follows SET notify_failures=0
-      WHERE id IN (SELECT (x.value#>>'{}')::uuid FROM jsonb_array_elements(v_sent) AS x(value))
-        AND NOT(v_lost ? id::text) AND notify_failures<>0;
-  EXCEPTION WHEN OTHERS THEN v_failed:=v_failed+1;
-    RAISE WARNING 'hermes_task_follow_tick_v1: failure counters kept (%)',SQLSTATE;
-  END;
+  -- Every give-up is warned and audited in its own subtransaction: a failing
+  -- audit write (advisory lock, lock_timeout) never undoes the stored decision.
+  FOR r IN SELECT x.value AS a FROM jsonb_array_elements(v_abandon) AS x(value) LOOP
+    v_abandoned:=v_abandoned+jsonb_array_length(r.a->'kinds');
+    RAISE WARNING 'hermes_task_follow_tick_v1: follow % notice % abandoned (%)',r.a->>'id',r.a->'kinds',r.a->>'reason';
+    BEGIN
+      PERFORM app_private.append_authz_audit_v1((r.a->>'org')::uuid,'HERMES_TASK_FOLLOW_NOTICE_ABANDONED','hermes_task_follow',(r.a->>'id')::uuid,NULL,
+        jsonb_build_object('jobId',r.a->'jobId','kinds',r.a->'kinds','failures',r.a->'failures','reason',r.a->>'reason'),
+        'Task follow notice abandoned without delivery');
+    EXCEPTION WHEN OTHERS THEN v_failed:=v_failed+1;
+      RAISE WARNING 'hermes_task_follow_tick_v1: abandon audit for follow % not written (%)',r.a->>'id',SQLSTATE;
+    END;
+  END LOOP;
   RETURN jsonb_build_object('checked',v_checked,'closed',v_closed,'notified',v_notified,'failed',v_failed,'skippedOrganizations',v_skipped,
     'retrying',v_retrying,'abandoned',v_abandoned);
 END $fn$;
@@ -197,11 +248,15 @@ END $fn$;
 -- idempotency key). Same channel as v1: in-app bell row plus send-push through
 -- pg_net with the reminder service JWT slot; a marked TEST database refuses that
 -- JWT, so TEST records only the bell. Text never claims a send happened.
+-- The push tag is per digest (hash of its incident set), not per company: a later
+-- digest about other incidents never replaces an earlier one on the device, while
+-- the recovered notice for exactly the same incidents replaces its opened notice,
+-- as v1's per-schedule tag does.
 CREATE OR REPLACE FUNCTION app_private.hermes_schedule_notify_v2(p_incidents uuid[],p_phase text)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,app_private,public AS $fn$
 DECLARE v_org uuid; v_user uuid; v_count integer; v_orgs integer; v_users integer; v_schedules integer; v_rows jsonb;
-  v_lines text; v_title text; v_body text; v_jwt text; v_error text; v_req bigint;
+  v_lines text; v_title text; v_body text; v_hash text; v_jwt text; v_error text; v_req bigint;
 BEGIN
   IF p_phase IS NULL OR p_phase NOT IN ('opened','recovered') OR p_incidents IS NULL OR cardinality(p_incidents) NOT BETWEEN 1 AND 20
     OR EXISTS(SELECT 1 FROM unnest(p_incidents) x WHERE x IS NULL)
@@ -251,11 +306,12 @@ BEGIN
     v_jwt:=app_private.lifecycle_reminder_service_jwt_v1();
   EXCEPTION WHEN OTHERS THEN v_jwt:=NULL; v_error:=left(SQLSTATE||': '||SQLERRM,300); END;
   IF v_jwt IS NOT NULL THEN
+    v_hash:=md5((SELECT string_agg(x::text,',' ORDER BY x) FROM unnest(p_incidents) x));
     v_req:=net.http_post(
       url:='https://tryymsxyyckgbrmmvozx.supabase.co/functions/v1/send-push',
       body:=jsonb_build_object('userId',v_user,'title',v_title,'body',v_body,'url','/settings/hermes',
-        'tag','hermes-schedule-digest:'||v_org::text,
-        'idempotencyKey',left('hermes-schedule-digest:'||md5((SELECT string_agg(x::text,',' ORDER BY x) FROM unnest(p_incidents) x))||':'||p_phase,128)),
+        'tag','hermes-schedule-digest:'||v_hash,
+        'idempotencyKey','hermes-schedule-digest:'||v_hash||':'||p_phase),
       headers:=jsonb_build_object('Authorization','Bearer '||v_jwt,'Content-Type','application/json'),
       timeout_milliseconds:=30000);
   END IF;
@@ -366,14 +422,22 @@ BEGIN
     UPDATE app_private.hermes_schedule_incidents SET notified_at=clock_timestamp(),notify_result=v_result WHERE id=ANY(v_group.ids);
     v_notified:=v_notified+cardinality(v_group.ids);
   END LOOP;
-  FOR v_group IN WITH picked AS (SELECT i.id,i.organization_id,i.user_id,i.closed_at FROM app_private.hermes_schedule_incidents i
+  -- Recovery: one notice per (company, owner) too, and only for incidents whose
+  -- opened notice actually wrote a bell; an owner never told about a problem
+  -- (write error, inactive owner) is not told it recovered. Every incident is
+  -- still closed out once.
+  FOR v_group IN WITH picked AS (SELECT i.id,i.organization_id,i.user_id,i.closed_at,i.notify_result->>'bell'='true' AS told
+      FROM app_private.hermes_schedule_incidents i
       WHERE i.close_reason='recovered' AND i.notified_at IS NOT NULL AND i.closed_notified_at IS NULL AND i.kind IN ('authority','run')
         AND (cardinality(p_organization_ids)=0 OR i.organization_id=ANY(p_organization_ids))
       ORDER BY i.closed_at,i.id LIMIT 20 FOR UPDATE SKIP LOCKED)
-    SELECT picked.organization_id,picked.user_id,array_agg(picked.id ORDER BY picked.closed_at,picked.id) AS ids FROM picked
+    SELECT picked.organization_id,picked.user_id,array_agg(picked.id ORDER BY picked.closed_at,picked.id) AS ids,
+      array_agg(picked.id ORDER BY picked.closed_at,picked.id) FILTER(WHERE picked.told) AS told_ids FROM picked
     GROUP BY picked.organization_id,picked.user_id ORDER BY min(picked.closed_at),picked.organization_id,picked.user_id LOOP
-    BEGIN PERFORM app_private.hermes_schedule_notify_v2(v_group.ids,'recovered');
-    EXCEPTION WHEN OTHERS THEN NULL; END;
+    IF v_group.told_ids IS NOT NULL THEN
+      BEGIN PERFORM app_private.hermes_schedule_notify_v2(v_group.told_ids,'recovered');
+      EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
     UPDATE app_private.hermes_schedule_incidents SET closed_notified_at=clock_timestamp() WHERE id=ANY(v_group.ids);
     v_notified:=v_notified+cardinality(v_group.ids);
   END LOOP;

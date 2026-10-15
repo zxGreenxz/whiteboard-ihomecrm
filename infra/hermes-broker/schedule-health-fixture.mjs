@@ -57,7 +57,7 @@ export async function setupScheduleHealth(t, { reconcile = false, hooks = {}, di
   const health = candidate('hermes_schedule_health_v1');
   await db.exec(health); await db.exec(health);
   if (reconcile) { const sql = candidate('hermes_delivery_reconcile_v1'); await db.exec(sql); await db.exec(sql); }
-  // Latest sweep: 20261015181525 groups owner notices (applied twice);
+  // Latest sweep: 20261015185559 groups owner notices (applied twice);
   // digest:null keeps the health migration's per-incident sweep.
   if (digest !== null) await applyNotifyRetryDigest(db, digest);
   const binding = { ...x.baseline, tokenDigest: createHash('sha256').update(token).digest('hex') };

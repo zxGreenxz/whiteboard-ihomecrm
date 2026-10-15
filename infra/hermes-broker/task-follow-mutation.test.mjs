@@ -18,7 +18,7 @@ const mutate = (from, to) => {
   return next;
 };
 // grant comes from the review-fix forward migration; the tick's latest
-// definition is the notify retry forward (20261015181525).
+// definition is the notify retry forward (20261015185559).
 const fixes = reviewFixesSql();
 const mutateFixes = (from, to) => {
   const next = fixes.replace(from, to);

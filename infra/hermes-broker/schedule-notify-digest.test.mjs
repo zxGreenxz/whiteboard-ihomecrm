@@ -3,16 +3,18 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setupScheduleHealth, SCHEDULE } from './schedule-health-fixture.mjs';
 import { notifyRetryDigestSql } from './notify-retry-digest-fixture.mjs';
-import { ORG, USER } from '../hermes-zalo-router/private-command-fixture.mjs';
+import { ORG, USER, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
 
-// 20261015181525_hermes_notify_retry_digest_v1 (2): the sweep groups the
+// 20261015185559_hermes_notify_retry_digest_v1 (2): the sweep groups the
 // incidents it picks in one pass by (company, schedule owner) into ONE bell
 // notice; every incident still records its own attempt, a failing owner write
-// does not block another owner, and transient causes still wait 15 minutes.
+// does not block another owner, transient causes still wait 15 minutes, and a
+// recovery is announced only for incidents whose opened notice wrote a bell.
 // Extra schedules are fixture copies of the created one (same connection and
-// grant settings, own id/owner); incidents are opened through the real helper.
-const OWNER2 = 'a1b2c3d4-1234-4567-8123-123456789abc';
-const S2 = 'b2c3d4e5-1234-4567-8123-123456789abc', S3 = 'c3d4e5f6-1234-4567-8123-123456789abc', S4 = 'd4e5f6a7-1234-4567-8123-123456789abc';
+// grant settings, own id/owner/company); incidents are opened through the real helper.
+const OWNER2 = 'a1b2c3d4-1234-4567-8123-123456789abc', SECOND_MEMBERSHIP = 'e5f6a7b8-1234-4567-8123-123456789abc';
+// Distinct last 8 characters: the notice labels a schedule by them.
+const S2 = 'b2c3d4e5-1234-4567-8123-0000000000b2', S3 = 'c3d4e5f6-1234-4567-8123-0000000000c3', S4 = 'd4e5f6a7-1234-4567-8123-0000000000d4';
 const label = id => `Lịch bản tin phòng …${id.slice(-8)}`;
 
 async function prepare(x, owners) {
@@ -20,17 +22,20 @@ async function prepare(x, owners) {
   await x.manage('create', { requestId: SCHEDULE, settings: x.settings() });
   await db.query('INSERT INTO auth.users VALUES($1) ON CONFLICT DO NOTHING', [OWNER2]);
   await db.query(`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES($1,$1,$2,'ACTIVE')`, [OWNER2, ORG]);
-  for (const [id, owner] of owners) {
+  // The schedule owner is also an active member of a second company.
+  await db.query(`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES($1,$2,$3,'ACTIVE')`, [SECOND_MEMBERSHIP, USER, FOREIGN]);
+  for (const [id, owner, org = ORG] of owners) {
     const grant = randomUUID();
     await db.query(`INSERT INTO app_private.hermes_room_schedules(id,user_id,organization_id,connection_id,grant_id,revision,state,last_request_id,last_request_digest)
-      SELECT $1,$3,organization_id,connection_id,$2,revision,state,$1,last_request_digest FROM app_private.hermes_room_schedules WHERE id=$4`,
-    [id, grant, owner, SCHEDULE]);
+      SELECT $1,$3,$5,connection_id,$2,revision,state,$1,last_request_digest FROM app_private.hermes_room_schedules WHERE id=$4`,
+    [id, grant, owner, SCHEDULE, org]);
     await db.query(`INSERT INTO app_private.hermes_schedule_grants(id,schedule_id,revision,user_id,organization_id,connection_id,binding_id,binding_epoch,
         account_id,settings,request_id,request_digest,created_at,expires_at)
-      SELECT $2,$1,revision,$3,organization_id,connection_id,binding_id,binding_epoch,account_id,settings,$1,request_digest,created_at,expires_at
-      FROM app_private.hermes_schedule_grants WHERE schedule_id=$4`, [id, grant, owner, SCHEDULE]);
+      SELECT $2,$1,revision,$3,$5,connection_id,binding_id,binding_epoch,account_id,settings,$1,request_digest,created_at,expires_at
+      FROM app_private.hermes_schedule_grants WHERE schedule_id=$4`, [id, grant, owner, SCHEDULE, org]);
   }
 }
+const pushTags = async x => (await x.db.query(`SELECT body->>'tag' tag,body->>'idempotencyKey' idem FROM net.fixture_requests ORDER BY id`)).rows;
 const open = (x, schedule, reason = 'user_permission_revoked', kind = 'authority') => x.db.query(
   'SELECT app_private.hermes_schedule_incident_open_v1($1,$2,$3,$4::jsonb)', [schedule, kind, reason, JSON.stringify({ permission: 'chat_zalo.manage_automation' })]);
 const marks = async x => (await x.db.query(`SELECT schedule_id,user_id,notified_at IS NOT NULL notified,notify_result,closed_notified_at IS NOT NULL closed_notified
@@ -73,6 +78,68 @@ async function ownersIsolated(x) {
   assert.ok(rows.filter(row => row.user_id === USER).every(row => row.notify_result.bell === true));
 }
 
+const recover = async (x, schedules) => {
+  for (const schedule of schedules) {
+    await x.db.query("SELECT app_private.hermes_schedule_incident_close_v1($1,ARRAY['authority','run'],'{}'::text[],'recovered')", [schedule]);
+  }
+};
+
+async function twoCompanies(x) {
+  await prepare(x, [[S2, USER], [S3, USER, FOREIGN], [S4, USER, FOREIGN]]);
+  for (const schedule of [SCHEDULE, S2, S3, S4]) await open(x, schedule);
+  assert.equal((await x.sweep([ORG, FOREIGN])).notified, 4);
+  const notes = await x.notifications();
+  assert.deepEqual(notes.map(note => [note.user_id, note.organization_id, note.metadata.count]).sort(),
+    [[USER, ORG, 2], [USER, FOREIGN, 2]].sort(), 'never one notice across companies');
+}
+
+async function recoveryDigest(x) {
+  await x.db.exec('UPDATE public.fixture_push SET enabled=true');
+  await prepare(x, [[S2, USER], [S3, USER]]);
+  for (const schedule of [SCHEDULE, S2, S3]) await open(x, schedule);
+  await x.sweep();
+  await recover(x, [SCHEDULE, S2, S3]);
+  assert.equal((await x.sweep()).notified, 3);
+  const notes = await x.notifications();
+  assert.equal(notes.length, 2);
+  assert.match(notes[1].subject, /đã chạy lại \(3 lịch\)/);
+  assert.equal(notes[1].metadata.phase, 'recovered');
+  for (const schedule of [SCHEDULE, S2, S3]) assert.ok(notes[1].content.includes(label(schedule)), schedule);
+  assert.doesNotMatch(notes[1].content, /đã gửi/);
+  assert.ok((await marks(x)).every(row => row.closed_notified));
+  await x.sweep();
+  assert.equal((await x.notifications()).length, 2);
+  // Same incident set: the recovered push replaces its opened push on the device.
+  let tags = await pushTags(x);
+  assert.equal(tags.length, 2);
+  assert.match(tags[0].tag, /^hermes-schedule-digest:[0-9a-f]{32}$/);
+  assert.equal(tags[1].tag, tags[0].tag);
+  assert.deepEqual(tags.map(row => row.idem.split(':').at(-1)), ['opened', 'recovered']);
+  // Another digest of the same owner and company never replaces the first one.
+  for (const schedule of [S2, S3]) await open(x, schedule, 'room_limit', 'run');
+  await x.sweep();
+  tags = await pushTags(x);
+  assert.equal(tags.length, 3);
+  assert.notEqual(tags[2].tag, tags[0].tag);
+}
+
+async function recoveryOnlyIfTold(x) {
+  await prepare(x, [[S2, USER], [S3, USER]]);
+  await open(x, SCHEDULE);
+  await x.sweep();
+  await poison(x, USER);
+  for (const schedule of [S2, S3]) await open(x, schedule);
+  await x.sweep();
+  await x.db.exec('DROP TRIGGER fixture_bell_poison ON public.notifications');
+  await recover(x, [SCHEDULE, S2, S3]);
+  assert.equal((await x.sweep()).notified, 3, 'all three closed out');
+  const notes = await x.notifications();
+  assert.deepEqual(notes.map(note => note.metadata.phase), ['opened', 'recovered'], 'told once, recovered once');
+  assert.equal(notes[1].metadata.scheduleId, SCHEDULE, 'only the incident the owner heard about');
+  assert.ok(!notes[1].content.includes(label(S2)) && !notes[1].content.includes(label(S3)));
+  assert.ok((await marks(x)).every(row => row.closed_notified));
+}
+
 test('schedule incident notices are grouped per owner in one sweep', { timeout: 300000 }, async t => {
   const x = await setupScheduleHealth(t, { reconcile: true });
 
@@ -90,24 +157,11 @@ test('schedule incident notices are grouped per owner in one sweep', { timeout: 
 
   await x.each('one owner failing to write the bell does not block another owner', () => ownersIsolated(x));
 
-  await x.each('recovery of several schedules of one owner is one notice', async () => {
-    await prepare(x, [[S2, USER], [S3, USER]]);
-    for (const schedule of [SCHEDULE, S2, S3]) await open(x, schedule);
-    await x.sweep();
-    for (const schedule of [SCHEDULE, S2, S3]) {
-      await x.db.query("SELECT app_private.hermes_schedule_incident_close_v1($1,ARRAY['authority','run'],'{}'::text[],'recovered')", [schedule]);
-    }
-    assert.equal((await x.sweep()).notified, 3);
-    const notes = await x.notifications();
-    assert.equal(notes.length, 2);
-    assert.match(notes[1].subject, /đã chạy lại \(3 lịch\)/);
-    assert.equal(notes[1].metadata.phase, 'recovered');
-    for (const schedule of [SCHEDULE, S2, S3]) assert.ok(notes[1].content.includes(label(schedule)), schedule);
-    assert.doesNotMatch(notes[1].content, /đã gửi/);
-    assert.ok((await marks(x)).every(row => row.closed_notified));
-    await x.sweep();
-    assert.equal((await x.notifications()).length, 2);
-  });
+  await x.each('the same owner in two companies gets one notice per company', () => twoCompanies(x));
+
+  await x.each('recovery of several schedules of one owner is one notice; push tag is per digest', () => recoveryDigest(x));
+
+  await x.each('recovery is announced only for incidents whose opened notice reached the bell', () => recoveryOnlyIfTold(x));
 
   await x.each('a transient cause still waits 15 minutes; a single incident keeps the v1 notice', async () => {
     await prepare(x, [[S2, USER]]);
@@ -158,6 +212,15 @@ for (const [name, sql, scenario] of [
   ['an owner write failure is not isolated',
     mutant("BEGIN v_result:=app_private.hermes_schedule_notify_v2(v_group.ids,'opened');\n    EXCEPTION WHEN OTHERS THEN v_result:=jsonb_build_object('error',SQLSTATE); END;",
       "v_result:=app_private.hermes_schedule_notify_v2(v_group.ids,'opened');"), ownersIsolated],
+  ['one group spans two companies of the same owner',
+    mutant(`    SELECT picked.organization_id,picked.user_id,array_agg(picked.id ORDER BY picked.opened_at,picked.id) AS ids FROM picked
+    GROUP BY picked.organization_id,picked.user_id ORDER BY min(picked.opened_at),picked.organization_id,picked.user_id LOOP`,
+    `    SELECT min(picked.organization_id::text)::uuid AS organization_id,picked.user_id,array_agg(picked.id ORDER BY picked.opened_at,picked.id) AS ids FROM picked
+    GROUP BY picked.user_id ORDER BY min(picked.opened_at),picked.user_id LOOP`), twoCompanies],
+  ['recovery announced although the opened notice never reached the bell',
+    mutant('FILTER(WHERE picked.told) AS told_ids', 'AS told_ids'), recoveryOnlyIfTold],
+  ['push tag per company: a later digest replaces an earlier one',
+    mutant("'tag','hermes-schedule-digest:'||v_hash", "'tag','hermes-schedule-digest:'||v_org::text"), recoveryDigest],
 ]) {
   test(`mutation caught: ${name}`, { timeout: 300000 }, async t => {
     const x = await setupScheduleHealth(t, { reconcile: true, digest: sql });
