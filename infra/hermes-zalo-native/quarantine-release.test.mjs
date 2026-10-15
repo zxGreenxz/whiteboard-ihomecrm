@@ -17,6 +17,10 @@ import { planNativeGrant, applyNativeGrant, inspectNativeDelivery, reconcileNati
 const accountId = '11111111-1111-4111-8111-111111111111';
 const receipt = () => ({ message: { msgId: 987654 }, attachment: [] });
 const lost = () => ({ ackLost: true });
+// The simulated lost ACK is an unrecognized receipt: the bridge reports only
+// its redacted shape. Every other fault below is a reconciliation fault.
+const LOST_FAULT = 'native_receipt_unrecognized {ackLost:boolean}';
+const ledgerFaults = faults => { assert.ok(faults.includes(LOST_FAULT)); return faults.filter(code => code !== LOST_FAULT); };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const OLD = 'Nội dung cũ chưa rõ đã tới chưa', NEW = 'Nội dung mới sau đối soát';
 
@@ -189,7 +193,7 @@ test('(b) operator reconcile reopens the channel for a new ID through the produc
   const inspected = inspect(f);
   assert.equal(inspected.quarantine, 'released_by_reconciliation');
   assert.deepEqual(inspected.reconciliation, { recorded: 1, unreconciled: 0, quarantineRelease: 'worker_reads_ledger_before_each_new_send' });
-  assert.deepEqual(h.faults, []);
+  assert.deepEqual(ledgerFaults(h.faults), []);
 });
 
 test('(c) an entry differing in digest, start time, generation, profile, account or request ID never releases', async t => {
@@ -198,7 +202,7 @@ test('(c) an entry differing in digest, start time, generation, profile, account
   assert.equal(h.calls.length, 1);
   fs.writeFileSync(f.ledgerFile, JSON.stringify(genuine));
   assert.equal(await h.send('alpha', 'after-genuine', NEW), 'sent', 'the genuine entry releases (fixture is not vacuous)');
-  assert.deepEqual(h.faults, []);
+  assert.deepEqual(ledgerFaults(h.faults), []);
 });
 
 test('(d) corrupt, schema-invalid, oversized or hardlinked ledgers fail closed with a redacted fault', async t => {
@@ -216,8 +220,8 @@ test('(d) corrupt, schema-invalid, oversized or hardlinked ledgers fail closed w
   fs.linkSync(f.ledgerFile, hardlink);
   await blocked(h, 'hardlink');
   fs.unlinkSync(hardlink);
-  assert.equal(h.faults.length, 6);
-  assert.ok(h.faults.every(code => code === 'native_reconciliation_unreadable'));
+  assert.equal(ledgerFaults(h.faults).length, 6);
+  assert.ok(ledgerFaults(h.faults).every(code => code === 'native_reconciliation_unreadable'));
   assert.equal(await h.send('alpha', 'after-repair', NEW), 'sent');
   assert.equal(inspect(f).quarantine, 'released_by_reconciliation');
 });
@@ -234,7 +238,7 @@ test('(d) Linux: unsafe ledger mode, config directory mode or a symlinked ledger
     fs.renameSync(f.ledgerFile, target); fs.symlinkSync(target, f.ledgerFile);
     await blocked(h, 'symlink');
     fs.unlinkSync(f.ledgerFile); fs.renameSync(target, f.ledgerFile);
-    assert.deepEqual(h.faults, Array(3).fill('native_reconciliation_unreadable'));
+    assert.deepEqual(ledgerFaults(h.faults), Array(3).fill('native_reconciliation_unreadable'));
     assert.equal(await h.send('alpha', 'after-repair', NEW), 'sent');
   });
 

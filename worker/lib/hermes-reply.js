@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { ThreadType } from 'zca-js';
+import { describeReceiptShape, providerTextReceipt } from './hermes-native-receipt.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const UID = /^[1-9][0-9]{0,39}$/;
@@ -58,26 +59,19 @@ function claimAck(data, source, deliveryId) {
   return ack;
 }
 
-// zca-js 2.2.0: dist/apis/sendMessage.{js,d.ts} returns
-// {message: {msgId: number}, attachment: []} for a single text request. Reject
-// unsafe numbers rather than inventing an exact ID from a rounded JSON number.
-// The pinned package has no smaller text limit; 32768 UTF-8 bytes is our bound.
-export function privateReplyReceipt(value) {
-  const result = exact(value, ['message', 'attachment']);
-  const message = exact(result?.message, ['msgId']);
-  try {
-    if (!message || !Number.isSafeInteger(message.msgId) || message.msgId <= 0 || !Array.isArray(result.attachment) ||
-        Reflect.ownKeys(result.attachment).length !== 1 || Object.getOwnPropertyDescriptor(result.attachment, 'length')?.value !== 0) return null;
-    return String(message.msgId);
-  } catch { return null; }
-}
+// zca-js sendMessage for a single text request: message.msgId as a positive safe
+// integer or a decimal string (the runtime may stringify it and add keys); see
+// hermes-native-receipt.js. Unsafe numbers are rejected rather than inventing an
+// exact ID from a rounded JSON number. The pinned package has no smaller text
+// limit; 32768 UTF-8 bytes is our bound.
+export const privateReplyReceipt = providerTextReceipt;
 
 /** One runner belongs to exactly one existing provider session. Unknown
  * admission quarantines this runner until a fresh attachment; no write or send
  * is automatically replayed. Closing still permits metadata-only settlement. */
 export function createHermesReplyRunner({ getSource, rpc, isActive, sendMessage, intervalMs = 5000,
-  rpcTimeoutMs = 8000, providerTimeoutMs = 60000, uuid = randomUUID } = {}) {
-  if (![getSource, rpc, isActive, sendMessage, uuid].every(value => typeof value === 'function') ||
+  rpcTimeoutMs = 8000, providerTimeoutMs = 60000, uuid = randomUUID, onFault = () => {} } = {}) {
+  if (![getSource, rpc, isActive, sendMessage, uuid, onFault].every(value => typeof value === 'function') ||
       !Number.isSafeInteger(intervalMs) || intervalMs < 1 || intervalMs > 60000 ||
       !Number.isSafeInteger(rpcTimeoutMs) || rpcTimeoutMs < 1 || rpcTimeoutMs > 30000 ||
       !Number.isSafeInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 60000) throw new TypeError('invalid_reply_runner');
@@ -138,7 +132,12 @@ export function createHermesReplyRunner({ getSource, rpc, isActive, sendMessage,
     // No await between the final local fence and the only provider invocation.
     try { transport = Promise.resolve(sendMessage(Object.freeze({ msg: claimed.text }), claimed.recipientUid, ThreadType.User)); }
     catch { return acknowledge(source, claimed, 'unknown', null, held); }
-    const settled = transport.then(privateReplyReceipt, () => null).catch(() => null).finally(() => clearTimeout(deadline));
+    const settled = transport.then(value => {
+      const receipt = privateReplyReceipt(value);
+      // Redacted shape only (key names and kinds), never text or IDs.
+      if (!receipt) { try { onFault(`private_reply_receipt_unrecognized ${describeReceiptShape(value)}`); } catch { /* diagnostics only */ } }
+      return receipt;
+    }, () => null).catch(() => null).finally(() => clearTimeout(deadline));
     held.push(settled);
     const providerMessageId = await Promise.race([settled, new Promise(resolve => { deadline = setTimeout(() => resolve(null), providerTimeoutMs); })]);
     // A stopped/replaced session may record the old delivery's provider receipt;

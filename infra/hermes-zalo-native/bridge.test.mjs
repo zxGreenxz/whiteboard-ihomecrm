@@ -4,19 +4,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { createNativeBridge } from '../../worker/lib/hermes-native-bridge.js';
+import { createNativeBridge, nativeTextReceipt } from '../../worker/lib/hermes-native-bridge.js';
 import { readNativeConfig } from '../../worker/lib/hermes-native-config.js';
 
 const channel = { accountId: '11111111-1111-4111-8111-111111111111', ownUid: '100', pairedUid: '200', mainUid: '200',
   profile: 'personal-fixture', generation: '22222222-2222-4222-8222-222222222222', token: 'hzn_' + 'a'.repeat(64) };
 const event = (id = 'm1') => ({ type: 0, isSelf: false, threadId: '200', data: {
   uidFrom: '200', idTo: '100', msgType: 'webchat', msgId: id, content: 'Native personal request', ts: Date.now() } });
-async function fixture(t, { config: supplied, provider, timeout, maxProviderPending } = {}) {
+async function fixture(t, { config: supplied, provider, timeout, maxProviderPending, onFault = () => {} } = {}) {
   const root = supplied?.stateRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-native-'));
   const config = supplied || { stateRoot: root, channels: [channel] };
   const sent = [];
   let active = true;
-  const bridge = createNativeBridge({ config, providerTimeoutMs: timeout || 100, maxProviderPending, onFault: () => {} });
+  const bridge = createNativeBridge({ config, providerTimeoutMs: timeout || 100, maxProviderPending, onFault });
   const api = { sendMessage: async (...args) => {
     sent.push(args); return provider ? provider(...args) : { message: { msgId: 987654 }, attachment: [] };
   } };
@@ -87,6 +87,35 @@ test('durable inbound dedup and outbound receipt survive a bridge restart withou
   assert.equal((await g.send()).data.status, 'sent');
   assert.equal(g.sent.length, 0);
   assert.equal((await g.send('reply-1', 'altered payload')).status, 400);
+});
+
+test('runtime receipt shapes: numeric-string msgId and extra keys are sent; invalid msgId stays unknown with a redacted fault', async t => {
+  assert.equal(nativeTextReceipt({ message: { msgId: 987654 }, attachment: [] }), '987654');
+  assert.equal(nativeTextReceipt({ message: { msgId: '7312345678901', cliMsgId: '1' }, attachment: [], extra: { a: 1 } }), '7312345678901');
+  assert.equal(nativeTextReceipt({ message: { msgId: '7312345678901' } }), '7312345678901', 'attachment may be absent');
+  for (const bad of [undefined, null, {}, { message: {} }, { message: { msgId: 0 }, attachment: [] }, { message: { msgId: -5 }, attachment: [] },
+    { message: { msgId: 2 ** 53 }, attachment: [] }, { message: { msgId: '0' }, attachment: [] }, { message: { msgId: '-5' }, attachment: [] },
+    { message: { msgId: 'abc' }, attachment: [] }, { message: { msgId: '12 3' }, attachment: [] }, { message: { msgId: '1'.repeat(26) }, attachment: [] },
+    { message: { msgId: 1 }, attachment: [{ msgId: 2 }] }, { message: { msgId: 1 }, attachment: 'x' }, { msgId: 1, attachment: [] }]) {
+    assert.equal(nativeTextReceipt(bad), null, JSON.stringify(bad));
+  }
+  const getter = { message: {}, attachment: [] }; let read = false;
+  Object.defineProperty(getter.message, 'msgId', { enumerable: true, get() { read = true; return 1; } });
+  assert.equal(nativeTextReceipt(getter), null); assert.equal(read, false, 'provider getters never run');
+
+  const live = await fixture(t, { provider: () => ({ message: { msgId: '7312345678901', cliMsgId: '55' }, attachment: [], ts: 1 }) });
+  assert.deepEqual((await live.send('string-id')).data, { status: 'sent', messageId: '7312345678901' });
+  assert.equal((await live.send('next', 'Second response')).data.status, 'sent', 'a recognized receipt never quarantines the channel');
+  const faults = [];
+  const bad = await fixture(t, { provider: () => ({ message: { msgId: 'PRIVATE 0912345678', note: 'PRIVATE TEXT' }, attachment: [] }),
+    onFault: code => faults.push(code) });
+  assert.equal((await bad.send('bad-id')).data.status, 'outcome_unknown');
+  assert.deepEqual(faults, ['native_receipt_unrecognized {message:{msgId:string,note:string},attachment:array(0)}']);
+  assert.doesNotMatch(faults.join(), /PRIVATE|0912/);
+  // A receipt the unchanged journal format cannot record stays unknown, never "sent".
+  const wide = await fixture(t, { provider: () => ({ message: { msgId: '9'.repeat(20) }, attachment: [] }), onFault: code => faults.push(code) });
+  assert.equal((await wide.send('wide-id')).data.status, 'outcome_unknown');
+  assert.equal(faults.at(-1), 'native_receipt_unrecordable');
 });
 
 test('lost provider outcome is quarantined durably and concurrent retry cannot send twice', async t => {

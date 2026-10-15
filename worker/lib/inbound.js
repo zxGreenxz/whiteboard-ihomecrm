@@ -575,6 +575,7 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
       isActive: active,
       rpc: ({ functionName, args, signal }) => sb.rpc(functionName, args).abortSignal(signal),
       sendMessage: (...args) => api.sendMessage(...args),
+      onFault: code => log('hermes reply', code),
     });
     session.hermesReply?.start();
     // Yêu cầu Zalo đẩy TIN GẦN ĐÂY (1-1 + nhóm); tin về qua event 'old_messages'.

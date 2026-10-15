@@ -4,6 +4,7 @@ import { createNativeJournal, nativeDigest } from './hermes-native-journal.js';
 import { nativeId, nativeUid, readNativeConfig } from './hermes-native-config.js';
 import { nativeReconciliationFile, nativeReconciliationFor, readNativeReconciliations } from './hermes-native-reconciliation.js';
 import { isHermesLinkMessage } from './hermes-link.js';
+import { describeReceiptShape, providerTextReceipt } from './hermes-native-receipt.js';
 
 const own = (value, key) => {
   if (!value || typeof value !== 'object') return undefined;
@@ -21,17 +22,9 @@ const validText = (value, bytes) => typeof value === 'string' && value.trim().le
 const publicChannel = c => ({ accountId: c.accountId, ownUid: c.ownUid, pairedUid: c.pairedUid,
   mainUid: c.mainUid, profile: c.profile, generation: c.generation });
 
-// zca-js 2.2.0 single-text result. Keep this protocol boundary free of a
-// provider SDK import; the existing worker injects its logged-in API.
-export function nativeTextReceipt(value) {
-  try {
-    const message = own(value, 'message'), attachments = own(value, 'attachment');
-    const id = own(message, 'msgId');
-    return exact(value, ['message', 'attachment']) && exact(message, ['msgId']) &&
-      Number.isSafeInteger(id) && id > 0 && Array.isArray(attachments) &&
-      Reflect.ownKeys(attachments).length === 1 && attachments.length === 0 ? String(id) : null;
-  } catch { return null; }
-}
+// zca-js single-text result (shared parser; no provider SDK import here). The
+// existing worker injects its logged-in API.
+export const nativeTextReceipt = providerTextReceipt;
 
 /** Shared transport only. It never creates a Zalo login, CRM client or model.
  * Every destination comes from the trusted local grant, never an HTTP body.
@@ -40,6 +33,8 @@ export function nativeTextReceipt(value) {
 export function createNativeBridge({ config, reconciliationFile = null, now = Date.now, providerTimeoutMs = 60000, maxProviderPending = 8, onFault = () => {} }) {
   if (!Number.isInteger(maxProviderPending) || maxProviderPending < 1 || maxProviderPending > 32 ||
       !Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 60000) throw new Error('invalid_native_limits');
+  // Operator diagnostics only; a failing logger never changes a send outcome.
+  const fault = code => { try { onFault(code); } catch { /* diagnostics only */ } };
   const channels = config.channels.map(channel => ({ channel, pending: new Set(),
     journal: createNativeJournal(config.stateRoot, channel) }));
   const attached = new Map();
@@ -158,10 +153,13 @@ export function createNativeBridge({ config, reconciliationFile = null, now = Da
           return source.api.sendMessage({ msg: body.text }, channel.pairedUid, 0);
         }).then(result => {
           const messageId = nativeTextReceipt(result);
-          if (!messageId) return { status: 'outcome_unknown' };
+          // Unrecognized receipt stays outcome_unknown; the operator sees only a
+          // redacted shape (key names and kinds), never text or IDs.
+          if (!messageId) { fault(`native_receipt_unrecognized ${describeReceiptShape(result)}`); return { status: 'outcome_unknown' }; }
           // Persist terminal proof even when the HTTP observation timed out.
           // Slot release and shutdown drain wait for this write as well.
-          journal.update('outbound', body.requestId, { ...record, status: 'sent', messageId, finishedAt: now() });
+          try { journal.update('outbound', body.requestId, { ...record, status: 'sent', messageId, finishedAt: now() }); }
+          catch (error) { fault('native_receipt_unrecordable'); throw error; }
           return { status: 'sent', messageId };
         });
         providers.add(provider); pending.add(body.requestId);
