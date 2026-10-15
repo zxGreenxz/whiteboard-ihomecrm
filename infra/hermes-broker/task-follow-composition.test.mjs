@@ -81,7 +81,7 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   };
 
   const names = (await broker.listTools(token)).tools.map(tool => tool.name).sort();
-  assert.deepEqual(names, ['crm_task_cancel', 'crm_task_create', 'crm_task_follow_list', 'crm_task_follow_set', 'crm_task_follow_stop',
+  assert.deepEqual(names, ['crm_new_request_id', 'crm_task_cancel', 'crm_task_create', 'crm_task_follow_list', 'crm_task_follow_set', 'crm_task_follow_stop',
     'crm_task_input_options', 'crm_task_progress', 'crm_task_status']);
   const J1 = await job({ title: 'Sơn lại cửa', deadline: new Date(Date.now() + 7200_000).toISOString() });
   const set = await mcp('crm_task_follow_set', { organizationId: ORG, requestId: u(1), jobId: J1, objective: 'Báo tôi khi xong', remindBeforeMinutes: 30 });

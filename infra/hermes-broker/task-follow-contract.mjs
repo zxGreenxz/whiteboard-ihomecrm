@@ -1,4 +1,5 @@
 import { domainExact, domainId } from './domain-contract.mjs';
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY } from './request-id-contract.mjs';
 
 // Follow/progress/cancel extend the existing CRM task family. Grants are the
 // existing CRM task permissions intersected with the Hermes overlay; nothing
@@ -143,19 +144,19 @@ export const TASK_FOLLOW_TOOLS = Object.freeze([
       status: { enum: ['open', 'completed', 'all'], default: 'open' }, limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
       offset: { type: 'integer', minimum: 0, maximum: 200, default: 0 } }, ['organizationId', 'role'],
     { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
-  tool('crm_task_follow_set', 'Đặt theo dõi chủ động (standing grant) cho một việc CRM đang mở đã có người thực hiện: nhắc người thực hiện trước hạn, báo quá hạn/hoàn thành/tiến độ cho người giao. Ghi bạn là người giao; không làm thay người nhận. Dùng requestId ổn định; mất phản hồi thì gọi lại đúng requestId để đối soát. Chuỗi giao lại cần parentFollowId; giao ngược cho người đang giao việc cho bạn bị chặn để chống vòng lặp.',
-    { organizationId: company, requestId: uuid, jobId: uuid, objective: { type: 'string', minLength: 1, maxLength: 500 },
+  tool('crm_task_follow_set', `Đặt theo dõi chủ động (standing grant) cho một việc CRM đang mở đã có người thực hiện: nhắc người thực hiện trước hạn, báo quá hạn/hoàn thành/tiến độ cho người giao. Ghi bạn là người giao; không làm thay người nhận. ${REQUEST_ID_GUIDANCE} Mất phản hồi thì gọi lại đúng requestId để đối soát. Chuỗi giao lại cần parentFollowId; giao ngược cho người đang giao việc cho bạn bị chặn để chống vòng lặp.`,
+    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, objective: { type: 'string', minLength: 1, maxLength: 500 },
       remindBeforeMinutes: { type: ['integer', 'null'], minimum: 0, maximum: 10080, default: null }, notifyAssigner: { type: 'boolean', default: true },
       parentFollowId: { ...nullableUuid, default: null } }, ['organizationId', 'requestId', 'jobId', 'objective'],
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
-  tool('crm_task_follow_stop', 'Dừng theo dõi/nhắc do chính bạn đã đặt (dùng version hiện tại). Không xoá việc CRM.',
-    { organizationId: company, requestId: uuid, followId: uuid, expectedVersion: { type: 'integer', minimum: 1 } },
+  tool('crm_task_follow_stop', `Dừng theo dõi/nhắc do chính bạn đã đặt (dùng version hiện tại). Không xoá việc CRM. ${REQUEST_ID_GUIDANCE}`,
+    { organizationId: company, requestId: REQUEST_ID_PROPERTY, followId: uuid, expectedVersion: { type: 'integer', minimum: 1 } },
     ['organizationId', 'requestId', 'followId', 'expectedVersion'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
-  tool('crm_task_progress', 'Ghi tiến độ (ghi chú) cho việc CRM đang mở mà bạn thực hiện hoặc đã tạo, theo quyền sửa công việc. Thay toàn bộ ghi chú: lấy progressDigest từ crm_task_follow_list. Hoàn thành việc vẫn làm trong CRM (ảnh, vị trí).',
-    { organizationId: company, requestId: uuid, jobId: uuid, note: { type: 'string', minLength: 1, maxLength: 1000 },
+  tool('crm_task_progress', `Ghi tiến độ (ghi chú) cho việc CRM đang mở mà bạn thực hiện hoặc đã tạo, theo quyền sửa công việc. Thay toàn bộ ghi chú: lấy progressDigest từ crm_task_follow_list. Hoàn thành việc vẫn làm trong CRM (ảnh, vị trí). ${REQUEST_ID_GUIDANCE}`,
+    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, note: { type: 'string', minLength: 1, maxLength: 1000 },
       expectedNoteDigest: { type: 'string', pattern: '^[a-f0-9]{32}$' } }, ['organizationId', 'requestId', 'jobId', 'note', 'expectedNoteDigest'],
     { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
-  tool('crm_task_cancel', 'Huỷ (xoá) một việc CRM đang mở theo quyền xoá công việc hiện tại khi người dùng yêu cầu rõ. Không huỷ việc đã hoàn thành hoặc đã ghi vật tư. Báo người thực hiện và đóng các theo dõi; ghi người huỷ và người thực hiện.',
-    { organizationId: company, requestId: uuid, jobId: uuid, reason: { type: 'string', minLength: 1, maxLength: 300 } },
+  tool('crm_task_cancel', `Huỷ (xoá) một việc CRM đang mở theo quyền xoá công việc hiện tại khi người dùng yêu cầu rõ. Không huỷ việc đã hoàn thành hoặc đã ghi vật tư. Báo người thực hiện và đóng các theo dõi; ghi người huỷ và người thực hiện. ${REQUEST_ID_GUIDANCE}`,
+    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, reason: { type: 'string', minLength: 1, maxLength: 300 } },
     ['organizationId', 'requestId', 'jobId', 'reason'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
 ]);

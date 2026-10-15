@@ -81,7 +81,7 @@ test('external MCP uses its real connection origin through preview, queue and pr
 
   await each('directory, preview, send and status work with no DM command, Copilot flag or organization policy', async () => {
     const broker = create(), tools = (await broker.listTools(token)).tools;
-    assert.deepEqual(tools.map(tool => tool.name), ['crm_available_rooms', ...EXTERNAL_GROUP_TOOLS.map(tool => tool.name)]);
+    assert.deepEqual(tools.map(tool => tool.name), ['crm_available_rooms', ...EXTERNAL_GROUP_TOOLS.map(tool => tool.name), 'crm_new_request_id']);
     assert(tools.find(tool => tool.name === 'crm_group_room_send').inputSchema.required.includes('requestId'));
     const directory = decode(await broker.callTool(token, 'crm_group_directory', {}));
     assert.equal(directory.conversations.length, 2);
@@ -144,7 +144,8 @@ test('external MCP uses its real connection origin through preview, queue and pr
   });
   await each('CRM read-only users can discover, preview and read status but cannot send', async () => {
     const broker = create(); await send(broker); await db.exec('UPDATE public.fixture_authority SET send_zalo=false');
-    assert(!(await broker.listTools(token)).tools.some(tool => tool.name === 'crm_group_room_send'));
+    assert(!(await broker.listTools(token)).tools.some(tool => ['crm_group_room_send', 'crm_new_request_id'].includes(tool.name)));
+    await assert.rejects(broker.callTool(token, 'crm_new_request_id', {}), code('tool_not_available'));
     assert.equal(decode(await broker.callTool(token, 'crm_group_room_preview', x.selection)).status, 'preview_only');
     assert.equal(decode(await status(broker)).recipients[0].status, 'queued');
     await assert.rejects(send(broker), code('tool_not_available')); assert.equal(sendCalls, 1);

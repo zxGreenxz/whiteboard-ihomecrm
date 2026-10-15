@@ -1,4 +1,5 @@
 import { domainExact, domainId } from './domain-contract.mjs';
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 export const TASK_ACTION = 'tasks.create';
 const nullable = check => value => value === null || check(value);
 const text = (value, max) => typeof value === 'string' && [...value].length <= max && !value.includes('\0');
@@ -40,12 +41,12 @@ export function taskResult(operation, value, identity, input) {
 const uuid = { type: 'string', format: 'uuid' };
 const nullableUuid = { type: ['string', 'null'], format: 'uuid' };
 export const TASK_TOOLS = Object.freeze([
-  { name: 'crm_task_create', description: 'Tạo và giao công việc CRM dưới chính người đang kết nối. Dùng requestId UUID ổn định; sau khi mất phản hồi chỉ đối soát status, không tạo lại. Chưa gồm vật tư, ảnh, hoàn thành hoặc thưởng.',
+  { name: 'crm_task_create', description: `Tạo và giao công việc CRM dưới chính người đang kết nối. ${REQUEST_ID_GUIDANCE} Sau khi mất phản hồi chỉ đối soát status, không tạo lại. Chưa gồm vật tư, ảnh, hoàn thành hoặc thưởng.`,
     inputSchema: { type: 'object', additionalProperties: false,
       required: ['requestId', 'title', 'description', 'buildingId', 'roomId', 'jobTypeId', 'priority', 'assigneeId', 'deadline'],
-      properties: { requestId: uuid, title: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: ['string', 'null'], maxLength: 4000 },
+      properties: { requestId: REQUEST_ID_PROPERTY, title: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: ['string', 'null'], maxLength: 4000 },
         buildingId: uuid, roomId: nullableUuid, jobTypeId: uuid, priority: { enum: ['NORMAL', 'LOW', 'URGENT'] }, assigneeId: nullableUuid,
         deadline: { type: ['string', 'null'], format: 'date-time', description: 'UTC ISO, đúng ba chữ số mili giây; null nếu không có hạn.' } } } },
-  { name: 'crm_task_status', description: 'Đối soát requestId đã dùng. not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo.',
+  { name: 'crm_task_status', description: `Đối soát requestId đã dùng. not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo. ${REQUEST_ID_STATUS_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } } },
 ]);

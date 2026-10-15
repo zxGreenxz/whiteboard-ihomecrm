@@ -1,4 +1,5 @@
 import { domainExact, domainId } from './domain-contract.mjs';
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 export const CUSTOMER_ACTIONS = Object.freeze(['customers.create', 'leads.create']);
 const kinds = Object.freeze({ 'customer.create': 'customer', 'customer.status': 'customer', 'lead.create': 'lead', 'lead.status': 'lead' });
 const sources = ['FACEBOOK', 'ZALO', 'PHONE', 'REFERRAL', 'WALK_IN', 'WEBSITE', 'OTHER'];
@@ -42,12 +43,12 @@ const TOOL_OPERATIONS = Object.freeze({ crm_customer_create: 'customer.create', 
   crm_lead_create: 'lead.create', crm_lead_status: 'lead.status' });
 export const customerActionOperation = name => Object.hasOwn(TOOL_OPERATIONS, name) ? TOOL_OPERATIONS[name] : undefined;
 export const CUSTOMER_ACTION_TOOLS = Object.freeze(['customer', 'lead'].flatMap(kind => [
-  Object.freeze({ name: `crm_${kind}_create`, description: `${kind === 'customer' ? 'Tạo khách hàng cá nhân WALK_IN' : 'Tạo lead B1_LEAD'} chưa gắn tòa, theo quyền CRM của người kết nối và phạm vi tổ chức Hermes Action. requestId UUID ổn định; mất phản hồi chỉ đối soát status. CRM cho phép trùng số điện thoại; không tự coi cùng số là cùng khách. Chỉ gọi khi người dùng yêu cầu tạo rõ ràng.`,
+  Object.freeze({ name: `crm_${kind}_create`, description: `${kind === 'customer' ? 'Tạo khách hàng cá nhân WALK_IN' : 'Tạo lead B1_LEAD'} chưa gắn tòa, theo quyền CRM của người kết nối và phạm vi tổ chức Hermes Action. ${REQUEST_ID_GUIDANCE} Mất phản hồi chỉ đối soát status. CRM cho phép trùng số điện thoại; không tự coi cùng số là cùng khách. Chỉ gọi khi người dùng yêu cầu tạo rõ ràng.`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId', 'name', 'phone', 'email', 'notes', ...(kind === 'lead' ? ['source'] : [])],
-      properties: { requestId: uuid, name: { type: 'string', minLength: 1, maxLength: 200 }, phone: { type: 'string', pattern: '^[0-9]{10,11}$' },
+      properties: { requestId: REQUEST_ID_PROPERTY, name: { type: 'string', minLength: 1, maxLength: 200 }, phone: { type: 'string', pattern: '^[0-9]{10,11}$' },
         email: { type: ['string', 'null'], maxLength: 254 }, notes: { type: ['string', 'null'], maxLength: 4000 }, ...(kind === 'lead' ? { source: { enum: sources } } : {}) } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }),
-  Object.freeze({ name: `crm_${kind}_status`, description: 'Đối soát requestId đã dùng; not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo.',
+  Object.freeze({ name: `crm_${kind}_status`, description: `Đối soát requestId đã dùng; not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo. ${REQUEST_ID_STATUS_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
 ]));

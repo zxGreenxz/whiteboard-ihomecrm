@@ -71,7 +71,7 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
    const response=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:++requestId,method:'tools/call',params:{name,arguments:args}})});
    assert.equal(response.status,200);const message=await response.json();return{...message.result,value:JSON.parse(message.result.content[0].text)};
  };
- const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_task_create','crm_task_input_options','crm_task_status']);
+ const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_new_request_id','crm_task_create','crm_task_input_options','crm_task_status']);
  const options=(kind,buildingId=null)=>call('crm_task_input_options',{kind,buildingId,query:'',limit:20,cursor:null});
  assert.deepEqual((await options('buildings')).value.items,[{id:BUILDING,label:'Nhà A'}]);
  assert.equal((await options('rooms',BUILDING)).value.items[0].id,input.roomId);
