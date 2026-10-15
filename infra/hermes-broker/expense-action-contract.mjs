@@ -1,4 +1,5 @@
 import { domainExact, domainId } from './domain-contract.mjs';
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 // Hermes "Báo chi nhanh": one EXPENSE voucher through the canonical CRM writer.
 // income_expenses.create is the tool grant. income_expenses.approve is only an
 // overlay: without it SQL refuses a voucher the writer would approve at birth
@@ -75,15 +76,15 @@ export const EXPENSE_ACTION_TOOLS = Object.freeze([
     inputSchema: { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { enum: KINDS }, buildingId: { type: ['string', 'null'], format: 'uuid' },
       query: { type: 'string', maxLength: 100 }, limit: { type: 'integer', minimum: 1, maximum: 50 }, cursor: { type: ['string', 'null'], format: 'uuid' } } },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
-  Object.freeze({ name: 'crm_expense_create', description: 'Ghi MỘT phiếu CHI nhanh (như Báo chi nhanh) qua writer CRM. Trạng thái do thang duyệt/bộ máy chi CRM quyết: UNAPPROVED = chờ duyệt; Hermes không duyệt hay vào sổ. Số tiền là số nguyên VND. requestId UUID cố định cho yêu cầu; mất phản hồi chỉ gọi crm_expense_status, không tạo lại. Chỉ gọi khi người dùng yêu cầu ghi rõ ràng; chỉ soạn thì không gọi.',
+  Object.freeze({ name: 'crm_expense_create', description: `Ghi MỘT phiếu CHI nhanh (như Báo chi nhanh) qua writer CRM. Trạng thái do thang duyệt/bộ máy chi CRM quyết: UNAPPROVED = chờ duyệt; Hermes không duyệt hay vào sổ. Số tiền là số nguyên VND. ${REQUEST_ID_GUIDANCE} Mất phản hồi chỉ gọi crm_expense_status, không tạo lại. Chỉ gọi khi người dùng yêu cầu ghi rõ ràng; chỉ soạn thì không gọi.`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId', 'buildingId', 'roomId', 'cashbookId', 'voucherDate', 'name', 'vendor', 'lines'], properties: {
-      requestId: uuid, buildingId: uuid, roomId: { type: ['string', 'null'], format: 'uuid' }, cashbookId: uuid,
+      requestId: REQUEST_ID_PROPERTY, buildingId: uuid, roomId: { type: ['string', 'null'], format: 'uuid' }, cashbookId: uuid,
       voucherDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, name: { type: 'string', minLength: 1, maxLength: 200 },
       vendor: { type: ['string', 'null'], maxLength: 100 },
       lines: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', additionalProperties: false, required: ['categoryId', 'amount', 'description'], properties: {
         categoryId: uuid, amount: { type: 'integer', minimum: 1, maximum: MAX_VND }, description: { type: ['string', 'null'], maxLength: 200 } } } } } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } }),
-  Object.freeze({ name: 'crm_expense_status', description: 'Đối soát requestId đã dùng cho crm_expense_create. not_found hoặc unknown KHÔNG cho phép tạo phiếu bằng requestId mới (yêu cầu cũ có thể vẫn đang ghi); nếu cần thử lại chỉ gọi lại crm_expense_create với CÙNG requestId và cùng nội dung — CRM không ghi trùng một requestId.',
+  Object.freeze({ name: 'crm_expense_status', description: `Đối soát requestId đã dùng cho crm_expense_create. not_found hoặc unknown KHÔNG cho phép tạo phiếu bằng requestId mới (yêu cầu cũ có thể vẫn đang ghi); nếu cần thử lại chỉ gọi lại crm_expense_create với CÙNG requestId và cùng nội dung — CRM không ghi trùng một requestId. ${REQUEST_ID_STATUS_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
 ]);

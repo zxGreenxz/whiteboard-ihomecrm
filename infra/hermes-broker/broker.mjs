@@ -13,6 +13,7 @@ import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
 import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
+import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -348,6 +349,26 @@ export function createBroker({
   }
   const mayReadRooms = identity => Boolean(rooms && identity.effective.read.includes(ROOM_PERMISSION) &&
     identity.assistantScopeIds.length && identity.scopesByPermission[ROOM_PERMISSION]?.buildingIds.length);
+  // Shared definitions (not copies) of every tool this identity may call now.
+  const grantedTools = identity => [
+    ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
+    ...(mayReadRooms(identity) ? [ROOM_TOOL] : []),
+    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
+    ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
+    ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
+    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
+    ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
+    ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
+    ...(memory ? WORK_MEMORY_TOOLS.filter(tool => mayUseWorkMemory(identity.effective, workMemoryOperation(tool.name))) : []),
+    ...(external ? EXTERNAL_GROUP_TOOLS.filter(tool => {
+      const operation = externalGroupOperation(tool.name);
+      return mayUseGroupTool(identity.effective, operation) &&
+        (!['preview', 'send'].includes(operation) || mayReadRooms(identity));
+    }) : []),
+  ];
+  // crm_new_request_id follows the listing itself: it exists exactly while at
+  // least one granted action starts a new requestId command.
+  const mayIssueRequestId = identity => grantedTools(identity).some(startsCrmRequest);
   if (!exactKeys(suppliedLimits, Object.keys(DEFAULT_LIMITS))) throw new TypeError('invalid_limits');
   const limits = { ...DEFAULT_LIMITS, ...suppliedLimits };
   for (const value of Object.values(limits)) {
@@ -691,24 +712,23 @@ export function createBroker({
       return invoke(presentedToken, 'authenticate', (identity) => safeConnection(identity.row));
     },
     async listTools(presentedToken) {
-      return invoke(presentedToken, 'tools/list', (identity) => ({
-        tools: [...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [structuredClone(TOOL)] : []),
-          ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : []),
-          ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(memory ? WORK_MEMORY_TOOLS.filter(tool => mayUseWorkMemory(identity.effective, workMemoryOperation(tool.name))).map(tool => structuredClone(tool)) : []),
-          ...(external ? EXTERNAL_GROUP_TOOLS.filter(tool => {
-            const operation = externalGroupOperation(tool.name);
-            return mayUseGroupTool(identity.effective, operation) &&
-              (!['preview', 'send'].includes(operation) || mayReadRooms(identity));
-          }).map(tool => structuredClone(tool)) : [])],
-      }), undefined, external ? { authority: external.authority } : {});
+      return invoke(presentedToken, 'tools/list', (identity) => {
+        const tools = grantedTools(identity);
+        return { tools: [...tools, ...(tools.some(startsCrmRequest) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => structuredClone(tool)) };
+      }, undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      // No CRM read/write and no stored state, but the same token/authority,
+      // per-connection tools/call quota, audit and post-audit authority check
+      // as every tool: a revoked or expired connection never receives an id.
+      if (name === NEW_REQUEST_ID_TOOL.name) {
+        const invalid = !dataRecord(args) || Object.keys(args).length !== 0;
+        return invoke(presentedToken, 'tools/call', (identity) => {
+          if (!mayIssueRequestId(identity)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          return { content: [{ type: 'text', text: JSON.stringify({ requestId: randomUUID() }) }], isError: false };
+        }, undefined, external ? { authority: external.authority } : {});
+      }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
         let input, invalid = false, uncertain = false;

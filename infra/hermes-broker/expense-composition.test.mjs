@@ -77,7 +77,7 @@ test('external MCP → broker → audited bound SQL: expense options/create/stat
   const callTool = async (name, args) => { const result = await mcp('tools/call', { name, arguments: args }); return { ...result, value: JSON.parse(result.content[0].text) }; };
   const listed = async () => (await mcp('tools/list')).tools.map(tool => tool.name).sort();
 
-  assert.deepEqual(await listed(), ['crm_expense_create', 'crm_expense_input_options', 'crm_expense_status']);
+  assert.deepEqual(await listed(), ['crm_expense_create', 'crm_expense_input_options', 'crm_expense_status', 'crm_new_request_id']);
   for (const name of ['crm_read_income_expenses', 'crm_customer_create', 'crm_task_create']) assert.equal((await callTool(name, {})).value.error, 'tool_not_available');
   assert.deepEqual((await callTool('crm_expense_input_options', { kind: 'buildings' })).value.items, [{ id: BUILDING, label: 'Toà A' }], 'overlay scope, not every CRM building');
   assert.deepEqual((await callTool('crm_expense_input_options', { kind: 'cashbooks' })).value.items, [{ id: CASHBOOK, label: 'Quỹ VCB ***' }]);
@@ -111,6 +111,7 @@ test('external MCP → broker → audited bound SQL: expense options/create/stat
   afterAudit = () => db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='income_expenses.create'");
   assert.equal((await callTool('crm_expense_status', { requestId: input.requestId })).value.error, 'context_changed', 'CRM revoke between audit and final read');
   assert.deepEqual(await listed(), []);
+  assert.equal((await callTool('crm_new_request_id', {})).value.error, 'tool_not_available', 'no action left, no request id');
   await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='income_expenses.create'");
   beforeFinal = () => db.exec("UPDATE app_private.hermes_connections SET action_capabilities='{}'");
   assert.equal((await callTool('crm_expense_create', create())).value.error, 'forbidden', 'definitive SQL denial is not an unknown outcome');

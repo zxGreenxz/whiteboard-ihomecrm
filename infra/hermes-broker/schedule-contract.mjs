@@ -1,3 +1,4 @@
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY } from './request-id-contract.mjs';
 // CRM owns this schedule. Native Hermes schedules remain outside this contract.
 // Limits reuse the current standing-grant and group-send bounds; timezone and
 // catch-up behavior match the existing worker automation scheduler.
@@ -180,19 +181,19 @@ const settingsSchema = { type: 'object', additionalProperties: false, required: 
 const descriptions = Object.freeze({
   list: 'Read CRM schedules owned by this connection, including revision, last runs and open issues. CRM remains the only scheduler.',
   issues: 'Read why CRM schedules of this connection are blocked or failing (machine-readable reason, open/closed state) and which deliveries of this connection are UNKNOWN_EFFECT. Read-only; nothing is retried.',
-  reconcile: 'Record the user\'s explicit confirmation that one UNKNOWN_EFFECT delivery of this connection did ("sent") or did not ("not_sent") reach the Zalo group, with the user\'s own words as note. Only when the user checked and said so; never guess. This never sends again: a new send is a new request with a new requestId. Reuse requestId on an uncertain outcome.',
+  reconcile: 'Record the user\'s explicit confirmation that one UNKNOWN_EFFECT delivery of this connection did ("sent") or did not ("not_sent") reach the Zalo group, with the user\'s own words as note. Only when the user checked and said so; never guess. This never sends again: a new send is a separate request. ' + REQUEST_ID_GUIDANCE,
 });
-const mutationDescription = operation => `${operation === 'revoke' ? 'Revoke' : operation === 'update' ? 'Replace the complete scope and settings of' : 'Create'} a CRM schedule (room bulletin or public sale-policy notice) only for a clear user request. CRM verifies current Read/Action rights and standing grant before each run and provider send, records blocked runs and notifies the schedule owner. Never create a second native Hermes cron for this CRM job. Reuse requestId on an uncertain outcome; read the schedule before issuing a different mutation. No PIN or per-job approval is required.`;
+const mutationDescription = operation => `${operation === 'revoke' ? 'Revoke' : operation === 'update' ? 'Replace the complete scope and settings of' : 'Create'} a CRM schedule (room bulletin or public sale-policy notice) only for a clear user request. CRM verifies current Read/Action rights and standing grant before each run and provider send, records blocked runs and notifies the schedule owner. Never create a second native Hermes cron for this CRM job. ${REQUEST_ID_GUIDANCE} Read the schedule before issuing a different mutation. No PIN or per-job approval is required.`;
 const inputSchema = operation => operation === 'list' ? { type: 'object', additionalProperties: false, required: [], properties: {
   limit: { type: 'integer', minimum: 1, maximum: 20, default: 20 },
   cursor: { type: ['string', 'null'], format: 'uuid', description: 'Use nextCursor from the previous page; null starts from the beginning.' } } }
   : operation === 'issues' ? { type: 'object', additionalProperties: false, required: [], properties: {
     limit: { type: 'integer', minimum: 1, maximum: 20, default: 20 }, scheduleId: { type: ['string', 'null'], format: 'uuid' } } }
     : operation === 'reconcile' ? { type: 'object', additionalProperties: false, required: ['requestId', 'jobId', 'decision', 'note'], properties: {
-      requestId: uuid, jobId: uuid, decision: { enum: ['sent', 'not_sent'] }, note: { type: 'string', minLength: 1, maxLength: 500 } } }
+      requestId: REQUEST_ID_PROPERTY, jobId: uuid, decision: { enum: ['sent', 'not_sent'] }, note: { type: 'string', minLength: 1, maxLength: 500 } } }
       : { type: 'object', additionalProperties: false, required: operation === 'create' ? ['requestId', 'settings'] :
         operation === 'update' ? ['requestId', 'scheduleId', 'expectedRevision', 'settings'] : ['requestId', 'scheduleId', 'expectedRevision'], properties: {
-        requestId: uuid, ...(operation !== 'create' ? { scheduleId: uuid, expectedRevision: { type: 'integer', minimum: 1 } } : {}),
+        requestId: REQUEST_ID_PROPERTY, ...(operation !== 'create' ? { scheduleId: uuid, expectedRevision: { type: 'integer', minimum: 1 } } : {}),
         ...(operation !== 'revoke' ? { settings: settingsSchema } : {}) } };
 export const SCHEDULE_TOOLS = Object.freeze(Object.entries(operations).map(([name, operation]) => Object.freeze({ name,
   description: descriptions[operation] ?? mutationDescription(operation), inputSchema: inputSchema(operation),

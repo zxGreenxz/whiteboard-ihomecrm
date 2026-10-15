@@ -57,7 +57,7 @@ test('external MCP → bound JWT → audited final caller SQL: room-pass action 
    const response=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:++requestId,method:'tools/call',params:{name,arguments:args}})});
    assert.equal(response.status,200);const message=await response.json();return{...message.result,value:JSON.parse(message.result.content[0].text)};
  };
- const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_room_pass_observe','crm_room_pass_set_active','crm_room_pass_status']);
+ const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_new_request_id','crm_room_pass_observe','crm_room_pass_set_active','crm_room_pass_status']);
  const observed=await call('crm_room_pass_observe',{listingId:LISTING});assert.equal(observed.isError,false);assert.equal(observed.value.listing.active,false);
  const input={requestId:REQUEST,listingId:LISTING,active:true,expectedRevision:observed.value.listing.revision};
  events.length=0;loseAck=true;

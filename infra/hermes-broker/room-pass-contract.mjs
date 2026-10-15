@@ -1,4 +1,5 @@
 import { domainExact, domainId } from './domain-contract.mjs';
+import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 export const ROOM_PASS_ACTION='sale_phong.manage_pass_listings';
 export function roomPassOperation(name) {
   if (name === 'crm_room_pass_observe') return 'observe';
@@ -32,6 +33,6 @@ export function roomPassResult(operation,result,identity,input){
 }
 export const ROOM_PASS_TOOLS=Object.freeze([
   {name:'crm_room_pass_observe',description:'Xem trạng thái và revision của tin khách nhờ sale trước khi đổi hiển thị công khai.',inputSchema:{type:'object',additionalProperties:false,required:['listingId'],properties:{listingId:{type:'string',format:'uuid'}}}},
-  {name:'crm_room_pass_set_active',description:'Bật hoặc ẩn tin khách nhờ sale trên kênh công khai. Cần requestId ổn định và revision vừa đọc; không đổi hợp đồng hay gửi tin nhắn.',inputSchema:{type:'object',additionalProperties:false,required:['requestId','listingId','active','expectedRevision'],properties:{requestId:{type:'string',format:'uuid'},listingId:{type:'string',format:'uuid'},active:{type:'boolean'},expectedRevision:{type:'string',pattern:'^[a-f0-9]{64}$'}}}},
-  {name:'crm_room_pass_status',description:'Đối soát requestId sau khi mất phản hồi. not_found chỉ nghĩa chưa thấy biên nhận; không tự thử ghi lại.',inputSchema:{type:'object',additionalProperties:false,required:['requestId'],properties:{requestId:{type:'string',format:'uuid'}}}},
+  {name:'crm_room_pass_set_active',description:`Bật hoặc ẩn tin khách nhờ sale trên kênh công khai. Cần revision vừa đọc; không đổi hợp đồng hay gửi tin nhắn. ${REQUEST_ID_GUIDANCE}`,inputSchema:{type:'object',additionalProperties:false,required:['requestId','listingId','active','expectedRevision'],properties:{requestId:REQUEST_ID_PROPERTY,listingId:{type:'string',format:'uuid'},active:{type:'boolean'},expectedRevision:{type:'string',pattern:'^[a-f0-9]{64}$'}}}},
+  {name:'crm_room_pass_status',description:`Đối soát requestId sau khi mất phản hồi. not_found chỉ nghĩa chưa thấy biên nhận; không tự thử ghi lại. ${REQUEST_ID_STATUS_GUIDANCE}`,inputSchema:{type:'object',additionalProperties:false,required:['requestId'],properties:{requestId:{type:'string',format:'uuid'}}}},
 ]);

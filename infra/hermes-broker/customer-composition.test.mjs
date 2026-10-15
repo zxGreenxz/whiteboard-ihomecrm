@@ -84,9 +84,9 @@ test('external MCP → broker → audited bound SQL: customer/lead create, ACK l
   const call = async (name, args) => { const result = await mcp('tools/call', { name, arguments: args }); return { ...result, value: JSON.parse(result.content[0].text) }; };
   const listed = async () => (await mcp('tools/list')).tools.map(tool => tool.name).sort();
 
-  assert.deepEqual(await listed(), ['crm_customer_create', 'crm_customer_status', 'crm_lead_create', 'crm_lead_status']);
+  assert.deepEqual(await listed(), ['crm_customer_create', 'crm_customer_status', 'crm_lead_create', 'crm_lead_status', 'crm_new_request_id']);
   await db.exec("UPDATE public.fixture_customer_acl SET allowed=false WHERE permission='leads.create'");
-  assert.deepEqual(await listed(), ['crm_customer_create', 'crm_customer_status'], 'CRM grant of each kind gates its own tools');
+  assert.deepEqual(await listed(), ['crm_customer_create', 'crm_customer_status', 'crm_new_request_id'], 'CRM grant of each kind gates its own tools');
   assert.equal((await call('crm_lead_create', { ...leadInput, requestId: id('7') })).value.error, 'tool_not_available');
   await db.exec("UPDATE public.fixture_customer_acl SET allowed=true WHERE permission='leads.create'");
   // Read/other families are not mounted on this broker; their names stay closed.
@@ -99,7 +99,10 @@ test('external MCP → broker → audited bound SQL: customer/lead create, ACK l
   assert.deepEqual((await call('crm_customer_create', customerInput)).value, created.value, 'same requestId replays the receipt');
   assert.equal(writes, 2); assert.equal((await counts()).customers, 1);
 
-  const lead = { ...leadInput, requestId: id('9') };
+  // The model takes the requestId from the connector, then reuses it for status.
+  const issued = await call('crm_new_request_id', {});
+  assert.equal(issued.isError, false); assert.deepEqual(Object.keys(issued.value), ['requestId']);
+  const lead = { ...leadInput, requestId: issued.value.requestId };
   events.length = 0; loseAck = true;
   const unknown = await call('crm_lead_create', lead);
   assert.deepEqual(unknown.value, { error: 'customer_outcome_unknown', requestId: lead.requestId }); assert.equal(unknown.isError, true);
@@ -119,7 +122,7 @@ test('external MCP → broker → audited bound SQL: customer/lead create, ACK l
 
   afterAudit = () => db.exec("UPDATE public.fixture_customer_acl SET allowed=false WHERE permission='customers.create'");
   assert.equal((await call('crm_customer_status', { requestId: REQUEST })).value.error, 'context_changed', 'CRM revoke between audit and final read');
-  assert.deepEqual(await listed(), ['crm_lead_create', 'crm_lead_status']);
+  assert.deepEqual(await listed(), ['crm_lead_create', 'crm_lead_status', 'crm_new_request_id']);
   await db.exec("UPDATE public.fixture_customer_acl SET allowed=true WHERE permission='customers.create'");
   beforeFinal = () => db.exec("UPDATE app_private.hermes_connections SET action_capabilities='{}'");
   const denied = await call('crm_customer_create', { ...customerInput, requestId: id('5') });
