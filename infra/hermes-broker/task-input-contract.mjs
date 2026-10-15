@@ -1,4 +1,4 @@
-import { domainExact,domainId } from './domain-contract.mjs';
+import { domainExact,domainId,EMPTY_RESULT_HINT } from './domain-contract.mjs';
 import { TASK_ACTION,taskInput,mayUseTask } from './task-contract.mjs';
 import { TASK_FOLLOW_TOOLS,taskFollowOperation,isTaskFollowOperation,mayUseTaskFollow,taskFollowInput } from './task-follow-contract.mjs';
 const kinds=['buildings','rooms','jobTypes','assignees'];
@@ -29,6 +29,6 @@ export function taskOptionsResult(operation,value,identity,input){
  if(value.nextCursor!==null&&(value.items.length!==input.limit||value.nextCursor!==value.items.at(-1)?.id))fail();
  return structuredClone(value);
 }
-export const TASK_INPUT_TOOLS=Object.freeze([{name:'crm_task_input_options',description:'Tra ID và tên để tạo/giao công việc. Tra buildings trước (kind=buildings: không cần buildingId); các loại rooms, jobTypes, assignees cần buildingId vừa chọn. Chỉ danh mục người dùng hiện tại được chọn theo RLS, không đọc công việc hay thông tin liên hệ.',
- inputSchema:{type:'object',additionalProperties:false,required:['kind','buildingId','query','limit','cursor'],properties:{kind:{enum:kinds},buildingId:{type:['string','null'],format:'uuid',description:'ID toà vừa chọn. kind=buildings: không cần buildingId.'},query:{type:'string',maxLength:100},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:['string','null'],format:'uuid'}}},
+export const TASK_INPUT_TOOLS=Object.freeze([{name:'crm_task_input_options',description:'Tra ID và tên để tạo/giao công việc. Tra buildings trước (kind=buildings: không cần buildingId); các loại rooms, jobTypes, assignees cần buildingId vừa chọn. Chỉ danh mục người dùng hiện tại được chọn theo RLS, không đọc công việc hay thông tin liên hệ. '+EMPTY_RESULT_HINT,
+ inputSchema:{type:'object',additionalProperties:false,required:['kind','buildingId','query','limit','cursor'],properties:{kind:{enum:kinds},buildingId:{type:['string','null'],format:'uuid',description:'ID toà vừa chọn từ kind=buildings; không phải ID công ty. kind=buildings: không cần buildingId.'},query:{type:'string',maxLength:100,description:'Lọc theo tên; để trống để xem tất cả.'},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:['string','null'],format:'uuid'}}},
  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},...TASK_FOLLOW_TOOLS]);
