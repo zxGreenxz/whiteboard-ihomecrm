@@ -8,12 +8,12 @@ Giờ Việt Nam (UTC+7). Hướng dẫn chủ/quản trị/vận hành: [BAN-GI
 
 | Thành phần | Trạng thái |
 | --- | --- |
-| App | `455920b1`, promote READY; #179/#180 chỉ đổi connector |
-| Connector VPS | `8b3304c8`, lùi `455920b1` |
-| Hermes | v0.21.6, image `sha256:ffa4fbb4…`, sidecar `hermes-owner` (RAM 900m); MCP qua `http://172.17.0.1:8740/mcp`, 52 tool |
+| App | `455920b1`, promote READY; #179–#181 chỉ đổi connector |
+| Connector VPS | `9cffe300`, lùi `8b3304c8` |
+| Hermes | v0.21.6, image `sha256:ffa4fbb4…`, sidecar `hermes-owner` (RAM 900m); MCP qua `http://172.17.0.1:8740/mcp`, 52 tool; model `cx/gpt-6-luna` từ 05:57 (trước đó `cx/gpt-6-sol`) |
 | Kết nối | `…624ef30e` (17 đọc + 11 thao tác, toàn tổ chức); liên kết Zalo nick chính → bot Ihome; đã thu hồi `…5e028d4f`, `…21e16a97`, `…369ce079` |
 | Migration production mới | `20261015172059` (registry 28/28); `20261015185559` (nhắc việc thử lại có trần theo loại + gộp thông báo sự cố lịch theo chủ); `20261015191139` (options v7 thêm `customers.create`/`leads.create`) |
-| PR đã merge | #174, #176, #177, #178, #179, #180 |
+| PR đã merge | #174, #176, #177, #178, #179, #180, #181 |
 
 **Thử thật qua Zalo (nick chính → Ihome):**
 
@@ -24,9 +24,11 @@ Giờ Việt Nam (UTC+7). Hướng dẫn chủ/quản trị/vận hành: [BAN-GI
 | 03:44 | Giao việc qua Zalo | ĐẠT: `JOB-20261015-0001` đúng toà/người nhận/hạn |
 | 04:24 | Đặt theo dõi + nhắc trước 1 giờ, liệt kê việc đã giao | ĐẠT 64 s |
 | 04:25 | Huỷ việc thử | ĐẠT 40 s: job xoá, follow `CANCELLED job_cancelled` |
-| 04:27 | Lập lịch bản tin nhóm Web nội bộ | Hermes hỏi lại toà (đúng), rồi `invalid_request` do expiresAt không có mili giây; Hermes tự kiểm "chưa có lịch, chưa gửi tin" — đang sửa (PR định dạng thời gian) |
+| 05:37 | Lập lịch bản tin nhóm Web nội bộ (luna) | ĐẠT 78 s: lịch `e6968b09…` chạy 05:48:46, tin vào hàng gửi và `sent` 05:48:49 (nhóm Web nội bộ); cảnh báo `grant_expiring` mở đúng thiết kế |
+| 05:50 | Thu hồi lịch qua Zalo | ĐẠT 50 s (`REVOKED`) |
+| 05:52–05:55 | Hỏi phòng / lập lịch / thu hồi với `gpt-6-sol(low)` | Phòng 28 s; lập lịch 113 s (CRM từ chối toà 0 phòng, Hermes tự bỏ và báo); thu hồi 35 s |
 
-Lỗi tìm ra khi thử và đã sửa: tham số null/UUID toàn 0 (#176); `kind=buildings` + mô tả tool (#179); trường vô nghĩa theo chế độ (#180); thiếu quyền Khách hàng ở options (#178). Hai nợ hoãn ngày 15/10 (thử lại nhắc việc; gộp thông báo sự cố lịch) **ĐÃ TRẢ** qua #177.
+Lỗi tìm ra khi thử và đã sửa: tham số null/UUID toàn 0 (#176); `kind=buildings` + mô tả tool (#179); trường vô nghĩa theo chế độ (#180); thiếu quyền Khách hàng ở options (#178); 04:27 lập lịch trả `invalid_request` vì `expiresAt` không có mili giây, Hermes tự kiểm "chưa có lịch, chưa gửi tin" (#181 chuẩn hoá mốc giờ có múi giờ ở `expiresAt`/`deadline`). Hai nợ hoãn ngày 15/10 (thử lại nhắc việc; gộp thông báo sự cố lịch) **ĐÃ TRẢ** qua #177.
 
 **Còn mở / chờ chủ:**
 
@@ -35,7 +37,8 @@ Lỗi tìm ra khi thử và đã sửa: tham số null/UUID toàn 0 (#176); `kin
 | Các miền ghi còn lại (hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản) + cách cho Hermes "làm như một user" — chủ hoãn 16/10 | P8 |
 | User thứ hai / canary nhiều người | P10.03 |
 | Trần ngân sách / độ trễ | P10.04 |
-| Chọn model / chặn SSE / guardrail theo [khảo sát tốc độ](TOI-UU-TOC-DO-DOT1.md) | — |
+| Theo dõi model `cx/gpt-6-luna`; chặn SSE / guardrail theo [khảo sát tốc độ](TOI-UU-TOC-DO-DOT1.md) | — |
+| Lịch: thử restart/catch-up/đồng thời/quá tải/lỗi một phần trên môi trường thật; cutover lịch cũ không chồng owner | P6.05/P6.06 |
 | Diễn tập lỗi còn thiếu: hết quota, đĩa đầy, backup/restore connector thật | P9.04/P9.05 |
 | Xác nhận lịch sử Copilot cũ còn xem được; thử revoke khi context CRM mở | P7.04/P7.05 |
 
@@ -841,7 +844,7 @@ Cập nhật 16/10/2026; bằng chứng từng ô ở [PLAN.md](PLAN.md) mục 1
 | P3 | Đạt P3.01–P3.06 (52 tool qua MCP) | — |
 | P4 | Đạt P4.01–P4.06 (DM nick chính ↔ bot Ihome) | — |
 | P5 | Đạt P5.01–P5.06 (canary nhóm Web nội bộ 15/10) | — |
-| P6 | Đang thử: TEST CDE 11/11; lịch production 16/10 lỗi `invalid_request` | P6.01–P6.06: chờ PR định dạng thời gian và kết quả thử lịch |
+| P6 | Đạt P6.01–P6.04 (lịch thật `e6968b09…` 16/10 + TEST CDE 11/11) | P6.05 restart/catch-up/đồng thời/quá tải/lỗi một phần chưa thử đủ; P6.06 cutover lịch cũ |
 | P7 | Đạt P7.01–P7.03, P7.06, P7.07 | P7.04 lịch sử Copilot cũ còn xem được; P7.05 revoke khi context CRM mở |
 | P8 | Chủ hoãn 16/10 | P8.01–P8.06: miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản |
 | P9 | Đạt P9.01–P9.03 | P9.04 diễn tập lỗi (hết quota, đĩa đầy…); P9.05 backup/restore connector thật |

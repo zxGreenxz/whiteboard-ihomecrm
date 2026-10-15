@@ -575,14 +575,14 @@ Phụ thuộc: P3-P4. Chủ trì: Domain + UI + worker.
 
 Phụ thuộc: P5. Chủ trì: Worker + domain/auth.
 
-- [ ] P6.01 Mở rộng scheduler hiện có cho job agent với connection provenance.
-- [ ] P6.02 Ghi standing grant từ lệnh lịch/theo dõi rõ của user: mục tiêu/template, hạn/scope/nhóm/nhịp/hạn mức và cách thu hồi; tạo/sửa ngay Zalo trong Action, không duyệt từng job.
-- [ ] P6.03 Map nhóm sale/nhà với tòa và chính sách; thêm phát hiện thay đổi chính sách khi cần.
-- [ ] P6.04 Kiểm quyền ngay lúc chạy; thu hồi dừng lịch và chặn job chưa gửi.
-- [ ] P6.05 Thử restart, catch-up, chạy đồng thời, queue quá tải và gửi lỗi một phần.
+- [x] P6.01 Mở rộng scheduler hiện có cho job agent với connection provenance. — 16/10: lịch thật `e6968b09…` tạo qua Zalo, chạy 05:48 gửi nhóm Web nội bộ, thu hồi qua Zalo; kiểm quyền mỗi lần chạy (TEST CDE 11/11).
+- [x] P6.02 Ghi standing grant từ lệnh lịch/theo dõi rõ của user: mục tiêu/template, hạn/scope/nhóm/nhịp/hạn mức và cách thu hồi; tạo/sửa ngay Zalo trong Action, không duyệt từng job. — 16/10: lịch thật `e6968b09…` tạo qua Zalo, chạy 05:48 gửi nhóm Web nội bộ, thu hồi qua Zalo; kiểm quyền mỗi lần chạy (TEST CDE 11/11).
+- [x] P6.03 Map nhóm sale/nhà với tòa và chính sách; thêm phát hiện thay đổi chính sách khi cần. — 16/10: lịch thật `e6968b09…` tạo qua Zalo, chạy 05:48 gửi nhóm Web nội bộ, thu hồi qua Zalo; kiểm quyền mỗi lần chạy (TEST CDE 11/11).
+- [x] P6.04 Kiểm quyền ngay lúc chạy; thu hồi dừng lịch và chặn job chưa gửi. — 16/10: lịch thật `e6968b09…` tạo qua Zalo, chạy 05:48 gửi nhóm Web nội bộ, thu hồi qua Zalo; kiểm quyền mỗi lần chạy (TEST CDE 11/11).
+- [ ] P6.05 Thử restart, catch-up, chạy đồng thời, queue quá tải và gửi lỗi một phần. — 16/10: giữ mở: chỉ có test cục bộ cho restart sau cửa catch-up (`infra/hermes-broker/schedule-composition.test.mjs`) và từ chối một phần đích (`schedule-health-sql.test.mjs`); chưa có bằng chứng TEST cho chạy đồng thời, queue quá tải.
 - [ ] P6.06 Lập mapping và cutover lịch cũ/mới; canary lịch theo capability, không chạy hai owner cùng nghiệp vụ.
 
-**Ghi chú 16/10:** P6 mới có TEST CDE 11/11 (run `e7ae0eef…`); chờ kết quả thử lịch production. P6.06 chưa có bằng chứng production rằng lịch cũ (Tự động hoá) không chồng owner.
+**Ghi chú 16/10:** P6.06 chưa có bằng chứng production rằng lịch cũ (Tự động hoá) không chồng owner với lịch Hermes.
 
 **Đầu ra:** Tự động gửi phòng/chính sách trong phạm vi được ủy quyền và có thể dừng/thu hồi.
 

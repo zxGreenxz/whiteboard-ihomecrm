@@ -33,7 +33,7 @@ Nhắn riêng cho bot từ nick Zalo chính đã liên kết. Ví dụ:
 | Tra thu chi, công nợ, chỉ số, cọc giữ, lãi lỗ | Hỏi bằng lời thường, nêu toà/tháng |
 | Lịch gửi định kỳ | "Mỗi sáng 8h gửi bản tin phòng trống vào nhóm …" |
 
-- Mới thêm 16/10: tạo khách (Cư dân) / lead (Khách hẹn); giao việc → theo dõi/nhắc hạn → huỷ việc — chuỗi việc này đã thử thật qua Zalo ngày 16/10 ([STATUS](STATUS.md#nghiệm-thu-cuối-1610)).
+- Mới thêm 16/10: tạo khách (Cư dân) / lead (Khách hẹn); giao việc → theo dõi/nhắc hạn → huỷ việc, và lập → chạy → thu hồi lịch bản tin nhóm — hai chuỗi này đã thử thật qua Zalo ngày 16/10 ([STATUS](STATUS.md#nghiệm-thu-cuối-1610)).
 - Hermes tự gọi CRM khi cần; dữ liệu phòng, giá, chính sách luôn lấy mới từ CRM, không lấy từ trí nhớ.
 - Khi mất phản hồi sau lúc gửi/ghi, Hermes báo "chưa rõ kết quả" và **không tự làm lại**; xem mục Đối soát ở phần 3.
 - `/stop` cắt lượt đang treo; `/new` mở phiên mới (Hermes hỏi xác nhận, trả lời `/approve`). Phiên rất dài dễ chậm — mở phiên mới khi đổi chủ đề lớn.
@@ -68,7 +68,7 @@ Runbook chi tiết: [HOST_SERVICE.md](../../../infra/hermes-runtime/HOST_SERVICE
 | Worker Zalo | container `ihome-zalo-worker` (chạy `--native`) |
 | Đường vào | Hermes gọi connector `http://172.17.0.1:8740/mcp` và 9router `http://172.17.0.1:20128/v1` qua unit `ihome-docker-connector`/`ihome-docker-9router` (systemd-socket-proxyd); web CRM gọi connector qua tunnel `crm-hermes.chillhome.io.vn` |
 
-**Release connector (16/10):** đang chạy `8b3304c8`; bản lùi giữ trên VPS `455920b1`.
+**Release connector (16/10):** đang chạy `9cffe300`; bản lùi giữ trên VPS `8b3304c8`.
 
 Giữ nguyên khi thao tác (tối ưu tốc độ 16/10): `connector.json` phải còn `172.17.0.1:8740` trong `http.allowedHosts` (thiếu là 403); MCP `connect_timeout: 30`; container Hermes RAM `900m`/swap `1800m` — chỉ `docker restart`, nếu tạo lại phải truyền lại; unit `ihome-net-tuning` (MSS 1452, `tcp_mtu_probing=1`); NTP qua IPv4 (`/etc/systemd/timesyncd.conf.d/ihome-ipv4.conf`) — đồng hồ lệch làm mọi RPC lịch trả 42501.
 
@@ -83,15 +83,25 @@ Giữ nguyên khi thao tác (tối ưu tốc độ 16/10): `connector.json` ph�
 | Thành phần | Phiên bản |
 | --- | --- |
 | Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 |
-| Connector | release `{{CONNECTOR_SHA}}` (lùi được về `455920b1`) |
-| Model | 9router `cx/gpt-6-sol` |
-| CRM | production `ptcrm.vercel.app` (app `455920b1`), registry năng lực Hermes 28/28 bật |
+| Connector | release `9cffe300` (lùi được về `8b3304c8`) |
+| Model | 9router `cx/gpt-6-luna` (từ 16/10 05:57) |
+| CRM | production `ptcrm.vercel.app` (app `455920b1`; #179–#181 chỉ đổi connector), registry năng lực Hermes 28/28 bật |
 
 ## 6. Lưu ý về model
 
-- `cx/gpt-6-sol` qua 9router dùng tool kém: lặp lại y nguyên lời gọi, lấy nhầm ID công ty làm ID toà, nhồi tên toà vào ô tìm, có lúc sinh tham số tool vô tận (>270 s, phải `/stop`), lộ suy nghĩ nội bộ ra Zalo, lặp `skill_view`.
-- Connector đã chịu lỗi tốt hơn: #176 (tham số null/UUID toàn 0), #179 (`kind=buildings`, mô tả tool), #180 (bỏ qua trường vô nghĩa theo chế độ) và PR định dạng thời gian sắp tới.
-- Chọn model khác, chặn SSE hay siết guardrail là việc chủ quyết, theo khảo sát [TOI-UU-TOC-DO-DOT1.md](TOI-UU-TOC-DO-DOT1.md).
+- Đang dùng `cx/gpt-6-luna`, đổi 16/10 05:57 theo yêu cầu chủ. Cấu hình chỉ đổi `model.default` và `model.context_length: 272000`; bản cũ giữ ở file `.bak` cạnh `config.yaml`.
+- Thử thật trong Hermes với cùng câu lập lịch (16/10):
+
+| Model | Kết quả |
+| --- | --- |
+| `gpt-6-sol` (medium), `gpt-6.1-sol`, `gpt-6-astra` (medium) | Treo ngay lần gọi model đầu: 9router không trả DONE, phải `/stop` |
+| `cx/gpt-6-luna` | Hỏi phòng 21 s, lập lịch 78 s, thu hồi lịch 50 s |
+| `gpt-6-sol(low)` | Hỏi phòng 28 s, lập lịch 113 s, thu hồi lịch 35 s |
+
+- Ngoài Hermes (bộ thử 52 tool CRM, prompt gọn) cả 4 cấu hình đều gọi tool đúng, không có ID giả hay lặp. Treo chỉ xuất hiện khi chạy đủ bộ tool + prompt của Hermes với sol/astra mức medium.
+- Connector đã chịu lỗi tham số: #176 (null/UUID toàn 0), #179 (`kind=buildings`, mô tả tool), #180 (bỏ trường vô nghĩa theo chế độ), #181 (chuẩn hoá mốc giờ có múi giờ ở `expiresAt`/`deadline`).
+- **Đổi model:** sửa `model.default` và `model.context_length` trong `config.yaml` của profile owner, rồi `docker restart hermes-owner` (chờ hết lượt đang trả lời). Mức suy nghĩ đặt bằng hậu tố `(low)` sau tên model, ví dụ `gpt-6-sol(low)`; kiểm dòng `THINK:` trong `journalctl -u 9router`.
+- Chặn SSE hay siết guardrail thêm: chủ quyết theo khảo sát [TOI-UU-TOC-DO-DOT1.md](TOI-UU-TOC-DO-DOT1.md).
 - Khi bot im quá 60 s: nhắn `/stop`, rồi `/new` + `/approve`.
 
 ## 7. Phần còn hoãn hoặc chờ chủ
