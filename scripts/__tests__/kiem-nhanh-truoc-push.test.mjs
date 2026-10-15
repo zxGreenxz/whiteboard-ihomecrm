@@ -147,8 +147,8 @@ describe("danh sách gate", () => {
 
   it("hoãn UI/model và fleet kể cả đường Windows, core và file kế bên vẫn hoạt động", () => {
     for (const path of [
-      "src/copilot/__tests__/llmClient.test.ts", "src/copilot/__tests__/ChatPanel.test.tsx",
-      "src\\copilot\\__tests__\\ChatPanel.test.tsx",
+      "src/copilot/__tests__/systemPromptVi.test.ts", "src/copilot/__tests__/pageScope.test.ts",
+      "src\\copilot\\__tests__\\pageScope.test.ts",
       "scripts/__tests__/check-copilot-routes.test.mjs",
       ".e2e-fleet/specs/chat-zalo.spec.ts",
     ]) expect(isDeferredTest(path), path).toBe(true);

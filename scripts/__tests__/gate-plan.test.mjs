@@ -150,10 +150,10 @@ describe("scope is a conservative proof, never a filename shortcut", () => {
     expect(p.generatorIds).toContain("gen-supabase-types");
   });
   it("deferred tests are never selected while shared migration tests stay active", () => {
-    const p = plan([changed("tooling/test-matrix.json", "a", "b")], { testFiles: ["src/copilot/__tests__/llmClient.test.ts", "src/lib/__tests__/copilotSafetyMigration.test.ts"] });
+    const p = plan([changed("tooling/test-matrix.json", "a", "b")], { testFiles: ["src/copilot/__tests__/systemPromptVi.test.ts", "src/lib/__tests__/copilotSafetyMigration.test.ts"] });
     const files = p.suiteSelections.flatMap((s) => s.files);
     expect(files).toContain("src/lib/__tests__/copilotSafetyMigration.test.ts");
-    expect(files).not.toContain("src/copilot/__tests__/llmClient.test.ts");
+    expect(files).not.toContain("src/copilot/__tests__/systemPromptVi.test.ts");
   });
   it("full core scope does not steal a Node 22 package workflow", () => {
     const p = plan([changed("tooling/risk-map.json", "{}", "{}")], { testFiles: ["infra/network-center-worker/src/foo.test.ts", "supabase/functions/network-watchdog/index.test.ts"] });

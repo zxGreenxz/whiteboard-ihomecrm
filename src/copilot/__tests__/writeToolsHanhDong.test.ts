@@ -34,7 +34,6 @@ const { buildRegistryDefinitions, toLlmTools, toPageAgentTools } = await import(
 const { datNguCanhXacNhan, layXacNhanDangCho, xoaXacNhanDangCho } = await import(
   '../confirmationStore'
 );
-const { hanhDongDaTat, nhanNutXacNhan, layHangSo } = await import('../XacNhanPhieuCard');
 
 import {
   ACTION_CATALOG,
@@ -307,29 +306,6 @@ describe('thẻ xác nhận tổng quát hoá', () => {
       generation: 3,
     });
     expect(ra).toContain('đã được thực hiện trước đó');
-  });
-
-  it('kill switch đo theo `tool` của đề xuất, không theo một khoá ghi chết', () => {
-    const bat = snapshot('enabled');
-    const tat: CopilotAvailabilitySnapshot = {
-      ...bat,
-      states: { ...bat.states, 'action:zalo.set_conversation_flags': 'disabled' },
-    };
-    expect(hanhDongDaTat('zalo.set_conversation_flags', bat)).toBe(false);
-    expect(hanhDongDaTat('zalo.set_conversation_flags', tat)).toBe(true);
-    // Tắt một hành động KHÔNG kéo theo hành động khác.
-    expect(hanhDongDaTat('income_expense.annotate', tat)).toBe(false);
-    // Hành động không có trong sổ ⇒ fail-closed.
-    expect(hanhDongDaTat('khong.co_that', bat)).toBe(true);
-    // Snapshot vắng ⇒ fail-closed.
-    expect(hanhDongDaTat('income_expense.annotate', null)).toBe(true);
-  });
-
-  it('nhãn nút lấy từ sổ, riêng đường tạo phiếu giữ câu quen thuộc', () => {
-    expect(nhanNutXacNhan(layHangSo('income_expense.create_draft')!)).toBe('Tạo phiếu chờ duyệt');
-    expect(nhanNutXacNhan(layHangSo('income_expense.annotate')!)).toBe(
-      ACTION_CATALOG['income_expense.annotate'].labelVi,
-    );
   });
 });
 

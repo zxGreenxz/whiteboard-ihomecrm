@@ -19,7 +19,7 @@ describe("run-related-vitest", () => {
       "scripts/__tests__/promote-to-production.test.mjs",
       "scripts/__tests__/ci-gate-execution.test.mjs",
       ".e2e-fleet/specs/personal-finance-demo.spec.ts",
-      "src/copilot/__tests__/llmClient.test.ts",
+      "src/copilot/__tests__/systemPromptVi.test.ts",
       "src/lib/permissions.ts",
     ], matrix);
     expect(owned).toEqual(["src/lib/__tests__/permissions.test.ts", "scripts/__tests__/promote-to-production.test.mjs"]);

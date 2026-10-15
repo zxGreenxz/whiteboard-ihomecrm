@@ -24,7 +24,6 @@ vi.mock('@/hooks/useRooms',()=>({useRooms:()=>({data:[]})}));
 vi.mock('@/hooks/useProfile',()=>({useProfile:()=>({data:null})}));
 vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:false})}));
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
-vi.mock('@/hooks/useCopilotPageContext',()=>({useCopilotPageContext:()=>{}}));
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
 vi.mock('@/hooks/useRenewedContracts',()=>({useRenewedContractIds:()=>({data:new Set(),status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()})}));
 vi.mock('@/hooks/useDashboard',()=>({

@@ -10,7 +10,6 @@ vi.mock('@/hooks/useBuildings',()=>({useBuildings:()=>({data:[]})}));
 vi.mock('@/hooks/useRooms',()=>({useRooms:()=>({data:[]})}));
 vi.mock('@/hooks/useMyBuildingScope',()=>({useMyBuildingScope:()=>({hasAnyScope:false})}));
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
-vi.mock('@/hooks/useCopilotPageContext',()=>({useCopilotPageContext:()=>{}}));
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
 vi.mock('@/components/contracts/ContractFormDialog',()=>({ContractFormDialog:()=>null}));
 vi.mock('@/components/contracts/MoveOutNoticeQueue',()=>({MoveOutNoticeQueue:()=>null}));

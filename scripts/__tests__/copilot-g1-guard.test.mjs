@@ -20,7 +20,8 @@ test('model transport admits the shipped exact completion endpoint only for DEMO
 test('only source-reviewed font and local model discovery reads are admitted', () => {
   const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
   const fontUrl = readFileSync('index.html', 'utf8').match(/href="(https:\/\/fonts.googleapis.com\/css2[^\"]+)"/)[1];
-  const localUrl = readFileSync('src/copilot/ollama.ts', 'utf8').match(/fetchJson\('(http:\/\/localhost:11434\/api\/tags)'/)[1];
+  // ollama.ts (dò model cục bộ của chat Copilot) đã gỡ ở P11; guard vẫn chỉ nhận đúng endpoint đọc này.
+  const localUrl = 'http://localhost:11434/api/tags';
   for (const url of [fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2']) {
     assert.equal(guard.allow({ url, method: 'GET' }), true, url);
     assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), true, url);

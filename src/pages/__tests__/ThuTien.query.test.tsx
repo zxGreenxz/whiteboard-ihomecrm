@@ -10,7 +10,6 @@ vi.mock('@/hooks/useInvoiceCollectors',()=>({useInvoiceCollectors:()=>h.collecto
 vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
 vi.mock('@/lib/permissionPages',()=>({canUse:()=>true}));
 vi.mock('@/hooks/useCashHandovers',()=>({useCashHandoverList:()=>({actionCount:0})}));
-vi.mock('@/hooks/useCopilotPageContext',()=>({useCopilotPageContext:()=>{}}));
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
 vi.mock('@/components/thu-tien/BuildingPills',()=>({BuildingPills:()=>null}));
 vi.mock('@/components/thu-tien/CollectSummaryBar',()=>({CollectSummaryBar:()=> <div>Tổng tiền theo dữ liệu</div>}));

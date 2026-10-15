@@ -1,11 +1,9 @@
 // Vitest Phase 2 (PLAN.md §Phase 2): maskPii, adapter ×2 cùng schema,
-// buildChatContext giữ cặp tool-call, mo_trang canonical route + perm,
-// parse provider:model, dựng lại conversation từ rows.
+// mo_trang canonical route + perm, parse provider:model. Phần chat engine
+// (buildChatContext, rowsToMessages, modelConDungDuoc) đã gỡ ở P11 Hermes.
 import { describe, expect, it } from 'vitest';
-import type { Message } from '@page-agent/llms';
 import { maskPii, maskPhonePartial } from '../maskPii';
 import { parseProviderModel } from '../copilotConfig';
-import { buildChatContext, rowsToMessages } from '../chatEngine';
 import {
   buildRegistry,
   buildRegistryDefinitions,
@@ -18,7 +16,6 @@ import { KHOA_ROLLOUT_DIEU_HUONG } from '../featureFlags';
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE, nhanNguyHiem } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
-import { modelConDungDuoc } from '../useAiProviders';
 import type { PermissionsMap } from '@/lib/permissions';
 
 /**
@@ -84,67 +81,6 @@ describe('parseProviderModel', () => {
     expect(parseProviderModel('gpt-4o')).toBeNull();
     expect(parseProviderModel(':x')).toBeNull();
     expect(parseProviderModel('openai:')).toBeNull();
-  });
-});
-
-describe('buildChatContext', () => {
-  const toolPair = (id: string): Message[] => [
-    {
-      role: 'assistant',
-      content: null,
-      tool_calls: [{ id, type: 'function', function: { name: 'tim_phong', arguments: '{}' } }],
-    },
-    { role: 'tool', tool_call_id: id, content: 'kết quả' },
-  ];
-
-  it('giữ NGUYÊN cặp tool_calls ↔ tool khi cắt', () => {
-    const history: Message[] = [
-      { role: 'user', content: 'câu 1' },
-      ...toolPair('a'),
-      { role: 'assistant', content: 'trả lời 1' },
-      { role: 'user', content: 'câu 2' },
-      ...toolPair('b'),
-      { role: 'assistant', content: 'trả lời 2' },
-    ];
-    const ctx = buildChatContext(history, { maxTurns: 3 });
-    // Không được có message tool mồ côi (tool mà assistant tool_calls trước nó không nằm trong ctx)
-    ctx.forEach((m, i) => {
-      if (m.role === 'tool') {
-        const prev = ctx.slice(0, i).reverse().find((x) => x.role === 'assistant');
-        expect(prev?.tool_calls?.some((tc) => tc.id === m.tool_call_id)).toBe(true);
-      }
-    });
-    // Cắt từ CUỐI: message cuối cùng phải giữ nguyên
-    expect(ctx[ctx.length - 1].content).toBe('trả lời 2');
-  });
-
-  it('tôn trọng maxChars nhưng luôn giữ ít nhất 1 block', () => {
-    const history: Message[] = [
-      { role: 'user', content: 'x'.repeat(50_000) },
-      { role: 'assistant', content: 'y'.repeat(50_000) },
-    ];
-    const ctx = buildChatContext(history, { maxChars: 100 });
-    expect(ctx.length).toBeGreaterThan(0);
-  });
-});
-
-describe('rowsToMessages (dựng lại conversation)', () => {
-  it('map đúng role/content/tool_calls/tool_call_id theo thứ tự rows', () => {
-    const rows: Parameters<typeof rowsToMessages>[0] = [
-      { role: 'user', content: 'hỏi', tool_calls: null, tool_call_id: null },
-      {
-        role: 'assistant', content: null,
-        tool_calls: [{ id: 'c1', type: 'function', function: { name: 't', arguments: '{}' } }],
-        tool_call_id: null,
-      },
-      { role: 'tool', content: 'kq', tool_calls: null, tool_call_id: 'c1' },
-      { role: 'assistant', content: 'đáp', tool_calls: null, tool_call_id: null },
-    ];
-    const msgs = rowsToMessages(rows);
-    expect(msgs).toHaveLength(4);
-    expect(msgs[1].tool_calls?.[0].id).toBe('c1');
-    expect(msgs[2].tool_call_id).toBe('c1');
-    expect(msgs[3].content).toBe('đáp');
   });
 });
 
@@ -408,7 +344,7 @@ describe('Phase 5 — write tool + form-fill guard', () => {
 
   it('KHÔNG chỉ dẫn nào trỏ tới tool đã bị gỡ khỏi registry', async () => {
     // `respond` từng là tool giả làm dấu "xong", bị gỡ khi chat engine chuyển
-    // sang tool_choice:'auto' (chú thích đầu chatEngine.ts). Chỉ dẫn còn sót lại
+    // sang tool_choice:'auto' (chatEngine.ts cũ, đã gỡ ở P11). Chỉ dẫn còn sót lại
     // bảo mô hình "gọi respond NGAY BÂY GIỜ" là trỏ vào hư không — mô hình hoặc
     // lờ đi, hoặc gọi rồi nhận lỗi, và bước dừng-để-hỏi trước khi tạo phiếu
     // hỏng đúng lúc nó cần chắc nhất.
@@ -503,34 +439,6 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     }
     // Và control autosave không nhãn thì không nhãn nào bắt được.
     expect(nhanNguyHiem([])).toBe(false);
-  });
-});
-
-describe('modelConDungDuoc — preference trỏ vào model đã bị gỡ', () => {
-  // Đã gặp thật 12/08/2026: tài khoản còn lưu `9router:mmf/mimo-auto` sau khi
-  // model đó bị gỡ khỏi VPS. Trước khi proxy ép allowlist thì hỏng ở upstream;
-  // sau đó thì 400 ngay lượt đầu, và người dùng không hiểu vì sao chỉ mình họ
-  // bị.
-  const opts = [
-    { value: '9router:cx/gpt-5.6-sol(max)', label: 'Sol Max', provider: '9router', localOnly: false },
-    { value: 'gemini:gemini-2.5-flash', label: 'Flash', provider: 'gemini', localOnly: false },
-  ];
-
-  it('model còn trong danh sách thì giữ', () => {
-    expect(modelConDungDuoc('9router:cx/gpt-5.6-sol(max)', opts)).toBe(true);
-  });
-
-  it('model đã bị gỡ thì báo lỗi thời', () => {
-    expect(modelConDungDuoc('9router:mmf/mimo-auto', opts)).toBe(false);
-  });
-
-  it('danh sách CHƯA TẢI thì giữ nguyên preference, không đá về mặc định', () => {
-    // Coi "chưa biết" là "không hợp lệ" sẽ nháy đổi model mỗi lần mở panel.
-    expect(modelConDungDuoc('9router:mmf/mimo-auto', undefined)).toBe(true);
-  });
-
-  it('danh sách RỖNG (không provider nào bật) thì coi là lỗi thời', () => {
-    expect(modelConDungDuoc('9router:cx/gpt-5.6-sol(max)', [])).toBe(false);
   });
 });
 

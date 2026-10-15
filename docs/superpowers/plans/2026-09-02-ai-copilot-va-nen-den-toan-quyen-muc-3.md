@@ -96,9 +96,9 @@ Luật chung mọi task: làm trong **worktree riêng** (5 phiên khác đang ch
 **G0-B. Organization vào quota** — migration DROP+CREATE `reserve_ai_usage(..., p_organization_id uuid)`; `llm-proxy` đọc header `x-organization-id` (client gửi từ `OrganizationContext`, `makeCopilotFetch` ở `copilotConfig.ts:52-62`), verify bằng `list_my_copilot_organizations_v1` (superadmin) / membership ACTIVE, INSERT `organization_id` tường minh; thiếu org → 400 `organization_required` (không 500). **Trước khi sửa**: kiểm live số user có ≠1 membership ACTIVE đã gọi Copilot (đọc `ai_usage_logs` + `organization_memberships`).
 
 **G0-C. Frontend sửa lỗi thật** (`src/copilot/`)
-1. 5 chuỗi mojibake/mất dấu ([chatEngine.ts:345,389,427](src/copilot/chatEngine.ts#L345), [safeControls.ts:212,217](src/copilot/safeControls.ts#L212)).
+1. 5 chuỗi mojibake/mất dấu (`chatEngine.ts:345,389,427` (đã gỡ ở P11 Hermes), [safeControls.ts:212,217](src/copilot/safeControls.ts#L212)).
 2. Availability: `refetchInterval: 30_000` khi panel mở + `await refetch()` trong `send` nếu snapshot cũ >45s; khi `buildRegistry` trả rỗng vì stale/null → banner "Đang làm mới quyền công cụ…" và **không gửi** cho tới khi tươi.
-3. Entitlement: thêm `.eq('user_id', uid)` ([useAiProviders.ts:104](src/copilot/useAiProviders.ts#L104)); admin page bỏ giả định global.
+3. Entitlement: thêm `.eq('user_id', uid)` (`useAiProviders.ts:104`, đã gỡ ở P11 Hermes); admin page bỏ giả định global.
 4. `runUiControl`: thay `return` im lặng bằng `setError(...)` theo từng nguyên nhân; panel dùng `formatCopilotRolloutError` (`featureFlags.ts:26-39`) + map `organization_required|organization_mismatch|rollout_unavailable`; `saveMessages` lỗi → toast + retry 1 lần; loading state cho model select/lịch sử thread.
 5. Test render đầu tiên: `ChatPanel.test.tsx` (banner stale, lỗi hiển thị, guard UI-control) + `CopilotLauncher.test.tsx` (điều kiện hiện nút).
 
