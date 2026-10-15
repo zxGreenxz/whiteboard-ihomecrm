@@ -1,4 +1,5 @@
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { exact, id, positive, isMemoryWrite, workMemoryInput } from './work-memory-contract.mjs';
@@ -30,9 +31,10 @@ export function createSupabaseWorkMemoryReads(options = {}) {
 export function createWorkMemoryAuthAdapter({ baseAuth, reads } = {}) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_memory_auth');
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    const current = await baseAuth.readAuthorization(input);
+    const { current, capability } = await readWithBaseAuthorization(baseAuth, input,
+      () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
     if (current.permissions.read.includes('assistant.memory.read') || current.permissions.action.includes('assistant.memory.write')) fail('context_changed');
-    const memory = await reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal });
+    const memory = capability();
     if (memory === null) return current;
     if (!exact(memory, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'readAllowed', 'writeAllowed']) ||
       memory.organizationId !== input.organizationId || memory.userId !== input.userId || memory.membershipId !== current.membership.membershipId ||

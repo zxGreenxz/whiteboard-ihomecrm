@@ -776,6 +776,106 @@ test('cancelled external maintenance retains the MCP fence until old SQL drains 
   assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
 });
 
+test('external MCP request waits for the maintenance fence and is admitted only after refresh and renewal drained', async t => {
+  const limits = { requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 10_000, maintenanceWaitMs: 2000 };
+  const refreshEntered = deferred(), refreshHeld = deferred();
+  t.after(() => refreshHeld.resolve()); // Before backend close: a held provider must not deadlock cleanup.
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true, limits });
+  const token = (await http.connect()).body.token;
+  f.nearSessionExpiry(); const refresh = arrangeRefresh(f), respond = f.providerOperations.refresh;
+  f.providerOperations.refresh = async (...args) => { refreshEntered.resolve(); await refreshHeld.promise; return respond(...args); };
+  const operation = http.beginExternalConnectionMaintenance(token, { signal: new AbortController().signal });
+  await refreshEntered.promise;
+  const sql = f.sql.length, calls = f.calls.length; let settled = 0;
+  const waiting = [http.mcp(token), http.mcp(token, 'tools/call', { name: 'crm_auth_context', arguments: {} })]
+    .map(request => request.then(value => { settled++; return value; }));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  // Held, not refused: nothing of the waiting requests touched SQL/Auth while parked.
+  assert.equal(settled, 0); assert.equal(f.sql.length, sql); assert.equal(f.calls.length, calls);
+  // Waiters are bounded by the per-connection concurrency; the next one is refused at once.
+  assert.equal((await http.mcp(token)).body.error, 'connection_maintenance');
+  refreshHeld.resolve();
+  const result = await operation.result; await operation.drained;
+  assert.equal(result.status, 'renewed');
+  const [listed, called] = await Promise.all(waiting);
+  // publish_refresh retires the old bearer, so a request admitted before the
+  // fence opened would fail Auth; both succeed on the refreshed, renewed session.
+  assert.equal(listed.status, 200); assert.equal(called.status, 200); assert.equal(called.body.result.isError, false);
+  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
+  assert.equal(f.sql.filter(query => /hermes_store_renew_connection/.test(query.text)).length, 1);
+  assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2); // One login, one refresh: never twice.
+});
+
+test('backend close wakes a request waiting on the maintenance fence and never dispatches it', async t => {
+  const limits = { requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 10_000, maintenanceWaitMs: 10_000 };
+  const refreshEntered = deferred(), refreshHeld = deferred();
+  t.after(() => refreshHeld.resolve()); // Before backend close: a held provider must not deadlock cleanup.
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true, limits });
+  const token = (await http.connect()).body.token;
+  f.nearSessionExpiry(); arrangeRefresh(f); const respond = f.providerOperations.refresh;
+  f.providerOperations.refresh = async (...args) => { refreshEntered.resolve(); await refreshHeld.promise; return respond(...args); };
+  const operation = http.beginExternalConnectionMaintenance(token, { signal: new AbortController().signal });
+  void operation.result.catch(() => {});
+  await refreshEntered.promise;
+  const waiter = http.mcp(token).then(value => value, error => ({ status: 0, error }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const started = Date.now(), closing = http.close();
+  const outcome = await waiter;
+  assert(Date.now() - started < 2000, 'close wakes the waiter instead of letting it sit out the wait');
+  assert(outcome.status === 0 || (outcome.status === 503 && outcome.body.error === 'backend_closed'), JSON.stringify(outcome.body));
+  refreshHeld.resolve(); await closing; await operation.drained.catch(() => {});
+});
+
+test('maintenance wait is bounded: a request still parked after the wait gets 503 without touching SQL', async t => {
+  const limits = { requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 10_000, maintenanceWaitMs: 50 };
+  const refreshEntered = deferred(), refreshHeld = deferred();
+  t.after(() => refreshHeld.resolve()); // Before backend close: a held provider must not deadlock cleanup.
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true, limits });
+  const token = (await http.connect()).body.token;
+  f.nearSessionExpiry(); arrangeRefresh(f); const respond = f.providerOperations.refresh;
+  f.providerOperations.refresh = async (...args) => { refreshEntered.resolve(); await refreshHeld.promise; return respond(...args); };
+  const operation = http.beginExternalConnectionMaintenance(token, { signal: new AbortController().signal });
+  await refreshEntered.promise;
+  const sql = f.sql.length, started = Date.now();
+  const late = await http.mcp(token);
+  assert.equal(late.status, 503); assert.equal(late.body.error, 'connection_maintenance'); assert(Date.now() - started >= 40);
+  assert.equal(f.sql.length, sql);
+  const longer = createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, maintenanceWaitMs: 10_000 } });
+  assert.throws(() => createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, maintenanceWaitMs: 10_001 } }),
+    { message: 'invalid_backend_config' });
+  assert.throws(() => createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, toolCallsPerMinute: 61 } }),
+    { message: 'invalid_backend_config' });
+  // Total wait + deadline is capped below the MCP client timeout and idle-socket cut-off.
+  for (const delta of [{ callTimeoutMs: 20_000, maintenanceWaitMs: 5001 }, { callTimeoutMs: 30_000, maintenanceWaitMs: 0 }]) {
+    assert.throws(() => createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, ...delta } }),
+      { message: 'invalid_backend_config' });
+  }
+  await createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, callTimeoutMs: 20_000, maintenanceWaitMs: 5000 } }).close();
+  await longer.close();
+  refreshHeld.resolve(); await operation.result; await operation.drained;
+  assert.equal((await http.mcp(token)).status, 200);
+});
+
+test('connector status shows only the caller\'s own connections with last MCP activity and a fixed error code', async t => {
+  const f = fakeBackend(), http = await listening(t, { ...f.configuration, connectorOnly: true }), token = (await http.connect()).body.token;
+  const empty = await http.browser('status');
+  assert.equal(empty.status, 200); assert.match(empty.body.connector.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(empty.body.connector.startedAt, NOW);
+  assert.deepEqual(empty.body.connections, [{ id: I.connection, lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null }]);
+  assert.equal((await http.mcp(token)).status, 200);
+  const called = await http.mcp(token, 'tools/call', { name: 'crm_auth_context', arguments: {} });
+  assert.equal(called.body.result.isError, false);
+  const denied = await http.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
+  assert.equal(JSON.parse(denied.body.result.content[0].text).error, 'tool_not_available');
+  const status = await http.browser('status');
+  assert.deepEqual(status.body.connections, [{ id: I.connection, lastSuccessAt: NOW, lastToolCallAt: NOW, lastErrorCode: 'tool_not_available', lastErrorAt: NOW }]);
+  for (const secret of [token, assistantJwt, browserJwt, 'SYNTHETIC-REFRESH', 'credentialRef', 'crm_auth_context']) assert(!status.text.includes(secret));
+  // Another organization or a missing browser session sees nothing.
+  assert.equal((await http.browser('status', { organizationId: id(99) })).status, 403);
+  assert.equal((await http.send('/api/hermes/connections/status', { organizationId: I.org }, { authorization: undefined })).status, 401);
+  assert.equal((await http.browser('status', { connectionId: I.connection })).status, 400);
+});
+
 test('backend close holds key and maintenance capacity until ignored-abort refresh fetch actually drains', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
   f.nearSessionExpiry(); const refresh = arrangeRefresh(f), entered = deferred(), held = deferred();

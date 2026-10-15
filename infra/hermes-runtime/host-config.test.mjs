@@ -61,6 +61,32 @@ test('connector config needs no model or personal profile and rejects accidental
   }
 });
 
+test('connector limits default safely, accept bounded overrides and reject unknown or unsafe values', async t => {
+  const f = await fixture(t), input = structuredClone(f.input);
+  delete input.model; input.version = 2; input.mode = 'connector'; await f.save(input);
+  let config = await loadHostConfiguration(f.configPath);
+  try {
+    assert.deepEqual({ ...config.limits }, { requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 20_000, maintenanceWaitMs: 5000 });
+    assert.ok(Object.isFrozen(config.limits));
+  } finally { config.dispose(); }
+  await f.save({ ...input, limits: { toolCallsPerMinute: 12, maintenanceWaitMs: 0 } });
+  config = await loadHostConfiguration(f.configPath);
+  try { assert.deepEqual({ ...config.limits }, { requestsPerMinute: 60, toolCallsPerMinute: 12, callTimeoutMs: 20_000, maintenanceWaitMs: 0 }); }
+  finally { config.dispose(); }
+  await f.save({ ...input, limits: { callTimeoutMs: 25_000, maintenanceWaitMs: 0 } });
+  config = await loadHostConfiguration(f.configPath);
+  try { assert.equal(config.limits.callTimeoutMs + config.limits.maintenanceWaitMs, 25_000); } finally { config.dispose(); }
+  // Wait + deadline above 25 s would outlive the 30 s MCP client / 35 s idle socket.
+  for (const limits of [{ callTimeoutMs: 20_001 }, { callTimeoutMs: 16_000, maintenanceWaitMs: 10_000 }, { callTimeoutMs: 30_000, maintenanceWaitMs: 0 },
+    { toolCallsPerMinute: 0 }, { toolCallsPerMinute: 61 }, { requestsPerMinute: 601, toolCallsPerMinute: 30 },
+    { callTimeoutMs: 999 }, { callTimeoutMs: 30_001 }, { maintenanceWaitMs: 10_001 }, { maintenanceWaitMs: -1 },
+    { toolCallsPerMinute: 1.5 }, { toolCallsPerMinute: '30' }, { burst: 5 }, []]) {
+    await f.save({ ...input, limits }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+  // Managed prototype keeps its own exact shape.
+  await f.save({ ...f.input, limits: {} }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+});
+
 test('inline secrets, extra/foreign fields, project mismatch, unsafe role/URL and model bounds reject before secret loading', async t => {
   const f = await fixture(t), cases = [
     x => { x.password = 'inline'; }, x => { x.store.password = 'inline'; }, x => { x.encryption.keys[0].secret = 'inline'; },

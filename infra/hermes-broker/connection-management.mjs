@@ -51,13 +51,14 @@ function contextMetadata(value, actor, org, id) {
   return { ...row, membershipId: value.membershipId, authorizationVersion: value.authorizationVersion,
     isSuperadmin: value.isSuperadmin, policyVersion: value.policyVersion, companyCeilings, effective };
 }
+const OWNER_READS = ['list', 'options', 'status'];
 function inputRequest(input, operation) {
   const keys = ['browserAccessToken', 'organizationId'];
-  if (!['list', 'options'].includes(operation)) keys.push('connectionId');
+  if (!OWNER_READS.includes(operation)) keys.push('connectionId');
   if (['restrict', 'revoke'].includes(operation)) keys.push('expectedEpoch');
   if (operation === 'restrict') keys.push('restrictions', 'scopeIds');
   if (!exact(input, keys) || typeof input.browserAccessToken !== 'string' || !TOKEN.test(input.browserAccessToken) ||
-      !uuid(input.organizationId) || (!['list', 'options'].includes(operation) && !uuid(input.connectionId)) ||
+      !uuid(input.organizationId) || (!OWNER_READS.includes(operation) && !uuid(input.connectionId)) ||
       (keys.includes('expectedEpoch') && (!positive(input.expectedEpoch) || input.expectedEpoch >= Number.MAX_SAFE_INTEGER))) fail('invalid_request');
   const request = { ...input };
   if (operation === 'restrict') {
@@ -133,10 +134,13 @@ async function bounded(signal, timeoutMs, operation, outcome, dependencyScope) {
  * Revoke accepts self-owned pending/revoked/expired rows from the list, so it does
  * not depend on a healthy assistant session or enabled assistant policy.
  * Lost write ACK is unknown; no retries, new credentials or cached admission.
+ * status (optional health port) answers connector activity only for the ids
+ * the verified owner list returned for this actor/org, after the final recheck.
  */
-export function createConnectionManagement({ auth, reads, connectionStore, clock = Date.now, timeoutMs = 30_000 } = {}) {
+export function createConnectionManagement({ auth, reads, connectionStore, health, clock = Date.now, timeoutMs = 30_000 } = {}) {
   if ([auth?.verifySession, auth?.readAuthorization, reads?.listConnections, reads?.connectionContext,
     connectionStore?.restrictConnection, connectionStore?.revokeConnection, clock].some(fn => typeof fn !== 'function') ||
+      (health !== undefined && typeof health?.snapshot !== 'function') ||
       !positive(timeoutMs) || timeoutMs > 30_000) throw new TypeError('invalid_connection_management_config');
   const now = () => { const value = clock(); if (!positive(value)) fail('backend_unavailable'); return value; };
   async function execute(operation, input, { signal } = {}) {
@@ -191,6 +195,10 @@ export function createConnectionManagement({ auth, reads, connectionStore, clock
           const connections = await ownList(); const current = await recheck(); checkLifetime(current);
           return { connections };
         }
+        if (operation === 'status') {
+          const connections = await ownList(); const current = await recheck(); checkLifetime(current);
+          return health.snapshot(connections.map(row => row.id));
+        }
         if (operation === 'context') {
           const context = await ownContext(); contextMatchesAuthority(context, initial);
           const current = await recheck();
@@ -237,7 +245,7 @@ export function createConnectionManagement({ auth, reads, connectionStore, clock
       }, outcome);
     } catch (error) { throw sanitize(error, write, receipt); }
   }
-  return Object.freeze(Object.fromEntries(['list', 'context', 'options', 'restrict', 'revoke'].map(operation => [operation,
+  return Object.freeze(Object.fromEntries(['list', 'context', 'options', 'restrict', 'revoke', ...(health ? ['status'] : [])].map(operation => [operation,
     (input, options) => execute(operation, input, options)])));
 }
 

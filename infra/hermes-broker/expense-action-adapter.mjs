@@ -3,6 +3,7 @@ import { BrokerError } from './broker.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { EXPENSE_ACTIONS, expenseActionInput, expenseActionResult, expenseSqlOperation, mayUseExpenseAction } from './expense-action-contract.mjs';
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
 const keys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
@@ -26,9 +27,11 @@ export function createExpenseActionReads(options) {
 export function createExpenseActionAuth({ baseAuth, reads } = {}) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_expense_action_auth');
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    const current = await baseAuth.readAuthorization(input);
+    const extended = await readWithBaseAuthorization(baseAuth, input,
+      () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
+    const current = extended.current;
     if (EXPENSE_ACTIONS.some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) fail('context_changed');
-    const cap = await reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal });
+    const cap = extended.capability();
     if (cap === null) return current;
     if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions']) ||
       cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||

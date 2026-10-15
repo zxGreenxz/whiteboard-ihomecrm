@@ -112,6 +112,26 @@ test('unknown send returns only validated dispatch correlation so native Hermes 
   assert.deepEqual(await invoke(), { error: 'backend_unavailable' });
 });
 
+test('quota on tools/call is a readable tool error with retry hint; other methods keep HTTP 429 plus Retry-After', async t => {
+  const state = await createFixtureBroker({ limits: { maxRequestsPerMinute: 2, maxToolCallsPerMinute: 1 } });
+  const server = createMcpHttpServer({ broker: state.broker });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const send = async message => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer ${state.connections.a.token}` }, body: JSON.stringify(message) });
+    return { status: response.status, retryAfter: response.headers.get('retry-after'), body: await response.json() };
+  };
+  assert.equal((await send(call())).body.result.isError, false);
+  const limited = await send(call());
+  assert.equal(limited.status, 200); assert.equal(limited.body.result.isError, true);
+  assert.deepEqual(JSON.parse(limited.body.result.content[0].text), { error: 'rate_limited', retryAfterSeconds: 60 });
+  assert.equal((await send({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).status, 200);
+  const transport = await send({ jsonrpc: '2.0', id: 4, method: 'tools/list' });
+  assert.equal(transport.status, 429); assert.deepEqual(transport.body, { error: 'rate_limited' });
+  assert.match(transport.retryAfter, /^[1-9][0-9]?$/);
+});
+
 test('extracted handler composes under a caller-owned server without changing legacy MCP result or hostname semantics', async t => {
   const state = await createFixtureBroker(), handler = createMcpHttpHandler({ broker: state.broker });
   const server = createServer(async (request, response) => {

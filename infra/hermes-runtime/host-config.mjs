@@ -84,6 +84,23 @@ function httpList(values, origin) {
   }
   return Object.freeze([...values]);
 }
+// Safe connector defaults: per-connection sliding windows, a whole-invocation
+// deadline with headroom for slow whole-company CRM reads yet below the Hermes
+// MCP client timeout (30 s documented profile), and a short maintenance wait.
+// Revocation is unaffected: every call still re-reads authority at admission
+// and again after its audit, whatever the deadline.
+const CONNECTOR_LIMITS = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 20_000, maintenanceWaitMs: 5000 });
+function connectorLimits(value) {
+  if (value === undefined) return CONNECTOR_LIMITS;
+  exact(value, [], Object.keys(CONNECTOR_LIMITS));
+  const limits = { ...CONNECTOR_LIMITS, ...value };
+  const within = (key, min, max) => Number.isSafeInteger(limits[key]) && limits[key] >= min && limits[key] <= max;
+  if (!within('requestsPerMinute', 1, 600) || !within('toolCallsPerMinute', 1, limits.requestsPerMinute) ||
+      !within('callTimeoutMs', 1000, 30_000) || !within('maintenanceWaitMs', 0, 10_000) ||
+      // Wait + deadline must end before the 30 s MCP client timeout and 35 s idle cut-off.
+      limits.callTimeoutMs + limits.maintenanceWaitMs > 25_000) fail();
+  return Object.freeze(limits);
+}
 
 /** Private host config only: no env fallback, provisioning, network or listener.
  * This read-only loader obtains stateRoot before the host acquires its durable
@@ -99,7 +116,9 @@ export async function loadHostConfiguration(configPath) {
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
     const connectorOnly = input?.version === 2 && input?.mode === 'connector';
-    exact(input, ['version', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort', ...(connectorOnly ? ['mode'] : ['model'])]);
+    exact(input, ['version', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort', ...(connectorOnly ? ['mode'] : ['model'])],
+      connectorOnly ? ['limits'] : []);
+    const limits = connectorOnly ? connectorLimits(input.limits) : undefined;
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
     if (!connectorOnly) exact(input.model, ['model', 'maxTokens', 'maxIterations']);
@@ -153,7 +172,7 @@ export async function loadHostConfiguration(configPath) {
     return Object.freeze({ supabase: Object.freeze({ url: url.origin, publishableKey: input.supabase.publishableKey }),
       store: Object.freeze({ projectRef, host, role, password, ...(ca === undefined ? {} : { ca }) }),
       encryption: Object.freeze({ activeKeyVersion, keys }), http, paths,
-      ...(connectorOnly ? { mode: 'connector' } : { model: Object.freeze({ model, maxTokens, maxIterations, allowedModels: Object.freeze([model]) }) }), listenPort: input.listenPort,
+      ...(connectorOnly ? { mode: 'connector', limits } : { model: Object.freeze({ model, maxTokens, maxIterations, allowedModels: Object.freeze([model]) }) }), listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

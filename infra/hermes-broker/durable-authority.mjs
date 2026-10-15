@@ -2,6 +2,7 @@ import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
+import { authorityRequestEntries, BROKER_AUTHORITY } from './authority-request-scope.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -116,13 +117,28 @@ function authorization(value, before, now) {
  * identifyConnection performs only a joined, token-digest-bound storage read for
  * quota admission. Its id is not an authorization receipt: resolve must run after
  * admission and the dispatcher must compare the resolved id with that reserved id.
+ *
+ * Inside a broker invocation (authority-request-scope) the identify snapshot is
+ * reused as the opening read of the next resolve, and a resolve result may be
+ * handed to exactly one following resolve of the same checkpoint. Outside that
+ * window (maintenance, renewal, runtime) every call is fully fresh. Auth and CRM
+ * authorization are read concurrently; their checks keep the sequential order.
  */
 export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000 } = {}) {
   if (typeof connectionStore?.readConnection !== 'function' || typeof crypto?.open !== 'function' ||
       typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function' || typeof clock !== 'function' ||
       !positive(timeoutMs) || timeoutMs > 30000) throw new TypeError('invalid_durable_authority_config');
-  const issued = new WeakSet();
+  const issued = new WeakSet(), owner = Object.freeze({});
   const now = () => { const value = clock(); if (!positive(value)) malformed(); return value; };
+  // One-shot hand-over inside a single broker checkpoint (authority-request-scope).
+  // Only a matching kind is consumed; anything else stays for its owner.
+  const take = (tokenDigest, kind) => {
+    const entries = authorityRequestEntries(owner), entry = entries?.get(tokenDigest);
+    if (entry?.kind !== kind) return undefined;
+    entries.delete(tokenDigest); return entry;
+  };
+  const offer = (tokenDigest, entry) => { authorityRequestEntries(owner)?.set(tokenDigest, entry); };
+  const brokerCall = options => options !== null && typeof options === 'object' && options[BROKER_AUTHORITY] === true;
   async function bounded(signal, operation) {
     if (!(signal instanceof AbortSignal)) malformed();
     if (signal.aborted) malformed();
@@ -138,10 +154,24 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       malformed();
     } finally { clearTimeout(timer); signal.removeEventListener('abort', stop); controller.abort(); }
   }
-  async function resolve(presentedToken, { signal } = {}) {
+  async function resolve(presentedToken, options = {}) {
     if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
-    const tokenDigest = digest(presentedToken);
-    return bounded(signal, async (innerSignal, check) => {
+    const tokenDigest = digest(presentedToken), broker = brokerCall(options);
+    if (!broker) {
+      // A service may consume the broker's own result of this checkpoint once.
+      const handed = take(tokenDigest, 'resolved');
+      if (handed) {
+        if (!(options?.signal instanceof AbortSignal) || options.signal.aborted) malformed();
+        return handed.result;
+      }
+    }
+    return fresh(presentedToken, tokenDigest, options?.signal, broker);
+  }
+  // broker: the dispatcher's own read. Only it may open with the admission
+  // identify snapshot and only its result is offered to the next service.
+  function fresh(presentedToken, tokenDigest, signal, broker) {
+    const handed = broker ? take(tokenDigest, 'identified') : undefined;
+    const pending = bounded(signal, async (innerSignal, check) => {
       const read = async () => {
         let value;
         try { value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); }
@@ -154,15 +184,23 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         check();
         return snapshot(value, tokenDigest, now());
       };
-      const before = await read();
+      // The admission identify read of this checkpoint is the opening snapshot;
+      // the closing read below still detects any change since that read.
+      const before = handed?.kind === 'identified' ? handed.snapshot : await read();
       let material;
       try { material = validateSessionMaterial(crypto.open(before.session.envelope, before.session.binding)); }
       catch { malformed(); }
       if (material.expiresAt <= now() || material.expiresAt !== before.session.expiresAt) fail('unauthorized');
-      const verified = await auth.verifySession({ accessToken: material.accessToken, signal: innerSignal }); check();
+      // Auth and CRM authorization are independent reads of the same bearer and
+      // start together, but are awaited in the sequential order: an Auth
+      // rejection is returned at once and leaving bounded() aborts the CRM read.
+      const verifying = Promise.resolve().then(() => auth.verifySession({ accessToken: material.accessToken, signal: innerSignal }));
+      const reading = Promise.resolve().then(() => auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
+        organizationId: before.connection.organizationId, signal: innerSignal }));
+      void reading.catch(() => {});
+      const verified = await verifying; check();
       verifiedSession(verified, before.session.binding, material, now());
-      const live = await auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
-        organizationId: before.connection.organizationId, signal: innerSignal }); check();
+      const live = await reading; check();
       const current = authorization(live, before, now());
       const after = await read();
       if (fingerprint(before) !== fingerprint(after)) fail('context_changed');
@@ -180,9 +218,12 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       scopesByPermission: current.scopesByPermission, contextVersion });
       issued.add(result); return result;
     });
+    if (broker) offer(tokenDigest, { kind: 'resolved', result: pending });
+    return pending;
   }
   return Object.freeze({
-    async identifyConnection(presentedToken, { signal } = {}) {
+    async identifyConnection(presentedToken, options = {}) {
+      const signal = options?.signal, broker = brokerCall(options);
       if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
       const tokenDigest = digest(presentedToken);
       return bounded(signal, async (innerSignal, check) => {
@@ -196,12 +237,26 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         }
         check();
         const current = snapshot(value, tokenDigest, now());
+        if (broker) offer(tokenDigest, { kind: 'identified', snapshot: current });
         return Object.freeze({ connectionId: current.connection.id });
       });
     },
-    resolve, async checkUnchanged(presentedToken, before, options) {
+    resolve, async checkUnchanged(presentedToken, before, options = {}) {
     if (!issued.has(before)) fail('context_changed');
-    const after = await resolve(presentedToken, options);
+    if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
+    const tokenDigest = digest(presentedToken), broker = brokerCall(options);
+    let after;
+    if (!broker) {
+      // The broker's post-audit result may serve this check, but never the
+      // receipt being checked itself: that would compare a result to itself.
+      const handed = take(tokenDigest, 'resolved');
+      if (handed) {
+        if (!(options?.signal instanceof AbortSignal) || options.signal.aborted) malformed();
+        const value = await handed.result;
+        if (value !== before) after = value;
+      }
+    }
+    after ??= await fresh(presentedToken, tokenDigest, options?.signal, broker);
     if (after.contextVersion !== before.contextVersion) fail('context_changed');
   } });
 }

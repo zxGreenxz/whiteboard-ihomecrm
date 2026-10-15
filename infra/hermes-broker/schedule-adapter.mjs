@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { scheduleInput } from './schedule-contract.mjs';
 const keys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
 const exact = (value, names) => value !== null && typeof value === 'object' &&
@@ -56,9 +57,11 @@ export function createSupabaseScheduleReads(options) {
 export function createScheduleAuthAdapter({ baseAuth, reads } = {}) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_schedule_auth');
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    const current = await baseAuth.readAuthorization(input);
+    const extended = await readWithBaseAuthorization(baseAuth, input,
+      () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
+    const current = extended.current;
     if (current.permissions.action.includes('chat_zalo.manage_automation') || current.companyCeilings.action.includes('chat_zalo.manage_automation')) throw new BrokerError('context_changed');
-    const capability = await reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal });
+    const capability = extended.capability();
     if (capability === null) return current;
     if (!exact(capability, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'allowed', 'companyEnabled']) ||
       capability.organizationId !== input.organizationId || capability.userId !== input.userId || capability.membershipId !== current.membership.membershipId ||

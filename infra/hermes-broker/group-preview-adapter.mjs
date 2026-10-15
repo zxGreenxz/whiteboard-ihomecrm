@@ -4,6 +4,7 @@ import { mayUseGroupTool } from './capability-contract.mjs';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
 import { projectAvailableRooms } from './room-read-projection.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA=/^[a-f0-9]{64}$/, TOKEN=/^hc_[A-Za-z0-9_-]{43}$/;
 const baseKeys=['connectionId','tokenDigest','commandId','claimId','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision','requestId'];
@@ -135,10 +136,10 @@ export function createGroupOriginReads({url,publishableKey,fetch:request=globalT
 function capabilityAuthAdapter(baseAuth,readAction,optional){
   if(typeof baseAuth?.verifySession!=='function'||typeof baseAuth?.readAuthorization!=='function'||typeof readAction!=='function')throw new TypeError('invalid_group_auth_config');
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
-    const current=await baseAuth.readAuthorization(input);
+    const {current,capability}=await readWithBaseAuthorization(baseAuth,input,()=>readAction({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}));
     if(current.permissions.action.length||current.companyCeilings.action.length||
       current.permissions.read.includes('chat_zalo.view')||current.companyCeilings.read.includes('chat_zalo.view'))fail('context_changed');
-    const action=await readAction({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal});
+    const action=capability();
     if(optional&&action===null)return current;
     if(!exact(action,['organizationId','userId','membershipId','authorizationVersion','policyVersion','allowed','companyEnabled','readAllowed','readCompanyEnabled'])||
       action.organizationId!==input.organizationId||action.userId!==input.userId||!id(action.membershipId)||!positive(action.authorizationVersion)||!(action.policyVersion===0||positive(action.policyVersion))||

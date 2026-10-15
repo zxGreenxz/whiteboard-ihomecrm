@@ -21,5 +21,11 @@
     "allowedOrigins": ["https://crm.example.com"]
   },
   "stateRoot": "/var/lib/ihome-hermes-connector",
-  "listenPort": 8740
+  "listenPort": 8740,
+  "limits": {
+    "requestsPerMinute": 60,
+    "toolCallsPerMinute": 30,
+    "callTimeoutMs": 20000,
+    "maintenanceWaitMs": 5000
+  }
 }

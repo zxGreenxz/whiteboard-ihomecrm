@@ -1,5 +1,6 @@
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
 import { BrokerError } from './broker.mjs';
 import { createHash } from 'node:crypto';
@@ -22,9 +23,10 @@ export function createRoomPassReads(options){
 export function createRoomPassAuth({baseAuth,reads}){
   if([baseAuth?.verifySession,baseAuth?.readAuthorization,reads?.capabilities].some(fn=>typeof fn!=='function'))throw new TypeError('invalid_room_pass_auth');
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
-    const current=await baseAuth.readAuthorization(input);
+    const extended=await readWithBaseAuthorization(baseAuth,input,()=>reads.capabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}));
+    const current=extended.current;
     if(current.permissions.action.includes(ROOM_PASS_ACTION)||current.companyCeilings.action.includes(ROOM_PASS_ACTION))throw new BrokerError('context_changed');
-    const cap=await reads.capabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal});if(cap===null)return current;
+    const cap=extended.capability();if(cap===null)return current;
     if(!domainExact(cap,['organizationId','userId','membershipId','authorizationVersion','isSuperadmin','policyVersion','allowed','companyEnabled','buildingIds'])||
       cap.organizationId!==input.organizationId||cap.userId!==input.userId||cap.membershipId!==current.membership.membershipId||cap.authorizationVersion!==current.membership.authorizationVersion||
       cap.isSuperadmin!==current.isSuperadmin||!(cap.policyVersion===0||positive(cap.policyVersion))||typeof cap.allowed!=='boolean'||typeof cap.companyEnabled!=='boolean'||

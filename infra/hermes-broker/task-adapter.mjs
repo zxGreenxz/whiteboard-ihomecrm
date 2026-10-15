@@ -1,5 +1,6 @@
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
 import { BrokerError } from './broker.mjs';
 import { createHash } from 'node:crypto';
@@ -24,9 +25,19 @@ export function createTaskReads(options){
 export function createTaskAuth({baseAuth,reads}){
   if([baseAuth?.verifySession,baseAuth?.readAuthorization,reads?.capabilities].some(fn=>typeof fn!=='function'))throw new TypeError('invalid_task_auth');
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
-    const current=await baseAuth.readAuthorization(input);
+    // Task and follow capability RPCs start in the same wave as the base chain.
+    // The follow observation is still consulted (and its failure surfaced) only
+    // after a present, valid task capability, exactly as before.
+    const follows=typeof reads.followCapabilities==='function';
+    const reading=await readWithBaseAuthorization(baseAuth,input,async()=>{
+      const [task,follow]=await Promise.allSettled([reads.capabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}),
+        follows?reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}):undefined]);
+      if(task.status==='rejected')throw task.reason;
+      return {cap:task.value,follow};
+    });
+    const current=reading.current;
     if(current.permissions.action.includes(TASK_ACTION)||current.companyCeilings.action.includes(TASK_ACTION))throw new BrokerError('context_changed');
-    const cap=await reads.capabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal});if(cap===null)return current;
+    const {cap,follow}=reading.capability();if(cap===null)return current;
     if(!domainExact(cap,['organizationId','userId','membershipId','authorizationVersion','isSuperadmin','policyVersion','allowed','companyEnabled','buildingIds'])||
       cap.organizationId!==input.organizationId||cap.userId!==input.userId||cap.membershipId!==current.membership.membershipId||cap.authorizationVersion!==current.membership.authorizationVersion||
       cap.isSuperadmin!==current.isSuperadmin||!(cap.policyVersion===0||positive(cap.policyVersion))||typeof cap.allowed!=='boolean'||typeof cap.companyEnabled!=='boolean'||
@@ -38,8 +49,9 @@ export function createTaskAuth({baseAuth,reads}){
       epoch:createHash('sha256').update(JSON.stringify({base:current.epoch,cap})).digest('hex')};
     // Follow/progress/cancel and supervision ride on the task SQL family: when
     // the task RPC above is absent, their optional RPC is never consulted.
-    if(typeof reads.followCapabilities!=='function')return extended;
-    return extendTaskFollowAuthorization(extended,await reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}),input);
+    if(!follows)return extended;
+    if(follow.status==='rejected')throw follow.reason;
+    return extendTaskFollowAuthorization(extended,follow.value,input);
   }});
 }
 export function createTaskService({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch,clock=Date.now}={}){

@@ -22,6 +22,62 @@ SIGINT/SIGTERM first block new work and await actual startup, runtime and depend
 
 Native Linux file permissions/fsync, full product container startup and real Zalo/provider delivery still require their deployment validation lanes. Unit tests with fake ports and Windows parsing do not provide that evidence.
 
+## Connector operations (version 2)
+
+This runbook covers the independent connector (`mode: "connector"`, `/etc/ihome-hermes/connector.json`, state root `/var/lib/ihome-hermes-connector`, unit `hermes-connector.service`). Paths below are the documented defaults; use the ones in your config.
+
+### Release package
+
+`package.json` resolves `xlsx` from `file:vendor/xlsx-0.20.3.tgz`. The release directory must therefore contain `vendor/xlsx-0.20.3.tgz` next to `package.json`/`package-lock.json`, otherwise `npm ci --omit=dev --ignore-scripts` fails before the connector can start. Build the release from a git checkout (or an archive that keeps `vendor/`), run the install inside the release directory, then switch `current`. Never copy `node_modules` from a developer machine.
+
+### Limits, deadline and maintenance wait
+
+The optional `limits` block (see `connector-config.example.json`) has safe defaults when omitted: `requestsPerMinute` 60, `toolCallsPerMinute` 30, `callTimeoutMs` 20000, `maintenanceWaitMs` 5000. Rates are per connection and use a sliding 60-second window; a rejected call is not counted. A limited `tools/call` returns a normal MCP tool result with `isError: true` and `{"error":"rate_limited","retryAfterSeconds":N}` (or `busy` when two calls of the same connection are already running), so Hermes keeps its session; other MCP methods answer HTTP 429 with `Retry-After`. `callTimeoutMs` bounds one whole invocation (admission, authority, tool, audit, final check); keep it below the Hermes MCP client `timeout` (30 s in the documented profile). The loader refuses `callTimeoutMs + maintenanceWaitMs` above 25000 ms, so a waiting request plus its whole call always ends before that client timeout and the connector's 35 s idle-socket cut-off. Raising it never changes revocation: every call still re-reads Auth and SQL authority at admission and again after its audit, and a revoked or expired connection fails the next call.
+
+While a connection is renewed or its provider session refreshed, MCP requests of that token wait up to `maintenanceWaitMs` for the fence to open (at most two waiters per connection) and are admitted only after the refresh/renewal has drained; otherwise they get `503 connection_maintenance` and Hermes reconnects. The fence stays closed only when the maintenance drain itself is uncertain (its dependencies could still be running): then requests are refused immediately until a restart, see crash recovery below. A renewal or refresh whose ACK was lost but whose work drained cleanly reopens the fence; later requests re-read current authority, and an uncertain provider refresh is settled through `reconnect_session` rather than retried, so the user may have to reconnect.
+
+### Status shown in CRM
+
+`/settings/hermes` calls `POST /api/hermes/connections/status`. For the caller's own connections in the selected company it shows the connector version (`serverInfo.version`), the connector start time, the last successful MCP call, the last successful tool call and the last error code. This is process memory of the running connector, reset by every restart, and never contains tokens, arguments or results. A connector without this route answers 404 and the page falls back to stored metadata only.
+
+### Backup and restore
+
+Back up, encrypted and outside the VPS, with owner-only permissions:
+
+- `/etc/ihome-hermes/connector.json` (paths and limits only, no secrets);
+- `/etc/ihome-hermes/store-password`, the optional `store-ca.pem`;
+- every key file still listed in `encryption.keys` (all versions, not only the active one);
+- `/var/lib/ihome-hermes-connector/handoff/` (encrypted WAL of issued connection tokens; maintenance needs it to renew existing connections) and `audit/broker-audit.jsonl` if you keep audit history.
+
+Do not back up or restore `.hermes-host.lock`, and do not back up personal Hermes profiles here. To restore: stop the unit and wait for the process to exit, restore files as `ihome-hermes:ihome-hermes` with mode 0600 for files and 0700 for directories (canonical paths, no symlinks), make sure no stale lock remains (see crash recovery), then start and check the journal for `host_ready`. A restored handoff never revives a revoked or expired connection: the backend re-reads current SQL/Auth authority, and such users simply reconnect from `/settings/hermes`.
+
+### Rotating the encryption key
+
+Create the new key with `head -c 32 /dev/urandom > /etc/ihome-hermes/keys/v2.bin`, set owner/mode 0600, append `{ "version": "v2", "file": ".../v2.bin" }` to `encryption.keys`, set `activeKeyVersion` to `v2` and keep `v1` in the list. Restart cleanly. New session envelopes and handoff records use `v2`; existing ciphertext stays readable only while `v1` remains configured. Remove `v1` only after every active connection has been refreshed or re-enrolled and old handoff records are gone; removing a version makes its ciphertext unreadable (there is no plaintext fallback) and those connections must reconnect.
+
+### Rotating the store role password
+
+The connector reads `store-password` only at startup, and the pool recycles connections within `maxLifetimeSeconds` (15 minutes). Prepare the new value first (`printf %s "$NEW" > store-password.new`, no trailing newline, owner `ihome-hermes`, mode 0600), then change the password of `hermes_store_host` through the reviewed admin path, immediately `mv` the new file over `store-password`, and restart the unit cleanly. Between the role change and the restart, new pool connections fail closed (MCP returns 503), so keep that window short. Verify with the journal (`host_ready`) and with a tool call that updates "Hermes gọi CRM lần cuối".
+
+### Crash and unclean stop
+
+The unit uses `Restart=no` on purpose. Exit 0 is a clean stop, exit 1 a failed start/run with cleanup complete, exit 2 a retained shutdown. After exit 2, a crash or a kill, `.hermes-host.lock` stays in the state root and the next start fails with `host_already_owned`. Do not script its removal. Recover manually: confirm no connector process is running (`systemctl status hermes-connector`, `pgrep -u ihome-hermes -f host-cli.mjs`), read the last journal events, confirm the handoff directory is intact (startup validates and decrypts it before serving), then remove only the lock file as `ihome-hermes` and start the unit. A connection whose maintenance drain was uncertain keeps answering `connection_maintenance` until the restart (a lost ACK with a clean drain does not need a restart); afterwards the backend re-reads the database, and a lease that already expired requires the user to reconnect.
+
+### Audit file capacity
+
+`audit/broker-audit.jsonl` is one append-only file capped at 16 MiB (roughly 80-100 thousand MCP calls). At capacity every MCP call fails closed with `backend_unavailable` (no data is returned without its audit receipt). Watch its size (`stat -c %s`). To rotate: stop the unit, move the file to an archive name (keep mode 0600), start the unit; it creates a new file. Never truncate or edit it while the connector runs.
+
+### Time synchronisation
+
+The host clock must be synchronised with database time. Lease RPCs bound a host-supplied heartbeat by PostgreSQL `clock_timestamp()` and refuse a time in the future with SQLSTATE 42501 (seen on production as `forbidden`). Connector maintenance decides with the host clock when to renew a lease of at most 15 minutes (5 minutes before expiry): a clock that runs ahead treats valid leases as expired and marks the connection for reconnect, a clock that runs behind renews too late and the database expires the lease. On an IPv4-only VPS the default `systemd-timesyncd` servers may resolve only over IPv6 and never sync. Configure IPv4-reachable servers, for example in `/etc/systemd/timesyncd.conf`:
+
+```ini
+[Time]
+NTP=0.vn.pool.ntp.org 1.vn.pool.ntp.org time.cloudflare.com
+```
+
+then `systemctl restart systemd-timesyncd` and confirm `timedatectl show -p NTPSynchronized` prints `NTPSynchronized=yes` and `timedatectl timesync-status` shows a small offset. Check this after every VPS rebuild and before investigating `forbidden`/42501 errors from lease or renewal RPCs.
+
 ## Frontend on Vercel
 
 The existing CRM UI uses same-origin POST requests. The two Node function entries under `api/hermes/connections/[operation].js` and `api/hermes/zalo/[operation].js` forward only the existing operation allowlists. They do not expose MCP, private queue RPCs or an arbitrary proxy. The SPA rewrite already excludes `/api/`; no new rewrite is required.

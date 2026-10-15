@@ -22,6 +22,16 @@ test('TLS, role-bound session pooler and execution limits cannot be overridden b
   assert.equal(pool.config.connectionString, undefined);
 });
 
+test('one connection stays warm between Hermes turns but every client has a bounded lifetime', () => {
+  const pool = create(input());
+  assert.equal(pool.config.min, 1);
+  assert.ok(pool.config.min < pool.config.max);
+  assert.ok(pool.config.idleTimeoutMillis >= 60_000);
+  assert.ok(pool.config.maxLifetimeSeconds > 0 && pool.config.maxLifetimeSeconds <= 900);
+  assert.equal(pool.config.keepAlive, true);
+  assert.ok(pool.config.keepAliveInitialDelayMillis > 0 && pool.config.keepAliveInitialDelayMillis <= 60_000);
+});
+
 test('direct hostname must match the project and uses only the dedicated role', () => {
   const pool = create({ ...input(), host: `db.${projectRef}.supabase.co` });
   assert.equal(pool.config.user, 'hermes_store_fixture');

@@ -7,7 +7,7 @@ import { createHermesFrontendProxy } from './frontend-proxy.mjs';
 const CRM = 'https://crm.example.test', UPSTREAM = 'https://hermes.example.test';
 const JWT = 'Bearer synthetic.jwt.signature';
 const BODY = '{"organizationId":"10000000-0000-4000-8000-000000000001"}';
-const ops = { connections: ['connect','list','context','options','restrict','revoke'],
+const ops = { connections: ['connect','list','context','options','restrict','revoke','status'],
   zalo: ['bots','manageBots','setBot','begin','status','confirm','unlink','list'] };
 const send = (port, { path = '/api/hermes/connections/list', method = 'POST', body = BODY, headers = {}, chunked = false } = {}) =>
   new Promise((resolve, reject) => {
@@ -62,7 +62,7 @@ test('all existing connection and Zalo routes traverse an actual Node HTTP handl
     assert.equal(f.calls.at(-1).url, UPSTREAM + path);
     assert.equal(f.observed.at(-1).body, BODY);
   }
-  assert.equal(f.calls.length, 14);
+  assert.equal(f.calls.length, 15);
 });
 
 test('only fixed transport headers pass; host, cookies and upstream response headers are not copied', async t => {
@@ -110,7 +110,7 @@ test('Vercel dynamic route metadata is accepted only when it agrees with the fix
   }
   for (const suffix of ['operation=revoke', 'operation=list&operation=revoke', 'operation=list&upstream=https://evil.test',
     'operation=%6cist', 'other=list']) assert.equal((await f.send({ path: `/api/hermes/connections/list?${suffix}` })).status, 404);
-  assert.equal(f.calls.length, 14);
+  assert.equal(f.calls.length, 15);
 });
 
 test('method, origin, host and bearer boundaries reject before upstream', async t => {

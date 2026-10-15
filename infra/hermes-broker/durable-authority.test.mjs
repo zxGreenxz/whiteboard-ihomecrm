@@ -6,6 +6,7 @@ import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { BrokerError, createBroker } from './broker.mjs';
+import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const ids = { connection: id('1'), assistant: id('2'), user: id('3'), org: id('4'), session: id('5'), credential: id('6'),
@@ -94,9 +95,13 @@ test('actual Auth must match user, provider session and encrypted expiry; no JWT
     const f = fixture(t); Object.assign(f.state.verified, changed);
     await assert.rejects(f.resolve(), code('unauthorized', 401)); assert.equal(f.state.reads, 1);
   }
-  const denied = fixture(t, { verify: () => { throw new BrokerError('unauthorized'); } });
-  await assert.rejects(denied.resolve(), code('unauthorized', 401));
-  assert(!denied.calls.some(call => call.operation === 'authorize'));
+  // CRM authorization is read concurrently with Auth, but an Auth failure still
+  // decides the outcome and no final read/admission follows it.
+  const denied = fixture(t, { verify: () => { throw new BrokerError('unauthorized'); },
+    authorize: () => { throw new BrokerError('forbidden'); } });
+  await assert.rejects(denied.resolve(), code('unauthorized', 401)); assert.equal(denied.state.reads, 1);
+  const deniedWithLiveCrm = fixture(t, { verify: () => { throw new BrokerError('unauthorized'); } });
+  await assert.rejects(deniedWithLiveCrm.resolve(), code('unauthorized', 401)); assert.equal(deniedWithLiveCrm.state.reads, 1);
 });
 
 test('strict Auth metadata is mandatory; the old P1 shape, malformed scopes and sparse arrays are refused', async t => {
@@ -215,7 +220,8 @@ test('abort before dispatch and abort while Auth awaits stop all later reads, in
   while (!settle) await new Promise(resolve => setImmediate(resolve));
   const rejected = assert.rejects(result, code('backend_unavailable', 503)); f.controller.abort(); await rejected;
   settle(f.state.verified); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(f.state.reads, 1); assert(!f.calls.some(call => call.operation === 'authorize'));
+  // The concurrent CRM read shares the aborted signal; nothing reads storage again.
+  assert.equal(f.state.reads, 1); assert.equal(f.calls.filter(call => call.operation === 'authorize').length, 1);
   assert(f.calls.every(call => call.signal.aborted));
   const prior = fixture(t); prior.controller.abort(); await assert.rejects(prior.resolve(), code('backend_unavailable', 503));
   assert.equal(prior.calls.length, 0);
@@ -250,7 +256,8 @@ test('broker consumes durable context version including scope-only drift without
   const expected = await f.resolve(); f.calls.length = 0;
   const first = JSON.parse((await broker.callTool(token, 'crm_auth_context', {})).content[0].text);
   assert.equal(first.contextVersion, expected.contextVersion);
-  assert.deepEqual(f.calls.map(call => call.operation), ['readConnection', 'readConnection', 'verify', 'authorize', 'readConnection',
+  // Admission identify read opens the first resolve; the post-audit check is fully fresh.
+  assert.deepEqual(f.calls.map(call => call.operation), ['readConnection', 'verify', 'authorize', 'readConnection',
     'readConnection', 'verify', 'authorize', 'readConnection']);
   f.state.auth.scopesByPermission['assistant.context.read'].buildingIds.push(ids.building);
   const second = JSON.parse((await broker.callTool(token, 'crm_auth_context', {})).content[0].text);
@@ -296,8 +303,81 @@ test('a storage id switch between quota identification and resolve never release
   } });
   const broker = createBroker({ authority: f.authority, clock: () => now });
   await assert.rejects(broker.callTool(token, 'crm_auth_context', {}), code('context_changed', 409));
-  assert.equal(f.state.reads, 3);
+  // The identify snapshot is the opening read; the closing read sees the switch.
+  assert.equal(f.state.reads, 2);
   assert(!broker.auditReceipts().some(receipt => receipt.outcome === 'prepared'));
+});
+
+test('request window hands only the broker result to exactly one following service resolve of the same checkpoint', async t => {
+  const f = fixture(t), other = fixture(t), signal = f.controller.signal, broker = { signal, [BROKER_AUTHORITY]: true };
+  const fresh = () => f.calls.filter(call => call.operation === 'verify').length;
+  await runAuthorityRequest(async () => {
+    const identified = await f.authority.identifyConnection(token, broker);
+    assert.equal(identified.connectionId, ids.connection);
+    const first = await f.authority.resolve(token, broker);
+    assert.equal(f.state.reads, 2, 'identify snapshot opens the broker resolve'); assert.equal(fresh(), 1);
+    const handed = await f.authority.resolve(token, { signal });
+    assert.equal(handed, first); assert.equal(fresh(), 1); assert.equal(f.state.reads, 2);
+    await f.authority.resolve(token, { signal });
+    assert.equal(fresh(), 2, 'a second consumer reads Auth/SQL again'); assert.equal(f.state.reads, 4);
+    // A service's own fresh resolve is never offered to anyone.
+    await f.authority.resolve(token, { signal });
+    assert.equal(fresh(), 3); assert.equal(f.state.reads, 6);
+    // Another authority instance never sees this instance's hand-over.
+    await f.authority.resolve(token, broker);
+    await other.authority.resolve(token, { signal: other.controller.signal });
+    assert.equal(other.calls.filter(call => call.operation === 'verify').length, 1);
+    advanceAuthorityRequest();
+    f.state.reply = { status: 'unavailable' };
+    await assert.rejects(f.authority.resolve(token, { signal }), code('unauthorized', 401));
+    await assert.rejects(f.authority.checkUnchanged(token, first, { signal }), code('unauthorized', 401));
+  });
+  // Outside a broker invocation every resolve is fresh, even when marked.
+  const g = fixture(t);
+  await g.authority.resolve(token, { signal: g.controller.signal, [BROKER_AUTHORITY]: true }); await g.resolve();
+  assert.equal(g.calls.filter(call => call.operation === 'verify').length, 2); assert.equal(g.state.reads, 4);
+  const aborted = fixture(t);
+  await runAuthorityRequest(async () => {
+    await aborted.authority.resolve(token, { signal: aborted.controller.signal, [BROKER_AUTHORITY]: true }); aborted.controller.abort();
+    await assert.rejects(aborted.resolve(), code('backend_unavailable', 503));
+  });
+});
+
+test('inside a request window, revocation after a service resolve or after the handed receipt is still caught', async t => {
+  // Reviewer probe 1: a plain resolve is not offered, so its own check reads again.
+  const a = fixture(t), signal = a.controller.signal;
+  await runAuthorityRequest(async () => {
+    const receipt = await a.authority.resolve(token, { signal });
+    const reads = a.state.reads; a.state.reply = { status: 'unavailable' };
+    await assert.rejects(a.authority.checkUnchanged(token, receipt, { signal }), code('unauthorized', 401));
+    assert(a.state.reads > reads, 'checkUnchanged read storage again');
+  });
+  // Reviewer probe 2: broker -> service take -> service fresh -> revoke -> service check.
+  const b = fixture(t), broker = { signal: b.controller.signal, [BROKER_AUTHORITY]: true };
+  await runAuthorityRequest(async () => {
+    await b.authority.resolve(token, broker);
+    await b.authority.resolve(token, { signal: b.controller.signal });
+    const mine = await b.authority.resolve(token, { signal: b.controller.signal });
+    b.state.reply = { status: 'unavailable' };
+    await assert.rejects(b.authority.checkUnchanged(token, mine, { signal: b.controller.signal }), code('unauthorized', 401));
+  });
+  // The broker's handed result is never used to check that same receipt.
+  const c = fixture(t), cb = { signal: c.controller.signal, [BROKER_AUTHORITY]: true };
+  await runAuthorityRequest(async () => {
+    const receipt = await c.authority.resolve(token, cb);
+    c.state.reply = { status: 'unavailable' };
+    await assert.rejects(c.authority.checkUnchanged(token, receipt, { signal: c.controller.signal }), code('unauthorized', 401));
+  });
+});
+
+test('a fast Auth rejection returns at once and aborts the concurrent CRM authorization read', async t => {
+  let crmSignal;
+  const f = fixture(t, { timeoutMs: 5000, verify: () => { throw new BrokerError('unauthorized'); },
+    authorize: (_state, input) => { crmSignal = input.signal; return new Promise(() => {}); } });
+  const started = Date.now();
+  await assert.rejects(f.resolve(), code('unauthorized', 401));
+  assert(Date.now() - started < 1000, 'did not wait for the CRM read or the timeout');
+  assert(crmSignal.aborted); assert.equal(f.state.reads, 1);
 });
 
  test('known SQL membership denial maps to forbidden on initial and final reads; outages and lookalike errors remain unavailable', async t => {
