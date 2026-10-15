@@ -8,6 +8,7 @@ import { createHermesBackend } from '../hermes-broker/server.mjs';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 10_000, maintenanceWaitMs: 5000 });
 test('real host preflight checks the pinned image against bundled provenance before serving', async () => {
   const provenance = JSON.parse(await readFile(new URL('./image-provenance.json', import.meta.url), 'utf8'));
   const image = { Id: provenance.expectedConfigDigest, RepoDigests: [HERMES_IMAGE], Os: 'linux', Architecture: 'amd64',
@@ -25,7 +26,7 @@ function fixture(t, changes = {}) {
   const configuration = { paths: { stateRoot: '/state', homeRoot: '/state/homes', leaseDirectory: '/state/homes/.leases',
     handoffDirectory: '/state/handoff', runtimeRoot: '/state/runtime', gatewayRoot: '/state/gateway' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
-    http: {}, ...(changes.connectorOnly ? { mode: 'connector' } : { model: { model: 'fixture', maxTokens: 1024, maxIterations: 4, allowedModels: ['fixture'] } }), listenPort: 0,
+    http: {}, ...(changes.connectorOnly ? { mode: 'connector', limits: connectorLimits } : { model: { model: 'fixture', maxTokens: 1024, maxIterations: 4, allowedModels: ['fixture'] } }), listenPort: 0,
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -47,7 +48,8 @@ function fixture(t, changes = {}) {
     createConnectionHandoff(options) { assert.equal(options.keys.get('k1')[0], 7); events.push('wal-copy'); return handoff; },
     createStorePool() { events.push('pool'); return { async end() { events.push('pool-close'); await changes.poolClose?.(); } }; },
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
-      if (changes.connectorOnly) assert.equal(options.connectorOnly, true);
+      if (changes.connectorOnly) { assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits); }
+      else assert.equal(Object.hasOwn(options, 'limits'), false);
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createGatewayTransport(options) { assert.equal(options.engine, engine); return transport; },
     createContainerRuntime(options) { assert.equal(options.gateway, gateway); assert.equal(options.engine, engine); return runtime; },

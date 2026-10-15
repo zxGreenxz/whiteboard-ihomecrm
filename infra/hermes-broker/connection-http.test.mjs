@@ -73,6 +73,28 @@ test('all six real HTTP routes forward the browser header and exact primitive fi
   assert.equal(f.calls.length, 6);
 });
 
+test('status route exists only with a health port, needs only the org and projects activity without secrets', async t => {
+  const absent = await fixture(t);
+  assert.equal((await absent.send('status', { value: { organizationId: ids.org } })).status, 404); assert.equal(absent.calls.length, 0);
+  const activity = () => ({ connector: { version: '0.2.0', startedAt: NOW, observedAt: NOW + 5 },
+    connections: [{ id: ids.connection, lastSuccessAt: NOW + 1, lastToolCallAt: null, lastErrorCode: 'rate_limited', lastErrorAt: NOW + 2 }] });
+  let output = activity(); const calls = [];
+  const f = await fixture(t, { management: { ...dependencies().management, async status(input, options) {
+    calls.push(structuredClone(input)); assert(options.signal instanceof AbortSignal); return output; } } });
+  const ok = await f.send('status', { value: { organizationId: ids.org } });
+  assert.equal(ok.status, 200); assert.deepEqual(ok.body, activity());
+  assert.deepEqual(calls, [{ browserAccessToken: 'browser.jwt.token', organizationId: ids.org }]);
+  assert.equal((await f.send('status', { value: { organizationId: ids.org, connectionId: ids.connection } })).status, 400);
+  for (const change of [value => { value.connections[0].token = 'hc_secret'; }, value => { value.connector.version = 'latest'; },
+    value => { value.connections[0].lastErrorAt = null; }, value => { value.connections[0].lastErrorCode = 'Bearer x'; },
+    value => { value.connections.push(structuredClone(value.connections[0])); }, value => { value.connector.secret = 1; },
+    value => { value.connections[0].lastSuccessAt = -1; }]) {
+    output = activity(); change(output);
+    const refused = await f.send('status', { value: { organizationId: ids.org } });
+    assert.equal(refused.status, 503); assert.deepEqual(refused.body, { error: 'backend_unavailable' });
+  }
+});
+
 test('HTTP context and choices preserve neutral policy version zero', async t => {
   const deps = dependencies();
   deps.management.options = async () => ({ options: { ...result('options').options, policyVersion: 0 } });

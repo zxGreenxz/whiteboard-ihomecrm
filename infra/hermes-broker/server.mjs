@@ -41,6 +41,7 @@ import { createModelRelay } from './model-relay.mjs';
 import { createRuntimeModelService } from './runtime-model-service.mjs';
 import { createRuntimeGateway } from '../hermes-runtime/runtime-gateway.mjs';
 import { createConnectionSupervisor } from '../hermes-runtime/connection-supervisor.mjs';
+import { createConnectorHealth } from './connector-health.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -94,8 +95,24 @@ function reply(response, status, error) {
  * tracks actual stage I/O but never lists/decrypts WAL or starts profiles itself.
  * Quota/admission remain process-local; this is not a multi-replica deployment.
  */
+const LIMIT_KEYS = ['requestsPerMinute', 'toolCallsPerMinute', 'callTimeoutMs', 'maintenanceWaitMs'];
+const DEFAULT_BACKEND_LIMITS = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinute: 60, callTimeoutMs: 10_000, maintenanceWaitMs: 0 });
+const integerIn = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+function backendLimits(value) {
+  if (value === undefined) return DEFAULT_BACKEND_LIMITS;
+  if (!exact(value, LIMIT_KEYS) || !integerIn(value.requestsPerMinute, 1, 600) ||
+      !integerIn(value.toolCallsPerMinute, 1, value.requestsPerMinute) || !integerIn(value.callTimeoutMs, 1000, 30_000) ||
+      !integerIn(value.maintenanceWaitMs, 0, 10_000)) throw new TypeError('invalid_backend_config');
+  return Object.freeze(Object.fromEntries(LIMIT_KEYS.map(key => [key, value[key]])));
+}
+
+/** Optional `limits` (all four keys): per-connection sliding-window request and
+ * tools/call rates, the broker's total deadline for one MCP invocation, and how
+ * long an external MCP request waits for its connection's maintenance fence
+ * before answering 503 connection_maintenance (0 keeps the immediate 503).
+ */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -108,6 +125,8 @@ export function createHermesBackend(configuration = {}) {
   const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now } = configuration;
   let crypto;
   try {
+    const limits = backendLimits(configuration.limits);
+    const health = createConnectorHealth({ clock });
     const dependencyScope = createDependencyScope();
     const transport = createStoreTransport({ pool: store.pool, expectedRole: store.expectedRole, dependencyScope });
     const retention = createWorkMemoryRetention({ transport });
@@ -148,7 +167,9 @@ export function createHermesBackend(configuration = {}) {
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock, limits: { maxResultBytes: 65_536 } });
+    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock,
+      observe: health.record, limits: { maxResultBytes: 65_536, maxRequestsPerMinute: limits.requestsPerMinute,
+        maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
     const stageHandoff = configuration.handoff?.stage.bind(configuration.handoff);
@@ -156,7 +177,7 @@ export function createHermesBackend(configuration = {}) {
     const controlPlane = createConnectionControlPlane({ auth, connectionStore, crypto, clock, handoff,
       signInProvider: createSupabaseAssistantSignIn({ ...supabase, fetch: request }),
       preparation: createSupabaseConnectionPreparation({ ...supabase, fetch: request }) });
-    const management = createConnectionManagement({ auth, connectionStore, clock,
+    const management = createConnectionManagement({ auth, connectionStore, clock, health,
       reads: createSupabaseConnectionManagementReads({ ...supabase, fetch: request, dependencyScope }) });
     const connections = createConnectionHttpHandler({ controlPlane, management, ...http });
     const binding = createZaloBindingService(createZaloBindingPorts({ auth, ...supabase, fetch: request, clock }));
@@ -171,7 +192,12 @@ export function createHermesBackend(configuration = {}) {
     const tokenKey = token => typeof token === 'string' && /^hc_[A-Za-z0-9_-]{43}$/.test(token)
       ? createHash('sha256').update(token).digest('hex') : null;
     const releaseExternal = (key, entry) => {
-      if (!entry.parked && entry.active.size === 0 && externalCalls.get(key) === entry) externalCalls.delete(key);
+      if (!entry.parked && entry.active.size === 0 && !entry.waiters.size && externalCalls.get(key) === entry) externalCalls.delete(key);
+    };
+    const externalEntry = key => {
+      let entry = externalCalls.get(key);
+      if (!entry) { entry = { active: new Set(), waiters: new Set(), parked: false }; externalCalls.set(key, entry); }
+      return entry;
     };
     // The external connector has no command pump or runtime supervisor. Park
     // admission for this token, drain actual HTTP dependencies, then reuse the
@@ -181,9 +207,8 @@ export function createHermesBackend(configuration = {}) {
       if (!configuration.connectorOnly || !key || !(signal instanceof AbortSignal)) throw new BrokerError('invalid_request');
       if (closing || signal.aborted) throw new BrokerError('backend_unavailable');
       if (pending.size >= 16) throw new BrokerError('busy');
-      let entry = externalCalls.get(key);
-      if (entry?.parked) throw new BrokerError('busy');
-      if (!entry) { entry = { active: new Set(), parked: false }; externalCalls.set(key, entry); }
+      if (externalCalls.get(key)?.parked) throw new BrokerError('busy');
+      const entry = externalEntry(key);
       entry.parked = true;
       const combined = AbortSignal.any([signal, supervisorAbort.signal]);
       let uncertainDrain = false;
@@ -195,7 +220,11 @@ export function createHermesBackend(configuration = {}) {
         finally { try { await operation.drained; } catch (error) { uncertainDrain = true; throw error; } }
       })();
       const drained = work.then(() => undefined, error => { if (uncertainDrain) throw error; }).finally(() => {
-        if (!uncertainDrain) { entry.parked = false; releaseExternal(key, entry); }
+        // Wake waiting MCP requests synchronously: admitted while the fence is
+        // open, or refused at once when an uncertain drain retains the fence.
+        if (!uncertainDrain) entry.parked = false; else entry.retained = true;
+        for (const wake of [...entry.waiters]) wake(!uncertainDrain);
+        if (!uncertainDrain) releaseExternal(key, entry);
       });
       pending.add(drained);
       void drained.then(() => pending.delete(drained), () => pending.delete(drained));
@@ -238,15 +267,23 @@ export function createHermesBackend(configuration = {}) {
       if (pending.size >= 16) { reply(res, 429, 'busy'); return; }
       const externalKey = configuration.connectorOnly && req.url === '/mcp'
         ? tokenKey(/^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1]) : null;
-      let externalEntry;
-      if (externalKey) {
-        externalEntry = externalCalls.get(externalKey);
-        if (externalEntry?.parked) { reply(res, 503, 'connection_maintenance'); return; }
-        if (!externalEntry) { externalEntry = { active: new Set(), parked: false }; externalCalls.set(externalKey, externalEntry); }
+      const parked = externalKey ? externalCalls.get(externalKey) : undefined;
+      if (parked?.parked) {
+        // Renewal/refresh usually finishes within seconds. Hold the request (and
+        // one shared slot) until the fence opens instead of failing the call;
+        // admission still happens only while the fence is open, never during it.
+        // At most the broker's per-connection concurrency (2) waits; a retained
+        // (uncertain) fence never opens, so it refuses at once.
+        if (!limits.maintenanceWaitMs || parked.retained || parked.waiters.size >= 2) { reply(res, 503, 'connection_maintenance'); return; }
+        waitForFence(req, res, externalKey, parked); return;
       }
-      // Request observers can finish before ignored-abort Auth/SQL/fetch work.
-      // Retain the shared admission slot until this finite dependency scope
-      // actually drains; no runtime listeners or startup live in this scope.
+      dispatch(req, res, externalKey);
+    });
+    // Request observers can finish before ignored-abort Auth/SQL/fetch work.
+    // Retain the shared admission slot until this finite dependency scope
+    // actually drains; no runtime listeners or startup live in this scope.
+    function dispatch(req, res, externalKey) {
+      const entry = externalKey ? externalEntry(externalKey) : undefined;
       const requestWork = dependencyScope.begin(async () => {
         if (req.url === '/mcp') await mcp(req, res);
         else if (!await connections(req, res) && !await zalo(req, res)) reply(res, 404, 'not_found');
@@ -257,12 +294,33 @@ export function createHermesBackend(configuration = {}) {
         finally { await requestWork.drained; }
       })();
       pending.add(work);
-      if (externalEntry) {
-        externalEntry.active.add(work);
-        void work.finally(() => { externalEntry.active.delete(work); releaseExternal(externalKey, externalEntry); }).catch(() => {});
+      if (entry) {
+        entry.active.add(work);
+        void work.finally(() => { entry.active.delete(work); releaseExternal(externalKey, entry); }).catch(() => {});
       }
       void work.catch(() => reply(res, 503, 'backend_unavailable')).finally(() => { pending.delete(work); });
-    });
+    }
+    function waitForFence(req, res, key, entry) {
+      let settle;
+      const waiting = new Promise(resolve => { settle = resolve; });
+      const finish = open => {
+        if (!entry.waiters.delete(wake)) return;
+        clearTimeout(timer); supervisorAbort.signal.removeEventListener('abort', closed); res.off('close', gone);
+        // Dispatch synchronously inside the fence-open callback: no other
+        // maintenance can park this token between the check and admission.
+        if (open && !closing && !res.destroyed && !entry.parked) dispatch(req, res, key);
+        else if (!res.destroyed) reply(res, 503, closing ? 'backend_closed' : 'connection_maintenance');
+        releaseExternal(key, entry);
+        settle();
+      };
+      const wake = open => finish(open), closed = () => finish(false), gone = () => finish(false);
+      entry.waiters.add(wake);
+      const timer = setTimeout(() => finish(false), limits.maintenanceWaitMs);
+      supervisorAbort.signal.addEventListener('abort', closed, { once: true });
+      res.once('close', gone);
+      pending.add(waiting);
+      void waiting.then(() => pending.delete(waiting));
+    }
     server.requestTimeout = 15_000; server.headersTimeout = 10_000; server.maxHeadersCount = 32;
     server.setTimeout(35_000, socket => { socket.destroy(); });
     server.on('clientError', (_error, socket) => {

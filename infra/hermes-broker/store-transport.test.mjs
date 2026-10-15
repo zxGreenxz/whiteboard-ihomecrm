@@ -95,6 +95,44 @@ test('dedicated role is required and privilege flags fail closed before any muta
   }
 });
 
+test('principal is verified once per physical client; new or destroyed clients are verified again', async () => {
+  const statements = [], idle = [];
+  let actor = principal(), opened = 0;
+  const make = () => {
+    const self = { query: async request => {
+      statements.push(request.text);
+      if (/pg_catalog\.pg_roles/.test(request.text)) return { rows: [actor] };
+      if (request.values[0] === '{"fail":true}') throw new Error('private connection loss');
+      return { rows: [{ result: { status: 'ok' } }] };
+    }, release: destroy => { if (!destroy) idle.push(self); } };
+    return self;
+  };
+  const transport = createStoreTransport({ pool: { connect: async () => idle.pop() ?? (opened++, make()) }, expectedRole: 'hermes_store_test' });
+  const signal = new AbortController().signal;
+  const principalChecks = () => statements.filter(text => /pg_roles/.test(text)).length;
+  await transport.call('readConnection', {}, { signal });
+  await transport.call('readConnection', {}, { signal });
+  assert.equal(opened, 1); assert.equal(principalChecks(), 1); assert.equal(statements.length, 3);
+  // A failed read destroys the client; the replacement is a new session.
+  await assert.rejects(transport.call('readConnection', { fail: true }, { signal }), code('store_unavailable'));
+  actor = { ...principal(), rolbypassrls: true };
+  await assert.rejects(transport.call('activate', {}, { signal }), code('store_principal_refused'));
+  assert.equal(opened, 2); assert.equal(principalChecks(), 2);
+  assert(!statements.slice(-1)[0].includes('hermes_store_activate'), 'no private function after a refused principal');
+  actor = principal();
+  await transport.call('activate', {}, { signal });
+  assert.equal(opened, 3); assert.equal(principalChecks(), 3);
+  // Even a pool that wrongly hands back a destroyed client gets a fresh check.
+  const reused = setup({ query: request => /pg_roles/.test(request.text) ? { rows: [principal()] }
+    : request.values[0] === '{"fail":true}' ? Promise.reject(new Error('private')) : { rows: [{ result: { status: 'ok' } }] } });
+  await reused.transport.call('readConnection', {}, reused);
+  await assert.rejects(reused.transport.call('readConnection', { fail: true }, reused), code('store_unavailable'));
+  await reused.transport.call('readConnection', {}, reused);
+  assert.deepEqual(reused.calls.map(request => /pg_roles/.test(request.text) ? 'principal' : 'call'),
+    ['principal', 'call', 'call', 'principal', 'call']);
+  assert.deepEqual(reused.releases, [false, true, false]);
+});
+
 test('lost write response is unknown, releases the connection and never retries', async () => {
   const f = setup({ query: async () => { throw new Error('secret credential detail'); } });
   await assert.rejects(f.transport.call('publishRefresh', {}, f), error => error.code === 'store_outcome_unknown' && !error.message.includes('secret'));

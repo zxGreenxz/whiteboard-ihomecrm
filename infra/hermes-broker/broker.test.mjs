@@ -197,6 +197,40 @@ test('rate limit and concurrent admission happen before any expensive auth call'
   block = false; resolve(); await first;
 });
 
+test('rate windows slide: no burst at a minute boundary, tools/call has its own budget and a retry hint', async () => {
+  const f = fixture({ broker: { limits: { maxRequestsPerMinute: 2 } } }); const a = await f.issue();
+  await f.broker.listTools(a.token); f.advance(59_000); await f.broker.listTools(a.token);
+  f.advance(1_500); await f.broker.listTools(a.token); // The first call left the window.
+  const limited = await f.broker.listTools(a.token).then(() => assert.fail('fixed-window burst admitted'), value => value);
+  assert(error('rate_limited')(limited)); assert.equal(limited.retryAfterMs, 58_500);
+  f.advance(58_500); await f.broker.listTools(a.token);
+  // Two calls just before a minute boundary and one just after: still two in the last 60 s.
+  const h = fixture({ broker: { limits: { maxRequestsPerMinute: 2 } } }); const c = await h.issue();
+  h.advance(19_000); await h.broker.listTools(c.token); h.advance(500); await h.broker.listTools(c.token);
+  h.advance(1_000);
+  await assert.rejects(h.broker.listTools(c.token), value => error('rate_limited')(value) && value.retryAfterMs === 58_500);
+  const g = fixture({ broker: { limits: { maxRequestsPerMinute: 5, maxToolCallsPerMinute: 1 } } }); const b = await g.issue();
+  await g.broker.callTool(b.token, 'crm_auth_context', {});
+  const before = g.verifyCount();
+  await assert.rejects(g.broker.callTool(b.token, 'crm_auth_context', {}), value => error('rate_limited')(value) && value.retryAfterMs === 60_000);
+  assert.equal(g.verifyCount(), before, 'rejected before Auth');
+  assert.equal((await g.broker.listTools(b.token)).tools.length, 1);
+  g.advance(60_000); await g.broker.callTool(b.token, 'crm_auth_context', {});
+  assert.throws(() => createBroker({ auth: f.auth, limits: { maxToolCallsPerMinute: 0 } }), /invalid_limits/);
+});
+
+test('outcome observer gets connection, operation and fixed code only, and can never change the result', async () => {
+  const events = [];
+  const f = fixture({ broker: { observe: event => { events.push(event); throw new Error('observer failure'); } } }); const a = await f.issue();
+  assert.equal(context(await f.broker.callTool(a.token, 'crm_auth_context', {})).userId, USER_A);
+  await assert.rejects(f.broker.callTool(a.token, 'execute_sql', {}), error('tool_not_available'));
+  await assert.rejects(f.broker.listTools(`hc_${'z'.repeat(43)}`), error('unauthorized'));
+  assert.deepEqual(events, [{ connectionId: a.connection.id, operation: 'tools/call' },
+    { connectionId: a.connection.id, operation: 'tools/call', code: 'tool_not_available' }]);
+  assert(events.every(Object.isFrozen));
+  assert.throws(() => createBroker({ auth: f.auth, observe: 'audit' }), /invalid_observer/);
+});
+
 test('timeout aborts work, frees admission, and audit records timeout', async () => {
   let block = false;
   const f = fixture({ broker: { limits: { timeoutMs: 20, maxConcurrentCalls: 1 } }, beforeVerify: async ({ signal }) => {

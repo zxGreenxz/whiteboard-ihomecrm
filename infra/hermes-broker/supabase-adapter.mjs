@@ -63,15 +63,21 @@ export function createSupabaseAuthAdapter({ url, publishableKey, fetch: request 
     },
     async readAuthorization({ accessToken, userId, organizationId, signal }) {
       if (!UUID.test(userId ?? '') || !UUID.test(organizationId ?? '')) deny();
-      const [context, directory] = await Promise.all([
+      // The three reads are independent bearer-bound snapshots; issue them in one
+      // network wave. Results are still evaluated in the original order, so the
+      // first failing step decides the error exactly as the sequential version.
+      const settled = await Promise.allSettled([
         read('/rest/v1/rpc/get_authorization_context_v1', accessToken, signal, { p_organization_id: organizationId }),
         read('/rest/v1/rpc/get_my_organizations', accessToken, signal, {}),
+        membershipScope(accessToken, organizationId, signal),
       ]);
+      const value = item => { if (item.status === 'rejected') throw item.reason; return item.value; };
+      const context = value(settled[0]), directory = value(settled[1]);
       if (!object(context) || context.organizationId !== organizationId || !UUID.test(context.membershipId ?? '') ||
           typeof context.isPlatformAdmin !== 'boolean' || context.isOffboarded !== false ||
           !object(context.permissions) || !object(directory) || directory.user_id !== userId ||
           !Array.isArray(directory.organizations)) deny();
-      const selectedScope = await membershipScope(accessToken, organizationId, signal);
+      const selectedScope = value(settled[2]);
       if (!Array.isArray(selectedScope) || selectedScope.some((id) => !UUID.test(id))) deny();
       const candidates = [...new Set(directory.organizations.map((org) => org?.id))];
       if (candidates.some((id) => !UUID.test(id ?? ''))) deny();
@@ -82,16 +88,14 @@ export function createSupabaseAuthAdapter({ url, publishableKey, fetch: request 
         // The directory includes stale ACTIVE memberships; probe candidates with
         // the strict membership gate instead of trusting directory visibility.
         if (candidates.length > 16) deny();
-        activeOrganizationIds = [];
-        for (const candidate of candidates) {
-          if (candidate === organizationId) { activeOrganizationIds.push(candidate); continue; }
-          try {
-            await membershipScope(accessToken, candidate, signal);
-            activeOrganizationIds.push(candidate);
-          } catch (error) {
-            if (!(error instanceof BrokerError) || error.code !== 'forbidden') throw error;
-          }
-        }
+        const others = candidates.filter(candidate => candidate !== organizationId);
+        const probes = await Promise.allSettled(others.map(candidate => membershipScope(accessToken, candidate, signal)));
+        const admitted = new Set([organizationId].filter(candidate => candidates.includes(candidate)));
+        probes.forEach((probe, index) => {
+          if (probe.status === 'fulfilled') { admitted.add(others[index]); return; }
+          if (!(probe.reason instanceof BrokerError) || probe.reason.code !== 'forbidden') throw probe.reason;
+        });
+        activeOrganizationIds = candidates.filter(candidate => admitted.has(candidate));
       }
       const readPermissions = ['assistant.context.read'];
       if (context.permissions['rooms.view'] === true && selectedScope.length > 0) readPermissions.push('rooms.view');

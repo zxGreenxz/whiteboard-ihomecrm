@@ -4,7 +4,8 @@ import { ConnectionManagementError } from './connection-management.mjs';
 import { connectionOptions } from './connection-options.mjs';
 
 const PREFIX = '/api/hermes/connections/';
-const OPERATIONS = ['connect', 'list', 'context', 'options', 'restrict', 'revoke'];
+const OPERATIONS = ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'status'];
+const OWNER_READS = ['connect', 'list', 'options', 'status'];
 const WRITES = new Set(['connect', 'restrict', 'revoke']);
 const MAX_BODY_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
@@ -49,7 +50,7 @@ function allowedConfiguration(values, origin) {
 function inputBody(value, operation) {
   const fields = ['organizationId'];
   if (operation === 'connect') fields.push('email', 'password', 'restrictions', 'scopeIds');
-  if (!['connect', 'list', 'options'].includes(operation)) fields.push('connectionId');
+  if (!OWNER_READS.includes(operation)) fields.push('connectionId');
   if (['restrict', 'revoke'].includes(operation)) fields.push('expectedEpoch');
   if (operation === 'restrict') fields.push('restrictions', 'scopeIds');
   if (!exact(value, fields) || !id(value.organizationId) ||
@@ -81,6 +82,23 @@ function output(value, operation, input) {
     // The sole credential allowed over this browser boundary is the one-time
     // opaque handoff from successful connect. No provider token is serialized.
     return { status: 'active', connection, token: value.token, tokenExpiresAt: value.tokenExpiresAt };
+  }
+  if (operation === 'status') {
+    // Activity only: no actor, token, tool argument or provider detail exists here.
+    const connector = value?.connector, time = item => item === null || positive(item);
+    if (!exact(value, ['connector', 'connections']) || !exact(connector, ['version', 'startedAt', 'observedAt']) ||
+        typeof connector.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(connector.version) || !positive(connector.startedAt) ||
+        !positive(connector.observedAt) || !Array.isArray(value.connections) || value.connections.length > 256) badOutput();
+    const connections = Array.from(value.connections, item => {
+      if (!exact(item, ['id', 'lastSuccessAt', 'lastToolCallAt', 'lastErrorCode', 'lastErrorAt']) || !id(item.id) ||
+          ![item.lastSuccessAt, item.lastToolCallAt, item.lastErrorAt].every(time) ||
+          (item.lastErrorCode === null) !== (item.lastErrorAt === null) ||
+          (item.lastErrorCode !== null && (typeof item.lastErrorCode !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(item.lastErrorCode)))) badOutput();
+      return { id: item.id, lastSuccessAt: item.lastSuccessAt, lastToolCallAt: item.lastToolCallAt,
+        lastErrorCode: item.lastErrorCode, lastErrorAt: item.lastErrorAt };
+    });
+    if (new Set(connections.map(item => item.id)).size !== connections.length) badOutput();
+    return { connector: { version: connector.version, startedAt: connector.startedAt, observedAt: connector.observedAt }, connections };
   }
   if (operation === 'list') {
     if (!exact(value, ['connections']) || !Array.isArray(value.connections) || value.connections.length > 256) badOutput();
@@ -162,7 +180,9 @@ function readBody(request, signal) {
 }
 
 /** Embeddable browser control-plane handler; return false for non-owned routes.
- * All six routes are POST /api/hermes/connections/{connect,list,context,options,restrict,revoke}.
+ * All routes are POST /api/hermes/connections/{connect,list,context,options,restrict,revoke,status};
+ * status (connector activity of the caller's own connections) exists only when
+ * management composes a health port, otherwise it stays an unowned route.
  * The browser bearer is a syntactic JWT only here; the injected existing control
  * and management primitives MUST perform actual Auth/CRM ownership verification.
  * No cookie, forwarded Host, caller-selected provider, CORS or OPTIONS fallback.
@@ -187,7 +207,7 @@ export function createConnectionHttpHandler({ controlPlane, management, allowedH
   let active = 0;
   return async function handleConnectionHttp(request, response) {
     const operation = typeof request.url === 'string' && request.url.startsWith(PREFIX) ? request.url.slice(PREFIX.length) : '';
-    if (!OPERATIONS.includes(operation)) return false;
+    if (!OPERATIONS.includes(operation) || (operation === 'status' && typeof management.status !== 'function')) return false;
     let dispatched = false, body, input;
     const seen = new Set();
     for (let i = 0; i < request.rawHeaders.length; i += 2) {

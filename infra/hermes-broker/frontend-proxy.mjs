@@ -1,7 +1,7 @@
 import { request as httpsRequest } from 'node:https';
 
 const ROUTES = Object.freeze({
-  connections: ['connect', 'list', 'context', 'options', 'restrict', 'revoke'],
+  connections: ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'status'],
   zalo: ['bots', 'manageBots', 'setBot', 'begin', 'status', 'confirm', 'unlink', 'list'],
 });
 const WRITES = new Set(['connections/connect', 'connections/restrict', 'connections/revoke',

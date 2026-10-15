@@ -403,3 +403,52 @@ describe('task-create Action building scope without Read',()=>{
   expect(JSON.parse(fetch.mock.calls[2][1]!.body as string)).toMatchObject({restrictions:input.restrictions,scopeIds:[SCOPE]});
  });
 });
+
+describe('Hermes connector status read', () => {
+  const connectorStatus = () => ({
+    connector: { version: '1.2.3', startedAt: 1_800_000_000_000, observedAt: 1_800_000_060_000 },
+    connections: [{ id: CONNECTION, lastSuccessAt: 1_800_000_030_000, lastToolCallAt: null, lastErrorCode: 'rate_limited', lastErrorAt: 1_800_000_040_000 }],
+  });
+  it('posts an empty input to the fixed status route and returns the parsed in-memory observation', async () => {
+    const { client, fetch } = setup();
+    fetch.mockResolvedValueOnce(json(connectorStatus()));
+    await expect(client.status()).resolves.toEqual(connectorStatus());
+    expect(fetch).toHaveBeenCalledWith('/api/hermes/connections/status', expect.objectContaining({ method: 'POST', body: JSON.stringify({ organizationId: ORG }) }));
+  });
+  it('accepts an empty connection list and null-only activity', async () => {
+    const { client, fetch } = setup();
+    fetch.mockResolvedValueOnce(json({ ...connectorStatus(), connections: [] }));
+    await expect(client.status()).resolves.toMatchObject({ connections: [] });
+    const quiet = { id: CONNECTION, lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null };
+    fetch.mockResolvedValueOnce(json({ ...connectorStatus(), connections: [quiet] }));
+    await expect(client.status()).resolves.toMatchObject({ connections: [quiet] });
+  });
+  it.each([
+    ['an extra top-level key', { ...connectorStatus(), extra: true }],
+    ['an extra connector key', { ...connectorStatus(), connector: { ...connectorStatus().connector, host: 'x' } }],
+    ['an extra connection key', { ...connectorStatus(), connections: [{ ...connectorStatus().connections[0], token: 'x' }] }],
+    ['a non-semver version', { ...connectorStatus(), connector: { ...connectorStatus().connector, version: 'v1.2' } }],
+    ['a non-positive startedAt', { ...connectorStatus(), connector: { ...connectorStatus().connector, startedAt: 0 } }],
+    ['a malformed error code', { ...connectorStatus(), connections: [{ ...connectorStatus().connections[0], lastErrorCode: 'Bad-Code' }] }],
+    ['an error code without a time', { ...connectorStatus(), connections: [{ ...connectorStatus().connections[0], lastErrorAt: null }] }],
+    ['an error time without a code', { ...connectorStatus(), connections: [{ ...connectorStatus().connections[0], lastErrorCode: null }] }],
+    ['a duplicate connection id', { ...connectorStatus(), connections: [connectorStatus().connections[0], connectorStatus().connections[0]] }],
+    ['a malformed connection id', { ...connectorStatus(), connections: [{ ...connectorStatus().connections[0], id: 'not-a-uuid' }] }],
+  ])('rejects %s as invalid_response', async (_name, body) => {
+    const { client, fetch } = setup();
+    fetch.mockResolvedValueOnce(json(body));
+    await expect(client.status()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  });
+  it('treats an older connector 404 not_found as invalid_response, not an unknown outcome', async () => {
+    const { client, fetch } = setup();
+    fetch.mockResolvedValueOnce(json({ error: 'not_found' }, 404));
+    await expect(client.status()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  });
+  it('maps shared error codes and treats a network failure as a read, never an unknown outcome', async () => {
+    const { client, fetch } = setup();
+    fetch.mockResolvedValueOnce(json({ error: 'forbidden' }, 403));
+    await expect(client.status()).rejects.toMatchObject({ code: 'forbidden', outcome: 'rejected' });
+    fetch.mockRejectedValueOnce(new Error('network down'));
+    await expect(client.status()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+  });
+});

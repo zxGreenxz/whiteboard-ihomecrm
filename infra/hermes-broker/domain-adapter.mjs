@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { DOMAIN_FAMILIES, ALL_DOMAIN_READ_CAPABILITIES, domainFamily, domainId, domainExact, domainInput } from './domain-contract.mjs';
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
 const fail = code => { throw new BrokerError(code); };
@@ -13,10 +14,15 @@ export function createSupabaseDomainReads(options) {
     // deployed (PGRST202) is null: its tools stay unavailable, others continue.
     async capabilities({ accessToken, organizationId }, callOptions) {
       if (!domainId(organizationId)) fail('invalid_request');
+      // Independent fixed reads: one network wave. The first failing family in
+      // catalog order decides the error, exactly as the sequential loop did.
+      const settled = await Promise.allSettled(FAMILY_NAMES.map(name =>
+        rpc(DOMAIN_FAMILIES[name].capabilitiesRpc, accessToken, { p_organization_id: organizationId }, callOptions, { optional: true })));
       const result = {};
-      for (const name of FAMILY_NAMES) {
-        result[name] = await rpc(DOMAIN_FAMILIES[name].capabilitiesRpc, accessToken, { p_organization_id: organizationId }, callOptions, { optional: true });
-      }
+      FAMILY_NAMES.forEach((name, index) => {
+        if (settled[index].status === 'rejected') throw settled[index].reason;
+        result[name] = settled[index].value;
+      });
       return result;
     },
     async execute(operation, value, callOptions) {
@@ -33,9 +39,10 @@ export function createSupabaseDomainReads(options) {
 export function createDomainAuthAdapter({ baseAuth, reads } = {}) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_domain_auth');
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    const current = await baseAuth.readAuthorization(input);
+    const { current, capability } = await readWithBaseAuthorization(baseAuth, input,
+      () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
     if (ALL_DOMAIN_READ_CAPABILITIES.some(key => current.permissions.read.includes(key) || current.companyCeilings.read.includes(key))) fail('context_changed');
-    const families = await reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal });
+    const families = capability();
     if (!domainExact(families, FAMILY_NAMES)) fail('context_changed');
     if (FAMILY_NAMES.every(name => families[name] === null)) return current;
     const granted = [], ceilings = [], scopes = {};
@@ -56,7 +63,7 @@ export function createDomainAuthAdapter({ baseAuth, reads } = {}) {
         if (cap.allowed) { granted.push(key); scopes[key] = { buildingIds: [...cap.buildingIds], cashbookIds: [] }; }
       }
     }
-    // Families are fetched sequentially; a policy change between them is a race.
+    // Families are separate snapshots; a policy change between them is a race.
     const versions = new Set(FAMILY_NAMES.filter(name => families[name] !== null).map(name => families[name].policyVersion));
     if (versions.size !== 1) fail('context_changed');
     return { ...current, permissions: { ...current.permissions, read: [...current.permissions.read, ...granted] },

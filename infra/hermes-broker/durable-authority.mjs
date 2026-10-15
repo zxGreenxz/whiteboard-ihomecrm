@@ -2,6 +2,7 @@ import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
+import { authorityRequestEntries } from './authority-request-scope.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -116,13 +117,25 @@ function authorization(value, before, now) {
  * identifyConnection performs only a joined, token-digest-bound storage read for
  * quota admission. Its id is not an authorization receipt: resolve must run after
  * admission and the dispatcher must compare the resolved id with that reserved id.
+ *
+ * Inside a broker invocation (authority-request-scope) the identify snapshot is
+ * reused as the opening read of the next resolve, and a resolve result may be
+ * handed to exactly one following resolve of the same checkpoint. Outside that
+ * window (maintenance, renewal, runtime) every call is fully fresh. Auth and CRM
+ * authorization are read concurrently; their checks keep the sequential order.
  */
 export function createDurableAuthority({ connectionStore, crypto, auth, clock = Date.now, timeoutMs = 10000 } = {}) {
   if (typeof connectionStore?.readConnection !== 'function' || typeof crypto?.open !== 'function' ||
       typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function' || typeof clock !== 'function' ||
       !positive(timeoutMs) || timeoutMs > 30000) throw new TypeError('invalid_durable_authority_config');
-  const issued = new WeakSet();
+  const issued = new WeakSet(), owner = Object.freeze({});
   const now = () => { const value = clock(); if (!positive(value)) malformed(); return value; };
+  // One-shot hand-over inside a single broker checkpoint (authority-request-scope).
+  const take = tokenDigest => {
+    const entries = authorityRequestEntries(owner), entry = entries?.get(tokenDigest);
+    entries?.delete(tokenDigest); return entry;
+  };
+  const offer = (tokenDigest, entry) => { authorityRequestEntries(owner)?.set(tokenDigest, entry); };
   async function bounded(signal, operation) {
     if (!(signal instanceof AbortSignal)) malformed();
     if (signal.aborted) malformed();
@@ -141,7 +154,13 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
   async function resolve(presentedToken, { signal } = {}) {
     if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
     const tokenDigest = digest(presentedToken);
-    return bounded(signal, async (innerSignal, check) => {
+    const handed = take(tokenDigest);
+    if (handed?.kind === 'resolved') {
+      // The broker's own result from this same checkpoint, consumed at most once.
+      if (!(signal instanceof AbortSignal) || signal.aborted) malformed();
+      return handed.result;
+    }
+    const pending = bounded(signal, async (innerSignal, check) => {
       const read = async () => {
         let value;
         try { value = await connectionStore.readConnection({ tokenDigest }, { signal: innerSignal }); }
@@ -154,16 +173,24 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         check();
         return snapshot(value, tokenDigest, now());
       };
-      const before = await read();
+      // The admission identify read of this checkpoint is the opening snapshot;
+      // the closing read below still detects any change since that read.
+      const before = handed?.kind === 'identified' ? handed.snapshot : await read();
       let material;
       try { material = validateSessionMaterial(crypto.open(before.session.envelope, before.session.binding)); }
       catch { malformed(); }
       if (material.expiresAt <= now() || material.expiresAt !== before.session.expiresAt) fail('unauthorized');
-      const verified = await auth.verifySession({ accessToken: material.accessToken, signal: innerSignal }); check();
-      verifiedSession(verified, before.session.binding, material, now());
-      const live = await auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
-        organizationId: before.connection.organizationId, signal: innerSignal }); check();
-      const current = authorization(live, before, now());
+      // Auth and CRM authorization are independent reads of the same bearer.
+      // Evaluate them in the sequential order so Auth failure still wins.
+      const [verifiedRead, liveRead] = await Promise.allSettled([
+        Promise.resolve().then(() => auth.verifySession({ accessToken: material.accessToken, signal: innerSignal })),
+        Promise.resolve().then(() => auth.readAuthorization({ accessToken: material.accessToken, userId: before.connection.userId,
+          organizationId: before.connection.organizationId, signal: innerSignal })),
+      ]); check();
+      if (verifiedRead.status === 'rejected') throw verifiedRead.reason;
+      verifiedSession(verifiedRead.value, before.session.binding, material, now());
+      if (liveRead.status === 'rejected') throw liveRead.reason;
+      const current = authorization(liveRead.value, before, now());
       const after = await read();
       if (fingerprint(before) !== fingerprint(after)) fail('context_changed');
       // Time may advance while the final read is pending even if no row changed.
@@ -180,6 +207,8 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
       scopesByPermission: current.scopesByPermission, contextVersion });
       issued.add(result); return result;
     });
+    offer(tokenDigest, { kind: 'resolved', result: pending });
+    return pending;
   }
   return Object.freeze({
     async identifyConnection(presentedToken, { signal } = {}) {
@@ -196,6 +225,7 @@ export function createDurableAuthority({ connectionStore, crypto, auth, clock = 
         }
         check();
         const current = snapshot(value, tokenDigest, now());
+        offer(tokenDigest, { kind: 'identified', snapshot: current });
         return Object.freeze({ connectionId: current.connection.id });
       });
     },

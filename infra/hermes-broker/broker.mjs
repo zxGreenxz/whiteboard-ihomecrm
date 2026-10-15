@@ -12,6 +12,7 @@ import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
 import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
+import { advanceAuthorityRequest, runAuthorityRequest } from './authority-request-scope.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -34,13 +35,18 @@ const ROOM_TOOL = Object.freeze({
   }, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
+// Per-connection admission. Both rates are sliding 60-second windows; tools/call
+// also counts against the request rate. timeoutMs bounds one whole invocation
+// (identify -> authority -> handler -> audit -> final check -> finalize).
 const DEFAULT_LIMITS = Object.freeze({
   tokenLifetimeMs: 15 * 60_000,
   maxRequestsPerMinute: 60,
+  maxToolCallsPerMinute: 60,
   maxConcurrentCalls: 2,
   timeoutMs: 10_000,
   maxResultBytes: 16_384,
 });
+const RATE_WINDOW_MS = 60_000;
 const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
   group_recipient_limit: 400, group_room_limit: 400,
@@ -243,7 +249,9 @@ export function createBroker({
   connectionStore,
   assistantStore,
   audit,
+  observe,
 } = {}) {
+  if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
   let injectedAuthority;
   if (authority !== undefined) {
     if (!authority || ['identifyConnection', 'resolve', 'checkUnchanged'].some((key) => typeof authority[key] !== 'function')) {
@@ -425,17 +433,40 @@ export function createBroker({
         JSON.stringify(after.effective) !== JSON.stringify(before.effective)) fail('context_changed');
   }
 
-  function enter(id) {
+  // Sliding windows: an admitted call stays counted for exactly 60 seconds, so
+  // a burst at a fixed-window boundary cannot double the rate. Rejected calls
+  // are not counted. retryAfterMs is when the oldest counted call leaves.
+  function enter(id, operation) {
     const now = clock();
+    // |now - time| keeps a clock step backwards from pinning calls indefinitely.
+    const counted = time => Math.abs(now - time) < RATE_WINDOW_MS;
     let entry = usage.get(id);
-    if (!entry) { entry = { window: now, count: 0, active: 0 }; usage.set(id, entry); }
-    if (now - entry.window >= 60_000) { entry.window = now; entry.count = 0; }
-    if (entry.active >= limits.maxConcurrentCalls) fail('busy');
-    if (entry.count >= limits.maxRequestsPerMinute) fail('rate_limited');
-    entry.count += 1;
+    if (!entry) {
+      if (usage.size >= 4096) {
+        for (const [key, value] of usage) if (!value.active && !value.requests.some(counted)) usage.delete(key);
+      }
+      entry = { requests: [], toolCalls: [], active: 0 }; usage.set(id, entry);
+    }
+    entry.requests = entry.requests.filter(counted); entry.toolCalls = entry.toolCalls.filter(counted);
+    if (entry.active >= limits.maxConcurrentCalls) { const error = new BrokerError('busy'); error.retryAfterMs = 1000; throw error; }
+    const limited = (list, max) => {
+      if (list.length < max) return;
+      const error = new BrokerError('rate_limited');
+      error.retryAfterMs = Math.min(RATE_WINDOW_MS, Math.max(1000, Math.min(...list) + RATE_WINDOW_MS - now));
+      throw error;
+    };
+    limited(entry.requests, limits.maxRequestsPerMinute);
+    if (operation === 'tools/call') limited(entry.toolCalls, limits.maxToolCallsPerMinute);
+    entry.requests.push(now);
+    if (operation === 'tools/call') entry.toolCalls.push(now);
     entry.active += 1;
     return () => { entry.active -= 1; };
   }
+  const report = (connectionId, operation, code) => {
+    if (!observe || !canonicalId(connectionId)) return;
+    try { observe(Object.freeze({ connectionId, operation, ...(code === undefined ? {} : { code }) })); }
+    catch { /* Health observation never changes the call outcome. */ }
+  };
 
   async function invoke(presentedToken, operation, handler, finalize, context = {}) {
     let release;
@@ -443,10 +474,11 @@ export function createBroker({
     let comparisonReceipt;
     const requestId = randomUUID();
     const selectedAuthority = context.authority ?? injectedAuthority;
-    const work = async () => { try {
-      return await bounded(async (signal) => {
+    let connectionId;
+    // One authority request window per invocation; see authority-request-scope.
+    const work = () => runAuthorityRequest(async () => { try {
+      const result = await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
-        let connectionId;
         if (selectedAuthority) {
           const identified = await selectedAuthority.identifyConnection(presentedToken, { signal });
           if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
@@ -458,7 +490,7 @@ export function createBroker({
         }
         if (signal.aborted) fail('timeout');
         // The joined identify read precedes admission; expensive Auth/crypto does not.
-        release = enter(connectionId);
+        release = enter(connectionId, operation);
         if (selectedAuthority) {
           comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal });
           identity = authorityIdentity(comparisonReceipt, clock());
@@ -473,6 +505,8 @@ export function createBroker({
         // audit sink can wait while DB authority changes, so the authoritative
         // post-read check must be the LAST awaited step before releasing data.
         await recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
+        // Everything below must observe authority read after the audit await.
+        advanceAuthorityRequest();
         if (selectedAuthority) {
           const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal });
           if (checked !== undefined) fail('backend_unavailable');
@@ -487,18 +521,22 @@ export function createBroker({
         if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
         return result;
       }, context.signal);
+      report(identity?.row.id, operation);
+      return result;
     } catch (error) {
       const safe = context.mutationUncertain?.() ? new BrokerError(context.mutationCode ?? 'memory_outcome_unknown') : context.sendUncertain?.() ? new BrokerError('send_outcome_unknown') : error instanceof BrokerError ? error : new BrokerError('backend_unavailable');
       const dispatchId = context.sendDispatchId?.();
       if (safe.code === 'send_outcome_unknown' && canonicalId(dispatchId)) safe.dispatchId = dispatchId;
       const mutationRequestId = context.mutationRequestId?.();
       if (REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
+      // A quota/concurrency rejection is attributable to the identified connection.
+      report(identity?.row.id ?? connectionId, operation, safe.code);
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
         outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
       catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
-    } };
+    } });
     if (dependencyScope) {
       // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
       // The public timeout remains bounded; release belongs to actual drain.

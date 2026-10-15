@@ -26,6 +26,10 @@ const row = (id = CONNECTION, organizationId = ORG, userId = USER) => ({ id, ass
   state: 'active', epoch: 2, restrictions: { read: ['assistant.context.read', 'rooms.view'], action: ['rooms.edit'] }, scopeIds: [SCOPE] });
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 const pending = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
+const STARTED = Date.UTC(2026, 9, 15, 1, 0, 0), SUCCESS = Date.UTC(2026, 9, 15, 2, 0, 0), TOOL = Date.UTC(2026, 9, 15, 2, 5, 0), FAILED = Date.UTC(2026, 9, 15, 2, 10, 0);
+const at = (value: number) => new Date(value).toLocaleString('vi-VN');
+const statusFixture = (connections: object[] = []) => ({ connector: { version: '1.4.0', startedAt: STARTED, observedAt: FAILED + 1000 }, connections });
+let statusBody: ReturnType<typeof statusFixture> | null;
 let rows: ReturnType<typeof row>[];
 let companyPolicy: HermesOrgPolicySnapshot;
 let fetchMock: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
@@ -42,6 +46,7 @@ async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Res
     status: 'listed', nextCursor: null, ...(operation === 'bots' ? { bots: [] } : { bindings: [] }) });
   const own = rows.filter(value => value.userId === identity.userId && value.organizationId === input.organizationId);
   if (operation === 'list') return json({ connections: own });
+  if (operation === 'status') return statusBody === null ? json({ error: 'not_found' }, 404) : json(statusBody);
   if (operation === 'options') return json({ options: { userId: identity.userId, organizationId: input.organizationId, membershipId: OTHER,
     authorizationVersion: 1, isSuperadmin: false, policyVersion: companyPolicy.policy.version, enabled: companyPolicy.policy.enabled,
     read: companyPolicy.policy.enabled ? companyPolicy.policy.read : [], action: companyPolicy.policy.enabled ? companyPolicy.policy.action : [],
@@ -81,7 +86,7 @@ beforeEach(() => {
     choices: { read: ['assistant.context.read', 'rooms.view'], action: [],
       scopes: [{ scopeId: SCOPE, scopeType: 'BUILDING', label: 'Toà: Nhà A', buildingId: ASSISTANT, areaId: null, cashbookId: null }] },
     storedScopes: [{ scopeId: SCOPE, label: 'Toà: Nhà A', available: true }] };
-  rows = [row()]; fetchMock = vi.fn<typeof globalThis.fetch>(respond); vi.stubGlobal('fetch', fetchMock);
+  statusBody = statusFixture(); rows = [row()]; fetchMock = vi.fn<typeof globalThis.fetch>(respond); vi.stubGlobal('fetch', fetchMock);
   vi.stubEnv('VITE_SUPABASE_URL', 'https://abcdefghijklmnopqrst.supabase.co');
   vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_fixture');
   writeClipboard = vi.fn(async () => {}); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: writeClipboard } });
@@ -128,10 +133,48 @@ describe('Hermes self-connection page with the real typed client and fake HTTP',
     render(<HermesConnectionsPage />); await ready();
     expect(screen.getByText('Kết nối của tôi tại Công ty A')).toBeTruthy();
     expect(screen.getByText(/Đã cấp kết nối · 2 quyền đọc · 1 quyền thao tác/)).toBeTruthy();
-    expect(screen.getByText(/chưa xác nhận Hermes đang chạy/)).toBeTruthy();
+    expect(screen.getByText(`Connector CRM phiên bản 1.4.0 đang chạy từ ${at(STARTED)}. Thời điểm Hermes gọi CRM chỉ tính từ lần khởi động này.`)).toBeTruthy();
+    expect(screen.queryByText(/chưa xác nhận Hermes đang chạy/)).toBeNull();
+    expect(screen.getByText('Chưa ghi nhận Hermes gọi CRM kể từ khi connector khởi động.')).toBeTruthy();
     expect(screen.getByText(/Quyền đọc và thao tác được chọn độc lập/)).toBeTruthy();
     expect(screen.queryByText(/^Đang chạy$/)).toBeNull();
-    expect(calls('list')).toHaveLength(1);
+    expect(calls('list')).toHaveLength(1); expect(calls('status')).toHaveLength(1);
+    expect(JSON.parse(calls('status')[0][1]!.body as string)).toEqual({ organizationId: ORG });
+  });
+
+  it('shows the last Hermes call, tool call and last error from connector memory, ignoring ids outside the list', async () => {
+    statusBody = statusFixture([
+      { id: CONNECTION, lastSuccessAt: SUCCESS, lastToolCallAt: TOOL, lastErrorCode: 'rate_limited', lastErrorAt: FAILED },
+      { id: OTHER, lastSuccessAt: SUCCESS, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null },
+    ]);
+    render(<HermesConnectionsPage />); await ready();
+    const card = within(screen.getByRole('article', { name: 'Kết nối 33333333' }));
+    expect(card.getByText(`Hermes gọi CRM lần cuối lúc ${at(SUCCESS)} · dùng công cụ CRM lần cuối lúc ${at(TOOL)}`)).toBeTruthy();
+    expect(card.getByText(`Lỗi gần nhất lúc ${at(FAILED)}: gọi quá nhiều lần trong một phút`)).toBeTruthy();
+    expect(card.queryByText(/Chưa ghi nhận Hermes gọi CRM/)).toBeNull();
+    expect(screen.getAllByText(/Hermes gọi CRM lần cuối lúc/)).toHaveLength(1);
+  });
+
+  it('labels outcome-unknown and unmapped error codes without inventing a success time', async () => {
+    statusBody = statusFixture([{ id: CONNECTION, lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: 'rooms_update_outcome_unknown', lastErrorAt: FAILED }]);
+    const view = render(<HermesConnectionsPage />); await ready();
+    expect(screen.getByText(`Lỗi gần nhất lúc ${at(FAILED)}: chưa xác định kết quả thao tác`)).toBeTruthy();
+    expect(screen.getByText('Chưa ghi nhận Hermes gọi CRM kể từ khi connector khởi động.')).toBeTruthy();
+    statusBody = statusFixture([{ id: CONNECTION, lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: 'weird_code', lastErrorAt: FAILED }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại danh sách' }));
+    await screen.findByText(`Lỗi gần nhất lúc ${at(FAILED)}: weird_code`); view.unmount();
+  });
+
+  it('falls back to stored records when the connector has no status operation, keeping the list and grant form usable', async () => {
+    statusBody = null;
+    render(<HermesConnectionsPage />); await ready();
+    expect(screen.getByText('Chưa đọc được trạng thái connector CRM; trạng thái dưới đây là hồ sơ đã lưu.')).toBeTruthy();
+    expect(screen.queryByText(/Chưa ghi nhận Hermes gọi CRM/)).toBeNull();
+    expect(screen.getByText(/Đã cấp kết nối · 2 quyền đọc · 1 quyền thao tác/)).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Tạo kết nối' }) as HTMLButtonElement).disabled).toBe(false));
+    statusBody = statusFixture(); fireEvent.click(screen.getByRole('button', { name: 'Tải lại danh sách' }));
+    await screen.findByText(/Connector CRM phiên bản 1.4.0/);
+    expect(screen.queryByText(/Chưa đọc được trạng thái connector CRM/)).toBeNull();
   });
 
   it('does not call HTTP or render a credential form without a selected company or finished Auth loading', async () => {

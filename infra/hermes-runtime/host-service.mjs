@@ -137,7 +137,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       pool = factories.createStorePool(configuration.store);
       backend = factories.createHermesBackend({ supabase: configuration.supabase, store: { pool, expectedRole: configuration.store.role },
         encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
-        ...(connectorOnly ? { connectorOnly: true } : {}) });
+        ...(connectorOnly ? { connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}) } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass runtime drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });

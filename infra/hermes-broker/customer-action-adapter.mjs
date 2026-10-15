@@ -3,6 +3,7 @@ import { BrokerError } from './broker.mjs';
 import { domainExact, domainId } from './domain-contract.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
+import { readWithBaseAuthorization } from './authorization-extension.mjs';
 import { CUSTOMER_ACTIONS, customerActionKind, customerActionInput, customerActionResult, mayUseCustomerAction } from './customer-action-contract.mjs';
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
 const keys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
@@ -24,9 +25,11 @@ export function createCustomerActionReads(options) {
 export function createCustomerActionAuth({ baseAuth, reads }) {
   if ([baseAuth?.verifySession, baseAuth?.readAuthorization, reads?.capabilities].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_customer_action_auth');
   return Object.freeze({ verifySession: input => baseAuth.verifySession(input), async readAuthorization(input) {
-    const current = await baseAuth.readAuthorization(input);
+    const extended = await readWithBaseAuthorization(baseAuth, input,
+      () => reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }));
+    const current = extended.current;
     if (CUSTOMER_ACTIONS.some(key => current.permissions.action.includes(key) || current.companyCeilings.action.includes(key))) throw new BrokerError('context_changed');
-    const cap = await reads.capabilities({ accessToken: input.accessToken, organizationId: input.organizationId }, { signal: input.signal }); if (cap === null) return current;
+    const cap = extended.capability(); if (cap === null) return current;
     if (!domainExact(cap, ['organizationId', 'userId', 'membershipId', 'authorizationVersion', 'isSuperadmin', 'policyVersion', 'permissions']) ||
       cap.organizationId !== input.organizationId || cap.userId !== input.userId || cap.membershipId !== current.membership.membershipId ||
       cap.authorizationVersion !== current.membership.authorizationVersion || cap.isSuperadmin !== current.isSuperadmin ||

@@ -47,6 +47,17 @@ const connectInput = z.object({
   value.restrictions.read.every(key => HERMES_READ_CAPABILITIES.includes(key)));
 const listResult = z.object({ connections: z.array(row).max(256)
   .refine(values => new Set(values.map(value => value.id)).size === values.length) }).strict();
+const connectionStatus = z.object({ id: uuid, lastSuccessAt: positive.nullable(), lastToolCallAt: positive.nullable(),
+  lastErrorCode: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).nullable(), lastErrorAt: positive.nullable(),
+}).strict().refine(value => (value.lastErrorCode === null) === (value.lastErrorAt === null))
+  // Same required-key normalisation as scopeChoice for the non-strict app compiler.
+  .transform(value => ({ id: value.id, lastSuccessAt: value.lastSuccessAt, lastToolCallAt: value.lastToolCallAt,
+    lastErrorCode: value.lastErrorCode, lastErrorAt: value.lastErrorAt }));
+const statusResult = z.object({
+  connector: z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/), startedAt: positive, observedAt: positive }).strict()
+    .transform(value => ({ version: value.version, startedAt: value.startedAt, observedAt: value.observedAt })),
+  connections: z.array(connectionStatus).max(256).refine(values => new Set(values.map(value => value.id)).size === values.length),
+}).strict();
 const contextResult = z.object({ context }).strict();
 const optionsResult = z.object({ options: grantOptions }).strict();
 const connectResult = z.object({ status: z.literal('active'), connection: row.extend({ state: z.literal('active') }),
@@ -59,6 +70,9 @@ export type HermesConnectionMetadata = z.infer<typeof row>;
 export type HermesConnectionContext = z.infer<typeof context>;
 export type HermesConnectionRestrictions = z.infer<typeof restrictions>;
 export type HermesGrantOptions = z.infer<typeof grantOptions>;
+/** Process-memory observations of the CRM connector since `connector.startedAt`; not durable history. */
+export type HermesConnectorStatus = z.infer<typeof statusResult>;
+export type HermesConnectionStatus = HermesConnectorStatus['connections'][number];
 export type HermesConnectInput = z.infer<typeof connectInput>;
 export type HermesRestrictInput = z.infer<typeof restrictInput>;
 export type HermesRevokeInput = z.infer<typeof revokeInput>;
@@ -75,7 +89,7 @@ const statuses = {
 } as const;
 type ServerCode = keyof typeof statuses;
 export type HermesConnectionErrorCode = ServerCode | 'invalid_response';
-type Operation = 'list' | 'context' | 'options' | 'connect' | 'restrict' | 'revoke';
+type Operation = 'list' | 'context' | 'options' | 'status' | 'connect' | 'restrict' | 'revoke';
 type WriteOperation = 'connect' | 'restrict' | 'revoke';
 type Outcome = 'not_dispatched' | 'rejected' | 'unknown';
 const serverCode = z.custom<ServerCode>(value => typeof value === 'string' && Object.prototype.hasOwnProperty.call(statuses, value));
@@ -123,7 +137,7 @@ export interface HermesRequestOptions { signal?: AbortSignal }
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(value => b.includes(value));
 const sameRestrictions = (a: HermesConnectionRestrictions, b: HermesConnectionRestrictions) =>
   sameSet(a.read, b.read) && sameSet(a.action, b.action);
-const writeOperation = (operation: Operation): operation is WriteOperation => !['list', 'context', 'options'].includes(operation);
+const writeOperation = (operation: Operation): operation is WriteOperation => !['list', 'context', 'options', 'status'].includes(operation);
 const MAX_REQUEST_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
 
@@ -291,6 +305,7 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
       value => value.connections.every(ownRow), requestOptions),
     options: (requestOptions?: HermesRequestOptions) => invoke('options', {}, emptyInput, optionsResult,
       value => value.options.userId === userId && value.options.organizationId === organizationId, requestOptions),
+    status: (requestOptions?: HermesRequestOptions) => invoke('status', {}, emptyInput, statusResult, () => true, requestOptions),
     context: (input: z.infer<typeof contextInput>, requestOptions?: HermesRequestOptions) => invoke('context', input, contextInput, contextResult,
       (value, request) => ownRow(value.context) && value.context.id === request.connectionId, requestOptions),
     connect: (input: HermesConnectInput, requestOptions?: HermesRequestOptions) => invoke('connect', input, connectInput, connectResult,

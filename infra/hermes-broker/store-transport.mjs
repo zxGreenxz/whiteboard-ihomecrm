@@ -50,6 +50,12 @@ function knownRejection(error) {
  * destroys failed/cancelled clients and never retries a dispatched statement.
  * A lost write ACK is store_outcome_unknown, even if the server may have committed.
  * Caller reconciles by the SAME operation/claim; it must not repeat a provider call.
+ *
+ * The principal is verified once per physical pooled client before its first
+ * private call. A session-pooler/direct login cannot change current_user or
+ * session_user afterwards because this transport only sends fixed function
+ * calls; failed/cancelled clients are destroyed and never reused. Role attribute
+ * changes are picked up by the next physical connection (bounded pool lifetime).
  */
 export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
   maxRequestBytes = 131_072, maxResponseBytes = 131_072, dependencyScope } = {}) {
@@ -61,6 +67,7 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
       (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) {
     throw new TypeError('invalid_store_transport_config');
   }
+  const verifiedClients = new WeakSet();
   return Object.freeze({
     async call(operation, input, { signal } = {}) {
       if (!Object.hasOwn(FUNCTIONS, operation) || !record(input)) fail('invalid_store_request');
@@ -74,6 +81,7 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
       const release = destroy => {
         if (!client || released) return;
         released = true;
+        if (destroy) verifiedClients.delete(client);
         try { client.release(destroy); } catch { /* The caller still receives the safe failure. */ }
       };
       const controller = new AbortController();
@@ -90,13 +98,16 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
         const run = async () => {
           client = await pool.connect();
           if (stopped) { release(true); fail('store_cancelled'); }
-          const check = await client.query({ text: PRINCIPAL_SQL, values: [], queryMode: 'extended' });
-          if (stopped) fail('store_cancelled');
-          const principal = check.rows?.[0];
-          if (check.rows?.length !== 1 || principal?.role !== expectedRole || principal.session_role !== expectedRole || principal.scoped !== true ||
-              principal.privileged_member !== false ||
-              ['rolsuper', 'rolbypassrls', 'rolcreaterole', 'rolcreatedb', 'rolreplication'].some(key => principal[key] !== false)) {
-            fail('store_principal_refused');
+          if (!verifiedClients.has(client)) {
+            const check = await client.query({ text: PRINCIPAL_SQL, values: [], queryMode: 'extended' });
+            if (stopped) fail('store_cancelled');
+            const principal = check.rows?.[0];
+            if (check.rows?.length !== 1 || principal?.role !== expectedRole || principal.session_role !== expectedRole || principal.scoped !== true ||
+                principal.privileged_member !== false ||
+                ['rolsuper', 'rolbypassrls', 'rolcreaterole', 'rolcreatedb', 'rolreplication'].some(key => principal[key] !== false)) {
+              fail('store_principal_refused');
+            }
+            verifiedClients.add(client);
           }
           // Function names are fixed constants. Only the JSON payload is a bound
           // parameter; callers cannot select a schema, arbitrary RPC or SQL text.

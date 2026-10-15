@@ -12,14 +12,17 @@ export function createStorePool({ projectRef, host, role, password, ca,
       typeof password !== 'string' || password.length < 16 || password.length > 4096 || /[\r\n\0]/.test(password) ||
       (ca !== undefined && (typeof ca !== 'string' || ca.length > 65_536 || !ca.includes('-----BEGIN CERTIFICATE-----'))) ||
       typeof onIdleFailure !== 'function' || typeof Pool !== 'function') throw new TypeError('invalid_store_pool_config');
+  // A new pooler connection costs TCP+TLS+SCRAM (several WAN round trips). Keep
+  // one verified connection warm between Hermes turns and recycle every client
+  // within a bounded lifetime so password/role changes reach new sessions.
   const pool = new Pool({
     host, port: 5432, database: 'postgres', user: direct ? role : `${role}.${projectRef}`, password,
     ssl: { rejectUnauthorized: true, ...(ca === undefined ? {} : { ca }) },
-    max: 4, connectionTimeoutMillis: 5000, idleTimeoutMillis: 10_000,
+    max: 4, min: 1, connectionTimeoutMillis: 5000, idleTimeoutMillis: 120_000, maxLifetimeSeconds: 900,
     query_timeout: 10_000, statement_timeout: 8000, lock_timeout: 3000,
     // Nonempty: pg falls back to ambient PGOPTIONS for an empty string.
     options: '-c statement_timeout=8000 -c lock_timeout=3000 -c idle_in_transaction_session_timeout=10000',
-    application_name: 'ihomecrm-hermes-store', keepAlive: true,
+    application_name: 'ihomecrm-hermes-store', keepAlive: true, keepAliveInitialDelayMillis: 30_000,
   });
   // pg emits background errors for idle clients. Do not crash or leak its error,
   // connection config, SQL or credential through the observer callback.

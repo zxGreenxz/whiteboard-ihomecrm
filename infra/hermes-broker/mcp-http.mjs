@@ -1,15 +1,19 @@
 import { createServer } from 'node:http';
 import { BrokerError } from './broker.mjs';
+import { CONNECTOR_VERSION } from './connector-health.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const keys = (value, allowed) => object(value) && Object.keys(value).every((key) => allowed.includes(key));
-function reply(response, status, value) {
+function reply(response, status, value, headers = {}) {
   if (response.destroyed || response.writableEnded) return;
   response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff' });
+    'x-content-type-options': 'nosniff', ...headers });
   response.end(value === undefined ? undefined : JSON.stringify(value));
 }
+// Whole seconds for Retry-After and the model-visible hint; never below 1.
+const retryAfterSeconds = error => Number.isSafeInteger(error?.retryAfterMs) && error.retryAfterMs > 0
+  ? Math.min(60, Math.ceil(error.retryAfterMs / 1000)) : 1;
 function rpcError(id, code, message) { return { jsonrpc: '2.0', id, error: { code, message } }; }
 async function readBody(request, cap) {
   const chunks = [];
@@ -82,7 +86,7 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
         }
         await broker.authenticate(presentedToken);
         result = { protocolVersion: VERSIONS.has(message.params.protocolVersion) ? message.params.protocolVersion : '2025-03-26',
-          capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'ihomecrm-hermes-broker-p1', version: '0.1.0' } };
+          capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'ihomecrm-hermes-broker-p1', version: CONNECTOR_VERSION } };
       } else if (message.method === 'tools/list') {
         if (message.params !== undefined && (!keys(message.params, ['_meta']) || Object.hasOwn(message.params, 'cursor'))) {
           reply(response, 200, rpcError(id, -32602, 'invalid_params')); return;
@@ -102,8 +106,12 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
       reply(response, 200, { jsonrpc: '2.0', id, result });
     } catch (error) {
       const safe = error instanceof BrokerError ? error : new BrokerError('backend_unavailable');
-      if (message?.method === 'tools/call' && !['unauthorized', 'rate_limited', 'busy'].includes(safe.code)) {
-        const receipt = safe.code === 'send_outcome_unknown' && typeof safe.dispatchId === 'string' &&
+      const admission = ['rate_limited', 'busy'].includes(safe.code);
+      // Per-connection quota is a tool outcome the model can read and wait on;
+      // a transport-level 429 would make an MCP client drop/reconnect instead.
+      if (message?.method === 'tools/call' && safe.code !== 'unauthorized') {
+        const receipt = admission ? { retryAfterSeconds: retryAfterSeconds(safe) }
+          : safe.code === 'send_outcome_unknown' && typeof safe.dispatchId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.dispatchId)
           ? { dispatchId: safe.dispatchId } : ['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown'].includes(safe.code) && typeof safe.requestId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
@@ -111,7 +119,9 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });
-      } else { reply(response, safe.status, { error: safe.code }); }
+      } else {
+        reply(response, safe.status, { error: safe.code }, admission ? { 'retry-after': String(retryAfterSeconds(safe)) } : {});
+      }
     } finally { active -= 1; }
   };
 }

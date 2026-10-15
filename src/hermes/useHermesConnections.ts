@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createHermesConnectionClient, HermesConnectionClientError, type HermesCallerScope,
   type HermesConnectionContext, type HermesConnectionMetadata, type HermesConnectInput,
-  type HermesConnectResult, type HermesConnectionRestrictions, type HermesGrantOptions } from './connectionClient';
+  type HermesConnectResult, type HermesConnectionRestrictions, type HermesConnectorStatus, type HermesGrantOptions } from './connectionClient';
 
 type Operation = 'list' | 'context' | 'connect' | 'restrict' | 'revoke';
 interface State {
   connections: HermesConnectionMetadata[] | null;
   context: HermesConnectionContext | null;
   options: HermesGrantOptions | null;
+  /** Connector process memory since its start; null while loading or when unavailable. */
+  connectorStatus: HermesConnectorStatus | null;
+  connectorStatusError: boolean;
   handoff: HermesConnectResult | null;
   busy: Operation | null;
   message: string | null;
   needsReload: boolean;
 }
-const initial = (): State => ({ connections: null, context: null, options: null, handoff: null, busy: null, message: null, needsReload: false });
+const initial = (): State => ({ connections: null, context: null, options: null, connectorStatus: null, connectorStatusError: false,
+  handoff: null, busy: null, message: null, needsReload: false });
 const errorMessage = (error: unknown, write: boolean) => {
   if (error instanceof HermesConnectionClientError) {
     if (error.outcomeUnknown) return 'Chưa xác định thao tác đã hoàn tất. Hãy tải lại danh sách để đối chiếu trước khi gửi yêu cầu khác.';
@@ -59,7 +63,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     const write = !['list', 'context'].includes(operation);
     if (operation === 'list') life.ready = false;
     setState(previous => ({ ...previous, busy: operation, message: null,
-      ...(operation === 'list' ? { connections: null, context: null, options: null } : {}),
+      ...(operation === 'list' ? { connections: null, context: null, options: null, connectorStatus: null, connectorStatusError: false } : {}),
       ...(operation === 'context' || write ? { context: null } : {}),
       ...(write ? { handoff: null } : {}) }));
     try {
@@ -79,9 +83,13 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   }, [client, currentScope, userId, organizationId]);
   const reload = useCallback(() => run('list', async signal => {
     const result = await client.list({ signal });
-    try { return { ...result, options: (await client.options({ signal })).options }; }
-    catch { return { ...result, options: null }; }
-  }, (result, previous) => ({ ...previous, connections: result.connections, options: result.options })), [client, run]);
+    // Independent reads: a missing grant list or an older connector without
+    // `status` must not hide the stored connections.
+    const [options, status] = await Promise.allSettled([client.options({ signal }), client.status({ signal })]);
+    return { ...result, options: options.status === 'fulfilled' ? options.value.options : null,
+      connectorStatus: status.status === 'fulfilled' ? status.value : null, connectorStatusError: status.status === 'rejected' };
+  }, (result, previous) => ({ ...previous, connections: result.connections, options: result.options,
+    connectorStatus: result.connectorStatus, connectorStatusError: result.connectorStatusError })), [client, run]);
   useEffect(() => { void reload(); }, [reload]);
 
   const invalidatePolicy = useCallback(() => {

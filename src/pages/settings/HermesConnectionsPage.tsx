@@ -14,9 +14,36 @@ import { HermesWorkAssistant } from '@/hermes/HermesWorkAssistant';
 import { HermesZaloBindings } from '@/hermes/HermesZaloBindings';
 import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
 import { HermesDeliveryReconcile } from '@/hermes/HermesDeliveryReconcile';
-import type { HermesCallerScope, HermesConnectionContext, HermesConnectionRestrictions, HermesGrantOptions } from '@/hermes/connectionClient';
+import type { HermesCallerScope, HermesConnectionContext, HermesConnectionMetadata, HermesConnectionRestrictions, HermesConnectionStatus,
+  HermesConnectorStatus, HermesGrantOptions } from '@/hermes/connectionClient';
 
 const states = { pending: 'Chờ hoàn tất', active: 'Đã cấp kết nối', revoked: 'Đã thu hồi' } as const;
+
+const errorLabels: Record<string, string> = {
+  unauthorized: 'kết nối hết hạn hoặc đã bị thu hồi', forbidden: 'không đủ quyền CRM', context_changed: 'quyền hoặc kết nối vừa thay đổi',
+  rate_limited: 'gọi quá nhiều lần trong một phút', busy: 'connector đang bận', timeout: 'quá thời gian xử lý',
+  backend_unavailable: 'dịch vụ CRM tạm không phản hồi', tool_not_available: 'công cụ chưa được cấp quyền', invalid_request: 'yêu cầu không hợp lệ',
+};
+const errorLabel = (code: string) => Object.prototype.hasOwnProperty.call(errorLabels, code) ? errorLabels[code]
+  : code.endsWith('_outcome_unknown') ? 'chưa xác định kết quả thao tác' : code;
+const when = (value: number) => new Date(value).toLocaleString('vi-VN');
+
+function connectorSummary(status: HermesConnectorStatus | null, failed: boolean) {
+  if (status) return `Connector CRM phiên bản ${status.connector.version} đang chạy từ ${when(status.connector.startedAt)}. Thời điểm Hermes gọi CRM chỉ tính từ lần khởi động này.`;
+  return failed ? 'Chưa đọc được trạng thái connector CRM; trạng thái dưới đây là hồ sơ đã lưu.' : 'Trạng thái dưới đây là hồ sơ đã lưu.';
+}
+
+/** Connector-memory observations only; absence means "not seen since start", never proof of health. */
+function ConnectionActivity({ connection, status }: { connection: HermesConnectionMetadata; status: HermesConnectionStatus | undefined }) {
+  const lastSuccessAt = status?.lastSuccessAt ?? null, lastToolCallAt = status?.lastToolCallAt ?? null;
+  return <>
+    {lastSuccessAt !== null
+      ? <p className="text-sm text-muted-foreground">Hermes gọi CRM lần cuối lúc {when(lastSuccessAt)}{lastToolCallAt !== null && ` · dùng công cụ CRM lần cuối lúc ${when(lastToolCallAt)}`}</p>
+      : connection.state === 'active' && <p className="text-sm text-muted-foreground">Chưa ghi nhận Hermes gọi CRM kể từ khi connector khởi động.</p>}
+    {status && status.lastErrorCode !== null && status.lastErrorAt !== null &&
+      <p className="text-sm text-muted-foreground">Lỗi gần nhất lúc {when(status.lastErrorAt)}: {errorLabel(status.lastErrorCode)}</p>}
+  </>;
+}
 
 function Restrictions({ context, options, disabled, onSave }: { context: HermesConnectionContext; options: HermesGrantOptions | null; disabled: boolean;
   onSave: (value: HermesConnectionRestrictions, scopeIds: string[]) => void }) {
@@ -97,7 +124,7 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
   };
   return <div className="max-w-4xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">Trạng thái dưới đây là hồ sơ đã lưu; chưa xác nhận Hermes đang chạy.</p>
+      <p className="text-sm text-muted-foreground">{connectorSummary(model.connectorStatus, model.connectorStatusError)}</p>
       <Button variant="outline" disabled={policyBusy || Boolean(model.busy)} onClick={() => { setCopied(null); void model.reload(); }}><RefreshCw className="h-4 w-4" />Tải lại danh sách</Button>
     </div>
     {model.message && <p role="status" className="rounded-lg border bg-muted/50 p-3 text-sm">{model.message}</p>}
@@ -107,7 +134,9 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
       {model.connections.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-muted-foreground">Chưa có kết nối Hermes trong công ty này.</p>}
       {model.connections.map(connection => <article key={connection.id} aria-label={`Kết nối ${connection.id.slice(-8)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
         <div><h2 className="font-medium">Kết nối …{connection.id.slice(-8)}</h2>
-          <p className="text-sm text-muted-foreground">{states[connection.state]} · {connection.restrictions.read.length} quyền đọc · {connection.restrictions.action.length} quyền thao tác</p></div>
+          <p className="text-sm text-muted-foreground">{states[connection.state]} · {connection.restrictions.read.length} quyền đọc · {connection.restrictions.action.length} quyền thao tác</p>
+          {model.connectorStatus && <ConnectionActivity connection={connection}
+            status={model.connectorStatus.connections.find(item => item.id === connection.id)} />}</div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" disabled={disabled || connection.state !== 'active'} onClick={() => void model.contextFor(connection)}>Xem quyền</Button>
           <Button variant="destructive" size="sm" disabled={disabled || connection.state === 'revoked'} onClick={() => { setCopied(null); void model.revoke(connection); }}>Thu hồi</Button>
