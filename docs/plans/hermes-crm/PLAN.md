@@ -408,7 +408,7 @@ Phụ thuộc: Sau khi chủ dự án chốt super plan. Chủ trì: Lead + QA.
 - [x] P0.03 Đối chiếu catalog TEST chỉ đọc: 32/32 registry khớp, 135/135 tên hàm có ở đúng schema (134 public + 1 helper private); ghi ACL/digest/flags. Ledger legacy đóng băng không phải schema thiếu. JWT/RLS/body parity kiểm ở P1 trở đi.
 - [x] P0.04 Xác định và kích hoạt lại đúng runner/gate Zalo-Copilot cần cho phạm vi, cập nhật manifest có review. Commit `c833d379`: local 47/47 đạt, review không còn P1/P2; CI draft PR #165 tại head `386296cb` đã xanh. Delta inventory/catalog có gate 47/47 và review tại `6ecdc399`; không dùng CI cũ thay evidence của head mới.
 - [x] P0.05 Ghi baseline câu hỏi/nghiệp vụ, lỗi đã biết và phạm vi public projection gửi nhóm. Bộ B01–B10 bên dưới là tiêu chí cần kiểm, không phải kết quả đã đạt.
-- [ ] P0.06 Bổ sung mapping từng capability → schema/RPC/resource/ACL/projection thật; phân biệt điều kiện nghiệp vụ với UI/approval/model flag của Copilot. Đối chiếu manifest hiện có, không làm lại inventory hoặc harness chỉ vì đổi phiên bản plan.
+- [x] P0.06 Bổ sung mapping từng capability → schema/RPC/resource/ACL/projection thật; phân biệt điều kiện nghiệp vụ với UI/approval/model flag của Copilot. Đối chiếu manifest hiện có, không làm lại inventory hoặc harness chỉ vì đổi phiên bản plan. — 16/10: [CAPABILITY-MAP.md](CAPABILITY-MAP.md) map từng tool/action/UI → quyền CRM, RPC/cổng và disposition.
 
 **Snapshot lịch sử:** Tiến độ 12/10/2026: P0 có inventory v2, comparator TEST, review và local gate 47/47 tại commit `6ecdc399`; PR còn draft. Inventory có metadata từng mục, 47 page contracts, 6 safe controls; comparator có 23 test bao gồm ca sai/mất dữ liệu. Sáu callsite RPC động được ghi rõ, không coi tên biến là hàm đã xác minh. [STATUS.md](STATUS.md) giữ bằng chứng và phần chưa đạt.
 
@@ -439,14 +439,14 @@ Projection gửi nhóm đề xuất: mã/tên phòng công khai, tòa/khu vực 
 
 Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 
-- [ ] P1.01 Hoàn thiện connector MCP/plugin; thử với Hermes upstream độc lập do user cấu hình, ghi version tương thích. Không bắt dùng wrapper/image pin của CRM hoặc đóng native tools.
-- [ ] P1.02 Chứng minh credential riêng cho connection ánh xạ đúng user/org mà không đưa JWT toàn quyền vào Hermes.
-- [ ] P1.03 Thử RPC auth.uid(), RLS và các RPC không cho service_role; chọn broker ủy quyền hoặc ADR executor.
-- [ ] P1.04 Thử hai user thường thuộc hai org và một superadmin nhiều org; kiểm revoke/expiry/refresh, giả actor/org và chọn công ty đích.
-- [ ] P1.05 Chốt auth/transport/context CRM và protocol tương thích; model/provider/personal memory nằm ngoài CRM. Ghi rõ phần prototype tái dùng và rollback connector.
-- [ ] P1.06 Chứng minh cách ly identity/context CRM/credential, quota công cụ/audit/kill switch connector; CRM revoke chỉ chặn phần CRM, không khóa native assistant.
-- [ ] P1.07 Tách dependency model cá nhân khỏi CRM/Copilot: Hermes dùng model user cấu hình dù CRM/Copilot tắt. Relay model CRM chỉ tùy chọn; nếu dùng mới cần admission riêng và ngân sách chung, không đòi ai_copilot.view.
-- [ ] P1.08 Bổ sung cấu hình/CLI external connector và graceful startup: CRM/MCP vắng hoặc lỗi chỉ làm CRM tools unavailable, Hermes native vẫn READY theo provider/config user. Dùng adapter, không viết engine mới.
+- [x] P1.01 Hoàn thiện connector MCP/plugin; thử với Hermes upstream độc lập do user cấu hình, ghi version tương thích. Không bắt dùng wrapper/image pin của CRM hoặc đóng native tools. — 16/10: production chạy Hermes upstream `nousresearch/hermes-agent` v0.21.6 (image `sha256:ffa4fbb4…`) nối connector MCP, 52 tool; cài theo [CONNECTOR.md](../../../infra/hermes-broker/CONNECTOR.md).
+- [x] P1.02 Chứng minh credential riêng cho connection ánh xạ đúng user/org mà không đưa JWT toàn quyền vào Hermes. — 16/10: Hermes chỉ giữ token `hc_…` mờ của kết nối; JWT/refresh nằm ở broker connector.
+- [x] P1.03 Thử RPC auth.uid(), RLS và các RPC không cho service_role; chọn broker ủy quyền hoặc ADR executor. — 16/10: JWT TEST thật 17/17 qua broker ủy quyền; ADR [P1-ARCHITECTURE](P1-ARCHITECTURE.md).
+- [x] P1.04 Thử hai user thường thuộc hai org và một superadmin nhiều org; kiểm revoke/expiry/refresh, giả actor/org và chọn công ty đích. — 16/10: JWT TEST 17/17 (3 user/2 org, có superadmin) + refresh Auth 5/5 + `jwt-management` 6/6.
+- [x] P1.05 Chốt auth/transport/context CRM và protocol tương thích; model/provider/personal memory nằm ngoài CRM. Ghi rõ phần prototype tái dùng và rollback connector. — 16/10: ADR [P1-ARCHITECTURE](P1-ARCHITECTURE.md); model qua 9router ngoài CRM; lùi connector bằng symlink release.
+- [x] P1.06 Chứng minh cách ly identity/context CRM/credential, quota công cụ/audit/kill switch connector; CRM revoke chỉ chặn phần CRM, không khóa native assistant. — 16/10: quota `tools/call`, deadline và thu hồi kết nối (#170); thu hồi chỉ chặn phần CRM.
+- [x] P1.07 Tách dependency model cá nhân khỏi CRM/Copilot: Hermes dùng model user cấu hình dù CRM/Copilot tắt. Relay model CRM chỉ tùy chọn; nếu dùng mới cần admission riêng và ngân sách chung, không đòi ai_copilot.view. — 16/10: model `cx/gpt-6-sol` qua 9router, độc lập CRM/Copilot.
+- [x] P1.08 Bổ sung cấu hình/CLI external connector và graceful startup: CRM/MCP vắng hoặc lỗi chỉ làm CRM tools unavailable, Hermes native vẫn READY theo provider/config user. Dùng adapter, không viết engine mới. — 16/10: 01:16 tắt connector, khởi động lại Hermes vẫn READY, MCP parked, trả lời thường và báo chưa đọc được CRM.
 
 **Snapshot lịch sử:** Tiến độ 12/10/2026: broker 28/28 unit/HTTP; harness 11/11 và JWT TEST thật 17/17, cleanup xác minh. MCP client upstream ghim đạt 4/4 transport checks. CI tại `9ad5ca42` chạy AIAgent thật với broker/model giả: 17/17, gồm mạng A/B riêng, single-host profile owner, restart và revoke. Digest image khớp; revision label trống nên provenance source commit chưa xác minh. Các ô P1 vẫn mở vì egress đầy đủ, refresh/lưu bền, model quota và invalidation memory chưa đạt. [ADR P1](P1-ARCHITECTURE.md) và STATUS ghi giới hạn.
 
@@ -462,12 +462,12 @@ Phụ thuộc: P0. Chủ trì: Backend/auth + QA.
 
 Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend. Có thể chuẩn bị code nền song song; không mở dữ liệu/nghiệm thu P2 khi các ranh giới P1 chưa đạt.
 
-- [ ] P2.01 Hoàn thiện connection, một lớp restrictions Hermes, channel binding và audit; hợp nhất trần/khóa trợ lý công ty nếu cần vào lớp này, giữ dữ liệu và migration đã apply.
-- [ ] P2.02 Hoàn thiện cấp/rotate/expire/revoke token connector ngoài CRM và effective-permission API; đổi token không reset personal assistant, lỗi token chỉ khóa phần CRM. Không đưa JWT/refresh/service key backend vào cấu hình Hermes.
-- [ ] P2.03 Tái dùng PermissionPicker/ScopePicker cho hai nhóm Đọc/Thao tác; lấy danh mục hiện có, một API quyền hiệu lực và lý do bị chặn; không sửa overrides user hoặc bắt cấp lại cùng quyền ở màn công ty.
-- [ ] P2.04 Chặn AI tự sửa grant/quyền; capability mới chưa nghiệm thu mặc định tắt; bật/tắt trong quyền quản trị hiện có và một overlay Hermes, không tạo role thứ hai.
-- [ ] P2.05 Tích hợp khóa thành viên, disconnect và policy invalidation; khóa org của user thường, chỉ cho superadmin chuyển context có xác thực.
-- [ ] P2.06 Tách liên kết người nhắn → Hermes cá nhân khỏi grant/credential CRM. Revoke CRM giữ hội thoại cá nhân; unlink kênh mới ngắt tuyến đó, không cho lộ CRM data đã bị chặn.
+- [x] P2.01 Hoàn thiện connection, một lớp restrictions Hermes, channel binding và audit; hợp nhất trần/khóa trợ lý công ty nếu cần vào lớp này, giữ dữ liệu và migration đã apply. — 16/10: kết nối + overlay Đọc/Thao tác + liên kết Zalo + audit chạy live trên production.
+- [x] P2.02 Hoàn thiện cấp/rotate/expire/revoke token connector ngoài CRM và effective-permission API; đổi token không reset personal assistant, lỗi token chỉ khóa phần CRM. Không đưa JWT/refresh/service key backend vào cấu hình Hermes. — 16/10: tạo mới/thu hồi kết nối 3 lần trên production (thu hồi `…5e028d4f`, `…21e16a97`, `…369ce079`; đang dùng `…624ef30e`); `jwt-management` 6/6 TEST.
+- [x] P2.03 Tái dùng PermissionPicker/ScopePicker cho hai nhóm Đọc/Thao tác; lấy danh mục hiện có, một API quyền hiệu lực và lý do bị chặn; không sửa overrides user hoặc bắt cấp lại cùng quyền ở màn công ty. — 16/10: `/settings/hermes` dùng PermissionPicker/ScopePicker; kết nối `…624ef30e` có 17 đọc + 11 thao tác.
+- [x] P2.04 Chặn AI tự sửa grant/quyền; capability mới chưa nghiệm thu mặc định tắt; bật/tắt trong quyền quản trị hiện có và một overlay Hermes, không tạo role thứ hai. — 16/10: registry `app_private.hermes_capabilities` mặc định tắt, bật bằng migration (`20261015172059`, 28/28).
+- [x] P2.05 Tích hợp khóa thành viên, disconnect và policy invalidation; khóa org của user thường, chỉ cho superadmin chuyển context có xác thực. — 16/10: `jwt-management` 6/6 TEST (options self/cross-org, policy/superadmin, thu hồi).
+- [x] P2.06 Tách liên kết người nhắn → Hermes cá nhân khỏi grant/credential CRM. Revoke CRM giữ hội thoại cá nhân; unlink kênh mới ngắt tuyến đó, không cho lộ CRM data đã bị chặn. — 16/10: ngắt/liên kết lại Zalo khi đổi kết nối trên production, độc lập với grant.
 
 **Snapshot lịch sử:** Tiến độ 12/10/2026: đã viết target binding TEST xuyên backup/catalog/apply/evidence, primitive mã hóa/refresh và relay dùng lại model proxy CRM. Nền đã commit tại `8bfc0682`; transport backend tại `494d306a`, mỗi checkpoint local 47/47. Chưa cấp kết nối sản phẩm; không đánh dấu P2.01–P2.05 hoàn tất từ các primitive này.
 
@@ -493,12 +493,12 @@ Phụ thuộc: P1; danh mục P0. Chủ trì: Backend + frontend. Có thể chu�
 
 Phụ thuộc: P1-P2. Chủ trì: Backend/domain + adapter.
 
-- [ ] P3.01 Tách định nghĩa khỏi browser imports; contract chung có version và mapping schema/RPC/query thực; adapter dùng lại cho nhiều miền, không khóa trong một tool phòng.
-- [ ] P3.02 Triển khai list/call qua backend ACL kiểm identity, quyền user hiện tại ∩ Read/Action Hermes, từng resource/scope, schema và quota; không tin tools/list hoặc service-role giả user.
-- [ ] P3.03 Mở đọc phòng trống, chính sách, nhóm nhận và kết quả công việc; trả nguồn/lúc lấy. Directory/bản nháp chỉ cần Read tương ứng, không đòi chat_zalo.send.
-- [ ] P3.04 Lọc field nội bộ bằng projection; không dùng memory để trả giá hay phòng hiện tại.
-- [ ] P3.05 Bổ sung parity và ca gọi trực tiếp/bị thu hồi trên runner hiện có; dùng mapping chung cho tools/options/UI, thay các giới hạn hardcode theo đợt capability đã kiểm.
-- [ ] P3.06 External MCP đọc/action dùng identity connection token đã xác minh và provenance đúng nguồn; không đòi private Zalo claim cho mọi call. Reuse ACL/resource/RPC kiểm backend của route nội bộ, không bỏ guard để mở tool ngoài.
+- [x] P3.01 Tách định nghĩa khỏi browser imports; contract chung có version và mapping schema/RPC/query thực; adapter dùng lại cho nhiều miền, không khóa trong một tool phòng. — 16/10: contract broker dùng chung cho nhiều miền (`infra/hermes-broker/*-contract.mjs`), 52 tool trên production.
+- [x] P3.02 Triển khai list/call qua backend ACL kiểm identity, quyền user hiện tại ∩ Read/Action Hermes, từng resource/scope, schema và quota; không tin tools/list hoặc service-role giả user. — 16/10: mỗi `tools/call` kiểm quyền user hiện tại ∩ Read/Action + scope, có quota/timeout (#170).
+- [x] P3.03 Mở đọc phòng trống, chính sách, nhóm nhận và kết quả công việc; trả nguồn/lúc lấy. Directory/bản nháp chỉ cần Read tương ứng, không đòi chat_zalo.send. — 16/10: 15/10 hỏi phòng trống production trả đúng danh sách canonical; đọc nhóm `chat_zalo.view`; 04:24 liệt kê việc đã giao.
+- [x] P3.04 Lọc field nội bộ bằng projection; không dùng memory để trả giá hay phòng hiện tại. — 16/10: projection sale facts lọc field nội bộ, SĐT khách che (CAPABILITY-MAP); giá/chính sách lấy mới từ CRM.
+- [x] P3.05 Bổ sung parity và ca gọi trực tiếp/bị thu hồi trên runner hiện có; dùng mapping chung cho tools/options/UI, thay các giới hạn hardcode theo đợt capability đã kiểm. — 16/10: TEST `jwt-management` 6/6 + CDE 11/11 (ca thiếu quyền/thu hồi); registry dùng chung cho tools/options/UI.
+- [x] P3.06 External MCP đọc/action dùng identity connection token đã xác minh và provenance đúng nguồn; không đòi private Zalo claim cho mọi call. Reuse ACL/resource/RPC kiểm backend của route nội bộ, không bỏ guard để mở tool ngoài. — 16/10: Hermes gọi CRM qua MCP bằng token kết nối trên production, không cần claim DM riêng.
 
 **Snapshot lịch sử:** Tiến độ 12/10/2026: đã viết projection phòng trống tái dùng sale facts của CRM, lọc bằng ID tòa, loại field nội bộ, giữ VND/null và báo giới hạn nguồn. 10/10 focused tests đạt; ba mutation bỏ scope/lộ field/bỏ deny scope rỗng đều bị bắt, source không đổi. Đây chỉ là hàm lọc dữ liệu; chưa có mapping scope, reader JWT hoặc business tool nối broker. Các ô P3 vẫn mở.
 
@@ -514,12 +514,12 @@ Phụ thuộc: P1-P2. Chủ trì: Backend/domain + adapter.
 
 Phụ thuộc: P2-P3. Chủ trì: Worker + adapter.
 
-- [ ] P4.01 Giữ duy nhất worker sở hữu nick phụ; định tuyến UID nick chính về Hermes riêng của từng user qua adapter kênh, không mặc định mọi DM là tác vụ CRM.
-- [ ] P4.02 Liên kết UID chủ bằng xác minh trong CRM/DM; tách binding theo bot account và org.
-- [ ] P4.03 Router lệnh riêng, chống replay/self-message; xử lý ưu tiên với auto-reply hiện có.
-- [ ] P4.04 Trả lời riêng nhiều lượt, tiếp nối intent/bản nháp đúng assistant và conversation; hỏi ngay Zalo khi thiếu dữ kiện, lỗi model/connection và nguồn theo request ID.
-- [ ] P4.05 Thử mất mạng, kick, relogin và sự kiện trùng trên tài khoản/nhóm thử được chỉ định.
-- [ ] P4.06 Khi gọi CRM: user thường có org cố định, superadmin chọn active-org; kiểm outbound có dữ liệu CRM khi quyền đổi. DM cá nhân tiếp tục khi CRM tắt, không hỏi công ty nếu chưa cần CRM.
+- [x] P4.01 Giữ duy nhất worker sở hữu nick phụ; định tuyến UID nick chính về Hermes riêng của từng user qua adapter kênh, không mặc định mọi DM là tác vụ CRM. — 16/10: worker `ihome-zalo-worker` duy nhất sở hữu nick Ihome; DM nick chính → Hermes riêng `hermes-owner`.
+- [x] P4.02 Liên kết UID chủ bằng xác minh trong CRM/DM; tách binding theo bot account và org. — 16/10: liên kết UID nick chính bằng mã + xác nhận trên CRM production (UID theo góc nhìn bot).
+- [x] P4.03 Router lệnh riêng, chống replay/self-message; xử lý ưu tiên với auto-reply hiện có. — 16/10: router lệnh riêng chạy production, DM bot không vào inbox chung; chống trùng/self echo có test worker.
+- [x] P4.04 Trả lời riêng nhiều lượt, tiếp nối intent/bản nháp đúng assistant và conversation; hỏi ngay Zalo khi thiếu dữ kiện, lỗi model/connection và nguồn theo request ID. — 16/10: hội thoại nhiều lượt qua Zalo; 04:27 Hermes hỏi lại toà khi thiếu dữ kiện.
+- [x] P4.05 Thử mất mạng, kick, relogin và sự kiện trùng trên tài khoản/nhóm thử được chỉ định. — 16/10: Ihome bị Zalo đá 15/10 16:09, quét QR lại 19:30, ingress `registered`; sự kiện trùng có test.
+- [x] P4.06 Khi gọi CRM: user thường có org cố định, superadmin chọn active-org; kiểm outbound có dữ liệu CRM khi quyền đổi. DM cá nhân tiếp tục khi CRM tắt, không hỏi công ty nếu chưa cần CRM. — 16/10: 01:16 CRM vắng vẫn trò chuyện; công ty cố định theo kết nối; superadmin chọn công ty kiểm ở JWT TEST 17/17.
 
 **Snapshot lịch sử:** Cập nhật 13/10: candidate danh tính có challenge CRM → DM sống → CRM xác nhận đúng UID; đã nối bước quan sát DM vào worker duy nhất. Mã được che trước lưu/log/preview; bỏ push/auto-reply cho handshake. Chỉ tin mới được quan sát, giữ generation theo phiên, khóa capacity tới khi RPC thực sự kết thúc, dừng khi thay phiên/mất lease, không retry ghi chưa rõ kết quả. 22 file worker đạt; routing 95/95; ba mutation worker bị bắt và khôi phục đúng hash.
 
@@ -558,12 +558,12 @@ Phụ thuộc: P2-P3. Chủ trì: Worker + adapter.
 
 Phụ thuộc: P3-P4. Chủ trì: Domain + UI + worker.
 
-- [ ] P5.01 Nối directory/draft/send dùng chung dữ liệu và context; đọc/soạn dùng Read, gửi dùng Action; nội dung/nhóm nhận kiểm quyền backend trên từng resource.
-- [ ] P5.02 Hermes thực hiện trực tiếp khi đủ quyền user và quyền thao tác Hermes; đề xuất/xác nhận Zalo khi được yêu cầu, không bắt CRM/PIN.
-- [ ] P5.03 Enqueue từ intent user rõ, actor/org/connection và provenance bất biến; không tạo approve/PIN giả. “Gửi bản này” nối đúng nháp, thay đích mơ hồ phải hỏi ngay Zalo.
-- [ ] P5.04 Worker kiểm lại quyền/gate trước provider call; lưu kết quả theo từng nhóm.
-- [ ] P5.05 Kiểm idempotency, xử lý crash trước/sau gửi và UNKNOWN_EFFECT/reconcile.
-- [ ] P5.06 Canary gửi một lần ngay sau gate trên cohort/nhóm đã chỉ định; không chờ chuyển hết mọi miền.
+- [x] P5.01 Nối directory/draft/send dùng chung dữ liệu và context; đọc/soạn dùng Read, gửi dùng Action; nội dung/nhóm nhận kiểm quyền backend trên từng resource. — 16/10: đọc nhóm (`chat_zalo.view`) và gửi nhóm (`chat_zalo.send`) tách Đọc/Thao tác, kiểm quyền backend.
+- [x] P5.02 Hermes thực hiện trực tiếp khi đủ quyền user và quyền thao tác Hermes; đề xuất/xác nhận Zalo khi được yêu cầu, không bắt CRM/PIN. — 16/10: 15/10 22:36 lệnh rõ → gửi ngay; "chỉ soạn" → nháp, không gửi.
+- [x] P5.03 Enqueue từ intent user rõ, actor/org/connection và provenance bất biến; không tạo approve/PIN giả. “Gửi bản này” nối đúng nháp, thay đích mơ hồ phải hỏi ngay Zalo. — 16/10: 15/10 mẫu CRM khác nháp tự do → Hermes hỏi lại, không tự gửi; `hermes_group_dispatch` ghi actor/kết nối.
+- [x] P5.04 Worker kiểm lại quyền/gate trước provider call; lưu kết quả theo từng nhóm. — 16/10: 15/10 22:36 `zalo_send_queue` `hermes_group_dispatch` = `sent`, Hermes báo trạng thái từ CRM.
+- [x] P5.05 Kiểm idempotency, xử lý crash trước/sau gửi và UNKNOWN_EFFECT/reconcile. — 16/10: đối soát UNKNOWN_EFFECT `3540df8c…` = `sent` trên production, không gửi lại.
+- [x] P5.06 Canary gửi một lần ngay sau gate trên cohort/nhóm đã chỉ định; không chờ chuyển hết mọi miền. — 16/10: canary nhóm Web nội bộ 15/10 22:36, đúng 1 tin.
 
 **Đầu ra:** Nhắn lệnh Zalo → soạn/gửi nhóm theo quyền → nhận kết quả từng nhóm trên Zalo.
 
@@ -582,6 +582,8 @@ Phụ thuộc: P5. Chủ trì: Worker + domain/auth.
 - [ ] P6.05 Thử restart, catch-up, chạy đồng thời, queue quá tải và gửi lỗi một phần.
 - [ ] P6.06 Lập mapping và cutover lịch cũ/mới; canary lịch theo capability, không chạy hai owner cùng nghiệp vụ.
 
+**Ghi chú 16/10:** P6 mới có TEST CDE 11/11 (run `e7ae0eef…`); chờ kết quả thử lịch production. P6.06 chưa có bằng chứng production rằng lịch cũ (Tự động hoá) không chồng owner.
+
 **Đầu ra:** Tự động gửi phòng/chính sách trong phạm vi được ủy quyền và có thể dừng/thu hồi.
 
 **Đạt khi:** Một scheduler; không chạy đôi; dữ liệu mới; không mở rộng nhóm bằng grant cũ.
@@ -592,13 +594,13 @@ Phụ thuộc: P5. Chủ trì: Worker + domain/auth.
 
 Phụ thuộc: P2-P3; tích hợp P5. Chủ trì: Frontend + backend + adapter.
 
-- [ ] P7.01 Tích hợp work memory CRM user–công ty với lựa chọn chia sẻ rõ, xem/sửa/quên/retention; giữ memory/history native đầy đủ theo user, không giới hạn ba cặp lượt hay áp CRM ACL lên personal filesystem.
-- [ ] P7.02 Tạo UI Trợ lý của tôi, một cấu hình quyền, hội thoại nhiều lượt, bản nháp khi yêu cầu và công việc/kết quả; không màn approve/PIN bắt buộc cho luồng thông thường.
-- [ ] P7.03 Nối kênh chat CRM nếu giữ vào Hermes độc lập qua adapter; tái dùng component phù hợp. Không xây kernel hội thoại riêng cạnh tranh Hermes hoặc ép đổi model cá nhân.
+- [x] P7.01 Tích hợp work memory CRM user–công ty với lựa chọn chia sẻ rõ, xem/sửa/quên/retention; giữ memory/history native đầy đủ theo user, không giới hạn ba cặp lượt hay áp CRM ACL lên personal filesystem. — 16/10: work memory CRM opt-in + xem/sửa/quên ở Trợ lý của tôi; memory native Hermes giữ riêng trong profile.
+- [x] P7.02 Tạo UI Trợ lý của tôi, một cấu hình quyền, hội thoại nhiều lượt, bản nháp khi yêu cầu và công việc/kết quả; không màn approve/PIN bắt buộc cho luồng thông thường. — 16/10: `/settings/hermes` có một cấu hình quyền + mục Trợ lý của tôi (ghi nhớ, việc theo dõi, nhắc hạn), không màn approve/PIN.
+- [x] P7.03 Nối kênh chat CRM nếu giữ vào Hermes độc lập qua adapter; tái dùng component phù hợp. Không xây kernel hội thoại riêng cạnh tranh Hermes hoặc ép đổi model cá nhân. — 16/10: không giữ kênh chat CRM: UI Copilot gỡ ở #171, Zalo là kênh.
 - [ ] P7.04 Giữ lịch sử cũ để xem; chỉ chuyển dữ liệu được chọn sang memory mới, có nguồn và audit.
 - [ ] P7.05 Thử revoke khi context CRM mở; quản lý cache/history CRM trong quyền hệ thống, không xóa audit; nêu rõ không thể thu hồi bản thông tin đã tới Hermes ngoài CRM.
-- [ ] P7.06 Hermes tổng tra cứu memory công việc và giao/hủy nhiệm vụ qua ACL CRM thực tế, có actor/executor/provenance; không tự đọc private history, nhập raw memory hoặc giả danh người nhận.
-- [ ] P7.07 Chủ động theo dõi/nhắc/báo cáo mục tiêu đã giao trong standing grant; kiểm lại quyền khi truy hồi và dispatch, chặn vòng lặp giao việc và tiếp tục đúng assistant sau reconnect.
+- [x] P7.06 Hermes tổng tra cứu memory công việc và giao/hủy nhiệm vụ qua ACL CRM thực tế, có actor/executor/provenance; không tự đọc private history, nhập raw memory hoặc giả danh người nhận. — 16/10: TEST CDE 11/11 với `assistant.memory.supervise` (có ca âm thiếu supervise).
+- [x] P7.07 Chủ động theo dõi/nhắc/báo cáo mục tiêu đã giao trong standing grant; kiểm lại quyền khi truy hồi và dispatch, chặn vòng lặp giao việc và tiếp tục đúng assistant sau reconnect. — 16/10: 04:24–04:25 production theo dõi + nhắc trước 1 giờ, huỷ việc đóng follow `CANCELLED job_cancelled`.
 
 **Đầu ra:** Hermes cá nhân đầy đủ qua kênh được chọn; connector/work memory CRM có scope rõ và Hermes tổng chỉ đọc phần công việc có quyền.
 
@@ -617,6 +619,8 @@ Phụ thuộc: P3-P7; từng miền theo P0. Chủ trì: Domain owners + QA.
 - [ ] P8.05 Cập nhật manifest trạng thái, hướng dẫn dùng, projection và tests cho từng năng lực.
 - [ ] P8.06 Nghiệm thu và canary từng miền sau gate; dùng phản hồi thật để điều chỉnh trước khi mở miền tiếp.
 
+**Ghi chú 16/10:** chủ hoãn P8 ngày 16/10; đã chuyển: phòng, pass phòng, nhóm, việc, khách/lead, phiếu chi, 13 miền đọc.
+
 **Đầu ra:** Báo cáo coverage toàn bộ năng lực hiện có; mỗi dòng có kết quả và quyết định.
 
 **Đạt khi:** Không mất ngầm năng lực; không mở lại action đã gỡ/tắt; các miền nhạy cảm qua kiểm riêng.
@@ -627,9 +631,9 @@ Phụ thuộc: P3-P7; từng miền theo P0. Chủ trì: Domain owners + QA.
 
 Phụ thuộc: Nền tối thiểu bắt buộc từ P1-P3; hoàn thiện cùng P4-P8 trước mở rộng nhiều user. Chủ trì: Platform + QA.
 
-- [ ] P9.01 Hoàn thiện quota tool/action/job CRM và timeout. Personal model do user quản lý; chỉ làm shared model quota/admission nếu relay CRM được dùng, không chặn core vì relay tùy chọn.
-- [ ] P9.02 Tái dùng tracing/health/queue/errors/usage và audit hiện có; chỉ bổ sung tín hiệu vận hành còn thiếu, gộp thông báo, không xây thống kê nặng trước core.
-- [ ] P9.03 Ghim connector/broker/worker/dependency do dự án phát hành, secret/TLS/TEST; công bố protocol tương thích để user tự cập nhật Hermes. Managed runtime pin chỉ khi dùng adapter đó.
+- [x] P9.01 Hoàn thiện quota tool/action/job CRM và timeout. Personal model do user quản lý; chỉ làm shared model quota/admission nếu relay CRM được dùng, không chặn core vì relay tùy chọn. — 16/10: quota `tools/call`, deadline 20 s, thao tác `status` (#170).
+- [x] P9.02 Tái dùng tracing/health/queue/errors/usage và audit hiện có; chỉ bổ sung tín hiệu vận hành còn thiếu, gộp thông báo, không xây thống kê nặng trước core. — 16/10: #177 gộp thông báo sự cố lịch theo chủ + thử lại nhắc việc; tín hiệu dùng log/queue/audit sẵn có.
+- [x] P9.03 Ghim connector/broker/worker/dependency do dự án phát hành, secret/TLS/TEST; công bố protocol tương thích để user tự cập nhật Hermes. Managed runtime pin chỉ khi dùng adapter đó. — 16/10: connector phát hành theo SHA (`releases/<sha8>`), Hermes ghim digest `ffa4fbb4…`, protocol ở [CONNECTOR.md](../../../infra/hermes-broker/CONNECTOR.md).
 - [ ] P9.04 Diễn tập lỗi provider, hết quota, token hết hạn, broker down, worker crash và disk/network issue.
 - [ ] P9.05 Backup/restore connector/config/work memory CRM, rotate/revoke, log không secret; native tools không có JWT/service credential CRM để vượt ACL. Backup personal Hermes theo cơ chế user chọn, không tự thu thập toàn workspace.
 
@@ -643,12 +647,12 @@ Phụ thuộc: Nền tối thiểu bắt buộc từ P1-P3; hoàn thiện cùng 
 
 Phụ thuộc: P7-P9; các miền đủ nghiệm thu. Chủ trì: Lead + QA + chủ dự án.
 
-- [ ] P10.01 Canary một user/org/nhóm được chọn, sau đó thêm user và miền theo cờ riêng.
+- [x] P10.01 Canary một user/org/nhóm được chọn, sau đó thêm user và miền theo cờ riêng. — 16/10: canary 1 user (chủ) / org iHome / nhóm Web nội bộ.
 - [ ] P10.02 Đo dữ liệu đúng, completion, thời gian, chi phí, lỗi/unknown outcome và hành vi thu hồi.
 - [ ] P10.03 Kiểm user thường đồng thời trong cùng/khác công ty, mỗi user chỉ một công ty; kiểm riêng superadmin chuyển công ty và grant tách theo công ty.
 - [ ] P10.04 Chốt trần ngân sách/latency theo số đo và nhu cầu; không dùng ước tính trước đo làm SLA.
 - [ ] P10.05 Nghiệm thu Hermes độc lập → connector → API/worker: user hoàn tất nhiều lượt/soạn/gửi/lịch CRM, một overlay quyền; Copilot tắt vẫn dùng CRM được và CRM tắt vẫn personal chat được. Kiểm tương thích một nâng cấp Hermes qua contract; production theo rollout/evidence.
-- [ ] P10.06 Thử startup không CRM, MCP lỗi, token expiry/rotate/revoke và phục hồi: personal Hermes vẫn READY, connector chỉ mở lại đúng identity/quyền mới. Kiểm external action không cần giả private DM claim.
+- [x] P10.06 Thử startup không CRM, MCP lỗi, token expiry/rotate/revoke và phục hồi: personal Hermes vẫn READY, connector chỉ mở lại đúng identity/quyền mới. Kiểm external action không cần giả private DM claim. — 16/10: 01:16 CRM vắng Hermes vẫn READY; xoay/thu hồi token kết nối 3 lần trên production.
 
 **Đầu ra:** Báo cáo canary + quyết định mở rộng từng cohort/capability.
 
@@ -660,11 +664,11 @@ Phụ thuộc: P7-P9; các miền đủ nghiệm thu. Chủ trì: Lead + QA + ch
 
 Gỡ engine và dependency chết có thể làm sớm song song core sau khi xác minh callers; không phụ thuộc chạy song song Copilot. Bàn giao toàn chương trình vẫn phụ thuộc P8-P10 và quyết định coverage rõ ràng. Chủ trì: Lead + platform + QA.
 
-- [ ] P11.01 Chốt mỗi năng lực trong inventory là đã chuyển, giữ UI, hoãn được chấp thuận hoặc bỏ có chủ đích.
-- [ ] P11.02 Gỡ entrypoint và lịch riêng của engine Copilot đã ngừng sử dụng; chat CRM chỉ giữ khi có ích và nối Hermes độc lập qua adapter. Không viết hoặc duy trì custom kernel/room-only prompt thay full Hermes, không yêu cầu song song hai engine.
-- [ ] P11.03 Giữ registry/RPC/ACL/quota/audit/lịch sử/component dùng chung và approval nghiệp vụ thật; bỏ coupling engine/UI approval cũ trên đường Hermes, không xóa theo tên thư mục Copilot.
-- [ ] P11.04 Gỡ dependency/cấu hình chết sau khi xác minh callers và build; cập nhật docs/runbooks/manifest.
-- [ ] P11.05 Bàn giao hướng dẫn user/admin, vận hành, backup/rollback, phiên bản và phần còn hoãn.
+- [ ] P11.01 Chốt mỗi năng lực trong inventory là đã chuyển, giữ UI, hoãn được chấp thuận hoặc bỏ có chủ đích. — 16/10: giữ mở: CAPABILITY-MAP có disposition từng tool/action/UI, nhưng [P11-COPILOT-RETIREMENT](P11-COPILOT-RETIREMENT.md) §5B còn chờ P11.01 chọn cho 131 RPC `copilot_*`.
+- [x] P11.02 Gỡ entrypoint và lịch riêng của engine Copilot đã ngừng sử dụng; chat CRM chỉ giữ khi có ích và nối Hermes độc lập qua adapter. Không viết hoặc duy trì custom kernel/room-only prompt thay full Hermes, không yêu cầu song song hai engine. — 16/10: #171 gỡ entrypoint/UI/engine Copilot; không có lịch riêng để gỡ ([P11-COPILOT-RETIREMENT](P11-COPILOT-RETIREMENT.md) §4).
+- [x] P11.03 Giữ registry/RPC/ACL/quota/audit/lịch sử/component dùng chung và approval nghiệp vụ thật; bỏ coupling engine/UI approval cũ trên đường Hermes, không xóa theo tên thư mục Copilot. — 16/10: #171 giữ registry/RPC/ACL/quota/audit/lịch sử dùng chung, bỏ coupling engine/UI approval.
+- [x] P11.04 Gỡ dependency/cấu hình chết sau khi xác minh callers và build; cập nhật docs/runbooks/manifest. — 16/10: #171 gỡ 24 file nguồn + 30 test sau khi dựng đồ thị caller; ghi ở P11-COPILOT-RETIREMENT.
+- [x] P11.05 Bàn giao hướng dẫn user/admin, vận hành, backup/rollback, phiên bản và phần còn hoãn. — 16/10: [BAN-GIAO.md](BAN-GIAO.md).
 
 **Đầu ra:** Một engine đích cho các luồng đã chốt + báo cáo nghiệm thu toàn chương trình.
 

@@ -1,5 +1,44 @@
 # Trạng thái triển khai Hermes × iHomeCRM
 
+## Nghiệm thu cuối 16/10
+
+Giờ Việt Nam (UTC+7). Hướng dẫn chủ/quản trị/vận hành: [BAN-GIAO.md](BAN-GIAO.md). Checkbox nghiệm thu: [PLAN.md](PLAN.md) mục 14.
+
+**Production 16/10:**
+
+| Thành phần | Trạng thái |
+| --- | --- |
+| App | `455920b1`, promote READY; #179/#180 chỉ đổi connector |
+| Connector VPS | `8b3304c8`, lùi `455920b1` |
+| Hermes | v0.21.6, image `sha256:ffa4fbb4…`, sidecar `hermes-owner` (RAM 900m); MCP qua `http://172.17.0.1:8740/mcp`, 52 tool |
+| Kết nối | `…624ef30e` (17 đọc + 11 thao tác, toàn tổ chức); liên kết Zalo nick chính → bot Ihome; đã thu hồi `…5e028d4f`, `…21e16a97`, `…369ce079` |
+| Migration production mới | `20261015172059` (registry 28/28); `20261015185559` (nhắc việc thử lại có trần theo loại + gộp thông báo sự cố lịch theo chủ); `20261015191139` (options v7 thêm `customers.create`/`leads.create`) |
+| PR đã merge | #174, #176, #177, #178, #179, #180 |
+
+**Thử thật qua Zalo (nick chính → Ihome):**
+
+| Giờ VN 16/10 | Việc | Kết quả |
+| --- | --- | --- |
+| 01:16 | Connector tắt, Hermes khởi động lại | READY; MCP parked; trả "17×23=391" và báo chưa đọc được CRM, không bịa (P1.08/P10.06) |
+| 01:32 | Cập nhật tin "Khách nhờ sale" 417LVT·103 | ĐẠT 54 s: cùng listing `1941b942…`, không trùng; giá/ngày/liên hệ giữ, chính sách cập nhật |
+| 03:44 | Giao việc qua Zalo | ĐẠT: `JOB-20261015-0001` đúng toà/người nhận/hạn |
+| 04:24 | Đặt theo dõi + nhắc trước 1 giờ, liệt kê việc đã giao | ĐẠT 64 s |
+| 04:25 | Huỷ việc thử | ĐẠT 40 s: job xoá, follow `CANCELLED job_cancelled` |
+| 04:27 | Lập lịch bản tin nhóm Web nội bộ | Hermes hỏi lại toà (đúng), rồi `invalid_request` do expiresAt không có mili giây; Hermes tự kiểm "chưa có lịch, chưa gửi tin" — đang sửa (PR định dạng thời gian) |
+
+Lỗi tìm ra khi thử và đã sửa: tham số null/UUID toàn 0 (#176); `kind=buildings` + mô tả tool (#179); trường vô nghĩa theo chế độ (#180); thiếu quyền Khách hàng ở options (#178). Hai nợ hoãn ngày 15/10 (thử lại nhắc việc; gộp thông báo sự cố lịch) **ĐÃ TRẢ** qua #177.
+
+**Còn mở / chờ chủ:**
+
+| Việc | Mục PLAN |
+| --- | --- |
+| Các miền ghi còn lại (hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản) + cách cho Hermes "làm như một user" — chủ hoãn 16/10 | P8 |
+| User thứ hai / canary nhiều người | P10.03 |
+| Trần ngân sách / độ trễ | P10.04 |
+| Chọn model / chặn SSE / guardrail theo [khảo sát tốc độ](TOI-UU-TOC-DO-DOT1.md) | — |
+| Diễn tập lỗi còn thiếu: hết quota, đĩa đầy, backup/restore connector thật | P9.04/P9.05 |
+| Xác nhận lịch sử Copilot cũ còn xem được; thử revoke khi context CRM mở | P7.04/P7.05 |
+
 ## Bàn giao phiên Claude — 15/10/2026 (chiều, Asia/Bangkok)
 
 **Đọc phần này trước.** Phiên Codex sáng 15/10 (mục cuối phần bàn giao) là snapshot trước đó. Toàn P0–P11 vẫn chưa hoàn tất; dưới đây là những gì đã ĐO/LÀM THẬT.
@@ -37,9 +76,9 @@
 **Nhánh tích hợp `worktree-hermes-toan-plan` (đã merge qua PR #169):** gói C (lịch: sổ sự cố + báo chủ lịch + phát hiện đổi quyền + chế độ "đổi chính sách" mặc định tắt + đối soát UNKNOWN_EFFECT có người xác nhận + prune), gói D (theo dõi/huỷ việc, nhắc hạn pg_cron, Hermes tổng `assistant.memory.supervise`, UI Trợ lý công việc), gói E (5 miền đọc: thu chi, công nợ, chỉ số, cọc giữ, lãi lỗ; ghi phiếu chi qua `create_income_expense_v1`, đòi thêm Action `income_expenses.approve` khi người lập có quyền duyệt; [CAPABILITY-MAP.md](CAPABILITY-MAP.md) cho P0.06), tích hợp (nối customer/expense vào broker, client `*_v6`, mở kênh native sau đối soát, `pg` sang dependencies, realpath `host-cli`). 10 migration đợt này đã apply **TEST** qua lane: 8 file `20261015{100000…120200}`, `20261015130000_hermes_review_fixes_v1` (sửa 4 P2 + 3 P3 của review độc lập) và `20261015074824_hermes_group_canary_enable_v1` (bật registry `chat_zalo.view`/`chat_zalo.send`). Review độc lập lần 1: không P1, 4 P2 → đã sửa; re-review phần sửa: logic đạt, P2 doc-counts đã `--fix`. Sửa P1 production biên nhận Zalo native: `worker/lib/hermes-native-receipt.js` (msgId số hoặc chuỗi số, cho khoá thừa, khoá toàn chữ số bị che trong fault).
 - Bằng chứng TEST live (JWT/RLS thật, fixture tự dọn): `test-hermes-private-flow --mode jwt-management` run `3aa6612a-a986-455b-b4d7-dae94e4669eb` 6/6; `--mode cde` run `e7ae0eef-65ad-4b3e-b964-a11d0b21d422` 11/11, `cleanupVerified=true`. Runner đã sửa: verifier đọc SECURITY/`search_path` từ câu CREATE cuối của từng hàm (bỏ danh sách ghim cứng, 8 ca đột biến); CDE cấp `assistant.memory.supervise` trong transaction ROLLBACK + ca âm khi thiếu supervise.
 - Canary: registry `chat_zalo.*` bật ngay khi apply production (CI main đòi apply trước merge), áp cho mọi công ty, nhưng mỗi kết nối vẫn phải tự chọn Đọc nhóm + Gửi nhóm và qua quyền CRM user. Nhóm canary chủ chọn: **"Web nội bộ"** (bot Ihome là thành viên; hội thoại phía bot `c27c36e1…`).
-- Nợ đã hoãn (có lý do): thông báo sự cố lịch chưa gộp theo người nhận (`notify_gate_v1` không có họ phù hợp — cần thiết kế riêng); lượt nhắc việc gặp lỗi gửi thì thông báo đó mất thay vì thử lại lượt sau (cần migration mới trả dấu `*_notified_at` về NULL).
+- Nợ đã hoãn (có lý do) — **ĐÃ TRẢ 16/10 qua #177** (migration `20261015185559`): thông báo sự cố lịch chưa gộp theo người nhận (`notify_gate_v1` không có họ phù hợp — cần thiết kế riêng); lượt nhắc việc gặp lỗi gửi thì thông báo đó mất thay vì thử lại lượt sau (cần migration mới trả dấu `*_notified_at` về NULL).
 
-**Thứ tự tiếp (cập nhật 22:40):** theo dõi sự cố stream treo trong phiên dài (đo lại vài ngày dùng thật) → bật dần các capability đọc/thao tác đã có (thu chi, công nợ, theo dõi việc, phiếu chi…) trên kết nối của chủ, mỗi lần thử thật qua Zalo → lịch bản tin phòng định kỳ cho nhóm (gói C, cần chủ chọn nhóm/khung giờ) → nợ hoãn (gộp thông báo sự cố lịch; thử lại nhắc việc khi lỗi gửi) → P10 thêm user thứ hai/canary nghiệp vụ → hợp đồng/cọc/lương theo CAPABILITY-MAP → P11.01 chốt lớp tools/plan Copilot còn giữ.
+**Thứ tự tiếp (cập nhật 22:40):** theo dõi sự cố stream treo trong phiên dài (đo lại vài ngày dùng thật) → bật dần các capability đọc/thao tác đã có (thu chi, công nợ, theo dõi việc, phiếu chi…) trên kết nối của chủ, mỗi lần thử thật qua Zalo → lịch bản tin phòng định kỳ cho nhóm (gói C, cần chủ chọn nhóm/khung giờ) → nợ hoãn (gộp thông báo sự cố lịch; thử lại nhắc việc khi lỗi gửi — **ĐÃ TRẢ 16/10, #177**) → P10 thêm user thứ hai/canary nghiệp vụ → hợp đồng/cọc/lương theo CAPABILITY-MAP → P11.01 chốt lớp tools/plan Copilot còn giữ.
 
 ## Bàn giao session Codex — 15/10/2026 (sáng)
 
@@ -792,20 +831,22 @@ Nét đứt: phần HTTP/UI hoặc luồng chat còn phải nối và nghiệm t
 
 ## Bảng tiến độ
 
+Cập nhật 16/10/2026; bằng chứng từng ô ở [PLAN.md](PLAN.md) mục 14.
+
 | Gói | Trạng thái | Còn thiếu để đóng |
 | --- | --- | --- |
-| P0 | Nội dung + focused + local gate đạt | CI/review snapshot cuối và tích hợp PR; không suy inventory thành runtime parity |
-| P1 | Đang hiện thực | JWT/broker, MCP, AIAgent, mạng A/B và single-host profile owner với dữ liệu giả đã đạt; còn egress đầy đủ, provenance, refresh, model quota và context invalidation đầy đủ |
-| P2 | Có store/HTTP/UI, gia hạn và supervisor candidate | TEST durable cuối 28/28 ở snapshot riêng, cleanup/hash xác minh; còn refresh/concurrency/production adapter/toàn tuyến. |
-| P3 | Có reader, projection và broker tool | TEST durable 28/28 đã gồm bản sửa conflict ở snapshot riêng. Chưa MCP HTTP/CRM/Hermes toàn tuyến hoặc parity mọi miền đọc. |
-| P4 | Có linking/UI, private intake, ledger và dispatcher/supervisor offline | Chưa apply/schema live; còn runtime adapter, outbound DM, scheduler dọn TTL, lỗi người dùng và Zalo thật. |
-| P5 | Chưa bắt đầu | Không tự duyệt; nội dung/đích đổi phải duyệt lại; không báo đã gửi khi chỉ enqueue; không retry mù. |
-| P6 | Chưa bắt đầu | Một scheduler; không chạy đôi; dữ liệu mới; không mở rộng nhóm bằng grant cũ. |
-| P7 | Chưa bắt đầu | Không lẫn user/org/private-group; thông tin hiện hành lấy CRM; UX xem rõ quyền và trạng thái. |
-| P8 | Chưa bắt đầu | Không mất ngầm năng lực; không mở lại action đã gỡ/tắt; các miền nhạy cảm qua kiểm riêng. |
-| P9 | Chưa bắt đầu | Giải thích được mọi tác vụ và chi phí; fail closed khi auth lỗi; tắt Hermes không phá queue/lịch độc lập. |
-| P10 | Chưa bắt đầu | Các invariant bắt buộc đạt; không có lỗi quyền/side effect chưa xử lý; người dùng hoàn thành luồng không cần kỹ thuật. |
-| P11 | Chưa bắt đầu | Không còn luồng mồ côi, job trùng, quota tách đôi hay hai nơi sửa nghiệp vụ; rollback đã diễn tập. |
+| P0 | Đạt P0.01–P0.06 | — |
+| P1 | Đạt P1.01–P1.08 (production + TEST JWT) | — |
+| P2 | Đạt P2.01–P2.06 (đổi kết nối 3 lần trên production) | — |
+| P3 | Đạt P3.01–P3.06 (52 tool qua MCP) | — |
+| P4 | Đạt P4.01–P4.06 (DM nick chính ↔ bot Ihome) | — |
+| P5 | Đạt P5.01–P5.06 (canary nhóm Web nội bộ 15/10) | — |
+| P6 | Đang thử: TEST CDE 11/11; lịch production 16/10 lỗi `invalid_request` | P6.01–P6.06: chờ PR định dạng thời gian và kết quả thử lịch |
+| P7 | Đạt P7.01–P7.03, P7.06, P7.07 | P7.04 lịch sử Copilot cũ còn xem được; P7.05 revoke khi context CRM mở |
+| P8 | Chủ hoãn 16/10 | P8.01–P8.06: miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản |
+| P9 | Đạt P9.01–P9.03 | P9.04 diễn tập lỗi (hết quota, đĩa đầy…); P9.05 backup/restore connector thật |
+| P10 | Đạt P10.01, P10.06 | P10.02 số đo; P10.03 user thứ hai; P10.04 trần ngân sách/độ trễ; P10.05 nghiệm thu toàn tuyến |
+| P11 | Đạt P11.02–P11.05 | P11.01: chọn disposition cho 131 RPC `copilot_*` (P11-COPILOT-RETIREMENT §5B) |
 
 ## WIP phải giữ
 
