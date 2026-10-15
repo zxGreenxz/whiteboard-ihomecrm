@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-15T11:59:07.960Z",
+  "generatedAt": "2026-10-15T16:59:05.028Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 715,
-    "unknown": 80,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11726,6 +11726,32 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-15T08:47:39.000Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015162454_hermes_room_pass_upsert_v1.sql",
+      "version": "20261015162454",
+      "name": "hermes_room_pass_upsert_v1",
+      "scheme": "timestamp14",
+      "sha256": "4af6cbae4668513acfa2583cad6ea625319d579d0cb514b21a3548d5e7b71d30",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_room_pass_fold_v1",
+        "function:app_private.hermes_room_pass_building_ok_v1",
+        "function:public.hermes_room_pass_upsert_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015163023_hermes_room_pass_registry_enable_v1.sql",
+      "version": "20261015163023",
+      "name": "hermes_room_pass_registry_enable_v1",
+      "scheme": "timestamp14",
+      "sha256": "1e90aa30d87e55d34ba49acdd627c428c11984360e1dea8e1f48c31d22f41719",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

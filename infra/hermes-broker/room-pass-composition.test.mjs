@@ -28,6 +28,10 @@ test('external MCP → bound JWT → audited final caller SQL: room-pass action 
    assert.equal(new URL(url).origin,'https://example.invalid');assert.equal(options.headers.authorization,'Bearer '+accessToken);
    assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.method,'POST');assert.equal(options.redirect,'error');
    const path=new URL(url).pathname,args=JSON.parse(options.body);
+   // This fixture holds only the applied v1 SQL: the upsert RPC is absent
+   // (PGRST202), so status must fall back to the v1 receipt reader.
+   if(path==='/rest/v1/rpc/hermes_room_pass_upsert_v1'){assert.equal(args.p_operation,'status');events.push('absent:status');
+     return Response.json({code:'PGRST202',message:'Could not find the function',details:null,hint:null},{status:404});}
    const capability=path==='/rest/v1/rpc/hermes_room_pass_capabilities_v1';
    assert.ok(capability||path==='/rest/v1/rpc/hermes_room_pass_action_v1');
    if(capability)assert.deepEqual(args,{p_organization_id:ORG});
@@ -57,7 +61,7 @@ test('external MCP → bound JWT → audited final caller SQL: room-pass action 
    const response=await fetch(`http://127.0.0.1:${server.address().port}/mcp`,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:++requestId,method:'tools/call',params:{name,arguments:args}})});
    assert.equal(response.status,200);const message=await response.json();return{...message.result,value:JSON.parse(message.result.content[0].text)};
  };
- const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_new_request_id','crm_room_pass_observe','crm_room_pass_set_active','crm_room_pass_status']);
+ const listed=await broker.listTools(token);assert.deepEqual(listed.tools.map(tool=>tool.name).sort(),['crm_new_request_id','crm_room_lookup','crm_room_pass_observe','crm_room_pass_set_active','crm_room_pass_status','crm_room_pass_upsert']);
  const observed=await call('crm_room_pass_observe',{listingId:LISTING});assert.equal(observed.isError,false);assert.equal(observed.value.listing.active,false);
  const input={requestId:REQUEST,listingId:LISTING,active:true,expectedRevision:observed.value.listing.revision};
  events.length=0;loseAck=true;

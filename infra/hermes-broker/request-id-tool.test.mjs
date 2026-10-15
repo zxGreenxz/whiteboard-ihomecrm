@@ -74,7 +74,7 @@ function fixture(t, { read = [], action = ['customers.create'], limits, onAudit 
 
 test('every requestId action points to crm_new_request_id; status tools reuse the original id; validation stays UUID', () => {
   assert.deepEqual(ALL_TOOLS.filter(startsCrmRequest).map(tool => tool.name).sort(), ['crm_customer_create', 'crm_expense_create',
-    'crm_group_room_send', 'crm_lead_create', 'crm_room_pass_set_active', 'crm_room_schedule_create', 'crm_room_schedule_reconcile',
+    'crm_group_room_send', 'crm_lead_create', 'crm_room_pass_set_active', 'crm_room_pass_upsert', 'crm_room_schedule_create', 'crm_room_schedule_reconcile',
     'crm_room_schedule_revoke', 'crm_room_schedule_update', 'crm_task_cancel', 'crm_task_create', 'crm_task_follow_set',
     'crm_task_follow_stop', 'crm_task_progress']);
   const takesRequestId = ALL_TOOLS.filter(tool => Object.hasOwn(tool.inputSchema.properties ?? {}, 'requestId'));
