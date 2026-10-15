@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { runHermesCli } from './host-cli.mjs';
+import { isMainModule, runHermesCli } from './host-cli.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -103,4 +105,67 @@ test('actual CLI invalid-argument process emits only fixed lifecycle JSON and ex
   const result = spawnSync(process.execPath, [cli, '--token', 'SECRET_DO_NOT_PRINT'], { encoding: 'utf8', timeout: 5000 });
   assert.equal(result.status, 1); assert.equal(result.stderr, ''); assert.equal(result.stdout.includes('SECRET_DO_NOT_PRINT'), false);
   assert.deepEqual(result.stdout.trim().split('\n').map(line => JSON.parse(line)), [{ event: 'host_failed' }, { event: 'host_stopped' }]);
+});
+
+// The VPS unit starts /opt/ihome-hermes/current/... where current/ is a link.
+const here = path.dirname(fileURLToPath(import.meta.url));
+/** Directory link like a release `current/`; Windows without symlink privilege
+ * falls back to a junction. Cleanup removes only the link, never its target. */
+function linkedDirectory(t, target) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'host-cli-link-')), link = path.join(root, 'current');
+  let kind = null;
+  for (const type of ['dir', 'junction']) {
+    try { fs.symlinkSync(target, link, type); kind = type; break; }
+    catch (error) { if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error; }
+  }
+  t.after(() => {
+    try { fs.unlinkSync(link); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    fs.rmdirSync(root);
+  });
+  return kind && { link, kind };
+}
+const runThrough = (link, file = 'host-cli.mjs') => spawnSync(process.execPath, [path.join(link, file), '--token', 'SECRET_DO_NOT_PRINT'],
+  { encoding: 'utf8', timeout: 5000 });
+const ran = result => result.status === 1 && result.stderr === '' &&
+  JSON.stringify(result.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))) === JSON.stringify([{ event: 'host_failed' }, { event: 'host_stopped' }]);
+
+test('actual CLI runs when started through a symlinked release directory', t => {
+  const linked = linkedDirectory(t, here);
+  if (!linked) { t.skip('neither a directory symlink nor a junction can be created on this host'); return; }
+  assert.notEqual(path.join(linked.link, 'host-cli.mjs'), fs.realpathSync(path.join(linked.link, 'host-cli.mjs')));
+  const result = runThrough(linked.link);
+  assert.equal(ran(result), true, `CLI did not run through ${linked.kind}: status=${result.status} stdout=${JSON.stringify(result.stdout)}`);
+  assert.equal(result.stdout.includes('SECRET_DO_NOT_PRINT'), false);
+});
+
+test('isMainModule compares realpaths and treats any resolution failure as not main', t => {
+  const self = fileURLToPath(new URL('./host-cli.mjs', import.meta.url)), url = pathToFileURL(self).href;
+  assert.equal(isMainModule(self, url), true);
+  assert.equal(isMainModule(path.join(here, 'host-config.mjs'), url), false);
+  for (const argv1 of [undefined, '', path.join(here, 'missing-entry.mjs')]) assert.equal(isMainModule(argv1, url), false);
+  assert.equal(isMainModule(self, url, () => { throw new Error('ELOOP'); }), false);
+  const linked = linkedDirectory(t, here);
+  if (!linked) { t.skip('neither a directory symlink nor a junction can be created on this host'); return; }
+  const viaLink = path.join(linked.link, 'host-cli.mjs');
+  assert.equal(isMainModule(viaLink, url), true);
+  // The previous lexical comparison misses exactly this case.
+  assert.notEqual(pathToFileURL(path.resolve(viaLink)).href, url);
+});
+
+test('mutation: the previous non-realpath entry check makes the symlinked CLI silently do nothing', t => {
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'host-cli-mutant-'));
+  t.after(() => fs.rmSync(stage, { recursive: true, force: true }));
+  const source = fs.readFileSync(path.join(here, 'host-cli.mjs'), 'utf8')
+    .replace(/(from |import\()'\.\/([^']+)'/g, (_, prefix, name) => `${prefix}'${pathToFileURL(path.join(here, name)).href}'`);
+  const anchor = 'if (isMainModule(process.argv[1], import.meta.url)) {';
+  assert.equal(source.split(anchor).length, 2, 'mutation anchor must occur exactly once');
+  for (const [name, text] of [['fixed', source], ['mutant', source.replace(anchor,
+    "if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(path.resolve(process.argv[1])).href) {")]]) {
+    fs.mkdirSync(path.join(stage, name)); fs.writeFileSync(path.join(stage, name, 'host-cli.mjs'), text);
+  }
+  const fixed = linkedDirectory(t, path.join(stage, 'fixed')), mutant = linkedDirectory(t, path.join(stage, 'mutant'));
+  if (!fixed || !mutant) { t.skip('neither a directory symlink nor a junction can be created on this host'); return; }
+  assert.equal(ran(runThrough(fixed.link)), true, 'staged fixed copy runs through the link');
+  const result = runThrough(mutant.link);
+  assert.deepEqual([ran(result), result.status, result.stdout], [false, 0, ''], 'old comparison exits 0 without running');
 });

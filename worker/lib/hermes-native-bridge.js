@@ -2,6 +2,7 @@ import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { createNativeJournal, nativeDigest } from './hermes-native-journal.js';
 import { nativeId, nativeUid, readNativeConfig } from './hermes-native-config.js';
+import { nativeReconciliationFile, nativeReconciliationFor, readNativeReconciliations } from './hermes-native-reconciliation.js';
 import { isHermesLinkMessage } from './hermes-link.js';
 
 const own = (value, key) => {
@@ -33,11 +34,13 @@ export function nativeTextReceipt(value) {
 }
 
 /** Shared transport only. It never creates a Zalo login, CRM client or model.
- * Every destination comes from the trusted local grant, never an HTTP body. */
-export function createNativeBridge({ config, now = Date.now, providerTimeoutMs = 60000, maxProviderPending = 8, onFault = () => {} }) {
+ * Every destination comes from the trusted local grant, never an HTTP body.
+ * Without reconciliationFile (the operator ledger of the running config) an
+ * outcome_unknown send keeps the channel quarantined permanently. */
+export function createNativeBridge({ config, reconciliationFile = null, now = Date.now, providerTimeoutMs = 60000, maxProviderPending = 8, onFault = () => {} }) {
   if (!Number.isInteger(maxProviderPending) || maxProviderPending < 1 || maxProviderPending > 32 ||
       !Number.isInteger(providerTimeoutMs) || providerTimeoutMs < 1 || providerTimeoutMs > 60000) throw new Error('invalid_native_limits');
-  const channels = config.channels.map(channel => ({ channel,
+  const channels = config.channels.map(channel => ({ channel, pending: new Set(),
     journal: createNativeJournal(config.stateRoot, channel) }));
   const attached = new Map();
   const providers = new Set();
@@ -89,8 +92,20 @@ export function createNativeBridge({ config, now = Date.now, providerTimeoutMs =
     const source = attached.get(channel.accountId);
     return !closing && source?.ownUid === channel.ownUid && source.isActive() ? source : null;
   };
+  // A human decision (sent or not_sent) recorded by the operator reconcile
+  // command releases quarantine for NEW request IDs only when it matches every
+  // unknown record of this channel exactly. Synchronous by design: no await may
+  // separate this read from the durable admission that follows it. Never
+  // releases while this process still awaits the provider for that record.
+  const reconciled = ({ channel, pending }, unknown) => {
+    if (!reconciliationFile || unknown.some(record => pending.has(record.id))) return false;
+    let entries;
+    try { ({ entries } = readNativeReconciliations(reconciliationFile)); }
+    catch { onFault('native_reconciliation_unreadable'); return false; }
+    return unknown.every(record => nativeReconciliationFor(entries, channel, record) !== null);
+  };
   async function dispatch(entry, route, body) {
-    const { channel, journal } = entry;
+    const { channel, journal, pending } = entry;
     if (closing) return { status: 'unavailable' };
     if (route === '/v1/channel' && exact(body, [])) return { ...publicChannel(channel), connected: !!activeSource(channel) };
     if (body.generation !== channel.generation) throw new Error('generation_mismatch');
@@ -123,9 +138,12 @@ export function createNativeBridge({ config, now = Date.now, providerTimeoutMs =
       const outbound = journal.values('outbound');
       // Upstream callers can retry with a new ID AND transformed text (cron
       // live -> standalone). Without a stable delivery identity, any unresolved
-      // provider effect quarantines this channel, including across restart.
-      // This check and the durable admission below contain no await.
-      if (outbound.some(record => record.status === 'outcome_unknown')) return { status: 'outcome_unknown' };
+      // provider effect quarantines this channel, including across restart,
+      // until a human reconciles every such record. The unknown record itself
+      // stays outcome_unknown and is never resent. This check and the durable
+      // admission below contain no await.
+      const unknown = outbound.filter(record => record.status === 'outcome_unknown');
+      if (unknown.length && !reconciled(entry, unknown)) return { status: 'outcome_unknown' };
       if (outbound.length >= 100000) throw new Error('native_journal_capacity');
       const source = activeSource(channel);
       if (!source) return { status: 'unavailable' };
@@ -146,9 +164,11 @@ export function createNativeBridge({ config, now = Date.now, providerTimeoutMs =
           journal.update('outbound', body.requestId, { ...record, status: 'sent', messageId, finishedAt: now() });
           return { status: 'sent', messageId };
         });
-        providers.add(provider);
-        // Observation timeout does not release this admission slot or ownership.
-        provider.then(() => providers.delete(provider), () => providers.delete(provider));
+        providers.add(provider); pending.add(body.requestId);
+        // Observation timeout does not release this admission slot, ownership
+        // or the in-process hold on reconciliation release for this record.
+        const settle = () => { providers.delete(provider); pending.delete(body.requestId); };
+        provider.then(settle, settle);
         return await Promise.race([
           provider,
           new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('provider_timeout')), providerTimeoutMs); }),
@@ -211,10 +231,13 @@ export function createNativeBridge({ config, now = Date.now, providerTimeoutMs =
 let nativeBridge = null;
 export const getNativeBridge = () => nativeBridge;
 export async function startNativeBridge({ onFault } = {}) {
-  const config = readNativeConfig();
+  const configFile = process.env.HERMES_ZALO_NATIVE_CONFIG;
+  const config = readNativeConfig(configFile);
   if (!config) return null;
   if (nativeBridge) throw new Error('native_bridge_already_started');
-  const bridge = createNativeBridge({ config, onFault });
+  // The operator ledger beside this exact config is re-read before each new
+  // send on a quarantined channel; no restart is needed after reconcile.
+  const bridge = createNativeBridge({ config, onFault, reconciliationFile: nativeReconciliationFile(configFile) });
   await bridge.listen(); nativeBridge = bridge;
   return bridge;
 }

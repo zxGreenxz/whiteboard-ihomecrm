@@ -30,7 +30,8 @@ test('reconcile plans read-only, then records one human decision without touchin
   const before = { journal: bytes(journalFile), config: bytes(f.configFile), entries: fs.readdirSync(f.root).sort() };
   const plan = reconcileNativeDelivery(request(f));
   assert.deepEqual([plan.diskStatus, plan.journal, plan.generation, plan.resend, plan.quarantineRelease],
-    ['planned', 'unchanged', 'unchanged', 'never', 'requires_worker_support']);
+    ['planned', 'unchanged', 'unchanged', 'never', 'worker_reads_ledger_before_each_new_send']);
+  assert.equal(inspectNativeDelivery({ configFile: f.configFile }).channels[0].quarantine, 'outcome_unknown');
   assert.deepEqual(fs.readdirSync(f.root).sort(), before.entries);
   const applied = reconcileNativeDelivery({ ...request(f), expect: plan.expectedRevision }, { apply: true });
   assert.equal(applied.diskStatus, 'recorded');
@@ -42,9 +43,11 @@ test('reconcile plans read-only, then records one human decision without touchin
     [['alpha', f.channel.generation, 'unknown-1', 'not_sent', nativeDigest('b'), 3]]);
   if (process.platform !== 'win32') assert.equal(fs.statSync(ledgerFile).mode & 0o777, 0o600);
   const inspected = inspectNativeDelivery({ configFile: f.configFile }).channels[0];
-  // The worker still quarantines on the unknown record; only the decision is shown.
-  assert.equal(inspected.quarantine, 'outcome_unknown');
-  assert.deepEqual(inspected.reconciliation, { recorded: 1, unreconciled: 0, quarantineRelease: 'requires_worker_support' });
+  // The journal record stays outcome_unknown; the matching decision is what the
+  // worker reads before admitting a new request ID (see quarantine-release.test.mjs).
+  assert.equal(inspected.quarantine, 'released_by_reconciliation');
+  assert.equal(inspected.outbound.counts.outcome_unknown, 1);
+  assert.deepEqual(inspected.reconciliation, { recorded: 1, unreconciled: 0, quarantineRelease: 'worker_reads_ledger_before_each_new_send' });
   assert.equal(inspected.outbound.records.find(record => record.id === 'unknown-1').reconciliation, 'not_sent');
   assert.equal(Object.hasOwn(inspected.outbound.records.find(record => record.id === 'sent-1'), 'reconciliation'), false);
   assert.ok(!JSON.stringify(inspected).includes(f.channel.token));
@@ -66,8 +69,14 @@ test('reconcile refuses stale revisions, settled or missing records, repeats and
   // The ledger path is reserved: a token cannot be created over it.
   assert.throws(() => planNativeGrant({ action: 'rotate', configFile: f.configFile, profile: 'alpha', tokenFile: `${f.configFile}.reconciliations.json` }),
     /native_operator_(reserved_path|token_file_exists)/);
-  fs.writeFileSync(`${f.configFile}.reconciliations.json`, '{"version":1,"entries":[{"edited":true}]}', { mode: 0o600 });
-  assert.throws(() => inspectNativeDelivery({ configFile: f.configFile }), /native_operator_ledger_invalid/);
+  const ledgerFile = `${f.configFile}.reconciliations.json`, genuine = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
+  // The worker and operator share one validator; its failures keep the operator code.
+  for (const bad of ['{"version":1,"entries":[{"edited":true}]}', '{', JSON.stringify({ ...genuine, entries: [...genuine.entries, genuine.entries[0]] }),
+    ...[{ decidedAt: 1 }, { accountId: 'not-a-uuid' }, { generation: 'g' }, { profile: 'Bad' }, { startedAt: -1 }]
+      .map(change => JSON.stringify({ ...genuine, entries: [{ ...genuine.entries[0], ...change }] }))]) {
+    fs.writeFileSync(ledgerFile, bad, { mode: 0o600 });
+    assert.throws(() => inspectNativeDelivery({ configFile: f.configFile }), /native_operator_ledger_invalid/);
+  }
 });
 
 test('CLI reconcile is dry-run unless --apply --expect; no clear-unknown or generation override exists', t => {
