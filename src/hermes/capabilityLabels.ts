@@ -8,7 +8,7 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'assistant.memory.supervise': 'Hermes tổng: tra ghi nhớ công việc được chia sẻ của người khác (theo quyền xem người dùng)',
 });
 const HINTS: Readonly<Record<string, string>> = Object.freeze({
-  'tasks.edit': 'Hermes: theo dõi, nhắc và cập nhật tiến độ công việc',
+  'tasks.edit': 'Hermes: ghi cập nhật tiến độ công việc (theo dõi/nhắc dùng Xem + Tạo công việc)',
   'tasks.delete': 'Hermes: huỷ công việc khi bạn yêu cầu rõ',
   'customers.create': 'Hermes: tạo khách cá nhân chưa gắn tòa; cần phạm vi Toàn tổ chức',
   'leads.create': 'Hermes: tạo khách hẹn mới chưa gắn tòa; cần phạm vi Toàn tổ chức',
