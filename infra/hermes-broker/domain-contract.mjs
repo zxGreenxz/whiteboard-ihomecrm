@@ -130,11 +130,17 @@ export function domainResult(operation, value, identity, input) {
 }
 // requiresDates never accepts null, so its required dates are not nullable.
 const dateSchema = required => ({ type: required ? 'string' : ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
+// 16/10 19:44Z production: the model put a building code in `query` (text filter
+// inside each row ⇒ empty), took the company id as buildingId, and repeated the
+// same call 20+ times reading [] as a glitch. Wording only; validators unchanged.
+export const DOMAIN_QUERY_HINT = 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.';
+export const DOMAIN_BUILDING_HINT = 'ID toà (lấy từ công cụ tra toà/phòng); không phải ID công ty. Bỏ trống để xem mọi toà được phép.';
+export const EMPTY_RESULT_HINT = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
 export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze({
-  name: `crm_read_${operation}`, description: definition.label,
+  name: `crm_read_${operation}`, description: `${definition.label}. ${EMPTY_RESULT_HINT}`,
   inputSchema: { type: 'object', additionalProperties: false, ...(definition.requiresDates ? { required: ['fromDate', 'toDate'] } : {}), properties: {
-    query: { type: 'string', maxLength: 200 }, limit: { type: 'integer', minimum: 1, maximum: 50 },
-    cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid' },
+    query: { type: 'string', maxLength: 200, description: DOMAIN_QUERY_HINT }, limit: { type: 'integer', minimum: 1, maximum: 50 },
+    cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid', description: DOMAIN_BUILDING_HINT },
     status: { enum: [null, ...definition.statuses] },
     ...(definition.dated ? { fromDate: dateSchema(definition.requiresDates), toDate: dateSchema(definition.requiresDates) } : {}),
   } }, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },

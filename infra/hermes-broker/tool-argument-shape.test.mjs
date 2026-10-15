@@ -10,7 +10,7 @@ import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mj
 import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS, taskActionInput } from './task-input-contract.mjs';
 import { ROOM_PASS_TOOLS, roomPassInput } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, domainInput } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, ALL_DOMAIN_READ_CAPABILITIES, domainInput } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
@@ -111,6 +111,22 @@ test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep 
   assert.deepEqual(normalizeToolArguments(tool('crm_expense_input_options'), { kind: 'rooms', buildingId: NIL }), { kind: 'rooms', buildingId: null });
 });
 
+test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final', () => {
+  const EMPTY = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
+  for (const read of DOMAIN_TOOLS) {
+    const listed = advertisedTool(read), { query, buildingId } = listed.inputSchema.properties;
+    assert.ok(listed.description.endsWith(`. ${EMPTY}`), read.name);
+    assert.equal(query.description, 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.', read.name);
+    assert.equal(buildingId.description, 'ID toà (lấy từ công cụ tra toà/phòng); không phải ID công ty. Bỏ trống để xem mọi toà được phép.', read.name);
+    // Text only: types and formats are what the validators already enforce.
+    assert.deepEqual([query.type, query.maxLength, buildingId.type, buildingId.format], ['string', 200, ['string', 'null'], 'uuid'], read.name);
+  }
+  const options = advertisedTool(tool('crm_task_input_options'));
+  assert.ok(options.description.endsWith(` ${EMPTY}`));
+  assert.match(options.inputSchema.properties.query.description, /^Lọc theo tên/);
+  assert.match(options.inputSchema.properties.buildingId.description, /không phải ID công ty\. kind=buildings: không cần buildingId\./);
+});
+
 test('crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear', () => {
   const upsert = tool('crm_room_pass_upsert'), base = { requestId: id('5'), roomId: id('6') };
   for (const args of [base, { ...base, customerName: '  ', customerPhone: '', salePolicy: ' \n' },
@@ -125,7 +141,8 @@ test('crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear', () 
 function brokerFixture(t) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const seen = [], CONNECTION = id('a');
-  const read = ['customers.view', 'chat_zalo.view', 'assistant.memory.read'];
+  // Every domain read is granted so tools/list below is measured with all of them.
+  const read = [...ALL_DOMAIN_READ_CAPABILITIES, 'chat_zalo.view', 'assistant.memory.read'];
   const action = ['tasks.create', 'sale_phong.manage_pass_listings', 'customers.create', 'leads.create', 'income_expenses.create',
     'chat_zalo.manage_automation', 'assistant.memory.write'];
   const identity = { row: { id: CONNECTION, assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 600_000,
@@ -138,7 +155,7 @@ function brokerFixture(t) {
   });
   const broker = createBroker({
     authority: { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} },
-    // Same listing budget as server.mjs; every family together is ~48 KB.
+    // Same listing budget as server.mjs; every family together is ~54 KB.
     dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
@@ -155,6 +172,8 @@ test('broker tools/list advertises no required nullable field across mounted fam
     assert.ok(listed.some(value => value.name === name), name);
   }
   for (const value of listed) assert.deepEqual(requiredNullable(value), [], value.name);
+  assert.equal(listed.filter(value => value.name.startsWith('crm_read_')).length, DOMAIN_TOOLS.length);
+  assert.ok(Buffer.byteLength(JSON.stringify({ tools: listed })) < 65_536, 'tools/list stays inside the server result budget');
   assert.deepEqual(listed.find(value => value.name === 'crm_task_input_options').inputSchema.required, ['kind', 'query', 'limit']);
   assert.deepEqual(listed.find(value => value.name === 'crm_task_create').inputSchema.required, ['requestId', 'title', 'buildingId', 'jobTypeId', 'priority']);
 });
