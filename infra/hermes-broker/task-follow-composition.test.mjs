@@ -34,12 +34,13 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   const envelope = crypto.seal({ accessToken, refreshToken: 'SYNTHETIC_REFRESH', expiresAt }, { assistantId: ASSISTANT, userId: USER, organizationId: ORG, sessionId: SESSION });
   await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0) WHERE id=$3', [JSON.stringify(envelope), expiresAt, SESSION]);
   const dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
-  const events = []; let loseAck = false, beforeFinal;
+  const events = [], listInputs = []; let loseAck = false, beforeFinal;
   const transport = async (url, options) => {
     assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
     const path = new URL(url).pathname, args = JSON.parse(options.body), entry = SQL[path];
     assert.ok(entry, `unexpected RPC ${path}`);
     events.push(path.split('/').at(-1) + (args.p_operation ? ':' + args.p_operation : ''));
+    if (path.endsWith('/hermes_task_follow_read_v1')) listInputs.push(args.p_input);
     if (args.p_binding && beforeFinal) { const hook = beforeFinal; beforeFinal = undefined; await hook(); }
     try {
       const result = await call(entry[0], entry[1](args));
@@ -91,6 +92,17 @@ test('external MCP → bound JWT → audited final caller SQL: follow, list, can
   assert.deepEqual(listed.value.items.map(item => item.id), [J1]); assert.equal(listed.value.items[0].follows[0].objective, 'Báo tôi khi xong');
   for (const extra of [{ userId: ASSIGNEE }, { actorId: ASSIGNEE }, { rpc: 'hermes_task_follow_action_v1' }])
     assert.equal((await mcp('crm_task_follow_list', { organizationId: ORG, role: 'team', ...extra })).value.error, 'invalid_request');
+  // 16/10 20:44Z production: exact shape that was rejected three times (a real user id with assigned_by_me).
+  listInputs.length = 0;
+  const incident = await mcp('crm_task_follow_list', { organizationId: ORG, role: 'assigned_by_me', assigneeUserId: ASSIGNEE, status: 'open', limit: 20, offset: 0 });
+  assert.equal(incident.isError, false); assert.deepEqual(incident.value.items.map(item => item.id), [J1]);
+  assert.deepEqual(listInputs, [{ organizationId: ORG, role: 'assigned_by_me', assigneeUserId: null, status: 'open', limit: 20, offset: 0 }]);
+  listInputs.length = 0;
+  for (const assigneeUserId of [7, {}, [ASSIGNEE], true])
+    assert.equal((await mcp('crm_task_follow_list', { organizationId: ORG, role: 'assigned_by_me', assigneeUserId })).value.error, 'invalid_request');
+  assert.deepEqual(listInputs, [], 'non-string assigneeUserId never reaches SQL');
+  const listedTool = (await broker.listTools(token)).tools.find(tool => tool.name === 'crm_task_follow_list');
+  assert.equal(listedTool.inputSchema.properties.assigneeUserId.description, 'Chỉ dùng với role=team; khác thì bỏ qua.');
 
   // Lost ACK on a dispatched cancel: the broker reports unknown with the
   // requestId; calling again with the same requestId reconciles, never redoes.

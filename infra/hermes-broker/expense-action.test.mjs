@@ -83,8 +83,14 @@ test('expense contract: fixed tools, exact input, integer VND, no approval/bank/
     { ...input, lines: [{ ...input.lines[0], amount: '150000' }] }, { ...input, lines: [{ ...input.lines[0], amount: 0 }] },
     { ...input, lines: [{ ...input.lines[0], amount: 9_999_999_999_999 }, { ...input.lines[0], amount: 1 }] }, { ...input, lines: [{ ...input.lines[0], tax: 1 }] }])
     assert.throws(() => expenseActionInput('expense.create', changed), JSON.stringify(changed).slice(0, 80));
-  for (const options of [{ kind: 'rooms' }, { kind: 'buildings', buildingId: BUILDING }, { kind: 'accounts' }, { kind: 'cashbooks', limit: 51 }])
-    assert.throws(() => expenseActionInput('expense.options', options));
+  for (const options of [{ kind: 'rooms' }, { kind: 'rooms', buildingId: 'Toà A' }, { kind: 'accounts' }, { kind: 'cashbooks', limit: 51 },
+    ...[7, true, {}, [BUILDING]].map(buildingId => ({ kind: 'cashbooks', buildingId }))])
+    assert.throws(() => expenseActionInput('expense.options', options), JSON.stringify(options));
+  // buildingId only narrows rooms: any string for another kind is dropped to null (same as crm_task_input_options kind=buildings).
+  for (const kind of ['buildings', 'categories', 'cashbooks'])
+    for (const buildingId of [BUILDING, ORG, '', 'Toà A', null])
+      assert.deepEqual(expenseActionInput('expense.options', { kind, buildingId }), { kind, buildingId: null, query: '', limit: 20, cursor: null }, `${kind} ${buildingId}`);
+  assert.equal(expenseActionInput('expense.options', { kind: 'rooms', buildingId: BUILDING }).buildingId, BUILDING);
   const voucher = { id: randomUUID(), code: 'PC-1', buildingId: BUILDING, roomId: ROOM, cashbookId: CASHBOOK, voucherDate: input.voucherDate,
     totalAmount: '150000.00', approvalStatus: 'UNAPPROVED', lineCount: 1, createdBy: USER };
   const result = { organizationId: ORG, requestId: input.requestId, outcome: 'applied', voucher };
@@ -107,6 +113,11 @@ test('expense SQL: canonical writer port, overlay/CRM/registry/approval controls
     const cashbooks = await options('cashbooks');
     assert.deepEqual(cashbooks.items, [{ id: CASHBOOK, label: 'Quỹ VCB ***' }]);
     assert.deepEqual(expenseActionResult('expense.options', cashbooks, identity, expenseActionInput('expense.options', { kind: 'cashbooks' })), cashbooks);
+    // A building given for a non-room kind is dropped before SQL, which still demands null.
+    const misplaced = expenseActionInput('expense.options', { kind: 'cashbooks', buildingId: BUILDING });
+    assert.deepEqual(await expense('options', misplaced), cashbooks);
+    assert.deepEqual(expenseActionResult('expense.options', cashbooks, identity, misplaced), cashbooks);
+    await assert.rejects(expense('options', { kind: 'cashbooks', buildingId: BUILDING, query: '', limit: 20, cursor: null }), code('22023'));
     await assert.rejects(expense('options', expenseActionInput('expense.options', { kind: 'rooms', buildingId: OTHER_BUILDING })), code('42501'));
   });
   await t.test('below-threshold machine approval follows the ladder; threshold keeps pending; receipt replays exactly', async () => {

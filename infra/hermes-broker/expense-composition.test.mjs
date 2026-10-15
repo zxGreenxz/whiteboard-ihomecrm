@@ -81,6 +81,10 @@ test('external MCP → broker → audited bound SQL: expense options/create/stat
   for (const name of ['crm_read_income_expenses', 'crm_customer_create', 'crm_task_create']) assert.equal((await callTool(name, {})).value.error, 'tool_not_available');
   assert.deepEqual((await callTool('crm_expense_input_options', { kind: 'buildings' })).value.items, [{ id: BUILDING, label: 'Toà A' }], 'overlay scope, not every CRM building');
   assert.deepEqual((await callTool('crm_expense_input_options', { kind: 'cashbooks' })).value.items, [{ id: CASHBOOK, label: 'Quỹ VCB ***' }]);
+  // buildingId only narrows kind=rooms; elsewhere a string is ignored, other types stay invalid.
+  const misplaced = await callTool('crm_expense_input_options', { kind: 'cashbooks', buildingId: BUILDING });
+  assert.equal(misplaced.isError, false); assert.equal(misplaced.value.buildingId, null); assert.deepEqual(misplaced.value.items, [{ id: CASHBOOK, label: 'Quỹ VCB ***' }]);
+  assert.equal((await callTool('crm_expense_input_options', { kind: 'categories', buildingId: 7 })).value.error, 'invalid_request');
   const before = await counts();
   assert.equal(creates, 0);
 

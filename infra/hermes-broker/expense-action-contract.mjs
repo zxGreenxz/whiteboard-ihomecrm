@@ -24,10 +24,11 @@ export function expenseActionInput(operation, input) {
   if (operation === 'expense.options') {
     if (!domainExact(input, Object.keys(input ?? {})) || Object.keys(input).some(key => !['kind', 'buildingId', 'query', 'limit', 'cursor'].includes(key))) fail();
     const value = { kind: null, buildingId: null, query: '', limit: 20, cursor: null, ...input };
-    if (!KINDS.includes(value.kind) || !(value.kind === 'rooms' ? domainId(value.buildingId) : value.buildingId === null) ||
+    if (!KINDS.includes(value.kind) || !(value.kind === 'rooms' ? domainId(value.buildingId) : value.buildingId === null || typeof value.buildingId === 'string') ||
         typeof value.query !== 'string' || [...value.query].length > 100 || /[\x00-\x1f\x7f-\x9f]/.test(value.query) ||
         !Number.isInteger(value.limit) || value.limit < 1 || value.limit > 50 || !(value.cursor === null || domainId(value.cursor))) fail();
-    return { kind: value.kind, buildingId: value.buildingId, query: value.query.trim(), limit: value.limit, cursor: value.cursor };
+    // buildingId only narrows kind=rooms; for other kinds any string is dropped to the null SQL requires.
+    return { kind: value.kind, buildingId: value.kind === 'rooms' ? value.buildingId : null, query: value.query.trim(), limit: value.limit, cursor: value.cursor };
   }
   if (operation === 'expense.status') {
     if (!domainExact(input, ['requestId']) || !domainId(input.requestId)) fail();
@@ -73,7 +74,7 @@ export function expenseActionResult(operation, value, identity, input) {
 const uuid = { type: 'string', format: 'uuid' };
 export const EXPENSE_ACTION_TOOLS = Object.freeze([
   Object.freeze({ name: 'crm_expense_input_options', description: 'Lấy ID/nhãn toà, phòng, hạng mục chi, sổ quỹ dùng được để ghi phiếu chi nhanh theo quyền Thao tác của bạn; chỉ là nhãn, không phải dữ liệu đọc.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { enum: KINDS }, buildingId: { type: ['string', 'null'], format: 'uuid' },
+    inputSchema: { type: 'object', additionalProperties: false, required: ['kind'], properties: { kind: { enum: KINDS }, buildingId: { type: ['string', 'null'], format: 'uuid', description: 'Chỉ dùng với kind=rooms; khác thì bỏ qua.' },
       query: { type: 'string', maxLength: 100 }, limit: { type: 'integer', minimum: 1, maximum: 50 }, cursor: { type: ['string', 'null'], format: 'uuid' } } },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }),
   Object.freeze({ name: 'crm_expense_create', description: `Ghi MỘT phiếu CHI nhanh (như Báo chi nhanh) qua writer CRM. Trạng thái do thang duyệt/bộ máy chi CRM quyết: UNAPPROVED = chờ duyệt; Hermes không duyệt hay vào sổ. Số tiền là số nguyên VND. ${REQUEST_ID_GUIDANCE} Mất phản hồi chỉ gọi crm_expense_status, không tạo lại. Chỉ gọi khi người dùng yêu cầu ghi rõ ràng; chỉ soạn thì không gọi.`,
