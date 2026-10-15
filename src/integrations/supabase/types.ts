@@ -24369,6 +24369,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_room_pass_upsert_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
       hermes_room_schedule_capabilities_v1: {
         Args: { p_organization_id: string }
         Returns: Json
