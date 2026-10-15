@@ -17,6 +17,7 @@ import { readTestCredentials, fixtureCleanupSql as baseCleanup, testFetch, write
 import { fixturePlan as basePlan, fixtureSetupSql as baseSetup, privateCleanupSql as durableCleanup,
   countsSql as durableCounts, loadFixtureCa, targetMatches, createSerializedLeaseAssertions,
   roleSetupSql, roleCleanupSql, guardedQuery } from './test-hermes-durable-store.mjs';
+import { splitSqlStatements } from './network-center-function-bodies.mjs';
 import { extractHermesFunctionDefinitions as extractFunctionDefinitions, verifyTaskFunctionCatalog, verifyCustomerFunctionCatalog, TASK_FUNCTIONS, CUSTOMER_FUNCTIONS } from './hermes-task-function-contract.mjs';
 import { createStorePool } from '../infra/hermes-broker/store-pool.mjs';
 import { createSessionCrypto } from '../infra/hermes-broker/session-crypto.mjs';
@@ -490,16 +491,46 @@ async function context() {
   return { cred, db, test, url: `https://${TEST_REF}.supabase.co` };
 }
 
+const normalizeSearchPath = value => value.replace(/["\s]/g, '');
+
+/** SECURITY mode and search_path of each Hermes function, read from its last
+ * CREATE statement (later migrations replace earlier ones, as in the catalog).
+ * Deriving them from source instead of a hand list keeps new pure/invoker
+ * helpers exact: a reviewed `SET search_path=pg_catalog` stays that narrow. */
+export function hermesFunctionAttributes(sources) {
+  const attributes = new Map();
+  for (const source of sources) for (const raw of splitSqlStatements(source.bytes.toString('utf8'))) {
+    const statement = raw.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/, '');
+    const head = /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+((?:public|app_private)\.hermes_\w+)\s*\(/i.exec(statement);
+    if (!head) continue;
+    // Dollar-quoted body, or an SQL-standard body (BEGIN ATOMIC / RETURN).
+    const bodyStart = statement.search(/\bAS\s+\$[A-Za-z_0-9]*\$|\bBEGIN\s+ATOMIC\b|\bRETURN\b/i);
+    demand(bodyStart > head[0].length, 'live_schema_source_unreadable');
+    const header = statement.slice(0, bodyStart);
+    // Identifier list only: a later clause such as SET lock_timeout is separate.
+    const path = /\bSET\s+search_path\s*(?:=|\bTO\b)\s*((?:"?[A-Za-z_][A-Za-z_0-9]*"?\s*,\s*)*"?[A-Za-z_][A-Za-z_0-9]*"?)/i.exec(header)?.[1];
+    attributes.set(head[1], { definer: /\bSECURITY\s+DEFINER\b/i.test(header), searchPath: path ? normalizeSearchPath(path) : null });
+  }
+  return attributes;
+}
+
 export async function verifyLiveSchema(pool) {
   const catalogFunctions = new Map([...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].map(spec => [spec.name, spec]));
   const expected = new Map(migrationSources().flatMap(source => extractFunctionDefinitions(source.bytes.toString('utf8'), source.path))
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName) && item.bodyKind !== 'sql-standard' && !catalogFunctions.has(item.qualifiedName)).map(item => [item.qualifiedName, item.bodyDigest]));
+  const attributes = hermesFunctionAttributes(migrationSources());
   const rows = (await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosrc,p.prosecdef,pg_get_userbyid(p.proowner) owner,p.proconfig
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1::text[])`, [[...expected.keys()]])).rows;
-  const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1','app_private.hermes_work_memory_settings_json_v1','app_private.hermes_schedule_immutable_v1','app_private.hermes_domain_permission_v1','app_private.hermes_domain_text_v1']);
-  demand(rows.length === expected.size && rows.every(row => row.prosecdef === (catalogFunctions.get(row.name)?.definer ?? (row.name !== 'app_private.hermes_group_number_vi_v1')) && row.owner === 'postgres'
-    && row.proconfig?.some(value => pureCatalog.has(row.name) ? value === 'search_path=pg_catalog' : value.startsWith('search_path=pg_catalog,'))
-    && sha(row.prosrc.replace(/\r\n?/g, '\n')) === expected.get(row.name)), 'live_schema_body_mismatch');
+  const livePath = row => (row.proconfig ?? []).filter(value => value.startsWith('search_path=')).map(value => normalizeSearchPath(value.slice(12)));
+  // Every Hermes function pins a search_path rooted at pg_catalog; the exact
+  // value and SECURITY mode must equal the reviewed source declaration.
+  demand(rows.length === expected.size && rows.every(row => {
+    const source = attributes.get(row.name), live = livePath(row);
+    return source?.searchPath?.startsWith('pg_catalog') && row.owner === 'postgres'
+      && row.prosecdef === (catalogFunctions.get(row.name)?.definer ?? source.definer)
+      && live.length === 1 && live[0] === source.searchPath
+      && sha(row.prosrc.replace(/\r\n?/g, '\n')) === expected.get(row.name);
+  }), 'live_schema_body_mismatch');
   await verifyTaskFunctionCatalog(pool, migrationSources());
   await verifyCustomerFunctionCatalog(pool, migrationSources());
   const signatures = [

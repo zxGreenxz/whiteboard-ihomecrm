@@ -112,6 +112,12 @@ test('runtime receipt shapes: numeric-string msgId and extra keys are sent; inva
   assert.equal((await bad.send('bad-id')).data.status, 'outcome_unknown');
   assert.deepEqual(faults, ['native_receipt_unrecognized {message:{msgId:string,note:string},attachment:array(0)}']);
   assert.doesNotMatch(faults.join(), /PRIVATE|0912/);
+  // A map keyed by IDs must not leak those IDs through key names.
+  const idKeyed = await fixture(t, { provider: () => ({ message: { 7312345678901: { ok: true } }, attachment: [] }),
+    onFault: code => faults.push(code) });
+  assert.equal((await idKeyed.send('id-keyed')).data.status, 'outcome_unknown');
+  assert.equal(faults.at(-1), 'native_receipt_unrecognized {message:{#:object},attachment:array(0)}');
+  assert.doesNotMatch(faults.join(), /7312345678901/);
   // A receipt the unchanged journal format cannot record stays unknown, never "sent".
   const wide = await fixture(t, { provider: () => ({ message: { msgId: '9'.repeat(20) }, attachment: [] }), onFault: code => faults.push(code) });
   assert.equal((await wide.send('wide-id')).data.status, 'outcome_unknown');

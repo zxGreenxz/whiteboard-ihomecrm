@@ -31,7 +31,11 @@ const SQL = Object.freeze({
   taskOptions: 'SELECT public.hermes_task_input_options_v1($1::jsonb,$2::jsonb) value',
   taskAction: 'SELECT public.hermes_task_create_action_v1($1::jsonb,$2::text,$3::jsonb) value',
 });
-const READ = ['assistant.context.read','assistant.memory.read','reports_real_estate.occupancy','chat_zalo.view'];
+// Reading another user's shared work memory is its own Read capability
+// (20261015110100): registry + company ceiling + connection overlay + users.view.
+const SUPERVISE = 'assistant.memory.supervise';
+const READ = ['assistant.context.read','assistant.memory.read','reports_real_estate.occupancy','chat_zalo.view',SUPERVISE];
+const ROLLBACK_REGISTRY = Object.freeze([...CDE_CAPABILITIES,'chat_zalo.view',SUPERVISE]);
 const ACTION = ['assistant.memory.write','chat_zalo.manage_automation',TASK_ACTION];
 const ids = values => values.map(id => { demand(UUID.test(id), 'cde_fixture_id_invalid'); return lit(id); }).join(',');
 const listed = ownerUserId => ({ownerUserId,limit:10,offset:0,updatedSince:null});
@@ -139,7 +143,7 @@ async function positiveSetup(client, plan, subjects) {
   // This function is reachable only after BEGIN inside rollbackOnly().
   await client.query('RESET ROLE');
   await client.query({text:'UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1::text[])',
-    values:[[...CDE_CAPABILITIES,'chat_zalo.view']],queryMode:'extended'});
+    values:[ROLLBACK_REGISTRY],queryMode:'extended'});
   await client.query({text:`UPDATE app_private.hermes_org_policies p SET read_capabilities=$2::text[],action_capabilities=$3::text[],
     scope_ids=ARRAY(SELECT id FROM public.authorization_scopes WHERE organization_id=p.organization_id AND scope_type='ORGANIZATION')
     WHERE organization_id=ANY($1::uuid[])`,values:[plan.orgs.map(o=>o.id),READ,ACTION],queryMode:'extended'});
@@ -308,7 +312,7 @@ export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRp
   let registry;
   try {
     await ctx.assertLease(ctx.lease,ctx.test);
-    registry=(await pool.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[]) ORDER BY capability',[[...CDE_CAPABILITIES,'chat_zalo.view']])).rows;
+    registry=(await pool.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[]) ORDER BY capability',[ROLLBACK_REGISTRY])).rows;
     demand(CDE_CAPABILITIES.every(key=>registry.some(r=>r.capability===key && r.enabled===false)),'cde_registry_must_remain_disabled');
     await check('cde.real_jwt_postgrest_disabled_and_explicit_org',async()=>{
       for(const s of subjects) {
@@ -339,6 +343,11 @@ export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRp
       await denial(client,()=>call(client,superA,actors,'memoryList',[sa,listed(actors[0].id)]));
       const saved=await call(client,owner,actors,'memoryUpsert',[b,{key:'q2_added',content:'Explicit synthetic work note',sourceLabel:'Q2 fixture',expectedId:null,expectedVersion:0,expectedAccessVersion:configured.settings.accessVersion}]);
       configured=await call(client,owner,actors,'memoryConfigure',[b,{enabled:true,sharing:'superadmin',retentionDays:1,expectedAccessVersion:configured.settings.accessVersion}]);
+      // Shared to superadmin is not enough: the reader's own overlay must carry supervise.
+      await client.query('RESET ROLE');await client.query('SAVEPOINT cde_supervise');
+      await client.query('UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,$2) WHERE id=$1',[superA.connection.id,SUPERVISE]);
+      await denial(client,()=>call(client,superA,actors,'memoryList',[sa,listed(actors[0].id)]));
+      await client.query('ROLLBACK TO SAVEPOINT cde_supervise');
       const shared=await call(client,superA,actors,'memoryList',[sa,listed(actors[0].id)]);assert.equal(shared.items.length,2);
       await denial(client,()=>call(client,superB,actors,'memoryList',[sb,listed(actors[0].id)]));
       await denial(client,()=>call(client,foreign,actors,'memoryStatus',[b]));
@@ -426,7 +435,7 @@ export async function runCdeChecks({ctx,plan,subjects,issue,write,okRpc,deniedRp
       });evidence.mvcc.nextReadDenied=true;
     });
     assertCdeTaskEvidence(evidence);
-    const after=(await pool.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[]) ORDER BY capability',[[...CDE_CAPABILITIES,'chat_zalo.view']])).rows;
+    const after=(await pool.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1::text[]) ORDER BY capability',[ROLLBACK_REGISTRY])).rows;
     assert.deepEqual(after,registry);evidence.registryUnchanged=true;evidence.positivePostgrest=false;evidence.positiveSqlRollback=true;
   } finally { await pool.end().catch(error=>{ctx.writeState.uncertain=true;throw error;}); }
 }

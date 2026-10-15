@@ -43,7 +43,9 @@ export function describeReceiptShape(value, depth = 0) {
     const parts = keys.slice(0, 12).map(key => {
       const property = Object.getOwnPropertyDescriptor(value, key);
       const kind = !property ? 'missing' : !Object.hasOwn(property, 'value') ? 'accessor' : describeReceiptShape(property.value, depth + 1);
-      return `${typeof key === 'string' && KEY.test(key) ? key : '?'}:${kind}`;
+      // An all-digit key is likely an ID (a map keyed by message/user ID): mask it.
+      const name = typeof key !== 'string' || !KEY.test(key) ? '?' : /^\d+$/.test(key) ? '#' : key;
+      return `${name}:${kind}`;
     });
     return `{${parts.join(',')}${keys.length > 12 ? ',...' : ''}}`;
   } catch { return 'unreadable'; }
