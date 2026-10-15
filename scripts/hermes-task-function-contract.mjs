@@ -15,6 +15,12 @@ const externalStandard=new Map([
   sourcePath:'supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql',
   statementSha256:'a65c0caaa8e6fbaf04c73d0af4eb9bc6d3d6cad2871b6271fa1fdace9660b451',
  }],
+ // Gói D: invoker binds private helper OIDs at definition time (no app_private USAGE).
+ ['public.hermes_task_follow_action_v1',{
+  name:'public.hermes_task_follow_action_v1',
+  sourcePath:'supabase/migrations/20261015110000_hermes_task_follow_v1.sql',
+  statementSha256:'d9a1a93cbcc59910e6c1f2f39a9d2be90c4a70fb080da760c952eec93b1387ee',
+ }],
 ]);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

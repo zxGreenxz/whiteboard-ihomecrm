@@ -81,7 +81,18 @@ Bootstrap chỉ nhận state directory trống. Apply đầu tiên ghi marker ri
 
 CLI dùng khóa `<config>.operator-lock` và `.native-operator-lock` trong state cho các lần sửa hợp tác, không tự phá khóa còn lại sau crash. Khóa state phối hợp cả những config path khác nhau; plan/inspect không tạo marker hay khóa. Không sửa config/token thủ công đồng thời hoặc chạy writer khác bỏ qua khóa. Marker giữ lại nếu commit config lỗi; trường hợp đó dừng thận trọng, không rollback marker để bootstrap lại. Token được ghi đầy đủ, fsync và công bố không ghi đè trước khi đổi config atomically; file cuối phải một link, mode 0600 và đúng owner. Windows không chứng minh quyền Linux hoặc directory fsync.
 
-`inspect` chỉ đọc snapshot trên đĩa, không gọi bridge/provider và không thay journal. Nó trả số lượng inbound `queued`/`dispatch_unknown`/`accepted`/`rejected`, outbound `sent`/`outcome_unknown`, cùng tối đa 100 receipt mỗi chiều; không xuất nội dung DM/token. `queued` là inbound còn chờ giao; outbound `outcome_unknown` có thể đang chờ provider hoặc đã kết thúc mà thiếu receipt. Không suy ra trạng thái live từ snapshot. `quarantine: outcome_unknown` giữ nghĩa chặn gửi mới; `none_observed` chỉ là không thấy unknown trong snapshot. Chưa có provider lookup đủ tin cậy để đối soát thủ công; CLI không có clear-unknown, sửa receipt, mark-sent, đổi generation hoặc resend.
+`inspect` chỉ đọc snapshot trên đĩa, không gọi bridge/provider và không thay journal. Nó trả số lượng inbound `queued`/`dispatch_unknown`/`accepted`/`rejected`, outbound `sent`/`outcome_unknown`, cùng tối đa 100 receipt mỗi chiều; không xuất nội dung DM/token. `queued` là inbound còn chờ giao; outbound `outcome_unknown` có thể đang chờ provider hoặc đã kết thúc mà thiếu receipt. Không suy ra trạng thái live từ snapshot. `quarantine: outcome_unknown` nghĩa là còn bản ghi unknown chưa đối soát nên kênh chặn gửi mới; `released_by_reconciliation` nghĩa là mọi unknown đã có quyết định khớp trong sổ; `none_observed` chỉ là không thấy unknown trong snapshot.
+
+Đối soát là quyết định của người, không phải provider lookup: operator tự kiểm tin trong Zalo (nick chính/nick phụ) rồi ghi một quyết định cho đúng **một** bản ghi unknown. Plan mặc định, apply cần `--expect`, cùng khóa hợp tác như lệnh grant:
+
+```sh
+node infra/hermes-zalo-native/operator.mjs reconcile --profile my-assistant \
+  --request-id <id bản ghi outcome_unknown từ inspect> --decision sent|not_sent \
+  --note "<đã kiểm gì trong Zalo>"
+# xem plan rồi chạy lại cùng lệnh với --apply --expect <expectedRevision>
+```
+
+Quyết định được nối vào sổ riêng tư `<config>.reconciliations.json` (mode 0600, cùng thư mục config, cùng owner). Sổ chỉ ghi thêm; lệnh không sửa journal, receipt, generation và không gửi lại. Worker đọc sổ này (qua mount config chỉ đọc) trước mỗi request ID **mới** trên kênh đang quarantine: kênh mở lại khi mọi bản ghi `outcome_unknown` của đúng profile/account/generation đều có entry khớp request ID, digest và thời điểm bắt đầu; `sent` hay `not_sent` đều tính, không cần restart. Request ID cũ vẫn chỉ đọc lại receipt `outcome_unknown`, không bao giờ gửi lại; `not_sent` không tự gửi bù, người dùng phải yêu cầu lại để tạo request mới. Sổ vắng, hỏng, sai quyền hoặc worker còn chờ provider cho chính bản ghi đó thì kênh tiếp tục chặn. CLI không có clear-unknown, sửa receipt, mark-sent, đổi generation hoặc resend.
 
 ## Cài plugin vào profile
 
@@ -114,6 +125,7 @@ Launcher dùng cố định các đường dẫn sau ở **cả host và contain
 | --- | --- | --- |
 | Config | `/opt/ihome-zalo-worker/native-config/config.json` | Chỉ đọc |
 | Token của từng profile | File trực tiếp trong `/opt/ihome-zalo-worker/native-config/` | Chỉ đọc |
+| Sổ đối soát (nếu có) | `/opt/ihome-zalo-worker/native-config/config.json.reconciliations.json`, chỉ CLI `reconcile` trên host ghi | Chỉ đọc, đọc lại trước mỗi request ID mới khi kênh quarantine |
 | Marker và journal | `/opt/ihome-zalo-worker/native-state/` | Đọc/ghi |
 
 Hai thư mục phải tồn tại, canonical, mode 0700, UID/GID 10002; file config/token mode 0600 và một hardlink. Chuẩn bị thư mục mới bằng operator quản trị; không chạy chmod/chown để che một cấu hình sai đang tồn tại. Các thư mục cha, đặc biệt `/opt/ihome-zalo-worker`, phải cho UID 10002 quyền traverse. Ví dụ cây mới có thể dùng parent root:10002 mode 0710; giữ `worker.env` root:root mode 0600 và không cho user Hermes đọc. Nếu parent hiện là root:root 0700, kiểm và cấp traverse tối thiểu trước khi dùng CLI dưới UID 10002; quyền file con vẫn giữ nguyên. Chỉ bootstrap trên state trống. State đã có marker giữ nguyên config path/generation như mục CLI phía trên.
@@ -140,7 +152,9 @@ Sau mỗi create/rotate/revoke, thực hiện theo thứ tự:
 4. Launcher chờ worker cũ hoàn tất shutdown bằng `docker stop --time -1`, rồi mới remove và tạo worker mới. Provider chưa kết thúc có thể khiến lệnh chờ vô hạn. Nếu stop bị ngắt/lỗi, không có replacement; kiểm worker thực tế trước khi tiếp tục. Không thêm `kill`, timeout ngoài hoặc retry tự động để coi như đã drain. OOM/mất host/force-kill vẫn có thể cắt receipt; journal `outcome_unknown` tiếp tục quarantine. Không xóa state, marker hoặc đổi generation.
 5. Sau khi worker mới chạy và giữ lease đúng, **tạo lại** các sidecar còn được cấp quyền theo ID container worker mới. `docker restart` sidecar cũ không chuyển nó sang network namespace mới. Dùng `inspect` trên đĩa để đối chiếu grant và receipt; inspect không chứng minh token đã được worker live nạp hay provider gửi thành công.
 
-Ví dụ phần mạng/mount của sidecar cho **một profile**; `$HERMES_IMAGE` phải là image upstream đã kiểm, ghim `@sha256:...`, có executable `hermes`. `$PROFILE_HOME` là home riêng của OS principal 10003, canonical mode 0700, chứa `.hermes/profiles/my-assistant` với plugin đã bật, config model/tools/memory và secret scope riêng. Image phải chạy được bằng principal đó; không dùng chung home với worker hoặc profile khác:
+Ví dụ phần mạng/mount của sidecar cho **một profile**; `$HERMES_IMAGE` phải là image upstream đã kiểm, ghim `@sha256:...`, có executable `hermes`. `$PROFILE_HOME` là home riêng của OS principal 10003, canonical mode 0700, chứa `.hermes/profiles/my-assistant` với plugin đã bật, config model/tools/memory và secret scope riêng. Image phải chạy được bằng principal đó; không dùng chung home với worker hoặc profile khác.
+
+Image upstream đặt sẵn `HERMES_HOME=/opt/data` và `HERMES_WRITE_SAFE_ROOT=/opt/data`, trong đó `/opt/data` là VOLUME riêng của image. Nếu chỉ đặt `HOME`, `--profile my-assistant` sẽ tìm `/opt/data/profiles/my-assistant` (không phải profile đã mount; Docker còn tạo volume ẩn danh ghi được dù `--read-only`) và công cụ ghi file bị chặn ngoài `/opt/data`. Vì vậy phải đặt **cả hai** biến trỏ vào Hermes home trong thư mục đã mount; `--profile` khi đó chọn `$HERMES_HOME/profiles/my-assistant`:
 
 ```sh
 WORKER_CONTAINER_ID="$(docker container inspect --format '{{.Id}}' ihome-zalo-worker)"
@@ -150,9 +164,13 @@ docker run -d --name hermes-my-assistant \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --tmpfs /tmp:rw,nosuid,nodev,size=64m,uid=10003,gid=10003,mode=0700 \
   --env HOME=/home/hermes \
+  --env HERMES_HOME=/home/hermes/.hermes \
+  --env HERMES_WRITE_SAFE_ROOT=/home/hermes/.hermes \
   --mount "type=bind,source=$PROFILE_HOME,target=/home/hermes" \
   --entrypoint hermes "$HERMES_IMAGE" --profile my-assistant gateway run
 ```
+
+Sau khi tạo, kiểm `docker exec hermes-my-assistant printenv HERMES_HOME HERMES_WRITE_SAFE_ROOT` ra đúng hai giá trị trên và `docker container inspect --format '{{json .Mounts}}' hermes-my-assistant` chỉ có bind `$PROFILE_HOME` (không có volume ẩn danh `/opt/data` được dùng làm profile). Muốn cho công cụ ghi rộng hơn trong home thì chỉ nới `HERMES_WRITE_SAFE_ROOT` tới `/home/hermes`, không bao giờ tới `/`. Các biến này đối chiếu source Hermes v0.21.6 commit `818c13be` (`hermes_constants.get_default_hermes_root`, `hermes_cli/profiles._get_profiles_root`, `agent/file_safety.py`, Dockerfile `ENV HERMES_HOME=/opt/data`); chưa kiểm lại trên VPS sau khi sửa.
 
 Lần tạo lại cần dừng và remove đúng sidecar cũ trước khi dùng lại tên; không xóa `$PROFILE_HOME`. Không dùng `--network host`, `-p`/`--publish`, Docker socket, mount `native-config`, `native-state`, `sessions` hoặc `worker.env` vào sidecar. Token kênh được provision vào profile là credential riêng của kênh đó; CRM dùng connector token riêng với quyền user hiện tại ∩ Read/Action. Profile có thể gọi model/tools/memory upstream theo cấu hình cá nhân; bridge chỉ dùng phiên Zalo đã có của worker.
 
@@ -172,7 +190,7 @@ setpriv --reuid 10002 --regid 10002 --clear-groups \
 - Mốc hiện tại hỗ trợ DM văn bản mới từ đúng user; ảnh/voice/file của kênh Zalo chưa nối. Nhóm, lịch sử, echo và tin chuyển tiếp không trở thành lệnh cá nhân. Lịch sử DM cá nhân không ghi vào inbox CRM; bản ghi ghép CRM chỉ lưu nội dung đã che mã.
 - Gửi Zalo qua trả lời của gateway đang chạy hoặc cron live. Đường Zalo generic `send_message` và standalone/CLI bị từ chối rõ bằng `native_zalo_generic_send_unsupported`, kể cả tin mới; hook `PlatformEntry.send_message_handler` chặn trước đường adapter generic. Những đường này không giữ định danh lần giao ban đầu, nên fallback có thể gửi trùng khi bridge đã ghi `sent` nhưng phía gọi mất phản hồi HTTP. Cron live lỗi không tự chuyển thành một lần gửi standalone khác. Đây là giới hạn tích hợp của kênh Zalo này; model, tools và memory cá nhân khác không bị thay đổi.
 - Cùng request ID và nội dung chỉ gửi một lần; đổi nội dung với ID cũ bị từ chối. Ghi trạng thái không chắc chắn hoặc mất phản hồi provider giữ `outcome_unknown`, không tự gửi lại. Không coi timeout là gửi thất bại chắc chắn.
-- Khi journal của một kênh/generation còn bất kỳ `outcome_unknown`, bridge chặn **mọi request ID mới của kênh đó**, kể cả nội dung khác, sau restart hoặc do cron đổi/cắt văn bản giữa nhánh live và standalone. Request ID đã có chỉ đọc lại receipt; profile khác vẫn độc lập. Đổi lại, tin mới, tin chủ động và ledger `pending` của kênh cũng phải chờ khi chưa có kết quả chắc chắn. Không xóa journal hay đổi generation để vượt chặn. CLI inspect giúp đọc receipt; chưa có công cụ đối soát/giải phóng quarantine cho operator.
+- Khi journal của một kênh/generation còn `outcome_unknown` **chưa đối soát**, bridge chặn **mọi request ID mới của kênh đó**, kể cả nội dung khác, sau restart hoặc do cron đổi/cắt văn bản giữa nhánh live và standalone. Request ID đã có chỉ đọc lại receipt; profile khác vẫn độc lập. Đổi lại, tin mới, tin chủ động và ledger `pending` của kênh cũng phải chờ khi chưa có kết quả chắc chắn. Không xóa journal hay đổi generation để vượt chặn. Dùng `inspect` để đọc receipt và `reconcile` (mục CLI) để ghi quyết định của người; kênh chỉ mở lại cho request ID mới khi mọi unknown đã có quyết định khớp.
 - Receipt provider hợp lệ đến muộn vẫn được ghi `sent` xuống journal trước khi nhả slot hoặc hoàn tất shutdown; khi không còn `outcome_unknown`, tin mới và nội dung lặp lại với ID mới được phép gửi. ACK không hợp lệ, provider lỗi hoặc không có receipt chắc chắn giữ quarantine. Đây là ghi nhận kết quả thực tế, không tự gửi lại.
 - Plugin dùng hook `_send_retry_is_final` của upstream để giữ nguyên mọi lỗi gửi native: không retry, sửa nội dung qua plain-text fallback hoặc gửi thông báo thay thế. Ledger upstream vẫn bật. Bản phục hồi sau restart/reconnect/rate limit đã từng thử gửi mang marker upstream nhưng thiếu `reply_to` và ID lần giao; plugin giữ bản đó ở trạng thái lỗi `quarantined`, không tạo request ID mới và không báo gửi thành công. Điều này áp dụng cả reply nhận lại từ transcript sau crash. Ledger có thể thử phục hồi đến giới hạn rồi chuyển `abandoned`; mọi lần đó đều bị chặn trước bridge. Operator đối chiếu tin thực tế và journal trước khi quyết định gửi mới.
 - Ba prefix `RECOVERED_MARKER`, `RECONNECTED_MARKER`, `FLOOD_MARKER` của upstream được dành riêng cho phục hồi; văn bản mới bắt đầu đúng một prefix này cũng bị chặn thận trọng. Khi kênh không có kết quả chưa rõ, tin mới có anchor, tin chủ động không anchor và ledger `pending` chưa từng thử gửi vẫn đi bình thường. Khi nâng pin upstream phải kiểm lại marker và cách chuyển định danh phục hồi.
@@ -186,7 +204,10 @@ setpriv --reuid 10002 --regid 10002 --clear-groups \
 
 ```sh
 node --test infra/hermes-zalo-native/bridge.test.mjs infra/hermes-zalo-native/journal.test.mjs infra/hermes-zalo-native/upstream.test.mjs
+node --test infra/hermes-zalo-native/operator-reconcile.test.mjs infra/hermes-zalo-native/quarantine-release.test.mjs
 ```
+
+`quarantine-release.test.mjs` ghi sổ bằng chính lệnh `reconcile` rồi kiểm bridge: unknown chưa đối soát chặn ID mới; đối soát đủ mở đúng một lần gửi ID mới, ID cũ không gửi lại; entry lệch digest/thời điểm/generation/profile, sổ hỏng hoặc chỉ đối soát một phần vẫn chặn; kèm đột biến bỏ kiểm sổ phải đỏ. Nhánh sổ sai quyền/symlink chỉ chạy trên Linux.
 
 Thiếu hai biến trên thì upstream test báo SKIP, không tính là đạt tương thích. `node --test worker/deploy/native-deployment.test.mjs` kiểm hành vi launcher với Docker giả và validator thật trong fixture cô lập: thứ tự preflight/stop, mount, opt-in, cấu hình lỗi, rotate/revoke và stop bị ngắt. Windows bỏ riêng kiểm Linux owner/mode; CI Linux phải chạy phần này không skip. Fixture không có Docker daemon, model, Zalo hay database. Windows không chứng minh Linux owner/mode hoặc directory fsync. Chưa nghiệm thu image worker được build/run với Docker thật, sidecar/network namespace trên VPS, model cá nhân, gửi Zalo thật, nhiều user thật hoặc UI cấu hình grant.
 

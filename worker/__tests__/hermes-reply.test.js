@@ -20,17 +20,23 @@ function fixture(options = {}) {
 }
 afterEach(() => { for (const runner of runners.splice(0)) runner.close(); vi.clearAllTimers(); vi.useRealTimers(); });
 
-describe('pinned zca-js single text receipt', () => {
-  it('accepts only the documented exact single text response with an unambiguous numeric ID', () => {
+describe('zca-js single text receipt', () => {
+  it('accepts a positive safe integer or decimal-string msgId; extra keys are ignored, attachment empty or absent', () => {
     expect(privateReplyReceipt(provider())).toBe('123456');
     expect(privateReplyReceipt({ message: { msgId: Number.MAX_SAFE_INTEGER }, attachment: [] })).toBe(String(Number.MAX_SAFE_INTEGER));
+    // Runtime shape seen in production: stringified ID and additional keys.
+    expect(privateReplyReceipt({ message: { msgId: '7312345678901' }, attachment: [] })).toBe('7312345678901');
+    expect(privateReplyReceipt({ message: { msgId: 123, cliMsgId: 8 }, attachment: [], extra: true })).toBe('123');
+    expect(privateReplyReceipt({ message: { msgId: '9'.repeat(25), cliMsgId: '8' } })).toBe('9'.repeat(25));
   });
   it.each([
-    null, {}, { msgId: 123 }, { message: { msgId: '123' }, attachment: [] },
+    null, {}, { msgId: 123 }, { message: null, attachment: [] }, { message: {}, attachment: [] },
     { message: { msgId: Number.MAX_SAFE_INTEGER + 1 }, attachment: [] },
-    { message: { msgId: 0 }, attachment: [] }, { message: { msgId: -1 }, attachment: [] },
-    { message: { msgId: 1.5 }, attachment: [] }, { message: { msgId: 123, cliMsgId: 8 }, attachment: [] },
-    { message: { msgId: 123 }, attachment: [{ msgId: 456 }] }, { message: { msgId: 123 }, attachment: [], extra: true },
+    { message: { msgId: 0 }, attachment: [] }, { message: { msgId: -1 }, attachment: [] }, { message: { msgId: 1.5 }, attachment: [] },
+    { message: { msgId: '0' }, attachment: [] }, { message: { msgId: '-1' }, attachment: [] }, { message: { msgId: '012' }, attachment: [] },
+    { message: { msgId: '12a' }, attachment: [] }, { message: { msgId: '' }, attachment: [] }, { message: { msgId: '1'.repeat(26) }, attachment: [] },
+    { message: { msgId: '123\n' }, attachment: [] }, { message: { msgId: [123] }, attachment: [] },
+    { message: { msgId: 123 }, attachment: [{ msgId: 456 }] }, { message: { msgId: 123 }, attachment: {} },
   ])('treats unsupported provider result %j as unknown', value => expect(privateReplyReceipt(value)).toBe(null));
   it('does not execute provider getters or accept decorated empty arrays', () => {
     const get = vi.fn(() => 123), value = { message: {}, attachment: [] };
@@ -168,6 +174,18 @@ describe('private reply runner', () => {
     if (kind === 'unsupported') f.sendMessage.mockResolvedValueOnce({ msgId: '123' });
     expect(await f.runner.tick()).toEqual({ status: 'unknown' }); expect(f.sendMessage).toHaveBeenCalledOnce();
     expect(f.rpc.mock.calls.at(-1)[0].args.p).toMatchObject({ outcome: 'unknown', providerMessageId: null });
+  });
+  it('records a stringified runtime msgId as sent and reports an unrecognized receipt only as a redacted shape', async () => {
+    const faults = [], f = fixture({ onFault: code => faults.push(code) });
+    f.sendMessage.mockResolvedValueOnce({ message: { msgId: '7312345678901', cliMsgId: 'x' }, attachment: [] });
+    expect(await f.runner.tick()).toEqual({ status: 'sent' });
+    expect(f.rpc.mock.calls.at(-1)[0].args.p).toMatchObject({ outcome: 'sent', providerMessageId: '7312345678901' });
+    expect(faults).toEqual([]);
+    const g = fixture({ onFault: code => faults.push(code) });
+    g.sendMessage.mockResolvedValueOnce({ message: { msgId: 'PRIVATE TEXT 0912345678', body: 'PRIVATE REPLY' }, attachment: [] });
+    expect(await g.runner.tick()).toEqual({ status: 'unknown' });
+    expect(faults).toEqual(['private_reply_receipt_unrecognized {message:{msgId:string,body:string},attachment:array(0)}']);
+    expect(faults.join()).not.toMatch(/PRIVATE|0912/);
   });
   it('ack timeout never causes another send and close does not abort receipt recording', async () => {
     vi.useFakeTimers(); let settle, signal; const f = fixture({ rpcTimeoutMs: 20 });

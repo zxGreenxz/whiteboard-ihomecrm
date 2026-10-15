@@ -4,6 +4,12 @@ import { PermissionPicker } from '@/components/authorization/PermissionPicker';
 import { ScopePicker } from '@/components/authorization/ScopePicker';
 import type { HermesCallerScope } from '@/hermes/connectionClient';
 import { createHermesOrgPolicyClient, HermesOrgPolicyError, type HermesOrgPolicyInput, type HermesOrgPolicySnapshot } from './orgPolicyClient';
+import { hermesCapabilityHint, hermesCapabilityLabel } from './capabilityLabels';
+
+const hint = (key: string) => {
+  const text = hermesCapabilityHint(key);
+  return text ? <span className="max-w-[50%] text-xs text-muted-foreground">{text}</span> : null;
+};
 
 interface Props {
   userId: string; organizationId: string; currentScope: () => HermesCallerScope; onPolicyChanged: () => void;
@@ -111,8 +117,10 @@ export function HermesOrgPolicySettings({ userId, organizationId, currentScope, 
             onChange={event => toggleRead(['assistant.context.read'], event.target.checked)} />Xem thông tin phiên và quyền của người dùng</label>}
           {choices.has('assistant.memory.read') && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.read.includes('assistant.memory.read')} disabled={disabled}
             onChange={event => toggleRead(['assistant.memory.read'], event.target.checked)} />Xem ghi nhớ công việc CRM được phép</label>}
+          {choices.has('assistant.memory.supervise') && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.read.includes('assistant.memory.supervise')} disabled={disabled}
+            onChange={event => toggleRead(['assistant.memory.supervise'], event.target.checked)} />{hermesCapabilityLabel('assistant.memory.supervise')}</label>}
           {[...choices].some(key => !key.startsWith('assistant.')) && <PermissionPicker value={new Set(draft.read)} availableKeys={new Set([...choices].filter(key => !key.startsWith('assistant.')))} visibleKeys={new Set([...choices].filter(key => !key.startsWith('assistant.')))}
-            onToggle={(key, enabled) => toggleRead([key], enabled)} onToggleMany={toggleRead} disabled={disabled} height="h-[240px]" />}
+            onToggle={(key, enabled) => toggleRead([key], enabled)} onToggleMany={toggleRead} disabled={disabled} renderTrailing={hint} height="h-[240px]" />}
           {draft.read.filter(key => !choices.has(key)).map(key => <label key={key} className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked disabled={disabled} onChange={() => removeStored('read', key)} /><span className="break-all">{key} — quyền đã lưu, chưa hỗ trợ thêm mới</span></label>)}
         </fieldset>
@@ -121,7 +129,7 @@ export function HermesOrgPolicySettings({ userId, organizationId, currentScope, 
           {actionChoices.has('assistant.memory.write') && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.action.includes('assistant.memory.write')} disabled={disabled}
             onChange={event => toggleAction(['assistant.memory.write'], event.target.checked)} />Lưu, sửa và quên ghi nhớ công việc CRM của chính người dùng</label>}
           {[...actionChoices].some(key => !key.startsWith('assistant.')) && <PermissionPicker value={new Set(draft.action)} availableKeys={new Set([...actionChoices].filter(key => !key.startsWith('assistant.')))} visibleKeys={new Set([...actionChoices].filter(key => !key.startsWith('assistant.')))}
-            onToggle={(key, enabled) => toggleAction([key], enabled)} onToggleMany={toggleAction} disabled={disabled} height="h-[240px]" />}
+            onToggle={(key, enabled) => toggleAction([key], enabled)} onToggleMany={toggleAction} disabled={disabled} renderTrailing={hint} height="h-[240px]" />}
           {draft.action.length === 0 && actionChoices.size === 0 && <p className="text-sm">Chưa cấp quyền thao tác.</p>}
           {draft.action.filter(key => !actionChoices.has(key)).map(key => <label key={key} className="flex items-start gap-2 text-sm"><input type="checkbox" checked disabled={disabled}
             onChange={() => removeStored('action', key)} /><span className="break-all">{key} — quyền đã lưu</span></label>)}

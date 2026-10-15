@@ -78,7 +78,7 @@ async function setup(t) {
 }
 
 test('domain contract rejects caller-controlled identity, RPC, implicit writes and malformed result projections',()=>{
-  assert.equal(DOMAIN_TOOLS.length,8);
+  assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,8);
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
   const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phoneMasked:'***4567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM}],nextCursor:null};
@@ -89,7 +89,7 @@ test('domain contract rejects caller-controlled identity, RPC, implicit writes a
 test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/Auth ports, no live JWT proof',{timeout:60000},async t=>{
   const {db,rpc,sqlCall}=await setup(t);
   await t.test('all eight projections execute with saved building overlay and typed amounts',async()=>{
-    for(const operation of Object.keys(DOMAIN_READS)){
+    for(const operation of Object.keys(DOMAIN_READS).filter(key=>DOMAIN_READS[key].family==='v1')){
       const result=await rpc(operation);assert.equal(result.items.length,1,operation);
       domainResult(operation,result,{row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}},domainInput(operation,{}));
       if(operation==='customers')assert.equal(result.items[0].phoneMasked,'***4567');
@@ -168,6 +168,8 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
     assert.equal(options.headers.authorization,'Bearer '+accessToken);assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.redirect,'error');
     const name=new URL(url).pathname,args=JSON.parse(options.body);events.push(name);
     if(name==='/rest/v1/rpc/hermes_domain_read_v1'&&beforeRead){const hook=beforeRead;beforeRead=undefined;await hook();}
+    // Family v2 is a later forward file and is absent in this v1 fixture.
+    if(name==='/rest/v1/rpc/hermes_domain_capabilities_v2')return Response.json({code:'PGRST202',message:'missing',details:null,hint:null},{status:404});
     try {return Response.json(name==='/rest/v1/rpc/hermes_domain_capabilities_v1'?await sqlCall('capabilities',[args.p_organization_id]):
       (assert.equal(name,'/rest/v1/rpc/hermes_domain_read_v1'),await sqlCall('read',[JSON.stringify(args.p_binding),args.p_domain,JSON.stringify(args.p_input)])));}
     catch(error){return Response.json({code:error.code,message:error.message,details:null,hint:null},{status:error.code==='42501'?403:error.code==='PT409'?409:400});}

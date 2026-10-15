@@ -10,8 +10,10 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { HermesPermissionFields } from '@/hermes/HermesPermissionFields';
 import { HermesOrgPolicySettings } from '@/hermes/HermesOrgPolicySettings';
 import { useHermesConnections } from '@/hermes/useHermesConnections';
+import { HermesWorkAssistant } from '@/hermes/HermesWorkAssistant';
 import { HermesZaloBindings } from '@/hermes/HermesZaloBindings';
 import { HermesZaloBotSettings } from '@/hermes/HermesZaloBotSettings';
+import { HermesDeliveryReconcile } from '@/hermes/HermesDeliveryReconcile';
 import type { HermesCallerScope, HermesConnectionContext, HermesConnectionRestrictions, HermesGrantOptions } from '@/hermes/connectionClient';
 
 const states = { pending: 'Chờ hoàn tất', active: 'Đã cấp kết nối', revoked: 'Đã thu hồi' } as const;
@@ -124,11 +126,13 @@ function Workspace({ userId, organizationId, email, currentScope }: { userId: st
         <Button variant="outline" onClick={() => { model.clearHandoff(); setCopied(null); }}>Đã lưu, ẩn mã</Button></div>
       {copied && <p role="status" className="text-sm">{copied}</p>}
     </section>}
+    <HermesWorkAssistant userId={userId} organizationId={organizationId} currentScope={currentScope} />
     <HermesOrgPolicySettings userId={userId} organizationId={organizationId} currentScope={currentScope}
       onPolicyChanging={policyChanging} onPolicyChanged={policyChanged} />
     <HermesZaloBotSettings userId={userId} organizationId={organizationId} currentScope={currentScope} onConfigurationChanged={botConfigurationChanged} />
     {model.connections && <HermesZaloBindings key={botGeneration} userId={userId} organizationId={organizationId} currentScope={currentScope}
       connections={model.connections} disabled={disabled} />}
+    <HermesDeliveryReconcile userId={userId} organizationId={organizationId} currentScope={currentScope} />
     <section aria-label="Cấp quyền Hermes mới" className="space-y-3 rounded-xl border bg-card p-4">
       <h2 className="font-semibold">Kết nối Hermes của tôi</h2>
       <p className="text-sm text-muted-foreground">Chọn quyền và phạm vi cho Hermes, rồi xác nhận mật khẩu CRM. Kết nối mới không thay đổi quyền của bạn.</p>

@@ -88,7 +88,7 @@ function fakeBackend() {
       return Response.json({ id: 'fixture', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'Synthetic answer' }, finish_reason: 'stop' }] });
     }
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
-    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2'].includes(endpoint.pathname))
+    if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -439,6 +439,20 @@ test('composed room tool uses the encrypted assistant JWT, fixed scope/data RPCs
   const invalid = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { organizationId: id(99) } });
   assert.equal(JSON.parse(invalid.body.result.content[0].text).error, 'invalid_request');
   assert.equal(f.calls.filter(call => call.path.endsWith('copilot_available_rooms_v1')).length, 1);
+});
+
+test('server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed', async t => {
+  const f = fakeBackend(), http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
+  f.grantRooms();
+  const listed = (await http.mcp(token)).body.result.tools.map(tool => tool.name);
+  for (const path of ['hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1'])
+    assert(f.calls.some(call => call.path === `/rest/v1/rpc/${path}` && call.options.headers.authorization === `Bearer ${assistantJwt}`), path);
+  assert(!listed.some(name => /^crm_(customer|lead|expense)_/.test(name)));
+  for (const name of ['crm_customer_create', 'crm_lead_status', 'crm_expense_create', 'crm_expense_input_options']) {
+    const response = await http.mcp(token, 'tools/call', { name, arguments: {} });
+    assert.equal(JSON.parse(response.body.result.content[0].text).error, 'tool_not_available', name);
+  }
+  assert(!f.calls.some(call => /hermes_(customer_create|expense)_action_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
 test('composed room response is withheld if policy changes at the final bound RPC after successful audit', async t => {

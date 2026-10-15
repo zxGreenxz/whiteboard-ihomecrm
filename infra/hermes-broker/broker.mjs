@@ -5,6 +5,8 @@ import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } fro
 import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
+import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
+import { EXPENSE_ACTION_TOOLS, expenseActionOperation, expenseActionInput, mayUseExpenseAction } from './expense-action-contract.mjs';
 import { MemoryAssistantStore, MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
 import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
@@ -44,7 +46,13 @@ const ERROR_STATUS = Object.freeze({
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504,
   backend_unavailable: 503, response_too_large: 502, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
+  customer_outcome_unknown: 503, expense_outcome_unknown: 503,
 });
+// Write uncertainty codes. Each carries the caller's stable requestId so the
+// model reconciles with the matching *_status tool instead of creating again.
+const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown']);
+const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown']);
 
 export class BrokerError extends Error {
   constructor(code) {
@@ -226,6 +234,8 @@ export function createBroker({
   domains,
   roomPass,
   tasks,
+  customers,
+  expenses,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -261,6 +271,18 @@ export function createBroker({
     if (!injectedAuthority || ['prepareRoomPass', 'finalizeRoomPass'].some(key => typeof roomPass?.[key] !== 'function') ||
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_room_pass_service_required');
     pass = Object.fromEntries(['prepareRoomPass', 'finalizeRoomPass'].map(key => [key, roomPass[key].bind(roomPass)]));
+  }
+  let customer;
+  if (customers !== undefined) {
+    if (!injectedAuthority || ['prepareCustomerAction', 'finalizeCustomerAction'].some(key => typeof customers?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_customer_action_service_required');
+    customer = Object.fromEntries(['prepareCustomerAction', 'finalizeCustomerAction'].map(key => [key, customers[key].bind(customers)]));
+  }
+  let expense;
+  if (expenses !== undefined) {
+    if (!injectedAuthority || ['prepareExpenseAction', 'finalizeExpenseAction'].some(key => typeof expenses?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_expense_action_service_required');
+    expense = Object.fromEntries(['prepareExpenseAction', 'finalizeExpenseAction'].map(key => [key, expenses[key].bind(expenses)]));
   }
   let domain;
   if (domains !== undefined) {
@@ -470,11 +492,11 @@ export function createBroker({
       const dispatchId = context.sendDispatchId?.();
       if (safe.code === 'send_outcome_unknown' && canonicalId(dispatchId)) safe.dispatchId = dispatchId;
       const mutationRequestId = context.mutationRequestId?.();
-      if (['room_pass_outcome_unknown', 'task_outcome_unknown'].includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
+      if (REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && canonicalId(mutationRequestId)) safe.requestId = mutationRequestId;
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
         outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
-      catch (auditError) { if (!['send_outcome_unknown', 'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown'].includes(safe.code)) throw auditError; }
+      catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
     } };
     if (dependencyScope) {
@@ -636,6 +658,8 @@ export function createBroker({
           ...(mayReadRooms(identity) ? [structuredClone(ROOM_TOOL)] : []),
           ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
+          ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))).map(tool => structuredClone(tool)) : []),
           ...(memory ? WORK_MEMORY_TOOLS.filter(tool => mayUseWorkMemory(identity.effective, workMemoryOperation(tool.name))).map(tool => structuredClone(tool)) : []),
@@ -678,6 +702,42 @@ export function createBroker({
             onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'room_pass_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
+      // Customer/lead and expense create share one shape: fixed DTO, branded
+      // receipt prepared before audit, final bound-JWT RPC as the last await.
+      // Lost ACK after dispatch is a distinct unknown code with the requestId;
+      // nothing here retries a create.
+      const customerOp = customerActionOperation(name);
+      if (customer && customerOp) {
+        let input, invalid = false, uncertain = false;
+        try { input = customerActionInput(customerOp, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseCustomerAction(identity.effective, customerOp)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await customer.prepareCustomerAction(presentedToken, customerOp, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await customer.finalizeCustomerAction(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'customer_outcome_unknown', mutationRequestId: () => input?.requestId });
+      }
+      const expenseOp = expenseActionOperation(name);
+      if (expense && expenseOp) {
+        let input, invalid = false, uncertain = false;
+        try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseExpenseAction(identity.effective, expenseOp)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await expense.finalizeExpenseAction(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'expense_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {

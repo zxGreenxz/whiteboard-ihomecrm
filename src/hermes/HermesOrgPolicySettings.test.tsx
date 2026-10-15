@@ -11,7 +11,7 @@ const scope={userId:USER,organizationId:ORG,generation:0},currentScope=()=>scope
 let value:HermesOrgPolicySnapshot,changed:ReturnType<typeof vi.fn<()=>void>>,fetchMock:ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 const writes=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith('/hermes_set_org_policy_v1'));
 async function respond(url:RequestInfo|URL,init?:RequestInit){
-  if(/\/hermes_org_policy_options_v[12345]$/.test(String(url)))return Response.json(value);
+  if(/\/hermes_org_policy_options_v[123456]$/.test(String(url)))return Response.json(value);
   if(!String(url).endsWith('/hermes_set_org_policy_v1'))throw new Error('unexpected_fixture_rpc');
   const input=JSON.parse(init!.body as string);
   if(input.p_expected_version!==value.policy.version)return Response.json({code:'PT409',message:'PRIVATE',details:null,hint:null},{status:409});
@@ -34,14 +34,14 @@ describe('company Hermes policy administration through the real client',()=>{
   it('rejects an unknown fixture RPC before it can mutate the company policy',async()=>{
     const before=structuredClone(value),body=JSON.stringify({p_org:ORG,p_expected_version:value.policy.version,
       p_enabled:true,p_read:[],p_action:[],p_scope_ids:[]});
-    for(const rpc of ['hermes_org_policy_options_v6','hermes_unexpected_v1']){
+    for(const rpc of ['hermes_org_policy_options_v7','hermes_unexpected_v1']){
       await expect(respond('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/'+rpc,{method:'POST',body})).rejects.toThrow('unexpected_fixture_rpc');
       expect(value).toEqual(before);
     }
   });
   it('explains neutral policy is optional and does not persist the displayed ceiling on open',async()=>{
     value.policy={...value.policy,version:0,enabled:true};render(view());await open();
-    expect(fetchMock.mock.calls[0][0]).toBe('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/hermes_org_policy_options_v5');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/hermes_org_policy_options_v6');
     expect(screen.getByText(/Bạn có thể tạo kết nối mà không cần lưu chính sách này/)).toBeTruthy();
     expect((screen.getByRole('checkbox',{name:'Bật Hermes cho công ty'}) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole('button',{name:'Lưu chính sách Hermes'}) as HTMLButtonElement).disabled).toBe(true);
@@ -115,6 +115,15 @@ describe('shared permission picker for explicit company action ceiling',()=>{
   fireEvent.click(screen.getByRole('button',{name:/Chat Zalo/}));const control=screen.getByRole('checkbox',{name:/Gửi \/ soạn tin nhắn/});expect(control.getAttribute('data-state')).toBe('unchecked');
   fireEvent.click(control);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
   expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_enabled:false,p_action:['chat_zalo.send']});expect(writes()).toHaveLength(1);
+ });
+ it('offers supervise and finance choices unchecked with their narrower Hermes meaning, saving only what the human checks',async()=>{
+  value.choices.read.push('assistant.memory.supervise');value.choices.action=['income_expenses.create','income_expenses.approve'];render(view());await open();
+  const supervise=screen.getByRole('checkbox',{name:/Hermes tổng: tra ghi nhớ công việc được chia sẻ/});expect((supervise as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:/Thu chi/}));
+  expect(screen.getByText(/Hermes: ghi phiếu CHI nhanh/)).toBeTruthy();expect(screen.getByText(/không có công cụ duyệt/)).toBeTruthy();
+  const create=screen.getByRole('checkbox',{name:/Tạo phiếu thu chi/});expect(create.getAttribute('data-state')).toBe('unchecked');
+  fireEvent.click(supervise);fireEvent.click(create);save();await screen.findByText('Đã tắt Hermes của công ty. Tải lại để tiếp tục chỉnh sửa.');
+  expect(JSON.parse(writes()[0][1]!.body as string)).toMatchObject({p_read:['assistant.context.read','assistant.memory.supervise'],p_action:['income_expenses.create']});
  });
  it('keeps catalog-disabled stored action visible only for narrowing',async()=>{
   value.policy.action=['chat_zalo.send'];render(view());await open();expect(screen.queryByRole('button',{name:/Chat Zalo/})).toBe(null);

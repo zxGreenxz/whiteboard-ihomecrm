@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { ROOT, TEST_REF, CANDIDATES, parseArguments, sha, validateSchemaEvidence, validateRecoveryBackup, fixturePlan,
   channelSetupSql, channelCleanupSql, channelCountsSql, roleProbe, expectSqlDenied, captureSourceIdentity, runHarness,
   executionMode, executionPlan, runChannelScope, accountSetupSql, verifyBindingManagementFixture, fixtureRpcDiagnostic, fixtureRequestHeaders,
-  activateFixtureConnection, verifyPolicyOptionsFixture, verifyLiveSchema, migrationSources, verifyExecutorPrincipal, createExecutorRole } from '../test-hermes-private-flow.mjs';
+  activateFixtureConnection, verifyPolicyOptionsFixture, verifyLiveSchema, migrationSources, verifyExecutorPrincipal, createExecutorRole,
+  hermesFunctionAttributes } from '../test-hermes-private-flow.mjs';
 import { createDurableConnectionStore } from '../../infra/hermes-broker/durable-connection-store.mjs';
 import { validateCleanupEvidence } from '../test-hermes-broker-authz.mjs';
 import { extractHermesFunctionDefinitions as extractFunctionDefinitions, TASK_FUNCTIONS, CUSTOMER_FUNCTIONS } from '../hermes-task-function-contract.mjs';
@@ -377,12 +378,12 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
     }
     if (sql.includes('to_regclass')) return { rows: [{relrowsecurity:true,owner:'postgres',private_usage:false,owner_only_acl:true,table_access:false}] };
     if (sql.includes('FROM pg_proc')) {
-      const pureCatalog = new Set(['app_private.hermes_group_number_vi_v1', 'app_private.hermes_work_memory_settings_json_v1',
-        'app_private.hermes_schedule_immutable_v1', 'app_private.hermes_domain_permission_v1', 'app_private.hermes_domain_text_v1']);
+      // Mirror PostgreSQL: proconfig stores the declared path with ", " separators.
+      const attributes = hermesFunctionAttributes(sources);
       const catalog = new Map([...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].map(spec => [spec.name, spec]));
       const rows = [...definitions.values()].filter(item => item.bodyKind !== 'sql-standard' && !catalog.has(item.qualifiedName)).map(item => ({ name: item.qualifiedName, prosrc: bodies.get(item.bodyDigest),
-        prosecdef: catalog.get(item.qualifiedName)?.definer ?? (item.qualifiedName !== 'app_private.hermes_group_number_vi_v1'), owner: 'postgres',
-        proconfig: [pureCatalog.has(item.qualifiedName) ? 'search_path=pg_catalog' : 'search_path=pg_catalog,public,app_private'] }));
+        prosecdef: catalog.get(item.qualifiedName)?.definer ?? attributes.get(item.qualifiedName).definer, owner: 'postgres',
+        proconfig: ['search_path=' + attributes.get(item.qualifiedName).searchPath.replaceAll(',', ', ')] }));
       mutateRows?.(rows); return { rows };
     }
     if (sql.includes('has_function_privilege')) {
@@ -720,6 +721,18 @@ for(const [label,mutateRows] of [
   ['pure helper search path expansion',rows=>{rows.find(row=>row.name==='app_private.hermes_domain_text_v1').proconfig=['search_path=pg_catalog,public'];}],
   ['pure helper invoker mode',rows=>{rows.find(row=>row.name==='app_private.hermes_work_memory_settings_json_v1').prosecdef=false;}],
   ['pure helper body change',rows=>{rows.find(row=>row.name==='app_private.hermes_domain_permission_v1').prosrc+=' ';}],
+  ['reviewed invoker helper turned definer',rows=>{rows.find(row=>row.name==='app_private.hermes_task_follow_apply_v1').prosecdef=true;}],
+  ['definer function losing its search path',rows=>{rows.find(row=>row.name==='app_private.hermes_task_follow_grant_v1').proconfig=null;}],
+  ['narrow helper path widened',rows=>{rows.find(row=>row.name==='app_private.hermes_schedule_message_v1').proconfig=['search_path=pg_catalog, public'];}],
+  ['second search_path entry',rows=>{const row=rows.find(row=>row.name==='app_private.hermes_memory_shared_with_v1');row.proconfig=[...row.proconfig,'search_path=public'];}],
 ])test('live schema preflight still rejects '+label,async()=>{
   await assert.rejects(verifyLiveSchema(mockSchema({mutateRows})),{code:'live_schema_body_mismatch'});
+});
+
+test('Hermes function attributes come from the last reviewed CREATE statement',()=>{
+  const attributes=hermesFunctionAttributes(migrationSources());
+  assert.deepEqual(attributes.get('app_private.hermes_task_follow_apply_v1'),{definer:false,searchPath:'pg_catalog,public'});
+  assert.deepEqual(attributes.get('app_private.hermes_schedule_message_v1'),{definer:false,searchPath:'pg_catalog'});
+  assert.deepEqual(attributes.get('app_private.hermes_work_memory_int_v1'),{definer:true,searchPath:'pg_catalog'});
+  assert.ok([...attributes.values()].every(item=>item.searchPath?.startsWith('pg_catalog')));
 });

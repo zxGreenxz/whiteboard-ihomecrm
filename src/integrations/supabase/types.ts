@@ -24251,11 +24251,16 @@ export type Database = {
         Args: { p_connection_id: string }
         Returns: Json
       }
+      hermes_connection_context_v6: {
+        Args: { p_connection_id: string }
+        Returns: Json
+      }
       hermes_connection_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v3: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v4: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v5: { Args: { p_org: string }; Returns: Json }
+      hermes_connection_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -24269,12 +24274,33 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_delivery_reconcile_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_delivery_reconcile_resolve_v1: { Args: { p: Json }; Returns: Json }
       hermes_domain_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_domain_capabilities_v2: {
         Args: { p_organization_id: string }
         Returns: Json
       }
       hermes_domain_read_v1: {
         Args: { p_binding: Json; p_domain: string; p_input: Json }
+        Returns: Json
+      }
+      hermes_domain_read_v2: {
+        Args: { p_binding: Json; p_domain: string; p_input: Json }
+        Returns: Json
+      }
+      hermes_expense_action_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
+      hermes_expense_capabilities_v1: {
+        Args: { p_organization_id: string }
         Returns: Json
       }
       hermes_external_group_directory_v1: { Args: { p: Json }; Returns: Json }
@@ -24296,11 +24322,36 @@ export type Database = {
       }
       hermes_group_send_v1: { Args: { p: Json }; Returns: Json }
       hermes_my_connections_v1: { Args: { p_org: string }; Returns: Json }
+      hermes_my_task_follow_stop_v1: {
+        Args: { p_input: Json; p_org: string }
+        Returns: Json
+      }
+      hermes_my_task_follows_v1: {
+        Args: { p_input: Json; p_org: string }
+        Returns: Json
+      }
+      hermes_my_work_memory_configure_v1: {
+        Args: { p_input: Json; p_org: string }
+        Returns: Json
+      }
+      hermes_my_work_memory_edit_v1: {
+        Args: { p_input: Json; p_org: string }
+        Returns: Json
+      }
+      hermes_my_work_memory_forget_v1: {
+        Args: { p_input: Json; p_org: string }
+        Returns: Json
+      }
+      hermes_my_work_memory_v1: {
+        Args: { p_offset: number; p_org: string }
+        Returns: Json
+      }
       hermes_org_policy_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v3: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v4: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v5: { Args: { p_org: string }; Returns: Json }
+      hermes_org_policy_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_prepare_connection_v1: {
         Args: {
           p_action: string[]
@@ -24327,12 +24378,29 @@ export type Database = {
         Returns: Json
       }
       hermes_room_schedule_manage_v1: { Args: { p: Json }; Returns: Json }
+      hermes_room_schedule_manage_v2: { Args: { p: Json }; Returns: Json }
+      hermes_room_schedule_probe_v1: {
+        Args: { p_instance_id: string; p_schedule_id: string }
+        Returns: Json
+      }
       hermes_room_schedule_run_v1: {
         Args: {
           p_expected_revision: number
           p_instance_id: string
           p_schedule_id: string
         }
+        Returns: Json
+      }
+      hermes_room_schedule_run_v2: {
+        Args: {
+          p_expected_revision: number
+          p_instance_id: string
+          p_schedule_id: string
+        }
+        Returns: Json
+      }
+      hermes_room_schedule_sweep_v1: {
+        Args: { p_instance_id: string; p_organization_ids?: string[] }
         Returns: Json
       }
       hermes_room_scope_map_v1: {
@@ -24368,6 +24436,18 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_task_follow_action_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
+      hermes_task_follow_capabilities_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      hermes_task_follow_read_v1: {
+        Args: { p_binding: Json; p_input: Json }
+        Returns: Json
+      }
       hermes_task_input_options_v1: {
         Args: { p_binding: Json; p_input: Json }
         Returns: Json
@@ -24385,6 +24465,10 @@ export type Database = {
         Returns: Json
       }
       hermes_work_memory_list_v1: {
+        Args: { p: Json; p_input: Json }
+        Returns: Json
+      }
+      hermes_work_memory_search_v1: {
         Args: { p: Json; p_input: Json }
         Returns: Json
       }

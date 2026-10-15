@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { installGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
 import { setupMount, token } from './group-preview-fixture.mjs';
+import { createHash } from 'node:crypto';
+import { ORG, USER, INSTANCE, SESSION, ACCOUNT, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
+import { scheduleInput } from './schedule-contract.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
-import { createHash } from 'node:crypto';
-import { ORG, USER, INSTANCE, CONNECTION, SESSION, ACCOUNT, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
-import { scheduleInput, scheduleResult } from './schedule-contract.mjs';
 import { tickHermesSchedules } from '../../worker/lib/hermes-schedule.js';
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const migrationRoot = new URL('../../supabase/migrations/', import.meta.url);
@@ -31,7 +31,9 @@ test('one existing scheduler tick issues one run per candidate and never retries
   assert.deepEqual(await tickHermesSchedules({ db, instanceId: INSTANCE }), [
     { scheduleId: REQUEST, status: 'unverified' }, { scheduleId: NEXT, status: 'already_run' },
   ]);
-  assert.equal(calls.length, 3);
+  // One run attempt each, then one maintenance sweep (its invalid reply is only logged).
+  assert.deepEqual(calls.map(call => call.name), ['hermes_room_schedule_due_v1', 'hermes_room_schedule_run_v2',
+    'hermes_room_schedule_run_v2', 'hermes_room_schedule_sweep_v1']);
 });
 test('actual draft SQL: current rights, grant lifecycle, current rooms and provider revocation', { timeout: 60000 }, async t => {
   const hooks = {}, x = await setupMount(t, hooks), { f, BUILDING, GROUP } = x, db = f.db;
@@ -106,7 +108,10 @@ test('actual draft SQL: current rights, grant lifecycle, current rooms and provi
       await manage('revoke',{requestId:revokeId,scheduleId,expectedRevision:1});
     }
     const seen=new Set(); let cursor=null;
-    do { const input=scheduleInput('list',{limit:20,cursor}), page=scheduleResult('list',await manage('list',input),null,input);
+    // v1 keyset SQL; the broker contract now validates manage_v2 output
+    // (schedule-health-sql.test.mjs covers that page shape end to end).
+    do { const input=scheduleInput('list',{limit:20,cursor}), page=await manage('list',input);
+      assert.ok(page.schedules.length<=20); assert.ok(page.nextCursor===null||page.nextCursor===page.schedules.at(-1).scheduleId);
       for(const row of page.schedules) { assert.equal(seen.has(row.scheduleId),false); seen.add(row.scheduleId); }
       cursor=page.nextCursor;
     } while(cursor);
@@ -239,37 +244,56 @@ test('actual draft SQL: current rights, grant lifecycle, current rooms and provi
     await db.exec("UPDATE public.zalo_send_queue SET result='{}'::jsonb");
     await insert();
   });
-  await each('real session-bound mount executes the fixed SQL RPC and validates schedule receipts', async () => {
+  // The session-bound mount calls manage_v2; its end-to-end receipt test lives
+  // with the forward migrations in schedule-health-sql.test.mjs. This database
+  // has only the deployed v1 SQL: a connector released before those migrations
+  // gets PGRST202 for v2 and must fall back, never fail every schedule call.
+  await each('session-bound mount falls back to the real manage_v1 SQL on PGRST202; issues/reconcile are unavailable', async () => {
     const auth = { verifySession: value => x.auth.verifySession(value), async readAuthorization(value) {
       const base = await x.auth.readAuthorization(value);
-      return { ...base, permissions: { ...base.permissions, action: [...base.permissions.action, 'chat_zalo.manage_automation'] },
-        companyCeilings: { ...base.companyCeilings, action: [...base.companyCeilings.action, 'chat_zalo.manage_automation'] },
-        scopesByPermission: { ...base.scopesByPermission, 'chat_zalo.manage_automation': { buildingIds: [], cashbookIds: [] } } };
+      return { ...base, permissions: { ...base.permissions, read: [...base.permissions.read, 'chat_zalo.view'], action: [...base.permissions.action, 'chat_zalo.send', 'chat_zalo.manage_automation'] },
+        companyCeilings: { ...base.companyCeilings, read: [...base.companyCeilings.read, 'chat_zalo.view'], action: [...base.companyCeilings.action, 'chat_zalo.send', 'chat_zalo.manage_automation'] },
+        scopesByPermission: { ...base.scopesByPermission, 'chat_zalo.view': { buildingIds: [], cashbookIds: [] }, 'chat_zalo.send': { buildingIds: [], cashbookIds: [] },
+          'chat_zalo.manage_automation': { buildingIds: [], cashbookIds: [] } } };
     } };
     const authority = createDurableAuthority({ auth, connectionStore: x.connectionStore, crypto: x.crypto });
-    let writes = 0;
+    const calls = [];
     hooks.beforeFetch = async (url, options) => {
-      if (new URL(url).pathname !== '/rest/v1/rpc/hermes_room_schedule_manage_v1') return;
-      assert.equal(new URL(url).origin, 'https://example.invalid'); assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
-      await auth.verifySession({ accessToken: options.headers.authorization.slice(7) });
-      const { p } = JSON.parse(options.body); assert.deepEqual(Object.keys(p).sort(), ['binding', 'input', 'operation']);
-      assert(!Object.hasOwn(p.input, 'userId')); assert(!Object.hasOwn(p.input, 'organizationId'));
-      const result = await f.rpc('public.hermes_room_schedule_manage_v1', p, 'authenticated');
-      if (p.operation !== 'list') writes++;
-      return Response.json(result);
+      const name = new URL(url).pathname.slice('/rest/v1/rpc/'.length);
+      if (!name.startsWith('hermes_room_schedule_manage_')) return;
+      calls.push(name);
+      if (name === 'hermes_room_schedule_manage_v2')
+        return Response.json({ code: 'PGRST202', message: 'Could not find the function public.hermes_room_schedule_manage_v2(p)', details: null, hint: null }, { status: 404 });
+      const { p } = JSON.parse(options.body);
+      assert.deepEqual(Object.keys(p).sort(), ['binding', 'input', 'operation']);
+      await heartbeat();
+      try {
+        await db.query("SELECT set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claim.session',$2,false)", [USER, SESSION]);
+        return Response.json(await f.rpc('public.hermes_room_schedule_manage_v1', p, 'authenticated'));
+      } catch (error) {
+        return Response.json({ code: error.code, message: error.message, details: null, hint: null },
+          { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 });
+      }
     };
-    const mount = createScheduleMount({ authority, auth, connectionStore: x.connectionStore, crypto: x.crypto,
-      supabase: x.config, dependencyScope: x.scope, fetch: x.config.fetch });
-    const service = mount.createService(), signal = new AbortController().signal, input = { requestId: REQUEST, settings: settings() };
-    const prepared = await service.prepareSchedule(token, 'create', input, { signal });
-    assert.deepEqual(prepared, {}); assert(Object.isFrozen(prepared)); assert.equal(writes, 0);
-    let dispatched = 0;
-    const result = await service.finalizeSchedule(token, prepared, { signal, onDispatch() { dispatched++; }, onRejected() { assert.fail('write unexpectedly rejected'); } });
-    assert.equal(result.schedule.scheduleId, REQUEST); assert.equal(dispatched, 1); assert.equal(writes, 1);
-    assert(!JSON.stringify(result).includes('SYNTHETIC_PRIVATE_REFRESH')); assert(!JSON.stringify(result).includes(token));
-    await assert.rejects(service.finalizeSchedule(token, prepared, { signal }), error => error.code === 'context_changed');
-    const read = await service.prepareSchedule(token, 'list', {}, { signal });
-    assert.equal((await service.finalizeSchedule(token, read, { signal })).schedules.length, 1);
-    hooks.beforeFetch = undefined;
+    try {
+      const mount = createScheduleMount({ authority, auth, connectionStore: x.connectionStore, crypto: x.crypto,
+        supabase: x.config, dependencyScope: x.scope, fetch: x.config.fetch });
+      const service = mount.createService(), signal = new AbortController().signal;
+      const call = async (operation, input, events = {}) => service.finalizeSchedule(token, await service.prepareSchedule(token, operation, input, { signal }), { signal,
+        onDispatch() { events.dispatched = (events.dispatched ?? 0) + 1; }, onRejected() { events.rejected = (events.rejected ?? 0) + 1; } });
+      const events = {};
+      const created = await call('create', { requestId: REQUEST, settings: settings() }, events);
+      assert.deepEqual([created.schedule.scheduleId, created.schedule.state, created.schedule.revision, created.schedule.openIssues], [REQUEST, 'ACTIVE', 1, []]);
+      assert.deepEqual([events.dispatched, events.rejected], [2, 1], 'the v2 refusal is definite; the v1 call is the only write that ran');
+      assert.equal((await run()).status, 'queued');
+      const listed = await call('list', {});
+      assert.deepEqual(listed.schedules.map(row => [row.scheduleId, row.openIssues, row.lastRuns.map(entry => [entry.outcome, entry.reason])]),
+        [[REQUEST, [], [['queued', null]]]]);
+      for (const [operation, input] of [['issues', {}], ['reconcile', { requestId: NEXT, jobId: REQUEST, decision: 'sent', note: 'Đã thấy trong nhóm' }]])
+        await assert.rejects(call(operation, input), error => error.code === 'backend_unavailable', operation);
+      assert.equal((await call('revoke', { requestId: NEXT, scheduleId: REQUEST, expectedRevision: 1 })).schedule.state, 'REVOKED');
+      assert.deepEqual(calls.filter(name => name.endsWith('_v1')).length, 3, 'create, list, revoke ran once each on v1; issues/reconcile never fell back');
+      assert.equal((await db.query('SELECT count(*)::integer n FROM public.zalo_send_queue')).rows[0].n, 1);
+    } finally { hooks.beforeFetch = undefined; }
   });
 });

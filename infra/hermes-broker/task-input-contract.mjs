@@ -1,10 +1,14 @@
 import { domainExact,domainId } from './domain-contract.mjs';
 import { TASK_ACTION,taskInput,mayUseTask } from './task-contract.mjs';
+import { TASK_FOLLOW_TOOLS,taskFollowOperation,isTaskFollowOperation,mayUseTaskFollow,taskFollowInput } from './task-follow-contract.mjs';
 const kinds=['buildings','rooms','jobTypes','assignees'];
 const fail=()=>{throw new TypeError('invalid_task_input_options');};
-export const taskActionOperation=name=>name==='crm_task_create'?'create':name==='crm_task_status'?'status':name==='crm_task_input_options'?'options':null;
-export const mayUseTaskAction=(effective,operation)=>operation==='options'?effective?.action?.includes(TASK_ACTION)===true:mayUseTask(effective,operation);
+// Follow/progress/cancel join the same task tool family and broker dispatch.
+export const taskActionOperation=name=>name==='crm_task_create'?'create':name==='crm_task_status'?'status':name==='crm_task_input_options'?'options':taskFollowOperation(name);
+export const mayUseTaskAction=(effective,operation)=>operation==='options'?effective?.action?.includes(TASK_ACTION)===true:
+ isTaskFollowOperation(operation)?mayUseTaskFollow(effective,operation):mayUseTask(effective,operation);
 export function taskActionInput(operation,input){
+ if(isTaskFollowOperation(operation))return taskFollowInput(operation,input);
  if(operation!=='options')return taskInput(operation,input);
  if(!domainExact(input,['kind','buildingId','query','limit','cursor'])||!kinds.includes(input.kind)||
   (input.kind==='buildings'?input.buildingId!==null:!domainId(input.buildingId))||
@@ -25,4 +29,4 @@ export function taskOptionsResult(operation,value,identity,input){
 }
 export const TASK_INPUT_TOOLS=Object.freeze([{name:'crm_task_input_options',description:'Tra ID và tên để tạo/giao công việc. Tra buildings trước; các loại rooms, jobTypes, assignees cần buildingId vừa chọn. Chỉ danh mục người dùng hiện tại được chọn theo RLS, không đọc công việc hay thông tin liên hệ.',
  inputSchema:{type:'object',additionalProperties:false,required:['kind','buildingId','query','limit','cursor'],properties:{kind:{enum:kinds},buildingId:{type:['string','null'],format:'uuid'},query:{type:'string',maxLength:100},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:['string','null'],format:'uuid'}}},
- annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}]);
+ annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},...TASK_FOLLOW_TOOLS]);
