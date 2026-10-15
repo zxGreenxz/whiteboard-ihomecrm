@@ -9,7 +9,9 @@ const exact = (value, names) => value !== null && typeof value === 'object' &&
 const id = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
 export function createSupabaseScheduleReads(options) {
-  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: ['hermes_room_schedule_manage_v1', 'hermes_room_schedule_capabilities_v1'] });
+  // manage_v2 keeps v1 validation/actor/grant semantics for mutations and adds
+  // issues/reconcile; it requires the schedule health + reconcile migrations.
+  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: ['hermes_room_schedule_manage_v2', 'hermes_room_schedule_capabilities_v1'] });
   return Object.freeze({ async capabilities({ accessToken, organizationId }, callOptions) {
     if (!id(organizationId)) throw new BrokerError('invalid_request');
     return rpc('hermes_room_schedule_capabilities_v1', accessToken, { p_organization_id: organizationId }, callOptions, { optional: true });
@@ -20,7 +22,8 @@ export function createSupabaseScheduleReads(options) {
       !(value.binding.expectedPolicyVersion === 0 || positive(value.binding.expectedPolicyVersion))) throw new BrokerError('invalid_request');
     let input; try { input = scheduleInput(operation, value.input); } catch { throw new BrokerError('invalid_request'); }
     const binding = { ...value.binding, requestId: input.requestId ?? randomUUID() };
-    return rpc('hermes_room_schedule_manage_v1', value.accessToken, { p: { binding, operation, input } }, callOptions, { write: operation !== 'list' });
+    return rpc('hermes_room_schedule_manage_v2', value.accessToken, { p: { binding, operation, input } }, callOptions,
+      { write: !['list', 'issues'].includes(operation) });
   } });
 }
 
