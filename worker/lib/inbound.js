@@ -15,6 +15,11 @@ import { sb, log, chunk, orgOf, notifyPush, sessions } from './ctx.js';
 import { xuLyTinDen } from './auto-reply.js';
 import { laChuoiMay, phanLoaiTinThe } from './message-card.js';
 import { createGroupMemberSync } from './group-members.js';
+import { createHermesIngress, isHermesLinkMessage, redactHermesLinkMessage } from './hermes-link.js';
+import { prepareLivePrivateCommand } from './hermes-command.js';
+import { createHermesReplyRunner } from './hermes-reply.js';
+import { getNativeBridge } from './hermes-native-bridge.js';
+import { INSTANCE_ID, isLeaseActive } from './lease.js';
 
 const syncGroupMembers = createGroupMemberSync({ db: sb });
 function refreshGroupMembers(api, accountId, conversationId, options = {}) {
@@ -47,6 +52,7 @@ function pickText(m) {
 
 // Phân loại tin → {msg_type, body, media_url, media_label}. Ảnh giữ URL CDN để FE hiện thật.
 export function classifyMessage(m) {
+  m = redactHermesLinkMessage(m);
   const d = m?.data || {};
   const mt = String(d.msgType || '');
   const c = d.content;
@@ -77,6 +83,7 @@ export function classifyMessage(m) {
 // Subset THÔ đủ để: dựng quote khi reply (§13.17) + params sendSeenEvent.
 // Chỉ tin có msgId; content cắt ≤2KB chống phình jsonb.
 export function rawSubset(m) {
+  m = redactHermesLinkMessage(m);
   const d = m?.data || {};
   if (!d.msgId) return null;
   let content = null;
@@ -180,8 +187,32 @@ async function upsertConversation(accountId, ownerId, m, api) {
   return conv;
 }
 
-export async function handleInbound(accountId, ownerId, m, api) {
+async function sharedInboxAllowed(accountId, ingress = sessions.get(accountId)?.hermesIngress) {
+  try { return (await ingress?.privacy())?.status === 'shared'; }
+  catch { return false; } // An unknown decision must never release private content.
+}
+
+export async function handleInbound(accountId, ownerId, m, api, { ingress = sessions.get(accountId)?.hermesIngress, ticket, privateCommand } = {}) {
+  const linkMessage = isHermesLinkMessage(m);
+  if (!linkMessage && threadTypeOf(m) !== 'group' && getNativeBridge()?.isPrivateThread(accountId, threadIdOf(m))) return;
+  m = redactHermesLinkMessage(m);
   try {
+    if (!linkMessage && threadTypeOf(m) !== 'group') {
+      let privacy;
+      try { privacy = await ingress?.privacy(); } catch { /* Fail closed, including logs. */ }
+      if (privacy?.status !== 'shared') {
+        // Only the live listener supplies a parsed, immutable command. History,
+        // self echoes and media never reach this intake; no shared fallback.
+        let result;
+        if (privacy?.status === 'private' && privateCommand) {
+          try { result = await ingress.acceptPrivateCommand(privateCommand); } catch { /* Do not log raw transport errors. */ }
+        }
+        const status = ['queued','duplicate','denied','context_changed','overloaded','inactive','outcome_unknown'].includes(result?.status)
+          ? result.status : 'suppressed';
+        log('hermes private ingress', status);
+        return;
+      }
+    }
     // isSelf = tin do CHÍNH tài khoản gửi (kể cả từ điện thoại) → lưu là 'out'.
     const out = !!m?.isSelf;
     const conv = await upsertConversation(accountId, ownerId, m, api);
@@ -193,7 +224,7 @@ export async function handleInbound(accountId, ownerId, m, api) {
     // Echo identity comes only from the provider ID. Matching pending messages
     // by body/type/time can attach phone sends or reordered album echoes to the
     // wrong row. The atomic send finalizer merges the exact echo into canonical.
-    const { data: insData } = await sb.from('zalo_messages').upsert({
+    const { data: insData, error: insertError } = await sb.from('zalo_messages').upsert({
       user_id: ownerId, organization_id: orgOf(accountId),
       conversation_id: conv.id, account_id: accountId,
       direction: out ? 'out' : 'in', msg_type: cm.msg_type, body,
@@ -203,10 +234,17 @@ export async function handleInbound(accountId, ownerId, m, api) {
       zalo_raw: rawSubset(m),
       status: out ? 'sent' : 'delivered', created_at: new Date().toISOString(),
     }, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: true }).select('id');
+    if (insertError) throw new Error(linkMessage ? 'hermes_link_persist_failed' : insertError.message);
 
     // §13.11 — unread chỉ cộng khi dòng THẬT SỰ mới VÀ có msgId. Tin thiếu
     // msgId không dedup được (partial unique) nên double-fire sẽ cộng ảo.
     const isNew = Array.isArray(insData) && insData.length > 0;
+    // Observe only after a new, redacted identity row exists. History and
+    // duplicates cannot propose a sender; this RPC never confirms the binding.
+    if (linkMessage && isNew && ticket && ingress) {
+      const result = await ingress.observe(ticket);
+      log('hermes link', result.status);
+    }
     const bump = isNew && !out && !!msgId;
     await sb.from('zalo_conversations').update({
       last_message_text: body || '[Tin nhắn]', last_message_at: new Date().toISOString(),
@@ -218,7 +256,7 @@ export async function handleInbound(accountId, ownerId, m, api) {
       void refreshGroupMembers(api, accountId, conv.id, { senderIds: [String(m?.data?.uidFrom || '')] });
     }
 
-    if (!out && isNew) {
+    if (!out && isNew && !linkMessage) {
       const peerName = m?.data?.dName || m?.data?.fromName || 'Zalo';
       notifyPush({
         userId: ownerId,
@@ -233,7 +271,7 @@ export async function handleInbound(accountId, ownerId, m, api) {
       xuLyTinDen({ accountId, conv: { ...conv, user_id: conv.user_id || ownerId }, body, zaloMsgId: msgId })
         .catch((e) => log('auto-reply (nuốt)', e?.message || e));
     }
-  } catch (e) { log('handleInbound error', e.message); }
+  } catch (e) { log('handleInbound error', linkMessage ? 'hermes_link_failed' : e.message); }
 }
 
 // ── Upsert N tin vào 1 hội thoại; tạo hội thoại nếu chưa có ──
@@ -241,6 +279,15 @@ export async function handleInbound(accountId, ownerId, m, api) {
 // nhóm vẫn được tạo, chỉ mang tên tạm "Nhóm Zalo".
 export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs, api = null) {
   if (!Array.isArray(msgs) || !msgs.length) return 0;
+  if (tt !== 'group' && getNativeBridge()?.isPrivateThread(accountId, threadId)) {
+    msgs = msgs.filter(isHermesLinkMessage);
+    if (!msgs.length) return 0;
+  }
+  if (tt !== 'group' && !msgs.every(isHermesLinkMessage) && !await sharedInboxAllowed(accountId)) {
+    msgs = msgs.filter(isHermesLinkMessage);
+    if (!msgs.length) return 0;
+  }
+  msgs = msgs.map(redactHermesLinkMessage);
   let { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', threadId).maybeSingle();
   if (!conv) {
     const f = msgs.find((x) => !x?.isSelf) || msgs[0];
@@ -454,30 +501,82 @@ export async function handleSeen(accountId, e) {
 
 // ── Gắn toàn bộ listener cho 1 phiên vừa login ──
 // onClosed(code): login.js truyền vào để xử lý kick/reconnect (tránh import vòng).
-export async function attachSession(accountId, ownerId, api, { onClosed, sessionSavedAt } = {}) {
+export async function attachSession(accountId, ownerId, api, { onClosed, sessionSavedAt, loginRequestedAt = null } = {}) {
   let ownId = '';
   try { ownId = await api.getOwnId?.(); } catch { /* ignore */ }
-  sessions.set(accountId, {
+  sessions.get(accountId)?.hermesReply?.close();
+  sessions.get(accountId)?.hermesIngress?.close();
+  sessions.get(accountId)?.hermesNative?.close();
+  const session = {
     api, ownId,
     connectedAt: Date.now(),
     probeFails: 0,
     sessionSavedAt: sessionSavedAt || Date.now(),
-  });
+  };
+  sessions.set(accountId, session);
+  const active = () => sessions.get(accountId) === session && isLeaseActive();
   try {
-    const active = () => sessions.get(accountId)?.api === api;
-    api.listener.on('message', (m) => active() && handleInbound(accountId, ownerId, m, api));
+    session.hermesNative = getNativeBridge()?.attach({ accountId, ownUid: String(ownId), api, isActive: active });
+  } catch {
+    sessions.delete(accountId);
+    try { api.listener.stop(); } catch { /* no listener yet */ }
+    log('native hermes session rejected', accountId);
+    return;
+  }
+  try {
+    session.hermesIngress = createHermesIngress({
+      source: { accountId, organizationId: orgOf(accountId), instanceId: INSTANCE_ID,
+        accountOwnerId: ownerId, ownUid: String(ownId), loginRequestedAt },
+      isActive: active,
+      rpc: ({ functionName, args, signal }) => sb.rpc(functionName, args).abortSignal(signal),
+    });
+    const registration = session.hermesIngress.register().then(result => log('hermes ingress', accountId, result.status));
+    if (session.hermesNative) {
+      // The native DM grant does not depend on CRM registration or its token.
+      void registration.catch(() => log('hermes ingress', accountId, 'unavailable'));
+    } else await registration;
+  } catch { log('hermes ingress', accountId, 'unavailable'); }
+  if (!active()) { session.hermesIngress?.close(); session.hermesNative?.close(); return; }
+  try {
+    api.listener.on('message', async (m) => {
+      if (!active()) return;
+      if (await session.hermesNative?.capture(m)) return;
+      if (!active()) return;
+      const ingress = session.hermesIngress;
+      const privateSource = ingress?.privateCommandSource();
+      const privateCommand = privateSource ? prepareLivePrivateCommand({ event: m, source: privateSource }) : null;
+      const ticket = await ingress?.captureLive(m);
+      if (!active()) return;
+      return handleInbound(accountId, ownerId, m, api, { ingress, ticket, privateCommand });
+    });
     api.listener.on('old_messages', (msgs, type) => active() && handleOldMessages(accountId, ownerId, msgs, type, api));
     api.listener.on('reaction', (e) => active() && handleReaction(accountId, e));
     api.listener.on('undo', (e) => active() && handleUndo(accountId, e));
     api.listener.on('seen_messages', (e) => active() && handleSeen(accountId, e));
-    api.listener.on('error', (e) => {
+    api.listener.on('error', () => {
       if (!active()) return;
-      log('listener error', accountId, e?.message || e);
+      session.hermesReply?.close();
+      session.hermesIngress?.close();
+      session.hermesNative?.close();
+      log('listener error', accountId, 'transport_error');
       onClosed?.(1006);
     });
     // zca-js phát 'closed' kèm CloseReason (3000 DuplicateConnection / 3003 Kick).
-    try { api.listener.on('closed', (code) => active() && onClosed?.(Number(code) || 1006)); } catch { /* phiên bản không có event này → watchdog lo */ }
+    try { api.listener.on('closed', (code) => {
+      if (!active()) return;
+      session.hermesReply?.close();
+      session.hermesIngress?.close();
+      session.hermesNative?.close();
+      onClosed?.(Number(code) || 1006);
+    }); } catch { /* phiên bản không có event này → watchdog lo */ }
     api.listener.start();
+    if (!session.hermesNative) session.hermesReply = createHermesReplyRunner({
+      getSource: () => session.hermesIngress?.privateReplySource(),
+      isActive: active,
+      rpc: ({ functionName, args, signal }) => sb.rpc(functionName, args).abortSignal(signal),
+      sendMessage: (...args) => api.sendMessage(...args),
+    });
+    session.hermesReply?.start();
     // Yêu cầu Zalo đẩy TIN GẦN ĐÂY (1-1 + nhóm); tin về qua event 'old_messages'.
     setTimeout(() => {
       if (!active()) return;

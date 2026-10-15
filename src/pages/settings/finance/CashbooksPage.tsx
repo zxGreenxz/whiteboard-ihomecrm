@@ -1,5 +1,4 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { usePhoneViewport } from "@/hooks/use-mobile";
@@ -71,7 +70,6 @@ const CashbooksDesktop = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
-  useCopilotPageContext('cashbooks.list', { search: searchQuery }, detailAcc);
   const handleAdd = useCallback(() => {
     setEditing(null);
     setFormOpen(true);

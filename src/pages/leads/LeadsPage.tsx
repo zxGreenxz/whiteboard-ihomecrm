@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { memo, useCallback, useMemo, useState } from "react";
 import { Plus, Search, Download, UserPlus } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
@@ -49,7 +48,6 @@ const LeadsPage = () => {
   // Số thẻ đang hiện theo cột; cột chưa bấm "Xem thêm" dùng THE_MOI_TRANG.
   const [shown, setShown] = useState<Record<string, number>>({});
 
-  useCopilotPageContext('leads.list', { search: searchTerm }, detailDialogOpen ? selectedLead : null);
   const leadQuery = useLeads();
   const { data: leads = [] } = leadQuery;
   const deleteMutation = useDeleteLead();

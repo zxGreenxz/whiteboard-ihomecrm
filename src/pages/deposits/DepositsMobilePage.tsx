@@ -1,6 +1,5 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { InlineSkeleton, LoadingState } from "@/components/loading/LoadingState";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus } from "lucide-react";
@@ -133,7 +132,6 @@ export default function DepositsMobilePage() {
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
   const [settlementVoucherId, setSettlementVoucherId] = useState<string | null>(null);
 
-  useCopilotPageContext('deposits.list', { view, status: view === 'ledger' ? ledgerFilter : undefined });
   const approveVoucher = useApproveVoucher();
   const heldDepositsQuery = useHeldDeposits();
   const { data: held = [], isLoading: heldLoading } = heldDepositsQuery;

@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -100,7 +99,6 @@ export default function TasksMobilePage() {
   const [completeTarget, setCompleteTarget] = useState<JobWithRelations | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  useCopilotPageContext('tasks.list', { ...appliedFilters, stat: statusFilter, tab: activeTab, search }, isDetailOpen ? selectedJob : null);
   const { data: allJobs = [], isLoading, isError, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 

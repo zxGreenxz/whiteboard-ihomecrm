@@ -12,7 +12,6 @@ import { getRoomDisplayStatus, type RoomDisplayStatus } from "@/lib/roomStatus";
 import { resolveRoomPrice } from "@/lib/roomPrice";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import RoomFormDialog from "@/components/rooms/RoomFormDialog";
 import { QueryRegion } from "@/components/errors/QueryRegion";
 import { InlineSkeleton } from "@/components/loading/LoadingState";
@@ -55,7 +54,6 @@ export default function RoomsMobilePage() {
   const [detail, setDetail] = useState<RoomWithRelations | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editRoom, setEditRoom] = useState<RoomWithRelations | null>(null);
-  useCopilotPageContext('rooms.list', { building_id: buildingId, status, search }, detail);
 
   useEffect(() => {
     if (preselected) setBuildingId(preselected);

@@ -1,6 +1,5 @@
 import { QueryRegion, refetchStartedSources } from "@/components/errors/QueryRegion";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -36,7 +35,6 @@ export default function CashFlowReport() {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
-  useCopilotPageContext('reports.finance.cash-flow', { year, building_id: buildingId, from: startDate, to: endDate });
   const buildingsQuery = useBuildings({ includeVirtual: true });
   const { data: buildings = [] } = buildingsQuery;
   const cashFlowByDayQuery = useCashFlowByDay(startDate, endDate, {

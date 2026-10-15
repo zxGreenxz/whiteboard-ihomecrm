@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Percent, TrendingUp, DollarSign, Calendar } from "lucide-react";
 import { startOfMonth, endOfMonth, subMonths } from "date-fns";
@@ -45,7 +44,6 @@ const CATEGORY_COLORS = [
 ];
 const RATIO_LINE_COLOR = "#DC2626";
 
-
 const formatCurrencyShort = (amount: number) => {
   const abs = Math.abs(amount);
   if (abs >= 1_000_000_000) return `${(amount / 1_000_000_000).toFixed(1)}tỷ`;
@@ -63,7 +61,6 @@ export default function ExpenseRatioReport() {
   const [category, setCategory] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:category", undefined);
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:buildingId", undefined);
 
-  useCopilotPageContext('reports.real-estate.expense-ratio', { building_id: buildingId, category, from: dateRange?.from, to: dateRange?.to });
   const buildingsQuery = useBuildings({ includeVirtual: true });
   const { data: buildings } = buildingsQuery;
   const categoriesListQuery = useIncomeExpenseTypeCategories("expense");

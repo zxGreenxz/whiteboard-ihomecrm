@@ -1,0 +1,17 @@
+name: ihome-zalo-native
+label: Zalo personal
+kind: platform
+version: 1.0.0
+description: Personal Zalo channel using the existing iHome worker session and Hermes native profile.
+requires_env:
+  - name: HERMES_ZALO_BRIDGE_URL
+    description: Loopback worker bridge URL
+  - name: HERMES_ZALO_BRIDGE_TOKEN
+    description: This profile's personal channel capability (never a CRM credential)
+    password: true
+  - name: HERMES_ZALO_PROFILE
+    description: Named Hermes profile that owns this channel
+  - name: HERMES_ZALO_PAIRED_UID
+    description: Verified paired user and sole gateway controller
+  - name: HERMES_ZALO_GENERATION
+    description: Local channel grant generation

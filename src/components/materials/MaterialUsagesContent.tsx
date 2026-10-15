@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight, ArrowDown, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -23,7 +22,7 @@ export default function MaterialUsagesContent() {
   const usagesQuery = useMaterialUsages();
   const { data: usages = [], isLoading } = usagesQuery;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useCopilotPageContext('materials.usages', {}, expanded.size === 1 ? usages.find((row) => expanded.has(row.id)) : null);
+
   const [formOpen, setFormOpen] = useState(false);
 
   const toggleExpanded = (id: string) =>

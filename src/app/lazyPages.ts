@@ -14,6 +14,7 @@
 import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 
 // Password recovery is only needed when its route is opened.
+export const ForgotPassword = lazy(() => import("../pages/auth/ForgotPassword"));
 export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 
 // ===== Lazy imports — code-split theo route =====
@@ -23,10 +24,6 @@ export const ResetPassword = lazy(() => import("../pages/auth/ResetPassword"));
 // vì có CSS toàn cục cần cô lập).
 export const BuildingMapPage = lazy(() => import("../pages/building-map/BuildingMapPage"));
 export const NetworkCenterApp = lazy(() => import("../pages/network-center/NetworkCenterApp"));
-// AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
-export const CopilotLauncher = lazy(() => import("../copilot/CopilotLauncher"));
-// AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
-export const AiCopilotAdminPage = lazy(() => import("../copilot/admin/AiCopilotAdminPage"));
 export const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
 export const BankEventsPage = lazy(() => import("../pages/bank-events/BankEventsPage"));
 export const PersonalTasksPage = lazy(() => import("../pages/PersonalTasksPage"));
@@ -91,6 +88,7 @@ export const BanGiaoCycleReport = lazy(() => import("../pages/reports/finance/Ba
 
 // Cài đặt
 export const GeneralSettingsPage = lazy(() => import("../pages/settings/GeneralSettingsPage"));
+export const HermesConnectionsPage = lazy(() => import("../pages/settings/HermesConnectionsPage"));
 export const CategoriesPage = lazy(() => import("../pages/settings/CategoriesPage"));
 export const TemplatesPage = lazy(() => import("../pages/settings/TemplatesPage"));
 export const SignaturesPage = lazy(() => import("../pages/settings/SignaturesPage"));

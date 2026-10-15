@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Đo rò dữ liệu giữa các tổ chức trên PRODUCTION, bằng vai người dùng THẬT.
+// Đo rò dữ liệu giữa các tổ chức bằng vai authenticated, trên đích đã ràng buộc.
 //
 //   node scripts/measure-org-leak.mjs --write   # đo và ghi baseline
 //   node scripts/measure-org-leak.mjs           # đo và in, không ghi
+//   node scripts/measure-org-leak.mjs --env test --expected-project-ref <TEST_REF> --write
 //
-// CHỈ ĐỌC. Mọi truy vấn bọc BEGIN … ROLLBACK trong cùng một chuỗi, không có
-// COMMIT, không lồng BEGIN trong BEGIN (Postgres không có transaction lồng —
+// Có INSERT fixture và DDL tạm trong transaction rollback; không gọi đây là
+// phép đo chỉ đọc. TEST bắt buộc marker/lease và không retry SQL khi ACK chưa rõ.
+// Các chuyến đo vai bọc BEGIN … ROLLBACK, không lồng BEGIN trong BEGIN —
 // COMMIT bên trong sẽ đóng transaction ngoài; án lệ 07/08/2026 đã ghi thật lên
 // production đúng theo cách đó).
 //
@@ -21,19 +23,100 @@
 //   3. auth.uid() phải trả đúng người mình định giả lập
 //   4. đối chứng DƯƠNG (income_expense_types — bảng đã rào) phải thấy >0 dòng
 //      của mình và 0 dòng ngoài; đối chứng ÂM (uid mồ côi) phải thấy 0 khắp nơi
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { vanBanNguoiDung } from './lib/che-so-lieu-ci.mjs';
 
-import { readPat, readProjectRef, runSql } from './capture-production-catalog.mjs';
+import { chayTruyVanQuanTri } from './apply-reviewed-migration.mjs';
+import { parseMigrationTargetArgs, resolveMigrationTarget, migrationTargetPaths,
+  withMigrationLease, PRODUCTION_REF } from './lib/migration-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DUONG_INVENTORY = join(repoRoot, 'docs/generated/org-boundary-inventory.json');
-const RA = join(repoRoot, 'docs/generated/org-leak-baseline.json');
 
 export const MA_THOAT_CHOT_HONG = 3;
+
+export function parseOrgLeakArgs(argv) {
+  let write = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--write' && !write) { write = true; continue; }
+    if (['--env', '--expected-project-ref'].includes(argv[index])) { index += 1; continue; }
+    throw new Error('org_leak_unknown_argument');
+  }
+  const target = parseMigrationTargetArgs(argv);
+  if (target.environment === 'test' && !target.expectedProjectRef) throw new Error('org_leak_test_expected_ref_required');
+  return { ...target, write };
+}
+
+/** One SQL dispatch per call, including fixture transactions. A caught failure
+ * cannot be hidden by a later successful read which clears the cleanup marker.
+ * withMigrationLease marks before dispatch; only a complete valid ACK settles it.
+ */
+export function createOrgLeakQuery(target, guard, queryImpl = chayTruyVanQuanTri) {
+  let failed = false;
+  const assertSettled = () => { if (failed) throw new Error('org_leak_query_unsettled'); };
+  return Object.freeze({
+    assertSettled,
+    async query(sql) {
+      assertSettled();
+      try {
+        const result = await guard.execute(async () => {
+          const query = /^\s*BEGIN\b/i.test(sql) ? sql : `BEGIN;\n${sql}\n;ROLLBACK;`;
+          const response = await queryImpl({ pat: target.pat, ref: target.projectRef, query });
+          if (response?.ok !== true) throw new Error('org_leak_query_failed');
+          let rows;
+          try { rows = JSON.parse(response.body); } catch { throw new Error('org_leak_response_invalid'); }
+          if (!Array.isArray(rows) || rows.some(row => row === null || typeof row !== 'object' || Array.isArray(row))) {
+            throw new Error('org_leak_response_invalid');
+          }
+          return { ok: true, rows };
+        });
+        return result.rows;
+      } catch {
+        failed = true;
+        throw new Error('org_leak_query_unsettled');
+      }
+    },
+  });
+}
+
+export async function loadOrgLeakInventory(target, query, root = repoRoot) {
+  if (target.environment === 'prod') {
+    return JSON.parse(readFileSync(join(root, 'docs/generated/org-boundary-inventory.json'), 'utf8'));
+  }
+  // TEST must never borrow a production inventory or its permission metadata.
+  const rows = await query(`SELECT c.relname AS table_name,
+    has_table_privilege('authenticated', c.oid, 'SELECT') AS authenticated_can_select
+    FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+      AND a.attname = 'organization_id' AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE c.relnamespace = 'public'::regnamespace
+      AND c.relkind IN ('r','p') AND NOT c.relispartition ORDER BY c.relname`);
+  if (!rows.length || rows.some(row => typeof row.table_name !== 'string' || !row.table_name ||
+      typeof row.authenticated_can_select !== 'boolean') || new Set(rows.map(row => row.table_name)).size !== rows.length) {
+    throw new Error('org_leak_inventory_invalid');
+  }
+  return { environment: 'test', projectRef: target.projectRef, source: 'live-catalog', catalogFingerprint: null, rows };
+}
+
+export async function main(argv = process.argv.slice(2), {
+  root = repoRoot, resolveTarget = resolveMigrationTarget, lease = withMigrationLease,
+  queryImpl = chayTruyVanQuanTri, measure = measureOrgLeak,
+} = {}) {
+  const options = parseOrgLeakArgs(argv);
+  const target = await resolveTarget(options, { needsDatabase: options.environment === 'test' });
+  if (target.environment !== options.environment ||
+      (options.expectedProjectRef && target.projectRef !== options.expectedProjectRef) ||
+      (target.environment === 'test' && target.projectRef === PRODUCTION_REF)) throw new Error('org_leak_target_mismatch');
+  return lease(target, async guard => {
+    const transport = createOrgLeakQuery(target, guard, queryImpl);
+    const result = await measure({ ghi: options.write, target, runSql: transport.query,
+      output: join(migrationTargetPaths(target, root).directory, 'org-leak-baseline.json'),
+      inventory: () => loadOrgLeakInventory(target, transport.query, root) });
+    transport.assertSettled();
+    return result;
+  });
+}
 
 const UID_MO_COI = '11111111-2222-4333-8444-555555555555';
 const BANG_DOI_CHUNG = 'income_expense_types';
@@ -161,7 +244,7 @@ VALUES ('${ORG_TONG_HOP}', '${UID_TONG_HOP}', 'STAFF', 'ACTIVE');
   return `BEGIN;
 SET LOCAL statement_timeout = '900s';
 ${dungTongHop}
-CREATE TEMP TABLE _kq(bang text, tong bigint, ngoai bigint);
+CREATE TEMP TABLE _kq(bang text, tong bigint, ngoai bigint, tu_choi boolean);
 GRANT INSERT, SELECT ON _kq TO PUBLIC;
 
 CREATE FUNCTION pg_temp._quet(p_org uuid) RETURNS void LANGUAGE plpgsql AS $quet$
@@ -172,9 +255,12 @@ BEGIN
       EXECUTE format(
         'SELECT count(*), count(*) FILTER (WHERE organization_id IS NOT NULL AND organization_id <> %L) FROM public.%I',
         p_org, b) INTO v_tong, v_ngoai;
-      INSERT INTO _kq VALUES (b, v_tong, v_ngoai);
-    EXCEPTION WHEN OTHERS THEN
-      INSERT INTO _kq VALUES (b, NULL, NULL);
+      INSERT INTO _kq VALUES (b, v_tong, v_ngoai, false);
+    EXCEPTION WHEN insufficient_privilege THEN
+      -- SQLSTATE 42501 is an explicit denial, not a successful count of zero.
+      INSERT INTO _kq VALUES (b, NULL, NULL, true);
+    WHEN OTHERS THEN
+      INSERT INTO _kq VALUES (b, NULL, NULL, false);
     END;
   END LOOP;
 END $quet$;
@@ -190,7 +276,7 @@ SELECT
   (SELECT array_to_string(public.my_org_ids(), ','))                                 AS my_orgs,
   (SELECT tong  FROM _kq WHERE bang = '${BANG_DOI_CHUNG}')                           AS doi_chung_duong_tong,
   (SELECT ngoai FROM _kq WHERE bang = '${BANG_DOI_CHUNG}')                           AS doi_chung_duong_ngoai,
-  (SELECT coalesce(json_agg(json_build_object('bang',bang,'tong',tong,'ngoai',ngoai)),'[]'::json)
+  (SELECT coalesce(json_agg(json_build_object('bang',bang,'tong',tong,'ngoai',ngoai,'tu_choi',tu_choi)),'[]'::json)
      FROM _kq)                                                                       AS bang;
 ROLLBACK;`;
 }
@@ -438,16 +524,29 @@ SELECT coalesce(json_agg(json_build_object('bang', bang, 'so_dong_null', so_dong
  * sinh ra để chống. Nay null đi lối riêng và làm gate đỏ bằng mã 3, khác hẳn mã
  * 1 của "đo xong, có rò".
  */
-export function phanLoaiBangKhongCotOrg(rows) {
+export function phanLoaiBangKhongCotOrg(rows, expectedTables) {
   const ro = [];
   const chuaDo = [];
+  const seen = new Set();
   let tuChoi = 0;
-  for (const b of rows ?? []) {
-    if (b?.tu_choi === true) { tuChoi += 1; continue; }
-    if (b?.tong === null || b?.tong === undefined) { chuaDo.push(b); continue; }
-    if (Number(b.tong) > 0) ro.push(b);
+  if (!Array.isArray(rows)) chuaDo.push({ bang: null, loi: 'Missing measured no-org rows' });
+  for (const b of Array.isArray(rows) ? rows : []) {
+    if (typeof b?.bang !== 'string' || !b.bang || seen.has(b.bang) ||
+        (expectedTables && !expectedTables.includes(b.bang)) || typeof b.tu_choi !== 'boolean') {
+      chuaDo.push(b); continue;
+    }
+    seen.add(b.bang);
+    if (b.tu_choi === true) {
+      if (b.tong !== null && demHopLe(b.tong) !== 0) chuaDo.push(b);
+      else tuChoi += 1;
+      continue;
+    }
+    const count = demHopLe(b.tong);
+    if (count === null) { chuaDo.push(b); continue; }
+    if (count > 0) ro.push(b);
   }
-  return { ro, chuaDo, tuChoi, tong: (rows ?? []).length };
+  for (const table of expectedTables ?? []) if (!seen.has(table)) chuaDo.push({ bang: table, loi: 'Missing table measurement' });
+  return { ro, chuaDo, tuChoi, tong: Array.isArray(rows) ? rows.length : 0 };
 }
 
 const SQL_BANG_KHONG_COT_ORG = `
@@ -494,11 +593,8 @@ function chonNhanVat(rows) {
   return [...theoOrg.values()];
 }
 
-async function main(argv) {
-  const ghi = argv.includes('--write');
-  const pat = readPat();
-  if (!pat) { console.error('❌ Không tìm thấy PAT'); return MA_THOAT_CHOT_HONG; }
-  const ref = readProjectRef();
+async function measureOrgLeak({ ghi, target, runSql, output, inventory }) {
+  const { pat, projectRef: ref } = target;
 
   // MỘT tổ chức thật là đủ: nó giữ vế "người thật vẫn thấy dữ liệu của mình"
   // (đối chứng dương). Vế "không ai thấy dữ liệu của người khác" do nhân vật
@@ -516,8 +612,12 @@ async function main(argv) {
     { uid: UID_TONG_HOP, org: ORG_TONG_HOP, email: '(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)', tongHop: true },
   ];
 
-  const [am] = await runSql(sqlDoiChungAm(), { pat, ref });
-  const doiChungAm = Number(am?.tong ?? -1);
+  const amRows = await runSql(sqlDoiChungAm(), { pat, ref });
+  const doiChungAm = amRows.length === 1 ? demHopLe(amRows[0]?.tong) : null;
+  if (doiChungAm !== 0) {
+    console.error('❌ Đối chứng âm thiếu số đếm hợp lệ hoặc người mồ côi vẫn thấy dữ liệu. KHÔNG ghi baseline.');
+    return MA_THOAT_CHOT_HONG;
+  }
 
   // Danh sách bảng lấy MỘT LẦN, rồi chia lô — mỗi lô một request.
   const tatCaBang = (await runSql(
@@ -529,6 +629,11 @@ async function main(argv) {
       ORDER BY c.relname`,
     { pat, ref },
   )).map((r) => r.ten);
+  if (!tatCaBang.length || tatCaBang.some(name => typeof name !== 'string' || !name) ||
+      new Set(tatCaBang).size !== tatCaBang.length) {
+    console.error('❌ Danh sách bảng cần đo rỗng hoặc không hợp lệ. KHÔNG ghi baseline.');
+    return MA_THOAT_CHOT_HONG;
+  }
   const cacLo = chiaLo(tatCaBang, SO_BANG_MOI_LO);
 
   const doDuoc = [];
@@ -541,6 +646,18 @@ async function main(argv) {
       // lô đầu thì các lô sau không có gì bảo đảm.
       const loKemDoiChung = lo.includes(BANG_DOI_CHUNG) ? lo : [...lo, BANG_DOI_CHUNG];
       const [kq] = await runSql(sqlDoMotVai(nv.uid, nv.org, loKemDoiChung, nv.tongHop), { pat, ref });
+      const measured = kq?.bang;
+      const validCounts = Array.isArray(measured) && measured.length === loKemDoiChung.length &&
+        new Set(measured.map(row => row?.bang)).size === measured.length &&
+        measured.every(row => loKemDoiChung.includes(row?.bang) && (row.tu_choi === true
+          ? row.bang !== BANG_DOI_CHUNG && row.tong === null && row.ngoai === null
+          : row.tu_choi === false && demHopLe(row.tong) !== null &&
+            demHopLe(row.ngoai) !== null && Number(row.ngoai) <= Number(row.tong))) &&
+        demHopLe(kq.doi_chung_duong_tong) !== null && demHopLe(kq.doi_chung_duong_ngoai) !== null;
+      if (!validCounts) {
+        console.error('❌ Một lô bảng thiếu số đếm, có NULL hoặc chưa đo đủ. KHÔNG coi lỗi truy vấn là 0 dòng rò.');
+        return MA_THOAT_CHOT_HONG;
+      }
       chotCuoi = kiemChotChongAoGiac({
         tongHop: nv.tongHop === true,
         my_orgs: kq.my_orgs,
@@ -548,12 +665,12 @@ async function main(argv) {
         rolbypassrls: kq.rolbypassrls,
         auth_uid: kq.auth_uid,
         uid_mong_doi: nv.uid,
-        doi_chung_duong_tong: Number(kq.doi_chung_duong_tong ?? 0),
-        doi_chung_duong_ngoai: Number(kq.doi_chung_duong_ngoai ?? 0),
+        doi_chung_duong_tong: Number(kq.doi_chung_duong_tong),
+        doi_chung_duong_ngoai: Number(kq.doi_chung_duong_ngoai),
         doi_chung_am: doiChungAm,
       });
       if (!chotCuoi.dat) {
-        console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nhanVaiTrenLog(nv)} (org ${nv.org.slice(0, 4)}…):`);
+        console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nhanVaiTrenLog(nv, target.environment === 'test' ? { CI: 'true' } : process.env)} (org ${nv.org.slice(0, 4)}…):`);
         for (const l of chotCuoi.loi) console.error(`   - ${l}`);
         console.error('   KHÔNG ghi baseline. Số đo lúc này không đáng tin.');
         return MA_THOAT_CHOT_HONG;
@@ -561,14 +678,23 @@ async function main(argv) {
       bang.push(...kq.bang.filter((b) => lo.includes(b.bang)));
     }
     doDuoc.push({ nhanVat: nv, bang });
-    console.log(`✔ ${nhanVaiTrenLog(nv)} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
+    console.log(`✔ ${nhanVaiTrenLog(nv, target.environment === 'test' ? { CI: 'true' } : process.env)} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
   }
 
   // ─── Điểm mù cũ: 12 bảng KHÔNG có cột organization_id chưa từng được quét ───
   const bangKhongCotOrg = (await runSql(SQL_BANG_KHONG_COT_ORG, { pat, ref })).map((r) => r.ten);
+  if (bangKhongCotOrg.some(name => typeof name !== 'string' || !name) ||
+      new Set(bangKhongCotOrg).size !== bangKhongCotOrg.length) {
+    console.error('❌ Danh sách bảng không có cột organization_id không hợp lệ.');
+    return MA_THOAT_CHOT_HONG;
+  }
   const doDuocKhongOrg = [];
   for (const lo of chiaLo(bangKhongCotOrg, SO_BANG_MOI_LO)) {
     const [kq] = await runSql(sqlDoBangKhongCotOrg(lo), { pat, ref });
+    if (phanLoaiBangKhongCotOrg(kq?.bang, lo).chuaDo.length) {
+      console.error('❌ Lô bảng không có cột organization_id thiếu bảng hoặc số đếm hợp lệ.');
+      return MA_THOAT_CHOT_HONG;
+    }
     const chot = kiemChotChongAoGiac({
       tongHop: true,
       my_orgs: kq.my_orgs,
@@ -587,7 +713,7 @@ async function main(argv) {
     }
     doDuocKhongOrg.push(...kq.bang);
   }
-  const kq0 = phanLoaiBangKhongCotOrg(doDuocKhongOrg);
+  const kq0 = phanLoaiBangKhongCotOrg(doDuocKhongOrg, bangKhongCotOrg);
   console.log(
     `✔ bảng KHÔNG có cột organization_id: quét ${kq0.tong}, `
     + `${kq0.tuChoi} không cấp quyền đọc, `
@@ -638,16 +764,22 @@ async function main(argv) {
   const gop = new Map();
   for (const d of doDuoc) {
     for (const b of d.bang) {
-      const cu = gop.get(b.bang) ?? { table_name: b.bang, visible_foreign: 0, ground_truth_total: 0, theoVai: {} };
-      cu.visible_foreign = Math.max(cu.visible_foreign, Number(b.ngoai ?? 0));
-      cu.ground_truth_total = Math.max(cu.ground_truth_total, Number(b.tong ?? 0));
-      cu.theoVai[d.nhanVat.email] = { tong: b.tong, ngoai: b.ngoai };
+      const cu = gop.get(b.bang) ?? { table_name: b.bang, visible_foreign: null, ground_truth_total: null, theoVai: {} };
+      if (!b.tu_choi) {
+        cu.visible_foreign = Math.max(cu.visible_foreign ?? 0, Number(b.ngoai));
+        cu.ground_truth_total = Math.max(cu.ground_truth_total ?? 0, Number(b.tong));
+      }
+      cu.theoVai[target.environment === 'test' ? `actor-${doDuoc.indexOf(d) + 1}` : d.nhanVat.email] = {
+        tong: b.tong, ngoai: b.ngoai, tu_choi: b.tu_choi };
       gop.set(b.bang, cu);
     }
   }
 
-  const inv = JSON.parse(readFileSync(DUONG_INVENTORY, 'utf8'));
+  const inv = await inventory();
   const capQuyen = new Map(inv.rows.map((r) => [r.table_name, r.authenticated_can_select]));
+  if (target.environment === 'test' && [...gop.keys()].some(table => !capQuyen.has(table))) {
+    throw new Error('org_leak_inventory_incomplete');
+  }
 
   // Trạng thái biên giới phải hỏi THẲNG production, không đọc từ inventory.
   //
@@ -664,11 +796,13 @@ async function main(argv) {
   );
   const daCoBoundary = new Set(boundaryRows.map((r) => r.table_name));
 
-  const rows = [...gop.values()].map((b) => ({
-    ...b,
-    authenticated_can_select: capQuyen.get(b.table_name) ?? true,
-    ...xepNhomTheoSoDo({ ...b, authenticated_can_select: capQuyen.get(b.table_name) ?? true }),
-  }));
+  const rows = [...gop.values()].map((b) => {
+    const allDenied = Object.values(b.theoVai).every(actor => actor.tu_choi === true);
+    return { ...b, measurement: allDenied ? 'DENIED' : 'COUNTED',
+      authenticated_can_select: capQuyen.get(b.table_name) ?? true,
+      ...(allDenied ? { group: 'B_KHONG_CAP_QUYEN', assigned_phase: 'GĐ3' }
+        : xepNhomTheoSoDo({ ...b, authenticated_can_select: capQuyen.get(b.table_name) ?? true })) };
+  });
 
   const canXet = rows.filter((r) => !daCoBoundary.has(r.table_name));
   const dem = canXet.reduce((m, r) => ({ ...m, [r.group]: (m[r.group] ?? 0) + 1 }), {});
@@ -686,11 +820,13 @@ async function main(argv) {
   try {
     mienTru = await runSql('SELECT table_name FROM app_private.org_boundary_exemptions', { pat, ref });
   } catch {
-    console.error('⚠ Không đọc được sổ miễn trừ — coi như RỖNG, tức mọi rò đều tính là chưa khai.');
+    throw new Error('org_leak_exemptions_unavailable');
   }
   const daKhai = new Set(mienTru.map((r) => r.table_name));
-  const roThat = canXet.filter((r) => r.group === 'LIVE_LEAK' && !daKhai.has(r.table_name));
-  const roDaKhai = canXet.filter((r) => r.group === 'LIVE_LEAK' && daKhai.has(r.table_name));
+  // A policy name is not proof of isolation: measure every table, including ones
+  // already declaring an org boundary. canXet only describes unfinished coverage.
+  const roThat = rows.filter((r) => r.group === 'LIVE_LEAK' && !daKhai.has(r.table_name));
+  const roDaKhai = rows.filter((r) => r.group === 'LIVE_LEAK' && daKhai.has(r.table_name));
 
   console.log('');
   console.log(`Bảng chưa có biên giới: ${canXet.length} · ${Object.entries(dem).sort().map(([k, v]) => `${k}=${v}`).join(' · ')}`);
@@ -703,22 +839,28 @@ async function main(argv) {
   }
 
   if (ghi) {
-    writeFileSync(RA, `${JSON.stringify({
-      note: 'Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.',
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, `${JSON.stringify({
+      note: 'Sinh bằng máy — measure-org-leak. Vai authenticated; fixture tổng hợp trong transaction ROLLBACK, không retry SQL.',
+      environment: target.environment,
+      authorizationMethod: 'SET LOCAL ROLE authenticated + request.jwt.claims; not an Auth JWT login',
       projectRef: ref,
       capturedAt: new Date().toISOString(),
       catalogFingerprint: inv.catalogFingerprint ?? null,
-      nhanVat: nhanVat.map((n) => ({ org: n.org, email: n.email })),
+      inventorySource: inv.source ?? 'production-inventory',
+      nhanVat: nhanVat.map((n, index) => target.environment === 'test'
+        ? { org: n.org, actor: `actor-${index + 1}` } : { org: n.org, email: n.email }),
       counts: dem,
       rows,
+      noOrg: doDuocKhongOrg,
     }, null, 2)}\n`);
-    console.log(`✅ Đã ghi ${RA.replace(repoRoot, '.')}`);
+    console.log(`✅ Đã ghi ${output.replace(repoRoot, '.')}`);
   }
   return roThat.length ? 1 : 0;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main(process.argv)
+  main(process.argv.slice(2))
     .then((c) => process.exit(c))
     .catch((e) => { console.error(`❌ ${e.message}`); process.exit(MA_THOAT_CHOT_HONG); });
 }

@@ -40,14 +40,33 @@ git archive <sha> worker | ssh <vps> "mkdir -p /opt/ihome-zalo-worker/source/<sh
 # 3. Lần đầu: /opt/ihome-zalo-worker/worker.env (chmod 600, root) gồm SUPABASE_URL,
 #    SUPABASE_SERVICE_ROLE_KEY, ZALO_SESSION_KEY (`openssl rand -hex 32`), WORKER_ORG_IDS (tuỳ chọn)
 
-# 4. Chạy hoặc thay bản (dừng êm bản cũ 30 giây trước)
+# 4. Chạy hoặc thay bản (chờ bản cũ dừng và nhả lease trước)
 /opt/ihome-zalo-worker/source/<sha12>/worker/deploy/zalo-worker.sh run ihome-zalo-worker:<sha12>
 docker logs -f ihome-zalo-worker
 ```
 
 Container chạy user 10002, hệ file chỉ đọc, giới hạn 384 MB RAM và 0,5 CPU, tự khởi động lại
-khi lỗi. Chỉ thư mục `/opt/ihome-zalo-worker/sessions` ghi được; đó là nơi giữ phiên Zalo đã
-mã hoá. Lùi bản: `zalo-worker.sh run ihome-zalo-worker:<sha12 cũ>`.
+khi lỗi. Mặc định chỉ thư mục `/opt/ihome-zalo-worker/sessions` và tmpfs `/tmp` ghi được;
+sessions giữ phiên Zalo đã mã hoá. Lùi bản: `zalo-worker.sh run ihome-zalo-worker:<sha12 cũ>`.
+
+Kênh Hermes cá nhân bật riêng bằng `run <image> --native`. Launcher kiểm cấu hình bằng
+chính validator của image đã chọn, dưới UID/GID 10002 và không có network, trước khi
+dừng worker cũ. Config/token ở `/opt/ihome-zalo-worker/native-config` được mount chỉ đọc;
+`/opt/ihome-zalo-worker/native-state` được mount đọc/ghi. Host và container dùng cùng
+đường dẫn canonical để CLI operator giữ đúng marker sở hữu state. Không có `--native`
+thì launcher ép `HERMES_ZALO_NATIVE_CONFIG` rỗng, kể cả `worker.env` đang đặt biến này.
+Image ID được cố định từ đầu preflight đến lúc chạy; không tự tải một image chưa có local.
+
+Hermes upstream chạy sidecar `--network container:<ID worker>` để tới bridge
+`127.0.0.1`; không publish port hay mở listener rộng. Quy trình cấp/rotate/revoke,
+restart worker rồi tạo lại sidecar và inspect nằm trong
+[runbook native](../infra/hermes-zalo-native/README.md#triển-khai-docker-opt-in).
+
+`run` và `stop` dùng `docker stop --time -1`; container mới cũng có stop-timeout `-1`.
+Lệnh có thể chờ vô hạn khi provider chưa kết thúc, để worker tiếp tục heartbeat trong
+lúc drain trước khi nhả lease. Ngắt/lỗi stop không được tiếp tục xóa hoặc chạy bản thay
+thế. OOM, mất host, Docker daemon hoặc force-kill vẫn có thể cắt drain: không coi đó là
+thu hồi/ghi receipt thành công, không xóa journal hoặc đổi generation để gửi lại.
 
 Chỉ chạy **1 instance** cho mọi nick (lease `zalo_worker_lease`). Đừng bật lại bản trên máy dev.
 

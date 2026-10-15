@@ -1,5 +1,4 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -16,7 +15,6 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
-
 
 const STATUS_MAP: Record<string, string> = {
   PENDING: "Chờ xác nhận",
@@ -37,7 +35,6 @@ export default function DepositsReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  useCopilotPageContext('reports.finance.deposits', { building_ids: buildingIds, status: statusFilter });
   const depositsReportQuery = useDepositsReport();
   const { data: deposits = [], isLoading } = depositsReportQuery;
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc.

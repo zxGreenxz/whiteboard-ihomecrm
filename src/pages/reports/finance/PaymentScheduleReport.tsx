@@ -1,5 +1,4 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -30,7 +29,6 @@ export default function PaymentScheduleReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  useCopilotPageContext('reports.finance.payment-schedule', { building_ids: buildingIds, from: startDate, to: endDate });
   const paymentScheduleReportQuery = usePaymentScheduleReport(365);
   const { data: invoices = [], isLoading } = paymentScheduleReportQuery;
 

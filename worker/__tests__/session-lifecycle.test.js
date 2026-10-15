@@ -14,10 +14,14 @@ describe('account sessions follow the latest user intent', () => {
   it('removes an old session before stop emits its close event', () => {
     const sessions = new Map();
     const stop = vi.fn(() => { expect(sessions.has('a')).toBe(false); });
-    sessions.set('a', { api: { listener: { stop } } });
+    const close = vi.fn(() => { expect(sessions.has('a')).toBe(false); expect(stop).not.toHaveBeenCalled(); });
+    const closeReply = vi.fn(() => { expect(sessions.has('a')).toBe(false); expect(close).not.toHaveBeenCalled(); });
+    sessions.set('a', { api: { listener: { stop } }, hermesIngress: { close }, hermesReply: { close: closeReply } });
     expect(stopAccountSession('a', sessions)).toBe(true);
     expect(stopAccountSession('a', sessions)).toBe(false);
     expect(stop).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(closeReply).toHaveBeenCalledOnce();
   });
   it('rejects QR/relogin completion after disconnect or a newer QR request', () => {
     const account = { id: 'a', organization_id: 'o', login_requested_at: 'request-1' };

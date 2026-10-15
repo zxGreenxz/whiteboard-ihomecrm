@@ -65,7 +65,7 @@ import {
   Coins,
   Share2,
   MessageSquare,
-  Sparkles,
+  Bot,
   Gift,
   Landmark,
   ShieldCheck,
@@ -231,9 +231,8 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Tổ chức', href: '/settings/organization', icon: Landmark, module: 'users' },
           { title: 'Thành viên', href: '/settings/members', icon: UserCog, module: 'users' },
           { title: 'Mẫu vai trò', href: '/settings/roles', icon: ShieldCheck, module: 'users' },
-          // Quản trị AI Copilot: super admin = full (kill switch/entitlements/
-          // providers/chi phí); owner/user thường = tab Sử dụng (gate trong page)
-          { title: 'Trợ lý AI', href: '/settings/ai-copilot', icon: Sparkles, module: 'ai_copilot' },
+          // Kết nối cá nhân: route cần đăng nhập, backend kiểm quyền và chủ sở hữu.
+          { title: 'Kết nối Hermes', href: '/settings/hermes', icon: Bot },
           // Sự kiện quay số may mắn: không gắn `module` vì tính năng nằm ngoài
           // ma trận phân quyền theo sổ/toà — RPC tự chặn OWNER/STAFF (42501).
           { title: 'Quay số may mắn', href: '/quayso/admin', icon: Gift },

@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Home, Building2, DoorOpen } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
@@ -26,7 +25,6 @@ export default function VacantRoomsReport() {
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-vacant-rooms:buildingId", undefined);
   const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-vacant-rooms:floorId", undefined);
 
-  useCopilotPageContext(['reports.real-estate.vacant', 'reports.real-estate.vacant-alias'], { building_id: buildingId, floor_id: floorId });
   const buildingsQuery = useBuildings();
   const { data: buildings } = buildingsQuery;
   const floorsQuery = useFloors(buildingId);

@@ -17,6 +17,11 @@ let duLieuAutomations = [];
 let duLieuConversations = [];
 let rpcError = null;
 let rpcCalls = [];
+let hermesCalls = [];
+let hermesDue = [];
+let hermesDueError = null;
+let hermesRun = () => ({ data: { status: 'already_run' }, error: null });
+let workerLogs = [];
 let rpcFailureFor = () => null;
 let uploadError = null;
 let tableInputs = [];
@@ -44,6 +49,22 @@ function ketQua(ctx) {
 
 const sbGia = {
   rpc: async (name, args) => {
+    if (name === 'hermes_room_schedule_due_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_organization_ids']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+      expect(Array.isArray(args.p_organization_ids)).toBe(true);
+      hermesCalls.push({ name, args });
+      return { data: structuredClone(hermesDue), error: hermesDueError };
+    }
+    if (name === 'hermes_room_schedule_run_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_expected_revision', 'p_instance_id', 'p_schedule_id']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+      hermesCalls.push({ name, args });
+      return hermesRun(args);
+    }
+    if (name !== 'zalo_enqueue_broadcast_v1') throw new Error(`unexpected_fixture_rpc:${name}`);
+    // Legacy assertions observe only its exact enqueue boundary. Hermes due
+    // reads and runs have their own strict contract and never fabricate a send.
     rpcCalls.push({ name, args });
     const failure = rpcError || rpcFailureFor(args);
     if (failure) return { data: null, error: failure };
@@ -92,7 +113,7 @@ const phienDangSong = new Map();
 
 vi.mock('../lib/ctx.js', () => ({
   sb: sbGia,
-  log: () => {},
+  log: (...args) => { workerLogs.push(args); },
   orgOf: () => 'org-1',
   sessions: phienDangSong,
   SUPABASE_URL: 'https://x.test',
@@ -111,6 +132,7 @@ vi.mock('../lib/room-list-table.js', () => ({
 }));
 
 const { tickTuDongHoa } = await import('../lib/automation.js');
+const { INSTANCE_ID } = await import('../lib/lease.js');
 
 /* ------------------------------------------------------------- dữ liệu nền */
 
@@ -146,6 +168,9 @@ beforeEach(() => {
   daChen.messages = []; daChen.queue = []; daChen.runs = [];
   capNhatAutomations = [];
   rpcCalls = []; rpcError = null;
+  hermesCalls = []; hermesDue = []; hermesDueError = null;
+  hermesRun = () => ({ data: { status: 'already_run' }, error: null });
+  workerLogs = [];
   rpcFailureFor = () => null;
   uploadError = null;
   tableInputs = [];
@@ -161,6 +186,50 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 /* -------------------------------------------------------------------- test */
 
 describe('engine broadcast — xếp hàng', () => {
+  it('polls the exact Hermes due RPC once through the real tick without inventing a queued message', async () => {
+    duLieuAutomations = [];
+    await tickTuDongHoa(['org-1']);
+    expect(hermesCalls).toEqual([{ name: 'hermes_room_schedule_due_v1', args: {
+      p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'],
+    } }]);
+    expect(rpcCalls).toEqual([]);
+    expect(daChen).toEqual({ messages: [], queue: [], runs: [] });
+    await expect(sbGia.rpc('unexpected_rpc', {})).rejects.toThrow('unexpected_fixture_rpc');
+    expect(daChen).toEqual({ messages: [], queue: [], runs: [] });
+  });
+
+  it('runs each Hermes candidate once with its revision and does not retry an unknown run while legacy still executes', async () => {
+    datCauHinh();
+    hermesDue = [{ scheduleId: 'schedule-a', revision: 2 }, { scheduleId: 'schedule-b', revision: 7 }];
+    hermesRun = args => args.p_schedule_id === 'schedule-a'
+      ? { data: null, error: { code: 'network_ack_lost' } }
+      : { data: { status: 'already_run' }, error: null };
+    await tickTuDongHoa(['org-1']);
+    expect(hermesCalls).toEqual([
+      { name: 'hermes_room_schedule_due_v1', args: { p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'] } },
+      ...hermesDue.map(row => ({ name: 'hermes_room_schedule_run_v1', args: {
+        p_schedule_id: row.scheduleId, p_expected_revision: row.revision, p_instance_id: INSTANCE_ID,
+      } })),
+    ]);
+    expect(workerLogs).toContainEqual(['hermes schedule run rejected', 'schedule-a', 'network_ack_lost']);
+    expect(rpcCalls).toHaveLength(4);
+    expect(rpcCalls.every(call => call.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
+    expect(daChen.queue).toHaveLength(4);
+  });
+
+  it('a failed or malformed Hermes due read dispatches no runs and leaves legacy scheduling available', async () => {
+    for (const invalid of ['failed', 'malformed']) {
+      datCauHinh(); hermesCalls = []; rpcCalls = []; daChen.queue = []; daChen.messages = [];
+      hermesDueError = invalid === 'failed' ? { code: '42501' } : null;
+      hermesDue = invalid === 'malformed' ? [{ scheduleId: 'schedule-a', revision: 0 }] : [];
+      await tickTuDongHoa();
+      expect(hermesCalls.map(call => call.name)).toEqual(['hermes_room_schedule_due_v1']);
+      expect(workerLogs.at(-1)[0]).toBe('hermes schedule tick unverified');
+      expect(daChen.queue).toHaveLength(4);
+      expect(rpcCalls).toHaveLength(4);
+    }
+  });
+
   it('sends every room photo, then information and separator, then the next room; empty rooms explicitly await photos', async () => {
     vi.stubEnv('R2_PUBLIC_BASE', 'https://images.example.test');
     const bytes = Buffer.alloc(32); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);

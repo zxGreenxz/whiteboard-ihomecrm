@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 
 import { giaiMoc, taoTruyVanRetirement } from "./check-forward-migration-idempotent.mjs";
 import { chanProduction, coPsql, goiPsql } from "./lib/goi-psql-dich.mjs";
+import { HERMES_RESTORE_BEFORE, HERMES_RESTORE_SOURCES, assertHermesRestoreStops, buildHermesRestoreFixture } from "./lib/restore-hermes-prerequisites.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(repoRoot, "supabase", "migrations");
@@ -223,7 +224,7 @@ function main(argv) {
   }
 
   const kyVong = JSON.parse(readFileSync(KY_VONG, "utf8")).expectations ?? {};
-  let restoreGroup; let fixtureSql;
+  let restoreGroup; let fixtureSql; let hermesFixtureSql;
   try {
     const groups = JSON.parse(readFileSync(POLICY, "utf8")).idempotencyRetirements?.filter(g => g.id === RESTORE_GROUP);
     if (groups?.length !== 1) throw Error("drill restore retirement group missing/duplicate");
@@ -231,6 +232,11 @@ function main(argv) {
     // This fixture is for a disposable, local drill only, never a remote DB.
     if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(dich).hostname)) throw Error("drill ACL fixture requires a local disposable database");
     fixtureSql = taoFixtureAcl(readFileSync(ACL_FIXTURE, "utf8"), ACL_FIXTURE_SHA256, restoreGroup);
+    if (!files.includes(HERMES_RESTORE_BEFORE)) throw Error("Hermes restore boundary missing");
+    hermesFixtureSql = buildHermesRestoreFixture(Object.fromEntries(Object.keys(HERMES_RESTORE_SOURCES).map(file => {
+      if (!files.includes(file) || file >= HERMES_RESTORE_BEFORE) throw Error(`Hermes restore source outside lane: ${file}`);
+      return [file, readFileSync(join(MIGRATIONS, file), "utf8")];
+    })));
     for (const f of [...restoreGroup.migrations, restoreGroup.compensation]) {
       if (!files.includes(f.file) || sha256(readFileSync(join(MIGRATIONS, f.file), "utf8")) !== f.sha256) throw Error(`drill immutable migration digest mismatch: ${f.file}`);
     }
@@ -279,6 +285,18 @@ function main(argv) {
     kiemCatalogPhucHoi(restoreGroup, JSON.parse(String(r.stdout).trim()), restored);
   };
   for (const ten of files) {
+    if (ten === HERMES_RESTORE_BEFORE) {
+      try {
+        assertHermesRestoreStops(ketQua, kyVong);
+        const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"], { ...psqlOptions, input: hermesFixtureSql });
+        if (r.status !== 0) throw Error(dauLoi(r.stderr));
+        console.log("→ Fixture Hermes PASS: 3 cascade stops giữ nguyên; dựng lease rỗng + queue.result + provider nguyên source đã pin, kiểm structure/body/owner/ACL/RLS trước Hermes.");
+      } catch (error) {
+        // Mandatory even outside --moc, just like the retirement scenario.
+        console.error(`❌ Fixture prerequisite Hermes thất bại: ${error.message}`);
+        return 1;
+      }
+    }
     if (ten === restoreGroup.migrations[0].file) {
       console.log("→ RAW baseline --no-acl không giữ ACL production: fixture cục bộ kiểm 22 hash/owner/ACL, khôi phục đúng 15 ACL; không đổi body hay dữ liệu.");
       const r = goiPsql(["-d", dich, "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"], { ...psqlOptions, input: fixtureSql });

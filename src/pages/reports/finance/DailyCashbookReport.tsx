@@ -1,5 +1,4 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -17,7 +16,6 @@ import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { addDays, format, startOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
 import { formatCurrency } from "@/lib/utils";
-
 
 const toLocalDateStr = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -53,7 +51,7 @@ export default function DailyCashbookReport() {
     building_id: buildingId === "all" ? undefined : buildingId,
     account_id: accountId === "all" ? undefined : accountId,
   };
-  useCopilotPageContext(['reports.finance.daily-cashbook', 'reports.finance.cash-book'], { ...filterOpts, from: startDate, to: endDate });
+
   const cashFlowByDayQuery = useCashFlowByDay(
     startDate || "",
     endDate || "",

@@ -1,5 +1,4 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // =============================================
 // Báo cáo "Chu kỳ Thu → Bàn giao" theo tòa quản lý.
 //  - Thẻ tổng: đã thu (kỳ) · đã bàn giao (kỳ) · CHƯA THU (hiện tại) · tổng đã lên HĐ.
@@ -52,7 +51,6 @@ export default function BanGiaoCycleReport() {
   const from = dateRange?.from ? toDate(dateRange.from) : '';
   const to = dateRange?.to ? toDate(dateRange.to) : '';
 
-  useCopilotPageContext('reports.finance.collection', { manager_id: managerId || 'self', from, to });
   const collectionCycleReportQuery = useCollectionCycleReport(managerId, from, to);
   const { data, isLoading } = collectionCycleReportQuery;
 

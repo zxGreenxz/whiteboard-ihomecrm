@@ -137,7 +137,10 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     else if (cosmetic) add("cosmetic-ui", c.path, "AST presentation whitelist; other executable structure is identical");
     else if (both.every((p) => matches(p, riskMap.scope.docsPaths)) && !schema) add("docs-only", c.path, "Documentation-only inputs");
     else if (!schema) add(both.some((p) => matches(p, riskMap.scope.uiPaths)) ? "ui-behavior" : "logic", c.path, "Executable or interaction change");
-    const rules = documentation ? [] : testMatrix.sourceSelectionRules.filter((r) => both.some((p) => matches(p, r.sourcePaths)));
+    // Corpus documents are executable inputs to AI ingestion/inventory. Only
+    // explicit domain rules opt them in; ordinary docs still select no suites.
+    const rules = testMatrix.sourceSelectionRules.filter((r) =>
+      (!documentation || r.includeDocumentation === true) && both.some((p) => matches(p, r.sourcePaths)));
     for (const rule of rules) matchedRules.add(rule);
     if (!schema && !shared && !isMoney && !isAuth && both.every((path) => rules.some((rule) => rule.ciSafe === true && matches(path, rule.sourcePaths) && testMatrix.suites.some((suite) => suite.id === rule.suiteId && suite.runner === "playwright")))) offlinePaths.add(c.path);
     const ownSuite = testMatrix.suites.find((s) => s.status !== "deferred" && owned(c.path, s));
@@ -174,6 +177,9 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
   if (offlinePaths.size) reasons.push({ path: null, profile: "ui-behavior", reason: "Offline demo source/spec scope contributes selected browser interaction; other changed files retain their own gates" });
   if (fullFallback) for (const [id, gate] of Object.entries(registry)) if (!id.startsWith("suite:") && gate.evidenceClass !== "live" && !isDeferredGate(id)) gates.add(id);
   for (const rule of testMatrix.sourceSelectionRules) if ((rule.profiles ?? []).some((p) => profiles.has(p))) matchedRules.add(rule);
+  // Domain-specific static contracts travel with their source-to-test mapping.
+  // Unknown ids still fail validation below; deferred gates remain excluded.
+  for (const rule of matchedRules) for (const id of rule.gates ?? []) gates.add(id);
   const suiteSelections = []; const browserRequirements = []; const unavailable = []; const external = new Map();
   const requireExternal = (workflow, suite, jobs) => {
     if (!external.has(workflow)) external.set(workflow, { workflow, jobs: [], suiteIds: [] });

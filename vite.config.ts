@@ -4,7 +4,7 @@ import path from "path";
 import { DEFERRED_TEST_PATTERNS } from "./scripts/lib/deferred-modules.mjs";
 
 if (process.env.VITEST && DEFERRED_TEST_PATTERNS.length) {
-  console.warn("DEFERRED: test riêng Zalo/Copilot không chạy; xem tooling/deferred-modules.json. Không tính là pass.");
+  console.warn("DEFERRED: một số test Copilot/UI/model và Zalo fleet còn hoãn; core offline đã mở theo tooling/deferred-modules.json. Phần hoãn không tính là pass.");
 }
 
 // Các gói @radix-ui mà ENTRY import tĩnh (qua Toaster/Tooltip/Label/Checkbox/

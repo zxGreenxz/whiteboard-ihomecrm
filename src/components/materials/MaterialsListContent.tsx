@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from 'react';
 import { Plus, Search, Tag, Pencil, Trash2, MoreHorizontal, FolderTree } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -60,7 +59,6 @@ export default function MaterialsListContent() {
     [search, categoryId, stockTab],
   );
 
-  useCopilotPageContext('materials.list', { search: filters.search, category_id: filters.categoryId, low_stock: filters.onlyLowStock });
   const materialsQuery = useMaterials(filters);
   const categoriesQuery = useMaterialCategories();
   const { data: materials = [], isLoading } = materialsQuery;

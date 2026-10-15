@@ -1,0 +1,127 @@
+import {createHash} from 'node:crypto';
+import {extractFunctionDefinitions,splitSqlStatements,normalizeSqlSource} from './network-center-function-bodies.mjs';
+import {TASK_FUNCTIONS,CUSTOMER_FUNCTIONS} from './hermes-task-function-specs.mjs';
+export {TASK_FUNCTIONS,CUSTOMER_FUNCTIONS};
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const requireValue=(value,code)=>{if(!value)throw Object.assign(new Error(code),{code});};
+const standard=new Map([...TASK_FUNCTIONS,...CUSTOMER_FUNCTIONS].filter(item=>item.standard).map(item=>[item.name,item]));
+// SQL-standard functions outside the task catalog still have to be joined and
+// accounted for when a candidate migration is parsed.  Keep this allowlist
+// explicit and byte-bound so adding a new BEGIN ATOMIC body cannot silently
+// weaken task source verification.
+const externalStandard=new Map([
+ ['public.hermes_customer_create_action_v1',{
+  name:'public.hermes_customer_create_action_v1',
+  sourcePath:'supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql',
+  statementSha256:'a65c0caaa8e6fbaf04c73d0af4eb9bc6d3d6cad2871b6271fa1fdace9660b451',
+ }],
+]);
+const sqlStandard=new Map([...standard,...externalStandard]);
+function withoutLeadingComments(text){
+ let next=text.trimStart();
+ while(next.startsWith('--')||next.startsWith('/*')){
+  if(next.startsWith('--')&&!next.includes('\n'))return '';
+  const end=next.startsWith('--')?next.indexOf('\n')+1:next.indexOf('*/');
+  requireValue(end>=0,'task_function_source_unreadable');next=next.slice(next.startsWith('--')?end:end+2).trimStart();
+ }
+ return next;
+}
+
+// The existing splitter/extractor remains unchanged. Exactly these three
+// single-statement SQL-standard bodies may join their trailing END token; any
+// additional statement or unknown BEGIN ATOMIC function fails. Extraction below
+// additionally checks the exact raw source; static replay checks the fixed body.
+export function splitHermesFunctionStatements(sql){
+ const statements=splitSqlStatements(sql),result=[];
+ for(let index=0;index<statements.length;index++){
+  const raw=statements[index],statement=withoutLeadingComments(raw);
+  const head=/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+((?:public|app_private)\.\w+)\(/i.exec(statement);
+  if(head&&/\bBEGIN\s+ATOMIC\b/i.test(statement.split(/\bAS\s+\$/i)[0])){
+   const spec=sqlStandard.get(head[1]);
+   requireValue(spec&&statements[index+1]?.trim()==='END','task_sql_standard_source_mismatch');
+   const complete=statement+';\nEND';
+   result.push(complete);index++;
+  }else result.push(raw);
+ }
+ return result;
+}
+
+export function extractHermesFunctionDefinitions(sql,path='migration.sql'){
+ return splitHermesFunctionStatements(sql).flatMap(raw=>{
+  const statement=withoutLeadingComments(raw),head=/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+((?:public|app_private)\.\w+)\(/i.exec(statement);
+  const spec=head&&standard.get(head[1]);
+  const external=head&&externalStandard.get(head[1]);
+  if(external){
+   requireValue(path===external.sourcePath&&hash(statement)===external.statementSha256,'task_sql_standard_source_mismatch');
+   return [{qualifiedName:external.name,bodyKind:'sql-standard',bodyDigest:null,external:true}];
+  }
+  if(spec){
+   requireValue(hash(statement)===spec.statementSha256,'task_sql_standard_source_mismatch');
+   return [{qualifiedName:spec.name,bodyKind:'sql-standard',bodyDigest:null}];
+  }
+  return extractFunctionDefinitions(raw,path);
+ });
+}
+
+// Run on one owned connection so the deparser's search_path is deterministic.
+// READ ONLY + ROLLBACK: no schema/function/session state survives this check.
+export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,receiptTable}){
+ const expected=new Map(sources.flatMap(source=>extractHermesFunctionDefinitions(source.bytes.toString('utf8'),source.path))
+  .map(item=>[item.qualifiedName,item]));
+ const prefix=errorPrefix;
+ requireValue(functions.every(spec=>expected.has(spec.name)), 'live_'+prefix+'_source_incomplete');
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN READ ONLY');
+  await client.query('SET LOCAL search_path=pg_catalog');
+  const rows=(await client.query('SELECT n.nspname||\'.\'||p.proname name,p.oid::regprocedure::text signature,'+
+   'p.prosrc,p.prosqlbody IS NOT NULL parsed_body,pg_get_functiondef(p.oid) definition,p.prosecdef,'+
+   'pg_get_userbyid(p.proowner) owner,p.proconfig,l.lanname language,p.provolatile,p.proparallel,p.proleakproof,p.proisstrict,'+
+   'pg_get_function_identity_arguments(p.oid) arguments,pg_get_function_result(p.oid) result,'+
+   '(SELECT jsonb_agg(jsonb_build_object(\'type\',a.type,\'identity\',a.identity,\'deptype\',d.deptype,'+
+   '\'bound_oid\',d.refobjid::bigint,\'resolved_oid\',(CASE WHEN a.type=\'function\' THEN to_regprocedure(a.identity)::oid '+
+   'WHEN a.type=\'schema\' THEN to_regnamespace(a.identity)::oid WHEN a.type=\'table column\' THEN to_regclass(format(\'%I.%I\',a.schema,a.name))::oid ELSE NULL END)::bigint) '+
+   'ORDER BY a.type,a.identity,d.deptype) FROM pg_depend d CROSS JOIN LATERAL pg_identify_object(d.refclassid,d.refobjid,d.refobjsubid) a '+
+   'WHERE d.classid=\'pg_proc\'::regclass AND d.objid=p.oid) dependencies,'+
+   '(SELECT jsonb_agg(jsonb_build_object(\'grantee\',CASE WHEN x.grantee=0 THEN \'PUBLIC\' ELSE pg_get_userbyid(x.grantee) END,'+
+   '\'privilege\',x.privilege_type,\'grantable\',x.is_grantable) ORDER BY x.grantee) FROM aclexplode(COALESCE(p.proacl,acldefault(\'f\',p.proowner))) x) acl '+
+   'FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang '+
+   'WHERE n.nspname||\'.\'||p.proname=ANY($1::text[])',[functions.map(item=>item.name)])).rows;
+  requireValue(rows.length===functions.length,'live_'+prefix+'_signature_mismatch');
+  for(const spec of functions){
+   const row=rows.find(item=>item.name===spec.name);
+   requireValue(row?.signature===spec.signature&&row.owner==='postgres'&&row.language===spec.language&&row.prosecdef===spec.definer
+    &&row.provolatile==='v'&&row.proparallel==='u'&&row.proleakproof===false&&row.proisstrict===false
+    &&JSON.stringify(row.proconfig)===JSON.stringify(['search_path='+spec.searchPath.replaceAll(',',', ')])
+    &&row.arguments===spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item=>item.trim()).join(', ')
+    &&row.result===(spec.name==='app_private.hermes_task_assignee_member_v1'?'boolean':'jsonb'),'live_'+prefix+'_definition_mismatch');
+   if(spec.standard){
+    requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===spec.deparsedSha256,'live_'+prefix+'_sql_standard_body_mismatch');
+    requireValue(Array.isArray(row.dependencies)&&row.dependencies.every(item=>Number.isInteger(item.bound_oid)&&item.bound_oid>0&&item.bound_oid===item.resolved_oid)
+     &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(spec.dependencies),'live_'+prefix+'_dependency_mismatch');
+   }else requireValue(row.parsed_body===false&&typeof row.prosrc==='string'&&hash(normalizeSqlSource(row.prosrc))===(spec.bodyDigest??expected.get(spec.name).bodyDigest),'live_'+prefix+'_body_mismatch');
+   const grantees=spec.authenticated?['authenticated','postgres']:['postgres'];
+   requireValue(Array.isArray(row.acl)&&row.acl.length===grantees.length&&row.acl.every(item=>grantees.includes(item.grantee)&&item.privilege==='EXECUTE'&&item.grantable===false)
+    &&new Set(row.acl.map(item=>item.grantee)).size===grantees.length,'live_'+prefix+'_acl_mismatch');
+   const acl=(await client.query('SELECT role,has_function_privilege(role,$1,\'EXECUTE\') allowed FROM unnest($2::text[]) role',
+    [spec.signature,['anon','authenticated','service_role','hermes_store_executor']])).rows;
+   requireValue(acl.length===4&&acl.every(item=>item.allowed===(spec.authenticated&&item.role==='authenticated')),'live_'+prefix+'_acl_mismatch');
+  }
+  const receipt=(await client.query('SELECT c.relrowsecurity,pg_get_userbyid(c.relowner) owner,'+
+    'has_schema_privilege(\'authenticated\',\'app_private\',\'USAGE\') private_usage,'+
+    'COALESCE(c.relacl,acldefault(\'r\',c.relowner))=acldefault(\'r\',c.relowner) owner_only_acl,'+
+    'EXISTS(SELECT 1 FROM unnest(ARRAY[\'anon\',\'authenticated\',\'service_role\',\'hermes_store_executor\']) r(role) '+
+    'CROSS JOIN LATERAL aclexplode(acldefault(\'r\',c.relowner)) p WHERE has_table_privilege(r.role,c.oid,p.privilege_type)) table_access '+
+    'FROM pg_class c WHERE c.oid=to_regclass($1)',['app_private.'+receiptTable])).rows;
+  requireValue(receipt.length===1&&receipt[0].relrowsecurity&&receipt[0].owner==='postgres'&&!receipt[0].private_usage
+   &&receipt[0].owner_only_acl===true&&!receipt[0].table_access,'live_'+prefix+'_private_boundary_mismatch');
+ }finally{
+  try{await client.query('ROLLBACK');}finally{client.release();}
+ }
+}
+export const verifyTaskFunctionCatalog=(pool,sources)=>verifyFunctionCatalog(pool,sources,{
+ functions:TASK_FUNCTIONS,errorPrefix:'task',receiptTable:'hermes_task_create_receipts',
+});
+export const verifyCustomerFunctionCatalog=(pool,sources)=>verifyFunctionCatalog(pool,sources,{
+ functions:CUSTOMER_FUNCTIONS,errorPrefix:'customer',receiptTable:'hermes_customer_create_receipts',
+});

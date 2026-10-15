@@ -26,6 +26,8 @@ export interface PermissionPickerProps {
   onToggleMany?: (keys: string[], bat: boolean) => void;
   /** Khoá KHÔNG có trong permission_definitions -> khoá mờ, kèm giải thích. */
   availableKeys?: Set<string>;
+  /** Giới hạn danh sách hiển thị cho một công cụ dùng chung; không cấp quyền. */
+  visibleKeys?: Set<string>;
   /** Hiện dấu hiệu "đến từ vai trò" cho các khoá này (dùng ở tab Ngoại lệ). */
   inheritedKeys?: Set<string>;
   disabled?: boolean;
@@ -45,6 +47,7 @@ export function PermissionPicker({
   onToggle,
   onToggleMany,
   availableKeys,
+  visibleKeys,
   inheritedKeys,
   disabled,
   renderTrailing,
@@ -55,22 +58,21 @@ export function PermissionPicker({
 
   const q = tim.trim().toLowerCase();
   const nhomHienThi = useMemo(() => {
-    if (!q) return VISIBLE_PAGE_GROUPS;
     return VISIBLE_PAGE_GROUPS.map((g) => ({
       ...g,
       pages: g.pages
         .map((p) => ({
           ...p,
           features: p.features.filter(
-            (ft) =>
-              ft.label.toLowerCase().includes(q) ||
+            (ft) => (!visibleKeys || visibleKeys.has(featureKey(ft))) && (
+              !q || ft.label.toLowerCase().includes(q) ||
               p.label.toLowerCase().includes(q) ||
-              featureKey(ft).includes(q),
+              featureKey(ft).includes(q)),
           ),
         }))
         .filter((p) => p.features.length),
     })).filter((g) => g.pages.length);
-  }, [q]);
+  }, [q, visibleKeys]);
 
   const dat = (keys: string[], bat: boolean) => {
     const duoc = keys.filter((k) => !availableKeys || availableKeys.has(k));

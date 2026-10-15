@@ -35,6 +35,7 @@ COPY --from=deps --chown=10002:10002 /app/node_modules ./node_modules
 COPY --from=deps --chown=10002:10002 /app/fonts ./fonts
 COPY --chown=10002:10002 package.json index.js ./
 COPY --chown=10002:10002 lib ./lib
+COPY --chown=10002:10002 deploy/native-preflight.mjs ./deploy/native-preflight.mjs
 
 USER 10002:10002
 

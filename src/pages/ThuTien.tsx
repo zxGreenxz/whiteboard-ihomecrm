@@ -1,6 +1,5 @@
 import { QueryRegion, refetchStartedSources } from '@/components/errors/QueryRegion';
 import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -117,7 +116,6 @@ const ThuTien = () => {
     return ['', ''];
   }, [timeFilter, dateRange]);
 
-  useCopilotPageContext('thu-tien.list', { building_id: buildingId, billing_month: billingMonth, time_range: timeFilter, from: lo, to: hi, status: statusFilter }, drawer.show ? monthInvoices?.find((invoice) => invoice.id === drawer.id) : null);
   const isPaid = (inv: InvoiceWithRelations) => collectStatus(inv) === 'paid';
   // "Đã thu" của ngày/khoảng đang xem: có phiếu thu trong phạm vi (đủ hoặc 1 phần).
   const collectedInScope = (inv: InvoiceWithRelations) => paymentsInRange(inv, lo, hi).has;

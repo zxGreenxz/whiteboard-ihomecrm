@@ -1,4 +1,3 @@
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { Fragment, useState } from 'react';
 import { Plus, Trash2, MoreHorizontal, ChevronDown, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -46,7 +45,6 @@ export default function MaterialAdjustmentsContent() {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MaterialAdjustmentWithItems | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useCopilotPageContext('materials.adjustments', {}, expanded.size === 1 ? adjustments.find((row) => expanded.has(row.id)) : null);
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {

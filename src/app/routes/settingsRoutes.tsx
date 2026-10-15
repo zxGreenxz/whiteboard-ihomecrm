@@ -8,7 +8,6 @@
 // route ở đây vẫn được kiểm như khi chúng còn nằm trong App.tsx.
 import { Route, Navigate } from "react-router-dom";
 import {
-  AiCopilotAdminPage,
   AssetMaintenancePage,
   AssetMovementsPage,
   AssetTypesPage,
@@ -22,6 +21,7 @@ import {
   FloorsPage,
   GeneralCategoriesPage,
   GeneralSettingsPage,
+  HermesConnectionsPage,
   HotlinesPage,
   IncomeExpenseTemplatesPage,
   IncomeExpenseTypesNewPage,
@@ -40,8 +40,8 @@ export const settingsRoutes = (
   <>
     {/* === CÀI ĐẶT HỆ THỐNG === */}
     <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><GeneralSettingsPage /></RequirePermission></ProtectedRoute>} />
-    {/* AI Copilot admin — gate super-admin/entitlement BÊN TRONG page (RLS là gate thật) */}
-    <Route path="/settings/ai-copilot" element={<ProtectedRoute><AiCopilotAdminPage /></ProtectedRoute>} />
+    {/* Self-service only: the Hermes backend verifies the current user, selected org and every connection's ownership. */}
+    <Route path="/settings/hermes" element={<ProtectedRoute><HermesConnectionsPage /></ProtectedRoute>} />
     <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />
     <Route path="/settings/categories" element={<ProtectedRoute><RequirePermission module="categories"><CategoriesPage /></RequirePermission></ProtectedRoute>} />
     {/* Categories Sub-Pages - Tài chính */}

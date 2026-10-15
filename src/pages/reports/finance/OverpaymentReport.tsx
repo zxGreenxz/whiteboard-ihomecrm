@@ -1,5 +1,4 @@
 import { QueryRegion } from "@/components/errors/QueryRegion";
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -17,7 +16,6 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
 
-
 export default function OverpaymentReport() {
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   // Lọc client-side theo buildings.id trên rows đã fetch (hook không nhận filter).
@@ -26,7 +24,6 @@ export default function OverpaymentReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  useCopilotPageContext('reports.finance.overpayment', { building_ids: buildingIds });
   const overpaymentReportQuery = useOverpaymentReport();
   const { data: overpayments = [], isLoading } = overpaymentReportQuery;
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc toà.

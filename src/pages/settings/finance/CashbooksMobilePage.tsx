@@ -1,6 +1,5 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
-import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText, Settings2 } from "lucide-react";
@@ -55,7 +54,7 @@ export default function CashbooksMobilePage() {
   const funds = (data?.data ?? []) as AccountWithBalance[];
 
   const [detail, setDetail] = useState<AccountWithBalance | null>(null);
-  useCopilotPageContext('cashbooks.list', {}, detail);
+
   const [fabOpen, setFabOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | null>(null);

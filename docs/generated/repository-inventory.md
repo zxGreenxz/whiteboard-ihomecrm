@@ -15,8 +15,8 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **1367** file test, **303** file đọc file bằng fs (673 lời gọi)
-- **303** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
+- **1483** file test, **349** file đọc file bằng fs (807 lời gọi)
+- **365** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
 
@@ -24,13 +24,13 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
-| sql | 107 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 52 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
-| manifest | 37 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
-| tai-lieu | 14 | Đọc tài liệu/asset. |
+| sql | 125 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
+| ma-nguon | 57 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| manifest | 53 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
+| tai-lieu | 15 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 52 file đọc MÃ NGUỒN
+## 57 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -43,12 +43,17 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs`
 - `scripts/__tests__/gen-supabase-types.test.ts`
 - `scripts/__tests__/generate-repository-inventory.test.mjs`
+- `scripts/__tests__/hermes-cde-live.test.mjs`
+- `scripts/__tests__/hermes-durable-store.test.mjs`
+- `scripts/__tests__/hermes-private-flow.test.mjs`
 - `scripts/__tests__/lifecycle-reminder-edge-auth.test.ts`
 - `scripts/__tests__/network-center-worker-release-readback.test.mjs`
 - `scripts/__tests__/network-center-worker-scope-verifier.test.mjs`
 - `scripts/__tests__/qr-csp-bindings.test.mjs`
 - `scripts/__tests__/super-admin-route-contract.test.mjs`
+- `scripts/__tests__/test-hermes-broker-authz.test.mjs`
 - `scripts/org-context-repair/sealed-artifact.test.mjs`
+- `scripts/test-hermes-product-runtime.test.mjs`
 - `src/components/errors/ErrorBoundary.pageNames.test.tsx`
 - `src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx`
 - `src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx`
