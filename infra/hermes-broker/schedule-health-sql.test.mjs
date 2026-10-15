@@ -10,6 +10,7 @@ import { scheduleInput, scheduleResult } from './schedule-contract.mjs';
 const code = expected => error => error.code === expected;
 const OTHER = '78901234-1234-4567-8123-123456789abc', LEGACY = '89012345-1234-4567-8123-123456789abc', SEND = '9abcdef0-1234-4567-8123-123456789abc';
 const uid40 = '1'.repeat(40);
+const ZONED = 'abcdef01-1234-4567-8123-123456789abc';
 
 test('schedule health SQL: durable blocked evidence, owner notice, recipient split, policy mode, reconciliation', { timeout: 300000 }, async t => {
   const hooks = {}, x = await setupScheduleHealth(t, { reconcile: true, hooks }), { db } = x;
@@ -490,6 +491,17 @@ test('schedule health SQL: durable blocked evidence, owner notice, recipient spl
       assert.deepEqual([conflict.dispatched, conflict.rejected], [1, 1]);
       assert.deepEqual((await call('issues', {})).unknownDeliveries, []);
       assert.equal(await x.count('public.zalo_send_queue'), 1);
+      // 16/10 21:27Z production: a zoned expiresAt without ".000" through the mount
+      // reaches SQL canonical, and the strict SQL echo check still matches.
+      const minute = Math.floor((Date.now() + 86400000) / 60000) * 60000, canonical = new Date(minute).toISOString();
+      const zoned = new Date(minute + 7 * 3600000).toISOString().slice(0, 16) + '+07:00';
+      // (update of the existing bulletin: a second ACTIVE one on the same group would be an owner conflict.)
+      const renew = expiresAt => call('update', { requestId: ZONED, scheduleId: NEXT, expectedRevision: 1, settings: x.settings('rooms_public_text_v1', { expiresAt }) });
+      const before = writes, renewed = await renew(zoned);
+      assert.deepEqual([renewed.schedule.scheduleId, renewed.schedule.revision, renewed.schedule.settings.expiresAt, writes - before], [NEXT, 2, canonical, 1]);
+      assert.deepEqual((await renew(canonical.replace('.000Z', 'Z'))).schedule, renewed.schedule, 'equivalent form replays the same request');
+      await assert.rejects(renew(zoned.slice(0, 16)), error => error.code === 'invalid_request', 'zone-less expiry never reaches SQL');
+      assert.equal(writes - before, 2);
     } finally { hooks.beforeFetch = undefined; }
   });
 
