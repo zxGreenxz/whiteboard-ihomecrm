@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-14T17:59:39.479Z",
+  "generatedAt": "2026-10-15T04:14:47.463Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 679,
-    "unknown": 106,
-    "catalog-proven": 205,
+    "unknown": 88,
+    "catalog-proven": 226,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11338,14 +11338,13 @@
       "name": "hermes_assistant_identity_policy_v1",
       "scheme": "timestamp14",
       "sha256": "ae88a8523c00c4b92deb659ea9cb9a06edfe40ca10f2f3160a90865b820f64a4",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_capabilities",
-        "table:app_private.hermes_assistants",
-        "table:app_private.hermes_org_policies",
-        "table:app_private.hermes_sessions",
-        "table:app_private.hermes_connections"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_capabilities",
+        "catalog:table:app_private.hermes_assistants",
+        "catalog:function:app_private.hermes_member_v1",
+        "catalog:function:app_private.hermes_validate_limits_v1",
+        "catalog:index:app_private.hermes_connection_one_current_token"
       ]
     },
     {
@@ -11354,14 +11353,10 @@
       "name": "hermes_encrypted_session_store_v1",
       "scheme": "timestamp14",
       "sha256": "1d5708a6a4a3d319719b7dd78aa81bc0a9db75a66914d4f047a1ec2137f5bbfd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_request_v1",
-        "function:app_private.hermes_uuid_v1",
-        "function:app_private.hermes_integer_v1",
-        "function:app_private.hermes_envelope_v1",
-        "function:app_private.hermes_binding_matches_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_request_v1",
+        "catalog:function:app_private.hermes_uuid_v1"
       ]
     },
     {
@@ -11370,10 +11365,9 @@
       "name": "hermes_envelope_length_guard_v1",
       "scheme": "timestamp14",
       "sha256": "0f0b4b039fc6af6596df5e0816d3b9c057689979dce2c3fbdb45dcd89141b74d",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_envelope_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_envelope_v1"
       ]
     },
     {
@@ -11382,11 +11376,10 @@
       "name": "hermes_room_scope_read_v1",
       "scheme": "timestamp14",
       "sha256": "04c5dd53033220c7398fb0a64944e995663327f84fb20caab1009c7e2191ddf9",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_room_scope_map_v1",
-        "function:public.hermes_connection_context_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_room_scope_map_v1",
+        "catalog:function:public.hermes_connection_context_v1"
       ]
     },
     {
@@ -11395,10 +11388,9 @@
       "name": "hermes_connection_renewal_v1",
       "scheme": "timestamp14",
       "sha256": "05d5d2961e307cc2c0c18f94e586ca9a8dba33f86da44d6189c8762ed4a542e2",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_store_renew_connection_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_store_renew_connection_v1"
       ]
     },
     {
@@ -11407,14 +11399,14 @@
       "name": "hermes_zalo_binding_v1",
       "scheme": "timestamp14",
       "sha256": "d57bf2f2f25dd890951c0de64006f89cf478f401b19f1e422c30f7338c224f54",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_zalo_bots",
-        "table:app_private.hermes_zalo_ingress_sessions",
-        "table:app_private.hermes_zalo_link_challenges",
-        "table:app_private.hermes_zalo_bindings",
-        "function:app_private.hermes_zalo_shared_inbox_guard_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_zalo_bots",
+        "catalog:table:app_private.hermes_zalo_ingress_sessions",
+        "catalog:function:app_private.hermes_zalo_shared_inbox_guard_v1",
+        "catalog:function:app_private.hermes_zalo_context_v1",
+        "catalog:index:app_private.hermes_zalo_self_list",
+        "catalog:trigger:public.zalo_conversations.hermes_zalo_private_conversation_guard"
       ]
     },
     {
@@ -11423,11 +11415,10 @@
       "name": "hermes_public_conflict_http_v1",
       "scheme": "timestamp14",
       "sha256": "b2f087aa089334446dfef3606a6c81ea6ae5b7cf4ec122da0630e30ba4a79e50",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_room_scope_map_v1",
-        "function:public.hermes_set_org_policy_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_room_scope_map_v1",
+        "catalog:function:public.hermes_set_org_policy_v1"
       ]
     },
     {
@@ -11436,12 +11427,11 @@
       "name": "hermes_zalo_private_command_v1",
       "scheme": "timestamp14",
       "sha256": "a03b0abd71b5a44c008f67eac361172f6ee2c07823bd158a165b37b759b38347",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_zalo_private_commands",
-        "function:public.hermes_zalo_private_command_v1",
-        "index:app_private.hermes_zalo_private_pending"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_zalo_private_commands",
+        "catalog:function:public.hermes_zalo_private_command_v1",
+        "catalog:index:app_private.hermes_zalo_private_pending"
       ]
     },
     {
@@ -11450,14 +11440,11 @@
       "name": "hermes_private_command_dispatch_v1",
       "scheme": "timestamp14",
       "sha256": "a03317beaf250c373e1ccea29a921161979b72e4dc4420eb32d3a46714cdde29",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_private_command_connection_v1",
-        "function:app_private.hermes_private_command_lock_v1",
-        "function:app_private.hermes_store_claim_private_command_v1",
-        "function:app_private.hermes_store_dispatch_private_command_v1",
-        "function:app_private.hermes_store_finish_private_command_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_private_command_connection_v1",
+        "catalog:function:app_private.hermes_private_command_lock_v1",
+        "catalog:index:app_private.hermes_private_command_claim"
       ]
     },
     {
@@ -11466,14 +11453,12 @@
       "name": "hermes_zalo_private_reply_v1",
       "scheme": "timestamp14",
       "sha256": "db9f4b38f5c7394ca15dfd54c9708def78740b14e4cf5496f7bdab688233369a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_private_command_authority_guard_v1",
-        "function:app_private.hermes_private_reply_lock_v1",
-        "function:public.hermes_zalo_private_reply_v1",
-        "function:app_private.hermes_store_prune_private_commands_v1",
-        "index:app_private.hermes_private_reply_delivery"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_private_command_authority_guard_v1",
+        "catalog:function:app_private.hermes_private_reply_lock_v1",
+        "catalog:index:app_private.hermes_private_reply_delivery",
+        "catalog:trigger:app_private.hermes_zalo_private_commands.hermes_private_command_authority"
       ]
     },
     {
@@ -11482,10 +11467,9 @@
       "name": "hermes_org_policy_options_v1",
       "scheme": "timestamp14",
       "sha256": "67aa0a792195a380be24798c29e7a9fed41c972508422049dd3210c738290b6c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_org_policy_options_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_org_policy_options_v1"
       ]
     },
     {
@@ -11494,13 +11478,10 @@
       "name": "hermes_group_preview_authority_v1",
       "scheme": "timestamp14",
       "sha256": "7de7b66dac4bcc1d2c2eb812f85ca6d4edc92ad4d62e571d936db14a0d3ba4bd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_group_action_context_v1",
-        "function:app_private.hermes_group_preview_context_v1",
-        "function:public.hermes_group_directory_v1",
-        "function:public.hermes_group_preview_decision_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_group_action_context_v1",
+        "catalog:function:app_private.hermes_group_preview_context_v1"
       ]
     },
     {
@@ -11509,12 +11490,10 @@
       "name": "hermes_group_capability_options_v2",
       "scheme": "timestamp14",
       "sha256": "8aa2683c5c9140d1a472930dca62f31e9b85869fb63712b2faf6a0951ab59931",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_org_policy_options_v2",
-        "function:public.hermes_connection_options_v2",
-        "function:public.hermes_connection_context_v2"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_org_policy_options_v2",
+        "catalog:function:public.hermes_connection_options_v2"
       ]
     },
     {
@@ -11523,14 +11502,13 @@
       "name": "hermes_group_authorized_queue_v1",
       "scheme": "timestamp14",
       "sha256": "e9ccb9de85d42992b142aa28a8077a290b6108de5f67f089a27d361fcab105fc",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_group_dispatches",
-        "table:app_private.hermes_group_jobs",
-        "function:app_private.hermes_group_immutable_v1",
-        "function:app_private.hermes_group_number_vi_v1",
-        "function:app_private.hermes_group_room_fact_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_group_dispatches",
+        "catalog:table:app_private.hermes_group_jobs",
+        "catalog:function:app_private.hermes_group_immutable_v1",
+        "catalog:function:app_private.hermes_group_number_vi_v1",
+        "catalog:trigger:app_private.hermes_group_dispatches.hermes_group_immutable"
       ]
     },
     {
@@ -11539,10 +11517,9 @@
       "name": "hermes_connection_options_v1",
       "scheme": "timestamp14",
       "sha256": "5ead8ede6928980d83a2df42a4a6e172f15a6d80dc38b73b7a5812aa31db36f1",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_connection_options_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_connection_options_v1"
       ]
     },
     {
@@ -11551,14 +11528,10 @@
       "name": "hermes_optional_org_policy_v1",
       "scheme": "timestamp14",
       "sha256": "47d34615509ec96542ffbb8369a653178b2415ff3da475442afba0100701131f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_effective_org_policy_v1",
-        "function:public.hermes_prepare_connection_v1",
-        "function:app_private.hermes_session_gate_v1",
-        "function:app_private.hermes_store_activate_v1",
-        "function:app_private.hermes_store_read_connection_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_effective_org_policy_v1",
+        "catalog:function:public.hermes_prepare_connection_v1"
       ]
     },
     {
@@ -11567,14 +11540,10 @@
       "name": "hermes_external_group_connector_v1",
       "scheme": "timestamp14",
       "sha256": "f9e714da3c18a4307cd8b11ab1af3f3c6ae5b7be33a23323b2186166f1c0aa4a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_external_group_context_v1",
-        "function:public.hermes_external_group_directory_v1",
-        "function:app_private.hermes_group_preview_from_context_v1",
-        "function:public.hermes_group_preview_decision_v1",
-        "function:public.hermes_external_group_preview_decision_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_external_group_context_v1",
+        "catalog:function:public.hermes_external_group_directory_v1"
       ]
     },
     {
@@ -11583,14 +11552,13 @@
       "name": "hermes_work_memory_v1",
       "scheme": "timestamp14",
       "sha256": "b133d6ffd95042daae5e9dd6eacd8143a55c76fca9b68f819232122f204b8bcd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_work_memory_settings",
-        "table:app_private.hermes_work_memories",
-        "function:public.hermes_work_memory_capabilities_v1",
-        "function:app_private.hermes_work_memory_context_v1",
-        "function:app_private.hermes_work_memory_settings_json_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_work_memory_settings",
+        "catalog:table:app_private.hermes_work_memories",
+        "catalog:function:public.hermes_work_memory_capabilities_v1",
+        "catalog:function:app_private.hermes_work_memory_context_v1",
+        "catalog:index:app_private.hermes_work_memories_expiry_idx"
       ]
     },
     {
@@ -11602,11 +11570,7 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "table:app_private.hermes_room_schedules",
-        "table:app_private.hermes_schedule_grants",
-        "table:app_private.hermes_schedule_runs",
-        "table:app_private.hermes_schedule_events",
-        "function:app_private.hermes_schedule_immutable_v1"
+        "trigger:public.app_private.hermes_schedule_immutable"
       ]
     },
     {
@@ -11615,14 +11579,10 @@
       "name": "hermes_domain_reads_v1",
       "scheme": "timestamp14",
       "sha256": "b81578dcdfd419856359c5c9696abb1f10feae4ecf36884716e03d27d8451db0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_domain_permission_v1",
-        "function:app_private.hermes_domain_text_v1",
-        "function:public.hermes_domain_capabilities_v1",
-        "function:public.hermes_domain_read_v1",
-        "function:app_private.hermes_domain_extend_options_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_domain_permission_v1",
+        "catalog:function:app_private.hermes_domain_text_v1"
       ]
     },
     {
@@ -11631,13 +11591,10 @@
       "name": "hermes_assistant_capabilities_v3",
       "scheme": "timestamp14",
       "sha256": "bfa25dd605bf318bf6260ae587a7a911f5e0060181a88ec0c9274c16de7a12de",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.hermes_room_schedule_capabilities_v1",
-        "function:public.hermes_org_policy_options_v3",
-        "function:public.hermes_connection_options_v3",
-        "function:public.hermes_connection_context_v3"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_room_schedule_capabilities_v1",
+        "catalog:function:public.hermes_org_policy_options_v3"
       ]
     },
     {
@@ -11646,13 +11603,11 @@
       "name": "hermes_room_pass_action_v1",
       "scheme": "timestamp14",
       "sha256": "525f08f2162f734b7d4d35c283827f6ffaed81ceff4fe9505c60db12c1bfdddb",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_room_pass_receipts",
-        "function:app_private.hermes_room_pass_revision_v1",
-        "function:public.hermes_room_pass_capabilities_v1",
-        "function:public.hermes_room_pass_action_v1"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.hermes_room_pass_receipts",
+        "catalog:function:app_private.hermes_room_pass_revision_v1",
+        "catalog:function:public.hermes_room_pass_capabilities_v1"
       ]
     },
     {
@@ -11716,6 +11671,53 @@
         "function:app_private.hermes_customer_insert_v1",
         "function:app_private.hermes_customer_finish_v1",
         "function:public.hermes_customer_create_action_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015110000_hermes_task_follow_v1.sql",
+      "version": "20261015110000",
+      "name": "hermes_task_follow_v1",
+      "scheme": "timestamp14",
+      "sha256": "413bb2eb6fcc39fa7ffb7f926afd3222edfb94769460cf0604b85cb60e802e01",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_task_follows",
+        "table:app_private.hermes_task_follow_receipts",
+        "function:app_private.hermes_task_dispatch_quota_v1",
+        "function:app_private.hermes_task_follow_int_v1",
+        "function:app_private.hermes_task_follow_text_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015110100_hermes_work_memory_supervise_v1.sql",
+      "version": "20261015110100",
+      "name": "hermes_work_memory_supervise_v1",
+      "scheme": "timestamp14",
+      "sha256": "17ba50fbece917a8f1548603b255e99c462fb294df270f98df56259bb6d9d1ed",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_work_memory_int_v1",
+        "function:app_private.hermes_memory_supervisor_v1",
+        "function:app_private.hermes_memory_shared_with_v1",
+        "function:public.hermes_work_memory_search_v1",
+        "function:app_private.hermes_memory_owner_name_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261015110200_hermes_task_follow_capabilities_hook.sql",
+      "version": "20261015110200",
+      "name": "hermes_task_follow_capabilities_hook",
+      "scheme": "timestamp14",
+      "sha256": "e89e3ee3a7ba94a057c29fb2f18fc9ea82132f0492e3c8b1c9fd80f6f59f99d8",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_task_follow_extend_options_v1",
+        "function:public.hermes_org_policy_options_v6",
+        "function:public.hermes_connection_options_v6",
+        "function:public.hermes_connection_context_v6"
       ]
     },
     {

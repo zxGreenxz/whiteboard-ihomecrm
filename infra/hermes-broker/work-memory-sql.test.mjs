@@ -7,6 +7,7 @@ const directory = new URL('../../supabase/migrations/', import.meta.url);
 const filename = readdirSync(directory).find(name => /_hermes_work_memory_v1\.sql$/.test(name)) ?? 'work_memory_v1.sql';
 const sql = readFileSync(process.env.HERMES_MEMORY_SQL ?? new URL(filename, directory), 'utf8');
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
+const supervise = source('20261015110100_hermes_work_memory_supervise_v1');
 const forward = source('20261014000503_hermes_optional_org_policy_v1');
 const actual = name => forward.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}[\\s\\S]*?\\$(?:fn)?\\$;`))[0];
 const OWNER = id('e');
@@ -23,6 +24,7 @@ async function setup(t) {
     CREATE FUNCTION app_private.is_actor_offboarded_v1() RETURNS boolean LANGUAGE sql AS $$SELECT false$$;
     CREATE TABLE public.fixture_audit(event text,metadata jsonb);
     CREATE TABLE public.authorization_scopes(id uuid PRIMARY KEY,organization_id uuid);
+    CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text);
     CREATE FUNCTION app_private.append_authz_audit_v1(o uuid,e text,k text,i uuid,m jsonb) RETURNS void LANGUAGE sql AS $$INSERT INTO public.fixture_audit VALUES(e,m)$$;
     CREATE TABLE public.fixture_acl(allowed boolean); INSERT INTO public.fixture_acl VALUES(true);
     CREATE FUNCTION app_private.authorize_tenant_action_v3(actor uuid,org uuid,permission text)
@@ -37,6 +39,8 @@ async function setup(t) {
   await db.exec(actual('app_private.hermes_private_command_connection_v1'));
   await db.exec(actual('app_private.hermes_session_gate_v1'));
   await db.exec(sql); await db.exec(sql);
+  // Live definitions: list/configure were forward-replaced by the supervision migration.
+  await db.exec(supervise); await db.exec(supervise);
   await db.exec("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability IN ('assistant.memory.read','assistant.memory.write')");
   async function rpc(operation, payload, binding = bound, role = 'authenticated', actor = USER) {
     assert.ok(['status', 'configure', 'list', 'upsert', 'forget', 'capabilities'].includes(operation));
@@ -92,6 +96,10 @@ test('CRM work-memory SQL uses real foundation identity and locks with synthetic
     await db.exec(`INSERT INTO public.super_admins VALUES('${USER}')`);
     await assert.rejects(rpc('list', { ...list, ownerUserId: OWNER }), /denied/);
     await db.exec(`UPDATE app_private.hermes_work_memory_settings SET sharing='superadmin' WHERE user_id='${OWNER}'`);
+    await assert.rejects(rpc('list', { ...list, ownerUserId: OWNER }), /denied/, 'cross-owner read needs the separate supervision grant');
+    await db.exec(`UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='assistant.memory.supervise';
+      UPDATE app_private.hermes_org_policies SET read_capabilities=ARRAY['assistant.memory.read','assistant.memory.supervise'];
+      UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['assistant.memory.read','assistant.memory.supervise']`);
     assert.equal((await rpc('list', { ...list, ownerUserId: OWNER })).items.length, 1);
     await db.exec('UPDATE public.fixture_acl SET allowed=false');
     await assert.rejects(rpc('list', { ...list, ownerUserId: OWNER }), /denied/);
