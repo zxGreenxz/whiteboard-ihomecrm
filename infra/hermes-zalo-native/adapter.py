@@ -23,6 +23,8 @@ from hermes_constants import get_hermes_home, profile_name_for_home
 log = logging.getLogger(__name__)
 _ENV = ("HERMES_ZALO_BRIDGE_URL", "HERMES_ZALO_BRIDGE_TOKEN", "HERMES_ZALO_PROFILE",
         "HERMES_ZALO_PAIRED_UID", "HERMES_ZALO_GENERATION")
+# The bridge answers /v1/receive immediately (no long-poll): a short idle sleep bounds inbound latency.
+_IDLE_POLL_SECONDS = 0.25
 
 
 def _settings():
@@ -117,10 +119,12 @@ class ZaloNativeAdapter(BasePlatformAdapter):
     async def _poll(self):
         failed = False
         while self._running:
+            delay = _IDLE_POLL_SECONDS
             try:
                 envelope = await self._request("/v1/receive", {"generation": self._generation})
                 if envelope.get("status") == "message":
                     await self._accept(envelope)
+                    delay = 0  # Drain the queue without waiting.
                 elif envelope.get("status") not in ("empty", "unavailable"):
                     raise ValueError("native_zalo_receive_invalid")
                 failed = False
@@ -130,7 +134,7 @@ class ZaloNativeAdapter(BasePlatformAdapter):
                 if not failed:
                     log.warning("Zalo personal transport unavailable; no message or provider call is replayed")
                 failed = True
-            await asyncio.sleep(1 if not failed else 5)
+            await asyncio.sleep(5 if failed else delay)
 
     async def _accept(self, envelope):
         if any(envelope.get(key) != value for key, value in self._channel.items()):
