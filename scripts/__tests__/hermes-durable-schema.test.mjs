@@ -52,6 +52,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_work_memory_upsert_v1(jsonb,jsonb)', 'hermes_work_memory_forget_v1(jsonb,jsonb)',
   'hermes_room_schedule_manage_v1(jsonb)', 'hermes_room_schedule_capabilities_v1(uuid)',
   'hermes_domain_capabilities_v1(uuid)', 'hermes_domain_read_v1(jsonb,text,jsonb)',
+  // Finance read family v2 and expense action (20261015120000/20261015120100).
+  'hermes_domain_capabilities_v2(uuid)', 'hermes_domain_read_v2(jsonb,text,jsonb)',
+  'hermes_expense_action_v1(jsonb,text,jsonb)', 'hermes_expense_capabilities_v1(uuid)',
   'hermes_org_policy_options_v3(uuid)', 'hermes_connection_options_v3(uuid)', 'hermes_connection_context_v3(uuid)',
   'hermes_room_pass_action_v1(jsonb,text,jsonb)', 'hermes_room_pass_capabilities_v1(uuid)',
   'hermes_org_policy_options_v4(uuid)', 'hermes_connection_options_v4(uuid)', 'hermes_connection_context_v4(uuid)'];
@@ -834,4 +837,18 @@ test('task receipt stays private, owned and RLS enabled', () => {
   assert.match(all, /ALTER TABLE app_private.hermes_task_create_receipts OWNER TO postgres/);
   assert.match(all, /ALTER TABLE app_private.hermes_task_create_receipts ENABLE ROW LEVEL SECURITY/);
   assert.match(all, /REVOKE ALL ON TABLE app_private.hermes_task_create_receipts FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor/);
+});
+test('expense receipt stays private, owned and RLS enabled; finance helpers have no API execute', () => {
+  assert.match(all, /ALTER TABLE app_private.hermes_expense_create_receipts OWNER TO postgres/);
+  assert.match(all, /ALTER TABLE app_private.hermes_expense_create_receipts ENABLE ROW LEVEL SECURITY/);
+  assert.match(all, /REVOKE ALL ON TABLE app_private.hermes_expense_create_receipts FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor/);
+  for (const helper of ['app_private.hermes_domain_date_v2(jsonb)', 'app_private.hermes_domain_grant_v2(uuid,text,boolean,jsonb)',
+    'app_private.hermes_expense_category_ok_v1(uuid,uuid)', 'app_private.hermes_expense_cashbook_ok_v1(uuid,uuid,uuid)',
+    'app_private.hermes_finance_extend_options_v1(jsonb,text)']) {
+    assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${helper} TO authenticated;`), /cannot execute/, helper);
+  }
+  for (const target of ['public.hermes_expense_action_v1(jsonb,text,jsonb)', 'public.hermes_expense_capabilities_v1(uuid)']) {
+    assert.throws(() => securityContract(all + `; GRANT EXECUTE ON FUNCTION ${target} TO service_role;`), /cannot execute/);
+    assert.throws(() => securityContract(all + `; REVOKE EXECUTE ON FUNCTION ${target} FROM authenticated;`), /effective execute ACL/);
+  }
 });
