@@ -96,7 +96,9 @@ function connectorLimits(value) {
   const limits = { ...CONNECTOR_LIMITS, ...value };
   const within = (key, min, max) => Number.isSafeInteger(limits[key]) && limits[key] >= min && limits[key] <= max;
   if (!within('requestsPerMinute', 1, 600) || !within('toolCallsPerMinute', 1, limits.requestsPerMinute) ||
-      !within('callTimeoutMs', 1000, 30_000) || !within('maintenanceWaitMs', 0, 10_000)) fail();
+      !within('callTimeoutMs', 1000, 30_000) || !within('maintenanceWaitMs', 0, 10_000) ||
+      // Wait + deadline must end before the 30 s MCP client timeout and 35 s idle cut-off.
+      limits.callTimeoutMs + limits.maintenanceWaitMs > 25_000) fail();
   return Object.freeze(limits);
 }
 

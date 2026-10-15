@@ -73,7 +73,12 @@ test('connector limits default safely, accept bounded overrides and reject unkno
   config = await loadHostConfiguration(f.configPath);
   try { assert.deepEqual({ ...config.limits }, { requestsPerMinute: 60, toolCallsPerMinute: 12, callTimeoutMs: 20_000, maintenanceWaitMs: 0 }); }
   finally { config.dispose(); }
-  for (const limits of [{ toolCallsPerMinute: 0 }, { toolCallsPerMinute: 61 }, { requestsPerMinute: 601, toolCallsPerMinute: 30 },
+  await f.save({ ...input, limits: { callTimeoutMs: 25_000, maintenanceWaitMs: 0 } });
+  config = await loadHostConfiguration(f.configPath);
+  try { assert.equal(config.limits.callTimeoutMs + config.limits.maintenanceWaitMs, 25_000); } finally { config.dispose(); }
+  // Wait + deadline above 25 s would outlive the 30 s MCP client / 35 s idle socket.
+  for (const limits of [{ callTimeoutMs: 20_001 }, { callTimeoutMs: 16_000, maintenanceWaitMs: 10_000 }, { callTimeoutMs: 30_000, maintenanceWaitMs: 0 },
+    { toolCallsPerMinute: 0 }, { toolCallsPerMinute: 61 }, { requestsPerMinute: 601, toolCallsPerMinute: 30 },
     { callTimeoutMs: 999 }, { callTimeoutMs: 30_001 }, { maintenanceWaitMs: 10_001 }, { maintenanceWaitMs: -1 },
     { toolCallsPerMinute: 1.5 }, { toolCallsPerMinute: '30' }, { burst: 5 }, []]) {
     await f.save({ ...input, limits }); await assert.rejects(loadHostConfiguration(f.configPath), refused);

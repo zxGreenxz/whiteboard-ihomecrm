@@ -3,17 +3,17 @@
  * independent reads with the same caller JWT/org, so both start in one network
  * wave instead of one after the other. Precedence is unchanged: a base failure
  * wins, then the caller's validation of the base result, and only then a
- * capability failure (`capability()` throws it). Both reads always settle, so a
- * dependency scope never loses track of the second one. No result is cached.
+ * capability failure (`capability()` throws it). A base failure is returned at
+ * once; the caller's abort signal then cancels the capability read, whose own
+ * transport stays tracked by the dependency scope. No result is cached.
  */
 export async function readWithBaseAuthorization(baseAuth, input, readCapability) {
-  const [base, extension] = await Promise.allSettled([
-    Promise.resolve().then(() => baseAuth.readAuthorization(input)),
-    Promise.resolve().then(() => readCapability()),
-  ]);
-  if (base.status === 'rejected') throw base.reason;
-  return Object.freeze({ current: base.value, capability() {
-    if (extension.status === 'rejected') throw extension.reason;
-    return extension.value;
+  const extension = Promise.resolve().then(() => readCapability())
+    .then(value => ({ ok: true, value }), reason => ({ ok: false, reason }));
+  const current = await Promise.resolve().then(() => baseAuth.readAuthorization(input));
+  const settled = await extension;
+  return Object.freeze({ current, capability() {
+    if (!settled.ok) throw settled.reason;
+    return settled.value;
   } });
 }

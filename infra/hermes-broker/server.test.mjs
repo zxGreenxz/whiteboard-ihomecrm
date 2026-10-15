@@ -845,6 +845,12 @@ test('maintenance wait is bounded: a request still parked after the wait gets 50
     { message: 'invalid_backend_config' });
   assert.throws(() => createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, toolCallsPerMinute: 61 } }),
     { message: 'invalid_backend_config' });
+  // Total wait + deadline is capped below the MCP client timeout and idle-socket cut-off.
+  for (const delta of [{ callTimeoutMs: 20_000, maintenanceWaitMs: 5001 }, { callTimeoutMs: 30_000, maintenanceWaitMs: 0 }]) {
+    assert.throws(() => createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, ...delta } }),
+      { message: 'invalid_backend_config' });
+  }
+  await createHermesBackend({ ...f.configuration, connectorOnly: true, limits: { ...limits, callTimeoutMs: 20_000, maintenanceWaitMs: 5000 } }).close();
   await longer.close();
   refreshHeld.resolve(); await operation.result; await operation.drained;
   assert.equal((await http.mcp(token)).status, 200);

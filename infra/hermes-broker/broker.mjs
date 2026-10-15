@@ -12,7 +12,7 @@ import { groupPreviewIntent, groupPreviewResponse, groupSendResponse,
   GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
 import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
-import { advanceAuthorityRequest, runAuthorityRequest } from './authority-request-scope.mjs';
+import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -480,7 +480,7 @@ export function createBroker({
       const result = await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
         if (selectedAuthority) {
-          const identified = await selectedAuthority.identifyConnection(presentedToken, { signal });
+          const identified = await selectedAuthority.identifyConnection(presentedToken, { signal, [BROKER_AUTHORITY]: true });
           if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
           connectionId = identified.connectionId;
         } else {
@@ -492,7 +492,7 @@ export function createBroker({
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId, operation);
         if (selectedAuthority) {
-          comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal });
+          comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true });
           identity = authorityIdentity(comparisonReceipt, clock());
         } else identity = await authorize(presentedToken, signal);
         if (signal.aborted) fail('timeout');
@@ -508,7 +508,7 @@ export function createBroker({
         // Everything below must observe authority read after the audit await.
         advanceAuthorityRequest();
         if (selectedAuthority) {
-          const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal });
+          const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
           if (checked !== undefined) fail('backend_unavailable');
           if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
         } else await checkUnchanged(presentedToken, identity, signal);

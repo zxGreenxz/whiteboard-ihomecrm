@@ -97,12 +97,16 @@ function reply(response, status, error) {
  */
 const LIMIT_KEYS = ['requestsPerMinute', 'toolCallsPerMinute', 'callTimeoutMs', 'maintenanceWaitMs'];
 const DEFAULT_BACKEND_LIMITS = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinute: 60, callTimeoutMs: 10_000, maintenanceWaitMs: 0 });
+const MAX_REQUEST_BUDGET_MS = 25_000;
 const integerIn = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 function backendLimits(value) {
   if (value === undefined) return DEFAULT_BACKEND_LIMITS;
   if (!exact(value, LIMIT_KEYS) || !integerIn(value.requestsPerMinute, 1, 600) ||
       !integerIn(value.toolCallsPerMinute, 1, value.requestsPerMinute) || !integerIn(value.callTimeoutMs, 1000, 30_000) ||
-      !integerIn(value.maintenanceWaitMs, 0, 10_000)) throw new TypeError('invalid_backend_config');
+      !integerIn(value.maintenanceWaitMs, 0, 10_000) ||
+      // Wait + whole-call deadline must finish before the Hermes MCP client timeout
+      // (30 s) and this server's 35 s idle-socket cut-off.
+      value.callTimeoutMs + value.maintenanceWaitMs > MAX_REQUEST_BUDGET_MS) throw new TypeError('invalid_backend_config');
   return Object.freeze(Object.fromEntries(LIMIT_KEYS.map(key => [key, value[key]])));
 }
 
