@@ -242,30 +242,6 @@ describe('quetThamSoKy — nối MỌI tool có tham số kỳ, không phải ha
     expect(ban.nua_cap).toBeUndefined();
     expect(ban.khong_schema).toBeUndefined();
   });
-
-  it('quét trên REGISTRY THẬT bắt được nhiều hơn hẳn hai tool của bản chép tay', async () => {
-    // Sàn chống-xanh-rỗng: bản trước nối đúng `doanh_thu_thang` và
-    // `tim_hoa_don` trong khi hàng chục tool khác cũng nhận kỳ.
-    const { buildRegistryDefinitions } = await import('../tools/registry');
-    const { toolSangKhaiBao } = await import('../chatEngine');
-    const map = Object.fromEntries(
-      buildRegistryDefinitions().map((t) => [t.name, { description: t.description, inputSchema: t.inputSchema }]),
-    );
-    const khaiBao = toolSangKhaiBao(map);
-    const ban = quetThamSoKy(khaiBao.map((k) => ({ name: k.function.name, parameters: k.function.parameters })));
-    expect(Object.keys(ban).length).toBeGreaterThanOrEqual(10);
-    expect(ban.doanh_thu_thang?.ky).toBe('thang');
-    expect(ban.tim_hoa_don?.ky).toBe('thang');
-    expect(ban.bao_cao_dong_tien?.tu).toBe('tu');
-    for (const name of ['bao_cao_khuyen_mai', 'bao_cao_ban_giao', 'bao_cao_chu_ky_thu']) {
-      expect(ban[name]).toEqual({ ky: 'ky', tu: 'tu', den: 'den' });
-      const quarter = resolveRelativePeriod('quý này', ctx('2026-08'));
-      const resolved = apDungKyTuongDoi(name, { ky: '2026-08' }, quarter, ban);
-      expect(resolved.args).toEqual({ tu: '2026-07-01', den: '2026-09-30' });
-    }
-    expect(ban.tim_phieu_thu_chi?.tu).toBe('tu_ngay');
-    expect(ban.phong_trong).toBeUndefined();
-  });
 });
 
 describe('apDungKyTuongDoi', () => {
@@ -340,33 +316,6 @@ describe('apDungKyTuongDoi', () => {
     expect(ra.args.tu_ngay).toBe('2026-07-01');
     expect(ra.args.den_ngay).toBe('2026-07-15');
     expect(ra.kyBiThayThe).toBe('2026-01-01 → 2026-01-31');
-  });
-});
-
-describe('dòng năng lực trong system prompt (ca C25)', () => {
-  it('liệt kê đích danh tool đang có, sinh từ danh sách ĐÃ LỌC QUYỀN', async () => {
-    // Mô hình từng nói "không có công cụ" cho ty_le_lap_day dù tool nằm ngay
-    // trong request. Nhắc tên bằng lời trong system prompt là chỗ nó chắc đọc.
-    const { dongNangLuc } = await import('../chatEngine');
-    const dong = dongNangLuc(['ty_le_lap_day', 'so_quy', 'cong_no_tong_quan'])!;
-    expect(dong).toContain('ty_le_lap_day');
-    expect(dong).toContain('so_quy');
-    expect(dong).toContain('cong_no_tong_quan');
-    expect(dong).toContain('(3)');
-    // Và phải dặn rõ hai điều mà đánh giá live bắt lỗi: đừng từ chối sai, và
-    // một tool lỗi không huỷ các ý khác.
-    expect(dong).toMatch(/không có công cụ/i);
-    expect(dong).toMatch(/ý khác|ý còn lại|ý nào/i);
-  });
-
-  it('không tool nào ⇒ không chèn dòng rỗng vào prompt', async () => {
-    const { dongNangLuc } = await import('../chatEngine');
-    expect(dongNangLuc([])).toBeNull();
-  });
-
-  it('thứ tự tool không đổi nội dung dòng (ổn định cho prompt cache)', async () => {
-    const { dongNangLuc } = await import('../chatEngine');
-    expect(dongNangLuc(['b_tool', 'a_tool'])).toBe(dongNangLuc(['a_tool', 'b_tool']));
   });
 });
 
@@ -502,33 +451,6 @@ describe('câu hỏi SO SÁNH: nhiều kỳ thì KHÔNG ép kỳ nào', () => {
     expect(ra.args.tu).toBe('2026-04-01');
     expect(ra.args.den).toBe('2026-06-30');
     expect(ra.ghiChu).not.toBeNull();
-  });
-});
-
-describe('dongKy — prompt phải nói ĐÚNG là có chốt kỳ hay không', () => {
-  it('một kỳ ⇒ "đã chốt", đừng hỏi lại', async () => {
-    const { dongKy } = await import('../chatEngine');
-    const ds = quetKyTrongCau('doanh thu tháng trước', ctx('2026-08'));
-    const d = dongKy(ds, false)!;
-    expect(d).toContain('đã chốt');
-    expect(d).toContain('tháng 07/2026');
-  });
-
-  it('nhiều kỳ ⇒ nói rõ KHÔNG chốt và kể đủ các kỳ', () => {
-    // Câu "hệ thống đã chốt kỳ 2026-06" đặt trước một câu hỏi so sánh chính là
-    // thứ dạy mô hình gọi cả hai lần với cùng một kỳ.
-    return import('../chatEngine').then(({ dongKy }) => {
-      const ds = quetKyTrongCau('so sánh doanh thu tháng 6 và tháng 7', ctx('2026-08'));
-      const d = dongKy(ds, true)!;
-      expect(d).toMatch(/KH[ÔO]NG ch[ốo]t/);
-      expect(d).toContain('tháng 06/2026');
-      expect(d).toContain('tháng 07/2026');
-    });
-  });
-
-  it('không kỳ nào ⇒ null, không chèn dòng rỗng', async () => {
-    const { dongKy } = await import('../chatEngine');
-    expect(dongKy([], false)).toBeNull();
   });
 });
 

@@ -18,11 +18,6 @@ import {
   type ToolCtx,
 } from '../tools/registry';
 import { khoaRolloutHanhDong } from '../plan/actionCatalog';
-import {
-  KHOA_HANH_DONG_TAO_PHIEU,
-  LOI_HANH_DONG_DA_TAT,
-  hanhDongTaoPhieuDaTat,
-} from '../XacNhanPhieuCard';
 import type { CopilotAvailabilitySnapshot, CopilotFlagState } from '../featureFlags';
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -116,36 +111,5 @@ describe('bộ lọc superAdminOnly', () => {
     expect(tool).toBeDefined();
     ctx.isSuperAdmin = false;
     await expect(tool!.execute({})).rejects.toThrow(/super_admin_required/);
-  });
-});
-
-describe('thẻ xác nhận đọc lại cờ ngay trước khi tiêu nonce', () => {
-  it('cờ tắt / shadow / vắng / snapshot hết hạn đều chặn; chỉ `enabled` mới cho bấm', () => {
-    expect(hanhDongTaoPhieuDaTat(snapshot('disabled'))).toBe(true);
-    expect(hanhDongTaoPhieuDaTat(snapshot('shadow'))).toBe(true);
-    expect(hanhDongTaoPhieuDaTat(snapshot('enabled'))).toBe(false);
-    expect(hanhDongTaoPhieuDaTat(null)).toBe(true);
-    expect(
-      hanhDongTaoPhieuDaTat({
-        revision: 23,
-        fetchedAt: Date.now(),
-        organizationId: ORG,
-        states: { 'page:rooms.list': 'enabled' },
-      }),
-    ).toBe(true);
-    // Hết hạn: cờ vẫn ghi `enabled` nhưng snapshot quá 60 giây.
-    expect(
-      hanhDongTaoPhieuDaTat({
-        revision: 24,
-        fetchedAt: Date.now() - 120_000,
-        organizationId: ORG,
-        states: { [KHOA_IE]: 'enabled' },
-      }),
-    ).toBe(true);
-  });
-
-  it('khoá thẻ dùng ĐÚNG khoá rollout của tool — không phải một chuỗi thứ hai', () => {
-    expect(KHOA_HANH_DONG_TAO_PHIEU).toBe(KHOA_IE);
-    expect(LOI_HANH_DONG_DA_TAT).toContain('quản trị');
   });
 });

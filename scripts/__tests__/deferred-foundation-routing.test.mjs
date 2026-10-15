@@ -838,8 +838,8 @@ describe('P0 shared CRM foundation routing', () => {
 
   it('does not activate browser, model or production-evidence lanes', () => {
     for (const file of [
-      'src/copilot/__tests__/llmClient.test.ts',
-      'src/copilot/__tests__/ChatPanel.test.tsx',
+      'src/copilot/__tests__/systemPromptVi.test.ts',
+      'src/copilot/__tests__/pageScope.test.ts',
       '.e2e-fleet/specs/copilot-confirmation.spec.ts',
       '.e2e-fleet/specs/chat-zalo.spec.ts',
       '.e2e-fleet/controlled/golden-provider-stop.test.mjs',

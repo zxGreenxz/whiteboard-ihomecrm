@@ -10,7 +10,6 @@ import type { LeadWithRelations } from "@/hooks/useLeads";
 
 const fx = vi.hoisted(() => ({ leads: [] as unknown[] }));
 
-vi.mock("@/hooks/useCopilotPageContext", () => ({ useCopilotPageContext: () => {} }));
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ children }: { children: ReactNode }) => <Fragment>{children}</Fragment>,
 }));

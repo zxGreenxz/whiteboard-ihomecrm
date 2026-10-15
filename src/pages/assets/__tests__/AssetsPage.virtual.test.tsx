@@ -13,7 +13,6 @@ const fx = vi.hoisted(() => ({ assets: [] as unknown[] }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock("@/hooks/useCopilotPageContext", () => ({ useCopilotPageContext: () => {} }));
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ children }: { children: ReactNode }) => <Fragment>{children}</Fragment>,
 }));

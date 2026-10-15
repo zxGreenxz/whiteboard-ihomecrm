@@ -14,10 +14,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/hooks/useCopilotPageContext", () => ({
-  useCopilotPageContext: () => {},
-}));
-
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
   Link: ({ children, ...rest }: { children?: unknown }) =>

@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1506,
-  "soFileDocBangFs": 359,
-  "tongLoiGoi": 830,
-  "khongPhanLoaiDuoc": 380,
+  "tongSoFileTest": 1477,
+  "soFileDocBangFs": 358,
+  "tongLoiGoi": 827,
+  "khongPhanLoaiDuoc": 379,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 58,
+      "soFile": 56,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -34,7 +34,6 @@
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/copilot-g1-acceptance.test.mjs",
-    "scripts/__tests__/copilot-g1-guard.test.mjs",
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -56,7 +55,6 @@
     "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
     "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
-    "src/copilot/__tests__/keHoachCard.test.tsx",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
     "src/copilot/__tests__/readonlyQueryContracts.test.ts",
     "src/copilot/__tests__/toolOrgScope.test.ts",
@@ -964,15 +962,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/__tests__/copilot-g1-guard.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "tai-lieu": 1,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/copilot-g3-voucher-lifecycle.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1115,14 +1104,6 @@
         "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/copilot/__tests__/keHoachCard.test.tsx",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/copilot/__tests__/toolOrgScope.test.ts",
@@ -1628,6 +1609,14 @@
       "soGoi": 1,
       "loai": {
         "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-g1-guard.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 0
     },

@@ -17,11 +17,14 @@ test('model transport admits the shipped exact completion endpoint only for DEMO
     assert.equal(guard.allow(request), false, request.url);
 });
 
-test('only source-reviewed font and local model discovery reads are admitted', () => {
+test('only source-reviewed font reads are admitted; local model discovery is gone', () => {
   const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
   const fontUrl = readFileSync('index.html', 'utf8').match(/href="(https:\/\/fonts.googleapis.com\/css2[^\"]+)"/)[1];
-  const localUrl = readFileSync('src/copilot/ollama.ts', 'utf8').match(/fetchJson\('(http:\/\/localhost:11434\/api\/tags)'/)[1];
-  for (const url of [fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2']) {
+  // ollama.ts (dò model cục bộ của chat Copilot) đã gỡ ở P11 nên endpoint đọc này cũng bị chặn.
+  const localUrl = 'http://localhost:11434/api/tags';
+  assert.equal(guard.allow({ url: localUrl, method: 'GET' }), false, localUrl);
+  assert.equal(guard.allow({ url: localUrl, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), false, localUrl);
+  for (const url of [fontUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2']) {
     assert.equal(guard.allow({ url, method: 'GET' }), true, url);
     assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), true, url);
     assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'POST' } }), false, url);
@@ -32,9 +35,9 @@ test('only source-reviewed font and local model discovery reads are admitted', (
     'https://fonts.googleapis.com/unknown', 'https://fonts.gstatic.com/s/unreviewed/v1/file.woff2',
     'https://fonts.gstatic.com/upload', 'https://other.example/api/tags']) {
     assert.equal(guard.allow({ url, method: 'POST' }), false, url);
-    if (![fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
+    if (![fontUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
       assert.equal(guard.allow({ url, method: 'GET' }), false, url);
-    if (![fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
+    if (![fontUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
       assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), false, url);
   }
 });

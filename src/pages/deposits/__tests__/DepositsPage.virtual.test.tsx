@@ -20,7 +20,6 @@ const fx = vi.hoisted(() => ({
 // useReservationSettlement gọi `supabase.rpc.bind(supabase)` ngay lúc nạp module.
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn(), from: vi.fn() } }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock("@/hooks/useCopilotPageContext", () => ({ useCopilotPageContext: () => {} }));
 vi.mock("@/hooks/use-mobile", () => ({ usePhoneViewport: () => false, useIsMobile: () => false }));
 vi.mock("@/components/layout/MainLayout", () => ({
   default: ({ children }: { children: ReactNode }) => <Fragment>{children}</Fragment>,

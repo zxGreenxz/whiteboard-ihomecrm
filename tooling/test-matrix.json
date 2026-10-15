@@ -377,7 +377,6 @@
       "testPatterns": [
         "src/copilot/__tests__/actionRollout.test.ts",
         "src/copilot/__tests__/availabilityAdapters.test.ts",
-        "src/copilot/__tests__/availabilityGate.test.ts",
         "src/copilot/__tests__/banDoHeThong.test.ts",
         "src/copilot/__tests__/chatErrors.test.ts",
         "src/copilot/__tests__/confirmationPersistence.feedback.test.ts",
@@ -394,7 +393,6 @@
         "src/copilot/__tests__/memory.test.ts",
         "src/copilot/__tests__/memoryReceipts.feedback.test.ts",
         "src/copilot/__tests__/nghiepVuTools.test.ts",
-        "src/copilot/__tests__/phaseDWriteMatrix.test.ts",
         "src/copilot/__tests__/planTools.test.ts",
         "src/copilot/__tests__/readonlyQueryContracts.test.ts",
         "src/copilot/__tests__/toolOrgScope.test.ts",

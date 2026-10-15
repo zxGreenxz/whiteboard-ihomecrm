@@ -1,5 +1,10 @@
 # Ngữ cảnh trang đang mở của Copilot
 
+> **Đã gỡ (P11 Hermes, 15/10/2026).** Hook `useCopilotPageContext`, kho publish/read trong
+> `src/copilot/activePageContext.ts` và ChatPanel không còn trong source; xem
+> [P11-COPILOT-RETIREMENT](../plans/hermes-crm/P11-COPILOT-RETIREMENT.md). Nội dung dưới là
+> hồ sơ lịch sử; đọc lại mã cũ tại commit `dd2ce3da`.
+
 `useCopilotPageContext` nhận **bộ lọc đã áp** từ component đang mount. Khi gửi câu hỏi,
 ChatPanel chụp ngữ cảnh theo pathname, query, khóa lần điều hướng và tổ chức đang chọn.
 Rời trang thì hủy; đổi tổ chức không tái sử dụng bản ghi cũ. Không quét storage, DOM,
