@@ -1,4 +1,4 @@
-import { domainExact, domainId } from './domain-contract.mjs';
+import { domainExact, domainId, canonicalInstant } from './domain-contract.mjs';
 import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY, REQUEST_ID_STATUS_GUIDANCE } from './request-id-contract.mjs';
 export const TASK_ACTION = 'tasks.create';
 const nullable = check => value => value === null || check(value);
@@ -16,7 +16,10 @@ export function taskInput(operation, input) {
     if (!domainExact(input, ['requestId', 'title', 'description', 'buildingId', 'roomId', 'jobTypeId', 'priority', 'assigneeId', 'deadline']) ||
       !domainId(input.requestId) || !title(input.title) || !nullable(v => text(v, 4000))(input.description) ||
       !domainId(input.buildingId) || !nullable(domainId)(input.roomId) || !domainId(input.jobTypeId) ||
-      !priority(input.priority) || !nullable(domainId)(input.assigneeId) || !nullable(instant)(input.deadline)) fail();
+      !priority(input.priority) || !nullable(domainId)(input.assigneeId) || !(input.deadline === null || canonicalInstant(input.deadline) !== null)) fail();
+    // Any zoned RFC 3339 deadline becomes the canonical form SQL requires and echoes;
+    // the result check below still compares the SQL job deadline strictly.
+    return { ...input, deadline: input.deadline === null ? null : canonicalInstant(input.deadline) };
   } else fail();
   return { ...input };
 }
@@ -46,7 +49,7 @@ export const TASK_TOOLS = Object.freeze([
       required: ['requestId', 'title', 'description', 'buildingId', 'roomId', 'jobTypeId', 'priority', 'assigneeId', 'deadline'],
       properties: { requestId: REQUEST_ID_PROPERTY, title: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: ['string', 'null'], maxLength: 4000 },
         buildingId: uuid, roomId: nullableUuid, jobTypeId: uuid, priority: { enum: ['NORMAL', 'LOW', 'URGENT'] }, assigneeId: nullableUuid,
-        deadline: { type: ['string', 'null'], format: 'date-time', description: 'UTC ISO, đúng ba chữ số mili giây; null nếu không có hạn.' } } } },
+        deadline: { type: ['string', 'null'], format: 'date-time', description: 'UTC hoặc có múi giờ, ví dụ 2026-10-16T05:00:00Z (không múi giờ bị từ chối); null nếu không có hạn.' } } } },
   { name: 'crm_task_status', description: `Đối soát requestId đã dùng. not_found hoặc unknown không cho phép tự gửi lại yêu cầu tạo. ${REQUEST_ID_STATUS_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId'], properties: { requestId: uuid } } },
 ]);

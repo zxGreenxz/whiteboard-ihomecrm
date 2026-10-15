@@ -37,6 +37,22 @@ test('canonical INSERT executes RLS, generates CRM code, assigns recipient while
  assert.deepEqual(await rpc('status',{requestId:id('9')}),{organizationId:ORG,requestId:id('9'),outcome:'not_found',job:null});
 });
 
+test('deadline: any zoned RFC 3339 form becomes the canonical SQL form; zone-less is refused; the SQL echo stays strict',{timeout:60000},async t=>{
+ // input.deadline is 2026-10-20T08:30:00.000Z; same pattern as the 16/10 21:27Z schedule expiresAt incident.
+ for(const deadline of ['2026-10-20T08:30:00Z','2026-10-20T08:30Z','2026-10-20T15:30:00+07:00','2026-10-20T15:30+07:00',input.deadline])
+  assert.deepEqual(taskInput('create',{...input,deadline}),input,deadline);
+ assert.equal(taskInput('create',{...input,deadline:'2026-10-20T08:30:00.5Z'}).deadline,'2026-10-20T08:30:00.500Z');
+ assert.equal(taskInput('create',{...input,deadline:null}).deadline,null);
+ for(const deadline of ['2026-10-20T08:30:00','2026-10-20T08:30:00.000','2026-10-20 08:30:00Z','2026-10-20T08:30:00+0700','2026-10-20T24:00:00Z',Date.parse(input.deadline),''])
+  assert.throws(()=>taskInput('create',{...input,deadline}),String(deadline));
+ const{rpc}=await setup(t);
+ const zoned=taskInput('create',{...input,deadline:'2026-10-20T15:30:00+07:00'});
+ const applied=await rpc('create',zoned);assert.equal(applied.job.deadline,input.deadline);
+ assert.deepEqual(taskResult('create',applied,identity,zoned),applied);
+ assert.deepEqual(await rpc('create',taskInput('create',{...input,deadline:'2026-10-20T08:30Z'})),applied,'equivalent form replays the same request');
+ assert.throws(()=>taskResult('create',{...applied,job:{...applied.job,deadline:'2026-10-20T08:30:00Z'}},identity,{...zoned,deadline:'2026-10-20T08:30:00Z'}),'SQL echo is never canonicalized');
+});
+
 test('jobs INSERT/SELECT and profile RLS remain effective even when Action guard and superadmin succeed',{timeout:60000},async t=>{
  const{db,rpc,counts}=await setup(t);
  for(const flag of ['insert_rls','select_rls','profile_rls']) {

@@ -9,6 +9,31 @@ const settings = (template = 'rooms_public_text_v1') => ({ template, buildingIds
 const summary = (over = {}) => ({ scheduleId: A, revision: 1, state: 'ACTIVE', settings: settings('sale_policy_public_text_v1'),
   createdAt: '2026-10-15T00:00:00.000Z', lastRuns: [], openIssues: [], ...over });
 
+test('16/10 21:27Z: expiresAt accepts any zoned RFC 3339 form, returns the canonical one; zone-less is refused; SQL echo stays strict', () => {
+  // Exact production settings shape (19 buildings, 1 group, every weekday) with expiresAt lacking ".000".
+  const buildingIds = Array.from({ length: 19 }, (_, index) => `aaaaaaaa-0000-4000-8000-${String(19 - index).padStart(12, '0')}`);
+  const incident = { template: 'rooms_public_text_v1', buildingIds, conversationIds: [B], weekdays: [1, 2, 3, 4, 5, 6, 7], time: '04:40',
+    timeZone: 'Asia/Ho_Chi_Minh', maxRooms: 5, maxMessagesPerDay: 1, expiresAt: '2026-10-16T05:00:00Z' };
+  const canonical = { ...incident, buildingIds: [...buildingIds].sort(), expiresAt: '2026-10-16T05:00:00.000Z' };
+  assert.deepEqual(scheduleInput('create', { requestId: A, settings: incident }, now).settings, canonical);
+  for (const expiresAt of ['2026-10-16T05:00Z', '2026-10-16T05:00:00.0Z', '2026-10-16T12:00:00+07:00', '2026-10-16T12:00+07:00', '2026-10-16T00:30:00-04:30', canonical.expiresAt])
+    assert.equal(scheduleInput('create', { requestId: A, settings: { ...incident, expiresAt } }, now).settings.expiresAt, canonical.expiresAt, expiresAt);
+  for (const expiresAt of ['2026-10-16T05:00:00', '2026-10-16T05:00:00.000', '2026-10-16 05:00:00Z', '2026-10-16', '2026-10-16T05:00:00+0700',
+    '2026-10-16T05:00:00z', '2026-10-16T05:00:60Z', '2026-02-30T05:00:00Z', '2026-10-16T05:00:00.1234Z', Date.parse('2026-10-16T05:00:00Z'), null])
+    assert.throws(() => scheduleInput('create', { requestId: A, settings: { ...incident, expiresAt } }, now), String(expiresAt));
+  // Future and ≤30-day bounds are unchanged: at 21:27Z that day, 05:00Z of the same day is already past.
+  const at = Date.parse('2026-10-16T21:27:00.000Z');
+  assert.throws(() => scheduleInput('create', { requestId: A, settings: incident }, at));
+  assert.equal(scheduleInput('create', { requestId: A, settings: { ...incident, expiresAt: '2026-10-17T05:00:00Z' } }, at).settings.expiresAt, '2026-10-17T05:00:00.000Z');
+  assert.throws(() => scheduleInput('create', { requestId: A, settings: { ...incident, expiresAt: '2026-11-16T05:00:00Z' } }, now));
+  // The canonical input matches the SQL echo; a non-canonical echo from SQL is still refused.
+  const input = scheduleInput('create', { requestId: A, settings: { ...settings('sale_policy_public_text_v1'), expiresAt: '2026-10-20T07:00+07:00' } }, now);
+  assert.equal(input.settings.expiresAt, '2026-10-20T00:00:00.000Z');
+  assert.equal(scheduleResult('create', { schedule: summary() }, null, input).schedule.settings.expiresAt, '2026-10-20T00:00:00.000Z');
+  for (const expiresAt of ['2026-10-20T00:00:00Z', '2026-10-20T07:00:00.000+07:00'])
+    assert.throws(() => scheduleResult('create', { schedule: summary({ settings: { ...settings('sale_policy_public_text_v1'), expiresAt } }) }, null, input), expiresAt);
+});
+
 test('schedule contract: policy template, issues/reconcile inputs and fixed vocabulary', () => {
   assert.equal(scheduleInput('create', { requestId: A, settings: settings('sale_policy_public_text_v1') }, now).settings.template, 'sale_policy_public_text_v1');
   assert.throws(() => scheduleInput('create', { requestId: A, settings: settings('free_text_v1') }, now));

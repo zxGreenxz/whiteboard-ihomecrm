@@ -1,4 +1,5 @@
 import { REQUEST_ID_GUIDANCE, REQUEST_ID_PROPERTY } from './request-id-contract.mjs';
+import { canonicalInstant } from './domain-contract.mjs';
 // CRM owns this schedule. Native Hermes schedules remain outside this contract.
 // Limits reuse the current standing-grant and group-send bounds; timezone and
 // catch-up behavior match the existing worker automation scheduler.
@@ -30,7 +31,10 @@ function ids(value, max) {
   }
   return [...value].sort();
 }
-function settings(value, now) {
+// Model input may give expiresAt in any zoned RFC 3339 form and gets it back
+// canonical (what SQL requires and echoes). SQL results (fromSql) must already
+// be canonical: reading never loosens.
+function settings(value, now, fromSql = false) {
   if (!exact(value, ['template', 'buildingIds', 'conversationIds', 'weekdays', 'time', 'timeZone', 'maxRooms', 'maxMessagesPerDay', 'expiresAt'])) fail();
   if (!SCHEDULE_TEMPLATES.includes(value.template) || typeof value.timeZone !== 'string' || value.timeZone.length > 100 ||
       typeof value.time !== 'string' || !/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value.time)) fail();
@@ -38,15 +42,15 @@ function settings(value, now) {
   if (!Array.isArray(value.weekdays) || Object.getPrototypeOf(value.weekdays) !== Array.prototype ||
       value.weekdays.length < 1 || value.weekdays.length > 7 || Reflect.ownKeys(value.weekdays).length !== value.weekdays.length + 1 ||
       value.weekdays.some(day => !Number.isInteger(day) || day < 1 || day > 7) || new Set(value.weekdays).size !== value.weekdays.length) fail();
-  const expires = typeof value.expiresAt === 'string' ? Date.parse(value.expiresAt) : NaN;
-  if (!Number.isFinite(expires) || new Date(expires).toISOString() !== value.expiresAt || expires <= now || expires > now + 30 * 86400000 ||
+  const expiresAt = canonicalInstant(value.expiresAt), expires = expiresAt === null ? NaN : Date.parse(expiresAt);
+  if (!Number.isFinite(expires) || fromSql && expiresAt !== value.expiresAt || expires <= now || expires > now + 30 * 86400000 ||
       !Number.isInteger(value.maxRooms) || value.maxRooms < 1 || value.maxRooms > SCHEDULE_LIMITS.rooms ||
       !Number.isInteger(value.maxMessagesPerDay) || value.maxMessagesPerDay < 1 || value.maxMessagesPerDay > SCHEDULE_LIMITS.messagesPerDay) fail();
   const conversationIds = ids(value.conversationIds, SCHEDULE_LIMITS.groups);
   if (value.maxMessagesPerDay < conversationIds.length) fail();
   return { template: value.template, buildingIds: ids(value.buildingIds, SCHEDULE_LIMITS.buildings), conversationIds,
     weekdays: [...value.weekdays].sort((a, b) => a - b), time: value.time, timeZone: value.timeZone,
-    maxRooms: value.maxRooms, maxMessagesPerDay: value.maxMessagesPerDay, expiresAt: value.expiresAt };
+    maxRooms: value.maxRooms, maxMessagesPerDay: value.maxMessagesPerDay, expiresAt };
 }
 const operations = Object.freeze({ crm_room_schedule_create: 'create', crm_room_schedule_update: 'update',
   crm_room_schedule_revoke: 'revoke', crm_room_schedule_list: 'list', crm_room_schedule_issues: 'issues',
@@ -74,7 +78,7 @@ function summary(value) {
   // Historical settings may already be expired; shape validation uses their own
   // grant boundary rather than requiring a future expiry when reading history.
   const expiry = Date.parse(value.settings?.expiresAt);
-  const checked = settings(value.settings, expiry - 1);
+  const checked = settings(value.settings, expiry - 1, true);
   const seen = new Set();
   const lastRuns = value.lastRuns.map(run => {
     if (!exact(run, ['date', 'conversationId', 'outcome', 'reason', 'dispatchId', 'deliveryStatus']) || typeof run.date !== 'string' ||
@@ -176,7 +180,7 @@ const settingsSchema = { type: 'object', additionalProperties: false, required: 
   time: { type: 'string', pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$' }, timeZone: { type: 'string', maxLength: 100, description: 'Explicit IANA timezone; must equal the CRM organization timezone.' },
   maxRooms: { type: 'integer', minimum: 1, maximum: 20, description: 'Room lines per message (bulletin rooms or policy room notes); a larger set is reported, never truncated.' },
   maxMessagesPerDay: { type: 'integer', minimum: 1, maximum: 200 },
-  expiresAt: { type: 'string', format: 'date-time', description: 'Explicit UTC expiry within 30 days. Ask the user if expiry or any other required schedule detail is missing.' },
+  expiresAt: { type: 'string', format: 'date-time', description: 'Explicit expiry within 30 days: UTC hoặc có múi giờ, ví dụ 2026-10-16T05:00:00Z (không múi giờ bị từ chối). Ask the user if expiry or any other required schedule detail is missing.' },
 } };
 const descriptions = Object.freeze({
   list: 'Read CRM schedules owned by this connection, including revision, last runs and open issues. CRM remains the only scheduler.',

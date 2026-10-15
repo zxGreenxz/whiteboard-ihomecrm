@@ -9,6 +9,23 @@ export const domainRecord = value => value !== null && typeof value === 'object'
     typeof key === 'string' && Object.getOwnPropertyDescriptor(value, key)?.enumerable === true &&
     Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
 export const domainExact = (value, keys) => domainRecord(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+// MODEL INPUT ONLY (never SQL results): an RFC 3339 instant with an explicit zone,
+// "YYYY-MM-DDTHH:MM[:SS[.f{1,3}]]" + "Z" or "±HH:MM". Returns the canonical
+// toISOString() form the SQL writers require, or null. A zone-less string is
+// refused: Date.parse would read it as host-local time. 16/10 21:27Z production:
+// "2026-10-16T05:00:00Z" was refused only for lacking ".000".
+const RFC3339 = /^([1-9]\d{3})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+export function canonicalInstant(value) {
+  const match = typeof value === 'string' ? RFC3339.exec(value) : null;
+  if (!match) return null;
+  const [year, month, day, hour, minute, second = 0, fraction = '0', sign, zoneHour = 0, zoneMinute = 0] =
+    match.slice(1).map((part, index) => part === undefined || index === 6 || index === 7 ? part : Number(part));
+  if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() ||
+      hour > 23 || minute > 59 || second > 59 || zoneHour > 23 || zoneMinute > 59) return null;
+  const offset = sign === undefined ? 0 : (sign === '-' ? -1 : 1) * (zoneHour * 60 + zoneMinute);
+  const canonical = new Date(Date.UTC(year, month - 1, day, hour, minute, second, Number(fraction.padEnd(3, '0'))) - offset * 60_000).toISOString();
+  return /^[1-9]\d{3}-/.test(canonical) ? canonical : null;
+}
 const fail = () => { throw new TypeError('invalid_domain_contract'); };
 const nullable = check => value => value === null || check(value);
 // SQL hermes_domain_text_v1 keeps left(...,200) characters (code points); an
