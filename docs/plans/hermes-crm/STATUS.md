@@ -4,7 +4,16 @@
 
 **Đọc phần này trước.** Phiên Codex sáng 15/10 (mục cuối phần bàn giao) là snapshot trước đó. Toàn P0–P11 vẫn chưa hoàn tất; dưới đây là những gì đã ĐO/LÀM THẬT.
 
-**Trạng thái mới nhất (19:40 15/10):**
+**Nghiệm thu thật tối 15/10 (22:40):**
+- **Mốc A (nhắn riêng hỏi phòng) ĐẠT trên production:** nick chính → bot Ihome → Hermes → connector → CRM → trả Zalo. 20:52 hỏi "còn phòng trống nào" → trả 4 phòng sau 20 s, đúng danh sách canonical (`copilot_available_rooms_v1`/`room_sale_workflow_fact_v1`; phòng `158PVC/502` có `status=AVAILABLE` nhưng sale fact RENTED — lệch dữ liệu CRM, không phải lỗi Hermes, cần chủ kiểm phòng này).
+- **Mốc B canary (gửi nhóm) ĐẠT:** 22:36 "gửi bản tin phòng trống theo mẫu CRM vào nhóm Web nội bộ" → đúng 1 tin từ bot Ihome (`zalo_send_queue` có `hermes_group_dispatch`, `sent`), Hermes báo lại trạng thái từ CRM. Trước đó "chỉ soạn" trả nháp không gửi; khi mẫu CRM khác bản nháp tự do Hermes hỏi lại chứ không tự gửi (đúng D15/Z04).
+- [PR #170](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/170) P9: chuỗi kiểm quyền song song (72 → 11 bước tuần tự), deadline 20 s, chờ gia hạn ≤5 s, quota `tools/call`, thao tác `status` + UI; review độc lập PASS (4 P3 đã sửa). Đo thật trên VPS: `crm_available_rooms` 4,1–4,5 s (trước timeout 10 s), `tools/list` ~3 s.
+- [PR #172](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/172): tool `crm_new_request_id` — Hermes v0.21.6 không có tool sinh UUID nên model tự chạy `terminal` và sinh đối số lặp vô hạn (treo 9 phút, 0 dispatch). Review PASS. Connector VPS `048a6ab4`.
+- Sự cố còn mở: hai lần lượt gửi nhóm trong phiên DM dài (>100 tin) treo ở "iteration 3, receiving stream response" (luồng `cx/gpt-6-sol` qua 9router không kết thúc; bộ phát hiện treo của Hermes chỉ cắt khi im lặng 180 s). `/stop` cắt được ngay ("⚡ Stopped"); phiên mới chạy trọn trong 1 phút. Chủ chốt: GIỮ native `terminal`, GIỮ thông báo tiến độ/self-improvement, không đổi `max_turns`. Theo dõi: nếu lặp lại thì thử model khác của 9router hoặc giới hạn độ dài phiên.
+- `/new` của Hermes đòi xác nhận (`/approve`); tin "💾 Self-improvement review" là tính năng nền của Hermes (đã tự tạo skill `crm-room-communications`).
+- [PR #171](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/171) P11 merged (`bd08b308`): gỡ ~11k dòng UI/engine Copilot chết, giữ backend dùng chung; review PASS. Kết nối cũ `…5e028d4f` đã thu hồi; VPS giữ release connector `209a5423` làm đường lùi, đã xoá `0991db1a`, `35cdde32` (đĩa còn ~2,5 GB).
+
+**Trạng thái lúc 19:40 15/10 (snapshot):**
 - [PR #169](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/169) MERGED → main `35cdde32`; 10 migration đợt 15/10 đã apply production qua lane trước merge (evidence + provenance 715 `ledger-applied`, types từ prod); CI main 5/5 run xanh; **promote production `35cdde32`** READY.
 - VPS: connector release `35cdde32` (bỏ drop-in, realpath OK; gói release phải kèm `vendor/xlsx-0.20.3.tgz` để `npm ci --omit=dev` chạy), worker native `ihome-zalo-worker:35cdde32c6db`, kênh native đã đối soát (`3540df8c…` = `sent`, `released_by_reconciliation`, journal/generation giữ nguyên), sidecar `hermes-owner` dùng kết nối **`…21e16a97`** (Read: phiên + `rooms.view` + `chat_zalo.view`; Action: `chat_zalo.send`; liên kết Zalo nick chính đang ACTIVE) + `ZALO_PERSONAL_HOME_CHANNEL`. Kết nối cũ `…5e028d4f` đã thu hồi; liên kết cũ đã ngắt (một nick chính + một bot chỉ có một liên kết ACTIVE — confirm trả 409 không giải thích, P3 UX).
 - Ihome bị Zalo đá phiên 16:09 (thường do mở Zalo PC/Web cùng nick); chủ quét QR lại 19:30, ingress `registered`.
@@ -25,7 +34,7 @@
 - Canary: registry `chat_zalo.*` bật ngay khi apply production (CI main đòi apply trước merge), áp cho mọi công ty, nhưng mỗi kết nối vẫn phải tự chọn Đọc nhóm + Gửi nhóm và qua quyền CRM user. Nhóm canary chủ chọn: **"Web nội bộ"** (bot Ihome là thành viên; hội thoại phía bot `c27c36e1…`).
 - Nợ đã hoãn (có lý do): thông báo sự cố lịch chưa gộp theo người nhận (`notify_gate_v1` không có họ phù hợp — cần thiết kế riêng); lượt nhắc việc gặp lỗi gửi thì thông báo đó mất thay vì thử lại lượt sau (cần migration mới trả dấu `*_notified_at` về NULL).
 
-**Thứ tự tiếp:** bản sửa P9 (deadline/round-trip) → review → PR → deploy connector → thử lại hỏi phòng → canary 1 bản tin phòng trống vào "Web nội bộ" (preview → send → status) → P11 PR riêng → P9 còn lại (503 khi gia hạn, rate limit, health UI, runbook) → nợ hoãn (gộp thông báo sự cố lịch; thử lại nhắc việc) → P10 nhiều user/canary nghiệp vụ → hợp đồng/cọc/lương theo CAPABILITY-MAP.
+**Thứ tự tiếp (cập nhật 22:40):** theo dõi sự cố stream treo trong phiên dài (đo lại vài ngày dùng thật) → bật dần các capability đọc/thao tác đã có (thu chi, công nợ, theo dõi việc, phiếu chi…) trên kết nối của chủ, mỗi lần thử thật qua Zalo → lịch bản tin phòng định kỳ cho nhóm (gói C, cần chủ chọn nhóm/khung giờ) → nợ hoãn (gộp thông báo sự cố lịch; thử lại nhắc việc khi lỗi gửi) → P10 thêm user thứ hai/canary nghiệp vụ → hợp đồng/cọc/lương theo CAPABILITY-MAP → P11.01 chốt lớp tools/plan Copilot còn giữ.
 
 ## Bàn giao session Codex — 15/10/2026 (sáng)
 
