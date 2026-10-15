@@ -128,13 +128,14 @@ export function domainResult(operation, value, identity, input) {
       value.nextCursor !== null && (items.length !== input.limit || value.nextCursor !== items.at(-1)?.id)) fail();
   return Object.fromEntries(family.resultKeys.map(key => [key, key === 'items' ? items : value[key]]));
 }
-const dateSchema = { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' };
+// requiresDates never accepts null, so its required dates are not nullable.
+const dateSchema = required => ({ type: required ? 'string' : ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' });
 export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze({
   name: `crm_read_${operation}`, description: definition.label,
   inputSchema: { type: 'object', additionalProperties: false, ...(definition.requiresDates ? { required: ['fromDate', 'toDate'] } : {}), properties: {
     query: { type: 'string', maxLength: 200 }, limit: { type: 'integer', minimum: 1, maximum: 50 },
     cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid' },
     status: { enum: [null, ...definition.statuses] },
-    ...(definition.dated ? { fromDate: dateSchema, toDate: dateSchema } : {}),
+    ...(definition.dated ? { fromDate: dateSchema(definition.requiresDates), toDate: dateSchema(definition.requiresDates) } : {}),
   } }, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 })));

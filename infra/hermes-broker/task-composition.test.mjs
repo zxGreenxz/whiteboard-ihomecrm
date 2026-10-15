@@ -77,6 +77,13 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
  assert.equal((await options('rooms',BUILDING)).value.items[0].id,input.roomId);
  assert.equal((await options('jobTypes',BUILDING)).value.items[0].id,input.jobTypeId);
  assert.ok((await options('assignees',BUILDING)).value.items.some(row=>row.id===input.assigneeId));
+ // 16/10 production: the model sent nil-UUID/blank placeholders (or nothing) instead of null.
+ const NIL='00000000-0000-0000-0000-000000000000',listedOptions=listed.tools.find(tool=>tool.name==='crm_task_input_options');
+ assert.deepEqual(listedOptions.inputSchema.required,['kind','query','limit']);
+ for(const args of [{kind:'buildings',buildingId:NIL,query:'',limit:50,cursor:NIL},{kind:'buildings',buildingId:`\t${NIL}\n`,query:'',limit:50,cursor:' '},{kind:'buildings',query:'',limit:50}]){
+   const placeholder=await call('crm_task_input_options',args);assert.equal(placeholder.isError,false);assert.deepEqual(placeholder.value.items,[{id:BUILDING,label:'Nhà A'}]);
+ }
+ assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:NIL,query:'',limit:50,cursor:NIL})).value.error,'invalid_request');
  assert.equal((await call('crm_read_tasks',{})).value.error,'tool_not_available');
  assert.equal((await call('crm_read_customers',{})).value.error,'tool_not_available');
  assert.equal(writes,0);assert.deepEqual(await counts(),{jobs:0,receipts:0,audits:0});
