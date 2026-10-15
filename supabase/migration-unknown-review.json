@@ -873,28 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261015191139_hermes_customer_options_v7.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261015191139_hermes_customer_options_v7.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_customer_extend_options_v1 và public.hermes_org_policy_options_v7/hermes_connection_options_v7/hermes_connection_context_v7 (bọc v6, thêm customers.create/leads.create)"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đúng bốn hàm trên — sinh 16/10/2026 ngay sau khi stage migration"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward mới (16/10/2026, cho chọn Thao tác Khách hàng trong /settings/hermes), chưa đi qua lane apply production — object vắng mặt vì migration CHƯA CHẠY trên production, không phải bị DROP. Đã apply TEST (hzulujxgonszuleqticb) qua apply-reviewed-migration: hai lượt ROLLBACK đạt, backup đủ tư cách, catalog đổi; ACL TEST đúng (v7 chỉ authenticated, helper app_private đóng). Kiểm khác là PGlite (hàm năng lực khách thật, v6 stub) và replay ACL tĩnh hermes-durable-schema. Khi apply production qua npm run migrate:forward, provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "function:app_private.hermes_customer_extend_options_v1",
-        "function:public.hermes_org_policy_options_v7",
-        "function:public.hermes_connection_options_v7",
-        "function:public.hermes_connection_context_v7"
-      ],
-      "raSoatBoi": "Claude Code — Hermes options v7 Khách hàng 16/10/2026",
-      "sha256": "72d58d9d09ebf1b3231d21e2de0f6da0577b7676e10ae8b2b37553940817fbc8"
     }
   }
 }
