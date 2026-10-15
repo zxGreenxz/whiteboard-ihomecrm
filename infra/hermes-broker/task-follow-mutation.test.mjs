@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { setupFollow, followPath, u, ORG, USER, ASSIGNEE, OTHER, CONNECTION } from './task-follow-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
+import { notifyRetryDigestSql } from './notify-retry-digest-fixture.mjs';
 
 // Mutation evidence for the authority checks: each mutant removes one guard and
 // the same probe that the original SQL denies must then succeed. A probe that
@@ -16,11 +17,18 @@ const mutate = (from, to) => {
   assert.notEqual(next, original, `mutation anchor not found: ${from}`);
   return next;
 };
-// grant/tick now come from the review-fix forward migration (latest definition).
+// grant comes from the review-fix forward migration; the tick's latest
+// definition is the notify retry forward (20261015185559).
 const fixes = reviewFixesSql();
 const mutateFixes = (from, to) => {
   const next = fixes.replace(from, to);
   assert.notEqual(next, fixes, `mutation anchor not found: ${from}`);
+  return next;
+};
+const retry = notifyRetryDigestSql();
+const mutateRetry = (from, to) => {
+  const next = retry.replace(from, to);
+  assert.notEqual(next, retry, `mutation anchor not found: ${from}`);
   return next;
 };
 // A Read revoke between ticks must stop reminders; the mutant keeps reminding.
@@ -70,7 +78,7 @@ const probes = [
       return action('cancel', { organizationId: ORG, requestId: u(6), jobId: id, reason: 'RLS' });
     } },
   { name: 'standing grant recheck at every reminder tick',
-    fixes: mutateFixes('v_reason:=app_private.hermes_task_follow_grant_v1(f);', 'v_reason:=NULL;'),
+    retry: mutateRetry('v_reason:=app_private.hermes_task_follow_grant_v1(f);', 'v_reason:=NULL;'),
     async run({ db, action, job, tick }) {
       const id = await job({ deadline: iso(10 * 60_000) });
       await action('set', { organizationId: ORG, requestId: u(7), jobId: id, objective: 'Nhắc', remindBeforeMinutes: 30, notifyAssigner: true, parentFollowId: null });
@@ -97,7 +105,7 @@ for (const probe of probes) {
       await assert.rejects(probe.run(await setupFollow(t)), /denied|loop|context_changed/);
     });
     await t.test('mutant lets the probe through (test is not vacuous)', async () => {
-      await probe.run(await setupFollow(t, { sql: probe.sql, fixes: probe.fixes }));
+      await probe.run(await setupFollow(t, { sql: probe.sql, fixes: probe.fixes, retry: probe.retry }));
     });
   });
 }
