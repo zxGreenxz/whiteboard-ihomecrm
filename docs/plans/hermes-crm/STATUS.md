@@ -1,6 +1,6 @@
 # Trạng thái triển khai Hermes × iHomeCRM
 
-### Chỉ dẫn hiện hành cho session/agent — 14/10/2026
+### Chỉ dẫn hiện hành cho session/agent — 15/10/2026
 
 - **Kiến trúc đích v1.4, thay thế managed-only:** Hermes upstream đầy đủ, user cấu hình/cập nhật độc lập; CRM chỉ là connector MCP/plugin. Bộ lọc **quyền CRM user hiện tại ∩ Read/Action Hermes** chỉ quản đọc/thao tác CRM. CRM mất quyền/token/offline không khóa personal chat, model, native tools hoặc personal memory. Không đưa JWT/refresh token/service credential vào Hermes. [CONNECTOR.md](../../../infra/hermes-broker/CONNECTOR.md) ghi bề mặt source và giới hạn hiện có.
 - Không dùng wrapper đóng native tools, prompt chỉ phòng, history ba cặp hoặc relay model qua Copilot như định nghĩa mặc định Hermes cá nhân. Các phần đó là prototype/adapter CRM tùy chọn, giữ để tái dùng bằng chứng. Model-admission cohort bắt buộc đã dừng trước khi sửa source/SQL. Kiểm kê/loại bỏ phụ thuộc chỉ dựa trên source; giữ hàm dữ liệu/quyền/nghiệp vụ CRM cần thiết, bỏ engine/consent/PIN Copilot khỏi đường Hermes.
@@ -11,17 +11,23 @@
 - Cấu hình chốt mới: code lõi/quyền/lỗi khó và review quan trọng dùng GPT-6 Astra Extra High (`gpt-6-astra`, `xhigh`); đọc file/chạy test sẵn/tổng hợp lỗi đơn giản dùng GPT-6.1 Sol High (`gpt-6.1-sol`, `high`). Tạo agent mới đúng cấu hình gói việc, không tái dùng agent effort cũ; reviewer độc lập. Lệnh kiểm đơn thuần có thể chạy terminal. Các cấu hình mặc định/Light/alias cx trong nhật ký cũ chỉ là lịch sử. Chủ dự án đã yêu cầu thực thi tiếp toàn plan theo phân công này, không hỏi lại từng lần.
 - Core hiện tại: coordinated refresh, handoff mã hóa, host lifecycle và quyền/phạm vi đọc phòng đã có code. Kiểm/checkpoint mới nhất ở nhật ký bên dưới; tiếp tục toàn P0–P11.
 - Review độc lập mới cho supervisor coordinated và orchestrator/backend không còn P1/P2 đã xác minh trong delta; reports và hash ở nhật ký mới nhất. Review private intake trước đó vẫn chỉ chứng minh snapshot/phạm vi đã ghi; không thay bằng chứng cho SQL/runtime mới.
-- Checkpoint nền `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e` giữ nguyên; head hiện hành `1f6a0b63` đã push PR #166. CI đúng head xanh đầy đủ; Hermes native dùng Auth/SQL/model giả. Full private flow vẫn chặn bởi worker singleton có sẵn; chưa deploy hoặc kiểm Zalo thật.
+- Checkpoint nền `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e` giữ nguyên; checkpoint đã kiểm `4edb126c` đã push PR #166. CI đúng checkpoint xanh đầy đủ; native-upstream dùng Hermes upstream thật và provider tổng hợp, không gọi model/Zalo thật. Full private flow vẫn chặn bởi worker singleton có sẵn; chưa deploy hoặc kiểm Zalo thật.
 
 
 Cập nhật: 15/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [PLAN.md](PLAN.md); nhật ký trước quyết định này là lịch sử.
+
+### 15/10/2026 — tiếp tục K3 deployment
+
+- Bản nháp launcher do agent trước báo hoàn thành được tìm thấy ở checkout `main`, chưa có trong nhánh tích hợp. Đã lưu đúng bốn file theo SHA báo cáo vào `.cache/hermes-native-deploy-misplaced/` rồi khôi phục riêng thay đổi của agent ở checkout đó; không đưa bản nháp này vào nghiệm thu. Agent cũ dừng do workspace hết credits.
+- K3 đã có code ở worktree tích hợp: `run <image> --native` ghim image ID, preflight dùng chính validator trong image trước khi dừng worker; config/token RO và state RW giữ cùng đường dẫn canonical host/container. Không truyền worker.env/session/network vào preflight. Chế độ tắt ghi đè đường dẫn native thành rỗng; Hermes sidecar chia network namespace với worker, không publish port hoặc đổi loopback listener. Stop chờ drain, lỗi/ngắt thì không thay container; không đổi DB lease hoặc reset journal/generation. Runbook ghi cách cấp/đổi/thu hồi token, restart worker và tạo lại sidecar.
+- Kiểm focused deployment + operator trên Windows: 29 đạt, 0 lỗi, 2 ca quyền Linux skip; bốn mutant bỏ validator đều bị bắt. Receipt/hashes ở `.cache/hermes-native-deploy-repair/focused-receipt.json`. Routing CI 2/2 đạt; matrix nhận test mới vào node-native, không mồ côi. Workflow Linux chạy deployment bắt buộc zero-skip cùng native-upstream. Review độc lập source không có P1/P2; báo cáo `.cache/hermes-native-deployment-independent-review.json` ghim 15 file và 2 inventory. Canonical Node24 đạt 47/47 local trên tree `ebfc3d30cc0afebdaa45c32d3ca75a08f790f1e9`, source không đổi trong lượt; receipt `.cache/hermes-native-deployment-gate-summary.json`. CI của delta mới còn chờ push; Docker image/network thật, model/Zalo/canary chưa kiểm.
 
 ### 15/10/2026 — nối CDE task live và làm sạch generated inventory
 
 - Sửa dead code trong runner: `taskChecks` giờ được gọi trong official CDE lane qua `rollbackOnly`, rồi evidence bắt buộc `pathExecuted`, E4 queued trong transaction và rollback đã được xác nhận. Fixture `outsideBuilding` được chuyển sang tổ chức foreign vì fixture role/policy hiện tại đều có scope ORGANIZATION; không nới production ACL và vẫn giữ denial cross-org.
 - TEST CDE run `13006bcf-16d7-406b-afb3-4ed6bef361c2`: 11/11 đạt, cleanup/uncertain sạch, `cdeEvidence.task.pathExecuted/e4QueuedInsideTransaction/rollbackVerified=true`, registry không đổi, positive SQL rollback đạt, cleanup counts của jobs/receipts/notifications/push về 0. Receipt SHA `988D733A66514FCA960C27A38E60326058783512EBC80A0ACCBBC5106BA205E8`.
 - Focused Node24 sau delta: CDE 15/15, private flow 124/124, inventory test 28/28; gói chạy chung 167/167 đạt. Review độc lập delta CDE không thấy P1/P2; source hash helper `95670ff20fe850086c0cc5c0b2848a4ea5b3bee9a590c848d78fbff10ce4b598`, test `0e82131a39cd900601337d20f7bd5ef5362c35229c091218da41eeddb321d514`.
-- Generator inventory đã chạy lại sau Copilot delta; `--check` đạt 67 tools, 32 actions, 29 UI capabilities, runtime authority none. Chưa commit/push delta này nên CI PR vẫn đang phản ánh head cũ và phải kiểm lại sau commit.
+- Generator inventory đã chạy lại sau Copilot delta; `--check` đạt 67 tools, 32 actions, 29 UI capabilities, runtime authority none. Delta đã commit/push qua `c669cab3`, `1f6a0b63` và checkpoint tài liệu `4edb126c`; CI Gates run `38636696652` đã SUCCESS, gồm gate-aggregate. Native-upstream, synthetic-isolation, restore-drill và Android cũng đạt trên checkpoint. Các job không được chọn/đã skip không được tính là đã kiểm.
 
 ## Điểm tiếp tục
 
@@ -32,7 +38,7 @@ Cập nhật: 15/10/2026 · Asia/Bangkok. Kế hoạch hiện hành v1.4 tại [
 - **P0 đã có bằng chứng cho inventory trước v1.4:** inventory v2/catalog TEST chỉ đọc, gate/CI theo nhật ký. P0.06 và đối chiếu kiến trúc connector mới chưa hoàn tất; không suy snapshot cũ thành nghiệm thu toàn v1.4.
 - **Chưa hoàn thành:** triển khai/kiểm dịch vụ thật, recovery sau crash/hết hạn, refresh/quota toàn tuyến, intake/dispatch/reply qua JWT/Supabase thật, Zalo thật; memory, Hermes tổng và P5–P11. Checklist nghiệm thu giữ nguyên đến khi có bằng chứng đúng cửa.
 - **Worktree hiện hành:** `C:/Users/Nguyen Tam/codex-worktrees/hermes-crm-integration-20261014`. Worktree `hermes-crm-foundation-20261012` giữ WIP cũ và cache/receipts; không tiếp tục sửa source ở đó.
-- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; commit/push gần nhất `1f6a0b63` sau merge `origin/main`, CI đúng head đã xanh. Source gồm schema/runner đã sửa, task create/assign, customer/lead, customer catalog live, CDE fixture, delta gỡ production Copilot page-context và generated inventories đồng bộ.
+- **Branch hiện hành:** `codex/hermes-crm-integration-20261014`; checkpoint đã commit/push và kiểm gần nhất `4edb126c` sau merge `origin/main`, CI đúng checkpoint đã xanh. Source gồm schema/runner đã sửa, task create/assign, customer/lead, customer catalog live, CDE fixture, delta gỡ production Copilot page-context và generated inventories đồng bộ.
 - **Base đã tích hợp:** `origin/main` tại `993fcfed99f48886cc0600b743d939094ded7e5a`; kiểm ancestor đạt. Rebase chỉ xung đột inventory máy sinh, đã chạy lại generator. Nhánh PR #165 vẫn nguyên trạng; không force-push.
 - **Checkpoint trước:** `04f0d5e27e0ccde4d7e52b4e0c892743e9489c3e`; các receipt cũ giữ nguyên và không đại diện head mới. CI head `1f6a0b63` đã xanh; đây vẫn không phải authority phát hành production.
 - **Draft PR hiện hành:** [#166 — tích hợp Hermes độc lập với quyền CRM](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/166). PR #165 giữ checkpoint nền cũ. Đọc checks đúng head; kết quả pull_request không phải authority phát hành production.

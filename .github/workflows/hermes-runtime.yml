@@ -10,6 +10,9 @@ on:
       - 'infra/hermes-runtime/**'
       - 'infra/hermes-broker/**'
       - 'infra/hermes-zalo-native/**'
+      - 'worker/deploy/**'
+      - 'worker/Dockerfile'
+      - 'worker/.dockerignore'
       - 'worker/lib/hermes-native-*.js'
       - 'worker/lib/hermes-link.js'
       - 'package.json'
@@ -23,6 +26,9 @@ on:
       - 'infra/hermes-runtime/**'
       - 'infra/hermes-broker/**'
       - 'infra/hermes-zalo-native/**'
+      - 'worker/deploy/**'
+      - 'worker/Dockerfile'
+      - 'worker/.dockerignore'
       - 'worker/lib/hermes-native-*.js'
       - 'worker/lib/hermes-link.js'
       - 'package.json'
@@ -79,7 +85,7 @@ jobs:
           const [image] = JSON.parse(execFileSync('docker', ['image', 'inspect', HERMES_IMAGE], { encoding: 'utf8', timeout: 15000 }));
           assertPinnedImageInspection(image, JSON.parse(readFileSync('infra/hermes-runtime/image-provenance.json', 'utf8')));
           NODE
-      - name: Require Linux native bridge, journal, operator and real upstream retry recovery tests
+      - name: Require Linux deployment, native bridge, journal, operator and upstream retry recovery tests
         timeout-minutes: 7
         env:
           HERMES_NATIVE_IMAGE: ${{ steps.pins.outputs.image }}
@@ -99,6 +105,9 @@ jobs:
             --tmpfs /opt/data:ro,nosuid,nodev,noexec,size=1048576 \
             --mount "type=bind,src=$PWD/package.json,dst=/fixture/package.json,readonly" \
             --mount "type=bind,src=$PWD/worker/lib,dst=/fixture/worker/lib,readonly" \
+            --mount "type=bind,src=$PWD/worker/deploy,dst=/fixture/worker/deploy,readonly" \
+            --mount "type=bind,src=$PWD/worker/Dockerfile,dst=/fixture/worker/Dockerfile,readonly" \
+            --mount "type=bind,src=$PWD/worker/.dockerignore,dst=/fixture/worker/.dockerignore,readonly" \
             --mount "type=bind,src=$PWD/infra/hermes-zalo-native,dst=/fixture/infra/hermes-zalo-native,readonly" \
             --mount "type=bind,src=$PWD/infra/hermes-runtime/runtime-contract.mjs,dst=/fixture/infra/hermes-runtime/runtime-contract.mjs,readonly" \
             --mount "type=bind,src=$PWD/scripts/test-hermes-native-ci.mjs,dst=/fixture/scripts/test-hermes-native-ci.mjs,readonly" \

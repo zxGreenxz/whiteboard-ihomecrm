@@ -821,6 +821,9 @@
       "id": "hermes-native-zalo-linux-upstream",
       "sourcePaths": [
         "infra/hermes-zalo-native/**",
+        "worker/deploy/**",
+        "worker/Dockerfile",
+        "worker/.dockerignore",
         "worker/lib/hermes-native-*.js",
         "worker/lib/hermes-link.js",
         "infra/hermes-runtime/runtime-contract.mjs",
@@ -830,9 +833,24 @@
         "package.json"
       ],
       "suiteId": "node-native",
-      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs"],
+      "testPatterns": ["infra/hermes-zalo-native/**/*.test.mjs", "worker/deploy/**/*.test.mjs"],
       "workflowOwner": ".github/workflows/hermes-runtime.yml",
       "jobs": ["native-upstream"]
+    },
+    {
+      "id": "hermes-native-deployment",
+      "sourcePaths": [
+        "worker/deploy/**",
+        "worker/Dockerfile",
+        "worker/.dockerignore",
+        "worker/lib/hermes-native-config.js",
+        "worker/lib/hermes-native-files.js",
+        "infra/hermes-zalo-native/operator.mjs",
+        "scripts/test-hermes-native-ci.mjs",
+        ".github/workflows/hermes-runtime.yml"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": ["worker/deploy/**/*.test.mjs"]
     },
     {
       "id": "hermes-native-zalo-transport",
@@ -1600,7 +1618,8 @@
         "scripts/__tests__/hermes-private-flow.test.mjs",
         "scripts/__tests__/hermes-cde-live.test.mjs",
         "infra/hermes-zalo-router/**/*.test.mjs",
-        "infra/hermes-zalo-native/**/*.test.mjs"
+        "infra/hermes-zalo-native/**/*.test.mjs",
+        "worker/deploy/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

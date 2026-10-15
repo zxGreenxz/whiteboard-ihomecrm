@@ -12,9 +12,13 @@ for (const key of ['HERMES_TEST_UPSTREAM', 'HERMES_TEST_PYTHON']) {
 }
 process.umask(0o077);
 
-for (const file of ['bridge.test.mjs', 'journal.test.mjs', 'operator.test.mjs', 'upstream.test.mjs']) {
+for (const file of [
+  'worker/deploy/native-deployment.test.mjs',
+  ...['bridge.test.mjs', 'journal.test.mjs', 'operator.test.mjs', 'upstream.test.mjs']
+    .map(name => `infra/hermes-zalo-native/${name}`),
+]) {
   const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-timeout=120000',
-    `infra/hermes-zalo-native/${file}`], { encoding: 'utf8', timeout: 180000, maxBuffer: 1024 * 1024 });
+    file], { encoding: 'utf8', timeout: 180000, maxBuffer: 1024 * 1024 });
   process.stdout.write(result.stdout || '');
   process.stderr.write(result.stderr || '');
   assert.ifError(result.error);

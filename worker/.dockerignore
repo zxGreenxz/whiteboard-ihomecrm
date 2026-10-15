@@ -7,6 +7,7 @@ fonts
 *.log
 *.png
 __tests__
-deploy
+deploy/*
+!deploy/native-preflight.mjs
 Dockerfile
 .dockerignore

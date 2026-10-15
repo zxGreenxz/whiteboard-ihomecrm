@@ -20,6 +20,7 @@ const testFiles = trackedTestFiles([]).filter(file =>
   file === 'src/pages/settings/HermesConnectionsPage.test.tsx' ||
   /^infra\/hermes-zalo-router\//.test(file) ||
   /^infra\/hermes-zalo-native\//.test(file) ||
+  /^worker\/deploy\//.test(file) ||
   /^(?:src\/copilot\/|worker\/__tests__\/|infra\/hermes-(?:broker|runtime)\/|scripts\/__tests__\/(?:check-copilot-|generate-hermes-crm-inventory\.|compare-hermes-crm-catalog\.|test-hermes-broker-authz\.|hermes-(?:refresh-auth|durable-schema|durable-store|connection-renewal-schema|room-scope-schema|public-conflict-schema)\.|migration-target\.|measure-org-leak[.-]|apply-reviewed-migration[.-]|backup-luu-tru\.|check-migration-provenance\.|generate-migration-provenance-scope\.|provenance-bien-nhan\.))/.test(file));
 const snapshot = { base: 'base', head: 'head', tree: 'tree', source: 'fixture' };
 const planFor = (path, testMatrix = matrix, files = testFiles) => createGatePlan({
@@ -92,7 +93,9 @@ describe('P0 shared CRM foundation routing', () => {
   it('requires the Linux upstream workflow when native transport or its CI runner changes', () => {
     const required = { workflow: '.github/workflows/hermes-runtime.yml', jobs: ['native-upstream'], suiteIds: ['node-native'] };
     for (const source of ['infra/hermes-zalo-native/adapter.py', 'infra/hermes-zalo-native/upstream.test.mjs',
-      'worker/lib/hermes-native-bridge.js', 'scripts/test-hermes-native-ci.mjs', '.github/workflows/hermes-runtime.yml']) {
+      'worker/lib/hermes-native-bridge.js', 'worker/deploy/zalo-worker.sh',
+      'worker/deploy/native-preflight.mjs', 'worker/Dockerfile', 'worker/.dockerignore',
+      'scripts/test-hermes-native-ci.mjs', '.github/workflows/hermes-runtime.yml']) {
       const plan = planFor(source);
       expect(plan.crossReview).toBe(true);
       expect(plan.requiredExternalWorkflows).toContainEqual(required);
@@ -100,6 +103,21 @@ describe('P0 shared CRM foundation routing', () => {
     const mutant = structuredClone(matrix);
     mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-native-zalo-linux-upstream');
     expect(planFor('infra/hermes-zalo-native/adapter.py', mutant).requiredExternalWorkflows).not.toContainEqual(required);
+    expect(planFor('worker/deploy/zalo-worker.sh', mutant).requiredExternalWorkflows).not.toContainEqual(required);
+    assertNativeOwner('worker/deploy/native-deployment.test.mjs');
+  });
+
+  it('routes native deployment and its validator dependencies to preflight behavior checks', () => {
+    const file = 'worker/deploy/native-deployment.test.mjs';
+    for (const source of ['worker/deploy/zalo-worker.sh', 'worker/deploy/native-preflight.mjs',
+      'worker/Dockerfile', 'worker/.dockerignore', 'worker/lib/hermes-native-config.js',
+      'worker/lib/hermes-native-files.js', 'infra/hermes-zalo-native/operator.mjs',
+      'scripts/test-hermes-native-ci.mjs']) {
+      assertP2Rule(source, 'hermes-native-deployment', [file]);
+    }
+    const mutant = structuredClone(matrix);
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-native-deployment');
+    expect(() => assertP2Rule('worker/deploy/zalo-worker.sh', 'hermes-native-deployment', [file], mutant)).toThrow();
   });
 
   it('routes native Zalo plugin and worker sources to transport and real inbound caller tests', () => {
