@@ -36,7 +36,7 @@ let fetchMock: ReturnType<typeof vi.fn<typeof globalThis.fetch>>;
 let writeClipboard: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>;
 async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const input = JSON.parse(init!.body as string), operation = String(path).split('/').at(-1);
-  if (['hermes_org_policy_options_v6', 'hermes_org_policy_options_v5', 'hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1'].includes(operation ?? '')) return json(companyPolicy);
+  if (['hermes_org_policy_options_v7', 'hermes_org_policy_options_v6', 'hermes_org_policy_options_v5', 'hermes_org_policy_options_v4', 'hermes_org_policy_options_v3', 'hermes_org_policy_options_v2', 'hermes_org_policy_options_v1'].includes(operation ?? '')) return json(companyPolicy);
   if (operation === 'hermes_set_org_policy_v1') {
     companyPolicy.policy = { organizationId: ORG, version: input.p_expected_version + 1,
       enabled: input.p_enabled, read: input.p_read, action: input.p_action, scopeIds: input.p_scope_ids };
@@ -50,7 +50,7 @@ async function respond(path: RequestInfo | URL, init?: RequestInit): Promise<Res
   if (operation === 'options') return json({ options: { userId: identity.userId, organizationId: input.organizationId, membershipId: OTHER,
     authorizationVersion: 1, isSuperadmin: false, policyVersion: companyPolicy.policy.version, enabled: companyPolicy.policy.enabled,
     read: companyPolicy.policy.enabled ? companyPolicy.policy.read : [], action: companyPolicy.policy.enabled ? companyPolicy.policy.action : [],
-    scopes: companyPolicy.policy.enabled && (companyPolicy.policy.read.includes('rooms.view') || companyPolicy.policy.action.includes('sale_phong.manage_pass_listings') || companyPolicy.policy.action.includes('tasks.create')) ? companyPolicy.choices.scopes.filter(scope => companyPolicy.policy.scopeIds.includes(scope.scopeId)) : [] } });
+    scopes: companyPolicy.policy.enabled && (companyPolicy.policy.read.includes('rooms.view') || companyPolicy.policy.action.includes('sale_phong.manage_pass_listings') || companyPolicy.policy.action.includes('tasks.create') || companyPolicy.policy.action.includes('customers.create')) ? companyPolicy.choices.scopes.filter(scope => companyPolicy.policy.scopeIds.includes(scope.scopeId)) : [] } });
   if (operation === 'context') {
     const item = own.find(value => value.id === input.connectionId)!;
     return json({ context: { ...item, membershipId: OTHER, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
@@ -553,5 +553,26 @@ describe('task-create Action enrollment',()=>{
   await waitFor(()=>expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(false));
   submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});
   expect(JSON.parse(calls('connect')[0][1]!.body as string)).toMatchObject({restrictions:{read:[],action:['tasks.create']},scopeIds:[SCOPE]});
+ });
+});
+
+describe('customer/lead-create Action enrollment',()=>{
+ it('shows offered Khách hàng actions unchecked and requires the Toàn tổ chức scope before connecting',async()=>{
+  companyPolicy.policy.read=[];companyPolicy.policy.action=['customers.create','leads.create'];
+  companyPolicy.choices.scopes=[{scopeId:SCOPE,scopeType:'ORGANIZATION',label:'Toàn tổ chức',buildingId:null,areaId:null,cashbookId:null}];
+  companyPolicy.storedScopes=[{scopeId:SCOPE,label:'Toàn tổ chức',available:true}];
+  render(<HermesConnectionsPage/>);await ready();
+  const section=within(screen.getByRole('region',{name:'Cấp quyền Hermes mới'}));
+  const actions=within(section.getByRole('group',{name:'Thao tác dữ liệu'}));
+  expect(await actions.findByText('Khách hàng')).toBeTruthy();
+  fireEvent.click(actions.getByRole('button',{name:/Khách hẹn/}));fireEvent.click(actions.getByRole('button',{name:/Cư dân/}));
+  const customer=actions.getByRole('checkbox',{name:/Tạo cư dân/i}),lead=actions.getByRole('checkbox',{name:/Tạo khách hẹn/i});
+  expect(customer.getAttribute('data-state')).toBe('unchecked');expect(lead.getAttribute('data-state')).toBe('unchecked');
+  expect(actions.getAllByText(/cần phạm vi Toàn tổ chức$/,{selector:'span.block'})).toHaveLength(2);
+  fireEvent.click(customer);expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(section.getByRole('checkbox',{name:'Toàn tổ chức'}));
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Tạo kết nối'}) as HTMLButtonElement).disabled).toBe(false));
+  submitPassword();await screen.findByRole('region',{name:'Mã kết nối một lần'});
+  expect(JSON.parse(calls('connect')[0][1]!.body as string)).toMatchObject({restrictions:{read:[],action:['customers.create']},scopeIds:[SCOPE]});
  });
 });

@@ -67,7 +67,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_my_work_memory_edit_v1(uuid,jsonb)', 'hermes_my_work_memory_forget_v1(uuid,jsonb)',
   'hermes_org_policy_options_v6(uuid)', 'hermes_connection_options_v6(uuid)', 'hermes_connection_context_v6(uuid)',
   // Room-pass lookup/upsert/status caller (20261015162454).
-  'hermes_room_pass_upsert_v1(jsonb,text,jsonb)'];
+  'hermes_room_pass_upsert_v1(jsonb,text,jsonb)',
+  // Customer/lead action options layer over v6 (20261015191139).
+  'hermes_org_policy_options_v7(uuid)', 'hermes_connection_options_v7(uuid)', 'hermes_connection_context_v7(uuid)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',

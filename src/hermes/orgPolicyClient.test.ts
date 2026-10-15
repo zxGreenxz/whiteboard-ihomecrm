@@ -33,10 +33,10 @@ describe('human Hermes company policy client',()=>{
     s.fetch.mockResolvedValueOnce(json(ack));await expect(s.client.save(narrowed)).resolves.toEqual(ack);
     expect(JSON.parse(s.fetch.mock.calls[1][1]!.body as string)).toMatchObject({p_expected_version:0,p_read:['assistant.context.read'],p_scope_ids:[]});
   });
-  it('negotiates read-only v5 only when v6 is definitively absent, with the same organization and bearer',async()=>{
+  it('negotiates read-only v6 only when v7 is definitively absent, with the same organization and bearer',async()=>{
     const s=setup();s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(json(example()));
     await expect(s.client.load()).resolves.toEqual(example());
-    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v6',URL+'/rest/v1/rpc/hermes_org_policy_options_v5']);
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v7',URL+'/rest/v1/rpc/hermes_org_policy_options_v6']);
     expect(s.fetch.mock.calls[0][1]!.body).toEqual(s.fetch.mock.calls[1][1]!.body);
     expect(s.fetch.mock.calls[0][1]!.headers).toEqual(s.fetch.mock.calls[1][1]!.headers);
   });
@@ -49,10 +49,10 @@ describe('human Hermes company policy client',()=>{
     await expect(s.client.save(s.input())).rejects.toMatchObject({code:'policy_outcome_unknown',outcomeUnknown:true});
     expect(s.fetch).toHaveBeenCalledTimes(2);
   });
-  it('keeps v1 compatibility after exact missing v6, v5, v4, v3 and v2 while refusing malformed v5 fallback',async()=>{
-    const s=setup();for(let i=0;i<5;i++)s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(json(example()));
+  it('keeps v1 compatibility after exact missing v7, v6, v5, v4, v3 and v2 while refusing malformed v6 fallback',async()=>{
+    const s=setup();for(let i=0;i<6;i++)s.fetch.mockResolvedValueOnce(denial('PGRST202',404));s.fetch.mockResolvedValueOnce(json(example()));
     await expect(s.client.load()).resolves.toEqual(example());
-    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([6,5,4,3,2,1].map(version=>URL+`/rest/v1/rpc/hermes_org_policy_options_v${version}`));
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([7,6,5,4,3,2,1].map(version=>URL+`/rest/v1/rpc/hermes_org_policy_options_v${version}`));
     const malformed=setup();malformed.fetch.mockResolvedValueOnce(denial('PGRST202',404));malformed.fetch.mockResolvedValueOnce(json({code:'PGRST202'},404));
     await expect(malformed.client.load()).rejects.toMatchObject({code:'backend_unavailable'});expect(malformed.fetch).toHaveBeenCalledTimes(2);
   });
@@ -66,7 +66,7 @@ describe('human Hermes company policy client',()=>{
   it('reads selected-org options then writes the existing versioned RPC with the browser JWT and explicit org header',async()=>{
     const s=setup();await expect(s.client.load()).resolves.toEqual(example());s.fetch.mockResolvedValueOnce(json(s.ack()));
     await expect(s.client.save(s.input())).resolves.toEqual(s.ack());
-    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v6',URL+'/rest/v1/rpc/hermes_set_org_policy_v1']);
+    expect(s.fetch.mock.calls.map(([url])=>url)).toEqual([URL+'/rest/v1/rpc/hermes_org_policy_options_v7',URL+'/rest/v1/rpc/hermes_set_org_policy_v1']);
     expect(s.fetch.mock.calls[1][1]).toMatchObject({method:'POST',mode:'cors',credentials:'omit',redirect:'error',cache:'no-store',headers:{
       authorization:'Bearer fixture.browser.jwt',apikey:'sb_publishable_fixture','x-organization-id':ORG,'content-profile':'public'}});
     expect(JSON.parse(s.fetch.mock.calls[1][1]!.body as string)).toEqual({p_org:ORG,p_expected_version:2,p_enabled:true,p_read:s.input().read,p_action:[],p_scope_ids:[SCOPE]});

@@ -24255,12 +24255,17 @@ export type Database = {
         Args: { p_connection_id: string }
         Returns: Json
       }
+      hermes_connection_context_v7: {
+        Args: { p_connection_id: string }
+        Returns: Json
+      }
       hermes_connection_options_v1: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v2: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v3: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v4: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v6: { Args: { p_org: string }; Returns: Json }
+      hermes_connection_options_v7: { Args: { p_org: string }; Returns: Json }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -24352,6 +24357,7 @@ export type Database = {
       hermes_org_policy_options_v4: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v6: { Args: { p_org: string }; Returns: Json }
+      hermes_org_policy_options_v7: { Args: { p_org: string }; Returns: Json }
       hermes_prepare_connection_v1: {
         Args: {
           p_action: string[]
