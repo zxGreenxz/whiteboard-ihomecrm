@@ -11,10 +11,12 @@ export function taskActionInput(operation,input){
  if(isTaskFollowOperation(operation))return taskFollowInput(operation,input);
  if(operation!=='options')return taskInput(operation,input);
  if(!domainExact(input,['kind','buildingId','query','limit','cursor'])||!kinds.includes(input.kind)||
-  (input.kind==='buildings'?input.buildingId!==null:!domainId(input.buildingId))||
+  (input.kind==='buildings'?!(input.buildingId===null||typeof input.buildingId==='string'):!domainId(input.buildingId))||
   typeof input.query!=='string'||[...input.query].length>100||input.query.includes('\0')||
   !Number.isSafeInteger(input.limit)||input.limit<1||input.limit>50||!(input.cursor===null||domainId(input.cursor)))fail();
- return {...input};
+ // kind=buildings has no parent: any string the model puts there (16/10: an
+ // invented well-formed UUID) is dropped to the null that SQL and the result check require.
+ return input.kind==='buildings'?{...input,buildingId:null}:{...input};
 }
 export function taskOptionsResult(operation,value,identity,input){
  if(operation!=='options'||!domainExact(value,['organizationId','kind','buildingId','items','nextCursor'])||value.organizationId!==identity.row.organizationId||
@@ -27,6 +29,6 @@ export function taskOptionsResult(operation,value,identity,input){
  if(value.nextCursor!==null&&(value.items.length!==input.limit||value.nextCursor!==value.items.at(-1)?.id))fail();
  return structuredClone(value);
 }
-export const TASK_INPUT_TOOLS=Object.freeze([{name:'crm_task_input_options',description:'Tra ID và tên để tạo/giao công việc. Tra buildings trước; các loại rooms, jobTypes, assignees cần buildingId vừa chọn. Chỉ danh mục người dùng hiện tại được chọn theo RLS, không đọc công việc hay thông tin liên hệ.',
- inputSchema:{type:'object',additionalProperties:false,required:['kind','buildingId','query','limit','cursor'],properties:{kind:{enum:kinds},buildingId:{type:['string','null'],format:'uuid'},query:{type:'string',maxLength:100},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:['string','null'],format:'uuid'}}},
+export const TASK_INPUT_TOOLS=Object.freeze([{name:'crm_task_input_options',description:'Tra ID và tên để tạo/giao công việc. Tra buildings trước (kind=buildings: không cần buildingId); các loại rooms, jobTypes, assignees cần buildingId vừa chọn. Chỉ danh mục người dùng hiện tại được chọn theo RLS, không đọc công việc hay thông tin liên hệ.',
+ inputSchema:{type:'object',additionalProperties:false,required:['kind','buildingId','query','limit','cursor'],properties:{kind:{enum:kinds},buildingId:{type:['string','null'],format:'uuid',description:'ID toà vừa chọn. kind=buildings: không cần buildingId.'},query:{type:'string',maxLength:100},limit:{type:'integer',minimum:1,maximum:50},cursor:{type:['string','null'],format:'uuid'}}},
  annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}},...TASK_FOLLOW_TOOLS]);

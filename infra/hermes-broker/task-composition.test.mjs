@@ -18,7 +18,7 @@ import { createDependencyScope } from './dependency-scope.mjs';
 const token='hc_'+'A'.repeat(43),digest=createHash('sha256').update(token).digest('hex');
 const ACTION='tasks.create';
 test('external MCP → bound JWT → audited final caller SQL: task-create action and unknown reconciliation',{timeout:60000},async t=>{
- const {db,rpc,counts}=await setup(t),events=[];
+ const {db,rpc,counts}=await setup(t),events=[],sent=[];
  await prepareTaskMetadata(db,{notifications:true});
  await db.exec(readFileSync(process.env.HERMES_TASK_OPTIONS_SQL??new URL('../../supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql',import.meta.url),'utf8'));
  await db.exec(extract(forward,'app_private.hermes_store_read_connection_v1'));
@@ -43,7 +43,7 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
    assert.ok(capability||metadata||path==='/rest/v1/rpc/hermes_task_create_action_v1');
    if(capability)assert.deepEqual(args,{p_organization_id:ORG});
    else{assert.deepEqual(Object.keys(args).sort(),metadata?['p_binding','p_input']:['p_binding','p_input','p_operation']);if(beforeFinal){const hook=beforeFinal;beforeFinal=undefined;await hook();}}
-   events.push(capability?'capability':`sql:${args.p_operation}`);
+   events.push(capability?'capability':`sql:${args.p_operation}`);if(metadata)sent.push(args.p_input);
    try{
      const result=capability?await rpc('capabilities',{}):metadata?await taskMetadataRpc(db,args.p_binding,args.p_input,{session:SESSION}):await rpc(args.p_operation,args.p_input,args.p_binding);
      if(args.p_operation==='create'){writes++;if(loseAck){loseAck=false;throw new Error('synthetic_ack_lost');}}
@@ -84,6 +84,19 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
    const placeholder=await call('crm_task_input_options',args);assert.equal(placeholder.isError,false);assert.deepEqual(placeholder.value.items,[{id:BUILDING,label:'Nhà A'}]);
  }
  assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:NIL,query:'',limit:50,cursor:NIL})).value.error,'invalid_request');
+ // 16/10 19:38Z production (after #176): an invented well-formed buildingId for kind=buildings; SQL must receive null.
+ const INVENTED='aaaa0000-0000-4000-8000-000000000001';
+ assert.match(listedOptions.inputSchema.properties.buildingId.description,/kind=buildings: không cần buildingId/);
+ await db.exec("UPDATE public.buildings SET name='Toà 417LVT'");sent.length=0;
+ const invented=await call('crm_task_input_options',{kind:'buildings',buildingId:INVENTED,query:'417LVT',limit:20,cursor:NIL});
+ assert.equal(invented.isError,false);assert.deepEqual(invented.value,{organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Toà 417LVT'}],nextCursor:null});
+ assert.deepEqual(sent,[{kind:'buildings',buildingId:null,query:'417LVT',limit:20,cursor:null}]);
+ await db.exec("UPDATE public.buildings SET name='Nhà A'");sent.length=0;
+ // Child kinds are not loosened: the invented id reaches SQL, which denies it.
+ assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:INVENTED,query:'',limit:20,cursor:null})).value.error,'forbidden');
+ assert.deepEqual(sent.map(value=>value.buildingId),[INVENTED]);sent.length=0;
+ for(const buildingId of [7,{},[INVENTED],true])assert.equal((await call('crm_task_input_options',{kind:'buildings',buildingId,query:'',limit:20,cursor:null})).value.error,'invalid_request');
+ assert.deepEqual(sent,[],'non-string buildingId never reaches SQL');
  assert.equal((await call('crm_read_tasks',{})).value.error,'tool_not_available');
  assert.equal((await call('crm_read_customers',{})).value.error,'tool_not_available');
  assert.equal(writes,0);assert.deepEqual(await counts(),{jobs:0,receipts:0,audits:0});

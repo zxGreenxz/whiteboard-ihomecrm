@@ -7,16 +7,28 @@ import {taskActionInput,taskActionOperation,mayUseTaskAction,taskOptionsResult} 
 const sql=()=>readFileSync(process.env.HERMES_TASK_OPTIONS_SQL??new URL('../../supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql',import.meta.url),'utf8');
 const options=(kind,buildingId=kind==='buildings'?null:BUILDING)=>({kind,buildingId,query:'',limit:20,cursor:null});
 const code=expected=>error=>error.code===expected;
+const INVENTED='aaaa0000-0000-4000-8000-000000000001';
 async function fixture(t){const f=await setup(t);await prepareTaskMetadata(f.db);await f.db.exec(sql());await f.db.exec(sql());return {...f,call:(value,b=binding)=>taskMetadataRpc(f.db,b,value,{session:SESSION})};}
 
 test('fixed action-input contract rejects arbitrary identity/directory and remains distinct from task-data Read',()=>{
  assert.equal(taskActionOperation('crm_task_input_options'),'options');for(const name of ['__proto__','toString','crm_read_tasks','rpc'])assert.equal(taskActionOperation(name),null);
  assert.equal(mayUseTaskAction({read:[],action:['tasks.create']},'options'),true);assert.equal(mayUseTaskAction({read:['tasks.view'],action:[]},'options'),false);
  assert.deepEqual(taskActionInput('options',options('buildings')),options('buildings'));
- for(const value of [{...options('rooms'),buildingId:null},{...options('buildings'),buildingId:BUILDING},{...options('assignees'),organizationId:ORG},{...options('jobTypes'),kind:'customers'},
+ for(const value of [{...options('rooms'),buildingId:null},{...options('assignees'),organizationId:ORG},{...options('jobTypes'),kind:'customers'},
   {...options('assignees'),query:'x'.repeat(101)},{...options('rooms'),limit:51}])assert.throws(()=>taskActionInput('options',value));
+ // 16/10 19:38Z production: kind=buildings with an invented well-formed buildingId (cursor nil UUID already null after #176).
+ const incident={kind:'buildings',buildingId:INVENTED,query:'417LVT',limit:20,cursor:null};
+ assert.deepEqual(taskActionInput('options',incident),{...incident,buildingId:null});
+ for(const buildingId of [BUILDING,FOREIGN,'','Nhà A',' x\0'])assert.deepEqual(taskActionInput('options',{...options('buildings'),buildingId}),options('buildings'),'buildings ignores any string');
+ for(const buildingId of [7,0,true,{},[],[BUILDING],undefined])assert.throws(()=>taskActionInput('options',{...options('buildings'),buildingId}),'non-string/null is still rejected');
+ for(const kind of ['rooms','jobTypes','assignees']){
+  assert.deepEqual(taskActionInput('options',options(kind,INVENTED)),options(kind,INVENTED),kind+' keeps the id for SQL to decide');
+  for(const buildingId of [null,'','Nhà A',7])assert.throws(()=>taskActionInput('options',options(kind,buildingId)),kind+' still needs a real UUID');
+ }
  const result={organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Nhà A'}],nextCursor:null};
  assert.deepEqual(taskOptionsResult('options',result,{row:{organizationId:ORG},scopesByPermission:{'tasks.create':{buildingIds:[BUILDING]}}},options('buildings')),result);
+ assert.deepEqual(taskOptionsResult('options',result,{row:{organizationId:ORG}},taskActionInput('options',incident)),result,'normalized input matches the SQL echo');
+ assert.throws(()=>taskOptionsResult('options',{...result,buildingId:INVENTED},{row:{organizationId:ORG}},taskActionInput('options',incident)));
  assert.throws(()=>taskOptionsResult('options',{...result,items:[{id:BUILDING,label:'Nhà A',phone:'private'}]},{row:{organizationId:ORG}},options('buildings')));
 });
 
@@ -27,6 +39,12 @@ test('action-only selectors preserve canonical RLS and task_types.view, return b
   const value=await call(options(kind));assert.equal(value.items[0].id,id);assert.deepEqual(Object.keys(value.items[0]).sort(),['id','label']);assert.equal(value.nextCursor,null);
  }
  const first=await call({...options('assignees'),limit:1});assert.deepEqual(first.items,[{id:ASSIGNEE,label:'Recipient'}]);assert.equal(first.nextCursor,ASSIGNEE);
+ // Exact 16/10 incident arguments: SQL itself still demands null; through the contract it lists the matching building.
+ const incident={kind:'buildings',buildingId:INVENTED,query:'417LVT',limit:20,cursor:null};
+ await db.exec("UPDATE public.buildings SET name='Toà 417LVT'");
+ await assert.rejects(call(incident),code('22023'));
+ assert.deepEqual(await call(taskActionInput('options',incident)),{organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Toà 417LVT'}],nextCursor:null});
+ await db.exec("UPDATE public.buildings SET name='Nhà A'");
  const second=await call({...options('assignees'),limit:1,cursor:first.nextCursor});assert.deepEqual(second.items,[{id:USER,label:'Actor'}]);assert.equal(second.nextCursor,null);
  assert.deepEqual((await call({...options('assignees'),query:'cipi'})).items,[{id:ASSIGNEE,label:'Recipient'}]);assert.deepEqual((await call({...options('assignees'),query:'%'})).items,[]);
  for(const [kind,flag] of [['buildings','building_rls'],['rooms','room_rls'],['jobTypes','type_rls'],['assignees','profile_rls']]){
@@ -47,6 +65,8 @@ test('action-input lookup rejects foreign/inactive recipients and stale or missi
  await db.exec(`UPDATE public.organization_memberships SET revoked_at=clock_timestamp() WHERE user_id='${ASSIGNEE}'`);
  assert.equal((await call(options('assignees'))).items.some(row=>row.id===ASSIGNEE),false);
  await assert.rejects(call(options('rooms',FOREIGN)),code('42501'));
+ // Not loosened for child kinds: an invented well-formed buildingId reaches SQL and is denied there.
+ for(const kind of ['rooms','jobTypes','assignees'])await assert.rejects(call(taskActionInput('options',options(kind,INVENTED))),code('42501'),kind);
  await assert.rejects(call(options('assignees'),{...binding,expectedEpoch:2}),code('PT409'));
  await db.exec("UPDATE app_private.hermes_connections SET action_capabilities='{}'");await assert.rejects(call(options('buildings')),code('42501'));
  await db.exec("UPDATE app_private.hermes_connections SET action_capabilities=ARRAY['tasks.create'];UPDATE public.authorization_scopes SET building_id=null");
