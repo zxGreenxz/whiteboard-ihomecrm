@@ -21,6 +21,9 @@ let hermesCalls = [];
 let hermesDue = [];
 let hermesDueError = null;
 let hermesRun = () => ({ data: { status: 'already_run' }, error: null });
+const SWEEP_OK = () => ({ data: { prunedCommands: 0, expiredJobs: 0, observed: 0, closed: 0, expiry: 0, notified: 0, probes: [] }, error: null });
+let hermesSweep = SWEEP_OK;
+let hermesProbe = () => ({ data: { status: 'healthy' }, error: null });
 let workerLogs = [];
 let rpcFailureFor = () => null;
 let uploadError = null;
@@ -56,11 +59,22 @@ const sbGia = {
       hermesCalls.push({ name, args });
       return { data: structuredClone(hermesDue), error: hermesDueError };
     }
-    if (name === 'hermes_room_schedule_run_v1') {
+    if (name === 'hermes_room_schedule_run_v2' || name === 'hermes_room_schedule_run_v1') {
       expect(Object.keys(args).sort()).toEqual(['p_expected_revision', 'p_instance_id', 'p_schedule_id']);
       expect(args.p_instance_id).toBe(INSTANCE_ID);
       hermesCalls.push({ name, args });
-      return hermesRun(args);
+      return hermesRun(args, name);
+    }
+    if (name === 'hermes_room_schedule_sweep_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_organization_ids']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+      hermesCalls.push({ name, args });
+      return hermesSweep(args);
+    }
+    if (name === 'hermes_room_schedule_probe_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_schedule_id']);
+      hermesCalls.push({ name, args });
+      return hermesProbe(args);
     }
     if (name !== 'zalo_enqueue_broadcast_v1') throw new Error(`unexpected_fixture_rpc:${name}`);
     // Legacy assertions observe only its exact enqueue boundary. Hermes due
@@ -170,6 +184,7 @@ beforeEach(() => {
   rpcCalls = []; rpcError = null;
   hermesCalls = []; hermesDue = []; hermesDueError = null;
   hermesRun = () => ({ data: { status: 'already_run' }, error: null });
+  hermesSweep = SWEEP_OK; hermesProbe = () => ({ data: { status: 'healthy' }, error: null });
   workerLogs = [];
   rpcFailureFor = () => null;
   uploadError = null;
@@ -191,7 +206,7 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa(['org-1']);
     expect(hermesCalls).toEqual([{ name: 'hermes_room_schedule_due_v1', args: {
       p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'],
-    } }]);
+    } }, { name: 'hermes_room_schedule_sweep_v1', args: { p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'] } }]);
     expect(rpcCalls).toEqual([]);
     expect(daChen).toEqual({ messages: [], queue: [], runs: [] });
     await expect(sbGia.rpc('unexpected_rpc', {})).rejects.toThrow('unexpected_fixture_rpc');
@@ -207,9 +222,10 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa(['org-1']);
     expect(hermesCalls).toEqual([
       { name: 'hermes_room_schedule_due_v1', args: { p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'] } },
-      ...hermesDue.map(row => ({ name: 'hermes_room_schedule_run_v1', args: {
+      ...hermesDue.map(row => ({ name: 'hermes_room_schedule_run_v2', args: {
         p_schedule_id: row.scheduleId, p_expected_revision: row.revision, p_instance_id: INSTANCE_ID,
       } })),
+      { name: 'hermes_room_schedule_sweep_v1', args: { p_instance_id: INSTANCE_ID, p_organization_ids: ['org-1'] } },
     ]);
     expect(workerLogs).toContainEqual(['hermes schedule run rejected', 'schedule-a', 'network_ack_lost']);
     expect(rpcCalls).toHaveLength(4);
@@ -223,9 +239,39 @@ describe('engine broadcast — xếp hàng', () => {
       hermesDueError = invalid === 'failed' ? { code: '42501' } : null;
       hermesDue = invalid === 'malformed' ? [{ scheduleId: 'schedule-a', revision: 0 }] : [];
       await tickTuDongHoa();
-      expect(hermesCalls.map(call => call.name)).toEqual(['hermes_room_schedule_due_v1']);
+      expect(hermesCalls.map(call => call.name)).toEqual(['hermes_room_schedule_due_v1', 'hermes_room_schedule_sweep_v1']);
       expect(workerLogs.at(-1)[0]).toBe('hermes schedule tick unverified');
       expect(daChen.queue).toHaveLength(4);
+      expect(rpcCalls).toHaveLength(4);
+    }
+  });
+
+  it('records a blocked run, falls back to run_v1 only when run_v2 is not deployed, and probes sweep candidates once', async () => {
+    datCauHinh();
+    const PROBE = '12345678-1234-4123-8123-123456789abc';
+    hermesDue = [{ scheduleId: 'schedule-a', revision: 2 }, { scheduleId: 'schedule-b', revision: 7 }];
+    hermesRun = (args, name) => args.p_schedule_id === 'schedule-a'
+      ? { data: { status: 'blocked', reason: 'user_permission_revoked' }, error: null }
+      : name === 'hermes_room_schedule_run_v2' ? { data: null, error: { code: 'PGRST202' } } : { data: { status: 'already_run' }, error: null };
+    hermesSweep = () => ({ data: { ...SWEEP_OK().data, notified: 1, probes: [PROBE] }, error: null });
+    hermesProbe = () => ({ data: { status: 'blocked', reason: 'scope_narrowed' }, error: null });
+    await tickTuDongHoa(['org-1']);
+    expect(hermesCalls.map(call => [call.name, call.args.p_schedule_id ?? null])).toEqual([
+      ['hermes_room_schedule_due_v1', null], ['hermes_room_schedule_run_v2', 'schedule-a'],
+      ['hermes_room_schedule_run_v2', 'schedule-b'], ['hermes_room_schedule_run_v1', 'schedule-b'],
+      ['hermes_room_schedule_sweep_v1', null], ['hermes_room_schedule_probe_v1', PROBE],
+    ]);
+    expect(workerLogs).toContainEqual(['hermes schedule blocked', 'schedule-a', 'user_permission_revoked']);
+    expect(rpcCalls).toHaveLength(4);
+  });
+
+  it('a failed or malformed sweep is logged and neither retries runs nor blocks legacy scheduling', async () => {
+    for (const sweep of [() => ({ data: null, error: { code: '42501' } }), () => ({ data: { probes: 'all' }, error: null })]) {
+      datCauHinh(); hermesCalls = []; rpcCalls = []; daChen.queue = []; daChen.messages = []; workerLogs = [];
+      hermesDue = [{ scheduleId: 'schedule-a', revision: 2 }]; hermesSweep = sweep;
+      await tickTuDongHoa();
+      expect(hermesCalls.map(call => call.name)).toEqual(['hermes_room_schedule_due_v1', 'hermes_room_schedule_run_v2', 'hermes_room_schedule_sweep_v1']);
+      expect(workerLogs.some(entry => entry[0] === 'hermes schedule sweep unverified')).toBe(true);
       expect(rpcCalls).toHaveLength(4);
     }
   });

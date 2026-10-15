@@ -965,6 +965,8 @@
       "id": "hermes-room-schedules",
       "sourcePaths": [
         "supabase/migrations/*_hermes_room_schedule_v1.sql",
+        "supabase/migrations/*_hermes_schedule_health_v1.sql",
+        "supabase/migrations/*_hermes_delivery_reconcile_v1.sql",
         "supabase/migrations/*_hermes_assistant_capabilities_v3.sql",
         "infra/hermes-broker/schedule*.mjs",
         "infra/hermes-broker/bound-user-*.mjs",
@@ -979,6 +981,34 @@
         "infra/hermes-broker/schedule*.test.mjs",
         "infra/hermes-broker/server.test.mjs",
         "infra/hermes-zalo-router/group-send-sql.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-room-schedule-worker-caller",
+      "sourcePaths": [
+        "worker/lib/hermes-schedule.js"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "worker/__tests__/automation-engine.test.js"
+      ]
+    },
+    {
+      "id": "hermes-delivery-reconcile-ui",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_delivery_reconcile_v1.sql",
+        "src/hermes/deliveryReconcileClient.ts",
+        "src/hermes/HermesDeliveryReconcile.tsx",
+        "src/pages/settings/HermesConnectionsPage.tsx"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "src/hermes/deliveryReconcileClient.test.ts",
+        "src/hermes/HermesDeliveryReconcile.test.tsx",
+        "src/pages/settings/HermesConnectionsPage.test.tsx"
+      ],
+      "viewports": [
+        "affected"
       ]
     },
     {
