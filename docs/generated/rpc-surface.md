@@ -19,7 +19,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|
 | RPC được gọi từ mã nguồn | 375 |
 | Hàm trong catalog (public + api) | 1335 |
-| File mã nguồn đã quét | 2587 |
+| File mã nguồn đã quét | 2598 |
 | SECURITY DEFINER | 356 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
