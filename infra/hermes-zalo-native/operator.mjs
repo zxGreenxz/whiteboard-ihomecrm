@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { nativeId, resolveNativeConfig } from '../../worker/lib/hermes-native-config.js';
 import { nativeAbsolute, nativeDirectory, nativePrivateRead } from '../../worker/lib/hermes-native-files.js';
 import { createNativeJournal, nativeDigest } from '../../worker/lib/hermes-native-journal.js';
+import { NATIVE_RECONCILIATION_MAX_BYTES as LEDGER_MAX, nativeReconciliationFile as ledgerPath, nativeReconciliationFor,
+  readNativeReconciliations, validNativeNote as validNote } from '../../worker/lib/hermes-native-reconciliation.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fail = code => { throw new Error(code); };
@@ -203,27 +205,11 @@ export function applyNativeGrant(options) {
 
 // Human reconciliation ledger: a private append-only file beside the config.
 // It never edits a journal record, generation, receipt or token; the running
-// worker cannot write it (config mount is read-only there).
-const LEDGER_MAX = 1024 * 1024, LEDGER_ENTRY_KEYS = ['profile', 'accountId', 'generation', 'requestId', 'recordDigest', 'startedAt', 'decision', 'note', 'decidedAt'];
-const ledgerPath = file => `${file}.reconciliations.json`;
-const plainObject = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-// eslint-disable-next-line no-control-regex
-const validNote = value => typeof value === 'string' && value.length >= 1 && value.length <= 500 && value.trim() !== '' && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+// worker cannot write it (config mount is read-only there) but reads it with
+// the same shared validator before each new send on a quarantined channel.
 function readLedger(file) {
-  const ledgerFile = ledgerPath(file);
-  if (absent(ledgerFile)) return { file: ledgerFile, raw: null, entries: [] };
-  const raw = nativePrivateRead(ledgerFile, LEDGER_MAX), value = JSON.parse(raw);
-  if (!plainObject(value) || Object.keys(value).length !== 2 || value.version !== 1 || !Array.isArray(value.entries) || value.entries.length > 100000) fail('native_operator_ledger_invalid');
-  const seen = new Set();
-  for (const entry of value.entries) {
-    if (!plainObject(entry) || Object.keys(entry).length !== LEDGER_ENTRY_KEYS.length || LEDGER_ENTRY_KEYS.some(key => !Object.hasOwn(entry, key)) ||
-        !nativeId(entry.requestId) || !/^[a-f0-9]{64}$/.test(entry.recordDigest) || !Number.isSafeInteger(entry.startedAt) ||
-        !['sent', 'not_sent'].includes(entry.decision) || !validNote(entry.note) || !Number.isFinite(Date.parse(entry.decidedAt))) fail('native_operator_ledger_invalid');
-    const key = JSON.stringify([entry.profile, entry.generation, entry.requestId]);
-    if (seen.has(key)) fail('native_operator_ledger_invalid');
-    seen.add(key);
-  }
-  return { file: ledgerFile, raw, entries: value.entries };
+  try { return readNativeReconciliations(ledgerPath(file)); }
+  catch (error) { if (error?.message === 'native_reconciliation_invalid') fail('native_operator_ledger_invalid'); throw error; }
 }
 function prepareReconcile(options) {
   const keys = ['action', 'configFile', 'profile', 'requestId', 'decision', 'note', 'expect'];
@@ -249,9 +235,10 @@ function reconcileSummary(prepared, options, applied) {
     channel: { profile: prepared.channel.profile, accountId: prepared.channel.accountId, generation: prepared.channel.generation },
     record: { id: prepared.record.id, status: prepared.record.status, startedAt: prepared.record.startedAt }, decision: options.decision,
     journal: 'unchanged', generation: 'unchanged', resend: 'never',
-    // The bridge still quarantines on any outcome_unknown in the journal; a
-    // worker release rule reading this ledger is required before reopening.
-    quarantineRelease: 'requires_worker_support' };
+    // The worker re-reads this ledger before each new request ID; the channel
+    // reopens only when every unknown record of this profile/generation has an
+    // exactly matching decision. This record itself is never resent.
+    quarantineRelease: 'worker_reads_ledger_before_each_new_send' };
 }
 /** Plan by default; apply requires --expect and the same cooperative locks as
  * grant changes. Records a human decision about ONE unknown send. */
@@ -308,22 +295,24 @@ export function inspectNativeDelivery({ configFile, profile, limit = 20 } = {}) 
       const journal = createNativeJournal(current.runtime.stateRoot, channel, { io: readOnlyIo });
       const inbound = journal.values('inbound'), outbound = journal.values('outbound');
       const outboundCounts = count(outbound, ['sent', 'outcome_unknown']);
-      const decided = new Map(ledger.entries.filter(entry => entry.profile === channel.profile && entry.generation === channel.generation)
-        .map(entry => [entry.requestId, entry]));
-      // A ledger entry is evidence only while it still matches the unknown record.
-      const decision = record => record.status === 'outcome_unknown' && decided.get(record.id)?.recordDigest === record.digest &&
-        decided.get(record.id)?.startedAt === record.startedAt ? decided.get(record.id).decision : null;
+      // A ledger entry is evidence only while it still matches the unknown
+      // record; the worker applies this same matcher before a new send.
+      const decision = record => nativeReconciliationFor(ledger.entries, channel, record)?.decision ?? null;
       const fields = ['id', 'status', 'messageId', 'sentAt', 'startedAt', 'finishedAt', 'dispatchedAt', 'acknowledgedAt'];
       const records = (values, kind) => (limit ? values.slice(-limit) : []).map(record => ({
         ...Object.fromEntries(fields.filter(key => Object.hasOwn(record, key)).map(key => [key, record[key]])),
         ...(kind === 'outbound' && record.status === 'outcome_unknown' ? { reconciliation: decision(record) } : {}) }));
       const unknown = outbound.filter(record => record.status === 'outcome_unknown');
+      const unreconciled = unknown.filter(record => decision(record) === null).length;
+      // Disk view only: a running worker also keeps quarantine while its own
+      // provider call for a reconciled record has not settled.
+      const quarantine = unreconciled ? 'outcome_unknown' : unknown.length ? 'released_by_reconciliation' : 'none_observed';
       return { profile: channel.profile, accountId: channel.accountId, generation: channel.generation,
-        journalFile, journalPresent: present, quarantine: outboundCounts.outcome_unknown ? 'outcome_unknown' : 'none_observed',
+        journalFile, journalPresent: present, quarantine,
         inbound: { counts: count(inbound, ['queued', 'dispatch_unknown', 'accepted', 'rejected']), records: records(inbound, 'inbound') },
         outbound: { counts: outboundCounts, records: records(outbound, 'outbound') },
-        reconciliation: { recorded: unknown.filter(record => decision(record) !== null).length,
-          unreconciled: unknown.filter(record => decision(record) === null).length, quarantineRelease: 'requires_worker_support' },
+        reconciliation: { recorded: unknown.length - unreconciled, unreconciled,
+          quarantineRelease: 'worker_reads_ledger_before_each_new_send' },
         pendingMeaning: 'inbound_queued_only; outbound_outcome_unknown_may_be_in_flight_or_settled_without_receipt',
         truncated: inbound.length > limit || outbound.length > limit };
     }) };
@@ -336,7 +325,7 @@ const usage = { commands: ['create', 'rotate', 'revoke', 'inspect', 'reconcile']
   bootstrap: 'For absent config only: --state-root <existing-private-directory> --listen-port <1024..65535>',
   rotate: '--profile <name> --token-file <new-private-path>', revoke: '--profile <name>', inspect: '[--profile <name>] [--limit <0..100>]',
   reconcile: '--profile <name> --request-id <journal id> --decision sent|not_sent --note <what you verified in Zalo>',
-  warning: 'Apply changes disk only. Restart the existing worker with its ownership controls; transfer issued tokens through the secret store. Do not start another session. Revoke retains binding/generation/journal with an unissued token. Reconcile only records a human decision in a private ledger: it never edits the journal, changes generation, resends, or lifts the worker quarantine.' };
+  warning: 'Apply changes disk only. Restart the existing worker with its ownership controls; transfer issued tokens through the secret store. Do not start another session. Revoke retains binding/generation/journal with an unissued token. Reconcile only records a human decision (sent or not_sent) in a private ledger: it never edits the journal, changes generation or resends. The running worker re-reads that ledger before each new request ID and reopens the channel only when every outcome_unknown send of the profile/generation has an exactly matching decision; the unknown request itself is never resent.' };
 export function runNativeOperator(argv, { write = line => process.stdout.write(line), error = line => process.stderr.write(line) } = {}) {
   try {
     if (argv.length === 1 && ['--help', 'help'].includes(argv[0])) { write(`${redact(usage)}\n`); return 0; }
@@ -361,4 +350,11 @@ export function runNativeOperator(argv, { write = line => process.stdout.write(l
     write(`${redact(result)}\n`); return 0;
   } catch (cause) { error(`${redact({ error: publicError(cause), runtimeStatus: 'unverified', instruction: 'Inspect disk state before retrying; never delete journals or change generation to retry an unknown send.' })}\n`); return 1; }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) process.exitCode = runNativeOperator(process.argv.slice(2));
+// Realpath both sides: a symlinked source path (argv[1]) must still run the CLI.
+// Kept local because the pinned operator source ships only this directory and worker/lib.
+export function isMainModule(argv1, metaUrl, realpath = fs.realpathSync) {
+  if (typeof argv1 !== 'string' || !argv1) return false;
+  try { return realpath(path.resolve(argv1)) === realpath(fileURLToPath(metaUrl)); }
+  catch { return false; }
+}
+if (isMainModule(process.argv[1], import.meta.url)) process.exitCode = runNativeOperator(process.argv.slice(2));

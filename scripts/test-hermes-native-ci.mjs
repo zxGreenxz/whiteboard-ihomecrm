@@ -14,7 +14,8 @@ process.umask(0o077);
 
 for (const file of [
   'worker/deploy/native-deployment.test.mjs',
-  ...['bridge.test.mjs', 'journal.test.mjs', 'operator.test.mjs', 'upstream.test.mjs']
+  ...['bridge.test.mjs', 'journal.test.mjs', 'operator.test.mjs', 'operator-reconcile.test.mjs',
+    'quarantine-release.test.mjs', 'upstream.test.mjs']
     .map(name => `infra/hermes-zalo-native/${name}`),
 ]) {
   const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-timeout=120000',

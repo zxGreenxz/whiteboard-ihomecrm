@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { loadHostConfiguration } from './host-config.mjs';
 
 const create = async configuration => {
@@ -70,6 +71,15 @@ export async function runHermesCli(args, { load = loadHostConfiguration, createH
   report(retained ? 'host_retained' : 'host_stopped'); setExitCode(code); return code;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+/** Entry check that survives a symlinked release path (/opt/.../current):
+ * Node reports import.meta.url as the realpath while argv[1] keeps the link.
+ * Any realpath failure means "not main", never a second implicit start. */
+export function isMainModule(argv1, metaUrl, realpath = fs.realpathSync) {
+  if (typeof argv1 !== 'string' || !argv1) return false;
+  try { return realpath(path.resolve(argv1)) === realpath(fileURLToPath(metaUrl)); }
+  catch { return false; }
+}
+
+if (isMainModule(process.argv[1], import.meta.url)) {
   await runHermesCli(process.argv.slice(2));
 }

@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { planNativeGrant, applyNativeGrant, inspectNativeDelivery, runNativeOperator } from './operator.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { planNativeGrant, applyNativeGrant, inspectNativeDelivery, runNativeOperator, isMainModule } from './operator.mjs';
 import { readNativeConfig } from '../../worker/lib/hermes-native-config.js';
 import { createNativeBridge } from '../../worker/lib/hermes-native-bridge.js';
 import { createNativeJournal, nativeDigest } from '../../worker/lib/hermes-native-journal.js';
@@ -272,4 +274,47 @@ test('a config commit failure retains the durable state owner and cannot bootstr
   if (process.platform !== 'win32') assert.equal(fs.statSync(ownerFile).mode & 0o777, 0o600);
   assert.equal(fs.existsSync(path.join(f.stateRoot, '.native-operator-lock')), false);
   assert.throws(() => planNativeGrant({ ...options, tokenFile: path.join(f.root, 'retry.token') }), /state_namespace/);
+});
+
+/** Directory link like a pinned source path; Windows without symlink privilege
+ * falls back to a junction. Cleanup removes only the link, never its target. */
+function linkedDirectory(t, target) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'native-operator-link-')), link = path.join(root, 'source');
+  let linked = false;
+  for (const type of ['dir', 'junction']) {
+    try { fs.symlinkSync(target, link, type); linked = true; break; }
+    catch (error) { if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error; }
+  }
+  t.after(() => {
+    try { fs.unlinkSync(link); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    fs.rmdirSync(root);
+  });
+  return linked ? link : null;
+}
+const helpThrough = link => spawnSync(process.execPath, [path.join(link, 'operator.mjs'), '--help'], { encoding: 'utf8', timeout: 10000 });
+
+test('actual operator CLI runs through a symlinked source directory; the previous lexical entry check did not', t => {
+  const here = path.dirname(fileURLToPath(import.meta.url)), self = path.join(here, 'operator.mjs');
+  const link = linkedDirectory(t, here);
+  if (!link) { t.skip('neither a directory symlink nor a junction can be created on this host'); return; }
+  const help = helpThrough(link);
+  assert.equal(help.status, 0, help.stderr);
+  assert.deepEqual(JSON.parse(help.stdout).commands, ['create', 'rotate', 'revoke', 'inspect', 'reconcile']);
+  assert.equal(isMainModule(path.join(link, 'operator.mjs'), pathToFileURL(self).href), true);
+  for (const argv1 of [undefined, path.join(here, 'missing.mjs')]) assert.equal(isMainModule(argv1, pathToFileURL(self).href), false);
+  // Mutation: a staged copy with the old comparison exits 0 without output.
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'native-operator-mutant-'));
+  t.after(() => fs.rmSync(stage, { recursive: true, force: true }));
+  const anchor = 'if (isMainModule(process.argv[1], import.meta.url))';
+  const source = fs.readFileSync(self, 'utf8').replace(/from '(\.{1,2}\/[^']+)'/g, (_, name) => `from '${pathToFileURL(path.resolve(here, name)).href}'`);
+  assert.equal(source.split(anchor).length, 2, 'mutation anchor must occur exactly once');
+  for (const [name, text] of [['fixed', source], ['mutant', source.replace(anchor,
+    "if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(path.resolve(process.argv[1])).href)")]]) {
+    fs.mkdirSync(path.join(stage, name)); fs.writeFileSync(path.join(stage, name, 'operator.mjs'), text);
+  }
+  const fixedLink = linkedDirectory(t, path.join(stage, 'fixed')), mutantLink = linkedDirectory(t, path.join(stage, 'mutant'));
+  if (!fixedLink || !mutantLink) { t.skip('neither a directory symlink nor a junction can be created on this host'); return; }
+  assert.deepEqual(JSON.parse(helpThrough(fixedLink).stdout).commands, ['create', 'rotate', 'revoke', 'inspect', 'reconcile']);
+  const mutant = helpThrough(mutantLink);
+  assert.deepEqual([mutant.status, mutant.stdout, mutant.stderr], [0, '', ''], 'old comparison silently skips the CLI');
 });
