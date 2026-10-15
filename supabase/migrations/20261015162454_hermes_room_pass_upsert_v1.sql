@@ -12,7 +12,8 @@
 --   upsert  — sửa tin ĐANG HIỆN của phòng, không có thì tạo mới (đúng nhánh
 --             p_id NULL của form "Thêm"). Trường vắng = giữ nguyên khi sửa /
 --             mặc định khi tạo; null = xoá. Tạo mới mà vắng cả SĐT lẫn tên thì
---             điền khách đại diện như form tự điền.
+--             điền khách đại diện như form tự điền và luôn bật contact_manager
+--             (không công khai số người dùng không đưa); contactSource báo nguồn.
 --   status  — đối soát requestId cho cả biên nhận bật/ẩn (hermes_room_pass_action_v1)
 --             lẫn upsert; không bao giờ ghi lại.
 -- Quyền mỗi lượt: Action sale_phong.manage_pass_listings (registry, trần công ty,
@@ -61,7 +62,7 @@ DECLARE c app_private.hermes_connections; s app_private.hermes_sessions; policy 
  member jsonb; context jsonb; receipt app_private.hermes_room_pass_receipts; listing public.room_pass_listings; saved public.room_pass_listings;
  k text; v_request uuid; v_room uuid; v_building uuid; v_owner uuid; v_change text; v_result jsonb; v_rooms jsonb; v_more boolean;
  v_name text; v_phone text; v_policy text; v_price numeric; v_date date; v_has_date boolean:=false; v_manager boolean; v_active boolean;
- v_tokens text[]; v_room_query text;
+ v_tokens text[]; v_room_query text; v_scope record; v_source text;
 BEGIN
  PERFORM app_private.hermes_request_v1(p_binding,ARRAY['connectionId','tokenDigest','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision']);
  IF p_operation='lookup' THEN PERFORM app_private.hermes_request_v1(p_input,ARRAY['buildingName','roomCode']);
@@ -135,21 +136,25 @@ BEGIN
    THEN RAISE EXCEPTION 'hermes_action_denied' USING ERRCODE='42501'; END IF;
 
  IF p_operation='lookup' THEN
-   WITH cand AS MATERIALIZED (
-     SELECT r.id,r.name,r.code,r.status::text AS status,b.id AS building_id,b.name AS building_name,b.user_id AS owner_id,
+   -- Lọc toà được phép TRƯỚC (đọc như form ∩ tập phạm vi ∩ quyết định đầy đủ theo
+   -- toà), rồi mới khớp phòng và cắt 10; truncated khi còn phòng được phép.
+   SELECT * INTO v_scope FROM app_private.authorized_scope_v3('sale_phong.manage_pass_listings',c.organization_id);
+   WITH matched_building AS MATERIALIZED (
+     SELECT b.id,b.name,b.user_id FROM public.buildings b
+     WHERE b.organization_id=c.organization_id AND b.deleted_at IS NULL AND NOT COALESCE(b.is_virtual,false)
+       AND (COALESCE(v_scope.org_wide,false) OR b.id=ANY(COALESCE(v_scope.building_ids,'{}'::uuid[])))
+       AND (b.user_id=auth.uid() OR public.can_access_building(b.id))
+       AND NOT EXISTS(SELECT 1 FROM unnest(v_tokens) AS tok(word) WHERE strpos(app_private.hermes_room_pass_fold_v1(concat_ws(' ',b.name,b.code,b.street_address)),tok.word)=0)
+   ), allowed_building AS MATERIALIZED (
+     SELECT mb.* FROM matched_building mb
+     WHERE app_private.hermes_room_pass_building_ok_v1(c,policy.scope_ids,member->>'authorizationVersion',mb.id,mb.user_id)
+   ), allowed AS MATERIALIZED (
+     SELECT r.id,r.name,r.code,r.status::text AS status,ab.id AS building_id,ab.name AS building_name,
        (regexp_replace(btrim(app_private.hermes_room_pass_fold_v1(r.name)),'^(phong|p\.?) ?(?=[0-9])','')=v_room_query
          OR regexp_replace(btrim(app_private.hermes_room_pass_fold_v1(r.code)),'^(phong|p\.?) ?(?=[0-9])','')=v_room_query) AS exact
-     FROM public.rooms r JOIN public.buildings b ON b.id=r.building_id
-     WHERE r.organization_id=c.organization_id AND b.organization_id=c.organization_id AND r.deleted_at IS NULL AND b.deleted_at IS NULL
-       AND NOT COALESCE(b.is_virtual,false) AND (b.user_id=auth.uid() OR public.can_access_building(b.id))
-       AND NOT EXISTS(SELECT 1 FROM unnest(v_tokens) AS tok(word) WHERE strpos(app_private.hermes_room_pass_fold_v1(concat_ws(' ',b.name,b.code,b.street_address)),tok.word)=0)
+     FROM allowed_building ab JOIN public.rooms r ON r.building_id=ab.id
+     WHERE r.organization_id=c.organization_id AND r.deleted_at IS NULL
        AND strpos(app_private.hermes_room_pass_fold_v1(concat_ws(' ',r.name,r.code)),v_room_query)>0
-     ORDER BY 8 DESC,b.name,r.name,r.id LIMIT 200
-   ), allowed_building AS MATERIALIZED (
-     SELECT d.building_id FROM (SELECT DISTINCT cand.building_id,cand.owner_id FROM cand) d
-     WHERE app_private.hermes_room_pass_building_ok_v1(c,policy.scope_ids,member->>'authorizationVersion',d.building_id,d.owner_id)
-   ), allowed AS MATERIALIZED (
-     SELECT cand.* FROM cand JOIN allowed_building USING(building_id)
    ), picked AS MATERIALIZED (
      SELECT a.*,row_number() OVER (ORDER BY a.exact DESC,a.building_name,a.name,a.id) AS rn FROM allowed a
      WHERE a.exact OR NOT EXISTS(SELECT 1 FROM allowed e WHERE e.exact)
@@ -212,17 +217,23 @@ BEGIN
  v_change:=CASE WHEN listing.id IS NULL THEN 'created' ELSE 'updated' END;
  v_phone:=CASE WHEN p_input ? 'customerPhone' THEN p_input->>'customerPhone' ELSE listing.contact_phone END;
  v_name:=CASE WHEN p_input ? 'customerName' THEN p_input->>'customerName' ELSE listing.contact_name END;
- IF listing.id IS NULL AND NOT(p_input ? 'customerPhone') AND NOT(p_input ? 'customerName') THEN
-   -- Như form: tự điền khách đại diện của hợp đồng đang hiệu lực.
+ v_source:=CASE WHEN p_input ? 'customerPhone' OR p_input ? 'customerName' THEN 'provided' ELSE 'unchanged' END;
+ IF listing.id IS NULL AND v_source='unchanged' THEN
+   -- Như form: tự điền khách đại diện của hợp đồng đang hiệu lực. Người dùng
+   -- không đưa số này nên KHÔNG công khai nó: contactManager bật bên dưới.
    SELECT cu.full_name,cu.phone INTO v_name,v_phone FROM public.contracts ct
      JOIN public.contract_customers cc ON cc.contract_id=ct.id JOIN public.customers cu ON cu.id=cc.customer_id AND cu.deleted_at IS NULL
      WHERE ct.room_id=v_room AND ct.deleted_at IS NULL AND ct.status IN ('ACTIVE','EXTENDED')
      ORDER BY COALESCE(cc.is_representative,false) DESC,cu.full_name,cu.id LIMIT 1;
+   IF FOUND THEN v_source:='representative'; END IF;
  END IF;
  v_policy:=CASE WHEN p_input ? 'salePolicy' THEN p_input->>'salePolicy' ELSE listing.sale_policy END;
  v_price:=CASE WHEN p_input ? 'passPrice' THEN (p_input->>'passPrice')::numeric ELSE listing.pass_price END;
  IF NOT v_has_date THEN v_date:=listing.avail_date; END IF;
- v_manager:=CASE WHEN p_input ? 'contactManager' THEN (p_input->>'contactManager')::boolean ELSE COALESCE(listing.contact_manager,false) END;
+ -- Số tự điền từ khách đại diện luôn ẩn (trang công khai hiện SĐT quản lý); chỉ
+ -- customerPhone tường minh mới đi theo contactManager như form.
+ v_manager:=CASE WHEN v_source='representative' THEN true
+   WHEN p_input ? 'contactManager' THEN (p_input->>'contactManager')::boolean ELSE COALESCE(listing.contact_manager,false) END;
  v_active:=CASE WHEN p_input ? 'active' THEN (p_input->>'active')::boolean ELSE COALESCE(listing.active,true) END;
  BEGIN
    SELECT * INTO saved FROM public.upsert_room_pass_listing(p_id=>listing.id,p_room_id=>v_room,p_contact_name=>v_name,p_contact_phone=>v_phone,
@@ -237,7 +248,7 @@ BEGIN
    OR saved.contact_manager IS DISTINCT FROM v_manager OR saved.contact_phone IS DISTINCT FROM v_phone OR saved.contact_name IS DISTINCT FROM v_name
    OR saved.sale_policy IS DISTINCT FROM v_policy OR saved.pass_price IS DISTINCT FROM v_price OR saved.avail_date IS DISTINCT FROM v_date
    THEN RAISE EXCEPTION 'hermes_action_receipt_invalid' USING ERRCODE='PT409'; END IF;
- v_result:=jsonb_build_object('requestId',v_request,'outcome','applied','change',v_change,
+ v_result:=jsonb_build_object('requestId',v_request,'outcome','applied','change',v_change,'contactSource',v_source,
    'listing',jsonb_build_object('listingId',saved.id,'buildingId',saved.building_id,'roomId',saved.room_id,'active',saved.active,
      'revision',app_private.hermes_room_pass_revision_v1(saved.id)),
    'contact',jsonb_build_object('name',app_private.hermes_domain_text_v1(saved.contact_name),

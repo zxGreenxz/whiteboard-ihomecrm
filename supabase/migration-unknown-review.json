@@ -886,14 +886,14 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Forward mới (15/10/2026, connector Hermes tạo/sửa tin \"Khách nhờ sale\"), chưa đi qua lane apply TEST/production — object vắng mặt vì migration CHƯA CHẠY, không phải bị DROP. Kiểm hiện có chỉ là PGlite với writer canonical thật (upsert_room_pass_listing, can_manage_pass_listing) trên bảng CRM tối giản, đột biến quyền và replay ACL tĩnh hermes-durable-schema; chưa có dry-run/biên nhận apply trên TEST hay production. File bật registry đi kèm (20261015163023) chỉ DML (bật đúng dòng registry), apply sau file này. Khi apply qua npm run migrate:forward, provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "Forward mới (15/10/2026, connector Hermes tạo/sửa tin \"Khách nhờ sale\"), chưa đi qua lane apply TEST/production — object vắng mặt vì migration CHƯA CHẠY, không phải bị DROP. Kiểm hiện có chỉ là PGlite với writer canonical thật (upsert_room_pass_listing, can_manage_pass_listing) trên bảng CRM tối giản, đột biến quyền và replay ACL tĩnh hermes-durable-schema; chưa có dry-run/biên nhận apply trên TEST hay production. Sửa sau review PR #173 (chưa apply nên sửa thẳng): chuỗi rỗng không xoá, tự điền khách đại diện luôn bật contact_manager kèm contactSource, tra phòng lọc toà được phép trước khi cắt. File bật registry đi kèm (20261015163023) chỉ DML, chặn khi dòng registry hoặc hàm này chưa có, apply sau file này. Khi apply qua npm run migrate:forward, provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.hermes_room_pass_fold_v1",
         "function:app_private.hermes_room_pass_building_ok_v1",
         "function:public.hermes_room_pass_upsert_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes tin pass phòng 15/10/2026",
-      "sha256": "4af6cbae4668513acfa2583cad6ea625319d579d0cb514b21a3548d5e7b71d30"
+      "sha256": "977fd738e1dd5d216610e643dce0c66101eaedaf0979c37d52ef01f3c44347a5"
     }
   }
 }

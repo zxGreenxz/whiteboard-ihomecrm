@@ -21,12 +21,15 @@ const calendarDate=value=>typeof value==='string'&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$
   Number.isFinite(Date.parse(`${value}T00:00:00Z`))&&new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value;
 // Input bound mirrors SQL: years 2000–2100 only.
 const isDate=value=>calendarDate(value)&&/^(20[0-9]{2}|2100)-/.test(value);
-// UI parity: trimmed, empty text means "no value" (form stores null).
+// Only an explicit null clears a stored value. An empty or blank string is what a
+// model sends for "không có thông tin", so it is treated as ABSENT (keep as is),
+// never as a clear.
+const ABSENT=Symbol('absent');
 function optionalText(value,max,control){
   if(value===null)return null;
   if(typeof value!=='string')fail();
   const text=value.trim();
-  if(!text)return null;
+  if(!text)return ABSENT;
   if(points(text)>max||control.test(text))fail();
   return text;
 }
@@ -36,11 +39,12 @@ function phone(value){
   if(value===null)return null;
   if(typeof value!=='string'||value.length>40)fail();
   let digits=value.replace(/[\s.\-()]/g,'');
-  if(!digits)return null;
+  if(!digits)return ABSENT;
   if(digits.startsWith('+84'))digits=`0${digits.slice(3)}`;
   if(!/^[0-9]{10,11}$/.test(digits))fail();
   return digits;
 }
+const keep=(out,key,value)=>{if(value!==ABSENT)out[key]=value;};
 const query=(value,max)=>{
   if(typeof value!=='string')fail();
   const text=value.trim().replace(/\s+/g,' ');
@@ -51,9 +55,9 @@ export function roomPassInput(operation,input){
   if(operation==='upsert'){
     if(!domainRecord(input)||!Object.keys(input).every(key=>UPSERT_KEYS.includes(key))||!domainId(input.requestId)||!domainId(input.roomId))fail();
     const out={requestId:input.requestId,roomId:input.roomId};
-    if(Object.hasOwn(input,'customerPhone'))out.customerPhone=phone(input.customerPhone);
-    if(Object.hasOwn(input,'customerName'))out.customerName=optionalText(input.customerName,ROOM_PASS_LIMITS.customerName,CONTROL);
-    if(Object.hasOwn(input,'salePolicy'))out.salePolicy=optionalText(input.salePolicy,ROOM_PASS_LIMITS.salePolicy,POLICY_CONTROL);
+    if(Object.hasOwn(input,'customerPhone'))keep(out,'customerPhone',phone(input.customerPhone));
+    if(Object.hasOwn(input,'customerName'))keep(out,'customerName',optionalText(input.customerName,ROOM_PASS_LIMITS.customerName,CONTROL));
+    if(Object.hasOwn(input,'salePolicy'))keep(out,'salePolicy',optionalText(input.salePolicy,ROOM_PASS_LIMITS.salePolicy,POLICY_CONTROL));
     if(Object.hasOwn(input,'passPrice')){
       if(input.passPrice!==null&&!(Number.isSafeInteger(input.passPrice)&&input.passPrice>0&&input.passPrice<=ROOM_PASS_LIMITS.passPrice))fail();
       out.passPrice=input.passPrice;
@@ -86,10 +90,16 @@ const contact=value=>{
   if(!domainExact(value,['name','phoneMasked'])||!nullableLabel(value.name)||!masked(value.phoneMasked))fail();
   return {...value};
 };
+// provided = input carried customerPhone/customerName; representative = new listing
+// auto-filled from the active contract (public page then shows the manager);
+// unchanged = contact kept (or left empty when no representative exists).
+const CONTACT_SOURCES=Object.freeze(['provided','representative','unchanged']);
 const upsertResult=(result,requestId)=>{
-  if(!domainExact(result,['requestId','outcome','change','listing','contact'])||result.requestId!==requestId||result.outcome!=='applied'||
-    !['created','updated'].includes(result.change))fail();
-  return{requestId:result.requestId,outcome:'applied',change:result.change,listing:snapshot(result.listing),contact:contact(result.contact)};
+  if(!domainExact(result,['requestId','outcome','change','listing','contact','contactSource'])||result.requestId!==requestId||result.outcome!=='applied'||
+    !['created','updated'].includes(result.change)||!CONTACT_SOURCES.includes(result.contactSource)||
+    result.contactSource==='representative'&&result.change!=='created')fail();
+  return{requestId:result.requestId,outcome:'applied',change:result.change,listing:snapshot(result.listing),contact:contact(result.contact),
+    contactSource:result.contactSource};
 };
 function lookupResult(result,identity){
   if(!domainExact(result,['organizationId','rooms','truncated'])||result.organizationId!==identity.row.organizationId||
@@ -113,14 +123,16 @@ export function roomPassResult(operation,result,identity,input){
   if(operation==='lookup')return lookupResult(result,identity);
   if(operation==='upsert'){
     const value=upsertResult(result,input.requestId);
-    if(value.listing.roomId!==input.roomId||Object.hasOwn(input,'active')&&value.listing.active!==input.active)fail();
+    const provided=Object.hasOwn(input,'customerPhone')||Object.hasOwn(input,'customerName');
+    if(value.listing.roomId!==input.roomId||Object.hasOwn(input,'active')&&value.listing.active!==input.active||
+      (provided?value.contactSource!=='provided':value.contactSource==='provided'))fail();
     return value;
   }
   if(operation==='observe'){
     if(!domainExact(result,['organizationId','listing'])||result.organizationId!==identity.row.organizationId)fail();
     const listing=snapshot(result.listing);if(listing.listingId!==input.listingId)fail();return{organizationId:result.organizationId,listing};
   }
-  // status reconciles either receipt kind: set_active (3 keys) or upsert (5 keys).
+  // status reconciles either receipt kind: set_active (3 keys) or upsert (6 keys).
   if(operation==='status'&&domainRecord(result)&&Object.hasOwn(result,'change'))return upsertResult(result,input.requestId);
   if(!domainExact(result,['requestId','outcome','listing'])||result.requestId!==input.requestId||!['applied','not_found'].includes(result.outcome))fail();
   if(result.outcome==='not_found'){if(operation!=='status'||result.listing!==null)fail();return {...result};}
@@ -136,7 +148,7 @@ export const ROOM_PASS_TOOLS=Object.freeze([
   {name:'crm_room_lookup',description:'Tra phòng theo toà + tên/mã phòng để lấy roomId cho tin "Khách nhờ sale" (pass phòng), GỒM CẢ phòng đang có khách thuê. Trả tên/mã phòng, trạng thái phòng, có hợp đồng đang hiệu lực không, khách đại diện (SĐT đã che, chỉ 4 số cuối) và tin pass hiện có của phòng (listingId, đang hiện/ẩn, giá, ngày trống). Chỉ đọc; chỉ các toà bạn vừa xem được vừa được quản lý tin pass. buildingName: tên, mã hoặc địa chỉ toà như người dùng viết (vd "417/57 Lê Văn Thọ"; khớp mọi từ, không phân biệt dấu). roomCode: tên/mã phòng (vd "103"). Có khớp chính xác thì chỉ trả phòng khớp chính xác; tối đa 10 phòng (truncated=true là còn nữa). Không thấy hoặc nhiều phòng ở các toà khác nhau thì hỏi lại người dùng, không đoán roomId.',
     inputSchema:{type:'object',additionalProperties:false,required:['buildingName','roomCode'],properties:{buildingName:{type:'string',minLength:1,maxLength:ROOM_PASS_LIMITS.buildingName},roomCode:{type:'string',minLength:1,maxLength:ROOM_PASS_LIMITS.roomCode}}},
     annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false}},
-  {name:'crm_room_pass_upsert',description:`Tạo mới hoặc sửa tin "Khách nhờ sale" (pass phòng) của MỘT phòng trên trang Sale phòng, tab "Khách nhờ sale" — cùng đường lưu với form "Thêm phòng pass". Khi người dùng dán/nhắn tin pass phòng và muốn cập nhật lên CRM: (1) trích toà, phòng, giá, ngày trống, SĐT/tên liên hệ và các điều kiện; (2) gọi crm_room_lookup lấy roomId (không thấy hoặc nhiều phòng khớp thì hỏi lại); (3) lấy requestId bằng crm_new_request_id; (4) gọi tool này ngay, không cần hỏi xác nhận lại khi yêu cầu đã rõ; báo lại kết quả. passPrice: số nguyên VND/tháng (3.500.000 hoặc "3tr5" → 3500000). availDate: YYYY-MM-DD; tin thiếu năm (vd "1/11") thì chọn năm hiện tại, hoặc năm tới nếu ngày đó đã qua hơn một tháng, và nói rõ năm đã chọn khi báo lại. salePolicy: gom điện, nước, phí dịch vụ, nội thất, số người/xe tối đa, ưu đãi/thưởng sale thành một đoạn ngắn, giữ nguyên số liệu (vd "Điện 3.5k/số; nước 100k/người; phí DV 150k/phòng; đủ nội thất; tối đa 2 người 2 xe"). customerPhone: SĐT khách viết liền chữ số; customerName: tên người liên hệ. contactManager=true khi khách muốn ẩn số và để quản lý nghe máy. active=false để lưu nhưng ẩn khỏi trang công khai. Trường bỏ trống = giữ nguyên khi sửa / mặc định khi tạo (contactManager=false, active=true); null = xoá giá trị đó. Sửa áp vào tin ĐANG HIỆN của phòng; phòng chưa có tin đang hiện thì tạo tin mới (muốn hiện lại tin cũ đang ẩn thì dùng crm_room_pass_set_active). Tạo mới mà không có cả SĐT lẫn tên thì tự lấy khách đại diện của hợp đồng đang hiệu lực như form. Không đổi hợp đồng, khách thuê hay trạng thái phòng. ${REQUEST_ID_GUIDANCE} Mất phản hồi (room_pass_outcome_unknown) thì tra crm_room_pass_status bằng đúng requestId đó, không gọi lại bằng mã mới.`,
+  {name:'crm_room_pass_upsert',description:`Tạo mới hoặc sửa tin "Khách nhờ sale" (pass phòng) của MỘT phòng trên trang Sale phòng, tab "Khách nhờ sale" — cùng đường lưu với form "Thêm phòng pass". Khi người dùng dán/nhắn tin pass phòng và muốn cập nhật lên CRM: (1) trích toà, phòng, giá, ngày trống, SĐT/tên liên hệ và các điều kiện; (2) gọi crm_room_lookup lấy roomId (không thấy hoặc nhiều phòng khớp thì hỏi lại); (3) lấy requestId bằng crm_new_request_id; (4) gọi tool này ngay, không cần hỏi xác nhận lại khi yêu cầu đã rõ; báo lại kết quả. passPrice: số nguyên VND/tháng (3.500.000 hoặc "3tr5" → 3500000). availDate: YYYY-MM-DD; tin thiếu năm (vd "1/11") thì chọn năm hiện tại, hoặc năm tới nếu ngày đó đã qua hơn một tháng, và nói rõ năm đã chọn khi báo lại. salePolicy: gom điện, nước, phí dịch vụ, nội thất, số người/xe tối đa, ưu đãi/thưởng sale thành một đoạn ngắn, giữ nguyên số liệu (vd "Điện 3.5k/số; nước 100k/người; phí DV 150k/phòng; đủ nội thất; tối đa 2 người 2 xe"). customerPhone: SĐT khách viết liền chữ số, chỉ gửi khi tin có SĐT liên hệ của khách; customerName: tên người liên hệ. contactManager=true khi khách muốn ẩn số và để quản lý nghe máy. active=false để lưu nhưng ẩn khỏi trang công khai. Không gửi trường = giữ nguyên khi sửa / mặc định khi tạo (contactManager=false, active=true); chuỗi rỗng cũng coi như không gửi; chỉ null mới xoá giá trị đó. Sửa áp vào tin ĐANG HIỆN của phòng; phòng chưa có tin đang hiện thì tạo tin mới (muốn hiện lại tin cũ đang ẩn thì dùng crm_room_pass_set_active). Tạo mới mà không gửi cả SĐT lẫn tên thì tự lấy khách đại diện của hợp đồng đang hiệu lực và LUÔN bật contactManager (trang công khai hiện SĐT quản lý, không lộ số khách). Kết quả contactSource: provided = liên hệ lấy từ tin; representative = tự điền khách đại diện, số khách đã ẩn; unchanged = giữ liên hệ cũ (hoặc để trống khi phòng không có khách đại diện) — báo rõ điều này cho người dùng. Không đổi hợp đồng, khách thuê hay trạng thái phòng. ${REQUEST_ID_GUIDANCE} Mất phản hồi (room_pass_outcome_unknown) thì tra crm_room_pass_status bằng đúng requestId đó, không gọi lại bằng mã mới.`,
     inputSchema:{type:'object',additionalProperties:false,required:['requestId','roomId'],properties:{requestId:REQUEST_ID_PROPERTY,roomId:{type:'string',format:'uuid'},
       customerPhone:nullableString(40,{description:'SĐT khách, vd 0354058160'}),customerName:nullableString(ROOM_PASS_LIMITS.customerName),
       contactManager:{type:'boolean'},passPrice:{type:['integer','null'],minimum:1,maximum:ROOM_PASS_LIMITS.passPrice},

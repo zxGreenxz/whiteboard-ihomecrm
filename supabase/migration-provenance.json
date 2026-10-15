@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-15T16:59:05.028Z",
+  "generatedAt": "2026-10-15T17:15:55.692Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -11733,7 +11733,7 @@
       "version": "20261015162454",
       "name": "hermes_room_pass_upsert_v1",
       "scheme": "timestamp14",
-      "sha256": "4af6cbae4668513acfa2583cad6ea625319d579d0cb514b21a3548d5e7b71d30",
+      "sha256": "977fd738e1dd5d216610e643dce0c66101eaedaf0979c37d52ef01f3c44347a5",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -11747,7 +11747,7 @@
       "version": "20261015163023",
       "name": "hermes_room_pass_registry_enable_v1",
       "scheme": "timestamp14",
-      "sha256": "1e90aa30d87e55d34ba49acdd627c428c11984360e1dea8e1f48c31d22f41719",
+      "sha256": "62663a5c786582ec9b240678f5c18be3b1f9ee75ed4b72b744f409d8b4982118",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

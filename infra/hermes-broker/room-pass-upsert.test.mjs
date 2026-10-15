@@ -32,9 +32,14 @@ test('room-pass upsert/lookup tools map to fixed operations behind the same inde
 test('upsert input is normalized like the form and rejects every malformed or extra field', () => {
   const normalized = roomPassInput('upsert', { requestId: req(1), roomId: ROOM, customerPhone: '+84 354 058 160', customerName: '  Duẩn ', salePolicy: ' ',
     passPrice: 3500000, availDate: '2026-11-01' });
-  assert.deepEqual(normalized, { requestId: req(1), roomId: ROOM, customerPhone: '0354058160', customerName: 'Duẩn', salePolicy: null, passPrice: 3500000, availDate: '2026-11-01' });
+  assert.deepEqual(normalized, { requestId: req(1), roomId: ROOM, customerPhone: '0354058160', customerName: 'Duẩn', passPrice: 3500000, availDate: '2026-11-01' },
+    'blank salePolicy is absent (keep), never a clear');
   assert.deepEqual(roomPassInput('upsert', normalized), normalized, 'normalization is idempotent across broker/service/adapter');
   assert.deepEqual(roomPassInput('upsert', { requestId: req(1), roomId: ROOM }), { requestId: req(1), roomId: ROOM }, 'absent stays absent (keep/default)');
+  assert.deepEqual(roomPassInput('upsert', { requestId: req(1), roomId: ROOM, customerPhone: '', customerName: '   ', salePolicy: '', passPrice: 3200000 }),
+    { requestId: req(1), roomId: ROOM, passPrice: 3200000 }, 'empty or blank text = absent: keep the stored phone, name and policy');
+  assert.deepEqual(roomPassInput('upsert', { requestId: req(1), roomId: ROOM, customerPhone: ' . - ', customerName: null, salePolicy: null }),
+    { requestId: req(1), roomId: ROOM, customerName: null, salePolicy: null }, 'only an explicit null clears');
   assert.deepEqual(roomPassInput('upsert', { requestId: req(1), roomId: ROOM, customerPhone: '0354.058.160', passPrice: null, availDate: null }),
     { requestId: req(1), roomId: ROOM, customerPhone: '0354058160', passPrice: null, availDate: null });
   for (const bad of [{ roomId: ROOM }, { requestId: req(1) }, { ...full, userId: USER }, { ...full, organizationId: ORG }, { ...full, listingId: LISTING },
@@ -59,8 +64,13 @@ test('broker result validation refuses an unmasked phone or a write for another 
   assert.throws(() => roomPassResult('lookup', { organizationId: FOREIGN, rooms: [], truncated: false }, identity, {}));
   assert.throws(() => roomPassResult('lookup', { organizationId: ORG, rooms: [room, room], truncated: false }, identity, {}));
   const listing = { listingId: LISTING, buildingId: BUILDING, roomId: ROOM, active: true, revision: 'a'.repeat(64) };
-  const applied = { requestId: req(1), outcome: 'applied', change: 'created', listing, contact: { name: 'Duẩn', phoneMasked: '***0001' } };
+  const applied = { requestId: req(1), outcome: 'applied', change: 'created', listing, contact: { name: 'Duẩn', phoneMasked: '***0001' }, contactSource: 'provided' };
   assert.deepEqual(roomPassResult('upsert', applied, identity, full), applied);
+  const bare = { requestId: req(1), roomId: ROOM, passPrice: 3500000 };
+  const auto = { ...applied, contactSource: 'representative' };
+  assert.deepEqual(roomPassResult('upsert', auto, identity, bare), auto);
+  for (const [value, input] of [[auto, full], [applied, bare], [{ ...auto, change: 'updated' }, bare], [{ ...applied, contactSource: 'customer' }, full],
+    [(({ contactSource, ...rest }) => rest)(applied), full]]) assert.throws(() => roomPassResult('upsert', value, identity, input), 'contactSource must match the input');
   assert.throws(() => roomPassResult('upsert', { ...applied, listing: { ...listing, roomId: ROOM2 } }, identity, full));
   assert.throws(() => roomPassResult('upsert', { ...applied, listing: { ...listing, active: false } }, identity, full));
   assert.throws(() => roomPassResult('upsert', { ...applied, contact: { name: 'Duẩn', phoneMasked: '0900000001' } }, identity, full));
@@ -95,6 +105,22 @@ test('lookup finds occupied rooms by building words without accents, masks the r
     assert.deepEqual((await call('lookup', { buildingName: 'le van tho', roomCode: '103' })).rooms, [], 'CRM action decision per building');
   });
 
+test('lookup filters allowed buildings before the cap: 205 forbidden matches sorting first cannot hide the allowed rooms; truncated past 10',
+  { timeout: 60000 }, async t => {
+    const { db, call } = await setupUpsert(t);
+    const forbidden = id('0').replace(/^0{8}/, 'f0f0f0f0');
+    await db.exec(`INSERT INTO public.buildings(id,organization_id,user_id,name,code,street_address) VALUES('${forbidden}','${ORG}','${OWNER}','A Toà 417/57 Lê Văn Thọ','A',null);
+      INSERT INTO public.rooms(id,organization_id,building_id,name,status) SELECT gen_random_uuid(),'${ORG}','${forbidden}','10'||lpad(n::text,3,'0'),'OCCUPIED' FROM generate_series(1,205) n;
+      INSERT INTO public.fixture_read_acl VALUES('${forbidden}')`);
+    assert.deepEqual((await call('lookup', { buildingName: 'Lê Văn Thọ', roomCode: '10' })).rooms.map(r => r.roomId).sort(), [ROOM, ROOM3].sort(),
+      'readable but unmanaged building never consumes the cap');
+    await db.exec(`INSERT INTO public.rooms(id,organization_id,building_id,name,status) SELECT gen_random_uuid(),'${ORG}','${BUILDING}','2'||lpad(n::text,2,'0')||'10','AVAILABLE' FROM generate_series(1,11) n`);
+    const capped = await call('lookup', { buildingName: 'Lê Văn Thọ', roomCode: '10' });
+    assert.equal(capped.rooms.length, 10); assert.equal(capped.truncated, true);
+    assert.ok(capped.rooms.every(r => r.buildingId === BUILDING));
+    assert.equal((await call('lookup', { buildingName: 'Lê Văn Thọ', roomCode: '103' })).truncated, false);
+  });
+
 test('upsert creates through the canonical writer, replays by requestId, edits only given fields and never touches contracts or customers',
   { timeout: 60000 }, async t => {
     const { db, call, count } = await setupUpsert(t);
@@ -117,23 +143,41 @@ test('upsert creates through the canonical writer, replays by requestId, edits o
     const audit = (await db.query('SELECT event,metadata FROM public.fixture_action_audit')).rows;
     assert.deepEqual(audit.map(entry => entry.event), ['HERMES_ROOM_PASS_UPSERT']);
     assert.deepEqual(audit[0].metadata, { actor: USER, connectionId: binding.connectionId, requestId: req(1), change: 'created', active: true });
+    assert.equal(created.contactSource, 'provided');
     const edited = await call('upsert', { requestId: req(2), roomId: ROOM, passPrice: 3200000 });
-    assert.equal(edited.change, 'updated'); assert.equal(edited.listing.listingId, created.listing.listingId);
+    assert.equal(edited.change, 'updated'); assert.equal(edited.listing.listingId, created.listing.listingId); assert.equal(edited.contactSource, 'unchanged');
     assert.deepEqual(await row(created.listing.listingId), { ...(await row(created.listing.listingId)), pass_price: '3200000', sale_policy: full.salePolicy,
       contact_phone: '0900000001', avail_date: '2026-11-01' }, 'absent fields keep their value');
+    // A model sending "" for unknown fields must not wipe the stored contact or policy.
+    const blank = roomPassInput('upsert', { requestId: req(10), roomId: ROOM, customerPhone: '', customerName: ' ', salePolicy: '', passPrice: 3300000 });
+    const kept = await call('upsert', blank);
+    assert.equal(kept.contactSource, 'unchanged'); assert.deepEqual(roomPassResult('upsert', kept, identity, blank), kept);
+    assert.deepEqual(await row(created.listing.listingId), { organization_id: ORG, user_id: OWNER, building_id: BUILDING, room_id: ROOM, contact_name: 'Duẩn',
+      contact_phone: '0900000001', sale_policy: full.salePolicy, pass_price: '3300000', avail_date: '2026-11-01', contact_manager: false, active: true, created_by: USER });
     await call('upsert', { requestId: req(3), roomId: ROOM, salePolicy: null, availDate: null, contactManager: true });
     assert.deepEqual(await row(created.listing.listingId), { organization_id: ORG, user_id: OWNER, building_id: BUILDING, room_id: ROOM, contact_name: 'Duẩn',
-      contact_phone: '0900000001', sale_policy: null, pass_price: '3200000', avail_date: null, contact_manager: true, active: true, created_by: USER });
+      contact_phone: '0900000001', sale_policy: null, pass_price: '3300000', avail_date: null, contact_manager: true, active: true, created_by: USER });
     const hidden = await call('upsert', { requestId: req(4), roomId: ROOM, active: false });
     assert.equal(hidden.listing.active, false); assert.equal(hidden.change, 'updated');
     // No listing shown any more: a new one is created like the form's "Thêm",
-    // with the representative contact auto-filled when none is given.
-    const second = await call('upsert', { requestId: req(5), roomId: ROOM, passPrice: 3500000 });
+    // with the representative auto-filled AND kept private (manager's phone),
+    // even if contactManager:false is sent without an explicit customerPhone.
+    const second = await call('upsert', { requestId: req(5), roomId: ROOM, passPrice: 3500000, contactManager: false });
     assert.equal(second.change, 'created'); assert.notEqual(second.listing.listingId, created.listing.listingId);
+    assert.equal(second.contactSource, 'representative');
     assert.deepEqual(second.contact, { name: 'Nguyễn Duẩn', phoneMasked: '***8160' });
-    assert.equal((await row(second.listing.listingId)).contact_phone, PHONE);
-    assert.equal(await count('public.room_pass_listings'), 3);
-    assert.equal(await count('app_private.hermes_room_pass_receipts'), 5);
+    assert.deepEqual([(await row(second.listing.listingId)).contact_phone, (await row(second.listing.listingId)).contact_manager], [PHONE, true]);
+    await call('upsert', { requestId: req(7), roomId: ROOM, active: false });
+    // An explicit customerPhone follows the form: contactManager:false shows it.
+    const third = await call('upsert', { requestId: req(8), roomId: ROOM, customerPhone: '0911222333', contactManager: false });
+    assert.equal(third.contactSource, 'provided');
+    assert.deepEqual([(await row(third.listing.listingId)).contact_phone, (await row(third.listing.listingId)).contact_manager], ['0911222333', false]);
+    // No active contract, no contact given: nothing is invented.
+    const empty = await call('upsert', { requestId: req(9), roomId: ROOM3, passPrice: 2800000 });
+    assert.deepEqual([empty.change, empty.contactSource, empty.contact], ['created', 'unchanged', { name: null, phoneMasked: null }]);
+    assert.equal((await row(empty.listing.listingId)).contact_manager, false);
+    assert.equal(await count('public.room_pass_listings'), 5);
+    assert.equal(await count('app_private.hermes_room_pass_receipts'), 9);
     assert.equal(await snapshot(), before, 'contracts, customers and rooms are untouched');
     assert.equal(JSON.stringify((await db.query('SELECT metadata FROM public.fixture_action_audit')).rows).includes('0900000001'), false, 'no phone in audit');
   });
@@ -189,7 +233,7 @@ test('status reconciles applied v1 set_active receipts as well and reports not_f
   assert.equal(await count('app_private.hermes_room_pass_receipts'), 1);
 });
 
-test('registry enable migration flips exactly the room-pass Action, is idempotent and refuses a missing registry row', { timeout: 60000 }, async t => {
+test('registry enable migration flips exactly the room-pass Action, is idempotent and refuses a missing registry row or upsert RPC', { timeout: 60000 }, async t => {
   const { db } = await setupUpsert(t);
   const enable = readFileSync(enablePath, 'utf8');
   await db.exec("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='sale_phong.manage_pass_listings'");
@@ -198,6 +242,8 @@ test('registry enable migration flips exactly the room-pass Action, is idempoten
   await db.exec(enable); await db.exec(enable);
   assert.equal((await db.query("SELECT enabled FROM app_private.hermes_capabilities WHERE capability='sale_phong.manage_pass_listings' AND mode='action'")).rows[0].enabled, true);
   assert.deepEqual(await others(), before, 'no other capability changes');
+  await db.exec('DROP FUNCTION public.hermes_room_pass_upsert_v1(jsonb,text,jsonb)');
+  await assert.rejects(db.exec(enable), /hermes_room_pass_upsert_missing/); await db.exec('ROLLBACK');
   await db.exec("DELETE FROM app_private.hermes_capabilities WHERE capability='sale_phong.manage_pass_listings'");
   await assert.rejects(db.exec(enable), /hermes_room_pass_registry_missing/); await db.exec('ROLLBACK');
 });

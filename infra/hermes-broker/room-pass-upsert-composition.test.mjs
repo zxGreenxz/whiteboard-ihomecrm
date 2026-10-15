@@ -88,7 +88,7 @@ test('MCP pass message flow: lookup → requestId → upsert through bound JWT S
   assert.equal(events.filter(event => event === 'upsert:upsert').length, 1, 'ACK loss is never retried');
   assert.equal(state.writes, 1);
   const status = await mcp('crm_room_pass_status', { requestId });
-  assert.equal(status.value.outcome, 'applied'); assert.equal(status.value.change, 'created');
+  assert.equal(status.value.outcome, 'applied'); assert.equal(status.value.change, 'created'); assert.equal(status.value.contactSource, 'provided');
   assert.deepEqual(status.value.contact, { name: 'Duẩn', phoneMasked: '***0001' });
   const replay = await mcp('crm_room_pass_upsert', input);
   assert.deepEqual(replay.value, status.value, 'retry with the same requestId returns the receipt');

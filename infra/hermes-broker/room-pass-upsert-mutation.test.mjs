@@ -22,7 +22,18 @@ const found = async (call, input) => {
   if (!value.rooms.length) throw new Error('hermes_action_denied: no room visible');
   return value;
 };
+// A new listing without contact auto-fills the representative; that phone was
+// not given by the user, so the public page must show the manager instead.
+const privateRepresentative = async ({ db, call }) => {
+  const result = await upsert(call, 12, { contactManager: false });
+  const row = (await db.query('SELECT contact_manager FROM public.room_pass_listings WHERE id=$1', [result.listing.listingId])).rows[0];
+  if (row.contact_manager) throw new Error('hermes_action_denied: representative phone kept private');
+  return result;
+};
 const probes = [
+  { name: 'auto-filled representative forces contactManager', sql: mutate("CASE WHEN v_source='representative' THEN true\n   WHEN", 'CASE WHEN'),
+    run: privateRepresentative },
+  { name: 'auto-fill marks its contact source', sql: mutate("IF FOUND THEN v_source:='representative'; END IF;", ''), run: privateRepresentative },
   { name: 'saved connection overlay (scope)', sql: mutate('overlay.id=ANY(c.scope_ids) AND ', ''),
     run: ({ call }) => upsert(call, 1, { roomId: ROOM2 }) },
   { name: 'CRM action decision per building', sql: mutate('RETURN COALESCE(decision.allowed,false)', 'RETURN true'),
@@ -104,6 +115,30 @@ test('broker validator is a second fence: a mutant lookup that leaks the full ph
   const value = await call('lookup', { buildingName: 'Lê Văn Thọ', roomCode: '103' });
   assert.ok(JSON.stringify(value).includes(PHONE));
   assert.throws(() => roomPassResult('lookup', value, { row: { organizationId: ORG } }, {}));
+});
+
+// The contract is mutated in memory and loaded as a data: module whose sibling
+// imports are rewritten to absolute file URLs; nothing is written to disk.
+const contractUrl = new URL('./room-pass-contract.mjs', import.meta.url);
+const contractSource = readFileSync(contractUrl, 'utf8');
+const loadContract = source => import(`data:text/javascript;base64,${Buffer.from(source.replace(/from '\.\/([a-z-]+\.mjs)'/g,
+  (_, file) => `from '${new URL(`./${file}`, contractUrl).href}'`)).toString('base64')}`);
+const blankAsClear = (() => {
+  let next = contractSource;
+  for (const [from, to] of [['if(!text)return ABSENT;', 'if(!text)return null;'], ['if(!digits)return ABSENT;', 'if(!digits)return null;']]) {
+    const changed = next.replace(from, to); assert.notEqual(changed, next, `mutation anchor not found: ${from}`); next = changed;
+  }
+  return next;
+})();
+test('mutation is caught: blank text from the model is absent (keep), never a clear of the stored contact/policy', { timeout: 90000 }, async t => {
+  for (const [label, source, breach] of [['reviewed contract', contractSource, false], ['mutant contract', blankAsClear, true]]) {
+    const { roomPassInput } = await loadContract(source);
+    const { db, call } = await setupUpsert(t);
+    const created = await upsert(call, 1, { customerPhone: '0900000001', customerName: 'Duẩn', salePolicy: 'Điện 3.5k' });
+    await call('upsert', roomPassInput('upsert', { requestId: req(2), roomId: ROOM, customerPhone: '', customerName: '  ', salePolicy: '' }));
+    const row = (await db.query('SELECT contact_phone,contact_name,sale_policy FROM public.room_pass_listings WHERE id=$1', [created.listing.listingId])).rows[0];
+    assert.equal([row.contact_phone, row.contact_name, row.sale_policy].includes(null), breach, label);
+  }
 });
 
 test('overlay mutant probe is not vacuous: the second building is CRM-allowed and only the saved overlay excludes it', { timeout: 90000 }, async t => {
