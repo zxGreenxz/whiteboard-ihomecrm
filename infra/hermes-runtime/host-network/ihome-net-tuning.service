@@ -1,0 +1,15 @@
+[Unit]
+Description=iHome: MSS clamp 1452 cho eth0.209 (PMTU 1492) va bat tcp_mtu_probing
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/sysctl -w net.ipv4.tcp_mtu_probing=1
+ExecStart=/bin/sh -c 'iptables -t mangle -C POSTROUTING -o eth0.209 -p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1453:65535 -j TCPMSS --set-mss 1452 2>/dev/null || iptables -t mangle -A POSTROUTING -o eth0.209 -p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1453:65535 -j TCPMSS --set-mss 1452'
+ExecStop=/bin/sh -c 'while iptables -t mangle -D POSTROUTING -o eth0.209 -p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1453:65535 -j TCPMSS --set-mss 1452 2>/dev/null; do :; done'
+ExecStop=/usr/sbin/sysctl -w net.ipv4.tcp_mtu_probing=0
+
+[Install]
+WantedBy=multi-user.target

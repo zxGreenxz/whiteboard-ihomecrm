@@ -53,7 +53,7 @@ Trên máy chạy Hermes, dùng profile riêng của user. Nếu đã có profil
 
 ```sh
 hermes profile create my-assistant
-hermes --profile my-assistant mcp add ihomecrm --url "https://hermes-crm.example.com/mcp" --auth header --connect-timeout 5
+hermes --profile my-assistant mcp add ihomecrm --url "https://hermes-crm.example.com/mcp" --auth header --connect-timeout 30
 hermes --profile my-assistant mcp test ihomecrm
 ```
 
@@ -66,12 +66,16 @@ mcp_servers:
     transport: http
     headers:
       Authorization: Bearer ${MCP_IHOMECRM_API_KEY}
-    connect_timeout: 5
+    connect_timeout: 30
     timeout: 30
     enabled: true
 ```
 
+`connect_timeout` bao cả bắt tay MCP (`initialize` → `notifications/initialized` → `tools/list`); mỗi bước connector đều xác minh kết nối với Supabase, đo thật 3–8 s tổng. Đặt 5 s làm Hermes huỷ kết nối (`CancelledError`) và khởi động không có công cụ CRM.
+
 Các option/secret interpolation/profile này được đối chiếu source Hermes v0.21.6, commit `818c13be1dc4fd28987e1e881a9408224afd4535`. Đây là phiên bản tương thích để kiểm, không buộc user ngừng cập nhật engine. Không ghi đè model, tools, skills hoặc memory đang có. Hermes gốc xử lý lỗi từng MCP server; CRM lỗi không phải điều kiện dừng personal startup. Chưa xác minh hội thoại model thật trong môi trường triển khai.
+
+Khi Hermes chạy cùng host với connector (sidecar Docker), không gọi `/mcp` qua tên miền công khai: đường vòng qua tunnel từng làm bắt tay TLS treo 30 s mỗi lần. Dùng cửa nội bộ `http://172.17.0.1:8740/mcp` theo [host-network](../hermes-runtime/host-network/README.md) và thêm `"172.17.0.1:8740"` vào `http.allowedHosts`; lưu lượng không rời host nên không cần TLS. Đường HTTPS công khai giữ cho web CRM và Hermes ở máy khác.
 
 Khi đổi token, thu hồi kết nối cũ rồi cấu hình mã mới và kết nối lại MCP trong profile; transport HTTP có thể giữ header cũ tới lúc reconnect. Không giả định đổi file secret tự thay header của transport đang chạy. Thu hồi chỉ ngắt CRM; profile cá nhân giữ nguyên.
 

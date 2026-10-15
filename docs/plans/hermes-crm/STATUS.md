@@ -4,6 +4,11 @@
 
 **Đọc phần này trước.** Phiên Codex sáng 15/10 (mục cuối phần bàn giao) là snapshot trước đó. Toàn P0–P11 vẫn chưa hoàn tất; dưới đây là những gì đã ĐO/LÀM THẬT.
 
+**Tối ưu tốc độ đợt 1 (16/10, 00:19–01:10):** chi tiết và số đo ở [TOI-UU-TOC-DO-DOT1](TOI-UU-TOC-DO-DOT1.md#0-kết-quả-thực-hiện-16102026).
+- Hermes gọi 9router/connector qua cửa nội bộ `172.17.0.1` (không vòng Cloudflare — nguyên nhân câu hỏi 73,8 s tối 15/10); tắt `tool_search`; `context_length 272000`; giữ ấm 4 giờ; RAM sidecar 900m; MSS clamp 1452; PR #175 poll Zalo 0,25 s.
+- `connect_timeout` MCP phải ≥ 30 s (đặt 5 làm mất CRM lúc khởi động). Cấu hình cũ sao lưu ở VPS `/root/ihome-perf/backup-20261015-1719/`.
+- **Còn mở:** model `cx/gpt-6-sol` thỉnh thoảng sinh tham số tool-call vô tận (1,5 MB/4,5 phút), bộ phát hiện treo không cắt vì chunk vẫn chảy, 9router bỏ qua giới hạn output với codex — chờ chủ chọn cách chặn. Khảo sát model: [MODEL-SURVEY](MODEL-SURVEY.md).
+
 **Nghiệm thu thật tối 15/10 (22:40):**
 - **Mốc A (nhắn riêng hỏi phòng) ĐẠT trên production:** nick chính → bot Ihome → Hermes → connector → CRM → trả Zalo. 20:52 hỏi "còn phòng trống nào" → trả 4 phòng sau 20 s, đúng danh sách canonical (`copilot_available_rooms_v1`/`room_sale_workflow_fact_v1`; phòng `158PVC/502` có `status=AVAILABLE` nhưng sale fact RENTED — lệch dữ liệu CRM, không phải lỗi Hermes, cần chủ kiểm phòng này).
 - **Mốc B canary (gửi nhóm) ĐẠT:** 22:36 "gửi bản tin phòng trống theo mẫu CRM vào nhóm Web nội bộ" → đúng 1 tin từ bot Ihome (`zalo_send_queue` có `hermes_group_dispatch`, `sent`), Hermes báo lại trạng thái từ CRM. Trước đó "chỉ soạn" trả nháp không gửi; khi mẫu CRM khác bản nháp tự do Hermes hỏi lại chứ không tự gửi (đúng D15/Z04).

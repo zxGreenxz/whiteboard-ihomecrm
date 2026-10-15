@@ -1,0 +1,12 @@
+[Unit]
+Description=iHome: proxy cua noi bo Docker -> connector (127.0.0.1:8740)
+Requires=ihome-docker-connector.socket
+After=ihome-docker-connector.socket hermes-connector.service
+
+[Service]
+ExecStart=/lib/systemd/systemd-socket-proxyd --connections-max=64 127.0.0.1:8740
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

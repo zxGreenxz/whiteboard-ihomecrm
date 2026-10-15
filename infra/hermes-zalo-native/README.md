@@ -161,6 +161,7 @@ WORKER_CONTAINER_ID="$(docker container inspect --format '{{.Id}}' ihome-zalo-wo
 docker run -d --name hermes-my-assistant \
   --network "container:$WORKER_CONTAINER_ID" \
   --user 10003:10003 --init --restart unless-stopped \
+  --memory 900m --memory-swap 1800m --cpus 1 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --tmpfs /tmp:rw,nosuid,nodev,size=64m,uid=10003,gid=10003,mode=0700 \
   --env HOME=/home/hermes \
@@ -171,6 +172,8 @@ docker run -d --name hermes-my-assistant \
 ```
 
 Sau khi tạo, kiểm `docker exec hermes-my-assistant printenv HERMES_HOME HERMES_WRITE_SAFE_ROOT` ra đúng hai giá trị trên và `docker container inspect --format '{{json .Mounts}}' hermes-my-assistant` chỉ có bind `$PROFILE_HOME` (không có volume ẩn danh `/opt/data` được dùng làm profile). Muốn cho công cụ ghi rộng hơn trong home thì chỉ nới `HERMES_WRITE_SAFE_ROOT` tới `/home/hermes`, không bao giờ tới `/`. Các biến này đối chiếu source Hermes v0.21.6 commit `818c13be` (`hermes_constants.get_default_hermes_root`, `hermes_cli/profiles._get_profiles_root`, `agent/file_safety.py`, Dockerfile `ENV HERMES_HOME=/opt/data`); chưa kiểm lại trên VPS sau khi sửa.
+
+RAM 900 MB (đo 15/10: 547/700 MiB khi phiên dài) đủ cho agent cache giữ ấm 4 giờ; chỉ `docker restart` thì giữ giới hạn, tạo lại thì phải truyền lại. Khi 9router/connector chạy cùng host, cấu hình model và MCP của profile đi cửa nội bộ `172.17.0.1` theo [host-network](../hermes-runtime/host-network/README.md), không vòng qua tên miền công khai.
 
 Lần tạo lại cần dừng và remove đúng sidecar cũ trước khi dùng lại tên; không xóa `$PROFILE_HOME`. Không dùng `--network host`, `-p`/`--publish`, Docker socket, mount `native-config`, `native-state`, `sessions` hoặc `worker.env` vào sidecar. Token kênh được provision vào profile là credential riêng của kênh đó; CRM dùng connector token riêng với quyền user hiện tại ∩ Read/Action. Profile có thể gọi model/tools/memory upstream theo cấu hình cá nhân; bridge chỉ dùng phiên Zalo đã có của worker.
 

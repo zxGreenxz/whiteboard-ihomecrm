@@ -1,0 +1,12 @@
+[Unit]
+Description=iHome: proxy cua noi bo Docker -> 9router (127.0.0.1:20128)
+Requires=ihome-docker-9router.socket
+After=ihome-docker-9router.socket 9router.service
+
+[Service]
+ExecStart=/lib/systemd/systemd-socket-proxyd --connections-max=64 127.0.0.1:20128
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
