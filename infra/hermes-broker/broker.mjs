@@ -14,6 +14,7 @@ import { mayUseGroupTool } from './capability-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from './external-group-mount.mjs';
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
+import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -36,6 +37,16 @@ const ROOM_TOOL = Object.freeze({
   }, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
+// Original definitions by name: tools/list advertises advertisedTool(tool) and
+// tools/call shapes arguments against the original before any validator. Built
+// per broker, not at module load: external-group-mount imports this module back.
+function toolDefinitions() {
+  const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
+    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+  const byName = new Map(tools.map(tool => [tool.name, tool]));
+  if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
+  return byName;
+}
 // Per-connection admission. Both rates are sliding 60-second windows; tools/call
 // also counts against the request rate. timeoutMs bounds one whole invocation
 // (identify -> authority -> handler -> audit -> final check -> finalize).
@@ -253,6 +264,7 @@ export function createBroker({
   observe,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
+  const definitions = toolDefinitions();
   let injectedAuthority;
   if (authority !== undefined) {
     if (!authority || ['identifyConnection', 'resolve', 'checkUnchanged'].some((key) => typeof authority[key] !== 'function')) {
@@ -714,10 +726,13 @@ export function createBroker({
     async listTools(presentedToken) {
       return invoke(presentedToken, 'tools/list', (identity) => {
         const tools = grantedTools(identity);
-        return { tools: [...tools, ...(tools.some(startsCrmRequest) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => structuredClone(tool)) };
+        return { tools: [...tools, ...(tools.some(startsCrmRequest) ? [NEW_REQUEST_ID_TOOL] : [])].map(tool => advertisedTool(tool)) };
       }, undefined, external ? { authority: external.authority } : {});
     },
     async callTool(presentedToken, name, args) {
+      // Omitted/blank/nil-UUID placeholders of nullable fields become null per
+      // the original definition; an unknown name or non-object is left as is.
+      args = normalizeToolArguments(definitions.get(name), args);
       // No CRM read/write and no stored state, but the same token/authority,
       // per-connection tools/call quota, audit and post-audit authority check
       // as every tool: a revoked or expired connection never receives an id.
