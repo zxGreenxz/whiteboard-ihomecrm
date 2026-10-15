@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { setupFollow, u, USER, ORG, ASSIGNEE, OTHER, FOREIGN, CONNECTION, BUILDING, binding2 } from './task-follow-fixture.mjs';
 import { input as createInput } from './task-fixture.mjs';
+import { taskFollowInput } from './task-follow-contract.mjs';
 
 const md5 = value => createHash('md5').update(value).digest('hex');
 const list = (role, extra = {}) => ({ organizationId: ORG, role, assigneeUserId: null, status: 'open', limit: 20, offset: 0, ...extra });
@@ -61,6 +62,8 @@ test('task follow SQL: tracking, progress, cancel and standing reminders under l
     const team = await read(list('team', { assigneeUserId: OTHER }));
     assert.equal(team.items.length, 0);
     await assert.rejects(read(list('assigned_by_me', { assigneeUserId: OTHER })), /invalid/);
+    // 16/10 20:44Z: through the broker contract the ignored filter reaches SQL as null.
+    assert.deepEqual((await read(taskFollowInput('list', list('assigned_by_me', { assigneeUserId: OTHER })))).items.map(item => item.id), [J1]);
   });
 
   await t.test('progress by executor updates the CRM note through RLS and reports to the assigner (merged)', async () => {

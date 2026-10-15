@@ -50,8 +50,11 @@ export function taskFollowInput(operation, raw) {
   if (!domainExact(value, KEYS[operation]) || !domainId(value.organizationId)) fail();
   if (operation === 'list') {
     if (!['assigned_to_me', 'assigned_by_me', 'team'].includes(value.role) || !['open', 'completed', 'all'].includes(value.status) ||
-      !nullable(domainId)(value.assigneeUserId) || (value.assigneeUserId !== null && value.role !== 'team') ||
+      !(value.role === 'team' ? nullable(domainId)(value.assigneeUserId) : value.assigneeUserId === null || typeof value.assigneeUserId === 'string') ||
       !integer(value.limit, 1, 50) || !integer(value.offset, 0, 200)) fail();
+    // assigneeUserId only narrows role=team. Elsewhere any string (16/10 20:44Z:
+    // a real user id with assigned_by_me) is dropped to the null SQL requires.
+    if (value.role !== 'team') value.assigneeUserId = null;
   } else if (!domainId(value.requestId)) fail();
   if (operation === 'set' && (!domainId(value.jobId) || !text(value.objective, 500) || !nullable(v => integer(v, 0, 10080))(value.remindBeforeMinutes) ||
     typeof value.notifyAssigner !== 'boolean' || !nullable(domainId)(value.parentFollowId))) fail();
@@ -140,7 +143,7 @@ const tool = (name, description, properties, required, annotations) => Object.fr
   inputSchema: { type: 'object', additionalProperties: false, required, properties }, annotations });
 export const TASK_FOLLOW_TOOLS = Object.freeze([
   tool('crm_task_follow_list', 'Xem việc CRM giao cho tôi, tôi giao hoặc của nhóm (team) trong phạm vi quyền xem công việc hiện tại: trạng thái, người thực hiện, hạn, quá hạn, ghi chú tiến độ và mục tiêu theo dõi. Dữ liệu hiện hành lấy từ CRM, không dùng ký ức thay thế.',
-    { organizationId: company, role: { enum: ['assigned_to_me', 'assigned_by_me', 'team'] }, assigneeUserId: { ...nullableUuid, description: 'Chỉ dùng với role=team.' },
+    { organizationId: company, role: { enum: ['assigned_to_me', 'assigned_by_me', 'team'] }, assigneeUserId: { ...nullableUuid, description: 'Chỉ dùng với role=team; khác thì bỏ qua.' },
       status: { enum: ['open', 'completed', 'all'], default: 'open' }, limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
       offset: { type: 'integer', minimum: 0, maximum: 200, default: 0 } }, ['organizationId', 'role'],
     { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),

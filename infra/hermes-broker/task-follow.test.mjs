@@ -43,8 +43,9 @@ test('inputs: fixed shapes, explicit company, no actor/role override, bounded si
     { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'Theo dõi', remindBeforeMinutes: null, notifyAssigner: true, parentFollowId: null });
   assert.equal(taskFollowInput('progress', { organizationId: ORG, requestId: REQ, jobId: JOB, note: 'Dòng 1\nDòng 2', expectedNoteDigest: 'a'.repeat(32) }).note, 'Dòng 1\nDòng 2');
   for (const [operation, value] of [
-    ['list', { role: 'team' }], ['list', { organizationId: ORG, role: 'assigned_to_me', assigneeUserId: OTHER }],
+    ['list', { role: 'team' }], ['list', { organizationId: ORG, role: 'team', assigneeUserId: 'Người làm' }],
     ['list', { organizationId: ORG, role: 'team', userId: OTHER }], ['list', { organizationId: ORG, role: 'all' }],
+    ...[7, 0, true, {}, [], [OTHER], undefined].map(assigneeUserId => ['list', { organizationId: ORG, role: 'assigned_by_me', assigneeUserId }]),
     ['set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'a\nb' }],
     ['set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'hc_' + 'A'.repeat(43) }],
     ['set', { organizationId: ORG, requestId: REQ, jobId: JOB, objective: 'x', assignerUserId: OTHER }],
@@ -53,6 +54,23 @@ test('inputs: fixed shapes, explicit company, no actor/role override, bounded si
     ['progress', { organizationId: ORG, requestId: REQ, jobId: JOB, note: ' lề', expectedNoteDigest: 'a'.repeat(32) }],
     ['cancel', { organizationId: ORG, requestId: REQ, jobId: JOB, reason: '' }], ['cancel', { organizationId: ORG, requestId: 'x', jobId: JOB, reason: 'r' }],
   ]) assert.throws(() => taskFollowInput(operation, value), /invalid_task_follow/, JSON.stringify(value));
+});
+
+test('16/10 20:44Z: assigneeUserId outside role=team is ignored (string/null -> null), never widened for team', () => {
+  // Exact incident shape: a real user id with assigned_by_me was rejected three times.
+  const incident = { organizationId: ORG, role: 'assigned_by_me', assigneeUserId: OTHER, status: 'open', limit: 20, offset: 0 };
+  assert.deepEqual(taskFollowInput('list', incident), { ...incident, assigneeUserId: null });
+  for (const role of ['assigned_to_me', 'assigned_by_me'])
+    for (const assigneeUserId of [ME, OTHER, '', 'Người làm', null])
+      assert.equal(taskFollowInput('list', { organizationId: ORG, role, assigneeUserId }).assigneeUserId, null, `${role} ${assigneeUserId}`);
+  assert.equal(taskFollowInput('list', { organizationId: ORG, role: 'team', assigneeUserId: OTHER }).assigneeUserId, OTHER, 'team keeps the filter');
+  assert.equal(taskFollowInput('list', { organizationId: ORG, role: 'team' }).assigneeUserId, null);
+  // The result fence follows the normalized input: assigned_by_me items for any assignee are valid.
+  const input = taskFollowInput('list', incident);
+  const page = { organizationId: ORG, role: 'assigned_by_me', status: 'open', readAt: '2026-10-15T01:00:00.000Z', items: [item({ assigneeId: ME })], offset: 0, nextOffset: null };
+  assert.deepEqual(taskFollowResult('list', page, identity, input), page);
+  const team = taskFollowInput('list', { organizationId: ORG, role: 'team', assigneeUserId: OTHER });
+  assert.throws(() => taskFollowResult('list', { ...page, role: 'team', items: [item({ assigneeId: ME })] }, identity, team), /invalid_task_follow/);
 });
 
 test('results: scope, role, party and echo checks fail closed', () => {
