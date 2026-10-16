@@ -7,6 +7,7 @@ After=ihome-docker-9router.socket 9router.service
 ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-llm-guard/llm-stream-guard.mjs
 Environment=GUARD_UPSTREAM=http://127.0.0.1:20128
 Restart=on-failure
+RestartSec=3
 DynamicUser=yes
 NoNewPrivileges=yes
 PrivateTmp=yes

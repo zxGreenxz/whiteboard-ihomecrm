@@ -15,6 +15,8 @@ Các file ở đây là bản cho VPS Minh; tên giao diện `docker0`, `eth0.20
 ## Cài
 
 ```sh
+# guard chạy bằng DynamicUser: mọi thư mục cha của node phải cho người lạ đi qua (o+x)
+systemd-run --wait --pipe -p DynamicUser=yes -p ProtectSystem=strict -p ProtectHome=yes /opt/ihome-hermes/node/bin/node -v
 install -d -m 755 /opt/ihome-llm-guard
 install -m 644 llm-stream-guard.mjs /opt/ihome-llm-guard/
 install -m 644 ihome-docker-*.socket ihome-docker-*.service ihome-net-tuning.service /etc/systemd/system/
@@ -33,15 +35,15 @@ ss -ltnp | grep -E '172.17.0.1%docker0:(20128|8740)'
 
 **Chuyển tiếp.** Guard chuyển nguyên method, path, query, header (gồm `Authorization`, `Host`) và body theo luồng, không đệm request hay response; chỉ header hop-by-hop (`Connection`, `Transfer-Encoding`…) do Node tự quản ở mỗi chặng. Riêng `POST /v1/chat/completions` bỏ `Accept-Encoding` để SSE không bị nén (chặng loopback không cần nén); nếu upstream vẫn nén, luồng đi qua không kiểm và ghi `llm_stream_guard_skip`. Client bỏ ngang thì request upstream bị huỷ; upstream trả lỗi thì status/header/body đi nguyên; upstream đứt giữa chừng thì client cũng thấy đứt; không kết nối được upstream thì trả 502 JSON (`type: upstream_unavailable`) và ghi `llm_stream_guard_upstream_error`.
 
-**Quy tắc cắt.** Chỉ đọc response `text/event-stream` của `POST /v1/chat/completions`, tách SSE theo dòng qua mọi biên TCP; dòng không phải JSON, chú thích hay `[DONE]` đều đi qua, lỗi phân tích không bao giờ làm hỏng luồng. Đếm cho từng tool call (theo `index`) tổng số ký tự `function.arguments`:
+**Quy tắc cắt.** Chỉ đọc response `text/event-stream` không nén của `POST /v1/chat/completions` (so đúng path; path khác như có `/` cuối thì đi qua không kiểm), tách SSE theo dòng `\n`/`\r\n` qua mọi biên TCP; mỗi dòng `data:` là một sự kiện (chunk OpenAI là JSON một dòng). Dòng không phải JSON, chú thích hay `[DONE]` đều đi qua, lỗi phân tích không bao giờ làm hỏng luồng; mọi trường hợp không đọc được đều để luồng đi qua chứ không cắt. Đếm cho từng tool call (theo `index`; `id` mới ở cùng index là call mới) tổng số ký tự `function.arguments`:
 
 | `reason` | Điều kiện | Mặc định (env) | Đơn vị `limit` |
 | --- | --- | --- | --- |
 | `tool_args` | `arguments` của một tool call vượt giới hạn | `GUARD_ARGS_MAX=8192`; tool trong `GUARD_LARGE_TOOLS` dùng `GUARD_LARGE_ARGS_MAX=131072` | ký tự |
-| `wall_clock` | Cả lượt stream quá thời gian, tính từ lúc guard nhận request | `GUARD_MAX_STREAM_SECONDS=300` | ms |
+| `wall_clock` | Cả lượt stream quá thời gian, tính từ lúc guard nhận request; hẹn giờ đặt khi upstream trả header (treo trước header do stale timeout của Hermes lo) | `GUARD_MAX_STREAM_SECONDS=300` | ms |
 | `events` | Quá số dòng `data:` | `GUARD_MAX_EVENTS=40000` | sự kiện |
 
-`GUARD_LARGE_TOOLS` (phân tách bằng dấu phẩy, **thay hẳn** danh sách mặc định) mặc định là các tool hợp lệ gửi arguments lớn: `write_file, patch, skill_manage, execute_code, terminal, memory, delegate_task, mcp__ihomecrm__crm_room_pass_upsert` (SKILL.md ≈3 KB+, heredoc, tin đăng dán vào…). Tool hợp lệ khác mà arguments vượt 8 KB sẽ bị cắt mỗi lượt: thêm tên nó vào danh sách bằng `systemctl edit ihome-docker-9router.service` (`[Service]` → `Environment=GUARD_LARGE_TOOLS=…`) rồi restart. Giá trị env sai làm guard thoát ngay (systemd báo failed), không chạy với giới hạn đoán.
+`GUARD_LARGE_TOOLS` (phân tách bằng dấu phẩy, **thay hẳn** danh sách mặc định) mặc định là các tool hợp lệ gửi arguments lớn: `write_file, patch, skill_manage, execute_code, terminal, memory, delegate_task, mcp__ihomecrm__crm_room_pass_upsert` (SKILL.md ≈3 KB+, heredoc, tin đăng dán vào…). Tool hợp lệ khác mà arguments vượt 8 KB sẽ bị cắt mỗi lượt: thêm tên nó vào danh sách bằng `systemctl edit ihome-docker-9router.service` (`[Service]` → `Environment=GUARD_LARGE_TOOLS=…`) rồi restart. Giá trị env sai làm guard thoát ngay (mã 1, lý do ở journal), không chạy với giới hạn đoán; systemd khởi động lại mỗi 3 s, và nếu chạm giới hạn khởi động (`service-start-limit-hit`) thì socket cũng failed, cổng 20128 ngừng nghe. Sửa env xong: `systemctl daemon-reload && systemctl reset-failed ihome-docker-9router.service ihome-docker-9router.socket && systemctl restart ihome-docker-9router.socket ihome-docker-9router.service`.
 
 **Khi cắt.** Guard không chuyển mảnh TCP chứa vi phạm, huỷ request upstream (9router thấy client rời đi, ngừng tiêu quota) và đóng socket client giữa body chunked. Hermes coi đó là stream drop và tự thử lại (`Stream drop on attempt 1/3 — retrying`); replay A/B cho thấy thoái hoá ở ~24% lượt gọi đầu nên lượt thử lại thường đạt. Mỗi lần cắt ghi đúng một dòng JSON ra stdout (journald), không bao giờ ghi arguments, nội dung, header hay khoá:
 
@@ -49,7 +51,7 @@ ss -ltnp | grep -E '172.17.0.1%docker0:(20128|8740)'
 {"event":"llm_stream_guard_cut","reason":"tool_args","tool":"skill_view","argsChars":8200,"limit":8192,"elapsedMs":2140,"events":96,"model":"gpt-6-luna"}
 ```
 
-`tool`/`argsChars` của `wall_clock` và `events` là tool call dài nhất đã thấy; `model` lấy từ chunk đầu. Theo dõi: `journalctl -u ihome-docker-9router.service -g llm_stream_guard`. Dòng `llm_stream_guard_start` lúc khởi động ghi giới hạn đang hiệu lực.
+`tool`/`argsChars` của `wall_clock` và `events` là tool call dài nhất đã thấy; `model` lấy từ chunk đầu. Theo dõi: `journalctl -u ihome-docker-9router.service -g llm_stream_guard`. Dòng `llm_stream_guard_start` lúc khởi động ghi giới hạn đang hiệu lực; `llm_stream_guard_drop` khi vượt 64 kết nối đồng thời (như `--connections-max=64` cũ), `llm_stream_guard_server_error` khi accept lỗi (vd. EMFILE).
 
 **Vận hành.** systemd giữ socket `172.17.0.1:20128` và trao fd 3 cho Node (`LISTEN_FDS`/`LISTEN_PID`); libuv tự bật `O_NONBLOCK` khi mở fd nên socket không cần `NonBlocking=true`. Restart service không nhả cổng: kết nối mới chờ trong backlog. SIGTERM: ngừng nhận kết nối, chờ luồng đang chạy tối đa 10 s rồi cắt phần còn lại (Hermes thử lại). Chạy tay để thử: `node llm-stream-guard.mjs --listen 127.0.0.1:20129`. Test: `node --test llm-stream-guard.test.mjs`.
 

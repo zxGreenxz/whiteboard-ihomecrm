@@ -39,9 +39,16 @@ export function loadConfig(env = process.env) {
     argsMax: positiveNumber(env, 'GUARD_ARGS_MAX', 8192),
     largeArgsMax: positiveNumber(env, 'GUARD_LARGE_ARGS_MAX', 131_072),
     largeTools: new Set(tools),
-    maxStreamMs: Math.round(positiveNumber(env, 'GUARD_MAX_STREAM_SECONDS', 300, false) * 1000),
+    maxStreamMs: streamMs(positiveNumber(env, 'GUARD_MAX_STREAM_SECONDS', 300, false)),
     maxEvents: positiveNumber(env, 'GUARD_MAX_EVENTS', 40_000),
   };
+}
+
+// setTimeout chỉ nhận 1 ms … 2^31-1 ms; ngoài khoảng đó Node đặt 1 ms và mọi luồng bị cắt ngay.
+function streamMs(seconds) {
+  const ms = Math.round(seconds * 1000);
+  if (ms < 1 || ms > 2 ** 31 - 1) throw new Error('GUARD_MAX_STREAM_SECONDS phải trong khoảng 0,001…2147483');
+  return ms;
 }
 
 // Tên tool/model do model sinh ra: chỉ giữ ký tự an toàn cho log, tối đa 100 ký tự.
@@ -93,8 +100,15 @@ export function createStreamInspector({ argsMax, largeArgsMax, largeTools, maxEv
 
   return {
     push(bytes) {
-      const lines = (tail + decoder.write(bytes)).split('\n');
-      tail = lines.pop();
+      const text = decoder.write(bytes);
+      const end = text.lastIndexOf('\n');
+      if (end === -1) { // chưa hết dòng: chỉ nối thêm, không quét lại phần đã giữ
+        tail += text;
+        if (tail.length > MAX_LINE_CHARS) { tail = ''; skipping = true; }
+        return null;
+      }
+      const lines = (tail + text.slice(0, end)).split('\n');
+      tail = text.slice(end + 1);
       for (const line of lines) {
         if (skipping) { skipping = false; continue; }
         const violation = onLine(line.endsWith('\r') ? line.slice(0, -1) : line);
@@ -123,7 +137,9 @@ function forwardHeaders(source, close = false) {
 
 export function createGuard(config, { log = line => process.stdout.write(`${line}\n`) } = {}) {
   const emit = record => log(JSON.stringify(record));
-  const agent = new http.Agent({ keepAlive: true }); // socket rảnh tự hết hạn theo header Keep-Alive của upstream
+  // Socket rảnh trong pool đóng sau 4 s, trước keep-alive 5 s mặc định của server Node phía upstream.
+  // Với socket đang chạy, timeout của agent chỉ phát sự kiện 'timeout' (không ai nghe), không cắt luồng SSE im lặng.
+  const agent = new http.Agent({ keepAlive: true, timeout: 4_000 });
   const upstreamHost = config.upstream.hostname.replace(/^\[|\]$/g, '');
   const upstreamPort = Number(config.upstream.port) || 80;
   const basePath = config.upstream.pathname.replace(/\/+$/, '');
@@ -169,8 +185,9 @@ export function createGuard(config, { log = line => process.stdout.write(`${line
         cut = true;
         clearTimeout(timer);
         const seen = inspector.summary();
-        emit({ event: 'llm_stream_guard_cut', reason: violation.reason, tool: violation.tool ?? seen.tool,
-          argsChars: violation.argsChars ?? seen.argsChars, limit: violation.limit,
+        const own = violation.reason === 'tool_args'; // đúng call vi phạm, kể cả khi call chưa có tên
+        emit({ event: 'llm_stream_guard_cut', reason: violation.reason, tool: own ? violation.tool : seen.tool,
+          argsChars: own ? violation.argsChars : seen.argsChars, limit: violation.limit,
           elapsedMs: Date.now() - startedAt, events: seen.events, model: seen.model });
         upReq.destroy(); // 9router thấy client rời đi, ngừng gọi backend
         res.destroy(); // client nhận chunked dở dang = stream drop, Hermes tự thử lại
@@ -203,6 +220,8 @@ export function createGuard(config, { log = line => process.stdout.write(`${line
   server.keepAliveTimeout = 65_000; // lâu hơn keep-alive 5 s của httpx để client luôn đóng trước
   server.headersTimeout = 66_000;
   server.maxConnections = 64; // như --connections-max=64 của systemd-socket-proxyd cũ
+  server.on('drop', () => emit({ event: 'llm_stream_guard_drop', maxConnections: server.maxConnections }));
+  server.on('error', error => emit({ event: 'llm_stream_guard_server_error', code: error.code ?? 'unknown' })); // vd. EMFILE khi accept
 
   return {
     server,
@@ -227,7 +246,7 @@ export function createGuard(config, { log = line => process.stdout.write(`${line
   };
 }
 
-function listenTarget(env, args) {
+export function listenTarget(env, args) {
   if (env.LISTEN_FDS && Number(env.LISTEN_PID) === process.pid) {
     if (env.LISTEN_FDS !== '1') throw new Error('cần đúng một socket từ systemd (LISTEN_FDS=1)');
     return { fd: 3 }; // SD_LISTEN_FDS_START; libuv tự đặt O_NONBLOCK khi mở fd
@@ -253,7 +272,11 @@ async function main() {
   process.once('SIGINT', shutdown);
 }
 
-// So realpath: chạy qua symlink vẫn khởi động (import.meta.url luôn là đường thật).
-if (process.argv[1] && realpathSync(path.resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
+// So realpath: chạy qua symlink vẫn khởi động (import.meta.url luôn là đường thật); bị import thì không chạy.
+function isMain() {
+  try { return realpathSync(path.resolve(process.argv[1] ?? '')) === fileURLToPath(import.meta.url); } catch { return false; }
+}
+
+if (isMain()) {
   main().catch(error => { console.error(`llm-stream-guard: ${error.message}`); process.exit(1); });
 }

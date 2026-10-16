@@ -4,7 +4,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createGuard, createStreamInspector, loadConfig, DEFAULT_LARGE_TOOLS } from './llm-stream-guard.mjs';
+import { createGuard, createStreamInspector, loadConfig, listenTarget, DEFAULT_LARGE_TOOLS } from './llm-stream-guard.mjs';
 
 const GUARD_FILE = fileURLToPath(new URL('./llm-stream-guard.mjs', import.meta.url));
 const MODEL = 'gpt-6-luna';
@@ -53,7 +53,7 @@ async function setup(t, handler, overrides = {}) {
     upstream.closeAllConnections();
     await new Promise(done => upstream.close(done));
   });
-  return { port, logs, calls, written: () => Buffer.concat(written).toString() };
+  return { port, logs, calls, guard, written: () => Buffer.concat(written).toString() };
 }
 
 function send(port, { method = 'POST', path = '/v1/chat/completions', body = '{"model":"gpt-6-luna","stream":true}',
@@ -92,8 +92,23 @@ test('luồng SSE bình thường đi qua nguyên byte, gồm [DONE]; header Aut
   assert.equal(reply.headers['content-type'], 'text/event-stream');
   assert.equal(f.calls[0].body, requestBody);
   assert.equal(f.calls[0].headers.authorization, 'Bearer sk-test-secret');
+  assert.equal(f.calls[0].headers.host, `127.0.0.1:${f.port}`, 'Host của client đi nguyên như socket-proxyd cũ');
   assert.equal(f.calls[0].headers['accept-encoding'], undefined, 'SSE cần đọc được nên không xin nén');
   assert.deepEqual(f.logs, []);
+});
+
+test('SSE đã nén thì đi qua không kiểm và ghi skip; POST khác giữ Accept-Encoding', async t => {
+  const f = await setup(t, (req, res) => {
+    if (req.url === '/v1/embeddings') { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); return; }
+    res.writeHead(200, { ...SSE_HEADERS, 'content-encoding': 'gzip' });
+    res.end(Buffer.from([0x1f, 0x8b, 0x08, 0x00]));
+  });
+  const reply = await send(f.port, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(reply.complete, true);
+  assert.deepEqual([...reply.body], [0x1f, 0x8b, 0x08, 0x00]);
+  assert.deepEqual(f.logs.map(line => JSON.parse(line)), [{ event: 'llm_stream_guard_skip', reason: 'content_encoding' }]);
+  await send(f.port, { path: '/v1/embeddings', headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(f.calls[1].headers['accept-encoding'], 'gzip');
 });
 
 test('tool nhỏ sinh arguments không dứt: cắt trước khi chuyển quá giới hạn, huỷ upstream, một dòng log không chứa nội dung', async t => {
@@ -307,6 +322,43 @@ test('cấu hình từ env: mặc định, ghi đè và giá trị sai', () => {
   assert.throws(() => loadConfig({ GUARD_ARGS_MAX: '-1' }), /GUARD_ARGS_MAX/);
   assert.throws(() => loadConfig({ GUARD_MAX_EVENTS: '1.5' }), /GUARD_MAX_EVENTS/);
   assert.throws(() => loadConfig({ GUARD_UPSTREAM: 'https://127.0.0.1:20128' }), /http/);
+  assert.throws(() => loadConfig({ GUARD_MAX_STREAM_SECONDS: '0.0001' }), /GUARD_MAX_STREAM_SECONDS/);
+  assert.throws(() => loadConfig({ GUARD_MAX_STREAM_SECONDS: '3000000' }), /GUARD_MAX_STREAM_SECONDS/);
+});
+
+test('chọn cửa nghe: fd 3 chỉ khi LISTEN_PID đúng pid, còn lại cần --listen', () => {
+  const pid = String(process.pid);
+  assert.deepEqual(listenTarget({ LISTEN_FDS: '1', LISTEN_PID: pid }, []), { fd: 3 });
+  assert.throws(() => listenTarget({ LISTEN_FDS: '2', LISTEN_PID: pid }, []), /LISTEN_FDS=1/);
+  assert.throws(() => listenTarget({ LISTEN_FDS: '1', LISTEN_PID: '1' }, []), /--listen/);
+  assert.deepEqual(listenTarget({}, ['--listen', '127.0.0.1:20129']), { host: '127.0.0.1', port: 20129 });
+  assert.deepEqual(listenTarget({}, ['--listen', '[::1]:8080']), { host: '::1', port: 8080 });
+});
+
+test('choices index khác 0 và function_call kiểu cũ cũng được đếm', () => {
+  const inspector = createStreamInspector(loadConfig({}));
+  const legacy = event({ choices: [{ index: 1, delta: { function_call: { name: 'skill_view', arguments: 'x'.repeat(8000) } } }] });
+  assert.equal(inspector.push(Buffer.from(legacy)), null);
+  const more = event({ choices: [{ index: 1, delta: { function_call: { arguments: 'y'.repeat(300) } } }] });
+  assert.deepEqual(inspector.push(Buffer.from(more)), { reason: 'tool_args', tool: 'skill_view', argsChars: 8300, limit: 8192 });
+});
+
+test('dừng êm: luồng xong trong hạn đi trọn, luồng dài bị cắt khi hết hạn và upstream bị huỷ', async t => {
+  const f = await setup(t, async (req, res) => {
+    res.writeHead(200, SSE_HEADERS);
+    if (req.url.includes('short')) { await sleep(30); res.end(content('xong') + 'data: [DONE]\n\n'); return; }
+    while (!res.destroyed) { res.write(content('x')); await sleep(10); }
+  });
+  let stopped;
+  const long = send(f.port, { onData: () => { stopped ??= f.guard.close(150); } });
+  const short = send(f.port, { path: '/v1/chat/completions?short=1' });
+  const started = Date.now();
+  const [longReply, shortReply] = await Promise.all([long, short]);
+  await stopped;
+  assert.equal(shortReply.complete, true);
+  assert.equal(longReply.complete, false);
+  assert.ok(Date.now() - started >= 100, 'luồng dài phải được chờ gần hết hạn');
+  await within(f.calls[0].closed, 2000, 'upstream của luồng dài không bị huỷ');
 });
 
 test('socket activation: nhận fd 3 từ systemd và thoát 0 khi SIGTERM', { skip: process.platform === 'win32' && 'cần /bin/sh và truyền fd kiểu POSIX' }, async t => {
@@ -315,12 +367,15 @@ test('socket activation: nhận fd 3 từ systemd và thoát 0 khi SIGTERM', { s
   t.after(() => { upstream.closeAllConnections(); upstream.close(); });
   const listener = net.createServer();
   await new Promise(done => listener.listen(0, '127.0.0.1', done));
+  t.after(() => listener.close());
   const { port } = listener.address();
   // Giống systemd: fd 3 là socket đang nghe, LISTEN_PID là pid của chính tiến trình node (exec giữ pid).
+  // Truyền số fd (kiểu 'fd'); truyền thẳng net.Server làm spawn gọi pause() không tồn tại.
   const child = spawn('/bin/sh', ['-c', 'export LISTEN_PID=$$ LISTEN_FDS=1; exec "$0" "$@"', process.execPath, GUARD_FILE], {
-    stdio: ['ignore', 'pipe', 'pipe', listener], env: { ...process.env, GUARD_UPSTREAM: `http://127.0.0.1:${upstream.address().port}` } });
-  listener.close();
+    stdio: ['ignore', 'pipe', 'pipe', listener._handle.fd],
+    env: { ...process.env, GUARD_UPSTREAM: `http://127.0.0.1:${upstream.address().port}` } });
   t.after(() => child.kill('SIGKILL'));
+  listener.close(); // tiến trình test bỏ bản sao fd của mình; con giữ socket đang nghe
   const exited = new Promise(done => child.on('exit', code => done(code)));
   let stdout = '', stderr = '';
   child.stderr.on('data', part => { stderr += part; });
