@@ -76,7 +76,8 @@ export default function BroadcastDialog({ open, onOpenChange, conversations, lab
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <LabelFilter labels={labels} selectedLabel={labelFilter} onSelect={setLabelFilter} />
+          {/* modal: nằm trong Dialog — không thì khoá cuộn của Dialog nuốt cuộn danh sách nhãn. */}
+          <LabelFilter labels={labels} selectedLabel={labelFilter} onSelect={setLabelFilter} modal />
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: '1 1 160px', minWidth: 0, height: 34, padding: '0 10px', background: 'hsl(210 20% 96%)', borderRadius: 8, color: 'hsl(210 10% 50%)' }}>
             <Search size={14} />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm hội thoại…" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />

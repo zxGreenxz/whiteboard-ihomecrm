@@ -55,6 +55,9 @@ interface Props {
 
 type Tab = 'broadcast' | 'reply' | 'nhatky';
 
+const NHAN_TAB = 'min-w-0 whitespace-normal px-2 text-center text-xs leading-tight sm:px-3 sm:text-sm';
+const ICON_TAB = 'mr-2 hidden h-4 w-4 shrink-0 sm:inline-block';
+
 export default function AutomationSettingsDialog({ open, onOpenChange, conversations, labels }: Props) {
   const configQuery = useZaloAutomationConfigs(open);
   const { data, isLoading } = configQuery;
@@ -150,7 +153,10 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-[880px]">
+      {/* grid-cols-[minmax(0,1fr)]: cột duy nhất của DialogContent không được nở
+          theo bề rộng tự nhiên của nội dung — hàng tab nowrap từng đẩy hộp lên
+          542px ở khổ 390 và tràn ngang cả hộp. */}
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[880px] grid-cols-[minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle>Cài đặt tự động hoá Zalo</DialogTitle>
           <DialogDescription>
@@ -165,15 +171,17 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
           <LoadingState label="cấu hình" variant="detail" rows={6} />
         ) : (
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="broadcast">
-                <Megaphone className="mr-2 h-4 w-4" />Gửi phòng trống định kỳ
+            {/* Khổ hẹp: tab được xuống dòng (h-auto + whitespace-normal), ẩn icon và
+                chữ nhỏ lại thay vì giữ một dòng rồi tràn ngang. */}
+            <TabsList className="grid h-auto w-full grid-cols-3">
+              <TabsTrigger value="broadcast" className={NHAN_TAB}>
+                <Megaphone className={ICON_TAB} />Gửi phòng trống định kỳ
               </TabsTrigger>
-              <TabsTrigger value="reply">
-                <MessageSquareReply className="mr-2 h-4 w-4" />Tự động trả lời
+              <TabsTrigger value="reply" className={NHAN_TAB}>
+                <MessageSquareReply className={ICON_TAB} />Tự động trả lời
               </TabsTrigger>
-              <TabsTrigger value="nhatky">
-                <History className="mr-2 h-4 w-4" />Nhật ký
+              <TabsTrigger value="nhatky" className={NHAN_TAB}>
+                <History className={ICON_TAB} />Nhật ký
               </TabsTrigger>
             </TabsList>
 
