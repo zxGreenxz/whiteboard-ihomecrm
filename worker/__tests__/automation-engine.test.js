@@ -28,6 +28,10 @@ let workerLogs = [];
 let rpcFailureFor = () => null;
 let uploadError = null;
 let tableInputs = [];
+let oneshotClaims = [];
+let oneshotCalls = [];
+let oneshotClaimError = null;
+let locCapNhat = [];
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -38,7 +42,7 @@ function taoQuery(bang) {
     in: () => q,
     order: () => q,
     limit: () => q,
-    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    maybeSingle: () => Promise.resolve({ data: bang === 'zalo_automations' ? structuredClone(duLieuAutomations[0] ?? null) : null, error: null }),
     single: () => Promise.resolve({ data: null, error: null }),
     then: (res) => Promise.resolve(ketQua(ctx)).then(res),
   };
@@ -76,7 +80,24 @@ const sbGia = {
       hermesCalls.push({ name, args });
       return hermesProbe(args);
     }
-    if (name !== 'zalo_enqueue_broadcast_v1') throw new Error(`unexpected_fixture_rpc:${name}`);
+    if (name === 'zalo_worker_claim_oneshot_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_organization_ids']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+      oneshotCalls.push({ name, args });
+      if (oneshotClaimError) return { data: null, error: oneshotClaimError };
+      return { data: structuredClone(oneshotClaims.shift() ?? { status: 'none' }), error: null };
+    }
+    if (name === 'zalo_worker_finish_oneshot_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_ok', 'p_oneshot_id', 'p_result']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+      oneshotCalls.push({ name, args });
+      return { data: { ok: true, status: args.p_ok ? 'done' : 'failed' }, error: null };
+    }
+    if (name === 'zalo_enqueue_broadcast_oneshot_v1') {
+      expect(Object.keys(args).sort()).toEqual(['p_attachment', 'p_body', 'p_conversation_id', 'p_instance_id',
+        'p_not_before', 'p_oneshot_id', 'p_request_key']);
+      expect(args.p_instance_id).toBe(INSTANCE_ID);
+    } else if (name !== 'zalo_enqueue_broadcast_v1') throw new Error(`unexpected_fixture_rpc:${name}`);
     // Legacy assertions observe only its exact enqueue boundary. Hermes due
     // reads and runs have their own strict contract and never fabricate a send.
     rpcCalls.push({ name, args });
@@ -110,7 +131,12 @@ const sbGia = {
     }
     if (bang === 'zalo_automations') {
       const q = taoQuery(bang);
-      q.update = (patch) => ({ eq: () => { capNhatAutomations.push(patch); return Promise.resolve({ error: null }); } });
+      q.update = (patch) => {
+        const loc = [];
+        const u = { eq: (c, v) => { loc.push([c, v]); return u; },
+          then: (res, rej) => { capNhatAutomations.push(patch); locCapNhat.push(loc); return Promise.resolve({ error: null }).then(res, rej); } };
+        return u;
+      };
       return q;
     }
     return taoQuery(bang);
@@ -135,8 +161,9 @@ vi.mock('../lib/ctx.js', () => ({
 
 // Không gọi DB thật để lấy phòng, và không vẽ ảnh thật (chậm + cần font).
 const phongGia = [];
+let trangSaleGia = 1;
 vi.mock('../lib/vacant-rooms.js', () => ({
-  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', address: '12 Đường A, Phường B, Quận C', rooms: phongGia }], rooms: phongGia, hotline: '0900' }),
+  docPhongTrong: () => Promise.resolve({ buildings: [{ id: 'b1', address: '12 Đường A, Phường B, Quận C', rooms: phongGia }], rooms: phongGia, hotline: '0900', trangSale: trangSaleGia }),
 }));
 vi.mock('../lib/room-list-image.js', () => ({
   veAnhDanhSach: () => Promise.resolve(Buffer.from('png-gia')),
@@ -189,6 +216,7 @@ beforeEach(() => {
   rpcFailureFor = () => null;
   uploadError = null;
   tableInputs = [];
+  oneshotClaims = []; oneshotCalls = []; oneshotClaimError = null; trangSaleGia = 1; locCapNhat = [];
   duLieuConversations = [conv('c1'), conv('c2')];
   phienDangSong.clear();
   phienDangSong.set('acc-1', { api: {}, ownId: 'own' });
@@ -536,6 +564,8 @@ describe('engine broadcast — xếp hàng', () => {
   it('ĐÓNG SỔ ngày ngay cả khi bỏ lượt — không xét lại mỗi phút', async () => {
     datCauHinh({}, { lastRoomsHash: 'khac', knownRoomIds: ['r1', 'r2'] });
     await tickTuDongHoa();
+    // Sổ chỉ ghi khi dòng còn bật: sau dừng khẩn cấp, updated_at phải đứng yên ở mốc dừng.
+    expect(locCapNhat.at(-1)).toEqual([['id', 'auto-1'], ['enabled', true]]);
     const so = capNhatAutomations.at(-1)?.stats;
     expect(so.lastScheduledDate).toBe('2026-08-31');
     expect(so.sentToday).toBe(4);
@@ -547,5 +577,134 @@ describe('engine broadcast — xếp hàng', () => {
     await tickTuDongHoa();
     expect(daChen.queue).toHaveLength(0);
     expect(daChen.runs).toHaveLength(0);
+  });
+});
+
+/* ------------------------------------------------- lượt gửi MỘT LẦN (CRM/Hermes) */
+
+const SHOT = 'shot-1';
+const claimOf = (over = {}, config = {}, extra = {}) => ({
+  status: 'claimed', con_lai: 120,
+  oneshot: { id: SHOT, organization_id: 'org-1', recipients: ['c1', 'c2'], mode: 'full', origin: 'hermes',
+    status: 'running', attempts: 1, ...over },
+  config: { recipients: [], schedule: { time: '08:30', skipIfUnchanged: true },
+    template: { shareUrl: 'https://ptcrm.test/r/abc' },
+    antiSpam: { gapBetweenRecipientsSec: 180, gapBetweenRoomMsgsSec: 20, dailyCap: 120, maxRoomsPerRun: 5 }, ...config },
+  ...extra,
+});
+const finishCalls = () => oneshotCalls.filter(c => c.name === 'zalo_worker_finish_oneshot_v1');
+
+describe('engine broadcast — lượt gửi một lần', () => {
+  it('gửi ngay khi lịch định kỳ TẮT: mặc định ĐẦY ĐỦ (link + ảnh bảng + chi tiết từng phòng) qua cổng SQL của lượt', async () => {
+    duLieuAutomations = [];
+    oneshotClaims = [claimOf()];
+    await tickTuDongHoa(['org-1']);
+    expect(oneshotCalls[0]).toMatchObject({ name: 'zalo_worker_claim_oneshot_v1', args: { p_organization_ids: ['org-1'] } });
+    expect(rpcCalls).toHaveLength(8); // (link + ảnh bảng + 2 phòng) × 2 nhóm
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v1' && c.args.p_oneshot_id === SHOT)).toBe(true);
+    expect(rpcCalls.map(c => c.args.p_request_key).slice(0, 4)).toEqual([
+      `oneshot:${SHOT}:c1:link`, `oneshot:${SHOT}:c1:table_image`, `oneshot:${SHOT}:c1:room:r1`, `oneshot:${SHOT}:c1:room:r2`]);
+    expect(rpcCalls[0].args.p_body).toContain('https://ptcrm.test/r/abc');
+    // Same pacing as the schedule: 20 s between messages, 180 s between groups.
+    expect(rpcCalls.map(c => (Date.parse(c.args.p_not_before) - THU_HAI_0830.getTime()) / 1000)).toEqual([0, 20, 40, 60, 180, 200, 220, 240]);
+    expect(finishCalls()).toHaveLength(1);
+    expect(finishCalls()[0].args).toMatchObject({ p_oneshot_id: SHOT, p_ok: true, p_result: { so_tin: 8, so_nguoi_nhan: 2, che_do: 'full', partial: false } });
+    expect(daChen.runs[0]).toMatchObject({ mode: 'full', messages_count: 8, recipients_count: 2, detail: { oneshot_id: SHOT, luot_mot_lan: true } });
+  });
+
+  it('chế độ GỌN chỉ gửi link + ảnh bảng', async () => {
+    duLieuAutomations = [];
+    oneshotClaims = [claimOf({ mode: 'compact' })];
+    await tickTuDongHoa();
+    expect(rpcCalls.map(c => c.args.p_request_key.split(':').at(-1))).toEqual(['link', 'table_image', 'link', 'table_image']);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'compact', messages_count: 4 });
+  });
+
+  it('KHÔNG áp skipIfUnchanged: danh sách y hệt lần gửi trước vẫn gửi, và chỉ cộng sổ trần (không đụng updated_at)', async () => {
+    const { vanTayDanhSach } = await import('../lib/automation-scenario.js');
+    datCauHinh({}, { lastScheduledDate: '2026-08-31', lastRoomsHash: vanTayDanhSach(phongGia), knownRoomIds: ['r1', 'r2'],
+      sentDate: '2026-08-31', sentToday: 4 });
+    oneshotClaims = [claimOf({ mode: 'compact' })];
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(4);
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_oneshot_v1')).toBe(true);
+    expect(capNhatAutomations).toHaveLength(1);
+    expect(capNhatAutomations[0]).toEqual({ stats: expect.objectContaining({ sentToday: 8, lastRoomsHash: vanTayDanhSach(phongGia) }) });
+    expect(locCapNhat[0]).toContainEqual(['enabled', true]);
+  });
+
+  it('ngoài khung giờ lúc chạy thì chốt thất bại có mã, không xếp tin nào', async () => {
+    vi.setSystemTime(new Date('2026-08-31T15:00:00Z')); // 22:00 giờ VN
+    duLieuAutomations = [];
+    oneshotClaims = [claimOf()];
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(finishCalls()[0].args).toMatchObject({ p_ok: false, p_result: { code: 'ngoai_khung_gio' } });
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { code: 'ngoai_khung_gio', oneshot_id: SHOT } });
+  });
+
+  it('trần ngày còn lại do SQL cấp chặn giữa chừng và báo một phần', async () => {
+    duLieuAutomations = [];
+    oneshotClaims = [claimOf({ mode: 'compact' }, {}, { con_lai: 3 })];
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(3);
+    expect(finishCalls()[0].args).toMatchObject({ p_ok: true, p_result: { so_tin: 3, so_chua_xep: 1, partial: true } });
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 3 });
+    oneshotCalls = []; rpcCalls = [];
+    oneshotClaims = [claimOf({}, {}, { con_lai: 0 })];
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(finishCalls()[0].args).toMatchObject({ p_ok: false, p_result: { code: 'het_tran_ngay' } });
+  });
+
+  it('chỉ gửi NHÓM sale còn hợp lệ có phiên sống; không còn nhóm nào thì chốt thất bại', async () => {
+    duLieuAutomations = [];
+    duLieuConversations = [conv('c1'), { ...conv('c2'), thread_type: 'user' }, { ...conv('c3'), is_sale_partner: false }, conv('c4', 'acc-DA-ROT')];
+    oneshotClaims = [claimOf({ mode: 'compact', recipients: ['c1', 'c2', 'c3', 'c4'] })];
+    await tickTuDongHoa();
+    expect(new Set(rpcCalls.map(c => c.args.p_conversation_id))).toEqual(new Set(['c1']));
+    oneshotCalls = []; rpcCalls = [];
+    oneshotClaims = [claimOf({ recipients: ['c2', 'c3'] })];
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(0);
+    expect(finishCalls()[0].args).toMatchObject({ p_ok: false, p_result: { code: 'khong_co_nhom_san_sang' } });
+  });
+
+  it('lượt quá hạn được ghi nhật ký rồi chạy tiếp lượt kế; chạy lại cùng lượt dùng lại đúng khoá (không gửi trùng)', async () => {
+    duLieuAutomations = [];
+    oneshotClaims = [{ status: 'expired', code: 'qua_han', reason: 'Quá hạn', oneshot: { id: 'old', organization_id: 'org-1' } }, claimOf()];
+    await tickTuDongHoa();
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', detail: { oneshot_id: 'old', code: 'qua_han' } });
+    const first = rpcCalls.map(c => c.args.p_request_key);
+    expect(first).toHaveLength(8);
+    rpcCalls = []; phongGia.reverse();
+    oneshotClaims = [claimOf({ attempts: 2 })]; // reclaimed after a worker crash
+    await tickTuDongHoa();
+    expect(new Set(rpcCalls.map(c => c.args.p_request_key))).toEqual(new Set(first));
+  });
+
+  it('công ty chưa có link chia sẻ trang Sale: báo đúng lý do, không gọi là hết phòng (cả lượt theo lịch)', async () => {
+    phongGia.length = 0; trangSaleGia = 0;
+    duLieuAutomations = [];
+    oneshotClaims = [claimOf()];
+    await tickTuDongHoa();
+    expect(finishCalls()[0].args).toMatchObject({ p_ok: false, p_result: { code: 'khong_co_trang_sale' } });
+    daChen.runs = [];
+    datCauHinh();
+    await tickTuDongHoa();
+    expect(daChen.runs[0]).toMatchObject({ mode: 'skipped' });
+    expect(daChen.runs[0].reason).toContain('chưa có link chia sẻ');
+    daChen.runs = []; trangSaleGia = 1; datCauHinh();
+    await tickTuDongHoa();
+    expect(daChen.runs[0].reason).toContain('bảng rỗng');
+  });
+
+  it('lỗi chiếm lượt một lần không chặn lượt theo lịch', async () => {
+    datCauHinh();
+    oneshotClaimError = { message: 'offline' };
+    await tickTuDongHoa();
+    expect(workerLogs).toContainEqual(['automation: chiếm lượt một lần lỗi', 'offline']);
+    expect(rpcCalls).toHaveLength(4);
+    expect(rpcCalls.every(c => c.name === 'zalo_enqueue_broadcast_v1')).toBe(true);
   });
 });

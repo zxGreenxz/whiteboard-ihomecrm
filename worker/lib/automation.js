@@ -37,6 +37,9 @@ export const AUTOMATION_MS = 60_000;
 
 const BUCKET = 'zalo-media';
 
+/** Danh sách phòng = trang Sale Phòng; không có link chia sẻ còn hiệu lực ≠ hết phòng. */
+const KHONG_CO_TRANG_SALE = 'Công ty chưa có link chia sẻ trang Sale phòng còn hiệu lực nên không có danh sách phòng đang đăng để gửi (không phải hết phòng). Tạo hoặc bật lại link ở trang Sale phòng.';
+
 /* ------------------------------------------------------------------ tiện ích */
 
 /** Tách {bucket, path} từ URL Supabase Storage đã lưu (khớp src/lib/storage.ts). */
@@ -97,17 +100,22 @@ export function soanTinPhong(room, mau, hotline) {
  * Chèn 1 dòng zalo_messages (pending) + 1 job zalo_send_queue hẹn giờ.
  * Trả về true nếu xếp được.
  */
-async function xepMotTin({ conv, khiNao, body, anh, requestKey }) {
+async function xepMotTin({ conv, khiNao, body, anh, requestKey, oneshotId }) {
   try {
     // One transaction reserves quota and creates both rows. Retrying the same
     // logical run after a lost response reuses its message/job, never resends it.
-    const { data, error } = await sb.rpc('zalo_enqueue_broadcast_v1', {
+    // A one-shot run goes through its own SQL gate (the shot, not the schedule
+    // switch/recipient list, is the authority); quota/hours/day checks are shared.
+    const tin = {
       p_conversation_id: conv.id,
       p_body: body || '',
       p_not_before: khiNao.toISOString(),
       p_request_key: requestKey,
       p_attachment: anh ? (Array.isArray(anh) ? anh.map(refAnh) : refAnh(anh)) : null,
-    });
+    };
+    const { data, error } = oneshotId
+      ? await sb.rpc('zalo_enqueue_broadcast_oneshot_v1', { p_oneshot_id: oneshotId, p_instance_id: INSTANCE_ID, ...tin })
+      : await sb.rpc('zalo_enqueue_broadcast_v1', tin);
     if (error) throw new Error(error.message);
     if (data?.status === 'queued') return true;
     if (data?.status === 'skipped') {
@@ -132,8 +140,11 @@ async function ghiNhatKy(row) {
 }
 
 async function luuSo(autoId, stats) {
+  // Only while still enabled: after an emergency stop the row's updated_at (also
+  // stamped by trigger set_zalo_automations_updated_at) must stay at the stop — a
+  // later user save is what lifts the stop for one-shots.
   const { error } = await sb.from('zalo_automations')
-    .update({ stats, updated_at: new Date().toISOString() }).eq('id', autoId);
+    .update({ stats, updated_at: new Date().toISOString() }).eq('id', autoId).eq('enabled', true);
   if (error) log('automation: lưu sổ lỗi', error.message);
 }
 
@@ -143,7 +154,7 @@ async function luuSo(autoId, stats) {
  * Xếp hàng một lô tin cho toàn bộ người nhận.
  * @returns {Promise<{soTin:number, soNguoiNhan:number}>}
  */
-async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now }) {
+async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId }) {
   const gapNguoi = config.antiSpam.gapBetweenRecipientsSec;
   const gapTin = config.antiSpam.gapBetweenRoomMsgsSec;
   const bayGio = Date.now();
@@ -174,7 +185,7 @@ async function xepLo({ convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tran
         soBoQuaKhungGio++;
         return false;
       }
-      if (await xepMotTin({ conv, khiNao, requestKey, ...content })) {
+      if (await xepMotTin({ conv, khiNao, requestKey, oneshotId, ...content })) {
         soTin++; daGuiChoNguoiNay = true;
         return true;
       }
@@ -294,6 +305,7 @@ async function xuLyMotCongTy(auto, now) {
   const luot = toiLuotTheoLich({ now, config, stats });
   if (luot.chay) {
     const qd = chonCheDo({ now, config, stats, rooms: phong.rooms });
+    if (qd.mode === 'skipped' && !phong.rooms.length && phong.trangSale === 0) qd.reason = KHONG_CO_TRANG_SALE;
 
     // Dù không gửi, vẫn ĐÓNG SỔ ngày hôm nay: nếu không, mỗi phút engine lại
     // xét lại cùng một lượt và nhật ký ngập những dòng giống hệt nhau.
@@ -441,8 +453,9 @@ function congSoTin(stats, ngay, them) {
  * Dựng nội dung theo cấu hình rồi xếp hàng.
  * @param {boolean} p.day        chế độ ĐẦY ĐỦ (kèm chi tiết từng phòng)
  * @param {boolean} p.chiChiTiet lượt bổ sung: chỉ gửi chi tiết phòng mới
+ * @param {string}  [p.oneshotId] lượt gửi MỘT LẦN: xếp qua cổng SQL của lượt đó
  */
-export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey }) {
+export async function guiLo({ convs, config, phong, accountId, orgId, now, day, chiChiTiet, tranConLai, runKey, oneshotId }) {
   const khoiCai = config.template.blocks;
   const khoi = chiChiTiet
     ? khoiCai.filter((k) => k === 'room_details')
@@ -484,7 +497,7 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
   }
 
   const ketQua = await xepLo({
-    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now,
+    convs, config, khoi, anhBang, vanBanMoDau, tinPhong, tranConLai, runKey, now, oneshotId,
   });
 
   const boSot = khoi.includes('room_details') ? Math.max(0, phong.rooms.length - tinPhong.length) : 0;
@@ -493,6 +506,148 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
     log(`automation: bỏ ${boSot} phòng khỏi phần chi tiết (trần ${config.antiSpam.maxRoomsPerRun}/lượt)`);
   }
   return { ...ketQua, anhBang, soPhongChiTiet: tinPhong.length, boSot };
+}
+
+/* ------------------------------------------------- lượt gửi MỘT LẦN (CRM/Hermes) */
+
+// Gửi ngay / hẹn giờ một lần (bảng zalo_automation_oneshots) chạy CHÍNH guiLo ở
+// trên: cùng ảnh bảng, tin chi tiết, giãn nhịp, khung giờ, trần ngày. Khác lượt
+// theo lịch đúng ba chỗ: không cần công tắc lịch bật, người nhận lấy từ lượt (đã
+// kiểm là nhóm sale khi tạo, kiểm lại ở SQL lúc xếp và lúc gửi), và KHÔNG áp
+// skipIfUnchanged/knownRoomIds — người dùng chủ động bấm gửi thì gửi.
+// runKey `oneshot:<id>` ổn định: chạy lại sau khi worker chết giữa lượt sẽ dùng
+// lại tin đã xếp thay vì gửi trùng.
+
+/** Số lượt chiếm tối đa mỗi tick (mỗi lượt có thể mất vài giây vì ảnh). */
+const TOI_DA_HEN_GIO_MOI_TICK = 3;
+
+async function chotHenGio(shot, ok, result) {
+  const { data, error } = await sb.rpc('zalo_worker_finish_oneshot_v1', {
+    p_oneshot_id: shot.id, p_instance_id: INSTANCE_ID, p_ok: ok, p_result: result,
+  });
+  if (error || data?.ok !== true) {
+    log('automation: chốt lượt một lần chưa xác nhận', shot.id, error?.message || data?.reason || 'không rõ');
+  }
+  return data;
+}
+
+async function congTranDinhKy(orgId, ngay, soTin) {
+  // Giữ sổ trần của lượt theo lịch khớp với tin vừa xếp, chỉ khi lịch đang bật
+  // (lịch tắt thì sổ không dùng). Trigger set_zalo_automations_updated_at vẫn đóng
+  // dấu updated_at, nhưng sau dừng khẩn cấp mọi dòng đã tắt nên mốc gỡ dừng không đổi.
+  const { data: auto, error } = await sb.from('zalo_automations')
+    .select('id, stats').eq('organization_id', orgId).eq('kind', 'broadcast_vacant').maybeSingle();
+  if (error || !auto) return;
+  const stats = auto.stats && typeof auto.stats === 'object' ? { ...auto.stats } : {};
+  congSoTin(stats, ngay, soTin);
+  const { error: saveError } = await sb.from('zalo_automations').update({ stats }).eq('id', auto.id).eq('enabled', true);
+  if (saveError) log('automation: cộng trần lượt một lần lỗi', saveError.message);
+}
+
+async function chayMotHenGio(claim, now) {
+  const shot = claim.oneshot;
+  const orgId = shot.organization_id;
+  const config = chuanHoaBroadcast(claim.config);
+  const mode = shot.mode === 'compact' ? 'compact' : 'full';
+  const t = gioVietNam(now);
+  const nguon = shot.origin === 'hermes' ? 'Hermes' : 'CRM';
+  let accountId = null;
+  const thatBai = async (code, reason, detail = {}) => {
+    await chotHenGio(shot, false, { code, reason, che_do: mode, ...detail });
+    await ghiNhatKy({
+      organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant', mode: 'failed',
+      reason: `Lượt gửi một lần (${nguon}): ${reason}`,
+      detail: { oneshot_id: shot.id, luot_mot_lan: true, code, ...detail },
+    });
+  };
+
+  const nhan = Array.isArray(shot.recipients) ? shot.recipients.map(String) : [];
+  const { data: convsTho, error } = await sb.from('zalo_conversations')
+    .select('id, user_id, organization_id, account_id, peer_name, thread_type, is_sale_partner')
+    .in('id', nhan)
+    .eq('organization_id', orgId);
+  if (error) return thatBai('khong_doc_duoc_nhom', 'Không đọc được danh sách nhóm nhận.');
+  // Giữ thứ tự của lượt; chỉ nhóm sale còn hợp lệ và tài khoản đang có phiên sống.
+  const convs = nhan.map(id => (convsTho || []).find(c => c.id === id)).filter(c => c
+    && c.organization_id === orgId && c.thread_type === 'group' && c.is_sale_partner && sessions.has(c.account_id));
+  if (!convs.length) {
+    return thatBai('khong_co_nhom_san_sang', 'Không có nhóm sale nào của lượt này đang có tài khoản Zalo kết nối.');
+  }
+  accountId = convs[0].account_id;
+
+  const khung = trongKhungGio(now, config.antiSpam);
+  if (!khung.trong) return thatBai('ngoai_khung_gio', khung.lyDo);
+  const tranConLai = Math.max(0, Math.floor(Number(claim.con_lai) || 0));
+  if (tranConLai <= 0) return thatBai('het_tran_ngay', `Đã chạm trần ${config.antiSpam.dailyCap} tin tự động trong ngày.`);
+
+  let phong;
+  try {
+    phong = await docPhongTrong(orgId);
+  } catch (e) {
+    return thatBai('khong_doc_duoc_phong', `Không đọc được danh sách phòng: ${e?.message || e}`);
+  }
+  if (!phong.rooms.length) {
+    return phong.trangSale === 0
+      ? thatBai('khong_co_trang_sale', KHONG_CO_TRANG_SALE)
+      : thatBai('khong_con_phong', 'Không còn phòng nào chào được — không gửi bảng rỗng.');
+  }
+
+  const ketQua = await guiLo({
+    convs, config, phong, accountId, orgId, now,
+    runKey: `oneshot:${shot.id}`, day: mode === 'full', tranConLai, oneshotId: shot.id,
+  });
+  const detail = {
+    oneshot_id: shot.id, luot_mot_lan: true, nguon: shot.origin, che_do: mode,
+    so_phong: phong.rooms.length,
+    co_anh_bang: !!ketQua.anhBang,
+    so_phong_gui_chi_tiet: ketQua.soPhongChiTiet,
+    bo_qua_khung_gio: ketQua.soBoQuaKhungGio,
+    khong_xep_duoc: ketQua.soKhongXepDuoc,
+    bo_qua_tran: ketQua.soBoQuaTran,
+    partial: ketQua.soTin > 0 && ketQua.soChuaXep > 0,
+  };
+  if (ketQua.soTin === 0) {
+    return thatBai('khong_xep_duoc', 'Chưa xếp hàng được tin nào (xem nhật ký worker).', detail);
+  }
+  const reason = ketQua.soChuaXep > 0
+    ? `Lượt gửi một lần (${nguon}): chỉ xếp hàng được ${ketQua.soTin} tin; còn ${ketQua.soChuaXep} tin chưa xếp. Không tự chạy lại phần thiếu.`
+    : `Lượt gửi một lần (${nguon}): đã xếp hàng ${ketQua.soTin} tin, chế độ ${mode === 'full' ? 'ĐẦY ĐỦ' : 'GỌN'}.`;
+  await chotHenGio(shot, true, {
+    ...detail, so_tin: ketQua.soTin, so_nguoi_nhan: ketQua.soNguoiNhan, so_chua_xep: ketQua.soChuaXep, reason,
+  });
+  await congTranDinhKy(orgId, t.ngay, ketQua.soTin);
+  await ghiNhatKy({
+    organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',
+    mode: ketQua.soChuaXep > 0 ? 'failed' : mode, reason,
+    recipients_count: ketQua.soNguoiNhan, messages_count: ketQua.soTin, detail,
+  });
+}
+
+/** Chiếm và chạy các lượt gửi một lần đã tới hạn. Lỗi không chặn lượt theo lịch. */
+async function xuLyHenGio(orgFilter, now) {
+  let daChay = 0;
+  for (let vong = 0; vong < TOI_DA_HEN_GIO_MOI_TICK * 2 && daChay < TOI_DA_HEN_GIO_MOI_TICK; vong++) {
+    const { data, error } = await sb.rpc('zalo_worker_claim_oneshot_v1', {
+      p_instance_id: INSTANCE_ID, p_organization_ids: orgFilter.length ? orgFilter : null,
+    });
+    if (error) { log('automation: chiếm lượt một lần lỗi', error.message); return; }
+    if (data?.status === 'expired' && data.oneshot?.id) {
+      await ghiNhatKy({
+        organization_id: data.oneshot.organization_id, account_id: null, kind: 'broadcast_vacant', mode: 'failed',
+        reason: `Lượt gửi một lần: ${data.reason || 'quá hạn'}`,
+        detail: { oneshot_id: data.oneshot.id, luot_mot_lan: true, code: data.code || null },
+      });
+      continue;
+    }
+    if (data?.status !== 'claimed' || !data.oneshot?.id || !data.oneshot.organization_id) return;
+    daChay++;
+    try {
+      await chayMotHenGio(data, now);
+    } catch (e) {
+      log('automation: lượt một lần lỗi', data.oneshot.id, e?.message || e);
+      await chotHenGio(data.oneshot, false, { code: 'loi_worker', reason: String(e?.message || e).slice(0, 500) });
+    }
+  }
 }
 
 /* ------------------------------------------------------------------- tick */
@@ -507,6 +662,9 @@ export async function tickTuDongHoa(orgFilter = []) {
   try {
     try { await tickHermesSchedules({ db: sb, instanceId: INSTANCE_ID, organizationIds: orgFilter, log }); }
     catch (error) { log('hermes schedule tick unverified', error?.message || error); }
+    // One-shots first: the scheduled pass below then reads the quota book they updated.
+    try { await xuLyHenGio(orgFilter, now); }
+    catch (error) { log('automation: lượt một lần chưa xác minh', error?.message || error); }
     let q = sb.from('zalo_automations')
       .select('id, organization_id, kind, enabled, config, stats')
       .eq('kind', 'broadcast_vacant').eq('enabled', true);
