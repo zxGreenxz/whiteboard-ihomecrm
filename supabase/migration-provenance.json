@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-16T14:26:46.955Z",
+  "generatedAt": "2026-10-16T15:25:51.392Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 722,
-    "unknown": 84,
-    "catalog-proven": 206,
+    "ledger-applied": 727,
+    "unknown": 80,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11811,14 +11811,9 @@
       "name": "zalo_broadcast_oneshot_v1",
       "scheme": "timestamp14",
       "sha256": "3f2ca93cd1608bf2f859eba92fd7a197fc29d3fca73e9b180c154fc8e32d2b63",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:public.zalo_automation_oneshots",
-        "function:app_private.zalo_oneshot_json_v1",
-        "function:app_private.zalo_oneshot_khung_gio_v1",
-        "function:app_private.zalo_dang_dung_khan_cap_v1",
-        "function:app_private.zalo_oneshot_tin_hom_nay_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:14:48.342Z|bien-nhan-backup"
       ]
     },
     {
@@ -11827,9 +11822,9 @@
       "name": "zalo_worker_rooms_sale_page_parity_v1",
       "scheme": "timestamp14",
       "sha256": "8f53cc47381e9cc6cd6364d7c3239a9a02e87c42a9f470477937c905c01e965c",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.zalo_phong_trong_cho_worker_v1"
+        "receipt:2026-10-16T15:17:32.259Z|bien-nhan-backup"
       ]
     },
     {
@@ -11838,12 +11833,9 @@
       "name": "zalo_broadcast_oneshot_review_fixes_v1",
       "scheme": "timestamp14",
       "sha256": "a928e30ef54c49b031f672ee73f1b13ea5a14d24d65f5ef51528888a3198a8ab",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.zalo_dang_dung_khan_cap_v1",
-        "function:app_private.zalo_oneshot_job_bi_dung_v1",
-        "function:public.zalo_worker_claim_oneshot_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:20:19.509Z|bien-nhan-backup"
       ]
     },
     {
@@ -11852,14 +11844,9 @@
       "name": "hermes_zalo_broadcast_v1",
       "scheme": "timestamp14",
       "sha256": "216630cbc12431b5ae83ba0122102d695606e22410337da6ccd7aaf48f2aad38",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.hermes_zalo_broadcast_receipts",
-        "function:app_private.hermes_zalo_js_string_v1",
-        "function:app_private.hermes_zalo_js_trim_v1",
-        "function:app_private.hermes_zalo_gio_v1",
-        "function:app_private.hermes_zalo_ngay_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:22:56.807Z|bien-nhan-backup"
       ]
     },
     {
@@ -11868,13 +11855,9 @@
       "name": "hermes_zalo_broadcast_review_fixes_v1",
       "scheme": "timestamp14",
       "sha256": "72f595826756b0970703ebc484acae0dbee57a66bed12932f512354d3fe39048",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_zalo_send_ok_v1",
-        "function:app_private.hermes_zalo_org_scope_ok_v1",
-        "function:app_private.hermes_zalo_nguoi_nhan_ghi_v1",
-        "function:public.hermes_zalo_broadcast_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:25:36.561Z|bien-nhan-backup"
       ]
     },
     {

@@ -19681,6 +19681,86 @@ export type Database = {
           },
         ]
       }
+      zalo_automation_oneshots: {
+        Row: {
+          attempts: number
+          cancelled_at: string | null
+          cancelled_by: string | null
+          claimed_by_instance: string | null
+          created_at: string
+          created_by: string
+          finished_at: string | null
+          id: string
+          kind: string
+          mode: string
+          organization_id: string
+          origin: string
+          recipients: string[]
+          request_fingerprint: string
+          request_id: string
+          result: Json
+          run_at: string
+          send_now: boolean
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          claimed_by_instance?: string | null
+          created_at?: string
+          created_by: string
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          mode?: string
+          organization_id: string
+          origin?: string
+          recipients: string[]
+          request_fingerprint: string
+          request_id: string
+          result?: Json
+          run_at: string
+          send_now?: boolean
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          claimed_by_instance?: string | null
+          created_at?: string
+          created_by?: string
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          mode?: string
+          organization_id?: string
+          origin?: string
+          recipients?: string[]
+          request_fingerprint?: string
+          request_id?: string
+          result?: Json
+          run_at?: string
+          send_now?: boolean
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zalo_automation_oneshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       zalo_automation_runs: {
         Row: {
           account_id: string | null
@@ -24492,6 +24572,7 @@ export type Database = {
         Returns: Json
       }
       hermes_zalo_binding_v1: { Args: { p: Json }; Returns: Json }
+      hermes_zalo_broadcast_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_command_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_reply_v1: { Args: { p: Json }; Returns: Json }
@@ -27800,6 +27881,10 @@ export type Database = {
         Args: { p_account_id: string }
         Returns: undefined
       }
+      zalo_ds_hen_gui_phong_trong_v1: {
+        Args: { p_limit?: number; p_organization_id?: string }
+        Returns: Json
+      }
       zalo_dung_khan_cap: {
         Args: { p_organization_id?: string }
         Returns: Json
@@ -27810,6 +27895,18 @@ export type Database = {
           p_conversation_id: string
           p_detail?: Json
           p_source_zalo_msg_id: string
+        }
+        Returns: Json
+      }
+      zalo_enqueue_broadcast_oneshot_v1: {
+        Args: {
+          p_attachment?: Json
+          p_body: string
+          p_conversation_id: string
+          p_instance_id: string
+          p_not_before: string
+          p_oneshot_id: string
+          p_request_key: string
         }
         Returns: Json
       }
@@ -27833,6 +27930,21 @@ export type Database = {
       }
       zalo_get_crm_summary: {
         Args: { p_conversation_id: string }
+        Returns: Json
+      }
+      zalo_hen_gui_phong_trong_v1: {
+        Args: {
+          p_mode?: string
+          p_organization_id?: string
+          p_origin?: string
+          p_recipients: string[]
+          p_request_id?: string
+          p_run_at?: string
+        }
+        Returns: Json
+      }
+      zalo_huy_hen_gui_phong_trong_v1: {
+        Args: { p_oneshot_id: string }
         Returns: Json
       }
       zalo_link_conversation: {
@@ -28241,8 +28353,21 @@ export type Database = {
         Args: { p_instance_id: string; p_job_id: string }
         Returns: Json
       }
+      zalo_worker_claim_oneshot_v1: {
+        Args: { p_instance_id: string; p_organization_ids?: string[] }
+        Returns: Json
+      }
       zalo_worker_finalize_send_v1: {
         Args: { p_instance_id: string; p_job_id: string; p_receipts: Json }
+        Returns: Json
+      }
+      zalo_worker_finish_oneshot_v1: {
+        Args: {
+          p_instance_id: string
+          p_ok: boolean
+          p_oneshot_id: string
+          p_result?: Json
+        }
         Returns: Json
       }
       zalo_worker_recover_jobs_v1: {
