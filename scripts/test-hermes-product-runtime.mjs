@@ -146,14 +146,14 @@ export function createSyntheticFixture() {
         permissionBuildingIds: [actor.building], binding: { connectionId: actor.connection, epoch: actor.joined.connection.epoch,
           policyVersion: actor.joined.policy.version, membershipId: actor.member, authorizationVersion: 1, sessionRevision: 1 } });
     }
-    if (endpoint.pathname === '/rest/v1/rpc/copilot_available_rooms_v1') {
+    if (endpoint.pathname === '/rest/v1/rpc/hermes_sale_listing_rooms_v1') {
       assert.deepEqual(args, { p_organization_id: actor.org }); actor.roomReads++;
       const other = actors.find(value => value !== actor);
       const room = value => ({ id: value.room, building_id: value.building, code: `${value.name}-101`, name: `${value.name}-101`, floor: 1, area: 20,
         rent_price: 3000000, deposit_amount: 3000000, status_public: 'free', sale_state: null, sale_today: '2026-10-13',
         avail_date: null, expected_ready_on: null, contact: 'PRIVATE-CONTACT-MUST-NOT-LEAK', note: 'PRIVATE-NOTE-MUST-NOT-LEAK' });
       // Include an out-of-scope row deliberately; the real room projection must remove it.
-      return Response.json({ buildings: [actor, other].map(value => ({ id: value.building, name: `House ${value.name}`, code: value.name })), rooms: [room(actor), room(other)] });
+      return Response.json({ pages: 1, buildings: [actor, other].map(value => ({ id: value.building, name: `House ${value.name}`, code: value.name })), rooms: [room(actor), room(other)] });
     }
     if (endpoint.pathname === '/functions/v1/llm-proxy/chat/completions') {
       assert.equal(options.headers['x-organization-id'], actor.org); assert.match(options.headers['x-task-id'], /^[a-f0-9-]{36}$/);

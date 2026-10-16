@@ -51,6 +51,8 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_work_memory_configure_v1(jsonb,jsonb)', 'hermes_work_memory_list_v1(jsonb,jsonb)',
   'hermes_work_memory_upsert_v1(jsonb,jsonb)', 'hermes_work_memory_forget_v1(jsonb,jsonb)',
   'hermes_room_schedule_manage_v1(jsonb)', 'hermes_room_schedule_capabilities_v1(uuid)',
+  // Published sale page read for crm_available_rooms/group preview (20261016080232).
+  'hermes_sale_listing_rooms_v1(uuid)',
   'hermes_domain_capabilities_v1(uuid)', 'hermes_domain_read_v1(jsonb,text,jsonb)',
   // Finance read family v2 and expense action (20261015120000/20261015120100).
   'hermes_domain_capabilities_v2(uuid)', 'hermes_domain_read_v2(jsonb,text,jsonb)',

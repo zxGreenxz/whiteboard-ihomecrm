@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 const uuid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = Date.parse('2026-10-13T10:00:00.000Z');
 export function fixture() {
-  const result = projectAvailableRooms({
+  const result = projectAvailableRooms({ pages: 1,
     buildings: [{ id: uuid(10), name: 'Tòa mẫu', code: 'M' }],
     rooms: [11, 12].map(n => ({ id: uuid(n), building_id: uuid(10), code: `P${n}`, name: `Phòng ${n}`,
       floor: 1, area: 25, rent_price: 4_500_000, deposit_amount: 9_000_000, status_public: 'free',
@@ -108,9 +108,22 @@ for (const [name, change, code] of [
   ['room field newline injection', x => { x.roomRead.result.rooms[0].code = 'P11\nInjected'; }, 'draft_input_invalid'],
   ['group bidi control', x => { x.recipientRead.conversations[0].name = 'abc\u202e'; }, 'draft_input_invalid'],
   ['invalid date', x => { x.roomRead.result.rooms[0].availability.availableOn = '2026-02-30'; }, 'draft_input_invalid'],
-  ['negative rent', x => { x.roomRead.result.rooms[0].rentVnd = -1; }, 'draft_input_invalid'],
-  ['unsupported pass room', x => { x.roomRead.result.rooms[0].status = 'pass'; }, 'draft_input_invalid'],
+  ['negative listed price', x => { x.roomRead.result.rooms[0].priceVnd = -1; }, 'draft_input_invalid'],
+  ['pass status with a non-pass fact', x => { x.roomRead.result.rooms[0].status = 'pass'; }, 'draft_input_invalid'],
+  ['pass fact on a vacant room', x => { x.roomRead.result.rooms[0].availability.kind = 'pass'; }, 'draft_input_invalid'],
 ]) test(`rejects ${name}`, () => rejects(change, code));
+test('customer-pass rooms listed on the sale page are selectable with listed price and the page contact text', () => {
+  const input = fixture();
+  input.roomRead.result = projectAvailableRooms({ pages: 1, buildings: [{ id: uuid(10), name: 'Tòa mẫu', code: 'M' }],
+    rooms: [11, 12].map(n => ({ id: uuid(n), building_id: uuid(10), code: `P${n}`, name: `Phòng ${n}`, floor: 1, area: 25,
+      rent_price: 4_500_000, deposit_amount: 9_000_000, status_public: 'pass', sale_state: 'PASS', sale_today: '2026-10-13',
+      avail_date: null, expected_ready_on: null, pass_price: n === 11 ? 3_900_000 : null, pass_contact_manager: n === 11,
+      pass_contact_phone: n === 11 ? null : '0900000002', pass_contact_name: n === 11 ? null : 'Khách Thử' })),
+  }, { allowedBuildingIds: [uuid(10)], readAt: now - 1000 });
+  const { body } = buildGroupRoomPreview(input).display;
+  assert.match(body, /Tòa mẫu · P11 \| 25 m² \| 3\.900\.000 đ\/tháng \| Khách pass phòng · Liên hệ admin iHome mở cửa/);
+  assert.match(body, /Tòa mẫu · P12 \| 25 m² \| 4\.500\.000 đ\/tháng \| Khách pass phòng: 0900000002 \(Khách Thử\)/);
+});
 test('does not execute model accessors or array accessors', () => {
   let calls = 0;
   const x = fixture(); Object.defineProperty(x.intent, 'roomIds', { get() { calls++; return [uuid(11)]; }, enumerable: true });
@@ -120,7 +133,7 @@ test('does not execute model accessors or array accessors', () => {
   assert.equal(calls, 0);
 });
 for (const [name, change] of [
-  ['exact body facts', x => { x.roomRead.result.rooms[0].rentVnd += 1; }],
+  ['exact body facts', x => { x.roomRead.result.rooms[0].priceVnd += 1; }],
   ['recipient', x => { x.intent.conversationIds = [uuid(21)]; }],
   ['provider thread', x => { x.recipientRead.conversations[0].threadId = '99999'; }],
   ['sender login', x => { x.recipientRead.sender.loginRequestedAt = '2026-10-13T09:01:00.000Z'; }],
@@ -139,7 +152,7 @@ for (const [name, change] of [
 });
 test('private or future room fields cannot flow to output or change selected public payload', () => {
   const a = fixture(), b = fixture();
-  b.roomRead.result.rooms[0].internal_note = 'SECRET_NEW'; b.roomRead.result.rooms[0].depositVnd = 100_000_000;
+  b.roomRead.result.rooms[0].internal_note = 'SECRET_NEW'; b.roomRead.result.rooms[0].depositVnd = 100_000_000; b.roomRead.result.rooms[0].rentVnd = 1;
   assert.deepEqual(buildGroupRoomPreview(a), buildGroupRoomPreview(b));
 });
 
@@ -263,7 +276,7 @@ for (const [name, modify, expected = 'context_changed'] of [
 test('source result cannot change during final await after its digest was bound', async () => {
   const f = serviceFixture(), original = f.decisions.finalize;
   f.decisions.finalize = async (...args) => {
-    const result = await original(...args); f.input.roomRead.result.rooms[0].rentVnd = 1;
+    const result = await original(...args); f.input.roomRead.result.rooms[0].priceVnd = 1;
     return result;
   };
   const out = await run(f); assert.match(out.display.body, /4\.500\.000/); assert.doesNotMatch(out.display.body, /\| 1 đ/);
@@ -355,7 +368,7 @@ test('composes real room service, durable authority, crypto and projection with 
     },
     async availableRooms(request) {
       events.push('room.raw-read'); assert.equal(request.accessToken, accessToken);
-      return { buildings: [{ id: uuid(10), name: 'Tòa mẫu', code: 'M' }],
+      return { pages: 1, buildings: [{ id: uuid(10), name: 'Tòa mẫu', code: 'M' }],
         rooms: [11, 12].map(n => ({ id: uuid(n), building_id: uuid(10), code: `P${n}`, name: `Phòng ${n}`,
           floor: 1, area: 25, rent_price: 4_500_000, deposit_amount: 9_000_000, status_public: 'free',
           sale_state: 'READY', sale_today: '2026-10-13', avail_date: null, expected_ready_on: null,

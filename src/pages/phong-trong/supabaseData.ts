@@ -5,7 +5,7 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 import { z } from 'zod';
-import { roomSaleFacts } from '@/lib/roomSaleFacts';
+import { roomSaleFacts, roomSaleListedPrice } from '@/lib/roomSaleFacts';
 import {
   layoutFloor,
   type Building,
@@ -218,7 +218,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined, op
         floor: rr.floor ?? 1,
         type: rr.room_type?.trim() || "",   // chưa có loại phòng -> để trống
         // Phòng pass: ưu tiên giá khách đặt (pass_price) nếu có.
-        price: ((status === "pass" && rr.pass_price != null ? rr.pass_price : rr.rent_price) ?? 0) / 1_000_000,
+        price: (roomSaleListedPrice(status, rr.rent_price, rr.pass_price) ?? 0) / 1_000_000,
         area: Math.round(rr.area ?? 0),
         status,
         amenities: toAmenities(rr.amenities),

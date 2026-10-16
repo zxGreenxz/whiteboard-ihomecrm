@@ -9,6 +9,7 @@
  * TÌNH TRẠNG, mỗi tòa một khối nền màu riêng.
  */
 import { type Building, type Room } from "./sampleData";
+import { roomSalePassStatusLines } from "@/lib/roomSaleFacts";
 
 /** Trạng thái được đưa vào ảnh — đúng bucket "trống" của trang (bỏ `rented`). */
 export const EXPORT_STATUSES = ["free", "soon", "pass"] as const;
@@ -89,14 +90,9 @@ export function autoStatusLines(r: Room): string[] {
   if (r.status === "soon") {
     return [r.availDate ? `${trimDate(r.availDate)} TRỐNG` : "SẮP TRỐNG"];
   }
+  // Dùng chung với Hermes (crm_available_rooms) để bot nói đúng chữ ảnh đang in.
   if (r.status === "pass") {
-    if (r.passContactManager) {
-      return ["KHÁCH PASS PHÒNG", "LIÊN HỆ ADMIN IHOME MỞ CỬA"];
-    }
-    const who = [r.passContactPhone, r.passContactName ? `(${r.passContactName})` : ""]
-      .filter(Boolean)
-      .join(" ");
-    return who ? ["KHÁCH PASS PHÒNG:", who] : ["KHÁCH PASS PHÒNG"];
+    return roomSalePassStatusLines({ contactManager: r.passContactManager, phone: r.passContactPhone, name: r.passContactName });
   }
   return ["TRỐNG SẴN"];
 }

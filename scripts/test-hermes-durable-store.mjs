@@ -32,6 +32,7 @@ const CA_FILE = 'infra/hermes-broker/certs/supabase-ca-2021.crt';
 const CA_FINGERPRINT = '807025AD50D4ED219D2C9C7D299C004F824EB00CF7F65AFEF607D07B72E6CAFA';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ROLE = /^hermes_store_fixture_[0-9a-f]{32}$/;
+const SHARE_LABEL = 'Hermes P3 sale page fixture';
 const OPS = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh'];
 const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'connections', 'connection_tokens'];
@@ -211,14 +212,21 @@ export function privateCleanupSql(plan) {
 export function roomReadFixtureSql(plan) {
   const org = plan.orgs[0], owner = plan.actors[2].id, r = plan.roomRead;
   demand([org.id, owner, r.areaId, r.scopeId, r.buildingId, r.roomId].every(id => UUID.test(id ?? '')), 'fixture_room_ids_required');
+  // crm_available_rooms reads the published sale page (live share link per building
+  // owner). Contact/description are public page columns now; the private negative
+  // control is media, which the page reader returns and the projection never emits.
   return `BEGIN;
-    insert into public.buildings(id,user_id,organization_id,name,province,district,ward,public_contact_name)
-      values (${lit(r.buildingId)},${lit(owner)},${lit(org.id)},'Hermes synthetic building','TEST','TEST','TEST','PRIVATE_HERMES_FIXTURE');
-    insert into public.rooms(id,building_id,organization_id,name,rent_price,deposit_amount,status,description)
-      values (${lit(r.roomId)},${lit(r.buildingId)},${lit(org.id)},'Hermes synthetic extra room',200,200,'AVAILABLE','PRIVATE_HERMES_FIXTURE');
-    update public.buildings set public_contact_name='PRIVATE_HERMES_FIXTURE'
+    insert into public.buildings(id,user_id,organization_id,name,province,district,ward,images)
+      values (${lit(r.buildingId)},${lit(owner)},${lit(org.id)},'Hermes synthetic building','TEST','TEST','TEST','["PRIVATE_HERMES_FIXTURE"]'::jsonb);
+    insert into public.rooms(id,building_id,organization_id,name,rent_price,deposit_amount,status,images)
+      values (${lit(r.roomId)},${lit(r.buildingId)},${lit(org.id)},'Hermes synthetic extra room',200,200,'AVAILABLE','["PRIVATE_HERMES_FIXTURE"]'::jsonb);
+    update public.buildings set images='["PRIVATE_HERMES_FIXTURE"]'::jsonb
       where id=${lit(org.buildingId)} and organization_id=${lit(org.id)};
-    update public.rooms set description='PRIVATE_HERMES_FIXTURE' where id=${lit(org.roomId)} and organization_id=${lit(org.id)};
+    update public.rooms set images='["PRIVATE_HERMES_FIXTURE"]'::jsonb where id=${lit(org.roomId)} and organization_id=${lit(org.id)};
+    insert into public.public_room_share_tokens(token,owner_id,organization_id,label)
+      select 'hermes-p3-'||b.id::text,b.user_id,b.organization_id,${lit(SHARE_LABEL)} from public.buildings b
+      where b.id in (${ids([r.buildingId, ...plan.orgs.map(value => value.buildingId)])}) and b.user_id is not null
+      on conflict do nothing;
     insert into public.areas(id,user_id,organization_id,name) values (${lit(r.areaId)},${lit(owner)},${lit(org.id)},'Hermes synthetic area');
     insert into public.area_buildings(area_id,building_id,user_id,organization_id)
       values (${lit(r.areaId)},${lit(org.buildingId)},${lit(owner)},${lit(org.id)});
@@ -229,7 +237,10 @@ export function roomReadFixtureSql(plan) {
 export function roomReadCleanupSql(plan) {
   const r = plan.roomRead, org = plan.orgs[0];
   demand([org.id, r?.areaId, r?.scopeId, r?.buildingId, r?.roomId].every(id => UUID.test(id ?? '')), 'fixture_room_ids_required');
-  return `delete from public.area_buildings where area_id=${lit(r.areaId)} and organization_id=${lit(org.id)};
+  const shareTokens = [r?.buildingId, ...plan.orgs.map(value => value.buildingId)].map(value => { demand(UUID.test(value ?? ''), 'fixture_room_ids_required');
+    return lit(`hermes-p3-${value}`); }).join(',');
+  return `delete from public.public_room_share_tokens where label=${lit(SHARE_LABEL)} and token in (${shareTokens});
+    delete from public.area_buildings where area_id=${lit(r.areaId)} and organization_id=${lit(org.id)};
     delete from public.authorization_scopes where organization_id=${lit(org.id)}
       and (id=${lit(r.scopeId)} or (scope_type='BUILDING' and building_id=${lit(r.buildingId)}));
     delete from public.rooms where id=${lit(r.roomId)} and organization_id=${lit(org.id)};
@@ -428,13 +439,16 @@ export async function runFixtureReadInterleaving({ read, mutate, signal, timeout
 export function assertRoomProjection(result, roomIds, buildingIds) {
   const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
     && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
-  demand(exact(result, ['source', 'readAt', 'currency', 'completeness', 'totalInSnapshot', 'offset', 'nextOffset', 'rooms'])
-    && result.source === 'copilot_available_rooms_v1' && result.currency === 'VND' && result.completeness === 'complete'
+  demand(exact(result, ['source', 'readAt', 'currency', 'completeness', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
+    'salePolicies', 'buildings', 'rooms'])
+    && result.source === 'hermes_sale_listing_rooms_v1' && result.currency === 'VND' && result.completeness === 'complete'
     && Array.isArray(result.rooms) && result.totalInSnapshot === roomIds.length, 'fixture_room_projection_invalid');
   assert.deepEqual(result.rooms.map(row => row.id).sort(), [...roomIds].sort());
   assert.deepEqual([...new Set(result.rooms.map(row => row.building?.id))].sort(), [...buildingIds].sort());
+  assert.deepEqual(result.buildings.map(row => row.id).sort(), [...buildingIds].sort());
   for (const row of result.rooms) {
-    demand(exact(row, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'rentVnd', 'depositVnd', 'status', 'availability'])
+    demand(exact(row, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'priceVnd', 'rentVnd', 'depositVnd', 'status', 'availability',
+      'statusLines', 'roomType', 'amenities', 'salePolicy'])
       && exact(row.building, ['id', 'name', 'code']) && exact(row.availability, ['kind', 'label', 'availableOn']), 'fixture_room_projection_invalid');
   }
   demand(!JSON.stringify(result).includes('PRIVATE_HERMES_FIXTURE'), 'fixture_room_projection_contains_private_data');
@@ -444,7 +458,7 @@ export function createLeaseReadFetch(ctx, { assertLease = ctx.assertLease ?? ass
   const tracker = fixtureWorkTracker(ctx, drainTimeoutMs);
   const paths = new Map([['/auth/v1/user', 'GET'], ['/rest/v1/rpc/get_authorization_context_v1', 'POST'],
     ['/rest/v1/rpc/get_my_organizations', 'POST'], ['/rest/v1/rpc/copilot_org_scope_buildings_v1', 'POST'],
-    ['/rest/v1/rpc/hermes_room_scope_map_v1', 'POST'], ['/rest/v1/rpc/copilot_available_rooms_v1', 'POST']]);
+    ['/rest/v1/rpc/hermes_room_scope_map_v1', 'POST'], ['/rest/v1/rpc/hermes_sale_listing_rooms_v1', 'POST']]);
   const read = async (url, options) => tracker.track(async () => {
     const parsed = new URL(url);
     demand(parsed.origin === ctx.url && !parsed.search && !parsed.hash && !parsed.username && !parsed.password

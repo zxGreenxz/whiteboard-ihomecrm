@@ -546,7 +546,13 @@ test('P3 fixtures add only a fresh AREA/edge/building/room in the owned syntheti
     assert(setup.includes(plan.roomRead[key])); assert(cleanup.includes(plan.roomRead[key]));
   }
   assert.match(setup, /'Hermes synthetic building'/);
-  assert.match(setup, /'PRIVATE_HERMES_FIXTURE'/);
+  assert.match(setup, /'\["PRIVATE_HERMES_FIXTURE"\]'::jsonb/);
+  // The room source is the published sale page: each plan building owner gets one
+  // labelled share token, removed again by the cleanup.
+  for (const buildingId of [plan.roomRead.buildingId, ...plan.orgs.map(org => org.buildingId)]) {
+    assert(setup.includes(buildingId)); assert(cleanup.includes(`'hermes-p3-${buildingId}'`));
+  }
+  assert.match(setup, /insert into public\.public_room_share_tokens/); assert.match(cleanup, /delete from public\.public_room_share_tokens where label=/);
   assert.match(setup, /public.area_buildings\(area_id,building_id,user_id,organization_id\)/);
   assert.match(setup, /'AREA'/); assert(setup.includes(plan.orgs[0].id));
   assert(!setup.includes(plan.orgs[1].id)); assert(!cleanup.includes(plan.orgs[1].id));
@@ -630,11 +636,12 @@ test('barrier timeout bounds waiting, while a started guarded mutation must sett
 
 function roomProjectionFixture() {
   const buildingId = randomUUID(), roomId = randomUUID();
-  return { buildingId, roomId, result: { source: 'copilot_available_rooms_v1', readAt: '2026-10-12T00:00:00.000Z', currency: 'VND',
-    completeness: 'complete', totalInSnapshot: 1, offset: 0, nextOffset: null,
+  return { buildingId, roomId, result: { source: 'hermes_sale_listing_rooms_v1', readAt: '2026-10-12T00:00:00.000Z', currency: 'VND',
+    completeness: 'complete', publishedPages: 1, totalInSnapshot: 1, offset: 0, nextOffset: null, salePolicies: [],
+    buildings: [{ id: buildingId, name: 'Synthetic', code: null, address: null, contact: { name: null, phone: null } }],
     rooms: [{ id: roomId, code: null, name: 'Synthetic', building: { id: buildingId, name: 'Synthetic', code: null },
-      floor: null, areaM2: null, rentVnd: 100, depositVnd: 100, status: 'free',
-      availability: { kind: 'free', label: 'Trống', availableOn: null } }] } };
+      floor: null, areaM2: null, priceVnd: 100, rentVnd: 100, depositVnd: 100, status: 'free',
+      availability: { kind: 'free', label: 'Trống', availableOn: null }, statusLines: ['TRỐNG SẴN'], roomType: null, amenities: null, salePolicy: null }] } };
 }
 test('room assertion rejects cross-scope rooms and every additional output field, including nested private data', () => {
   const f = roomProjectionFixture();
@@ -651,7 +658,7 @@ test('room assertion rejects cross-scope rooms and every additional output field
 test('P3 fetch only adds two fixed read endpoints, retains lease checks, and denies arbitrary methods/origins', async () => {
   const { context } = transportContext(); let checks = 0, sends = 0;
   const fetch = createLeaseReadFetch(context, { assertLease: async () => { checks++; }, request: async () => { sends++; return Response.json({}); } });
-  for (const name of ['hermes_room_scope_map_v1', 'copilot_available_rooms_v1']) {
+  for (const name of ['hermes_room_scope_map_v1', 'hermes_sale_listing_rooms_v1']) {
     await fetch(`${context.url}/rest/v1/rpc/${name}`, { method: 'POST', redirect: 'error', signal: context.lease.signal });
   }
   for (const [url, method] of [[`${context.url}/rest/v1/rpc/arbitrary_rpc`, 'POST'],

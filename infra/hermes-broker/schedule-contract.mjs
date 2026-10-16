@@ -173,7 +173,7 @@ export function scheduleInput(operation, input, now = Date.now()) {
 }
 const uuid = { type: 'string', format: 'uuid' };
 const settingsSchema = { type: 'object', additionalProperties: false, required: ['template', 'buildingIds', 'conversationIds', 'weekdays', 'time', 'timeZone', 'maxRooms', 'maxMessagesPerDay', 'expiresAt'], properties: {
-  template: { enum: [...SCHEDULE_TEMPLATES], description: 'rooms_public_text_v1: daily public vacant-room bulletin. sale_policy_public_text_v1: at the set time, compare the public sale policy (company sale policy and sale notes of offered rooms in these buildings) with what each group last received; the first run only records a baseline, later runs send the current public policy once when it changed. CRM may report a template as disabled.' },
+  template: { enum: [...SCHEDULE_TEMPLATES], description: 'rooms_public_text_v1: daily bulletin of the rooms listed on the CRM sale page / public share link (vacant, soon-vacant and customer-pass rooms) in these buildings, same list as crm_available_rooms. sale_policy_public_text_v1: at the set time, compare the public sale policy (company sale policy and sale notes of offered rooms in these buildings) with what each group last received; the first run only records a baseline, later runs send the current public policy once when it changed. CRM may report a template as disabled.' },
   buildingIds: { type: 'array', items: uuid, minItems: 1, maxItems: 20, uniqueItems: true },
   conversationIds: { type: 'array', items: uuid, minItems: 1, maxItems: 8, uniqueItems: true },
   weekdays: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 7 }, minItems: 1, maxItems: 7, uniqueItems: true, description: 'ISO weekday: Monday=1, Sunday=7.' },

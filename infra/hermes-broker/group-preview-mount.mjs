@@ -37,7 +37,7 @@ export const GROUP_DIRECTORY_TOOL = freeze({
 });
 export const GROUP_PREVIEW_TOOL = freeze({
   name: 'crm_group_room_preview',
-  description: 'Prepare a room sale text preview for selected groups. Use when the user asks to draft, preview or see a proposal. This does not send anything.',
+  description: 'Prepare a room sale text preview for selected groups. roomIds come from crm_available_rooms (the sale page list, including customer-pass rooms). Use when the user asks to draft, preview or see a proposal. This does not send anything.',
   inputSchema: { type: 'object', properties: {
     roomIds: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
     conversationIds: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', format: 'uuid' } },

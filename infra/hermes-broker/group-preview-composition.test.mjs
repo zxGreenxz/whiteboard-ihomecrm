@@ -17,6 +17,7 @@ import {ProfileLeaseStore} from '../hermes-runtime/profile-lease.mjs';
 import {createPrivateCommandRunner} from './private-command-runner.mjs';
 import {createPrivateCommandStore} from './private-command-store.mjs';
 import {setupMount, token} from './group-preview-fixture.mjs';
+import {installSaleListingSql,PREVIEW_CHAIN} from './sale-listing-sql-fixture.mjs';
 const signal=()=>new AbortController().signal;
 const code=c=>e=>e.code===c;
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});void promise.catch(()=>{});return{promise,resolve,reject};};
@@ -24,7 +25,7 @@ const tick=()=>new Promise(done=>setImmediate(done));
 const pending=async p=>{let done=false;void p.then(()=>done=true,()=>done=true);await tick();assert.equal(done,false);};
 
 test('private group preview composes real broker, durable core, transports and canonical SQL; IO/Auth/CRM synthetic', {timeout:60000}, async t=>{
-  const hooks={},f=await setupMount(t,hooks);
+  const hooks={},f=await setupMount(t,hooks);await installSaleListingSql(f,{chain:PREVIEW_CHAIN});
   const authority=createDurableAuthority({auth:f.baseAuth,connectionStore:f.connectionStore,crypto:f.crypto});
   const roomReads=createRoomReadService({authority,connectionStore:f.connectionStore,crypto:f.crypto,auth:f.baseAuth,reads:createSupabaseRoomReads(f.config)});
   const mount=createGroupPreviewMount({baseAuth:f.baseAuth,connectionStore:f.connectionStore,crypto:f.crypto,

@@ -29,7 +29,7 @@ const TOOL = Object.freeze({
 const ROOM_PERMISSION = 'rooms.view';
 const ROOM_TOOL = Object.freeze({
   name: 'crm_available_rooms',
-  description: 'Read free and soon-available rooms within this connection’s current CRM and assistant building scope. Pagination belongs to one read snapshot.',
+  description: 'Rooms currently listed for sale: exactly the list the CRM "Sale phòng" page / public share link shows and its "Danh sách phòng trống" image — vacant, soon-vacant and customer-pass (khách pass) rooms, with listed price, availability, room type, furniture, sale policy, status text and the contact that page prints. Use it for any question about which rooms are listed, on sale or vacant. Limited to this connection’s building scope; pagination belongs to one read snapshot.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -112,24 +112,38 @@ function roomResult(value, request, identity) {
   const amount = value => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER);
   const day = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
-  if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'totalInSnapshot', 'offset', 'nextOffset', 'rooms']) ||
-      value.source !== 'copilot_available_rooms_v1' || value.currency !== 'VND' ||
+  if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
+    'salePolicies', 'buildings', 'rooms']) ||
+      value.source !== 'hermes_sale_listing_rooms_v1' || value.currency !== 'VND' ||
       !['complete', 'source_capped'].includes(value.completeness) || typeof value.readAt !== 'string' ||
       !Number.isFinite(Date.parse(value.readAt)) || new Date(value.readAt).toISOString() !== value.readAt ||
+      !Number.isSafeInteger(value.publishedPages) || value.publishedPages < 0 || value.publishedPages > 1000 ||
       !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > 2000 ||
       value.offset !== request.offset || value.nextOffset !== (request.offset + request.limit < value.totalInSnapshot ? request.offset + request.limit : null) ||
+      !Array.isArray(value.salePolicies) || value.salePolicies.length > 50 || !value.salePolicies.every(policy => text(policy, 2000)) ||
+      !Array.isArray(value.buildings) || value.buildings.length > 100 ||
       !Array.isArray(value.rooms) || value.rooms.length !== Math.min(request.limit, Math.max(0, value.totalInSnapshot - request.offset))) fail('backend_unavailable');
-  const seen = new Set(), buildings = identity.scopesByPermission[ROOM_PERMISSION].buildingIds;
+  const seen = new Set(), buildings = identity.scopesByPermission[ROOM_PERMISSION].buildingIds, listed = new Set();
+  for (const building of value.buildings) {
+    if (!exactData(building, ['id', 'name', 'code', 'address', 'contact']) || !canonicalId(building.id) || listed.has(building.id) ||
+        !buildings.includes(building.id) || !text(building.name, 500) || !text(building.code, 256, true) || !text(building.address, 1000, true) ||
+        !exactData(building.contact, ['name', 'phone']) || !text(building.contact.name, 256, true) || !text(building.contact.phone, 256, true)) fail('backend_unavailable');
+    listed.add(building.id);
+  }
   for (const room of value.rooms) {
-    if (!exactData(room, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'rentVnd', 'depositVnd', 'status', 'availability']) ||
+    if (!exactData(room, ['id', 'code', 'name', 'building', 'floor', 'areaM2', 'priceVnd', 'rentVnd', 'depositVnd', 'status', 'availability',
+      'statusLines', 'roomType', 'amenities', 'salePolicy']) ||
         !canonicalId(room.id) || seen.has(room.id) || !text(room.code, 256, true) || !text(room.name, 500) ||
-        !exactData(room.building, ['id', 'name', 'code']) || !canonicalId(room.building.id) || !buildings.includes(room.building.id) ||
+        !exactData(room.building, ['id', 'name', 'code']) || !canonicalId(room.building.id) || !buildings.includes(room.building.id) || !listed.has(room.building.id) ||
         !text(room.building.name, 500) || !room.building.name.toLowerCase().includes(request.buildingName.toLowerCase()) || !text(room.building.code, 256, true) ||
         !(room.floor === null || (Number.isInteger(room.floor) && room.floor >= -100 && room.floor <= 1000)) ||
-        ![room.areaM2, room.rentVnd, room.depositVnd].every(amount) || !['free', 'soon'].includes(room.status) ||
+        ![room.areaM2, room.priceVnd, room.rentVnd, room.depositVnd].every(amount) || !['free', 'soon', 'pass'].includes(room.status) ||
         !exactData(room.availability, ['kind', 'label', 'availableOn']) ||
-        !['ready', 'notice', 'confirm_notice', 'preparing'].includes(room.availability.kind) ||
-        !text(room.availability.label, 256) || !day(room.availability.availableOn)) fail('backend_unavailable');
+        !['ready', 'notice', 'confirm_notice', 'preparing', 'pass'].includes(room.availability.kind) ||
+        (room.status === 'pass') !== (room.availability.kind === 'pass') ||
+        !text(room.availability.label, 600) || !day(room.availability.availableOn) ||
+        !Array.isArray(room.statusLines) || room.statusLines.length < 1 || room.statusLines.length > 4 || !room.statusLines.every(line => text(line, 600)) ||
+        ![room.roomType, room.amenities, room.salePolicy].every(value => text(value, 600, true))) fail('backend_unavailable');
     seen.add(room.id);
   }
   return { content: [{ type: 'text', text: JSON.stringify(structuredClone(value)) }], isError: false };

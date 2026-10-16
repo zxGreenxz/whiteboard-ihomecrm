@@ -249,6 +249,9 @@ async function jsonBody(response, cap, signal) {
 }
 
 /** Exactly two fixed POST RPCs with the verified assistant's real JWT.
+ * Rooms come from hermes_sale_listing_rooms_v1: the company's published sale page
+ * (the same get_public_available_rooms reader as the share link), cut to the
+ * caller's current rooms.view scope in SQL and to the assistant scope here.
  * hermes_room_scope_map_v1 requires its separately reviewed/applied migration;
  * this module neither creates it nor treats a missing RPC as an empty map.
  * The backend derives its expected binding and token digest from the admitted
@@ -275,7 +278,7 @@ export function createSupabaseRoomReads({ url, publishableKey, fetch: request = 
         p_expected_policy_version: bound.expectedPolicyVersion, p_expected_membership_id: bound.expectedMembershipId,
         p_expected_authorization_version: bound.expectedAuthorizationVersion, p_expected_session_revision: bound.expectedSessionRevision });
     }
-    const body = JSON.stringify(args), path = operation === 'scopeMap' ? 'hermes_room_scope_map_v1' : 'copilot_available_rooms_v1';
+    const body = JSON.stringify(args), path = operation === 'scopeMap' ? 'hermes_room_scope_map_v1' : 'hermes_sale_listing_rooms_v1';
     return bounded(signal, timeoutMs, async (innerSignal, check) => {
       const response = await request(new URL(`/rest/v1/rpc/${path}`, origin).href, { method: 'POST', redirect: 'error', signal: innerSignal,
         headers: { apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',

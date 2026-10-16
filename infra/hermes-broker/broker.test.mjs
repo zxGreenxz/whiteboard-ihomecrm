@@ -388,11 +388,17 @@ test('injected postcheck cannot signal denial as a successful false result', asy
 const BUILDING = '50000000-0000-4000-8000-000000000001';
 const ROOM_SCOPE = '60000000-0000-4000-8000-000000000001';
 function roomPayload() {
-  return { source: 'copilot_available_rooms_v1', readAt: new Date(1_000_000).toISOString(), currency: 'VND',
-    completeness: 'complete', totalInSnapshot: 1, offset: 0, nextOffset: null,
+  return { source: 'hermes_sale_listing_rooms_v1', readAt: new Date(1_000_000).toISOString(), currency: 'VND',
+    completeness: 'complete', publishedPages: 1, totalInSnapshot: 2, offset: 0, nextOffset: null, salePolicies: ['Chính sách thử'],
+    buildings: [{ id: BUILDING, name: 'House A', code: 'A', address: 'Đường Thử', contact: { name: 'Hotline thử', phone: '0900000001' } }],
     rooms: [{ id: '70000000-0000-4000-8000-000000000001', code: '101', name: '101',
-      building: { id: BUILDING, name: 'House A', code: 'A' }, floor: 1, areaM2: 20, rentVnd: 3000000,
-      depositVnd: 3000000, status: 'free', availability: { kind: 'ready', label: 'Trống sẵn', availableOn: null } }] };
+      building: { id: BUILDING, name: 'House A', code: 'A' }, floor: 1, areaM2: 20, priceVnd: 3000000, rentVnd: 3000000,
+      depositVnd: 3000000, status: 'free', availability: { kind: 'ready', label: 'Trống sẵn', availableOn: null },
+      statusLines: ['TRỐNG SẴN'], roomType: 'Phòng 20m²', amenities: null, salePolicy: null },
+    { id: '70000000-0000-4000-8000-000000000002', code: '102', name: '102',
+      building: { id: BUILDING, name: 'House A', code: 'A' }, floor: 1, areaM2: 20, priceVnd: 2900000, rentVnd: 3000000,
+      depositVnd: 3000000, status: 'pass', availability: { kind: 'pass', label: 'Khách pass phòng · Liên hệ admin iHome mở cửa', availableOn: null },
+      statusLines: ['KHÁCH PASS PHÒNG', 'LIÊN HỆ ADMIN IHOME MỞ CỬA'], roomType: 'Phòng 20m²', amenities: 'Máy lạnh', salePolicy: 'Thử' }] };
 }
 function roomsFixture(options = {}) {
   const events = [], prepared = new WeakSet(); let f, captured;
@@ -450,7 +456,8 @@ test('room arguments reject scope/RPC/field overrides and snapshot filters befor
     assert(!f.events.includes('prepare')); assert(f.events.includes('denied'));
   }
   const args = { buildingName: 'House', limit: 1 };
-  const f = roomsFixture({ beforeResolve: async () => { args.buildingName = 'Other'; args.limit = 100; } });
+  const f = roomsFixture({ beforeResolve: async () => { args.buildingName = 'Other'; args.limit = 100; },
+    result: () => { const value = roomPayload(); value.rooms = value.rooms.slice(0, 1); value.nextOffset = 1; return value; } });
   await f.broker.callTool(f.token, 'crm_available_rooms', args);
   assert.deepEqual(f.input(), { buildingName: 'House', offset: 0, limit: 1 });
 });
@@ -475,8 +482,13 @@ test('a final scope/policy denial wins after successful audit and branded broker
 test('room result rejects fields outside its protocol, foreign buildings and invalid pagination without leaking data', async () => {
   for (const mutate of [value => { value.accessToken = 'PRIVATE'; }, value => { value.rooms[0].contact = 'PRIVATE'; },
     value => { value.rooms[0].building.id = USER_B; }, value => { value.rooms[0].availability.note = 'PRIVATE'; },
-    value => { value.rooms[0].status = 'pass'; }, value => { value.rooms[0].availability.availableOn = '2026-02-30'; },
-    value => { value.totalInSnapshot = 2; }, value => { value.nextOffset = 1; },
+    value => { value.rooms[0].status = 'pass'; }, value => { value.rooms[1].availability.kind = 'ready'; },
+    value => { value.rooms[0].status = 'rented'; }, value => { value.rooms[0].availability.availableOn = '2026-02-30'; },
+    value => { value.source = 'copilot_available_rooms_v1'; }, value => { value.buildings = []; },
+    value => { value.buildings[0].contact.secret = 'PRIVATE'; }, value => { value.buildings.push({ ...value.buildings[0], id: USER_B }); },
+    value => { value.rooms[1].statusLines = []; }, value => { value.rooms[1].salePolicy = 'x'.repeat(601); },
+    value => { value.rooms[0].priceVnd = -1; }, value => { value.publishedPages = '1'; }, value => { value.salePolicies = [1]; },
+    value => { value.totalInSnapshot = 3; }, value => { value.nextOffset = 1; },
     value => { value.rooms.toJSON = () => ({ accessToken: 'PRIVATE' }); }]) {
     const f = roomsFixture({ result: () => { const value = roomPayload(); mutate(value); return value; } });
     await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('backend_unavailable'));

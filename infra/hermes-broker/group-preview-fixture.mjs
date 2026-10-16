@@ -36,7 +36,7 @@ export async function setupMount(t,hooks={}) {
     hermes_group_directory_v1:{keys:['p'],sql:'SELECT public.hermes_group_directory_v1($1::jsonb) result'},
     hermes_group_preview_decision_v1:{keys:['p'],sql:'SELECT public.hermes_group_preview_decision_v1($1::jsonb) result'},
     hermes_room_scope_map_v1:{keys:['p_organization_id','p_scope_ids','p_connection_id','p_token_digest','p_expected_epoch','p_expected_policy_version','p_expected_membership_id','p_expected_authorization_version','p_expected_session_revision'],sql:'SELECT public.hermes_room_scope_map_v1($1::uuid,$2::uuid[],$3::uuid,$4::text,$5::bigint,$6::bigint,$7::uuid,$8::bigint,$9::bigint) result'},
-    copilot_available_rooms_v1:{keys:['p_organization_id'],sql:'SELECT public.copilot_available_rooms_v1($1::uuid) result'},
+    hermes_sale_listing_rooms_v1:{keys:['p_organization_id'],sql:'SELECT public.hermes_sale_listing_rooms_v1($1::uuid) result'},
   };
   let beforeDecision=null;
   async function fetch(url,options){

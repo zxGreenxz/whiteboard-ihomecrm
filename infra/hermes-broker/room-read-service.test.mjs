@@ -28,7 +28,7 @@ const building = value => ({ id: value, name: 'Cùng tên', code: 'B', secret: '
 const room = (value, buildingId) => ({ id: value, building_id: buildingId, code: 'P101', name: 'Phòng', floor: 1, area: 24,
   rent_price: 4_000_000, deposit_amount: 8_000_000, status_public: 'free', sale_state: 'VACANT', sale_today: '2026-10-12',
   avail_date: null, expected_ready_on: null, contact: 'PRIVATE PHONE', internal_note: 'PRIVATE NOTE' });
-const payload = () => ({ buildings: [building(I.a), building(I.b), building(I.foreign)],
+const payload = () => ({ pages: 1, buildings: [building(I.a), building(I.b), building(I.foreign)],
   rooms: [room(id(51), I.a), room(id(52), I.b), room(id(53), I.foreign)], contact: 'PRIVATE CONTACT' });
 const code = expected => error => error instanceof BrokerError && error.code === expected && error.message === expected && error.cause === undefined;
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -239,7 +239,7 @@ test('HTTP adapter pins exactly two read RPCs, actual authenticated JWT and sele
   const reads = createSupabaseRoomReads({ url: origin, publishableKey, fetch: async (url, options) => { calls.push({ url, ...options }); return Response.json(mapping()); } });
   await reads.scopeMap({ accessToken: jwt(), organizationId: I.org, scopeIds: [I.scope], ...boundInput() }, { signal: f.signal });
   await reads.availableRooms({ accessToken: jwt(), organizationId: I.org }, { signal: f.signal });
-  assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_room_scope_map_v1', origin + '/rest/v1/rpc/copilot_available_rooms_v1']);
+  assert.deepEqual(calls.map(c => c.url), [origin + '/rest/v1/rpc/hermes_room_scope_map_v1', origin + '/rest/v1/rpc/hermes_sale_listing_rooms_v1']);
   assert.deepEqual(calls.map(c => JSON.parse(c.body)), [{ p_organization_id: I.org, p_scope_ids: [I.scope],
     p_connection_id: I.connection, p_token_digest: digest, p_expected_epoch: 1, p_expected_policy_version: 1,
     p_expected_membership_id: I.membership, p_expected_authorization_version: 1, p_expected_session_revision: 1 }, { p_organization_id: I.org }]);

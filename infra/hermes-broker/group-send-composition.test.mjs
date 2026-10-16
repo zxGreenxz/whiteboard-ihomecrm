@@ -5,7 +5,7 @@ import {createGroupPreviewMount} from './group-preview-mount.mjs';
 import {createDurableAuthority} from './durable-authority.mjs';
 import {createRoomReadService,createSupabaseRoomReads} from './room-read-service.mjs';
 import {setupMount,token} from './group-preview-fixture.mjs';
-import {installGroupSendSql} from '../hermes-zalo-router/group-send-sql-fixture.mjs';
+import {installSaleListingSql,PREVIEW_CHAIN} from './sale-listing-sql-fixture.mjs';
 import {USER,SESSION,FOREIGN} from '../hermes-zalo-router/private-command-fixture.mjs';
 
 // Real mount/broker/transports and canonical send/status SQL in one PGlite.
@@ -14,7 +14,7 @@ import {USER,SESSION,FOREIGN} from '../hermes-zalo-router/private-command-fixtur
 // PostgREST, provider delivery or concurrent PostgreSQL integration evidence.
 test('group send composes the real broker with canonical SQL queue and status', {timeout:60000},async t=>{
   const hooks={},f=await setupMount(t,hooks);
-  await installGroupSendSql(f);
+  await installSaleListingSql(f,{chain:PREVIEW_CHAIN});
   let beforeWrite,loseReply=false,sendCalls=0,statusCalls=0,observedId;
   const specs={
     hermes_group_send_v1:{keys:['p'],sql:'SELECT public.hermes_group_send_v1($1::jsonb) result'},
