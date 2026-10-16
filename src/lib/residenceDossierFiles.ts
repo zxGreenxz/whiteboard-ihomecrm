@@ -94,7 +94,7 @@ export async function listBuildingOwnershipFiles(buildingId: string): Promise<Re
  * của CHÍNH thao tác này để lại trên trình duyệt trước khi gửi lần mới.
  *
  * VÌ SAO (16/10/2026): Safari trên iPhone hay nạp lại trang khi mở camera, mạng di động
- * quá hạn chờ giữa chừng — lần tải dở để lại dấu trong localStorage. Bộ điều phối chỉ gỡ
+ * quá hạn chờ giữa chừng — lần tải dở để lại dấu trong trình duyệt. Bộ điều phối chỉ gỡ
  * dấu khi có hàm đối chiếu, ảnh hồ sơ không có, nên máy đó bị chặn tải loại ảnh ấy của
  * khách VĨNH VIỄN ("Chưa xác nhận xong yêu cầu tải ảnh hồ sơ trước đó…"); tải lại trang
  * hay đăng xuất không gỡ được, mà máy chủ không có tệp hay dòng hồ sơ nào để đối chiếu.
