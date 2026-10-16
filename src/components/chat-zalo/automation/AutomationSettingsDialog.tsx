@@ -36,7 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useZaloAutomationConfigs, useSaveAutomation, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply } from '../automationConfig';
 import type { CauHinhBroadcast, CauHinhAutoReply } from '../automationConfig';
-import type { ZaloConversation } from '@/components/chat-zalo/types';
+import type { ZaloConversation, ZaloLabel } from '@/components/chat-zalo/types';
 import RecipientPicker from './RecipientPicker';
 import SchedulePlanner from './SchedulePlanner';
 import TemplateBuilder from './TemplateBuilder';
@@ -49,11 +49,13 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   conversations: ZaloConversation[];
+  /** Nhãn "Phân loại" đã gắn tên nick — để lọc người nhận theo phân loại. */
+  labels?: ZaloLabel[];
 }
 
 type Tab = 'broadcast' | 'reply' | 'nhatky';
 
-export default function AutomationSettingsDialog({ open, onOpenChange, conversations }: Props) {
+export default function AutomationSettingsDialog({ open, onOpenChange, conversations, labels }: Props) {
   const configQuery = useZaloAutomationConfigs(open);
   const { data, isLoading } = configQuery;
   // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
@@ -210,6 +212,7 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                   <div data-field-name="recipients" tabIndex={-1} aria-invalid={!!errors.recipients} className="rounded aria-[invalid=true]:border aria-[invalid=true]:border-destructive">
                   <RecipientPicker
                     conversations={conversations}
+                    labels={labels}
                     value={bc.recipients}
                     onChange={(ids) => setBc({ ...bc, recipients: ids })}
                   />

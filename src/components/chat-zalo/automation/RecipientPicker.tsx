@@ -6,6 +6,13 @@
 // đang ở trong phòng không có lý do gì nhận bản tin rao phòng mỗi sáng; gửi
 // nhầm một lần là mất uy tín với người trả tiền thuê, và với Zalo thì đó đúng
 // là dấu hiệu spam. Bộ lọc này là hàng rào, không phải tiện ích sắp xếp.
+//
+// LỌC THEO PHÂN LOẠI (nhãn Zalo) chỉ THU HẸP thêm trong đám ứng viên trên —
+// không bao giờ đưa một khách thuê có nhãn vào danh sách. Khoá nhãn là
+// `accountId:labelId` vì label_id chỉ duy nhất trong một nick: hai nick cùng có
+// nhãn số 1 tên "Công việc" là hai phân loại khác nhau. "Chọn cả phân loại" chỉ
+// CỘNG các hội thoại đang hiện vào lựa chọn — cấu hình vẫn lưu danh sách id cố
+// định lúc chọn, gắn nhãn mới sau này không tự thêm người nhận.
 // =============================================================================
 
 import { useMemo, useState } from 'react';
@@ -13,14 +20,27 @@ import { Search, Users, BadgeCheck, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { tagStyle, avatarStyle } from '../zaloTheme';
-import type { ZaloConversation } from '@/components/chat-zalo/types';
+import LabelFilter from '../LabelFilter';
+import { conversationHasLabel, zaloLabelKey } from '../conversationState';
+import type { ZaloConversation, ZaloLabel } from '@/components/chat-zalo/types';
 import { CHU_MO, VIEN, VIEN_NHAT, NEN_MO, BangCanhBao } from './uiChung';
 
 interface Props {
   conversations: ZaloConversation[];
+  /** Nhãn "Phân loại" của tổ chức, đã gắn `accountName` (tên nick). */
+  labels?: ZaloLabel[];
   value: string[];
   onChange: (ids: string[]) => void;
 }
+
+// Hằng ở cấp module: mặc định `[]` ngay trong tham số sẽ là mảng mới mỗi lần
+// render và làm useMemo phía dưới tính lại vô ích.
+const KHONG_NHAN: ZaloLabel[] = [];
+
+/** "Công việc · Ihome" — tên nhãn luôn đi kèm tên nick để hai nhãn trùng tên
+ *  ở hai nick không bị lẫn (cùng cách hiển thị với LabelFilter). */
+const tenNhanKemNick = (l: ZaloLabel) =>
+  `${l.emoji ? `${l.emoji} ` : ''}${l.name} · ${l.accountName || l.accountId.slice(0, 8)}`;
 
 // Dải dấu tổ hợp Unicode (U+0300..U+036F) — thứ mà `normalize('NFD')` tách ra.
 // Lọc bằng SỐ HEX chứ không dán ký tự thật vào một regex `[x-y]`: dấu tổ hợp
@@ -42,8 +62,9 @@ const boDau = (s: string) =>
     })
     .join('');
 
-export default function RecipientPicker({ conversations, value, onChange }: Props) {
+export default function RecipientPicker({ conversations, labels = KHONG_NHAN, value, onChange }: Props) {
   const [tim, setTim] = useState('');
+  const [nhan, setNhan] = useState<string | null>(null);
 
   const chon = Array.isArray(value) ? value : [];
   const daChon = useMemo(() => new Set(Array.isArray(value) ? value : []), [value]);
@@ -54,11 +75,19 @@ export default function RecipientPicker({ conversations, value, onChange }: Prop
     [conversations],
   );
 
+  const dsNhan = Array.isArray(labels) ? labels : KHONG_NHAN;
+  // Nhãn đang chọn mà biến khỏi danh sách (đồng bộ lại, nick bị gỡ) thì coi như
+  // không lọc — để nguyên khoá cũ sẽ ra danh sách rỗng mà nút vẫn ghi "Phân loại".
+  const nhanDangLoc = useMemo(
+    () => (nhan === null ? null : dsNhan.find((l) => zaloLabelKey(l) === nhan) ?? null),
+    [dsNhan, nhan],
+  );
+  const khoaNhan = nhanDangLoc ? zaloLabelKey(nhanDangLoc) : null;
+
   const loc = useMemo(() => {
     const k = boDau(tim).trim();
-    if (!k) return ungVien;
-    return ungVien.filter((c) => boDau(c.name).includes(k));
-  }, [ungVien, tim]);
+    return ungVien.filter((c) => conversationHasLabel(c, khoaNhan) && (!k || boDau(c.name).includes(k)));
+  }, [ungVien, tim, khoaNhan]);
 
   // Id đã chọn nhưng KHÔNG còn trong danh sách ứng viên: hội thoại bị gỡ đánh
   // dấu sale, rời nhóm, hoặc thuộc tài khoản Zalo khác. Worker sẽ bỏ qua chúng
@@ -77,9 +106,14 @@ export default function RecipientPicker({ conversations, value, onChange }: Prop
 
   return (
     <div>
-      {/* Thanh tìm + số đã chọn */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      {/* Thanh lọc phân loại + tìm + số đã chọn */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 9 }}>
+        {dsNhan.length > 0 && (
+          <div style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '100%' }}>
+            <LabelFilter labels={dsNhan} selectedLabel={khoaNhan} onSelect={setNhan} modal />
+          </div>
+        )}
+        <div style={{ position: 'relative', flex: '1 1 160px', minWidth: 0 }}>
           <Search size={14} style={{ position: 'absolute', left: 9, top: 9, color: CHU_MO }} />
           <Input
             value={tim}
@@ -100,12 +134,18 @@ export default function RecipientPicker({ conversations, value, onChange }: Prop
 
       {ungVien.length > 0 && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 11.5 }}>
+          {/* Đang lọc phân loại thì nút này thành "Chọn cả phân loại": cùng hành
+              vi (cộng dồn các hội thoại đang hiện), nhưng số trong ngoặc phải là
+              số đang hiện chứ không phải tổng ứng viên — hai nút song song làm
+              cùng một việc chỉ khiến người dùng phân vân. */}
           <button
             type="button"
             onClick={chonHetDangLoc}
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'hsl(224 76% 46%)', fontWeight: 600 }}
           >
-            Chọn tất cả {tim.trim() ? `(${loc.length} kết quả)` : `(${ungVien.length})`}
+            {khoaNhan
+              ? `Chọn cả phân loại (${loc.length})`
+              : `Chọn tất cả ${tim.trim() ? `(${loc.length} kết quả)` : `(${ungVien.length})`}`}
           </button>
           <button
             type="button"
@@ -136,7 +176,11 @@ export default function RecipientPicker({ conversations, value, onChange }: Prop
         )}
 
         {ungVien.length > 0 && loc.length === 0 && (
-          <div style={{ padding: 14, fontSize: 12, color: CHU_MO }}>Không có hội thoại nào khớp “{tim}”.</div>
+          <div style={{ padding: 14, fontSize: 12, color: CHU_MO }}>
+            {nhanDangLoc
+              ? <>Không có nhóm hay hội thoại sale nào{tim.trim() ? <> khớp “{tim}”</> : null} thuộc phân loại “{tenNhanKemNick(nhanDangLoc)}”.</>
+              : <>Không có hội thoại nào khớp “{tim}”.</>}
+          </div>
         )}
 
         {loc.map((c, i) => {
