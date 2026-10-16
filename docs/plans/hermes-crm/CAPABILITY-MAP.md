@@ -19,11 +19,11 @@ Ký hiệu cổng reader Copilot: **H** = `copilot_org_scope_buildings_v1` (mả
 | `phong_trong` | rooms.view | `copilot_available_rooms_v1` (H) | `crm_available_rooms` | Đã chuyển |
 | `bao_cao_phong_trong` | reports_real_estate.vacant_rooms | `copilot_report_vacant_rooms_v1` (H) | `crm_available_rooms`, `crm_read_occupancy` | Một phần: thay bằng tool phòng; báo cáo riêng hoãn |
 | `ty_le_lap_day` | reports_real_estate.occupancy | `occupancy_snapshot_v2` / `_upcoming_vacancy_v2` (H) | `crm_read_occupancy` | Một phần: snapshot hiện tại; dự báo trống hoãn |
-| `tim_khach_hang` | customers.view | `copilot_customer_search_v1` (H, SĐT đầy đủ) | `crm_read_customers` (SĐT che) | Đã chuyển |
+| `tim_khach_hang` | customers.view | `copilot_customer_search_v1` (H, SĐT đầy đủ) | `crm_read_customers` (SĐT đầy đủ từ 16/10, họ v3) + `crm_read_customer_detail` | Đã chuyển |
 | `tim_khach_hen` | leads.view | `copilot_lead_search_v1` (H+A) | `crm_read_leads` | Đã chuyển |
-| `tim_hop_dong` | contracts.view | `copilot_contract_search_v1` (H) | `crm_read_contracts` | Đã chuyển |
-| `chi_tiet_hop_dong` | contracts.view | `copilot_contract_detail_v1` (H) | `crm_read_contracts` | Một phần: chi tiết tiền thuê/cọc/khách hoãn, cần projection riêng |
-| `tim_hoa_don` | invoices.view | `copilot_invoice_search_v1` (H) | `crm_read_invoices` | Đã chuyển |
+| `tim_hop_dong` | contracts.view | `copilot_contract_search_v1` (H) | `crm_read_contracts`; `crm_read_contract_search` (tên khách/phòng/toà, chỉ kết nối Toàn tổ chức) | Đã chuyển |
+| `chi_tiet_hop_dong` | contracts.view | `copilot_contract_detail_v1` (H) | `crm_read_contract_detail` (họ v3: điều khoản, cọc, người ở, dịch vụ) | Đã chuyển (16/10) |
+| `tim_hoa_don` | invoices.view | `copilot_invoice_search_v1` (H) | `crm_read_invoices`; `crm_read_invoice_report` (search/stats) | Đã chuyển |
 | `cong_no_tong_quan` | invoices.view | `get_invoice_statistics_v2` (H) | `crm_read_receivables` | Chuyển đợt này (dạng danh sách còn nợ); thống kê gộp hoãn: chưa rà shape JSON |
 | `bao_cao_lich_thu_tien` | reports_finance.payment_schedule | `copilot_report_payment_schedule_v1` (H, tên khách) | `crm_read_receivables` (lọc hạn) | Một phần |
 | `tim_phieu_thu_chi` | income_expenses.view | `copilot_income_expense_search_v1` (H + `can_view_restricted_ie`) | `crm_read_income_expenses` | Chuyển đợt này |
@@ -37,7 +37,7 @@ Ký hiệu cổng reader Copilot: **H** = `copilot_org_scope_buildings_v1` (mả
 | `danh_sach_loai_cong_viec` | task_types.view | `copilot_job_type_directory_v1` (A, cờ) | `crm_task_input_options kind=jobTypes` | Một phần: chỉ khi có Action tasks.create |
 | `danh_sach_toa_nha` | buildings.view | `copilot_building_directory_v1` (A+H, cờ) | nhãn toà trong `crm_*_input_options`, `crm_read_occupancy` | Một phần |
 | `danh_sach_phong_sale` | sale_phong.view | `copilot_sale_listing_directory_v1` (H+A, cờ) | `crm_available_rooms`, `crm_room_pass_observe` | Một phần |
-| `hoi_thoai_zalo` | chat_zalo.view | `copilot_zalo_conversations_v1` (H+A; SĐT, nội dung tin) | `crm_group_directory` (nhóm) | Một phần; hội thoại cá nhân hoãn: nội dung riêng tư cần projection |
+| `hoi_thoai_zalo` | chat_zalo.view | `copilot_zalo_conversations_v1` (H+A; SĐT, nội dung tin) | `crm_group_directory` (nhóm); `crm_read_zalo_conversations` (danh sách + tin cuối, trả lời riêng, Toàn tổ chức) | Đã chuyển danh sách (16/10); nội dung đầy đủ tin nhắn chưa |
 | `bao_cao_dat_coc` | reports_finance.deposits_report | `copilot_report_deposits_v1` (H, tên khách) | `crm_read_deposits_held` (tổng theo toà) | Một phần; chi tiết hoãn |
 | `bao_cao_gia_han` | reports_real_estate.renewals_transfers | `copilot_report_renewals_v1` (H) | — | Hoãn: ứng viên đợt sau, cần bỏ tên khách khỏi projection |
 | `bao_cao_hop_dong_moi` | reports_real_estate.new_leases | `copilot_report_new_leases_v1` (H) | — | Hoãn: như trên |

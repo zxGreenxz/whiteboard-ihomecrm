@@ -8,7 +8,7 @@ import { ROOM_PASS_ACTION, ROOM_PASS_UPSERT_OPERATIONS, roomPassInput, roomPassR
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const keys=['connectionId','tokenDigest','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision'];
 export function createRoomPassReads(options){
-  const rpc=createBoundUserRpcTransport({...options,allowedNames:['hermes_room_pass_action_v1','hermes_room_pass_capabilities_v1','hermes_room_pass_upsert_v1']});
+  const rpc=createBoundUserRpcTransport({...options,allowedNames:['hermes_room_pass_action_v1','hermes_room_pass_capabilities_v1','hermes_room_pass_upsert_v1','hermes_room_pass_upsert_v2']});
   return Object.freeze({async capabilities({accessToken,organizationId},callOptions){
     if(!domainId(organizationId))throw new BrokerError('invalid_request');
     return rpc('hermes_room_pass_capabilities_v1',accessToken,{p_organization_id:organizationId},callOptions,{optional:true});
@@ -18,15 +18,18 @@ export function createRoomPassReads(options){
       !(value.binding.expectedPolicyVersion===0||positive(value.binding.expectedPolicyVersion)))throw new BrokerError('invalid_request');
     let input;try{input=roomPassInput(operation,value.input);}catch{throw new BrokerError('invalid_request');}
     const args={p_binding:value.binding,p_operation:operation,p_input:input};
-    // lookup/upsert exist only in hermes_room_pass_upsert_v1 (absent = PGRST202 =>
-    // backend_unavailable, never a v1 write). status asks it first because it also
-    // reconciles upsert receipts; only when that RPC is not deployed yet does the
-    // applied v1 answer set_active receipts as before.
+    // lookup/upsert go to hermes_room_pass_upsert_v2: the reviewed v1 decides
+    // everything, v2 only adds the full contact phone for the private reply
+    // (absent = PGRST202 => backend_unavailable, never a v1 write). status asks v2,
+    // then v1 (receipts with the masked contact), then the applied action v1 for
+    // set_active receipts when neither upsert RPC is deployed yet.
     if(ROOM_PASS_UPSERT_OPERATIONS.includes(operation))
-      return rpc('hermes_room_pass_upsert_v1',value.accessToken,args,callOptions,{write:operation==='upsert'});
+      return rpc('hermes_room_pass_upsert_v2',value.accessToken,args,callOptions,{write:operation==='upsert'});
     if(operation==='status'){
-      const reconciled=await rpc('hermes_room_pass_upsert_v1',value.accessToken,args,callOptions,{optional:true});
-      if(reconciled!==null)return reconciled;
+      for(const name of ['hermes_room_pass_upsert_v2','hermes_room_pass_upsert_v1']){
+        const reconciled=await rpc(name,value.accessToken,args,callOptions,{optional:true});
+        if(reconciled!==null)return reconciled;
+      }
     }
     return rpc('hermes_room_pass_action_v1',value.accessToken,args,callOptions,{write:operation==='set_active'});
   }});

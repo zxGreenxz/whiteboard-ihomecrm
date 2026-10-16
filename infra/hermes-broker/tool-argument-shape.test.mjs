@@ -98,8 +98,12 @@ test('non-objects, unknown tools, prototypes, accessors and hostile proxies pass
   assert.equal(normalizeToolArguments(options, hostile), hostile);
 });
 
+// List-shaped reads (query/cursor/buildingId). Detail/report reads of the v3 full-read
+// family have their own schema (full-read-contract) and are checked separately.
+const LIST_READS = DOMAIN_TOOLS.filter(read => Object.hasOwn(read.inputSchema.properties, 'cursor'));
 test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep absence', () => {
-  for (const read of DOMAIN_TOOLS) {
+  assert.ok(LIST_READS.length >= 13);
+  for (const read of LIST_READS) {
     assert.deepEqual(normalizeToolArguments(read, { cursor: NIL, buildingId: ` ${NIL}\t` }), { cursor: null, buildingId: null }, read.name);
     assert.deepEqual(normalizeToolArguments(read, { cursor: '', buildingId: '  ' }), { cursor: null, buildingId: null }, read.name);
     assert.deepEqual(normalizeToolArguments(read, { query: ' ', limit: 5 }), { query: ' ', limit: 5 }, read.name);
@@ -114,7 +118,7 @@ test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep 
 
 test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final', () => {
   const EMPTY = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
-  for (const read of DOMAIN_TOOLS) {
+  for (const read of LIST_READS) {
     const listed = advertisedTool(read), { query, buildingId } = listed.inputSchema.properties;
     assert.ok(listed.description.endsWith(`. ${EMPTY}`), read.name);
     assert.equal(query.description, 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.', read.name);

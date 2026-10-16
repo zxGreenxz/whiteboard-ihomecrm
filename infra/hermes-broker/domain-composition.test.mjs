@@ -78,12 +78,13 @@ async function setup(t) {
 }
 
 test('domain contract rejects caller-controlled identity, RPC, implicit writes and malformed result projections',()=>{
-  assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,8);
+  // 16/10 đọc đầy đủ: crm_read_customers chuyển sang họ v3 (SĐT đầy đủ); v1 SQL vẫn là bản đã phát hành.
+  assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,7);assert.equal(DOMAIN_READS.customers.family,'v3');
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
-  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phoneMasked:'***4567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM}],nextCursor:null};
+  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
   assert.deepEqual(domainResult('customers',result,identity,domainInput('customers',{})),result);
-  for(const changed of [{...result,organizationId:FOREIGN},{...result,items:[{...result.items[0],buildingId:OTHER_BUILDING}]},{...result,items:[{...result.items[0],phone:'full'}]},{...result,nextCursor:ITEM}]) assert.throws(()=>domainResult('customers',changed,identity,domainInput('customers',{})));
+  for(const changed of [{...result,organizationId:FOREIGN},{...result,items:[{...result.items[0],buildingId:OTHER_BUILDING}]},{...result,items:[{...result.items[0],phoneMasked:'***4567'}]},{...result,fetchedAt:'now'},{...result,nextCursor:ITEM}]) assert.throws(()=>domainResult('customers',changed,identity,domainInput('customers',{})));
 });
 
 test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/Auth ports, no live JWT proof',{timeout:60000},async t=>{
@@ -182,15 +183,16 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
   const connectionStore=createDurableConnectionStore({transport:{async call(operation,payload){assert.equal(operation,'readConnection');return f.rpc('app_private.hermes_store_read_connection_v1',payload);}}});
   const authority=createDurableAuthority({connectionStore,crypto,auth});
   const service=createDomainMount({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch}).createService(),options={signal:new AbortController().signal};
-  const receipt=await service.prepareDomain(token,'customers',{},options);assert.ok(Object.isFrozen(receipt));assert.deepEqual(Object.keys(receipt),[]);
-  const result=await service.finalizeDomain(token,receipt,options);assert.equal(result.items[0].phoneMasked,'***4567');
+  // customers moved to the v3 full-read family (domain-v3.test.mjs); the applied v1 SQL is exercised through contracts.
+  const receipt=await service.prepareDomain(token,'contracts',{},options);assert.ok(Object.isFrozen(receipt));assert.deepEqual(Object.keys(receipt),[]);
+  const result=await service.finalizeDomain(token,receipt,options);assert.equal(result.items[0].number,'CONTRACT');
   assert.equal(events.at(-1),'/rest/v1/rpc/hermes_domain_read_v1');await assert.rejects(service.finalizeDomain(token,receipt,options),code('context_changed'));
-  const stale=await service.prepareDomain(token,'customers',{},options);await db.exec("UPDATE public.fixture_domain_acl SET allowed=false WHERE permission='customers.view'");
+  const stale=await service.prepareDomain(token,'contracts',{},options);await db.exec("UPDATE public.fixture_domain_acl SET allowed=false WHERE permission='contracts.view'");
   const before=events.filter(name=>name.endsWith('read_v1')).length;
   await assert.rejects(service.finalizeDomain(token,stale,options),code('context_changed'));
   assert.equal(events.filter(name=>name.endsWith('read_v1')).length,before);
-  await db.exec("UPDATE public.fixture_domain_acl SET allowed=true WHERE permission='customers.view'");
-  const finalFence=await service.prepareDomain(token,'customers',{},options);
+  await db.exec("UPDATE public.fixture_domain_acl SET allowed=true WHERE permission='contracts.view'");
+  const finalFence=await service.prepareDomain(token,'contracts',{},options);
   beforeRead=()=>db.exec("UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['tasks.view']");
   await assert.rejects(service.finalizeDomain(token,finalFence,options),code('forbidden'));
 });

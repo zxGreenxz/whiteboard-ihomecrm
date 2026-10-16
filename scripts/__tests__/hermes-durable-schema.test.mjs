@@ -73,7 +73,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   // Customer/lead action options layer over v6 (20261015191139).
   'hermes_org_policy_options_v7(uuid)', 'hermes_connection_options_v7(uuid)', 'hermes_connection_context_v7(uuid)',
   // CRM "Gửi ảnh phòng trống" status/recipients/send/cancel/update caller (20261016111855).
-  'hermes_zalo_broadcast_v1(jsonb)'];
+  'hermes_zalo_broadcast_v1(jsonb)',
+  // Full read for the asker (20261016162104): room-pass wrapper over v1 and domain family v3.
+  'hermes_room_pass_upsert_v2(jsonb,text,jsonb)', 'hermes_domain_read_v3(jsonb,text,jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',

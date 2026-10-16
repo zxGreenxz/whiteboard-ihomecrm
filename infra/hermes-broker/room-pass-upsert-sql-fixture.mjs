@@ -10,11 +10,13 @@ import { id, USER, ORG, FOREIGN, SESSION } from '../hermes-zalo-router/private-c
 // another is not. No PostgREST/JWT/RLS or concurrent MVCC evidence.
 export const upsertPath = new URL('../../supabase/migrations/20261015162454_hermes_room_pass_upsert_v1.sql', import.meta.url);
 export const enablePath = new URL('../../supabase/migrations/20261015163023_hermes_room_pass_registry_enable_v1.sql', import.meta.url);
+// Đọc đầy đủ cho người hỏi (16/10): hermes_room_pass_upsert_v2 bọc v1 và trả SĐT đầy đủ.
+export const fullReadPath = new URL('../../supabase/migrations/20261016162104_hermes_full_read_v1.sql', import.meta.url);
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 export const OWNER = id('3'), BUILDING2 = id('4'), ROOM2 = id('5'), FOREIGN_BUILDING = id('6'), FOREIGN_ROOM = id('7'), SCOPE2 = id('8');
 export const ROOM3 = id('9'), CONTRACT = id('e'), CUSTOMER = '0c0c0c0c-0000-4000-8000-000000000001', PHONE = '0354058160';
 
-export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8') } = {}) {
+export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8'), fullRead = null } = {}) {
   const base = await setupRoomPass(t), { db } = base;
   await db.exec(`
     ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN code text,ADD COLUMN street_address text,ADD COLUMN is_virtual boolean NOT NULL DEFAULT false;
@@ -67,17 +69,20 @@ export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8') } 
   await db.exec(extract(writer, 'public.upsert_room_pass_listing'));
   await db.exec(extract(migration('20261014081902_hermes_domain_reads_v1'), 'app_private.hermes_domain_text_v1'));
   await db.exec(sql); await db.exec(sql);
-  async function call(operation, input, b = binding, role = 'authenticated', actor = USER) {
+  if (fullRead !== null) { await db.exec(fullRead); await db.exec(fullRead); }
+  async function call(operation, input, b = binding, role = 'authenticated', actor = USER, rpc = 'hermes_room_pass_upsert_v1') {
     await db.exec('BEGIN');
     await db.query("SELECT set_config('request.jwt.claim.role',$1,true),set_config('request.jwt.claim.sub',$2,true),set_config('request.jwt.claim.session',$3,true)", [role, actor, SESSION]);
     await db.exec(`SET LOCAL ROLE ${role}`);
     try {
-      const result = (await db.query('SELECT public.hermes_room_pass_upsert_v1($1::jsonb,$2::text,$3::jsonb) result', [JSON.stringify(b), operation, JSON.stringify(input)])).rows[0].result;
+      if (!['hermes_room_pass_upsert_v1', 'hermes_room_pass_upsert_v2'].includes(rpc)) throw new Error('invalid_fixture_rpc');
+      const result = (await db.query(`SELECT public.${rpc}($1::jsonb,$2::text,$3::jsonb) result`, [JSON.stringify(b), operation, JSON.stringify(input)])).rows[0].result;
       await db.exec('COMMIT'); return result;
     } catch (error) { await db.exec('ROLLBACK'); throw error; } finally { await db.exec('RESET ROLE'); }
   }
   const count = async table => (await db.query(`SELECT count(*)::integer n FROM ${table}`)).rows[0].n;
-  return { ...base, call, count };
+  const call2 = (operation, input, b = binding, role = 'authenticated', actor = USER) => call(operation, input, b, role, actor, 'hermes_room_pass_upsert_v2');
+  return { ...base, call, call2, count };
 }
 
 export { BUILDING, ROOM, LISTING, SCOPE, binding, code };
