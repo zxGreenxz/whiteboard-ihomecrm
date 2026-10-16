@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupMount, token } from './group-preview-fixture.mjs';
+import { installSaleListingSql, PREVIEW_CHAIN } from './sale-listing-sql-fixture.mjs';
 import { createGroupPreviewMount } from './group-preview-mount.mjs';
 import { setupGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
 import { createBroker } from './broker.mjs';
@@ -8,7 +9,7 @@ import { createRoomReadService, createSupabaseRoomReads } from './room-read-serv
 import { FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
 
 test('group directory needs current chat read only; preview needs room read; action stays independent', { timeout: 60000 }, async t => {
-  const f = await setupMount(t);
+  const f = await setupMount(t); await installSaleListingSql(f, { chain: PREVIEW_CHAIN });
   const mount = createGroupPreviewMount({ auth: f.auth, authority: f.authority, connectionStore: f.connectionStore, crypto: f.crypto,
     supabase: { url: f.config.url, publishableKey: f.config.publishableKey }, dependencyScope: f.scope, fetch: f.config.fetch });
   assert.equal(mount.authority, f.authority);

@@ -7,7 +7,7 @@ const sql=readFileSync(new URL('20261013163623_hermes_group_preview_authority_v1
 const migration=name=>readFileSync(`supabase/migrations/${name}.sql`,'utf8');
 const SCOPE=id('e'),BUILDING=id('f'),ROOM='01234567-1234-4567-8123-123456789abc',GROUP='12345678-1234-4567-8123-123456789abc',CLAIM='23456789-1234-4567-8123-123456789abc',REQUEST='34567890-1234-4567-8123-123456789abc';
 const baseline={connectionId:CONNECTION,tokenDigest:'b'.repeat(64),commandId:null,claimId:CLAIM,expectedEpoch:1,expectedPolicyVersion:1,expectedMembershipId:USER,expectedAuthorizationVersion:1,expectedSessionRevision:1,requestId:REQUEST};
-const body={buildings:[{id:BUILDING,name:'Synthetic building',code:'B',public_contact_phone:'not-to-cross'}],rooms:[{id:ROOM,building_id:BUILDING,name:'101',code:'101',floor:1,area:25,rent_price:5000000,deposit_amount:5000000,status_public:'free',avail_date:null,sale_state:null,sale_today:'2026-10-13',expected_ready_on:null,description:'PRIVATE',sale_note:'PRIVATE'}]};
+const body={pages:1,buildings:[{id:BUILDING,name:'Synthetic building',code:'B',public_contact_phone:'not-to-cross'}],rooms:[{id:ROOM,building_id:BUILDING,name:'101',code:'101',floor:1,area:25,rent_price:5000000,deposit_amount:5000000,status_public:'free',avail_date:null,sale_state:null,sale_today:'2026-10-13',expected_ready_on:null,description:'PRIVATE',sale_note:'PRIVATE'}]};
 
 export async function setup(t){
   const f=await fixture(t,{migrations:['20261013084000_hermes_private_command_dispatch_v1']});

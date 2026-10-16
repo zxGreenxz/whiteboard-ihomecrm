@@ -4,6 +4,7 @@ import { installGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixtur
 import { setupMount, token } from './group-preview-fixture.mjs';
 import { ORG, USER, INSTANCE, SESSION } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { applyNotifyRetryDigest, notifyRetryDigestSql } from './notify-retry-digest-fixture.mjs';
+import { installSaleListingSql } from './sale-listing-sql-fixture.mjs';
 
 // Actual candidate SQL (schedule v1 + health/reconcile + notify digest forward migrations) on a
 // disposable PGlite fixture. CRM authority, sale facts, timezone, push JWT and
@@ -60,6 +61,8 @@ export async function setupScheduleHealth(t, { reconcile = false, hooks = {}, di
   // Latest sweep: 20261015185559 groups owner notices (applied twice);
   // digest:null keeps the health migration's per-incident sweep.
   if (digest !== null) await applyNotifyRetryDigest(db, digest);
+  // Latest room source: the published sale page (20261016080232) for run_v1/fact/preview.
+  await installSaleListingSql(x, { chain: false });
   const binding = { ...x.baseline, tokenDigest: createHash('sha256').update(token).digest('hex') };
   delete binding.commandId; delete binding.claimId;
   const temporal = (await db.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh','HH24:MI') time,

@@ -24427,6 +24427,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_sale_listing_rooms_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       hermes_set_org_policy_v1: {
         Args: {
           p_action: string[]

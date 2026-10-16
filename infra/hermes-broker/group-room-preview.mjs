@@ -93,8 +93,8 @@ export function buildGroupRoomPreview({ intent, authority, roomRead, recipientRe
   }
   exact(roomRead, ['organizationId', 'contextVersion', 'result']);
   const result = roomRead.result;
-  exact(result, ['source', 'readAt', 'currency', 'completeness', 'totalInSnapshot', 'offset', 'nextOffset', 'rooms']);
-  if (result.source !== 'copilot_available_rooms_v1' || result.currency !== 'VND' || result.completeness !== 'complete') fail('draft_source_incomplete');
+  exact(result, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset', 'salePolicies', 'buildings', 'rooms']);
+  if (result.source !== 'hermes_sale_listing_rooms_v1' || result.currency !== 'VND' || result.completeness !== 'complete') fail('draft_source_incomplete');
   if (!Number.isSafeInteger(result.totalInSnapshot) || result.totalInSnapshot < 1 || result.totalInSnapshot > 2000 ||
       !Number.isSafeInteger(result.offset) || result.offset < 0 || result.offset >= result.totalInSnapshot) fail('draft_input_invalid');
   const rows = array(result.rooms, 100), seenRooms = new Set(), facts = new Map();
@@ -106,13 +106,13 @@ export function buildGroupRoomPreview({ intent, authority, roomRead, recipientRe
     if (!roomIds.includes(row.id)) continue;
     exact(row.building, ['id', 'name', 'code']);
     if (!id(row.building.id) || !allowedBuildingIds.includes(row.building.id)) fail('draft_forbidden');
-    if (!['free', 'soon'].includes(row.status)) fail('draft_input_invalid');
+    if (!['free', 'soon', 'pass'].includes(row.status)) fail('draft_input_invalid');
     exact(row.availability, ['kind', 'label', 'availableOn']);
-    if (!['ready', 'notice', 'confirm_notice', 'preparing'].includes(row.availability.kind)) fail('draft_input_invalid');
+    if (!['ready', 'notice', 'confirm_notice', 'preparing', 'pass'].includes(row.availability.kind) || (row.status === 'pass') !== (row.availability.kind === 'pass')) fail('draft_input_invalid');
     facts.set(row.id, {
       roomId: row.id, buildingId: row.building.id,
       roomLabel: label(row.code === null ? row.name : row.code, 500), buildingLabel: label(row.building.name),
-      areaM2: amount(row.areaM2), rentVnd: amount(row.rentVnd), status: row.status,
+      areaM2: amount(row.areaM2), rentVnd: amount(row.priceVnd), status: row.status,
       availability: { kind: row.availability.kind, label: label(row.availability.label, 500), availableOn: day(row.availability.availableOn) },
     });
   }

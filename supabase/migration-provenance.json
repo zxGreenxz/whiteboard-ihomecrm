@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-15T19:47:18.055Z",
+  "generatedAt": "2026-10-16T09:10:12.515Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 720,
+    "ledger-applied": 722,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -11781,6 +11781,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-15T19:47:06.743Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016080232_hermes_sale_listing_parity_v1.sql",
+      "version": "20261016080232",
+      "name": "hermes_sale_listing_parity_v1",
+      "scheme": "timestamp14",
+      "sha256": "1be9fbd55404d63c42607ac5cc0f278006c3d0ec3e42201f6eed3e6a1e83b604",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T09:06:38.326Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016085117_hermes_sale_listing_no_page_v1.sql",
+      "version": "20261016085117",
+      "name": "hermes_sale_listing_no_page_v1",
+      "scheme": "timestamp14",
+      "sha256": "37a4378ea0cf3eeca87259493ab25fb967442f75821adf353f38f8777cd4ea56",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T09:09:26.050Z|bien-nhan-backup"
       ]
     },
     {

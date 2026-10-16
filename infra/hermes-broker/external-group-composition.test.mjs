@@ -9,6 +9,7 @@ import { createGroupPreviewMount } from './group-preview-mount.mjs';
 import { createRoomReadService, createSupabaseRoomReads } from './room-read-service.mjs';
 import { setupMount, token } from './group-preview-fixture.mjs';
 import { installGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
+import { installSaleListingSql } from './sale-listing-sql-fixture.mjs';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 import { USER, SESSION, ORG, FOREIGN, INSTANCE, CONNECTION, ACCOUNT } from '../hermes-zalo-router/private-command-fixture.mjs';
 
@@ -30,6 +31,7 @@ test('external MCP uses its real connection origin through preview, queue and pr
   const catalog = () => db.query(`SELECT p.proname,p.prosrc,p.provolatile,p.proowner,p.proacl,p.proconfig
     FROM pg_proc p WHERE p.proname LIKE 'hermes_external_group_%' OR p.proname IN ('hermes_group_assert_dispatch_v1','hermes_group_preview_from_context_v1') ORDER BY p.proname`);
   await db.exec(sql); const first = await catalog(); await db.exec(sql); assert.deepEqual(await catalog(), first);
+  await installSaleListingSql(x, { chain: false });
   await db.exec(`DELETE FROM app_private.hermes_org_policies; DELETE FROM app_private.hermes_zalo_private_commands;
     INSERT INTO public.zalo_conversations(id,account_id,organization_id,thread_type,thread_id,peer_name,user_id)
       VALUES('${OTHER_GROUP}','${ACCOUNT}','${ORG}','group','988','Other synthetic group','${FOREIGN}')`);
@@ -242,7 +244,7 @@ test('external forward SQL preserves the private command origin through the shar
   const queue = await installGroupSendSql(x);
   await db.exec(migration('20261013095000_hermes_zalo_private_reply_v1'));
   await db.exec(migration('20261014000503_hermes_optional_org_policy_v1'));
-  await db.exec(sql); await db.exec('DELETE FROM app_private.hermes_org_policies');
+  await db.exec(sql); await installSaleListingSql(x, { chain: false }); await db.exec('DELETE FROM app_private.hermes_org_policies');
   hooks.beforeFetch = async (url, options) => {
     const name = new URL(url).pathname.slice('/rest/v1/rpc/'.length);
     if (!['hermes_group_send_v1', 'hermes_group_send_status_v1'].includes(name)) return;

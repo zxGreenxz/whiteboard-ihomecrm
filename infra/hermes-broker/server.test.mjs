@@ -111,12 +111,12 @@ function fakeBackend() {
         permissionBuildingIds: [I.building], binding: { connectionId: I.connection, epoch: joined.connection.epoch,
           policyVersion: joined.policy.version, membershipId: I.member, authorizationVersion: 1, sessionRevision: joined.session.revision } });
     }
-    if (endpoint.pathname === '/rest/v1/rpc/copilot_available_rooms_v1') {
+    if (endpoint.pathname === '/rest/v1/rpc/hermes_sale_listing_rooms_v1') {
       assert.equal(bearer, assistantJwt); assert.deepEqual(args, { p_organization_id: I.org });
       const rawRoom = (roomId, buildingId) => ({ id: roomId, building_id: buildingId, code: '101', name: '101', floor: 1, area: 20,
         rent_price: 3000000, deposit_amount: 3000000, status_public: 'free', sale_state: null, sale_today: '2026-10-12',
         avail_date: null, expected_ready_on: null, contact: 'PRIVATE-CONTACT', note: 'PRIVATE-NOTE' });
-      return Response.json({ buildings: [{ id: I.building, name: 'House A', code: 'A', note: 'PRIVATE-BUILDING-NOTE' },
+      return Response.json({ pages: 1, buildings: [{ id: I.building, name: 'House A', code: 'A', note: 'PRIVATE-BUILDING-NOTE' },
         { id: id(80), name: 'Outside scope', code: 'X' }], rooms: [rawRoom(id(10), I.building), rawRoom(id(81), id(80))] });
     }
     assert.equal(bearer, browserJwt, 'management/prepare RPC uses browser session');
@@ -432,13 +432,13 @@ test('composed room tool uses the encrypted assistant JWT, fixed scope/data RPCs
   assert.equal(data.rooms.length, 1); assert.equal(data.rooms[0].building.id, I.building); assert.equal(data.rooms[0].availability.label, 'Trống sẵn');
   assert.equal(data.totalInSnapshot, 1); assert.equal(data.nextOffset, null); assert.equal(data.completeness, 'complete');
   assert.equal(order.filter(value => value === 'hermes_room_scope_map_v1').length, 2);
-  assert(order.indexOf('copilot_available_rooms_v1') < order.indexOf('audit:prepared'));
+  assert(order.indexOf('hermes_sale_listing_rooms_v1') < order.indexOf('audit:prepared'));
   assert.equal(order.at(-1), 'hermes_room_scope_map_v1');
   const exposed = response.text + JSON.stringify(f.audits);
   for (const secret of [token, browserJwt, assistantJwt, 'SYNTHETIC-REFRESH-SECRET', 'PRIVATE-CONTACT', 'PRIVATE-NOTE', 'PRIVATE-BUILDING-NOTE', 'Outside scope']) assert(!exposed.includes(secret));
   const invalid = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { organizationId: id(99) } });
   assert.equal(JSON.parse(invalid.body.result.content[0].text).error, 'invalid_request');
-  assert.equal(f.calls.filter(call => call.path.endsWith('copilot_available_rooms_v1')).length, 1);
+  assert.equal(f.calls.filter(call => call.path.endsWith('hermes_sale_listing_rooms_v1')).length, 1);
 });
 
 test('server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed', async t => {

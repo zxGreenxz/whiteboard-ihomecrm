@@ -10,7 +10,7 @@ import { DOMAIN_READ_CAPABILITIES } from './domain-contract.mjs';
 // Local latency model for the real composed connector: every SQL statement is
 // one pooler round trip, a cold pool connection pays TCP+TLS+SCRAM, Supabase
 // Auth is slower than PostgREST. Numbers are synthetic, not a VPS measurement.
-// roomSnapshot: extra server time of the whole-company copilot_available_rooms_v1
+// roomSnapshot: extra server time of the whole-company hermes_sale_listing_rooms_v1
 // read (an assumption; production compute time was not measured separately).
 const LATENCY = Object.freeze({ connect: 250, db: 60, auth: 150, rest: 60, roomSnapshot: 400, audit: 5 });
 const HOST = 'connector.example:8443', NOW = 1_800_000_000_000;
@@ -62,7 +62,7 @@ function connector({ latency = LATENCY, onAudit = () => {}, limits } = {}) {
   const fetch = async (url, options) => {
     const path = new URL(url).pathname;
     if (path === '/auth/v1/user') { await wait('auth', latency.auth); return Response.json({ id: I.user }); }
-    await wait('rest', latency.rest + (path === '/rest/v1/rpc/copilot_available_rooms_v1' ? latency.roomSnapshot : 0));
+    await wait('rest', latency.rest + (path === '/rest/v1/rpc/hermes_sale_listing_rooms_v1' ? latency.roomSnapshot : 0));
     if (optional.includes(path)) return Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 });
     if (path === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org, membershipId: I.member,
       authorizationVersion: state.authorizationVersion, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
@@ -73,7 +73,7 @@ function connector({ latency = LATENCY, onAudit = () => {}, limits } = {}) {
         permissionBuildingIds: [I.building], binding: { connectionId: I.connection, epoch: args.p_expected_epoch, policyVersion: args.p_expected_policy_version,
           membershipId: I.member, authorizationVersion: args.p_expected_authorization_version, sessionRevision: args.p_expected_session_revision } });
     }
-    if (path === '/rest/v1/rpc/copilot_available_rooms_v1') return Response.json({ buildings: [{ id: I.building, name: 'House A', code: 'A' }],
+    if (path === '/rest/v1/rpc/hermes_sale_listing_rooms_v1') return Response.json({ pages: 1, buildings: [{ id: I.building, name: 'House A', code: 'A' }],
       rooms: [{ id: I.room, building_id: I.building, code: '101', name: '101', floor: 1, area: 20, rent_price: 3000000, deposit_amount: 3000000,
         status_public: 'free', sale_state: null, sale_today: '2026-10-15', avail_date: null, expected_ready_on: null }] });
     if (path === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: I.user, organizations: [{ id: I.org }] });
