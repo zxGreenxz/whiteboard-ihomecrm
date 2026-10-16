@@ -246,6 +246,23 @@
       "heQua": "Không re-apply file này trên schema đã có các object. Phục hồi baseline chưa chứa tính năng cần quy trình phục hồi một lần được review riêng; lane thông thường với chốt hai lượt sẽ từ chối file này ngay cả trên baseline sạch. Khi mất phản hồi sau commit, đối chiếu catalog và biên nhận trước khi quyết định bước tiếp theo. Thay đổi SQL tiếp theo phải dùng migration mới.",
       "baiHoc": "Kiểm idempotency đã bị bỏ sót trước apply; thêm kiểm hai lượt ROLLBACK bắt buộc vào lane trước các lần apply tiếp theo, không cho ngoại lệ lịch sử vượt chốt đó.",
       "exitCondition": "Giữ bản ghi lịch sử và digest. Chỉ thay cơ chế kiểm khi có quy trình phục hồi được review thay thế; không đổi cutoff, không di chuyển/xóa file và không báo raw migration đã idempotent."
+    },
+    {
+      "file": "20261016101450_zalo_broadcast_oneshot_v1.sql",
+      "sha256": "3f2ca93cd1608bf2f859eba92fd7a197fc29d3fca73e9b180c154fc8e32d2b63",
+      "expectedSqlState": "P0001",
+      "expectedMessage": "unexpected public.zalo_worker_begin_provider_v1 source 0f46fcbaea8688b759bd041b842532e0b9107cda5892bdac7710f1f3ef624fba",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261016101450_zalo_broadcast_oneshot_v1.json",
+      "supersededBy": {
+        "file": "20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql",
+        "sha256": "a928e30ef54c49b031f672ee73f1b13ea5a14d24d65f5ef51528888a3198a8ab",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.json"
+      },
+      "ciEvidence": "Đo local 16/10/2026 sau khi lane áp cả 5 file lên production tryymsxyyckgbrmmvozx: node scripts/with-cred.mjs node scripts/check-forward-migration-idempotent.mjs --file supabase/migrations/20261016101450_zalo_broadcast_oneshot_v1.sql ⇒ P0001 nguyên văn ở expectedMessage. Trước khi áp, CI PR #187 (3c848805) và hai lượt ROLLBACK của lane trên production đều chạy lại được file này.",
+      "lop": "phép đo replay đơn lẻ gặp định nghĩa đã được migration sau thay thế",
+      "why": "File 10:14:50 vá public.zalo_worker_begin_provider_v1 (nhánh lượt gửi một lần) và tự chặn mọi thân lạ: chỉ nhận bản đã phát hành 73deb1cf hoặc chính bản của nó c832f76d. File 11:05:39 đã được review và áp sau đó để thêm chặn dừng khẩn cấp vào chính hàm này (thân 0f46fcba). Phát lại riêng file 10:14:50 trên catalog cuối vì vậy phải ném unexpected source; chuỗi baseline + forward theo thứ tự không gặp lỗi này.",
+      "heQua": "Không sửa migration đã áp. Gate vẫn gọi production mỗi lượt, chỉ chấp nhận đúng digest file gốc, đúng P0001/message (kèm sha thân 0f46fcba của file thay thế) và đúng biên nhận của cả file gốc lẫn file thay thế.",
+      "exitCondition": "Gỡ khi gate kiểm replay theo đúng thứ tự trên database dùng một lần; không được đổi mục này thành idempotent PASS."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
