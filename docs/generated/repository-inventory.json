@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1494,
   "soFileDocBangFs": 365,
-  "tongLoiGoi": 839,
+  "tongLoiGoi": 840,
   "khongPhanLoaiDuoc": 383,
   "theoLoai": {
     "ma-nguon": {
@@ -369,6 +369,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -545,14 +553,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/domain-v2.test.mjs",
