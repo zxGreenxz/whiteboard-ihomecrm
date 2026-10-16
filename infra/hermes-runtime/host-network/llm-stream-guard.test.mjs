@@ -358,10 +358,15 @@ test('dừng êm: luồng xong trong hạn đi trọn, luồng dài bị cắt k
   assert.equal(shortReply.complete, true);
   assert.equal(longReply.complete, false);
   assert.ok(Date.now() - started >= 100, 'luồng dài phải được chờ gần hết hạn');
-  await within(f.calls[0].closed, 2000, 'upstream của luồng dài không bị huỷ');
+  const longCall = f.calls.find(call => !call.url.includes('short'));
+  const shortCall = f.calls.find(call => call.url.includes('short'));
+  await within(longCall.closed, 2000, 'upstream của luồng dài không bị huỷ');
+  assert.equal(longCall.aborted, true);
+  assert.equal(shortCall.aborted, false);
 });
 
-test('socket activation: nhận fd 3 từ systemd và thoát 0 khi SIGTERM', { skip: process.platform === 'win32' && 'cần /bin/sh và truyền fd kiểu POSIX' }, async t => {
+test('socket activation: nhận fd 3 từ systemd và thoát 0 khi SIGTERM', {
+  skip: process.platform === 'win32' && 'cần /bin/sh và truyền fd kiểu POSIX', timeout: 10_000 }, async t => {
   const upstream = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"data":[]}'); });
   await new Promise(done => upstream.listen(0, '127.0.0.1', done));
   t.after(() => { upstream.closeAllConnections(); upstream.close(); });
