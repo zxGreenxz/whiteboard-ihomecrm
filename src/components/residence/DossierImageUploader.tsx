@@ -47,7 +47,6 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
   const hovered = useRef(false);
   const [pending, setPending] = useState(0);
   const [failure,setFailure] = useState('');
-  const [uploadBlocked,setUploadBlocked] = useState(false);
   const [deleteFailures,setDeleteFailures] = useState<Record<string,{message:string;blocked:boolean}>>({});
   const busy = useRef(false);
   const errorMessage = (error:unknown, operation:string) => error instanceof DossierFileError ? error.message : recordWriteMessage(error,operation);
@@ -56,7 +55,7 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
 
   const handleFiles = async (picked: File[], input?: HTMLInputElement | null) => {
     if (input) input.value = '';
-    if (picked.length === 0 || busy.current || uploadBlocked) return;
+    if (picked.length === 0 || busy.current) return;
     busy.current = true;
     setFailure('');
     setPending(picked.length);
@@ -70,8 +69,9 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
           saved += 1;
         } catch (error) {
           errors.push(`${file.name}: ${errorMessage(error,'tải ảnh hồ sơ')}`);
+          // Kết quả chưa rõ: dừng các tệp còn lại nhưng KHÔNG khoá nút — danh sách ảnh
+          // được làm mới sau lỗi, người dùng nhìn đó rồi tải lại nếu ảnh chưa có.
           if (recordWriteBlocked(error)) {
-            setUploadBlocked(true);
             const remaining=picked.slice(index+1).map(next=>next.name);
             if (remaining.length) errors.push(`Chưa gửi các tệp: ${remaining.join(', ')}.`);
             break;
@@ -130,10 +130,10 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
         </p>
         {canEdit && (
           <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={pending > 0 || uploadBlocked} onClick={() => captureRef.current?.click()}>
+            <Button type="button" size="sm" variant="outline" disabled={pending > 0} onClick={() => captureRef.current?.click()}>
               <Camera className="h-4 w-4" /> Chụp ảnh
             </Button>
-            <Button type="button" size="sm" variant="outline" disabled={pending > 0 || uploadBlocked} onClick={() => pickRef.current?.click()}
+            <Button type="button" size="sm" variant="outline" disabled={pending > 0} onClick={() => pickRef.current?.click()}
               title="Chọn tệp từ máy, hoặc đưa chuột vào đây rồi bấm Ctrl+V để dán ảnh">
               {pending > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
               {pending > 0 ? `Đang tải ${pending} ảnh…` : 'Chọn tệp'}

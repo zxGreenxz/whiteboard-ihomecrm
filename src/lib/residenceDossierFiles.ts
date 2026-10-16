@@ -6,7 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { deleteFile, getPublicUrl, parseStorageRef, sanitizeStorageFileName, uploadFile } from '@/lib/storage';
 import { getSessionUser } from '@/lib/authSession';
 import { persistentFinancialWorkflow } from './persistentFinancialWorkflow';
-import { FinancialWorkflowError, isConfirmedFinancialRejection } from './financialWorkflow';
+import { FinancialWorkflowError, isConfirmedFinancialRejection, type FinancialWorkflowProgress } from './financialWorkflow';
+import { financialPending, type FinancialPendingRecord } from './financialPending';
 import { confirmedRecordId } from './recordWriteOutcome';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -88,6 +89,38 @@ export async function listBuildingOwnershipFiles(buildingId: string): Promise<Re
   return data as ResidenceDossierFile[];
 }
 
+/**
+ * Ghi ảnh hồ sơ qua bộ điều phối, nhưng đối chiếu rồi gỡ dấu "chờ đối chiếu" mà lần trước
+ * của CHÍNH thao tác này để lại trên trình duyệt trước khi gửi lần mới.
+ *
+ * VÌ SAO (16/10/2026): Safari trên iPhone hay nạp lại trang khi mở camera, mạng di động
+ * quá hạn chờ giữa chừng — lần tải dở để lại dấu trong localStorage. Bộ điều phối chỉ gỡ
+ * dấu khi có hàm đối chiếu, ảnh hồ sơ không có, nên máy đó bị chặn tải loại ảnh ấy của
+ * khách VĨNH VIỄN ("Chưa xác nhận xong yêu cầu tải ảnh hồ sơ trước đó…"); tải lại trang
+ * hay đăng xuất không gỡ được, mà máy chủ không có tệp hay dòng hồ sơ nào để đối chiếu.
+ *
+ * Kết quả thật của lần trước nằm trên máy chủ, nên `doiChieu` đọc lại trước khi gỡ dấu
+ * (đọc hụt thì ném lỗi, dấu giữ nguyên — không gửi lại mù). Ảnh trùng nếu có thì hiện trong
+ * danh sách (làm mới sau mỗi lần ghi, kể cả lần lỗi) và xoá được. Thiếu `doiChieu` chỉ dành cho
+ * ghi lặp lại được trên cùng một dòng (sửa hạn, xoá mềm): chính biên nhận của lần ghi lại
+ * xác nhận trạng thái cuối.
+ */
+async function ghiAnhHoSo<T>(namespace: string, key: string, operation: string,
+  task: (progress: FinancialWorkflowProgress) => Promise<T>,
+  doiChieu?: (prior: FinancialPendingRecord, userId: string) => Promise<void>): Promise<T> {
+  const user = await getSessionUser();
+  if (user) {
+    // 'actor-scope' là phạm vi persistentFinancialWorkflow dùng cho {scope:'actor'}.
+    const scope = { namespace, userId: user.id, organizationId: 'actor-scope', businessKey: key };
+    const prior = financialPending.read(scope);
+    if (prior) {
+      await doiChieu?.(prior, user.id);
+      financialPending.clearConfirmed(scope, prior.attemptId);
+    }
+  }
+  return persistentFinancialWorkflow(namespace, { scope: 'actor' }).run(key, operation, task);
+}
+
 function contentTypeOf(objectName: string, original: string): string {
   // Ảnh giữ nguyên byte gốc nên content-type = của tệp gốc; giữ phép kiểm đuôi
   // phòng khi lớp storage đổi định dạng ở tương lai.
@@ -130,10 +163,14 @@ export async function uploadDossierFile(input: {
     customerName: input.customerName,
   });
   const path = `${user.id}/${kind.toLowerCase()}/${Date.now()}-${sanitizeStorageFileName(displayName)}`;
-  return persistentFinancialWorkflow('residence-dossier-upload', {scope:'actor'}).run(`${buildingId}:${customerId ?? ''}:${kind}`, 'tải ảnh hồ sơ', async (progress) => {
+  return ghiAnhHoSo('residence-dossier-upload', `${buildingId}:${customerId ?? ''}:${kind}`, 'tải ảnh hồ sơ', async (progress) => {
   let stored: string;
   try { stored = await uploadFile(RESIDENCE_DOCS_BUCKET, path, file, { imagePolicy: 'identity-original' }); }
-  catch (error) { throw new FinancialWorkflowError('Chưa xác nhận được kết quả tải ảnh. Giữ đường dẫn tệp và đối chiếu trước khi tải lại.', 'unknown', [{id:path,label:'Tệp cần đối chiếu'}], error); }
+  catch (error) {
+    // Kho đã trả lời từ chối (quyền, cỡ, định dạng…): tệp chắc chắn chưa lưu, giữ đúng lý do.
+    if (error instanceof FinancialWorkflowError && error.outcome === 'failure') throw error;
+    throw new FinancialWorkflowError('Chưa xác nhận được ảnh đã lưu hay chưa (mạng chập chờn hoặc trang tải lại giữa chừng). Xem danh sách ảnh: chưa có thì chụp hoặc chọn lại.', 'unknown', [], error);
+  }
   const objectName = parseStorageRef(stored)?.path ?? path;
   const { data, error } = await supabase.from('residence_dossier_files').insert({
     kind,
@@ -159,12 +196,21 @@ export async function uploadDossierFile(input: {
       : 'Chưa lưu được ảnh vào hồ sơ. Ảnh vừa tải đã được dọn; bạn có thể thử lại.', 'failure', [], error);
   }
   if (error || !data?.id || data.object_name !== objectName || data.bucket_id !== RESIDENCE_DOCS_BUCKET) {
-    throw new FinancialWorkflowError('Ảnh đã tải lên; chưa xác nhận dòng hồ sơ. Giữ tệp để đối chiếu trước khi tải lại.', 'partial', [
+    throw new FinancialWorkflowError('Ảnh đã tải lên nhưng chưa xác nhận đã vào hồ sơ. Xem danh sách ảnh: chưa có thì tải lại.', 'partial', [
       {id:objectName,label:'Tệp đã tải lên'}, ...(data?.id ? [{id:data.id,label:'Ảnh hồ sơ cần đối chiếu'}] : []),
     ], error);
   }
   progress.completed.push({id:data.id,label:'Ảnh hồ sơ đã lưu'});
   return data as ResidenceDossierFile;
+  }, async (prior, userId) => {
+    // Đọc được danh sách là kết quả lần trước đã rõ: có dòng thì ảnh đã vào hồ sơ (hiện
+    // trong danh sách), không có thì lần trước chưa lưu. Lùi 10 phút phòng lệch đồng hồ máy.
+    const tu = new Date(Date.parse(prior.startedAt) - 10 * 60_000).toISOString();
+    const lanTruoc = supabase.from('residence_dossier_files').select('id')
+      .eq('created_by', userId).eq('building_id', buildingId).eq('kind', kind).gte('created_at', tu);
+    const { data: daGhi, error: loiDoc } = await (kind === 'OWNERSHIP'
+      ? lanTruoc.is('customer_id', null) : lanTruoc.eq('customer_id', customerId as string));
+    if (loiDoc || !Array.isArray(daGhi)) throw new DossierFileError('Chưa kiểm được lần tải trước trên máy chủ. Thử lại khi mạng ổn.');
   });
 }
 
@@ -208,7 +254,7 @@ function ngayIso(ddmmyyyy: string): string {
 export async function luuHanHopDong(
   id: string, from: string, to: string, nguon: 'ocr' | 'manual' = 'ocr',
 ): Promise<void> {
-  return persistentFinancialWorkflow('residence-dossier-term', {scope:'actor'}).run(id, 'lưu hạn hợp đồng', async (progress) => {
+  return ghiAnhHoSo('residence-dossier-term', id, 'lưu hạn hợp đồng', async (progress) => {
   const { data, error } = await supabase.from('residence_dossier_files')
     .update({ lease_term_from: ngayIso(from), lease_term_to: ngayIso(to), lease_term_source: nguon })
     .eq('id', id).select('id').single();
@@ -219,7 +265,7 @@ export async function luuHanHopDong(
 }
 
 export async function removeDossierFile(id: string): Promise<void> {
-  return persistentFinancialWorkflow('residence-dossier-remove', {scope:'actor'}).run(id, 'xoá ảnh hồ sơ', async (progress) => {
+  return ghiAnhHoSo('residence-dossier-remove', id, 'xoá ảnh hồ sơ', async (progress) => {
   const { data, error } = await supabase.from('residence_dossier_files')
     .update({ deleted_at: new Date().toISOString() }).eq('id', id).select('id').single();
   if (error) throw error;

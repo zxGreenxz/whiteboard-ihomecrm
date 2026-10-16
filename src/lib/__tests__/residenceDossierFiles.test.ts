@@ -26,13 +26,16 @@ import {
   pickDeregistrationFiles, slugTen, tenTepHoSo, uploadDossierFile,
   type ResidenceDossierFile,
 } from '../residenceDossierFiles';
+import { FinancialWorkflowError } from '../financialWorkflowError';
 
 beforeEach(() => { localStorage.clear(); });
+
+const dauCho = () => Object.keys(localStorage).filter((key) => key.startsWith('ihome:financial-pending:'));
 
 type Chain = Record<string, ReturnType<typeof vi.fn>> & { then: (res: (v: unknown) => void) => void };
 function table(result: unknown): Chain {
   const chain = {} as Chain;
-  for (const m of ['select', 'eq', 'is', 'in', 'order', 'insert', 'update', 'single', 'maybeSingle']) {
+  for (const m of ['select', 'eq', 'is', 'in', 'gte', 'order', 'insert', 'update', 'single', 'maybeSingle']) {
     chain[m] = vi.fn(() => chain);
   }
   chain.then = (res) => res(result);
@@ -150,6 +153,40 @@ describe('uploadDossierFile', () => {
       .rejects.toThrow(/chưa lưu được ảnh vào hồ sơ/i);
     expect(boundary.deleteFile).toHaveBeenCalledWith('residence-docs', 'user-1/ct01/1-nguyengiabinhct011.jpg');
   });
+
+  // Mỗi lần from('residence_dossier_files') là một truy vấn mới: đếm ảnh trả [], chèn trả dòng mới.
+  function filesTable(inserted: unknown) {
+    return () => {
+      const chain = table({ data: [], error: null });
+      chain.insert = vi.fn(() => { chain.then = (res) => res({ data: inserted, error: null }); return chain; });
+      return chain;
+    };
+  }
+  const lease = () => uploadDossierFile({ kind: 'LEASE', buildingId: 'b1', customerId: 'c1', file: new File(['x'], 'image.jpg', { type: 'image/jpeg' }) });
+
+  it('lần tải dở trước (mạng rớt, trang tải lại) không chặn mãi lần tải sau trên cùng máy', async () => {
+    const buildings = table({ data: { organization_id: 'org-1', name: '950NK' }, error: null });
+    const inserted = { id: 'f9', kind: 'LEASE', object_name: 'user-1/ct01/1-nguyengiabinhct011.jpg', bucket_id: 'residence-docs' };
+    const files = filesTable(inserted);
+    boundary.from.mockImplementation((t: string) => (t === 'buildings' ? buildings : files()));
+    boundary.uploadFile.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await expect(lease()).rejects.toThrow(/chưa xác nhận được ảnh đã lưu/i);
+    expect(dauCho()).toHaveLength(1);
+
+    // Prod 16/10: lần sau báo "Chưa xác nhận xong yêu cầu tải ảnh hồ sơ trước đó" mãi mãi.
+    await expect(lease()).resolves.toEqual(inserted);
+    expect(boundary.uploadFile).toHaveBeenCalledTimes(2);
+    expect(dauCho()).toEqual([]);
+  });
+
+  it('kho từ chối hẳn thì giữ đúng lý do và không để lại dấu chờ', async () => {
+    const buildings = table({ data: { organization_id: 'org-1', name: '950NK' }, error: null });
+    boundary.from.mockImplementation((t: string) => (t === 'buildings' ? buildings : filesTable(null)()));
+    boundary.uploadFile.mockRejectedValueOnce(new FinancialWorkflowError('Máy chủ đã từ chối tải tệp.', 'failure', []));
+    await expect(lease()).rejects.toThrow('Máy chủ đã từ chối tải tệp.');
+    expect(dauCho()).toEqual([]);
+  });
 });
 
 describe('listCustomerDossierFiles', () => {
@@ -170,6 +207,16 @@ describe('removeDossierFile', () => {
     await removeDossierFile('f1');
     expect(files.update.mock.calls[0][0]).toHaveProperty('deleted_at');
     expect(files.eq).toHaveBeenCalledWith('id', 'f1');
+  });
+
+  it('lần xoá trước chưa rõ kết quả không chặn mãi lần xoá lại', async () => {
+    boundary.getSessionUser.mockResolvedValue({ id: 'user-1' });
+    boundary.from.mockReturnValueOnce(table({ data: null, error: { message: 'Failed to fetch' } }));
+    await expect(removeDossierFile('f1')).rejects.toThrow();
+    expect(dauCho()).toHaveLength(1);
+    boundary.from.mockReturnValueOnce(table({ data: { id: 'f1' }, error: null }));
+    await expect(removeDossierFile('f1')).resolves.toBeUndefined();
+    expect(dauCho()).toEqual([]);
   });
 });
 

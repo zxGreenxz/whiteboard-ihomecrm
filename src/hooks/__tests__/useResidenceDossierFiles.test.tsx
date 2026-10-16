@@ -52,6 +52,21 @@ describe('useResidenceDossierFiles', () => {
     expect(client.getQueryState(residenceDossierKeys.building('b1'))).toBeUndefined();
   });
 
+  it('tải lỗi vẫn làm mới danh sách để người dùng thấy ảnh đã lưu hay chưa', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const { result } = renderHook(() => ({
+      list: useCustomerDossierFiles('c1'),
+      mut: useDossierFileMutations({ customerId: 'c1', buildingId: 'b1' }),
+    }), { wrapper: wrapper(client) });
+    await waitFor(() => expect(boundary.listCustomerDossierFiles).toHaveBeenCalledTimes(1));
+    boundary.uploadDossierFile.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await act(async () => {
+      await result.current.mut.upload.mutateAsync({ kind: 'LEASE', file: new File(['x'], 'a.jpg', { type: 'image/jpeg' }) }).catch(() => undefined);
+    });
+    await waitFor(() => expect(boundary.listCustomerDossierFiles).toHaveBeenCalledTimes(2));
+    expect(boundary.toastError).toHaveBeenCalled();
+  });
+
   it('xoá mềm rồi làm mới; lỗi được toast', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     const { result } = renderHook(() => useDossierFileMutations({ buildingId: 'b1' }), { wrapper: wrapper(client) });

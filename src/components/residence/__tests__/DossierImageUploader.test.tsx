@@ -10,6 +10,7 @@ vi.mock('@/lib/authSession', () => ({ getSessionUser: vi.fn() }));
 
 import DossierImageUploader from '../DossierImageUploader';
 import type { ResidenceDossierFile } from '@/lib/residenceDossierFiles';
+import { FinancialWorkflowError } from '@/lib/financialWorkflowError';
 
 const file = (id: string): ResidenceDossierFile => ({
   id, kind: 'CT01', organization_id: 'o', building_id: 'b', customer_id: 'c', contract_id: 'ct',
@@ -45,6 +46,21 @@ describe('DossierImageUploader', () => {
     await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
     expect(onUpload.mock.calls[0][0]).toEqual({ kind: 'CT01', contractId: 'ct1', file: a });
     expect(onUpload.mock.calls[1][0]).toEqual({ kind: 'CT01', contractId: 'ct1', file: b });
+  });
+
+  it('kết quả chưa rõ: báo lỗi, dừng tệp còn lại nhưng vẫn cho tải lại', async () => {
+    const onUpload = vi.fn()
+      .mockRejectedValueOnce(new FinancialWorkflowError('Chưa xác nhận được ảnh đã lưu hay chưa.', 'unknown', []))
+      .mockResolvedValue(undefined);
+    render(<DossierImageUploader kind="LEASE" files={[]} canEdit onUpload={onUpload} onRemove={vi.fn()} />);
+    const pick = screen.getByLabelText(/chọn tệp hợp đồng/i) as HTMLInputElement;
+    fireEvent.change(pick, { target: { files: [new File(['a'], 'a.jpg', { type: 'image/jpeg' }), new File(['b'], 'b.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/Đã tải 0\/2 ảnh.*Chưa gửi các tệp: b\.png/));
+    expect(onUpload).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: /chụp ảnh/i }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(pick, { target: { files: [new File(['c'], 'c.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
   it('hiện thumbnail và xoá được khi có quyền', async () => {

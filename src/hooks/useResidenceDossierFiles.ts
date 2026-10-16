@@ -54,12 +54,13 @@ export function useDossierFileMutations(scope: {
       kind: input.kind, buildingId: scope.buildingId, customerId: scope.customerId, contractId: input.contractId, file: input.file,
       buildingName: scope.buildingName, customerName: scope.customerName,
     }),
-    onSuccess: invalidate,
+    // Làm mới cả khi lỗi: kết quả chưa rõ thì danh sách ảnh là chỗ người dùng xem đã lưu chưa.
+    onSettled: invalidate,
     onError: (error) => toast.error(dossierError(error, 'tải ảnh hồ sơ tạm trú')),
   });
   const remove = useMutation<void, Error, string>({
     mutationFn: (id) => removeDossierFile(id),
-    onSuccess: invalidate,
+    onSettled: invalidate,
     onError: (error) => toast.error(dossierError(error, 'xóa ảnh hồ sơ tạm trú')),
   });
   const luuHan = useMutation<void, Error, { id: string; from: string; to: string; nguon?: 'ocr' | 'manual' }>({
