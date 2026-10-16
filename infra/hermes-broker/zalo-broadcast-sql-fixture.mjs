@@ -16,6 +16,8 @@ export const extract = (src, name) => {
   return match[0];
 };
 export const ACCOUNT2 = id('e'), FOREIGN_ACCOUNT = id('f');
+export const ORG_SCOPE = '40000000-0000-4000-8000-000000000001', BUILDING_SCOPE = '40000000-0000-4000-8000-000000000002';
+export const FIXES = new URL('../../supabase/migrations/20261016140535_hermes_zalo_broadcast_review_fixes_v1.sql', import.meta.url);
 export const G1 = '10000000-0000-4000-8000-000000000001', G2 = '10000000-0000-4000-8000-000000000002', G3 = '10000000-0000-4000-8000-000000000003',
   G4 = '10000000-0000-4000-8000-000000000004', U1 = '10000000-0000-4000-8000-000000000005', GF = '10000000-0000-4000-8000-000000000006';
 export const WHOLE_DAY = { antiSpam: { allowedHours: { from: '00:00', to: '23:59' }, dailyCap: 120 } };
@@ -23,7 +25,7 @@ export const binding = Object.freeze({ connectionId: CONNECTION, tokenDigest: 'b
   expectedMembershipId: USER, expectedAuthorizationVersion: 1, expectedSessionRevision: 1 });
 export const code = expected => error => error.code === expected;
 
-export async function setupZaloBroadcast(t, { sql = readFileSync(CANDIDATE, 'utf8') } = {}) {
+export async function setupZaloBroadcast(t, { sql = readFileSync(CANDIDATE, 'utf8'), fixes = readFileSync(FIXES, 'utf8') } = {}) {
   const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'] }), { db } = f;
   await db.exec(`
     CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql AS $$SELECT jsonb_build_object('session_id',current_setting('request.jwt.claim.session',true))$$;
@@ -71,8 +73,14 @@ export async function setupZaloBroadcast(t, { sql = readFileSync(CANDIDATE, 'utf
       RETURNS uuid LANGUAGE sql AS $$INSERT INTO public.fixture_audit VALUES(e,k,i,new_state) RETURNING gen_random_uuid()$$;
     INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('chat_zalo.view','read',true),('chat_zalo.send','action',true),
       ('chat_zalo.manage_automation','action',true) ON CONFLICT(capability) DO UPDATE SET enabled=true,mode=EXCLUDED.mode;
-    UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['chat_zalo.view'],action_capabilities=ARRAY['chat_zalo.manage_automation','chat_zalo.send'];
-    UPDATE app_private.hermes_org_policies SET read_capabilities=ARRAY['chat_zalo.view'],action_capabilities=ARRAY['chat_zalo.manage_automation','chat_zalo.send'];
+    -- Overlay scopes: writes need the selected Toàn tổ chức scope (20261016140535 P2.2).
+    CREATE TABLE public.authorization_scopes(id uuid PRIMARY KEY,organization_id uuid,scope_type text,building_id uuid,area_id uuid,cashbook_id uuid);
+    INSERT INTO public.authorization_scopes VALUES('${ORG_SCOPE}','${ORG}','ORGANIZATION',null,null,null),
+      ('${BUILDING_SCOPE}','${ORG}','BUILDING','${id('c')}',null,null);
+    UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['chat_zalo.view'],action_capabilities=ARRAY['chat_zalo.manage_automation','chat_zalo.send'],
+      scope_ids=ARRAY['${ORG_SCOPE}'::uuid];
+    UPDATE app_private.hermes_org_policies SET read_capabilities=ARRAY['chat_zalo.view'],action_capabilities=ARRAY['chat_zalo.manage_automation','chat_zalo.send'],
+      scope_ids=ARRAY['${ORG_SCOPE}'::uuid,'${BUILDING_SCOPE}'::uuid];
     INSERT INTO public.zalo_accounts(id,organization_id,user_id,kind,status,name) VALUES
       ('${ACCOUNT2}','${ORG}','${USER}','personal','connected','Nick Hai'),('${FOREIGN_ACCOUNT}','${FOREIGN}','${USER}','personal','connected','Nick ngoài');
     INSERT INTO public.zalo_conversations(id,account_id,organization_id,thread_type,thread_id,unread_count,peer_name,label_ids,is_sale_partner) VALUES
@@ -100,7 +108,10 @@ export async function setupZaloBroadcast(t, { sql = readFileSync(CANDIDATE, 'utf
   // 20261016110539 (P2.2): the stop holds until a later save/toggle of EITHER automation row.
   // Only this body is used here; its begin_provider/claim patches attest worker bodies outside this fixture.
   await db.exec(extract(source('20261016110539_zalo_broadcast_oneshot_review_fixes_v1'), 'app_private.zalo_dang_dung_khan_cap_v1'));
+  // Released legacy settings validator (20261015100000), retired by the review-fix migration after a body check.
+  await db.exec(extract(source('20261015100000_hermes_schedule_health_v1'), 'app_private.hermes_schedule_settings_v1'));
   await db.exec(sql); await db.exec(sql);
+  if (fixes !== null) { await db.exec(fixes); await db.exec(fixes); }
 
   async function as(sqlText, params, { role = 'authenticated', actor = USER } = {}) {
     await db.exec('BEGIN');

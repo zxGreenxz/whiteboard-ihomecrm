@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import { chuanHoaBroadcast } from '../../worker/lib/automation-config.js';
 import { zaloBroadcastResult, zaloBroadcastInput } from './zalo-broadcast-contract.mjs';
 import { setupZaloBroadcast, windowExcludingNow, binding, code, WHOLE_DAY, G1, G2, G3, G4, U1, GF, ACCOUNT2,
-  USER, ORG, FOREIGN, ACCOUNT } from './zalo-broadcast-sql-fixture.mjs';
+  USER, ORG, FOREIGN, ACCOUNT, ORG_SCOPE, BUILDING_SCOPE } from './zalo-broadcast-sql-fixture.mjs';
 
 const req = n => `30000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const identity = { row: { organizationId: ORG } };
@@ -198,7 +199,8 @@ test('authority: Read for every call, Action manage for writes, send for send; o
   const x = await setupZaloBroadcast(t);
   await x.setConfig(WHOLE_DAY);
   const send = n => x.call('send', { requestId: req(n), conversationIds: [G1], mode: 'full', runAt: null });
-  const update = async n => x.call('update', { requestId: req(n), expectedVersion: (await x.call('status', {})).version, enabled: true });
+  // A schedule change that cannot start sends (time on a disabled schedule) needs manage only.
+  const update = async n => x.call('update', { requestId: req(n), expectedVersion: (await x.call('status', {})).version, time: `0${n % 10}:15` });
   await x.db.exec('UPDATE public.fixture_authority SET send_zalo=false');
   await assert.rejects(send(1), code('42501')); assert.equal((await update(2)).ok, true, 'update needs manage, not send');
   await x.db.exec('UPDATE public.fixture_authority SET send_zalo=true,manage_zalo=false');
@@ -226,4 +228,73 @@ test('authority: Read for every call, Action manage for writes, send for send; o
   for (const [name, args] of [['app_private.hermes_zalo_broadcast_view_v1', `'${ORG}'::uuid`], ['app_private.hermes_zalo_group_ok_v1', `'${ORG}'::uuid,'${G1}'::uuid`]])
     await assert.rejects(x.as(`SELECT ${name}(${args}) v`, []), code('42501'));
   await assert.rejects(x.as('SELECT count(*) v FROM app_private.hermes_zalo_broadcast_receipts', []), code('42501'));
+});
+
+test('review fixes (20261016140535): send Action gates turning sends on; writes need the Toàn tổ chức overlay; UUID case', async t => {
+  const x = await setupZaloBroadcast(t);
+  const version = async () => checked('status', {}, await x.call('status', {})).version;
+  const update = async (n, patch) => x.call('update', { requestId: req(n), expectedVersion: await version(), ...patch });
+  // P2.1 — the saved overlay has manage_automation but not chat_zalo.send.
+  await x.setConfig({ ...WHOLE_DAY, recipients: [G1] }, false);
+  await x.db.exec("UPDATE app_private.hermes_connections SET action_capabilities=ARRAY['chat_zalo.manage_automation']");
+  await assert.rejects(update(1, { enabled: true }), code('42501'), 'turning sends on');
+  assert.equal((await update(2, { addConversationIds: [G2] })).ok, true, 'adding to a disabled schedule');
+  await x.setConfig({ ...WHOLE_DAY, recipients: [G1] }, true);
+  await assert.rejects(update(3, { addConversationIds: [G2] }), code('42501'), 'adding to an enabled schedule');
+  await assert.rejects(update(4, { setConversationIds: [G2] }), code('42501'), 'replacing recipients of an enabled schedule');
+  assert.deepEqual((await update(5, { time: '09:00', removeConversationIds: [G1] })).changed, ['time', 'recipients'], 'narrowing stays allowed');
+  assert.equal((await update(6, { enabled: false })).ok, true, 'turning off stays allowed');
+  await x.db.exec("UPDATE app_private.hermes_connections SET action_capabilities=ARRAY['chat_zalo.manage_automation','chat_zalo.send']");
+  await x.db.exec('UPDATE public.fixture_authority SET send_zalo=false');
+  await assert.rejects(update(7, { enabled: true }), code('42501'), 'CRM send decision revoked');
+  await x.db.exec('UPDATE public.fixture_authority SET send_zalo=true');
+  assert.deepEqual((await update(8, { enabled: true, addConversationIds: [G2] })).changed, ['enabled', 'recipients']);
+  // P2.2 — a building-only connection overlay reads but never writes.
+  await x.db.exec(`UPDATE app_private.hermes_connections SET scope_ids=ARRAY['${BUILDING_SCOPE}'::uuid]`);
+  assert.equal(checked('recipients', {}, await x.call('recipients', { groupName: null, labelName: null, labelKey: null, limit: 5 })).total, 3);
+  await assert.rejects(x.call('send', { requestId: req(9), conversationIds: [G1], mode: 'full', runAt: null }), code('42501'));
+  await assert.rejects(update(10, { time: '10:00' }), code('42501'));
+  await assert.rejects(x.call('cancel', { oneshotId: req(11) }), code('42501'));
+  // Only an ORGANIZATION-typed overlay counts, even a malformed one without building/area/cashbook.
+  await x.db.exec(`INSERT INTO public.authorization_scopes VALUES('40000000-0000-4000-8000-000000000003','${ORG}','AREA',null,null,null);
+    UPDATE app_private.hermes_org_policies SET scope_ids=scope_ids||'40000000-0000-4000-8000-000000000003'::uuid;
+    UPDATE app_private.hermes_connections SET scope_ids=ARRAY['40000000-0000-4000-8000-000000000003'::uuid]`);
+  await assert.rejects(update(13, { time: '10:00' }), code('42501'));
+  await x.db.exec(`UPDATE app_private.hermes_connections SET scope_ids=ARRAY['${ORG_SCOPE}'::uuid]`);
+  // P3c — the same UUID in another case is one recipient (ids with hex letters).
+  const GA = 'a0000000-0000-4000-8000-00000000000a', GB = 'b0000000-0000-4000-8000-00000000000b';
+  await x.db.query(`INSERT INTO public.zalo_conversations(id,account_id,organization_id,thread_type,thread_id,unread_count,peer_name,is_sale_partner)
+    VALUES($1,$3,$4,'group','ga',0,'Nhóm Ánh',true),($2,$3,$4,'group','gb',0,'Nhóm Bảo',true)`, [GA, GB, ACCOUNT, ORG]);
+  await x.setConfig({ ...WHOLE_DAY, recipients: [GA.toUpperCase(), 'rác', GB.toUpperCase()] }, true);
+  await update(12, { addConversationIds: [GA, G2], removeConversationIds: [GB] });
+  assert.deepEqual((await x.row()).config.recipients, [GA, 'rác', G2]);
+  assert.equal(checked('recipients', {}, await x.call('recipients', { groupName: 'anh', labelName: null, labelKey: null, limit: 5 }))
+    .groups.find(group => group.conversationId === GA).inSchedule, true);
+});
+
+test('review fixes (20261016140535): stop mark taken after the company lock; legacy text schedules cannot be created in SQL', async t => {
+  const x = await setupZaloBroadcast(t);
+  await x.setConfig(WHOLE_DAY, false);
+  // A save that won the company lock after this transaction began (updated_at > now()) must not lift the stop.
+  await x.db.exec('BEGIN');
+  try {
+    await x.db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)", [USER]);
+    await x.db.query('SELECT pg_sleep(0.05)');
+    await x.db.exec("SET LOCAL session_replication_role='replica'");
+    await x.db.query('UPDATE public.zalo_automations SET updated_at=clock_timestamp() WHERE organization_id=$1', [ORG]);
+    await x.db.exec("SET LOCAL session_replication_role='origin'");
+    await x.db.query('SELECT public.zalo_dung_khan_cap($1)', [ORG]);
+    assert.equal((await x.db.query('SELECT app_private.zalo_dang_dung_khan_cap_v1($1) v', [ORG])).rows[0].v, true);
+    assert.equal((await x.db.query("SELECT bool_and(created_at>now()) v FROM public.zalo_automation_runs WHERE mode='stopped'")).rows[0].v, true);
+  } finally { await x.db.exec('ROLLBACK'); }
+  await assert.rejects(x.db.query("SELECT app_private.hermes_schedule_settings_v1('{}'::jsonb,$1::uuid)", [ORG]),
+    error => error.code === '42501' && /hermes_schedule_retired/.test(error.message));
+  // Its only caller is manage_v1 create/update; manage_v2 hands create/update/revoke to manage_v1.
+  const root = new URL('../../supabase/migrations/', import.meta.url);
+  const calls = readdirSync(root).filter(name => name.endsWith('.sql')).flatMap(name => readFileSync(new URL(name, root), 'utf8').split('\n')
+    .filter(line => line.includes('hermes_schedule_settings_v1(') && !/CREATE OR REPLACE|ALTER FUNCTION|REVOKE|GRANT|'app_private\.hermes_schedule_settings_v1|position\(|hermes_schedule_settings_v1\(jsonb,uuid\)/.test(line))
+    .map(line => `${name}: ${line.trim()}`));
+  assert.deepEqual(calls, ["20261014081344_hermes_room_schedule_v1.sql: settings:=app_private.hermes_schedule_settings_v1(input->'settings',c.organization_id);"]);
+  assert.match(readFileSync(new URL('20261015100100_hermes_delivery_reconcile_v1.sql', root), 'utf8'),
+    /IF op IN \('create','update','revoke'\) THEN[\s\S]{0,120}result:=public\.hermes_room_schedule_manage_v1\(p\);/);
 });

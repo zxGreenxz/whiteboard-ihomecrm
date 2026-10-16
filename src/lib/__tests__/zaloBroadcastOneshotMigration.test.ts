@@ -11,6 +11,7 @@ const MIGRATION = 'supabase/migrations/20261016101450_zalo_broadcast_oneshot_v1.
 // attest the room-source body of 20261016102533, so it is replayed in order too.
 const FOLLOW_UPS = ['supabase/migrations/20261016102533_zalo_worker_rooms_sale_page_parity_v1.sql',
   'supabase/migrations/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql'];
+const LIVE_STOP = 'supabase/migrations/20261016140535_hermes_zalo_broadcast_review_fixes_v1.sql';
 const QUEUE = readFileSync('supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql', 'utf8').replace(/\r\n/g, '\n');
 const ALBUM = 'supabase/migrations/20261012012329_zalo_broadcast_album_phong.sql';
 const pick = (re: RegExp) => { const m = re.exec(QUEUE); if (!m) throw new Error(`missing ${re}`); return m[0]; };
@@ -78,6 +79,11 @@ beforeAll(async () => {
   await db.exec(migration);
   await db.exec(migration); // forward lane replays every file twice
   for (const file of FOLLOW_UPS) { const sql = readFileSync(file, 'utf8'); await db.exec(sql); await db.exec(sql); }
+  // Live emergency-stop body (stop mark taken after the company lock). The rest of
+  // that file is Hermes-only and is covered by infra/hermes-broker/zalo-broadcast-sql.test.mjs.
+  const live = readFileSync(LIVE_STOP, 'utf8').replace(/\r\n/g, '\n').match(/CREATE OR REPLACE FUNCTION public\.zalo_dung_khan_cap[\s\S]*?END \$fn\$;/);
+  if (!live) throw new Error('missing live public.zalo_dung_khan_cap');
+  await db.exec(live[0]); await db.exec(live[0]);
 }, 60_000);
 afterAll(() => db.close());
 

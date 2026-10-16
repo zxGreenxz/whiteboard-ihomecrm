@@ -27,6 +27,13 @@ test('capability gate: Read for everything, manage for writes, send only for sen
   assert.deepEqual(allowed({ read: [], action: all.action }), []);
   assert.deepEqual(allowed({ read: ['rooms.view'], action: all.action }), []);
   assert.equal(mayUseZaloBroadcast(all, 'create'), false); assert.equal(zaloBroadcastOperation('crm_room_schedule_create'), null);
+  // An update that can start sends also needs chat_zalo.send (conservative: only explicit enabled:false waives it).
+  const manageOnly = { read, action: ['chat_zalo.manage_automation'] };
+  for (const input of [{ enabled: true }, { addConversationIds: [A] }, { setConversationIds: [A] }, { enabled: true, removeConversationIds: [A] }])
+    assert.equal(mayUseZaloBroadcast(manageOnly, 'update', input), false, JSON.stringify(input));
+  for (const input of [{ enabled: false }, { time: '09:00' }, { days: { mon: 'off' } }, { removeConversationIds: [A] }, { enabled: false, addConversationIds: [A] }])
+    assert.equal(mayUseZaloBroadcast(manageOnly, 'update', input), true, JSON.stringify(input));
+  assert.equal(mayUseZaloBroadcast(all, 'update', { enabled: true, setConversationIds: [A] }), true);
 });
 
 test('input: canonical, idempotent, zone-required times; ids only, never names', () => {
@@ -160,7 +167,10 @@ test('broker: gating per call, lost write ACK is zalo_broadcast_outcome_unknown 
   await assert.rejects(broker.callTool(fixture.token, 'crm_zalo_broadcast_cancel', { oneshotId: C }),
     error => error.code === 'zalo_broadcast_outcome_unknown' && error.requestId === undefined);
   await assert.rejects(broker.callTool(fixture.token, 'crm_zalo_broadcast_update', { requestId: B, expectedVersion: V }), error => error.code === 'invalid_request');
-  assert.equal(finalizeCalls, 2, 'invalid input never reaches SQL');
+  for (const patch of [{ enabled: true }, { addConversationIds: [A] }])
+    await assert.rejects(broker.callTool(fixture.token, 'crm_zalo_broadcast_update', { requestId: B, expectedVersion: V, ...patch }),
+      error => error.code === 'forbidden', 'turning sends on needs chat_zalo.send');
+  assert.equal(finalizeCalls, 2, 'invalid or unauthorised input never reaches SQL');
   fixture.identity.effective = { read: [], action: ['chat_zalo.manage_automation'] };
   assert.deepEqual((await broker.listTools(fixture.token)).tools.filter(value => value.name.startsWith('crm_zalo_broadcast')), []);
   await assert.rejects(broker.callTool(fixture.token, 'crm_zalo_broadcast_status', {}), error => error.code === 'tool_not_available');

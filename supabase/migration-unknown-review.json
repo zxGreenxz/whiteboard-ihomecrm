@@ -952,6 +952,32 @@
       ],
       "raSoatBoi": "Claude Code — Hermes điều khiển gửi ảnh phòng trống 16/10/2026",
       "sha256": "216630cbc12431b5ae83ba0122102d695606e22410337da6ccd7aaf48f2aad38"
+    },
+    "supabase/migrations/20261016140535_hermes_zalo_broadcast_review_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261016140535_hermes_zalo_broadcast_review_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_zalo_send_ok_v1 / hermes_zalo_org_scope_ok_v1 / hermes_zalo_nguoi_nhan_ghi_v1; thay thân public.hermes_zalo_broadcast_v1, public.zalo_dung_khan_cap (mốc dừng clock_timestamp sau khoá), app_private.hermes_schedule_settings_v1 (hermes_schedule_retired) sau khi kiểm sha thân"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 4 object — sinh 16/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261016140535_hermes_zalo_broadcast_review_fixes_v1.json",
+          "trich_doan": "apply TEST qua lane 16/10/2026: hai lượt ROLLBACK đạt, backup TEST, catalog e4cb2c686f60 → d632eb83f815"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 16/10/2026, sửa sau review độc lập 6b79e702 (không P1): update bật lịch/thêm-thay người nhận đòi thêm chat_zalo.send; send/update/cancel đòi phạm vi kết nối Toàn tổ chức; mốc dừng khẩn cấp lấy sau khoá công ty; SQL chặn tạo/sửa lịch chữ cũ; UUID người nhận so trùng không phân biệt hoa thường. Chưa đi qua lane apply production — object vắng mặt vì migration (và 20261016101450/110539/111855 đi trước) CHƯA CHẠY, không phải bị DROP. Đã apply TEST qua lane (dry-run, --apply có backup) và bộ thử ROLLBACK trên TEST (JWT thành viên, actor stub): đủ 5 thao tác, lịch cũ bị từ chối hermes_schedule_retired, mốc dừng sau đầu giao dịch. PGlite 10 ca SQL + đột biến tay đều bị bắt. Sẽ áp qua npm run migrate:forward sau review, đúng thứ tự sau 20261016111855.",
+      "missingObjects": [
+        "function:app_private.hermes_zalo_send_ok_v1",
+        "function:app_private.hermes_zalo_org_scope_ok_v1",
+        "function:app_private.hermes_zalo_nguoi_nhan_ghi_v1",
+        "function:public.hermes_zalo_broadcast_v1"
+      ],
+      "raSoatBoi": "Claude Code — sửa sau review Hermes gửi ảnh phòng trống 16/10/2026",
+      "sha256": "72f595826756b0970703ebc484acae0dbee57a66bed12932f512354d3fe39048"
     }
   }
 }

@@ -882,6 +882,8 @@ export function createBroker({
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseZaloBroadcast(identity.effective, broadcastOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
+          // Listed for manage_automation, but turning sends on/adding recipients also needs chat_zalo.send.
+          if (!mayUseZaloBroadcast(identity.effective, broadcastOp, input)) fail('forbidden');
           const receipt = await broadcast.prepareZaloBroadcast(presentedToken, broadcastOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;

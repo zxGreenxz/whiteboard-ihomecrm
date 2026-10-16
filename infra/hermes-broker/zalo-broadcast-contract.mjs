@@ -13,11 +13,19 @@ const TOOL_OPERATIONS = Object.freeze({ crm_zalo_broadcast_status: 'status', crm
 const OPERATIONS = Object.freeze(Object.values(TOOL_OPERATIONS));
 export const ZALO_BROADCAST_WRITES = Object.freeze(['send', 'cancel', 'update']);
 export const zaloBroadcastOperation = name => typeof name === 'string' && Object.hasOwn(TOOL_OPERATIONS, name) ? TOOL_OPERATIONS[name] : null;
-export function mayUseZaloBroadcast(effective, operation) {
+// An update that can make the CRM start sending (turn the schedule on, add or
+// replace recipients) needs the send Action too. The broker cannot see the stored
+// state, so it is conservative (only an explicit enabled:false waives it); SQL
+// decides exactly on the state after the write.
+export const zaloBroadcastUpdateNeedsSend = input => input?.enabled === true ||
+  (input?.enabled !== false && (Object.hasOwn(input ?? {}, 'addConversationIds') || Object.hasOwn(input ?? {}, 'setConversationIds')));
+export function mayUseZaloBroadcast(effective, operation, input) {
   if (!OPERATIONS.includes(operation) || effective?.read?.includes(ZALO_BROADCAST_READ) !== true) return false;
   if (!ZALO_BROADCAST_WRITES.includes(operation)) return true;
   if (effective.action?.includes(ZALO_BROADCAST_MANAGE) !== true) return false;
-  return operation !== 'send' || effective.action.includes(ZALO_BROADCAST_SEND);
+  const send = effective.action.includes(ZALO_BROADCAST_SEND);
+  if (operation === 'send') return send;
+  return operation !== 'update' || input === undefined || send || !zaloBroadcastUpdateNeedsSend(input);
 }
 export const ZALO_BROADCAST_LIMITS = Object.freeze({ sendGroups: 50, listGroups: 100, query: 120, pageSize: 50 });
 const DAYS = Object.freeze(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
@@ -279,7 +287,7 @@ export const ZALO_BROADCAST_TOOLS = Object.freeze([
     inputSchema: { type: 'object', additionalProperties: false, required: ['oneshotId'], properties: { oneshotId: uuid } },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } }),
   Object.freeze({ name: 'crm_zalo_broadcast_update',
-    description: `Sửa lịch gửi ảnh phòng trống định kỳ của CRM: bật/tắt (enabled), giờ gửi hằng ngày (time, giờ Việt Nam), chế độ từng thứ (days), thêm/bớt nhóm nhận hoặc thay cả danh sách (chỉ nhóm lấy từ crm_zalo_broadcast_recipients). Chỉ gửi trường cần đổi; mẫu tin, khung giờ, giãn nhịp và phần còn lại giữ nguyên. expectedVersion = version vừa đọc bằng crm_zalo_broadcast_status; gặp cau_hinh_vua_doi thì đọc lại rồi làm lại. Không tự gỡ dừng khẩn cấp. ${SCHEDULER} ${REQUEST_ID_GUIDANCE}`,
+    description: `Sửa lịch gửi ảnh phòng trống định kỳ của CRM: bật/tắt (enabled), giờ gửi hằng ngày (time, giờ Việt Nam), chế độ từng thứ (days), thêm/bớt nhóm nhận hoặc thay cả danh sách (chỉ nhóm lấy từ crm_zalo_broadcast_recipients). Chỉ gửi trường cần đổi; mẫu tin, khung giờ, giãn nhịp và phần còn lại giữ nguyên. Bật lịch hoặc thêm/thay nhóm nhận cần thêm quyền gửi tin Zalo của kết nối. expectedVersion = version vừa đọc bằng crm_zalo_broadcast_status; gặp cau_hinh_vua_doi thì đọc lại rồi làm lại. Không tự gỡ dừng khẩn cấp. ${SCHEDULER} ${REQUEST_ID_GUIDANCE}`,
     inputSchema: { type: 'object', additionalProperties: false, required: ['requestId', 'expectedVersion'], properties: {
       requestId: REQUEST_ID_PROPERTY, expectedVersion: { type: 'string', pattern: '^[0-9a-f]{64}$' }, enabled: { type: 'boolean' },
       time: { type: 'string', pattern: '^[0-9]{1,2}:[0-9]{2}$', description: 'HH:MM, vd 08:30.' },
