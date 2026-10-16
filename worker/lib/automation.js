@@ -518,6 +518,9 @@ export async function guiLo({ convs, config, phong, accountId, orgId, now, day, 
 // runKey `oneshot:<id>` ổn định: chạy lại sau khi worker chết giữa lượt sẽ dùng
 // lại tin đã xếp thay vì gửi trùng.
 
+/** Lượt bị dừng khẩn cấp giữa chừng: tin chờ đã bị huỷ ở DB, không nói "đã xếp hàng". */
+const LUOT_DA_HUY = 'bị huỷ giữa chừng (dừng khẩn cấp).';
+
 /** Số lượt chiếm tối đa mỗi tick (mỗi lượt có thể mất vài giây vì ảnh). */
 const TOI_DA_HEN_GIO_MOI_TICK = 3;
 
@@ -553,11 +556,12 @@ async function chayMotHenGio(claim, now) {
   const nguon = shot.origin === 'hermes' ? 'Hermes' : 'CRM';
   let accountId = null;
   const thatBai = async (code, reason, detail = {}) => {
-    await chotHenGio(shot, false, { code, reason, che_do: mode, ...detail });
+    const chot = await chotHenGio(shot, false, { code, reason, che_do: mode, ...detail });
+    const daHuy = chot?.reason === 'cancelled';
     await ghiNhatKy({
       organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant', mode: 'failed',
-      reason: `Lượt gửi một lần (${nguon}): ${reason}`,
-      detail: { oneshot_id: shot.id, luot_mot_lan: true, code, ...detail },
+      reason: `Lượt gửi một lần (${nguon}): ${daHuy ? LUOT_DA_HUY : reason}`,
+      detail: { oneshot_id: shot.id, luot_mot_lan: true, code, ...detail, ...(daHuy ? { huy_giua_chung: true } : {}) },
     });
   };
 
@@ -612,9 +616,18 @@ async function chayMotHenGio(claim, now) {
   const reason = ketQua.soChuaXep > 0
     ? `Lượt gửi một lần (${nguon}): chỉ xếp hàng được ${ketQua.soTin} tin; còn ${ketQua.soChuaXep} tin chưa xếp. Không tự chạy lại phần thiếu.`
     : `Lượt gửi một lần (${nguon}): đã xếp hàng ${ketQua.soTin} tin, chế độ ${mode === 'full' ? 'ĐẦY ĐỦ' : 'GỌN'}.`;
-  await chotHenGio(shot, true, {
+  const chot = await chotHenGio(shot, true, {
     ...detail, so_tin: ketQua.soTin, so_nguoi_nhan: ketQua.soNguoiNhan, so_chua_xep: ketQua.soChuaXep, reason,
   });
+  if (chot?.reason === 'cancelled') {
+    // Dừng khẩn cấp/huỷ giữa lượt: tin chờ đã bị huỷ ở DB — không ghi "đã xếp hàng N tin".
+    await ghiNhatKy({
+      organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant', mode: 'failed',
+      reason: `Lượt gửi một lần (${nguon}): ${LUOT_DA_HUY} Trước khi huỷ đã xếp ${ketQua.soTin} tin; tin còn chờ không gửi.`,
+      recipients_count: ketQua.soNguoiNhan, messages_count: ketQua.soTin, detail: { ...detail, huy_giua_chung: true },
+    });
+    return;
+  }
   await congTranDinhKy(orgId, t.ngay, ketQua.soTin);
   await ghiNhatKy({
     organization_id: orgId, account_id: accountId, kind: 'broadcast_vacant',

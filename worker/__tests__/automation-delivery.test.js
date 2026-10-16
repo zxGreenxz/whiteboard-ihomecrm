@@ -6,14 +6,20 @@ const now = new Date('2026-10-11T12:59:00Z');
 const job = { account_id: 'a', organization_id: 'o', conversation_id: 'c',
   payload: { tu_dong: true }, not_before: now.toISOString() };
 function database({ enabled = true, sale = true, recipients = ['c'], error = null,
-  conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true } = {}) {
+  conversationOrg = 'o', conversationError = null, threadType = 'group', shot = null, shotError = null, automation = true,
+  stopAt = null, stopError = null, saves = [] } = {}) {
   return { from: vi.fn(table => {
     const data = table === 'zalo_automations'
       ? (automation ? { enabled, config: { recipients, antiSpam: { allowedHours: { from: '08:00', to: '20:00' } } } } : null)
       : table === 'zalo_automation_oneshots' ? shot
-        : { account_id: 'a', organization_id: conversationOrg, is_sale_partner: sale, thread_type: threadType };
-    const failure = table === 'zalo_automations' ? error : table === 'zalo_automation_oneshots' ? shotError : conversationError;
-    const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data, error: failure }) };
+        : table === 'zalo_automation_runs' ? (stopAt ? { created_at: stopAt } : null)
+          : { account_id: 'a', organization_id: conversationOrg, is_sale_partner: sale, thread_type: threadType };
+    const failure = table === 'zalo_automations' ? error : table === 'zalo_automation_oneshots' ? shotError
+      : table === 'zalo_automation_runs' ? stopError : conversationError;
+    const q = { select: () => q, eq: () => q, order: () => q, limit: () => q,
+      maybeSingle: async () => ({ data, error: failure }),
+      // List read (only the one-shot stop check reads every automation row's updated_at).
+      then: (res, rej) => Promise.resolve({ data: table === 'zalo_automations' ? saves.map(updated_at => ({ updated_at })) : [], error: null }).then(res, rej) };
     return q;
   }) };
 }
@@ -73,6 +79,21 @@ describe('automation dispatch checks current conditions', () => {
     ])('refuses a cancelled, foreign or no-longer-sale-group one-shot: %j', async (settings, reason) => {
       expect(await validateAutomationDelivery(shotJob, database(settings), now))
         .toMatchObject({ ok: false, reason: expect.stringContaining(reason) });
+    });
+    it('P2.1: emergency stop blocks a one-shot job created before the latest stop, and while the stop is not lifted', async () => {
+      const at = { ...shotJob, created_at: '2026-10-11T12:00:00Z' };
+      const done = shot({ status: 'done' });
+      expect(await validateAutomationDelivery(at, database({ shot: done, stopAt: '2026-10-11T12:30:00Z', saves: ['2026-10-11T12:40:00Z'] }), now))
+        .toMatchObject({ ok: false, reason: expect.stringContaining('trước lần dừng khẩn cấp') });
+      expect(await validateAutomationDelivery(at, database({ shot: done, stopAt: '2026-10-11T11:00:00Z', saves: ['2026-10-11T10:00:00Z'] }), now))
+        .toMatchObject({ ok: false, reason: expect.stringContaining('đang dừng khẩn cấp') });
+      expect(await validateAutomationDelivery(at, database({ shot: done, stopAt: '2026-10-11T11:00:00Z', saves: [] }), now))
+        .toMatchObject({ ok: false, reason: expect.stringContaining('đang dừng khẩn cấp') });
+      expect(await validateAutomationDelivery(at, database({ shot: done, stopError: { message: 'offline' } }), now))
+        .toMatchObject({ ok: false, reason: expect.stringContaining('AUTOMATION_UNVERIFIED') });
+      // Lifted by a later save/toggle of either automation row: a newer job may send.
+      expect(await validateAutomationDelivery(at, database({ shot: done, stopAt: '2026-10-11T11:00:00Z',
+        saves: ['2026-10-11T10:00:00Z', '2026-10-11T11:30:00Z'] }), now)).toEqual({ ok: true });
     });
     it('keeps hours/day/due checks for one-shots', async () => {
       expect(await validateAutomationDelivery(shotJob, database({ shot: shot() }), new Date('2026-10-11T13:01:00Z')))

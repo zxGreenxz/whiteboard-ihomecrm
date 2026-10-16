@@ -43,6 +43,25 @@ export async function validateAutomationDelivery(job, db = sb, now = new Date())
     if (conv.thread_type !== 'group' || !conv.is_sale_partner) {
       return reject('CANCELLED_AUTOMATION: hội thoại không còn là nhóm sale');
     }
+    // Emergency stop blocks every message of a one-shot, including a finished shot's
+    // queued/processing/recovered jobs; a job created before the latest stop never
+    // sends, even after the stop is lifted (mirrors app_private.zalo_oneshot_job_bi_dung_v1).
+    const { data: stop, error: stopError } = await db.from('zalo_automation_runs')
+      .select('created_at').eq('organization_id', job.organization_id).eq('kind', 'broadcast_vacant')
+      .eq('mode', 'stopped').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (stopError) return reject('AUTOMATION_UNVERIFIED: không đọc được trạng thái dừng khẩn cấp');
+    if (stop?.created_at) {
+      const stopAt = Date.parse(stop.created_at);
+      const jobAt = Date.parse(job.created_at);
+      if (!Number.isFinite(stopAt) || !Number.isFinite(jobAt) || jobAt <= stopAt) {
+        return reject('CANCELLED_AUTOMATION: tin được xếp trước lần dừng khẩn cấp');
+      }
+      const { data: saves, error: saveError } = await db.from('zalo_automations')
+        .select('updated_at').eq('organization_id', job.organization_id);
+      if (saveError) return reject('AUTOMATION_UNVERIFIED: không đọc được lần lưu cấu hình');
+      const lastSave = Math.max(...(Array.isArray(saves) ? saves : []).map(r => Date.parse(r?.updated_at)).filter(Number.isFinite));
+      if (!(lastSave > stopAt)) return reject('CANCELLED_AUTOMATION: tự động hóa đang dừng khẩn cấp');
+    }
   } else if (!config.recipients.includes(job.conversation_id)) {
     return reject('CANCELLED_AUTOMATION: hội thoại đã bỏ khỏi danh sách nhận');
   }

@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1490,
   "soFileDocBangFs": 364,
-  "tongLoiGoi": 836,
-  "khongPhanLoaiDuoc": 381,
+  "tongLoiGoi": 837,
+  "khongPhanLoaiDuoc": 382,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
@@ -547,6 +547,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/domain-v2.test.mjs",
       "soGoi": 3,
       "loai": {},
@@ -796,14 +804,6 @@
     },
     {
       "file": "src/lib/__tests__/rentSupportSalaryMigration.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
       "soGoi": 3,
       "loai": {
         "sql": 3

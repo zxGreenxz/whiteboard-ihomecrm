@@ -7,6 +7,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 // giả lập tối thiểu; hàm khung giờ/trần ngày, begin_provider và dừng khẩn cấp là thân THẬT của
 // 20261011052259 (+ dòng Hermes 20261013170125) để kiểm cả bước kiểm sha trước khi thay.
 const MIGRATION = 'supabase/migrations/20261016101450_zalo_broadcast_oneshot_v1.sql';
+// Review fixes (P2.1 stop blocks every one-shot job, P2.2 stop state vs latest save/toggle, P3 reclaim)
+// attest the room-source body of 20261016102533, so it is replayed in order too.
+const FOLLOW_UPS = ['supabase/migrations/20261016102533_zalo_worker_rooms_sale_page_parity_v1.sql',
+  'supabase/migrations/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql'];
 const QUEUE = readFileSync('supabase/migrations/20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql', 'utf8').replace(/\r\n/g, '\n');
 const ALBUM = 'supabase/migrations/20261012012329_zalo_broadcast_album_phong.sql';
 const pick = (re: RegExp) => { const m = re.exec(QUEUE); if (!m) throw new Error(`missing ${re}`); return m[0]; };
@@ -73,6 +77,7 @@ beforeAll(async () => {
   const migration = readFileSync(MIGRATION, 'utf8');
   await db.exec(migration);
   await db.exec(migration); // forward lane replays every file twice
+  for (const file of FOLLOW_UPS) { const sql = readFileSync(file, 'utf8'); await db.exec(sql); await db.exec(sql); }
 }, 60_000);
 afterAll(() => db.close());
 
@@ -288,5 +293,53 @@ describe('zalo broadcast one-shot — worker và dừng khẩn cấp', () => {
     await db.query('INSERT INTO app_private.hermes_group_jobs VALUES($1)', [second]);
     await setConfig({ ...WHOLE_DAY, recipients: [G1] }, true);
     expect(await beginProvider(second)).toBe(false);
+  });
+});
+
+describe('zalo broadcast one-shot — sửa sau review', () => {
+  const saveConfig = (kind = 'broadcast_vacant') =>
+    db.query('UPDATE public.zalo_automations SET updated_at=clock_timestamp() WHERE organization_id=$1 AND kind=$2', [ORG, kind]);
+
+  it('P2.1: dừng khẩn cấp chặn job của lượt đã done (processing lúc bấm dừng, hoặc được recover xếp lại), kể cả sau khi gỡ dừng', async () => {
+    const shot = await claimed([G1, G2], 'req-done');
+    const sending = await enqueue(shot, G1);
+    const waiting = await enqueue(shot, G2);
+    expect(await finish(shot, true)).toMatchObject({ ok: true, status: 'done' });
+    await db.query("UPDATE public.zalo_send_queue SET status='processing',processing_instance_id=$2 WHERE id=$1", [sending.job_id, INSTANCE]);
+    expect(await stop()).toMatchObject({ da_huy: 1, hen_gio_huy: 0, con_dang_gui: 1 });
+    expect(await scalar<string>('SELECT status v FROM public.zalo_automation_oneshots WHERE id=$1', [shot])).toBe('done');
+    expect(await as<boolean>(null, 'service_role', 'SELECT public.zalo_worker_begin_provider_v1($1,$2) v', [sending.job_id, INSTANCE])).toBe(false);
+    // recover_jobs puts an un-started job back to queued; it must still never reach the provider.
+    await db.query("UPDATE public.zalo_send_queue SET status='queued',processing_instance_id=NULL WHERE id=ANY($1::uuid[])", [uuids([sending.job_id!, waiting.job_id!])]);
+    expect(await beginProvider(sending.job_id!)).toBe(false);
+    expect(await beginProvider(waiting.job_id!)).toBe(false);
+    await saveConfig();
+    expect(await beginProvider(sending.job_id!)).toBe(false); // created before the stop: never sends
+    const fresh = await claimed([G1], 'req-after-lift');
+    const job = await enqueue(fresh, G1);
+    expect(await beginProvider(job.job_id!)).toBe(true);
+  });
+
+  it('P2.2: chỉ chặn khi lần dừng mới hơn lần lưu/bật lại gần nhất của bất kỳ dòng tự động hoá nào', async () => {
+    await db.exec(`INSERT INTO public.zalo_automations(organization_id,kind,enabled) VALUES('${ORG}','auto_reply',false)`);
+    await stop();
+    expect(await create({ requestId: 'req-blocked' })).toMatchObject({ ok: false, code: 'dang_dung_khan_cap' });
+    await saveConfig('auto_reply'); // zalo_toggle_automation/zalo_luu_tu_dong_hoa on either row stamps updated_at
+    expect(await create({ requestId: 'req-lifted' })).toMatchObject({ ok: true });
+    // An OLD stop never blocks once any later save exists.
+    await db.query("UPDATE public.zalo_automation_runs SET created_at=created_at-interval '1 day' WHERE mode='stopped'");
+    await db.query("UPDATE public.zalo_automations SET updated_at=clock_timestamp()-interval '1 hour' WHERE organization_id=$1", [ORG]);
+    expect(await create({ requestId: 'req-old-stop' })).toMatchObject({ ok: true });
+    // No automation row at all: a stop stays until someone saves settings.
+    await db.query('DELETE FROM public.zalo_automations WHERE organization_id=$1', [ORG]);
+    await db.query("UPDATE public.zalo_automation_runs SET created_at=clock_timestamp() WHERE mode='stopped'");
+    expect(await create({ requestId: 'req-no-row' })).toMatchObject({ ok: false, code: 'dang_dung_khan_cap' });
+  });
+
+  it('P3a: lượt running của chính instance được chiếm lại sau 10 phút, không sớm hơn', async () => {
+    const shot = await claimed([G1], 'req-stuck');
+    expect((await claim()).status).toBe('none');
+    await db.query("UPDATE public.zalo_automation_oneshots SET updated_at=clock_timestamp()-interval '11 minutes' WHERE id=$1", [shot]);
+    expect(await claim()).toMatchObject({ status: 'claimed', oneshot: { id: shot, attempts: 2 } });
   });
 });

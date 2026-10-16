@@ -59,6 +59,12 @@ export function soanDanhSachPhong(rooms, link) {
   return phan.join('\n\n');
 }
 
+/**
+ * Công ty chưa có link chia sẻ trang Sale phòng: không có danh sách đang đăng, KHÔNG
+ * phải hết phòng — câu trả lời không được khẳng định "chưa có phòng trống".
+ */
+export const CAU_CHUA_CO_TRANG_SALE = 'Anh/chị để lại nhu cầu (khu vực, mức giá, ngày vào ở), em gửi phòng phù hợp ngay ạ.';
+
 async function ghiNhatKy(row) {
   const { error } = await sb.from('zalo_automation_runs').insert(row);
   if (error) log('auto-reply: ghi nhật ký lỗi', error.message);
@@ -112,21 +118,29 @@ export async function xuLyTinDen({ accountId, conv, body, zaloMsgId }) {
     // Nội dung: lời chào người dùng soạn + số liệu lấy thẳng từ CSDL lúc này.
     let than = cfg.replyIntro;
     let soPhong = 0;
+    let khongCoTrangSale = false;
     if (cfg.includeRoomList) {
-      const { rooms } = await docPhongTrong(orgId);
+      const { rooms, trangSale } = await docPhongTrong(orgId);
       soPhong = rooms.length;
-      // Link tổng lấy từ cấu hình broadcast — người dùng chỉ phải khai một chỗ.
-      const { data: bc } = await sb.from('zalo_automations')
-        .select('config').eq('organization_id', orgId).eq('kind', 'broadcast_vacant').maybeSingle();
-      const link = typeof bc?.config?.template?.shareUrl === 'string' ? bc.config.template.shareUrl.trim() : '';
-      than = `${cfg.replyIntro}\n\n${soanDanhSachPhong(rooms, link)}`;
+      if (trangSale === 0) {
+        // Danh sách = trang Sale Phòng; không có link chia sẻ ≠ hết phòng.
+        khongCoTrangSale = true;
+        than = `${cfg.replyIntro}\n\n${CAU_CHUA_CO_TRANG_SALE}`;
+      } else {
+        // Link tổng lấy từ cấu hình broadcast — người dùng chỉ phải khai một chỗ.
+        const { data: bc } = await sb.from('zalo_automations')
+          .select('config').eq('organization_id', orgId).eq('kind', 'broadcast_vacant').maybeSingle();
+        const link = typeof bc?.config?.template?.shareUrl === 'string' ? bc.config.template.shareUrl.trim() : '';
+        than = `${cfg.replyIntro}\n\n${soanDanhSachPhong(rooms, link)}`;
+      }
     }
 
     const { data: result, error } = await sb.rpc('zalo_enqueue_auto_reply_v1', {
       p_conversation_id: conv.id,
       p_body: than,
       p_source_zalo_msg_id: String(zaloMsgId),
-      p_detail: { tu_khoa: khop, so_phong: soPhong },
+      p_detail: { tu_khoa: khop, so_phong: khongCoTrangSale ? null : soPhong,
+        ...(khongCoTrangSale ? { khong_co_trang_sale: true } : {}) },
     });
     if (error) throw new Error(error.message);
     if (!['queued', 'skipped'].includes(result?.status)) throw new Error('Kết quả xếp hàng tự động không xác định');

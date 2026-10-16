@@ -32,6 +32,7 @@ let oneshotClaims = [];
 let oneshotCalls = [];
 let oneshotClaimError = null;
 let locCapNhat = [];
+let finishResult = null;
 
 /** Query builder giả — đủ chuỗi phương thức mà engine dùng, không hơn. */
 function taoQuery(bang) {
@@ -91,7 +92,7 @@ const sbGia = {
       expect(Object.keys(args).sort()).toEqual(['p_instance_id', 'p_ok', 'p_oneshot_id', 'p_result']);
       expect(args.p_instance_id).toBe(INSTANCE_ID);
       oneshotCalls.push({ name, args });
-      return { data: { ok: true, status: args.p_ok ? 'done' : 'failed' }, error: null };
+      return { data: finishResult ?? { ok: true, status: args.p_ok ? 'done' : 'failed' }, error: null };
     }
     if (name === 'zalo_enqueue_broadcast_oneshot_v1') {
       expect(Object.keys(args).sort()).toEqual(['p_attachment', 'p_body', 'p_conversation_id', 'p_instance_id',
@@ -216,7 +217,7 @@ beforeEach(() => {
   rpcFailureFor = () => null;
   uploadError = null;
   tableInputs = [];
-  oneshotClaims = []; oneshotCalls = []; oneshotClaimError = null; trangSaleGia = 1; locCapNhat = [];
+  oneshotClaims = []; oneshotCalls = []; oneshotClaimError = null; trangSaleGia = 1; locCapNhat = []; finishResult = null;
   duLieuConversations = [conv('c1'), conv('c2')];
   phienDangSong.clear();
   phienDangSong.set('acc-1', { api: {}, ownId: 'own' });
@@ -697,6 +698,18 @@ describe('engine broadcast — lượt gửi một lần', () => {
     daChen.runs = []; trangSaleGia = 1; datCauHinh();
     await tickTuDongHoa();
     expect(daChen.runs[0].reason).toContain('bảng rỗng');
+  });
+
+  it('P3b: bị dừng khẩn cấp giữa lượt thì nhật ký nói bị huỷ, không nói "đã xếp hàng", không cộng sổ trần', async () => {
+    datCauHinh({}, { lastScheduledDate: '2026-08-31' });
+    oneshotClaims = [claimOf({ mode: 'compact' })];
+    finishResult = { ok: false, reason: 'cancelled', status: 'cancelled' };
+    await tickTuDongHoa();
+    expect(rpcCalls).toHaveLength(4);
+    expect(daChen.runs[0]).toMatchObject({ mode: 'failed', messages_count: 4, detail: { huy_giua_chung: true, oneshot_id: SHOT } });
+    expect(daChen.runs[0].reason).toContain('bị huỷ giữa chừng');
+    expect(daChen.runs[0].reason).not.toContain('đã xếp hàng');
+    expect(capNhatAutomations).toHaveLength(0);
   });
 
   it('lỗi chiếm lượt một lần không chặn lượt theo lịch', async () => {

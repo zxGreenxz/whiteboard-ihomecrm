@@ -900,6 +900,31 @@
       ],
       "raSoatBoi": "Claude Code — gửi phòng trống một lần 16/10/2026",
       "sha256": "3f2ca93cd1608bf2f859eba92fd7a197fc29d3fca73e9b180c154fc8e32d2b63"
+    },
+    "supabase/migrations/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.zalo_dang_dung_khan_cap_v1 / app_private.zalo_oneshot_job_bi_dung_v1; public.zalo_worker_begin_provider_v1 / public.zalo_worker_claim_oneshot_v1 sau khi kiểm sha thân (và kiểm thân zalo_phong_trong_cho_worker_v1 = bản 20261016102533)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 object trên — sinh 16/10/2026 ngay sau khi tạo file; các object do 20261016101450 (cũng chưa áp) tạo hoặc mới tạo ở đây"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.json",
+          "trich_doan": "apply TEST qua lane 16/10/2026: hai lượt ROLLBACK đạt, backup TEST, catalog 3af7ffd2cae1 → 93b152070f30"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 16/10/2026, sửa sau review độc lập be94dd2a (dừng khẩn cấp chặn mọi tin của lượt gửi một lần kể cả lượt đã done/job xếp lại; trạng thái dừng xét lần lưu/bật lại của cả hai dòng tự động hoá; chiếm lại lượt treo của chính worker sau 10 phút). Chưa đi qua lane apply production — object vắng mặt vì migration (và 20261016101450 đi trước) CHƯA CHẠY, không phải bị DROP. Đã apply TEST qua lane (dry-run, --apply có backup) và bộ thử ROLLBACK trên TEST (JWT chủ công ty + service_role, gồm job của lượt done bị chặn sau dừng). PGlite 15 ca + 9 đột biến tay đều bị bắt. Sẽ áp qua npm run migrate:forward sau review, theo thứ tự sau 20261016101450 và 20261016102533; khi đó hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.zalo_dang_dung_khan_cap_v1",
+        "function:app_private.zalo_oneshot_job_bi_dung_v1",
+        "function:public.zalo_worker_claim_oneshot_v1"
+      ],
+      "raSoatBoi": "Claude Code — sửa sau review gửi phòng trống một lần 16/10/2026",
+      "sha256": "a928e30ef54c49b031f672ee73f1b13ea5a14d24d65f5ef51528888a3198a8ab"
     }
   }
 }
