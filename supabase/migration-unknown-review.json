@@ -873,30 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261016080232_hermes_sale_listing_parity_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261016080232_hermes_sale_listing_parity_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_sale_listing_payload_v1(uuid) / public.hermes_sale_listing_rooms_v1(uuid); thay thân hermes_group_room_fact_v1, hermes_group_preview_from_context_v1, hermes_room_schedule_run_v1"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 2 hàm mới — sinh 16/10/2026 ngay sau khi tạo file"
-        },
-        {
-          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261016080232_hermes_sale_listing_parity_v1.json",
-          "trich_doan": "lane migrate:forward --env test --apply 16/10/2026: kiểm hai lượt ROLLBACK đạt, backup TEST 650 bảng, catalog đổi"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 16/10/2026 (Hermes đọc đúng danh sách trang Sale Phòng/link chia sẻ đang đăng), chưa đi qua lane apply production — 2 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (hai lượt ROLLBACK đạt rồi apply có backup); trên TEST lõi trả đúng tập phòng get_public_available_rooms của link (5/5, không lộ ảnh/sơ đồ), anon/authenticated không gọi được lõi. Bộ thử PGlite sale-listing-sql 10 ca + 5 đột biến. Sẽ áp production qua npm run migrate:forward sau review; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "function:app_private.hermes_sale_listing_payload_v1",
-        "function:public.hermes_sale_listing_rooms_v1"
-      ],
-      "raSoatBoi": "Claude Code — Hermes danh sách phòng đang sale 16/10/2026",
-      "sha256": "1be9fbd55404d63c42607ac5cc0f278006c3d0ec3e42201f6eed3e6a1e83b604"
     }
   }
 }
