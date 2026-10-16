@@ -925,6 +925,33 @@
       ],
       "raSoatBoi": "Claude Code — sửa sau review gửi phòng trống một lần 16/10/2026",
       "sha256": "a928e30ef54c49b031f672ee73f1b13ea5a14d24d65f5ef51528888a3198a8ab"
+    },
+    "supabase/migrations/20261016111855_hermes_zalo_broadcast_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261016111855_hermes_zalo_broadcast_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_zalo_broadcast_receipts; CREATE OR REPLACE FUNCTION app_private.hermes_zalo_js_string_v1 / js_trim_v1 / gio_v1 / ngay_v1 / nguoi_nhan_v1 / text_v1 / iso_v1 / broadcast_version_v1 / group_ok_v1 / broadcast_view_v1 / oneshot_v1 / ids_v1 / fold_v1 / query_v1; public.hermes_zalo_broadcast_v1 (status/recipients/send/cancel/update)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object đầu — sinh 16/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261016111855_hermes_zalo_broadcast_v1.json",
+          "trich_doan": "apply TEST qua lane 16/10/2026: hai lượt ROLLBACK đạt, backup TEST, catalog 3f40a6ef570c → e4cb2c686f60 (bản cuối; hai bản trước của chính file, chưa commit, đã apply TEST lúc 93b152070f30 → e0f0fa8c435b → 3f40a6ef570c rồi được thay bằng CREATE OR REPLACE: helper gấp chữ tự đủ, helper SECURITY DEFINER, ACL câu lệnh tường minh)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 16/10/2026: Hermes điều khiển tự động hoá CRM \"Gửi ảnh phòng trống\" (đọc cài đặt, tìm nhóm theo tên/phân loại, gửi ngay/hẹn một lần qua zalo_hen_gui_phong_trong_v1, huỷ lượt hẹn, sửa lịch định kỳ qua zalo_luu_tu_dong_hoa có kiểm version). Chưa đi qua lane apply production — các object vắng mặt vì migration CHƯA CHẠY, không phải bị DROP; phụ thuộc 20261016101450 và 20261016110539 (cũng chưa áp production). Đã apply TEST qua lane (dry-run, rồi --apply có backup) và bộ thử ROLLBACK trên TEST bằng JWT thành viên có quyền chat_zalo (actor kết nối là stub vì TEST không có kết nối Hermes): status, recipients, send hẹn giờ, gửi lại cùng requestId (reused), khác tham số (ma_yeu_cau_da_dung), huỷ, update chỉ đổi giờ/thứ giữ nguyên khoá khác, version cũ bị từ chối, 3 dòng audit. PGlite 8+2 ca + 30 đột biến tay đều bị bắt. Sẽ áp qua npm run migrate:forward sau review, theo thứ tự sau 20261016101450 và 20261016110539; khi đó hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "table:app_private.hermes_zalo_broadcast_receipts",
+        "function:app_private.hermes_zalo_js_string_v1",
+        "function:app_private.hermes_zalo_js_trim_v1",
+        "function:app_private.hermes_zalo_gio_v1",
+        "function:app_private.hermes_zalo_ngay_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes điều khiển gửi ảnh phòng trống 16/10/2026",
+      "sha256": "216630cbc12431b5ae83ba0122102d695606e22410337da6ccd7aaf48f2aad38"
     }
   }
 }

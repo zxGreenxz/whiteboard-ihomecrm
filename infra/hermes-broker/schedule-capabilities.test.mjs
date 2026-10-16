@@ -101,7 +101,10 @@ test('broker gates schedule tools by overlay and returns unknown write outcome w
   identity.scopesByPermission=Object.fromEntries([...identity.effective.read,...identity.effective.action].map(key=>[key,{buildingIds:[],cashbookIds:[]}]));
   const broker=createBroker({authority:{identifyConnection:async()=>({connectionId:CONNECTION}),resolve:async()=>identity,checkUnchanged:async()=>{}},dependencyScope:scope,audit:async()=>events.push('audit'),
     schedules:{prepareSchedule:async()=>{events.push('prepare');return Object.freeze({});},finalizeSchedule:async(_t,_r,options)=>{events.push('finalize');options.onDispatch();throw Error('lost ACK');}}});
-  const token='hc_'+'A'.repeat(43);assert.deepEqual((await broker.listTools(token)).tools.filter(t=>t.name.startsWith('crm_room_schedule')).map(t=>t.name).sort(),['crm_room_schedule_create','crm_room_schedule_issues','crm_room_schedule_list','crm_room_schedule_reconcile','crm_room_schedule_revoke','crm_room_schedule_update']);events.length=0;
+  // Cutover P6.06: create/update are retired (CRM automation is the one scheduler); legacy rows stay readable/revocable.
+  const token='hc_'+'A'.repeat(43);assert.deepEqual((await broker.listTools(token)).tools.filter(t=>t.name.startsWith('crm_room_schedule')).map(t=>t.name).sort(),['crm_room_schedule_issues','crm_room_schedule_list','crm_room_schedule_reconcile','crm_room_schedule_revoke']);
+  await assert.rejects(broker.callTool(token,'crm_room_schedule_create',{requestId:MEMBER,settings:{}}),/tool_not_available/);
+  assert.equal(events.filter(x=>x==='prepare').length,0);events.length=0;
   await assert.rejects(broker.callTool(token,'crm_room_schedule_revoke',{requestId:MEMBER,scheduleId:ORG,expectedRevision:1}),e=>e.code==='schedule_outcome_unknown');
   assert.equal(events.filter(x=>x==='finalize').length,1);assert.deepEqual(events.slice(0,3),['prepare','audit','finalize']);
   identity.effective.action=[];assert.deepEqual((await broker.listTools(token)).tools.filter(t=>t.name.startsWith('crm_room_schedule')).map(t=>t.name).sort(),['crm_room_schedule_issues','crm_room_schedule_list']);

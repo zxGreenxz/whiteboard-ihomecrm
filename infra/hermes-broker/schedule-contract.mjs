@@ -182,12 +182,16 @@ const settingsSchema = { type: 'object', additionalProperties: false, required: 
   maxMessagesPerDay: { type: 'integer', minimum: 1, maximum: 200 },
   expiresAt: { type: 'string', format: 'date-time', description: 'Explicit expiry within 30 days: UTC hoặc có múi giờ, ví dụ 2026-10-16T05:00:00Z (không múi giờ bị từ chối). Ask the user if expiry or any other required schedule detail is missing.' },
 } };
+// Cutover P6.06: create/update stay in this contract (SQL tests, legacy rows) but
+// the broker no longer lists or calls them; vacant-room sends are scheduled by the
+// CRM automation through crm_zalo_broadcast_*.
+export const SCHEDULE_RETIRED_NOTE = 'Lịch chữ cũ của Hermes chỉ còn để xem/thu hồi; lịch gửi ảnh phòng trống xem/sửa bằng crm_zalo_broadcast_status/crm_zalo_broadcast_update.';
 const descriptions = Object.freeze({
-  list: 'Read CRM schedules owned by this connection, including revision, last runs and open issues. CRM remains the only scheduler.',
+  list: `Read legacy Hermes text schedules owned by this connection, including revision, last runs and open issues. ${SCHEDULE_RETIRED_NOTE}`,
   issues: 'Read why CRM schedules of this connection are blocked or failing (machine-readable reason, open/closed state) and which deliveries of this connection are UNKNOWN_EFFECT. Read-only; nothing is retried.',
   reconcile: 'Record the user\'s explicit confirmation that one UNKNOWN_EFFECT delivery of this connection did ("sent") or did not ("not_sent") reach the Zalo group, with the user\'s own words as note. Only when the user checked and said so; never guess. This never sends again: a new send is a separate request. ' + REQUEST_ID_GUIDANCE,
 });
-const mutationDescription = operation => `${operation === 'revoke' ? 'Revoke' : operation === 'update' ? 'Replace the complete scope and settings of' : 'Create'} a CRM schedule (room bulletin or public sale-policy notice) only for a clear user request. CRM verifies current Read/Action rights and standing grant before each run and provider send, records blocked runs and notifies the schedule owner. Never create a second native Hermes cron for this CRM job. ${REQUEST_ID_GUIDANCE} Read the schedule before issuing a different mutation. No PIN or per-job approval is required.`;
+const mutationDescription = operation => operation === 'revoke' ? `Revoke one legacy Hermes text schedule (room bulletin or public sale-policy notice) only for a clear user request. ${SCHEDULE_RETIRED_NOTE} ${REQUEST_ID_GUIDANCE} Read the schedule first for its revision.` : `${operation === 'update' ? 'Replace the complete scope and settings of' : 'Create'} a CRM schedule (room bulletin or public sale-policy notice) only for a clear user request. CRM verifies current Read/Action rights and standing grant before each run and provider send, records blocked runs and notifies the schedule owner. Never create a second native Hermes cron for this CRM job. ${REQUEST_ID_GUIDANCE} Read the schedule before issuing a different mutation. No PIN or per-job approval is required.`;
 const inputSchema = operation => operation === 'list' ? { type: 'object', additionalProperties: false, required: [], properties: {
   limit: { type: 'integer', minimum: 1, maximum: 20, default: 20 },
   cursor: { type: ['string', 'null'], format: 'uuid', description: 'Use nextCursor from the previous page; null starts from the beginning.' } } }
