@@ -474,6 +474,7 @@ export default function ChatZaloPage() {
         open={settingsOpen && canManageAutomation}
         onOpenChange={setSettingsOpen}
         conversations={conversations}
+        labels={labels}
       />
 
       {canManageTemplates && (

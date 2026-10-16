@@ -9,8 +9,11 @@ import BroadcastDialog from '../BroadcastDialog';
 import ConversationList from '../ConversationList';
 // Keep the real LabelFilter and its account-aware choices. Portal/focus behavior
 // of a nested Dialog + Popover belongs to the browser test, not this data-flow case.
+// `modal` được ghi lại: trong Dialog, Popover không modal bị khoá cuộn của Dialog
+// nuốt thao tác cuộn danh sách nhãn.
+const popover = vi.hoisted(() => ({ modal: [] as unknown[] }));
 vi.mock('@/components/ui/popover', () => ({
-  Popover: ({ children }: PropsWithChildren) => <>{children}</>,
+  Popover: ({ children, modal }: PropsWithChildren<{ modal?: boolean }>) => { popover.modal.push(modal); return <>{children}</>; },
   PopoverTrigger: ({ children }: PropsWithChildren) => <>{children}</>,
   PopoverContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
 }));
@@ -35,7 +38,10 @@ it('the same numeric label on two accounts does not match the other account', ()
 
 it('broadcast filters and select-all retain only the account owning the selected label', async () => {
   const send = vi.fn().mockResolvedValue(1);
+  popover.modal.length = 0;
   render(<BroadcastDialog open onOpenChange={vi.fn()} conversations={[conv('A', 'account-a'), conv('B', 'account-b')]} labels={labels} onSend={send} />);
+  expect(popover.modal.length).toBeGreaterThan(0);
+  expect(popover.modal.every((m) => m === true)).toBe(true);
   expect(screen.getByTitle('Sale A')).toBeTruthy();
   expect(screen.getByTitle('Sale B')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Phân loại' }));

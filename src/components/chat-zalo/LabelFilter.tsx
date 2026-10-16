@@ -14,15 +14,18 @@ interface Props {
   labels: ZaloLabel[];
   selectedLabel: string | null;
   onSelect: (labelKey: string | null) => void;
+  /** Bật khi nằm trong Dialog: khoá cuộn của Dialog nuốt thao tác cuộn danh
+   *  sách nhãn (portal ra ngoài hộp), nhãn cuối danh sách không với tới được. */
+  modal?: boolean;
 }
 
 /** Dropdown "Phân loại" — lọc hội thoại theo nhãn Zalo. */
-export default function LabelFilter({ labels, selectedLabel, onSelect }: Props) {
+export default function LabelFilter({ labels, selectedLabel, onSelect, modal = false }: Props) {
   const [open, setOpen] = useState(false);
   const active = labels.find((l) => zaloLabelKey(l) === selectedLabel);
   const on = !!active;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <button
           style={{
