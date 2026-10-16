@@ -11,11 +11,14 @@ import { ORG, USER } from '../hermes-zalo-router/private-command-fixture.mjs';
 const root = new URL('../../supabase/migrations/', import.meta.url);
 const migration = name => readFileSync(new URL(`${name}.sql`, root), 'utf8');
 export const TOKEN_ROW = 'fixture-share-token';
-export function saleListingCandidate() {
-  const names = readdirSync(root).filter(name => /^\d{14}_hermes_sale_listing_parity_v1\.sql$/.test(name));
-  if (names.length !== 1) throw new Error('expected one hermes_sale_listing_parity_v1 migration');
+function candidate(slug) {
+  const names = readdirSync(root).filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
+  if (names.length !== 1) throw new Error(`expected one ${slug} migration`);
   return readFileSync(new URL(names[0], root), 'utf8');
 }
+/** Candidate forward migrations in apply order (parity, then the no-sale-page fix). */
+export const SALE_LISTING_SLUGS = Object.freeze(['hermes_sale_listing_parity_v1', 'hermes_sale_listing_no_page_v1']);
+export function saleListingCandidate(slug = SALE_LISTING_SLUGS[0]) { return candidate(slug); }
 
 /** Group SQL applied after the group queue migration, in production order. */
 export const FULL_CHAIN = Object.freeze(['20261013095000_hermes_zalo_private_reply_v1', '20261014000503_hermes_optional_org_policy_v1',
@@ -51,8 +54,12 @@ export async function installSaleListingSql(x, { chain = FULL_CHAIN } = {}) {
     $$;`);
   // The schedule/queue tables of later migrations may be absent in a preview-only
   // fixture; plpgsql bodies are then validated on first call instead of at CREATE.
-  const sql = saleListingCandidate();
+  // The no-sale-page fix replaces schedule functions and asserts their production ACL,
+  // so it needs the schedule migrations; preview-only fixtures stop after the parity file.
+  const schedules = (await db.query("SELECT to_regprocedure('public.hermes_room_schedule_run_v2(uuid,bigint,uuid)') IS NOT NULL AS ok")).rows[0].ok;
   await db.exec('SET check_function_bodies=off');
-  try { await db.exec(sql); await db.exec(sql); } finally { await db.exec('SET check_function_bodies=on'); }
+  try {
+    for (const slug of schedules ? SALE_LISTING_SLUGS : SALE_LISTING_SLUGS.slice(0, 1)) { const sql = candidate(slug); await db.exec(sql); await db.exec(sql); }
+  } finally { await db.exec('SET check_function_bodies=on'); }
   return x;
 }

@@ -439,9 +439,9 @@ export async function runFixtureReadInterleaving({ read, mutate, signal, timeout
 export function assertRoomProjection(result, roomIds, buildingIds) {
   const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
     && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
-  demand(exact(result, ['source', 'readAt', 'currency', 'completeness', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
+  demand(exact(result, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
     'salePolicies', 'buildings', 'rooms'])
-    && result.source === 'hermes_sale_listing_rooms_v1' && result.currency === 'VND' && result.completeness === 'complete'
+    && result.source === 'hermes_sale_listing_rooms_v1' && result.listing === 'published' && result.currency === 'VND' && result.completeness === 'complete'
     && Array.isArray(result.rooms) && result.totalInSnapshot === roomIds.length, 'fixture_room_projection_invalid');
   assert.deepEqual(result.rooms.map(row => row.id).sort(), [...roomIds].sort());
   assert.deepEqual([...new Set(result.rooms.map(row => row.building?.id))].sort(), [...buildingIds].sort());

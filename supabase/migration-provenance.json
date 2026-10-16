@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-16T08:26:47.972Z",
+  "generatedAt": "2026-10-16T08:58:49.295Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 720,
     "unknown": 81,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11794,6 +11794,18 @@
       "missingObjects": [
         "function:app_private.hermes_sale_listing_payload_v1",
         "function:public.hermes_sale_listing_rooms_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016085117_hermes_sale_listing_no_page_v1.sql",
+      "version": "20261016085117",
+      "name": "hermes_sale_listing_no_page_v1",
+      "scheme": "timestamp14",
+      "sha256": "37a4378ea0cf3eeca87259493ab25fb967442f75821adf353f38f8777cd4ea56",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_group_room_fact_v1",
+        "catalog:function:public.hermes_room_schedule_run_v1"
       ]
     },
     {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupScheduleHealth, SCHEDULE } from './schedule-health-fixture.mjs';
 import { saleListingCandidate, TOKEN_ROW } from './sale-listing-sql-fixture.mjs';
-import { projectAvailableRooms } from './room-read-projection.mjs';
+import { projectAvailableRooms, PASS_CONTACT_CHARS } from './room-read-projection.mjs';
 import { roomSalePassLabel } from '../../src/lib/roomSaleFacts.ts';
 import { ORG, USER, FOREIGN, SESSION, INSTANCE } from '../hermes-zalo-router/private-command-fixture.mjs';
 
@@ -18,6 +18,7 @@ const fn = (sql, name) => sql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${nam
 
 test('Hermes sale listing SQL: the published sale page is the only room source for reads, group preview/send and schedules', { timeout: 300000 }, async t => {
   const x = await setupScheduleHealth(t, { reconcile: true }), { db } = x, sql = saleListingCandidate();
+  const noPageSql = saleListingCandidate('hermes_sale_listing_no_page_v1');
   const roomRow = (room, building, fields = {}) => ({ id: room, building_id: building, name: room.slice(-3), code: `P${room.slice(-2)}`, floor: 1,
     area: 20, rent_price: 3000000, deposit_amount: 3000000, amenities: ['Máy lạnh'], images: ['PRIVATE_IMAGE'], description: null,
     sale_note: null, room_type: null, status_public: 'free', sale_state: 'READY', avail_date: null, sale_today: '2026-10-16',
@@ -116,6 +117,12 @@ test('Hermes sale listing SQL: the published sale page is the only room source f
     assert.deepEqual(customer.availability, { kind: 'pass',
       label: roomSalePassLabel({ contactManager: false, phone: '0900000002', name: 'Khách Thử' }), availableOn: '2099-01-01' });
     assert.deepEqual([vacant.rentVnd, vacant.availability.kind], [5000000, 'ready']);
+    // An over-long customer contact is clipped exactly like the connector, never failing the bulletin.
+    await db.query('UPDATE public.room_pass_listings SET contact_name=$1,contact_phone=$2 WHERE room_id=$3', ['y'.repeat(100), '9'.repeat(81), PASS_CUSTOMER]);
+    const clipped = { contactManager: false, phone: `${'9'.repeat(79)}…`, name: `${'y'.repeat(79)}…` };
+    assert.equal(PASS_CONTACT_CHARS, 80);
+    assert.equal((await fact(PASS_CUSTOMER)).availability.label, roomSalePassLabel(clipped));
+    // Last: a PT409 aborts this rollback case's transaction.
     await assert.rejects(fact(RENTED), code('PT409'));
   });
 
@@ -152,12 +159,49 @@ test('Hermes sale listing SQL: the published sale page is the only room source f
     assert(lines.some(line => line.endsWith('| Khách pass phòng: 0900000002 (Khách Thử)')));
     assert(!lines.some(line => line.includes('P03') || line.includes('P05')));
   });
-  await x.each('schedule: no published link means no rooms, never the whole company', async () => {
+  const noSalePage = async () => {
+    assert.deepEqual(await x.run(), { status: 'blocked', reason: 'no_sale_page', closedRecipients: 0 });
+    assert.equal(await x.count('public.zalo_send_queue'), 0);
+    const rows = await x.incidents();
+    assert.deepEqual(rows.map(row => [row.kind, row.reason, row.closed]), [['run', 'no_sale_page', false]]);
+  };
+  await x.each('schedule: no live share link is blocked as no_sale_page (incident + owner notice), never "no rooms" or the whole company', async () => {
     await arrange();
     await db.exec(`UPDATE public.public_room_share_tokens SET revoked=true WHERE token='${TOKEN_ROW}'`);
     await x.manage('create', { requestId: SCHEDULE, settings: x.settings() });
+    await noSalePage();
+    await x.run(); assert.equal((await x.incidents())[0].occurrences, 2);
+    assert.equal((await x.sweep()).notified, 1);
+    const [note] = await x.notifications();
+    assert.equal(note.metadata.reason, 'no_sale_page'); assert.match(note.content, /chưa có trang Sale phòng\/link chia sẻ còn hiệu lực/);
+    assert.match(note.content, /không phải hết phòng/);
+    // Link restored: the next run queues and closes the incident as recovered.
+    await db.exec(`UPDATE public.public_room_share_tokens SET revoked=false WHERE token='${TOKEN_ROW}'`);
+    assert.equal((await x.run()).status, 'queued');
+    assert.deepEqual((await x.incidents()).map(row => [row.reason, row.closed, row.close_reason]), [['no_sale_page', true, 'recovered']]);
+  });
+  await x.each('schedule: a live page with no listed room in the schedule buildings is still plain no_rooms', async () => {
+    await arrange();
+    await db.query('UPDATE public.fixture_rooms SET payload=$1::jsonb', [JSON.stringify({ ...page,
+      rooms: page.rooms.map(room => ({ ...room, status_public: 'rented', sale_state: 'RENTED' })) })]);
+    await x.manage('create', { requestId: SCHEDULE, settings: x.settings() });
     assert.deepEqual(await x.run(), { status: 'skipped', reason: 'no_rooms' });
-    assert.equal(await x.count('public.zalo_send_queue'), 0);
+    assert.deepEqual(await x.incidents(), []);
+  });
+  await x.each('mutation: dropping the no_sale_page stop or its classification is observed', async () => {
+    await arrange();
+    await db.exec(`UPDATE public.public_room_share_tokens SET revoked=true WHERE token='${TOKEN_ROW}'`);
+    await x.manage('create', { requestId: SCHEDULE, settings: x.settings() });
+    const run1 = fn(noPageSql, 'public.hermes_room_schedule_run_v1'), run2 = fn(noPageSql, 'public.hermes_room_schedule_run_v2');
+    for (const [original, mutant] of [
+      [run1, run1.replace(`    IF COALESCE((v_listing->>'pages')::integer,0)=0 THEN RAISE EXCEPTION 'hermes_schedule_no_sale_page' USING ERRCODE='55000'; END IF;\n`, '')],
+      [run2, run2.replace(`WHEN v_message='hermes_schedule_no_sale_page' THEN 'no_sale_page'\n      WHEN`, 'WHEN')]]) {
+      assert.notEqual(mutant, original);
+      await db.exec('SAVEPOINT mutant');
+      try { await db.exec(mutant); await assert.rejects(noSalePage(), { code: 'ERR_ASSERTION' }); }
+      finally { await db.exec('ROLLBACK TO SAVEPOINT mutant; RELEASE SAVEPOINT mutant'); }
+    }
+    await noSalePage();
   });
 
   // Hand mutations of the candidate SQL: each removes one rule; the same observation must change.
@@ -183,12 +227,15 @@ test('Hermes sale listing SQL: the published sale page is the only room source f
       } finally { await db.exec('ROLLBACK TO SAVEPOINT mutant; RELEASE SAVEPOINT mutant'); }
     }
   });
-  await x.each('mutation: printing a managed pass contact or refusing pass rooms is observed', async () => {
+  await x.each('mutation: printing a managed pass contact, refusing pass rooms or an unclipped contact is observed', async () => {
     await arrange();
-    const original = fn(sql, 'app_private.hermes_group_room_fact_v1');
+    const original = fn(noPageSql, 'app_private.hermes_group_room_fact_v1');
     const leaks = original.replace("WHEN COALESCE(pl.contact_manager,false) THEN 'Khách pass phòng · Liên hệ admin iHome mở cửa'\n      ", '');
     const refuses = original.replace("NOT IN ('free','soon','pass')", "NOT IN ('free','soon')");
+    const unclipped = original.replace("CASE WHEN char_length(pl.contact_name)>80 THEN left(pl.contact_name,79)||'…' ELSE pl.contact_name END", 'pl.contact_name');
+    await db.query('UPDATE public.room_pass_listings SET contact_name=$1 WHERE room_id=$2', ['y'.repeat(100), PASS_CUSTOMER]);
     for (const [mutant, observe] of [[leaks, async () => assert.match(JSON.stringify(await fact(PASS_ADMIN)), /0900000005/)],
+      [unclipped, async () => assert.match((await fact(PASS_CUSTOMER)).availability.label, /y{100}/)],
       [refuses, async () => assert.rejects(fact(PASS_ADMIN), code('PT409'))]]) {
       assert.notEqual(mutant, original);
       await db.exec('SAVEPOINT mutant');

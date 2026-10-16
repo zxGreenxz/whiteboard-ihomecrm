@@ -637,7 +637,7 @@ test('barrier timeout bounds waiting, while a started guarded mutation must sett
 function roomProjectionFixture() {
   const buildingId = randomUUID(), roomId = randomUUID();
   return { buildingId, roomId, result: { source: 'hermes_sale_listing_rooms_v1', readAt: '2026-10-12T00:00:00.000Z', currency: 'VND',
-    completeness: 'complete', publishedPages: 1, totalInSnapshot: 1, offset: 0, nextOffset: null, salePolicies: [],
+    completeness: 'complete', listing: 'published', notice: null, publishedPages: 1, totalInSnapshot: 1, offset: 0, nextOffset: null, salePolicies: [],
     buildings: [{ id: buildingId, name: 'Synthetic', code: null, address: null, contact: { name: null, phone: null } }],
     rooms: [{ id: roomId, code: null, name: 'Synthetic', building: { id: buildingId, name: 'Synthetic', code: null },
       floor: null, areaM2: null, priceVnd: 100, rentVnd: 100, depositVnd: 100, status: 'free',

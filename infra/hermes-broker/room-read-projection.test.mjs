@@ -80,6 +80,14 @@ test('no scope, wildcard, names and malformed IDs never become org-wide reads', 
     assert.throws(() => project(payload(), options({ allowedBuildingIds })), code('rooms_projection_request_invalid'));
   }
 });
+test('no live share link is reported as no_sale_page, never as an empty published list', () => {
+  const none = project({ pages: 0, rooms: [], buildings: [] });
+  assert.deepEqual([none.listing, none.publishedPages, none.totalInSnapshot], ['no_sale_page', 0, 0]);
+  assert.match(none.notice, /chưa có trang Sale phòng\/link chia sẻ còn hiệu lực/); assert.match(none.notice, /không phải là hết phòng/);
+  const empty = project({ pages: 1, rooms: [], buildings: [] });
+  assert.deepEqual([empty.listing, empty.notice, empty.totalInSnapshot], ['published', null, 0]);
+  assert.deepEqual([project().listing, project().notice], ['published', null]);
+});
 test('valid empty response is distinguished from malformed/error payload, old source shape and unknown status', () => {
   const out = project({ pages: 0, rooms: [], buildings: [] });
   assert.equal(out.totalInSnapshot, 0); assert.equal(out.completeness, 'complete'); assert.equal(out.publishedPages, 0);
@@ -97,14 +105,24 @@ test('reject missing relation, duplicate room or duplicate building instead of i
 test('strict quantities, flags and dates fail closed; no coercion of missing/bad data to zero or today', () => {
   for (const fields of [{ rent_price: '4000000' }, { rent_price: -1 }, { area: Infinity }, { deposit_amount: Number.MAX_SAFE_INTEGER + 1 },
     { floor: '1' }, { sale_today: '2026-02-30' }, { expected_ready_on: 'tomorrow' }, { name: null }, { pass_price: -1 },
-    { pass_contact_manager: 'true' }, { pass_avail_date: '2026-13-01' }, { amenities: Array(201).fill('x') }, { sale_note: 1 }]) {
+    { pass_contact_manager: 'true' }, { pass_avail_date: '2026-13-01' }, { sale_note: 1 }, { description: ['x'] }, { pass_contact_phone: 9 }]) {
     assert.throws(() => project(payload([room(uuid(3), A, fields)])), code('rooms_response_invalid'));
   }
 });
-test('long free text is bounded for the tool result; the start is kept', () => {
-  const out = project(payload([room(uuid(3), A, { sale_note: 'x'.repeat(500), description: 'y'.repeat(500) })]));
-  assert.equal(out.rooms[0].salePolicy.length, 240); assert(out.rooms[0].salePolicy.endsWith('…'));
-  assert.equal(out.rooms[0].amenities.length, 240);
+test('over-long public text is clipped with "…" instead of failing the whole company list', () => {
+  const long = n => 'x'.repeat(n);
+  const out = project(payload([
+    room(uuid(3), A, { sale_note: long(5000), description: long(9000), room_type: long(400), amenities: Array(500).fill('Máy lạnh') }),
+    room(uuid(4), A, { status_public: 'pass', pass_contact_phone: long(300), pass_contact_name: long(300), pass_sale_policy: long(5000) }),
+  ], [building(A, { address: long(2000), page_contact_name: long(400), page_contact_phone: long(400), page_sale_policy: long(3000) })]));
+  const [first, pass] = out.rooms, [b] = out.buildings;
+  assert.equal(out.totalInSnapshot, 2);
+  for (const value of [first.salePolicy, pass.salePolicy]) { assert.equal(value.length, 240); assert(value.endsWith('…')); }
+  assert.equal(first.amenities.length, 240); assert.equal(first.roomType.length, 'Phòng 26m², '.length + 120);
+  assert.equal(pass.availability.label, `Khách pass phòng: ${long(79)}… (${long(79)}…)`);
+  assert.deepEqual([b.address.length, b.contact.name.length, b.contact.phone.length], [300, 120, 64]);
+  assert.equal(out.salePolicies[0].length, 2000);
+  assert(Buffer.byteLength(JSON.stringify(out)) < 16_384, 'clipped page stays within the default tool result limit');
 });
 test('pagination keeps the page order and reports the source cap without claiming all rooms were returned', () => {
   const data = payload(Array.from({ length: 2000 }, (_, i) => room(uuid(10 + i))));

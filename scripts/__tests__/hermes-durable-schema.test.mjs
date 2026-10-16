@@ -486,6 +486,7 @@ RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog AS $fn$
         WHEN 'message_too_large' THEN 'nội dung vượt giới hạn một tin nên chưa gửi, không cắt bớt. Thu hẹp phạm vi lịch.'
         WHEN 'missed_window' THEN 'lịch hôm nay đã quá 180 phút sau giờ hẹn mà chưa xếp hàng được cho mọi nhóm; không gửi bù. Kiểm tra worker Zalo và các báo lỗi khác của lịch.'
         WHEN 'membership_ambiguous' THEN 'tài khoản đang thuộc nhiều công ty nên Hermes tạm dừng truy cập CRM. Nhờ quản trị kiểm tra tư cách thành viên.'
+        WHEN 'no_sale_page' THEN 'công ty chưa có trang Sale phòng/link chia sẻ còn hiệu lực nên không có danh sách phòng đang đăng để gửi (không phải hết phòng). Tạo lại hoặc bật lại link chia sẻ ở trang Sale phòng.'
         WHEN 'room_data_changed' THEN 'dữ liệu phòng công khai chưa hợp lệ để lập bản tin. Kiểm tra tên tòa, mã phòng và trạng thái phòng.'
         WHEN 'context_changed' THEN 'quyền hoặc kết nối thay đổi liên tục trong lúc chạy.'
         WHEN 'delivery_failed' THEN 'một tin của lịch chưa gửi được ('||COALESCE(p_detail->>'errorCode','không rõ mã')||'). Không gửi lại tự động; lượt sau chạy theo nhịp.'

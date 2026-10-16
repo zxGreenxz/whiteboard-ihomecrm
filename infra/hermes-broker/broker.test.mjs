@@ -389,7 +389,7 @@ const BUILDING = '50000000-0000-4000-8000-000000000001';
 const ROOM_SCOPE = '60000000-0000-4000-8000-000000000001';
 function roomPayload() {
   return { source: 'hermes_sale_listing_rooms_v1', readAt: new Date(1_000_000).toISOString(), currency: 'VND',
-    completeness: 'complete', publishedPages: 1, totalInSnapshot: 2, offset: 0, nextOffset: null, salePolicies: ['Chính sách thử'],
+    completeness: 'complete', listing: 'published', notice: null, publishedPages: 1, totalInSnapshot: 2, offset: 0, nextOffset: null, salePolicies: ['Chính sách thử'],
     buildings: [{ id: BUILDING, name: 'House A', code: 'A', address: 'Đường Thử', contact: { name: 'Hotline thử', phone: '0900000001' } }],
     rooms: [{ id: '70000000-0000-4000-8000-000000000001', code: '101', name: '101',
       building: { id: BUILDING, name: 'House A', code: 'A' }, floor: 1, areaM2: 20, priceVnd: 3000000, rentVnd: 3000000,
@@ -488,6 +488,7 @@ test('room result rejects fields outside its protocol, foreign buildings and inv
     value => { value.buildings[0].contact.secret = 'PRIVATE'; }, value => { value.buildings.push({ ...value.buildings[0], id: USER_B }); },
     value => { value.rooms[1].statusLines = []; }, value => { value.rooms[1].salePolicy = 'x'.repeat(601); },
     value => { value.rooms[0].priceVnd = -1; }, value => { value.publishedPages = '1'; }, value => { value.salePolicies = [1]; },
+    value => { value.listing = 'no_sale_page'; }, value => { value.notice = 'PRIVATE'; }, value => { value.publishedPages = 0; },
     value => { value.totalInSnapshot = 3; }, value => { value.nextOffset = 1; },
     value => { value.rooms.toJSON = () => ({ accessToken: 'PRIVATE' }); }]) {
     const f = roomsFixture({ result: () => { const value = roomPayload(); mutate(value); return value; } });
@@ -497,6 +498,15 @@ test('room result rejects fields outside its protocol, foreign buildings and inv
   const f = roomsFixture({ badReceipt: { accessToken: 'PRIVATE' } });
   await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error('backend_unavailable'));
   assert(!f.events.includes('prepared')); assert(!f.events.includes('final'));
+});
+
+test('a company without a live share link gets an explicit no_sale_page result, not an empty room list', async () => {
+  const f = roomsFixture({ result: () => ({ ...roomPayload(), listing: 'no_sale_page', publishedPages: 0, totalInSnapshot: 0, salePolicies: [],
+    buildings: [], rooms: [], notice: 'Công ty chưa có trang Sale phòng/link chia sẻ còn hiệu lực. Đây không phải là hết phòng.' }) });
+  const value = JSON.parse((await f.broker.callTool(f.token, 'crm_available_rooms', {})).content[0].text);
+  assert.deepEqual([value.listing, value.totalInSnapshot], ['no_sale_page', 0]); assert.match(value.notice, /không phải là hết phòng/);
+  const hidden = roomsFixture({ result: () => ({ ...roomPayload(), listing: 'no_sale_page', publishedPages: 0, notice: 'x' }) });
+  await assert.rejects(hidden.broker.callTool(hidden.token, 'crm_available_rooms', {}), error('backend_unavailable'));
 });
 
 test('room calls share per-connection quota and byte limits with the context dispatcher', async () => {

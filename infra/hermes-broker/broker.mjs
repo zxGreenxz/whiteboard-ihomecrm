@@ -29,7 +29,7 @@ const TOOL = Object.freeze({
 const ROOM_PERMISSION = 'rooms.view';
 const ROOM_TOOL = Object.freeze({
   name: 'crm_available_rooms',
-  description: 'Rooms currently listed for sale: exactly the list the CRM "Sale phòng" page / public share link shows and its "Danh sách phòng trống" image — vacant, soon-vacant and customer-pass (khách pass) rooms, with listed price, availability, room type, furniture, sale policy, status text and the contact that page prints. Use it for any question about which rooms are listed, on sale or vacant. Limited to this connection’s building scope; pagination belongs to one read snapshot.',
+  description: 'Rooms currently listed for sale: exactly the rooms the CRM "Sale phòng" public share link lists — vacant, soon-vacant and customer-pass (khách pass) rooms, with listed price, availability, room type, furniture, sale policy and the contact that page prints (status text is the automatic one; a status typed inside the app is not included). Use it for any question about which rooms are listed, on sale or vacant. listing "no_sale_page" means the company has no live share link: say so, never "no rooms". Limited to this connection’s building scope; pagination belongs to one read snapshot.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -112,9 +112,11 @@ function roomResult(value, request, identity) {
   const amount = value => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER);
   const day = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
-  if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
+  if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
     'salePolicies', 'buildings', 'rooms']) ||
       value.source !== 'hermes_sale_listing_rooms_v1' || value.currency !== 'VND' ||
+      value.listing !== (value.publishedPages > 0 ? 'published' : 'no_sale_page') ||
+      (value.listing === 'published' ? value.notice !== null : !text(value.notice, 600) || value.totalInSnapshot !== 0) ||
       !['complete', 'source_capped'].includes(value.completeness) || typeof value.readAt !== 'string' ||
       !Number.isFinite(Date.parse(value.readAt)) || new Date(value.readAt).toISOString() !== value.readAt ||
       !Number.isSafeInteger(value.publishedPages) || value.publishedPages < 0 || value.publishedPages > 1000 ||

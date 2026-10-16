@@ -93,7 +93,7 @@ export function buildGroupRoomPreview({ intent, authority, roomRead, recipientRe
   }
   exact(roomRead, ['organizationId', 'contextVersion', 'result']);
   const result = roomRead.result;
-  exact(result, ['source', 'readAt', 'currency', 'completeness', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset', 'salePolicies', 'buildings', 'rooms']);
+  exact(result, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset', 'salePolicies', 'buildings', 'rooms']);
   if (result.source !== 'hermes_sale_listing_rooms_v1' || result.currency !== 'VND' || result.completeness !== 'complete') fail('draft_source_incomplete');
   if (!Number.isSafeInteger(result.totalInSnapshot) || result.totalInSnapshot < 1 || result.totalInSnapshot > 2000 ||
       !Number.isSafeInteger(result.offset) || result.offset < 0 || result.offset >= result.totalInSnapshot) fail('draft_input_invalid');

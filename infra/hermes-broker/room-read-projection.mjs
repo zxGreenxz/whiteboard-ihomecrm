@@ -7,8 +7,19 @@ const id = value => typeof value === 'string' && UUID.test(value);
 const fail = code => { throw Object.assign(new Error(code), { code }); };
 const invalid = () => fail('rooms_response_invalid');
 // Bounded tool output: long free text keeps its start; the page itself is unchanged.
+// One over-long public text never fails the whole company's list.
 const CELL = 240;
-const cell = value => value.length > CELL ? `${value.slice(0, CELL - 1)}…` : value;
+// Pass contact shortening must stay identical to SQL hermes_group_room_fact_v1 (20261016085117).
+export const PASS_CONTACT_CHARS = 80;
+export const NO_SALE_PAGE_NOTICE = 'Công ty chưa có trang Sale phòng/link chia sẻ còn hiệu lực nên không có danh sách phòng đang đăng. Đây không phải là hết phòng.';
+const clip = (value, cap) => value.length > cap ? `${value.slice(0, cap - 1)}…` : value;
+const cell = value => clip(value, CELL);
+/** Public free text: null stays null, a non-string is malformed, a long string is clipped. */
+function freeText(value, cap) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') invalid();
+  return clip(value, cap);
+}
 function text(value, cap, nullable = false) {
   if (nullable && (value === null || value === undefined)) return null;
   if (typeof value !== 'string' || value.length > cap) invalid();
@@ -34,8 +45,7 @@ function day(value) {
 // Same reading of rooms.amenities as the sale page (supabaseData toAmenities).
 function amenityList(raw) {
   if (Array.isArray(raw)) {
-    if (raw.length > 200) invalid();
-    return raw.map(item => typeof item === 'string' ? item : record(item) ? String(item.name ?? item.label ?? '') : String(item)).filter(Boolean);
+    return raw.slice(0, 200).map(item => typeof item === 'string' ? item : record(item) ? String(item.name ?? item.label ?? '') : String(item)).filter(Boolean);
   }
   if (record(raw)) return Object.keys(raw).filter(key => raw[key]);
   return [];
@@ -50,9 +60,12 @@ function amenityList(raw) {
  *
  * The source is the company's published sale page (get_public_available_rooms per
  * live share link), so the rooms are exactly those the page lists: vacant, soon
- * vacant and customer-pass rooms. Columns mirror the "Danh sách phòng trống" image
- * (price, type, furniture, sale policy, status) through the shared sale formatter;
- * pass contact is only what the public page prints (contact_manager hides it).
+ * vacant and customer-pass rooms. Price, type, furniture and sale policy columns
+ * follow the "Danh sách phòng trống" table through the shared sale formatter; the
+ * status text is the automatic one the public link shows (a TÌNH TRẠNG typed in the
+ * app is not part of the public reader). Pass contact is only what the public page
+ * prints (contact_manager hides it). pages=0 means no live share link: listing is
+ * 'no_sale_page', which is not the same as "no rooms".
  * Images/URLs, floor plans and internal notes never reach this payload.
  * The source RPC has a 2,000-row cap; reaching it is explicitly incomplete.
  */
@@ -75,12 +88,12 @@ export function projectAvailableRooms(payload, options) {
     if (!record(row) || !id(row.id)) invalid();
     if (!allowed.has(row.id)) continue;
     if (buildings.has(row.id)) invalid();
-    const pageName = text(row.page_contact_name, 256, true)?.trim() || '', pagePhone = text(row.page_contact_phone, 256, true)?.trim() || '';
-    const policy = text(row.page_sale_policy, 2000, true)?.trim();
+    const pageName = freeText(row.page_contact_name, 120)?.trim() || '', pagePhone = freeText(row.page_contact_phone, 64)?.trim() || '';
+    const policy = freeText(row.page_sale_policy, 2000)?.trim();
     // Card/table contact: the building's own manager first, else the page hotline.
-    const name = text(row.public_contact_name, 256, true)?.trim() || pageName, phone = text(row.public_contact_phone, 256, true)?.trim() || pagePhone;
+    const name = freeText(row.public_contact_name, 120)?.trim() || pageName, phone = freeText(row.public_contact_phone, 64)?.trim() || pagePhone;
     buildings.set(row.id, { building: { id: row.id, name: text(row.name, 500), code: text(row.code, 256, true) },
-      detail: { id: row.id, name: row.name, code: row.code, address: text(row.address, 1000, true), contact: { name: name || null, phone: phone || null } },
+      detail: { id: row.id, name: row.name, code: row.code, address: freeText(row.address, 300), contact: { name: name || null, phone: phone || null } },
       policy: policy || null });
   }
   const rooms = [], seen = new Set();
@@ -95,12 +108,12 @@ export function projectAvailableRooms(payload, options) {
     if (!(row.floor === null || (Number.isSafeInteger(row.floor) && row.floor >= -100 && row.floor <= 1000))) invalid();
     const status = row.status_public, area = number(row.area, true), rent = number(row.rent_price, true);
     const pass = status === 'pass', contact = { contactManager: flag(row.pass_contact_manager),
-      phone: text(row.pass_contact_phone, 256, true) || null, name: text(row.pass_contact_name, 256, true) || null };
+      phone: freeText(row.pass_contact_phone, PASS_CONTACT_CHARS) || null, name: freeText(row.pass_contact_name, PASS_CONTACT_CHARS) || null };
     const fact = roomSaleFacts({ status, state: text(row.sale_state, 64, true),
       today: day(row.sale_today), availableOn: day(row.avail_date), expectedReadyOn: day(row.expected_ready_on) });
     const passPrice = number(row.pass_price, true), passOn = day(row.pass_avail_date);
-    const type = text(row.room_type, 256, true)?.trim(), description = text(row.description, 8000, true)?.trim();
-    const saleNote = text(row.sale_note, 4000, true)?.trim(), passPolicy = text(row.pass_sale_policy, 4000, true)?.trim();
+    const type = freeText(row.room_type, 120)?.trim(), description = freeText(row.description, CELL)?.trim();
+    const saleNote = freeText(row.sale_note, CELL)?.trim(), passPolicy = freeText(row.pass_sale_policy, CELL)?.trim();
     const roundedArea = Math.round(area ?? 0);
     rooms.push({ id: row.id, code: text(row.code, 256, true), name: text(row.name, 500),
       building: { ...owner.building }, floor: row.floor, areaM2: area,
@@ -120,6 +133,8 @@ export function projectAvailableRooms(payload, options) {
   return {
     source: 'hermes_sale_listing_rooms_v1', readAt: new Date(options.readAt).toISOString(), currency: 'VND',
     completeness: payload.rooms.length === 2000 || payload.buildings.length === 2000 ? 'source_capped' : 'complete',
+    listing: payload.pages > 0 ? 'published' : 'no_sale_page',
+    notice: payload.pages > 0 ? null : NO_SALE_PAGE_NOTICE,
     publishedPages: payload.pages, totalInSnapshot: rooms.length, offset, nextOffset: next < rooms.length ? next : null,
     salePolicies: [...policies],
     buildings: [...buildings.values()].filter(row => used.has(row.detail.id)).map(row => structuredClone(row.detail)),

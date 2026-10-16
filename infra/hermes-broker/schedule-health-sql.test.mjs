@@ -250,8 +250,8 @@ test('schedule health SQL: durable blocked evidence, owner notice, recipient spl
   await x.each('policy notice: silent baseline, change queued once with public text, fenced at provider, unknown blocks, not-sent sends a new dispatch', async () => {
     await db.exec("UPDATE app_private.hermes_schedule_templates SET enabled=true WHERE template='sale_policy_public_text_v1'");
     // Clock port for the local day of run_v1 only (calendar progression).
-    // Latest run_v1 body (room source moved to the published sale page in this migration).
-    const definition = candidate('hermes_sale_listing_parity_v1').match(/CREATE OR REPLACE FUNCTION public\.hermes_room_schedule_run_v1[\s\S]*?\$fn\$;/)[0];
+    // Latest run_v1 body (published sale page source + no_sale_page stop, 20261016085117).
+    const definition = candidate('hermes_sale_listing_no_page_v1').match(/CREATE OR REPLACE FUNCTION public\.hermes_room_schedule_run_v1[\s\S]*?\$fn\$;/)[0];
     const anchor = "local_now:=clock_timestamp() AT TIME ZONE (g.settings->>'timeZone')";
     assert.ok(definition.includes(anchor), 'actual run_v1 local clock');
     await db.exec(`CREATE FUNCTION app_private.fixture_day_clock() RETURNS timestamptz LANGUAGE sql AS $$

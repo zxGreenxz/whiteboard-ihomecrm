@@ -27,6 +27,8 @@ export interface HermesSaleListing {
   readAt: string;
   currency: 'VND';
   completeness: 'complete' | 'source_capped';
+  listing: 'published' | 'no_sale_page';
+  notice: string | null;
   publishedPages: number;
   totalInSnapshot: number;
   offset: number;
@@ -35,4 +37,6 @@ export interface HermesSaleListing {
   buildings: { id: string; name: string; code: string | null; address: string | null; contact: { name: string | null; phone: string | null } }[];
   rooms: HermesSaleListingRoom[];
 }
+export const PASS_CONTACT_CHARS: number;
+export const NO_SALE_PAGE_NOTICE: string;
 export function projectAvailableRooms(payload: unknown, options: ProjectAvailableRoomsOptions): HermesSaleListing;
