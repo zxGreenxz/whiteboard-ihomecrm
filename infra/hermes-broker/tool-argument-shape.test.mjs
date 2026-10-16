@@ -16,11 +16,12 @@ import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
 import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
+import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 
 const NIL = '00000000-0000-0000-0000-000000000000';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
 const ALL = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS,
-  ...CUSTOMER_ACTION_TOOLS, ...EXPENSE_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+  ...CUSTOMER_ACTION_TOOLS, ...EXPENSE_ACTION_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS, NEW_REQUEST_ID_TOOL];
 const tool = name => ALL.find(value => value.name === name);
 const nullable = property => Array.isArray(property?.type) && property.type.includes('null');
 const requiredNullable = value => (value.inputSchema.required ?? []).filter(key => nullable(value.inputSchema.properties?.[key]));
@@ -30,7 +31,7 @@ const INCIDENT = Object.freeze({ kind: 'buildings', buildingId: NIL, query: '', 
 test('advertised schemas make required nullable fields omittable and leave every original unchanged', () => {
   const before = JSON.stringify(ALL);
   assert.deepEqual(ALL.filter(value => requiredNullable(value).length).map(value => value.name).sort(), ['crm_customer_create',
-    'crm_expense_create', 'crm_lead_create', 'crm_task_create', 'crm_task_input_options', 'crm_work_memory_upsert']);
+    'crm_expense_create', 'crm_lead_create', 'crm_task_create', 'crm_task_input_options', 'crm_work_memory_upsert', 'crm_zalo_broadcast_send']);
   for (const original of ALL) {
     const listed = advertisedTool(original), dropped = requiredNullable(original), properties = original.inputSchema.properties ?? {};
     assert.deepEqual(requiredNullable(listed), [], original.name);
@@ -144,7 +145,7 @@ function brokerFixture(t) {
   // Every domain read is granted so tools/list below is measured with all of them.
   const read = [...ALL_DOMAIN_READ_CAPABILITIES, 'chat_zalo.view', 'assistant.memory.read'];
   const action = ['tasks.create', 'sale_phong.manage_pass_listings', 'customers.create', 'leads.create', 'income_expenses.create',
-    'chat_zalo.manage_automation', 'assistant.memory.write'];
+    'chat_zalo.manage_automation', 'chat_zalo.send', 'assistant.memory.write'];
   const identity = { row: { id: CONNECTION, assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 600_000,
     epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
   policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [],
@@ -160,6 +161,7 @@ function brokerFixture(t) {
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
+    zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'),
   });
   return { broker, seen, token: `hc_${'A'.repeat(43)}` };
 }
@@ -168,7 +170,7 @@ test('broker tools/list advertises no required nullable field across mounted fam
   const { broker, token } = brokerFixture(t);
   const listed = (await broker.listTools(token)).tools;
   for (const name of ['crm_task_input_options', 'crm_task_create', 'crm_customer_create', 'crm_lead_create', 'crm_expense_create',
-    'crm_work_memory_upsert', 'crm_read_customers', 'crm_room_pass_upsert', 'crm_room_schedule_list', 'crm_new_request_id']) {
+    'crm_work_memory_upsert', 'crm_read_customers', 'crm_room_pass_upsert', 'crm_room_schedule_list', 'crm_zalo_broadcast_send', 'crm_zalo_broadcast_update', 'crm_new_request_id']) {
     assert.ok(listed.some(value => value.name === name), name);
   }
   for (const value of listed) assert.deepEqual(requiredNullable(value), [], value.name);

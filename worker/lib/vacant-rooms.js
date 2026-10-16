@@ -142,11 +142,14 @@ export function mapPayloadSangToa(payload) {
 }
 
 /**
- * Đọc phòng trống của một công ty.
+ * Đọc phòng trống của một công ty — đúng danh sách trang Sale Phòng/link chia sẻ
+ * (RPC gộp `get_public_available_rooms` của từng chủ có link còn hiệu lực).
  * @param {string} organizationId
- * @returns {Promise<{buildings: Array, rooms: Array, hotline: string}>}
+ * @returns {Promise<{buildings: Array, rooms: Array, hotline: string, trangSale: number|null}>}
  *          `rooms` là danh sách PHẲNG đã kèm tên/địa chỉ toà — engine dùng nó để
- *          soạn tin chi tiết và để tính vân tay thay đổi.
+ *          soạn tin chi tiết và để tính vân tay thay đổi. `trangSale` = số trang
+ *          sale đọc được; 0 nghĩa là công ty chưa có link chia sẻ (không phải hết
+ *          phòng); null khi RPC cũ chưa trả khoá này.
  */
 export async function docPhongTrong(organizationId) {
   const { data, error } = await sb.rpc('zalo_phong_trong_cho_worker_v1', {
@@ -158,5 +161,6 @@ export async function docPhongTrong(organizationId) {
   const rooms = buildings.flatMap((b) => b.rooms);
   const hotline = data?.contact?.phone || buildings.find((b) => b.phone)?.phone || '';
   log('phòng trống org', String(organizationId).slice(0, 8), '→', rooms.length, 'phòng /', buildings.length, 'toà');
-  return { buildings, rooms, hotline };
+  const trangSale = Number.isInteger(data?.pages) ? data.pages : null;
+  return { buildings, rooms, hotline, trangSale };
 }

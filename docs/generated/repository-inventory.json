@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1489,
-  "soFileDocBangFs": 362,
-  "tongLoiGoi": 832,
-  "khongPhanLoaiDuoc": 381,
+  "tongSoFileTest": 1494,
+  "soFileDocBangFs": 365,
+  "tongLoiGoi": 840,
+  "khongPhanLoaiDuoc": 383,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 131,
+      "soFile": 134,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -367,6 +367,14 @@
         "sql": 5
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/zaloBroadcastOneshotMigration.test.ts",
+      "soGoi": 5,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
@@ -874,6 +882,14 @@
     },
     {
       "file": "infra/hermes-broker/work-memory-supervise-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/zalo-broadcast-sql.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 1
@@ -2680,6 +2696,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/zaloWorkerRoomsSalePageParity.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/contract-lifecycle/__tests__/noticeTransitions.test.ts",

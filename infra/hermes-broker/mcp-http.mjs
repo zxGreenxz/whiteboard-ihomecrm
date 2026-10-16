@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { BrokerError } from './broker.mjs';
+import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
@@ -113,7 +113,7 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
         const receipt = admission ? { retryAfterSeconds: retryAfterSeconds(safe) }
           : safe.code === 'send_outcome_unknown' && typeof safe.dispatchId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.dispatchId)
-          ? { dispatchId: safe.dispatchId } : ['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown'].includes(safe.code) && typeof safe.requestId === 'string' &&
+          ? { dispatchId: safe.dispatchId } : REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && typeof safe.requestId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
           ? { requestId: safe.requestId } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {

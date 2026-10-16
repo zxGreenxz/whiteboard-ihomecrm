@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-16T09:10:12.515Z",
+  "generatedAt": "2026-10-16T15:25:51.392Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 722,
+    "ledger-applied": 727,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -11803,6 +11803,61 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-16T09:09:26.050Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016101450_zalo_broadcast_oneshot_v1.sql",
+      "version": "20261016101450",
+      "name": "zalo_broadcast_oneshot_v1",
+      "scheme": "timestamp14",
+      "sha256": "3f2ca93cd1608bf2f859eba92fd7a197fc29d3fca73e9b180c154fc8e32d2b63",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:14:48.342Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016102533_zalo_worker_rooms_sale_page_parity_v1.sql",
+      "version": "20261016102533",
+      "name": "zalo_worker_rooms_sale_page_parity_v1",
+      "scheme": "timestamp14",
+      "sha256": "8f53cc47381e9cc6cd6364d7c3239a9a02e87c42a9f470477937c905c01e965c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:17:32.259Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016110539_zalo_broadcast_oneshot_review_fixes_v1.sql",
+      "version": "20261016110539",
+      "name": "zalo_broadcast_oneshot_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "a928e30ef54c49b031f672ee73f1b13ea5a14d24d65f5ef51528888a3198a8ab",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:20:19.509Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016111855_hermes_zalo_broadcast_v1.sql",
+      "version": "20261016111855",
+      "name": "hermes_zalo_broadcast_v1",
+      "scheme": "timestamp14",
+      "sha256": "216630cbc12431b5ae83ba0122102d695606e22410337da6ccd7aaf48f2aad38",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:22:56.807Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261016140535_hermes_zalo_broadcast_review_fixes_v1.sql",
+      "version": "20261016140535",
+      "name": "hermes_zalo_broadcast_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "72f595826756b0970703ebc484acae0dbee57a66bed12932f512354d3fe39048",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-16T15:25:36.561Z|bien-nhan-backup"
       ]
     },
     {

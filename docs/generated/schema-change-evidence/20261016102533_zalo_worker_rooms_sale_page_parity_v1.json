@@ -1,0 +1,40 @@
+{
+  "file": "supabase/migrations/20261016102533_zalo_worker_rooms_sale_page_parity_v1.sql",
+  "sha256": "8f53cc47381e9cc6cd6364d7c3239a9a02e87c42a9f470477937c905c01e965c",
+  "appliedAt": "2026-10-16T15:17:32.259Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "environment": "prod",
+  "evidenceComplete": true,
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "d1004beaae7d515c",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-10-16T15-14-57-202Z.dump",
+    "backupSha256": "5057605254468738109421005884bfb7720caa211af17fd56fbe360ab3194d44",
+    "backupCreatedAt": "2026-10-16T15:17:27.110Z",
+    "backupTablesWithData": 647,
+    "backupProjectRef": "tryymsxyyckgbrmmvozx",
+    "backupEnvironment": "prod"
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "3c8488054a25d5b95fc06dff93bc9ccfcd661b11",
+  "reviewedBlob": "cc25501053d8fc321f3297d4bd07f28fc3ac186c",
+  "statementBytes": 5730,
+  "normalizedDigest": "b78dceff16952150a79890ab96716dd7ab2dcf863a685add28c1cd5d34836a25",
+  "catalog": {
+    "before": "9538c809b1c8fec208b58d99cc76bb1ebecdbab2451c4c63d34159c58c8f3ee2",
+    "after": "9538c809b1c8fec208b58d99cc76bb1ebecdbab2451c4c63d34159c58c8f3ee2",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 283,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 2156,
+      "securityDefinerFunctions": 1628,
+      "enums": 30,
+      "realtimeTables": 27
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}

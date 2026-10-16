@@ -17,6 +17,7 @@ import { DOMAIN_TOOLS } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS } from './schedule-contract.mjs';
 import { WORK_MEMORY_TOOLS } from './work-memory-contract.mjs';
 import { EXTERNAL_GROUP_TOOLS } from './external-group-mount.mjs';
+import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
@@ -29,7 +30,7 @@ const code = expected => error => error instanceof BrokerError && error.code ===
 const issued = result => { assert.equal(result.isError, false); const value = JSON.parse(result.content[0].text);
   assert.deepEqual(Object.keys(value), ['requestId']); assert.match(value.requestId, UUID_V4); return value.requestId; };
 const ALL_TOOLS = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS, ...EXPENSE_ACTION_TOOLS,
-  ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS];
+  ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, ...ZALO_BROADCAST_TOOLS];
 
 // Real durable authority (digest-bound joined read, sealed session, live Auth)
 // over a synthetic store: revoke = the store answers unavailable.
@@ -76,7 +77,7 @@ test('every requestId action points to crm_new_request_id; status tools reuse th
   assert.deepEqual(ALL_TOOLS.filter(startsCrmRequest).map(tool => tool.name).sort(), ['crm_customer_create', 'crm_expense_create',
     'crm_group_room_send', 'crm_lead_create', 'crm_room_pass_set_active', 'crm_room_pass_upsert', 'crm_room_schedule_create', 'crm_room_schedule_reconcile',
     'crm_room_schedule_revoke', 'crm_room_schedule_update', 'crm_task_cancel', 'crm_task_create', 'crm_task_follow_set',
-    'crm_task_follow_stop', 'crm_task_progress']);
+    'crm_task_follow_stop', 'crm_task_progress', 'crm_zalo_broadcast_send', 'crm_zalo_broadcast_update']);
   const takesRequestId = ALL_TOOLS.filter(tool => Object.hasOwn(tool.inputSchema.properties ?? {}, 'requestId'));
   assert.deepEqual(takesRequestId.filter(tool => !startsCrmRequest(tool)).map(tool => tool.name).sort(),
     ['crm_customer_status', 'crm_expense_status', 'crm_lead_status', 'crm_room_pass_status', 'crm_task_status']);

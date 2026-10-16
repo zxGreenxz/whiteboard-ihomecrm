@@ -70,8 +70,9 @@ const phong = [
   { id: 'r1', code: '402', price: 4.5, status: 'free', area: 25, type: 'Studio', buildingAddr: '102 LVT', buildingName: 'T1', availDate: null },
   { id: 'r2', code: '305', price: 3.9, status: 'soon', area: 20, type: 'Gác', buildingAddr: '102 LVT', buildingName: 'T1', availDate: '5/9' },
 ];
+let trangSale = 1;
 vi.mock('../lib/vacant-rooms.js', () => ({
-  docPhongTrong: () => Promise.resolve({ buildings: [], rooms: phong, hotline: '0900' }),
+  docPhongTrong: () => Promise.resolve({ buildings: [], rooms: trangSale === 0 ? [] : phong, hotline: '0900', trangSale }),
 }));
 
 const { xuLyTinDen } = await import('../lib/auto-reply.js');
@@ -86,6 +87,24 @@ beforeEach(() => {
   dongAutomation = { id: 'a1', enabled: true, config: {} };
   rpcCalls = []; rpcError = null;
   rpcResult = { status: 'queued', message_id: 'm1', job_id: 'j1' };
+  trangSale = 1;
+});
+
+describe('auto-reply — nguồn phòng = trang Sale', () => {
+  it('công ty chưa có link chia sẻ: KHÔNG khẳng định hết phòng, hỏi nhu cầu bằng câu trung tính', async () => {
+    trangSale = 0;
+    await goi('còn phòng không b');
+    expect(rpcCalls).toHaveLength(1);
+    const body = rpcCalls[0].args.p_body;
+    expect(body).not.toContain('chưa có phòng trống');
+    expect(body).toContain('để lại nhu cầu');
+    expect(rpcCalls[0].args.p_detail).toMatchObject({ so_phong: null, khong_co_trang_sale: true });
+  });
+  it('có trang sale: vẫn gửi danh sách như cũ', async () => {
+    await goi('còn phòng không b');
+    expect(rpcCalls[0].args.p_body).toContain('P.402');
+    expect(rpcCalls[0].args.p_detail).toMatchObject({ so_phong: 2 });
+  });
 });
 
 describe('auto-reply — atomic enqueue contract', () => {

@@ -8,6 +8,7 @@ import { createDomainMount } from './domain-mount.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createScheduleMount } from './schedule-mount.mjs';
 import { createScheduleAuthAdapter, createSupabaseScheduleReads } from './schedule-adapter.mjs';
+import { createZaloBroadcastService } from './zalo-broadcast-adapter.mjs';
 import { createWorkMemoryAuthAdapter, createSupabaseWorkMemoryReads } from './work-memory-adapter.mjs';
 import { createWorkMemoryService } from './work-memory-service.mjs';
 import { createWorkMemoryRetention } from './work-memory-retention.mjs';
@@ -165,13 +166,15 @@ export function createHermesBackend(configuration = {}) {
       supabase, fetch: request });
     const externalGroups = createExternalGroupMount({ auth, authority, connectionStore, crypto, clock, dependencyScope,
       supabase, fetch: request });
+    // Same composed auth: chat_zalo.view/send (group) and manage_automation (schedule).
+    const zaloBroadcasts = createZaloBroadcastService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
     const domains = createDomainMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, domains, dependencyScope, audit, clock,
+    const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
       observe: health.record, limits: { maxResultBytes: 65_536, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise

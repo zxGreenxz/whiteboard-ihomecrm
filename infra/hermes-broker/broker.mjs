@@ -4,6 +4,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
+import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
 import { CUSTOMER_ACTION_TOOLS, customerActionOperation, customerActionInput, mayUseCustomerAction } from './customer-action-contract.mjs';
 import { EXPENSE_ACTION_TOOLS, expenseActionOperation, expenseActionInput, mayUseExpenseAction } from './expense-action-contract.mjs';
@@ -42,7 +43,7 @@ const ROOM_TOOL = Object.freeze({
 // per broker, not at module load: external-group-mount imports this module back.
 function toolDefinitions() {
   const tools = [TOOL, ROOM_TOOL, ...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...CUSTOMER_ACTION_TOOLS,
-    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
+    ...EXPENSE_ACTION_TOOLS, ...DOMAIN_TOOLS, ...SCHEDULE_TOOLS, ...ZALO_BROADCAST_TOOLS, ...WORK_MEMORY_TOOLS, ...EXTERNAL_GROUP_TOOLS, NEW_REQUEST_ID_TOOL];
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
@@ -64,13 +65,18 @@ const ERROR_STATUS = Object.freeze({
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504,
   backend_unavailable: 503, response_too_large: 502, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
-  customer_outcome_unknown: 503, expense_outcome_unknown: 503,
+  customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
 });
 // Write uncertainty codes. Each carries the caller's stable requestId so the
 // model reconciles with the matching *_status tool instead of creating again.
 const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
-  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown']);
-const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown']);
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown',
+  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+// Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
+// vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
+// readable/revocable for existing rows but can no longer be created or replaced.
+const RETIRED_SCHEDULE_OPERATIONS = Object.freeze(['create', 'update']);
 
 export class BrokerError extends Error {
   constructor(code) {
@@ -265,6 +271,7 @@ export function createBroker({
   externalGroups,
   workMemory,
   schedules,
+  zaloBroadcasts,
   domains,
   roomPass,
   tasks,
@@ -333,6 +340,12 @@ export function createBroker({
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_schedule_service_required');
     schedule = Object.fromEntries(['prepareSchedule', 'finalizeSchedule'].map(key => [key, schedules[key].bind(schedules)]));
   }
+  let broadcast;
+  if (zaloBroadcasts !== undefined) {
+    if (!injectedAuthority || ['prepareZaloBroadcast', 'finalizeZaloBroadcast'].some(key => typeof zaloBroadcasts?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_zalo_broadcast_service_required');
+    broadcast = Object.fromEntries(['prepareZaloBroadcast', 'finalizeZaloBroadcast'].map(key => [key, zaloBroadcasts[key].bind(zaloBroadcasts)]));
+  }
   let memory;
   if (workMemory !== undefined) {
     if (!injectedAuthority || ['prepareMemory', 'finalizeMemory'].some(key => typeof workMemory?.[key] !== 'function') ||
@@ -386,7 +399,9 @@ export function createBroker({
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
     ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
-    ...(schedule ? SCHEDULE_TOOLS.filter(tool => mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
+    ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
+      mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
+    ...(broadcast ? ZALO_BROADCAST_TOOLS.filter(tool => mayUseZaloBroadcast(identity.effective, zaloBroadcastOperation(tool.name))) : []),
     ...(memory ? WORK_MEMORY_TOOLS.filter(tool => mayUseWorkMemory(identity.effective, workMemoryOperation(tool.name))) : []),
     ...(external ? EXTERNAL_GROUP_TOOLS.filter(tool => {
       const operation = externalGroupOperation(tool.name);
@@ -846,7 +861,7 @@ export function createBroker({
         let input, invalid = false, uncertain = false;
         try { input = scheduleInput(scheduleOp, args, clock()); } catch { invalid = true; }
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
-          if (!mayUseSchedule(identity.effective, scheduleOp)) fail('tool_not_available');
+          if (RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOp) || !mayUseSchedule(identity.effective, scheduleOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await schedule.prepareSchedule(presentedToken, scheduleOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
@@ -856,6 +871,27 @@ export function createBroker({
             onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'schedule_outcome_unknown' });
+      }
+      // Same receipt shape as room pass: fixed DTO, branded receipt before audit,
+      // the bound-JWT SQL call last. Reads never dispatch; a lost write ACK is
+      // zalo_broadcast_outcome_unknown (+ requestId for send/update), never retried.
+      const broadcastOp = zaloBroadcastOperation(name);
+      if (broadcast && broadcastOp) {
+        let input, invalid = false, uncertain = false;
+        try { input = zaloBroadcastInput(broadcastOp, args); } catch { invalid = true; }
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+          if (!mayUseZaloBroadcast(identity.effective, broadcastOp)) fail('tool_not_available');
+          if (invalid) fail('invalid_request');
+          // Listed for manage_automation, but turning sends on/adding recipients also needs chat_zalo.send.
+          if (!mayUseZaloBroadcast(identity.effective, broadcastOp, input)) fail('forbidden');
+          const receipt = await broadcast.prepareZaloBroadcast(presentedToken, broadcastOp, input, { signal });
+          if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
+          return receipt;
+        }, async (receipt, _identity, signal) => {
+          const result = await broadcast.finalizeZaloBroadcast(presentedToken, receipt, { signal,
+            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        }, { mutationUncertain: () => uncertain, mutationCode: 'zalo_broadcast_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
       const memoryOperation = workMemoryOperation(name);
       if (memory && memoryOperation) {

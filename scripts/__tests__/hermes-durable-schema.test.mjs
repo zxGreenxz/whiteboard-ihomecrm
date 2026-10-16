@@ -71,7 +71,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   // Room-pass lookup/upsert/status caller (20261015162454).
   'hermes_room_pass_upsert_v1(jsonb,text,jsonb)',
   // Customer/lead action options layer over v6 (20261015191139).
-  'hermes_org_policy_options_v7(uuid)', 'hermes_connection_options_v7(uuid)', 'hermes_connection_context_v7(uuid)'];
+  'hermes_org_policy_options_v7(uuid)', 'hermes_connection_options_v7(uuid)', 'hermes_connection_context_v7(uuid)',
+  // CRM "Gửi ảnh phòng trống" status/recipients/send/cancel/update caller (20261016111855).
+  'hermes_zalo_broadcast_v1(jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -79,6 +81,17 @@ const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_priv
   // Package C schedule health worker ports (20261015100000).
   'public.hermes_room_schedule_run_v2(uuid,bigint,uuid)', 'public.hermes_room_schedule_probe_v1(uuid,uuid)',
   'public.hermes_room_schedule_sweep_v1(uuid,uuid[])'];
+// Non-Hermes Zalo one-shot surfaces declared in the same scanned file
+// (20261016101450, patched by 20261016110539). The ACL replay stays fail-closed
+// for every declared signature: these are the reviewed caller-only and
+// worker-only grants; their private zalo_oneshot_* helpers must end with none.
+const ZALO_ONESHOT_CALLER = ['public.zalo_hen_gui_phong_trong_v1(uuid[],text,timestamptz,text,text,uuid)',
+  'public.zalo_huy_hen_gui_phong_trong_v1(uuid)', 'public.zalo_ds_hen_gui_phong_trong_v1(uuid,integer)', 'public.zalo_dung_khan_cap(uuid)'];
+// The only reviewed table grant in a scanned file: the worker reads the one-shot
+// queue (RPC-only for callers). Exact statement; any other table grant still fails.
+const REVIEWED_TABLE_GRANTS = new Set(['GRANT SELECT ON public.zalo_automation_oneshots TO service_role']);
+const ZALO_ONESHOT_WORKER = ['public.zalo_worker_claim_oneshot_v1(uuid,uuid[])', 'public.zalo_worker_finish_oneshot_v1(uuid,uuid,boolean,jsonb)',
+  'public.zalo_enqueue_broadcast_oneshot_v1(uuid,uuid,uuid,text,timestamptz,text,jsonb)'];
 // The package D SQL-standard invoker wrapper reaches exactly these three
 // private steps by bound OID (same shape as the task/customer create wrappers).
 const TASK_FOLLOW_STEPS = ['app_private.hermes_task_follow_guard_v1(jsonb,text,jsonb)',
@@ -88,17 +101,23 @@ const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'conne
 // Intentionally a small fail-closed grammar for these reviewed SQL signatures,
 // not a general SQL parser. NULL defaults and these exact worker-port defaults
 // (pinned by function name and full argument text) are reviewed; other
-// expressions/modes fail.
+// expressions/modes fail. A function may pin several reviewed defaults.
 const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
 const REVIEWED_DEFAULTS = new Map([
-  ['public.hermes_room_schedule_due_v1', ["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']],
-  ['public.hermes_room_schedule_sweep_v1', ["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']],
-  ['app_private.hermes_task_follow_tick_v1', ['p_limit integer DEFAULT 500', 'p_limit integer']],
+  ['public.hermes_room_schedule_due_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
+  ['public.hermes_room_schedule_sweep_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
+  ['app_private.hermes_task_follow_tick_v1', [['p_limit integer DEFAULT 500', 'p_limit integer']]],
+  // Zalo one-shot RPCs (20261016101450). That file is scanned because it re-creates
+  // the tracked worker entry zalo_worker_begin_provider_v1; every signature it
+  // declares still goes through this grammar, so its literal defaults are pinned.
+  ['public.zalo_hen_gui_phong_trong_v1', [["p_mode text DEFAULT 'full'", 'p_mode text'], ["p_origin text DEFAULT 'ui'", 'p_origin text']]],
+  ['public.zalo_ds_hen_gui_phong_trong_v1', [['p_limit integer DEFAULT 20', 'p_limit integer']]],
+  ['public.zalo_worker_finish_oneshot_v1', [["p_result jsonb DEFAULT '{}'", 'p_result jsonb']]],
 ]);
 function signature(name, args, named = false) {
-  const reviewed = named ? REVIEWED_DEFAULTS.get(name) : undefined;
+  const reviewed = named ? REVIEWED_DEFAULTS.get(name) ?? [] : [];
   const types = args.trim() === '' ? [] : args.split(',').map(arg => {
-    const argument = reviewed && arg.trim() === reviewed[0] ? reviewed[1] : arg.trim();
+    const argument = reviewed.find(([text]) => arg.trim() === text)?.[1] ?? arg.trim();
     const parts = (named ? argument.replace(/\s+DEFAULT NULL$/i, '') : argument).split(/\s+/);
     assert.equal(parts.length, named ? 2 : 1, 'only the reviewed argument grammar is accepted');
     if (named) assert.match(parts[0], /^[a-z_][a-z0-9_]*$/);
@@ -628,9 +647,10 @@ function securityContract(sql = all, registry = functions) {
   const acl = new Map();
   const allowed = new Map([
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
-      ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS])],
+      ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
+      ...ZALO_ONESHOT_CALLER])],
     ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
-    ['service_role', new Set(WORKER)],
+    ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
   ]);
   for (const statement of splitSqlStatements(sql).map(clean)) {
     const definition = /^CREATE (?:OR REPLACE )?FUNCTION ((?:app_private|public)\.\w+)\(([^)]*)\)/i.exec(statement);
@@ -640,7 +660,7 @@ function securityContract(sql = all, registry = functions) {
     }
     if (/^GRANT USAGE ON SCHEMA app_private TO hermes_store_executor$/i.test(statement)) continue;
     if (!/^(?:GRANT|REVOKE)\b/i.test(statement) || !/\bON FUNCTION\b/i.test(statement)) {
-      if (/^GRANT\b/i.test(statement)) assert.fail(`Unexpected grant: ${statement}`);
+      if (/^GRANT\b/i.test(statement) && !REVIEWED_TABLE_GRANTS.has(statement)) assert.fail(`Unexpected grant: ${statement}`);
       continue;
     }
     if (/^GRANT\b/i.test(statement)) {
@@ -922,6 +942,23 @@ test('signature grammar accepts reviewed NULL defaults but rejects expressions o
   for (const args of ["p_read text[] DEFAULT '{}'", 'p_read text[] DEFAULT NULL extra', 'IN p_org uuid']) {
     assert.throws(() => signature('helper', args, true), /reviewed argument grammar/);
   }
+});
+
+test('Zalo one-shot surfaces: exact reviewed defaults, caller/worker split and the single table grant stay fail-closed', () => {
+  const hen = 'public.zalo_hen_gui_phong_trong_v1';
+  assert.equal(signature(hen, "p_recipients uuid[],p_mode text DEFAULT 'full',p_run_at timestamptz DEFAULT NULL,p_request_id text DEFAULT NULL,p_origin text DEFAULT 'ui',p_organization_id uuid DEFAULT NULL", true),
+    `${hen}(uuid[],text,timestamptz,text,text,uuid)`);
+  assert.equal(signature('public.zalo_ds_hen_gui_phong_trong_v1', 'p_organization_id uuid DEFAULT NULL,p_limit integer DEFAULT 20', true), 'public.zalo_ds_hen_gui_phong_trong_v1(uuid,integer)');
+  for (const [name, args] of [[hen, "p_mode text DEFAULT 'compact'"], [hen, "p_origin text DEFAULT 'hermes'"], [hen, "p_mode varchar DEFAULT 'full'"],
+    ['public.zalo_ds_hen_gui_phong_trong_v1', 'p_limit integer DEFAULT 100'], ['public.zalo_worker_finish_oneshot_v1', "p_result jsonb DEFAULT '{\"ok\":true}'"],
+    ['public.zalo_huy_hen_gui_phong_trong_v1', "p_mode text DEFAULT 'full'"]]) assert.throws(() => signature(name, args, true), /reviewed argument grammar/, `${name}(${args})`);
+  securityContract();
+  for (const extra of ['GRANT SELECT ON public.zalo_automation_oneshots TO authenticated', 'GRANT INSERT ON public.zalo_automation_oneshots TO service_role'])
+    assert.throws(() => securityContract(all + `; ${extra};`), /Unexpected grant/, extra);
+  assert.throws(() => securityContract(all + '; GRANT EXECUTE ON FUNCTION public.zalo_worker_claim_oneshot_v1(uuid,uuid[]) TO authenticated;'), /cannot execute/);
+  assert.throws(() => securityContract(all + '; GRANT EXECUTE ON FUNCTION public.zalo_hen_gui_phong_trong_v1(uuid[],text,timestamptz,text,text,uuid) TO service_role;'), /cannot execute/);
+  assert.throws(() => securityContract(all + '; GRANT EXECUTE ON FUNCTION app_private.zalo_oneshot_khung_gio_v1(jsonb,timestamptz) TO authenticated;'), /cannot execute/);
+  assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION public.zalo_ds_hen_gui_phong_trong_v1(uuid,integer) FROM authenticated;'), /effective execute ACL/);
 });
 
 test('signature grammar accepts only the exact schedule due empty-list default', () => {
