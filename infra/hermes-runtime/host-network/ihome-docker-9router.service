@@ -6,6 +6,8 @@ After=ihome-docker-9router.socket 9router.service
 [Service]
 ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-llm-guard/llm-stream-guard.mjs
 Environment=GUARD_UPSTREAM=http://127.0.0.1:20128
+# Chay loan do duoc 100-500 ky tu/giay: 128 KB/300 s mac dinh van treo toi 5 phut voi tool lon (terminal...).
+Environment=GUARD_LARGE_ARGS_MAX=32768 GUARD_MAX_STREAM_SECONDS=180
 Restart=on-failure
 RestartSec=3
 DynamicUser=yes
