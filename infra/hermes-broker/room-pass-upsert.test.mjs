@@ -24,6 +24,11 @@ test('room-pass upsert/lookup tools map to fixed operations behind the same inde
   assert.equal(upsert.inputSchema.additionalProperties, false);
   for (const phrase of ['crm_room_lookup', 'crm_new_request_id', 'năm hiện tại', 'năm tới', 'salePolicy', 'nội thất', 'crm_room_pass_status', 'Không đổi hợp đồng'])
     assert.ok(upsert.description.includes(phrase), phrase);
+  // Production 16/10 14:42: "bạn tạo khách sang phòng được không" was read as moving a
+  // tenant to another room. The description leads with what the task means (not a fixed
+  // word list) and asks one short question when pass vs. room move is unclear.
+  assert.ok(upsert.description.startsWith('Dùng khi khách đang thuê muốn tìm người thay / nhượng lại phòng của mình (pass phòng, sang phòng, khách nhờ sale).'));
+  assert.ok(upsert.description.includes('hỏi lại một câu ngắn; Hermes chưa có công cụ chuyển hợp đồng sang phòng khác.'));
   const lookup = ROOM_PASS_TOOLS.find(tool => tool.name === 'crm_room_lookup');
   assert.equal(lookup.annotations.readOnlyHint, true);
   assert.ok(lookup.description.includes('đang có khách') || lookup.description.includes('ĐANG CÓ KHÁCH') || lookup.description.includes('đang có khách thuê'));
