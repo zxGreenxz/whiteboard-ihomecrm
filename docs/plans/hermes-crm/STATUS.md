@@ -47,9 +47,10 @@ Lỗi tìm ra khi thử và đã sửa: tham số null/UUID toàn 0 (#176); `kin
 **Đọc phần này trước.** Phiên Codex sáng 15/10 (mục cuối phần bàn giao) là snapshot trước đó. Toàn P0–P11 vẫn chưa hoàn tất; dưới đây là những gì đã ĐO/LÀM THẬT.
 
 **Tối ưu tốc độ đợt 1 (16/10, 00:19–01:10):** chi tiết và số đo ở [TOI-UU-TOC-DO-DOT1](TOI-UU-TOC-DO-DOT1.md#0-kết-quả-thực-hiện-16102026).
-- Hermes gọi 9router/connector qua cửa nội bộ `172.17.0.1` (không vòng Cloudflare — nguyên nhân câu hỏi 73,8 s tối 15/10); tắt `tool_search`; `context_length 272000`; giữ ấm 4 giờ; RAM sidecar 900m; MSS clamp 1452; PR #175 poll Zalo 0,25 s.
+- Hermes gọi 9router/connector qua cửa nội bộ `172.17.0.1` (không vòng Cloudflare — nguyên nhân câu hỏi 73,8 s tối 15/10); `context_length 272000`; giữ ấm 4 giờ; RAM sidecar 900m; MSS clamp 1452; PR #175 poll Zalo 0,25 s.
+- `tools.tool_search.enabled` phải giữ `"auto"`: thử tắt (nạp sẵn 78 tool) làm 6/25 lượt gọi đầu sinh tool arguments thoái hoá so với 0/15 khi ~29 tool (đối chứng 16/10); đã bật lại 12:11.
 - `connect_timeout` MCP phải ≥ 30 s (đặt 5 làm mất CRM lúc khởi động). Cấu hình cũ sao lưu ở VPS `/root/ihome-perf/backup-20261015-1719/`.
-- **Còn mở:** model `cx/gpt-6-sol` thỉnh thoảng sinh tham số tool-call vô tận (1,5 MB/4,5 phút), bộ phát hiện treo không cắt vì chunk vẫn chảy, 9router bỏ qua giới hạn output với codex — chờ chủ chọn cách chặn. Khảo sát model: [MODEL-SURVEY](MODEL-SURVEY.md).
+- Model sinh tham số tool-call vô tận (1,5 MB/4,5 phút; bộ phát hiện treo của Hermes không cắt vì chunk vẫn chảy, 9router bỏ qua giới hạn output với codex) giờ bị `llm-stream-guard` ([PR #183](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/183)) ở cửa `20128` cắt: arguments >8 KB (tool lớn 32 KB) hoặc >180 s, Hermes tự thử lại. Model hiện dùng `cx/gpt-6-luna` (chủ chọn 16/10). Khảo sát model: [MODEL-SURVEY](MODEL-SURVEY.md).
 
 **Nghiệm thu thật tối 15/10 (22:40):**
 - **Mốc A (nhắn riêng hỏi phòng) ĐẠT trên production:** nick chính → bot Ihome → Hermes → connector → CRM → trả Zalo. 20:52 hỏi "còn phòng trống nào" → trả 4 phòng sau 20 s, đúng danh sách canonical (`copilot_available_rooms_v1`/`room_sale_workflow_fact_v1`; phòng `158PVC/502` có `status=AVAILABLE` nhưng sale fact RENTED — lệch dữ liệu CRM, không phải lỗi Hermes, cần chủ kiểm phòng này).

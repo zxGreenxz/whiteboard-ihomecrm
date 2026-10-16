@@ -11,7 +11,7 @@
 | # | Đã làm | Kiểm |
 |---|---|---|
 | 1 | Cửa nội bộ `172.17.0.1:20128`/`:8740` ([host-network](../../../infra/hermes-runtime/host-network/README.md)); `allowedHosts` thêm `172.17.0.1:8740`; Hermes trỏ model/MCP vào đó | Từ netns Hermes: 9router 0,076 s, connector 0,010 s (Cloudflare 0,43 s); không khóa → 401; MCP đăng ký đủ tool |
-| 2 | `tools.tool_search.enabled: "off"` | Log không còn `tool_search activated`; lượt hỏi CRM không còn `tool_search`/`tool_describe`. Sau khi kết nối mới mở 48 tool CRM, prompt cố định 14,6k → 25,6k token (86 schema), vẫn cache ~90% |
+| 2 | `tools.tool_search.enabled: "off"` — **đã trả về `"auto"` 16/10 12:11** sau đối chứng (mục dưới) | Lúc tắt: log không còn `tool_search activated`; lượt hỏi CRM không còn `tool_search`/`tool_describe`. Sau khi kết nối mới mở 48 tool CRM, prompt cố định 14,6k → 25,6k token (86 schema), vẫn cache ~90% |
 | 3 | `model.context_length: 272000` | Không còn `probe-down` |
 | 4 | `stale_timeout_seconds: 90` ở `providers.custom` và `providers.ninerouter` | `get_provider_stale_timeout("custom", …)` = 90. **Không chặn được kiểu treo thật** — xem dưới |
 | 5 | Định đặt `connect_timeout: 5` → Hermes mất CRM (`CancelledError`, init MCP 3–8 s); **trả về 30** và sửa runbook | Restart lần 2: `registered 10 tool(s)` |
@@ -22,6 +22,12 @@
 Sao lưu cấu hình cũ ở VPS `/root/ihome-perf/backup-20261015-1719/`.
 
 **Treo vì model chạy loạn (phát hiện sau khi áp):** 2 lượt 01:26 và 01:33 phải `/stop`. `stream_diag` cho thấy không phải im lặng: 35.562 chunk / 1,5 MB / 273 s và 27.172 chunk / 1,66 MB / 306 s, `finish_reason_seen=False`; 9router nhận request nhưng không bao giờ DONE. Model `cx/gpt-6-sol` sinh tham số tool-call vô tận (arguments chèn khoảng trắng; lần 2 ngay sau 3 lỗi `invalid_request` của `crm_task_input_options`). Vì chunk vẫn chảy, bộ phát hiện treo (đo im lặng) không cắt — mốc 90 hay 600 s như nhau; `RunawayStreamWatch` của Hermes v0.21.6 chỉ theo dõi content/reasoning, không theo dõi arguments. 9router bỏ qua `max_tokens`/`max_completion_tokens`/`max_output_tokens` với codex (đặt 40 vẫn ra ~800 token). Lỗi đã có trước đợt 1 (20:55 lượt 589 s, 22:27 `/stop`). Lựa chọn chờ chủ quyết: relay SSE ở cửa `20128` cắt khi arguments một tool-call vượt ngưỡng (khuyến nghị, PR riêng); hạ `gateway_timeout`; hoặc đổi model theo [khảo sát](MODEL-SURVEY.md). Connector đang được sửa để nhận `null` cho tham số tùy chọn (giảm tác nhân).
+
+**Đối chứng #2 và chặn chạy loạn (16/10 sáng):**
+- Sau khi kết nối CRM lên 52 tool, Hermes (78 tool eager) với `gpt-6-sol`/`gpt-6.1-sol`/`gpt-6-astra` mức medium treo ngay API call #1 trong câu lập lịch nhóm: `stream_diag` 0,46–1,0 MB, 10–24 nghìn chunk, ~180 s. Chủ chuyển Hermes sang `cx/gpt-6-luna`.
+- Đối chứng: bắt nguyên một request thật của Hermes (prompt hệ thống + 78 tool) trên docker0, phát lại 50 lần tới 9router với câu lập lịch, không thực thi tool, cắt khi arguments ≥4–8 KB. Lần gọi đầu luôn là `skill_view` (bình thường ~50 ký tự). 78 tool: 6/25 lượt sinh arguments rác dài hàng nghìn ký tự (sol medium 4/15, sol(low) 1/5, luna 1/5); ~29 tool như trạng thái `tool_search`: 0/15. Request bắt được đã xoá sau khi đo.
+- Kết luận: nạp sẵn mọi tool (#2) làm tăng rõ thoái hoá; `tools.tool_search.enabled` trả về `"auto"` (log: `22 core/visible tools kept, 68 deferred`, 25 schema). Đổi lại mỗi câu CRM thêm 1–2 lượt `tool_search`/`tool_describe`.
+- [PR #183](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/183) (`1ce2bf9f`): `llm-stream-guard` thay `systemd-socket-proxyd` ở cửa `20128`, cắt khi arguments một tool call vượt 8 KB (tool lớn 32 KB) hoặc lượt stream quá 180 s; Hermes tự thử lại. Đã deploy (sha256 `791f14fc…`), luồng thật đi qua bình thường; theo dõi `journalctl -u ihome-docker-9router.service -g llm_stream_guard_cut`.
 
 **Khảo sát model:** [MODEL-SURVEY.md](MODEL-SURVEY.md) — 284 request, dữ liệu tổng hợp. Đề xuất cho #10: `cx/gpt-6-sol(low)` (S2 tổng p50 3,39 s so với 4,01 s ở medium, chất lượng như cũ) hoặc thử `cx/gpt-6-luna` (nhanh nhất, 2,91 s); Gemini 3.8 flash-low chỉ làm dự phòng. Khảo sát không đo khả năng chống chạy loạn tham số.
 
