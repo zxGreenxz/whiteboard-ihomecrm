@@ -149,9 +149,11 @@ export function useRefundForfeitSummary(buildingIds?: string[]) {
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'refund-forfeit-summary', buildingIds ?? []],
     queryFn: async (): Promise<RefundForfeitServerSummary> => {
+      // hermes-parity:begin deposit-refunds — Hermes gọi cùng RPC (báo cáo deposit_refunds)
       const { data, error } = await supabase.rpc('get_refund_forfeit_summary', {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
+      // hermes-parity:end deposit-refunds
       if (error) throw error;
       const d = (data ?? {}) as any;
       return {
@@ -316,6 +318,7 @@ export interface RefundForfeitRow {
   refund_drift: number;
 }
 
+// hermes-parity:begin deposit-held-rows — tên khách (cũng dùng cho deposit-refunds)
 function repName(contractCustomers: any[] | undefined | null): string {
   const list = contractCustomers ?? [];
   const rep = list.find((cc: any) => cc.is_representative);
@@ -325,6 +328,7 @@ function repName(contractCustomers: any[] | undefined | null): string {
     'Khách hàng'
   );
 }
+// hermes-parity:end deposit-held-rows
 
 /**
  * Cọc đang giữ theo HĐ đang hiệu lực (ACTIVE) — nguồn sự thật đủ/thiếu cọc.
@@ -335,6 +339,7 @@ export function useHeldDeposits() {
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'held'],
     queryFn: async (): Promise<HeldDepositRow[]> => {
+      // hermes-parity:begin deposit-held-rows — Hermes chép vùng này (public.deposit_held_contracts_v1)
       // PAGED: danh sách HĐ ACTIVE có thể > 1000 → phân trang kẻo bảng bị cắt.
       const data = await fetchAllRows<any>(
         (from, to) => supabase
@@ -385,6 +390,7 @@ export function useHeldDeposits() {
           state,
         };
       });
+      // hermes-parity:end deposit-held-rows
     },
   });
 }
@@ -433,6 +439,7 @@ export function useDepositRefundsForfeits() {
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'refunds-forfeits'],
     queryFn: async (): Promise<RefundForfeitRow[]> => {
+      // hermes-parity:begin deposit-refunds — Hermes chép vùng này (public.deposit_refunds_forfeits_v1)
       // PAGED cả hai nhánh: thanh lý và phiếu hoàn đều tích luỹ mãi → phân trang
       // (order + id tiebreaker). CỐ Ý KHÔNG select `refund_date` nữa: nó do cùng
       // câu UPDATE với status='COMPLETED' đặt ra nên không nói được gì về tiền.
@@ -518,6 +525,7 @@ export function useDepositRefundsForfeits() {
           refund_drift: settlementNet > 0 ? settlementNet - agg.total : 0,
         };
       });
+      // hermes-parity:end deposit-refunds
     },
   });
 }

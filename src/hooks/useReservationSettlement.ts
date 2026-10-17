@@ -121,12 +121,14 @@ export function usePayReservationRefund() {
 export function useReservationSettlementSummary(buildingIds?: string[]) {
   return useQuery({
     queryKey: ["reservation-settlement-summary", buildingIds ?? []],
+    // hermes-parity:begin deposit-reservation-settlements — Hermes gọi cùng RPC (báo cáo reservation_settlements)
     queryFn: () => invokeReservationSettlementRpc(
       rpc,
       "get_reservation_settlement_summary_v1",
       { p_building_ids: buildingIds?.length ? buildingIds : null },
       reservationSettlementSummarySchema,
     ),
+    // hermes-parity:end deposit-reservation-settlements
   });
 }
 
@@ -156,6 +158,7 @@ export function useInfiniteReservationSettlements(input?: {
   return useInfiniteQuery({
     queryKey: ["reservation-settlements", "infinite", input ?? {}],
     initialPageParam: null as ReservationSettlementCursor | null,
+    // hermes-parity:begin deposit-reservation-settlements
     queryFn: ({ pageParam }) => invokeReservationSettlementRpc(
       rpc,
       "get_reservation_settlements_v1",
@@ -163,6 +166,7 @@ export function useInfiniteReservationSettlements(input?: {
       reservationSettlementListSchema,
     ),
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    // hermes-parity:end deposit-reservation-settlements
   });
 }
 
