@@ -21,7 +21,9 @@ export function usePhongTrong(token?: string) {
     refetchInterval: (query) => query.state.error instanceof PublicRoomLinkError ? false : roomSalePollingInterval(query.state.error ? query.state.errorUpdateCount : 0),
     queryFn: async () => {
       if (!token) throw new PublicRoomLinkError();
+      // hermes-parity:begin sale-listing — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("get_public_available_rooms", { p_token: token });
+      // hermes-parity:end sale-listing
       if (error) throw error;
       // RPC trả NULL khi token không tồn tại/đã thu hồi; payload rỗng hợp lệ
       // vẫn có buildings/rooms. Không biến hai kết quả này thành cùng một []

@@ -1,3 +1,4 @@
+// hermes-parity:begin customer-list — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 const vietnameseLetters = {
   a: 'aàáạảãâầấậẩẫăằắặẳẵ',
   e: 'eèéẹẻẽêềếệểễ',
@@ -26,3 +27,4 @@ export function customerSearchFilter(search: string): string {
     ...['phone', 'email', 'id_number'].map(field => `${field}.imatch.${literal}`),
   ].join(',');
 }
+// hermes-parity:end customer-list

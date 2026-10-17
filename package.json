@@ -141,6 +141,7 @@
     "org-inventory:build": "node scripts/build-org-boundary-inventory.mjs --write",
     "gate:org-boundary-inventory": "node scripts/build-org-boundary-inventory.mjs --check",
     "gate:rpc-name-literal": "node scripts/check-rpc-name-literal.mjs",
+    "gate:hermes-web-parity": "node scripts/check-hermes-web-parity.mjs",
     "qr:assets": "node scripts/qr/build-wechat-wasm.mjs",
     "prebuild": "npm run qr:assets && npm run ocr:assets",
     "predev": "npm run qr:assets && npm run ocr:assets",

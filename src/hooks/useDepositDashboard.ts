@@ -5,7 +5,9 @@ import { fetchAllRows } from '@/lib/supabaseFetchAll';
 export { useReservationSettlementSummary as useReservationDepositSettlementSummary } from '@/hooks/useReservationSettlement';
 
 // Ngưỡng làm tròn: chênh cọc < 10.000đ coi như đủ (khớp PREVIOUS_DEBT_ROUND_THRESHOLD).
+// hermes-parity:begin deposits-held — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export const DEPOSIT_SHORTFALL_THRESHOLD = 10000;
+// hermes-parity:end deposits-held
 
 const nn = financialReadNumber;
 // Older responses omit these optional breakdowns; malformed present values still fail.
@@ -34,10 +36,12 @@ export function useHeldDepositSummary(
     meta:{errorDisplay:'inline',label:'thống kê cọc'},
     queryKey: ['deposit-dashboard', 'held-summary', buildingIds ?? [], threshold],
     queryFn: async (): Promise<HeldDepositBuildingAgg[]> => {
+      // hermes-parity:begin deposits-held
       const { data, error } = await supabase.rpc('get_held_deposit_summary', {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
         p_threshold: threshold,
       });
+      // hermes-parity:end deposits-held
       if (error) throw error;
       return financialReadRows(data as any[]).map((r): HeldDepositBuildingAgg => ({
         building_id: r.building_id,

@@ -1,13 +1,13 @@
 # Project Contract — hướng dẫn chung cho agent
 
-Đọc adapter của agent và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần, rồi tra source.
-Không tự đọc audit mới nhất, plan cũ hoặc lần theo toàn bộ liên kết. Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
+Đọc adapter và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần rồi tra source, không tự đọc audit, plan cũ hay lần theo mọi liên kết.
+Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
 Copilot mở lại core cho Hermes (12/10/2026); UI/model/live còn hoãn. Zalo unit mở lại (10/10/2026), fleet còn hoãn. Chi tiết: [hồ sơ riêng](../deferred/zalo-copilot.md).
 
 ## 1. Dự án và nguồn tra cứu
 
 React/Vite, Supabase, Cloudflare R2 và Network Center. Chọn scope từ diff và source.
-[risk-map](../../tooling/risk-map.json) sở hữu tier/review; [test-matrix](../../tooling/test-matrix.json) sở hữu runner; [runtime-matrix](../../tooling/runtime-matrix.json) sở hữu runtime; [package.json](../../package.json) sở hữu lệnh.
+[risk-map](../../tooling/risk-map.json) sở hữu tier/review, [test-matrix](../../tooling/test-matrix.json) runner, [runtime-matrix](../../tooling/runtime-matrix.json) runtime, [package.json](../../package.json) lệnh.
 Chỉ đọc [một domain](../he-thong/README.md) nếu chưa rõ nghiệp vụ; manifest và evidence thay số đếm chép tay.
 
 ## 2. Phạm vi dữ liệu
@@ -49,7 +49,7 @@ Module mới strict-clean; không tăng baseline né lỗi. Chi tiết auth/dead
 - Test hành vi bị đổi bằng runner trong manifest. Sửa UI kiểm luồng/vai trò và viewport bị ảnh hưởng, ảnh chụp cùng console; không mặc định quét desktop lẫn mobile hay E2E toàn app.
 - Build/bundle ở CI một lần cho đúng candidate; local chỉ chạy khi cần chẩn đoán hoặc thiếu bằng chứng. Không dựng lại bản không đổi chỉ để báo xong.
 - Tiền, quyền, cách ly org, migration và verifier có thể xanh rỗng cần kiểm đột biến; [hướng dẫn kiểm](../CODEBASE_STRUCTURE.md#kiểm-thử) giữ quy trình hash/khôi phục và E2E headless.
-- Test bị skip/DEFERRED hoặc thiếu runner vẫn là chưa kiểm. Không hạ kiểm soát để CI xanh.
+- Test skip/DEFERRED hoặc thiếu runner là chưa kiểm; không hạ kiểm soát để CI xanh.
 
 ## 9. Credential
 
@@ -82,3 +82,4 @@ Chỉ mở runbook theo thao tác: [migration](MIGRATION_STRATEGY.md), [dữ li�
 
 UI shadcn/Lucide, Tailwind, React Hook Form + Zod; dữ liệu qua hook/service typed, không RPC trực tiếp trong component hoặc thêm cast `any` high-risk.
 Giữ loading/error và phân biệt lỗi quyền/validation/concurrency; không trả rỗng che lỗi. Lazy route nặng, đo bundle khi đổi tải trang; file/media đi lớp storage hiện có.
+Công thức dùng nhiều nơi hoặc dính tiền/quyền: [hàm SQL chung](../CODEBASE_STRUCTURE.md#công-thức-dùng-chung).

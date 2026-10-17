@@ -88,6 +88,7 @@ export const useFaMonthlyPnl = (
         // `check-rpc-arg-names`, `check-rpc-layer`) vì cả ba tìm chuỗi viết thẳng
         // trong văn bản — xem `scripts/check-rpc-name-literal.mjs`.
         () => {
+          // hermes-parity:begin monthly-pnl — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
           const args = {
             p_start_date: batBuoc(start, 'start'),
             p_end_date: batBuoc(end, 'end'),
@@ -96,6 +97,7 @@ export const useFaMonthlyPnl = (
           return accrual
             ? supabase.rpc("fa_monthly_pnl_accrual", args)
             : supabase.rpc("fa_monthly_pnl", args);
+          // hermes-parity:end monthly-pnl
         },
         "Không thể tải P&L theo tháng",
         (r): FaMonthlyPnlRow => ({

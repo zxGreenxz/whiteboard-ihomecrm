@@ -490,6 +490,21 @@
       ]
     },
     {
+      "id": "hermes-web-parity",
+      "$comment": "Chuông báo Hermes ↔ web (chủ chốt 17/10/2026). Gate check-hermes-web-parity chạy cho mọi thay đổi mã qua risk-map gateProfiles (logic/ui/cosmetic/schema/money-auth); rule này chỉ chọn test của chính bộ kiểm. KHÔNG khai src/** ở sourcePaths: sourcePaths làm file 'đã biết' và tắt fallback full của planner.",
+      "sourcePaths": [
+        "scripts/check-hermes-web-parity.mjs",
+        "infra/hermes-broker/web-parity.json"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "scripts/__tests__/check-hermes-web-parity.test.mjs"
+      ],
+      "gates": [
+        "check-hermes-web-parity"
+      ]
+    },
+    {
       "id": "hermes-broker-spike",
       "sourcePaths": [
         "infra/hermes-broker/**",
@@ -1471,6 +1486,7 @@
         "scripts/__tests__/bank-event-gmail-sql.test.mjs",
         "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
         "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "scripts/__tests__/check-hermes-web-parity.test.mjs",
         "infra/hermes-broker/**/*.test.mjs",
         "infra/hermes-runtime/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs",
@@ -1789,6 +1805,7 @@
         "scripts/__tests__/bank-event-gmail-sql.test.mjs",
         "scripts/__tests__/generate-hermes-crm-inventory.test.mjs",
         "scripts/__tests__/compare-hermes-crm-catalog.test.mjs",
+        "scripts/__tests__/check-hermes-web-parity.test.mjs",
         "infra/hermes-broker/**/*.test.mjs",
         "infra/hermes-runtime/**/*.test.mjs",
         "scripts/__tests__/test-hermes-broker-authz.test.mjs",
