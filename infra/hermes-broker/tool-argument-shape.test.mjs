@@ -142,7 +142,7 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // nhóm Zalo, sửa/huỷ việc). Trước 17/10 tools/list dùng chung trần dữ liệu 65 536 B: vượt là mất cả danh sách.
 // Từ 17/10 tools/list có trần riêng TOOLS_LIST_MAX_BYTES (192 KiB); tools/call giữ 65 536 B (server.mjs).
 // Ngân sách 64 000 B vẫn giữ để connector bản cũ (một trần chung) nhận đủ danh sách.
-// 85280779: 67 988 B (đã vượt); rút họ đọc: 63 743 B; rút chữ requestId (15 tool): 61 883 B.
+// 85280779: 67 988 B (đã vượt); rút họ đọc: 63 743 B; rút chữ requestId (15 tool): 62 168 B.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
   const scope = createDependencyScope(); t.after(() => scope.close());
@@ -161,7 +161,10 @@ function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
-    externalGroups: { authority, createService: () => ({}) } });
+    externalGroups: { authority, createService: () => ({}) },
+    // Host-only private port (never in tools/list): a directory result of a few hundred bytes.
+    groupPreviews: { authority, createService: () => ({ async prepareGroupDirectory() { return Object.freeze({}); },
+      async finalizeGroupDirectory() { return { groups: ['1', '2', '3', '4'].map(n => ({ conversationId: id(n), name: `Nhóm ${n}` })) }; } }) } });
   return { broker, token: `hc_${'A'.repeat(43)}` };
 }
 
@@ -192,9 +195,15 @@ test('tools/list has its own 192 KiB cap; tools/call data keeps the result cap',
   // ... while a tools/call result is still measured against maxResultBytes alone.
   assert.equal((await narrow.broker.callTool(narrow.token, 'crm_new_request_id', {})).isError, false);
   const tight = fullGrantBroker(t, { maxResultBytes: 64 });
-  await assert.rejects(tight.broker.callTool(tight.token, 'crm_new_request_id', {}),
-    error => error.code === 'response_too_large' && error.status === 502);
+  const tooLarge = error => error.code === 'response_too_large' && error.status === 502;
+  await assert.rejects(tight.broker.callTool(tight.token, 'crm_new_request_id', {}), tooLarge);
   assert.deepEqual(await tight.broker.listTools(tight.token), all);
+  // Only tools/list: authenticate and the host-only private operations keep the data cap too.
+  const directory = broker => broker.groupDirectory(reference.token, { commandId: id('7'), claimId: id('8') }, { signal: AbortSignal.timeout(5000) });
+  assert.equal((await reference.broker.authenticate(reference.token)).id, id('a'));
+  assert.equal((await directory(reference.broker)).groups.length, 4);
+  await assert.rejects(tight.broker.authenticate(tight.token), tooLarge);
+  await assert.rejects(directory(tight.broker), tooLarge);
   // Over its own cap the listing still fails closed: never a truncated catalogue.
   const exact = fullGrantBroker(t, { maxResultBytes: 65_536, maxToolsListBytes: bytes });
   assert.deepEqual(await exact.broker.listTools(exact.token), all);
