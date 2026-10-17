@@ -263,6 +263,25 @@ gaps:
     exit_condition: >
       Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản
       vá spec ở 8dd5bb18 lên main và chạy xanh trên preview đúng commit với vai thật.
+  - id: e2e-fleet-hop-dong-ham-dung-chung-allowlist
+    where: >
+      .e2e-fleet/specs/contract-mobile-settlement-readonly.spec.ts,
+      .e2e-fleet/specs/contract-unified-form.spec.ts, .e2e-fleet/specs/contract-workspace-tabs.spec.ts,
+      .e2e-fleet/specs/user-feedback.spec.ts, .e2e-fleet/specs/rent-support-browser.ts,
+      .e2e-fleet/specs/copilotRoomPassGuard.ts
+    expires_at: 2026-11-30
+    why: >
+      PR #197 (17–18/10/2026) chuyển danh sách và 4 ô thống kê màn /contracts sang RPC đọc
+      contract_list_v1 + contract_stats_v2 (POST). Các spec chỉ-đọc trên chỉ cho qua danh sách RPC đọc
+      cũ (get_contract_stats, đọc bảng contracts) nên sẽ chặn hai RPC mới; spec trả phòng mobile còn
+      chờ phản hồi /rest/v1/contracts, spec user-feedback giả lỗi ở get_contract_stats. Bản vá spec
+      (thêm hai RPC vào danh sách đọc, chờ/giả đúng RPC mới) và spec mới contract-list-shared-fn
+      nằm ở commit e3914bae của PR #197; spec mới chạy xanh 2/2 ngày 18/10/2026 trên dev server worktree
+      trỏ TEST (chủ nguyentam desktop 1440, quản lý joey mobile 390). Không đưa lên main vì đổi spec
+      fleet tạo nghĩa vụ "Live browser evidence" chặn promote (xem e2e-fleet-contract-workspace-tabs-luu-cong-ty).
+    exit_condition: >
+      Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản vá
+      spec ở e3914bae + contract_stats_v2 lên main và chạy xanh trên preview đúng commit với vai thật.
   - id: e2e-fleet-contract-moveout-deferred-o-chi-so
     where: >
       .e2e-fleet/specs/contract-moveout-deferred.spec.ts

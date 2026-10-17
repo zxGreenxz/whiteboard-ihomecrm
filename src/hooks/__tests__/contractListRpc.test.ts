@@ -11,7 +11,7 @@ vi.mock('@/integrations/supabase/client', () => ({
     from: h.from,
   },
 }));
-import { contractsPagedQuery, fetchContractsForExport } from '../useContracts';
+import { contractsPagedQuery, contractStatsQuery, fetchContractsForExport, msToNextVnMidnight } from '../useContracts';
 import { getContractDisplayStatus } from '@/types/contract';
 
 const row = (id: string, display_status = 'EXPIRING') => ({
@@ -71,7 +71,7 @@ it.each([
 
 it('lỗi RPC (quyền/validation) được ném nguyên cho trang hiện thẻ lỗi', async () => {
   h.error = { code: '22023', message: 'Tháng phải có dạng YYYY-MM' };
-  await expect(contractsPagedQuery({ month: '2026-13' }, { page: 1, pageSize: 20 }).queryFn()).rejects.toMatchObject({ code: '22023' });
+  await expect(contractsPagedQuery({ month: '2026-10' }, { page: 1, pageSize: 20 }).queryFn()).rejects.toMatchObject({ code: '22023' });
 });
 
 it('xuất Excel đọc từng khúc 1000 cùng bộ lọc tới khi đủ tổng', async () => {
@@ -80,4 +80,24 @@ it('xuất Excel đọc từng khúc 1000 cùng bộ lọc tới khi đủ tổn
   const all = await fetchContractsForExport({ stat: 'EXPIRED' });
   expect(all).toHaveLength(1001);
   expect(h.calls.map((c) => [c.args.p_offset, c.args.p_limit, c.args.p_stat])).toEqual([[0, 1000, 'EXPIRED'], [1000, 1000, 'EXPIRED']]);
+});
+
+it.each(['2026-13', '2026-00', '10/2026', 'abc'])('tháng lưu trong phiên sai dạng (%s) ⇒ bỏ lọc tháng như web cũ, không gửi lên SQL', async (month) => {
+  await contractsPagedQuery({ month }, { page: 1, pageSize: 20 }).queryFn();
+  expect(h.calls[0].args.p_month).toBeUndefined();
+});
+
+it('ô thống kê đọc contract_stats_v2 (cùng RLS/mốc ngày với danh sách); toà [] = mọi toà; số thiếu thì báo lỗi', async () => {
+  h.data = { total: 9, expiring: 2, expired: 1, terminated: 3, today: '2026-10-17' };
+  await expect(contractStatsQuery(['b1']).queryFn()).resolves.toEqual({ total: 9, expiring: 2, expired: 1, terminated: 3 });
+  await contractStatsQuery([]).queryFn();
+  expect(h.calls).toEqual([{ fn: 'contract_stats_v2', args: { p_building_ids: ['b1'] } }, { fn: 'contract_stats_v2', args: { p_building_ids: undefined } }]);
+  h.data = { total: 9, expiring: null, expired: 1, terminated: 3 };
+  await expect(contractStatsQuery().queryFn()).rejects.toThrow();
+});
+
+it('đọc lại đúng lúc qua 00:00 giờ VN (+5 s) để nhãn/ô không giữ ngày cũ', () => {
+  expect(msToNextVnMidnight(Date.parse('2026-10-17T16:59:00Z'))).toBe(60_000 + 5_000); // 23:59 giờ VN
+  expect(msToNextVnMidnight(Date.parse('2026-10-17T17:00:00Z'))).toBe(86_400_000 + 5_000); // đúng 00:00 giờ VN
+  expect(msToNextVnMidnight(Date.parse('2026-10-17T05:00:00Z'))).toBe(12 * 3_600_000 + 5_000); // 12:00 giờ VN
 });

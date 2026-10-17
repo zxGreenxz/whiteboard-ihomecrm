@@ -6,8 +6,10 @@ import { CONTRACT_STATUS_CONFIG, getContractDisplayStatus, type Contract } from 
 /**
  * Migration 20261017115636 — public.contract_list_v1: danh sách Hợp đồng dùng chung web/Hermes/báo
  * cáo. Chạy THẬT trên PostgreSQL nhúng, MỘT instance cho cả file, mỗi ca BEGIN…ROLLBACK.
- * Quyền dựng lại theo pg_policies TEST 17/10/2026 (cùng tên hàm, cùng biểu thức) để kiểm hàm
- * DEFINER ra ĐÚNG tập hàng mà RLS cho web đọc. Migration chạy HAI lượt (idempotent).
+ * Mô hình INVOKER + RLS (quyết định 18/10/2026): hàm đọc bằng RLS của người gọi. Policy dựng lại
+ * theo pg_policies TEST 17/10/2026 (cùng tên hàm, cùng biểu thức) để kiểm hàm ra ĐÚNG tập hàng
+ * web đọc, chặn gọi ngoài vai authenticated, và các biên RLS (HĐ không phòng / không công ty,
+ * liên kết khách khác công ty, sandbox). Migration chạy HAI lượt (idempotent).
  */
 const FILE = "supabase/migrations/20261017115636_contract_list_v1.sql";
 const SIG = "public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)";
@@ -51,12 +53,20 @@ async function list(user: string | null, a: Args = {}, today = TODAY): Promise<R
   });
 }
 const nums = (r: Result) => r.rows.map((x) => x.contract_number);
+type Stats = { total: number; expiring: number; expired: number; terminated: number; today: string };
+async function stats(user: string, buildings: string[] | null = null, today = TODAY): Promise<Stats> {
+  return inTx(async () => {
+    await db.query("SELECT set_config('test.today',$1,true)", [today]);
+    await asUser(user);
+    return (await db.query<{ v: Stats }>("SELECT public.contract_stats_v2($1::uuid[]) v", [buildings])).rows[0].v;
+  });
+}
 async function errorCode(user: string | null, a: Args): Promise<string | undefined> {
   try { await list(user, a); return undefined; } catch (e) { return (e as { code?: string }).code; }
 }
 
 // Một hợp đồng thử: số HĐ, toà/phòng, trạng thái, ngày, khách.
-type Seed = { n: string; org: string; room: string | null; status?: string; start?: string; end: string; moveOut?: string; created: string; deleted?: boolean; user?: string };
+type Seed = { n: string; org: string | null; room: string | null; status?: string; start?: string; end: string; moveOut?: string; created: string; deleted?: boolean; user?: string };
 const SEEDS: Seed[] = [
   { n: "HD-X-ACT", org: ORG_A, room: R_X1, end: "2027-06-30", created: "2026-10-10 10:00:00+00" },
   { n: "HD-X-EXPIRED", org: ORG_A, room: R_X1, end: "2026-10-16", created: "2026-10-09 10:00:00+00" },
@@ -70,6 +80,11 @@ const SEEDS: Seed[] = [
   { n: "HD-X-ENUM-EXPIRED", org: ORG_A, room: R_X1, status: "EXPIRED", end: "2027-12-31", created: "2026-10-01 10:00:00+00" },
   { n: "HD-X-DELETED", org: ORG_A, room: R_X1, end: "2027-01-01", created: "2026-10-11 10:00:00+00", deleted: true },
   { n: "HD-Y-ACT", org: ORG_A, room: R_Y1, start: "2026-09-01", end: "2026-09-30", created: "2026-09-30 10:00:00+00" },
+  // Biên RLS: HĐ thiếu công ty (org_boundary cho qua NULL) vẫn theo phòng; HĐ không phòng chỉ super admin thấy.
+  { n: "HD-X-NULLORG", org: null, room: R_X1, end: "2027-03-01", created: "2026-09-15 10:00:00+00" },
+  { n: "HD-NOROOM", org: ORG_A, room: null, end: "2027-03-01", created: "2026-10-12 13:00:00+00" },
+  // Dữ liệu lệch: HĐ ghi công ty B nhưng ở phòng toà X (công ty A) — org_boundary của contracts giấu với người A.
+  { n: "HD-X-ORGB", org: ORG_B, room: R_X1, end: "2027-03-01", created: "2026-10-12 14:00:00+00" },
   { n: "HD-Y-TIE-A", org: ORG_A, room: R_Y1, end: "2027-01-01", created: "2026-09-01 10:00:00+00" },
   { n: "HD-Y-TIE-B", org: ORG_A, room: R_Y1, end: "2027-01-01", created: "2026-09-01 10:00:00+00" },
   { n: "HD-B-ACT", org: ORG_B, room: R_B1, end: "2027-01-01", created: "2026-10-12 10:00:00+00" },
@@ -187,7 +202,9 @@ beforeAll(async () => {
       UNION ALL SELECT '${ORG_A}', id, '${CU_1}', true, '2026-10-02' FROM public.contracts WHERE contract_number = 'HD-X-ACT'
       UNION ALL SELECT '${ORG_A}', id, '${CU_FOREIGN_OWNER}', true, '2026-10-01' FROM public.contracts WHERE contract_number = 'HD-X-EXPIRED'
       UNION ALL SELECT '${ORG_A}', id, '${CU_2}', true, '2026-10-01' FROM public.contracts WHERE contract_number = 'HD-Y-ACT'
-      UNION ALL SELECT '${ORG_B}', id, '${CU_B}', true, '2026-10-01' FROM public.contracts WHERE contract_number = 'HD-B-ACT';
+      UNION ALL SELECT '${ORG_B}', id, '${CU_B}', true, '2026-10-01' FROM public.contracts WHERE contract_number = 'HD-B-ACT'
+      -- Liên kết khách thuộc công ty B gắn vào HĐ công ty A: org_boundary của contract_customers giấu với người A.
+      UNION ALL SELECT '${ORG_B}', id, '${CU_B}', false, '2026-10-03' FROM public.contracts WHERE contract_number = 'HD-X-ACT';
   `);
   const sql = readFileSync(FILE, "utf8");
   await db.exec(sql);
@@ -196,27 +213,39 @@ beforeAll(async () => {
 afterAll(() => db.close());
 
 const ORG_A_VISIBLE = ["HD-X-ACT", "HD-X-EXPIRED", "HD-X-TODAY", "HD-X-D30", "HD-X-D31", "HD-X-MOVE", "HD-X-TERM", "HD-X-TRANS", "HD-X-DRAFT",
-  "HD-X-ENUM-EXPIRED", "HD-Y-ACT", "HD-Y-TIE-A", "HD-Y-TIE-B"];
+  "HD-X-ENUM-EXPIRED", "HD-X-NULLORG", "HD-Y-ACT", "HD-Y-TIE-A", "HD-Y-TIE-B"];
+const FN_SIGS = [SIG, "public.contract_stats_v2(uuid[])", "public.contract_display_status_v1(text,date,date,date)", "public.contract_display_label_v1(text)"];
 const X_ONLY = ORG_A_VISIBLE.filter((n) => n.startsWith("HD-X"));
 
 describe("contract_list_v1 — quyền và phạm vi", () => {
-  it("chưa đăng nhập ⇒ 42501; chỉ authenticated EXECUTE (không anon/service_role); helper nội bộ đóng", async () => {
+  it("chỉ JWT người dùng: chưa đăng nhập, vai ngoài authenticated (kể cả chủ hàm) ⇒ 42501; INVOKER; ACL chỉ authenticated", async () => {
     expect(await errorCode(null, {})).toBe("42501");
-    await inTx(async () => {
-      await db.exec("SET LOCAL ROLE anon");
-      await expect(db.query("SELECT public.contract_list_v1()")).rejects.toMatchObject({ code: "42501" });
-    });
-    const acl = await db.query<{ anon: boolean; auth: boolean; svc: boolean; helper: boolean; label: boolean }>(
-      `SELECT has_function_privilege('anon','${SIG}','EXECUTE') anon, has_function_privilege('authenticated','${SIG}','EXECUTE') auth,
-              has_function_privilege('service_role','${SIG}','EXECUTE') svc,
-              has_function_privilege('authenticated','app_private.contract_list_args_v1(text,text,text,text,integer,integer)','EXECUTE') helper,
-              has_function_privilege('authenticated','app_private.contract_display_status_v1(text,date,date,date)','EXECUTE') label`);
-    expect(acl.rows[0]).toEqual({ anon: false, auth: true, svc: false, helper: false, label: false });
+    for (const call of ["SELECT public.contract_list_v1()", "SELECT public.contract_stats_v2()"]) {
+      for (const role of ["anon", "service_role"]) {
+        await inTx(async () => {
+          await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [OWNER_A]);
+          await db.exec(`SET LOCAL ROLE ${role}`);
+          await expect(db.query(call), `${role} ${call}`).rejects.toMatchObject({ code: "42501" });
+        });
+      }
+      // Gọi bằng vai chủ (như từ thân hàm SECURITY DEFINER): RLS không áp ⇒ phải bị chặn dù có JWT.
+      await inTx(async () => {
+        await db.query("SELECT set_config('request.jwt.claim.sub',$1,true), set_config('test.today',$2,true)", [OWNER_A, TODAY]);
+        await expect(db.query(call), `chủ hàm ${call}`).rejects.toMatchObject({ code: "42501" });
+      });
+    }
+    for (const sig of FN_SIGS) {
+      const acl = await db.query<{ anon: boolean; auth: boolean; svc: boolean; definer: boolean }>(
+        `SELECT has_function_privilege('anon',$1::regprocedure,'EXECUTE') anon, has_function_privilege('authenticated',$1::regprocedure,'EXECUTE') auth,
+                has_function_privilege('service_role',$1::regprocedure,'EXECUTE') svc, (SELECT prosecdef FROM pg_proc WHERE oid = $1::regprocedure) definer`, [sig]);
+      expect(acl.rows[0], sig).toEqual({ anon: false, auth: true, svc: false, definer: false });
+    }
   });
 
   it("chủ công ty thấy mọi HĐ chưa xoá của công ty mình, không thấy công ty khác; mới tạo trước, hoà theo id", async () => {
     const r = await list(OWNER_A);
     expect(r.total).toBe(ORG_A_VISIBLE.length + 1); // + HD-DEMO: chủ (không phải super admin) vẫn thấy toà demo của công ty mình
+    expect(nums(r)).not.toContain("HD-NOROOM");
     expect(nums(r)).not.toContain("HD-X-DELETED");
     expect(nums(r)).not.toContain("HD-B-ACT");
     const created = r.rows.map((x) => (x as unknown as { created_at: string }).created_at);
@@ -259,6 +288,26 @@ describe("contract_list_v1 — quyền và phạm vi", () => {
     expect(r).not.toContain("HD-DEMO");
     expect(r).not.toContain("HD-SANDBOX");
   });
+
+  it("biên RLS: HĐ không phòng chỉ super admin thấy (room null, lọc toà loại ra); HĐ thiếu công ty theo phòng; liên kết khách khác công ty bị giấu", async () => {
+    const sup = await list(SUPER);
+    expect(sup.rows.find((x) => x.contract_number === "HD-NOROOM")?.room).toBeNull();
+    expect(nums(await list(SUPER, { buildings: [B_X] }))).not.toContain("HD-NOROOM");
+    for (const u of [OWNER_A, STAFF_X]) {
+      const r = await list(u);
+      expect(nums(r), u).toContain("HD-X-NULLORG");
+      expect(nums(r), u).not.toContain("HD-NOROOM");
+      expect(nums(r), u).not.toContain("HD-X-ORGB");
+      // HĐ X-ACT có 3 liên kết, liên kết thuộc công ty B không hiện với người công ty A.
+      expect(r.rows.find((x) => x.contract_number === "HD-X-ACT")!.contract_customers.map((c) => c.customer?.full_name), u)
+        .not.toContain("Phạm Công Ty B");
+      expect(r.rows.find((x) => x.contract_number === "HD-X-ACT")!.contract_customers, u).toHaveLength(2);
+    }
+    expect(sup.rows.find((x) => x.contract_number === "HD-X-ACT")!.contract_customers.map((c) => c.customer?.full_name))
+      .toEqual(["Nguyễn Văn An", "Trần Thị Bình", "Phạm Công Ty B"]);
+    expect(nums(await list(OUTSIDER))).toEqual(["HD-B-ACT"]);
+    expect(nums(sup)).toContain("HD-X-ORGB");
+  });
 });
 
 describe("contract_list_v1 — khách (customers.view như web)", () => {
@@ -294,7 +343,7 @@ describe("contract_list_v1 — khách (customers.view như web)", () => {
     expect(nums(await list(OWNER_A, { search: "Bình" })).sort()).toEqual(["HD-X-ACT", "HD-Y-ACT"]);
   });
 
-  it("hàm DEFINER ra ĐÚNG tập HĐ, phòng, toà và khách mà RLS cho đọc thẳng (mọi vai)", async () => {
+  it("hàm INVOKER ra ĐÚNG tập HĐ, phòng, toà và khách mà RLS cho đọc thẳng (mọi vai)", async () => {
     for (const user of [OWNER_A, STAFF_X, STAFF_NO_CUST, STAFF_CUST_Y, OUTSIDER, SUPER]) {
       const fn = await list(user);
       const viaRls = await inTx(async () => {
@@ -359,6 +408,22 @@ describe("contract_list_v1 — nhãn hiển thị và bộ lọc", () => {
     expect(await errorCode(OWNER_A, { lifecycle: "active" })).toBe("22023");
   });
 
+  it("contract_stats_v2: 4 ô = tổng dòng của danh sách khi bấm ô (cùng RLS, cùng mốc ngày), kể cả lọc toà và qua nửa đêm", async () => {
+    for (const [user, buildings] of [[OWNER_A, null], [STAFF_X, null], [OWNER_A, [B_Y]], [SUPER, null], [STAFF_CUST_Y, [B_X]]] as const) {
+      for (const day of [TODAY, "2026-10-18"]) {
+        const s = await stats(user, buildings ? [...buildings] : null, day);
+        const b = buildings ? [...buildings] : undefined;
+        expect(s.today).toBe(day);
+        expect(s.total, `${user} total ${day}`).toBe((await list(user, { buildings: b }, day)).total);
+        expect(s.expiring, `${user} expiring ${day}`).toBe((await list(user, { buildings: b, stat: "EXPIRING", lifecycle: "ACTIVE" }, day)).total);
+        expect(s.expired, `${user} expired ${day}`).toBe((await list(user, { buildings: b, stat: "EXPIRED", lifecycle: "ACTIVE" }, day)).total);
+        expect(s.terminated, `${user} terminated ${day}`).toBe((await list(user, { buildings: b, stat: "TERMINATED", lifecycle: "TERMINATED" }, day)).total);
+      }
+    }
+    expect(await stats(OWNER_A)).toMatchObject({ expiring: 2, expired: 2, terminated: 1 });
+    expect((await stats(STAFF_X, [])).total).toBe(0);
+  });
+
   it("tháng: khoảng hiệu lực giao tháng (chạm biên vẫn tính); sai dạng ⇒ 22023; '' = không lọc", async () => {
     const sep = nums(await list(OWNER_A, { month: "2026-09" }));
     expect(sep).toContain("HD-Y-ACT"); // 01/09–30/09
@@ -386,11 +451,11 @@ describe("contract_list_v1 — nhãn hiển thị và bộ lọc", () => {
     expect(nums(await list(OWNER_A, { search: "D1" }))).toEqual(["HD-DEMO"]);
   });
 
-  it("JS getContractDisplayStatus = SQL khi giờ VN 07:00–24:00; lệch đúng hai biên trong 00:00–07:00", async () => {
+  it("JS getContractDisplayStatus = SQL ở mọi giờ trong ngày (kể cả 00:00–07:00 giờ VN)", async () => {
     const statuses = ["ACTIVE", "TERMINATED", "TRANSFERRED", "DRAFT", "EXPIRED"];
     const ends = ["2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18", "2026-11-15", "2026-11-16", "2026-11-17"];
     const sql = await db.query<{ s: string; e: string; m: boolean; d: string }>(
-      `SELECT s, e, m, app_private.contract_display_status_v1(s, CASE WHEN m THEN DATE '2026-10-30' END, e::date, DATE '${TODAY}') d
+      `SELECT s, e, m, public.contract_display_status_v1(s, CASE WHEN m THEN DATE '2026-10-30' END, e::date, DATE '${TODAY}') d
          FROM unnest($1::text[]) s, unnest($2::text[]) e, unnest(ARRAY[false,true]) m`, [statuses, ends]);
     const jsAt = (iso: string) => {
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -401,9 +466,10 @@ describe("contract_list_v1 — nhãn hiển thị và bộ lọc", () => {
     };
     const noonVn = jsAt("2026-10-17T05:00:00Z");
     expect(noonVn).toEqual(sql.rows.map((x) => x.d));
-    const lateNight = jsAt("2026-10-16T20:00:00Z"); // 03:00 ngày 17/10 giờ VN
-    const diff = sql.rows.filter((x, i) => lateNight[i] !== x.d).map((x) => `${x.s}/${x.e}/${x.m}`);
-    expect(diff.sort()).toEqual(["ACTIVE/2026-10-16/false", "ACTIVE/2026-11-16/false", "EXPIRED/2026-10-16/false", "EXPIRED/2026-11-16/false"]);
+    // 00:00, 03:00 và 06:59 giờ VN ngày 17/10 (còn là 16/10 theo UTC) và 23:59 giờ VN.
+    for (const instant of ["2026-10-16T17:00:00Z", "2026-10-16T20:00:00Z", "2026-10-16T23:59:00Z", "2026-10-17T16:59:00Z"]) {
+      expect(jsAt(instant), instant).toEqual(sql.rows.map((x) => x.d));
+    }
     // Hàng danh sách mang sẵn nhãn SQL ⇒ web hiện đúng nhãn đó, không tính lại.
     expect(getContractDisplayStatus({ status: "ACTIVE", end_date: "2020-01-01", expected_move_out_date: null, display_status: "EXPIRING" } as unknown as Contract)).toBe("EXPIRING");
   });

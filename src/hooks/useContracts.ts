@@ -219,16 +219,24 @@ type ContractListArgs = {
   p_limit: number;
   p_offset: number;
 };
-type ContractListRpc = (fn: "contract_list_v1", args: ContractListArgs) => PromiseLike<{ data: unknown; error: unknown }>;
+type ContractReadArgs = { contract_list_v1: ContractListArgs; contract_stats_v2: { p_building_ids?: string[] } };
+type ContractReadRpc = <F extends keyof ContractReadArgs>(fn: F, args: ContractReadArgs[F]) => PromiseLike<{ data: unknown; error: unknown }>;
 
-// types.ts sinh từ catalog production; contract_list_v1 đi cùng migration
+// types.ts sinh từ catalog production; contract_list_v1/contract_stats_v2 đi cùng migration
 // 20261017115636 nên chưa có kiểu. Khẳng định HẸP đúng chữ ký (không any) và giữ
 // lời gọi `.rpc("contract_list_v1", …)` viết thẳng để gate RPC và hermes-parity
 // thấy. Áp production + gen:types xong thì đổi về supabase.rpc(...) có kiểu.
 // Phản hồi được kiểm đủ ở readContractListPage.
-const contractListClient: { rpc: ContractListRpc } = {
-  rpc: (fn, args) => (supabase.rpc as unknown as ContractListRpc)(fn, args),
+const contractReadClient: { rpc: ContractReadRpc } = {
+  rpc: (fn, args) => (supabase.rpc as unknown as ContractReadRpc)(fn, args),
 };
+
+/** Tháng hợp lệ YYYY-MM. Giá trị lưu trong phiên (flt:contracts:month) sai dạng ⇒ bỏ lọc như web cũ. */
+const MONTH_FILTER = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
+
+/** ms tới 00:00 kế tiếp giờ VN (+5 s). Nhãn và ô thống kê đổi theo ngày ⇒ trang mở qua nửa đêm tự đọc lại. */
+export const msToNextVnMidnight = (nowMs: number = Date.now()): number =>
+  86_400_000 - ((nowMs + 7 * 3_600_000) % 86_400_000) + 5_000;
 
 const CONTRACT_DISPLAY_STATUSES: readonly ContractDisplayStatus[] = [
   "ACTIVE", "EXPIRING", "EXPIRED", "MOVING_OUT", "TERMINATED", "TRANSFERRED", "DRAFT",
@@ -257,13 +265,13 @@ async function fetchContractsPagedOnce(
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data, error } = await contractListClient.rpc("contract_list_v1", {
+  const { data, error } = await contractReadClient.rpc("contract_list_v1", {
     p_search: filters?.search?.trim() || undefined,
     p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
     p_room_name: filters?.room_name && filters.room_name !== "all" ? filters.room_name : undefined,
     p_lifecycle: filters?.lifecycle ?? "ALL",
     p_stat: filters?.stat ?? "ALL",
-    p_month: filters?.month || undefined,
+    p_month: filters?.month && MONTH_FILTER.test(filters.month) ? filters.month : undefined,
     p_limit: range ? Math.min(range.to - range.from + 1, CONTRACT_LIST_MAX_ROWS) : CONTRACT_LIST_MAX_ROWS,
     p_offset: range?.from ?? 0,
   });
@@ -301,6 +309,9 @@ export const useContractsPaged = (
     ...contractsPagedQuery(filters, pagination),
     // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
     placeholderData: keepPreviousData,
+    // Nhãn theo ngày: qua 00:00 giờ VN đọc lại một lần (kể cả tab nền).
+    refetchInterval: () => msToNextVnMidnight(),
+    refetchIntervalInBackground: true,
   });
 };
 
@@ -327,13 +338,10 @@ export async function fetchContractsForExport(
 }
 
 // =============================================
-// useContractStats — 4 ô thống kê đầu trang Hợp đồng bằng 4 HEAD count song
-// song (không kéo dữ liệu). Điều kiện khớp getContractDisplayStatus:
-// - expiring: không TERMINATED/TRANSFERRED/DRAFT, không expected_move_out_date,
-//   end_date trong [hôm nay, hôm nay+30].
-// - expired: như trên nhưng end_date < hôm nay.
-// - terminated: status = TERMINATED.
-// buildingIds (tuỳ chọn) lọc theo toà qua rooms!inner.
+// useContractStats — 4 ô thống kê đầu trang Hợp đồng qua public.contract_stats_v2
+// (migration 20261017115636): cùng RLS, cùng mốc ngày công ty (giờ VN) và cùng hàm
+// nhãn với contract_list_v1 ⇒ số trên ô = tổng dòng khi bấm ô đó.
+// buildingIds (tuỳ chọn) chỉ thu hẹp theo toà.
 // =============================================
 
 const contractHeadCountBase = (buildingIds?: string[]) => {
@@ -356,22 +364,9 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const today = toLocalISODate(new Date());
-      const in30d = new Date();
-      in30d.setDate(in30d.getDate() + 30);
-      const in30 = toLocalISODate(in30d);
-
-      // 1 RPC thay 4 HEAD-count (migration 20260705210000) — bớt 3 request +
-      // 3 lần plan RLS mỗi lần tải trang. SECURITY INVOKER nên RLS như cũ;
-      // p_today/p_in30 truyền từ FE để giữ đúng local-date (không lệch TZ).
-      const { data, error } = await supabase.rpc(
-        "get_contract_stats",
-        {
-          p_building_ids: buildingIds?.length ? buildingIds : undefined,
-          p_today: today,
-          p_in30: in30,
-        },
-      );
+      const { data, error } = await contractReadClient.rpc("contract_stats_v2", {
+        p_building_ids: buildingIds?.length ? buildingIds : undefined,
+      });
       if (error) {
         console.error("useContractStats error:", error);
         throw error;
@@ -392,6 +387,9 @@ export const useContractStats = (buildingIds?: string[]) => {
     ...contractStatsQuery(buildingIds),
     meta: { errorDisplay: 'inline', label: 'thống kê hợp đồng' },
     placeholderData: keepPreviousData,
+    // Ô "sắp hết hạn"/"quá hạn" đổi theo ngày: qua 00:00 giờ VN đọc lại như danh sách.
+    refetchInterval: () => msToNextVnMidnight(),
+    refetchIntervalInBackground: true,
   });
 };
 

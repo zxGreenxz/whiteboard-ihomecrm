@@ -9,7 +9,7 @@ const READ_RPC=new Set([
  'get_my_permissions','get_my_permissions_v2','list_my_copilot_organizations_v1','business_performance_organizations_v1','my_org_ids',
  'get_notification_org_config_v1','get_my_notification_preferences_v1','list_cashbook_visibility_v2','list_due_contract_move_out_notices_v1',
  'list_contract_exit_cases_v1','list_contract_meter_followups_v1','get_contract_move_out_notice_v1','read_contract_meter_boundary_set_v1',
- 'read_contract_transfer_links_v1','list_contract_drafts','contract_list_v1','list_room_reservations_v1','get_income_expense_layer_stats','get_invoice_statistics_v2',
+ 'read_contract_transfer_links_v1','list_contract_drafts','list_room_reservations_v1','get_income_expense_layer_stats','get_invoice_statistics_v2',
  'get_receiving_cashbooks_v1','get_my_cashbook_access_v2','list_cashbooks_for_expense_v2','get_income_expense_stats','get_pending_approvals_count',
  'list_active_memberships_v1','list_organization_members_v2','read_authorization_catalog_v1','get_finance_v2_routes_v1'
 ]);

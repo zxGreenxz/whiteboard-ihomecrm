@@ -1,42 +1,39 @@
--- Danh sách Hợp đồng (/contracts) thành MỘT hàm SQL dùng chung (chủ chốt 17/10/2026): web, Hermes
--- và báo cáo cùng gọi public.contract_list_v1, không mỗi nơi tự chép bộ lọc + nhãn trạng thái.
+-- Danh sách Hợp đồng (/contracts) thành hàm SQL dùng chung (chủ chốt 17/10/2026): web, Hermes và
+-- báo cáo cùng gọi public.contract_list_v1 + public.contract_stats_v2, không mỗi nơi tự chép bộ
+-- lọc + nhãn trạng thái.
+--
+-- MÔ HÌNH QUYỀN (quyết định chung 18/10/2026, review PR #197 — giống customer_list_v1):
+-- SECURITY INVOKER + RLS. Hàm đọc contracts / rooms / buildings / contract_customers / customers
+-- BẰNG RLS CỦA NGƯỜI GỌI, nên tập dòng trùng tập web thấy theo cấu trúc, không theo bản chép luật
+-- (bản DEFINER trước đó chép policy: policy đổi thì hàm lệch mà không gì báo đỏ). Policy đã bọc
+-- InitPlan ⇒ hàm quyền chạy một lần mỗi câu, không theo dòng.
+--   * Chỉ chạy bằng JWT người dùng: current_user phải là `authenticated` và auth.uid() có giá trị.
+--     Gọi từ thân hàm SECURITY DEFINER sẽ chạy bằng quyền chủ hàm và bỏ qua RLS ⇒ bị chặn 42501.
+--     Hermes gọi qua đường INVOKER bằng JWT người dùng.
+--   * p_building_ids CHỈ THU HẸP (AND thêm vào RLS): NULL = toàn phạm vi RLS, '{}' = rỗng.
+--   * p_with_customers = false ẩn thêm khách (Hermes truyền theo khoá Read của kết nối).
 --
 -- Chép ĐÚNG đường đọc web trước khi đổi (src/hooks/useContracts.ts — fetchContractsPagedOnce +
 -- resolveContractSearchOr; nhãn src/types/contract.ts getContractDisplayStatus):
 --   * vòng đời ALL | ACTIVE (mọi trạng thái trừ TERMINATED) | TERMINATED;
---   * ô thống kê ALL | EXPIRING | EXPIRED | TERMINATED — nay lọc bằng CHÍNH nhãn hiển thị;
+--   * ô thống kê ALL | EXPIRING | EXPIRED | TERMINATED — lọc bằng CHÍNH nhãn hiển thị;
 --   * tháng 'YYYY-MM': [start_date, end_date] giao tháng; toà (p_building_ids); tên phòng đúng tên;
---   * tìm: số HĐ, tên/SĐT khách (chỉ khi người gọi thấy khách), tên phòng — ILIKE '%từ%', bỏ
+--   * tìm: số HĐ, tên/SĐT khách (customers thấy được qua RLS), tên phòng — ILIKE '%từ%', bỏ
 --     , ( ) " ' \ % như web, gộp khoảng trắng, '*' là ký tự đại diện như PostgREST;
---   * mới tạo trước (created_at DESC), hoà thì theo id; trả tổng dòng cho phân trang.
+--   * mới tạo trước (created_at DESC), hoà theo id; trả tổng dòng cho phân trang.
+-- contract_stats_v2: bốn ô thống kê (tổng / sắp hết hạn / quá hạn / đã thanh lý) cùng RLS, cùng
+-- mốc ngày, cùng hàm nhãn với danh sách ⇒ số trên ô khớp số dòng khi bấm ô.
 --
--- QUYỀN — kiểm MỘT lần mỗi lượt (CTE ctx), không theo từng dòng. Hàm SECURITY DEFINER nên RLS
--- KHÔNG chạy; điều kiện trong thân chép nguyên văn các policy SELECT hiện hành (đọc từ
--- pg_policies TEST 17/10/2026) của contracts / rooms / buildings / contract_customers /
--- customers: *_select_rbac + *_super_admin_all (PERMISSIVE) ∧ *_org_boundary +
--- *_hide_demo_admin + *_hide_sandbox_admin (RESTRICTIVE), từng vế bọc IS TRUE như RLS.
--- Vì vậy gọi từ PostgREST (vai authenticated) hay từ hàm DEFINER của Hermes (auth.uid() vẫn là
--- người dùng trong JWT) đều ra CÙNG một kết quả.
---   * p_building_ids CHỈ THU HẸP: hàng luôn phải qua phạm vi thật trước; '{}' = không toà nào.
---   * Khách (tên/SĐT, tìm theo khách): đúng RLS bảng customers của web — can_access_org_entity
---     ('customers','view') (quyền ở BẤT KỲ phạm vi nào) ∧ chủ bản ghi thuộc thành viên công ty
---     (current_visible_owner_ids). Web KHÔNG xét customers.view theo từng toà; hàm giữ nguyên
---     hành vi đó. p_with_customers = false ẩn thêm (Hermes truyền theo khoá Read của kết nối).
+-- NGÀY: một mốc org_today_v1() (múi giờ công ty, mặc định Asia/Ho_Chi_Minh) cho nhãn lẫn bộ lọc.
+-- Web trước đây tính nhãn theo ngày UTC (end_date đọc như 00:00 UTC) nhưng lọc theo ngày máy ⇒
+-- lệch 00:00–07:00 giờ VN; nay JS getContractDisplayStatus cũng tính theo ngày VN.
 --
--- NGÀY: web tính nhãn bằng Math.ceil((Date(end_date) - now)/1 ngày) — end_date đọc như 00:00 UTC
--- nên thực chất so theo NGÀY UTC; còn lọc EXPIRING/EXPIRED dùng ngày máy (giờ VN). Hai mốc lệch
--- nhau 00:00–07:00 giờ VN. Hàm dùng MỘT mốc: org_today_v1() (múi giờ công ty, mặc định
--- Asia/Ho_Chi_Minh) cho cả nhãn lẫn bộ lọc; từ 07:00 đến 24:00 giờ VN kết quả trùng web.
---
--- Khác web (cố ý, ghi rõ):
---   * web cắt tìm khách ở 200 khách / 500 liên kết HĐ–khách, tìm phòng ở 200 phòng (truy vấn
---     phụ không sắp xếp); hàm không cắt;
---   * p_month sai dạng: web lặng lẽ bỏ lọc (YYYY-MM sai tháng thì PostgREST lỗi); hàm báo 22023;
---   * hoà created_at: web không có khoá phụ; hàm thêm id để phân trang ổn định.
+-- Khác web cũ (cố ý): không cắt tìm khách ở 200 khách / 500 liên kết / 200 phòng; hoà created_at
+-- xếp theo id; tháng sai dạng báo 22023 (web lọc bỏ trước khi gọi); trang quá cuối trả rỗng + tổng.
 -- Không DROP, không đổi hàm cũ, không ghi dữ liệu.
 
--- Nhãn hiển thị: đúng thứ tự getContractDisplayStatus (src/types/contract.ts).
-CREATE OR REPLACE FUNCTION app_private.contract_display_status_v1(
+-- Nhãn hiển thị: đúng thứ tự getContractDisplayStatus (src/types/contract.ts). Hàm thuần.
+CREATE OR REPLACE FUNCTION public.contract_display_status_v1(
   p_status text,
   p_expected_move_out_date date,
   p_end_date date,
@@ -45,7 +42,7 @@ CREATE OR REPLACE FUNCTION app_private.contract_display_status_v1(
 LANGUAGE sql
 IMMUTABLE
 PARALLEL SAFE
-SET search_path TO 'pg_catalog'
+SET search_path = ''
 AS $fn$
   SELECT CASE
     WHEN p_status = 'TERMINATED' THEN 'TERMINATED'
@@ -58,13 +55,13 @@ AS $fn$
   END
 $fn$;
 
--- Chữ của nhãn: đúng CONTRACT_STATUS_CONFIG[...].label (src/types/contract.ts).
-CREATE OR REPLACE FUNCTION app_private.contract_display_label_v1(p_display_status text)
+-- Chữ của nhãn: đúng CONTRACT_STATUS_CONFIG[...].label (src/types/contract.ts). Hàm thuần.
+CREATE OR REPLACE FUNCTION public.contract_display_label_v1(p_display_status text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
 PARALLEL SAFE
-SET search_path TO 'pg_catalog'
+SET search_path = ''
 AS $fn$
   SELECT CASE p_display_status
     WHEN 'ACTIVE' THEN 'Còn hạn'
@@ -75,74 +72,6 @@ AS $fn$
     WHEN 'TRANSFERRED' THEN 'Đã nhượng'
     WHEN 'DRAFT' THEN 'Nháp'
   END
-$fn$;
-
--- Người gọi + tham số: kiểm đăng nhập và giá trị bộ lọc, báo lỗi thay vì trả rỗng che lỗi.
--- plpgsql chỉ vì cần RAISE; hàm danh sách chính vẫn là LANGUAGE sql.
-CREATE OR REPLACE FUNCTION app_private.contract_list_args_v1(
-  p_search text,
-  p_lifecycle text,
-  p_stat text,
-  p_month text,
-  p_limit integer,
-  p_offset integer
-) RETURNS TABLE (
-  actor_id uuid,
-  lifecycle_filter text,
-  stat_filter text,
-  month_start date,
-  month_end date,
-  search_pattern text,
-  row_limit integer,
-  row_offset integer
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'pg_catalog', 'public', 'app_private'
-AS $fn$
-DECLARE
-  v_safe text;
-BEGIN
-  actor_id := auth.uid();
-  IF actor_id IS NULL THEN
-    RAISE EXCEPTION 'Bạn chưa đăng nhập. Hãy đăng nhập lại rồi thử lại.' USING ERRCODE = '42501';
-  END IF;
-
-  lifecycle_filter := COALESCE(p_lifecycle, 'ALL');
-  IF lifecycle_filter NOT IN ('ALL', 'ACTIVE', 'TERMINATED') THEN
-    RAISE EXCEPTION 'Bộ lọc vòng đời hợp đồng không hợp lệ: %', lifecycle_filter USING ERRCODE = '22023';
-  END IF;
-
-  stat_filter := COALESCE(p_stat, 'ALL');
-  IF stat_filter NOT IN ('ALL', 'EXPIRING', 'EXPIRED', 'TERMINATED') THEN
-    RAISE EXCEPTION 'Bộ lọc trạng thái hợp đồng không hợp lệ: %', stat_filter USING ERRCODE = '22023';
-  END IF;
-
-  -- '' = không lọc tháng (web gửi month: '' → undefined).
-  IF NULLIF(p_month, '') IS NOT NULL THEN
-    IF p_month !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN
-      RAISE EXCEPTION 'Tháng phải có dạng YYYY-MM: %', p_month USING ERRCODE = '22023';
-    END IF;
-    month_start := to_date(p_month || '-01', 'YYYY-MM-DD');
-    month_end := (month_start + interval '1 month' - interval '1 day')::date;
-  END IF;
-
-  row_limit := COALESCE(p_limit, 1000);
-  row_offset := COALESCE(p_offset, 0);
-  IF row_limit < 1 OR row_limit > 1000 OR row_offset < 0 THEN
-    RAISE EXCEPTION 'Phân trang không hợp lệ (1–1000 dòng, vị trí ≥ 0).' USING ERRCODE = '22023';
-  END IF;
-
-  -- sanitizeSearchTerm của web: , ( ) " ' \ % thành khoảng trắng, gộp khoảng trắng (đúng tập \s
-  -- của JavaScript), bỏ hai đầu. Rỗng sau khi làm sạch = không tìm.
-  v_safe := btrim(regexp_replace(
-    regexp_replace(COALESCE(p_search, ''), '[,()"''\\%]', ' ', 'g'),
-    '[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+', ' ', 'g'));
-  search_pattern := CASE WHEN v_safe = '' THEN NULL ELSE '%' || replace(v_safe, '*', '%') || '%' END;
-
-  RETURN NEXT;
-END
 $fn$;
 
 CREATE OR REPLACE FUNCTION public.contract_list_v1(
@@ -156,169 +85,228 @@ CREATE OR REPLACE FUNCTION public.contract_list_v1(
   p_offset integer DEFAULT 0,
   p_with_customers boolean DEFAULT true
 ) RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
-SECURITY DEFINER
-SET search_path TO 'pg_catalog', 'public', 'app_private'
+SECURITY INVOKER
+SET search_path = ''
 AS $fn$
-WITH args AS MATERIALIZED (
-  SELECT * FROM app_private.contract_list_args_v1(p_search, p_lifecycle, p_stat, p_month, p_limit, p_offset)
-),
--- Phạm vi của auth.uid(), tính MỘT lần. Tên hàm/biểu thức đúng như trong các policy RLS.
-ctx AS MATERIALIZED (
-  SELECT a.*, s.is_super, s.is_admin, s.full_scope,
-         public.my_org_ids() AS my_orgs,
-         CASE WHEN s.full_scope THEN NULL
-              ELSE COALESCE(ARRAY(SELECT public.accessible_building_ids()), '{}'::uuid[]) END AS buildings,
-         public.can_access_org_entity('customers', 'view') AS customers_any_scope,
-         public.current_visible_owner_ids() AS owner_ids,
-         CASE WHEN s.is_super OR s.is_admin THEN public.demo_user_ids() ELSE '{}'::uuid[] END AS demo_users,
-         CASE WHEN s.is_super OR s.is_admin THEN public.demo_building_ids() ELSE '{}'::uuid[] END AS demo_buildings,
-         public.sandbox_org_ids() AS sandbox_orgs,
-         public.org_today_v1(NULL) AS today,
-         (p_with_customers IS TRUE) AS with_customers
-    FROM args a
-   CROSS JOIN LATERAL (
-     SELECT public.is_super_admin() AS is_super, public.is_admin() AS is_admin,
-            public.has_full_building_scope() AS full_scope
-   ) s
-),
-hits AS MATERIALIZED (
-  SELECT c.id, c.created_at, v.room_ok, v.display_status
-    FROM ctx
-    JOIN public.contracts c ON c.deleted_at IS NULL
-    LEFT JOIN public.rooms r ON r.id = c.room_id
-   CROSS JOIN LATERAL (
-     SELECT
-       -- contracts: super_admin_all ∨ select_rbac, ∧ org_boundary ∧ hide_demo_admin ∧ hide_sandbox_admin
-       ((ctx.is_super
-         OR ctx.is_admin
-         OR (c.room_id IS NOT NULL AND (ctx.full_scope OR r.building_id = ANY (ctx.buildings))))
-        AND (c.organization_id IS NULL OR ctx.is_super OR c.organization_id = ANY (ctx.my_orgs))
-        AND NOT ((ctx.is_super OR ctx.is_admin) AND c.user_id = ANY (ctx.demo_users))
-        AND NOT (ctx.is_super AND COALESCE(c.organization_id = ANY (ctx.sandbox_orgs), false))
-       ) IS TRUE AS contract_ok,
-       -- rooms (embed room:rooms!contracts_room_id_fkey)
-       (r.id IS NOT NULL
-        AND ((ctx.is_super OR ctx.full_scope OR r.building_id = ANY (ctx.buildings))
-             AND (r.organization_id IS NULL OR ctx.is_super OR r.organization_id = ANY (ctx.my_orgs))
-             AND NOT ((ctx.is_super OR ctx.is_admin) AND r.building_id = ANY (ctx.demo_buildings))
-             AND NOT (ctx.is_super AND COALESCE(r.organization_id = ANY (ctx.sandbox_orgs), false))
-            ) IS TRUE) AS room_ok,
-       app_private.contract_display_status_v1(c.status::text, c.expected_move_out_date, c.end_date, ctx.today)
-         AS display_status
-   ) v
-   WHERE v.contract_ok
-     AND (p_building_ids IS NULL OR (v.room_ok AND r.building_id = ANY (p_building_ids)))
-     AND (p_room_name IS NULL OR (v.room_ok AND r.name = p_room_name))
-     AND (ctx.lifecycle_filter = 'ALL'
-          OR (ctx.lifecycle_filter = 'ACTIVE' AND c.status::text <> 'TERMINATED')
-          OR (ctx.lifecycle_filter = 'TERMINATED' AND c.status::text = 'TERMINATED'))
-     AND (ctx.stat_filter = 'ALL' OR v.display_status = ctx.stat_filter)
-     AND (ctx.month_start IS NULL OR (c.start_date <= ctx.month_end AND c.end_date >= ctx.month_start))
-     AND (ctx.search_pattern IS NULL
-          OR c.contract_number ILIKE ctx.search_pattern
-          OR (v.room_ok AND r.name ILIKE ctx.search_pattern)
-          OR (ctx.with_customers AND EXISTS (
-                SELECT 1
-                  FROM public.contract_customers cc
-                  JOIN public.customers cu ON cu.id = cc.customer_id
-                 WHERE cc.contract_id = c.id
-                   -- contract_customers: super_admin_all ∨ select_rbac (accessible_contract_ids)
-                   AND ((ctx.is_super OR ctx.full_scope OR r.building_id = ANY (ctx.buildings))
-                        AND (cc.organization_id IS NULL OR ctx.is_super OR cc.organization_id = ANY (ctx.my_orgs))
-                        AND NOT (ctx.is_super AND COALESCE(cc.organization_id = ANY (ctx.sandbox_orgs), false))
-                       ) IS TRUE
-                   -- customers: super_admin_all ∨ select_rbac (customers.view ∧ chủ bản ghi)
-                   AND ((ctx.is_super OR (ctx.customers_any_scope AND cu.user_id = ANY (ctx.owner_ids)))
-                        AND (cu.organization_id IS NULL OR ctx.is_super OR cu.organization_id = ANY (ctx.my_orgs))
-                        AND NOT ((ctx.is_super OR ctx.is_admin) AND cu.user_id = ANY (ctx.demo_users))
-                        AND NOT (ctx.is_super AND COALESCE(cu.organization_id = ANY (ctx.sandbox_orgs), false))
-                       ) IS TRUE
-                   AND (cu.full_name ILIKE ctx.search_pattern OR cu.phone ILIKE ctx.search_pattern))))
-),
-page AS (
-  SELECT h.*
-    FROM hits h
-   ORDER BY h.created_at DESC, h.id
-   LIMIT (SELECT row_limit FROM ctx)
-  OFFSET (SELECT row_offset FROM ctx)
-)
-SELECT jsonb_build_object(
-  'total', (SELECT count(*) FROM hits),
-  'today', ctx.today,
-  'rows', COALESCE((
-    SELECT jsonb_agg(
-             to_jsonb(c) || jsonb_build_object(
-               'display_status', p.display_status,
-               'display_label', app_private.contract_display_label_v1(p.display_status),
-               'room', CASE WHEN p.room_ok THEN jsonb_build_object(
-                         'id', r.id,
-                         'name', r.name,
-                         'building_id', r.building_id,
-                         'building', CASE WHEN (b.id IS NOT NULL
-                           AND ((ctx.is_super OR ctx.full_scope OR b.id = ANY (ctx.buildings))
-                                AND (b.organization_id IS NULL OR ctx.is_super OR b.organization_id = ANY (ctx.my_orgs))
-                                AND NOT ((ctx.is_super OR ctx.is_admin) AND b.user_id = ANY (ctx.demo_users))
-                                AND NOT (ctx.is_super AND COALESCE(b.organization_id = ANY (ctx.sandbox_orgs), false))
-                               ) IS TRUE)
-                           THEN jsonb_build_object('id', b.id, 'name', b.name) END) END,
-               'contract_customers', COALESCE((
-                 SELECT jsonb_agg(jsonb_build_object(
-                          'id', cc.id,
-                          'contract_id', cc.contract_id,
-                          'customer_id', cc.customer_id,
-                          'is_representative', cc.is_representative,
-                          'customer', CASE WHEN ctx.with_customers AND cu.id IS NOT NULL
-                            AND ((ctx.is_super OR (ctx.customers_any_scope AND cu.user_id = ANY (ctx.owner_ids)))
-                                 AND (cu.organization_id IS NULL OR ctx.is_super OR cu.organization_id = ANY (ctx.my_orgs))
-                                 AND NOT ((ctx.is_super OR ctx.is_admin) AND cu.user_id = ANY (ctx.demo_users))
-                                 AND NOT (ctx.is_super AND COALESCE(cu.organization_id = ANY (ctx.sandbox_orgs), false))
-                                ) IS TRUE
-                            THEN jsonb_build_object('id', cu.id, 'full_name', cu.full_name, 'phone', cu.phone) END)
-                          ORDER BY COALESCE(cc.is_representative, false) DESC, cc.created_at, cc.id)
-                   FROM public.contract_customers cc
-                   LEFT JOIN public.customers cu ON cu.id = cc.customer_id
-                  WHERE cc.contract_id = c.id
-                    AND ((ctx.is_super OR ctx.full_scope OR r.building_id = ANY (ctx.buildings))
-                         AND (cc.organization_id IS NULL OR ctx.is_super OR cc.organization_id = ANY (ctx.my_orgs))
-                         AND NOT (ctx.is_super AND COALESCE(cc.organization_id = ANY (ctx.sandbox_orgs), false))
-                        ) IS TRUE), '[]'::jsonb))
-             ORDER BY p.created_at DESC, p.id)
-      FROM page p
-      JOIN public.contracts c ON c.id = p.id
+DECLARE
+  v_lifecycle text := COALESCE(p_lifecycle, 'ALL');
+  v_stat text := COALESCE(p_stat, 'ALL');
+  v_limit integer := COALESCE(p_limit, 1000);
+  v_offset integer := COALESCE(p_offset, 0);
+  v_customers boolean := p_with_customers IS TRUE;
+  v_month_start date;
+  v_month_end date;
+  v_safe text;
+  v_pattern text;
+  v_today date;
+  v_result jsonb;
+BEGIN
+  IF current_user IS DISTINCT FROM 'authenticated' OR auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'contract_list_v1 chỉ chạy bằng JWT người dùng (vai authenticated).' USING ERRCODE = '42501';
+  END IF;
+
+  IF v_lifecycle NOT IN ('ALL', 'ACTIVE', 'TERMINATED') THEN
+    RAISE EXCEPTION 'Bộ lọc vòng đời hợp đồng không hợp lệ: %', v_lifecycle USING ERRCODE = '22023';
+  END IF;
+  IF v_stat NOT IN ('ALL', 'EXPIRING', 'EXPIRED', 'TERMINATED') THEN
+    RAISE EXCEPTION 'Bộ lọc trạng thái hợp đồng không hợp lệ: %', v_stat USING ERRCODE = '22023';
+  END IF;
+  IF v_limit < 1 OR v_limit > 1000 OR v_offset < 0 THEN
+    RAISE EXCEPTION 'Phân trang không hợp lệ (1–1000 dòng, vị trí ≥ 0).' USING ERRCODE = '22023';
+  END IF;
+  IF array_position(p_building_ids, NULL) IS NOT NULL THEN
+    RAISE EXCEPTION 'Danh sách toà có phần tử rỗng.' USING ERRCODE = '22023';
+  END IF;
+  -- '' = không lọc tháng (web gửi month: '' → undefined).
+  IF NULLIF(p_month, '') IS NOT NULL THEN
+    IF p_month !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN
+      RAISE EXCEPTION 'Tháng phải có dạng YYYY-MM: %', p_month USING ERRCODE = '22023';
+    END IF;
+    v_month_start := to_date(p_month || '-01', 'YYYY-MM-DD');
+    v_month_end := (v_month_start + interval '1 month' - interval '1 day')::date;
+  END IF;
+
+  -- sanitizeSearchTerm của web: , ( ) " ' \ % thành khoảng trắng, gộp khoảng trắng (đúng tập \s
+  -- của JavaScript), bỏ hai đầu. Rỗng sau khi làm sạch = không tìm.
+  v_safe := btrim(regexp_replace(
+    regexp_replace(COALESCE(p_search, ''), '[,()"''\\%]', ' ', 'g'),
+    '[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+', ' ', 'g'));
+  v_pattern := CASE WHEN v_safe = '' THEN NULL ELSE '%' || replace(v_safe, '*', '%') || '%' END;
+
+  v_today := public.org_today_v1(NULL);
+
+  -- Mỗi bảng chỉ được tham chiếu MỘT lần trong câu: mỗi lần tham chiếu là một lượt policy RLS
+  -- với các InitPlan riêng (accessible_*_ids ≈ 35 ms/lượt đo trên TEST 18/10/2026).
+  WITH links AS MATERIALIZED (
+    -- Liên kết HĐ–khách thấy được (RLS contract_customers) + khách thấy được (RLS customers, LEFT
+    -- JOIN như embed web): dùng chung cho tìm theo khách và cột contract_customers của trang.
+    SELECT cc.id, cc.contract_id, cc.customer_id, cc.is_representative, cc.created_at,
+           cu.id AS cu_id, cu.full_name, cu.phone
+      FROM public.contract_customers cc
+      LEFT JOIN public.customers cu ON cu.id = cc.customer_id
+  ),
+  hits AS MATERIALIZED (
+    SELECT c AS crow, c.id, c.created_at, r.id AS room_id, r.name AS room_name,
+           r.building_id, d.display_status
+      FROM public.contracts c
       LEFT JOIN public.rooms r ON r.id = c.room_id
-      LEFT JOIN public.buildings b ON b.id = r.building_id
-  ), '[]'::jsonb))
-FROM ctx
+     CROSS JOIN LATERAL (
+       SELECT public.contract_display_status_v1(c.status::text, c.expected_move_out_date, c.end_date, v_today)
+         AS display_status
+     ) d
+     WHERE c.deleted_at IS NULL
+       -- rooms!inner của web: phòng phải thấy được (RLS) và khớp bộ lọc.
+       AND (p_building_ids IS NULL OR r.building_id = ANY (p_building_ids))
+       AND (p_room_name IS NULL OR r.name = p_room_name)
+       AND (v_lifecycle = 'ALL'
+            OR (v_lifecycle = 'ACTIVE' AND c.status::text <> 'TERMINATED')
+            OR (v_lifecycle = 'TERMINATED' AND c.status::text = 'TERMINATED'))
+       AND (v_stat = 'ALL' OR d.display_status = v_stat)
+       AND (v_month_start IS NULL OR (c.start_date <= v_month_end AND c.end_date >= v_month_start))
+       AND (v_pattern IS NULL
+            OR c.contract_number ILIKE v_pattern
+            OR r.name ILIKE v_pattern
+            OR (v_customers AND EXISTS (
+                  SELECT 1
+                    FROM links l
+                   WHERE l.contract_id = c.id
+                     AND l.cu_id IS NOT NULL
+                     AND (l.full_name ILIKE v_pattern OR l.phone ILIKE v_pattern))))
+  ),
+  page AS MATERIALIZED (
+    SELECT h.*
+      FROM hits h
+     ORDER BY h.created_at DESC, h.id
+     LIMIT v_limit OFFSET v_offset
+  ),
+  people AS MATERIALIZED (
+    -- Đại diện đứng đầu; khách không thấy được (RLS) hoặc bị ẩn thêm ⇒ customer = null như embed web.
+    SELECT l.contract_id,
+           jsonb_agg(jsonb_build_object(
+             'id', l.id,
+             'contract_id', l.contract_id,
+             'customer_id', l.customer_id,
+             'is_representative', l.is_representative,
+             'customer', CASE WHEN v_customers AND l.cu_id IS NOT NULL
+               THEN jsonb_build_object('id', l.cu_id, 'full_name', l.full_name, 'phone', l.phone) END)
+             ORDER BY COALESCE(l.is_representative, false) DESC, l.created_at, l.id) AS items
+      FROM links l
+     WHERE l.contract_id IN (SELECT p.id FROM page p)
+     GROUP BY l.contract_id
+  )
+  SELECT jsonb_build_object(
+    'total', (SELECT count(*) FROM hits),
+    'today', v_today,
+    'rows', COALESCE((
+      SELECT jsonb_agg(
+               to_jsonb(p.crow) || jsonb_build_object(
+                 'display_status', p.display_status,
+                 'display_label', public.contract_display_label_v1(p.display_status),
+                 'room', CASE WHEN p.room_id IS NOT NULL THEN jsonb_build_object(
+                           'id', p.room_id,
+                           'name', p.room_name,
+                           'building_id', p.building_id,
+                           'building', CASE WHEN b.id IS NOT NULL
+                             THEN jsonb_build_object('id', b.id, 'name', b.name) END) END,
+                 'contract_customers', COALESCE(pe.items, '[]'::jsonb))
+               ORDER BY p.created_at DESC, p.id)
+        FROM page p
+        LEFT JOIN public.buildings b ON b.id = p.building_id
+        LEFT JOIN people pe ON pe.contract_id = p.id
+    ), '[]'::jsonb))
+  INTO v_result;
+
+  RETURN v_result;
+END
+$fn$;
+
+-- Bốn ô thống kê: cùng RLS, cùng mốc ngày, cùng hàm nhãn với contract_list_v1.
+CREATE OR REPLACE FUNCTION public.contract_stats_v2(p_building_ids uuid[] DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_today date;
+  v_result jsonb;
+BEGIN
+  IF current_user IS DISTINCT FROM 'authenticated' OR auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'contract_stats_v2 chỉ chạy bằng JWT người dùng (vai authenticated).' USING ERRCODE = '42501';
+  END IF;
+  IF array_position(p_building_ids, NULL) IS NOT NULL THEN
+    RAISE EXCEPTION 'Danh sách toà có phần tử rỗng.' USING ERRCODE = '22023';
+  END IF;
+  v_today := public.org_today_v1(NULL);
+
+  SELECT jsonb_build_object(
+           'total', count(*),
+           'expiring', count(*) FILTER (WHERE d.display_status = 'EXPIRING'),
+           'expired', count(*) FILTER (WHERE d.display_status = 'EXPIRED'),
+           'terminated', count(*) FILTER (WHERE c.status::text = 'TERMINATED'),
+           'today', v_today)
+    INTO v_result
+    FROM public.contracts c
+   CROSS JOIN LATERAL (
+     SELECT public.contract_display_status_v1(c.status::text, c.expected_move_out_date, c.end_date, v_today)
+       AS display_status
+   ) d
+   WHERE c.deleted_at IS NULL
+     -- Như get_contract_stats: chỉ chạm rooms (thêm một lượt RLS) khi thật sự lọc toà.
+     AND (p_building_ids IS NULL OR EXISTS (
+           SELECT 1 FROM public.rooms r WHERE r.id = c.room_id AND r.building_id = ANY (p_building_ids)));
+
+  RETURN v_result;
+END
 $fn$;
 
 COMMENT ON FUNCTION public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean) IS
-  'Danh sách Hợp đồng dùng chung (web /contracts, Hermes, báo cáo). Trả {total, today, rows[]}; mỗi hàng = cột contracts + display_status/display_label + room{building} + contract_customers{customer}. Phạm vi = RLS SELECT hiện hành của auth.uid(); p_building_ids chỉ thu hẹp; p_with_customers=false ẩn khách. Migration 20261017115636.';
+  'Danh sách Hợp đồng dùng chung (web /contracts, Hermes, báo cáo). INVOKER: RLS của người gọi, chỉ gọi bằng JWT người dùng. Trả {total, today, rows[]}; hàng = cột contracts + display_status/display_label + room{building} + contract_customers{customer}. p_building_ids chỉ thu hẹp (NULL = toàn phạm vi RLS, {} = rỗng); p_with_customers=false ẩn khách. Migration 20261017115636.';
+COMMENT ON FUNCTION public.contract_stats_v2(uuid[]) IS
+  'Bốn ô thống kê màn Hợp đồng (total/expiring/expired/terminated + today). INVOKER: RLS của người gọi; cùng mốc ngày và hàm nhãn với contract_list_v1. Migration 20261017115636.';
 
-ALTER FUNCTION app_private.contract_display_status_v1(text, date, date, date) OWNER TO postgres;
-ALTER FUNCTION app_private.contract_display_label_v1(text) OWNER TO postgres;
-ALTER FUNCTION app_private.contract_list_args_v1(text, text, text, text, integer, integer) OWNER TO postgres;
+ALTER FUNCTION public.contract_display_status_v1(text, date, date, date) OWNER TO postgres;
+ALTER FUNCTION public.contract_display_label_v1(text) OWNER TO postgres;
 ALTER FUNCTION public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean) OWNER TO postgres;
+ALTER FUNCTION public.contract_stats_v2(uuid[]) OWNER TO postgres;
 
-REVOKE ALL ON FUNCTION app_private.contract_display_status_v1(text, date, date, date) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION app_private.contract_display_label_v1(text) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION app_private.contract_list_args_v1(text, text, text, text, integer, integer) FROM PUBLIC, anon, authenticated, service_role;
--- Chỉ người dùng đăng nhập (JWT). service_role không có auth.uid() nên không có phạm vi để đọc.
-REVOKE ALL ON FUNCTION public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean) FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean) TO authenticated;
+-- Chỉ người dùng đăng nhập (JWT). Hai hàm nhãn thuần cũng chỉ mở cho authenticated vì hàm INVOKER
+-- gọi chúng bằng vai người dùng.
+REVOKE ALL ON FUNCTION public.contract_display_status_v1(text, date, date, date),
+  public.contract_display_label_v1(text),
+  public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean),
+  public.contract_stats_v2(uuid[])
+  FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.contract_display_status_v1(text, date, date, date),
+  public.contract_display_label_v1(text),
+  public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean),
+  public.contract_stats_v2(uuid[])
+  TO authenticated;
 
 DO $assert$
+DECLARE
+  v_fn regprocedure;
 BEGIN
-  IF has_function_privilege('anon', 'public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)', 'EXECUTE')
-     OR has_function_privilege('service_role', 'public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'contract_list_v1 vẫn EXECUTE được bởi anon/service_role';
-  END IF;
-  IF NOT has_function_privilege('authenticated', 'public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'contract_list_v1 thiếu EXECUTE cho authenticated';
-  END IF;
-  IF has_function_privilege('authenticated', 'app_private.contract_list_args_v1(text, text, text, text, integer, integer)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'contract_list_args_v1 không được mở cho authenticated';
+  FOREACH v_fn IN ARRAY ARRAY[
+    'public.contract_display_status_v1(text, date, date, date)'::regprocedure,
+    'public.contract_display_label_v1(text)'::regprocedure,
+    'public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)'::regprocedure,
+    'public.contract_stats_v2(uuid[])'::regprocedure
+  ] LOOP
+    IF has_function_privilege('anon', v_fn, 'EXECUTE') OR has_function_privilege('service_role', v_fn, 'EXECUTE') THEN
+      RAISE EXCEPTION '% vẫn EXECUTE được bởi anon/service_role', v_fn;
+    END IF;
+    IF NOT has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN
+      RAISE EXCEPTION '% thiếu EXECUTE cho authenticated', v_fn;
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE oid IN (
+       'public.contract_list_v1(text, uuid[], text, text, text, text, integer, integer, boolean)'::regprocedure,
+       'public.contract_stats_v2(uuid[])'::regprocedure) AND prosecdef) THEN
+    RAISE EXCEPTION 'contract_list_v1/contract_stats_v2 phải là SECURITY INVOKER (đọc bằng RLS người gọi)';
   END IF;
 END
 $assert$;

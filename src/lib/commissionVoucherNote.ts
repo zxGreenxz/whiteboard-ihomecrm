@@ -14,6 +14,8 @@
 import { formatVND } from "@/lib/utils";
 import {
   CONTRACT_STATUS_CONFIG,
+  contractDisplayStatusOn,
+  type Contract,
   type ContractDisplayStatus,
 } from "@/types/contract";
 import { isJsonObject, jsonArray } from "@/lib/jsonValue";
@@ -124,38 +126,18 @@ export function fmtNgay(iso: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 }
 
-/** Số ngày giữa hai chuỗi 'YYYY-MM-DD' (b − a), tính theo UTC để không lệch DST. */
-function soNgay(a: string, b: string): number | null {
-  const pa = /^(\d{4})-(\d{2})-(\d{2})/.exec(a);
-  const pb = /^(\d{4})-(\d{2})-(\d{2})/.exec(b);
-  if (!pa || !pb) return null;
-  // noUncheckedIndexedAccess: nhóm regex là string | undefined dù đã khớp — Number()
-  // nhận cả hai; khớp regex ở trên đã bảo đảm ba nhóm có mặt.
-  const utc = (m: RegExpExecArray) => Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const ua = utc(pa);
-  const ub = utc(pb);
-  if (!Number.isFinite(ua) || !Number.isFinite(ub)) return null;
-  return Math.round((ub - ua) / 86_400_000);
-}
-
 /**
- * Trạng thái hiển thị của HĐ — cùng luật với getContractDisplayStatus ở
- * src/types/contract.ts nhưng lấy "hôm nay" từ server (facts.today) thay vì
- * đồng hồ máy khách, để bản in/ghi chú ổn định và test được.
+ * Trạng thái hiển thị của HĐ — ĐÚNG hàm nhãn chung (contractDisplayStatusOn, cùng công thức
+ * public.contract_display_status_v1) nhưng lấy "hôm nay" từ server (facts.today, theo múi giờ
+ * tổ chức) thay vì đồng hồ máy khách, để bản in/ghi chú ổn định và test được.
  */
 export function trangThaiHopDong(f: Pick<CommissionVoucherFacts,
   "status" | "end_date" | "expected_move_out_date" | "today">): ContractDisplayStatus {
-  if (f.status === "TERMINATED") return "TERMINATED";
-  if (f.status === "TRANSFERRED") return "TRANSFERRED";
-  if (f.status === "DRAFT") return "DRAFT";
-  if (f.expected_move_out_date) return "MOVING_OUT";
-  if (f.status === "EXPIRED") return "EXPIRED";
-  if (!f.end_date || !f.today) return "ACTIVE";
-  const d = soNgay(f.today, f.end_date);
-  if (d === null) return "ACTIVE";
-  if (d < 0) return "EXPIRED";
-  if (d <= 30) return "EXPIRING";
-  return "ACTIVE";
+  return contractDisplayStatusOn({
+    status: (f.status ?? "") as Contract["status"],
+    end_date: f.end_date ?? "",
+    expected_move_out_date: f.expected_move_out_date,
+  }, f.today?.slice(0, 10) ?? "");
 }
 
 const fmtPhanTram = (p: number): string =>

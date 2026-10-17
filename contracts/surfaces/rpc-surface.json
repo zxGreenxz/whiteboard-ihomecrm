@@ -9,9 +9,9 @@
     ]
   },
   "counts": {
-    "calledRpcs": 372,
+    "calledRpcs": 371,
     "byRisk": {
-      "normal": 269,
+      "normal": 268,
       "financial": 103
     },
     "securityDefiner": 353
@@ -19,6 +19,12 @@
   "missingOnServer": [
     {
       "name": "contract_list_v1",
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ]
+    },
+    {
+      "name": "contract_stats_v2",
       "callers": [
         "src/hooks/useContracts.ts"
       ]
@@ -2369,26 +2375,6 @@
       ],
       "callers": [
         "src/hooks/useContractMoveOutNotice.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_contract_stats": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_today date DEFAULT NULL::date, p_in30 date DEFAULT NULL::date",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useContracts.ts"
       ],
       "risk": "normal"
     },
