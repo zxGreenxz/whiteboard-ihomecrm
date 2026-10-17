@@ -13,6 +13,8 @@ const READ_RPC = new Set([
   'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1',
   'list_contract_meter_followups_v1', 'get_contract_move_out_notice_v1',
   'read_contract_meter_boundary_set_v1', 'read_contract_transfer_links_v1',
+  // Danh sách Hợp đồng: một hàm đọc dùng chung (migration 20261017115636).
+  'contract_list_v1',
 ]);
 
 test('TEST DEMO: returned contract mobile status loads from existing readers without writes', async ({ page, context }, testInfo) => {
@@ -57,13 +59,13 @@ test('TEST DEMO: returned contract mobile status loads from existing readers wit
   await page.goto('/contracts');
   const returned = page.waitForResponse(response => {
     const url = new URL(response.url());
-    return url.hostname === TEST_HOST && url.pathname === '/rest/v1/contracts'
-      && !!url.searchParams.get('status')?.includes('TERMINATED');
+    return url.hostname === TEST_HOST && url.pathname === '/rest/v1/rpc/contract_list_v1'
+      && response.request().postDataJSON()?.p_stat === 'TERMINATED';
   });
   await page.getByRole('button', { name: /Đã thanh lý/ }).click();
   const result = await returned;
   expect(result.ok()).toBe(true);
-  const records = await result.json();
+  const records = (await result.json())?.rows;
   expect(Array.isArray(records)).toBe(true);
   test.skip(records.length === 0, 'TEST DEMO không có hợp đồng TERMINATED có sẵn; không seed giao dịch.');
   await expect(page.locator('.rowlist .ctr').first()).toBeVisible();

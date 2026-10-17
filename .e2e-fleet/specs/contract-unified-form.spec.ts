@@ -11,7 +11,7 @@ const READ_RPC = new Set([
   'get_notification_org_config_v1', 'get_my_notification_preferences_v1', 'list_cashbook_visibility_v2',
   'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1', 'list_contract_meter_followups_v1',
   'get_contract_move_out_notice_v1', 'read_contract_meter_boundary_set_v1', 'read_contract_transfer_links_v1',
-  'list_contract_drafts', 'list_room_reservations_v1',
+  'list_contract_drafts', 'list_room_reservations_v1', 'contract_list_v1',
 ]);
 
 type JsonRecord = Record<string, unknown>;
