@@ -9,7 +9,11 @@ import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './fin
 // list_cashbook_closings_v1, sáu fa_*, personal_finance_snapshot, bank_event_admin_v1. Cổng tổng hợp
 // cùng chữ ký (KHÔNG chứng minh bản thật): is_super_admin, can_view_restricted_ie, ie_actor_is_company_owner_v1,
 // staff_can, org_timezone_v1 và năm RPC Hiệu quả kinh doanh (cổng "tất cả hoặc không" theo fixture_acl, số
-// lấy từ fa_* thật). Không chứng minh RLS, JWT thật hay PostgREST. Dữ liệu tổng hợp.
+// lấy từ fa_* thật). Mô hình INVOKER + RLS: gói chạy dưới vai authenticated nên các bảng gói đọc có GRANT +
+// RLS là CỔNG TỔNG HỢP theo policy web (accounts, income_expenses, buildings, cổ đông/lợi nhuận, ví) — chứng
+// minh gói không vượt RLS, KHÔNG chứng minh policy thật của production. Không JWT thật, không PostgREST.
+// Cổng hiện tại (Gói 0) còn DEFINER: test lấy ctx bằng chính cổng (hàm đọc ghi lại ctx) rồi gọi gói dưới
+// vai authenticated như cổng INVOKER mới sẽ làm (xem wave2-b.test.mjs). Dữ liệu tổng hợp.
 // MỘT PGlite cho cả file test, mỗi ca BEGIN … ROLLBACK (shared.isolated).
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
@@ -33,7 +37,9 @@ export const CAT_FOOD = u(13), SOURCE = u(14), EVENT_1 = u(15), EVENT_2 = u(16),
 const TABLES = `
   CREATE TABLE IF NOT EXISTS public.profiles(id uuid PRIMARY KEY,full_name text);
   ALTER TABLE public.accounts ADD COLUMN code text,ADD COLUMN description text,ADD COLUMN bank_name text,
-    ADD COLUMN initial_amount numeric(18,2) NOT NULL DEFAULT 0,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+    ADD COLUMN initial_amount numeric(18,2) NOT NULL DEFAULT 0,ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    ADD COLUMN is_default boolean DEFAULT false,ADD COLUMN updated_at timestamptz,ADD COLUMN bank_account_holder text,ADD COLUMN initial_date date,
+    ADD COLUMN lock_date date,ADD COLUMN branch text;
   ALTER TABLE public.cashbook_possession_bindings ADD COLUMN valid_from timestamptz NOT NULL DEFAULT '2020-01-01';
   CREATE TABLE public.income_expense_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,voucher_id uuid,event_kind text,posted_on date);
   CREATE TABLE public.income_expense_posting_lines(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid,posting_id uuid,account_id uuid,signed_amount numeric(15,2));
@@ -69,22 +75,29 @@ const TABLES = `
     received_at timestamptz,duplicate_count bigint DEFAULT 0,ciphertext text,nonce text,key_id text,payload_hash text);
   CREATE TABLE app_private.bank_event_audit(id bigserial PRIMARY KEY,actor_id uuid,action text,source_id uuid,event_id uuid,detail jsonb,created_at timestamptz DEFAULT clock_timestamp());
   CREATE TABLE public.fixture_company_owners(organization_id uuid,user_id uuid);
+  CREATE TABLE public.building_shareholders(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,building_id uuid,shareholder_id uuid,percent numeric,organization_id uuid);
+  CREATE TABLE public.profit_managers(id uuid PRIMARY KEY,auth_user_id uuid,deleted_at timestamptz);
+  CREATE TABLE public.profit_manager_salaries(id uuid PRIMARY KEY,manager_id uuid);
+  CREATE TABLE public.profit_manager_salary_buildings(salary_id uuid,building_id uuid);
+  CREATE TABLE public.fixture_w2b_ctx(n bigserial PRIMARY KEY,ctx jsonb);
   CREATE TABLE public.fixture_bp(building_id uuid PRIMARY KEY,cohort_billed numeric,cash_received numeric);`;
 
 // Cổng tổng hợp cùng chữ ký.
 const PORTS = `
-  CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT EXISTS(SELECT 1 FROM public.super_admins WHERE user_id=auth.uid())$$;
-  CREATE OR REPLACE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE AS $$
+  CREATE OR REPLACE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$SELECT EXISTS(SELECT 1 FROM public.super_admins WHERE user_id=auth.uid())$$;
+  CREATE OR REPLACE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT public.is_super_admin() OR EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='income_expenses.restricted_view' AND allowed
       AND (org_wide OR cardinality(building_ids)>0))$$;
   CREATE OR REPLACE FUNCTION app_private.ie_actor_is_company_owner_v1(p_org uuid,p_user uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
     SELECT EXISTS(SELECT 1 FROM public.fixture_company_owners WHERE organization_id=p_org AND user_id=p_user)$$;
   CREATE OR REPLACE FUNCTION public.staff_can(_table text,_action text,_owner uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT false$$;
+  CREATE OR REPLACE FUNCTION public.current_shareholder_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
+    SELECT id FROM public.shareholders WHERE auth_user_id=auth.uid() AND deleted_at IS NULL ORDER BY id LIMIT 1$$;
   CREATE OR REPLACE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT 'Asia/Ho_Chi_Minh'::text$$;
   -- Hiệu quả kinh doanh: danh sách toà = reports_finance.analysis (fixture_acl) ∩ can_access_building, toà thật của công ty;
   -- restricted_allowed = income_expenses.restricted_view phủ toà. RPC: "tất cả hoặc không" (42501) như exact_scope_v1.
   CREATE OR REPLACE FUNCTION public.business_performance_organizations_v1() RETURNS TABLE(organization_id uuid,organization_name text,
-    authorized_buildings jsonb,authorized_physical_building_count bigint,authorization_version bigint) LANGUAGE sql AS $$
+    authorized_buildings jsonb,authorized_physical_building_count bigint,authorization_version bigint) LANGUAGE sql SECURITY DEFINER AS $$
     SELECT b.organization_id,'Công ty',jsonb_agg(jsonb_build_object('id',b.id,'name',b.name,'restricted_allowed',EXISTS(SELECT 1 FROM public.fixture_acl r
         WHERE r.permission='income_expenses.restricted_view' AND r.allowed AND (r.org_wide OR b.id=ANY(r.building_ids))),'analysis_provenance','CANONICAL') ORDER BY b.id),
       count(*),1::bigint
@@ -92,7 +105,7 @@ const PORTS = `
     WHERE b.deleted_at IS NULL AND NOT COALESCE(b.is_virtual,false) AND public.can_access_building(b.id)
       AND EXISTS(SELECT 1 FROM public.fixture_acl a WHERE a.permission='reports_finance.analysis' AND a.allowed AND (a.org_wide OR b.id=ANY(a.building_ids)))
     GROUP BY b.organization_id$$;
-  CREATE OR REPLACE FUNCTION public.fixture_bp_gate(p_org uuid,p_buildings uuid[],p_restricted boolean) RETURNS uuid[] LANGUAGE plpgsql AS $$
+  CREATE OR REPLACE FUNCTION public.fixture_bp_gate(p_org uuid,p_buildings uuid[],p_restricted boolean) RETURNS uuid[] LANGUAGE plpgsql SECURITY DEFINER AS $$
   DECLARE v_roster jsonb; v_id uuid;
   BEGIN
     SELECT authorized_buildings INTO v_roster FROM public.business_performance_organizations_v1() WHERE organization_id=p_org;
@@ -104,7 +117,7 @@ const PORTS = `
     RETURN p_buildings;
   END $$;
   CREATE OR REPLACE FUNCTION public.business_performance_pnl_v1(p_organization_id uuid,p_basis text,p_start_date date,p_end_date date,p_building_ids uuid[])
-  RETURNS TABLE(month date,building_id uuid,building_name text,is_virtual boolean,revenue numeric,expense numeric,net numeric) LANGUAGE plpgsql AS $$
+  RETURNS TABLE(month date,building_id uuid,building_name text,is_virtual boolean,revenue numeric,expense numeric,net numeric) LANGUAGE plpgsql SECURITY DEFINER AS $$
   DECLARE v uuid[]:=public.fixture_bp_gate(p_organization_id,p_building_ids,true);
   BEGIN
     IF p_basis NOT IN ('ACCRUAL','VOUCHER_DATE') THEN RAISE EXCEPTION 'Unsupported business performance basis' USING ERRCODE='22023'; END IF;
@@ -112,7 +125,7 @@ const PORTS = `
     ELSE RETURN QUERY SELECT * FROM public.fa_monthly_pnl(p_start_date,p_end_date,v); END IF;
   END $$;
   CREATE OR REPLACE FUNCTION public.business_performance_category_breakdown_v1(p_organization_id uuid,p_basis text,p_start_date date,p_end_date date,p_building_ids uuid[])
-  RETURNS TABLE(month date,side text,type_id uuid,type_name text,category text,total_amount numeric,voucher_count bigint) LANGUAGE plpgsql AS $$
+  RETURNS TABLE(month date,side text,type_id uuid,type_name text,category text,total_amount numeric,voucher_count bigint) LANGUAGE plpgsql SECURITY DEFINER AS $$
   DECLARE v uuid[]:=public.fixture_bp_gate(p_organization_id,p_building_ids,true);
   BEGIN
     IF p_basis='ACCRUAL' THEN RETURN QUERY SELECT * FROM public.fa_type_breakdown_accrual(p_start_date,p_end_date,v);
@@ -122,7 +135,7 @@ const PORTS = `
   RETURNS TABLE(building_id uuid,building_name text,cohort_month date,cohort_available boolean,billed_current_charge numeric,collected_current_charge numeric,
     remaining_current_charge numeric,collection_rate_pct numeric,invoice_count integer,allocation_unknown_count integer,allocation_unknown_amount numeric,
     component_anomaly_count integer,carried_invoice_debt numeric,carried_deposit_debt numeric,current_deposit numeric,draft_pending_count integer,
-    draft_pending_amount numeric,settlement_count integer,settlement_amount numeric,generated_at timestamptz) LANGUAGE plpgsql AS $$
+    draft_pending_amount numeric,settlement_count integer,settlement_amount numeric,generated_at timestamptz) LANGUAGE plpgsql SECURITY DEFINER AS $$
   DECLARE v uuid[]:=public.fixture_bp_gate(p_organization_id,p_building_ids,true);
   BEGIN
     RETURN QUERY SELECT b.id,b.name,p_cohort_month,true,COALESCE(f.cohort_billed,0),COALESCE(f.cohort_billed,0)/2,COALESCE(f.cohort_billed,0)/2,50.0::numeric,
@@ -131,7 +144,7 @@ const PORTS = `
   END $$;
   CREATE OR REPLACE FUNCTION public.business_performance_cash_received_v1(p_organization_id uuid,p_month date,p_building_ids uuid[])
   RETURNS TABLE(building_id uuid,building_name text,cash_month date,cash_received numeric,payment_event_count integer,first_payment_date date,
-    last_payment_date date,generated_at timestamptz) LANGUAGE plpgsql AS $$
+    last_payment_date date,generated_at timestamptz) LANGUAGE plpgsql SECURITY DEFINER AS $$
   DECLARE v uuid[]:=public.fixture_bp_gate(p_organization_id,p_building_ids,true);
   BEGIN
     RETURN QUERY SELECT b.id,b.name,p_month,COALESCE(f.cash_received,0),1,p_month,p_month,clock_timestamp()
@@ -150,7 +163,7 @@ const REAL = [
   [migration('20260730101000_cashbook_aggregate_possession'), 'public.cashflow_by_day_v2'],
   [baseline, 'public.cashbook_period_totals'], [baseline, 'public.cashbook_opening_balance'], [baseline, 'public.cashflow_by_day'],
   [migration('20260724160000_finance_v2_cashbook_visibility_flags'), 'public.list_cashbook_visibility_v2'],
-  [baseline, 'public.list_cashbook_closings_v1'],
+  [baseline, 'public.list_cashbook_closings_v1'], [baseline, 'public.get_my_share_buildings'],
   [migration('20261003152559_danh_muc_chi_bao_cao_cong_gop'), 'public.fa_type_breakdown'],
   [migration('20260626000000_fa_accrual_pnl'), 'public.fa_type_breakdown_accrual'],
   [migration('20260731070000_current_date_to_org_today'), 'public.fa_snapshot_kpis'],
@@ -163,11 +176,64 @@ const REAL = [
 ];
 export const REAL_FUNCTIONS = REAL.map(([, name]) => name);
 
+// View thật của trang Sổ quỹ (bản cuối 20260723150000) — security_invoker như production.
+const balanceView = () => {
+  const src = migration('20260723150000_finance_v2_read_cutover_bridge');
+  const start = src.indexOf('CREATE OR REPLACE VIEW public.accounts_with_balance'), end = src.indexOf('ALTER VIEW public.accounts_with_balance SET (security_invoker = true);');
+  if (start < 0 || end < 0) throw new Error('missing accounts_with_balance');
+  return src.slice(start, end) + 'ALTER VIEW public.accounts_with_balance SET (security_invoker = true);';
+};
+// RLS cổng tổng hợp theo policy web (tên fixture_*), chỉ phần gói B đọc dưới vai authenticated.
+const RLS = `
+  GRANT USAGE ON SCHEMA app_private TO authenticated;
+  GRANT SELECT ON public.accounts,public.accounts_with_balance,public.profiles,public.income_expense_posting_lines,public.income_expense_postings,
+    public.income_expenses,public.income_expense_items,public.income_expense_types,public.buildings,public.shareholders,public.profit_monthly,
+    public.profit_allocations,public.personal_wallets,public.personal_categories,public.personal_legacy_category_map,public.personal_transactions,
+    public.personal_wallet_transfers,public.personal_budget_limits,public.personal_goals,public.super_admins,public.fixture_acl,
+    public.fixture_company_owners,public.fixture_building_access,public.organization_memberships TO authenticated;
+  ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_accounts_select ON public.accounts FOR SELECT TO authenticated USING (
+    (organization_id IS NULL OR public.is_super_admin() OR organization_id=ANY(public.my_org_ids()))
+    AND (user_id=auth.uid() OR public.is_super_admin() OR id IN (SELECT app_private.my_possessed_cashbook_ids_v1())
+      OR organization_id IN (SELECT app_private.my_company_owner_org_ids_v1())));
+  ALTER TABLE public.income_expenses ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_ie_select ON public.income_expenses FOR SELECT TO authenticated USING (
+    (public.is_super_admin() OR public.can_access_building(building_id) OR shareholder_id=public.current_shareholder_id())
+    AND (has_restricted_item=false OR user_id=auth.uid() OR public.can_view_restricted_ie()));
+  ALTER TABLE public.buildings ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_buildings_select ON public.buildings FOR SELECT TO authenticated USING (public.is_super_admin() OR public.can_access_building(id));
+  ALTER TABLE public.shareholders ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_shareholders_select ON public.shareholders FOR SELECT TO authenticated USING (user_id=auth.uid() OR public.is_super_admin()
+    OR organization_id IN (SELECT app_private.my_company_owner_org_ids_v1()) OR (auth_user_id=auth.uid() AND deleted_at IS NULL));
+  ALTER TABLE public.profit_allocations ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_alloc_select ON public.profit_allocations FOR SELECT TO authenticated USING (user_id=auth.uid() OR public.is_super_admin()
+    OR organization_id IN (SELECT app_private.my_company_owner_org_ids_v1()) OR shareholder_id=public.current_shareholder_id());
+  ALTER TABLE public.profit_monthly ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_pm_select ON public.profit_monthly FOR SELECT TO authenticated USING (user_id=auth.uid() OR public.is_super_admin()
+    OR organization_id IN (SELECT app_private.my_company_owner_org_ids_v1())
+    OR EXISTS(SELECT 1 FROM public.profit_allocations pa WHERE pa.profit_monthly_id=profit_monthly.id AND pa.shareholder_id=public.current_shareholder_id()));
+  ALTER TABLE public.personal_wallets ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_wallets_owner ON public.personal_wallets FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_categories ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_categories_owner ON public.personal_categories FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_legacy_category_map ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_legacy_map_owner ON public.personal_legacy_category_map FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_transactions ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_transactions_owner ON public.personal_transactions FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_wallet_transfers ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_transfers_owner ON public.personal_wallet_transfers FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_budget_limits ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_budgets_owner ON public.personal_budget_limits FOR SELECT TO authenticated USING (user_id=auth.uid());
+  ALTER TABLE public.personal_goals ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_personal_goals_owner ON public.personal_goals FOR SELECT TO authenticated USING (user_id=auth.uid());
+  -- Cổng INVOKER mới (Gói 0) sẽ gọi hàm đọc gói dưới vai authenticated: giả lập quyền gọi đó trong test.
+  GRANT EXECUTE ON FUNCTION app_private.hermes_w2b_read_v1(text,jsonb,jsonb) TO authenticated;`;
+
 async function before(db) {
   await db.exec(TABLES);
   await db.exec(PORTS);
   await db.exec('SET check_function_bodies=off');
-  try { for (const [src, name] of REAL) await db.exec(definitionOf(src, name)); }
+  try { for (const [src, name] of REAL) await db.exec(definitionOf(src, name)); await db.exec(balanceView()); }
   finally { await db.exec('RESET check_function_bodies'); }
 }
 
@@ -216,6 +282,8 @@ async function seed(db) {
   await db.exec(`INSERT INTO public.shareholders(id,user_id,auth_user_id,name,organization_id) VALUES
       ('${SH_ME}','${OTHER_USER}','${USER}','Cổ đông Tôi','${ORG}'),('${SH_OTHER}','${OTHER_USER}',null,'Cổ đông Khác','${ORG}'),
       ('${SH_FOREIGN}','${USER}','${USER}','Cổ đông ngoài','${FOREIGN}');
+    INSERT INTO public.building_shareholders(building_id,shareholder_id,percent,organization_id) VALUES
+      ('${BUILDING}','${SH_ME}',30,'${ORG}'),('${OTHER_BUILDING}','${SH_ME}',30,'${ORG}'),('${BUILDING}','${SH_OTHER}',70,'${ORG}');
     INSERT INTO public.profit_monthly(id,user_id,building_id,period_month,adjusted_profit,status,organization_id) VALUES
       ('${PM_A9}','${OTHER_USER}','${BUILDING}','2026-09-01',10000000,'LOCKED','${ORG}'),('${PM_B9}','${OTHER_USER}','${OTHER_BUILDING}','2026-09-01',4000000,'LOCKED','${ORG}'),
       ('${PM_A10}','${OTHER_USER}','${BUILDING}','2025-10-01',2000000,'LOCKED','${ORG}'),('${PM_F}','${USER}','${FOREIGN}','2026-09-01',99,'LOCKED','${FOREIGN}');
@@ -243,6 +311,7 @@ async function seed(db) {
     INSERT INTO app_private.bank_inbound_events(id,source_id,external_id,event_type,occurred_at,received_at,duplicate_count,ciphertext,nonce,key_id,payload_hash) VALUES
       ('${EVENT_1}','${SOURCE}','${'a'.repeat(64)}','sms.received','2026-10-15T01:00:00Z','2026-10-15T01:00:05Z',0,'CIPHERTEXT-SECRET','n','k1','${'b'.repeat(64)}'),
       ('${EVENT_2}','${SOURCE}','${'c'.repeat(64)}','notification.received','2026-10-16T02:00:00Z','2026-10-16T02:00:03Z',2,'CIPHERTEXT-SECRET','n','k1','${'d'.repeat(64)}');`);
+  await db.exec(RLS);
 }
 
 export async function sharedW2b(options = {}) {

@@ -13,6 +13,10 @@ import { W2B_REPORTS } from './wave2-b-contract.mjs';
 // quỹ chỉ trong sổ nhìn thấy (chặt hơn web ở chốt sổ), phiếu/hạng mục hạn chế, riêng tư (cổ đông, ví, biến
 // động số dư), rào đầu ra broker và đột biến SQL của gói B. Dữ liệu tổng hợp; RPC web là định nghĩa thật
 // (trừ cụm Hiệu quả kinh doanh: cổng tổng hợp cùng chữ ký — xem wave2-b-sql-fixture.mjs).
+// Mô hình INVOKER + RLS (quyết định 18/10): gói chạy dưới vai authenticated. Cổng của Gói 0 trên nhánh này còn
+// DEFINER nên run() dùng CHÍNH cổng đó để kiểm quyền và dựng ctx (hàm đọc gói tạm thay bằng bản ghi ctx), rồi
+// gọi hàm đọc thật dưới vai authenticated với ctx đó — đúng như cổng INVOKER mới sẽ làm. Rebase lên cổng mới
+// thì run() gọi thẳng env.report().
 const MAIN_PATH = 'supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql';
 const Q4_PATH = 'supabase/migrations/20261018020100_hermes_w2b_monthly_pnl_keys_v1.sql';
 const main = readFileSync(MAIN_PATH, 'utf8');
@@ -28,10 +32,30 @@ const RESTRICTED = 'income_expenses.restricted_view';
 // Broker → SQL → broker: tham số chuẩn hoá bằng chính khai báo JS, kết quả qua rào đầu ra của broker.
 const identity = (permission, buildings = [BUILDING, OTHER_BUILDING]) => ({ row: { organizationId: ORG }, effective: { read: [permission], action: [] },
   scopesByPermission: { [permission]: { buildingIds: buildings, cashbookIds: [] } } });
-async function run(env, report, params = {}, { limit = 50, offset = 0, actor } = {}) {
+const block = (sql, name) => {
+  const found = sql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g'));
+  assert.ok(found, name); return found.at(-1);
+};
+const READER = block(main, 'app_private.hermes_w2b_read_v1');
+const RECORDER = `CREATE OR REPLACE FUNCTION app_private.hermes_w2b_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
+  RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+  BEGIN INSERT INTO public.fixture_w2b_ctx(ctx) VALUES(p_ctx);
+    RETURN jsonb_build_object('rows','[]'::jsonb,'summary',NULL,'sourceCapped',false,'unavailable',NULL); END $fn$;`;
+// Cổng (quyền, tham số, toà, khoá phụ) → ctx; gói dưới vai authenticated; trang như cổng; rào đầu ra broker.
+async function run(env, report, params = {}, { limit = 50, offset = 0, actor = USER } = {}) {
   const input = W2.reads.report.input({ report, params, limit, offset });
-  const value = await env.report(report, input.params, { limit, offset }, undefined, actor ? { actor } : undefined);
-  return W2.reads.report.result(value, identity(W2B_REPORTS[report].permission), input);
+  await env.db.exec(RECORDER);
+  let gate;
+  try { gate = await env.report(report, input.params, { limit, offset }, undefined, { actor }); } finally { await env.db.exec(READER); }
+  const check = value => W2.reads.report.result(value, identity(W2B_REPORTS[report].permission), input);
+  if (gate.unavailable !== null) return check(gate);
+  const ctx = (await env.db.query('SELECT ctx FROM public.fixture_w2b_ctx ORDER BY n DESC LIMIT 1')).rows[0].ctx;
+  const raw = await env.call('SELECT app_private.hermes_w2b_read_v1($1,$2::jsonb,$3::jsonb) result', [report, JSON.stringify(input.params), JSON.stringify(ctx)],
+    { role: 'authenticated', actor });
+  const items = raw.unavailable === null ? raw.rows.slice(offset, offset + limit) : [];
+  return check({ ...gate, unavailable: raw.unavailable, summary: raw.unavailable === null ? raw.summary : null, items,
+    nextOffset: raw.unavailable === null && offset + items.length < raw.rows.length && items.length > 0 ? offset + items.length : null,
+    sourceCapped: raw.unavailable === null ? raw.sourceCapped : false });
 }
 async function all(env, report, params = {}) {
   const items = []; let offset = 0, last;
@@ -42,9 +66,9 @@ async function orgOverlay(db, on = true) {
   for (const table of ['hermes_connections', 'hermes_org_policies'])
     await db.query(on ? `UPDATE app_private.${table} SET scope_ids=array_append(scope_ids,$1::uuid)` : `UPDATE app_private.${table} SET scope_ids=array_remove(scope_ids,$1::uuid)`, [ORG_SCOPE]);
 }
-// Gọi RPC/hàm web như người dùng (jwt sub = USER) để so từng con số với Hermes.
-const web = (env, sql, args = [], actor = USER) => env.call(`SELECT (${sql}) result`, args, { role: 'postgres', actor });
-const webRows = (env, sql, args = [], actor = USER) => env.call(`SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) result FROM (${sql}) x`, args, { role: 'postgres', actor });
+// Gọi RPC/hàm web như người dùng: vai authenticated + jwt sub = USER (bảng chịu RLS cổng tổng hợp).
+const web = (env, sql, args = [], actor = USER) => env.call(`SELECT (${sql}) result`, args, { role: 'authenticated', actor });
+const webRows = (env, sql, args = [], actor = USER) => env.call(`SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) result FROM (${sql}) x`, args, { role: 'authenticated', actor });
 const num = value => Number(value);
 // Người hỏi thuộc thêm công ty khác (web lọc my_org_ids() ⇒ trộn hai công ty). Chỉ đổi my_org_ids: cổng Hermes
 // từ chối người có hai membership thường (hermes_ordinary_org_ambiguous), còn RPC web chỉ đọc my_org_ids().
@@ -53,7 +77,7 @@ const secondOrg = db => db.exec(`CREATE OR REPLACE FUNCTION public.my_org_ids() 
 
 test('gói B: bảng báo cáo SQL (hermes_w2b_catalog_v1) khớp khai báo JS (W2B_REPORTS)', () => shared.isolated(env => assertPackageParity(env, 'b')));
 
-test('cấu trúc: chỉ hàm hermes_w2b_* và bốn hàm dùng chung public; Q4 chỉ hai hàm đọc báo cáo; ACL, DEFINER/INVOKER, search_path; không trợ lý cũ', () => inCase(async ({ db }) => {
+test('cấu trúc: chỉ hàm hermes_w2b_* và bốn hàm dùng chung public; Q4 chỉ hai hàm đọc báo cáo; mọi hàm gói INVOKER search_path rỗng; ACL; không trợ lý cũ', () => inCase(async ({ db }) => {
   const created = sql => [...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
   const SHARED = ['public.cashbook_list_v1', 'public.finance_analysis_top_expenses_v1', 'public.profit_my_share_v1', 'public.profit_shareholder_summary_v1'];
   const mine = created(main);
@@ -69,10 +93,23 @@ test('cấu trúc: chỉ hàm hermes_w2b_* và bốn hàm dùng chung public; Q4
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname||'.'||p.proname=ANY($1)`, [[...new Set(mine)]])).rows;
   assert.equal(procs.length, new Set(mine).size);
+  const FRAME = ['app_private.hermes_w2b_catalog_v1', 'app_private.hermes_w2b_read_v1'];
+  const live = (await db.query("SELECT has_function_privilege('authenticated','app_private.hermes_w2b_read_v1(text,jsonb,jsonb)','EXECUTE') v")).rows[0].v;
   for (const proc of procs) {
-    assert.deepEqual([proc.auth, proc.anon, proc.service], [SHARED.includes(proc.name), false, false], proc.name);
-    assert.equal(proc.definer, proc.name !== 'public.finance_analysis_top_expenses_v1', `${proc.name}: chỉ hàm chi lớn là INVOKER`);
-    assert.match(proc.config.join(','), /^search_path=pg_catalog, ?(public, ?)?(app_private)?$|^search_path=pg_catalog, ?public$/, proc.name);
+    // Hai hàm khung giữ ACL của nền (fixture cấp EXECUTE cho hàm đọc để giả lập cổng INVOKER mới).
+    assert.deepEqual([proc.auth, proc.anon, proc.service], [FRAME.includes(proc.name) ? proc.name.endsWith('read_v1') && live : true, false, false], proc.name);
+    assert.equal(proc.definer, false, `${proc.name}: INVOKER`);
+    assert.deepEqual(proc.config, ['search_path=""'], `${proc.name}: search_path rỗng`);
+  }
+  assert.doesNotMatch(stripComments(main), /SECURITY DEFINER/, 'không hàm DEFINER nào trong gói');
+  // Hàm dùng chung và hàm đọc gói tự từ chối khi KHÔNG chạy dưới vai authenticated (vd. bị cổng DEFINER gọi).
+  for (const sql of ['SELECT count(*) FROM public.cashbook_list_v1($1::uuid)', 'SELECT count(*) FROM public.finance_analysis_top_expenses_v1($1::uuid,current_date,current_date)',
+    'SELECT public.profit_my_share_v1($1::uuid)', 'SELECT public.profit_shareholder_summary_v1($1::uuid)'])
+  {
+    await db.exec('SAVEPOINT role_check');
+    const failed = await db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true); ${sql.replace('$1', `'${ORG}'`)}`).then(() => null, error => error);
+    await db.exec('ROLLBACK TO SAVEPOINT role_check; RELEASE SAVEPOINT role_check');
+    assert.equal(failed?.code, '42501', sql);
   }
 }));
 
@@ -169,9 +206,9 @@ test('B3 sổ quỹ = hàm dùng chung cashbook_list_v1: sổ nhìn thấy của
   assert.ok(value.items.every(row => row.balanceVisible === false && row.initialAmount === null && row.currentAmount === null));
   await db.exec(`INSERT INTO public.cashbook_possession_bindings(organization_id,cashbook_id,membership_id,possession_kind) VALUES('${ORG}','${OWNER_BOOK}','${USER}','CUSTODIAN')`);
   assert.deepEqual((await all(env, 'cashbooks')).items.filter(row => row.balanceVisible).map(row => row.cashbookId), [OWNER_BOOK]);
-  // Hàm dùng chung tự kiểm khoá web cashbooks.view khi web gọi thẳng.
+  // Khoá web cashbooks.view: cổng Hermes kiểm; hàm dùng chung chỉ dựa RLS (không chép policy, không tự kiểm khoá).
   await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='cashbooks.view'");
-  await assert.rejects(web(env, 'SELECT count(*) FROM public.cashbook_list_v1($1::uuid)', [ORG]), code('42501'));
+  await assert.rejects(run(env, 'cashbooks'), code('42501'));
 }));
 
 test('B4 chốt sổ: web list_cashbook_closings_v1 lộ chênh lệch MỌI sổ cho mọi thành viên; Hermes chỉ sổ người hỏi nhìn thấy', { timeout: 120000 }, () => inCase(async env => {
@@ -260,7 +297,8 @@ test('B7 10 khoản chi lớn = hàm dùng chung (INVOKER) trên toà kết nố
   assert.deepEqual([value.items[0].buildingId, value.items[0].itemTypes, value.items[0].voucherDate], [BUILDING, 'Lương', '2026-10-04']);
   await orgOverlay(db);
   assert.deepEqual(pick((await all(env, 'top_expenses', { month: '2026-10' })).items).map(([c]) => c), ['PC-402', 'PC-401', 'PC-403', 'PC-404']);
-  assert.equal((await webRows(env, "SELECT * FROM public.finance_analysis_top_expenses_v1($1::uuid,'2026-10-01','2026-10-31',NULL,10)", [ORG])).length, 0, 'không danh sách toà ⇒ không hàng');
+  assert.equal((await webRows(env, "SELECT * FROM public.finance_analysis_top_expenses_v1($1::uuid,'2026-10-01','2026-10-31',NULL,10)", [ORG])).length, 4, 'NULL = toàn phạm vi RLS');
+  assert.equal((await webRows(env, "SELECT * FROM public.finance_analysis_top_expenses_v1($1::uuid,'2026-10-01','2026-10-31','{}',10)", [ORG])).length, 0, "'{}' = rỗng");
 }));
 
 test('B8 Hiệu quả kinh doanh: RPC web "tất cả hoặc không" chỉ nhận toà web cho phép ∩ restricted_view của CRM và kết nối', { timeout: 120000 }, () => inCase(async env => {
@@ -334,7 +372,8 @@ test('B10 quản lý: cần shareholder_profit.view + Toàn tổ chức; dòng n
   assert.deepEqual(webSummary.shareholders.map(row => num(row.remaining)), value.items.map(row => num(row.remaining)));
   await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='shareholder_profit.view'");
   await assert.rejects(run(env, 'profit_shareholders'), code('42501'));
-  await assert.rejects(web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG]), code('42501'), 'hàm dùng chung tự kiểm khoá web');
+  // Hàm dùng chung chỉ dựa RLS: người không phải cổ đông/chủ/người tạo không thấy dòng nào.
+  assert.deepEqual((await web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG], FOREIGN)).shareholders, []);
 }));
 
 test('B12 ví cá nhân = personal_finance_snapshot của CHÍNH người hỏi (không theo công ty/toà, không gọi bootstrap)', { timeout: 120000 }, () => inCase(async env => {
@@ -395,12 +434,12 @@ const probes = [
     run: async env => { await grantRead(env.db, ['cashbooks.view'], { orgWide: true }); await orgOverlay(env.db);
       return (await all(env, 'cashbook_closings')).items.some(row => row.cashbookId === FOREIGN_CASHBOOK); } },
   { name: 'sổ quỹ chỉ của công ty kết nối', sql: replaceExactly(`  WHERE a.organization_id=(p_ctx->>'organizationId')::uuid AND a.deleted_at IS NULL
-    AND a.id IN (SELECT v.cashbook_id`, `  WHERE a.deleted_at IS NULL
-    AND a.id IN (SELECT v.cashbook_id`),
+    AND (NOT (p_ctx ? 'cashbookIds')`, `  WHERE a.deleted_at IS NULL
+    AND (NOT (p_ctx ? 'cashbookIds')`),
     run: async env => { await grantRead(env.db, ['reports_finance.daily_cashbook'], { orgWide: true }); await orgOverlay(env.db); await secondOrg(env.db);
       return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
   { name: 'người nhiều công ty: gọi từng sổ thay vì "Tất cả" của web', sql: replaceExactly(
-    `  ELSIF EXISTS(SELECT 1 FROM app_private.ie_visible_cashbook_ids_v1() v WHERE NOT v.cashbook_id=ANY(v_books)) THEN v_accounts:=v_books;\n`, ''),
+    `  ELSIF EXISTS(SELECT 1 FROM public.accounts v WHERE v.deleted_at IS NULL AND NOT v.id=ANY(v_books)) THEN v_accounts:=v_books;\n`, ''),
     run: async env => { await grantRead(env.db, ['reports_finance.daily_cashbook'], { orgWide: true }); await orgOverlay(env.db); await secondOrg(env.db);
       return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
   { name: '"Tất cả toà" chỉ khi Toàn tổ chức', sql: replaceExactly(`  v_buildings:=CASE WHEN p_ctx->'orgWide'='true'::jsonb THEN ARRAY[NULL::uuid]`, `  v_buildings:=CASE WHEN true THEN ARRAY[NULL::uuid]`),
@@ -422,24 +461,30 @@ const probes = [
     run: async env => { await orgOverlay(env.db); await grantRead(env.db, [RESTRICTED]);
       await env.db.exec(`UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'${RESTRICTED}')`);
       return (await all(env, 'bp_pnl', { fromDate: '2026-10-01', toDate: '2026-10-31' })).items.length > 0; } },
-  { name: 'toà của báo cáo = ctx.buildings', sql: replaceExactly(`    AND jsonb_typeof(p_ctx->'buildings')='array' AND p_ctx->'buildings' ? b.id::text\n`, ''),
+  { name: 'toà của báo cáo = ctx.buildings', sql: replaceExactly(`   FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(p_ctx->'buildings')='array' THEN p_ctx->'buildings' ELSE '[]'::jsonb END) x`,
+    `   FROM (SELECT id::text FROM public.buildings) b(x)`),
     run: async env => (await all(env, 'fa_type_breakdown', { fromDate: '2026-10-01', toDate: '2026-10-31', basis: 'cash' })).items.some(row => num(row.totalAmount) === 1400000) },
-  { name: 'tổng quan cổ đông: dòng nhìn thấy như RLS', sql: replaceExactly(`      AND (v_super OR v_owner OR s.user_id=auth.uid() OR s.auth_user_id=auth.uid())`, ''),
+  { name: 'tổng quan cổ đông: chỉ cổ đông của đúng công ty', sql: replaceExactly(`    SELECT s.id,s.name FROM public.shareholders s WHERE s.organization_id=p_organization_id AND s.deleted_at IS NULL`,
+    `    SELECT s.id,s.name FROM public.shareholders s WHERE s.deleted_at IS NULL`),
     run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await orgOverlay(env.db);
-      return (await all(env, 'profit_shareholders')).items.some(row => row.shareholderId === SH_OTHER); } },
+      return (await all(env, 'profit_shareholders')).items.some(row => row.name === 'Cổ đông ngoài'); } },
   { name: 'cổ đông tự xem: chỉ toà kết nối', sql: replaceExactly(`    v_raw:=public.profit_my_share_v1(v_org,v_buildings);`, `    v_raw:=public.profit_my_share_v1(v_org,NULL); v_buildings:=ARRAY(SELECT id FROM public.buildings);`),
     run: async env => { await grantRead(env.db, ['reports_finance.profit_distribution'], { orgWide: true });
       return (await all(env, 'profit_my_share')).items.some(row => row.buildingId === OTHER_BUILDING); } },
-  { name: 'hàm dùng chung sổ quỹ tự kiểm khoá web', sql: replaceExactly(`  IF NOT public.is_super_admin() AND NOT EXISTS(SELECT 1 FROM app_private.authorized_scope_v3('cashbooks.view',p_organization_id) s`,
-    `  IF false AND NOT EXISTS(SELECT 1 FROM app_private.authorized_scope_v3('cashbooks.view',p_organization_id) s`),
-    run: async env => { await env.db.exec("DELETE FROM public.fixture_acl WHERE permission='cashbooks.view'");
-      return (await web(env, 'SELECT count(*)::int FROM public.cashbook_list_v1($1::uuid)', [ORG])) > 0; } },
+  { name: 'hàm dùng chung sổ quỹ: đúng một công ty', sql: replaceExactly(`  JOIN public.accounts o ON o.id=a.id AND o.organization_id=p_organization_id`, `  JOIN public.accounts o ON o.id=a.id`),
+    run: async env => { await secondOrg(env.db);
+      return (await webRows(env, 'SELECT cashbook_id FROM public.cashbook_list_v1($1::uuid)', [ORG])).some(row => row.cashbook_id === FOREIGN_ORG_BOOK); } },
+  { name: 'hàm dùng chung: chỉ chạy dưới vai authenticated', sql: replaceExactly(`  IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_organization_id IS NULL THEN
+    RAISE EXCEPTION 'profit_summary_denied'`, `  IF auth.uid() IS NULL OR p_organization_id IS NULL THEN
+    RAISE EXCEPTION 'profit_summary_denied'`),
+    run: async env => { await env.db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true)`);
+      return (await env.db.query(`SELECT jsonb_array_length(public.profit_shareholder_summary_v1('${ORG}')->'shareholders') n`)).rows[0].n > 1; } },
   { name: 'biến động số dư chỉ super admin ở gói (ngoài cổng)', sql: replaceExactly(`  IF p_ctx->'isSuperadmin' IS DISTINCT FROM 'true'::jsonb THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;\n  v_status`, '  v_status'),
     run: async env => { await env.db.exec(`INSERT INTO public.super_admins VALUES('${USER}')`);
       const ctx = { organizationId: ORG, userId: USER, report: 'bank_event_feed', permission: 'assistant.bank_events.read', scope: 'self', buildings: [],
         requestedBuildingId: null, overlayOrg: false, orgWide: false, isSuperadmin: false, today: '2026-10-16', scopes: {} };
       const value = await env.call('SELECT app_private.hermes_w2b_read_v1($1,$2::jsonb,$3::jsonb) result', ['bank_event_feed',
-        JSON.stringify({ fromDate: null, toDate: null, kind: null }), JSON.stringify(ctx)], { role: 'postgres' });
+        JSON.stringify({ fromDate: null, toDate: null, kind: null }), JSON.stringify(ctx)], { role: 'authenticated' });
       return value.rows.length > 0; } },
 ];
 for (const probe of probes) {
