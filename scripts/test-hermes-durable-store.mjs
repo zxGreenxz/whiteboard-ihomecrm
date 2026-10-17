@@ -457,7 +457,7 @@ export function assertRoomProjection(result, roomIds, buildingIds) {
 export function createLeaseReadFetch(ctx, { assertLease = ctx.assertLease ?? assertTestLease, request = fetch, drainTimeoutMs = 30_000 } = {}) {
   const tracker = fixtureWorkTracker(ctx, drainTimeoutMs);
   const paths = new Map([['/auth/v1/user', 'GET'], ['/rest/v1/rpc/get_authorization_context_v1', 'POST'],
-    ['/rest/v1/rpc/get_my_organizations', 'POST'], ['/rest/v1/rpc/copilot_org_scope_buildings_v1', 'POST'],
+    ['/rest/v1/rpc/get_my_organizations', 'POST'], ['/rest/v1/rpc/hermes_scope_buildings_v1', 'POST'],
     ['/rest/v1/rpc/hermes_room_scope_map_v1', 'POST'], ['/rest/v1/rpc/hermes_sale_listing_rooms_v1', 'POST']]);
   const read = async (url, options) => tracker.track(async () => {
     const parsed = new URL(url);

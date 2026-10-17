@@ -215,7 +215,7 @@ export async function runHarness({ context, lease, reportPath = REPORT, sourceId
       fetch: async (url, options) => {
         const started = performance.now();
         const endpoint = new URL(url).pathname.split('/').at(-1);
-        demand(['user', 'get_authorization_context_v1', 'get_my_organizations', 'copilot_org_scope_buildings_v1'].includes(endpoint), 'unexpected_adapter_endpoint');
+        demand(['user', 'get_authorization_context_v1', 'get_my_organizations', 'hermes_scope_buildings_v1'].includes(endpoint), 'unexpected_adapter_endpoint');
         const response = await fetch(url, options);
         let errorCode = null;
         if (!response.ok) {

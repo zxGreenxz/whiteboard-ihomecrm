@@ -503,6 +503,22 @@
       ]
     },
     {
+      "id": "hermes-copilot-independence",
+      "sourcePaths": [
+        "supabase/migrations/*.sql",
+        "infra/hermes-runtime/**",
+        "infra/hermes-zalo-router/**",
+        "infra/hermes-zalo-native/**",
+        "scripts/hermes-task-function-contract.mjs",
+        "scripts/network-center-function-bodies.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/copilot-independence.test.mjs",
+        "infra/hermes-broker/scope-buildings-sql.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-frontend-proxy",
       "sourcePaths": [
         "api/hermes/**",

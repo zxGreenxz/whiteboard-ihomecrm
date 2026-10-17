@@ -23,7 +23,7 @@ function fixture({ response, directory = [ORG], scope = [BUILDING], superadmin =
           organizationId: ORG, membershipId: MEMBER, authorizationVersion: 1, isPlatformAdmin: superadmin,
           isOffboarded: false, permissions: { 'rooms.view': true },
         } : path.endsWith('get_my_organizations') ? { user_id: USER, organizations: directory.map((id) => ({ id })) }
-          : path.endsWith('copilot_org_scope_buildings_v1') ? scope : undefined;
+          : path.endsWith('hermes_scope_buildings_v1') ? scope : undefined;
       assert.notEqual(data, undefined, 'unexpected endpoint');
       return Response.json(data);
     } });
@@ -45,7 +45,7 @@ test('adapter uses real-user bearer and only fixed read endpoints; verifies Auth
       assert.equal(call.init.headers['accept-profile'], 'public');
     }
   }
-  assert.deepEqual(f.calls.find((call) => call.path.endsWith('copilot_org_scope_buildings_v1')).args,
+  assert.deepEqual(f.calls.find((call) => call.path.endsWith('hermes_scope_buildings_v1')).args,
     { p_permission_key: 'rooms.view', p_organization_id: ORG });
 });
 
@@ -58,7 +58,7 @@ test('forged user, role, expired session and Auth rejection are not accepted', a
 });
 
 test('current strict scope failure denies even when legacy authorization context says membership active', async () => {
-  const f = fixture({ response: ({ path }) => path.endsWith('copilot_org_scope_buildings_v1')
+  const f = fixture({ response: ({ path }) => path.endsWith('hermes_scope_buildings_v1')
     ? Response.json({ code: '42501', message: 'revoked private member' }, { status: 403 }) : null });
   await assert.rejects(f.read(), { code: 'forbidden' });
 });
@@ -70,7 +70,7 @@ test('empty authorized resource scope is valid self context and removes business
 
 test('stale directory candidates are probed; active ambiguity remains visible for broker rejection', async () => {
   const stale = fixture({ directory: [ORG, OTHER], response: ({ path, args }) =>
-    path.endsWith('copilot_org_scope_buildings_v1') && args.p_organization_id === OTHER
+    path.endsWith('hermes_scope_buildings_v1') && args.p_organization_id === OTHER
       ? Response.json({ code: '42501' }, { status: 403 }) : null });
   assert.deepEqual((await stale.read()).activeOrganizationIds, [ORG]);
   assert.deepEqual((await fixture({ directory: [ORG, OTHER] }).read()).activeOrganizationIds, [ORG, OTHER]);

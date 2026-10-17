@@ -44,7 +44,7 @@ export function createSupabaseAuthAdapter({ url, publishableKey, fetch: request 
   }
   // Private fixed-name calls. The caller/model never controls an RPC path or permission key.
   const membershipScope = (accessToken, organizationId, signal) => read(
-    '/rest/v1/rpc/copilot_org_scope_buildings_v1', accessToken, signal,
+    '/rest/v1/rpc/hermes_scope_buildings_v1', accessToken, signal,
     { p_permission_key: 'rooms.view', p_organization_id: organizationId });
 
   return Object.freeze({

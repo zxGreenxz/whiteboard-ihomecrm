@@ -77,7 +77,7 @@ function connector({ latency = LATENCY, onAudit = () => {}, limits } = {}) {
       rooms: [{ id: I.room, building_id: I.building, code: '101', name: '101', floor: 1, area: 20, rent_price: 3000000, deposit_amount: 3000000,
         status_public: 'free', sale_state: null, sale_today: '2026-10-15', avail_date: null, expected_ready_on: null }] });
     if (path === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: I.user, organizations: [{ id: I.org }] });
-    if (path === '/rest/v1/rpc/copilot_org_scope_buildings_v1') return Response.json([I.building]);
+    if (path === '/rest/v1/rpc/hermes_scope_buildings_v1') return Response.json([I.building]);
     if (path === '/rest/v1/rpc/hermes_domain_capabilities_v1') return Response.json({ organizationId: I.org, userId: I.user,
       membershipId: I.member, authorizationVersion: state.authorizationVersion, isSuperadmin: false, policyVersion: 1,
       permissions: Object.fromEntries(DOMAIN_READ_CAPABILITIES.map(name => [name, name === 'customers.view'
