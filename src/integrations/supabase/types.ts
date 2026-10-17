@@ -24380,6 +24380,10 @@ export type Database = {
         Args: { p_binding: Json; p_domain: string; p_input: Json }
         Returns: Json
       }
+      hermes_domain_read_v3: {
+        Args: { p_binding: Json; p_domain: string; p_input: Json }
+        Returns: Json
+      }
       hermes_expense_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
@@ -24456,6 +24460,10 @@ export type Database = {
         Returns: Json
       }
       hermes_room_pass_upsert_v1: {
+        Args: { p_binding: Json; p_input: Json; p_operation: string }
+        Returns: Json
+      }
+      hermes_room_pass_upsert_v2: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
       }

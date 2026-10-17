@@ -10,11 +10,20 @@ import { id, USER, ORG, FOREIGN, SESSION } from '../hermes-zalo-router/private-c
 // another is not. No PostgREST/JWT/RLS or concurrent MVCC evidence.
 export const upsertPath = new URL('../../supabase/migrations/20261015162454_hermes_room_pass_upsert_v1.sql', import.meta.url);
 export const enablePath = new URL('../../supabase/migrations/20261015163023_hermes_room_pass_registry_enable_v1.sql', import.meta.url);
+// Đọc đầy đủ cho người hỏi (16/10): hermes_room_pass_upsert_v2 bọc v1 và trả SĐT đầy đủ.
+export const fullReadPath = new URL('../../supabase/migrations/20261016162104_hermes_full_read_v1.sql', import.meta.url);
+// Sửa sau review 9aef3a21: v2 chỉ trả SĐT đầy đủ khi khoá Read customers.view cho phép.
+export const fullReadFixPath = new URL('../../supabase/migrations/20261016172206_hermes_full_read_review_fixes_v1.sql', import.meta.url);
+// Khớp web (17/10) rồi sửa sau review 85280779: v2 chỉ trả khách đại diện có chủ hồ sơ là thành
+// viên ACTIVE (RLS customers_select_rbac). Định nghĩa SỐNG của v2 ở phần tử CUỐI của chuỗi.
+export const fullReadParityPath = new URL('../../supabase/migrations/20261017021554_hermes_full_read_web_parity_v1.sql', import.meta.url);
+export const fullReadOwnerPath = new URL('../../supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql', import.meta.url);
+export const fullReadChain = () => [fullReadPath, fullReadFixPath, fullReadParityPath, fullReadOwnerPath].map(path => readFileSync(path, 'utf8'));
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 export const OWNER = id('3'), BUILDING2 = id('4'), ROOM2 = id('5'), FOREIGN_BUILDING = id('6'), FOREIGN_ROOM = id('7'), SCOPE2 = id('8');
 export const ROOM3 = id('9'), CONTRACT = id('e'), CUSTOMER = '0c0c0c0c-0000-4000-8000-000000000001', PHONE = '0354058160';
 
-export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8') } = {}) {
+export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8'), fullRead = null } = {}) {
   const base = await setupRoomPass(t), { db } = base;
   await db.exec(`
     ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN code text,ADD COLUMN street_address text,ADD COLUMN is_virtual boolean NOT NULL DEFAULT false;
@@ -67,17 +76,57 @@ export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8') } 
   await db.exec(extract(writer, 'public.upsert_room_pass_listing'));
   await db.exec(extract(migration('20261014081902_hermes_domain_reads_v1'), 'app_private.hermes_domain_text_v1'));
   await db.exec(sql); await db.exec(sql);
-  async function call(operation, input, b = binding, role = 'authenticated', actor = USER) {
-    await db.exec('BEGIN');
+  if (fullRead !== null) {
+    // customers.view: cổng CRM tổng hợp theo toà (fixture_customer_read), registry bật,
+    // chính sách và Read kết nối có khoá; overlay kết nối vẫn là SCOPE (chỉ BUILDING).
+    // Chủ hồ sơ khách (customers.user_id) và thành viên ACTIVE nhìn thấy được (current_visible_owner_ids).
+    await db.exec(`ALTER TABLE public.customers ADD COLUMN user_id uuid DEFAULT '${USER}';
+      CREATE TABLE public.fixture_visible_owners(user_id uuid PRIMARY KEY);
+      INSERT INTO public.fixture_visible_owners VALUES('${USER}');
+      CREATE OR REPLACE FUNCTION public.current_visible_owner_ids() RETURNS uuid[] LANGUAGE sql AS $$SELECT COALESCE(array_agg(user_id),'{}'::uuid[]) FROM public.fixture_visible_owners$$;`);
+    await db.exec(`CREATE TABLE public.fixture_customer_read(building_id uuid PRIMARY KEY,allowed boolean NOT NULL DEFAULT true);
+      INSERT INTO public.fixture_customer_read(building_id) VALUES('${BUILDING}'),('${BUILDING2}');
+      INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('customers.view','read',true) ON CONFLICT(capability) DO UPDATE SET enabled=true;
+      CREATE OR REPLACE FUNCTION app_private.authorized_scope_v3(text,uuid) RETURNS TABLE(org_wide boolean,building_ids uuid[],cashbook_ids uuid[]) LANGUAGE sql AS $$
+        SELECT false,CASE WHEN $1='customers.view' THEN (SELECT COALESCE(array_agg(building_id ORDER BY building_id) FILTER (WHERE allowed AND $2='${ORG}'::uuid),'{}'::uuid[])
+            FROM public.fixture_customer_read)
+          ELSE (SELECT COALESCE(array_agg(building_id ORDER BY building_id) FILTER (WHERE allowed AND $1='sale_phong.manage_pass_listings' AND $2='${ORG}'::uuid),'{}'::uuid[])
+            FROM public.fixture_action_acl) END,'{}'::uuid[]$$;
+      CREATE OR REPLACE FUNCTION public.get_authorization_context_v1(p_org uuid) RETURNS jsonb LANGUAGE sql AS $$SELECT jsonb_build_object('organizationId',p_org,'isOffboarded',false,
+        'membershipId','${USER}','authorizationVersion',1,'permissions',jsonb_build_object(
+          'sale_phong.manage_pass_listings',(SELECT COALESCE(bool_or(allowed),false) FROM public.fixture_action_acl),
+          'customers.view',(SELECT COALESCE(bool_or(allowed),false) FROM public.fixture_customer_read)))$$;
+      UPDATE app_private.hermes_connections SET read_capabilities=array_append(read_capabilities,'customers.view');
+      UPDATE app_private.hermes_org_policies SET read_capabilities=array_append(read_capabilities,'customers.view');`);
+    await db.exec(extract(migration('20261015120000_hermes_domain_reads_v2'), 'app_private.hermes_domain_grant_v2'));
+    for (const sql of [].concat(fullRead)) { await db.exec(sql); await db.exec(sql); }
+  }
+  // rollbackCase: một PGlite dùng chung cho cả file test; mỗi ca BEGIN … ROLLBACK, lời gọi là SAVEPOINT.
+  let inCase = false;
+  const rollbackCase = work => base.f.rollbackCase(async () => { inCase = true; try { await work(); } finally { inCase = false; } });
+  async function call(operation, input, b = binding, role = 'authenticated', actor = USER, rpc = 'hermes_room_pass_upsert_v1') {
+    await db.exec(inCase ? 'SAVEPOINT fixture_call' : 'BEGIN');
     await db.query("SELECT set_config('request.jwt.claim.role',$1,true),set_config('request.jwt.claim.sub',$2,true),set_config('request.jwt.claim.session',$3,true)", [role, actor, SESSION]);
     await db.exec(`SET LOCAL ROLE ${role}`);
     try {
-      const result = (await db.query('SELECT public.hermes_room_pass_upsert_v1($1::jsonb,$2::text,$3::jsonb) result', [JSON.stringify(b), operation, JSON.stringify(input)])).rows[0].result;
-      await db.exec('COMMIT'); return result;
-    } catch (error) { await db.exec('ROLLBACK'); throw error; } finally { await db.exec('RESET ROLE'); }
+      if (!['hermes_room_pass_upsert_v1', 'hermes_room_pass_upsert_v2'].includes(rpc)) throw new Error('invalid_fixture_rpc');
+      const result = (await db.query(`SELECT public.${rpc}($1::jsonb,$2::text,$3::jsonb) result`, [JSON.stringify(b), operation, JSON.stringify(input)])).rows[0].result;
+      await db.exec(inCase ? 'RELEASE SAVEPOINT fixture_call' : 'COMMIT'); return result;
+    } catch (error) { await db.exec(inCase ? 'ROLLBACK TO SAVEPOINT fixture_call; RELEASE SAVEPOINT fixture_call' : 'ROLLBACK'); throw error; }
+    finally { await db.exec('RESET ROLE'); }
   }
   const count = async table => (await db.query(`SELECT count(*)::integer n FROM ${table}`)).rows[0].n;
-  return { ...base, call, count };
+  const call2 = (operation, input, b = binding, role = 'authenticated', actor = USER) => call(operation, input, b, role, actor, 'hermes_room_pass_upsert_v2');
+  return { ...base, call, call2, count, rollbackCase };
+}
+
+// MỘT PGlite cho cả file test (PGlite không trả lại bộ nhớ WASM sau close); mỗi ca isolated().
+export async function sharedUpsert(options) {
+  const cleanups = [];
+  const env = await setupUpsert({ after: fn => cleanups.push(fn) }, options);
+  let open = true;
+  return { ...env, isolated: work => env.rollbackCase(() => work(env)),
+    async close() { if (!open) return; open = false; for (const fn of cleanups.reverse()) await fn(); } };
 }
 
 export { BUILDING, ROOM, LISTING, SCOPE, binding, code };

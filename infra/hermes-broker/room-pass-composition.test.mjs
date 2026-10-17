@@ -30,7 +30,8 @@ test('external MCP → bound JWT → audited final caller SQL: room-pass action 
    const path=new URL(url).pathname,args=JSON.parse(options.body);
    // This fixture holds only the applied v1 SQL: the upsert RPC is absent
    // (PGRST202), so status must fall back to the v1 receipt reader.
-   if(path==='/rest/v1/rpc/hermes_room_pass_upsert_v1'){assert.equal(args.p_operation,'status');events.push('absent:status');
+   // Nor the full-read v2 wrapper (20261016162104): both answer PGRST202 in order.
+   if(['/rest/v1/rpc/hermes_room_pass_upsert_v2','/rest/v1/rpc/hermes_room_pass_upsert_v1'].includes(path)){assert.equal(args.p_operation,'status');events.push('absent:status');
      return Response.json({code:'PGRST202',message:'Could not find the function',details:null,hint:null},{status:404});}
    const capability=path==='/rest/v1/rpc/hermes_room_pass_capabilities_v1';
    assert.ok(capability||path==='/rest/v1/rpc/hermes_room_pass_action_v1');

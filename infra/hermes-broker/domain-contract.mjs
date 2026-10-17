@@ -2,6 +2,7 @@
 // grants always come from live CRM authority intersected with the saved overlay.
 // One registry drives tools, input/result validation and the SQL family (fixed
 // RPC pair) of each domain; the model never names a table, RPC or actor.
+import { FULL_READS, PRIVATE_HINT } from './full-read-contract.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const domainId = value => typeof value === 'string' && UUID.test(value);
 export const domainRecord = value => value !== null && typeof value === 'object' &&
@@ -52,10 +53,15 @@ export const DOMAIN_FAMILIES = Object.freeze({
   v2: Object.freeze({ readRpc: 'hermes_domain_read_v2', capabilitiesRpc: 'hermes_domain_capabilities_v2',
     inputKeys: Object.freeze([...BASE_INPUT, 'fromDate', 'toDate']), resultKeys: Object.freeze([...BASE_RESULT, 'source', 'fetchedAt']),
     capabilities: Object.freeze(['income_expenses.view', 'meter_readings.view', 'deposits.view', 'reports_finance.analysis']) }),
+  // Đọc đầy đủ cho người hỏi (20261016162104). Không có hàm capabilities riêng và
+  // không thêm khoá: quyền là các khoá ĐÃ CÓ do v1/v2/base cấp; SQL quyết định cuối.
+  v3: Object.freeze({ readRpc: 'hermes_domain_read_v3', capabilitiesRpc: null, inputKeys: BASE_INPUT,
+    resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: Object.freeze([]) }),
 });
 export const DOMAIN_READS = Object.freeze({
-  customers: define('customers.view', 'Tra khách hàng trong hợp đồng thuộc phạm vi được cấp', {
-    id: domainId, name: text, phoneMasked: nullable(text), contractId: domainId, buildingId: domainId, roomId: domainId }),
+  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ; phòng gần nhất và contractId khi có quyền hợp đồng). Toàn tổ chức thấy cả khách chưa có hợp đồng. Hồ sơ: crm_read_customer_detail. ${PRIVATE_HINT}`, {
+    id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), roomId: nullable(domainId),
+    roomName: nullable(text) }, [], { family: 'v3' }),
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
     id: domainId, name: text, status: text, buildingId: nullable(domainId), roomId: nullable(domainId), nextFollowUp: nullable(text) },
   ['B1_LEAD', 'B2_APPOINTMENT', 'B3_CONSULTATION', 'CONVERTED', 'FAILED']),
@@ -71,9 +77,10 @@ export const DOMAIN_READS = Object.freeze({
   tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành', {
     id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), roomId: nullable(domainId), deadline: nullable(text) },
   ['IN_PROGRESS', 'COMPLETED']),
-  occupancy: define('reports_real_estate.occupancy', 'Số phòng theo trạng thái hiện tại cho từng tòa; không phải báo cáo lịch sử hoặc dự báo', {
-    id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true }),
-  income_expenses: define('income_expenses.view', 'Tra phiếu thu/chi theo ngày phiếu và trạng thái duyệt (UNAPPROVED = chờ duyệt). Không gồm phiếu có hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Số tiền là chuỗi VND', {
+  // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
+  occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
+    id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
+  income_expenses: define('income_expenses.view', 'Tra phiếu thu/chi theo ngày phiếu và trạng thái duyệt (UNAPPROVED = chờ duyệt; hỏi "phiếu chờ duyệt" thì dùng tool này với status=UNAPPROVED). Không gồm phiếu có hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Số tiền là chuỗi VND', {
     id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, roomId: nullable(domainId),
     roomName: nullable(text), voucherDate: date, totalAmount: amount, approvalStatus: oneOf(['UNAPPROVED', 'APPROVED', 'CANCELLED']) },
   ['UNAPPROVED', 'APPROVED', 'CANCELLED'], { family: 'v2', dated: true, source: 'crm.income_expenses' }),
@@ -93,6 +100,8 @@ export const DOMAIN_READS = Object.freeze({
   building_profit: define('reports_finance.analysis', 'Lãi lỗ kết quả kinh doanh theo toà trong kỳ fromDate..toDate (≤ 366 ngày) từ báo cáo tài chính CRM: phiếu đã duyệt, tính theo ngày phiếu; toà không có số liệu không xuất hiện', {
     id: domainId, buildingId: domainId, name: text, revenue: amount, expense: amount, net: amount, months: integer },
   [], { family: 'v2', perBuilding: true, dated: true, requiresDates: true, source: 'crm.fa_monthly_pnl' }),
+  // Họ v3 chi tiết/báo cáo (full-read-contract): sau cùng để thứ tự tool cũ không đổi.
+  ...FULL_READS,
 });
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
@@ -105,6 +114,8 @@ export const mayUseDomain = (effective, operation) => Object.hasOwn(DOMAIN_READS
 export function domainInput(operation, input) {
   if (!Object.hasOwn(DOMAIN_READS, operation)) fail();
   const definition = DOMAIN_READS[operation], family = domainFamily(operation);
+  // Đọc đầy đủ (v3): mỗi thao tác chi tiết/báo cáo có schema riêng trong full-read-contract.
+  if (typeof definition.input === 'function') { try { return definition.input(input); } catch { fail(); } }
   if (!domainRecord(input) || Object.keys(input).some(key => !family.inputKeys.includes(key))) fail();
   const result = { ...Object.fromEntries(family.inputKeys.map(key => [key, null])), query: '', limit: 20, ...input };
   if (!text(result.query) || !Number.isInteger(result.limit) || result.limit < 1 || result.limit > 50 ||
@@ -120,10 +131,17 @@ export function domainInput(operation, input) {
 }
 export function domainResult(operation, value, identity, input) {
   const definition = DOMAIN_READS[operation], family = domainFamily(operation);
+  if (typeof definition?.result === 'function') {
+    if (!domainExact(value, definition.resultKeys) || value.organizationId !== identity.row.organizationId || value.domain !== operation ||
+        !instant(value.fetchedAt)) fail();
+    let projected; try { projected = definition.result(value, identity, input); } catch { fail(); }
+    return Object.fromEntries(definition.resultKeys.map(key => [key, Object.hasOwn(projected, key) ? projected[key] : value[key]]));
+  }
   if (!definition || !domainExact(value, family.resultKeys) ||
       value.organizationId !== identity.row.organizationId || value.domain !== operation || !Array.isArray(value.items) ||
       value.items.length > input.limit || !nullable(domainId)(value.nextCursor) ||
-      family === DOMAIN_FAMILIES.v2 && (value.source !== definition.source || !instant(value.fetchedAt))) fail();
+      family === DOMAIN_FAMILIES.v2 && (value.source !== definition.source || !instant(value.fetchedAt)) ||
+      family === DOMAIN_FAMILIES.v3 && !instant(value.fetchedAt)) fail();
   const scopes = identity.scopesByPermission?.[definition.permission]?.buildingIds;
   // SQL is final authority. If supplied, the earlier CRM scope also fences output;
   // it is never a substitute for the saved authorization_scopes overlay in SQL.
@@ -150,10 +168,13 @@ const dateSchema = required => ({ type: required ? 'string' : ['string', 'null']
 // 16/10 19:44Z production: the model put a building code in `query` (text filter
 // inside each row ⇒ empty), took the company id as buildingId, and repeated the
 // same call 20+ times reading [] as a glitch. Wording only; validators unchanged.
-export const DOMAIN_QUERY_HINT = 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.';
-export const DOMAIN_BUILDING_HINT = 'ID toà (lấy từ công cụ tra toà/phòng); không phải ID công ty. Bỏ trống để xem mọi toà được phép.';
-export const EMPTY_RESULT_HINT = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
-export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze({
+export const DOMAIN_QUERY_HINT = 'Lọc chữ trong từng mục (tên, phòng, mã); lọc toà thì dùng buildingId.';
+export const DOMAIN_BUILDING_HINT = 'ID toà, không phải ID công ty; trống = mọi toà.';
+export const EMPTY_RESULT_HINT = 'Rỗng là kết quả thật; không gọi lại cùng đối số.';
+export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze(definition.inputSchema ? {
+  name: `crm_read_${operation}`, description: definition.description, inputSchema: definition.inputSchema,
+  annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+} : {
   name: `crm_read_${operation}`, description: `${definition.label}. ${EMPTY_RESULT_HINT}`,
   inputSchema: { type: 'object', additionalProperties: false, ...(definition.requiresDates ? { required: ['fromDate', 'toDate'] } : {}), properties: {
     query: { type: 'string', maxLength: 200, description: DOMAIN_QUERY_HINT }, limit: { type: 'integer', minimum: 1, maximum: 50 },

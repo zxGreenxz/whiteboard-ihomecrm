@@ -82,11 +82,12 @@ function connector({ latency = LATENCY, onAudit = () => {}, limits } = {}) {
       membershipId: I.member, authorizationVersion: state.authorizationVersion, isSuperadmin: false, policyVersion: 1,
       permissions: Object.fromEntries(DOMAIN_READ_CAPABILITIES.map(name => [name, name === 'customers.view'
         ? { allowed: true, companyEnabled: true, buildingIds: [I.building] } : { allowed: false, companyEnabled: false, buildingIds: [] }])) });
-    if (path === '/rest/v1/rpc/hermes_domain_read_v1') {
+    // crm_read_customers reads through the v3 full-read family (16/10): full phone for the private reply.
+    if (path === '/rest/v1/rpc/hermes_domain_read_v3') {
       const args = JSON.parse(options.body);
       assert.equal(args.p_domain, 'customers'); assert.equal(args.p_binding.tokenDigest, DIGEST);
-      return Response.json({ organizationId: I.org, domain: 'customers', nextCursor: null, items: [{ id: I.item, name: 'Synthetic resident',
-        phoneMasked: '090****567', contractId: I.item, buildingId: I.building, roomId: I.item }] });
+      return Response.json({ organizationId: I.org, domain: 'customers', nextCursor: null, fetchedAt: '2026-10-16T00:00:00.000Z', items: [{ id: I.item,
+        name: 'Synthetic resident', phone: '0900000567', contractId: I.item, buildingId: I.building, roomId: I.item, roomName: '101' }] });
     }
     assert.fail(`unexpected ${path}`);
   };

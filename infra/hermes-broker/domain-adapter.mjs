@@ -6,9 +6,11 @@ import { DOMAIN_FAMILIES, ALL_DOMAIN_READ_CAPABILITIES, domainFamily, domainId, 
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
 const fail = code => { throw new BrokerError(code); };
 const bindingKeys = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId', 'expectedAuthorizationVersion', 'expectedSessionRevision'];
-const FAMILY_NAMES = Object.freeze(Object.keys(DOMAIN_FAMILIES));
+// Families with their own capability RPC. v3 (full read) adds no key: it reuses the
+// keys these families and the base authorization already grant.
+const FAMILY_NAMES = Object.freeze(Object.keys(DOMAIN_FAMILIES).filter(name => DOMAIN_FAMILIES[name].capabilitiesRpc !== null));
 export function createSupabaseDomainReads(options) {
-  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: Object.values(DOMAIN_FAMILIES).flatMap(family => [family.readRpc, family.capabilitiesRpc]) });
+  const rpc = createBoundUserRpcTransport({ ...options, allowedNames: Object.values(DOMAIN_FAMILIES).flatMap(family => [family.readRpc, family.capabilitiesRpc]).filter(name => name !== null) });
   return Object.freeze({
     // One fixed capability RPC per reviewed SQL family. A family not yet
     // deployed (PGRST202) is null: its tools stay unavailable, others continue.

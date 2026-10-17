@@ -46,6 +46,8 @@ export function createBoundUserRpcTransport({ url, publishableKey, fetch: reques
       if (response.status === 403 && error && data.code === '42501') fail('forbidden');
       if (response.status === 409 && error && data.code === 'PT409') fail('context_changed');
       if (response.status === 400 && error && data.code === '22023') fail('invalid_request');
+      // SQL đọc quá trần kích thước (PT413 ⇒ HTTP 413): kết quả quá lớn, không phải yêu cầu sai.
+      if (response.status === 413 && error && data.code === 'PT413') fail('result_too_large');
       if (!response.ok || !record(data) || ['error', 'error_code', 'error_description'].some(k => Object.hasOwn(data, k))) fail('backend_unavailable');
       return data;
     });
