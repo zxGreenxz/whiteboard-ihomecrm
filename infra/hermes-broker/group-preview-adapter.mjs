@@ -5,6 +5,7 @@ import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
 import { projectAvailableRooms } from './room-read-projection.mjs';
 import { readWithBaseAuthorization } from './authorization-extension.mjs';
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA=/^[a-f0-9]{64}$/, TOKEN=/^hc_[A-Za-z0-9_-]{43}$/;
 const baseKeys=['connectionId','tokenDigest','commandId','claimId','expectedEpoch','expectedPolicyVersion','expectedMembershipId','expectedAuthorizationVersion','expectedSessionRevision','requestId'];
@@ -230,13 +231,13 @@ export function createGroupOriginDecisions({authority,connectionStore,crypto,aut
       const d=final.decision;
       if(!exact(d,['kind','outcome','decisionId','tokenDigest','intentDigest','roomReadDigest','contextVersion','checkedAt','expiresAt'])||d.kind!=='hermes.group-room-preview.v1'||d.outcome!=='allow'||
         d.decisionId!==snap.binding.requestId||d.tokenDigest!==snap.tokenDigest||d.intentDigest!==captured.intentDigest||d.roomReadDigest!==captured.roomReadDigest||
-        d.contextVersion!==snap.contextVersion||d.contextVersion!==final.authority.contextVersion||!positive(d.checkedAt)||d.checkedAt>now()||d.checkedAt<iso(captured.roomReadAt)||
+        d.contextVersion!==snap.contextVersion||d.contextVersion!==final.authority.contextVersion||!positive(d.checkedAt)||d.checkedAt>now()+DB_CLOCK_SKEW_MS||d.checkedAt<iso(captured.roomReadAt)||
         d.expiresAt!==final.authority.expiresAt||d.expiresAt<=now())fail('context_changed');
       const projected=projectAvailableRooms(final.roomPayload,{allowedBuildingIds:final.authority.allowedBuildingIds,offset:0,limit:100,readAt:iso(captured.roomReadAt)});
       if(hash(projected)!==captured.roomReadDigest)fail('context_changed');
       if(write){
         const dispatch=dispatchSnapshot(final.dispatch,snap.selected.conversationIds,true),expiresAt=iso(dispatch.expiresAt);
-        if(dispatch.id!==snap.binding.requestId||expiresAt<=now()||expiresAt>now()+300000||expiresAt>Math.min(snap.expiresAt,snap.row.expiresAt))fail('backend_unavailable');
+        if(dispatch.id!==snap.binding.requestId||expiresAt<=now()||expiresAt>now()+300000+DB_CLOCK_SKEW_MS||expiresAt>Math.min(snap.expiresAt,snap.row.expiresAt))fail('backend_unavailable');
       }
       return freeze({decision:d,authority:final.authority,recipientRead:final.recipientRead,...(write?{dispatch:final.dispatch}:{})});
     });}catch(error){if(write&&uncertain)fail('send_outcome_unknown');throw error;}

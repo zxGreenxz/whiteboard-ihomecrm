@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createDependencyScope } from './dependency-scope.mjs';
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OWNER = ['connectionId', 'assistantId', 'userId', 'organizationId'];
@@ -33,7 +34,9 @@ function snapshot(value, keys, code = 'private_command_outcome_unknown') {
 }
 function owner(value, now) {
   const copied = snapshot(value, [...OWNER, 'expiresAt'], 'authority_unavailable');
-  if (OWNER.some(key => !uuid(copied[key])) || !positive(copied.expiresAt) || copied.expiresAt <= now || copied.expiresAt > now + 900000) fail('authority_unavailable');
+  // A renewed token expiry is DB clock_timestamp() + TTL.
+  if (OWNER.some(key => !uuid(copied[key])) || !positive(copied.expiresAt) || copied.expiresAt <= now ||
+      copied.expiresAt > now + 900000 + DB_CLOCK_SKEW_MS) fail('authority_unavailable');
   return copied;
 }
 function command(value, now) {

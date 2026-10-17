@@ -23,6 +23,10 @@ const code=c=>e=>e.code===c;
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});void promise.catch(()=>{});return{promise,resolve,reject};};
 const tick=()=>new Promise(done=>setImmediate(done));
 const pending=async p=>{let done=false;void p.then(()=>done=true,()=>done=true);await tick();assert.equal(done,false);};
+// Supabase's clock runs ahead of the connector host. Instants issued by SQL get the
+// shared 5 s allowance on their upper bound only: 50 ms and 4 s ahead pass, 6 s fails.
+const AHEAD=[[50,true],[4000,true],[6000,false]];
+const later=(iso,ms)=>new Date(Date.parse(iso)+ms).toISOString();
 
 test('private group preview composes real broker, durable core, transports and canonical SQL; IO/Auth/CRM synthetic', {timeout:60000}, async t=>{
   const hooks={},f=await setupMount(t,hooks);await installSaleListingSql(f,{chain:PREVIEW_CHAIN});
@@ -113,6 +117,44 @@ test('private group preview composes real broker, durable core, transports and c
     assert(!JSON.stringify(result).includes(token));assert(!JSON.stringify(result).includes(f.CLAIM));
     await assert.rejects(create().callTool(token,'crm_group_room_send',f.selection),code('tool_not_available'));
   }));
+  // Re-serve one real SQL result with its DB-issued instants moved `ahead` ms later.
+  const sqlAhead=(rpc,ahead,change)=>{let through=false;hooks.beforeFetch=async(url,options)=>{
+    if(through||!new URL(url).pathname.endsWith('/'+rpc))return;
+    through=true;
+    try{const response=await f.config.fetch(url,options),value=await response.json();if(response.ok)change(value,ahead);return Response.json(value,{status:response.status});}
+    finally{through=false;}
+  };};
+  await t.test('directory read by a DB clock ahead of this host: 50 ms and 4 s pass, 6 s fails',async()=>{
+    for(const [ahead,accepted] of AHEAD)await each(async()=>{
+      sqlAhead('hermes_group_directory_v1',ahead,value=>{value.recipientRead.readAt=later(value.recipientRead.readAt,ahead);});
+      const result=create().groupDirectory(token,context,{signal:signal()});
+      if(accepted)assert.deepEqual((await result).conversations,[{conversationId:f.GROUP,name:'Synthetic group'}]);
+      else await assert.rejects(result,code('backend_unavailable'));
+    });
+  });
+  await t.test('final preview decision by a DB clock ahead of this host: 50 ms and 4 s pass, 6 s fails',async()=>{
+    for(const [ahead,accepted] of AHEAD)await each(async()=>{
+      sqlAhead('hermes_group_preview_decision_v1',ahead,value=>{
+        value.decision.checkedAt+=ahead;value.recipientRead.readAt=later(value.recipientRead.readAt,ahead);});
+      const result=create().previewGroupRooms(token,context,f.selection,{signal:signal()});
+      if(accepted)assert.equal((await result).status,'preview_only');
+      else await assert.rejects(result,code('context_changed'));
+    });
+  });
+  await t.test('queue expiry issued by a DB clock ahead of this host: 50 ms and 4 s pass, 6 s is an unknown outcome',async()=>{
+    for(const [ahead,accepted] of AHEAD)await each(async()=>{
+      let expiresAt;
+      hooks.beforeFetch=async(url,options)=>{
+        if(!new URL(url).pathname.endsWith('/hermes_group_send_v1'))return;
+        const input=JSON.parse(options.body),decision=await f.config.fetch(url.replace('hermes_group_send_v1','hermes_group_preview_decision_v1'),options);
+        expiresAt=new Date(Date.now()+300000+ahead).toISOString();
+        return Response.json({...await decision.json(),dispatch:{id:input.p.requestId,expiresAt,recipients:[{conversationId:f.GROUP,jobId:f.ROOM,status:'queued'}]}});
+      };
+      const result=create().sendGroupRooms(token,context,f.selection,{signal:signal()});
+      if(accepted)assert.equal((await result).expiresAt,expiresAt);
+      else await assert.rejects(result,code('send_outcome_unknown'));
+    });
+  });
   await t.test('malformed create ACK is unknown, while exact SQL rejection is definite; neither retries',()=>each(async()=>{
     let creates=0,dispatched=0,rejected=0,dispatchId;
     hooks.beforeFetch=async url=>new URL(url).pathname.endsWith('/hermes_group_send_v1')?(creates++,Response.json({dispatch:{status:'queued'},accessToken:'must-not-cross'})):undefined;

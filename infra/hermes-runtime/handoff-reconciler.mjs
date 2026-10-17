@@ -1,3 +1,5 @@
+import { DB_CLOCK_SKEW_MS } from '../hermes-broker/clock-skew.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const OWNER = ['connectionId', 'assistantId', 'userId', 'organizationId'];
@@ -87,7 +89,7 @@ export function createHandoffReconciler({ handoff, backend, orchestrator, clock 
   const identity = raw => {
     const value = exact(raw, [...OWNER, 'expiresAt']), time = now();
     if (OWNER.some(key => typeof value[key] !== 'string' || !UUID.test(value[key])) ||
-        !positive(value.expiresAt) || value.expiresAt <= time || value.expiresAt > time + 900000) fail('handoff_reconciler_invalid_authority');
+        !positive(value.expiresAt) || value.expiresAt <= time || value.expiresAt > time + 900000 + DB_CLOCK_SKEW_MS) fail('handoff_reconciler_invalid_authority');
     return value;
   };
   const checkHandle = entry => {

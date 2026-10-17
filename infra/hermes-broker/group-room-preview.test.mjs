@@ -103,7 +103,8 @@ for (const [name, change, code] of [
   ['same provider group repeated', x => { x.recipientRead.conversations[0].threadId = '21'; }, 'draft_input_invalid'],
   ['capped source', x => { x.roomRead.result.completeness = 'source_capped'; }, 'draft_source_incomplete'],
   ['stale room response', x => { x.roomRead.result.readAt = new Date(now - 300_000).toISOString(); }, 'draft_expired'],
-  ['future receiver response', x => { x.recipientRead.readAt = new Date(now + 1).toISOString(); }, 'draft_expired'],
+  ['future receiver response beyond the DB clock skew', x => { x.recipientRead.readAt = new Date(now + 6_000).toISOString(); }, 'draft_expired'],
+  ['future room read stamped by this host', x => { x.roomRead.result.readAt = new Date(now + 1).toISOString(); }, 'draft_expired'],
   ['expired connection', x => { x.authority.expiresAt = now; }, 'draft_expired'],
   ['room field newline injection', x => { x.roomRead.result.rooms[0].code = 'P11\nInjected'; }, 'draft_input_invalid'],
   ['group bidi control', x => { x.recipientRead.conversations[0].name = 'abc\u202e'; }, 'draft_input_invalid'],
@@ -112,6 +113,16 @@ for (const [name, change, code] of [
   ['pass status with a non-pass fact', x => { x.roomRead.result.rooms[0].status = 'pass'; }, 'draft_input_invalid'],
   ['pass fact on a vacant room', x => { x.roomRead.result.rooms[0].availability.kind = 'pass'; }, 'draft_input_invalid'],
 ]) test(`rejects ${name}`, () => rejects(change, code));
+// Supabase's clock runs ahead of the connector host; DB-issued instants get the
+// shared 5 s allowance on their upper bound only.
+const AHEAD = [[50, true], [4_000, true], [6_000, false]];
+test('receiver read stamped by a DB clock 50 ms or 4 s ahead is current; 6 s ahead is rejected', () => {
+  for (const [ahead, accepted] of AHEAD) {
+    const input = fixture(); input.recipientRead.readAt = new Date(now + ahead).toISOString();
+    if (accepted) assert.equal(buildGroupRoomPreview(input).display.expiresAt, now + 299_000);
+    else assert.throws(() => buildGroupRoomPreview(input), error => error.code === 'draft_expired');
+  }
+});
 test('customer-pass rooms listed on the sale page are selectable with listed price and the page contact text', () => {
   const input = fixture();
   input.roomRead.result = projectAvailableRooms({ pages: 1, buildings: [{ id: uuid(10), name: 'Tòa mẫu', code: 'M' }],
@@ -265,13 +276,36 @@ for (const [name, modify, expected = 'context_changed'] of [
   ['wrong room content', x => { x.decision.roomReadDigest = 'b'.repeat(64); }],
   ['changed authority context', x => { x.authority = { ...x.authority, contextVersion: 'b'.repeat(64) }; }],
   ['old decision', x => { x.decision.checkedAt = now - 1; }],
-  ['future decision', x => { x.decision.checkedAt = now + 1; }],
+  ['future decision beyond the DB clock skew', x => { x.decision.checkedAt = now + 6_000; }],
   ['expired decision', x => { x.decision.expiresAt = now; }],
   ['too-long decision', x => { x.decision.expiresAt = now + 300_001; }],
 ]) test(`service rejects ${name} and does not retry`, async () => {
   const f = serviceFixture(), original = f.decisions.finalize;
   f.decisions.finalize = async (...args) => { const result = await original(...args); modify(result); return result; };
   await assert.rejects(run(f), code(expected)); assert.equal(f.events.filter(v => v === 'decision.finalize').length, 1);
+});
+test('service accepts a final decision checked by a DB clock 50 ms or 4 s ahead; 6 s ahead is a conflict', async () => {
+  for (const [ahead, accepted] of AHEAD) {
+    const f = serviceFixture(), original = f.decisions.finalize;
+    f.decisions.finalize = async (...args) => { const result = await original(...args); result.decision.checkedAt = now + ahead; return result; };
+    if (accepted) assert.equal((await run(f)).display.expiresAt, now + 60_000);
+    else await assert.rejects(run(f), code('context_changed'));
+  }
+});
+test('send accepts a queue expiry issued by a DB clock 50 ms or 4 s ahead; 6 s ahead stays an unknown outcome', async () => {
+  for (const [ahead, accepted] of AHEAD) {
+    const f = serviceFixture(), expiresAt = new Date(now + 300_000 + ahead).toISOString();
+    f.decisions.dispatch = async (token, receipt, binding, { signal, onDispatch }) => {
+      onDispatch(uuid(95)); const final = await f.decisions.finalize(token, receipt, binding, { signal });
+      return { ...final, dispatch: { id: uuid(95), expiresAt,
+        recipients: [uuid(20), uuid(21)].map((conversationId, n) => ({ conversationId, jobId: uuid(96 + n), status: 'queued' })) } };
+    };
+    const service = f.create(), receipt = await service.prepareGroupRoomPreview(opaque, f.input.intent, f.options);
+    const sent = service.finalizeGroupRoomSend(opaque, receipt, { ...f.options, onDispatch() {}, onRejected() {} });
+    if (accepted) assert.deepEqual(await sent, { status: 'queued', dispatchId: uuid(95), expiresAt,
+      recipients: [20, 21].map(n => ({ conversationId: uuid(n), name: `Nhóm mẫu ${n}`, status: 'queued' })) });
+    else await assert.rejects(sent, code('send_outcome_unknown'));
+  }
 });
 test('source result cannot change during final await after its digest was bound', async () => {
   const f = serviceFixture(), original = f.decisions.finalize;

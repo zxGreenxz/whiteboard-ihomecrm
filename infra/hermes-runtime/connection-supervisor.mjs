@@ -1,4 +1,5 @@
 import { ProfileLeaseStore } from './profile-lease.mjs';
+import { DB_CLOCK_SKEW_MS } from '../hermes-broker/clock-skew.mjs';
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const integer = value => Number.isSafeInteger(value) && value > 0;
@@ -25,6 +26,7 @@ const snapshotExact = (value, keys) => {
  * and fail-closed. stop resolves only when the runtime can no longer execute.
  * A failed stop retains the profile lock. No crash takeover or automatic restart.
  * Timers are scheduling hints; backend enforces DB expiry, hard age and revocation.
+ * Renewed expiries are DB clock_timestamp() + TTL, so their upper bound allows DB_CLOCK_SKEW_MS.
  * This module owns neither the backend nor its lifecycle. It drains promises it
  * invokes; nested adapters own cancellation of their underlying transports.
  * Private delivery accepts only a trusted, database-derived claim and a branded
@@ -146,7 +148,7 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
         if (closing || entry.controller.signal.aborted) fail('supervisor_closed');
         if (!exact(identity, ['connectionId', 'assistantId', 'userId', 'organizationId', 'expiresAt']) ||
             ['connectionId', 'assistantId', 'userId', 'organizationId'].some(key => !uuid.test(identity[key])) ||
-            !integer(identity.expiresAt) || identity.expiresAt <= now() || identity.expiresAt > now() + 900000) fail('invalid_identity');
+            !integer(identity.expiresAt) || identity.expiresAt <= now() || identity.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS) fail('invalid_identity');
         identity = Object.freeze(Object.fromEntries(['connectionId', 'assistantId', 'userId', 'organizationId', 'expiresAt'].map(key => [key, identity[key]])));
         if (connections.has(identity.connectionId)) fail('connection_in_use');
         entry.identity = identity; entry.connectionId = identity.connectionId; connections.add(entry.connectionId); entry.expiresAt = identity.expiresAt;
@@ -162,7 +164,7 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
         const current = await backend.resolveConnection(token, { signal: entry.controller.signal });
         if (!exact(current, ['connectionId', 'assistantId', 'userId', 'organizationId', 'expiresAt']) ||
             ['connectionId', 'assistantId', 'userId', 'organizationId'].some(key => current[key] !== identity[key]) ||
-            !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000 ||
+            !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS ||
             closing || entry.controller.signal.aborted) fail('identity_changed');
         entry.expiresAt = current.expiresAt;
         entry.state = 'active'; runtime.setAdmission(entry.instance, true); arm(entry);
@@ -233,11 +235,11 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
         }
         check();
         if (ack.ok !== true || ack.status !== 'renewed' || ack.connectionId !== entry.connectionId || typeof ack.reconciled !== 'boolean' ||
-          !integer(ack.expiresAt) || ack.expiresAt <= oldExpiry || ack.expiresAt > now() + 900000) fail('invalid_maintenance_ack');
+          !integer(ack.expiresAt) || ack.expiresAt <= oldExpiry || ack.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS) fail('invalid_maintenance_ack');
         const current = snapshotExact(await backend.resolveConnection(entry.token, { signal: maintenance.controller.signal }), [...ownerKeys, 'expiresAt']);
         check();
         if (ownerKeys.some(key => current[key] !== entry.identity[key]) || current.expiresAt !== ack.expiresAt ||
-          !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000) fail('maintenance_authority_changed');
+          !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS) fail('maintenance_authority_changed');
         return ack;
       } catch { abort(maintenance.reason ?? 'maintenance_failed'); throw new Error(maintenance.reason ?? 'maintenance_failed'); }
       finally { await Promise.allSettled([...maintenance.known]); }
@@ -349,7 +351,7 @@ export function createConnectionSupervisor({ profileStore, backend, runtime,
       try { current = snapshotExact(raw, [...ownerKeys, 'expiresAt']); }
       catch { return denyAuthority('private_command_authority_changed'); }
       if (ownerKeys.some(key => current[key] !== entry.identity[key] || current[key] !== claim[key]) ||
-          !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000) return denyAuthority('private_command_authority_changed');
+          !integer(current.expiresAt) || current.expiresAt <= now() || current.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS) return denyAuthority('private_command_authority_changed');
       // A resolver may reveal an earlier live expiry than the last renewal ACK.
       // Shorten the watchdog immediately; reads never extend the local lease.
       if (current.expiresAt < entry.expiresAt) { entry.expiresAt = current.expiresAt; arm(entry); }

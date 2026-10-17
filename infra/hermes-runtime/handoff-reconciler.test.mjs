@@ -273,3 +273,22 @@ test('actual orchestrator honors persisted expected owner before home/runtime, a
     assert(events.indexOf('backend-close') < events.indexOf('pool-close'));
   });
 });
+
+// DB clock skew: a DB-issued expiry may lead this host's clock by up to 5 s (literals on purpose).
+for (const [delta, accepted] of [[50, true], [4000, true], [6000, false]]) {
+  test(`fresh authority with DB clock ${delta} ms ahead is ${accepted ? 'accepted and attaches' : 'unreadable: stays pending, never attaches, retried later'}`, async () => {
+    let expiresAt = NOW + 900000 + delta;
+    const f = fixture({ resolve: async () => ({ ...current(A), expiresAt }) }); f.setBatch([A]);
+    f.reconciler.start(); await pause();
+    if (accepted) {
+      assert.equal(f.calls.attach.length, 1); assert.deepEqual(f.calls.attach[0].expectedOwner, owner(A));
+      assert.equal(f.reconciler.status().active, 1); assert.equal(f.calls.resolve.length, 1);
+    } else {
+      assert.equal(f.calls.resolve.length, 1); assert.equal(f.calls.attach.length, 0);
+      assert.equal(f.reconciler.status().pending, 1); assert.equal(f.reconciler.status().needsAttention, 0);
+      expiresAt = NOW + 600000; await f.poll(); // a valid read later proceeds normally
+      assert.equal(f.calls.resolve.length, 2); assert.equal(f.calls.attach.length, 1); assert.equal(f.reconciler.status().active, 1);
+    }
+    await f.reconciler.close();
+  });
+}

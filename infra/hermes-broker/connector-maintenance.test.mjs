@@ -37,6 +37,38 @@ test('external maintenance renews the same enrolled token without touching any p
   await f.service.close(); assert.equal(f.service.status().state, 'closed');
 });
 
+// Owner expiry is DB clock_timestamp() + 15 min; literal skews so a zeroed tolerance is caught.
+for (const ahead of [50, 4000]) {
+  test(`owner expiry ${ahead} ms past the 15-minute TTL (DB clock ahead) is not blocked`, async t => {
+    let expiry = NOW + 900000 + ahead;
+    const f = fixture(t, { resolve: () => Object.fromEntries([...['connectionId', 'assistantId', 'userId', 'organizationId'].map(k => [k, row[k]]), ['expiresAt', expiry]]) });
+    await f.cycle(); assert.deepEqual(f.counts(), { calls: 0, reads: 1 });
+    assert.deepEqual(f.service.status(), { state: 'ready', requiresReconnect: 0 });
+    expiry = NOW + 120000; await f.cycle(); assert.equal(f.counts().calls, 1); // still renewable, i.e. never latched
+  });
+}
+
+test('owner expiry 6000 ms past the 15-minute TTL blocks the connection from renewal', async t => {
+  let expiry = NOW + 900000 + 6000;
+  const f = fixture(t, { resolve: () => Object.fromEntries([...['connectionId', 'assistantId', 'userId', 'organizationId'].map(k => [k, row[k]]), ['expiresAt', expiry]]) });
+  await f.cycle(); assert.equal(f.counts().calls, 0); assert.deepEqual(f.service.status(), { state: 'needs_attention', requiresReconnect: 1 });
+  expiry = NOW + 120000; await f.cycle(); assert.equal(f.counts().calls, 0); assert.equal(f.service.status().requiresReconnect, 1);
+});
+
+for (const ahead of [50, 4000]) {
+  test(`renewal ACK ${ahead} ms past the 15-minute TTL (DB clock ahead) unlocks the next renewal`, async t => {
+    const f = fixture(t, { begin: ack => ({ result: Promise.resolve({ ...ack, expiresAt: NOW + 900000 + ahead }), drained: Promise.resolve() }) });
+    await f.cycle(); assert.equal(f.counts().calls, 1); assert.deepEqual(f.service.status(), { state: 'ready', requiresReconnect: 0 });
+    await f.cycle(); assert.equal(f.counts().calls, 2); // owner stays near expiry in this fixture
+  });
+}
+
+test('renewal ACK 6000 ms past the 15-minute TTL keeps the connection latched', async t => {
+  const f = fixture(t, { begin: ack => ({ result: Promise.resolve({ ...ack, expiresAt: NOW + 900000 + 6000 }), drained: Promise.resolve() }) });
+  await f.cycle(); assert.equal(f.counts().calls, 1); assert.deepEqual(f.service.status(), { state: 'needs_attention', requiresReconnect: 1 });
+  await f.cycle(); assert.equal(f.counts().calls, 1);
+});
+
 test('owner mismatch and malformed batch fail before renewal; persisted owner never grants authority', async t => {
   const a = fixture(t, { resolve: () => ({ ...Object.fromEntries(['connectionId', 'assistantId', 'userId', 'organizationId'].map(k => [k, row[k]])),
     userId: id(99), expiresAt: NOW + 1000 }) });

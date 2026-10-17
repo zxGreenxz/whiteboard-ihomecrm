@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { snapshotConnectionAuthority, snapshotConnectionState } from './connection-renewal.mjs';
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -121,7 +122,8 @@ export function createConnectionMaintenance({ authority, connectionStore, refres
       check(); entry.dispatched = true;
       const result = fields(await renewal.renew(token, options), ['ok', 'status', 'connectionId', 'expiresAt', 'reconciled']); check();
       if (result.ok !== true || result.status !== 'renewed' || result.connectionId !== before.context.stable.row.id ||
-          !positive(result.expiresAt) || result.expiresAt <= before.context.expiresAt || result.expiresAt > now() + 900000 ||
+          // The renewal target is DB clock_timestamp() + TTL.
+          !positive(result.expiresAt) || result.expiresAt <= before.context.expiresAt || result.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS ||
           result.expiresAt > expected.state.stable.session.expiresAt || typeof result.reconciled !== 'boolean') fail('maintenance_rejected');
       const finalReceipt = await authority.resolve(token, options); check(); const final = await read(finalReceipt);
       stable(final, before);

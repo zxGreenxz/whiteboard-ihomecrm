@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConnectionActionAuthAdapter, createGroupPreviewAuthAdapter, createSupabaseGroupPreviewReads } from './group-preview-adapter.mjs';
-import { groupDirectoryResponse, GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL } from './group-preview-mount.mjs';
+import { groupDirectoryResponse, groupPreviewResponse, groupSendResponse, GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL } from './group-preview-mount.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -30,6 +30,41 @@ test('directory output exposes only CRM selection IDs and display labels with st
   assert.deepEqual(groupDirectoryResponse(empty, now).conversations, []);
   assert.equal(GROUP_DIRECTORY_TOOL.inputSchema.additionalProperties, false);
   assert.deepEqual(GROUP_PREVIEW_TOOL.inputSchema.required, ['roomIds', 'conversationIds']);
+});
+
+// Supabase's clock runs ahead of the connector host. DB-issued instants get the
+// shared 5 s allowance on their upper bound only: 50 ms and 4 s ahead pass, 6 s fails.
+const AHEAD = [[50, true], [4000, true], [6000, false]];
+const accepts = (accepted, run, code) => accepted ? assert.doesNotThrow(run) : assert.throws(run, e => e.code === code);
+test('directory read stamped by a DB clock ahead of this host passes within the shared skew (production 17/10 regression)', () => {
+  // Captured on the VPS: DB readAt 06:54:20.808Z while Date.now() was 06:54:20.799Z.
+  const at = Date.parse('2026-10-17T06:54:20.799Z'), captured = directory();
+  captured.authority.expiresAt = at + 30000; captured.recipientRead.readAt = '2026-10-17T06:54:20.808Z';
+  assert.deepEqual(groupDirectoryResponse(captured, at).conversations, [{ conversationId: id(10), name: 'Group' }]);
+  for (const [ahead, accepted] of AHEAD) {
+    const read = directory(); read.recipientRead.readAt = new Date(now + ahead).toISOString();
+    accepts(accepted, () => assert.equal(groupDirectoryResponse(read, now).sender, 'Bot'), 'backend_unavailable');
+    const authority = directory(); authority.authority.expiresAt = now + 300000 + ahead;
+    accepts(accepted, () => assert.equal(groupDirectoryResponse(authority, now).expiresAt, now + 300000), 'backend_unavailable');
+  }
+  // Staleness and expiry are not loosened.
+  const stale = directory(); stale.recipientRead.readAt = new Date(now - 300000).toISOString();
+  assert.throws(() => groupDirectoryResponse(stale, now), e => e.code === 'backend_unavailable');
+  const expired = directory(); expired.authority.expiresAt = now;
+  assert.throws(() => groupDirectoryResponse(expired, now), e => e.code === 'backend_unavailable');
+});
+test('preview and send responses bound DB-issued expiries with the shared skew, never accept expired ones', () => {
+  const intent = { roomIds: [id(12)], conversationIds: [id(10)] };
+  const preview = expiresAt => ({ status: 'preview_only', fieldSet: 'selected-room-sale-text-v1', digest: 'c'.repeat(64),
+    display: { body: 'PHÒNG ĐÃ CHỌN', sender: 'Bot', recipients: [{ conversationId: id(10), name: 'Group' }], expiresAt } });
+  const send = expiresAt => ({ status: 'queued', dispatchId: id(11), expiresAt: new Date(expiresAt).toISOString(),
+    recipients: [{ conversationId: id(10), name: 'Group', status: 'queued' }] });
+  for (const [ahead, accepted] of AHEAD) {
+    accepts(accepted, () => assert.equal(groupPreviewResponse(preview(now + 300000 + ahead), intent, now).status, 'preview_only'), 'backend_unavailable');
+    accepts(accepted, () => assert.equal(groupSendResponse(send(now + 300000 + ahead), now).status, 'queued'), 'send_outcome_unknown');
+  }
+  assert.throws(() => groupPreviewResponse(preview(now), intent, now), e => e.code === 'backend_unavailable');
+  assert.throws(() => groupSendResponse(send(now), now), e => e.code === 'send_outcome_unknown');
 });
 
 test('management action extension falls back only for known missing rollout and never gives that fallback action authority', async t => {

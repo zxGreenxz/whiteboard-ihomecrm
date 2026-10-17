@@ -3,6 +3,7 @@ import { createDurableAuthority } from './durable-authority.mjs';
 import { createRoomReadService, createSupabaseRoomReads } from './room-read-service.mjs';
 import { createGroupRoomPreviewService } from './group-room-preview.mjs';
 import { createSupabaseGroupPreviewReads, createGroupPreviewAuthAdapter, createGroupPreviewDecisions } from './group-preview-adapter.mjs';
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const fail = code => { throw new BrokerError(code); };
@@ -57,10 +58,13 @@ export const GROUP_SEND_STATUS_TOOL = freeze({
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
 
+// DB-issued instants (readAt, expiresAt) are bounded above with DB_CLOCK_SKEW_MS;
+// expiry and staleness (`<= now`, `now - readAt >= 300000`) stay strict.
 export function groupSendResponse(value, now) {
   if (!exact(value, ['status', 'dispatchId', 'expiresAt', 'recipients']) || value.status !== 'queued' || !UUID.test(value.dispatchId ?? '') ||
       typeof value.expiresAt !== 'string' || !Number.isSafeInteger(Date.parse(value.expiresAt)) ||
-      new Date(value.expiresAt).toISOString() !== value.expiresAt || Date.parse(value.expiresAt) <= now || Date.parse(value.expiresAt) > now + 300000 ||
+      new Date(value.expiresAt).toISOString() !== value.expiresAt || Date.parse(value.expiresAt) <= now ||
+      Date.parse(value.expiresAt) > now + 300000 + DB_CLOCK_SKEW_MS ||
       !Array.isArray(value.recipients) || value.recipients.length < 1 || value.recipients.length > 8) fail('send_outcome_unknown');
   const seen = new Set();
   for (const row of value.recipients) {
@@ -78,7 +82,7 @@ export function groupPreviewResponse(value, intent, now) {
   if (!exact(value, ['status', 'fieldSet', 'digest', 'display']) || value.status !== 'preview_only' ||
       value.fieldSet !== 'selected-room-sale-text-v1' || typeof value.digest !== 'string' || !/^[a-f0-9]{64}$/.test(value.digest) ||
       !exact(value.display, ['body', 'sender', 'recipients', 'expiresAt']) || !text(value.display.body, 32768) || !text(value.display.sender, 500) ||
-      !Number.isSafeInteger(value.display.expiresAt) || value.display.expiresAt <= now || value.display.expiresAt > now + 300000 ||
+      !Number.isSafeInteger(value.display.expiresAt) || value.display.expiresAt <= now || value.display.expiresAt > now + 300000 + DB_CLOCK_SKEW_MS ||
       !Array.isArray(value.display.recipients) || value.display.recipients.length !== intent.conversationIds.length) fail('backend_unavailable');
   const targets = [];
   for (const row of value.display.recipients) {
@@ -99,14 +103,14 @@ export function groupDirectoryResponse(value, now) {
   const { authority, recipientRead: read } = value;
   if (!record(authority) || !exact(authority.owner, ['userId', 'organizationId', 'assistantId', 'connectionId']) ||
       Object.values(authority.owner).some(x => !UUID.test(x ?? '')) || !/^[a-f0-9]{64}$/.test(authority.contextVersion ?? '') ||
-      !positive(authority.expiresAt) || authority.expiresAt <= now || authority.expiresAt > now + 300000 ||
+      !positive(authority.expiresAt) || authority.expiresAt <= now || authority.expiresAt > now + 300000 + DB_CLOCK_SKEW_MS ||
       !exact(read, ['organizationId', 'contextVersion', 'readAt', 'sender', 'allowedConversationIds', 'conversations']) ||
       read.organizationId !== authority.owner.organizationId || read.contextVersion !== authority.contextVersion ||
       !exact(read.sender, ['accountId', 'name', 'ownUid', 'loginRequestedAt', 'botVersion', 'ingressGeneration']) ||
       !UUID.test(read.sender.accountId ?? '') || !UUID.test(read.sender.ingressGeneration ?? '') || !text(read.sender.name) ||
       !uid(read.sender.ownUid) || !positive(read.sender.botVersion)) fail('backend_unavailable');
   const readAt = Date.parse(read.readAt), loginAt = Date.parse(read.sender.loginRequestedAt);
-  if (!positive(readAt) || new Date(readAt).toISOString() !== read.readAt || readAt > now || now - readAt >= 300000 ||
+  if (!positive(readAt) || new Date(readAt).toISOString() !== read.readAt || readAt > now + DB_CLOCK_SKEW_MS || now - readAt >= 300000 ||
       (read.sender.loginRequestedAt !== null && (!positive(loginAt) || new Date(loginAt).toISOString() !== read.sender.loginRequestedAt)) ||
       !Array.isArray(read.allowedConversationIds) || read.allowedConversationIds.length > 256 ||
       read.allowedConversationIds.some(x => !UUID.test(x ?? '')) || new Set(read.allowedConversationIds).size !== read.allowedConversationIds.length ||
