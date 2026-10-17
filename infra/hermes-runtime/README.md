@@ -3,6 +3,12 @@
 This is a synthetic P1 harness. It never connects to CRM, Zalo or a paid model.
 It is not a production gateway, credential store or memory service.
 
+The production connector host in this directory (`host-cli.mjs`, `host-service.mjs`,
+`host-config.mjs`, `hermes-connector.service`) is documented in
+[HOST_SERVICE.md](HOST_SERVICE.md). The managed host v1 runtime (container
+gateway/driver, `agent-process.py` wrapper and model relay) was never deployed and
+was removed on 17/10/2026; this P1 experiment does not depend on it.
+
 The runtime image is pinned to Hermes `v0.21.6`, source commit
 `818c13be1dc4fd28987e1e881a9408224afd4535`, Linux amd64 manifest digest
 `sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95`.

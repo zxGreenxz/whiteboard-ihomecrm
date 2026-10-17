@@ -73,7 +73,7 @@ Cập nhật kèm theo:
 | `src/copilot/copilotConfig.ts` | `src/hooks/quick-entry/useQuickEntryFeed.ts`, `quickEntryAi.ts`; alias trong `.e2e-fleet/specs/personal-finance-product.spec.ts`; `createAgent.ts` | Báo chi nhanh là tính năng sản phẩm |
 | `tools/**`, `plan/**`, `docs/**`, `featureFlags`, `memoryClient`, `confirmationStore`, `createAgent`, `pageScope`, `safeControls`, `safetyGuard`, `uiControlAvailability`, `pageAgentCompatibility`, `useHangDoiSauDuyet` | `scripts/generate-hermes-crm-inventory.mjs` (32 nguồn có sha256); `check-copilot-tool-inventory`; `check-copilot-forbidden-actions` (`SCAN_ROOTS`, `rpcAllowlist` neo vào `planClient`/`stepUpClient`/`standingGrantClient`); `check-copilot-docs-manifest`; `generate-copilot-guide-corpus`; suite `copilot-shared-core` | Nguồn inventory P11.01 và gate P0 đang chạy; không có caller sản phẩm. `useHangDoiSauDuyet` là hàng đợi phía trình duyệt của engine cũ, nay chỉ còn giá trị kiểm kê |
 | `banDoHeThong`, `activePageContext` (chỉ còn type), `temporalContext`, `systemPromptVi`, `pageContext`, `chatErrors`, `anToanVanBan`, `maskPii`, `hrefAnToan` | Core giữ import; `.e2e-fleet/specs` cũng import `maskPii`/`hrefAnToan` | Phụ thuộc bắc cầu. Đổi spec fleet làm gate-aggregate chặn promote |
-| Edge `llm-proxy` | `infra/hermes-broker/model-relay.mjs` (`x-copilot-feature: chat`), `createAgent`; suite `edge-deno-llm-proxy` | Relay model và quota dùng chung (`reserve_ai_usage`) |
+| Edge `llm-proxy` | `createAgent`; suite `edge-deno-llm-proxy`. Relay Hermes `model-relay.mjs` (`x-copilot-feature: chat`) đã gỡ 17/10/2026 cùng chế độ host v1 (PR #193) | Model và quota của Copilot (`reserve_ai_usage`); Hermes không còn caller |
 | Edge `quick-entry` | Báo chi nhanh | Tính năng sản phẩm; chế độ `pilot` đọc `ai_copilot_entitlements` |
 | `OrganizationProvider`, `src/lib/myOrganizations.ts` | Toàn app | RPC `list_my_copilot_organizations_v1` là danh bạ công ty dùng chung |
 | `AiSubmittedBadge.tsx` | Hộp chờ duyệt | Lịch sử và approval nghiệp vụ (`system_source = 'AI_COPILOT'`) |
@@ -120,7 +120,7 @@ executor backend, hoặc thu hồi.
 
 - **Quota và provider không còn UI quản trị.** Trang quản trị Copilot rời route từ `81bb6eb0`; nay
   source cũng đã gỡ. Bốn mục `ai_copilot_settings`, `ai_copilot_entitlements`, `ai_providers` và trần
-  token vẫn điều khiển `llm-proxy` (relay Hermes) và `quick-entry` ở chế độ `pilot`. Muốn chỉnh thì
+  token vẫn điều khiển `llm-proxy` và `quick-entry` ở chế độ `pilot` (relay Hermes qua `llm-proxy` đã gỡ 17/10/2026). Muốn chỉnh thì
   dựng màn quản trị trong Hermes, hoặc dùng runbook SQL qua lane. Mã cũ đọc lại bằng `git show dd2ce3da:<path>`.
 - **Dọn core sau khi P11.01 chốt.** Gỡ `tools/**`, `plan/**`, `createAgent`, `safetyGuard`… phải sửa
   đồng thời `generate-hermes-crm-inventory.mjs`, các `check-copilot-*`, `copilot-action-policy.json`,

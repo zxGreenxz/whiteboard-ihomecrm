@@ -7,11 +7,11 @@ import { scopeBuildingsMigration } from './scope-buildings-sql-fixture.mjs';
 // Candidate 20261017023242 (public.hermes_scope_buildings_v1) against the REAL shared
 // resolver app_private.authorized_scope_v3 (20260908162757, byte-identical to production
 // pg_proc 17/10/2026) and a byte-identical PORT of the Copilot wrapper body that production
-// runs today. That production body is NOT the one in this repository's 20260829090000:
-// it came from 20260906201114_copilot_building_deny_scope_v1 (branch
-// codex/copilot-building-deny-apply, never merged). Its prosrc md5 is pinned below, so the
-// port cannot drift silently. Synthetic tables/data on disposable PGlite; not proof of
-// production JWT, RLS or PostgREST.
+// runs today. That production body is NOT the one in 20260829090000: it is
+// 20260906201114_copilot_building_deny_scope_v1 (applied to production 06/09/2026, backfilled
+// into main by PR #193). The port below stays byte-identical to that file's body and its
+// prosrc md5 is pinned, so the port cannot drift silently. Synthetic tables/data on
+// disposable PGlite; not proof of production JWT, RLS or PostgREST.
 const migrations = new URL('../../supabase/migrations/', import.meta.url);
 function definition(sql, name) {
   const start = sql.search(new RegExp(`create or replace function ${name.replace('.', '\\.')}\\s*\\(`, 'i'));
