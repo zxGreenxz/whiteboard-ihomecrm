@@ -16,6 +16,7 @@
   },
   "include": [],
   "files": [
+    "src/lib/customerSearch.ts",
     "src/components/contracts/CommissionAmountReview.tsx",
     "src/components/contracts/CommissionRequestEvidence.tsx",
     "src/components/income-expenses/CommissionAuditHistory.tsx",

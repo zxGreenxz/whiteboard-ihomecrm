@@ -3,7 +3,7 @@ import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
 import { useCallback } from "react";
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import { friendlyError } from '@/lib/friendlyError';
+import { customerSearchFilter } from '@/lib/customerSearch';
 
 // =============================================
 // useCustomers - Query customers with filters and pagination
@@ -126,9 +127,7 @@ export const useCustomers = (
       if (filters?.search) {
         const search = filters.search.trim();
         if (search) {
-          query = query.or(
-            `full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%,id_number.ilike.%${search}%`
-          );
+          query = query.or(customerSearchFilter(search));
         }
       }
 
@@ -293,13 +292,49 @@ export const useCustomer = (id: string) => {
 // =============================================
 
 export const useCustomerStats = (filters?: CustomerFilters) => {
+  const { selectedOrganizationId } = useOrganization();
   return useQuery({
+    enabled: !!selectedOrganizationId,
     // Giữ số cũ khi đổi filter/search để 2 thẻ đếm không nháy về 0.
-    placeholderData: keepPreviousData,
-    queryKey: ["customer-stats", filters],
+    placeholderData: (previous, query) => query?.queryKey.at(-1) === selectedOrganizationId ? previous : undefined,
+    queryKey: ["customer-stats", filters, selectedOrganizationId],
     queryFn: async (): Promise<CustomerStats> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
+
+      const search = filters?.search?.trim();
+      if (search) {
+        if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
+        const locationIds = filters?.building_id || filters?.room_id
+          ? await readResidenceLocationIds(selectedOrganizationId, filters.building_id, filters.room_id, filters.status !== 'RENTING')
+          : undefined;
+        if (locationIds?.length === 0) return { total: 0, individual: 0, organization: 0, foreign: 0 };
+
+        // The stats RPC uses accent-sensitive ILIKE. For searches, count with
+        // the same server predicate as the list; HEAD avoids downloading rows
+        // or truncating totals at the API row limit. Unfiltered stats keep RPC.
+        const countQuery = () => {
+          let query = supabase.from('customers').select('id', { count: 'exact', head: true })
+            .is('deleted_at', null).eq('organization_id', selectedOrganizationId)
+            .or(customerSearchFilter(search));
+          if (filters?.status) query = query.eq('status_v2', filters.status);
+          if (locationIds) query = query.in('id', locationIds);
+          return query;
+        };
+        const readCount = async (query: ReturnType<typeof countQuery>): Promise<number> => {
+          const { count, error } = await query;
+          if (error) throw error;
+          if (count === null) throw new Error('Chưa xác nhận được thống kê khách hàng');
+          return count;
+        };
+        const [total, individual, organization, foreign] = await Promise.all([
+          readCount(countQuery()),
+          readCount(countQuery().eq('customer_type', 'INDIVIDUAL')),
+          readCount(countQuery().eq('customer_type', 'ORGANIZATION')),
+          readCount(countQuery().eq('is_foreign', true)),
+        ]);
+        return { total, individual, organization, foreign };
+      }
 
       // 1 RPC thay 4 HEAD-count + resolve location trùng lặp (migration
       // 20260705210000). Trước đây khi lọc toà/phòng, hook này chạy LẠI
