@@ -16,7 +16,7 @@ nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; v
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
 - **1487** file test, **363** file đọc file bằng fs (826 lời gọi)
-- **379** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
+- **380** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
 

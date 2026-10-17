@@ -108,7 +108,7 @@ Kiểm kê khai báo tĩnh tại 5 file tìm thấy 67 tên công cụ: 55 đọ
 | Tool đọc và nghiệp vụ | Tách schema và logic dùng chung khỏi browser client, Vite docs, navigate và context UI. | copilot/tools/registry.ts; nghiepVuTools.ts |
 | Hành động và điều kiện nghiệp vụ | Tái dùng registry, validation, idempotency, nhật ký và đối soát; chỉ giữ preview/step-up/phê duyệt khi là điều kiện nghiệp vụ thực sự của user. Không nhập nguyên luồng consent của Copilot. | copilot/plan/actionCatalog.ts; planClient.ts; confirmationStore.ts |
 | Zalo | Giữ zca-js, session store, lease, inbound, hàng đợi, ảnh bảng phòng và lịch gửi. | worker/lib/login.js; inbound.js; queue.js; automation.js |
-| Model và quota | Model cá nhân do user cấu hình ở Hermes, không phụ thuộc role/quota CRM. Relay CRM hiện có là tùy chọn: nếu dùng phải tách admission khỏi chat_enabled/ai_copilot.view và giữ ledger/budget thật. Không là dependency của connector. | infra/hermes-broker/model-relay.mjs; supabase/functions/llm-proxy/index.ts; RPC reserve_ai_usage |
+| Model và quota | Model cá nhân do user cấu hình ở Hermes, không phụ thuộc role/quota CRM. Relay model CRM qua `llm-proxy` (chế độ host v1, `model-relay.mjs`) đã gỡ 17/10/2026 (PR #193); connector không gọi model. Dựng lại relay thì phải tách admission khỏi chat_enabled/ai_copilot.view và giữ ledger/budget thật. | supabase/functions/llm-proxy/index.ts; RPC reserve_ai_usage (Copilot) |
 | Chat và PageAgent | Chuyển engine; giữ/thay các phần UI có ích. Thao tác DOM không chuyển nguyên sang runtime nền. | copilot/chatEngine.ts; ChatPanel.tsx; createAgent.ts |
 | Bộ nhớ | Hiện có user + org; phải bổ sung ranh giới connection/kênh/phiên và thu hồi quyền. | copilot/memoryClient.ts; migration ai_user_memory_v1 |
 

@@ -4,7 +4,7 @@
   "tongSoFileTest": 1487,
   "soFileDocBangFs": 363,
   "tongLoiGoi": 826,
-  "khongPhanLoaiDuoc": 379,
+  "khongPhanLoaiDuoc": 380,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 56,
@@ -429,9 +429,9 @@
       "file": "scripts/__tests__/copilot-remaining-reports.test.mjs",
       "soGoi": 4,
       "loai": {
-        "sql": 2
+        "sql": 1
       },
-      "khongPhanLoaiDuoc": 2
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/pwa-manifest.test.ts",

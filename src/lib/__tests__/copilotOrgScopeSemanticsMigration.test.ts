@@ -36,6 +36,7 @@ function liveDefinitionOf(schema: string, functionName: string): { file: string;
 
 const buildingHelper = liveDefinitionOf('public', 'copilot_org_scope_buildings_v1');
 const cashbookHelper = liveDefinitionOf('app_private', 'copilot_scope_cashbooks_v1');
+const settlement = liveDefinitionOf('public', 'copilot_cashbook_settlement_v2');
 
 describe('Copilot organization scope semantics migrations', () => {
   it.each([buildingHelper, cashbookHelper])(
@@ -61,5 +62,12 @@ describe('Copilot organization scope semantics migrations', () => {
       /unnest\(COALESCE\(s\.building_ids,\s*'\{\}'::uuid\[\]\)\)[\s\S]{0,300}b\.organization_id\s*=\s*p_organization_id[\s\S]{0,100}b\.deleted_at\s+IS\s+NULL/i,
     );
     expect(buildingHelper.sql).not.toMatch(/WHEN\s+s\.org_wide\s+THEN/i);
+  });
+
+  it(`${settlement.file} aligns superadmin settlement scope with the selectable non-sandbox directory`, () => {
+    expect(settlement.sql).toMatch(
+      /NOT\s*\(\s*public\.is_super_admin\(\)\s+AND\s+a\.organization_id\s*=\s*ANY\(\s*public\.sandbox_org_ids\(\)\s*\)\s*\)/i,
+    );
+    expect(settlement.sql).toContain('public.sandbox_org_ids()');
   });
 });
