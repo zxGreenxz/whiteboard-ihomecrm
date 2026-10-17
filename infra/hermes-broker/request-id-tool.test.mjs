@@ -91,7 +91,12 @@ test('every requestId action points to crm_new_request_id; status tools reuse th
       assert.deepEqual(tool.inputSchema.properties.requestId, { type: 'string', format: 'uuid' }, tool.name);
     }
   }
-  assert.match(REQUEST_ID_GUIDANCE, /MỘT lần cho mỗi lệnh mới; dùng lại đúng mã đó khi thử lại hoặc tra trạng thái; không tự tạo mã, không dùng lại mã của lệnh khác/);
+  // 17/10: lặp ở mọi action bắt đầu lệnh nên rút ngắn (tools/list ≤ ngân sách), giữ đủ ba ý:
+  // UUID lấy từ crm_new_request_id; thử lại cùng yêu cầu dùng lại đúng mã; yêu cầu mới lấy mã mới.
+  assert.equal(REQUEST_ID_GUIDANCE, 'requestId: gọi crm_new_request_id lấy UUID; thử lại cùng yêu cầu thì dùng lại đúng mã, yêu cầu mới thì lấy mã mới.');
+  assert.equal(REQUEST_ID_PROPERTY.description, 'UUID từ crm_new_request_id; giữ nguyên khi thử lại.');
+  assert.ok(Buffer.byteLength(REQUEST_ID_GUIDANCE) + Buffer.byteLength(REQUEST_ID_PROPERTY.description) <= 210, 'repeated per action: keep it short');
+  assert.deepEqual(Object.keys(REQUEST_ID_PROPERTY), ['type', 'format', 'description']);
   assert.deepEqual([REQUEST_ID_PROPERTY.type, REQUEST_ID_PROPERTY.format], ['string', 'uuid']);
   assert.equal(startsCrmRequest(NEW_REQUEST_ID_TOOL), false);
   assert.deepEqual(NEW_REQUEST_ID_TOOL.inputSchema, { type: 'object', properties: {}, additionalProperties: false });

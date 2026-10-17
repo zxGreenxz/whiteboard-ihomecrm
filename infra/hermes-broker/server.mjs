@@ -13,7 +13,7 @@ import { createWorkMemoryAuthAdapter, createSupabaseWorkMemoryReads } from './wo
 import { createWorkMemoryService } from './work-memory-service.mjs';
 import { createWorkMemoryRetention } from './work-memory-retention.mjs';
 import { createHash } from 'node:crypto';
-import { BrokerError, createBroker } from './broker.mjs';
+import { BrokerError, TOOLS_LIST_MAX_BYTES, createBroker } from './broker.mjs';
 import { createGroupPreviewMount } from './group-preview-mount.mjs';
 import { createExternalGroupMount } from './external-group-mount.mjs';
 import { createHermesCapabilityAuthAdapter, createSupabaseGroupPreviewReads } from './group-preview-adapter.mjs';
@@ -174,8 +174,9 @@ export function createHermesBackend(configuration = {}) {
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
+    // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, limits: { maxResultBytes: 65_536, maxRequestsPerMinute: limits.requestsPerMinute,
+      observe: health.record, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.

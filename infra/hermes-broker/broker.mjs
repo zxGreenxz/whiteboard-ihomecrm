@@ -48,9 +48,14 @@ function toolDefinitions() {
   if (byName.size !== tools.length) throw new TypeError('ambiguous_tool_definition');
   return byName;
 }
+// tools/list is the connector's own catalogue, static per grant set, not CRM
+// data. It has its own ceiling: one over the tools/call data cap would cost the
+// connection every tool at once (response_too_large on the listing).
+export const TOOLS_LIST_MAX_BYTES = 196_608;
 // Per-connection admission. Both rates are sliding 60-second windows; tools/call
 // also counts against the request rate. timeoutMs bounds one whole invocation
 // (identify -> authority -> handler -> audit -> final check -> finalize).
+// maxResultBytes caps every response except tools/list (maxToolsListBytes).
 const DEFAULT_LIMITS = Object.freeze({
   tokenLifetimeMs: 15 * 60_000,
   maxRequestsPerMinute: 60,
@@ -58,6 +63,7 @@ const DEFAULT_LIMITS = Object.freeze({
   maxConcurrentCalls: 2,
   timeoutMs: 10_000,
   maxResultBytes: 16_384,
+  maxToolsListBytes: TOOLS_LIST_MAX_BYTES,
 });
 const RATE_WINDOW_MS = 60_000;
 const ERROR_STATUS = Object.freeze({
@@ -418,7 +424,7 @@ export function createBroker({
     if (!Number.isSafeInteger(value) || value < 1) throw new TypeError('invalid_limits');
   }
   if (limits.tokenLifetimeMs > DEFAULT_LIMITS.tokenLifetimeMs || limits.timeoutMs > 30_000 ||
-      limits.maxResultBytes > 65_536) throw new TypeError('unsafe_limits');
+      limits.maxResultBytes > 65_536 || limits.maxToolsListBytes > TOOLS_LIST_MAX_BYTES) throw new TypeError('unsafe_limits');
   const usage = new Map();
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
@@ -538,6 +544,7 @@ export function createBroker({
     let comparisonReceipt;
     const requestId = randomUUID();
     const selectedAuthority = context.authority ?? injectedAuthority;
+    const maxBytes = operation === 'tools/list' ? limits.maxToolsListBytes : limits.maxResultBytes;
     let connectionId;
     // One authority request window per invocation; see authority-request-scope.
     const work = () => runAuthorityRequest(async () => { try {
@@ -564,7 +571,7 @@ export function createBroker({
         if (identity.row.id !== connectionId) fail('context_changed');
         let result = await handler(identity, signal);
         if (signal.aborted) fail('timeout');
-        if (!finalize && Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
+        if (!finalize && Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
         // This receipt means a response was prepared, not delivered. An async
         // audit sink can wait while DB authority changes, so the authoritative
         // post-read check must be the LAST awaited step before releasing data.
@@ -582,7 +589,7 @@ export function createBroker({
         // only local protocol/byte validation and serialization may follow it.
         if (finalize) result = await finalize(result, identity, signal);
         if (signal.aborted) fail('timeout');
-        if (Buffer.byteLength(JSON.stringify(result)) > limits.maxResultBytes) fail('response_too_large');
+        if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
         return result;
       }, context.signal);
       report(identity?.row.id, operation);

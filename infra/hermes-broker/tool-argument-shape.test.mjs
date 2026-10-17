@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // broker must not read the tool arrays while modules are still loading.
 import { EXTERNAL_GROUP_TOOLS } from './external-group-mount.mjs';
 import { GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL } from './group-preview-mount.mjs';
-import { createBroker } from './broker.mjs';
+import { TOOLS_LIST_MAX_BYTES, createBroker } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { TASK_TOOLS } from './task-contract.mjs';
@@ -139,11 +139,12 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 });
 
 // P2-1 (review 85280779): kết nối đủ quyền thấy MỌI họ tool cùng lúc (cả crm_available_rooms,
-// nhóm Zalo, sửa/huỷ việc). server.mjs:178 cắt kết quả ở 65 536 byte: vượt là mất cả danh sách.
-// 85280779: 67 988 B (đã vượt); sau khi rút gọn họ đọc: 63 743 B. Đích review là ≤ 58 000 B —
-// phần còn lại nằm ở mô tả các họ ghi (requestId lặp ở 15 tool, pass phòng, Zalo broadcast, việc).
+// nhóm Zalo, sửa/huỷ việc). Trước 17/10 tools/list dùng chung trần dữ liệu 65 536 B: vượt là mất cả danh sách.
+// Từ 17/10 tools/list có trần riêng TOOLS_LIST_MAX_BYTES (192 KiB); tools/call giữ 65 536 B (server.mjs).
+// Ngân sách 64 000 B vẫn giữ để connector bản cũ (một trần chung) nhận đủ danh sách.
+// 85280779: 67 988 B (đã vượt); rút họ đọc: 63 743 B; rút chữ requestId (15 tool): 61 883 B.
 const TOOLS_LIST_BUDGET = 64_000;
-test('tools/list of a connection holding every grantable key lists every family and stays inside the budget', async t => {
+function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const CONNECTION = id('a'), BUILDING = id('f');
   const read = [...new Set([...HERMES_READ_CAPABILITIES, ...ALL_DOMAIN_READ_CAPABILITIES, 'chat_zalo.view', 'rooms.view', 'assistant.context.read', 'assistant.memory.read'])];
@@ -155,13 +156,18 @@ test('tools/list of a connection holding every grantable key lists every family 
   scopesByPermission: Object.fromEntries([...read, ...action].map(key => [key, { buildingIds: [BUILDING], cashbookIds: [] }])) };
   const authority = { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} };
   const port = (prepare, finalize) => ({ async [prepare]() { return Object.freeze({}); }, async [finalize]() { return { ok: true }; } });
-  const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
+  const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits,
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
     schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
     zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
     externalGroups: { authority, createService: () => ({}) } });
-  const listed = (await broker.listTools(`hc_${'A'.repeat(43)}`)).tools, names = listed.map(value => value.name);
+  return { broker, token: `hc_${'A'.repeat(43)}` };
+}
+
+test('tools/list of a connection holding every grantable key lists every family and stays inside the budget', async t => {
+  const { broker, token } = fullGrantBroker(t);
+  const listed = (await broker.listTools(token)).tools, names = listed.map(value => value.name);
   const expected = [...ALL.filter(value => !['crm_room_schedule_create', 'crm_room_schedule_update'].includes(value.name)).map(value => value.name),
     'crm_auth_context', 'crm_available_rooms'];
   assert.deepEqual([...names].sort(), [...new Set(expected)].sort(), 'every family, every non-retired tool');
@@ -173,6 +179,31 @@ test('tools/list of a connection holding every grantable key lists every family 
     'crm_read_invoice_report', 'crm_read_monthly_pnl', 'crm_read_pending_approvals', 'crm_read_zalo_conversations', 'crm_read_contract_search'].includes(value.name));
   assert.equal(full.length, 10);
   assert.ok(Buffer.byteLength(JSON.stringify(full)) <= 10_000, 'full-read family stays compact');
+});
+
+test('tools/list has its own 192 KiB cap; tools/call data keeps the result cap', async t => {
+  assert.equal(TOOLS_LIST_MAX_BYTES, 192 * 1024);
+  const reference = fullGrantBroker(t), all = await reference.broker.listTools(reference.token);
+  const bytes = Buffer.byteLength(JSON.stringify(all));
+  // A catalogue larger than the data cap still lists in full and unchanged ...
+  const narrow = fullGrantBroker(t, { maxResultBytes: 4096 });
+  assert.ok(bytes > 4096);
+  assert.deepEqual(await narrow.broker.listTools(narrow.token), all);
+  // ... while a tools/call result is still measured against maxResultBytes alone.
+  assert.equal((await narrow.broker.callTool(narrow.token, 'crm_new_request_id', {})).isError, false);
+  const tight = fullGrantBroker(t, { maxResultBytes: 64 });
+  await assert.rejects(tight.broker.callTool(tight.token, 'crm_new_request_id', {}),
+    error => error.code === 'response_too_large' && error.status === 502);
+  assert.deepEqual(await tight.broker.listTools(tight.token), all);
+  // Over its own cap the listing still fails closed: never a truncated catalogue.
+  const exact = fullGrantBroker(t, { maxResultBytes: 65_536, maxToolsListBytes: bytes });
+  assert.deepEqual(await exact.broker.listTools(exact.token), all);
+  const over = fullGrantBroker(t, { maxResultBytes: 65_536, maxToolsListBytes: bytes - 1 });
+  await assert.rejects(over.broker.listTools(over.token), error => error.code === 'response_too_large' && error.status === 502);
+  // The ceiling is bounded like the data cap.
+  assert.throws(() => fullGrantBroker(t, { maxToolsListBytes: TOOLS_LIST_MAX_BYTES + 1 }), /unsafe_limits/);
+  assert.throws(() => fullGrantBroker(t, { maxResultBytes: 65_537 }), /unsafe_limits/);
+  for (const value of [0, 1.5, '196608']) assert.throws(() => fullGrantBroker(t, { maxToolsListBytes: value }), /invalid_limits/);
 });
 
 test('crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear', () => {
@@ -203,7 +234,7 @@ function brokerFixture(t) {
   });
   const broker = createBroker({
     authority: { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} },
-    // Same listing budget as server.mjs; every family together is ~54 KB.
+    // Same data cap as server.mjs; tools/list has its own cap (TOOLS_LIST_MAX_BYTES).
     dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
     tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
     customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
@@ -222,7 +253,7 @@ test('broker tools/list advertises no required nullable field across mounted fam
   }
   for (const value of listed) assert.deepEqual(requiredNullable(value), [], value.name);
   assert.equal(listed.filter(value => value.name.startsWith('crm_read_')).length, DOMAIN_TOOLS.length);
-  assert.ok(Buffer.byteLength(JSON.stringify({ tools: listed })) < 65_536, 'tools/list stays inside the server result budget');
+  assert.ok(Buffer.byteLength(JSON.stringify({ tools: listed })) <= TOOLS_LIST_BUDGET, 'tools/list stays inside the budget');
   assert.deepEqual(listed.find(value => value.name === 'crm_task_input_options').inputSchema.required, ['kind', 'query', 'limit']);
   assert.deepEqual(listed.find(value => value.name === 'crm_task_create').inputSchema.required, ['requestId', 'title', 'buildingId', 'jobTypeId', 'priority']);
 });
