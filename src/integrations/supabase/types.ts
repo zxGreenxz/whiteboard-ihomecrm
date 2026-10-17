@@ -24519,6 +24519,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_scope_buildings_v1: {
+        Args: { p_organization_id: string; p_permission_key: string }
+        Returns: string[]
+      }
       hermes_set_org_policy_v1: {
         Args: {
           p_action: string[]
