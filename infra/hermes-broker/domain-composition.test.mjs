@@ -78,8 +78,9 @@ async function setup(t) {
 }
 
 test('domain contract rejects caller-controlled identity, RPC, implicit writes and malformed result projections',()=>{
-  // 16/10 đọc đầy đủ: crm_read_customers chuyển sang họ v3 (SĐT đầy đủ); v1 SQL vẫn là bản đã phát hành.
-  assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,7);assert.equal(DOMAIN_READS.customers.family,'v3');
+  // 16/10 đọc đầy đủ: crm_read_customers chuyển sang họ v3 (SĐT đầy đủ); 17/10 crm_read_occupancy sang v3
+  // (snapshot trang Báo cáo lấp đầy). v1 SQL vẫn là bản đã phát hành.
+  assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,6);assert.equal(DOMAIN_READS.occupancy.family,'v3');assert.equal(DOMAIN_READS.customers.family,'v3');
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
   const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupFullRead, fullReadSql, fullReadFixSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
+import { setupFullRead, fullReadSql, fullReadFixSql, fullReadParitySql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
@@ -139,11 +139,11 @@ test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, c
     ['nope', { customerId: CUSTOMER_A }], ['customers', { ...list(), status: 'ACTIVE' }]]) await assert.rejects(read3(domain, input), code('22023'), domain);
 });
 
-test('group path untouched: both full-read migrations define only their own reviewed functions and no group/sale-listing projection', () => {
-  const sql = [fullReadSql(), fullReadFixSql()].join('\n').replace(/--[^\n]*/g, '');
+test('group path untouched: the three full-read migrations define only their own reviewed functions and no group/sale-listing projection', () => {
+  const sql = [fullReadSql(), fullReadFixSql(), fullReadParitySql()].join('\n').replace(/--[^\n]*/g, '');
   const created = [...sql.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)/gi)].map(match => match[1]).sort();
   assert.ok(created.length > 0);
-  for (const name of created) assert.match(name, /^(public\.hermes_(room_pass_upsert_v2|domain_read_v3)|app_private\.hermes_(full_text_v1|full_read_scope_v1|report_[a-z_]+_v[12]))$/, name);
+  for (const name of created) assert.match(name, /^(public\.hermes_(room_pass_upsert_v2|domain_read_v3)|app_private\.hermes_(full_text_v1|full_read_scope_v1|pnl_pending_v1|report_[a-z_]+_v[12]))$/, name);
   assert.doesNotMatch(sql, /hermes_group_|sale_listing|room_read|zalo_broadcast|hermes_capabilities\s+SET|INSERT\s+INTO\s+app_private\.hermes_capabilities/i);
 });
 
@@ -172,7 +172,9 @@ test('composition: broker → domain mount → bound user JWT → hermes_domain_
   const connectionStore = createDurableConnectionStore({ transport: { async call(operation, payload) { return env.rpc('app_private.hermes_store_read_connection_v1', payload); } } });
   const authority = createDurableAuthority({ connectionStore, crypto, auth });
   const domains = createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch }).createService();
-  const broker = createBroker({ authority, domains, dependencyScope, audit: async entry => { events.push(`audit:${entry.outcome}`); } });
+  // Trần kết quả như server.mjs (65 536 byte): tools/list của kết nối này vượt mặc định 16 KB.
+  const broker = createBroker({ authority, domains, dependencyScope, limits: { maxResultBytes: 65_536 },
+    audit: async entry => { events.push(`audit:${entry.outcome}`); } });
   const listed = (await broker.listTools(token)).tools.map(tool => tool.name);
   for (const name of ['crm_read_customers', 'crm_read_customer_detail', 'crm_read_contract_detail']) assert.ok(listed.includes(name), name);
   events.length = 0;
@@ -235,8 +237,8 @@ test('P1 customer side: without contracts.view the profile and list keep the cus
 
 // Mutation evidence: each mutant removes ONE fence; the same probe that the
 // reviewed SQL refuses must then succeed, so the probes are not vacuous.
-// Định nghĩa sống ở file sửa 20261016172206: đột biến nhắm vào đó.
-const reviewed = fullReadFixSql();
+// Định nghĩa sống của v3 ở file khớp web 20261017021554: đột biến nhắm vào đó.
+const reviewed = fullReadParitySql();
 const mutate = (from, to = '') => { assert.equal(reviewed.split(from).length, 2, `anchor: ${from}`); return reviewed.replace(from, to); };
 const probes = [
   { name: 'connection overlay building scope', sql: mutate(`  SELECT COALESCE(array_agg(b.id ORDER BY b.id),'{}'::uuid[]) INTO buildings
@@ -273,12 +275,21 @@ const probes = [
       await db.exec(removeRead('contracts.view')[0]);
       return (await read3('customer_detail', { customerId: CUSTOMER_A })).item.contracts.length > 0;
     } },
+  // crm_read_occupancy (v3) dùng snapshot web trên toà đã giao: bỏ lọc toà ⇒ lộ toà B.
+  { name: 'occupancy domain stays inside the connection buildings', sql: mutate(`      WHERE snapshot.building_id=ANY(buildings) AND (cursor_id IS NULL`, `      WHERE true AND (cursor_id IS NULL`)
+      .split('public.occupancy_snapshot_v2(public.org_today_v1(c.organization_id),buildings)').join('public.occupancy_snapshot_v2(public.org_today_v1(c.organization_id),NULL)'),
+    run: async ({ db, read3 }) => {
+      await db.exec("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='reports_real_estate.occupancy'");
+      for (const table of ['hermes_org_policies', 'hermes_connections'])
+        await db.exec(`UPDATE app_private.${table} SET read_capabilities=read_capabilities||ARRAY['reports_real_estate.occupancy']`);
+      return (await read3('occupancy', domainInput('occupancy', {}))).items.some(row => row.buildingId === OTHER_BUILDING);
+    } },
 ];
 for (const probe of probes) {
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async t => {
     const safe = await setupFullRead(t);
     assert.equal(await probe.run(safe).catch(() => false), false, 'reviewed SQL refuses');
-    const mutant = await setupFullRead(t, { fix: probe.sql });
+    const mutant = await setupFullRead(t, { parity: probe.sql });
     assert.equal(await probe.run(mutant), true, 'mutant breaches');
   });
 }

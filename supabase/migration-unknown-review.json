@@ -919,6 +919,28 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đọc đầy đủ đợt 1 (sửa review), 17/10/2026",
       "sha256": "850df82a17c395b36c184139f98f07b0bb4ad4391c3173943d86ecd2998bbb73"
+    },
+    "supabase/migrations/20261017021554_hermes_full_read_web_parity_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261017021554_hermes_full_read_web_parity_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_pnl_pending_v1 / app_private.hermes_report_catalog_v1 / public.hermes_domain_read_v3 / app_private.hermes_report_read_v2"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là các object trên — sinh 17/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 17/10/2026 (Hermes đọc đầy đủ đợt 1b: báo cáo khớp màn web, không phụ thuộc hàm copilot_*: gọi thẳng occupancy_snapshot_v2/occupancy_upcoming_vacancy_v2/fa_monthly_pnl_accrual/fa_monthly_pnl/list_my_pending_approvals_v1, SQL theo bộ lọc web cho hoá đơn/hợp đồng/Chat Zalo; crm_read_occupancy theo snapshot), chạy SAU 20261016172206; chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY (cùng hai file trước 20261016162104/20261016172206), không phải vì bị DROP. Apply TEST (hzulujxgonszuleqticb) qua npm run migrate:forward --env test; EXPLAIN các truy vấn mới trên schema TEST và production (thay helper của 20261016162104 bằng left()) đạt. Kiểm hành vi bằng PGlite với RPC web thật kèm đột biến. Sẽ áp production qua lane (sau 20261016172206) khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_pnl_pending_v1",
+        "function:app_private.hermes_report_catalog_v1",
+        "function:public.hermes_domain_read_v3",
+        "function:app_private.hermes_report_read_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đọc đầy đủ đợt 1b (khớp web), 17/10/2026",
+      "sha256": "32a9c1b9e5b1bbd2316c5719e4c34e6cc259bcb40aee59c2f601f5b6b652570f"
     }
   }
 }

@@ -77,44 +77,52 @@ const detail = (key, fields, fences, hidden) => (value, identity, input) => {
 const define = (permission, name, description, options) => Object.freeze({ family: 'v3', permission, label: description, description, fields: Object.freeze({}),
   statuses: Object.freeze([]), dated: false, requiresDates: false, perBuilding: false, source: null, ...options, toolName: name });
 
-// --- Báo cáo bọc hàm đọc copilot_* đã phát hành (khớp hermes_report_catalog_v1).
-// Mỗi tool một khoá ĐÃ CÓ (trùng khoá hàm copilot tự kiểm); `report` chọn biến thể.
+// --- Báo cáo khớp màn web (khớp hermes_report_catalog_v1, 20261017021554): nguồn là RPC
+// web đang gọi hoặc SQL theo bộ lọc web; Hermes không phụ thuộc copilot_* (chủ chốt 17/10).
+// Mỗi tool một khoá ĐÃ CÓ; `report` chọn biến thể.
 // scope: rows = hàng có toà, lọc theo toà đã giao; buildings = hàm nhận danh sách
 // toà; organization = hàng không có toà ⇒ chỉ kết nối Toàn tổ chức (ngược lại SQL
 // trả unavailable=organization_scope_required).
-export const REPORT_INPUT_KEYS = Object.freeze(['report', 'query', 'status', 'month', 'fromDate', 'toDate', 'days', 'buildingId', 'limit', 'offset']);
+export const REPORT_INPUT_KEYS = Object.freeze(['report', 'query', 'status', 'month', 'fromDate', 'toDate', 'days', 'basis', 'buildingId', 'limit', 'offset']);
 const REPORT_RESULT = Object.freeze(['organizationId', 'domain', 'fetchedAt', 'report', 'source', 'unavailable', 'summary', 'items', 'offset', 'nextOffset', 'sourceCapped']);
 const name200 = nullable(longText(200)), name100 = nullable(longText(100)), money = nullable(amount), int = nullable(count);
 const report = (source, scope, fields, options = {}) => Object.freeze({ source, scope, fields: Object.freeze(fields), summary: null, statuses: null,
-  month: false, fromDate: false, toDate: false, requiresDates: false, days: false, buildingFilter: scope !== 'organization', ...options });
+  month: false, fromDate: false, toDate: false, requiresDates: false, days: false, basis: false, buildingFilter: scope !== 'organization', ...options });
 const INVOICE_STATS = Object.freeze(Object.fromEntries(['totalAmount', 'totalPaid', 'totalRemaining', 'totalRefunded', 'rentAmount', 'electricAmount',
   'waterAmount', 'serviceAmount'].map(key => [key, amount]).concat([['totalCount', count]])));
 export const REPORTS = Object.freeze({
   occupancy_report: Object.freeze({ permission: 'reports_real_estate.occupancy', reports: Object.freeze({
-    snapshot: report('crm.copilot_occupancy_v1', 'rows', { buildingId: id, buildingName: name200, total: count, occupied: count, reserved: count,
+    snapshot: report('crm.occupancy_snapshot_v2', 'rows', { buildingId: id, buildingName: name200, total: count, occupied: count, reserved: count,
       maintenance: count, unavailable: count, available: count, occupancyPct: money, committedPct: money, missedRevenue: money }, { fromDate: true }),
-    upcoming: report('crm.copilot_occupancy_upcoming_v1', 'rows', { contractId: id, contractNumber: name100, buildingId: id, buildingName: name200,
+    upcoming: report('crm.occupancy_upcoming_vacancy_v2', 'rows', { contractId: id, contractNumber: name100, buildingId: id, buildingName: name200,
       roomId: id, roomName: name100, effectiveEndDate: nullable(date), daysRemaining: nullable(Number.isSafeInteger), rentPrice: money, extensionApplied: nullable(bool) },
     { fromDate: true, days: true }) }) }),
   invoice_report: Object.freeze({ permission: 'invoices.view', reports: Object.freeze({
-    search: report('crm.copilot_invoice_search_v1', 'rows', { id, number: name100, billingMonth: nullable(longText(20)), totalAmount: amount, status: code,
-      buildingId: id, buildingName: name200, roomId: id, roomName: name100 }, { month: true, statuses: Object.freeze(['paid', 'partial', 'unpaid']) }),
+    // Như /invoices (useInvoices.ts:194-214): mặc định ẩn huỷ; unpaid = chưa thu đồng nào, không huỷ.
+    search: report('crm.invoices', 'rows', { id, number: name100, billingMonth: nullable(longText(20)), dueDate: nullable(date), totalAmount: amount,
+      paidAmount: amount, remainingAmount: amount, status: code, buildingId: id, buildingName: name200, roomId: nullable(id), roomName: name100 },
+    { month: true, statuses: Object.freeze(['paid', 'partial', 'unpaid', 'cancelled']) }),
     stats: report('crm.invoices', 'buildings', {}, { month: true, summary: INVOICE_STATS }) }) }),
   monthly_pnl: Object.freeze({ permission: 'reports_finance.analysis', reports: Object.freeze({
-    by_month: report('crm.copilot_financial_pnl_v1', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
-      { fromDate: true, toDate: true, requiresDates: true }) }) }),
+    // Mặc định dồn tích như BC Doanh Thu Chi Phí / Phân tích tài chính; chờ duyệt tách riêng.
+    by_month: report('crm.fa_monthly_pnl', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
+      { fromDate: true, toDate: true, requiresDates: true, basis: true,
+        summary: Object.freeze({ basis: value => value === 'accrual' || value === 'cash', pendingIncome: amount, pendingExpense: amount, pendingVouchers: count }) }) }) }),
   pending_approvals: Object.freeze({ permission: 'income_expenses.view', reports: Object.freeze({
-    inbox: report('crm.copilot_pending_requests_v1', 'organization', { requestId: id, submissionNo: int, submittedAt: nullable(instant), amount: money,
+    inbox: report('crm.list_my_pending_approvals_v1', 'organization', { requestId: id, submissionNo: int, submittedAt: nullable(instant), amount: money,
       voucherId: nullable(id), voucherCode: name100, voucherName: name200, voucherType: nullable(code), makerName: name200, stepNo: int }) }) }),
   zalo_conversations: Object.freeze({ permission: 'chat_zalo.view', reports: Object.freeze({
-    list: report('crm.copilot_zalo_conversations_v1', 'organization', { conversationId: id, peerName: name200, phone: nullable(longText(40)),
+    list: report('crm.zalo_conversations', 'organization', { conversationId: id, peerName: name200, phone: nullable(longText(40)),
       threadType: nullable(longText(40)), kind: nullable(longText(40)), unread: count, markedUnread: bool, pinned: bool, roomName: name100,
       buildingName: name200, label: name200, lastMessageAt: nullable(instant), lastMessageDir: nullable(longText(20)), lastMessage: nullable(longText(160)) },
     { summary: Object.freeze({ conversations: count, unreadConversations: count, unreadMessages: count, pinned: count }) }) }) }),
   contract_search: Object.freeze({ permission: 'contracts.view', reports: Object.freeze({
-    search: report('crm.copilot_contract_search_v1', 'organization', { contractId: id, number: name100, customerName: name200, roomName: name100,
-      buildingName: name200, startDate: nullable(date), endDate: nullable(date), status: code, rentPrice: money, totalDeposit: money, depositPaid: money },
-    { statuses: Object.freeze(['DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED']) }) }) }),
+    // Như danh sách hợp đồng (getContractDisplayStatus, src/types/contract.ts:180-196).
+    search: report('crm.contracts', 'rows', { contractId: id, number: name100, customerName: name200, buildingId: id, buildingName: name200,
+      roomId: id, roomName: name100, startDate: nullable(date), endDate: nullable(date), actualEndDate: nullable(date), expectedMoveOutDate: nullable(date),
+      status: code, displayStatus: value => ['ACTIVE', 'EXPIRING', 'EXPIRED', 'MOVING_OUT', 'TERMINATED', 'TRANSFERRED', 'DRAFT'].includes(value),
+      displayLabel: longText(20), rentPrice: amount, totalDeposit: amount, depositPaid: amount },
+    { statuses: Object.freeze(['ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED']) }) }) }),
 });
 const MONTH = /^(20[0-9]{2}|2100)-(0[1-9]|1[0-2])$/;
 const QUERY_CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
@@ -132,6 +140,7 @@ const reportInput = operation => input => {
       spec.requiresDates && (value.fromDate === null || value.toDate === null) ||
       value.fromDate !== null && value.toDate !== null && (value.toDate < value.fromDate || Date.parse(value.toDate) - Date.parse(value.fromDate) > 366 * 86_400_000) ||
       !(value.days === null || spec.days && Number.isInteger(value.days) && value.days >= 1 && value.days <= 365) ||
+      !(value.basis === null || spec.basis && ['accrual', 'cash'].includes(value.basis)) ||
       !(value.buildingId === null || spec.buildingFilter && id(value.buildingId))) fail();
   return Object.fromEntries(REPORT_INPUT_KEYS.map(key => [key, value[key]]));
 };
@@ -168,17 +177,17 @@ const reportDefine = (operation, description, properties, required) => define(RE
 const REPORT_READS = Object.freeze({
   occupancy_report: reportDefine('occupancy_report', 'Báo cáo lấp đầy: report=snapshot — từng toà có bao nhiêu phòng đang ở/giữ chỗ/bảo trì/không khai thác/trống, tỷ lệ lấp đầy và doanh thu bỏ lỡ tại ngày fromDate (mặc định hôm nay); report=upcoming — hợp đồng sắp hết hạn, phòng sắp trống trong days ngày tới (mặc định 30) kể từ fromDate.',
     { report: { enum: ['snapshot', 'upcoming'] }, fromDate: DATE, days: { type: ['integer', 'null'], minimum: 1, maximum: 365 }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  invoice_report: reportDefine('invoice_report', 'Hoá đơn: report=search — tìm hoá đơn theo kỳ month (YYYY-MM), trạng thái thanh toán (paid/partial/unpaid) và query (số hoá đơn hoặc tên khách), có toà/phòng/tổng tiền; report=stats — tổng hợp kỳ month trên các toà được đọc: số hoá đơn, tổng tiền, đã thu, còn nợ, hoàn, tiền phòng/điện/nước/dịch vụ (không gồm hoá đơn huỷ). Số tiền là chuỗi VND.',
-    { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid'] },
+  invoice_report: reportDefine('invoice_report', 'Hoá đơn như trang Hoá đơn. report=search: lọc month (YYYY-MM), status (paid đã thu đủ, partial thu một phần, unpaid chưa thu đồng nào, cancelled chỉ hoá đơn huỷ; mặc định ẩn huỷ), query (số HĐ; tên khách nếu có quyền khách hàng); trả hạn, tổng/đã thu/còn lại, toà/phòng. Còn nợ kể cả thu một phần: crm_read_receivables. report=stats: tổng kỳ month trên các toà được đọc (số HĐ, tổng, đã thu, còn nợ, hoàn, phòng/điện/nước/dịch vụ; không gồm huỷ). Số tiền là chuỗi VND.',
+    { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid', 'cancelled'] },
       buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng THÁNG của từng toà (doanh thu, chi phí, lãi ròng) trong kỳ fromDate..toDate (≤ 366 ngày), cùng nguồn báo cáo tài chính CRM như crm_read_building_profit nhưng tách theo tháng. Số tiền là chuỗi VND.',
-    { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
-  pending_approvals: reportDefine('pending_approvals', `Hộp chờ duyệt của CHÍNH người hỏi: phiếu thu/chi đang chờ bạn duyệt (mã, tên phiếu, số tiền, người lập, bước duyệt, lúc gửi). ${PRIVATE_HINT} ${ORG_ONLY}`,
+  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng THÁNG của từng toà (doanh thu, chi phí, lãi ròng), fromDate..toDate ≤ 366 ngày, như "Phân tích tài chính": basis=accrual (mặc định, dồn tích theo kỳ phân bổ) hoặc cash (theo ngày phiếu). Hàng chỉ gồm phiếu ĐÃ DUYỆT; summary.pendingIncome/pendingExpense = thu/chi CHỜ DUYỆT cùng kỳ mà "BC Doanh Thu Chi Phí" cộng thêm — nói rõ phần này. Số tiền là chuỗi VND.',
+    { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
+  pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals): yêu cầu duyệt phiếu đang tới lượt bạn (mã, tên phiếu, số tiền, người lập, bước duyệt, lúc gửi). KHÔNG phải mọi phiếu thu/chi chưa duyệt: hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
-  zalo_conversations: reportDefine('zalo_conversations', `Danh sách hội thoại Zalo của công ty như trang Chat Zalo: người nhắn, SĐT, phòng/toà gắn, số tin chưa đọc, ghim, tin cuối (≤160 ký tự) và tổng hợp chưa đọc; query tìm theo tên/SĐT/nhãn (không tìm trong nội dung tin). ${PRIVATE_HINT} ${ORG_ONLY}`,
+  zalo_conversations: reportDefine('zalo_conversations', `Danh sách hội thoại Zalo của công ty như trang Chat Zalo (cần quyền xem Chat Zalo toàn công ty như web): người nhắn, SĐT, phòng/toà gắn, số tin chưa đọc, ghim, tin cuối (≤160 ký tự) và tổng hợp chưa đọc; query tìm theo tên/SĐT/nhãn (không tìm trong nội dung tin). ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
-  contract_search: reportDefine('contract_search', `Tìm hợp đồng theo số HĐ, phòng, toà hoặc tên khách (query) và trạng thái: phòng, toà, ngày bắt đầu/kết thúc, giá thuê, cọc phải thu/đã thu; tên khách đại diện và tìm theo tên khách chỉ khi kết nối có quyền đọc khách hàng (customers.view), thiếu thì customerName=null. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT} ${ORG_ONLY}`,
-    { status: { enum: [null, 'DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED'] }, query: QUERY, limit: LIMIT, offset: OFFSET }),
+  contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query theo số HĐ, tên phòng, tên/SĐT khách; status như bộ lọc web (ACTIVE = mọi HĐ trừ đã thanh lý, TERMINATED, EXPIRING = còn ≤30 ngày, EXPIRED = quá endDate). Trả toà/phòng, ngày bắt đầu, endDate, expectedMoveOutDate, giá thuê, cọc và displayLabel như web (Còn hạn, Sắp hết hạn, Quá hạn, Sắp chuyển đi, Đã thanh lý, Đã nhượng). Tên khách đại diện và tìm theo tên/SĐT chỉ khi có quyền khách hàng (customers.view) ở mọi toà của kết quả, thiếu thì customerName=null. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
+    { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }),
 });
 
 export const FULL_READS = Object.freeze({
