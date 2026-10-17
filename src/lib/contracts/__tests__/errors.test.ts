@@ -32,6 +32,11 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
     expect(isRetryable("rate_limit")).toBe(false);
     expect(isUserActionable("rate_limit")).toBe(true);
   });
+  it('PT413 oversized read must be narrowed, never retried unchanged', () => {
+    expect(classifyDbError({ code: 'PT413', message: 'hermes_domain_response_too_large' })).toBe('validation');
+    expect(retryOnlyConcurrency(0, { code: 'PT413' })).toBe(false);
+  });
+
   it('PT409 domain stale state requires reload, while native 40001 keeps concurrency semantics', () => {
     const stale = { code: 'PT409', message: 'Hóa đơn vừa thay đổi; vui lòng tải lại' };
     const category = classifyDbError(stale);
