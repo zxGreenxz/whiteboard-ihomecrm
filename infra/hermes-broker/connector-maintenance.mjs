@@ -1,3 +1,5 @@
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const OWNER = ['connectionId', 'assistantId', 'userId', 'organizationId'];
@@ -42,8 +44,9 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
         try { owner = await backend.resolveConnection(row.token, { signal: controller.signal }); }
         catch { unavailable = true; continue; } // Read-only discovery may recover after a temporary outage.
         if (closing) break;
+        // Token expiries are DB clock_timestamp() + TTL after any renewal.
         if (!exact(owner, [...OWNER, 'expiresAt']) || !same(row, owner) || !positive(owner.expiresAt) ||
-          owner.expiresAt <= checkTime() || owner.expiresAt > checkTime() + 900000) { blocked.add(row.operationId); continue; }
+          owner.expiresAt <= checkTime() || owner.expiresAt > checkTime() + 900000 + DB_CLOCK_SKEW_MS) { blocked.add(row.operationId); continue; }
         if (owner.expiresAt - checkTime() > renewBeforeMs) continue;
         // Latch before dispatch. Only a fully validated ACK plus actual drain
         // allows a later scheduled renewal of this connection.
@@ -66,7 +69,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
           finally { try { await operation.drained; } catch { retained = true; throw new Error('connector_maintenance_retained'); } }
           if (!exact(result, ['ok', 'status', 'connectionId', 'expiresAt', 'reconciled']) || result.ok !== true || result.status !== 'renewed' ||
             result.connectionId !== row.connectionId || !positive(result.expiresAt) || result.expiresAt <= owner.expiresAt ||
-            result.expiresAt > checkTime() + 900000 || typeof result.reconciled !== 'boolean') continue;
+            result.expiresAt > checkTime() + 900000 + DB_CLOCK_SKEW_MS || typeof result.reconciled !== 'boolean') continue;
           blocked.delete(row.operationId);
         } catch (error) {
           // The backend rejects admission synchronously before any write when

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { mayUseGroupTool } from './capability-contract.mjs';
+import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 
 // Pure formatting/canonicalization after trusted live admission.
 // This is NOT an authorization implementation or an RPC/queue adapter. None of
@@ -138,8 +139,10 @@ export function buildGroupRoomPreview({ intent, authority, roomRead, recipientRe
     return { conversationId, threadId: row.threadId, name: label(row.name) };
   });
   if (new Set(recipients.map(row => row.threadId)).size !== recipients.length) fail('draft_input_invalid');
+  // roomReadAt is stamped by this host's room service; recipientReadAt is DB clock_timestamp().
   const roomReadAt = time(result.readAt), recipientReadAt = time(recipientRead.readAt);
-  if ([roomReadAt, recipientReadAt].some(at => at > now || now - at >= MAX_AGE_MS) || authority.expiresAt <= now) fail('draft_expired');
+  if (roomReadAt > now || recipientReadAt > now + DB_CLOCK_SKEW_MS ||
+      [roomReadAt, recipientReadAt].some(at => now - at >= MAX_AGE_MS) || authority.expiresAt <= now) fail('draft_expired');
   const expiresAt = Math.min(authority.expiresAt, roomReadAt + MAX_AGE_MS, recipientReadAt + MAX_AGE_MS);
   const publicFacts = roomIds.map(value => facts.get(value));
   const body = ['PHÒNG ĐÃ CHỌN', ...publicFacts.map((row, index) =>
@@ -181,7 +184,7 @@ function decisionSnapshot(payload, expected, now) {
   if (decision.outcome === 'deny') deny('forbidden');
   if (['tokenDigest', 'intentDigest', 'roomReadDigest'].some(key => decision[key] !== expected[key]) ||
       !record(payload.authority) || decision.contextVersion !== payload.authority.contextVersion ||
-      decision.checkedAt < expected.startedAt || decision.checkedAt > now || decision.expiresAt <= now ||
+      decision.checkedAt < expected.startedAt - DB_CLOCK_SKEW_MS || decision.checkedAt > now + DB_CLOCK_SKEW_MS || decision.expiresAt <= now ||
       decision.expiresAt > decision.checkedAt + MAX_AGE_MS) deny('context_changed');
   return payload;
 }
@@ -298,7 +301,8 @@ export function createGroupRoomPreviewService({ roomReads, decisions, clock = Da
       if (send) {
         const dispatch = final.dispatch; exact(dispatch, ['id', 'expiresAt', 'recipients']);
         const expiresAt = time(dispatch.expiresAt), rows = array(dispatch.recipients, 8), seen = new Set(), jobs = new Set();
-        if (!id(dispatch.id) || expiresAt <= now() || expiresAt > now() + MAX_AGE_MS || rows.length !== snapshot.intent.conversationIds.length) deny('backend_unavailable');
+        if (!id(dispatch.id) || expiresAt <= now() || expiresAt > now() + MAX_AGE_MS + DB_CLOCK_SKEW_MS ||
+            rows.length !== snapshot.intent.conversationIds.length) deny('backend_unavailable');
         const recipients = rows.map(row => {
           exact(row, ['conversationId', 'jobId', 'status']);
           const selected = preview.display.recipients.find(value => value.conversationId === row.conversationId);

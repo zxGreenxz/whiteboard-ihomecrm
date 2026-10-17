@@ -24,7 +24,7 @@ function fixture(t, hooks = {}) {
   const calls = [], timers = new Map(); let nextTimer = 0;
   const store = { async readConnection(input, options) { assert.deepEqual(input, { tokenDigest: digest }); await hooks.read?.(scope, options); return structuredClone(row); },
     async renewConnection(input) { calls.push('renew'); await hooks.renew?.(row); assert.equal(input.expectedRevision, row.session.revision);
-      row.connection.expiresAt = NOW + 900000; return { ok: true, status: 'renewed', expiresAt: row.connection.expiresAt }; } };
+      row.connection.expiresAt = NOW + 900000 + (hooks.dbAhead ?? 0); return { ok: true, status: 'renewed', expiresAt: row.connection.expiresAt }; } };
   const authority = createDurableAuthority({ connectionStore: store, crypto, clock: () => NOW, auth: {
     async verifySession({ accessToken }) { calls.push('auth:' + accessToken); assert(sessions.has(accessToken));
       return { userId: binding.userId, sessionId: binding.sessionId, expiresAt: sessions.get(accessToken) }; },
@@ -54,6 +54,20 @@ test('near-expiry refresh is derived from real branded authority and verified be
   assert.equal(f.calls.filter(x => x === 'refresh').length, 1); assert.equal(f.calls.filter(x => x === 'renew').length, 1);
   assert(f.calls.indexOf('refresh') < f.calls.indexOf('auth:PRIVATE-NEW')); assert(f.calls.indexOf('auth:PRIVATE-NEW') < f.calls.indexOf('renew'));
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE|hc_|credential|sessionId|binding|tokenDigest/);
+});
+// Renewal target is DB clock_timestamp() + 15 min; dbAhead shifts only that target (session stays valid).
+for (const ahead of [50, 4000]) {
+  test(`renewal target ${ahead} ms past the 15-minute TTL (DB clock ahead) is still accepted`, async t => {
+    const f = fixture(t, { dbAhead: ahead }), operation = f.begin();
+    assert.deepEqual(await operation.result, { ok: true, status: 'renewed', connectionId: id(1), expiresAt: NOW + 900000 + ahead, reconciled: false });
+    await operation.drained; assert.equal(f.calls.filter(x => x === 'renew').length, 1);
+  });
+}
+test('renewal target 6000 ms past the 15-minute TTL is not reported as success', async t => {
+  const f = fixture(t, { dbAhead: 6000 }), operation = f.begin();
+  // The renewal write was already dispatched, so the rejected ACK surfaces as unknown outcome.
+  await assert.rejects(operation.result, { code: 'maintenance_outcome_unknown' }); await operation.drained;
+  assert.equal(f.calls.filter(x => x === 'renew').length, 1);
 });
 test('fresh provider session only renews opaque connection; invalid actors/getters never reach dependencies', async t => {
   const f = fixture(t, { fresh: true }); let reads = 0;

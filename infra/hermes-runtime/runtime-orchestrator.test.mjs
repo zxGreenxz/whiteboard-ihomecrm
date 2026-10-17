@@ -331,3 +331,52 @@ test('persisted handoff owner fence snapshots values before await and never exec
   expectedOwner.userId = B.userId; gate.resolve(); const handle = await pending;
   assert.equal(f.orchestrator.status(handle).userId,A.userId); await f.orchestrator.close();
 });
+
+// DB clock skew: a DB-issued expiry may lead this host's clock by up to 5 s (literals on purpose).
+const SKEW_CASES = [[50, true], [4000, true], [6000, false]];
+
+// Attach resolves 5 times: 1, 2 and 5 go through the orchestrator's own identity(); 3 and 4 belong to the
+// real supervisor and stay un-skewed, so only identity() sees the lead. A rejected lead hits exactly one lookup.
+for (const [delta, accepted] of SKEW_CASES) {
+  for (const target of accepted ? [0] : [1, 2, 5]) {
+    test(`attach authority with DB clock ${delta} ms ahead is ${accepted ? 'accepted at every orchestrator lookup' : `rejected at lookup ${target}`}`, async t => {
+      let calls = 0, f;
+      f = await fixture(t, { resolve: () => {
+        const skewed = accepted ? [1, 2, 5].includes(++calls) : ++calls === target;
+        f.owners.set(TA, { ...A, expiresAt: NOW + (skewed ? 900000 + delta : 600000) });
+      } });
+      if (accepted) {
+        const a = await f.attach(); assert.equal(f.orchestrator.status(a).state, 'active'); assert.equal(calls, 5);
+        assert(f.events.includes('runtime-start:' + A.assistantId)); assert(!f.events.includes('runtime-stop:' + A.assistantId));
+      } else {
+        await assert.rejects(f.attach(), /orchestrator_attach_failed/); assert.equal(calls, target, 'failed at the skewed lookup, no later one');
+        if (target < 5) assert(!f.events.some(event => event.startsWith('register:')));
+        else assert(f.events.includes('runtime-stop:' + A.assistantId));
+      }
+      await f.orchestrator.close();
+    });
+  }
+
+  // The supervisor is replaced by a stub with a matching status, so the receipt check at the
+  // orchestrator is the only thing that can quarantine the owner (no real supervisor bound is in play).
+  test(`maintenance result with DB clock ${delta} ms ahead is ${accepted ? 'accepted' : 'quarantined'}`, async t => {
+    const f = await fixture(t), base = f.config.supervisor; let receipt;
+    const supervisor = { renewalMode: 'coordinated', beginStart: base.beginStart, stop: base.stop, close: base.close,
+      status: handle => { const state = base.status(handle); return receipt && state.state === 'active' ? { ...state, expiresAt: receipt.expiresAt } : state; },
+      beginMaintain: () => {
+        receipt = { ok: true, status: 'renewed', connectionId: A.connectionId, expiresAt: NOW + 300000 + 900000 + delta, reconciled: false };
+        return { result: Promise.resolve({ ...receipt }), drained: Promise.resolve() };
+      } };
+    const orchestrator = createRuntimeOrchestrator({ ...f.config, supervisor });
+    const a = await orchestrator.attach({ token: TA, signal: new AbortController().signal }); orchestrator.start();
+    f.advanceClock(300000); f.timer.fire(5000);
+    if (accepted) {
+      await pause(); await pause();
+      assert.deepEqual([orchestrator.status(a).state, orchestrator.status(a).expiresAt], ['active', NOW + 1200000 + delta]);
+      assert(!f.events.includes('runtime-stop:' + A.assistantId));
+    } else {
+      await f.waitFor('runtime-stop:' + A.assistantId); assert.equal(orchestrator.status(a).state, 'reconnect_required');
+    }
+    await orchestrator.close();
+  });
+}

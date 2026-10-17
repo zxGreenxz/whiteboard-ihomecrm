@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { RuntimeModelServiceError } from '../hermes-broker/runtime-model-service.mjs';
 import { GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL, groupPreviewIntent } from '../hermes-broker/group-preview-mount.mjs';
+import { DB_CLOCK_SKEW_MS } from '../hermes-broker/clock-skew.mjs';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
@@ -237,7 +238,8 @@ export function createRuntimeGateway({ backend, broker, modelService, transport,
     try {
       const raw = await bounded(entry, null, signal => backend.resolveConnection(token, { signal }), input.signal);
       const identity = fields(raw, IDENTITY);
-      if (IDENTITY.slice(0, -1).some(key => !UUID.test(identity[key] ?? '')) || !positive(identity.expiresAt) || identity.expiresAt <= now() || identity.expiresAt > now() + 900000) fail('invalid_identity');
+      if (IDENTITY.slice(0, -1).some(key => !UUID.test(identity[key] ?? '')) || !positive(identity.expiresAt) || identity.expiresAt <= now() ||
+        identity.expiresAt > now() + 900000 + DB_CLOCK_SKEW_MS) fail('invalid_identity');
       entry.owner = OWNER.map(key => identity[key]).join(':'); if (owners.has(entry.owner)) { entry.owner = undefined; fail('profile_in_use'); }
       owners.add(entry.owner); entry.identity = freeze(identity); const ticket = Object.freeze({}); tickets.set(ticket, entry); return ticket;
     } catch { await closeEntry(entry); fail('invalid_identity'); }

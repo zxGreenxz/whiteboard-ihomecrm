@@ -637,3 +637,21 @@ test('shutdown prevents new registration and closes both actual transports only 
   await assert.rejects(f.gateway.register(tokens.a, { home: a.binding.home }), err('gateway_closed'));
   assert.throws(() => f.gateway.prepare(a.binding), err('invalid_binding'));
 });
+
+// DB clock skew: a DB-issued expiry may lead this host's clock by up to 5 s (literals on purpose).
+for (const [delta, accepted] of [[50, true], [4000, true], [6000, false]]) {
+  test(`register with DB clock ${delta} ms ahead is ${accepted ? 'accepted and prepares' : 'rejected as invalid_identity and releases the profile'}`, async t => {
+    const NOW = 1800000000000, f = await fixture(t, { clock: () => NOW }), home = path.resolve(os.tmpdir(), `hermes-gateway-skew-${delta}`);
+    let expiresAt = NOW + 900000 + delta; f.state.resolve = async () => ({ ...owners.a, expiresAt });
+    const binding = { assistantId: owners.a.assistantId, userId: owners.a.userId, organizationId: owners.a.organizationId, home };
+    if (accepted) {
+      const ticket = await f.gateway.register(tokens.a, { home }); assert(Object.isFrozen(ticket));
+      const handle = f.gateway.prepare(binding); assert(Object.isFrozen(handle)); await f.gateway.start(handle);
+    } else {
+      await assert.rejects(f.gateway.register(tokens.a, { home }), err('invalid_identity'));
+      assert.throws(() => f.gateway.prepare(binding), err('invalid_binding')); assert.equal(f.channels.length, 0);
+      expiresAt = NOW + 600000; await f.gateway.register(tokens.a, { home }); // same home and owner are free again
+    }
+    assert.equal(f.events.filter(event => event.kind === 'resolve').length, accepted ? 1 : 2);
+  });
+}

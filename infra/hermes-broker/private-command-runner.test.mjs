@@ -94,6 +94,26 @@ test('trusted pump resolves fresh owner, claims and dispatches once, then return
   assert.equal(f.calls.find(call => call.method === 'execute').options.timeoutMs, 120000);
 });
 
+// The DB stamps token expiry as clock_timestamp() + 15 min; literal skews so a zeroed tolerance is caught.
+for (const ahead of [50, 4000]) {
+  test(`owner expiry ${ahead} ms past the 15-minute TTL (DB clock ahead) is still accepted`, async t => {
+    const f = fixture(t, { resolve: () => ({ ...authority, expiresAt: NOW + 900000 + ahead }) });
+    assert.deepEqual(await f.run(), { status: 'ready', commandId: item.commandId });
+    assert.deepEqual(methods(f), ['resolve', 'claim', 'resolve', 'dispatch', 'execute', 'resolve', 'finish']);
+  });
+}
+
+test('owner expiry 6000 ms past the 15-minute TTL is rejected before any write', async t => {
+  const f = fixture(t, { resolve: () => ({ ...authority, expiresAt: NOW + 900000 + 6000 }) });
+  await assert.rejects(f.run(), { code: 'authority_unavailable' }); assert.deepEqual(methods(f), ['resolve']);
+});
+
+test('a fresh owner re-read with expiry 6000 ms past the TTL stops before dispatch', async t => {
+  let resolves = 0;
+  const f = fixture(t, { resolve: () => ({ ...authority, expiresAt: NOW + 900000 + (++resolves === 2 ? 6000 : 50) }) });
+  await assert.rejects(f.run(), unknown); assert.deepEqual(methods(f), ['resolve', 'claim', 'resolve']);
+});
+
 test('empty claim returns without dispatch, runtime, polling or cleanup', async t => {
   const f = fixture(t, { claim: () => ({ status: 'empty' }) });
   assert.deepEqual(await f.run(), { status: 'empty' }); await tick();

@@ -414,7 +414,7 @@ test('a stop during gate reopening cannot let maintenance restore active state a
 });
 
 test('maintenance rejects malformed or non-increasing/unbounded ACK before reopening admission', async t => {
-  for (const mutate of [ack => { ack.expiresAt = 1800000600000; }, ack => { ack.expiresAt = 1800000900001; },
+  for (const mutate of [ack => { ack.expiresAt = 1800000600000; }, ack => { ack.expiresAt = 1800000906000; },
     ack => { ack.expiresAt = '1800000900000'; }, ack => { ack.connectionId = id('7'); },
     ack => { ack.reconciled = 'false'; }, ack => { ack.extra = true; }]) {
     let f; f = await maintenanceFixture(t, { maintain: () => {
@@ -772,3 +772,63 @@ test('caller cancellation during runtime aborts immediately and keeps the ID con
   await assert.rejects(f.supervisor.executePrivateCommand(handle, claim(f)), /private_command_stopped/);
   assert.equal(f.resolutions, 3);
 });
+
+// DB clock skew: the database may run ahead of this host, so upper bounds on a DB-issued
+// expiry tolerate a few seconds (literals on purpose: 50/4000 accepted, 6000 rejected).
+const T0 = 1800000000000, SKEW_CASES = [[50, true], [4000, true], [6000, false]];
+
+for (const [delta, accepted] of SKEW_CASES) {
+  test(`start identity (first lookup) with DB clock ${delta} ms ahead is ${accepted ? 'accepted' : 'rejected before any runtime'}`, async t => {
+    let f; f = await fixture(t, { resolve: () => ({ ...f.identity, ...(f.resolutions === 1 ? { expiresAt: T0 + 900000 + delta } : {}) }) });
+    if (accepted) {
+      const handle = await f.start(); assert.equal(f.supervisor.status(handle).state, 'active'); assert.equal(f.resolutions, 2);
+      assert(f.calls.some(call => call[0] === 'gate' && call[1]));
+    } else {
+      await assert.rejects(f.start(), /supervisor_start_failed/);
+      assert.equal(f.resolutions, 1); assert(!f.calls.some(call => call[0] === 'start'));
+    }
+  });
+
+  test(`start re-resolve (second lookup) with DB clock ${delta} ms ahead is ${accepted ? 'accepted' : 'rejected before admission opens'}`, async t => {
+    let f; f = await fixture(t, { resolve: () => ({ ...f.identity, ...(f.resolutions === 2 ? { expiresAt: T0 + 900000 + delta } : {}) }) });
+    if (accepted) {
+      const handle = await f.start();
+      assert.deepEqual(f.supervisor.status(handle), { state: 'active', expiresAt: T0 + 900000 + delta }); assert.equal(f.resolutions, 2);
+    } else {
+      await assert.rejects(f.start(), /supervisor_start_failed/);
+      assert.equal(f.resolutions, 2); assert(f.calls.some(call => call[0] === 'start')); assert(!f.calls.some(call => call[0] === 'gate' && call[1]));
+    }
+  });
+
+  // The ACK check and the fresh-authority check share one value (they must be equal), so the
+  // accepted case covers both bounds; a 6 s lead is rejected at the ACK, before any fresh read.
+  test(`maintenance ACK and fresh authority with DB clock ${delta} ms ahead are ${accepted ? 'accepted' : 'rejected at the ACK'}`, async t => {
+    let f, ack; f = await maintenanceFixture(t, { maintain: () => {
+      f.identity.expiresAt = T0 + 900000 + delta; ack = maintenanceAck(f); return { result: Promise.resolve(ack), drained: Promise.resolve() };
+    } });
+    const handle = await f.start(), operation = f.supervisor.beginMaintain(handle, { signal: new AbortController().signal });
+    if (accepted) {
+      assert.deepEqual(await operation.result, ack); await operation.drained;
+      assert.deepEqual(f.supervisor.status(handle), { state: 'active', expiresAt: T0 + 900000 + delta }); assert.equal(f.resolutions, 3);
+      assert.equal(f.calls.filter(call => call[0] === 'gate' && call[1]).length, 2);
+    } else {
+      await assert.rejects(operation.result, /maintenance_failed/); await operation.drained; await f.supervisor.stop(handle);
+      assert.equal(f.resolutions, 2, 'rejected at the ACK, before the fresh authority read'); assert.equal(f.calls.filter(call => call[0] === 'gate' && call[1]).length, 1);
+    }
+  });
+
+  for (const phase of ['before', 'after']) {
+    test(`private command authority ${phase} dispatch with DB clock ${delta} ms ahead is ${accepted ? 'accepted' : 'denied'}`, async t => {
+      let f; f = await commandFixture(t, { resolve: () => ({ ...f.identity,
+        ...(f.resolutions === (phase === 'before' ? 3 : 4) ? { expiresAt: T0 + 900000 + delta } : {}) }) });
+      const handle = await f.start();
+      if (accepted) {
+        assert.deepEqual(await f.supervisor.executePrivateCommand(handle, claim(f)), { text: 'Phòng A đang trống.' });
+        assert.equal(executions(f).length, 1); assert.equal(f.resolutions, 4); assert.equal(f.supervisor.status(handle).state, 'active');
+      } else {
+        await assert.rejects(f.supervisor.executePrivateCommand(handle, claim(f)), /private_command_authority_changed/);
+        assert.equal(executions(f).length, phase === 'before' ? 0 : 1); assert.equal(f.supervisor.status(handle).state, 'reconnect_required');
+      }
+    });
+  }
+}
