@@ -873,6 +873,27 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261017115708_customer_list_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261017115708_customer_list_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.customer_search_patterns_v1 / public.customer_location_ids_v1 / public.customer_list_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 function trên — sinh 17/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 17/10/2026 (màn Khách hàng đọc qua hàm dùng chung customer_list_v1), chưa đi qua lane apply production — 3 function vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (apply-reviewed-migration --env test --apply: hai lượt ROLLBACK xanh, backup TEST, catalog đổi), PGlite 15 ca + 17 đột biến bị bắt, và đối chiếu từng dòng với đường web cũ bằng JWT người dùng thật trên TEST. Sẽ áp production qua npm run migrate:forward sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.customer_search_patterns_v1",
+        "function:public.customer_location_ids_v1",
+        "function:public.customer_list_v1"
+      ],
+      "raSoatBoi": "Claude Code — Khách hàng hàm dùng chung 17/10/2026",
+      "sha256": "31f1221c9676a209708b1ce72a943d8717e79f68b1c9d956b7897097a14ee248"
     }
   }
 }
