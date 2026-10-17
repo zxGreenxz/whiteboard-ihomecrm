@@ -15,7 +15,7 @@ function absolute(value) {
 }
 function privateInfo(info, directory) {
   if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile())) fail();
-  // Product service requires Linux. Windows parsing tests do not prove ACLs.
+  // Connector service requires Linux. Windows parsing tests do not prove ACLs.
   if (process.platform !== 'win32' && (info.uid !== process.getuid?.() || info.gid !== process.getgid?.() ||
       (info.mode & 0o777) !== (directory ? 0o700 : 0o600))) fail();
 }
@@ -48,7 +48,7 @@ async function privateRead(rawPath, maxBytes) {
     try { await handle?.close(); } catch { result?.fill(0); fail(); }
   }
 }
-// Same decoded-key scanner as the gateway boundary; JSON.parse verifies grammar.
+// Decoded-key scanner; JSON.parse verifies grammar.
 // Bounded private config accepts human-readable JSON but never duplicate keys.
 function parse(buffer) {
   const source = new TextDecoder('utf-8', { fatal: true }).decode(buffer); let i = 0;
@@ -102,7 +102,8 @@ function connectorLimits(value) {
   return Object.freeze(limits);
 }
 
-/** Private host config only: no env fallback, provisioning, network or listener.
+/** Private connector config only (`version: 2`, `mode: "connector"`): no env
+ * fallback, provisioning, network or listener.
  * This read-only loader obtains stateRoot before the host acquires its durable
  * ownership marker. The host must hold that marker before any state mutation.
  * Caller creates absent fixed subdirectories privately after validation, copies
@@ -115,14 +116,12 @@ export async function loadHostConfiguration(configPath) {
     const configFile = absolute(configPath), bytes = await privateRead(configFile, 32768);
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
-    const connectorOnly = input?.version === 2 && input?.mode === 'connector';
-    exact(input, ['version', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort', ...(connectorOnly ? ['mode'] : ['model'])],
-      connectorOnly ? ['limits'] : []);
-    const limits = connectorOnly ? connectorLimits(input.limits) : undefined;
+    if (input?.version !== 2 || input?.mode !== 'connector') fail();
+    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits']);
+    const limits = connectorLimits(input.limits);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
-    if (!connectorOnly) exact(input.model, ['model', 'maxTokens', 'maxIterations']);
-    if ((!connectorOnly && input.version !== 1) || !Number.isSafeInteger(input.listenPort) || input.listenPort < 1 || input.listenPort > 65535) fail();
+    if (!Number.isSafeInteger(input.listenPort) || input.listenPort < 1 || input.listenPort > 65535) fail();
     const { projectRef, host, role } = input.store;
     if (typeof projectRef !== 'string' || !/^[a-z0-9]{20}$/.test(projectRef) ||
         (host !== `db.${projectRef}.supabase.co` && (typeof host !== 'string' || !/^[a-z0-9-]+\.pooler\.supabase\.com$/.test(host))) ||
@@ -131,16 +130,9 @@ export async function loadHostConfiguration(configPath) {
     if (url.origin !== `https://${projectRef}.supabase.co` || url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
         typeof input.supabase.publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(input.supabase.publishableKey)) fail();
     const http = Object.freeze({ allowedHosts: httpList(input.http.allowedHosts, false), allowedOrigins: httpList(input.http.allowedOrigins, true) });
-    const { model, maxTokens, maxIterations } = input.model ?? {};
-    if (!connectorOnly && (typeof model !== 'string' || !/^[a-z][a-z0-9_-]*:[A-Za-z0-9_./:-]{1,128}$/.test(model) || model.length > 128 ||
-        !Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096 || !Number.isSafeInteger(maxIterations) || maxIterations < 1 || maxIterations > 16)) fail();
     const stateRoot = absolute(input.stateRoot); await privateDirectory(stateRoot);
-    const homeRoot = path.join(stateRoot, 'homes');
-    const paths = Object.freeze({ stateRoot, homeRoot, leaseDirectory: path.join(homeRoot, '.leases'), handoffDirectory: path.join(stateRoot, 'handoff'),
-      runtimeRoot: path.join(stateRoot, 'runtime'), gatewayRoot: path.join(stateRoot, 'gateway') });
-    // gateway transport already caps native Unix socket names at 100 bytes.
-    if (!connectorOnly && process.platform !== 'win32' && Buffer.byteLength(path.join(paths.gatewayRoot, '00000000-0000-4000-8000-000000000000', 's', 'gateway.sock')) > 100) fail();
-    for (const directory of connectorOnly ? [paths.handoffDirectory] : Object.values(paths).slice(1)) await privateDirectory(directory, true);
+    const paths = Object.freeze({ stateRoot, handoffDirectory: path.join(stateRoot, 'handoff') });
+    await privateDirectory(paths.handoffDirectory, true);
     const refs = input.encryption.keys, { activeKeyVersion } = input.encryption;
     if (!Array.isArray(refs) || refs.length < 1 || refs.length > 16 || typeof activeKeyVersion !== 'string' || !VERSION.test(activeKeyVersion)) fail();
     const versions = new Set(), secretFiles = [input.store.passwordFile, ...(input.store.caFile === undefined ? [] : [input.store.caFile])];
@@ -152,8 +144,8 @@ export async function loadHostConfiguration(configPath) {
     if (!versions.has(activeKeyVersion)) fail();
     for (const file of [configFile, ...secretFiles]) {
       const target = absolute(file);
-      // None of these paths may ever become an agent or gateway bind source.
-      if ([paths.homeRoot, paths.runtimeRoot, paths.gatewayRoot, paths.handoffDirectory].some(directory => inside(directory, target))) fail();
+      // Secrets never live inside the encrypted WAL directory.
+      if (inside(paths.handoffDirectory, target)) fail();
     }
     let password, ca;
     const passwordBytes = await privateRead(input.store.passwordFile, 4096);
@@ -171,8 +163,7 @@ export async function loadHostConfiguration(configPath) {
     let disposed = false;
     return Object.freeze({ supabase: Object.freeze({ url: url.origin, publishableKey: input.supabase.publishableKey }),
       store: Object.freeze({ projectRef, host, role, password, ...(ca === undefined ? {} : { ca }) }),
-      encryption: Object.freeze({ activeKeyVersion, keys }), http, paths,
-      ...(connectorOnly ? { mode: 'connector', limits } : { model: Object.freeze({ model, maxTokens, maxIterations, allowedModels: Object.freeze([model]) }) }), listenPort: input.listenPort,
+      encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, mode: 'connector', limits, listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

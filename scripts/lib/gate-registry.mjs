@@ -36,6 +36,8 @@ nodeGate('generate-copilot-guide-corpus', 'quality-gates', {
 nodeGate('generate-hermes-crm-inventory', 'quality-gates', {
   args: ['scripts/generate-hermes-crm-inventory.mjs', '--check'],
 });
+// Chuông báo Hermes ↔ web (chủ chốt 17/10/2026): đọc src/, migrations và bản đồ ở infra/hermes-broker.
+nodeGate('check-hermes-web-parity', 'quality-gates', { inputs: [...broadInputs, 'infra/**'] });
 nodeGate('normalize-supabase-types', 'quality-gates', { args: ['scripts/normalize-supabase-types.mjs', '--check'] });
 nodeGate('generate-docs-views', 'quality-gates', { args: ['scripts/generate-docs-views.mjs', '--check'], inputs: docsInputs });
 nodeGate('check-dependency-audit', 'quality-gates', { local: false, evidenceClass: 'external' });

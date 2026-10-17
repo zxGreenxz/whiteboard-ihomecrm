@@ -169,6 +169,7 @@ export const invoicesListQuery = (
           })
         : supabase.from('invoices');
 
+      // hermes-parity:begin invoice-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = (invoiceSource
         .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
         .is('deleted_at', null)
@@ -176,6 +177,7 @@ export const invoicesListQuery = (
         .order('building(name_sort)', { ascending: true, nullsFirst: false })
         .order('room(name_sort)', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
+      // hermes-parity:end invoice-search
 
       // Apply filters
       if (filters?.building_ids?.length) {
@@ -191,6 +193,7 @@ export const invoicesListQuery = (
       if (filters?.contract_id) {
         query = query.eq('contract_id', filters.contract_id);
       }
+      // hermes-parity:begin invoice-search
       if (filters?.status) {
         query = query.eq('status', filters.status);
       }
@@ -213,6 +216,7 @@ export const invoicesListQuery = (
       if (filters?.billing_month) {
         query = query.eq('billing_month', filters.billing_month);
       }
+      // hermes-parity:end invoice-search
       if (filters?.date_range?.start) {
         query = query.gte('issue_date', filters.date_range.start);
       }
@@ -230,6 +234,7 @@ export const invoicesListQuery = (
       // Tìm theo text: số HĐ (invoice_number) HOẶC tên khách. Tên khách nằm ở
       // bảng join (contract → contract_customers → customers) nên resolve trước
       // customer_id khớp tên → contract_id rồi OR vào điều kiện.
+      // hermes-parity:begin invoice-search
       if (filters?.search?.trim()) {
         const q = filters.search.trim().replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
         if (q) {
@@ -256,6 +261,7 @@ export const invoicesListQuery = (
           query = query.or(ors.join(','));
         }
       }
+      // hermes-parity:end invoice-search
 
       if (filters?.adjustment_review_status) {
         query = query.eq('adjustment_review_status', filters.adjustment_review_status === 'pending' ? 'PENDING' : 'CHECKED');
@@ -1394,6 +1400,7 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
       // RBAC v2: không truyền p_user_id; quyền xác định qua can_access_building().
       // Nhờ vậy super_admin thấy đủ data của các building trong scope (kể cả invoice
       // do staff khác tạo), khắc phục lỗi "lệch owner" của bản v1.
+      // hermes-parity:begin invoice-stats — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
         p_building_id: filters?.building_id ?? undefined,
         p_room_id: filters?.room_id ?? undefined,
@@ -1404,6 +1411,7 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
         p_payment_status: filters?.payment_status ?? undefined,
         p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
+      // hermes-parity:end invoice-stats
 
       if (error) throw error;
 

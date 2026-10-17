@@ -1,14 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer, request as httpRequest } from 'node:http';
+import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import path from 'node:path';
-import os from 'node:os';
-import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { createHermesBackend } from './server.mjs';
-import { ProfileLeaseStore } from '../hermes-runtime/profile-lease.mjs';
-import { createRuntimeOrchestrator } from '../hermes-runtime/runtime-orchestrator.mjs';
-import { createProfileHomes } from '../hermes-runtime/profile-homes.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -21,7 +15,7 @@ const tick = () => new Promise(done => setImmediate(done));
 const metadata = value => Object.fromEntries(['id', 'assistantId', 'organizationId', 'userId', 'state', 'epoch', 'restrictions', 'scopeIds']
   .map(key => [key, structuredClone(value[key])]));
 function fakeBackend() {
-  const calls = [], sql = [], audits = [], releases = [], key = randomBytes(32), privateOperations = new Map(), modelOperations = {}, providerOperations = {};
+  const calls = [], sql = [], audits = [], releases = [], key = randomBytes(32), privateOperations = new Map(), providerOperations = {};
   const acceptedAssistantTokens = new Set([assistantJwt]);
   let joined, poolEnds = 0, prepareCount = 0, signInCount = 0, clock = NOW;
   const principal = { role: 'hermes_store_test', session_role: 'hermes_store_test', scoped: true, privileged_member: false,
@@ -80,13 +74,6 @@ function fakeBackend() {
       return Response.json({ token_type: 'bearer', access_token: assistantJwt, refresh_token: 'SYNTHETIC-REFRESH-SECRET', user: { id: I.user } });
     }
     if (bearer !== browserJwt && !acceptedAssistantTokens.has(bearer)) return Response.json({ error: 'not authorized' }, { status: 401 });
-    if (endpoint.pathname === '/functions/v1/llm-proxy/chat/completions') {
-      assert.equal(bearer, assistantJwt); assert.equal(options.headers['x-organization-id'], I.org);
-      assert.equal(options.headers['x-copilot-feature'], 'chat'); assert.match(options.headers['x-task-id'], /^[a-f0-9-]{36}$/);
-      assert.equal(args.model, 'openai:fixture'); assert.equal(args.stream, false);
-      if (modelOperations.respond) return modelOperations.respond(options);
-      return Response.json({ id: 'fixture', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'Synthetic answer' }, finish_reason: 'stop' }] });
-    }
     if (endpoint.pathname === '/auth/v1/user') return Response.json({ id: I.user });
     if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
@@ -133,7 +120,7 @@ function fakeBackend() {
   const configuration = { supabase: { url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture' },
     store: { pool, expectedRole: 'hermes_store_test' }, encryption: { activeKeyVersion: 'fixture', keys: new Map([['fixture', key]]) },
     http: { allowedHosts: [HOST], allowedOrigins: [ORIGIN] }, fetch, clock: () => clock, audit: async event => { audits.push(structuredClone(event)); } };
-  return { configuration, calls, sql, audits, releases, key, principal, pool, privateOperations, modelOperations, providerOperations, acceptedAssistantTokens,
+  return { configuration, calls, sql, audits, releases, key, principal, pool, privateOperations, providerOperations, acceptedAssistantTokens,
     read: () => ({ joined, poolEnds, prepareCount, signInCount, clock }),
     nearSessionExpiry() { clock = NOW + 57 * 60000; joined.connection.expiresAt = clock + 120000; },
     grantRooms() { // A trusted fixture models an already-granted connection; browser connect remains default-off.
@@ -142,36 +129,6 @@ function fakeBackend() {
     } };
 }
 
-// Real host HTTP handler + real composed authority/crypto/model adapters. Only
-// Supabase/DB responses and the not-yet-deployed Docker transport are synthetic.
-async function privateGateway(t, http, token) {
-  let port, opened = 0, closed = 0;
-  const options = { allowedModels: ['openai:fixture'], transport: { async open({ handler, signal }) {
-    assert(signal instanceof AbortSignal); opened++;
-    const server = createServer(handler);
-    await new Promise(done => server.listen(0, '127.0.0.1', done)); port = server.address().port;
-    return { descriptor: { networkName: 'fixture-private', networkId: 'a'.repeat(64), mcpUrl: 'http://hermes-gateway:8787/mcp', modelBaseUrl: 'http://hermes-gateway:8787/v1' },
-      async close() { closed++; const stopped = new Promise(done => server.close(done)); server.closeAllConnections(); await stopped; } };
-  } } };
-  const gateway = http.createRuntimeGateway(options);
-  assert.equal(http.createRuntimeGateway(options), gateway);
-  assert.throws(() => http.createRuntimeGateway({ ...options }), /already_bound/);
-  const home = path.resolve('.cache', 'synthetic-profile');
-  const ticket = await gateway.register(token, { home, signal: new AbortController().signal });
-  assert.deepEqual(ticket, {}); assert.equal(opened, 0);
-  const handle = gateway.prepare({ home, assistantId: I.assistant, userId: I.user, organizationId: I.org });
-  assert.equal(opened, 0); await gateway.start(handle, { signal: new AbortController().signal });
-  t.after(() => gateway.shutdown());
-  const send = (url, body) => new Promise((resolve, reject) => {
-    const bytes = JSON.stringify(body);
-    const req = httpRequest({ host: '127.0.0.1', port, path: url, method: 'POST', headers: { host: 'hermes-gateway:8787',
-      'content-type': 'application/json', 'content-length': Buffer.byteLength(bytes) } }, res => {
-      const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
-      res.on('end', () => { const text = Buffer.concat(chunks).toString(); resolve({ status: res.statusCode, text, body: JSON.parse(text) }); });
-    }); req.on('error', reject); req.end(bytes);
-  });
-  return { gateway, handle, send, read: () => ({ opened, closed }) };
-}
 async function listening(t, configuration) {
   const backend = createHermesBackend(configuration);
   assert.equal(backend.server.listening, false);
@@ -202,7 +159,7 @@ test('construction does no I/O, requires explicit audit/config, exposes no priva
     assert.throws(() => createHermesBackend({ ...f.configuration, ...delta }), error => error.message === 'invalid_backend_config' && error.cause === undefined);
   }
   const backend = createHermesBackend(f.configuration);
-  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'createPrivateCommandRunner', 'createRuntimeGateway', 'createRuntimeSupervisor', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
+  assert.deepEqual(Object.keys(backend), ['server', 'close', 'resolveConnection', 'renewConnection', 'beginConnectionMaintenance', 'beginExternalConnectionMaintenance', 'startWorkMemoryRetention', 'workMemoryRetentionStatus']); assert.equal(backend.server.listening, false);
   assert.equal(f.calls.length, 0); assert.equal(f.sql.length, 0); assert.equal(f.audits.length, 0);
   assert.equal(backend.server.requestTimeout, 15000); assert.equal(backend.server.headersTimeout, 10000); assert.equal(backend.server.maxHeadersCount, 32);
   const first = backend.close(); assert.equal(backend.close(), first); await first;
@@ -220,47 +177,7 @@ test('host-owned retention uses only its fixed executor and backend close waits 
   assert.equal(f.calls.length, 0); assert.equal(calls, 1); assert.equal(f.read().poolEnds, 0);
 });
 
-test('private gateway composes real model authority and existing llm-proxy without a public model route or runtime credential', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
-  const runtime = await privateGateway(t, http, token);
-  const context = await runtime.send('/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'crm_auth_context', arguments: {} } });
-  assert.equal(context.status, 200); assert.equal(context.body.result.isError, false);
-  const identity = JSON.parse(context.body.result.content[0].text);
-  assert.equal(identity.userId, I.user); assert.equal(identity.organizationId, I.org); assert.equal(identity.assistantId, I.assistant);
-  const body = { model: 'openai:fixture', messages: [{ role: 'user', content: 'Synthetic question' }], max_tokens: 128 };
-  assert.equal((await runtime.send('/v1/chat/completions', body)).status, 403);
-  assert.equal(f.calls.filter(call => call.path.includes('llm-proxy')).length, 0);
-  runtime.gateway.setAdmission(runtime.handle, true); runtime.gateway.beginTurn(runtime.handle, { commandId: id(50) });
-  const answer = await runtime.send('/v1/chat/completions', body);
-  assert.equal(answer.status, 200); assert.equal(answer.body.choices[0].message.content, 'Synthetic answer');
-  const calls = f.calls.filter(call => call.path.includes('llm-proxy'));
-  assert.equal(calls.length, 1); assert.equal(calls[0].options.headers.authorization, `Bearer ${assistantJwt}`);
-  for (const secret of [token, assistantJwt, 'SYNTHETIC-REFRESH-SECRET']) assert(!answer.text.includes(secret));
-  assert.equal((await runtime.send('/v1/chat/completions', body)).status, 409);
-  assert.equal(f.calls.filter(call => call.path.includes('llm-proxy')).length, 1);
-  await runtime.gateway.endTurn(runtime.handle, { commandId: id(50) });
-  assert.equal((await http.send('/v1/chat/completions', body)).status, 404);
-  await http.close(); assert.deepEqual(runtime.read(), { opened: 1, closed: 1 });
-});
-
-test('private model result is withheld after connection revocation and the same profile cannot issue another paid request', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
-  const runtime = await privateGateway(t, http, token);
-  f.modelOperations.respond = () => {
-    f.read().joined.connection.state = 'revoked';
-    return Response.json({ id: 'fixture', object: 'chat.completion', choices: [{ index: 0,
-      message: { role: 'assistant', content: 'PRIVATE-STALE-ANSWER' }, finish_reason: 'stop' }] });
-  };
-  runtime.gateway.setAdmission(runtime.handle, true); runtime.gateway.beginTurn(runtime.handle, { commandId: id(51) });
-  const body = { model: 'openai:fixture', messages: [{ role: 'user', content: 'Synthetic question' }], max_tokens: 128 };
-  const result = await runtime.send('/v1/chat/completions', body);
-  assert(result.status >= 400); assert(!result.text.includes('PRIVATE-STALE-ANSWER'));
-  assert((await runtime.send('/v1/chat/completions', { ...body, temperature: 0.2 })).status >= 400);
-  assert.equal(f.calls.filter(call => call.path.includes('llm-proxy')).length, 1);
-  await runtime.gateway.endTurn(runtime.handle, { commandId: id(51) });
-});
-
-test('trusted supervisor resolves live owner without exposing credentials, permissions or a public identity route', async t => {
+test('trusted host resolves live owner without exposing credentials, permissions or a public identity route', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration);
   const created = await http.connect(), token = created.body.token;
   const options = { signal: new AbortController().signal };
@@ -279,7 +196,7 @@ test('trusted supervisor resolves live owner without exposing credentials, permi
   await assert.rejects(http.resolveConnection(token, options), { code: 'backend_unavailable' });
 });
 
-test('supervisor identity reads share bounded admission and close cancels late output', async t => {
+test('trusted identity reads share bounded admission and close cancels late output', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration);
   const token = (await http.connect()).body.token, started = deferred(), held = deferred();
   const originalConnect = f.pool.connect;
@@ -336,7 +253,7 @@ test('real composed constructors serve connect, durable MCP authority and manage
   assert.equal(f.read().joined.session.envelope.algorithm, 'A256GCM'); assert(f.releases.every(value => value === false));
 });
 
-test('trusted supervisor renewal uses composed authority/store, is absent from public routes, and stops after revoke/close', async t => {
+test('trusted host renewal uses composed authority/store, is absent from public routes, and stops after revoke/close', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration);
   const created = await http.connect(), token = created.body.token, before = f.read().joined.connection.expiresAt;
   const result = await http.renewConnection(token, { signal: new AbortController().signal });
@@ -535,135 +452,6 @@ test('binding shutdown waits for the dispatched RPC and never returns late succe
   assert((await response).error);
 });
 
-test('private runner factory binds once, uses composed live authority/store and exposes no public pump route', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), handle = Object.freeze({}), executed = [], ledger = [];
-  const command = { commandId: id(70), connectionId: I.connection, assistantId: I.assistant, userId: I.user,
-    organizationId: I.org, bindingId: id(71), bindingEpoch: 1, text: 'Private question', expiresAt: NOW + 300000 };
-  const supervisor = { status(value) { assert.equal(value, handle); return { state: 'active', expiresAt: NOW + 600000 }; },
-    async executePrivateCommand(value, input, options) { assert.equal(value, handle); assert(options.signal instanceof AbortSignal); executed.push(input); return { text: 'Private response' }; } };
-  assert.throws(() => http.createPrivateCommandRunner({}), /invalid_private_command_runner_config/);
-  const runner = http.createPrivateCommandRunner(supervisor);
-  assert.equal(http.createPrivateCommandRunner(supervisor), runner);
-  assert.throws(() => http.createPrivateCommandRunner({ ...supervisor }), /private_command_runner_already_bound/);
-  assert.equal(f.sql.length, 0); assert.deepEqual(Object.keys(runner), ['beginRun', 'beginPrune', 'run', 'prune', 'close']);
-  for (const operation of ['claim_private_command', 'dispatch_private_command', 'finish_private_command', 'prune_private_commands']) {
-    f.privateOperations.set(operation, input => {
-      ledger.push({ operation, input });
-      if (operation === 'prune_private_commands') return { status: 'pruned', count: 0 };
-      assert.equal(input.tokenDigest, f.read().joined.connection.tokenDigest);
-      if (operation === 'claim_private_command') return { status: 'claimed', claimId: input.claimId, command };
-      return { status: operation === 'dispatch_private_command' ? 'dispatched' : 'ready', commandId: command.commandId, claimId: input.claimId };
-    });
-  }
-  const token = (await http.connect()).body.token, options = { signal: new AbortController().signal };
-  assert.deepEqual(await runner.run(token, handle, options), { status: 'ready', commandId: command.commandId });
-  assert.deepEqual(await runner.prune({ limit: 12 }, options), { status: 'pruned', count: 0 });
-  assert.deepEqual(executed, [command]); assert.equal(ledger.at(-2).input.text, 'Private response');
-  assert.equal(new Set(ledger.slice(0, 3).map(row => row.input.claimId)).size, 1);
-  assert(!JSON.stringify(ledger).includes(token));
-  for (const path of ['/api/hermes/commands/run', '/internal/hermes/private-command/run']) assert.equal((await http.send(path, {})).status, 404);
-  assert(!(await http.mcp(token)).body.result.tools.some(tool => /command|prune|dispatch/i.test(tool.name)));
-  await http.close(); await assert.rejects(runner.run(token, handle, options), { code: 'backend_closed' });
-  assert.throws(() => http.createPrivateCommandRunner(supervisor), { code: 'backend_closed' });
-});
-
-test('backend close aborts and drains private runtime promise before erasing its copied encryption key', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), entered = deferred(), held = deferred(), handle = Object.freeze({});
-  const command = { commandId: id(70), connectionId: I.connection, assistantId: I.assistant, userId: I.user,
-    organizationId: I.org, bindingId: id(71), bindingEpoch: 1, text: 'Private question', expiresAt: NOW + 300000 };
-  f.privateOperations.set('claim_private_command', input => ({ status: 'claimed', claimId: input.claimId, command }));
-  f.privateOperations.set('dispatch_private_command', input => ({ status: 'dispatched', claimId: input.claimId, commandId: command.commandId }));
-  let signal, destroyed = false; const fill = Buffer.prototype.fill;
-  t.mock.method(Buffer.prototype, 'fill', function (value, ...args) {
-    if (value === 0 && this.length === 32 && this.equals(f.key)) destroyed = true;
-    return Reflect.apply(fill, this, [value, ...args]);
-  });
-  const runner = http.createPrivateCommandRunner({ status() { return { state: 'active', expiresAt: NOW + 600000 }; },
-    executePrivateCommand(_handle, _command, options) { signal = options.signal; entered.resolve(); return held.promise; } });
-  const token = (await http.connect()).body.token;
-  const running = runner.run(token, handle, { signal: new AbortController().signal });
-  const rejected = assert.rejects(running, { code: 'private_command_outcome_unknown' }); await entered.promise;
-  let closed = false; const closing = http.close(); void closing.then(() => { closed = true; });
-  try { await rejected; await tick(); assert(signal.aborted); assert.equal(closed, false); assert.equal(destroyed, false); }
-  finally { held.resolve({ text: 'late response' }); await closing; }
-  assert.equal(destroyed, true); assert.equal(f.read().poolEnds, 0);
-  assert(!f.sql.some(query => /hermes_store_(finish|fail)_private_command/.test(query.text)));
-});
-
-async function ownedRuntime(t, http, token, hooks = {}) {
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'hermes-backend-runtime-')));
-  const home = path.join(root, 'assistant'); await mkdir(home);
-  t.after(async () => { await http.close(); await rm(root, { recursive: true, force: true }); });
-  const events = [], profileStore = new ProfileLeaseStore({ homeRoot: root, directory: path.join(root, 'leases') });
-  const gateway = http.createRuntimeGateway({ allowedModels: ['openai:fixture'], transport: {
-    async open() { events.push('transport-open'); return {
-      descriptor: { networkName: 'fixture-private', networkId: 'a'.repeat(64), mcpUrl: 'http://hermes-gateway:8787/mcp', modelBaseUrl: 'http://hermes-gateway:8787/v1' },
-      async close() { events.push('transport-close'); },
-    }; },
-  } });
-  const runtime = {
-    prepare({ binding, admission, signal }) { assert.equal(admission, false); assert(signal instanceof AbortSignal);
-      return gateway.prepare(binding); },
-    start(handle) { return gateway.start(handle, { signal: new AbortController().signal }); },
-    setAdmission(handle, value) { events.push(`gate-${value}`); gateway.setAdmission(handle, value); },
-    async stop(handle) { events.push('runtime-stop'); hooks.stopEntered?.resolve(); await hooks.stopWait?.promise;
-      await gateway.close(handle); events.push('runtime-stopped'); },
-    beginExecutePrivateCommand: hooks.beginExecute ?? (() => Object.freeze({ result: Promise.resolve({ text: 'answer' }), drained: Promise.resolve() })),
-  };
-  const options = { profileStore, runtime }, supervisor = http.createRuntimeSupervisor(options);
-  assert.equal(http.createRuntimeSupervisor(options), supervisor);
-  assert.throws(() => http.createRuntimeSupervisor({ ...options }), /runtime_supervisor_already_bound/);
-  await gateway.register(token, { home, signal: new AbortController().signal });
-  const started = supervisor.beginStart({ token, home }); await started.ready;
-  return { supervisor, handle: started.handle, events, profileStore, home };
-}
-
-test('owned supervisor factory is inert, rejects getters and closes runtime before gateway teardown', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration);
-  let getters = 0;
-  for (const options of [{}, { profileStore: {}, runtime: {}, dependencyScope: {} },
-    { profileStore: {}, get runtime() { getters++; return {}; } }]) {
-    assert.throws(() => http.createRuntimeSupervisor(options), /invalid_runtime_supervisor_config|invalid_supervisor_config/);
-  }
-  assert.equal(getters, 0); assert.equal(f.sql.length, 0); assert.equal(f.calls.length, 0);
-  const token = (await http.connect()).body.token, stopWait = deferred(), stopEntered = deferred();
-  const runtime = await ownedRuntime(t, http, token, { stopWait, stopEntered });
-  assert.throws(() => http.createPrivateCommandRunner({}), /private_command_supervisor_mismatch/);
-  let closed = false; const closing = http.close().then(() => { closed = true; }); await stopEntered.promise;
-  try { await tick(); assert.equal(closed, false); assert(!runtime.events.includes('transport-close'));
-    assert.equal(runtime.events.at(-1), 'runtime-stop');
-  } finally { stopWait.resolve(); await closing; }
-  assert(runtime.events.indexOf('runtime-stop') < runtime.events.indexOf('transport-close'));
-  assert.equal(runtime.events.at(-1), 'runtime-stopped'); assert.equal(f.read().poolEnds, 0);
-  assert.throws(() => http.createRuntimeSupervisor({}), { code: 'backend_unavailable' });
-});
-
-test('owned supervisor shares runner drain scope; close starts runtime stop before waiting for the aborted result', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
-  const entered = deferred(), held = deferred(), stopEntered = deferred(); let observed;
-  const runtime = await ownedRuntime(t, http, token, { stopWait: held, stopEntered,
-    beginExecute(_handle, _input, { signal }) {
-      observed = signal; entered.resolve();
-      const result = new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Error('cancelled')), { once: true }));
-      return Object.freeze({ result, drained: held.promise });
-    },
-  });
-  const command = { commandId: id(70), connectionId: I.connection, assistantId: I.assistant, userId: I.user,
-    organizationId: I.org, bindingId: id(71), bindingEpoch: 1, text: 'Private question', expiresAt: NOW + 300000 };
-  f.privateOperations.set('claim_private_command', input => ({ status: 'claimed', claimId: input.claimId, command }));
-  f.privateOperations.set('dispatch_private_command', input => ({ status: 'dispatched', claimId: input.claimId, commandId: command.commandId }));
-  const runner = http.createPrivateCommandRunner(runtime.supervisor);
-  const operation = runner.beginRun(token, runtime.handle, { signal: new AbortController().signal });
-  const rejected = assert.rejects(operation.result, { code: 'private_command_outcome_unknown' }); await entered.promise;
-  let drained = false, closed = false; void operation.drained.then(() => { drained = true; });
-  const closing = http.close().then(() => { closed = true; }); await stopEntered.promise; await rejected;
-  try { await tick(); assert(observed.aborted); assert.equal(drained, false); assert.equal(closed, false);
-    assert(!runtime.events.includes('transport-close'));
-  } finally { held.resolve(); await closing; await operation.drained; }
-  assert.equal(drained, true); assert.equal(f.read().poolEnds, 0);
-  assert(!f.sql.some(query => /hermes_store_(finish|fail)_private_command/.test(query.text)));
-});
-
 function arrangeRefresh(f) {
   const operations = [], old = structuredClone(f.read().joined.session);
   const nextJwt = jwt(I.assistantSession, NOW + 7200000); let ownerId, staged;
@@ -746,9 +534,7 @@ test('external connector parks only its token, drains an active MCP call and ref
   const result = await operation.result; await operation.drained;
   assert.equal(result.status, 'renewed'); assert.equal((await http.mcp(token)).status, 200);
   assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
-  for (const method of ['createRuntimeGateway', 'createRuntimeSupervisor', 'createPrivateCommandRunner']) {
-    assert.throws(() => http[method]({}), { code: 'tool_not_available' });
-  }
+  for (const method of ['createRuntimeGateway', 'createRuntimeSupervisor', 'createPrivateCommandRunner']) assert.equal(Object.hasOwn(http, method), false);
   assert(!f.calls.some(call => call.path.includes('llm-proxy')));
 });
 
@@ -900,47 +686,6 @@ test('backend close holds key and maintenance capacity until ignored-abort refre
   assert(!f.sql.some(query => /hermes_store_renew_connection/.test(query.text)));
   assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2);
 });
-
-test('product orchestrator parks the actual runner, refreshes through composed backend, then resumes with the same runtime', async t => {
-  const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
-  f.nearSessionExpiry(); const refresh = arrangeRefresh(f), entered = deferred(), held = deferred(), reopened = deferred();
-  const respond = f.providerOperations.refresh;
-  f.providerOperations.refresh = async (...args) => { entered.resolve(); await held.promise; return respond(...args); };
-  f.providerOperations.renewExpiry = () => f.read().clock + 900000;
-  f.privateOperations.set('claim_private_command', () => ({ status: 'empty' }));
-  f.privateOperations.set('prune_private_commands', () => ({ status: 'pruned', count: 0 }));
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'hermes-coordinated-backend-')));
-  const gates = [], jobs = new Map(); let next = 0, starts = 0, stops = 0;
-  const gateway = http.createRuntimeGateway({ allowedModels: ['openai:fixture'], transport: { async open() {
-    return { descriptor: { networkName: 'fixture-private', networkId: 'a'.repeat(64), mcpUrl: 'http://hermes-gateway:8787/mcp', modelBaseUrl: 'http://hermes-gateway:8787/v1' }, async close() {} };
-  } } });
-  const supervisor = http.createRuntimeSupervisor({ profileStore: new ProfileLeaseStore({ homeRoot: root, directory: path.join(root, 'leases') }),
-    runtime: {
-      prepare({ binding, admission }) { assert.equal(admission, false); return gateway.prepare(binding); },
-      async start(handle) { starts++; await gateway.start(handle, { signal: new AbortController().signal }); },
-      setAdmission(handle, allowed) { gateway.setAdmission(handle, allowed); gates.push(allowed); if (allowed && gates.length > 1) reopened.resolve(); },
-      async stop(handle) { stops++; await gateway.close(handle); },
-    } });
-  assert.equal(supervisor.renewalMode, 'coordinated');
-  const orchestrator = createRuntimeOrchestrator({ backend: http, gateway, supervisor, runner: http.createPrivateCommandRunner(supervisor),
-    profileHomes: createProfileHomes({ homeRoot: root }), clock: () => f.read().clock,
-    closeIngress() {}, closePool: () => f.pool.end(),
-    timers: { setTimeout(fn, ms) { const key = ++next; jobs.set(key, { fn, ms }); return key; }, clearTimeout(key) { jobs.delete(key); } } });
-  t.after(async () => { held.resolve(); await orchestrator.close(); await rm(root, { recursive: true, force: true }); });
-  const pump = () => { const job = [...jobs].find(([, value]) => value.ms === 5000); assert(job); jobs.delete(job[0]); job[1].fn(); };
-  const handle = await orchestrator.attach({ token, signal: new AbortController().signal }); orchestrator.start(); pump(); await entered.promise;
-  assert.equal(orchestrator.status(handle).state, 'maintaining'); assert.deepEqual(gates, [true, false]);
-  const reads = f.sql.filter(query => /hermes_store_read_connection/.test(query.text)).length;
-  pump(); await tick(); assert.equal(f.sql.filter(query => /hermes_store_read_connection/.test(query.text)).length, reads);
-  assert(!f.sql.some(query => /hermes_store_claim_private_command/.test(query.text)));
-  held.resolve(); await reopened.promise; await tick(); assert.equal(orchestrator.status(handle).state, 'active');
-  assert.equal(orchestrator.status(handle).expiresAt, f.read().clock + 900000); assert.deepEqual(gates, [true, false, true]);
-  assert.deepEqual(refresh.operations, ['acquire_refresh', 'dispatch_refresh', 'stage_refresh', 'publish_refresh']);
-  pump(); await tick(); assert.equal(f.sql.filter(query => /hermes_store_claim_private_command/.test(query.text)).length, 1);
-  assert.equal(starts, 1); assert.equal(stops, 0); assert.equal(f.calls.filter(call => call.path === '/auth/v1/token').length, 2);
-  await orchestrator.close(); assert.equal(stops, 1); assert.equal(f.read().poolEnds, 1); assert.equal(jobs.size, 0);
-});
-
 
 test('backend handoff persists before activation and returns the same opaque token through the existing browser route', async t => {
   const f = fakeBackend(), entered = deferred(), hold = deferred(); let captured;

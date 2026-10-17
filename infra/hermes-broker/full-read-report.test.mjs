@@ -142,7 +142,7 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   assert.deepEqual(snapshot.value.items, [{ buildingId: BUILDING, buildingName: 'Toà A', total: 4, occupied: 1, reserved: 1, maintenance: 0, unavailable: 1,
     available: 1, occupancyPct: '25.00', committedPct: '50.00', missedRevenue: '2000000.00' }], 'overlay drops OTHER_BUILDING');
   assert.equal(snapshot.value.source, 'crm.occupancy_snapshot_v2');
-  // Cùng con số với RPC web của trang Báo cáo lấp đầy (useOccupancyDashboard.ts:83) hôm nay.
+  // Cùng con số với RPC web của trang Báo cáo lấp đầy (useOccupancyDashboard.ts, hermes-parity:occupancy-snapshot) hôm nay.
   const direct = await web(env, `SELECT jsonb_agg(jsonb_build_object('total',total,'occupied',occupied,'reserved',reserved,'maintenance',maintenance,
     'unavailable',unavailable,'available',available)) result FROM public.occupancy_snapshot_v2('2026-10-16',$1::uuid[])`, [[BUILDING]]);
   const [hermes] = snapshot.value.items;
@@ -208,7 +208,7 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
     ['2026-10-01', BUILDING, 400000, 0, 400000]], 'approved only, re-perioded like fa_monthly_pnl_accrual');
   assert.deepEqual([accrual.value.summary.basis, Number(accrual.value.summary.pendingIncome), Number(accrual.value.summary.pendingExpense),
     accrual.value.summary.pendingVouchers], ['accrual', 600000, 500000, 2], 'pending V5 (T9+T10 of T9–T11) and V3; V4 is outside the overlay');
-  // Từng hàng bằng RPC web (useFinancialAnalysis.ts:96-98) trên cùng tập toà.
+  // Từng hàng bằng RPC web (useFinancialAnalysis.ts, hermes-parity:monthly-pnl) trên cùng tập toà.
   const direct = await web(env, `SELECT jsonb_agg(jsonb_build_object('month',month,'buildingId',building_id,'revenue',revenue::text,'expense',expense::text,
     'net',net::text) ORDER BY month) result FROM public.fa_monthly_pnl_accrual($1::date,$2::date,$3::uuid[])`, [range.fromDate, range.toDate, [BUILDING]]);
   assert.deepEqual(accrual.value.items.map(({ month, buildingId, revenue, expense, net }) => ({ month, buildingId, revenue, expense, net })), direct);
@@ -268,7 +268,7 @@ test('contract_search like the Hợp đồng list: building-scoped rows, web fil
   assert.deepEqual([first.value.items[0].displayStatus, first.value.items[0].displayLabel, first.value.items[0].customerName], ['ACTIVE', 'Còn hạn', null]);
   await seedContracts(db);
   const labels = Object.fromEntries((await run(env, 'contract_search', {})).value.items.map(row => [row.contractId, [row.displayStatus, row.displayLabel]]));
-  // src/types/contract.ts:180-196 tại hôm nay 2026-10-16.
+  // src/types/contract.ts (hermes-parity:contract-search) tại hôm nay 2026-10-16.
   assert.deepEqual(labels, { [CONTRACT_A]: ['ACTIVE', 'Còn hạn'], [C_EXPIRED]: ['EXPIRED', 'Quá hạn'], [C_EXPIRING]: ['EXPIRING', 'Sắp hết hạn'],
     [C_MOVING]: ['MOVING_OUT', 'Sắp chuyển đi'], [C_TERMINATED]: ['TERMINATED', 'Đã thanh lý'], [C_TRANSFERRED]: ['TRANSFERRED', 'Đã nhượng'] });
   const byStatus = async status => sorted((await run(env, 'contract_search', { status })).value.items.map(row => row.contractId));

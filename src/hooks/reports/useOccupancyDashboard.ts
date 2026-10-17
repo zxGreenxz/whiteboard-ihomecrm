@@ -80,10 +80,12 @@ export function useOccupancySnapshot(asOfDate: string, buildingIds: string[]) {
     meta: {feedback:'inline'},
     queryKey: ["occupancy-dashboard", "snapshot", asOfDate, buildingIds] as const,
     queryFn: async (): Promise<OccupancySnapshotRow[]> => {
+      // hermes-parity:begin occupancy-snapshot — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("occupancy_snapshot_v2", {
         p_as_of_date: asOfDate,
         p_building_ids: toIdsParam(buildingIds),
       });
+      // hermes-parity:end occupancy-snapshot
       if (error) throw error;
       return financialReadRows(data).map(row => {
         const normalized = {...row};
@@ -105,11 +107,13 @@ export function useUpcomingVacancy(
       "occupancy-dashboard", "upcoming-vacancy", asOfDate, windowDays, buildingIds,
     ] as const,
     queryFn: async (): Promise<UpcomingVacancyRow[]> => {
+      // hermes-parity:begin occupancy-upcoming — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("occupancy_upcoming_vacancy_v2", {
         p_as_of_date: asOfDate,
         p_window_days: windowDays,
         p_building_ids: toIdsParam(buildingIds),
       });
+      // hermes-parity:end occupancy-upcoming
       if (error) throw error;
       return financialReadRows(data).map(row => ({...row,days_remaining:financialReadNumber(row.days_remaining),rent_price:financialReadNumber(row.rent_price)})) as UpcomingVacancyRow[];
     },

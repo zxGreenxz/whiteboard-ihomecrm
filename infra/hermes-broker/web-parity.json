@@ -1,0 +1,523 @@
+{
+  "$comment": "Chuông báo Hermes ↔ web (chủ chốt 17/10/2026, phương án A). Mỗi mục: chỗ web mà Hermes gọi theo (rpc) hoặc chép lại (mirrored), kèm nơi Hermes chép. Kiểm: node scripts/check-hermes-web-parity.mjs; ghi hash mới SAU KHI Hermes đã theo web: --write. Thêm mục: bọc mã web bằng // hermes-parity:begin <vùng> … // hermes-parity:end <vùng>, thêm một mục ở đây (web + hermes), chạy --write. Hướng dẫn: docs/plans/hermes-crm/BAN-GIAO.md.",
+  "notes": "Đã rà 17/10 (review PR #194), CHƯA vào bản đồ vì Hermes tự định nghĩa bộ lọc chứ không chép một màn web cụ thể: income_expenses (hermes_domain_read_v2: bỏ phiếu có hạng mục hạn chế/lương/cổ đông/quản lý lợi nhuận, lọc trạng thái duyệt/ngày/tên-mã), receivables (v2: APPROVED/PARTIAL_PAID/OVERDUE và còn nợ >0 — cùng tập trạng thái web dùng ở nhiều chỗ như useExcelInvoiceData, useContracts, không phải một trang), meter_readings (v2), leads và tasks (hermes_domain_read_v1: danh sách đơn giản theo toà/trạng thái/tên). Nếu sau này nói \"như trang X\" thì thêm mục mirrored + marker.",
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "occupancy-snapshot",
+      "kind": "rpc",
+      "description": "Báo cáo lấp đầy: ảnh chụp từng toà (crm_read_occupancy, crm_read_occupancy_report report=snapshot).",
+      "rpc": [
+        "occupancy_snapshot_v2"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/reports/useOccupancyDashboard.ts",
+          "region": "occupancy-snapshot",
+          "sha256": "2f503992484703b6648e32714c09eb1ef459b341258b8790b21b85cd240bd73a"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/reports/useOccupancyDashboard.ts",
+          "rpc": "occupancy_snapshot_v2"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v3",
+          "calls": [
+            "occupancy_snapshot_v2"
+          ],
+          "note": "miền occupancy"
+        },
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "occupancy_snapshot_v2"
+          ],
+          "note": "occupancy_report snapshot"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.occupancy_snapshot_v2"
+        }
+      ]
+    },
+    {
+      "id": "occupancy-upcoming",
+      "kind": "rpc",
+      "description": "Báo cáo lấp đầy: phòng sắp trống (crm_read_occupancy_report report=upcoming).",
+      "rpc": [
+        "occupancy_upcoming_vacancy_v2"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/reports/useOccupancyDashboard.ts",
+          "region": "occupancy-upcoming",
+          "sha256": "1cc6a3e87041ddc3b1b960650886a2f411b7967f598ee3e0f4e5d5873bf04fd1"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/reports/useOccupancyDashboard.ts",
+          "rpc": "occupancy_upcoming_vacancy_v2"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "occupancy_upcoming_vacancy_v2"
+          ],
+          "note": "occupancy_report upcoming"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.occupancy_upcoming_vacancy_v2"
+        }
+      ]
+    },
+    {
+      "id": "monthly-pnl",
+      "kind": "rpc",
+      "description": "Phân tích tài chính: lãi lỗ từng tháng từng toà, dồn tích hoặc tiền mặt (crm_read_monthly_pnl).",
+      "rpc": [
+        "fa_monthly_pnl_accrual",
+        "fa_monthly_pnl"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "region": "monthly-pnl",
+          "sha256": "dfb54057d5145aa00fa90be43c1f7c0ad085251ac033bb92a30554c66a494598"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_monthly_pnl_accrual"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_monthly_pnl"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "fa_monthly_pnl_accrual",
+            "fa_monthly_pnl"
+          ],
+          "note": "monthly_pnl"
+        },
+        {
+          "sql": "public.hermes_domain_read_v2",
+          "calls": [
+            "fa_monthly_pnl"
+          ],
+          "note": "building_profit (tiền mặt, phiếu đã duyệt)"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.fa_monthly_pnl"
+        }
+      ]
+    },
+    {
+      "id": "pending-approvals",
+      "kind": "rpc",
+      "description": "Hộp /approvals: việc chờ chính người hỏi duyệt (crm_read_pending_approvals).",
+      "rpc": [
+        "list_my_pending_approvals_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useApprovals.ts",
+          "region": "pending-approvals",
+          "sha256": "069149e58b7037c6c75d19323073166368bf9a673350412e54edc201347989ca"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useApprovals.ts",
+          "rpc": "list_my_pending_approvals_v1"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "list_my_pending_approvals_v1"
+          ],
+          "note": "pending_approvals"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.list_my_pending_approvals_v1"
+        }
+      ]
+    },
+    {
+      "id": "deposits-held",
+      "kind": "rpc",
+      "description": "Báo cáo cọc đang giữ theo toà (crm_read_deposits_held): Hermes gọi thẳng get_held_deposit_summary như trang Cọc.",
+      "rpc": [
+        "get_held_deposit_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "region": "deposits-held",
+          "sha256": "af414d0a54b8fcc531a8b48de6fcc422ba5951064ab6f2e84609089d20f0e5aa"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "rpc": "get_held_deposit_summary"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_held_deposit_summary",
+          "sha256": "2844cf1806b07bb7084e274cb9560ddfb15aa2eb127a5dcb37ded492affdc42f"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v2",
+          "calls": [
+            "get_held_deposit_summary"
+          ],
+          "note": "deposits_held"
+        },
+        {
+          "path": "infra/hermes-broker/domain-contract.mjs",
+          "contains": "deposits_held"
+        }
+      ],
+      "notes": "Hermes không truyền p_threshold nên dùng mặc định SQL 10000, bằng DEPOSIT_SHORTFALL_THRESHOLD web truyền vào. Vì thế băm cả thân get_held_deposit_summary: đổi mặc định hoặc hằng web thì Hermes phải theo."
+    },
+    {
+      "id": "sale-listing",
+      "kind": "rpc",
+      "description": "Trang Sale Phòng công khai (link chia sẻ): Hermes đọc nguyên trang qua hermes_sale_listing_rooms_v1 (crm_available_rooms, bản tin nhóm, lịch rooms_public_text_v1).",
+      "rpc": [
+        "get_public_available_rooms"
+      ],
+      "web": [
+        {
+          "path": "src/pages/phong-trong/usePhongTrong.ts",
+          "region": "sale-listing",
+          "sha256": "7898da87d17fbfcd77467ea2606451deb50fe71aaa2f2c97d6ab0396fb46495e"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/pages/phong-trong/usePhongTrong.ts",
+          "rpc": "get_public_available_rooms"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_sale_listing_payload_v1",
+          "calls": [
+            "get_public_available_rooms"
+          ],
+          "note": "đọc trang của từng chủ có link"
+        },
+        {
+          "sql": "public.hermes_sale_listing_rooms_v1",
+          "calls": [
+            "hermes_sale_listing_payload_v1"
+          ],
+          "note": "cửa JWT người dùng"
+        }
+      ]
+    },
+    {
+      "id": "authorized-scope",
+      "kind": "rpc",
+      "description": "Phạm vi quyền CRM thật của một khoá (toà/toàn tổ chức) mà mọi đọc của Hermes giao với Read của kết nối. Web không gọi authorized_scope_v3 trực tiếp: quyền web đến từ get_my_permissions_v2 (bản gộp của authorized_scope_v3) nên chuông là successorGuard + web vẫn dùng get_my_permissions_v2.",
+      "rpc": [
+        "authorized_scope_v3"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useMyPermissions.ts",
+          "rpc": "get_my_permissions_v2"
+        }
+      ],
+      "successorGuard": [
+        "app_private.authorized_scope_v3"
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_domain_grant_v2",
+          "calls": [
+            "authorized_scope_v3"
+          ],
+          "note": "quyền CRM của khoá Read"
+        },
+        {
+          "sql": "app_private.hermes_full_read_scope_v1",
+          "calls": [
+            "hermes_domain_grant_v2"
+          ],
+          "note": "tập toà của khoá thứ hai (customers/contracts.view)"
+        }
+      ]
+    },
+    {
+      "id": "invoice-search",
+      "kind": "mirrored",
+      "description": "Danh sách /invoices: thứ tự, lọc trạng thái (mặc định ẩn huỷ; unpaid = chưa thu đồng nào), kỳ, tìm số HĐ hoặc tên khách (crm_read_invoice_report report=search).",
+      "web": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "region": "invoice-search",
+          "sha256": "2dca5c21201e0a6892361dffcba5302f1a18c11b49183f7704983add227872df"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "note": "invoice_report search"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "'paid', 'partial', 'unpaid', 'cancelled'"
+        }
+      ],
+      "notes": "Đã biết 17/10: web xếp toà/phòng theo name_sort (tự nhiên), Hermes theo name."
+    },
+    {
+      "id": "invoice-stats",
+      "kind": "mirrored",
+      "description": "Thẻ tổng hoá đơn: Hermes chép bộ lọc hai khối tổng của get_invoice_statistics_v2 (không tính huỷ, lọc kỳ, nhóm điện/nước/dịch vụ theo mô tả dòng) nhưng phạm vi theo invoices.view (crm_read_invoice_report report=stats).",
+      "web": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "region": "invoice-stats",
+          "sha256": "c6006444fb703fa6a56f54a7d409910d97033e89578928776add8693786d8f24"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "rpc": "get_invoice_statistics_v2"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_invoice_statistics_v2",
+          "sha256": "af79a16dc9a26a4eb7fccc0c2a3d5d6e53f57156815b5d944fd8b55da5edf8ac"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "note": "invoice_report stats"
+        }
+      ]
+    },
+    {
+      "id": "contract-search",
+      "kind": "mirrored",
+      "description": "Danh sách Hợp đồng: tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời và thẻ sắp hết hạn/quá hạn, nhãn getContractDisplayStatus (crm_read_contract_search).",
+      "web": [
+        {
+          "path": "src/hooks/useContracts.ts",
+          "region": "contract-search",
+          "sha256": "eaf9fd967aaf6d3866b73ba1ac5521354b9042bd9692eea8a8ce14177acb0533"
+        },
+        {
+          "path": "src/types/contract.ts",
+          "region": "contract-search",
+          "sha256": "891e1807ddcacdec3703cf347a5079cd068b0344acae8555fe804a6ab221b62c"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "note": "contract_search"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.contracts"
+        }
+      ]
+    },
+    {
+      "id": "contract-detail",
+      "kind": "mirrored",
+      "description": "Chi tiết /contracts/:id: trường hợp đồng, toà/phòng, người ở, dịch vụ (crm_read_contract_detail).",
+      "web": [
+        {
+          "path": "src/hooks/useContracts.ts",
+          "region": "contract-detail",
+          "sha256": "ef08f9116b8fb90ff0e99c35eb9181971e74a1338de74d0e52f6c10fbb6d3b66"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v3",
+          "note": "contract_detail"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "CONTRACT_DETAIL_FIELDS"
+        }
+      ]
+    },
+    {
+      "id": "customer-list",
+      "kind": "mirrored",
+      "description": "Danh sách /customers: tìm khách, phòng/toà hiện tại (crm_read_customers).",
+      "web": [
+        {
+          "path": "src/hooks/useCustomers.ts",
+          "region": "customer-list",
+          "sha256": "f20fb4e6e9eebd54749e5742905db1fbbab37e6878904b503fc4770ed71ff7b0"
+        },
+        {
+          "path": "src/lib/customerSearch.ts",
+          "region": "customer-list",
+          "sha256": "3b8c1a5f2f7eedfca3ff081bf0e6ed28149fc5295affbfc35385970015ee825e"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v3",
+          "note": "customers"
+        }
+      ],
+      "notes": "LỆCH ĐÃ BIẾT 17/10: web 7f0bb373 tìm tên không dấu + SĐT/email/CCCD (imatch); Hermes vẫn tìm tên có dấu + số SĐT. Web lấy phòng hiện tại từ HĐ ACTIVE; Hermes ưu tiên ACTIVE/EXTENDED rồi HĐ gần nhất. Chờ đợt 2."
+    },
+    {
+      "id": "customer-detail",
+      "kind": "mirrored",
+      "description": "Hồ sơ /customers/:id (crm_read_customer_detail).",
+      "web": [
+        {
+          "path": "src/hooks/useCustomers.ts",
+          "region": "customer-detail",
+          "sha256": "713d389ef7735345e781c8d44988b73a375f1f8ab9513a84786a9e4182aab978"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v3",
+          "note": "customer_detail"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "CUSTOMER_DETAIL_FIELDS"
+        }
+      ]
+    },
+    {
+      "id": "customer-visibility",
+      "kind": "mirrored",
+      "description": "RLS customers_select_rbac của web (chủ hồ sơ khách là thành viên ACTIVE của công ty): Hermes chép vào mọi nhánh đọc customers.",
+      "sql": [
+        {
+          "policy": "customers_select_rbac",
+          "table": "public.customers",
+          "sha256": "4b14deca024322b75c502f3b9c8366046b847e6f16a85ca180bb2af29f2429a0"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v3",
+          "calls": [
+            "current_visible_owner_ids"
+          ],
+          "note": "customers, customer_detail, contract_detail"
+        },
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "current_visible_owner_ids"
+          ],
+          "note": "tên khách trong tìm hoá đơn/hợp đồng"
+        },
+        {
+          "sql": "public.hermes_room_pass_upsert_v2",
+          "calls": [
+            "current_visible_owner_ids"
+          ],
+          "note": "khách đại diện crm_room_lookup"
+        }
+      ]
+    },
+    {
+      "id": "zalo-conversations",
+      "kind": "mirrored",
+      "description": "Chat Zalo: danh sách hội thoại của công ty (ghim trước, tin mới nhất), tìm theo tên/SĐT/nhãn (crm_read_zalo_conversations). RLS web = zalo_authorized_org_ids('view').",
+      "web": [
+        {
+          "path": "src/hooks/useZaloChat.ts",
+          "region": "zalo-conversations",
+          "sha256": "93a2aa554701859d5097c7f40f47887f02fc7d7b780b8a493dd01c47f8402d27"
+        },
+        {
+          "path": "src/pages/chat-zalo/ChatZaloPage.tsx",
+          "region": "zalo-conversations",
+          "sha256": "43f57cc7d45ac705e702e325056de392d435a9fb6b81165c41aec90a610553da"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "zalo_authorized_org_ids"
+          ],
+          "note": "zalo_conversations"
+        },
+        {
+          "path": "infra/hermes-broker/full-read-contract.mjs",
+          "contains": "crm.zalo_conversations"
+        }
+      ],
+      "notes": "Đã biết 17/10: web ẩn hội thoại chưa có tin khi không tìm, tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
+    },
+    {
+      "id": "pnl-pending",
+      "kind": "mirrored",
+      "description": "Phần thu/chi CHỜ DUYỆT của lãi lỗ: BC Doanh Thu Chi Phí cộng ALL_ACTIVE; Hermes chép cách phân bổ fa_accrual_allocations (dồn tích) và fa_monthly_pnl (tiền mặt), chỉ đổi approval_status.",
+      "web": [
+        {
+          "path": "src/hooks/useAccrualReport.ts",
+          "region": "pnl-pending",
+          "sha256": "97932afdeea8e9d21f6252fcb372fc70ea2f7c9b2fdd11692bbcf7e76c0e3b48"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.fa_accrual_allocations",
+          "sha256": "4b5d2f3451d4bfeda619d9e1c2f2403bcde40af8b3cf8628428fd06c9cedebbd"
+        },
+        {
+          "function": "public.fa_monthly_pnl",
+          "sha256": "5a7e290d6bc206b1daabf417cdd58d0cd38c4c6308f0791ce6c1d96bbb7d3283"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_pnl_pending_v1",
+          "note": "phần chờ duyệt"
+        },
+        {
+          "sql": "app_private.hermes_report_read_v2",
+          "calls": [
+            "hermes_pnl_pending_v1"
+          ],
+          "note": "monthly_pnl summary.pending*"
+        }
+      ]
+    }
+  ]
+}

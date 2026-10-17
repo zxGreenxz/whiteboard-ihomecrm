@@ -99,7 +99,7 @@ export const REPORTS = Object.freeze({
       roomId: id, roomName: name100, effectiveEndDate: nullable(date), daysRemaining: nullable(Number.isSafeInteger), rentPrice: money, extensionApplied: nullable(bool) },
     { fromDate: true, days: true }) }) }),
   invoice_report: Object.freeze({ permission: 'invoices.view', reports: Object.freeze({
-    // Như /invoices (useInvoices.ts:194-214): mặc định ẩn huỷ; unpaid = chưa thu đồng nào, không huỷ.
+    // Như /invoices (src/hooks/useInvoices.ts, vùng hermes-parity:invoice-search): mặc định ẩn huỷ; unpaid = chưa thu đồng nào, không huỷ.
     search: report('crm.invoices', 'rows', { id, number: name100, billingMonth: nullable(longText(20)), dueDate: nullable(date), totalAmount: amount,
       paidAmount: amount, remainingAmount: amount, status: code, buildingId: id, buildingName: name200, roomId: nullable(id), roomName: name100 },
     { month: true, statuses: Object.freeze(['paid', 'partial', 'unpaid', 'cancelled']) }),
@@ -118,7 +118,7 @@ export const REPORTS = Object.freeze({
       buildingName: name200, label: name200, lastMessageAt: nullable(instant), lastMessageDir: nullable(longText(20)), lastMessage: nullable(longText(160)) },
     { summary: Object.freeze({ conversations: count, unreadConversations: count, unreadMessages: count, pinned: count }) }) }) }),
   contract_search: Object.freeze({ permission: 'contracts.view', reports: Object.freeze({
-    // Như danh sách hợp đồng (getContractDisplayStatus, src/types/contract.ts:180-196).
+    // Như danh sách hợp đồng (getContractDisplayStatus, src/types/contract.ts, vùng hermes-parity:contract-search).
     search: report('crm.contracts', 'rows', { contractId: id, number: name100, customerName: name200, buildingId: id, buildingName: name200,
       roomId: id, roomName: name100, startDate: nullable(date), endDate: nullable(date), actualEndDate: nullable(date), expectedMoveOutDate: nullable(date),
       status: code, displayStatus: value => ['ACTIVE', 'EXPIRING', 'EXPIRED', 'MOVING_OUT', 'TERMINATED', 'TRANSFERRED', 'DRAFT'].includes(value),

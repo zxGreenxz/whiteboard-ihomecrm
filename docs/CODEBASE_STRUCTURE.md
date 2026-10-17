@@ -29,6 +29,16 @@ Client chỉ phản chiếu quyền; quyết định cuối ở backend. Không 
 - `src/app/providers/AuthCacheSync.tsx`: callback auth chỉ đồng bộ; không `await supabase.*` vì có thể deadlock; effect đăng ký/huỷ listener.
 - GitNexus chỉ hỗ trợ callers/callees khi source chưa đủ rõ; wrapper tự kiểm index, không cần freshness gate. Sau đổi code, graph là bản chụp cũ.
 
+## Công thức dùng chung
+
+Công thức/bộ lọc có từ hai nơi trở lên cùng dùng (web, Hermes, báo cáo, worker) hoặc dính tiền/quyền đặt trong hàm SQL dùng chung mà mọi nơi cùng gọi; frontend chỉ giữ hiển thị (định dạng, sắp xếp cột, ẩn/hiện) và truy vấn chỉ trang đó dùng. Chỗ còn chép công thức sang Hermes phải có marker `hermes-parity` (chủ chốt 17/10/2026).
+
+- Chuyển từng màn một: đưa công thức của một màn vào hàm SQL chung, đổi màn đó gọi hàm, xong mới sang màn kế.
+- Khớp số trước/sau: cùng org/kỳ/bộ lọc (TEST/DEMO hoặc chỉ đọc), so kết quả cũ với hàm mới; lệch thì dừng và giải trình từng chênh.
+- `EXPLAIN` hàm mới trên dữ liệu cỡ thật: quyền/RLS tính theo tập (initplan), không gọi từng dòng; không chậm hơn bản cũ.
+- `p_building_ids` và tham số lọc tương tự chỉ thu hẹp (∩) phạm vi quyền server tự tính, không bao giờ mở rộng hay thay quyền.
+- Hermes còn chép: bọc mã web bằng `hermes-parity:begin/end`, thêm mục vào [web-parity.json](../infra/hermes-broker/web-parity.json); chuyển sang gọi hàm chung thì đổi mục thành `rpc`. Gate: `npm run gate:hermes-web-parity`.
+
 ## Kiểm thử
 
 Chọn runner từ [test-matrix](../tooling/test-matrix.json), runtime từ [runtime-matrix](../tooling/runtime-matrix.json), risk/review từ [risk-map](../tooling/risk-map.json). Không suy mọi test trong `supabase/functions/` là Deno.

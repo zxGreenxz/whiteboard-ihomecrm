@@ -176,6 +176,7 @@ export function isContractInEffect(status?: string | null): boolean {
   return status === 'ACTIVE';
 }
 
+// hermes-parity:begin contract-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 // Helper: compute display status
 export function getContractDisplayStatus(contract: Contract): ContractDisplayStatus {
   if (contract.status === 'TERMINATED') return 'TERMINATED';
@@ -202,6 +203,7 @@ export const CONTRACT_STATUS_CONFIG: Record<ContractDisplayStatus, { label: stri
   TRANSFERRED: { label: 'Đã nhượng', color: 'bg-gray-100 text-gray-600' },
   DRAFT: { label: 'Nháp', color: 'bg-gray-100 text-gray-500' },
 };
+// hermes-parity:end contract-search
 
 // Payment cycle labels
 export const PAYMENT_CYCLE_LABELS: Record<PaymentCycle, string> = {
