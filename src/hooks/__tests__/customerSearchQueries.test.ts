@@ -1,15 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { customerSearchFilter } from '@/lib/customerSearch';
 
 const h = vi.hoisted(() => ({
-  query: vi.fn(), fetch: vi.fn(), location: vi.fn(), org: '11111111-1111-4111-8111-111111111111',
+  query: vi.fn(), fetch: vi.fn(), org: '11111111-1111-4111-8111-111111111111',
 }));
 vi.mock('@tanstack/react-query', async importOriginal => ({
   ...await importOriginal<typeof import('@tanstack/react-query')>(), useQuery: h.query,
 }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: h.org }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'fixture-user' }) }));
-vi.mock('@/lib/customerResidenceHistory', () => ({ readResidenceLocationIds: h.location }));
 vi.mock('@/integrations/supabase/client', async () => {
   const { createClient } = await import('@supabase/supabase-js');
   return { supabase: createClient('https://fixture.invalid', 'fixture-key', {
@@ -18,23 +16,21 @@ vi.mock('@/integrations/supabase/client', async () => {
 });
 import { useCustomers, useCustomerStats } from '../useCustomers';
 
-const requests: Request[] = [];
-const counts = { total: 1205, individual: 1200, organization: 5, foreign: 2 };
+const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+const stats = { total: 1205, individual: 1200, organization: 5, foreign: 2 };
+const row = (n: number) => ({ id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, full_name: `Khách ${n}`, created_at: '2026-10-17T00:00:00+00:00',
+  current_building_id: null, current_building_name: null, current_room_name: null });
+let reply: unknown;
 
 beforeEach(() => {
   vi.clearAllMocks();
   requests.length = 0;
   h.org = '11111111-1111-4111-8111-111111111111';
-  h.location.mockResolvedValue(['customer-a']);
+  reply = { total: 41, stats, rows: [row(1), row(2)] };
   h.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
-    requests.push(request);
-    const url = new URL(request.url);
-    if (url.pathname.endsWith('/rpc/get_customer_stats')) return Response.json(counts);
-    const type = url.searchParams.get('customer_type');
-    const count = type === 'eq.INDIVIDUAL' ? counts.individual : type === 'eq.ORGANIZATION' ? counts.organization
-      : url.searchParams.has('is_foreign') ? counts.foreign : counts.total;
-    return new Response(request.method === 'HEAD' ? null : '[]', { headers: { 'Content-Range': `0-19/${count}` } });
+    requests.push({ path: new URL(request.url).pathname, body: await request.json() as Record<string, unknown> });
+    return Response.json(reply);
   });
 });
 
@@ -46,62 +42,64 @@ function queryOptions(invoke: () => unknown) {
   };
 }
 
-describe('customer search list and counts', () => {
-  it('sends the same server search for paginated list and every stat count', async () => {
-    const filters = { search: 'NGUYEN NHAT AN', status: 'RENTING' as const };
-    await queryOptions(() => useCustomers(filters, { page: 2, pageSize: 20 }, { skipLocationEnrichment: true })).queryFn();
-    const stats = await queryOptions(() => useCustomerStats(filters)).queryFn();
-    expect(stats).toEqual(counts);
-    expect(requests).toHaveLength(5);
-    for (const request of requests) {
-      const params = new URL(request.url).searchParams;
-      expect(params.get('or')).toBe(`(${customerSearchFilter(filters.search)})`);
-      expect(params.get('organization_id')).toBe(`eq.${h.org}`);
-      expect(params.get('status_v2')).toBe('eq.RENTING');
-      expect(params.get('deleted_at')).toBe('is.null');
-      expect(request.headers.get('prefer')).toContain('count=exact');
-    }
-    expect(new URL(requests[0].url).searchParams.get('offset')).toBe('20');
-    expect(new URL(requests[0].url).searchParams.get('limit')).toBe('20');
-    expect(requests.slice(1).every(request => request.method === 'HEAD')).toBe(true);
+describe('màn Khách hàng đọc qua customer_list_v1', () => {
+  it('danh sách phân trang gửi đúng bộ lọc, từ khoá đã trim và trang; trả tổng của server', async () => {
+    const filters = { search: '  NGUYỄN NHAT AN ', status: 'RENTING' as const, statFilter: 'INDIVIDUAL' as const };
+    const result = await queryOptions(() => useCustomers(filters, { page: 2, pageSize: 20 })).queryFn();
+    expect(requests).toEqual([{ path: '/rest/v1/rpc/customer_list_v1', body: {
+      p_organization_id: h.org, p_status: 'RENTING', p_kind: 'INDIVIDUAL', p_search: 'NGUYỄN NHAT AN',
+      p_limit: 20, p_offset: 20, p_include_location: true,
+    } }]);
+    expect(result).toEqual({ data: [row(1), row(2)], count: 41 });
   });
 
-  it('keeps residence filters in sync and ignores the selected stat card when counting', async () => {
-    const filters = { search: 'duong', status: 'MOVED_OUT' as const, building_id: 'building-a', room_id: 'room-a', statFilter: 'FOREIGN' as const };
-    await queryOptions(() => useCustomers(filters)).queryFn();
-    await queryOptions(() => useCustomerStats(filters)).queryFn();
-    expect(h.location.mock.calls).toEqual(Array(2).fill([h.org, 'building-a', 'room-a', true]));
-    expect(requests.every(request => new URL(request.url).searchParams.get('id') === 'in.(customer-a)')).toBe(true);
-    expect(new URL(requests[1].url).searchParams.has('is_foreign')).toBe(false);
+  it('thống kê dùng cùng hàm, cùng tập lọc nhưng bỏ thẻ loại và không tải dòng', async () => {
+    reply = { total: 3, stats, rows: [] };
+    const filters = { search: 'duong', status: 'MOVED_OUT' as const, building_id: 'b-1', room_id: 'r-1', statFilter: 'FOREIGN' as const };
+    expect(await queryOptions(() => useCustomerStats(filters)).queryFn()).toEqual(stats);
+    expect(requests[0].body).toEqual({
+      p_organization_id: h.org, p_status: 'MOVED_OUT', p_search: 'duong', p_building_ids: ['b-1'], p_room_id: 'r-1',
+      p_limit: 0, p_offset: 0, p_include_location: false,
+    });
   });
 
-  it('returns zero counts when the selected location has no matching customers', async () => {
-    h.location.mockResolvedValue([]);
-    const result = await queryOptions(() => useCustomerStats({ search: 'an', building_id: 'empty', status: 'RENTING' })).queryFn();
-    expect(result).toEqual({ total: 0, individual: 0, organization: 0, foreign: 0 });
-    expect(h.location).toHaveBeenCalledWith(h.org, 'empty', undefined, false);
-    expect(requests).toHaveLength(0);
+  it('lọc toà/phòng đi cùng lời gọi danh sách; thẻ "Tất cả" và từ khoá rỗng không gửi gì', async () => {
+    await queryOptions(() => useCustomers({ search: '  ', statFilter: 'ALL', building_id: 'b-1' }, { page: 1, pageSize: 20 })).queryFn();
+    expect(requests[0].body).toEqual({
+      p_organization_id: h.org, p_building_ids: ['b-1'], p_limit: 20, p_offset: 0, p_include_location: true,
+    });
   });
 
-  it('retains the single RPC for empty search', async () => {
-    expect(await queryOptions(() => useCustomerStats({ search: '  ' })).queryFn()).toEqual(counts);
-    expect(requests).toHaveLength(1);
-    expect(new URL(requests[0].url).pathname).toBe('/rest/v1/rpc/get_customer_stats');
+  it('picker hợp đồng: không phân trang, bỏ toà hiện tại, count = số dòng như trước', async () => {
+    reply = { total: 2, stats: { ...stats, total: 2 }, rows: [row(1), row(2)] };
+    const result = await queryOptions(() => useCustomers(undefined, undefined, { skipLocationEnrichment: true })).queryFn();
+    expect(requests[0].body).toEqual({ p_organization_id: h.org, p_offset: 0, p_include_location: false });
+    expect(result).toEqual({ data: [row(1), row(2)], count: 2 });
   });
 
-  it('propagates failed and missing counts instead of reporting zero', async () => {
+  it('lỗi quyền và câu trả lời sai hình dạng là lỗi, không phải danh sách rỗng hay số 0', async () => {
     h.fetch.mockImplementation(async () => Response.json({ message: 'permission denied', code: '42501' }, { status: 403 }));
     await expect(queryOptions(() => useCustomerStats({ search: 'an' })).queryFn()).rejects.toMatchObject({ code: '42501' });
-    h.fetch.mockImplementation(async () => new Response(null));
-    await expect(queryOptions(() => useCustomerStats({ search: 'an' })).queryFn()).rejects.toThrow('Chưa xác nhận');
+    await expect(queryOptions(() => useCustomers({}, { page: 1, pageSize: 20 })).queryFn()).rejects.toMatchObject({ code: '42501' });
+    for (const bad of [null, {}, { total: 1, stats, rows: [{ id: 'x' }] }, { total: 0, stats, rows: [row(1)] },
+      { total: 3, stats, rows: [row(1), row(1)] }, { total: 2, stats: { ...stats, total: 1 }, rows: [] }]) {
+      h.fetch.mockImplementation(async () => Response.json(bad));
+      await expect(queryOptions(() => useCustomers({}, { page: 1, pageSize: 1 }, { skipLocationEnrichment: true })).queryFn(), JSON.stringify(bad)).rejects.toThrow();
+    }
+    const { current_building_id: _drop, ...withoutLocation } = row(1);
+    h.fetch.mockImplementation(async () => Response.json({ total: 1, stats, rows: [withoutLocation] }));
+    await expect(queryOptions(() => useCustomers({}, { page: 1, pageSize: 20 })).queryFn()).rejects.toThrow('không nhất quán');
   });
 
-  it('does not carry stats across organizations or run without an organization', () => {
+  it('không mang số liệu sang công ty khác và không chạy khi chưa chọn công ty', () => {
     const options = queryOptions(() => useCustomerStats({ search: 'an' }));
-    expect(options.queryKey.at(-1)).toBe(h.org);
-    expect(options.placeholderData(counts, { queryKey: options.queryKey })).toBe(counts);
-    expect(options.placeholderData(counts, { queryKey: ['customer-stats', {}, 'other-org'] })).toBeUndefined();
+    expect(options.queryKey).toEqual(['customer-stats', { search: 'an' }, h.org]);
+    expect(options.placeholderData(stats, { queryKey: options.queryKey })).toBe(stats);
+    expect(options.placeholderData(stats, { queryKey: ['customer-stats', {}, 'other-org'] })).toBeUndefined();
+    const list = queryOptions(() => useCustomers({ search: 'an' }, { page: 1, pageSize: 20 }));
+    expect(list.queryKey).toEqual(['customers', { search: 'an' }, { page: 1, pageSize: 20 }, h.org]);
     h.org = '';
     expect(queryOptions(() => useCustomerStats({ search: 'an' })).enabled).toBe(false);
+    expect(queryOptions(() => useCustomers({ search: 'an' })).enabled).toBe(false);
   });
 });
