@@ -19,6 +19,7 @@ import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { DOMAIN_QUERY_HINT, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT } from './domain-contract.mjs';
+import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 
 const NIL = '00000000-0000-0000-0000-000000000000';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
@@ -171,8 +172,10 @@ function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
 test('tools/list of a connection holding every grantable key lists every family and stays inside the budget', async t => {
   const { broker, token } = fullGrantBroker(t);
   const listed = (await broker.listTools(token)).tools, names = listed.map(value => value.name);
-  const expected = [...ALL.filter(value => !['crm_room_schedule_create', 'crm_room_schedule_update'].includes(value.name)).map(value => value.name),
-    'crm_auth_context', 'crm_available_rooms'];
+  // Hai tool meta đợt 2 chỉ hiện khi sổ báo cáo (wave2-registry) có ít nhất một báo cáo; khi đó
+  // chúng nằm trong phép đo byte dưới đây (Gói 0 ước +1 488 B).
+  const expected = [...ALL.filter(value => !['crm_room_schedule_create', 'crm_room_schedule_update'].includes(value.name) &&
+    (W2.permissions.length > 0 || !W2_TOOL_NAMES.includes(value.name))).map(value => value.name), 'crm_auth_context', 'crm_available_rooms'];
   assert.deepEqual([...names].sort(), [...new Set(expected)].sort(), 'every family, every non-retired tool');
   const bytes = Buffer.byteLength(JSON.stringify({ tools: listed }));
   t.diagnostic(`tools/list ${listed.length} tools, ${bytes} bytes`);
@@ -261,7 +264,8 @@ test('broker tools/list advertises no required nullable field across mounted fam
     assert.ok(listed.some(value => value.name === name), name);
   }
   for (const value of listed) assert.deepEqual(requiredNullable(value), [], value.name);
-  assert.equal(listed.filter(value => value.name.startsWith('crm_read_')).length, DOMAIN_TOOLS.length);
+  assert.equal(listed.filter(value => value.name.startsWith('crm_read_')).length,
+    DOMAIN_TOOLS.length - (W2.permissions.length > 0 ? 0 : W2_TOOL_NAMES.length), 'mọi tool đọc; meta đợt 2 khi đã có báo cáo');
   assert.ok(Buffer.byteLength(JSON.stringify({ tools: listed })) <= TOOLS_LIST_BUDGET, 'tools/list stays inside the budget');
   assert.deepEqual(listed.find(value => value.name === 'crm_task_input_options').inputSchema.required, ['kind', 'query', 'limit']);
   assert.deepEqual(listed.find(value => value.name === 'crm_task_create').inputSchema.required, ['requestId', 'title', 'buildingId', 'jobTypeId', 'priority']);

@@ -171,6 +171,8 @@ test('composition: broker → domain mount → bound user JWT → hermes_domain_
   const fetch = async (url, options) => {
     assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
     const name = new URL(url).pathname.replace('/rest/v1/rpc/', ''), args = JSON.parse(options.body); events.push(name);
+    // Họ khoá đợt 2 (20261018000000) vắng trong fixture đợt 1: như SQL chưa deploy (PGRST202).
+    if (name === 'hermes_domain_capabilities_v3') return Response.json({ code: 'PGRST202', message: 'missing', details: null, hint: null }, { status: 404 });
     assert.ok(Object.hasOwn(SQL, name), `unexpected RPC ${name}`);
     try { return Response.json(await call(SQL[name], name.includes('capabilities') ? [args.p_organization_id] : [JSON.stringify(args.p_binding), args.p_domain, JSON.stringify(args.p_input)])); }
     catch (error) { return Response.json({ code: error.code, message: error.message, details: null, hint: null }, { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 }); }

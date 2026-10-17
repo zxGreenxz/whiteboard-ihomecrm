@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1501,
-  "soFileDocBangFs": 368,
-  "tongLoiGoi": 845,
-  "khongPhanLoaiDuoc": 387,
+  "tongSoFileTest": 1507,
+  "soFileDocBangFs": 369,
+  "tongLoiGoi": 848,
+  "khongPhanLoaiDuoc": 390,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
@@ -855,6 +855,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/full-read-report.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -877,6 +883,12 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-foundation.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/work-memory-sql.test.mjs",
@@ -1476,12 +1488,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/full-read-report.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/group-options-sql.test.mjs",

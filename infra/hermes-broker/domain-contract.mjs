@@ -3,6 +3,7 @@
 // One registry drives tools, input/result validation and the SQL family (fixed
 // RPC pair) of each domain; the model never names a table, RPC or actor.
 import { FULL_READS, PRIVATE_HINT } from './full-read-contract.mjs';
+import { W2_READS, W2_READ_KEY_LIST } from './wave2-registry.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const domainId = value => typeof value === 'string' && UUID.test(value);
 export const domainRecord = value => value !== null && typeof value === 'object' &&
@@ -53,10 +54,11 @@ export const DOMAIN_FAMILIES = Object.freeze({
   v2: Object.freeze({ readRpc: 'hermes_domain_read_v2', capabilitiesRpc: 'hermes_domain_capabilities_v2',
     inputKeys: Object.freeze([...BASE_INPUT, 'fromDate', 'toDate']), resultKeys: Object.freeze([...BASE_RESULT, 'source', 'fetchedAt']),
     capabilities: Object.freeze(['income_expenses.view', 'meter_readings.view', 'deposits.view', 'reports_finance.analysis']) }),
-  // Đọc đầy đủ cho người hỏi (20261016162104). Không có hàm capabilities riêng và
-  // không thêm khoá: quyền là các khoá ĐÃ CÓ do v1/v2/base cấp; SQL quyết định cuối.
-  v3: Object.freeze({ readRpc: 'hermes_domain_read_v3', capabilitiesRpc: null, inputKeys: BASE_INPUT,
-    resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: Object.freeze([]) }),
+  // Đọc đầy đủ cho người hỏi (20261016162104): đợt 1 dùng lại khoá ĐÃ CÓ do v1/v2/base cấp.
+  // Đợt 2 (20261018000000) thêm hàm capabilities riêng cho các khoá đọc mới (wave2-registry);
+  // chưa deploy (PGRST202) ⇒ null, các họ khác vẫn chạy. SQL quyết định cuối.
+  v3: Object.freeze({ readRpc: 'hermes_domain_read_v3', capabilitiesRpc: 'hermes_domain_capabilities_v3', inputKeys: BASE_INPUT,
+    resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: W2_READ_KEY_LIST }),
 });
 export const DOMAIN_READS = Object.freeze({
   customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ; phòng gần nhất và contractId khi có quyền hợp đồng). Toàn tổ chức thấy cả khách chưa có hợp đồng. Hồ sơ: crm_read_customer_detail. ${PRIVATE_HINT}`, {
@@ -102,15 +104,25 @@ export const DOMAIN_READS = Object.freeze({
   [], { family: 'v2', perBuilding: true, dated: true, requiresDates: true, source: 'crm.fa_monthly_pnl' }),
   // Họ v3 chi tiết/báo cáo (full-read-contract): sau cùng để thứ tự tool cũ không đổi.
   ...FULL_READS,
+  // Đợt 2: hai tool meta crm_read_report_list / crm_read_report (wave2-registry.mjs, điểm đăng ký cố định).
+  ...W2_READS,
 });
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
 export const DOMAIN_READ_CAPABILITIES = DOMAIN_FAMILIES.v1.capabilities;
 export const DOMAIN_READ_CAPABILITIES_V2 = DOMAIN_FAMILIES.v2.capabilities;
-export const ALL_DOMAIN_READ_CAPABILITIES = Object.freeze([...DOMAIN_FAMILIES.v1.capabilities, ...DOMAIN_FAMILIES.v2.capabilities]);
+export const DOMAIN_READ_CAPABILITIES_V3 = DOMAIN_FAMILIES.v3.capabilities;
+export const ALL_DOMAIN_READ_CAPABILITIES = Object.freeze([...DOMAIN_FAMILIES.v1.capabilities, ...DOMAIN_FAMILIES.v2.capabilities, ...DOMAIN_FAMILIES.v3.capabilities]);
 export const domainFamily = operation => Object.hasOwn(DOMAIN_READS, operation) ? DOMAIN_FAMILIES[DOMAIN_READS[operation].family] : undefined;
 export const domainOperation = name => typeof name === 'string' && name.startsWith('crm_read_') && Object.hasOwn(DOMAIN_READS, name.slice(9)) ? name.slice(9) : undefined;
-export const mayUseDomain = (effective, operation) => Object.hasOwn(DOMAIN_READS, operation) && effective?.read?.includes(DOMAIN_READS[operation].permission) === true;
+// Không input (tools/list, chặn sớm): tool có hiện không. Có input đã kiểm (đợt 2: crm_read_report):
+// đúng khoá của báo cáo được gọi. Họ cũ: một khoá cố định, input không đổi kết quả.
+export const mayUseDomain = (effective, operation, input) => {
+  if (!Object.hasOwn(DOMAIN_READS, operation)) return false;
+  const definition = DOMAIN_READS[operation];
+  if (typeof definition.mayUse === 'function') return definition.mayUse(effective, input) === true;
+  return effective?.read?.includes(definition.permission) === true;
+};
 export function domainInput(operation, input) {
   if (!Object.hasOwn(DOMAIN_READS, operation)) fail();
   const definition = DOMAIN_READS[operation], family = domainFamily(operation);
