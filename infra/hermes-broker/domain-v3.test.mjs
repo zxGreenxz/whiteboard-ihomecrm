@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupFullRead, fullReadSql, fullReadFixSql, fullReadParitySql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
+import { setupFullRead, fullReadSql, fullReadFixSql, fullReadParitySql, fullReadOwnerSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
@@ -15,7 +15,9 @@ import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 
 const code = expected => error => error.code === expected;
-const identity = (permission, buildings = [BUILDING, OTHER_BUILDING]) => ({ row: { organizationId: ORG }, scopesByPermission: { [permission]: { buildingIds: buildings } } });
+// Ảnh chụp quyền CRM có phạm vi cho từng khoá đã cấp (inScope đóng khi thiếu khoá — P3-8).
+const identity = (permission, buildings = [BUILDING, OTHER_BUILDING]) => ({ row: { organizationId: ORG },
+  scopesByPermission: Object.fromEntries([].concat(permission).map(key => [key, { buildingIds: buildings }])) });
 const list = (extra = {}) => domainInput('customers', extra);
 const ids = rows => rows.map(row => row.id).sort();
 
@@ -52,8 +54,9 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   await db.exec("UPDATE public.fixture_acl SET org_wide=false WHERE permission='customers.view'");
   await orgWide('customers.view');
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
+  // P2-2: như RLS customers_select_rbac, chủ hồ sơ (customers.user_id) phải là thành viên ACTIVE — kể cả khách có hợp đồng.
   await db.exec(`DELETE FROM public.fixture_visible_owners`);
-  assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CUSTOMER_B, CO_TENANT].sort(), 'no-contract rows need a visible owner');
+  assert.deepEqual(ids((await read3('customers', list())).items), [], 'no row without a visible owner');
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${USER}')`);
   assert.deepEqual(ids((await read3('customers', list({ buildingId: BUILDING }))).items), [CUSTOMER_A, CO_TENANT].sort(), 'buildingId drops the org-wide branch');
   const page = await read3('customers', list({ limit: 2 }));
@@ -77,7 +80,9 @@ test('SQL customer_detail: the /customers/:id fields in full, never images, bank
   const raw = JSON.stringify(result);
   for (const secret of [SECRET_IMAGE, BANK_A, 'FP-1', 'VCB', 'PUBLIC-CODE-A']) assert.equal(raw.includes(secret), false, secret);
   const input = domainInput('customer_detail', { customerId: CUSTOMER_A });
-  assert.deepEqual(domainResult('customer_detail', result, identity('customers.view'), input), result);
+  assert.deepEqual(domainResult('customer_detail', result, identity(['customers.view', 'contracts.view']), input), result);
+  assert.throws(() => domainResult('customer_detail', result, identity('customers.view'), input), 'P3-8: contracts without a contracts.view scope are refused');
+  assert.deepEqual(domainResult('customer_detail', { ...result, item: { ...item, contractsVisible: false, contracts: [] } }, identity('customers.view'), input).item.contracts, []);
   assert.equal(item.contractsVisible, true);
   assert.throws(() => domainResult('customer_detail', result, identity('contracts.view', [OTHER_BUILDING]), input), 'contracts fenced by the contracts.view CRM scope');
   assert.throws(() => domainResult('customer_detail', { ...result, item: { ...item, idImages: SECRET_IMAGE } }, identity('customers.view'), input));
@@ -106,7 +111,8 @@ test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; 
   const raw = JSON.stringify(result);
   for (const secret of ['contracts/secret-file.pdf', 'PUBLIC-CODE-A', SECRET_IMAGE, BANK_A]) assert.equal(raw.includes(secret), false, secret);
   const input = domainInput('contract_detail', { contractId: CONTRACT_A });
-  assert.deepEqual(domainResult('contract_detail', result, identity('contracts.view'), input), result);
+  assert.deepEqual(domainResult('contract_detail', result, identity(['contracts.view', 'customers.view']), input), result);
+  assert.throws(() => domainResult('contract_detail', result, identity('contracts.view'), input), 'P3-8: tenants without a customers.view scope are refused');
   assert.throws(() => domainResult('contract_detail', { ...result, item: { ...item, contractFileUrl: 'x' } }, identity('contracts.view'), input));
   for (const hidden of [CONTRACT_B, CONTRACT_F, CUSTOMER_A]) assert.equal((await read3('contract_detail', { contractId: hidden })).item, null, hidden);
   await db.exec(`UPDATE app_private.hermes_connections SET scope_ids=array_append(scope_ids,'${ORG_SCOPE}'::uuid);
@@ -139,8 +145,8 @@ test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, c
     ['nope', { customerId: CUSTOMER_A }], ['customers', { ...list(), status: 'ACTIVE' }]]) await assert.rejects(read3(domain, input), code('22023'), domain);
 });
 
-test('group path untouched: the three full-read migrations define only their own reviewed functions and no group/sale-listing projection', () => {
-  const sql = [fullReadSql(), fullReadFixSql(), fullReadParitySql()].join('\n').replace(/--[^\n]*/g, '');
+test('group path untouched: the four full-read migrations define only their own reviewed functions and no group/sale-listing projection', () => {
+  const sql = [fullReadSql(), fullReadFixSql(), fullReadParitySql(), fullReadOwnerSql()].join('\n').replace(/--[^\n]*/g, '');
   const created = [...sql.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)/gi)].map(match => match[1]).sort();
   assert.ok(created.length > 0);
   for (const name of created) assert.match(name, /^(public\.hermes_(room_pass_upsert_v2|domain_read_v3)|app_private\.hermes_(full_text_v1|full_read_scope_v1|pnl_pending_v1|report_[a-z_]+_v[12]))$/, name);
@@ -231,14 +237,30 @@ test('P1 customer side: without contracts.view the profile and list keep the cus
     assert.equal(JSON.stringify(detail).includes('HD-A'), false);
     const people = await read3('customers', list());
     assert.deepEqual(people.items.map(row => row.contractId), [null, null], 'contractId only with contracts.view');
+    // P3-6: phòng/toà gần nhất đi cùng hợp đồng nên cũng cần contracts.view.
+    assert.deepEqual(people.items.map(row => [row.buildingId, row.roomId, row.roomName]), [[null, null, null], [null, null, null]]);
   } finally { await db.exec(on); }
   assert.equal((await read3('customers', list())).items.find(row => row.id === CUSTOMER_A).contractId, CONTRACT_A);
 });
 
+const STRANGER = '0e0e0e0e-0000-4000-8000-000000000040';
+test('P2-2: a customer whose owner (customers.user_id) is not an active member is hidden in list, profile and tenants, like the web RLS', { timeout: 120000 }, async t => {
+  const { db, read3 } = await setupFullRead(t);
+  await db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CO_TENANT}'`);
+  assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A]);
+  assert.equal((await read3('customer_detail', { customerId: CO_TENANT })).item, null);
+  const contract = (await read3('contract_detail', { contractId: CONTRACT_A })).item;
+  assert.deepEqual([contract.tenantsVisible, contract.tenants.map(row => row.customerId)], [true, [CUSTOMER_A]]);
+  assert.equal(JSON.stringify(contract).includes('0933333333'), false);
+  await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${STRANGER}')`);
+  assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CO_TENANT].sort(), 'owner joins the company: visible again');
+  assert.equal((await read3('customer_detail', { customerId: CO_TENANT })).item.id, CO_TENANT);
+});
+
 // Mutation evidence: each mutant removes ONE fence; the same probe that the
 // reviewed SQL refuses must then succeed, so the probes are not vacuous.
-// Định nghĩa sống của v3 ở file khớp web 20261017021554: đột biến nhắm vào đó.
-const reviewed = fullReadParitySql();
+// Định nghĩa sống của v3 ở file sửa sau review 20261017033630: đột biến nhắm vào đó.
+const reviewed = fullReadOwnerSql();
 const mutate = (from, to = '') => { assert.equal(reviewed.split(from).length, 2, `anchor: ${from}`); return reviewed.replace(from, to); };
 const probes = [
   { name: 'connection overlay building scope', sql: mutate(`  SELECT COALESCE(array_agg(b.id ORDER BY b.id),'{}'::uuid[]) INTO buildings
@@ -254,8 +276,8 @@ const probes = [
       await db.exec("UPDATE public.fixture_acl SET org_wide=true WHERE permission='customers.view'");
       return (await read3('customer_detail', { customerId: CUSTOMER_C })).item !== null;
     } },
-  { name: 'company isolation of the detail row', sql: mutate(`      WHERE cu.id=v_target AND cu.organization_id=c.organization_id AND cu.deleted_at IS NULL
-        AND (EXISTS(`, `      WHERE cu.id=v_target AND cu.deleted_at IS NULL
+  { name: 'company isolation of the detail row', sql: mutate(`      WHERE cu.id=v_target AND cu.organization_id=c.organization_id AND cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)
+        AND (EXISTS(`, `      WHERE cu.id=v_target AND cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)
         AND (true OR EXISTS(`),
     run: async ({ read3 }) => (await read3('customer_detail', { customerId: CUSTOMER_F })).item !== null },
   { name: 'connection Read overlay key', sql: mutate(` OR NOT(permission=ANY(c.read_capabilities))`),
@@ -284,12 +306,32 @@ const probes = [
         await db.exec(`UPDATE app_private.${table} SET read_capabilities=read_capabilities||ARRAY['reports_real_estate.occupancy']`);
       return (await read3('occupancy', domainInput('occupancy', {}))).items.some(row => row.buildingId === OTHER_BUILDING);
     } },
+  // P2-2: chủ hồ sơ khách không còn là thành viên ACTIVE ⇒ web không thấy khách (RLS customers).
+  { name: 'P2-2 customer list needs a visible owner', sql: mutate(`        AND customer.user_id=ANY(v_owners) AND (latest.id IS NOT NULL OR org_wide)
+`, `        AND (latest.id IS NOT NULL OR org_wide)
+`),
+    run: async ({ db, read3 }) => { await db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CO_TENANT}'`);
+      return (await read3('customers', list())).items.some(row => row.id === CO_TENANT); } },
+  { name: 'P2-2 customer profile needs a visible owner', sql: mutate(`AND cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)
+        AND (EXISTS(`, `AND cu.deleted_at IS NULL
+        AND (EXISTS(`),
+    run: async ({ db, read3 }) => { await db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CO_TENANT}'`);
+      return (await read3('customer_detail', { customerId: CO_TENANT })).item !== null; } },
+  { name: 'P2-2 tenants need a visible owner', sql: mutate(`          AND cu.user_id=ANY(v_owners)
+        WHERE cc.contract_id=ct.id`, `
+        WHERE cc.contract_id=ct.id`),
+    run: async ({ db, read3 }) => { await db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CO_TENANT}'`);
+      return JSON.stringify(await read3('contract_detail', { contractId: CONTRACT_A })).includes('0933333333'); } },
+  { name: 'P3-6 room of the customer list needs contracts.view', sql: mutate(`        'roomName',CASE WHEN latest.building_id=ANY(v_contract_scope) THEN app_private.hermes_domain_text_v1(latest.room_name) END) item`,
+    `        'roomName',app_private.hermes_domain_text_v1(latest.room_name)) item`),
+    run: async ({ db, read3 }) => { await db.exec(removeRead('contracts.view')[0]);
+      return (await read3('customers', list())).items.some(row => row.roomName !== null); } },
 ];
 for (const probe of probes) {
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async t => {
     const safe = await setupFullRead(t);
     assert.equal(await probe.run(safe).catch(() => false), false, 'reviewed SQL refuses');
-    const mutant = await setupFullRead(t, { parity: probe.sql });
+    const mutant = await setupFullRead(t, { owner: probe.sql });
     assert.equal(await probe.run(mutant), true, 'mutant breaches');
   });
 }

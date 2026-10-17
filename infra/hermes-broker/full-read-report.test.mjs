@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { setupFullRead, fullReadParitySql, FULL_READ_PARITY_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { setupFullRead, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, FULL_READ_OWNER_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
-  PHONE_A } from './full-read-sql-fixture.mjs';
+  PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
@@ -109,11 +109,13 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     const pattern = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g');
     const last = files.map(file => [file, [...readFileSync(`supabase/migrations/${file}`, 'utf8').matchAll(pattern)].at(-1)?.[0]]).filter(([, body]) => body).at(-1);
     assert.ok(last, name);
-    if (['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2', 'app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
+    if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_PARITY_PATH, `${name} lives in the web-parity migration`);
+    if (['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2'].includes(name))
+      assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
-  assert.doesNotMatch(fullReadParitySql().replace(/--[^\n]*/g, ''), /copilot_/i, 'the web-parity migration calls no copilot function');
+  for (const sql of [fullReadParitySql(), fullReadOwnerSql()]) assert.doesNotMatch(sql.replace(/--[^\n]*/g, ''), /copilot_/i, 'no copilot function call');
   // Bản thật trong PGlite sau cả ba migration: không thân hàm nào của chuỗi đọc đầy đủ nhắc copilot_.
   const { db } = await setup(t);
   const rows = (await db.query(`SELECT p.proname,p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -280,6 +282,54 @@ test('contract_search like the Hợp đồng list: building-scoped rows, web fil
   assert.equal((await run(env, 'contract_search', { buildingId: BUILDING, query: 'hd-a' })).value.items[0].customerName, 'Nguyễn Văn An');
 });
 
+// P2-2 (review 85280779): RLS customers_select_rbac của web — chủ hồ sơ (customers.user_id) phải là
+// thành viên ACTIVE của công ty (current_visible_owner_ids), kể cả khi tra qua báo cáo.
+const STRANGER = '0e0e0e0e-0000-4000-8000-000000000041';
+const strangerOwnsA = db => db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CUSTOMER_A}'`);
+test('P2-2 reports: a customer whose owner is not an active member is never named or matched', { timeout: 120000 }, async t => {
+  const env = await setup(t), { db } = env;
+  await grantCustomers(db);
+  assert.equal((await run(env, 'contract_search', {})).value.items[0].customerName, 'Nguyễn Văn An');
+  await strangerOwnsA(db);
+  const rows = (await run(env, 'contract_search', {})).value.items;
+  assert.deepEqual(rows.map(row => [row.contractId, row.customerName]), [[CONTRACT_A, 'Lê Ở Ghép']], 'the visible co-tenant represents the contract');
+  for (const query of ['văn an', PHONE_A]) assert.deepEqual((await run(env, 'contract_search', { query })).value.items, [], query);
+  assert.deepEqual((await run(env, 'invoice_report', { report: 'search', query: 'văn an' })).value.items, []);
+  await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${STRANGER}')`);
+  assert.deepEqual((await run(env, 'contract_search', { query: 'văn an' })).value.items.map(row => row.contractId), [CONTRACT_A]);
+});
+
+test('P3-5 monthly_pnl: the pending part covers exactly the buildings of the rows (query on building name)', { timeout: 120000 }, async t => {
+  const env = await setup(t), { db } = env;
+  await seedPnl(db); await orgWideOverlay(db);
+  const range = { fromDate: '2026-08-01', toDate: '2026-10-31' };
+  assert.equal(Number((await run(env, 'monthly_pnl', range)).value.summary.pendingIncome), 1300000, 'both buildings: V5 600k + V4 700k');
+  const onlyA = (await run(env, 'monthly_pnl', { ...range, query: 'toà a' })).value;
+  assert.ok(onlyA.items.every(row => row.buildingId === BUILDING));
+  assert.deepEqual([Number(onlyA.summary.pendingIncome), Number(onlyA.summary.pendingExpense), onlyA.summary.pendingVouchers], [600000, 500000, 2]);
+  const cashB = (await run(env, 'monthly_pnl', { ...range, basis: 'cash', query: 'toà b' })).value;
+  assert.deepEqual([cashB.items, Number(cashB.summary.pendingIncome), cashB.summary.pendingVouchers], [[], 700000, 1]);
+});
+
+// P3-7: ngân sách trang đo SAU escape JSON, như broker bọc kết quả (chuỗi trong chuỗi).
+const seedQuotedZalo = db => db.exec(`INSERT INTO public.zalo_conversations(id,organization_id,thread_type,thread_id,peer_name,last_message_text,unread_count,is_pinned,last_message_at)
+  SELECT gen_random_uuid(),'${ORG}','user','q'||n,repeat('"',60),repeat('"',65),0,false,'2026-10-01T00:00:00Z'::timestamptz+n*interval '1 minute'
+  FROM generate_series(1,50) n`);
+test('P3-7: report pages are sized after JSON escaping, so the wrapped tool result always fits the broker cap', { timeout: 120000 }, async t => {
+  const env = await setup(t), { db } = env;
+  await orgWideOverlay(db); await seedQuotedZalo(db);
+  const input = domainInput('zalo_conversations', { limit: 50 }), value = await env.read3('zalo_conversations', input);
+  const raw = value.items.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)), 0);
+  assert.ok(value.items.length < 50 && value.nextOffset === value.items.length, 'page stops early on the escaped size');
+  assert.ok(raw < 40000, 'unescaped the same page would have fit: the escaping is what is measured');
+  const wrapped = Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(domainResult('zalo_conversations', value, identity('chat_zalo.view'), input)) }] }));
+  assert.ok(wrapped < 65_536, `wrapped ${wrapped}`);
+  // Trần cuối của v3 cũng đo sau escape và trả PT413 (HTTP 413 ⇒ result_too_large), không phải 22023.
+  const tiny = fullReadOwnerSql().split('  IF octet_length(to_jsonb(v_result::text)::text)>60000 THEN').join('  IF octet_length(to_jsonb(v_result::text)::text)>500 THEN');
+  const capped = await setup(t, { owner: tiny });
+  await assert.rejects(capped.read3('invoice_report', domainInput('invoice_report', { report: 'search' })), error => error.code === 'PT413' && /limit/.test(error.hint));
+});
+
 test('P3a stats: company owner without staff_assignments gets the real numbers from the invoices.view scope; empty scope is unavailable', { timeout: 120000 }, async t => {
   const env = await setup(t), { db } = env;
   await orgWideOverlay(db);
@@ -351,6 +401,8 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
     identity('income_expenses.view'), domainInput('pending_approvals', {})), 'organization reports never claim a building scope');
   const narrow = { row: { organizationId: ORG }, scopesByPermission: { 'invoices.view': { buildingIds: [OTHER_BUILDING] } } };
   assert.throws(() => domainResult('invoice_report', value, narrow, input), 'earlier CRM scope fences output');
+  // P3-8: ảnh chụp không có phạm vi của khoá ⇒ đóng (trước đây coi là mở).
+  assert.throws(() => domainResult('invoice_report', value, { row: { organizationId: ORG }, scopesByPermission: {} }, input), 'no scope for the key ⇒ refused');
   const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-08-31' });
   const pnl = { ...value, domain: 'monthly_pnl', report: 'by_month', source: 'crm.fa_monthly_pnl', items: [],
     summary: { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 } };
@@ -359,12 +411,14 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
     assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity('reports_finance.analysis'), pnlInput), JSON.stringify(summary));
 });
 
-// Mutation evidence: the live definitions are in the web-parity file (20261017021554).
-const live = fullReadParitySql();
+// Mutation evidence: v3 / reader live in the review-fix file (20261017033630); catalog and the
+// pending helper live in the web-parity file (20261017021554).
+const live = { owner: fullReadOwnerSql(), parity: fullReadParitySql() };
 const replaceExactly = (sql, from, to, count = 1) => {
   assert.equal(sql.split(from).length, count + 1, `anchor: ${from}`); return sql.split(from).join(to);
 };
-const mutate = (...pairs) => pairs.reduce((sql, [from, to, count]) => replaceExactly(sql, from, to, count), live);
+const mutate = (...pairs) => ({ owner: pairs.reduce((sql, [from, to, count]) => replaceExactly(sql, from, to, count), live.owner) });
+const mutateParity = (...pairs) => ({ parity: pairs.reduce((sql, [from, to, count]) => replaceExactly(sql, from, to, count), live.parity) });
 const searchIds = async (env, args) => (await env.read3('invoice_report', domainInput('invoice_report', { report: 'search', ...args }))).items.map(row => row.id);
 const pnlSummary = async env => (await env.read3('monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }))).summary;
 for (const probe of [
@@ -403,10 +457,10 @@ for (const probe of [
       const rows = (await env.read3('monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }))).items;
       return !rows.some(row => row.month === '2026-10-01');
     } },
-  { name: 'pending part counts only UNAPPROVED vouchers', sql: mutate([`voucher.approval_status='UNAPPROVED' AND voucher.business_result_accounting`,
+  { name: 'pending part counts only UNAPPROVED vouchers', sql: mutateParity([`voucher.approval_status='UNAPPROVED' AND voucher.business_result_accounting`,
     `voucher.approval_status IN ('UNAPPROVED','APPROVED') AND voucher.business_result_accounting`]),
     run: async env => { await seedPnl(env.db); return Number((await pnlSummary(env)).pendingIncome) > 600000; } },
-  { name: 'pending part stays inside the connection buildings', sql: mutate([`WHERE b.deleted_at IS NULL AND b.id=ANY(COALESCE(p_building_ids,'{}'::uuid[])) AND public.can_access_building(b.id)
+  { name: 'pending part stays inside the connection buildings', sql: mutateParity([`WHERE b.deleted_at IS NULL AND b.id=ANY(COALESCE(p_building_ids,'{}'::uuid[])) AND public.can_access_building(b.id)
     ),`, `WHERE b.deleted_at IS NULL AND public.can_access_building(b.id)
     ),`]),
     run: async env => { await seedPnl(env.db); return Number((await pnlSummary(env)).pendingIncome) > 600000; } },
@@ -436,11 +490,35 @@ for (const probe of [
     run: async env => (await env.read3('contract_search', domainInput('contract_search', { query: 'văn an' }))).items.length > 0 },
   { name: 'contract ACTIVE filter is every status but TERMINATED', sql: mutate([`WHEN 'ACTIVE' THEN ct.status::text<>'TERMINATED'`, `WHEN 'ACTIVE' THEN ct.status::text='ACTIVE'`]),
     run: async env => { await seedContracts(env.db); return !(await env.read3('contract_search', domainInput('contract_search', { status: 'ACTIVE' }))).items.some(row => row.contractId === C_TRANSFERRED); } },
+  { name: 'P2-2 contract_search customer name needs a visible owner', sql: mutate([`JOIN public.customers cu ON cu.id=cc.customer_id AND cu.organization_id=p_org AND cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)
+          WHERE cc.contract_id=ct.id`, `JOIN public.customers cu ON cu.id=cc.customer_id AND cu.organization_id=p_org AND cu.deleted_at IS NULL
+          WHERE cc.contract_id=ct.id`]),
+    run: async env => { await grantCustomers(env.db); await strangerOwnsA(env.db);
+      return (await env.read3('contract_search', domainInput('contract_search', {}))).items.some(row => row.customerName === 'Nguyễn Văn An'); } },
+  { name: 'P2-2 contract_search name/phone search needs a visible owner', sql: mutate([`cu2.deleted_at IS NULL AND cu2.user_id=ANY(v_owners)`, 'cu2.deleted_at IS NULL']),
+    run: async env => { await grantCustomers(env.db); await strangerOwnsA(env.db);
+      return (await env.read3('contract_search', domainInput('contract_search', { query: PHONE_A }))).items.length > 0; } },
+  { name: 'P2-2 invoice customer-name search needs a visible owner', sql: mutate([`cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)
+            WHERE cc.contract_id=inv.contract_id`, `cu.deleted_at IS NULL
+            WHERE cc.contract_id=inv.contract_id`]),
+    run: async env => { await grantCustomers(env.db); await strangerOwnsA(env.db); return (await searchIds(env, { query: 'văn an' })).length > 0; } },
+  { name: 'P3-5 pending part uses the same buildings as the rows', sql: mutate([`app_private.hermes_pnl_pending_v1(v_from,v_to,v_pnl_buildings,v_basis='accrual')`,
+    `app_private.hermes_pnl_pending_v1(v_from,v_to,p_buildings,v_basis='accrual')`]),
+    run: async env => { await seedPnl(env.db); await orgWideOverlay(env.db);
+      const summary = (await env.read3('monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31', query: 'Toà A' }))).summary;
+      return Number(summary.pendingIncome) > 600000; } },
+  { name: 'P3-7 page budget counts JSON escaping', sql: mutate([`    v_size:=octet_length(to_jsonb(v_item::text)::text);`, `    v_size:=octet_length(v_item::text);`]),
+    run: async env => { await orgWideOverlay(env.db); await seedQuotedZalo(env.db);
+      return (await env.read3('zalo_conversations', domainInput('zalo_conversations', { limit: 50 }))).items.length === 50; } },
+  { name: 'P3-10 names need customers.view over EVERY building of the report', sql: mutate([`COALESCE(v_customer_scope@>buildings,false)`, `v_customer_scope IS NOT NULL`]),
+    run: async env => { await grantCustomers(env.db); await orgWideOverlay(env.db);
+      await env.db.exec(`UPDATE public.fixture_acl SET org_wide=false,building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='customers.view'`);
+      return (await env.read3('contract_search', domainInput('contract_search', {}))).items.some(row => row.customerName !== null); } },
   { name: 'moving-out wins over the end-date labels', sql: mutate([` WHEN ct.expected_move_out_date IS NOT NULL THEN 'MOVING_OUT'`, '']),
     run: async env => { await seedContracts(env.db); return (await env.read3('contract_search', domainInput('contract_search', {}))).items.find(row => row.contractId === C_MOVING).displayStatus !== 'MOVING_OUT'; } },
 ]) {
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async t => {
     assert.equal(await probe.run(await setup(t)).catch(() => false), false, 'reviewed SQL refuses');
-    assert.equal(await probe.run(await setup(t, { parity: probe.sql })), true, 'mutant breaches');
+    assert.equal(await probe.run(await setup(t, probe.sql)), true, 'mutant breaches');
   });
 }

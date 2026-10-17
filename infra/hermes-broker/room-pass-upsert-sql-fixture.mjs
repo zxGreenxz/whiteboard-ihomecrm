@@ -14,7 +14,11 @@ export const enablePath = new URL('../../supabase/migrations/20261015163023_herm
 export const fullReadPath = new URL('../../supabase/migrations/20261016162104_hermes_full_read_v1.sql', import.meta.url);
 // Sửa sau review 9aef3a21: v2 chỉ trả SĐT đầy đủ khi khoá Read customers.view cho phép.
 export const fullReadFixPath = new URL('../../supabase/migrations/20261016172206_hermes_full_read_review_fixes_v1.sql', import.meta.url);
-export const fullReadChain = () => [readFileSync(fullReadPath, 'utf8'), readFileSync(fullReadFixPath, 'utf8')];
+// Khớp web (17/10) rồi sửa sau review 85280779: v2 chỉ trả khách đại diện có chủ hồ sơ là thành
+// viên ACTIVE (RLS customers_select_rbac). Định nghĩa SỐNG của v2 ở phần tử CUỐI của chuỗi.
+export const fullReadParityPath = new URL('../../supabase/migrations/20261017021554_hermes_full_read_web_parity_v1.sql', import.meta.url);
+export const fullReadOwnerPath = new URL('../../supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql', import.meta.url);
+export const fullReadChain = () => [fullReadPath, fullReadFixPath, fullReadParityPath, fullReadOwnerPath].map(path => readFileSync(path, 'utf8'));
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 export const OWNER = id('3'), BUILDING2 = id('4'), ROOM2 = id('5'), FOREIGN_BUILDING = id('6'), FOREIGN_ROOM = id('7'), SCOPE2 = id('8');
 export const ROOM3 = id('9'), CONTRACT = id('e'), CUSTOMER = '0c0c0c0c-0000-4000-8000-000000000001', PHONE = '0354058160';
@@ -75,6 +79,11 @@ export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8'), f
   if (fullRead !== null) {
     // customers.view: cổng CRM tổng hợp theo toà (fixture_customer_read), registry bật,
     // chính sách và Read kết nối có khoá; overlay kết nối vẫn là SCOPE (chỉ BUILDING).
+    // Chủ hồ sơ khách (customers.user_id) và thành viên ACTIVE nhìn thấy được (current_visible_owner_ids).
+    await db.exec(`ALTER TABLE public.customers ADD COLUMN user_id uuid DEFAULT '${USER}';
+      CREATE TABLE public.fixture_visible_owners(user_id uuid PRIMARY KEY);
+      INSERT INTO public.fixture_visible_owners VALUES('${USER}');
+      CREATE OR REPLACE FUNCTION public.current_visible_owner_ids() RETURNS uuid[] LANGUAGE sql AS $$SELECT COALESCE(array_agg(user_id),'{}'::uuid[]) FROM public.fixture_visible_owners$$;`);
     await db.exec(`CREATE TABLE public.fixture_customer_read(building_id uuid PRIMARY KEY,allowed boolean NOT NULL DEFAULT true);
       INSERT INTO public.fixture_customer_read(building_id) VALUES('${BUILDING}'),('${BUILDING2}');
       INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('customers.view','read',true) ON CONFLICT(capability) DO UPDATE SET enabled=true;

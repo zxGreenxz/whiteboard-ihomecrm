@@ -4,6 +4,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { createFixtureBroker } from './fixture.mjs';
 import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
 import { BrokerError } from './broker.mjs';
+import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -91,6 +92,31 @@ test('HTTP errors redact untrusted backend exception text', async (t) => {
   }, body: JSON.stringify(call()) });
   const text = await result.text();
   assert.ok(text.includes('backend_unavailable')); assert.ok(!text.includes('secret'));
+});
+
+// P3-7 (review 85280779): SQL đọc quá trần trả PT413 ⇒ HTTP 413 ⇒ result_too_large (không phải
+// invalid_request), và tool error dặn model thu hẹp lệnh thay vì gọi lại y hệt.
+test('oversized SQL read: PT413 maps to result_too_large with a narrow-the-call hint', async t => {
+  const claims = Buffer.from(JSON.stringify({ role: 'authenticated', sub: '10000000-0000-4000-8000-000000000001',
+    session_id: '10000000-0000-4000-8000-000000000002' })).toString('base64url');
+  const scope = { track: work => work(), begin: () => () => {} };
+  const reply = (status, code) => async () => new Response(JSON.stringify({ code, message: 'hermes_domain_response_too_large', details: null, hint: 'x' }),
+    { status, headers: { 'content-type': 'application/json' } });
+  const rpcWith = fetch => createBoundUserRpcTransport({ url: 'https://example.invalid/', publishableKey: 'sb_publishable_test', fetch, dependencyScope: scope,
+    allowedNames: ['hermes_domain_read_v3'] });
+  const token = `header.${claims}.signature`, signal = new AbortController().signal;
+  await assert.rejects(rpcWith(reply(413, 'PT413'))('hermes_domain_read_v3', token, {}, { signal }), error => error.code === 'result_too_large');
+  await assert.rejects(rpcWith(reply(400, '22023'))('hermes_domain_read_v3', token, {}, { signal }), error => error.code === 'invalid_request');
+  await assert.rejects(rpcWith(reply(413, 'P0001'))('hermes_domain_read_v3', token, {}, { signal }), error => error.code === 'backend_unavailable');
+  assert.equal(new BrokerError('result_too_large').status, 413);
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw new BrokerError('result_too_large'); } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+    'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}` }, body: JSON.stringify(call('crm_read_invoice_report', { report: 'search' })) });
+  const body = await response.json(), value = JSON.parse(body.result.content[0].text);
+  assert.equal(body.result.isError, true); assert.equal(value.error, 'result_too_large');
+  assert.match(value.hint, /limit nhỏ hơn hoặc bộ lọc hẹp hơn/);
 });
 
 test('unknown send returns only validated dispatch correlation so native Hermes can check status', async t => {

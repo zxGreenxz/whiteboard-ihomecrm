@@ -3,7 +3,7 @@ import { setup as setupFinance, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOP
   from './finance-fixture.mjs';
 export { BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, binding, token, USER, ORG, FOREIGN, SESSION, CONNECTION };
 
-// Đọc đầy đủ (20261016162104 → 20261016172206 → 20261017021554) trên fixture tài chính:
+// Đọc đầy đủ (20261016162104 → 20261016172206 → 20261017021554 → 20261017033630) trên fixture tài chính:
 // nền Hermes thật (binding, phiên, chính sách, overlay), v1/v2 thật; các RPC web THẬT
 // (định nghĩa cuối trong baseline/migration): occupancy_snapshot_v2,
 // occupancy_upcoming_vacancy_v2, fa_monthly_pnl, fa_monthly_pnl_accrual, fa_accrual_allocations,
@@ -20,6 +20,10 @@ export const fullReadFixSql = () => readFileSync(process.env.HERMES_FULL_READ_FI
 // Khớp màn web, không còn copilot_* (đợt 1b): định nghĩa SỐNG của v3/báo cáo ở file này.
 export const FULL_READ_PARITY_PATH = 'supabase/migrations/20261017021554_hermes_full_read_web_parity_v1.sql';
 export const fullReadParitySql = () => readFileSync(process.env.HERMES_FULL_READ_PARITY_SQL ?? FULL_READ_PARITY_PATH, 'utf8');
+// Sửa sau review 85280779 (chủ hồ sơ khách, chờ duyệt cùng toà, trần sau escape): định nghĩa SỐNG
+// của v3 / báo cáo / room pass v2 ở file này.
+export const FULL_READ_OWNER_PATH = 'supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql';
+export const fullReadOwnerSql = () => readFileSync(process.env.HERMES_FULL_READ_OWNER_SQL ?? FULL_READ_OWNER_PATH, 'utf8');
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -37,7 +41,8 @@ export const INVOICE_CANCELLED = u(18), INVOICE_PARTIAL = u(19), FOREIGN_PENDING
 export const FULL_READ_KEYS = ['customers.view', 'contracts.view'];
 export const REPORT_KEYS = ['reports_real_estate.occupancy', 'invoices.view', 'reports_finance.analysis', 'income_expenses.view', 'chat_zalo.view', 'contracts.view'];
 
-export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixSql(), parity = fullReadParitySql(), reads = [...FULL_READ_KEYS], before = null } = {}) {
+export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixSql(), parity = fullReadParitySql(), owner = fullReadOwnerSql(),
+  reads = [...FULL_READ_KEYS], before = null } = {}) {
   const env = await setupFinance(t), { db } = env;
   await db.exec(`ALTER TABLE public.buildings ADD COLUMN street_address text,ADD COLUMN ward text,ADD COLUMN district text,ADD COLUMN province text;
     ALTER TABLE public.contracts ADD COLUMN contract_number text,ADD COLUMN signed_date date,ADD COLUMN start_date date,ADD COLUMN end_date date,
@@ -139,6 +144,7 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   await db.exec(sql); await db.exec(sql);
   if (fix !== null) { await db.exec(fix); await db.exec(fix); }
   if (parity !== null) { await db.exec(parity); await db.exec(parity); }
+  if (owner !== null) { await db.exec(owner); await db.exec(owner); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

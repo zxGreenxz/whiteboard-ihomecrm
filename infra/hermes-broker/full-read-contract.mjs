@@ -61,10 +61,11 @@ export const CONTRACT_DETAIL_FIELDS = Object.freeze({ id, number: nullable(longT
   depositDebtReason: nullable(longText(500)), depositTopupDueDate: nullable(date), initialElectricityReading: nullable(amount),
   initialWaterReading: nullable(amount), notes: nullable(longText(2000)), parentContractId: nullable(id),
   tenantsVisible: bool, tenants: list(10, TENANT), services: list(50, SERVICE) });
-// The CRM building scope supplied earlier also fences output when present.
+// The CRM building scope supplied earlier also fences output. Closed (P3-8): a row that names
+// a building is refused when the snapshot holds no scope for the key that granted it.
 function inScope(identity, permission, buildingIds) {
   const scopes = identity.scopesByPermission?.[permission]?.buildingIds;
-  return !Array.isArray(scopes) || buildingIds.every(building => scopes.includes(building));
+  return buildingIds.length === 0 || Array.isArray(scopes) && buildingIds.every(building => scopes.includes(building));
 }
 // fences: [[khoá, toà của mục]] — mỗi phần chỉ được nằm trong phạm vi CRM của đúng khoá
 // đã cấp nó (người ở ⇐ customers.view, hợp đồng ⇐ contracts.view, như embed của web).
@@ -165,39 +166,39 @@ const reportResult = (operation, permission) => (value, identity, input) => {
 };
 const QUERY = { type: 'string', maxLength: 200 }, LIMIT = { type: 'integer', minimum: 1, maximum: 50 }, OFFSET = { type: 'integer', minimum: 0, maximum: 2000 };
 const DATE = { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, REQUIRED_DATE = { type: 'string', pattern: DATE.pattern };
-const BUILDING = { type: ['string', 'null'], format: 'uuid', description: 'ID toà (lấy từ công cụ tra toà/phòng); bỏ trống = mọi toà được phép.' };
+const BUILDING = { type: ['string', 'null'], format: 'uuid', description: 'ID toà, không phải ID công ty; trống = mọi toà.' };
 const reportSchema = (properties, required = []) => ({ type: 'object', additionalProperties: false, ...(required.length ? { required } : {}), properties });
-const PAGE = 'Trang tiếp: gọi lại với offset=nextOffset. sourceCapped=true: nguồn CRM đã chạm trần, thu hẹp bộ lọc.';
-const ORG_ONLY = 'Cần kết nối phạm vi Toàn tổ chức (không lọc được theo toà); thiếu thì unavailable=organization_scope_required.';
-const NO_BUILDING = 'unavailable=no_building_scope: kết nối không còn toà nào được đọc (không phải số 0).';
+const PAGE = 'Trang sau: offset=nextOffset; sourceCapped=true thì thu hẹp bộ lọc.';
+const ORG_ONLY = 'Chỉ kết nối Toàn tổ chức; thiếu thì unavailable=organization_scope_required.';
+const NO_BUILDING = 'unavailable=no_building_scope: kết nối không còn toà nào (không phải số 0).';
 const reportDefine = (operation, description, properties, required) => define(REPORTS[operation].permission, `crm_read_${operation}`,
   `${description} ${PAGE}${Object.values(REPORTS[operation].reports).some(spec => spec.scope !== 'organization') ? ` ${NO_BUILDING}` : ''}`, {
   input: reportInput(operation), inputSchema: reportSchema(properties, required), resultKeys: REPORT_RESULT,
   result: reportResult(operation, REPORTS[operation].permission), reports: REPORTS[operation].reports });
 const REPORT_READS = Object.freeze({
-  occupancy_report: reportDefine('occupancy_report', 'Báo cáo lấp đầy: report=snapshot — từng toà có bao nhiêu phòng đang ở/giữ chỗ/bảo trì/không khai thác/trống, tỷ lệ lấp đầy và doanh thu bỏ lỡ tại ngày fromDate (mặc định hôm nay); report=upcoming — hợp đồng sắp hết hạn, phòng sắp trống trong days ngày tới (mặc định 30) kể từ fromDate.',
+  occupancy_report: reportDefine('occupancy_report', 'Báo cáo lấp đầy. snapshot: từng toà đang ở/giữ chỗ/bảo trì/không khai thác/trống, tỷ lệ, doanh thu bỏ lỡ tại fromDate (mặc định hôm nay). upcoming: phòng sắp trống trong days ngày (mặc định 30) từ fromDate.',
     { report: { enum: ['snapshot', 'upcoming'] }, fromDate: DATE, days: { type: ['integer', 'null'], minimum: 1, maximum: 365 }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  invoice_report: reportDefine('invoice_report', 'Hoá đơn như trang Hoá đơn. report=search: lọc month (YYYY-MM), status (paid đã thu đủ, partial thu một phần, unpaid chưa thu đồng nào, cancelled chỉ hoá đơn huỷ; mặc định ẩn huỷ), query (số HĐ; tên khách nếu có quyền khách hàng); trả hạn, tổng/đã thu/còn lại, toà/phòng. Còn nợ kể cả thu một phần: crm_read_receivables. report=stats: tổng kỳ month trên các toà được đọc (số HĐ, tổng, đã thu, còn nợ, hoàn, phòng/điện/nước/dịch vụ; không gồm huỷ). Số tiền là chuỗi VND.',
+  invoice_report: reportDefine('invoice_report', 'Hoá đơn như trang Hoá đơn. search: month (YYYY-MM), status (paid, partial, unpaid = chưa thu đồng nào, cancelled; mặc định ẩn huỷ), query (số HĐ; tên khách nếu có quyền khách hàng). Còn nợ kể cả thu một phần: crm_read_receivables. stats: tổng kỳ month (số HĐ, tổng, đã thu, còn nợ, phòng/điện/nước/dịch vụ). Tiền là chuỗi VND.',
     { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid', 'cancelled'] },
       buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng THÁNG của từng toà (doanh thu, chi phí, lãi ròng), fromDate..toDate ≤ 366 ngày, như "Phân tích tài chính": basis=accrual (mặc định, dồn tích theo kỳ phân bổ) hoặc cash (theo ngày phiếu). Hàng chỉ gồm phiếu ĐÃ DUYỆT; summary.pendingIncome/pendingExpense = thu/chi CHỜ DUYỆT cùng kỳ mà "BC Doanh Thu Chi Phí" cộng thêm — nói rõ phần này. Số tiền là chuỗi VND.',
+  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng tháng từng toà như "Phân tích tài chính", fromDate..toDate ≤ 366 ngày; basis=accrual (mặc định) hoặc cash. Hàng chỉ gồm phiếu đã duyệt; summary.pending* = thu/chi chờ duyệt mà "BC Doanh Thu Chi Phí" cộng thêm, cùng các toà của hàng. Tiền là chuỗi VND.',
     { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
-  pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals): yêu cầu duyệt phiếu đang tới lượt bạn (mã, tên phiếu, số tiền, người lập, bước duyệt, lúc gửi). KHÔNG phải mọi phiếu thu/chi chưa duyệt: hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
+  pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals). Hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
-  zalo_conversations: reportDefine('zalo_conversations', `Danh sách hội thoại Zalo của công ty như trang Chat Zalo (cần quyền xem Chat Zalo toàn công ty như web): người nhắn, SĐT, phòng/toà gắn, số tin chưa đọc, ghim, tin cuối (≤160 ký tự) và tổng hợp chưa đọc; query tìm theo tên/SĐT/nhãn (không tìm trong nội dung tin). ${PRIVATE_HINT} ${ORG_ONLY}`,
+  zalo_conversations: reportDefine('zalo_conversations', `Hội thoại Zalo của công ty như Chat Zalo (cần quyền Chat Zalo toàn công ty): người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự; query theo tên/SĐT/nhãn. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
-  contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query theo số HĐ, tên phòng, tên/SĐT khách; status như bộ lọc web (ACTIVE = mọi HĐ trừ đã thanh lý, TERMINATED, EXPIRING = còn ≤30 ngày, EXPIRED = quá endDate). Trả toà/phòng, ngày bắt đầu, endDate, expectedMoveOutDate, giá thuê, cọc và displayLabel như web (Còn hạn, Sắp hết hạn, Quá hạn, Sắp chuyển đi, Đã thanh lý, Đã nhượng). Tên khách đại diện và tìm theo tên/SĐT chỉ khi có quyền khách hàng (customers.view) ở mọi toà của kết quả, thiếu thì customerName=null. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
+  contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query số HĐ/tên phòng/tên-SĐT khách; status ACTIVE (trừ đã thanh lý), TERMINATED, EXPIRING (≤30 ngày), EXPIRED; displayLabel như web. Tên khách chỉ khi có quyền khách hàng ở mọi toà của kết quả. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
     { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }),
 });
 
 export const FULL_READS = Object.freeze({
   customer_detail: define('customers.view', 'crm_read_customer_detail',
-    `Hồ sơ đầy đủ của MỘT khách như trang /customers/:id: họ tên, SĐT, email, CCCD/CMND (số dạng chữ, ngày/nơi cấp), ngày sinh, giới tính, địa chỉ chi tiết, chỗ ở hiện tại, thường trú, nghề nghiệp, nơi làm việc, người liên hệ khẩn cấp, ghi chú và các hợp đồng (≤20) ở toà mà quyền đọc hợp đồng (contracts.view) cho phép — thiếu thì contracts=[] (contractsVisible=false). Không có ảnh CCCD. customerId lấy từ crm_read_customers. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
+    `Hồ sơ MỘT khách như /customers/:id: SĐT, email, CCCD (số, ngày/nơi cấp), ngày sinh, địa chỉ, thường trú, nghề nghiệp, nơi làm việc, liên hệ khẩn cấp, ghi chú; hợp đồng (≤20) khi có quyền hợp đồng (contractsVisible). Không ảnh CCCD. customerId từ crm_read_customers; item=null: ngoài phạm vi. ${PRIVATE_HINT}`,
     { input: detailInput('customerId'), inputSchema: detailSchema('customerId'), resultKeys: DETAIL_RESULT,
       result: detail('customerId', CUSTOMER_DETAIL_FIELDS, item => [['contracts.view', item.contracts.map(row => row.buildingId)]],
         item => !item.contractsVisible && item.contracts.length > 0) }),
   contract_detail: define('contracts.view', 'crm_read_contract_detail',
-    `Chi tiết MỘT hợp đồng như trang /contracts/:id: số HĐ, trạng thái, toà/phòng, ngày ký/bắt đầu/kết thúc/dự kiến trả phòng, kỳ tính tiền, giá thuê, chu kỳ thanh toán, cọc (phải thu/đã thu/còn thiếu, nợ cọc), chỉ số điện nước ban đầu, ghi chú, người ở (≤10: SĐT, CCCD, ngày sinh, thường trú...; chỉ khi kết nối có quyền đọc khách hàng customers.view như web, thiếu thì tenants=[] và tenantsVisible=false) và dịch vụ kèm đơn giá. Không có file hợp đồng/ảnh CCCD. contractId lấy từ crm_read_contracts hoặc crm_read_customer_detail. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
+    `Chi tiết MỘT hợp đồng như /contracts/:id: điều khoản, ngày, kỳ tính tiền, giá thuê, cọc/nợ cọc, chỉ số đầu, ghi chú, dịch vụ; người ở (≤10: SĐT, CCCD…) khi có quyền khách hàng (tenantsVisible). Không file HĐ/ảnh CCCD. contractId từ crm_read_contracts/crm_read_contract_search; item=null: ngoài phạm vi. ${PRIVATE_HINT}`,
     { input: detailInput('contractId'), inputSchema: detailSchema('contractId'), resultKeys: DETAIL_RESULT,
       result: detail('contractId', CONTRACT_DETAIL_FIELDS, item => [['contracts.view', [item.buildingId]], ...(item.tenantsVisible ? [['customers.view', [item.buildingId]]] : [])],
         item => !item.tenantsVisible && item.tenants.length > 0) }),

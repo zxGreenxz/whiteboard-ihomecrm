@@ -14,6 +14,8 @@ function reply(response, status, value, headers = {}) {
 // Whole seconds for Retry-After and the model-visible hint; never below 1.
 const retryAfterSeconds = error => Number.isSafeInteger(error?.retryAfterMs) && error.retryAfterMs > 0
   ? Math.min(60, Math.ceil(error.retryAfterMs / 1000)) : 1;
+// SQL read over its size cap: the model should narrow the call, not retry it unchanged.
+const RESULT_TOO_LARGE_HINT = 'Kết quả quá lớn: gọi lại với limit nhỏ hơn hoặc bộ lọc hẹp hơn (query, buildingId, month).';
 function rpcError(id, code, message) { return { jsonrpc: '2.0', id, error: { code, message } }; }
 async function readBody(request, cap) {
   const chunks = [];
@@ -115,7 +117,7 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.dispatchId)
           ? { dispatchId: safe.dispatchId } : REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && typeof safe.requestId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
-          ? { requestId: safe.requestId } : {};
+          ? { requestId: safe.requestId } : safe.code === 'result_too_large' ? { hint: RESULT_TOO_LARGE_HINT } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });

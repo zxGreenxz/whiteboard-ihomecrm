@@ -74,6 +74,19 @@ Giữ nguyên khi thao tác (tối ưu tốc độ 16/10): `connector.json` ph�
 
 **Cập nhật connector:** đóng gói từ commit đã merge và CI main xanh (thư mục `infra/hermes-broker`, `infra/hermes-runtime`, `infra/hermes-zalo-router`, `src/lib/roomSaleFacts.ts`, `worker/lib/hermes-link.js`, `worker/package.json`, `vendor/xlsx-0.20.3.tgz`, `package.json`, `package-lock.json`, bỏ test) → giải nén vào `releases/<sha8>` → `npm ci --omit=dev --ignore-scripts` bằng Node 24 của `/opt/ihome-hermes/node` → thử import `host-service.mjs` bằng user 10004 → đổi symlink → restart connector → kiểm `GET /` 404, `/mcp` không token 401 qua tunnel. Có tool mới thì `docker restart hermes-owner` (chờ hết lượt đang trả lời) để Hermes đọc lại danh sách tool.
 
+**Đọc đầy đủ (crm_read_customers / `_detail` / `_report`, crm_read_occupancy họ v3):** áp ĐỦ bốn migration trong MỘT lượt lane, đúng thứ tự `20261016162104_hermes_full_read_v1` → `20261016172206_hermes_full_read_review_fixes_v1` → `20261017021554_hermes_full_read_web_parity_v1` → `20261017033630_hermes_full_read_owner_scope_v1` (`npm run migrate:forward -- <file> --env prod --apply` từng file, không xen việc khác). Chỉ đổi symlink connector khi câu dưới (`npm run db:query -- --file <câu>`) trả `1 | t | t | t | crm.fa_monthly_pnl`; connector lên trước thì `crm_read_occupancy` và các báo cáo trả `backend_unavailable` hoặc `invalid_request`.
+
+```sql
+SELECT count(*) FILTER (WHERE p.proname='hermes_pnl_pending_v1') AS pnl_pending,
+  bool_or(p.proname='hermes_domain_read_v3' AND p.prosrc LIKE '%current_visible_owner_ids%') AS v3_owner_scope,
+  bool_or(p.proname='hermes_report_read_v2' AND p.prosrc LIKE '%v_pnl_buildings%') AS reports_fixed,
+  bool_or(p.proname='hermes_room_pass_upsert_v2' AND p.prosrc LIKE '%v_owners%') AS room_lookup_owner,
+  app_private.hermes_report_catalog_v1('monthly_pnl','by_month')->>'source' AS pnl_source
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname IN ('public','app_private')
+  AND p.proname IN ('hermes_pnl_pending_v1','hermes_domain_read_v3','hermes_report_read_v2','hermes_room_pass_upsert_v2');
+```
+
 **Lùi bản:** trỏ symlink `current` về release trước (giữ ít nhất một bản cũ) rồi restart connector. Migration CRM đã apply không lùi; muốn tắt năng lực thì tắt dòng registry `app_private.hermes_capabilities` bằng migration mới hoặc thu hồi kết nối.
 
 **Đĩa:** VPS 19 GB, còn khoảng 2,4 GB — xoá release cũ không dùng (không xoá bản đang `current` và bản lùi gần nhất).

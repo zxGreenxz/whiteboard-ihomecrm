@@ -17,6 +17,8 @@ import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
 import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
+import { DOMAIN_QUERY_HINT, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT } from './domain-contract.mjs';
 
 const NIL = '00000000-0000-0000-0000-000000000000';
 const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
@@ -117,12 +119,16 @@ test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep 
 });
 
 test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final', () => {
-  const EMPTY = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
+  // 17/10 rút gọn (tools/list ≤ ngân sách) nhưng giữ đủ ba ý của sự cố.
+  const EMPTY = EMPTY_RESULT_HINT;
+  assert.match(EMPTY, /kết quả thật; không gọi lại cùng đối số\.$/);
+  assert.match(DOMAIN_QUERY_HINT, /^Lọc chữ trong từng mục .*lọc toà thì dùng buildingId\.$/);
+  assert.match(DOMAIN_BUILDING_HINT, /^ID toà, không phải ID công ty; trống = mọi toà\.$/);
   for (const read of LIST_READS) {
     const listed = advertisedTool(read), { query, buildingId } = listed.inputSchema.properties;
     assert.ok(listed.description.endsWith(`. ${EMPTY}`), read.name);
-    assert.equal(query.description, 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.', read.name);
-    assert.equal(buildingId.description, 'ID toà (lấy từ công cụ tra toà/phòng); không phải ID công ty. Bỏ trống để xem mọi toà được phép.', read.name);
+    assert.equal(query.description, DOMAIN_QUERY_HINT, read.name);
+    assert.equal(buildingId.description, DOMAIN_BUILDING_HINT, read.name);
     // Text only: types and formats are what the validators already enforce.
     assert.deepEqual([query.type, query.maxLength, buildingId.type, buildingId.format], ['string', 200, ['string', 'null'], 'uuid'], read.name);
   }
@@ -130,6 +136,43 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
   assert.ok(options.description.endsWith(` ${EMPTY}`));
   assert.match(options.inputSchema.properties.query.description, /^Lọc theo tên/);
   assert.match(options.inputSchema.properties.buildingId.description, /không phải ID công ty\. kind=buildings: không cần buildingId\./);
+});
+
+// P2-1 (review 85280779): kết nối đủ quyền thấy MỌI họ tool cùng lúc (cả crm_available_rooms,
+// nhóm Zalo, sửa/huỷ việc). server.mjs:178 cắt kết quả ở 65 536 byte: vượt là mất cả danh sách.
+// 85280779: 67 988 B (đã vượt); sau khi rút gọn họ đọc: 63 743 B. Đích review là ≤ 58 000 B —
+// phần còn lại nằm ở mô tả các họ ghi (requestId lặp ở 15 tool, pass phòng, Zalo broadcast, việc).
+const TOOLS_LIST_BUDGET = 64_000;
+test('tools/list of a connection holding every grantable key lists every family and stays inside the budget', async t => {
+  const scope = createDependencyScope(); t.after(() => scope.close());
+  const CONNECTION = id('a'), BUILDING = id('f');
+  const read = [...new Set([...HERMES_READ_CAPABILITIES, ...ALL_DOMAIN_READ_CAPABILITIES, 'chat_zalo.view', 'rooms.view', 'assistant.context.read', 'assistant.memory.read'])];
+  const action = [...new Set([...HERMES_ACTION_CAPABILITIES, 'tasks.create', 'tasks.edit', 'tasks.delete', 'sale_phong.manage_pass_listings', 'customers.create',
+    'leads.create', 'income_expenses.create', 'chat_zalo.manage_automation', 'chat_zalo.send', 'assistant.memory.write'])];
+  const identity = { row: { id: CONNECTION, assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 600_000,
+    epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
+  policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [id('e')],
+  scopesByPermission: Object.fromEntries([...read, ...action].map(key => [key, { buildingIds: [BUILDING], cashbookIds: [] }])) };
+  const authority = { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} };
+  const port = (prepare, finalize) => ({ async [prepare]() { return Object.freeze({}); }, async [finalize]() { return { ok: true }; } });
+  const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
+    tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
+    customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
+    schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
+    zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
+    externalGroups: { authority, createService: () => ({}) } });
+  const listed = (await broker.listTools(`hc_${'A'.repeat(43)}`)).tools, names = listed.map(value => value.name);
+  const expected = [...ALL.filter(value => !['crm_room_schedule_create', 'crm_room_schedule_update'].includes(value.name)).map(value => value.name),
+    'crm_auth_context', 'crm_available_rooms'];
+  assert.deepEqual([...names].sort(), [...new Set(expected)].sort(), 'every family, every non-retired tool');
+  const bytes = Buffer.byteLength(JSON.stringify({ tools: listed }));
+  t.diagnostic(`tools/list ${listed.length} tools, ${bytes} bytes`);
+  assert.ok(bytes <= TOOLS_LIST_BUDGET, `tools/list ${bytes} bytes > ${TOOLS_LIST_BUDGET}`);
+  // Họ đọc đầy đủ v3 (10 tool) giữ mô tả gọn: ý riêng tư + ý chọn đúng tool.
+  const full = listed.filter(value => ['crm_read_customers', 'crm_read_occupancy', 'crm_read_customer_detail', 'crm_read_contract_detail', 'crm_read_occupancy_report',
+    'crm_read_invoice_report', 'crm_read_monthly_pnl', 'crm_read_pending_approvals', 'crm_read_zalo_conversations', 'crm_read_contract_search'].includes(value.name));
+  assert.equal(full.length, 10);
+  assert.ok(Buffer.byteLength(JSON.stringify(full)) <= 10_000, 'full-read family stays compact');
 });
 
 test('crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear', () => {

@@ -59,7 +59,7 @@ export const DOMAIN_FAMILIES = Object.freeze({
     resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: Object.freeze([]) }),
 });
 export const DOMAIN_READS = Object.freeze({
-  customers: define('customers.view', `Tra khách hàng (tên, SĐT đầy đủ, phòng gần nhất; contractId chỉ khi có quyền đọc hợp đồng) trong phạm vi được cấp; kết nối Toàn tổ chức thấy cả khách chưa có hợp đồng. ${PRIVATE_HINT} Hồ sơ đầy đủ: crm_read_customer_detail`, {
+  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ; phòng gần nhất và contractId khi có quyền hợp đồng). Toàn tổ chức thấy cả khách chưa có hợp đồng. Hồ sơ: crm_read_customer_detail. ${PRIVATE_HINT}`, {
     id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), roomId: nullable(domainId),
     roomName: nullable(text) }, [], { family: 'v3' }),
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
@@ -78,7 +78,7 @@ export const DOMAIN_READS = Object.freeze({
     id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), roomId: nullable(domainId), deadline: nullable(text) },
   ['IN_PROGRESS', 'COMPLETED']),
   // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
-  occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở / trống / tổng của từng toà hôm nay, cùng số liệu trang Báo cáo lấp đầy (đang ở = có hợp đồng hiệu lực); giữ chỗ/bảo trì, tỷ lệ và dự báo: crm_read_occupancy_report', {
+  occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
     id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
   income_expenses: define('income_expenses.view', 'Tra phiếu thu/chi theo ngày phiếu và trạng thái duyệt (UNAPPROVED = chờ duyệt; hỏi "phiếu chờ duyệt" thì dùng tool này với status=UNAPPROVED). Không gồm phiếu có hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Số tiền là chuỗi VND', {
     id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, roomId: nullable(domainId),
@@ -168,9 +168,9 @@ const dateSchema = required => ({ type: required ? 'string' : ['string', 'null']
 // 16/10 19:44Z production: the model put a building code in `query` (text filter
 // inside each row ⇒ empty), took the company id as buildingId, and repeated the
 // same call 20+ times reading [] as a glitch. Wording only; validators unchanged.
-export const DOMAIN_QUERY_HINT = 'Lọc theo chữ trong từng mục (tên khách, phòng, mã chứng từ). Để trống khi chỉ lọc theo toà — lọc toà dùng buildingId.';
-export const DOMAIN_BUILDING_HINT = 'ID toà (lấy từ công cụ tra toà/phòng); không phải ID công ty. Bỏ trống để xem mọi toà được phép.';
-export const EMPTY_RESULT_HINT = 'Danh sách rỗng là kết quả thật của CRM; không gọi lại cùng đối số.';
+export const DOMAIN_QUERY_HINT = 'Lọc chữ trong từng mục (tên, phòng, mã); lọc toà thì dùng buildingId.';
+export const DOMAIN_BUILDING_HINT = 'ID toà, không phải ID công ty; trống = mọi toà.';
+export const EMPTY_RESULT_HINT = 'Rỗng là kết quả thật; không gọi lại cùng đối số.';
 export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze(definition.inputSchema ? {
   name: `crm_read_${operation}`, description: definition.description, inputSchema: definition.inputSchema,
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },

@@ -8,8 +8,9 @@ import { roomPassResult, ROOM_PASS_TOOLS } from './room-pass-contract.mjs';
 // Đọc đầy đủ cho người hỏi (chủ chốt 16/10): hermes_room_pass_upsert_v2 bọc v1.
 // v1 vẫn quyết định mọi quyền/biên nhận; v2 chỉ thay SĐT che bằng SĐT đầy đủ của
 // đúng khách đại diện / liên hệ tin pass mà v1 vừa trả. Synthetic rows only.
-// Chuỗi hai file: định nghĩa sống của v2 ở file sửa 20261016172206.
-const fullRead = fullReadChain();
+// Chuỗi bốn file: định nghĩa sống của v2 ở file CUỐI (20261017033630, sửa sau review 85280779).
+const fullRead = fullReadChain(), LIVE = fullRead.length - 1;
+const withLive = sql => [...fullRead.slice(0, LIVE), sql];
 const req = n => `0f0f0f0f-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const identity = { row: { organizationId: ORG } };
 const lookup = { buildingName: 'le van tho', roomCode: '103' };
@@ -85,6 +86,9 @@ test('contract: v2 contact accepted, legacy masked receipt still reconciles, mal
   const tool = ROOM_PASS_TOOLS.find(item => item.name === 'crm_room_lookup');
   assert.match(tool.description, /SĐT đầy đủ khi kết nối có quyền đọc khách hàng customers.view, thiếu thì SĐT che chỉ 4 số cuối; chỉ trả lời riêng cho người hỏi, không đăng vào nhóm/);
   assert.doesNotMatch(tool.description, /đã che/);
+  // P3-4 (review 85280779): status trả lại contact của biên nhận upsert (SĐT đầy đủ) nên cũng dặn trả lời riêng.
+  for (const name of ['crm_room_pass_upsert', 'crm_room_pass_status'])
+    assert.match(ROOM_PASS_TOOLS.find(value => value.name === name).description, /chỉ trả lời riêng cho người hỏi, không đăng vào nhóm/, name);
 });
 
 // P2 (review 9aef3a21): SĐT đầy đủ chỉ khi khoá Read customers.view (quyền CRM ∩ Read kết
@@ -134,7 +138,7 @@ test('P2 per building: the phone is unmasked only where the customers.view CRM s
 // (active contract only). Dropping that filter leaks a former tenant's phone.
 test('mutation is caught: v2 representative restricted to the active contract', { timeout: 90000 }, async t => {
   const anchor = "WHERE ct.room_id=(room.value->>'roomId')::uuid AND ct.deleted_at IS NULL AND ct.status IN ('ACTIVE','EXTENDED')";
-  assert.equal(fullRead[1].split(anchor).length, 2, 'anchor');
+  assert.equal(fullRead[LIVE].split(anchor).length, 2, 'anchor');
   const probe = async ({ db, call2 }) => {
     await db.exec(`INSERT INTO public.contracts VALUES('${OLD_CONTRACT}','${ROOM3}','TERMINATED',null);
       INSERT INTO public.customers VALUES('${OLD_CUSTOMER}','Khách cũ','0977000111',null);
@@ -142,7 +146,7 @@ test('mutation is caught: v2 representative restricted to the active contract', 
     return JSON.stringify(await call2('lookup', { buildingName: 'le van tho', roomCode: '1103' })).includes('0977000111');
   };
   assert.equal(await probe(await setupUpsert(t, { fullRead })), false, 'reviewed SQL');
-  const mutant = [fullRead[0], fullRead[1].split(anchor).join("WHERE ct.room_id=(room.value->>'roomId')::uuid AND ct.deleted_at IS NULL")];
+  const mutant = withLive(fullRead[LIVE].split(anchor).join("WHERE ct.room_id=(room.value->>'roomId')::uuid AND ct.deleted_at IS NULL"));
   assert.equal(await probe(await setupUpsert(t, { fullRead: mutant })), true, 'mutant leaks the former tenant');
 });
 
@@ -155,13 +159,31 @@ for (const [name, from, to, probe] of [
     async call2 => JSON.stringify(await call2('upsert', { requestId: req(8), roomId: ROOM, customerPhone: '0900000008', passPrice: 3500000 })).includes('0900000008')],
 ]) {
   test(`mutation is caught: P2 ${name}`, { timeout: 120000 }, async t => {
-    assert.equal(fullRead[1].split(from).length, 2, 'anchor');
+    assert.equal(fullRead[LIVE].split(from).length, 2, 'anchor');
     const run = async sql => {
       const { db, call2 } = await setupUpsert(t, { fullRead: sql });
       await db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
       return probe(call2);
     };
     assert.equal(await run(fullRead), false, 'reviewed SQL keeps the mask');
-    assert.equal(await run([fullRead[0], fullRead[1].split(from).join(to)]), true, 'mutant leaks the phone');
+    assert.equal(await run(withLive(fullRead[LIVE].split(from).join(to))), true, 'mutant leaks the phone');
   });
 }
+
+// P2-2 (review 85280779): như RLS customers_select_rbac của web, khách đại diện chỉ hiện khi chủ hồ
+// sơ (customers.user_id) là thành viên ACTIVE của công ty (current_visible_owner_ids).
+const OWNER_GATE = 'JOIN public.customers cu ON cu.id=cc.customer_id AND cu.deleted_at IS NULL AND cu.user_id=ANY(v_owners)';
+test('P2-2 lookup: a representative whose owner is not an active member stays hidden like the web', { timeout: 120000 }, async t => {
+  const probe = async ({ db, call2 }) => {
+    await db.exec(`UPDATE public.customers SET user_id='${id('a')}' WHERE id='${CUSTOMER}'`);
+    return JSON.stringify(await call2('lookup', lookup)).includes(PHONE);
+  };
+  const { db, call2 } = await setupUpsert(t, { fullRead });
+  assert.deepEqual((await call2('lookup', lookup)).rooms[0].representative, { name: 'Nguyễn Duẩn', phone: PHONE }, 'member owner: full phone');
+  assert.equal(await probe({ db, call2 }), false, 'reviewed SQL hides the full phone');
+  await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${id('a')}')`);
+  assert.equal(JSON.stringify(await call2('lookup', lookup)).includes(PHONE), true, 'owner back in the company: visible again');
+  assert.equal(fullRead[LIVE].split(OWNER_GATE).length, 2, 'anchor');
+  const mutant = withLive(fullRead[LIVE].split(OWNER_GATE).join('JOIN public.customers cu ON cu.id=cc.customer_id AND cu.deleted_at IS NULL'));
+  assert.equal(await probe(await setupUpsert(t, { fullRead: mutant })), true, 'mutant leaks the phone');
+});

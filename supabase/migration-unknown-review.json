@@ -941,6 +941,27 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đọc đầy đủ đợt 1b (khớp web), 17/10/2026",
       "sha256": "32a9c1b9e5b1bbd2316c5719e4c34e6cc259bcb40aee59c2f601f5b6b652570f"
+    },
+    "supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_room_pass_upsert_v2 / public.hermes_domain_read_v3 / app_private.hermes_report_read_v2"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects là các object trên — sinh 17/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 17/10/2026 (sửa sau review độc lập 85280779 của Hermes đọc đầy đủ: điều kiện chủ hồ sơ khách như RLS customers_select_rbac của web, phần chờ duyệt cùng tập toà với hàng lãi lỗ, phòng gần nhất của danh sách khách theo contracts.view, trần kích thước đo sau escape JSON và mã PT413), chạy SAU 20261017021554; chưa đi qua lane apply production — object vắng mặt trên production vì cả chuỗi 20261016162104 → 20261016172206 → 20261017021554 → file này CHƯA CHẠY, không phải vì bị DROP. Apply TEST (hzulujxgonszuleqticb) qua npm run migrate:forward --env test. Kiểm hành vi bằng PGlite kèm đột biến. Sẽ áp production qua lane cùng một lượt với ba file trước (BAN-GIAO) khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.hermes_room_pass_upsert_v2",
+        "function:public.hermes_domain_read_v3",
+        "function:app_private.hermes_report_read_v2"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đọc đầy đủ (sửa review 85280779), 17/10/2026",
+      "sha256": "eb7d6005716317707abc8a7b6e27a78fcd27ab6cb20b934520eacedd62a0f898"
     }
   }
 }

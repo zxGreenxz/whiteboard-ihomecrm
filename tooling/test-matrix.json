@@ -940,6 +940,25 @@
       ]
     },
     {
+      "id": "hermes-full-read",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_full_read_*.sql",
+        "infra/hermes-broker/full-read-*.mjs",
+        "infra/hermes-broker/room-pass-upsert-sql-fixture.mjs",
+        "infra/hermes-broker/bound-user-rpc.mjs",
+        "infra/hermes-broker/mcp-http.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/domain-v3.test.mjs",
+        "infra/hermes-broker/full-read-report.test.mjs",
+        "infra/hermes-broker/room-pass-full-read.test.mjs",
+        "infra/hermes-broker/tool-argument-shape.test.mjs",
+        "infra/hermes-broker/mcp-http.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-finance-expense",
       "sourcePaths": [
         "supabase/migrations/*_hermes_domain_reads_v2.sql",
