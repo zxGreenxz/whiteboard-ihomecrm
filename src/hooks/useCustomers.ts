@@ -1,4 +1,4 @@
-import {readResidenceLocationIds} from '@/lib/customerResidenceHistory';
+import { customerListArgs, parseCustomerList } from '@/lib/customerList';
 import { persistentFinancialWorkflow } from '@/lib/persistentFinancialWorkflow';
 import { FinancialWorkflowError, type CompletedFinancialStep } from '@/lib/financialWorkflow';
 import { confirmedRecordId, confirmedRecordBatch, recordWriteMessage } from '@/lib/recordWriteOutcome';
@@ -15,11 +15,10 @@ import type {
 } from "@/types/customer";
 import type { VehicleType } from '@/types/vehicle';
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
-import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
+import { ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import { friendlyError } from '@/lib/friendlyError';
-import { customerSearchFilter } from '@/lib/customerSearch';
 
 // =============================================
 // useCustomers - Query customers with filters and pagination
@@ -91,130 +90,26 @@ export const useCustomers = (
     queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
+      if (!selectedOrganizationId) throw new Error("Chưa chọn tổ chức.");
 
-      // count:'exact' bắt PostgREST chạy THÊM một nhánh đếm, quét lại toàn bộ
-      // dòng khớp dưới cùng bộ predicate RLS và chạy lại InitPlan — đo được
-      // ~2,2× trên chính query này. Chỉ trả giá đó khi thật sự có người phân
-      // trang. Dùng LẠI ĐÚNG điều kiện của .range() bên dưới, không viết lại,
-      // để count và range không bao giờ lệch nhau.
-      const wantsPage = !!(pagination?.page && pagination?.pageSize);
-
-      // hermes-parity:begin customer-list — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      let query = (supabase
-        .from("customers")
-        .select("*", wantsPage ? { count: "exact" } : undefined) as any)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-
-      if(selectedOrganizationId)query=query.eq("organization_id",selectedOrganizationId);
-      // hermes-parity:end customer-list
-
-      // Filter by status_v2
-      if (filters?.status) {
-        query = query.eq("status_v2", filters.status);
-      }
-
-      // Filter by stat type
-      if (filters?.statFilter && filters.statFilter !== "ALL") {
-        if (filters.statFilter === "INDIVIDUAL") {
-          query = query.eq("customer_type", "INDIVIDUAL");
-        } else if (filters.statFilter === "ORGANIZATION") {
-          query = query.eq("customer_type", "ORGANIZATION");
-        } else if (filters.statFilter === "FOREIGN") {
-          query = query.eq("is_foreign", true);
-        }
-      }
-
-      // Search by name, phone, email, id_number
-      // hermes-parity:begin customer-list
-      if (filters?.search) {
-        const search = filters.search.trim();
-        if (search) {
-          query = query.or(customerSearchFilter(search));
-        }
-      }
-      // hermes-parity:end customer-list
-
-      // Filter by building/room via contract_customers junction table
-      if (filters?.building_id || filters?.room_id ) {
-        if(!selectedOrganizationId)throw new Error("Chưa chọn tổ chức.");
-        const customerIds = await readResidenceLocationIds(selectedOrganizationId,filters.building_id,filters.room_id,filters.status!=="RENTING");
-        if (customerIds.length === 0) return { data: [], count: 0 };
-        query = query.in("id", customerIds);
-      }
-
-      // Apply pagination
-      if (wantsPage) {
-        const offset = (pagination.page - 1) * pagination.pageSize;
-        query = query.range(offset, offset + pagination.pageSize - 1);
-      }
-
-      const { data, error, count } = await query;
+      // Một lời gọi thay chuỗi PostgREST cũ (customers + count + location ids
+      // phân trang + 1 request nhúng toà/80 khách): RLS, tìm không dấu, lọc
+      // toà/phòng, sắp xếp, phân trang, tổng và toà hiện tại đều nằm trong
+      // customer_list_v1 — cùng công thức với Hermes/báo cáo. Không phân trang
+      // (picker HĐ) ⇒ toàn bộ danh sách, `count` = số dòng như trước.
+      const args = customerListArgs({
+        organizationId: selectedOrganizationId,
+        filters,
+        pagination,
+        includeLocation: !options?.skipLocationEnrichment,
+      });
+      const { data, error } = await supabase.rpc("customer_list_v1", args);
       if (error) {
         console.error("useCustomers error:", error);
         throw error;
       }
-
-      const customers = (data || []) as Customer[];
-
-      // Enrich with current room/building from latest ACTIVE contract.
-      // Done as a follow-up query because PostgREST embed paths get
-      // unwieldy through contract_customers. Cũng kèm building.id để FE
-      // dùng check building scope (ẩn nút Sửa/Xoá khi không quản lý tòa).
-      if (!options?.skipLocationEnrichment && customers.length > 0) {
-        const ids = customers.map((c) => c.id);
-        const CHUNK = 80;
-        const map = new Map<
-          string,
-          { building_id: string | null; building_name: string; room_name: string }
-        >();
-        for (let i = 0; i < ids.length; i += CHUNK) {
-          const slice = ids.slice(i, i + CHUNK).join(',');
-          const { data: links, error: locationError } = await (supabase
-            .from("contract_customers")
-            .select(
-              `customer_id,
-               contract:contracts!contract_customers_contract_id_fkey (
-                 status, end_date,
-                 room:rooms!contracts_room_id_fkey (
-                   name,
-                   building:buildings!rooms_building_id_fkey ( id, name )
-                 )
-               )`
-            ) as any)
-            .in('customer_id', slice.split(','));
-          if(locationError)throw locationError;
-          // hermes-parity:begin customer-list
-          for (const l of (links || []) as any[]) {
-            if (!l.contract || !isContractInEffect(l.contract.status)) continue;
-            const bid = l.contract.room?.building?.id || null;
-            const bn = l.contract.room?.building?.name || '';
-            const rn = l.contract.room?.name || '';
-            if (!bid && !bn && !rn) continue;
-            // Prefer the most recent contract if multiple
-            const prev = map.get(l.customer_id);
-            if (!prev) map.set(l.customer_id, { building_id: bid, building_name: bn, room_name: rn });
-          }
-          // hermes-parity:end customer-list
-        }
-        for (const c of customers) {
-          const cur = map.get(c.id);
-          (c as any).current_building_id = cur?.building_id || null;
-          (c as any).current_building_name = cur?.building_name || null;
-          (c as any).current_room_name = cur?.room_name || null;
-        }
-      }
-
-      return {
-        data: customers,
-        // postgrest-js chỉ đọc Content-Range khi request đã xin count, nên không
-        // xin ⇒ `count === null`. Trả `customers.length` thay vì 0: một consumer
-        // lỡ đọc `count` sẽ thấy "có bấy nhiêu khách" chứ không thấy "không có
-        // khách nào" — sai lệch thì có, nhưng không phải sai lệch câm lặng biến
-        // dữ liệu thành rỗng. `??` chứ không phải `||`: khi CÓ xin count thì
-        // số 0 là số thật, phải giữ.
-        count: count ?? customers.length,
-      };
+      const list = parseCustomerList(data, args);
+      return { data: list.rows, count: list.total };
     },
   });
 };
@@ -309,73 +204,19 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
     queryFn: async (): Promise<CustomerStats> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
+      if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
 
-      const search = filters?.search?.trim();
-      if (search) {
-        if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
-        const locationIds = filters?.building_id || filters?.room_id
-          ? await readResidenceLocationIds(selectedOrganizationId, filters.building_id, filters.room_id, filters.status !== 'RENTING')
-          : undefined;
-        if (locationIds?.length === 0) return { total: 0, individual: 0, organization: 0, foreign: 0 };
-
-        // The stats RPC uses accent-sensitive ILIKE. For searches, count with
-        // the same server predicate as the list; HEAD avoids downloading rows
-        // or truncating totals at the API row limit. Unfiltered stats keep RPC.
-        const countQuery = () => {
-          let query = supabase.from('customers').select('id', { count: 'exact', head: true })
-            .is('deleted_at', null).eq('organization_id', selectedOrganizationId)
-            .or(customerSearchFilter(search));
-          if (filters?.status) query = query.eq('status_v2', filters.status);
-          if (locationIds) query = query.in('id', locationIds);
-          return query;
-        };
-        const readCount = async (query: ReturnType<typeof countQuery>): Promise<number> => {
-          const { count, error } = await query;
-          if (error) throw error;
-          if (count === null) throw new Error('Chưa xác nhận được thống kê khách hàng');
-          return count;
-        };
-        const [total, individual, organization, foreign] = await Promise.all([
-          readCount(countQuery()),
-          readCount(countQuery().eq('customer_type', 'INDIVIDUAL')),
-          readCount(countQuery().eq('customer_type', 'ORGANIZATION')),
-          readCount(countQuery().eq('is_foreign', true)),
-        ]);
-        return { total, individual, organization, foreign };
-      }
-
-      // 1 RPC thay 4 HEAD-count + resolve location trùng lặp (migration
-      // 20260705210000). Trước đây khi lọc toà/phòng, hook này chạy LẠI
-      // resolveCustomerIdsByLocation mà useCustomers vừa chạy (1 query contracts
-      // + N query contract_customers), rồi thêm 4 count = burst request; giờ
-      // toàn bộ gói trong 1 câu SQL, SECURITY INVOKER giữ RLS như cũ.
-      const { data, error } = await supabase.rpc(
-        "get_customer_stats",
-        {
-          // Cả 4 tham số đều `DEFAULT NULL` ở server (xem rpc-surface.json), nên
-          // bỏ khoá khỏi payload = truyền NULL. Dùng `undefined` để khớp kiểu
-          // `p_x?: T` mà bộ sinh Supabase tạo cho tham số CÓ DEFAULT.
-          p_status: filters?.status ?? undefined,
-          p_search: filters?.search?.trim() || undefined,
-          p_building_id: filters?.building_id ?? undefined,
-          p_room_id: filters?.room_id ?? undefined,
-        },
-      );
+      // Cùng hàm với danh sách, không tải dòng nào: khối stats bỏ qua thẻ loại
+      // đang chọn và đếm trên đúng tập lọc (trạng thái, tìm không dấu, toà/phòng)
+      // của bảng, trong đúng công ty đang chọn. Thay get_customer_stats (không
+      // tìm) và 4 HEAD-count (có tìm).
+      const args = customerListArgs({ organizationId: selectedOrganizationId, filters, includeLocation: false, statsOnly: true });
+      const { data, error } = await supabase.rpc("customer_list_v1", args);
       if (error) {
         console.error("useCustomerStats error:", error);
         throw error;
       }
-      if (!data || typeof data !== 'object') throw new Error('Chưa xác nhận được thống kê khách hàng');
-      const row = data as Record<string, number>;
-      if (['total', 'individual', 'organization', 'foreign'].some(key => !Number.isFinite(Number(row[key])))) {
-        throw new Error('Thống kê khách hàng chưa đủ dữ liệu');
-      }
-      return {
-        total: Number(row.total) || 0,
-        individual: Number(row.individual) || 0,
-        organization: Number(row.organization) || 0,
-        foreign: Number(row.foreign) || 0,
-      };
+      return parseCustomerList(data, args).stats;
     },
   });
 };
