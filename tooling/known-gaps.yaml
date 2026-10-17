@@ -309,3 +309,24 @@ gaps:
     exit_condition: >
       Worker trả job về hàng đợi kèm not_before (có trần số lần) khi tài khoản chưa disconnected mà
       đang đăng nhập lại, chỉ đánh FAILED khi hết hạn chờ; có test cho cả hai nhánh.
+  - id: hermes-lenh-rieng-zalo-khong-ai-tieu-thu
+    where: >
+      worker/lib/inbound.js (handleInbound, nhánh privacy 'private' gọi ingress.acceptPrivateCommand) ·
+      worker/lib/hermes-link.js (acceptPrivateCommand → RPC hermes_zalo_private_command_v1)
+    expires_at: 2026-12-31
+    why: >
+      PR #193 (17/10/2026) gỡ chế độ host v1, gồm private-command-runner/store là bên DUY NHẤT
+      claim và trả lời hàng đợi app_private.hermes_zalo_private_commands. Worker vẫn đẩy tin nhắn
+      riêng (DM) không đi qua native bridge vào hermes_zalo_private_command_v1 khi privacy của
+      cuộc trò chuyện là 'private'; connector-only production không tiêu thụ hàng đợi này.
+      Rủi ro: tin riêng của khách nằm trong hàng đợi chờ đến hết hạn mà không ai trả lời, người
+      gửi không nhận phản hồi, worker vẫn log 'queued' như thể đã nhận; nội dung DM nằm lại trong
+      DB — dòng hết hạn sau tối đa 15 phút nhưng việc prune (hermes_store_prune_private_commands_v1)
+      do runner đã gỡ đảm nhiệm, chưa thấy cron nào dọn thay. Tin đi qua native bridge (DM đã cấp
+      cho plugin Zalo native) không bị ảnh hưởng vì return trước nhánh này. PR #193 cố ý KHÔNG
+      đổi hành vi worker.
+    exit_condition: >
+      Chặn ở worker: không gọi acceptPrivateCommand (hoặc tắt privateCommandSource) khi không có
+      bên tiêu thụ, ghi trạng thái 'suppressed' và có test cho nhánh đó; rồi quyết định giữ hay
+      gỡ RPC hermes_zalo_private_command_v1 cùng hàng đợi qua lane migration. Hoặc dựng lại một
+      bên tiêu thụ thật cho hàng đợi, có test đầu-cuối.

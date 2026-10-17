@@ -1213,15 +1213,13 @@
         "infra/hermes-broker/connection-options.mjs",
         "infra/hermes-broker/broker.mjs",
         "infra/hermes-broker/mcp-http.mjs",
-        "infra/hermes-broker/server.mjs",
-        "scripts/test-hermes-product-runtime.mjs"
+        "infra/hermes-broker/server.mjs"
       ],
       "suiteId": "node-native",
       "testPatterns": [
         "infra/hermes-broker/room-pass-*.test.mjs",
         "infra/hermes-broker/connection-management.test.mjs",
-        "infra/hermes-broker/server.test.mjs",
-        "scripts/test-hermes-product-runtime.test.mjs"
+        "infra/hermes-broker/server.test.mjs"
       ]
     },
     {
@@ -1257,27 +1255,14 @@
       ]
     },
     {
-      "id": "hermes-private-runtime-composition",
+      "id": "hermes-connector-host-composition",
       "sourcePaths": [
         "infra/hermes-runtime/host-*",
-        "infra/hermes-runtime/hermes-host.service",
-        "scripts/test-hermes-product-runtime.mjs",
+        "infra/hermes-runtime/hermes-connector.service",
         "infra/hermes-broker/connection-handoff.mjs",
         "infra/hermes-broker/connection-control-plane.mjs",
-        "infra/hermes-runtime/handoff-reconciler.mjs",
-        "infra/hermes-runtime/runtime-orchestrator.mjs",
-        "infra/hermes-runtime/profile-homes.mjs",
-        "infra/hermes-runtime/connection-supervisor.mjs",
-        "infra/hermes-broker/private-command-runner.mjs",
-        "infra/hermes-runtime/runtime-gateway.mjs",
-        "infra/hermes-runtime/gateway-relay.mjs",
-        "infra/hermes-runtime/gateway-transport.mjs",
-        "infra/hermes-runtime/container-driver.mjs",
-        "infra/hermes-runtime/container-contract.mjs",
         "infra/hermes-broker/dependency-scope.mjs",
         "infra/hermes-broker/clock-skew.mjs",
-        "infra/hermes-broker/runtime-model-service.mjs",
-        "infra/hermes-broker/model-relay.mjs",
         "infra/hermes-broker/server.mjs",
         "infra/hermes-broker/store-transport.mjs",
         "infra/hermes-broker/supabase-durable-auth-adapter.mjs",
@@ -1291,8 +1276,7 @@
       "suiteId": "node-native",
       "testPatterns": [
         "infra/hermes-broker/**/*.test.mjs",
-        "infra/hermes-runtime/**/*.test.mjs",
-        "scripts/test-hermes-product-runtime.test.mjs"
+        "infra/hermes-runtime/**/*.test.mjs"
       ]
     },
     {
@@ -1745,7 +1729,6 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
-        "scripts/test-hermes-product-runtime.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
         "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
         "scripts/__tests__/hermes-task-function-catalog.test.mjs",

@@ -10,7 +10,6 @@ const riskMap = JSON.parse(readFileSync(new URL('../../tooling/risk-map.json', i
 // Exercise real files in the restored domains without repeatedly planning
 // thousands of unrelated app tests in each routing assertion.
 const testFiles = trackedTestFiles([]).filter(file =>
-  file === 'scripts/test-hermes-product-runtime.test.mjs' ||
   file === 'scripts/__tests__/hermes-private-flow.test.mjs' ||
   file === 'scripts/__tests__/hermes-cde-live.test.mjs' ||
   file === 'src/hermes/connectionClient.test.ts' ||
@@ -273,9 +272,8 @@ describe('P0 shared CRM foundation routing', () => {
       .not.toContain('infra/hermes-zalo-router/privacy-sql.test.mjs');
   });
 
-  it('routes the product process and private reply through authorization review and their actual runners', () => {
+  it('routes the private reply through authorization review and its actual runners', () => {
     for (const [source, suite, file] of [
-      ['infra/hermes-runtime/agent-process.py', 'node-native', 'infra/hermes-runtime/agent-process.test.mjs'],
       ['worker/lib/hermes-reply.js', 'app-unit', 'worker/__tests__/hermes-reply.test.js'],
       ['supabase/migrations/20261013095000_hermes_zalo_private_reply_v1.sql', 'node-native', 'infra/hermes-zalo-router/private-reply-sql.test.mjs'],
     ]) {
@@ -285,33 +283,10 @@ describe('P0 shared CRM foundation routing', () => {
     }
   });
 
-  it('product gateway and container changes require authorization review plus backend/runtime composition tests', () => {
-    const required = ['infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/runtime-model-service.test.mjs',
-      'infra/hermes-broker/dependency-drain.test.mjs', 'infra/hermes-runtime/runtime-gateway.test.mjs',
-      'infra/hermes-runtime/gateway-relay.test.mjs', 'infra/hermes-runtime/gateway-transport.test.mjs',
-      'infra/hermes-runtime/container-driver.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs',
-      'infra/hermes-runtime/profile-homes.test.mjs', 'infra/hermes-runtime/connection-supervisor.test.mjs',
-      'infra/hermes-broker/private-command-runner.test.mjs'];
-    const files = [...new Set([...testFiles, ...required])];
-    for (const source of ['runtime-gateway', 'gateway-relay', 'gateway-transport', 'container-driver', 'container-contract',
-      'runtime-orchestrator', 'profile-homes', 'connection-supervisor']) {
-      const path = `infra/hermes-runtime/${source}.mjs`, plan = planFor(path, matrix, files);
-      expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
-      expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
-      expect(riskMap.tiers.authorization.paths).toContain(path);
-    }
-    const mutant = structuredClone(matrix);
-    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-runtime-composition');
-    expect(planFor('infra/hermes-runtime/runtime-gateway.mjs', mutant, files).suiteSelections.find(selection => selection.id === 'node-native').files)
-      .not.toContain('infra/hermes-broker/runtime-model-service.test.mjs');
-    expect(planFor('infra/hermes-broker/private-command-runner.mjs', matrix, files).suiteSelections.find(selection => selection.id === 'node-native').files)
-      .toEqual(expect.arrayContaining(required));
-  });
-
-  it('maintenance and refresh changes include backend/runtime integration and authorization review', () => {
+  it('maintenance and refresh changes include backend/connector host integration and authorization review', () => {
     const required = ['infra/hermes-broker/connection-maintenance.test.mjs', 'infra/hermes-broker/connection-renewal.test.mjs',
       'infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/refresh-manager.test.mjs',
-      'infra/hermes-runtime/connection-supervisor.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs'];
+      'infra/hermes-broker/connector-maintenance.test.mjs', 'infra/hermes-runtime/host-service.test.mjs'];
     const files = [...new Set([...testFiles, ...required])];
     for (const source of ['connection-maintenance', 'connection-renewal', 'refresh-manager', 'supabase-refresh-provider', 'durable-refresh-store']) {
       const path = 'infra/hermes-broker/' + source + '.mjs', plan = planFor(path, matrix, files);
@@ -319,68 +294,35 @@ describe('P0 shared CRM foundation routing', () => {
       expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
     }
     const mutant = structuredClone(matrix);
-    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-private-runtime-composition');
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule => rule.id !== 'hermes-connector-host-composition');
     expect(planFor('infra/hermes-broker/connection-maintenance.mjs', mutant, files).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? [])
-      .not.toContain('infra/hermes-runtime/connection-supervisor.test.mjs');
+      .not.toContain('infra/hermes-runtime/host-service.test.mjs');
   });
 
-  it('durable handoff and reconciliation select owner, crypto and backend integration with authorization review', () => {
+  it('durable handoff selects owner, crypto, backend and connector host integration with authorization review', () => {
     const required = ['infra/hermes-broker/connection-handoff.test.mjs', 'infra/hermes-broker/connection-control-plane.test.mjs',
-      'infra/hermes-broker/server.test.mjs', 'infra/hermes-runtime/handoff-reconciler.test.mjs', 'infra/hermes-runtime/runtime-orchestrator.test.mjs'];
+      'infra/hermes-broker/server.test.mjs', 'infra/hermes-broker/connector-maintenance.test.mjs', 'infra/hermes-runtime/host-service.test.mjs'];
     const files = [...new Set([...testFiles, ...required])];
-    for (const path of ['infra/hermes-broker/connection-handoff.mjs', 'infra/hermes-broker/connection-control-plane.mjs',
-      'infra/hermes-runtime/handoff-reconciler.mjs']) {
+    for (const path of ['infra/hermes-broker/connection-handoff.mjs', 'infra/hermes-broker/connection-control-plane.mjs']) {
       const plan = planFor(path,matrix,files);
       expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
       expect(plan.suiteSelections.find(selection=>selection.id==='node-native').files).toEqual(expect.arrayContaining(required));
     }
     const mutant = structuredClone(matrix);
-    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule=>rule.id!=='hermes-private-runtime-composition');
-    expect(planFor('infra/hermes-runtime/handoff-reconciler.mjs',mutant,files).suiteSelections.find(selection=>selection.id==='node-native')?.files ?? [])
-      .not.toContain('infra/hermes-broker/server.test.mjs');
+    mutant.sourceSelectionRules = mutant.sourceSelectionRules.filter(rule=>rule.id!=='hermes-connector-host-composition');
+    expect(planFor('infra/hermes-broker/connection-handoff.mjs',mutant,files).suiteSelections.find(selection=>selection.id==='node-native')?.files ?? [])
+      .not.toContain('infra/hermes-runtime/host-service.test.mjs');
   });
 
   it('host service/config/ownership and executable deployment require authorization and composed runtime checks', () => {
     const required = ['infra/hermes-runtime/host-service.test.mjs', 'infra/hermes-runtime/host-config.test.mjs',
       'infra/hermes-runtime/host-ownership.test.mjs', 'infra/hermes-runtime/host-cli.test.mjs', 'infra/hermes-broker/server.test.mjs'];
     const files = [...new Set([...testFiles, ...required])];
-    for (const name of ['host-service.mjs', 'host-config.mjs', 'host-ownership.mjs', 'host-cli.mjs', 'host-config.example.json', 'hermes-host.service']) {
+    for (const name of ['host-service.mjs', 'host-config.mjs', 'host-ownership.mjs', 'host-cli.mjs', 'connector-config.example.json', 'hermes-connector.service']) {
       const plan = planFor(`infra/hermes-runtime/${name}`, matrix, files);
       expect(plan.crossReview).toBe(true); expect(plan.profiles).toContain('money-auth');
       expect(plan.suiteSelections.find(selection => selection.id === 'node-native').files).toEqual(expect.arrayContaining(required));
     }
-  });
-
-  it('product runtime harness owns its native test and selects it with the real Node runner', () => {
-    const source = 'scripts/test-hermes-product-runtime.mjs', file = 'scripts/test-hermes-product-runtime.test.mjs';
-    expect(testFiles).toContain(file); assertNativeOwner(file);
-    for (const changed of [source, 'infra/hermes-runtime/container-driver.mjs', 'infra/hermes-runtime/gateway-transport.mjs', 'infra/hermes-broker/server.mjs']) {
-      const plan = planFor(changed), native = plan.suiteSelections.find(selection => selection.id === 'node-native');
-      expect(native.files).toContain(file);
-      expect(getGate('suite:node-native', plan).args).toEqual(['--test', ...native.files]);
-      expect(getGate('suite:node-native', plan).args).not.toContain(source);
-    }
-    const onlyTest = planFor(file), gate = getGate('suite:node-native', onlyTest);
-    expect(gate.args).toEqual(['--test', file]);
-    const assertRuntimeRule = candidate => {
-      const rule = candidate.sourceSelectionRules.find(item => item.id === 'hermes-private-runtime-composition');
-      expect(rule.suiteId).toBe('node-native');
-      expect(rule.sourcePaths.some(pattern => globToRegExp(pattern).test(source))).toBe(true);
-      expect(rule.testPatterns.some(pattern => globToRegExp(pattern).test(file))).toBe(true);
-    };
-    assertRuntimeRule(matrix);
-    const mutant = structuredClone(matrix);
-    mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns =
-      mutant.sourceSelectionRules.find(rule => rule.id === 'hermes-private-runtime-composition').testPatterns.filter(pattern => pattern !== file);
-    expect(() => assertRuntimeRule(mutant)).toThrow();
-    // Room-pass composition independently needs this same test. Losing one
-    // required rule must be detected even while the other still selects it.
-    expect(planFor(source, mutant).suiteSelections.find(selection => selection.id === 'node-native').files).toContain(file);
-    const unowned = structuredClone(matrix);
-    for (const rule of unowned.sourceSelectionRules.filter(rule => rule.sourcePaths?.some(pattern => globToRegExp(pattern).test(source)))) {
-      rule.testPatterns = rule.testPatterns.filter(pattern => !globToRegExp(pattern).test(file));
-    }
-    expect(planFor(source, unowned).suiteSelections.find(selection => selection.id === 'node-native')?.files ?? []).not.toContain(file);
   });
 
   it('private TEST runner selects offline helper tests with review and never schedules its live command', () => {
@@ -613,7 +555,6 @@ describe('P0 shared CRM foundation routing', () => {
     ['src/lib/roomSaleFacts.ts', 'infra/hermes-broker/room-read-projection.test.mjs'],
     ['scripts/test-hermes-broker-authz.mjs', 'scripts/__tests__/test-hermes-broker-authz.test.mjs'],
     ['infra/hermes-runtime/runtime-probe.py', 'infra/hermes-runtime/runtime-contract.test.mjs'],
-    ['infra/hermes-runtime/connection-supervisor.mjs', 'infra/hermes-runtime/connection-supervisor.test.mjs'],
     ['scripts/test-hermes-runtime-isolation.mjs', 'infra/hermes-runtime/fixture-server.test.mjs'],
   ])('routes P1 %s to offline contracts without executing its live harness', (source, testFile) => {
     const plan = planFor(source);
@@ -623,7 +564,7 @@ describe('P0 shared CRM foundation routing', () => {
     expect(args[0]).toBe('--test');
     expect(args).not.toContain('--env');
     expect(args).not.toContain('--run');
-    if (source.includes('broker') || source.includes('connection-supervisor')) expect(plan.profiles).toContain('money-auth');
+    if (source.includes('broker')) expect(plan.profiles).toContain('money-auth');
   });
 
   it.each([

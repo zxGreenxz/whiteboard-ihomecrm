@@ -18,6 +18,18 @@ function definition(sql,name) {
  assert.notEqual(start,-1); const tail=sql.slice(start), q=tail.match(/\bAS\s+(\$\w*\$)/i);
  return tail.slice(0,tail.indexOf(';',tail.indexOf(q[1],q.index+q[0].length)+q[1].length)+1);
 }
+// Production semantics = the LAST forward CREATE of the function in file order, exactly as the
+// restore drill replays them (e.g. 20260906201114 replaced the 20260829090000 building helper).
+function liveDefinition(name) {
+ const pattern=new RegExp(`create or replace function ${name.replace('.','\\.')}\\s*\\(`,'gi');
+ let last;
+ for(const file of readdirSync(migrationDir).filter(n=>n.endsWith('.sql')).sort()) {
+  const sql=readFileSync(new URL(file,migrationDir),'utf8'), hits=[...sql.matchAll(pattern)];
+  if(hits.length) last={file,sql:sql.slice(hits.at(-1).index)};
+ }
+ assert.ok(last,`missing ${name}`);
+ return definition(last.sql,name);
+}
 async function setup() {
  const db=new PGlite();
  await db.exec(`
@@ -86,9 +98,8 @@ async function setup() {
  UPDATE fixture_policy SET org_wide=true WHERE permission LIKE 'reports_finance.%';
  SELECT set_config('request.jwt.claim.sub','${actor}',false);
  `);
- const helpers=readFileSync(new URL('20260829090000_copilot_org_scope_semantics_v1.sql',migrationDir),'utf8');
- await db.exec(definition(helpers,'public.copilot_org_scope_buildings_v1'));
- await db.exec(definition(helpers,'app_private.copilot_scope_cashbooks_v1'));
+ await db.exec(liveDefinition('public.copilot_org_scope_buildings_v1'));
+ await db.exec(liveDefinition('app_private.copilot_scope_cashbooks_v1'));
  await db.exec(readFileSync(new URL(migration,migrationDir),'utf8'));
  return db;
 }
@@ -96,6 +107,14 @@ async function call(db,name,limit=1,selected=org,tu='2026-09-01',den='2026-09-09
  const extra=name==='promotions'?',NULL':'';
  return (await db.query(`SELECT public.copilot_report_${name}_v1($1::uuid,$2::date,$3::date${extra},$4::integer) AS value`,[selected,tu,den,limit])).rows[0].value;
 }
+test('live building helper keeps the resolver building_ids even under an organization-wide grant',async()=>{
+ // reports_finance.* is org_wide=true with building_ids={Allowed}: the production helper must
+ // not widen to every organization building (the pre-20260906201114 body returned DENIED too).
+ const db=await setup(); try {
+  const {rows}=await db.query(`SELECT public.copilot_org_scope_buildings_v1('reports_finance.collection_cycle',$1::uuid) AS v`,[org]);
+  assert.deepEqual(rows[0].v,[building]);
+ } finally {await db.close();}
+});
 test('report SQL: formulas, tenant joins, cashbook/building denies and full totals precede LIMIT',async()=>{
  const db=await setup(); try {
   const promo=await call(db,'promotions');

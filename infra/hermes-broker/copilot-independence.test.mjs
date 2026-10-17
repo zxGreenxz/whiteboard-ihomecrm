@@ -23,15 +23,9 @@ const COPILOT = /copilot/i;
 // SQL: allowlist RỖNG. Một hàm Hermes cần dữ liệu Copilot đang có thì gọi thẳng hàm web
 // dùng cho dữ liệu đó hoặc bộ giải chung mà hàm Copilot bọc, không thêm dòng vào đây.
 const SQL_ALLOWLIST = new Map();
-// infra: chỉ còn relay model của chế độ host v1 (prototype quản lý model, chưa từng
-// deploy; production chạy connector-only, createRuntimeGateway ném tool_not_available).
-// Relay đi qua Edge llm-proxy của Copilot và ánh xạ mã lỗi của nó. CONNECTOR.md giữ relay
-// làm phương án tuỳ chọn chờ tách admission: việc gỡ là quyết định của chủ. Số dòng là
-// chính xác: gỡ/đổi dòng nào thì phải sửa allowlist này (không để mục thừa).
-const INFRA_ALLOWLIST = new Map([
-  ['infra/hermes-broker/model-relay.mjs', { lines: 2, reason: 'host v1 relay: llm-proxy error code copilot_disabled + header x-copilot-feature' }],
-  ['infra/hermes-broker/runtime-model-service.mjs', { lines: 1, reason: 'host v1 relay: definite llm-proxy error copilot_disabled' }],
-]);
+// infra: allowlist RỖNG (chủ chốt 17/10/2026: gỡ chế độ host v1 cùng relay model qua
+// Edge llm-proxy của Copilot; connector-only không gọi model). Không thêm mục vào đây.
+const INFRA_ALLOWLIST = new Map();
 
 // Comments are prose, not dependencies: they are blanked (newlines kept) before any
 // match. String/identifier literals are kept, so `--`, `//` or `#` inside them never
@@ -212,12 +206,12 @@ test('comment stripping keeps code and literals, drops only comments', () => {
   assert.match(stripSql(sql), /'a -- copilot_in_string'/);
 });
 
-test('infra/hermes-* source does not reference Copilot except the exact host v1 relay lines', () => {
+test('infra/hermes-* source does not reference Copilot (allowlist empty)', () => {
   const found = new Map();
   for (const path of infraSources()) {
     const lines = copilotLines(readFileSync(join(root, path), 'utf8'), path);
     if (lines) found.set(path, lines);
   }
-  assert.deepEqual(Object.fromEntries(found), Object.fromEntries([...INFRA_ALLOWLIST].map(([path, { lines }]) => [path, lines])));
-  for (const { reason } of INFRA_ALLOWLIST.values()) assert.match(reason, /host v1/);
+  assert.deepEqual(Object.fromEntries(found), Object.fromEntries(INFRA_ALLOWLIST));
+  assert.equal(INFRA_ALLOWLIST.size, 0);
 });

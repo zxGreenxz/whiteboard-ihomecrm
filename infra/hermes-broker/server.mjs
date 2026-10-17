@@ -30,18 +30,12 @@ import { createConnectionMaintenance } from './connection-maintenance.mjs';
 import { createRefreshManager } from './refresh-manager.mjs';
 import { createDurableRefreshStore } from './durable-refresh-store.mjs';
 import { createSupabaseRefreshProvider } from './supabase-refresh-provider.mjs';
-import { createPrivateCommandStore } from './private-command-store.mjs';
-import { createPrivateCommandRunner, PrivateCommandRunnerError } from './private-command-runner.mjs';
 import { createMcpHttpHandler } from './mcp-http.mjs';
 import { createRoomReadService, createSupabaseRoomReads } from './room-read-service.mjs';
 import { createZaloBindingService } from '../hermes-zalo-router/binding-service.mjs';
 import { createZaloBindingPorts } from '../hermes-zalo-router/binding-adapter.mjs';
 import { createZaloBindingHttpHandler } from '../hermes-zalo-router/binding-http.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
-import { createModelRelay } from './model-relay.mjs';
-import { createRuntimeModelService } from './runtime-model-service.mjs';
-import { createRuntimeGateway } from '../hermes-runtime/runtime-gateway.mjs';
-import { createConnectionSupervisor } from '../hermes-runtime/connection-supervisor.mjs';
 import { createConnectorHealth } from './connector-health.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
@@ -69,31 +63,23 @@ function reply(response, status, error) {
  * broker. Its handler retains capacity until that bounded work settles. Browser
  * writes propagate disconnect through the existing connection HTTP handler.
  * resolveConnection() returns a fresh, fixed owner projection to the trusted
- * supervisor. It shares HTTP admission and is aborted/drained on close.
- * Its promise includes actual authority dependency drain, even after an adapter
- * timeout. Startup owners must not free profile capacity on a public SQL race.
- * renewConnection() is a trusted supervisor API with separate bounded admission;
+ * host (connector maintenance). It shares HTTP admission and is aborted/drained
+ * on close. Its promise includes actual authority dependency drain, even after
+ * an adapter timeout.
+ * renewConnection() is a trusted host API with separate bounded admission;
  * it is not an HTTP route or model tool and never refreshes provider credentials.
  * beginConnectionMaintenance() composes token-derived fenced provider refresh
- * and renewal. The trusted host must park its whole command pump until drained;
- * it is not automatically scheduled and never accepts caller credential refs.
- * createPrivateCommandRunner(supervisor) binds one trusted explicit ledger pump;
- * it is never mounted on HTTP/MCP. Repeated calls reuse the same supervisor only.
- * createRuntimeSupervisor({profileStore,runtime}) owns one supervisor with the
- * same dependency scope as SQL/Auth and the runner. It requires the coordinated
- * orchestrator for renewal; its own expiry watchdog always remains active.
- * Runtime command ports must
- * expose actual drain (beginExecutePrivateCommand), or settle only after work.
- * Owned runner/supervisor close concurrently, before gateway/model teardown.
- * External supervisors remain caller-owned and must stop before backend.close.
+ * and renewal. It is not automatically scheduled and never accepts caller
+ * credential refs; the connector reaches it through
+ * beginExternalConnectionMaintenance(), which parks that token's MCP admission.
  * close() blocks admission, aborts renewals, destroys sockets, awaits handlers
- * and direct renewal/private-command dependency promises, then destroys its
+ * and direct renewal/maintenance dependency promises, then destroys its
  * keyring. Socket loss/unknown write ACK is NOT rollback or a retry guarantee;
  * Nested adapters own transport cancellation; draining their public promises
  * does not prove an in-flight database write rolled back.
  * optional handoff.stage persists an encrypted host WAL before activation. The
- * product host must inject it and own its close after backend.close; this backend
- * tracks actual stage I/O but never lists/decrypts WAL or starts profiles itself.
+ * host must inject it and own its close after backend.close; this backend
+ * tracks actual stage I/O but never lists/decrypts WAL.
  * Quota/admission remain process-local; this is not a multi-replica deployment.
  */
 const LIMIT_KEYS = ['requestsPerMinute', 'toolCallsPerMinute', 'callTimeoutMs', 'maintenanceWaitMs'];
@@ -160,7 +146,8 @@ export function createHermesBackend(configuration = {}) {
     const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
     const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock,
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
-    // The concrete preview stack is private to the trusted active-turn gateway.
+    // The concrete preview stack is reachable only through the broker's group
+    // methods that need a host-supplied private command context (no MCP route).
     // Construction does not grant a capability, policy or connection action.
     const groupPreviews = createGroupPreviewMount({ auth, authority, connectionStore, crypto, clock, dependencyScope,
       supabase, fetch: request });
@@ -195,7 +182,7 @@ export function createHermesBackend(configuration = {}) {
     const hosts = new Set(http.allowedHosts), origins = new Set(http.allowedOrigins);
     const mcp = createMcpHttpHandler({ broker, allowedHosts: [...new Set([...hosts].map(host => new URL(`http://${host}`).hostname))],
       allowedOrigins: [...origins] });
-    const pending = new Set(), supervisorAbort = new AbortController(); let closing = false, closePromise, privateRunner, privateSupervisor;
+    const pending = new Set(), closeAbort = new AbortController(); let closing = false, closePromise;
     const externalCalls = new Map();
     const tokenKey = token => typeof token === 'string' && /^hc_[A-Za-z0-9_-]{43}$/.test(token)
       ? createHash('sha256').update(token).digest('hex') : null;
@@ -207,7 +194,7 @@ export function createHermesBackend(configuration = {}) {
       if (!entry) { entry = { active: new Set(), waiters: new Set(), parked: false }; externalCalls.set(key, entry); }
       return entry;
     };
-    // The external connector has no command pump or runtime supervisor. Park
+    // The connector has no command pump or runtime supervisor. Park
     // admission for this token, drain actual HTTP dependencies, then reuse the
     // existing refresh/renew lane. Socket close alone never frees this fence.
     const beginExternalConnectionMaintenance = (token, { signal } = {}) => {
@@ -218,7 +205,7 @@ export function createHermesBackend(configuration = {}) {
       if (externalCalls.get(key)?.parked) throw new BrokerError('busy');
       const entry = externalEntry(key);
       entry.parked = true;
-      const combined = AbortSignal.any([signal, supervisorAbort.signal]);
+      const combined = AbortSignal.any([signal, closeAbort.signal]);
       let uncertainDrain = false;
       const work = (async () => {
         await Promise.allSettled([...entry.active]);
@@ -239,15 +226,13 @@ export function createHermesBackend(configuration = {}) {
       void work.catch(() => {}); void drained.catch(() => {});
       return Object.freeze({ result: work, drained });
     };
-    let runtimeGateway, runtimeModels, runtimeOptions, ownedSupervisor, supervisorOptions;
     const resolveConnection = (token, { signal } = {}) => {
       if (!(signal instanceof AbortSignal)) return Promise.reject(new BrokerError('invalid_request'));
       if (closing || signal.aborted) return Promise.reject(new BrokerError('backend_unavailable'));
       if (pending.size >= 16) return Promise.reject(new BrokerError('busy'));
-      const combined = AbortSignal.any([signal, supervisorAbort.signal]);
+      const combined = AbortSignal.any([signal, closeAbort.signal]);
       const work = Promise.resolve().then(async () => {
-        // Scope only the finite authority lookup, never long-lived runtime
-        // startup/listeners. Preserve startup ownership and the 16-call limit
+        // Scope only the finite authority lookup. Preserve the 16-call limit
         // when a SQL/Auth observer aborts before its actual transport settles.
         const lookup = dependencyScope.begin(() => authority.resolve(token, { signal: combined }));
         let context;
@@ -289,7 +274,7 @@ export function createHermesBackend(configuration = {}) {
     });
     // Request observers can finish before ignored-abort Auth/SQL/fetch work.
     // Retain the shared admission slot until this finite dependency scope
-    // actually drains; no runtime listeners or startup live in this scope.
+    // actually drains; no long-lived listeners live in this scope.
     function dispatch(req, res, externalKey) {
       const entry = externalKey ? externalEntry(externalKey) : undefined;
       const requestWork = dependencyScope.begin(async () => {
@@ -313,7 +298,7 @@ export function createHermesBackend(configuration = {}) {
       const waiting = new Promise(resolve => { settle = resolve; });
       const finish = open => {
         if (!entry.waiters.delete(wake)) return;
-        clearTimeout(timer); supervisorAbort.signal.removeEventListener('abort', closed); res.off('close', gone);
+        clearTimeout(timer); closeAbort.signal.removeEventListener('abort', closed); res.off('close', gone);
         // Dispatch synchronously inside the fence-open callback: no other
         // maintenance can park this token between the check and admission.
         if (open && !closing && !res.destroyed && !entry.parked) dispatch(req, res, key);
@@ -324,7 +309,7 @@ export function createHermesBackend(configuration = {}) {
       const wake = open => finish(open), closed = () => finish(false), gone = () => finish(false);
       entry.waiters.add(wake);
       const timer = setTimeout(() => finish(false), limits.maintenanceWaitMs);
-      supervisorAbort.signal.addEventListener('abort', closed, { once: true });
+      closeAbort.signal.addEventListener('abort', closed, { once: true });
       res.once('close', gone);
       pending.add(waiting);
       void waiting.then(() => pending.delete(waiting));
@@ -338,20 +323,12 @@ export function createHermesBackend(configuration = {}) {
     const close = () => {
       if (closePromise) return closePromise;
       closing = true;
-      supervisorAbort.abort();
+      closeAbort.abort();
       const retentionStopped = retention.close();
       const renewalsStopped = renewal.close();
       const refreshStopped = Promise.all([maintenance.close(), refreshManager.close(), refreshProvider.close()]);
       void refreshStopped.catch(() => {});
       const bindingsStopped = binding.close();
-      const privateCommandsStopped = privateRunner?.close();
-      // Start both stops before awaiting either: a runner can be waiting for
-      // the runtime exit caused by supervisor.close(). Never remove a sidecar
-      // network or erase credentials while the owned runtime can still execute.
-      const supervisorStopped = ownedSupervisor?.close();
-      const runtimeStopped = Promise.all([privateCommandsStopped, supervisorStopped]).then(() =>
-        Promise.all([runtimeGateway?.shutdown(), runtimeModels?.close()]));
-      void runtimeStopped.catch(() => {});
       closePromise = (async () => {
         const stopped = new Promise(resolve => server.close(() => resolve()));
         server.closeAllConnections();
@@ -361,71 +338,13 @@ export function createHermesBackend(configuration = {}) {
         await renewalsStopped;
         await refreshStopped;
         await bindingsStopped;
-        await privateCommandsStopped;
-        await runtimeStopped;
         await dependencyScope.close();
         crypto.destroy();
       })();
       return closePromise;
     };
-    // Trusted supervisor API only. Never registered as a browser route or MCP
-    // tool; the browser JWT and provider credentials cannot renew runtime leases.
-    const privateCommandRunner = supervisor => {
-      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
-      if (closing) throw new PrivateCommandRunnerError('backend_closed');
-      if (ownedSupervisor && supervisor !== ownedSupervisor) throw new TypeError('private_command_supervisor_mismatch');
-      if (privateRunner) {
-        if (supervisor !== privateSupervisor) throw new TypeError('private_command_runner_already_bound');
-        return privateRunner;
-      }
-      const runner = createPrivateCommandRunner({ store: createPrivateCommandStore({ transport }), resolveConnection, supervisor, clock, dependencyScope });
-      privateSupervisor = supervisor; privateRunner = runner; return runner;
-    };
-    const runtimeSupervisorFactory = options => {
-      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
-      if (closing) throw new BrokerError('backend_unavailable');
-      if (!plain(options) || Reflect.ownKeys(options).length !== 2 ||
-          ['profileStore', 'runtime'].some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(options, key) ?? {}, 'value'))) {
-        throw new TypeError('invalid_runtime_supervisor_config');
-      }
-      if (ownedSupervisor) {
-        if (options !== supervisorOptions) throw new TypeError('runtime_supervisor_already_bound');
-        return ownedSupervisor;
-      }
-      if (privateRunner) throw new TypeError('private_command_runner_already_bound');
-      const supervisor = createConnectionSupervisor({ profileStore: options.profileStore, runtime: options.runtime,
-        backend: { resolveConnection, renewConnection: renewal.renew, beginConnectionMaintenance: maintenance.begin },
-        renewalMode: 'coordinated', clock, dependencyScope });
-      supervisorOptions = options; ownedSupervisor = supervisor; return supervisor;
-    };
-    // Trusted factory only. The model/runtime receive neither this factory nor
-    // token/JWT/store/keyring. HTTP routing remains unchanged; model authority
-    // is derived from the registration's opaque connection on the host.
-    const runtimeGatewayFactory = options => {
-      if (configuration.connectorOnly) throw new BrokerError('tool_not_available');
-      if (closing) throw new BrokerError('backend_unavailable');
-      if (!exact(options, ['transport', 'allowedModels']) || typeof options.transport?.open !== 'function') throw new TypeError('invalid_runtime_gateway_config');
-      if (runtimeGateway) {
-        if (options !== runtimeOptions) throw new TypeError('runtime_gateway_already_bound');
-        return runtimeGateway;
-      }
-      const relay = createModelRelay({ supabaseUrl: supabase.url, publishableKey: supabase.publishableKey,
-        allowedModels: options.allowedModels, fetch: request });
-      const models = createRuntimeModelService({ authority, connectionStore, crypto, auth, relay, clock, dependencyScope });
-      try {
-        const gateway = createRuntimeGateway({ backend: { resolveConnection }, broker, modelService: models,
-          transport: options.transport, clock, dependencyScope,
-          resolvePrivateCommandContext: (handle, scope) => {
-            if (!ownedSupervisor) throw new BrokerError('backend_unavailable');
-            return ownedSupervisor.readPrivateCommandContext(handle, scope);
-          } });
-        runtimeOptions = options; runtimeModels = models; runtimeGateway = gateway; return gateway;
-      } catch (error) { void models.close().catch(() => {}); throw error; }
-    };
     return Object.freeze({ server, close, resolveConnection, renewConnection: renewal.renew,
-      createPrivateCommandRunner: privateCommandRunner, createRuntimeGateway: runtimeGatewayFactory,
-      createRuntimeSupervisor: runtimeSupervisorFactory, beginConnectionMaintenance: maintenance.begin,
-      beginExternalConnectionMaintenance,
+      beginConnectionMaintenance: maintenance.begin, beginExternalConnectionMaintenance,
       startWorkMemoryRetention() { if (closing) throw new BrokerError('backend_unavailable'); retention.start(); },
       workMemoryRetentionStatus: retention.status });
   } catch {
