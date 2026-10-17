@@ -43,6 +43,9 @@ import { friendlyError } from '@/lib/friendlyError';
  * Gốc key vẫn là `["customers"]` nên hub realtime (src/hooks/realtime/operations.ts)
  * invalidate theo prefix vẫn phủ hết — tạo root mới mới là thứ rơi ra ngoài hub.
  */
+/** Một trang danh sách khách; `stats` = khối thẻ đếm (bỏ qua thẻ loại) của cùng lời gọi. */
+export type CustomerListPage = PaginatedData<Customer> & { stats?: CustomerStats };
+
 export const customersQueryKey = (
   filters?: CustomerFilters,
   pagination?: { page: number; pageSize: number },
@@ -87,16 +90,17 @@ export const useCustomers = (
       options?.skipLocationEnrichment,
       selectedOrganizationId,
     ),
-    queryFn: async (): Promise<PaginatedData<Customer>> => {
+    queryFn: async (): Promise<CustomerListPage> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
       if (!selectedOrganizationId) throw new Error("Chưa chọn tổ chức.");
 
       // Một lời gọi thay chuỗi PostgREST cũ (customers + count + location ids
-      // phân trang + 1 request nhúng toà/80 khách): RLS, tìm không dấu, lọc
-      // toà/phòng, sắp xếp, phân trang, tổng và toà hiện tại đều nằm trong
-      // customer_list_v1 — cùng công thức với Hermes/báo cáo. Không phân trang
-      // (picker HĐ) ⇒ toàn bộ danh sách, `count` = số dòng như trước.
+      // phân trang + 1 request nhúng toà/80 khách + get_customer_stats/4 HEAD-count):
+      // RLS, tìm không dấu, lọc toà/phòng, sắp xếp, phân trang, tổng, thẻ thống kê và
+      // toà hiện tại đều nằm trong customer_list_v1 — cùng công thức với Hermes/báo cáo.
+      // `stats` bỏ qua thẻ loại đang chọn (đúng nghĩa thẻ đếm cũ), nên màn đọc thẳng từ
+      // đây, không gọi thêm. Không phân trang (picker HĐ) ⇒ toàn bộ danh sách.
       const args = customerListArgs({
         organizationId: selectedOrganizationId,
         filters,
@@ -109,7 +113,7 @@ export const useCustomers = (
         throw error;
       }
       const list = parseCustomerList(data, args);
-      return { data: list.rows, count: list.total };
+      return { data: list.rows, count: list.total, stats: list.stats };
     },
   });
 };
@@ -190,38 +194,6 @@ export const useCustomer = (id: string) => {
 };
 
 // =============================================
-// useCustomerStats - Count total, individual, organization, foreign
-// Requirements: 1.2, 1.3
-// =============================================
-
-export const useCustomerStats = (filters?: CustomerFilters) => {
-  const { selectedOrganizationId } = useOrganization();
-  return useQuery({
-    enabled: !!selectedOrganizationId,
-    // Giữ số cũ khi đổi filter/search để 2 thẻ đếm không nháy về 0.
-    placeholderData: (previous, query) => query?.queryKey.at(-1) === selectedOrganizationId ? previous : undefined,
-    queryKey: ["customer-stats", filters, selectedOrganizationId],
-    queryFn: async (): Promise<CustomerStats> => {
-      const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
-      if (!selectedOrganizationId) throw new Error('Chưa chọn tổ chức.');
-
-      // Cùng hàm với danh sách, không tải dòng nào: khối stats bỏ qua thẻ loại
-      // đang chọn và đếm trên đúng tập lọc (trạng thái, tìm không dấu, toà/phòng)
-      // của bảng, trong đúng công ty đang chọn. Thay get_customer_stats (không
-      // tìm) và 4 HEAD-count (có tìm).
-      const args = customerListArgs({ organizationId: selectedOrganizationId, filters, includeLocation: false, statsOnly: true });
-      const { data, error } = await supabase.rpc("customer_list_v1", args);
-      if (error) {
-        console.error("useCustomerStats error:", error);
-        throw error;
-      }
-      return parseCustomerList(data, args).stats;
-    },
-  });
-};
-
-// =============================================
 // useCreateCustomer - Insert mutation
 // Requirements: 2.10, 2.12
 // =============================================
@@ -246,7 +218,7 @@ export const useCreateCustomer = (options: {silent?:boolean} = {}) => {
   const queryClient = useQueryClient();
   const {selectedOrganizationId} = useOrganization();
   const guard = persistentFinancialWorkflow('customer-create');
-  const refresh = () => {for(const key of ['customers','customer-stats','vehicles']) queryClient.invalidateQueries({queryKey:[key]});};
+  const refresh = () => {for(const key of ['customers','vehicles']) queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
     meta:{handlesFeedback:true},
     mutationFn:async(formData:CustomerFormData):Promise<CreateCustomerResult>=>{
@@ -327,7 +299,7 @@ async function syncCustomerVehicles(customerId:string,vehicles:NonNullable<Custo
 export const useUpdateCustomer = () => {
   const queryClient=useQueryClient();const {selectedOrganizationId}=useOrganization();
   const guard=persistentFinancialWorkflow('customer-update');
-  const refresh=()=>{for(const key of ['customers','customer-stats','vehicles'])queryClient.invalidateQueries({queryKey:[key]});};
+  const refresh=()=>{for(const key of ['customers','vehicles'])queryClient.invalidateQueries({queryKey:[key]});};
   return useMutation({
     meta:{handlesFeedback:true},
     mutationFn:async({id,data:formData}:{id:string;data:Partial<CustomerFormData>}):Promise<CreateCustomerResult>=>{
@@ -412,12 +384,10 @@ export const useDeleteCustomer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
       toast.success('Đã xác nhận xoá khách hàng');
     },
     onError: (error: any) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['customer-stats'] });
       if (error instanceof FinancialWorkflowError) {
         toast.error('Chưa xác nhận xoá khách hàng', {description:recordWriteMessage(error, 'xoá khách hàng')});
         return;

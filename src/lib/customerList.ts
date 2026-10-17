@@ -20,15 +20,13 @@ export interface CustomerListRequest {
   pagination?: { page: number; pageSize: number };
   /** Kèm toà/phòng hiện tại (current_building_*) cho kiểm phạm vi nút Sửa/Xoá. */
   includeLocation: boolean;
-  /** Chỉ lấy khối thống kê: không tải dòng nào. */
-  statsOnly?: boolean;
 }
 
 export function customerListArgs(request: CustomerListRequest): CustomerListArgs {
   const filters = request.filters ?? {};
   const { page, pageSize } = request.pagination ?? { page: 0, pageSize: 0 };
-  const wantsPage = !request.statsOnly && page > 0 && pageSize > 0;
-  const kind = filters.statFilter && filters.statFilter !== 'ALL' && !request.statsOnly ? filters.statFilter : undefined;
+  const wantsPage = page > 0 && pageSize > 0;
+  const kind = filters.statFilter && filters.statFilter !== 'ALL' ? filters.statFilter : undefined;
   return {
     p_organization_id: request.organizationId,
     p_status: filters.status || undefined,
@@ -36,9 +34,9 @@ export function customerListArgs(request: CustomerListRequest): CustomerListArgs
     p_search: filters.search?.trim() || undefined,
     p_building_ids: filters.building_id ? [filters.building_id] : undefined,
     p_room_id: filters.room_id || undefined,
-    p_limit: request.statsOnly ? 0 : wantsPage ? pageSize : undefined,
+    p_limit: wantsPage ? pageSize : undefined,
     p_offset: wantsPage ? (page - 1) * pageSize : 0,
-    p_include_location: request.statsOnly ? false : request.includeLocation,
+    p_include_location: request.includeLocation,
   };
 }
 

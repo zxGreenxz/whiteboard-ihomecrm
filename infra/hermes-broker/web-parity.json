@@ -385,7 +385,7 @@
       "sql": [
         {
           "function": "public.customer_list_v1",
-          "sha256": "c6e805b82679a43f682ce679668381cb9ff205cd537126c1c1154b72d203cff6"
+          "sha256": "990c2ead1296fa54234ed211b46caa365f82b0f5f2d9a9c516794c89368fe27f"
         },
         {
           "function": "public.customer_search_patterns_v1",
@@ -402,7 +402,7 @@
           "note": "customers"
         }
       ],
-      "notes": "17/10: web bỏ PostgREST + customerSearchFilter, gọi customer_list_v1 (SECURITY INVOKER, RLS người gọi; p_building_ids chỉ thu hẹp). Hermes chuyển ở PR sau: khi đó đổi mục này thành kind rpc, rpc [customer_list_v1], hermes.calls [customer_list_v1]. LỆCH ĐÃ BIẾT đến lúc đó: Hermes tìm tên có dấu + số SĐT (web tìm tên không dấu + SĐT/email/CCCD); Hermes ưu tiên HĐ ACTIVE/EXTENDED rồi HĐ gần nhất (web: HĐ ACTIVE thấy được qua RLS, bắt đầu muộn nhất); Hermes chỉ khách có HĐ ở toà được giao trừ kết nối Toàn tổ chức."
+      "notes": "17/10: web bỏ PostgREST + customerSearchFilter, gọi customer_list_v1 (SECURITY INVOKER, RLS người gọi; danh sách, tổng và thẻ đếm trong MỘT lời gọi). Hermes chuyển ở PR sau: đổi mục này thành kind rpc, rpc [customer_list_v1], hermes.calls [customer_list_v1]. BẪY khi chuyển: p_building_ids NULL = toàn phạm vi RLS, '{}' = rỗng ⇒ truyền COALESCE(tập toà kết nối, '{}'); p_search tối đa 200 ký tự. LỆCH ĐÃ BIẾT đến lúc đó: Hermes tìm tên có dấu + số SĐT (web tìm tên không dấu + SĐT/email/CCCD); Hermes ưu tiên HĐ ACTIVE/EXTENDED rồi HĐ gần nhất (web: HĐ ACTIVE còn sống thấy được qua RLS, bắt đầu muộn nhất); Hermes chỉ khách có HĐ ở toà được giao trừ kết nối Toàn tổ chức."
     },
     {
       "id": "customer-detail",

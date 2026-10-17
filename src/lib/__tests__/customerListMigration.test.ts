@@ -263,13 +263,14 @@ async function webList(uid: string, org: string, f: Filters, page?: Page, includ
   const total = page ? (await db.query<{ n: number }>(`SELECT count(*)::int n FROM public.customers c WHERE ${where.join(' AND ')}`, params)).rows[0].n : rows.length;
   const locations = new Map<string, Location[]>();
   if (includeLocation && rows.length) {
-    const links = (await db.query<{ customer_id: string; status: string | null; rn: string | null; bid: string | null; bn: string | null }>(
-      `SELECT cc.customer_id, c.status, r.name rn, b.id bid, b.name bn FROM public.contract_customers cc
+    const links = (await db.query<{ customer_id: string; status: string | null; deleted: boolean | null; rn: string | null; bid: string | null; bn: string | null }>(
+      `SELECT cc.customer_id, c.status, c.deleted_at IS NOT NULL deleted, r.name rn, b.id bid, b.name bn FROM public.contract_customers cc
        LEFT JOIN public.contracts c ON c.id = cc.contract_id LEFT JOIN public.rooms r ON r.id = c.room_id
        LEFT JOIN public.buildings b ON b.id = r.building_id WHERE cc.customer_id = ANY ($1::uuid[])`, [rows.map(r => r.id)])).rows;
     // Vòng lặp cũ lấy liên kết hợp lệ ĐẦU TIÊN theo thứ tự trả về (không order) ⇒ mọi ứng viên đều là "web".
+    // Khác biệt có chủ đích (review PR #196): HĐ đã xoá mềm không còn là toà hiện tại.
     for (const l of links) {
-      if (l.status !== 'ACTIVE' || (!l.bid && !l.bn && !l.rn)) continue;
+      if (l.status !== 'ACTIVE' || l.deleted || (!l.bid && !l.bn && !l.rn)) continue;
       locations.set(l.customer_id, [...(locations.get(l.customer_id) ?? []), { bid: l.bid || null, bn: l.bn || null, rn: l.rn || null }]);
     }
   }
@@ -417,7 +418,7 @@ describe('quyền và phạm vi', () => {
     expect(await list(ORG_A)).toEqual({ total: 0, stats: { total: 0, individual: 0, organization: 0, foreign: 0 }, rows: [] });
     await as(OTHER);
     expect((await list(ORG_A)).total).toBe(0);
-    expect((await attempt(() => list(ORG_A, { buildings: [B1] }))).ok).toBe(false);
+    expect(await attempt(() => list(ORG_A, { buildings: [B1] }))).toMatchObject({ ok: false, code: '42501' });
   });
 
   it('p_building_ids chỉ thu hẹp: tập con của không lọc, bằng hợp các toà cũ, toà ngoài phạm vi không thêm gì', async () => {
@@ -442,6 +443,24 @@ describe('quyền và phạm vi', () => {
     expect((await list(ORG_A, { buildings: [B2] })).total).toBeGreaterThan(0);
     expect((await list(ORG_A, { buildings: [] })).total).toBe(0);
   }, 60_000);
+
+  it('p_building_ids: NULL = toàn phạm vi RLS, mảng rỗng = 0 dòng (caller thu hẹp phải COALESCE)', async () => {
+    for (const uid of [OWNER, STAFF, SUPER]) {
+      await as(uid);
+      for (const status of STATUSES) {
+        const none = await list(ORG_A, { status });
+        const viaNull = await list(ORG_A, { status, buildings: null });
+        expect(viaNull).toEqual(none);
+        // Đúng phạm vi RLS: bằng tập customers mà chính người gọi đọc được trong công ty.
+        const rls = (await db.query<{ id: string }>(`SELECT id FROM public.customers WHERE organization_id = $1 AND deleted_at IS NULL
+          AND ($2::text IS NULL OR status_v2::text = $2)`, [ORG_A, status ?? null])).rows.map(r => r.id).sort();
+        expect(viaNull.rows.map(r => r.id).sort()).toEqual(rls);
+        expect(viaNull.total).toBeGreaterThan(0);
+        const empty = await list(ORG_A, { status, buildings: [] });
+        expect(empty).toEqual({ total: 0, stats: { total: 0, individual: 0, organization: 0, foreign: 0 }, rows: [] });
+      }
+    }
+  });
 
   it('kiểm quyền toà MỘT lần mỗi toà, không theo dòng như hàm cũ', async () => {
     const checks = async (run: () => Promise<unknown>) => {
@@ -472,16 +491,26 @@ describe('quyền và phạm vi', () => {
     await db.exec('RESET ROLE');
     await db.exec('SET LOCAL ROLE anon');
     expect(await attempt(() => list(ORG_A))).toMatchObject({ ok: false, code: '42501' });
+    for (const sql of ['SELECT public.customer_location_ids_v1($1, ARRAY[$2]::uuid[], NULL, true)', 'SELECT public.customer_search_patterns_v1($1)']) {
+      const args = sql.includes('location') ? [ORG_A, B1] : ['an'];
+      expect(await attempt(() => db.query(sql, args)), sql).toMatchObject({ ok: false, code: '42501' });
+    }
     await db.exec('RESET ROLE');
     expect(await attempt(() => list(ORG_A))).toMatchObject({ ok: false, code: '42501' });
+    // Người đăng nhập nhưng không thuộc công ty: helper lưu trú DEFINER cũng từ chối 42501.
+    await as(OTHER);
+    expect(await attempt(() => db.query('SELECT public.customer_location_ids_v1($1, ARRAY[$2]::uuid[], NULL, true)', [ORG_A, B1])))
+      .toMatchObject({ ok: false, code: '42501' });
   });
 
   it('tham số sai báo 22023 thay vì trả rỗng', async () => {
     await as(OWNER);
     for (const bad of [{ status: 'ACTIVE' }, { kind: 'VIP' }, { limit: -1 }, { offset: -1 }, { offset: null },
-      { location: null }, { buildings: [B1, null as unknown as string] }] as Args[]) {
-      expect(await attempt(() => list(ORG_A, bad)), JSON.stringify(bad)).toMatchObject({ ok: false, code: '22023' });
+      { location: null }, { buildings: [B1, null as unknown as string] }, { search: 'a'.repeat(201) }] as Args[]) {
+      expect(await attempt(() => list(ORG_A, bad)), JSON.stringify(bad).slice(0, 60)).toMatchObject({ ok: false, code: '22023' });
     }
+    // Đúng 200 ký tự vẫn tìm được (trần, không phải cắt).
+    expect(await attempt(() => list(ORG_A, { search: 'ă'.repeat(200) }))).toMatchObject({ ok: true, value: { total: 0 } });
     expect(await attempt(() => db.query('SELECT public.customer_list_v1(NULL)'))).toMatchObject({ ok: false, code: '22023' });
   });
 });
@@ -511,12 +540,17 @@ describe('sắp xếp, phân trang, toà hiện tại', () => {
     expect(paged).toEqual(full.rows.map(r => r.id));
   });
 
-  it('toà hiện tại: HĐ ACTIVE thấy được qua RLS; nhiều HĐ lấy HĐ bắt đầu muộn nhất; tên rỗng thành null', async () => {
+  it('toà hiện tại: HĐ ACTIVE còn sống thấy được qua RLS; nhiều HĐ lấy HĐ bắt đầu muộn nhất; tên rỗng thành null', async () => {
     await as(OWNER);
     const byId = new Map((await list(ORG_A)).rows.map(r => [r.id, r]));
     expect(byId.get(C(8))).toMatchObject({ current_building_id: B1, current_room_name: '101' });
     expect(byId.get(C(4))).toMatchObject({ current_building_id: B3, current_building_name: null, current_room_name: null });
-    expect(byId.get(C(13))).toMatchObject({ current_building_id: B2, current_room_name: '201' });
+    // HĐ ACTIVE duy nhất của khách 13 đã xoá mềm ⇒ không còn toà hiện tại (chuỗi nhúng cũ vẫn lấy).
+    expect(byId.get(C(13))).toMatchObject({ current_building_id: null, current_building_name: null, current_room_name: null });
+    await db.exec('RESET ROLE');
+    await db.exec(`UPDATE public.contracts SET deleted_at = NULL WHERE id = '${id(47)}'`);
+    await as(OWNER);
+    expect((await list(ORG_A)).rows.find(r => r.id === C(13))).toMatchObject({ current_building_id: B2, current_room_name: '201' });
     expect(byId.get(C(6))).toMatchObject({ current_building_id: null });
     await as(STAFF);
     const staff = new Map((await list(ORG_A)).rows.map(r => [r.id, r]));

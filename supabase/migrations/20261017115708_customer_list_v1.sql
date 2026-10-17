@@ -20,7 +20,9 @@
 --     InitPlan ⇒ hàm quyền chạy một lần mỗi câu, không theo dòng.
 --
 -- Hermes (PR sau) gọi bằng JWT người dùng và truyền p_building_ids để THU HẸP: điều kiện chỉ
--- được AND thêm, không bao giờ mở rộng phạm vi RLS. Cấm gọi customer_list_v1 từ thân hàm
+-- được AND thêm, không bao giờ mở rộng phạm vi RLS. BẪY: p_building_ids NULL = toàn phạm vi
+-- RLS (không lọc toà), '{}' = rỗng; caller thu hẹp theo tập toà của mình phải truyền
+-- COALESCE(ids, '{}') để tập rỗng không thành "mọi toà". Cấm gọi customer_list_v1 từ thân hàm
 -- SECURITY DEFINER: INVOKER khi đó chạy bằng quyền chủ hàm và bỏ qua RLS ⇒ hàm tự chặn khi
 -- current_user không phải `authenticated`.
 BEGIN;
@@ -150,8 +152,10 @@ BEGIN
   END IF;
   -- Không đặt trần p_limit: "Xem thêm" trên mobile tăng trang 30 một và picker HĐ đọc cả
   -- danh sách (p_limit NULL); tập dòng vốn đã giới hạn bởi RLS + công ty.
+  -- p_building_ids: NULL = toàn phạm vi RLS (KHÔNG lọc toà); '{}' = rỗng (0 dòng). Caller
+  -- muốn thu hẹp theo tập toà của mình phải truyền COALESCE(ids, '{}'), không được để NULL.
   IF p_organization_id IS NULL OR p_offset IS NULL OR p_offset < 0 OR p_include_location IS NULL
-     OR p_limit < 0
+     OR p_limit < 0 OR char_length(p_search) > 200
      OR (p_status IS NOT NULL AND p_status NOT IN ('RENTING', 'MOVED_OUT', 'WALK_IN'))
      OR (p_kind IS NOT NULL AND p_kind NOT IN ('ALL', 'INDIVIDUAL', 'ORGANIZATION', 'FOREIGN'))
      OR array_position(p_building_ids, NULL) IS NOT NULL OR cardinality(p_building_ids) > 500 THEN
@@ -166,7 +170,8 @@ BEGIN
   END IF;
 
   WITH base AS MATERIALIZED (
-    SELECT cu.*
+    -- Chỉ cột cần để lọc/đếm/sắp; dòng đầy đủ chỉ đọc lại cho trang (cùng RLS, cùng snapshot).
+    SELECT cu.id, cu.created_at, cu.customer_type, cu.is_foreign
     FROM public.customers cu
     WHERE cu.organization_id = p_organization_id
       AND cu.deleted_at IS NULL
@@ -186,14 +191,15 @@ BEGIN
        OR (v_kind IN ('INDIVIDUAL', 'ORGANIZATION') AND b.customer_type::text = v_kind)
   ), page AS MATERIALIZED (
     -- Web sắp created_at desc không khoá phụ; id desc làm thứ tự xác định giữa các dòng trùng giờ.
-    SELECT k.*
+    SELECT k.id, k.created_at
     FROM kinded k
     ORDER BY k.created_at DESC, k.id DESC
     OFFSET p_offset
     LIMIT p_limit
   ), loc AS MATERIALIZED (
-    -- Toà/phòng hiện tại như chuỗi nhúng cũ: HĐ status ACTIVE thấy được qua RLS, bỏ liên kết
-    -- không có toà lẫn tên phòng. Nhiều HĐ thì lấy HĐ còn sống, bắt đầu muộn nhất.
+    -- Toà/phòng hiện tại: HĐ status ACTIVE CÒN SỐNG thấy được qua RLS, bỏ liên kết không có
+    -- toà lẫn tên phòng; nhiều HĐ thì lấy HĐ bắt đầu muộn nhất. (Chuỗi nhúng cũ không bỏ HĐ đã
+    -- xoá mềm — đổi có chủ đích theo review PR #196.)
     SELECT DISTINCT ON (cc.customer_id)
       cc.customer_id, b.id AS building_id, b.name AS building_name, r.name AS room_name
     FROM page pg
@@ -203,9 +209,9 @@ BEGIN
     LEFT JOIN public.buildings b ON b.id = r.building_id
     WHERE p_include_location
       AND c.status::text = 'ACTIVE'
+      AND c.deleted_at IS NULL
       AND (b.id IS NOT NULL OR COALESCE(r.name, '') <> '')
-    ORDER BY cc.customer_id, (c.deleted_at IS NULL) DESC, c.start_date DESC NULLS LAST,
-      cc.created_at DESC NULLS LAST, c.id DESC
+    ORDER BY cc.customer_id, c.start_date DESC NULLS LAST, cc.created_at DESC NULLS LAST, c.id DESC
   )
   SELECT jsonb_build_object(
     'total', (SELECT count(*) FROM kinded),
@@ -216,13 +222,14 @@ BEGIN
                 'foreign', count(*) FILTER (WHERE b.is_foreign IS TRUE))
               FROM base b),
     'rows', COALESCE((
-      SELECT jsonb_agg(CASE WHEN p_include_location THEN to_jsonb(pg) || jsonb_build_object(
+      SELECT jsonb_agg(CASE WHEN p_include_location THEN to_jsonb(cu) || jsonb_build_object(
                  'current_building_id', loc.building_id,
                  'current_building_name', NULLIF(loc.building_name, ''),
                  'current_room_name', NULLIF(loc.room_name, ''))
-               ELSE to_jsonb(pg) END
+               ELSE to_jsonb(cu) END
              ORDER BY pg.created_at DESC, pg.id DESC)
       FROM page pg
+      JOIN public.customers cu ON cu.id = pg.id
       LEFT JOIN loc ON loc.customer_id = pg.id), '[]'::jsonb))
   INTO v_result;
 
@@ -244,7 +251,7 @@ GRANT EXECUTE ON FUNCTION public.customer_search_patterns_v1(text),
   TO authenticated;
 
 COMMENT ON FUNCTION public.customer_list_v1(uuid, text, text, text, uuid[], uuid, integer, integer, boolean) IS
-  'Danh sách + tổng + thống kê màn Khách hàng. INVOKER: RLS của người gọi; chỉ gọi bằng JWT người dùng. p_building_ids chỉ thu hẹp.';
+  'Danh sách + tổng + thống kê màn Khách hàng. INVOKER: RLS của người gọi; chỉ gọi bằng JWT người dùng. p_building_ids chỉ thu hẹp: NULL = toàn phạm vi RLS; ''{}'' = rỗng; caller thu hẹp phải COALESCE(ids,''{}''). p_search tối đa 200 ký tự.';
 
 COMMIT;
 NOTIFY pgrst, 'reload schema';

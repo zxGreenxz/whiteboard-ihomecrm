@@ -14,7 +14,7 @@ vi.mock('@/integrations/supabase/client', async () => {
     auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: h.fetch },
   }) };
 });
-import { useCustomers, useCustomerStats } from '../useCustomers';
+import { useCustomers } from '../useCustomers';
 
 const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
 const stats = { total: 1205, individual: 1200, organization: 5, foreign: 2 };
@@ -50,17 +50,20 @@ describe('màn Khách hàng đọc qua customer_list_v1', () => {
       p_organization_id: h.org, p_status: 'RENTING', p_kind: 'INDIVIDUAL', p_search: 'NGUYỄN NHAT AN',
       p_limit: 20, p_offset: 20, p_include_location: true,
     } }]);
-    expect(result).toEqual({ data: [row(1), row(2)], count: 41 });
+    expect(result).toEqual({ data: [row(1), row(2)], count: 41, stats });
   });
 
-  it('thống kê dùng cùng hàm, cùng tập lọc nhưng bỏ thẻ loại và không tải dòng', async () => {
-    reply = { total: 3, stats, rows: [] };
+  it('thẻ đếm đi cùng MỘT lời gọi danh sách: thẻ loại chỉ lọc dòng, stats của server giữ nguyên', async () => {
+    reply = { total: 2, stats, rows: [row(1), row(2)] };
     const filters = { search: 'duong', status: 'MOVED_OUT' as const, building_id: 'b-1', room_id: 'r-1', statFilter: 'FOREIGN' as const };
-    expect(await queryOptions(() => useCustomerStats(filters)).queryFn()).toEqual(stats);
+    const result = await queryOptions(() => useCustomers(filters, { page: 1, pageSize: 20 })).queryFn();
+    expect(requests).toHaveLength(1);
     expect(requests[0].body).toEqual({
-      p_organization_id: h.org, p_status: 'MOVED_OUT', p_search: 'duong', p_building_ids: ['b-1'], p_room_id: 'r-1',
-      p_limit: 0, p_offset: 0, p_include_location: false,
+      p_organization_id: h.org, p_status: 'MOVED_OUT', p_kind: 'FOREIGN', p_search: 'duong', p_building_ids: ['b-1'], p_room_id: 'r-1',
+      p_limit: 20, p_offset: 0, p_include_location: true,
     });
+    // stats là của tập lọc KHÔNG theo thẻ loại (server bỏ qua p_kind khi đếm), không phải 2 dòng FOREIGN.
+    expect(result).toMatchObject({ count: 2, stats });
   });
 
   it('lọc toà/phòng đi cùng lời gọi danh sách; thẻ "Tất cả" và từ khoá rỗng không gửi gì', async () => {
@@ -74,12 +77,11 @@ describe('màn Khách hàng đọc qua customer_list_v1', () => {
     reply = { total: 2, stats: { ...stats, total: 2 }, rows: [row(1), row(2)] };
     const result = await queryOptions(() => useCustomers(undefined, undefined, { skipLocationEnrichment: true })).queryFn();
     expect(requests[0].body).toEqual({ p_organization_id: h.org, p_offset: 0, p_include_location: false });
-    expect(result).toEqual({ data: [row(1), row(2)], count: 2 });
+    expect(result).toEqual({ data: [row(1), row(2)], count: 2, stats: { ...stats, total: 2 } });
   });
 
   it('lỗi quyền và câu trả lời sai hình dạng là lỗi, không phải danh sách rỗng hay số 0', async () => {
     h.fetch.mockImplementation(async () => Response.json({ message: 'permission denied', code: '42501' }, { status: 403 }));
-    await expect(queryOptions(() => useCustomerStats({ search: 'an' })).queryFn()).rejects.toMatchObject({ code: '42501' });
     await expect(queryOptions(() => useCustomers({}, { page: 1, pageSize: 20 })).queryFn()).rejects.toMatchObject({ code: '42501' });
     for (const bad of [null, {}, { total: 1, stats, rows: [{ id: 'x' }] }, { total: 0, stats, rows: [row(1)] },
       { total: 3, stats, rows: [row(1), row(1)] }, { total: 2, stats: { ...stats, total: 1 }, rows: [] }]) {
@@ -92,14 +94,12 @@ describe('màn Khách hàng đọc qua customer_list_v1', () => {
   });
 
   it('không mang số liệu sang công ty khác và không chạy khi chưa chọn công ty', () => {
-    const options = queryOptions(() => useCustomerStats({ search: 'an' }));
-    expect(options.queryKey).toEqual(['customer-stats', { search: 'an' }, h.org]);
-    expect(options.placeholderData(stats, { queryKey: options.queryKey })).toBe(stats);
-    expect(options.placeholderData(stats, { queryKey: ['customer-stats', {}, 'other-org'] })).toBeUndefined();
     const list = queryOptions(() => useCustomers({ search: 'an' }, { page: 1, pageSize: 20 }));
     expect(list.queryKey).toEqual(['customers', { search: 'an' }, { page: 1, pageSize: 20 }, h.org]);
+    const previous = { data: [row(1)], count: 1, stats };
+    expect(list.placeholderData(previous, { queryKey: list.queryKey })).toBe(previous);
+    expect(list.placeholderData(previous, { queryKey: ['customers', {}, undefined, 'other-org'] })).toBeUndefined();
     h.org = '';
-    expect(queryOptions(() => useCustomerStats({ search: 'an' })).enabled).toBe(false);
     expect(queryOptions(() => useCustomers({ search: 'an' })).enabled).toBe(false);
   });
 });
