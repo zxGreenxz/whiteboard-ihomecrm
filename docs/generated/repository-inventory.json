@@ -1,21 +1,21 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1502,
-  "soFileDocBangFs": 369,
-  "tongLoiGoi": 849,
-  "khongPhanLoaiDuoc": 391,
+  "tongSoFileTest": 1487,
+  "soFileDocBangFs": 363,
+  "tongLoiGoi": 826,
+  "khongPhanLoaiDuoc": 378,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 57,
+      "soFile": 56,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 54,
+      "soFile": 48,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 15,
+      "soFile": 14,
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
@@ -48,7 +48,6 @@
     "scripts/__tests__/super-admin-route-contract.test.mjs",
     "scripts/__tests__/test-hermes-broker-authz.test.mjs",
     "scripts/org-context-repair/sealed-artifact.test.mjs",
-    "scripts/test-hermes-product-runtime.test.mjs",
     "src/components/errors/ErrorBoundary.pageNames.test.tsx",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
@@ -175,14 +174,6 @@
         "sql": 9
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-runtime/container-driver.test.mjs",
-      "soGoi": 9,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 8
     },
     {
       "file": "scripts/__tests__/check-vault-access.test.mjs",
@@ -399,14 +390,6 @@
       "khongPhanLoaiDuoc": 3
     },
     {
-      "file": "infra/hermes-runtime/gateway-transport.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -457,15 +440,6 @@
         "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "scripts/test-hermes-product-runtime.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 1,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",
@@ -579,14 +553,6 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-runtime/agent-process.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
@@ -907,15 +873,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-runtime/profile-homes.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1,
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-zalo-router/privacy-schema.test.mjs",
@@ -1598,14 +1555,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-runtime/host-service.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-zalo-native/upstream.test.mjs",

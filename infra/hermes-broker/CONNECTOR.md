@@ -15,7 +15,7 @@ Quyền CRM chỉ kiểm khi gọi công cụ CRM. Ngắt kết nối hoặc thu
 
 ## Bề mặt hiện có
 
-`createHermesBackend` trong `server.mjs` có thể cung cấp HTTP/MCP mà không gọi `createRuntimeGateway`, `createRuntimeSupervisor` hoặc `createPrivateCommandRunner`. Các chức năng runtime/model được tạo riêng khi caller chọn dùng; chúng không phải điều kiện của giao thức MCP.
+`createHermesBackend` trong `server.mjs` cung cấp HTTP/MCP, quản lý kết nối và bảo trì kết nối; không chạy runtime và không gọi model. Connector-only là chế độ duy nhất: model/provider do profile Hermes của user cấu hình (production đi 9router trực tiếp).
 
 MCP bên ngoài hiện là JSON trên Streamable HTTP stateless tại `/mcp`, với header `Authorization: Bearer <token kết nối>`. `initialize`, `tools/list`, `tools/call` đều xác minh kết nối; tool arguments không nhận user/JWT/quyền do model tự khai. Kết quả `tools/call` giới hạn 64 KiB; `tools/list` (danh mục tĩnh theo quyền, không phải dữ liệu CRM) có trần riêng 192 KiB (`TOOLS_LIST_MAX_BYTES`); vượt trần thì trả `response_too_large`, không cắt bớt danh sách. Host thực tế cần HTTPS reverse proxy và cấu hình Host/Origin đúng đích.
 
@@ -43,7 +43,7 @@ Kênh nhắn riêng dùng [plugin Zalo native](../hermes-zalo-native/README.md) 
 
 Dùng `infra/hermes-runtime/host-cli.mjs --config /etc/ihome-hermes/connector.json` với mẫu [connector-config.example.json](../hermes-runtime/connector-config.example.json), `version: 2`, `mode: "connector"`. Dịch vụ dùng Linux, Node 24.18.0, database principal giới hạn và keyring như backend hiện có. `pg` là dependency runtime (store của connector): cài release bằng `npm ci --omit=dev --ignore-scripts` từ đúng `package-lock.json`. CLI nhận diện file chính bằng realpath nên chạy được qua symlink release `current/`. Config/password/key phải là file riêng tư đúng owner, state root mode 0700; password/key mode 0600. Khóa mã hóa là 32 byte thô; không đặt secret trong profile Hermes. Startup không tạo quyền hoặc apply schema.
 
-[hermes-connector.service](../hermes-runtime/hermes-connector.service) chạy CLI này mà không cần Docker, model hoặc image Hermes. Host chỉ tạo thư mục handoff/audit, mở listener loopback và vòng gia hạn kết nối; không tạo profile, model relay hay runtime của user. Không chạy hai service cùng port/state root. TLS reverse proxy phải giữ Host, chỉ forward các route đã cấu hình và không ghi Authorization/body vào access log. Cấu hình proxy frontend quản trị giữ theo [HOST_SERVICE.md](../hermes-runtime/HOST_SERVICE.md#frontend-on-vercel); `/mcp` là endpoint HTTPS riêng cho Hermes.
+[hermes-connector.service](../hermes-runtime/hermes-connector.service) chạy CLI này mà không cần Docker, model hoặc image Hermes. Host chỉ tạo thư mục handoff/audit, mở listener loopback và vòng gia hạn kết nối; không tạo profile, không gọi model, không chạy runtime của user. CLI từ chối config `version: 1` (chế độ host v1 đã gỡ). Không chạy hai service cùng port/state root. TLS reverse proxy phải giữ Host, chỉ forward các route đã cấu hình và không ghi Authorization/body vào access log. Cấu hình proxy frontend quản trị giữ theo [HOST_SERVICE.md](../hermes-runtime/HOST_SERVICE.md#frontend-on-vercel); `/mcp` là endpoint HTTPS riêng cho Hermes.
 
 Handoff lưu token opaque đã cấp ở dạng mã hóa. Vòng bảo trì đọc lại quyền, tạm chặn call MCP của đúng kết nối, chờ các call cũ kết thúc rồi refresh phiên/gia hạn. Call MCP đến trong lúc chặn được giữ tối đa `limits.maintenanceWaitMs` (mặc định 5 s, tối đa 2 call/kết nối) và chỉ chạy sau khi hàng rào mở; quá hạn thì trả `503 connection_maintenance`. Token opaque giữ nguyên khi gia hạn thành công; JWT/refresh token chỉ ở backend. Mất ACK hoặc kết quả refresh chưa rõ không được thử lại mù; kết nối đó cần kiểm lại hoặc kết nối mới. Backend không khôi phục token đã hết hạn/thu hồi, không tự bật lại quyền.
 
@@ -91,8 +91,10 @@ Gửi nhóm cần `requestId` UUID cố định cho yêu cầu đó, lấy bằn
 - Cập nhật Hermes upstream dùng hợp đồng connector ổn định. Không buộc sửa kernel Hermes hoặc chạy qua một engine Copilot ở giữa.
 - Thu hồi quyền vô hiệu hóa cache/token và job CRM theo quyền hiện tại. Không xóa personal memory hay hứa có thể thu hồi mọi bản sao dữ liệu mà user đã được phép nhận trước đó.
 
-## Adapter prototype
+## Chế độ host v1 đã gỡ
 
-`infra/hermes-runtime/agent-process.py` và host runtime hiện có là prototype thực thi tác vụ CRM có giới hạn, với tool allowlist, model relay và history giới hạn. Chúng **không phải cấu hình mặc định của Hermes cá nhân đầy đủ**. Model relay hiện còn qua admission chat Copilot; chỉ được giữ như phương án quản lý model tùy chọn sau khi tách admission phù hợp. Không dùng relay đó làm điều kiện trò chuyện cá nhân.
+Chế độ host v1 (runtime CRM có quản lý: wrapper `agent-process.py`, gateway/driver container, supervisor/runner lệnh riêng và relay model qua Edge `llm-proxy` của Copilot) là prototype chưa từng deploy; chủ chốt gỡ khỏi repo ngày 17/10/2026, không còn phương án relay model tuỳ chọn. Cần tham khảo thì tra lịch sử git. Gate `copilot-independence.test.mjs` giữ allowlist infra rỗng: mã `infra/hermes-*` không nhắc Copilot.
+
+Còn lại chưa gỡ vì nằm trong module dùng chung, cần review riêng: nhóm phương thức broker nhận ngữ cảnh lệnh riêng (`listGroupTools`/`sendGroupRooms`/`groupDirectory`/`groupSendStatus`/`previewGroupRooms`, cùng mount `group-preview-*`), năm mục RPC hàng đợi lệnh riêng trong `store-transport.mjs`, và hàng đợi lệnh riêng phía SQL/worker (`hermes_zalo_private_command_v1`). Connector-only không gọi các đường này.
 
 Các lớp Auth, giao quyền, mã hóa credential, queue và chống gửi trùng được tái dùng. CLI/config connector, gia hạn và kênh Zalo native đã có code. Plugin đã kiểm với bộ xử lý upstream thật qua loopback và provider tổng hợp; chưa model/Zalo thật. Các miền CRM còn lại, mapping grant tự phục vụ, vòng đời rotate/recovery đầy đủ và kiểm nâng cấp upstream vẫn phải hoàn thiện/nghiệm thu trong plan.
