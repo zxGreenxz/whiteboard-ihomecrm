@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createBroker } from './broker.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 import { advertisedTool } from './tool-argument-shape.mjs';
@@ -30,17 +32,27 @@ const PROBE = createW2Registry({
 });
 const identity = (read, buildings = [A, B]) => ({ row: { organizationId: ORG }, effective: { read, action: [] },
   scopesByPermission: Object.fromEntries(read.map(key => [key, { buildingIds: buildings, cashbookIds: [] }])) });
+const FENCE_A = Object.freeze({ buildings: [A], cashbooks: [], orgWide: false }), NO_FENCE = Object.freeze({ buildings: [], cashbooks: [], orgWide: false });
 const envelope = (report, items, extra = {}) => ({ organizationId: ORG, domain: 'report', fetchedAt: '2026-10-18T00:00:00.000Z', report,
-  source: PROBE.reports[report].source, unavailable: null, summary: null, items, offset: 0, nextOffset: null, sourceCapped: false, ...extra });
+  source: PROBE.reports[report].source, unavailable: null, summary: null, items, offset: 0, nextOffset: null, sourceCapped: false,
+  fence: ['rows', 'buildings'].includes(PROBE.reports[report].scope) ? FENCE_A : NO_FENCE, ...extra });
 
-test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộc ngoài params, status thiếu danh sách, nguồn sai dạng, buildingId ở organization/self)', () => {
+test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộc ngoài params, status thiếu danh sách, nguồn sai dạng, tham số gắn toà ngoài rows/buildings, khoá ↔ scope)', () => {
   const ok = { permission: 'vehicles.view', source: 'crm.vehicles', scope: 'rows', title: 'Xe', params: ['query'], fields };
   assert.ok(Object.isFrozen(w2Report(ok)));
   for (const bad of [{ params: ['foo'] }, { required: ['month'] }, { params: ['status'] }, { params: ['kind'], kinds: [] }, { statuses: ['x'] },
     { source: 'crm.Vehicles' }, { source: 'vehicles' }, { scope: 'global' }, { scope: 'organization', params: ['buildingId'] },
     { scope: 'self', params: ['buildingId'] }, { title: '' }, { title: 'x'.repeat(301) }, { permission: 'Vehicles' }, { fields: { a: 1 } },
-    { summary: [] }, { private: 'yes' }, { extra: 1 }, { params: ['query', 'query'] }])
+    { summary: [] }, { private: 'yes' }, { extra: 1 }, { params: ['query', 'query'] },
+    // P2-1 (review PR #195): khoá ↔ scope, khoá ngoài danh sách, tham số gắn toà chỉ ở rows/buildings.
+    { scope: 'self' }, { permission: 'assistant.salary.self' }, { permission: 'assistant.bank_events.read', scope: 'organization' },
+    { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'contracts.view' },
+    { scope: 'organization', params: ['roomId'] }, { scope: 'cashbooks', params: ['invoiceId'] }, { scope: 'organization', params: ['areaId'] }])
     assert.throws(() => w2Report({ ...ok, ...bad }), JSON.stringify(bad));
+  for (const good of [{ permission: 'notifications.view', scope: 'self' }, { permission: 'assistant.bank_events.read', scope: 'platform' },
+    { permission: 'cashbooks.view', scope: 'cashbooks', params: ['cashbookId'] }, { permission: 'invoices.view', params: ['invoiceId', 'roomId'] },
+    { permission: 'salary.view', scope: 'organization', params: ['staffId', 'month'] }, { permission: 'rooms.view', scope: 'buildings', params: ['areaId'] }])
+    assert.ok(w2Report({ ...ok, ...good }), JSON.stringify(good));
 });
 
 test('sổ báo cáo: bốn gói đúng chữ cái, mã duy nhất xuyên gói, chỉ nhận khai báo của w2Report', () => {
@@ -90,7 +102,8 @@ test('mặt tool: đúng hai tool meta, gọn (≤ 1 600 B), không nhắc bản
   assert.deepEqual(meta[1].inputSchema.required, ['report']);
   const all = { read: [...HERMES_READ_CAPABILITIES], action: [] };
   assert.equal(W2.permissions.length === 0, !mayUseDomain(all, 'report_list'), 'hiện ⇔ có ít nhất một báo cáo đã đăng ký');
-  assert.equal(DOMAIN_READS.report.family, 'v3'); assert.equal(DOMAIN_READS.report_list.family, 'v3');
+  // Lối vào INVOKER riêng (20261018000600): hàm gói chạy dưới RLS của người hỏi.
+  assert.equal(DOMAIN_READS.report.family, 'w2'); assert.equal(DOMAIN_READS.report_list.family, 'w2');
 });
 
 test('quyền theo báo cáo: tool hiện khi giữ khoá của MỘT báo cáo; chạy đòi đúng khoá của báo cáo được gọi', () => {
@@ -144,19 +157,38 @@ test('mục lục: chiếu từ khai báo, chỉ báo cáo SQL vừa xác nhận
     assert.throws(() => list.result(sql(items), identity(who), list.input(topic)), JSON.stringify(items).slice(0, 60));
 });
 
-test('kết quả: rào khoá, nguồn, khuôn hàng, phạm vi CRM của khoá và toà được hỏi; unavailable đúng tập', () => {
-  const { report } = PROBE.reads, input = report.input({ report: 'probe_rows' });
+test('kết quả: rào khoá, nguồn, khuôn hàng, fence (⊆ CRM, toà của hàng ∈ fence, null chỉ khi org_wide, buildingIds), toà được hỏi; fence không ra mô hình', () => {
+  const { report } = PROBE.reads, input = report.input({ report: 'probe_rows' }), sum = { summary: { total: '1' } };
   const row = { buildingId: A, name: 'Toà A', total: '1' }, who = identity(['vehicles.view']);
-  assert.deepEqual(report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), who, input).items, [row]);
-  assert.deepEqual(report.result(envelope('probe_rows', [{ ...row, buildingId: null }], { summary: { total: '1' } }), who, input).items[0].buildingId, null);
-  for (const bad of [envelope('probe_rows', [{ ...row, buildingId: C }], { summary: { total: '1' } }), envelope('probe_rows', [{ ...row, phone: '0900' }], { summary: { total: '1' } }),
-    envelope('probe_rows', [row], { summary: null }), envelope('probe_rows', [row], { summary: { total: '1' }, source: 'crm.other_source' }),
-    envelope('probe_rows', [row], { summary: { total: '1' }, nextOffset: 5 }), envelope('probe_rows', [row], { summary: { total: '1' }, report: 'probe_org' })])
+  const ok = report.result(envelope('probe_rows', [row], sum), who, input);
+  assert.deepEqual([ok.items, Object.hasOwn(ok, 'fence')], [[row], false]);
+  assert.deepEqual(report.outputKeys, ['organizationId', 'domain', 'fetchedAt', 'report', 'source', 'unavailable', 'summary', 'items', 'offset', 'nextOffset', 'sourceCapped']);
+  assert.ok(report.resultKeys.includes('fence'), 'SQL phải gửi fence');
+  const wide = { buildings: [A, B], cashbooks: [], orgWide: true };
+  assert.equal(report.result(envelope('probe_rows', [{ ...row, buildingId: null }], { ...sum, fence: wide }), who, input).items[0].buildingId, null, 'null khi org_wide');
+  assert.equal(report.result(envelope('probe_rows', [{ ...row, buildingId: B }], { ...sum, fence: wide }), who, input).items.length, 1);
+  for (const bad of [envelope('probe_rows', [{ ...row, buildingId: C }], sum), envelope('probe_rows', [{ ...row, buildingId: B }], sum),
+    envelope('probe_rows', [{ ...row, buildingId: null }], sum), envelope('probe_rows', [{ ...row, phone: '0900' }], sum),
+    envelope('probe_rows', [row], { summary: null }), envelope('probe_rows', [row], { ...sum, source: 'crm.other_source' }),
+    envelope('probe_rows', [row], { ...sum, nextOffset: 5 }), envelope('probe_rows', [row], { ...sum, report: 'probe_org' }),
+    envelope('probe_rows', [row], { ...sum, fence: { buildings: [A, C], cashbooks: [], orgWide: false } }),
+    envelope('probe_rows', [row], { ...sum, fence: { buildings: [A] } }), envelope('probe_rows', [row], { ...sum, fence: undefined }),
+    envelope('probe_rows', [row], { ...sum, fence: { buildings: [A], cashbooks: [A], orgWide: false } })])
     assert.throws(() => report.result(bad, who, input), JSON.stringify(bad).slice(0, 90));
-  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), identity(['materials.view']), input), 'mất khoá giữa chừng');
-  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), identity(['vehicles.view'], [B]), input), 'phạm vi CRM rào đầu ra');
-  const onlyA = report.input({ report: 'probe_rows', params: { buildingId: B } });
-  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), who, onlyA), 'hỏi toà B, hàng toà A');
+  assert.throws(() => report.result(envelope('probe_rows', [row], sum), identity(['materials.view']), input), 'mất khoá giữa chừng');
+  assert.throws(() => report.result(envelope('probe_rows', [row], sum), identity(['vehicles.view'], [B]), input), 'fence ngoài phạm vi CRM');
+  const onlyB = report.input({ report: 'probe_rows', params: { buildingId: B } });
+  assert.throws(() => report.result(envelope('probe_rows', [row], sum), who, onlyB), 'hỏi toà B, fence/hàng toà A');
+  assert.throws(() => report.result(envelope('probe_rows', [], { ...sum, fence: { buildings: [B], cashbooks: [], orgWide: true } }), who, onlyB), 'hỏi một toà mà fence org_wide');
+  // Mảng buildingIds và báo cáo không theo toà.
+  const multi = createW2Registry({ a: { probe_multi: w2Report({ permission: 'services.view', source: 'crm.probe_multi', scope: 'rows', title: 'Dịch vụ',
+    fields: { buildingIds: () => true, total: amount } }) }, b: {}, c: {}, d: {} }).reads.report, multiInput = multi.input({ report: 'probe_multi' });
+  const multiEnv = (items, fence = FENCE_A) => ({ ...envelope('probe_rows', items), report: 'probe_multi', source: 'crm.probe_multi', fence });
+  assert.equal(multi.result(multiEnv([{ buildingIds: [A], total: '1' }]), identity(['services.view']), multiInput).items.length, 1);
+  for (const buildingIds of [[A, B], [null], A]) assert.throws(() => multi.result(multiEnv([{ buildingIds, total: '1' }]), identity(['services.view']), multiInput), JSON.stringify(buildingIds));
+  const org = report.input({ report: 'probe_org' });
+  assert.throws(() => report.result(envelope('probe_org', [{ buildingId: A, name: null, total: '1' }]), identity(['materials.view']), org), 'organization không nêu toà');
+  assert.throws(() => report.result(envelope('probe_org', [], { fence: FENCE_A }), identity(['materials.view']), org), 'organization không có toà trong fence');
   for (const reason of ['not_implemented', 'source_unavailable', 'no_building_scope', 'organization_scope_required'])
     assert.equal(report.result(envelope('probe_rows', [], { unavailable: reason }), who, input).unavailable, reason);
   const self = report.input({ report: 'probe_self', params: { month: '2026-09' } });
@@ -165,11 +197,6 @@ test('kết quả: rào khoá, nguồn, khuôn hàng, phạm vi CRM của khoá 
     assert.throws(() => report.result(envelope('probe_rows', bad.items ?? [], bad), who, input), JSON.stringify(bad));
 });
 
-// Giá trị hợp lệ mẫu cho mọi tên trong từ điển (để gọi được báo cáo có tham số bắt buộc).
-const SAMPLE = { query: 'x', month: '2026-10', year: 2026, fromDate: '2026-10-01', toDate: '2026-10-31', date: '2026-10-16', days: 30, floor: 1,
-  basis: 'accrual', unreadOnly: true, lowStock: true };
-const sampleParams = spec => Object.fromEntries(spec.required.map(name => [name, name === 'status' ? spec.statuses[0] : name === 'kind' ? spec.kinds[0]
-  : Object.hasOwn(SAMPLE, name) ? SAMPLE[name] : A]));
 function brokerFor(t, read) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const CONNECTION = uuid('1'), seen = [];
@@ -182,22 +209,20 @@ function brokerFor(t, read) {
   return { broker, seen, token: `hc_${'A'.repeat(43)}` };
 }
 
-// Dây broker (broker.mjs: forbidden khi input là báo cáo của khoá khác) chỉ đo được khi sổ thật có hai
-// báo cáo khác khoá: Gói 0 chưa có báo cáo nào ⇒ ca này bỏ qua CÓ GHI LÝ DO; báo cáo đầu tiên của Gói A–D
-// tự kích hoạt nó (không phải sửa test).
-test('broker: crm_read_report đòi đúng khoá của báo cáo được gọi (forbidden trước khi tới SQL)', async t => {
-  const reports = Object.entries(W2.reports);
-  const pair = reports.find(([, a]) => reports.some(([, b]) => b.permission !== a.permission));
-  if (!pair) { t.skip('sổ thật chưa có hai báo cáo khác khoá (Gói 0) — Gói A–D kích hoạt ca này'); return; }
-  const [reportId, spec] = pair, other = reports.find(([, b]) => b.permission !== spec.permission)[1].permission;
-  const args = { report: reportId, params: sampleParams(spec) };
-  const denied = brokerFor(t, [other]);
-  assert.ok((await denied.broker.listTools(denied.token)).tools.some(tool => tool.name === 'crm_read_report'), 'tool hiện nhờ khoá báo cáo khác');
-  await assert.rejects(denied.broker.callTool(denied.token, 'crm_read_report', args), error => error.code === 'forbidden');
-  assert.deepEqual(denied.seen, []);
-  const allowed = brokerFor(t, [spec.permission]);
-  await allowed.broker.callTool(allowed.token, 'crm_read_report', args);
-  assert.deepEqual(allowed.seen, [['report', domainInput('report', args)]]);
+// Dây broker thật với sổ có báo cáo: tiến trình con nạp sổ thăm dò hai báo cáo khác khoá qua hook
+// node:module (wave2-probe-*.fixture.mjs) — mã sản phẩm không có đường tiêm. Đo luôn tools/list đủ quyền
+// khi hai tool meta đã hiện (ngân sách 64 000 B cho connector một trần chung).
+test('broker có báo cáo (tiến trình con): forbidden khi khoá của báo cáo khác, được phép tới prepare, tools/list đủ quyền ≤ 64 000 B', () => {
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL('./wave2-probe-broker.fixture.mjs', import.meta.url))], { encoding: 'utf8', timeout: 90_000 });
+  assert.equal(run.status, 0, run.stderr);
+  const result = JSON.parse(run.stdout.trim().split('\n').at(-1));
+  assert.deepEqual(result.reports, ['probe_rows', 'probe_org'], 'hook đã thay sổ gói A');
+  for (const name of W2_TOOL_NAMES) assert.ok(result.fullNames.includes(name), name);
+  assert.ok(result.fullBytes <= 64_000, `tools/list đủ quyền ${result.fullBytes} B (${result.fullCount} tool)`);
+  assert.deepEqual(result.otherList.filter(name => W2_TOOL_NAMES.includes(name)), W2_TOOL_NAMES, 'tool hiện nhờ khoá của báo cáo khác');
+  assert.deepEqual([result.denied, result.deniedSeen], ['forbidden', []], 'khoá báo cáo khác ⇒ forbidden, không tới prepare');
+  assert.deepEqual([result.allowed, result.allowedSeen], ['ok', [['report', result.expectedInput]]]);
+  assert.equal(result.noneList.some(name => W2_TOOL_NAMES.includes(name)), false, 'không giữ khoá báo cáo nào ⇒ không hiện');
 });
 
 test('broker: tool meta hiện ⇔ kết nối giữ khoá của ít nhất một báo cáo đã đăng ký; thiếu khoá ⇒ không hiện, gọi thẳng tool_not_available', async t => {

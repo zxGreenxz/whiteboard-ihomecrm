@@ -28,10 +28,13 @@ export async function sharedW2({ reads = [...new Set([...FULL_READ_KEYS, ...REPO
   const paths = w2MigrationPaths({ packages });
   for (const path of paths) { const sql = readFileSync(path, 'utf8'); await db.exec(sql); await db.exec(sql); }
   if (seed) await seed(db);
+  // Lối vào INVOKER (20261018000600), gọi như PostgREST: SET LOCAL ROLE authenticated + claims JWT.
+  const w2read = (domain, input, b = binding, options) => shared.call('SELECT public.hermes_w2_read_v1($1::jsonb,$2::text,$3::jsonb) result',
+    [JSON.stringify(b), domain, JSON.stringify(input)], options);
   const report = (reportId, params = {}, extra = {}, b = binding, options) =>
-    shared.read3('report', { report: reportId, params, limit: 20, offset: 0, ...extra }, b, options);
-  const reportList = (topic = null, b = binding, options) => shared.read3('report_list', { topic }, b, options);
-  const env = { ...shared, paths, report, reportList, grant: keys => grantRead(db, keys) };
+    w2read('report', { report: reportId, params, limit: 20, offset: 0, ...extra }, b, options);
+  const reportList = (topic = null, b = binding, options) => w2read('report_list', { topic }, b, options);
+  const env = { ...shared, paths, w2read, report, reportList, grant: keys => grantRead(db, keys) };
   // Mỗi ca BEGIN … ROLLBACK, nhận đúng env đợt 2 (có report/reportList).
   env.isolated = work => shared.isolated(() => work(env));
   return env;

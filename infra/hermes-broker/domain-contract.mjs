@@ -59,6 +59,10 @@ export const DOMAIN_FAMILIES = Object.freeze({
   // chưa deploy (PGRST202) ⇒ null, các họ khác vẫn chạy. SQL quyết định cuối.
   v3: Object.freeze({ readRpc: 'hermes_domain_read_v3', capabilitiesRpc: 'hermes_domain_capabilities_v3', inputKeys: BASE_INPUT,
     resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: W2_READ_KEY_LIST }),
+  // Hai tool meta đợt 2 (20261018000600): lối vào INVOKER riêng, hàm gói chạy dưới RLS của người hỏi.
+  // Khoá do capabilities v3 cấp; input/kết quả do wave2-registry kiểm (inputKeys/resultKeys không dùng).
+  w2: Object.freeze({ readRpc: 'hermes_w2_read_v1', capabilitiesRpc: null, inputKeys: Object.freeze([]), resultKeys: Object.freeze([]),
+    capabilities: Object.freeze([]) }),
 });
 export const DOMAIN_READS = Object.freeze({
   customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ; phòng gần nhất và contractId khi có quyền hợp đồng). Toàn tổ chức thấy cả khách chưa có hợp đồng. Hồ sơ: crm_read_customer_detail. ${PRIVATE_HINT}`, {
@@ -147,7 +151,8 @@ export function domainResult(operation, value, identity, input) {
     if (!domainExact(value, definition.resultKeys) || value.organizationId !== identity.row.organizationId || value.domain !== operation ||
         !instant(value.fetchedAt)) fail();
     let projected; try { projected = definition.result(value, identity, input); } catch { fail(); }
-    return Object.fromEntries(definition.resultKeys.map(key => [key, Object.hasOwn(projected, key) ? projected[key] : value[key]]));
+    // outputKeys (đợt 2): khoá chỉ dùng để rào (fence) không đi tới mô hình.
+    return Object.fromEntries((definition.outputKeys ?? definition.resultKeys).map(key => [key, Object.hasOwn(projected, key) ? projected[key] : value[key]]));
   }
   if (!definition || !domainExact(value, family.resultKeys) ||
       value.organizationId !== identity.row.organizationId || value.domain !== operation || !Array.isArray(value.items) ||

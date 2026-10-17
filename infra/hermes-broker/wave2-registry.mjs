@@ -12,58 +12,12 @@ import { W2A_REPORTS } from './wave2-a-contract.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
 import { W2C_REPORTS } from './wave2-c-contract.mjs';
 import { W2D_REPORTS } from './wave2-d-contract.mjs';
-import { W2_TOPICS, W2_PACKAGES, W2_UNAVAILABLE, w2Record, w2Params, w2CatalogEntry, isW2ReportId, shaped, id, PRIVATE_HINT } from './wave2-kit.mjs';
+import { W2_TOPICS, W2_PACKAGES, W2_UNAVAILABLE, W2_READ_KEYS, W2_SELF_KEYS, W2_REUSED_KEYS, w2Record, w2Params, w2CatalogEntry, isW2ReportId, shaped, id,
+  PRIVATE_HINT } from './wave2-kit.mjs';
+export { W2_READ_KEYS, W2_SELF_KEYS, W2_REUSED_KEYS };
 
-// Mọi khoá đọc MỚI của đợt 2 (seed MỘT lần ở 20261018000000, enabled=false; Gói Z bật).
-// Tên = khoá web đang dùng (catalog CRM), trừ hai khoá Hermes-only vì web không có khoá:
-//   assistant.salary.self      — "Lương của tôi" (/finance/my-salary chỉ cần cấu hình lương của chính mình);
-//   assistant.bank_events.read — "Biến động số dư" (/bien-dong-so-du chỉ RequireSuperAdmin, không khoá catalog).
-// resource (capability-contract): building = SQL giao toà overlay; organization_scope = dữ liệu không
-// gắn toà nhưng kết nối phải chọn phạm vi (SQL đòi Toàn tổ chức khi cần); self = dữ liệu của chính
-// người hỏi, không theo toà (grant trả buildingIds=[]).
-export const W2_READ_KEYS = Object.freeze({
-  // Gói A — thu tiền, công nợ, cọc
-  'reports_finance.payment_schedule': 'building',
-  'reports_finance.overpayment': 'building',
-  'reports_finance.deposits_report': 'building',
-  'thu_tien.view': 'building',
-  // Gói B — sổ quỹ, dòng tiền, KQKD, lợi nhuận cổ đông, ví cá nhân, biến động số dư
-  'reports_finance.daily_cashbook': 'building',
-  'reports_finance.cash_flow': 'building',
-  'reports_finance.handover_report': 'building',
-  'reports_finance.collection_cycle': 'building',
-  'cashbooks.view': 'organization_scope',
-  'income_expenses.restricted_view': 'building',
-  'reports_finance.profit_distribution': 'building',
-  'shareholder_profit.view': 'organization_scope',
-  'personal_finance.view': 'self',
-  'assistant.bank_events.read': 'self',
-  // Gói C — xe, kho, lương, thông báo, Network Center
-  'vehicles.view': 'building',
-  'materials.view': 'organization_scope',
-  'warehouses.view': 'building',
-  'salary.view': 'organization_scope',
-  'assistant.salary.self': 'self',
-  'notifications.view': 'self',
-  'network_center.view': 'building',
-  // Gói D — danh mục, toà/phòng, báo cáo BĐS
-  'buildings.view': 'building',
-  'meters.view': 'building',
-  'suppliers.view': 'organization_scope',
-  'hotline.view': 'organization_scope',
-  'task_types.view': 'organization_scope',
-  'service_quotas.view': 'organization_scope',
-  'categories.view': 'organization_scope',
-  'reports_real_estate.vacant_rooms': 'building',
-  'reports_real_estate.expiring': 'building',
-  'reports_real_estate.renewals_transfers': 'building',
-  'reports_real_estate.promotions': 'building',
-  'reports_real_estate.new_leases': 'building',
-  'reports_real_estate.terminations': 'building',
-  'reports_real_estate.expense_ratio': 'building',
-});
+// Khoá đợt 2 khai ở wave2-kit.mjs (w2Report kiểm loại khoá ↔ scope ngay khi khai báo); xuất lại ở đây.
 export const W2_READ_KEY_LIST = Object.freeze(Object.keys(W2_READ_KEYS));
-export const W2_SELF_KEYS = Object.freeze(W2_READ_KEY_LIST.filter(key => W2_READ_KEYS[key] === 'self'));
 // Khoá không có trong catalog CRM: grant do SQL tự quyết (hermes_w2_grant_v1), cần nhãn riêng ở UI.
 export const W2_HERMES_ONLY_KEYS = Object.freeze(['assistant.bank_events.read', 'assistant.salary.self']);
 export const W2_TOOL_NAMES = Object.freeze(['crm_read_report_list', 'crm_read_report']);
@@ -73,7 +27,11 @@ const LETTERS = Object.freeze(['a', 'b', 'c', 'd']);
 const SPEC_KEYS = Object.freeze(['permission', 'source', 'scope', 'title', 'params', 'required', 'statuses', 'kinds', 'scopeKeys', 'fields', 'summary', 'private']);
 const RUN_KEYS = Object.freeze(['report', 'params', 'limit', 'offset']);
 const LIST_RESULT = Object.freeze(['organizationId', 'domain', 'fetchedAt', 'items']);
-const RUN_RESULT = Object.freeze(['organizationId', 'domain', 'fetchedAt', 'report', 'source', 'unavailable', 'summary', 'items', 'offset', 'nextOffset', 'sourceCapped']);
+// Phong bì SQL có thêm "fence" (toà/sổ quỹ/org_wide cổng đã dùng); broker rào theo nó rồi BỎ khỏi đầu ra.
+const RUN_OUTPUT = Object.freeze(['organizationId', 'domain', 'fetchedAt', 'report', 'source', 'unavailable', 'summary', 'items', 'offset', 'nextOffset', 'sourceCapped']);
+const RUN_RESULT = Object.freeze([...RUN_OUTPUT, 'fence']);
+const uuids = value => Array.isArray(value) && value.length <= 256 && value.every(id) && new Set(value).size === value.length;
+const FENCE = Object.freeze({ buildings: uuids, cashbooks: uuids, orgWide: value => typeof value === 'boolean' });
 // Mô tả gọn (tools/list): đủ ý chọn tool, phân trang, "không có toà" ≠ số 0, riêng tư.
 const LIST_DESCRIPTION = 'Mục lục báo cáo CRM mở rộng kết nối được xem lúc này: report, mô tả, params, private. Gọi trước crm_read_report. ' +
   'topic: thu_tien=thu tiền/công nợ/cọc; tai_chinh=sổ quỹ/KQKD/lợi nhuận/ví; van_hanh=xe/kho/lương/thông báo/mạng; danh_muc=tài sản/danh mục/toà phòng/BĐS.';
@@ -85,11 +43,6 @@ const RUN_SCHEMA = Object.freeze({ type: 'object', additionalProperties: false, 
   report: { type: 'string', pattern: '^[a-z][a-z0-9_]{1,47}$' }, params: { type: 'object' },
   limit: { type: 'integer', minimum: 1, maximum: 50 }, offset: { type: 'integer', minimum: 0, maximum: 2000 } } });
 
-// Phạm vi CRM đã cấp cho khoá rào đầu ra (như full-read-contract): hàng nêu toà phải nằm trong đó.
-function inScope(identity, permission, buildingId) {
-  const scopes = identity.scopesByPermission?.[permission]?.buildingIds;
-  return Array.isArray(scopes) && scopes.includes(buildingId);
-}
 const granted = (effective, permission) => Array.isArray(effective?.read) && effective.read.includes(permission);
 
 /** Gom bốn gói thành một sổ báo cáo + hai định nghĩa đọc meta. Dùng cho sổ thật (W2) và cho test
@@ -143,32 +96,48 @@ export function createW2Registry(packages) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50 || !Number.isInteger(offset) || offset < 0 || offset > 2000) fail();
     return { report: input.report, params: w2Params(spec, input.params), limit, offset };
   }
+  // Rào thứ hai (SQL quyết định cuối): fence của cổng phải nằm trong phạm vi CRM của khoá mà broker vừa
+  // đọc; hàng nêu toà phải thuộc fence.buildings (null chỉ khi fence.orgWide), mảng buildingIds cũng vậy;
+  // báo cáo không theo toà không được nêu toà; scope cashbooks chỉ trong fence.cashbooks khi không org_wide.
+  function fenceOf(value, identity, spec, input) {
+    const fence = value.fence, crm = identity.scopesByPermission?.[spec.permission]?.buildingIds;
+    const byBuilding = ['rows', 'buildings'].includes(spec.scope), building = input.params.buildingId ?? null;
+    if (!shaped(fence, FENCE) || !Array.isArray(crm) || fence.buildings.some(item => !crm.includes(item)) ||
+        !byBuilding && fence.buildings.length || spec.scope !== 'cashbooks' && fence.cashbooks.length ||
+        building !== null && (fence.orgWide || fence.buildings.length > 1 || fence.buildings.length === 1 && fence.buildings[0] !== building)) fail();
+    return fence;
+  }
   function runResult(value, identity, input) {
     const spec = specOf(input.report) ?? fail();
     if (!granted(identity.effective, spec.permission) || value.report !== input.report || value.source !== spec.source || value.offset !== input.offset ||
         typeof value.sourceCapped !== 'boolean' || !Array.isArray(value.items) || value.items.length > input.limit ||
         !(value.nextOffset === null || Number.isSafeInteger(value.nextOffset) && value.nextOffset === input.offset + value.items.length && value.items.length > 0)) fail();
+    const fence = fenceOf(value, identity, spec, input), byBuilding = ['rows', 'buildings'].includes(spec.scope);
     if (value.unavailable !== null) {
-      if (!W2_UNAVAILABLE.includes(value.unavailable) || value.unavailable === 'no_building_scope' && !['rows', 'buildings'].includes(spec.scope) ||
+      if (!W2_UNAVAILABLE.includes(value.unavailable) || value.unavailable === 'no_building_scope' && !byBuilding ||
           value.items.length || value.summary !== null || value.nextOffset !== null) fail();
       return { report: value.report, source: value.source, unavailable: value.unavailable, summary: null, items: [], offset: value.offset, nextOffset: null, sourceCapped: false };
     }
     if (!(spec.summary === null ? value.summary === null : shaped(value.summary, spec.summary))) fail();
-    const building = input.params.buildingId ?? null;
+    const inFence = item => id(item) && fence.buildings.includes(item);
     for (const row of value.items) {
       if (!shaped(row, spec.fields)) fail();
-      if (Object.hasOwn(row, 'buildingId') && row.buildingId !== null &&
-          (!id(row.buildingId) || !inScope(identity, spec.permission, row.buildingId) || building !== null && row.buildingId !== building)) fail();
+      const hasBuilding = Object.hasOwn(row, 'buildingId'), hasBuildings = Object.hasOwn(row, 'buildingIds');
+      if (!byBuilding && (hasBuilding || hasBuildings) ||
+          hasBuilding && !(row.buildingId === null ? fence.orgWide : inFence(row.buildingId)) ||
+          hasBuildings && !(Array.isArray(row.buildingIds) && row.buildingIds.every(inFence)) ||
+          spec.scope === 'cashbooks' && !fence.orgWide && Object.hasOwn(row, 'cashbookId') &&
+            !(id(row.cashbookId) && fence.cashbooks.includes(row.cashbookId))) fail();
     }
     return structuredClone({ report: value.report, source: value.source, unavailable: null, summary: value.summary, items: value.items,
       offset: value.offset, nextOffset: value.nextOffset, sourceCapped: value.sourceCapped });
   }
-  const define = (toolName, description, inputSchema, input, resultKeys, result, mayUse) => Object.freeze({ family: 'v3', permission: null,
+  const define = (toolName, description, inputSchema, input, resultKeys, outputKeys, result, mayUse) => Object.freeze({ family: 'w2', permission: null,
     label: description, description, fields: Object.freeze({}), statuses: Object.freeze([]), dated: false, requiresDates: false, perBuilding: false,
-    source: null, toolName, inputSchema, input, resultKeys, result, mayUse });
+    source: null, toolName, inputSchema, input, resultKeys, outputKeys, result, mayUse });
   const reads = Object.freeze({
-    report_list: define(W2_TOOL_NAMES[0], LIST_DESCRIPTION, LIST_SCHEMA, listInput, LIST_RESULT, listResult, effective => any(effective)),
-    report: define(W2_TOOL_NAMES[1], RUN_DESCRIPTION, RUN_SCHEMA, runInput, RUN_RESULT, runResult,
+    report_list: define(W2_TOOL_NAMES[0], LIST_DESCRIPTION, LIST_SCHEMA, listInput, LIST_RESULT, LIST_RESULT, listResult, effective => any(effective)),
+    report: define(W2_TOOL_NAMES[1], RUN_DESCRIPTION, RUN_SCHEMA, runInput, RUN_RESULT, RUN_OUTPUT, runResult,
       (effective, input) => input === undefined ? any(effective) : granted(effective, specOf(input?.report)?.permission)),
   });
   // Bản chiếu đúng những trường mà app_private.hermes_w2<gói>_catalog_v1 phải trả (test so khớp).

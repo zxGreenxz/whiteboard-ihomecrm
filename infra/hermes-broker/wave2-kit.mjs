@@ -6,7 +6,17 @@
 // meta (crm_read_report_list → crm_read_report), không phải mỗi báo cáo một tool (ngân sách
 // tools/list, xem wave2-registry.mjs). Quyền mỗi báo cáo = MỘT khoá đọc (permission) của web;
 // SQL quyết định cuối: quyền CRM thật ∩ registry ∩ chính sách công ty ∩ Read của kết nối ∩ toà
-// overlay (app_private.hermes_w2_gate_v1). Không hàm copilot_* nào.
+// overlay (app_private.hermes_w2_scope_v1). Không hàm copilot_* nào.
+//
+// INVOKER + RLS (20261018000600): broker gọi public.hermes_w2_read_v1 bằng JWT người hỏi. Bước kiểm quyền
+// (DEFINER) dựng ctx, rồi hàm đọc của gói app_private.hermes_w2<gói>_read_v1 chạy SECURITY INVOKER dưới
+// RLS của CHÍNH người hỏi (current_user = authenticated), rồi bước kết thúc (DEFINER) rào đầu ra/phân trang.
+// Gói thay thân hàm đọc và GIỮ dòng đầu "LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET
+// search_path=pg_catalog,public". Thân plpgsql KHÔNG gọi app_private.* theo tên (authenticated không có
+// USAGE trên app_private ⇒ 42501); gọi hàm dùng chung public.<miền>_<báo cáo>_v<n> (INVOKER, từ chối khi
+// current_user <> 'authenticated', p_building_ids := ctx.buildings). Helper DEFINER chỉ để trả TẬP ID của
+// chính người gọi, đặt ở public; cần app_private thì thân SQL chuẩn (gắn OID lúc tạo) + GRANT EXECUTE TO
+// authenticated (hermes-durable-schema.test.mjs phải liệt kê).
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';
 export { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT };
 
@@ -18,9 +28,77 @@ export const w2Record = value => value !== null && typeof value === 'object' && 
 // Nhóm hiển thị cho mô hình (crm_read_report_list.topic) ↔ gói SQL.
 export const W2_TOPICS = Object.freeze({ thu_tien: 'a', tai_chinh: 'b', van_hanh: 'c', danh_muc: 'd' });
 export const W2_PACKAGES = Object.freeze(Object.fromEntries(Object.entries(W2_TOPICS).map(([topic, letter]) => [letter, topic])));
-// rows = hàng có toà, lọc theo toà đã giao; buildings = nguồn nhận danh sách toà; organization =
-// dữ liệu không gắn toà ⇒ chỉ kết nối Toàn tổ chức; self = dữ liệu của CHÍNH người hỏi (không toà).
-export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'organization', 'self']);
+// Phạm vi báo cáo (cổng SQL quyết định; sửa sau review PR #195):
+//   rows / buildings — hàng gắn toà / nguồn nhận danh sách toà: toà = CRM ∩ overlay; hết toà ⇒ no_building_scope.
+//   organization     — dữ liệu không gắn toà: cần org_wide = CRM toàn công ty ∩ overlay Toàn tổ chức.
+//   cashbooks        — sổ quỹ: org_wide, hoặc overlay Toàn tổ chức + sổ CRM cấp (ctx.cashbooks, scope CASHBOOK).
+//   self             — dữ liệu của CHÍNH người hỏi (chỉ khoá loại self).
+//   platform         — toàn nền tảng, chỉ super admin (chỉ khoá biến động số dư).
+export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'organization', 'cashbooks', 'self', 'platform']);
+// Tham số mà cổng giải về toà (phải thuộc công ty + ctx.buildings, thu hẹp ctx.buildings): chỉ ở rows/buildings.
+export const W2_BUILDING_PARAMS = Object.freeze(['buildingId', 'areaId', 'roomId', 'contractId', 'invoiceId']);
+
+// Mọi khoá đọc MỚI của đợt 2 (seed MỘT lần ở 20261018000000, enabled=false; Gói Z bật).
+// Tên = khoá web đang dùng (catalog CRM), trừ hai khoá Hermes-only vì web không có khoá:
+//   assistant.salary.self      — "Lương của tôi" (/finance/my-salary chỉ cần cấu hình lương của chính mình);
+//   assistant.bank_events.read — "Biến động số dư" (/bien-dong-so-du chỉ RequireSuperAdmin, dữ liệu toàn nền tảng).
+// resource (capability-contract): building = SQL giao toà overlay; organization_scope = dữ liệu không
+// gắn toà nhưng kết nối phải chọn phạm vi; self = không theo toà (grant trả buildingIds=[]).
+export const W2_READ_KEYS = Object.freeze({
+  // Gói A — thu tiền, công nợ, cọc
+  'reports_finance.payment_schedule': 'building',
+  'reports_finance.overpayment': 'building',
+  'reports_finance.deposits_report': 'building',
+  'thu_tien.view': 'building',
+  // Gói B — sổ quỹ, dòng tiền, KQKD, lợi nhuận cổ đông, ví cá nhân, biến động số dư
+  'reports_finance.daily_cashbook': 'building',
+  'reports_finance.cash_flow': 'building',
+  'reports_finance.handover_report': 'building',
+  'reports_finance.collection_cycle': 'building',
+  'cashbooks.view': 'organization_scope',
+  'income_expenses.restricted_view': 'building',
+  'reports_finance.profit_distribution': 'building',
+  'shareholder_profit.view': 'organization_scope',
+  'personal_finance.view': 'self',
+  'assistant.bank_events.read': 'self',
+  // Gói C — xe, kho, lương, thông báo, Network Center
+  'vehicles.view': 'building',
+  'materials.view': 'organization_scope',
+  'warehouses.view': 'building',
+  'salary.view': 'organization_scope',
+  'assistant.salary.self': 'self',
+  'notifications.view': 'self',
+  'network_center.view': 'building',
+  // Gói D — danh mục, toà/phòng, báo cáo BĐS
+  'buildings.view': 'building',
+  'meters.view': 'building',
+  'suppliers.view': 'organization_scope',
+  'hotline.view': 'organization_scope',
+  'task_types.view': 'organization_scope',
+  'service_quotas.view': 'organization_scope',
+  'categories.view': 'organization_scope',
+  'reports_real_estate.vacant_rooms': 'building',
+  'reports_real_estate.expiring': 'building',
+  'reports_real_estate.renewals_transfers': 'building',
+  'reports_real_estate.promotions': 'building',
+  'reports_real_estate.new_leases': 'building',
+  'reports_real_estate.terminations': 'building',
+  'reports_real_estate.expense_ratio': 'building',
+});
+// Khoá đợt 1 ĐÃ BẬT được dùng lại làm khoá báo cáo đợt 2 (khớp app_private.hermes_w2_reused_keys_v1).
+// LƯU Ý: báo cáo dùng các khoá này SỐNG NGAY khi phát hành SQL + connector (registry đã bật từ 16/10),
+// không chờ công tắc Gói Z. Cần khoá đợt 1 khác ⇒ yêu cầu Gói Z.
+export const W2_REUSED_KEYS = Object.freeze(['invoices.view', 'deposits.view', 'reports_finance.analysis', 'assets.view', 'services.view',
+  'rooms.view', 'income_expenses.view']);
+// Khoá không theo toà (grant buildingIds=[]; khớp app_private.hermes_w2_self_keys_v1).
+export const W2_SELF_KEYS = Object.freeze(Object.keys(W2_READ_KEYS).filter(key => W2_READ_KEYS[key] === 'self'));
+export const W2_PLATFORM_KEYS = Object.freeze(['assistant.bank_events.read']);
+/** Loại khoá báo cáo (khớp app_private.hermes_w2_permission_kind_v1): 'platform' | 'self' | 'company' | null. */
+export function w2PermissionKind(key) {
+  if (W2_PLATFORM_KEYS.includes(key)) return 'platform';
+  if (W2_SELF_KEYS.includes(key)) return 'self';
+  return Object.hasOwn(W2_READ_KEYS, key) || W2_REUSED_KEYS.includes(key) ? 'company' : null;
+}
 // Lý do "không có số liệu" được phép (cổng SQL kiểm cùng tập; khác ⇒ backend_unavailable).
 export const W2_UNAVAILABLE = Object.freeze(['organization_scope_required', 'no_building_scope', 'not_implemented', 'source_unavailable']);
 
@@ -77,22 +155,26 @@ const validators = value => w2Record(value) && Object.values(value).every(check 
 export const isW2ReportId = value => typeof value === 'string' && REPORT_ID.test(value);
 
 /** Khai báo MỘT báo cáo đợt 2. Kiểm khi nạp module: sai khai báo là lỗi ngay, không đợi lúc gọi.
- * permission: khoá đọc web (đã có hoặc khoá đợt 2 trong W2_READ_KEYS); source: 'crm.<rpc|bảng web>';
- * scope: W2_SCOPES; title: mô tả cho mô hình (≤300 ký tự, tiếng Việt); params ⊆ W2_PARAMS; required ⊆ params;
- * statuses/kinds: bắt buộc khi có param status/kind; scopeKeys: khoá phụ cổng SQL tính sẵn vào ctx.scopes
- * (vd. customers.view cho tên khách); fields/summary: hàm kiểm từng trường hàng/tổng; private: dữ liệu
- * riêng tư (PRIVATE_HINT) — chỉ trả lời riêng. Hàng có trường buildingId (khác null) bị broker rào theo
- * phạm vi CRM của permission: báo cáo scope=self không đặt tên trường là buildingId. */
+ * permission: khoá đọc web — khoá đợt 2 (W2_READ_KEYS) hoặc khoá đợt 1 dùng lại (W2_REUSED_KEYS); loại khoá
+ * buộc scope: khoá self ⇔ scope 'self', khoá biến động số dư ⇔ scope 'platform', khoá còn lại ⇒ rows/
+ * buildings/organization/cashbooks. source: 'crm.<rpc|bảng web>'; title: mô tả cho mô hình (≤300 ký tự);
+ * params ⊆ W2_PARAMS (W2_BUILDING_PARAMS chỉ ở rows/buildings); required ⊆ params; statuses/kinds bắt buộc
+ * khi có param status/kind; scopeKeys: khoá CRM phụ cổng tính sẵn vào ctx.scopes (vd. customers.view cho
+ * tên khách); fields/summary: hàm kiểm từng trường hàng/tổng; private: dữ liệu riêng tư (PRIVATE_HINT).
+ * Hàng: trường buildingId/buildingIds CHỈ ở rows/buildings và phải thuộc toà cổng đã giao (null chỉ khi
+ * org_wide); cashbookId ở scope cashbooks phải thuộc sổ được cấp — cổng SQL và broker đều rào, sai ⇒ 42501. */
 export function w2Report({ permission, source, scope, title, params = [], required = [], statuses = null, kinds = null, scopeKeys = [],
   fields, summary = null, private: privateData = false, ...rest } = {}) {
-  if (Object.keys(rest).length || typeof permission !== 'string' || !KEY.test(permission) ||
+  const kind = w2PermissionKind(permission);
+  if (Object.keys(rest).length || typeof permission !== 'string' || !KEY.test(permission) || kind === null ||
+      (kind === 'self') !== (scope === 'self') || (kind === 'platform') !== (scope === 'platform') ||
       typeof source !== 'string' || !/^crm\.[a-z][a-z0-9_.]{0,79}$/.test(source) ||
       !W2_SCOPES.includes(scope) || typeof title !== 'string' || !title.trim() || [...title].length > 300 || CONTROL.test(title) ||
       !strings(params, /^[a-zA-Z]+$/) || params.some(name => !Object.hasOwn(W2_PARAMS, name)) ||
       !strings(required, /^[a-zA-Z]+$/) || required.some(name => !params.includes(name)) ||
       (params.includes('status') ? !(strings(statuses, VALUE) && statuses.length > 0) : statuses !== null) ||
       (params.includes('kind') ? !(strings(kinds, VALUE) && kinds.length > 0) : kinds !== null) ||
-      ['organization', 'self'].includes(scope) && params.includes('buildingId') ||
+      !['rows', 'buildings'].includes(scope) && params.some(name => W2_BUILDING_PARAMS.includes(name)) ||
       !strings(scopeKeys, KEY) || !validators(fields) || !(summary === null || validators(summary)) || typeof privateData !== 'boolean') fail();
   return Object.freeze({ permission, source, scope, title, params: Object.freeze([...params]), required: Object.freeze([...required]),
     statuses: statuses && Object.freeze([...statuses]), kinds: kinds && Object.freeze([...kinds]), scopeKeys: Object.freeze([...scopeKeys]),
