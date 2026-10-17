@@ -184,7 +184,7 @@ function decisionSnapshot(payload, expected, now) {
   if (decision.outcome === 'deny') deny('forbidden');
   if (['tokenDigest', 'intentDigest', 'roomReadDigest'].some(key => decision[key] !== expected[key]) ||
       !record(payload.authority) || decision.contextVersion !== payload.authority.contextVersion ||
-      decision.checkedAt < expected.startedAt || decision.checkedAt > now + DB_CLOCK_SKEW_MS || decision.expiresAt <= now ||
+      decision.checkedAt < expected.startedAt - DB_CLOCK_SKEW_MS || decision.checkedAt > now + DB_CLOCK_SKEW_MS || decision.expiresAt <= now ||
       decision.expiresAt > decision.checkedAt + MAX_AGE_MS) deny('context_changed');
   return payload;
 }

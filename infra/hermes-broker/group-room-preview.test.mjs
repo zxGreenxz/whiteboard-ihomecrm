@@ -113,11 +113,12 @@ for (const [name, change, code] of [
   ['pass status with a non-pass fact', x => { x.roomRead.result.rooms[0].status = 'pass'; }, 'draft_input_invalid'],
   ['pass fact on a vacant room', x => { x.roomRead.result.rooms[0].availability.kind = 'pass'; }, 'draft_input_invalid'],
 ]) test(`rejects ${name}`, () => rejects(change, code));
-// Supabase's clock runs ahead of the connector host; DB-issued instants get the
-// shared 5 s allowance on their upper bound only.
-const AHEAD = [[50, true], [4_000, true], [6_000, false]];
+// Supabase's clock may run ahead of (or behind) the connector host; DB-issued
+// instants get the shared 5 s allowance on upper bounds and on the decision
+// ordering lower bound. Expiry and staleness stay strict.
+const SKEW_CASES = [[50, true], [4_000, true], [6_000, false]];
 test('receiver read stamped by a DB clock 50 ms or 4 s ahead is current; 6 s ahead is rejected', () => {
-  for (const [ahead, accepted] of AHEAD) {
+  for (const [ahead, accepted] of SKEW_CASES) {
     const input = fixture(); input.recipientRead.readAt = new Date(now + ahead).toISOString();
     if (accepted) assert.equal(buildGroupRoomPreview(input).display.expiresAt, now + 299_000);
     else assert.throws(() => buildGroupRoomPreview(input), error => error.code === 'draft_expired');
@@ -275,7 +276,7 @@ for (const [name, modify, expected = 'context_changed'] of [
   ['wrong intent', x => { x.decision.intentDigest = 'b'.repeat(64); }],
   ['wrong room content', x => { x.decision.roomReadDigest = 'b'.repeat(64); }],
   ['changed authority context', x => { x.authority = { ...x.authority, contextVersion: 'b'.repeat(64) }; }],
-  ['old decision', x => { x.decision.checkedAt = now - 1; }],
+  ['old decision beyond the DB clock skew', x => { x.decision.checkedAt = now - 6_000; }],
   ['future decision beyond the DB clock skew', x => { x.decision.checkedAt = now + 6_000; }],
   ['expired decision', x => { x.decision.expiresAt = now; }],
   ['too-long decision', x => { x.decision.expiresAt = now + 300_001; }],
@@ -285,15 +286,24 @@ for (const [name, modify, expected = 'context_changed'] of [
   await assert.rejects(run(f), code(expected)); assert.equal(f.events.filter(v => v === 'decision.finalize').length, 1);
 });
 test('service accepts a final decision checked by a DB clock 50 ms or 4 s ahead; 6 s ahead is a conflict', async () => {
-  for (const [ahead, accepted] of AHEAD) {
+  for (const [ahead, accepted] of SKEW_CASES) {
     const f = serviceFixture(), original = f.decisions.finalize;
     f.decisions.finalize = async (...args) => { const result = await original(...args); result.decision.checkedAt = now + ahead; return result; };
     if (accepted) assert.equal((await run(f)).display.expiresAt, now + 60_000);
     else await assert.rejects(run(f), code('context_changed'));
   }
 });
+test('service accepts a final decision checked by a DB clock 50 ms or 4 s behind prepare start; 6 s behind is a conflict', async () => {
+  // startedAt is this host's clock at prepare (= now); the DB clock may lag it.
+  for (const [behind, accepted] of SKEW_CASES) {
+    const f = serviceFixture(), original = f.decisions.finalize;
+    f.decisions.finalize = async (...args) => { const result = await original(...args); result.decision.checkedAt = now - behind; return result; };
+    if (accepted) assert.equal((await run(f)).display.expiresAt, now + 60_000);
+    else await assert.rejects(run(f), code('context_changed'));
+  }
+});
 test('send accepts a queue expiry issued by a DB clock 50 ms or 4 s ahead; 6 s ahead stays an unknown outcome', async () => {
-  for (const [ahead, accepted] of AHEAD) {
+  for (const [ahead, accepted] of SKEW_CASES) {
     const f = serviceFixture(), expiresAt = new Date(now + 300_000 + ahead).toISOString();
     f.decisions.dispatch = async (token, receipt, binding, { signal, onDispatch }) => {
       onDispatch(uuid(95)); const final = await f.decisions.finalize(token, receipt, binding, { signal });

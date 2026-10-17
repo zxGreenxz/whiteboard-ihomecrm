@@ -53,17 +53,17 @@ test('directory read stamped by a DB clock ahead of this host passes within the 
   const expired = directory(); expired.authority.expiresAt = now;
   assert.throws(() => groupDirectoryResponse(expired, now), e => e.code === 'backend_unavailable');
 });
-test('preview and send responses bound DB-issued expiries with the shared skew, never accept expired ones', () => {
+test('send bounds its DB-issued expiry with the shared skew; broker-computed preview expiry stays strict', () => {
   const intent = { roomIds: [id(12)], conversationIds: [id(10)] };
   const preview = expiresAt => ({ status: 'preview_only', fieldSet: 'selected-room-sale-text-v1', digest: 'c'.repeat(64),
     display: { body: 'PHÒNG ĐÃ CHỌN', sender: 'Bot', recipients: [{ conversationId: id(10), name: 'Group' }], expiresAt } });
   const send = expiresAt => ({ status: 'queued', dispatchId: id(11), expiresAt: new Date(expiresAt).toISOString(),
     recipients: [{ conversationId: id(10), name: 'Group', status: 'queued' }] });
-  for (const [ahead, accepted] of AHEAD) {
-    accepts(accepted, () => assert.equal(groupPreviewResponse(preview(now + 300000 + ahead), intent, now).status, 'preview_only'), 'backend_unavailable');
+  for (const [ahead, accepted] of AHEAD)
     accepts(accepted, () => assert.equal(groupSendResponse(send(now + 300000 + ahead), now).status, 'queued'), 'send_outcome_unknown');
-  }
-  assert.throws(() => groupPreviewResponse(preview(now), intent, now), e => e.code === 'backend_unavailable');
+  // display.expiresAt is capped by the host-stamped room readAt + 300000; no DB skew applies.
+  assert.equal(groupPreviewResponse(preview(now + 300000), intent, now).status, 'preview_only');
+  for (const expiresAt of [now + 300001, now]) assert.throws(() => groupPreviewResponse(preview(expiresAt), intent, now), e => e.code === 'backend_unavailable');
   assert.throws(() => groupSendResponse(send(now), now), e => e.code === 'send_outcome_unknown');
 });
 

@@ -76,13 +76,15 @@ export function groupSendResponse(value, now) {
 }
 
 /** Local protocol check after the final SQL await. It neither grants permission
- * nor turns a digest into a send credential. The concrete service owns all facts. */
+ * nor turns a digest into a send credential. The concrete service owns all facts.
+ * display.expiresAt is computed by this broker (capped by the host-stamped room
+ * readAt + 300000), not issued by the DB, so its upper bound stays strict. */
 export function groupPreviewResponse(value, intent, now) {
   const text = (x, cap) => typeof x === 'string' && x.trim().length > 0 && Buffer.byteLength(x) <= cap && !x.includes('\0');
   if (!exact(value, ['status', 'fieldSet', 'digest', 'display']) || value.status !== 'preview_only' ||
       value.fieldSet !== 'selected-room-sale-text-v1' || typeof value.digest !== 'string' || !/^[a-f0-9]{64}$/.test(value.digest) ||
       !exact(value.display, ['body', 'sender', 'recipients', 'expiresAt']) || !text(value.display.body, 32768) || !text(value.display.sender, 500) ||
-      !Number.isSafeInteger(value.display.expiresAt) || value.display.expiresAt <= now || value.display.expiresAt > now + 300000 + DB_CLOCK_SKEW_MS ||
+      !Number.isSafeInteger(value.display.expiresAt) || value.display.expiresAt <= now || value.display.expiresAt > now + 300000 ||
       !Array.isArray(value.display.recipients) || value.display.recipients.length !== intent.conversationIds.length) fail('backend_unavailable');
   const targets = [];
   for (const row of value.display.recipients) {

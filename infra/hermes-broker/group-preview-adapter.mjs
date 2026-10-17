@@ -231,7 +231,7 @@ export function createGroupOriginDecisions({authority,connectionStore,crypto,aut
       const d=final.decision;
       if(!exact(d,['kind','outcome','decisionId','tokenDigest','intentDigest','roomReadDigest','contextVersion','checkedAt','expiresAt'])||d.kind!=='hermes.group-room-preview.v1'||d.outcome!=='allow'||
         d.decisionId!==snap.binding.requestId||d.tokenDigest!==snap.tokenDigest||d.intentDigest!==captured.intentDigest||d.roomReadDigest!==captured.roomReadDigest||
-        d.contextVersion!==snap.contextVersion||d.contextVersion!==final.authority.contextVersion||!positive(d.checkedAt)||d.checkedAt>now()+DB_CLOCK_SKEW_MS||d.checkedAt<iso(captured.roomReadAt)||
+        d.contextVersion!==snap.contextVersion||d.contextVersion!==final.authority.contextVersion||!positive(d.checkedAt)||d.checkedAt>now()+DB_CLOCK_SKEW_MS||d.checkedAt<iso(captured.roomReadAt)-DB_CLOCK_SKEW_MS||
         d.expiresAt!==final.authority.expiresAt||d.expiresAt<=now())fail('context_changed');
       const projected=projectAvailableRooms(final.roomPayload,{allowedBuildingIds:final.authority.allowedBuildingIds,offset:0,limit:100,readAt:iso(captured.roomReadAt)});
       if(hash(projected)!==captured.roomReadDigest)fail('context_changed');

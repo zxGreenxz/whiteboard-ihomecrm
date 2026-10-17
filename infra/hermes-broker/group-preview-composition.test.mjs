@@ -23,8 +23,9 @@ const code=c=>e=>e.code===c;
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});void promise.catch(()=>{});return{promise,resolve,reject};};
 const tick=()=>new Promise(done=>setImmediate(done));
 const pending=async p=>{let done=false;void p.then(()=>done=true,()=>done=true);await tick();assert.equal(done,false);};
-// Supabase's clock runs ahead of the connector host. Instants issued by SQL get the
-// shared 5 s allowance on their upper bound only: 50 ms and 4 s ahead pass, 6 s fails.
+// Supabase's clock may run ahead of (or behind) the connector host. Instants issued by SQL
+// get the shared 5 s allowance on upper bounds and on the decision ordering lower bound:
+// 50 ms and 4 s pass, 6 s fails. Expiry and staleness stay strict.
 const AHEAD=[[50,true],[4000,true],[6000,false]];
 const later=(iso,ms)=>new Date(Date.parse(iso)+ms).toISOString();
 
@@ -117,7 +118,7 @@ test('private group preview composes real broker, durable core, transports and c
     assert(!JSON.stringify(result).includes(token));assert(!JSON.stringify(result).includes(f.CLAIM));
     await assert.rejects(create().callTool(token,'crm_group_room_send',f.selection),code('tool_not_available'));
   }));
-  // Re-serve one real SQL result with its DB-issued instants moved `ahead` ms later.
+  // Re-serve one real SQL result after `change` moves its DB-issued instants (later or earlier).
   const sqlAhead=(rpc,ahead,change)=>{let through=false;hooks.beforeFetch=async(url,options)=>{
     if(through||!new URL(url).pathname.endsWith('/'+rpc))return;
     through=true;
@@ -136,6 +137,16 @@ test('private group preview composes real broker, durable core, transports and c
     for(const [ahead,accepted] of AHEAD)await each(async()=>{
       sqlAhead('hermes_group_preview_decision_v1',ahead,value=>{
         value.decision.checkedAt+=ahead;value.recipientRead.readAt=later(value.recipientRead.readAt,ahead);});
+      const result=create().previewGroupRooms(token,context,f.selection,{signal:signal()});
+      if(accepted)assert.equal((await result).status,'preview_only');
+      else await assert.rejects(result,code('context_changed'));
+    });
+  });
+  await t.test('final preview decision by a DB clock behind this host room read: 50 ms and 4 s pass, 6 s fails',async()=>{
+    // checkedAt must not precede the host-stamped roomReadAt/startedAt by more than the skew.
+    for(const [behind,accepted] of AHEAD)await each(async()=>{
+      sqlAhead('hermes_group_preview_decision_v1',-behind,value=>{
+        value.decision.checkedAt-=behind;value.recipientRead.readAt=later(value.recipientRead.readAt,-behind);});
       const result=create().previewGroupRooms(token,context,f.selection,{signal:signal()});
       if(accepted)assert.equal((await result).status,'preview_only');
       else await assert.rejects(result,code('context_changed'));
