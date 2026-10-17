@@ -9,7 +9,10 @@ export { BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE
 // tổng hợp cùng chữ ký. Chứng minh phép giao quyền của Hermes, không chứng minh
 // RLS, JWT thật hay thân hàm copilot_* trên production. Dữ liệu tổng hợp.
 export const FULL_READ_PATH = 'supabase/migrations/20261016162104_hermes_full_read_v1.sql';
+// Sửa sau review 9aef3a21 (P1/P2/P3): thay thân v2/v3/báo cáo; định nghĩa SỐNG ở file này.
+export const FULL_READ_FIX_PATH = 'supabase/migrations/20261016172206_hermes_full_read_review_fixes_v1.sql';
 export const fullReadSql = () => readFileSync(process.env.HERMES_FULL_READ_SQL ?? FULL_READ_PATH, 'utf8');
+export const fullReadFixSql = () => readFileSync(process.env.HERMES_FULL_READ_FIX_SQL ?? FULL_READ_FIX_PATH, 'utf8');
 const u = n => `0e0e0e0e-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export const CUSTOMER_A = u(1), CUSTOMER_B = u(2), CUSTOMER_C = u(3), CUSTOMER_F = u(4), CONTRACT_A = u(5), CONTRACT_B = u(6), CONTRACT_F = u(7);
 export const SERVICE = u(8), ORG_SCOPE = UNSELECTED_ORG_SCOPE, FOREIGN_ROOM = u(9), CO_TENANT = u(10), OLD_CONTRACT = u(11);
@@ -18,7 +21,7 @@ export const INVOICE_A = u(13), INVOICE_B = u(14), PENDING = u(15), VOUCHER = u(
 export const FULL_READ_KEYS = ['customers.view', 'contracts.view'];
 export const REPORT_KEYS = ['reports_real_estate.occupancy', 'invoices.view', 'reports_finance.analysis', 'income_expenses.view', 'chat_zalo.view', 'contracts.view'];
 
-export async function setupFullRead(t, { sql = fullReadSql(), reads = [...FULL_READ_KEYS], before = null } = {}) {
+export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixSql(), reads = [...FULL_READ_KEYS], before = null } = {}) {
   const env = await setupFinance(t), { db } = env;
   await db.exec(`ALTER TABLE public.buildings ADD COLUMN street_address text,ADD COLUMN ward text,ADD COLUMN district text,ADD COLUMN province text;
     ALTER TABLE public.contracts ADD COLUMN contract_number text,ADD COLUMN signed_date date,ADD COLUMN start_date date,ADD COLUMN end_date date,
@@ -68,9 +71,16 @@ export async function setupFullRead(t, { sql = fullReadSql(), reads = [...FULL_R
     INSERT INTO public.services VALUES('${SERVICE}','${ORG}','Điện','kWh','ELECTRICITY','PER_UNIT',3500,'${USER}',null);
     INSERT INTO public.contract_services(organization_id,contract_id,service_id,unit_price,initial_reading) VALUES('${ORG}','${CONTRACT_A}','${SERVICE}',3800,120.5);`);
   // Cổng copilot_* tổng hợp: cùng chữ ký/kiểu trả về với bản production (pg_proc
-  // 16/10), tự kiểm khoá CRM qua copilot_org_scope_buildings_v1 như bản thật. Cờ
-  // trang: tên báo cáo trong fixture_disabled_flags ⇒ raise copilot_feature_disabled.
-  await db.exec(`CREATE TABLE public.fixture_disabled_flags(name text PRIMARY KEY);
+  // 16/10), tự kiểm khoá CRM qua copilot_org_scope_buildings_v1 như bản thật. Sáu hàm
+  // được bọc không kiểm cờ trang copilot_feature_flags (như production).
+  // get_invoice_statistics_v2 giữ đúng cách lấy phạm vi của bản thật: staff_assignments
+  // (chủ công ty không có phân công ⇒ 0) — bản sửa không được gọi nó nữa.
+  await db.exec(`CREATE TABLE public.staff_assignments(staff_id uuid,building_id uuid,area_id uuid);
+    CREATE TABLE public.invoice_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),invoice_id uuid,type text,description text,amount numeric);
+    INSERT INTO public.invoice_items(invoice_id,type,description,amount) VALUES('${INVOICE_A}','RENT','Tiền phòng',3000000),
+      ('${INVOICE_A}','SERVICE','Tiền điện T10',350000),('${INVOICE_A}','SERVICE','Tiền nước T10',100000),('${INVOICE_A}','SERVICE','Phí dịch vụ',50000),
+      ('${INVOICE_B}','RENT','Tiền phòng',9100000);
+    CREATE FUNCTION app_private.copilot_fold_text_v1(p_text text) RETURNS text LANGUAGE sql IMMUTABLE AS $$SELECT lower(COALESCE(p_text,''))$$;
     INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('chat_zalo.view','read',false) ON CONFLICT(capability) DO NOTHING;
     INSERT INTO public.fixture_acl(permission,building_ids) VALUES('chat_zalo.view',ARRAY['${BUILDING}'::uuid,'${OTHER_BUILDING}'::uuid]) ON CONFLICT DO NOTHING;
     INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount,notes) VALUES
@@ -104,12 +114,10 @@ export async function setupFullRead(t, { sql = fullReadSql(), reads = [...FULL_R
     CREATE FUNCTION public.get_invoice_statistics_v2(p_building_id uuid,p_room_id uuid,p_status text,p_start_date date,p_end_date date,p_billing_month text,
       p_payment_status text,p_building_ids uuid[]) RETURNS json LANGUAGE sql AS $$
       SELECT json_build_object('total_amount',COALESCE(sum(total_amount),0),'total_paid',COALESCE(sum(paid_amount),0),'total_remaining',COALESCE(sum(remaining_amount),0),
-        'total_refunded',0,'total_count',count(*),'rent_amount',COALESCE(sum(total_amount),0),'electric_amount',0,'water_amount',0,'pdv_amount',0,
-        'total_collected',COALESCE(sum(paid_amount),0),'payment_tm',COALESCE(sum(paid_amount),0),'payment_tk',0,'payment_tt',0,'payment_ct',0,'change_amount',0,
-        'deposit_collected',0)
+        'total_refunded',0,'total_count',count(*),'rent_amount',0,'electric_amount',0,'water_amount',0,'pdv_amount',0)
       FROM public.invoices WHERE deleted_at IS NULL AND (p_building_ids IS NULL OR building_id=ANY(p_building_ids))
         AND (p_billing_month IS NULL OR billing_month=p_billing_month)
-        AND building_id=ANY(public.copilot_org_scope_buildings_v1('invoices.view','${ORG}'::uuid))$$;
+        AND building_id IN (SELECT building_id FROM public.staff_assignments WHERE staff_id=auth.uid())$$;
     CREATE FUNCTION public.copilot_financial_pnl_v1(p_organization_id uuid,p_start_date date,p_end_date date,p_accrual boolean DEFAULT false)
       RETURNS TABLE(month date,building_id uuid,building_name text,is_virtual boolean,revenue numeric,expense numeric,net numeric) LANGUAGE sql AS $$
       SELECT m.month::date,b.id,b.name,false,1000000::numeric,400000::numeric,600000::numeric FROM public.buildings b
@@ -133,16 +141,17 @@ export async function setupFullRead(t, { sql = fullReadSql(), reads = [...FULL_R
     CREATE FUNCTION public.copilot_contract_search_v1(p_organization_id uuid,p_query text DEFAULT NULL,p_status text DEFAULT NULL,p_limit integer DEFAULT 20)
       RETURNS jsonb LANGUAGE plpgsql AS $$
     BEGIN
-      IF EXISTS(SELECT 1 FROM public.fixture_disabled_flags WHERE name='contract_search') THEN RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE='42501'; END IF;
       RETURN jsonb_build_object('gioi_han',p_limit,'so_luong',1,'hop_dong',(SELECT COALESCE(jsonb_agg(jsonb_build_object('hop_dong_id',ct.id,'so_hop_dong',ct.contract_number,
         'khach_hang','Nguyễn Văn An','phong',r.name,'toa_nha',b.name,'ngay_bat_dau',ct.start_date,'ngay_ket_thuc',ct.end_date,'trang_thai',ct.status,
         'tien_thue',ct.rent_price,'tien_coc',ct.total_deposit,'coc_da_thu',ct.deposit_paid) ORDER BY ct.id),'[]'::jsonb)
         FROM public.contracts ct JOIN public.rooms r ON r.id=ct.room_id JOIN public.buildings b ON b.id=r.building_id
         WHERE ct.organization_id=p_organization_id AND r.building_id=ANY(public.copilot_org_scope_buildings_v1('contracts.view',p_organization_id))
-          AND (p_status IS NULL OR ct.status=p_status)));
+          AND (p_status IS NULL OR ct.status=p_status)
+          AND (p_query IS NULL OR lower(concat_ws(' ',ct.contract_number,r.name,b.name,'Nguyễn Văn An')) LIKE '%'||lower(p_query)||'%')));
     END $$;`);
   if (before) await before(db);
   await db.exec(sql); await db.exec(sql);
+  if (fix !== null) { await db.exec(fix); await db.exec(fix); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { setupUpsert, fullReadPath, ROOM, LISTING, PHONE, binding } from './room-pass-upsert-sql-fixture.mjs';
+import { setupUpsert, fullReadChain, ROOM, LISTING, PHONE, binding } from './room-pass-upsert-sql-fixture.mjs';
 import { extract, forward } from './room-pass-sql-fixture.mjs';
 import { USER, ORG, FOREIGN, SESSION, ASSISTANT, id } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { createRoomPassAuth, createRoomPassReads, createRoomPassService } from './room-pass-adapter.mjs';
@@ -19,10 +19,11 @@ const PATHS = Object.freeze({ capability: '/rest/v1/rpc/hermes_room_pass_capabil
   upsert: '/rest/v1/rpc/hermes_room_pass_upsert_v1', full: '/rest/v1/rpc/hermes_room_pass_upsert_v2' });
 
 async function compose(t) {
-  const fixture = await setupUpsert(t, { fullRead: readFileSync(fullReadPath, 'utf8') }), { f, db, rpc, call, call2 } = fixture, events = [];
+  const fixture = await setupUpsert(t, { fullRead: fullReadChain() }), { f, db, rpc, call, call2 } = fixture, events = [];
   await db.exec(extract(forward, 'app_private.hermes_store_read_connection_v1'));
   await db.query('UPDATE app_private.hermes_connection_tokens SET token_digest=$1', [digest]);
-  await db.exec("UPDATE app_private.hermes_connections SET read_capabilities='{}';UPDATE app_private.hermes_org_policies SET read_capabilities='{}'");
+  // Read customers.view kept: the private reply may show the full phone (P2, review 9aef3a21).
+  await db.exec("UPDATE app_private.hermes_connections SET read_capabilities='{customers.view}';UPDATE app_private.hermes_org_policies SET read_capabilities='{customers.view}'");
   const expiresAt = (Math.floor(Date.now() / 1000) + 3600) * 1000;
   const accessToken = ['header', Buffer.from(JSON.stringify({ role: 'authenticated', sub: USER, session_id: SESSION, exp: expiresAt / 1000 })).toString('base64url'), 'signature'].join('.');
   const crypto = createSessionCrypto({ activeKeyVersion: 'test', keys: new Map([['test', randomBytes(32)]]) }); t.after(() => crypto.destroy());

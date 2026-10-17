@@ -2,7 +2,7 @@
 // grants always come from live CRM authority intersected with the saved overlay.
 // One registry drives tools, input/result validation and the SQL family (fixed
 // RPC pair) of each domain; the model never names a table, RPC or actor.
-import { FULL_READS } from './full-read-contract.mjs';
+import { FULL_READS, PRIVATE_HINT } from './full-read-contract.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const domainId = value => typeof value === 'string' && UUID.test(value);
 export const domainRecord = value => value !== null && typeof value === 'object' &&
@@ -59,7 +59,7 @@ export const DOMAIN_FAMILIES = Object.freeze({
     resultKeys: Object.freeze([...BASE_RESULT, 'fetchedAt']), capabilities: Object.freeze([]) }),
 });
 export const DOMAIN_READS = Object.freeze({
-  customers: define('customers.view', 'Tra khách hàng (tên, SĐT đầy đủ, hợp đồng/phòng gần nhất) trong phạm vi được cấp; kết nối Toàn tổ chức thấy cả khách chưa có hợp đồng. Dữ liệu riêng tư: chỉ trả lời riêng người hỏi, không đưa vào tin nhóm. Hồ sơ đầy đủ: crm_read_customer_detail', {
+  customers: define('customers.view', `Tra khách hàng (tên, SĐT đầy đủ, phòng gần nhất; contractId chỉ khi có quyền đọc hợp đồng) trong phạm vi được cấp; kết nối Toàn tổ chức thấy cả khách chưa có hợp đồng. ${PRIVATE_HINT} Hồ sơ đầy đủ: crm_read_customer_detail`, {
     id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), roomId: nullable(domainId),
     roomName: nullable(text) }, [], { family: 'v3' }),
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {

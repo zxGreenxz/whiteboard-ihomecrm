@@ -30,7 +30,7 @@ const object = fields => value => shaped(value, fields);
 export function shaped(value, fields) {
   return exact(value, Object.keys(fields)) && Object.entries(fields).every(([key, check]) => check(value[key]));
 }
-export const PRIVATE_HINT = 'Dữ liệu riêng tư: chỉ trả lời riêng người hỏi, không đưa vào tin nhóm.';
+export const PRIVATE_HINT = 'Dữ liệu riêng tư: chỉ trả lời riêng cho người hỏi, không đăng vào nhóm.';
 const detailSchema = key => ({ type: 'object', additionalProperties: false, required: [key], properties: { [key]: { type: 'string', format: 'uuid' } } });
 const detailInput = key => input => {
   if (!exact(input, [key]) || !id(input[key])) fail();
@@ -47,7 +47,7 @@ export const CUSTOMER_DETAIL_FIELDS = Object.freeze({ id, name: nullable(longTex
   district: nullable(longText(100)), province: nullable(longText(100)), currentResidence: nullable(longText(500)), permanentAddress: nullable(longText(500)),
   companyName: nullable(longText(200)), contactPerson: nullable(longText(200)), contactPersonPhone: nullable(longText(40)),
   emergencyContact: nullable(object({ name: nullable(longText(200)), phone: nullable(longText(40)), relationship: nullable(longText(100)) })),
-  notes: nullable(longText(2000)), contracts: list(20, CUSTOMER_CONTRACT) });
+  notes: nullable(longText(2000)), contractsVisible: bool, contracts: list(20, CUSTOMER_CONTRACT) });
 const TENANT = Object.freeze({ customerId: id, name: nullable(longText(200)), phone: nullable(longText(40)), isRepresentative: bool,
   idNumber: nullable(longText(40)), idIssueDate: nullable(date), idIssuePlace: nullable(longText(200)), dateOfBirth: nullable(date),
   gender: nullable(longText(20)), isForeign: nullable(bool), permanentAddress: nullable(longText(300)), currentResidence: nullable(longText(300)),
@@ -60,15 +60,18 @@ export const CONTRACT_DETAIL_FIELDS = Object.freeze({ id, number: nullable(longT
   rentPrice: amount, paymentCycle: nullable(code), totalDeposit: amount, depositPaid: amount, depositRemaining: amount, depositDebtMode: nullable(code),
   depositDebtReason: nullable(longText(500)), depositTopupDueDate: nullable(date), initialElectricityReading: nullable(amount),
   initialWaterReading: nullable(amount), notes: nullable(longText(2000)), parentContractId: nullable(id),
-  tenants: list(10, TENANT), services: list(50, SERVICE) });
+  tenantsVisible: bool, tenants: list(10, TENANT), services: list(50, SERVICE) });
 // The CRM building scope supplied earlier also fences output when present.
 function inScope(identity, permission, buildingIds) {
   const scopes = identity.scopesByPermission?.[permission]?.buildingIds;
   return !Array.isArray(scopes) || buildingIds.every(building => scopes.includes(building));
 }
-const detail = (permission, key, fields, buildingsOf) => (value, identity, input) => {
+// fences: [[khoá, toà của mục]] — mỗi phần chỉ được nằm trong phạm vi CRM của đúng khoá
+// đã cấp nó (người ở ⇐ customers.view, hợp đồng ⇐ contracts.view, như embed của web).
+const detail = (key, fields, fences, hidden) => (value, identity, input) => {
   if (value.item === null) return { item: null };
-  if (!shaped(value.item, fields) || value.item.id !== input[key] || !inScope(identity, permission, buildingsOf(value.item))) fail();
+  if (!shaped(value.item, fields) || value.item.id !== input[key] || hidden(value.item) ||
+      fences(value.item).some(([permission, buildings]) => !inScope(identity, permission, buildings))) fail();
   return { item: structuredClone(value.item) };
 };
 const define = (permission, name, description, options) => Object.freeze({ family: 'v3', permission, label: description, description, fields: Object.freeze({}),
@@ -85,8 +88,7 @@ const name200 = nullable(longText(200)), name100 = nullable(longText(100)), mone
 const report = (source, scope, fields, options = {}) => Object.freeze({ source, scope, fields: Object.freeze(fields), summary: null, statuses: null,
   month: false, fromDate: false, toDate: false, requiresDates: false, days: false, buildingFilter: scope !== 'organization', ...options });
 const INVOICE_STATS = Object.freeze(Object.fromEntries(['totalAmount', 'totalPaid', 'totalRemaining', 'totalRefunded', 'rentAmount', 'electricAmount',
-  'waterAmount', 'serviceAmount', 'totalCollected', 'cashAmount', 'transferAmount', 'paymentTt', 'paymentCt', 'changeAmount', 'depositCollected']
-  .map(key => [key, amount]).concat([['totalCount', count]])));
+  'waterAmount', 'serviceAmount'].map(key => [key, amount]).concat([['totalCount', count]])));
 export const REPORTS = Object.freeze({
   occupancy_report: Object.freeze({ permission: 'reports_real_estate.occupancy', reports: Object.freeze({
     snapshot: report('crm.copilot_occupancy_v1', 'rows', { buildingId: id, buildingName: name200, total: count, occupied: count, reserved: count,
@@ -97,7 +99,7 @@ export const REPORTS = Object.freeze({
   invoice_report: Object.freeze({ permission: 'invoices.view', reports: Object.freeze({
     search: report('crm.copilot_invoice_search_v1', 'rows', { id, number: name100, billingMonth: nullable(longText(20)), totalAmount: amount, status: code,
       buildingId: id, buildingName: name200, roomId: id, roomName: name100 }, { month: true, statuses: Object.freeze(['paid', 'partial', 'unpaid']) }),
-    stats: report('crm.get_invoice_statistics_v2', 'buildings', {}, { month: true, summary: INVOICE_STATS }) }) }),
+    stats: report('crm.invoices', 'buildings', {}, { month: true, summary: INVOICE_STATS }) }) }),
   monthly_pnl: Object.freeze({ permission: 'reports_finance.analysis', reports: Object.freeze({
     by_month: report('crm.copilot_financial_pnl_v1', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
       { fromDate: true, toDate: true, requiresDates: true }) }) }),
@@ -139,7 +141,8 @@ const reportResult = (operation, permission) => (value, identity, input) => {
       !Array.isArray(value.items) || value.items.length > input.limit ||
       !(value.nextOffset === null || Number.isSafeInteger(value.nextOffset) && value.nextOffset === input.offset + value.items.length && value.items.length > 0)) fail();
   if (value.unavailable !== null) {
-    if (!(value.unavailable === 'copilot_feature_disabled' || value.unavailable === 'organization_scope_required' && spec.scope === 'organization') ||
+    if (!(value.unavailable === 'organization_scope_required' && spec.scope === 'organization' ||
+        value.unavailable === 'no_building_scope' && spec.scope !== 'organization') ||
         value.items.length || value.summary !== null || value.nextOffset !== null) fail();
     return { report: value.report, source: value.source, unavailable: value.unavailable, summary: null, items: [], offset: value.offset, nextOffset: null, sourceCapped: false };
   }
@@ -157,33 +160,37 @@ const BUILDING = { type: ['string', 'null'], format: 'uuid', description: 'ID to
 const reportSchema = (properties, required = []) => ({ type: 'object', additionalProperties: false, ...(required.length ? { required } : {}), properties });
 const PAGE = 'Trang tiếp: gọi lại với offset=nextOffset. sourceCapped=true: nguồn CRM đã chạm trần, thu hẹp bộ lọc.';
 const ORG_ONLY = 'Cần kết nối phạm vi Toàn tổ chức (không lọc được theo toà); thiếu thì unavailable=organization_scope_required.';
-const reportDefine = (operation, description, properties, required) => define(REPORTS[operation].permission, `crm_read_${operation}`, `${description} ${PAGE}`, {
+const NO_BUILDING = 'unavailable=no_building_scope: kết nối không còn toà nào được đọc (không phải số 0).';
+const reportDefine = (operation, description, properties, required) => define(REPORTS[operation].permission, `crm_read_${operation}`,
+  `${description} ${PAGE}${Object.values(REPORTS[operation].reports).some(spec => spec.scope !== 'organization') ? ` ${NO_BUILDING}` : ''}`, {
   input: reportInput(operation), inputSchema: reportSchema(properties, required), resultKeys: REPORT_RESULT,
   result: reportResult(operation, REPORTS[operation].permission), reports: REPORTS[operation].reports });
 const REPORT_READS = Object.freeze({
   occupancy_report: reportDefine('occupancy_report', 'Báo cáo lấp đầy: report=snapshot — từng toà có bao nhiêu phòng đang ở/giữ chỗ/bảo trì/không khai thác/trống, tỷ lệ lấp đầy và doanh thu bỏ lỡ tại ngày fromDate (mặc định hôm nay); report=upcoming — hợp đồng sắp hết hạn, phòng sắp trống trong days ngày tới (mặc định 30) kể từ fromDate.',
     { report: { enum: ['snapshot', 'upcoming'] }, fromDate: DATE, days: { type: ['integer', 'null'], minimum: 1, maximum: 365 }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  invoice_report: reportDefine('invoice_report', 'Hoá đơn: report=search — tìm hoá đơn theo kỳ month (YYYY-MM), trạng thái thanh toán (paid/partial/unpaid) và query (số hoá đơn hoặc tên khách), có toà/phòng/tổng tiền; report=stats — tổng hợp kỳ month: tổng tiền, đã thu, còn nợ, hoàn, tiền phòng/điện/nước/dịch vụ, đã thu theo tiền mặt (cash) và chuyển khoản (transfer), cọc đã thu. Số tiền là chuỗi VND.',
+  invoice_report: reportDefine('invoice_report', 'Hoá đơn: report=search — tìm hoá đơn theo kỳ month (YYYY-MM), trạng thái thanh toán (paid/partial/unpaid) và query (số hoá đơn hoặc tên khách), có toà/phòng/tổng tiền; report=stats — tổng hợp kỳ month trên các toà được đọc: số hoá đơn, tổng tiền, đã thu, còn nợ, hoàn, tiền phòng/điện/nước/dịch vụ (không gồm hoá đơn huỷ). Số tiền là chuỗi VND.',
     { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid'] },
       buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
   monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng THÁNG của từng toà (doanh thu, chi phí, lãi ròng) trong kỳ fromDate..toDate (≤ 366 ngày), cùng nguồn báo cáo tài chính CRM như crm_read_building_profit nhưng tách theo tháng. Số tiền là chuỗi VND.',
     { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
-  pending_approvals: reportDefine('pending_approvals', `Hộp chờ duyệt của CHÍNH người hỏi: phiếu thu/chi đang chờ bạn duyệt (mã, tên phiếu, số tiền, người lập, bước duyệt, lúc gửi). ${ORG_ONLY}`,
+  pending_approvals: reportDefine('pending_approvals', `Hộp chờ duyệt của CHÍNH người hỏi: phiếu thu/chi đang chờ bạn duyệt (mã, tên phiếu, số tiền, người lập, bước duyệt, lúc gửi). ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
   zalo_conversations: reportDefine('zalo_conversations', `Danh sách hội thoại Zalo của công ty như trang Chat Zalo: người nhắn, SĐT, phòng/toà gắn, số tin chưa đọc, ghim, tin cuối (≤160 ký tự) và tổng hợp chưa đọc; query tìm theo tên/SĐT/nhãn (không tìm trong nội dung tin). ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),
-  contract_search: reportDefine('contract_search', `Tìm hợp đồng theo tên khách, số HĐ, phòng hoặc toà (query) và trạng thái: khách đại diện, phòng, toà, ngày bắt đầu/kết thúc, giá thuê, cọc phải thu/đã thu. Chi tiết: crm_read_contract_detail. ${ORG_ONLY}`,
+  contract_search: reportDefine('contract_search', `Tìm hợp đồng theo số HĐ, phòng, toà hoặc tên khách (query) và trạng thái: phòng, toà, ngày bắt đầu/kết thúc, giá thuê, cọc phải thu/đã thu; tên khách đại diện và tìm theo tên khách chỉ khi kết nối có quyền đọc khách hàng (customers.view), thiếu thì customerName=null. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { status: { enum: [null, 'DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED'] }, query: QUERY, limit: LIMIT, offset: OFFSET }),
 });
 
 export const FULL_READS = Object.freeze({
   customer_detail: define('customers.view', 'crm_read_customer_detail',
-    `Hồ sơ đầy đủ của MỘT khách như trang /customers/:id: họ tên, SĐT, email, CCCD/CMND (số dạng chữ, ngày/nơi cấp), ngày sinh, giới tính, địa chỉ chi tiết, chỗ ở hiện tại, thường trú, nghề nghiệp, nơi làm việc, người liên hệ khẩn cấp, ghi chú và các hợp đồng (≤20) ở toà được phép. Không có ảnh CCCD. customerId lấy từ crm_read_customers. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
+    `Hồ sơ đầy đủ của MỘT khách như trang /customers/:id: họ tên, SĐT, email, CCCD/CMND (số dạng chữ, ngày/nơi cấp), ngày sinh, giới tính, địa chỉ chi tiết, chỗ ở hiện tại, thường trú, nghề nghiệp, nơi làm việc, người liên hệ khẩn cấp, ghi chú và các hợp đồng (≤20) ở toà mà quyền đọc hợp đồng (contracts.view) cho phép — thiếu thì contracts=[] (contractsVisible=false). Không có ảnh CCCD. customerId lấy từ crm_read_customers. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
     { input: detailInput('customerId'), inputSchema: detailSchema('customerId'), resultKeys: DETAIL_RESULT,
-      result: detail('customers.view', 'customerId', CUSTOMER_DETAIL_FIELDS, item => item.contracts.map(row => row.buildingId)) }),
+      result: detail('customerId', CUSTOMER_DETAIL_FIELDS, item => [['contracts.view', item.contracts.map(row => row.buildingId)]],
+        item => !item.contractsVisible && item.contracts.length > 0) }),
   contract_detail: define('contracts.view', 'crm_read_contract_detail',
-    `Chi tiết MỘT hợp đồng như trang /contracts/:id: số HĐ, trạng thái, toà/phòng, ngày ký/bắt đầu/kết thúc/dự kiến trả phòng, kỳ tính tiền, giá thuê, chu kỳ thanh toán, cọc (phải thu/đã thu/còn thiếu, nợ cọc), chỉ số điện nước ban đầu, ghi chú, người ở (≤10: SĐT, CCCD, ngày sinh, thường trú...) và dịch vụ kèm đơn giá. Không có file hợp đồng/ảnh CCCD. contractId lấy từ crm_read_contracts hoặc crm_read_customer_detail. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
+    `Chi tiết MỘT hợp đồng như trang /contracts/:id: số HĐ, trạng thái, toà/phòng, ngày ký/bắt đầu/kết thúc/dự kiến trả phòng, kỳ tính tiền, giá thuê, chu kỳ thanh toán, cọc (phải thu/đã thu/còn thiếu, nợ cọc), chỉ số điện nước ban đầu, ghi chú, người ở (≤10: SĐT, CCCD, ngày sinh, thường trú...; chỉ khi kết nối có quyền đọc khách hàng customers.view như web, thiếu thì tenants=[] và tenantsVisible=false) và dịch vụ kèm đơn giá. Không có file hợp đồng/ảnh CCCD. contractId lấy từ crm_read_contracts hoặc crm_read_customer_detail. item=null: không thấy hoặc ngoài phạm vi. ${PRIVATE_HINT}`,
     { input: detailInput('contractId'), inputSchema: detailSchema('contractId'), resultKeys: DETAIL_RESULT,
-      result: detail('contracts.view', 'contractId', CONTRACT_DETAIL_FIELDS, item => [item.buildingId]) }),
+      result: detail('contractId', CONTRACT_DETAIL_FIELDS, item => [['contracts.view', [item.buildingId]], ...(item.tenantsVisible ? [['customers.view', [item.buildingId]]] : [])],
+        item => !item.tenantsVisible && item.tenants.length > 0) }),
   ...REPORT_READS,
 });

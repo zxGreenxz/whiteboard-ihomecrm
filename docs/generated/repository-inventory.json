@@ -2,9 +2,9 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1497,
-  "soFileDocBangFs": 367,
-  "tongLoiGoi": 842,
-  "khongPhanLoaiDuoc": 385,
+  "soFileDocBangFs": 365,
+  "tongLoiGoi": 840,
+  "khongPhanLoaiDuoc": 383,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 57,
@@ -1494,24 +1494,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/room-pass-full-read.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "infra/hermes-broker/room-pass-metadata.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/room-pass-upsert-composition.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/room-pass-upsert.test.mjs",
