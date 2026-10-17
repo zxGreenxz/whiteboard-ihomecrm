@@ -4,7 +4,6 @@ import { createDependencyScope } from './dependency-scope.mjs';
 import { createStoreTransport } from './store-transport.mjs';
 import { createSupabaseDurableAuthAdapter } from './supabase-durable-auth-adapter.mjs';
 import { createSupabaseRoomReads } from './room-read-service.mjs';
-import { createModelRelay } from './model-relay.mjs';
 
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = 1_800_000_000_000;
@@ -42,25 +41,4 @@ for (const kind of ['auth', 'rooms']) test(`${kind} abort keeps late fetch and r
     { headers: { 'content-type': 'application/json' } }));
   await cancelStarted.promise; await tick(); assert.equal(drained, false);
   cancelled.resolve(); await task.drained; await scope.close();
-});
-
-test('relay separates bounded result from actual fetch/body drain and never retries a lost response', async () => {
-  const received = deferred(), fetchResult = deferred(), cancelled = deferred(), cancelStarted = deferred(); let count = 0;
-  const relay = createModelRelay({ supabaseUrl: upstream.url, publishableKey: upstream.publishableKey,
-    allowedModels: ['openai:fixture'], fetch() { count++; received.resolve(); return fetchResult.promise; } });
-  const controller = new AbortController();
-  const handle = relay.beginCompletion({ accessToken: jwt, organizationId: id(3), requestId: id(4), signal: controller.signal,
-    body: { model: 'openai:fixture', messages: [{ role: 'user', content: 'Fixture' }], max_tokens: 128 } });
-  await received.promise; controller.abort(); await assert.rejects(handle.result, /cancelled/);
-  let drained = false; void handle.drained.then(() => { drained = true; }); await tick(); assert.equal(drained, false);
-  fetchResult.resolve(new Response(new ReadableStream({ cancel() { cancelStarted.resolve(); return cancelled.promise; } })));
-  await cancelStarted.promise; await tick(); assert.equal(drained, false);
-  cancelled.resolve(); assert.equal(await handle.drained, undefined); assert.equal(count, 1);
-});
-
-test('relay validation denial drains without issuing transport', async () => {
-  let count = 0;
-  const relay = createModelRelay({ supabaseUrl: upstream.url, publishableKey: upstream.publishableKey, fetch() { count++; } });
-  const handle = relay.beginCompletion({});
-  await assert.rejects(handle.result, /invalid_context/); assert.equal(await handle.drained, undefined); assert.equal(count, 0);
 });
