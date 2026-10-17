@@ -7,6 +7,7 @@ import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, 
 import { CATEGORY } from './finance-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
+import { W2_FOUNDATION_PATH } from './wave2-sql-paths.mjs';
 
 // Báo cáo khớp màn web (họ v3, 20261017021554): nguồn là RPC web THẬT (định nghĩa cuối
 // trong baseline/migration, nạp vào PGlite) hoặc SQL theo bộ lọc web; không hàm copilot_*
@@ -115,11 +116,16 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     assert.ok(last, name);
     if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_PARITY_PATH, `${name} lives in the web-parity migration`);
-    if (['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2'].includes(name))
+    if (name === 'app_private.hermes_report_read_v2')
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
+    // Đợt 2 thay v3 MỘT lần (20261018000000): thêm định tuyến report/report_list, phần còn lại giữ nguyên
+    // bản review-fix (wave2-foundation.test.mjs so từng ký tự); đột biến ở file này vẫn nhắm bản review-fix.
+    if (name === 'public.hermes_domain_read_v3')
+      assert.equal(`supabase/migrations/${last[0]}`, W2_FOUNDATION_PATH, `${name} lives in the wave-2 foundation migration`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
-  for (const sql of [fullReadParitySql(), fullReadOwnerSql()]) assert.doesNotMatch(sql.replace(/--[^\n]*/g, ''), /copilot_/i, 'no copilot function call');
+  for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])
+    assert.doesNotMatch(sql.replace(/--[^\n]*/g, ''), /copilot_/i, 'no copilot function call');
   // Bản thật trong PGlite sau cả ba migration: không thân hàm nào của chuỗi đọc đầy đủ nhắc copilot_.
   const { db } = env;
   const rows = (await db.query(`SELECT p.proname,p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace

@@ -1,0 +1,219 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createBroker } from './broker.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
+import { advertisedTool } from './tool-argument-shape.mjs';
+import { DOMAIN_TOOLS, DOMAIN_READS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES, HERMES_CAPABILITIES, requiresBuildingScope } from './capability-contract.mjs';
+import { W2, W2_READ_KEYS, W2_READ_KEY_LIST, W2_SELF_KEYS, W2_TOOL_NAMES, createW2Registry } from './wave2-registry.mjs';
+import { W2_TOPICS, PRIVATE_HINT, w2Report, w2Params, w2CatalogEntry, id, nullable, longText, amount } from './wave2-kit.mjs';
+import { W2A_REPORTS } from './wave2-a-contract.mjs';
+import { W2B_REPORTS } from './wave2-b-contract.mjs';
+import { W2C_REPORTS } from './wave2-c-contract.mjs';
+import { W2D_REPORTS } from './wave2-d-contract.mjs';
+
+// Gói 0 — mặt tool đợt 2 ở broker (không PGlite): sổ báo cáo, hai tool meta, rào quyền theo báo cáo,
+// chuẩn hoá tham số, rào đầu ra theo phạm vi CRM, ngân sách byte tools/list.
+const uuid = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-${n.repeat(12)}`;
+const ORG = uuid('d'), A = uuid('a'), B = uuid('b'), C = uuid('c');
+const fields = { buildingId: nullable(id), name: nullable(longText(100)), total: amount };
+const PROBE = createW2Registry({
+  a: { probe_rows: w2Report({ permission: 'vehicles.view', source: 'crm.probe_rows', scope: 'rows', title: 'Thăm dò hàng có toà',
+    params: ['query', 'buildingId', 'fromDate', 'toDate', 'status'], statuses: ['open', 'closed'], scopeKeys: ['customers.view'], fields,
+    summary: { total: amount }, private: true }) },
+  b: { probe_org: w2Report({ permission: 'materials.view', source: 'crm.probe_org', scope: 'organization', title: 'Thăm dò toàn công ty',
+    params: ['query'], fields }) },
+  c: { probe_self: w2Report({ permission: 'assistant.salary.self', source: 'crm.probe_self', scope: 'self', title: 'Thăm dò của tôi',
+    params: ['month'], required: ['month'], fields: { month: longText(7), total: amount } }) },
+  d: { probe_invoice: w2Report({ permission: 'invoices.view', source: 'crm.probe_invoice', scope: 'rows', title: 'Thăm dò khoá đợt 1',
+    params: ['invoiceId'], required: ['invoiceId'], fields }) },
+});
+const identity = (read, buildings = [A, B]) => ({ row: { organizationId: ORG }, effective: { read, action: [] },
+  scopesByPermission: Object.fromEntries(read.map(key => [key, { buildingIds: buildings, cashbookIds: [] }])) });
+const envelope = (report, items, extra = {}) => ({ organizationId: ORG, domain: 'report', fetchedAt: '2026-10-18T00:00:00.000Z', report,
+  source: PROBE.reports[report].source, unavailable: null, summary: null, items, offset: 0, nextOffset: null, sourceCapped: false, ...extra });
+
+test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộc ngoài params, status thiếu danh sách, nguồn sai dạng, buildingId ở organization/self)', () => {
+  const ok = { permission: 'vehicles.view', source: 'crm.vehicles', scope: 'rows', title: 'Xe', params: ['query'], fields };
+  assert.ok(Object.isFrozen(w2Report(ok)));
+  for (const bad of [{ params: ['foo'] }, { required: ['month'] }, { params: ['status'] }, { params: ['kind'], kinds: [] }, { statuses: ['x'] },
+    { source: 'crm.Vehicles' }, { source: 'vehicles' }, { scope: 'global' }, { scope: 'organization', params: ['buildingId'] },
+    { scope: 'self', params: ['buildingId'] }, { title: '' }, { title: 'x'.repeat(301) }, { permission: 'Vehicles' }, { fields: { a: 1 } },
+    { summary: [] }, { private: 'yes' }, { extra: 1 }, { params: ['query', 'query'] }])
+    assert.throws(() => w2Report({ ...ok, ...bad }), JSON.stringify(bad));
+});
+
+test('sổ báo cáo: bốn gói đúng chữ cái, mã duy nhất xuyên gói, chỉ nhận khai báo của w2Report', () => {
+  const spec = PROBE.reports.probe_rows, plain = Object.freeze(Object.fromEntries(Object.entries(spec).filter(([key]) => key !== 'package')));
+  const empty = { a: {}, b: {}, c: {}, d: {} };
+  assert.deepEqual(createW2Registry(empty).permissions, []);
+  for (const bad of [{ ...empty, a: { dup: plain }, b: { dup: plain } }, { ...empty, a: { Bad: plain } }, { ...empty, a: { x: { ...plain } } },
+    { a: {}, b: {}, c: {} }, { ...empty, e: {} }, { ...empty, a: { x: Object.freeze({ ...plain, extra: 1 }) } }])
+    assert.throws(() => createW2Registry(bad), JSON.stringify(Object.keys(bad)));
+  assert.deepEqual(PROBE.permissions, ['assistant.salary.self', 'invoices.view', 'materials.view', 'vehicles.view']);
+  assert.deepEqual(PROBE.sqlSpec('probe_rows'), { permission: 'vehicles.view', source: 'crm.probe_rows', scope: 'rows',
+    params: ['query', 'buildingId', 'fromDate', 'toDate', 'status'], required: [], statuses: ['open', 'closed'], kinds: null, scopeKeys: ['customers.view'], package: 'a' });
+  // Sổ thật (Gói 0): bốn file gói còn rỗng — mã của gói nào nằm ở file gói đó.
+  for (const [letter, reports] of Object.entries({ a: W2A_REPORTS, b: W2B_REPORTS, c: W2C_REPORTS, d: W2D_REPORTS }))
+    for (const reportId of Object.keys(reports)) assert.equal(W2.reports[reportId].package, letter);
+});
+
+test('khoá đợt 2: 35 khoá đọc trong capability contract (không trùng khoá cũ), resource đúng, self không cần phạm vi', () => {
+  assert.equal(W2_READ_KEY_LIST.length, 35);
+  for (const key of W2_READ_KEY_LIST) {
+    assert.ok(HERMES_READ_CAPABILITIES.includes(key), key);
+    assert.deepEqual(HERMES_CAPABILITIES[key], { mode: 'read', resource: W2_READ_KEYS[key] }, key);
+    assert.equal(HERMES_ACTION_CAPABILITIES.includes(key), false);
+  }
+  assert.deepEqual([...W2_SELF_KEYS].sort(), ['assistant.bank_events.read', 'assistant.salary.self', 'notifications.view', 'personal_finance.view']);
+  assert.equal(requiresBuildingScope(W2_SELF_KEYS), false, 'kết nối chỉ khoá self: không bắt chọn phạm vi');
+  assert.equal(requiresBuildingScope(['vehicles.view']), true); assert.equal(requiresBuildingScope(['salary.view']), true);
+  for (const key of ['shareholder_profit.view', 'personal_finance.view', 'assistant.bank_events.read', 'salary.view', 'assistant.salary.self',
+    'reports_finance.profit_distribution', 'cashbooks.view', 'network_center.view', 'reports_real_estate.vacant_rooms', 'reports_real_estate.expense_ratio'])
+    assert.ok(W2_READ_KEY_LIST.includes(key), `chủ chốt 17/10: ${key}`);
+  for (const key of ['shareholder_profit.lock', 'reports_finance.reconcile', 'network_center.execute', 'salary.lock', 'personal_finance.create'])
+    assert.equal(Object.hasOwn(HERMES_CAPABILITIES, key), false, `không mở khoá ghi/quản trị: ${key}`);
+});
+
+test('mặt tool: đúng hai tool meta, gọn (≤ 1 600 B), không nhắc bảng/RPC/copilot; chưa có báo cáo nào ⇒ không hiện dù đủ khoá', () => {
+  const meta = DOMAIN_TOOLS.filter(tool => W2_TOOL_NAMES.includes(tool.name));
+  assert.deepEqual(meta.map(tool => tool.name), W2_TOOL_NAMES);
+  const bytes = Buffer.byteLength(JSON.stringify(meta.map(advertisedTool)));
+  assert.ok(bytes <= 1600, `hai tool meta ${bytes} B`);
+  for (const tool of meta) {
+    assert.doesNotMatch(tool.description, /copilot|hermes_|SELECT|app_private/i, tool.name);
+    assert.deepEqual(tool.annotations, { readOnlyHint: true, destructiveHint: false, openWorldHint: false });
+    assert.equal(tool.inputSchema.additionalProperties, false);
+  }
+  assert.ok(meta[1].description.includes(PRIVATE_HINT) && meta[1].description.includes('no_building_scope') && meta[1].description.includes('nextOffset'));
+  assert.deepEqual(meta[0].inputSchema.properties.topic.enum, [null, ...Object.keys(W2_TOPICS)]);
+  assert.deepEqual(meta[1].inputSchema.required, ['report']);
+  const all = { read: [...HERMES_READ_CAPABILITIES], action: [] };
+  assert.equal(W2.permissions.length === 0, !mayUseDomain(all, 'report_list'), 'hiện ⇔ có ít nhất một báo cáo đã đăng ký');
+  assert.equal(DOMAIN_READS.report.family, 'v3'); assert.equal(DOMAIN_READS.report_list.family, 'v3');
+});
+
+test('quyền theo báo cáo: tool hiện khi giữ khoá của MỘT báo cáo; chạy đòi đúng khoá của báo cáo được gọi', () => {
+  const { report_list: list, report } = PROBE.reads;
+  assert.equal(list.mayUse({ read: [] }), false); assert.equal(list.mayUse(undefined), false);
+  assert.equal(list.mayUse({ read: ['rooms.view', 'customers.view'] }), false, 'khoá không thuộc báo cáo nào');
+  assert.equal(list.mayUse({ read: ['vehicles.view'] }), true);
+  assert.equal(report.mayUse({ read: ['invoices.view'] }), true, 'khoá đợt 1 dùng lại được');
+  const run = report.input({ report: 'probe_org' });
+  assert.equal(report.mayUse({ read: ['vehicles.view'] }, run), false, 'khoá của báo cáo khác');
+  assert.equal(report.mayUse({ read: ['materials.view'] }, run), true);
+});
+
+test('đầu vào: topic theo tên nhóm; params chuẩn hoá đủ tên (trống/UUID 0 = null), sai kiểu ⇒ từ chối trước SQL', () => {
+  const { report_list: list, report } = PROBE.reads;
+  assert.deepEqual(list.input({}), { topic: null }); assert.deepEqual(list.input({ topic: null }), { topic: null });
+  assert.deepEqual(list.input({ topic: 'thu_tien' }), { topic: 'a' }); assert.deepEqual(list.input({ topic: 'danh_muc' }), { topic: 'd' });
+  for (const bad of [{ topic: 'x' }, { topic: 'e' }, { topic: 'toString' }, { topic: 1 }, { other: 1 }, null, []]) assert.throws(() => list.input(bad), JSON.stringify(bad));
+  // Broker, dịch vụ bound-user và adapter đều kiểm lại bản đã chuẩn hoá: phải bất biến.
+  for (const value of [{}, { topic: 'thu_tien' }, { topic: 'van_hanh' }]) assert.deepEqual(list.input(list.input(value)), list.input(value), JSON.stringify(value));
+  for (const value of [{ report: 'probe_rows', params: { query: '  xe ', buildingId: '00000000-0000-0000-0000-000000000000' } }, { report: 'probe_self', params: { month: '2026-09' }, limit: 3 }])
+    assert.deepEqual(report.input(report.input(value)), report.input(value), JSON.stringify(value));
+  assert.deepEqual(domainInput('report_list', domainInput('report_list', { topic: 'tai_chinh' })), { topic: 'b' }, 'sổ thật cũng bất biến');
+  assert.deepEqual(report.input({ report: 'probe_rows' }), { report: 'probe_rows', params: { query: null, buildingId: null, fromDate: null, toDate: null, status: null }, limit: 20, offset: 0 });
+  assert.deepEqual(report.input({ report: 'probe_rows', params: { query: '  xe  ', buildingId: '00000000-0000-0000-0000-000000000000', status: 'open' }, limit: 5, offset: 10 }),
+    { report: 'probe_rows', params: { query: 'xe', buildingId: null, fromDate: null, toDate: null, status: 'open' }, limit: 5, offset: 10 });
+  assert.deepEqual(report.input({ report: 'probe_self', params: { month: '2026-09' } }).params, { month: '2026-09' });
+  for (const bad of [{ report: 'nope' }, { report: 'probe_rows', params: { foo: 1 } }, { report: 'probe_rows', params: { status: 'OPEN' } },
+    { report: 'probe_rows', limit: 0 }, { report: 'probe_rows', limit: 51 }, { report: 'probe_rows', offset: 2001 }, { report: 'probe_rows', organizationId: ORG },
+    { report: 'probe_self' }, { report: 'probe_self', params: { month: '2026-13' } }, { report: 'probe_invoice', params: { invoiceId: 'HD-1' } },
+    { report: 'probe_rows', params: { fromDate: '2026-01-01', toDate: '2027-01-03' } }, { report: 'probe_rows', params: [] }])
+    assert.throws(() => report.input(bad), JSON.stringify(bad));
+  assert.throws(() => w2Params(PROBE.reports.probe_org, { buildingId: A }), 'organization không có buildingId');
+});
+
+test('mục lục: chiếu từ khai báo, chỉ báo cáo SQL vừa xác nhận và broker cũng thấy khoá; mã lạ bỏ qua, lệch khoá/nhóm ⇒ từ chối', () => {
+  const { report_list: list } = PROBE.reads, input = list.input({});
+  const sql = items => ({ organizationId: ORG, domain: 'report_list', fetchedAt: '2026-10-18T00:00:00.000Z', items });
+  const value = list.result(sql([{ report: 'future_report', permission: 'x.view' }, { report: 'probe_org', permission: 'materials.view' },
+    { report: 'probe_rows', permission: 'vehicles.view' }]), identity(['vehicles.view', 'materials.view']), input);
+  assert.deepEqual(value.items, [w2CatalogEntry('probe_org', PROBE.reports.probe_org, 'b'), w2CatalogEntry('probe_rows', PROBE.reports.probe_rows, 'a')]);
+  assert.deepEqual(value.items[1], { report: 'probe_rows', topic: 'thu_tien', title: 'Thăm dò hàng có toà', private: true,
+    params: { query: 'chữ tìm ≤200 ký tự', buildingId: 'ID toà (không phải ID công ty)', fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD', status: 'open|closed' } });
+  assert.equal(list.result(sql([{ report: 'probe_self', permission: 'assistant.salary.self' }]), identity(['assistant.salary.self']), input).items[0].params.month,
+    'YYYY-MM, bắt buộc');
+  for (const [items, who, topic] of [[[{ report: 'probe_rows', permission: 'materials.view' }], ['vehicles.view', 'materials.view'], {}],
+    [[{ report: 'probe_rows', permission: 'vehicles.view' }], ['materials.view'], {}],
+    [[{ report: 'probe_rows', permission: 'vehicles.view' }, { report: 'probe_org', permission: 'materials.view' }], ['vehicles.view', 'materials.view'], {}],
+    [[{ report: 'probe_org', permission: 'materials.view' }], ['materials.view'], { topic: 'thu_tien' }],
+    [[{ report: 'probe_rows', permission: 'vehicles.view', extra: 1 }], ['vehicles.view'], {}]])
+    assert.throws(() => list.result(sql(items), identity(who), list.input(topic)), JSON.stringify(items).slice(0, 60));
+});
+
+test('kết quả: rào khoá, nguồn, khuôn hàng, phạm vi CRM của khoá và toà được hỏi; unavailable đúng tập', () => {
+  const { report } = PROBE.reads, input = report.input({ report: 'probe_rows' });
+  const row = { buildingId: A, name: 'Toà A', total: '1' }, who = identity(['vehicles.view']);
+  assert.deepEqual(report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), who, input).items, [row]);
+  assert.deepEqual(report.result(envelope('probe_rows', [{ ...row, buildingId: null }], { summary: { total: '1' } }), who, input).items[0].buildingId, null);
+  for (const bad of [envelope('probe_rows', [{ ...row, buildingId: C }], { summary: { total: '1' } }), envelope('probe_rows', [{ ...row, phone: '0900' }], { summary: { total: '1' } }),
+    envelope('probe_rows', [row], { summary: null }), envelope('probe_rows', [row], { summary: { total: '1' }, source: 'crm.other_source' }),
+    envelope('probe_rows', [row], { summary: { total: '1' }, nextOffset: 5 }), envelope('probe_rows', [row], { summary: { total: '1' }, report: 'probe_org' })])
+    assert.throws(() => report.result(bad, who, input), JSON.stringify(bad).slice(0, 90));
+  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), identity(['materials.view']), input), 'mất khoá giữa chừng');
+  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), identity(['vehicles.view'], [B]), input), 'phạm vi CRM rào đầu ra');
+  const onlyA = report.input({ report: 'probe_rows', params: { buildingId: B } });
+  assert.throws(() => report.result(envelope('probe_rows', [row], { summary: { total: '1' } }), who, onlyA), 'hỏi toà B, hàng toà A');
+  for (const reason of ['not_implemented', 'source_unavailable', 'no_building_scope', 'organization_scope_required'])
+    assert.equal(report.result(envelope('probe_rows', [], { unavailable: reason }), who, input).unavailable, reason);
+  const self = report.input({ report: 'probe_self', params: { month: '2026-09' } });
+  assert.throws(() => report.result(envelope('probe_self', [], { unavailable: 'no_building_scope' }), identity(['assistant.salary.self']), self), 'self không "hết toà"');
+  for (const bad of [{ unavailable: 'copilot_feature_disabled' }, { unavailable: 'not_implemented', items: [row] }, { unavailable: 'not_implemented', summary: { total: '1' } }])
+    assert.throws(() => report.result(envelope('probe_rows', bad.items ?? [], bad), who, input), JSON.stringify(bad));
+});
+
+// Giá trị hợp lệ mẫu cho mọi tên trong từ điển (để gọi được báo cáo có tham số bắt buộc).
+const SAMPLE = { query: 'x', month: '2026-10', year: 2026, fromDate: '2026-10-01', toDate: '2026-10-31', date: '2026-10-16', days: 30, floor: 1,
+  basis: 'accrual', unreadOnly: true, lowStock: true };
+const sampleParams = spec => Object.fromEntries(spec.required.map(name => [name, name === 'status' ? spec.statuses[0] : name === 'kind' ? spec.kinds[0]
+  : Object.hasOwn(SAMPLE, name) ? SAMPLE[name] : A]));
+function brokerFor(t, read) {
+  const scope = createDependencyScope(); t.after(() => scope.close());
+  const CONNECTION = uuid('1'), seen = [];
+  const who = { row: { id: CONNECTION, assistantId: uuid('2'), userId: uuid('3'), organizationId: ORG, expiresAt: Date.now() + 600_000, epoch: 1, state: 'active',
+    restrictions: { read, action: [] } }, effective: { read, action: [] }, isSuperadmin: false, policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64),
+  assistantScopeIds: [uuid('4')], scopesByPermission: Object.fromEntries(read.map(key => [key, { buildingIds: [A], cashbookIds: [] }])) };
+  const broker = createBroker({ authority: { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => who, checkUnchanged: async () => {} },
+    dependencyScope: scope, audit: async () => {}, limits: { maxResultBytes: 65_536 },
+    domains: { async prepareDomain(_token, operation, input) { seen.push([operation, input]); return Object.freeze({}); }, async finalizeDomain() { return {}; } } });
+  return { broker, seen, token: `hc_${'A'.repeat(43)}` };
+}
+
+// Dây broker (broker.mjs: forbidden khi input là báo cáo của khoá khác) chỉ đo được khi sổ thật có hai
+// báo cáo khác khoá: Gói 0 chưa có báo cáo nào ⇒ ca này bỏ qua CÓ GHI LÝ DO; báo cáo đầu tiên của Gói A–D
+// tự kích hoạt nó (không phải sửa test).
+test('broker: crm_read_report đòi đúng khoá của báo cáo được gọi (forbidden trước khi tới SQL)', async t => {
+  const reports = Object.entries(W2.reports);
+  const pair = reports.find(([, a]) => reports.some(([, b]) => b.permission !== a.permission));
+  if (!pair) { t.skip('sổ thật chưa có hai báo cáo khác khoá (Gói 0) — Gói A–D kích hoạt ca này'); return; }
+  const [reportId, spec] = pair, other = reports.find(([, b]) => b.permission !== spec.permission)[1].permission;
+  const args = { report: reportId, params: sampleParams(spec) };
+  const denied = brokerFor(t, [other]);
+  assert.ok((await denied.broker.listTools(denied.token)).tools.some(tool => tool.name === 'crm_read_report'), 'tool hiện nhờ khoá báo cáo khác');
+  await assert.rejects(denied.broker.callTool(denied.token, 'crm_read_report', args), error => error.code === 'forbidden');
+  assert.deepEqual(denied.seen, []);
+  const allowed = brokerFor(t, [spec.permission]);
+  await allowed.broker.callTool(allowed.token, 'crm_read_report', args);
+  assert.deepEqual(allowed.seen, [['report', domainInput('report', args)]]);
+});
+
+test('broker: tool meta hiện ⇔ kết nối giữ khoá của ít nhất một báo cáo đã đăng ký; thiếu khoá ⇒ không hiện, gọi thẳng tool_not_available', async t => {
+  const all = brokerFor(t, [...HERMES_READ_CAPABILITIES]);
+  const names = (await all.broker.listTools(all.token)).tools.map(tool => tool.name);
+  for (const name of W2_TOOL_NAMES) assert.equal(names.includes(name), W2.permissions.length > 0, `${name}: ${W2.permissions.length} khoá có báo cáo`);
+  assert.ok(names.includes('crm_read_customers'), 'họ cũ vẫn hiện');
+  // Không khoá nào của báo cáo đã đăng ký (Gói 0: sổ rỗng ⇒ mọi kết nối) ⇒ không hiện, gọi thẳng bị chặn trước SQL.
+  const none = brokerFor(t, HERMES_READ_CAPABILITIES.filter(key => !W2.permissions.includes(key)));
+  const visible = (await none.broker.listTools(none.token)).tools.map(tool => tool.name);
+  for (const name of W2_TOOL_NAMES) assert.equal(visible.includes(name), false, name);
+  await assert.rejects(none.broker.callTool(none.token, 'crm_read_report', { report: 'probe_rows' }), error => error.code === 'tool_not_available');
+  await assert.rejects(none.broker.callTool(none.token, 'crm_read_report_list', {}), error => error.code === 'tool_not_available');
+  assert.deepEqual(none.seen, []);
+  assert.throws(() => domainInput('report', { report: 'probe_rows' }), 'sổ thật không có mã thăm dò');
+  assert.deepEqual(domainResult('report_list', { organizationId: ORG, domain: 'report_list', fetchedAt: '2026-10-18T00:00:00.000Z',
+    items: [{ report: 'future_report', permission: 'vehicles.view' }] }, identity(['vehicles.view']), domainInput('report_list', {})).items, [],
+  'mã SQL mà bản broker này chưa biết bị bỏ qua');
+});

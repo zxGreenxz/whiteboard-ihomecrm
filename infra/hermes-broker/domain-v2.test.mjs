@@ -244,6 +244,8 @@ test('domain mount routes v2 tools to the v2 RPC with the bound user JWT and mer
   const fetch = async (url, options) => {
     assert.equal(options.headers.authorization, 'Bearer ' + accessToken); assert.equal(options.redirect, 'error');
     const name = new URL(url).pathname, args = JSON.parse(options.body); events.push(name);
+    // Họ khoá đợt 2 (20261018000000) là file forward sau, vắng trong fixture v2 này.
+    if (name === '/rest/v1/rpc/hermes_domain_capabilities_v3') return Response.json({ code: 'PGRST202', message: 'missing', details: null, hint: null }, { status: 404 });
     assert.ok(Object.hasOwn(sql, name), `unexpected RPC ${name}`);
     try { return Response.json(await call(sql[name], name.includes('capabilities') ? [args.p_organization_id] : [JSON.stringify(args.p_binding), args.p_domain, JSON.stringify(args.p_input)])); }
     catch (error) { return Response.json({ code: error.code, message: error.message, details: null, hint: null }, { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 }); }

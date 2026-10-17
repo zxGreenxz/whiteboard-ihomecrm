@@ -857,6 +857,8 @@ export function createBroker({
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
+          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
+          if (!mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
           const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
