@@ -1,5 +1,6 @@
 {
   "$comment": "Chuông báo Hermes ↔ web (chủ chốt 17/10/2026, phương án A). Mỗi mục: chỗ web mà Hermes gọi theo (rpc) hoặc chép lại (mirrored), kèm nơi Hermes chép. Kiểm: node scripts/check-hermes-web-parity.mjs; ghi hash mới SAU KHI Hermes đã theo web: --write. Thêm mục: bọc mã web bằng // hermes-parity:begin <vùng> … // hermes-parity:end <vùng>, thêm một mục ở đây (web + hermes), chạy --write. Hướng dẫn: docs/plans/hermes-crm/BAN-GIAO.md.",
+  "notes": "Đã rà 17/10 (review PR #194), CHƯA vào bản đồ vì Hermes tự định nghĩa bộ lọc chứ không chép một màn web cụ thể: income_expenses (hermes_domain_read_v2: bỏ phiếu có hạng mục hạn chế/lương/cổ đông/quản lý lợi nhuận, lọc trạng thái duyệt/ngày/tên-mã), receivables (v2: APPROVED/PARTIAL_PAID/OVERDUE và còn nợ >0 — cùng tập trạng thái web dùng ở nhiều chỗ như useExcelInvoiceData, useContracts, không phải một trang), meter_readings (v2), leads và tasks (hermes_domain_read_v1: danh sách đơn giản theo toà/trạng thái/tên). Nếu sau này nói \"như trang X\" thì thêm mục mirrored + marker.",
   "schemaVersion": 1,
   "entries": [
     {
@@ -112,6 +113,13 @@
           "note": "monthly_pnl"
         },
         {
+          "sql": "public.hermes_domain_read_v2",
+          "calls": [
+            "fa_monthly_pnl"
+          ],
+          "note": "building_profit (tiền mặt, phiếu đã duyệt)"
+        },
+        {
           "path": "infra/hermes-broker/full-read-contract.mjs",
           "contains": "crm.fa_monthly_pnl"
         }
@@ -150,6 +158,47 @@
           "contains": "crm.list_my_pending_approvals_v1"
         }
       ]
+    },
+    {
+      "id": "deposits-held",
+      "kind": "rpc",
+      "description": "Báo cáo cọc đang giữ theo toà (crm_read_deposits_held): Hermes gọi thẳng get_held_deposit_summary như trang Cọc.",
+      "rpc": [
+        "get_held_deposit_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "region": "deposits-held",
+          "sha256": "af414d0a54b8fcc531a8b48de6fcc422ba5951064ab6f2e84609089d20f0e5aa"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "rpc": "get_held_deposit_summary"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_held_deposit_summary",
+          "sha256": "2844cf1806b07bb7084e274cb9560ddfb15aa2eb127a5dcb37ded492affdc42f"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_domain_read_v2",
+          "calls": [
+            "get_held_deposit_summary"
+          ],
+          "note": "deposits_held"
+        },
+        {
+          "path": "infra/hermes-broker/domain-contract.mjs",
+          "contains": "deposits_held"
+        }
+      ],
+      "notes": "Hermes không truyền p_threshold nên dùng mặc định SQL 10000, bằng DEPOSIT_SHORTFALL_THRESHOLD web truyền vào. Vì thế băm cả thân get_held_deposit_summary: đổi mặc định hoặc hằng web thì Hermes phải theo."
     },
     {
       "id": "sale-listing",
