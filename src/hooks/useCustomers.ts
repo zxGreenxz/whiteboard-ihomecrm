@@ -99,6 +99,7 @@ export const useCustomers = (
       // để count và range không bao giờ lệch nhau.
       const wantsPage = !!(pagination?.page && pagination?.pageSize);
 
+      // hermes-parity:begin customer-list — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = (supabase
         .from("customers")
         .select("*", wantsPage ? { count: "exact" } : undefined) as any)
@@ -106,6 +107,7 @@ export const useCustomers = (
         .order("created_at", { ascending: false });
 
       if(selectedOrganizationId)query=query.eq("organization_id",selectedOrganizationId);
+      // hermes-parity:end customer-list
 
       // Filter by status_v2
       if (filters?.status) {
@@ -124,12 +126,14 @@ export const useCustomers = (
       }
 
       // Search by name, phone, email, id_number
+      // hermes-parity:begin customer-list
       if (filters?.search) {
         const search = filters.search.trim();
         if (search) {
           query = query.or(customerSearchFilter(search));
         }
       }
+      // hermes-parity:end customer-list
 
       // Filter by building/room via contract_customers junction table
       if (filters?.building_id || filters?.room_id ) {
@@ -180,6 +184,7 @@ export const useCustomers = (
             ) as any)
             .in('customer_id', slice.split(','));
           if(locationError)throw locationError;
+          // hermes-parity:begin customer-list
           for (const l of (links || []) as any[]) {
             if (!l.contract || !isContractInEffect(l.contract.status)) continue;
             const bid = l.contract.room?.building?.id || null;
@@ -190,6 +195,7 @@ export const useCustomers = (
             const prev = map.get(l.customer_id);
             if (!prev) map.set(l.customer_id, { building_id: bid, building_name: bn, room_name: rn });
           }
+          // hermes-parity:end customer-list
         }
         for (const c of customers) {
           const cur = map.get(c.id);
@@ -268,12 +274,14 @@ export const useCustomer = (id: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // hermes-parity:begin customer-detail — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("customers")
         .select("*")
         .eq("id", id)
         .is("deleted_at", null)
         .single();
+      // hermes-parity:end customer-detail
 
       if (error) {
         console.error("useCustomer error:", error);

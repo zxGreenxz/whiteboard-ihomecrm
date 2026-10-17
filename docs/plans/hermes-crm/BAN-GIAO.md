@@ -120,3 +120,15 @@ WHERE n.nspname IN ('public','app_private')
 ## 7. Phần còn hoãn hoặc chờ chủ
 
 Xem bảng nghiệm thu cuối trong [STATUS.md](STATUS.md#nghiệm-thu-cuối-1610). Tóm tắt: các miền ghi CRM còn lại và cách cho Hermes "làm như một user" (chủ làm sau); user thứ hai/canary nhiều người; trần ngân sách/độ trễ chính thức; các bước tối ưu tốc độ còn lại theo [TOI-UU-TOC-DO-DOT1.md](TOI-UU-TOC-DO-DOT1.md).
+
+## 8. Chuông báo Hermes ↔ web
+
+Chủ chốt 17/10/2026: sửa bộ lọc/công thức web mà Hermes đang chép thì CI đỏ cho tới khi Hermes theo trong cùng thay đổi. Bản đồ: [web-parity.json](../../../infra/hermes-broker/web-parity.json); gate `npm run gate:hermes-web-parity` (CI: `check-hermes-web-parity`, job quality-gates).
+
+Khi gate đỏ:
+
+1. Đọc dòng lỗi: mục `[id]`, vùng web hoặc nguồn SQL CRM đã đổi, và hàm/file Hermes đang chép (kèm migration chứa bản định nghĩa cuối).
+2. Sửa Hermes cho khớp web bằng migration `hermes_*` mới (migration đã apply không sửa) và/hoặc `infra/hermes-broker/*-contract.mjs`.
+3. Web chuyển RPC (vd. `_v3`): đổi lời gọi trong hàm Hermes, sửa `rpc`/`webCalls`/`calls` trong bản đồ.
+4. Chạy `node scripts/check-hermes-web-parity.mjs --write` để ghi hash mới, nêu lý do trong commit. Đổi chỉ là trình bày, không ảnh hưởng Hermes: vẫn `--write`, ghi rõ "không ảnh hưởng Hermes".
+5. Thêm chỗ chép mới (đợt 2): bọc mã web bằng `// hermes-parity:begin <vùng>` … `// hermes-parity:end <vùng>` (chỉ chú thích), thêm một mục (`web` + `hermes`, `sql` nếu chép thân hàm/RLS CRM), rồi `--write`.

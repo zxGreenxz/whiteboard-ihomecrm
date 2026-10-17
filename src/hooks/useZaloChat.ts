@@ -168,6 +168,7 @@ export function useZaloConversations() {
     enabled: !!orgId,
     retry: 1,
     queryFn: async (): Promise<ZaloConversation[]> => {
+      // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await db
         .from('zalo_conversations')
         .select(CONV_COLS)
@@ -178,6 +179,7 @@ export function useZaloConversations() {
       const list = (data || []).map(mapConv);
       // ghim lên đầu — sort client-side, không đổi query
       return list.sort((a: ZaloConversation, b: ZaloConversation) => Number(b.pinned) - Number(a.pinned));
+      // hermes-parity:end zalo-conversations
     },
   });
 }

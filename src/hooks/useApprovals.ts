@@ -48,7 +48,9 @@ export const usePendingApprovals = () => {
     queryKey: ["pending-approvals"],
     meta: {errorDisplay:"inline",label:"yêu cầu chờ duyệt"},
     queryFn: async (): Promise<PendingApproval[]> => {
+      // hermes-parity:begin pending-approvals — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("list_my_pending_approvals_v1");
+      // hermes-parity:end pending-approvals
       if (error) throw error;
 
       return financialReadRows(data as any[]).map((r) => ({

@@ -182,6 +182,7 @@ export const useAccrualMonthReport = (
           q = q.eq("room_id", filters.room_id);
         }
         if (filters.type) q = q.eq("type", filters.type);
+        // hermes-parity:begin pnl-pending — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
         if (filters.approval_status === "ALL_ACTIVE") {
           q = q.in("approval_status", ["APPROVED", "UNAPPROVED"]);
         } else if (filters.approval_status) {
@@ -190,6 +191,7 @@ export const useAccrualMonthReport = (
         // KQKD item-level: chỉ loại phiếu ÉP không-KQKD (override=false); phiếu
         // trộn (thu HĐ gộp cọc) vẫn vào — item cọc bị bỏ ở bước transform.
         if (businessResultOnly) q = q.not("business_result_accounting", "is", false);
+        // hermes-parity:end pnl-pending
         return q;
       };
 

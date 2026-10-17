@@ -63,6 +63,7 @@ export type { ContractWithRelations } from "@/types/contract";
 // Supabase select string for contracts with full relations
 // =============================================
 
+// hermes-parity:begin contract-detail — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 const CONTRACT_SELECT = `
   *,
   room:rooms!contracts_room_id_fkey (
@@ -92,6 +93,7 @@ const CONTRACT_SELECT = `
     )
   )
 `;
+// hermes-parity:end contract-detail
 
 // =============================================
 // useContracts — Query all contracts with relations
@@ -239,6 +241,7 @@ const buildContractListSelect = (innerRoom: boolean) =>
 const toLocalISODate = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+// hermes-parity:begin contract-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 /** Bỏ ký tự phá cú pháp or() của PostgREST (dấu phẩy, ngoặc, nháy, %, \). */
 const sanitizeSearchTerm = (term: string): string =>
   term.replace(/[,()"'\\%]/g, " ").replace(/\s+/g, " ").trim();
@@ -299,6 +302,7 @@ async function resolveContractSearchOr(rawTerm: string): Promise<string | null> 
 
   return orParts.join(",");
 }
+// hermes-parity:end contract-search
 
 /** Query 1 trang (hoặc 1 khúc .range cho export). Dùng chung bởi
  *  useContractsPaged + fetchContractsForExport để filter luôn nhất quán. */
@@ -314,6 +318,7 @@ async function fetchContractsPagedOnce(
     (filters?.room_name && filters.room_name !== "all")
   );
 
+  // hermes-parity:begin contract-search
   let query = supabase
     .from("contracts")
     .select(buildContractListSelect(needInnerRoom), { count: "exact" })
@@ -345,6 +350,7 @@ async function fetchContractsPagedOnce(
       query = query.gte("end_date", today).lte("end_date", toLocalISODate(in30));
     }
   }
+  // hermes-parity:end contract-search
 
   if (filters?.building_ids?.length) {
     query = query.in("room.building_id", filters.building_ids);
@@ -361,10 +367,12 @@ async function fetchContractsPagedOnce(
     query = query.lte("start_date", monthEnd).gte("end_date", monthStart);
   }
 
+  // hermes-parity:begin contract-search
   if (filters?.search?.trim()) {
     const orFilter = await resolveContractSearchOr(filters.search);
     if (orFilter) query = query.or(orFilter);
   }
+  // hermes-parity:end contract-search
 
   if (range) {
     query = query.range(range.from, range.to);
@@ -593,11 +601,13 @@ export const useContract = (id?: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // hermes-parity:begin contract-detail
       const { data, error } = await supabase
         .from("contracts")
         .select(CONTRACT_SELECT)
         .eq("id", id)
         .single();
+      // hermes-parity:end contract-detail
 
       if (error) {
         console.error("useContract error:", error);

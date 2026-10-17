@@ -127,6 +127,7 @@ export default function ChatZaloPage() {
 
   const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
 
+  // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const selSet = new Set(selIds);
@@ -149,6 +150,7 @@ export default function ChatZaloPage() {
       );
     });
   }, [conversations, filter, search, selIds, accounts, selectedLabel]);
+  // hermes-parity:end zalo-conversations
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
