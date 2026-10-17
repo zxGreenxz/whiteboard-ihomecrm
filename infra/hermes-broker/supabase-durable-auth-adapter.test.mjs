@@ -13,7 +13,7 @@ const NOW = 1800000000000, EXP = NOW + 3600000;
 const jwt = (claims = {}) => `header.${Buffer.from(JSON.stringify({ sub: USER, role: 'authenticated', session_id: SESSION, exp: EXP / 1000, ...claims })).toString('base64url')}.signature`;
 const code = (expected, status) => error => error instanceof BrokerError && error.code === expected && error.status === status && error.cause === undefined && error.message === expected;
 const gates = { user: '/auth/v1/user', context: '/rest/v1/rpc/get_authorization_context_v1',
-  directory: '/rest/v1/rpc/get_my_organizations', scope: '/rest/v1/rpc/copilot_org_scope_buildings_v1' };
+  directory: '/rest/v1/rpc/get_my_organizations', scope: '/rest/v1/rpc/hermes_scope_buildings_v1' };
 function fixture(options = {}) {
   const controller = new AbortController(), calls = [];
   const state = { context: { organizationId: ORG, membershipId: MEMBER, authorizationVersion: 1, isPlatformAdmin: false,

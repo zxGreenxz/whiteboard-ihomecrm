@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { installGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
 import { ORG, USER } from '../hermes-zalo-router/private-command-fixture.mjs';
+import { installScopeBuildingsSql } from './scope-buildings-sql-fixture.mjs';
 
 // Candidate forward migration (Hermes reads the published sale page) on top of the
 // production chain of a disposable PGlite fixture. The page reader itself,
@@ -61,5 +62,7 @@ export async function installSaleListingSql(x, { chain = FULL_CHAIN } = {}) {
   try {
     for (const slug of schedules ? SALE_LISTING_SLUGS : SALE_LISTING_SLUGS.slice(0, 1)) { const sql = candidate(slug); await db.exec(sql); await db.exec(sql); }
   } finally { await db.exec('SET check_function_bodies=on'); }
+  // Final room scope source: Hermes-owned, no Copilot wrapper (see scope-buildings-sql-fixture.mjs).
+  await installScopeBuildingsSql(db);
   return x;
 }

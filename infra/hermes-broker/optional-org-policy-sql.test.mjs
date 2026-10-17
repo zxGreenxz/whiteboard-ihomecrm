@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 import { setupGroupSendSql } from '../hermes-zalo-router/group-send-sql-fixture.mjs';
+import { installScopeBuildingsSql } from './scope-buildings-sql-fixture.mjs';
 import { ORG, USER, SESSION, CONNECTION, FOREIGN, INSTANCE, ACCOUNT, GENERATION, id } from '../hermes-zalo-router/private-command-fixture.mjs';
 
 const migration = name => readFileSync(new URL(`../../supabase/migrations/${name}.sql`, import.meta.url), 'utf8');
@@ -37,6 +38,8 @@ test('optional organization ceiling preserves live CRM and connection authority 
   const catalog = () => db.query(`SELECT n.nspname,p.proname,p.prosrc,p.provolatile,p.proowner,p.proacl,p.proconfig FROM pg_proc p
     JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.proname LIKE 'hermes_%' ORDER BY n.nspname,p.proname,p.oid`);
   await db.exec(sql); const first = await catalog(); await db.exec(sql); assert.deepEqual(await catalog(), first);
+  // Final room scope source of the replaced readers: Hermes-owned, no Copilot wrapper (20261017023242).
+  await installScopeBuildingsSql(db);
   // Start every scenario with no organization policy; this is the behavior under
   // test, not a seed of a broad policy or a CRM permission grant.
   await db.exec('DELETE FROM app_private.hermes_org_policies');

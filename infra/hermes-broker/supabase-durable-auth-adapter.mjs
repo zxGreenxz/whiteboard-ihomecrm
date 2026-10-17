@@ -5,7 +5,7 @@ import { createSupabaseAuthAdapter } from './supabase-adapter.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^[\x21-\x7e]{1,16384}$/;
 const PATHS = Object.freeze({ user: '/auth/v1/user', context: '/rest/v1/rpc/get_authorization_context_v1',
-  directory: '/rest/v1/rpc/get_my_organizations', scope: '/rest/v1/rpc/copilot_org_scope_buildings_v1' });
+  directory: '/rest/v1/rpc/get_my_organizations', scope: '/rest/v1/rpc/hermes_scope_buildings_v1' });
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exact = (value, keys) => record(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const uuid = value => typeof value === 'string' && UUID.test(value);
@@ -46,7 +46,7 @@ function ids(value, max = 256) {
  * It never reads env, accepts endpoint/permission arguments, retries, or refreshes.
  *
  * Membership ID/version come from get_authorization_context_v1. Selected-org
- * BUILDING IDs come ONLY from copilot_org_scope_buildings_v1('rooms.view', org),
+ * BUILDING IDs come ONLY from hermes_scope_buildings_v1('rooms.view', org),
  * which checks active/revoked/time membership and expands orgWide server-side.
  * scopeSets, frontend orgWide flags and other-org probe scopes are NOT authority
  * for this result. Self-context has no resource IDs. No cashbook permission is

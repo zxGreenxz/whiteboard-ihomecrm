@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupScheduleHealth, SCHEDULE } from './schedule-health-fixture.mjs';
 import { saleListingCandidate, TOKEN_ROW } from './sale-listing-sql-fixture.mjs';
+import { scopeBuildingsMigration } from './scope-buildings-sql-fixture.mjs';
 import { projectAvailableRooms, PASS_CONTACT_CHARS } from './room-read-projection.mjs';
 import { roomSalePassLabel } from '../../src/lib/roomSaleFacts.ts';
 import { ORG, USER, FOREIGN, SESSION, INSTANCE } from '../hermes-zalo-router/private-command-fixture.mjs';
@@ -45,7 +46,7 @@ test('Hermes sale listing SQL: the published sale page is the only room source f
         (gen_random_uuid(),'${PASS_ADMIN}','${USER}','${ORG}',true,2900000,true,'0900000005','Khách Ẩn',NULL),
         (gen_random_uuid(),'${PASS_CUSTOMER}','${USER}','${ORG}',true,2800000,false,'0900000002','Khách Thử','2099-01-01');
       -- The owner without a link is still inside the caller's rooms.view scope: only the page rule hides it.
-      CREATE OR REPLACE FUNCTION public.copilot_org_scope_buildings_v1(permission text,org uuid) RETURNS uuid[] LANGUAGE sql STABLE AS $$
+      CREATE OR REPLACE FUNCTION public.fixture_room_scope_port_v1(permission text,org uuid) RETURNS uuid[] LANGUAGE sql STABLE AS $$
         SELECT CASE WHEN rooms AND org='${ORG}'::uuid AND permission='rooms.view' THEN ARRAY['${x.BUILDING}'::uuid,'${OTHER_BUILDING}'::uuid] ELSE '{}'::uuid[] END
         FROM public.fixture_authority$$;`);
   }
@@ -207,11 +208,12 @@ test('Hermes sale listing SQL: the published sale page is the only room source f
   // Hand mutations of the candidate SQL: each removes one rule; the same observation must change.
   await x.each('mutation: dropping the company filter, the listed-status filter or the rooms.view cut is observed', async () => {
     await arrange();
-    const core = fn(sql, 'app_private.hermes_sale_listing_payload_v1'), wrapper = fn(sql, 'public.hermes_sale_listing_rooms_v1');
+    // The wrapper's final definition is the Hermes-owned scope candidate (20261017023242).
+    const core = fn(sql, 'app_private.hermes_sale_listing_payload_v1'), wrapper = fn(scopeBuildingsMigration(), 'public.hermes_sale_listing_rooms_v1');
     const mutants = [
       [core, core.replaceAll(' AND b.organization_id=p_org)', ')'), async () => {
         await db.exec(`UPDATE public.buildings SET organization_id='${OTHER_ORG}' WHERE id='${x.BUILDING}'`);
-        await db.exec(`CREATE OR REPLACE FUNCTION public.copilot_org_scope_buildings_v1(permission text,org uuid) RETURNS uuid[] LANGUAGE sql STABLE AS $$
+        await db.exec(`CREATE OR REPLACE FUNCTION public.fixture_room_scope_port_v1(permission text,org uuid) RETURNS uuid[] LANGUAGE sql STABLE AS $$
           SELECT ARRAY['${x.BUILDING}'::uuid]$$`); }],
       [core, core.replace(`WHERE pr->>'status_public' IN ('free','soon','pass')\n        AND`, 'WHERE'), async () => {}],
       [wrapper, wrapper.replace(`WHERE (x->>'building_id')::uuid=ANY(v_buildings) ORDER BY ord LIMIT 2000`, 'ORDER BY ord LIMIT 2000'),

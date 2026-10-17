@@ -127,7 +127,7 @@ export function createSyntheticFixture() {
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: actor.org,
       membershipId: actor.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
     if (endpoint.pathname === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: actor.user, organizations: [{ id: actor.org }] });
-    if (endpoint.pathname === '/rest/v1/rpc/copilot_org_scope_buildings_v1') {
+    if (endpoint.pathname === '/rest/v1/rpc/hermes_scope_buildings_v1') {
       assert.equal(args.p_organization_id, actor.org); assert.equal(args.p_permission_key, 'rooms.view'); return Response.json([actor.building]);
     }
     if (endpoint.pathname === '/rest/v1/rpc/hermes_prepare_connection_v1') {

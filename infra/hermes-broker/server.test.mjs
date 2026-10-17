@@ -93,7 +93,7 @@ function fakeBackend() {
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });
     if (endpoint.pathname === '/rest/v1/rpc/get_my_organizations') return Response.json({ user_id: I.user, organizations: [{ id: I.org }] });
-    if (endpoint.pathname === '/rest/v1/rpc/copilot_org_scope_buildings_v1') {
+    if (endpoint.pathname === '/rest/v1/rpc/hermes_scope_buildings_v1') {
       assert.equal(args.p_organization_id, I.org); assert.equal(args.p_permission_key, 'rooms.view'); return Response.json([I.building]);
     }
     if (endpoint.pathname === '/rest/v1/rpc/hermes_room_scope_map_v1') {

@@ -106,7 +106,11 @@ executor backend, hoặc thu hồi.
 
 **Dùng chung, giữ nguyên:**
 
-- `copilot_available_rooms_v1`, `copilot_org_scope_buildings_v1`: Hermes broker và migration Hermes dùng.
+- `copilot_available_rooms_v1`, `copilot_org_scope_buildings_v1`: Hermes KHÔNG còn dùng lúc chạy (17/10/2026).
+  Phòng đọc qua `hermes_sale_listing_rooms_v1` (trang Sale, 20261016080232); phạm vi toà qua
+  `hermes_scope_buildings_v1` gọi thẳng `authorized_scope_v3` (20261017023242, connector đổi RPC cùng đợt).
+  Connector bản cũ vẫn gọi `copilot_org_scope_buildings_v1` tới khi deploy bản mới, nên hàm này phải còn
+  trên production cho tới lúc đó. Gate `infra/hermes-broker/copilot-independence.test.mjs` chặn tham chiếu mới.
 - `copilot_plan_submit_voucher_v1`: approval nghiệp vụ.
 - `list_my_copilot_organizations_v1`: danh bạ công ty.
 - `reserve_ai_usage`, `ai_copilot_settings`, `ai_copilot_entitlements`, `ai_providers`, `ai_usage_logs`:

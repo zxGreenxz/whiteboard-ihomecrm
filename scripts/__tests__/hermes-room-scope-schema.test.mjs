@@ -21,7 +21,7 @@ function coherentDecision(sql) {
   assert.doesNotMatch(sql, /(?:PERFORM|:=)\s*app_private\.(?:hermes_member_v1|lock_org_for_decision_v1)/i);
   assert.match(sql, /v_auth:=public\.get_authorization_context_v1\(p_organization_id\)/);
   assert.match(sql, /v_auth->'permissions'->'rooms\.view' IS DISTINCT FROM 'true'::jsonb/);
-  assert.match(sql, /v_buildings:=public\.copilot_org_scope_buildings_v1\('rooms\.view',p_organization_id\)/);
+  assert.match(sql, /v_buildings:=public\.hermes_scope_buildings_v1\('rooms\.view',p_organization_id\)/);
   assert.match(sql, /cardinality\(v_buildings\)<1 OR cardinality\(v_buildings\)>256/);
 }
 function ownershipFence(sql, policy = find('app_private.hermes_effective_org_policy_v1')) {
@@ -83,7 +83,7 @@ test('mapping uses exact assistant constraint intersection, complete same-org li
 test('canonical scope/context dependencies are STABLE in their source definitions', () => {
   const definitions = [
     ['20260725190000_authz_read_rpcs.sql', 'public.get_authorization_context_v1'],
-    ['20260829090000_copilot_org_scope_semantics_v1.sql', 'public.copilot_org_scope_buildings_v1'],
+    ['20261017023242_hermes_scope_buildings_v1.sql', 'public.hermes_scope_buildings_v1'],
     ['20260908162757_authz_scope_org_wide_scoped_deny_v1.sql', 'app_private.authorized_scope_v3'],
   ];
   for (const [filename, name] of definitions) {
