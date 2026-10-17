@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { setupFullRead, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, FULL_READ_OWNER_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, FULL_READ_OWNER_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
   PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
@@ -15,7 +15,11 @@ import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
 const code = expected => error => error.code === expected;
 const uid = n => `0e0e0e0e-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
 const identity = permission => ({ row: { organizationId: ORG }, scopesByPermission: { [permission]: { buildingIds: [BUILDING, OTHER_BUILDING] } } });
-const setup = (t, options = {}) => setupFullRead(t, { reads: REPORT_KEYS, ...options });
+// Một PGlite cho cả file; mỗi ca chạy trong BEGIN … ROLLBACK (inCase), đột biến chỉ thay thân hàm trong ca.
+let shared;
+before(async () => { shared = await sharedFullRead({ reads: REPORT_KEYS }); });
+after(async () => { await shared?.close(); });
+const inCase = work => shared.isolated(work);
 const sorted = values => [...values].sort();
 async function run(env, domain, args) {
   const input = domainInput(domain, args), value = await env.read3(domain, input);
@@ -64,8 +68,8 @@ const seedContracts = db => db.exec(`INSERT INTO public.contracts(id,organizatio
   ('${C_TERMINATED}','${ORG}','${ROOM}','TERMINATED',0,0,0,'HD-TL','2025-05-01','2026-05-01',null,'2026-05-01',1),
   ('${C_TRANSFERRED}','${ORG}','${ROOM}','TRANSFERRED',0,0,0,'HD-NH','2025-12-31','2026-12-31',null,null,1)`);
 
-test('contract: one tool per existing permission key, SQL catalog matches the JS table, tools/list fragment stays small', async t => {
-  const { db } = await setup(t);
+test('contract: one tool per existing permission key, SQL catalog matches the JS table, tools/list fragment stays small', () => inCase(async env => {
+  const { db } = env;
   const expected = { occupancy_report: 'reports_real_estate.occupancy', invoice_report: 'invoices.view', monthly_pnl: 'reports_finance.analysis',
     pending_approvals: 'income_expenses.view', zalo_conversations: 'chat_zalo.view', contract_search: 'contracts.view' };
   assert.deepEqual(Object.fromEntries(Object.entries(REPORTS).map(([key, value]) => [key, value.permission])), expected);
@@ -99,9 +103,9 @@ test('contract: one tool per existing permission key, SQL catalog matches the JS
   assert.throws(() => domainInput('pending_approvals', { buildingId: BUILDING }), 'organization-only report has no building filter');
   assert.throws(() => domainInput('contract_search', { status: 'TRANSFERRED' }), 'only the web filter values');
   assert.equal(domainInput('contract_search', { buildingId: BUILDING }).buildingId, BUILDING, 'contract search filters by building');
-});
+}));
 
-test('no copilot_*: the final Hermes full-read definitions (migrations and PGlite) never call a copilot function', async t => {
+test('no copilot_*: the final Hermes full-read definitions (migrations and PGlite) never call a copilot function', () => inCase(async env => {
   const files = readdirSync('supabase/migrations').filter(name => name.endsWith('.sql')).sort();
   const names = ['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2', 'app_private.hermes_report_read_v1', 'app_private.hermes_report_catalog_v1',
     'app_private.hermes_pnl_pending_v1', 'app_private.hermes_full_read_scope_v1'];
@@ -117,16 +121,16 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql()]) assert.doesNotMatch(sql.replace(/--[^\n]*/g, ''), /copilot_/i, 'no copilot function call');
   // Bản thật trong PGlite sau cả ba migration: không thân hàm nào của chuỗi đọc đầy đủ nhắc copilot_.
-  const { db } = await setup(t);
+  const { db } = env;
   const rows = (await db.query(`SELECT p.proname,p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname IN ('public','app_private') AND p.proname=ANY($1)`, [names.map(name => name.split('.')[1])])).rows;
   assert.equal(rows.length, names.length);
   for (const row of rows) assert.doesNotMatch(row.prosrc.replace(/--[^\n]*/g, ''), /copilot_/i, row.proname);
   assert.equal((await db.query("SELECT count(*)::int n FROM pg_proc WHERE proname LIKE 'copilot%'")).rows[0].n, 0, 'fixture defines no copilot function');
-});
+}));
 
-test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings; crm_read_occupancy counts like the snapshot, not rooms.status', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings; crm_read_occupancy counts like the snapshot, not rooms.status', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await seedRooms(db);
   const snapshot = await run(env, 'occupancy_report', { report: 'snapshot' });
   assert.deepEqual(snapshot.value.items, [{ buildingId: BUILDING, buildingName: 'Toà A', total: 4, occupied: 1, reserved: 1, maintenance: 0, unavailable: 1,
@@ -156,10 +160,10 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   const both = (await run(env, 'occupancy_report', { report: 'snapshot' })).value.items;
   assert.deepEqual(both.map(row => [row.buildingId, row.total, row.occupied]), [[BUILDING, 4, 1], [OTHER_BUILDING, 1, 1]]);
   assert.deepEqual((await run(env, 'occupancy_report', { report: 'snapshot', buildingId: OTHER_BUILDING })).value.items.map(row => row.buildingId), [OTHER_BUILDING]);
-});
+}));
 
-test('invoice search like /invoices: cancelled hidden by default, unpaid = no money collected, customer-name search needs customers.view', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('invoice search like /invoices: cancelled hidden by default, unpaid = no money collected, customer-name search needs customers.view', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   // Tổng kỳ trên toà kết nối (trước khi thêm hoá đơn): không phải phạm vi CRM toàn bộ.
   const stats = await run(env, 'invoice_report', { report: 'stats', month: '2026-10' });
   assert.deepEqual(stats.value.summary, { totalCount: 1, totalAmount: '3500000.00', totalPaid: '1000000.00', totalRemaining: '2500000.00', totalRefunded: '0',
@@ -186,10 +190,10 @@ test('invoice search like /invoices: cancelled hidden by default, unpaid = no mo
   assert.deepEqual(sorted((await run(env, 'invoice_report', { report: 'search' })).value.items.map(row => row.id)), sorted([INVOICE_A, INVOICE_B, INVOICE_PARTIAL]));
   assert.deepEqual((await run(env, 'invoice_report', { report: 'search', buildingId: OTHER_BUILDING })).value.items.map(row => row.id), [INVOICE_B]);
   assert.equal((await run(env, 'invoice_report', { report: 'stats' })).value.summary.totalCount, 3, 'stats exclude cancelled');
-});
+}));
 
-test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on request) plus the pending part BC Doanh Thu Chi Phí adds', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on request) plus the pending part BC Doanh Thu Chi Phí adds', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await seedPnl(db);
   const range = { fromDate: '2026-08-01', toDate: '2026-10-31' };
   const accrual = await run(env, 'monthly_pnl', range);
@@ -220,10 +224,10 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
   await orgWideOverlay(db);
   const wide = await run(env, 'monthly_pnl', range);
   assert.deepEqual([Number(wide.value.summary.pendingIncome), wide.value.summary.pendingVouchers], [700000, 1]);
-});
+}));
 
-test('organization reports: approvals inbox of the asker in this company; Zalo needs Chat Zalo company-wide like the web', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('organization reports: approvals inbox of the asker in this company; Zalo needs Chat Zalo company-wide like the web', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   for (const [domain, args] of [['pending_approvals', {}], ['zalo_conversations', {}]]) {
     const { value, checked } = await run(env, domain, args);
     assert.deepEqual([value.unavailable, value.items, value.summary], ['organization_scope_required', [], null], domain);
@@ -249,10 +253,10 @@ test('organization reports: approvals inbox of the asker in this company; Zalo n
   assert.deepEqual((await run(env, 'zalo_conversations', { query: 'khach zalo' })).value.items.map(row => row.conversationId), [CONVERSATION], 'accent-folded name');
   assert.deepEqual((await run(env, 'zalo_conversations', { query: ZALO_PHONE.slice(0, 6) })).value.items.map(row => row.conversationId), [CONVERSATION]);
   assert.deepEqual((await run(env, 'zalo_conversations', { query: 'phòng còn' })).value.items, [], 'message text is not searched');
-});
+}));
 
-test('contract_search like the Hợp đồng list: building-scoped rows, web filters, getContractDisplayStatus labels, names need customers.view', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('contract_search like the Hợp đồng list: building-scoped rows, web filters, getContractDisplayStatus labels, names need customers.view', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   const first = await run(env, 'contract_search', {});
   assert.deepEqual(first.value.items.map(row => row.contractId), [CONTRACT_A], 'connection building only (CONTRACT_B is in toà B)');
   assert.deepEqual([first.value.items[0].displayStatus, first.value.items[0].displayLabel, first.value.items[0].customerName], ['ACTIVE', 'Còn hạn', null]);
@@ -280,14 +284,14 @@ test('contract_search like the Hợp đồng list: building-scoped rows, web fil
   await db.exec(`UPDATE public.fixture_acl SET org_wide=false,building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='customers.view'`);
   assert.ok((await run(env, 'contract_search', {})).value.items.every(row => row.customerName === null), 'customers.view must cover every building of the report');
   assert.equal((await run(env, 'contract_search', { buildingId: BUILDING, query: 'hd-a' })).value.items[0].customerName, 'Nguyễn Văn An');
-});
+}));
 
 // P2-2 (review 85280779): RLS customers_select_rbac của web — chủ hồ sơ (customers.user_id) phải là
 // thành viên ACTIVE của công ty (current_visible_owner_ids), kể cả khi tra qua báo cáo.
 const STRANGER = '0e0e0e0e-0000-4000-8000-000000000041';
 const strangerOwnsA = db => db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CUSTOMER_A}'`);
-test('P2-2 reports: a customer whose owner is not an active member is never named or matched', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('P2-2 reports: a customer whose owner is not an active member is never named or matched', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await grantCustomers(db);
   assert.equal((await run(env, 'contract_search', {})).value.items[0].customerName, 'Nguyễn Văn An');
   await strangerOwnsA(db);
@@ -297,10 +301,10 @@ test('P2-2 reports: a customer whose owner is not an active member is never name
   assert.deepEqual((await run(env, 'invoice_report', { report: 'search', query: 'văn an' })).value.items, []);
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${STRANGER}')`);
   assert.deepEqual((await run(env, 'contract_search', { query: 'văn an' })).value.items.map(row => row.contractId), [CONTRACT_A]);
-});
+}));
 
-test('P3-5 monthly_pnl: the pending part covers exactly the buildings of the rows (query on building name)', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('P3-5 monthly_pnl: the pending part covers exactly the buildings of the rows (query on building name)', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await seedPnl(db); await orgWideOverlay(db);
   const range = { fromDate: '2026-08-01', toDate: '2026-10-31' };
   assert.equal(Number((await run(env, 'monthly_pnl', range)).value.summary.pendingIncome), 1300000, 'both buildings: V5 600k + V4 700k');
@@ -309,14 +313,14 @@ test('P3-5 monthly_pnl: the pending part covers exactly the buildings of the row
   assert.deepEqual([Number(onlyA.summary.pendingIncome), Number(onlyA.summary.pendingExpense), onlyA.summary.pendingVouchers], [600000, 500000, 2]);
   const cashB = (await run(env, 'monthly_pnl', { ...range, basis: 'cash', query: 'toà b' })).value;
   assert.deepEqual([cashB.items, Number(cashB.summary.pendingIncome), cashB.summary.pendingVouchers], [[], 700000, 1]);
-});
+}));
 
 // P3-7: ngân sách trang đo SAU escape JSON, như broker bọc kết quả (chuỗi trong chuỗi).
 const seedQuotedZalo = db => db.exec(`INSERT INTO public.zalo_conversations(id,organization_id,thread_type,thread_id,peer_name,last_message_text,unread_count,is_pinned,last_message_at)
   SELECT gen_random_uuid(),'${ORG}','user','q'||n,repeat('"',60),repeat('"',65),0,false,'2026-10-01T00:00:00Z'::timestamptz+n*interval '1 minute'
   FROM generate_series(1,50) n`);
-test('P3-7: report pages are sized after JSON escaping, so the wrapped tool result always fits the broker cap', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('P3-7: report pages are sized after JSON escaping, so the wrapped tool result always fits the broker cap', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await orgWideOverlay(db); await seedQuotedZalo(db);
   const input = domainInput('zalo_conversations', { limit: 50 }), value = await env.read3('zalo_conversations', input);
   const raw = value.items.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)), 0);
@@ -326,18 +330,19 @@ test('P3-7: report pages are sized after JSON escaping, so the wrapped tool resu
   assert.ok(wrapped < 65_536, `wrapped ${wrapped}`);
   // Trần cuối của v3 cũng đo sau escape và trả PT413 (HTTP 413 ⇒ result_too_large), không phải 22023.
   const tiny = fullReadOwnerSql().split('  IF octet_length(to_jsonb(v_result::text)::text)>60000 THEN').join('  IF octet_length(to_jsonb(v_result::text)::text)>500 THEN');
-  const capped = await setup(t, { owner: tiny });
+  for (const sql of changedFunctions(fullReadOwnerSql(), tiny)) await db.exec(sql);
+  const capped = env;
   await assert.rejects(capped.read3('invoice_report', domainInput('invoice_report', { report: 'search' })), error => error.code === 'PT413' && /limit/.test(error.hint));
-});
+}));
 
-test('P3a stats: company owner without staff_assignments gets the real numbers from the invoices.view scope; empty scope is unavailable', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('P3a stats: company owner without staff_assignments gets the real numbers from the invoices.view scope; empty scope is unavailable', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   await orgWideOverlay(db);
   // The canonical get_invoice_statistics_v2 scopes by staff_assignments: zero for this owner.
-  await db.exec('BEGIN');
+  await db.exec('SAVEPOINT legacy_stats');
   await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [USER]);
   const legacy = (await db.query("SELECT public.get_invoice_statistics_v2(NULL,NULL,NULL,NULL,NULL,'2026-10',NULL,NULL)::jsonb AS v")).rows[0].v;
-  await db.exec('ROLLBACK');
+  await db.exec('ROLLBACK TO SAVEPOINT legacy_stats; RELEASE SAVEPOINT legacy_stats');
   assert.equal(legacy.total_count, 0, 'fixture reproduces the staff_assignments scope');
   const stats = (await run(env, 'invoice_report', { report: 'stats', month: '2026-10' })).value.summary;
   assert.deepEqual([stats.totalCount, stats.totalAmount, stats.totalPaid, stats.totalRemaining, stats.rentAmount], [2, '12600000.00', '1000000.00', '11600000.00', '12100000']);
@@ -352,10 +357,10 @@ test('P3a stats: company owner without staff_assignments gets the real numbers f
     assert.deepEqual([value.unavailable, value.summary, value.items], ['no_building_scope', null, []], `${domain}:${args.report}`);
     assert.equal(checked.unavailable, 'no_building_scope');
   }
-});
+}));
 
-test('P3c: a status or basis sent to a report that does not declare it is refused by SQL itself', { timeout: 120000 }, async t => {
-  const env = await setup(t);
+test('P3c: a status or basis sent to a report that does not declare it is refused by SQL itself', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   for (const [domain, report] of [['occupancy_report', 'snapshot'], ['monthly_pnl', 'by_month'], ['pending_approvals', 'inbox'], ['invoice_report', 'stats']]) {
     const base = domainInput(domain, { report, ...(domain === 'monthly_pnl' ? { fromDate: '2026-01-01', toDate: '2026-02-01' } : {}) });
     await assert.rejects(env.read3(domain, { ...base, status: 'paid' }), code('22023'), `${domain}:${report}`);
@@ -365,10 +370,10 @@ test('P3c: a status or basis sent to a report that does not declare it is refuse
   await assert.rejects(env.read3('monthly_pnl', { ...domainInput('monthly_pnl', { fromDate: '2026-01-01', toDate: '2026-02-01' }), basis: 'kqkd' }), code('22023'));
   await assert.rejects(env.read3('contract_search', { ...domainInput('contract_search', {}), status: 'TRANSFERRED' }), code('22023'));
   assert.equal((await env.read3('invoice_report', domainInput('invoice_report', { report: 'search', status: 'unpaid' }))).items.length, 1);
-});
+}));
 
-test('SQL report denials: CRM grant, registry, connection overlay, caller and other company', { timeout: 120000 }, async t => {
-  const env = await setup(t), { db } = env;
+test('SQL report denials: CRM grant, registry, connection overlay, caller and other company', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
   const probe = () => env.read3('invoice_report', domainInput('invoice_report', { report: 'search' }));
   assert.equal((await probe()).items.length, 1);
   for (const [label, off, on] of [
@@ -382,7 +387,7 @@ test('SQL report denials: CRM grant, registry, connection overlay, caller and ot
   for (const input of [{ ...domainInput('invoice_report', { report: 'search' }), report: 'drop' }, { ...domainInput('invoice_report', { report: 'search' }), days: 3 },
     { ...domainInput('pending_approvals', {}), buildingId: BUILDING }, (({ offset, ...rest }) => rest)(domainInput('monthly_pnl', { fromDate: '2026-01-01', toDate: '2026-02-01' }))])
     await assert.rejects(env.read3(input.report === 'by_month' || !input.report ? 'monthly_pnl' : input.report === 'inbox' ? 'pending_approvals' : 'invoice_report', input), code('22023'), JSON.stringify(input));
-});
+}));
 
 test('broker fence: report rows outside the CRM scope, wrong source or forged unavailable reasons are refused', () => {
   const input = domainInput('invoice_report', { report: 'search' });
@@ -517,8 +522,13 @@ for (const probe of [
   { name: 'moving-out wins over the end-date labels', sql: mutate([` WHEN ct.expected_move_out_date IS NOT NULL THEN 'MOVING_OUT'`, '']),
     run: async env => { await seedContracts(env.db); return (await env.read3('contract_search', domainInput('contract_search', {}))).items.find(row => row.contractId === C_MOVING).displayStatus !== 'MOVING_OUT'; } },
 ]) {
-  test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async t => {
-    assert.equal(await probe.run(await setup(t)).catch(() => false), false, 'reviewed SQL refuses');
-    assert.equal(await probe.run(await setup(t, probe.sql)), true, 'mutant breaches');
+  // Bản đột biến: chỉ các hàm khác bản sống, tính ngay khi nạp file (neo sai ⇒ đỏ sớm).
+  const [file, text] = Object.entries(probe.sql)[0], changed = changedFunctions(live[file], text);
+  test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
+    await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'reviewed SQL refuses'));
+    await inCase(async env => {
+      for (const sql of changed) await env.db.exec(sql);
+      assert.equal(await probe.run(env), true, 'mutant breaches');
+    });
   });
 }

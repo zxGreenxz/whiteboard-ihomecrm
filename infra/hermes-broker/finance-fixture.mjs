@@ -133,17 +133,22 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=$1,action_capabilities=$2,scope_ids=$3', [reads2, ['income_expenses.create'], [SCOPE]]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=$1,action_capabilities=$2,scope_ids=$3', [reads2, ['income_expenses.create'], [SCOPE]]);
   await db.query('UPDATE app_private.hermes_connection_tokens SET token_digest=$1', [digest]);
+  // rollbackCase: one shared PGlite per test file; each case runs inside BEGIN … ROLLBACK and
+  // every call becomes a SAVEPOINT (the base fixture's rpc does the same while in a case).
+  let inCase = false;
+  const rollbackCase = work => f.rollbackCase(async () => { inCase = true; try { await work(); } finally { inCase = false; } });
   async function call(sql, args, { role = 'authenticated', actor = USER, session = SESSION } = {}) {
-    await db.exec('BEGIN');
+    await db.exec(inCase ? 'SAVEPOINT fixture_call' : 'BEGIN');
     await db.query("SELECT set_config('request.jwt.claim.role',$1,true),set_config('request.jwt.claim.sub',$2,true),set_config('request.jwt.claim.session',$3,true)",
       [role === 'postgres' ? 'authenticated' : role, actor, session]);
     if (role !== 'postgres') await db.exec(`SET LOCAL ROLE ${role}`);
-    try { const result = (await db.query(sql, args)).rows[0].result; await db.exec('COMMIT'); return result; }
-    catch (error) { await db.exec('ROLLBACK'); throw error; } finally { await db.exec('RESET ROLE'); }
+    try { const result = (await db.query(sql, args)).rows[0].result; await db.exec(inCase ? 'RELEASE SAVEPOINT fixture_call' : 'COMMIT'); return result; }
+    catch (error) { await db.exec(inCase ? 'ROLLBACK TO SAVEPOINT fixture_call; RELEASE SAVEPOINT fixture_call' : 'ROLLBACK'); throw error; }
+    finally { await db.exec('RESET ROLE'); }
   }
   const read = (domain, input, b = binding, options) => call('SELECT public.hermes_domain_read_v2($1::jsonb,$2::text,$3::jsonb) result', [JSON.stringify(b), domain, JSON.stringify(input)], options);
   const expense = (operation, input, b = binding, options) => call('SELECT public.hermes_expense_action_v1($1::jsonb,$2::text,$3::jsonb) result', [JSON.stringify(b), operation, JSON.stringify(input)], options);
   const counts = async () => (await db.query(`SELECT (SELECT count(*)::int FROM public.income_expenses WHERE code LIKE 'PC-%') vouchers,
     (SELECT count(*)::int FROM app_private.hermes_expense_create_receipts) receipts,(SELECT count(*)::int FROM public.authorization_audit_events) audits`)).rows[0];
-  return { ...f, db, call, read, expense, counts };
+  return { ...f, db, call, read, expense, counts, rollbackCase };
 }

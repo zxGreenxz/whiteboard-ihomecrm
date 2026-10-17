@@ -101,19 +101,32 @@ export async function setupUpsert(t, { sql = readFileSync(upsertPath, 'utf8'), f
     await db.exec(extract(migration('20261015120000_hermes_domain_reads_v2'), 'app_private.hermes_domain_grant_v2'));
     for (const sql of [].concat(fullRead)) { await db.exec(sql); await db.exec(sql); }
   }
+  // rollbackCase: một PGlite dùng chung cho cả file test; mỗi ca BEGIN … ROLLBACK, lời gọi là SAVEPOINT.
+  let inCase = false;
+  const rollbackCase = work => base.f.rollbackCase(async () => { inCase = true; try { await work(); } finally { inCase = false; } });
   async function call(operation, input, b = binding, role = 'authenticated', actor = USER, rpc = 'hermes_room_pass_upsert_v1') {
-    await db.exec('BEGIN');
+    await db.exec(inCase ? 'SAVEPOINT fixture_call' : 'BEGIN');
     await db.query("SELECT set_config('request.jwt.claim.role',$1,true),set_config('request.jwt.claim.sub',$2,true),set_config('request.jwt.claim.session',$3,true)", [role, actor, SESSION]);
     await db.exec(`SET LOCAL ROLE ${role}`);
     try {
       if (!['hermes_room_pass_upsert_v1', 'hermes_room_pass_upsert_v2'].includes(rpc)) throw new Error('invalid_fixture_rpc');
       const result = (await db.query(`SELECT public.${rpc}($1::jsonb,$2::text,$3::jsonb) result`, [JSON.stringify(b), operation, JSON.stringify(input)])).rows[0].result;
-      await db.exec('COMMIT'); return result;
-    } catch (error) { await db.exec('ROLLBACK'); throw error; } finally { await db.exec('RESET ROLE'); }
+      await db.exec(inCase ? 'RELEASE SAVEPOINT fixture_call' : 'COMMIT'); return result;
+    } catch (error) { await db.exec(inCase ? 'ROLLBACK TO SAVEPOINT fixture_call; RELEASE SAVEPOINT fixture_call' : 'ROLLBACK'); throw error; }
+    finally { await db.exec('RESET ROLE'); }
   }
   const count = async table => (await db.query(`SELECT count(*)::integer n FROM ${table}`)).rows[0].n;
   const call2 = (operation, input, b = binding, role = 'authenticated', actor = USER) => call(operation, input, b, role, actor, 'hermes_room_pass_upsert_v2');
-  return { ...base, call, call2, count };
+  return { ...base, call, call2, count, rollbackCase };
+}
+
+// MỘT PGlite cho cả file test (PGlite không trả lại bộ nhớ WASM sau close); mỗi ca isolated().
+export async function sharedUpsert(options) {
+  const cleanups = [];
+  const env = await setupUpsert({ after: fn => cleanups.push(fn) }, options);
+  let open = true;
+  return { ...env, isolated: work => env.rollbackCase(() => work(env)),
+    async close() { if (!open) return; open = false; for (const fn of cleanups.reverse()) await fn(); } };
 }
 
 export { BUILDING, ROOM, LISTING, SCOPE, binding, code };

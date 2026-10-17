@@ -1,6 +1,6 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupFullRead, fullReadSql, fullReadFixSql, fullReadParitySql, fullReadOwnerSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
+import { sharedFullRead, changedFunctions, fullReadSql, fullReadFixSql, fullReadParitySql, fullReadOwnerSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
@@ -15,6 +15,11 @@ import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 
 const code = expected => error => error.code === expected;
+// Một PGlite cho cả file; mỗi ca chạy trong BEGIN … ROLLBACK (inCase), đột biến chỉ thay thân hàm trong ca.
+let shared;
+before(async () => { shared = await sharedFullRead(); });
+after(async () => { await shared?.close(); });
+const inCase = work => shared.isolated(work);
 // Ảnh chụp quyền CRM có phạm vi cho từng khoá đã cấp (inScope đóng khi thiếu khoá — P3-8).
 const identity = (permission, buildings = [BUILDING, OTHER_BUILDING]) => ({ row: { organizationId: ORG },
   scopesByPermission: Object.fromEntries([].concat(permission).map(key => [key, { buildingIds: buildings }])) });
@@ -38,8 +43,8 @@ test('contract: v3 tools are fixed, read-only, keyed on existing permissions, an
   assert.throws(() => domainInput('customers', { status: 'ACTIVE' }), 'customers has no status filter');
 });
 
-test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ chức also lists customers without a contract', { timeout: 90000 }, async t => {
-  const env = await setupFullRead(t), { db, read3, orgWide } = env;
+test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ chức also lists customers without a contract', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3, orgWide } = env;
   const first = await read3('customers', list());
   assert.deepEqual(ids(first.items), [CUSTOMER_A, CO_TENANT].sort(), 'building overlay only; foreign org never');
   const a = first.items.find(row => row.id === CUSTOMER_A);
@@ -63,10 +68,10 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   assert.equal(page.items.length, 2); assert.equal(page.nextCursor, page.items[1].id);
   const rest = await read3('customers', list({ limit: 2, cursor: page.nextCursor }));
   assert.deepEqual([...ids(page.items), ...ids(rest.items)].sort(), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
-});
+}));
 
-test('SQL customer_detail: the /customers/:id fields in full, never images, bank account or fingerprint; out of scope is null', { timeout: 90000 }, async t => {
-  const { db, read3, orgWide } = await setupFullRead(t);
+test('SQL customer_detail: the /customers/:id fields in full, never images, bank account or fingerprint; out of scope is null', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3, orgWide } = env;
   const result = await read3('customer_detail', { customerId: CUSTOMER_A });
   assert.deepEqual(Object.keys(result).sort(), ['domain', 'fetchedAt', 'item', 'organizationId']);
   const item = result.item;
@@ -96,10 +101,10 @@ test('SQL customer_detail: the /customers/:id fields in full, never images, bank
   assert.equal((await read3('customer_detail', { customerId: CUSTOMER_F })).item, null, 'other company stays invisible');
   await db.exec(`UPDATE public.customers SET deleted_at=clock_timestamp() WHERE id='${CUSTOMER_C}'`);
   assert.equal((await read3('customer_detail', { customerId: CUSTOMER_C })).item, null);
-});
+}));
 
-test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; no file, public code or bank data', { timeout: 90000 }, async t => {
-  const { db, read3 } = await setupFullRead(t);
+test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; no file, public code or bank data', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3 } = env;
   const result = await read3('contract_detail', { contractId: CONTRACT_A }), item = result.item;
   assert.deepEqual(Object.keys(item).sort(), Object.keys(CONTRACT_DETAIL_FIELDS).sort());
   assert.deepEqual([item.number, item.status, item.rentPrice, item.paymentCycle, item.totalDeposit, item.depositPaid, item.depositRemaining, item.depositDebtMode],
@@ -120,10 +125,10 @@ test('SQL contract_detail: /contracts/:id terms, deposit, tenants and services; 
   assert.equal((await read3('contract_detail', { contractId: CONTRACT_B })).item.id, CONTRACT_B, 'Toàn tổ chức overlay ∩ CRM buildings');
   await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='contracts.view'`);
   assert.equal((await read3('contract_detail', { contractId: CONTRACT_B })).item, null, 'CRM building scope still applies');
-});
+}));
 
-test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, caller, session and binding versions', { timeout: 90000 }, async t => {
-  const { db, read3 } = await setupFullRead(t);
+test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, caller, session and binding versions', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3 } = env;
   const probe = () => read3('customer_detail', { customerId: CUSTOMER_A });
   assert.ok((await probe()).item);
   for (const [label, off, on] of [
@@ -143,7 +148,7 @@ test('SQL v3 denials: CRM grant, registry, company policy, connection overlay, c
   await assert.rejects(read3('customers', list({ buildingId: OTHER_BUILDING })), code('42501'), 'building outside the overlay');
   for (const [domain, input] of [['customer_detail', { customerId: CUSTOMER_A, extra: 1 }], ['contract_detail', { customerId: CUSTOMER_A }],
     ['nope', { customerId: CUSTOMER_A }], ['customers', { ...list(), status: 'ACTIVE' }]]) await assert.rejects(read3(domain, input), code('22023'), domain);
-});
+}));
 
 test('group path untouched: the four full-read migrations define only their own reviewed functions and no group/sale-listing projection', () => {
   const sql = [fullReadSql(), fullReadFixSql(), fullReadParitySql(), fullReadOwnerSql()].join('\n').replace(/--[^\n]*/g, '');
@@ -153,8 +158,8 @@ test('group path untouched: the four full-read migrations define only their own 
   assert.doesNotMatch(sql, /hermes_group_|sale_listing|room_read|zalo_broadcast|hermes_capabilities\s+SET|INSERT\s+INTO\s+app_private\.hermes_capabilities/i);
 });
 
-test('composition: broker → domain mount → bound user JWT → hermes_domain_read_v3; tools follow the CRM ∩ overlay grant', { timeout: 120000 }, async t => {
-  const env = await setupFullRead(t), { db, call } = env, events = [];
+test('composition: broker → domain mount → bound user JWT → hermes_domain_read_v3; tools follow the CRM ∩ overlay grant', { timeout: 120000 }, t => inCase(async env => {
+  const { db, call } = env, events = [];
   const expiresAt = (Math.floor(Date.now() / 1000) + 3600) * 1000;
   const accessToken = ['header', Buffer.from(JSON.stringify({ role: 'authenticated', sub: USER, session_id: SESSION, exp: expiresAt / 1000 })).toString('base64url'), 'signature'].join('.');
   const crypto = createSessionCrypto({ activeKeyVersion: 'test', keys: new Map([['test', randomBytes(32)]]) }); t.after(() => crypto.destroy());
@@ -197,15 +202,15 @@ test('composition: broker → domain mount → bound user JWT → hermes_domain_
   const after = (await broker.listTools(token)).tools.map(tool => tool.name);
   assert.equal(after.some(name => ['crm_read_customers', 'crm_read_customer_detail', 'crm_read_contract_detail'].includes(name)), false);
   await assert.rejects(broker.callTool(token, 'crm_read_contract_detail', { contractId: CONTRACT_A }), code('tool_not_available'));
-});
+}));
 
 // P1 (review 9aef3a21): như web — người ở chỉ qua customers.view, hợp đồng của khách chỉ
 // qua contracts.view (quyền CRM ∩ Read kết nối ∩ toà overlay). Kế toán chỉ có contracts.view.
 const PII = [PHONE_A, CCCD_A, '1990-05-01', 'Thôn Đông', 'Công ty X', '0933333333', '001200000001'];
 const removeRead = permission => [`UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'${permission}')`,
   `UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['${permission}']`];
-test('P1 contract_detail: an accountant with contracts.view but no customers.view sees terms, never tenant PII', { timeout: 120000 }, async t => {
-  const { db, read3 } = await setupFullRead(t);
+test('P1 contract_detail: an accountant with contracts.view but no customers.view sees terms, never tenant PII', { timeout: 120000 }, t => inCase(async env => {
+  const { db, read3 } = env;
   const input = domainInput('contract_detail', { contractId: CONTRACT_A });
   const full = await read3('contract_detail', input);
   assert.deepEqual([full.item.tenantsVisible, full.item.tenants.length], [true, 2]);
@@ -226,9 +231,9 @@ test('P1 contract_detail: an accountant with contracts.view but no customers.vie
   }
   assert.throws(() => domainResult('contract_detail', { ...full, item: { ...full.item, tenantsVisible: false } }, identity('contracts.view'), input),
     'broker refuses tenants marked invisible');
-});
-test('P1 customer side: without contracts.view the profile and list keep the customer but drop contracts', { timeout: 120000 }, async t => {
-  const { db, read3 } = await setupFullRead(t);
+}));
+test('P1 customer side: without contracts.view the profile and list keep the customer but drop contracts', { timeout: 120000 }, t => inCase(async env => {
+  const { db, read3 } = env;
   const [off, on] = removeRead('contracts.view');
   await db.exec(off);
   try {
@@ -241,11 +246,11 @@ test('P1 customer side: without contracts.view the profile and list keep the cus
     assert.deepEqual(people.items.map(row => [row.buildingId, row.roomId, row.roomName]), [[null, null, null], [null, null, null]]);
   } finally { await db.exec(on); }
   assert.equal((await read3('customers', list())).items.find(row => row.id === CUSTOMER_A).contractId, CONTRACT_A);
-});
+}));
 
 const STRANGER = '0e0e0e0e-0000-4000-8000-000000000040';
-test('P2-2: a customer whose owner (customers.user_id) is not an active member is hidden in list, profile and tenants, like the web RLS', { timeout: 120000 }, async t => {
-  const { db, read3 } = await setupFullRead(t);
+test('P2-2: a customer whose owner (customers.user_id) is not an active member is hidden in list, profile and tenants, like the web RLS', { timeout: 120000 }, t => inCase(async env => {
+  const { db, read3 } = env;
   await db.exec(`UPDATE public.customers SET user_id='${STRANGER}' WHERE id='${CO_TENANT}'`);
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A]);
   assert.equal((await read3('customer_detail', { customerId: CO_TENANT })).item, null);
@@ -255,7 +260,7 @@ test('P2-2: a customer whose owner (customers.user_id) is not an active member i
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${STRANGER}')`);
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CO_TENANT].sort(), 'owner joins the company: visible again');
   assert.equal((await read3('customer_detail', { customerId: CO_TENANT })).item.id, CO_TENANT);
-});
+}));
 
 // Mutation evidence: each mutant removes ONE fence; the same probe that the
 // reviewed SQL refuses must then succeed, so the probes are not vacuous.
@@ -328,10 +333,13 @@ const probes = [
       return (await read3('customers', list())).items.some(row => row.roomName !== null); } },
 ];
 for (const probe of probes) {
-  test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async t => {
-    const safe = await setupFullRead(t);
-    assert.equal(await probe.run(safe).catch(() => false), false, 'reviewed SQL refuses');
-    const mutant = await setupFullRead(t, { owner: probe.sql });
-    assert.equal(await probe.run(mutant), true, 'mutant breaches');
+  // Chỉ các hàm khác bản sống, tính ngay khi nạp file (neo sai ⇒ đỏ sớm).
+  const changed = changedFunctions(reviewed, probe.sql);
+  test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
+    await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'reviewed SQL refuses'));
+    await inCase(async env => {
+      for (const sql of changed) await env.db.exec(sql);
+      assert.equal(await probe.run(env), true, 'mutant breaches');
+    });
   });
 }

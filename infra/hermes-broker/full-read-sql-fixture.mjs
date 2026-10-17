@@ -160,3 +160,24 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   }
   return { ...env, read3, orgWide };
 }
+
+// MỘT PGlite cho cả file test (mỗi instance PGlite giữ vài trăm MB WASM và không trả lại sau
+// close — 38 instance của full-read-report từng đẩy RSS lên ~13 GB, runner CI bị tắt). Mỗi ca
+// chạy trong BEGIN … ROLLBACK (isolated); lời gọi bên trong là SAVEPOINT.
+export async function sharedFullRead(options) {
+  const cleanups = [];
+  const env = await setupFullRead({ after: fn => cleanups.push(fn) }, options);
+  let open = true;
+  return { ...env, isolated: work => env.rollbackCase(() => work(env)),
+    async close() { if (!open) return; open = false; for (const fn of cleanups.reverse()) await fn(); } };
+}
+// Đột biến chạy trong ca: chỉ các CREATE OR REPLACE FUNCTION mà bản đột biến khác bản sống
+// (file migration có BEGIN/COMMIT nên không exec cả file trong một giao dịch đang mở).
+const functionBlocks = sql => [...sql.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)].map(match => match[0]);
+export function changedFunctions(live, mutant) {
+  const before = functionBlocks(live), after = functionBlocks(mutant);
+  if (before.length !== after.length) throw new Error('mutant changed the function layout');
+  const changed = after.filter((block, index) => block !== before[index]);
+  if (!changed.length) throw new Error('mutant changed no function');
+  return changed;
+}

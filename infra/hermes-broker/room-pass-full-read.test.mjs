@@ -1,23 +1,33 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { setupUpsert, fullReadChain, BUILDING2, BUILDING, ROOM, SCOPE, SCOPE2, ROOM2, ROOM3, CONTRACT, CUSTOMER, PHONE, binding } from './room-pass-upsert-sql-fixture.mjs';
+import { sharedUpsert, fullReadChain, BUILDING2, BUILDING, ROOM, SCOPE, SCOPE2, ROOM2, ROOM3, CONTRACT, CUSTOMER, PHONE, binding } from './room-pass-upsert-sql-fixture.mjs';
 import { id, ORG, FOREIGN } from '../hermes-zalo-router/private-command-fixture.mjs';
 import { roomPassResult, ROOM_PASS_TOOLS } from './room-pass-contract.mjs';
+import { changedFunctions } from './full-read-sql-fixture.mjs';
 
 // Đọc đầy đủ cho người hỏi (chủ chốt 16/10): hermes_room_pass_upsert_v2 bọc v1.
 // v1 vẫn quyết định mọi quyền/biên nhận; v2 chỉ thay SĐT che bằng SĐT đầy đủ của
 // đúng khách đại diện / liên hệ tin pass mà v1 vừa trả. Synthetic rows only.
 // Chuỗi bốn file: định nghĩa sống của v2 ở file CUỐI (20261017033630, sửa sau review 85280779).
 const fullRead = fullReadChain(), LIVE = fullRead.length - 1;
-const withLive = sql => [...fullRead.slice(0, LIVE), sql];
+// Một PGlite cho cả file; mỗi ca BEGIN … ROLLBACK. Đột biến: chỉ thay thân hàm khác bản sống, trong ca.
+let shared;
+before(async () => { shared = await sharedUpsert({ fullRead }); });
+after(async () => { await shared?.close(); });
+const inCase = work => shared.isolated(work);
+const valueInCase = async work => { let value; await inCase(async env => { value = await work(env); }); return value; };
+const mutantValue = (mutatedLive, work) => valueInCase(async env => {
+  for (const sql of changedFunctions(fullRead[LIVE], mutatedLive)) await env.db.exec(sql);
+  return work(env);
+});
 const req = n => `0f0f0f0f-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const identity = { row: { organizationId: ORG } };
 const lookup = { buildingName: 'le van tho', roomCode: '103' };
 const OLD_CONTRACT = '0d0d0d0d-0000-4000-8000-000000000001', OLD_CUSTOMER = '0d0d0d0d-0000-4000-8000-000000000002', NEW_CONTRACT = '0d0d0d0d-0000-4000-8000-000000000003';
 
-test('v2 lookup: same rooms and authority as v1, representative phone in full only for the private reply', { timeout: 60000 }, async t => {
-  const { db, call, call2 } = await setupUpsert(t, { fullRead });
+test('v2 lookup: same rooms and authority as v1, representative phone in full only for the private reply', { timeout: 60000 }, () => inCase(async env => {
+  const { db, call, call2 } = env;
   const masked = await call('lookup', lookup), full = await call2('lookup', lookup);
   assert.deepEqual(full.rooms.map(room => room.roomId), masked.rooms.map(room => room.roomId));
   assert.deepEqual(masked.rooms[0].representative, { name: 'Nguyễn Duẩn', phoneMasked: '***8160' }, 'applied v1 is unchanged');
@@ -37,20 +47,20 @@ test('v2 lookup: same rooms and authority as v1, representative phone in full on
   await assert.rejects(call2('lookup', lookup, binding, 'anon'), error => error.code === '42501');
   await assert.rejects(call2('lookup', lookup, binding, 'authenticated', FOREIGN), error => /42501|PT409/.test(error.code));
   await assert.rejects(call2('delete', lookup), error => error.code === '22023');
-});
+}));
 
-test('v2 lookup: a room whose only contract ended shows no representative (never the former tenant)', { timeout: 60000 }, async t => {
-  const { db, call2 } = await setupUpsert(t, { fullRead });
+test('v2 lookup: a room whose only contract ended shows no representative (never the former tenant)', { timeout: 60000 }, () => inCase(async env => {
+  const { db, call2 } = env;
   await db.exec(`INSERT INTO public.contracts VALUES('${OLD_CONTRACT}','${ROOM3}','TERMINATED',null);
     INSERT INTO public.customers VALUES('${OLD_CUSTOMER}','Khách cũ','0977000111',null);
     INSERT INTO public.contract_customers VALUES('${OLD_CONTRACT}','${OLD_CUSTOMER}',true)`);
   const found = await call2('lookup', { buildingName: 'le van tho', roomCode: '1103' });
   assert.deepEqual(found.rooms.map(room => [room.roomId, room.hasActiveContract, room.representative]), [[ROOM3, false, null]]);
   assert.equal(JSON.stringify(found).includes('0977000111'), false);
-});
+}));
 
-test('v2 upsert/status: contact phone in full; receipt, writer and replay are v1\'s', { timeout: 60000 }, async t => {
-  const { db, call, call2, count } = await setupUpsert(t, { fullRead });
+test('v2 upsert/status: contact phone in full; receipt, writer and replay are v1\'s', { timeout: 60000 }, () => inCase(async env => {
+  const { db, call, call2, count } = env;
   const input = { requestId: req(1), roomId: ROOM, customerPhone: '0900000001', customerName: 'Duẩn', passPrice: 3500000 };
   const created = await call2('upsert', input);
   assert.deepEqual(created.contact, { name: 'Duẩn', phone: '0900000001' });
@@ -73,7 +83,7 @@ test('v2 upsert/status: contact phone in full; receipt, writer and replay are v1
   await assert.rejects(call2('upsert', { ...input, requestId: req(4), roomId: ROOM2 }), error => error.code === '42501');
   assert.equal(await count('app_private.hermes_room_pass_receipts'), 3);
   assert.equal((await db.query("SELECT count(*)::int n FROM public.contracts WHERE id=$1", [CONTRACT])).rows[0].n, 1);
-});
+}));
 
 test('contract: v2 contact accepted, legacy masked receipt still reconciles, malformed contact refused', () => {
   const listing = { listingId: id('f'), buildingId: BUILDING, roomId: ROOM, active: true, revision: 'a'.repeat(64) };
@@ -94,8 +104,8 @@ test('contract: v2 contact accepted, legacy masked receipt still reconciles, mal
 // P2 (review 9aef3a21): SĐT đầy đủ chỉ khi khoá Read customers.view (quyền CRM ∩ Read kết
 // nối ∩ toà overlay) phủ toà của phòng; thiếu thì giữ đúng dạng che của v1.
 const masked = { name: 'Nguyễn Duẩn', phoneMasked: '***8160' };
-test('P2 lookup/upsert keep the v1 mask without customers.view (connection Read, CRM grant, registry or CRM building scope)', { timeout: 120000 }, async t => {
-  const { db, call2 } = await setupUpsert(t, { fullRead });
+test('P2 lookup/upsert keep the v1 mask without customers.view (connection Read, CRM grant, registry or CRM building scope)', { timeout: 120000 }, () => inCase(async env => {
+  const { db, call2 } = env;
   assert.deepEqual((await call2('lookup', lookup)).rooms[0].representative, { name: 'Nguyễn Duẩn', phone: PHONE });
   for (const [label, off, on] of [
     ['connection Read', "UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')",
@@ -119,9 +129,9 @@ test('P2 lookup/upsert keep the v1 mask without customers.view (connection Read,
   assert.deepEqual((await call2('upsert', input)).contact, { name: 'Khách bảy', phoneMasked: '***0007' });
   await db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_append(read_capabilities,'customers.view')");
   assert.deepEqual((await call2('status', { requestId: req(7) })).contact, { name: 'Khách bảy', phone: '0900000007' });
-});
-test('P2 per building: the phone is unmasked only where the customers.view CRM scope ∩ overlay covers that building', { timeout: 120000 }, async t => {
-  const { db, call2 } = await setupUpsert(t, { fullRead });
+}));
+test('P2 per building: the phone is unmasked only where the customers.view CRM scope ∩ overlay covers that building', { timeout: 120000 }, () => inCase(async env => {
+  const { db, call2 } = env;
   await db.exec(`INSERT INTO public.contracts VALUES('${NEW_CONTRACT}','${ROOM2}','ACTIVE',null);
     INSERT INTO public.customers VALUES('${OLD_CUSTOMER}','Khách Quang Trung','0977000222',null);
     INSERT INTO public.contract_customers VALUES('${NEW_CONTRACT}','${OLD_CUSTOMER}',true);
@@ -132,7 +142,7 @@ test('P2 per building: the phone is unmasked only where the customers.view CRM s
   await db.exec(`DELETE FROM public.fixture_customer_read WHERE building_id='${BUILDING2}'`);
   assert.deepEqual((await call2('lookup', quangTrung)).rooms[0].representative, { name: 'Khách Quang Trung', phoneMasked: '***0222' });
   assert.deepEqual((await call2('lookup', lookup)).rooms[0].representative, { name: 'Nguyễn Duẩn', phone: PHONE }, 'the other building keeps the full phone');
-});
+}));
 
 // Mutation evidence: the representative of v2 must be chosen exactly like v1
 // (active contract only). Dropping that filter leaks a former tenant's phone.
@@ -145,9 +155,9 @@ test('mutation is caught: v2 representative restricted to the active contract', 
       INSERT INTO public.contract_customers VALUES('${OLD_CONTRACT}','${OLD_CUSTOMER}',true)`);
     return JSON.stringify(await call2('lookup', { buildingName: 'le van tho', roomCode: '1103' })).includes('0977000111');
   };
-  assert.equal(await probe(await setupUpsert(t, { fullRead })), false, 'reviewed SQL');
-  const mutant = withLive(fullRead[LIVE].split(anchor).join("WHERE ct.room_id=(room.value->>'roomId')::uuid AND ct.deleted_at IS NULL"));
-  assert.equal(await probe(await setupUpsert(t, { fullRead: mutant })), true, 'mutant leaks the former tenant');
+  assert.equal(await valueInCase(probe), false, 'reviewed SQL');
+  const mutant = fullRead[LIVE].split(anchor).join("WHERE ct.room_id=(room.value->>'roomId')::uuid AND ct.deleted_at IS NULL");
+  assert.equal(await mutantValue(mutant, probe), true, 'mutant leaks the former tenant');
 });
 
 // P2 mutation evidence: dropping the customers.view gate leaks the full phone to a
@@ -160,13 +170,12 @@ for (const [name, from, to, probe] of [
 ]) {
   test(`mutation is caught: P2 ${name}`, { timeout: 120000 }, async t => {
     assert.equal(fullRead[LIVE].split(from).length, 2, 'anchor');
-    const run = async sql => {
-      const { db, call2 } = await setupUpsert(t, { fullRead: sql });
+    const run = async ({ db, call2 }) => {
       await db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
       return probe(call2);
     };
-    assert.equal(await run(fullRead), false, 'reviewed SQL keeps the mask');
-    assert.equal(await run(withLive(fullRead[LIVE].split(from).join(to))), true, 'mutant leaks the phone');
+    assert.equal(await valueInCase(run), false, 'reviewed SQL keeps the mask');
+    assert.equal(await mutantValue(fullRead[LIVE].split(from).join(to), run), true, 'mutant leaks the phone');
   });
 }
 
@@ -178,12 +187,13 @@ test('P2-2 lookup: a representative whose owner is not an active member stays hi
     await db.exec(`UPDATE public.customers SET user_id='${id('a')}' WHERE id='${CUSTOMER}'`);
     return JSON.stringify(await call2('lookup', lookup)).includes(PHONE);
   };
-  const { db, call2 } = await setupUpsert(t, { fullRead });
-  assert.deepEqual((await call2('lookup', lookup)).rooms[0].representative, { name: 'Nguyễn Duẩn', phone: PHONE }, 'member owner: full phone');
-  assert.equal(await probe({ db, call2 }), false, 'reviewed SQL hides the full phone');
-  await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${id('a')}')`);
-  assert.equal(JSON.stringify(await call2('lookup', lookup)).includes(PHONE), true, 'owner back in the company: visible again');
+  await inCase(async ({ db, call2 }) => {
+    assert.deepEqual((await call2('lookup', lookup)).rooms[0].representative, { name: 'Nguyễn Duẩn', phone: PHONE }, 'member owner: full phone');
+    assert.equal(await probe({ db, call2 }), false, 'reviewed SQL hides the full phone');
+    await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${id('a')}')`);
+    assert.equal(JSON.stringify(await call2('lookup', lookup)).includes(PHONE), true, 'owner back in the company: visible again');
+  });
   assert.equal(fullRead[LIVE].split(OWNER_GATE).length, 2, 'anchor');
-  const mutant = withLive(fullRead[LIVE].split(OWNER_GATE).join('JOIN public.customers cu ON cu.id=cc.customer_id AND cu.deleted_at IS NULL'));
-  assert.equal(await probe(await setupUpsert(t, { fullRead: mutant })), true, 'mutant leaks the phone');
+  const mutant = fullRead[LIVE].split(OWNER_GATE).join('JOIN public.customers cu ON cu.id=cc.customer_id AND cu.deleted_at IS NULL');
+  assert.equal(await mutantValue(mutant, probe), true, 'mutant leaks the phone');
 });
