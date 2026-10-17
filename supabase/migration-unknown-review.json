@@ -873,6 +873,32 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261017115636_contract_list_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261017115636_contract_list_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.contract_display_status_v1, app_private.contract_display_label_v1, app_private.contract_list_args_v1, public.contract_list_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 4 hàm trên — sinh 17/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261017115636_contract_list_v1.json",
+          "trich_doan": "lane apply-reviewed-migration --env test --apply 17/10/2026: hai lượt ROLLBACK đạt, backup TEST 652 bảng, apply 1s (evidence TEST, không chứng minh production)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 17/10/2026 (danh sách Hợp đồng thành hàm SQL dùng chung contract_list_v1, chủ chốt 17/10), chưa đi qua lane apply production — 4 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp qua lane trên TEST (hai lượt idempotent đạt), PGlite 16 ca + 12 đột biến, khớp số TEST 6 vai. Sẽ áp production qua npm run migrate:forward sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.contract_display_status_v1",
+        "function:app_private.contract_display_label_v1",
+        "function:app_private.contract_list_args_v1",
+        "function:public.contract_list_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hợp đồng hàm dùng chung 17/10/2026",
+      "sha256": "e4edc79355cbc0019d1fc99c53980fc579e4a7f2f8fd41422256c446e8e74d3c"
     }
   }
 }

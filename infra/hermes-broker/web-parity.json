@@ -326,17 +326,37 @@
     {
       "id": "contract-search",
       "kind": "mirrored",
-      "description": "Danh sách Hợp đồng: tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời và thẻ sắp hết hạn/quá hạn, nhãn getContractDisplayStatus (crm_read_contract_search).",
+      "description": "Danh sách Hợp đồng (crm_read_contract_search). Nguồn công thức nay là hàm SQL dùng chung public.contract_list_v1 (migration 20261017115636): tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời, thẻ sắp hết hạn/quá hạn/thanh lý, tháng, toà/phòng, nhãn hiển thị, phân trang. Web /contracts đã gọi hàm này; nhãn JS getContractDisplayStatus còn giữ cho màn chi tiết.",
+      "notes": "HERMES CHƯA CHUYỂN (17/10/2026): app_private.hermes_report_read_v2 nhánh contract_search vẫn chép bộ lọc/nhãn. PR Hermes sau: gọi public.contract_list_v1 (truyền p_building_ids = toà kết nối, p_with_customers theo khoá Read customers.view của kết nối) rồi đổi mục này thành kind rpc (rpc + webCalls + hermes.calls), bỏ nguồn sql.",
       "web": [
-        {
-          "path": "src/hooks/useContracts.ts",
-          "region": "contract-search",
-          "sha256": "eaf9fd967aaf6d3866b73ba1ac5521354b9042bd9692eea8a8ce14177acb0533"
-        },
         {
           "path": "src/types/contract.ts",
           "region": "contract-search",
-          "sha256": "891e1807ddcacdec3703cf347a5079cd068b0344acae8555fe804a6ab221b62c"
+          "sha256": "20b033c8407821aa802cdf60c112767e178ea4ce65cb0fe1ee2aa38888df602d"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useContracts.ts",
+          "rpc": "contract_list_v1"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.contract_list_v1",
+          "sha256": "47f69ac266dc3eed3e1ea8c61d7f4cbd75306962953b315aa610ca0c7d3b979d"
+        },
+        {
+          "function": "app_private.contract_list_args_v1",
+          "sha256": "3feed9ee328a27c2296b4cc58be3bbe32ab40c668a424f6a0e68ba52b8e03259"
+        },
+        {
+          "function": "app_private.contract_display_status_v1",
+          "sha256": "8bf0cf1f7088873a59a6a5f4b8522206a58051cc1eebbec47edcfe279bcc277a"
+        },
+        {
+          "function": "app_private.contract_display_label_v1",
+          "sha256": "c09936d45acd66fd2d5b29a7bc3df4645a6c8590a0c377274e9e9da14f0fdecd"
         }
       ],
       "hermes": [

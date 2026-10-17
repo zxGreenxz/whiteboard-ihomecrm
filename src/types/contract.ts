@@ -178,7 +178,12 @@ export function isContractInEffect(status?: string | null): boolean {
 
 // hermes-parity:begin contract-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 // Helper: compute display status
-export function getContractDisplayStatus(contract: Contract): ContractDisplayStatus {
+// Hàng danh sách đọc từ contract_list_v1 đã mang nhãn do SQL tính (cùng công thức, mốc là
+// ngày của công ty — giờ VN) ⇒ dùng lại để web/Hermes/báo cáo hiện cùng một nhãn. Hàng khác
+// (chi tiết HĐ) tính tại chỗ: end_date đọc như 00:00 UTC nên thực chất so theo ngày UTC,
+// lệch nhãn SQL trong khung 00:00–07:00 giờ VN (khoá ở contractListV1Migration.test.ts).
+export function getContractDisplayStatus(contract: Contract & { display_status?: ContractDisplayStatus }): ContractDisplayStatus {
+  if (contract.display_status) return contract.display_status;
   if (contract.status === 'TERMINATED') return 'TERMINATED';
   if (contract.status === 'TRANSFERRED') return 'TRANSFERRED';
   if (contract.status === 'DRAFT') return 'DRAFT';
