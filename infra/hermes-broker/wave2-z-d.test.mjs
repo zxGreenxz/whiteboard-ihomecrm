@@ -8,11 +8,13 @@ import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2D_REPORTS } from './wave2-d-contract.mjs';
 import { w2Params } from './wave2-kit.mjs';
 
-// Gói Z — bản sửa tích hợp của Gói D (20261018080300_hermes_w2z_catalog_fixes_v1) trên harness Gói D + dải Z. MỘT PGlite
+// Gói Z — bản sửa tích hợp của Gói D (hàm đọc 20261018080300_hermes_w2z_catalog_fixes_v1; loại thu chi ở hàm dùng chung
+// 20261018080000_hermes_w2z_shared_fixes_v1) trên harness Gói D + dải Z. MỘT PGlite
 // cho cả file, mỗi ca BEGIN … ROLLBACK, qua cổng thật public.hermes_w2_read_v1. Ca: HĐ thanh lý hai khách, khách đại diện
 // thuộc chủ hồ sơ ngoài phạm vi (RLS customers ẩn) ⇒ không ghi chú; khử trùng loại thu chi (hàng công ty thắng hàng dùng
 // chung; dòng của chính người hỏi so bằng IS TRUE). Đột biến đưa từng chỗ sửa về thân của gói D. Dữ liệu tổng hợp.
 const Z = readFileSync('supabase/migrations/20261018080300_hermes_w2z_catalog_fixes_v1.sql', 'utf8');
+const SHARED = readFileSync('supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql', 'utf8');
 const ORG_SCOPE = '00000000-0000-4000-8000-0000000000a1';
 const STRANGER = '0d0d0d0d-0000-4000-8000-0000000000e1', HIDDEN_REP = '0d0d0d0d-0000-4000-8000-0000000000e2';
 const GLOBAL_DUP = '0d0d0d0d-0000-4000-8000-0000000000e3', DUP_NULL = '0d0d0d0d-0000-4000-8000-0000000000e4', DUP_MINE = '0d0d0d0d-0000-4000-8000-0000000000e5';
@@ -27,8 +29,9 @@ async function orgWide(env, keys) {
     await env.db.query(`UPDATE app_private.${table} SET scope_ids=ARRAY(SELECT DISTINCT unnest(array_append(scope_ids,$1::uuid)))`, [ORG_SCOPE]);
 }
 const mutate = async (env, from, to) => {
-  assert.equal(Z.split(from).length, 2, `anchor: ${from}`);
-  for (const statement of changedFunctions(Z, Z.replace(from, () => to))) await env.db.exec(statement);
+  const source = Z.includes(from) ? Z : SHARED;
+  assert.equal(source.split(from).length, 2, `anchor: ${from}`);
+  for (const statement of changedFunctions(source, source.replace(from, () => to))) await env.db.exec(statement);
 };
 // Khách đại diện của HĐ thanh lý C_END thuộc chủ hồ sơ ngoài phạm vi thấy (RLS customers trả 0 dòng).
 const hiddenRep = db => db.exec(`INSERT INTO public.customers(id,organization_id,user_id,full_name,phone)

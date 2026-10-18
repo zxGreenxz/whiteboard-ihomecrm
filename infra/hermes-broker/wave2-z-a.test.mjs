@@ -5,12 +5,13 @@ import { sharedW2a, BUILDING, USER, ORG, CUSTOMER_C, INVOICE_A, INV_C_PAID, INV_
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
 
-// Gói Z — bản sửa tích hợp của Gói A (20261018080000_hermes_w2z_receivables_pii_v1) trên harness Gói A + dải Z. MỘT
+// Gói Z — bản sửa tích hợp của Gói A (hàm đọc 20261018080100_hermes_w2z_receivables_pii_v1; Thu tiền ở hàm dùng chung
+// 20261018080000_hermes_w2z_shared_fixes_v1) trên harness Gói A + dải Z. MỘT
 // PGlite cho cả file, mỗi ca BEGIN … ROLLBACK. Gọi thẳng hàm đọc gói bằng vai authenticated (public.fixture_w2a_read của
 // fixture, ctx như cổng dựng), hàm dùng chung gọi như web. Đột biến: đưa từng chỗ sửa về thân cũ trong ca ⇒ ca phải đỏ.
 // Dữ liệu tổng hợp; RLS là RLS giả lập của fixture (chủ hồ sơ khách theo fixture_visible_owners).
-const Z_PATH = 'supabase/migrations/20261018080000_hermes_w2z_receivables_pii_v1.sql';
-const Z = readFileSync(Z_PATH, 'utf8');
+const Z = readFileSync('supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql', 'utf8');
+const SHARED = readFileSync('supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql', 'utf8');
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
 let shared;
 before(async () => { shared = await sharedW2a({ packages: ['a', 'z'] }); });
@@ -23,8 +24,9 @@ const direct = (env, report, values = {}) => env.call('SELECT public.fixture_w2a
   [report, JSON.stringify(params(report, values)), JSON.stringify({ ...CTX, report })]);
 // Đột biến trong ca: thay một đoạn của file Z rồi chạy lại đúng các hàm bị đổi.
 const mutate = async (env, from, to) => {
-  assert.equal(Z.split(from).length, 2, `anchor: ${from}`);
-  for (const statement of changedFunctions(Z, Z.replace(from, () => to))) await env.db.exec(statement);
+  const source = Z.includes(from) ? Z : SHARED;
+  assert.equal(source.split(from).length, 2, `anchor: ${from}`);
+  for (const statement of changedFunctions(source, source.replace(from, () => to))) await env.db.exec(statement);
 };
 const showStranger = env => env.db.query('INSERT INTO public.fixture_visible_owners VALUES($1) ON CONFLICT DO NOTHING', [STRANGER]);
 

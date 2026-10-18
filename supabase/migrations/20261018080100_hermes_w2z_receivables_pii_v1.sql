@@ -1,85 +1,15 @@
--- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): sửa Gói A sau soát lại + theo web main #209. Áp SAU
--- 20261018010100 (Gói A) và TRƯỚC công tắc 20261018090000_hermes_w2_enable_v1. Không DROP, không đổi chữ ký/kiểu trả về
--- (hàm chưa phát hành production), không GRANT/REVOKE (CREATE OR REPLACE giữ ACL), không ghi dữ liệu nghiệp vụ.
---  1. app_private.hermes_w2a_read_v1 (thân = 20261018010100, đổi đúng hai chỗ): siết rào PII theo review nội bộ — chữ tự do
---     gắn hợp đồng (ghi chú hoá đơn + tên phiếu ở invoice_detail; người nộp + ghi chú ở change_ledger) chỉ trả khi MỌI
---     khách của hợp đồng nhìn thấy dưới RLS customers của người hỏi (cùng công ty), không chỉ khách đại diện/khách đầu.
---     Tên khách (của chính hồ sơ đã qua RLS) giữ điều kiện cũ.
---  2. public.thu_tien_collection_v1 (thân = 20261018010000, đổi một dòng): theo web (#209, useCollectionReport.ts) — khoản
---     thu đã hoàn tác (reversed_at) không còn là tiền đã thu: bỏ khỏi đã thu theo ngày/khoảng, paidUpTo, paidAsOf.
--- Kiểm: infra/hermes-broker/wave2-z-a.test.mjs (HĐ hai khách, một khách bị RLS ẩn; khoản hoàn tác; đột biến về thân cũ).
+-- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): hàm đọc Gói A sau soát lại. Áp SAU 20261018010100 (Gói A) và
+-- 20261018080000 (hàm dùng chung Z), TRƯỚC công tắc 20261018090000_hermes_w2_enable_v1. Không DROP, không đổi chữ ký, không
+-- GRANT/REVOKE (CREATE OR REPLACE giữ ACL của nền 000600), không ghi dữ liệu.
+-- app_private.hermes_w2a_read_v1 (thân = 20261018010100, đổi đúng hai chỗ): siết rào PII theo review nội bộ — chữ tự do gắn hợp
+-- đồng (ghi chú hoá đơn + tên phiếu ở invoice_detail; người nộp + ghi chú ở change_ledger) chỉ trả khi MỌI khách của hợp đồng
+-- nhìn thấy dưới RLS customers của người hỏi (cùng công ty), không chỉ khách đại diện/khách đầu. Tên khách (của chính hồ sơ đã
+-- qua RLS) giữ điều kiện cũ.
+-- Kiểm: infra/hermes-broker/wave2-z-a.test.mjs (HĐ hai khách, một khách bị RLS ẩn; đột biến về thân cũ).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
--- Thu tiền theo kỳ: như 20261018010000, trừ — (Gói Z, theo web #209) payments chỉ tính dòng CHƯA hoàn tác
--- (reversed_at IS NULL), cùng chỗ web lọc ngay sau khi tải (useThuTienInvoices).
-CREATE OR REPLACE FUNCTION public.thu_tien_collection_v1(p_organization_id uuid,p_billing_month text,p_from date,p_to date,p_today date,
-  p_building_ids uuid[] DEFAULT NULL)
-RETURNS TABLE(invoice_id uuid,invoice_number text,invoice_status text,building_id uuid,building_name text,building_sort text,room_id uuid,
-  room_name text,room_sort text,contract_id uuid,customer_id uuid,customer_name text,total_amount numeric,paid_amount numeric,
-  remaining_amount numeric,collect_status text,time_mode text,collected_in_range numeric,in_scope boolean,status_paid boolean,
-  status_unpaid boolean,summary_collected numeric,summary_paid boolean,summary_due boolean,summary_remaining numeric,collectors text[])
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
-#variable_conflict use_column
-DECLARE v_b uuid[];
-BEGIN
-  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
-  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
-  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
-    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
-      AND public.can_do_on_building('thu_tien','view',b.id);
-  RETURN QUERY
-  WITH win AS (SELECT CASE WHEN p_from IS NULL AND p_to IS NULL THEN 'all'
-      WHEN COALESCE(p_from,p_to)=p_today AND COALESCE(p_to,p_from)=p_today THEN 'today' ELSE 'date' END mode,
-    LEAST(COALESCE(p_from,p_to),COALESCE(p_to,p_from)) lo,GREATEST(COALESCE(p_from,p_to),COALESCE(p_to,p_from)) hi),
-  base AS (
-    SELECT i.id,i.invoice_number,i.status::text status,i.building_id,i.room_id,i.contract_id,COALESCE(i.total_amount,0) total,
-      COALESCE(i.paid_amount,0) paid,COALESCE(i.remaining_amount,COALESCE(i.total_amount,0)-COALESCE(i.paid_amount,0)) rem,
-      w.mode,w.lo,w.hi,pay.sum_range,pay.has_range,pay.paid_upto,pay.all_before
-    FROM public.invoices i CROSS JOIN win w
-    CROSS JOIN LATERAL (SELECT COALESCE(sum(p.amount) FILTER (WHERE p.payment_date BETWEEN w.lo AND w.hi),0) sum_range,
-        count(*) FILTER (WHERE p.payment_date BETWEEN w.lo AND w.hi)>0 has_range,
-        COALESCE(sum(p.amount) FILTER (WHERE p.payment_date<=w.hi),0) paid_upto,
-        COALESCE(bool_and(COALESCE(p.payment_date<=w.hi,false)),true) all_before
-      FROM public.payments p WHERE p.invoice_id=i.id AND p.reversed_at IS NULL) pay
-    WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND i.billing_month=p_billing_month
-      AND i.building_id=ANY(v_b)),
-  flags AS (
-    SELECT b.*,(b.status='PAID' OR b.rem<=0) is_paid,
-      (b.paid_upto>=b.total OR ((b.status='PAID' OR b.rem<=0) AND b.all_before)) paid_as_of
-    FROM base b),
-  scoped AS (
-    SELECT f.*,CASE WHEN f.mode='today' THEN NOT f.is_paid ELSE NOT f.paid_as_of END owes FROM flags f)
-  SELECT s.id,s.invoice_number,s.status,s.building_id,bd.name,bd.name_sort,s.room_id,r.name,r.name_sort,s.contract_id,cu.id,cu.full_name,
-    s.total,s.paid,s.rem,
-    CASE WHEN s.is_paid THEN 'paid' WHEN s.status='PARTIAL_PAID' OR s.paid>0 THEN 'partial' ELSE 'unpaid' END,
-    s.mode,CASE WHEN s.mode='all' THEN NULL ELSE s.sum_range END,
-    s.mode='all' OR s.has_range OR s.owes,
-    CASE WHEN s.mode='all' THEN s.is_paid ELSE s.has_range END,
-    CASE WHEN s.mode='all' THEN NOT s.is_paid ELSE s.owes AND NOT s.has_range END,
-    CASE WHEN s.mode='all' THEN s.paid ELSE s.sum_range END,
-    CASE WHEN s.mode='all' THEN s.is_paid ELSE s.has_range END,
-    CASE WHEN s.mode='all' THEN NOT s.is_paid ELSE NOT s.has_range AND s.owes END,
-    CASE WHEN s.mode='all' THEN CASE WHEN s.is_paid THEN 0 ELSE GREATEST(0,s.rem) END
-      WHEN s.has_range OR NOT s.owes THEN 0
-      WHEN s.mode='today' THEN GREATEST(0,s.rem)
-      WHEN s.paid_as_of THEN 0 ELSE GREATEST(0,s.total-s.paid_upto) END,
-    (SELECT array_agg(n.name ORDER BY n.first_at,n.name) FROM (
-       SELECT DISTINCT ON (lower(btrim(ie.creator_name))) btrim(ie.creator_name) name,ie.created_at first_at
-       FROM public.income_expenses ie
-       WHERE ie.invoice_id=s.id AND ie.organization_id=p_organization_id AND ie.type='INCOME' AND ie.approval_status='APPROVED'
-         AND ie.deleted_at IS NULL AND ie.payment_id IS NOT NULL AND btrim(COALESCE(ie.creator_name,''))<>''
-       ORDER BY lower(btrim(ie.creator_name)),ie.created_at) n)
-  FROM scoped s
-  LEFT JOIN public.buildings bd ON bd.id=s.building_id
-  LEFT JOIN public.rooms r ON r.id=s.room_id
-  LEFT JOIN LATERAL (SELECT cc.customer_id FROM public.contract_customers cc WHERE cc.contract_id=s.contract_id
-    ORDER BY cc.is_representative DESC,cc.created_at,cc.id LIMIT 1) rep ON true
-  LEFT JOIN public.customers cu ON cu.id=rep.customer_id AND cu.organization_id=p_organization_id;
-END $fn$;
-
--- Hàm đọc Gói A: như 20261018010100, trừ hai chỗ rào PII ở invoice_detail và change_ledger (xem đầu file).
 CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
 DECLARE v_org uuid; v_b uuid[]; v_cust uuid[]; v_today date; v_rows jsonb:='[]'::jsonb; v_total integer:=0; v_summary jsonb;
@@ -351,7 +281,6 @@ BEGIN
   RETURN jsonb_build_object('rows',v_rows,'summary',v_summary,'sourceCapped',v_total>2000,'unavailable',NULL);
 END $fn$;
 
-ALTER FUNCTION public.thu_tien_collection_v1(uuid,text,date,date,date,uuid[]) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_w2a_read_v1(text,jsonb,jsonb) OWNER TO postgres;
 COMMIT;
 NOTIFY pgrst,'reload schema';

@@ -1,8 +1,8 @@
--- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): sửa Gói B sau soát lại. Áp SAU 20261018020300 (Gói B) và TRƯỚC
+-- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): hàm đọc Gói B sau soát lại. Áp SAU 20261018020300 (Gói B), TRƯỚC
 -- công tắc 20261018090000_hermes_w2_enable_v1. Không DROP, không đổi chữ ký, không GRANT/REVOKE, không ghi dữ liệu.
--- app_private.hermes_w2b_read_v1 (thân = 20261018020300, đổi đúng một câu): cờ "được xem phiếu/hạng mục hạn chế" (v_ok)
--- đóng khi thiếu khoá restricted_view trong ctx.scopes — trước đây NULL truyền xuống finance_analysis_top_expenses_v2 /
--- finance_analysis_type_breakdown_v1 bị đọc là "theo RLS" (mở) ở top khoản chi và hạng mục thu/chi.
+-- app_private.hermes_w2b_read_v1 (thân = 20261018020300, đổi đúng một câu): cờ "được xem phiếu/hạng mục hạn chế" (v_ok) đóng khi
+-- ctx.scopes thiếu khoá restricted_view — NULL truyền xuống finance_analysis_top_expenses_v2 / finance_analysis_type_breakdown_v1
+-- bị đọc là "theo RLS" (mở) ở top khoản chi và hạng mục thu/chi.
 -- Kiểm: infra/hermes-broker/wave2-z-b.test.mjs (ctx thiếu khoá; đột biến về thân cũ).
 BEGIN;
 SET LOCAL lock_timeout='5s';

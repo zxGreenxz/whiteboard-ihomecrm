@@ -6,10 +6,10 @@ import { USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2 } from './wave2-registry.mjs';
 
-// Gói Z — bản sửa tích hợp của Gói C (20261018080200_hermes_w2z_notifications_org_v1) trên harness Gói C + dải Z. MỘT
+// Gói Z — bản sửa tích hợp của Gói C (hàm dùng chung 20261018080000_hermes_w2z_shared_fixes_v1) trên harness Gói C + dải Z. MỘT
 // PGlite cho cả file, mỗi ca BEGIN … ROLLBACK. Theo web main #209 (useNotifications.ts inboxScope): đã chọn công ty thì chỉ
 // thông báo của đúng công ty đó. Đi qua cổng thật public.hermes_w2_read_v1 + rào broker. Dữ liệu tổng hợp.
-const Z = readFileSync('supabase/migrations/20261018080200_hermes_w2z_notifications_org_v1.sql', 'utf8');
+const Z = readFileSync('supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql', 'utf8');
 let shared;
 before(async () => { shared = await sharedW2c({ packages: ['c', 'z'] }); });
 after(async () => { await shared?.close(); });

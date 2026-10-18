@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1504,
   "soFileDocBangFs": 376,
-  "tongLoiGoi": 860,
+  "tongLoiGoi": 862,
   "khongPhanLoaiDuoc": 392,
   "theoLoai": {
     "ma-nguon": {
@@ -901,7 +901,23 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/wave2-z-a.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/wave2-z-b.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-z-d.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2
@@ -1595,23 +1611,7 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/wave2-z-a.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "infra/hermes-broker/wave2-z-c.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/wave2-z-d.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1

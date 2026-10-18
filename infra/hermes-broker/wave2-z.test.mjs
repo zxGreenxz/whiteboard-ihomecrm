@@ -22,12 +22,14 @@ import { W2_RANGES, w2MigrationPaths, w2FenceViolations, w2AllMigrations } from 
 // Z đo ở wave2-z-{a,b,c,d}.test.mjs (một PGlite mỗi file).
 const DIR = 'supabase/migrations';
 const ENABLE = '20261018090000_hermes_w2_enable_v1.sql';
+// Hàm dùng chung public.* ở MỘT file không nhắc trợ lý (như các gói — ngoài phạm vi rà ACL hàm trợ lý của
+// hermes-durable-schema.test.mjs, vốn chỉ quét file có chữ của trợ lý); hàm đọc gói ở ba file riêng.
+const SHARED_FIXES = '20261018080000_hermes_w2z_shared_fixes_v1.sql';
 const Z_FIXES = Object.freeze({
-  '20261018080000_hermes_w2z_receivables_pii_v1.sql': ['public.thu_tien_collection_v1', 'app_private.hermes_w2a_read_v1'],
-  '20261018080100_hermes_w2z_finance_fail_closed_v1.sql': ['app_private.hermes_w2b_read_v1'],
-  '20261018080200_hermes_w2z_notifications_org_v1.sql': ['public.notifications_inbox_v1'],
-  '20261018080300_hermes_w2z_catalog_fixes_v1.sql': ['public.income_expense_types_list_v1', 'app_private.hermes_w2d_read_v1'],
-  '20261018080400_hermes_w2z_report_text_v1.sql': ['public.report_text_v1'],
+  [SHARED_FIXES]: ['public.thu_tien_collection_v1', 'public.notifications_inbox_v1', 'public.income_expense_types_list_v1', 'public.report_text_v1'],
+  '20261018080100_hermes_w2z_receivables_pii_v1.sql': ['app_private.hermes_w2a_read_v1'],
+  '20261018080200_hermes_w2z_finance_fail_closed_v1.sql': ['app_private.hermes_w2b_read_v1'],
+  '20261018080300_hermes_w2z_catalog_fixes_v1.sql': ['app_private.hermes_w2d_read_v1'],
 });
 // Bản trước (của gói) mà mỗi hàm Z thay: chữ ký, kiểu trả về, LANGUAGE/volatility/INVOKER/search_path phải giữ nguyên.
 const PREVIOUS = Object.freeze({
@@ -68,14 +70,14 @@ test('công tắc Z: bật đúng khoá đợt 2 có báo cáo (hoặc là khoá
   for (const marker of ["strpos(p.prosrc,'v_inv_text')>0", "strpos(p.prosrc,'v_ok:=COALESCE(')>0", "strpos(p.prosrc,'n.organization_id IS NULL')=0",
     "strpos(p.prosrc,'nv.ok')>0"]) assert.ok(body.includes(marker), marker);
   // Dấu mà công tắc đòi phải có trong đúng bản sửa Z (bật trên hàm chưa sửa là không được).
-  for (const [file, marker] of [['20261018080000_hermes_w2z_receivables_pii_v1.sql', 'v_inv_text'],
-    ['20261018080100_hermes_w2z_finance_fail_closed_v1.sql', 'v_ok:=COALESCE('], ['20261018080300_hermes_w2z_catalog_fixes_v1.sql', 'nv.ok']])
+  for (const [file, marker] of [['20261018080100_hermes_w2z_receivables_pii_v1.sql', 'v_inv_text'],
+    ['20261018080200_hermes_w2z_finance_fail_closed_v1.sql', 'v_ok:=COALESCE('], ['20261018080300_hermes_w2z_catalog_fixes_v1.sql', 'nv.ok']])
     assert.ok(stripComments(sql(file)).includes(marker), `${file}: ${marker}`);
-  assert.ok(!stripComments(sql('20261018080200_hermes_w2z_notifications_org_v1.sql')).includes('n.organization_id IS NULL'));
+  assert.ok(!stripComments(sql(SHARED_FIXES)).includes('n.organization_id IS NULL'));
   // Thứ tự áp: bản sửa Z (08xxxx) sau mọi gói, công tắc (09xxxx) cuối cùng.
   const order = w2MigrationPaths().map(path => path.split('/').pop());
   assert.equal(order.at(-1), ENABLE);
-  assert.deepEqual(order.slice(-6, -1), Object.keys(Z_FIXES));
+  assert.deepEqual(order.slice(-5, -1), Object.keys(Z_FIXES));
   assert.ok(order.indexOf('20261018040300_hermes_w2d_reader_fixes_v1.sql') < order.indexOf(Object.keys(Z_FIXES)[0]));
 });
 
@@ -87,6 +89,8 @@ test('bản sửa Z: mỗi file chỉ thay đúng hàm đã nêu; chữ ký, ki�
     assert.doesNotMatch(body, /\bDROP\b|\bGRANT\b|\bREVOKE\b|SECURITY DEFINER|copilot|\bINSERT\b|\bDELETE\b|UPDATE\s+public\./i, file);
     assert.match(body, /^\s*BEGIN;/m);
     assert.match(body, /^COMMIT;/m);
+    // File hàm dùng chung không nhắc trợ lý; file hàm đọc gói chỉ thay hàm của trợ lý.
+    assert.equal(/\bhermes_/i.test(text), file !== SHARED_FIXES, file);
     for (const fn of fns) {
       assert.equal(head(text, fn), head(sql(PREVIOUS[fn]), fn), `${fn}: dòng đầu như bản trước`);
       assert.match(head(text, fn), /SECURITY INVOKER/);

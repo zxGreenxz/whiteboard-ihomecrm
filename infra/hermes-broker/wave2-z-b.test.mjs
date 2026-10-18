@@ -6,11 +6,11 @@ import { BUILDING, USER, ORG } from './wave2-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
 
-// Gói Z — bản sửa tích hợp của Gói B (20261018080100_hermes_w2z_finance_fail_closed_v1) trên harness Gói B + dải Z. MỘT
+// Gói Z — bản sửa tích hợp của Gói B (20261018080200_hermes_w2z_finance_fail_closed_v1) trên harness Gói B + dải Z. MỘT
 // PGlite cho cả file, mỗi ca BEGIN … ROLLBACK. Ca soát lại: bảng báo cáo thiếu khoá phụ restricted_view ⇒ cổng không đưa
 // khoá vào ctx.scopes; hàm đọc gói phải ĐÓNG (ẩn phiếu/hạng mục hạn chế của người khác), không đọc NULL là "theo RLS".
 // Gọi thẳng hàm đọc gói bằng vai authenticated với ctx khuôn hermes_w2_scope_v1 (thiếu khoá phụ). Dữ liệu tổng hợp.
-const Z = readFileSync('supabase/migrations/20261018080100_hermes_w2z_finance_fail_closed_v1.sql', 'utf8');
+const Z = readFileSync('supabase/migrations/20261018080200_hermes_w2z_finance_fail_closed_v1.sql', 'utf8');
 const RESTRICTED = 'income_expenses.restricted_view';
 let shared;
 before(async () => { shared = await sharedW2b({ packages: ['b', 'z'] }); });

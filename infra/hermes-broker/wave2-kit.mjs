@@ -27,7 +27,7 @@
 //  2. Hàng tổng hợp toàn công ty buildingId=null (cashbook_daily, cash_flow, fa_type_breakdown) chỉ khi kết nối phạm vi
 //     Toàn tổ chức (cổng 20261018000700 nhận null chỉ khi orgWide); organizationId = p_organization_id hàm đã lọc.
 //  3. Hàng dùng chung (organization_id NULL) bị bỏ và đếm ở summary.globalRowsOmitted (ie_types); trùng tên thì hàng
-//     của công ty thắng khi khử trùng (20261018080300).
+//     của công ty thắng khi khử trùng (20261018080000).
 //  4. Báo cáo theo toà nhận tối đa 256 toà: network_fleet toàn công ty > 256 toà ⇒ 22023 hermes_domain_scope_too_large.
 //  5. Chữ tự do gắn hợp đồng (ghi chú, người nộp, tên phiếu) chỉ khi MỌI khách của HĐ nhìn thấy dưới RLS customers.
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';

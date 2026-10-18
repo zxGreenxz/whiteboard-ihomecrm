@@ -1,39 +1,13 @@
--- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): sửa Gói D sau soát lại. Áp SAU 20261018040300 (Gói D) và TRƯỚC
--- công tắc 20261018090000_hermes_w2_enable_v1. Không DROP, không đổi chữ ký/kiểu trả về, không GRANT/REVOKE, không ghi dữ liệu.
---  1. public.income_expense_types_list_v1 (thân = 20261018040000, đổi thứ tự khử trùng): trong mỗi (loại, tên) hàng của công ty
---     thắng hàng dùng chung (organization_id NULL) — Hermes bỏ hàng dùng chung (đếm globalRowsOmitted) nên hàng dùng chung
---     cũ hơn từng làm mất hạng mục cùng tên của công ty; rồi hàng của CHÍNH người gọi — (user_id=auth.uid()) IS TRUE, vì
---     "= auth.uid()" ra NULL với user_id NULL và DESC xếp NULL lên đầu (web: ownershipRank). Khác web có chủ ý ở điểm đầu
---     (web-parity w2d-ie-types).
---  2. app_private.hermes_w2d_read_v1 (thân = 20261018040300, đổi re_terminations + một chú thích): siết rào PII theo review
---     nội bộ — ghi chú thanh lý chỉ trả khi MỌI khách của hợp đồng nhìn thấy dưới RLS customers của người hỏi.
--- Kiểm: infra/hermes-broker/wave2-z-d.test.mjs (HĐ hai khách, một khách bị RLS ẩn; hạng mục trùng tên; đột biến về thân cũ).
+-- Hermes đọc đầy đủ — ĐỢT 2, Gói Z (tích hợp, 18/10/2026): hàm đọc Gói D sau soát lại. Áp SAU 20261018040300 (Gói D) và
+-- 20261018080000 (hàm dùng chung Z: khử trùng loại thu chi), TRƯỚC công tắc 20261018090000_hermes_w2_enable_v1. Không DROP, không
+-- đổi chữ ký, không GRANT/REVOKE, không ghi dữ liệu.
+-- app_private.hermes_w2d_read_v1 (thân = 20261018040300, đổi re_terminations + một chú thích): siết rào PII theo review nội bộ —
+-- ghi chú thanh lý chỉ trả khi MỌI khách của hợp đồng nhìn thấy dưới RLS customers của người hỏi.
+-- Kiểm: infra/hermes-broker/wave2-z-d.test.mjs (HĐ hai khách, khách đại diện bị RLS ẩn; đột biến về thân cũ).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
--- Loại thu chi (useIncomeExpenseTypes): như 20261018040000, trừ thứ tự khử trùng (xem đầu file).
-CREATE OR REPLACE FUNCTION public.income_expense_types_list_v1(p_organization_id uuid,p_type text DEFAULT NULL)
-RETURNS TABLE(type_id uuid,type text,name text,category text,description text,is_default boolean,system_only boolean,manual_hidden boolean,
-  quick_entry_hidden boolean,archived boolean,sort_order integer,is_restricted boolean,rule_key text,organization_id uuid)
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
-#variable_conflict use_column
-BEGIN
-  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'w2d_authenticated_only' USING ERRCODE='42501'; END IF;
-  -- Khoá web của màn (RequirePermission categories) khi web gọi thẳng; Hermes đã qua cổng.
-  IF NOT COALESCE(public.can_access_org_entity('categories','view'),false) THEN RAISE EXCEPTION 'w2d_permission_denied' USING ERRCODE='42501'; END IF;
-  RETURN QUERY
-  SELECT x.id,x.type,x.name,x.category,x.description,x.is_default,x.system_only,x.manual_hidden,x.quick_entry_hidden,x.archived,x.sort_order,
-    x.is_restricted,x.rule_key,x.organization_id
-  FROM (SELECT DISTINCT ON (t.type,lower(btrim(t.name))) t.id,t.type,t.name,t.category,t.description,t.is_default,t.system_only,t.manual_hidden,
-      t.quick_entry_hidden,t.archived_at IS NOT NULL archived,t.sort_order,t.is_restricted,t.rule_key,t.organization_id
-    FROM public.income_expense_types t
-    WHERE (t.organization_id IS NULL OR t.organization_id=p_organization_id) AND (p_type IS NULL OR t.type=p_type)
-    ORDER BY t.type,lower(btrim(t.name)),(t.organization_id IS NOT NULL) DESC,(t.user_id=auth.uid()) IS TRUE DESC,t.created_at,t.id) x
-  ORDER BY x.archived,x.type='income',x.category NULLS LAST,x.sort_order NULLS LAST,x.name,x.id;
-END $fn$;
-
--- Hàm đọc Gói D: như 20261018040300, trừ ghi chú thanh lý (re_terminations).
 CREATE OR REPLACE FUNCTION app_private.hermes_w2d_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
 DECLARE v_org uuid; v_today date; v_buildings uuid[]; v_customers uuid[]; v_contracts uuid[]; v_restricted uuid[];
@@ -433,7 +407,6 @@ BEGIN
   RETURN jsonb_build_object('rows',v_rows,'summary',v_summary,'sourceCapped',v_capped,'unavailable',NULL);
 END $fn$;
 
-ALTER FUNCTION public.income_expense_types_list_v1(uuid,text) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_w2d_read_v1(text,jsonb,jsonb) OWNER TO postgres;
 COMMIT;
 NOTIFY pgrst,'reload schema';
