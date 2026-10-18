@@ -12,8 +12,7 @@ import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './fin
 // lấy từ fa_* thật). Mô hình INVOKER + RLS: gói chạy dưới vai authenticated nên các bảng gói đọc có GRANT +
 // RLS là CỔNG TỔNG HỢP theo policy web (accounts, income_expenses, buildings, cổ đông/lợi nhuận, ví) — chứng
 // minh gói không vượt RLS, KHÔNG chứng minh policy thật của production. Không JWT thật, không PostgREST.
-// Cổng hiện tại (Gói 0) còn DEFINER: test lấy ctx bằng chính cổng (hàm đọc ghi lại ctx) rồi gọi gói dưới
-// vai authenticated như cổng INVOKER mới sẽ làm (xem wave2-b.test.mjs). Dữ liệu tổng hợp.
+// Test gọi lối vào INVOKER thật của Gói 0 (public.hermes_w2_read_v1) dưới vai authenticated. Dữ liệu tổng hợp.
 // MỘT PGlite cho cả file test, mỗi ca BEGIN … ROLLBACK (shared.isolated).
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migration = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
@@ -79,7 +78,6 @@ const TABLES = `
   CREATE TABLE public.profit_managers(id uuid PRIMARY KEY,auth_user_id uuid,deleted_at timestamptz);
   CREATE TABLE public.profit_manager_salaries(id uuid PRIMARY KEY,manager_id uuid);
   CREATE TABLE public.profit_manager_salary_buildings(salary_id uuid,building_id uuid);
-  CREATE TABLE public.fixture_w2b_ctx(n bigserial PRIMARY KEY,ctx jsonb);
   CREATE TABLE public.fixture_bp(building_id uuid PRIMARY KEY,cohort_billed numeric,cash_received numeric);`;
 
 // Cổng tổng hợp cùng chữ ký.
@@ -185,7 +183,6 @@ const balanceView = () => {
 };
 // RLS cổng tổng hợp theo policy web (tên fixture_*), chỉ phần gói B đọc dưới vai authenticated.
 const RLS = `
-  GRANT USAGE ON SCHEMA app_private TO authenticated;
   GRANT SELECT ON public.accounts,public.accounts_with_balance,public.profiles,public.income_expense_posting_lines,public.income_expense_postings,
     public.income_expenses,public.income_expense_items,public.income_expense_types,public.buildings,public.shareholders,public.profit_monthly,
     public.profit_allocations,public.personal_wallets,public.personal_categories,public.personal_legacy_category_map,public.personal_transactions,
@@ -226,8 +223,7 @@ const RLS = `
   CREATE POLICY fixture_personal_budgets_owner ON public.personal_budget_limits FOR SELECT TO authenticated USING (user_id=auth.uid());
   ALTER TABLE public.personal_goals ENABLE ROW LEVEL SECURITY;
   CREATE POLICY fixture_personal_goals_owner ON public.personal_goals FOR SELECT TO authenticated USING (user_id=auth.uid());
-  -- Cổng INVOKER mới (Gói 0) sẽ gọi hàm đọc gói dưới vai authenticated: giả lập quyền gọi đó trong test.
-  GRANT EXECUTE ON FUNCTION app_private.hermes_w2b_read_v1(text,jsonb,jsonb) TO authenticated;`;
+  -- Không cấp USAGE trên app_private (như production): hàm gói chỉ gọi public.*; policy gắn OID lúc tạo.`;
 
 async function before(db) {
   await db.exec(TABLES);

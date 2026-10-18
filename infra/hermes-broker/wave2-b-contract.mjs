@@ -10,7 +10,7 @@
 //    Read của kết nối) phủ MỌI toà của báo cáo — web để fa_type_breakdown (SECURITY DEFINER) lộ tổng
 //    hạng mục hạn chế cho mọi người có reports_finance.analysis;
 //  - chốt sổ: chỉ sổ người hỏi nhìn thấy (web list_cashbook_closings_v1 trả chênh lệch MỌI sổ của
-//    công ty cho mọi thành viên);
+//    công ty cho mọi thành viên); sổ quỹ theo phạm vi cashbooks của cổng (Toàn tổ chức hoặc sổ CRM cấp);
 //  - sổ quỹ chỉ của công ty kết nối (RPC web lọc my_org_ids() nên người nhiều công ty bị trộn).
 import { w2Report, id, nullable, longText, code, amount, bool, count, date, instant } from './wave2-kit.mjs';
 
@@ -19,29 +19,29 @@ const money = amount;
 const side = value => value === 'INCOME' || value === 'EXPENSE';
 const year = value => Number.isInteger(value) && value >= 2000 && value <= 2100;
 const RESTRICTED = 'income_expenses.restricted_view';
-const BREAKDOWN = Object.freeze({ month: date, side, typeId: nullable(id), typeName: name, category: nullable(longText(100)), totalAmount: money, voucherCount: count });
+const BREAKDOWN = Object.freeze({ buildingId: nullable(id), month: date, side, typeId: nullable(id), typeName: name, category: nullable(longText(100)), totalAmount: money, voucherCount: count });
 
 export const W2B_REPORTS = Object.freeze({
   // B1 — /reports/finance/daily-cashbook (DailyCashbookReport.tsx; useCashBook.ts:42,72,114).
-  cashbook_daily: w2Report({ permission: 'reports_finance.daily_cashbook', source: 'crm.cashflow_by_day', scope: 'buildings', private: true,
-    title: 'Sổ quỹ theo ngày: tồn đầu, thu, chi, tồn cuối từng ngày (mặc định đầu tháng → hôm nay), mọi sổ người hỏi xem được của công ty hoặc một sổ (cashbookId từ báo cáo cashbooks); buildingId lọc phiếu theo toà.',
+  cashbook_daily: w2Report({ permission: 'reports_finance.daily_cashbook', source: 'crm.cashbook_daily_v1', scope: 'buildings', private: true,
+    title: 'Sổ quỹ theo ngày: tồn đầu, thu, chi, tồn cuối từng ngày (mặc định đầu tháng → hôm nay), mọi sổ xem được hoặc một sổ (cashbookId). Toàn tổ chức: một chuỗi buildingId=null (mọi toà); không thì từng toà.',
     params: ['fromDate', 'toDate', 'cashbookId', 'buildingId'],
-    fields: { date, opening: money, income: money, expense: money, closing: money },
+    fields: { buildingId: nullable(id), date, opening: money, income: money, expense: money, closing: money },
     summary: { fromDate: date, toDate: date, cashbookId: nullable(id), openingBalance: money, totalIncome: money, totalExpense: money, closingBalance: money } }),
   // B2 — /reports/finance/cash-flow (CashFlowReport.tsx:38-75): cashflow_by_day cả năm, gộp tháng/quý.
-  cash_flow: w2Report({ permission: 'reports_finance.cash_flow', source: 'crm.cashflow_by_day', scope: 'buildings', private: true,
-    title: 'Dòng tiền năm (mặc định năm nay): thu, chi, ròng từng tháng (period YYYY-MM) và từng quý (YYYY-Q1..Q4) trên mọi sổ người hỏi xem được của công ty.',
+  cash_flow: w2Report({ permission: 'reports_finance.cash_flow', source: 'crm.cashbook_cash_flow_v1', scope: 'buildings', private: true,
+    title: 'Dòng tiền năm (mặc định năm nay): thu, chi, ròng từng tháng (YYYY-MM) và quý (YYYY-Q1..Q4) trên mọi sổ xem được. Toàn tổ chức: buildingId=null (mọi toà); không thì từng toà.',
     params: ['year', 'buildingId'],
-    fields: { period: longText(10), income: money, expense: money, net: money },
+    fields: { buildingId: nullable(id), period: longText(10), income: money, expense: money, net: money },
     summary: { year, income: money, expense: money, net: money } }),
   // B3 — /finance/cashbooks (CashbooksPage.tsx; useAccounts.ts:115-202): không trả số tài khoản/ngân hàng.
-  cashbooks: w2Report({ permission: 'cashbooks.view', source: 'crm.cashbook_list_v1', scope: 'organization', private: true,
+  cashbooks: w2Report({ permission: 'cashbooks.view', source: 'crm.cashbook_list_v1', scope: 'cashbooks', private: true,
     title: 'Danh sách sổ quỹ người hỏi xem được: mã, tên, người phụ trách, sổ ảo; số dư đầu kỳ và tồn quỹ chỉ khi balanceVisible (như web). Không có số tài khoản. query: tên/mã sổ.',
     params: ['query'],
     fields: { cashbookId: id, code: nullable(longText(50)), name, ownerName: name, isVirtual: bool, balanceVisible: bool,
       initialAmount: nullable(money), currentAmount: nullable(money), note: nullable(longText(300)) } }),
   // B4 — /finance/cashbooks/closure/:id (CashbookClosureRecord.tsx:126-132) + đề nghị chốt chờ xác nhận.
-  cashbook_closings: w2Report({ permission: 'cashbooks.view', source: 'crm.list_cashbook_closings_v1', scope: 'organization', private: true,
+  cashbook_closings: w2Report({ permission: 'cashbooks.view', source: 'crm.cashbook_closings_v1', scope: 'cashbooks', private: true,
     title: 'Chốt sổ quỹ: biên bản đã chốt (CONFIRMED) và đề nghị chờ xác nhận (PENDING) của các sổ người hỏi xem được: ngày chốt, tồn hệ thống, tiền đếm, chênh lệch, người đề nghị/xác nhận.',
     params: ['cashbookId', 'status'], statuses: ['PENDING', 'CONFIRMED'],
     fields: { state: code, closureId: nullable(count), requestId: nullable(id), cashbookId: id, cashbookName: name, closedThrough: date,
@@ -49,8 +49,8 @@ export const W2B_REPORTS = Object.freeze({
       confirmedAt: nullable(instant), createdAt: nullable(instant), mineToConfirm: bool, note: nullable(longText(300)) } }),
 
   // B7 — /reports/finance/analysis (useFinancialAnalysis.ts; ExpenseTab.tsx:61-83).
-  fa_type_breakdown: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_type_breakdown', scope: 'buildings', scopeKeys: [RESTRICTED],
-    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate; basis accrual (mặc định, dồn tích) hoặc cash. Hạng mục hạn chế chỉ có khi restrictedIncluded=true.',
+  fa_type_breakdown: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_type_breakdown_v1', scope: 'buildings', scopeKeys: [RESTRICTED],
+    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate; basis accrual (mặc định) hoặc cash; buildingId=null là gộp mọi toà. Hạng mục hạn chế chỉ có khi restrictedIncluded=true.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: BREAKDOWN, summary: { basis: value => value === 'accrual' || value === 'cash', restrictedIncluded: bool } }),
   fa_snapshot_kpis: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_snapshot_kpis', scope: 'rows',
@@ -95,7 +95,7 @@ export const W2B_REPORTS = Object.freeze({
     fields: { buildingId: id, buildingName: name, cashMonth: date, cashReceived: money, paymentEventCount: count,
       firstPaymentDate: nullable(date), lastPaymentDate: nullable(date) } }),
   bp_categories: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_category_breakdown_v1', scope: 'buildings', scopeKeys: [RESTRICTED],
-    title: 'Hiệu quả kinh doanh — cơ cấu thu/chi theo hạng mục từng tháng trên các toà thật, fromDate..toDate; basis accrual (mặc định) hoặc cash.',
+    title: 'Hiệu quả kinh doanh — cơ cấu thu/chi theo hạng mục từng tháng của từng toà thật, fromDate..toDate; basis accrual (mặc định) hoặc cash.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: BREAKDOWN }),
 
@@ -124,7 +124,7 @@ export const W2B_REPORTS = Object.freeze({
 
   // B11 — /bien-dong-so-du (BankEventsPage.tsx, RequireSuperAdmin): chỉ siêu dữ liệu. Số tiền/số dư/nội dung chỉ
   // giải mã được ở Edge bank-event-admin (khoá AES ở secret Edge) ⇒ SQL không đọc được, Hermes không trả.
-  bank_event_feed: w2Report({ permission: 'assistant.bank_events.read', source: 'crm.bank_event_admin_v1', scope: 'self', private: true,
+  bank_event_feed: w2Report({ permission: 'assistant.bank_events.read', source: 'crm.bank_event_admin_v1', scope: 'platform', private: true,
     title: 'Biến động số dư (chỉ super admin): tin ngân hàng mới nhất đã nhận (≤100): nguồn, loại, lúc xảy ra/nhận, số lần trùng; KHÔNG có số tiền/số dư/nội dung (chỉ xem trên web).',
     params: ['fromDate', 'toDate', 'kind'], kinds: ['sms', 'notification', 'email', 'test'],
     fields: { eventId: id, sourceName: name, eventType: longText(40), occurredAt: nullable(instant), receivedAt: instant, duplicateCount: count },
