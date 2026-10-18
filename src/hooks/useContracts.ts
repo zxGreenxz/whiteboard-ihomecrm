@@ -210,28 +210,6 @@ const toLocalISODate = (d: Date): string =>
 /** Trần mỗi lượt của contract_list_v1 — bằng trần max-rows PostgREST trước đây. */
 const CONTRACT_LIST_MAX_ROWS = 1000;
 
-type ContractListArgs = {
-  p_search?: string;
-  p_building_ids?: string[];
-  p_room_name?: string;
-  p_lifecycle: ContractLifecycleFilter;
-  p_stat: ContractStatFilter;
-  p_month?: string;
-  p_limit: number;
-  p_offset: number;
-};
-type ContractReadArgs = { contract_list_v1: ContractListArgs; contract_stats_v2: { p_building_ids?: string[] } };
-type ContractReadRpc = <F extends keyof ContractReadArgs>(fn: F, args: ContractReadArgs[F]) => PromiseLike<{ data: unknown; error: unknown }>;
-
-// types.ts sinh từ catalog production; contract_list_v1/contract_stats_v2 đi cùng migration
-// 20261017115636 nên chưa có kiểu. Khẳng định HẸP đúng chữ ký (không any) và giữ
-// lời gọi `.rpc("contract_list_v1", …)` viết thẳng để gate RPC và hermes-parity
-// thấy. Áp production + gen:types xong thì đổi về supabase.rpc(...) có kiểu.
-// Phản hồi được kiểm đủ ở readContractListPage.
-const contractReadClient: { rpc: ContractReadRpc } = {
-  rpc: (fn, args) => (supabase.rpc as unknown as ContractReadRpc)(fn, args),
-};
-
 /** Tháng hợp lệ YYYY-MM. Giá trị lưu trong phiên (flt:contracts:month) sai dạng ⇒ bỏ lọc như web cũ. */
 const MONTH_FILTER = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 
@@ -290,7 +268,7 @@ async function fetchContractsPagedOnce(
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { data, error } = await contractReadClient.rpc("contract_list_v1", {
+  const { data, error } = await supabase.rpc("contract_list_v1", {
     p_search: filters?.search?.trim() || undefined,
     p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
     p_room_name: filters?.room_name && filters.room_name !== "all" ? filters.room_name : undefined,
@@ -389,7 +367,7 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await contractReadClient.rpc("contract_stats_v2", {
+      const { data, error } = await supabase.rpc("contract_stats_v2", {
         p_building_ids: buildingIds?.length ? buildingIds : undefined,
       });
       if (error) {
@@ -463,7 +441,7 @@ export const useContractDashboardCounts = (buildingId?: string | null) => {
             .eq("status", "TERMINATED")
             .gte("end_date", monthStart),
         ]),
-        contractReadClient.rpc("contract_stats_v2", { p_building_ids: buildingIds }),
+        supabase.rpc("contract_stats_v2", { p_building_ids: buildingIds }),
       ]);
 
       for (const r of results) {
