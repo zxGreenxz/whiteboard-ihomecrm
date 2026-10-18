@@ -16,7 +16,7 @@ import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
-import { createPublicTextGuard, privateRead, splitConfirmToken } from './public-text-guard.mjs';
+import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -292,8 +292,6 @@ export function createBroker({
   assistantStore,
   audit,
   observe,
-  // Tiến trình thật (server.mjs) bật: dấu đọc riêng chỉ nằm trong bộ nhớ nên sau khởi động coi mọi kết nối là nhiễm.
-  publicTextStartTainted = false,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
   const definitions = toolDefinitions();
@@ -429,8 +427,8 @@ export function createBroker({
   if (limits.tokenLifetimeMs > DEFAULT_LIMITS.tokenLifetimeMs || limits.timeoutMs > 30_000 ||
       limits.maxResultBytes > 65_536 || limits.maxToolsListBytes > TOOLS_LIST_MAX_BYTES) throw new TypeError('unsafe_limits');
   const usage = new Map();
-  // Rào chữ công khai sau khi kết nối đọc dữ liệu riêng (public-text-guard.mjs).
-  const publicText = createPublicTextGuard({ clock, startTainted: publicTextStartTainted === true });
+  // Rào chữ công khai: chữ tự do mới ra bề mặt công khai luôn qua xác nhận hai bước (public-text-guard.mjs).
+  const publicText = createPublicTextGuard({ clock });
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
     receipts.push(structuredClone(event));
@@ -812,7 +810,7 @@ export function createBroker({
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseRoomPass(identity.effective, passOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
-          // Trước mọi I/O ghi: kết nối vừa đọc dữ liệu riêng thì chữ công khai mới phải qua xác nhận hai bước.
+          // Trước mọi I/O ghi: chữ công khai mới luôn phải qua xác nhận hai bước.
           const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
           if (reviewed.refused) fail('confirmation_invalid');
           if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
@@ -864,9 +862,9 @@ export function createBroker({
       }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {
-        let input, invalid = false, reader;
+        let input, invalid = false;
         try { input = domainInput(domainOp, args); } catch { invalid = true; }
-        const result = await invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
@@ -874,14 +872,8 @@ export function createBroker({
           const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
-        }, async (receipt, identity, signal) => {
-          const value = { content: [{ type: 'text', text: JSON.stringify(await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false };
-          reader = identity.row.id;
-          return value;
-        });
-        // Đọc dữ liệu riêng thành công (đã trả cho kết nối) ⇒ đánh dấu nhiễm trước khi phản hồi rời broker.
-        if (reader !== undefined && privateRead(name, input)) publicText.markPrivateRead(reader);
-        return result;
+        }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
+          await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }));
       }
       const scheduleOp = scheduleOperation(name);
       if (schedule && scheduleOp) {
