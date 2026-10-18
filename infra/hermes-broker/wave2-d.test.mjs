@@ -16,7 +16,11 @@ import { W2_RANGES, w2FenceViolations, w2AllMigrations } from './wave2-sql-paths
 // JWT thật hay PostgREST; thân get_room_cash_lifecycle_v1 là cổng tổng hợp.
 const FILES = readdirSync('supabase/migrations').filter(name => W2_RANGES.d.test(name)).sort();
 const SHARED_SQL = readFileSync(`supabase/migrations/${FILES[0]}`, 'utf8');
-const READER_SQL = readFileSync(`supabase/migrations/${FILES[1]}`, 'utf8');
+const CATALOG_SQL = readFileSync(`supabase/migrations/${FILES[1]}`, 'utf8');
+// Sửa sau review PR #203: 040200 = bản CUỐI của report_text_v1, areas_in_scope_v1 (file hàm dùng chung, không chữ hermes_);
+// 040300 = bản CUỐI của hàm đọc. Đột biến neo vào bản cuối.
+const SHARED_FIX_SQL = readFileSync(`supabase/migrations/${FILES[2]}`, 'utf8');
+const READER_SQL = readFileSync(`supabase/migrations/${FILES[3]}`, 'utf8');
 const stripComments = sql => sql.replace(/--[^\n]*/g, '');
 let shared;
 before(async () => { shared = await sharedW2d(); });
@@ -24,6 +28,8 @@ after(async () => { await shared?.close(); });
 const inCase = work => shared.isolated(work);
 const code = expected => error => error.code === expected;
 const ORG_SCOPE = '00000000-0000-4000-8000-0000000000a1';
+const FOREIGN_AREA = '0d0d0d0d-0000-4000-8000-0000000000f1';
+const GLOBAL_IE_TYPES = ['0d0d0d0d-0000-4000-8000-0000000000f2', '0d0d0d0d-0000-4000-8000-0000000000f3', '0d0d0d0d-0000-4000-8000-0000000000f4'];
 // Quyền CRM/RLS giả lập (fixture_acl) mà KHÔNG đổi Read của kết nối.
 const acl = (db, keys, allowed = true) => Promise.all(keys.map(key => db.query(`INSERT INTO public.fixture_acl(permission,allowed,building_ids) VALUES($1,$2,$3)
   ON CONFLICT(permission) DO UPDATE SET allowed=EXCLUDED.allowed`, [key, allowed, [BUILDING, OTHER_BUILDING]])));
@@ -49,18 +55,21 @@ const ORG_KEYS = [...new Set(Object.values(W2D_REPORTS).filter(spec => spec.scop
 
 test('gói D: bảng báo cáo SQL (hermes_w2d_catalog_v1) khớp khai báo JS (W2D_REPORTS)', () => inCase(env => assertPackageParity(env, 'd')));
 
-test('cấu trúc: hai file dải D; hàng rào gói; hàm dùng chung INVOKER search_path rỗng, tự kiểm khoá web; helper khu DEFINER; hàm đọc INVOKER không gọi app_private', () => inCase(async ({ db }) => {
-  assert.deepEqual(FILES, ['20261018040000_hermes_w2d_catalog_read_v1.sql', '20261018040100_hermes_w2d_reader_v1.sql']);
+test('cấu trúc: ba file dải D; hàng rào gói; hàm dùng chung INVOKER search_path rỗng, chỉ authenticated, tự kiểm khoá web; không DEFINER; hàm đọc INVOKER không gọi app_private', () => inCase(async ({ db }) => {
+  assert.deepEqual(FILES, ['20261018040000_hermes_w2d_catalog_read_v1.sql', '20261018040100_hermes_w2d_reader_v1.sql',
+    '20261018040200_hermes_w2d_shared_fixes_v1.sql', '20261018040300_hermes_w2d_reader_fixes_v1.sql']);
   assert.deepEqual(w2FenceViolations(w2AllMigrations()), [], 'hàng rào gói của nền (P2-4)');
-  for (const sql of [SHARED_SQL, READER_SQL]) {
+  for (const sql of [SHARED_SQL, CATALOG_SQL, SHARED_FIX_SQL, READER_SQL]) {
     assert.doesNotMatch(stripComments(sql), /copilot/i);
     assert.doesNotMatch(stripComments(sql), /\bDROP\b|ALTER TABLE|\bINSERT\s+INTO\b|\bUPDATE\s+[a-z_]+\.|\bDELETE\s+FROM\b|CREATE TEMP|check_function_bodies|\bGRANT\b[^;]*hermes_w2d|\bREVOKE\b[^;]*hermes_w2d_read/i);
   }
   const created = sql => [...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
   const pub = created(SHARED_SQL).filter(name => name.startsWith('public.'));
   assert.deepEqual(created(SHARED_SQL).filter(name => !name.startsWith('public.')), [], 'file hàm dùng chung không có hàm nội bộ');
-  assert.doesNotMatch(SHARED_SQL, /hermes_/i, 'file hàm dùng chung (RPC web) không chứa hàm Hermes nào');
-  assert.deepEqual(created(READER_SQL), ['app_private.hermes_w2d_catalog_v1', 'app_private.hermes_w2d_read_v1']);
+  for (const sql of [SHARED_SQL, SHARED_FIX_SQL]) assert.doesNotMatch(sql, /hermes_/i, 'file hàm dùng chung (RPC web) không chứa hàm Hermes nào');
+  assert.deepEqual(created(CATALOG_SQL), ['app_private.hermes_w2d_catalog_v1', 'app_private.hermes_w2d_read_v1']);
+  assert.deepEqual(created(SHARED_FIX_SQL), ['public.report_text_v1', 'public.areas_in_scope_v1'], 'sửa review: chỉ thay thân hàm dùng chung');
+  assert.deepEqual(created(READER_SQL), ['app_private.hermes_w2d_read_v1'], 'sửa review: chỉ thay thân hàm đọc');
   for (const [report, spec] of Object.entries(W2D_REPORTS)) {
     const source = spec.source.replace(/^crm\./, 'public.');
     assert.ok(pub.includes(source) || source === 'public.get_room_cash_lifecycle_v1', `${report}: ${spec.source}`);
@@ -78,12 +87,13 @@ test('cấu trúc: hai file dải D; hàng rào gói; hàm dùng chung INVOKER s
       assert.doesNotMatch(proc.src, /app_private/, 'thân không nhắc app_private (authenticated không USAGE)');
       continue;
     }
-    assert.equal(proc.definer, proc.name === 'public.areas_in_scope_v1', `${proc.name}: chỉ helper khu là DEFINER`);
+    // Review P1: không hàm nào của gói trả payload vượt RLS (helper khu cũ là DEFINER).
+    assert.equal(proc.definer, false, `${proc.name}: INVOKER`);
     assert.deepEqual(proc.config, ['search_path=""'], `${proc.name}: search_path rỗng`);
     // Rào công ty 000700: hàng nào cũng mang công ty của cột nguồn (bảng neo đã lọc p_organization_id).
     if (proc.retset) assert.match(proc.result, /[(,] ?organization_id uuid\)$/, `${proc.name}: trả organization_id`);
+    assert.match(proc.src, /current_user<>'authenticated' OR auth\.uid\(\) IS NULL/, `${proc.name}: chỉ authenticated`);
     if (proc.name === 'public.report_text_v1') continue;
-    if (proc.name !== 'public.areas_in_scope_v1') assert.match(proc.src, /current_user<>'authenticated' OR auth\.uid\(\) IS NULL/, `${proc.name}: chỉ authenticated`);
     assert.match(proc.src, /public\.can_access_org_entity\('[a-z_]+','[a-z_]+'\)/, `${proc.name}: tự kiểm khoá web`);
   }
   assert.equal((await db.query("SELECT count(*)::int n FROM pg_proc WHERE proname IN ('hermes_w2d_text_v1','hermes_w2d_items_v1','hermes_w2d_customer_ok_v1')")).rows[0].n, 0);
@@ -109,11 +119,14 @@ test('hàm dùng chung: chỉ authenticated có khoá web; p_building_ids NULL =
   await assert.rejects(env.call('SELECT count(*)::int result FROM public.real_estate_vacant_rooms_v1($1,NULL)', [ORG], { role: 'authenticated', actor: '' }),
     code('42501'), 'không JWT');
   assert.equal(await call('SELECT public.report_text_v1($1,5) result', ['a\u0007b\r\nc dddd']), 'ab\nc\n', 'bỏ ký tự điều khiển, CRLF/U+2028 thành xuống dòng, cắt theo ký tự');
+  await assert.rejects(env.call('SELECT public.report_text_v1($1,5) result', ['x'], { role: 'postgres' }), code('42501'), 'report_text_v1: chỉ authenticated (review P3)');
 }));
 
 test('đầu–cuối qua cổng: cả 22 báo cáo qua rào đầu ra của nền và khuôn JS của broker (fence, toà ∈ phạm vi)', () => inCase(async env => {
   await env.grant([...KEYS, 'suppliers.view', 'categories.view', 'tasks.view']);
   await orgWide(env, KEYS);
+  // RLS areas (giả lập) chỉ cho quản trị: không có quản trị thì báo cáo khu rỗng đúng như web (review P1).
+  await env.db.query('INSERT INTO public.fixture_admins VALUES($1)', [USER]);
   for (const [report, spec] of Object.entries(W2D_REPORTS)) {
     const values = valuesFor(report, spec);
     const value = await run(env, report, values);
@@ -178,6 +191,33 @@ test('BĐS gia hạn & chuyển nhượng; khuyến mại; HĐ mới; thanh lý 
   assert.deepEqual(value.summary, { fromDate: '2026-10-01', toDate: '2026-10-16', total: 1, terminated: 1, expired: 0, totalContracts: 5, terminationRatePct: '20.0' });
   value = await run(env, 're_terminations', { fromDate: '2026-08-01', toDate: '2026-10-16' });
   assert.deepEqual([ids(value.items, 'contractId'), value.summary.expired], [[D.C_END, D.C_EXP], 1]);
+}));
+
+test('BĐS thanh lý (review P1/P2): ghi chú theo rào PII như tên khách; tỉ lệ = tử/mẫu cùng tập toà (khác web: web lấy mẫu số toàn công ty)', () => inCase(async env => {
+  const { db } = env;
+  await env.grant(['reports_real_estate.terminations']);
+  let value = await run(env, 're_terminations');
+  assert.deepEqual(value.items.map(row => [row.contractId, row.note, row.customerName]), [[D.C_END, 'Khách chuyển đi sớm', 'Lê Ở Ghép']]);
+  assert.deepEqual([value.summary.total, value.summary.totalContracts, value.summary.terminationRatePct], [1, 5, '20.0'], 'overlay toà A: tử và mẫu cùng toà A');
+  await acl(db, ['customers.view'], false);
+  value = await run(env, 're_terminations');
+  assert.deepEqual([value.items[0].note, value.items[0].customerName, value.items[0].terminationType], [null, null, 'EARLY'], 'tắt quyền khách ⇒ không ghi chú');
+  await acl(db, ['customers.view']);
+  await db.exec('DELETE FROM public.fixture_visible_owners');
+  value = await run(env, 're_terminations');
+  assert.deepEqual([value.items[0].note, value.items[0].customerName], [null, null], 'chủ hồ sơ ngoài phạm vi thấy ⇒ không ghi chú');
+  await db.query('INSERT INTO public.fixture_visible_owners VALUES($1)', [USER]);
+  assert.equal((await run(env, 're_terminations')).items[0].note, 'Khách chuyển đi sớm');
+  await dropRead(db, 'customers.view');
+  assert.equal((await run(env, 're_terminations')).items[0].note, null, 'kết nối không chọn customers.view ⇒ không ghi chú');
+  // Hai toà: toà A có 5 HĐ (1 thanh lý trong kỳ), toà B có 2 HĐ ACTIVE. Web chia cho toàn công ty dù lọc toà.
+  await orgWide(env, ['reports_real_estate.terminations']);
+  value = await run(env, 're_terminations');
+  assert.deepEqual([value.summary.total, value.summary.totalContracts, value.summary.terminationRatePct], [1, 7, '14.3'], 'Toàn tổ chức: mẫu số hai toà');
+  value = await run(env, 're_terminations', { buildingId: BUILDING });
+  assert.deepEqual([value.summary.total, value.summary.totalContracts, value.summary.terminationRatePct], [1, 5, '20.0'], 'lọc toà A: mẫu số chỉ toà A');
+  value = await run(env, 're_terminations', { buildingId: OTHER_BUILDING });
+  assert.deepEqual([value.summary.total, value.summary.totalContracts, value.summary.terminationRatePct], [0, 2, '0.0']);
 }));
 
 test('BĐS tỷ lệ chi phí: RLS web (loại cần categories.view, phiếu hạn chế theo quyền xem hạn chế) + thu hẹp theo khoá phụ của kết nối', () => inCase(async env => {
@@ -251,7 +291,7 @@ test('dịch vụ, định mức, NCC, công tơ, tầng: toà theo ctx; tổ ch
   await assert.rejects(run(env, 'service_quotas'), code('42501'), 'mất quyền CRM');
 }));
 
-test('toà, khu, chi tiết toà: danh sách trắng; khu qua helper phạm vi toà thật (RLS areas lệch chỉ cho quản trị)', () => inCase(async env => {
+test('toà, khu, chi tiết toà: danh sách trắng; khu DƯỚI RLS areas của người hỏi như web — RLS chặn thì Hermes cũng không thấy (review P1)', () => inCase(async env => {
   const { db } = env;
   await env.grant(['buildings.view']);
   let value = await run(env, 'buildings');
@@ -260,20 +300,23 @@ test('toà, khu, chi tiết toà: danh sách trắng; khu qua helper phạm vi t
   for (const key of ['commissionTiers', 'commissionChangeReason', 'defaultAccountIdTt', 'publicContactPhone', 'latitude']) assert.ok(!(key in row), key);
   assert.ok(!JSON.stringify(value).includes('bí mật') && !JSON.stringify(value).includes('0909000000'), 'không lộ giá trị cột bị loại');
   assert.deepEqual([row.address, row.areaNames, row.roomsTotal, row.roomsOccupied, row.updatedOn],
-    ['12 Lê Lợi, Phường 1, Quận 3, TP HCM', ['Khu Trung tâm'], 5, 2, '2026-10-16'], 'tên khu có dù RLS areas không cho người không quản trị');
-  assert.equal(await env.call('SELECT count(*)::int result FROM public.areas', [], { role: 'authenticated' }), 0, 'RLS areas lệch (giả lập)');
-  assert.deepEqual((await run(env, 'areas')).items.map(area => [area.id, area.buildingId]), [[D.AREA_AB, BUILDING]], 'hàng theo khu × toà trong phạm vi');
+    ['12 Lê Lợi, Phường 1, Quận 3, TP HCM', [], 5, 2, '2026-10-16'], 'RLS areas (giả lập: chỉ quản trị) chặn ⇒ không tên khu');
+  assert.equal(await env.call('SELECT count(*)::int result FROM public.areas', [], { role: 'authenticated' }), 0, 'RLS areas chặn người không quản trị');
+  assert.equal(await env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1)', [ORG], { role: 'authenticated' }), 0, 'helper không vượt RLS');
+  assert.deepEqual((await run(env, 'areas')).items, [], 'RLS chặn ⇒ báo cáo khu rỗng');
   assert.equal((await run(env, 'building_detail', { buildingId: BUILDING })).items[0].description, 'Toà mẫu');
   await assert.rejects(run(env, 'building_detail', { buildingId: OTHER_BUILDING }), code('42501'));
   await assert.rejects(run(env, 'buildings', { areaId: D.AREA_B }), code('42501'), 'cổng: khu không có toà trong phạm vi');
+  await db.query('INSERT INTO public.fixture_admins VALUES($1)', [USER]);
+  assert.deepEqual((await run(env, 'buildings')).items[0].areaNames, ['Khu Trung tâm'], 'RLS cho quản trị ⇒ có tên khu');
+  assert.deepEqual((await run(env, 'areas')).items.map(area => [area.id, area.buildingId]), [[D.AREA_AB, BUILDING]], 'hàng theo khu × toà trong phạm vi');
   await orgWide(env, ['buildings.view']);
   assert.deepEqual(ids((await run(env, 'buildings', { areaId: D.AREA_B })).items, 'buildingId'), [OTHER_BUILDING]);
-  await db.query('DELETE FROM public.fixture_building_access WHERE building_id=$1', [BUILDING]);
-  assert.deepEqual(ids((await run(env, 'areas')).items), [D.AREA_B, D.AREA_AB], 'helper: chỉ khu có toà người hỏi thấy (B); khu trống cần toàn phạm vi toà');
-  await db.query('INSERT INTO public.fixture_admins VALUES($1)', [USER]);
-  assert.deepEqual(ids((await run(env, 'areas')).items), [D.AREA_EMPTY, D.AREA_B, D.AREA_AB]);
-  await assert.rejects(env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1)', [FOREIGN], { role: 'authenticated' }), code('42501'),
-    'helper: công ty không phải của người hỏi');
+  assert.deepEqual((await run(env, 'areas')).items.map(area => `${area.id}|${area.buildingId}`).sort(),
+    [`${D.AREA_EMPTY}|null`, `${D.AREA_B}|${OTHER_BUILDING}`, `${D.AREA_AB}|${BUILDING}`, `${D.AREA_AB}|${OTHER_BUILDING}`].sort(), 'Toàn tổ chức: khu trống = buildingId null');
+  await db.query("INSERT INTO public.areas(id,organization_id,name,code) VALUES($1,$2,'Khu công ty khác','KF')", [FOREIGN_AREA, FOREIGN]);
+  assert.equal(await env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1) WHERE area_id=$2', [ORG, FOREIGN_AREA], { role: 'authenticated' }), 0,
+    'RLS quản trị thấy mọi công ty: lọc organization_id tường minh');
 }));
 
 test('phòng: trạng thái hiển thị như getRoomDisplayStatus; chi tiết phòng: HĐ cần contracts.view, người ở cần customers.view của kết nối', () => inCase(async env => {
@@ -327,6 +370,22 @@ test('loại thu chi, loại việc, hotline: ẩn hạn chế/lương; khử tr
   assert.deepEqual((await run(env, 'hotlines')).items.map(row => row.id), [D.HOTLINE], 'RLS: hotline của chủ hồ sơ ngoài công ty ẩn');
 }));
 
+test('loại thu chi (review P2): hạng mục dùng chung (organization_id NULL) tạm không trả, đếm globalRowsOmitted; công ty khác không lọt; không 42501', () => inCase(async env => {
+  const { db } = env;
+  await env.grant(['categories.view']);
+  await orgWide(env, ['categories.view']);
+  await db.query(`INSERT INTO public.income_expense_types(id,organization_id,type,name,category,is_restricted,rule_key,created_at) VALUES
+    ($1,NULL,'expense','Điện nước chung','Tiện ích',false,null,'2025-01-01T00:00:00Z'),($2,NULL,'income','Thu dùng chung','Doanh thu',false,null,'2025-01-01T00:00:00Z'),
+    ($3,NULL,'expense','Hạn chế dùng chung','Nhân sự',true,null,'2025-01-01T00:00:00Z')`, GLOBAL_IE_TYPES);
+  const value = await run(env, 'ie_types');
+  assert.deepEqual(value.items.map(row => row.name), ['Sửa chữa', 'Ẩn', 'Tiền phòng'], 'chỉ hạng mục của công ty');
+  assert.deepEqual(value.summary, { total: 3, globalRowsOmitted: 2 }, 'đếm dùng chung theo cùng bộ lọc hiển thị (bỏ hạn chế)');
+  assert.ok(!JSON.stringify(value).includes('Loại công ty khác') && !JSON.stringify(value).includes('chung'));
+  assert.deepEqual((await run(env, 'ie_types', { kind: 'income' })).summary, { total: 1, globalRowsOmitted: 1 });
+  await db.exec('DELETE FROM public.income_expense_types WHERE organization_id IS NULL');
+  assert.deepEqual((await run(env, 'ie_types')).summary, { total: 3, globalRowsOmitted: 0 });
+}));
+
 test('quyền: thiếu khoá/không chọn khoá ⇒ 42501; người khác cầm token ⇒ 42501; tổ chức cần Toàn tổ chức; không hàng nào của công ty khác', () => inCase(async env => {
   const { db } = env;
   await env.grant([...KEYS, 'suppliers.view', 'categories.view', 'tasks.view']);
@@ -347,6 +406,11 @@ test('quyền: thiếu khoá/không chọn khoá ⇒ 42501; người khác cầm
 }));
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào của gói D; phép thử mà bản sống từ chối thì bản đột biến phải lọt.
+const fnDefinition = (sql, name) => {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
+  assert.ok(start >= 0, `definition: ${name}`);
+  return sql.slice(start, sql.indexOf('END $fn$;', start) + 'END $fn$;'.length);
+};
 const mutate = (sql, from, to) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return { live: sql, mutant: sql.replace(from, () => to) }; };
 const GUARD_SUPPLIERS = `RETURNS TABLE(supplier_id uuid,name text,organization_id uuid)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
@@ -392,22 +456,37 @@ const probes = [
       await env.db.query('INSERT INTO public.fixture_restricted_viewers VALUES($1)', [USER]);
       return ids((await run(env, 'ie_types')).items, 'name').includes('Lương'); } },
   { name: 'loại thu chi: ẩn hạng mục lương theo rule_key', ...mutate(READER_SQL,
-    `          AND COALESCE(t.rule_key,'') NOT IN ('luong_dieu_hanh','luong_quan_ly','ung_luong','chia_loi_nhuan')) x;`, `) x;`),
+    `          AND COALESCE(t.rule_key,'') NOT IN ('luong_dieu_hanh','luong_quan_ly','ung_luong','chia_loi_nhuan'))\n    SELECT`, `)\n    SELECT`),
     run: async env => { await env.grant(['categories.view']); await orgWide(env, ['categories.view']);
       return ids((await run(env, 'ie_types')).items, 'name').includes('Ứng lương'); } },
   { name: 'chi tiết phòng: HĐ cần contracts.view của kết nối', ...mutate(READER_SQL, `'contract',CASE WHEN r.building_id=ANY(v_contracts) THEN`, `'contract',CASE WHEN true THEN`),
     run: async env => { await env.grant(['rooms.view']); await dropRead(env.db, 'contracts.view');
       return (await run(env, 'room_detail', { roomId: ROOM })).items[0].contract !== null; } },
-  { name: 'helper khu: chỉ khu có toà trong phạm vi toà thật', ...mutate(SHARED_SQL,
-    `    AND (v_full OR EXISTS(SELECT 1 FROM public.area_buildings ab JOIN public.buildings b ON b.id=ab.building_id`,
-    `    AND (true OR EXISTS(SELECT 1 FROM public.area_buildings ab JOIN public.buildings b ON b.id=ab.building_id`),
-    run: async env => { await acl(env.db, ['buildings.view']); await env.db.query('DELETE FROM public.fixture_building_access WHERE building_id=$1', [OTHER_BUILDING]);
-      return (await env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1)', [ORG], { role: 'authenticated' })) > 1; } },
-  { name: 'helper khu: người hỏi phải là thành viên công ty', ...mutate(SHARED_SQL,
-    `  IF auth.uid() IS NULL OR p_organization_id IS NULL OR NOT (p_organization_id=ANY(COALESCE(public.my_org_ids(),'{}'::uuid[])))`,
-    `  IF auth.uid() IS NULL OR p_organization_id IS NULL`),
-    run: async env => { await acl(env.db, ['buildings.view']);
-      return (await env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1)', [FOREIGN], { role: 'authenticated' })) >= 0; } },
+  // Review P1: bản DEFINER cũ của 040000 (tự chép phạm vi, vượt RLS areas) thay bản INVOKER ⇒ người không quản trị thấy tên khu.
+  { name: 'khu: đọc dưới RLS của người hỏi, không DEFINER vượt RLS', ...mutate(SHARED_FIX_SQL, fnDefinition(SHARED_FIX_SQL, 'public.areas_in_scope_v1'),
+    fnDefinition(SHARED_SQL, 'public.areas_in_scope_v1')),
+    run: async env => { await env.grant(['buildings.view']); return (await run(env, 'buildings')).items[0].areaNames.length > 0; } },
+  { name: 'khu: lọc organization_id tường minh', ...mutate(SHARED_FIX_SQL,
+    `  WHERE a.organization_id=p_organization_id AND a.deleted_at IS NULL\n  ORDER BY a.created_at DESC,a.id;`, `  WHERE a.deleted_at IS NULL\n  ORDER BY a.created_at DESC,a.id;`),
+    run: async env => { await env.db.query('INSERT INTO public.fixture_admins VALUES($1)', [USER]);
+      await env.db.query("INSERT INTO public.areas(id,organization_id,name,code) VALUES($1,$2,'Khu công ty khác','KF')", [FOREIGN_AREA, FOREIGN]);
+      return (await env.call('SELECT count(*)::int result FROM public.areas_in_scope_v1($1) WHERE area_id=$2', [ORG, FOREIGN_AREA], { role: 'authenticated' })) > 0; } },
+  { name: 'thanh lý: ghi chú cần rào PII (customers.view của kết nối)', ...mutate(READER_SQL,
+    `'note',CASE WHEN pii.ok THEN public.report_text_v1(v.termination_note,300) END,`, `'note',public.report_text_v1(v.termination_note,300),`),
+    run: async env => { await env.grant(['reports_real_estate.terminations']); await dropRead(env.db, 'customers.view');
+      return (await run(env, 're_terminations')).items[0].note !== null; } },
+  { name: 'thanh lý: mẫu số cùng tập toà với tử số', ...mutate(READER_SQL,
+    `    v_total:=public.real_estate_contract_count_v1(v_org,v_buildings);`, `    v_total:=public.real_estate_contract_count_v1(v_org,NULL);`),
+    run: async env => { await env.grant(['reports_real_estate.terminations']); return (await run(env, 're_terminations')).summary.totalContracts !== 5; } },
+  { name: 'loại thu chi: bỏ hạng mục dùng chung (không làm cả báo cáo 42501)', ...mutate(READER_SQL,
+    `        FROM shown t WHERE t.organization_id=v_org) x;`, `        FROM shown t) x;`),
+    run: async env => { await env.grant(['categories.view']); await orgWide(env, ['categories.view']);
+      await env.db.query(`INSERT INTO public.income_expense_types(id,organization_id,type,name,category,is_restricted,created_at)
+        VALUES($1,NULL,'expense','Điện nước chung','Tiện ích',false,'2025-01-01T00:00:00Z')`, [GLOBAL_IE_TYPES[0]]);
+      return run(env, 'ie_types').then(() => false, error => error.code === '42501'); } },
+  { name: 'report_text_v1: chỉ authenticated', ...mutate(SHARED_FIX_SQL,
+    `  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'w2d_authenticated_only' USING ERRCODE='42501'; END IF;\n  RETURN CASE`, `  RETURN CASE`),
+    run: async env => env.call('SELECT public.report_text_v1($1,5) result', ['x'], { role: 'postgres' }).then(() => true) },
 ];
 for (const probe of probes) {
   const changed = changedFunctions(probe.live, probe.mutant);

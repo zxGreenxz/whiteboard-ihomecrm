@@ -1,6 +1,7 @@
 // Gói D đợt 2 — Tài sản, danh mục, toà/phòng, báo cáo BĐS. File của RIÊNG Gói D.
 // Khai báo mỗi báo cáo bằng w2Report() (wave2-kit.mjs); khớp từng trường với
-// app_private.hermes_w2d_catalog_v1 và hàm đọc INVOKER (20261018040100); hàm dùng chung ở 20261018040000.
+// app_private.hermes_w2d_catalog_v1 và hàm đọc INVOKER (20261018040100); hàm dùng chung ở 20261018040000; sửa sau review
+// PR #203 ở 20261018040200 (bản cuối của hàm đọc, report_text_v1, areas_in_scope_v1).
 // Nguồn: hàm SQL DÙNG CHUNG public.<miền>_*_v1 (INVOKER + RLS của người hỏi, search_path rỗng, danh sách toà chỉ
 // thu hẹp) theo đúng bộ lọc màn web đọc bảng thẳng; riêng dòng tiền phòng gọi thẳng RPC web get_room_cash_lifecycle_v1.
 // Khoá đợt 1 dùng lại (đang bật trên production): assets.view, services.view, rooms.view ⇒ các báo cáo assets,
@@ -64,7 +65,7 @@ export const W2D_REPORTS = Object.freeze({
       paymentCycle: nullable(code), durationMonths: int, totalValue: amount, ...ROOM, customerName: text(200), customerPhone: text(40) },
     summary: { fromDate: nullable(date), toDate: nullable(date), total: count, totalValue: amount, avgRent: amount, avgDurationMonths: int } }),
   re_terminations: w2Report({ permission: 'reports_real_estate.terminations', source: 'crm.real_estate_terminations_v1', scope: 'rows', private: true,
-    title: `HĐ thanh lý/hết hạn có ngày kết thúc trong kỳ (mặc định đầu tháng tới hôm nay): loại, ghi chú, cọc, tỉ lệ so với tổng HĐ. ${RANGE}`,
+    title: `HĐ thanh lý/hết hạn có ngày kết thúc trong kỳ (mặc định đầu tháng tới hôm nay): loại, ghi chú (cần quyền xem khách), cọc; tỉ lệ thanh lý = tử/mẫu cùng tập toà (khác web: web lấy mẫu số toàn công ty). ${RANGE}`,
     params: ['buildingId', 'fromDate', 'toDate'], scopeKeys: ['customers.view'],
     fields: { ...CONTRACT, startDate: nullable(date), endDate: nullable(date), actualEndDate: nullable(date), effectiveEndDate: date,
       durationDays: nullable(int), rentPrice: amount, totalDeposit: amount, terminationType: text(40), note: text(300), ...ROOM,
@@ -113,7 +114,7 @@ export const W2D_REPORTS = Object.freeze({
     title: 'Danh sách toà: mã, tên, địa chỉ, trạng thái, khu, số phòng theo trạng thái; query tìm tên/mã/đường; areaId lọc theo khu.',
     params: ['query', 'status', 'areaId'], statuses: ['ACTIVE', 'INACTIVE', 'MAINTENANCE'], fields: BUILDING_ROW, summary: BUILDING_SUMMARY }),
   areas: w2Report({ permission: 'buildings.view', source: 'crm.areas_list_v1', scope: 'rows', private: true,
-    title: 'Khu/cụm toà: mỗi hàng một khu × toà trong phạm vi (khu chưa có toà = buildingId null, chỉ Toàn tổ chức): mã, tên, trạng thái.',
+    title: 'Khu/cụm toà theo quyền xem khu (RLS) của người hỏi: mỗi hàng một khu × toà trong phạm vi (khu chưa có toà = buildingId null, chỉ Toàn tổ chức): mã, tên, trạng thái.',
     fields: { id, code: text(100), name: text(200), status: text(40), buildingId: nullable(id), buildingName: text(200) },
     summary: { total: count, links: count } }),
   building_detail: w2Report({ permission: 'buildings.view', source: 'crm.buildings_list_v1', scope: 'rows', private: true,
@@ -145,11 +146,13 @@ export const W2D_REPORTS = Object.freeze({
     fields: { id, buildingId: id, buildingName: text(200), floorNumber: int, name: text(100), description: text(500), status: text(40) }, summary: TOTAL }),
   // D12/D13/D14 — Loại thu chi, loại việc, hotline
   ie_types: w2Report({ permission: 'categories.view', source: 'crm.income_expense_types_list_v1', scope: 'organization', private: true,
-    title: 'Loại thu/chi (hạng mục): tên, nhóm, mô tả, mặc định, cờ hệ thống/ẩn, đã lưu trữ; không gồm hạng mục hạn chế, lương, cổ đông.',
+    title: 'Loại thu/chi (hạng mục) của công ty: tên, nhóm, mô tả, mặc định, cờ hệ thống/ẩn, đã lưu trữ; không gồm hạng mục hạn chế, lương, cổ đông; hạng mục dùng chung chưa trả (đếm ở globalRowsOmitted).',
     params: ['kind'], kinds: ['income', 'expense'],
     fields: { id, type: code, name: text(200), category: text(200), description: text(500), isDefault: bool, systemOnly: bool, manualHidden: bool,
       quickEntryHidden: bool, archived: bool },
-    summary: TOTAL }),
+    // Review P2: hạng mục dùng chung (organization_id NULL) tạm không trả — rào công ty của cổng đòi mọi hàng đúng công ty
+    // kết nối. Yêu cầu Gói Z: cờ "globalRows" cho scope organization để trả được dòng dùng chung.
+    summary: { total: count, globalRowsOmitted: count } }),
   task_types: w2Report({ permission: 'task_types.view', source: 'crm.job_types_list_v1', scope: 'organization', private: true,
     title: 'Loại công việc: bộ phận, nhóm việc, hạn gọi khách/tiếp nhận/hoàn thành (phút), giờ hành chính; query tìm tên.',
     params: ['query'], scopeKeys: ['tasks.view'],

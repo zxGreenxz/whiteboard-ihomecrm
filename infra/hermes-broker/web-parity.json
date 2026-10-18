@@ -667,7 +667,7 @@
           "contains": "crm.real_estate_terminations_v1"
         }
       ],
-      "notes": "LỆCH ĐÃ BIẾT 18/10: web nhúng bảng tenants cũ (contracts.tenant_id rỗng ở mọi HĐ trên TEST 18/10 nên luôn hiện N/A), Hermes dùng khách đại diện từ contract_customers; khoảng ngày web lấy từ Date của trình duyệt rồi toISOString() nên lệch tối đa 1 ngày theo múi giờ, Hermes dùng ngày thuần theo giờ công ty."
+      "notes": "LỆCH ĐÃ BIẾT 18/10: web nhúng bảng tenants cũ (contracts.tenant_id rỗng ở mọi HĐ trên TEST 18/10 nên luôn hiện N/A), Hermes dùng khách đại diện từ contract_customers; khoảng ngày web lấy từ Date của trình duyệt rồi toISOString() nên lệch tối đa 1 ngày theo múi giờ, Hermes dùng ngày thuần theo giờ công ty. LỖI WEB (review PR #203): realEstateReports.ts:893-915 lọc tử số theo toà nhưng mẫu số (tổng HĐ khác DRAFT) lấy toàn công ty, nên tỉ lệ khi lọc một toà bị hạ thấp. Hermes giữ tử và mẫu cùng một tập toà (đúng nghĩa). Ghi chú thanh lý (chữ tự do) Hermes chỉ trả khi khách đại diện thấy được qua RLS và kết nối có customers.view ở toà đó; web hiện cho mọi người có khoá báo cáo."
     },
     {
       "id": "w2d-re-expense-ratio",
@@ -824,7 +824,7 @@
           "contains": "crm.buildings_list_v1"
         }
       ],
-      "notes": "Web select(*) và chỉ đếm tổng phòng; Hermes chỉ trả cột trong danh sách trắng (không hoa hồng/tài khoản/toạ độ) và số phòng theo trạng thái."
+      "notes": "Web select(*) và chỉ đếm tổng phòng; Hermes chỉ trả cột trong danh sách trắng (không hoa hồng/tài khoản/toạ độ) và số phòng theo trạng thái. Tên khu đọc qua areas_in_scope_v1 dưới RLS areas như web (embed)."
     },
     {
       "id": "w2d-building-detail",
@@ -868,7 +868,8 @@
           "path": "infra/hermes-broker/wave2-d-contract.mjs",
           "contains": "crm.areas_list_v1"
         }
-      ]
+      ],
+      "notes": "Hermes đọc areas DƯỚI RLS của người hỏi như web (public.areas_in_scope_v1 SECURITY INVOKER từ 20261018040200, lọc organization_id tường minh): RLS chặn thì Hermes cũng không thấy. RLS areas_select_rbac còn đọc staff_assignments cũ — sửa ở PR vá lỗ hổng riêng, không ở đây."
     },
     {
       "id": "w2d-rooms",
@@ -969,7 +970,7 @@
           "contains": "crm.income_expense_types_list_v1"
         }
       ],
-      "notes": "Hermes ẩn hạng mục hạn chế, lương, cổ đông (chặt hơn web) và sắp theo lưu trữ, nhóm, sort_order; web sắp theo tên (vi). Web lọc tổ chức qua my_org_ids, Hermes theo p_organization_id."
+      "notes": "Hermes ẩn hạng mục hạn chế, lương, cổ đông (chặt hơn web) và sắp theo lưu trữ, nhóm, sort_order; web sắp theo tên (vi). Web lọc tổ chức qua my_org_ids, Hermes theo p_organization_id. Hermes tạm KHÔNG trả hạng mục dùng chung (organization_id NULL) — rào công ty của cổng đòi mọi hàng đúng công ty kết nối; đếm ở summary.globalRowsOmitted (chờ Gói Z thêm cờ globalRows cho scope organization)."
     },
     {
       "id": "w2d-task-types",
