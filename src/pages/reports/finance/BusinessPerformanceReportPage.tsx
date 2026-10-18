@@ -327,11 +327,13 @@ function AuthorizedBusinessPerformanceReportPage({
   const [selectedBuildingIds, setSelectedBuildingIds] = usePersistedState<
     string[]
   >("flt:rpt-business-performance:buildingIds", []);
+  // hermes-parity:begin business-performance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const [storedBasis, setStoredBasis] =
     usePersistedState<BusinessPerformanceBasis>(
       "flt:rpt-business-performance:basis",
       "ACCRUAL",
     );
+  // hermes-parity:end business-performance
   const [storedOrganizationId, setStoredOrganizationId] =
     usePersistedState<string>(
       "flt:rpt-business-performance:organizationId",

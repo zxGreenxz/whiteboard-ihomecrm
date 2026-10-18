@@ -567,6 +567,544 @@
       ]
     },
     {
+      "id": "cashbook-daily-cash-flow",
+      "kind": "rpc",
+      "description": "Sổ quỹ theo ngày và Dòng tiền năm (crm_read_report report=cashbook_daily, cash_flow): Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như useCashBook, rồi chép phép tính của hai trang: tồn đầu/cuối cộng dồn từng ngày, ngày không phát sinh = 0, mặc định đầu tháng → hôm nay (DailyCashbookReport) và gộp 12 tháng + 4 quý của cả năm, mặc định năm nay (CashFlowReport).",
+      "rpc": [
+        "cashbook_opening_balance",
+        "cashflow_by_day"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useCashBook.ts",
+          "region": "cashbook-daily-cash-flow",
+          "sha256": "6aad17f15a207f28ae9a07090b93b8a78d11b259673b45235901b00bc72aae3e"
+        },
+        {
+          "path": "src/pages/reports/finance/DailyCashbookReport.tsx",
+          "region": "cashbook-daily-cash-flow",
+          "sha256": "286f1cc9f985b9185afa35e64cb043e664bdb43c03d5b78a6c5ff07d66a69bea"
+        },
+        {
+          "path": "src/pages/reports/finance/CashFlowReport.tsx",
+          "region": "cashbook-daily-cash-flow",
+          "sha256": "5588175babd0e47f00deab9182283ad83d627ab1e9c9474309c481032ac733c3"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useCashBook.ts",
+          "rpc": "cashbook_opening_balance"
+        },
+        {
+          "path": "src/hooks/useCashBook.ts",
+          "rpc": "cashflow_by_day"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.cashbook_daily_v1",
+          "calls": [
+            "cashbook_opening_balance",
+            "cashflow_by_day"
+          ],
+          "note": "cashbook_daily"
+        },
+        {
+          "sql": "public.cashbook_cash_flow_v1",
+          "calls": [
+            "cashflow_by_day"
+          ],
+          "note": "cash_flow"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "cashbook_daily_v1",
+            "cashbook_cash_flow_v1"
+          ],
+          "note": "cashbook_daily, cash_flow"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.cashbook_daily_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.cashbook_cash_flow_v1"
+        }
+      ],
+      "notes": "Đã biết 18/10: tổng thu/chi của trang ngày (summary web) lấy từ cashbook_period_totals, Hermes cộng từ các dòng cashflow_by_day nên không gọi cashbook_period_totals (không có marker). Hermes gọi hai RPC theo VỊ TRÍ tham số (p_before_date, p_building_id, p_account_id / p_start, p_end, p_building_id, p_account_id): đổi thứ tự tham số RPC là hỏng mà bản đồ không bắt. Hai RPC lọc my_org_ids() nên người ở nhiều công ty được Hermes gọi từng sổ của đúng công ty kết nối."
+    },
+    {
+      "id": "cashbook-list",
+      "kind": "mirrored",
+      "description": "Danh sách /finance/cashbooks (crm_read_report report=cashbooks): web đọc view accounts_with_balance (bỏ mã DEMO ngoài phiên demo, tìm tên/mã), gắn tên người phụ trách từ profiles và chỉ hiện số dư đầu kỳ/tồn quỹ của sổ mà list_cashbook_visibility_v2 cho phép (còn lại null); Hermes cashbook_list_v1 chép đúng các bước đó, không trả số tài khoản/ngân hàng.",
+      "web": [
+        {
+          "path": "src/hooks/useAccounts.ts",
+          "region": "cashbook-list",
+          "sha256": "65cb98477e93f9e23b370f59088eddcb95c0212287e433f4922a4a51b1265186"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useAccounts.ts",
+          "rpc": "list_cashbook_visibility_v2"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.cashbook_list_v1",
+          "calls": [
+            "list_cashbook_visibility_v2"
+          ],
+          "note": "cashbooks"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "cashbook_list_v1"
+          ],
+          "note": "cashbooks"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.cashbook_list_v1"
+        }
+      ],
+      "notes": "Đã biết 18/10: web xếp created_at giảm dần và phân trang 10 dòng (.order/.range không có marker), Hermes xếp sổ ảo sau cùng rồi created_at giảm dần, tối đa 2000 dòng; web chỉ bỏ mã DEMO ngoài phiên demo, Hermes luôn bỏ; Hermes lọc đúng một công ty."
+    },
+    {
+      "id": "cashbook-closings",
+      "kind": "rpc",
+      "description": "Chốt sổ quỹ (crm_read_report report=cashbook_closings): Hermes gọi cùng list_cashbook_closings_v1 như useCashbookClosings và đọc hai mảng pending/closures theo tên khoá của PendingClosure/ConfirmedClosure, nhưng chỉ giữ sổ người hỏi nhìn thấy (chặt hơn web).",
+      "rpc": [
+        "list_cashbook_closings_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useCashbookClosing.ts",
+          "region": "cashbook-closings",
+          "sha256": "1d63f797b8124b8d79fa8ea55f6ff637cd4225c5eb6bd9217cddb1aa9a86b768"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useCashbookClosing.ts",
+          "rpc": "list_cashbook_closings_v1"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.cashbook_closings_v1",
+          "calls": [
+            "list_cashbook_closings_v1"
+          ],
+          "note": "cashbook_closings"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "cashbook_closings_v1"
+          ],
+          "note": "cashbook_closings"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.cashbook_closings_v1"
+        }
+      ],
+      "notes": "Hermes truyền p_cashbook theo VỊ TRÍ và chỉ khi lọc ra đúng một sổ (web truyền p_cashbook của trang hoặc bỏ trống). Trang biên bản CashbookClosureRecord.tsx chỉ tìm closure_id trong danh sách nên không có marker."
+    },
+    {
+      "id": "finance-analysis-rpc",
+      "kind": "rpc",
+      "description": "Phân tích tài chính (crm_read_report report=fa_type_breakdown, fa_snapshot_kpis, fa_occupancy_monthly, fa_lease_events, fa_invoice_collection): Hermes gọi cùng các RPC fa_* như useFinancialAnalysis; hạng mục thu/chi chọn fa_type_breakdown_accrual (mặc định dồn tích như FinancialAnalysisReport) hoặc fa_type_breakdown (tiền mặt).",
+      "rpc": [
+        "fa_type_breakdown_accrual",
+        "fa_type_breakdown",
+        "fa_snapshot_kpis",
+        "fa_occupancy_monthly",
+        "fa_lease_events",
+        "fa_invoice_collection"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "region": "finance-analysis-rpc",
+          "sha256": "620e05eff530d6363190035802f390f9f77b1c2e358249b481e7a43b770ad5fc"
+        },
+        {
+          "path": "src/pages/reports/finance/FinancialAnalysisReport.tsx",
+          "region": "finance-analysis-rpc",
+          "sha256": "2dcb1c2108025207492ee9d2bc5d91e228cdbb00e214fd8c0ba6b7dcdf87543b"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_type_breakdown_accrual"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_type_breakdown"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_snapshot_kpis"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_occupancy_monthly"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_lease_events"
+        },
+        {
+          "path": "src/hooks/useFinancialAnalysis.ts",
+          "rpc": "fa_invoice_collection"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.finance_analysis_type_breakdown_v1",
+          "calls": [
+            "fa_type_breakdown_accrual",
+            "fa_type_breakdown"
+          ],
+          "note": "fa_type_breakdown"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "finance_analysis_type_breakdown_v1",
+            "fa_snapshot_kpis",
+            "fa_occupancy_monthly",
+            "fa_lease_events",
+            "fa_invoice_collection"
+          ],
+          "note": "fa_type_breakdown, fa_snapshot_kpis, fa_occupancy_monthly, fa_lease_events, fa_invoice_collection"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.finance_analysis_type_breakdown_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.fa_snapshot_kpis"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.fa_occupancy_monthly"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.fa_lease_events"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.fa_invoice_collection"
+        }
+      ],
+      "notes": "Hạng mục hạn chế (lương, cổ đông…): Hermes chỉ cho khi restricted_view phủ mọi toà, còn fa_type_breakdown của web lộ tổng cho mọi người có reports_finance.analysis (cố ý chặt hơn, không phải lệch). Hermes truyền mảng toà tường minh, web truyền undefined khi không chọn toà (normIds). Cột trả về của 5 RPC được Hermes đọc theo tên; web chỉ bọc lời gọi, không bọc phần ánh xạ cột."
+    },
+    {
+      "id": "finance-top-expenses",
+      "kind": "mirrored",
+      "description": "Top 10 khoản chi của Phân tích tài chính (crm_read_report report=top_expenses): Hermes chép bộ lọc ExpenseTab (phiếu EXPENSE, approval_status APPROVED, kqkd_amount > 0, voucher_date trong tháng, đọc dưới RLS) và cách xếp theo số tiền lấy 10.",
+      "web": [
+        {
+          "path": "src/components/finance-analysis/ExpenseTab.tsx",
+          "region": "finance-top-expenses",
+          "sha256": "240b596db2c428645650fa48280f8c58854c6e376ce62836de6b0e4f05f0e05c"
+        },
+        {
+          "path": "src/hooks/income-expenses/queries.ts",
+          "region": "finance-top-expenses",
+          "sha256": "5eff752ee02cbcfb355b8ef6fe6f80b5ae649dd286bb49cc76990d59cf6a43c6"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.finance_analysis_top_expenses_v2",
+          "note": "top_expenses"
+        },
+        {
+          "sql": "public.finance_analysis_top_expenses_v1",
+          "calls": [
+            "finance_analysis_top_expenses_v2"
+          ],
+          "note": "top_expenses (bản web gọi được = _v2 không thu hẹp)"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "finance_analysis_top_expenses_v2"
+          ],
+          "note": "top_expenses"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.finance_analysis_top_expenses_v1"
+        }
+      ],
+      "notes": "Đã biết 18/10 (cố ý): web lấy 100 phiếu MỚI NHẤT của kỳ rồi mới xếp theo số tiền (sai khi tháng có hơn 100 phiếu chi), Hermes xếp trên cả kỳ rồi lấy 10; Hermes ẩn thêm phiếu hạn chế của người khác khi restricted_view không phủ mọi toà — lọc trong finance_analysis_top_expenses_v2 (p_include_restricted=false) TRƯỚC khi xếp/cắt, không lọc sau LIMIT (sửa sau review PR #208). queries.ts chỉ bọc quy tắc business_result_only → kqkd_amount > 0; deleted_at và nhánh approval_status = APPROVED của hook chưa bọc."
+    },
+    {
+      "id": "business-performance",
+      "kind": "rpc",
+      "description": "Hiệu quả kinh doanh (crm_read_report report=bp_pnl, bp_cohort, bp_cash_received, bp_categories): Hermes gọi thẳng 4 RPC business_performance_*_v1 như trang, lấy toà từ business_performance_organizations_v1 (authorized_buildings, restricted_allowed) và chỉ truyền toà được xem phiếu hạn chế; cơ sở ghi nhận ACCRUAL / VOUCHER_DATE (mặc định ACCRUAL như BusinessPerformanceReportPage).",
+      "rpc": [
+        "business_performance_organizations_v1",
+        "business_performance_pnl_v1",
+        "business_performance_invoice_cohort_v1",
+        "business_performance_cash_received_v1",
+        "business_performance_category_breakdown_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/reports/useBusinessPerformance.ts",
+          "region": "business-performance",
+          "sha256": "b707e36ffbdbbf5de2ed5c497d518d95bef6451a5671f864c2dbace0e2a0f977"
+        },
+        {
+          "path": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+          "region": "business-performance",
+          "sha256": "71030553beff14ecd2cfb307afb2fa7f503796323ed390f7ed2ae5033b43831c"
+        },
+        {
+          "path": "src/lib/businessPerformance.ts",
+          "region": "business-performance",
+          "sha256": "853c00b18b77fe35db98f266a9ebfa3f6bfb3801f04c5247797783a23af4e61d"
+        },
+        {
+          "path": "src/pages/reports/finance/BusinessPerformanceReportPage.tsx",
+          "region": "business-performance",
+          "sha256": "e4afe56f7cb44f8555e1aab732c9125b188aa9e19110a5caffb51e8379a46f35"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/reports/useBusinessPerformance.ts",
+          "rpc": "business_performance_organizations_v1"
+        },
+        {
+          "path": "src/hooks/reports/useBusinessPerformance.ts",
+          "rpc": "business_performance_pnl_v1"
+        },
+        {
+          "path": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+          "rpc": "business_performance_invoice_cohort_v1"
+        },
+        {
+          "path": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+          "rpc": "business_performance_cash_received_v1"
+        },
+        {
+          "path": "src/hooks/reports/useBusinessPerformanceGatedData.ts",
+          "rpc": "business_performance_category_breakdown_v1"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "business_performance_organizations_v1",
+            "business_performance_pnl_v1",
+            "business_performance_invoice_cohort_v1",
+            "business_performance_cash_received_v1",
+            "business_performance_category_breakdown_v1"
+          ],
+          "note": "bp_pnl, bp_cohort, bp_cash_received, bp_categories"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.business_performance_pnl_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.business_performance_invoice_cohort_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.business_performance_cash_received_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.business_performance_category_breakdown_v1"
+        }
+      ],
+      "notes": "Hermes gọi các RPC theo VỊ TRÍ tham số (tổ chức, cơ sở/tháng, ngày, mảng toà) và gửi cả mảng toà một lượt, web chia pnl thành lô PNL_RPC_BUILDING_BATCH_SIZE; category_breakdown Hermes gọi từng toà một; bp_pnl Hermes bỏ toà ảo (is_virtual). RPC \"tất cả hoặc không\" (42501) nên Hermes chỉ gửi toà restricted_allowed ∩ restricted_view của kết nối: không còn toà nào ⇒ 42501 như web, không có toà thật ⇒ no_building_scope. Phần web đọc cột của từng RPC (parse*Row) chưa có marker."
+    },
+    {
+      "id": "shareholder-profit",
+      "kind": "mirrored",
+      "description": "Lợi nhuận cổ đông (crm_read_report report=profit_my_share, profit_shareholders): tab Tổng quan tự xem của cổ đông (ShareholderSelfView) và Tổng quan quản lý (ProfitOverviewTab). Web đọc profit_allocations kèm kỳ chốt profit_monthly, phiếu chi chia lợi nhuận (income_expenses EXPENSE/APPROVED gắn cổ đông), cổ đông còn hiệu lực, tên toà qua get_my_share_buildings, rồi computeShareholderSummary (được chia, đã ứng, còn lại) và lọc năm; Hermes chép bằng profit_my_share_v1 và profit_shareholder_summary_v1.",
+      "web": [
+        {
+          "path": "src/hooks/useShareholderProfit.ts",
+          "region": "shareholder-profit",
+          "sha256": "6d0498b150e635f43b63cd9c29e74f86a45ff0f6f98ac7775eb60a2a1d3236cd"
+        },
+        {
+          "path": "src/hooks/useShareholders.ts",
+          "region": "shareholder-profit",
+          "sha256": "bc9753dd1f3aff97b442764425d690a2ace5e7e9a66c3d9c8b541922daf8541c"
+        },
+        {
+          "path": "src/lib/shareholderProfit.ts",
+          "region": "shareholder-profit",
+          "sha256": "8bb05b80b834e8bc30c335f0a7de5d6df00800e8b97f87d1d6090eae68035317"
+        },
+        {
+          "path": "src/components/shareholders/ShareholderSelfView.tsx",
+          "region": "shareholder-profit",
+          "sha256": "e10764fc3973be033425b6f14bceef1599aa773fd4f2a3d0ede922025b32b4b9"
+        },
+        {
+          "path": "src/components/shareholders/ProfitOverviewTab.tsx",
+          "region": "shareholder-profit",
+          "sha256": "050bd5595e93fc3f2f53526d1c7a5cd798fb71da2f65d44c678eb537bd640745"
+        },
+        {
+          "path": "src/pages/reports/finance/ProfitHubPage.tsx",
+          "region": "shareholder-profit",
+          "sha256": "465e5868510f5e5b94bf832a67b3442f66b4e7c4daa691a535ec43ee09b03db7"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useShareholders.ts",
+          "rpc": "get_my_share_buildings"
+        },
+        {
+          "path": "src/hooks/useShareholderProfit.ts",
+          "rpc": "profit_close_scopes_v2"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.profit_my_share_v1",
+          "calls": [
+            "get_my_share_buildings"
+          ],
+          "note": "profit_my_share"
+        },
+        {
+          "sql": "public.profit_shareholder_summary_v1",
+          "calls": [
+            "profit_close_scopes_v2"
+          ],
+          "note": "profit_shareholders (isManager: chốt/mở chốt LN như useProfitCloseOrganizations)"
+        },
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "profit_my_share_v1",
+            "profit_shareholder_summary_v1"
+          ],
+          "note": "profit_my_share, profit_shareholders"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.profit_my_share_v1"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.profit_shareholder_summary_v1"
+        }
+      ],
+      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy."
+    },
+    {
+      "id": "personal-finance",
+      "kind": "rpc",
+      "description": "Ví cá nhân (crm_read_report report=personal_wallets, personal_transactions): Hermes gọi personal_finance_snapshot (INVOKER, chỉ dữ liệu của chính người hỏi) như PersonalWalletPage và đọc các khoá owner_id, wallets, categories, transactions của snapshotSchema; không gọi personal_finance_bootstrap (ghi dữ liệu).",
+      "rpc": [
+        "personal_finance_snapshot"
+      ],
+      "web": [
+        {
+          "path": "src/lib/personalFinance/service.ts",
+          "region": "personal-finance",
+          "sha256": "28cfe981065d2b3090ca187e666011832d94593ba0684ef8dd86375807a06ca7"
+        },
+        {
+          "path": "src/lib/personalFinance/contract.ts",
+          "region": "personal-finance",
+          "sha256": "f6dd51b700e49d0e87fb1cca77a4ae60b5983facf7eaf8670e0bb0217259a9f2"
+        },
+        {
+          "path": "src/lib/personalFinance/selectors.ts",
+          "region": "personal-finance-balance",
+          "sha256": "f8e356b944761ebe574fc4306d0bded1fb2bbf2571f4952a20da846dc4d63665"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/lib/personalFinance/service.ts",
+          "rpc": "personal_finance_snapshot"
+        },
+        {
+          "path": "src/hooks/personal-finance/usePersonalFinance.ts",
+          "rpc": "personal_finance_snapshot"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "personal_finance_snapshot"
+          ],
+          "note": "personal_wallets, personal_transactions"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.personal_finance_snapshot"
+        }
+      ],
+      "notes": "Tổng số dư summary.totalBalance của personal_wallets theo selectBalance (cộng mọi ví của snapshot, kể cả ví ẩn) — vùng personal-finance-balance; tổng và số ví tính trên MỌI ví, hàng sắp như snapshot (mặc định, tên, id) và cắt 2000 (sourceCapped theo tổng thật). Hermes lọc giao dịch (ngày, loại, từ khoá mô tả/danh mục) trên thứ tự của snapshot (txn_date giảm dần, đã bỏ dòng xoá), không chép bộ chọn selectTransactions/selectMonth của web."
+    },
+    {
+      "id": "bank-events",
+      "kind": "rpc",
+      "description": "Biến động số dư (crm_read_report report=bank_event_feed, chỉ super admin): web gọi Edge bank-event-admin (action status / list_events → RPC bank_event_admin_v1, rồi giải mã nội dung); Hermes gọi thẳng bank_event_admin_v1 (không kèm withPayload) và chỉ trả siêu dữ liệu, theo tên khoá sự kiện, loại sự kiện và cách đổi khoảng ngày sang giờ Việt Nam của service.ts và BankEventsPage.",
+      "rpc": [
+        "bank_event_admin_v1"
+      ],
+      "web": [
+        {
+          "path": "src/lib/bank-events/service.ts",
+          "region": "bank-events",
+          "sha256": "eaf0fbadf04558cf318eecd1aace6046e26d08ec5557ee9ed024a996c89614d1"
+        },
+        {
+          "path": "src/pages/bank-events/BankEventsPage.tsx",
+          "region": "bank-events",
+          "sha256": "3d410c2e44839fb483d96e11dc894b5df59312b079e63fd1750624f88c984781"
+        }
+      ],
+      "successorGuard": [
+        "public.bank_event_admin_v1"
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2b_read_v1",
+          "calls": [
+            "bank_event_admin_v1"
+          ],
+          "note": "bank_event_feed"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-b-contract.mjs",
+          "contains": "crm.bank_event_admin_v1"
+        }
+      ],
+      "notes": "Không có webCalls vì web gọi Edge function (supabase.functions.invoke) chứ không .rpc(); chuông gồm successorGuard (CRM có bank_event_admin_v2) và các vùng service.ts/BankEventsPage. Edge function supabase/functions/bank-event-admin nằm ngoài src/ nên không đánh marker. Hermes giới hạn 100 tin mới nhất (web 25 tin/trang + cursor), không có query/sourceId."
+    },
+    {
       "id": "finance-payment-schedule",
       "kind": "mirrored",
       "description": "Lịch thanh toán (/reports/finance/payment-schedule): hoá đơn chưa huỷ hạn ≤ hôm nay+365, gộp theo phòng, đến ngày = hạn xa nhất, khách của hoá đơn đầu (crm_read_report report=payment_schedule).",

@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T09:56:10.809Z",
+  "generatedAt": "2026-10-18T10:45:39.572Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 737,
-    "unknown": 86,
+    "unknown": 90,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12048,6 +12048,63 @@
       "evidence": [],
       "missingObjects": [
         "function:app_private.hermes_w2a_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
+      "version": "20261018020050",
+      "name": "hermes_w2b_finance_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "54cc805ee2a5eb4d288bac411007cb7eab0f367b61bee9c0ea514db19d74f9b3",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.finance_my_scope_v1",
+        "function:public.finance_type_restricted_v1",
+        "function:public.report_text_v1",
+        "function:public.cashbook_daily_v1",
+        "function:public.cashbook_cash_flow_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020200_hermes_w2b_finance_read_v1.sql",
+      "version": "20261018020200",
+      "name": "hermes_w2b_finance_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "69c0b0c826467a9ce6dc9b8f6ed669eeee59df232297c405f750a8d4cb71e842",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2b_catalog_v1",
+        "function:app_private.hermes_w2b_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020250_hermes_w2b_finance_shared_fixes_v1.sql",
+      "version": "20261018020250",
+      "name": "hermes_w2b_finance_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "12828601dd1569d69e33ea67b62455fe31a32f86a106ad9bf3de9440f2fd7cb6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.finance_my_scope_v1",
+        "function:public.finance_type_restricted_v1",
+        "function:public.report_text_v1",
+        "function:public.finance_analysis_top_expenses_v2",
+        "function:public.finance_analysis_top_expenses_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020300_hermes_w2b_finance_read_fixes_v1.sql",
+      "version": "20261018020300",
+      "name": "hermes_w2b_finance_read_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "33f5318d55ab6f9f0ffae3f97e885f6e7e371ade3b119f073fe56da8940f3609",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2b_read_v1"
       ]
     },
     {

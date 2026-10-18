@@ -237,9 +237,11 @@ export const useProfitAllocations = () => {
     queryFn: async () => {
       const data = await fetchAllRows<any>(
         (from, to) =>
+          // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
           (supabase
             .from("profit_allocations")
             .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any)
+          // hermes-parity:end shareholder-profit
             .order("id", { ascending: true })
             .range(from, to),
         { label: "profit.shareholderAllocations" },
@@ -260,6 +262,7 @@ export const useShareholderDistributions = () => {
     queryFn: async () => {
       const data = await fetchAllRows<any>(
         (from, to) =>
+          // hermes-parity:begin shareholder-profit
           (supabase
             .from("income_expenses")
             .select("id, shareholder_id, total_amount, voucher_date, name, account_id, building_id") as any)
@@ -267,6 +270,7 @@ export const useShareholderDistributions = () => {
             .eq("approval_status", "APPROVED")
             .not("shareholder_id", "is", null)
             .is("deleted_at", null)
+          // hermes-parity:end shareholder-profit
             .order("voucher_date", { ascending: false })
             .order("id", { ascending: true })
             .range(from, to),
