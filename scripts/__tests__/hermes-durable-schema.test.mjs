@@ -77,7 +77,11 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   // CRM "Gửi ảnh phòng trống" status/recipients/send/cancel/update caller (20261016111855).
   'hermes_zalo_broadcast_v1(jsonb)',
   // Full read for the asker (20261016162104): room-pass wrapper over v1 and domain family v3.
-  'hermes_room_pass_upsert_v2(jsonb,text,jsonb)', 'hermes_domain_read_v3(jsonb,text,jsonb)'];
+  'hermes_room_pass_upsert_v2(jsonb,text,jsonb)', 'hermes_domain_read_v3(jsonb,text,jsonb)',
+  // Wave 2 foundation (20261018000000): capability state of the wave-2 read keys.
+  'hermes_domain_capabilities_v3(uuid)',
+  // Wave 2 INVOKER report entry (20261018000600): package reads run under the asker's RLS.
+  'hermes_w2_read_v1(jsonb,text,jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -391,6 +395,13 @@ END $acl$`), targets: [
 const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL, ...CD_FORWARD_ACL_BLOCKS];
 const TASK_BY_NAME = new Map(TASK_FUNCTIONS.map(spec => [spec.name, spec]));
 const CUSTOMER_INVOKER = new Set(['app_private.hermes_customer_insert_v1', 'public.hermes_customer_create_action_v1']);
+// Wave 2 (20261018000600): the INVOKER report entry and the four package read functions (run under the
+// asker's RLS). authenticated executes them plus the two DEFINER steps, reachable only through the entry's
+// SQL-standard body (OIDs bound at creation; authenticated keeps no USAGE on app_private).
+const W2_READERS = new Set(['a', 'b', 'c', 'd'].map(letter => `app_private.hermes_w2${letter}_read_v1`));
+const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
+const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
+  ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -639,6 +650,11 @@ function securityContract(sql = all, registry = functions) {
     else if (name === 'app_private.hermes_task_follow_apply_v1') assert.equal(header, TASK_FOLLOW_APPLY_HEADER, 'exact task-follow invoker step');
     else if (name === 'public.hermes_task_follow_action_v1') assert.equal(definition, TASK_FOLLOW_ACTION, 'exact task-follow SQL-standard wrapper');
     else if (CUSTOMER_INVOKER.has(name)) assert.match(header, /SECURITY INVOKER SET search_path=pg_catalog,public/i, name);
+    else if (W2_INVOKER.has(name)) {
+      assert.match(header, /LANGUAGE (?:plpgsql|sql) (?:VOLATILE|STABLE) SECURITY INVOKER SET search_path=pg_catalog,public$/i, name);
+      // A plpgsql body resolves names as the asker, who has no USAGE on app_private: it may not name it.
+      if (/\bAS\s+\$/i.test(definition)) assert.doesNotMatch(definition.split(/\bAS\s+\$/i).slice(1).join(''), /\bapp_private\./i, `${name}: plpgsql invoker names app_private`);
+    }
     else assert.match(header, /SECURITY DEFINER SET search_path=pg_catalog,(?:public,)?app_private/i, name);
     assert.match(sql, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
     assert.match(sql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`, 'i'), `${name}: revoke default/API execute explicitly`);
@@ -652,7 +668,7 @@ function securityContract(sql = all, registry = functions) {
   const allowed = new Map([
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
       ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
-      ...ZALO_ONESHOT_CALLER])],
+      ...ZALO_ONESHOT_CALLER, ...W2_CALLER])],
     ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
   ]);
@@ -1319,4 +1335,18 @@ test('signature grammar accepts only the exact sweep empty-list and tick limit d
     ['app_private.hermes_task_follow_tick_v1', "p_organization_ids uuid[] DEFAULT '{}'"],
     ['public.hermes_room_schedule_run_v2', 'p_limit integer DEFAULT 500'],
   ]) assert.throws(() => signature(name, args, true), /reviewed argument grammar/, `${name}(${args})`);
+});
+
+test('wave-2 INVOKER entry and package reads stay INVOKER, keep pg_catalog,public, never name app_private in plpgsql and keep the exact caller grant', () => {
+  for (const name of ['public.hermes_w2_read_v1', 'hermes_w2a_read_v1']) {
+    const registry = new Map(functions), key = name.startsWith('public.') ? name : `app_private.${name}`;
+    registry.set(key, fn(name).replace('SECURITY INVOKER', 'SECURITY DEFINER'));
+    assert.throws(() => securityContract(all, registry), undefined, `${name}: DEFINER`);
+  }
+  const registry = new Map(functions);
+  registry.set('app_private.hermes_w2b_read_v1', fn('hermes_w2b_read_v1').replace('RETURN jsonb_build_object(',
+    'PERFORM app_private.hermes_w2_param_names_v1(); RETURN jsonb_build_object('));
+  assert.throws(() => securityContract(all, registry), /plpgsql invoker names app_private/);
+  for (const target of ['app_private.hermes_w2_catalog_v1(text)', 'app_private.hermes_w2_gate_v1(jsonb,text,jsonb)'])
+    assert.throws(() => securityContract(`${all};\nGRANT EXECUTE ON FUNCTION ${target} TO authenticated`), /cannot execute/, target);
 });
