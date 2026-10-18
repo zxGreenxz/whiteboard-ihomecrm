@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { kiemOwnersSnapshot, ownersDigest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
+import { haDangNhapVaiDichVu, kiemOwnersSnapshot, ownersDigest, sqlKhoiPhucOwners, sqlKhoiPhucVai, sqlOwners } from '../test-env/owners.mjs';
 
 const roles = [{ name: 'ie_detail_reader', inherit: true, login: false, superuser: false,
   createdb: false, createrole: false, replication: false, bypassrls: false, connectionLimit: -1,
@@ -123,6 +123,28 @@ describe('TEST restore preserves restricted routine execution identity', () => {
   it.each(['login', 'superuser', 'createdb', 'createrole', 'replication', 'bypassrls'])('rejects unsafe source role attribute %s before SQL is generated', (attribute) => {
     const meta = metadata(); meta.roles[0][attribute] = true;
     expect(() => sqlKhoiPhucVai(meta)).toThrow(/restricted|hạn chế/);
+  });
+
+  it('rebuilds the approved production login service role as NOLOGIN on TEST', async () => fixture(async (db) => {
+    const meta = metadata(); meta.roles[0].name = 'hermes_store_host'; meta.roles[0].login = true;
+    meta.memberships = []; meta.routines = []; meta.schemaAcl = [];
+    expect(() => sqlKhoiPhucVai(meta)).toThrow(/restricted|hạn chế/);
+    const test = haDangNhapVaiDichVu(meta);
+    expect(test.roles[0].login).toBe(false);
+    expect(meta.roles[0].login).toBe(true);
+    await db.exec(sqlKhoiPhucVai(test));
+    expect((await db.query(`SELECT rolcanlogin FROM pg_roles WHERE rolname='hermes_store_host'`)).rows[0].rolcanlogin).toBe(false);
+  }));
+
+  it.each(['superuser', 'createdb', 'createrole', 'replication', 'bypassrls'])('still rejects the approved service role with %s', (attribute) => {
+    const meta = metadata(); meta.roles[0].name = 'hermes_store_host'; meta.roles[0].login = true; meta.roles[0][attribute] = true;
+    expect(() => sqlKhoiPhucVai(haDangNhapVaiDichVu(meta))).toThrow(/restricted|hạn chế/);
+  });
+
+  it('keeps rejecting any other login role', () => {
+    const meta = metadata(); meta.roles[0].login = true;
+    expect(haDangNhapVaiDichVu(meta).roles[0].login).toBe(true);
+    expect(() => sqlKhoiPhucVai(haDangNhapVaiDichVu(meta))).toThrow(/restricted|hạn chế/);
   });
 
   it.each(['pg_monitor', 'supabase_admin', 'postgres', 'authenticated', 'cli_login_postgres'])('never alters managed role %s from custom-role metadata', (name) => {
