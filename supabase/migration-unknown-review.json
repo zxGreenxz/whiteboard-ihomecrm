@@ -1230,6 +1230,167 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C (sửa sau review PR #204), 18/10/2026",
       "sha256": "38bbe1c3b7848e1b8cbb2ecfdcfbcb85821eb36b693d19af87490f46ca096403"
+    },
+    "supabase/migrations/20261018040000_hermes_w2d_catalog_read_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018040000_hermes_w2d_catalog_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:public.real_estate_vacant_rooms_v1, function:public.real_estate_expiring_contracts_v1, function:public.real_estate_renewals_transfers_v1, function:public.real_estate_promotions_v1, function:public.real_estate_new_leases_v1 — Gói D — hàm dùng chung danh mục/BĐS (PR #203)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói D — hàm dùng chung danh mục/BĐS (PR #203)), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.real_estate_vacant_rooms_v1",
+        "function:public.real_estate_expiring_contracts_v1",
+        "function:public.real_estate_renewals_transfers_v1",
+        "function:public.real_estate_promotions_v1",
+        "function:public.real_estate_new_leases_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "4d66c5469d8e7029289e208254f25afe83387c862224a8b2a1f077f04833aa04"
+    },
+    "supabase/migrations/20261018040100_hermes_w2d_reader_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018040100_hermes_w2d_reader_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:app_private.hermes_w2d_catalog_v1, function:app_private.hermes_w2d_read_v1 — Gói D — hàm đọc/catalog gói (PR #203)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 2 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói D — hàm đọc/catalog gói (PR #203)), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2d_catalog_v1",
+        "function:app_private.hermes_w2d_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "76c6694e46f97d4951c3f0cca2b73677d37e0cafb73818f053709bbf3dae0cf1"
+    },
+    "supabase/migrations/20261018040200_hermes_w2d_shared_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018040200_hermes_w2d_shared_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:public.report_text_v1, function:public.areas_in_scope_v1 — Gói D — sửa hàm dùng chung sau review độc lập PR #203"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 2 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói D — sửa hàm dùng chung sau review độc lập PR #203), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.report_text_v1",
+        "function:public.areas_in_scope_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "6ba15eb4e91935b94b188dca83732c22e9ae47184c687f2919d96399211aa289"
+    },
+    "supabase/migrations/20261018040300_hermes_w2d_reader_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018040300_hermes_w2d_reader_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:app_private.hermes_w2d_read_v1 — Gói D — sửa hàm đọc sau review độc lập PR #203"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói D — sửa hàm đọc sau review độc lập PR #203), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2d_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "c94825444df2ef8601811cc6e0e7182246ea0fa4726dee238b7420ba2da032e5"
+    },
+    "supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:public.thu_tien_collection_v1, function:public.notifications_inbox_v1, function:public.income_expense_types_list_v1, function:public.report_text_v1 — Gói Z — sửa tích hợp hàm dùng chung (theo web #209, thống nhất report_text_v1)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 4 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói Z — sửa tích hợp hàm dùng chung (theo web #209, thống nhất report_text_v1)), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.thu_tien_collection_v1",
+        "function:public.notifications_inbox_v1",
+        "function:public.income_expense_types_list_v1",
+        "function:public.report_text_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "7dd2dd6d6867e5bc68c9087248e62ee12316878eb76ea811992de0c2bc7c0b5d"
+    },
+    "supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:app_private.hermes_w2a_read_v1 — Gói Z — siết rào PII hàm đọc Gói A"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói Z — siết rào PII hàm đọc Gói A), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2a_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "75263b5d1f3bc1cc9c935bb88259bb6cc43ecf939b62563e07f0a96cacda1d25"
+    },
+    "supabase/migrations/20261018080200_hermes_w2z_finance_fail_closed_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018080200_hermes_w2z_finance_fail_closed_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:app_private.hermes_w2b_read_v1 — Gói Z — hàm đọc Gói B đóng khi thiếu khoá"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói Z — hàm đọc Gói B đóng khi thiếu khoá), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2b_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "a656128489c3d83a48ab08dae7cfc986300f6745220a0a12045ed858792c8261"
+    },
+    "supabase/migrations/20261018080300_hermes_w2z_catalog_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018080300_hermes_w2z_catalog_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE function:app_private.hermes_w2d_read_v1 — Gói Z — sửa hàm đọc Gói D (PII, khử trùng ie_types)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — sinh bằng provenance:generate 18/10/2026 (catalog production thật)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói Z — sửa hàm đọc Gói D (PII, khử trùng ie_types)), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST rồi production theo thứ tự trong PR #215 qua npm run migrate:forward; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2d_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói Z (tích hợp PR #215), 18/10/2026",
+      "sha256": "be076d962c0c81d8e7f917d95ab0e70e1f841cbe2ffc56589f36bb91b5cd24b2"
     }
   }
 }
