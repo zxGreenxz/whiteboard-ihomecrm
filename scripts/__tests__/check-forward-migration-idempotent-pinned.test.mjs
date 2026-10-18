@@ -112,8 +112,16 @@ describe("ngoại lệ idempotency pinned", () => {
     expect(docLoiSql(actual)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
     const withContext = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nCONTEXT:  PL/pgSQL function inline_code_block line 5 at RAISE\n` });
     expect(docLoiSql(withContext)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
+    // DETAIL/HINT không bị nuốt: chúng nằm trong message nên pin phải ghi đúng nguyên văn cả hai.
     const withDetail = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nDETAIL: extra\n` });
-    expect(docLoiSql(withDetail).sqlState).toBe("");
+    expect(docLoiSql(withDetail)).toEqual({ sqlState: "42P07", message: `${entry.expectedMessage}\nDETAIL: extra` });
+    expect(docLoiSql(withDetail).message).not.toBe(entry.expectedMessage);
+    const withDetailHintContext = JSON.stringify({ message: "Failed to run sql query: ERROR:  42P13: cannot change return type of existing function\nDETAIL:  Row type defined by OUT parameters is different.\nHINT:  Use DROP FUNCTION f(uuid) first.\nCONTEXT:  SQL statement\n" });
+    expect(docLoiSql(withDetailHintContext)).toEqual({ sqlState: "42P13",
+      message: "cannot change return type of existing function\nDETAIL:  Row type defined by OUT parameters is different.\nHINT:  Use DROP FUNCTION f(uuid) first." });
+    // Dòng lạ ngoài DETAIL/HINT/CONTEXT vẫn không tách mã lỗi.
+    const withOther = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nWHATEVER: x\n` });
+    expect(docLoiSql(withOther).sqlState).toBe("");
   });
 });
 
