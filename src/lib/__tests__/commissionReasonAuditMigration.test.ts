@@ -216,7 +216,7 @@ describe('commission canonical posting cashbook',()=>{
    await denied(call,'23514');
    expect((await db.query('SELECT account_id,approval_status,posting_status FROM income_expenses WHERE id=$1',[v.id])).rows[0]).toEqual({account_id:book,approval_status:mode==='post_approved'?'APPROVED':'UNAPPROVED',posting_status:'UNPOSTED'});
    expect((await db.query('SELECT * FROM income_expense_postings')).rows).toHaveLength(0);
-   expect((await db.query('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
+   expect((await db.query<{state:string}>('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
    expect((await history(v.id)).filter(e=>e.stage==='POST')).toHaveLength(0);
    await owner("DO $$BEGIN IF EXISTS(SELECT 1 FROM app_private.commission_reason_contexts) OR EXISTS(SELECT 1 FROM app_private.canonical_write_operations) THEN RAISE EXCEPTION 'Leaked transaction';END IF;END$$");
   }));
@@ -230,8 +230,8 @@ describe('commission canonical posting cashbook',()=>{
   await denied(()=>db.query('SELECT post_approved_income_expense_v2($1)',[JSON.stringify(input)]));
   await owner(`INSERT INTO income_expense_postings(id,voucher_id,event_kind) VALUES('${id(25)}','${v.id}','POSTING')`);
   await denied(()=>db.query('SELECT post_approved_income_expense_v2($1)',[JSON.stringify(input)]),'55000');
-  expect((await db.query('SELECT count(*)::integer n FROM income_expense_postings')).rows[0].n).toBe(1);
-  expect((await db.query('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
+  expect((await db.query<{n:number}>('SELECT count(*)::integer n FROM income_expense_postings')).rows[0].n).toBe(1);
+  expect((await db.query<{state:string}>('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
  }));
 });
 
