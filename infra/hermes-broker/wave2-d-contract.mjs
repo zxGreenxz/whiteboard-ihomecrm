@@ -1,6 +1,6 @@
 // Gói D đợt 2 — Tài sản, danh mục, toà/phòng, báo cáo BĐS. File của RIÊNG Gói D.
 // Khai báo mỗi báo cáo bằng w2Report() (wave2-kit.mjs); khớp từng trường với
-// app_private.hermes_w2d_catalog_v1 (migration 20261018040000_hermes_w2d_catalog_read_v1.sql).
+// app_private.hermes_w2d_catalog_v1 (migration 20261018040000_hermes_w2d_catalog_read_v1.sql); hàm đọc INVOKER ở 20261018040100.
 // Nguồn: hàm SQL DÙNG CHUNG public.<miền>_*_v1 (INVOKER + RLS của người hỏi, search_path rỗng, danh sách toà chỉ
 // thu hẹp) theo đúng bộ lọc màn web đọc bảng thẳng; riêng dòng tiền phòng gọi thẳng RPC web get_room_cash_lifecycle_v1.
 // Khoá đợt 1 dùng lại (đang bật trên production): assets.view, services.view, rooms.view ⇒ các báo cáo assets,
@@ -12,8 +12,6 @@ import { w2Report, id, nullable, longText, code, amount, bool, count, date } fro
 const int = value => Number.isSafeInteger(value);
 const month = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const text = max => nullable(longText(max));
-const unique = values => new Set(values).size === values.length;
-const idList = max => value => Array.isArray(value) && value.length <= max && value.every(id) && unique(value);
 const textList = (max, len) => value => Array.isArray(value) && value.length <= max && value.every(longText(len));
 const shapedList = (max, fields) => value => Array.isArray(value) && value.length <= max &&
   value.every(row => row !== null && typeof row === 'object' && !Array.isArray(row) &&
@@ -71,14 +69,14 @@ export const W2D_REPORTS = Object.freeze({
       customerName: text(200), customerPhone: text(40) },
     summary: { fromDate: nullable(date), toDate: nullable(date), total: count, terminated: count, expired: count, totalContracts: count,
       terminationRatePct: amount } }),
-  re_expense_ratio: w2Report({ permission: 'reports_real_estate.expense_ratio', source: 'crm.real_estate_expense_ratio_v1', scope: 'buildings', private: true,
-    title: 'Tỷ lệ chi phí/doanh thu theo tháng (mặc định 6 tháng). kind=month|category|type; query = đúng tên nhóm chi. Phần chi cần quyền danh mục như web.',
+  re_expense_ratio: w2Report({ permission: 'reports_real_estate.expense_ratio', source: 'crm.real_estate_expense_ratio_v1', scope: 'rows', private: true,
+    title: 'Tỷ lệ chi phí/doanh thu (mặc định 6 tháng): summary/byMonth gộp mọi toà như web, hàng theo toà. kind=month|category|type; query = đúng tên nhóm chi. Phần chi cần quyền danh mục.',
     params: ['buildingId', 'fromDate', 'toDate', 'query', 'kind'], kinds: ['month', 'category', 'type'],
     scopeKeys: ['categories.view', 'income_expenses.restricted_view'],
-    // Một khuôn hàng cho ba kind: month ⇒ month/revenue/expense/ratioPct; category ⇒ month/category/expense; type ⇒ category/typeName/expense.
-    fields: { month: nullable(month), category: text(200), typeName: text(200), revenue: nullable(amount), expense: amount, ratioPct: nullable(amount) },
+    // Một khuôn hàng cho ba kind (theo toà): month ⇒ month/revenue/expense/ratioPct; category ⇒ month/category/expense; type ⇒ category/typeName/expense.
+    fields: { buildingId: id, buildingName: text(200), month: nullable(month), category: text(200), typeName: text(200), revenue: nullable(amount), expense: amount, ratioPct: nullable(amount) },
     summary: { fromMonth: month, toMonth: month, totalRevenue: amount, totalExpense: amount, avgRatioPct: amount, peakMonth: nullable(month),
-      peakRatioPct: nullable(amount), categories: textList(100, 200), expenseTypesVisible: bool, category: text(200) } }),
+      peakRatioPct: nullable(amount), byMonth: shapedList(13, { month, revenue: amount, expense: amount, ratioPct: nullable(amount) }), categories: textList(100, 200), expenseTypesVisible: bool, category: text(200) } }),
 
   // D1 — Tài sản (/assets; useAssets.ts:146-199)
   assets: w2Report({ permission: 'assets.view', source: 'crm.assets_list_v1', scope: 'rows', private: true,
@@ -88,12 +86,12 @@ export const W2D_REPORTS = Object.freeze({
       buildingId: nullable(id), buildingName: text(200), roomId: nullable(id), roomName: text(100), supplierName: text(200), purchaseDate: nullable(date) },
     summary: { total: count, totalValue: amount, goodOrNew: count, poorOrBroken: count } }),
   // D3/D4/D5 — Dịch vụ, định mức, nhà cung cấp
-  services: w2Report({ permission: 'services.view', source: 'crm.services_list_v1', scope: 'buildings', private: true,
-    title: 'Dịch vụ: mã, tên, loại phí, cách tính, đơn giá/đơn vị, mặc định, các toà đang áp dụng (trong phạm vi kết nối).',
+  services: w2Report({ permission: 'services.view', source: 'crm.services_list_v1', scope: 'rows', private: true,
+    title: 'Dịch vụ theo toà áp dụng (mỗi hàng một toà × dịch vụ; chưa gắn toà = buildingId null, chỉ Toàn tổ chức): mã, tên, loại phí, cách tính, đơn giá, mặc định.',
     params: ['buildingId', 'kind'], kinds: ['TIEN_PHI_DICH_VU', 'TIEN_DIEN', 'TIEN_NUOC', 'TIEN_PHI_KHAC', 'TIEN_VE_SINH'],
-    fields: { id, code: text(100), name: text(200), feeType: nullable(code), pricingType: nullable(code), unit: text(40), unitPrice: amount,
-      isDefault: bool, buildingIds: idList(2000) },
-    summary: TOTAL }),
+    fields: { buildingId: nullable(id), buildingName: text(200), id, code: text(100), name: text(200), feeType: nullable(code), pricingType: nullable(code),
+      unit: text(40), unitPrice: amount, isDefault: bool },
+    summary: { total: count, links: count } }),
   service_quotas: w2Report({ permission: 'service_quotas.view', source: 'crm.service_quotas_list_v1', scope: 'organization', private: true,
     title: 'Định mức dịch vụ (bậc giá điện/nước…): tên, mô tả, các bậc từ–đến và đơn giá.',
     fields: { id, name: text(200), description: text(500), tierCount: count,
@@ -112,9 +110,10 @@ export const W2D_REPORTS = Object.freeze({
   buildings: w2Report({ permission: 'buildings.view', source: 'crm.buildings_list_v1', scope: 'rows', private: true,
     title: 'Danh sách toà: mã, tên, địa chỉ, trạng thái, khu, số phòng theo trạng thái; query tìm tên/mã/đường; areaId lọc theo khu.',
     params: ['query', 'status', 'areaId'], statuses: ['ACTIVE', 'INACTIVE', 'MAINTENANCE'], fields: BUILDING_ROW, summary: BUILDING_SUMMARY }),
-  areas: w2Report({ permission: 'buildings.view', source: 'crm.areas_list_v1', scope: 'buildings', private: true,
-    title: 'Khu/cụm toà: mã, tên, trạng thái và các toà thuộc khu (trong phạm vi kết nối).',
-    fields: { id, code: text(100), name: text(200), status: text(40), buildingIds: idList(2000), buildingCount: count }, summary: TOTAL }),
+  areas: w2Report({ permission: 'buildings.view', source: 'crm.areas_list_v1', scope: 'rows', private: true,
+    title: 'Khu/cụm toà: mỗi hàng một khu × toà trong phạm vi (khu chưa có toà = buildingId null, chỉ Toàn tổ chức): mã, tên, trạng thái.',
+    fields: { id, code: text(100), name: text(200), status: text(40), buildingId: nullable(id), buildingName: text(200) },
+    summary: { total: count, links: count } }),
   building_detail: w2Report({ permission: 'buildings.view', source: 'crm.buildings_list_v1', scope: 'rows', private: true,
     title: 'Chi tiết một toà: mã, loại hình, trạng thái, số tầng, địa chỉ, mô tả, khu, số phòng theo trạng thái (không hoa hồng/tài khoản).',
     params: ['buildingId'], required: ['buildingId'], fields: BUILDING_ROW, summary: BUILDING_SUMMARY }),
@@ -132,12 +131,13 @@ export const W2D_REPORTS = Object.freeze({
   room_cash_lifecycle: w2Report({ permission: 'thu_tien.view', source: 'crm.get_room_cash_lifecycle_v1', scope: 'rows', private: true,
     title: 'Dòng tiền vòng đời một phòng (như màn Thu tiền): sự kiện HĐ, cọc, hoá đơn, thu, thanh lý, hoàn cọc, hoa hồng; tóm tắt HĐ và các khoảng trống.',
     params: ['roomId', 'fromDate', 'toDate'], required: ['roomId'],
-    fields: { type: code, date, contractId: nullable(id), amount: nullable(amount), trusted: bool },
+    fields: { buildingId: id, type: code, date, contractId: nullable(id), amount: nullable(amount), trusted: bool },
     summary: { roomId: id, roomName: text(100), buildingId: id, buildingName: text(200),
       contracts: shapedList(50, { id, number: text(100), status: nullable(code), startDate: nullable(date), endDate: nullable(date),
         actualEndDate: nullable(date), rentPrice: amount, totalDeposit: amount }),
       vacancies: shapedList(100, { fromDate: nullable(date), toDate: nullable(date), days: nullable(int) }) } }),
-  // D10 — Tầng (/settings/categories/floors; RLS theo toà = buildings.view)
+  // D10 — Tầng (/settings/categories/floors): khoá báo cáo theo toà buildings.view (RLS floors); hàm dùng chung còn đòi
+  // categories.view như route web (khoá công ty chỉ được làm khoá báo cáo scope organization).
   floors: w2Report({ permission: 'buildings.view', source: 'crm.floors_list_v1', scope: 'rows', private: true,
     title: 'Tầng của các toà: số tầng, tên, mô tả, trạng thái.', params: ['buildingId'],
     fields: { id, buildingId: id, buildingName: text(200), floorNumber: int, name: text(100), description: text(500), status: text(40) }, summary: TOTAL }),

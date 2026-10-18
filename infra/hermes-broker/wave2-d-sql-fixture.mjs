@@ -10,8 +10,9 @@ import { CATEGORY, RESTRICTED_CATEGORY, HIDDEN_CATEGORY } from './finance-fixtur
 // RLS GIẢ LẬP (mô hình INVOKER + RLS, 18/10): policy SELECT rút gọn theo đúng hình dạng policy web (toà theo
 // fixture_building_access, khoá org-entity theo fixture_acl, chủ hồ sơ theo fixture_visible_owners, hạn chế theo
 // fixture_restricted_viewers; RLS areas chỉ quản trị — như areas_select_rbac còn đọc staff_assignments cũ). seed: dữ
-// liệu tổng hợp + quyền gọi thẳng hàm gói dưới vai authenticated (giả lập cổng INVOKER Gói 0 đang làm). Không chứng
-// minh RLS thật của production, JWT thật, PostgREST hay thân RPC dòng tiền phòng.
+// liệu tổng hợp. Khoá web của màn (can_access_org_entity) giả lập theo fixture_acl. Hàm gói chạy qua lối vào INVOKER
+// thật của nền (public.hermes_w2_read_v1, vai authenticated, KHÔNG USAGE trên app_private). Không chứng minh RLS thật
+// của production, JWT thật, PostgREST hay thân RPC dòng tiền phòng.
 // MỘT PGlite cho cả file test, mỗi ca BEGIN … ROLLBACK (shared.isolated).
 const u = n => `0d0d0d0d-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export const D = Object.freeze({
@@ -77,6 +78,8 @@ const BEFORE = `
     $$SELECT building_id FROM public.fixture_building_access$$;
   CREATE OR REPLACE FUNCTION public.has_full_building_scope() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
     $$SELECT EXISTS(SELECT 1 FROM public.fixture_admins WHERE user_id=auth.uid())$$;
+  CREATE OR REPLACE FUNCTION public.can_access_org_entity(_resource text,_action text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
+    $$SELECT public.fixture_can(_resource||'.'||_action) OR EXISTS(SELECT 1 FROM public.fixture_admins WHERE user_id=auth.uid())$$;
   CREATE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT EXISTS(SELECT 1 FROM public.fixture_restricted_viewers WHERE user_id=auth.uid())$$;
   CREATE OR REPLACE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT EXISTS(SELECT 1 FROM public.fixture_admins WHERE user_id=auth.uid())$$;
   CREATE OR REPLACE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS
@@ -131,8 +134,6 @@ const BEFORE = `
   CREATE POLICY f ON public.hotlines FOR SELECT TO authenticated USING (public.fixture_can('hotline.view') AND public.fixture_owner(user_id));`;
 
 const SEED = `
-  GRANT USAGE ON SCHEMA app_private TO authenticated;
-  GRANT EXECUTE ON FUNCTION app_private.hermes_w2d_read_v1(text,jsonb,jsonb),app_private.hermes_w2d_catalog_v1() TO authenticated;
   INSERT INTO public.organization_timezones VALUES('${ORG}','Asia/Ho_Chi_Minh');
   INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES('rooms.view','read',false),('assets.view','read',false),
     ('services.view','read',false),('tasks.view','read',false) ON CONFLICT(capability) DO NOTHING;
