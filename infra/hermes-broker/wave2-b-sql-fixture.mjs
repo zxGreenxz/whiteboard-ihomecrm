@@ -10,7 +10,7 @@ import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './fin
 // cùng chữ ký (KHÔNG chứng minh bản thật): is_super_admin, can_view_restricted_ie, ie_actor_is_company_owner_v1,
 // staff_can, org_timezone_v1 và năm RPC Hiệu quả kinh doanh (cổng "tất cả hoặc không" theo fixture_acl, số
 // lấy từ fa_* thật). Mô hình INVOKER + RLS: gói chạy dưới vai authenticated nên các bảng gói đọc có GRANT +
-// RLS là CỔNG TỔNG HỢP theo policy web (accounts, income_expenses, buildings, cổ đông/lợi nhuận, ví) — chứng
+// RLS là CỔNG TỔNG HỢP theo policy web (accounts, income_expenses, hạng mục, buildings, cổ đông/lợi nhuận, ví) — chứng
 // minh gói không vượt RLS, KHÔNG chứng minh policy thật của production. Không JWT thật, không PostgREST.
 // Test gọi lối vào INVOKER thật của Gói 0 (public.hermes_w2_read_v1) dưới vai authenticated. Dữ liệu tổng hợp.
 // MỘT PGlite cho cả file test, mỗi ca BEGIN … ROLLBACK (shared.isolated).
@@ -88,6 +88,7 @@ const PORTS = `
       AND (org_wide OR cardinality(building_ids)>0))$$;
   CREATE OR REPLACE FUNCTION app_private.ie_actor_is_company_owner_v1(p_org uuid,p_user uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
     SELECT EXISTS(SELECT 1 FROM public.fixture_company_owners WHERE organization_id=p_org AND user_id=p_user)$$;
+  CREATE OR REPLACE FUNCTION public.can_create_restricted_ie() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$SELECT false$$;
   CREATE OR REPLACE FUNCTION public.staff_can(_table text,_action text,_owner uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT false$$;
   CREATE OR REPLACE FUNCTION public.current_shareholder_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT id FROM public.shareholders WHERE auth_user_id=auth.uid() AND deleted_at IS NULL ORDER BY id LIMIT 1$$;
@@ -197,6 +198,12 @@ const RLS = `
   CREATE POLICY fixture_ie_select ON public.income_expenses FOR SELECT TO authenticated USING (
     (public.is_super_admin() OR public.can_access_building(building_id) OR shareholder_id=public.current_shareholder_id())
     AND (has_restricted_item=false OR user_id=auth.uid() OR public.can_view_restricted_ie()));
+  -- Hạng mục: RESTRICTIVE như income_expense_types_restricted_select của production (baseline) — giấu hạng mục hạn chế với
+  -- người thiếu quyền xem phiếu hạn chế ở mọi toà (bảng fixture không có cột user_id của production).
+  ALTER TABLE public.income_expense_types ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY fixture_types_select ON public.income_expense_types FOR SELECT TO authenticated USING (true);
+  CREATE POLICY fixture_types_restricted_select ON public.income_expense_types AS RESTRICTIVE FOR SELECT TO authenticated
+    USING (is_restricted=false OR public.can_view_restricted_ie() OR public.can_create_restricted_ie());
   ALTER TABLE public.buildings ENABLE ROW LEVEL SECURITY;
   CREATE POLICY fixture_buildings_select ON public.buildings FOR SELECT TO authenticated USING (public.is_super_admin() OR public.can_access_building(id));
   ALTER TABLE public.shareholders ENABLE ROW LEVEL SECURITY;

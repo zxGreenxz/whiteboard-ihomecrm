@@ -1,9 +1,9 @@
 // Gói B đợt 2 — Sổ quỹ, dòng tiền, kết quả kinh doanh, lợi nhuận cổ đông, ví cá nhân, biến động
 // số dư. File của RIÊNG Gói B. SQL cùng gói: app_private.hermes_w2b_catalog_v1 (khớp từng trường với
 // khai báo ở đây, test wave2-b.test.mjs so khớp) và app_private.hermes_w2b_read_v1 — migration
-// 20261018020000_hermes_w2b_finance_read_v1.sql (hàm dùng chung: 20261018020050_hermes_w2b_finance_shared_v1.sql). Lãi lỗ
-// tháng (crm_read_monthly_pnl, đợt 1) siết khoá ở 20261018090100_hermes_w2_monthly_pnl_keys_v1.sql (ngoại lệ Q4, dải Z vì
-// thay hàm đợt 1 và phát hành cùng Gói Z bật khoá; khai báo ở full-read-contract.mjs).
+// 20261018020200_hermes_w2b_finance_read_v1.sql (hàm dùng chung, áp trước: 20261018020050_hermes_w2b_finance_shared_v1.sql).
+// Q4 (siết khoá lãi lỗ tháng crm_read_monthly_pnl của đợt 1) KHÔNG ở gói này: phải phát hành cùng Gói Z bật khoá
+// reports_finance.profit_distribution (bản soạn sẵn: commit 85ef7ed, 20261018090100_hermes_w2_monthly_pnl_keys_v1.sql).
 //
 // Quyền mỗi báo cáo = khoá web của màn đó (SQL quyết định cuối, cổng hermes_w2_gate_v1); chỗ web hở
 // thì Hermes chặt hơn:

@@ -8,10 +8,6 @@ import { CATEGORY } from './finance-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { W2_FOUNDATION_PATH } from './wave2-sql-paths.mjs';
-// Ngoại lệ Q4 đợt 2 (chủ chốt 17/10; soạn ở Gói B, dải Z): catalog + reader báo cáo sống ở file này, nạp SAU bản owner.
-const Q4_PATH = 'supabase/migrations/20261018090100_hermes_w2_monthly_pnl_keys_v1.sql';
-const q4Sql = () => readFileSync(Q4_PATH, 'utf8');
-const PNL_KEY = 'reports_finance.profit_distribution', RESTRICTED = 'income_expenses.restricted_view';
 
 // Báo cáo khớp màn web (họ v3, 20261017021554): nguồn là RPC web THẬT (định nghĩa cuối
 // trong baseline/migration, nạp vào PGlite) hoặc SQL theo bộ lọc web; không hàm copilot_*
@@ -22,16 +18,7 @@ const uid = n => `0e0e0e0e-0000-4000-8000-0000000002${String(n).padStart(2, '0')
 const identity = permission => ({ row: { organizationId: ORG }, scopesByPermission: { [permission]: { buildingIds: [BUILDING, OTHER_BUILDING] } } });
 // Một PGlite cho cả file; mỗi ca chạy trong BEGIN … ROLLBACK (inCase), đột biến chỉ thay thân hàm trong ca.
 let shared;
-before(async () => {
-  shared = await sharedFullRead({ reads: REPORT_KEYS, owner: `${fullReadOwnerSql()}\n${q4Sql()}` });
-  // Q4: lãi lỗ tháng gate bằng khoá của tab BC Doanh Thu Chi Phí + quyền CRM xem phiếu hạn chế (nền đợt 2 seed khoá;
-  // fixture đợt 1 không có nền nên tự thêm dòng registry).
-  await shared.db.query("INSERT INTO app_private.hermes_capabilities(capability,mode,enabled) VALUES($1,'read',true) ON CONFLICT(capability) DO UPDATE SET enabled=true", [PNL_KEY]);
-  for (const table of ['hermes_org_policies', 'hermes_connections'])
-    await shared.db.query(`UPDATE app_private.${table} SET read_capabilities=read_capabilities||ARRAY[$1]`, [PNL_KEY]);
-  for (const key of [PNL_KEY, RESTRICTED])
-    await shared.db.query('INSERT INTO public.fixture_acl(permission,building_ids) VALUES($1,$2) ON CONFLICT DO NOTHING', [key, [BUILDING, OTHER_BUILDING]]);
-});
+before(async () => { shared = await sharedFullRead({ reads: REPORT_KEYS }); });
 after(async () => { await shared?.close(); });
 const inCase = work => shared.isolated(work);
 const sorted = values => [...values].sort();
@@ -84,7 +71,7 @@ const seedContracts = db => db.exec(`INSERT INTO public.contracts(id,organizatio
 
 test('contract: one tool per existing permission key, SQL catalog matches the JS table, tools/list fragment stays small', () => inCase(async env => {
   const { db } = env;
-  const expected = { occupancy_report: 'reports_real_estate.occupancy', invoice_report: 'invoices.view', monthly_pnl: 'reports_finance.profit_distribution',
+  const expected = { occupancy_report: 'reports_real_estate.occupancy', invoice_report: 'invoices.view', monthly_pnl: 'reports_finance.analysis',
     pending_approvals: 'income_expenses.view', zalo_conversations: 'chat_zalo.view', contract_search: 'contracts.view' };
   assert.deepEqual(Object.fromEntries(Object.entries(REPORTS).map(([key, value]) => [key, value.permission])), expected);
   for (const [domain, { reports, permission }] of Object.entries(REPORTS)) {
@@ -127,18 +114,17 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     const pattern = new RegExp(`CREATE (?:OR REPLACE )?FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g');
     const last = files.map(file => [file, [...readFileSync(`supabase/migrations/${file}`, 'utf8').matchAll(pattern)].at(-1)?.[0]]).filter(([, body]) => body).at(-1);
     assert.ok(last, name);
-    if (name === 'app_private.hermes_pnl_pending_v1')
+    if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_PARITY_PATH, `${name} lives in the web-parity migration`);
-    // Q4 (Gói B đợt 2): catalog + reader thay một lần, chỉ đổi mục monthly_pnl (test Q4 bên dưới so từng ký tự).
-    if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_report_read_v2'].includes(name))
-      assert.equal(`supabase/migrations/${last[0]}`, Q4_PATH, `${name} lives in the Q4 migration`);
+    if (name === 'app_private.hermes_report_read_v2')
+      assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
     // Đợt 2 thay v3 MỘT lần (20261018000000): thêm định tuyến report/report_list, phần còn lại giữ nguyên
     // bản review-fix (wave2-foundation.test.mjs so từng ký tự); đột biến ở file này vẫn nhắm bản review-fix.
     if (name === 'public.hermes_domain_read_v3')
       assert.equal(`supabase/migrations/${last[0]}`, W2_FOUNDATION_PATH, `${name} lives in the wave-2 foundation migration`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
-  for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8'), q4Sql()])
+  for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])
     assert.doesNotMatch(sql.replace(/--[^\n]*/g, ''), /copilot_/i, 'no copilot function call');
   // Bản thật trong PGlite sau cả ba migration: không thân hàm nào của chuỗi đọc đầy đủ nhắc copilot_.
   const { db } = env;
@@ -370,7 +356,7 @@ test('P3a stats: company owner without staff_assignments gets the real numbers f
   assert.equal((await run(env, 'invoice_report', { report: 'stats', month: '2026-10' })).value.summary.totalCount, 1, 'cancelled invoices excluded like the canonical stats');
   // Connection and CRM scope no longer share a building: say so instead of zeros.
   await orgWideOverlay(db, false);
-  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission IN ('invoices.view','contracts.view','reports_finance.analysis','${PNL_KEY}')`);
+  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission IN ('invoices.view','contracts.view','reports_finance.analysis')`);
   for (const [domain, args] of [['invoice_report', { report: 'stats' }], ['invoice_report', { report: 'search' }], ['contract_search', {}],
     ['monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }]]) {
     const { value, checked } = await run(env, domain, args);
@@ -431,45 +417,14 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
   const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-08-31' });
   const pnl = { ...value, domain: 'monthly_pnl', report: 'by_month', source: 'crm.fa_monthly_pnl', items: [],
     summary: { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 } };
-  assert.equal(domainResult('monthly_pnl', pnl, identity(PNL_KEY), pnlInput).summary.basis, 'accrual');
+  assert.equal(domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput).summary.basis, 'accrual');
   for (const summary of [{ ...pnl.summary, basis: 'kqkd' }, { ...pnl.summary, pendingExpense: 1 }, (({ basis, ...rest }) => rest)(pnl.summary)])
-    assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity(PNL_KEY), pnlInput), JSON.stringify(summary));
+    assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity('reports_finance.analysis'), pnlInput), JSON.stringify(summary));
 });
 
-// Q4: hai hàm của file Q4 = đúng bản sống trước đó, chỉ khác mục monthly_pnl (khoá + lọc toà theo phiếu hạn chế).
-const blockOf = (sql, name) => {
-  const found = sql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g'));
-  assert.ok(found, name); return found.at(-1);
-};
-test('Q4: catalog/reader = bản sống trước đó trừ đúng mục monthly_pnl; khoá BC Doanh Thu Chi Phí, phiếu hạn chế theo toà (như Hiệu quả kinh doanh)', { timeout: 120000 }, () => inCase(async env => {
-  const { db } = env;
-  const RESTRICT_BLOCK = /    -- Q4 \(20261018090100\)[\s\S]*?    END IF;\n/;
-  assert.equal(blockOf(q4Sql(), 'app_private.hermes_report_catalog_v1').replace('"permission":"reports_finance.profit_distribution"', '"permission":"reports_finance.analysis"'),
-    blockOf(fullReadParitySql(), 'app_private.hermes_report_catalog_v1'));
-  assert.equal(blockOf(q4Sql(), 'app_private.hermes_report_read_v2').replace(RESTRICT_BLOCK, '').replace(' v_restricted uuid[];', ''),
-    blockOf(fullReadOwnerSql(), 'app_private.hermes_report_read_v2'));
-  assert.equal(DOMAIN_READS.monthly_pnl.permission, PNL_KEY);
-  assert.equal(mayUseDomain({ read: ['reports_finance.analysis'] }, 'monthly_pnl'), false, 'khoá Phân tích tài chính không còn đủ');
-  assert.ok(mayUseDomain({ read: [PNL_KEY] }, 'monthly_pnl'));
-  await seedPnl(db);
-  const range = { fromDate: '2026-08-01', toDate: '2026-10-31' };
-  assert.equal((await run(env, 'monthly_pnl', range)).value.items.length, 3, 'đủ khoá + phiếu hạn chế ở toà A');
-  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission='${RESTRICTED}'`);
-  await assert.rejects(env.read3('monthly_pnl', domainInput('monthly_pnl', range)), code('42501'), 'toà A không có quyền phiếu hạn chế ⇒ từ chối');
-  await orgWideOverlay(db);
-  await db.exec(`UPDATE public.fixture_acl SET org_wide=false WHERE permission='${RESTRICTED}'`);
-  const wide = await run(env, 'monthly_pnl', range);
-  assert.deepEqual([[...new Set(wide.value.items.map(row => row.buildingId))], Number(wide.value.summary.pendingIncome)], [[], 700000],
-    'Toàn tổ chức: chỉ toà B (có quyền) — hàng/chờ duyệt cùng tập toà');
-  await db.exec(`UPDATE public.fixture_acl SET allowed=false WHERE permission='${PNL_KEY}'`);
-  await assert.rejects(env.read3('monthly_pnl', domainInput('monthly_pnl', range)), code('42501'), 'chỉ có reports_finance.analysis ⇒ từ chối');
-}));
-
-// Mutation evidence: v3 lives in the review-fix file (20261017033630) and the reader in the Q4 file
-// (20261018090100): the live 'owner' text is the review-fix file with its reader block swapped for the Q4
-// one, so every mutant derives from the definition in force. Catalog (Q4) and pending helper (web-parity).
-const live = { owner: fullReadOwnerSql().replace(blockOf(fullReadOwnerSql(), 'app_private.hermes_report_read_v2'),
-  () => blockOf(q4Sql(), 'app_private.hermes_report_read_v2')), parity: fullReadParitySql() };
+// Mutation evidence: v3 / reader live in the review-fix file (20261017033630); catalog and the
+// pending helper live in the web-parity file (20261017021554).
+const live = { owner: fullReadOwnerSql(), parity: fullReadParitySql() };
 const replaceExactly = (sql, from, to, count = 1) => {
   assert.equal(sql.split(from).length, count + 1, `anchor: ${from}`); return sql.split(from).join(to);
 };
@@ -563,11 +518,6 @@ for (const probe of [
     run: async env => { await seedPnl(env.db); await orgWideOverlay(env.db);
       const summary = (await env.read3('monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31', query: 'Toà A' }))).summary;
       return Number(summary.pendingIncome) > 600000; } },
-  { name: 'Q4 monthly_pnl keeps only buildings with income_expenses.restricted_view', sql: mutate([`      IF cardinality(v_restricted)=0 THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
-      v_pnl_buildings:=v_restricted;`, '']),
-    run: async env => { await seedPnl(env.db);
-      await env.db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission='${RESTRICTED}'`);
-      return (await env.read3('monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }))).items.length > 0; } },
   { name: 'P3-7 page budget counts JSON escaping', sql: mutate([`    v_size:=octet_length(to_jsonb(v_item::text)::text);`, `    v_size:=octet_length(v_item::text);`]),
     run: async env => { await orgWideOverlay(env.db); await seedQuotedZalo(env.db);
       return (await env.read3('zalo_conversations', domainInput('zalo_conversations', { limit: 50 }))).items.length === 50; } },

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sharedW2b, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
 import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ORG_SCOPE, USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
-import { CASHBOOK, FOREIGN_CASHBOOK } from './finance-fixture.mjs';
+import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2 } from './wave2-registry.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
@@ -15,8 +15,7 @@ import { W2B_REPORTS } from './wave2-b-contract.mjs';
 // chỉ trong sổ nhìn thấy (chặt hơn web ở chốt sổ), phiếu/hạng mục hạn chế, riêng tư (cổ đông, ví, biến động số dư) và
 // đột biến SQL trên hàng rào riêng của gói (rào toà của hàng đã do bước kết thúc của cổng chặn). Dữ liệu tổng hợp; RPC
 // web là định nghĩa thật (trừ cụm Hiệu quả kinh doanh: cổng tổng hợp cùng chữ ký — xem wave2-b-sql-fixture.mjs).
-const MAIN_PATH = 'supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql';
-const Q4_PATH = 'supabase/migrations/20261018090100_hermes_w2_monthly_pnl_keys_v1.sql';
+const MAIN_PATH = 'supabase/migrations/20261018020200_hermes_w2b_finance_read_v1.sql';
 // Hàm dùng chung CRM nằm ở file riêng (nội dung không nhắc trợ lý); test xét hai file như một khối của gói.
 const SHARED_PATH = 'supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql';
 const main = `${readFileSync(SHARED_PATH, 'utf8')}\n${readFileSync(MAIN_PATH, 'utf8')}`;
@@ -64,16 +63,13 @@ test('gói B: bảng báo cáo SQL (hermes_w2b_catalog_v1) khớp khai báo JS (
 
 const SHARED = ['public.cashbook_daily_v1', 'public.cashbook_cash_flow_v1', 'public.cashbook_list_v1', 'public.cashbook_closings_v1',
   'public.finance_analysis_type_breakdown_v1', 'public.finance_analysis_top_expenses_v1', 'public.profit_my_share_v1', 'public.profit_shareholder_summary_v1'];
-test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app_private; hàm dùng chung INVOKER search_path rỗng tự từ chối ngoài vai authenticated; một helper DEFINER trả phạm vi của chính người gọi', () => inCase(async ({ db }) => {
+test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app_private; hàm dùng chung INVOKER search_path rỗng tự từ chối ngoài vai authenticated; hai helper DEFINER nhỏ (phạm vi của chính người gọi, cờ hạn chế của hạng mục)', () => inCase(async ({ db }) => {
   const created = sql => [...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
   const mine = created(main);
-  assert.deepEqual(sorted(mine), sorted([...SHARED, 'public.finance_my_scope_v1', 'public.report_text_v1', 'app_private.hermes_w2b_catalog_v1',
-    'app_private.hermes_w2b_read_v1']));
-  assert.deepEqual(sorted(created(readFileSync(Q4_PATH, 'utf8'))), ['app_private.hermes_report_catalog_v1', 'app_private.hermes_report_read_v2']);
-  for (const sql of [main, readFileSync(Q4_PATH, 'utf8')]) {
-    assert.doesNotMatch(sql, /copilot/i, 'không có chữ của trợ lý cũ');
-    assert.doesNotMatch(stripComments(sql), /\bDROP\b|ALTER TABLE|INSERT INTO|UPDATE public|DELETE FROM|hermes_capabilities SET/i);
-  }
+  assert.deepEqual(sorted(mine), sorted([...SHARED, 'public.finance_my_scope_v1', 'public.finance_type_restricted_v1', 'public.report_text_v1',
+    'app_private.hermes_w2b_catalog_v1', 'app_private.hermes_w2b_read_v1']));
+  assert.doesNotMatch(main, /copilot/i, 'không có chữ của trợ lý cũ');
+  assert.doesNotMatch(stripComments(main), /\bDROP\b|ALTER TABLE|INSERT INTO|UPDATE public|DELETE FROM|hermes_capabilities SET/i);
   const reader = stripComments(block(main, 'app_private.hermes_w2b_read_v1'));
   assert.match(reader, /LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   assert.doesNotMatch(reader.replace(/^CREATE OR REPLACE FUNCTION app_private\.hermes_w2b_read_v1/, ''), /app_private\./, 'thân không gọi app_private.*');
@@ -84,6 +80,7 @@ test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app
     WHERE n.nspname||'.'||p.proname=ANY($1)`, [mine])).rows;
   assert.equal(procs.length, mine.length);
   const expected = { 'public.finance_my_scope_v1': [true, 'search_path=pg_catalog, public, app_private'], 'public.report_text_v1': [false, 'search_path=pg_catalog'],
+    'public.finance_type_restricted_v1': [true, 'search_path=pg_catalog, public'],
     'app_private.hermes_w2b_catalog_v1': [true, 'search_path=pg_catalog, app_private'], 'app_private.hermes_w2b_read_v1': [false, 'search_path=pg_catalog, public'],
     ...Object.fromEntries(SHARED.map(name => [name, [false, 'search_path=""']])) };
   for (const proc of procs) {
@@ -256,6 +253,24 @@ test('B7 hạng mục thu/chi = fa_type_breakdown(_accrual) web trên toà kết
   await db.exec(`UPDATE public.fixture_acl SET org_wide=false,building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission='${RESTRICTED}'`);
   const direct = await web(env, "public.finance_analysis_type_breakdown_v1($1::uuid,'2026-10-01','2026-10-31',false,$2::uuid[])", [ORG, [BUILDING]]);
   assert.deepEqual([direct.restricted_included, direct.rows.map(row => row.type_name)], [false, ['Sửa chữa']]);
+}));
+
+test('B7 hạng mục hạn chế dưới RLS hạng mục như production (giấu chính hạng mục hạn chế) và hạng mục hạn chế gộp vào hạng mục thường — vẫn chặn', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  const range = { fromDate: '2026-10-01', toDate: '2026-10-31' };
+  const pick = value => [value.items.map(row => [row.typeName, num(row.totalAmount)]), value.summary.restrictedIncluded];
+  // Không có restricted_view ở đâu: RLS giấu "Lương" ⇒ kiểm dưới RLS sẽ tưởng không hạn chế; Hermes vẫn chặn (cash, dồn tích).
+  assert.equal((await web(env, "(SELECT count(*) FROM public.income_expense_types WHERE is_restricted)")), 0, 'RLS giấu hạng mục hạn chế');
+  assert.deepEqual(pick(await all(env, 'fa_type_breakdown', { ...range, basis: 'cash' })), [[['Sửa chữa', 800000]], false]);
+  assert.deepEqual(pick(await all(env, 'fa_type_breakdown', range)), [[['Sửa chữa', 800000]], false]);
+  // restricted_view chỉ ở toà B (kết nối toà A), "Lương" gộp vào "Sửa chữa": cash dồn số hạn chế vào dòng thường ⇒ bỏ cả dòng;
+  // dồn tích theo hạng mục gốc ⇒ "Sửa chữa" giữ đúng số của chính nó.
+  await db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
+  await db.exec(`UPDATE public.income_expense_types SET merged_into_id='${CATEGORY}' WHERE id='${RESTRICTED_CATEGORY}'`);
+  assert.deepEqual((await webRows(env, "SELECT type_name,total_amount FROM public.fa_type_breakdown('2026-10-01','2026-10-31',$1::uuid[])", [[BUILDING]]))
+    .map(row => [row.type_name, num(row.total_amount)]), [['Sửa chữa', 6100000]], 'web: số hạn chế dồn vào hạng mục thường');
+  assert.deepEqual(pick(await all(env, 'fa_type_breakdown', { ...range, basis: 'cash' })), [[], false]);
+  assert.deepEqual(pick(await all(env, 'fa_type_breakdown', range)), [[['Sửa chữa', 800000]], false]);
 }));
 
 test('B7 bốn RPC Phân tích tài chính (snapshot, lấp đầy, sự kiện HĐ, thu hồi HĐ) = web trên đúng toà kết nối', { timeout: 120000 }, () => inCase(async env => {
@@ -471,7 +486,10 @@ const probes = [
     run: async env => { await grantRead(env.db, ['reports_finance.daily_cashbook'], { orgWide: true }); await orgOverlay(env.db); await secondOrg(env.db);
       return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
   { name: 'sổ quỹ ngày: người nhiều công ty gọi từng sổ thay vì "Tất cả" của web', sql: mutate([`  ELSIF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
-  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
+  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
+  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
+  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
+    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
   ELSE v_accounts:=ARRAY[NULL::uuid];
   END IF;
   IF p_building_ids IS NULL AND v_scope->'orgWide'='true'::jsonb THEN v_buildings:=ARRAY[NULL::uuid];
@@ -508,6 +526,27 @@ const probes = [
     run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
       const value = await web(env, "public.finance_analysis_type_breakdown_v1($1::uuid,'2026-10-01','2026-10-31',false,$2::uuid[])", [ORG, [BUILDING]]);
       return value.rows.some(row => row.type_name === 'Lương'); } },
+  { name: 'hạng mục hạn chế: cờ hạn chế kiểm ngoài RLS hạng mục (DEFINER)', sql: mutate([
+    `    WHERE v_ok OR t.type_id IS NULL OR NOT public.finance_type_restricted_v1(t.type_id,NOT COALESCE(p_accrual,true));`,
+    `    WHERE v_ok OR t.type_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.income_expense_types it WHERE it.id=t.type_id AND it.is_restricted);`]),
+    run: async env => (await all(env, 'fa_type_breakdown', { fromDate: '2026-10-01', toDate: '2026-10-31', basis: 'cash' })).items.some(row => row.typeName === 'Lương') },
+  { name: 'hạng mục hạn chế: hạng mục hạn chế gộp vào hạng mục thường (cash)', sql: mutate([
+    `    AND (t.id=p_type_id OR COALESCE(p_merged,true) AND t.merged_into_id=p_type_id));`, `    AND t.id=p_type_id);`]),
+    run: async env => { await env.db.exec(`UPDATE public.income_expense_types SET merged_into_id='${CATEGORY}' WHERE id='${RESTRICTED_CATEGORY}'`);
+      return (await all(env, 'fa_type_breakdown', { fromDate: '2026-10-01', toDate: '2026-10-31', basis: 'cash' })).items.some(row => num(row.totalAmount) > 800000); } },
+  { name: 'sổ quỹ ngày: "Tất cả" chỉ khi người hỏi thuộc đúng công ty (RLS sổ hẹp hơn tập sổ RPC web cộng)', sql: mutate([
+    `    v_accounts:=ARRAY[p_cashbook_id];
+  ELSIF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
+  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
+  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
+  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
+    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`, `    v_accounts:=ARRAY[p_cashbook_id];
+  ELSIF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
+  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`]),
+    run: async env => { await grantRead(env.db, ['reports_finance.daily_cashbook'], { orgWide: true }); await orgOverlay(env.db); await secondOrg(env.db);
+      // Sổ công ty khác bị RLS giấu (như policy RESTRICTIVE ẩn demo/sandbox với super admin) nhưng RPC web vẫn cộng.
+      await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
+      return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
   { name: 'chi lớn: phiếu hạn chế người khác cần restricted_view phủ toà', sql: mutate([` AND (NOT t.has_restricted_item OR t.user_id=auth.uid() OR v_ok)`, '']),
     run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
       return (await all(env, 'top_expenses', { month: '2026-10' })).items.some(row => row.code === 'PC-402'); } },

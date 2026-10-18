@@ -104,9 +104,7 @@ export const REPORTS = Object.freeze({
       paidAmount: amount, remainingAmount: amount, status: code, buildingId: id, buildingName: name200, roomId: nullable(id), roomName: name100 },
     { month: true, statuses: Object.freeze(['paid', 'partial', 'unpaid', 'cancelled']) }),
     stats: report('crm.invoices', 'buildings', {}, { month: true, summary: INVOICE_STATS }) }) }),
-  // Q4 (chủ chốt 17/10, 20261018090100): khoá của tab BC Doanh Thu Chi Phí (ProfitHubPage.tsx:44), SQL chỉ giữ toà có
-  // income_expenses.restricted_view (lãi lỗ cộng cả phiếu hạn chế, như business_performance_pnl_v1).
-  monthly_pnl: Object.freeze({ permission: 'reports_finance.profit_distribution', reports: Object.freeze({
+  monthly_pnl: Object.freeze({ permission: 'reports_finance.analysis', reports: Object.freeze({
     // Mặc định dồn tích như BC Doanh Thu Chi Phí / Phân tích tài chính; chờ duyệt tách riêng.
     by_month: report('crm.fa_monthly_pnl', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
       { fromDate: true, toDate: true, requiresDates: true, basis: true,
@@ -183,7 +181,7 @@ const REPORT_READS = Object.freeze({
   invoice_report: reportDefine('invoice_report', 'Hoá đơn như trang Hoá đơn. search: month (YYYY-MM), status (paid, partial, unpaid = chưa thu đồng nào, cancelled; mặc định ẩn huỷ), query (số HĐ; tên khách nếu có quyền khách hàng). Còn nợ kể cả thu một phần: crm_read_receivables. stats: tổng kỳ month (số HĐ, tổng, đã thu, còn nợ, phòng/điện/nước/dịch vụ). Tiền là chuỗi VND.',
     { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid', 'cancelled'] },
       buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
-  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng tháng từng toà có quyền xem phiếu hạn chế, fromDate..toDate ≤ 366 ngày; basis=accrual (mặc định) hoặc cash. Hàng chỉ gồm phiếu đã duyệt; summary.pending* = thu/chi chờ duyệt mà "BC Doanh Thu Chi Phí" cộng thêm, cùng các toà của hàng. Tiền là chuỗi VND.',
+  monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng tháng từng toà như "Phân tích tài chính", fromDate..toDate ≤ 366 ngày; basis=accrual (mặc định) hoặc cash. Hàng chỉ gồm phiếu đã duyệt; summary.pending* = thu/chi chờ duyệt mà "BC Doanh Thu Chi Phí" cộng thêm, cùng các toà của hàng. Tiền là chuỗi VND.',
     { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
   pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals). Hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: QUERY, limit: LIMIT, offset: OFFSET }),

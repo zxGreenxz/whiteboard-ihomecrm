@@ -5,8 +5,10 @@
 --    đọc bảng gốc dưới RLS của chính người gọi (KHÔNG chép policy); tự kiểm khoá web của màn tương ứng; lọc đúng
 --    một công ty (super admin và người nhiều công ty nhìn được nhiều công ty qua RLS); p_building_ids chỉ thu hẹp
 --    (NULL = toàn phạm vi khoá ∩ RLS, '{}' = rỗng). Màn web có RPC thì gọi thẳng RPC đó bên trong.
---  * DEFINER duy nhất: public.finance_my_scope_v1 — helper nhỏ trả phạm vi (toà/sổ) của MỘT khoá cho CHÍNH người
---    gọi (app_private.authorized_scope_v3 không mở cho authenticated).
+--  * Hai helper DEFINER nhỏ: public.finance_my_scope_v1 — phạm vi (toà/sổ) của MỘT khoá cho CHÍNH người gọi
+--    (app_private.authorized_scope_v3 không mở cho authenticated); public.finance_type_restricted_v1 — một hạng mục
+--    (kể cả hạng mục gộp vào nó) có phải hạn chế không, vì RLS income_expense_types giấu chính hạng mục hạn chế với
+--    người thiếu quyền (như public.ie_type_is_restricted có sẵn, cộng nguồn gộp merged_into_id).
 --  * Mỗi hàng nêu organization_id: cột của bảng nguồn (sổ quỹ, phiếu, phân bổ, cổ đông); chuỗi tổng hợp không ứng với
 --    một hàng nguồn (sổ quỹ ngày, dòng tiền, hạng mục) nêu công ty hàm đã lọc tường minh. Người gọi (trợ lý: rào công ty
 --    của cổng) đối chiếu với công ty của mình.
@@ -17,7 +19,7 @@ SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
 -- Chỉ đòi bộ máy quyền (helper DEFINER dựa vào nó). RPC web (cashflow_by_day, list_cashbook_closings_v1, fa_*…) có trên
--- production từ trước và được gọi lúc chạy (plpgsql) — thiếu thì chỉ báo cáo đó lỗi (như 20261018020000).
+-- production từ trước và được gọi lúc chạy (plpgsql) — thiếu thì chỉ báo cáo đó lỗi (như 20261018020200).
 DO $requires$
 BEGIN
   IF to_regprocedure('app_private.authorized_scope_v3(text,uuid)') IS NULL THEN
@@ -48,6 +50,17 @@ BEGIN
       SELECT 1 FROM app_private.authorized_scope_v3(p_permission,p_organization_id) s WHERE a.id=ANY(COALESCE(s.cashbook_ids,'{}'::uuid[])));
   RETURN jsonb_build_object('allowed',v_org_wide OR cardinality(v_buildings)>0 OR cardinality(v_cashbooks)>0,'orgWide',v_org_wide,
     'buildingIds',to_jsonb(v_buildings),'cashbookIds',to_jsonb(v_cashbooks));
+END $fn$;
+
+-- Hạng mục p_type_id có phải hạn chế không: chính nó, hoặc (p_merged) một hạng mục gộp vào nó (fa_type_breakdown dồn
+-- theo COALESCE(merged_into_id,id), fa_type_breakdown_accrual theo hạng mục gốc). DEFINER vì RLS RESTRICTIVE
+-- income_expense_types_restricted_select giấu hàng hạn chế với người thiếu quyền ⇒ kiểm dưới RLS luôn "không hạn chế".
+-- Chỉ trả một boolean cho một ID hạng mục (như public.ie_type_is_restricted đã mở cho authenticated).
+CREATE OR REPLACE FUNCTION public.finance_type_restricted_v1(p_type_id uuid,p_merged boolean)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
+BEGIN
+  RETURN EXISTS(SELECT 1 FROM public.income_expense_types t WHERE t.is_restricted
+    AND (t.id=p_type_id OR COALESCE(p_merged,true) AND t.merged_into_id=p_type_id));
 END $fn$;
 
 -- Chữ an toàn cho đầu ra báo cáo: giữ xuống dòng, bỏ ký tự điều khiển, cắt theo ký tự — hàm thuần, gọi được từ hàm
@@ -86,7 +99,10 @@ BEGIN
     IF NOT p_cashbook_id=ANY(v_books) THEN RAISE EXCEPTION 'cashbook_daily_denied' USING ERRCODE='42501'; END IF;
     v_accounts:=ARRAY[p_cashbook_id];
   ELSIF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
-  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
+  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
+  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
+  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
+    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
   ELSE v_accounts:=ARRAY[NULL::uuid];
   END IF;
   IF p_building_ids IS NULL AND v_scope->'orgWide'='true'::jsonb THEN v_buildings:=ARRAY[NULL::uuid];
@@ -132,7 +148,10 @@ BEGIN
   SELECT COALESCE(array_agg(a.id ORDER BY a.id),'{}'::uuid[]) INTO v_books FROM public.accounts a
     WHERE a.organization_id=p_organization_id AND a.deleted_at IS NULL;
   IF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
-  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
+  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
+  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
+  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
+    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;
   ELSE v_accounts:=ARRAY[NULL::uuid];
   END IF;
   IF p_building_ids IS NULL AND v_scope->'orgWide'='true'::jsonb THEN v_buildings:=ARRAY[NULL::uuid];
@@ -234,9 +253,10 @@ END $fn$;
 -- B7 — Thu/chi theo hạng mục như "Phân tích tài chính" (useFinancialAnalysis.ts:134-135, mặc định dồn tích như
 -- FinancialAnalysisReport.tsx:36): RPC web fa_type_breakdown_accrual / fa_type_breakdown trên toà của khoá
 -- reports_finance.analysis: p_building_ids NULL ⇒ gộp mọi toà của khoá (building_id NULL), có danh sách ⇒ từng toà
--- (building_id). Hạng mục hạn chế (income_expense_types.is_restricted) chỉ khi người gọi có
--- income_expenses.restricted_view phủ MỌI toà đó và p_include_restricted không false (chặt hơn web, nơi
--- fa_type_breakdown lộ tổng hạng mục hạn chế cho mọi người có quyền Phân tích tài chính).
+-- (building_id). Hạng mục hạn chế (income_expense_types.is_restricted, kể cả hạng mục thường mà hạng mục hạn chế gộp
+-- vào ở chế độ cash) chỉ khi người gọi có income_expenses.restricted_view phủ MỌI toà đó và p_include_restricted không
+-- false (chặt hơn web, nơi fa_type_breakdown lộ tổng hạng mục hạn chế cho mọi người có quyền Phân tích tài chính).
+-- Kiểm qua finance_type_restricted_v1 (không dưới RLS: RLS giấu chính hạng mục hạn chế ⇒ "không chắc thì chặn").
 CREATE OR REPLACE FUNCTION public.finance_analysis_type_breakdown_v1(p_organization_id uuid,p_from date,p_to date,p_accrual boolean DEFAULT NULL,
   p_building_ids uuid[] DEFAULT NULL,p_include_restricted boolean DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
@@ -263,7 +283,7 @@ BEGIN
     INTO v_rows
     FROM groups g CROSS JOIN LATERAL (SELECT * FROM public.fa_type_breakdown_accrual(p_from,p_to,g.ids) WHERE COALESCE(p_accrual,true)
       UNION ALL SELECT * FROM public.fa_type_breakdown(p_from,p_to,g.ids) WHERE NOT COALESCE(p_accrual,true)) t
-    WHERE v_ok OR t.type_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.income_expense_types it WHERE it.id=t.type_id AND it.is_restricted);
+    WHERE v_ok OR t.type_id IS NULL OR NOT public.finance_type_restricted_v1(t.type_id,NOT COALESCE(p_accrual,true));
   RETURN jsonb_build_object('restricted_included',v_ok,'rows',v_rows);
 END $fn$;
 
@@ -371,6 +391,7 @@ BEGIN
 END $fn$;
 
 ALTER FUNCTION public.finance_my_scope_v1(uuid,text) OWNER TO postgres;
+ALTER FUNCTION public.finance_type_restricted_v1(uuid,boolean) OWNER TO postgres;
 ALTER FUNCTION public.report_text_v1(text,integer) OWNER TO postgres;
 ALTER FUNCTION public.cashbook_daily_v1(uuid,date,date,uuid,uuid[]) OWNER TO postgres;
 ALTER FUNCTION public.cashbook_cash_flow_v1(uuid,integer,uuid[]) OWNER TO postgres;
@@ -381,12 +402,12 @@ ALTER FUNCTION public.finance_analysis_top_expenses_v1(uuid,date,date,uuid[],int
 ALTER FUNCTION public.profit_my_share_v1(uuid,uuid[]) OWNER TO postgres;
 ALTER FUNCTION public.profit_shareholder_summary_v1(uuid,integer) OWNER TO postgres;
 -- Chỉ vai authenticated (web và trợ lý dưới JWT người dùng); anon/service_role không gọi được.
-REVOKE ALL ON FUNCTION public.finance_my_scope_v1(uuid,text),public.report_text_v1(text,integer),public.cashbook_daily_v1(uuid,date,date,uuid,uuid[]),
+REVOKE ALL ON FUNCTION public.finance_my_scope_v1(uuid,text),public.finance_type_restricted_v1(uuid,boolean),public.report_text_v1(text,integer),public.cashbook_daily_v1(uuid,date,date,uuid,uuid[]),
   public.cashbook_cash_flow_v1(uuid,integer,uuid[]),public.cashbook_list_v1(uuid,text),public.cashbook_closings_v1(uuid,uuid[],text),
   public.finance_analysis_type_breakdown_v1(uuid,date,date,boolean,uuid[],boolean),public.finance_analysis_top_expenses_v1(uuid,date,date,uuid[],integer),
   public.profit_my_share_v1(uuid,uuid[]),public.profit_shareholder_summary_v1(uuid,integer)
   FROM PUBLIC,anon,authenticated,service_role;
-GRANT EXECUTE ON FUNCTION public.finance_my_scope_v1(uuid,text),public.report_text_v1(text,integer),public.cashbook_daily_v1(uuid,date,date,uuid,uuid[]),
+GRANT EXECUTE ON FUNCTION public.finance_my_scope_v1(uuid,text),public.finance_type_restricted_v1(uuid,boolean),public.report_text_v1(text,integer),public.cashbook_daily_v1(uuid,date,date,uuid,uuid[]),
   public.cashbook_cash_flow_v1(uuid,integer,uuid[]),public.cashbook_list_v1(uuid,text),public.cashbook_closings_v1(uuid,uuid[],text),
   public.finance_analysis_type_breakdown_v1(uuid,date,date,boolean,uuid[],boolean),public.finance_analysis_top_expenses_v1(uuid,date,date,uuid[],integer),
   public.profit_my_share_v1(uuid,uuid[]),public.profit_shareholder_summary_v1(uuid,integer) TO authenticated;

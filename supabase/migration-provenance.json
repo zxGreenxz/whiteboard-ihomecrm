@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T05:38:15.290Z",
+  "generatedAt": "2026-10-18T06:05:20.716Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 735,
     "unknown": 86,
-    "catalog-proven": 206,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12001,32 +12001,32 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql",
-      "version": "20261018020000",
+      "path": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
+      "version": "20261018020050",
+      "name": "hermes_w2b_finance_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "54cc805ee2a5eb4d288bac411007cb7eab0f367b61bee9c0ea514db19d74f9b3",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.finance_my_scope_v1",
+        "function:public.finance_type_restricted_v1",
+        "function:public.report_text_v1",
+        "function:public.cashbook_daily_v1",
+        "function:public.cashbook_cash_flow_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020200_hermes_w2b_finance_read_v1.sql",
+      "version": "20261018020200",
       "name": "hermes_w2b_finance_read_v1",
       "scheme": "timestamp14",
-      "sha256": "092b1294d37a7de62236fbe420cacf97558bb98e22d863eaf72a78bd252e28ad",
+      "sha256": "f5c2541cc7d92f02c82e39f5f5f32024a510b48234613c31f9f58add76eca5bd",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "function:app_private.hermes_w2b_catalog_v1",
         "function:app_private.hermes_w2b_read_v1"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
-      "version": "20261018020050",
-      "name": "hermes_w2b_finance_shared_v1",
-      "scheme": "timestamp14",
-      "sha256": "c1554f03ab684cc051130e07e5c565a1f0a226d1604c52e69390a76286ae55fa",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.finance_my_scope_v1",
-        "function:public.report_text_v1",
-        "function:public.cashbook_daily_v1",
-        "function:public.cashbook_cash_flow_v1",
-        "function:public.cashbook_list_v1"
       ]
     },
     {
@@ -12038,18 +12038,6 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20261018090100_hermes_w2_monthly_pnl_keys_v1.sql",
-      "version": "20261018090100",
-      "name": "hermes_w2_monthly_pnl_keys_v1",
-      "scheme": "timestamp14",
-      "sha256": "1e1076aeb8a115e0e8d32d56ba120c182e99a5e8fde6c1dfee99b115fbb66762",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.hermes_report_catalog_v1",
-        "catalog:function:app_private.hermes_report_read_v2"
       ]
     },
     {

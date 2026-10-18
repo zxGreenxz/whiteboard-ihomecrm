@@ -1,5 +1,6 @@
 -- Hermes đọc đầy đủ — ĐỢT 2, Gói B: sổ quỹ, dòng tiền, kết quả kinh doanh, lợi nhuận cổ đông, ví cá
--- nhân, biến động số dư (18/10/2026). Chạy SAU nền đợt 2 (20261018000000 / 000500 / 000600: cổng INVOKER).
+-- nhân, biến động số dư (18/10/2026). Chạy SAU nền đợt 2 (20261018000000 / 000500 / 000600 / 000700: cổng INVOKER, rào
+-- công ty) và SAU hàm dùng chung 20261018020050_hermes_w2b_finance_shared_v1 (thứ tự tên = thứ tự áp).
 -- Mô hình INVOKER + RLS (quyết định kiến trúc 18/10, hai review độc lập; luật Gói 0 sau 000600):
 --  * app_private.hermes_w2b_read_v1: SECURITY INVOKER, search_path=pg_catalog,public, chạy dưới vai
 --    authenticated của người hỏi (lối vào public.hermes_w2_read_v1); thân KHÔNG gọi app_private.* (vai
@@ -28,6 +29,17 @@ BEGIN
     OR to_regprocedure('app_private.hermes_w2_catalog_v1(text)') IS NULL
     OR to_regprocedure('app_private.hermes_w2b_read_v1(text,jsonb,jsonb)') IS NULL THEN
     RAISE EXCEPTION 'hermes_w2b_requires_invoker_gate';
+  END IF;
+  IF to_regprocedure('public.finance_type_restricted_v1(uuid,boolean)') IS NULL
+    OR to_regprocedure('public.cashbook_daily_v1(uuid,date,date,uuid,uuid[])') IS NULL
+    OR to_regprocedure('public.cashbook_cash_flow_v1(uuid,integer,uuid[])') IS NULL
+    OR to_regprocedure('public.cashbook_list_v1(uuid,text)') IS NULL
+    OR to_regprocedure('public.cashbook_closings_v1(uuid,uuid[],text)') IS NULL
+    OR to_regprocedure('public.finance_analysis_type_breakdown_v1(uuid,date,date,boolean,uuid[],boolean)') IS NULL
+    OR to_regprocedure('public.finance_analysis_top_expenses_v1(uuid,date,date,uuid[],integer)') IS NULL
+    OR to_regprocedure('public.profit_my_share_v1(uuid,uuid[])') IS NULL
+    OR to_regprocedure('public.profit_shareholder_summary_v1(uuid,integer)') IS NULL THEN
+    RAISE EXCEPTION 'hermes_w2b_requires_finance_shared';
   END IF;
 END $requires$;
 
@@ -108,10 +120,11 @@ BEGIN
       INTO v_rows,v_capped,v_summary;
   ELSIF p_report='cash_flow' THEN
     v_year:=COALESCE((p_params->>'year')::integer,extract(year FROM v_today)::integer);
+    -- 16 hàng mỗi chuỗi toà: trần 2000 hàng như mọi báo cáo (sourceCapped), tổng năm vẫn trên mọi hàng.
     SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',f.organization_id,'buildingId',f.building_id,'period',f.period,'income',f.income::text,'expense',f.expense::text,
-          'net',f.net::text) ORDER BY f.ord),'[]'::jsonb),
-        COALESCE(sum(f.income) FILTER (WHERE f.period NOT LIKE '%Q%'),0),COALESCE(sum(f.expense) FILTER (WHERE f.period NOT LIKE '%Q%'),0)
-      INTO v_rows,v_a,v_b FROM (SELECT x.*,row_number() OVER () AS ord
+          'net',f.net::text) ORDER BY f.ord) FILTER (WHERE f.ord<=2000),'[]'::jsonb),
+        COALESCE(sum(f.income) FILTER (WHERE f.period NOT LIKE '%Q%'),0),COALESCE(sum(f.expense) FILTER (WHERE f.period NOT LIKE '%Q%'),0),count(*)>2000
+      INTO v_rows,v_a,v_b,v_capped FROM (SELECT x.*,row_number() OVER () AS ord
         FROM public.cashbook_cash_flow_v1(v_org,v_year,CASE WHEN v_org_wide THEN NULL ELSE v_buildings END) x) f;
     v_summary:=jsonb_build_object('year',v_year,'income',v_a::text,'expense',v_b::text,'net',(v_a-v_b)::text);
   ELSIF p_report='cashbooks' THEN
