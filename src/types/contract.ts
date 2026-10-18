@@ -1,4 +1,5 @@
 import type { SupportPlanInput } from '@/lib/rentSupport';
+import { addDaysISO, vnTodayISO } from '@/lib/vnDate';
 // =============================================
 // Contract Module Types
 // =============================================
@@ -177,20 +178,37 @@ export function isContractInEffect(status?: string | null): boolean {
 }
 
 // hermes-parity:begin contract-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-// Helper: compute display status
-export function getContractDisplayStatus(contract: Contract): ContractDisplayStatus {
+// Nhãn hiển thị — CÙNG công thức với public.contract_display_status_v1 (SQL). Danh sách/thống kê
+// đọc nhãn do SQL tính; màn chi tiết và ghi chú phiếu tính tại chỗ bằng đúng hàm dưới — khoá bằng
+// contractListV1Migration.test.ts (JS = SQL mọi giờ trong ngày).
+// Mốc ngày: JS luôn dùng Asia/Ho_Chi_Minh (vnTodayISO của lib/vnDate); SQL dùng org_today_v1 =
+// organization_timezones của công ty, mặc định Asia/Ho_Chi_Minh. Hiện mọi công ty đều theo mặc
+// định; công ty nào đặt múi giờ khác thì nhãn tính tại chỗ (chi tiết) có thể lệch nhãn SQL quanh
+// nửa đêm cho tới khi chi tiết cũng đọc nhãn từ SQL.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Nhãn theo một ngày mốc cho trước (YYYY-MM-DD) — dùng khi "hôm nay" do server cấp. */
+export function contractDisplayStatusOn(
+  contract: Pick<Contract, 'status' | 'end_date' | 'expected_move_out_date'>,
+  todayISO: string,
+): ContractDisplayStatus {
   if (contract.status === 'TERMINATED') return 'TERMINATED';
   if (contract.status === 'TRANSFERRED') return 'TRANSFERRED';
   if (contract.status === 'DRAFT') return 'DRAFT';
   if (contract.expected_move_out_date) return 'MOVING_OUT';
-
-  const now = new Date();
-  const endDate = new Date(contract.end_date);
-  const daysUntilEnd = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (daysUntilEnd < 0) return 'EXPIRED';
-  if (daysUntilEnd <= 30) return 'EXPIRING';
+  // Thiếu/hỏng ngày (end_date hoặc mốc) ⇒ 'ACTIVE', như SQL so với NULL rơi xuống ELSE.
+  const end = typeof contract.end_date === 'string' ? contract.end_date.slice(0, 10) : '';
+  const in30 = ISO_DATE.test(todayISO) ? addDaysISO(todayISO, 30) : null;
+  if (!ISO_DATE.test(end) || in30 === null) return 'ACTIVE';
+  if (end < todayISO) return 'EXPIRED';
+  if (end <= in30) return 'EXPIRING';
   return 'ACTIVE';
+}
+
+// Hàng danh sách đọc từ contract_list_v1 đã mang nhãn SQL ⇒ dùng lại nguyên nhãn đó.
+export function getContractDisplayStatus(contract: Contract & { display_status?: ContractDisplayStatus }): ContractDisplayStatus {
+  if (contract.display_status) return contract.display_status;
+  return contractDisplayStatusOn(contract, vnTodayISO());
 }
 
 // Helper: status badge config

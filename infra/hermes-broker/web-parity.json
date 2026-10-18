@@ -274,13 +274,6 @@
       "id": "invoice-search",
       "kind": "mirrored",
       "description": "Danh sách /invoices: thứ tự, lọc trạng thái (mặc định ẩn huỷ; unpaid = chưa thu đồng nào), kỳ, tìm số HĐ hoặc tên khách (crm_read_invoice_report report=search).",
-      "web": [
-        {
-          "path": "src/hooks/useInvoices.ts",
-          "region": "invoice-search",
-          "sha256": "2dca5c21201e0a6892361dffcba5302f1a18c11b49183f7704983add227872df"
-        }
-      ],
       "hermes": [
         {
           "sql": "app_private.hermes_report_read_v2",
@@ -291,29 +284,50 @@
           "contains": "'paid', 'partial', 'unpaid', 'cancelled'"
         }
       ],
-      "notes": "Đã biết 17/10: web xếp toà/phòng theo name_sort (tự nhiên), Hermes theo name."
+      "notes": "Web gọi hàm SQL dùng chung (migration 20261017115809_invoice_read_shared_v1, mô hình INVOKER + RLS 18/10/2026), không còn vùng mã web chép; Hermes CHƯA chuyển — hermes_report_read_v2 vẫn tự chép bộ lọc nên giữ loại mirrored. PR Hermes kế tiếp gọi thẳng hàm bằng JWT người dùng (hàm từ chối khi current_user khác authenticated) và truyền p_building_ids = toà của kết nối (chỉ thu hẹp), rồi đổi mục này sang kind \"rpc\". Đã biết 17/10: web xếp toà/phòng theo name_sort (tự nhiên), Hermes theo name; web không cắt 200 khách khi tìm tên.",
+      "webCalls": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "rpc": "invoice_list_v1"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.invoice_list_v1",
+          "sha256": "f347c11a5c131d209cfa8708588b2815dfffde2264423cfaba2c322b2f058bc2"
+        },
+        {
+          "function": "public.invoice_scope_building_ids_v1",
+          "sha256": "e06e517224176a6ded943800e8957dc657460f1ac082248033e875c460cc7571"
+        },
+        {
+          "function": "public.invoice_receipt_methods_v1",
+          "sha256": "139f25c244437a4b51901ff76f0773231326d40fe016e079a7188eec1027a045"
+        }
+      ]
     },
     {
       "id": "invoice-stats",
       "kind": "mirrored",
       "description": "Thẻ tổng hoá đơn: Hermes chép bộ lọc hai khối tổng của get_invoice_statistics_v2 (không tính huỷ, lọc kỳ, nhóm điện/nước/dịch vụ theo mô tả dòng) nhưng phạm vi theo invoices.view (crm_read_invoice_report report=stats).",
-      "web": [
-        {
-          "path": "src/hooks/useInvoices.ts",
-          "region": "invoice-stats",
-          "sha256": "c6006444fb703fa6a56f54a7d409910d97033e89578928776add8693786d8f24"
-        }
-      ],
       "webCalls": [
         {
           "path": "src/hooks/useInvoices.ts",
-          "rpc": "get_invoice_statistics_v2"
+          "rpc": "invoice_statistics_v3"
         }
       ],
       "sql": [
         {
-          "function": "public.get_invoice_statistics_v2",
-          "sha256": "af79a16dc9a26a4eb7fccc0c2a3d5d6e53f57156815b5d944fd8b55da5edf8ac"
+          "function": "public.invoice_statistics_v3",
+          "sha256": "13c812437725268d9151ef3264c637e409287e94bd30b1a264225dd6dffc0454"
+        },
+        {
+          "function": "public.invoice_scope_building_ids_v1",
+          "sha256": "e06e517224176a6ded943800e8957dc657460f1ac082248033e875c460cc7571"
+        },
+        {
+          "function": "public.invoice_statistics_money_v1",
+          "sha256": "b83fb5aaafd76d7c68182db18a059ec60ad6c12a49fc763d7288da1e8f5e8d87"
         }
       ],
       "hermes": [
@@ -321,22 +335,47 @@
           "sql": "app_private.hermes_report_read_v2",
           "note": "invoice_report stats"
         }
-      ]
+      ],
+      "notes": "Web gọi hàm SQL dùng chung (migration 20261017115809_invoice_read_shared_v1, mô hình INVOKER + RLS 18/10/2026), không còn vùng mã web chép; Hermes CHƯA chuyển — hermes_report_read_v2 vẫn tự chép bộ lọc nên giữ loại mirrored. PR Hermes kế tiếp gọi thẳng hàm bằng JWT người dùng (hàm từ chối khi current_user khác authenticated) và truyền p_building_ids = toà của kết nối (chỉ thu hẹp), rồi đổi mục này sang kind \"rpc\"."
     },
     {
       "id": "contract-search",
       "kind": "mirrored",
-      "description": "Danh sách Hợp đồng: tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời và thẻ sắp hết hạn/quá hạn, nhãn getContractDisplayStatus (crm_read_contract_search).",
+      "description": "Danh sách Hợp đồng (crm_read_contract_search). Nguồn công thức nay là hàm SQL dùng chung public.contract_list_v1 + public.contract_stats_v2 (SECURITY INVOKER, RLS người gọi; migration 20261017115636): tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời, thẻ sắp hết hạn/quá hạn/thanh lý, tháng, toà/phòng, nhãn hiển thị (public.contract_display_status_v1, mốc org_today_v1), phân trang, 4 ô thống kê. Web /contracts đã gọi hai hàm này; nhãn JS getContractDisplayStatus/contractDisplayStatusOn (cùng công thức, ngày giờ VN) còn cho màn chi tiết và ghi chú phiếu.",
+      "notes": "HERMES CHƯA CHUYỂN (18/10/2026): app_private.hermes_report_read_v2 nhánh contract_search vẫn chép bộ lọc/nhãn. PR Hermes sau: gọi public.contract_list_v1 qua đường INVOKER bằng JWT người dùng (KHÔNG từ thân hàm SECURITY DEFINER — hàm tự chặn 42501), p_building_ids = toà kết nối (NULL = toàn phạm vi RLS, {} = rỗng), p_with_customers theo khoá Read customers.view của kết nối; rồi đổi mục này thành kind rpc (rpc + webCalls + hermes.calls), bỏ nguồn sql.",
       "web": [
-        {
-          "path": "src/hooks/useContracts.ts",
-          "region": "contract-search",
-          "sha256": "eaf9fd967aaf6d3866b73ba1ac5521354b9042bd9692eea8a8ce14177acb0533"
-        },
         {
           "path": "src/types/contract.ts",
           "region": "contract-search",
-          "sha256": "891e1807ddcacdec3703cf347a5079cd068b0344acae8555fe804a6ab221b62c"
+          "sha256": "83eccc3b45a3ffbf96ae36e94f14e8554bfa46672eaa50fc06e7086f1cff0de6"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useContracts.ts",
+          "rpc": "contract_list_v1"
+        },
+        {
+          "path": "src/hooks/useContracts.ts",
+          "rpc": "contract_stats_v2"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.contract_list_v1",
+          "sha256": "ad823a77889c58d6766a03c9734899037eaf6dc84495bd9cd1f2547c9c3da9e0"
+        },
+        {
+          "function": "public.contract_stats_v2",
+          "sha256": "5e4f00769548b1ecb5ed9a0a11e155a5858b6edb406a84147c1f140895d36c7a"
+        },
+        {
+          "function": "public.contract_display_status_v1",
+          "sha256": "7d1d9555ac53e77ced1d65da0feee6d9cbc81ea4287f83b0602ca80bed96bbcf"
+        },
+        {
+          "function": "public.contract_display_label_v1",
+          "sha256": "5d2bcfa00bd0a6c8e01b13b5a0b974866802768a354e0c33354fc041857241d5"
         }
       ],
       "hermes": [

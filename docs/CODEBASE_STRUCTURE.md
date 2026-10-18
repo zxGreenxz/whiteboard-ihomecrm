@@ -37,6 +37,12 @@ Công thức/bộ lọc có từ hai nơi trở lên cùng dùng (web, Hermes, b
 - Khớp số trước/sau: cùng org/kỳ/bộ lọc (TEST/DEMO hoặc chỉ đọc), so kết quả cũ với hàm mới; lệch thì dừng và giải trình từng chênh.
 - `EXPLAIN` hàm mới trên dữ liệu cỡ thật: quyền/RLS tính theo tập (initplan), không gọi từng dòng; không chậm hơn bản cũ.
 - `p_building_ids` và tham số lọc tương tự chỉ thu hẹp (∩) phạm vi quyền server tự tính, không bao giờ mở rộng hay thay quyền.
+- Quyền (chốt 18/10/2026): hàm chung là `SECURITY INVOKER` đọc bằng RLS người gọi, `search_path=''`, tự chặn khi `current_user` khác `authenticated` hoặc `auth.uid()` rỗng; không chép policy vào thân hàm.
+- `SECURITY DEFINER` chỉ cho helper nhỏ trong `app_private` trả tập id và tự kiểm phạm vi `auth.uid()`; không bao giờ trả cả danh sách.
+- Ngoại lệ vị trí: helper DEFINER mà hàm INVOKER gọi trực tiếp phải ở `public` (EXECUTE chỉ `authenticated`): `authenticated` không có USAGE trên `app_private` (đo production 18/10/2026), như helper của màn Hoá đơn.
+- Ngoại lệ "DEFINER trả tổng" (vd. `invoice_statistics_money_v1`) chỉ khi đủ ba điều kiện: tự giao phạm vi của chính người gọi, không tin id bên gọi truyền; trả đúng một dòng tổng, không trả danh sách; có test bất biến (gọi thẳng với id toà xoá mềm/công ty khác ra 0, phạm vi ⊆ `accessible_building_ids()`) và đột biến làm suite đỏ.
+- Hermes gọi qua đường INVOKER bằng JWT người dùng (không gọi từ thân hàm DEFINER), thu hẹp bằng `p_building_ids`: NULL = toàn phạm vi RLS, `'{}'` = rỗng.
+- Mỗi bảng chỉ tham chiếu một lần trong câu: mỗi lần là thêm một lượt policy/InitPlan (`accessible_*_ids` ≈ 35 ms/lượt trên TEST).
 - Hermes còn chép: bọc mã web bằng `hermes-parity:begin/end`, thêm mục vào [web-parity.json](../infra/hermes-broker/web-parity.json); chuyển sang gọi hàm chung thì đổi mục thành `rpc`. Gate: `npm run gate:hermes-web-parity`.
 
 ## Kiểm thử
