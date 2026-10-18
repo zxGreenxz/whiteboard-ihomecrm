@@ -145,7 +145,8 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // Ngân sách 64 000 B vẫn giữ để connector bản cũ (một trần chung) nhận đủ danh sách.
 // 85280779: 67 988 B (đã vượt); rút họ đọc: 63 743 B; rút chữ requestId (15 tool): 62 168 B.
 // Gói Z 18/10/2026 (tích hợp đợt 2: Gói 0 + A + B + C + D + Z, hai tool meta crm_read_report_list/crm_read_report):
-// 65 tool, 63 654 B — còn 346 B tới trần chung. Trần tổng giữ 64 000 B (connector bản cũ một trần 65 536 B); thêm tool
+// 65 tool, 63 654 B. Rào chữ công khai sau khi đọc dữ liệu riêng (crm_room_pass_upsert: confirmToken + một câu, +187 B):
+// 63 841 B — còn 159 B tới trần chung. Trần tổng giữ 64 000 B (connector bản cũ một trần 65 536 B); thêm tool
 // hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
@@ -230,6 +231,9 @@ test('crm_room_pass_upsert keeps absent = keep, blank = keep, null = clear', () 
     assert.deepEqual(shaped, args); assert.deepEqual(roomPassInput('upsert', shaped), roomPassInput('upsert', args));
   }
   assert.deepEqual(roomPassInput('upsert', normalizeToolArguments(upsert, { ...base, customerName: '  ' })), base, 'blank never becomes a clear');
+  // confirmToken (rào chữ công khai) là chuỗi thường: không bị đổi thành null, broker tách nó trước roomPassInput.
+  assert.deepEqual(upsert.inputSchema.properties.confirmToken, { type: 'string' });
+  assert.deepEqual(normalizeToolArguments(upsert, { ...base, confirmToken: '' }), { ...base, confirmToken: '' });
 });
 
 function brokerFixture(t) {
