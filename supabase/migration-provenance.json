@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T04:23:35.073Z",
+  "generatedAt": "2026-10-18T05:25:34.668Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 735,
-    "unknown": 84,
-    "catalog-proven": 205,
+    "unknown": 86,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12001,6 +12001,35 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql",
+      "version": "20261018020000",
+      "name": "hermes_w2b_finance_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "4120192f5369b5eddb8bf1c1f94915ddcaaa3e07b74c1b7759fa98911e512eec",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2b_catalog_v1",
+        "function:app_private.hermes_w2b_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
+      "version": "20261018020050",
+      "name": "hermes_w2b_finance_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "c1554f03ab684cc051130e07e5c565a1f0a226d1604c52e69390a76286ae55fa",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.finance_my_scope_v1",
+        "function:public.report_text_v1",
+        "function:public.cashbook_daily_v1",
+        "function:public.cashbook_cash_flow_v1",
+        "function:public.cashbook_list_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261018031847_commission_canonical_post_cashbook.sql",
       "version": "20261018031847",
       "name": "commission_canonical_post_cashbook",
@@ -12009,6 +12038,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018090100_hermes_w2_monthly_pnl_keys_v1.sql",
+      "version": "20261018090100",
+      "name": "hermes_w2_monthly_pnl_keys_v1",
+      "scheme": "timestamp14",
+      "sha256": "1e1076aeb8a115e0e8d32d56ba120c182e99a5e8fde6c1dfee99b115fbb66762",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_report_catalog_v1",
+        "catalog:function:app_private.hermes_report_read_v2"
       ]
     },
     {

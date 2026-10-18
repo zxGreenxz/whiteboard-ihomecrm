@@ -976,6 +976,49 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói 0 (sửa sau review cổng INVOKER), 18/10/2026",
       "sha256": "0c942b1f505c3782956e1ed0a11f8b506f034884748146c2225621451176f47a"
+    },
+    "supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018020000_hermes_w2b_finance_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2b_catalog_v1 / app_private.hermes_w2b_read_v1 (thay khung rỗng của nền 20261018000000/000600, chữ ký giữ nguyên)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 2 object — sinh 18/10/2026 sau khi tách hàm dùng chung sang 020050 và thêm organizationId"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Gói B đợt 2: 19 báo cáo sổ quỹ, dòng tiền, phân tích tài chính, hiệu quả kinh doanh, lợi nhuận cổ đông, ví cá nhân, biến động số dư), chưa đi qua lane apply production — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Bản trên TEST là bản cũ trước khi tách hàm dùng chung (theo nhật ký phiên trước, chưa đối chiếu lại); bản hiện tại CHƯA áp TEST. PGlite wave2-b 29/29 kể cả đột biến, wave2-foundation 50/50. Áp qua npm run migrate:forward sau review; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2b_catalog_v1",
+        "function:app_private.hermes_w2b_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói B (theo rào công ty 20261018000700), 18/10/2026",
+      "sha256": "4120192f5369b5eddb8bf1c1f94915ddcaaa3e07b74c1b7759fa98911e512eec"
+    },
+    "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.finance_my_scope_v1, public.report_text_v1 và 8 hàm báo cáo dùng chung public.cashbook_*_v1 / finance_analysis_*_v1 / profit_*_v1 (mới, INVOKER search_path rỗng)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object (danh sách cắt ở 5) — sinh 18/10/2026"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (hàm báo cáo tài chính dùng chung web + trợ lý, Gói B đợt 2), chưa đi qua lane apply production hay TEST — mọi hàm đều mới nên vắng mặt vì migration CHƯA CHẠY, không phải vì bị DROP. PGlite wave2-b 29/29 kể cả đột biến (lọc đúng công ty, tự kiểm khoá web, chỉ chạy dưới vai authenticated). Áp qua npm run migrate:forward sau review, TRƯỚC 20261018020000; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.finance_my_scope_v1",
+        "function:public.report_text_v1",
+        "function:public.cashbook_daily_v1",
+        "function:public.cashbook_cash_flow_v1",
+        "function:public.cashbook_list_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói B (theo rào công ty 20261018000700), 18/10/2026",
+      "sha256": "c1554f03ab684cc051130e07e5c565a1f0a226d1604c52e69390a76286ae55fa"
     }
   }
 }
