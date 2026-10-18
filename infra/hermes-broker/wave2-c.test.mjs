@@ -13,10 +13,12 @@ import { W2C_REPORTS } from './wave2-c-contract.mjs';
 // quyền DEFINER dựng ctx → app_private.hermes_w2c_read_v1 (INVOKER, RLS THẬT chép nguyên văn trong fixture) → bước
 // kết thúc rào đầu ra/phân trang; rồi rào broker (W2.reads.report.result). authenticated KHÔNG có USAGE trên
 // app_private: thân hàm đọc mà gọi app_private.* là ca đỏ. Ca "ctx không mở rộng RLS" gọi hàm đọc trực tiếp (cấp
-// USAGE tạm trong ca). Đột biến SQL trên hai migration của gói.
-const SHARED_PATH = 'supabase/migrations/20261018030100_hermes_w2c_shared_v1.sql';
-const PACKAGE_PATH = 'supabase/migrations/20261018030200_hermes_w2c_ops_read_v1.sql';
-const sharedSql = readFileSync(SHARED_PATH, 'utf8'), packageSql = readFileSync(PACKAGE_PATH, 'utf8');
+// USAGE tạm trong ca). Đột biến SQL trên định nghĩa SỐNG (file sau cùng định nghĩa hàm) của bốn migration của gói.
+// Rào công ty (nền 20261018000700): hàm dùng chung trả cột organization_id (030300), hàm đọc gắn organizationId (030400).
+const read = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
+const sharedSql = read('20261018030100_hermes_w2c_shared_v1'), sharedOrgSql = read('20261018030300_hermes_w2c_shared_org_v1');
+const packageSql = read('20261018030200_hermes_w2c_ops_read_v1'), fenceSql = read('20261018030400_hermes_w2c_org_fence_v1');
+const SHARED_SOURCES = [sharedOrgSql, sharedSql], PACKAGE_SOURCES = [fenceSql, packageSql];
 let shared;
 before(async () => { shared = await sharedW2c(); });
 after(async () => { await shared?.close(); });
@@ -55,15 +57,26 @@ test('gói C: bảng báo cáo SQL (hermes_w2c_catalog_v1) khớp khai báo JS (
 test('cấu trúc: hàm dùng chung INVOKER (trừ helper salary_is_admin_v1), chỉ authenticated; hàm đọc INVOKER pg_catalog,public không gọi app_private', () => inCase(async env => {
   const { db } = env;
   const strip = sql => sql.replace(/--[^\n]*/g, '');
-  for (const sql of [sharedSql, packageSql]) {
-    assert.doesNotMatch(strip(sql), /copilot/i);
-    assert.doesNotMatch(strip(sql), /\bDROP\b|ALTER TABLE|UPDATE app_private\.hermes_capabilities|INSERT INTO|current_visible_owner_ids/i, 'không chép policy');
-  }
-  assert.doesNotMatch(sharedSql, /hermes_/i, 'hàm dùng chung không thuộc trợ lý');
   const created = sql => [...strip(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
+  // DROP duy nhất được phép: 030300 bỏ hàm dùng chung CỦA GÓI để đổi kiểu trả về rồi tạo lại ngay trong cùng file.
+  const dropped = [...strip(sharedOrgSql).matchAll(/DROP FUNCTION IF EXISTS ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
+  assert.deepEqual(dropped, created(sharedOrgSql), '030300: mỗi DROP đi liền CREATE cùng hàm');
+  for (const sql of [sharedSql, sharedOrgSql, packageSql, fenceSql]) {
+    assert.doesNotMatch(strip(sql), /copilot/i);
+    assert.doesNotMatch(strip(sql).replace(/DROP FUNCTION IF EXISTS public\.[a-z0-9_]+\([^)]*\);/g, ''),
+      /\bDROP\b|ALTER TABLE|UPDATE app_private\.hermes_capabilities|INSERT INTO|current_visible_owner_ids/i, 'không chép policy');
+  }
+  for (const sql of [sharedSql, sharedOrgSql]) assert.doesNotMatch(sql, /hermes_/i, 'hàm dùng chung không thuộc trợ lý');
   assert.deepEqual(created(packageSql).sort(), ['app_private.hermes_w2c_catalog_v1', 'app_private.hermes_w2c_read_v1']);
+  assert.deepEqual(created(fenceSql), ['app_private.hermes_w2c_read_v1']);
   const SHARED = created(sharedSql);
   assert.equal(SHARED.length, 14);
+  assert.ok(created(sharedOrgSql).every(name => SHARED.includes(name)), '030300 không thêm hàm mới');
+  // Hàm dùng chung của báo cáo công ty trả cột nguồn organization_id (tám hàm của 030300).
+  const outputs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.proargnames names,p.proargmodes modes FROM pg_proc p
+    JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1)`, [created(sharedOrgSql)])).rows;
+  assert.equal(outputs.length, 8);
+  for (const row of outputs) assert.equal(row.modes[row.names.indexOf('organization_id')], 't', `${row.name}: cột organization_id`);
   assert.ok(SHARED.every(name => /^public\.[a-z][a-z0-9_]*_v1$/.test(name) && !name.startsWith('public.hermes_')));
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.prosrc src,
       has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
@@ -309,7 +322,14 @@ test('C10–C14 Network Center: RPC web gọi thẳng, giữ đúng toà ctx; kh
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào của Gói C; cùng phép thử mà bản sống từ chối thì bản đột biến phải lọt.
 const mutate = (source, from, to) => { assert.equal(source.split(from).length, 2, `anchor: ${from}`); return [source, source.replace(from, () => to)]; };
-const S = (from, to) => mutate(sharedSql, from, to), P = (from, to) => mutate(packageSql, from, to);
+// Định nghĩa SỐNG: file sau cùng chứa neo (030300 trước 030100, 030400 trước 030200).
+const live = (sources, from) => sources.find(sql => sql.includes(from)) ?? sources[0];
+const S = (from, to) => mutate(live(SHARED_SOURCES, from), from, to), P = (from, to) => mutate(live(PACKAGE_SOURCES, from), from, to);
+// Hàm dùng chung HỎNG (bỏ lọc công ty tường minh) + super admin (RLS phủ công ty khác): dựng nguồn rò cho ca rào công ty.
+const leak = async (env, from, to) => {
+  await env.db.exec(`INSERT INTO public.super_admins VALUES('${USER}')`);
+  for (const sql of changedFunctions(...S(from, to))) await env.db.exec(sql);
+};
 const items = async (env, report, values) => ids(await env.report(report, full(report, values), { limit: 50, offset: 0 }));
 const probes = [
   { name: 'hàm dùng chung: chỉ vai authenticated', pair: S(
@@ -388,6 +408,18 @@ const probes = [
     run: async env => { await env.grant(['network_center.view']);
       await env.db.query("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
       return (await env.report('network_clients', full('network_clients', { buildingId: BUILDING }), { limit: 50, offset: 0 })).items[0].customerName !== null; } },
+  { name: 'rào công ty: xe nêu organizationId cột nguồn (không chép ctx)', pair: P(`'organizationId',x.organization_id)
+        ORDER BY x.created_at DESC,x.id DESC)`, `'organizationId',v_org)
+        ORDER BY x.created_at DESC,x.id DESC)`),
+    run: async env => { await env.grant(['vehicles.view']); await env.orgWide('vehicles.view');
+      await leak(env, `    WHERE v.organization_id=p_organization_id AND v.deleted_at IS NULL\n`, `    WHERE v.deleted_at IS NULL\n`);
+      return (await items(env, 'vehicles')).includes(VEHICLE.foreignFree); } },
+  { name: 'rào công ty: vật tư nêu organizationId cột nguồn (không chép ctx)', pair: P(`'avgUnitCost',x.avg_unit_cost::text,
+          'organizationId',x.organization_id)`, `'avgUnitCost',x.avg_unit_cost::text,
+          'organizationId',v_org)`),
+    run: async env => { await env.grant(['materials.view']); await env.orgWide('materials.view');
+      await leak(env, `  WHERE m.organization_id=p_organization_id AND m.deleted_at IS NULL\n    AND (p_category_id`, `  WHERE m.deleted_at IS NULL\n    AND (p_category_id`);
+      return (await items(env, 'materials')).includes(MATERIAL.foreign); } },
   { name: 'hàm đọc: chỉ vai authenticated của chính người hỏi', pair: P(`  IF current_user<>'authenticated' OR v_uid IS NULL OR p_ctx->>'userId' IS DISTINCT FROM v_uid::text`,
     `  IF v_uid IS NULL`),
     run: async env => { await env.grant(['network_center.view']);

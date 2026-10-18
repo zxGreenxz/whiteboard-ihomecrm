@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1494,
   "soFileDocBangFs": 366,
-  "tongLoiGoi": 843,
+  "tongLoiGoi": 842,
   "khongPhanLoaiDuoc": 387,
   "theoLoai": {
     "ma-nguon": {
@@ -879,14 +879,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/wave2-c.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "infra/hermes-broker/work-memory-sql.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1558,6 +1550,14 @@
     },
     {
       "file": "infra/hermes-broker/task-metadata.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/wave2-c.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1

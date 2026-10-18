@@ -4,7 +4,10 @@
 // (CRM thật ∩ registry ∩ chính sách ∩ Read kết nối ∩ toà overlay). Mô hình INVOKER + RLS: hàm đọc của gói chạy
 // bằng vai authenticated dưới RLS của người hỏi; nguồn = RPC web gọi thẳng (Network Center, salary_staff_months)
 // hoặc hàm dùng chung public.<miền>_<báo cáo>_v1 (20261018030100) khi web đọc bảng qua PostgREST. Báo cáo theo
-// toà: mọi hàng nêu buildingId (null chỉ khi kết nối toàn công ty).
+// toà: mọi hàng nêu buildingId (null chỉ khi kết nối toàn công ty). Rào công ty (nền 20261018000700): hàm đọc
+// (20261018030400) gắn organizationId cột nguồn vào mọi hàng trừ self — cột organization_id của hàm dùng chung
+// (20261018030300) hoặc buildings.organization_id với Network Center; cổng so với công ty kết nối rồi gỡ, nên
+// fields dưới đây KHÔNG khai organizationId.
 import { w2Report, id, nullable, longText, code, amount, bool, count, date, instant, shaped } from './wave2-kit.mjs';
 
 const text = max => nullable(longText(max));
@@ -147,22 +150,6 @@ export const W2C_REPORTS = Object.freeze({
     fields: { line: count, buildingId: id, kind: code, text: text(500) }, summary: { changeCount: metric } }),
 });
 
-// Đề xuất mục web-parity.json (PR #194 chưa merge vào nền): Gói Z thêm marker `// hermes-parity:begin/end <id>`
-// quanh đúng vùng web và mục bản đồ. kind=mirrored: hàm dùng chung chép bộ lọc web; rpc: Hermes gọi thẳng RPC web.
-export const W2C_WEB_PARITY = Object.freeze([
-  { id: 'w2c-vehicles-list', kind: 'mirrored', web: 'src/hooks/useVehicles.ts:39-130', hermes: 'public.vehicles_list_v1' },
-  { id: 'w2c-materials-items', kind: 'mirrored', web: 'src/hooks/useMaterials.ts:20-62', hermes: 'public.materials_items_v1' },
-  { id: 'w2c-materials-categories', kind: 'mirrored', web: 'src/hooks/useMaterialCategories.ts:12-28', hermes: 'public.materials_categories_v1' },
-  { id: 'w2c-materials-purchases', kind: 'mirrored', web: 'src/hooks/useMaterialPurchases.ts:24-35', hermes: 'public.materials_purchases_v1' },
-  { id: 'w2c-materials-usages', kind: 'mirrored', web: 'src/hooks/useMaterialUsages.ts:18-35', hermes: 'public.materials_usages_v1' },
-  { id: 'w2c-materials-adjustments', kind: 'mirrored', web: 'src/hooks/useMaterialAdjustments.ts:17-25', hermes: 'public.materials_adjustments_v1' },
-  { id: 'w2c-warehouses-list', kind: 'mirrored', web: 'src/hooks/useAssetWarehouses.ts:14-38', hermes: 'public.warehouses_list_v1' },
-  { id: 'w2c-notifications-inbox', kind: 'mirrored', web: 'src/hooks/useNotifications.ts:88-140', hermes: 'public.notifications_inbox_v1' },
-  { id: 'w2c-salary-locked', kind: 'mirrored', web: 'src/hooks/useManagerSalary.ts:113-125,567-583', hermes: 'public.salary_locked_month_v1' },
-  { id: 'w2c-salary-lines', kind: 'mirrored', web: 'src/hooks/useManagerSalary.ts:337-384', hermes: 'public.salary_locked_lines_v1' },
-  { id: 'w2c-salary-staff-months', kind: 'rpc', rpc: 'salary_staff_months', web: 'src/hooks/useManagerSalary.ts:639-665',
-    hermes: 'app_private.hermes_w2c_read_v1' },
-  { id: 'w2c-network-center', kind: 'rpc', rpc: ['network_center_list_fleet_v1', 'network_center_get_building_v1', 'network_center_list_clients_v1',
-    'network_center_list_aruba_v1', 'network_center_list_h196a_v1', 'network_center_list_commands_v1', 'network_center_list_audit_v1',
-    'network_center_compare_snapshots_v1'], web: 'src/lib/network-center/supabaseRepository.ts:192-421', hermes: 'app_private.hermes_w2c_read_v1' },
-]);
+// Chuông Hermes ↔ web: mục w2c-* trong infra/hermes-broker/web-parity.json (marker // hermes-parity:begin/end w2c-*
+// quanh vùng web nguồn; gate check-hermes-web-parity). Mirrored: hàm dùng chung chép bộ lọc web; rpc: Hermes gọi
+// thẳng RPC web (salary_staff_months, network_center_*).

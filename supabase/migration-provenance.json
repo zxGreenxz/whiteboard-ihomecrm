@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 735,
-    "unknown": 86,
+    "unknown": 88,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12026,6 +12026,34 @@
       "evidence": [],
       "missingObjects": [
         "function:app_private.hermes_w2c_catalog_v1",
+        "function:app_private.hermes_w2c_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030300_hermes_w2c_shared_org_v1.sql",
+      "version": "20261018030300",
+      "name": "hermes_w2c_shared_org_v1",
+      "scheme": "timestamp14",
+      "sha256": "d41b3d3afaa93ba7e699c19d490f2b0ac1b90b4e4b4204e9a83955d868d07d23",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.vehicles_list_v1",
+        "function:public.materials_items_v1",
+        "function:public.materials_categories_v1",
+        "function:public.materials_purchases_v1",
+        "function:public.materials_usages_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030400_hermes_w2c_org_fence_v1.sql",
+      "version": "20261018030400",
+      "name": "hermes_w2c_org_fence_v1",
+      "scheme": "timestamp14",
+      "sha256": "b25442562f7d2c6dbc8f7e5393d7adc9197637ac771eb61a1a14289e752a7995",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
         "function:app_private.hermes_w2c_read_v1"
       ]
     },
