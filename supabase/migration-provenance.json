@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T03:51:46.142Z",
+  "generatedAt": "2026-10-18T04:56:15.237Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 735,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11946,6 +11946,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018044046_toi_uu_ham_quyen_rls_v1.sql",
+      "version": "20261018044046",
+      "name": "toi_uu_ham_quyen_rls_v1",
+      "scheme": "timestamp14",
+      "sha256": "e903378b1bbd35409e4eb73b81ef41d4e38f89f1f8e752443cfaa947a19fb5cd",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.is_super_admin",
+        "catalog:function:public.is_admin"
       ]
     },
     {
