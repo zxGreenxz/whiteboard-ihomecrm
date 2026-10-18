@@ -751,7 +751,8 @@
           "path": "infra/hermes-broker/wave2-d-contract.mjs",
           "contains": "crm.assets_list_v1"
         }
-      ]
+      ],
+      "notes": "Khác web: kết nối không phải Toàn tổ chức thì Hermes bỏ tài sản không gắn toà (web vẫn hiện) — so trên TEST 18/10."
     },
     {
       "id": "w2d-services",
@@ -1111,7 +1112,7 @@
           "contains": "crm.vehicles_list_v1"
         }
       ],
-      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên chủ xe và tên/SĐT khách chỉ hiện (và chỉ tìm được) khi hồ sơ khách của xe đọc được dưới RLS customers và kết nối có customers.view ở toà đó — web hiện tên chủ xe của mọi xe đọc được (review PR #204); Hermes chưa lọc theo dòng xe/màu."
+      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên chủ xe và tên/SĐT khách chỉ hiện (và chỉ tìm được) khi hồ sơ khách của xe đọc được dưới RLS customers và kết nối có customers.view ở toà đó — web hiện tên chủ xe của mọi xe đọc được (review PR #204); Hermes chưa lọc theo dòng xe/màu. Kết nối không phải Toàn tổ chức: Hermes bỏ xe không gắn toà (web vẫn hiện) — so trên TEST 18/10."
     },
     {
       "id": "w2c-materials",
@@ -2189,7 +2190,7 @@
           "contains": "crm.deposit_reservation_vouchers_v1"
         }
       ],
-      "notes": "Thân sống của get_reservation_deposit_summary được vá bằng thay chuỗi động (20260909172332, 20260928161948), không có CREATE nguyên văn ⇒ không băm sql."
+      "notes": "Thân sống của get_reservation_deposit_summary được vá bằng thay chuỗi động (20260909172332, 20260928161948), không có CREATE nguyên văn ⇒ không băm sql. Khác web (chặt hơn, chờ sửa theo web): Hermes chỉ trả phiếu ở toà có deposits.view; web còn hiện phiếu vào sổ quỹ người dùng giữ (policy income_expenses_select_fund_member) nên đếm/tổng trên web có thể lớn hơn — so trên TEST 18/10."
     },
     {
       "id": "deposit-reservation-settlements",
