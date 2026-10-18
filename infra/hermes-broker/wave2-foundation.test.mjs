@@ -5,9 +5,10 @@ import { sharedW2, grantRead, assertPackageParity, BUILDING, OTHER_BUILDING, SCO
 import { changedFunctions, FULL_READ_OWNER_PATH, ROOM, OTHER_ROOM, FOREIGN_ROOM, CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, CUSTOMER_A,
   CUSTOMER_F } from './full-read-sql-fixture.mjs';
 import { CASHBOOK } from './finance-fixture.mjs';
-import { W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, w2MigrationPaths, w2FenceViolations, w2AllMigrations } from './wave2-sql-paths.mjs';
+import { W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH, W2_RANGES, W2_FOUNDATION_FUNCTIONS, w2MigrationPaths, w2FenceViolations,
+  w2AllMigrations } from './wave2-sql-paths.mjs';
 import { W2_READ_KEY_LIST, W2_SELF_KEYS } from './wave2-registry.mjs';
-import { W2_PARAMS, W2_REUSED_KEYS, w2Report, w2Params, w2PermissionKind } from './wave2-kit.mjs';
+import { W2_PARAMS, W2_REUSED_KEYS, W2_ORG_KEYS, w2Report, w2Params, w2PermissionKind } from './wave2-kit.mjs';
 import { DOMAIN_FAMILIES, domainFamily, domainInput } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
@@ -31,6 +32,7 @@ const inCase = work => shared.isolated(work);
 const code = expected => error => error.code === expected;
 const sorted = values => [...values].sort();
 const foundation = readFileSync(W2_FOUNDATION_PATH, 'utf8'), fixes = readFileSync(W2_FIXES_PATH, 'utf8'), invoker = readFileSync(W2_INVOKER_PATH, 'utf8');
+const orgfence = readFileSync(W2_ORG_FENCE_PATH, 'utf8');
 const stripComments = sql => sql.replace(/--[^\n]*/g, '');
 const block = (sql, name) => {
   const found = sql.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`, 'g'));
@@ -64,7 +66,10 @@ const readerSql = letter => `CREATE OR REPLACE FUNCTION app_private.hermes_w2${l
   BEGIN
     INSERT INTO public.fixture_w2_calls(package,report,params,ctx) VALUES('${letter}',p_report,p_params,p_ctx);
     SELECT value INTO v FROM public.fixture_w2_reply WHERE package='${letter}';
-    RETURN COALESCE(v,jsonb_build_object('rows',jsonb_build_array(jsonb_build_object('package','${letter}','report',p_report)),
+    -- Hàng mặc định tự nêu toà (rows/buildings) và công ty (trừ self/platform) như gói thật phải làm.
+    RETURN COALESCE(v,jsonb_build_object('rows',jsonb_build_array(jsonb_build_object('package','${letter}','report',p_report)
+      ||CASE WHEN p_ctx->>'scope' IN ('rows','buildings') THEN jsonb_build_object('buildingId',p_ctx->'buildings'->0) ELSE '{}'::jsonb END
+      ||CASE WHEN p_ctx->>'scope' NOT IN ('self','platform') THEN jsonb_build_object('organizationId',p_ctx->'organizationId') ELSE '{}'::jsonb END),
       'summary',NULL,'sourceCapped',false,'unavailable',NULL));
   END $fn$;`;
 async function installProbes(db, { readers = true, catalogs = PROBES, extra = false } = {}) {
@@ -79,6 +84,8 @@ const calls = async db => (await db.query('SELECT package,report,params,ctx FROM
 const reply = (db, letter, value) => db.query('INSERT INTO public.fixture_w2_reply VALUES($1,$2::jsonb) ON CONFLICT(package) DO UPDATE SET value=EXCLUDED.value',
   [letter, JSON.stringify(value)]);
 const rowsReply = (db, letter, rows) => reply(db, letter, { rows, summary: null, sourceCapped: false, unavailable: null });
+// Hàng của báo cáo công ty phải tự nêu công ty (trường rào, cổng gỡ trước khi trả).
+const orgRows = (rows, org = ORG) => rows.map(row => ({ organizationId: org, ...row }));
 const params = (letter, values = {}) => ({ ...Object.fromEntries(PROBES[letter][1].params.map(name => [name, null])), ...values });
 const run = (env, letter, values, extra) => env.report(PROBES[letter][0], params(letter, values), extra);
 async function orgOverlay(db, on = true) {
@@ -105,8 +112,11 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
   assert.deepEqual(await one('SELECT app_private.hermes_w2_param_names_v1() v'), Object.keys(W2_PARAMS));
   for (const key of [...W2_READ_KEY_LIST, ...W2_REUSED_KEYS, 'users.view', 'customers.create', 'chat_zalo.view'])
     assert.equal(await one('SELECT app_private.hermes_w2_permission_kind_v1($1) v', [key]), w2PermissionKind(key), key);
-  assert.deepEqual(['assistant.bank_events.read', 'assistant.salary.self', 'notifications.view', 'invoices.view', 'users.view'].map(w2PermissionKind),
-    ['platform', 'self', 'self', 'company', null]);
+  assert.deepEqual(['assistant.bank_events.read', 'assistant.salary.self', 'notifications.view', 'invoices.view', 'materials.view', 'cashbooks.view', 'users.view']
+    .map(w2PermissionKind), ['platform', 'self', 'self', 'company', 'organization', 'organization', null]);
+  // Loại organization = resource organization_scope (capability-contract), khớp SQL.
+  assert.deepEqual(await one('SELECT app_private.hermes_w2_org_keys_v1() v'), [...W2_ORG_KEYS]);
+  assert.equal(W2_ORG_KEYS.length, 9);
   const rows = (await db.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1) ORDER BY capability', [W2_READ_KEY_LIST])).rows;
   assert.deepEqual(rows, sorted(W2_READ_KEY_LIST).map(capability => ({ capability, mode: 'read', enabled: false })), 'seed tắt, mode read');
   assert.equal(DOMAIN_FAMILIES.v3.capabilitiesRpc, 'hermes_domain_capabilities_v3');
@@ -114,7 +124,7 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
   // Hai tool meta đi lối vào INVOKER riêng; khoá vẫn do capabilities v3 cấp.
   assert.deepEqual([domainFamily('report').readRpc, domainFamily('report_list').readRpc, DOMAIN_FAMILIES.w2.capabilitiesRpc],
     ['hermes_w2_read_v1', 'hermes_w2_read_v1', null]);
-  assert.deepEqual(w2MigrationPaths({ packages: [] }), [W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH]);
+  assert.deepEqual(w2MigrationPaths({ packages: [] }), [W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH]);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 
@@ -124,7 +134,7 @@ test('cấu trúc: v3 = bản 20261017033630 + hai dòng định tuyến; file s
     "  IF p_domain IN ('report','report_list') THEN RETURN app_private.hermes_w2_gate_v1(p_binding,p_domain,p_input); END IF;\n";
   assert.equal(live.split(prefix).length, 2, 'đúng một khối định tuyến');
   assert.equal(live.replace(prefix, ''), reviewed, 'mọi dòng khác của v3 giữ nguyên');
-  for (const sql of [foundation, fixes, invoker]) {
+  for (const sql of [foundation, fixes, invoker, orgfence]) {
     assert.doesNotMatch(stripComments(sql), /copilot/i);
     assert.doesNotMatch(stripComments(sql), /\bDROP\b|ALTER TABLE|UPDATE app_private\.hermes_capabilities|enabled\s*=\s*true/i);
   }
@@ -134,15 +144,18 @@ test('cấu trúc: v3 = bản 20261017033630 + hai dòng định tuyến; file s
     'app_private.hermes_w2_extend_options_v1', ...['a', 'b', 'c', 'd'].map(letter => `app_private.hermes_w2${letter}_catalog_v1`),
     'app_private.hermes_w2_param_names_v1', 'app_private.hermes_w2_catalog_v1', 'app_private.hermes_w2_params_v1',
     ...['a', 'b', 'c', 'd'].map(letter => `app_private.hermes_w2${letter}_read_v1`), 'app_private.hermes_w2_gate_v1'];
-  const ADDED = ['app_private.hermes_w2_reused_keys_v1', 'app_private.hermes_w2_permission_kind_v1'];
+  const ADDED = ['app_private.hermes_w2_reused_keys_v1', 'app_private.hermes_w2_permission_kind_v1', 'app_private.hermes_w2_org_keys_v1'];
   const READERS = ['a', 'b', 'c', 'd'].map(letter => `app_private.hermes_w2${letter}_read_v1`);
   // INVOKER: lối vào + hàm đọc của gói. authenticated gọi được: lối vào, hai bước DEFINER, hàm gói (qua OID).
   const INVOKER = ['public.hermes_w2_read_v1', ...READERS];
   const CALLER = [...INVOKER, 'app_private.hermes_w2_scope_v1', 'app_private.hermes_w2_finish_v1'];
   assert.deepEqual(sorted(created(foundation)), sorted([...PUBLIC, ...PRIVATE]), 'file nền: chỉ hàm của nền đợt 2');
-  assert.deepEqual(sorted(created(fixes)), sorted([...ADDED, 'app_private.hermes_w2_catalog_v1', 'app_private.hermes_w2_gate_v1']), 'file sửa: cổng + bảng gom + 2 hàm mới');
+  assert.deepEqual(sorted(created(fixes)), sorted(['app_private.hermes_w2_reused_keys_v1', 'app_private.hermes_w2_permission_kind_v1',
+    'app_private.hermes_w2_catalog_v1', 'app_private.hermes_w2_gate_v1']), 'file sửa: cổng + bảng gom + 2 hàm mới');
   assert.deepEqual(sorted(created(invoker)), sorted([...CALLER, 'app_private.hermes_w2_gate_v1']), 'file INVOKER: lối vào, hai bước, khung gói, cổng cũ ngừng');
-  assert.match(block(invoker, 'app_private.hermes_w2_scope_v1'), /ORDER BY e\.key COLLATE "C"/, 'P3: mục lục theo thứ tự byte như broker');
+  assert.deepEqual(sorted(created(orgfence)), sorted(['app_private.hermes_w2_org_keys_v1', 'app_private.hermes_w2_permission_kind_v1',
+    'app_private.hermes_w2_catalog_v1', 'app_private.hermes_w2_scope_v1', 'app_private.hermes_w2_finish_v1']), 'file rào công ty: đúng 5 hàm, lối vào/hàm gói không đổi');
+  assert.match(block(orgfence, 'app_private.hermes_w2_scope_v1'), /ORDER BY e\.key COLLATE "C"/, 'P3: mục lục theo thứ tự byte như broker');
   const retired = block(invoker, 'app_private.hermes_w2_gate_v1');
   assert.ok(retired.includes("\nBEGIN\n  RAISE EXCEPTION 'hermes_domain_invalid' USING ERRCODE='22023';\nEND $fn$;") && !/hermes_w2[a-d]?_(read|catalog|scope)_v1/.test(retired),
     'cổng DEFINER cũ chỉ còn 22023, không gọi gì');
@@ -180,7 +193,47 @@ test('hàng rào gói (P2-4): file dải gói chỉ tạo hermes_w2<gói>_* ho�
   assert.ok(check({ name: '20261018020000_hermes_w2b_x_v1.sql', sql: fn('public.shared_v1') }, { name: '20261018030000_hermes_w2c_x_v1.sql', sql: fn('public.shared_v1') })
     .length > 0, 'hai gói cùng tạo một hàm dùng chung');
   assert.deepEqual(check({ name: '20261018030000_hermes_w2c_x_v1.sql', sql: '-- CREATE OR REPLACE FUNCTION app_private.hermes_w2_gate_v1(\n' }), [], 'chú thích không tính');
+  // Mở rộng sau review cổng INVOKER: tên trong ngoặc kép, ALTER FUNCTION, DO … EXECUTE, tên thiếu schema.
+  const A = '20261018010000_hermes_w2a_x_v1.sql';
+  for (const [sql, label] of [['CREATE OR REPLACE FUNCTION "app_private"."hermes_w2_scope_v1"(p jsonb) RETURNS jsonb LANGUAGE sql AS $fn$ SELECT p $fn$;', 'ngoặc kép'],
+    ['CREATE FUNCTION app_private . hermes_w2_finish_v1 (p jsonb) RETURNS jsonb LANGUAGE sql AS $fn$ SELECT p $fn$;', 'khoảng trắng quanh dấu chấm'],
+    ['ALTER FUNCTION app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text) SECURITY INVOKER;', 'ALTER hàm nền'],
+    ['ALTER FUNCTION app_private.hermes_w2a_read_v1(text,jsonb,jsonb) SECURITY DEFINER;', 'ALTER hàm gói ngoài OWNER'],
+    ['ALTER ROUTINE "public"."hermes_w2_read_v1"(jsonb,text,jsonb) RENAME TO x;', 'ALTER ROUTINE ngoặc kép'],
+    ["DO $x$ BEGIN EXECUTE 'CREATE OR REPLACE FUNCTION app_private.hermes_w2_' || 'gate_v1() RETURNS int LANGUAGE sql AS ''SELECT 1'''; END $x$;", 'DO … EXECUTE'],
+    ['CREATE OR REPLACE FUNCTION hermes_w2a_helper_v1(p jsonb) RETURNS jsonb LANGUAGE sql AS $fn$ SELECT p $fn$;', 'thiếu schema']])
+    assert.ok(check({ name: A, sql }).length > 0, label);
+  assert.deepEqual(check({ name: A, sql: fn('app_private.hermes_w2a_read_v1') + 'ALTER FUNCTION app_private.hermes_w2a_read_v1(text,jsonb,jsonb) OWNER TO postgres;' +
+    'DO $requires$ BEGIN IF to_regprocedure(\'app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)\') IS NULL THEN RAISE EXCEPTION \'x\'; END IF; END $requires$;' }),
+  [], 'ALTER OWNER hàm của gói, DO không EXECUTE: được');
+  assert.deepEqual(check({ name: A, sql: fn('public.receivable_aging_v1') }, { name: '20261018010100_hermes_w2a_review_fixes_v1.sql', sql: fn('public.receivable_aging_v1') }),
+    [], 'sửa sau review trong cùng dải gói được thay hàm dùng chung của mình');
 });
+
+// Định nghĩa SỐNG (catalog PGlite sau MỌI migration đợt 2 có trong repo, kể cả của gói) của từng hàm nền phải
+// trùng bản định nghĩa cuối ở dải nền: chạy lại đúng câu đó trong ca phải không đổi gì — bắt cả thay đổi
+// bằng SQL động / ALTER mà regex hàng rào không thấy.
+test('hàng rào gói (catalog): định nghĩa sống của hàm nền = bản cuối ở dải nền', () => inCase(async ({ db }) => {
+  const sources = w2AllMigrations().filter(({ name }) => W2_RANGES.foundation.test(name));
+  // Câu CREATE kết thúc ở "$fn$;" (plpgsql/sql) hoặc "\nEND;" (thân SQL chuẩn), cái nào tới trước.
+  const statement = (sql, fn) => {
+    const start = sql.lastIndexOf(`CREATE OR REPLACE FUNCTION ${fn}(`);
+    if (start < 0) return null;
+    const [at, mark] = [[sql.indexOf('$fn$;', start), '$fn$;'], [sql.indexOf('\nEND;', start), '\nEND;']].filter(([index]) => index >= 0)
+      .sort((x, y) => x[0] - y[0])[0];
+    return sql.slice(start, at + mark.length);
+  };
+  const live = async fn => (await db.query(`SELECT pg_get_functiondef(p.oid) def,p.proowner::regrole::text owner FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname||'.'||p.proname=$1`, [fn])).rows;
+  for (const fn of W2_FOUNDATION_FUNCTIONS) {
+    const last = [...sources].reverse().map(({ sql }) => statement(sql, fn)).find(Boolean);
+    assert.ok(last, `nguồn ${fn}`);
+    const before = await live(fn);
+    assert.equal(before.length, 1, `${fn}: đúng một hàm`);
+    await db.exec(last);
+    assert.deepEqual(await live(fn), before, `${fn}: định nghĩa sống = bản cuối ở dải nền`);
+  }
+}));
 
 test('capabilities v3: đúng 35 khoá; registry, chính sách, CRM là ba hàng rào; self không trả toà; hai khoá Hermes-only theo cổng web', () => inCase(async env => {
   const { db } = env;
@@ -230,7 +283,7 @@ test('định tuyến: mỗi mã sang đúng hàm của gói với ctx do cổng
   const { db } = env;
   await installProbes(db);
   const rows = await run(env, 'a');
-  assert.deepEqual(rows.items, [{ package: 'a', report: 'probe_rows' }]);
+  assert.deepEqual(rows.items, [{ package: 'a', report: 'probe_rows', buildingId: BUILDING }], 'organizationId (trường rào) đã gỡ');
   assert.deepEqual([rows.source, rows.organizationId, rows.domain], ['crm.probe_rows', ORG, 'report']);
   assert.deepEqual(rows.fence, { buildings: [BUILDING], cashbooks: [], orgWide: false });
   const [call] = await calls(db);
@@ -239,7 +292,7 @@ test('định tuyến: mỗi mã sang đúng hàm của gói với ctx do cổng
   assert.deepEqual(call.ctx, { organizationId: ORG, userId: USER, report: 'probe_rows', permission: 'vehicles.view', scope: 'rows',
     buildings: [BUILDING], requestedBuildingId: null, overlayOrg: false, orgWide: false, isSuperadmin: false, today: '2026-10-16',
     scopes: { 'customers.view': [BUILDING] }, cashbooks: [] }, 'CRM A+B ∩ overlay A; khoá phụ cùng cách tính');
-  assert.deepEqual((await run(env, 'd', { kind: 'water' })).items, [{ package: 'd', report: 'probe_buildings' }]);
+  assert.deepEqual((await run(env, 'd', { kind: 'water' })).items, [{ package: 'd', report: 'probe_buildings', buildingId: BUILDING }]);
   const self = await run(env, 'c', { month: '2026-09' });
   assert.deepEqual([self.items, self.fence], [[{ package: 'c', report: 'probe_self' }], { buildings: [], cashbooks: [], orgWide: false }]);
   assert.deepEqual((await lastCtx(db)).buildings, [], 'self: không toà, vẫn đọc');
@@ -271,7 +324,7 @@ const ENTRY = 'SELECT public.hermes_w2_read_v1($1::jsonb,$2::text,$3::jsonb) res
 const entryArgs = (domain = 'report', input = { report: 'probe_rows', params: params('a'), limit: 20, offset: 0 }) =>
   [JSON.stringify(binding), domain, JSON.stringify(input)];
 const FINISH = 'SELECT app_private.hermes_w2_finish_v1($1::jsonb,$2::jsonb,$3::jsonb) result';
-const finishPlan = (extra = {}) => ({ domain: 'report', connectionId: binding.connectionId, report: 'probe_rows', source: 'crm.probe_rows', scope: 'rows',
+const finishPlan = (extra = {}) => ({ domain: 'report', connectionId: binding.connectionId, organizationId: ORG, report: 'probe_rows', source: 'crm.probe_rows', scope: 'rows',
   limit: 20, offset: 0, unavailable: null, fence: { buildings: [BUILDING], cashbooks: [], orgWide: false }, package: 'a', params: {}, ctx: {}, ...extra });
 const EMPTY = { rows: [], summary: null, sourceCapped: false, unavailable: null };
 
@@ -286,9 +339,14 @@ test('INVOKER + RLS: hàm gói đọc dưới RLS của người hỏi; vai ch�
     INSERT INTO public.fixture_w2_rls VALUES(1,'${USER}'),(2,'${FOREIGN}'),(3,'${USER}');
     CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
       RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
-      BEGIN RETURN jsonb_build_object('rows',(SELECT COALESCE(jsonb_agg(jsonb_build_object('n',n) ORDER BY n),'[]'::jsonb) FROM public.fixture_w2_rls),
+      BEGIN RETURN jsonb_build_object('rows',(SELECT COALESCE(jsonb_agg(jsonb_build_object('n',n,'buildingId',p_ctx->'buildings'->0,
+        'organizationId',p_ctx->'organizationId') ORDER BY n),'[]'::jsonb) FROM public.fixture_w2_rls),
         'summary',NULL,'sourceCapped',false,'unavailable',NULL); END $fn$;`);
-  assert.deepEqual((await run(env, 'a')).items, [{ n: 1 }, { n: 3 }], 'RLS của người hỏi: không thấy hàng người khác');
+  assert.deepEqual((await run(env, 'a')).items, [{ n: 1, buildingId: BUILDING }, { n: 3, buildingId: BUILDING }], 'RLS của người hỏi: không thấy hàng người khác');
+  // Gọi THẲNG hàm gói / bước kết thúc dưới vai authenticated (như PostgREST): không tới được (42501).
+  for (const sql of ['SELECT app_private.hermes_w2a_read_v1($1,$2::jsonb,$3::jsonb) result', 'SELECT app_private.hermes_w2_finish_v1($1::jsonb,$2::jsonb,$3::jsonb) result'])
+    await assert.rejects(env.call(sql, sql.includes('finish') ? [JSON.stringify(binding), JSON.stringify(finishPlan()), JSON.stringify(EMPTY)]
+      : ['probe_rows', JSON.stringify(params('a')), '{}']), code('42501'), sql);
   await assert.rejects(asOwner(db, ENTRY, entryArgs()), code('42501'), 'vai chủ hàm (bỏ qua RLS) ⇒ từ chối trước khi gọi gói');
   // authenticated không gọi thẳng bước nào trong app_private (không USAGE); anon không gọi được lối vào.
   await assert.rejects(env.call(`SELECT app_private.hermes_w2_scope_v1($1::jsonb,'report',$2::jsonb,'authenticated') result`,
@@ -306,6 +364,8 @@ test('INVOKER + RLS: hàm gói đọc dưới RLS của người hỏi; vai ch�
   assert.deepEqual((await asOwner(db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan()), JSON.stringify(EMPTY)])).items, []);
   await assert.rejects(asOwner(db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ connectionId: uid(77) })), JSON.stringify(EMPTY)]),
     code('42501'), 'kết nối khác bước 1');
+  await assert.rejects(asOwner(db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ organizationId: FOREIGN })), JSON.stringify(EMPTY)]),
+    code('42501'), 'công ty khác bước 1');
   await assert.rejects(asOwner(db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ unavailable: 'no_building_scope', package: null })),
     JSON.stringify(EMPTY)]), code('XX000'), 'bước 1 báo thiếu phạm vi mà vẫn có kết quả gói');
   // Broker: adapter gọi đúng RPC lối vào mới (mục lục, vì sổ JS sản phẩm chưa có báo cáo).
@@ -419,27 +479,86 @@ test('rào đầu ra (P2-2a): hàng nêu toà ngoài ctx.buildings, null khi kh�
   const { db } = env;
   await installProbes(db);
   for (const rows of [[{ buildingId: OTHER_BUILDING }], [{ buildingId: null }], [{ buildingId: 'not-a-uuid' }], [{ buildingId: 7 }],
-    [{ buildingIds: [BUILDING, OTHER_BUILDING] }], [{ buildingIds: BUILDING }], [{ buildingIds: [null] }]]) {
-    await rowsReply(db, 'a', rows);
+    [{ buildingId: BUILDING, buildingIds: [BUILDING, OTHER_BUILDING] }], [{ buildingId: BUILDING, buildingIds: BUILDING }],
+    [{ buildingId: BUILDING, buildingIds: [null] }]]) {
+    await rowsReply(db, 'a', orgRows(rows));
     await assert.rejects(run(env, 'a'), code('42501'), JSON.stringify(rows));
   }
-  for (const rows of [[{ buildingId: BUILDING }], [{ buildingIds: [BUILDING] }], [{ buildingIds: [] }], [{ total: 1 }]]) {
-    await rowsReply(db, 'a', rows);
-    assert.deepEqual((await run(env, 'a')).items, rows, JSON.stringify(rows));
+  for (const rows of [[{ buildingId: BUILDING }], [{ buildingId: BUILDING, buildingIds: [BUILDING] }], [{ buildingId: BUILDING, buildingIds: [] }],
+    [{ buildingId: BUILDING, total: 1 }]]) {
+    await rowsReply(db, 'a', orgRows(rows));
+    assert.deepEqual((await run(env, 'a')).items, rows, `${JSON.stringify(rows)}: organizationId đã gỡ`);
   }
-  await rowsReply(db, 'a', [{ buildingId: BUILDING }]);
+  // (P2-a) Theo toà: mọi hàng nêu toà; báo cáo công ty: mọi hàng nêu công ty — thiếu ⇒ khuôn sai (XX000).
+  for (const rows of [orgRows([{ total: 1 }]), orgRows([{ buildingIds: [BUILDING] }]), [{ buildingId: BUILDING }]]) {
+    await rowsReply(db, 'a', rows);
+    await assert.rejects(run(env, 'a'), code('XX000'), `thiếu trường rào: ${JSON.stringify(rows)}`);
+  }
+  await rowsReply(db, 'a', orgRows([{ buildingId: BUILDING }]));
   await assert.rejects(run(env, 'a', { roomId: OTHER_ROOM }), code('42501'), 'thu hẹp xong vẫn rào');
   await orgOverlay(db); await crmOrgWide(db, 'vehicles.view');
   for (const rows of [[{ buildingId: null }], [{ buildingId: OTHER_BUILDING }]]) {
-    await rowsReply(db, 'a', rows);
+    await rowsReply(db, 'a', orgRows(rows));
     assert.deepEqual((await run(env, 'a')).items, rows, `org_wide: ${JSON.stringify(rows)}`);
   }
-  await rowsReply(db, 'a', [{ buildingId: null }]);
+  await rowsReply(db, 'a', orgRows([{ buildingId: null }]));
   await assert.rejects(run(env, 'a', { buildingId: BUILDING }), code('42501'), 'đã thu hẹp toà ⇒ hết org_wide ⇒ null bị chặn');
   await crmOrgWide(db, 'materials.view');
-  for (const [letter, values, rows] of [['b', {}, [{ buildingId: BUILDING }]], ['b', {}, [{ buildingIds: [] }]], ['c', { month: '2026-09' }, [{ buildingId: BUILDING }]]]) {
+  for (const [letter, values, rows] of [['b', {}, orgRows([{ buildingId: BUILDING }])], ['b', {}, orgRows([{ buildingIds: [] }])],
+    ['c', { month: '2026-09' }, [{ buildingId: BUILDING }]]]) {
     await rowsReply(db, letter, rows);
     await assert.rejects(run(env, letter, values), code('42501'), `${letter}: báo cáo không theo toà nêu toà`);
+  }
+}));
+
+// RLS kiểu web (thành viên công ty qua my_org_ids, super admin thấy tất cả) RỘNG hơn công ty của kết nối: hàm
+// gói INVOKER "quên" lọc công ty phải bị cổng chặn (42501), lọc đúng thì qua.
+const W2_ORG_TABLE = `CREATE TABLE public.fixture_w2_org_rows(n int PRIMARY KEY,org uuid NOT NULL,building uuid);
+  ALTER TABLE public.fixture_w2_org_rows ENABLE ROW LEVEL SECURITY;
+  CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+    SELECT COALESCE(array_agg(m.organization_id ORDER BY m.organization_id),'{}'::uuid[]) FROM public.organization_memberships m
+    WHERE m.user_id=auth.uid() AND m.status='ACTIVE' AND m.revoked_at IS NULL$$;
+  CREATE FUNCTION public.fixture_is_super_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+    SELECT EXISTS(SELECT 1 FROM public.super_admins s WHERE s.user_id=auth.uid())$$;
+  CREATE POLICY fixture_w2_org_rows_web ON public.fixture_w2_org_rows FOR SELECT TO authenticated
+    USING (org=ANY(public.my_org_ids()) OR public.fixture_is_super_admin());
+  GRANT SELECT ON public.fixture_w2_org_rows TO authenticated;`;
+// filter: biểu thức SQL thêm vào WHERE của hàm gói ('true' = quên lọc công ty).
+const orgReader = (letter, filter, building) => `CREATE OR REPLACE FUNCTION app_private.hermes_w2${letter}_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
+  RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
+  BEGIN RETURN jsonb_build_object('rows',(SELECT COALESCE(jsonb_agg(jsonb_build_object('n',n,'organizationId',org)${building ? "||jsonb_build_object('buildingId',building)" : ''}
+    ORDER BY n),'[]'::jsonb) FROM public.fixture_w2_org_rows WHERE ${filter}),'summary',NULL,'sourceCapped',false,'unavailable',NULL); END $fn$;`;
+test('công ty (P2-a): RLS super admin / RLS web phủ công ty khác rộng hơn kết nối; hàm gói quên lọc công ty ⇒ 42501, lọc đúng ⇒ chỉ công ty kết nối', () => inCase(async env => {
+  const { db } = env;
+  await installProbes(db);
+  await orgOverlay(db); await crmOrgWide(db, 'materials.view'); await crmOrgWide(db, 'vehicles.view');
+  await db.exec(W2_ORG_TABLE);
+  await db.exec(`INSERT INTO public.fixture_w2_org_rows VALUES(1,'${ORG}','${BUILDING}'),(2,'${FOREIGN}',null),(3,'${ORG}','${OTHER_BUILDING}'),(4,'${FOREIGN}','${BUILDING}')`);
+  const visible = async () => (await env.call('SELECT (SELECT array_agg(n ORDER BY n) FROM public.fixture_w2_org_rows) result', [])) ?? [];
+  assert.deepEqual(await visible(), [1, 3], 'RLS: chỉ công ty là thành viên');
+  // Người thường là thành viên ACTIVE của hai công ty: Hermes từ chối cả lượt trước khi gọi gói.
+  await db.exec('SAVEPOINT two_orgs');
+  await db.exec(`INSERT INTO public.organization_memberships(id,user_id,organization_id,status) VALUES('${uid(60)}','${USER}','${FOREIGN}','ACTIVE')`);
+  await assert.rejects(run(env, 'b'), error => error.code === '42501' && /hermes_ordinary_org_ambiguous/.test(error.message), 'người thường hai công ty');
+  await db.exec('ROLLBACK TO SAVEPOINT two_orgs; RELEASE SAVEPOINT two_orgs');
+  // RLS rộng hơn kết nối: super admin (là thành viên vẫn một công ty), hoặc RLS web phủ công ty khác (my_org_ids).
+  for (const [label, widen] of [['RLS web phủ công ty khác', `CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql STABLE
+      SECURITY DEFINER SET search_path=pg_catalog,public AS $$SELECT ARRAY['${ORG}','${FOREIGN}']::uuid[]$$`],
+    ['super admin', `INSERT INTO public.super_admins VALUES('${USER}')`]]) {
+    await db.exec('SAVEPOINT widen');
+    await db.exec(widen);
+    assert.deepEqual(await visible(), [1, 2, 3, 4], `${label}: RLS thấy cả công ty khác`);
+    // organization (vật tư): hàng không gắn toà — chỉ cột công ty phân biệt được.
+    await db.exec(orgReader('b', 'true', false));
+    await assert.rejects(run(env, 'b'), code('42501'), `${label}: quên lọc công ty (organization)`);
+    // rows: toà null ở công ty khác lọt rào toà khi org_wide — rào công ty chặn.
+    await db.exec(orgReader('a', 'building IS NULL OR building IS NOT NULL', true));
+    await assert.rejects(run(env, 'a'), code('42501'), `${label}: quên lọc công ty (rows)`);
+    await db.exec(orgReader('b', "org=(p_ctx->>'organizationId')::uuid", false));
+    assert.deepEqual((await run(env, 'b')).items, [{ n: 1 }, { n: 3 }], `${label}: lọc đúng ⇒ chỉ công ty kết nối, organizationId đã gỡ`);
+    await db.exec(orgReader('a', "org=(p_ctx->>'organizationId')::uuid", true));
+    assert.deepEqual((await run(env, 'a')).items, [{ n: 1, buildingId: BUILDING }, { n: 3, buildingId: OTHER_BUILDING }], `${label}: rows lọc đúng`);
+    await db.exec('ROLLBACK TO SAVEPOINT widen; RELEASE SAVEPOINT widen');
   }
 }));
 
@@ -464,14 +583,14 @@ test('org_wide, sổ quỹ, nền tảng (P2-3): organization đòi CRM toàn c�
   await cash({ cashbookId: CASHBOOK });
   assert.deepEqual((await lastCtx(db)).cashbooks, [CASHBOOK]);
   for (const rows of [[{ cashbookId: uid(8) }], [{ cashbookId: null }]]) {
-    await rowsReply(db, 'b', rows);
+    await rowsReply(db, 'b', orgRows(rows));
     await assert.rejects(cash(), code('42501'), `sổ ngoài phạm vi: ${JSON.stringify(rows)}`);
   }
-  await rowsReply(db, 'b', [{ cashbookId: CASHBOOK }]);
-  assert.equal((await cash()).items.length, 1);
+  await rowsReply(db, 'b', orgRows([{ cashbookId: CASHBOOK }]));
+  assert.deepEqual((await cash()).items, [{ cashbookId: CASHBOOK }]);
   await orgOverlay(db, false);
   assert.equal((await cash()).unavailable, 'organization_scope_required', 'sổ CRM nhưng kết nối không chọn Toàn tổ chức');
-  await orgOverlay(db); await crmOrgWide(db, 'cashbooks.view'); await rowsReply(db, 'b', [{ cashbookId: uid(8) }]);
+  await orgOverlay(db); await crmOrgWide(db, 'cashbooks.view'); await rowsReply(db, 'b', orgRows([{ cashbookId: uid(8) }]));
   assert.deepEqual((await cash()).fence.orgWide, true, 'CRM toàn công ty: mọi sổ của công ty');
   // platform: biến động số dư toàn nền tảng, chỉ super admin.
   await assert.rejects(env.report('probe_bank', {}), code('42501'), 'không phải super admin');
@@ -481,9 +600,9 @@ test('org_wide, sổ quỹ, nền tảng (P2-3): organization đòi CRM toàn c�
 }));
 
 // Cùng một khai báo cho JS (w2Report/w2Params) và SQL (bảng thăm dò): mọi tham số sai bị cả hai từ chối.
-const JS_PROBE = { a: w2Report({ ...PROBES.a[1], title: 'thăm dò', fields: { package: () => true, report: () => true } }),
+const JS_PROBE = { a: w2Report({ ...PROBES.a[1], title: 'thăm dò', fields: { package: () => true, report: () => true, buildingId: () => true } }),
   c: w2Report({ ...PROBES.c[1], title: 'thăm dò', fields: { package: () => true, report: () => true } }),
-  d: w2Report({ ...PROBES.d[1], title: 'thăm dò', fields: { package: () => true, report: () => true } }) };
+  d: w2Report({ ...PROBES.d[1], title: 'thăm dò', fields: { package: () => true, report: () => true, buildingId: () => true } }) };
 test('tham số: SQL và JS cùng luật (tên, kiểu, danh sách status/kind, bắt buộc, khoảng ngày ≤ 366)', () => inCase(async env => {
   const { db } = env;
   await installProbes(db);
@@ -509,12 +628,14 @@ test('tham số: SQL và JS cùng luật (tên, kiểu, danh sách status/kind, 
 test('kết quả gói: phân trang chung (offset/limit/≈40 KB), khuôn sai ⇒ XX000, unavailable của gói đi nguyên', () => inCase(async env => {
   const { db } = env;
   await installProbes(db);
-  await reply(db, 'a', { rows: Array.from({ length: 60 }, (_, n) => ({ n })), summary: { total: 60 }, sourceCapped: true, unavailable: null });
+  await reply(db, 'a', { rows: orgRows(Array.from({ length: 60 }, (_, n) => ({ n, buildingId: BUILDING }))), summary: { total: 60 }, sourceCapped: true, unavailable: null });
   let page = await run(env, 'a');
-  assert.deepEqual([page.items.length, page.items[0], page.offset, page.nextOffset, page.summary, page.sourceCapped], [20, { n: 0 }, 0, 20, { total: 60 }, true]);
+  assert.deepEqual([page.items.length, page.items[0], page.offset, page.nextOffset, page.summary, page.sourceCapped],
+    [20, { n: 0, buildingId: BUILDING }, 0, 20, { total: 60 }, true]);
   page = await run(env, 'a', {}, { offset: 40, limit: 50 });
   assert.deepEqual([page.items.length, page.items[0].n, page.nextOffset], [20, 40, null]);
-  await reply(db, 'a', { rows: Array.from({ length: 30 }, (_, n) => ({ n, text: '"'.repeat(1500) })), summary: null, sourceCapped: false, unavailable: null });
+  await reply(db, 'a', { rows: orgRows(Array.from({ length: 30 }, (_, n) => ({ n, buildingId: BUILDING, text: '"'.repeat(1500) }))), summary: null,
+    sourceCapped: false, unavailable: null });
   page = await run(env, 'a', {}, { limit: 50 });
   assert.ok(page.items.length < 30 && page.nextOffset === page.items.length, 'dừng sớm theo byte sau escape');
   await reply(db, 'a', { rows: [], summary: null, sourceCapped: false, unavailable: 'source_unavailable' });
@@ -529,7 +650,7 @@ test('kết quả gói: phân trang chung (offset/limit/≈40 KB), khuôn sai �
   }
   await reply(db, 'c', { rows: [], summary: null, sourceCapped: false, unavailable: 'no_building_scope' });
   await assert.rejects(run(env, 'c', { month: '2026-09' }), code('XX000'), 'self không thể "hết toà"');
-  await reply(db, 'a', { rows: [{ text: 'x'.repeat(70000) }], summary: null, sourceCapped: false, unavailable: null });
+  await reply(db, 'a', { rows: orgRows([{ buildingId: BUILDING, text: 'x'.repeat(70000) }]), summary: null, sourceCapped: false, unavailable: null });
   await assert.rejects(run(env, 'a'), code('PT413'), 'một hàng quá trần ⇒ result_too_large');
 }));
 
@@ -549,7 +670,9 @@ test('bảng báo cáo: trùng mã, khai báo sai khuôn, khoá ↔ scope sai (P
     { b: ['probe_org', { ...org, scope: 'platform' }] }, { a: ['probe_rows', { ...spec, permission: 'users.view' }] },
     { a: ['probe_rows', { ...spec, permission: 'customers.create' }] },
     // Tham số gắn toà chỉ ở rows/buildings.
-    { b: ['probe_org', { ...org, params: ['roomId'] }] }, { b: ['probe_org', { ...org, scope: 'cashbooks', params: ['areaId'] }] }];
+    { b: ['probe_org', { ...org, params: ['roomId'] }] }, { b: ['probe_org', { ...org, scope: 'cashbooks', params: ['areaId'] }] },
+    // P2-b: khoá dữ liệu không gắn toà (organization_scope) chỉ scope organization/cashbooks.
+    { d: ['probe_buildings', { ...PROBES.d[1], permission: 'materials.view' }] }, { a: ['probe_rows', { ...spec, permission: 'salary.view' }] }];
   for (const change of broken) {
     const [letter] = Object.keys(change);
     await db.exec(catalogSql(letter, Object.fromEntries([...(change[letter][0] === PROBES[letter]?.[0] ? [] : [PROBES[letter]]), change[letter]])));
@@ -629,93 +752,133 @@ test('ghép nối: createDomainAuthAdapter nhận khuôn capabilities v3 thật 
 }));
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào; cùng phép thử mà bản sống từ chối thì bản đột biến phải lọt. Đột biến trên
-// file chứa định nghĩa SỐNG: bước kiểm quyền/kết thúc (cổng) ở file INVOKER; bảng gom ở file sửa; grant, tham
-// số, options ở file nền.
-const LIVE = { base: foundation, fixes, invoker };
+// file chứa định nghĩa SỐNG: bước kiểm quyền, bước kết thúc, bảng gom, loại khoá ở file rào công ty (000700);
+// grant, tham số, options ở file nền.
+const LIVE = { base: foundation, orgfence };
 const mutate = (file, from, to) => { assert.equal(LIVE[file].split(from).length, 2, `anchor: ${from}`); return { file, text: LIVE[file].replace(from, () => to) }; };
+const ORG_PROBES = [
+  { name: 'P2-a: hàng theo toà phải nêu buildingId', sql: mutate('orgfence', `      IF v_scope IN ('rows','buildings') AND EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r WHERE NOT r ? 'buildingId')
+        THEN RAISE EXCEPTION 'hermes_w2_package_result_invalid' USING ERRCODE='XX000'; END IF;\n`, ''),
+    run: async env => { await installProbes(env.db); await rowsReply(env.db, 'a', orgRows([{ total: 1 }])); return (await run(env, 'a')).items.length === 1; } },
+  { name: 'P2-a: hàng báo cáo công ty phải nêu organizationId', sql: mutate('orgfence',
+    `      IF v_scope NOT IN ('self','platform') AND EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r WHERE NOT r ? 'organizationId')
+        THEN RAISE EXCEPTION 'hermes_w2_package_result_invalid' USING ERRCODE='XX000'; END IF;\n`, ''),
+    run: async env => { await installProbes(env.db); await orgOverlay(env.db); await crmOrgWide(env.db, 'materials.view');
+      await rowsReply(env.db, 'b', [{ n: 1 }]); return (await run(env, 'b')).items.length === 1; } },
+  { name: 'P2-a: hàng công ty khác ⇒ 42501', sql: mutate('orgfence', `      IF v_scope<>'platform' AND EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r
+          WHERE r ? 'organizationId' AND NOT`, `      IF false AND EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r
+          WHERE r ? 'organizationId' AND NOT`),
+    run: async env => { await installProbes(env.db); await orgOverlay(env.db); await crmOrgWide(env.db, 'materials.view');
+      await rowsReply(env.db, 'b', orgRows([{ n: 1 }], FOREIGN)); return (await run(env, 'b')).items.length === 1; } },
+  { name: 'P2-a: bước kết thúc kiểm lại kết nối/phiên (cả khối)', sql: mutate('orgfence',
+    `  c:=app_private.hermes_private_command_connection_v1(p_binding->>'tokenDigest');
+  SELECT * INTO session FROM app_private.hermes_sessions WHERE id=c.credential_ref;
+  IF c.id::text IS DISTINCT FROM p_plan->>'connectionId' OR c.user_id IS DISTINCT FROM auth.uid()
+    OR c.organization_id::text IS DISTINCT FROM p_plan->>'organizationId' OR NOT app_private.hermes_session_gate_v1(session)
+    THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;\n`, ''),
+    run: async env => (await asOwner(env.db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ connectionId: uid(77), organizationId: FOREIGN })),
+      JSON.stringify(EMPTY)])).items.length === 0 },
+  { name: 'P2-a: bước kết thúc đúng công ty bước 1', sql: mutate('orgfence',
+    `    OR c.organization_id::text IS DISTINCT FROM p_plan->>'organizationId' OR NOT`, `    OR NOT`),
+    run: async env => (await asOwner(env.db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ organizationId: FOREIGN })),
+      JSON.stringify(EMPTY)])).items.length === 0 },
+  { name: 'P2-b: khoá organization chỉ scope organization/cashbooks', sql: mutate('orgfence',
+    `      IF v_kind='organization' AND v_spec->>'scope' NOT IN ('organization','cashbooks') THEN`, `      IF false THEN`),
+    run: async env => { await installProbes(env.db);
+      await env.db.exec(catalogSql('d', Object.fromEntries([['probe_buildings', { ...PROBES.d[1], permission: 'materials.view' }]])));
+      return (await env.reportList()).items.length > 0; } },
+  // Hồi quy: sổ quỹ CRM phải tính cho cả khoá loại organization (cashbooks.view) — bỏ đi thì sổ quỹ hết đọc được.
+  { name: 'P2-b hồi quy: sổ quỹ CRM cho khoá organization', sql: mutate('orgfence',
+    `    IF app_private.hermes_w2_permission_kind_v1(permission) IN ('company','organization') THEN`,
+    `    IF app_private.hermes_w2_permission_kind_v1(permission)='company' THEN`),
+    run: async env => { await installProbes(env.db, { extra: true }); await orgOverlay(env.db); await crmCashbooks(env.db, 'cashbooks.view', [CASHBOOK]);
+      return (await env.report('probe_cash', { cashbookId: null })).unavailable !== null; } },
+];
 const probes = [
-  { name: 'INVOKER: lối vào đòi vai authenticated (không chạy gói dưới vai chủ hàm)', sql: mutate('invoker',
+  { name: 'INVOKER: lối vào đòi vai authenticated (không chạy gói dưới vai chủ hàm)', sql: mutate('orgfence',
     `  IF p_caller IS DISTINCT FROM 'authenticated' THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;\n`, ''),
     run: async env => { await installProbes(env.db); return (await asOwner(env.db, ENTRY, entryArgs())).items.length === 1; } },
-  { name: 'INVOKER: bước kết thúc đúng kết nối bước 1', sql: mutate('invoker', `  IF c.id::text IS DISTINCT FROM p_plan->>'connectionId' OR c.user_id`, `  IF c.user_id`),
+  { name: 'INVOKER: bước kết thúc đúng kết nối bước 1', sql: mutate('orgfence', `  IF c.id::text IS DISTINCT FROM p_plan->>'connectionId' OR c.user_id`, `  IF c.user_id`),
     run: async env => (await asOwner(env.db, FINISH, [JSON.stringify(binding), JSON.stringify(finishPlan({ connectionId: uid(77) })),
       JSON.stringify(EMPTY)])).items.length === 0 },
-  { name: 'gate: toà = grant ∩ overlay của kết nối', sql: mutate('invoker', `      AND state->'buildingIds' ? b.id::text
+  { name: 'gate: toà = grant ∩ overlay của kết nối', sql: mutate('orgfence', `      AND state->'buildingIds' ? b.id::text
       AND EXISTS(SELECT 1 FROM public.authorization_scopes scope WHERE scope.id=ANY(scopes)`, `      AND state->'buildingIds' ? b.id::text
       AND true OR EXISTS(SELECT 1 FROM public.authorization_scopes scope WHERE scope.id=ANY(scopes)`),
     run: async env => { await installProbes(env.db); await run(env, 'a'); return (await lastCtx(env.db)).buildings.includes(OTHER_BUILDING); } },
-  { name: 'gate: Read của kết nối', sql: mutate('invoker', `    IF state->'allowed' IS DISTINCT FROM 'true'::jsonb OR NOT(permission=ANY(c.read_capabilities))
+  { name: 'gate: Read của kết nối', sql: mutate('orgfence', `    IF state->'allowed' IS DISTINCT FROM 'true'::jsonb OR NOT(permission=ANY(c.read_capabilities))
       THEN`, `    IF state->'allowed' IS DISTINCT FROM 'true'::jsonb
       THEN`),
     run: async env => { await installProbes(env.db);
       await env.db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'vehicles.view')");
       return (await run(env, 'a')).items.length === 1; } },
-  { name: 'gate: registry', sql: mutate('invoker', `    enabled:=policy.enabled AND permission=ANY(policy.read_capabilities) AND EXISTS(
+  { name: 'gate: registry', sql: mutate('orgfence', `    enabled:=policy.enabled AND permission=ANY(policy.read_capabilities) AND EXISTS(
       SELECT 1 FROM app_private.hermes_capabilities h WHERE h.capability=permission AND h.mode='read' AND h.enabled);
     state:=app_private.hermes_w2_grant_v1`, `    enabled:=policy.enabled AND permission=ANY(policy.read_capabilities);
     state:=app_private.hermes_w2_grant_v1`),
     run: async env => { await installProbes(env.db);
       await env.db.exec("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='vehicles.view'");
       return (await run(env, 'a')).items.length === 1; } },
-  { name: 'P2-3 organization cần org_wide', sql: mutate('invoker', `WHEN v_scope='organization' AND NOT org_wide THEN`, `WHEN false THEN`),
+  { name: 'P2-3 organization cần org_wide', sql: mutate('orgfence', `WHEN v_scope='organization' AND NOT org_wide THEN`, `WHEN false THEN`),
     run: async env => { await installProbes(env.db); return (await run(env, 'b')).items.length === 1; } },
   // Overlay Toàn tổ chức KHÔNG bật; CRM toàn công ty bật ⇒ bỏ "AND overlay_org" mới lọt.
-  { name: 'P2-3 org_wide cần overlay Toàn tổ chức (bỏ AND overlay_org)', sql: mutate('invoker', `    org_wide:=state->'orgWide'='true'::jsonb AND overlay_org;`,
+  { name: 'P2-3 org_wide cần overlay Toàn tổ chức (bỏ AND overlay_org)', sql: mutate('orgfence', `    org_wide:=state->'orgWide'='true'::jsonb AND overlay_org;`,
     `    org_wide:=state->'orgWide'='true'::jsonb;`),
     run: async env => { await installProbes(env.db); await crmOrgWide(env.db, 'materials.view'); return (await run(env, 'b')).items.length === 1; } },
-  { name: 'P2-3 cashbooks cần sổ CRM hoặc org_wide', sql: mutate('invoker', `WHEN v_scope='cashbooks' AND NOT (org_wide OR overlay_org AND cardinality(v_cashbooks)>0) THEN`,
+  { name: 'P2-3 cashbooks cần sổ CRM hoặc org_wide', sql: mutate('orgfence', `WHEN v_scope='cashbooks' AND NOT (org_wide OR overlay_org AND cardinality(v_cashbooks)>0) THEN`,
     `WHEN v_scope='cashbooks' AND NOT (org_wide OR overlay_org) THEN`),
     run: async env => { await installProbes(env.db, { extra: true }); await orgOverlay(env.db);
       return (await env.report('probe_cash', { cashbookId: null })).unavailable === null; } },
-  { name: 'P2-3 platform chỉ super admin (cổng)', sql: mutate('invoker', `    IF v_scope='platform' AND member->'isSuperadmin' IS DISTINCT FROM 'true'::jsonb
+  { name: 'P2-3 platform chỉ super admin (cổng)', sql: mutate('orgfence', `    IF v_scope='platform' AND member->'isSuperadmin' IS DISTINCT FROM 'true'::jsonb
       THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
 `, ''),
     run: async env => { await installProbes(env.db, { extra: true });
       // Hàng rào thứ hai: giả lập grant lỏng (đột biến grant ở file nền đã có ca riêng).
       await env.db.exec(block(foundation, 'app_private.hermes_w2_grant_v1').replace(` AND p_member->'isSuperadmin'='true'::jsonb;`, ';'));
       return (await env.report('probe_bank', {})).items.length === 1; } },
-  { name: 'gate: buildingId phải trong phạm vi', sql: mutate('invoker', `      IF NOT(requested_building=ANY(buildings)) THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
+  { name: 'gate: buildingId phải trong phạm vi', sql: mutate('orgfence', `      IF NOT(requested_building=ANY(buildings)) THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
       buildings:=ARRAY[requested_building];`, `      buildings:=ARRAY[requested_building];`),
     run: async env => { await installProbes(env.db); return (await run(env, 'a', { buildingId: OTHER_BUILDING })).items.length === 1; } },
-  { name: 'P2-2b ID gắn toà phải thuộc ctx.buildings', sql: mutate('invoker', `          IF v_building IS NULL OR NOT(v_building=ANY(buildings)) THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
+  { name: 'P2-2b ID gắn toà phải thuộc ctx.buildings', sql: mutate('orgfence', `          IF v_building IS NULL OR NOT(v_building=ANY(buildings)) THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
 `, ''),
     run: async env => { await installProbes(env.db); return (await run(env, 'a', { roomId: OTHER_ROOM })).items.length === 1; } },
-  { name: 'P2-2b staffId phải là thành viên công ty', sql: mutate('invoker', `              AND m.status='ACTIVE' AND m.revoked_at IS NULL)
+  { name: 'P2-2b staffId phải là thành viên công ty', sql: mutate('orgfence', `              AND m.status='ACTIVE' AND m.revoked_at IS NULL)
           THEN RAISE EXCEPTION`, `              AND m.status='ACTIVE' AND m.revoked_at IS NULL) AND false
           THEN RAISE EXCEPTION`),
     run: async env => { await installProbes(env.db); return (await run(env, 'a', { staffId: uid(5) })).items.length === 1; } },
-  { name: 'P2-2a rào đầu ra theo ctx.buildings', sql: mutate('invoker', `            r ? 'buildingId' AND NOT (CASE WHEN r->'buildingId'='null'::jsonb THEN org_wide`,
+  { name: 'P2-2a rào đầu ra theo ctx.buildings', sql: mutate('orgfence', `            r ? 'buildingId' AND NOT (CASE WHEN r->'buildingId'='null'::jsonb THEN org_wide`,
     `            false AND NOT (CASE WHEN r->'buildingId'='null'::jsonb THEN org_wide`),
-    run: async env => { await installProbes(env.db); await rowsReply(env.db, 'a', [{ buildingId: OTHER_BUILDING }]);
+    run: async env => { await installProbes(env.db); await rowsReply(env.db, 'a', orgRows([{ buildingId: OTHER_BUILDING }]));
       return (await run(env, 'a')).items.length === 1; } },
-  { name: 'P2-2a báo cáo không theo toà không nêu toà', sql: mutate('invoker', `      ELSIF EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r WHERE r ? 'buildingId' OR r ? 'buildingIds') THEN`,
+  { name: 'P2-2a báo cáo không theo toà không nêu toà', sql: mutate('orgfence', `      ELSIF EXISTS(SELECT 1 FROM jsonb_array_elements(v_raw->'rows') r WHERE r ? 'buildingId' OR r ? 'buildingIds') THEN`,
     `      ELSIF false THEN`),
     run: async env => { await installProbes(env.db); await rowsReply(env.db, 'c', [{ buildingId: BUILDING }]);
       return (await run(env, 'c', { month: '2026-09' })).items.length === 1; } },
-  { name: 'gate: hết toà ⇒ no_building_scope', sql: mutate('invoker', `      WHEN v_scope IN ('rows','buildings') AND cardinality(buildings)=0 THEN 'no_building_scope' END;`, ` END;`),
+  { name: 'gate: hết toà ⇒ no_building_scope', sql: mutate('orgfence', `      WHEN v_scope IN ('rows','buildings') AND cardinality(buildings)=0 THEN 'no_building_scope' END;`, ` END;`),
     run: async env => { await installProbes(env.db);
       await env.db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${OTHER_BUILDING}'::uuid] WHERE permission='vehicles.view'`);
-      return (await run(env, 'a')).items.length === 1; } },
-  { name: 'mục lục: Read của kết nối', sql: mutate('invoker', `IF state->'allowed'='true'::jsonb AND k=ANY(c.read_capabilities) THEN`, `IF state->'allowed'='true'::jsonb THEN`),
+      // Không toà ⇒ hàng nào nêu toà cũng bị rào; gói trả rỗng: bản sống báo no_building_scope, đột biến gọi gói.
+      await rowsReply(env.db, 'a', []);
+      return (await run(env, 'a')).unavailable === null; } },
+  { name: 'mục lục: Read của kết nối', sql: mutate('orgfence', `IF state->'allowed'='true'::jsonb AND k=ANY(c.read_capabilities) THEN`, `IF state->'allowed'='true'::jsonb THEN`),
     run: async env => { await installProbes(env.db);
       await env.db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'vehicles.view')");
       return (await env.reportList()).items.some(row => row.report === 'probe_rows'); } },
-  { name: 'P2-1 bảng gom: khoá ↔ scope', sql: mutate('fixes', `      IF v_kind IS NULL OR (v_kind='self')<>(v_spec->>'scope'='self') OR (v_kind='platform')<>(v_spec->>'scope'='platform') THEN`,
+  { name: 'P2-1 bảng gom: khoá ↔ scope', sql: mutate('orgfence', `      IF v_kind IS NULL OR (v_kind='self')<>(v_spec->>'scope'='self') OR (v_kind='platform')<>(v_spec->>'scope'='platform') THEN`,
     `      IF false THEN`),
     run: async env => { await installProbes(env.db);
       await env.db.exec(catalogSql('c', Object.fromEntries([['probe_self', { ...PROBES.c[1], permission: 'vehicles.view' }]])));
       return (await env.reportList()).items.length > 0; } },
-  { name: 'P2-1 bảng gom: tham số gắn toà chỉ ở rows/buildings', sql: mutate('fixes', `        OR v_spec->>'scope' NOT IN ('rows','buildings') AND EXISTS(`,
+  { name: 'P2-1 bảng gom: tham số gắn toà chỉ ở rows/buildings', sql: mutate('orgfence', `        OR v_spec->>'scope' NOT IN ('rows','buildings') AND EXISTS(`,
     `        OR false AND EXISTS(`),
     run: async env => { await installProbes(env.db);
       await env.db.exec(catalogSql('b', Object.fromEntries([['probe_org', { ...PROBES.b[1], params: ['roomId'] }]])));
       return (await env.reportList()).items.length > 0; } },
-  { name: 'kết quả gói: unavailable không kèm hàng', sql: mutate('invoker', `        OR v_raw->'unavailable'<>'null'::jsonb AND (jsonb_array_length(v_raw->'rows')>0 OR v_raw->'summary'<>'null'::jsonb)
+  { name: 'kết quả gói: unavailable không kèm hàng', sql: mutate('orgfence', `        OR v_raw->'unavailable'<>'null'::jsonb AND (jsonb_array_length(v_raw->'rows')>0 OR v_raw->'summary'<>'null'::jsonb)
 `, ''),
     run: async env => { await installProbes(env.db);
-      await reply(env.db, 'a', { rows: [{ n: 1 }], summary: null, sourceCapped: false, unavailable: 'not_implemented' });
+      await reply(env.db, 'a', { rows: orgRows([{ n: 1, buildingId: BUILDING }]), summary: null, sourceCapped: false, unavailable: 'not_implemented' });
       return (await run(env, 'a')).unavailable === 'not_implemented'; } },
-  { name: 'bảng báo cáo: cấm trùng mã giữa hai gói', sql: mutate('fixes', `      IF v_all ? v_key OR v_key !~`, `      IF v_key !~`),
+  { name: 'bảng báo cáo: cấm trùng mã giữa hai gói', sql: mutate('orgfence', `      IF v_all ? v_key OR v_key !~`, `      IF v_key !~`),
     run: async env => { await installProbes(env.db); await env.db.exec(catalogSql('b', Object.fromEntries([PROBES.b, ['probe_rows', PROBES.a[1]]])));
       return (await env.reportList()).items.length > 0; } },
   { name: 'grant: Biến động số dư chỉ super admin', sql: mutate('base', ` AND p_member->'isSuperadmin'='true'::jsonb;`, `;`),
@@ -732,7 +895,7 @@ const probes = [
       // Không phạm vi nào ⇒ khoá cần toà bị bỏ ở cuối; khoá self (không toà) lộ ra nếu thiếu hàng rào.
       return (await v7(env, 'hermes_connection_options_v7')).read.includes('notifications.view'); } },
 ];
-for (const probe of probes) {
+for (const probe of [...ORG_PROBES, ...probes]) {
   const changed = changedFunctions(LIVE[probe.sql.file], probe.sql.text);
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
     await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'bản sống từ chối'));

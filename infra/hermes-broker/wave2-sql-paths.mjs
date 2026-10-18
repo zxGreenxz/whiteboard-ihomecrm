@@ -19,6 +19,9 @@ export const W2_FIXES_PATH = `${W2_MIGRATION_DIR}/${W2_FIXES_FILE}`;
 // Cổng INVOKER + RLS: lối vào public.hermes_w2_read_v1, bước kiểm quyền/bước kết thúc DEFINER, hàm gói INVOKER.
 export const W2_INVOKER_FILE = '20261018000600_hermes_w2_invoker_gate_v1.sql';
 export const W2_INVOKER_PATH = `${W2_MIGRATION_DIR}/${W2_INVOKER_FILE}`;
+// Rào công ty (organizationId mọi hàng, buildingId mọi hàng theo toà) + loại khoá organization.
+export const W2_ORG_FENCE_FILE = '20261018000700_hermes_w2_org_fence_v1.sql';
+export const W2_ORG_FENCE_PATH = `${W2_MIGRATION_DIR}/${W2_ORG_FENCE_FILE}`;
 export const W2_RANGES = Object.freeze({
   foundation: /^2026101800\d{4}_hermes_w2_[a-z0-9_]+\.sql$/,
   a: /^2026101801\d{4}_hermes_w2a_[a-z0-9_]+\.sql$/,
@@ -44,27 +47,41 @@ export const W2_FOUNDATION_FUNCTIONS = Object.freeze(['app_private.hermes_w2_rea
   'public.hermes_domain_capabilities_v3', 'app_private.hermes_w2_extend_options_v1', 'public.hermes_org_policy_options_v7',
   'public.hermes_connection_options_v7', 'public.hermes_connection_context_v7', 'app_private.hermes_w2_param_names_v1',
   'app_private.hermes_w2_catalog_v1', 'app_private.hermes_w2_params_v1', 'app_private.hermes_w2_gate_v1', 'public.hermes_domain_read_v3',
-  'app_private.hermes_w2_scope_v1', 'app_private.hermes_w2_finish_v1', 'public.hermes_w2_read_v1']);
-const stripComments = sql => sql.replace(/--[^\n]*/g, '');
-const createdFunctions = sql => [...stripComments(sql).matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+)\.([a-z0-9_]+)\s*\(/gi)]
-  .map(match => `${match[1].toLowerCase()}.${match[2].toLowerCase()}`);
+  'app_private.hermes_w2_scope_v1', 'app_private.hermes_w2_finish_v1', 'public.hermes_w2_read_v1', 'app_private.hermes_w2_org_keys_v1']);
+const stripComments = sql => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '');
+// Tên có/không ngoặc kép, có khoảng trắng quanh dấu chấm; tên không schema bắt riêng (vi phạm ở dải gói).
+const NAME = String.raw`"?([a-z_][a-z0-9_$]*)"?\s*\.\s*"?([a-z_][a-z0-9_$]*)"?`;
+const qualified = (match, schema = 1, name = 2) => `${match[schema].toLowerCase()}.${match[name].toLowerCase()}`;
+const createdFunctions = sql => [...stripComments(sql).matchAll(new RegExp(String.raw`\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\s+${NAME}\s*\(`, 'gi'))]
+  .map(match => qualified(match));
+const unqualifiedFunctions = sql => [...stripComments(sql).matchAll(/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\s+"?([a-z_][a-z0-9_$]*)"?\s*\(/gi)]
+  .map(match => match[1].toLowerCase());
+const alteredFunctions = sql => [...stripComments(sql).matchAll(new RegExp(String.raw`\bALTER\s+(?:FUNCTION|PROCEDURE|ROUTINE)\s+${NAME}\s*\([^)]*\)\s*([^;]*)`, 'gi'))]
+  .map(match => ({ fn: qualified(match), action: match[3].trim().replace(/\s+/g, ' ') }));
+// DO … EXECUTE (SQL động) có thể tạo/thay hàm mà regex không thấy: cấm ở dải gói.
+const dynamicBlocks = sql => [...stripComments(sql).matchAll(/\bDO\s+(?:LANGUAGE\s+[a-z]+\s+)?(\$[a-z_]*\$)([\s\S]*?)\1/gi)]
+  .filter(match => /\bEXECUTE\b/i.test(match[2])).length + (/\bDO\s+(?:LANGUAGE\s+[a-z]+\s+)?'/i.test(stripComments(sql)) ? 1 : 0);
 
-/** Hàng rào gói (P2-4, review PR #195). files: [{name, sql}] mọi migration theo thứ tự tên. Trả danh sách vi phạm:
- * file trong dải gói <x> chỉ được tạo/thay hermes_w2<x>_* (public hoặc app_private) hoặc hàm dùng chung MỚI
- * public.<miền>_*_v<n> (không bắt đầu bằng hermes_, chưa có ở file nào khác); định nghĩa cuối của hàm nền phải
- * nằm ở dải nền hoặc Z. */
+/** Hàng rào gói (P2-4, review PR #195; mở rộng sau review cổng INVOKER). files: [{name, sql}] mọi migration theo
+ * thứ tự tên. Trả danh sách vi phạm: file trong dải gói <x> chỉ được tạo/thay hermes_w2<x>_* (public hoặc
+ * app_private) hoặc hàm dùng chung MỚI public.<miền>_*_v<n> (không bắt đầu bằng hermes_, chỉ do file của chính gói
+ * định nghĩa); tên hàm phải có schema (có/không ngoặc kép đều bắt); ALTER FUNCTION chỉ trên hàm của gói và chỉ
+ * OWNER TO postgres; không DO … EXECUTE. Định nghĩa cuối của hàm nền phải nằm ở dải nền hoặc Z (test PGlite còn
+ * so định nghĩa SỐNG trong catalog với bản của file nền). */
 export function w2FenceViolations(files) {
   const violations = [], definedBy = new Map();
   for (const { name, sql } of files) for (const fn of createdFunctions(sql)) definedBy.set(fn, [...(definedBy.get(fn) ?? []), name]);
   for (const { name, sql } of files) {
     const letter = W2_PACKAGE_LETTERS.find(item => W2_RANGES[item].test(name));
     if (!letter) continue;
-    for (const fn of createdFunctions(sql)) {
-      const own = new RegExp(`^(public|app_private)\\.hermes_w2${letter}_[a-z0-9_]+$`).test(fn);
-      const shared = /^public\.[a-z][a-z0-9_]*_v\d+$/.test(fn) && !/^public\.hermes_/.test(fn) &&
-        (definedBy.get(fn) ?? []).every(file => file === name);
-      if (!own && !shared) violations.push(`${name}: ${fn}`);
-    }
+    const mine = fn => new RegExp(`^(public|app_private)\\.hermes_w2${letter}_[a-z0-9_]+$`).test(fn) ||
+      /^public\.[a-z][a-z0-9_]*_v\d+$/.test(fn) && !/^public\.hermes_/.test(fn) &&
+        (definedBy.get(fn) ?? []).every(file => W2_RANGES[letter].test(file));
+    for (const fn of createdFunctions(sql)) if (!mine(fn)) violations.push(`${name}: ${fn}`);
+    for (const fn of unqualifiedFunctions(sql)) violations.push(`${name}: ${fn} (thiếu schema)`);
+    for (const { fn, action } of alteredFunctions(sql))
+      if (!mine(fn) || !/^OWNER TO "?postgres"?$/i.test(action)) violations.push(`${name}: ALTER ${fn} ${action}`);
+    if (dynamicBlocks(sql)) violations.push(`${name}: DO … EXECUTE`);
   }
   for (const fn of W2_FOUNDATION_FUNCTIONS) {
     const last = (definedBy.get(fn) ?? []).at(-1);

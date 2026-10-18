@@ -123,7 +123,9 @@ export function createW2Registry(packages) {
     for (const row of value.items) {
       if (!shaped(row, spec.fields)) fail();
       const hasBuilding = Object.hasOwn(row, 'buildingId'), hasBuildings = Object.hasOwn(row, 'buildingIds');
-      if (!byBuilding && (hasBuilding || hasBuildings) ||
+      // Theo toà: mọi hàng nêu toà; organizationId là trường rào SQL đã gỡ (chỉ platform giữ).
+      if (byBuilding && !hasBuilding || spec.scope !== 'platform' && Object.hasOwn(row, 'organizationId') ||
+          !byBuilding && (hasBuilding || hasBuildings) ||
           hasBuilding && !(row.buildingId === null ? fence.orgWide : inFence(row.buildingId)) ||
           hasBuildings && !(Array.isArray(row.buildingIds) && row.buildingIds.every(inFence)) ||
           spec.scope === 'cashbooks' && !fence.orgWide && Object.hasOwn(row, 'cashbookId') &&

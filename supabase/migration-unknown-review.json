@@ -949,6 +949,33 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói 0 (sửa sau review PR #195), 18/10/2026",
       "sha256": "5f316d4a1206725ca85b06ca30ecb5fc589b891a0e0f9bcc80876679ca072c1e"
+    },
+    "supabase/migrations/20261018000700_hermes_w2_org_fence_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018000700_hermes_w2_org_fence_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2_org_keys_v1 (mới); thay thân hermes_w2_permission_kind_v1, hermes_w2_catalog_v1, hermes_w2_scope_v1, hermes_w2_finish_v1 (chữ ký giữ nguyên)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object — sinh 18/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261018000700_hermes_w2_org_fence_v1.json",
+          "trich_doan": "lane --env test --apply 18/10/2026: hai lượt ROLLBACK đạt, backup TEST 652 bảng, catalog đổi"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (sửa sau review độc lập cổng INVOKER: rào công ty organizationId + buildingId bắt buộc ở bước kết thúc, loại khoá organization chỉ scope organization/cashbooks), chưa đi qua lane apply production — hàm mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (hai lượt ROLLBACK đạt rồi apply có backup); catalog TEST sau apply: org_keys/permission_kind/catalog/scope/finish DEFINER owner postgres, materials.view là loại organization, authenticated vẫn không có USAGE trên app_private, gọi lối vào dưới vai chủ hàm ⇒ 42501. PGlite wave2-foundation 50/50 kể cả đột biến; hermes-durable-schema đạt. Áp production qua npm run migrate:forward sau review; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2_org_keys_v1",
+        "function:app_private.hermes_w2_permission_kind_v1",
+        "function:app_private.hermes_w2_catalog_v1",
+        "function:app_private.hermes_w2_scope_v1",
+        "function:app_private.hermes_w2_finish_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói 0 (sửa sau review cổng INVOKER), 18/10/2026",
+      "sha256": "0c942b1f505c3782956e1ed0a11f8b506f034884748146c2225621451176f47a"
     }
   }
 }
