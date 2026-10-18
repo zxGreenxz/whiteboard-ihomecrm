@@ -91,13 +91,9 @@ function prefetchInvoices(qc: QueryClient) {
     qc.prefetchQuery(
       invoicesListQuery(filters, { page: 1, pageSize: MOBILE_FIRST_PAGE_SIZE }),
     );
-    qc.prefetchQuery(
-      invoiceStatisticsQuery({
-        building_id: buildingId || undefined,
-        room_id: undefined,
-        status: stat === "all" ? undefined : stat,
-      }),
-    );
+    // KHÔNG prefetch thẻ thống kê trên mobile: mobile không lọc kỳ nên thống kê là toàn
+    // thời gian (tốn nhất), mà chỉ hiện khi người dùng chạm tiêu đề mở sheet "Báo cáo hoá
+    // đơn" — lúc đó InvoiceStatsSummary tự tải.
     return;
   }
 

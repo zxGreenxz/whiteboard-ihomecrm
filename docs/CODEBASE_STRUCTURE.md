@@ -37,6 +37,8 @@ Công thức/bộ lọc có từ hai nơi trở lên cùng dùng (web, Hermes, b
 - Khớp số trước/sau: cùng org/kỳ/bộ lọc (TEST/DEMO hoặc chỉ đọc), so kết quả cũ với hàm mới; lệch thì dừng và giải trình từng chênh.
 - `EXPLAIN` hàm mới trên dữ liệu cỡ thật: quyền/RLS tính theo tập (initplan), không gọi từng dòng; không chậm hơn bản cũ.
 - `p_building_ids` và tham số lọc tương tự chỉ thu hẹp (∩) phạm vi quyền server tự tính, không bao giờ mở rộng hay thay quyền.
+- Mô hình (18/10/2026): hàm chung SECURITY INVOKER, `search_path ''`, từ chối khi `current_user` khác `authenticated` hoặc `auth.uid()` NULL, đọc bảng gốc qua RLS, không chép policy. Phần buộc vượt RLS tách thành DEFINER nhỏ tự kiểm `auth.uid()`, chỉ trả tập id.
+- Ngoại lệ "DEFINER trả tổng" (vd. `invoice_statistics_money_v1`) chỉ khi đủ ba điều kiện: tự giao phạm vi của chính người gọi, không tin id bên gọi truyền; trả đúng một dòng tổng, không trả danh sách; có test bất biến (gọi thẳng với id toà xoá mềm/công ty khác ra 0, phạm vi ⊆ `accessible_building_ids()`) và đột biến làm suite đỏ.
 - Hermes còn chép: bọc mã web bằng `hermes-parity:begin/end`, thêm mục vào [web-parity.json](../infra/hermes-broker/web-parity.json); chuyển sang gọi hàm chung thì đổi mục thành `rpc`. Gate: `npm run gate:hermes-web-parity`.
 
 ## Kiểm thử

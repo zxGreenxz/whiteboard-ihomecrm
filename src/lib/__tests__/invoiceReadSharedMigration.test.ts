@@ -23,6 +23,7 @@ const DEMO_USER = u(16);
 const NOBODY = u(17);
 const NOPERM = u(18); // chỉ buildings.view toàn công ty, không invoices.view
 const EX_MEMBER = u(19); // người tạo hồ sơ khách đã rời công ty
+const INV_ONLY = u(20); // invoices.view toàn công ty nhưng KHÔNG có buildings.view
 // Toà / phòng
 const B1 = u(21), B2 = u(22), B3 = u(23), BX = u(24), BS = u(25), BD = u(26); // B3: toà đã xoá mềm
 const R1 = u(31), R2 = u(32), R3 = u(33), RX = u(34), RD = u(35), RS = u(36);
@@ -32,6 +33,8 @@ const C1 = u(51), C2 = u(52), CX = u(53), C3 = u(54);
 const CC1 = u(61);
 // Hoá đơn
 const I1 = u(71), I2 = u(72), I3 = u(73), I4 = u(74), I5 = u(75), I6 = u(76), I7 = u(77), IX = u(78), IS = u(79), ID = u(80), I8 = u(85);
+const I9 = u(86), I10 = u(87); // chỉ chèn trong từng ca (thu dư)
+const COL_ON = u(121), COL_OFF = u(122); // lần thu còn hiệu lực / đã huỷ
 
 const db = new PGlite();
 
@@ -120,7 +123,7 @@ beforeAll(async () => {
     INSERT INTO memberships VALUES
       ('${OWNER}','${ORG_A}','ACTIVE'),('${STAFF}','${ORG_A}','ACTIVE'),('${STAFF_CUST}','${ORG_A}','ACTIVE'),
       ('${OTHER}','${ORG_B}','ACTIVE'),('${SUPER}','${ORG_A}','ACTIVE'),('${DEMO_USER}','${DEMO_ORG}','ACTIVE'),
-      ('${NOPERM}','${ORG_A}','ACTIVE'),('${EX_MEMBER}','${ORG_A}','REVOKED');
+      ('${NOPERM}','${ORG_A}','ACTIVE'),('${EX_MEMBER}','${ORG_A}','REVOKED'),('${INV_ONLY}','${ORG_A}','ACTIVE');
     INSERT INTO super_admins VALUES ('${SUPER}');
     INSERT INTO demo_users VALUES ('${DEMO_USER}');
     INSERT INTO test_grants VALUES
@@ -128,7 +131,8 @@ beforeAll(async () => {
       ('${STAFF}','buildings.view','${ORG_A}','${B1}'),('${STAFF}','buildings.view','${ORG_A}','${B2}'),('${STAFF}','invoices.view','${ORG_A}','${B1}'),
       ('${STAFF_CUST}','buildings.view','${ORG_A}','${B1}'),('${STAFF_CUST}','invoices.view','${ORG_A}','${B1}'),('${STAFF_CUST}','customers.view','${ORG_A}','${B1}'),
       ('${OTHER}','invoices.view','${ORG_B}',NULL),('${OTHER}','buildings.view','${ORG_B}',NULL),('${OTHER}','customers.view','${ORG_B}',NULL),
-      ('${NOPERM}','buildings.view','${ORG_A}',NULL);
+      ('${NOPERM}','buildings.view','${ORG_A}',NULL),
+      ('${INV_ONLY}','invoices.view','${ORG_A}',NULL),('${INV_ONLY}','customers.view','${ORG_A}',NULL);
 
     INSERT INTO buildings VALUES
       ('${B1}','${ORG_A}','${OWNER}','Toà A','toa a',NULL,NULL,NULL),('${B2}','${ORG_A}','${OWNER}','Toà B','toa b',NULL,NULL,NULL),
@@ -170,8 +174,9 @@ beforeAll(async () => {
     INSERT INTO payments VALUES ('${u(81)}','${ORG_A}','${OWNER}','${I2}',500000,'2026-10-05','TM',NULL,NULL,NULL,NULL),
       ('${u(82)}','${ORG_A}','${OWNER}','${I3}',300000,'2026-10-05','TK',NULL,NULL,NULL,NULL),
       ('${u(83)}','${ORG_A}','${OWNER}','${I3}',100000,'2026-10-04','TM',NULL,NULL,NULL,'2026-10-06');
+    -- I8 (toà xoá mềm) và IX (công ty khác) CÓ phiếu thu/tiền thối/cọc: helper gọi thẳng vẫn phải ra 0/rỗng.
     INSERT INTO active_payment_receipts VALUES ('${ORG_A}','${I2}','TM',500000),('${ORG_A}','${I3}','TK',300000),
-      ('${ORG_A}','${I3}','CT',0),('${ORG_B}','${IX}','TT',100000);
+      ('${ORG_A}','${I3}','CT',0),('${ORG_B}','${IX}','TT',100000),('${ORG_A}','${I8}','TT',3000);
     INSERT INTO invoice_adjustments(id,organization_id,invoice_id,revision,reason,review_status) VALUES
       ('${u(91)}','${ORG_A}','${I5}',1,'Sửa số điện','PENDING'),('${u(92)}','${ORG_B}','${I5}',2,'Khác công ty','PENDING');
     UPDATE invoice_items SET accounting_class = 'REVENUE';
@@ -184,10 +189,14 @@ beforeAll(async () => {
       ('${u(105)}','${ORG_B}','${BX}','${RX}',NULL,'INCOME','APPROVED','2026-10-08',0),
       ('${u(106)}','${ORG_A}','${B1}','${R1}','${I4}','INCOME','APPROVED','2026-09-05',7000),
       ('${u(107)}','${SANDBOX}','${BS}','${RS}',NULL,'INCOME','APPROVED','2026-10-08',0),
-      ('${u(108)}','${ORG_A}','${B2}','${R3}','${I3}','INCOME','APPROVED','2026-10-06',3000);
+      ('${u(108)}','${ORG_A}','${B2}','${R3}','${I3}','INCOME','APPROVED','2026-10-06',3000),
+      ('${u(109)}','${ORG_A}','${B3}',NULL,'${I8}','INCOME','APPROVED','2026-07-02',500),
+      ('${u(110)}','${ORG_B}','${BX}','${RX}','${IX}','INCOME','APPROVED','2026-10-02',4000);
     INSERT INTO income_expense_items(organization_id,income_expense_id,income_expense_type_id,amount) VALUES
       ('${ORG_A}','${u(102)}','${u(111)}',2000000),('${ORG_A}','${u(102)}','${u(112)}',150000),('${ORG_A}','${u(103)}','${u(111)}',1000000),
       ('${ORG_A}','${u(104)}','${u(111)}',5000000),('${ORG_B}','${u(105)}','${u(113)}',7000000),
+      -- Cọc ở toà đã xoá mềm: người thường KHÔNG được tính.
+      ('${ORG_A}','${u(109)}','${u(111)}',400000),
       -- Cọc ở toà sandbox: super admin cũng KHÔNG được tính.
       ('${SANDBOX}','${u(107)}','${u(111)}',300000);
     UPDATE income_expenses SET user_id = '${OWNER}';
@@ -317,6 +326,9 @@ describe('invoice_list_v1 — quyền', () => {
     await tx(async () => {
       expect(await ids(STAFF)).toEqual([I7, I1, I2, I5]);
       expect(await ids(NOPERM)).toEqual([]);
+      // invoices.view mà không có buildings.view: không thấy gì, thẻ cũng 0.
+      expect(await ids(INV_ONLY)).toEqual([]);
+      expect(await stats(INV_ONLY)).toEqual(ZERO_STATS);
     });
   });
 
@@ -379,9 +391,8 @@ describe('invoice_list_v1 — quyền', () => {
 
   it('ACL + mô hình: hai hàm chính INVOKER search_path rỗng; helper DEFINER chỉ cho authenticated', async () => {
     await tx(async () => {
-      const helpers = ['public.invoice_scope_building_ids_v1()', 'public.invoice_receipt_methods_v1(uuid[])',
-        'public.invoice_receipt_totals_v1(uuid[])', 'public.invoice_change_voucher_ids_v1(uuid[])',
-        'public.invoice_deposit_item_ids_v1(text,uuid[],uuid[],date,date,uuid[])'];
+      const helpers = ['public.invoice_scope_building_ids_v1()', 'public.invoice_receipt_methods_v1(uuid[],public.payment_method)',
+        'public.invoice_statistics_money_v1(uuid[],text,uuid[],uuid[],date,date,uuid[])'];
       const r = await db.query<Record<string, unknown>>(`SELECT
         has_function_privilege('authenticated', '${LIST_SIG}', 'EXECUTE') AS list_auth,
         has_function_privilege('anon', '${LIST_SIG}', 'EXECUTE') AS list_anon,
@@ -393,10 +404,14 @@ describe('invoice_list_v1 — quyền', () => {
            FROM pg_proc WHERE oid = ANY (ARRAY[${helpers.map((h) => `'${h}'::regprocedure`).join(',')}]::oid[])) AS helpers_acl,
         (SELECT bool_or(prosecdef) FROM pg_proc WHERE oid IN ('${LIST_SIG}'::regprocedure, '${STAT_SIG}'::regprocedure)) AS main_definer,
         (SELECT bool_and(array_to_string(proconfig, ',') LIKE '%search_path=""%') FROM pg_proc WHERE oid IN ('${LIST_SIG}'::regprocedure, '${STAT_SIG}'::regprocedure)) AS main_empty_path,
-        (SELECT count(*) FROM pg_proc WHERE proname IN ('invoice_read_context_v1', 'invoice_read_args_v1', 'invoice_search_pattern_v1', 'invoice_deposit_type_ids_v1'))::int AS draft_left`);
+        (SELECT bool_and(array_to_string(proconfig, ',') LIKE '%search_path=""%') FROM pg_proc WHERE oid = ANY (ARRAY[${helpers.map((h) => `'${h}'::regprocedure`).join(',')}]::oid[])) AS helpers_empty_path,
+        (SELECT count(*) FROM pg_proc WHERE proname IN ('invoice_read_context_v1', 'invoice_read_args_v1', 'invoice_search_pattern_v1',
+          'invoice_deposit_type_ids_v1', 'invoice_receipt_totals_v1', 'invoice_change_voucher_ids_v1', 'invoice_deposit_item_ids_v1'))::int AS draft_left,
+        (SELECT count(*) FROM pg_proc WHERE proname = 'invoice_receipt_methods_v1')::int AS methods_overloads`);
       expect(r.rows[0]).toEqual({
         list_auth: true, list_anon: false, list_service: false, stat_auth: true, stat_anon: false,
-        helpers_definer: true, helpers_acl: true, main_definer: false, main_empty_path: true, draft_left: 0,
+        helpers_definer: true, helpers_acl: true, main_definer: false, main_empty_path: true, helpers_empty_path: true,
+        draft_left: 0, methods_overloads: 1,
       });
     });
   });
@@ -407,26 +422,69 @@ describe('invoice_list_v1 — quyền', () => {
       await db.exec('SET LOCAL ROLE authenticated');
       try { return (await db.query<Record<string, unknown>>(sql, params)).rows; } finally { await db.exec('RESET ROLE').catch(() => undefined); }
     };
+    const arr = (xs: string[] | null) => (xs ? `{${xs.join(',')}}` : null);
+    const scopeOf = async (uid: string) => (await asUser(uid, 'SELECT public.invoice_scope_building_ids_v1() AS s'))[0].s as string[];
+    const methods = (uid: string | null, invoiceIds: string[] | null, method: string | null = null) =>
+      asUser(uid, 'SELECT payment_method, invoice_ids FROM public.invoice_receipt_methods_v1($1::uuid[], $2::public.payment_method) ORDER BY 1',
+        [arr(invoiceIds), method]);
+    const money = async (uid: string | null, invoiceIds: string[] | null,
+      opts: { month?: string; filter?: string[]; buildings?: string[] } = {}) => {
+      const rows = await asUser(uid, `SELECT * FROM public.invoice_statistics_money_v1($1::uuid[], p_billing_month => $2::text,
+        p_filter_building_ids => $3::uuid[], p_building_ids => $4::uuid[])`,
+      [arr(invoiceIds), opts.month ?? null, arr(opts.filter ?? null), arr(opts.buildings ?? null)]);
+      // Ngoại lệ "DEFINER trả tổng": luôn ĐÚNG MỘT dòng, không bao giờ là danh sách.
+      expect(rows).toHaveLength(1);
+      return Object.fromEntries(Object.entries(rows[0]).map(([k, v]) => [k, Number(v)]));
+    };
+    const ZERO_MONEY = { total_collected: 0, payment_tm: 0, payment_tk: 0, payment_tt: 0, payment_ct: 0, change_amount: 0, deposit_collected: 0 };
     await tx(async () => {
-      expect((await asUser(STAFF, 'SELECT public.invoice_scope_building_ids_v1() AS s'))[0].s).toEqual([B1]);
-      const superScope = (await asUser(SUPER, 'SELECT public.invoice_scope_building_ids_v1() AS s'))[0].s as string[];
+      expect(await scopeOf(STAFF)).toEqual([B1]);
+      expect(await scopeOf(OWNER)).toEqual([B1, B2]); // B3 xoá mềm bị bỏ
+      expect(await scopeOf(OTHER)).toEqual([BX]);
+      expect(await scopeOf(INV_ONLY)).toEqual([]); // invoices.view mà thiếu buildings.view
+      expect(await scopeOf(NOPERM)).toEqual([]); // buildings.view mà thiếu invoices.view
+      expect(await scopeOf(NOBODY)).toEqual([]);
+      const superScope = await scopeOf(SUPER);
       expect(superScope).toContain(B3);
       expect(superScope).not.toContain(BS);
       expect(superScope).not.toContain(BD);
-      // I3 ở B2: nhân viên có buildings.view B2 nhưng không có invoices.view ⇒ helper không cộng.
-      expect((await asUser(STAFF, 'SELECT * FROM public.invoice_receipt_totals_v1($1::uuid[])', [`{${I2},${I3}}`]))[0])
-        .toMatchObject({ total_collected: '500000', payment_tm: '500000', payment_tk: '0' });
-      // Phiếu tiền thối của I3 (B2) không lọt qua helper cho nhân viên không có invoices.view ở B2.
-      expect((await asUser(STAFF, 'SELECT public.invoice_change_voucher_ids_v1($1::uuid[]) AS v', [`{${I2},${I3}}`]))[0].v).toEqual([u(101)]);
-      expect((await asUser(OWNER, 'SELECT public.invoice_change_voucher_ids_v1($1::uuid[]) AS v', [`{${I2},${I3}}`]))[0].v).toEqual([u(101), u(108)]);
-      expect(await asUser(STAFF, 'SELECT payment_method, invoice_ids FROM public.invoice_receipt_methods_v1(NULL) ORDER BY 1'))
-        .toEqual([{ payment_method: 'TM', invoice_ids: [I2] }]);
-      expect(await asUser(OWNER, 'SELECT payment_method, invoice_ids FROM public.invoice_receipt_methods_v1(NULL) ORDER BY 1'))
-        .toEqual([{ payment_method: 'TK', invoice_ids: [I3] }, { payment_method: 'TM', invoice_ids: [I2] }]);
+      // Bất biến: người thường KHÔNG BAO GIỜ có phạm vi rộng hơn accessible_building_ids() (RLS buildings.view).
+      for (const uid of [OWNER, STAFF, STAFF_CUST, OTHER, NOPERM, INV_ONLY, NOBODY, DEMO_USER, EX_MEMBER]) {
+        const r = await asUser(uid, `SELECT public.invoice_scope_building_ids_v1() <@ ARRAY(SELECT public.accessible_building_ids()) AS ok`);
+        expect({ uid, ok: r[0].ok }).toEqual({ uid, ok: true });
+      }
+
+      // Phương thức: I8 (toà xoá mềm, có phiếu TT) và IX (công ty khác, có phiếu TT) không bao giờ lọt.
+      expect(await methods(STAFF, null)).toEqual([{ payment_method: 'TM', invoice_ids: [I2] }]);
+      expect(await methods(OWNER, null)).toEqual([{ payment_method: 'TK', invoice_ids: [I3] }, { payment_method: 'TM', invoice_ids: [I2] }]);
+      expect(await methods(OWNER, null, 'TM')).toEqual([{ payment_method: 'TM', invoice_ids: [I2] }]);
+      expect(await methods(OWNER, null, 'TT')).toEqual([]);
+      expect(await methods(OWNER, [I8, IX])).toEqual([]);
+      expect(await methods(INV_ONLY, null)).toEqual([]);
+
+      // Khối tiền: I3 ở B2 — nhân viên có buildings.view B2 nhưng không có invoices.view ⇒ không cộng thu/thối.
+      expect(await money(STAFF, [I2, I3], { month: '2026-10' })).toEqual({
+        total_collected: 500000, payment_tm: 500000, payment_tk: 0, payment_tt: 0, payment_ct: 0,
+        change_amount: 20000, deposit_collected: 2000000 });
+      expect(await money(OWNER, [I2, I3], { month: '2026-10' })).toEqual({
+        total_collected: 800000, payment_tm: 500000, payment_tk: 300000, payment_tt: 0, payment_ct: 0,
+        change_amount: 23000, deposit_collected: 3000000 });
+      // Gọi thẳng với id I8/IX: thu/thối 0; cọc theo phạm vi (B3 xoá mềm và BX không vào).
+      expect(await money(OWNER, [I8, IX])).toEqual({ ...ZERO_MONEY, deposit_collected: 3000000 });
+      expect(await money(OWNER, [I8, IX], { filter: [B3] })).toEqual(ZERO_MONEY);
+      expect(await money(OWNER, [I8, IX], { filter: [BX] })).toEqual(ZERO_MONEY);
+      expect(await money(OWNER, [I8, IX], { buildings: [B3, BX] })).toEqual(ZERO_MONEY);
+      expect(await money(INV_ONLY, [I2, I3])).toEqual(ZERO_MONEY);
+      expect(await money(NOBODY, [I2, I3])).toEqual(ZERO_MONEY);
+      // NULL = tập rỗng (KHÔNG phải mọi hoá đơn).
+      expect(await money(OWNER, null, { filter: [B1, B2] })).toEqual({ ...ZERO_MONEY, deposit_collected: 3000000 });
     });
-    await tx(async () => {
-      await expect(asUser(null, 'SELECT public.invoice_scope_building_ids_v1()')).rejects.toMatchObject({ code: '42501' });
-    });
+    for (const sql of ['SELECT public.invoice_scope_building_ids_v1()', 'SELECT * FROM public.invoice_receipt_methods_v1(NULL, NULL)',
+      'SELECT * FROM public.invoice_statistics_money_v1(NULL)']) {
+      await tx(async () => {
+        await expect(asUser(null, sql)).rejects.toMatchObject({ code: '42501' });
+      });
+    }
   });
 
   it('gọi từ thân hàm DEFINER (RLS bị bỏ qua) ⇒ 42501', async () => {
@@ -493,7 +551,8 @@ describe('invoice_list_v1 — bộ lọc', () => {
       expect(await ids(OWNER, { p_search: 'hd-00' })).toEqual([I7, I1, I2, I3, I5]);
       expect(await ids(OWNER, { p_search: 'Văn An' })).toEqual([I7, I1, I5]);
       expect(await ids(OWNER, { p_search: '  (Văn,   An)  ' })).toEqual([I7, I1, I5]);
-      expect(await ids(OWNER, { p_search: 'Văn An' })).toEqual([I7, I1, I5]);
+      expect(await ids(OWNER, { p_search: `Văn${String.fromCharCode(0xa0)}An` })).toEqual([I7, I1, I5]);
+      expect(await ids(OWNER, { p_search: `${String.fromCharCode(0x3000)}Văn${String.fromCharCode(0x2028)}An${String.fromCharCode(0xfeff)}` })).toEqual([I7, I1, I5]);
       expect(await ids(OWNER, { p_search: 'Nguyễn*An' })).toEqual([I7, I1, I5]);
       expect(await ids(OWNER, { p_search: ' , ' })).toEqual([I7, I1, I2, I3, I5]);
       // Khách do người đã rời công ty tạo: RLS customers giấu ⇒ không tìm ra.
@@ -607,9 +666,43 @@ describe('invoice_statistics_v3', () => {
     });
   });
 
+  it('hoá đơn thu dư: "còn lại" không âm, phần dư vào total_refunded', async () => {
+    await tx(async () => {
+      await db.exec(`INSERT INTO invoices(id,organization_id,user_id,contract_id,building_id,room_id,invoice_number,billing_month,
+          issue_date,status,total_amount,paid_amount,created_at) VALUES
+        ('${I9}','${ORG_A}','${OWNER}','${C1}','${B1}','${R1}','HD-009','2026-11','2026-11-01','PAID',100000,150000,'2026-11-01 10:00+00'),
+        ('${I10}','${ORG_A}','${OWNER}','${C1}','${B1}','${R1}','HD-010','2026-11','2026-11-02','APPROVED',200000,0,'2026-11-02 10:00+00')`);
+      expect(await stats(OWNER, { p_billing_month: '2026-11' })).toMatchObject({
+        total_count: 2, total_amount: 300000, total_paid: 150000, total_remaining: 200000, total_refunded: 50000 });
+    });
+  });
+
+  it('tiền thối/cọc chỉ tính phiếu gắn lần thu còn hiệu lực + phiếu thu chưa đảo; CT khác 0 vào đúng thẻ', async () => {
+    await tx(async () => {
+      await db.exec(`INSERT INTO invoice_payment_collections VALUES ('${COL_ON}','ACTIVE'),('${COL_OFF}','REVERSED');
+        INSERT INTO income_expenses(id,organization_id,user_id,building_id,room_id,invoice_id,type,approval_status,voucher_date,
+            change_amount,payment_collection_id,payment_id) VALUES
+          ('${u(131)}','${ORG_A}','${OWNER}','${B1}','${R1}','${I1}','INCOME','APPROVED','2026-10-10',1000,'${COL_ON}',NULL),
+          ('${u(132)}','${ORG_A}','${OWNER}','${B1}','${R1}','${I1}','INCOME','APPROVED','2026-10-10',2000,'${COL_OFF}',NULL),
+          ('${u(133)}','${ORG_A}','${OWNER}','${B1}','${R1}','${I1}','INCOME','APPROVED','2026-10-10',4000,NULL,'${u(81)}'),
+          ('${u(134)}','${ORG_A}','${OWNER}','${B1}','${R1}','${I1}','INCOME','APPROVED','2026-10-10',8000,NULL,'${u(83)}');
+        INSERT INTO income_expense_items(organization_id,income_expense_id,income_expense_type_id,amount) VALUES
+          ('${ORG_A}','${u(131)}','${u(111)}',10000),('${ORG_A}','${u(132)}','${u(111)}',20000),
+          ('${ORG_A}','${u(133)}','${u(111)}',40000),('${ORG_A}','${u(134)}','${u(111)}',80000);
+        INSERT INTO active_payment_receipts VALUES ('${ORG_A}','${I1}','CT',25000);`);
+      // u(132)/u(134) gắn lần thu đã huỷ / phiếu thu đã đảo ⇒ không tính (thối 23000+1000+4000; cọc +10000+40000).
+      expect(await stats(OWNER, { p_billing_month: '2026-10' })).toMatchObject({
+        change_amount: 28000, deposit_collected: 3050000,
+        total_collected: 825000, payment_tm: 500000, payment_tk: 300000, payment_tt: 0, payment_ct: 25000 });
+      expect(await ids(OWNER, { p_payment_method: 'CT' })).toEqual([I1]);
+      const i1 = (await list(OWNER, { p_limit: 100 })).rows.find((r) => r.id === I1)!;
+      expect(i1.active_payment_methods).toEqual(['CT']);
+    });
+  });
+
   it('khớp danh sách: số hoá đơn và tổng tiền của thẻ = tập dòng của bảng cùng bộ lọc', async () => {
     await tx(async () => {
-      for (const uid of [OWNER, STAFF, OTHER, SUPER]) {
+      for (const uid of [OWNER, STAFF, OTHER, SUPER, INV_ONLY, NOPERM]) {
         const rows = (await list(uid, { p_billing_month: '2026-10', p_limit: 1000 })).rows;
         const s = await stats(uid, { p_billing_month: '2026-10' });
         expect(s.total_count).toBe(rows.length);

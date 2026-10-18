@@ -8,42 +8,56 @@
 --
 -- MÔ HÌNH (quyết định chung 18/10/2026, review #196/#197): INVOKER + RLS.
 --   Hai hàm trên là SECURITY INVOKER, search_path '': đọc invoices và mọi bảng lồng BẰNG RLS
---   CỦA NGƯỜI GỌI (không chép policy) — tập dòng trùng tập web cũ thấy theo cấu trúc. Từ chối
---   khi current_user khác `authenticated` hoặc auth.uid() NULL (gọi từ thân DEFINER sẽ bỏ RLS).
---   Phần phải vượt RLS tách thành hàm DEFINER nhỏ, tự kiểm auth.uid():
+--   CỦA NGƯỜI GỌI (không chép policy). Từ chối khi current_user khác `authenticated` hoặc
+--   auth.uid() NULL (gọi từ thân DEFINER sẽ bỏ RLS).
+--   Phần phải vượt RLS tách thành hàm DEFINER nhỏ, tự kiểm auth.uid() và TỰ giao phạm vi của
+--   chính người gọi (không tin tập id bên gọi truyền vào):
 --     invoice_scope_building_ids_v1   tập toà có invoices.view ∩ buildings.view (bộ giải chung
---                                     authorized_scope_all_v3) — thay staff_assignments của v2,
---                                     nên chủ công ty không phân công toà hết ra 0.
---     invoice_receipt_methods_v1      tập hoá đơn theo phương thức phiếu thu còn hiệu lực.
---     invoice_receipt_totals_v1       tổng thu theo phương thức cho tập hoá đơn ĐÃ đọc qua RLS.
---     invoice_change_voucher_ids_v1   id phiếu thu có tiền thối của tập hoá đơn đã đọc qua RLS.
---     invoice_deposit_item_ids_v1     id dòng cọc đã thu theo toà/phòng/ngày phiếu.
---   Các helper phiếu thu tồn tại vì RLS invoice_payment_tenders/collections gọi can_access_building/
---   building_of_invoice TỪNG DÒNG: đo TEST 18/10 (joey) tổng thu một kỳ dưới RLS ~3,0 s, lọc thẻ
---   TM ~3,0 s; khối tiền thối ~430 ms, cọc ~950 ms (chủ). invoice_receipt_totals_v1 trả TỔNG
---   (không trả danh sách) và chỉ cho hoá đơn trong phạm vi của chính người gọi; tiền thối và cọc
---   thì helper chỉ trả id, hàm INVOKER đọc lại số tiền qua RLS.
+--                                     authorized_scope_all_v3, bỏ toà xoá mềm) — thay
+--                                     staff_assignments của v2. Chỉ trả id.
+--     invoice_receipt_methods_v1      hoá đơn theo phương thức phiếu thu còn hiệu lực (lọc được
+--                                     theo một phương thức). Chỉ trả tập id.
+--     invoice_statistics_money_v1     NGOẠI LỆ "DEFINER trả tổng" (docs/CODEBASE_STRUCTURE.md, mục
+--                                     Công thức dùng chung): tiền đã thu theo phương thức, tiền
+--                                     thối, cọc đã thu. Tính phạm vi MỘT lần, trả ĐÚNG MỘT dòng tổng,
+--                                     không trả danh sách; bất biến khoá bằng test PGlite.
+--   Lý do vượt RLS: policy invoice_payment_tenders/collections/income_expenses gọi
+--   can_access_building/building_of_invoice TỪNG DÒNG — đo TEST 18/10: tổng thu một kỳ dưới RLS
+--   ~3,0 s (joey), lọc thẻ TM ~3,0 s, khối tiền thối ~430 ms, khối cọc ~950 ms (chủ).
 --   p_building_ids: phạm vi người gọi (Hermes truyền toà của kết nối) — CHỈ THU HẸP (AND thêm):
 --   NULL = toàn phạm vi RLS, '{}' = không dòng nào. p_filter_building_ids (bộ lọc màn) như vậy.
 --
--- Khác biệt CHỦ Ý so với web cũ: (1) thống kê theo quyền thật (chủ không còn ra 0; nhân viên
--- có quyền ở toà không phân công thì thẻ tính đủ như bảng); (2) tìm theo tên khách không còn cắt
--- 200 khách khớp đầu tiên; (3) lọc thẻ TM/TK/TT/CT trả tổng số đúng (web cũ: rpc().select(…,
--- {count}) bỏ count ⇒ tổng 0); (4) thứ tự trong nhóm trùng khoá sắp xếp xác định bằng id.
+-- THAY ĐỔI HÀNH VI (chủ ý, ghi cả trong PR #201):
+--   (1) Danh sách theo invoices.view TỪNG TOÀ. Trang /invoices vốn chặn bằng RequirePermission
+--       module="invoices" (financeWorkRoutes.tsx) nhưng danh sách cũ đọc PostgREST chỉ theo RLS
+--       invoices: người có invoices.view ở toà A mà chỉ có buildings.view ở toà B trước thấy cả
+--       hoá đơn toà B — nay KHÔNG thấy.
+--   (2) Thẻ thống kê theo quyền thật thay staff_assignments: chủ công ty không phân công toà nào
+--       hết ra 0; nhân viên có quyền ở toà không được phân công thì thẻ tính đủ như bảng. Người
+--       quản lý lợi nhuận (profit_manager_salary_buildings — v2 cộng các toà này) nay chỉ thấy thẻ
+--       của toà mình có invoices.view.
+--   (3) Tìm theo tên khách không còn cắt 200 khách khớp đầu tiên.
+--   (4) Lọc thẻ TM/TK/TT/CT trả tổng số đúng (web cũ: rpc().select(…, {count}) bỏ count ⇒ tổng 0).
+--   (5) Thứ tự trong nhóm trùng khoá sắp xếp xác định bằng id.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '120s';
 
--- Bản nháp DEFINER đã áp TEST 17/10 (không có ở production): dọn.
+-- Bản nháp đã áp TEST 17–18/10 (không có ở production): dọn.
 DROP FUNCTION IF EXISTS app_private.invoice_read_context_v1(uuid, uuid[], uuid[]);
 DROP FUNCTION IF EXISTS app_private.invoice_read_args_v1(text, text, text, integer, integer);
 DROP FUNCTION IF EXISTS app_private.invoice_search_pattern_v1(text);
 DROP FUNCTION IF EXISTS public.invoice_deposit_type_ids_v1();
+DROP FUNCTION IF EXISTS public.invoice_receipt_methods_v1(uuid[]);
+DROP FUNCTION IF EXISTS public.invoice_receipt_totals_v1(uuid[]);
+DROP FUNCTION IF EXISTS public.invoice_change_voucher_ids_v1(uuid[]);
+DROP FUNCTION IF EXISTS public.invoice_deposit_item_ids_v1(text, uuid[], uuid[], date, date, uuid[]);
 
--- Tập toà người gọi được đọc hoá đơn. Người thường: invoices.view ∩ buildings.view, hậu kỳ như
--- app_private.buildings_for_v3 (bỏ toà xoá mềm; hai vế super admin/demo/sandbox của hàm đó luôn
--- sai với người thường). Super admin: mọi toà trừ sandbox và toà của tài khoản demo (như nhánh
--- đặc quyền của v2 và RLS super_admin_all + hide_demo/sandbox), kể cả toà đã xoá.
+-- Tập toà người gọi được đọc hoá đơn. Người thường: MỘT truy vấn trên buildings — bỏ toà xoá mềm
+-- (như hậu kỳ app_private.buildings_for_v3; hai vế super admin/demo/sandbox của hàm đó luôn sai với
+-- người thường), rồi đòi ĐỒNG THỜI buildings.view và invoices.view. Super admin: mọi toà trừ sandbox
+-- và toà của tài khoản demo (như nhánh đặc quyền của v2 và RLS super_admin_all + hide_demo/sandbox),
+-- kể cả toà đã xoá.
 CREATE OR REPLACE FUNCTION public.invoice_scope_building_ids_v1()
 RETURNS uuid[]
 LANGUAGE plpgsql
@@ -55,10 +69,10 @@ DECLARE
   v_orgs uuid[];
   v_sandbox uuid[];
   v_demo uuid[];
-  v_org_wide boolean;
-  v_ids uuid[];
-  v_view uuid[];
-  v_invoice uuid[];
+  v_view_org_wide boolean;
+  v_view_ids uuid[];
+  v_invoice_org_wide boolean;
+  v_invoice_ids uuid[];
   v_result uuid[];
 BEGIN
   IF auth.uid() IS NULL THEN
@@ -74,30 +88,29 @@ BEGIN
     RETURN v_result;
   END IF;
   v_orgs := public.my_org_ids();
-  SELECT s.org_wide, s.building_ids INTO v_org_wide, v_ids
+  SELECT s.org_wide, s.building_ids INTO v_view_org_wide, v_view_ids
     FROM app_private.authorized_scope_all_v3('buildings.view') s;
-  SELECT coalesce(array_agg(b.id ORDER BY b.id), '{}'::uuid[]) INTO v_view
-    FROM public.buildings b
-   WHERE b.deleted_at IS NULL
-     AND CASE WHEN coalesce(v_org_wide, false) THEN b.organization_id = ANY (v_orgs)
-              ELSE b.id = ANY (coalesce(v_ids, '{}'::uuid[])) END;
-  SELECT s.org_wide, s.building_ids INTO v_org_wide, v_ids
+  SELECT s.org_wide, s.building_ids INTO v_invoice_org_wide, v_invoice_ids
     FROM app_private.authorized_scope_all_v3('invoices.view') s;
-  SELECT coalesce(array_agg(b.id ORDER BY b.id), '{}'::uuid[]) INTO v_invoice
+  SELECT coalesce(array_agg(b.id ORDER BY b.id), '{}'::uuid[]) INTO v_result
     FROM public.buildings b
    WHERE b.deleted_at IS NULL
-     AND CASE WHEN coalesce(v_org_wide, false) THEN b.organization_id = ANY (v_orgs)
-              ELSE b.id = ANY (coalesce(v_ids, '{}'::uuid[])) END;
-  SELECT coalesce(array_agg(v.id ORDER BY v.id), '{}'::uuid[]) INTO v_result
-    FROM unnest(v_view) AS v(id)
-   WHERE v.id = ANY (v_invoice);
+     -- buildings.view (như RLS bảng invoices cũ)
+     AND CASE WHEN coalesce(v_view_org_wide, false) THEN b.organization_id = ANY (v_orgs)
+              ELSE b.id = ANY (coalesce(v_view_ids, '{}'::uuid[])) END
+     -- invoices.view (quyền của màn /invoices)
+     AND CASE WHEN coalesce(v_invoice_org_wide, false) THEN b.organization_id = ANY (v_orgs)
+              ELSE b.id = ANY (coalesce(v_invoice_ids, '{}'::uuid[])) END;
   RETURN v_result;
 END
 $fn$;
 
--- Hoá đơn (trong phạm vi người gọi) có phiếu thu còn hiệu lực theo từng phương thức. NULL =
--- mọi hoá đơn trong phạm vi; truyền mảng thì chỉ xét các hoá đơn đó. Chỉ trả tập id.
-CREATE OR REPLACE FUNCTION public.invoice_receipt_methods_v1(p_invoice_ids uuid[] DEFAULT NULL)
+-- Hoá đơn (trong phạm vi người gọi) có phiếu thu còn hiệu lực theo từng phương thức.
+-- p_invoice_ids NULL = mọi hoá đơn trong phạm vi; truyền mảng thì chỉ xét các hoá đơn đó.
+-- p_payment_method: chỉ gom đúng một phương thức (bấm thẻ TM/TK/TT/CT). Chỉ trả tập id.
+CREATE OR REPLACE FUNCTION public.invoice_receipt_methods_v1(
+  p_invoice_ids uuid[] DEFAULT NULL,
+  p_payment_method public.payment_method DEFAULT NULL)
 RETURNS TABLE (payment_method text, invoice_ids uuid[])
 LANGUAGE plpgsql
 STABLE
@@ -118,87 +131,29 @@ BEGIN
    WHERE r.collected_amount > 0
      AND i.building_id = ANY (v_scope)
      AND (p_invoice_ids IS NULL OR r.invoice_id = ANY (p_invoice_ids))
+     AND (p_payment_method IS NULL OR r.payment_method::text = p_payment_method::text)
    GROUP BY r.payment_method;
 END
 $fn$;
 
--- Tổng tiền đã thu theo phương thức (khối thu của get_invoice_statistics_v2) cho tập hoá đơn
--- người gọi đã đọc qua RLS; hoá đơn ngoài phạm vi của chính người gọi bị bỏ. Trả một dòng tổng.
-CREATE OR REPLACE FUNCTION public.invoice_receipt_totals_v1(p_invoice_ids uuid[])
-RETURNS TABLE (total_collected numeric, payment_tm numeric, payment_tk numeric,
-               payment_tt numeric, payment_ct numeric)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $fn$
-DECLARE
-  v_scope uuid[];
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'invoice_read_unauthenticated' USING ERRCODE = '42501';
-  END IF;
-  v_scope := public.invoice_scope_building_ids_v1();
-  RETURN QUERY
-  SELECT coalesce(sum(r.collected_amount), 0),
-         coalesce(sum(CASE WHEN r.payment_method::text = 'TM' THEN r.collected_amount ELSE 0 END), 0),
-         coalesce(sum(CASE WHEN r.payment_method::text = 'TK' THEN r.collected_amount ELSE 0 END), 0),
-         coalesce(sum(CASE WHEN r.payment_method::text = 'TT' THEN r.collected_amount ELSE 0 END), 0),
-         coalesce(sum(CASE WHEN r.payment_method::text = 'CT' THEN r.collected_amount ELSE 0 END), 0)
-    FROM public.active_payment_receipts r
-    JOIN public.invoices i ON i.id = r.invoice_id
-   WHERE i.building_id = ANY (v_scope)
-     AND r.invoice_id = ANY (coalesce(p_invoice_ids, '{}'::uuid[]));
-END
-$fn$;
-
--- Phiếu thu có tiền thối (khối "Tiền thối" của v2) của các hoá đơn người gọi đã đọc qua RLS, giới
--- hạn trong phạm vi của chính người gọi. Chỉ trả tập id; hàm INVOKER đọc lại số tiền qua RLS.
--- (Đọc thẳng dưới RLS chạm invoice_payment_collections — policy gọi building_of_invoice TỪNG DÒNG,
--- đo TEST 18/10: khối tiền thối ~430 ms, khối cọc ~950 ms.)
-CREATE OR REPLACE FUNCTION public.invoice_change_voucher_ids_v1(p_invoice_ids uuid[])
-RETURNS uuid[]
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $fn$
-DECLARE
-  v_scope uuid[];
-  v_result uuid[];
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'invoice_read_unauthenticated' USING ERRCODE = '42501';
-  END IF;
-  v_scope := public.invoice_scope_building_ids_v1();
-  SELECT coalesce(array_agg(ie.id ORDER BY ie.id), '{}'::uuid[]) INTO v_result
-    FROM public.income_expenses ie
-    JOIN public.invoices i ON i.id = ie.invoice_id
-   WHERE ie.invoice_id = ANY (coalesce(p_invoice_ids, '{}'::uuid[]))
-     AND i.building_id = ANY (v_scope)
-     AND ie.deleted_at IS NULL
-     AND ie.type = 'INCOME'
-     AND ie.change_amount > 0
-     AND (ie.payment_collection_id IS NULL OR EXISTS (
-           SELECT 1 FROM public.invoice_payment_collections active_collection
-            WHERE active_collection.id = ie.payment_collection_id AND active_collection.status = 'ACTIVE'))
-     AND (ie.payment_id IS NULL OR EXISTS (
-           SELECT 1 FROM public.active_payments active_payment WHERE active_payment.id = ie.payment_id));
-  RETURN v_result;
-END
-$fn$;
-
--- Dòng cọc (loại thu is_deposit) của phiếu thu đã duyệt, theo toà/phòng/ngày phiếu như khối "Cọc
--- đã thu" của v2, trong phạm vi người gọi. Không đọc income_expense_types qua RLS (đòi
--- categories.view — thiếu thì thẻ cọc về 0 dù v2 vẫn tính). Chỉ trả tập id.
-CREATE OR REPLACE FUNCTION public.invoice_deposit_item_ids_v1(
+-- Khối tiền của thẻ thống kê (cùng công thức get_invoice_statistics_v2) — NGOẠI LỆ "DEFINER trả tổng":
+--   * tiền đã thu theo phương thức + tiền thối: chỉ của tập hoá đơn bên gọi đã đọc qua RLS, SAU KHI
+--     giao lại với phạm vi của chính người gọi (id ngoài phạm vi, toà xoá mềm, công ty khác bị bỏ);
+--   * cọc đã thu: Σ DÒNG cọc (loại thu is_deposit) của phiếu thu đã duyệt theo toà/phòng/ngày phiếu
+--     trong phạm vi người gọi (không đọc income_expense_types qua RLS — đòi categories.view, thiếu
+--     thì thẻ cọc về 0 dù v2 vẫn tính).
+-- Phạm vi tính MỘT lần; trả ĐÚNG MỘT dòng tổng, không bao giờ trả danh sách.
+CREATE OR REPLACE FUNCTION public.invoice_statistics_money_v1(
+  p_invoice_ids uuid[],
   p_billing_month text DEFAULT NULL,
   p_filter_building_ids uuid[] DEFAULT NULL,
   p_room_ids uuid[] DEFAULT NULL,
   p_issue_date_from date DEFAULT NULL,
   p_issue_date_to date DEFAULT NULL,
   p_building_ids uuid[] DEFAULT NULL)
-RETURNS uuid[]
+RETURNS TABLE (total_collected numeric, payment_tm numeric, payment_tk numeric,
+               payment_tt numeric, payment_ct numeric, change_amount numeric,
+               deposit_collected numeric)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
@@ -206,32 +161,65 @@ SET search_path = ''
 AS $fn$
 DECLARE
   v_scope uuid[];
-  v_result uuid[];
+  v_ids uuid[];
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'invoice_read_unauthenticated' USING ERRCODE = '42501';
   END IF;
   v_scope := public.invoice_scope_building_ids_v1();
-  SELECT coalesce(array_agg(it.id ORDER BY it.id), '{}'::uuid[]) INTO v_result
-    FROM public.income_expenses ie
-    JOIN public.income_expense_items it ON it.income_expense_id = ie.id
-    JOIN public.income_expense_types t ON t.id = it.income_expense_type_id AND t.is_deposit = TRUE
-   WHERE ie.deleted_at IS NULL
-     AND ie.type = 'INCOME'
-     AND ie.approval_status = 'APPROVED'
-     AND ie.building_id = ANY (v_scope)
-     AND (p_building_ids IS NULL OR ie.building_id = ANY (p_building_ids))
-     AND (p_filter_building_ids IS NULL OR ie.building_id = ANY (p_filter_building_ids))
-     AND (ie.payment_collection_id IS NULL OR EXISTS (
-           SELECT 1 FROM public.invoice_payment_collections active_collection
-            WHERE active_collection.id = ie.payment_collection_id AND active_collection.status = 'ACTIVE'))
-     AND (ie.payment_id IS NULL OR EXISTS (
-           SELECT 1 FROM public.active_payments active_payment WHERE active_payment.id = ie.payment_id))
-     AND (p_room_ids IS NULL OR ie.room_id = ANY (p_room_ids))
-     AND (p_issue_date_from IS NULL OR ie.voucher_date >= p_issue_date_from)
-     AND (p_issue_date_to IS NULL OR ie.voucher_date <= p_issue_date_to)
-     AND (p_billing_month IS NULL OR to_char(ie.voucher_date, 'YYYY-MM') = p_billing_month);
-  RETURN v_result;
+  -- Không tin tập id bên gọi: chỉ giữ hoá đơn thuộc toà trong phạm vi của chính người gọi.
+  SELECT coalesce(array_agg(i.id), '{}'::uuid[]) INTO v_ids
+    FROM public.invoices i
+   WHERE i.id = ANY (coalesce(p_invoice_ids, '{}'::uuid[]))
+     AND i.building_id = ANY (v_scope);
+
+  RETURN QUERY
+  WITH receipts AS (
+    SELECT coalesce(sum(r.collected_amount), 0) AS total_collected,
+           coalesce(sum(CASE WHEN r.payment_method::text = 'TM' THEN r.collected_amount ELSE 0 END), 0) AS payment_tm,
+           coalesce(sum(CASE WHEN r.payment_method::text = 'TK' THEN r.collected_amount ELSE 0 END), 0) AS payment_tk,
+           coalesce(sum(CASE WHEN r.payment_method::text = 'TT' THEN r.collected_amount ELSE 0 END), 0) AS payment_tt,
+           coalesce(sum(CASE WHEN r.payment_method::text = 'CT' THEN r.collected_amount ELSE 0 END), 0) AS payment_ct
+      FROM public.active_payment_receipts r
+     WHERE r.invoice_id = ANY (v_ids)
+  ),
+  change AS (
+    SELECT coalesce(sum(ie.change_amount), 0) AS change_amount
+      FROM public.income_expenses ie
+     WHERE ie.invoice_id = ANY (v_ids)
+       AND ie.deleted_at IS NULL
+       AND ie.type = 'INCOME'
+       AND ie.change_amount > 0
+       AND (ie.payment_collection_id IS NULL OR EXISTS (
+             SELECT 1 FROM public.invoice_payment_collections active_collection
+              WHERE active_collection.id = ie.payment_collection_id AND active_collection.status = 'ACTIVE'))
+       AND (ie.payment_id IS NULL OR EXISTS (
+             SELECT 1 FROM public.active_payments active_payment WHERE active_payment.id = ie.payment_id))
+  ),
+  deposit AS (
+    SELECT coalesce(sum(it.amount), 0) AS deposit_collected
+      FROM public.income_expenses ie
+      JOIN public.income_expense_items it ON it.income_expense_id = ie.id
+      JOIN public.income_expense_types t ON t.id = it.income_expense_type_id AND t.is_deposit = TRUE
+     WHERE ie.deleted_at IS NULL
+       AND ie.type = 'INCOME'
+       AND ie.approval_status = 'APPROVED'
+       AND ie.building_id = ANY (v_scope)
+       AND (p_building_ids IS NULL OR ie.building_id = ANY (p_building_ids))
+       AND (p_filter_building_ids IS NULL OR ie.building_id = ANY (p_filter_building_ids))
+       AND (ie.payment_collection_id IS NULL OR EXISTS (
+             SELECT 1 FROM public.invoice_payment_collections active_collection
+              WHERE active_collection.id = ie.payment_collection_id AND active_collection.status = 'ACTIVE'))
+       AND (ie.payment_id IS NULL OR EXISTS (
+             SELECT 1 FROM public.active_payments active_payment WHERE active_payment.id = ie.payment_id))
+       AND (p_room_ids IS NULL OR ie.room_id = ANY (p_room_ids))
+       AND (p_issue_date_from IS NULL OR ie.voucher_date >= p_issue_date_from)
+       AND (p_issue_date_to IS NULL OR ie.voucher_date <= p_issue_date_to)
+       AND (p_billing_month IS NULL OR to_char(ie.voucher_date, 'YYYY-MM') = p_billing_month)
+  )
+  SELECT receipts.total_collected, receipts.payment_tm, receipts.payment_tk, receipts.payment_tt,
+         receipts.payment_ct, change.change_amount, deposit.deposit_collected
+    FROM receipts, change, deposit;
 END
 $fn$;
 
@@ -277,14 +265,15 @@ BEGIN
 
   v_scope := public.invoice_scope_building_ids_v1();
   IF p_payment_method IS NOT NULL THEN
-    SELECT coalesce((SELECT m.invoice_ids FROM public.invoice_receipt_methods_v1(NULL) m
-                      WHERE m.payment_method = p_payment_method::text), '{}'::uuid[])
+    -- Chỉ gom phiếu thu đúng phương thức đang bấm, không gom toàn lịch sử mọi phương thức.
+    SELECT coalesce((SELECT m.invoice_ids FROM public.invoice_receipt_methods_v1(NULL, p_payment_method) m), '{}'::uuid[])
       INTO v_method_ids;
   END IF;
   -- Ô tìm kiếm như web cũ: , ( ) → khoảng trắng, gộp khoảng trắng (kể cả khoảng trắng Unicode
   -- mà \s của JavaScript nhận), cắt hai đầu; '*' là '%' như PostgREST. Rỗng ⇒ không lọc.
   v_q := btrim(regexp_replace(regexp_replace(coalesce(p_search, ''), '[,()]', ' ', 'g'),
-           '[\s   -     　﻿]+', ' ', 'g'));
+           '[\s' || chr(160) || chr(5760) || chr(8192) || '-' || chr(8202) || chr(8232) || chr(8233)
+             || chr(8239) || chr(8287) || chr(12288) || chr(65279) || ']+', ' ', 'g'));
   IF v_q <> '' THEN
     v_pattern := '%' || replace(v_q, '*', '%') || '%';
   END IF;
@@ -344,7 +333,8 @@ BEGIN
   ),
   page_methods AS MATERIALIZED (
     SELECT u.invoice_id, jsonb_agg(m.payment_method ORDER BY m.payment_method) AS methods
-      FROM public.invoice_receipt_methods_v1((SELECT array_agg(p.id) FROM page p)) m
+      -- coalesce: trang rỗng phải là '{}' (không phải NULL = mọi hoá đơn trong phạm vi).
+      FROM public.invoice_receipt_methods_v1((SELECT coalesce(array_agg(p.id), '{}'::uuid[]) FROM page p), NULL) m
      CROSS JOIN LATERAL unnest(m.invoice_ids) AS u(invoice_id)
      GROUP BY u.invoice_id
   )
@@ -421,7 +411,7 @@ $fn$;
 -- Thẻ thống kê: cùng công thức get_invoice_statistics_v2 (huỷ không tính trừ khi hỏi đích danh
 -- CANCELLED; điện/nước/dịch vụ theo mô tả dòng; tiền thối; cọc đã thu theo ngày phiếu) trên
 -- CÙNG tập hoá đơn với invoice_list_v1 (RLS + invoice_scope_building_ids_v1 + cùng bộ lọc ngày
--- lập/kỳ). Bộ lọc toà/phòng nhận mảng.
+-- lập/kỳ). Đọc invoices MỘT lần dưới RLS; các khối tiền đi một helper DEFINER trả một dòng tổng.
 CREATE OR REPLACE FUNCTION public.invoice_statistics_v3(
   p_billing_month text DEFAULT NULL,
   p_status public.invoice_status DEFAULT NULL,
@@ -455,9 +445,6 @@ SET search_path = ''
 AS $fn$
 DECLARE
   v_scope uuid[];
-  v_ids uuid[];
-  v_change_ids uuid[];
-  v_deposit_item_ids uuid[];
 BEGIN
   IF current_user IS DISTINCT FROM 'authenticated' OR auth.uid() IS NULL THEN
     RAISE EXCEPTION 'invoice_statistics_v3 chỉ chạy bằng JWT người dùng' USING ERRCODE = '42501';
@@ -467,39 +454,34 @@ BEGIN
   END IF;
   v_scope := public.invoice_scope_building_ids_v1();
 
-  -- Cùng tập hoá đơn với invoice_list_v1: RLS + phạm vi invoices.view + cùng bộ lọc kỳ/ngày lập.
-  SELECT coalesce(array_agg(i.id), '{}'::uuid[]) INTO v_ids
-    FROM public.invoices i
-   WHERE i.deleted_at IS NULL
-     AND i.building_id = ANY (v_scope)
-     AND (p_building_ids IS NULL OR i.building_id = ANY (p_building_ids))
-     AND (p_filter_building_ids IS NULL OR i.building_id = ANY (p_filter_building_ids))
-     AND (p_room_ids IS NULL OR i.room_id = ANY (p_room_ids))
-     AND (p_status IS NULL OR i.status = p_status)
-     -- [A1] Hoá đơn đã HUỶ không còn là công nợ: loại khỏi mọi tổng, TRỪ khi hỏi đích danh.
-     AND (p_status IS NOT DISTINCT FROM 'CANCELLED'::public.invoice_status OR i.status <> 'CANCELLED')
-     AND (p_issue_date_from IS NULL OR i.issue_date >= p_issue_date_from)
-     AND (p_issue_date_to IS NULL OR i.issue_date <= p_issue_date_to)
-     AND (p_billing_month IS NULL OR i.billing_month = p_billing_month)
-     AND (p_payment_status IS NULL
-          OR (p_payment_status = 'paid' AND i.status = 'PAID')
-          OR (p_payment_status = 'partial' AND i.status = 'PARTIAL_PAID')
-          OR (p_payment_status = 'unpaid' AND i.status NOT IN ('PAID', 'PARTIAL_PAID')));
-  v_change_ids := public.invoice_change_voucher_ids_v1(v_ids);
-  v_deposit_item_ids := public.invoice_deposit_item_ids_v1(p_billing_month, p_filter_building_ids, p_room_ids,
-    p_issue_date_from, p_issue_date_to, p_building_ids);
-
   RETURN QUERY
+  -- Cùng tập hoá đơn với invoice_list_v1: RLS + phạm vi invoices.view + cùng bộ lọc kỳ/ngày lập.
   WITH inv AS MATERIALIZED (
     SELECT i.id, i.total_amount, i.paid_amount, i.remaining_amount
-      FROM public.invoices i WHERE i.id = ANY (v_ids)
+      FROM public.invoices i
+     WHERE i.deleted_at IS NULL
+       AND i.building_id = ANY (v_scope)
+       AND (p_building_ids IS NULL OR i.building_id = ANY (p_building_ids))
+       AND (p_filter_building_ids IS NULL OR i.building_id = ANY (p_filter_building_ids))
+       AND (p_room_ids IS NULL OR i.room_id = ANY (p_room_ids))
+       AND (p_status IS NULL OR i.status = p_status)
+       -- [A1] Hoá đơn đã HUỶ không còn là công nợ: loại khỏi mọi tổng, TRỪ khi hỏi đích danh.
+       AND (p_status IS NOT DISTINCT FROM 'CANCELLED'::public.invoice_status OR i.status <> 'CANCELLED')
+       AND (p_issue_date_from IS NULL OR i.issue_date >= p_issue_date_from)
+       AND (p_issue_date_to IS NULL OR i.issue_date <= p_issue_date_to)
+       AND (p_billing_month IS NULL OR i.billing_month = p_billing_month)
+       AND (p_payment_status IS NULL
+            OR (p_payment_status = 'paid' AND i.status = 'PAID')
+            OR (p_payment_status = 'partial' AND i.status = 'PARTIAL_PAID')
+            OR (p_payment_status = 'unpaid' AND i.status NOT IN ('PAID', 'PARTIAL_PAID')))
   ),
   totals AS (
     SELECT coalesce(sum(inv.total_amount), 0) AS total_amount,
            coalesce(sum(inv.paid_amount), 0) AS total_paid,
            coalesce(sum(greatest(inv.remaining_amount, 0)), 0) AS total_remaining,
            coalesce(sum(greatest(-inv.remaining_amount, 0)), 0) AS total_refunded,
-           count(*) AS total_count
+           count(*) AS total_count,
+           coalesce(array_agg(inv.id), '{}'::uuid[]) AS ids
       FROM inv
   ),
   items AS (
@@ -516,68 +498,51 @@ BEGIN
                              THEN ii.amount ELSE 0 END), 0) AS pdv_amount
       FROM inv JOIN public.invoice_items ii ON ii.invoice_id = inv.id
   ),
-  receipts AS (
-    SELECT * FROM public.invoice_receipt_totals_v1(v_ids)
-  ),
-  -- Số tiền đọc lại QUA RLS theo tập id helper trả về.
-  change AS (
-    SELECT coalesce(sum(ie.change_amount), 0) AS change_amount
-      FROM public.income_expenses ie WHERE ie.id = ANY (v_change_ids)
-  ),
-  -- Cọc đã thu — Σ DÒNG cọc của phiếu thu đã duyệt (phiếu trộn chỉ tính phần cọc), theo toà/phòng/ngày phiếu.
-  deposit AS (
-    SELECT coalesce(sum(it.amount), 0) AS deposit_collected
-      FROM public.income_expense_items it WHERE it.id = ANY (v_deposit_item_ids)
+  money AS (
+    SELECT m.*
+      FROM totals
+     CROSS JOIN LATERAL public.invoice_statistics_money_v1(totals.ids, p_billing_month, p_filter_building_ids,
+       p_room_ids, p_issue_date_from, p_issue_date_to, p_building_ids) m
   )
   -- numeric(15,2) như các biến DECIMAL(15,2) của v2.
   SELECT totals.total_amount::numeric(15,2), totals.total_paid::numeric(15,2),
          totals.total_remaining::numeric(15,2), totals.total_refunded::numeric(15,2), totals.total_count,
          items.rent_amount::numeric(15,2), items.electric_amount::numeric(15,2),
          items.water_amount::numeric(15,2), items.pdv_amount::numeric(15,2),
-         receipts.total_collected::numeric(15,2), receipts.payment_tm::numeric(15,2),
-         receipts.payment_tk::numeric(15,2), receipts.payment_tt::numeric(15,2),
-         receipts.payment_ct::numeric(15,2), change.change_amount::numeric(15,2),
-         deposit.deposit_collected::numeric(15,2)
-    FROM totals, items, receipts, change, deposit;
+         money.total_collected::numeric(15,2), money.payment_tm::numeric(15,2),
+         money.payment_tk::numeric(15,2), money.payment_tt::numeric(15,2),
+         money.payment_ct::numeric(15,2), money.change_amount::numeric(15,2),
+         money.deposit_collected::numeric(15,2)
+    FROM totals, items, money;
 END
 $fn$;
 
 COMMENT ON FUNCTION public.invoice_list_v1(text, text, public.invoice_status, text, uuid[], uuid[], uuid, date, date, numeric, text, text, public.payment_method, uuid[], integer, integer) IS
-  'Danh sách hoá đơn dùng chung (web /invoices, Hermes). INVOKER: RLS của người gọi, chỉ chạy bằng JWT (current_user authenticated). Trả {total_count, rows}; dòng = cột invoices + contract/building/room/invoice_items/payments(chưa đảo)/invoice_adjustments/active_payment_methods. Phạm vi: RLS ∩ invoice_scope_building_ids_v1 (invoices.view). p_building_ids và p_filter_building_ids CHỈ THU HẸP: NULL = toàn phạm vi RLS, ''{}'' = không dòng nào.';
+  'Danh sách hoá đơn dùng chung (web /invoices, Hermes). INVOKER: RLS của người gọi, chỉ chạy bằng JWT (current_user authenticated). Trả {total_count, rows}; dòng = cột invoices + contract/building/room/invoice_items/payments(chưa đảo)/invoice_adjustments/active_payment_methods. Phạm vi: RLS ∩ invoice_scope_building_ids_v1 (invoices.view ∩ buildings.view). p_building_ids và p_filter_building_ids CHỈ THU HẸP: NULL = toàn phạm vi RLS, ''{}'' = không dòng nào.';
 COMMENT ON FUNCTION public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[]) IS
   'Thẻ thống kê hoá đơn dùng chung — công thức get_invoice_statistics_v2 trên cùng tập hoá đơn với invoice_list_v1 (INVOKER + RLS + invoices.view thật, không theo staff_assignments). p_building_ids chỉ thu hẹp: NULL = toàn phạm vi, ''{}'' = rỗng.';
 COMMENT ON FUNCTION public.invoice_scope_building_ids_v1() IS
-  'DEFINER nhỏ: tập toà người gọi đọc được hoá đơn (invoices.view ∩ buildings.view qua authorized_scope_all_v3; super admin: mọi toà trừ sandbox/demo). Chỉ trả id.';
-COMMENT ON FUNCTION public.invoice_receipt_methods_v1(uuid[]) IS
+  'DEFINER nhỏ: tập toà người gọi đọc được hoá đơn (invoices.view ∩ buildings.view qua authorized_scope_all_v3, bỏ toà xoá mềm; super admin: mọi toà trừ sandbox/demo). Chỉ trả id.';
+COMMENT ON FUNCTION public.invoice_receipt_methods_v1(uuid[], public.payment_method) IS
   'DEFINER nhỏ: hoá đơn trong phạm vi người gọi có phiếu thu còn hiệu lực theo từng phương thức (vượt RLS phiếu thu vốn kiểm từng dòng). Chỉ trả tập id.';
-COMMENT ON FUNCTION public.invoice_receipt_totals_v1(uuid[]) IS
-  'DEFINER nhỏ: tổng đã thu theo phương thức cho tập hoá đơn đã đọc qua RLS, giới hạn trong phạm vi của chính người gọi. Trả một dòng tổng, không trả danh sách.';
-COMMENT ON FUNCTION public.invoice_change_voucher_ids_v1(uuid[]) IS
-  'DEFINER nhỏ: id phiếu thu có tiền thối của tập hoá đơn đã đọc qua RLS, trong phạm vi người gọi. Chỉ trả id.';
-COMMENT ON FUNCTION public.invoice_deposit_item_ids_v1(text, uuid[], uuid[], date, date, uuid[]) IS
-  'DEFINER nhỏ: id dòng cọc (loại is_deposit) của phiếu thu đã duyệt theo toà/phòng/ngày phiếu, trong phạm vi người gọi. Chỉ trả id.';
+COMMENT ON FUNCTION public.invoice_statistics_money_v1(uuid[], text, uuid[], uuid[], date, date, uuid[]) IS
+  'DEFINER trả TỔNG (ngoại lệ có điều kiện, docs/CODEBASE_STRUCTURE.md#công-thức-dùng-chung): tiền đã thu theo phương thức + tiền thối của tập hoá đơn đã đọc qua RLS, cọc đã thu theo toà/phòng/ngày phiếu. Tự giao phạm vi của chính người gọi một lần; trả đúng một dòng tổng, không trả danh sách.';
 
 ALTER FUNCTION public.invoice_scope_building_ids_v1() OWNER TO postgres;
-ALTER FUNCTION public.invoice_receipt_methods_v1(uuid[]) OWNER TO postgres;
-ALTER FUNCTION public.invoice_receipt_totals_v1(uuid[]) OWNER TO postgres;
-ALTER FUNCTION public.invoice_change_voucher_ids_v1(uuid[]) OWNER TO postgres;
-ALTER FUNCTION public.invoice_deposit_item_ids_v1(text, uuid[], uuid[], date, date, uuid[]) OWNER TO postgres;
+ALTER FUNCTION public.invoice_receipt_methods_v1(uuid[], public.payment_method) OWNER TO postgres;
+ALTER FUNCTION public.invoice_statistics_money_v1(uuid[], text, uuid[], uuid[], date, date, uuid[]) OWNER TO postgres;
 ALTER FUNCTION public.invoice_list_v1(text, text, public.invoice_status, text, uuid[], uuid[], uuid, date, date, numeric, text, text, public.payment_method, uuid[], integer, integer) OWNER TO postgres;
 ALTER FUNCTION public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[]) OWNER TO postgres;
 
 REVOKE ALL ON FUNCTION public.invoice_scope_building_ids_v1(),
-  public.invoice_receipt_methods_v1(uuid[]),
-  public.invoice_receipt_totals_v1(uuid[]),
-  public.invoice_change_voucher_ids_v1(uuid[]),
-  public.invoice_deposit_item_ids_v1(text, uuid[], uuid[], date, date, uuid[]),
+  public.invoice_receipt_methods_v1(uuid[], public.payment_method),
+  public.invoice_statistics_money_v1(uuid[], text, uuid[], uuid[], date, date, uuid[]),
   public.invoice_list_v1(text, text, public.invoice_status, text, uuid[], uuid[], uuid, date, date, numeric, text, text, public.payment_method, uuid[], integer, integer),
   public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[])
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.invoice_scope_building_ids_v1(),
-  public.invoice_receipt_methods_v1(uuid[]),
-  public.invoice_receipt_totals_v1(uuid[]),
-  public.invoice_change_voucher_ids_v1(uuid[]),
-  public.invoice_deposit_item_ids_v1(text, uuid[], uuid[], date, date, uuid[]),
+  public.invoice_receipt_methods_v1(uuid[], public.payment_method),
+  public.invoice_statistics_money_v1(uuid[], text, uuid[], uuid[], date, date, uuid[]),
   public.invoice_list_v1(text, text, public.invoice_status, text, uuid[], uuid[], uuid, date, date, numeric, text, text, public.payment_method, uuid[], integer, integer),
   public.invoice_statistics_v3(text, public.invoice_status, text, uuid[], uuid[], date, date, uuid[])
   TO authenticated;
