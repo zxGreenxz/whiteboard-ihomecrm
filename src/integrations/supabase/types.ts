@@ -24747,6 +24747,27 @@ export type Database = {
           payment_methods: string[]
         }[]
       }
+      invoice_list_v1: {
+        Args: {
+          p_adjustment_review_status?: string
+          p_amount_target?: number
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_contract_id?: string
+          p_filter_building_ids?: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_limit?: number
+          p_offset?: number
+          p_payment_method?: Database["public"]["Enums"]["payment_method"]
+          p_payment_status?: string
+          p_room_ids?: string[]
+          p_search?: string
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+          p_view_status?: string
+        }
+        Returns: Json
+      }
       invoice_payment_method_drilldown: {
         Args: {
           p_payment_method: Database["public"]["Enums"]["payment_method"]
@@ -24797,6 +24818,67 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      invoice_receipt_methods_v1: {
+        Args: {
+          p_invoice_ids?: string[]
+          p_payment_method?: Database["public"]["Enums"]["payment_method"]
+        }
+        Returns: {
+          invoice_ids: string[]
+          payment_method: string
+        }[]
+      }
+      invoice_scope_building_ids_v1: { Args: never; Returns: string[] }
+      invoice_statistics_money_v1: {
+        Args: {
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_filter_building_ids?: string[]
+          p_invoice_ids: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_room_ids?: string[]
+        }
+        Returns: {
+          change_amount: number
+          deposit_collected: number
+          payment_ct: number
+          payment_tk: number
+          payment_tm: number
+          payment_tt: number
+          total_collected: number
+        }[]
+      }
+      invoice_statistics_v3: {
+        Args: {
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_filter_building_ids?: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_payment_status?: string
+          p_room_ids?: string[]
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+        }
+        Returns: {
+          change_amount: number
+          deposit_collected: number
+          electric_amount: number
+          payment_ct: number
+          payment_tk: number
+          payment_tm: number
+          payment_tt: number
+          pdv_amount: number
+          rent_amount: number
+          total_amount: number
+          total_collected: number
+          total_count: number
+          total_paid: number
+          total_refunded: number
+          total_remaining: number
+          water_amount: number
+        }[]
       }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
