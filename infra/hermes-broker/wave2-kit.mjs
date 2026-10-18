@@ -19,6 +19,17 @@
 // Helper DEFINER chỉ để trả TẬP ID của
 // chính người gọi, đặt ở public; cần app_private thì thân SQL chuẩn (gắn OID lúc tạo) + GRANT EXECUTE TO
 // authenticated (hermes-durable-schema.test.mjs phải liệt kê).
+//
+// NGOẠI LỆ NỀN đã duyệt (Gói Z 18/10/2026 — cùng danh sách ở docs/CODEBASE_STRUCTURE.md "Công thức dùng chung"):
+//  1. Helper DEFINER nhỏ ở public trả MỘT boolean, không trả danh sách: public.salary_is_admin_v1(p_organization_id) —
+//     về CHÍNH người gọi (admin trang lương); public.finance_type_restricted_v1(p_type_id,p_merged) — về một hạng mục
+//     trong công ty của người gọi (khác công ty/id lạ ⇒ NULL). EXECUTE chỉ authenticated, search_path cố định.
+//  2. Hàng tổng hợp toàn công ty buildingId=null (cashbook_daily, cash_flow, fa_type_breakdown) chỉ khi kết nối phạm vi
+//     Toàn tổ chức (cổng 20261018000700 nhận null chỉ khi orgWide); organizationId = p_organization_id hàm đã lọc.
+//  3. Hàng dùng chung (organization_id NULL) bị bỏ và đếm ở summary.globalRowsOmitted (ie_types); trùng tên thì hàng
+//     của công ty thắng khi khử trùng (20261018080300).
+//  4. Báo cáo theo toà nhận tối đa 256 toà: network_fleet toàn công ty > 256 toà ⇒ 22023 hermes_domain_scope_too_large.
+//  5. Chữ tự do gắn hợp đồng (ghi chú, người nộp, tên phiếu) chỉ khi MỌI khách của HĐ nhìn thấy dưới RLS customers.
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';
 export { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT };
 

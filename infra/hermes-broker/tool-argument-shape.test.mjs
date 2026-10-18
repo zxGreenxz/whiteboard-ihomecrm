@@ -144,6 +144,9 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // Từ 17/10 tools/list có trần riêng TOOLS_LIST_MAX_BYTES (192 KiB); tools/call giữ 65 536 B (server.mjs).
 // Ngân sách 64 000 B vẫn giữ để connector bản cũ (một trần chung) nhận đủ danh sách.
 // 85280779: 67 988 B (đã vượt); rút họ đọc: 63 743 B; rút chữ requestId (15 tool): 62 168 B.
+// Gói Z 18/10/2026 (tích hợp đợt 2: Gói 0 + A + B + C + D + Z, hai tool meta crm_read_report_list/crm_read_report):
+// 65 tool, 63 654 B — còn 346 B tới trần chung. Trần tổng giữ 64 000 B (connector bản cũ một trần 65 536 B); thêm tool
+// hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
   const scope = createDependencyScope(); t.after(() => scope.close());

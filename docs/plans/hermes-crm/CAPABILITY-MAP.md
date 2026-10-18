@@ -1,6 +1,6 @@
 # Bản đồ năng lực CRM → Hermes (P0.06)
 
-Snapshot 15/10/2026, nhánh gói E từ `0991db1a`. Đối chiếu [inventory](../../../tooling/hermes-crm-inventory.generated.json) schemaVersion 2 (67 tool, 32 action, 29 bề mặt UI) với source, migration và broker hiện có. Chỉ dựa trên repo: **chưa đo catalog/ACL TEST hay production**, chưa gọi PostgREST thật. Inventory là manifest Copilot, không phải cấu hình quyền; file này không cấp quyền hay bật capability nào.
+Snapshot 15/10/2026, nhánh gói E từ `0991db1a`; cập nhật 18/10/2026 (Gói Z) cho đợt 2 đọc đầy đủ — §2 cột Hermes/Disposition và §5.4. Đối chiếu [inventory](../../../tooling/hermes-crm-inventory.generated.json) schemaVersion 2 (67 tool, 32 action, 29 bề mặt UI) với source, migration và broker hiện có. Chỉ dựa trên repo: **chưa đo catalog/ACL TEST hay production**, chưa gọi PostgREST thật. Inventory là manifest Copilot, không phải cấu hình quyền; file này không cấp quyền hay bật capability nào.
 
 ## 1. Quy ước
 
@@ -17,7 +17,7 @@ Ký hiệu cổng reader Copilot: **H** = `copilot_org_scope_buildings_v1` (mả
 | Tool Copilot | Quyền CRM | RPC/hàm nền (cổng) | Hermes | Disposition |
 | --- | --- | --- | --- | --- |
 | `phong_trong` | rooms.view | `copilot_available_rooms_v1` (H) | `crm_available_rooms` | Đã chuyển |
-| `bao_cao_phong_trong` | reports_real_estate.vacant_rooms | `copilot_report_vacant_rooms_v1` (H) | `crm_available_rooms`, `crm_read_occupancy` | Một phần: thay bằng tool phòng; báo cáo riêng hoãn |
+| `bao_cao_phong_trong` | reports_real_estate.vacant_rooms | `copilot_report_vacant_rooms_v1` (H) | `crm_available_rooms`, `crm_read_occupancy`; `crm_read_report` re_vacant_rooms | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `ty_le_lap_day` | reports_real_estate.occupancy | `occupancy_snapshot_v2` / `_upcoming_vacancy_v2` (H) | `crm_read_occupancy` (họ v3 từ 17/10: cùng snapshot web, không đếm `rooms.status`); `crm_read_occupancy_report` (snapshot/upcoming gọi thẳng hai RPC web) | Đã chuyển (17/10) |
 | `tim_khach_hang` | customers.view | `copilot_customer_search_v1` (H, SĐT đầy đủ) | `crm_read_customers` (SĐT đầy đủ từ 16/10, họ v3) + `crm_read_customer_detail` | Đã chuyển |
 | `tim_khach_hen` | leads.view | `copilot_lead_search_v1` (H+A) | `crm_read_leads` | Đã chuyển |
@@ -25,7 +25,7 @@ Ký hiệu cổng reader Copilot: **H** = `copilot_org_scope_buildings_v1` (mả
 | `chi_tiet_hop_dong` | contracts.view | `copilot_contract_detail_v1` (H) | `crm_read_contract_detail` (họ v3: điều khoản, cọc, người ở, dịch vụ) | Đã chuyển (16/10) |
 | `tim_hoa_don` | invoices.view | `copilot_invoice_search_v1` (H) | `crm_read_invoices`; `crm_read_invoice_report` (search theo bộ lọc /invoices: ẩn huỷ, unpaid = chưa thu đồng nào; stats) | Đã chuyển (17/10 bỏ phụ thuộc copilot) |
 | `cong_no_tong_quan` | invoices.view | `get_invoice_statistics_v2` (H) | `crm_read_receivables` | Chuyển đợt này (dạng danh sách còn nợ); thống kê gộp hoãn: chưa rà shape JSON |
-| `bao_cao_lich_thu_tien` | reports_finance.payment_schedule | `copilot_report_payment_schedule_v1` (H, tên khách) | `crm_read_receivables` (lọc hạn) | Một phần |
+| `bao_cao_lich_thu_tien` | reports_finance.payment_schedule | `copilot_report_payment_schedule_v1` (H, tên khách) | `crm_read_report` payment_schedule (tên khách khi có customers.view); `crm_read_receivables` | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `tim_phieu_thu_chi` | income_expenses.view | `copilot_income_expense_search_v1` (H + `can_view_restricted_ie`) | `crm_read_income_expenses` | Chuyển đợt này |
 | `hop_cho_duyet` | income_expenses.view | `list_my_pending_approvals_v1` (H+A) | `crm_read_pending_approvals` (gọi thẳng RPC hộp /approvals, việc chờ CHÍNH người hỏi duyệt, Toàn tổ chức); "phiếu chờ duyệt" = `crm_read_income_expenses status=UNAPPROVED` | Đã chuyển (17/10) |
 | `chi_so_cong_to` | meter_readings.view | `copilot_meter_readings_v1` (H+A) | `crm_read_meter_readings` | Chuyển đợt này |
@@ -34,39 +34,39 @@ Ký hiệu cổng reader Copilot: **H** = `copilot_org_scope_buildings_v1` (mả
 | `cong_viec` | tasks.view | `copilot_tasks_v1` (H+A) | `crm_read_tasks` | Đã chuyển |
 | `danh_sach_tai_san` | assets.view | `copilot_asset_directory_v1` (H+A, cờ) | `crm_read_assets` (không cờ) | Đã chuyển |
 | `danh_sach_dich_vu` | services.view | `copilot_service_directory_v1` (H+A, cờ) | `crm_read_services` | Đã chuyển |
-| `danh_sach_loai_cong_viec` | task_types.view | `copilot_job_type_directory_v1` (A, cờ) | `crm_task_input_options kind=jobTypes` | Một phần: chỉ khi có Action tasks.create |
-| `danh_sach_toa_nha` | buildings.view | `copilot_building_directory_v1` (A+H, cờ) | nhãn toà trong `crm_*_input_options`, `crm_read_occupancy` | Một phần |
+| `danh_sach_loai_cong_viec` | task_types.view | `copilot_job_type_directory_v1` (A, cờ) | `crm_task_input_options kind=jobTypes`; `crm_read_report` task_types (bỏ thưởng/tính lương) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_toa_nha` | buildings.view | `copilot_building_directory_v1` (A+H, cờ) | `crm_read_report` buildings, building_detail, rooms, room_detail; nhãn toà trong `crm_*_input_options` | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `danh_sach_phong_sale` | sale_phong.view | `copilot_sale_listing_directory_v1` (H+A, cờ) | `crm_available_rooms`, `crm_room_pass_observe` | Một phần |
 | `hoi_thoai_zalo` | chat_zalo.view | `copilot_zalo_conversations_v1` (H+A; SĐT, nội dung tin) | `crm_group_directory` (nhóm); `crm_read_zalo_conversations` (SQL theo trang Chat Zalo + điều kiện RLS `zalo_authorized_org_ids('view')`; trả lời riêng, Toàn tổ chức) | Đã chuyển danh sách (17/10 bỏ phụ thuộc copilot); nội dung đầy đủ tin nhắn chưa |
-| `bao_cao_dat_coc` | reports_finance.deposits_report | `copilot_report_deposits_v1` (H, tên khách) | `crm_read_deposits_held` (tổng theo toà) | Một phần; chi tiết hoãn |
-| `bao_cao_gia_han` | reports_real_estate.renewals_transfers | `copilot_report_renewals_v1` (H) | — | Hoãn: ứng viên đợt sau, cần bỏ tên khách khỏi projection |
-| `bao_cao_hop_dong_moi` | reports_real_estate.new_leases | `copilot_report_new_leases_v1` (H) | — | Hoãn: như trên |
-| `bao_cao_thanh_ly` | reports_real_estate.terminations | `copilot_report_terminations_v1` (H; hoàn cọc, tên khách) | — | Hoãn: tiền hoàn cọc cần đối chiếu nghiệp vụ |
-| `hop_dong_sap_het_han` | reports_real_estate.expiring | `copilot_expiring_contracts_v1` (H) | `crm_read_contracts` (chưa lọc ngày) | Hoãn: thêm lọc endDate vào họ v2 |
-| `bao_cao_thu_thua` | reports_finance.overpayment | `copilot_report_overpayment_v1` (H) | — | Hoãn |
-| `bao_cao_ty_le_chi_phi` | reports_real_estate.expense_ratio | `copilot_report_expense_ratio_v1` (H) | — | Hoãn: hạng mục gộp/lưu trữ cần `ie_type_report_root_v1` |
-| `bao_cao_dong_tien` | reports_finance.cash_flow | `copilot_report_cash_flow_v1` (H+A, postings, sổ) | — | Hoãn: số liệu posting/sổ phải khớp reconcile v2; overlay sổ quỹ chưa có |
-| `bao_cao_thu_chi_theo_ngay` | reports_finance.daily_cashbook | `copilot_report_daily_cashbook_v1` (như trên) | `crm_read_income_expenses` (danh sách) | Một phần; tổng theo ngày hoãn cùng lý do |
-| `so_quy` | cashbooks.view | `copilot_cashbook_settlement_v2` (scope sổ) | — | Hoãn: cần overlay scope CASHBOOK (options hiện loại `cashbook_id`) và số dư theo reconcile v2 |
-| `bao_cao_ban_giao` | reports_finance.handover_report | `copilot_report_handover_v1` (A, cờ, sổ) | — | Hoãn: cờ + scope sổ |
-| `bao_cao_chu_ky_thu` | reports_finance.collection_cycle | `copilot_report_collection_cycle_v1` (A, cờ) | — | Hoãn: cờ + scope sổ |
-| `bao_cao_khuyen_mai` | reports_real_estate.promotions | `copilot_report_promotions_v1` (A, cờ) | — | Hoãn |
-| `bang_luong_ky` | salary.view | `copilot_salary_summary_v1` (cờ sensitive; lương cá nhân) | — | Hoãn: miền nhạy cảm, cần harness vai thật |
-| `loi_nhuan_co_dong` | shareholder_profit.view | `copilot_shareholder_profit_v1` (cờ sensitive) | — | Hoãn: như trên |
-| `trang_thai_mang` | network_center.view | `copilot_network_status_v1` (cờ sensitive) | — | Hoãn |
-| `tim_xe` | vehicles.view | `copilot_vehicle_search_v1` (biển số, chủ xe) | — | Hoãn: PII |
-| `ton_kho_vat_tu` | materials.view | `copilot_material_stock_v1` (H+A) | — | Hoãn: ứng viên không tiền |
+| `bao_cao_dat_coc` | reports_finance.deposits_report | `copilot_report_deposits_v1` (H, tên khách) | `crm_read_deposits_held`; `crm_read_report` held_deposits, reservation_vouchers, reservation_settlements, deposit_refunds (khoá deposits.view) | Một phần: khoá reports_finance.deposits_report giữ tắt (bảng legacy deposits chưa có báo cáo) |
+| `bao_cao_gia_han` | reports_real_estate.renewals_transfers | `copilot_report_renewals_v1` (H) | `crm_read_report` re_renewals_transfers | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_hop_dong_moi` | reports_real_estate.new_leases | `copilot_report_new_leases_v1` (H) | `crm_read_report` re_new_leases | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_thanh_ly` | reports_real_estate.terminations | `copilot_report_terminations_v1` (H; hoàn cọc, tên khách) | `crm_read_report` re_terminations (mẫu số tỉ lệ theo toà — khác web); hoàn cọc: `crm_read_report` deposit_refunds | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `hop_dong_sap_het_han` | reports_real_estate.expiring | `copilot_expiring_contracts_v1` (H) | `crm_read_report` re_expiring; `crm_read_contracts` | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_thu_thua` | reports_finance.overpayment | `copilot_report_overpayment_v1` (H) | `crm_read_report` overpayment | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_ty_le_chi_phi` | reports_real_estate.expense_ratio | `copilot_report_expense_ratio_v1` (H) | `crm_read_report` re_expense_ratio | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_dong_tien` | reports_finance.cash_flow | `copilot_report_cash_flow_v1` (H+A, postings, sổ) | `crm_read_report` cash_flow (hàng toàn công ty buildingId=null chỉ khi Toàn tổ chức) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_thu_chi_theo_ngay` | reports_finance.daily_cashbook | `copilot_report_daily_cashbook_v1` (như trên) | `crm_read_report` cashbook_daily; `crm_read_income_expenses` (danh sách) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `so_quy` | cashbooks.view | `copilot_cashbook_settlement_v2` (scope sổ) | `crm_read_report` cashbooks, cashbook_closings (chỉ sổ nhìn thấy, không số tài khoản) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bao_cao_ban_giao` | reports_finance.handover_report | `copilot_report_handover_v1` (A, cờ, sổ) | — | Hoãn: khoá reports_finance.handover_report giữ tắt (chưa có báo cáo; phạm vi web theo staff_assignments phải viết lại) |
+| `bao_cao_chu_ky_thu` | reports_finance.collection_cycle | `copilot_report_collection_cycle_v1` (A, cờ) | — | Hoãn: khoá reports_finance.collection_cycle giữ tắt (chưa có báo cáo; như trên) |
+| `bao_cao_khuyen_mai` | reports_real_estate.promotions | `copilot_report_promotions_v1` (A, cờ) | `crm_read_report` re_promotions | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `bang_luong_ky` | salary.view | `copilot_salary_summary_v1` (cờ sensitive; lương cá nhân) | `crm_read_report` salary_month (salary.view, tháng đã chốt); `crm_read_report` my_salary (assistant.salary.self) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `loi_nhuan_co_dong` | shareholder_profit.view | `copilot_shareholder_profit_v1` (cờ sensitive) | `crm_read_report` profit_shareholders, profit_my_share | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `trang_thai_mang` | network_center.view | `copilot_network_status_v1` (cờ sensitive) | `crm_read_report` network_fleet … network_config_diff (10 báo cáo; fleet toàn công ty ≤256 toà) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `tim_xe` | vehicles.view | `copilot_vehicle_search_v1` (biển số, chủ xe) | `crm_read_report` vehicles (tên/SĐT khách khi có customers.view) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `ton_kho_vat_tu` | materials.view | `copilot_material_stock_v1` (H+A) | `crm_read_report` materials, material_categories, material_purchases, material_usages, material_adjustments | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `danh_sach_bao_tri_tai_san` | assets.view | `copilot_asset_maintenance_directory_v1` (cờ) | `crm_read_assets` | Một phần |
-| `danh_sach_cong_to` | meters.view | `copilot_meter_directory_v1` (cờ) | — | Hoãn |
-| `danh_sach_dinh_muc_dich_vu` | service_quotas.view | `copilot_service_quota_directory_v1` (cờ) | — | Hoãn |
-| `danh_sach_hotline` | hotline.view | `copilot_hotline_directory_v1` (cờ, SĐT đầy đủ) | — | Hoãn |
-| `danh_sach_kho_tai_san` | warehouses.view | `copilot_warehouse_directory_v1` (cờ) | — | Hoãn |
-| `danh_sach_khu_vuc` | areas.view | `copilot_area_directory_v1` (cờ) | nhãn khu vực trong lựa chọn scope | Một phần |
+| `danh_sach_cong_to` | meters.view | `copilot_meter_directory_v1` (cờ) | `crm_read_report` meters | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_dinh_muc_dich_vu` | service_quotas.view | `copilot_service_quota_directory_v1` (cờ) | `crm_read_report` service_quotas | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_hotline` | hotline.view | `copilot_hotline_directory_v1` (cờ, SĐT đầy đủ) | `crm_read_report` hotlines | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_kho_tai_san` | warehouses.view | `copilot_warehouse_directory_v1` (cờ) | `crm_read_report` warehouses | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_khu_vuc` | areas.view | `copilot_area_directory_v1` (cờ) | `crm_read_report` areas (khoá buildings.view); nhãn khu vực trong lựa chọn scope | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `danh_sach_loai_tai_san` | asset_types.view | `copilot_asset_type_directory_v1` (cờ) | — | Hoãn |
-| `danh_sach_nha_cung_cap` | suppliers.view | `copilot_supplier_directory_v1` (cờ) | — | Hoãn |
-| `danh_sach_tang` | categories.view | `copilot_floor_directory_v1` (cờ) | — | Hoãn |
+| `danh_sach_nha_cung_cap` | suppliers.view | `copilot_supplier_directory_v1` (cờ) | `crm_read_report` suppliers (chỉ id, tên) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
+| `danh_sach_tang` | categories.view | `copilot_floor_directory_v1` (cờ) | `crm_read_report` floors (khoá buildings.view như RLS) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `danh_sach_thanh_vien_vai_tro` | users.view | `copilot_member_role_directory_v1` (cờ) | — | Hoãn: quản trị thành viên |
-| `thong_bao_gan_day` | notifications.view | `copilot_notification_feed_v1` (cờ) | — | Hoãn |
+| `thong_bao_gan_day` | notifications.view | `copilot_notification_feed_v1` (cờ) | `crm_read_report` notifications (của chính người hỏi, công ty kết nối) | Chuyển đợt 2 (18/10, chưa áp TEST/prod) |
 | `trang_thai_gach_no_tu_dong` | auto_debt.view | `copilot_auto_debt_status_v1` (cờ) | — | Hoãn |
 | `ban_do_he_thong`, `huong_dan`, `liet_ke_chu_de` | — | tài liệu tĩnh trong bundle | — | Hoãn: cần nguồn tài liệu theo permission (§07 "Tài liệu"), không phải RPC CRM |
 
@@ -156,6 +156,14 @@ Khoá v2 chưa nằm trong `HERMES_CAPABILITIES` (capability contract) nên chư
 ### 5.3 Hook dùng chung (`20261015120200_hermes_finance_capabilities_hook.sql`)
 
 Định nghĩa lại `public.hermes_org_policy_options_v5`, `public.hermes_connection_options_v5`, `public.hermes_connection_context_v5` (giữ chữ ký/ACL), bọc thêm `app_private.hermes_finance_extend_options_v1` cho 4 khoá đọc v2 và 2 khoá action. Người tích hợp gộp với hook song song khác thành một chuỗi.
+
+### 5.4 Đợt 2 đọc đầy đủ (Gói 0 + A–D + Z, 18/10/2026 — chưa áp TEST/production)
+
+- **Mặt tool:** hai tool meta `crm_read_report_list` (mục lục theo quyền lúc gọi) và `crm_read_report` (chạy một báo cáo) thay cho ~70 tool riêng; sổ báo cáo gom ở `infra/hermes-broker/wave2-registry.mjs` từ `wave2-{a,b,c,d}-contract.mjs`. 70 báo cáo, đều `private=true`: A thu tiền/công nợ/cọc 9, B sổ quỹ/KQKD/lợi nhuận/ví/biến động số dư 19, C xe/kho/thông báo/lương/Network Center 20, D BĐS/tài sản/danh mục/toà-phòng 22.
+- **Quyền:** cổng SQL `public.hermes_w2_read_v1` (INVOKER) → bước kiểm quyền DEFINER (CRM thật ∩ registry ∩ chính sách công ty ∩ Read kết nối ∩ overlay toà) → hàm đọc gói INVOKER dưới RLS người hỏi → bước kết thúc rào đầu ra (toà/sổ/công ty mọi hàng, phân trang, trần 2000 hàng). Ngoại lệ nền đã duyệt: [CODEBASE_STRUCTURE.md](../../CODEBASE_STRUCTURE.md#công-thức-dùng-chung).
+- **Công tắc:** `20261018090000_hermes_w2_enable_v1` bật 32 khoá (khoá của ít nhất một báo cáo + khoá phụ `income_expenses.restricted_view`); giữ tắt `reports_finance.deposits_report`, `reports_finance.handover_report`, `reports_finance.collection_cycle` (chưa có báo cáo). Khoá đợt 1 dùng lại (`invoices.view`, `deposits.view`, `reports_finance.analysis`, `assets.view`, `services.view`, `rooms.view`) đã bật từ 16/10: báo cáo dùng chúng sống ngay khi phát hành SQL + connector. Chủ phải tạo lại kết nối (và liên kết lại Zalo) để kết nối nhận khoá mới.
+- **Thứ tự áp:** nền `20261018000000 → 000500 → 000600 → 000700`; A `010000 → 010100`; B `020050 → 020200 → 020250 → 020300`; C `030100 → 030200 → 030300 → 030400 → 030500 → 030600`; D `040000 → 040100 → 040200 → 040300`; Z sửa tích hợp `080000 → 080100 → 080200 → 080300 → 080400`; công tắc `090000`.
+- **Riêng tư / tin nhóm:** như đợt 1, rào là cấu trúc (kênh Zalo cá nhân chỉ DM với người đã ghép; mọi tool gửi nhóm chỉ nhận ID/tuỳ chọn có khuôn, thân tin do broker/SQL dựng từ dữ liệu phòng công khai), cộng `PRIVATE_HINT` trong mô tả tool. Không có rào runtime đọc cờ `private`; test `wave2-z.test.mjs` khoá rào cấu trúc. Còn hở: tool ghi có chữ tự do ra bề mặt công khai (`salePolicy` của tin pass phòng) chỉ dựa vào chỉ dẫn mô hình + yêu cầu rõ của người dùng.
 
 ## 6. Đề xuất tiếp theo (chưa làm)
 
