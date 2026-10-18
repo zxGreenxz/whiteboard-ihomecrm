@@ -6,7 +6,8 @@
 //   Gói B        2026101802xxxx_hermes_w2b_<slug>.sql   (đề xuất 20261018020000_hermes_w2b_cashbook_read_v1)
 //   Gói C        2026101803xxxx_hermes_w2c_<slug>.sql   (đề xuất 20261018030000_hermes_w2c_ops_read_v1)
 //   Gói D        2026101804xxxx_hermes_w2d_<slug>.sql   (đề xuất 20261018040000_hermes_w2d_catalog_read_v1)
-//   Gói Z        2026101809xxxx_hermes_w2_<slug>.sql    (đề xuất 20261018090000_hermes_w2_enable_v1)
+//   Gói Z        2026101808xxxx_hermes_w2z_<slug>.sql   (sửa lúc tích hợp, áp TRƯỚC công tắc; được thay hàm của gói)
+//                2026101809xxxx_hermes_w2_<slug>.sql    (20261018090000_hermes_w2_enable_v1 — công tắc bật khoá)
 // Sửa sau review trong cùng gói: timestamp kế tiếp trong dải (vd. 20261018010100_hermes_w2a_review_fixes_v1).
 // KHÔNG dùng scripts/tao-ten-migration.mjs cho các file này (nó cấp giờ thực, ra ngoài dải).
 import { readdirSync, readFileSync } from 'node:fs';
@@ -28,7 +29,7 @@ export const W2_RANGES = Object.freeze({
   b: /^2026101802\d{4}_hermes_w2b_[a-z0-9_]+\.sql$/,
   c: /^2026101803\d{4}_hermes_w2c_[a-z0-9_]+\.sql$/,
   d: /^2026101804\d{4}_hermes_w2d_[a-z0-9_]+\.sql$/,
-  z: /^2026101809\d{4}_hermes_w2_[a-z0-9_]+\.sql$/,
+  z: /^20261018(?:08\d{4}_hermes_w2z|09\d{4}_hermes_w2)_[a-z0-9_]+\.sql$/,
 });
 export const W2_PACKAGE_LETTERS = Object.freeze(['a', 'b', 'c', 'd']);
 
@@ -65,18 +66,21 @@ const dynamicBlocks = sql => [...stripComments(sql).matchAll(/\bDO\s+(?:LANGUAGE
 /** Hàng rào gói (P2-4, review PR #195; mở rộng sau review cổng INVOKER). files: [{name, sql}] mọi migration theo
  * thứ tự tên. Trả danh sách vi phạm: file trong dải gói <x> chỉ được tạo/thay hermes_w2<x>_* (public hoặc
  * app_private) hoặc hàm dùng chung MỚI public.<miền>_*_v<n> (không bắt đầu bằng hermes_, chỉ do file của chính gói
- * định nghĩa); tên hàm phải có schema (có/không ngoặc kép đều bắt); ALTER FUNCTION chỉ trên hàm của gói và chỉ
- * OWNER TO postgres; không DO … EXECUTE. Định nghĩa cuối của hàm nền phải nằm ở dải nền hoặc Z (test PGlite còn
- * so định nghĩa SỐNG trong catalog với bản của file nền). */
+ * định nghĩa, hoặc dải Z — agent tích hợp sửa sau review); tên hàm phải có schema (có/không ngoặc kép đều bắt); ALTER
+ * FUNCTION chỉ trên hàm của gói và chỉ OWNER TO postgres; không DO … EXECUTE. Định nghĩa cuối của hàm nền phải nằm ở dải
+ * nền hoặc Z (test PGlite còn so định nghĩa SỐNG trong catalog với bản của file nền). */
 export function w2FenceViolations(files) {
   const violations = [], definedBy = new Map();
   for (const { name, sql } of files) for (const fn of createdFunctions(sql)) definedBy.set(fn, [...(definedBy.get(fn) ?? []), name]);
   for (const { name, sql } of files) {
     const letter = W2_PACKAGE_LETTERS.find(item => W2_RANGES[item].test(name));
     if (!letter) continue;
+    // Hàm dùng chung do HAI gói cùng định nghĩa (vd. public.report_text_v1 của B và D) chỉ qua khi bản cuối nằm ở dải Z:
+    // agent tích hợp đã đối chiếu và chốt một bản cho cả hai.
+    const reconciled = fn => W2_RANGES.z.test((definedBy.get(fn) ?? []).at(-1) ?? '');
     const mine = fn => new RegExp(`^(public|app_private)\\.hermes_w2${letter}_[a-z0-9_]+$`).test(fn) ||
       /^public\.[a-z][a-z0-9_]*_v\d+$/.test(fn) && !/^public\.hermes_/.test(fn) &&
-        (definedBy.get(fn) ?? []).every(file => W2_RANGES[letter].test(file));
+        ((definedBy.get(fn) ?? []).every(file => W2_RANGES[letter].test(file) || W2_RANGES.z.test(file)) || reconciled(fn));
     for (const fn of createdFunctions(sql)) if (!mine(fn)) violations.push(`${name}: ${fn}`);
     for (const fn of unqualifiedFunctions(sql)) violations.push(`${name}: ${fn} (thiếu schema)`);
     for (const { fn, action } of alteredFunctions(sql))

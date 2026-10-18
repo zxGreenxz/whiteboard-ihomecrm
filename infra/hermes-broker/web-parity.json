@@ -706,7 +706,7 @@
           "contains": "crm.real_estate_terminations_v1"
         }
       ],
-      "notes": "LỆCH ĐÃ BIẾT 18/10: web nhúng bảng tenants cũ (contracts.tenant_id rỗng ở mọi HĐ trên TEST 18/10 nên luôn hiện N/A), Hermes dùng khách đại diện từ contract_customers; khoảng ngày web lấy từ Date của trình duyệt rồi toISOString() nên lệch tối đa 1 ngày theo múi giờ, Hermes dùng ngày thuần theo giờ công ty. LỖI WEB (review PR #203): realEstateReports.ts:893-915 lọc tử số theo toà nhưng mẫu số (tổng HĐ khác DRAFT) lấy toàn công ty, nên tỉ lệ khi lọc một toà bị hạ thấp. Hermes giữ tử và mẫu cùng một tập toà (đúng nghĩa). Ghi chú thanh lý (chữ tự do) Hermes chỉ trả khi khách đại diện thấy được qua RLS và kết nối có customers.view ở toà đó; web hiện cho mọi người có khoá báo cáo."
+      "notes": "LỆCH ĐÃ BIẾT 18/10: web nhúng bảng tenants cũ (contracts.tenant_id rỗng ở mọi HĐ trên TEST 18/10 nên luôn hiện N/A), Hermes dùng khách đại diện từ contract_customers; khoảng ngày web lấy từ Date của trình duyệt rồi toISOString() nên lệch tối đa 1 ngày theo múi giờ, Hermes dùng ngày thuần theo giờ công ty. KHÁC WEB CÓ CHỦ Ý — MẪU SỐ TỈ LỆ (chủ dự án chốt 18/10: theo toà là đúng): Hermes giữ tử số và mẫu số (tổng HĐ khác DRAFT) cùng một tập toà; web (realEstateReports.ts:893-915) lọc tử số theo toà nhưng mẫu số lấy toàn công ty nên tỉ lệ khi lọc một toà bị hạ thấp — lỗi web, sửa khi báo cáo BĐS chuyển sang hàm dùng chung. Ghi chú thanh lý (chữ tự do) Hermes chỉ trả khi kết nối có customers.view ở toà đó, khách đại diện thấy được qua RLS VÀ mọi khách của HĐ đều thấy được (Gói Z); web hiện cho mọi người có khoá báo cáo."
     },
     {
       "id": "w2d-re-expense-ratio",
@@ -1009,7 +1009,7 @@
           "contains": "crm.income_expense_types_list_v1"
         }
       ],
-      "notes": "Hermes ẩn hạng mục hạn chế, lương, cổ đông (chặt hơn web) và sắp theo lưu trữ, nhóm, sort_order; web sắp theo tên (vi). Web lọc tổ chức qua my_org_ids, Hermes theo p_organization_id. Hermes tạm KHÔNG trả hạng mục dùng chung (organization_id NULL) — rào công ty của cổng đòi mọi hàng đúng công ty kết nối; đếm ở summary.globalRowsOmitted (chờ Gói Z thêm cờ globalRows cho scope organization)."
+      "notes": "Hermes ẩn hạng mục hạn chế, lương, cổ đông (chặt hơn web) và sắp theo lưu trữ, nhóm, sort_order; web sắp theo tên (vi). Web lọc tổ chức qua my_org_ids, Hermes theo p_organization_id. Hermes KHÔNG trả hạng mục dùng chung (organization_id NULL) — rào công ty của cổng đòi mọi hàng đúng công ty kết nối; đếm ở summary.globalRowsOmitted (ngoại lệ nền ghi ở docs/CODEBASE_STRUCTURE.md). KHÁC WEB CÓ CHỦ Ý (Gói Z 18/10): khi khử trùng cùng (loại, tên), hàng của công ty thắng hàng dùng chung (web không xét công ty, lấy dòng của mình rồi dòng cũ nhất) — nếu không, hàng dùng chung cũ hơn thắng rồi bị bỏ, hạng mục cùng tên của công ty biến mất; dòng của chính người hỏi so bằng IS TRUE (user_id NULL không lên trước), khớp ownershipRank của web."
     },
     {
       "id": "w2d-task-types",
@@ -1303,7 +1303,7 @@
         {
           "path": "src/hooks/useNotifications.ts",
           "region": "w2c-notifications",
-          "sha256": "274d0b0ce72b87c7684c907336c2f935f0287d72a209ecfc8c71a13901896cc7"
+          "sha256": "42485b73c28bb9ceaf647f4914f1cb62d90cc72e356f8675d76e9fadb5eedd5c"
         }
       ],
       "hermes": [
@@ -1322,7 +1322,7 @@
           "contains": "crm.notifications_inbox_v1"
         }
       ],
-      "notes": "Hermes chặt hơn web: web lấy thông báo thường của MỌI công ty và LIFECYCLE của công ty đang chọn; Hermes chỉ công ty của kết nối (và dòng chưa gắn công ty không phải LIFECYCLE). Thêm lọc loại và chỉ-chưa-đọc."
+      "notes": "Theo web #209 (Gói Z 18/10): đã chọn công ty thì web chỉ hiện thông báo của đúng công ty đó (inboxScope: organization_id = công ty); Hermes luôn có công ty của kết nối nên lọc organization_id = công ty kết nối — cùng tập với web. Hermes thêm lọc loại và chỉ-chưa-đọc."
     },
     {
       "id": "w2c-salary-locked",
@@ -2078,7 +2078,7 @@
         {
           "path": "src/hooks/useCollectionReport.ts",
           "region": "thu-tien-collection",
-          "sha256": "c03eb6be19803d30d36a3852986b2f0eb04a5a3919fc78fe2055f3ca0f998d2c"
+          "sha256": "a686734e77546a62934102ba1387945cf580e1842cc8b40a0842ec6720528504"
         },
         {
           "path": "src/pages/ThuTien.tsx",
@@ -2112,7 +2112,7 @@
           "contains": "crm.thu_tien_collection_v1"
         }
       ],
-      "notes": "Web cộng mọi dòng payments kể cả đã hoàn tác (reversed_at); Hermes giữ nguyên để khớp số."
+      "notes": "Theo web #209 (Gói Z 18/10): khoản thu đã hoàn tác (reversed_at) bị bỏ ở nguồn, cả web (useThuTienInvoices lọc ngay sau khi tải) lẫn Hermes (thu_tien_collection_v1: payments reversed_at IS NULL) — đã thu theo ngày/khoảng, paidUpTo, paidAsOf không còn cộng khoản hoàn tác. paid_amount/remaining_amount của hoá đơn vẫn đọc từ cột như web."
     },
     {
       "id": "invoice-detail",

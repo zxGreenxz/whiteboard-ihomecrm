@@ -81,7 +81,9 @@ export const useThuTienInvoices = (billing_month: string) =>
             // Khoản đã hoàn tác (reversed_at) không còn là tiền đã thu — bỏ ngay ở
             // nguồn như useInvoices, nếu không "đã thu hôm nay"/theo ngày
             // (paymentsInRange, paidAsOf…) và báo cáo thu vẫn cộng nó.
+            // hermes-parity:begin thu-tien-collection — Hermes chép bộ lọc này (thu_tien_collection_v1: payments reversed_at IS NULL)
             .filter(payment=>!(payment as typeof payment & { reversed_at?: string | null }).reversed_at),
+            // hermes-parity:end thu-tien-collection
         };
       });
     },
