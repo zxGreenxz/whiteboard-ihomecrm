@@ -221,7 +221,7 @@ export function summarizeGatePlan(plan) {
     suites: plan.suiteSelections.map(({ id, runner, mode, files, viewports }) => ({ id, runner, mode, testFileCount: files.length, viewports })),
     generatorIds: plan.generatorIds, requiredJobs: plan.requiredJobs,
     requiredExternalWorkflows: plan.requiredExternalWorkflows, browserRequirements: plan.browserRequirements,
-    unavailable: plan.unavailable, executionMismatches: plan.executionMismatches,
+    unavailable: plan.unavailable, localEvidence: plan.localEvidence ?? [], executionMismatches: plan.executionMismatches,
     deferred: 'Zalo/Copilot — không chạy và không tính là pass',
   };
 }

@@ -1683,7 +1683,7 @@
         ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts",
         ".e2e-fleet/specs/bank-events.spec.ts"
       ],
-      "note": "Phần fleet hoạt động chưa lên CI: bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO hoặc TEST. Test riêng Copilot/Zalo được loại qua deferredModules; metadata suite Copilot giữ lại để khôi phục.",
+      "note": "Phần fleet hoạt động chưa lên CI: bằng chứng LOCAL là biên nhận do `npm run e2e:fleet:bien-nhan` ghi vào docs/generated/e2e-fleet-evidence/ (gắn commit + tree .e2e-fleet, mọi spec đạt); gate-plan chỉ coi nghĩa vụ live-browser của suite này là thoả khi biên nhận khớp (scripts/lib/gate-e2e-local-evidence.mjs). Chỉ ghi vào org DEMO hoặc TEST. Test riêng Copilot/Zalo được loại qua deferredModules; metadata suite Copilot giữ lại để khôi phục.",
       "ciJobs": [],
       "environment": "local",
       "blockedFromCi": {

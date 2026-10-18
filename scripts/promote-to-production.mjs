@@ -33,6 +33,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { inKetQua, resolveCommitSha, verifyVercelRelease } from './release-verify.mjs';
+import { validLocalEvidenceSummary } from './lib/gate-e2e-local-evidence.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -128,7 +129,9 @@ export function validAggregateForRun(aggregate, run, sha) {
     aggregate.snapshot?.head === sha && aggregate.runId === `${run.id}:${run.run_attempt}` &&
     Array.isArray(aggregate.gateIds) && aggregate.gateIds.length > 0 &&
     ['policyDigest', 'runtimeDigest', 'inputDigest'].every((key) => typeof aggregate[key] === 'string' && aggregate[key].length > 0) &&
-    Array.isArray(aggregate.requiredExternalWorkflows);
+    Array.isArray(aggregate.requiredExternalWorkflows) &&
+    // Aggregate cũ không có trường này; có thì chỉ được là biên nhận fleet hợp hình dạng.
+    (aggregate.localEvidence === undefined || validLocalEvidenceSummary(aggregate.localEvidence));
 }
 
 export function validateExternalWorkflowEvidence(required, observations, sha) {
