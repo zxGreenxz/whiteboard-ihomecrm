@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T19:09:11.989Z",
+  "generatedAt": "2026-10-18T19:24:29.471Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12261,7 +12261,7 @@
       "version": "20261018182656",
       "name": "hermes_w2a_reservation_fund_member_v1",
       "scheme": "timestamp14",
-      "sha256": "b728a39c6849513fda64ea5db2d3186c1de2f8ee2a7bffa5277ee87c09223219",
+      "sha256": "3e819540e9296555918b7cf796b99a2dc1874f01f14908191611ded55a860751",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.deposit_reservation_vouchers_v1",
