@@ -17,20 +17,20 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 373 |
+| RPC được gọi từ mã nguồn | 371 |
 | Hàm trong catalog (public + api) | 1380 |
-| File mã nguồn đã quét | 2556 |
+| File mã nguồn đã quét | 2558 |
 | SECURITY DEFINER | 353 |
-| **Gọi mà server KHÔNG CÓ** | **0** |
+| **Gọi mà server KHÔNG CÓ** | **2** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 270 | còn lại |
-| tiền | 103 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 271 | còn lại |
+| tiền | 100 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 103 RPC chạm TIỀN
+## 100 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -72,7 +72,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
 | `get_income_expense_layer_stats` |  | hooks/income-expenses/queries.ts, hooks/useProfitVerification.ts |
-| `get_invoice_statistics_v2` | ✔ | hooks/useInvoices.ts, hooks/useProfitVerification.ts, hooks/useUtilityBills.ts |
 | `get_my_permissions` | ✔ | hooks/personal-finance/usePersonalFinancePermissions.ts, hooks/useMyPermissions.ts |
 | `get_overpayment_summary` |  | hooks/reports/financeReports.ts |
 | `get_receiving_cashbooks_v1` | ✔ | hooks/useReceivingCashbooks.ts |
@@ -83,8 +82,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `ie_compat_update_pending_v2` | ✔ | hooks/useUploadPaymentReceipt.ts |
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `intervene_commission_v1` | ✔ | hooks/income-expenses/commissionIntervention.ts |
-| `invoice_active_payment_methods` |  | hooks/useInvoices.ts |
-| `invoice_payment_method_drilldown` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |
 | `list_cashbook_closings_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `list_contract_commission_followups_v2` | ✔ | lib/contractCommissionFollowup.ts |
