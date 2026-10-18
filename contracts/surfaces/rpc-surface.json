@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2552,
+    "sourceCallSites": 2554,
     "catalogFunctions": 1376,
     "schemas": [
       "public",
@@ -9,14 +9,27 @@
     ]
   },
   "counts": {
-    "calledRpcs": 372,
+    "calledRpcs": 370,
     "byRisk": {
-      "normal": 269,
-      "financial": 103
+      "normal": 270,
+      "financial": 100
     },
     "securityDefiner": 353
   },
-  "missingOnServer": [],
+  "missingOnServer": [
+    {
+      "name": "invoice_list_v1",
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ]
+    },
+    {
+      "name": "invoice_statistics_v3",
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ]
+    }
+  ],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -2660,11 +2673,10 @@
         }
       ],
       "callers": [
-        "src/hooks/useInvoices.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useUtilityBills.ts"
       ],
-      "risk": "financial"
+      "risk": "normal"
     },
     "get_member_authorization_v1": {
       "definitions": [
@@ -3363,44 +3375,6 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
-    },
-    "invoice_active_payment_methods": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_invoice_ids uuid[]",
-          "returns": "TABLE(invoice_id uuid, payment_methods text[])",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
-    },
-    "invoice_payment_method_drilldown": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_payment_method payment_method",
-          "returns": "SETOF invoices",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ],
-      "risk": "financial"
     },
     "is_admin": {
       "definitions": [
