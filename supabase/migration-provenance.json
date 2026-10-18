@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T10:45:39.572Z",
+  "generatedAt": "2026-10-18T12:17:49.494Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 737,
-    "unknown": 96,
+    "unknown": 105,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12201,6 +12201,123 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040000_hermes_w2d_catalog_read_v1.sql",
+      "version": "20261018040000",
+      "name": "hermes_w2d_catalog_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "4d66c5469d8e7029289e208254f25afe83387c862224a8b2a1f077f04833aa04",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.real_estate_vacant_rooms_v1",
+        "function:public.real_estate_expiring_contracts_v1",
+        "function:public.real_estate_renewals_transfers_v1",
+        "function:public.real_estate_promotions_v1",
+        "function:public.real_estate_new_leases_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040100_hermes_w2d_reader_v1.sql",
+      "version": "20261018040100",
+      "name": "hermes_w2d_reader_v1",
+      "scheme": "timestamp14",
+      "sha256": "76c6694e46f97d4951c3f0cca2b73677d37e0cafb73818f053709bbf3dae0cf1",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2d_catalog_v1",
+        "function:app_private.hermes_w2d_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040200_hermes_w2d_shared_fixes_v1.sql",
+      "version": "20261018040200",
+      "name": "hermes_w2d_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "6ba15eb4e91935b94b188dca83732c22e9ae47184c687f2919d96399211aa289",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.report_text_v1",
+        "function:public.areas_in_scope_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040300_hermes_w2d_reader_fixes_v1.sql",
+      "version": "20261018040300",
+      "name": "hermes_w2d_reader_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "c94825444df2ef8601811cc6e0e7182246ea0fa4726dee238b7420ba2da032e5",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2d_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql",
+      "version": "20261018080000",
+      "name": "hermes_w2z_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "7dd2dd6d6867e5bc68c9087248e62ee12316878eb76ea811992de0c2bc7c0b5d",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.thu_tien_collection_v1",
+        "function:public.notifications_inbox_v1",
+        "function:public.income_expense_types_list_v1",
+        "function:public.report_text_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql",
+      "version": "20261018080100",
+      "name": "hermes_w2z_receivables_pii_v1",
+      "scheme": "timestamp14",
+      "sha256": "75263b5d1f3bc1cc9c935bb88259bb6cc43ecf939b62563e07f0a96cacda1d25",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2a_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080200_hermes_w2z_finance_fail_closed_v1.sql",
+      "version": "20261018080200",
+      "name": "hermes_w2z_finance_fail_closed_v1",
+      "scheme": "timestamp14",
+      "sha256": "a656128489c3d83a48ab08dae7cfc986300f6745220a0a12045ed858792c8261",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2b_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080300_hermes_w2z_catalog_fixes_v1.sql",
+      "version": "20261018080300",
+      "name": "hermes_w2z_catalog_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "be076d962c0c81d8e7f917d95ab0e70e1f841cbe2ffc56589f36bb91b5cd24b2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2d_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018090000_hermes_w2_enable_v1.sql",
+      "version": "20261018090000",
+      "name": "hermes_w2_enable_v1",
+      "scheme": "timestamp14",
+      "sha256": "7459fec1fc9fd9ac28acedae682529e01ad046b30e9b546062cd5308765f41aa",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {
