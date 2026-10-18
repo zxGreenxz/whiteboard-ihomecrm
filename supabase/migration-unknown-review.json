@@ -959,10 +959,14 @@
         {
           "duong_dan": "supabase/migration-provenance.json",
           "trich_doan": "state unknown, missingObjects 5 object — sinh 18/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": ".cache/migration-targets/test/hzulujxgonszuleqticb/schema-change-evidence/20261018000700_hermes_w2_org_fence_v1.json",
+          "trich_doan": "lane --env test --apply 18/10/2026: hai lượt ROLLBACK đạt, backup TEST 652 bảng, catalog đổi"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 18/10/2026 (sửa sau review độc lập cổng INVOKER: rào công ty organizationId + buildingId bắt buộc ở bước kết thúc, loại khoá organization chỉ scope organization/cashbooks), chưa đi qua lane apply production — hàm mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. CHƯA áp TEST: khoá test_env.active_run của một lượt khác bị bỏ dở từ 17/10 23:32Z (tiến trình đã chết), không tự xoá theo scripts/test-env/README.md. PGlite wave2-foundation 50/50 kể cả đột biến; hermes-durable-schema đạt. Áp production qua npm run migrate:forward sau review; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 18/10/2026 (sửa sau review độc lập cổng INVOKER: rào công ty organizationId + buildingId bắt buộc ở bước kết thúc, loại khoá organization chỉ scope organization/cashbooks), chưa đi qua lane apply production — hàm mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (hai lượt ROLLBACK đạt rồi apply có backup); catalog TEST sau apply: org_keys/permission_kind/catalog/scope/finish DEFINER owner postgres, materials.view là loại organization, authenticated vẫn không có USAGE trên app_private, gọi lối vào dưới vai chủ hàm ⇒ 42501. PGlite wave2-foundation 50/50 kể cả đột biến; hermes-durable-schema đạt. Áp production qua npm run migrate:forward sau review; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.hermes_w2_org_keys_v1",
         "function:app_private.hermes_w2_permission_kind_v1",
