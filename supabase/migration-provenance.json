@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T17:27:57.942Z",
+  "generatedAt": "2026-10-18T19:09:11.989Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 763,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12254,6 +12254,41 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T17:27:42.790Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018182656_hermes_w2a_reservation_fund_member_v1.sql",
+      "version": "20261018182656",
+      "name": "hermes_w2a_reservation_fund_member_v1",
+      "scheme": "timestamp14",
+      "sha256": "b728a39c6849513fda64ea5db2d3186c1de2f8ee2a7bffa5277ee87c09223219",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.deposit_reservation_vouchers_v1",
+        "catalog:function:app_private.hermes_w2a_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql",
+      "version": "20261018185339",
+      "name": "hermes_w2_rls_buildings_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "cbefe8cebc56dce8c2173561e4932943dd7681d5bf8d26dc1fb226f5c9c73028",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2_catalog_v1",
+        "catalog:function:app_private.hermes_w2_scope_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018185413_hermes_w2a_reservation_rls_scope_v1.sql",
+      "version": "20261018185413",
+      "name": "hermes_w2a_reservation_rls_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "3be4b69a018de65a505975f91aac619d051999ec844e7ed35de0e612f40d30e2",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_w2a_catalog_v1"
       ]
     },
     {
