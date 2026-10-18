@@ -14,7 +14,7 @@ import { join } from "node:path";
 
 import { APP_SCHEMAS, PhienPsql, SET_CHUAN, congCu, ghiLog } from "./lib.mjs";
 import { sqlBamLo, sqlDanhSachBang, sqlVanTay } from "./van-tay.mjs";
-import { kiemMetadataOwners, sqlOwners } from "./owners.mjs";
+import { haDangNhapVaiDichVu, kiemMetadataOwners, sqlOwners } from "./owners.mjs";
 
 function chayPgDump(args, nhan) {
   return new Promise((ok, hong) => {
@@ -111,7 +111,7 @@ export async function xuatProduction({ prod, thuMuc }) {
       Object.assign(bam, r.j);
     }
     const meta = {
-      owners: (await phien.json(sqlOwners()))[0],
+      owners: haDangNhapVaiDichVu((await phien.json(sqlOwners()))[0]),
       policyNenTang: await phien.json(SQL_POLICY_NEN_TANG),
       triggerNenTang: await phien.json(SQL_TRIGGER_NEN_TANG),
       eventTrigger: await phien.json(SQL_EVENT_TRIGGER),
