@@ -17,7 +17,10 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 interface Props {
   conversations: ZaloConversation[];
-  totalCount: number;
+  /** Số hội thoại khớp bộ lọc trước khi cắt trang (zalo_conversation_list_v1 trả 300 dòng đầu). */
+  matchCount?: number;
+  /** Số hội thoại của danh sách nền; chưa biết (đang tải) thì vẽ khối xám. */
+  totalCount?: number;
   activeId: string;
   filter: FilterKey;
   search: string;
@@ -43,14 +46,16 @@ interface Props {
   /** Đang tải lần đầu (chưa có dữ liệu): số đếm và danh sách là khối xám, không phải "0" /
    *  "Không có hội thoại phù hợp" — chủ chốt 02/10/2026. */
   loading?: boolean;
+  /** Cột danh sách lỗi và chưa có trang nào: không vẽ "Không có hội thoại phù hợp" như kết quả thật. */
+  listUnavailable?: boolean;
 }
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
 export default function ConversationList({
-  conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
+  conversations, matchCount = conversations.length, totalCount, activeId, filter, search, automationActive, automationRuns,
   onFilter, onSearch, onSelect, className, topSlot,
   labels = [], selectedLabel = null, onSelectLabel, onBroadcast,
-  onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner, loading = false,
+  onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner, loading = false, listUnavailable = false,
 }: Props) {
   const choDuLieu = loading && conversations.length === 0;
   return (
@@ -61,7 +66,7 @@ export default function ConversationList({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-.01em' }}>Hội thoại</h2>
-            {choDuLieu ? (
+            {choDuLieu || totalCount === undefined ? (
               <span className="ld-appear" aria-hidden="true"><SkeletonBar className="h-4 rounded-lg" style={{ width: '1.75rem' }} /></span>
             ) : (
               <span style={{ background: 'hsl(152 30% 94%)', color: 'hsl(152 69% 28%)', fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{totalCount}</span>
@@ -81,6 +86,7 @@ export default function ConversationList({
           <input
             value={search}
             onChange={(e) => onSearch(e.target.value)}
+            maxLength={200}
             placeholder="Tìm theo tên, SĐT, mã phòng…"
             style={{ flex: 1, border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13, color: 'hsl(160 30% 14%)' }}
           />
@@ -114,7 +120,7 @@ export default function ConversationList({
           <LoadingState label="hội thoại" variant="list" rows={6} className="px-3" />
         ) : conversations.length === 0 ? (
           <div style={{ padding: '40px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 13 }}>
-            Không có hội thoại phù hợp
+            {listUnavailable ? 'Chưa tải được danh sách hội thoại' : 'Không có hội thoại phù hợp'}
           </div>
         ) : (
           <>
@@ -124,9 +130,9 @@ export default function ConversationList({
                 onTogglePin={onTogglePin} onToggleMute={onToggleMute} onToggleUnread={onToggleUnread} onLinkCrm={onLinkCrm}
               />
             ))}
-            {conversations.length > 300 && (
+            {matchCount > Math.min(conversations.length, 300) && (
               <div style={{ padding: '12px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 12 }}>
-                Hiển thị 300/{conversations.length} — gõ tìm kiếm để thu hẹp
+                Hiển thị {Math.min(conversations.length, 300)}/{matchCount} — gõ tìm kiếm để thu hẹp
               </div>
             )}
           </>

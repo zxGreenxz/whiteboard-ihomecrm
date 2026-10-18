@@ -464,17 +464,17 @@
     {
       "id": "zalo-conversations",
       "kind": "mirrored",
-      "description": "Chat Zalo: danh sách hội thoại của công ty (ghim trước, tin mới nhất), tìm theo tên/SĐT/nhãn (crm_read_zalo_conversations). RLS web = zalo_authorized_org_ids('view').",
-      "web": [
+      "description": "Danh sách hội thoại /chat-zalo: web gọi hàm dùng chung zalo_conversation_list_v1 (migration 20261018051900) cho danh sách nền, cột danh sách (thẻ lọc, tìm, tài khoản, nhãn), ẩn hội thoại chưa có tin, ghim trước/tin mới nhất, phân trang và tổng. Hermes (crm_read_zalo_conversations) CHƯA chuyển, vẫn tự chép bộ lọc. RLS web = zalo_authorized_org_ids('view').",
+      "webCalls": [
         {
           "path": "src/hooks/useZaloChat.ts",
-          "region": "zalo-conversations",
-          "sha256": "93a2aa554701859d5097c7f40f47887f02fc7d7b780b8a493dd01c47f8402d27"
-        },
+          "rpc": "zalo_conversation_list_v1"
+        }
+      ],
+      "sql": [
         {
-          "path": "src/pages/chat-zalo/ChatZaloPage.tsx",
-          "region": "zalo-conversations",
-          "sha256": "43f57cc7d45ac705e702e325056de392d435a9fb6b81165c41aec90a610553da"
+          "function": "public.zalo_conversation_list_v1",
+          "sha256": "ea9b2b3eb3cbb4525f76248e89bef6957cce69d0104e78556892e0ec84ae4399"
         }
       ],
       "hermes": [
@@ -490,7 +490,7 @@
           "contains": "crm.zalo_conversations"
         }
       ],
-      "notes": "Đã biết 17/10: web ẩn hội thoại chưa có tin khi không tìm, tìm cả tên phòng, không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng."
+      "notes": "18/10: web bỏ PostgREST + bộ lọc filtered của ChatZaloPage (gỡ marker), gọi zalo_conversation_list_v1 (SECURITY INVOKER, RLS người gọi). Hermes chuyển ở PR sau: đổi mục này thành kind rpc, rpc [zalo_conversation_list_v1], hermes.calls [zalo_conversation_list_v1], gọi bằng JWT người dùng (hàm tự chặn khi gọi từ thân SECURITY DEFINER). BẪY khi chuyển: p_filter NULL = danh sách nền (gồm danh bạ chưa có tin), 'all' = thẻ Tất cả (ẩn chưa có tin khi không tìm); p_building_ids NULL = toàn phạm vi RLS, '{}' = rỗng ⇒ truyền COALESCE(tập toà kết nối, '{}'); p_search tối đa 200 ký tự; nhãn là cặp p_label_account_id + p_label_id. LỆCH ĐÃ BIẾT đến lúc đó (từ 17/10): web ẩn hội thoại chưa có tin khi không tìm, tìm cả tên phòng (profile.room), không bỏ dấu; Hermes hiện mọi hội thoại, bỏ dấu, không tìm tên phòng; Hermes trả thêm kind, last_message_dir, tên phòng/toà mà hàm chưa trả."
     },
     {
       "id": "pnl-pending",

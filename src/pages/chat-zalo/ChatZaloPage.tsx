@@ -22,7 +22,7 @@ import TemplateManagerDialog from '@/components/chat-zalo/TemplateManagerDialog'
 import AutomationSettingsDialog from '@/components/chat-zalo/automation/AutomationSettingsDialog';
 import type { FilterKey, RightTab, ZaloConversation, ZaloMessage } from '@/components/chat-zalo/types';
 import {
-  useZaloConversations, useZaloMessages, useZaloGroupMembers, useSendZaloMessage, useMarkConversationRead,
+  useZaloConversations, useZaloConversationList, useZaloMessages, useZaloGroupMembers, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount, useZaloWorkerStatus,
   useReactMessage, useRecallMessage, useLoadHistory,
@@ -32,7 +32,6 @@ import { useSendZaloMedia, useSendZaloSticker, type StickerItem } from '@/hooks/
 import { useForwardZaloMedia } from '@/hooks/chat-zalo/useForwardZaloMedia';
 import { useSetConversationFlags, useStartChatByPhone, useDeleteMessageForMe, useThreadPresence } from '@/hooks/chat-zalo/useZaloConversationActions';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
-import { conversationHasLabel, isTenantConversation } from '@/components/chat-zalo/conversationState';
 
 /**
  * Trang Chat Zalo — workspace 3 cột (danh sách · khung chat · panel thông tin).
@@ -75,6 +74,13 @@ export default function ChatZaloPage() {
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
+  // Tìm chạy trong zalo_conversation_list_v1 → debounce 350ms để mỗi phím không bắn một request;
+  // ô nhập vẫn hiện `search` ngay.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [drafts,setDrafts] = useState<Record<string,string>>({});
   const [sendErrors,setSendErrors] = useState<Record<string,string>>({});
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
@@ -112,6 +118,12 @@ export default function ChatZaloPage() {
 
   const selIds = selectedIds ?? accounts.map((a) => a.id);
 
+  // Cột danh sách: thẻ lọc/tìm/tài khoản/nhãn tính trong hàm SQL dùng chung (cùng công thức Hermes).
+  const listQuery = useZaloConversationList({
+    filter, search: debouncedSearch, selectedAccountIds: selIds, accountIds: accounts.map(account => account.id), label: selectedLabel,
+  });
+  const listed = listQuery.data?.rows;
+
   const effectiveId = activeId || conversations[0]?.id || '';
   const draft = drafts[effectiveId] ?? '';
   const setDraft = (value:string) => setDrafts(previous=>({...previous,[effectiveId]:value}));
@@ -119,38 +131,16 @@ export default function ChatZaloPage() {
   const msgQuery = useZaloMessages(effectiveId || undefined);
   const messages = msgQuery.data ?? [];
 
-  const base = conversations.find((c) => c.id === effectiveId);
+  // Danh sách nền trần 1000 dòng; hội thoại tìm thấy ngoài trần vẫn mở được từ cột danh sách.
+  const findConversation = useCallback((id: string) =>
+    conversations.find((c) => c.id === id) ?? listed?.find((c) => c.id === id), [conversations, listed]);
+  const base = findConversation(effectiveId);
   const memberQuery = useZaloGroupMembers(base);
   const active = useMemo(() => base ? {
     ...base, messages: withMessageSenders(messages, base, conversations, accounts.find(account => account.id === base.accountId), memberQuery.data),
   } : undefined, [base, messages, conversations, accounts, memberQuery.data]);
 
   const activeLabel = labels.find(label => `${label.accountId}:${label.labelId}` === selectedLabel);
-
-  // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const selSet = new Set(selIds);
-    const allSelected = accounts.every(account => selSet.has(account.id));
-    return conversations.filter((c) => {
-      if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
-      if (!conversationHasLabel(c, selectedLabel)) return false;
-      // 'Danh bạ' = đã sync từ bạn bè nhưng CHƯA từng có tin nhắn; các chip khác ẩn nhóm này
-      if (filter === 'contacts') { if (c.hasMessages) return false; }
-      else if (!c.hasMessages && !q) return false;
-      if (filter === 'unread' && c.unread <= 0 && !c.markedUnread) return false;
-      if (filter === 'tenant' && !isTenantConversation(c)) return false;
-      if (filter === 'lead' && !c.leadId) return false;
-      if (!q) return true;
-      return (
-        c.name.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
-        c.sub.toLowerCase().includes(q) ||
-        (c.profile.room || '').toLowerCase().includes(q)
-      );
-    });
-  }, [conversations, filter, search, selIds, accounts, selectedLabel]);
-  // hermes-parity:end zalo-conversations
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
@@ -172,7 +162,7 @@ export default function ChatZaloPage() {
   const automationActive = (automations.broadcastOn ? 1 : 0) + (automations.autoReplyOn ? 1 : 0);
 
   const select = useCallback((id: string) => {
-    const conv = conversations.find((c) => c.id === id);
+    const conv = findConversation(id);
     setUnreadAtOpen((prev) => ({ ...prev, [id]: conv?.unread || 0 }));
     setActiveId(id);
     setMobileView('thread');
@@ -180,7 +170,7 @@ export default function ChatZaloPage() {
     markRead.mutate(id);
     sendSeen(id); // báo "đã xem" sang Zalo (best-effort)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations]);
+  }, [findConversation]);
 
   const send = () => {
     const text = draft.trim();
@@ -282,9 +272,11 @@ export default function ChatZaloPage() {
       <div className="flex h-full min-w-0">
         <ConversationList
           className={cn('w-full lg:w-[322px] lg:flex', mobileView === 'list' ? 'flex' : 'hidden')}
-          conversations={filtered}
-          totalCount={conversations.length}
-          loading={convQuery.isLoading}
+          conversations={listed ?? []}
+          matchCount={listQuery.data?.total}
+          // Danh sách nền tải riêng: còn tải thì số đếm là khối xám, không phải "0".
+          totalCount={convQuery.isLoading ? undefined : conversations.length}
+          loading={listQuery.isLoading}
           activeId={effectiveId}
           filter={filter}
           search={search}
@@ -302,9 +294,13 @@ export default function ChatZaloPage() {
           onToggleMute={(c) => flagsMut.mutate({ conversationId: c.id, muted: !c.muted })}
           onToggleUnread={(c) => flagsMut.mutate({ conversationId: c.id, markedUnread: !c.markedUnread })}
           onLinkCrm={setLinkConv}
-          errorBanner={convQuery.isError
-            ? errorBanner(convQuery.data ? 'Mất kết nối — danh sách có thể cũ' : 'Không tải được hội thoại', () => convQuery.refetch())
+          // Chữ theo đúng query lỗi: cột danh sách lỗi mà chưa có trang nào thì không phải "danh sách cũ".
+          errorBanner={listQuery.isError || convQuery.isError
+            ? errorBanner((listQuery.isError ? listQuery.data : convQuery.data) ? 'Mất kết nối — danh sách có thể cũ' : 'Không tải được hội thoại', () => {
+              void listQuery.refetch(); void convQuery.refetch();
+            })
             : undefined}
+          listUnavailable={listQuery.isError && !listQuery.data}
         />
 
         {active ? (

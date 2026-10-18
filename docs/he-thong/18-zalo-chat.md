@@ -276,8 +276,8 @@ Sự cố: worker bulk-sync (đồng bộ danh bạ/tin gần đây) ghi **hàng
 Ba quy tắc bắt buộc (đã cài trong [useZaloChat.ts](src/hooks/useZaloChat.ts) — sửa hook này phải giữ nguyên cả ba):
 
 1. **Debounce invalidate realtime**: `useZaloRealtime` gom mọi event trong cửa sổ **400ms** (accounts 200ms) về **1 lần** `invalidateQueries` per queryKey — cơn bão sync N dòng → ~1 refetch/đợt; chat lẻ vẫn cập nhật dưới nửa giây. KHÔNG bao giờ invalidate trực tiếp trong callback `postgres_changes`.
-2. **Chọn cột, cấm `select('*')`**: hằng `CONV_COLS` / `MSG_COLS` liệt kê đúng cột mapper dùng. Thêm cột hiển thị mới = thêm vào hằng, không quay về `*`.
-3. **LIMIT trần**: hội thoại `CONV_LIMIT=5000`; tin nhắn `MSG_LIMIT=1000` **mới nhất** (query `desc` rồi đảo lại phía client) — không kéo cả lịch sử mỗi refetch; tin cũ hơn nạp chủ động qua `zalo_load_history`.
+2. **Chọn cột, cấm `select('*')`**: `MSG_COLS` liệt kê đúng cột mapper dùng; danh sách hội thoại đi hàm dùng chung `zalo_conversation_list_v1` (từ 18/10/2026), trả đúng `CONV_FIELDS` + profile thu gọn theo `PROFILE_FIELDS` ([zaloConversationList.ts](src/lib/zaloConversationList.ts)). Thêm cột hiển thị mới = thêm ở cả hàm SQL lẫn hằng, không quay về `*`.
+3. **LIMIT trần**: danh sách nền `CONV_LIMIT=1000` (đúng trần thật cũ: `max_rows` PostgREST cắt `limit(5000)`), cột danh sách `LIST_LIMIT=300` (kèm tổng khớp); tin nhắn `MSG_LIMIT=1000` **mới nhất** (query `desc` rồi đảo lại phía client) — không kéo cả lịch sử mỗi refetch; tin cũ hơn nạp chủ động qua `zalo_load_history`.
 
 Cùng họ tối ưu: subscribe tin nhắn **chỉ cho hội thoại đang mở** (channel `zalo-msg-<id>`, filter `conversation_id=eq.`), danh sách chỉ render tối đa **300 dòng** ([ConversationList](src/components/chat-zalo/ConversationList.tsx) — quá thì nhắc gõ tìm kiếm), poll accounts dừng khi tab ẩn.
 
@@ -291,7 +291,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 
 **Cột 1 — Danh sách hội thoại** ([ConversationList](src/components/chat-zalo/ConversationList.tsx)):
 - Trên cùng: [AccountSwitcher](src/components/chat-zalo/AccountSwitcher.tsx) — xem **nhiều tài khoản cùng lúc** (toggle/only/all; account mới xuất hiện tự thêm vào tập xem), nút "Kết nối Zalo cá nhân" (→ RPC `zalo_request_connect` + [ConnectZaloDialog](src/components/chat-zalo/ConnectZaloDialog.tsx) hiện QR), kết nối lại / ngắt từng nick.
-- Tìm kiếm client-side theo tên / SĐT / sub / mã phòng; chip lọc `Tất cả · Chưa đọc · Khách trọ · Lead` (2 chip cuối lọc `profile.kind` — hiện không match gì vì kind luôn `unknown`, xem mục 2.2); [LabelFilter](src/components/chat-zalo/LabelFilter.tsx) lọc theo 1 nhãn phân loại.
+- Tìm kiếm (debounce 350ms) theo tên / SĐT / sub / mã phòng, chọn tài khoản, nhãn và chip lọc tính trong hàm SQL dùng chung `zalo_conversation_list_v1` (RLS người gọi, cùng công thức Hermes); chip lọc `Tất cả · Chưa đọc · Khách trọ · Lead · Danh bạ` (Khách trọ = có `contract_id`/`room_id`, Lead = có `lead_id`, Danh bạ = chưa từng có tin; các chip khác ẩn hội thoại chưa có tin trừ khi đang tìm); [LabelFilter](src/components/chat-zalo/LabelFilter.tsx) lọc theo 1 nhãn phân loại.
 - Chọn hội thoại → mở thread + `markRead.mutate` (RPC `zalo_mark_read`).
 - Nút loa → mở [BroadcastDialog](src/components/chat-zalo/BroadcastDialog.tsx): lọc theo nhãn + tìm + "Chọn tất cả" (chỉ tập đang lọc) → RPC `zalo_broadcast` → toast "Đã gửi tới N hội thoại"; worker gửi tuần tự có rải nhịp.
 - Nút "Soạn tin mới" hiện là nút trang trí (chưa có handler).

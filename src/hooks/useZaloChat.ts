@@ -11,27 +11,35 @@ import { chuHienThi, docThe, linkMediaAnToan } from '@/lib/zaloContent';
 //
 // BA QUY TẮC CHỐNG EGRESS (sự cố 3.1GB 26/06 — GIỮ NGUYÊN khi sửa file này):
 //   1. Debounce invalidate realtime ≥400ms (gom bão event bulk-sync về 1 refetch).
-//   2. Chọn cột tường minh CONV_COLS/MSG_COLS — cấm select('*'); thêm cột hiển
-//      thị mới thì thêm vào hằng.
-//   3. LIMIT trần: CONV_LIMIT 5000 / MSG_LIMIT 1000 (tin mới nhất, đảo client).
+//   2. Chọn cột tường minh MSG_COLS — cấm select('*'); danh sách hội thoại trả đúng
+//      CONV_FIELDS/PROFILE_FIELDS (src/lib/zaloConversationList.ts) từ
+//      zalo_conversation_list_v1 — thêm cột hiển thị mới thì thêm ở cả hàm SQL lẫn hằng.
+//   3. LIMIT trần: CONV_LIMIT 1000 (danh sách nền) / LIST_LIMIT 300 (cột danh sách) /
+//      MSG_LIMIT 1000 (tin mới nhất, đảo client).
 import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type {
-  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey, ZaloProfile, ZaloGroupMembers,
+  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey, ZaloGroupMembers,
 } from '@/components/chat-zalo/types';
+import {
+  PROFILE_FIELDS, parseZaloConversationList, zaloConversationListArgs,
+  type ZaloConversationListArgs, type ZaloConversationListRequest,
+} from '@/lib/zaloConversationList';
 
 // Cast một chỗ cho các bảng zalo_* (types sinh tự động có đủ nhưng shape query
 // động ở đây tồn tại từ trước ratchet rpc-cast — KHÔNG thêm cast mới ngoài dòng này).
 const db = supabase as any;
 
-// Member maps can be large. The list only reads the small profile fields it displays.
-const PROFILE_FIELDS = ['kind', 'room', 'roomSub', 'price', 'contractCode', 'contractTerm', 'contractStatus', 'debt', 'issue', 'stage', 'source', 'company', 'phone', 'rooms', 'stats', 'isGroup', 'members', 'desc', 'staff', 'tags'] as const satisfies readonly (keyof ZaloProfile)[];
-export const CONV_COLS = 'id, account_id, peer_zalo_uid, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner,' + PROFILE_FIELDS.map(key => `profile_${key}:profile->${key}`).join(',');
 const MSG_COLS = 'id, sender_uid:zalo_raw->>uidFrom, sender_name:zalo_raw->>senderName, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
-const CONV_LIMIT = 5000;
+// Đường PostgREST cũ ghi limit(5000) nhưng max_rows của PostgREST (1000, audit realtime 29/07)
+// cắt trước; hàm trả MỘT giá trị jsonb nên max_rows không còn cắt ⇒ giữ đúng trần thật 1000 để
+// không tăng egress mỗi lần realtime invalidate.
+const CONV_LIMIT = 1000;
+/** Cột danh sách vẽ tối đa 300 dòng (ConversationList); tổng khớp đi kèm để báo "300/N". */
+export const LIST_LIMIT = 300;
 const MSG_LIMIT = 1000;
 
 // ── format giờ/ngày hiển thị ──
@@ -160,7 +168,19 @@ function mapAccount(r: any): ZaloAccount {
   };
 }
 
-// ── Danh sách hội thoại (ghim lên đầu, còn lại theo tin mới nhất) ──
+// ── Danh sách hội thoại: MỘT hàm SQL dùng chung zalo_conversation_list_v1 (web, Hermes) ──
+// RLS, lọc tài khoản/nhãn/thẻ, ẩn hội thoại chưa có tin, tìm, ghim trước rồi tin mới nhất,
+// phân trang và tổng đều nằm trong hàm — trình duyệt chỉ dựng tham số và hiển thị.
+export interface ZaloConversationPage { rows: ZaloConversation[]; total: number }
+
+async function readConversationList(args: ZaloConversationListArgs): Promise<ZaloConversationPage> {
+  const { data, error } = await db.rpc('zalo_conversation_list_v1', args);
+  if (error) throw error;
+  const list = parseZaloConversationList(data, args);
+  return { rows: list.rows.map(mapConv), total: list.total };
+}
+
+/** Danh sách nền: mọi hội thoại của công ty (kể cả danh bạ chưa có tin) cho khung chat và dialog. */
 export function useZaloConversations() {
   const orgId = useZaloOrgId();
   return useQuery({
@@ -168,18 +188,27 @@ export function useZaloConversations() {
     enabled: !!orgId,
     retry: 1,
     queryFn: async (): Promise<ZaloConversation[]> => {
-      // hermes-parity:begin zalo-conversations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      const { data, error } = await db
-        .from('zalo_conversations')
-        .select(CONV_COLS)
-        .eq('organization_id', orgId)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .limit(CONV_LIMIT);
-      if (error) throw error;
-      const list = (data || []).map(mapConv);
-      // ghim lên đầu — sort client-side, không đổi query
-      return list.sort((a: ZaloConversation, b: ZaloConversation) => Number(b.pinned) - Number(a.pinned));
-      // hermes-parity:end zalo-conversations
+      if (!orgId) throw new Error('Chưa chọn tổ chức.');
+      return (await readConversationList(zaloConversationListArgs({ organizationId: orgId, limit: CONV_LIMIT }))).rows;
+    },
+  });
+}
+
+export type ZaloConversationListFilters = Omit<ZaloConversationListRequest, 'organizationId' | 'limit' | 'offset'>;
+
+/** Cột danh sách: LIST_LIMIT dòng đầu khớp bộ lọc + tổng khớp. Cùng gốc key ⇒ realtime/mutation vẫn invalidate. */
+export function useZaloConversationList(filters: ZaloConversationListFilters) {
+  const orgId = useZaloOrgId();
+  const args = orgId ? zaloConversationListArgs({ organizationId: orgId, ...filters, limit: LIST_LIMIT }) : null;
+  return useQuery({
+    queryKey: [...QK.conversations, orgId, 'list', args],
+    enabled: !!args,
+    retry: 1,
+    // Giữ danh sách cũ khi đổi thẻ/tìm/tài khoản để cột không nháy về khối xám; khác công ty thì bỏ.
+    placeholderData: (previous, query) => (query?.queryKey[2] === orgId ? previous : undefined),
+    queryFn: (): Promise<ZaloConversationPage> => {
+      if (!args) throw new Error('Chưa chọn tổ chức.');
+      return readConversationList(args);
     },
   });
 }
