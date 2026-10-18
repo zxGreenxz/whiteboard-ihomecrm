@@ -21,6 +21,12 @@ const externalStandard=new Map([
   sourcePath:'supabase/migrations/20261015110000_hermes_task_follow_v1.sql',
   statementSha256:'d9a1a93cbcc59910e6c1f2f39a9d2be90c4a70fb080da760c952eec93b1387ee',
  }],
+ // Đợt 2 Gói 0: lối vào báo cáo INVOKER gắn OID bước kiểm quyền / hàm gói / bước kết thúc lúc tạo.
+ ['public.hermes_w2_read_v1',{
+  name:'public.hermes_w2_read_v1',
+  sourcePath:'supabase/migrations/20261018000600_hermes_w2_invoker_gate_v1.sql',
+  statementSha256:'eb3603767a8a0c47bbae0c367b3f6714c6a2fc585f64d568f9ab7f85817c5ba5',
+ }],
 ]);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

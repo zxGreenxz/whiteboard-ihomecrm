@@ -102,6 +102,7 @@ export const useAccounts = (opts?: { enabled?: boolean }) => {
  * Lỗi kiểm tra quyền được truyền ra query; không hiển thị số dư như đã xác minh.
  */
 const readBalanceVisibility = async (): Promise<Map<string, boolean>> => {
+  // hermes-parity:begin cashbook-list — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const { data, error } = await supabase.rpc("list_cashbook_visibility_v2");
   if (error) {
     throw error;
@@ -109,6 +110,7 @@ const readBalanceVisibility = async (): Promise<Map<string, boolean>> => {
   if (!Array.isArray(data) || data.some(row => !row || typeof row !== "object" || typeof row.cashbook_id !== "string" || typeof row.balance_visible !== "boolean")) throw new Error("Chưa kiểm tra được quyền xem số dư sổ quỹ");
   const rows = data as { cashbook_id: string; balance_visible: boolean }[];
   return new Map(rows.map((r) => [r.cashbook_id, r.balance_visible === true]));
+  // hermes-parity:end cashbook-list
 };
 
 // --- Query: list with balance (cho trang Cashbooks) ---
@@ -128,6 +130,7 @@ export const useAccountsWithBalance = (params?: {
       data: AccountWithBalance[];
       totalCount: number;
     }> => {
+      // hermes-parity:begin cashbook-list
       let query = supabase
         .from("accounts_with_balance" as any)
         .select("*", { count: "exact" });
@@ -141,6 +144,7 @@ export const useAccountsWithBalance = (params?: {
           `name.ilike.%${searchQuery}%,code.ilike.%${searchQuery}%`
         );
       }
+      // hermes-parity:end cashbook-list
 
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
@@ -157,6 +161,7 @@ export const useAccountsWithBalance = (params?: {
       const rows = data as any[];
 
       // JS-merge owner profile (full_name) cho cột "Phụ trách".
+      // hermes-parity:begin cashbook-list
       const userIds = Array.from(
         new Set(rows.map((r) => r.user_id).filter(Boolean))
       ) as string[];
@@ -172,6 +177,7 @@ export const useAccountsWithBalance = (params?: {
           ownerById.set(p.id, { full_name: p.full_name ?? null });
         }
       }
+      // hermes-parity:end cashbook-list
 
       // H3.4 — `accounts_with_balance` là view security_invoker, nên cột
       // current_amount của nó được tính DƯỚI QUYỀN NGƯỜI ĐỌC:
@@ -182,6 +188,7 @@ export const useAccountsWithBalance = (params?: {
       // Đó là một con số SAI trông như số thật — cộng được vào tổng, in được
       // ra báo cáo. Hỏi server sổ nào thật sự đọc được rồi để TRỐNG phần còn
       // lại; `null` không cộng nhầm vào đâu được, `0` thì có.
+      // hermes-parity:begin cashbook-list
       const visibleById = await readBalanceVisibility();
 
       const mapped: AccountWithBalance[] = rows.map((r) => {
@@ -195,6 +202,7 @@ export const useAccountsWithBalance = (params?: {
           owner_name: ownerById.get(r.user_id)?.full_name ?? null,
         };
       });
+      // hermes-parity:end cashbook-list
 
       return { data: mapped, totalCount: count };
     },

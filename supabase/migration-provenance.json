@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T12:29:54.074Z",
+  "generatedAt": "2026-10-18T18:01:48.340Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 738,
+    "ledger-applied": 763,
     "unknown": 81,
     "catalog-proven": 208,
     "superseded": 15
@@ -11960,6 +11960,182 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261018000000_hermes_w2_foundation_v1.sql",
+      "version": "20261018000000",
+      "name": "hermes_w2_foundation_v1",
+      "scheme": "timestamp14",
+      "sha256": "491e547531b36f691a241a8460d6cabef69286ee75d4c6eaae4fc09c251432e0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:28:15.149Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018000500_hermes_w2_foundation_fixes_v1.sql",
+      "version": "20261018000500",
+      "name": "hermes_w2_foundation_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "8c9e8908cc0511a672fdaa40cb51999bf5d09dcc0a023bc93b79105166ac98f0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:30:50.316Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018000600_hermes_w2_invoker_gate_v1.sql",
+      "version": "20261018000600",
+      "name": "hermes_w2_invoker_gate_v1",
+      "scheme": "timestamp14",
+      "sha256": "5f316d4a1206725ca85b06ca30ecb5fc589b891a0e0f9bcc80876679ca072c1e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:33:01.042Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018000700_hermes_w2_org_fence_v1.sql",
+      "version": "20261018000700",
+      "name": "hermes_w2_org_fence_v1",
+      "scheme": "timestamp14",
+      "sha256": "0c942b1f505c3782956e1ed0a11f8b506f034884748146c2225621451176f47a",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:35:04.425Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql",
+      "version": "20261018010000",
+      "name": "hermes_w2a_receivables_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "89cdc54292970437ee9515737b0aad67ae6f9151e72d7dbae186c735dbbd2193",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:37:39.514Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql",
+      "version": "20261018010100",
+      "name": "hermes_w2a_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "7acae252e3b27dc3fb5bdaac11fd82b3924cd4211ddeb83287fc6911bed931cd",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:39:38.128Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql",
+      "version": "20261018020050",
+      "name": "hermes_w2b_finance_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "54cc805ee2a5eb4d288bac411007cb7eab0f367b61bee9c0ea514db19d74f9b3",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:42:14.166Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020200_hermes_w2b_finance_read_v1.sql",
+      "version": "20261018020200",
+      "name": "hermes_w2b_finance_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "69c0b0c826467a9ce6dc9b8f6ed669eeee59df232297c405f750a8d4cb71e842",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:44:14.321Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020250_hermes_w2b_finance_shared_fixes_v1.sql",
+      "version": "20261018020250",
+      "name": "hermes_w2b_finance_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "12828601dd1569d69e33ea67b62455fe31a32f86a106ad9bf3de9440f2fd7cb6",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:46:10.599Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018020300_hermes_w2b_finance_read_fixes_v1.sql",
+      "version": "20261018020300",
+      "name": "hermes_w2b_finance_read_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "33f5318d55ab6f9f0ffae3f97e885f6e7e371ade3b119f073fe56da8940f3609",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:49:13.916Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030100_hermes_w2c_shared_v1.sql",
+      "version": "20261018030100",
+      "name": "hermes_w2c_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "8ff45a533ffc3b8b7cd0c2f9caa35fe8947d68cca85a73b8f6a37907799b0839",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:52:21.122Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030200_hermes_w2c_ops_read_v1.sql",
+      "version": "20261018030200",
+      "name": "hermes_w2c_ops_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "e0e1959242e55c57546cd7c73fa259872723cb95391876ed02c35127c84c8027",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:54:21.774Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030300_hermes_w2c_shared_org_v1.sql",
+      "version": "20261018030300",
+      "name": "hermes_w2c_shared_org_v1",
+      "scheme": "timestamp14",
+      "sha256": "d41b3d3afaa93ba7e699c19d490f2b0ac1b90b4e4b4204e9a83955d868d07d23",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:57:21.618Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030400_hermes_w2c_org_fence_v1.sql",
+      "version": "20261018030400",
+      "name": "hermes_w2c_org_fence_v1",
+      "scheme": "timestamp14",
+      "sha256": "b25442562f7d2c6dbc8f7e5393d7adc9197637ac771eb61a1a14289e752a7995",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T16:59:27.444Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030500_hermes_w2c_shared_review_v1.sql",
+      "version": "20261018030500",
+      "name": "hermes_w2c_shared_review_v1",
+      "scheme": "timestamp14",
+      "sha256": "15ea47e4ed6faa0e3d11ebb58281801441a745df80df717b90b4a6b960897dca",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:01:25.242Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030600_hermes_w2c_review_read_v1.sql",
+      "version": "20261018030600",
+      "name": "hermes_w2c_review_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "38bbe1c3b7848e1b8cbb2ecfdcfbcb85821eb36b693d19af87490f46ca096403",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:03:59.073Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261018031847_commission_canonical_post_cashbook.sql",
       "version": "20261018031847",
       "name": "commission_canonical_post_cashbook",
@@ -11968,6 +12144,50 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040000_hermes_w2d_catalog_read_v1.sql",
+      "version": "20261018040000",
+      "name": "hermes_w2d_catalog_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "4d66c5469d8e7029289e208254f25afe83387c862224a8b2a1f077f04833aa04",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:06:34.764Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040100_hermes_w2d_reader_v1.sql",
+      "version": "20261018040100",
+      "name": "hermes_w2d_reader_v1",
+      "scheme": "timestamp14",
+      "sha256": "76c6694e46f97d4951c3f0cca2b73677d37e0cafb73818f053709bbf3dae0cf1",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:08:31.957Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040200_hermes_w2d_shared_fixes_v1.sql",
+      "version": "20261018040200",
+      "name": "hermes_w2d_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "6ba15eb4e91935b94b188dca83732c22e9ae47184c687f2919d96399211aa289",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:11:59.499Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018040300_hermes_w2d_reader_fixes_v1.sql",
+      "version": "20261018040300",
+      "name": "hermes_w2d_reader_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "c94825444df2ef8601811cc6e0e7182246ea0fa4726dee238b7420ba2da032e5",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:14:38.499Z|bien-nhan-backup"
       ]
     },
     {
@@ -12024,6 +12244,61 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080000_hermes_w2z_shared_fixes_v1.sql",
+      "version": "20261018080000",
+      "name": "hermes_w2z_shared_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "7dd2dd6d6867e5bc68c9087248e62ee12316878eb76ea811992de0c2bc7c0b5d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:17:16.671Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql",
+      "version": "20261018080100",
+      "name": "hermes_w2z_receivables_pii_v1",
+      "scheme": "timestamp14",
+      "sha256": "75263b5d1f3bc1cc9c935bb88259bb6cc43ecf939b62563e07f0a96cacda1d25",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:20:51.901Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080200_hermes_w2z_finance_fail_closed_v1.sql",
+      "version": "20261018080200",
+      "name": "hermes_w2z_finance_fail_closed_v1",
+      "scheme": "timestamp14",
+      "sha256": "a656128489c3d83a48ab08dae7cfc986300f6745220a0a12045ed858792c8261",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:23:04.047Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018080300_hermes_w2z_catalog_fixes_v1.sql",
+      "version": "20261018080300",
+      "name": "hermes_w2z_catalog_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "be076d962c0c81d8e7f917d95ab0e70e1f841cbe2ffc56589f36bb91b5cd24b2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:25:10.533Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018090000_hermes_w2_enable_v1.sql",
+      "version": "20261018090000",
+      "name": "hermes_w2_enable_v1",
+      "scheme": "timestamp14",
+      "sha256": "7459fec1fc9fd9ac28acedae682529e01ad046b30e9b546062cd5308765f41aa",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T17:27:42.790Z|bien-nhan-backup"
       ]
     },
     {

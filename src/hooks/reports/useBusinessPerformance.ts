@@ -889,6 +889,7 @@ export function useBusinessPerformancePnl(
       const batches = chunkIds(requestedIds, PNL_RPC_BUILDING_BATCH_SIZE);
       const batchRows = await Promise.all(
         batches.map(async (batchIds) => {
+          // hermes-parity:begin business-performance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
           const params = {
             p_start_date: startDate,
             p_end_date: endDate,
@@ -902,6 +903,7 @@ export function useBusinessPerformancePnl(
               p_basis: basis,
             },
           );
+          // hermes-parity:end business-performance
           if (result.error) throw result.error;
           const batchBuildingIds = new Set(batchIds);
           const rows = requiredRows(result.data, "pnl")
@@ -932,9 +934,11 @@ export function useBusinessPerformanceOrganizations(
     staleTime: HISTORICAL_STALE_TIME,
     refetchInterval: HISTORICAL_STALE_TIME,
     queryFn: async () => {
+      // hermes-parity:begin business-performance
       const { data, error } = await supabase.rpc(
         "business_performance_organizations_v1",
       );
+      // hermes-parity:end business-performance
       if (error) throw error;
       const rows = requiredRows(data, "organizations").map(parseOrganizationRow);
       const organizationIds = new Set<string>();

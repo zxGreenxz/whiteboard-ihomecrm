@@ -12,11 +12,13 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 // nên người thuộc hai công ty thấy cả thông báo thường của công ty kia.
 // Chưa chốt (null) giữ hành vi cũ: ẩn LIFECYCLE (link phụ thuộc công ty), dòng
 // không có event phải qua được ngữ nghĩa NULL của SQL.
+// hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1: phạm vi công ty)
 function inboxScope(organizationId: string | null): string {
   return organizationId
     ? `organization_id.eq.${organizationId}`
     : 'metadata->>event.neq.LIFECYCLE,metadata->>event.is.null';
 }
+// hermes-parity:end w2c-notifications
 
 // Types
 export type NotificationType =
@@ -97,6 +99,7 @@ export function useNotifications() {
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1)
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -108,6 +111,7 @@ export function useNotifications() {
         .order('created_at', { ascending: false })
         // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
         .limit(200);
+      // hermes-parity:end w2c-notifications
 
       if (error) throw error;
       return data as Notification[];
@@ -131,6 +135,7 @@ export function useUnreadNotificationsCount() {
 
       // Dùng PENDING làm cờ chưa đọc. Hôm nay bảng chỉ có PENDING/READ nên tương đương
       // `!= READ`; nếu sau này có dòng SENT/FAILED thì phải xem lại (đã ghi trong plan).
+      // hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1: chưa đọc = PENDING)
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
@@ -138,6 +143,7 @@ export function useUnreadNotificationsCount() {
         .eq('channel', 'IN_APP')
         .or(inboxScope(selectedOrganizationId))
         .eq('status', 'PENDING');
+      // hermes-parity:end w2c-notifications
 
       if (error) throw error;
       return count || 0;

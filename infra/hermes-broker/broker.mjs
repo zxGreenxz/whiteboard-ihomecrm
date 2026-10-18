@@ -16,6 +16,7 @@ import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
+import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -69,7 +70,7 @@ const RATE_WINDOW_MS = 60_000;
 const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
   group_recipient_limit: 400, group_room_limit: 400,
-  tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504,
+  tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
   customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
 });
@@ -426,6 +427,8 @@ export function createBroker({
   if (limits.tokenLifetimeMs > DEFAULT_LIMITS.tokenLifetimeMs || limits.timeoutMs > 30_000 ||
       limits.maxResultBytes > 65_536 || limits.maxToolsListBytes > TOOLS_LIST_MAX_BYTES) throw new TypeError('unsafe_limits');
   const usage = new Map();
+  // Rào chữ công khai: chữ tự do mới ra bề mặt công khai luôn qua xác nhận hai bước (public-text-guard.mjs).
+  const publicText = createPublicTextGuard({ clock });
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
     receipts.push(structuredClone(event));
@@ -800,15 +803,22 @@ export function createBroker({
       }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {
-        let input, invalid = false, uncertain = false;
-        try { input = roomPassInput(passOperation, args); } catch { invalid = true; }
+        // confirmToken thuộc rào chữ công khai, không phải đầu vào CRM: tách trước validator.
+        const split = splitConfirmToken(name, args);
+        let input, invalid = split.invalid, uncertain = false, confirmation;
+        try { input = roomPassInput(passOperation, split.args); } catch { invalid = true; }
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseRoomPass(identity.effective, passOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
+          // Trước mọi I/O ghi: chữ công khai mới luôn phải qua xác nhận hai bước.
+          const reviewed = publicText.review(identity.row.id, name, input, split.confirmToken);
+          if (reviewed.refused) fail('confirmation_invalid');
+          if (reviewed.confirmation) { confirmation = reviewed.confirmation; return Object.freeze({}); }
           const receipt = await pass.prepareRoomPass(presentedToken, passOperation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => {
+          if (confirmation) return { content: [{ type: 'text', text: JSON.stringify(confirmation) }], isError: false };
           const result = await pass.finalizeRoomPass(presentedToken, receipt, { signal,
             onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
@@ -857,6 +867,8 @@ export function createBroker({
         return invoke(presentedToken, 'tools/call', async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
+          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
+          if (!mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
           const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;

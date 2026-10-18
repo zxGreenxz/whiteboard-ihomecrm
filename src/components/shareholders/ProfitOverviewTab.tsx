@@ -61,6 +61,7 @@ export default function ProfitOverviewTab() {
   // Chỉ tính phần của cổ đông CÒN HIỆU LỰC: phân bổ/phiếu chi gắn cổ đông đã xoá
   // (vd "Green") không được cộng vào tổng — nếu không "Tổng được chia" sẽ phồng
   // hơn tổng từng cổ đông đang hiển thị. (shareholders đã loại deleted_at.)
+  // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const activeIds = useMemo(() => new Set(shareholders.map((s) => s.id)), [shareholders]);
   const allocActive = useMemo(
     () => allocations.filter((a) => activeIds.has(a.shareholder_id)),
@@ -70,10 +71,12 @@ export default function ProfitOverviewTab() {
     () => distributions.filter((d) => activeIds.has(d.shareholder_id)),
     [distributions, activeIds]
   );
+  // hermes-parity:end shareholder-profit
 
   // ---- Phân bổ (đã GẮN % cổ đông) lọc theo năm + cổ đông ----
   // Charts/bảng lấy từ profit_allocations (amount = LN nhà × % cổ đông) thay vì
   // adjusted_profit thô của profit_monthly → đúng phần CỔ ĐÔNG ĐƯỢC CHIA.
+  // hermes-parity:begin shareholder-profit
   const allocYear = useMemo(
     () =>
       allocActive.filter(
@@ -83,6 +86,7 @@ export default function ProfitOverviewTab() {
       ),
     [allocActive, year, shId]
   );
+  // hermes-parity:end shareholder-profit
 
   // Thêm lọc tháng (cho biểu đồ cơ cấu theo nhà + bảng).
   const allocScoped = useMemo(
@@ -133,10 +137,12 @@ export default function ProfitOverviewTab() {
   }, [allocScoped]);
 
   // ---- KPI: settlement luỹ kế, lọc theo cổ đông ----
+  // hermes-parity:begin shareholder-profit
   const summary = useMemo(
     () => computeShareholderSummary(shareholders.map((s) => s.id), allocActive, distActive),
     [shareholders, allocActive, distActive]
   );
+  // hermes-parity:end shareholder-profit
 
   // ---- Lương điều hành: settlement luỹ kế theo quản lý (tái dùng computeShareholderSummary) ----
   const activeMgrIds = useMemo(() => new Set(managers.map((m) => m.id)), [managers]);
@@ -156,15 +162,19 @@ export default function ProfitOverviewTab() {
 
   const totals = useMemo(() => {
     // Tổng LN đã chốt = toàn bộ LN doanh nghiệp đã khoá (KHÔNG theo cổ đông — là gốc trước chia).
+    // hermes-parity:begin shareholder-profit
     const lockedProfit = profitMonthly
       .filter((p) => p.status === "LOCKED")
       .reduce((s, p) => s + p.adjusted_profit, 0);
+    // hermes-parity:end shareholder-profit
     // Được chia / Đã ứng / Còn lại = luỹ kế, lọc theo cổ đông đang chọn (đã loại cổ đông xoá).
+    // hermes-parity:begin shareholder-profit
     const allocF = allocActive.filter((a) => shId === ALL || a.shareholder_id === shId);
     const distF = distActive.filter((d) => shId === ALL || d.shareholder_id === shId);
     const accrued = allocF.reduce((s, a) => s + a.amount, 0);
     const paid = distF.reduce((s, d) => s + d.total_amount, 0);
     return { lockedProfit, accrued, paid, remaining: accrued - paid };
+    // hermes-parity:end shareholder-profit
   }, [profitMonthly, allocActive, distActive, shId]);
 
   const remainingChart = useMemo(

@@ -75,10 +75,12 @@ export default function MaterialsListContent() {
   const [deleteCatTarget, setDeleteCatTarget] = useState<MaterialCategory | null>(null);
   const [showCategoriesPanel, setShowCategoriesPanel] = useState(false);
 
+  // hermes-parity:begin w2c-materials — Hermes chép vùng này (public.materials_items_v1: low_stock_count)
   const lowStockCount = useMemo(
     () => materials.filter((m) => Number(m.on_hand) <= Number(m.reorder_level)).length,
     [materials],
   );
+  // hermes-parity:end w2c-materials
 
   // Khung trang (nút, ô tìm, bộ lọc, tab) hiện ngay và KHÔNG bị gỡ khi gõ tìm (khoá query đổi
   // theo ô tìm ⇒ mỗi lần gõ là một lượt tải mới); chỉ bảng chờ dữ liệu — chủ chốt 02/10/2026.
