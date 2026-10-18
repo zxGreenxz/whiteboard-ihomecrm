@@ -53,7 +53,9 @@ export const W2A_REPORTS = Object.freeze({
       remainingAmount: nullable(amount), notes: nullable(longText(1000)), adjustmentCount: nullable(count), adjustmentReviewStatus: nullable(longText(40)),
       totalReceived: nullable(amount), totalRefunded: nullable(amount) } }),
   // /deposits tab Phiếu giữ chỗ (useDeposits.ts:145-258; useReservationHoldDeadlines.ts:36-70).
-  reservation_vouchers: w2Report({ permission: 'deposits.view', source: 'crm.deposit_reservation_vouchers_v1', scope: 'rows',
+  // scope rls_buildings (19/10): như /deposits (route không truyền toà) — tập phiếu do RLS income_expenses quyết, kể cả phiếu vào sổ
+  // quỹ người hỏi giữ ở toà không có deposits.view; toà = toà công ty ∩ phạm vi kết nối.
+  reservation_vouchers: w2Report({ permission: 'deposits.view', source: 'crm.deposit_reservation_vouchers_v1', scope: 'rls_buildings',
     title: 'Phiếu cọc giữ chỗ (phiếu thu cọc chưa gắn hợp đồng): số cọc, trạng thái duyệt, đã quyết toán chưa, hạn làm hợp đồng/bổ sung cọc; query tìm theo mã phiếu/tên phòng (không trả tên phiếu/người nộp). summary: tổng cọc đang giữ.',
     params: ['buildingId', 'status', 'query'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], scopeKeys: CUSTOMER, private: true,
     fields: { voucherId: id, code: number, name: nullable(longText(300)), payerName: personName, depositAmount: amount, voucherDate: nullable(date),

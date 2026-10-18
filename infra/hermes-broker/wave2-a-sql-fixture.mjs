@@ -77,6 +77,9 @@ const TABLES = `
   -- Khoá trang theo toà (bản thật: not offboarded AND (super admin OR can_v3(bảng.hành_động, toà))).
   CREATE FUNCTION public.can_do_on_building(_table text,_action text,_building_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
     $$SELECT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission=_table||'.'||_action AND allowed AND (org_wide OR _building_id=ANY(building_ids)))$$;
+  -- Khoá trang không theo toà, như route web không truyền toà (bản thật: is_super_admin() OR has_any_scope_v3(khoá)).
+  CREATE FUNCTION public.can_access_org_entity(_resource text,_action text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
+    $$SELECT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission=_resource||'.'||_action AND allowed)$$;
   CREATE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE AS
     $$SELECT EXISTS(SELECT 1 FROM public.fixture_restricted_view WHERE user_id=auth.uid())$$;
   CREATE FUNCTION app_private.ie_visible_cashbook_ids_v1() RETURNS TABLE(cashbook_id uuid) LANGUAGE sql STABLE AS
