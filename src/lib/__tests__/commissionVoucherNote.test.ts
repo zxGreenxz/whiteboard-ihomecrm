@@ -114,6 +114,10 @@ describe("buildCommissionNoteLines — 5 dòng chủ chốt", () => {
     expect(trangThaiHopDong(goc({ today: "2027-09-01" }))).toBe("EXPIRED");
     expect(trangThaiHopDong(goc({ status: "TERMINATED" }))).toBe("TERMINATED");
     expect(trangThaiHopDong(goc({ expected_move_out_date: "2026-10-01" }))).toBe("MOVING_OUT");
+    // Trạng thái cũ EXPIRED giữ in Quá hạn dù ngày kết thúc chưa tới; ngày chuyển đi vẫn ưu tiên.
+    expect(trangThaiHopDong(goc({ status: "EXPIRED", today: "2027-01-01" }))).toBe("EXPIRED");
+    expect(trangThaiHopDong(goc({ status: "EXPIRED", expected_move_out_date: "2026-10-01" }))).toBe("MOVING_OUT");
+    expect(trangThaiHopDong(goc({ status: "ACTIVE", today: "2027-01-01" }))).toBe("ACTIVE");
     expect(buildCommissionNoteLines(goc({ status: "TERMINATED" })).at(-1)).toBe(
       "Đào Lê · 0901234567 · Đã thanh lý",
     );
