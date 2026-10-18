@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-17T22:56:53.040Z",
+  "generatedAt": "2026-10-17T23:21:31.262Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 733,
-    "unknown": 83,
+    "unknown": 85,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11970,6 +11970,35 @@
         "function:app_private.hermes_w2_finish_v1",
         "function:app_private.hermes_w2a_read_v1",
         "function:app_private.hermes_w2b_read_v1",
+        "function:app_private.hermes_w2c_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030100_hermes_w2c_shared_v1.sql",
+      "version": "20261018030100",
+      "name": "hermes_w2c_shared_v1",
+      "scheme": "timestamp14",
+      "sha256": "8ff45a533ffc3b8b7cd0c2f9caa35fe8947d68cca85a73b8f6a37907799b0839",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.safe_text_v1",
+        "function:public.utc_instant_v1",
+        "function:public.json_number_v1",
+        "function:public.vehicles_list_v1",
+        "function:public.materials_items_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030200_hermes_w2c_ops_read_v1.sql",
+      "version": "20261018030200",
+      "name": "hermes_w2c_ops_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "e0e1959242e55c57546cd7c73fa259872723cb95391876ed02c35127c84c8027",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2c_catalog_v1",
         "function:app_private.hermes_w2c_read_v1"
       ]
     },
