@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 735,
-    "unknown": 88,
+    "unknown": 90,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12051,6 +12051,34 @@
       "name": "hermes_w2c_org_fence_v1",
       "scheme": "timestamp14",
       "sha256": "b25442562f7d2c6dbc8f7e5393d7adc9197637ac771eb61a1a14289e752a7995",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2c_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030500_hermes_w2c_shared_review_v1.sql",
+      "version": "20261018030500",
+      "name": "hermes_w2c_shared_review_v1",
+      "scheme": "timestamp14",
+      "sha256": "15ea47e4ed6faa0e3d11ebb58281801441a745df80df717b90b4a6b960897dca",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.safe_text_v1",
+        "function:public.utc_instant_v1",
+        "function:public.json_number_v1",
+        "function:public.vehicles_list_v1",
+        "function:public.materials_usages_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018030600_hermes_w2c_review_read_v1.sql",
+      "version": "20261018030600",
+      "name": "hermes_w2c_review_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "38bbe1c3b7848e1b8cbb2ecfdcfbcb85821eb36b693d19af87490f46ca096403",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

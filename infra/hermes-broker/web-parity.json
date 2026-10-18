@@ -554,7 +554,7 @@
           "contains": "crm.vehicles_list_v1"
         }
       ],
-      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên/SĐT khách chỉ hiện khi khách đọc được dưới RLS customers và kết nối có customers.view ở toà đó; Hermes chưa lọc theo dòng xe/màu."
+      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên chủ xe và tên/SĐT khách chỉ hiện (và chỉ tìm được) khi hồ sơ khách của xe đọc được dưới RLS customers và kết nối có customers.view ở toà đó — web hiện tên chủ xe của mọi xe đọc được (review PR #204); Hermes chưa lọc theo dòng xe/màu."
     },
     {
       "id": "w2c-materials",

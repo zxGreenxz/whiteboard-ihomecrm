@@ -7,18 +7,24 @@ import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ROOM, USER, O
 import { CUSTOMER_A, CUSTOMER_B, CONTRACT_A, changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2 } from './wave2-registry.mjs';
 import { W2C_REPORTS } from './wave2-c-contract.mjs';
+import { w2CatalogEntry } from './wave2-kit.mjs';
 
 // Gói C đợt 2 — test RIÊNG của Gói C. MỘT PGlite cho cả file, mỗi ca BEGIN … ROLLBACK.
 // Đường thật: lối vào INVOKER public.hermes_w2_read_v1 (Gói 0, 20261018000600) bằng vai authenticated → bước kiểm
 // quyền DEFINER dựng ctx → app_private.hermes_w2c_read_v1 (INVOKER, RLS THẬT chép nguyên văn trong fixture) → bước
 // kết thúc rào đầu ra/phân trang; rồi rào broker (W2.reads.report.result). authenticated KHÔNG có USAGE trên
 // app_private: thân hàm đọc mà gọi app_private.* là ca đỏ. Ca "ctx không mở rộng RLS" gọi hàm đọc trực tiếp (cấp
-// USAGE tạm trong ca). Đột biến SQL trên định nghĩa SỐNG (file sau cùng định nghĩa hàm) của bốn migration của gói.
+// USAGE tạm trong ca). Đột biến SQL trên định nghĩa SỐNG (file sau cùng định nghĩa hàm) của sáu migration của gói.
 // Rào công ty (nền 20261018000700): hàm dùng chung trả cột organization_id (030300), hàm đọc gắn organizationId (030400).
+// Sửa sau review PR #204: hàm dùng chung (030500: rào tên chủ xe, tổng chi phí toàn nguồn, guard helper, COMMENT DEFINER),
+// hàm đọc (030600: tối đa 2000 hàng, tổng thật ở summary).
 const read = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const sharedSql = read('20261018030100_hermes_w2c_shared_v1'), sharedOrgSql = read('20261018030300_hermes_w2c_shared_org_v1');
+const sharedReviewSql = read('20261018030500_hermes_w2c_shared_review_v1');
 const packageSql = read('20261018030200_hermes_w2c_ops_read_v1'), fenceSql = read('20261018030400_hermes_w2c_org_fence_v1');
-const SHARED_SOURCES = [sharedOrgSql, sharedSql], PACKAGE_SOURCES = [fenceSql, packageSql];
+const reviewReadSql = read('20261018030600_hermes_w2c_review_read_v1');
+// Mới nhất trước: định nghĩa sống của một hàm là bản trong file đầu tiên (theo thứ tự này) có định nghĩa hàm đó.
+const SHARED_SOURCES = [sharedReviewSql, sharedOrgSql, sharedSql], PACKAGE_SOURCES = [reviewReadSql, fenceSql, packageSql];
 let shared;
 before(async () => { shared = await sharedW2c(); });
 after(async () => { await shared?.close(); });
@@ -58,20 +64,26 @@ test('cấu trúc: hàm dùng chung INVOKER (trừ helper salary_is_admin_v1), c
   const { db } = env;
   const strip = sql => sql.replace(/--[^\n]*/g, '');
   const created = sql => [...strip(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
-  // DROP duy nhất được phép: 030300 bỏ hàm dùng chung CỦA GÓI để đổi kiểu trả về rồi tạo lại ngay trong cùng file.
-  const dropped = [...strip(sharedOrgSql).matchAll(/DROP FUNCTION IF EXISTS ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
-  assert.deepEqual(dropped, created(sharedOrgSql), '030300: mỗi DROP đi liền CREATE cùng hàm');
-  for (const sql of [sharedSql, sharedOrgSql, packageSql, fenceSql]) {
+  // DROP duy nhất được phép: bỏ hàm dùng chung CỦA GÓI để đổi kiểu trả về rồi tạo lại ngay trong cùng file.
+  const dropped = sql => [...strip(sql).matchAll(/DROP FUNCTION IF EXISTS ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
+  assert.deepEqual(dropped(sharedOrgSql), created(sharedOrgSql), '030300: mỗi DROP đi liền CREATE cùng hàm');
+  assert.deepEqual(dropped(sharedReviewSql), ['public.materials_usages_v1'], '030500: chỉ hàm đổi kiểu trả về');
+  assert.ok(created(sharedReviewSql).includes('public.materials_usages_v1'));
+  for (const sql of [sharedSql, sharedOrgSql, sharedReviewSql, packageSql, fenceSql, reviewReadSql]) {
     assert.doesNotMatch(strip(sql), /copilot/i);
     assert.doesNotMatch(strip(sql).replace(/DROP FUNCTION IF EXISTS public\.[a-z0-9_]+\([^)]*\);/g, ''),
       /\bDROP\b|ALTER TABLE|UPDATE app_private\.hermes_capabilities|INSERT INTO|current_visible_owner_ids/i, 'không chép policy');
   }
-  for (const sql of [sharedSql, sharedOrgSql]) assert.doesNotMatch(sql, /hermes_/i, 'hàm dùng chung không thuộc trợ lý');
+  for (const sql of [sharedSql, sharedOrgSql, sharedReviewSql]) assert.doesNotMatch(sql, /hermes_/i, 'hàm dùng chung không thuộc trợ lý');
   assert.deepEqual(created(packageSql).sort(), ['app_private.hermes_w2c_catalog_v1', 'app_private.hermes_w2c_read_v1']);
   assert.deepEqual(created(fenceSql), ['app_private.hermes_w2c_read_v1']);
+  assert.deepEqual(created(reviewReadSql), ['app_private.hermes_w2c_read_v1']);
   const SHARED = created(sharedSql);
   assert.equal(SHARED.length, 14);
-  assert.ok(created(sharedOrgSql).every(name => SHARED.includes(name)), '030300 không thêm hàm mới');
+  for (const sql of [sharedOrgSql, sharedReviewSql]) assert.ok(created(sql).every(name => SHARED.includes(name)), 'bản sửa không thêm hàm mới');
+  // [P2 review] Tổng thành tiền phiếu xuất tính trên toàn nguồn đã lọc (cột total_cost_sum).
+  const usage = (await db.query(`SELECT proargnames names,proargmodes modes FROM pg_proc WHERE oid='public.materials_usages_v1(uuid,date,date,uuid[],integer,integer)'::regprocedure`)).rows[0];
+  assert.equal(usage.modes[usage.names.indexOf('total_cost_sum')], 't');
   // Hàm dùng chung của báo cáo công ty trả cột nguồn organization_id (tám hàm của 030300).
   const outputs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.proargnames names,p.proargmodes modes FROM pg_proc p
     JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1)`, [created(sharedOrgSql)])).rows;
@@ -93,6 +105,20 @@ test('cấu trúc: hàm dùng chung INVOKER (trừ helper salary_is_admin_v1), c
       assert.equal(proc.definer, proc.name === 'public.salary_is_admin_v1', `${proc.name}: chỉ helper lương là DEFINER`);
     }
   }
+  // [P2 review] Ngoại lệ DEFINER chấp nhận có điều kiện: chỉ nhận công ty (không nhận người dùng khác), trả boolean về
+  // chính người gọi, search_path rỗng cố định, không PUBLIC/anon, lý do ghi trong COMMENT.
+  const admin = (await db.query(`SELECT pg_get_function_identity_arguments(p.oid) args,pg_get_function_result(p.oid) result,
+      obj_description(p.oid,'pg_proc') note,has_function_privilege('public',p.oid,'EXECUTE') pub
+    FROM pg_proc p WHERE p.oid='public.salary_is_admin_v1(uuid)'::regprocedure`)).rows[0];
+  assert.deepEqual([admin.args, admin.result, admin.pub], ['p_organization_id uuid', 'boolean', false]);
+  assert.match(admin.note ?? '', /SECURITY DEFINER có chủ đích[\s\S]*auth\.uid\(\)[\s\S]*Không nhận người dùng khác/);
+  // [P3 review] Helper thuần cũng từ chối khi không chạy bằng vai authenticated của một người gọi.
+  for (const sql of ["SELECT public.safe_text_v1('a',5) result", "SELECT public.utc_instant_v1(now()) result", "SELECT public.json_number_v1('1') result"]) {
+    await assert.rejects(env.call(sql, [], { role: 'postgres' }), code('42501'), sql);
+    await assert.rejects(env.call(sql, [], { role: 'anon' }), /permission denied/, sql);
+  }
+  assert.deepEqual(await env.call("SELECT jsonb_build_array(public.safe_text_v1(E'a\\x01b\\nc  ',10),public.utc_instant_v1('2026-10-16T08:00:00+07'),public.json_number_v1('\"x\"')) result"),
+    ['ab\nc', '2026-10-16T01:00:00.000Z', null]);
   // Hàm dùng chung từ chối khi không chạy bằng vai authenticated (vd. bị gọi trong một hàm DEFINER) hoặc không có người gọi.
   await assert.rejects(env.call('SELECT count(*)::int result FROM public.vehicles_list_v1($1)', [ORG], { role: 'postgres' }), code('42501'));
   await assert.rejects(env.call('SELECT count(*)::int result FROM public.vehicles_list_v1($1)', [ORG], { role: 'anon' }), /permission denied/);
@@ -122,16 +148,32 @@ test('C1 xe: RLS + vehicles.view theo toà; ctx thu hẹp (overlay, khách theo 
   assert.deepEqual(ids(await run(env, 'vehicles', { kind: 'ELECTRIC_BIKE' })), [VEHICLE.hidden]);
   assert.deepEqual(ids(await run(env, 'vehicles', { customerId: CUSTOMER_A })), [VEHICLE.mine]);
   await assert.rejects(run(env, 'vehicles', { customerId: HIDDEN_CUSTOMER }), code('42501'), 'cổng: khách ngoài phạm vi');
+  // [P1 review] Tên chủ xe là dữ liệu của khách: cùng rào với tên/SĐT khách, cả kết quả lẫn tìm kiếm.
+  await db.exec(`UPDATE public.vehicles SET owner_name='Chủ Ẩn Danh' WHERE id='${VEHICLE.hidden}'`);
+  page = await run(env, 'vehicles');
+  assert.deepEqual(page.items.map(row => row.ownerName), ['Chủ xe An', null], 'chủ hồ sơ khách ngoài phạm vi ⇒ không trả tên chủ xe');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'chủ xe an' })), [VEHICLE.mine], 'tìm theo tên chủ xe khi hồ sơ khách hiện');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'Ẩn Danh' })), [], 'không tìm ra qua tên chủ xe của khách bị ẩn');
   await db.query("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
   page = await run(env, 'vehicles');
-  assert.deepEqual([page.items[0].customerName, page.items[0].customerPhone, page.items[0].customerId], [null, null, null], 'kết nối không customers.view');
+  assert.deepEqual([page.items[0].customerName, page.items[0].customerPhone, page.items[0].customerId, page.items[0].ownerName], [null, null, null, null],
+    'kết nối không customers.view');
   assert.deepEqual(ids(await run(env, 'vehicles', { query: 'Nguyễn' })), []);
-  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'chủ xe' })), [VEHICLE.mine], 'tên chủ xe là cột của xe');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'chủ xe' })), [], 'không customers.view ⇒ không tìm theo tên chủ xe');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: '11111' })), [VEHICLE.mine], 'biển số vẫn tìm được');
   await db.query("UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['customers.view']");
+  // Gỡ chủ hồ sơ khỏi tập được xem (RLS customers): có customers.view vẫn không trả, không tìm tên chủ xe.
+  await db.exec(`UPDATE public.customers SET user_id='${OUTSIDER}' WHERE id='${CUSTOMER_A}'`);
+  page = await run(env, 'vehicles');
+  assert.deepEqual([page.items[0].id, page.items[0].ownerName, page.items[0].customerName], [VEHICLE.mine, null, null], 'gỡ chủ hồ sơ');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'chủ xe an' })), []);
+  await db.exec(`UPDATE public.customers SET user_id='${USER}' WHERE id='${CUSTOMER_A}'`);
   await env.orgWide('vehicles.view');
   page = await run(env, 'vehicles');
   assert.deepEqual(ids(page), [VEHICLE.mine, VEHICLE.other, VEHICLE.unassigned, VEHICLE.hidden]);
   assert.equal(page.items[1].customerId, CUSTOMER_B);
+  assert.equal(page.items[2].ownerName, null, 'xe không gắn khách: không chứng minh được hồ sơ chủ xe');
+  assert.deepEqual(ids(await run(env, 'vehicles', { query: 'tự do' })), []);
   // Bộ lọc web (useVehicles.ts:39-57) dưới RLS của chính người dùng = cùng tập.
   assert.deepEqual(ids(page), await asUser(env, 'SELECT id FROM public.vehicles WHERE deleted_at IS NULL ORDER BY created_at DESC'));
   assert.deepEqual(ids(await run(env, 'vehicles', { buildingId: OTHER_BUILDING })), [VEHICLE.other], 'buildingId bỏ xe không toà');
@@ -221,7 +263,7 @@ test('C8 lương của tôi: chỉ auth.uid(), tháng ĐÃ CHỐT; chưa chốt/
   assert.deepEqual(page.summary, { month: '2026-09', status: 'LOCKED', lockedAt: '2026-10-05T03:00:00.000Z', roleTitle: 'Quản lý toà',
     workBonus: '1200000.00', contractBonus: '300000.00', adjustmentsTotal: '300000.00', baseSalary: '8000000.00', bonus: '1800000.00',
     investment: '400000.00', commission: '2500000.00', grossTotal: '12700000.00', advances: '1000000.00', roomRent: '1500000.00',
-    takeHome: '10200000.00', paid: '4000000.00', remaining: '6200000.00' });
+    takeHome: '10200000.00', paid: '4000000.00', remaining: '6200000.00', lineCount: 2 });
   assert.deepEqual(page.items.map(row => [row.type, row.label, row.amount]), [['BONUS', 'Thưởng KPI', '500000.00'], ['DEDUCTION', 'Đi trễ', '-200000.00']]);
   page = await run(env, 'my_salary', { month: '2026-09', kind: 'ledger' });
   assert.deepEqual(page.items.map(row => [row.type, row.date, row.label, row.amount]),
@@ -320,10 +362,105 @@ test('C10–C14 Network Center: RPC web gọi thẳng, giữ đúng toà ctx; kh
   assert.equal((await run(env, 'network_config_diff', { buildingId: BUILDING, fromId: SNAPSHOT.old, toId: ROUTER.a })).unavailable, 'source_unavailable');
 }));
 
+// [P2 review] Mọi báo cáo gói C là dữ liệu riêng tư; phép kiểm tự bắt được một báo cáo private=false.
+const notPrivate = specs => Object.entries(specs).filter(([, spec]) => spec.private !== true).map(([reportId]) => reportId);
+test('mọi báo cáo gói C private=true (khai báo JS, sổ đợt 2 và dòng mục lục)', () => {
+  assert.deepEqual(notPrivate(W2C_REPORTS), []);
+  const registered = Object.fromEntries(Object.entries(W2.reports).filter(([, spec]) => spec.package === 'c'));
+  assert.equal(Object.keys(registered).length, 20);
+  assert.deepEqual(notPrivate(registered), []);
+  for (const reportId of Object.keys(registered)) assert.equal(w2CatalogEntry(reportId, registered[reportId], 'c').private, true, reportId);
+  assert.deepEqual(notPrivate({ ...W2C_REPORTS, probe: { ...W2C_REPORTS.materials, private: false } }), ['probe'], 'phép kiểm không xanh rỗng');
+});
+
+// [P2 review] Nguồn > 2000 dòng: bước kết thúc từ chối rows > 2000 (XX000) ⇒ hàm đọc cắt TỐI ĐA 2000 hàng theo thứ tự ổn
+// định, tổng thật ở summary, sourceCapped=true; trang cuối (offset 1950) dừng đúng ở hàng 2000.
+const BULK = 2001;
+const bulk = {
+  categories: db => db.exec(`INSERT INTO public.material_categories(id,user_id,organization_id,name)
+    SELECT gen_random_uuid(),'${USER}','${ORG}','DM '||lpad(g::text,5,'0') FROM generate_series(1,${BULK}) g`),
+  warehouses: db => db.exec(`INSERT INTO public.asset_warehouses(id,name,location,building_id,user_id,organization_id)
+    SELECT gen_random_uuid(),'Kho '||lpad(g::text,5,'0'),null,'${BUILDING}','${USER}','${ORG}' FROM generate_series(1,${BULK}) g`),
+  salaryLines: db => db.exec(`INSERT INTO public.salary_adjustments(user_id,salary_monthly_id,kind,label,amount,note,source,organization_id,created_at)
+    SELECT '${USER}','${SALARY.mine}','BONUS','Thưởng '||g,1000,null,'MANUAL','${ORG}','2026-09-30T00:00:00Z'::timestamptz+g*interval '1 second'
+    FROM generate_series(1,${BULK}) g`),
+  managers: db => db.exec(`INSERT INTO public.manager_salary_config(user_id,staff_id,base_salary,role_title,alias,effective_from,effective_to,is_active,
+      organization_id)
+    SELECT '${USER}',gen_random_uuid(),1,'Quản lý','QL '||lpad(g::text,5,'0'),'2026-01-01',null,true,'${ORG}' FROM generate_series(1,${BULK}) g`),
+  ports: db => db.exec(`INSERT INTO public.network_interfaces(id,organization_id,building_id,device_id,interface_key,display_name,interface_role,is_protected,
+      sort_order)
+    SELECT gen_random_uuid(),'${ORG}','${BUILDING}','${ROUTER.a}','vlan'||g,'VLAN '||g,'LAN',false,10+g FROM generate_series(1,${BULK}) g`),
+  incidents: db => db.exec(`INSERT INTO public.network_incidents(id,organization_id,building_id,device_id,fingerprint,incident_type,severity,status,title,
+      summary,opened_at,last_observed_at)
+    SELECT gen_random_uuid(),'${ORG}','${BUILDING}','${ROUTER.a}','fp-bulk-'||g,'LINK_DOWN','WARNING','OPEN','Sự cố '||g,'Tóm tắt '||g,
+      '2026-10-01T00:00:00Z'::timestamptz+g*interval '1 second','2026-10-16T00:00:00Z' FROM generate_series(1,${BULK}) g`),
+  // Phiếu xuất MỚI hơn mọi phiếu cũ, không dòng vật tư (thành tiền 0): hai phiếu có tiền (USAGE.a/b) rơi vào đuôi > 2000.
+  usages: db => db.exec(`INSERT INTO public.material_usages(id,user_id,organization_id,code,usage_date,job_id,notes,created_at)
+    SELECT gen_random_uuid(),'${USER}','${ORG}','PX-B'||g,'2026-10-15',null,null,'2026-10-15T00:00:00Z'::timestamptz+g*interval '1 second'
+    FROM generate_series(1,${BULK}) g`),
+};
+const xx000 = promise => promise.then(() => false, error => error.code === 'XX000');
+test('[review] nguồn > 2000 dòng: tối đa 2000 hàng ổn định, tổng thật ở summary, sourceCapped; trang cuối dừng ở hàng 2000', { timeout: 300000 },
+  () => inCase(async env => {
+    const { db } = env;
+    const last = async (report, values) => {
+      const page = await run(env, report, values, { offset: 1950 });
+      assert.deepEqual([page.items.length, page.nextOffset, page.sourceCapped], [50, null, true], report);
+      return page;
+    };
+    await env.grant(['materials.view', 'warehouses.view', 'assistant.salary.self', 'salary.view', 'network_center.view']);
+    await env.orgWide('materials.view');
+    await bulk.categories(db);
+    let page = await run(env, 'material_categories');
+    assert.deepEqual([page.summary.total, page.sourceCapped, page.nextOffset], [BULK + 1, true, 50]);
+    assert.deepEqual(ids(await last('material_categories')),
+      await asUser(env, 'SELECT id FROM public.material_categories WHERE organization_id=$1 ORDER BY name,id OFFSET 1950 LIMIT 50', [ORG]), 'tên,id');
+    await bulk.warehouses(db);
+    page = await run(env, 'warehouses');
+    // Overlay đã Toàn tổ chức (orgWide ở trên), CRM warehouses.view theo hai toà: Kho A + Kho B + 2001 kho; kho không toà thì không.
+    assert.deepEqual([page.summary.total, page.sourceCapped], [BULK + 2, true]);
+    assert.deepEqual(ids(await last('warehouses')),
+      await asUser(env, 'SELECT id FROM public.asset_warehouses WHERE building_id=ANY($1) ORDER BY name,id OFFSET 1950 LIMIT 50', [ALL]));
+    await bulk.salaryLines(db);
+    page = await run(env, 'my_salary', { month: '2026-09' });
+    assert.deepEqual([page.summary.lineCount, page.summary.grossTotal, page.sourceCapped], [BULK + 2, '12700000.00', true]);
+    assert.deepEqual(ids(await last('my_salary', { month: '2026-09' })),
+      await asUser(env, 'SELECT id FROM public.salary_adjustments WHERE salary_monthly_id=$1 ORDER BY created_at,id OFFSET 1950 LIMIT 50', [SALARY.mine]));
+    await env.orgWide('salary.view'); await acl(db, 'salary.lock', true);
+    await bulk.managers(db);
+    page = await run(env, 'salary_month', { month: '2026-09' });
+    assert.deepEqual([page.summary.managers, page.summary.locked, page.sourceCapped], [BULK + 2, 1, true]);
+    await last('salary_month', { month: '2026-09' });
+    await bulk.ports(db);
+    page = await run(env, 'network_ports', { buildingId: BUILDING });
+    assert.deepEqual([page.summary.total, page.sourceCapped], [BULK + 2, true]);
+    await last('network_ports', { buildingId: BUILDING });
+    await bulk.incidents(db);
+    page = await run(env, 'network_building', { buildingId: BUILDING });
+    assert.deepEqual([page.summary.openIncidents, page.summary.ports, page.sourceCapped], [BULK + 1, BULK + 2, true]);
+    await last('network_building', { buildingId: BUILDING });
+  }));
+
+test('[review] phiếu xuất: tổng thành tiền tính trên toàn nguồn đã lọc, kể cả phần đuôi ngoài 2000 phiếu', { timeout: 120000 }, () => inCase(async env => {
+  await env.grant(['materials.view']); await env.orgWide('materials.view');
+  await bulk.usages(env.db);
+  const page = await run(env, 'material_usages');
+  assert.deepEqual([page.summary, page.sourceCapped], [{ total: BULK + 2, cost: '120000.00' }, true], 'USAGE.a 90 000 + USAGE.b 30 000 nằm ở đuôi');
+  assert.equal(ids(await run(env, 'material_usages', {}, { offset: 1950 })).some(id => id === USAGE.a || id === USAGE.b), false, 'đuôi bị cắt khỏi rows');
+}));
+
 // Đột biến: mỗi bản bỏ MỘT hàng rào của Gói C; cùng phép thử mà bản sống từ chối thì bản đột biến phải lọt.
 const mutate = (source, from, to) => { assert.equal(source.split(from).length, 2, `anchor: ${from}`); return [source, source.replace(from, () => to)]; };
-// Định nghĩa SỐNG: file sau cùng chứa neo (030300 trước 030100, 030400 trước 030200).
-const live = (sources, from) => sources.find(sql => sql.includes(from)) ?? sources[0];
+// Định nghĩa SỐNG: file mới nhất chứa neo; neo phải nằm trong hàm mà KHÔNG file mới hơn nào định nghĩa lại (không đột biến
+// nhầm bản cũ).
+const definedIn = (sql, index) => [...sql.slice(0, index).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].at(-1)?.[1];
+const live = (sources, from) => {
+  const at = sources.findIndex(sql => sql.includes(from));
+  assert.ok(at >= 0, `anchor: ${from}`);
+  const fn = definedIn(sources[at], sources[at].indexOf(from));
+  assert.ok(sources.slice(0, at).every(sql => !sql.includes(`CREATE OR REPLACE FUNCTION ${fn}(`)), `neo nằm trong bản cũ của ${fn}`);
+  return sources[at];
+};
 const S = (from, to) => mutate(live(SHARED_SOURCES, from), from, to), P = (from, to) => mutate(live(PACKAGE_SOURCES, from), from, to);
 // Hàm dùng chung HỎNG (bỏ lọc công ty tường minh) + super admin (RLS phủ công ty khác): dựng nguồn rò cho ca rào công ty.
 const leak = async (env, from, to) => {
@@ -420,6 +557,65 @@ const probes = [
     run: async env => { await env.grant(['materials.view']); await env.orgWide('materials.view');
       await leak(env, `  WHERE m.organization_id=p_organization_id AND m.deleted_at IS NULL\n    AND (p_category_id`, `  WHERE m.deleted_at IS NULL\n    AND (p_category_id`);
       return (await items(env, 'materials')).includes(MATERIAL.foreign); } },
+  // [P1 review] Tên chủ xe: cùng rào khách cho kết quả và cho tìm kiếm.
+  { name: 'review P1: tên chủ xe chỉ khi hồ sơ khách hiện', pair: S(`CASE WHEN x.customer_visible THEN x.owner_name END`, `x.owner_name`),
+    run: async env => { await env.grant(['vehicles.view']);
+      await env.db.query("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
+      return (await env.report('vehicles', full('vehicles'), { limit: 50, offset: 0 })).items[0].ownerName !== null; } },
+  { name: 'review P1: tìm theo tên chủ xe chỉ khi hồ sơ khách hiện', pair: S(
+    `OR x.customer_visible AND (x.owner_name ILIKE v_pattern OR x.cu_name ILIKE v_pattern))`,
+    `OR x.owner_name ILIKE v_pattern OR x.customer_visible AND x.cu_name ILIKE v_pattern)`),
+    run: async env => { await env.grant(['vehicles.view']);
+      await env.db.exec(`UPDATE public.customers SET user_id='${OUTSIDER}' WHERE id='${CUSTOMER_A}'`);
+      return (await items(env, 'vehicles', { query: 'chủ xe an' })).includes(VEHICLE.mine); } },
+  // [P2 review] Mỗi nhánh nguồn không giới hạn cắt 2000 hàng; bỏ cắt ⇒ bước kết thúc từ chối (XX000).
+  { name: 'review P2: danh mục vật tư tối đa 2000 hàng', pair: P(
+    `'materialCount',x.material_count,'organizationId',x.organization_id) ORDER BY x.rn) FILTER (WHERE x.rn<=2000)`,
+    `'materialCount',x.material_count,'organizationId',x.organization_id) ORDER BY x.rn)`),
+    run: async env => { await env.grant(['materials.view']); await env.orgWide('materials.view'); await bulk.categories(env.db);
+      return xx000(env.report('material_categories', full('material_categories'), { limit: 50, offset: 0 })); } },
+  { name: 'review P2: kho tài sản tối đa 2000 hàng', pair: P(`'organizationId',x.organization_id) ORDER BY x.rn) FILTER (WHERE x.rn<=2000),
+        '[]'::jsonb),max(x.total_count)`, `'organizationId',x.organization_id) ORDER BY x.rn),
+        '[]'::jsonb),max(x.total_count)`),
+    run: async env => { await env.grant(['warehouses.view']); await bulk.warehouses(env.db);
+      return xx000(env.report('warehouses', full('warehouses'), { limit: 50, offset: 0 })); } },
+  { name: 'review P2: lương của tôi tối đa 2000 dòng', pair: P(`ORDER BY o)
+          FILTER (WHERE o<=2000),'[]'::jsonb),count(*)`, `ORDER BY o),'[]'::jsonb),count(*)`),
+    run: async env => { await env.grant(['assistant.salary.self']); await bulk.salaryLines(env.db);
+      return xx000(env.report('my_salary', full('my_salary', { month: '2026-09' }), { limit: 50, offset: 0 })); } },
+  { name: 'review P2: lương quản lý tối đa 2000 người', pair: P(
+    `'remaining',x.remaining::text,'organizationId',x.organization_id) ORDER BY x.rn) FILTER (WHERE x.rn<=2000),'[]'::jsonb),`,
+    `'remaining',x.remaining::text,'organizationId',x.organization_id) ORDER BY x.rn),'[]'::jsonb),`),
+    run: async env => { await env.grant(['salary.view']); await env.orgWide('salary.view'); await acl(env.db, 'salary.lock', true);
+      await bulk.managers(env.db);
+      return xx000(env.report('salary_month', full('salary_month', { month: '2026-09' }), { limit: 50, offset: 0 })); } },
+  { name: 'review P2: cổng mạng tối đa 2000 hàng', pair: P(`    RETURN jsonb_build_object('rows',(SELECT COALESCE(jsonb_agg(t.r ORDER BY t.n),'[]'::jsonb) FROM jsonb_array_elements(v_rows) WITH ORDINALITY t(r,n) WHERE t.n<=2000),'summary',jsonb_build_object('total',jsonb_array_length(v_rows)),`,
+    `    RETURN jsonb_build_object('rows',v_rows,'summary',jsonb_build_object('total',jsonb_array_length(v_rows)),`),
+    run: async env => { await env.grant(['network_center.view']); await bulk.ports(env.db);
+      return xx000(env.report('network_ports', full('network_ports', { buildingId: BUILDING }), { limit: 50, offset: 0 })); } },
+  { name: 'review P2: sự cố một toà tối đa 2000 hàng', pair: P(`      RETURN jsonb_build_object('rows',(SELECT COALESCE(jsonb_agg(t.r ORDER BY t.n),'[]'::jsonb) FROM jsonb_array_elements(v_rows) WITH ORDINALITY t(r,n) WHERE t.n<=2000),'summary',jsonb_build_object(
+        'buildingName',`, `      RETURN jsonb_build_object('rows',v_rows,'summary',jsonb_build_object(
+        'buildingName',`),
+    run: async env => { await env.grant(['network_center.view']); await bulk.incidents(env.db);
+      return xx000(env.report('network_building', full('network_building', { buildingId: BUILDING }), { limit: 50, offset: 0 })); } },
+  // [P2 review] Tổng thành tiền phiếu xuất trên toàn nguồn đã lọc (hai đột biến: hàm đọc cộng trang, hàm dùng chung cộng sau LIMIT).
+  { name: 'review P2: hàm đọc lấy tổng chi phí toàn nguồn', pair: P(`max(x.total_count),max(x.total_cost_sum)`, `max(x.total_count),sum(x.total_cost)`),
+    run: async env => { await env.grant(['materials.view']); await env.orgWide('materials.view'); await bulk.usages(env.db);
+      return (await env.report('material_usages', full('material_usages'), { limit: 50, offset: 0 })).summary.cost !== '120000.00'; } },
+  { name: 'review P2: hàm dùng chung cộng chi phí trước LIMIT', pair: S(`x.u_created,count(*) OVER (),x.u_org,sum(x.u_cost) OVER ()`,
+    `x.u_created,count(*) OVER (),x.u_org,x.u_cost`),
+    run: async env => { await env.grant(['materials.view']); await env.orgWide('materials.view'); await bulk.usages(env.db);
+      return (await env.report('material_usages', full('material_usages'), { limit: 50, offset: 0 })).summary.cost !== '120000.00'; } },
+  // [P3 review] Helper thuần từ chối người gọi không phải authenticated.
+  { name: 'review P3: safe_text_v1 chỉ vai authenticated', pair: S(
+    `  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'safe_text_denied' USING ERRCODE='42501'; END IF;\n`, ''),
+    run: async env => (await env.call("SELECT public.safe_text_v1('a',5) result", [], { role: 'postgres' })) === 'a' },
+  { name: 'review P3: utc_instant_v1 chỉ vai authenticated', pair: S(
+    `  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'utc_instant_denied' USING ERRCODE='42501'; END IF;\n`, ''),
+    run: async env => typeof (await env.call('SELECT public.utc_instant_v1(now()) result', [], { role: 'postgres' })) === 'string' },
+  { name: 'review P3: json_number_v1 chỉ vai authenticated', pair: S(
+    `  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'json_number_denied' USING ERRCODE='42501'; END IF;\n`, ''),
+    run: async env => (await env.call("SELECT public.json_number_v1('1') result", [], { role: 'postgres' })) === 1 },
   { name: 'hàm đọc: chỉ vai authenticated của chính người hỏi', pair: P(`  IF current_user<>'authenticated' OR v_uid IS NULL OR p_ctx->>'userId' IS DISTINCT FROM v_uid::text`,
     `  IF v_uid IS NULL`),
     run: async env => { await env.grant(['network_center.view']);
