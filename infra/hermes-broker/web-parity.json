@@ -2190,7 +2190,7 @@
           "contains": "crm.deposit_reservation_vouchers_v1"
         }
       ],
-      "notes": "Thân sống của get_reservation_deposit_summary được vá bằng thay chuỗi động (20260909172332, 20260928161948), không có CREATE nguyên văn ⇒ không băm sql. Khác web (chặt hơn, chờ sửa theo web): Hermes chỉ trả phiếu ở toà có deposits.view; web còn hiện phiếu vào sổ quỹ người dùng giữ (policy income_expenses_select_fund_member) nên đếm/tổng trên web có thể lớn hơn — so trên TEST 18/10."
+      "notes": "Thân sống của get_reservation_deposit_summary được vá bằng thay chuỗi động (20260909172332, 20260928161948), không có CREATE nguyên văn ⇒ không băm sql. Tập phiếu = RLS income_expenses của người hỏi như web, kể cả phiếu vào sổ quỹ người dùng giữ (policy income_expenses_select_fund_member) — 20261018182656: hàm dùng chung chỉ kiểm khoá trang như route web (can_access_org_entity, không theo toà), hàm đọc không giao thêm toà buildings.view. Còn khác web (có chủ ý, rào kết nối): Hermes chỉ trả phiếu có toà ∈ ctx.buildings (toà có deposits.view ∩ phạm vi kết nối); phiếu web hiện ở toà ngoài tập đó (vd. sổ quỹ ở toà người dùng không có deposits.view) Hermes không trả, đếm/tổng tính trên đúng tập toà đã giao. Kiểm: wave2-a-coc-quy.test.mjs."
     },
     {
       "id": "deposit-reservation-settlements",

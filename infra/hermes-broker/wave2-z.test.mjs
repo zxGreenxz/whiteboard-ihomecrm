@@ -74,8 +74,12 @@ test('công tắc Z: bật đúng khoá đợt 2 có báo cáo (hoặc là khoá
     ['20261018080200_hermes_w2z_finance_fail_closed_v1.sql', 'v_ok:=COALESCE('], ['20261018080300_hermes_w2z_catalog_fixes_v1.sql', 'nv.ok']])
     assert.ok(stripComments(sql(file)).includes(marker), `${file}: ${marker}`);
   assert.ok(!stripComments(sql(SHARED_FIXES)).includes('n.organization_id IS NULL'));
-  // Thứ tự áp: bản sửa Z (08xxxx) sau mọi gói, công tắc (09xxxx) cuối cùng.
-  const order = w2MigrationPaths().map(path => path.split('/').pop());
+  // Thứ tự áp: bản sửa Z (08xxxx) sau mọi gói, công tắc (09xxxx) cuối cùng trong ngày đợt 2; sau đó chỉ còn bản sửa sau
+  // phát hành của từng gói (giờ thực, tiền tố gói).
+  const all = w2MigrationPaths().map(path => path.split('/').pop());
+  const order = all.slice(0, all.indexOf(ENABLE) + 1);
+  for (const file of all.slice(order.length))
+    assert.ok(file > ENABLE && ['a', 'b', 'c', 'd'].some(letter => W2_RANGES[letter].test(file)) && !/^2026101800|^202610180[1-9]/.test(file), file);
   assert.equal(order.at(-1), ENABLE);
   assert.deepEqual(order.slice(-5, -1), Object.keys(Z_FIXES));
   assert.ok(order.indexOf('20261018040300_hermes_w2d_reader_fixes_v1.sql') < order.indexOf(Object.keys(Z_FIXES)[0]));
