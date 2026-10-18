@@ -8,6 +8,7 @@ export type RoomDisplayStatus =
   | "EXPIRING_SOON"
   | "MAINTENANCE";
 
+// hermes-parity:begin w2d-rooms — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 // Số ngày còn lại của hợp đồng được coi là "sắp hết hạn / sắp trống".
 export const EXPIRING_SOON_DAYS = 30;
 
@@ -39,3 +40,4 @@ export function getRoomDisplayStatus(
   if (roomStatus === "RESERVED") return "RESERVED";
   return "AVAILABLE";
 }
+// hermes-parity:end w2d-rooms
