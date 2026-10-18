@@ -1,14 +1,15 @@
 import {financialReadNumber,financialReadRows} from '@/lib/financialReadValidation';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { invoiceBreakdownClient } from '@/lib/invoiceBreakdownRpc';
+import { invoiceStatisticsRpcArgs } from '@/lib/invoiceReadArgs';
 import { getSessionUser } from '@/lib/authSession';
 import type { InvoiceStatisticsFilters } from '@/hooks/useInvoices';
 
 // =============================================
 // Chi tiết cho 2 thẻ thống kê (mở modal khi bấm):
-//  - Tiền thối: get_change_breakdown_v2 (theo sổ quỹ × kỳ)
-//  - Cọc đã thu: get_deposit_breakdown_v2 (theo toà → phòng, đủ/thiếu)
-// Cùng scope (building/billing_month) như get_invoice_statistics_v2.
+//  - Tiền thối: invoice_change_breakdown_v1 (theo sổ quỹ × kỳ)
+//  - Cọc đã thu: invoice_deposit_breakdown_v1 (theo toà → phòng, đủ/thiếu)
+// Cùng scope (building/billing_month) như invoice_statistics_v3.
 // =============================================
 
 export interface ChangeBreakdownRow {
@@ -36,18 +37,11 @@ export const useChangeBreakdown = (
     queryFn: async (): Promise<ChangeBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-      const { data, error } = await supabase.rpc('get_change_breakdown_v2', {
-        p_building_id: filters?.building_id ?? undefined,
-        p_room_id: filters?.room_id ?? undefined,
-        p_status: filters?.status ?? undefined,
-        p_start_date: filters?.start_date ?? undefined,
-        p_end_date: filters?.end_date ?? undefined,
-        p_billing_month: filters?.billing_month ?? undefined,
-        p_payment_status: filters?.payment_status ?? undefined,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
-      });
+      const { data, error } = await invoiceBreakdownClient.rpc(
+        'invoice_change_breakdown_v1', invoiceStatisticsRpcArgs(filters),
+      );
       if (error) throw error;
-      return (financialReadRows(data as unknown[]) as Array<Record<string, any>>).map((r) => ({
+      return financialReadRows(data as unknown as ChangeBreakdownRow[] | null).map((r) => ({
         account_id: r.account_id ?? null,
         account_name: r.account_name ?? '(chưa gán sổ thối)',
         billing_month: r.billing_month ?? '',
@@ -98,16 +92,11 @@ export const useDepositBreakdown = (
     queryFn: async (): Promise<DepositBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-      const { data, error } = await supabase.rpc('get_deposit_breakdown_v2', {
-        p_building_id: filters?.building_id ?? undefined,
-        p_room_id: filters?.room_id ?? undefined,
-        p_start_date: filters?.start_date ?? undefined,
-        p_end_date: filters?.end_date ?? undefined,
-        p_billing_month: filters?.billing_month ?? undefined,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
-      });
+      const { data, error } = await invoiceBreakdownClient.rpc(
+        'invoice_deposit_breakdown_v1', invoiceStatisticsRpcArgs(filters),
+      );
       if (error) throw error;
-      return (financialReadRows(data as unknown[]) as Array<Record<string, any>>).map((r) => ({
+      return financialReadRows(data as unknown as DepositBreakdownRow[] | null).map((r) => ({
         building_id: r.building_id ?? null,
         building_name: r.building_name ?? '—',
         room_id: r.room_id ?? null,

@@ -249,6 +249,19 @@ beforeAll(async () => {
   `);
   await db.exec(migrationSql);
   await db.exec(migrationSql);
+  await db.exec(`
+    ALTER TABLE income_expenses ADD COLUMN change_account_id uuid, ADD COLUMN account_id uuid,
+      ADD COLUMN contract_id uuid, ADD COLUMN payer_name text, ADD COLUMN creator_name text,
+      ADD COLUMN code text, ADD COLUMN notes text, ADD COLUMN has_restricted_item boolean DEFAULT false;
+    ALTER TABLE contracts ADD COLUMN total_deposit numeric, ADD COLUMN deposit_paid numeric,
+      ADD COLUMN deposit_remaining numeric, ADD COLUMN deposit_debt_mode text;
+    CREATE TABLE accounts(id uuid PRIMARY KEY, name text);
+    ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+    GRANT SELECT ON accounts TO authenticated;
+  `);
+  const breakdownSql = readFileSync('supabase/migrations/20261018055627_invoice_stat_breakdowns_v1.sql', 'utf8');
+  await db.exec(breakdownSql);
+  await db.exec(breakdownSql);
 }, 60_000);
 
 afterAll(async () => { await db.close(); });
@@ -719,4 +732,175 @@ describe('invoice_statistics_v3', () => {
       await expect(stats(null)).rejects.toMatchObject({ code: '42501' });
     });
   });
+});
+
+
+async function breakdownAsUser(uid: string, sql: string) {
+  await db.query("SELECT set_config('test.uid', $1, true)", [uid]);
+  await db.exec('SET LOCAL ROLE authenticated');
+  const result = await db.query<Record<string, unknown>>(sql);
+  await db.exec('RESET ROLE');
+  return result.rows;
+}
+
+// Dùng cùng instance/fixture quyền với thẻ; mỗi ca vẫn BEGIN … ROLLBACK.
+async function breakdown(uid: string | null, kind: 'change' | 'deposit', args: Record<string, unknown> = {}) {
+  const names = Object.keys(args);
+  const params = names.map((n, i) => `${n} => $${i + 1}::${STAT_TYPES[n]}`).join(', ');
+  await db.query("SELECT set_config('test.uid', $1, true)", [uid ?? '']);
+  await db.exec('SET LOCAL ROLE authenticated');
+  const res = await db.query<{ rows: Record<string, unknown>[] }>(
+    `SELECT public.invoice_${kind}_breakdown_v1(${params}) AS rows`, names.map(n => toParam(args[n])));
+  await db.exec('RESET ROLE');
+  return res.rows[0].rows;
+}
+async function expectBreakdownParity(uid: string, args: Record<string, unknown> = {}) {
+  const card = await stats(uid, args);
+  for (const kind of ['change', 'deposit'] as const) {
+    const rows = await breakdown(uid, kind, args);
+    const total = rows.reduce((sum, r) => sum + Number(r[kind === 'change' ? 'change_amount' : 'amount']), 0);
+    expect(total, `${kind}: ${uid} ${JSON.stringify(args)}`).toBe(card[kind === 'change' ? 'change_amount' : 'deposit_collected']);
+  }
+}
+
+describe('invoice breakdowns — cùng tổng thẻ, INVOKER + RLS', () => {
+  it('tổng hộp thoại = thẻ theo vai và tổ hợp bộ lọc, kể cả không categories.view', async () => tx(async () => {
+    for (const uid of [OWNER, STAFF, OTHER, NOPERM, INV_ONLY, SUPER, NOBODY]) {
+      for (const args of [{}, { p_billing_month: '2026-10' }, { p_billing_month: '2026-09' },
+        { p_status: 'CANCELLED' }, { p_payment_status: 'paid' }, { p_payment_status: 'partial' },
+        { p_payment_status: 'unpaid' }, { p_room_ids: [R1] }, { p_filter_building_ids: [B2] },
+        { p_filter_building_ids: [] }, { p_building_ids: [BX, B3, BS] },
+        { p_building_ids: [B1], p_filter_building_ids: [B2] },
+        { p_issue_date_from: '2026-10-06', p_issue_date_to: '2026-10-08' }]) {
+        await expectBreakdownParity(uid, args);
+      }
+    }
+    // Cartesian: trạng thái × thanh toán × kỳ × toà/phòng/ngày (giao rỗng cũng phải khớp).
+    for (const status of [undefined, 'CANCELLED', 'PAID', 'APPROVED'])
+      for (const payment of [undefined, 'paid', 'partial', 'unpaid'])
+        for (const month of [undefined, '2026-10', '2026-09'])
+          await expectBreakdownParity(STAFF, { p_status: status ?? null, p_payment_status: payment ?? null,
+            p_billing_month: month ?? null, p_filter_building_ids: [B1, B2], p_room_ids: [R1, R2],
+            p_issue_date_from: '2026-09-01', p_issue_date_to: '2026-10-31' });
+  }), 60_000);
+
+  it('loại huỷ mặc định, xoá mềm, phiếu đảo/huỷ, cọc không phụ thuộc trạng thái hoá đơn', async () => tx(async () => {
+    expect((await breakdown(OWNER, 'change')).reduce((s, r) => s + Number(r.change_amount), 0)).toBe(23000);
+    expect((await breakdown(OWNER, 'change', { p_status: 'CANCELLED' }))[0].change_amount).toBe(7000);
+    await db.exec(`
+      INSERT INTO invoice_payment_collections VALUES ('${COL_ON}','ACTIVE'),('${COL_OFF}','CANCELLED');
+      UPDATE income_expenses SET payment_collection_id='${COL_OFF}' WHERE id='${u(101)}';
+      UPDATE income_expenses SET payment_id='${u(83)}' WHERE id='${u(102)}';
+      UPDATE invoices SET deleted_at=now() WHERE id='${I3}';
+      UPDATE income_expenses SET deleted_at=now() WHERE id='${u(103)}';
+    `);
+    await expectBreakdownParity(OWNER);
+    expect(await breakdown(OWNER, 'change')).toEqual([]);
+    expect(await breakdown(OWNER, 'deposit')).toEqual([]);
+  }));
+
+  it('phiếu hạn chế: thẻ và dialog cùng chịu restrictive RLS, tác giả vẫn đọc được', async () => tx(async () => {
+    await db.exec(`
+      CREATE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE AS $$
+        SELECT auth.uid()='${OWNER}'::uuid OR public.is_super_admin() $$;
+      CREATE POLICY income_expenses_restricted_select ON income_expenses AS RESTRICTIVE FOR SELECT TO authenticated
+        USING (NOT has_restricted_item OR user_id=auth.uid() OR public.can_view_restricted_ie());
+      CREATE POLICY income_expense_items_restricted_select ON income_expense_items AS RESTRICTIVE FOR SELECT TO authenticated
+        USING (EXISTS (SELECT 1 FROM income_expenses ie WHERE ie.id=income_expense_id
+          AND (NOT ie.has_restricted_item OR ie.user_id=auth.uid() OR public.can_view_restricted_ie())));
+      UPDATE income_expenses SET has_restricted_item=true WHERE id IN ('${u(101)}','${u(102)}');
+    `);
+    await expectBreakdownParity(STAFF);
+    const hidden = await stats(STAFF);
+    expect(hidden.change_amount).toBe(0);
+    expect(hidden.deposit_collected).toBe(0);
+    await expectBreakdownParity(OWNER);
+    await db.exec(`UPDATE income_expenses SET user_id='${STAFF}' WHERE id IN ('${u(101)}','${u(102)}')`);
+    await expectBreakdownParity(STAFF);
+    expect((await stats(STAFF)).change_amount).toBe(20000);
+    expect((await stats(STAFF)).deposit_collected).toBe(2000000);
+  }));
+
+  it('cọc cộng dòng cọc, giữ số âm/0 và mọi phiếu >1000; không nhân dòng khi metadata bị RLS ẩn', async () => tx(async () => {
+    await db.exec(`
+      INSERT INTO income_expense_items(organization_id,income_expense_id,income_expense_type_id,amount)
+        VALUES ('${ORG_A}','${u(102)}','${u(111)}',-2100000);
+      INSERT INTO income_expenses(id,organization_id,user_id,building_id,room_id,type,approval_status,voucher_date)
+        SELECT gen_random_uuid(),'${ORG_A}','${OWNER}','${B1}','${R1}','INCOME','APPROVED','2026-10-01' FROM generate_series(1,1001);
+      INSERT INTO income_expense_items(organization_id,income_expense_id,income_expense_type_id,amount)
+        SELECT organization_id,id,'${u(111)}',1 FROM income_expenses WHERE invoice_id IS NULL AND voucher_date='2026-10-01';
+    `);
+    await expectBreakdownParity(STAFF);
+    expect((await breakdown(STAFF, 'deposit')).length).toBe(1002);
+    expect((await breakdown(STAFF, 'deposit')).some(r => Number(r.amount) === -100000)).toBe(true);
+  }));
+
+  it('helper chỉ trả id cọc trong phạm vi; hai hàm chi tiết thật sự chịu RLS', async () => tx(async () => {
+    const scoped = await breakdownAsUser(STAFF, 'SELECT public.invoice_breakdown_deposit_item_ids_v1() AS ids');
+    const allowed = await db.query<{ id: string }>(`SELECT it.id FROM income_expense_items it JOIN income_expenses ie ON ie.id=it.income_expense_id WHERE ie.building_id='${B1}'`);
+    expect(scoped[0].ids).not.toEqual([]);
+    expect((scoped[0].ids as string[]).every(id => allowed.rows.some(r => r.id === id))).toBe(true);
+    for (const id of [NOPERM, INV_ONLY, NOBODY])
+      expect((await breakdownAsUser(id, 'SELECT public.invoice_breakdown_deposit_item_ids_v1() AS ids'))[0].ids).toEqual([]);
+    await db.exec(`CREATE POLICY test_hide_vouchers ON income_expenses AS RESTRICTIVE FOR SELECT TO authenticated USING(false)`);
+    expect(await breakdown(OWNER, 'change')).toEqual([]);
+    expect(await breakdown(OWNER, 'deposit')).toEqual([]);
+    await expectBreakdownParity(OWNER);
+  }));
+
+  it('cọc theo phiếu: không mất cọc khi hoá đơn liên kết huỷ/xoá; metadata ẩn không mất tiền', async () => tx(async () => {
+    await db.exec(`
+      UPDATE income_expenses SET invoice_id='${I4}',contract_id='${C1}' WHERE id='${u(102)}';
+      UPDATE invoices SET deleted_at=now() WHERE id='${I4}';
+      CREATE POLICY hide_contract_metadata ON contracts AS RESTRICTIVE FOR SELECT TO authenticated USING(false);
+    `);
+    await expectBreakdownParity(STAFF, { p_status: 'PAID', p_billing_month: '2026-10' });
+    const rows = await breakdown(STAFF, 'deposit');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amount: 2000000, contract_number: null, invoice_id: null });
+  }));
+
+  it('nguồn entries và helper ID có ACL/search_path đúng, không gọi được bằng role đặc quyền', async () => {
+    await tx(async () => {
+      const functions = await db.query<{ proname: string; prosecdef: boolean; proconfig: string[]; anon: boolean; service: boolean }>(`
+        SELECT proname,prosecdef,proconfig,has_function_privilege('anon',oid,'execute') AS anon,
+          has_function_privilege('service_role',oid,'execute') AS service
+          FROM pg_proc WHERE proname IN ('invoice_change_entries_v1','invoice_deposit_entries_v1','invoice_breakdown_deposit_item_ids_v1')`);
+      expect(functions.rows).toHaveLength(3);
+      for (const f of functions.rows) {
+        expect(f.prosecdef).toBe(f.proname === 'invoice_breakdown_deposit_item_ids_v1');
+        expect(f.proconfig).toEqual(['search_path=""']);
+        expect(f.anon).toBe(false);
+        expect(f.service).toBe(false);
+      }
+    });
+    for (const kind of ['change', 'deposit']) {
+      await expect(tx(async () => {
+        await db.query("SELECT set_config('test.uid', $1, true)", [OWNER]);
+        await db.query(`SELECT * FROM public.invoice_${kind}_entries_v1()`);
+      })).rejects.toMatchObject({ code: '42501' });
+    }
+    await expect(tx(async () => {
+      await db.query("SELECT set_config('test.uid', '', true)");
+      await db.query('SELECT public.invoice_breakdown_deposit_item_ids_v1()');
+    })).rejects.toMatchObject({ code: '42501' });
+  });
+
+  for (const kind of ['change', 'deposit'] as const) {
+    it(`${kind}: cấm anon/service/DEFINER, thiếu JWT và tham số sai`, async () => {
+      const sig = `public.invoice_${kind}_breakdown_v1(text,public.invoice_status,text,uuid[],uuid[],date,date,uuid[])`;
+      await tx(async () => {
+        const acl = await db.query<{ definer: boolean; config: string[]; anon: boolean; service: boolean }>(
+          `SELECT prosecdef AS definer, proconfig AS config, has_function_privilege('anon',oid,'execute') AS anon,
+           has_function_privilege('service_role',oid,'execute') AS service FROM pg_proc WHERE oid=$1::regprocedure`, [sig]);
+        expect(acl.rows[0]).toEqual({ definer: false, config: ['search_path=""'], anon: false, service: false });
+      });
+      await expect(tx(() => breakdown(null, kind))).rejects.toMatchObject({ code: '42501' });
+      await expect(tx(() => breakdown(OWNER, kind, { p_payment_status: 'bad' }))).rejects.toMatchObject({ code: '22023' });
+      await expect(tx(async () => {
+        await db.query("SELECT set_config('test.uid', $1, true)", [OWNER]);
+        await db.query(`SELECT public.invoice_${kind}_breakdown_v1()`);
+      })).rejects.toMatchObject({ code: '42501' });
+    });
+  }
 });
