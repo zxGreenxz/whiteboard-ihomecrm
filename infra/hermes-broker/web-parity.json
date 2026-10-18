@@ -399,17 +399,25 @@
     {
       "id": "customer-list",
       "kind": "mirrored",
-      "description": "Danh sách /customers: tìm khách, phòng/toà hiện tại (crm_read_customers).",
-      "web": [
+      "description": "Danh sách /customers: web gọi hàm dùng chung customer_list_v1 (migration 20261017115708) cho danh sách, tổng, thẻ thống kê, tìm không dấu và toà/phòng hiện tại. Hermes (crm_read_customers) CHƯA chuyển, vẫn tự chép bộ lọc.",
+      "webCalls": [
         {
           "path": "src/hooks/useCustomers.ts",
-          "region": "customer-list",
-          "sha256": "f20fb4e6e9eebd54749e5742905db1fbbab37e6878904b503fc4770ed71ff7b0"
+          "rpc": "customer_list_v1"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.customer_list_v1",
+          "sha256": "990c2ead1296fa54234ed211b46caa365f82b0f5f2d9a9c516794c89368fe27f"
         },
         {
-          "path": "src/lib/customerSearch.ts",
-          "region": "customer-list",
-          "sha256": "3b8c1a5f2f7eedfca3ff081bf0e6ed28149fc5295affbfc35385970015ee825e"
+          "function": "public.customer_search_patterns_v1",
+          "sha256": "5faa0ecbe2091f48be72bb08eb9aa85075b71d77a85ff0f8ee3aff035926324d"
+        },
+        {
+          "function": "public.customer_location_ids_v1",
+          "sha256": "a8a5987d7e7438be8060f5e5b9def33609baf826e4761a1ca70b4a6c1dad281d"
         }
       ],
       "hermes": [
@@ -418,7 +426,7 @@
           "note": "customers"
         }
       ],
-      "notes": "LỆCH ĐÃ BIẾT 17/10: web 7f0bb373 tìm tên không dấu + SĐT/email/CCCD (imatch); Hermes vẫn tìm tên có dấu + số SĐT. Web lấy phòng hiện tại từ HĐ ACTIVE; Hermes ưu tiên ACTIVE/EXTENDED rồi HĐ gần nhất. Chờ đợt 2."
+      "notes": "17/10: web bỏ PostgREST + customerSearchFilter, gọi customer_list_v1 (SECURITY INVOKER, RLS người gọi; danh sách, tổng và thẻ đếm trong MỘT lời gọi). Hermes chuyển ở PR sau: đổi mục này thành kind rpc, rpc [customer_list_v1], hermes.calls [customer_list_v1]. BẪY khi chuyển: p_building_ids NULL = toàn phạm vi RLS, '{}' = rỗng ⇒ truyền COALESCE(tập toà kết nối, '{}'); p_search tối đa 200 ký tự. LỆCH ĐÃ BIẾT đến lúc đó: Hermes tìm tên có dấu + số SĐT (web tìm tên không dấu + SĐT/email/CCCD); Hermes ưu tiên HĐ ACTIVE/EXTENDED rồi HĐ gần nhất (web: HĐ ACTIVE còn sống thấy được qua RLS, bắt đầu muộn nhất); Hermes chỉ khách có HĐ ở toà được giao trừ kết nối Toàn tổ chức."
     },
     {
       "id": "customer-detail",

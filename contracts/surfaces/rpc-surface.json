@@ -9,27 +9,14 @@
     ]
   },
   "counts": {
-    "calledRpcs": 371,
+    "calledRpcs": 372,
     "byRisk": {
-      "normal": 268,
+      "normal": 269,
       "financial": 103
     },
     "securityDefiner": 353
   },
-  "missingOnServer": [
-    {
-      "name": "contract_list_v1",
-      "callers": [
-        "src/hooks/useContracts.ts"
-      ]
-    },
-    {
-      "name": "contract_stats_v2",
-      "callers": [
-        "src/hooks/useContracts.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -1825,6 +1812,25 @@
       ],
       "risk": "normal"
     },
+    "customer_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_status text DEFAULT NULL::text, p_kind text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_room_id uuid DEFAULT NULL::uuid, p_limit integer DEFAULT NULL::integer, p_offset integer DEFAULT 0, p_include_location boolean DEFAULT true",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
     "decide_financial_request_v2": {
       "definitions": [
         {
@@ -2378,6 +2384,26 @@
       ],
       "risk": "normal"
     },
+    "get_contract_stats": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_today date DEFAULT NULL::date, p_in30 date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
     "get_customer_credit_balance_v1": {
       "definitions": [
         {
@@ -2451,26 +2477,6 @@
       ],
       "callers": [
         "src/lib/customerResidenceHistory.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_customer_stats": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_status text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCustomers.ts"
       ],
       "risk": "normal"
     },

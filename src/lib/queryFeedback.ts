@@ -42,7 +42,6 @@ const LABELS: Record<string, string> = {
   "ct01-declarations": "tờ khai CT01",
   "ct01-tenancies": "thông tin cư trú để lập CT01",
   "customer-contracts": "hợp đồng của khách hàng",
-  "customer-stats": "thống kê khách hàng",
   "debt-chart": "biểu đồ công nợ",
   "departments": "danh sách bộ phận",
   "deposit-breakdown": "chi tiết tiền cọc",
