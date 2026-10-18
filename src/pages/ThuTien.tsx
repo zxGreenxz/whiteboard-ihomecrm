@@ -107,6 +107,7 @@ const ThuTien = () => {
     return out;
   }, [collectorsMap]);
 
+  // hermes-parity:begin thu-tien-collection — Hermes chép vùng này (public.thu_tien_collection_v1)
   const [lo, hi] = useMemo<[string, string]>(() => {
     if (timeFilter === 'today') return [todayISO(), todayISO()];
     if (timeFilter === 'date') {
@@ -172,6 +173,7 @@ const ThuTien = () => {
     }
     return { collectedSum, remainingSum, paidRooms, dueRooms };
   }, [allRooms, timeFilter, lo, hi]);
+  // hermes-parity:end thu-tien-collection
 
   const timeCounts = useMemo(() => {
     const today = todayISO();

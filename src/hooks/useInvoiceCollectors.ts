@@ -41,6 +41,7 @@ export const useInvoiceCollectors = (invoiceIds: string[]) => {
       for (let i = 0; i < invoiceIds.length; i += CHUNK) {
         chunks.push(invoiceIds.slice(i, i + CHUNK));
       }
+      // hermes-parity:begin thu-tien-collection — Hermes chép vùng này (cột collectors của public.thu_tien_collection_v1)
       const results = await Promise.all(
         chunks.map((ids) =>
           supabase
@@ -54,6 +55,7 @@ export const useInvoiceCollectors = (invoiceIds: string[]) => {
             .order('created_at', { ascending: true }),
         ),
       );
+      // hermes-parity:end thu-tien-collection
 
       const rows: any[] = [];
       for (const r of results) {

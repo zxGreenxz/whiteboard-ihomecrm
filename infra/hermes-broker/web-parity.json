@@ -565,6 +565,366 @@
           "note": "monthly_pnl summary.pending*"
         }
       ]
+    },
+    {
+      "id": "finance-payment-schedule",
+      "kind": "mirrored",
+      "description": "Lịch thanh toán (/reports/finance/payment-schedule): hoá đơn chưa huỷ hạn ≤ hôm nay+365, gộp theo phòng, đến ngày = hạn xa nhất, khách của hoá đơn đầu (crm_read_report report=payment_schedule).",
+      "web": [
+        {
+          "path": "src/hooks/reports/financeReports.ts",
+          "region": "finance-payment-schedule",
+          "sha256": "98442b19e8182fe73d4abf3d6580bbd38a98d07999df56bb17273bf4d7ba8e3d"
+        },
+        {
+          "path": "src/pages/reports/finance/PaymentScheduleReport.tsx",
+          "region": "finance-payment-schedule",
+          "sha256": "8d190fd651e1a5b19364d611a8d0d3b7518930a1e6b5ddad6a3c02d651f72326"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.finance_payment_schedule_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "finance_payment_schedule_v1"
+          ],
+          "note": "payment_schedule"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.finance_payment_schedule_v1"
+        }
+      ],
+      "notes": "Web phân trang đủ (fetchAllRows, sắp due_date,id — #209); Hermes đọc đủ trong SQL cùng thứ tự due_date,id, trả ≤2000 phòng."
+    },
+    {
+      "id": "finance-overpayment",
+      "kind": "rpc",
+      "description": "Tiền thừa (/reports/finance/overpayment): hoá đơn đã thu > tổng (kể cả đã huỷ như web) + tổng RPC get_overpayment_summary (report=overpayment).",
+      "rpc": [
+        "get_overpayment_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/reports/financeReports.ts",
+          "region": "finance-overpayment",
+          "sha256": "874782848739aadf96b4006284501a9e1770bcd4b18a68e463cf4ae0f11b7d80"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/reports/financeReports.ts",
+          "rpc": "get_overpayment_summary"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_overpayment_summary",
+          "sha256": "091812fab6905395c86b8a10cfe7fbcb1b93f36848f1d96aa6250f813fb857bd"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.finance_overpayment_invoices_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "finance_overpayment_invoices_v1",
+            "get_overpayment_summary"
+          ],
+          "note": "overpayment"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.finance_overpayment_invoices_v1"
+        }
+      ]
+    },
+    {
+      "id": "thu-tien-collection",
+      "kind": "mirrored",
+      "description": "Thu tiền theo kỳ (/thu-tien): hoá đơn kỳ, chế độ cả kỳ/hôm nay/khoảng ngày, tab Đã thu/Chưa thu, thanh tổng, người thu (report=collection).",
+      "web": [
+        {
+          "path": "src/hooks/useCollectionReport.ts",
+          "region": "thu-tien-collection",
+          "sha256": "c03eb6be19803d30d36a3852986b2f0eb04a5a3919fc78fe2055f3ca0f998d2c"
+        },
+        {
+          "path": "src/pages/ThuTien.tsx",
+          "region": "thu-tien-collection",
+          "sha256": "198ff180b825066850fb3424539c8cf9e024490fe950e6b118cd4d405edb3f72"
+        },
+        {
+          "path": "src/lib/collect.ts",
+          "region": "thu-tien-collection",
+          "sha256": "e202b3fb712713f598106ad2a9c78a5a2049405e4794de480bfa61da063ebf4b"
+        },
+        {
+          "path": "src/hooks/useInvoiceCollectors.ts",
+          "region": "thu-tien-collection",
+          "sha256": "6c67a87ca0b6d7ba56e8f0dedd3f7e69e0661f2a63f116531aa732deec8d48a4"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.thu_tien_collection_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "thu_tien_collection_v1"
+          ],
+          "note": "collection"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.thu_tien_collection_v1"
+        }
+      ],
+      "notes": "Web cộng mọi dòng payments kể cả đã hoàn tác (reversed_at); Hermes giữ nguyên để khớp số."
+    },
+    {
+      "id": "invoice-detail",
+      "kind": "mirrored",
+      "description": "Chi tiết hoá đơn (/invoices/:id): đầu hoá đơn, dòng, khoản thu, phiếu đã duyệt (bỏ phiếu của lần thu đã hoàn tác), tổng thu/chi (report=invoice_detail).",
+      "web": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "region": "invoice-detail",
+          "sha256": "2bc3bfb6bfd0c22a96a479c08d52c8612726ae3cbb73a107717054d1ca0be70f"
+        },
+        {
+          "path": "src/components/invoices/InvoiceDetailView.tsx",
+          "region": "invoice-detail",
+          "sha256": "eefa82844cc5138da3df1c1a79c1dc91721e4062ff83ac79e381530dec166d3f"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.invoice_detail_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "invoice_detail_v1"
+          ],
+          "note": "invoice_detail"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.invoice_detail_v1"
+        }
+      ]
+    },
+    {
+      "id": "deposit-reservation-vouchers",
+      "kind": "rpc",
+      "description": "Phiếu cọc giữ chỗ (/deposits): phiếu thu cọc chưa gắn hợp đồng, không loại trừ, số cọc = Σ hạng mục cọc, kỳ hạn + tổng RPC get_reservation_deposit_summary (report=reservation_vouchers).",
+      "rpc": [
+        "get_reservation_deposit_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useDeposits.ts",
+          "region": "deposit-reservation-vouchers",
+          "sha256": "4ad20eaea4a6d21a603a2c080ac1d18f1650d5e7ae68d31111d6e731d0f46e61"
+        },
+        {
+          "path": "src/hooks/useReservationHoldDeadlines.ts",
+          "region": "deposit-reservation-vouchers",
+          "sha256": "15fab66cc1585f4195c06622b01d3e5c85bebd2a621a802c28b6f9c6494f407c"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useDeposits.ts",
+          "rpc": "get_reservation_deposit_summary"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.deposit_reservation_vouchers_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "deposit_reservation_vouchers_v1",
+            "get_reservation_deposit_summary"
+          ],
+          "note": "reservation_vouchers"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.deposit_reservation_vouchers_v1"
+        }
+      ],
+      "notes": "Thân sống của get_reservation_deposit_summary được vá bằng thay chuỗi động (20260909172332, 20260928161948), không có CREATE nguyên văn ⇒ không băm sql."
+    },
+    {
+      "id": "deposit-reservation-settlements",
+      "kind": "rpc",
+      "description": "Quyết toán cọc giữ chỗ (/deposits): Hermes gọi thẳng get_reservation_settlements_v1 + get_reservation_settlement_summary_v1 (report=reservation_settlements).",
+      "rpc": [
+        "get_reservation_settlements_v1",
+        "get_reservation_settlement_summary_v1"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useReservationSettlement.ts",
+          "region": "deposit-reservation-settlements",
+          "sha256": "71e63640685462360b53c7caabbfef649f54783128e997e2c1b952a6d80120e7"
+        }
+      ],
+      "successorGuard": [
+        "get_reservation_settlements_v1",
+        "get_reservation_settlement_summary_v1"
+      ],
+      "sql": [
+        {
+          "function": "public.get_reservation_settlements_v1",
+          "sha256": "546baadf7ebf3137a2a9257eeeffffce768e4a77fe528993418761d25147c860"
+        },
+        {
+          "function": "public.get_reservation_settlement_summary_v1",
+          "sha256": "49d92add71d4c4987fae6de0655aa19ab407054cbf78f8adb84ccc292d16e0bf"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "get_reservation_settlements_v1",
+            "get_reservation_settlement_summary_v1"
+          ],
+          "note": "reservation_settlements"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.get_reservation_settlements_v1"
+        }
+      ],
+      "notes": "Web gọi qua invokeReservationSettlementRpc (không phải .rpc('tên')) nên dùng successorGuard thay webCalls."
+    },
+    {
+      "id": "deposit-held-rows",
+      "kind": "rpc",
+      "description": "Cọc đang giữ theo hợp đồng (/deposits tab Đủ/Thiếu cọc): FULL/SHORT/FIRST_INVOICE, tên khách repName + KPI get_held_deposit_summary (report=held_deposits).",
+      "rpc": [
+        "get_held_deposit_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "region": "deposit-held-rows",
+          "sha256": "bbfd19455ce0594c6c020989769178551253a21e21069f71932009e3eeff47f1"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "rpc": "get_held_deposit_summary"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_held_deposit_summary",
+          "sha256": "2844cf1806b07bb7084e274cb9560ddfb15aa2eb127a5dcb37ded492affdc42f"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.deposit_held_contracts_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "deposit_held_contracts_v1",
+            "get_held_deposit_summary"
+          ],
+          "note": "held_deposits"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.deposit_held_contracts_v1"
+        }
+      ]
+    },
+    {
+      "id": "deposit-refunds",
+      "kind": "rpc",
+      "description": "Hoàn / bỏ cọc (/deposits): hồ sơ thanh lý + phiếu hoàn đã vào sổ gộp theo hợp đồng + KPI get_refund_forfeit_summary (report=deposit_refunds).",
+      "rpc": [
+        "get_refund_forfeit_summary"
+      ],
+      "web": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "region": "deposit-refunds",
+          "sha256": "f391faf000d1c4914b5082db908b5a7bff605379060bc0aaebb90d6858938473"
+        }
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useDepositDashboard.ts",
+          "rpc": "get_refund_forfeit_summary"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_refund_forfeit_summary",
+          "sha256": "dcc4baa158143c55c7a8ce04f0b5db5470283add3aa409dede3f01cf397f6c7f"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.deposit_refunds_forfeits_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "deposit_refunds_forfeits_v1",
+            "get_refund_forfeit_summary"
+          ],
+          "note": "deposit_refunds"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.deposit_refunds_forfeits_v1"
+        }
+      ]
+    },
+    {
+      "id": "cashbook-change-ledger",
+      "kind": "mirrored",
+      "description": "Sổ tiền thối / làm tròn (/finance/refund-log): sổ \"Làm tròn tiền thiếu\" theo rounding, sổ khác theo change, phiếu đã duyệt, mặc định tháng này (report=change_ledger).",
+      "web": [
+        {
+          "path": "src/pages/payments/RefundLogPage.tsx",
+          "region": "cashbook-change-ledger",
+          "sha256": "bb0d52fe25402ccb0f452749db5adac2fe2e34692e15dde25b0618cd1347e498"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.cashbook_change_ledger_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2a_read_v1",
+          "calls": [
+            "cashbook_change_ledger_v1"
+          ],
+          "note": "change_ledger"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-a-contract.mjs",
+          "contains": "crm.cashbook_change_ledger_v1"
+        }
+      ]
     }
   ]
 }

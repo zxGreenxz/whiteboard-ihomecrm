@@ -37,6 +37,7 @@ export function useReservationHoldDeadlines() {
   return useQuery({
     queryKey: HOLD_DEADLINE_KEY,
     queryFn: async (): Promise<HoldTermsMap> => {
+      // hermes-parity:begin deposit-reservation-vouchers — Hermes chép vùng này (kỳ hạn trong public.deposit_reservation_vouchers_v1)
       // PAGED: mỗi phiếu giữ chỗ một dòng, tích luỹ mãi theo thời gian.
       const rows = await fetchAllRows<{
         income_expense_id: string;
@@ -56,6 +57,7 @@ export function useReservationHoldDeadlines() {
       // "chưa đặt hạn" và hai nhóm gấp nhất biến mất im lặng — đúng cái nhóm
       // sinh ra để không ai bỏ quên phòng hay để khách mất cọc oan.
       if (rows === null) throw new Error("Lỗi tải kỳ hạn của phiếu giữ chỗ");
+      // hermes-parity:end deposit-reservation-vouchers
       const map: Record<string, ReservationHoldTerms> = {};
       for (const r of rows) {
         map[r.income_expense_id] = {

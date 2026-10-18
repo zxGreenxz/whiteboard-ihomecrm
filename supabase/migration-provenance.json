@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 737,
-    "unknown": 84,
+    "unknown": 86,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12020,6 +12020,34 @@
         "function:app_private.hermes_w2_catalog_v1",
         "function:app_private.hermes_w2_scope_v1",
         "function:app_private.hermes_w2_finish_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql",
+      "version": "20261018010000",
+      "name": "hermes_w2a_receivables_read_v1",
+      "scheme": "timestamp14",
+      "sha256": "89cdc54292970437ee9515737b0aad67ae6f9151e72d7dbae186c735dbbd2193",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.finance_payment_schedule_v1",
+        "function:public.finance_overpayment_invoices_v1",
+        "function:public.thu_tien_collection_v1",
+        "function:public.invoice_detail_v1",
+        "function:public.deposit_reservation_vouchers_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql",
+      "version": "20261018010100",
+      "name": "hermes_w2a_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "7acae252e3b27dc3fb5bdaac11fd82b3924cd4211ddeb83287fc6911bed931cd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2a_read_v1"
       ]
     },
     {
