@@ -3,8 +3,8 @@
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "serverVersion": "17.6",
-  "capturedAt": "2026-10-18T09:56:08.480Z",
-  "catalogFingerprint": "226e835f9b81d3638d76214ea08e4c860e59c639e9b3bbfc0549b144de077e03",
+  "capturedAt": "2026-10-18T12:11:24.040Z",
+  "catalogFingerprint": "f1ceea35a369dc9690d1fee274cc8a18aca23ccd0226c66e81864b826002250b",
   "counts": {
     "logicalTables": 283,
     "childPartitions": 92,
