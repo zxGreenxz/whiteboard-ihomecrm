@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1488,
   "soFileDocBangFs": 364,
-  "tongLoiGoi": 832,
-  "khongPhanLoaiDuoc": 380,
+  "tongLoiGoi": 835,
+  "khongPhanLoaiDuoc": 381,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 56,
@@ -483,6 +483,14 @@
         "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/customerListMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/customerResidenceEvidenceMigration.test.ts",
@@ -2485,14 +2493,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/invoiceReadSharedMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/networkCenterH196aMigration.test.ts",

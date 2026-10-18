@@ -9,27 +9,14 @@
     ]
   },
   "counts": {
-    "calledRpcs": 370,
+    "calledRpcs": 372,
     "byRisk": {
-      "normal": 270,
-      "financial": 100
+      "normal": 269,
+      "financial": 103
     },
     "securityDefiner": 353
   },
-  "missingOnServer": [
-    {
-      "name": "invoice_list_v1",
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ]
-    },
-    {
-      "name": "invoice_statistics_v3",
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -1825,6 +1812,25 @@
       ],
       "risk": "normal"
     },
+    "customer_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_status text DEFAULT NULL::text, p_kind text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_room_id uuid DEFAULT NULL::uuid, p_limit integer DEFAULT NULL::integer, p_offset integer DEFAULT 0, p_include_location boolean DEFAULT true",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
     "decide_financial_request_v2": {
       "definitions": [
         {
@@ -2474,26 +2480,6 @@
       ],
       "risk": "normal"
     },
-    "get_customer_stats": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_status text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCustomers.ts"
-      ],
-      "risk": "normal"
-    },
     "get_dashboard_summary": {
       "definitions": [
         {
@@ -2673,10 +2659,11 @@
         }
       ],
       "callers": [
+        "src/hooks/useInvoices.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useUtilityBills.ts"
       ],
-      "risk": "normal"
+      "risk": "financial"
     },
     "get_member_authorization_v1": {
       "definitions": [
@@ -3375,6 +3362,44 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "invoice_active_payment_methods": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_ids uuid[]",
+          "returns": "TABLE(invoice_id uuid, payment_methods text[])",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_payment_method_drilldown": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_payment_method payment_method",
+          "returns": "SETOF invoices",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
     },
     "is_admin": {
       "definitions": [
