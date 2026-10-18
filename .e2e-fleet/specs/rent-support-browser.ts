@@ -57,6 +57,8 @@ export function fixtures(): BrowserFixture {
 const READERS = new Set([
   'get_my_context', 'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
   'my_org_ids', 'can_access_building', 'accessible_building_ids', 'get_contract_stats', 'get_dashboard_summary',
+  // Danh sách + ô thống kê màn Hợp đồng đọc qua hàm dùng chung (migration 20261017115636).
+  'contract_list_v1', 'contract_stats_v2',
   'list_my_copilot_organizations_v1', 'business_performance_organizations_v1', 'list_cashbook_visibility_v2',
   'get_notification_org_config_v1', 'get_my_notification_preferences_v1', 'list_contract_drafts', 'list_room_reservations_v1',
   'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1', 'list_contract_meter_followups_v1',

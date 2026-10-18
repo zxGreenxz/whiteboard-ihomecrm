@@ -22120,6 +22120,34 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      contract_display_label_v1: {
+        Args: { p_display_status: string }
+        Returns: string
+      }
+      contract_display_status_v1: {
+        Args: {
+          p_end_date: string
+          p_expected_move_out_date: string
+          p_status: string
+          p_today: string
+        }
+        Returns: string
+      }
+      contract_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_lifecycle?: string
+          p_limit?: number
+          p_month?: string
+          p_offset?: number
+          p_room_name?: string
+          p_search?: string
+          p_stat?: string
+          p_with_customers?: boolean
+        }
+        Returns: Json
+      }
+      contract_stats_v2: { Args: { p_building_ids?: string[] }; Returns: Json }
       copilot_action_ledger_list_v1: {
         Args: { p_limit?: number; p_organization_id: string }
         Returns: Json
