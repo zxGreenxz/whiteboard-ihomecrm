@@ -981,7 +981,7 @@
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.finance_payment_schedule_v1 / finance_overpayment_invoices_v1 / thu_tien_collection_v1 / invoice_detail_v1 / deposit_reservation_vouchers_v1 / deposit_held_contracts_v1 / deposit_refunds_forfeits_v1 / cashbook_change_ledger_v1 (SECURITY INVOKER, search_path rỗng, từ chối vai khác authenticated), thay thân app_private.hermes_w2a_catalog_v1 và hermes_w2a_read_v1 (khung INVOKER của 20261018000600)"
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.finance_payment_schedule_v1 / finance_overpayment_invoices_v1 / thu_tien_collection_v1 / invoice_detail_v1 / deposit_reservation_vouchers_v1 / deposit_held_contracts_v1 / deposit_refunds_forfeits_v1 / cashbook_change_ledger_v1 (SECURITY INVOKER, search_path rỗng, từ chối vai khác authenticated), thay thân app_private.hermes_w2a_catalog_v1 và hermes_w2a_read_v1 (khung INVOKER của 20261018000600; mọi hàng mang organizationId tra từ cột nguồn cho rào công ty 20261018000700)"
         },
         {
           "duong_dan": "supabase/migration-provenance.json",
@@ -989,7 +989,7 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói A thu tiền/công nợ/cọc), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST qua lane (--env test --apply) và đối chiếu số với truy vấn web dưới RLS thật trên TEST (ROLLBACK). PGlite: wave2-a kể cả đột biến. Áp production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói A thu tiền/công nợ/cọc), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Áp TEST qua lane (--env test --apply) và đối chiếu số với truy vấn web dưới RLS thật trên TEST (ROLLBACK). PGlite: wave2-a kể cả đột biến (gồm rào công ty: hàm dùng chung bỏ lọc công ty ⇒ bước kết thúc 42501). TEST đang có bản cũ e93d4c72 (cùng chữ ký hàm, nên áp lại bằng CREATE OR REPLACE được). Áp production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:public.finance_payment_schedule_v1",
         "function:public.finance_overpayment_invoices_v1",
@@ -998,7 +998,7 @@
         "function:public.deposit_reservation_vouchers_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói A, 18/10/2026",
-      "sha256": "7d008989c4aac95baa2171dd13feb5bcec8535d8fcf623907b0c41072ab3544b"
+      "sha256": "89cdc54292970437ee9515737b0aad67ae6f9151e72d7dbae186c735dbbd2193"
     }
   }
 }

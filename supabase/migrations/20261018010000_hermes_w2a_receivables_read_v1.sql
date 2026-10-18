@@ -1,6 +1,7 @@
 -- Hermes đọc đầy đủ — ĐỢT 2, Gói A: thu tiền, công nợ, cọc (18/10/2026). Chạy SAU nền đợt 2
 -- (20261018000000 → 000500 → 000600 cổng INVOKER: public.hermes_w2_read_v1 → bước kiểm quyền DEFINER dựng ctx →
--- hàm đọc gói INVOKER dưới RLS người hỏi → bước kết thúc DEFINER rào đầu ra/phân trang).
+-- hàm đọc gói INVOKER dưới RLS người hỏi → bước kết thúc DEFINER rào đầu ra/phân trang → 000700 rào công ty: mọi
+-- hàng mang organizationId lấy từ CỘT nguồn, bước kết thúc so với công ty kết nối rồi gỡ).
 -- Chủ chốt 17/10: theo ĐÚNG quyền user trên web ∩ overlay Read ∩ toà kết nối. Công thức dùng ≥2 nơi hoặc dính
 -- tiền/quyền đặt trong hàm SQL dùng chung public.<miền>_<báo cáo>_v1(..., p_building_ids):
 --  (a) màn web có RPC ⇒ Hermes gọi THẲNG RPC đó;
@@ -186,7 +187,8 @@ END $fn$;
 -- Chi tiết hoá đơn (useInvoice + InvoiceDetailView.tsx): hoá đơn chưa xoá theo id; dòng hoá đơn; khoản thu (không ảnh
 -- chứng từ); phiếu thu/chi APPROVED gắn hoá đơn, BỎ phiếu trỏ lần thu đã hoàn tác (activeVouchers), số tiền =
 -- Σ đơn giá × số lượng; tổng thu/tổng chi trả khách như chân thẻ web; khách đại diện, không thấy thì khách đầu; điều
--- chỉnh chỉ đếm (không snapshot). NULL = không có / ngoài phạm vi RLS hoặc p_building_ids.
+-- chỉnh chỉ đếm (không snapshot). NULL = không có / ngoài phạm vi RLS hoặc p_building_ids. organizationId của đầu
+-- hoá đơn / khoản thu / phiếu lấy từ cột organization_id của chính bảng đó (rào công ty của cổng đợt 2).
 CREATE OR REPLACE FUNCTION public.invoice_detail_v1(p_organization_id uuid,p_invoice_id uuid,p_building_ids uuid[] DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE v_b uuid[];
@@ -200,13 +202,13 @@ BEGIN
   WITH inv AS (SELECT i.* FROM public.invoices i WHERE i.id=p_invoice_id AND i.organization_id=p_organization_id AND i.deleted_at IS NULL
     AND i.building_id=ANY(v_b)),
   vouchers AS (
-    SELECT v.id,v.code,v.type,v.name,v.voucher_date,v.approval_status,v.creator_name,a.name account_name,
+    SELECT v.id,v.organization_id,v.code,v.type,v.name,v.voucher_date,v.approval_status,v.creator_name,a.name account_name,
       (SELECT COALESCE(sum(COALESCE(x.unit_price,0)*COALESCE(x.quantity,0)),0) FROM public.income_expense_items x WHERE x.income_expense_id=v.id) amount
     FROM inv JOIN public.income_expenses v ON v.invoice_id=inv.id LEFT JOIN public.accounts a ON a.id=v.account_id
     WHERE v.organization_id=p_organization_id AND v.approval_status='APPROVED' AND v.deleted_at IS NULL
       AND NOT EXISTS(SELECT 1 FROM public.payments rp WHERE rp.id=v.payment_id AND rp.invoice_id=inv.id AND rp.reversed_at IS NOT NULL))
   SELECT jsonb_build_object(
-    'invoice',jsonb_build_object('id',i.id,'invoiceNumber',i.invoice_number,'status',i.status::text,'kind',i.kind,'billingMonth',i.billing_month,
+    'invoice',jsonb_build_object('id',i.id,'organizationId',i.organization_id,'invoiceNumber',i.invoice_number,'status',i.status::text,'kind',i.kind,'billingMonth',i.billing_month,
       'issueDate',i.issue_date,'dueDate',i.due_date,'paidDate',i.paid_date,'subtotal',i.subtotal,'discountAmount',i.discount_amount,
       'previousDebt',i.previous_debt,'totalAmount',i.total_amount,'paidAmount',i.paid_amount,
       'remainingAmount',COALESCE(i.remaining_amount,COALESCE(i.total_amount,0)-COALESCE(i.paid_amount,0)),'notes',i.notes,
@@ -217,10 +219,10 @@ BEGIN
         'quantity',it.quantity,'amount',it.amount,'fromDate',it.from_date,'toDate',it.to_date,'previousReading',it.previous_reading,
         'currentReading',it.current_reading) ORDER BY it.sort_order NULLS LAST,it.id),'[]'::jsonb)
       FROM public.invoice_items it WHERE it.invoice_id=i.id),
-    'payments',(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'receiptNumber',p.receipt_number,'amount',p.amount,
+    'payments',(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',p.id,'organizationId',p.organization_id,'receiptNumber',p.receipt_number,'amount',p.amount,
         'method',p.payment_method::text,'paymentDate',p.payment_date,'reversed',p.reversed_at IS NOT NULL) ORDER BY p.payment_date,p.created_at,p.id),'[]'::jsonb)
       FROM public.payments p WHERE p.invoice_id=i.id),
-    'vouchers',(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',v.id,'code',v.code,'type',v.type,'name',v.name,'voucherDate',v.voucher_date,
+    'vouchers',(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',v.id,'organizationId',v.organization_id,'code',v.code,'type',v.type,'name',v.name,'voucherDate',v.voucher_date,
         'approvalStatus',v.approval_status,'creatorName',v.creator_name,'accountName',v.account_name,'amount',v.amount) ORDER BY v.voucher_date,v.id),'[]'::jsonb)
       FROM vouchers v),
     'totalReceived',(SELECT COALESCE(sum(v.amount) FILTER (WHERE v.type='INCOME'),0) FROM vouchers v),
@@ -403,7 +405,10 @@ $fn$;
 -- ── Hàm đọc Gói A: INVOKER, chạy trong phiên của chính người hỏi (cổng đợt 2 dựng ctx sau khi kiểm phạm vi).
 -- ctx.buildings = grant CRM của khoá ∩ overlay (đã thu hẹp theo buildingId nếu có); mọi bảng/RPC đọc dưới RLS
 -- của người hỏi nên ctx giả cũng không vượt được web. Mỗi báo cáo trả ≤2000 hàng đã sắp + sourceCapped; tên
--- khách chỉ khi RLS customers cho thấy VÀ toà của hàng ∈ ctx.scopes['customers.view']. ──────────────────────
+-- khách chỉ khi RLS customers cho thấy VÀ toà của hàng ∈ ctx.scopes['customers.view']. Rào công ty (000700): mọi hàng
+-- mang organizationId tra từ CỘT organization_id của bảng nguồn theo khoá hàng, trong cùng câu lệnh với hàm dùng chung
+-- (không chép ctx.organizationId; hàm dùng chung giữ nguyên chữ ký) — hàm dùng chung lỡ bỏ lọc công ty thì bước kết
+-- thúc thấy công ty khác ⇒ 42501; dòng hoá đơn (invoice_items.organization_id có thể NULL) mang công ty của hoá đơn. ──
 CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
 DECLARE v_org uuid; v_b uuid[]; v_cust uuid[]; v_today date; v_rows jsonb:='[]'::jsonb; v_total integer:=0; v_summary jsonb;
@@ -437,6 +442,7 @@ BEGIN
     -- Web: due_date ≤ hôm nay + 365 (usePaymentScheduleReport(365)); ngày lọc trên "đã lên hoá đơn đến".
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER w o,count(*) OVER () total,jsonb_build_object('buildingId',s.building_id,
+          'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=s.invoice_id),
           'buildingName',s.building_name,'roomId',s.room_id,'roomName',s.room_name,
           'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
           'billedThrough',s.billed_through) item
@@ -449,6 +455,7 @@ BEGIN
   ELSIF p_report='overpayment' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY s.invoice_id) o,count(*) OVER () total,jsonb_build_object('invoiceId',s.invoice_id,
+          'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=s.invoice_id),
           'invoiceNumber',s.invoice_number,'buildingId',s.building_id,
           'buildingName',s.building_name,'roomId',s.room_id,'roomName',s.room_name,
           'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
@@ -468,7 +475,8 @@ BEGIN
       SELECT row_number() OVER (ORDER BY t.building_sort,t.building_id,t.room_sort,t.invoice_id) o,t.time_mode mode,t.summary_collected collected,
         t.summary_remaining remaining,t.summary_paid paid,t.summary_due due,
         t.in_scope AND (v_status IS NULL OR v_status='paid' AND t.status_paid OR v_status='unpaid' AND t.status_unpaid) listed,
-        jsonb_build_object('invoiceId',t.invoice_id,'invoiceNumber',t.invoice_number,
+        jsonb_build_object('invoiceId',t.invoice_id,'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=t.invoice_id),
+          'invoiceNumber',t.invoice_number,
           'buildingId',t.building_id,'buildingName',t.building_name,'roomId',t.room_id,
           'roomName',t.room_name,
           'customerName',CASE WHEN t.building_id=ANY(v_cust) THEN t.customer_name END,
@@ -503,19 +511,19 @@ BEGIN
         'adjustmentReviewStatus',to_jsonb(v_head->>'adjustmentReviewStatus'));
       -- Dòng chi tiết: dòng hoá đơn, khoản thu, phiếu thu/chi đã duyệt (cùng khuôn; trường không dùng = null).
       SELECT COALESCE(jsonb_agg(l.item ORDER BY l.k,l.n),'[]'::jsonb),count(*)::integer INTO v_rows,v_total FROM (
-        SELECT 1 k,n,jsonb_build_object('kind','item','id',e->'id','buildingId',v_head->'buildingId','code',NULL,'label',to_jsonb(e->>'description'),
+        SELECT 1 k,n,jsonb_build_object('kind','item','id',e->'id','organizationId',v_head->'organizationId','buildingId',v_head->'buildingId','code',NULL,'label',to_jsonb(e->>'description'),
             'category',e->'type','amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',to_jsonb((e->>'unitPrice')::numeric::text),
             'quantity',to_jsonb((e->>'quantity')::numeric::text),'date',e->'fromDate','endDate',e->'toDate','status',NULL,'person',NULL,
             'previousReading',to_jsonb((e->>'previousReading')::numeric::text),'currentReading',to_jsonb((e->>'currentReading')::numeric::text)) item
           FROM jsonb_array_elements(v_detail->'items') WITH ORDINALITY a(e,n)
         UNION ALL
-        SELECT 2,n,jsonb_build_object('kind','payment','id',e->'id','buildingId',v_head->'buildingId','code',to_jsonb(e->>'receiptNumber'),'label',NULL,
+        SELECT 2,n,jsonb_build_object('kind','payment','id',e->'id','organizationId',e->'organizationId','buildingId',v_head->'buildingId','code',to_jsonb(e->>'receiptNumber'),'label',NULL,
             'category',e->'method','amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',NULL,'quantity',NULL,'date',e->'paymentDate',
             'endDate',NULL,'status',to_jsonb(CASE WHEN (e->>'reversed')::boolean THEN 'REVERSED' ELSE 'ACTIVE' END),'person',NULL,
             'previousReading',NULL,'currentReading',NULL)
           FROM jsonb_array_elements(v_detail->'payments') WITH ORDINALITY a(e,n)
         UNION ALL
-        SELECT 3,n,jsonb_build_object('kind','voucher','id',e->'id','buildingId',v_head->'buildingId','code',to_jsonb(e->>'code'),
+        SELECT 3,n,jsonb_build_object('kind','voucher','id',e->'id','organizationId',e->'organizationId','buildingId',v_head->'buildingId','code',to_jsonb(e->>'code'),
             'label',to_jsonb(e->>'name'),'category',to_jsonb(e->>'type'),
             'amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',NULL,'quantity',NULL,'date',e->'voucherDate','endDate',NULL,
             'status',to_jsonb(e->>'approvalStatus'),'person',to_jsonb(e->>'creatorName'),
@@ -526,6 +534,7 @@ BEGIN
   ELSIF p_report='reservation_vouchers' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY v.voucher_date DESC,v.voucher_id) o,count(*) OVER () total,jsonb_build_object('voucherId',v.voucher_id,
+          'organizationId',(SELECT src.organization_id FROM public.income_expenses src WHERE src.id=v.voucher_id),
           'code',v.code,'name',v.name,
           'payerName',CASE WHEN v.building_id=ANY(v_cust) THEN v.payer_name END,
           'depositAmount',v.deposit_amount::text,'voucherDate',v.voucher_date,'approvalStatus',v.approval_status,'buildingId',v.building_id,
@@ -550,7 +559,9 @@ BEGIN
       v_cursor:=v_page->'nextCursor';
       EXIT WHEN v_cursor IS NULL OR v_cursor='null'::jsonb OR jsonb_array_length(v_rows)>2000;
     END LOOP;
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('settlementId',e->'id','voucherCode',to_jsonb(e->>'voucherCode'),
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('settlementId',e->'id',
+        'organizationId',(SELECT src.organization_id FROM public.reservation_deposit_settlements src WHERE src.id=(e->>'id')::uuid),
+        'voucherCode',to_jsonb(e->>'voucherCode'),
         'buildingId',e->'buildingId','buildingName',to_jsonb(e->>'buildingName'),'roomId',e->'roomId',
         'roomName',to_jsonb(e->>'roomName'),
         'payerName',CASE WHEN (e->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(e->>'payerName') ELSE 'null'::jsonb END,
@@ -568,7 +579,8 @@ BEGIN
   ELSIF p_report='held_deposits' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY h.building_name,h.building_id,h.room_sort,h.contract_id) o,count(*) OVER () total,
-        jsonb_build_object('contractId',h.contract_id,'contractNumber',h.contract_number,'buildingId',h.building_id,
+        jsonb_build_object('contractId',h.contract_id,'organizationId',(SELECT src.organization_id FROM public.contracts src WHERE src.id=h.contract_id),
+          'contractNumber',h.contract_number,'buildingId',h.building_id,
           'buildingName',h.building_name,'roomId',h.room_id,'roomName',h.room_name,
           'customerName',CASE WHEN h.building_id=ANY(v_cust) THEN h.customer_name END,
           'totalDeposit',h.total_deposit::text,'depositPaid',h.deposit_paid::text,'depositRemaining',h.deposit_remaining::text,
@@ -585,7 +597,9 @@ BEGIN
   ELSIF p_report='deposit_refunds' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY d.termination_date DESC NULLS LAST,d.termination_id) o,count(*) OVER () total,
-        jsonb_build_object('terminationId',d.termination_id,'contractId',d.contract_id,'contractNumber',d.contract_number,
+        jsonb_build_object('terminationId',d.termination_id,
+          'organizationId',(SELECT src.organization_id FROM public.contract_terminations src WHERE src.id=d.termination_id),
+          'contractId',d.contract_id,'contractNumber',d.contract_number,
           'buildingId',d.building_id,'buildingName',d.building_name,'roomId',d.room_id,
           'roomName',d.room_name,
           'customerName',CASE WHEN d.building_id=ANY(v_cust) THEN d.customer_name END,
@@ -615,6 +629,7 @@ BEGIN
             FROM public.accounts a WHERE a.id=v_target)),'fromDate',v_from,'toDate',v_to,'total',COALESCE(sum(x.amount),0)::text,'count',count(*)::integer)
       INTO v_rows,v_total,v_summary FROM (
       SELECT row_number() OVER (ORDER BY l.voucher_date DESC,l.voucher_id) o,l.amount,l.ledger_mode mode,jsonb_build_object('voucherId',l.voucher_id,
+          'organizationId',(SELECT src.organization_id FROM public.income_expenses src WHERE src.id=l.voucher_id),
           'voucherDate',l.voucher_date,'code',l.code,'invoiceId',l.invoice_id,
           'invoiceNumber',l.invoice_number,'buildingId',l.building_id,
           'buildingName',l.building_name,'roomName',l.room_name,

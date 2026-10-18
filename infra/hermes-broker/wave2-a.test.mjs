@@ -132,6 +132,41 @@ test('cổng đầu-cuối (public.hermes_w2_read_v1): số như gọi thẳng; 
   assert.ok(wide.fence.orgWide && wide.items.some(row => row.buildingId === OTHER_BUILDING), 'Toàn tổ chức ⇒ có toà B');
 }));
 
+test('rào công ty (000700): mọi hàng của 9 báo cáo mang organizationId từ cột nguồn; cổng gỡ trước khi trả; thân hàm đọc không chép ctx', () => inCase(async env => {
+  for (const report of REPORTS) {
+    const raw = await direct(env, report);
+    assert.ok(raw.rows.length > 0, `${report}: có hàng để kiểm`);
+    assert.ok(raw.rows.every(row => row.organizationId === ORG), `${report}: organizationId = công ty`);
+    const viaGate = await env.report(report, params(report, DEFAULTS[report]), { limit: 50 });
+    assert.ok(viaGate.items.length > 0 && viaGate.items.every(row => !Object.hasOwn(row, 'organizationId')), `${report}: cổng gỡ trường rào`);
+    assert.ok(!Object.hasOwn(W2A_REPORTS[report].fields, 'organizationId'), `${report}: fields không khai organizationId`);
+  }
+  const stripped = migration.replace(/--[^\n]*/g, '');
+  const readBody = stripped.slice(stripped.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(')).split('$fn$')[1];
+  const sources = [...readBody.matchAll(/'organizationId',([^,]+)/g)].map(match => match[1].trim());
+  assert.equal(sources.length, 11, '8 báo cáo bảng + 3 loại dòng chi tiết hoá đơn');
+  for (const source of sources) assert.match(source, /^\(SELECT src\.organization_id FROM public\.[a-z_]+ src WHERE src\.id=|^v_head->'organizationId'$|^e->'organizationId'$/, source);
+}));
+
+test('rào công ty: hàm dùng chung lỡ bỏ lọc công ty ⇒ cột nguồn làm bước kết thúc chặn cả lượt (42501); chép ctx.organizationId thì lọt', async () => {
+  const swap = (sql, from, to) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return sql.replace(from, () => to); };
+  const noFilter = swap(migration, `  WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.paid_amount>0`, `  WHERE i.deleted_at IS NULL AND i.paid_amount>0`);
+  const copyCtx = swap(noFilter, `'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=s.invoice_id),
+          'invoiceNumber',s.invoice_number`, `'organizationId',v_org,
+          'invoiceNumber',s.invoice_number`);
+  // Dữ liệu lệch: hoá đơn nêu công ty khác nhưng nằm ở toà của công ty kết nối (RLS theo toà vẫn cho thấy).
+  const seeded = async (env, variant) => {
+    if (variant) for (const sql of changedFunctions(migration, variant)) await env.db.exec(sql);
+    await env.db.exec(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount)
+      VALUES('${FOREIGN_INVOICE}','${FOREIGN}','INV-F3','APPROVED','${BUILDING}',null,'2026-10','2026-10-01',100,500)`);
+    return env.report('overpayment', params('overpayment'), { limit: 50 });
+  };
+  await inCase(async env => assert.ok(!ids((await seeded(env)).items, 'invoiceId').includes(FOREIGN_INVOICE), 'bản sống: lọc công ty'));
+  await inCase(async env => assert.rejects(seeded(env, noFilter), error => error.code === '42501' && error.message === 'hermes_w2_row_outside_scope',
+    'bỏ lọc công ty: cột nguồn ⇒ bước kết thúc 42501'));
+  await inCase(async env => assert.ok(ids((await seeded(env, copyCtx)).items, 'invoiceId').includes(FOREIGN_INVOICE), 'chép ctx: lọt (phép thử nhạy)'));
+});
+
 test('payment_schedule: một dòng/phòng, đến ngày = hạn xa nhất ≤ hôm nay+365 (bỏ huỷ/xoá), khách của hoá đơn đầu, mới nhất trước; lọc ngày', () => inCase(async env => {
   let value = await run(env, 'payment_schedule');
   assert.deepEqual(value.items.map(row => [row.roomName, row.billedThrough, row.customerName]),
