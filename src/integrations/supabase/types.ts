@@ -23386,6 +23386,29 @@ export type Database = {
         Args: { _customer_id: string; _owner: string }
         Returns: boolean
       }
+      customer_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_include_location?: boolean
+          p_kind?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_room_id?: string
+          p_search?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      customer_location_ids_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_include_history?: boolean
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: string[]
+      }
       customer_residence_matches_location_v1: {
         Args: {
           p_building: string
@@ -23395,6 +23418,10 @@ export type Database = {
           p_room: string
         }
         Returns: boolean
+      }
+      customer_search_patterns_v1: {
+        Args: { p_search: string }
+        Returns: string[]
       }
       decide_financial_request_v2: {
         Args: { p_decision: string; p_reason?: string; p_request_id: string }

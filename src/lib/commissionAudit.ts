@@ -3,6 +3,12 @@ import { z } from 'zod';
 export const COMMISSION_REASON_MIN = 8;
 export const COMMISSION_REASON_MAX = 2000;
 export const COMMISSION_REASON_MESSAGE = 'Nhập lý do cụ thể từ 8 đến 2.000 ký tự để lưu lịch sử hoa hồng.';
+/**
+ * Chỉ THÊM chứng từ (không gỡ ảnh cũ) là bổ sung bình thường lúc chi, không phải can thiệp
+ * ⇒ không hỏi người dùng (chủ chốt 17/10/2026). Máy chủ vẫn đòi chuỗi lý do cho mọi lệnh
+ * ANNOTATE của phiếu hoa hồng nên gửi câu mô tả cố định này; gỡ ảnh cũ vẫn bắt nhập lý do.
+ */
+export const COMMISSION_EVIDENCE_ADD_REASON = 'Bổ sung chứng từ: chỉ thêm ảnh, không gỡ ảnh cũ.';
 export function isCommissionReasonValid(reason: string | null | undefined): boolean {
   const length = reason?.trim().length ?? 0;
   return length >= COMMISSION_REASON_MIN && length <= COMMISSION_REASON_MAX;

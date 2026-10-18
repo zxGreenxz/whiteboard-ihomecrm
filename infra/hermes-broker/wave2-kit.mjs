@@ -14,7 +14,9 @@
 // Gói thay thân hàm đọc và GIỮ dòng đầu "LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET
 // search_path=pg_catalog,public". Thân plpgsql KHÔNG gọi app_private.* theo tên (authenticated không có
 // USAGE trên app_private ⇒ 42501); gọi hàm dùng chung public.<miền>_<báo cáo>_v<n> (INVOKER, từ chối khi
-// current_user <> 'authenticated', p_building_ids := ctx.buildings). Helper DEFINER chỉ để trả TẬP ID của
+// current_user <> 'authenticated', NHẬN p_organization_id := ctx.organizationId và lọc organization_id tường
+// minh — RLS của super admin / người nhiều công ty phủ cả công ty khác —, p_building_ids := ctx.buildings).
+// Helper DEFINER chỉ để trả TẬP ID của
 // chính người gọi, đặt ở public; cần app_private thì thân SQL chuẩn (gắn OID lúc tạo) + GRANT EXECUTE TO
 // authenticated (hermes-durable-schema.test.mjs phải liệt kê).
 import { id, nullable, longText, code, amount, bool, count, date, instant, shaped, PRIVATE_HINT } from './full-read-contract.mjs';
@@ -34,6 +36,10 @@ export const W2_PACKAGES = Object.freeze(Object.fromEntries(Object.entries(W2_TO
 //   cashbooks        — sổ quỹ: org_wide, hoặc overlay Toàn tổ chức + sổ CRM cấp (ctx.cashbooks, scope CASHBOOK).
 //   self             — dữ liệu của CHÍNH người hỏi (chỉ khoá loại self).
 //   platform         — toàn nền tảng, chỉ super admin (chỉ khoá biến động số dư).
+// Hàng (20261018000700, RLS người hỏi có thể rộng hơn công ty kết nối): rows/buildings — MỌI hàng có
+// buildingId (fields khai buildingId); mọi phạm vi trừ self/platform — MỌI hàng gói trả có organizationId
+// lấy từ CỘT nguồn (không chép ctx.organizationId), cổng so với công ty kết nối rồi GỠ trước khi trả, nên
+// fields KHÔNG khai organizationId (trừ platform). Khác công ty ⇒ 42501; thiếu trường ⇒ XX000.
 export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'organization', 'cashbooks', 'self', 'platform']);
 // Tham số mà cổng giải về toà (phải thuộc công ty + ctx.buildings, thu hẹp ctx.buildings): chỉ ở rows/buildings.
 export const W2_BUILDING_PARAMS = Object.freeze(['buildingId', 'areaId', 'roomId', 'contractId', 'invoiceId']);
@@ -93,10 +99,15 @@ export const W2_REUSED_KEYS = Object.freeze(['invoices.view', 'deposits.view', '
 // Khoá không theo toà (grant buildingIds=[]; khớp app_private.hermes_w2_self_keys_v1).
 export const W2_SELF_KEYS = Object.freeze(Object.keys(W2_READ_KEYS).filter(key => W2_READ_KEYS[key] === 'self'));
 export const W2_PLATFORM_KEYS = Object.freeze(['assistant.bank_events.read']);
-/** Loại khoá báo cáo (khớp app_private.hermes_w2_permission_kind_v1): 'platform' | 'self' | 'company' | null. */
+// Khoá dữ liệu KHÔNG gắn toà (resource organization_scope; khớp app_private.hermes_w2_org_keys_v1):
+// báo cáo dùng khoá này chỉ được scope organization hoặc cashbooks (chưa có ngoại lệ; cần ⇒ yêu cầu Gói Z kèm lý do).
+export const W2_ORG_KEYS = Object.freeze(Object.keys(W2_READ_KEYS).filter(key => W2_READ_KEYS[key] === 'organization_scope'));
+export const W2_ORG_SCOPES = Object.freeze(['organization', 'cashbooks']);
+/** Loại khoá báo cáo (khớp app_private.hermes_w2_permission_kind_v1): 'platform' | 'self' | 'organization' | 'company' | null. */
 export function w2PermissionKind(key) {
   if (W2_PLATFORM_KEYS.includes(key)) return 'platform';
   if (W2_SELF_KEYS.includes(key)) return 'self';
+  if (W2_ORG_KEYS.includes(key)) return 'organization';
   return Object.hasOwn(W2_READ_KEYS, key) || W2_REUSED_KEYS.includes(key) ? 'company' : null;
 }
 // Lý do "không có số liệu" được phép (cổng SQL kiểm cùng tập; khác ⇒ backend_unavailable).
@@ -168,6 +179,10 @@ export function w2Report({ permission, source, scope, title, params = [], requir
   const kind = w2PermissionKind(permission);
   if (Object.keys(rest).length || typeof permission !== 'string' || !KEY.test(permission) || kind === null ||
       (kind === 'self') !== (scope === 'self') || (kind === 'platform') !== (scope === 'platform') ||
+      kind === 'organization' && !W2_ORG_SCOPES.includes(scope) ||
+      // Trường rào: theo toà phải khai buildingId; organizationId do cổng gỡ (chỉ platform được khai).
+      validators(fields) && (['rows', 'buildings'].includes(scope) && !Object.hasOwn(fields, 'buildingId') ||
+        scope !== 'platform' && Object.hasOwn(fields, 'organizationId')) ||
       typeof source !== 'string' || !/^crm\.[a-z][a-z0-9_.]{0,79}$/.test(source) ||
       !W2_SCOPES.includes(scope) || typeof title !== 'string' || !title.trim() || [...title].length > 300 || CONTROL.test(title) ||
       !strings(params, /^[a-zA-Z]+$/) || params.some(name => !Object.hasOwn(W2_PARAMS, name)) ||
