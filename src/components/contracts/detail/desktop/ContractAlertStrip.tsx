@@ -99,7 +99,7 @@ export function ContractAlertStrip({
 
       {isExpiringSoon && isActive && (
         <Dai mau="cam" icon={AlertCircle}>
-          Hợp đồng sẽ hết hạn trong {daysRemaining} ngày. Vui lòng liên hệ khách hàng để gia hạn.
+          {daysRemaining > 0 ? `Hợp đồng sẽ hết hạn trong ${daysRemaining} ngày.` : 'Hợp đồng hết hạn hôm nay.'} Vui lòng liên hệ khách hàng để gia hạn.
         </Dai>
       )}
 
