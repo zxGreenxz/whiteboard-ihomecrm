@@ -17,20 +17,20 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 371 |
-| Hàm trong catalog (public + api) | 1380 |
+| RPC được gọi từ mã nguồn | 373 |
+| Hàm trong catalog (public + api) | 1385 |
 | File mã nguồn đã quét | 2558 |
 | SECURITY DEFINER | 353 |
-| **Gọi mà server KHÔNG CÓ** | **2** |
+| **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 271 | còn lại |
-| tiền | 100 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 102 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 100 RPC chạm TIỀN
+## 102 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -82,6 +82,8 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `ie_compat_update_pending_v2` | ✔ | hooks/useUploadPaymentReceipt.ts |
 | `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `intervene_commission_v1` | ✔ | hooks/income-expenses/commissionIntervention.ts |
+| `invoice_list_v1` |  | hooks/useInvoices.ts |
+| `invoice_statistics_v3` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |
 | `list_cashbook_closings_v1` | ✔ | hooks/useCashbookClosing.ts |
 | `list_contract_commission_followups_v2` | ✔ | lib/contractCommissionFollowup.ts |

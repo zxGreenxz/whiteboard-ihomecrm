@@ -2,34 +2,21 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 2558,
-    "catalogFunctions": 1380,
+    "catalogFunctions": 1385,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 371,
+    "calledRpcs": 373,
     "byRisk": {
       "normal": 271,
-      "financial": 100
+      "financial": 102
     },
     "securityDefiner": 353
   },
-  "missingOnServer": [
-    {
-      "name": "invoice_list_v1",
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ]
-    },
-    {
-      "name": "invoice_statistics_v3",
-      "callers": [
-        "src/hooks/useInvoices.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -3392,6 +3379,44 @@
         "src/hooks/useOrganizationAuthorization.ts"
       ],
       "risk": "normal"
+    },
+    "invoice_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_billing_month text DEFAULT NULL::text, p_view_status text DEFAULT 'active'::text, p_status invoice_status DEFAULT NULL::invoice_status, p_payment_status text DEFAULT NULL::text, p_filter_building_ids uuid[] DEFAULT NULL::uuid[], p_room_ids uuid[] DEFAULT NULL::uuid[], p_contract_id uuid DEFAULT NULL::uuid, p_issue_date_from date DEFAULT NULL::date, p_issue_date_to date DEFAULT NULL::date, p_amount_target numeric DEFAULT NULL::numeric, p_search text DEFAULT NULL::text, p_adjustment_review_status text DEFAULT NULL::text, p_payment_method payment_method DEFAULT NULL::payment_method, p_building_ids uuid[] DEFAULT NULL::uuid[], p_limit integer DEFAULT 20, p_offset integer DEFAULT 0",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_statistics_v3": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_billing_month text DEFAULT NULL::text, p_status invoice_status DEFAULT NULL::invoice_status, p_payment_status text DEFAULT NULL::text, p_filter_building_ids uuid[] DEFAULT NULL::uuid[], p_room_ids uuid[] DEFAULT NULL::uuid[], p_issue_date_from date DEFAULT NULL::date, p_issue_date_to date DEFAULT NULL::date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(total_amount numeric, total_paid numeric, total_remaining numeric, total_refunded numeric, total_count bigint, rent_amount numeric, electric_amount numeric, water_amount numeric, pdv_amount numeric, total_collected numeric, payment_tm numeric, payment_tk numeric, payment_tt numeric, payment_ct numeric, change_amount numeric, deposit_collected numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
     },
     "is_admin": {
       "definitions": [
