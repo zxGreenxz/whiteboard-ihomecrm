@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "kind": "hermes-official-release-observation",
+  "observedDate": "2026-10-18",
+  "observedTimezone": "Asia/Bangkok",
+  "release": {
+    "repository": "NousResearch/hermes-agent",
+    "tag": "v0.22.2",
+    "publishedAt": "2026-10-15T08:21:32Z",
+    "draft": false,
+    "prerelease": false,
+    "latestStableAtObservation": true,
+    "annotatedTagObject": "7b77e29eedd85a8497ce2821448dac7964dc46f6",
+    "commit": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
+    "signatureVerified": false,
+    "signatureVerificationReason": "unsigned"
+  },
+  "image": {
+    "repository": "docker.io/nousresearch/hermes-agent",
+    "tag": "v0.22.2",
+    "platform": "linux/amd64",
+    "indexDigest": "sha256:36099926da316742423544e055d4734777105ffe6341873af5459b957d0c2919",
+    "manifestDigest": "sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05",
+    "configDigest": "sha256:02e7aa0e84123fa0e9b22686e7a2bfb7d85fd59821d4d28812a3e07f3061cf41",
+    "immutableReference": "docker.io/nousresearch/hermes-agent@sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05",
+    "createdAt": "2026-10-15T06:20:46.439224137Z",
+    "layerCount": 37,
+    "registryAndDockerHubAgree": true,
+    "runtimeVersionVerified": false,
+    "runtimeVerificationRequired": "Inspect version_info.get_version in the pulled image; its config has no OCI revision label."
+  },
+  "diskEstimates": {
+    "compressedLayerBytes": 1121639598,
+    "unpackedTarBytes": 3267676160,
+    "comparedWithManifestDigest": "sha256:ffa4fbb471c2bc8c85fbcfc629347585cc1586c86d2e6db465d01203ce696d95",
+    "sharedLayerCount": 3,
+    "uniqueCompressedLayerBytes": 1068338417,
+    "uniqueUnpackedTarBytes": 3137458688,
+    "uniqueCompressedPlusUnpackedBytes": 4205797105,
+    "previousCompressedLayerBytes": 1119987676,
+    "previousUnpackedTarBytes": 3262300160,
+    "method": "Compressed sizes from registry manifests. Unpacked estimates sum each gzip layer footer ISIZE read using HTTP Range bytes=-8; no image pull was performed for this observation.",
+    "limitations": [
+      "ISIZE is modulo 2^32 per gzip member; these values are estimates, not a filesystem allocation guarantee.",
+      "Filesystem metadata, block rounding, temporary extraction space, writable layers, backups and concurrent growth are excluded.",
+      "A containerd image store can retain both compressed blobs and unpacked layers."
+    ]
+  },
+  "officialUrls": {
+    "latestReleaseApi": "https://api.github.com/repos/NousResearch/hermes-agent/releases/latest",
+    "release": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.22.2",
+    "releaseApi": "https://api.github.com/repos/NousResearch/hermes-agent/releases/tags/v0.22.2",
+    "tagRefApi": "https://api.github.com/repos/NousResearch/hermes-agent/git/ref/tags/v0.22.2",
+    "annotatedTagApi": "https://api.github.com/repos/NousResearch/hermes-agent/git/tags/7b77e29eedd85a8497ce2821448dac7964dc46f6",
+    "sourceCommit": "https://github.com/NousResearch/hermes-agent/commit/d923a5eb487a17c0a68801bba9ef0f56c81040a8",
+    "dockerHubTagApi": "https://hub.docker.com/v2/repositories/nousresearch/hermes-agent/tags/v0.22.2",
+    "registryTagManifest": "https://registry-1.docker.io/v2/nousresearch/hermes-agent/manifests/v0.22.2",
+    "registryAmd64Manifest": "https://registry-1.docker.io/v2/nousresearch/hermes-agent/manifests/sha256:a11574b7fe8e1631d7d88d556677dac693bc058abf558cdeb899155688c1bf05"
+  },
+  "scope": "Public release and image metadata only. This receipt does not attest a production deployment, image signature, runtime compatibility test or available VPS disk space."
+}
