@@ -1,4 +1,6 @@
-// hermes-parity:begin customer-list — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
+// Từ 17/10/2026 màn Khách hàng tìm qua customer_list_v1; bản SQL của hàm này là
+// public.customer_search_patterns_v1. File giữ làm bản đối chiếu: customerListMigration.test.ts
+// chứng minh hai bên dựng ĐÚNG cùng hai regex.
 const vietnameseLetters = {
   a: 'aàáạảãâầấậẩẫăằắặẳẵ',
   e: 'eèéẹẻẽêềếệểễ',
@@ -27,4 +29,3 @@ export function customerSearchFilter(search: string): string {
     ...['phone', 'email', 'id_number'].map(field => `${field}.imatch.${literal}`),
   ].join(',');
 }
-// hermes-parity:end customer-list

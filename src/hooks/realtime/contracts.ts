@@ -9,7 +9,6 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["contracts"],
       ["customer-residence"],
       ["customers"],
-      ["customer-stats"],
       ["contracts-legacy"],
       // deposit-dashboard đọc contracts + contract_terminations (KHÔNG phải
       // income_expenses) → phải gắn vào ĐÂY mới live theo thay đổi HĐ.
@@ -48,7 +47,6 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["contracts"],
       ["customer-residence"],
       ["customers"],
-      ["customer-stats"],
     ],
     domain: "contracts",
   },
@@ -72,7 +70,6 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["contracts"],
       ["customer-residence"],
       ["customers"],
-      ["customer-stats"],
       ["rooms"],
     ],
     domain: "contracts",
