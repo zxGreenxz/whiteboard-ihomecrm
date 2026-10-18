@@ -220,7 +220,7 @@ test('publication fault seam retains encrypted WAL and close waits actual file I
     const native = {...fs}, root = ${JSON.stringify(root)};
     let resolveHeld, release, waiting = new Promise(r => resolveHeld = r), hold = new Promise(r => release = r);
     let mode = 'hold', directorySyncs = 0; const events=[];
-    mock.module('node:fs/promises', { exports: {...native, open: async (...args) => {
+    mock.module('node:fs/promises', { namedExports: {...native, open: async (...args) => {
       const fakeDirectory=process.platform==='win32' && args[0]===root;
       const file = fakeDirectory ? {stat:()=>native.stat(root),sync:async()=>{},close:async()=>{}} : await native.open(...args);
       const sync = file.sync.bind(file);

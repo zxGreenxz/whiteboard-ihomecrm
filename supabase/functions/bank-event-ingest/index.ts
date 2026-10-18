@@ -1,4 +1,5 @@
 import {bearer,Dependencies,encryptPayload,failed,HASH,heartbeatFields,object,readJson,reply,RequestError,rpcError,runtimeDependencies,sha256,UUID,validateEvent,validTimestamp} from '../_shared/bank-events.ts';
+import {reconciliationFacts} from '../_shared/bank-reconciliation.ts';
 
 export function createHandler(deps: Dependencies={}) {
   const {env,rpc}=runtimeDependencies(deps);
@@ -26,6 +27,12 @@ export function createHandler(deps: Dependencies={}) {
         ||typeof receipt.sourceId!=='string'||!UUID.test(receipt.sourceId)||receipt.externalId!==event.id||!validTimestamp(receipt.acceptedAt)
         ||(heartbeat?receipt.status!=='heartbeat'||receipt.eventId!==null:
           receipt.status==='heartbeat'||typeof receipt.eventId!=='string'||!UUID.test(receipt.eventId)))throw new RequestError(502,'invalid_storage_receipt');
+      const facts=heartbeat?null:reconciliationFacts(event);
+      if(facts) {
+        const cached=await rpc('bank_reconciliation_cache_v1',{p_event_id:receipt.eventId,p_facts:facts});
+        if(cached.error)throw rpcError(cached.error.code);
+        if(cached.data!==true)throw new RequestError(502,'invalid_storage_receipt');
+      }
       // PostgreSQL trả giờ dạng +00:00; Instant.parse trên Android 8–13 chỉ nhận đuôi Z nên app từ chối biên nhận.
       return reply(receipt.status==='accepted'?201:200,{schemaVersion:1,ok:true,data:{...receipt,acceptedAt:new Date(String(receipt.acceptedAt)).toISOString()}});
     }catch(error){return failed(error);}
