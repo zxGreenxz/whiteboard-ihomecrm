@@ -22,28 +22,35 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
       const today = new Date();
       const futureDate = addDays(today, daysAhead);
 
-      const { data, error } = await supabase
-        .from("invoices")
-        .select(`
-          *,
-          building:buildings!invoices_building_id_fkey (id, name),
-          room:rooms!invoices_room_id_fkey (id, name),
-          contract:contracts!invoices_contract_id_fkey (
-            id,
-            contract_customers!contract_customers_contract_id_fkey (
-              is_representative,
-              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+      // PAGED: lọc "đến hạn ≤ hôm nay + N ngày" gồm cả mọi hoá đơn cũ → vượt 1000
+      // dòng (thật > 1.700) thì PostgREST cắt im lặng ở 1000 → phân trang
+      // (due_date + id tiebreaker).
+      const data = await fetchAllRows<unknown>(
+        (from, to) => supabase
+          .from("invoices")
+          .select(`
+            *,
+            building:buildings!invoices_building_id_fkey (id, name),
+            room:rooms!invoices_room_id_fkey (id, name),
+            contract:contracts!invoices_contract_id_fkey (
+              id,
+              contract_customers!contract_customers_contract_id_fkey (
+                is_representative,
+                customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+              )
             )
-          )
-        `)
-        .lte("due_date", futureDate.toISOString())
-        // Bỏ HĐ đã xoá mềm (bug sẵn có: trước đây lọt vào báo cáo) và HĐ đã
-        // huỷ — từ 09/2026 nút Xoá gôm về nút Huỷ nên rác mang status CANCELLED.
-        .is("deleted_at", null)
-        .neq("status", "CANCELLED")
-        .order("due_date", { ascending: true });
-
-      if (error) throw error;
+          `)
+          .lte("due_date", futureDate.toISOString())
+          // Bỏ HĐ đã xoá mềm (bug sẵn có: trước đây lọt vào báo cáo) và HĐ đã
+          // huỷ — từ 09/2026 nút Xoá gôm về nút Huỷ nên rác mang status CANCELLED.
+          .is("deleted_at", null)
+          .neq("status", "CANCELLED")
+          .order("due_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "reports.payment-schedule" },
+      );
+      if (data === null) throw new Error("Lỗi tải hoá đơn (lịch thanh toán)");
 
       return financialReadRows(data).map((invoice: any) => {
         const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
