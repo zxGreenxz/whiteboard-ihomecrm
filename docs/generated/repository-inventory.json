@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1492,
-  "soFileDocBangFs": 367,
-  "tongLoiGoi": 838,
-  "khongPhanLoaiDuoc": 383,
+  "tongSoFileTest": 1493,
+  "soFileDocBangFs": 368,
+  "tongLoiGoi": 840,
+  "khongPhanLoaiDuoc": 384,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 56,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 48,
+      "soFile": 49,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -1076,6 +1076,14 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/room-cash-lifecycle-module-key-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/super-admin-route-contract.test.mjs",

@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T09:04:48.145Z",
+  "generatedAt": "2026-10-18T09:04:59.472Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 736,
     "unknown": 80,
-    "catalog-proven": 207,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11979,6 +11979,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.list_cashbook_closings_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018052932_vong_doi_tien_phong_doi_khoa_man_hinh.sql",
+      "version": "20261018052932",
+      "name": "vong_doi_tien_phong_doi_khoa_man_hinh",
+      "scheme": "timestamp14",
+      "sha256": "c165eb834f8d435677ffde895a30dfed0c572faa58eac4bfba5f6a42e2c2c4c2",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.get_room_cash_lifecycle_v1"
       ]
     },
     {
