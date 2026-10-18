@@ -37,6 +37,7 @@ export const fmtBillingMonth = (m?: string | null): string => {
 };
 
 // ── Số tiền còn lại + trạng thái thu ──
+// hermes-parity:begin thu-tien-collection — Hermes chép vùng này (public.thu_tien_collection_v1)
 export const remainingOf = (inv: InvoiceWithRelations): number =>
   Number(inv.remaining_amount ?? (inv.total_amount - inv.paid_amount)) || 0;
 
@@ -51,6 +52,7 @@ export const collectStatus = (inv: InvoiceWithRelations): CollectStatus => {
   if (inv.status === 'PARTIAL_PAID' || (inv.paid_amount ?? 0) > 0) return 'partial';
   return 'unpaid';
 };
+// hermes-parity:end thu-tien-collection
 
 /** Token Tailwind theo bảng màu thu-tiền (đỏ/vàng/xanh-lá — README §6). */
 export const STATUS_META: Record<
@@ -158,6 +160,7 @@ export const collectedAt = (inv: InvoiceWithRelations): string | null => {
   return ps.reduce((max, p) => (p.payment_date > max ? p.payment_date : max), ps[0].payment_date);
 };
 
+// hermes-parity:begin thu-tien-collection
 /** Tổng tiền + có-hay-không payment rơi trong khoảng [start, end] (DATE, inclusive). */
 export const paymentsInRange = (
   inv: InvoiceWithRelations,
@@ -174,6 +177,7 @@ export const paymentsInRange = (
   }
   return { sum, has };
 };
+// hermes-parity:end thu-tien-collection
 
 /**
  * Payment gần nhất CÒN SỐNG (để Hoàn tác). null nếu chưa có.
@@ -198,6 +202,7 @@ export const latestPaymentId = (inv: InvoiceWithRelations): string | null =>
 
 // ── Snapshot theo ngày (tái dựng "chưa thu của ngày D" từ lịch sử payments) ──
 
+// hermes-parity:begin thu-tien-collection
 /** Tổng tiền đã thu TÍNH ĐẾN HẾT ngày `date` (DATE, inclusive). */
 export const paidUpTo = (inv: InvoiceWithRelations, date: string): number => {
   let sum = 0;
@@ -222,6 +227,7 @@ export const paidAsOf = (inv: InvoiceWithRelations, date: string): boolean => {
 /** Còn phải thu tính đến hết ngày `date` (0 nếu đã settle, kể cả làm tròn). */
 export const remainingAsOf = (inv: InvoiceWithRelations, date: string): number =>
   paidAsOf(inv, date) ? 0 : Math.max(0, (Number(inv.total_amount) || 0) - paidUpTo(inv, date));
+// hermes-parity:end thu-tien-collection
 
 /** Ngày hiện tại theo GIỜ LOCAL (không dùng toISOString — UTC làm lệch ngày trước 7h sáng VN). */
 export const todayISO = (): string => {

@@ -24,6 +24,7 @@ export const useMaterials = (filters: MaterialFilters = {}) => {
       // PHÂN TRANG: lọc `search`/`onlyLowStock` chạy CLIENT-SIDE bên dưới, nên
       // dòng bị PostgREST cắt ở mốc 1000 không bao giờ lọt vào kết quả tìm kiếm —
       // gõ đúng tên vật tư mà "không tìm thấy". `name` không duy nhất → tiebreaker `id`.
+      // hermes-parity:begin w2c-materials — Hermes chép vùng này (public.materials_items_v1)
       const all = await fetchAllRows((from, to) => {
         let query = supabase
           .from('materials' as any)
@@ -56,6 +57,7 @@ export const useMaterials = (filters: MaterialFilters = {}) => {
       if (filters.onlyLowStock) {
         rows = rows.filter((r) => Number(r.on_hand) <= Number(r.reorder_level));
       }
+      // hermes-parity:end w2c-materials
       return rows;
     },
   });

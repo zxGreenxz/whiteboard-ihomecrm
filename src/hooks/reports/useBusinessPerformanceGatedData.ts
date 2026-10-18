@@ -753,6 +753,7 @@ export function useBusinessPerformanceInvoiceCohort(
     enabled: queryEnabled(userId, filters, enabled),
     staleTime: LIVE_STALE_TIME,
     queryFn: async () => {
+      // hermes-parity:begin business-performance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc(
         "business_performance_invoice_cohort_v1",
         {
@@ -761,6 +762,7 @@ export function useBusinessPerformanceInvoiceCohort(
           p_building_ids: scope.buildingIds,
         },
       );
+      // hermes-parity:end business-performance
       if (error) throw error;
       return rows(data, "invoice_cohort").map((value) =>
         parseCohortRow(value, scope.buildingSet),
@@ -782,6 +784,7 @@ export function useBusinessPerformanceCashReceived(
     enabled: queryEnabled(userId, filters, enabled),
     staleTime: LIVE_STALE_TIME,
     queryFn: async () => {
+      // hermes-parity:begin business-performance
       const { data, error } = await supabase.rpc(
         "business_performance_cash_received_v1",
         {
@@ -790,6 +793,7 @@ export function useBusinessPerformanceCashReceived(
           p_building_ids: scope.buildingIds,
         },
       );
+      // hermes-parity:end business-performance
       if (error) throw error;
       return rows(data, "cash_received").map((value) =>
         parseCashRow(value, scope.buildingSet),
@@ -813,6 +817,7 @@ export function useBusinessPerformanceCategoryBreakdown(
     enabled: queryEnabled(userId, filters, enabled),
     staleTime: HISTORICAL_STALE_TIME,
     queryFn: async () => {
+      // hermes-parity:begin business-performance
       const { data, error } = await supabase.rpc(
         "business_performance_category_breakdown_v1",
         {
@@ -823,6 +828,7 @@ export function useBusinessPerformanceCategoryBreakdown(
           p_building_ids: scope.buildingIds,
         },
       );
+      // hermes-parity:end business-performance
       if (error) throw error;
       return rows(data, "category_breakdown").map(parseCategoryRow);
     },

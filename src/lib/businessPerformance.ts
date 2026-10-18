@@ -74,12 +74,14 @@ export interface BusinessPerformanceSnapshotAggregate {
   occupancy_pct: number | null;
 }
 
+// hermes-parity:begin business-performance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export interface BusinessPerformanceAuthorizedBuilding {
   id: string;
   name: string;
   restricted_allowed: boolean;
   analysis_provenance: Record<string, unknown>;
 }
+// hermes-parity:end business-performance
 
 export interface BusinessPerformanceOrganization {
   id: string;
@@ -196,6 +198,7 @@ function monthEnd(month: string): string {
   return `${month}-${String(day).padStart(2, "0")}`;
 }
 
+// hermes-parity:begin business-performance
 export function parseBusinessPerformanceBasis(value: unknown): BusinessPerformanceBasis {
   if (value !== "ACCRUAL" && value !== "VOUCHER_DATE") {
     throw new BusinessPerformanceDataError(
@@ -205,6 +208,7 @@ export function parseBusinessPerformanceBasis(value: unknown): BusinessPerforman
   }
   return value;
 }
+// hermes-parity:end business-performance
 
 export function parseBusinessPerformanceUuid(value: unknown, field: string): string {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -295,6 +299,7 @@ export function resolveAuthorizedBuildingIds(
   );
 }
 
+// hermes-parity:begin business-performance
 export function canViewRestrictedBusinessPerformance(
   organization: BusinessPerformanceOrganization | null | undefined,
   selectedBuildingIds: readonly string[] | null | undefined,
@@ -323,6 +328,7 @@ export function canViewRestrictedBusinessPerformance(
     )
   );
 }
+// hermes-parity:end business-performance
 
 export function parseFiniteNumber(value: unknown, field: string): number {
   const parsed =

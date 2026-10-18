@@ -15,6 +15,7 @@ export const useAssetWarehouses = (buildingId?: string) => {
   return useQuery({
     queryKey: ["asset_warehouses", buildingId],
     queryFn: async () => {
+      // hermes-parity:begin w2c-warehouses — Hermes chép vùng này (public.warehouses_list_v1)
       let query = supabase
         .from("asset_warehouses")
         .select("*")
@@ -23,6 +24,7 @@ export const useAssetWarehouses = (buildingId?: string) => {
       if (buildingId) {
         query = query.eq("building_id", buildingId);
       }
+      // hermes-parity:end w2c-warehouses
 
       const { data, error } = await query;
 

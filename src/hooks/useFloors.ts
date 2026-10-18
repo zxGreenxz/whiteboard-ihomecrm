@@ -16,6 +16,7 @@ export const useFloors = (buildingId?: string) => {
   return useQuery({
     queryKey: ["floors", buildingId],
     queryFn: async () => {
+      // hermes-parity:begin w2d-floors — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = supabase
         .from("floors")
         .select("*")
@@ -34,6 +35,7 @@ export const useFloors = (buildingId?: string) => {
 
       if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
       return data;
+      // hermes-parity:end w2d-floors
     },
   });
 };

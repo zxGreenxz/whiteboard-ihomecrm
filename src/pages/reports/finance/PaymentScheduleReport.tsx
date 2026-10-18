@@ -34,6 +34,7 @@ export default function PaymentScheduleReport() {
 
   // Group invoices by room → "đã lên hóa đơn đến ngày" = latest billing_period_end per room
   const rows = useMemo(() => {
+    // hermes-parity:begin finance-payment-schedule
     let list = invoices as any[];
     if (buildingIds.length > 0) {
       list = list.filter((inv) => buildingIds.includes(inv.rooms?.buildings?.id));
@@ -66,6 +67,7 @@ export default function PaymentScheduleReport() {
     return arr.sort((a, b) =>
       new Date(b.billedThrough).getTime() - new Date(a.billedThrough).getTime()
     );
+    // hermes-parity:end finance-payment-schedule
   }, [invoices, buildingIds, startDate, endDate]);
 
   const totalCount = rows.length;

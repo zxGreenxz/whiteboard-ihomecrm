@@ -58,6 +58,7 @@ export function ExpenseTab({ filters }: Props) {
 
   // Top 10 khoản chi lớn tháng chọn (hook sort theo ngày → lấy 100 dòng rồi
   // client-sort theo số tiền)
+  // hermes-parity:begin finance-top-expenses — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const ieFilters: IncomeExpenseFilters = useMemo(
     () => ({
       building_ids: buildingIds.length ? buildingIds : undefined,
@@ -73,7 +74,9 @@ export function ExpenseTab({ filters }: Props) {
     page: 1,
     pageSize: 100,
   });
+  // hermes-parity:end finance-top-expenses
   const { data: vouchers, isLoading: vLoading } = reportQuery1;
+  // hermes-parity:begin finance-top-expenses
   const topVouchers = useMemo(
     () =>
       [...(vouchers?.data ?? [])]
@@ -81,6 +84,7 @@ export function ExpenseTab({ filters }: Props) {
         .slice(0, 10),
     [vouchers],
   );
+  // hermes-parity:end finance-top-expenses
 
   return (
     <QueryRegion label="phân tích tài chính" queries={[reportQuery0, reportQuery1]} loading={<ChartSkeleton label="phân tích tài chính" height={320} onRetry={() => refetchStartedSources([reportQuery0, reportQuery1])} />}>

@@ -18,6 +18,7 @@ export interface MaterialUsageWithJob extends MaterialUsageWithItems {
 export const useMaterialUsages = () => useQuery({
   queryKey: ['material-usages', 'list'],
   queryFn: async (): Promise<MaterialUsageWithJob[]> => {
+    // hermes-parity:begin w2c-material-usages — Hermes chép vùng này (public.materials_usages_v1)
     const { data, error } = await supabase.from('material_usages' as any).select('*, items:material_usage_items(*, material:materials(id,name,unit)), job:jobs(id,code,title)').order('usage_date', { ascending: false }).order('created_at', { ascending: false });
     if (error) throw error;
     if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách phiếu xuất. Tải lại để kiểm tra.');
@@ -30,6 +31,7 @@ export const useMaterialUsages = () => useQuery({
       const nameMap = new Map((profiles as unknown as Array<{ id: string; full_name: string | null }>).map(profile => [profile.id, profile.full_name]));
       rows.forEach(row => { row.creator = row.user_id ? { full_name: nameMap.get(row.user_id) ?? null } : null; });
     }
+    // hermes-parity:end w2c-material-usages
     return rows;
   },
 });

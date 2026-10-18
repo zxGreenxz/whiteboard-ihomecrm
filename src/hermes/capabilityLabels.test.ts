@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HERMES_ACTION_CAPABILITIES, HERMES_READ_CAPABILITIES } from '../../infra/hermes-broker/capability-contract.mjs';
+import { W2_HERMES_ONLY_KEYS, W2_READ_KEY_LIST } from '../../infra/hermes-broker/wave2-registry.mjs';
 import { VISIBLE_PAGE_GROUPS, featureKey } from '@/lib/permissionPages';
 import { hermesCapabilityHint, hermesCapabilityLabel } from './capabilityLabels';
 
@@ -20,5 +21,17 @@ describe('Hermes capability labels', () => {
     expect(hermesCapabilityHint('income_expenses.approve')).toContain('không có công cụ duyệt');
     expect(hermesCapabilityHint('toString')).toBeUndefined();
     expect(hermesCapabilityLabel('constructor')).toBe('constructor');
+  });
+  it('wave 2: every new read key is a CRM catalog key with a Hermes hint, or a labelled Hermes-only key', () => {
+    for (const key of W2_READ_KEY_LIST) {
+      expect(HERMES_READ_CAPABILITIES.includes(key), key).toBe(true);
+      if (W2_HERMES_ONLY_KEYS.includes(key)) {
+        expect(catalog.has(key), key).toBe(false);
+        expect(hermesCapabilityLabel(key), key).not.toBe(key);
+      } else {
+        expect(catalog.has(key), key).toBe(true);
+        expect(hermesCapabilityHint(key), key).toMatch(/^Hermes: /);
+      }
+    }
   });
 });

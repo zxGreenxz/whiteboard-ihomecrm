@@ -113,6 +113,7 @@ export interface UpdateInvoiceData {
 // Shared select string for invoice queries
 // =============================================
 
+// hermes-parity:begin invoice-detail — Hermes chép vùng này (public.invoice_detail_v1)
 const INVOICE_LIST_SELECT = `
   *,
   contract:contracts!invoices_contract_id_fkey (
@@ -128,6 +129,7 @@ const INVOICE_LIST_SELECT = `
   payments (id, amount, payment_date, payment_method, notes, receipt_image_url, collection_id, reversed_at)
   ,invoice_adjustments (id, organization_id, invoice_id, revision, idempotency_key, reason, before_snapshot, after_snapshot, before_total, after_total, delta, adjusted_by, adjusted_at, review_status, checked_by, checked_at)
 `;
+// hermes-parity:end invoice-detail
 
 // =============================================
 // Pagination params
@@ -234,12 +236,14 @@ export const useInvoice = (invoiceId?: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // hermes-parity:begin invoice-detail
       const { data, error } = await (supabase
         .from('invoices')
         .select(INVOICE_LIST_SELECT) as any)
         .eq('id', invoiceId)
         .is('deleted_at', null)
         .single();
+      // hermes-parity:end invoice-detail
 
       if (error) throw error;
       if(!data || data.id!==invoiceId)throw new TypeError('Chưa đọc được hóa đơn cần xem.');

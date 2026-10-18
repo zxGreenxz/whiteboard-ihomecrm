@@ -51,6 +51,7 @@ export const useThuTienInvoices = (billing_month: string) =>
       // Filter y hệt useInvoices({billing_month}) mặc định: bỏ đã xoá + đã huỷ.
       // PAGED: nguồn DUY NHẤT của /thu-tien — vượt 1000 HĐ/kỳ mà không phân
       // trang là phòng biến mất khỏi grid + báo cáo cộng thiếu (bug cap-1000).
+      // hermes-parity:begin thu-tien-collection — Hermes chép vùng này (public.thu_tien_collection_v1)
       const data = await fetchAllRows<InvoiceWithRelations>(
         (from, to) =>
           (supabase
@@ -64,6 +65,7 @@ export const useThuTienInvoices = (billing_month: string) =>
             .range(from, to),
         { label: 'thu-tien.invoices', throwOnError: true },
       );
+      // hermes-parity:end thu-tien-collection
       // không nuốt lỗi (pattern perf round 06-30): null từ fetchAllRows = lỗi query
       if (data === null) throw new Error('Lỗi tải hoá đơn kỳ thu tiền');
       return data.map(invoice=>{
@@ -79,7 +81,9 @@ export const useThuTienInvoices = (billing_month: string) =>
             // Khoản đã hoàn tác (reversed_at) không còn là tiền đã thu — bỏ ngay ở
             // nguồn như useInvoices, nếu không "đã thu hôm nay"/theo ngày
             // (paymentsInRange, paidAsOf…) và báo cáo thu vẫn cộng nó.
+            // hermes-parity:begin thu-tien-collection — Hermes chép bộ lọc này (thu_tien_collection_v1: payments reversed_at IS NULL)
             .filter(payment=>!(payment as typeof payment & { reversed_at?: string | null }).reversed_at),
+            // hermes-parity:end thu-tien-collection
         };
       });
     },

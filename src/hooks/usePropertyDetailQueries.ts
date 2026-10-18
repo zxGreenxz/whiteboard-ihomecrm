@@ -68,6 +68,7 @@ export type BuildingDetailInvoice = {
 };
 
 
+// hermes-parity:begin w2d-room-detail — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export function useRoomDetailContracts(id:string){return useQuery({
  queryKey:['room-detail-contracts',id],enabled:!!id,meta:{feedback:'inline'},queryFn:async()=>{
  const {data,error}=await supabase.from('contracts').select('id,contract_number,start_date,end_date,status,rent_price,tenant:tenants(id,full_name,phone)').eq('room_id',id).is('deleted_at',null).order('created_at',{ascending:false});
@@ -78,6 +79,7 @@ export function useRoomDetailTenants(id:string){return useQuery({
  const {data,error}=await supabase.from('contracts').select('tenant:tenants(id,full_name,phone,email,status)').eq('room_id',id).in('status',['ACTIVE']).is('deleted_at',null);
  if(error)throw error;return rows<{tenant:RoomDetailTenant|null}>(data).flatMap(row=>row.tenant?[row.tenant]:[]);
  }});}
+// hermes-parity:end w2d-room-detail
 export function useRoomDetailInvoices(id:string){return useQuery({
  queryKey:['room-detail-invoices',id],enabled:!!id,meta:{feedback:'inline'},queryFn:async()=>{
  const {data,error}=await supabase.from('invoices').select('id,invoice_number,due_date,total_amount,status,contract:contracts!inner(room_id,tenant:tenants(full_name))').eq('contract.room_id',id).is('deleted_at',null).order('created_at',{ascending:false}).limit(50);
