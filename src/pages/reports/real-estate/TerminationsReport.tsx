@@ -52,7 +52,7 @@ export default function TerminationsReport() {
 
   const exportData = terminations.map(term => ({
     "Mã HĐ": term.contract_number || term.id.slice(0, 8),
-    "Khách hàng": term.tenants?.full_name || "N/A",
+    "Khách hàng": term.customer?.full_name || "N/A",
     "Căn hộ": `${term.rooms?.buildings?.name} - ${term.rooms?.room_number}`,
     "Ngày thanh lý": format(new Date(term.actual_end_date || term.end_date), "dd/MM/yyyy", { locale: vi }),
     "Lý do": term.termination_reason || term.termination_type || "N/A",
@@ -112,8 +112,8 @@ export default function TerminationsReport() {
                         <TableCell className="font-medium">{term.contract_number || term.id.slice(0, 8)}</TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            <div className="font-medium">{term.tenants?.full_name || "N/A"}</div>
-                            <div className="text-muted-foreground">{term.tenants?.phone || "-"}</div>
+                            <div className="font-medium">{term.customer?.full_name || "N/A"}</div>
+                            <div className="text-muted-foreground">{term.customer?.phone || "-"}</div>
                           </div>
                         </TableCell>
                         <TableCell>
