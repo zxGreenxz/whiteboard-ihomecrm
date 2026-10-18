@@ -1103,6 +1103,133 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói B (sửa sau review độc lập PR #208), 18/10/2026",
       "sha256": "33f5318d55ab6f9f0ffae3f97e885f6e7e371ade3b119f073fe56da8940f3609"
+    },
+    "supabase/migrations/20261018030100_hermes_w2c_shared_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030100_hermes_w2c_shared_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.safe_text_v1 / utc_instant_v1 / json_number_v1 / vehicles_list_v1 / materials_items_v1 / materials_categories_v1 / materials_purchases_v1 / materials_usages_v1 / materials_adjustments_v1 / warehouses_list_v1 / notifications_inbox_v1 / salary_is_admin_v1 / salary_locked_month_v1 / salary_locked_lines_v1 (hàm dùng chung web + trợ lý, INVOKER + RLS; helper DEFINER duy nhất salary_is_admin_v1)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object trên — sinh 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — hàm dùng chung public.<miền>_<báo cáo>_v1), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (--env test --apply: hai lượt ROLLBACK đạt, backup, biên nhận bien-nhan-backup). Áp production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.safe_text_v1",
+        "function:public.utc_instant_v1",
+        "function:public.json_number_v1",
+        "function:public.vehicles_list_v1",
+        "function:public.materials_items_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C, 18/10/2026",
+      "sha256": "8ff45a533ffc3b8b7cd0c2f9caa35fe8947d68cca85a73b8f6a37907799b0839"
+    },
+    "supabase/migrations/20261018030200_hermes_w2c_ops_read_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030200_hermes_w2c_ops_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2c_catalog_v1 (bảng 20 báo cáo, dòng đầu như nền) / app_private.hermes_w2c_read_v1 (INVOKER, search_path=pg_catalog,public, không gọi app_private.*) — thay thân khung của 20261018000000/20261018000600"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 2 object trên — sinh 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — bảng báo cáo + hàm đọc của gói; thay bản thử 20261018030000 chưa merge), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp TEST qua lane (--env test --apply: hai lượt ROLLBACK đạt, backup, biên nhận bien-nhan-backup). Áp production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2c_catalog_v1",
+        "function:app_private.hermes_w2c_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C, 18/10/2026",
+      "sha256": "e0e1959242e55c57546cd7c73fa259872723cb95391876ed02c35127c84c8027"
+    },
+    "supabase/migrations/20261018030300_hermes_w2c_shared_org_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030300_hermes_w2c_shared_org_v1.sql",
+          "trich_doan": "DROP FUNCTION IF EXISTS + CREATE OR REPLACE FUNCTION public.vehicles_list_v1 / materials_items_v1 / materials_categories_v1 / materials_purchases_v1 / materials_usages_v1 / materials_adjustments_v1 / warehouses_list_v1 / salary_locked_month_v1 — thân chép nguyên 20261018030100, thêm cột organization_id (cột nguồn) ở cuối kiểu trả về; ACL chỉ authenticated"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object trên — dựng 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — theo rào công ty nền 20261018000700: hàm dùng chung trả cột organization_id để lớp gọi kiểm lại công ty), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY (kể cả bản đầu 20261018030100), không phải vì bị DROP. DROP chỉ nhằm đổi kiểu trả về của hàm do chính gói tạo ở 030100, chưa phát hành, chưa màn web nào gọi; tạo lại ngay trong cùng file. CHƯA áp TEST (phiên cloud không có mật khẩu DB). Mục provenance dựng offline bằng classify của generator với catalog rỗng cho object mới — phiên local chạy provenance:generate để xác nhận. Áp TEST rồi production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.vehicles_list_v1",
+        "function:public.materials_items_v1",
+        "function:public.materials_categories_v1",
+        "function:public.materials_purchases_v1",
+        "function:public.materials_usages_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C (rào công ty), 18/10/2026",
+      "sha256": "d41b3d3afaa93ba7e699c19d490f2b0ac1b90b4e4b4204e9a83955d868d07d23"
+    },
+    "supabase/migrations/20261018030400_hermes_w2c_org_fence_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030400_hermes_w2c_org_fence_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2c_read_v1 (INVOKER, search_path=pg_catalog,public) — thân chép 20261018030200, cộng organizationId cột nguồn vào mọi hàng báo cáo công ty (hàm dùng chung: organization_id; Network Center: buildings.organization_id dưới RLS người hỏi)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — dựng 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — hàm đọc theo rào công ty nền 20261018000700), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. CHƯA áp TEST (phiên cloud không có mật khẩu DB). Mục provenance dựng offline bằng classify của generator với catalog rỗng cho object mới — phiên local chạy provenance:generate để xác nhận. Áp TEST rồi production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2c_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C (rào công ty), 18/10/2026",
+      "sha256": "b25442562f7d2c6dbc8f7e5393d7adc9197637ac771eb61a1a14289e752a7995"
+    },
+    "supabase/migrations/20261018030500_hermes_w2c_shared_review_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030500_hermes_w2c_shared_review_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.safe_text_v1 / utc_instant_v1 / json_number_v1 (guard current_user, plpgsql STABLE) / vehicles_list_v1 (rào tên chủ xe như tên khách); DROP + CREATE public.materials_usages_v1 (thêm total_cost_sum trước LIMIT); COMMENT ON FUNCTION public.salary_is_admin_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 5 object trên — dựng 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — sửa hàm dùng chung sau review độc lập PR #204), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY (kể cả bản đầu 20261018030100), không phải vì bị DROP. DROP chỉ nhằm đổi kiểu trả về của materials_usages_v1 do chính gói tạo, chưa phát hành, chưa màn web nào gọi; tạo lại ngay trong cùng file. CHƯA áp TEST (phiên cloud không có mật khẩu DB). Mục provenance dựng offline bằng classify của generator với catalog rỗng cho object mới — phiên local chạy provenance:generate để xác nhận. Áp TEST rồi production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.safe_text_v1",
+        "function:public.utc_instant_v1",
+        "function:public.json_number_v1",
+        "function:public.vehicles_list_v1",
+        "function:public.materials_usages_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C (sửa sau review PR #204), 18/10/2026",
+      "sha256": "15ea47e4ed6faa0e3d11ebb58281801441a745df80df717b90b4a6b960897dca"
+    },
+    "supabase/migrations/20261018030600_hermes_w2c_review_read_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018030600_hermes_w2c_review_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2c_read_v1 (INVOKER, search_path=pg_catalog,public) — thân chép 20261018030400, cộng cắt tối đa 2000 hàng theo thứ tự ổn định (tổng thật ở summary) và tổng chi phí phiếu xuất toàn nguồn"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects 1 object trên — dựng 18/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (Hermes đọc đầy đủ đợt 2, Gói C — hàm đọc sửa sau review độc lập PR #204), chưa đi qua lane apply production — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. CHƯA áp TEST (phiên cloud không có mật khẩu DB). Mục provenance dựng offline bằng classify của generator với catalog rỗng cho object mới — phiên local chạy provenance:generate để xác nhận. Áp TEST rồi production qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2c_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói C (sửa sau review PR #204), 18/10/2026",
+      "sha256": "38bbe1c3b7848e1b8cbb2ecfdcfbcb85821eb36b693d19af87490f46ca096403"
     }
   }
 }

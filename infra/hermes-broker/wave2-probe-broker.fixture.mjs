@@ -41,7 +41,9 @@ try {
   const otherList = (await other.broker.listTools(other.token)).tools.map(tool => tool.name);
   const allowed = broker(['vehicles.view']), allowedOutcome = await outcome(allowed.broker.callTool(allowed.token, 'crm_read_report', args));
   const none = broker(['customers.view']), noneList = (await none.broker.listTools(none.token)).tools.map(tool => tool.name);
-  console.log(JSON.stringify({ reports: Object.keys(W2.reports), fullCount: listed.length, fullBytes: Buffer.byteLength(JSON.stringify({ tools: listed })),
+  // Hook chỉ thay sổ gói A; sổ gói khác (đã có báo cáo thật) giữ nguyên ⇒ chỉ in báo cáo gói A.
+  const reportsA = Object.keys(W2.reports).filter(reportId => W2.reports[reportId].package === 'a');
+  console.log(JSON.stringify({ reports: reportsA, fullCount: listed.length, fullBytes: Buffer.byteLength(JSON.stringify({ tools: listed })),
     fullNames: listed.map(tool => tool.name), otherList, denied, deniedSeen: other.seen, allowed: allowedOutcome, allowedSeen: allowed.seen,
     expectedInput: domainInput('report', args), noneList }));
 } finally { for (const scope of scopes) await scope.close(); }

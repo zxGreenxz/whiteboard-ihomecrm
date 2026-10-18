@@ -567,6 +567,376 @@
       ]
     },
     {
+      "id": "w2c-vehicles",
+      "kind": "mirrored",
+      "description": "Danh sách /vehicles: xe chưa xoá, mới tạo trước, tìm biển số/tên xe/chủ xe/tên khách, lọc loại/toà/phòng/khách/dòng xe/màu, phân trang (crm_read_report report=vehicles).",
+      "web": [
+        {
+          "path": "src/hooks/useVehicles.ts",
+          "region": "w2c-vehicles",
+          "sha256": "45c1e06b4665b9f5884fbeb6abebf39948e119242e795ba5b1e8c45834e1dcf6"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.vehicles_list_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "vehicles_list_v1"
+          ],
+          "note": "vehicles"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.vehicles_list_v1"
+        }
+      ],
+      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên chủ xe và tên/SĐT khách chỉ hiện (và chỉ tìm được) khi hồ sơ khách của xe đọc được dưới RLS customers và kết nối có customers.view ở toà đó — web hiện tên chủ xe của mọi xe đọc được (review PR #204); Hermes chưa lọc theo dòng xe/màu."
+    },
+    {
+      "id": "w2c-materials",
+      "kind": "mirrored",
+      "description": "Danh sách /materials: vật tư chưa xoá, sắp tên rồi id, tìm tên/mã/mô tả, lọc danh mục, sắp hết = tồn <= mức đặt lại, badge sắp hết (crm_read_report report=materials).",
+      "web": [
+        {
+          "path": "src/hooks/useMaterials.ts",
+          "region": "w2c-materials",
+          "sha256": "fcd3dc41146de20d24a8c1f203bac7b5442aac1d1d80c8170884247832ba14d3"
+        },
+        {
+          "path": "src/components/materials/MaterialsListContent.tsx",
+          "region": "w2c-materials",
+          "sha256": "741471f59f74eab407729a5b9a5b926cc0c8c78cebebd0fc8b9cd0c51a6762a4"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.materials_items_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "materials_items_v1"
+          ],
+          "note": "materials"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.materials_items_v1"
+        }
+      ],
+      "notes": "Web lọc tìm kiếm/sắp hết ở trình duyệt (toLowerCase().includes); Hermes lọc trong SQL (lower + strpos), cùng kết quả. Cần kết nối Toàn tổ chức."
+    },
+    {
+      "id": "w2c-material-categories",
+      "kind": "mirrored",
+      "description": "Danh mục vật tư (/materials, bảng danh mục): sắp theo tên; Hermes thêm số vật tư đang dùng danh mục (crm_read_report report=material_categories).",
+      "web": [
+        {
+          "path": "src/hooks/useMaterialCategories.ts",
+          "region": "w2c-material-categories",
+          "sha256": "c34bf75914fc56983ceeb42619b4c22b2f6b636ca341f5176c1a36d680aa495c"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.materials_categories_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "materials_categories_v1"
+          ],
+          "note": "material_categories"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.materials_categories_v1"
+        }
+      ]
+    },
+    {
+      "id": "w2c-material-purchases",
+      "kind": "mirrored",
+      "description": "Phiếu nhập /materials/purchases: mới trước (ngày, giờ tạo), lọc từ-đến ngày, kèm dòng vật tư và nhà cung cấp (crm_read_report report=material_purchases).",
+      "web": [
+        {
+          "path": "src/hooks/useMaterialPurchases.ts",
+          "region": "w2c-material-purchases",
+          "sha256": "82c91531fe68cddb68dc4b05d58d939fd3665f2baaf0cd5bcc8c2c40e948e58b"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.materials_purchases_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "materials_purchases_v1"
+          ],
+          "note": "material_purchases"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.materials_purchases_v1"
+        }
+      ],
+      "notes": "Tên nhà cung cấp chỉ hiện khi kết nối có suppliers.view (web theo RLS suppliers.view); lọc theo nhà cung cấp chỉ khi nhà cung cấp hiện được."
+    },
+    {
+      "id": "w2c-material-usages",
+      "kind": "mirrored",
+      "description": "Phiếu xuất /materials/usages: mới trước (ngày xuất, giờ tạo), người tạo theo profiles, tổng SL và thành tiền = Σ SL x giá lúc xuất (crm_read_report report=material_usages).",
+      "web": [
+        {
+          "path": "src/hooks/useMaterialUsages.ts",
+          "region": "w2c-material-usages",
+          "sha256": "1c10d59dcab718fd974a0e8749b1552cc37488d215f778111a48d9fd5abcb6b4"
+        },
+        {
+          "path": "src/components/materials/MaterialUsagesContent.tsx",
+          "region": "w2c-material-usages",
+          "sha256": "96f9949beabd1d4acec6aefd1d16a238f602726a86967e6d2fc9f8963c8ba585"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.materials_usages_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "materials_usages_v1"
+          ],
+          "note": "material_usages"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.materials_usages_v1"
+        }
+      ],
+      "notes": "Mã/tên công việc chỉ hiện khi việc thuộc toà mà kết nối được xem công việc (tasks.view); web chỉ theo RLS jobs. Tổng SL/thành tiền web tính ở trình duyệt, Hermes tính trong SQL."
+    },
+    {
+      "id": "w2c-material-adjustments",
+      "kind": "mirrored",
+      "description": "Phiếu kiểm kê/điều chỉnh /materials/adjustments: mới trước (ngày, giờ tạo), loại IN/OUT, kèm dòng vật tư (crm_read_report report=material_adjustments).",
+      "web": [
+        {
+          "path": "src/hooks/useMaterialAdjustments.ts",
+          "region": "w2c-material-adjustments",
+          "sha256": "36f5b6c3d2e47acc194e6af00b11e6632ba29013bd0a68c81d999f5978c54301"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.materials_adjustments_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "materials_adjustments_v1"
+          ],
+          "note": "material_adjustments"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.materials_adjustments_v1"
+        }
+      ]
+    },
+    {
+      "id": "w2c-warehouses",
+      "kind": "mirrored",
+      "description": "Kho tài sản /settings/categories/warehouses: sắp theo tên, lọc theo toà (crm_read_report report=warehouses).",
+      "web": [
+        {
+          "path": "src/hooks/useAssetWarehouses.ts",
+          "region": "w2c-warehouses",
+          "sha256": "5203abe6667f11d0bb65a08547f335c7f918d669182078c3f1bd7f8da27b9dea"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.warehouses_list_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "warehouses_list_v1"
+          ],
+          "note": "warehouses"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.warehouses_list_v1"
+        }
+      ],
+      "notes": "Hermes tự kiểm warehouses.view theo toà (kho không gắn toà cần quyền cấp tổ chức) và thêm ô tìm tên/vị trí mà web không có."
+    },
+    {
+      "id": "w2c-notifications",
+      "kind": "mirrored",
+      "description": "Hộp thông báo /notifications: thông báo IN_APP của chính người hỏi, mới trước, trần 200, chưa đọc = status PENDING (crm_read_report report=notifications).",
+      "web": [
+        {
+          "path": "src/hooks/useNotifications.ts",
+          "region": "w2c-notifications",
+          "sha256": "274d0b0ce72b87c7684c907336c2f935f0287d72a209ecfc8c71a13901896cc7"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.notifications_inbox_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "notifications_inbox_v1"
+          ],
+          "note": "notifications"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.notifications_inbox_v1"
+        }
+      ],
+      "notes": "Hermes chặt hơn web: web lấy thông báo thường của MỌI công ty và LIFECYCLE của công ty đang chọn; Hermes chỉ công ty của kết nối (và dòng chưa gắn công ty không phải LIFECYCLE). Thêm lọc loại và chỉ-chưa-đọc."
+    },
+    {
+      "id": "w2c-salary-locked",
+      "kind": "mirrored",
+      "description": "Lương quản lý THÁNG ĐÃ CHỐT: /finance/salary (admin trang lương thấy mọi người, còn lại chỉ dòng của mình) và /finance/my-salary (trần tháng nhân viên tự xem) — salary_monthly LOCKED, bảng kê đã chốt, thưởng/trừ tay (crm_read_report report=salary_month, my_salary).",
+      "web": [
+        {
+          "path": "src/hooks/useManagerSalary.ts",
+          "region": "w2c-salary-locked",
+          "sha256": "3002062931adc176df730fae141c175f0991fc737ad410b190fa88461885dd2f"
+        },
+        {
+          "path": "src/pages/finance/MySalaryPage.tsx",
+          "region": "w2c-salary-locked",
+          "sha256": "3756497649f83849f467c3567f72481c710045647ee2c4b934191c61cf2775a5"
+        },
+        {
+          "path": "src/pages/finance/ManagerSalaryPage.tsx",
+          "region": "w2c-salary-locked",
+          "sha256": "69f0db4c2c87a93207f81b4e9fed182d817877c89421d16058fd6a810e13f5c8"
+        },
+        {
+          "path": "src/lib/managerSalary.ts",
+          "region": "w2c-salary-locked",
+          "sha256": "63f9a6f0f9e047eec12dd0e67a5f39d89cdc35aed50a0ebfca12ee514fa7f423"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.salary_locked_month_v1"
+        },
+        {
+          "sql": "public.salary_locked_lines_v1"
+        },
+        {
+          "sql": "public.salary_is_admin_v1"
+        },
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "salary_locked_month_v1",
+            "salary_locked_lines_v1",
+            "salary_is_admin_v1",
+            "salary_staff_months"
+          ],
+          "note": "my_salary, salary_month"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.salary_locked_month_v1"
+        }
+      ],
+      "notes": "Hermes CHỈ đọc tháng đã chốt; tháng chưa chốt web tính ở trình duyệt (useManagerSalary.ts) nên Hermes trả \"không có số\", không đoán. Khác web: trang hiện lương cứng/đầu tư/ứng SỐNG kể cả tháng đã chốt, Hermes dùng số đã chốt (base_salary, investment_profit, advances_total); \"Đã trả\" là cột sống. Trần tháng (isStaffMonthVisible/latestVisibleStaffYm/staffCeilingYm) được chép sang SQL trong hermes_w2c_read_v1."
+    },
+    {
+      "id": "w2c-salary-staff-months",
+      "kind": "rpc",
+      "description": "Trần tháng nhân viên tự xem lương (/finance/my-salary): Hermes gọi cùng RPC salary_staff_months như useStaffDisplayMonth rồi áp luật trần (crm_read_report report=my_salary, salary_month).",
+      "rpc": [
+        "salary_staff_months"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useManagerSalary.ts",
+          "rpc": "salary_staff_months"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "salary_staff_months"
+          ],
+          "note": "my_salary, salary_month: trần tháng"
+        }
+      ],
+      "notes": "Luật dùng kết quả RPC (khoá YYYY-MM truthy như JS, lùi tối đa 13 tháng) nằm trong mục w2c-salary-locked (vùng managerSalary.ts và useStaffDisplayMonth)."
+    },
+    {
+      "id": "w2c-network-center",
+      "kind": "rpc",
+      "description": "Network Center (/network-center): Hermes gọi thẳng các RPC đọc mà trang web gọi qua SupabaseNetworkCenterRepository (crm_read_report report=network_fleet, network_building, network_ports, network_clients, network_aruba, network_h196a, network_commands, network_audit, network_backups, network_config_diff).",
+      "rpc": [
+        "network_center_list_fleet_v1",
+        "network_center_get_building_v1",
+        "network_center_list_clients_v1",
+        "network_center_list_aruba_v1",
+        "network_center_list_h196a_v1",
+        "network_center_list_commands_v1",
+        "network_center_list_audit_v1",
+        "network_center_compare_snapshots_v1"
+      ],
+      "web": [
+        {
+          "path": "src/lib/network-center/supabaseRepository.ts",
+          "region": "w2c-network-center",
+          "sha256": "e59f8a0f92b3faf10b4ae6edefec4db933081de5671cdeb7bd550ee206c0529e"
+        }
+      ],
+      "successorGuard": [
+        "public.network_center_list_fleet_v1",
+        "public.network_center_get_building_v1",
+        "public.network_center_list_clients_v1",
+        "public.network_center_list_aruba_v1",
+        "public.network_center_list_h196a_v1",
+        "public.network_center_list_commands_v1",
+        "public.network_center_list_audit_v1",
+        "public.network_center_compare_snapshots_v1"
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_w2c_read_v1",
+          "calls": [
+            "network_center_list_fleet_v1",
+            "network_center_get_building_v1",
+            "network_center_list_clients_v1",
+            "network_center_list_aruba_v1",
+            "network_center_list_h196a_v1",
+            "network_center_list_commands_v1",
+            "network_center_list_audit_v1",
+            "network_center_compare_snapshots_v1"
+          ],
+          "note": "network_*"
+        },
+        {
+          "path": "infra/hermes-broker/wave2-c-contract.mjs",
+          "contains": "crm.network_center_list_fleet_v1"
+        }
+      ],
+      "notes": "Web gọi RPC qua hàm bọc this.call(\"tên_rpc\", …) nên webCalls (chỉ nhận .rpc(\"tên\")) không áp dụng: chuông là hash vùng web quanh từng lời gọi + successorGuard (CRM có network_center_*_vN mới hơn). Khác web: khách hotspot chỉ hiện khi khách đọc được dưới RLS customers VÀ kết nối có customers.view ở toà đó (RPC web JOIN customers không kiểm); Hermes đọc tiếp theo con trỏ (clients/commands/audit trang 100 tới 2000 dòng, Aruba/H196A trang 250) còn trang web chỉ xem trang đầu 100 dòng; Hermes chỉ trả \"chính tôi hay không\" cho người thực hiện lệnh. Kích thước trang web (NETWORK_CENTER_PAGE_SIZE… trong src/lib/network-center/dto.ts) chưa nằm trong vùng đánh dấu."
+    },
+    {
       "id": "cashbook-daily-cash-flow",
       "kind": "rpc",
       "description": "Sổ quỹ theo ngày và Dòng tiền năm (crm_read_report report=cashbook_daily, cash_flow): Hermes gọi cùng cashbook_opening_balance + cashflow_by_day như useCashBook, rồi chép phép tính của hai trang: tồn đầu/cuối cộng dồn từng ngày, ngày không phát sinh = 0, mặc định đầu tháng → hôm nay (DailyCashbookReport) và gộp 12 tháng + 4 quý của cả năm, mặc định năm nay (CashFlowReport).",

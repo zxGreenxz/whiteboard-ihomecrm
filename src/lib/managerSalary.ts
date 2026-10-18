@@ -437,6 +437,7 @@ export function autoStaffYm(curYm: string, prevLocked: boolean): string {
 
 // Một tháng có hiển thị cho nhân viên không: override (admin) ưu tiên; nếu không
 // có override thì hiện mọi tháng ≤ mốc auto (so sánh chuỗi 'YYYY-MM' hợp lệ).
+// hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (app_private.hermes_w2c_read_v1: trần tháng nhân viên, lùi tối đa 13 tháng)
 export function isStaffMonthVisible(
   ym: string,
   autoYm: string,
@@ -460,6 +461,7 @@ export function latestVisibleStaffYm(
   }
   return autoYm;
 }
+// hermes-parity:end w2c-salary-locked
 
 // Engine lương áp cho MỘT kỳ. v5 chỉ đúng từ tháng có dữ liệu chấm công v5
 // (`system_v5.effective_from`); tháng trước mốc đó phải rơi về legacy — nếu không
@@ -500,6 +502,8 @@ export function isUnqualifiedContractRow(r: SalLedgerRow): boolean {
 // Trước đây mặc định lùi 1 tháng cho tới khi tháng trước được CHỐT — hệ quả là
 // nhân viên không xem được lương tháng đang chạy của chính mình.
 // Admin vẫn chặn/mở từng tháng qua staffMonths (override luôn thắng).
+// hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (app_private.hermes_w2c_read_v1: trần = tháng hiện tại khi không có khoá)
 export function staffCeilingYm(curYm: string, overrides: Record<string, boolean>): string {
   return latestVisibleStaffYm(curYm, curYm, overrides);
 }
+// hermes-parity:end w2c-salary-locked

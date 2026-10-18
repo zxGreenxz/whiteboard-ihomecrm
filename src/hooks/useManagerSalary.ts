@@ -110,6 +110,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const period: SalPeriod = { periodMonth, label: `Tháng ${mm}`, year: yy, lockedAt: null };
 
       // 1) Cấu hình quản lý hưởng lương (hiệu lực trong tháng)
+      // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: cấu hình quản lý hiệu lực đầu tháng)
       const { data: cfgRaw , error: sourceError1 } = await (supabase
         .from("manager_salary_config")
         .select("*") as any)
@@ -121,6 +122,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const configs = ((cfgRaw || []) as any[]).filter(
         (c) => !c.effective_to || c.effective_to >= start
       );
+      // hermes-parity:end w2c-salary-locked
       if (configs.length === 0) return { managers: [], period, ownerId: "", extras: EMPTY_SALARY_EXTRAS };
 
       const staffIds: string[] = configs.map((c) => c.staff_id);
@@ -197,7 +199,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       ] = await Promise.all([
         (supabase.from("profiles").select("id, full_name") as any).in("id", staffIds),
         supabase.rpc("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: undefined }),
+        // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: đọc salary_monthly của kỳ)
         (supabase.from("salary_monthly").select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
+        // hermes-parity:end w2c-salary-locked
         (supabase.from("shareholders").select("id, auth_user_id") as any).in("auth_user_id", staffIds),
         (supabase.from("profit_monthly").select("status, period_month") as any).eq("period_month", periodMonth),
         (supabase
@@ -330,6 +334,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const monthlyByStaff = new Map<string, any>(
         ((monthlyRes.data || []) as any[]).map((r) => [r.staff_id, r])
       );
+      // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_lines_v1: bảng kê đã chốt + thưởng/trừ tay)
       const lockedMonthlyIds = ((monthlyRes.data || []) as any[])
         .filter((r) => r.status === "LOCKED")
         .map((r) => r.id);
@@ -382,6 +387,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           adjByMonthly.set(a.salary_monthly_id, arr);
         }
       }
+      // hermes-parity:end w2c-salary-locked
 
       // income_expenses → commission / advance theo staff
       const ieByStaff = new Map<string, any[]>();
@@ -558,15 +564,19 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
                   };
                 })()
               : null,
+          // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: "Đã trả" là cột sống)
           paid: locked ? num(mRow.paid) : num(mRow?.paid),
+          // hermes-parity:end w2c-salary-locked
           stats,
           trend: [],
           status: locked ? "LOCKED" : "DRAFT",
           salaryMonthlyId: mRow?.id ?? null,
           ledger,
+          // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: số đã chốt đóng băng)
           frozen: locked
             ? { base: num(mRow.base_salary), investment: num(mRow.investment_profit), commission: num(mRow.commission_total), advance: num(mRow.advances_total) }
             : null,
+          // hermes-parity:end w2c-salary-locked
           organizationId: c.organization_id ?? null,
         };
         // Gắn khoản định kỳ + số ghi đè TRƯỚC salCalc ⇒ thực nhận, chốt kỳ và phiếu chi
@@ -574,6 +584,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         const m = applySalaryExtras(m0, extras.recurring, extras.overrides);
 
         // calc: chốt → số đã đóng băng; nháp → tính live
+        // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_locked_month_v1: gross/thực nhận đã chốt)
         if (locked) {
           m.calc = {
             autoSum: num(mRow.work_bonus),
@@ -582,6 +593,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             gross: num(mRow.gross_total),
             takehome: num(mRow.take_home),
           };
+        // hermes-parity:end w2c-salary-locked
         } else {
           m.calc = salCalc(m);
         }
@@ -636,6 +648,7 @@ export const useMyManagerConfig = () => {
 // admin. Override đọc qua RPC SECURITY DEFINER (staff không đọc được salary_bonus_rules);
 // trạng thái chốt đọc từ salary_monthly của chính nhân viên (sm_self_select).
 // Trả về period_month 'YYYY-MM-01'.
+// hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (app_private.hermes_w2c_read_v1: trần tháng nhân viên tự xem)
 export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled = true) => {
   return useQuery({
     queryKey: ["salary-staff-month", staffId],
@@ -663,6 +676,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
     },
   });
 };
+// hermes-parity:end w2c-salary-locked
 
 // --- Mutations ---
 

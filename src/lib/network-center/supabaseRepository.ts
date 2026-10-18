@@ -189,11 +189,13 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
   constructor(private readonly rpc: NetworkCenterRpcCall = defaultRpc) {}
 
   async listFleet(): Promise<NetworkBuilding[]> {
+    // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_fleet)
     const fleet = await this.call(
       "network_center_list_fleet_v1",
       undefined,
       parseNetworkCenterFleet,
     );
+    // hermes-parity:end w2c-network-center
     type FleetDetailSlot = {
       detail: NetworkCenterBuildingDto | undefined;
       error: string | undefined;
@@ -237,6 +239,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
 
     const detail = await this.fetchBuildingDto(normalizedBuildingId);
     const [clients, commands, audit] = await Promise.all([
+      // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_clients)
       this.call(
         "network_center_list_clients_v1",
         {
@@ -247,6 +250,8 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
         },
         parseNetworkCenterClientPage,
       ),
+      // hermes-parity:end w2c-network-center
+      // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_commands)
       this.call(
         "network_center_list_commands_v1",
         {
@@ -257,6 +262,8 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
         },
         parseNetworkCenterCommandPage,
       ),
+      // hermes-parity:end w2c-network-center
+      // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_audit)
       this.call(
         "network_center_list_audit_v1",
         {
@@ -267,6 +274,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
         },
         parseNetworkCenterAuditPage,
       ),
+      // hermes-parity:end w2c-network-center
     ]);
     const building = mergeNetworkCenterBuilding(
       base,
@@ -290,6 +298,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       );
     }
     const normalizedBuildingId = buildingId.trim().toLowerCase();
+    // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_h196a)
     const page = await this.call(
       "network_center_list_h196a_v1",
       {
@@ -300,6 +309,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       },
       parseNetworkCenterH196aPage,
     );
+    // hermes-parity:end w2c-network-center
     return mapNetworkCenterH196aPage(page);
   }
 
@@ -314,6 +324,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       );
     }
     const normalizedBuildingId = buildingId.trim().toLowerCase();
+    // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_aruba)
     const page = await this.call(
       "network_center_list_aruba_v1",
       {
@@ -324,6 +335,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       },
       parseNetworkCenterArubaPage,
     );
+    // hermes-parity:end w2c-network-center
     return mapNetworkCenterArubaPage(page);
   }
 
@@ -409,6 +421,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     fromRevisionId: string,
     toRevisionId: string,
   ): Promise<ConfigDiff> {
+    // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_config_diff)
     return this.call(
       "network_center_compare_snapshots_v1",
       {
@@ -418,6 +431,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       },
       parseNetworkCenterDiff,
     );
+    // hermes-parity:end w2c-network-center
   }
 
   async executeAction(
@@ -522,11 +536,13 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
 
   private async fetchBuildingDto(buildingId: string): Promise<NetworkCenterBuildingDto> {
     const normalizedBuildingId = buildingId.trim().toLowerCase();
+    // hermes-parity:begin w2c-network-center — Hermes gọi thẳng RPC này (hermes_w2c_read_v1: network_building/ports/backups)
     return this.call(
       "network_center_get_building_v1",
       { p_building_id: normalizedBuildingId },
       parseNetworkCenterBuilding,
     );
+    // hermes-parity:end w2c-network-center
   }
 
   private async requireBuilding(buildingId: string): Promise<NetworkBuilding> {
