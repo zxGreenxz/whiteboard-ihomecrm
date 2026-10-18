@@ -129,11 +129,13 @@ test('audit writes only the real broker protocol, snapshots callers and remains 
   const timeout = { ...EVENT, operation: 'tools/list', outcome: 'timeout', code: 'timeout' };
   // Rào chữ công khai: token xác nhận bị từ chối vẫn được ghi sổ với đúng mã (không thành backend_unavailable).
   const confirmation = { ...EVENT, outcome: 'denied', code: 'confirmation_invalid' };
-  await Promise.all([sink.write(denied), sink.write(timeout), sink.write(confirmation)]); await sink.close();
+  // Báo cáo vượt trần trang (PT413) giữ đúng mã để mô hình thu hẹp bộ lọc.
+  const tooLarge = { ...EVENT, outcome: 'denied', code: 'result_too_large' };
+  await Promise.all([sink.write(denied), sink.write(timeout), sink.write(confirmation), sink.write(tooLarge)]); await sink.close();
   const filename = path.join(root, 'broker-audit.jsonl');
-  const rows = (await fs.readFile(filename, 'utf8')).trim().split('\n').map(JSON.parse); assert.deepEqual(rows, [EVENT, denied, timeout, confirmation]);
+  const rows = (await fs.readFile(filename, 'utf8')).trim().split('\n').map(JSON.parse); assert.deepEqual(rows, [EVENT, denied, timeout, confirmation, tooLarge]);
   const again = createHostAudit({ directory: root }); await again.write(EVENT); await again.close();
-  assert.equal((await fs.readFile(filename, 'utf8')).trim().split('\n').length, 5);
+  assert.equal((await fs.readFile(filename, 'utf8')).trim().split('\n').length, 6);
 });
 
 test('group directory and preview audit operations retain the exact private host protocol', async t => {

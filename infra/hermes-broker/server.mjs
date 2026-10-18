@@ -163,7 +163,7 @@ export function createHermesBackend(configuration = {}) {
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
+      publicTextStartTainted: true, observe: health.record, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.

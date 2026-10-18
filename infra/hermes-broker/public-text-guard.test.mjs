@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 // external-group-mount nạp broker.mjs ngược lại: nạp trước (như tool-argument-shape.test.mjs).
 import './external-group-mount.mjs';
@@ -24,7 +25,7 @@ const action = ['sale_phong.manage_pass_listings'];
 const upsert = (extra = {}) => ({ requestId: id('1'), roomId: ROOM, salePolicy: '  Điện 3.5k/số; nước 100k/người  ', ...extra });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
-function setup(t, { failRead = false } = {}) {
+function setup(t, { failRead = false, startTainted = false } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
   const clock = { now: START }, writes = [], reads = [];
   const identity = token => ({ row: { id: CONNECTIONS[token], assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: START + 86_400_000,
@@ -34,6 +35,7 @@ function setup(t, { failRead = false } = {}) {
   const authority = { identifyConnection: async token => ({ connectionId: CONNECTIONS[token] }), resolve: async token => identity(token), checkUnchanged: async () => {} };
   const audits = [];
   const broker = createBroker({ authority, dependencyScope: scope, audit: async event => { audits.push(event); }, clock: () => clock.now,
+    publicTextStartTainted: startTainted,
     domains: { async prepareDomain(_token, operation, input) { reads.push([operation, input]); return Object.freeze({}); },
       async finalizeDomain() { if (failRead) throw new Error('read failed'); return { items: [] }; } },
     roomPass: { async prepareRoomPass(_token, operation, input) { writes.push([operation, input]); return Object.freeze({}); },
@@ -82,6 +84,25 @@ test('không nhiễm ⇒ ghi thẳng như cũ; đọc không riêng tư hoặc �
   const failing = setup(t, { failRead: true });
   await assert.rejects(failing.privateLookup(TOKEN_A), error => error.code === 'backend_unavailable');
   assert.deepEqual(await failing.call(TOKEN_A, 'crm_room_pass_upsert', upsert()), { outcome: 'applied' }, 'đọc riêng thất bại không nhiễm');
+});
+
+test('tiến trình thật: dấu chỉ trong bộ nhớ ⇒ 30 phút đầu sau khởi động mọi kết nối coi như đã đọc riêng', async t => {
+  const env = setup(t, { startTainted: true });
+  for (const token of [TOKEN_A, TOKEN_B]) {
+    const first = await env.call(token, 'crm_room_pass_upsert', upsert());
+    assert.equal(first.outcome, 'confirmation_required');
+    assert.match(first.confirmToken, CF);
+  }
+  assert.equal(env.writes.length, 0, 'không ghi khi vừa khởi động');
+  env.clock.now = START + PRIVATE_READ_TTL_MS - 1;
+  assert.equal((await env.call(TOKEN_A, 'crm_room_pass_upsert', upsert({ requestId: id('2') }))).outcome, 'confirmation_required');
+  env.clock.now = START + PRIVATE_READ_TTL_MS;
+  assert.deepEqual(await env.call(TOKEN_A, 'crm_room_pass_upsert', upsert({ requestId: id('3') })), { outcome: 'applied' });
+  await env.privateLookup(TOKEN_A);
+  assert.equal((await env.call(TOKEN_A, 'crm_room_pass_upsert', upsert({ requestId: id('4') }))).outcome, 'confirmation_required');
+  assert.deepEqual(await env.call(TOKEN_B, 'crm_room_pass_upsert', upsert({ requestId: id('5') })), { outcome: 'applied' });
+  const server = readFileSync(fileURLToPath(new URL('./server.mjs', import.meta.url)), 'utf8');
+  assert.match(server, /createBroker\(\{[^}]*publicTextStartTainted: true/s, 'server.mjs phải bật dấu nhiễm lúc khởi động');
 });
 
 test('nhiễm ⇒ lần đầu không ghi, trả preview nguyên văn + token; token đúng ⇒ ghi đúng đầu vào CRM', async t => {

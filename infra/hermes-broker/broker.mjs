@@ -292,6 +292,8 @@ export function createBroker({
   assistantStore,
   audit,
   observe,
+  // Tiến trình thật (server.mjs) bật: dấu đọc riêng chỉ nằm trong bộ nhớ nên sau khởi động coi mọi kết nối là nhiễm.
+  publicTextStartTainted = false,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
   const definitions = toolDefinitions();
@@ -428,7 +430,7 @@ export function createBroker({
       limits.maxResultBytes > 65_536 || limits.maxToolsListBytes > TOOLS_LIST_MAX_BYTES) throw new TypeError('unsafe_limits');
   const usage = new Map();
   // Rào chữ công khai sau khi kết nối đọc dữ liệu riêng (public-text-guard.mjs).
-  const publicText = createPublicTextGuard({ clock });
+  const publicText = createPublicTextGuard({ clock, startTainted: publicTextStartTainted === true });
   const receipts = [];
   const writeAudit = audit ?? (async (event) => {
     receipts.push(structuredClone(event));

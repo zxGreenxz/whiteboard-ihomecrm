@@ -6,7 +6,8 @@
 //
 // Khoá nhiễm = id kết nối broker (identity.row.id): HTTP MCP không có phiên (mcp-http.mjs), id kết nối
 // là khoá hẹp nhất có sẵn và giữ nguyên qua xoay token. Trạng thái trong bộ nhớ tiến trình như hạn mức
-// theo kết nối (usage); khởi động lại broker xoá dấu (không có bảng bền, không thêm migration).
+// theo kết nối (usage); khởi động lại broker xoá dấu (không có bảng bền, không thêm migration) nên tiến
+// trình thật bật startTainted: 30 phút đầu sau khởi động mọi kết nối coi như đã đọc dữ liệu riêng.
 import { createHash, randomBytes } from 'node:crypto';
 import { W2 } from './wave2-registry.mjs';
 
@@ -51,12 +52,14 @@ export function splitConfirmToken(name, args) {
   } catch { return { args, confirmToken: undefined, invalid: true }; }
 }
 
-export function createPublicTextGuard({ clock }) {
+export function createPublicTextGuard({ clock, startTainted = false }) {
   if (typeof clock !== 'function') throw new TypeError('invalid_public_text_clock');
   const readers = new Map(), pending = new Map();
+  const startedAt = clock();
   const digest = value => createHash('sha256').update(value).digest('hex');
   // Đồng hồ lùi giữ dấu (an toàn), còn token coi là hết hạn.
-  const tainted = (connectionId, now) => readers.has(connectionId) && now - readers.get(connectionId) < PRIVATE_READ_TTL_MS;
+  const tainted = (connectionId, now) => (startTainted === true && now - startedAt < PRIVATE_READ_TTL_MS) ||
+    (readers.has(connectionId) && now - readers.get(connectionId) < PRIVATE_READ_TTL_MS);
   const live = (entry, now) => now >= entry.issuedAt && now - entry.issuedAt < CONFIRM_TTL_MS;
   const binding = (connectionId, name, spec, input) => digest(JSON.stringify([connectionId, name, input[spec.object],
     spec.fields.map(field => Object.hasOwn(input, field) ? [input[field]] : [])]));
