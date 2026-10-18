@@ -9,7 +9,10 @@
 //   Gói Z        2026101808xxxx_hermes_w2z_<slug>.sql   (sửa lúc tích hợp, áp TRƯỚC công tắc; được thay hàm của gói)
 //                2026101809xxxx_hermes_w2_<slug>.sql    (20261018090000_hermes_w2_enable_v1 — công tắc bật khoá)
 // Sửa sau review trong cùng gói: timestamp kế tiếp trong dải (vd. 20261018010100_hermes_w2a_review_fixes_v1).
-// KHÔNG dùng scripts/tao-ten-migration.mjs cho các file này (nó cấp giờ thực, ra ngoài dải).
+// KHÔNG dùng scripts/tao-ten-migration.mjs cho các file trong dải (nó cấp giờ thực, ra ngoài dải).
+// Sửa SAU phát hành (sau công tắc 20261018090000): tên do scripts/tao-ten-migration.mjs cấp (giờ thực UTC từ 18/10 10:00
+// trở đi), tiền tố của đúng gói (vd. 20261018182656_hermes_w2a_reservation_fund_member_v1) ⇒ thuộc gói đó, áp sau công tắc;
+// tiền tố hermes_w2_ (vd. 20261018185339_hermes_w2_rls_buildings_scope_v1) ⇒ thuộc nền (được thay hàm nền).
 import { readdirSync, readFileSync } from 'node:fs';
 
 export const W2_MIGRATION_DIR = 'supabase/migrations';
@@ -23,12 +26,15 @@ export const W2_INVOKER_PATH = `${W2_MIGRATION_DIR}/${W2_INVOKER_FILE}`;
 // Rào công ty (organizationId mọi hàng, buildingId mọi hàng theo toà) + loại khoá organization.
 export const W2_ORG_FENCE_FILE = '20261018000700_hermes_w2_org_fence_v1.sql';
 export const W2_ORG_FENCE_PATH = `${W2_MIGRATION_DIR}/${W2_ORG_FENCE_FILE}`;
+// Mốc giờ thực sau công tắc: 18/10 10:00–23:59:59 UTC hoặc ngày sau đó (đến hết 2026).
+const W2_POST = String.raw`(?:20261018(?:1\d|2[0-3])\d{4}|2026(?:10(?:19|2\d|3[01])|1[12]\d\d)\d{6})`;
+const w2Package = (band, letter) => new RegExp(String.raw`^(?:202610180${band}\d{4}|${W2_POST})_hermes_w2${letter}_[a-z0-9_]+\.sql$`);
 export const W2_RANGES = Object.freeze({
-  foundation: /^2026101800\d{4}_hermes_w2_[a-z0-9_]+\.sql$/,
-  a: /^2026101801\d{4}_hermes_w2a_[a-z0-9_]+\.sql$/,
-  b: /^2026101802\d{4}_hermes_w2b_[a-z0-9_]+\.sql$/,
-  c: /^2026101803\d{4}_hermes_w2c_[a-z0-9_]+\.sql$/,
-  d: /^2026101804\d{4}_hermes_w2d_[a-z0-9_]+\.sql$/,
+  foundation: new RegExp(String.raw`^(?:2026101800\d{4}|${W2_POST})_hermes_w2_[a-z0-9_]+\.sql$`),
+  a: w2Package(1, 'a'),
+  b: w2Package(2, 'b'),
+  c: w2Package(3, 'c'),
+  d: w2Package(4, 'd'),
   z: /^20261018(?:08\d{4}_hermes_w2z|09\d{4}_hermes_w2)_[a-z0-9_]+\.sql$/,
 });
 export const W2_PACKAGE_LETTERS = Object.freeze(['a', 'b', 'c', 'd']);

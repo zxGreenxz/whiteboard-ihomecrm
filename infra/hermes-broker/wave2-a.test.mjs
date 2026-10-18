@@ -26,6 +26,10 @@ const fixes = readFileSync(FIX_PATH, 'utf8');
 // Gói Z (20261018080100) thay thân hàm đọc gói lần cuối; fixture mặc định chạy chuỗi a + z (review PR #215 P3-1).
 const Z_PATH = 'supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql';
 const zFix = readFileSync(Z_PATH, 'utf8');
+// Sau phát hành (19/10): phiếu cọc giữ chỗ theo đúng tập web (RLS, gồm phiếu vào sổ quỹ người hỏi giữ) — thay thân hàm đọc gói
+// lần cuối và hàm dùng chung public.deposit_reservation_vouchers_v1 (test riêng: wave2-a-coc-quy.test.mjs).
+const POST_PATH = 'supabase/migrations/20261018182656_hermes_w2a_reservation_fund_member_v1.sql';
+const postFix = readFileSync(POST_PATH, 'utf8');
 const READ_HEAD = 'CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(';
 const readBodyOf = sql => sql.slice(sql.indexOf(READ_HEAD)).split('$fn$')[1];
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
@@ -62,7 +66,7 @@ test('khai báo: 9 báo cáo, đều riêng tư, tên khách qua customers.view;
   assert.deepEqual([...REPORTS].sort(), ['change_ledger', 'collection', 'deposit_refunds', 'held_deposits', 'invoice_detail', 'overpayment', 'payment_schedule',
     'reservation_settlements', 'reservation_vouchers']);
   for (const [report, spec] of Object.entries(W2A_REPORTS)) {
-    assert.equal(spec.private, true, report); assert.deepEqual(spec.scopeKeys, ['customers.view'], report); assert.equal(spec.scope, 'rows', report);
+    assert.equal(spec.private, true, report); assert.deepEqual(spec.scopeKeys, ['customers.view'], report); assert.equal(spec.scope, report === 'reservation_vouchers' ? 'rls_buildings' : 'rows', report);
     const fn = spec.source.replace(/^crm\./, '');
     assert.equal((await env.db.query("SELECT count(*)::int n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=$1", [fn])).rows[0].n, 1, fn);
   }
@@ -92,8 +96,9 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   assert.doesNotMatch(readBodyOf(fixed), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(fixed, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   assert.equal((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc,
-    readBodyOf(zFix), 'thân sống = bản Z (080100)');
+    readBodyOf(postFix), 'thân sống = bản sau phát hành (phiếu cọc giữ chỗ theo web), thay bản Z (080100)');
   assert.notEqual(readBodyOf(zFix), readBodyOf(fixes), 'bản Z thay thân bản sửa sau review');
+  assert.notEqual(readBodyOf(postFix), readBodyOf(zFix), 'bản sau phát hành thay thân bản Z');
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.provolatile vol,
       has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -321,7 +326,11 @@ test('change_ledger: sổ tiền thối theo change_account_id, sổ "Làm tròn
 test('quyền như web: chỉ toà buildings.view (RLS các bảng) dù khoá trang rộng hơn ⇒ hết toà = no_building_scope; ctx người khác ⇒ 42501', () => inCase(async env => {
   await assert.rejects(direct(env, 'overpayment', {}, { userId: CUSTOMER_C }), code('42501'));
   await env.db.exec(`DELETE FROM public.fixture_building_access WHERE building_id='${BUILDING}'`);
-  for (const report of REPORTS) assert.equal((await run(env, report, DEFAULTS[report])).unavailable, 'no_building_scope', report);
+  for (const report of REPORTS.filter(report => report !== 'reservation_vouchers'))
+    assert.equal((await run(env, report, DEFAULTS[report])).unavailable, 'no_building_scope', report);
+  // Phiếu cọc giữ chỗ (19/10, như web): không giao buildings.view — RLS income_expenses quyết; không giữ sổ quỹ ⇒ không phiếu nào.
+  const reservation = await run(env, 'reservation_vouchers');
+  assert.deepEqual([reservation.unavailable, reservation.items, reservation.summary.approvedCount, reservation.summary.holdingAmount], [null, [], 0, '0']);
   await env.db.exec('INSERT INTO public.fixture_super_scope VALUES(true)');
   assert.equal((await run(env, 'overpayment')).items.length, 2, 'toàn quyền toà (super admin) không thu hẹp');
 }));
