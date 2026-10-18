@@ -17,6 +17,7 @@
   "include": [],
   "files": [
     "src/lib/invoiceReadArgs.ts",
+    "src/lib/invoiceBreakdownRpc.ts",
     "src/lib/customerSearch.ts",
     "src/lib/customerList.ts",
     "src/components/contracts/CommissionAmountReview.tsx",

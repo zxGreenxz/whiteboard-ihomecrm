@@ -72,6 +72,8 @@ const READERS = new Set([
   // Danh sách + thẻ thống kê màn Hoá đơn đọc qua hàm dùng chung (migration 20261017115809);
   // helper invoice_* chỉ gọi từ trong SQL, trình duyệt không gọi thẳng.
   'invoice_list_v1', 'invoice_statistics_v3',
+  // Chi tiết tiền thối/cọc của thẻ: chỉ hai RPC đọc public, không mở các helper SQL.
+  'invoice_change_breakdown_v1', 'invoice_deposit_breakdown_v1',
   'read_rent_support_salary_parts_v1',
   // Existing canonical readers used by the salary and settlement pages. Money
   // writers (lock/pay/approve/collect/termination) remain outside the allowlist.
