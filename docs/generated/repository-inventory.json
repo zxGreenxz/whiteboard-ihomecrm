@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1487,
   "soFileDocBangFs": 363,
-  "tongLoiGoi": 826,
+  "tongLoiGoi": 831,
   "khongPhanLoaiDuoc": 380,
   "theoLoai": {
     "ma-nguon": {
@@ -271,6 +271,14 @@
     },
     {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 6
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
       "soGoi": 6,
       "loai": {
         "sql": 6
@@ -2061,14 +2069,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/commissionReasonAuditMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/commissionVoucherDisplayName.test.ts",

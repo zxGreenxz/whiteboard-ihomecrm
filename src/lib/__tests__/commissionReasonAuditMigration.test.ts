@@ -18,6 +18,14 @@ const db=new PGlite();
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const org=id(1),actor=id(2),building=id(3),room=id(4),contract=id(5),type=id(6),other=id(7);
 const reason='Điều chỉnh theo thỏa thuận đã xác nhận';
+const book=id(20),otherBook=id(21),evidence=id(22);
+const writers=readFileSync('supabase/migrations/20260723050000_finance_v2_writers.sql','utf8');
+function writer(name:string,tag:string){
+ const start=writers.indexOf(`CREATE FUNCTION ${name}(`);
+ const end=writers.indexOf(`\n$${tag}$;`,start);
+ if(start<0||end<0)throw new Error(`Missing canonical writer ${name}`);
+ return writers.slice(start,end+tag.length+4);
+}
 type Event={stage:string;reason:string|null;actor_id:string;actor_name:string;at:string;baseline:Record<string,unknown>|null;before:Record<string,unknown>|null;after:Record<string,unknown>|null};
 
 beforeAll(async()=>{
@@ -121,6 +129,46 @@ beforeAll(async()=>{
  // Dependency writers above model only their API boundaries. The entire new
  // migration, triggers, role ACLs, snapshots and adapters execute unmodified twice.
  await db.exec(sql);await db.exec(sql);
+ // Execute the real canonical posting, ledger/evidence and idempotency writers.
+ // Only unrelated actor/period services are small deterministic boundaries.
+ await db.exec(`
+ ALTER TABLE income_expenses ADD COLUMN type text DEFAULT 'EXPENSE',ADD COLUMN posting_mode text DEFAULT 'CASHBOOK',
+ ADD COLUMN review_state text DEFAULT 'PENDING',ADD COLUMN review_version bigint DEFAULT 1,ADD COLUMN posting_version bigint DEFAULT 1,
+ ADD COLUMN birth_operation_id uuid,ADD COLUMN approved_by uuid,ADD COLUMN approved_at timestamptz,ADD COLUMN updated_at timestamptz,
+ ADD COLUMN active_posting_id_v2 uuid,ADD COLUMN posting_id uuid,ADD COLUMN posted_at_v2 timestamptz,ADD COLUMN reversed_by_posting_id uuid;
+ ALTER TABLE accounts ADD COLUMN organization_id uuid,ADD COLUMN deleted_at timestamptz;
+ INSERT INTO accounts(id,name,organization_id) VALUES('${book}','Sổ dự kiến','${org}'),('${otherBook}','Sổ thanh toán','${org}');
+ CREATE TABLE app_private.canonical_write_operations(organization_id uuid,operation text,subject_scope text,actor_id uuid,idempotency_key text,payload_hash text,subject_id uuid,actor_membership_id uuid,transaction_id xid8,completed_at timestamptz,response_payload jsonb,outcome_kind text,resulting_review_version bigint,resulting_approval_version bigint,resulting_posting_version bigint,UNIQUE(organization_id,operation,subject_scope,actor_id,idempotency_key));
+ CREATE TABLE approval_requests(organization_id uuid,subject_type text,subject_id uuid,state text,outcome_kind text,closed_by_membership_id uuid,closed_at timestamptz);
+ CREATE TABLE income_expense_postings(id uuid PRIMARY KEY,organization_id uuid,voucher_id uuid,posting_subject_kind text,posting_subject_id uuid,direction text,account_id uuid,gross_amount numeric,voucher_amount_snapshot numeric,amount_basis text,net_cash_effect numeric,posted_on date,posted_by_membership_id uuid,posted_by_user_id uuid,approval_version bigint,event_kind text,idempotency_key text,source_kind text,posting_generation integer,created_at timestamptz,reversal_of_id uuid,UNIQUE(organization_id,idempotency_key));
+ CREATE TABLE income_expense_posting_lines(id uuid,organization_id uuid,posting_id uuid,account_id uuid,line_kind text,signed_amount numeric,created_at timestamptz);
+ CREATE TABLE finance_evidence_objects(id uuid PRIMARY KEY,organization_id uuid,state text);
+ CREATE TABLE income_expense_posting_evidence(id uuid,organization_id uuid,posting_id uuid,evidence_id uuid,relation_kind text,created_at timestamptz);
+ CREATE FUNCTION app_private.resolve_finance_actor_v2(uuid) RETURNS TABLE(user_id uuid,membership_id uuid) LANGUAGE plpgsql AS $$BEGIN IF auth.uid() IS DISTINCT FROM '${actor}'::uuid OR $1<>'${org}' THEN RAISE EXCEPTION 'Denied' USING ERRCODE='42501';END IF;RETURN QUERY SELECT auth.uid(),auth.uid();END$$;
+ CREATE FUNCTION app_private.assert_income_expense_flow_owner_v2(uuid,text) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ CREATE FUNCTION app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid) RETURNS TABLE(allowed boolean) LANGUAGE sql AS $$SELECT $1='${actor}' AND $2='${org}' AND current_setting('test.approve',true) IS DISTINCT FROM 'no'$$;
+ CREATE FUNCTION app_private.assert_committed_birth_boundary_v2(uuid,uuid) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ CREATE FUNCTION app_private.assert_cashbook_access_v2(uuid,uuid,text,uuid) RETURNS void LANGUAGE plpgsql AS $$BEGIN IF $1<>'${org}' OR $4<>'${actor}' OR current_setting('test.custodian',true)='no' THEN RAISE EXCEPTION 'Denied' USING ERRCODE='42501';END IF;END$$;
+ CREATE FUNCTION app_private.finance_v2_is_cashbook_period_open(uuid,uuid,date) RETURNS boolean LANGUAGE sql AS $$SELECT current_setting('test.period_closed',true) IS DISTINCT FROM 'yes'$$;
+ CREATE FUNCTION app_private.finance_v2_log_event(uuid,text,uuid,uuid,text) RETURNS void LANGUAGE sql AS $$SELECT$$;
+ `);
+ for(const [name,tag]of [
+  ['app_private.finance_v2_begin_canonical_op','begin_op'],['app_private.finance_v2_finish_canonical_op','finish_op'],
+  ['app_private.finance_v2_post_manual_voucher','post_manual'],
+  ['public.post_approved_income_expense_v2','post_ie'],['public.approve_and_post_income_expense_v2','approve_post_ie'],
+ ])await db.exec(writer(name,tag));
+ // Apply the actual deployed cashbook-stamping patch, excluding its data backfill.
+ const stamp=readFileSync('supabase/migrations/20260725040000_stamp_cashbook_on_voucher_after_posting.sql','utf8');
+ await db.exec(stamp.slice(stamp.indexOf('DO $patch$'),stamp.indexOf('$patch$;')+'$patch$;'.length));
+ const generation=readFileSync('supabase/migrations/20260724130000_finance_v2_repost_reversed.sql','utf8');
+ await db.exec(generation.slice(generation.indexOf('DO $gen$'),generation.indexOf('$gen$;')+'$gen$;'.length));
+ const livePostingGuard=readFileSync('supabase/migrations/20260802170000_ie_posting_flag_repair.sql','utf8');
+ await db.exec(livePostingGuard.slice(livePostingGuard.indexOf('CREATE OR REPLACE FUNCTION public.post_approved_income_expense_v2')));
+ if(process.env.COMMISSION_POST_MUTATION!=='skip_context'){
+  const postingFix=readFileSync('supabase/migrations/20261018031847_commission_canonical_post_cashbook.sql','utf8');
+  await db.exec(postingFix);await db.exec(postingFix);
+ }
+ await db.exec('GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;');
 },60000);
 afterAll(()=>db.close());
 async function tx(run:()=>Promise<void>){await db.exec(`BEGIN;SET LOCAL test.actor='${actor}';SET LOCAL ROLE authenticated;`);try{await run();}finally{await db.exec('ROLLBACK');}}
@@ -131,6 +179,61 @@ async function prepare(i= intent()){return db.query('SELECT public.prepare_commi
 async function execute(request=id(10),kind='broker'){return (await db.query<{r:{id:string;status:string}}>('SELECT public.execute_commission_request_v1($1,$2,$3,$4) r',[org,contract,kind,request])).rows[0].r;}
 async function history(v:string){return (await db.query<{r:Event[]}>('SELECT public.read_commission_interventions_v1($1) r',[v])).rows[0].r;}
 async function dispatch(v:string,stage:string,why:string|null,payload:Record<string,unknown>){return db.query('SELECT public.intervene_commission_v1($1,$2,$3,$4)',[v,stage,why,JSON.stringify(payload)]);}
+
+describe('commission canonical posting cashbook',()=>{
+ for(const mode of ['approve_and_post','post_approved']){
+  for(const plannedBook of [book,otherBook,null])it(`${mode}: first payment from ${plannedBook===null?'unassigned':plannedBook===book?'different':'same'} cashbook needs no edit reason`,()=>tx(async()=>{
+   await prepare();const v=await execute();
+   await dispatch(v.id,'EDIT_PENDING',reason,{expected_approval_version:1,patch:{account_id:plannedBook},idempotency_key:'set-planned-book'});
+   if(mode==='post_approved')await db.query("UPDATE income_expenses SET approval_status='APPROVED' WHERE id=$1",[v.id]);
+   await owner(`INSERT INTO finance_evidence_objects VALUES('${evidence}','${org}','FINALIZED')`);
+   const input={subjectKind:'VOUCHER',subjectId:v.id,cashbookId:otherBook,postedOn:'2026-10-18',evidenceIds:[evidence],expectedApprovalVersion:2,expectedPostingVersion:1,idempotencyKey:'first-payment'};
+   const call=()=>db.query<{r:{postingStatus:string;postingId:string}}>(`SELECT public.${mode}_income_expense_v2($1) r`,[JSON.stringify(input)]);
+   const first=(await call()).rows[0].r;
+   expect(first.postingStatus).toBe('POSTED');
+   expect((await call()).rows[0].r).toEqual(first);
+   expect((await db.query('SELECT account_id,approval_status,posting_status FROM income_expenses WHERE id=$1',[v.id])).rows[0]).toEqual({account_id:otherBook,approval_status:'APPROVED',posting_status:'POSTED'});
+   expect((await db.query('SELECT account_id,signed_amount::integer FROM income_expense_posting_lines WHERE posting_id=$1',[first.postingId])).rows).toEqual([{account_id:otherBook,signed_amount:-1200000}]);
+   const post=(await history(v.id)).filter(e=>e.stage==='POST');expect(post).toHaveLength(1);expect(post[0].reason).toBeNull();
+   if(plannedBook!==otherBook){expect(post[0].before?.account_id).toBe(plannedBook);expect(post[0].after?.account_id).toBe(otherBook);}
+   await owner("DO $$BEGIN IF EXISTS(SELECT 1 FROM app_private.commission_reason_contexts) THEN RAISE EXCEPTION 'Leaked context';END IF;END$$");
+   await denied(()=>db.query('UPDATE income_expenses SET account_id=$1 WHERE id=$2',[book,v.id]));
+  }));
+  it(`${mode}: rejected posting rolls back approval, ledger, evidence and private context`,()=>tx(async()=>{
+   await prepare();const v=await execute();
+   await dispatch(v.id,'EDIT_PENDING',reason,{expected_approval_version:1,patch:{account_id:book},idempotency_key:'plan'});
+   if(mode==='post_approved')await db.query("UPDATE income_expenses SET approval_status='APPROVED' WHERE id=$1",[v.id]);
+   const input={subjectKind:'VOUCHER',subjectId:v.id,cashbookId:otherBook,postedOn:'2026-10-18',evidenceIds:[evidence],expectedApprovalVersion:2,expectedPostingVersion:1,idempotencyKey:'denied-payment'};
+   const call=()=>db.query(`SELECT public.${mode}_income_expense_v2($1)`,[JSON.stringify(input)]);
+   // The actual ledger writer inserts its posting before rejecting missing evidence.
+   await denied(call,'55000');
+   await owner(`INSERT INTO finance_evidence_objects VALUES('${evidence}','${org}','FINALIZED')`);
+   await owner("SET LOCAL test.custodian='no'");await denied(call,'42501');await owner("SET LOCAL test.custodian='yes'");
+   if(mode==='approve_and_post'){await owner("SET LOCAL test.approve='no'");await denied(call,'42501');await owner("SET LOCAL test.approve='yes'");}
+   await owner("SET LOCAL test.period_closed='yes'");await denied(call,'55000');await owner("SET LOCAL test.period_closed='no'");
+   await owner(`CREATE FUNCTION reject_post_stamp() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.posting_status='POSTED' THEN RAISE EXCEPTION 'late stamp failure' USING ERRCODE='23514';END IF;RETURN NEW;END$$;
+    CREATE TRIGGER zz_test_late_failure BEFORE UPDATE ON income_expenses FOR EACH ROW EXECUTE FUNCTION reject_post_stamp();`);
+   await denied(call,'23514');
+   expect((await db.query('SELECT account_id,approval_status,posting_status FROM income_expenses WHERE id=$1',[v.id])).rows[0]).toEqual({account_id:book,approval_status:mode==='post_approved'?'APPROVED':'UNAPPROVED',posting_status:'UNPOSTED'});
+   expect((await db.query('SELECT * FROM income_expense_postings')).rows).toHaveLength(0);
+   expect((await db.query('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
+   expect((await history(v.id)).filter(e=>e.stage==='POST')).toHaveLength(0);
+   await owner("DO $$BEGIN IF EXISTS(SELECT 1 FROM app_private.commission_reason_contexts) OR EXISTS(SELECT 1 FROM app_private.canonical_write_operations) THEN RAISE EXCEPTION 'Leaked transaction';END IF;END$$");
+  }));
+ }
+ it('keeps reversed commissions outside the first-payment exemption and prevents a second live posting',()=>tx(async()=>{
+  await prepare();const v=await execute();
+  await db.query("UPDATE income_expenses SET approval_status='APPROVED' WHERE id=$1",[v.id]);
+  await db.query('SELECT reverse_posted_income_expense_v2($1,$2,$3,$4,$5)',[v.id,book,'2026-10-18',reason,'reversal']);
+  await owner(`INSERT INTO finance_evidence_objects VALUES('${evidence}','${org}','FINALIZED')`);
+  const input={subjectKind:'VOUCHER',subjectId:v.id,cashbookId:otherBook,postedOn:'2026-10-18',evidenceIds:[evidence],expectedApprovalVersion:1,expectedPostingVersion:1,idempotencyKey:'repeat-payment'};
+  await denied(()=>db.query('SELECT post_approved_income_expense_v2($1)',[JSON.stringify(input)]));
+  await owner(`INSERT INTO income_expense_postings(id,voucher_id,event_kind) VALUES('${id(25)}','${v.id}','POSTING')`);
+  await denied(()=>db.query('SELECT post_approved_income_expense_v2($1)',[JSON.stringify(input)]),'55000');
+  expect((await db.query('SELECT count(*)::integer n FROM income_expense_postings')).rows[0].n).toBe(1);
+  expect((await db.query('SELECT state FROM finance_evidence_objects WHERE id=$1',[evidence])).rows[0].state).toBe('FINALIZED');
+ }));
+});
 
 describe('server-enforced commission explanations and evidence',()=>{
  it('allows the default and records authoritative configuration, actor, time and creation item',()=>tx(async()=>{
