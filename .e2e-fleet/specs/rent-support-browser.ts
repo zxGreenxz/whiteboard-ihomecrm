@@ -69,6 +69,9 @@ const READERS = new Set([
   'read_contract_draft_signing_v1', 'read_contract_meter_interval_v1', 'read_contract_rent_support_lifecycle_v1',
   'read_rent_support_deposit_candidate_v1',
   'get_invoice_statistics_v2', 'is_company_owner_self_v1', 'invoice_active_payment_methods', 'get_customer_credit_balance_v1',
+  // Danh sách + thẻ thống kê màn Hoá đơn đọc qua hàm dùng chung (migration 20261017115809);
+  // helper invoice_* chỉ gọi từ trong SQL, trình duyệt không gọi thẳng.
+  'invoice_list_v1', 'invoice_statistics_v3',
   'read_rent_support_salary_parts_v1',
   // Existing canonical readers used by the salary and settlement pages. Money
   // writers (lock/pay/approve/collect/termination) remain outside the allowlist.

@@ -35,7 +35,7 @@ import {
   getInvoiceTitle,
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
-import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
+import { invoiceListRpcArgs, invoiceStatisticsRpcArgs, readInvoiceListPayload } from '@/lib/invoiceReadArgs';
 import { markLocalWrite } from '@/hooks/useRealtimeDataSync';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { withOrg, withOrgAll } from '@/lib/orgPayload';
@@ -155,166 +155,23 @@ export const invoicesListQuery = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Sort mặc định: KỲ mới nhất trước (toàn bộ HĐ tháng 7 → tháng 6 → ...),
-      // trong cùng kỳ xếp như mục Thu của Phân bổ LN: tòa A→Z → phòng
-      // (MB→G→L→số, so tự nhiên). name_sort = generated column mirror của
-      // src/lib/roomSort.ts (migration 20260702100000). Phải order server-side
-      // vì phân trang server-side (mỗi trang chỉ fetch 20 dòng).
-      // Method drill-down starts from a SECURITY INVOKER table-valued RPC.
-      // PostgREST can still apply all filters/count/range to SETOF invoices,
-      // while the EXISTS stays server-side and cannot hit the 1000-row cap.
-      const invoiceSource = filters?.payment_method
-        ? supabase.rpc('invoice_payment_method_drilldown', {
-            p_payment_method: filters.payment_method,
-          })
-        : supabase.from('invoices');
-
-      // hermes-parity:begin invoice-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      let query = (invoiceSource
-        .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
-        .is('deleted_at', null)
-        .order('billing_month', { ascending: false })
-        .order('building(name_sort)', { ascending: true, nullsFirst: false })
-        .order('room(name_sort)', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false });
-      // hermes-parity:end invoice-search
-
-      // Apply filters
-      if (filters?.building_ids?.length) {
-        query = query.in('building_id', filters.building_ids);
-      } else if (filters?.building_id) {
-        query = query.eq('building_id', filters.building_id);
-      }
-      if (filters?.room_ids?.length) {
-        query = query.in('room_id', filters.room_ids);
-      } else if (filters?.room_id) {
-        query = query.eq('room_id', filters.room_id);
-      }
-      if (filters?.contract_id) {
-        query = query.eq('contract_id', filters.contract_id);
-      }
-      // hermes-parity:begin invoice-search
-      if (filters?.status) {
-        query = query.eq('status', filters.status);
-      }
-      if (filters?.payment_status === 'paid') {
-        query = query.eq('status', 'PAID');
-      } else if (filters?.payment_status === 'partial') {
-        query = query.eq('status', 'PARTIAL_PAID');
-      } else if (filters?.payment_status === 'unpaid') {
-        // Chưa thu đồng nào → loại cả PAID lẫn PARTIAL_PAID.
-        query = query.not('status', 'in', '(PAID,PARTIAL_PAID)');
-      }
-      // Vòng đời HĐ — mặc định 'active': ẩn các HĐ đã huỷ. Đặt SAU các filter
-      // status/payment_status để không bị override khi user chọn cụ thể.
-      const viewStatus = filters?.view_status ?? 'active';
-      if (viewStatus === 'active' && !filters?.status) {
-        query = query.neq('status', 'CANCELLED');
-      } else if (viewStatus === 'cancelled') {
-        query = query.eq('status', 'CANCELLED');
-      }
-      if (filters?.billing_month) {
-        query = query.eq('billing_month', filters.billing_month);
-      }
-      // hermes-parity:end invoice-search
-      if (filters?.date_range?.start) {
-        query = query.gte('issue_date', filters.date_range.start);
-      }
-      if (filters?.date_range?.end) {
-        query = query.lte('issue_date', filters.date_range.end);
-      }
-
-      // Lọc theo số tiền (±tolerance) — suy từ ô tìm kiếm khi người dùng gõ số.
-      if (filters?.amount_target != null) {
-        query = query
-          .gte('total_amount', filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
-          .lte('total_amount', filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
-      }
-
-      // Tìm theo text: số HĐ (invoice_number) HOẶC tên khách. Tên khách nằm ở
-      // bảng join (contract → contract_customers → customers) nên resolve trước
-      // customer_id khớp tên → contract_id rồi OR vào điều kiện.
-      // hermes-parity:begin invoice-search
-      if (filters?.search?.trim()) {
-        const q = filters.search.trim().replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
-        if (q) {
-          const { data: custRows } = await supabase
-            .from('customers')
-            .select('id')
-            .ilike('full_name', `%${q}%`)
-            .limit(200);
-          const custIds = ((custRows || []) as any[]).map((c) => c.id);
-          let contractIds: string[] = [];
-          if (custIds.length > 0) {
-            const { data: ccRows } = await supabase
-              .from('contract_customers')
-              .select('contract_id')
-              .in('customer_id', custIds);
-            contractIds = Array.from(
-              new Set(((ccRows || []) as any[]).map((r) => r.contract_id).filter(Boolean))
-            );
-          }
-          const ors = [`invoice_number.ilike.%${q}%`];
-          if (contractIds.length > 0) {
-            ors.push(`contract_id.in.(${contractIds.join(',')})`);
-          }
-          query = query.or(ors.join(','));
-        }
-      }
-      // hermes-parity:end invoice-search
-
-      if (filters?.adjustment_review_status) {
-        query = query.eq('adjustment_review_status', filters.adjustment_review_status === 'pending' ? 'PENDING' : 'CHECKED');
-      }
-
-      // Apply pagination
-      if (pagination?.page && pagination?.pageSize) {
-        const offset = (pagination.page - 1) * pagination.pageSize;
-        query = query.range(offset, offset + pagination.pageSize - 1);
-      }
-
-      const { data, error, count } = await query;
+      // Lọc + quyền + sắp xếp (kỳ mới nhất → toà A→Z theo name_sort → phòng theo
+      // name_sort → mới tạo trước) + phân trang + tổng số dòng nằm trong MỘT hàm SQL
+      // dùng chung invoice_list_v1 (migration 20261017115809). Hermes và báo cáo gọi
+      // cùng hàm nên số luôn khớp với màn này. Dòng trả về giữ nguyên shape cũ
+      // (cột invoices + contract/building/room/invoice_items/payments chưa đảo/
+      // invoice_adjustments/active_payment_methods) cho các dialog dùng lại.
+      const { data, error } = await supabase.rpc(
+        'invoice_list_v1',
+        invoiceListRpcArgs(filters, pagination),
+      );
       if (error) {
         // KHÔNG nuốt lỗi: throw để React Query vào isError + retry. Trước đây
         // return {data:[]} khiến trang hiện "Chưa có hoá đơn" GIẢ khi RLS/timeout/5xx.
         console.error('useInvoices error:', error);
         throw error;
       }
-
-      const invoiceRows = financialReadRows(data as InvoiceWithRelations[] | null).map((invoice) => ({
-        ...invoice,
-        payments: (invoice.payments ?? []).filter(
-          (payment) => !(payment as typeof payment & { reversed_at?: string | null }).reversed_at,
-        ),
-      }));
-
-      if (invoiceRows.length > 0) {
-        const { data: methodRows, error: methodError } = await supabase.rpc(
-          'invoice_active_payment_methods',
-          { p_invoice_ids: invoiceRows.map((invoice) => invoice.id) },
-        );
-        if (!methodError) {
-          const methodsByInvoice = new Map<string, string[]>();
-          for (const row of (methodRows ?? []) as Array<{
-            invoice_id: string;
-            payment_methods: string[] | null;
-          }>) {
-            methodsByInvoice.set(row.invoice_id, row.payment_methods ?? []);
-          }
-          return {
-            data: invoiceRows.map((invoice) => ({
-              ...invoice,
-              active_payment_methods: methodsByInvoice.get(invoice.id) ?? [],
-            })) as InvoiceWithRelations[],
-            count: count || 0,
-          };
-        }
-        // Highlight enrichment is non-critical; keep the paginated invoice list
-        // available and fall back to its active embedded payment rows.
-        console.error('invoice_active_payment_methods error:', methodError);
-      }
-
-      return { data: invoiceRows as InvoiceWithRelations[], count: count || 0 };
+      return readInvoiceListPayload(data);
     },
   });
 
@@ -1397,28 +1254,20 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // RBAC v2: không truyền p_user_id; quyền xác định qua can_access_building().
-      // Nhờ vậy super_admin thấy đủ data của các building trong scope (kể cả invoice
-      // do staff khác tạo), khắc phục lỗi "lệch owner" của bản v1.
-      // hermes-parity:begin invoice-stats — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-      const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
-        p_building_id: filters?.building_id ?? undefined,
-        p_room_id: filters?.room_id ?? undefined,
-        p_status: filters?.status ?? undefined,
-        p_start_date: filters?.start_date ?? undefined,
-        p_end_date: filters?.end_date ?? undefined,
-        p_billing_month: filters?.billing_month ?? undefined,
-        p_payment_status: filters?.payment_status ?? undefined,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
-      });
-      // hermes-parity:end invoice-stats
+      // Hàm dùng chung invoice_statistics_v3 (migration 20261017115809): cùng công
+      // thức get_invoice_statistics_v2 nhưng phạm vi theo QUYỀN THẬT invoices.view
+      // như danh sách — v2 lấy staff_assignments nên chủ công ty không phân công toà
+      // ra toàn 0. v2 vẫn giữ cho các chỗ khác (đối chiếu lợi nhuận, Copilot).
+      const { data, error } = await supabase.rpc(
+        'invoice_statistics_v3',
+        invoiceStatisticsRpcArgs(filters),
+      );
 
       if (error) throw error;
 
-      // Kết quả RPC về dưới dạng Json; ép một lần ở đây thay vì cast cả
-      // supabase.rpc — như vậy tên RPC và tham số vẫn được compiler kiểm.
+      // RETURNS TABLE ⇒ một dòng. Dòng thiếu/hỏng ném ở financialReadNumber.
       const result = (Array.isArray(data) ? data[0] : data) as unknown as
-        Record<string, number | null | undefined>;
+        Record<string, number | null | undefined> | undefined;
       return {
         total_amount: financialReadNumber(result?.total_amount),
         total_paid: financialReadNumber(result?.total_paid),
