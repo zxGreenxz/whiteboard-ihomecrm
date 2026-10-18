@@ -85,6 +85,7 @@ import {
 } from '@/lib/contractSettlement';
 import type { useSettlementActions } from '@/hooks/useSettlementActions';
 import { VoucherPartialError } from '@/lib/voucherFeedback';
+import { COMMISSION_EVIDENCE_ADD_REASON } from '@/lib/commissionAudit';
 
 type Actions = ReturnType<typeof useSettlementActions>;
 
@@ -217,17 +218,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-it('bổ sung chứng từ hoa hồng yêu cầu lý do trước khi tải ảnh',async()=>{
+it('bổ sung chứng từ hoa hồng không hỏi lý do, gửi câu cố định cho lịch sử',async()=>{
   dungMan(phieu({kind:'commission',commissionKind:'broker'}));
   moFormChi();
+  expect(screen.queryByLabelText(/Lý do bổ sung chứng từ hoa hồng/)).toBeNull();
   const file=tepAnh();
   const input=document.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input,{target:{files:[file]}});
-  expect(H.attach).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText(/Lý do bổ sung chứng từ hoa hồng/),{target:{value:'Bổ sung ảnh đối chiếu hoa hồng đã nhận'}});
-  fireEvent.change(input,{target:{files:[file]}});
   await waitFor(()=>expect(H.attach).toHaveBeenCalledOnce());
-  expect(H.attach).toHaveBeenCalledWith(file,expect.objectContaining({voucherId:V_A,commissionReason:'Bổ sung ảnh đối chiếu hoa hồng đã nhận'}));
+  expect(H.attach).toHaveBeenCalledWith(file,expect.objectContaining({voucherId:V_A,commissionReason:COMMISSION_EVIDENCE_ADD_REASON}));
 });
 
 it('oversized supplement reason stays inline, keeps draft, focuses field and never calls writer',async()=>{

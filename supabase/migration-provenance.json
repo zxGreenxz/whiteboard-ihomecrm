@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-17T23:08:46.710Z",
+  "generatedAt": "2026-10-18T03:40:42.333Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 733,
-    "unknown": 81,
+    "ledger-applied": 734,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11927,18 +11927,14 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261017115636_contract_list_v1.sql",
-      "version": "20261017115636",
-      "name": "contract_list_v1",
+      "path": "supabase/migrations/20261018031847_commission_canonical_post_cashbook.sql",
+      "version": "20261018031847",
+      "name": "commission_canonical_post_cashbook",
       "scheme": "timestamp14",
-      "sha256": "0a52a529123e792b24039208ce770e0aa02c652094c79d5cbfbf28398fa6520e",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.contract_display_status_v1",
-        "function:public.contract_display_label_v1",
-        "function:public.contract_list_v1",
-        "function:public.contract_stats_v2"
+      "sha256": "7e3291da6c35a114deca7741ad478131873f9f80d5cce09fe45f63baefe76f50",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
       ]
     },
     {

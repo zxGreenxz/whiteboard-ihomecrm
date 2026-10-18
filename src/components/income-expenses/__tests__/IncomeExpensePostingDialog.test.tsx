@@ -70,6 +70,7 @@ vi.mock('sonner', () => ({
 
 import IncomeExpensePostingDialog from '../IncomeExpensePostingDialog';
 import { adoptVoucherAttachmentsAsEvidence, commitPostingAttachmentChanges, useAttachPostingEvidence } from '@/hooks/income-expenses/financeV2Mutations';
+import { COMMISSION_EVIDENCE_ADD_REASON } from '@/lib/commissionAudit';
 
 const PHIEU = '0f0f0f0f-0000-4000-8000-00000000000a';
 const SO = '0d0d0d0d-0000-4000-8000-000000000001';
@@ -785,18 +786,15 @@ describe('tải ảnh nhanh và chịu mạng chập chờn', () => {
   });
 });
 
-it('thêm chứng từ hoa hồng: chặn lý do trống trước ghi và lưu lý do khi chỉ thêm ảnh', async () => {
+it('thêm chứng từ hoa hồng: chỉ thêm ảnh thì không hỏi lý do, máy chủ nhận câu cố định', async () => {
   render(<Khung hoaHong />);
   const {url}=await themAnh('bo-sung-chung-tu.png');
-  fireEvent.click(screen.getByRole('button',{name:'Chi'}));
-  await screen.findByText(/Nhập lý do cụ thể từ 8/);
-  expect(H.ghiSo).not.toHaveBeenCalled();
-  expect(H.goiMayChu.mock.calls.some(([name])=>name==='intervene_commission_v1'||name==='annotate_income_expense_v1')).toBe(false);
-  fireEvent.change(screen.getByLabelText(/Lý do thay đổi chứng từ hoa hồng/),{target:{value:'Bổ sung xác nhận chuyển khoản đã đối chiếu'}});
+  expect(screen.queryByLabelText(/Lý do thay đổi chứng từ hoa hồng/)).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Chi'}));
   await waitFor(()=>expect(H.ghiSo).toHaveBeenCalledOnce());
+  expect(screen.queryByText(/Nhập lý do cụ thể từ 8/)).toBeNull();
   expect(H.goiMayChu).toHaveBeenCalledWith('intervene_commission_v1',expect.objectContaining({
-    p_stage:'ANNOTATE',p_reason:'Bổ sung xác nhận chuyển khoản đã đối chiếu',p_payload:expect.objectContaining({add_attachments:[url],remove_attachments:[]}),
+    p_stage:'ANNOTATE',p_reason:COMMISSION_EVIDENCE_ADD_REASON,p_payload:expect.objectContaining({add_attachments:[url],remove_attachments:[]}),
   }));
 });
 
@@ -825,7 +823,6 @@ it('đính chứng từ ngay của hoa hồng chặn trước upload và truyề
 it('lỗi can thiệp chứng từ hoa hồng không đi đường lùi để ghi sổ',async()=>{
   render(<Khung hoaHong />);
   await themAnh('chung-tu-bi-tu-choi.png');
-  fireEvent.change(screen.getByLabelText(/Lý do thay đổi chứng từ hoa hồng/),{target:{value:'Bổ sung theo đối chiếu kỳ hoa hồng'}});
   may.loiGhiAnh={message:'permission denied'};
   fireEvent.click(screen.getByRole('button',{name:'Chi'}));
   await waitFor(()=>expect(H.goiMayChu.mock.calls.some(([name])=>name==='intervene_commission_v1')).toBe(true));
