@@ -12,7 +12,7 @@ import { W2A_REPORTS } from './wave2-a-contract.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
 import { W2C_REPORTS } from './wave2-c-contract.mjs';
 import { W2D_REPORTS } from './wave2-d-contract.mjs';
-import { W2_TOPICS, W2_PACKAGES, W2_UNAVAILABLE, W2_READ_KEYS, W2_SELF_KEYS, W2_REUSED_KEYS, w2Record, w2Params, w2CatalogEntry, isW2ReportId, shaped, id,
+import { W2_TOPICS, W2_BUILDING_SCOPES, W2_PACKAGES, W2_UNAVAILABLE, W2_READ_KEYS, W2_SELF_KEYS, W2_REUSED_KEYS, w2Record, w2Params, w2CatalogEntry, isW2ReportId, shaped, id,
   PRIVATE_HINT } from './wave2-kit.mjs';
 export { W2_READ_KEYS, W2_SELF_KEYS, W2_REUSED_KEYS };
 
@@ -101,8 +101,11 @@ export function createW2Registry(packages) {
   // báo cáo không theo toà không được nêu toà; scope cashbooks chỉ trong fence.cashbooks khi không org_wide.
   function fenceOf(value, identity, spec, input) {
     const fence = value.fence, crm = identity.scopesByPermission?.[spec.permission]?.buildingIds;
-    const byBuilding = ['rows', 'buildings'].includes(spec.scope), building = input.params.buildingId ?? null;
-    if (!shaped(fence, FENCE) || !Array.isArray(crm) || fence.buildings.some(item => !crm.includes(item)) ||
+    const byBuilding = W2_BUILDING_SCOPES.includes(spec.scope), building = input.params.buildingId ?? null;
+    // rls_buildings (như route web không truyền toà): fence = toà công ty ∩ phạm vi kết nối, không ⊆ tập toà của khoá; broker chỉ
+    // đòi khoá có ở ít nhất một toà (SQL quyết định cuối, hàng vẫn phải thuộc fence).
+    if (!shaped(fence, FENCE) || !Array.isArray(crm) ||
+        (spec.scope === 'rls_buildings' ? !crm.length : fence.buildings.some(item => !crm.includes(item))) ||
         !byBuilding && fence.buildings.length || spec.scope !== 'cashbooks' && fence.cashbooks.length ||
         building !== null && (fence.orgWide || fence.buildings.length > 1 || fence.buildings.length === 1 && fence.buildings[0] !== building)) fail();
     return fence;
@@ -112,7 +115,7 @@ export function createW2Registry(packages) {
     if (!granted(identity.effective, spec.permission) || value.report !== input.report || value.source !== spec.source || value.offset !== input.offset ||
         typeof value.sourceCapped !== 'boolean' || !Array.isArray(value.items) || value.items.length > input.limit ||
         !(value.nextOffset === null || Number.isSafeInteger(value.nextOffset) && value.nextOffset === input.offset + value.items.length && value.items.length > 0)) fail();
-    const fence = fenceOf(value, identity, spec, input), byBuilding = ['rows', 'buildings'].includes(spec.scope);
+    const fence = fenceOf(value, identity, spec, input), byBuilding = W2_BUILDING_SCOPES.includes(spec.scope);
     if (value.unavailable !== null) {
       if (!W2_UNAVAILABLE.includes(value.unavailable) || value.unavailable === 'no_building_scope' && !byBuilding ||
           value.items.length || value.summary !== null || value.nextOffset !== null) fail();

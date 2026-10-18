@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T17:27:57.942Z",
+  "generatedAt": "2026-10-18T19:49:15.050Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 763,
+    "ledger-applied": 766,
     "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
@@ -12254,6 +12254,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T17:27:42.790Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018182656_hermes_w2a_reservation_fund_member_v1.sql",
+      "version": "20261018182656",
+      "name": "hermes_w2a_reservation_fund_member_v1",
+      "scheme": "timestamp14",
+      "sha256": "3e819540e9296555918b7cf796b99a2dc1874f01f14908191611ded55a860751",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T19:44:22.978Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql",
+      "version": "20261018185339",
+      "name": "hermes_w2_rls_buildings_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "cbefe8cebc56dce8c2173561e4932943dd7681d5bf8d26dc1fb226f5c9c73028",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T19:47:11.841Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018185413_hermes_w2a_reservation_rls_scope_v1.sql",
+      "version": "20261018185413",
+      "name": "hermes_w2a_reservation_rls_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "3be4b69a018de65a505975f91aac619d051999ec844e7ed35de0e612f40d30e2",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T19:49:07.144Z|bien-nhan-backup"
       ]
     },
     {
