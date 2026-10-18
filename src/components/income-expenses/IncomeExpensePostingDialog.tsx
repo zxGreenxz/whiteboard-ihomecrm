@@ -1,5 +1,5 @@
 import { CommissionReasonField } from './CommissionReasonField';
-import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE } from '@/lib/commissionAudit';
+import { isCommissionReasonValid, COMMISSION_REASON_MESSAGE, COMMISSION_EVIDENCE_ADD_REASON } from '@/lib/commissionAudit';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown } from "@/lib/voucherFeedback";
 import { FinancialWorkflowError } from "@/lib/financialWorkflowError";
@@ -938,6 +938,8 @@ export default function IncomeExpensePostingDialog({
    */
   const hasPendingAttachmentChanges =
     stagedUrls.length > 0 || removedUrls.length > 0 || pendingUploads.length > 0;
+  /** Phiếu hoa hồng chỉ hỏi lý do khi gỡ ảnh cũ; chỉ thêm ảnh dùng câu cố định (xem `COMMISSION_EVIDENCE_ADD_REASON`). */
+  const commissionReasonRequired = !!voucher.isCommission && removedUrls.length > 0;
 
   /**
    * `evidenceIds` của form LUÔN được suy ra, không bao giờ sửa tay. Không còn thay
@@ -1162,7 +1164,7 @@ export default function IncomeExpensePostingDialog({
         ? `duyệt và ${isExpense ? 'chi' : 'thu'}`
         : isExpense ? 'chi tiền' : 'ghi nhận thu';
       const res = await withCommitDeadline(
-        commitDraft(voucher.subjectId, { add, remove, ...(voucher.isCommission && (add.length || remove.length) ? { commissionReason: commissionReason.trim() } : {}) }),
+        commitDraft(voucher.subjectId, { add, remove, ...(voucher.isCommission && (add.length || remove.length) ? { commissionReason: remove.length ? commissionReason.trim() : COMMISSION_EVIDENCE_ADD_REASON } : {}) }),
         `Chưa gửi lệnh ${lenh}`,
       );
       if (sessionRef.current !== session) {
@@ -1219,7 +1221,7 @@ export default function IncomeExpensePostingDialog({
 
   const submit = form.handleSubmit(async (values) => {
     const session = sessionRef.current;
-    if (voucher.isCommission && hasPendingAttachmentChanges && !isCommissionReasonValid(commissionReason)) { setSubmitError(COMMISSION_REASON_MESSAGE); return; }
+    if (commissionReasonRequired && !isCommissionReasonValid(commissionReason)) { setSubmitError(COMMISSION_REASON_MESSAGE); return; }
     if (reconcileRequired || cashbookError || submitLockRef.current === session) return;
     submitLockRef.current = session;
     setSubmitError(null);
@@ -1487,7 +1489,7 @@ export default function IncomeExpensePostingDialog({
               )}
             />
 
-            {voucher.isCommission && hasPendingAttachmentChanges && <CommissionReasonField id="posting-commission-reason" label="Lý do thay đổi chứng từ hoa hồng" value={commissionReason} onChange={setCommissionReason} />}
+            {commissionReasonRequired && <CommissionReasonField id="posting-commission-reason" label="Lý do thay đổi chứng từ hoa hồng" value={commissionReason} onChange={setCommissionReason} />}
             {adoptError && <p role="alert" className="text-sm text-destructive">Chưa kiểm tra được chứng từ đã đính kèm. Đóng và mở lại phiếu để tải lại, hoặc thêm chứng từ mới.</p>}
             {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
             {!capabilityOk && (

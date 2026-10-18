@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-17T23:22:41.611Z",
+  "generatedAt": "2026-10-18T04:23:35.073Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 733,
-    "unknown": 84,
+    "ledger-applied": 735,
+    "unknown": 85,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11927,6 +11927,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261017115708_customer_list_v1.sql",
+      "version": "20261017115708",
+      "name": "customer_list_v1",
+      "scheme": "timestamp14",
+      "sha256": "1f5e7d40fd2cfccb8db7ecaab139bf02077a10da827f6e834b124a1fb778d3ed",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-17T23:24:49.480Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261018000000_hermes_w2_foundation_v1.sql",
       "version": "20261018000000",
       "name": "hermes_w2_foundation_v1",
@@ -11974,6 +11985,22 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261018000700_hermes_w2_org_fence_v1.sql",
+      "version": "20261018000700",
+      "name": "hermes_w2_org_fence_v1",
+      "scheme": "timestamp14",
+      "sha256": "0c942b1f505c3782956e1ed0a11f8b506f034884748146c2225621451176f47a",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2_org_keys_v1",
+        "function:app_private.hermes_w2_permission_kind_v1",
+        "function:app_private.hermes_w2_catalog_v1",
+        "function:app_private.hermes_w2_scope_v1",
+        "function:app_private.hermes_w2_finish_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql",
       "version": "20261018010000",
       "name": "hermes_w2a_receivables_read_v1",
@@ -11987,6 +12014,17 @@
         "function:public.thu_tien_collection_v1",
         "function:public.invoice_detail_v1",
         "function:public.deposit_reservation_vouchers_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018031847_commission_canonical_post_cashbook.sql",
+      "version": "20261018031847",
+      "name": "commission_canonical_post_cashbook",
+      "scheme": "timestamp14",
+      "sha256": "7e3291da6c35a114deca7741ad478131873f9f80d5cce09fe45f63baefe76f50",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T03:36:18.333Z|bien-nhan-backup"
       ]
     },
     {

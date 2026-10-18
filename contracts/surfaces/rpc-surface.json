@@ -1,8 +1,8 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 2552,
-    "catalogFunctions": 1373,
+    "sourceCallSites": 2554,
+    "catalogFunctions": 1376,
     "schemas": [
       "public",
       "api"
@@ -1812,6 +1812,25 @@
       ],
       "risk": "normal"
     },
+    "customer_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_status text DEFAULT NULL::text, p_kind text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_room_id uuid DEFAULT NULL::uuid, p_limit integer DEFAULT NULL::integer, p_offset integer DEFAULT 0, p_include_location boolean DEFAULT true",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
     "decide_financial_request_v2": {
       "definitions": [
         {
@@ -2458,26 +2477,6 @@
       ],
       "callers": [
         "src/lib/customerResidenceHistory.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_customer_stats": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_status text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": false,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useCustomers.ts"
       ],
       "risk": "normal"
     },

@@ -135,7 +135,7 @@ live theo thay đổi HĐ), `["unpaid-invoices"]`, `["dashboard-alerts"]`, `["re
 Các root báo cáo legacy ở §5 giữ nguyên; hai bảng này cũng không invalidate `occupancy-dashboard`.
 
 ### `jobs` / `customers`
-`["jobs"]` · `["customers"]`, `["customer-stats"]`.
+`["jobs"]` · `["customers"]` (thẻ đếm màn Khách hàng đi cùng lời gọi danh sách `customer_list_v1` từ 18/10/2026, không còn root `customer-stats`).
 
 ---
 

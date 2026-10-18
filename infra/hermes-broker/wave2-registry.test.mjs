@@ -47,9 +47,16 @@ test('khai báo: w2Report từ chối khai báo sai (tham số lạ, bắt buộ
     // P2-1 (review PR #195): khoá ↔ scope, khoá ngoài danh sách, tham số gắn toà chỉ ở rows/buildings.
     { scope: 'self' }, { permission: 'assistant.salary.self' }, { permission: 'assistant.bank_events.read', scope: 'organization' },
     { scope: 'platform' }, { permission: 'users.view' }, { permission: 'customers.create' }, { permission: 'contracts.view' },
-    { scope: 'organization', params: ['roomId'] }, { scope: 'cashbooks', params: ['invoiceId'] }, { scope: 'organization', params: ['areaId'] }])
+    { scope: 'organization', params: ['roomId'] }, { scope: 'cashbooks', params: ['invoiceId'] }, { scope: 'organization', params: ['areaId'] },
+    // P2-b (review cổng INVOKER): khoá organization_scope chỉ scope organization/cashbooks.
+    { permission: 'salary.view' }, { permission: 'materials.view', scope: 'buildings' }, { permission: 'cashbooks.view', scope: 'rows' },
+    // P2-a: theo toà phải khai buildingId; organizationId là trường rào (cổng gỡ), chỉ platform được khai.
+    { fields: { name: nullable(longText(100)), total: amount } }, { fields: { ...fields, organizationId: id } },
+    { permission: 'materials.view', scope: 'organization', fields: { organizationId: id, total: amount } }])
     assert.throws(() => w2Report({ ...ok, ...bad }), JSON.stringify(bad));
   for (const good of [{ permission: 'notifications.view', scope: 'self' }, { permission: 'assistant.bank_events.read', scope: 'platform' },
+    { permission: 'assistant.bank_events.read', scope: 'platform', fields: { organizationId: nullable(id), total: amount } },
+    { permission: 'materials.view', scope: 'organization', fields: { name: nullable(longText(100)), total: amount } },
     { permission: 'cashbooks.view', scope: 'cashbooks', params: ['cashbookId'] }, { permission: 'invoices.view', params: ['invoiceId', 'roomId'] },
     { permission: 'salary.view', scope: 'organization', params: ['staffId', 'month'] }, { permission: 'rooms.view', scope: 'buildings', params: ['areaId'] }])
     assert.ok(w2Report({ ...ok, ...good }), JSON.stringify(good));
@@ -182,10 +189,15 @@ test('kết quả: rào khoá, nguồn, khuôn hàng, fence (⊆ CRM, toà của
   assert.throws(() => report.result(envelope('probe_rows', [], { ...sum, fence: { buildings: [B], cashbooks: [], orgWide: true } }), who, onlyB), 'hỏi một toà mà fence org_wide');
   // Mảng buildingIds và báo cáo không theo toà.
   const multi = createW2Registry({ a: { probe_multi: w2Report({ permission: 'services.view', source: 'crm.probe_multi', scope: 'rows', title: 'Dịch vụ',
-    fields: { buildingIds: () => true, total: amount } }) }, b: {}, c: {}, d: {} }).reads.report, multiInput = multi.input({ report: 'probe_multi' });
+    fields: { buildingId: nullable(id), buildingIds: () => true, total: amount } }) }, b: {}, c: {}, d: {} }).reads.report, multiInput = multi.input({ report: 'probe_multi' });
   const multiEnv = (items, fence = FENCE_A) => ({ ...envelope('probe_rows', items), report: 'probe_multi', source: 'crm.probe_multi', fence });
-  assert.equal(multi.result(multiEnv([{ buildingIds: [A], total: '1' }]), identity(['services.view']), multiInput).items.length, 1);
-  for (const buildingIds of [[A, B], [null], A]) assert.throws(() => multi.result(multiEnv([{ buildingIds, total: '1' }]), identity(['services.view']), multiInput), JSON.stringify(buildingIds));
+  assert.equal(multi.result(multiEnv([{ buildingId: A, buildingIds: [A], total: '1' }]), identity(['services.view']), multiInput).items.length, 1);
+  for (const buildingIds of [[A, B], [null], A])
+    assert.throws(() => multi.result(multiEnv([{ buildingId: A, buildingIds, total: '1' }]), identity(['services.view']), multiInput), JSON.stringify(buildingIds));
+  // P2-a: hàng theo toà thiếu buildingId (w2Report bắt khai nên khuôn hàng từ chối); organizationId (trường
+  // rào SQL đã gỡ) lọt tới broker ⇒ từ chối.
+  assert.throws(() => report.result(envelope('probe_rows', [{ name: 'Toà A', total: '1' }], sum), who, input), 'theo toà mà hàng không nêu toà');
+  assert.throws(() => report.result(envelope('probe_rows', [{ ...row, organizationId: ORG }], sum), who, input), 'organizationId không được tới mô hình');
   const org = report.input({ report: 'probe_org' });
   assert.throws(() => report.result(envelope('probe_org', [{ buildingId: A, name: null, total: '1' }]), identity(['materials.view']), org), 'organization không nêu toà');
   assert.throws(() => report.result(envelope('probe_org', [], { fence: FENCE_A }), identity(['materials.view']), org), 'organization không có toà trong fence');
