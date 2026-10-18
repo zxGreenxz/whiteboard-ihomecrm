@@ -228,7 +228,9 @@ test('broker có báo cáo (tiến trình con): forbidden khi khoá của báo c
   const run = spawnSync(process.execPath, [fileURLToPath(new URL('./wave2-probe-broker.fixture.mjs', import.meta.url))], { encoding: 'utf8', timeout: 90_000 });
   assert.equal(run.status, 0, run.stderr);
   const result = JSON.parse(run.stdout.trim().split('\n').at(-1));
-  assert.deepEqual(result.reports, ['probe_rows', 'probe_org'], 'hook đã thay sổ gói A');
+  // Hook chỉ thay sổ gói A bằng sổ thăm dò; sổ thật của các gói khác (B/C/D) vẫn nạp như tiến trình cha.
+  assert.deepEqual(result.reports, ['probe_rows', 'probe_org', ...Object.keys(W2.reports).filter(key => !Object.hasOwn(W2A_REPORTS, key))],
+    'hook đã thay sổ gói A');
   for (const name of W2_TOOL_NAMES) assert.ok(result.fullNames.includes(name), name);
   assert.ok(result.fullBytes <= 64_000, `tools/list đủ quyền ${result.fullBytes} B (${result.fullCount} tool)`);
   assert.deepEqual(result.otherList.filter(name => W2_TOOL_NAMES.includes(name)), W2_TOOL_NAMES, 'tool hiện nhờ khoá của báo cáo khác');
