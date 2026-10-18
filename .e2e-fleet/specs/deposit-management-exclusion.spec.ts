@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { USERS } from './auth';
+import { readRpcAllowlist } from '../support/read-rpc-allowlist';
 
 // Read-only acceptance after the reviewed exclusion migration is seeded on TEST.
 // Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5198,
@@ -17,15 +18,9 @@ const BUILDING_ID = '59c6fc2c-2369-4ec8-b253-1ac64abb2f45';
 const ROOM_ID = '46a8f5e8-cc72-4c32-a288-0dafe93f343c';
 
 // Source: OrganizationContext, useMyPermissions, useDepositDashboard,
-// useReservationSettlement, useRoomReservations and Sidebar's organization read.
-const READ_RPCS = new Set([
-  'list_my_copilot_organizations_v1', 'get_my_permissions_v2', 'get_my_permissions',
-  'is_admin', 'is_super_admin', 'is_company_owner_self_v1',
-  'business_performance_organizations_v1', 'get_held_deposit_summary',
-  'get_refund_forfeit_summary', 'get_reservation_deposit_summary',
-  'get_reservation_settlement_summary_v1', 'get_reservation_settlements_v1',
-  'list_room_reservations_v1',
-]);
+// useReservationSettlement, useRoomReservations and Sidebar's organization read
+// (shared module; shell and shared readers included).
+const READ_RPCS = readRpcAllowlist('deposits');
 
 const CONTROLLED_REFUND_SUMMARY = {
   refund_total: 0, refund_count: 0, forfeit_total: 0, forfeit_count: 0,

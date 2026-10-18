@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { expect, type Page, type Request, type TestInfo } from '@playwright/test';
 import { createNavigationReadGuard } from '../../scripts/lib/commission-e2e-network.mjs';
+import { readRpcAllowlist } from '../support/read-rpc-allowlist';
 
 export const TEST_REF = 'hzulujxgonszuleqticb';
 export const TEST_ORIGIN = `https://${TEST_REF}.supabase.co`;
@@ -54,28 +55,9 @@ export function fixtures(): BrowserFixture {
   }
   return f;
 }
-const READERS = new Set([
-  'get_my_context', 'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
-  'my_org_ids', 'can_access_building', 'accessible_building_ids', 'get_contract_stats', 'get_dashboard_summary',
-  'list_my_copilot_organizations_v1', 'business_performance_organizations_v1', 'list_cashbook_visibility_v2',
-  'get_notification_org_config_v1', 'get_my_notification_preferences_v1', 'list_contract_drafts', 'list_room_reservations_v1',
-  'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1', 'list_contract_meter_followups_v1',
-  'get_contract_move_out_notice_v1', 'read_contract_meter_boundary_set_v1', 'read_contract_transfer_links_v1',
-  'read_contract_rent_support_v1', 'quote_contract_rent_support_v1', 'quote_invoice_rent_support_v1',
-  'list_rent_support_parties_v1', 'read_contract_payout_operation_v1', 'read_contract_payout_request_v1',
-  'list_contract_commission_followups_v2', 'get_commission_voucher_facts_v1', 'sale_bonus_status_v1',
-  'read_contract_draft_signing_v1', 'read_contract_meter_interval_v1', 'read_contract_rent_support_lifecycle_v1',
-  'read_rent_support_deposit_candidate_v1',
-  'get_invoice_statistics_v2', 'is_company_owner_self_v1', 'invoice_active_payment_methods', 'get_customer_credit_balance_v1',
-  'read_rent_support_salary_parts_v1',
-  // Existing canonical readers used by the salary and settlement pages. Money
-  // writers (lock/pay/approve/collect/termination) remain outside the allowlist.
-  'salary_work_ledger', 'salary_commission_meta_v1', 'salary_staff_months', 'get_salary_v5_config', 'v5_month_money_bulk',
-  'salary_recurring_list_v1', 'salary_line_override_list_v1', 'salary_can_edit_amounts_v1', 'rent_support_salary_bridge_required_v1',
-  'get_special_fee_prices_v1', 'get_period_fee_status', 'get_period_commissions', 'is_org_owner_self_v1',
-  'ie_form_buildings', 'ie_form_rooms', 'read_income_expense_details_v1', 'get_room_cash_lifecycle_v1', 'get_room_residence_segments_v1',
-  'get_finance_v2_client_flags_v1', 'can_flex_cancel_v1',
-]);
+// Canonical readers of the contract, invoice, salary and settlement pages (shared
+// module). Money writers (lock/pay/approve/collect/termination) remain outside it.
+const READERS = readRpcAllowlist('dashboard', 'contracts', 'invoices', 'incomeExpense', 'rentSupport', 'salary');
 const WRITERS = new Set(['save_contract_draft', 'register_contract_draft_document', 'sign_and_checkin_contract_draft_v1',
   'prepare_contract_payouts_with_support_v1', 'execute_contract_payout_operation_v1', 'create_invoice_v1', 'create_invoice_with_credit_v1', 'mark_overdue_invoices_v1', 'verify_rent_support_deposit_payee_v1']);
 export async function openTest(page: Page, f: BrowserFixture, role: keyof BrowserFixture['actors'], path = '/contracts') {

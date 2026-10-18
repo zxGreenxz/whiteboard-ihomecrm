@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { credentials, type UserKey } from './auth';
+import { readRpcAllowlist } from '../support/read-rpc-allowlist';
 
 const TEST_HOST = 'hzulujxgonszuleqticb.supabase.co';
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
@@ -11,16 +12,7 @@ const METER_FOLLOWUP = {
     effective_on: '2026-09-28', state: 'MISSING' }],
   total: 1, limit: 10, offset: 0,
 };
-const READ_RPC = new Set([
-  'get_dashboard_summary', 'revenue_by_month', 'get_contract_stats', 'get_my_context',
-  'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
-  'list_my_copilot_organizations_v1', 'business_performance_organizations_v1', 'my_org_ids',
-  'get_notification_org_config_v1', 'get_my_notification_preferences_v1',
-  'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1',
-  'list_contract_meter_followups_v1', 'get_contract_move_out_notice_v1',
-  'read_contract_meter_boundary_set_v1', 'read_contract_transfer_links_v1',
-  'list_contract_drafts',
-]);
+const READ_RPC = readRpcAllowlist('dashboard', 'contracts');
 
 type CapturedReaders = { exits: number[]; drafts: number[] };
 
@@ -100,6 +92,12 @@ async function readonlyDemo(page: Page, email: string) {
         if (body?.p_organization_id !== DEMO_ORG || body?.p_limit !== 10 || body?.p_offset !== 0) return block();
         meterResponsesMocked++;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(METER_FOLLOWUP) });
+      }
+      if (rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ (từ 05/10/2026). Trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const body = request.postDataJSON();
+        if (body?.p_value !== DEMO_ORG) return block();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ [body.p_key]: body.p_value }) });
       }
       if (rpc && READ_RPC.has(rpc) && method === 'POST') {
         const body = request.postDataJSON();

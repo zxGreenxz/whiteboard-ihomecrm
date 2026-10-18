@@ -1,5 +1,6 @@
 // Real TEST roles and database, supplied only by the guarded disposable-fixture runner.
 import { expect, test, type Page } from '@playwright/test';
+import { readRpcAllowlist } from '../support/read-rpc-allowlist';
 
 type Actor = { id: string; email: string; password: string };
 type Fixtures = { org: string; ref: string; url: string; writer: Actor; viewer: Actor };
@@ -13,6 +14,7 @@ type LedgerSnapshot = {
   budgets: Array<{ id: string; amount: number; category_id: string | null }>;
 };
 type NetworkControl = { loseReceiptFor?: string; lostReceipts: number; sttCalls: number; aiReads: number; snapshot?: LedgerSnapshot };
+const PERSONAL_FINANCE_READ_RPC = readRpcAllowlist('personalFinance');
 const fixture = JSON.parse(process.env.PERSONAL_FINANCE_TEST_FIXTURES || 'null') as Fixtures | null;
 if (!fixture || fixture.ref === 'tryymsxyyckgbrmmvozx' || fixture.org !== 'dddd0000-0000-4000-8000-000000000001') {
   throw new Error('Run scripts/test-personal-finance-browser.mjs; guarded TEST fixtures are required');
@@ -81,8 +83,9 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
         }
       } else if (target.pathname.startsWith('/rest/v1/rpc/')) {
         const name = target.pathname.split('/').pop() || '';
-        // Existing layout roster RPC is SELECT-only (20260725001000 migration).
-        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1'].includes(name)) return deny();
+        // Existing layout roster RPC is SELECT-only (20260725001000 migration); shared
+        // readers (contract_stats_v2, invoice_list_v1…) come from the shared module.
+        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !PERSONAL_FINANCE_READ_RPC.has(name)) return deny();
       } else if (!['/auth/v1/token', '/auth/v1/logout'].includes(target.pathname)) return deny();
     }
     await route.continue();

@@ -261,8 +261,45 @@ gaps:
       production..HEAD nên spec đã đổi nằm trong mọi plan, chặn promote tới khi production vượt
       qua nó. PR #143 vì vậy giữ nguyên nhãn mà spec khẳng định.
     exit_condition: >
-      Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản
-      vá spec ở 8dd5bb18 lên main và chạy xanh trên preview đúng commit với vai thật.
+      Nhánh claude/e2e-read-rpc-module (18/10/2026) đưa phần set_my_ui_preference của 8dd5bb18 vào
+      spec; phần đổi nhãn khung chỉ số của 8dd5bb18 KHÔNG đưa vì main vẫn hiện "Chờ bổ sung chỉ số
+      bàn giao". Đóng khi lượt fleet của mục e2e-fleet-read-rpc-allowlist-chua-chay có spec này
+      xanh 2/2 (chunha, quanly) trên đúng commit với vai thật, bằng chứng đính kèm PR. Promote vẫn
+      cần đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet).
+  - id: e2e-fleet-read-rpc-allowlist-chua-chay
+    where: >
+      .e2e-fleet/support/read-rpc-allowlist.ts ·
+      .e2e-fleet/specs/{contract-workspace-tabs,contract-unified-form,contract-mobile-settlement-readonly,user-feedback,deposit-management-exclusion,personal-finance-real,invoice-adjustment-repair}.spec.ts ·
+      .e2e-fleet/specs/rent-support-browser.ts (dùng bởi rent-support-schedule.spec.ts)
+    expires_at: 2026-11-30
+    why: >
+      Nhánh claude/e2e-read-rpc-module (18/10/2026) gom danh sách RPC đọc của các spec fleet chỉ-đọc
+      vào một module ngoài specs/, thêm sẵn hàm dùng chung (contract_list_v1, contract_stats_v2,
+      customer_list_v1, customer_location_ids_v1, customer_search_patterns_v1, invoice_list_v1,
+      invoice_statistics_v3), và cho chỗ chờ danh sách/thẻ thống kê nhận cả dạng cũ (GET bảng) lẫn
+      hàm dùng chung. Từ đó web chuyển một màn sang hàm dùng chung chỉ cần sửa module: đường đó
+      không khớp `.e2e-fleet/specs/**/*.spec.ts` nên gate-plan không sinh mục "unavailable".
+      Chính lần đổi này vẫn sửa spec nên gate-aggregate báo "Unverifiable required obligation:
+      e2e-fleet" cho mọi plan chứa commit đó, và các spec CHƯA CHẠY (phiên cloud không credential).
+      Đã kiểm: typecheck:e2e không thêm lỗi so với main, eslint, playwright --list, mỗi danh sách
+      mới chứa đủ danh sách cũ và không có hàm ghi, hàm nhận diện chạy với request giả và
+      parseCustomerList thật. Kèm theo: user-feedback trả lời giả customer_list_v1 (web gọi từ PR
+      #196; spec cũ chỉ giả GET /rest/v1/customers nên picker khách bị chặn 403), contract-workspace-tabs
+      nhận bản vá set_my_ui_preference. copilotRoomPassGuard.ts (nạp bằng transpileModule thành
+      data: URL nên không import tương đối được) và scripts/lib/copilot-g1-guard.mjs giữ danh sách
+      chữ ký riêng, chưa có customer_list_v1; Copilot đang tạm hoãn nên không đổi. Mục
+      e2e-fleet-hop-dong-ham-dung-chung-allowlist của PR #197 (chưa merge) được phủ bởi mục này:
+      nhánh merge sau bỏ mục đó và các dòng READERS trùng trong rent-support-browser.ts.
+    exit_condition: >
+      Một phiên local có credential chạy fleet theo quy trình của suite e2e-fleet (bằng chứng LOCAL
+      đính kèm PR, chỉ ghi DEMO/TEST, credential qua `npm run with-cred --`): mỗi spec ở `where` xanh
+      với vai thật trên đúng commit của PR — spec ghim FLEET_BASE_URL 127.0.0.1:5197/5198 chạy trên
+      dev server worktree trỏ TEST, user-feedback trên preview đúng SHA với FLEET_EXPECT_SHA,
+      rent-support-schedule và personal-finance-real qua runner fixture của chúng,
+      invoice-adjustment-repair từ checkout chính (xem e2e-fleet-doc-vault-truc-tiep). Ghi vào PR:
+      SHA, base URL, vai, viewport, số ca đạt/bỏ qua, ảnh. Spec đỏ do danh sách đọc thì sửa module,
+      không sửa spec. Chỉ đóng khi có lượt xanh; promote còn cần đường nộp bằng chứng E2E live cho
+      gate-aggregate (hoặc job CI fleet), vì aggregate chưa nhận bằng chứng local.
   - id: e2e-fleet-contract-moveout-deferred-o-chi-so
     where: >
       .e2e-fleet/specs/contract-moveout-deferred.spec.ts

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
+import { isInvoiceListRead, listReadRows } from '../support/read-rpc-allowlist';
 import { loadSupabaseAdminConfig } from '../../scripts/apply-accounting-rollout.mjs';
 import { DEMO_ORG_ID, DEMO_OWNER_EMAIL, runQuery, fixtureInvoiceSql,
   committedAdjustmentFixtureTeardownSql, fixtureMarker, newRunId, sqlLiteral, uuidLiteral,
@@ -169,14 +170,11 @@ test('issued adjustment, collection, review, mobile history and edit after rever
       sessionStorage.setItem('flt:invoices:filters', JSON.stringify({ building_id: building, billing_month: billingMonth, adjustment_review_status: 'pending' }));
       sessionStorage.setItem('flt:invoices:search', JSON.stringify(''));
     }, { building: fixture.building_id, billingMonth: month });
-    const filtered = page.waitForResponse(response => {
-      const url = new URL(response.url());
-      return url.pathname === '/rest/v1/invoices' && url.searchParams.get('adjustment_review_status') === 'eq.PENDING' && response.request().method() === 'GET';
-    });
+    const filtered = page.waitForResponse(response => isInvoiceListRead(response.request(), { adjustmentReviewStatus: 'pending' }));
     await page.goto('/invoices');
     const filterResponse = await filtered;
     expect(filterResponse.ok()).toBe(true);
-    expect((await filterResponse.json()).some((row: { id: string }) => row.id === invoiceId)).toBe(true);
+    expect((await listReadRows<{ id: string }>(filterResponse)).some(row => row.id === invoiceId)).toBe(true);
     await expect(page.getByRole('combobox').filter({ hasText: 'Bản mới nhất chưa kiểm tra' })).toBeVisible();
 
     // Canonical reversal, then the issued editor must remain available at paid_amount=0.
