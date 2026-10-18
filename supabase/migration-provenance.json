@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T09:04:36.706Z",
+  "generatedAt": "2026-10-18T09:04:48.145Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 736,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 207,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -11968,6 +11968,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.network_center_list_clients_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018052723_chot_so_quy_chi_so_nguoi_goi_nhin_thay.sql",
+      "version": "20261018052723",
+      "name": "chot_so_quy_chi_so_nguoi_goi_nhin_thay",
+      "scheme": "timestamp14",
+      "sha256": "d93c78bf458d7b6d6941a64a34c981e143e33e338de6d29395582b9c1c0cab1e",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.list_cashbook_closings_v1"
       ]
     },
     {
