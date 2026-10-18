@@ -64,6 +64,7 @@ export interface IncomeExpenseTypeCatalogUpdates {
   merged_into_id?: string | null;
 }
 
+// hermes-parity:begin w2d-ie-types — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 /**
  * Lọc hạng mục về đúng tổ chức của user TRƯỚC khi dedup theo tên.
  *
@@ -106,6 +107,7 @@ export function selectIeTypeRowsForOrgs(
     a.name.localeCompare(b.name, "vi", { sensitivity: "base" })
   );
 }
+// hermes-parity:end w2d-ie-types
 
 // my_org_ids() là SECURITY DEFINER đã grant authenticated (xem useMyOrgIds ở
 // useNotificationSettings.ts).
@@ -140,6 +142,7 @@ export const useIncomeExpenseTypes = (
     staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
+      // hermes-parity:begin w2d-ie-types
       // DB canonical theo (organization, type, normalized name). Giữ dedup
       // client-side trong giai đoạn rollout để phiên đang mở trước migration
       // không nháy dòng trùng; đây không còn là nguồn bảo đảm tính duy nhất.
@@ -168,6 +171,7 @@ export const useIncomeExpenseTypes = (
       if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách loại thu chi. Tải lại trước khi chọn.');
       const rows = data as unknown as IncomeExpenseType[];
       return selectIeTypeRowsForOrgs(rows, currentUserId, myOrgIds);
+      // hermes-parity:end w2d-ie-types
     },
   });
 };

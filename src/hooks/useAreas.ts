@@ -32,6 +32,7 @@ export const useAreas = () => {
   return useQuery({
     queryKey: ["areas"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-areas — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("areas")
         .select(`
@@ -51,6 +52,7 @@ export const useAreas = () => {
         ...area,
         buildings_count: area.members?.[0]?.count || 0
       }));
+      // hermes-parity:end w2d-areas
     },
   });
 };

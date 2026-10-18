@@ -86,6 +86,8 @@ $fn$;
 -- Hàm đọc của gói D. Hàng ≤2000 (sourceCapped khi hơn); tổng hợp (thẻ số của trang web) tính trên TOÀN BỘ kết quả.
 -- Tên/SĐT khách: RLS customers của web + customers.view của kết nối phủ đúng toà của hàng. Các khoá phụ khác
 -- (contracts/suppliers/categories/tasks/income_expenses.restricted_view) chỉ che bớt, không nới RLS.
+-- Rào công ty (20261018000700): MỌI hàng nêu organizationId lấy từ cột organization_id mà hàm dùng chung trả (cột của
+-- bảng neo đã lọc công ty); cổng so với công ty kết nối rồi gỡ trước khi trả, nên contract không khai trường này.
 CREATE OR REPLACE FUNCTION app_private.hermes_w2d_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
 DECLARE v_org uuid; v_today date; v_buildings uuid[]; v_customers uuid[]; v_contracts uuid[]; v_restricted uuid[];
@@ -94,7 +96,7 @@ DECLARE v_org uuid; v_today date; v_buildings uuid[]; v_customers uuid[]; v_cont
   v_floor integer; v_days integer; v_from date; v_to date; v_from_m date; v_to_m date; v_total bigint;
   v_query text:=NULLIF(btrim(COALESCE(p_params->>'query','')),''); v_search text:=lower(NULLIF(btrim(COALESCE(p_params->>'query','')),''));
   v_status text:=p_params->>'status'; v_kind text:=p_params->>'kind';
-  v_room uuid; v_category uuid; v_area uuid; v_room_building uuid; v_lifecycle jsonb; v_tz text;
+  v_room uuid; v_category uuid; v_area uuid; v_room_building uuid; v_room_org uuid; v_lifecycle jsonb; v_tz text;
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_ctx->>'userId' IS DISTINCT FROM auth.uid()::text
     THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
@@ -123,7 +125,8 @@ BEGIN
   IF jsonb_typeof(p_params->'areaId')='string' THEN v_area:=(p_params->>'areaId')::uuid; END IF;
   -- Phòng phải thuộc toà đã giao và người hỏi thấy được qua RLS (cổng đã giải; đây là hàng rào thứ hai).
   IF v_room IS NOT NULL THEN
-    SELECT r.building_id INTO v_room_building FROM public.rooms r JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=v_org
+    SELECT r.building_id,b.organization_id INTO v_room_building,v_room_org FROM public.rooms r
+      JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=v_org
       WHERE r.id=v_room AND r.deleted_at IS NULL;
     IF v_room_building IS NULL OR NOT(v_room_building=ANY(v_buildings)) THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
   END IF;
@@ -137,8 +140,8 @@ BEGIN
         'unknownSince',count(*) FILTER (WHERE x.days IS NULL))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.building_name,v.room_name,v.room_id) ord,v.days_vacant days,
-        jsonb_build_object('roomId',v.room_id,'roomName',public.report_text_v1(v.room_name,100),'buildingId',v.building_id,
-          'buildingName',public.report_text_v1(v.building_name,200),'floor',v.floor,'area',round(v.area,2)::text,
+        jsonb_build_object('organizationId',v.organization_id,'roomId',v.room_id,'roomName',public.report_text_v1(v.room_name,100),
+          'buildingId',v.building_id,'buildingName',public.report_text_v1(v.building_name,200),'floor',v.floor,'area',round(v.area,2)::text,
           'rentPrice',round(COALESCE(v.rent_price,0),2)::text,'status',v.status,'lastEndDate',v.last_end_date,'daysVacant',v.days_vacant) item
         FROM public.real_estate_vacant_rooms_v1(v_org,v_buildings,v_floor,v_today) v WHERE v.building_id=ANY(v_buildings)) x;
   ELSIF p_report='re_expiring' THEN
@@ -148,7 +151,8 @@ BEGIN
         'within8To15Days',count(*) FILTER (WHERE x.days>7 AND x.days<=15),'within16To30Days',count(*) FILTER (WHERE x.days>15 AND x.days<=30))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.end_date,v.building_name,v.room_name,v.contract_id) ord,v.days_left days,
-        jsonb_build_object('contractId',v.contract_id,'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
+        jsonb_build_object('organizationId',v.organization_id,'contractId',v.contract_id,
+          'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
           'startDate',v.start_date,'endDate',v.end_date,'daysLeft',v.days_left,'rentPrice',round(COALESCE(v.rent_price,0),2)::text,
           'roomId',v.room_id,'roomName',public.report_text_v1(v.room_name,100),'floor',v.floor,'buildingId',v.building_id,
           'buildingName',public.report_text_v1(v.building_name,200),
@@ -163,7 +167,7 @@ BEGIN
       jsonb_build_object('total',count(*),'renewals',count(*) FILTER (WHERE x.kind='RENEWAL'),'transfers',count(*) FILTER (WHERE x.kind='TRANSFER'))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.event_date DESC,v.kind,v.contract_number,v.event_id) ord,v.kind,
-        jsonb_build_object('kind',v.kind,'eventId',v.event_id,'contractId',v.contract_id,
+        jsonb_build_object('organizationId',v.organization_id,'kind',v.kind,'eventId',v.event_id,'contractId',v.contract_id,
           'contractNumber',public.report_text_v1(v.contract_number,100),'eventDate',v.event_date,
           'rentPrice',round(COALESCE(v.rent_price,0),2)::text,'roomId',v.room_id,'roomName',public.report_text_v1(v.room_name,100),
           'buildingId',v.building_id,'buildingName',public.report_text_v1(v.building_name,200),
@@ -178,7 +182,8 @@ BEGIN
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.signed_date DESC,v.contract_number,v.contract_id) ord,v.status,v.savings,
         (v.discount_amount<>0 OR COALESCE(v.amount_per_month,0)<>0) has_terms,
-        jsonb_build_object('contractId',v.contract_id,'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
+        jsonb_build_object('organizationId',v.organization_id,'contractId',v.contract_id,
+          'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
           'signedDate',v.signed_date,'startDate',v.start_date,'endDate',v.end_date,'rentPrice',round(COALESCE(v.rent_price,0),2)::text,
           'discountType',v.discount_type,'discountAmount',round(v.discount_amount,2)::text,'savings',round(v.savings,2)::text,
           'effectiveRent',round(v.effective_rent,2)::text,'promotionName',public.report_text_v1(v.promotion_name,200),
@@ -200,7 +205,8 @@ BEGIN
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.signed_date DESC,v.contract_number,v.contract_id) ord,v.total_value,v.rent_price rent,
         v.duration_months months,
-        jsonb_build_object('contractId',v.contract_id,'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
+        jsonb_build_object('organizationId',v.organization_id,'contractId',v.contract_id,
+          'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
           'signedDate',v.signed_date,'startDate',v.start_date,'endDate',v.end_date,'rentPrice',round(COALESCE(v.rent_price,0),2)::text,
           'totalDeposit',round(COALESCE(v.total_deposit,0),2)::text,'paymentCycle',v.payment_cycle,'durationMonths',v.duration_months,
           'totalValue',round(COALESCE(v.total_value,0),2)::text,'roomId',v.room_id,'roomName',public.report_text_v1(v.room_name,100),
@@ -220,7 +226,8 @@ BEGIN
         'terminationRatePct',round(CASE WHEN v_total>0 THEN count(*)*100.0/v_total ELSE 0 END,1)::text)
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY v.actual_end_date DESC NULLS LAST,v.contract_id) ord,v.status,
-        jsonb_build_object('contractId',v.contract_id,'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
+        jsonb_build_object('organizationId',v.organization_id,'contractId',v.contract_id,
+          'contractNumber',public.report_text_v1(v.contract_number,100),'status',v.status,
           'startDate',v.start_date,'endDate',v.end_date,'actualEndDate',v.actual_end_date,'effectiveEndDate',v.effective_end_date,
           'durationDays',v.duration_days,'rentPrice',round(COALESCE(v.rent_price,0),2)::text,'totalDeposit',round(COALESCE(v.total_deposit,0),2)::text,
           'terminationType',public.report_text_v1(v.termination_type,40),'note',public.report_text_v1(v.termination_note,300),
@@ -236,7 +243,7 @@ BEGIN
     v_to_m:=date_trunc('month',COALESCE(v_to,v_today))::date;
     v_from_m:=date_trunc('month',COALESCE(v_from,v_to_m-interval '5 months'))::date;
     -- Thẻ số + biểu đồ của web gộp mọi toà (summary, byMonth); hàng chi tiết theo TOÀ (mọi hàng nêu buildingId).
-    WITH raw AS MATERIALIZED (SELECT r.row_kind,r.building_id,r.month,r.category,r.type_name,r.amount
+    WITH raw AS MATERIALIZED (SELECT r.row_kind,r.organization_id,r.building_id,r.month,r.category,r.type_name,r.amount
       FROM public.real_estate_expense_ratio_v1(v_org,v_buildings,v_from_m,v_to_m,v_query,v_restricted) r
       WHERE r.building_id=ANY(v_buildings) AND (r.row_kind='revenue' OR v_cat_visible)),
     months AS (SELECT to_char(m,'YYYY-MM') AS month FROM generate_series(v_from_m,v_to_m,interval '1 month') m),
@@ -244,8 +251,8 @@ BEGIN
         COALESCE((SELECT sum(t.amount) FROM raw t WHERE t.row_kind='expense' AND t.month=mo.month),0) expense FROM months mo),
     ratios AS (SELECT b.*,CASE WHEN b.revenue>0 THEN b.expense/b.revenue*100 END ratio FROM by_month b),
     peak AS (SELECT r.month,r.ratio FROM ratios r WHERE r.ratio IS NOT NULL ORDER BY r.ratio DESC,r.month LIMIT 1),
-    bld AS (SELECT b.id,b.name FROM public.buildings b WHERE b.id IN (SELECT t.building_id FROM raw t) AND b.organization_id=v_org),
-    bld_month AS (SELECT bl.id building_id,bl.name building_name,mo.month,
+    bld AS (SELECT b.id,b.name,b.organization_id FROM public.buildings b WHERE b.id IN (SELECT t.building_id FROM raw t) AND b.organization_id=v_org),
+    bld_month AS (SELECT bl.organization_id,bl.id building_id,bl.name building_name,mo.month,
         COALESCE((SELECT sum(t.amount) FROM raw t WHERE t.row_kind='revenue' AND t.building_id=bl.id AND t.month=mo.month),0) revenue,
         COALESCE((SELECT sum(t.amount) FROM raw t WHERE t.row_kind='expense' AND t.building_id=bl.id AND t.month=mo.month),0) expense
       FROM bld bl CROSS JOIN months mo)
@@ -259,17 +266,20 @@ BEGIN
           WHERE t.row_kind='expense' ORDER BY 1 LIMIT 100) cats),'[]'::jsonb),
         'expenseTypesVisible',v_cat_visible,'category',public.report_text_v1(v_query,200)),
       CASE v_kind
-        WHEN 'category' THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('buildingId',g.building_id,'buildingName',public.report_text_v1(bl.name,200),
+        WHEN 'category' THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',g.organization_id,'buildingId',g.building_id,
+            'buildingName',public.report_text_v1(bl.name,200),
             'month',g.month,'category',public.report_text_v1(g.category,200),'typeName',NULL,'revenue',NULL,'expense',round(g.amount,2)::text,'ratioPct',NULL)
             ORDER BY bl.name,g.building_id,g.month,g.category),'[]'::jsonb)
-          FROM (SELECT t.building_id,t.month,t.category,sum(t.amount) amount FROM raw t WHERE t.row_kind='expense' GROUP BY 1,2,3) g
+          FROM (SELECT t.organization_id,t.building_id,t.month,t.category,sum(t.amount) amount FROM raw t WHERE t.row_kind='expense' GROUP BY 1,2,3,4) g
           JOIN bld bl ON bl.id=g.building_id)
-        WHEN 'type' THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('buildingId',g.building_id,'buildingName',public.report_text_v1(bl.name,200),
+        WHEN 'type' THEN (SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',g.organization_id,'buildingId',g.building_id,
+            'buildingName',public.report_text_v1(bl.name,200),
             'month',NULL,'category',public.report_text_v1(g.category,200),'typeName',public.report_text_v1(g.type_name,200),'revenue',NULL,
             'expense',round(g.amount,2)::text,'ratioPct',NULL) ORDER BY bl.name,g.building_id,g.amount DESC,g.category,g.type_name),'[]'::jsonb)
-          FROM (SELECT t.building_id,t.category,t.type_name,sum(t.amount) amount FROM raw t WHERE t.row_kind='expense' GROUP BY 1,2,3) g
+          FROM (SELECT t.organization_id,t.building_id,t.category,t.type_name,sum(t.amount) amount FROM raw t WHERE t.row_kind='expense' GROUP BY 1,2,3,4) g
           JOIN bld bl ON bl.id=g.building_id)
-        ELSE (SELECT COALESCE(jsonb_agg(jsonb_build_object('buildingId',m.building_id,'buildingName',public.report_text_v1(m.building_name,200),
+        ELSE (SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',m.organization_id,'buildingId',m.building_id,
+            'buildingName',public.report_text_v1(m.building_name,200),
             'month',m.month,'category',NULL,'typeName',NULL,'revenue',round(m.revenue,2)::text,'expense',round(m.expense,2)::text,
             'ratioPct',round(CASE WHEN m.revenue>0 THEN m.expense/m.revenue*100 END,2)::text) ORDER BY m.building_name,m.building_id,m.month),'[]'::jsonb)
           FROM bld_month m) END
@@ -284,7 +294,7 @@ BEGIN
         'poorOrBroken',count(*) FILTER (WHERE x.condition IN ('POOR','BROKEN')))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY a.created_at DESC,a.asset_id) ord,a.total_value value,a.condition,
-        jsonb_build_object('id',a.asset_id,'code',public.report_text_v1(a.code,100),'name',public.report_text_v1(a.name,200),
+        jsonb_build_object('organizationId',a.organization_id,'id',a.asset_id,'code',public.report_text_v1(a.code,100),'name',public.report_text_v1(a.name,200),
           'categoryName',public.report_text_v1(a.category_name,200),'quantity',a.quantity,'totalValue',round(a.total_value,2)::text,
           'condition',a.condition,'buildingId',a.building_id,'buildingName',public.report_text_v1(a.building_name,200),
           'roomId',a.room_id,'roomName',public.report_text_v1(a.room_name,100),
@@ -299,7 +309,7 @@ BEGIN
       jsonb_build_object('total',count(DISTINCT x.service_id),'links',count(x.building_id))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY b.name NULLS FIRST,l.building_id NULLS FIRST,s.name,s.service_id) ord,s.service_id,l.building_id,
-        jsonb_build_object('buildingId',l.building_id,'buildingName',public.report_text_v1(b.name,200),'id',s.service_id,
+        jsonb_build_object('organizationId',s.organization_id,'buildingId',l.building_id,'buildingName',public.report_text_v1(b.name,200),'id',s.service_id,
           'code',public.report_text_v1(s.code,100),'name',public.report_text_v1(s.name,200),
           'feeType',s.fee_type,'pricingType',s.pricing_type,'unit',public.report_text_v1(s.unit,40),
           'unitPrice',round(COALESCE(s.unit_price,0),2)::text,'isDefault',COALESCE(s.is_default,false)) item
@@ -311,7 +321,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY q.name,q.quota_id) ord,
-        jsonb_build_object('id',q.quota_id,'name',public.report_text_v1(q.name,200),
+        jsonb_build_object('organizationId',q.organization_id,'id',q.quota_id,'name',public.report_text_v1(q.name,200),
           'description',public.report_text_v1(q.description,500),'tierCount',q.tier_count,
           'tiers',(SELECT COALESCE(jsonb_agg(jsonb_build_object('tierNumber',(t->>'tierNumber')::integer,
               'fromValue',round((t->>'fromValue')::numeric,2)::text,'toValue',round((t->>'toValue')::numeric,2)::text,
@@ -322,12 +332,13 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY s.name,s.supplier_id) ord,
-        jsonb_build_object('id',s.supplier_id,'name',public.report_text_v1(s.name,200)) item FROM public.suppliers_list_v1(v_org) s) x;
+        jsonb_build_object('organizationId',s.organization_id,'id',s.supplier_id,'name',public.report_text_v1(s.name,200)) item
+        FROM public.suppliers_list_v1(v_org) s) x;
   ELSIF p_report='meters' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY m.building_name,m.room_name NULLS FIRST,m.code,m.meter_id) ord,
-        jsonb_build_object('id',m.meter_id,'code',public.report_text_v1(m.code,100),'name',public.report_text_v1(m.name,200),
+        jsonb_build_object('organizationId',m.organization_id,'id',m.meter_id,'code',public.report_text_v1(m.code,100),'name',public.report_text_v1(m.name,200),
           'meterType',m.meter_type,'status',public.report_text_v1(m.status,40),'buildingId',m.building_id,
           'buildingName',public.report_text_v1(m.building_name,200),'roomId',m.room_id,'roomName',public.report_text_v1(m.room_name,100),
           'initialReading',round(m.initial_reading,2)::text,'latestReading',round(m.latest_reading,2)::text,'latestReadingDate',m.latest_reading_date) item
@@ -340,7 +351,7 @@ BEGIN
         'inactive',count(*) FILTER (WHERE x.status='INACTIVE'))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY b.created_at DESC,b.building_id) ord,b.status,(v_status IS NULL OR b.status=v_status) shown,
-        jsonb_build_object('buildingId',b.building_id,'code',public.report_text_v1(b.code,100),'name',public.report_text_v1(b.name,200),
+        jsonb_build_object('organizationId',b.organization_id,'buildingId',b.building_id,'code',public.report_text_v1(b.code,100),'name',public.report_text_v1(b.name,200),
           'type',b.type,'status',b.status,'totalFloors',b.total_floors,
           'address',public.report_text_v1(NULLIF(concat_ws(', ',NULLIF(btrim(b.street_address),''),NULLIF(btrim(b.ward),''),
             NULLIF(btrim(b.district),''),NULLIF(btrim(b.province),'')),''),500),
@@ -359,7 +370,7 @@ BEGIN
       jsonb_build_object('total',count(DISTINCT x.area_id),'links',count(x.building_id))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY a.created_at DESC,a.area_id,b.name NULLS FIRST,l.building_id NULLS FIRST) ord,a.area_id,l.building_id,
-        jsonb_build_object('id',a.area_id,'code',public.report_text_v1(a.code,100),'name',public.report_text_v1(a.name,200),
+        jsonb_build_object('organizationId',a.organization_id,'id',a.area_id,'code',public.report_text_v1(a.code,100),'name',public.report_text_v1(a.name,200),
           'status',public.report_text_v1(a.status,40),'buildingId',l.building_id,'buildingName',public.report_text_v1(b.name,200)) item
         FROM public.areas_list_v1(v_org,v_buildings,v_org_wide) a
         CROSS JOIN LATERAL (SELECT u building_id FROM unnest(a.building_ids) u WHERE u=ANY(v_buildings)
@@ -371,8 +382,8 @@ BEGIN
         'expiringSoon',count(*) FILTER (WHERE x.display='EXPIRING_SOON'),'reserved',count(*) FILTER (WHERE x.display='RESERVED'))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY r.building_name,r.name,r.room_id) ord,r.display_status display,
-        jsonb_build_object('roomId',r.room_id,'name',public.report_text_v1(r.name,100),'code',public.report_text_v1(r.code,100),
-          'buildingId',r.building_id,'buildingName',public.report_text_v1(r.building_name,200),'floor',r.floor,'area',round(r.area,2)::text,
+        jsonb_build_object('organizationId',r.organization_id,'roomId',r.room_id,'name',public.report_text_v1(r.name,100),
+          'code',public.report_text_v1(r.code,100),'buildingId',r.building_id,'buildingName',public.report_text_v1(r.building_name,200),'floor',r.floor,'area',round(r.area,2)::text,
           'rentPrice',round(COALESCE(r.rent_price,0),2)::text,'depositAmount',round(COALESCE(r.deposit_amount,0),2)::text,'maxOccupants',r.max_occupants,
           'status',r.status,'displayStatus',r.display_status) item
         FROM public.rooms_list_v1(v_org,v_buildings,v_today) r
@@ -381,7 +392,7 @@ BEGIN
           AND (v_search IS NULL OR position(v_search IN lower(COALESCE(r.name,'')))>0 OR position(v_search IN lower(COALESCE(r.code,'')))>0)) x;
   ELSIF p_report='room_detail' THEN
     -- Hợp đồng: contracts.view của kết nối phủ toà (như crm_read_contract_detail đợt 1); người ở: customers.view.
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('roomId',r.room_id,'name',public.report_text_v1(r.name,100),
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'roomId',r.room_id,'name',public.report_text_v1(r.name,100),
         'code',public.report_text_v1(r.code,100),'buildingId',r.building_id,'buildingName',public.report_text_v1(r.building_name,200),
         'floor',r.floor,'area',round(r.area,2)::text,'rentPrice',round(COALESCE(r.rent_price,0),2)::text,
         'depositAmount',round(COALESCE(r.deposit_amount,0),2)::text,'maxOccupants',r.max_occupants,'status',r.status,'displayStatus',r.display_status,
@@ -406,7 +417,7 @@ BEGIN
     v_lifecycle:=public.get_room_cash_lifecycle_v1(v_room,CASE WHEN jsonb_typeof(p_params->'fromDate')='string' THEN (p_params->>'fromDate')::date END,
       CASE WHEN jsonb_typeof(p_params->'toDate')='string' THEN (p_params->>'toDate')::date END);
     IF v_lifecycle#>>'{room,buildingId}' IS DISTINCT FROM v_room_building::text THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('buildingId',v_room_building,'type',e->>'type','date',e->>'date','contractId',e->>'contractId',
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',v_room_org,'buildingId',v_room_building,'type',e->>'type','date',e->>'date','contractId',e->>'contractId',
         'amount',CASE WHEN jsonb_typeof(e->'amount')='number' THEN round((e->>'amount')::numeric,2)::text END,'trusted',COALESCE((e->>'trusted')::boolean,false))
         ORDER BY o) FILTER (WHERE o<=2000),'[]'::jsonb),count(*)>2000
       INTO v_rows,v_capped FROM jsonb_array_elements(COALESCE(v_lifecycle->'events','[]'::jsonb)) WITH ORDINALITY ev(e,o);
@@ -423,7 +434,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY f.floor_number,f.building_name,f.floor_id) ord,
-        jsonb_build_object('id',f.floor_id,'buildingId',f.building_id,'buildingName',public.report_text_v1(f.building_name,200),
+        jsonb_build_object('organizationId',f.organization_id,'id',f.floor_id,'buildingId',f.building_id,'buildingName',public.report_text_v1(f.building_name,200),
           'floorNumber',f.floor_number,'name',public.report_text_v1(f.name,100),'description',public.report_text_v1(f.description,500),
           'status',public.report_text_v1(f.status,40)) item
         FROM public.floors_list_v1(v_org,v_buildings) f WHERE f.building_id=ANY(v_buildings)) x;
@@ -433,7 +444,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY t.archived,t.type='income',t.category NULLS LAST,t.sort_order NULLS LAST,t.name,t.type_id) ord,
-        jsonb_build_object('id',t.type_id,'type',t.type,'name',public.report_text_v1(t.name,200),
+        jsonb_build_object('organizationId',t.organization_id,'id',t.type_id,'type',t.type,'name',public.report_text_v1(t.name,200),
           'category',public.report_text_v1(t.category,200),'description',public.report_text_v1(t.description,500),
           'isDefault',COALESCE(t.is_default,false),'systemOnly',COALESCE(t.system_only,false),'manualHidden',COALESCE(t.manual_hidden,false),
           'quickEntryHidden',COALESCE(t.quick_entry_hidden,false),'archived',t.archived) item
@@ -445,7 +456,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY j.created_at DESC,j.job_type_id) ord,
-        jsonb_build_object('id',j.job_type_id,'name',public.report_text_v1(j.name,200),
+        jsonb_build_object('organizationId',j.organization_id,'id',j.job_type_id,'name',public.report_text_v1(j.name,200),
           'departmentName',public.report_text_v1(j.department_name,200),
           'jobGroupName',CASE WHEN v_groups THEN public.report_text_v1(j.job_group_name,200) END,
           'customerContactDeadlineMinutes',j.customer_contact_deadline,'acceptanceDeadlineMinutes',j.acceptance_deadline,
@@ -455,7 +466,7 @@ BEGIN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.ord) FILTER (WHERE x.ord<=2000),'[]'::jsonb),count(*)>2000,jsonb_build_object('total',count(*))
       INTO v_rows,v_capped,v_summary
       FROM (SELECT row_number() OVER (ORDER BY h.created_at DESC,h.hotline_id) ord,
-        jsonb_build_object('id',h.hotline_id,'name',public.report_text_v1(h.name,200),'phoneNumber',public.report_text_v1(h.phone_number,40),
+        jsonb_build_object('organizationId',h.organization_id,'id',h.hotline_id,'name',public.report_text_v1(h.name,200),'phoneNumber',public.report_text_v1(h.phone_number,40),
           'description',public.report_text_v1(h.description,500),'isActive',h.is_active) item FROM public.hotlines_list_v1(v_org) h) x;
   ELSE
     RAISE EXCEPTION 'hermes_domain_invalid' USING ERRCODE='22023';

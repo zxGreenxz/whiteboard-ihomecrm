@@ -27,6 +27,7 @@ export const useRooms = (
     enabled: options?.enabled ?? true,
     queryKey: buildingId ? ["rooms", "building", buildingId] : ["rooms"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-rooms — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       // PHÂN TRANG: key ["rooms"] được gọi org-wide (5 dialog dùng chung). Một
       // request trần chỉ lấy được 1000 dòng và PostgREST KHÔNG báo gì —
       // portfolio >1000 phòng thì dropdown thiếu phòng mà không ai biết.
@@ -69,6 +70,7 @@ export const useRooms = (
           b.name ?? "",
         ),
       );
+      // hermes-parity:end w2d-rooms
     },
   });
 };

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
+import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -341,7 +342,9 @@ test('composed room tool uses the encrypted assistant JWT, fixed scope/data RPCs
   const http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
   assert.equal((await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: {} })).body.result.isError, true);
   f.grantRooms();
-  assert.deepEqual((await http.mcp(token)).body.result.tools.map(tool => tool.name), ['crm_auth_context', 'crm_available_rooms']);
+  // Hai tool meta đợt 2 hiện khi sổ có báo cáo dùng khoá rooms.view (khoá đợt 1 đã bật, vd. Gói D rooms/room_detail).
+  assert.deepEqual((await http.mcp(token)).body.result.tools.map(tool => tool.name),
+    ['crm_auth_context', 'crm_available_rooms', ...(W2.permissions.includes('rooms.view') ? W2_TOOL_NAMES : [])]);
   order.length = 0;
   const response = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { buildingName: 'House', limit: 100 } });
   assert.equal(response.body.result.isError, false);

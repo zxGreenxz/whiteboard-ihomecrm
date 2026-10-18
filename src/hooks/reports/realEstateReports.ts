@@ -33,6 +33,7 @@ export function useVacantRoomsReport(
     // — hook này bắn 3 query full-table, không nên chạy ngầm mỗi lần mount).
     enabled: opts?.enabled ?? true,
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-vacant-rooms — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       // Get all rooms
       let roomsQuery = supabase
         .from("rooms")
@@ -111,6 +112,7 @@ export function useVacantRoomsReport(
       }
 
       return vacantRooms;
+      // hermes-parity:end w2d-re-vacant-rooms
     },
   });
 }
@@ -345,6 +347,7 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
     meta: { errorDisplay: "inline", label: "báo cáo hợp đồng sắp hết hạn" },
     queryKey: ["reports", "expiring-contracts", daysAhead, buildingId, floorId],
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-expiring — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const today = new Date();
       const futureDate = addDays(today, daysAhead);
 
@@ -397,6 +400,7 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
       }
 
       return contracts;
+      // hermes-parity:end w2d-re-expiring
     },
   });
 }
@@ -421,6 +425,7 @@ export function useRenewalsTransfersReport(
     meta: { errorDisplay: "inline", label: "báo cáo gia hạn và chuyển nhượng" },
     queryKey: ["reports", "renewals-transfers", startDate, endDate, buildingId],
     queryFn: async (): Promise<RenewalTransferRow[]> => {
+      // hermes-parity:begin w2d-re-renewals-transfers — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const repName = (ccs: EmbeddedCustomers | undefined): string => {
         const arr = ccs ?? [];
         const rep = arr.find((x) => x.is_representative) ?? arr[0];
@@ -498,6 +503,7 @@ export function useRenewalsTransfersReport(
       if (buildingId) results = results.filter((r) => r.building_id === buildingId);
       results.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
       return results;
+      // hermes-parity:end w2d-re-renewals-transfers
     },
   });
 }
@@ -528,6 +534,7 @@ export function useExpenseRatioReport(
       buildingId ?? null,
     ],
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-expense-ratio — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const rangeEnd = endDate ? endOfMonth(endDate) : endOfMonth(new Date());
       const rangeStart = startDate
         ? startOfMonth(startDate)
@@ -687,6 +694,7 @@ export function useExpenseRatioReport(
           a.localeCompare(b, "vi", { sensitivity: "base" })
         ),
       };
+      // hermes-parity:end w2d-re-expense-ratio
     },
   });
 }
@@ -701,6 +709,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
     meta: { errorDisplay: "inline", label: "báo cáo khuyến mại" },
     queryKey: ["reports", "promotions", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-promotions — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = supabase
         .from("contracts")
         .select(`
@@ -761,6 +770,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
           effective_rent: effectiveRent > 0 ? effectiveRent : 0,
         };
       });
+      // hermes-parity:end w2d-re-promotions
     },
   });
 }
@@ -773,6 +783,7 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
     meta: { errorDisplay: "inline", label: "báo cáo hợp đồng mới" },
     queryKey: ["reports", "new-leases", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-new-leases — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = supabase
         .from("contracts")
         .select(`
@@ -827,6 +838,7 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
           total_value: totalValue,
         };
       });
+      // hermes-parity:end w2d-re-new-leases
     },
   });
 }
@@ -839,6 +851,7 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
     meta: { errorDisplay: "inline", label: "báo cáo thanh lý hợp đồng" },
     queryKey: ["reports", "terminations", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
+      // hermes-parity:begin w2d-re-terminations — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       // Get terminated/expired contracts (filter date client-side để fallback end_date khi actual_end_date null)
       const query = supabase
         .from("contracts")
@@ -924,6 +937,7 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
           ? Number(((filtered.length / totalContracts) * 100).toFixed(1))
           : 0,
       };
+      // hermes-parity:end w2d-re-terminations
     },
   });
 }

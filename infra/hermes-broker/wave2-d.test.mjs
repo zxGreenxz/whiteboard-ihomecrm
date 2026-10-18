@@ -67,7 +67,7 @@ test('cấu trúc: hai file dải D; hàng rào gói; hàm dùng chung INVOKER s
     assert.ok(W2_READ_KEY_LIST.includes(spec.permission) || ['assets.view', 'services.view', 'rooms.view'].includes(spec.permission), spec.permission);
   }
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.prosrc src,
-      has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
+      p.proretset retset,pg_get_function_result(p.oid) result,has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
       has_function_privilege('service_role',p.oid,'EXECUTE') service
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1)`, [[...pub, 'app_private.hermes_w2d_read_v1']])).rows;
   assert.equal(procs.length, pub.length + 1);
@@ -80,6 +80,8 @@ test('cấu trúc: hai file dải D; hàng rào gói; hàm dùng chung INVOKER s
     }
     assert.equal(proc.definer, proc.name === 'public.areas_in_scope_v1', `${proc.name}: chỉ helper khu là DEFINER`);
     assert.deepEqual(proc.config, ['search_path=""'], `${proc.name}: search_path rỗng`);
+    // Rào công ty 000700: hàng nào cũng mang công ty của cột nguồn (bảng neo đã lọc p_organization_id).
+    if (proc.retset) assert.match(proc.result, /[(,] ?organization_id uuid\)$/, `${proc.name}: trả organization_id`);
     if (proc.name === 'public.report_text_v1') continue;
     if (proc.name !== 'public.areas_in_scope_v1') assert.match(proc.src, /current_user<>'authenticated' OR auth\.uid\(\) IS NULL/, `${proc.name}: chỉ authenticated`);
     assert.match(proc.src, /public\.can_access_org_entity\('[a-z_]+','[a-z_]+'\)/, `${proc.name}: tự kiểm khoá web`);
@@ -346,7 +348,7 @@ test('quyền: thiếu khoá/không chọn khoá ⇒ 42501; người khác cầm
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào của gói D; phép thử mà bản sống từ chối thì bản đột biến phải lọt.
 const mutate = (sql, from, to) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return { live: sql, mutant: sql.replace(from, () => to) }; };
-const GUARD_SUPPLIERS = `RETURNS TABLE(supplier_id uuid,name text)
+const GUARD_SUPPLIERS = `RETURNS TABLE(supplier_id uuid,name text,organization_id uuid)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
 BEGIN

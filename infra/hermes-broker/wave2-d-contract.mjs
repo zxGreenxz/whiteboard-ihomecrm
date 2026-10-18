@@ -1,10 +1,12 @@
 // Gói D đợt 2 — Tài sản, danh mục, toà/phòng, báo cáo BĐS. File của RIÊNG Gói D.
 // Khai báo mỗi báo cáo bằng w2Report() (wave2-kit.mjs); khớp từng trường với
-// app_private.hermes_w2d_catalog_v1 (migration 20261018040000_hermes_w2d_catalog_read_v1.sql); hàm đọc INVOKER ở 20261018040100.
+// app_private.hermes_w2d_catalog_v1 và hàm đọc INVOKER (20261018040100); hàm dùng chung ở 20261018040000.
 // Nguồn: hàm SQL DÙNG CHUNG public.<miền>_*_v1 (INVOKER + RLS của người hỏi, search_path rỗng, danh sách toà chỉ
 // thu hẹp) theo đúng bộ lọc màn web đọc bảng thẳng; riêng dòng tiền phòng gọi thẳng RPC web get_room_cash_lifecycle_v1.
 // Khoá đợt 1 dùng lại (đang bật trên production): assets.view, services.view, rooms.view ⇒ các báo cáo assets,
 // services, rooms, room_detail sống ngay khi cổng + migration này deploy (không đợi Gói Z bật khoá).
+// Rào công ty (20261018000700): mọi hàng SQL nêu organizationId từ cột organization_id của hàm dùng chung (bảng neo
+// đã lọc công ty); cổng so với công ty kết nối rồi gỡ ⇒ fields KHÔNG khai organizationId.
 // Chủ chốt 17/10: mọi đầu ra chỉ trả lời riêng (private). Bỏ D2 (ba trang PlaceholderPage, TEST 0 dòng) và
 // D11 (trang giữ chỗ, không bảng).
 import { w2Report, id, nullable, longText, code, amount, bool, count, date } from './wave2-kit.mjs';
