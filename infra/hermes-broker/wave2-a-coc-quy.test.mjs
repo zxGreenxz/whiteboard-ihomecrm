@@ -174,6 +174,16 @@ test('báo cáo khác KHÔNG đổi: chỉ reservation_vouchers khai rls_buildin
   assert.deepEqual([...(await viaGate(env)).fence.buildings].sort(), [BUILDING, OTHER_BUILDING].sort(), 'đối chứng: rls_buildings');
 }));
 
+test('cổng thật rls_buildings: hơn 256 toà trong phạm vi kết nối ⇒ 22023 hermes_domain_scope_too_large (trần toà của cổng)', () => inCase(async env => {
+  await orgOverlay(env);
+  await onlyDepositsAt(env, [BUILDING]);
+  assert.equal((await viaGate(env)).fence.buildings.length, 2, 'đối chứng: 2 toà');
+  await addBuildings(env, 254);
+  assert.equal((await viaGate(env)).fence.buildings.length, 256, 'đúng 256 toà: được');
+  await addBuildings(env, 1, 254);
+  await assert.rejects(viaGate(env), error => error.code === '22023' && error.message === 'hermes_domain_scope_too_large', '257 toà');
+}));
+
 test('trần 2000 hàng: cắt ở 2000, sourceCapped; tổng trên toàn nguồn (RPC web)', () => inCase(async env => {
   await env.db.exec(`INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,account_id,voucher_date,total_amount,approval_status)
       SELECT ('0a0a0a0a-0000-4000-8001-'||lpad(g::text,12,'0'))::uuid,'${ORG}','${STRANGER}','PT-N'||g,'INCOME','Cọc','${OTHER_BUILDING}','${FUND_MINE}','2026-09-01',1000,'APPROVED'
@@ -192,12 +202,20 @@ const mutate = async (env, from, to) => {
   assert.equal(source.split(from).length, 2, `anchor: ${from}`);
   for (const statement of changedFunctions(source, source.replace(from, () => to))) await env.db.exec(statement);
 };
+// Toà tổng hợp của công ty kết nối (id dải 0a0a0a0a-…-8002-…); kết nối Toàn tổ chức phủ mọi toà công ty.
+const addBuildings = (env, count, offset = 0) => env.db.query(`INSERT INTO public.buildings(id,organization_id,name,is_virtual,deleted_at)
+  SELECT ('0a0a0a0a-0000-4000-8002-'||lpad(g::text,12,'0'))::uuid,$1,'Toà trần '||g,false,null FROM generate_series($2::int+1,$2::int+$3::int) g ON CONFLICT (id) DO NOTHING`,
+  [ORG, offset, count]);
 const fundViaOrgGate = async env => { await orgOverlay(env); await onlyDepositsAt(env, [BUILDING]); return ids((await viaGate(env)).items); };
 const probes = [
   { name: 'cổng: giao lại tập toà của khoá (bản 000700)', from: "AND (v_scope='rls_buildings' OR state->'buildingIds' ? b.id::text)",
     to: "AND state->'buildingIds' ? b.id::text", run: async env => !(await fundViaOrgGate(env)).includes(RV_FUND) },
   { name: 'cổng: bỏ đòi khoá ở ít nhất một toà', from: "        OR jsonb_array_length(state->'buildingIds')=0 AND state->'orgWide' IS DISTINCT FROM 'true'::jsonb\n", to: '',
     run: async env => { await orgOverlay(env); await onlyDepositsAt(env, []); return viaGate(env).then(() => true, () => false); } },
+  { name: 'cổng: bỏ trần 256 toà của rls_buildings',
+    from: "      IF cardinality(buildings)>256 THEN RAISE EXCEPTION 'hermes_domain_scope_too_large' USING ERRCODE='22023'; END IF;\n", to: '',
+    run: async env => { await orgOverlay(env); await onlyDepositsAt(env, [BUILDING]); await addBuildings(env, 255);
+      return viaGate(env).then(() => true, () => false); } },
   { name: 'cổng: bỏ thu hẹp theo phạm vi kết nối', from: "      v_scope:='rows';\n",
     to: "      SELECT array_agg(b.id ORDER BY b.id) INTO buildings FROM public.buildings b WHERE b.organization_id=c.organization_id AND b.deleted_at IS NULL;\n      v_scope:='rows';\n",
     run: async env => ids((await viaGate(env)).items).includes(RV_FUND) },

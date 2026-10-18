@@ -50,14 +50,15 @@ export const W2_PACKAGES = Object.freeze(Object.fromEntries(Object.entries(W2_TO
 //   cashbooks        — sổ quỹ: org_wide, hoặc overlay Toàn tổ chức + sổ CRM cấp (ctx.cashbooks, scope CASHBOOK).
 //   self             — dữ liệu của CHÍNH người hỏi (chỉ khoá loại self).
 //   platform         — toàn nền tảng, chỉ super admin (chỉ khoá biến động số dư).
-// Hàng (20261018000700, RLS người hỏi có thể rộng hơn công ty kết nối): rows/buildings — MỌI hàng có
+// Hàng (20261018000700, RLS người hỏi có thể rộng hơn công ty kết nối): rows/buildings/rls_buildings — MỌI hàng có
 // buildingId (fields khai buildingId); mọi phạm vi trừ self/platform — MỌI hàng gói trả có organizationId
 // lấy từ CỘT nguồn (không chép ctx.organizationId), cổng so với công ty kết nối rồi GỠ trước khi trả, nên
 // fields KHÔNG khai organizationId (trừ platform). Khác công ty ⇒ 42501; thiếu trường ⇒ XX000.
 export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'rls_buildings', 'organization', 'cashbooks', 'self', 'platform']);
 // Phạm vi theo toà (hàng nêu buildingId, tham số gắn toà, fence.buildings).
 export const W2_BUILDING_SCOPES = Object.freeze(['rows', 'buildings', 'rls_buildings']);
-// Tham số mà cổng giải về toà (phải thuộc công ty + ctx.buildings, thu hẹp ctx.buildings): chỉ ở rows/buildings.
+// Tham số mà cổng giải về toà (phải thuộc công ty + ctx.buildings, thu hẹp ctx.buildings): chỉ ở W2_BUILDING_SCOPES
+// (rows/buildings/rls_buildings).
 export const W2_BUILDING_PARAMS = Object.freeze(['buildingId', 'areaId', 'roomId', 'contractId', 'invoiceId']);
 
 // Mọi khoá đọc MỚI của đợt 2 (seed MỘT lần ở 20261018000000, enabled=false; Gói Z bật).
@@ -185,10 +186,10 @@ export const isW2ReportId = value => typeof value === 'string' && REPORT_ID.test
  * permission: khoá đọc web — khoá đợt 2 (W2_READ_KEYS) hoặc khoá đợt 1 dùng lại (W2_REUSED_KEYS); loại khoá
  * buộc scope: khoá self ⇔ scope 'self', khoá biến động số dư ⇔ scope 'platform', khoá còn lại ⇒ rows/
  * buildings/organization/cashbooks. source: 'crm.<rpc|bảng web>'; title: mô tả cho mô hình (≤300 ký tự);
- * params ⊆ W2_PARAMS (W2_BUILDING_PARAMS chỉ ở rows/buildings); required ⊆ params; statuses/kinds bắt buộc
+ * params ⊆ W2_PARAMS (W2_BUILDING_PARAMS chỉ ở W2_BUILDING_SCOPES); required ⊆ params; statuses/kinds bắt buộc
  * khi có param status/kind; scopeKeys: khoá CRM phụ cổng tính sẵn vào ctx.scopes (vd. customers.view cho
  * tên khách); fields/summary: hàm kiểm từng trường hàng/tổng; private: dữ liệu riêng tư (PRIVATE_HINT).
- * Hàng: trường buildingId/buildingIds CHỈ ở rows/buildings và phải thuộc toà cổng đã giao (null chỉ khi
+ * Hàng: trường buildingId/buildingIds CHỈ ở W2_BUILDING_SCOPES và phải thuộc toà cổng đã giao (null chỉ khi
  * org_wide); cashbookId ở scope cashbooks phải thuộc sổ được cấp — cổng SQL và broker đều rào, sai ⇒ 42501. */
 export function w2Report({ permission, source, scope, title, params = [], required = [], statuses = null, kinds = null, scopeKeys = [],
   fields, summary = null, private: privateData = false, ...rest } = {}) {

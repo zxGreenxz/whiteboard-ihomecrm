@@ -12,13 +12,15 @@
 --  2. app_private.hermes_w2a_read_v1 (thân = 20261018080100, đổi đúng MỘT chỗ): báo cáo reservation_vouchers dùng nguyên
 --     ctx.buildings, không giao thêm toà buildings.view (accessible_building_ids) — phiếu vào sổ quỹ ở toà người hỏi không có
 --     buildings.view vẫn thấy như web. Mọi báo cáo khác giữ giao toà như cũ.
--- Giữ nguyên: ctx.buildings (= toà có deposits.view của người hỏi ∩ phạm vi kết nối) chỉ thu hẹp, bước kết thúc của cổng chặn
--- mọi hàng có buildingId ngoài ctx.buildings ⇒ phiếu web hiện ở toà ngoài ctx.buildings (toà người hỏi không có deposits.view
--- hoặc ngoài phạm vi kết nối) Hermes KHÔNG trả. Tên phiếu / người nộp vẫn NULL (rào PII Gói Z: phiếu cọc giữ chỗ không nối được
--- hồ sơ khách dưới RLS người hỏi); ô tìm chỉ theo mã phiếu và tên phòng; trần 2000 hàng, tổng trên toàn nguồn (RPC web với đúng
--- danh sách toà đã giao).
--- Kiểm: infra/hermes-broker/wave2-a-coc-quy.test.mjs (sổ quỹ ở toà không có buildings.view; sổ khác; kết nối thu hẹp; toà không
--- có deposits.view; PII; tổng như web; đột biến).
+-- ctx.buildings do cổng dựng; cùng đợt, 20261018185339 (cổng) + 20261018185413 (khai báo) cho báo cáo này phạm vi
+-- 'rls_buildings': ctx.buildings = toà CHƯA xoá mềm của công ty kết nối ∩ phạm vi kết nối (không giao tập toà có
+-- deposits.view) ⇒ phiếu vào sổ quỹ ở toà người hỏi không có deposits.view Hermes trả như web. Kết nối chỉ thu hẹp: bước kết
+-- thúc của cổng chặn mọi hàng có buildingId ngoài ctx.buildings ⇒ phiếu ở toà ngoài phạm vi kết nối, hoặc ở toà đã xoá mềm
+-- (web không lọc toà nên vẫn hiện nếu RLS cho thấy), Hermes KHÔNG trả. Tên phiếu / người nộp vẫn NULL (rào PII Gói Z: phiếu
+-- cọc giữ chỗ không nối được hồ sơ khách dưới RLS người hỏi); ô tìm chỉ theo mã phiếu và tên phòng; trần 2000 hàng, tổng trên
+-- toàn nguồn (RPC web với đúng danh sách toà đã giao).
+-- Kiểm: infra/hermes-broker/wave2-a-coc-quy.test.mjs (sổ quỹ ở toà không có buildings.view / không có deposits.view; sổ khác;
+-- kết nối thu hẹp; PII; tổng như web; đột biến).
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
