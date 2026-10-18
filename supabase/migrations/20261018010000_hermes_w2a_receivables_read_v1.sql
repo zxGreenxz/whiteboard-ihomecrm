@@ -1,5 +1,6 @@
--- Hermes đọc đầy đủ — ĐỢT 2, Gói A: thu tiền, công nợ, cọc (18/10/2026). Chạy SAU
--- 20261018000000_hermes_w2_foundation_v1 (cổng đợt 2).
+-- Hermes đọc đầy đủ — ĐỢT 2, Gói A: thu tiền, công nợ, cọc (18/10/2026). Chạy SAU nền đợt 2
+-- (20261018000000 → 000500 → 000600 cổng INVOKER: public.hermes_w2_read_v1 → bước kiểm quyền DEFINER dựng ctx →
+-- hàm đọc gói INVOKER dưới RLS người hỏi → bước kết thúc DEFINER rào đầu ra/phân trang).
 -- Chủ chốt 17/10: theo ĐÚNG quyền user trên web ∩ overlay Read ∩ toà kết nối. Công thức dùng ≥2 nơi hoặc dính
 -- tiền/quyền đặt trong hàm SQL dùng chung public.<miền>_<báo cáo>_v1(..., p_building_ids):
 --  (a) màn web có RPC ⇒ Hermes gọi THẲNG RPC đó;
@@ -8,7 +9,11 @@
 --      auth.uid() NULL; đọc bảng gốc dưới RLS của chính người hỏi (KHÔNG chép policy: tên khách ẩn khi RLS
 --      customers ẩn, phiếu có hạng mục hạn chế ẩn khi RLS income_expenses ẩn); đúng bộ lọc web; p_building_ids chỉ
 --      thu hẹp (NULL = toàn phạm vi RLS, '{}' = rỗng); p_organization_id thu hẹp về một công ty (RLS web trải mọi
---      công ty của người dùng). Web CHƯA chuyển sang các hàm này.
+--      công ty của người dùng); tự kiểm khoá của trang theo từng toà (public.can_do_on_building) để web gọi thẳng
+--      cũng đúng quyền. Web CHƯA chuyển sang các hàm này. ACL: chỉ REVOKE PUBLIC/anon/service_role — authenticated
+--      giữ quyền EXECUTE mặc định của schema public (pg_default_acl Supabase), không GRANT riêng.
+--  Hàm đọc của gói app_private.hermes_w2a_read_v1 giữ dòng đầu INVOKER của nền, không gọi app_private.* (authenticated
+--  không có USAGE), không đổi ACL (nền 000600 cấp).
 -- Báo cáo (mã ⇒ khoá ⇒ nguồn web, vùng hermes-parity):
 --   payment_schedule        reports_finance.payment_schedule  src/hooks/reports/financeReports.ts usePaymentScheduleReport +
 --                                                             PaymentScheduleReport.tsx useMemo (vùng finance-payment-schedule)
@@ -35,8 +40,8 @@ SET LOCAL statement_timeout='120s';
 
 DO $requires$
 BEGIN
-  IF to_regprocedure('app_private.hermes_w2_gate_v1(jsonb,text,jsonb)') IS NULL
-    OR to_regprocedure('app_private.hermes_full_text_v1(text,integer)') IS NULL THEN
+  IF to_regprocedure('public.hermes_w2_read_v1(jsonb,text,jsonb)') IS NULL
+    OR to_regprocedure('app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)') IS NULL THEN
     RAISE EXCEPTION 'hermes_w2a_requires_foundation';
   END IF;
 END $requires$;
@@ -54,8 +59,13 @@ RETURNS TABLE(building_id uuid,building_name text,room_id uuid,room_name text,in
   customer_name text,billed_through date,first_due_date date)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','payment_schedule',b.id);
   RETURN QUERY
   WITH src AS (
     SELECT i.id,i.building_id,i.room_id,i.contract_id,i.due_date,
@@ -63,7 +73,7 @@ BEGIN
       max(i.due_date) OVER (PARTITION BY i.building_id,COALESCE(i.room_id,i.id)) billed
     FROM public.invoices i
     WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED'
-      AND i.due_date<=p_due_until AND (p_building_ids IS NULL OR i.building_id=ANY(p_building_ids)))
+      AND i.due_date<=p_due_until AND i.building_id=ANY(v_b))
   SELECT s.building_id,b.name,s.room_id,r.name,s.id,s.contract_id,cu.id,cu.full_name,s.billed,s.due_date
   FROM src s
   LEFT JOIN public.buildings b ON b.id=s.building_id
@@ -81,8 +91,13 @@ RETURNS TABLE(invoice_id uuid,invoice_number text,building_id uuid,building_name
   customer_id uuid,customer_name text,total_amount numeric,paid_amount numeric,overpaid_amount numeric)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','overpayment',b.id);
   RETURN QUERY
   SELECT i.id,i.invoice_number,i.building_id,b.name,i.room_id,r.name,i.contract_id,cu.id,cu.full_name,i.total_amount,i.paid_amount,
     i.paid_amount-i.total_amount
@@ -93,7 +108,7 @@ BEGIN
     ORDER BY cc.is_representative DESC,cc.created_at,cc.id LIMIT 1) rep ON true
   LEFT JOIN public.customers cu ON cu.id=rep.customer_id AND cu.organization_id=p_organization_id
   WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.paid_amount>0 AND i.paid_amount>i.total_amount
-    AND (p_building_ids IS NULL OR i.building_id=ANY(p_building_ids));
+    AND i.building_id=ANY(v_b);
 END $fn$;
 
 -- Thu tiền theo kỳ (useThuTienInvoices; ThuTien.tsx lọc/thanh tổng; collect.ts): hoá đơn chưa xoá, khác CANCELLED,
@@ -111,8 +126,13 @@ RETURNS TABLE(invoice_id uuid,invoice_number text,invoice_status text,building_i
   status_unpaid boolean,summary_collected numeric,summary_paid boolean,summary_due boolean,summary_remaining numeric,collectors text[])
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('thu_tien','view',b.id);
   RETURN QUERY
   WITH win AS (SELECT CASE WHEN p_from IS NULL AND p_to IS NULL THEN 'all'
       WHEN COALESCE(p_from,p_to)=p_today AND COALESCE(p_to,p_from)=p_today THEN 'today' ELSE 'date' END mode,
@@ -128,7 +148,7 @@ BEGIN
         COALESCE(bool_and(COALESCE(p.payment_date<=w.hi,false)),true) all_before
       FROM public.payments p WHERE p.invoice_id=i.id) pay
     WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED' AND i.billing_month=p_billing_month
-      AND (p_building_ids IS NULL OR i.building_id=ANY(p_building_ids))),
+      AND i.building_id=ANY(v_b)),
   flags AS (
     SELECT b.*,(b.status='PAID' OR b.rem<=0) is_paid,
       (b.paid_upto>=b.total OR ((b.status='PAID' OR b.rem<=0) AND b.all_before)) paid_as_of
@@ -169,11 +189,16 @@ END $fn$;
 -- chỉnh chỉ đếm (không snapshot). NULL = không có / ngoài phạm vi RLS hoặc p_building_ids.
 CREATE OR REPLACE FUNCTION public.invoice_detail_v1(p_organization_id uuid,p_invoice_id uuid,p_building_ids uuid[] DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('invoices','view',b.id);
   RETURN (
   WITH inv AS (SELECT i.* FROM public.invoices i WHERE i.id=p_invoice_id AND i.organization_id=p_organization_id AND i.deleted_at IS NULL
-    AND (p_building_ids IS NULL OR i.building_id=ANY(p_building_ids))),
+    AND i.building_id=ANY(v_b)),
   vouchers AS (
     SELECT v.id,v.code,v.type,v.name,v.voucher_date,v.approval_status,v.creator_name,a.name account_name,
       (SELECT COALESCE(sum(COALESCE(x.unit_price,0)*COALESCE(x.quantity,0)),0) FROM public.income_expense_items x WHERE x.income_expense_id=v.id) amount
@@ -221,8 +246,13 @@ RETURNS TABLE(voucher_id uuid,code text,name text,payer_name text,deposit_amount
   building_id uuid,building_name text,room_id uuid,room_name text,settled boolean,hold_until date,topup_due_date date,deposit_target numeric)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('deposits','view',b.id);
   RETURN QUERY
   SELECT ie.id,ie.code,ie.name,ie.payer_name,dep.amount,ie.voucher_date,ie.approval_status,ie.building_id,b.name,ie.room_id,r.name,
     EXISTS(SELECT 1 FROM public.reservation_deposit_settlements s WHERE s.source_voucher_id=ie.id),h.hold_until,h.topup_due_date,h.deposit_target
@@ -235,7 +265,7 @@ BEGIN
   WHERE ie.organization_id=p_organization_id AND ie.contract_id IS NULL AND ie.deleted_at IS NULL AND ie.type='INCOME'
     AND ie.approval_status IN ('APPROVED','UNAPPROVED','CANCELLED') AND dep.n>0
     AND NOT EXISTS(SELECT 1 FROM public.deposit_management_exclusions ex WHERE ex.voucher_id=ie.id AND ex.organization_id=ie.organization_id)
-    AND (p_building_ids IS NULL OR ie.building_id=ANY(p_building_ids));
+    AND ie.building_id=ANY(v_b);
 END $fn$;
 
 -- Cọc đang giữ theo hợp đồng ACTIVE (useHeldDeposits): còn thiếu = deposit_remaining (không có thì cọc − đã thu);
@@ -247,8 +277,13 @@ RETURNS TABLE(contract_id uuid,contract_number text,building_id uuid,building_na
   deposit_topup_due_date date,state text)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('deposits','view',b.id);
   RETURN QUERY
   SELECT c.id,c.contract_number,r.building_id,b.name,r.id,r.name,r.name_sort,
     CASE WHEN COALESCE(rc.full_name,'')<>'' THEN rc.id ELSE fc.id END,COALESCE(NULLIF(rc.full_name,''),NULLIF(fc.full_name,'')),
@@ -264,7 +299,7 @@ BEGIN
   LEFT JOIN public.customers rc ON rc.id=pick.rep_id AND rc.organization_id=p_organization_id
   LEFT JOIN public.customers fc ON fc.id=pick.first_id AND fc.organization_id=p_organization_id
   WHERE c.organization_id=p_organization_id AND c.status::text='ACTIVE' AND c.deleted_at IS NULL
-    AND (p_building_ids IS NULL OR r.building_id=ANY(p_building_ids));
+    AND r.building_id=ANY(v_b);
 END $fn$;
 
 -- Hoàn cọc / bỏ cọc (useDepositRefundsForfeits): hồ sơ contract_terminations; "đã hoàn" = phiếu chi termination.refund
@@ -277,8 +312,13 @@ RETURNS TABLE(termination_id uuid,contract_id uuid,contract_number text,building
   refund_drift numeric)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('deposits','view',b.id);
   RETURN QUERY
   SELECT t.id,t.contract_id,c.contract_number,r.building_id,b.name,r.id,r.name,
     CASE WHEN COALESCE(rc.full_name,'')<>'' THEN rc.id ELSE fc.id END,COALESCE(NULLIF(rc.full_name,''),NULLIF(fc.full_name,'')),
@@ -299,7 +339,7 @@ BEGIN
       (SELECT cc.customer_id FROM public.contract_customers cc WHERE cc.contract_id=t.contract_id ORDER BY cc.created_at,cc.id LIMIT 1) first_id) pick ON true
   LEFT JOIN public.customers rc ON rc.id=pick.rep_id AND rc.organization_id=p_organization_id
   LEFT JOIN public.customers fc ON fc.id=pick.first_id AND fc.organization_id=p_organization_id
-  WHERE t.organization_id=p_organization_id AND (p_building_ids IS NULL OR r.building_id=ANY(p_building_ids));
+  WHERE t.organization_id=p_organization_id AND r.building_id=ANY(v_b);
 END $fn$;
 
 -- Sổ tiền thối / làm tròn (RefundLogPage.tsx useRefundLog): sổ (đọc dưới RLS accounts) tên "Làm tròn tiền thiếu" ⇒
@@ -311,8 +351,13 @@ RETURNS TABLE(voucher_id uuid,voucher_date date,code text,invoice_id uuid,invoic
   room_id uuid,room_name text,payer_name text,amount numeric,total_amount numeric,notes text,ledger_mode text)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 #variable_conflict use_column
+DECLARE v_b uuid[];
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('deposits','view',b.id);
   RETURN QUERY
   WITH acc AS (SELECT a.id,CASE WHEN btrim(COALESCE(a.name,''))='Làm tròn tiền thiếu' THEN 'rounding' ELSE 'refund' END mode
     FROM public.accounts a WHERE a.id=p_account_id AND a.organization_id=p_organization_id)
@@ -325,7 +370,7 @@ BEGIN
   LEFT JOIN public.rooms r ON r.id=ie.room_id
   WHERE ie.organization_id=p_organization_id AND ie.approval_status='APPROVED' AND ie.deleted_at IS NULL
     AND ie.voucher_date BETWEEN p_from AND p_to
-    AND (p_building_ids IS NULL OR ie.building_id=ANY(p_building_ids));
+    AND ie.building_id=ANY(v_b);
 END $fn$;
 
 -- ── Bảng báo cáo Gói A (khớp W2A_REPORTS trong infra/hermes-broker/wave2-a-contract.mjs) ────────────────
@@ -360,10 +405,14 @@ $fn$;
 -- của người hỏi nên ctx giả cũng không vượt được web. Mỗi báo cáo trả ≤2000 hàng đã sắp + sourceCapped; tên
 -- khách chỉ khi RLS customers cho thấy VÀ toà của hàng ∈ ctx.scopes['customers.view']. ──────────────────────
 CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(p_report text,p_params jsonb,p_ctx jsonb)
-RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path='' AS $fn$
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $fn$
 DECLARE v_org uuid; v_b uuid[]; v_cust uuid[]; v_today date; v_rows jsonb:='[]'::jsonb; v_total integer:=0; v_summary jsonb;
   v_status text; v_kind text; v_query text; v_from date; v_to date; v_target uuid; v_detail jsonb; v_page jsonb; v_cursor jsonb;
-  v_head jsonb; v_raw jsonb;
+  v_head jsonb; v_raw jsonb; v_clean jsonb;
+  -- Độ dài tối đa của từng trường chữ trong kết quả (khớp longText(n) của wave2-a-contract.mjs).
+  v_limits constant jsonb:='{"buildingName":200,"roomName":100,"customerName":200,"payerName":200,"invoiceNumber":100,"contractNumber":100,
+    "code":100,"voucherCode":100,"label":300,"name":300,"category":40,"status":40,"person":200,"collectors":300,"notes":1000,"kind":40,
+    "billingMonth":20,"reasonCode":40,"debtMode":40,"terminationType":40,"adjustmentReviewStatus":40,"invoiceStatus":40,"approvalStatus":40}';
 BEGIN
   IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_ctx->>'userId' IS DISTINCT FROM auth.uid()::text
     THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
@@ -388,8 +437,8 @@ BEGIN
     -- Web: due_date ≤ hôm nay + 365 (usePaymentScheduleReport(365)); ngày lọc trên "đã lên hoá đơn đến".
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER w o,count(*) OVER () total,jsonb_build_object('buildingId',s.building_id,
-          'buildingName',app_private.hermes_full_text_v1(s.building_name,200),'roomId',s.room_id,'roomName',app_private.hermes_full_text_v1(s.room_name,100),
-          'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(s.customer_name,200) END,
+          'buildingName',s.building_name,'roomId',s.room_id,'roomName',s.room_name,
+          'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
           'billedThrough',s.billed_through) item
       FROM public.finance_payment_schedule_v1(v_org,v_today+365,v_b) s
       WHERE (v_from IS NULL OR s.billed_through>=v_from) AND (v_to IS NULL OR s.billed_through<=v_to)
@@ -400,9 +449,9 @@ BEGIN
   ELSIF p_report='overpayment' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY s.invoice_id) o,count(*) OVER () total,jsonb_build_object('invoiceId',s.invoice_id,
-          'invoiceNumber',app_private.hermes_full_text_v1(s.invoice_number,100),'buildingId',s.building_id,
-          'buildingName',app_private.hermes_full_text_v1(s.building_name,200),'roomId',s.room_id,'roomName',app_private.hermes_full_text_v1(s.room_name,100),
-          'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(s.customer_name,200) END,
+          'invoiceNumber',s.invoice_number,'buildingId',s.building_id,
+          'buildingName',s.building_name,'roomId',s.room_id,'roomName',s.room_name,
+          'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
           'totalAmount',COALESCE(s.total_amount,0)::text,'paidAmount',COALESCE(s.paid_amount,0)::text,'overpaidAmount',COALESCE(s.overpaid_amount,0)::text) item
       FROM public.finance_overpayment_invoices_v1(v_org,v_b) s ORDER BY s.invoice_id LIMIT 2001) x;
     -- Tổng như web (useOverpaymentSummary): RPC INVOKER, gọi với đúng danh sách toà đã giao.
@@ -419,13 +468,13 @@ BEGIN
       SELECT row_number() OVER (ORDER BY t.building_sort,t.building_id,t.room_sort,t.invoice_id) o,t.time_mode mode,t.summary_collected collected,
         t.summary_remaining remaining,t.summary_paid paid,t.summary_due due,
         t.in_scope AND (v_status IS NULL OR v_status='paid' AND t.status_paid OR v_status='unpaid' AND t.status_unpaid) listed,
-        jsonb_build_object('invoiceId',t.invoice_id,'invoiceNumber',app_private.hermes_full_text_v1(t.invoice_number,100),
-          'buildingId',t.building_id,'buildingName',app_private.hermes_full_text_v1(t.building_name,200),'roomId',t.room_id,
-          'roomName',app_private.hermes_full_text_v1(t.room_name,100),
-          'customerName',CASE WHEN t.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(t.customer_name,200) END,
+        jsonb_build_object('invoiceId',t.invoice_id,'invoiceNumber',t.invoice_number,
+          'buildingId',t.building_id,'buildingName',t.building_name,'roomId',t.room_id,
+          'roomName',t.room_name,
+          'customerName',CASE WHEN t.building_id=ANY(v_cust) THEN t.customer_name END,
           'invoiceStatus',t.invoice_status,'collectStatus',t.collect_status,'totalAmount',t.total_amount::text,'paidAmount',t.paid_amount::text,
           'remainingAmount',t.remaining_amount::text,'collectedInRange',t.collected_in_range::text,
-          'collectors',app_private.hermes_full_text_v1(array_to_string(t.collectors,', '),300)) item
+          'collectors',array_to_string(t.collectors,', ')) item
       FROM public.thu_tien_collection_v1(v_org,p_params->>'month',v_from,v_to,v_today,v_b) t) x;
     IF v_total>2000 THEN v_rows:=(SELECT jsonb_agg(e ORDER BY n) FROM jsonb_array_elements(v_rows) WITH ORDINALITY a(e,n) WHERE n<=2001); END IF;
 
@@ -439,37 +488,37 @@ BEGIN
         'subtotal',NULL,'discountAmount',NULL,'previousDebt',NULL,'totalAmount',NULL,'paidAmount',NULL,'remainingAmount',NULL,'notes',NULL,
         'adjustmentCount',NULL,'adjustmentReviewStatus',NULL,'totalReceived',NULL,'totalRefunded',NULL);
     ELSE
-      v_summary:=jsonb_build_object('found',true,'invoiceId',v_head->'id','invoiceNumber',to_jsonb(app_private.hermes_full_text_v1(v_head->>'invoiceNumber',100)),
-        'status',v_head->'status','kind',to_jsonb(app_private.hermes_full_text_v1(v_head->>'kind',40)),
-        'billingMonth',to_jsonb(app_private.hermes_full_text_v1(v_head->>'billingMonth',20)),'issueDate',v_head->'issueDate','dueDate',v_head->'dueDate',
-        'paidDate',v_head->'paidDate','buildingId',v_head->'buildingId','buildingName',to_jsonb(app_private.hermes_full_text_v1(v_head->>'buildingName',200)),
-        'roomId',v_head->'roomId','roomName',to_jsonb(app_private.hermes_full_text_v1(v_head->>'roomName',100)),
-        'contractNumber',to_jsonb(app_private.hermes_full_text_v1(v_head->>'contractNumber',100)),
-        'customerName',CASE WHEN (v_head->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(app_private.hermes_full_text_v1(v_head->>'customerName',200)) ELSE 'null'::jsonb END,
+      v_summary:=jsonb_build_object('found',true,'invoiceId',v_head->'id','invoiceNumber',to_jsonb(v_head->>'invoiceNumber'),
+        'status',v_head->'status','kind',to_jsonb(v_head->>'kind'),
+        'billingMonth',to_jsonb(v_head->>'billingMonth'),'issueDate',v_head->'issueDate','dueDate',v_head->'dueDate',
+        'paidDate',v_head->'paidDate','buildingId',v_head->'buildingId','buildingName',to_jsonb(v_head->>'buildingName'),
+        'roomId',v_head->'roomId','roomName',to_jsonb(v_head->>'roomName'),
+        'contractNumber',to_jsonb(v_head->>'contractNumber'),
+        'customerName',CASE WHEN (v_head->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(v_head->>'customerName') ELSE 'null'::jsonb END,
         'subtotal',to_jsonb((v_head->>'subtotal')::numeric::text),'discountAmount',to_jsonb((v_head->>'discountAmount')::numeric::text),
         'previousDebt',to_jsonb((v_head->>'previousDebt')::numeric::text),'totalAmount',to_jsonb(COALESCE((v_head->>'totalAmount')::numeric,0)::text),
         'paidAmount',to_jsonb(COALESCE((v_head->>'paidAmount')::numeric,0)::text),'remainingAmount',to_jsonb(COALESCE((v_head->>'remainingAmount')::numeric,0)::text),
-        'notes',to_jsonb(app_private.hermes_full_text_v1(v_head->>'notes',1000)),'adjustmentCount',v_detail->'adjustmentCount',
+        'notes',to_jsonb(v_head->>'notes'),'adjustmentCount',v_detail->'adjustmentCount',
         'totalReceived',to_jsonb((v_detail->>'totalReceived')::numeric::text),'totalRefunded',to_jsonb((v_detail->>'totalRefunded')::numeric::text),
-        'adjustmentReviewStatus',to_jsonb(app_private.hermes_full_text_v1(v_head->>'adjustmentReviewStatus',40)));
+        'adjustmentReviewStatus',to_jsonb(v_head->>'adjustmentReviewStatus'));
       -- Dòng chi tiết: dòng hoá đơn, khoản thu, phiếu thu/chi đã duyệt (cùng khuôn; trường không dùng = null).
       SELECT COALESCE(jsonb_agg(l.item ORDER BY l.k,l.n),'[]'::jsonb),count(*)::integer INTO v_rows,v_total FROM (
-        SELECT 1 k,n,jsonb_build_object('kind','item','id',e->'id','code',NULL,'label',to_jsonb(app_private.hermes_full_text_v1(e->>'description',300)),
+        SELECT 1 k,n,jsonb_build_object('kind','item','id',e->'id','buildingId',v_head->'buildingId','code',NULL,'label',to_jsonb(e->>'description'),
             'category',e->'type','amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',to_jsonb((e->>'unitPrice')::numeric::text),
             'quantity',to_jsonb((e->>'quantity')::numeric::text),'date',e->'fromDate','endDate',e->'toDate','status',NULL,'person',NULL,
             'previousReading',to_jsonb((e->>'previousReading')::numeric::text),'currentReading',to_jsonb((e->>'currentReading')::numeric::text)) item
           FROM jsonb_array_elements(v_detail->'items') WITH ORDINALITY a(e,n)
         UNION ALL
-        SELECT 2,n,jsonb_build_object('kind','payment','id',e->'id','code',to_jsonb(app_private.hermes_full_text_v1(e->>'receiptNumber',100)),'label',NULL,
+        SELECT 2,n,jsonb_build_object('kind','payment','id',e->'id','buildingId',v_head->'buildingId','code',to_jsonb(e->>'receiptNumber'),'label',NULL,
             'category',e->'method','amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',NULL,'quantity',NULL,'date',e->'paymentDate',
             'endDate',NULL,'status',to_jsonb(CASE WHEN (e->>'reversed')::boolean THEN 'REVERSED' ELSE 'ACTIVE' END),'person',NULL,
             'previousReading',NULL,'currentReading',NULL)
           FROM jsonb_array_elements(v_detail->'payments') WITH ORDINALITY a(e,n)
         UNION ALL
-        SELECT 3,n,jsonb_build_object('kind','voucher','id',e->'id','code',to_jsonb(app_private.hermes_full_text_v1(e->>'code',100)),
-            'label',to_jsonb(app_private.hermes_full_text_v1(e->>'name',300)),'category',to_jsonb(app_private.hermes_full_text_v1(e->>'type',40)),
+        SELECT 3,n,jsonb_build_object('kind','voucher','id',e->'id','buildingId',v_head->'buildingId','code',to_jsonb(e->>'code'),
+            'label',to_jsonb(e->>'name'),'category',to_jsonb(e->>'type'),
             'amount',to_jsonb(COALESCE((e->>'amount')::numeric,0)::text),'unitPrice',NULL,'quantity',NULL,'date',e->'voucherDate','endDate',NULL,
-            'status',to_jsonb(app_private.hermes_full_text_v1(e->>'approvalStatus',40)),'person',to_jsonb(app_private.hermes_full_text_v1(e->>'creatorName',200)),
+            'status',to_jsonb(e->>'approvalStatus'),'person',to_jsonb(e->>'creatorName'),
             'previousReading',NULL,'currentReading',NULL)
           FROM jsonb_array_elements(v_detail->'vouchers') WITH ORDINALITY a(e,n)) l;
     END IF;
@@ -477,10 +526,10 @@ BEGIN
   ELSIF p_report='reservation_vouchers' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY v.voucher_date DESC,v.voucher_id) o,count(*) OVER () total,jsonb_build_object('voucherId',v.voucher_id,
-          'code',app_private.hermes_full_text_v1(v.code,100),'name',app_private.hermes_full_text_v1(v.name,300),
-          'payerName',CASE WHEN v.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(v.payer_name,200) END,
+          'code',v.code,'name',v.name,
+          'payerName',CASE WHEN v.building_id=ANY(v_cust) THEN v.payer_name END,
           'depositAmount',v.deposit_amount::text,'voucherDate',v.voucher_date,'approvalStatus',v.approval_status,'buildingId',v.building_id,
-          'buildingName',app_private.hermes_full_text_v1(v.building_name,200),'roomId',v.room_id,'roomName',app_private.hermes_full_text_v1(v.room_name,100),
+          'buildingName',v.building_name,'roomId',v.room_id,'roomName',v.room_name,
           'settled',v.settled,'holdUntil',v.hold_until,'topupDueDate',v.topup_due_date,'depositTarget',v.deposit_target::text) item
       FROM public.deposit_reservation_vouchers_v1(v_org,v_b) v
       WHERE (v_status IS NULL OR v.approval_status=v_status)
@@ -501,14 +550,14 @@ BEGIN
       v_cursor:=v_page->'nextCursor';
       EXIT WHEN v_cursor IS NULL OR v_cursor='null'::jsonb OR jsonb_array_length(v_rows)>2000;
     END LOOP;
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('settlementId',e->'id','voucherCode',to_jsonb(app_private.hermes_full_text_v1(e->>'voucherCode',100)),
-        'buildingId',e->'buildingId','buildingName',to_jsonb(app_private.hermes_full_text_v1(e->>'buildingName',200)),'roomId',e->'roomId',
-        'roomName',to_jsonb(app_private.hermes_full_text_v1(e->>'roomName',100)),
-        'payerName',CASE WHEN (e->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(app_private.hermes_full_text_v1(e->>'payerName',200)) ELSE 'null'::jsonb END,
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('settlementId',e->'id','voucherCode',to_jsonb(e->>'voucherCode'),
+        'buildingId',e->'buildingId','buildingName',to_jsonb(e->>'buildingName'),'roomId',e->'roomId',
+        'roomName',to_jsonb(e->>'roomName'),
+        'payerName',CASE WHEN (e->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(e->>'payerName') ELSE 'null'::jsonb END,
         'depositAmount',to_jsonb((e->>'depositAmount')::numeric::text),'retainedAmount',to_jsonb((e->>'retainedAmount')::numeric::text),
         'refundAmount',to_jsonb((e->>'refundAmount')::numeric::text),'refundedAmount',to_jsonb((e->>'refundedAmount')::numeric::text),
         'refundRemaining',to_jsonb((e->>'refundRemaining')::numeric::text),'refundState',e->'refundState','settlementDate',e->'settlementDate',
-        'reasonCode',to_jsonb(app_private.hermes_full_text_v1(e->>'reasonCode',40)),'roomReleased',e->'roomReleased') ORDER BY n),'[]'::jsonb),
+        'reasonCode',to_jsonb(e->>'reasonCode'),'roomReleased',e->'roomReleased') ORDER BY n),'[]'::jsonb),
       count(*)::integer INTO v_rows,v_total
       FROM jsonb_array_elements(v_rows) WITH ORDINALITY a(e,n) WHERE n<=2001;
     v_raw:=public.get_reservation_settlement_summary_v1(v_b);
@@ -519,11 +568,11 @@ BEGIN
   ELSIF p_report='held_deposits' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY h.building_name,h.building_id,h.room_sort,h.contract_id) o,count(*) OVER () total,
-        jsonb_build_object('contractId',h.contract_id,'contractNumber',app_private.hermes_full_text_v1(h.contract_number,100),'buildingId',h.building_id,
-          'buildingName',app_private.hermes_full_text_v1(h.building_name,200),'roomId',h.room_id,'roomName',app_private.hermes_full_text_v1(h.room_name,100),
-          'customerName',CASE WHEN h.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(h.customer_name,200) END,
+        jsonb_build_object('contractId',h.contract_id,'contractNumber',h.contract_number,'buildingId',h.building_id,
+          'buildingName',h.building_name,'roomId',h.room_id,'roomName',h.room_name,
+          'customerName',CASE WHEN h.building_id=ANY(v_cust) THEN h.customer_name END,
           'totalDeposit',h.total_deposit::text,'depositPaid',h.deposit_paid::text,'depositRemaining',h.deposit_remaining::text,
-          'debtMode',app_private.hermes_full_text_v1(h.deposit_debt_mode,40),'topupDueDate',h.deposit_topup_due_date,'state',h.state) item
+          'debtMode',h.deposit_debt_mode,'topupDueDate',h.deposit_topup_due_date,'state',h.state) item
       FROM public.deposit_held_contracts_v1(v_org,10000,v_b) h WHERE v_status IS NULL OR h.state=v_status
       ORDER BY h.building_name,h.building_id,h.room_sort,h.contract_id LIMIT 2001) x;
     -- KPI như web (useHeldDepositSummary + DepositsPage.tsx:438-452): cộng các toà; "thiếu" = shortfall_short.
@@ -536,13 +585,13 @@ BEGIN
   ELSIF p_report='deposit_refunds' THEN
     SELECT COALESCE(jsonb_agg(x.item ORDER BY x.o),'[]'::jsonb),COALESCE(max(x.total),0) INTO v_rows,v_total FROM (
       SELECT row_number() OVER (ORDER BY d.termination_date DESC NULLS LAST,d.termination_id) o,count(*) OVER () total,
-        jsonb_build_object('terminationId',d.termination_id,'contractId',d.contract_id,'contractNumber',app_private.hermes_full_text_v1(d.contract_number,100),
-          'buildingId',d.building_id,'buildingName',app_private.hermes_full_text_v1(d.building_name,200),'roomId',d.room_id,
-          'roomName',app_private.hermes_full_text_v1(d.room_name,100),
-          'customerName',CASE WHEN d.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(d.customer_name,200) END,
-          'terminationDate',d.termination_date,'terminationType',app_private.hermes_full_text_v1(d.termination_type,40),'kind',d.kind,
+        jsonb_build_object('terminationId',d.termination_id,'contractId',d.contract_id,'contractNumber',d.contract_number,
+          'buildingId',d.building_id,'buildingName',d.building_name,'roomId',d.room_id,
+          'roomName',d.room_name,
+          'customerName',CASE WHEN d.building_id=ANY(v_cust) THEN d.customer_name END,
+          'terminationDate',d.termination_date,'terminationType',d.termination_type,'kind',d.kind,
           'totalDeposit',d.total_deposit::text,'totalDeductions',d.total_deductions::text,'settlementNet',d.settlement_net::text,
-          'status',app_private.hermes_full_text_v1(d.status,40),'postedRefund',d.posted_refund::text,'postedRefundCount',d.posted_refund_count,
+          'status',d.status,'postedRefund',d.posted_refund::text,'postedRefundCount',d.posted_refund_count,
           'refundDone',d.refund_done,'refundDrift',d.refund_drift::text) item
       FROM public.deposit_refunds_forfeits_v1(v_org,v_b) d WHERE v_kind IS NULL OR d.kind=v_kind
       ORDER BY d.termination_date DESC NULLS LAST,d.termination_id LIMIT 2001) x;
@@ -566,12 +615,12 @@ BEGIN
             FROM public.accounts a WHERE a.id=v_target)),'fromDate',v_from,'toDate',v_to,'total',COALESCE(sum(x.amount),0)::text,'count',count(*)::integer)
       INTO v_rows,v_total,v_summary FROM (
       SELECT row_number() OVER (ORDER BY l.voucher_date DESC,l.voucher_id) o,l.amount,l.ledger_mode mode,jsonb_build_object('voucherId',l.voucher_id,
-          'voucherDate',l.voucher_date,'code',app_private.hermes_full_text_v1(l.code,100),'invoiceId',l.invoice_id,
-          'invoiceNumber',app_private.hermes_full_text_v1(l.invoice_number,100),'buildingId',l.building_id,
-          'buildingName',app_private.hermes_full_text_v1(l.building_name,200),'roomName',app_private.hermes_full_text_v1(l.room_name,100),
-          'payerName',CASE WHEN l.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(l.payer_name,200) END,
+          'voucherDate',l.voucher_date,'code',l.code,'invoiceId',l.invoice_id,
+          'invoiceNumber',l.invoice_number,'buildingId',l.building_id,
+          'buildingName',l.building_name,'roomName',l.room_name,
+          'payerName',CASE WHEN l.building_id=ANY(v_cust) THEN l.payer_name END,
           'amount',l.amount::text,'totalAmount',COALESCE(l.total_amount,0)::text,
-          'notes',CASE WHEN l.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(l.notes,300) END) item
+          'notes',CASE WHEN l.building_id=ANY(v_cust) THEN l.notes END) item
       FROM public.cashbook_change_ledger_v1(v_org,v_target,v_from,v_to,v_b) l) x;
 
   ELSE
@@ -579,6 +628,16 @@ BEGIN
   END IF;
 
   IF jsonb_array_length(v_rows)>2000 THEN v_rows:=v_rows-2000; END IF;
+  -- Làm sạch chữ MỘT lần cho mọi hàng + summary (cùng luật hermes_full_text_v1 của đợt 1: giữ xuống dòng,
+  -- bỏ ký tự điều khiển, cắt theo ký tự); hàm đọc INVOKER không gọi được app_private.* (không USAGE).
+  SELECT COALESCE(jsonb_agg(c.obj ORDER BY a.n),'[]'::jsonb) INTO v_clean
+    FROM jsonb_array_elements(v_rows||jsonb_build_array(COALESCE(v_summary,'{"_":null}'::jsonb))) WITH ORDINALITY a(r,n)
+    CROSS JOIN LATERAL (SELECT jsonb_object_agg(e.key,CASE WHEN jsonb_typeof(e.value)='string' AND v_limits ? e.key THEN to_jsonb(left(btrim(regexp_replace(
+        translate(replace(e.value#>>'{}',chr(13)||chr(10),chr(10)),chr(13)||chr(8232)||chr(8233),chr(10)||chr(10)||chr(10)),
+        '[\x01-\x09\x0b-\x1f\x7f-\x9f]','','g'),' '||chr(10)),(v_limits->>e.key)::integer)) ELSE e.value END) obj
+      FROM jsonb_each(a.r) e) c;
+  v_summary:=CASE WHEN v_summary IS NULL THEN NULL ELSE v_clean->-1 END;
+  v_rows:=v_clean - -1;
   RETURN jsonb_build_object('rows',v_rows,'summary',v_summary,'sourceCapped',v_total>2000,'unavailable',NULL);
 END $fn$;
 
@@ -592,17 +651,12 @@ ALTER FUNCTION public.deposit_refunds_forfeits_v1(uuid,uuid[]) OWNER TO postgres
 ALTER FUNCTION public.cashbook_change_ledger_v1(uuid,uuid,date,date,uuid[]) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_w2a_catalog_v1() OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_w2a_read_v1(text,jsonb,jsonb) OWNER TO postgres;
--- Hàm dùng chung và hàm đọc của gói: INVOKER (RLS của người gọi), chỉ authenticated (thân hàm còn tự từ chối vai khác).
+-- Hàm dùng chung: INVOKER (RLS của người gọi); anon/PUBLIC/service_role không gọi được, authenticated giữ quyền mặc
+-- định của schema public (thân hàm còn tự từ chối mọi vai khác authenticated). Hàm đọc của gói: ACL do nền 000600.
 REVOKE ALL ON FUNCTION public.finance_payment_schedule_v1(uuid,date,uuid[]),public.finance_overpayment_invoices_v1(uuid,uuid[]),
   public.thu_tien_collection_v1(uuid,text,date,date,date,uuid[]),public.invoice_detail_v1(uuid,uuid,uuid[]),
   public.deposit_reservation_vouchers_v1(uuid,uuid[]),public.deposit_held_contracts_v1(uuid,numeric,uuid[]),
-  public.deposit_refunds_forfeits_v1(uuid,uuid[]),public.cashbook_change_ledger_v1(uuid,uuid,date,date,uuid[]),
-  app_private.hermes_w2a_read_v1(text,jsonb,jsonb) FROM PUBLIC,anon,service_role,hermes_store_executor;
-GRANT EXECUTE ON FUNCTION public.finance_payment_schedule_v1(uuid,date,uuid[]),public.finance_overpayment_invoices_v1(uuid,uuid[]),
-  public.thu_tien_collection_v1(uuid,text,date,date,date,uuid[]),public.invoice_detail_v1(uuid,uuid,uuid[]),
-  public.deposit_reservation_vouchers_v1(uuid,uuid[]),public.deposit_held_contracts_v1(uuid,numeric,uuid[]),
-  public.deposit_refunds_forfeits_v1(uuid,uuid[]),public.cashbook_change_ledger_v1(uuid,uuid,date,date,uuid[]),
-  app_private.hermes_w2a_read_v1(text,jsonb,jsonb) TO authenticated;
+  public.deposit_refunds_forfeits_v1(uuid,uuid[]),public.cashbook_change_ledger_v1(uuid,uuid,date,date,uuid[]) FROM PUBLIC,anon,service_role;
 -- Bảng báo cáo: chỉ cổng đọc.
 REVOKE ALL ON FUNCTION app_private.hermes_w2a_catalog_v1() FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 COMMIT;

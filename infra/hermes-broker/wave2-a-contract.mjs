@@ -40,7 +40,7 @@ export const W2A_REPORTS = Object.freeze({
   invoice_detail: w2Report({ permission: 'invoices.view', source: 'crm.invoice_detail_v1', scope: 'rows',
     title: 'Chi tiết một hoá đơn (invoiceId): summary là đầu hoá đơn + tổng thu/chi như chân thẻ web (found=false nếu không có/ngoài phạm vi); hàng kind=item dòng hoá đơn, payment khoản thu (REVERSED = đã hoàn tác), voucher phiếu thu/chi đã duyệt.',
     params: ['invoiceId'], required: ['invoiceId'], scopeKeys: CUSTOMER, private: true,
-    fields: { kind: oneOf(['item', 'payment', 'voucher']), id, code: number, label: nullable(longText(300)), category: nullable(longText(40)),
+    fields: { kind: oneOf(['item', 'payment', 'voucher']), id, buildingId: id, code: number, label: nullable(longText(300)), category: nullable(longText(40)),
       amount, unitPrice: nullable(amount), quantity: nullable(amount), date: nullable(date), endDate: nullable(date), status: nullable(longText(40)),
       person: personName, previousReading: nullable(amount), currentReading: nullable(amount) },
     summary: { found: bool, invoiceId: nullable(id), invoiceNumber: number, status: nullable(code), kind: nullable(longText(40)),
@@ -90,6 +90,6 @@ export const W2A_REPORTS = Object.freeze({
     title: 'Sổ tiền thối / làm tròn của một sổ quỹ (cashbookId; sổ "Làm tròn tiền thiếu" = làm tròn, sổ khác = tiền thối), phiếu đã duyệt; mặc định tháng này. Không phải hoàn cọc.',
     params: ['cashbookId', 'fromDate', 'toDate'], required: ['cashbookId'], scopeKeys: CUSTOMER, private: true,
     fields: { voucherId: id, voucherDate: nullable(date), code: number, invoiceId: nullable(id), invoiceNumber: number, buildingId: id, buildingName,
-      roomName, payerName: personName, amount, totalAmount: amount, notes: nullable(longText(300)) },
+      roomName, payerName: personName, amount, totalAmount: amount, notes: nullable(longText(1000)) },
     summary: { mode: oneOf(['refund', 'rounding']), fromDate: date, toDate: date, total: amount, count } }),
 });

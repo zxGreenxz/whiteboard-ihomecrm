@@ -1,8 +1,8 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2a, BUILDING, OTHER_BUILDING, USER, ORG, CUSTOMER_C, CONTRACT_A, INVOICE_A, INVOICE_B, ROOM2,
-  INV_FOREIGN, INV_OVER, INV_OVER_CANCELLED, INV_OVER_DELETED, INV_OVER_B, INV_C_PAID, INV_C_REV, PAY_A,
+import { sharedW2a, BUILDING, OTHER_BUILDING, USER, ORG, FOREIGN, CUSTOMER_C, CONTRACT_A, INVOICE_A, INVOICE_B, ROOM2,
+  INV_OVER, INV_OVER_CANCELLED, INV_OVER_DELETED, INV_OVER_B, INV_C_PAID, INV_C_REV, PAY_A,
   CONTRACT_FULL, CONTRACT_FI, CONTRACT_TERM, RV1, RV2, RV3, RV_EXCL, RV_SETTLED, S1, S2, S3, T1, T2, T3, CHANGE_BOOK, ROUND_BOOK, OTHER_BOOK,
   L1, L2, L4, L6, L7, V_DETAIL, V_DETAIL_UNAPPROVED, V_DETAIL_RESTRICTED, V_DETAIL_REVERSED } from './wave2-a-sql-fixture.mjs';
 import { assertPackageParity } from './wave2-sql-fixture.mjs';
@@ -14,15 +14,16 @@ import { domainInput, domainResult } from './domain-contract.mjs';
 // Gói A đợt 2 — test RIÊNG của Gói A (chỉ Gói A sửa). MỘT PGlite cho cả file, mỗi ca BEGIN … ROLLBACK.
 // Mô hình INVOKER + RLS (18/10): hàm đọc gói và hàm dùng chung chạy bằng vai authenticated của người hỏi, dưới RLS
 // cổng tổng hợp của fixture (ý nghĩa policy sống). ctx như cổng dựng (toà A, customers.view ở A, hôm nay 16/10).
-// Số liệu tính tay theo đúng bộ lọc web (vùng hermes-parity dẫn trong migration gói A); rào đầu ra broker
-// (domainInput/domainResult của crm_read_report) nhận đúng khuôn SQL thật; đột biến SQL trên chính migration gói A.
-// CHƯA kiểm qua cổng chung: cổng đợt 2 đang đổi sang INVOKER dispatcher (Gói 0) — ca đầu-cuối thêm sau khi rebase.
-// Không chứng minh RLS thật/JWT thật/PostgREST: phần đó đo trên TEST.
+// Số liệu tính tay theo đúng bộ lọc web (vùng hermes-parity dẫn trong migration gói A); ca đầu-cuối qua lối vào thật
+// public.hermes_w2_read_v1 (bước kiểm quyền → hàm gói → rào đầu ra); rào broker (domainInput/domainResult của
+// crm_read_report) nhận đúng phong bì SQL thật; đột biến SQL trên chính migration gói A (gọi thẳng hàm gói/hàm dùng
+// chung bằng vai authenticated). Không chứng minh RLS thật/JWT thật/PostgREST: phần đó đo trên TEST.
 const MIGRATION_PATH = 'supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql';
 const migration = readFileSync(MIGRATION_PATH, 'utf8');
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
 const REPORTS = Object.keys(W2A_REPORTS);
-const FOREIGN_BUILDING = '0a0a0a0a-0000-4000-8000-000000000009';
+// Toà của công ty khác có trong fixture đọc đầy đủ (u(12) của full-read-sql-fixture) và một hoá đơn tạo trong ca.
+const OTHER_ORG_BUILDING = '0e0e0e0e-0000-4000-8000-000000000012', FOREIGN_INVOICE = '0a0a0a0a-0000-4000-8000-000000000130';
 let shared;
 before(async () => { shared = await sharedW2a(); });
 after(async () => { await shared?.close(); });
@@ -34,7 +35,7 @@ const DEFAULTS = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month
 const CTX = { organizationId: ORG, userId: USER, report: null, permission: null, scope: 'rows', buildings: [BUILDING], requestedBuildingId: null,
   overlayOrg: false, orgWide: false, isSuperadmin: false, today: '2026-10-16', scopes: { 'customers.view': [BUILDING] } };
 // Hàm đọc của gói, bằng vai authenticated (như cổng INVOKER sẽ gọi).
-const direct = (env, report, values = {}, ctx = {}, options) => env.call('SELECT app_private.hermes_w2a_read_v1($1,$2::jsonb,$3::jsonb) result',
+const direct = (env, report, values = {}, ctx = {}, options) => env.call('SELECT public.fixture_w2a_read($1,$2::jsonb,$3::jsonb) result',
   [report, JSON.stringify(params(report, { ...DEFAULTS[report], ...values })), JSON.stringify({ ...CTX, report, ...ctx })], options);
 // Như cổng: phân trang ảnh chụp ≤2000 hàng (offset/limit), unavailable đi nguyên.
 async function run(env, report, values = {}, { limit = 50, offset = 0, ctx = {} } = {}) {
@@ -60,7 +61,7 @@ test('khai báo: 9 báo cáo, đều riêng tư, tên khách qua customers.view;
   assert.deepEqual(ids((await env.reportList('a')).items, 'report'), [...REPORTS].sort());
 }));
 
-test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER search_path rỗng, chỉ authenticated, tự từ chối vai khác; không copilot, không chép policy', () => inCase(async env => {
+test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authenticated, tự từ chối vai khác; hàm đọc không gọi app_private, không đổi ACL; không copilot, không chép policy', () => inCase(async env => {
   const { db } = env;
   const stripped = migration.replace(/--[^\n]*/g, '');
   const created = [...stripped.matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]).sort();
@@ -69,6 +70,11 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER search_path r
   assert.deepEqual(created, ['app_private.hermes_w2a_catalog_v1', 'app_private.hermes_w2a_read_v1', ...SHARED].sort());
   assert.doesNotMatch(stripped, /copilot|\bDROP\b|ALTER TABLE|UPDATE |INSERT |DELETE /i);
   assert.doesNotMatch(stripped, /current_visible_owner_ids|can_view_restricted_ie|has_restricted_item|ie_visible_cashbook_ids/, 'không chép policy RLS');
+  assert.doesNotMatch(stripped, /\bGRANT\b/i, 'không GRANT: authenticated giữ quyền mặc định schema public; hàm đọc do nền cấp');
+  assert.doesNotMatch(stripped, /(?:GRANT|REVOKE)[^;]*hermes_w2a_read_v1/i, 'không đổi ACL hàm đọc');
+  const readBody = stripped.slice(stripped.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(')).split('$fn$')[1];
+  assert.doesNotMatch(readBody, /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
+  assert.match(stripped, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.provolatile vol,
       has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -77,7 +83,8 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER search_path r
   for (const proc of procs) {
     const catalog = proc.name === 'app_private.hermes_w2a_catalog_v1';
     assert.equal(proc.definer, catalog, `${proc.name}: ${catalog ? 'DEFINER (bảng hằng)' : 'INVOKER'}`);
-    if (!catalog) assert.deepEqual(proc.config, ['search_path=""'], proc.name);
+    if (SHARED.includes(proc.name)) assert.deepEqual(proc.config, ['search_path=""'], proc.name);
+    else if (!catalog) assert.deepEqual(proc.config, ['search_path=pg_catalog, public'], proc.name);
     assert.deepEqual([proc.auth, proc.anon, proc.service], [!catalog, false, false], proc.name);
     if (SHARED.includes(proc.name)) assert.equal(proc.vol, 's', `${proc.name}: STABLE`);
   }
@@ -89,6 +96,40 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER search_path r
     await env.call(call, []);
   }
   await assert.rejects(direct(env, 'overpayment', {}, {}, { role: 'postgres' }), code('42501'), 'hàm đọc gói: vai khác authenticated');
+}));
+
+test('hàm dùng chung tự kiểm khoá của trang theo toà (web gọi thẳng cũng đúng quyền); p_building_ids chỉ thu hẹp, {} = rỗng', () => inCase(async env => {
+  const calls = { 'reports_finance.payment_schedule': ['public.finance_payment_schedule_v1($1,$2,$3)', [ORG, '2027-10-16']],
+    'reports_finance.overpayment': ['public.finance_overpayment_invoices_v1($1,$2)', [ORG]],
+    'thu_tien.view': ['public.thu_tien_collection_v1($1,$2,NULL,NULL,$3,$4)', [ORG, '2026-10', '2026-10-16']],
+    'deposits.view': ['public.deposit_held_contracts_v1($1,10000,$2)', [ORG]] };
+  for (const [key, [fn, args]] of Object.entries(calls)) {
+    assert.ok((await sharedFn(env, fn, [...args, null])).length > 0, `${key}: NULL = toàn phạm vi RLS`);
+    assert.equal((await sharedFn(env, fn, [...args, []])).length, 0, `${key}: {} = rỗng`);
+    await env.db.query('UPDATE public.fixture_acl SET allowed=false WHERE permission=$1', [key]);
+    assert.equal((await sharedFn(env, fn, [...args, null])).length, 0, `${key}: thiếu khoá trang ⇒ không hàng nào`);
+    await env.db.query('UPDATE public.fixture_acl SET allowed=true WHERE permission=$1', [key]);
+  }
+  await env.db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='invoices.view'");
+  assert.equal(await env.call(`SELECT public.invoice_detail_v1('${ORG}','${INVOICE_A}',NULL) result`, []), null, 'invoices.view thiếu ⇒ không thấy hoá đơn');
+}));
+
+test('cổng đầu-cuối (public.hermes_w2_read_v1): số như gọi thẳng; thiếu khoá/toà ngoài overlay/hoá đơn toà khác ⇒ 42501; Toàn tổ chức ⇒ có toà B', () => inCase(async env => {
+  const viaGate = await env.report('overpayment', params('overpayment'), { limit: 50 });
+  assert.deepEqual([ids(viaGate.items, 'invoiceId'), viaGate.summary, viaGate.fence], [[INV_OVER, INV_OVER_CANCELLED], { total: '300000.00', count: 2 },
+    { buildings: [BUILDING], cashbooks: [], orgWide: false }]);
+  const detail = await env.report('invoice_detail', params('invoice_detail', { invoiceId: INVOICE_A }), { limit: 50 });
+  assert.deepEqual([detail.summary.found, detail.summary.customerName, detail.items.length], [true, 'Nguyễn Văn An', 8]);
+  await assert.rejects(env.report('invoice_detail', params('invoice_detail', { invoiceId: INVOICE_B })), code('42501'), 'hoá đơn toà B ngoài overlay');
+  await assert.rejects(env.report('overpayment', params('overpayment', { buildingId: OTHER_BUILDING })), code('42501'), 'toà B ngoài overlay');
+  await assert.rejects(env.report('change_ledger', params('change_ledger', { cashbookId: '0a0a0a0a-0000-4000-8000-000000000999' })), code('42501'), 'sổ không thuộc công ty');
+  await env.db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='deposits.view'");
+  await assert.rejects(env.report('held_deposits', params('held_deposits')), code('42501'), 'thiếu khoá CRM');
+  await env.db.exec("UPDATE public.fixture_acl SET allowed=true,org_wide=true WHERE permission='reports_finance.payment_schedule'");
+  for (const table of ['hermes_connections', 'hermes_org_policies'])
+    await env.db.query(`UPDATE app_private.${table} SET scope_ids=array_append(scope_ids,$1::uuid)`, ['00000000-0000-4000-8000-0000000000a1']);
+  const wide = await env.report('payment_schedule', params('payment_schedule'), { limit: 50 });
+  assert.ok(wide.fence.orgWide && wide.items.some(row => row.buildingId === OTHER_BUILDING), 'Toàn tổ chức ⇒ có toà B');
 }));
 
 test('payment_schedule: một dòng/phòng, đến ngày = hạn xa nhất ≤ hôm nay+365 (bỏ huỷ/xoá), khách của hoá đơn đầu, mới nhất trước; lọc ngày', () => inCase(async env => {
@@ -245,8 +286,8 @@ test('riêng tư: không customers.view ở toà (ctx) hoặc RLS customers ẩn
 test('rào broker: kết quả SQL thật của cả 9 báo cáo qua domainInput/domainResult của crm_read_report; hàng toà ngoài phạm vi bị chặn', () => inCase(async env => {
   for (const report of REPORTS) {
     const input = domainInput('report', { report, params: DEFAULTS[report] ?? {}, limit: 50 });
-    const value = { organizationId: ORG, domain: 'report', fetchedAt: '2026-10-18T00:00:00.000Z',
-      ...await run(env, report, input.params, { limit: input.limit, offset: input.offset }) };
+    // Phong bì THẬT của lối vào (có fence); broker rào theo fence rồi bỏ fence khỏi đầu ra.
+    const value = await env.report(report, input.params, { limit: input.limit, offset: input.offset });
     const projected = domainResult('report', value, identity(KEYS), input);
     assert.deepEqual(projected.items, value.items, report);
     assert.deepEqual(projected.summary, value.summary, report);
@@ -267,6 +308,7 @@ test('trần nguồn: hơn 2000 phòng ⇒ 2000 hàng đầu đã sắp + source
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào/công thức của migration gói A; cùng phép thử mà bản sống từ chối thì bản đột biến phải lọt.
 const replaceExactly = (from, to) => { assert.equal(migration.split(from).length, 2, `anchor: ${from}`); return migration.replace(from, () => to); };
+const replaceEach = pairs => pairs.reduce((sql, [from, to]) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return sql.replace(from, () => to); }, migration);
 const rowsOf = async (env, report, values, ctx) => (await direct(env, report, values, ctx)).rows;
 const probes = [
   { name: 'payment_schedule: bỏ hoá đơn huỷ', sql: replaceExactly(`i.status::text<>'CANCELLED'
@@ -275,18 +317,32 @@ const probes = [
     run: async env => (await rowsOf(env, 'payment_schedule'))[0].billedThrough === '2027-01-10' },
   { name: 'payment_schedule: trần hôm nay+365', sql: replaceExactly(`AND i.due_date<=p_due_until AND`, `AND`),
     run: async env => (await rowsOf(env, 'payment_schedule'))[0].billedThrough === '2027-12-10' },
-  { name: 'hàm dùng chung: thu hẹp về đúng công ty (RLS trải mọi công ty của người dùng)', sql: replaceExactly(`    WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED'
+  { name: 'hàm dùng chung: thu hẹp về đúng công ty (RLS trải mọi công ty của người dùng)', sql: replaceEach([[`    WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.status::text<>'CANCELLED'
       AND i.due_date`, `    WHERE i.deleted_at IS NULL AND i.status::text<>'CANCELLED'
-      AND i.due_date`),
-    run: async env => { await env.db.exec(`INSERT INTO public.fixture_building_access VALUES('${FOREIGN_BUILDING}')`);
-      return (await sharedFn(env, 'public.finance_payment_schedule_v1($1,$2,NULL)', [ORG, '2027-10-16'])).some(row => row.invoice_id === INV_FOREIGN); } },
+      AND i.due_date`], [`    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','payment_schedule',b.id);`, `    WHERE (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','payment_schedule',b.id);`]]),
+    run: async env => {
+      // Người dùng thuộc hai công ty: RLS cho thấy toà + hoá đơn của công ty kia.
+      await env.db.exec(`INSERT INTO public.fixture_building_access VALUES('${OTHER_ORG_BUILDING}');
+        UPDATE public.fixture_acl SET building_ids=building_ids||'${OTHER_ORG_BUILDING}'::uuid WHERE permission='reports_finance.payment_schedule';
+        INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount)
+          VALUES('${FOREIGN_INVOICE}','${FOREIGN}','INV-F2','APPROVED','${OTHER_ORG_BUILDING}',null,'2026-10','2026-10-01',1,0)`);
+      return (await sharedFn(env, 'public.finance_payment_schedule_v1($1,$2,NULL)', [ORG, '2027-10-16'])).some(row => row.invoice_id === FOREIGN_INVOICE); } },
   { name: 'hàm dùng chung: từ chối vai không phải authenticated', sql: replaceExactly(`  IF current_user<>'authenticated' OR auth.uid() IS NULL THEN RAISE EXCEPTION 'shared_read_requires_authenticated' USING ERRCODE='42501'; END IF;
-  RETURN QUERY
-  SELECT i.id,i.invoice_number,i.building_id`, `  RETURN QUERY
-  SELECT i.id,i.invoice_number,i.building_id`),
+  -- Như web: khoá của trang (RequirePermission) xét theo từng toà, trên toà RLS buildings của người gọi thấy.
+  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','overpayment',b.id);`, `  SELECT COALESCE(array_agg(b.id),'{}'::uuid[]) INTO v_b FROM public.buildings b
+    WHERE b.organization_id=p_organization_id AND (p_building_ids IS NULL OR b.id=ANY(p_building_ids))
+      AND public.can_do_on_building('reports_finance','overpayment',b.id);`),
     run: async env => (await sharedFn(env, 'public.finance_overpayment_invoices_v1($1,NULL)', [ORG], { role: 'postgres' })).length > 0 },
-  { name: 'payment_schedule: tên khách theo customers.view của toà', sql: replaceExactly(`'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN app_private.hermes_full_text_v1(s.customer_name,200) END,
-          'billedThrough'`, `'customerName',app_private.hermes_full_text_v1(s.customer_name,200),
+  { name: 'hàm dùng chung: tự kiểm khoá của trang theo toà', sql: replaceExactly(`
+      AND public.can_do_on_building('reports_finance','overpayment',b.id);`, `;`),
+    run: async env => { await env.db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='reports_finance.overpayment'");
+      return (await sharedFn(env, 'public.finance_overpayment_invoices_v1($1,NULL)', [ORG])).length > 0; } },
+  { name: 'payment_schedule: tên khách theo customers.view của toà', sql: replaceExactly(`'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
+          'billedThrough'`, `'customerName',s.customer_name,
           'billedThrough'`),
     run: async env => (await rowsOf(env, 'payment_schedule', {}, { scopes: {} }))[0].customerName !== null },
   { name: 'overpayment: bỏ hoá đơn đã xoá', sql: replaceExactly(`i.deleted_at IS NULL AND i.paid_amount>0`, `i.paid_amount>0`),
@@ -316,8 +372,8 @@ const probes = [
     run: async env => ids(await rowsOf(env, 'held_deposits'), 'contractId').includes(CONTRACT_TERM) },
   { name: 'deposit_refunds: chỉ phiếu đã vào sổ', sql: replaceExactly(`AND ie.approval_status='APPROVED' AND ie.posting_status='POSTED' AND`, `AND ie.approval_status='APPROVED' AND`),
     run: async env => (await rowsOf(env, 'deposit_refunds')).find(row => row.terminationId === T1).postedRefund !== '1500000.00' },
-  { name: 'deposit_refunds: toà trong hàm dùng chung', sql: replaceExactly(`WHERE t.organization_id=p_organization_id AND (p_building_ids IS NULL OR r.building_id=ANY(p_building_ids))`,
-    `WHERE t.organization_id=p_organization_id`),
+  { name: 'deposit_refunds: toà trong hàm dùng chung', sql: replaceExactly(`WHERE t.organization_id=p_organization_id AND r.building_id=ANY(v_b);`,
+    `WHERE t.organization_id=p_organization_id;`),
     run: async env => (await sharedFn(env, 'public.deposit_refunds_forfeits_v1($1,$2)', [ORG, [BUILDING]])).some(row => row.termination_id === T3) },
   { name: 'change_ledger: sổ phải nhìn thấy như web', sql: replaceExactly(`    IF NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=v_target AND a.organization_id=v_org AND a.deleted_at IS NULL) THEN
       RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501';

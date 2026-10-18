@@ -74,6 +74,9 @@ const TABLES = `
   CREATE TABLE public.fixture_super_scope(on_off boolean NOT NULL);
   CREATE FUNCTION public.has_full_building_scope() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT EXISTS(SELECT 1 FROM public.fixture_super_scope WHERE on_off)$$;
   CREATE FUNCTION public.accessible_building_ids() RETURNS SETOF uuid LANGUAGE sql STABLE AS $$SELECT building_id FROM public.fixture_building_access$$;
+  -- Khoá trang theo toà (bản thật: not offboarded AND (super admin OR can_v3(bảng.hành_động, toà))).
+  CREATE FUNCTION public.can_do_on_building(_table text,_action text,_building_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
+    $$SELECT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission=_table||'.'||_action AND allowed AND (org_wide OR _building_id=ANY(building_ids)))$$;
   CREATE FUNCTION public.can_view_restricted_ie() RETURNS boolean LANGUAGE sql STABLE AS
     $$SELECT EXISTS(SELECT 1 FROM public.fixture_restricted_view WHERE user_id=auth.uid())$$;
   CREATE FUNCTION app_private.ie_visible_cashbook_ids_v1() RETURNS TABLE(cashbook_id uuid) LANGUAGE sql STABLE AS
@@ -240,8 +243,8 @@ const SEED = `
 // RLS cổng tổng hợp cho vai authenticated (mô hình INVOKER + RLS 18/10): hàm dùng chung và hàm đọc gói A chạy
 // dưới RLS của người hỏi. Policy chép ĐÚNG ý nghĩa bản sống (pg_policies TEST 17/10), cấp toà qua
 // fixture_building_access (= accessible_building_ids). Không chứng minh policy thật — phần đó đo trên TEST.
-// Hai quyền dưới đây CHƯA có trên TEST/production (yêu cầu Gói 0/Z cho cổng INVOKER): USAGE schema app_private và
-// EXECUTE app_private.hermes_full_text_v1 cho authenticated.
+// authenticated KHÔNG có USAGE trên app_private (như TEST/production): test gọi hàm đọc gói qua lối vào thật
+// public.hermes_w2_read_v1 hoặc qua public.fixture_w2a_read (thân SQL chuẩn gắn OID, như lối vào thật).
 const RLS = `
   CREATE FUNCTION public.fixture_can_view_customers() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS
     $$SELECT EXISTS(SELECT 1 FROM public.fixture_acl WHERE permission='customers.view' AND allowed)$$;
@@ -280,12 +283,16 @@ const RLS = `
     USING (EXISTS(SELECT 1 FROM public.income_expenses v WHERE v.id=income_expense_id));
   CREATE POLICY f_select ON public.income_expense_types FOR SELECT TO authenticated USING (true);
   GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated;
-  GRANT USAGE ON SCHEMA app_private TO authenticated;
-  GRANT EXECUTE ON FUNCTION app_private.hermes_full_text_v1(text,integer) TO authenticated;`;
+  -- Gọi thẳng hàm đọc gói bằng vai authenticated với ctx tự dựng (không qua bước kiểm quyền của cổng).
+  CREATE FUNCTION public.fixture_w2a_read(p_report text,p_params jsonb,p_ctx jsonb) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER
+  BEGIN ATOMIC SELECT app_private.hermes_w2a_read_v1(p_report,p_params,p_ctx); END;`;
 
 export async function sharedW2a(options = {}) {
   return sharedW2({ packages: ['a'], ...options,
     before: async db => {
+      // Như Supabase (pg_default_acl schema public): hàm postgres tạo trong public mặc định cấp EXECUTE cho anon,
+      // authenticated, service_role; migration gói chỉ REVOKE PUBLIC/anon/service_role.
+      await db.exec('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role');
       await db.exec(TABLES);
       for (const [file, name] of [['20260710170000_money_aggregate_rpcs', 'public.get_overpayment_summary'],
         ['20260822113000_refund_kpi_split_deposit_vs_other', 'public.get_refund_forfeit_summary'],
