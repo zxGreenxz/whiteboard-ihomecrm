@@ -7,7 +7,7 @@ import { changedFunctions, FULL_READ_OWNER_PATH, ROOM, OTHER_ROOM, FOREIGN_ROOM,
 import { CASHBOOK } from './finance-fixture.mjs';
 import { W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH, W2_RANGES, W2_FOUNDATION_FUNCTIONS, w2MigrationPaths, w2FenceViolations,
   w2AllMigrations } from './wave2-sql-paths.mjs';
-import { W2_READ_KEY_LIST, W2_SELF_KEYS } from './wave2-registry.mjs';
+import { W2_READ_KEY_LIST, W2_SELF_KEYS, W2_ENABLED_KEYS } from './wave2-registry.mjs';
 import { W2_PARAMS, W2_REUSED_KEYS, W2_ORG_KEYS, w2Report, w2Params, w2PermissionKind } from './wave2-kit.mjs';
 import { DOMAIN_FAMILIES, domainFamily, domainInput } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
@@ -118,7 +118,9 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
   assert.deepEqual(await one('SELECT app_private.hermes_w2_org_keys_v1() v'), [...W2_ORG_KEYS]);
   assert.equal(W2_ORG_KEYS.length, 9);
   const rows = (await db.query('SELECT capability,mode,enabled FROM app_private.hermes_capabilities WHERE capability=ANY($1) ORDER BY capability', [W2_READ_KEY_LIST])).rows;
-  assert.deepEqual(rows, sorted(W2_READ_KEY_LIST).map(capability => ({ capability, mode: 'read', enabled: false })), 'seed tắt, mode read');
+  // Seed tắt (20261018000000); chuỗi mặc định có công tắc Gói Z (20261018090000) bật đúng W2_ENABLED_KEYS, phần còn lại giữ tắt.
+  assert.deepEqual(rows, sorted(W2_READ_KEY_LIST).map(capability => ({ capability, mode: 'read', enabled: W2_ENABLED_KEYS.includes(capability) })),
+    'seed tắt, công tắc Z bật khoá có báo cáo, mode read');
   assert.equal(DOMAIN_FAMILIES.v3.capabilitiesRpc, 'hermes_domain_capabilities_v3');
   assert.deepEqual(DOMAIN_FAMILIES.v3.capabilities, W2_READ_KEY_LIST);
   // Hai tool meta đi lối vào INVOKER riêng; khoá vẫn do capabilities v3 cấp.
@@ -693,7 +695,9 @@ const v7 = (env, name, arg = ORG) => env.call(`SELECT public.${name}($1::uuid) r
 const base = (db, kind, value) => db.query('INSERT INTO public.fixture_v6 VALUES($1,$2::jsonb) ON CONFLICT(kind) DO UPDATE SET value=EXCLUDED.value', [kind, JSON.stringify(value)]);
 test('options/context v7: lớp đợt 2 chỉ thêm khoá registry đã bật / CRM đang cấp; không có khoá nào ⇒ nguyên lớp dưới', () => inCase(async env => {
   const { db } = env;
-  const org = { ...MEMBER, policyVersion: 1, choices: { read: ['customers.view'], action: [] } };
+  // Trạng thái TRƯỚC công tắc Gói Z (20261018090000 bật khoá trong chuỗi mặc định): mọi khoá đợt 2 tắt.
+  await db.query('UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability=ANY($1)', [W2_READ_KEY_LIST]);
+  const org ={ ...MEMBER, policyVersion: 1, choices: { read: ['customers.view'], action: [] } };
   const options = { ...MEMBER, policyVersion: 1, enabled: true, read: ['customers.view'], action: [], scopes: [] };
   const context = { ...MEMBER, policyVersion: 1, scopeIds: [SCOPE], restrictions: { read: ['vehicles.view', 'notifications.view'], action: [] },
     companyCeilings: { read: ['vehicles.view', 'notifications.view'], action: [] }, effective: { read: [], action: [] } };

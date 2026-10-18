@@ -153,3 +153,9 @@ export function createW2Registry(packages) {
 
 export const W2 = createW2Registry({ a: W2A_REPORTS, b: W2B_REPORTS, c: W2C_REPORTS, d: W2D_REPORTS });
 export const W2_READS = W2.reads;
+// Công tắc Gói Z (20261018090000_hermes_w2_enable_v1, test wave2-z.test.mjs so khớp): bật khoá đợt 2 là khoá của ÍT NHẤT
+// MỘT báo cáo đã đăng ký, hoặc khoá phụ (scopeKeys) mà báo cáo cần mới có số liệu — income_expenses.restricted_view: hạng
+// mục/phiếu hạn chế và tab P&L Hiệu quả kinh doanh. Khoá seed mà không báo cáo nào dùng giữ TẮT (W2_DISABLED_KEYS).
+export const W2_ENABLED_KEYS = Object.freeze(W2_READ_KEY_LIST.filter(key =>
+  Object.values(W2.reports).some(spec => spec.permission === key || spec.scopeKeys.includes(key))));
+export const W2_DISABLED_KEYS = Object.freeze(W2_READ_KEY_LIST.filter(key => !W2_ENABLED_KEYS.includes(key)));
