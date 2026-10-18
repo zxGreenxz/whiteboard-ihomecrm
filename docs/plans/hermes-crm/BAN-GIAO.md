@@ -1,6 +1,6 @@
 # Bàn giao Hermes × iHomeCRM
 
-Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật 18/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md).
+Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md).
 
 ## 1. Hermes đang chạy thế nào
 
@@ -48,7 +48,7 @@ Nhắn riêng cho bot từ nick Zalo chính đã liên kết. Ví dụ:
 
 Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản/dịch vụ và các miền ghi khác ngoài danh sách trên. Hermes sẽ nói không có công cụ; làm trực tiếp trên CRM.
 
-Chưa đọc được (đợt 2, chưa phát hành): lương, cổ đông, ví cá nhân, biến động số dư, sổ quỹ, tài sản/dịch vụ/vật tư, Network Center và các báo cáo khác của đợt 2 ([STATUS](STATUS.md#cập-nhật-1810)).
+Đọc đầy đủ đợt 2 (lương, cổ đông, ví cá nhân, biến động số dư, sổ quỹ, tài sản/dịch vụ/vật tư, Network Center, thu tiền/công nợ/cọc…) **đã lên production 19/10** (#215): khoảng 70 báo cáo qua hai tool `crm_read_report_list` (mục lục) và `crm_read_report` (chạy báo cáo), mọi báo cáo private (chỉ trong tin nhắn riêng). Nhưng kết nối Hermes hiện có chỉ thấy 20 báo cáo — kết nối chỉ thu hẹp, không tự có quyền mới. Muốn dùng đủ, chủ cần tạo kết nối mới (phần 3); việc này **chưa làm**. Ba khoá còn tắt vì chưa có báo cáo: `reports_finance.deposits_report`, `handover_report`, `collection_cycle` ([STATUS](STATUS.md#cập-nhật-1910)).
 
 ## 3. Quản trị trên CRM (`/settings/hermes`)
 
@@ -56,7 +56,7 @@ Chưa đọc được (đợt 2, chưa phát hành): lương, cổ đông, ví c
 
 **Đổi quyền = tạo kết nối mới:** kết nối chỉ thu hẹp được, không mở rộng. Muốn thêm quyền: tạo kết nối mới → ngắt liên kết Zalo cũ → liên kết Zalo với kết nối mới → thay token trong Hermes → thu hồi kết nối cũ. Một nick chính + một bot chỉ có một liên kết đang hoạt động. Đã làm 3 lần trên production; kết nối đang dùng (ghi 16/10) `…624ef30e` (17 quyền Đọc + 11 quyền Thao tác, toàn tổ chức).
 
-**Sau khi đợt 2 phát hành:** 35 khoá đọc mới mặc định tắt, chỉ bật (Gói Z) khi web và connector mới đã lên production. Khi đó chủ tạo **một kết nối mới** có các khoá cần dùng và **liên kết lại Zalo một lần** theo đúng quy trình trên; kết nối cũ không tự có quyền mới.
+**Sau khi đợt 2 phát hành (19/10 đã phát hành):** registry bật 32 khoá đọc mới (Gói Z, migration `20261018090000`); 3 khoá giữ tắt. Việc còn lại của chủ, **CHƯA làm**: tạo **một kết nối mới** ở `/settings/hermes` có các khoá cần dùng → thay token trong profile owner (`MCP_IHOMECRM_API_KEY`) → **liên kết lại Zalo một lần** → thu hồi kết nối cũ `…624ef30e`, theo đúng quy trình trên. Kết nối cũ không tự có quyền mới.
 
 **Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick).
 
@@ -79,7 +79,7 @@ Runbook chi tiết: [HOST_SERVICE.md](../../../infra/hermes-runtime/HOST_SERVICE
 | Worker Zalo | container `ihome-zalo-worker` (chạy `--native`) |
 | Đường vào | Hermes gọi connector `http://172.17.0.1:8740/mcp` và 9router `http://172.17.0.1:20128/v1` qua unit `ihome-docker-connector` (systemd-socket-proxyd) và `ihome-docker-9router` (`llm-stream-guard`, cắt tool arguments chạy loạn; [host-network](../../../infra/hermes-runtime/host-network/README.md)); web CRM gọi connector qua tunnel `crm-hermes.chillhome.io.vn` |
 
-**Release connector (18/10):** đang chạy main `77a4327a` (merge #192; gồm #187 gửi ảnh phòng trống, #189 phạm vi toà, #190 đọc đầy đủ đợt 1, #191 lệch đồng hồ, #192 trần `tools/list`). Kết nối đủ quyền thấy 63 tool, `tools/list` ≈ 62 KB (61.883 B); trần riêng của `tools/list` là 192 KiB, mọi phản hồi khác vẫn 64 KiB. Chưa gồm #193 (chỉ gỡ mã host v1 chưa từng chạy; connector-only không đổi hành vi). Lùi bản: chọn release cũ còn trên VPS nhưng không cũ hơn `f762ff52` (#187) — bản trước #185/#187 đọc nguồn phòng cũ nên gửi nhóm trả `context_changed` và tạo lịch chữ bị SQL từ chối (đều dừng an toàn, không gửi sai).
+**Release connector (19/10):** đang chạy main `14c6588a` (merge #215, đọc đầy đủ đợt 2). Kết nối đủ quyền thấy 65 tool, `tools/list` 63.872 B (trần test 64.000 B; trần riêng của `tools/list` là 192 KiB, mọi phản hồi khác vẫn 64 KiB). Bản lùi giữ trên VPS: release `77a4327a` (merge #192, 63 tool; gồm #187 gửi ảnh phòng trống, #189 phạm vi toà, #190 đọc đầy đủ đợt 1, #191 lệch đồng hồ, #192 trần `tools/list`). Lùi về `77a4327a` thì hai tool `crm_read_report_list`/`crm_read_report` biến mất; migration đợt 2 đã áp không lùi được. Lùi sâu hơn: không cũ hơn `f762ff52` (#187) — bản trước #185/#187 đọc nguồn phòng cũ nên gửi nhóm trả `context_changed` và tạo lịch chữ bị SQL từ chối (đều dừng an toàn, không gửi sai). Việc đổi symlink sang `14c6588a` theo báo cáo vận hành 19/10; phiên cập nhật tài liệu không kiểm lại VPS.
 
 Giữ nguyên khi thao tác (tối ưu tốc độ 16/10): `connector.json` phải còn `172.17.0.1:8740` trong `http.allowedHosts` (thiếu là 403); MCP `connect_timeout: 30`; container Hermes RAM `900m`/swap `1800m` — chỉ `docker restart`, nếu tạo lại phải truyền lại; unit `ihome-net-tuning` (MSS 1452, `tcp_mtu_probing=1`); NTP qua IPv4 (`/etc/systemd/timesyncd.conf.d/ihome-ipv4.conf`) — đồng hồ lệch làm mọi RPC lịch trả 42501. Connector đã có dung sai 5 s cho mốc giờ do DB sinh (#191), không thay được NTP.
 
@@ -104,23 +104,25 @@ WHERE n.nspname IN ('public','app_private')
   AND p.proname IN ('hermes_pnl_pending_v1','hermes_domain_read_v3','hermes_report_read_v2','hermes_room_pass_upsert_v2');
 ```
 
-**Đợt 2 (chưa phát hành):** migration Gói 0 (`20261018000000`, `20261018000500`, `20261018000600`) và các gói A–D lên trước; kiểm `select to_regprocedure('public.hermes_w2_read_v1(jsonb,text,jsonb)') is not null` rồi mới đổi connector. 35 khoá còn tắt nên thứ tự không làm gãy kết nối hiện có (#195); Gói Z bật registry sau cùng, rồi chủ tạo kết nối mới + liên kết lại Zalo (phần 3).
+**Đọc đầy đủ đợt 2 (đã phát hành 19/10, #215):** gộp Gói 0 (#195), A (#207), B (#208), C (#204), D (#203) và Gói Z. 25 migration `20261018000000…20261018090000` áp production qua lane `migrate:forward` (mỗi file backup + hai lượt ROLLBACK trước khi áp, 25/25 đạt, không thử lại), cuối cùng là công tắc `20261018090000_hermes_w2_enable_v1` bật 32 khoá. Thứ tự đã dùng: migration lên trước, kiểm `select to_regprocedure('public.hermes_w2_read_v1(jsonb,text,jsonb)') is not null`, rồi mới đổi connector sang `14c6588a`. Dựng môi trường khác thì làm y vậy. Biên nhận: commit "Bằng chứng apply production" `e68f9420`.
+
+**Rào chữ công khai (đợt 2):** `crm_room_pass_upsert` có tên, SĐT hoặc chính sách bán (chữ sẽ hiện công khai) luôn đi qua xác nhận hai bước, không phụ thuộc Hermes đã đọc dữ liệu riêng hay chưa: lần gọi đầu trả `confirmation_required` kèm `confirmToken` dùng một lần, hết hạn sau 10 phút và gắn đúng nội dung; Hermes chỉ ghi khi người dùng xác nhận và gọi lại kèm token.
 
 **Lùi bản:** trỏ symlink `current` về release trước (giữ ít nhất một bản cũ) rồi restart connector. Migration CRM đã apply không lùi; muốn tắt năng lực thì tắt dòng registry `app_private.hermes_capabilities` bằng migration mới hoặc thu hồi kết nối.
 
 **Đĩa:** VPS 19 GB, còn khoảng 2,4 GB (đo 16/10) — xoá release cũ không dùng (không xoá bản đang `current` và bản lùi gần nhất).
 
-## 5. Phiên bản đang chạy (18/10/2026)
+## 5. Phiên bản đang chạy (19/10/2026)
 
 | Thành phần | Phiên bản |
 | --- | --- |
 | Hermes | `nousresearch/hermes-agent` v0.21.6, image `sha256:ffa4fbb4…`, plugin `ihome-zalo-native` từ PR #175 (ghi 16/10, không đổi trong các PR 17–18/10) |
-| Connector | release main `77a4327a`, 63 tool khi kết nối đủ quyền |
+| Connector | release main `14c6588a` (19/10), 65 tool khi kết nối đủ quyền; bản lùi `77a4327a` (63 tool) |
 | Model | 9router `cx/gpt-6-luna` (từ 16/10 05:57) |
-| CRM | production `ptcrm.vercel.app`, nhánh `production` = `c384ab2d` (18/10). Màn Khách hàng gọi `customer_list_v1` (#196) mới có ở main/Preview, chưa promote |
-| Schema production 16–18/10 | #185 (2 migration), #187 (5), #190 (4), #189 `20261017023242`, #196 `20261017115708`; mỗi lượt có commit biên nhận lane. Registry năng lực không thêm khoá; 35 khoá đợt 2 chưa lên production |
+| CRM | production `ptcrm.vercel.app` phục vụ `d001edac` (18/10). Vercel bị chặn hạn mức dựng do push git nên bản này dựng qua API. Khách hàng (#196), Hợp đồng (#197), Hoá đơn (#201) và sửa trang tài chính (#209) đã ở main; Khách hàng và Hợp đồng đã ở production |
+| Schema production 16–19/10 | #185 (2 migration), #187 (5), #190 (4), #189 `20261017023242`, #196 `20261017115708`, #206 `20261018044046_toi_uu_ham_quyen_rls_v1` (18/10), đợt 2 25 migration `20261018000000…20261018090000` (19/10); mỗi lượt có commit biên nhận lane. Registry năng lực: 32 khoá đọc mới bật 19/10, 3 khoá tắt |
 
-Phiên cập nhật tài liệu 18/10 không có quyền VPS/DB: release VPS ghi theo báo cáo vận hành; app và migration lấy từ nhánh `production` và các commit biên nhận trên main.
+Phiên cập nhật tài liệu 19/10 không có quyền VPS/DB: release VPS và app ghi theo báo cáo vận hành; migration lấy từ các commit biên nhận trên main.
 
 ## 6. Lưu ý về model
 
@@ -141,11 +143,12 @@ Phiên cập nhật tài liệu 18/10 không có quyền VPS/DB: release VPS ghi
 
 ## 7. Phần còn hoãn hoặc chờ chủ
 
-Chi tiết ở [STATUS.md](STATUS.md#cập-nhật-1810). Tóm tắt:
+Chi tiết ở [STATUS.md](STATUS.md#cập-nhật-1910). Tóm tắt:
 
-- Đọc đầy đủ đợt 2: Gói 0 (#195, draft) và gói A–D (nhánh `claude/hermes-w2a`…`claude/hermes-w2d`, WIP) → Gói Z bật registry → kết nối mới + liên kết lại Zalo.
-- Hàm dùng chung web + Hermes: Hợp đồng (#197) và Hoá đơn (#201) chưa merge, chưa áp production; Hermes chuyển sang gọi `customer_list_v1` / `contract_list_v1` / hàm hoá đơn ở PR sau.
-- Thử thật qua Zalo trên connector `77a4327a`: gửi ảnh phòng trống, đọc đầy đủ đợt 1, `crm_group_directory` sau #191.
+- Đọc đầy đủ đợt 2 đã lên production 19/10. Còn chờ chủ (CHƯA làm): tạo kết nối mới ở `/settings/hermes` → thay token trong profile owner → liên kết lại Zalo → thu hồi kết nối cũ `…624ef30e`; kết nối hiện có chỉ thấy 20 báo cáo.
+- Nghiệm thu đợt 2 qua Zalo thật (chưa làm) và sửa phiếu cọc giữ chỗ: Hermes chặt hơn web, chờ sửa theo web.
+- Hàm dùng chung web + Hermes: Hermes chưa chuyển sang gọi `customer_list_v1` / `contract_list_v1` / `invoice_list_v1` (PR sau).
+- Thử thật qua Zalo trên connector mới (`14c6588a`): gửi ảnh phòng trống, đọc đầy đủ đợt 1 và 2, `crm_group_directory` sau #191.
 - Các miền ghi CRM còn lại và cách cho Hermes "làm như một user" (chủ làm sau); user thứ hai/canary nhiều người; trần ngân sách/độ trễ chính thức; các bước tối ưu tốc độ còn lại theo [TOI-UU-TOC-DO-DOT1.md](TOI-UU-TOC-DO-DOT1.md).
 
 ## 8. Chuông báo Hermes ↔ web và hàm dùng chung
@@ -162,13 +165,18 @@ Khi gate đỏ:
 
 **Hàm dùng chung (chủ chốt 17/10, mô hình INVOKER + RLS 18/10):** công thức dùng từ hai nơi trở lên hoặc dính tiền/quyền đặt trong một hàm SQL mà web và Hermes cùng gọi ([quy tắc](../../CODEBASE_STRUCTURE.md#công-thức-dùng-chung)). Hàm là `SECURITY INVOKER`, đọc bằng RLS của chính người gọi; `p_building_ids` chỉ thu hẹp; helper DEFINER chỉ dùng cho phần kiểm quyền. Không gọi hàm INVOKER từ thân hàm DEFINER của Hermes (bỏ qua RLS, bị chặn 42501): đợt 2 có lối vào INVOKER `public.hermes_w2_read_v1`. Web chuyển sang hàm chung thì mục bản đồ giữ `mirrored` (hash trỏ hàm mới) tới khi Hermes gọi cùng hàm, lúc đó đổi thành `rpc`.
 
-| Màn | Hàm | Trạng thái 18/10 |
+| Màn | Hàm | Trạng thái 19/10 |
 | --- | --- | --- |
-| Khách hàng | `customer_list_v1` (#196) | Merged, đã áp production; web mới ở main/Preview; Hermes chưa chuyển |
-| Hợp đồng | `contract_list_v1` + `contract_stats_v2` (#197) | Draft, chưa merge, chưa áp production |
-| Hoá đơn | `invoice_list_v1` + `invoice_statistics_v3` (#201) | Draft, chưa merge, chưa áp production; sửa thống kê chủ công ty ra 0 |
+| Khách hàng | `customer_list_v1` (#196) | Merged, đã ở production; Hermes chưa chuyển |
+| Hợp đồng | `contract_list_v1` + `contract_stats_v2` (#197) | Merged, đã ở production; Hermes chưa chuyển |
+| Hoá đơn | `invoice_list_v1` + `invoice_statistics_v3` (#201, `SECURITY INVOKER` + RLS) | Merged 18/10 cùng sửa trang tài chính #209; production phục vụ `d001edac`; sửa thống kê chủ công ty ra 0; Hermes chưa chuyển |
 
-## 9. Bài học 17–18/10
+Tối ưu 18/10 (#206): 22 hàm quyền RLS đổi từ `sql` sang `plpgsql` (InitPlan), đã áp production; `/invoices` gọi `invoice_list_v1` từ ~1,9 s xuống ~0,4–0,5 s.
+
+## 9. Bài học 17–19/10
+
+- **So Hermes với web trước khi bật đọc đợt 2 (TEST, phiên thật, 19/10).** Chủ: 19/21 khớp, 2 khác có chủ ý. Quản lý toà hẹp: 8 khớp, 10 cả hai cùng từ chối, 2 khác có chủ ý, 1 lệch — phiếu cọc giữ chỗ: Hermes chặt hơn web, chờ sửa theo web. Các khác biệt có chủ ý ghi ở `notes` của [web-parity.json](../../../infra/hermes-broker/web-parity.json).
+- **`test-env:sync` từng hỏng 15→18/10:** vai dịch vụ `hermes_store_host` (LOGIN) bị dựng lại NOLOGIN trên TEST; #216 sửa.
 
 - **Mốc giờ DB so với giờ VPS phải có dung sai.** Đồng hồ DB chạy trước VPS vài chục ms làm `crm_group_directory` trả `backend_unavailable` khoảng một nửa số lần dù NTP của VPS tốt. Connector dùng `DB_CLOCK_SKEW_MS = 5000` ([clock-skew.mjs](../../../infra/hermes-broker/clock-skew.mjs)) cho cận trên mốc giờ do DB sinh, không nới chiều "đã hết hạn" (#191). Phép so mới với mốc giờ DB dùng lại hằng này.
 - **PGlite: một instance mỗi file test.** Mỗi ca chạy trong `BEGIN … ROLLBACK`, đột biến chỉ `CREATE OR REPLACE` bên trong ca. Dựng nhiều instance mỗi file làm runner CI cạn RAM (job quality-gates bị tắt; full-read-report đo 13,6 GB → 0,68 GB sau khi sửa ở `9f5ec9b2`).

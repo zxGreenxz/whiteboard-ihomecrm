@@ -1,8 +1,61 @@
 # Trạng thái triển khai Hermes × iHomeCRM
 
+## Cập nhật 19/10
+
+Giờ Việt Nam (UTC+7). Gồm việc 18/10 – 19/10. Nguồn: `git log origin/main` tới `14c6588a` (merge #215), mô tả PR #201–#216 và commit "Bằng chứng apply production" `e68f9420`. Phiên ghi tài liệu này không có quyền DB/VPS: trạng thái production theo báo cáo vận hành và các commit biên nhận. Phần dưới "Cập nhật 18/10" là snapshot trước đó; chỗ nào lệch thì lấy phần này. Hướng dẫn chủ/vận hành: [BAN-GIAO.md](BAN-GIAO.md).
+
+**Production 19/10:**
+
+| Thành phần | Trạng thái |
+| --- | --- |
+| Connector VPS | main `14c6588a` (merge #215): 65 tool, `tools/list` 63.872 B (trần test 64.000 B). Bản lùi giữ trên VPS: release `77a4327a` (63 tool) |
+| App | phục vụ `d001edac` (18/10). Vercel bị chặn hạn mức dựng do push git nên dựng qua API |
+| Migration production mới | 18/10: #206 `20261018044046_toi_uu_ham_quyen_rls_v1`. 19/10: đọc đầy đủ đợt 2, 25 migration `20261018000000…20261018090000` qua lane `migrate:forward` (mỗi file backup + hai lượt ROLLBACK trước khi áp, 25/25 đạt, không thử lại) |
+| Registry năng lực | 32 khoá đọc đợt 2 bật (`20261018090000_hermes_w2_enable_v1`); giữ tắt `reports_finance.deposits_report`, `handover_report`, `collection_cycle` vì chưa có báo cáo |
+| Kết nối / model | Không đổi so với 16/10: kết nối `…624ef30e`, model `cx/gpt-6-luna` |
+
+**PR 18–19/10:**
+
+| PR | Nội dung | Trạng thái 19/10 |
+| --- | --- | --- |
+| #197 | Hợp đồng: `contract_list_v1` + `contract_stats_v2` | Merged; đã ở production |
+| #201 | Hoá đơn: `invoice_list_v1` + `invoice_statistics_v3` (INVOKER + RLS) | Merged 18/10; production phục vụ `d001edac` |
+| #209 | Sửa trang tài chính | Merged 18/10 |
+| #206 | Tối ưu 22 hàm quyền RLS (`sql` → `plpgsql`, InitPlan) | Merged, đã áp production 18/10; `/invoices` gọi `invoice_list_v1` ~1,9 s → ~0,4–0,5 s |
+| #216 | Sửa `test-env:sync`: vai dịch vụ `hermes_store_host` (LOGIN) bị dựng lại NOLOGIN trên TEST | Merged; sync TEST hỏng từ 15/10 tới 18/10 |
+| #195, #207, #208, #204, #203 | Đọc đầy đủ đợt 2: Gói 0, A, B, C, D | Gộp vào #215 |
+| #215 | Gói Z (tích hợp, công tắc) + gộp các gói trên | Merged 19/10; 25 migration và connector đã lên production |
+
+Khách hàng (#196) đã ở production từ trước; Hợp đồng và Hoá đơn dùng cùng mô hình hàm dùng chung INVOKER + RLS. Hermes **chưa** chuyển sang gọi các hàm này; mục web-parity vẫn `mirrored`.
+
+**Đọc đầy đủ đợt 2 (#215):**
+
+- Phạm vi: ~70 báo cáo qua hai tool `crm_read_report_list` (mục lục) và `crm_read_report` (chạy báo cáo) trên cổng INVOKER `public.hermes_w2_read_v1`; mọi báo cáo private (chỉ trong tin nhắn riêng). 32 khoá bật, 3 khoá giữ tắt (ở trên).
+- Thứ tự phát hành: nền Gói 0 → A–D → sửa tích hợp Gói Z (dải `2026101808xxxx_hermes_w2z_*`) → công tắc `20261018090000`, sau đó mới đổi connector.
+- Biên nhận: commit `e68f9420` sinh lại provenance, database-inventory, rpc-surface, types; gỡ 24 hồ sơ rà soát unknown đã thừa; web-parity ghi 3 khác biệt có chủ ý tìm thấy khi so với web trên TEST (xe/tài sản không gắn toà khi kết nối không Toàn tổ chức; phiếu cọc giữ chỗ chặt hơn web).
+- So Hermes với web bằng phiên thật trên TEST trước khi áp: chủ 19/21 khớp + 2 khác có chủ ý; quản lý toà hẹp 8 khớp, 10 cả hai cùng từ chối, 2 khác có chủ ý, 1 lệch (phiếu cọc giữ chỗ: Hermes chặt hơn web, chờ sửa theo web).
+- Rào chữ công khai: `crm_room_pass_upsert` có tên, SĐT hoặc chính sách bán luôn qua xác nhận hai bước (`confirmation_required` + `confirmToken` dùng một lần, 10 phút, gắn đúng nội dung), không phụ thuộc dấu đọc riêng (`60c764bd` → `a1309d21`). Sổ audit host nhận `result_too_large`.
+
+**Chưa xác minh / chưa làm:**
+
+- **Việc của chủ, CHƯA làm:** kết nối Hermes hiện có chỉ thấy 20 báo cáo (kết nối chỉ thu hẹp) nên cần tạo kết nối mới ở `/settings/hermes`, thay token trong profile owner, liên kết lại Zalo, rồi thu hồi kết nối cũ `…624ef30e`.
+- Nghiệm thu đợt 2 qua Zalo thật: chưa làm. Đọc đợt 1 và gửi ảnh phòng trống qua Zalo vẫn chưa có bằng chứng thử thật trong repo.
+- Phiếu cọc giữ chỗ: Hermes chặt hơn web, chờ sửa theo web.
+- Release `14c6588a` trên VPS và 65 tool: theo báo cáo vận hành, không kiểm lại VPS/DB trong phiên này. Client MCP của Hermes v0.21.6 có giới hạn kích thước `tools/list` hay không vẫn chưa thử thật (hiện 63.872 B).
+- Ba khoá đọc còn tắt chờ có báo cáo tương ứng.
+
+**Còn mở / chờ chủ (cập nhật bảng 18/10):**
+
+| Việc | Mục PLAN |
+| --- | --- |
+| Kết nối mới + liên kết lại Zalo + thu hồi kết nối cũ; nghiệm thu đợt 2 qua Zalo thật | P8.01/P8.06 |
+| Sửa phiếu cọc giữ chỗ cho khớp web; Hermes chuyển sang gọi `customer_list_v1` / `contract_list_v1` / `invoice_list_v1` | P8.02 |
+| Canary gửi ảnh phòng trống qua Hermes (cutover lịch đã có ở #187) | P6.06 |
+| Chọn thu hồi/giữ từng RPC `copilot_*` (Hermes đã không dùng) | P11.01 |
+
 ## Cập nhật 18/10
 
-Giờ Việt Nam (UTC+7). Gồm việc 16/10 chiều – 18/10. Nguồn: `git log origin/main` tới `12e5123b` (merge #196), nhánh `production`, mô tả PR #183–#201 và các commit "Bằng chứng apply production". Phiên ghi tài liệu này không có quyền DB/VPS: release VPS theo báo cáo vận hành, chưa kiểm lại. Hướng dẫn chủ/vận hành: [BAN-GIAO.md](BAN-GIAO.md).
+Giờ Việt Nam (UTC+7). Gồm việc 16/10 chiều – 18/10 (snapshot; trạng thái đợt 2, #197, #201 và connector đã đổi ở "Cập nhật 19/10"). Nguồn: `git log origin/main` tới `12e5123b` (merge #196), nhánh `production`, mô tả PR #183–#201 và các commit "Bằng chứng apply production". Phiên ghi tài liệu này không có quyền DB/VPS: release VPS theo báo cáo vận hành, chưa kiểm lại. Hướng dẫn chủ/vận hành: [BAN-GIAO.md](BAN-GIAO.md).
 
 **Production 18/10:**
 
