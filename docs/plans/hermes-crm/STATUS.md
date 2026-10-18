@@ -1,5 +1,93 @@
 # Trạng thái triển khai Hermes × iHomeCRM
 
+## Cập nhật 18/10
+
+Giờ Việt Nam (UTC+7). Gồm việc 16/10 chiều – 18/10. Nguồn: `git log origin/main` tới `12e5123b` (merge #196), nhánh `production`, mô tả PR #183–#201 và các commit "Bằng chứng apply production". Phiên ghi tài liệu này không có quyền DB/VPS: release VPS theo báo cáo vận hành, chưa kiểm lại. Hướng dẫn chủ/vận hành: [BAN-GIAO.md](BAN-GIAO.md).
+
+**Production 18/10:**
+
+| Thành phần | Trạng thái |
+| --- | --- |
+| Connector VPS | main `77a4327a` (merge #192, gồm #187, #189–#192); 63 tool khi kết nối đủ quyền, `tools/list` 61.883 B (trần riêng 192 KiB). Chưa gồm #193 (chỉ gỡ mã host v1 không chạy) |
+| App | nhánh `production` = `c384ab2d`; màn Khách hàng gọi `customer_list_v1` (#196) có ở main/Preview, chưa promote |
+| Migration production mới | 16/10: #185 (2), #187 (5, 22:28). 17/10: #190 đọc đầy đủ đợt 1 (4, liền một lượt, 12:34), #189 `20261017023242_hermes_scope_buildings_v1` (18:18). 18/10: #196 `20261017115708_customer_list_v1` (06:29). Mỗi lượt: lane forward, backup đủ tư cách, hai lượt ROLLBACK, commit biên nhận |
+| Hermes / model / kết nối | Không đổi trong repo so với 16/10; registry năng lực không thêm khoá |
+
+**PR 16–18/10:**
+
+| PR | Nội dung | Trạng thái 18/10 |
+| --- | --- | --- |
+| #183 | `llm-stream-guard` cắt luồng tool arguments chạy loạn (thay socket-proxyd của 9router) | Merged 16/10; unit đã triển khai (`b3a63fa`) |
+| #184 | Mô tả tin pass theo nghĩa việc, hỏi lại khi lẫn với chuyển phòng | Merged 16/10 |
+| #185 | Phòng đang sale = trang Sale Phòng/link chia sẻ; `no_sale_page` | Merged 16/10; 2 migration production |
+| #186 | Zalo tự động hoá lọc người nhận theo phân loại (web/worker) | Merged 16/10 |
+| #187 | Gửi ảnh phòng trống một lần + 5 tool `crm_zalo_broadcast_*`; ẩn tạo/sửa lịch chữ cũ (connector và SQL đều từ chối) | Merged 16/10; 5 migration production |
+| #189 | Bỏ phụ thuộc Copilot lúc chạy: phạm vi toà qua `hermes_scope_buildings_v1` gọi thẳng `authorized_scope_v3` | Merged 17/10; migration production; TEST 36/36 cặp user × công ty trùng bản cũ, JWT 17/17 |
+| #190 | Đọc đầy đủ đợt 1 cho người hỏi | Merged 17/10; 4 migration production |
+| #191 | Dung sai lệch đồng hồ DB↔VPS 5 s | Merged 17/10; chỉ connector |
+| #192 | Trần riêng 192 KiB cho `tools/list`; rút gọn chữ `requestId` ở 15 tool ghi | Merged 17/10; chỉ connector |
+| #193 | Gỡ chế độ host v1 (relay model qua `llm-proxy` của Copilot); bù migration `20260906201114_copilot_building_deny_scope_v1` vào main | Merged 18/10; không deploy (file bù đã có trên production từ 06/09) |
+| #194 | Chuông CI `check-hermes-web-parity` + quy tắc "công thức dùng chung" | Merged 17/10; chỉ CI/docs |
+| #195 | Đọc đầy đủ đợt 2 — Gói 0 | Draft, mở; 3 migration đã áp TEST, chưa production |
+| #196 | Khách hàng: `customer_list_v1` (INVOKER + RLS) | Merged 18/10; migration production; app chưa promote |
+| #197 | Hợp đồng: `contract_list_v1` + `contract_stats_v2` (INVOKER + RLS) | Draft, mở; chưa áp production |
+| #201 | Hoá đơn: `invoice_list_v1` + `invoice_statistics_v3` (INVOKER + RLS) | Draft, mở; chưa áp production |
+| #188, #198, #199, #200 | Hoa hồng, đồng bộ types, đối chiếu biến động ngân hàng | Ngoài Hermes |
+
+**Đọc đầy đủ đợt 1 (#190):**
+
+- Quyền = quyền CRM thật ∩ overlay Đọc của kết nối ∩ phạm vi toà kết nối ∩ registry. SĐT/CCCD đầy đủ, hồ sơ khách, chi tiết hợp đồng chỉ trả trong trả lời riêng; bản tin nhóm (preview/send/lịch/tự động hoá) không đổi, vẫn lọc công khai.
+- Báo cáo gọi thẳng RPC web: `occupancy_snapshot_v2` / `occupancy_upcoming_vacancy_v2`, `fa_monthly_pnl_accrual` (mặc định) / `fa_monthly_pnl` kèm phần chờ duyệt, `list_my_pending_approvals_v1`. Hoá đơn, hợp đồng, hội thoại Zalo dùng SQL riêng theo bộ lọc `useInvoices.ts`, `useContracts.ts`, `useZaloChat.ts`. Kết quả quá trần trả `PT413`, broker đổi thành `result_too_large`.
+- Production sau apply: câu kiểm ở [BAN-GIAO](BAN-GIAO.md) phần 4 trả `1 | t | t | t | crm.fa_monthly_pnl`; tám hàm DEFINER không thân nào gọi `copilot_*`.
+- Ba chỗ lệch web có sẵn ghi trong `notes` của [web-parity.json](../../../infra/hermes-broker/web-parity.json) (tìm khách không dấu/SĐT, hội thoại Zalo chưa có tin, thứ tự `name_sort` hoá đơn) — xử lý khi Hermes chuyển sang hàm dùng chung.
+
+**Bỏ phụ thuộc Copilot (#189, #193):** không còn hàm `hermes_*` (bản định nghĩa cuối) hay mã `infra/hermes-*` (không tính chú thích, test/fixture/`.md`) nhắc `copilot_`; allowlist infra của gate `copilot-independence` rỗng. Không sửa/xoá hàm `copilot_*` nào (chủ chốt 17/10). #193 xoá các module chỉ phục vụ host v1 (runtime gateway, supervisor, private command runner, model relay…), `host-service` chỉ nhận `mode: "connector"`. File bù `20260906201114` chép nguyên byte từ nhánh codex, provenance `ledger-applied`; dựng lại DB từ main giờ ra đúng bản production (md5 thân hàm `7e49860f…`).
+
+**Connector và CI (#191, #192, #194):**
+
+- #191: `DB_CLOCK_SKEW_MS = 5000` cho 22 phép so cận trên của mốc giờ do DB/SQL sinh; không nới chiều "đã hết hạn", kiểm "đã cũ", mốc giờ connector tự sinh hay hạn membership. Lỗi gốc: `crm_group_directory` trả `backend_unavailable` khoảng 50% vì `readAt` (DB) sau `now` (VPS) vài ms.
+- #192: `TOOLS_LIST_MAX_BYTES = 196608` chỉ áp cho `tools/list`; `tools/call` và mọi phản hồi khác giữ 65.536 B. Đo `tools/list` đủ quyền 63.743 → 61.883 B.
+- #194: bản đồ 16 mục (7 `rpc`, 9 `mirrored`), 17 vùng web trong 13 file, 5 nguồn SQL CRM băm theo bản định nghĩa cuối. Gate chạy cho mọi thay đổi mã qua `gateProfiles`; thay đổi chỉ docs không chạy. Quy tắc ở [CODEBASE_STRUCTURE](../../CODEBASE_STRUCTURE.md#công-thức-dùng-chung), Contract §14 dẫn tới.
+
+**Hàm dùng chung web + Hermes (mô hình INVOKER + RLS):** hàm `SECURITY INVOKER` đọc bằng RLS người gọi, `p_building_ids` chỉ thu hẹp, helper DEFINER chỉ cho phần kiểm quyền. Gọi từ thân hàm DEFINER sẽ bỏ qua RLS nên bị chặn 42501; Hermes sẽ gọi qua lối vào INVOKER.
+
+| Màn | Hàm | Mức (theo PLAN §20) | Kiểm đã có (TEST) |
+| --- | --- | --- | --- |
+| Khách hàng (#196) | `customer_list_v1`, `customer_search_patterns_v1`, `customer_location_ids_v1` | Đã phát hành schema; web chờ promote; Hermes chưa chuyển | JWT 920 tổ hợp 0 lệch; PostgREST 232 kịch bản 0 lệch; production chỉ đọc khớp RLS đếm thẳng |
+| Hợp đồng (#197) | `contract_list_v1`, `contract_stats_v2` | Đã review một lượt, sửa sang INVOKER ở `af25228b`; chưa merge | 5 vai × ~30 tổ hợp so với đường PostgREST cũ |
+| Hoá đơn (#201) | `invoice_list_v1`, `invoice_statistics_v3` | Đã có code, draft; chưa merge | 5 user × 33 tổ hợp, ~50k dòng, 0 lệch nội dung ngoài các sửa lỗi; sửa thống kê chủ công ty ra 0 |
+
+Mục web-parity của ba màn giữ `mirrored` (hash trỏ hàm mới) tới khi Hermes gọi cùng hàm.
+
+**Đọc đầy đủ đợt 2 (#195 + nhánh `claude/hermes-w2a`…`claude/hermes-w2d`):**
+
+- Gói 0 (`claude/hermes-w2-goi0`, draft #195): migration `20261018000000_hermes_w2_foundation_v1` seed **35 khoá đọc `enabled=false`** (tắt tới Gói Z), `20261018000500` vá cổng sau review (khoá ↔ phạm vi, rào đầu ra theo toà, sổ quỹ, scope platform chỉ super admin), `20261018000600_hermes_w2_invoker_gate_v1` thêm **cổng INVOKER `public.hermes_w2_read_v1`**: `hermes_w2_scope_v1` (DEFINER, kiểm quyền) → hàm gói `hermes_w2<x>_read_v1` (INVOKER, RLS người hỏi) → `hermes_w2_finish_v1` (DEFINER, khuôn/rào đầu ra/phân trang). Connector thêm 2 tool `crm_read_report_list` (mục lục) và `crm_read_report` (chạy báo cáo). Cả ba migration đã áp TEST, chưa production.
+- Gói A–D: WIP bàn giao cloud ngày 18/10 (commit đầu nhánh), số báo cáo đã có code + test PGlite: A 9 (lịch thanh toán, trả thừa, thu tiền, chi tiết hoá đơn, cọc, sổ thay đổi), B 19 (sổ quỹ, phân tích tài chính, lợi nhuận/cổ đông, ví cá nhân, biến động số dư chỉ siêu dữ liệu), C 20 (xe, vật tư, kho, thông báo, lương, Network Center), D 22 (BĐS, tài sản, dịch vụ, đồng hồ, toà/khu/phòng, danh mục). Mỗi gói kèm migration hàm dùng chung INVOKER riêng, lọc `organization_id` tường minh.
+- TEST: Gói C đã áp đúng bản hiện tại; A, B, D mới áp bản nháp cũ, B và D còn hàm nháp mồ côi cần DROP. Gói A để lại khoá `test_env.active_run` của tiến trình đã chết: phiên có credential phải kiểm và xoá đúng token ghi trong commit `19137133` trước khi chạy lane TEST.
+- Còn đỏ chung: `wave2-registry` ca "broker có báo cáo (tiến trình con)" giả định sổ gói rỗng — Gói 0/Z sửa kỳ vọng. Chưa có marker/mục web-parity cho B, C, D.
+- Phát hành: migration + connector trước, Gói Z bật registry sau cùng; sau đó chủ tạo kết nối mới và liên kết lại Zalo một lần.
+
+**Quy trình deploy connector (chốt 18/10):** áp migration trước và kiểm `to_regprocedure(...)` trên production → dựng gói release từ commit đã merge → đổi symlink `/opt/ihome-hermes/current` → restart connector, giữ nguyên `/etc/ihome-hermes/connector.json` → `docker restart hermes-owner` (không tạo lại sidecar; buộc tạo lại phải có `--entrypoint hermes`, RAM 900m). Từng bước ở [BAN-GIAO](BAN-GIAO.md) phần 4.
+
+**Bài học:** so mốc giờ DB với giờ VPS phải có dung sai (#191); PGlite test một instance mỗi file, ca chạy trong `BEGIN … ROLLBACK` — nhiều instance mỗi file làm runner CI cạn RAM (`9f5ec9b2`). Chi tiết ở [BAN-GIAO](BAN-GIAO.md) phần 9.
+
+**Chưa xác minh:**
+
+- Release `77a4327a` và 63 tool trên VPS: theo báo cáo vận hành; phiên này không kiểm VPS/DB.
+- Thử thật qua Zalo trên connector mới: đọc đầy đủ đợt 1 (dữ liệu cá nhân chỉ trong tin riêng), gửi ảnh phòng trống `crm_zalo_broadcast_*`, `crm_group_directory` hết chập chờn sau #191.
+- Client MCP của Hermes v0.21.6 có giới hạn kích thước `tools/list` hay không (#192) — thử thật trước khi đợt 2 vượt 64 KB.
+- #190: lãi lỗ một tháng trên TEST lệch một phép đo tay, chưa rõ nguyên nhân; cần đối chiếu màn web.
+- `release:verify` cho app `c384ab2d` không chạy trong phiên này.
+
+**Còn mở / chờ chủ (bổ sung bảng 16/10 bên dưới):**
+
+| Việc | Mục PLAN |
+| --- | --- |
+| Đợt 2: hoàn tất gói A–D, Gói Z bật 35 khoá, kết nối mới + liên kết lại Zalo | P8.01/P8.02 |
+| Merge + áp production #197, #201; Hermes chuyển sang gọi hàm dùng chung | P8.02 |
+| Canary gửi ảnh phòng trống qua Hermes (cutover lịch đã có ở #187) | P6.06 |
+| Chọn thu hồi/giữ từng RPC `copilot_*` (Hermes đã không dùng) | P11.01 |
+
 ## Nghiệm thu cuối 16/10
 
 Giờ Việt Nam (UTC+7). Hướng dẫn chủ/quản trị/vận hành: [BAN-GIAO.md](BAN-GIAO.md). Checkbox nghiệm thu: [PLAN.md](PLAN.md) mục 14.
@@ -835,22 +923,22 @@ Nét đứt: phần HTTP/UI hoặc luồng chat còn phải nối và nghiệm t
 
 ## Bảng tiến độ
 
-Cập nhật 16/10/2026; bằng chứng từng ô ở [PLAN.md](PLAN.md) mục 14.
+Cập nhật 18/10/2026; bằng chứng từng ô ở [PLAN.md](PLAN.md) mục 14. Không có ô nghiệm thu mới đủ tiêu chí đánh dấu trong 17–18/10; tiến triển ghi ở cột phải.
 
 | Gói | Trạng thái | Còn thiếu để đóng |
 | --- | --- | --- |
 | P0 | Đạt P0.01–P0.06 | — |
 | P1 | Đạt P1.01–P1.08 (production + TEST JWT) | — |
 | P2 | Đạt P2.01–P2.06 (đổi kết nối 3 lần trên production) | — |
-| P3 | Đạt P3.01–P3.06 (52 tool qua MCP) | — |
+| P3 | Đạt P3.01–P3.06 (52 tool qua MCP 16/10; 63 tool từ connector `77a4327a`) | — |
 | P4 | Đạt P4.01–P4.06 (DM nick chính ↔ bot Ihome) | — |
 | P5 | Đạt P5.01–P5.06 (canary nhóm Web nội bộ 15/10) | — |
-| P6 | Đạt P6.01–P6.04 (lịch thật `e6968b09…` 16/10 + TEST CDE 11/11) | P6.05 restart/catch-up/đồng thời/quá tải/lỗi một phần chưa thử đủ; P6.06 cutover lịch cũ |
+| P6 | Đạt P6.01–P6.04 (lịch thật `e6968b09…` 16/10 + TEST CDE 11/11) | P6.05 restart/catch-up/đồng thời/quá tải/lỗi một phần chưa thử đủ; P6.06 cutover đã phát hành (#187: CRM là bộ lập lịch duy nhất), còn canary qua Zalo |
 | P7 | Đạt P7.01–P7.03, P7.06, P7.07 | P7.04 lịch sử Copilot cũ còn xem được; P7.05 revoke khi context CRM mở |
-| P8 | Chủ hoãn 16/10 | P8.01–P8.06: miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản |
+| P8 | Miền ghi chủ hoãn 16/10; miền đọc đang chuyển: đợt 1 production 17/10 (#190), đợt 2 đang làm (#195, 35 khoá tắt) | P8.01–P8.06: đợt 2 đọc; miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản; hàm dùng chung #197/#201 |
 | P9 | Đạt P9.01–P9.03 | P9.04 diễn tập lỗi (hết quota, đĩa đầy…); P9.05 backup/restore connector thật |
 | P10 | Đạt P10.01, P10.06 | P10.02 số đo; P10.03 user thứ hai; P10.04 trần ngân sách/độ trễ; P10.05 nghiệm thu toàn tuyến |
-| P11 | Đạt P11.02–P11.05 | P11.01: chọn disposition cho 131 RPC `copilot_*` (P11-COPILOT-RETIREMENT §5B) |
+| P11 | Đạt P11.02–P11.05; Hermes không còn gọi `copilot_*` (#189, #193) | P11.01: chọn thu hồi/giữ cho 131 RPC `copilot_*` (P11-COPILOT-RETIREMENT §5B); chủ chốt 17/10 không sửa/xoá |
 
 ## WIP phải giữ
 
