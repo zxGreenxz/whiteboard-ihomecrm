@@ -7,7 +7,7 @@
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 735,
-    "unknown": 85,
+    "unknown": 86,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12014,6 +12014,18 @@
         "function:public.thu_tien_collection_v1",
         "function:public.invoice_detail_v1",
         "function:public.deposit_reservation_vouchers_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql",
+      "version": "20261018010100",
+      "name": "hermes_w2a_review_fixes_v1",
+      "scheme": "timestamp14",
+      "sha256": "7acae252e3b27dc3fb5bdaac11fd82b3924cd4211ddeb83287fc6911bed931cd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_w2a_read_v1"
       ]
     },
     {

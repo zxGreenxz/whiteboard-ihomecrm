@@ -999,6 +999,25 @@
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói A, 18/10/2026",
       "sha256": "89cdc54292970437ee9515737b0aad67ae6f9151e72d7dbae186c735dbbd2193"
+    },
+    "supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1 (chỉ thay thân hàm đọc Gói A, giữ dòng đầu INVOKER pg_catalog,public; không đổi hàm dùng chung, không GRANT/REVOKE)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects function:app_private.hermes_w2a_read_v1 — cùng object với 20261018000600 (nền đợt 2 chưa áp production)"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 18/10/2026 (sửa sau review độc lập PR #207: PII chép trên phiếu chỉ trả khi nối được hồ sơ khách nhìn thấy dưới RLS, ghi chú hoá đơn/tên phiếu theo cùng điều kiện tên khách, trần 2000 cắt toàn bộ phần sau 2000), chưa đi qua lane apply production — hàm đọc vắng mặt trên production vì nền đợt 2 và Gói A CHƯA CHẠY, không phải vì bị DROP. 20261018010000 đã áp TEST nên không sửa, bản sửa đi migration kế tiếp trong dải Gói A. PGlite: wave2-a kể cả đột biến cho từng lỗi. Áp TEST qua lane (--env test --apply) sau 20261018010000; áp production qua npm run migrate:forward sau review; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.hermes_w2a_read_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes đợt 2 Gói A (sửa sau review PR #207), 18/10/2026",
+      "sha256": "7acae252e3b27dc3fb5bdaac11fd82b3924cd4211ddeb83287fc6911bed931cd"
     }
   }
 }

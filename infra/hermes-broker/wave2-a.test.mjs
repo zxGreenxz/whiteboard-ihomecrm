@@ -20,6 +20,11 @@ import { domainInput, domainResult } from './domain-contract.mjs';
 // chung bằng vai authenticated). Không chứng minh RLS thật/JWT thật/PostgREST: phần đó đo trên TEST.
 const MIGRATION_PATH = 'supabase/migrations/20261018010000_hermes_w2a_receivables_read_v1.sql';
 const migration = readFileSync(MIGRATION_PATH, 'utf8');
+// Sửa sau review PR #207: thay thân hàm đọc gói (định nghĩa sống cuối cùng); 8 hàm dùng chung vẫn ở MIGRATION_PATH.
+const FIX_PATH = 'supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql';
+const fixes = readFileSync(FIX_PATH, 'utf8');
+const READ_HEAD = 'CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(';
+const readBodyOf = sql => sql.slice(sql.indexOf(READ_HEAD)).split('$fn$')[1];
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
 const REPORTS = Object.keys(W2A_REPORTS);
 // Toà của công ty khác có trong fixture đọc đầy đủ (u(12) của full-read-sql-fixture) và một hoá đơn tạo trong ca.
@@ -75,6 +80,15 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   const readBody = stripped.slice(stripped.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(')).split('$fn$')[1];
   assert.doesNotMatch(readBody, /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(stripped, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
+  // Bản sửa sau review: CHỈ thay thân hàm đọc (cùng dòng đầu INVOKER), không đổi ACL/hàm dùng chung; thân đó là bản sống.
+  const fixed = fixes.replace(/--[^\n]*/g, '');
+  assert.deepEqual([...fixed.matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]), ['app_private.hermes_w2a_read_v1']);
+  assert.doesNotMatch(fixed, /copilot|\bDROP\b|ALTER TABLE|UPDATE |INSERT |DELETE |\bGRANT\b|\bREVOKE\b/i);
+  assert.doesNotMatch(fixed, /current_visible_owner_ids|can_view_restricted_ie|has_restricted_item|ie_visible_cashbook_ids/, 'không chép policy RLS');
+  assert.doesNotMatch(readBodyOf(fixed), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
+  assert.match(fixed, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
+  assert.equal((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc,
+    readBodyOf(fixes), 'thân sống = bản sửa sau review');
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.provolatile vol,
       has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -141,8 +155,7 @@ test('rào công ty (000700): mọi hàng của 9 báo cáo mang organizationId 
     assert.ok(viaGate.items.length > 0 && viaGate.items.every(row => !Object.hasOwn(row, 'organizationId')), `${report}: cổng gỡ trường rào`);
     assert.ok(!Object.hasOwn(W2A_REPORTS[report].fields, 'organizationId'), `${report}: fields không khai organizationId`);
   }
-  const stripped = migration.replace(/--[^\n]*/g, '');
-  const readBody = stripped.slice(stripped.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(')).split('$fn$')[1];
+  const readBody = readBodyOf(fixes.replace(/--[^\n]*/g, ''));
   const sources = [...readBody.matchAll(/'organizationId',([^,]+)/g)].map(match => match[1].trim());
   assert.equal(sources.length, 11, '8 báo cáo bảng + 3 loại dòng chi tiết hoá đơn');
   for (const source of sources) assert.match(source, /^\(SELECT src\.organization_id FROM public\.[a-z_]+ src WHERE src\.id=|^v_head->'organizationId'$|^e->'organizationId'$/, source);
@@ -151,20 +164,21 @@ test('rào công ty (000700): mọi hàng của 9 báo cáo mang organizationId 
 test('rào công ty: hàm dùng chung lỡ bỏ lọc công ty ⇒ cột nguồn làm bước kết thúc chặn cả lượt (42501); chép ctx.organizationId thì lọt', async () => {
   const swap = (sql, from, to) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return sql.replace(from, () => to); };
   const noFilter = swap(migration, `  WHERE i.organization_id=p_organization_id AND i.deleted_at IS NULL AND i.paid_amount>0`, `  WHERE i.deleted_at IS NULL AND i.paid_amount>0`);
-  const copyCtx = swap(noFilter, `'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=s.invoice_id),
+  const copyCtx = swap(fixes, `'organizationId',(SELECT src.organization_id FROM public.invoices src WHERE src.id=s.invoice_id),
           'invoiceNumber',s.invoice_number`, `'organizationId',v_org,
           'invoiceNumber',s.invoice_number`);
   // Dữ liệu lệch: hoá đơn nêu công ty khác nhưng nằm ở toà của công ty kết nối (RLS theo toà vẫn cho thấy).
-  const seeded = async (env, variant) => {
-    if (variant) for (const sql of changedFunctions(migration, variant)) await env.db.exec(sql);
+  const seeded = async (env, ...variants) => {
+    for (const [base, variant] of variants) for (const sql of changedFunctions(base, variant)) await env.db.exec(sql);
     await env.db.exec(`INSERT INTO public.invoices(id,organization_id,invoice_number,status,building_id,room_id,billing_month,due_date,total_amount,paid_amount)
       VALUES('${FOREIGN_INVOICE}','${FOREIGN}','INV-F3','APPROVED','${BUILDING}',null,'2026-10','2026-10-01',100,500)`);
     return env.report('overpayment', params('overpayment'), { limit: 50 });
   };
   await inCase(async env => assert.ok(!ids((await seeded(env)).items, 'invoiceId').includes(FOREIGN_INVOICE), 'bản sống: lọc công ty'));
-  await inCase(async env => assert.rejects(seeded(env, noFilter), error => error.code === '42501' && error.message === 'hermes_w2_row_outside_scope',
+  await inCase(async env => assert.rejects(seeded(env, [migration, noFilter]), error => error.code === '42501' && error.message === 'hermes_w2_row_outside_scope',
     'bỏ lọc công ty: cột nguồn ⇒ bước kết thúc 42501'));
-  await inCase(async env => assert.ok(ids((await seeded(env, copyCtx)).items, 'invoiceId').includes(FOREIGN_INVOICE), 'chép ctx: lọt (phép thử nhạy)'));
+  await inCase(async env => assert.ok(ids((await seeded(env, [migration, noFilter], [fixes, copyCtx])).items, 'invoiceId').includes(FOREIGN_INVOICE),
+    'chép ctx: lọt (phép thử nhạy)'));
 });
 
 test('payment_schedule: một dòng/phòng, đến ngày = hạn xa nhất ≤ hôm nay+365 (bỏ huỷ/xoá), khách của hoá đơn đầu, mới nhất trước; lọc ngày', () => inCase(async env => {
@@ -215,7 +229,8 @@ test('invoice_detail: đầu hoá đơn + dòng HĐ + khoản thu + phiếu đã
   let value = await run(env, 'invoice_detail', { invoiceId: INVOICE_A });
   assert.equal(value.summary.found, true);
   assert.deepEqual([value.summary.invoiceNumber, value.summary.totalAmount, value.summary.paidAmount, value.summary.remainingAmount, value.summary.customerName,
-    value.summary.contractNumber, value.summary.adjustmentCount], ['INV-A', '3500000.00', '1000000.00', '2500000.00', 'Nguyễn Văn An', 'HD-A', 1]);
+    value.summary.contractNumber, value.summary.adjustmentCount, value.summary.notes],
+  ['INV-A', '3500000.00', '1000000.00', '2500000.00', 'Nguyễn Văn An', 'HD-A', 1, 'Khách hẹn trả cuối tháng']);
   assert.deepEqual(value.items.map(row => [row.kind, row.label ?? row.code, row.amount, row.status]), [['item', 'Tiền phòng', '3000000', null],
     ['item', 'Tiền điện T10', '350000', null], ['item', 'Tiền nước T10', '100000', null], ['item', 'Phí dịch vụ', '50000', null],
     ['payment', 'PT-A1', '1000000', 'ACTIVE'], ['payment', 'PT-A1R', '500000', 'REVERSED'], ['voucher', 'Thu có thối', '0', 'APPROVED'],
@@ -230,23 +245,27 @@ test('invoice_detail: đầu hoá đơn + dòng HĐ + khoản thu + phiếu đã
   assert.ok(Object.entries(value.summary).every(([key, item]) => key === 'found' || item === null));
 }));
 
-test('reservation_vouchers: phiếu cọc giữ chỗ (bỏ loại trừ, đã vào HĐ, không cọc, toà B), số cọc = Σ hạng mục cọc; tìm; tổng từ RPC', () => inCase(async env => {
+test('reservation_vouchers: phiếu cọc giữ chỗ (bỏ loại trừ, đã vào HĐ, không cọc, toà B), số cọc = Σ hạng mục cọc; tìm mã/phòng; tổng từ RPC', () => inCase(async env => {
   const value = await run(env, 'reservation_vouchers');
   assert.deepEqual(value.items.map(row => [row.voucherId, row.depositAmount, row.settled]),
     [[RV2, '500000', false], [RV1, '2000000', false], [RV_SETTLED, '700000', true], [RV3, '300000', false]]);
-  assert.deepEqual([value.items[1].holdUntil, value.items[1].topupDueDate, value.items[1].depositTarget, value.items[1].payerName],
-    ['2026-10-20', '2026-10-18', '2500000', 'Trần Cọc']);
+  assert.deepEqual([value.items[1].holdUntil, value.items[1].topupDueDate, value.items[1].depositTarget, value.items[1].code],
+    ['2026-10-20', '2026-10-18', '2500000', 'PT-G1']);
+  assert.ok(value.items.every(row => row.payerName === null && row.name === null),
+    'người nộp/tên phiếu chép tên khách: không nối được hồ sơ khách dưới RLS người hỏi ⇒ NULL kể cả khi đủ quyền');
   assert.deepEqual(value.summary, { holdingAmount: '2000000', approvedCount: 1, unapprovedCount: 1, cancelledCount: 1 }, 'RPC bỏ phiếu đã quyết toán');
   assert.deepEqual(ids((await run(env, 'reservation_vouchers', { status: 'APPROVED' })).items, 'voucherId'), [RV1, RV_SETTLED]);
   assert.deepEqual(ids((await run(env, 'reservation_vouchers', { query: 'p104' })).items, 'voucherId'), [RV3], 'tìm theo tên phòng');
-  assert.deepEqual(ids((await run(env, 'reservation_vouchers', { query: 'TRẦN cọc' })).items, 'voucherId'), [RV1], 'tìm theo người nộp');
+  assert.deepEqual(ids((await run(env, 'reservation_vouchers', { query: 'pt-g2' })).items, 'voucherId'), [RV2], 'tìm theo mã phiếu');
+  for (const query of ['TRẦN cọc', 'Cọc huỷ'])
+    assert.deepEqual((await run(env, 'reservation_vouchers', { query })).items, [], `không tìm theo người nộp/tên phiếu: ${query}`);
   assert.ok(!ids(value.items, 'voucherId').includes(RV_EXCL));
 }));
 
 test('reservation_settlements: gọi thẳng get_reservation_settlements_v1 (toà tường minh), trạng thái hoàn, tổng từ RPC; nhiều hơn một trang 200 vẫn đủ', () => inCase(async env => {
   let value = await run(env, 'reservation_settlements');
   assert.deepEqual(value.items.map(row => [row.settlementId, row.refundState, row.refundRemaining, row.payerName]),
-    [[S2, 'PENDING', '300000', null], [S1, 'PAID', '0', 'Ngô Quyết']]);
+    [[S2, 'PENDING', '300000', null], [S1, 'PAID', '0', null]], 'người nộp của phiếu cọc nguồn: không nối được hồ sơ khách ⇒ NULL');
   assert.ok(!ids(value.items, 'settlementId').includes(S3));
   assert.doesNotMatch(JSON.stringify(value), /riêng tư/, 'không trả lý do gõ tay');
   assert.deepEqual(value.summary, { retainedAmount: '200000', retainedCount: 1, refundPendingAmount: '300000', refundPendingCount: 1,
@@ -281,7 +300,8 @@ test('deposit_refunds: "đã hoàn" chỉ phiếu APPROVED+POSTED+còn bút toá
 
 test('change_ledger: sổ tiền thối theo change_account_id, sổ "Làm tròn tiền thiếu" theo rounding; mặc định tháng này; sổ RLS không thấy ⇒ 42501', () => inCase(async env => {
   let value = await run(env, 'change_ledger', { cashbookId: CHANGE_BOOK });
-  assert.deepEqual(value.items.map(row => [row.voucherId, row.amount, row.payerName]), [[L2, '3000', 'Khách Hai'], [L1, '5000', 'Khách Lẻ']]);
+  assert.deepEqual(value.items.map(row => [row.voucherId, row.amount, row.payerName, row.notes]), [[L2, '3000', null, null], [L1, '5000', 'Khách Lẻ', 'thối 5k']],
+    'L1 nối hoá đơn → HĐ → khách nhìn thấy; L2 không nối được hồ sơ khách ⇒ NULL');
   assert.deepEqual(value.summary, { mode: 'refund', fromDate: '2026-10-01', toDate: '2026-10-31', total: '8000', count: 2 });
   assert.ok(!ids(value.items, 'voucherId').includes(L7), 'phiếu hạn chế của người khác (RLS)');
   value = await run(env, 'change_ledger', { cashbookId: ROUND_BOOK });
@@ -304,7 +324,10 @@ test('riêng tư: không customers.view ở toà (ctx) hoặc RLS customers ẩn
     const out = [];
     for (const report of REPORTS) {
       const value = await run(env, report, DEFAULTS[report], { ctx });
-      for (const row of [...value.items, value.summary ?? {}]) for (const key of ['customerName', 'payerName', 'notes']) if (Object.hasOwn(row, key) && row[key] !== null) out.push(`${report}.${key}`);
+      for (const row of [...value.items, value.summary ?? {}]) {
+        for (const key of ['customerName', 'payerName', 'notes', 'name']) if (Object.hasOwn(row, key) && row[key] !== null) out.push(`${report}.${key}`);
+        if (row.kind === 'voucher' && row.label !== null) out.push(`${report}.voucher.label`);
+      }
     }
     return out;
   };
@@ -313,9 +336,45 @@ test('riêng tư: không customers.view ở toà (ctx) hoặc RLS customers ẩn
   assert.deepEqual(await names({ scopes: {} }), [], 'kết nối không giữ customers.view');
   assert.deepEqual((await run(env, 'reservation_vouchers', { query: 'Trần Cọc' }, { ctx: { scopes: {} } })).items, [], 'không dò được người nộp');
   await env.db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='customers.view'");
-  for (const report of ['payment_schedule', 'held_deposits', 'deposit_refunds', 'invoice_detail'])
+  for (const report of ['payment_schedule', 'held_deposits', 'deposit_refunds', 'invoice_detail', 'change_ledger'])
     assert.ok((await run(env, report, DEFAULTS[report])).items.concat([(await run(env, report, DEFAULTS[report])).summary])
-      .every(row => !row || row.customerName === undefined || row.customerName === null), `${report}: RLS customers ẩn`);
+      .every(row => !row || ['customerName', 'payerName', 'notes'].every(key => row[key] === undefined || row[key] === null)), `${report}: RLS customers ẩn`);
+}));
+
+test('PII chép trên phiếu: gỡ chủ hồ sơ khỏi visible owners ⇒ RLS customers rỗng, 3 báo cáo snapshot hết người nộp/ghi chú/tên phiếu, không tìm theo người nộp', () => inCase(async env => {
+  const pii = async () => {
+    const out = [];
+    for (const report of ['reservation_vouchers', 'reservation_settlements', 'change_ledger'])
+      for (const row of (await run(env, report, DEFAULTS[report], { limit: 2000 })).items)
+        for (const key of ['payerName', 'notes', 'name']) if (Object.hasOwn(row, key) && row[key] !== null) out.push(`${report}.${key}`);
+    return out;
+  };
+  assert.deepEqual(await pii(), ['change_ledger.payerName', 'change_ledger.notes'], 'trước khi gỡ: chỉ phiếu nối được tới khách nhìn thấy');
+  await env.db.exec('DELETE FROM public.fixture_visible_owners');
+  assert.equal(await env.call('SELECT count(*)::int result FROM public.customers', []), 0, 'RLS customers: không còn hồ sơ nào');
+  assert.deepEqual(await pii(), []);
+  for (const query of ['Trần Cọc', 'Ngô Quyết', 'Khách Lẻ'])
+    assert.deepEqual((await run(env, 'reservation_vouchers', { query })).items, [], `không dò được người nộp: ${query}`);
+}));
+
+test('invoice_detail: ghi chú hoá đơn và tên phiếu chỉ khi toà ∈ customers.view VÀ hồ sơ khách nhìn thấy dưới RLS; mô tả dòng hoá đơn giữ nguyên', () => inCase(async env => {
+  const view = async ctx => {
+    const value = await run(env, 'invoice_detail', {}, { ctx });
+    return [value.summary.notes, value.items.filter(row => row.kind === 'voucher').map(row => row.label), value.items.filter(row => row.kind === 'item').map(row => row.label)];
+  };
+  const ITEMS = ['Tiền phòng', 'Tiền điện T10', 'Tiền nước T10', 'Phí dịch vụ'];
+  assert.deepEqual(await view({}), ['Khách hẹn trả cuối tháng', ['Thu có thối', 'Thu INV-A'], ITEMS]);
+  assert.deepEqual(await view({ scopes: {} }), [null, [null, null], ITEMS], 'không customers.view ở toà');
+  await env.db.exec('DELETE FROM public.fixture_visible_owners');
+  assert.deepEqual(await view({}), [null, [null, null], ITEMS], 'hồ sơ khách của hoá đơn không nhìn thấy dưới RLS');
+}));
+
+test('trần nguồn invoice_detail: hơn 2001 dòng ⇒ đúng 2000 hàng đầu đã sắp + sourceCapped; đầu hoá đơn không đổi', () => inCase(async env => {
+  await env.db.exec(`INSERT INTO public.invoice_items(invoice_id,type,description,amount,unit_price,quantity,sort_order)
+    SELECT '${INVOICE_A}','SERVICE','Dòng '||n,1,1,1,100+n FROM generate_series(1,2001) n`);
+  const raw = await direct(env, 'invoice_detail');
+  assert.deepEqual([raw.rows.length, raw.sourceCapped, raw.rows[0].label, raw.rows[1999].label, raw.summary.totalAmount],
+    [2000, true, 'Tiền phòng', 'Dòng 1996', '3500000.00'], '4 + 2001 dòng hoá đơn + 2 khoản thu + 2 phiếu = 2009 dòng');
 }));
 
 test('rào broker: kết quả SQL thật của cả 9 báo cáo qua domainInput/domainResult của crm_read_report; hàng toà ngoài phạm vi bị chặn', () => inCase(async env => {
@@ -342,7 +401,10 @@ test('trần nguồn: hơn 2000 phòng ⇒ 2000 hàng đầu đã sắp + source
 }));
 
 // Đột biến: mỗi bản bỏ MỘT hàng rào/công thức của migration gói A; cùng phép thử mà bản sống từ chối thì bản đột biến phải lọt.
-const replaceExactly = (from, to) => { assert.equal(migration.split(from).length, 2, `anchor: ${from}`); return migration.replace(from, () => to); };
+// Hàm dùng chung đột biến trên MIGRATION_PATH; hàm đọc gói đột biến trên FIX_PATH (định nghĩa sống) — base: fixes.
+const replaceIn = base => (from, to) => { assert.equal(base.split(from).length, 2, `anchor: ${from}`); return base.replace(from, () => to); };
+const replaceExactly = replaceIn(migration), replaceRead = replaceIn(fixes);
+const hideOwners = env => env.db.exec('DELETE FROM public.fixture_visible_owners');
 const replaceEach = pairs => pairs.reduce((sql, [from, to]) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return sql.replace(from, () => to); }, migration);
 const rowsOf = async (env, report, values, ctx) => (await direct(env, report, values, ctx)).rows;
 const probes = [
@@ -376,13 +438,13 @@ const probes = [
       AND public.can_do_on_building('reports_finance','overpayment',b.id);`, `;`),
     run: async env => { await env.db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='reports_finance.overpayment'");
       return (await sharedFn(env, 'public.finance_overpayment_invoices_v1($1,NULL)', [ORG])).length > 0; } },
-  { name: 'payment_schedule: tên khách theo customers.view của toà', sql: replaceExactly(`'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
+  { name: 'payment_schedule: tên khách theo customers.view của toà', base: fixes, sql: replaceRead(`'customerName',CASE WHEN s.building_id=ANY(v_cust) THEN s.customer_name END,
           'billedThrough'`, `'customerName',s.customer_name,
           'billedThrough'`),
     run: async env => (await rowsOf(env, 'payment_schedule', {}, { scopes: {} }))[0].customerName !== null },
   { name: 'overpayment: bỏ hoá đơn đã xoá', sql: replaceExactly(`i.deleted_at IS NULL AND i.paid_amount>0`, `i.paid_amount>0`),
     run: async env => ids(await rowsOf(env, 'overpayment'), 'invoiceId').includes(INV_OVER_DELETED) },
-  { name: 'overpayment: tổng theo toà đã giao', sql: replaceExactly(`v_raw:=public.get_overpayment_summary(v_b);`, `v_raw:=public.get_overpayment_summary(NULL);`),
+  { name: 'overpayment: tổng theo toà đã giao', base: fixes, sql: replaceRead(`v_raw:=public.get_overpayment_summary(v_b);`, `v_raw:=public.get_overpayment_summary(NULL);`),
     run: async env => (await direct(env, 'overpayment')).summary.total !== '300000.00' },
   { name: 'collection: phòng thu trong ngày vẫn thuộc danh sách ngày', sql: replaceExactly(`s.mode='all' OR s.has_range OR s.owes,`, `s.mode='all' OR s.owes,`),
     run: async env => !ids(await rowsOf(env, 'collection', { fromDate: '2026-10-16', toDate: '2026-10-16' }), 'invoiceId').includes(INV_C_PAID) },
@@ -398,9 +460,49 @@ const probes = [
   { name: 'reservation_vouchers: loại trừ quản lý', sql: replaceExactly(`    AND NOT EXISTS(SELECT 1 FROM public.deposit_management_exclusions ex WHERE ex.voucher_id=ie.id AND ex.organization_id=ie.organization_id)
 `, ''),
     run: async env => ids(await rowsOf(env, 'reservation_vouchers'), 'voucherId').includes(RV_EXCL) },
-  { name: 'reservation_vouchers: tìm người nộp cần quyền xem tên khách', sql: replaceExactly(`OR v.building_id=ANY(v_cust) AND position(v_query`, `OR position(v_query`),
-    run: async env => (await rowsOf(env, 'reservation_vouchers', { query: 'trần cọc' }, { scopes: {} })).length > 0 },
-  { name: 'reservation_settlements: truyền trạng thái hoàn', sql: replaceExactly(`get_reservation_settlements_v1(v_b,v_status,v_cursor,200,NULL)`,
+  // [P1 review #207] PII chép trên phiếu: chỉ khi nối được hồ sơ khách nhìn thấy dưới RLS ⇒ phiếu cọc/quyết toán luôn NULL.
+  { name: 'reservation_vouchers: người nộp không nối được hồ sơ khách ⇒ NULL', base: fixes, sql: replaceRead(`          'payerName',NULL,
+          'depositAmount'`, `          'payerName',CASE WHEN v.building_id=ANY(v_cust) THEN v.payer_name END,
+          'depositAmount'`),
+    run: async env => { await hideOwners(env); return (await rowsOf(env, 'reservation_vouchers')).some(row => row.payerName !== null); } },
+  { name: 'reservation_vouchers: tên phiếu (luồng bổ sung cọc ghi tên khách) ⇒ NULL', base: fixes, sql: replaceRead(`'code',v.code,'name',NULL,`,
+    `'code',v.code,'name',v.name,`),
+    run: async env => { await hideOwners(env); return (await rowsOf(env, 'reservation_vouchers')).some(row => row.name !== null); } },
+  { name: 'reservation_vouchers: không tìm theo người nộp', base: fixes, sql: replaceRead(`          OR position(v_query IN lower(COALESCE(v.room_name,'')))>0)`,
+    `          OR position(v_query IN lower(COALESCE(v.room_name,'')))>0 OR v.building_id=ANY(v_cust) AND position(v_query IN lower(COALESCE(v.payer_name,'')))>0)`),
+    run: async env => { await hideOwners(env); return (await rowsOf(env, 'reservation_vouchers', { query: 'trần cọc' })).length > 0; } },
+  { name: 'reservation_settlements: người nộp không nối được hồ sơ khách ⇒ NULL', base: fixes, sql: replaceRead(`        'payerName',NULL,
+        'depositAmount',to_jsonb(`, `        'payerName',CASE WHEN (e->>'buildingId')::uuid=ANY(v_cust) THEN to_jsonb(e->>'payerName') ELSE 'null'::jsonb END,
+        'depositAmount',to_jsonb(`),
+    run: async env => { await hideOwners(env); return (await rowsOf(env, 'reservation_settlements')).some(row => row.payerName !== null); } },
+  { name: 'change_ledger: người nộp/ghi chú cần hồ sơ khách nhìn thấy dưới RLS', base: fixes, sql: replaceRead(`CROSS JOIN LATERAL (SELECT l.building_id=ANY(v_cust) AND EXISTS(
+          SELECT 1 FROM public.income_expenses src LEFT JOIN public.invoices inv ON inv.id=src.invoice_id
+            JOIN public.contract_customers cc ON cc.contract_id=COALESCE(src.contract_id,inv.contract_id)
+            JOIN public.customers cu ON cu.id=cc.customer_id AND cu.organization_id=v_org
+          WHERE src.id=l.voucher_id) linked) k) x;`, `CROSS JOIN LATERAL (SELECT l.building_id=ANY(v_cust) linked) k) x;`),
+    run: async env => { await hideOwners(env); return (await rowsOf(env, 'change_ledger')).some(row => row.payerName !== null || row.notes !== null); } },
+  { name: 'change_ledger: hồ sơ khách nối được phải cùng công ty', base: fixes, sql: replaceRead(`JOIN public.customers cu ON cu.id=cc.customer_id AND cu.organization_id=v_org`,
+    `JOIN public.customers cu ON cu.id=cc.customer_id`),
+    run: async env => { await env.db.exec(`UPDATE public.customers SET organization_id='${FOREIGN}' WHERE organization_id='${ORG}'`);
+      return (await rowsOf(env, 'change_ledger')).some(row => row.payerName !== null); } },
+  // [P1 review #207] Ghi chú hoá đơn / tên phiếu: cùng điều kiện tên khách (customers.view ở toà + hồ sơ khách nhìn thấy).
+  { name: 'invoice_detail: ghi chú hoá đơn theo hồ sơ khách', base: fixes, sql: replaceRead(
+    `'notes',CASE WHEN v_inv_cust THEN to_jsonb(v_head->>'notes') ELSE 'null'::jsonb END,`, `'notes',to_jsonb(v_head->>'notes'),`),
+    run: async env => (await direct(env, 'invoice_detail', {}, { scopes: {} })).summary.notes !== null },
+  { name: 'invoice_detail: tên phiếu theo hồ sơ khách', base: fixes, sql: replaceRead(
+    `'label',CASE WHEN v_inv_cust THEN to_jsonb(e->>'name') ELSE 'null'::jsonb END,`, `'label',to_jsonb(e->>'name'),`),
+    run: async env => (await rowsOf(env, 'invoice_detail', {}, { scopes: {} })).some(row => row.kind === 'voucher' && row.label !== null) },
+  { name: 'invoice_detail: hồ sơ khách nhìn thấy, không chỉ customers.view ở toà', base: fixes, sql: replaceRead(
+    `v_inv_cust:=(v_head->>'buildingId')::uuid=ANY(v_cust) AND v_head->>'customerId' IS NOT NULL;`, `v_inv_cust:=(v_head->>'buildingId')::uuid=ANY(v_cust);`),
+    run: async env => { await hideOwners(env); return (await direct(env, 'invoice_detail')).summary.notes !== null; } },
+  // [P2 review #207] Trần 2000: cắt toàn bộ phần sau 2000, không chỉ một phần tử.
+  { name: 'trần 2000: cắt toàn bộ phần sau 2000', base: fixes, sql: replaceRead(`  IF jsonb_array_length(v_rows)>2000 THEN
+    v_rows:=(SELECT jsonb_agg(e ORDER BY n) FROM jsonb_array_elements(v_rows) WITH ORDINALITY a(e,n) WHERE n<=2000);
+  END IF;`, `  IF jsonb_array_length(v_rows)>2000 THEN v_rows:=v_rows-2000; END IF;`),
+    run: async env => { await env.db.exec(`INSERT INTO public.invoice_items(invoice_id,type,description,amount,sort_order)
+      SELECT '${INVOICE_A}','SERVICE','Dòng '||n,1,100+n FROM generate_series(1,2001) n`);
+      return (await rowsOf(env, 'invoice_detail')).length > 2000; } },
+  { name: 'reservation_settlements: truyền trạng thái hoàn', base: fixes, sql: replaceRead(`get_reservation_settlements_v1(v_b,v_status,v_cursor,200,NULL)`,
     `get_reservation_settlements_v1(v_b,NULL,v_cursor,200,NULL)`),
     run: async env => ids(await rowsOf(env, 'reservation_settlements', { status: 'PENDING' }), 'settlementId').includes(S1) },
   { name: 'held_deposits: chỉ HĐ hiệu lực', sql: replaceExactly(`c.status::text='ACTIVE' AND c.deleted_at IS NULL`, `c.deleted_at IS NULL`),
@@ -410,22 +512,23 @@ const probes = [
   { name: 'deposit_refunds: toà trong hàm dùng chung', sql: replaceExactly(`WHERE t.organization_id=p_organization_id AND r.building_id=ANY(v_b);`,
     `WHERE t.organization_id=p_organization_id;`),
     run: async env => (await sharedFn(env, 'public.deposit_refunds_forfeits_v1($1,$2)', [ORG, [BUILDING]])).some(row => row.termination_id === T3) },
-  { name: 'change_ledger: sổ phải nhìn thấy như web', sql: replaceExactly(`    IF NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=v_target AND a.organization_id=v_org AND a.deleted_at IS NULL) THEN
+  { name: 'change_ledger: sổ phải nhìn thấy như web', base: fixes, sql: replaceRead(`    IF NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.id=v_target AND a.organization_id=v_org AND a.deleted_at IS NULL) THEN
       RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501';
     END IF;
 `, ''),
     run: async env => Array.isArray((await direct(env, 'change_ledger', { cashbookId: OTHER_BOOK })).rows) },
-  { name: 'read: giao thêm buildings.view như RLS web', sql: replaceExactly(`jsonb_array_elements_text(p_ctx->'buildings') x
+  { name: 'read: giao thêm buildings.view như RLS web', base: fixes, sql: replaceRead(`jsonb_array_elements_text(p_ctx->'buildings') x
     WHERE public.has_full_building_scope() OR x::uuid IN (SELECT public.accessible_building_ids());`, `jsonb_array_elements_text(p_ctx->'buildings') x;`),
     run: async env => { await env.db.exec(`DELETE FROM public.fixture_building_access WHERE building_id='${BUILDING}'`);
       return (await direct(env, 'overpayment')).unavailable === null; } },
-  { name: 'read: chỉ đúng người hỏi', sql: replaceExactly(`  IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_ctx->>'userId' IS DISTINCT FROM auth.uid()::text
+  { name: 'read: chỉ đúng người hỏi', base: fixes, sql: replaceRead(`  IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_ctx->>'userId' IS DISTINCT FROM auth.uid()::text
     THEN RAISE EXCEPTION 'hermes_domain_denied' USING ERRCODE='42501'; END IF;
   v_org:=`, `  v_org:=`),
     run: async env => Array.isArray((await direct(env, 'overpayment', {}, { userId: CUSTOMER_C })).rows) },
 ];
 for (const probe of probes) {
-  const changed = changedFunctions(migration, probe.sql);
+  const changed = changedFunctions(probe.base ?? migration, probe.sql);
+  assert.equal(changed.length, 1, `${probe.name}: đúng một hàm đổi`);
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
     await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'bản sống từ chối'));
     await inCase(async env => {

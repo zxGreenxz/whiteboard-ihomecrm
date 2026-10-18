@@ -2,11 +2,14 @@
 // Khai báo mỗi báo cáo bằng w2Report() (wave2-kit.mjs); mã báo cáo là khoá của object, khớp
 // /^[a-z][a-z0-9_]{1,47}$/ và KHÔNG trùng mã của gói khác (wave2-registry.mjs kiểm khi nạp).
 // SQL cùng gói: app_private.hermes_w2a_catalog_v1 (khớp từng trường với khai báo ở đây) và
-// app_private.hermes_w2a_read_v1 — migration 20261018010000_hermes_w2a_receivables_read_v1.sql.
+// app_private.hermes_w2a_read_v1 — migration 20261018010000_hermes_w2a_receivables_read_v1.sql, thân hàm đọc thay ở
+// 20261018010100_hermes_w2a_review_fixes_v1.sql (sửa sau review PR #207).
 // Nguồn số liệu (chủ chốt 17/10): màn web có RPC ⇒ gọi thẳng RPC; màn web đọc bảng ⇒ hàm dùng chung
 // public.<miền>_<báo cáo>_v1(..., p_building_ids) theo đúng bộ lọc web (dẫn file:line trong migration).
 // A3 (BC tiền cọc, bảng legacy deposits) không làm: production 17/10 có 0 dòng.
-// Tên khách (không SĐT): chỉ khi customers.view ở đúng toà của hàng và chủ hồ sơ thuộc công ty.
+// Tên khách (không SĐT): chỉ khi customers.view ở đúng toà của hàng và chủ hồ sơ thuộc công ty. Chữ chép trên phiếu
+// (người nộp, ghi chú, tên phiếu) và ghi chú hoá đơn: chỉ khi nối được hồ sơ khách nhìn thấy dưới RLS, cùng công ty,
+// đủ customers.view ở toà; không nối được ⇒ null (phiếu cọc giữ chỗ/quyết toán: luôn null).
 import { w2Report, id, nullable, longText, code, amount, bool, count, date } from './wave2-kit.mjs';
 
 const oneOf = values => value => values.includes(value);
@@ -51,7 +54,7 @@ export const W2A_REPORTS = Object.freeze({
       totalReceived: nullable(amount), totalRefunded: nullable(amount) } }),
   // /deposits tab Phiếu giữ chỗ (useDeposits.ts:145-258; useReservationHoldDeadlines.ts:36-70).
   reservation_vouchers: w2Report({ permission: 'deposits.view', source: 'crm.deposit_reservation_vouchers_v1', scope: 'rows',
-    title: 'Phiếu cọc giữ chỗ (phiếu thu cọc chưa gắn hợp đồng): số cọc, trạng thái duyệt, đã quyết toán chưa, hạn làm hợp đồng/bổ sung cọc; query tìm mã/tên phiếu/phòng/người nộp. summary: tổng cọc đang giữ.',
+    title: 'Phiếu cọc giữ chỗ (phiếu thu cọc chưa gắn hợp đồng): số cọc, trạng thái duyệt, đã quyết toán chưa, hạn làm hợp đồng/bổ sung cọc; query tìm theo mã phiếu/tên phòng (không trả tên phiếu/người nộp). summary: tổng cọc đang giữ.',
     params: ['buildingId', 'status', 'query'], statuses: ['APPROVED', 'UNAPPROVED', 'CANCELLED'], scopeKeys: CUSTOMER, private: true,
     fields: { voucherId: id, code: number, name: nullable(longText(300)), payerName: personName, depositAmount: amount, voucherDate: nullable(date),
       approvalStatus: code, buildingId: id, buildingName, roomId: nullable(id), roomName, settled: bool, holdUntil: nullable(date),

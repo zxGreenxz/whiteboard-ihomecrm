@@ -147,8 +147,9 @@ const SEED = `
   INSERT INTO public.contract_customers(organization_id,contract_id,customer_id,is_representative,created_at) VALUES
     ('${ORG}','${CONTRACT_FULL}','${CUSTOMER_C}',false,'2026-01-01T00:00:00Z'),('${ORG}','${CONTRACT_FULL}','${HIDDEN_CUSTOMER}',true,'2026-01-02T00:00:00Z'),
     ('${ORG}','${CONTRACT_TERM}','${CUSTOMER_C}',true,'2026-01-01T00:00:00Z');
-  UPDATE public.invoices SET kind='MONTHLY',issue_date='2026-10-01',subtotal=3500000,discount_amount=0,previous_debt=0,adjustment_review_status='CHECKED'
-    WHERE id='${INVOICE_A}';
+  -- Ghi chú hoá đơn là chữ tự do (có thể chứa thông tin khách): chỉ trả cùng điều kiện với tên khách.
+  UPDATE public.invoices SET kind='MONTHLY',issue_date='2026-10-01',subtotal=3500000,discount_amount=0,previous_debt=0,adjustment_review_status='CHECKED',
+    notes='Khách hẹn trả cuối tháng' WHERE id='${INVOICE_A}';
   UPDATE public.invoice_items SET unit_price=amount,quantity=1,sort_order=CASE description WHEN 'Tiền phòng' THEN 1 WHEN 'Tiền điện T10' THEN 2
     WHEN 'Tiền nước T10' THEN 3 ELSE 4 END WHERE invoice_id='${INVOICE_A}';
   UPDATE public.invoice_items SET previous_reading=100,current_reading=200,unit_price=3500,quantity=100 WHERE description='Tiền điện T10';
