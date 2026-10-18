@@ -8,7 +8,7 @@ import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './fin
 // (ie_visible_cashbook_ids_v1, my_possessed/my_company_owner_org_ids), list_cashbook_visibility_v2,
 // list_cashbook_closings_v1, sáu fa_*, personal_finance_snapshot, bank_event_admin_v1. Cổng tổng hợp
 // cùng chữ ký (KHÔNG chứng minh bản thật): is_super_admin, can_view_restricted_ie, ie_actor_is_company_owner_v1,
-// staff_can, org_timezone_v1 và năm RPC Hiệu quả kinh doanh (cổng "tất cả hoặc không" theo fixture_acl, số
+// staff_can, org_timezone_v1, profit_close_scopes_v2 và năm RPC Hiệu quả kinh doanh (cổng "tất cả hoặc không" theo fixture_acl, số
 // lấy từ fa_* thật). Mô hình INVOKER + RLS: gói chạy dưới vai authenticated nên các bảng gói đọc có GRANT +
 // RLS là CỔNG TỔNG HỢP theo policy web (accounts, income_expenses, hạng mục, buildings, cổ đông/lợi nhuận, ví) — chứng
 // minh gói không vượt RLS, KHÔNG chứng minh policy thật của production. Không JWT thật, không PostgREST.
@@ -78,7 +78,8 @@ const TABLES = `
   CREATE TABLE public.profit_managers(id uuid PRIMARY KEY,auth_user_id uuid,deleted_at timestamptz);
   CREATE TABLE public.profit_manager_salaries(id uuid PRIMARY KEY,manager_id uuid);
   CREATE TABLE public.profit_manager_salary_buildings(salary_id uuid,building_id uuid);
-  CREATE TABLE public.fixture_bp(building_id uuid PRIMARY KEY,cohort_billed numeric,cash_received numeric);`;
+  CREATE TABLE public.fixture_bp(building_id uuid PRIMARY KEY,cohort_billed numeric,cash_received numeric);
+  CREATE TABLE public.fixture_profit_close(user_id uuid,organization_id uuid,can_lock boolean NOT NULL DEFAULT false,can_unlock boolean NOT NULL DEFAULT false);`;
 
 // Cổng tổng hợp cùng chữ ký.
 const PORTS = `
@@ -93,6 +94,12 @@ const PORTS = `
   CREATE OR REPLACE FUNCTION public.current_shareholder_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$
     SELECT id FROM public.shareholders WHERE auth_user_id=auth.uid() AND deleted_at IS NULL ORDER BY id LIMIT 1$$;
   CREATE OR REPLACE FUNCTION app_private.org_timezone_v1(p_organization_id uuid) RETURNS text LANGUAGE sql STABLE AS $$SELECT 'Asia/Ho_Chi_Minh'::text$$;
+  -- Quyền chốt/mở chốt LN của web (bản thật: authorize_v2 'shareholder_profit.lock|unlock' phạm vi ORGANIZATION trên MỌI công ty
+  -- người gọi là thành viên): bảng fixture_profit_close theo người × công ty.
+  CREATE OR REPLACE FUNCTION public.profit_close_scopes_v2() RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER AS $$
+    SELECT jsonb_build_object('organizations',COALESCE(jsonb_agg(jsonb_build_object('organization_id',f.organization_id,'organization_name','Công ty',
+        'organization_slug','cong-ty','can_lock',f.can_lock,'can_unlock',f.can_unlock) ORDER BY f.organization_id),'[]'::jsonb))
+    FROM public.fixture_profit_close f WHERE f.user_id=auth.uid() AND (f.can_lock OR f.can_unlock)$$;
   -- Hiệu quả kinh doanh: danh sách toà = reports_finance.analysis (fixture_acl) ∩ can_access_building, toà thật của công ty;
   -- restricted_allowed = income_expenses.restricted_view phủ toà. RPC: "tất cả hoặc không" (42501) như exact_scope_v1.
   CREATE OR REPLACE FUNCTION public.business_performance_organizations_v1() RETURNS TABLE(organization_id uuid,organization_name text,

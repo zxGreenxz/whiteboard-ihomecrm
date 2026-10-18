@@ -1,12 +1,13 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2b, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
+import { sharedW2b, FOREIGN_ORG_BOOK, OWNER_BOOK, SH_ME, SH_OTHER, OTHER_USER, EVENT_1, EVENT_2, WALLET, WALLET_HIDDEN, VIRTUAL } from './wave2-b-sql-fixture.mjs';
 import { assertPackageParity, grantRead, BUILDING, OTHER_BUILDING, ORG_SCOPE, USER, ORG, FOREIGN } from './wave2-sql-fixture.mjs';
 import { CASHBOOK, FOREIGN_CASHBOOK, CATEGORY, RESTRICTED_CATEGORY } from './finance-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2 } from './wave2-registry.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
+import { w2CatalogEntry } from './wave2-kit.mjs';
 
 // Gói B đợt 2 — test RIÊNG của Gói B. MỘT PGlite cho cả file, mỗi ca BEGIN … ROLLBACK. Mọi báo cáo đi đúng đường thật:
 // lối vào INVOKER public.hermes_w2_read_v1 dưới vai authenticated (cổng Gói 0: kiểm quyền DEFINER → hàm đọc gói
@@ -18,7 +19,19 @@ import { W2B_REPORTS } from './wave2-b-contract.mjs';
 const MAIN_PATH = 'supabase/migrations/20261018020200_hermes_w2b_finance_read_v1.sql';
 // Hàm dùng chung CRM nằm ở file riêng (nội dung không nhắc trợ lý); test xét hai file như một khối của gói.
 const SHARED_PATH = 'supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql';
-const main = `${readFileSync(SHARED_PATH, 'utf8')}\n${readFileSync(MAIN_PATH, 'utf8')}`;
+// Sửa sau review PR #208: thay bản định nghĩa của hai file trên (áp sau, hai file kia giữ nguyên) — hàm dùng chung (file riêng,
+// không nhắc hàm của trợ lý) rồi hàm đọc gói.
+const SHARED_FIX_PATH = 'supabase/migrations/20261018020250_hermes_w2b_finance_shared_fixes_v1.sql';
+const MAIN_FIX_PATH = 'supabase/migrations/20261018020300_hermes_w2b_finance_read_fixes_v1.sql';
+const sharedFix = readFileSync(SHARED_FIX_PATH, 'utf8'), mainFix = readFileSync(MAIN_FIX_PATH, 'utf8');
+const main = [readFileSync(SHARED_PATH, 'utf8'), readFileSync(MAIN_PATH, 'utf8'), sharedFix, mainFix].join('\n');
+// Bản SỐNG: định nghĩa CUỐI của từng hàm theo thứ tự áp. Đột biến đo trên đây — đột biến bản đã bị thay sẽ đè bản sống
+// bằng một bản cũ, đo sai thứ.
+const live = (() => {
+  const last = new Map();
+  for (const [sql] of main.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$fn\$;/g)) last.set(sql.match(/^CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/)[1], sql);
+  return [...last.values()].join('\n\n');
+})();
 let shared;
 before(async () => { shared = await sharedW2b(); });
 after(async () => { await shared?.close(); });
@@ -58,16 +71,34 @@ const num = value => Number(value);
 // người có hai membership thường (hermes_ordinary_org_ambiguous), còn RPC web/RLS chỉ đọc my_org_ids().
 const secondOrg = db => db.exec(`CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql AS $$
     SELECT CASE WHEN auth.uid()='${USER}'::uuid THEN ARRAY['${ORG}'::uuid,'${FOREIGN}'::uuid] ELSE '{}'::uuid[] END$$;`);
+// Quyền CRM thuần (không phải khoá đọc của Hermes — không đụng registry/kết nối): toàn công ty hoặc chỉ toà A.
+const crmGrant = (permission, orgWide = true) => `INSERT INTO public.fixture_acl(permission,allowed,org_wide,building_ids)
+  VALUES('${permission}',true,${orgWide},${orgWide ? "'{}'::uuid[]" : `ARRAY['${BUILDING}'::uuid]`})
+  ON CONFLICT(permission) DO UPDATE SET allowed=true,org_wide=EXCLUDED.org_wide,building_ids=EXCLUDED.building_ids`;
+// 101 phiếu chi hạn chế của người khác, lớn hơn mọi phiếu hợp lệ của toà A (PC-402 5tr + 100 phiếu ~10tr).
+const restrictedAhead = db => db.exec(`INSERT INTO public.income_expenses(organization_id,user_id,code,type,name,building_id,voucher_date,total_amount,
+    approval_status,kqkd_amount,has_restricted_item)
+  SELECT '${ORG}','${OTHER_USER}','PC-R'||lpad(g::text,3,'0'),'EXPENSE','Lương '||g,'${BUILDING}','2026-10-15',10000000+g,'APPROVED',10000000+g,true
+  FROM generate_series(1,100) g`);
+const extraWallets = (db, n) => db.exec(`INSERT INTO public.personal_wallets(id,user_id,name,kind,opening_balance)
+  SELECT gen_random_uuid(),'${USER}','Ví '||lpad(g::text,4,'0'),'cash',1 FROM generate_series(1,${n}) g`);
 
 test('gói B: bảng báo cáo SQL (hermes_w2b_catalog_v1) khớp khai báo JS (W2B_REPORTS)', () => shared.isolated(env => assertPackageParity(env, 'b')));
 
 const SHARED = ['public.cashbook_daily_v1', 'public.cashbook_cash_flow_v1', 'public.cashbook_list_v1', 'public.cashbook_closings_v1',
-  'public.finance_analysis_type_breakdown_v1', 'public.finance_analysis_top_expenses_v1', 'public.profit_my_share_v1', 'public.profit_shareholder_summary_v1'];
+  'public.finance_analysis_type_breakdown_v1', 'public.finance_analysis_top_expenses_v1', 'public.finance_analysis_top_expenses_v2', 'public.profit_my_share_v1',
+  'public.profit_shareholder_summary_v1', 'public.report_text_v1'];
 test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app_private; hàm dùng chung INVOKER search_path rỗng tự từ chối ngoài vai authenticated; hai helper DEFINER nhỏ (phạm vi của chính người gọi, cờ hạn chế của hạng mục)', () => inCase(async ({ db }) => {
-  const created = sql => [...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]);
+  const created = sql => [...new Set([...stripComments(sql).matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]))];
   const mine = created(main);
-  assert.deepEqual(sorted(mine), sorted([...SHARED, 'public.finance_my_scope_v1', 'public.finance_type_restricted_v1', 'public.report_text_v1',
+  assert.deepEqual(sorted(mine), sorted([...SHARED, 'public.finance_my_scope_v1', 'public.finance_type_restricted_v1',
     'app_private.hermes_w2b_catalog_v1', 'app_private.hermes_w2b_read_v1']));
+  // Hai file sửa sau review chỉ THAY định nghĩa của gói (hàm mới duy nhất: hàm dùng chung _v2); file hàm dùng chung không nêu
+  // hàm của trợ lý (như 20261018020050).
+  assert.deepEqual(sorted(created(sharedFix)), sorted(['public.finance_my_scope_v1', 'public.finance_type_restricted_v1', 'public.report_text_v1',
+    'public.finance_analysis_top_expenses_v2', 'public.finance_analysis_top_expenses_v1', 'public.profit_shareholder_summary_v1']));
+  assert.doesNotMatch(sharedFix, /\bhermes_/i);
+  assert.deepEqual(created(mainFix), ['app_private.hermes_w2b_read_v1']);
   assert.doesNotMatch(main, /copilot/i, 'không có chữ của trợ lý cũ');
   assert.doesNotMatch(stripComments(main), /\bDROP\b|ALTER TABLE|INSERT INTO|UPDATE public|DELETE FROM|hermes_capabilities SET/i);
   const reader = stripComments(block(main, 'app_private.hermes_w2b_read_v1'));
@@ -79,7 +110,7 @@ test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname||'.'||p.proname=ANY($1)`, [mine])).rows;
   assert.equal(procs.length, mine.length);
-  const expected = { 'public.finance_my_scope_v1': [true, 'search_path=pg_catalog, public, app_private'], 'public.report_text_v1': [false, 'search_path=pg_catalog'],
+  const expected = { 'public.finance_my_scope_v1': [true, 'search_path=pg_catalog, public, app_private'],
     'public.finance_type_restricted_v1': [true, 'search_path=pg_catalog, public'],
     'app_private.hermes_w2b_catalog_v1': [true, 'search_path=pg_catalog, app_private'], 'app_private.hermes_w2b_read_v1': [false, 'search_path=pg_catalog, public'],
     ...Object.fromEntries(SHARED.map(name => [name, [false, 'search_path=""']])) };
@@ -90,6 +121,7 @@ test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app
   }
   // Hàm dùng chung tự từ chối khi KHÔNG chạy dưới vai authenticated (vd. bị một hàm DEFINER gọi: bỏ qua RLS).
   for (const sql of ['SELECT count(*) FROM public.cashbook_list_v1($1::uuid)', 'SELECT count(*) FROM public.finance_analysis_top_expenses_v1($1::uuid,current_date,current_date)',
+    'SELECT count(*) FROM public.finance_analysis_top_expenses_v2($1::uuid,current_date,current_date)', "SELECT public.report_text_v1('x',10)",
     'SELECT public.profit_my_share_v1($1::uuid)', 'SELECT public.profit_shareholder_summary_v1($1::uuid)',
     "SELECT count(*) FROM public.cashbook_daily_v1($1::uuid,'2026-10-01','2026-10-02')", 'SELECT count(*) FROM public.cashbook_cash_flow_v1($1::uuid,2026)',
     'SELECT count(*) FROM public.cashbook_closings_v1($1::uuid)', "SELECT public.finance_analysis_type_breakdown_v1($1::uuid,'2026-10-01','2026-10-02')"]) {
@@ -98,6 +130,43 @@ test('cấu trúc: hàm đọc gói INVOKER (pg_catalog,public) không gọi app
     await db.exec('ROLLBACK TO SAVEPOINT role_check; RELEASE SAVEPOINT role_check');
     assert.equal(failed?.code, '42501', sql);
   }
+}));
+
+test('mục lục: MỌI báo cáo gói B là private (số liệu tài chính nội bộ) — khai báo JS và mục lục crm_read_report_list', () => inCase(async env => {
+  const { db } = env;
+  assert.equal(Object.keys(W2B_REPORTS).length, 19);
+  for (const [report, spec] of Object.entries(W2B_REPORTS)) {
+    assert.equal(spec.private, true, report);
+    assert.equal(w2CatalogEntry(report, spec, 'b').private, true, report);
+  }
+  const keys = [...new Set(Object.values(W2B_REPORTS).map(spec => spec.permission))];
+  await grantRead(db, keys);
+  await db.exec(`INSERT INTO public.super_admins VALUES('${USER}')`);
+  const input = W2.reads.report_list.input({ topic: 'tai_chinh' });
+  const listed = W2.reads.report_list.result(await env.reportList(input.topic), { effective: { read: keys, action: [] } }, input).items;
+  assert.deepEqual(sorted(listed.map(entry => entry.report)), sorted(Object.keys(W2B_REPORTS)), 'mục lục đủ 19 báo cáo khi đủ khoá');
+  assert.ok(listed.every(entry => entry.private === true), 'mọi mục private=true');
+}));
+
+test('report_text_v1: cùng công thức chữ an toàn (giữ xuống dòng, bỏ ký tự điều khiển, cắt theo ký tự) dưới vai authenticated', () => inCase(async env => {
+  const text = (value, max) => web(env, 'public.report_text_v1($1::text,$2::integer)', [value, max]);
+  const raw = `  a\r\nb c\u0007d\u009f  `;
+  assert.deepEqual([await text(raw, 100), await text(raw, 3), await text(null, 5), await text('abc', -1)], ['a\nb\ncd', 'a\nb', null, '']);
+}));
+
+test('cờ hạn chế (DEFINER) chỉ trả lời cho hạng mục thuộc công ty của chính người gọi: id công ty khác hoặc id lạ ⇒ NULL', () => inCase(async env => {
+  const { db } = env;
+  const FOREIGN_TYPE = '0b0b0b0b-0000-4000-8000-000000000901', UNKNOWN_TYPE = '0b0b0b0b-0000-4000-8000-000000000902';
+  await db.exec(`INSERT INTO public.income_expense_types(id,organization_id,type,name,is_restricted) VALUES('${FOREIGN_TYPE}','${FOREIGN}','expense','Lương công ty khác',true)`);
+  const flag = (typeId, merged = true, actor = USER) => web(env, 'public.finance_type_restricted_v1($1::uuid,$2::boolean)', [typeId, merged], actor);
+  assert.deepEqual([await flag(RESTRICTED_CATEGORY), await flag(CATEGORY), await flag(FOREIGN_TYPE), await flag(UNKNOWN_TYPE)], [true, false, null, null]);
+  assert.equal(await flag(RESTRICTED_CATEGORY, true, OTHER_USER), null, 'người gọi không thuộc công ty của hạng mục (my_org_ids của fixture rỗng) ⇒ NULL');
+  // Hạng mục hạn chế gộp vào hạng mục thường: chỉ khi hỏi kèm nguồn gộp (chế độ cash).
+  await db.exec(`UPDATE public.income_expense_types SET merged_into_id='${CATEGORY}' WHERE id='${RESTRICTED_CATEGORY}'`);
+  assert.deepEqual([await flag(CATEGORY, true), await flag(CATEGORY, false)], [true, false]);
+  // Phạm vi = my_org_ids(): người hỏi thuộc thêm công ty kia thì được trả lời cho hạng mục của công ty đó.
+  await secondOrg(db);
+  assert.equal(await flag(FOREIGN_TYPE), true);
 }));
 
 test('B1 sổ quỹ theo ngày = RPC web cashbook_opening_balance + cashflow_by_day (từng toà khi kết nối theo toà; một chuỗi "Tất cả" khi Toàn tổ chức)', { timeout: 120000 }, () => inCase(async env => {
@@ -331,6 +400,28 @@ test('B7 10 khoản chi lớn = hàm dùng chung (INVOKER, RLS) trên toà kết
   assert.equal((await webRows(env, "SELECT * FROM public.finance_analysis_top_expenses_v1($1::uuid,'2026-10-01','2026-10-31','{}',10)", [ORG])).length, 0, "'{}' = rỗng");
 }));
 
+test('B7 10 khoản chi lớn: 101 phiếu hạn chế của người khác lớn hơn đứng trước — vẫn ra đúng phiếu hợp lệ (lọc trong hàm nguồn, TRƯỚC khi xếp/cắt)', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  const pick = rows => rows.map(row => [row.code, num(row.totalAmount ?? row.total_amount)]);
+  // restricted_view chỉ ở toà B: RLS web cho thấy phiếu hạn chế (có quyền ở đâu đó); kết nối toà A ⇒ Hermes phải ẩn.
+  await db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
+  await restrictedAhead(db);
+  const source = (limit, narrow) => webRows(env, 'SELECT * FROM public.finance_analysis_top_expenses_v2($1::uuid,$2::date,$3::date,$4::uuid[],$5::integer,$6::boolean)',
+    [ORG, '2026-10-01', '2026-10-31', [BUILDING], limit, narrow]);
+  const top100 = await source(100, null);
+  assert.ok(top100.length === 100 && top100.every(row => row.has_restricted_item && row.user_id === OTHER_USER), '100 phiếu đầu đều là phiếu hạn chế của người khác');
+  assert.deepEqual(pick(await source(10, false)), [['PC-401', 800000], ['PC-404', 300000]], 'hàm nguồn thu hẹp trước LIMIT');
+  assert.deepEqual(pick(await source(10, true)), pick(top100.slice(0, 10)), 'true = như RLS (không mở rộng)');
+  assert.deepEqual(pick((await all(env, 'top_expenses', { month: '2026-10' })).items), [['PC-401', 800000], ['PC-404', 300000]]);
+  // Phủ mọi toà ⇒ 10 phiếu lớn nhất, kể cả phiếu hạn chế (như web).
+  await grantRead(db, [RESTRICTED]);
+  assert.deepEqual((await all(env, 'top_expenses', { month: '2026-10' })).items.map(row => row.code),
+    Array.from({ length: 10 }, (_, i) => `PC-R${String(100 - i).padStart(3, '0')}`));
+  // Bản _v1 (web gọi được) = _v2 không thu hẹp.
+  assert.deepEqual(pick(await webRows(env, "SELECT * FROM public.finance_analysis_top_expenses_v1($1::uuid,'2026-10-01','2026-10-31',$2::uuid[],100)", [ORG, [BUILDING]])),
+    pick(await source(100, null)));
+}));
+
 test('B8 Hiệu quả kinh doanh: RPC web "tất cả hoặc không" chỉ nhận toà web cho phép ∩ restricted_view của CRM và kết nối', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await db.exec(`INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,voucher_date,total_amount,approval_status,kqkd_amount) VALUES
@@ -386,26 +477,59 @@ test('B10 cổ đông tự xem: chỉ phần của CHÍNH người hỏi trong c
   await assert.rejects(web(env, 'public.profit_my_share_v1($1::uuid,NULL)', [ORG]), code('42501'), 'hàm dùng chung tự kiểm khoá web');
 }));
 
-test('B10 quản lý: cần shareholder_profit.view + Toàn tổ chức; dòng nhìn thấy do RLS quyết (người tạo, chủ công ty, super admin, chính cổ đông)', { timeout: 120000 }, () => inCase(async env => {
+test('B10 quản lý: như tab "Tổng quan" quản lý của web — shareholder_profit.view VÀ isManager (super admin, chốt/mở chốt LN, chia LN, quản lý cổ đông) + Toàn tổ chức; dòng nhìn thấy do RLS quyết', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
+  const summaryOf = (actor = USER) => web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG], actor);
+  const mine = value => value.items.map(row => [row.shareholderId, row.accrued, row.paid, row.remaining, row.yearAccrued]);
   await grantRead(db, ['shareholder_profit.view'], { orgWide: true });
   assert.equal((await run(env, 'profit_shareholders')).unavailable, 'organization_scope_required');
   await orgOverlay(db);
+  // Chỉ quyền xem: web không phải isManager ⇒ không có tab ⇒ 42501 ở Hermes lẫn hàm dùng chung.
+  await assert.rejects(run(env, 'profit_shareholders'), code('42501'), 'chỉ quyền xem');
+  await assert.rejects(summaryOf(), code('42501'), 'chỉ quyền xem: hàm dùng chung');
+  // Từng quyền quản lý một, mỗi quyền đủ mở tab (ProfitHubPage.tsx:51).
+  for (const [label, on, off] of [
+    ['super admin', `INSERT INTO public.super_admins VALUES('${USER}')`, `DELETE FROM public.super_admins WHERE user_id='${USER}'`],
+    ['chốt LN', `INSERT INTO public.fixture_profit_close VALUES('${USER}','${ORG}',true,false)`, 'DELETE FROM public.fixture_profit_close'],
+    ['mở chốt LN', `INSERT INTO public.fixture_profit_close VALUES('${USER}','${ORG}',false,true)`, 'DELETE FROM public.fixture_profit_close'],
+    ['chia LN (chỉ ở một toà, như canUse không hỏi toà)', crmGrant('shareholder_profit.distribute', false), "DELETE FROM public.fixture_acl WHERE permission='shareholder_profit.distribute'"],
+    ['quản lý cổ đông', crmGrant('shareholder_profit.manage_shareholders'), "DELETE FROM public.fixture_acl WHERE permission='shareholder_profit.manage_shareholders'"],
+  ]) {
+    await db.exec(on);
+    const value = await all(env, 'profit_shareholders', { year: 2026 });
+    if (label === 'super admin') assert.deepEqual(value.items.map(row => row.shareholderId), [SH_OTHER, SH_ME], 'super admin: RLS cho mọi dòng của công ty');
+    else assert.deepEqual(mine(value), [[SH_ME, '4800000', '1200000.00', '3600000.00', '4200000']], `${label}: không phải chủ/người tạo ⇒ chỉ dòng của mình (RLS self)`);
+    assert.ok((await summaryOf()).shareholders.length > 0, `${label}: hàm dùng chung`);
+    await db.exec(off);
+    await assert.rejects(run(env, 'profit_shareholders'), code('42501'), `${label}: gỡ ⇒ hết quyền`);
+  }
+  // Chốt LN ở công ty KHÁC: web (some() mọi công ty) vẫn coi là quản lý; Hermes chỉ xét đúng công ty ⇒ 42501.
+  await db.exec(`INSERT INTO public.fixture_profit_close VALUES('${USER}','${FOREIGN}',true,true)`);
+  await assert.rejects(run(env, 'profit_shareholders'), code('42501'), 'chốt LN ở công ty khác');
+  // Quản lý bị thu hồi.
+  await db.exec(crmGrant('shareholder_profit.distribute'));
   let value = await all(env, 'profit_shareholders', { year: 2026 });
-  assert.deepEqual(value.items.map(row => [row.shareholderId, row.accrued, row.paid, row.remaining, row.yearAccrued]),
-    [[SH_ME, '4800000', '1200000.00', '3600000.00', '4200000']], 'không phải chủ/người tạo: chỉ dòng của chính mình (RLS self)');
   assert.equal(value.summary.lockedProfit, '16000000', 'chỉ kỳ chốt có phần của mình');
+  await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='shareholder_profit.distribute'");
+  await assert.rejects(run(env, 'profit_shareholders'), code('42501'), 'quản lý bị thu hồi');
+  await assert.rejects(summaryOf(), code('42501'), 'quản lý bị thu hồi: hàm dùng chung');
+  // Người tạo cũ (OTHER_USER tạo các dòng: RLS owner_all cho đọc hết) mà không còn quyền quản lý ⇒ 42501; còn quyền chốt ⇒ đọc như RLS.
+  await assert.rejects(summaryOf(OTHER_USER), code('42501'), 'người tạo cũ, chỉ quyền xem');
+  await db.exec(`INSERT INTO public.fixture_profit_close VALUES('${OTHER_USER}','${ORG}',true,false)`);
+  assert.equal((await summaryOf(OTHER_USER)).shareholders.length, 2, 'người tạo còn quyền chốt LN: thấy mọi dòng (RLS owner_all)');
+  await db.exec(`DELETE FROM public.fixture_profit_close WHERE user_id='${OTHER_USER}'`);
+  await assert.rejects(summaryOf(OTHER_USER), code('42501'), 'người tạo cũ mất quyền chốt LN');
+  // Chủ công ty (RLS owner) + quyền quản lý: mọi cổ đông, tổng các cột.
+  await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='shareholder_profit.distribute'");
   await db.exec(`INSERT INTO public.fixture_company_owners VALUES('${ORG}','${USER}')`);
   value = await all(env, 'profit_shareholders');
   assert.deepEqual(value.items.map(row => [row.name, row.accrued, row.paid, row.yearAccrued]),
     [['Cổ đông Khác', '7000000', '2500000.00', null], ['Cổ đông Tôi', '4800000', '1200000.00', null]]);
   assert.deepEqual(value.summary, { lockedProfit: '16000000', accrued: '11800000', paid: '3700000.00', remaining: '8100000.00' });
-  const webSummary = await web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG]);
-  assert.deepEqual(webSummary.shareholders.map(row => num(row.remaining)), value.items.map(row => num(row.remaining)));
-  assert.deepEqual((await web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG], OTHER_USER)).shareholders.length, 2, 'người tạo dòng thấy (RLS owner_all)');
+  assert.deepEqual((await summaryOf()).shareholders.map(row => num(row.remaining)), value.items.map(row => num(row.remaining)));
   await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='shareholder_profit.view'");
   await assert.rejects(run(env, 'profit_shareholders'), code('42501'));
-  await assert.rejects(web(env, 'public.profit_shareholder_summary_v1($1::uuid,NULL)', [ORG]), code('42501'), 'hàm dùng chung tự kiểm khoá web');
+  await assert.rejects(summaryOf(), code('42501'), 'hàm dùng chung tự kiểm khoá web');
 }));
 
 test('B12 ví cá nhân = personal_finance_snapshot của CHÍNH người hỏi (không theo công ty/toà, không gọi bootstrap)', { timeout: 120000 }, () => inCase(async env => {
@@ -428,6 +552,27 @@ test('B12 ví cá nhân = personal_finance_snapshot của CHÍNH người hỏi 
   assert.equal((await all(env, 'personal_transactions', { query: 'ăn uống' })).items.length, 2);
   assert.ok(!JSON.stringify([wallets, tx]).includes('777777') && !JSON.stringify(tx).includes('123456'), 'không bao giờ dữ liệu người khác');
   assert.equal((await db.query('SELECT count(*)::int n FROM public.personal_wallets')).rows[0].n, 3, 'không ghi (không bootstrap)');
+}));
+
+test('B12 ví cá nhân nhiều ví (1999/2000/2001): tổng trên MỌI ví, hàng sắp như snapshot, cắt 2000, sourceCapped theo tổng thật', { timeout: 180000 }, () => inCase(async env => {
+  const { db } = env;
+  await grantRead(db, ['personal_finance.view']);
+  await db.exec(`UPDATE app_private.hermes_connections SET scope_ids='{}'; UPDATE app_private.hermes_org_policies SET scope_ids='{}'`);
+  for (const total of [1999, 2000, 2001]) {
+    await db.exec('SAVEPOINT wallets');
+    await extraWallets(db, total - 2);
+    const snap = await web(env, 'public.personal_finance_snapshot()');
+    assert.equal(snap.wallets.length, total);
+    const first = await run(env, 'personal_wallets');
+    const last = await run(env, 'personal_wallets', {}, { offset: 1950 });
+    const kept = Math.min(total, 2000);
+    assert.deepEqual([first.items.map(row => row.walletId), last.items.map(row => row.walletId)],
+      [snap.wallets.slice(0, 50).map(row => row.id), snap.wallets.slice(1950, kept).map(row => row.id)], `${total}: thứ tự như snapshot (mặc định, tên, id)`);
+    assert.deepEqual([first.nextOffset, last.nextOffset, last.sourceCapped, first.sourceCapped], [50, null, total > 2000, total > 2000], `${total}: trang/trần`);
+    // Tổng trên mọi ví (kể cả ví bị cắt): 2 ví nền 1 905 000 + mỗi ví thêm 1.
+    assert.deepEqual(last.summary, { totalBalance: String(1905000 + total - 2), wallets: total }, `${total}: tổng`);
+    await db.exec('ROLLBACK TO SAVEPOINT wallets; RELEASE SAVEPOINT wallets');
+  }
 }));
 
 test('B11 biến động số dư (scope platform): chỉ super admin; chỉ siêu dữ liệu (không bản mã, không số tiền), không ghi dấu vết xem nội dung', { timeout: 120000 }, () => inCase(async env => {
@@ -468,7 +613,7 @@ test('rào đầu ra broker: hàng nêu toà ngoài fence/phạm vi CRM, sai ngu
 // chung (web gọi thẳng, không có rào của cổng) VÀ đòi cổng từ chối 42501 — organizationId lấy từ cột nguồn, không chép ctx.
 const gateCode = promise => promise.then(() => 'ok', error => error.code);
 const replaceExactly = (sql, from, to) => { assert.equal(sql.split(from).length, 2, `anchor: ${from}`); return sql.replace(from, () => to); };
-const mutate = (...pairs) => pairs.reduce((sql, [from, to]) => replaceExactly(sql, from, to), main);
+const mutate = (...pairs) => pairs.reduce((sql, [from, to]) => replaceExactly(sql, from, to), live);
 const probes = [
   { name: 'chốt sổ chỉ sổ nhìn thấy (chặt hơn web)', sql: mutate([`    WHERE (p_status IS NULL OR p_status='CONFIRMED') AND (e->>'cashbook_id')::uuid=ANY(v_books)`,
     `    WHERE (p_status IS NULL OR p_status='CONFIRMED')`]),
@@ -531,7 +676,7 @@ const probes = [
     `    WHERE v_ok OR t.type_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.income_expense_types it WHERE it.id=t.type_id AND it.is_restricted);`]),
     run: async env => (await all(env, 'fa_type_breakdown', { fromDate: '2026-10-01', toDate: '2026-10-31', basis: 'cash' })).items.some(row => row.typeName === 'Lương') },
   { name: 'hạng mục hạn chế: hạng mục hạn chế gộp vào hạng mục thường (cash)', sql: mutate([
-    `    AND (t.id=p_type_id OR COALESCE(p_merged,true) AND t.merged_into_id=p_type_id));`, `    AND t.id=p_type_id);`]),
+    `    AND (r.id=p_type_id OR COALESCE(p_merged,true) AND r.merged_into_id=p_type_id));`, `    AND r.id=p_type_id);`]),
     run: async env => { await env.db.exec(`UPDATE public.income_expense_types SET merged_into_id='${CATEGORY}' WHERE id='${RESTRICTED_CATEGORY}'`);
       return (await all(env, 'fa_type_breakdown', { fromDate: '2026-10-01', toDate: '2026-10-31', basis: 'cash' })).items.some(row => num(row.totalAmount) > 800000); } },
   { name: 'sổ quỹ ngày: "Tất cả" chỉ khi người hỏi thuộc đúng công ty (RLS sổ hẹp hơn tập sổ RPC web cộng)', sql: mutate([
@@ -559,9 +704,20 @@ const probes = [
       await secondOrg(env.db);
       await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
       return JSON.stringify((await all(env, 'cash_flow', { year: 2026 })).summary) !== JSON.stringify(one); } },
-  { name: 'chi lớn: phiếu hạn chế người khác cần restricted_view phủ toà', sql: mutate([` AND (NOT t.has_restricted_item OR t.user_id=auth.uid() OR v_ok)`, '']),
+  { name: 'chi lớn: hàm đọc truyền restricted_view của kết nối (v_ok) vào hàm nguồn', sql: mutate([`v_buildings,10,v_ok) t) x;`, `v_buildings,10,NULL) t) x;`]),
     run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
       return (await all(env, 'top_expenses', { month: '2026-10' })).items.some(row => row.code === 'PC-402'); } },
+  { name: 'chi lớn: hàm nguồn bỏ phiếu hạn chế của người khác khi được thu hẹp', sql: mutate([`
+    AND (p_include_restricted IS NOT FALSE OR NOT ie.has_restricted_item OR ie.user_id=auth.uid())`, '']),
+    run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
+      return (await all(env, 'top_expenses', { month: '2026-10' })).items.some(row => row.code === 'PC-402'); } },
+  { name: 'chi lớn: lọc phiếu hạn chế TRƯỚC khi xếp/cắt (không lọc sau 100 phiếu của hàm nguồn)', sql: mutate([
+    `v_buildings,10,v_ok) t) x;`, `v_buildings,100,NULL) t
+      WHERE (NOT t.has_restricted_item OR t.user_id=auth.uid() OR v_ok)
+      ORDER BY t.total_amount DESC,t.voucher_date DESC,t.voucher_id LIMIT 10) x;`]),
+    run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
+      await restrictedAhead(env.db);
+      return JSON.stringify((await all(env, 'top_expenses', { month: '2026-10' })).items.map(row => row.code)) !== JSON.stringify(['PC-401', 'PC-404']); } },
   { name: 'chi lớn: hàm dùng chung chỉ trên toà của khoá', sql: mutate([`    AND ie.voucher_date BETWEEN p_start_date AND p_end_date AND ie.building_id=ANY(v_buildings)`,
     `    AND ie.voucher_date BETWEEN p_start_date AND p_end_date`]),
     run: async env => { await env.db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='reports_finance.analysis'`);
@@ -575,6 +731,7 @@ const probes = [
   { name: 'tổng quan cổ đông: chỉ cổ đông của đúng công ty', sql: mutate([`    SELECT s.id,s.name,s.organization_id FROM public.shareholders s WHERE s.organization_id=p_organization_id AND s.deleted_at IS NULL`,
     `    SELECT s.id,s.name,s.organization_id FROM public.shareholders s WHERE s.deleted_at IS NULL`]),
     run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await orgOverlay(env.db);
+      await env.db.exec(crmGrant('shareholder_profit.distribute'));
       const direct = (await web(env, 'public.profit_shareholder_summary_v1($1::uuid)', [ORG])).shareholders.some(row => row.name === 'Cổ đông ngoài');
       // Cổ đông công ty khác mang organization_id của công ty đó ⇒ rào công ty của cổng từ chối.
       return direct && await gateCode(all(env, 'profit_shareholders')) === '42501'; } },
@@ -594,11 +751,44 @@ const probes = [
   { name: 'hàm dùng chung: chỉ chạy dưới vai authenticated (không bị DEFINER gọi bỏ qua RLS)', sql: mutate([`  IF current_user<>'authenticated' OR auth.uid() IS NULL OR p_organization_id IS NULL THEN
     RAISE EXCEPTION 'profit_summary_denied'`, `  IF auth.uid() IS NULL OR p_organization_id IS NULL THEN
     RAISE EXCEPTION 'profit_summary_denied'`]),
-    run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await env.db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true)`);
+    run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await env.db.exec(crmGrant('shareholder_profit.distribute'));
+      await env.db.exec(`SELECT set_config('request.jwt.claim.sub','${USER}',true)`);
       return (await env.db.query(`SELECT jsonb_array_length(public.profit_shareholder_summary_v1('${ORG}')->'shareholders') n`)).rows[0].n > 1; } },
+  // Sửa sau review PR #208 (20261018020300).
+  { name: 'tổng quan cổ đông: điều kiện isManager của web (chỉ quyền xem ⇒ không có tab)', sql: mutate([`  -- isManager: RPC chốt LN chỉ gọi khi ba điều kiện rẻ hơn đều không có.
+  IF NOT (COALESCE(public.is_super_admin(),false)`, `  IF false AND NOT (COALESCE(public.is_super_admin(),false)`]),
+    run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await orgOverlay(env.db);
+      return (await all(env, 'profit_shareholders')).items.length > 0; } },
+  { name: 'tổng quan cổ đông: quyền chốt/mở chốt LN chỉ tính ở ĐÚNG công ty', sql: mutate([`        WHERE o->>'organization_id'=p_organization_id::text
+          AND (COALESCE`, `        WHERE (COALESCE`]),
+    run: async env => { await grantRead(env.db, ['shareholder_profit.view'], { orgWide: true }); await orgOverlay(env.db);
+      await env.db.exec(`INSERT INTO public.fixture_profit_close VALUES('${USER}','${FOREIGN}',true,true)`);
+      return (await all(env, 'profit_shareholders')).items.length > 0; } },
+  { name: 'cờ hạn chế: chỉ trả lời cho hạng mục thuộc công ty của người gọi', sql: mutate([
+    `  IF auth.uid() IS NULL OR v_org IS NULL OR NOT COALESCE(v_org=ANY(public.my_org_ids()),false) THEN RETURN NULL; END IF;`, `  IF v_org IS NULL THEN RETURN NULL; END IF;`]),
+    run: async env => { await env.db.exec(`INSERT INTO public.income_expense_types(id,organization_id,type,name,is_restricted)
+        VALUES('0b0b0b0b-0000-4000-8000-000000000901','${FOREIGN}','expense','Lương công ty khác',true)`);
+      return await web(env, "public.finance_type_restricted_v1('0b0b0b0b-0000-4000-8000-000000000901',true)") !== null; } },
+  { name: 'report_text_v1: chỉ chạy dưới vai authenticated', sql: mutate([
+    `  IF current_user<>'authenticated' THEN RAISE EXCEPTION 'report_text_denied' USING ERRCODE='42501'; END IF;\n`, '']),
+    run: async env => (await env.db.query("SELECT public.report_text_v1('a'||chr(7)||'b',10) t")).rows[0].t === 'ab' },
+  { name: 'ví cá nhân: cắt 2000 hàng (trần của cổng)', sql: mutate([`            FROM wal ORDER BY wal.is_default DESC,wal.wname,wal.wid LIMIT 2000) p),`,
+    `            FROM wal ORDER BY wal.is_default DESC,wal.wname,wal.wid) p),`]),
+    run: async env => { await grantRead(env.db, ['personal_finance.view']); await extraWallets(env.db, 1999);
+      return await gateCode(run(env, 'personal_wallets')) !== 'ok'; } },
+  { name: 'ví cá nhân: tổng và số ví trên MỌI ví, không chỉ phần trả về', sql: mutate([`        INTO v_rows,v_a,v_n FROM wal;`,
+    `        INTO v_rows,v_a,v_n FROM (SELECT * FROM wal ORDER BY wal.is_default DESC,wal.wname,wal.wid LIMIT 2000) wal;`]),
+    run: async env => { await grantRead(env.db, ['personal_finance.view']); await extraWallets(env.db, 1999);
+      const { summary } = await run(env, 'personal_wallets');
+      return summary.totalBalance !== '1906999' || summary.wallets !== 2001; } },
+  { name: 'ví cá nhân: sourceCapped theo tổng thật (đúng 2000 ví không bị cắt)', sql: mutate([`      v_summary:=jsonb_build_object('totalBalance',v_a::text,'wallets',v_n);
+      v_capped:=v_n>2000;`, `      v_summary:=jsonb_build_object('totalBalance',v_a::text,'wallets',v_n);
+      v_capped:=v_n>=2000;`]),
+    run: async env => { await grantRead(env.db, ['personal_finance.view']); await extraWallets(env.db, 1998);
+      return (await run(env, 'personal_wallets')).sourceCapped; } },
 ];
 for (const probe of probes) {
-  const changed = changedFunctions(main, probe.sql);
+  const changed = changedFunctions(live, probe.sql);
   test(`mutation is caught: ${probe.name}`, { timeout: 120000 }, async () => {
     await inCase(async env => assert.equal(await probe.run(env).catch(() => false), false, 'bản sống từ chối'));
     await inCase(async env => {

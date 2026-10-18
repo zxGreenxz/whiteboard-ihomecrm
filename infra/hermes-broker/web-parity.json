@@ -789,13 +789,20 @@
       ],
       "hermes": [
         {
-          "sql": "public.finance_analysis_top_expenses_v1",
+          "sql": "public.finance_analysis_top_expenses_v2",
           "note": "top_expenses"
+        },
+        {
+          "sql": "public.finance_analysis_top_expenses_v1",
+          "calls": [
+            "finance_analysis_top_expenses_v2"
+          ],
+          "note": "top_expenses (bản web gọi được = _v2 không thu hẹp)"
         },
         {
           "sql": "app_private.hermes_w2b_read_v1",
           "calls": [
-            "finance_analysis_top_expenses_v1"
+            "finance_analysis_top_expenses_v2"
           ],
           "note": "top_expenses"
         },
@@ -804,7 +811,7 @@
           "contains": "crm.finance_analysis_top_expenses_v1"
         }
       ],
-      "notes": "Đã biết 18/10 (cố ý): web lấy 100 phiếu MỚI NHẤT của kỳ rồi mới xếp theo số tiền (sai khi tháng có hơn 100 phiếu chi), Hermes xếp trên cả kỳ rồi lấy 10; Hermes ẩn thêm phiếu hạn chế của người khác khi restricted_view không phủ mọi toà. queries.ts chỉ bọc quy tắc business_result_only → kqkd_amount > 0; deleted_at và nhánh approval_status = APPROVED của hook chưa bọc."
+      "notes": "Đã biết 18/10 (cố ý): web lấy 100 phiếu MỚI NHẤT của kỳ rồi mới xếp theo số tiền (sai khi tháng có hơn 100 phiếu chi), Hermes xếp trên cả kỳ rồi lấy 10; Hermes ẩn thêm phiếu hạn chế của người khác khi restricted_view không phủ mọi toà — lọc trong finance_analysis_top_expenses_v2 (p_include_restricted=false) TRƯỚC khi xếp/cắt, không lọc sau LIMIT (sửa sau review PR #208). queries.ts chỉ bọc quy tắc business_result_only → kqkd_amount > 0; deleted_at và nhánh approval_status = APPROVED của hook chưa bọc."
     },
     {
       "id": "business-performance",
@@ -925,13 +932,17 @@
         {
           "path": "src/pages/reports/finance/ProfitHubPage.tsx",
           "region": "shareholder-profit",
-          "sha256": "fefd32766006e753d7f712045beb64edcbec1623a40ffc90a50c1b8e564a0751"
+          "sha256": "465e5868510f5e5b94bf832a67b3442f66b4e7c4daa691a535ec43ee09b03db7"
         }
       ],
       "webCalls": [
         {
           "path": "src/hooks/useShareholders.ts",
           "rpc": "get_my_share_buildings"
+        },
+        {
+          "path": "src/hooks/useShareholderProfit.ts",
+          "rpc": "profit_close_scopes_v2"
         }
       ],
       "hermes": [
@@ -944,7 +955,10 @@
         },
         {
           "sql": "public.profit_shareholder_summary_v1",
-          "note": "profit_shareholders"
+          "calls": [
+            "profit_close_scopes_v2"
+          ],
+          "note": "profit_shareholders (isManager: chốt/mở chốt LN như useProfitCloseOrganizations)"
         },
         {
           "sql": "app_private.hermes_w2b_read_v1",
@@ -963,7 +977,7 @@
           "contains": "crm.profit_shareholder_summary_v1"
         }
       ],
-      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager; ProfitHubPage chỉ bọc hai khoá quyền (canReport, canViewManagedProfit). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy."
+      "notes": "Đã biết 18/10: tab tự xem của web chỉ hiện khi canReport && !isManager (người quản lý lợi nhuận thấy tab quản lý thay vào), Hermes profit_my_share trả phần của chính người hỏi nếu họ là cổ đông và có reports_finance.profit_distribution, không áp !isManager. ProfitHubPage bọc canReport, canViewManagedProfit và isManager (super admin, canLock/canUnlock, distribute, manage_shareholders): profit_shareholders đòi shareholder_profit.view VÀ isManager như tab Tổng quan quản lý (sửa sau review PR #208), chặt hơn web ở chỗ chốt/mở chốt LN chỉ tính ở đúng công ty kết nối (web some() mọi công ty). Hermes lọc năm bằng extract(year) còn web startsWith(năm). Dòng nhìn thấy do RLS profit_*/shareholders/income_expenses quyết, Hermes không chép policy."
     },
     {
       "id": "personal-finance",
@@ -1012,7 +1026,7 @@
           "contains": "crm.personal_finance_snapshot"
         }
       ],
-      "notes": "Tổng số dư summary.totalBalance của personal_wallets theo selectBalance (cộng mọi ví của snapshot, kể cả ví ẩn) — vùng personal-finance-balance. Hermes lọc giao dịch (ngày, loại, từ khoá mô tả/danh mục) trên thứ tự của snapshot (txn_date giảm dần, đã bỏ dòng xoá), không chép bộ chọn selectTransactions/selectMonth của web."
+      "notes": "Tổng số dư summary.totalBalance của personal_wallets theo selectBalance (cộng mọi ví của snapshot, kể cả ví ẩn) — vùng personal-finance-balance; tổng và số ví tính trên MỌI ví, hàng sắp như snapshot (mặc định, tên, id) và cắt 2000 (sourceCapped theo tổng thật). Hermes lọc giao dịch (ngày, loại, từ khoá mô tả/danh mục) trên thứ tự của snapshot (txn_date giảm dần, đã bỏ dòng xoá), không chép bộ chọn selectTransactions/selectMonth của web."
     },
     {
       "id": "bank-events",

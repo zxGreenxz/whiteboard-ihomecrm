@@ -1,7 +1,10 @@
 // Gói B đợt 2 — Sổ quỹ, dòng tiền, kết quả kinh doanh, lợi nhuận cổ đông, ví cá nhân, biến động
 // số dư. File của RIÊNG Gói B. SQL cùng gói: app_private.hermes_w2b_catalog_v1 (khớp từng trường với
 // khai báo ở đây, test wave2-b.test.mjs so khớp) và app_private.hermes_w2b_read_v1 — migration
-// 20261018020200_hermes_w2b_finance_read_v1.sql (hàm dùng chung, áp trước: 20261018020050_hermes_w2b_finance_shared_v1.sql).
+// 20261018020200_hermes_w2b_finance_read_v1.sql (hàm dùng chung, áp trước: 20261018020050_hermes_w2b_finance_shared_v1.sql);
+// sửa sau review PR #208 (thay bản định nghĩa, áp sau hai file trên): 20261018020250_hermes_w2b_finance_shared_fixes_v1.sql (top
+// khoản chi _v2, isManager tổng quan cổ đông, report_text_v1, cờ hạn chế theo công ty) rồi 20261018020300_hermes_w2b_finance_read_fixes_v1.sql (ví).
+// Mọi báo cáo của gói là private=true (số liệu tài chính nội bộ: chỉ trả lời riêng người hỏi, không đăng vào nhóm — PRIVATE_HINT).
 // Q4 (siết khoá lãi lỗ tháng crm_read_monthly_pnl của đợt 1) KHÔNG ở gói này: phải phát hành cùng Gói Z bật khoá
 // reports_finance.profit_distribution (bản soạn sẵn: 20261018090100_hermes_w2_monthly_pnl_keys_v1.sql ở commit 85ef7ed của
 // nhánh claude/hermes-w2b-continued-828j1x; bản gốc 20261018020100_hermes_w2b_monthly_pnl_keys_v1.sql ở nhánh claude/hermes-w2b).
@@ -26,13 +29,13 @@ const BREAKDOWN = Object.freeze({ buildingId: nullable(id), month: date, side, t
 export const W2B_REPORTS = Object.freeze({
   // B1 — /reports/finance/daily-cashbook (DailyCashbookReport.tsx; useCashBook.ts:42,72,114).
   cashbook_daily: w2Report({ permission: 'reports_finance.daily_cashbook', source: 'crm.cashbook_daily_v1', scope: 'buildings', private: true,
-    title: 'Sổ quỹ theo ngày: tồn đầu, thu, chi, tồn cuối từng ngày (mặc định đầu tháng → hôm nay), mọi sổ xem được hoặc một sổ (cashbookId). Toàn tổ chức: một chuỗi buildingId=null (mọi toà); không thì từng toà.',
+    title: 'Sổ quỹ theo ngày: tồn đầu, thu, chi, tồn cuối từng ngày (mặc định đầu tháng → hôm nay), mọi sổ xem được hoặc một sổ (cashbookId). buildingId=null: hàng tổng hợp toàn công ty, chỉ khi kết nối Toàn tổ chức; không thì từng toà.',
     params: ['fromDate', 'toDate', 'cashbookId', 'buildingId'],
     fields: { buildingId: nullable(id), date, opening: money, income: money, expense: money, closing: money },
     summary: { fromDate: date, toDate: date, cashbookId: nullable(id), openingBalance: money, totalIncome: money, totalExpense: money, closingBalance: money } }),
   // B2 — /reports/finance/cash-flow (CashFlowReport.tsx:38-75): cashflow_by_day cả năm, gộp tháng/quý.
   cash_flow: w2Report({ permission: 'reports_finance.cash_flow', source: 'crm.cashbook_cash_flow_v1', scope: 'buildings', private: true,
-    title: 'Dòng tiền năm (mặc định năm nay): thu, chi, ròng từng tháng (YYYY-MM) và quý (YYYY-Q1..Q4) trên mọi sổ xem được. Toàn tổ chức: buildingId=null (mọi toà); không thì từng toà.',
+    title: 'Dòng tiền năm (mặc định năm nay): thu, chi, ròng từng tháng (YYYY-MM) và quý (YYYY-Q1..Q4) trên mọi sổ xem được. buildingId=null: hàng tổng hợp toàn công ty, chỉ khi kết nối Toàn tổ chức; không thì từng toà.',
     params: ['year', 'buildingId'],
     fields: { buildingId: nullable(id), period: longText(10), income: money, expense: money, net: money },
     summary: { year, income: money, expense: money, net: money } }),
@@ -51,52 +54,52 @@ export const W2B_REPORTS = Object.freeze({
       confirmedAt: nullable(instant), createdAt: nullable(instant), mineToConfirm: bool, note: nullable(longText(300)) } }),
 
   // B7 — /reports/finance/analysis (useFinancialAnalysis.ts; ExpenseTab.tsx:61-83).
-  fa_type_breakdown: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_type_breakdown_v1', scope: 'buildings', scopeKeys: [RESTRICTED],
-    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate; basis accrual (mặc định) hoặc cash; buildingId=null là gộp mọi toà. Hạng mục hạn chế chỉ có khi restrictedIncluded=true; cash: hạng mục thường có hạng mục hạn chế gộp vào cũng ẩn.',
+  fa_type_breakdown: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_type_breakdown_v1', scope: 'buildings', private: true, scopeKeys: [RESTRICTED],
+    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate, basis accrual (mặc định)|cash. buildingId=null: hàng tổng hợp toàn công ty, chỉ khi kết nối Toàn tổ chức; không thì từng toà. Hạng mục hạn chế chỉ khi restrictedIncluded=true; cash: ẩn cả hạng mục thường có hạn chế gộp vào.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: BREAKDOWN, summary: { basis: value => value === 'accrual' || value === 'cash', restrictedIncluded: bool } }),
-  fa_snapshot_kpis: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_snapshot_kpis', scope: 'rows',
+  fa_snapshot_kpis: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_snapshot_kpis', scope: 'rows', private: true,
     title: 'Phân tích tài chính — ảnh chụp từng toà hôm nay: phòng theo trạng thái, thất thu phòng trống, HĐ hiệu lực, giá thuê TB, cọc đang giữ, công nợ và tuổi nợ.',
     params: ['buildingId'],
     fields: { buildingId: id, buildingName: name, totalRooms: count, roomsAvailable: count, roomsOccupied: count, roomsReserved: count,
       roomsMaintenance: count, roomsUnavailable: count, vacancyLossMonth: money, activeContracts: count, avgRent: money, depositHeld: money,
       receivableTotal: money, agingNotDue: money, aging1To30: money, aging31To60: money, aging61To90: money, agingOver90: money } }),
-  fa_occupancy_monthly: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_occupancy_monthly', scope: 'rows',
+  fa_occupancy_monthly: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_occupancy_monthly', scope: 'rows', private: true,
     title: 'Phân tích tài chính — lấp đầy theo tháng từng toà (phòng có HĐ giao tháng / tổng phòng), fromDate..toDate.',
     params: ['fromDate', 'toDate', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: { month: date, buildingId: id, buildingName: name, totalRooms: count, occupiedRooms: count, occupancyPct: money } }),
-  fa_lease_events: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_lease_events', scope: 'rows',
+  fa_lease_events: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_lease_events', scope: 'rows', private: true,
     title: 'Phân tích tài chính — HĐ ký mới, gia hạn, thanh lý theo tháng từng toà, fromDate..toDate (chỉ tháng có sự kiện).',
     params: ['fromDate', 'toDate', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: { month: date, buildingId: id, buildingName: name, newContracts: count, renewals: count, terminations: count } }),
-  fa_invoice_collection: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_invoice_collection', scope: 'rows',
+  fa_invoice_collection: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_invoice_collection', scope: 'rows', private: true,
     title: 'Phân tích tài chính — thu hồi hoá đơn theo kỳ (billingMonth) từng toà, các kỳ từ tháng của fromDate đến tháng của toDate: phát hành, đã thu, còn nợ, số HĐ theo trạng thái.',
     params: ['fromDate', 'toDate', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: { billingMonth: longText(7), buildingId: id, buildingName: name, billed: money, collected: money, remaining: money, invoiceCount: count,
       draftCount: count, pendingCount: count, approvedCount: count, paidCount: count, partialCount: count, overdueCount: count } }),
-  top_expenses: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_top_expenses_v1', scope: 'rows', scopeKeys: [RESTRICTED],
+  top_expenses: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_top_expenses_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
     title: 'Phân tích tài chính — 10 khoản chi KQKD đã duyệt lớn nhất của tháng month: ngày, mã, tên phiếu, toà, hạng mục, số tiền.',
     params: ['month', 'buildingId'], required: ['month'],
     fields: { voucherId: id, voucherDate: date, code: nullable(longText(60)), name, buildingId: id, buildingName: name,
       itemTypes: nullable(longText(300)), totalAmount: money } }),
 
   // B8 — /reports/finance/business-performance (useBusinessPerformance.ts:897-1229; useBusinessPerformanceGatedData.ts).
-  bp_pnl: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_pnl_v1', scope: 'rows', scopeKeys: [RESTRICTED],
+  bp_pnl: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_pnl_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
     title: 'Hiệu quả kinh doanh — lãi lỗ từng tháng từng toà thật, fromDate..toDate; basis accrual (mặc định) hoặc cash. Cần quyền xem phiếu hạn chế ở mọi toà của báo cáo.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: { month: date, buildingId: id, buildingName: name, revenue: money, expense: money, net: money } }),
-  bp_cohort: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_invoice_cohort_v1', scope: 'rows', scopeKeys: [RESTRICTED],
+  bp_cohort: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_invoice_cohort_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
     title: 'Hiệu quả kinh doanh — thu hồi hoá đơn kỳ month từng toà: phí kỳ đã phát hành/đã thu/còn lại, tỷ lệ thu, nợ mang sang, cọc, nháp chờ duyệt, quyết toán.',
     params: ['month', 'buildingId'], required: ['month'],
     fields: { buildingId: id, buildingName: name, cohortMonth: date, cohortAvailable: bool, billed: money, collected: money, remaining: money,
       collectionRatePct: nullable(money), invoiceCount: count, carriedInvoiceDebt: money, carriedDepositDebt: money, currentDeposit: money,
       draftPendingCount: count, draftPendingAmount: money, settlementCount: count, settlementAmount: money } }),
-  bp_cash_received: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_cash_received_v1', scope: 'rows', scopeKeys: [RESTRICTED],
+  bp_cash_received: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_cash_received_v1', scope: 'rows', private: true, scopeKeys: [RESTRICTED],
     title: 'Hiệu quả kinh doanh — tiền thực thu trong tháng month từng toà: số tiền, số lần thu, ngày thu đầu/cuối.',
     params: ['month', 'buildingId'], required: ['month'],
     fields: { buildingId: id, buildingName: name, cashMonth: date, cashReceived: money, paymentEventCount: count,
       firstPaymentDate: nullable(date), lastPaymentDate: nullable(date) } }),
-  bp_categories: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_category_breakdown_v1', scope: 'buildings', scopeKeys: [RESTRICTED],
+  bp_categories: w2Report({ permission: 'reports_finance.analysis', source: 'crm.business_performance_category_breakdown_v1', scope: 'buildings', private: true, scopeKeys: [RESTRICTED],
     title: 'Hiệu quả kinh doanh — cơ cấu thu/chi theo hạng mục từng tháng của từng toà thật, fromDate..toDate; basis accrual (mặc định) hoặc cash.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: BREAKDOWN }),

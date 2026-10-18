@@ -44,12 +44,12 @@ export default function ProfitHubPage() {
   // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
   const canViewManagedProfit = canUse(perms, "shareholder_profit", "view");
-  // hermes-parity:end shareholder-profit
   const canLock = profitCloseOrganizations.some((organization) => organization.can_lock);
   const canUnlock = profitCloseOrganizations.some((organization) => organization.can_unlock);
   const canDistribute = canUse(perms, "shareholder_profit", "distribute");
   const canManageShareholders = canUse(perms, "shareholder_profit", "manage_shareholders");
   const isManager = !!perms?.__superadmin || canLock || canUnlock || canDistribute || canManageShareholders;
+  // hermes-parity:end shareholder-profit
 
   // Cổ đông-partner (B.Huy…) được cấp quyền xem báo cáo LN → thêm tab "Tổng quan"
   // xem phần lợi nhuận của CHÍNH MÌNH (RLS tự lọc, không lộ cổ đông khác). Quản lý
