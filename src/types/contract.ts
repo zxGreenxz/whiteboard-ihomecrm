@@ -1,4 +1,5 @@
 import type { SupportPlanInput } from '@/lib/rentSupport';
+import { addDaysISO, vnTodayISO } from '@/lib/vnDate';
 // =============================================
 // Contract Module Types
 // =============================================
@@ -177,18 +178,14 @@ export function isContractInEffect(status?: string | null): boolean {
 }
 
 // hermes-parity:begin contract-search — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
-// Nhãn hiển thị — CÙNG công thức với public.contract_display_status_v1 (SQL) và cùng mốc ngày
-// org_today_v1 (múi giờ công ty, mặc định Asia/Ho_Chi_Minh, không đổi giờ mùa hè ⇒ UTC+7 cố
-// định). Danh sách/thống kê đọc nhãn do SQL tính; màn chi tiết và ghi chú phiếu tính tại chỗ
-// bằng đúng hàm dưới — khoá bằng contractListV1Migration.test.ts (JS = SQL mọi giờ trong ngày).
-const VN_UTC_OFFSET_MS = 7 * 3_600_000;
-const DAY_MS = 86_400_000;
+// Nhãn hiển thị — CÙNG công thức với public.contract_display_status_v1 (SQL). Danh sách/thống kê
+// đọc nhãn do SQL tính; màn chi tiết và ghi chú phiếu tính tại chỗ bằng đúng hàm dưới — khoá bằng
+// contractListV1Migration.test.ts (JS = SQL mọi giờ trong ngày).
+// Mốc ngày: JS luôn dùng Asia/Ho_Chi_Minh (vnTodayISO của lib/vnDate); SQL dùng org_today_v1 =
+// organization_timezones của công ty, mặc định Asia/Ho_Chi_Minh. Hiện mọi công ty đều theo mặc
+// định; công ty nào đặt múi giờ khác thì nhãn tính tại chỗ (chi tiết) có thể lệch nhãn SQL quanh
+// nửa đêm cho tới khi chi tiết cũng đọc nhãn từ SQL.
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Hôm nay theo giờ Việt Nam, dạng YYYY-MM-DD. */
-export function vnTodayISO(nowMs: number = Date.now()): string {
-  return new Date(nowMs + VN_UTC_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 /** Nhãn theo một ngày mốc cho trước (YYYY-MM-DD) — dùng khi "hôm nay" do server cấp. */
 export function contractDisplayStatusOn(
@@ -201,9 +198,9 @@ export function contractDisplayStatusOn(
   if (contract.expected_move_out_date) return 'MOVING_OUT';
   // Thiếu/hỏng ngày (end_date hoặc mốc) ⇒ 'ACTIVE', như SQL so với NULL rơi xuống ELSE.
   const end = typeof contract.end_date === 'string' ? contract.end_date.slice(0, 10) : '';
-  if (!ISO_DATE.test(end) || !ISO_DATE.test(todayISO)) return 'ACTIVE';
+  const in30 = ISO_DATE.test(todayISO) ? addDaysISO(todayISO, 30) : null;
+  if (!ISO_DATE.test(end) || in30 === null) return 'ACTIVE';
   if (end < todayISO) return 'EXPIRED';
-  const in30 = new Date(Date.parse(`${todayISO}T00:00:00Z`) + 30 * DAY_MS).toISOString().slice(0, 10);
   if (end <= in30) return 'EXPIRING';
   return 'ACTIVE';
 }

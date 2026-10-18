@@ -890,7 +890,7 @@
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 17/10/2026, chuyển sang SECURITY INVOKER + RLS ngày 18/10/2026 theo review PR #197 (danh sách Hợp đồng + 4 ô thống kê thành hàm SQL dùng chung). Chưa đi qua lane apply production — 4 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp qua lane trên TEST, PGlite 18 ca + 18 đột biến, khớp số TEST 5 vai. Sẽ áp production qua npm run migrate:forward sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 17/10/2026, chuyển sang SECURITY INVOKER + RLS ngày 18/10/2026 theo review PR #197 (danh sách Hợp đồng + 4 ô thống kê thành hàm SQL dùng chung). Chưa đi qua lane apply production — 4 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã áp qua lane trên TEST, PGlite 18 ca + 19 đột biến, khớp số TEST 5 vai. Sẽ áp production qua npm run migrate:forward sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:public.contract_display_status_v1",
         "function:public.contract_display_label_v1",
@@ -898,7 +898,7 @@
         "function:public.contract_stats_v2"
       ],
       "raSoatBoi": "Claude Code — Hợp đồng hàm dùng chung 17/10/2026",
-      "sha256": "0a52a529123e792b24039208ce770e0aa02c652094c79d5cbfbf28398fa6520e"
+      "sha256": "6ed5fae7fd30a7d996414a43d8eb283c304a665abc063e98a7af3db68b9b1ad0"
     }
   }
 }

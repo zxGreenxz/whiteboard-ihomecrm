@@ -444,6 +444,11 @@ describe("contract_list_v1 — nhãn hiển thị và bộ lọc", () => {
     expect((await list(OWNER_A, { search: "%,()" })).total).toBe((await list(OWNER_A)).total);
     expect(nums(await list(OWNER_A, { search: "HD-X*TERM" }))).toEqual(["HD-X-TERM"]);
     expect(nums(await list(OWNER_A, { search: "0903333" })).sort()).toEqual(["HD-X-ACT", "HD-Y-ACT"]);
+    // Khi đang tìm, cột khách của trang lấy từ cùng tập liên kết đã gom để tìm (đại diện đứng đầu).
+    const ccOf = (r: Result, n: string) => r.rows.find((x) => x.contract_number === n)!.contract_customers.map((c) => c.customer?.full_name ?? null);
+    expect(ccOf(await list(OWNER_A, { search: "0903333" }), "HD-X-ACT")).toEqual(["Nguyễn Văn An", "Trần Thị Bình"]);
+    expect(ccOf(await list(OWNER_A, { search: "hd-x-act" }), "HD-X-ACT")).toEqual(["Nguyễn Văn An", "Trần Thị Bình"]);
+    expect(ccOf(await list(OWNER_A, { search: "hd-x-act", withCustomers: false }), "HD-X-ACT")).toEqual([null, null]);
     const room101 = nums(await list(OWNER_A, { room: "101" }));
     expect(room101).toEqual(expect.arrayContaining(["HD-X-ACT", "HD-Y-ACT"]));
     expect(room101).not.toContain("HD-X-TODAY");

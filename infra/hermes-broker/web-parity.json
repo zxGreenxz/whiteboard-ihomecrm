@@ -332,7 +332,7 @@
         {
           "path": "src/types/contract.ts",
           "region": "contract-search",
-          "sha256": "ffdadc6a6293086daa9c76c1cfdc400d242b0a1ecdab6841bd0f8c2aff87b6be"
+          "sha256": "83eccc3b45a3ffbf96ae36e94f14e8554bfa46672eaa50fc06e7086f1cff0de6"
         }
       ],
       "webCalls": [
@@ -348,7 +348,7 @@
       "sql": [
         {
           "function": "public.contract_list_v1",
-          "sha256": "f4ec6747fc3268abc0c1deb3f3d781ebd1db9f74c6e8145cc564db5275e118d3"
+          "sha256": "ad823a77889c58d6766a03c9734899037eaf6dc84495bd9cd1f2547c9c3da9e0"
         },
         {
           "function": "public.contract_stats_v2",

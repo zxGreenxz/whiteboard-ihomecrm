@@ -16,6 +16,7 @@ import { assertImportedContractRelations } from "@/lib/contractImportOutcome";
 import { markLocalWrite } from "@/hooks/useRealtimeDataSync";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { withOrg, withOrgAll } from "@/lib/orgPayload";
+import { vnTodayISO } from "@/lib/vnDate";
 import {
   createContractV2,
   buildCreateContractRpcArgs,
@@ -234,18 +235,42 @@ const contractReadClient: { rpc: ContractReadRpc } = {
 /** Tháng hợp lệ YYYY-MM. Giá trị lưu trong phiên (flt:contracts:month) sai dạng ⇒ bỏ lọc như web cũ. */
 const MONTH_FILTER = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 
-/** ms tới 00:00 kế tiếp giờ VN (+5 s). Nhãn và ô thống kê đổi theo ngày ⇒ trang mở qua nửa đêm tự đọc lại. */
+/** ms tới 00:00 kế tiếp giờ VN (+5 s). Giờ VN không đổi theo mùa ⇒ UTC+7 cố định. */
 export const msToNextVnMidnight = (nowMs: number = Date.now()): number =>
   86_400_000 - ((nowMs + 7 * 3_600_000) % 86_400_000) + 5_000;
+
+/**
+ * Lịch đọc lại theo NGÀY cho danh sách và ô thống kê: SQL trả `today` (ngày công ty, org_today_v1).
+ * - `today` cũ hơn hôm nay giờ VN (tab mở qua nửa đêm, đồng hồ lệch) ⇒ đọc lại sau 60 s;
+ * - còn lại ⇒ ngay sau 00:00 giờ VN kế tiếp.
+ * Cộng jitter 0–30 s để các tab không cùng gọi một lúc.
+ */
+export function contractDayRefetchMs(
+  sqlToday: string | undefined,
+  nowMs: number = Date.now(),
+  random: () => number = Math.random,
+): number {
+  const jitter = Math.floor(random() * 30_000);
+  if (sqlToday && sqlToday < vnTodayISO(new Date(nowMs))) return 60_000 + jitter;
+  return msToNextVnMidnight(nowMs) + jitter;
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Trang danh sách + ngày công ty mà SQL dùng để tính nhãn. */
+export type ContractListPage = PaginatedData<ContractListRow> & { today: string };
+/** 4 ô thống kê + ngày công ty mà SQL dùng. */
+export type ContractStatsOfDay = ContractStats & { today: string };
 
 const CONTRACT_DISPLAY_STATUSES: readonly ContractDisplayStatus[] = [
   "ACTIVE", "EXPIRING", "EXPIRED", "MOVING_OUT", "TERMINATED", "TRANSFERRED", "DRAFT",
 ];
 
 /** Không biến phản hồi hỏng thành danh sách rỗng / tổng 0 / nhãn đoán. */
-function readContractListPage(data: unknown): PaginatedData<ContractListRow> {
+function readContractListPage(data: unknown): ContractListPage {
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new TypeError("Chưa đọc được danh sách hợp đồng.");
-  const { total, rows } = data as { total?: unknown; rows?: unknown };
+  const { total, rows, today } = data as { total?: unknown; rows?: unknown; today?: unknown };
+  if (typeof today !== "string" || !ISO_DAY.test(today)) throw new TypeError("Chưa xác nhận được ngày tính nhãn hợp đồng.");
   if (typeof total !== "number" || !Number.isSafeInteger(total) || total < 0) throw new TypeError("Chưa xác nhận được tổng số hợp đồng.");
   const list = financialReadRows(rows as ContractListRow[] | null | undefined);
   for (const row of list) {
@@ -253,7 +278,7 @@ function readContractListPage(data: unknown): PaginatedData<ContractListRow> {
       throw new TypeError("Chưa đọc được đủ thông tin hợp đồng.");
     }
   }
-  return { data: list, count: total };
+  return { data: list, count: total, today };
 }
 
 /** Query 1 trang (hoặc 1 khúc cho export). Dùng chung bởi useContractsPaged +
@@ -261,7 +286,7 @@ function readContractListPage(data: unknown): PaginatedData<ContractListRow> {
 async function fetchContractsPagedOnce(
   filters: ContractPagedFilters | undefined,
   range: { from: number; to: number } | null,
-): Promise<PaginatedData<ContractListRow>> {
+): Promise<ContractListPage> {
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
 
@@ -290,7 +315,7 @@ export const contractsPagedQuery = (
 ) => ({
   queryKey: ["contracts", "paged", filters ?? null, pagination ?? null] as const,
   gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5' hay bị GC trước khi bấm)
-  queryFn: async (): Promise<PaginatedData<ContractListRow>> => {
+  queryFn: async (): Promise<ContractListPage> => {
     const range = pagination
       ? {
           from: (pagination.page - 1) * pagination.pageSize,
@@ -309,8 +334,8 @@ export const useContractsPaged = (
     ...contractsPagedQuery(filters, pagination),
     // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
     placeholderData: keepPreviousData,
-    // Nhãn theo ngày: qua 00:00 giờ VN đọc lại một lần (kể cả tab nền).
-    refetchInterval: () => msToNextVnMidnight(),
+    // Nhãn theo ngày: qua 00:00 giờ VN đọc lại (kể cả tab nền); ngày SQL đã cũ ⇒ đọc lại sau 60 s.
+    refetchInterval: (query) => contractDayRefetchMs(query.state.data?.today),
     refetchIntervalInBackground: true,
   });
 };
@@ -360,7 +385,7 @@ const contractHeadCountBase = (buildingIds?: string[]) => {
 export const contractStatsQuery = (buildingIds?: string[]) => ({
     queryKey: ["contracts", "stats", buildingIds ?? []] as const,
     gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
-    queryFn: async (): Promise<ContractStats> => {
+    queryFn: async (): Promise<ContractStatsOfDay> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -373,11 +398,13 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       }
       if (!data || typeof data !== "object" || Array.isArray(data)) throw new TypeError("Chưa tải đủ thống kê hợp đồng.");
       const row = data as Record<string, unknown>;
+      if (typeof row.today !== "string" || !ISO_DAY.test(row.today)) throw new TypeError("Chưa tải đủ thống kê hợp đồng.");
       return {
         total: financialReadNumber(row.total),
         expiring: financialReadNumber(row.expiring),
         expired: financialReadNumber(row.expired),
         terminated: financialReadNumber(row.terminated),
+        today: row.today,
       };
     },
   });
@@ -387,8 +414,8 @@ export const useContractStats = (buildingIds?: string[]) => {
     ...contractStatsQuery(buildingIds),
     meta: { errorDisplay: 'inline', label: 'thống kê hợp đồng' },
     placeholderData: keepPreviousData,
-    // Ô "sắp hết hạn"/"quá hạn" đổi theo ngày: qua 00:00 giờ VN đọc lại như danh sách.
-    refetchInterval: () => msToNextVnMidnight(),
+    // Ô "sắp hết hạn"/"quá hạn" đổi theo ngày: cùng lịch đọc lại với danh sách.
+    refetchInterval: (query) => contractDayRefetchMs(query.state.data?.today),
     refetchIntervalInBackground: true,
   });
 };
@@ -422,24 +449,21 @@ export const useContractDashboardCounts = (buildingId?: string | null) => {
 
       const buildingIds = buildingId ? [buildingId] : undefined;
       const now = new Date();
-      const today = toLocalISODate(now);
       const monthStart = toLocalISODate(
         new Date(now.getFullYear(), now.getMonth(), 1),
       );
-      const in30d = new Date();
-      in30d.setDate(in30d.getDate() + 30);
-      const in30 = toLocalISODate(in30d);
 
-      const results = await Promise.all([
-        contractHeadCountBase(buildingIds).eq("status", "ACTIVE"),
-        contractHeadCountBase(buildingIds).gte("start_date", monthStart),
-        contractHeadCountBase(buildingIds)
-          .eq("status", "ACTIVE")
-          .gte("end_date", today)
-          .lte("end_date", in30),
-        contractHeadCountBase(buildingIds)
-          .eq("status", "TERMINATED")
-          .gte("end_date", monthStart),
+      // "Sắp hết hạn" = đúng ô Sắp hết hạn của màn Hợp đồng (contract_stats_v2: cùng RLS, ngày
+      // công ty và hàm nhãn) — không tự đếm lại theo ngày máy.
+      const [results, stats] = await Promise.all([
+        Promise.all([
+          contractHeadCountBase(buildingIds).eq("status", "ACTIVE"),
+          contractHeadCountBase(buildingIds).gte("start_date", monthStart),
+          contractHeadCountBase(buildingIds)
+            .eq("status", "TERMINATED")
+            .gte("end_date", monthStart),
+        ]),
+        contractReadClient.rpc("contract_stats_v2", { p_building_ids: buildingIds }),
       ]);
 
       for (const r of results) {
@@ -448,12 +472,17 @@ export const useContractDashboardCounts = (buildingId?: string | null) => {
           throw r.error;
         }
       }
+      if (stats.error) {
+        console.error("useContractDashboardCounts error:", stats.error);
+        throw stats.error;
+      }
+      if (!stats.data || typeof stats.data !== "object" || Array.isArray(stats.data)) throw new TypeError("Chưa xác nhận được tổng số hợp đồng.");
 
-      const [active, newThisMonth, expiringSoon, terminatedThisMonth] = results;
+      const [active, newThisMonth, terminatedThisMonth] = results;
       return {
         active: confirmedContractCount(active.count),
         newThisMonth: confirmedContractCount(newThisMonth.count),
-        expiringSoon: confirmedContractCount(expiringSoon.count),
+        expiringSoon: confirmedContractCount((stats.data as Record<string, unknown>).expiring),
         terminatedThisMonth: confirmedContractCount(terminatedThisMonth.count),
       };
     },

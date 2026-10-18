@@ -133,6 +133,9 @@ export function fmtNgay(iso: string | null | undefined): string {
  */
 export function trangThaiHopDong(f: Pick<CommissionVoucherFacts,
   "status" | "end_date" | "expected_move_out_date" | "today">): ContractDisplayStatus {
+  // Giữ như trước: HĐ còn mang trạng thái cũ EXPIRED (enum ngưng dùng) in là Quá hạn trong ghi chú
+  // phiếu, kể cả khi ngày kết thúc chưa tới. Nhãn danh sách/SQL thì tính theo ngày.
+  if (f.status === "EXPIRED" && !f.expected_move_out_date) return "EXPIRED";
   return contractDisplayStatusOn({
     status: (f.status ?? "") as Contract["status"],
     end_date: f.end_date ?? "",

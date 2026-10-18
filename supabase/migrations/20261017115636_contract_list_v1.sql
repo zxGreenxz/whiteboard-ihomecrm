@@ -137,15 +137,17 @@ BEGIN
 
   v_today := public.org_today_v1(NULL);
 
-  -- Mỗi bảng chỉ được tham chiếu MỘT lần trong câu: mỗi lần tham chiếu là một lượt policy RLS
-  -- với các InitPlan riêng (accessible_*_ids ≈ 35 ms/lượt đo trên TEST 18/10/2026).
-  WITH links AS MATERIALIZED (
-    -- Liên kết HĐ–khách thấy được (RLS contract_customers) + khách thấy được (RLS customers, LEFT
-    -- JOIN như embed web): dùng chung cho tìm theo khách và cột contract_customers của trang.
+  -- Mỗi lần tham chiếu bảng là thêm một lượt policy RLS với InitPlan riêng (accessible_*_ids ≈ 35 ms
+  -- đo trên TEST 18/10/2026) ⇒ mỗi bảng chỉ CHẠY một lần trong câu. Liên kết HĐ–khách chỉ gom
+  -- toàn bộ khi đang tìm theo khách (links_search, dùng lại cho cột của trang); còn lại chỉ đọc
+  -- cho các HĐ của trang hiện tại (links_page). Hai nhánh loại trừ nhau bằng điều kiện hằng
+  -- (One-Time Filter) nên nhánh không dùng không quét và không chạy policy.
+  WITH links_search AS MATERIALIZED (
     SELECT cc.id, cc.contract_id, cc.customer_id, cc.is_representative, cc.created_at,
            cu.id AS cu_id, cu.full_name, cu.phone
       FROM public.contract_customers cc
       LEFT JOIN public.customers cu ON cu.id = cc.customer_id
+     WHERE v_pattern IS NOT NULL AND v_customers
   ),
   hits AS MATERIALIZED (
     SELECT c AS crow, c.id, c.created_at, r.id AS room_id, r.name AS room_name,
@@ -170,7 +172,7 @@ BEGIN
             OR r.name ILIKE v_pattern
             OR (v_customers AND EXISTS (
                   SELECT 1
-                    FROM links l
+                    FROM links_search l
                    WHERE l.contract_id = c.id
                      AND l.cu_id IS NOT NULL
                      AND (l.full_name ILIKE v_pattern OR l.phone ILIKE v_pattern))))
@@ -180,6 +182,14 @@ BEGIN
       FROM hits h
      ORDER BY h.created_at DESC, h.id
      LIMIT v_limit OFFSET v_offset
+  ),
+  links_page AS MATERIALIZED (
+    SELECT cc.id, cc.contract_id, cc.customer_id, cc.is_representative, cc.created_at,
+           cu.id AS cu_id, cu.full_name, cu.phone
+      FROM public.contract_customers cc
+      LEFT JOIN public.customers cu ON cu.id = cc.customer_id
+     WHERE NOT (v_pattern IS NOT NULL AND v_customers)
+       AND cc.contract_id IN (SELECT p.id FROM page p)
   ),
   people AS MATERIALIZED (
     -- Đại diện đứng đầu; khách không thấy được (RLS) hoặc bị ẩn thêm ⇒ customer = null như embed web.
@@ -192,8 +202,9 @@ BEGIN
              'customer', CASE WHEN v_customers AND l.cu_id IS NOT NULL
                THEN jsonb_build_object('id', l.cu_id, 'full_name', l.full_name, 'phone', l.phone) END)
              ORDER BY COALESCE(l.is_representative, false) DESC, l.created_at, l.id) AS items
-      FROM links l
-     WHERE l.contract_id IN (SELECT p.id FROM page p)
+      FROM (SELECT * FROM links_search s WHERE s.contract_id IN (SELECT p.id FROM page p)
+            UNION ALL
+            SELECT * FROM links_page) l
      GROUP BY l.contract_id
   )
   SELECT jsonb_build_object(
