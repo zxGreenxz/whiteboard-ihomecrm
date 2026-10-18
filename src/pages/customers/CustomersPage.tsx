@@ -10,7 +10,7 @@ import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
-import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
+import { useCustomers, useCreateCustomer } from '@/hooks/useCustomers';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { RefreshBar } from '@/components/loading/LoadingState';
 import { friendlyError } from '@/lib/friendlyError';
@@ -47,8 +47,8 @@ function CustomersDesktopPage() {
   // (match HĐ đang hiệu lực qua contract_customers trong useCustomers).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:customers:buildingIds', []);
   const [searchQuery, setSearchQuery] = usePersistedState('flt:customers:search', '');
-  // Search đẩy xuống server (list + RPC stats) → debounce 350ms như mobile để
-  // mỗi phím không bắn 2 request; input vẫn hiển thị searchQuery nên gõ phản
+  // Search đẩy xuống server (customer_list_v1: danh sách + thẻ đếm) → debounce 350ms
+  // như mobile để mỗi phím không bắn request; input vẫn hiển thị searchQuery nên gõ phản
   // hồi tức thì. Khởi tạo từ giá trị khôi phục để F5 không fetch 2 lần.
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchQuery.trim());
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -100,23 +100,12 @@ function CustomersDesktopPage() {
     [filters, buildingIds, activeTab, activeStatFilter, debouncedSearch]
   );
 
-  // Stats filters (same as effective but without statFilter to get all counts)
-
-  const statsFilters = useMemo<CustomerFilters>(
-    () => ({
-      ...filters,
-      building_id: buildingIds.length === 1 ? buildingIds[0] : undefined,
-      status: activeTab,
-      search: debouncedSearch || undefined,
-    }),
-    [filters, buildingIds, activeTab, debouncedSearch]
-  );
-
   // Data fetching
   const customersQuery = useCustomers(effectiveFilters, { page, pageSize });
-  const statsQuery = useCustomerStats(statsFilters);
   const { data: customersData } = customersQuery;
-  const { data: stats } = statsQuery;
+  // Thẻ đếm đi cùng lời gọi danh sách: khối stats của customer_list_v1 đếm trên cùng tập
+  // lọc nhưng BỎ QUA thẻ loại đang chọn — đúng nghĩa bộ lọc thẻ cũ (statsFilters).
+  const stats = customersData?.stats;
   const createCustomer = useCreateCustomer({ silent: true });
 
   const customers = customersData?.data ?? [];
@@ -234,7 +223,8 @@ function CustomersDesktopPage() {
   return (
     <MainLayout title="Quản lý Khách hàng" subtitle="Quản lý thông tin khách hàng" icon={Users}>
       {/* Chủ chốt 02/10/2026: tab, bộ lọc, thanh công cụ hiện ngay; thẻ thống kê và bảng
-          là hai vùng chờ riêng (hai nguồn độc lập) — mỗi vùng tự báo lỗi của nó. */}
+          là hai vùng chờ riêng — mỗi vùng tự báo lỗi của nó. Từ 18/10 cả hai đọc cùng một
+          lời gọi customer_list_v1 nên chờ và lỗi cùng lúc. */}
       <div className="space-y-4">
         {/* Status Tabs */}
         <CustomerStatusTabs activeTab={activeTab} onTabChange={handleTabChange} />
@@ -242,7 +232,7 @@ function CustomersDesktopPage() {
         {/* Stats Cards — chưa có số thì ô số là vạch xám, không in 0. */}
         <QueryRegion
           label="thống kê khách hàng"
-          queries={[statsQuery]}
+          queries={[customersQuery]}
           loading={
             <CustomerStatsCards
               stats={null}
