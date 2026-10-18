@@ -294,15 +294,15 @@
       "sql": [
         {
           "function": "public.invoice_list_v1",
-          "sha256": "58098fe9d2f4488aec31b48a85ee7a2a3aa929a27cac92b74a874ffb9f1b88e2"
+          "sha256": "f347c11a5c131d209cfa8708588b2815dfffde2264423cfaba2c322b2f058bc2"
         },
         {
           "function": "public.invoice_scope_building_ids_v1",
-          "sha256": "f099f853773307fd2dc6731d147f1c0d05dbd8ddb18f6b59c32da4e62d43c105"
+          "sha256": "e06e517224176a6ded943800e8957dc657460f1ac082248033e875c460cc7571"
         },
         {
           "function": "public.invoice_receipt_methods_v1",
-          "sha256": "9435d7f3d96cfd05353bc3800cfe4b66304b44a763db630dfd5423a4c575dc56"
+          "sha256": "139f25c244437a4b51901ff76f0773231326d40fe016e079a7188eec1027a045"
         }
       ]
     },
@@ -319,23 +319,15 @@
       "sql": [
         {
           "function": "public.invoice_statistics_v3",
-          "sha256": "a1362aa7c1b1c44c5d32c900f688db2f3c78248d8861583478f5a1794e965d8c"
+          "sha256": "13c812437725268d9151ef3264c637e409287e94bd30b1a264225dd6dffc0454"
         },
         {
           "function": "public.invoice_scope_building_ids_v1",
-          "sha256": "f099f853773307fd2dc6731d147f1c0d05dbd8ddb18f6b59c32da4e62d43c105"
+          "sha256": "e06e517224176a6ded943800e8957dc657460f1ac082248033e875c460cc7571"
         },
         {
-          "function": "public.invoice_receipt_totals_v1",
-          "sha256": "aa90422f0af52b997b05ed1c9c8365803084db67f5e9d04125fd8b4c5f4919f1"
-        },
-        {
-          "function": "public.invoice_change_voucher_ids_v1",
-          "sha256": "d3e90826ec4aaf066df7ef8e818a277c0a86d8d89ac02b121a28e224a886df80"
-        },
-        {
-          "function": "public.invoice_deposit_item_ids_v1",
-          "sha256": "8f4e3afb0c08951c180e47b58b182aa74c96f1e61de66fadfbc76f3cc8c8fdf4"
+          "function": "public.invoice_statistics_money_v1",
+          "sha256": "b83fb5aaafd76d7c68182db18a059ec60ad6c12a49fc763d7288da1e8f5e8d87"
         }
       ],
       "hermes": [

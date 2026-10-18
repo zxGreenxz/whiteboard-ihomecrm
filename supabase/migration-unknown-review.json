@@ -878,7 +878,7 @@
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261017115809_invoice_read_shared_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_scope_building_ids_v1 / invoice_receipt_methods_v1 / invoice_receipt_totals_v1 / invoice_change_voucher_ids_v1 / invoice_deposit_item_ids_v1 / invoice_list_v1 / invoice_statistics_v3"
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_scope_building_ids_v1 / invoice_receipt_methods_v1 / invoice_statistics_money_v1 / invoice_list_v1 / invoice_statistics_v3"
         },
         {
           "duong_dan": "supabase/migration-provenance.json",
@@ -890,12 +890,12 @@
       "missingObjects": [
         "function:public.invoice_scope_building_ids_v1",
         "function:public.invoice_receipt_methods_v1",
-        "function:public.invoice_receipt_totals_v1",
-        "function:public.invoice_change_voucher_ids_v1",
-        "function:public.invoice_deposit_item_ids_v1"
+        "function:public.invoice_statistics_money_v1",
+        "function:public.invoice_list_v1",
+        "function:public.invoice_statistics_v3"
       ],
-      "raSoatBoi": "Claude Code — Hoá đơn hàm dùng chung 18/10/2026",
-      "sha256": "aa01f64873f7847585069868dab43c0473f097734d1f410b2051e8acdb5a7c11"
+      "raSoatBoi": "Claude Code — Hoá đơn hàm dùng chung 18/10/2026 (sửa theo review PR #201)",
+      "sha256": "c450d90d050ce6200444048bbf667893be33d89745e9d588467e4181a0973025"
     }
   }
 }
