@@ -21,6 +21,9 @@ const dashboardReads: Record<string, string[]> = {
   // Prefetch màn Hoá đơn (src/lib/prefetchPages.ts) đọc qua hai hàm dùng chung (migration 20261017115809).
   invoice_list_v1: ['p_billing_month', 'p_view_status', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_contract_id', 'p_issue_date_from', 'p_issue_date_to', 'p_amount_target', 'p_search', 'p_adjustment_review_status', 'p_payment_method', 'p_limit', 'p_offset'],
   invoice_statistics_v3: ['p_billing_month', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_issue_date_from', 'p_issue_date_to'],
+  // Dialog dùng cùng bộ lọc frontend với thẻ; tên/tham số lạ vẫn bị chặn.
+  invoice_change_breakdown_v1: ['p_billing_month', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_issue_date_from', 'p_issue_date_to'],
+  invoice_deposit_breakdown_v1: ['p_billing_month', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_issue_date_from', 'p_issue_date_to'],
   revenue_by_month: ['p_start', 'p_end', 'p_building_id'],
 };
 const keysOnly = (row: Record<string, unknown>, keys: string[]) => Object.keys(row).every(key => keys.includes(key));

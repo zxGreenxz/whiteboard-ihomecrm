@@ -414,6 +414,8 @@ test('browser guard delegates reads, owns chat and denies every unexpected busin
     get_income_expense_layer_stats: { p_start_date: '2026-09-01', p_end_date: '2026-09-30', p_kqkd_only: true },
     get_invoice_statistics_v2: { p_building_id: null, p_start_date: '2026-09-01', p_end_date: '2026-09-30' },
     invoice_active_payment_methods: { p_invoice_ids: [listingId] },
+    invoice_change_breakdown_v1: { p_billing_month: '2026-10', p_status: 'PAID', p_payment_status: 'paid', p_filter_building_ids: [listingId], p_room_ids: [listingId], p_issue_date_from: '2026-10-01', p_issue_date_to: '2026-10-31' },
+    invoice_deposit_breakdown_v1: { p_billing_month: '2026-10', p_status: 'CANCELLED', p_payment_status: 'unpaid', p_filter_building_ids: [], p_room_ids: [], p_issue_date_from: '2026-10-01', p_issue_date_to: '2026-10-31' },
     revenue_by_month: { p_start: '2026-01-01', p_end: '2026-09-30', p_building_id: null },
   })) {
     const before = guard.counters();
