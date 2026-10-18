@@ -8,6 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist",
+      "test-results/", // Generated Playwright output is recreated while local gates run.
     ],
   },
   {

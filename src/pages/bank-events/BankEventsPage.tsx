@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Check, ChevronLeft, ChevronRight, Copy, Download, Inbox, KeyRound, Mail, Pause, Play, Plus, RefreshCw, Search, ShieldCheck, Smartphone, Wifi } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { useBankEvents } from '@/hooks/bank-events/useBankEvents';
 import MainLayout from '@/components/layout/MainLayout';
 import { bankEventService, eventType, isGmailHeartbeat, type BankEvent, type BankSource, type BankSourceKind, type EventFilters } from '@/lib/bank-events/service';
 import { GmailSetup } from './GmailSetup';
+const BankReconciliation=lazy(()=>import('../bank-reconciliation/BankReconciliation'));
 
 const eventLabels = { 'sms.received': 'SMS', 'notification.received': 'Thông báo app', 'email.received': 'Email', 'gateway.test': 'Tin thử' } as const;
 const scheduleLabels = { 'day-1m': '1 phút/lần (ban ngày)', 'night-10m': '10 phút/lần (00:30–06:30)', 'saver-5m': '5 phút/lần (tiết kiệm hạn mức)' } as const;
@@ -114,14 +115,15 @@ export default function BankEventsPage() {
       <div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400"><Activity className="h-4 w-4" /> Trung tâm tiếp nhận</div><h1 className="text-2xl font-bold tracking-tight md:text-3xl">Biến động số dư</h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Theo dõi tin từ điện thoại, Gmail và kiểm tra các nguồn kết nối tại một nơi.</p></div>
       <div className="flex flex-wrap gap-2"><Button variant="outline" asChild><a href={gatewayApk.url} target="_blank" rel="noopener noreferrer"><Download className="mr-2 h-4 w-4" />Tải app Android<span className="ml-1.5 text-xs text-muted-foreground">v{gatewayApk.version}</span></a></Button><Button variant="outline" onClick={reload} disabled={events.isFetching || sources.isFetching || status.isFetching}><RefreshCw className="mr-2 h-4 w-4" />Làm mới</Button></div>
     </header>
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30"><ShieldCheck className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" /><p><strong>Toàn hệ thống · Chỉ super admin</strong><span className="ml-2 text-muted-foreground">Không giới hạn theo công ty đang chọn.</span></p></div>
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/30"><ShieldCheck className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" /><p><strong>Toàn hệ thống · Chỉ super admin</strong><span className="ml-2 text-muted-foreground">Tin nhận được trên toàn hệ thống; đối chiếu theo công ty đang chọn.</span></p></div>
     <section aria-label="Tổng quan tiếp nhận" className="grid gap-3 sm:grid-cols-3">
       {[{ label: 'Tin đã tiếp nhận', value: summary?.totalEvents.toLocaleString('vi-VN'), icon: Inbox }, { label: 'Nguồn đang bật', value: summary ? `${summary.enabledSources} / ${summary.totalSources}` : undefined, icon: Smartphone }, { label: 'Lần nhận gần nhất', value: summary ? time(summary.lastReceivedAt) : undefined, icon: Wifi }].map(item => <div key={item.label} className="rounded-xl border bg-card p-5"><div className="flex items-center justify-between text-sm text-muted-foreground"><span>{item.label}</span><item.icon className="h-4 w-4" /></div><div className="mt-3 text-xl font-semibold tracking-tight">{item.value ?? '—'}</div></div>)}
     </section>
     {status.isError && <p role="alert" className="text-sm text-destructive">Chưa tải được số liệu vận hành. Bấm Làm mới để thử lại.</p>}
     {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">{error}</div>}
     <Tabs defaultValue="events" className="space-y-5">
-      <TabsList className="grid h-auto w-full grid-cols-3 p-1 md:w-fit"><TabsTrigger value="events" className="px-3 py-2">Tin nhận được</TabsTrigger><TabsTrigger value="sources" className="px-3 py-2">Nguồn kết nối</TabsTrigger><TabsTrigger value="operations" className="px-3 py-2">Vận hành</TabsTrigger></TabsList>
+      <TabsList className="grid h-auto w-full grid-cols-2 p-1 md:w-fit md:grid-cols-4"><TabsTrigger value="reconciliation" className="px-3 py-2">Đối chiếu ngân hàng</TabsTrigger><TabsTrigger value="events" className="px-3 py-2">Tin nhận được</TabsTrigger><TabsTrigger value="sources" className="px-3 py-2">Nguồn kết nối</TabsTrigger><TabsTrigger value="operations" className="px-3 py-2">Vận hành</TabsTrigger></TabsList>
+      <TabsContent value="reconciliation">{allowed&&actorId&&sources.data&&<Suspense fallback={<p>Đang mở đối chiếu…</p>}><BankReconciliation actorId={actorId} sources={sources.data.sources}/></Suspense>}</TabsContent>
       <TabsContent value="events" className="space-y-4">
         <p className="text-xs text-muted-foreground">Tự cập nhật mỗi 15 giây ở trang đầu.</p>
         <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">

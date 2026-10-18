@@ -9,6 +9,8 @@ import autoprefixer from 'autoprefixer';
 import loadTailwindConfig from 'tailwindcss/loadConfig.js';
 import { fixtureActor, fixtureEvent, fixtureSource, fixtureStatus } from '../../src/lib/bank-events/__tests__/fixtures';
 const root = fileURLToPath(new URL('../..', import.meta.url));
+const reconciliationOrg='dddd0000-0000-4000-8000-000000000001';
+const bookId='50000000-0000-4000-8000-000000000001',invoiceId='60000000-0000-4000-8000-000000000001',buildingId='70000000-0000-4000-8000-000000000001';
 let server: ViteDevServer, base: string;
 const entry = `import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,Route,Routes} from 'react-router-dom';import {QueryClient,QueryClientProvider} from '@tanstack/react-query';import {RequireSuperAdmin} from '@/components/auth/RequireSuperAdmin';import Page from '@/pages/bank-events/BankEventsPage';import '@/index.css';createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/bien-dong-so-du']} future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Routes><Route path='/bien-dong-so-du' element={<RequireSuperAdmin><Page/></RequireSuperAdmin>}/><Route path='/' element={<p>Không có quyền truy cập trang tổng</p>}/></Routes></MemoryRouter></QueryClientProvider>);`;
 test.describe.configure({ mode: 'default' });
@@ -17,12 +19,14 @@ test.beforeAll(async () => {
   const virtual = new Map([
     ['virtual:bank-auth', `export const useAuth=()=>({data:{id:'${fixtureActor}'},isLoading:false,error:null});`],
     ['virtual:bank-layout', 'export default function Layout({children}){return children}'],
+    ['virtual:bank-org', `export const useOrganization=()=>({selectedOrganizationId:'${reconciliationOrg}'});`],
+    ['virtual:bank-realtime', 'export const markLocalWrite=()=>{};'],
     ['virtual:bank-client', `export const supabase={auth:{getSession:async()=>({data:{session:{access_token:'fixture-jwt',user:{id:'${fixtureActor}'}}},error:null})},rpc:async(name)=>({data:!location.search.includes('denied'),error:null}),functions:{invoke:async(name,options)=>{const response=await fetch('/__bank-api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(options.body)});return {data:await response.json(),error:null}}}};`],
   ]);
   server = await createServer({ configFile: false, root, cacheDir: path.join(root, '.e2e-fleet/test-results/bank-events-vite'), esbuild: { jsx: 'automatic' },
     css: { postcss: { plugins: [tailwindcss({ ...loadTailwindConfig(path.join(root, 'tailwind.config.ts')), content: [path.join(root, 'src/**/*.{ts,tsx}').replaceAll('\\', '/')] }), autoprefixer()] } },
     optimizeDeps: { noDiscovery: true, include: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client', 'react-router-dom', '@tanstack/react-query', 'lucide-react', 'zod', '@radix-ui/react-dialog', '@radix-ui/react-tabs', '@radix-ui/react-slot', '@radix-ui/react-label'] },
-    resolve: { alias: [{ find: '@/hooks/useAuth', replacement: 'virtual:bank-auth' }, { find: '@/components/layout/MainLayout', replacement: 'virtual:bank-layout' }, { find: '@/integrations/supabase/client', replacement: 'virtual:bank-client' }, { find: '@', replacement: path.join(root, 'src') }] },
+    resolve: { alias: [{find:'@/contexts/OrganizationContext',replacement:'virtual:bank-org'},{find:'@/hooks/useRealtimeDataSync',replacement:'virtual:bank-realtime'},{ find: '@/hooks/useAuth', replacement: 'virtual:bank-auth' }, { find: '@/components/layout/MainLayout', replacement: 'virtual:bank-layout' }, { find: '@/integrations/supabase/client', replacement: 'virtual:bank-client' }, { find: '@', replacement: path.join(root, 'src') }] },
     plugins: [{ name: 'bank-events-fixture', resolveId(id) { if (id === '/__bank.tsx' || virtual.has(id)) return '\0' + id; }, async load(id) { if (id === '\0/__bank.tsx') return (await transformWithEsbuild(entry, 'fixture.tsx', { loader: 'tsx', jsx: 'automatic' })).code; return virtual.get(id.slice(1)); }, configureServer(vite) { vite.middlewares.use(async (req, res, next) => { if (!req.url?.startsWith('/__bank.html')) return next(); res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(await vite.transformIndexHtml('/__bank.html', '<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"></head><body><div id="root"></div><script type="module" src="/__bank.tsx"></script></body></html>')); }); } }],
     server: { host: '127.0.0.1', port: 0, strictPort: true, hmr: false },
   });
@@ -34,7 +38,9 @@ async function setup(page: Page) {
   const calls: Record<string, unknown>[] = [], errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  let sources = [{ ...fixtureSource }];
+  let sources = [{ ...fixtureSource,organizationId:reconciliationOrg }];
+  let transactionState='pending',revision=0,remaining=100000,invoiceRevision=0;
+  const rules:Record<string,unknown>[]=[];
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
@@ -43,11 +49,25 @@ async function setup(page: Page) {
     const body = route.request().postDataJSON() as Record<string, unknown>; calls.push(body);
     let data: unknown;
     switch (body.action) {
+      case 'reconcile': {
+        expect(body.organizationId).toBe(reconciliationOrg);
+        const input=body.input as Record<string,unknown>;
+        if(body.operation==='settings')data={rules,books:[{id:bookId,name:'Sổ ngân hàng DEMO',buildings:[{id:buildingId,name:'Tòa DEMO',method:'TK'}]}]};
+        else if(body.operation==='list')data={events:input.query==='khong-co'?[]:[{id:fixtureEvent.id,sourceId:fixtureSource.id,source:fixtureSource.name,channel:'sms.received',receivedAt:fixtureEvent.receivedAt,
+          facts:{direction:'in',amount:105000,balance:200000,account:'••1234',description:'KHACH MAU A01 TOA DEMO',bank:'DEMO',transactedAt:'2026-10-01T09:00:00+07:00',origin:'bank-demo',reference:null},accountId:bookId,book:'Sổ ngân hàng DEMO',method:'TK',state:transactionState,revision,invoiceId:transactionState==='collected'?invoiceId:null,collectionId:null,reason:null}]};
+        else if(body.operation==='detail')data={candidates:[{id:invoiceId,number:'INV-DEMO-01',building:'Tòa DEMO',buildingId,room:'A01',customerId:'80000000-0000-4000-8000-000000000001',customer:'Khách Mẫu',month:'2026-10',remaining,paid:0,revision:invoiceRevision,delta:105000-remaining,nameMatch:true,roomMatch:true,buildingMatch:true,hasCarriedDebt:false}],existing:[],possibleDuplicates:[],routeCount:1,decision:null};
+        else if(body.operation==='collect'){expect(input.overpayAction).toBe('CREDIT');expect(input.expectedPaid).toBe(0);expect(input.expectedRemaining).toBe(remaining);revision++;transactionState='collected';data={saved:true,eventId:fixtureEvent.id,revision};}
+        else if(body.operation==='undo'){revision++;transactionState='reversed';data={saved:true,eventId:fixtureEvent.id,revision};}
+        else if(body.operation==='save_rule'){rules.push({id:input.id,organization_id:reconciliationOrg,source_id:input.sourceId,event_type:input.eventType,origin:input.origin,account_hint:input.accountHint,description_contains:input.contains,account_id:input.accountId,method:input.method,valid_from:new Date(String(input.validFrom)).toISOString(),enabled:input.enabled,revision:1});data={saved:true,revision:1};}
+        else if(body.operation==='sync')data={cached:1,unparsed:0,failed:0,nextCursor:null};
+        else throw Error('Unplanned reconciliation action');
+        break;
+      }
       case 'status': data = fixtureStatus; break;
       case 'list_sources': data = { sources }; break;
       case 'list_events': data = { events: body.query === 'khong-co' ? [] : [fixtureEvent], nextCursor: body.cursor || body.query === 'khong-co' ? null : 'fixture-next-page' }; break;
       case 'get_event': data = { event: fixtureEvent, payload: { event: 'sms.received', sender: 'BANK-FIXTURE', body: 'NOI_DUNG_THU_NGHIEM_KHONG_PHAI_TIN_THAT' } }; break;
-      case 'create_source': { const source = { ...fixtureSource, id: '44444444-4444-4444-8444-444444444444', name: String(body.name), deviceId: null }; sources.push(source); data = { source, token: 'fixture-token-' + 'x'.repeat(40) }; break; }
+      case 'create_source': { const source = { ...fixtureSource, organizationId:reconciliationOrg, id: '44444444-4444-4444-8444-444444444444', name: String(body.name), deviceId: null }; sources.push(source); data = { source, token: 'fixture-token-' + 'x'.repeat(40) }; break; }
       case 'rotate_source': data = { source: sources.find(source => source.id === body.sourceId), token: 'fixture-rotated-' + 'y'.repeat(40) }; break;
       case 'set_source_enabled': sources = sources.map(source => source.id === body.sourceId ? { ...source, enabled: Boolean(body.enabled) } : source); data = { source: sources.find(source => source.id === body.sourceId) }; break;
       case 'revoke_source': sources = sources.map(source => source.id === body.sourceId ? { ...source, enabled: false, revokedAt: fixtureStatus.serverTime, credentialFingerprint: null, credentialCreatedAt: null } : source); data = { source: sources.find(source => source.id === body.sourceId) }; break;
@@ -55,7 +75,7 @@ async function setup(page: Page) {
     }
     await route.fulfill({ json: { ok: true, data } });
   });
-  return { calls, errors };
+  return { calls, errors, changeInvoice(amount:number){remaining=amount;invoiceRevision++;} };
 }
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) test(`inbox, raw detail and filters at ${viewport.width}px`, async ({ page }, info) => {
   await page.setViewportSize(viewport); const evidence = await setup(page); await page.goto(base + '/__bank.html', { waitUntil: 'domcontentloaded' });
@@ -90,4 +110,52 @@ test('source lifecycle shows credentials once and pauses/revokes with explicit a
 test('non-superadmin never mounts the inbox or calls the admin API', async ({ page }) => {
   const evidence = await setup(page); await page.goto(base + '/__bank.html?denied=owner-admin-sentinel', { waitUntil: 'domcontentloaded' }); await expect(page.getByText('Không có quyền truy cập trang tổng')).toBeVisible();
   expect(evidence.calls).toEqual([]); expect(evidence.errors).toEqual([]);
+});
+
+for(const width of [1440,390])test(`reconciliation filters, explicit excess confirmation and undo at ${width}px`,async({page},info)=>{
+ await page.setViewportSize({width,height:1000});const evidence=await setup(page);await page.goto(base+'/__bank.html',{waitUntil:'domcontentloaded'});
+ await page.getByRole('tab',{name:'Đối chiếu ngân hàng'}).click();
+ await expect(page.getByRole('heading',{name:'Đối chiếu ngân hàng'})).toBeVisible();
+ await page.getByLabel('Sổ quỹ ngân hàng',{exact:true}).selectOption(bookId);
+ await page.getByRole('button',{name:'Áp dụng bộ lọc',exact:true}).click();
+ await expect.poll(()=>evidence.calls.some(c=>c.operation==='list'&&(c.input as Record<string,unknown>).accountId===bookId)).toBe(true);
+ await page.getByRole('button',{name:'Đối chiếu',exact:true}).click();const dialog=page.getByRole('dialog');
+ await expect(dialog.getByText('Khớp tên khách',{exact:false})).toBeVisible();
+ await dialog.getByRole('radio').check();
+ const collect=dialog.getByRole('button',{name:'Xác nhận ghi thu hóa đơn',exact:true});await expect(collect).toBeDisabled();
+ await dialog.getByLabel('Lý do xác nhận / phân loại / hoàn tác').fill('Đã kiểm tra khách và kỳ thu DEMO');
+ await dialog.getByRole('checkbox').check();await expect(dialog).toContainText('giữ 5.000đ tiền dư');await expect(collect).toBeEnabled();
+ await page.screenshot({path:info.outputPath(`bank-reconciliation-detail-${width}.png`),fullPage:true});
+ await collect.click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('cell',{name:'Đã ghi thu',exact:true})).toBeVisible();
+ expect(evidence.calls.filter(c=>c.operation==='collect')).toHaveLength(1);
+ await page.getByRole('button',{name:'Đối chiếu',exact:true}).click();await dialog.getByLabel('Lý do xác nhận / phân loại / hoàn tác').fill('Hoàn tác thao tác DEMO');await dialog.getByRole('checkbox').check();
+ await dialog.getByRole('button',{name:'Xác nhận hoàn tác'}).click();await expect(page.getByRole('cell',{name:'Đã hoàn tác',exact:true})).toBeVisible();
+ await page.screenshot({path:info.outputPath(`bank-reconciliation-${width}.png`),fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);expect(evidence.errors).toEqual([]);
+});
+test('source routing form and historic synchronization',async({page})=>{
+ const evidence=await setup(page);await page.goto(base+'/__bank.html',{waitUntil:'domcontentloaded'});await page.getByRole('tab',{name:'Đối chiếu ngân hàng'}).click();
+ await page.getByRole('button',{name:'Cấu hình nguồn → sổ quỹ'}).click();await page.getByRole('button',{name:'Thêm điều kiện'}).click();
+ const dialog=page.getByRole('dialog');await dialog.getByLabel('Nguồn nhận',{exact:true}).selectOption(fixtureSource.id);
+ await dialog.getByLabel('Mã app (packageName)').fill('com.bank.fixture');await dialog.getByLabel('Sổ ngân hàng',{exact:true}).selectOption(bookId);
+ await dialog.getByLabel('Áp dụng từ ngày').fill('');await expect(dialog.getByLabel('Áp dụng từ ngày')).toHaveValue('');await expect(dialog).toBeVisible();
+ await dialog.getByLabel('Áp dụng từ ngày').fill('2026-10-01');
+ await expect(dialog).toContainText('Tòa được nhận: Tòa DEMO');await dialog.getByRole('button',{name:'Lưu cấu hình'}).click();await expect(dialog).toHaveCount(0);
+ expect(evidence.calls.find(c=>c.operation==='save_rule')?.input).toMatchObject({origin:'com.bank.fixture',accountId:bookId,method:'TK'});
+ await page.getByRole('button',{name:'Sửa',exact:true}).click();await expect(dialog.getByLabel('Áp dụng từ ngày')).toHaveValue('2026-10-01');
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await page.getByRole('button',{name:'Đọc tin cũ',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Đã đọc 1 tin biến động'})).toBeVisible();expect(evidence.errors).toEqual([]);
+});
+
+test('reconnect cannot reuse consent after the invoice amount changes',async({page})=>{
+ const evidence=await setup(page);await page.goto(base+'/__bank.html',{waitUntil:'domcontentloaded'});await page.getByRole('tab',{name:'Đối chiếu ngân hàng'}).click();
+ await page.getByRole('button',{name:'Đối chiếu',exact:true}).click();const dialog=page.getByRole('dialog');
+ await dialog.getByRole('radio').check();await dialog.getByLabel('Lý do xác nhận / phân loại / hoàn tác').fill('Kiểm tra khách và hóa đơn mẫu');
+ await dialog.getByRole('checkbox').check();const collect=dialog.getByRole('button',{name:'Xác nhận ghi thu hóa đơn',exact:true});await expect(collect).toBeEnabled();
+ await page.clock.install();await page.evaluate(()=>window.dispatchEvent(new Event('offline')));
+ evidence.changeInvoice(95000);await page.clock.fastForward(16000);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(dialog).toContainText('Dư 10.000đ');await expect(dialog.getByRole('checkbox')).not.toBeChecked();await expect(collect).toBeDisabled();
+ expect(evidence.calls.filter(c=>c.operation==='collect')).toHaveLength(0);
+ await dialog.getByRole('checkbox').check();await collect.click();await expect(dialog).toHaveCount(0);
+ expect(evidence.calls.find(c=>c.operation==='collect')?.input).toMatchObject({invoiceRevision:1,overpayAction:'CREDIT'});expect(evidence.errors).toEqual([]);
 });

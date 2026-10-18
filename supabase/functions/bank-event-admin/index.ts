@@ -1,5 +1,6 @@
 import {bearer,boundedText,decryptPayload,Dependencies,Environment,failed,JsonObject,newToken,object,readJson,reply,RequestError,rpcError,runtimeDependencies,sha256,UUID,validTimestamp} from '../_shared/bank-events.ts';
 import {summarizeBankPayload} from '../_shared/bank-events-parse.ts';
+import {reconciliationFacts} from '../_shared/bank-reconciliation.ts';
 const EVENT_TYPES=['sms.received','notification.received','gateway.test','email.received'];
 const fields:Record<string,string[]>={list_sources:[],status:[],create_source:['name','kind'],rotate_source:['sourceId'],set_source_enabled:['sourceId','enabled'],revoke_source:['sourceId'],get_event:['eventId'],list_events:['limit','cursor','sourceId','eventType','query','from','to']};
 function validatedInput(value:unknown):{action:string;input:JsonObject;limit:number} {
@@ -53,7 +54,47 @@ export function createHandler(deps:Dependencies={}) {
       if(request.method!=='POST')throw new RequestError(405,'method_not_allowed');
       const authorization=bearer(request);
       if(!await authorizeAdmin(authorization))throw new RequestError(403,'forbidden');
-      const {action,input,limit}=validatedInput(await readJson(request));
+      const raw=await readJson(request);
+      if(object(raw)&&raw.action==='reconcile') {
+        if(Object.keys(raw).some(k=>!['action','organizationId','operation','input'].includes(k))
+          ||typeof raw.organizationId!=='string'||!UUID.test(raw.organizationId)||!object(raw.input)
+          ||!['settings','save_rule','list','detail','collect','link','classify','undo','sync'].includes(String(raw.operation)))throw new RequestError(400,'invalid_request');
+        const args={p_organization_id:raw.organizationId,p_action:raw.operation,p_input:raw.input};
+        if(raw.operation==='sync') {
+          // The ordinary authenticated RPC checks membership before any privileged caching.
+          const permission=await rpc('bank_reconciliation_v1',{...args,p_action:'settings'},authorization);
+          if(permission.error)throw rpcError(permission.error.code);
+          const input=raw.input;
+          if(Object.keys(input).some(k=>!['sourceId','cursor'].includes(k)))throw new RequestError(400,'invalid_request');
+          const sources=await rpc('bank_event_admin_v1',{p_action:'list_sources',p_input:{}},authorization);
+          if(sources.error)throw rpcError(sources.error.code);
+          if(!object(sources.data)||!Array.isArray(sources.data.sources)||!sources.data.sources.some(s=>object(s)&&s.id===input.sourceId&&s.organizationId===raw.organizationId))throw new RequestError(403,'forbidden');
+          const validated=validatedInput({action:'list_events',...input,limit:100});
+          const fetched=await rpc('bank_event_admin_v1',{p_action:'list_events',p_input:{...validated.input,withPayload:true}},authorization);
+          if(fetched.error)throw rpcError(fetched.error.code);
+          if(!object(fetched.data)||!Array.isArray(fetched.data.events))throw new RequestError(502,'invalid_admin_receipt');
+          const rows=fetched.data.events.slice(0,100);let cached=0,unparsed=0,failedCount=0;
+          for(const row of rows) {
+            if(!object(row))throw new RequestError(502,'invalid_admin_receipt');
+            const {ciphertext,nonce,keyId,payloadHash,...event}=row;
+            let payload:unknown;
+            try {payload=await decryptPayload(env,{event,ciphertext,nonce,keyId,payloadHash});}catch{failedCount++;continue;}
+            const facts=object(payload)?reconciliationFacts(payload):null;
+            if(!facts){unparsed++;continue;}
+            const saved=await rpc('bank_reconciliation_cache_v1',{p_event_id:event.id,p_facts:facts});
+            if(saved.error)throw rpcError(saved.error.code);
+            if(saved.data!==true)throw new RequestError(502,'invalid_admin_receipt');
+            cached++;
+          }
+          const last=rows.at(-1);
+          return reply(200,{ok:true,data:{cached,unparsed,failed:failedCount,nextCursor:fetched.data.events.length>100&&object(last)?btoa(JSON.stringify({time:last.receivedAt,id:last.id})):null}});
+        }
+        const result=await rpc('bank_reconciliation_v1',args,authorization);
+        if(result.error)throw rpcError(result.error.code);
+        if(!object(result.data))throw new RequestError(502,'invalid_admin_receipt');
+        return reply(200,{ok:true,data:result.data});
+      }
+      const {action,input,limit}=validatedInput(raw);
       let token:string|undefined;
       if(action==='create_source'||action==='rotate_source') {
         token=newToken();const digest=await sha256(token);input.credentialDigest=digest;input.fingerprint=`sha256:${digest.slice(0,12)}`;

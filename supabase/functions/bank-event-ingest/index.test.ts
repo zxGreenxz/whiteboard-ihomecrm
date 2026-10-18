@@ -75,7 +75,7 @@ Deno.test('revocation, collision and storage errors are not acknowledged; malfor
  assert.equal((await duplicate(request())).status,200);
 });
 Deno.test('email events and gmail heartbeats have their own exact shape; android fields cannot be mixed in',async()=>{
- const saved:JsonObject[]=[];const handler=createHandler({env,rpc:async(_name,args)=>{saved.push(args);return {data:receipt(args.p_event_type==='gateway.heartbeat'?'heartbeat':'accepted'),error:null};}});
+ const saved:JsonObject[]=[];const handler=createHandler({env,rpc:async(name,args)=>{if(name==='bank_reconciliation_cache_v1')return {data:true,error:null};saved.push(args);return {data:receipt(args.p_event_type==='gateway.heartbeat'?'heartbeat':'accepted'),error:null};}});
  const email={schemaVersion:1,event:'email.received',id:'a'.repeat(64),deviceId:event().deviceId,receivedAt:event().receivedAt,from:'"DEMO" <alert@example.test>',subject:'Thử',body:'Ghi có +1,000 VND'};
  assert.equal((await handler(request(email))).status,201);assert.equal(saved[0].p_event_type,'email.received');
  for(const bad of [{...email,sender:'extra'},{...email,subject:'x'.repeat(1025)},{...email,body:'😊'.repeat(2049)},{...email,from:undefined}])

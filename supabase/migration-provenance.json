@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-17T11:46:12.040Z",
+  "generatedAt": "2026-10-18T02:47:15.470Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 733,
-    "unknown": 80,
+    "unknown": 81,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11924,6 +11924,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-17T05:32:17.584Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261018015538_bank_reconciliation.sql",
+      "version": "20261018015538",
+      "name": "bank_reconciliation",
+      "scheme": "timestamp14",
+      "sha256": "70e8dad6734d94b7b1f3355e527e329468b64c10f220fda001d81e135a289dfd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.bank_reconciliation_facts",
+        "table:app_private.bank_reconciliation_rules",
+        "table:app_private.bank_reconciliation_decisions",
+        "function:app_private.bank_reconciliation_fold",
+        "function:public.bank_reconciliation_cache_v1"
       ]
     },
     {
