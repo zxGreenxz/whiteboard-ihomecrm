@@ -79,7 +79,7 @@ test('công tắc Z: bật đúng khoá đợt 2 có báo cáo (hoặc là khoá
   const all = w2MigrationPaths().map(path => path.split('/').pop());
   const order = all.slice(0, all.indexOf(ENABLE) + 1);
   for (const file of all.slice(order.length))
-    assert.ok(file > ENABLE && ['a', 'b', 'c', 'd'].some(letter => W2_RANGES[letter].test(file)) && !/^2026101800|^202610180[1-9]/.test(file), file);
+    assert.ok(file > ENABLE && ['foundation', 'a', 'b', 'c', 'd'].some(range => W2_RANGES[range].test(file)) && !/^2026101800|^202610180[1-9]/.test(file), file);
   assert.equal(order.at(-1), ENABLE);
   assert.deepEqual(order.slice(-5, -1), Object.keys(Z_FIXES));
   assert.ok(order.indexOf('20261018040300_hermes_w2d_reader_fixes_v1.sql') < order.indexOf(Object.keys(Z_FIXES)[0]));

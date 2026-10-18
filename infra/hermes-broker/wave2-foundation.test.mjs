@@ -126,7 +126,9 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
   // Hai tool meta đi lối vào INVOKER riêng; khoá vẫn do capabilities v3 cấp.
   assert.deepEqual([domainFamily('report').readRpc, domainFamily('report_list').readRpc, DOMAIN_FAMILIES.w2.capabilitiesRpc],
     ['hermes_w2_read_v1', 'hermes_w2_read_v1', null]);
-  assert.deepEqual(w2MigrationPaths({ packages: [] }), [W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH]);
+  // Nền đợt 2 + bản sửa nền sau phát hành (giờ thực, tiền tố hermes_w2_; 19/10: kiểu phạm vi rls_buildings).
+  assert.deepEqual(w2MigrationPaths({ packages: [] }), [W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH,
+    'supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 

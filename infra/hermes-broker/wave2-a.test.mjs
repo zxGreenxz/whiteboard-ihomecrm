@@ -66,7 +66,7 @@ test('khai báo: 9 báo cáo, đều riêng tư, tên khách qua customers.view;
   assert.deepEqual([...REPORTS].sort(), ['change_ledger', 'collection', 'deposit_refunds', 'held_deposits', 'invoice_detail', 'overpayment', 'payment_schedule',
     'reservation_settlements', 'reservation_vouchers']);
   for (const [report, spec] of Object.entries(W2A_REPORTS)) {
-    assert.equal(spec.private, true, report); assert.deepEqual(spec.scopeKeys, ['customers.view'], report); assert.equal(spec.scope, 'rows', report);
+    assert.equal(spec.private, true, report); assert.deepEqual(spec.scopeKeys, ['customers.view'], report); assert.equal(spec.scope, report === 'reservation_vouchers' ? 'rls_buildings' : 'rows', report);
     const fn = spec.source.replace(/^crm\./, '');
     assert.equal((await env.db.query("SELECT count(*)::int n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=$1", [fn])).rows[0].n, 1, fn);
   }

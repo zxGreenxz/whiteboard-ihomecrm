@@ -1,19 +1,25 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedW2a, BUILDING, OTHER_BUILDING, OTHER_ROOM, USER, ORG, FOREIGN, STRANGER, DEPOSIT_TYPE, RV1, RV2, RV3, RV_SETTLED, RV_B } from './wave2-a-sql-fixture.mjs';
+import { sharedW2a, INVOICE_A, CHANGE_BOOK, BUILDING, OTHER_BUILDING, OTHER_ROOM, USER, ORG, FOREIGN, STRANGER, DEPOSIT_TYPE, RV1, RV2, RV3, RV_SETTLED, RV_B } from './wave2-a-sql-fixture.mjs';
 import { ORG_SCOPE } from './wave2-sql-fixture.mjs';
 import { changedFunctions } from './full-read-sql-fixture.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
+import { W2 } from './wave2-registry.mjs';
+import { domainInput, domainResult } from './domain-contract.mjs';
 
-// Gói A sau phát hành (19/10/2026, migration 20261018182656_hermes_w2a_reservation_fund_member_v1): phiếu cọc giữ chỗ
-// (reservation_vouchers) = ĐÚNG tập web thấy dưới RLS income_expenses — kể cả phiếu vào sổ quỹ người hỏi giữ (policy sổ quỹ,
-// không theo toà) — thu hẹp theo ctx.buildings (toà có deposits.view ∩ phạm vi kết nối). MỘT PGlite cho cả file, mỗi ca
+// Gói A sau phát hành (19/10/2026; 20261018182656 hàm dùng chung + hàm đọc theo RLS, 20261018185339 kiểu phạm vi
+// rls_buildings của cổng, 20261018185413 khai báo): phiếu cọc giữ chỗ (reservation_vouchers) = ĐÚNG tập web thấy dưới RLS
+// income_expenses — kể cả phiếu vào sổ quỹ người hỏi giữ ở toà KHÔNG có deposits.view (route /deposits không truyền toà) —
+// thu hẹp theo phạm vi KẾT NỐI (ctx.buildings = toà công ty ∩ overlay). MỘT PGlite cho cả file, mỗi ca
 // BEGIN … ROLLBACK. Tình huống: người hỏi giữ sổ quỹ ở toà B nhưng KHÔNG có buildings.view ở B (RLS rbac ẩn mọi phiếu
 // khác của B). "Tập web" = câu chép đúng bộ lọc của useReservationDeposits chạy dưới RLS (vai authenticated). RLS là RLS
 // giả lập của fixture (f_rbac theo toà + f_fund theo sổ người hỏi giữ); không chứng minh policy/JWT/PostgREST thật — phần
 // đó so trên TEST. Đột biến: thay từng chỗ của migration trong ca ⇒ phép thử phải đổi kết quả.
 const POST = readFileSync('supabase/migrations/20261018182656_hermes_w2a_reservation_fund_member_v1.sql', 'utf8');
+const GATE = readFileSync('supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql', 'utf8');
+const code = expected => error => error.code === expected;
+const OTHER_ORG_BUILDING = '0e0e0e0e-0000-4000-8000-000000000012';
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
 const u = n => `0a0a0a0a-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const FUND_MINE = u(300), FUND_OTHER = u(301), RV_FUND = u(302), RV_FUND_UNAPPROVED = u(303), RV_FUND_OTHER = u(304), RV_FOREIGN = u(305);
@@ -115,23 +121,57 @@ test('ctx chỉ toà A (kết nối thu hẹp): không trả phiếu ở B dù w
   assert.deepEqual(norm(value.summary), { holdingAmount: '2000000', approvedCount: 1, unapprovedCount: 1, cancelledCount: 1 });
 }));
 
-test('cổng thật (public.hermes_w2_read_v1): kết nối chỉ toà A ⇒ không phiếu B; Toàn tổ chức + deposits.view ở B ⇒ có phiếu sổ của mình; không deposits.view ở B ⇒ KHÔNG trả (web vẫn hiện)', () => inCase(async env => {
-  let gate = await env.report('reservation_vouchers', params(), { limit: 50 });
+const identity = (read, buildings) => ({ row: { organizationId: ORG }, effective: { read, action: [] },
+  scopesByPermission: Object.fromEntries(read.map(key => [key, { buildingIds: buildings, cashbookIds: [] }])) });
+const viaGate = env => env.report('reservation_vouchers', params(), { limit: 50 });
+
+test('cổng thật: kết nối chỉ toà A ⇒ chỉ phiếu toà A (kết nối thu hẹp); Toàn tổ chức ⇒ đúng tập web kể cả phiếu sổ của mình ở toà KHÔNG có deposits.view', () => inCase(async env => {
+  await onlyDepositsAt(env, [BUILDING]);
+  let gate = await viaGate(env);
   assert.deepEqual(gate.fence, { buildings: [BUILDING], cashbooks: [], orgWide: false });
   assert.deepEqual(ids(gate.items), [RV2, RV1, RV_SETTLED, RV3], 'phạm vi kết nối thu hẹp: chỉ toà A');
+  assert.deepEqual(norm(gate.summary), await webSummary(env, [BUILDING]));
   await orgOverlay(env);
-  gate = await env.report('reservation_vouchers', params(), { limit: 50 });
-  assert.deepEqual([...gate.fence.buildings].sort(), [BUILDING, OTHER_BUILDING].sort());
-  assert.deepEqual(ids(gate.items), await webIds(env), 'kết nối Toàn tổ chức, deposits.view ở A+B: đúng tập web');
-  assert.deepEqual(norm(gate.summary), await webSummary(env));
-  // Toà ngoài ctx.buildings (không có deposits.view ở B): web vẫn hiện phiếu vào sổ của mình ở B (route web không theo toà),
-  // Hermes KHÔNG trả — ctx.buildings của cổng lấy từ khoá deposits.view theo toà; giữ nguyên, ghi ở web-parity.json.
-  await onlyDepositsAt(env, [BUILDING]);
-  gate = await env.report('reservation_vouchers', params(), { limit: 50 });
-  assert.deepEqual(gate.fence.buildings, [BUILDING]);
-  assert.ok((await webIds(env)).includes(RV_FUND), 'web hiện');
-  assert.ok(!ids(gate.items).includes(RV_FUND), 'Hermes không trả phiếu ở toà ngoài ctx.buildings');
-  assert.deepEqual(norm(gate.summary), await webSummary(env, [BUILDING]), 'tổng trên đúng tập toà đã giao');
+  gate = await viaGate(env);
+  assert.deepEqual([...gate.fence.buildings].sort(), [BUILDING, OTHER_BUILDING].sort(), 'toà công ty ∩ kết nối, không giao tập toà deposits.view');
+  assert.equal(gate.fence.orgWide, false, 'khoá không toàn công ty');
+  assert.deepEqual(ids(gate.items), await webIds(env), 'đúng tập web: có phiếu sổ của mình ở B, không phiếu sổ người khác ở B');
+  assert.ok(ids(gate.items).includes(RV_FUND) && !ids(gate.items).includes(RV_FUND_OTHER));
+  assert.deepEqual(norm(gate.summary), await webSummary(env), 'tổng = RPC web (không lọc toà)');
+  assert.ok(gate.items.every(row => row.name === null && row.payerName === null), 'PII Gói Z');
+  // Hỏi một toà: được hỏi toà B (trong phạm vi kết nối), không toà công ty khác.
+  const onlyB = await env.report('reservation_vouchers', params({ buildingId: OTHER_BUILDING }), { limit: 50 });
+  assert.deepEqual([onlyB.fence.buildings, ids(onlyB.items)], [[OTHER_BUILDING], [RV_FUND, RV_FUND_UNAPPROVED]]);
+  await assert.rejects(env.report('reservation_vouchers', params({ buildingId: OTHER_ORG_BUILDING })), code('42501'), 'toà công ty khác');
+  // Rào broker: fence không ⊆ tập toà của khoá vẫn nhận (rls_buildings); hàng ngoài fence vẫn bị chặn; khoá không ở toà nào ⇒ chặn.
+  const input = domainInput('report', { report: 'reservation_vouchers', params: {}, limit: 50 });
+  const value = await env.report('reservation_vouchers', input.params, { limit: input.limit, offset: input.offset });
+  assert.deepEqual(domainResult('report', value, identity(KEYS, [BUILDING]), input).items, value.items);
+  assert.throws(() => domainResult('report', { ...value, items: [{ ...value.items[0], buildingId: OTHER_ORG_BUILDING }] },
+    identity(KEYS, [BUILDING]), input), 'hàng ngoài fence');
+  assert.throws(() => domainResult('report', value, identity(KEYS, []), input), 'broker: khoá không có ở toà nào');
+}));
+
+test('cổng thật: không có deposits.view ở đâu (hoặc mất khoá) ⇒ 42501', () => inCase(async env => {
+  await orgOverlay(env);
+  await onlyDepositsAt(env, []);
+  await assert.rejects(viaGate(env), code('42501'), 'khoá không ở toà nào');
+  await env.db.query("UPDATE public.fixture_acl SET allowed=false,building_ids=$1 WHERE permission='deposits.view'", [[BUILDING]]);
+  await assert.rejects(viaGate(env), code('42501'), 'mất khoá');
+}));
+
+test('báo cáo khác KHÔNG đổi: chỉ reservation_vouchers khai rls_buildings; báo cáo rows giữ ctx.buildings = toà của khoá ∩ kết nối', () => inCase(async env => {
+  assert.deepEqual(Object.entries(W2.reports).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId), ['reservation_vouchers']);
+  const catalog = (await env.db.query('SELECT app_private.hermes_w2_catalog_v1(NULL) spec')).rows[0].spec;
+  assert.deepEqual(Object.entries(catalog).filter(([, spec]) => spec.scope === 'rls_buildings').map(([reportId]) => reportId), ['reservation_vouchers']);
+  await orgOverlay(env);
+  for (const key of KEYS) await env.db.query('UPDATE public.fixture_acl SET building_ids=$2 WHERE permission=$1', [key, [BUILDING]]);
+  const defaults = { invoice_detail: { invoiceId: INVOICE_A }, collection: { month: '2026-10' }, change_ledger: { cashbookId: CHANGE_BOOK } };
+  for (const report of Object.keys(W2A_REPORTS).filter(report => report !== 'reservation_vouchers')) {
+    const value = await env.report(report, { ...Object.fromEntries(W2A_REPORTS[report].params.map(name => [name, null])), ...defaults[report] }, { limit: 50 });
+    assert.deepEqual(value.fence.buildings, [BUILDING], `${report}: ctx.buildings = toà của khoá ∩ kết nối`);
+  }
+  assert.deepEqual([...(await viaGate(env)).fence.buildings].sort(), [BUILDING, OTHER_BUILDING].sort(), 'đối chứng: rls_buildings');
 }));
 
 test('trần 2000 hàng: cắt ở 2000, sourceCapped; tổng trên toàn nguồn (RPC web)', () => inCase(async env => {
@@ -148,10 +188,19 @@ test('trần 2000 hàng: cắt ở 2000, sourceCapped; tổng trên toàn nguồ
 
 // Đột biến: thay từng chỗ của migration trong ca rồi chạy lại đúng hàm bị đổi ⇒ phép thử (true = sai) phải đổi từ false sang true.
 const mutate = async (env, from, to) => {
-  assert.equal(POST.split(from).length, 2, `anchor: ${from}`);
-  for (const statement of changedFunctions(POST, POST.replace(from, () => to))) await env.db.exec(statement);
+  const source = POST.includes(from) ? POST : GATE;
+  assert.equal(source.split(from).length, 2, `anchor: ${from}`);
+  for (const statement of changedFunctions(source, source.replace(from, () => to))) await env.db.exec(statement);
 };
+const fundViaOrgGate = async env => { await orgOverlay(env); await onlyDepositsAt(env, [BUILDING]); return ids((await viaGate(env)).items); };
 const probes = [
+  { name: 'cổng: giao lại tập toà của khoá (bản 000700)', from: "AND (v_scope='rls_buildings' OR state->'buildingIds' ? b.id::text)",
+    to: "AND state->'buildingIds' ? b.id::text", run: async env => !(await fundViaOrgGate(env)).includes(RV_FUND) },
+  { name: 'cổng: bỏ đòi khoá ở ít nhất một toà', from: "        OR jsonb_array_length(state->'buildingIds')=0 AND state->'orgWide' IS DISTINCT FROM 'true'::jsonb\n", to: '',
+    run: async env => { await orgOverlay(env); await onlyDepositsAt(env, []); return viaGate(env).then(() => true, () => false); } },
+  { name: 'cổng: bỏ thu hẹp theo phạm vi kết nối', from: "      v_scope:='rows';\n",
+    to: "      SELECT array_agg(b.id ORDER BY b.id) INTO buildings FROM public.buildings b WHERE b.organization_id=c.organization_id AND b.deleted_at IS NULL;\n      v_scope:='rows';\n",
+    run: async env => ids((await viaGate(env)).items).includes(RV_FUND) },
   { name: 'hàm đọc: giao lại toà buildings.view cho phiếu cọc giữ chỗ (bản Z)',
     from: "WHERE p_report='reservation_vouchers' OR public.has_full_building_scope()", to: 'WHERE public.has_full_building_scope()',
     run: async env => !ids((await direct(env)).rows).includes(RV_FUND) },

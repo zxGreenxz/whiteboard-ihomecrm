@@ -43,6 +43,9 @@ export const W2_TOPICS = Object.freeze({ thu_tien: 'a', tai_chinh: 'b', van_hanh
 export const W2_PACKAGES = Object.freeze(Object.fromEntries(Object.entries(W2_TOPICS).map(([topic, letter]) => [letter, topic])));
 // Phạm vi báo cáo (cổng SQL quyết định; sửa sau review PR #195):
 //   rows / buildings — hàng gắn toà / nguồn nhận danh sách toà: toà = CRM ∩ overlay; hết toà ⇒ no_building_scope.
+//   rls_buildings    — như rows, nhưng như route web KHÔNG truyền toà (19/10/2026, 20261018185339): khoá chỉ cần có ở ít nhất
+//                      một toà / toàn công ty (không ⇒ 42501); toà = toà công ty ∩ overlay (không giao tập toà của khoá), hàng do
+//                      RLS người hỏi quyết (vd. phiếu vào sổ quỹ người dùng giữ). Chỉ khoá loại company.
 //   organization     — dữ liệu không gắn toà: cần org_wide = CRM toàn công ty ∩ overlay Toàn tổ chức.
 //   cashbooks        — sổ quỹ: org_wide, hoặc overlay Toàn tổ chức + sổ CRM cấp (ctx.cashbooks, scope CASHBOOK).
 //   self             — dữ liệu của CHÍNH người hỏi (chỉ khoá loại self).
@@ -51,7 +54,9 @@ export const W2_PACKAGES = Object.freeze(Object.fromEntries(Object.entries(W2_TO
 // buildingId (fields khai buildingId); mọi phạm vi trừ self/platform — MỌI hàng gói trả có organizationId
 // lấy từ CỘT nguồn (không chép ctx.organizationId), cổng so với công ty kết nối rồi GỠ trước khi trả, nên
 // fields KHÔNG khai organizationId (trừ platform). Khác công ty ⇒ 42501; thiếu trường ⇒ XX000.
-export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'organization', 'cashbooks', 'self', 'platform']);
+export const W2_SCOPES = Object.freeze(['rows', 'buildings', 'rls_buildings', 'organization', 'cashbooks', 'self', 'platform']);
+// Phạm vi theo toà (hàng nêu buildingId, tham số gắn toà, fence.buildings).
+export const W2_BUILDING_SCOPES = Object.freeze(['rows', 'buildings', 'rls_buildings']);
 // Tham số mà cổng giải về toà (phải thuộc công ty + ctx.buildings, thu hẹp ctx.buildings): chỉ ở rows/buildings.
 export const W2_BUILDING_PARAMS = Object.freeze(['buildingId', 'areaId', 'roomId', 'contractId', 'invoiceId']);
 
@@ -190,9 +195,9 @@ export function w2Report({ permission, source, scope, title, params = [], requir
   const kind = w2PermissionKind(permission);
   if (Object.keys(rest).length || typeof permission !== 'string' || !KEY.test(permission) || kind === null ||
       (kind === 'self') !== (scope === 'self') || (kind === 'platform') !== (scope === 'platform') ||
-      kind === 'organization' && !W2_ORG_SCOPES.includes(scope) ||
+      kind === 'organization' && !W2_ORG_SCOPES.includes(scope) || scope === 'rls_buildings' && kind !== 'company' ||
       // Trường rào: theo toà phải khai buildingId; organizationId do cổng gỡ (chỉ platform được khai).
-      validators(fields) && (['rows', 'buildings'].includes(scope) && !Object.hasOwn(fields, 'buildingId') ||
+      validators(fields) && (W2_BUILDING_SCOPES.includes(scope) && !Object.hasOwn(fields, 'buildingId') ||
         scope !== 'platform' && Object.hasOwn(fields, 'organizationId')) ||
       typeof source !== 'string' || !/^crm\.[a-z][a-z0-9_.]{0,79}$/.test(source) ||
       !W2_SCOPES.includes(scope) || typeof title !== 'string' || !title.trim() || [...title].length > 300 || CONTROL.test(title) ||
@@ -200,7 +205,7 @@ export function w2Report({ permission, source, scope, title, params = [], requir
       !strings(required, /^[a-zA-Z]+$/) || required.some(name => !params.includes(name)) ||
       (params.includes('status') ? !(strings(statuses, VALUE) && statuses.length > 0) : statuses !== null) ||
       (params.includes('kind') ? !(strings(kinds, VALUE) && kinds.length > 0) : kinds !== null) ||
-      !['rows', 'buildings'].includes(scope) && params.some(name => W2_BUILDING_PARAMS.includes(name)) ||
+      !W2_BUILDING_SCOPES.includes(scope) && params.some(name => W2_BUILDING_PARAMS.includes(name)) ||
       !strings(scopeKeys, KEY) || !validators(fields) || !(summary === null || validators(summary)) || typeof privateData !== 'boolean') fail();
   return Object.freeze({ permission, source, scope, title, params: Object.freeze([...params]), required: Object.freeze([...required]),
     statuses: statuses && Object.freeze([...statuses]), kinds: kinds && Object.freeze([...kinds]), scopeKeys: Object.freeze([...scopeKeys]),
