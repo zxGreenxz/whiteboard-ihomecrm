@@ -547,6 +547,18 @@ const probes = [
       // Sổ công ty khác bị RLS giấu (như policy RESTRICTIVE ẩn demo/sandbox với super admin) nhưng RPC web vẫn cộng.
       await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
       return (await all(env, 'cashbook_daily', { fromDate: '2026-10-01', toDate: '2026-10-12' })).summary.totalIncome !== '1300000.00'; } },
+  { name: 'dòng tiền: "Tất cả" chỉ khi người hỏi thuộc đúng công ty (RLS sổ hẹp hơn tập sổ RPC web cộng)', sql: mutate([
+    `  IF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
+  -- "Tất cả" của web (RPC lọc sổ nhìn thấy ∩ my_org_ids()) chỉ khi người gọi thuộc ĐÚNG công ty này và không thấy sổ nào
+  -- ngoài nó; không thì gọi từng sổ (luôn đúng công ty) — RLS accounts có thể hẹp hơn tập sổ RPC web cộng (super admin).
+  ELSIF public.my_org_ids() IS DISTINCT FROM ARRAY[p_organization_id]
+    OR EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`, `  IF cardinality(v_books)=0 THEN v_accounts:='{}'::uuid[];
+  ELSIF EXISTS(SELECT 1 FROM public.accounts x WHERE x.deleted_at IS NULL AND NOT x.id=ANY(v_books)) THEN v_accounts:=v_books;`]),
+    run: async env => { await grantRead(env.db, ['reports_finance.cash_flow'], { orgWide: true }); await orgOverlay(env.db);
+      const one = (await all(env, 'cash_flow', { year: 2026 })).summary;
+      await secondOrg(env.db);
+      await env.db.exec(`CREATE POLICY probe_hide_book ON public.accounts AS RESTRICTIVE FOR SELECT TO authenticated USING (id<>'${FOREIGN_ORG_BOOK}'::uuid)`);
+      return JSON.stringify((await all(env, 'cash_flow', { year: 2026 })).summary) !== JSON.stringify(one); } },
   { name: 'chi lớn: phiếu hạn chế người khác cần restricted_view phủ toà', sql: mutate([` AND (NOT t.has_restricted_item OR t.user_id=auth.uid() OR v_ok)`, '']),
     run: async env => { await env.db.exec(`INSERT INTO public.fixture_acl(permission,building_ids) VALUES('${RESTRICTED}',ARRAY['${OTHER_BUILDING}'::uuid])`);
       return (await all(env, 'top_expenses', { month: '2026-10' })).items.some(row => row.code === 'PC-402'); } },

@@ -21,8 +21,8 @@ BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
 
--- Chỉ đòi cổng INVOKER của nền; RPC web (sổ quỹ, fa_*, Hiệu quả kinh doanh, ví, biến động số dư) có trên
--- production từ trước và được gọi lúc chạy (plpgsql) — thiếu thì chỉ báo cáo đó lỗi.
+-- Đòi cổng INVOKER của nền và 9 hàm dùng chung của 20261018020050; RPC web (sổ quỹ, fa_*, Hiệu quả kinh doanh, ví,
+-- biến động số dư) có trên production từ trước và được gọi lúc chạy (plpgsql) — thiếu thì chỉ báo cáo đó lỗi.
 DO $requires$
 BEGIN
   IF to_regprocedure('app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)') IS NULL

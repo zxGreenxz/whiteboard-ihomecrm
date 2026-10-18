@@ -3,7 +3,8 @@
 // khai báo ở đây, test wave2-b.test.mjs so khớp) và app_private.hermes_w2b_read_v1 — migration
 // 20261018020200_hermes_w2b_finance_read_v1.sql (hàm dùng chung, áp trước: 20261018020050_hermes_w2b_finance_shared_v1.sql).
 // Q4 (siết khoá lãi lỗ tháng crm_read_monthly_pnl của đợt 1) KHÔNG ở gói này: phải phát hành cùng Gói Z bật khoá
-// reports_finance.profit_distribution (bản soạn sẵn: commit 85ef7ed, 20261018090100_hermes_w2_monthly_pnl_keys_v1.sql).
+// reports_finance.profit_distribution (bản soạn sẵn: 20261018090100_hermes_w2_monthly_pnl_keys_v1.sql ở commit 85ef7ed của
+// nhánh claude/hermes-w2b-continued-828j1x; bản gốc 20261018020100_hermes_w2b_monthly_pnl_keys_v1.sql ở nhánh claude/hermes-w2b).
 //
 // Quyền mỗi báo cáo = khoá web của màn đó (SQL quyết định cuối, cổng hermes_w2_gate_v1); chỗ web hở
 // thì Hermes chặt hơn:
@@ -51,7 +52,7 @@ export const W2B_REPORTS = Object.freeze({
 
   // B7 — /reports/finance/analysis (useFinancialAnalysis.ts; ExpenseTab.tsx:61-83).
   fa_type_breakdown: w2Report({ permission: 'reports_finance.analysis', source: 'crm.finance_analysis_type_breakdown_v1', scope: 'buildings', scopeKeys: [RESTRICTED],
-    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate; basis accrual (mặc định) hoặc cash; buildingId=null là gộp mọi toà. Hạng mục hạn chế chỉ có khi restrictedIncluded=true.',
+    title: 'Phân tích tài chính — thu/chi theo hạng mục từng tháng, fromDate..toDate; basis accrual (mặc định) hoặc cash; buildingId=null là gộp mọi toà. Hạng mục hạn chế chỉ có khi restrictedIncluded=true; cash: hạng mục thường có hạng mục hạn chế gộp vào cũng ẩn.',
     params: ['fromDate', 'toDate', 'basis', 'buildingId'], required: ['fromDate', 'toDate'],
     fields: BREAKDOWN, summary: { basis: value => value === 'accrual' || value === 'cash', restrictedIncluded: bool } }),
   fa_snapshot_kpis: w2Report({ permission: 'reports_finance.analysis', source: 'crm.fa_snapshot_kpis', scope: 'rows',
