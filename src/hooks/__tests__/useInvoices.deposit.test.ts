@@ -71,8 +71,12 @@ for (const operation of ['create', 'update'] as const) {
   });
 }
 
-it('requests accounting class in the invoice list projection used by edit', async () => {
-  await invoicesListQuery().queryFn();
-  const projection = boundary.select.mock.calls[0]?.[0] as string;
-  expect(projection.match(/invoice_items\s*\(([^)]*)\)/)?.[1]?.split(',').map(column => column.trim())).toContain('accounting_class');
+// Projection danh sách nay ở hàm SQL invoice_list_v1 (PGlite kiểm cột accounting_class:
+// src/lib/__tests__/invoiceReadSharedMigration.test.ts); hook phải giữ nguyên trường đó cho form sửa.
+it('keeps accounting class on list rows used by edit', async () => {
+  const item = { id: 'i1', type: 'OTHER', accounting_class: 'DEPOSIT', amount: 2200000 };
+  boundary.rpc.mockResolvedValueOnce({ data: { total_count: 1, rows: [{ id: 'demo-invoice', invoice_items: [item] }] }, error: null });
+  const result = await invoicesListQuery().queryFn();
+  expect(boundary.rpc).toHaveBeenCalledWith('invoice_list_v1', expect.objectContaining({ p_view_status: 'active' }));
+  expect(result.data[0]?.invoice_items).toEqual([item]);
 });
