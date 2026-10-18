@@ -10,6 +10,7 @@ export const useJobTypes = () => {
   return useQuery({
     queryKey: ["job_types"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-task-types — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("job_types")
         .select(`*, job_groups(id, name), departments:departments!job_types_default_department_id_fkey(id, name)`)
@@ -21,6 +22,7 @@ export const useJobTypes = () => {
       }
 
       return readJobTypes(data);
+      // hermes-parity:end w2d-task-types
     },
   });
 };

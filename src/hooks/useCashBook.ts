@@ -69,6 +69,7 @@ export const useCashBookSummary = (
       // danh một sổ không được phép.
       let openingBalance = 0;
       if (start_date) {
+        // hermes-parity:begin cashbook-daily-cash-flow — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
         const { data: ob, error: obErr } = await supabase.rpc(
           "cashbook_opening_balance",
           {
@@ -79,6 +80,7 @@ export const useCashBookSummary = (
         );
         if (obErr) throw obErr;
         openingBalance = financialReadNumber(ob);
+        // hermes-parity:end cashbook-daily-cash-flow
       }
 
       return {
@@ -111,6 +113,7 @@ export const useCashFlowByDay = (
 
       // RPC SQL aggregate theo ngày (miễn nhiễm cap-1000): 1 dòng/ngày, đã group
       // + sort trong SQL → không kéo cả năm phiếu về client cộng tay.
+      // hermes-parity:begin cashbook-daily-cash-flow
       const { data, error } = await supabase.rpc("cashflow_by_day", {
         p_start: start_date,
         p_end: end_date,
@@ -124,6 +127,7 @@ export const useCashFlowByDay = (
         income: financialReadNumber(r.income),
         expense: financialReadNumber(r.expense),
       }));
+      // hermes-parity:end cashbook-daily-cash-flow
     },
     enabled: !!start_date && !!end_date,
   });

@@ -182,6 +182,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     queryKey: ['invoice-vouchers', id],
     enabled: !!id,
     queryFn: async () => {
+      // hermes-parity:begin invoice-detail — Hermes chép vùng này (public.invoice_detail_v1)
       const { data, error } = await supabase
         .from('income_expenses' as any)
         .select(
@@ -191,6 +192,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
         .eq('approval_status', 'APPROVED')
         .is('deleted_at', null)
         .order('voucher_date', { ascending: true });
+      // hermes-parity:end invoice-detail
       if (error) throw error;
       return readInvoiceRelatedVouchers(data as unknown as RelatedVoucher[]|null);
     },
@@ -241,6 +243,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const paid = invoice.paid_amount || 0;
   const outstandingAmount = total - paid;
 
+  // hermes-parity:begin invoice-detail
   const voucherAmount = (v: RelatedVoucher): number =>
     (v.items ?? []).reduce(
       (sum, it) => sum + Number(it.unit_price || 0) * Number(it.quantity || 0),
@@ -264,6 +267,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const totalRefunded = activeVouchers
     .filter((v) => v.type === 'EXPENSE')
     .reduce((s, v) => s + voucherAmount(v), 0);
+  // hermes-parity:end invoice-detail
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
 
   const handleCancel = () => {
@@ -289,11 +293,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
   // Khách đại diện (đặt theo contract_customers; ưu tiên is_representative,
   // fallback khách đầu tiên).
+  // hermes-parity:begin invoice-detail
   const contractCustomers = invoice.contract?.contract_customers ?? [];
   const representativeCustomer =
     contractCustomers.find((cc) => cc.is_representative)?.customer ??
     contractCustomers[0]?.customer ??
     null;
+  // hermes-parity:end invoice-detail
 
   // Hiển thị "Toà - Phòng" cho ô Căn hộ.
   const apartmentLabel = [buildingName, roomName]

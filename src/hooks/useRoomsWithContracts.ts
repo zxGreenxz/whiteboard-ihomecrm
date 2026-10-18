@@ -57,6 +57,7 @@ export const useRoomsWithActiveContracts = (buildingId?: string) => {
   return useQuery({
     queryKey: ["rooms-with-contracts", buildingId || "all"],
     queryFn: async (): Promise<RoomWithContract[]> => {
+      // hermes-parity:begin w2d-rooms — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       // PHÂN TRANG: RoomsPage gọi hook này KHÔNG kèm buildingId (org-wide), và
       // join 4 tầng làm mỗi dòng nặng. Không `.range()` thì PostgREST cắt ở 1000
       // phòng và sơ đồ toà nhà mất phòng mà không báo gì. `id` là tiebreaker duy
@@ -84,6 +85,7 @@ export const useRoomsWithActiveContracts = (buildingId?: string) => {
 
         return query.range(from, to);
       }, { label: "rooms-with-contracts" });
+      // hermes-parity:end w2d-rooms
 
       if (rows === null) {
         // fetchAllRows fail-closed: null = LỖI, không phải "không có phòng nào".

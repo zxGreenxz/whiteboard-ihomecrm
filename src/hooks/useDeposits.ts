@@ -146,6 +146,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
   return useQuery({
     queryKey: ['reservation-deposits', buildingIds ?? []],
     queryFn: async (): Promise<ReservationDepositRow[]> => {
+      // hermes-parity:begin deposit-reservation-vouchers — Hermes chép vùng này (public.deposit_reservation_vouchers_v1)
       // PAGED: phiếu cọc giữ chỗ tích luỹ mãi → phân trang (order voucher_date + id).
       const data = await fetchAllRows<any>(
         (from, to) => {
@@ -227,6 +228,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           settlement: settlementBySource.get(v.id) ?? null,
         });
       }
+      // hermes-parity:end deposit-reservation-vouchers
       return rows;
     },
   });
@@ -245,9 +247,11 @@ export const useReservationDepositSummary = (buildingIds?: string[]) => {
     queryKey: ['reservation-deposits', 'summary', buildingIds ?? []],
     meta:{errorDisplay:'inline',label:'tổng cọc giữ chỗ'},
     queryFn: async (): Promise<ReservationDepositSummary> => {
+      // hermes-parity:begin deposit-reservation-vouchers
       const { data, error } = await supabase.rpc('get_reservation_deposit_summary', {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
+      // hermes-parity:end deposit-reservation-vouchers
       if (error) throw error;
       const d = (data ?? {}) as any;
       return {

@@ -30,6 +30,7 @@ export const useBuildings = (options?: {
     enabled: options?.enabled ?? true,
     queryKey: ["buildings", { includeVirtual }],
     queryFn: async () => {
+      // hermes-parity:begin w2d-buildings — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let q = (supabase
         .from("buildings")
         .select(`
@@ -58,6 +59,7 @@ export const useBuildings = (options?: {
         area_ids: (building.area_links || []).map((l: any) => l.area_id),
         areas: (building.area_links || []).map((l: any) => l.area).filter(Boolean),
       }));
+      // hermes-parity:end w2d-buildings
     },
   });
 };
@@ -67,6 +69,7 @@ export const useBuilding = (id: string) => {
   return useQuery({
     queryKey: ["buildings", id],
     queryFn: async () => {
+      // hermes-parity:begin w2d-building-detail — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("buildings")
         .select(`
@@ -86,6 +89,7 @@ export const useBuilding = (id: string) => {
             areas: (data.area_links || []).map((l: any) => l.area).filter(Boolean),
           }
         : null;
+      // hermes-parity:end w2d-building-detail
     },
     enabled: !!id,
   });

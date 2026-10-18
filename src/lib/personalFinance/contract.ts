@@ -45,14 +45,18 @@ export const mutationSchema = z.object({
 });
 export const normalizeMutation = (input: unknown): Mutation => mutationSchema.parse(input);
 const base = z.object({ id: uuid, user_id: uuid, version });
+// hermes-parity:begin personal-finance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export const walletSchema = base.extend({ name, kind: walletKind, icon, opening_balance: z.number().finite(), hidden: z.boolean(), is_default: z.boolean(), is_preferred: z.boolean().optional(), balance: z.number().finite() });
 // Legacy labels use PostgreSQL character/space rules; output must not trim or apply new-input UTF-16 limits.
 export const categorySchema = base.extend({ type, name: z.string().min(1), icon, color: z.string(), hidden: z.boolean(), seed_key: z.string().nullable(), legacy_name: z.string().nullable() });
 export const transactionSchema = base.extend({ type, amount: z.number().finite().nonnegative(), txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().nullable(), category: z.string().nullable(), wallet_id: uuid.nullable(), category_id: uuid.nullable(), resolved_wallet_id: uuid, resolved_category_id: uuid.nullable(), created_at: z.string().datetime({ offset: true }), updated_at: z.string().datetime({ offset: true }), deleted_at: z.string().datetime({ offset: true }).nullable() });
+// hermes-parity:end personal-finance
 export const transferSchema = base.extend({ source_wallet_id: uuid, target_wallet_id: uuid, amount, txn_date: dateSchema, note: z.string().nullable(), goal_id: uuid.nullable(), deleted_at: z.string().nullable() });
 export const budgetSchema = base.extend({ category_id: uuid.nullable(), amount, type: z.literal('EXPENSE') });
 export const goalSchema = base.extend({ name, icon, target: amount, target_date: dateSchema.nullable(), wallet_id: uuid, saved: z.number().finite().nonnegative() });
+// hermes-parity:begin personal-finance
 export const snapshotSchema = z.object({ owner_id: uuid, schema_version: z.literal(1), wallets: z.array(walletSchema), categories: z.array(categorySchema), transactions: z.array(transactionSchema), transfers: z.array(transferSchema), budgets: z.array(budgetSchema), goals: z.array(goalSchema) });
+// hermes-parity:end personal-finance
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type Wallet = z.infer<typeof walletSchema>;
 export type Category = z.infer<typeof categorySchema>;

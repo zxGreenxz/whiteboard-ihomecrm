@@ -24,9 +24,11 @@ const KEY = ['material-purchases'] as const;
 export const useMaterialPurchases = (filters: { from?: string; to?: string } = {}) => useQuery({
   queryKey: [...KEY, 'list', filters],
   queryFn: async (): Promise<MaterialPurchaseWithItems[]> => {
+    // hermes-parity:begin w2c-material-purchases — Hermes chép vùng này (public.materials_purchases_v1)
     let q = supabase.from('material_purchases' as any).select('*, supplier:suppliers(id,name), items:material_purchase_items(*, material:materials(id,name,unit))').order('purchase_date', { ascending: false }).order('created_at', { ascending: false });
     if (filters.from) q = q.gte('purchase_date', filters.from);
     if (filters.to) q = q.lte('purchase_date', filters.to);
+    // hermes-parity:end w2c-material-purchases
     const { data, error } = await q;
     if (error) throw error;
     if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách phiếu nhập. Tải lại để kiểm tra.');

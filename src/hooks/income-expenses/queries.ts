@@ -368,12 +368,14 @@ export const incomeExpensesListQuery = (
       } else if (filters.verified_status === "UNVERIFIED") {
         query = query.is("verified_at", null);
       }
+      // hermes-parity:begin finance-top-expenses — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       // Báo cáo Lợi nhuận: chỉ phiếu có PHẦN hạch toán KQKD > 0 (item-level —
       // phiếu trộn thu HĐ gộp cọc vẫn hiện với phần doanh thu; phiếu thuần cọc
       // và phiếu override không-KQKD bị loại).
       if (filters.business_result_only) {
         query = query.gt("kqkd_amount", 0);
       }
+      // hermes-parity:end finance-top-expenses
 
       // Search SERVER-SIDE: name/code ilike trực tiếp; tenant_name nằm ở bảng
       // join nên resolve trước tenant_id khớp tên rồi OR vào. Trước đây khi

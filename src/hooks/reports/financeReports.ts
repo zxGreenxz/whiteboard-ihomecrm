@@ -19,6 +19,7 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "payment-schedule", daysAhead],
     queryFn: async () => {
+      // hermes-parity:begin finance-payment-schedule — Hermes chép vùng này (public.finance_payment_schedule_v1)
       const today = new Date();
       const futureDate = addDays(today, daysAhead);
 
@@ -67,6 +68,7 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
           remaining_amount: invoice.remaining_amount == null ? financialReadNumber(invoice.total_amount) - financialReadNumber(invoice.paid_amount) : financialReadNumber(invoice.remaining_amount),
         };
       });
+      // hermes-parity:end finance-payment-schedule
     },
   });
 }
@@ -80,6 +82,7 @@ export function useOverpaymentReport() {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment"],
     queryFn: async () => {
+      // hermes-parity:begin finance-overpayment — Hermes chép vùng này (public.finance_overpayment_invoices_v1)
       // PAGED: mọi hoá đơn từng thu đều paid_amount>0 → dễ vượt 1000 → phân trang.
       const data = await fetchAllRows<any>(
         (from, to) => supabase
@@ -124,6 +127,7 @@ export function useOverpaymentReport() {
             overpaid_amount: financialReadNumber(invoice.paid_amount) - financialReadNumber(invoice.total_amount),
           };
         });
+      // hermes-parity:end finance-overpayment
     },
   });
 }
@@ -134,9 +138,11 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number }> => {
+      // hermes-parity:begin finance-overpayment
       const { data, error } = await supabase.rpc("get_overpayment_summary", {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
+      // hermes-parity:end finance-overpayment
       if (error) throw error;
       const d = (data ?? {}) as any;
       return { total: summaryNumber(d.total), count: summaryNumber(d.count) };
