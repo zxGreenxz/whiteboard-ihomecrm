@@ -402,7 +402,9 @@ test('B12 ví cá nhân = personal_finance_snapshot của CHÍNH người hỏi 
   assert.deepEqual(wallets.items.map(row => [row.walletId, row.balance]), snap.wallets.map(row => [row.id, String(row.balance)]));
   assert.deepEqual(wallets.items.map(row => [row.walletId, row.name, row.balance, row.hidden]),
     [[WALLET, 'Ví chính', '1900000', false], [WALLET_HIDDEN, 'Ví ẩn', '5000', true]]);
-  assert.deepEqual(wallets.summary, { totalBalance: '1900000', wallets: 2 });
+  // Tổng = selectBalance của trang Ví cá nhân: cộng mọi ví của snapshot, kể cả ví ẩn.
+  assert.deepEqual(wallets.summary, { totalBalance: String(snap.wallets.reduce((sum, row) => sum + Number(row.balance), 0)), wallets: 2 });
+  assert.equal(wallets.summary.totalBalance, '1905000');
   const tx = await all(env, 'personal_transactions');
   assert.deepEqual(tx.items.map(row => [row.date, row.type, row.amount, row.categoryName, row.walletName]),
     [['2026-10-06', 'EXPENSE', '150000', 'Ăn uống', 'Ví chính'], ['2026-10-05', 'INCOME', '2000000', null, 'Ví chính'], ['2026-09-30', 'EXPENSE', '50000', 'Ăn uống', 'Ví chính']]);

@@ -26,7 +26,9 @@ export function createPersonalFinanceService(client: PersonalFinanceRpcClient, o
   async snapshot(): Promise<Snapshot> {
    try {
     const bootstrap = await client.rpc('personal_finance_bootstrap'); if (bootstrap.error) throw bootstrap.error;
+    // hermes-parity:begin personal-finance — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
     const response = await client.rpc('personal_finance_snapshot'); if (response.error) throw response.error;
+    // hermes-parity:end personal-finance
     try { return parseSnapshot(response.data, owner); } catch (error) { throw new PersonalFinanceError('internal', 'Dữ liệu ví trả về không hợp lệ.', error); }
    } catch (error) { throw mapFinanceError(error); }
   },

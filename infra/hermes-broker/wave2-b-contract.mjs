@@ -114,7 +114,7 @@ export const W2B_REPORTS = Object.freeze({
 
   // B12 — /finance/personal-wallet (PersonalWalletPage.tsx; personal_finance_snapshot): chỉ của CHÍNH người hỏi.
   personal_wallets: w2Report({ permission: 'personal_finance.view', source: 'crm.personal_finance_snapshot', scope: 'self', private: true,
-    title: 'Ví cá nhân của CHÍNH người hỏi: từng ví (loại, số dư đầu, số dư hiện tại, ẩn, mặc định); summary tổng số dư các ví không ẩn.',
+    title: 'Ví cá nhân của CHÍNH người hỏi: từng ví (loại, số dư đầu, số dư hiện tại, ẩn, mặc định); summary tổng số dư mọi ví, kể cả ví ẩn (như trang Ví cá nhân).',
     fields: { walletId: id, name, kind: code, openingBalance: money, balance: money, isDefault: bool, hidden: bool },
     summary: { totalBalance: money, wallets: count } }),
   personal_transactions: w2Report({ permission: 'personal_finance.view', source: 'crm.personal_finance_snapshot', scope: 'self', private: true,

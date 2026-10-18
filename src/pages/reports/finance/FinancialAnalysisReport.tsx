@@ -33,7 +33,9 @@ export default function FinancialAnalysisReport() {
   const [monthStr, setMonthStr] = usePersistedState<string>("flt:rpt-fin-analysis:month", format(new Date(), "MM-yyyy"));
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-fin-analysis:buildingIds", []);
   // Mặc định DỒN TÍCH để khớp Phân bổ lợi nhuận (cũng mặc định accrual).
+  // hermes-parity:begin finance-analysis-rpc — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const [accrual, setAccrual] = usePersistedState<boolean>("flt:rpt-fin-analysis:accrual", true);
+  // hermes-parity:end finance-analysis-rpc
 
   // 36 tháng gần nhất — đủ ngữ cảnh YoY khi xem lùi 2 năm.
   const monthOptions = useMemo(() => {

@@ -278,7 +278,8 @@ BEGIN
       SELECT COALESCE(jsonb_agg(jsonb_build_object('walletId',(w->>'id')::uuid,'name',public.report_text_v1(w->>'name',200),'kind',w->>'kind',
           'openingBalance',COALESCE((w->>'opening_balance')::numeric,0)::text,'balance',COALESCE((w->>'balance')::numeric,0)::text,
           'isDefault',COALESCE((w->>'is_default')::boolean,false),'hidden',COALESCE((w->>'hidden')::boolean,false)) ORDER BY ord),'[]'::jsonb),
-        COALESCE(sum((w->>'balance')::numeric) FILTER (WHERE NOT COALESCE((w->>'hidden')::boolean,false)),0),count(*)
+        -- Tổng như selectBalance của trang Ví cá nhân (src/lib/personalFinance/selectors.ts): cộng cả ví ẩn.
+        COALESCE(sum((w->>'balance')::numeric),0),count(*)
         INTO v_rows,v_a,v_n FROM jsonb_array_elements(COALESCE(v_raw->'wallets','[]'::jsonb)) WITH ORDINALITY x(w,ord);
       v_summary:=jsonb_build_object('totalBalance',v_a::text,'wallets',v_n);
     ELSE

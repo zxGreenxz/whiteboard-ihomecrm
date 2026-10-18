@@ -41,8 +41,10 @@ export default function ProfitHubPage() {
   const accessQueries = [permissionQuery,shareholderQuery,managerQuery,closeOrganizationsQuery];
   const phone = usePhoneViewport();
 
+  // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
   const canViewManagedProfit = canUse(perms, "shareholder_profit", "view");
+  // hermes-parity:end shareholder-profit
   const canLock = profitCloseOrganizations.some((organization) => organization.can_lock);
   const canUnlock = profitCloseOrganizations.some((organization) => organization.can_unlock);
   const canDistribute = canUse(perms, "shareholder_profit", "distribute");

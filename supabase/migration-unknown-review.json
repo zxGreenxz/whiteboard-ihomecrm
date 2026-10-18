@@ -995,7 +995,7 @@
         "function:app_private.hermes_w2b_read_v1"
       ],
       "raSoatBoi": "Claude Code — Hermes đợt 2 Gói B (theo rào công ty 20261018000700), 18/10/2026",
-      "sha256": "4120192f5369b5eddb8bf1c1f94915ddcaaa3e07b74c1b7759fa98911e512eec"
+      "sha256": "092b1294d37a7de62236fbe420cacf97558bb98e22d863eaf72a78bd252e28ad"
     },
     "supabase/migrations/20261018020050_hermes_w2b_finance_shared_v1.sql": {
       "bangChung": [
