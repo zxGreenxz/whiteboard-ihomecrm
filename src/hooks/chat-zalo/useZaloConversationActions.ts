@@ -6,8 +6,11 @@ import { useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { QK } from '@/hooks/useZaloChat';
+import { QK, type ZaloConversationPage } from '@/hooks/useZaloChat';
 import type { ZaloConversation } from '@/components/chat-zalo/types';
+
+const isConversationPage = (value: unknown): value is ZaloConversationPage =>
+  !!value && typeof value === 'object' && Array.isArray((value as ZaloConversationPage).rows);
 
 export function useSetConversationFlags() {
   const qc = useQueryClient();
@@ -23,18 +26,20 @@ export function useSetConversationFlags() {
     },
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: QK.conversations });
-      // Optimistic trên MỌI biến thể key (['zalo','conversations', orgId])
-      const entries = qc.getQueriesData<ZaloConversation[]>({ queryKey: QK.conversations });
-      for (const [key, list] of entries) {
-        if (!list) continue;
-        qc.setQueryData<ZaloConversation[]>(key, list.map((c) => (c.id === v.conversationId
-          ? {
-              ...c,
-              pinned: v.pinned ?? c.pinned,
-              muted: v.muted ?? c.muted,
-              markedUnread: v.markedUnread ?? c.markedUnread,
-            }
-          : c)).sort((a, b) => Number(b.pinned) - Number(a.pinned)));
+      // Optimistic trên MỌI biến thể key: danh sách nền ['zalo','conversations', orgId] là mảng,
+      // cột danh sách [..., 'list', args] là trang { rows, total }; ô khác (thành viên nhóm) bỏ qua.
+      const entries = qc.getQueriesData<unknown>({ queryKey: QK.conversations });
+      const patch = (list: ZaloConversation[]) => list.map((c) => (c.id === v.conversationId
+        ? {
+            ...c,
+            pinned: v.pinned ?? c.pinned,
+            muted: v.muted ?? c.muted,
+            markedUnread: v.markedUnread ?? c.markedUnread,
+          }
+        : c)).sort((a, b) => Number(b.pinned) - Number(a.pinned));
+      for (const [key, data] of entries) {
+        if (Array.isArray(data)) qc.setQueryData<ZaloConversation[]>(key, patch(data));
+        else if (isConversationPage(data)) qc.setQueryData<ZaloConversationPage>(key, { ...data, rows: patch(data.rows) });
       }
       return { entries };
     },

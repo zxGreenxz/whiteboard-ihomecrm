@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ organization: null }) }));
 
-import { CONV_COLS, mapConv, mapGroupMembers, mapMsg, mapWorkerStatus } from '@/hooks/useZaloChat';
+import { mapConv, mapGroupMembers, mapMsg, mapWorkerStatus } from '@/hooks/useZaloChat';
+import { CONV_FIELDS, PROFILE_FIELDS } from '@/lib/zaloConversationList';
 import { CHU_TIN_THE_CU } from '@/lib/zaloContent';
 
 const dong = (over: Record<string, unknown>) => ({
@@ -47,8 +48,8 @@ describe('mapMsg — tin dạng thẻ', () => {
 
 describe('group member projection', () => {
   it('does not load member maps with the conversation list and preserves small profile fields', () => {
-    expect(CONV_COLS.split(',').map(s => s.trim())).not.toContain('profile');
-    expect(CONV_COLS).not.toContain('memberProfiles');
+    expect(CONV_FIELDS).not.toContain('profile');
+    expect(PROFILE_FIELDS).not.toContain('memberProfiles');
     expect(mapConv({ id: 'c', peer_name: 'Nhóm', thread_type: 'group', profile_kind: 'broker', profile_members: 30, profile_tags: [{ l: 'T', t: 'info' }], profile_room: 'P1' }).profile)
       .toEqual({ kind: 'broker', members: 30, tags: [{ l: 'T', t: 'info' }], room: 'P1' });
   });
