@@ -1,0 +1,20 @@
+[Unit]
+Description=Hermes dashboard proxy into verified live owner network namespace
+Requires=hermes-dashboard-proxy.socket
+BindsTo=hermes-dashboard.service
+PartOf=hermes-dashboard.service
+After=hermes-dashboard.service hermes-dashboard-proxy.socket
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/ihome-hermes/node/bin/node /opt/ihome-hermes-dashboard/current/launcher.mjs proxy
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=78
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal

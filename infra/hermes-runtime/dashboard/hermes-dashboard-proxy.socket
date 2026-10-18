@@ -1,0 +1,13 @@
+[Unit]
+Description=Hermes dashboard ingress on host loopback only
+BindsTo=hermes-dashboard.service
+PartOf=hermes-dashboard.service
+After=hermes-dashboard.service
+
+[Socket]
+ListenStream=127.0.0.1:19119
+NoDelay=true
+Service=hermes-dashboard-proxy.service
+
+[Install]
+WantedBy=hermes-dashboard.service
