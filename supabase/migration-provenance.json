@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T04:43:22.678Z",
+  "generatedAt": "2026-10-18T05:15:02.973Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 735,
-    "unknown": 81,
+    "ledger-applied": 736,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -11927,6 +11927,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20261017115636_contract_list_v1.sql",
+      "version": "20261017115636",
+      "name": "contract_list_v1",
+      "scheme": "timestamp14",
+      "sha256": "6ed5fae7fd30a7d996414a43d8eb283c304a665abc063e98a7af3db68b9b1ad0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-18T05:14:16.969Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20261017115708_customer_list_v1.sql",
       "version": "20261017115708",
       "name": "customer_list_v1",
@@ -11935,22 +11946,6 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-17T23:24:49.480Z|bien-nhan-backup"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20261017115809_invoice_read_shared_v1.sql",
-      "version": "20261017115809",
-      "name": "invoice_read_shared_v1",
-      "scheme": "timestamp14",
-      "sha256": "c450d90d050ce6200444048bbf667893be33d89745e9d588467e4181a0973025",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.invoice_scope_building_ids_v1",
-        "function:public.invoice_receipt_methods_v1",
-        "function:public.invoice_statistics_money_v1",
-        "function:public.invoice_list_v1",
-        "function:public.invoice_statistics_v3"
       ]
     },
     {

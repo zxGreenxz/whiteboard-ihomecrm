@@ -169,16 +169,14 @@ test('issued adjustment, collection, review, mobile history and edit after rever
       sessionStorage.setItem('flt:invoices:filters', JSON.stringify({ building_id: building, billing_month: billingMonth, adjustment_review_status: 'pending' }));
       sessionStorage.setItem('flt:invoices:search', JSON.stringify(''));
     }, { building: fixture.building_id, billingMonth: month });
-    // Danh sách đọc qua hàm SQL dùng chung invoice_list_v1 (bộ lọc nằm trong body POST).
     const filtered = page.waitForResponse(response => {
       const url = new URL(response.url());
-      const body = response.request().postDataJSON() as { p_adjustment_review_status?: string } | null;
-      return url.pathname === '/rest/v1/rpc/invoice_list_v1' && response.request().method() === 'POST' && body?.p_adjustment_review_status === 'pending';
+      return url.pathname === '/rest/v1/invoices' && url.searchParams.get('adjustment_review_status') === 'eq.PENDING' && response.request().method() === 'GET';
     });
     await page.goto('/invoices');
     const filterResponse = await filtered;
     expect(filterResponse.ok()).toBe(true);
-    expect((await filterResponse.json() as { rows: { id: string }[] }).rows.some(row => row.id === invoiceId)).toBe(true);
+    expect((await filterResponse.json()).some((row: { id: string }) => row.id === invoiceId)).toBe(true);
     await expect(page.getByRole('combobox').filter({ hasText: 'Bản mới nhất chưa kiểm tra' })).toBeVisible();
 
     // Canonical reversal, then the issued editor must remain available at paid_amount=0.

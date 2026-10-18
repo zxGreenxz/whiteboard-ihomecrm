@@ -263,6 +263,60 @@ gaps:
     exit_condition: >
       Có đường nộp bằng chứng E2E live cho gate-aggregate (hoặc job CI cho phần fleet); đưa bản
       vá spec ở 8dd5bb18 lên main và chạy xanh trên preview đúng commit với vai thật.
+  - id: e2e-fleet-hop-dong-ham-dung-chung-allowlist
+    where: >
+      .e2e-fleet/specs/contract-mobile-settlement-readonly.spec.ts (READ_RPC + chờ /rest/v1/contracts
+      ở bước bấm "Đã thanh lý"), .e2e-fleet/specs/contract-unified-form.spec.ts (READ_RPC),
+      .e2e-fleet/specs/contract-workspace-tabs.spec.ts (READ_RPC), .e2e-fleet/specs/user-feedback.spec.ts
+      (READ_RPC + ca "DEMO lỗi tải thống kê" giả lỗi ở /rpc/get_contract_stats, dòng 158)
+    expires_at: 2026-11-30
+    why: >
+      PR #197 (17–18/10/2026) chuyển danh sách và 4 ô thống kê màn /contracts sang hai RPC đọc
+      contract_list_v1 + contract_stats_v2 (POST), không còn đọc bảng contracts kèm khách hay gọi
+      get_contract_stats. Bốn spec chỉ-đọc trên có danh sách READ_RPC riêng trong file spec nên sẽ chặn
+      cả contract_list_v1 lẫn contract_stats_v2; spec trả phòng mobile còn chờ phản hồi
+      /rest/v1/contracts?status=…TERMINATED (nay là POST /rest/v1/rpc/contract_list_v1 với
+      p_stat=TERMINATED, kết quả ở .rows); ca lỗi thống kê của user-feedback giả 403 ở get_contract_stats
+      nên không còn chặn được ô (phải giả ở /rpc/contract_stats_v2). Hai module dùng chung không phải
+      spec (rent-support-browser.ts, copilotRoomPassGuard.ts) ĐÃ vá trong PR #197. Bản vá spec (thêm
+      contract_list_v1 vào READ_RPC, chờ đúng RPC mới) và spec mới contract-list-shared-fn nằm ở commit
+      e3914bae của PR #197, CHƯA có contract_stats_v2; spec mới (có thêm contract_stats_v2 và kiểm ô =
+      danh sách) chạy xanh 2/2 ngày 18/10/2026 trên dev server worktree trỏ TEST (chủ nguyentam desktop
+      1440, quản lý joey mobile 390). Không đưa lên main vì đổi spec fleet tạo nghĩa vụ "Live browser
+      evidence" chặn promote. Đề xuất khi sửa: gom các danh sách READ_RPC lặp ở từng spec vào một module
+      không phải spec (như rent-support-browser.ts) để lần đổi RPC đọc sau chỉ chạm module đó.
+    exit_condition: >
+      Như e2e-fleet-contract-workspace-tabs-luu-cong-ty: có đường nộp bằng chứng E2E live cho
+      gate-aggregate (hoặc job CI cho phần fleet). Khi đó đưa bản vá spec ở e3914bae lên main kèm
+      contract_stats_v2 trong READ_RPC, ca lỗi thống kê giả ở /rpc/contract_stats_v2, rồi chạy xanh trên
+      preview đúng commit với vai thật.
+  - id: e2e-fleet-hoa-don-ham-dung-chung-allowlist
+    where: >
+      .e2e-fleet/specs/invoice-adjustment-repair.spec.ts (bước lọc "điều chỉnh chờ kiểm" chờ GET
+      /rest/v1/invoices?adjustment_review_status=eq.PENDING rồi đọc mảng dòng),
+      .e2e-fleet/specs/user-feedback.spec.ts (READ_RPC thiếu invoice_list_v1, invoice_statistics_v3)
+    expires_at: 2026-11-30
+    why: >
+      PR #201 (17–18/10/2026) chuyển danh sách và thẻ thống kê màn /invoices sang hai RPC đọc dùng
+      chung invoice_list_v1 + invoice_statistics_v3 (POST, migration 20261017115809), không còn đọc
+      bảng invoices bằng PostgREST hay gọi get_invoice_statistics_v2/invoice_active_payment_methods/
+      invoice_payment_method_drilldown. Prefetch lúc rảnh (src/lib/prefetchPages.ts) cũng gọi hai RPC
+      này ở màn chính. Hai module dùng chung không phải spec (rent-support-browser.ts READERS,
+      copilotRoomPassGuard.ts dashboardReads kèm đúng tập khoá tham số) ĐÃ vá trong PR #201. Helper
+      invoice_scope_building_ids_v1 / invoice_receipt_methods_v1 / invoice_statistics_money_v1 chỉ gọi
+      từ trong SQL nên không cần vào allowlist. Bản vá hai spec nằm ở commit 1a79fb5e của PR #201:
+      READ_RPC của user-feedback thêm hai RPC; invoice-adjustment-repair chờ POST
+      /rest/v1/rpc/invoice_list_v1 có body p_adjustment_review_status='pending' và đọc .rows. Màn đã
+      kiểm bằng Playwright trên dev server worktree trỏ TEST (chủ nguyentam desktop 1440 + mobile 390,
+      joey desktop). Không đưa bản vá spec lên main vì đổi spec fleet tạo nghĩa vụ "Live browser
+      evidence" chặn merge/promote. PR #205 (nhánh claude/e2e-read-rpc-module) đang gom các READ_RPC
+      lặp vào một module chung: cần thêm invoice_list_v1 + invoice_statistics_v3 vào module đó.
+    exit_condition: >
+      Như e2e-fleet-contract-workspace-tabs-luu-cong-ty: có đường nộp bằng chứng E2E live cho
+      gate-aggregate (hoặc job CI cho phần fleet). Khi đó đưa bản vá spec ở 1a79fb5e lên main (hoặc
+      thêm hai RPC vào module READ_RPC chung của PR #205 và sửa bước chờ của
+      invoice-adjustment-repair sang /rpc/invoice_list_v1 + .rows), rồi chạy xanh trên preview đúng
+      commit với vai thật.
   - id: e2e-fleet-contract-moveout-deferred-o-chi-so
     where: >
       .e2e-fleet/specs/contract-moveout-deferred.spec.ts
