@@ -37,6 +37,18 @@ Công thức/bộ lọc có từ hai nơi trở lên cùng dùng (web, Hermes, b
 - Khớp số trước/sau: cùng org/kỳ/bộ lọc (TEST/DEMO hoặc chỉ đọc), so kết quả cũ với hàm mới; lệch thì dừng và giải trình từng chênh.
 - `EXPLAIN` hàm mới trên dữ liệu cỡ thật: quyền/RLS tính theo tập (initplan), không gọi từng dòng; không chậm hơn bản cũ.
 - `p_building_ids` và tham số lọc tương tự chỉ thu hẹp (∩) phạm vi quyền server tự tính, không bao giờ mở rộng hay thay quyền.
+- Quyền (chốt 18/10/2026): hàm chung là `SECURITY INVOKER` đọc bằng RLS người gọi, `search_path=''`, tự chặn khi `current_user` khác `authenticated` hoặc `auth.uid()` rỗng; không chép policy vào thân hàm.
+- `SECURITY DEFINER` chỉ cho helper nhỏ trong `app_private` trả tập id và tự kiểm phạm vi `auth.uid()`; không bao giờ trả cả danh sách.
+- Ngoại lệ vị trí: helper DEFINER mà hàm INVOKER gọi trực tiếp phải ở `public` (EXECUTE chỉ `authenticated`): `authenticated` không có USAGE trên `app_private` (đo production 18/10/2026), như helper của màn Hoá đơn.
+- Ngoại lệ "DEFINER trả tổng" (vd. `invoice_statistics_money_v1`) chỉ khi đủ ba điều kiện: tự giao phạm vi của chính người gọi, không tin id bên gọi truyền; trả đúng một dòng tổng, không trả danh sách; có test bất biến (gọi thẳng với id toà xoá mềm/công ty khác ra 0, phạm vi ⊆ `accessible_building_ids()`) và đột biến làm suite đỏ.
+- Hermes gọi qua đường INVOKER bằng JWT người dùng (không gọi từ thân hàm DEFINER), thu hẹp bằng `p_building_ids`: NULL = toàn phạm vi RLS, `'{}'` = rỗng.
+- Ngoại lệ đã duyệt của Hermes đợt 2 (Gói Z 18/10/2026; chi tiết ở đầu [wave2-kit.mjs](../infra/hermes-broker/wave2-kit.mjs)):
+  - Helper `SECURITY DEFINER` ở `public` (EXECUTE chỉ `authenticated`, `search_path` cố định) trả **một boolean** về chính người gọi hoặc về một hạng mục trong công ty người gọi, không trả danh sách: `salary_is_admin_v1(p_organization_id)` (người gọi có là admin trang lương: super admin hoặc `salary.lock`/`manage_salary`/`distribute` toàn công ty; không uid/không thuộc công ty ⇒ false) và `finance_type_restricted_v1(p_type_id, p_merged)` (hạng mục có hạn chế không; chỉ trả cho hạng mục thuộc công ty người gọi, khác ⇒ NULL — bản INVOKER bị RLS hạn chế giấu chính hạng mục nên đọc sai thành "không hạn chế"). `finance_my_scope_v1` (DEFINER) trả phạm vi của chính người gọi cho một khoá cố định — thuộc luật "trả tập id của chính người gọi".
+  - Hàng tổng hợp toàn công ty `buildingId = null` (`cashbook_daily`, `cash_flow`, `fa_type_breakdown`) chỉ khi kết nối phạm vi Toàn tổ chức (cổng 20261018000700 chỉ nhận null khi `orgWide`); `organizationId` = công ty hàm đã lọc tường minh.
+  - Hàng dùng chung (`organization_id` NULL, vd. hạng mục thu chi dùng chung) không trả qua Hermes — rào công ty đòi mọi hàng đúng công ty kết nối — và được đếm ở `summary.globalRowsOmitted`; khi trùng tên, hàng của công ty thắng hàng dùng chung.
+  - `network_fleet` toàn công ty bị cổng từ chối khi quá 256 toà (`22023 hermes_domain_scope_too_large`, trần toà của cổng/broker).
+  - Chữ tự do gắn hợp đồng (ghi chú hoá đơn/phiếu/thanh lý, người nộp) chỉ trả khi MỌI khách của hợp đồng nhìn thấy dưới RLS `customers`; viết trong câu (đếm dòng khách = đếm dòng nối được hồ sơ), không tách hàm plpgsql gọi theo từng dòng vì mỗi lời gọi tính lại InitPlan RLS.
+- Mỗi bảng chỉ tham chiếu một lần trong câu: mỗi lần là thêm một lượt policy/InitPlan (`accessible_*_ids` ≈ 35 ms/lượt trên TEST).
 - Hermes còn chép: bọc mã web bằng `hermes-parity:begin/end`, thêm mục vào [web-parity.json](../infra/hermes-broker/web-parity.json); chuyển sang gọi hàm chung thì đổi mục thành `rpc`. Gate: `npm run gate:hermes-web-parity`.
 
 ## Kiểm thử

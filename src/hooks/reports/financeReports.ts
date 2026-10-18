@@ -19,31 +19,39 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "payment-schedule", daysAhead],
     queryFn: async () => {
+      // hermes-parity:begin finance-payment-schedule — Hermes chép vùng này (public.finance_payment_schedule_v1)
       const today = new Date();
       const futureDate = addDays(today, daysAhead);
 
-      const { data, error } = await supabase
-        .from("invoices")
-        .select(`
-          *,
-          building:buildings!invoices_building_id_fkey (id, name),
-          room:rooms!invoices_room_id_fkey (id, name),
-          contract:contracts!invoices_contract_id_fkey (
-            id,
-            contract_customers!contract_customers_contract_id_fkey (
-              is_representative,
-              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+      // PAGED: lọc "đến hạn ≤ hôm nay + N ngày" gồm cả mọi hoá đơn cũ → vượt 1000
+      // dòng (thật > 1.700) thì PostgREST cắt im lặng ở 1000 → phân trang
+      // (due_date + id tiebreaker).
+      const data = await fetchAllRows<unknown>(
+        (from, to) => supabase
+          .from("invoices")
+          .select(`
+            *,
+            building:buildings!invoices_building_id_fkey (id, name),
+            room:rooms!invoices_room_id_fkey (id, name),
+            contract:contracts!invoices_contract_id_fkey (
+              id,
+              contract_customers!contract_customers_contract_id_fkey (
+                is_representative,
+                customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+              )
             )
-          )
-        `)
-        .lte("due_date", futureDate.toISOString())
-        // Bỏ HĐ đã xoá mềm (bug sẵn có: trước đây lọt vào báo cáo) và HĐ đã
-        // huỷ — từ 09/2026 nút Xoá gôm về nút Huỷ nên rác mang status CANCELLED.
-        .is("deleted_at", null)
-        .neq("status", "CANCELLED")
-        .order("due_date", { ascending: true });
-
-      if (error) throw error;
+          `)
+          .lte("due_date", futureDate.toISOString())
+          // Bỏ HĐ đã xoá mềm (bug sẵn có: trước đây lọt vào báo cáo) và HĐ đã
+          // huỷ — từ 09/2026 nút Xoá gôm về nút Huỷ nên rác mang status CANCELLED.
+          .is("deleted_at", null)
+          .neq("status", "CANCELLED")
+          .order("due_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "reports.payment-schedule" },
+      );
+      if (data === null) throw new Error("Lỗi tải hoá đơn (lịch thanh toán)");
 
       return financialReadRows(data).map((invoice: any) => {
         const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
@@ -60,6 +68,7 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
           remaining_amount: invoice.remaining_amount == null ? financialReadNumber(invoice.total_amount) - financialReadNumber(invoice.paid_amount) : financialReadNumber(invoice.remaining_amount),
         };
       });
+      // hermes-parity:end finance-payment-schedule
     },
   });
 }
@@ -73,6 +82,7 @@ export function useOverpaymentReport() {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment"],
     queryFn: async () => {
+      // hermes-parity:begin finance-overpayment — Hermes chép vùng này (public.finance_overpayment_invoices_v1)
       // PAGED: mọi hoá đơn từng thu đều paid_amount>0 → dễ vượt 1000 → phân trang.
       const data = await fetchAllRows<any>(
         (from, to) => supabase
@@ -117,6 +127,7 @@ export function useOverpaymentReport() {
             overpaid_amount: financialReadNumber(invoice.paid_amount) - financialReadNumber(invoice.total_amount),
           };
         });
+      // hermes-parity:end finance-overpayment
     },
   });
 }
@@ -127,9 +138,11 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
     meta:{errorDisplay:"inline",label:"báo cáo tài chính"},
     queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number }> => {
+      // hermes-parity:begin finance-overpayment
       const { data, error } = await supabase.rpc("get_overpayment_summary", {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
+      // hermes-parity:end finance-overpayment
       if (error) throw error;
       const d = (data ?? {}) as any;
       return { total: summaryNumber(d.total), count: summaryNumber(d.count) };

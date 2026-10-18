@@ -51,6 +51,7 @@ interface RefundRow {
 
 type LedgerMode = "refund" | "rounding";
 
+// hermes-parity:begin cashbook-change-ledger — Hermes chép vùng này (public.cashbook_change_ledger_v1)
 const ROUNDING_ACCOUNT_NAME = "Làm tròn tiền thiếu";
 
 function detectMode(name: string | null | undefined): LedgerMode {
@@ -124,6 +125,7 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
     },
   });
 }
+// hermes-parity:end cashbook-change-ledger
 
 type Period = "this-month" | "last-month" | "this-year" | "custom";
 
@@ -146,6 +148,7 @@ const RefundLogPage = () => {
     () => format(endOfMonth(new Date()), "yyyy-MM-dd"),
   );
 
+  // hermes-parity:begin cashbook-change-ledger
   const { start, end } = useMemo(() => {
     const now = new Date();
     if (period === "this-month") {
@@ -160,6 +163,7 @@ const RefundLogPage = () => {
     }
     return { start: customStart || "1970-01-01", end: customEnd || "2999-12-31" };
   }, [period, customStart, customEnd]);
+  // hermes-parity:end cashbook-change-ledger
 
   const query = useRefundLog(accountId, start, end);
   const { data, isLoading } = query;

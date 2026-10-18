@@ -106,6 +106,9 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
   "54000": "internal_invariant", // program_limit_exceeded
   "42723": "internal_invariant", // duplicate_function — migration dựng chồng
   "42601": "internal_invariant", // syntax_error — SQL động ghép sai
+  // internal_error: PostgreSQL tự sinh khi lỗi nội bộ, và cổng Hermes đợt 2 ném khi hàm đọc của gói trả sai khuôn
+  // (`hermes_w2_package_result_invalid`, 20261018000600/000700). Cả hai là chốt chặn vỡ: kêu to, không thử lại.
+  XX000: "internal_invariant",
 };
 
 /** Mã của PostgREST (không phải SQLSTATE) — nằm cùng trường `code`. */

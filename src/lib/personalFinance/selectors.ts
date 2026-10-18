@@ -3,8 +3,10 @@ import { sumMoney, subtractMoney } from './money';
 
 export const localMonth=(date=new Date())=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
 export const selectTransactions=(s:Snapshot)=>s.transactions.filter(t=>t.user_id===s.owner_id && !t.deleted_at).sort((a,b)=>b.txn_date.localeCompare(a.txn_date)||b.created_at.localeCompare(a.created_at));
+// hermes-parity:begin personal-finance-balance
 /** Snapshot balances already include opening balance and every transaction/transfer, including hidden wallets. */
 export const selectBalance=(s:Snapshot)=>sumMoney(s.wallets.map(w=>w.balance));
+// hermes-parity:end personal-finance-balance
 export function selectMonth(s:Snapshot,month:string) {
  const transactions=selectTransactions(s).filter(t=>t.txn_date.slice(0,7)===month);
  const sum=(type:PersonalTransaction['type'])=>sumMoney(transactions.filter(t=>t.type===type).map(t=>t.amount));

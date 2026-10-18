@@ -7,6 +7,7 @@ export interface ShareholderSummaryRow {
   remaining: number; // còn lại = accrued - paid
 }
 
+// hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 // Tổng hợp Được chia / Đã ứng / Còn lại cho mỗi cổ đông (luỹ kế).
 export function computeShareholderSummary(
   shareholderIds: string[],
@@ -24,3 +25,4 @@ export function computeShareholderSummary(
 
   return out;
 }
+// hermes-parity:end shareholder-profit

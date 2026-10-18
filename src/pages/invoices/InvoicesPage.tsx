@@ -194,7 +194,7 @@ const InvoicesDesktopPage = () => {
           : filters.room_ids?.length
             ? undefined
             : filters.room_id,
-      // [A1] get_invoice_statistics_v2 loại hoá đơn CANCELLED khỏi mọi tổng,
+      // [A1] invoice_statistics_v3 (như v2) loại hoá đơn CANCELLED khỏi mọi tổng,
       // TRỪ khi được hỏi đích danh. Bảng dưới lọc theo view_status, nên phải
       // dịch view "Đã huỷ" thành p_status=CANCELLED — nếu không, chọn tab đó
       // sẽ ra bảng đầy hoá đơn nhưng thẻ thống kê toàn số 0.

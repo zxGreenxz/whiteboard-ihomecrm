@@ -21399,6 +21399,62 @@ export type Database = {
       }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
       archive_cashbook_v1: { Args: { p_cashbook_id: string }; Returns: Json }
+      areas_in_scope_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          area_id: string
+          code: string
+          created_at: string
+          name: string
+          organization_id: string
+          status: string
+        }[]
+      }
+      areas_list_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_include_empty?: boolean
+          p_organization_id: string
+        }
+        Returns: {
+          area_id: string
+          building_ids: string[]
+          code: string
+          created_at: string
+          name: string
+          organization_id: string
+          status: string
+        }[]
+      }
+      assets_list_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_category_id?: string
+          p_condition?: string
+          p_include_unassigned?: boolean
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: {
+          asset_id: string
+          building_id: string
+          building_name: string
+          category_id: string
+          category_name: string
+          code: string
+          condition: string
+          created_at: string
+          name: string
+          organization_id: string
+          purchase_date: string
+          quantity: number
+          room_id: string
+          room_name: string
+          supplier_id: string
+          supplier_name: string
+          total_value: number
+        }[]
+      }
       assign_commission_manager_v1: {
         Args: {
           p_expected_approval_version: number
@@ -21467,6 +21523,34 @@ export type Database = {
       building_of_contract: { Args: { _id: string }; Returns: string }
       building_of_invoice: { Args: { _id: string }; Returns: string }
       building_of_payment: { Args: { _id: string }; Returns: string }
+      buildings_list_v1: {
+        Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: {
+          area_ids: string[]
+          area_names: string[]
+          building_id: string
+          code: string
+          created_at: string
+          description: string
+          district: string
+          is_virtual: boolean
+          name: string
+          organization_id: string
+          province: string
+          rooms_available: number
+          rooms_count: number
+          rooms_maintenance: number
+          rooms_occupied: number
+          rooms_reserved: number
+          rooms_unavailable: number
+          status: string
+          street_address: string
+          total_floors: number
+          type: string
+          updated_at: string
+          ward: string
+        }[]
+      }
       bulk_approve_invoices_v1: {
         Args: { p_invoice_ids: string[] }
         Returns: number
@@ -21943,6 +22027,46 @@ export type Database = {
         Args: { p_as_of?: string; p_cashbook: string }
         Returns: number
       }
+      cashbook_cash_flow_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_year: number
+        }
+        Returns: {
+          building_id: string
+          expense: number
+          income: number
+          net: number
+          organization_id: string
+          period: string
+        }[]
+      }
+      cashbook_change_ledger_v1: {
+        Args: {
+          p_account_id: string
+          p_building_ids?: string[]
+          p_from: string
+          p_organization_id: string
+          p_to: string
+        }
+        Returns: {
+          amount: number
+          building_id: string
+          building_name: string
+          code: string
+          invoice_id: string
+          invoice_number: string
+          ledger_mode: string
+          notes: string
+          payer_name: string
+          room_id: string
+          room_name: string
+          total_amount: number
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
       cashbook_close_confirmers_v1: {
         Args: { p_cashbook: string }
         Returns: {
@@ -21976,6 +22100,67 @@ export type Database = {
           i_can_propose: boolean
           is_bank: boolean
           needs_closing: boolean
+        }[]
+      }
+      cashbook_closings_v1: {
+        Args: {
+          p_cashbook_ids?: string[]
+          p_organization_id: string
+          p_status?: string
+        }
+        Returns: {
+          basis: string
+          cashbook_id: string
+          cashbook_name: string
+          closed_through: string
+          closure_id: number
+          confirmed_at: string
+          confirmer_name: string
+          counted_balance: number
+          created_at: string
+          difference: number
+          mine_to_confirm: boolean
+          note: string
+          organization_id: string
+          proposed_by_name: string
+          request_id: string
+          state: string
+          system_balance: number
+        }[]
+      }
+      cashbook_daily_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_cashbook_id?: string
+          p_from: string
+          p_organization_id: string
+          p_to: string
+        }
+        Returns: {
+          building_id: string
+          closing: number
+          day: string
+          expense: number
+          income: number
+          opening: number
+          organization_id: string
+        }[]
+      }
+      cashbook_list_v1: {
+        Args: { p_organization_id: string; p_query?: string }
+        Returns: {
+          balance_visible: boolean
+          cashbook_id: string
+          code: string
+          created_at: string
+          current_amount: number
+          description: string
+          initial_amount: number
+          is_virtual: boolean
+          name: string
+          organization_id: string
+          owner_id: string
+          owner_name: string
         }[]
       }
       cashbook_opening_balance: {
@@ -22120,6 +22305,34 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      contract_display_label_v1: {
+        Args: { p_display_status: string }
+        Returns: string
+      }
+      contract_display_status_v1: {
+        Args: {
+          p_end_date: string
+          p_expected_move_out_date: string
+          p_status: string
+          p_today: string
+        }
+        Returns: string
+      }
+      contract_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_lifecycle?: string
+          p_limit?: number
+          p_month?: string
+          p_offset?: number
+          p_room_name?: string
+          p_search?: string
+          p_stat?: string
+          p_with_customers?: boolean
+        }
+        Returns: Json
+      }
+      contract_stats_v2: { Args: { p_building_ids?: string[] }; Returns: Json }
       copilot_action_ledger_list_v1: {
         Args: { p_limit?: number; p_organization_id: string }
         Returns: Json
@@ -23460,6 +23673,76 @@ export type Database = {
       demo_building_ids: { Args: never; Returns: string[] }
       demo_reset: { Args: never; Returns: Json }
       demo_user_ids: { Args: never; Returns: string[] }
+      deposit_held_contracts_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_organization_id: string
+          p_threshold: number
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          deposit_debt_mode: string
+          deposit_paid: number
+          deposit_remaining: number
+          deposit_topup_due_date: string
+          room_id: string
+          room_name: string
+          room_sort: string
+          state: string
+          total_deposit: number
+        }[]
+      }
+      deposit_refunds_forfeits_v1: {
+        Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          kind: string
+          posted_refund: number
+          posted_refund_codes: string[]
+          posted_refund_count: number
+          refund_done: boolean
+          refund_drift: number
+          room_id: string
+          room_name: string
+          settlement_net: number
+          status: string
+          termination_date: string
+          termination_id: string
+          termination_type: string
+          total_deductions: number
+          total_deposit: number
+        }[]
+      }
+      deposit_reservation_vouchers_v1: {
+        Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: {
+          approval_status: string
+          building_id: string
+          building_name: string
+          code: string
+          deposit_amount: number
+          deposit_target: number
+          hold_until: string
+          name: string
+          payer_name: string
+          room_id: string
+          room_name: string
+          settled: boolean
+          topup_due_date: string
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
       distribute_shareholder_profit_v1: {
         Args: {
           p_account_id: string
@@ -23742,9 +24025,122 @@ export type Database = {
         Args: { p_evidence_id: string }
         Returns: Json
       }
+      finance_analysis_top_expenses_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_limit?: number
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          code: string
+          has_restricted_item: boolean
+          item_types: string
+          name: string
+          organization_id: string
+          total_amount: number
+          user_id: string
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
+      finance_analysis_top_expenses_v2: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_include_restricted?: boolean
+          p_limit?: number
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          code: string
+          has_restricted_item: boolean
+          item_types: string
+          name: string
+          organization_id: string
+          total_amount: number
+          user_id: string
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
+      finance_analysis_type_breakdown_v1: {
+        Args: {
+          p_accrual?: boolean
+          p_building_ids?: string[]
+          p_from: string
+          p_include_restricted?: boolean
+          p_organization_id: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      finance_my_scope_v1: {
+        Args: { p_organization_id: string; p_permission: string }
+        Returns: Json
+      }
+      finance_overpayment_invoices_v1: {
+        Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          customer_id: string
+          customer_name: string
+          invoice_id: string
+          invoice_number: string
+          overpaid_amount: number
+          paid_amount: number
+          room_id: string
+          room_name: string
+          total_amount: number
+        }[]
+      }
+      finance_payment_schedule_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_due_until: string
+          p_organization_id: string
+        }
+        Returns: {
+          billed_through: string
+          building_id: string
+          building_name: string
+          contract_id: string
+          customer_id: string
+          customer_name: string
+          first_due_date: string
+          invoice_id: string
+          room_id: string
+          room_name: string
+        }[]
+      }
+      finance_type_restricted_v1: {
+        Args: { p_merged: boolean; p_type_id: string }
+        Returns: boolean
+      }
       finance_v2_pending_kqkd_blockers: {
         Args: { p_org: string; p_period: string }
         Returns: Json
+      }
+      floors_list_v1: {
+        Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          description: string
+          floor_id: string
+          floor_number: number
+          name: string
+          organization_id: string
+          status: string
+        }[]
       }
       fmt_bonus_k: { Args: { amt: number }; Returns: string }
       gen_contract_public_code: { Args: { len?: number }; Returns: string }
@@ -24399,6 +24795,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_domain_capabilities_v3: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       hermes_domain_read_v1: {
         Args: { p_binding: Json; p_domain: string; p_input: Json }
         Returns: Json
@@ -24585,6 +24985,10 @@ export type Database = {
         Args: { p_binding: Json; p_input: Json }
         Returns: Json
       }
+      hermes_w2_read_v1: {
+        Args: { p_binding: Json; p_domain: string; p_input: Json }
+        Returns: Json
+      }
       hermes_work_memory_capabilities_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -24615,6 +25019,18 @@ export type Database = {
       hermes_zalo_ingress_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_command_v1: { Args: { p: Json }; Returns: Json }
       hermes_zalo_private_reply_v1: { Args: { p: Json }; Returns: Json }
+      hotlines_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          created_at: string
+          description: string
+          hotline_id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          phone_number: string
+        }[]
+      }
       ie_all_buildings_action_ids: {
         Args: { _action: string }
         Returns: string[]
@@ -24693,6 +25109,25 @@ export type Database = {
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       ie_type_report_root_v1: { Args: { p_type_id: string }; Returns: string }
       ie_type_rule_editor_ok_v1: { Args: { p_org: string }; Returns: boolean }
+      income_expense_types_list_v1: {
+        Args: { p_organization_id: string; p_type?: string }
+        Returns: {
+          archived: boolean
+          category: string
+          description: string
+          is_default: boolean
+          is_restricted: boolean
+          manual_hidden: boolean
+          name: string
+          organization_id: string
+          quick_entry_hidden: boolean
+          rule_key: string
+          sort_order: number
+          system_only: boolean
+          type: string
+          type_id: string
+        }[]
+      }
       intervene_commission_v1: {
         Args: {
           p_payload: Json
@@ -24718,6 +25153,35 @@ export type Database = {
           invoice_id: string
           payment_methods: string[]
         }[]
+      }
+      invoice_detail_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_invoice_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      invoice_list_v1: {
+        Args: {
+          p_adjustment_review_status?: string
+          p_amount_target?: number
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_contract_id?: string
+          p_filter_building_ids?: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_limit?: number
+          p_offset?: number
+          p_payment_method?: Database["public"]["Enums"]["payment_method"]
+          p_payment_status?: string
+          p_room_ids?: string[]
+          p_search?: string
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+          p_view_status?: string
+        }
+        Returns: Json
       }
       invoice_payment_method_drilldown: {
         Args: {
@@ -24770,6 +25234,67 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      invoice_receipt_methods_v1: {
+        Args: {
+          p_invoice_ids?: string[]
+          p_payment_method?: Database["public"]["Enums"]["payment_method"]
+        }
+        Returns: {
+          invoice_ids: string[]
+          payment_method: string
+        }[]
+      }
+      invoice_scope_building_ids_v1: { Args: never; Returns: string[] }
+      invoice_statistics_money_v1: {
+        Args: {
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_filter_building_ids?: string[]
+          p_invoice_ids: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_room_ids?: string[]
+        }
+        Returns: {
+          change_amount: number
+          deposit_collected: number
+          payment_ct: number
+          payment_tk: number
+          payment_tm: number
+          payment_tt: number
+          total_collected: number
+        }[]
+      }
+      invoice_statistics_v3: {
+        Args: {
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_filter_building_ids?: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_payment_status?: string
+          p_room_ids?: string[]
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+        }
+        Returns: {
+          change_amount: number
+          deposit_collected: number
+          electric_amount: number
+          payment_ct: number
+          payment_tk: number
+          payment_tm: number
+          payment_tt: number
+          pdv_amount: number
+          rent_amount: number
+          total_amount: number
+          total_collected: number
+          total_count: number
+          total_paid: number
+          total_refunded: number
+          total_remaining: number
+          water_amount: number
+        }[]
+      }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_company_owner_self_v1: { Args: never; Returns: boolean }
@@ -24788,6 +25313,24 @@ export type Database = {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
       }
+      job_types_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          acceptance_deadline: number
+          business_hours_only: boolean
+          completion_deadline: number
+          created_at: string
+          customer_contact_deadline: number
+          department_name: string
+          is_active: boolean
+          job_group_id: string
+          job_group_name: string
+          job_type_id: string
+          name: string
+          organization_id: string
+        }[]
+      }
+      json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
       lifecycle_reminder_health_v1: { Args: never; Returns: Json }
       lifecycle_reminder_record_failure_v1: {
@@ -25193,6 +25736,140 @@ export type Database = {
         Returns: Json
       }
       mark_overdue_invoices_v1: { Args: never; Returns: number }
+      materials_adjustments_v1: {
+        Args: {
+          p_from?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_to?: string
+          p_type?: string
+        }
+        Returns: {
+          adjustment_date: string
+          code: string
+          created_at: string
+          id: string
+          item_count: number
+          items: Json
+          organization_id: string
+          reason: string
+          total_count: number
+          type: string
+        }[]
+      }
+      materials_categories_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          description: string
+          id: string
+          material_count: number
+          name: string
+          organization_id: string
+        }[]
+      }
+      materials_items_v1: {
+        Args: {
+          p_category_id?: string
+          p_limit?: number
+          p_low_stock?: boolean
+          p_offset?: number
+          p_organization_id: string
+          p_query?: string
+        }
+        Returns: {
+          avg_unit_cost: number
+          category_id: string
+          category_name: string
+          code: string
+          id: string
+          low_stock: boolean
+          low_stock_count: number
+          name: string
+          on_hand: number
+          organization_id: string
+          reorder_level: number
+          total_count: number
+          unit: string
+        }[]
+      }
+      materials_purchases_v1: {
+        Args: {
+          p_from?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_show_suppliers?: boolean
+          p_supplier_id?: string
+          p_to?: string
+        }
+        Returns: {
+          code: string
+          created_at: string
+          id: string
+          item_count: number
+          items: Json
+          notes: string
+          organization_id: string
+          purchase_date: string
+          supplier_id: string
+          supplier_name: string
+          total: number
+          total_amount: number
+          total_count: number
+        }[]
+      }
+      materials_usages_v1: {
+        Args: {
+          p_from?: string
+          p_job_building_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          code: string
+          created_at: string
+          creator_name: string
+          id: string
+          item_count: number
+          items: Json
+          job_code: string
+          job_id: string
+          job_title: string
+          notes: string
+          organization_id: string
+          total_cost: number
+          total_cost_sum: number
+          total_count: number
+          total_quantity: number
+          usage_date: string
+        }[]
+      }
+      meters_list_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_meter_type?: string
+          p_organization_id: string
+          p_room_id?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          code: string
+          initial_reading: number
+          latest_reading: number
+          latest_reading_date: string
+          meter_id: string
+          meter_type: string
+          name: string
+          organization_id: string
+          room_id: string
+          room_name: string
+          status: string
+        }[]
+      }
       monthly_building_profit: {
         Args: { p_building_id?: string; p_end: string; p_start: string }
         Returns: {
@@ -25612,6 +26289,24 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      notifications_inbox_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_type?: string
+          p_unread_only?: boolean
+        }
+        Returns: {
+          content: string
+          created_at: string
+          id: string
+          status: string
+          subject: string
+          total_count: number
+          type: string
+          unread_count: number
+        }[]
+      }
       notify_claim_push_batch_v1: {
         Args: { p_limit?: number }
         Returns: {
@@ -25974,6 +26669,10 @@ export type Database = {
         }
         Returns: Json
       }
+      profit_my_share_v1: {
+        Args: { p_building_ids?: string[]; p_organization_id: string }
+        Returns: Json
+      }
       profit_reclose_v2: {
         Args: {
           p_adjustments?: Json
@@ -26007,6 +26706,10 @@ export type Database = {
           p_period_month: string
           p_reason: string
         }
+        Returns: Json
+      }
+      profit_shareholder_summary_v1: {
+        Args: { p_organization_id: string; p_year?: number }
         Returns: Json
       }
       profit_total_group_peers_v2: {
@@ -26137,6 +26840,191 @@ export type Database = {
       read_room_turnover_v1: {
         Args: { p_organization_id: string; p_room_id: string }
         Returns: Json
+      }
+      real_estate_contract_count_v1: {
+        Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: number
+      }
+      real_estate_expense_ratio_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_category?: string
+          p_from?: string
+          p_organization_id: string
+          p_restricted_building_ids?: string[]
+          p_to?: string
+        }
+        Returns: {
+          amount: number
+          building_id: string
+          category: string
+          month: string
+          organization_id: string
+          row_kind: string
+          type_name: string
+        }[]
+      }
+      real_estate_expiring_contracts_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_days?: number
+          p_floor?: number
+          p_organization_id: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_email: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          days_left: number
+          end_date: string
+          floor: number
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          start_date: string
+          status: string
+        }[]
+      }
+      real_estate_new_leases_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          duration_months: number
+          end_date: string
+          organization_id: string
+          payment_cycle: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          signed_date: string
+          start_date: string
+          status: string
+          total_deposit: number
+          total_value: number
+        }[]
+      }
+      real_estate_promotions_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          amount_per_month: number
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          discount_amount: number
+          discount_months: number
+          discount_type: string
+          effective_rent: number
+          end_date: string
+          organization_id: string
+          promotion_name: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          savings: number
+          signed_date: string
+          start_date: string
+          status: string
+        }[]
+      }
+      real_estate_renewals_transfers_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          event_date: string
+          event_id: string
+          kind: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+        }[]
+      }
+      real_estate_terminations_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_from?: string
+          p_organization_id: string
+          p_to?: string
+        }
+        Returns: {
+          actual_end_date: string
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          duration_days: number
+          effective_end_date: string
+          end_date: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          start_date: string
+          status: string
+          termination_note: string
+          termination_type: string
+          total_deposit: number
+        }[]
+      }
+      real_estate_vacant_rooms_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_floor?: number
+          p_organization_id: string
+        }
+        Returns: {
+          area: number
+          building_id: string
+          building_name: string
+          days_vacant: number
+          floor: number
+          last_end_date: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          status: string
+        }[]
       }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
@@ -26339,6 +27227,10 @@ export type Database = {
       report_device_issue: {
         Args: { p_reason: string; p_session: string }
         Returns: Json
+      }
+      report_text_v1: {
+        Args: { p_max: number; p_text: string }
+        Returns: string
       }
       request_cancel_handover: {
         Args: { p_handover_id: string; p_reason: string }
@@ -26597,7 +27489,49 @@ export type Database = {
         Returns: boolean
       }
       room_sort_key: { Args: { p_name: string }; Returns: string }
+      room_tenancy_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_organization_id: string
+          p_room_id: string
+        }
+        Returns: {
+          contract_id: string
+          contract_number: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          end_date: string
+          is_representative: boolean
+          organization_id: string
+          rent_price: number
+          start_date: string
+        }[]
+      }
+      rooms_list_v1: {
+        Args: {
+          p_as_of?: string
+          p_building_ids: string[]
+          p_organization_id: string
+        }
+        Returns: {
+          area: number
+          building_id: string
+          building_name: string
+          code: string
+          deposit_amount: number
+          display_status: string
+          floor: number
+          max_occupants: number
+          name: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          status: string
+        }[]
+      }
       run_recurring_vouchers_job: { Args: never; Returns: undefined }
+      safe_text_v1: { Args: { p_max: number; p_text: string }; Returns: string }
       salary_can_edit_amounts_v1: {
         Args: { p_organization_id: string }
         Returns: boolean
@@ -26613,6 +27547,10 @@ export type Database = {
           on_manager_book: boolean
           voucher_id: string
         }[]
+      }
+      salary_is_admin_v1: {
+        Args: { p_organization_id: string }
+        Returns: boolean
       }
       salary_line_override_list_v1: {
         Args: { p_organization_id: string; p_period_month: string }
@@ -26640,6 +27578,52 @@ export type Database = {
           p_staff_id: string
         }
         Returns: Json
+      }
+      salary_locked_lines_v1: {
+        Args: {
+          p_kind: string
+          p_organization_id: string
+          p_period_month: string
+          p_staff_id: string
+        }
+        Returns: {
+          amount: number
+          detail: string
+          is_contract: boolean
+          is_repair: boolean
+          label: string
+          line_id: string
+          line_type: string
+          occurred_date: string
+        }[]
+      }
+      salary_locked_month_v1: {
+        Args: {
+          p_organization_id: string
+          p_period_month: string
+          p_staff_ids?: string[]
+        }
+        Returns: {
+          adjustments_total: number
+          advances_total: number
+          base_salary: number
+          bonus_total: number
+          commission_total: number
+          contract_bonus: number
+          gross_total: number
+          investment_profit: number
+          locked_at: string
+          organization_id: string
+          paid: number
+          remaining: number
+          role_title: string
+          room_rent: number
+          staff_id: string
+          staff_name: string
+          status: string
+          take_home: number
+          work_bonus: number
+        }[]
       }
       salary_payout_v1: {
         Args: {
@@ -26769,6 +27753,37 @@ export type Database = {
         Returns: undefined
       }
       seed_default_settings: { Args: { p_user_id: string }; Returns: undefined }
+      service_quotas_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          description: string
+          name: string
+          organization_id: string
+          quota_id: string
+          tier_count: number
+          tiers: Json
+        }[]
+      }
+      services_list_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_fee_type?: string
+          p_include_unlinked?: boolean
+          p_organization_id: string
+        }
+        Returns: {
+          building_ids: string[]
+          code: string
+          fee_type: string
+          is_default: boolean
+          name: string
+          organization_id: string
+          pricing_type: string
+          service_id: string
+          unit: string
+          unit_price: number
+        }[]
+      }
       set_building_receiving_cashbooks_v1: {
         Args: {
           p_building_id: string
@@ -27141,6 +28156,14 @@ export type Database = {
         Args: { p_idempotency_key: string; p_invoice_id: string }
         Returns: Json
       }
+      suppliers_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          name: string
+          organization_id: string
+          supplier_id: string
+        }[]
+      }
       terminate_contract_forfeit: {
         Args: {
           p_contract_id: string
@@ -27214,6 +28237,44 @@ export type Database = {
           p_shortfall_mode: string
         }
         Returns: Json
+      }
+      thu_tien_collection_v1: {
+        Args: {
+          p_billing_month: string
+          p_building_ids?: string[]
+          p_from: string
+          p_organization_id: string
+          p_to: string
+          p_today: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          building_sort: string
+          collect_status: string
+          collected_in_range: number
+          collectors: string[]
+          contract_id: string
+          customer_id: string
+          customer_name: string
+          in_scope: boolean
+          invoice_id: string
+          invoice_number: string
+          invoice_status: string
+          paid_amount: number
+          remaining_amount: number
+          room_id: string
+          room_name: string
+          room_sort: string
+          status_paid: boolean
+          status_unpaid: boolean
+          summary_collected: number
+          summary_due: boolean
+          summary_paid: boolean
+          summary_remaining: number
+          time_mode: string
+          total_amount: number
+        }[]
       }
       transfer_contract: {
         Args: {
@@ -27619,6 +28680,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      utc_instant_v1: { Args: { p_at: string }; Returns: string }
       v5_appeal: { Args: { p_date: string; p_text: string }; Returns: Json }
       v5_apply_lock_adjustments: { Args: { p_month: string }; Returns: Json }
       v5_building_reqs: { Args: { p_building: string }; Returns: Json }
@@ -27811,6 +28873,40 @@ export type Database = {
         }
         Returns: Json
       }
+      vehicles_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_customer_building_ids?: string[]
+          p_customer_id?: string
+          p_include_unassigned?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_query?: string
+          p_room_id?: string
+          p_vehicle_type?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          color: string
+          created_at: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          id: string
+          license_plate: string
+          organization_id: string
+          owner_name: string
+          parking_fee: number
+          room_id: string
+          room_name: string
+          ticket_number: string
+          total_count: number
+          vehicle_name: string
+          vehicle_type: string
+        }[]
+      }
       verify_income_expense: {
         Args: { p_id: string; p_note?: string }
         Returns: undefined
@@ -27839,6 +28935,23 @@ export type Database = {
       vn_local_dow: { Args: { ts: string }; Returns: number }
       vn_local_time: { Args: { ts: string }; Returns: string }
       vn_workdays: { Args: { p_month: string }; Returns: string[] }
+      warehouses_list_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_include_unassigned?: boolean
+          p_organization_id: string
+          p_query?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          id: string
+          location: string
+          name: string
+          organization_id: string
+          total_count: number
+        }[]
+      }
       withdraw_financial_request_v1: {
         Args: { p_reason?: string; p_request_id: string }
         Returns: Json

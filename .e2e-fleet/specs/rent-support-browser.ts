@@ -57,6 +57,8 @@ export function fixtures(): BrowserFixture {
 const READERS = new Set([
   'get_my_context', 'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
   'my_org_ids', 'can_access_building', 'accessible_building_ids', 'get_contract_stats', 'get_dashboard_summary',
+  // Danh sách + ô thống kê màn Hợp đồng đọc qua hàm dùng chung (migration 20261017115636).
+  'contract_list_v1', 'contract_stats_v2',
   'list_my_copilot_organizations_v1', 'business_performance_organizations_v1', 'list_cashbook_visibility_v2',
   'get_notification_org_config_v1', 'get_my_notification_preferences_v1', 'list_contract_drafts', 'list_room_reservations_v1',
   'list_due_contract_move_out_notices_v1', 'list_contract_exit_cases_v1', 'list_contract_meter_followups_v1',
@@ -67,6 +69,9 @@ const READERS = new Set([
   'read_contract_draft_signing_v1', 'read_contract_meter_interval_v1', 'read_contract_rent_support_lifecycle_v1',
   'read_rent_support_deposit_candidate_v1',
   'get_invoice_statistics_v2', 'is_company_owner_self_v1', 'invoice_active_payment_methods', 'get_customer_credit_balance_v1',
+  // Danh sách + thẻ thống kê màn Hoá đơn đọc qua hàm dùng chung (migration 20261017115809);
+  // helper invoice_* chỉ gọi từ trong SQL, trình duyệt không gọi thẳng.
+  'invoice_list_v1', 'invoice_statistics_v3',
   'read_rent_support_salary_parts_v1',
   // Existing canonical readers used by the salary and settlement pages. Money
   // writers (lock/pay/approve/collect/termination) remain outside the allowlist.

@@ -17,7 +17,9 @@ const KEY = ['material-adjustments'] as const;
 export const useMaterialAdjustments = () => useQuery({
   queryKey: [...KEY, 'list'],
   queryFn: async (): Promise<MaterialAdjustmentWithItems[]> => {
+    // hermes-parity:begin w2c-material-adjustments — Hermes chép vùng này (public.materials_adjustments_v1)
     const { data, error } = await supabase.from('material_adjustments' as any).select('*, items:material_adjustment_items(*, material:materials(id,name,unit))').order('adjustment_date', { ascending: false }).order('created_at', { ascending: false });
+    // hermes-parity:end w2c-material-adjustments
     if (error) throw error;
     if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách phiếu kiểm kê. Tải lại để kiểm tra.');
     return data as unknown as MaterialAdjustmentWithItems[];

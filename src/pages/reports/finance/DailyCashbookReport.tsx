@@ -31,10 +31,12 @@ const enumerateDays = (start: string, end: string): string[] => {
 };
 
 export default function DailyCashbookReport() {
+  // hermes-parity:begin cashbook-daily-cash-flow — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-daily-cashbook:dateRange", {
     from: startOfMonth(new Date()),
     to: new Date(),
   });
+  // hermes-parity:end cashbook-daily-cash-flow
   // Toà nhà giữ ĐƠN-chọn: useCashFlowByDay/useCashBookSummary chỉ nhận
   // building_id đơn (chưa hỗ trợ building_ids — không sửa hooks ở đây).
   const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-daily-cashbook:buildingId", "all");
@@ -65,6 +67,7 @@ export default function DailyCashbookReport() {
     ? "Tất cả"
     : (accounts as any[]).find((a) => a.id === accountId)?.name || "—";
 
+  // hermes-parity:begin cashbook-daily-cash-flow
   const rows = useMemo(() => {
     if (!startDate || !endDate) return [];
     const dayMap = new Map<string, { income: number; expense: number }>();
@@ -86,6 +89,7 @@ export default function DailyCashbookReport() {
       };
     });
   }, [byDay, summary, startDate, endDate]);
+  // hermes-parity:end cashbook-daily-cash-flow
 
   return (
     <MainLayout>

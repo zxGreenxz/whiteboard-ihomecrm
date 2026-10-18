@@ -15,6 +15,7 @@ export const useHotlines = () => {
   return useQuery({
     queryKey: ["hotlines"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-hotlines — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("hotlines")
         .select("*")
@@ -27,6 +28,7 @@ export const useHotlines = () => {
 
       if (!Array.isArray(data)) throw new TypeError("Invalid category list response");
       return data;
+      // hermes-parity:end w2d-hotlines
     },
   });
 };

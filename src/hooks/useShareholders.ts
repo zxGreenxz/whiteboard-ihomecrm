@@ -50,11 +50,13 @@ export const useShareholders = () => {
     queryKey: ["shareholders"],
     meta: { label: "dữ liệu lợi nhuận", errorDisplay: "inline" },
     queryFn: async () => {
+      // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await (supabase
         .from("shareholders" as any)
         .select("*") as any)
         .is("deleted_at", null)
         .order("name", { ascending: true });
+      // hermes-parity:end shareholder-profit
       if (error) {
         throw error;
       }
@@ -72,12 +74,14 @@ export const useMyShareholder = () => {
     queryFn: async () => {
       const auth = { user: await getSessionUser() };
       if (!auth.user) return null;
+      // hermes-parity:begin shareholder-profit
       const { data, error } = await (supabase
         .from("shareholders" as any)
         .select("*") as any)
         .eq("auth_user_id", auth.user.id)
         .is("deleted_at", null)
         .maybeSingle();
+      // hermes-parity:end shareholder-profit
       // KHÔNG nuốt: null ở đây nghĩa "bạn không phải cổ đông" — nuốt lỗi là ẩn
       // sạch phần chia lợi nhuận của đúng người có phần.
       if (error) throw error;

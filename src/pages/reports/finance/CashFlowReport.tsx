@@ -23,8 +23,10 @@ const formatCurrency = (n: number) =>
 const QUARTER_LABEL = ["I", "II", "III", "IV"];
 
 export default function CashFlowReport() {
+  // hermes-parity:begin cashbook-daily-cash-flow — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const currentYear = new Date().getFullYear();
   const [year, setYear] = usePersistedState<number>("flt:rpt-cash-flow:year", currentYear);
+  // hermes-parity:end cashbook-daily-cash-flow
   const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-cash-flow:buildingId", "all");
   const [series, setSeries] = useState<{
     income: boolean;
@@ -32,8 +34,10 @@ export default function CashFlowReport() {
     net: boolean;
   }>({ income: true, expense: true, net: true });
 
+  // hermes-parity:begin cashbook-daily-cash-flow
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
+  // hermes-parity:end cashbook-daily-cash-flow
 
   const buildingsQuery = useBuildings({ includeVirtual: true });
   const { data: buildings = [] } = buildingsQuery;
@@ -42,6 +46,7 @@ export default function CashFlowReport() {
   });
   const { data: byDay = [], isLoading } = cashFlowByDayQuery;
 
+  // hermes-parity:begin cashbook-daily-cash-flow
   // Aggregate to 12 months
   const monthly = useMemo(() => {
     const result = Array.from({ length: 12 }, (_, i) => ({
@@ -77,6 +82,7 @@ export default function CashFlowReport() {
     const expense = monthly.reduce((s, m) => s + m.expense, 0);
     return { income, expense, net: income - expense };
   }, [monthly]);
+  // hermes-parity:end cashbook-daily-cash-flow
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 

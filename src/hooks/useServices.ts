@@ -69,6 +69,7 @@ export const useServices = (
     enabled: options?.enabled ?? true,
     queryKey: ["services", filters],
     queryFn: async () => {
+      // hermes-parity:begin w2d-services — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       let query = supabase
         .from("services")
         .select("*, building_services(building_id, is_active)")
@@ -95,6 +96,7 @@ export const useServices = (
       }
 
       return result;
+      // hermes-parity:end w2d-services
     },
   });
 };
@@ -175,6 +177,7 @@ export const useServiceQuotas = () => {
   return useQuery({
     queryKey: ["service_quotas"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-service-quotas — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from("service_quotas")
         .select("*, service_quota_tiers(*)")
@@ -184,6 +187,7 @@ export const useServiceQuotas = () => {
       if (error) throw error;
       if (!Array.isArray(data)) throw new TypeError('Chưa xác nhận được danh sách định mức dịch vụ. Tải lại để kiểm tra.');
       return data as ServiceQuotaWithTiers[];
+      // hermes-parity:end w2d-service-quotas
     },
   });
 };

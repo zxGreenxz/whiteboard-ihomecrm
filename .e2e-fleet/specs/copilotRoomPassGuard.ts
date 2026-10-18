@@ -12,9 +12,15 @@ const scopedReads = new Set(['get_authorization_context_v1', 'get_my_copilot_ava
 const dashboardReads: Record<string, string[]> = {
   get_dashboard_summary: ['p_building_id'],
   get_contract_stats: ['p_building_ids', 'p_today', 'p_in30'],
+  // Danh sách + ô thống kê màn Hợp đồng (prefetch khi rảnh) — hàm đọc dùng chung, migration 20261017115636.
+  contract_stats_v2: ['p_building_ids'],
+  contract_list_v1: ['p_search', 'p_building_ids', 'p_room_name', 'p_lifecycle', 'p_stat', 'p_month', 'p_limit', 'p_offset'],
   get_income_expense_layer_stats: ['p_building_ids', 'p_room_ids', 'p_account_id', 'p_type', 'p_start_date', 'p_end_date', 'p_approval', 'p_creator_id', 'p_amount', 'p_amount_tol', 'p_verified', 'p_item_type_ids', 'p_voucher_ids', 'p_sources', 'p_source_manual', 'p_internal_sources', 'p_kqkd_only'],
   get_invoice_statistics_v2: ['p_building_id', 'p_room_id', 'p_status', 'p_start_date', 'p_end_date', 'p_billing_month', 'p_payment_status', 'p_building_ids'],
   invoice_active_payment_methods: ['p_invoice_ids'],
+  // Prefetch màn Hoá đơn (src/lib/prefetchPages.ts) đọc qua hai hàm dùng chung (migration 20261017115809).
+  invoice_list_v1: ['p_billing_month', 'p_view_status', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_contract_id', 'p_issue_date_from', 'p_issue_date_to', 'p_amount_target', 'p_search', 'p_adjustment_review_status', 'p_payment_method', 'p_limit', 'p_offset'],
+  invoice_statistics_v3: ['p_billing_month', 'p_status', 'p_payment_status', 'p_filter_building_ids', 'p_room_ids', 'p_issue_date_from', 'p_issue_date_to'],
   revenue_by_month: ['p_start', 'p_end', 'p_building_id'],
 };
 const keysOnly = (row: Record<string, unknown>, keys: string[]) => Object.keys(row).every(key => keys.includes(key));

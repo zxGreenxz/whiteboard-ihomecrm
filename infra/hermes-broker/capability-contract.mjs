@@ -3,13 +3,14 @@ import { ROOM_PASS_ACTION } from './room-pass-contract.mjs';
 import { DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2 } from './domain-contract.mjs';
 import { CUSTOMER_ACTIONS } from './customer-action-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-action-contract.mjs';
+import { W2_READ_KEYS } from './wave2-registry.mjs';
 // Implemented CRM capabilities only. This is a mode/resource contract, never a
 // role grant map. Current grants come exclusively from the CRM resolver; the
 // durable authority intersects them with the persisted Hermes overlay.
 // resource: 'building' = the SQL intersects a building scope overlay;
 // 'organization_scope' = the record has no building, yet SQL still requires a
 // selected Toàn tổ chức overlay scope; both therefore need a selected scope.
-export const HERMES_CAPABILITIES = Object.freeze({
+const BEFORE_W2 = Object.freeze({
   [TASK_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   [ROOM_PASS_ACTION]: Object.freeze({ mode: 'action', resource: 'building' }),
   ...Object.fromEntries(DOMAIN_READ_CAPABILITIES.map(key => [key, Object.freeze({ mode: 'read', resource: 'building' })])),
@@ -33,6 +34,13 @@ export const HERMES_CAPABILITIES = Object.freeze({
   'chat_zalo.manage_automation': Object.freeze({ mode: 'action', resource: 'organization' }),
   'chat_zalo.send': Object.freeze({ mode: 'action', resource: 'organization' }),
 });
+// Đợt 2 đọc đầy đủ (20261018000000): mọi khoá đọc mới, seed MỘT lần ở trạng thái tắt; 'self' =
+// dữ liệu của chính người hỏi, không cần chọn phạm vi toà (wave2-registry.mjs giải thích từng khoá).
+// Một khoá chỉ có một mode/resource: khoá đợt 2 trùng khoá đã khai ⇒ lỗi khi nạp module.
+const duplicate = Object.keys(W2_READ_KEYS).find(key => Object.hasOwn(BEFORE_W2, key));
+if (duplicate) throw new TypeError(`hermes_capability_duplicate:${duplicate}`);
+export const HERMES_CAPABILITIES = Object.freeze({ ...BEFORE_W2,
+  ...Object.fromEntries(Object.entries(W2_READ_KEYS).map(([key, resource]) => [key, Object.freeze({ mode: 'read', resource })])) });
 export const HERMES_READ_CAPABILITIES = Object.freeze(Object.keys(HERMES_CAPABILITIES).filter(key => HERMES_CAPABILITIES[key].mode === 'read'));
 export const HERMES_ACTION_CAPABILITIES = Object.freeze(Object.keys(HERMES_CAPABILITIES).filter(key => HERMES_CAPABILITIES[key].mode === 'action'));
 export const requiresBuildingScope = (read, action = []) => [...read, ...action].some(key =>

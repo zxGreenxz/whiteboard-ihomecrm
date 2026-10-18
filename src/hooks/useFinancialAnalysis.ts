@@ -127,6 +127,7 @@ export const useFaTypeBreakdown = (
     queryFn: () =>
       callFa(
         () => {
+          // hermes-parity:begin finance-analysis-rpc — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
           const args = {
             p_start_date: batBuoc(start, 'start'),
             p_end_date: batBuoc(end, 'end'),
@@ -135,6 +136,7 @@ export const useFaTypeBreakdown = (
           return accrual
             ? supabase.rpc("fa_type_breakdown_accrual", args)
             : supabase.rpc("fa_type_breakdown", args);
+          // hermes-parity:end finance-analysis-rpc
         },
         "Không thể tải cơ cấu thu chi",
         (r): FaTypeBreakdownRow => ({
@@ -158,7 +160,9 @@ export const useFaOccupancyMonthly = (start?: string, end?: string, buildingIds?
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
+        // hermes-parity:begin finance-analysis-rpc
         () => supabase.rpc("fa_occupancy_monthly", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
+        // hermes-parity:end finance-analysis-rpc
         "Không thể tải tỷ lệ lấp đầy",
         (r): FaOccupancyRow => ({
           month: String(r.month),
@@ -180,7 +184,9 @@ export const useFaLeaseEvents = (start?: string, end?: string, buildingIds?: str
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
+        // hermes-parity:begin finance-analysis-rpc
         () => supabase.rpc("fa_lease_events", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
+        // hermes-parity:end finance-analysis-rpc
         "Không thể tải biến động hợp đồng",
         (r): FaLeaseEventsRow => ({
           month: String(r.month),
@@ -206,7 +212,9 @@ export const useFaInvoiceCollection = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
+        // hermes-parity:begin finance-analysis-rpc
         () => supabase.rpc("fa_invoice_collection", { p_start_month: batBuoc(startMonth, 'startMonth'), p_end_month: batBuoc(endMonth, 'endMonth'), p_building_ids: normIds(buildingIds) }),
+        // hermes-parity:end finance-analysis-rpc
         "Không thể tải thu hồi hoá đơn",
         (r): FaInvoiceCollectionRow => ({
           billing_month: r.billing_month,
@@ -234,7 +242,9 @@ export const useFaSnapshotKpis = (buildingIds?: string[]) =>
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
+        // hermes-parity:begin finance-analysis-rpc
         () => supabase.rpc("fa_snapshot_kpis", { p_building_ids: normIds(buildingIds) }),
+        // hermes-parity:end finance-analysis-rpc
         "Không thể tải KPI hiện tại",
         (r): FaSnapshotKpisRow => ({
           building_id: r.building_id,

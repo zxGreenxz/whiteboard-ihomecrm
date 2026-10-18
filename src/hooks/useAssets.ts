@@ -102,6 +102,7 @@ export interface AssetListFilter {
 
 type AssetLikeForFilter = Pick<AssetWithRelations, "room_id" | "name" | "code" | "category">;
 
+// hermes-parity:begin w2d-assets — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 /**
  * Lọc theo phòng và từ khoá (tên / mã / tên loại, không phân biệt hoa thường).
  * Thuần để trang bọc trong `useMemo`: trước đây phép lọc chạy lại mỗi render
@@ -119,7 +120,9 @@ export function filterAssets<T extends AssetLikeForFilter>(assets: readonly T[],
     );
   });
 }
+// hermes-parity:end w2d-assets
 
+// hermes-parity:begin w2d-assets
 export interface AssetSummary {
   totalAssets: number;
   /** Σ giá mua × số lượng (giá null tính 0, số lượng null tính 1). */
@@ -141,6 +144,7 @@ export function summarizeAssets(assets: readonly AssetLikeForSummary[]): AssetSu
   }
   return { totalAssets: assets.length, totalValue, byCondition };
 }
+// hermes-parity:end w2d-assets
 
 // Fetch all assets
 export const useAssets = (filters?: {
@@ -154,6 +158,7 @@ export const useAssets = (filters?: {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // hermes-parity:begin w2d-assets
       // PAGED: 1 portfolio ~700 phòng × nhiều tài sản/phòng dễ vượt 1000 dòng →
       // tổng giá trị tài sản (client-reduce ở AssetsPage) hụt nếu không phân trang.
       const data = await fetchAllRows<any>(
@@ -193,6 +198,7 @@ export const useAssets = (filters?: {
       }
 
       return (data as AssetWithRelations[]) || [];
+      // hermes-parity:end w2d-assets
     },
   });
 };

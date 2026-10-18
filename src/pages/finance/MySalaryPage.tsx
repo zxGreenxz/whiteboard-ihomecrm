@@ -36,9 +36,11 @@ export default function MySalaryPage() {
 
   // Tháng đang xem: mặc định = tháng hiển thị (lùi theo chốt lương). Cho phép lùi
   // về lịch sử; chặn vượt quá mốc được phép xem (staffMonth) — giữ đúng chính sách.
+  // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (app_private.hermes_w2c_read_v1: my_salary, trần tháng)
   const ceiling = staffMonth || currentPeriodMonth();
   const [override, setOverride] = useState<string | null>(null);
   const effPeriod = override || ceiling;
+  // hermes-parity:end w2c-salary-locked
 
   // Chế độ lương (cũ/v5) — chỉ đổi SỐ LIỆU tháng chưa chốt, UI giữ nguyên.
   const engineQuery = useSalaryV5Config();
@@ -85,7 +87,9 @@ export default function MySalaryPage() {
 
   const me = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
 
+  // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (app_private.hermes_w2c_read_v1: my_salary, không xem vượt trần)
   const canNext = effPeriod < ceiling;
+  // hermes-parity:end w2c-salary-locked
 
   if (phone) {
     // Nhãn tháng suy TRỰC TIẾP từ effPeriod: React Query còn giữ data tháng cũ

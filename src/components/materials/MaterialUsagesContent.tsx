@@ -77,11 +77,13 @@ export default function MaterialUsagesContent() {
                 </TableRow>
               ) : (
                 usages.map((u) => {
+                  // hermes-parity:begin w2c-material-usages — Hermes chép vùng này (public.materials_usages_v1: tổng SL/thành tiền)
                   const totalQty = u.items.reduce((s, it) => s + Number(it.quantity), 0);
                   const totalCost = u.items.reduce(
                     (s, it) => s + Number(it.quantity) * Number(it.unit_cost_at_usage),
                     0,
                   );
+                  // hermes-parity:end w2c-material-usages
                   return (
                     <Fragment key={u.id}>
                       <TableRow className="hover:bg-muted/40">

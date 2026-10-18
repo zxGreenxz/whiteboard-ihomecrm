@@ -93,6 +93,7 @@ export function filterActiveMeters<T extends { deleted_at: string | null }>(
   return meters.filter((meter) => meter.deleted_at === null);
 }
 
+// hermes-parity:begin w2d-meters — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 /** Pure function to filter meters by building_id and/or meter_type */
 export function filterMeters(
   meters: MeterWithRoom[],
@@ -108,6 +109,7 @@ export function filterMeters(
     return true;
   });
 }
+// hermes-parity:end w2d-meters
 
 // ============================================================================
 // Internal helpers
@@ -159,6 +161,7 @@ export const useMeters = (roomId?: string, meterType?: MeterType) => {
   return useQuery({
     queryKey: ["meters", roomId, meterType],
     queryFn: async () => {
+      // hermes-parity:begin w2d-meters
       // PHÂN TRANG: không truyền roomId thì đây là truy vấn org-wide; một toà
       // nhiều phòng × điện/nước/gas vượt 1000 dòng rất dễ, và PostgREST cắt im.
       // `created_at` không duy nhất → phải có tiebreaker `id` thì ranh giới
@@ -188,6 +191,7 @@ export const useMeters = (roomId?: string, meterType?: MeterType) => {
       }
 
       return rows;
+      // hermes-parity:end w2d-meters
     },
   });
 };
@@ -217,6 +221,7 @@ export const useMetersWithLatestReading = () => {
   return useQuery({
     queryKey: ["meters-with-latest-reading"],
     queryFn: async () => {
+      // hermes-parity:begin w2d-meters
       // View KHÔNG có filter nào: đây là toàn bộ công tơ của org. Không phân
       // trang thì màn công tơ mất dòng từ số 1001 trở đi, im lặng.
       const rows = await fetchAllRows((from, to) =>
@@ -235,6 +240,7 @@ export const useMetersWithLatestReading = () => {
       }
 
       return rows;
+      // hermes-parity:end w2d-meters
     },
   });
 };
