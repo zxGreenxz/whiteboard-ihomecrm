@@ -74,6 +74,25 @@ test('Z-A change_ledger: phiếu thối nối HĐ có khách bị RLS ẩn ⇒ k
   assert.deepEqual([row(VOUCHER).payerName, row(VOUCHER).notes], ['Khách Ẩn Chủ', 'SĐT 0977000000']);
 }));
 
+// Review PR #215 P3-1 (đột biến M1 sống): rào "mọi khách" đếm 0 = 0 khi phiếu không nối HĐ ⇒ phải có count(*)>0.
+const UNLINKED = '0a0a0a0a-0000-4000-8000-0000000002a3';
+const insertUnlinked = env => env.db.query(`INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,voucher_date,
+    total_amount,approval_status,contract_id,invoice_id,payer_name,notes,change_account_id,change_amount,has_restricted_item)
+  VALUES($1,$2,$3,'PT-Z3','INCOME','Thu lẻ không HĐ',$4,'2026-10-12',300000,'APPROVED',NULL,NULL,'Người Nộp Lẻ Z','SĐT 0966000000',$5,2000,false)
+  ON CONFLICT (id) DO NOTHING`, [UNLINKED, ORG, USER, BUILDING, CHANGE_BOOK]);
+test('Z-A change_ledger: phiếu thối KHÔNG nối hợp đồng (không khách để đối chiếu) ⇒ không người nộp/ghi chú', () => inCase(async env => {
+  await insertUnlinked(env);
+  const rows = (await direct(env, 'change_ledger', { cashbookId: CHANGE_BOOK })).rows;
+  const item = rows.find(value => value.voucherId === UNLINKED);
+  assert.ok(item, 'phiếu có trong sổ');
+  assert.deepEqual([item.payerName, item.notes], [null, null]);
+  assert.ok(!JSON.stringify(rows).includes('0966000000') && !JSON.stringify(rows).includes('Người Nộp Lẻ Z'));
+  // Kể cả khi mọi chủ hồ sơ đều nhìn thấy: không nối HĐ thì vẫn không có khách để đối chiếu.
+  await showStranger(env);
+  assert.deepEqual((await direct(env, 'change_ledger', { cashbookId: CHANGE_BOOK })).rows.filter(value => value.voucherId === UNLINKED)
+    .map(value => [value.payerName, value.notes]), [[null, null]]);
+}));
+
 test('Z-A collection (theo web #209): khoản thu đã hoàn tác không còn là tiền đã thu', () => inCase(async env => {
   // Hôm nay 16/10: P102 thu 2tr (còn hiệu lực), P104 có khoản 800k thu rồi hoàn tác cùng ngày ⇒ web (lọc reversed_at) coi P104 chưa thu.
   const value = await direct(env, 'collection', { month: '2026-10', fromDate: '2026-10-16', toDate: '2026-10-16' });
@@ -103,6 +122,10 @@ const probes = [
       ON CONFLICT (id) DO NOTHING`,
       [ORG, USER, BUILDING, CONTRACT_FULL, CHANGE_BOOK]);
       return (await direct(env, 'change_ledger', { cashbookId: CHANGE_BOOK })).rows.some(item => item.payerName === 'Khách Ẩn Chủ'); } },
+  { name: 'change_ledger: bỏ count(*)>0 (phiếu không nối HĐ lọt người nộp)', from: 'SELECT count(*)>0 AND count(*)=count(cu.id)\n          FROM public.income_expenses src',
+    to: 'SELECT count(*)=count(cu.id)\n          FROM public.income_expenses src',
+    run: async env => { await insertUnlinked(env);
+      return (await direct(env, 'change_ledger', { cashbookId: CHANGE_BOOK })).rows.some(item => item.payerName === 'Người Nộp Lẻ Z'); } },
   { name: 'collection: cộng cả khoản đã hoàn tác (bản gói A)', from: 'WHERE p.invoice_id=i.id AND p.reversed_at IS NULL) pay', to: 'WHERE p.invoice_id=i.id) pay',
     run: async env => (await direct(env, 'collection', { month: '2026-10', fromDate: '2026-10-16', toDate: '2026-10-16' })).summary.collectedSum === '2800000' },
 ];

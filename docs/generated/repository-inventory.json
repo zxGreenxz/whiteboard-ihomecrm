@@ -3,11 +3,11 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1506,
   "soFileDocBangFs": 378,
-  "tongLoiGoi": 866,
-  "khongPhanLoaiDuoc": 394,
+  "tongLoiGoi": 867,
+  "khongPhanLoaiDuoc": 395,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 57,
+      "soFile": 56,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -29,7 +29,6 @@
   },
   "testDocMaNguon": [
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
-    "infra/hermes-broker/public-text-guard.test.mjs",
     "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
     "scripts/__tests__/apply-reviewed-migration.test.mjs",
@@ -592,6 +591,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "infra/hermes-broker/wave2-a.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -895,14 +902,6 @@
     },
     {
       "file": "infra/hermes-broker/task-composition.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/wave2-a.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2
@@ -1548,10 +1547,8 @@
     {
       "file": "infra/hermes-broker/public-text-guard.test.mjs",
       "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/room-pass-metadata.test.mjs",

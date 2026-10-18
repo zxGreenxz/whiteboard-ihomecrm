@@ -23,6 +23,9 @@ const migration = readFileSync(MIGRATION_PATH, 'utf8');
 // Sửa sau review PR #207: thay thân hàm đọc gói (định nghĩa sống cuối cùng); 8 hàm dùng chung vẫn ở MIGRATION_PATH.
 const FIX_PATH = 'supabase/migrations/20261018010100_hermes_w2a_review_fixes_v1.sql';
 const fixes = readFileSync(FIX_PATH, 'utf8');
+// Gói Z (20261018080100) thay thân hàm đọc gói lần cuối; fixture mặc định chạy chuỗi a + z (review PR #215 P3-1).
+const Z_PATH = 'supabase/migrations/20261018080100_hermes_w2z_receivables_pii_v1.sql';
+const zFix = readFileSync(Z_PATH, 'utf8');
 const READ_HEAD = 'CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(';
 const readBodyOf = sql => sql.slice(sql.indexOf(READ_HEAD)).split('$fn$')[1];
 const KEYS = [...new Set(Object.values(W2A_REPORTS).map(spec => spec.permission))];
@@ -80,7 +83,8 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   const readBody = stripped.slice(stripped.indexOf('CREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(')).split('$fn$')[1];
   assert.doesNotMatch(readBody, /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(stripped, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
-  // Bản sửa sau review: CHỈ thay thân hàm đọc (cùng dòng đầu INVOKER), không đổi ACL/hàm dùng chung; thân đó là bản sống.
+  // Bản sửa sau review: CHỈ thay thân hàm đọc (cùng dòng đầu INVOKER), không đổi ACL/hàm dùng chung. Bản sống là bản Z
+  // (080100, cùng dòng đầu) — trước review PR #215 test này chạy chuỗi chỉ gói A nên so với bản sửa sau review.
   const fixed = fixes.replace(/--[^\n]*/g, '');
   assert.deepEqual([...fixed.matchAll(/CREATE OR REPLACE FUNCTION ([a-z_]+\.[a-z0-9_]+)\(/g)].map(match => match[1]), ['app_private.hermes_w2a_read_v1']);
   assert.doesNotMatch(fixed, /copilot|\bDROP\b|ALTER TABLE|UPDATE |INSERT |DELETE |\bGRANT\b|\bREVOKE\b/i);
@@ -88,7 +92,8 @@ test('cấu trúc: chỉ hàm gói A + 8 hàm dùng chung; INVOKER, chỉ authen
   assert.doesNotMatch(readBodyOf(fixed), /app_private\./i, 'hàm đọc INVOKER không gọi app_private.*');
   assert.match(fixed, /CREATE OR REPLACE FUNCTION app_private\.hermes_w2a_read_v1\(p_report text,p_params jsonb,p_ctx jsonb\)\s+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS/);
   assert.equal((await db.query("SELECT prosrc FROM pg_proc WHERE oid='app_private.hermes_w2a_read_v1(text,jsonb,jsonb)'::regprocedure")).rows[0].prosrc,
-    readBodyOf(fixes), 'thân sống = bản sửa sau review');
+    readBodyOf(zFix), 'thân sống = bản Z (080100)');
+  assert.notEqual(readBodyOf(zFix), readBodyOf(fixes), 'bản Z thay thân bản sửa sau review');
   const procs = (await db.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef definer,p.proconfig config,p.provolatile vol,
       has_function_privilege('authenticated',p.oid,'EXECUTE') auth,has_function_privilege('anon',p.oid,'EXECUTE') anon,
       has_function_privilege('service_role',p.oid,'EXECUTE') service FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -202,7 +207,7 @@ test('overpayment: đã thu > tổng (kể cả hoá đơn huỷ như web, bỏ 
   assert.ok(!ids(value.items, 'invoiceId').includes(INV_OVER_DELETED) && !ids(value.items, 'invoiceId').includes(INV_OVER_B));
 }));
 
-test('collection: cả kỳ / hôm nay / khoảng ngày như ThuTien.tsx; tab Đã thu/Chưa thu; người thu bỏ trùng, RLS ẩn phiếu hạn chế; khoản đã hoàn tác vẫn cộng như web', () => inCase(async env => {
+test('collection: cả kỳ / hôm nay / khoảng ngày như ThuTien.tsx; tab Đã thu/Chưa thu; người thu bỏ trùng, RLS ẩn phiếu hạn chế; khoản đã hoàn tác không cộng (web #209, bản Z)', () => inCase(async env => {
   let value = await run(env, 'collection', { month: '2026-10' });
   assert.deepEqual(value.summary, { mode: 'all', invoiceCount: 4, collectedSum: '3000000.00', remainingSum: '4800000.00', paidRooms: 1, dueRooms: 3 });
   assert.deepEqual(value.items.map(row => [row.roomName, row.collectStatus, row.collectors]),
@@ -210,10 +215,12 @@ test('collection: cả kỳ / hôm nay / khoảng ngày như ThuTien.tsx; tab Đ
   assert.equal(value.items[0].customerName, 'Nguyễn Văn An');
   assert.deepEqual(ids((await run(env, 'collection', { month: '2026-10', status: 'paid' })).items, 'invoiceId'), [INV_C_PAID]);
   value = await run(env, 'collection', { month: '2026-10', fromDate: '2026-10-16', toDate: '2026-10-16' });
-  assert.deepEqual(value.summary, { mode: 'today', invoiceCount: 4, collectedSum: '2800000', remainingSum: '4000000.00', paidRooms: 2, dueRooms: 2 },
-    'hôm nay: thu 2tr + 800k (khoản đã hoàn tác: web vẫn cộng); còn nợ P101 + P103');
+  // Kỳ vọng cũ của gói A ("khoản đã hoàn tác: web vẫn cộng" ⇒ 2,8tr, 2 phòng đã thu) lỗi thời từ web #209: bản Z
+  // (080000, thu_tien_collection_v1) lọc payments.reversed_at như useThuTienInvoices ⇒ P104 (800k thu rồi hoàn tác) chưa thu.
+  assert.deepEqual(value.summary, { mode: 'today', invoiceCount: 4, collectedSum: '2000000', remainingSum: '4800000.00', paidRooms: 1, dueRooms: 3 },
+    'hôm nay: thu 2tr (khoản 800k đã hoàn tác không cộng); còn nợ P101 + P103 + P104');
   assert.deepEqual(ids((await run(env, 'collection', { month: '2026-10', fromDate: '2026-10-16', toDate: '2026-10-16', status: 'paid' })).items, 'invoiceId'),
-    [INV_C_PAID, INV_C_REV]);
+    [INV_C_PAID]);
   value = await run(env, 'collection', { month: '2026-10', fromDate: '2026-10-01', toDate: '2026-10-05' });
   assert.deepEqual(value.summary, { mode: 'date', invoiceCount: 4, collectedSum: '1000000', remainingSum: '4300000.00', paidRooms: 1, dueRooms: 3 },
     'tới 05/10: P102 chưa thu (2tr), P103 1,5tr, P104 800k');

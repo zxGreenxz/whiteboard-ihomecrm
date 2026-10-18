@@ -288,8 +288,9 @@ const RLS = `
   CREATE FUNCTION public.fixture_w2a_read(p_report text,p_params jsonb,p_ctx jsonb) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER
   BEGIN ATOMIC SELECT app_private.hermes_w2a_read_v1(p_report,p_params,p_ctx); END;`;
 
+// Mặc định gói A + dải Z (review PR #215 P3-1): test gói kiểm định nghĩa CUỐI sẽ phát hành, không phải bản gói đã bị Z thay.
 export async function sharedW2a(options = {}) {
-  return sharedW2({ packages: ['a'], ...options,
+  return sharedW2({ packages: ['a', 'z'], ...options,
     before: async db => {
       // Như Supabase (pg_default_acl schema public): hàm postgres tạo trong public mặc định cấp EXECUTE cho anon,
       // authenticated, service_role; migration gói chỉ REVOKE PUBLIC/anon/service_role.

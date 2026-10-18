@@ -235,25 +235,26 @@ test('C6 kho tài sản: toà overlay ∩ warehouses.view; kho không gắn toà
   assert.deepEqual(ids(await run(env, 'warehouses', { query: 'văn phòng' })), [WAREHOUSE.free]);
 }));
 
-test('C9 thông báo: RLS chính mình; IN_APP; công ty kết nối (chặt hơn web); chưa đọc = PENDING; trần 200', () => inCase(async env => {
+// Fixture chạy chuỗi c + z (review PR #215 P3-1). Kỳ vọng cũ của gói C (dòng chưa gắn công ty NOTE.legacy vẫn hiện; web
+// còn hiện thông báo công ty khác) lỗi thời từ web #209: bản Z (080000, notifications_inbox_v1) lọc đúng công ty như web.
+test('C9 thông báo: RLS chính mình; IN_APP; đúng công ty kết nối như web #209 (bản Z); chưa đọc = PENDING; trần 200', () => inCase(async env => {
   const { db } = env;
   await env.grant(['notifications.view']);
   let page = await run(env, 'notifications');
-  assert.deepEqual(ids(page), [NOTE.unread, NOTE.read, NOTE.legacy, NOTE.lifecycle]);
-  assert.deepEqual(page.summary, { total: 4, unread: 2 });
+  assert.deepEqual(ids(page), [NOTE.unread, NOTE.read, NOTE.lifecycle], 'không còn dòng chưa gắn công ty (NOTE.legacy)');
+  assert.deepEqual(page.summary, { total: 3, unread: 1 });
   assert.deepEqual(page.items[0], { id: NOTE.unread, type: 'NEW_INVOICE', subject: 'Hoá đơn mới', content: 'Phòng P101 có hoá đơn T10', unread: true,
     createdAt: '2026-10-16T07:59:00.000Z' });
-  assert.deepEqual(ids(await run(env, 'notifications', { unreadOnly: true })), [NOTE.unread, NOTE.legacy]);
+  assert.deepEqual(ids(await run(env, 'notifications', { unreadOnly: true })), [NOTE.unread]);
   assert.deepEqual(ids(await run(env, 'notifications', { kind: 'APPROVAL_RESULT' })), [NOTE.read]);
-  // Người dùng thuộc cả công ty khác: web (useNotifications.ts:97-107, công ty đang chọn ORG) còn hiện thông báo thường
-  // của công ty kia; Hermes chỉ công ty của kết nối.
+  // Người dùng thuộc cả công ty khác: web sau #209 (công ty đang chọn ORG) và Hermes đều chỉ công ty đó.
   await db.exec(`CREATE OR REPLACE FUNCTION public.my_org_ids() RETURNS uuid[] LANGUAGE sql AS $$
     SELECT CASE WHEN auth.uid()='${USER}'::uuid THEN ARRAY['${ORG}'::uuid,'${FOREIGN}'::uuid] ELSE '{}'::uuid[] END$$`);
-  const web = await asUser(env, `SELECT id FROM public.notifications WHERE user_id=$1 AND channel='IN_APP' AND (metadata->>'event' IS DISTINCT FROM 'LIFECYCLE'
-    OR organization_id=$2) ORDER BY created_at DESC LIMIT 200`, [USER, ORG]);
+  const web = await asUser(env, `SELECT id FROM public.notifications WHERE user_id=$1 AND channel='IN_APP' AND organization_id=$2
+    ORDER BY created_at DESC LIMIT 200`, [USER, ORG]);
   page = await run(env, 'notifications');
-  assert.ok(web.includes(NOTE.otherOrg), 'khác biệt đã ghi: web hiện thông báo công ty khác');
-  assert.deepEqual(web.filter(id => id !== NOTE.otherOrg), ids(page));
+  assert.ok(!ids(page).includes(NOTE.otherOrg) && !ids(page).includes(NOTE.legacy));
+  assert.deepEqual(web, ids(page), 'cùng tập/thứ tự với web #209');
 }));
 
 test('C8 lương của tôi: chỉ auth.uid(), tháng ĐÃ CHỐT; chưa chốt/sau trần ⇒ source_unavailable; dòng thưởng-trừ và bảng kê', () => inCase(async env => {

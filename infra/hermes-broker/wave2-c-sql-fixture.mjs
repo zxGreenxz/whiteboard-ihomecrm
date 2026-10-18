@@ -260,6 +260,7 @@ const SEED = `
   INSERT INTO public.network_audit_events(id,organization_id,building_id,actor_type,actor_id,action,target_type,target_display,reason,outcome,occurred_at)
     VALUES('${AUDIT}','${ORG}','${BUILDING}','USER','${OUTSIDER}','settings.update','site','{}','Đổi chu kỳ poll','SUCCEEDED',${ts(15)});`;
 
+// Mặc định gói C + dải Z (review PR #215 P3-1): test gói kiểm định nghĩa CUỐI sẽ phát hành, không phải bản gói đã bị Z thay.
 export async function sharedW2c(options = {}) {
-  return sharedW2({ packages: ['c'], before, seed: db => db.exec(SEED), ...options });
+  return sharedW2({ packages: ['c', 'z'], before, seed: db => db.exec(SEED), ...options });
 }

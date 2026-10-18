@@ -77,7 +77,18 @@ test('Z-D loại thu chi: hàng dùng chung cũ hơn cùng tên không làm mấ
   assert.deepEqual([...direct].sort(), [CATEGORY, DUP_MINE].sort());
 }));
 
+// Review PR #215 P3-1 (đột biến M4 sống trong dải Z): bản chung của report_text_v1 (080000) đòi authenticated CÓ JWT.
+const TEXT_CALL = 'SELECT public.report_text_v1($1,5) result';
+const noJwt = env => env.call(TEXT_CALL, ['x'], { role: 'authenticated', actor: '' }).then(() => true, error => { assert.equal(error.code, '42501'); return false; });
+test('Z report_text_v1 (bản chung 080000): authenticated có JWT chạy; không JWT hoặc vai khác ⇒ 42501', () => inCase(async env => {
+  assert.equal(await env.call(TEXT_CALL, ['a\u0007b\r\nc dddd']), 'ab\nc ');
+  assert.equal(await noJwt(env), false, 'không JWT');
+  await assert.rejects(env.call(TEXT_CALL, ['x'], { role: 'postgres' }), error => error.code === '42501', 'vai postgres');
+}));
+
 const probes = [
+  { name: 'report_text_v1: bỏ kiểm auth.uid() (không JWT lọt)', from: "OR auth.uid() IS NULL THEN RAISE EXCEPTION 'report_text_denied'",
+    to: "THEN RAISE EXCEPTION 'report_text_denied'", run: noJwt },
   { name: 'thanh lý: ghi chú theo rào tên khách (bản gói D)', from: NOTE_FIX, to: NOTE_OLD,
     run: async env => { await env.grant(['reports_real_estate.terminations']); await hiddenRep(env.db);
       return (await run(env, 're_terminations')).items[0].note !== null; } },

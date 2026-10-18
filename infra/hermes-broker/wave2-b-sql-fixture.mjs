@@ -324,6 +324,7 @@ async function seed(db) {
   await db.exec(RLS);
 }
 
+// Mặc định gói B + dải Z (review PR #215 P3-1): test gói kiểm định nghĩa CUỐI sẽ phát hành, không phải bản gói đã bị Z thay.
 export async function sharedW2b(options = {}) {
-  return sharedW2({ packages: ['b'], before, seed, ...options });
+  return sharedW2({ packages: ['b', 'z'], before, seed, ...options });
 }

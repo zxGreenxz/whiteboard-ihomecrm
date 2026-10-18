@@ -245,8 +245,9 @@ const SEED = `
         'meta',jsonb_build_object('code','PC-HH','name','Hoa hồng cho Nguyễn Văn An'))),
     'vacancies',jsonb_build_array(jsonb_build_object('fromDate','2025-12-01','toDate','2026-01-02','days',32)),'generatedAt','2026-10-16T00:00:00Z'));`;
 
+// Mặc định gói D + dải Z (review PR #215 P3-1): test gói kiểm định nghĩa CUỐI sẽ phát hành, không phải bản gói đã bị Z thay.
 export async function sharedW2d(options = {}) {
-  return sharedW2({ packages: ['d'], before: db => db.exec(BEFORE), seed: db => db.exec(SEED), ...options });
+  return sharedW2({ packages: ['d', 'z'], before: db => db.exec(BEFORE), seed: db => db.exec(SEED), ...options });
 }
 export { BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, USER, ORG, FOREIGN, CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT, CONTRACT_A, CONTRACT_B, SERVICE,
   CATEGORY, RESTRICTED_CATEGORY, HIDDEN_CATEGORY };
