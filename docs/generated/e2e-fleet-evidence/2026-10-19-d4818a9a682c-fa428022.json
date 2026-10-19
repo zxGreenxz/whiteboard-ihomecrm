@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "kind": "e2e-fleet-local-receipt",
+  "suiteId": "e2e-fleet",
+  "status": "passed",
+  "commit": "d4818a9a682c214419eceb42208192189ccb72ac",
+  "fleetTree": "4dc648cff0f742bde3f2839e5331a54c129c67b8",
+  "environment": "TEST",
+  "target": {
+    "kind": "loopback",
+    "origin": "http://127.0.0.1:5197"
+  },
+  "targetSupabaseRef": "hzulujxgonszuleqticb",
+  "targetBuildSha": "d4818a9a682c214419eceb42208192189ccb72ac",
+  "actor": {
+    "gitUser": "zxGreenxz",
+    "agent": "claude"
+  },
+  "reportSha256": "3bbfc9c7015fea4b9642d8c779d5683ec549fd276ff18657ff6cbff1315b48d9",
+  "runner": {
+    "node": "v22.20.0",
+    "playwright": "1.61.1"
+  },
+  "runId": "fa428022-2b90-44f9-afa2-d7e0034ed040",
+  "startedAt": "2026-10-19T02:34:25.941Z",
+  "completedAt": "2026-10-19T02:37:15.609Z",
+  "specs": [
+    {
+      "file": ".e2e-fleet/specs/contract-mobile-settlement-readonly.spec.ts",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/contract-unified-form.spec.ts",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/contract-workspace-tabs.spec.ts",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/deposit-management-exclusion.spec.ts",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/invoice-adjustment-repair.spec.ts",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/personal-finance-real.spec.ts",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    },
+    {
+      "file": ".e2e-fleet/specs/user-feedback.spec.ts",
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "flaky": 0
+    }
+  ]
+}
