@@ -33,7 +33,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { inKetQua, resolveCommitSha, verifyVercelRelease } from './release-verify.mjs';
-import { validLocalEvidenceSummary } from './lib/gate-e2e-local-evidence.mjs';
+import { describeLocalEvidence, validLocalEvidenceSummary } from './lib/gate-e2e-local-evidence.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -192,6 +192,8 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
   const jobs = [];
   const observations = [];
   const requiredExternal = [];
+  // Biên nhận E2E local mà aggregate đã nhận — in ra để chủ thấy lần promote dựa vào gì.
+  const localEvidence = [];
 
   const pendingRuns = [];
   const failedRuns = [];
@@ -241,6 +243,7 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
       } else {
         hasCompletedMainCi = true;
         requiredExternal.push(...aggregate.requiredExternalWorkflows);
+        localEvidence.push(...(aggregate.localEvidence ?? []));
       }
     }
 
@@ -255,6 +258,7 @@ export async function readGateEvidence(repo, sha, token, request = goiGitHub, re
   verdict.doGate.push(...failedRuns);
   // Một aggregate phủ đủ là đủ; aggregate hẹp hơn của lượt khác không chặn.
   verdict.khongPhu = hasCompletedMainCi ? [] : uncovered;
+  verdict.localEvidence = hasCompletedMainCi ? localEvidence : [];
   verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length && !verdict.khongPhu.length;
   return { jobs, verdict };
 }
@@ -337,6 +341,10 @@ async function main(argv) {
 
   const { jobs, verdict: kq } = evidence;
   console.log(`  ${jobs.length} job, ${jobs.reduce((n, j) => n + (j.steps?.length ?? 0), 0)} bước`);
+  if (kq.localEvidence?.length) {
+    console.log('\n  Nghĩa vụ E2E fleet thoả bằng BIÊN NHẬN LOCAL (do runner sinh, không phải CI chạy):');
+    for (const line of describeLocalEvidence(kq.localEvidence)) console.log(`  - ${line}`);
+  }
 
   if (kq.nuot.length > 0) {
     console.error(`\n❌ ${kq.nuot.length} bước FAIL nhưng job vẫn báo xanh (continue-on-error):`);
