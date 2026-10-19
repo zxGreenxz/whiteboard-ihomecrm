@@ -38,7 +38,7 @@ export type HermesManagedZaloBot = z.infer<typeof managedBot>;
 export type HermesZaloBinding = z.infer<typeof binding>;
 export type HermesZaloChallenge = z.infer<typeof begin>;
 export type HermesZaloStatus = z.infer<typeof status>;
-const statuses = { invalid_request: 400, forbidden: 403, reauthentication_required: 401, context_changed: 409,
+const statuses = { invalid_request: 400, forbidden: 403, reauthentication_required: 401, context_changed: 409, sender_already_linked: 409,
   backend_unavailable: 503, binding_outcome_unknown: 503, cancelled: 408, timeout: 504, busy: 429, backend_closed: 503 } as const;
 type ErrorCode = keyof typeof statuses | 'invalid_response';
 type Operation = 'bots' | 'manageBots' | 'setBot' | 'selectCredential' | 'list' | 'begin' | 'status' | 'confirm' | 'unlink';

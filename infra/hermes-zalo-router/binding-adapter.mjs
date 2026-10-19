@@ -88,6 +88,11 @@ export function createZaloBindingPorts({ auth, url, publishableKey, fetch: reque
         if (response.status === 200) return data;
         if (response.status === 401) throw new ZaloBindingRpcRejection('reauthentication_required');
         if (response.status === 403 && data?.code === '42501') throw new ZaloBindingRpcRejection('forbidden');
+        if (args.p.operation === 'confirm' && response.status === 409 && data?.code === '23505' &&
+            data.message === 'duplicate key value violates unique constraint "hermes_zalo_one_sender"') {
+          // Keep the database diagnostic private; it may contain the sender UID.
+          throw new ZaloBindingRpcRejection('sender_already_linked');
+        }
         if (response.status === 409 && ['PT409', '23505'].includes(data?.code)) throw new ZaloBindingRpcRejection('context_changed');
         if (response.status === 400 && data?.code === '22023') throw new ZaloBindingRpcRejection('invalid_request');
         fail('backend_unavailable');
