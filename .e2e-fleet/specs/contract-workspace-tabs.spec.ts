@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { credentials, type UserKey } from './auth';
-import { readRpcAllowlist } from '../support/read-rpc-allowlist';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 const TEST_HOST = 'hzulujxgonszuleqticb.supabase.co';
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
@@ -95,9 +95,8 @@ async function readonlyDemo(page: Page, email: string) {
       }
       if (rpc === 'set_my_ui_preference' && method === 'POST') {
         // App ghi nhớ công ty đã chọn lên hồ sơ (từ 05/10/2026). Trả lời giả để lượt chỉ-đọc không ghi vào TEST.
-        const body = request.postDataJSON();
-        if (body?.p_value !== DEMO_ORG) return block();
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ [body.p_key]: body.p_value }) });
+        const fake = uiPreferenceFakeBody(request, DEMO_ORG);
+        return fake ? route.fulfill({ status: 200, contentType: 'application/json', body: fake }) : block();
       }
       if (rpc && READ_RPC.has(rpc) && method === 'POST') {
         const body = request.postDataJSON();

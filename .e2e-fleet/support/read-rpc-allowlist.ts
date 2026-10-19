@@ -9,7 +9,9 @@ import type { Request, Response } from '@playwright/test';
 // chỉ import. Mỗi spec vẫn giữ luật riêng của nó (org DEMO, host TEST, phản hồi giả).
 //
 // Chỉ thêm hàm KHÔNG ghi: STABLE/IMMUTABLE trong migration, hoặc hàm đọc đã có trong
-// danh sách cũ của spec. Hàm ghi (kể cả set_my_ui_preference) để spec tự chặn/trả giả.
+// danh sách cũ của spec, hoặc hàm đọc mà lượt chạy thật cho thấy màn đó gọi (ghi rõ hook/trang).
+// Hàm ghi không vào danh sách; riêng set_my_ui_preference (app gọi ở mọi màn) có
+// uiPreferenceFakeBody để spec trả lời giả thay vì cho tới máy chủ.
 
 /** Mọi route sau đăng nhập: phiên, quyền, công ty, thông báo, sidebar. */
 const SHELL = [
@@ -44,6 +46,9 @@ const PAGES = {
     'list_contract_meter_followups_v1', 'get_contract_move_out_notice_v1', 'read_contract_meter_boundary_set_v1',
     'read_contract_transfer_links_v1', 'list_contract_drafts', 'list_room_reservations_v1',
     'read_contract_draft_signing_v1', 'read_contract_meter_interval_v1',
+    // Chi tiết hợp đồng tải bảng hoa hồng: src/hooks/useContractCommissionFollowup.ts
+    // (ContractCommissionFollowupPanel). Thấy khi chạy contract-mobile-settlement-readonly trên TEST 19/10/2026.
+    'list_contract_commission_followups_v2',
   ],
   /** /invoices và /invoices/:id. */
   invoices: [
@@ -62,6 +67,9 @@ const PAGES = {
   deposits: [
     'get_held_deposit_summary', 'get_refund_forfeit_summary', 'get_reservation_deposit_summary',
     'get_reservation_settlement_summary_v1', 'get_reservation_settlements_v1', 'list_room_reservations_v1',
+    // Khung "Phòng đang khoá tạm" của /deposits: src/hooks/useRoomSaleLocks.ts (RoomSaleLocksPanel,
+    // lock tạm phòng 10/10/2026). Thấy khi chạy deposit-management-exclusion trên TEST 19/10/2026.
+    'list_room_sale_locks_v1',
   ],
   /** Hỗ trợ tiền thuê, chi hợp đồng, hoa hồng (rent-support-browser.ts). */
   rentSupport: [
@@ -129,6 +137,20 @@ export function isInvoiceListRead(request: ReadRequest, { adjustmentReviewStatus
   }
   return request.method() === 'POST' && rpcName(url) === 'invoice_list_v1'
     && rpcArgs(request).p_adjustment_review_status === adjustmentReviewStatus;
+}
+
+/**
+ * `set_my_ui_preference` là hàm GHI sở thích giao diện (công ty đã chọn…) mà app gọi ở mọi màn
+ * sau đăng nhập (src/lib/companyPreferenceRemote.ts, src/hooks/useUiPreferences.ts; từ
+ * 05/10/2026). Spec chỉ-đọc không cho nó tới máy chủ: trả thân giả `{ [p_key]: p_value }` (đúng
+ * hình dạng hai caller đó xác nhận) khi p_value là org của lượt chạy; giá trị khác thì null để
+ * spec chặn như hàm ghi lạ. Spec vẫn tự nhận diện tên RPC và tự gọi route.fulfill.
+ */
+export function uiPreferenceFakeBody(request: ReadRequest, organizationId: string): string | null {
+  if (request.method() !== 'POST' || rpcName(new URL(request.url())) !== 'set_my_ui_preference') return null;
+  const args = rpcArgs(request);
+  return typeof args.p_key === 'string' && args.p_value === organizationId
+    ? JSON.stringify({ [args.p_key]: args.p_value }) : null;
 }
 
 /** Danh sách khách (/customers, picker khách của form hợp đồng). */

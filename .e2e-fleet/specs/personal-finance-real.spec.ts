@@ -1,6 +1,6 @@
 // Real TEST roles and database, supplied only by the guarded disposable-fixture runner.
 import { expect, test, type Page } from '@playwright/test';
-import { readRpcAllowlist } from '../support/read-rpc-allowlist';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 type Actor = { id: string; email: string; password: string };
 type Fixtures = { org: string; ref: string; url: string; writer: Actor; viewer: Actor };
@@ -81,6 +81,11 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
           await route.fulfill({ status: 200, contentType: 'application/json', json: { receiptUnavailable: true } });
           return;
         }
+      } else if (target.pathname === '/rest/v1/rpc/set_my_ui_preference') {
+        // Sở thích giao diện (công ty đã chọn) là hàm ghi ngoài ví: trả lời giả, không ghi TEST.
+        const fake = uiPreferenceFakeBody(request, f.org);
+        if (!fake) return deny();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: fake });
       } else if (target.pathname.startsWith('/rest/v1/rpc/')) {
         const name = target.pathname.split('/').pop() || '';
         // Existing layout roster RPC is SELECT-only (20260725001000 migration); shared

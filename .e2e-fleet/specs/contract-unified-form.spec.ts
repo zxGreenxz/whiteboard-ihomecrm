@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { credentials, type UserKey } from './auth';
-import { readRpcAllowlist } from '../support/read-rpc-allowlist';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 const TEST_HOST = 'hzulujxgonszuleqticb.supabase.co';
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
@@ -83,6 +83,11 @@ async function guardTestDemo(page: Page, email: string) {
         const grant = url.searchParams.get('grant_type');
         const body = request.postDataJSON();
         if (grant === 'refresh_token' || (grant === 'password' && body.email === email)) return route.continue();
+      }
+      if (rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ; trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const fake = uiPreferenceFakeBody(request, DEMO_ORG);
+        return fake ? route.fulfill({ status: 200, contentType: 'application/json', body: fake }) : block();
       }
       if (rpc === 'save_contract_draft' && method === 'POST') {
         const body = request.postDataJSON();

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login } from './auth';
-import { isContractListRead, listReadRows, readRpcAllowlist } from '../support/read-rpc-allowlist';
+import { isContractListRead, listReadRows, readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 const TEST_HOST = 'hzulujxgonszuleqticb.supabase.co';
 const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
@@ -33,6 +33,11 @@ test('TEST DEMO: returned contract mobile status loads from existing readers wit
         }
       }
       const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([^/]+)$/)?.[1];
+      if (rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ; trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const fake = uiPreferenceFakeBody(request, DEMO_ORG);
+        return fake ? route.fulfill({ status: 200, contentType: 'application/json', body: fake }) : block();
+      }
       if (rpc && READ_RPC.has(rpc) && method === 'POST') {
         const body = request.postDataJSON();
         if (body?.p_organization_id && body.p_organization_id !== DEMO_ORG) return block();

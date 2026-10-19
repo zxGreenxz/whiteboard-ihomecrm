@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { USERS } from './auth';
-import { readRpcAllowlist } from '../support/read-rpc-allowlist';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 // Read-only acceptance after the reviewed exclusion migration is seeded on TEST.
 // Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5197 (same loopback
@@ -148,6 +148,14 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
         return;
       }
       const rpc = url.pathname.startsWith('/rest/v1/rpc/') ? url.pathname.split('/').at(-1) : null;
+      if (url.origin === TEST_ORIGIN && rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ; trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const fake = uiPreferenceFakeBody(req, ORGANIZATION_ID);
+        if (fake) { await route.fulfill({ status: 200, contentType: 'application/json', body: fake }); return; }
+        unexpectedRequests.push(`${method} ${url.hostname}${url.pathname}`);
+        await route.abort('blockedbyclient');
+        return;
+      }
       const allowedRpc = url.origin === TEST_ORIGIN && rpc && READ_RPCS.has(rpc) && ['GET', 'POST'].includes(method);
       const allowedAuth = url.origin === TEST_ORIGIN && url.pathname === '/auth/v1/token' && method === 'POST';
       const allowedRead = method === 'OPTIONS' || (['GET', 'HEAD'].includes(method) && !rpc);
