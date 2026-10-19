@@ -1,12 +1,12 @@
 # Đánh giá và kế hoạch tối ưu tốc độ CRM và Hermes
 
-Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 23:13 UTC+7:** nick đã ghép đúng tài khoản Gmail và credential chủ chọn đã áp vào profile owner; runtime VPS `8ee1fd0` hoạt động. MCP thật đạt 5/6: đọc khách hàng/hợp đồng/hóa đơn được, phòng lỗi do phạm vi trỏ tới tòa/khu đã xóa. Bản sửa ở [PR #227](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/227) đã merge main `b16d9afd`, TEST signed PostgREST đạt 3/3 tài khoản; production mới dry-run/ROLLBACK, chưa apply. Main aggregate 74/74 đạt; runtime bắt buộc, restore drill và migration validation đã SUCCESS. CI Gates còn queued; canonical chờ thêm 180 giây vẫn chưa đủ điều kiện phát hành. Chrome xác nhận đã liên kết nhưng nhãn đồng bộ vẫn pending. Chủ cho phép agent chat thử qua CRM: bốn lượt đều được bot trả lời; đọc khách hàng/hợp đồng đạt, đọc phòng vẫn lỗi `backend_unavailable`. Đã đối chiếu tên công cụ và thời điểm trong phiên Hermes thật, không chỉ dựa lời bot. Không yêu cầu ghép nick lại. Fast production vẫn OFF: 45 cặp mẫu khớp core CRM, lượt bổ sung 15 cặp khoanh khác biệt khách hàng vào bốn trường phòng/hợp đồng; chưa bật khi chưa đối chiếu đủ nghĩa nghiệp vụ. Ba tài khoản TEST đã kiểm Chrome loading/tạo/đọc lại quyền/thu hồi/logout, chủ kiểm thêm tắt/bật quyền. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md#checkpoint-hiện-hành) giữ bằng chứng vận hành chi tiết.
+Ngày đánh giá: 19/10/2026. Khảo sát ban đầu `81c49363`; các phần khảo sát cũ phía dưới giữ theo thời điểm. **Checkpoint 23:44 UTC+7:** SQL sửa phòng PR #227 đã áp production sau backup và CI nguồn 4/4 SUCCESS; MCP phòng HTTP 200 có dữ liệu, Zalo 23:43 đọc thành công. Runtime VPS `8ee1fd0`, nick/kết nối đã ghép đúng user; fast production vẫn OFF. **Đánh giá hiện hành và thứ tự làm tiếp ở [báo cáo tổng hợp tốc độ](hermes-crm/TOI-UU-TOC-DO-HIEN-HANH.md)**: giảm lượt model, hoàn tất đối chiếu fast, sau đó đo web/SQL; phân biệt việc đã làm với đề xuất cũ. [STATUS](hermes-crm/STATUS.md#checkpoint-hiện-hành) giữ rollout và lỗi CI checkpoint tài liệu khác source sửa phòng.
 
 **Đích quyền: quyền Hermes = quyền CRM user − những quyền bị tắt trong cài đặt Hermes.** [Báo cáo tinh giản, ba lỗi, sơ đồ và audit §10](hermes-crm/TINH-GON-KIEM-QUYEN.md) giữ plan Hermes hiện hành và tiến độ candidate. Chủ đã làm rõ §9 chỉ là đề xuất agent khác: không áp đặt 100 ms, cấm cache hoặc epoch mọi RPC. Giữ quyền/RLS CRM vốn có; bỏ hai kiểm cuối và công việc lặp. Xác nhận chữ công khai là lựa chọn riêng, chưa chốt mới. Báo cáo dưới giữ bằng chứng và phạm vi CRM/Jev rộng hơn.
 
 ## Luồng sau ghép nick và bản sửa đọc phòng
 
-Bạn đã làm xong phần ghép nick. Luồng dưới đã được kiểm bằng hội thoại thật qua Zalo Chat trên CRM; khách hàng và hợp đồng có phản hồi thành công, riêng bước đọc phòng vẫn lỗi. Một câu hỏi được trả lời xong thì bot chờ câu tiếp theo, không tự chạy toàn bộ kế hoạch kiểm thử.
+Bạn đã làm xong phần ghép nick. Luồng dưới đã được kiểm bằng hội thoại thật qua Zalo Chat trên CRM; khách hàng và hợp đồng có phản hồi thành công, bước đọc phòng cũng đã thành công sau apply production lúc 23:41. Một câu hỏi được trả lời xong thì bot chờ câu tiếp theo, không tự chạy toàn bộ kế hoạch kiểm thử.
 
 ```mermaid
 flowchart LR
@@ -30,10 +30,14 @@ flowchart LR
 |---|---|---|
 | MCP sau kích hoạt trên VPS: khách hàng / hợp đồng / hóa đơn | Khoảng 3,12 / 2,87 / 2,87 giây, có dữ liệu | Một lượt mẫu; chưa gồm thời gian model và Zalo |
 | Bước ánh xạ phạm vi phòng trên TEST: chủ / quản lý / hệ thống | 481 / 309 / 357 ms; cả ba đúng quyền và không lỗi vì scope đã xóa | Chỉ một RPC và mapper, không phải toàn bộ lời hỏi phòng |
-| Bản sửa trên production | Dry-run đạt và đã hoàn tác | Chưa áp dụng; chờ CI Gates, backup và đo MCP sau apply |
-| Gửi hỏi và nhận trả lời qua Zalo | 4/4 lượt có phản hồi; 3 lượt đạt mục tiêu, lượt phòng báo lỗi | Một hội thoại hiện hành, bốn mẫu; chưa phải p95 hoặc mọi quyền |
+| Bản sửa trên production | Đã áp 23:41 sau backup; hậu kiểm MCP 2/2, phòng 2,16 giây có 1 dòng | Một lượt đọc phòng, chưa phải p95; không rerun mọi tool |
+| Gửi hỏi và nhận trả lời qua Zalo | Bốn lượt trước đều có phản hồi, phòng lỗi; lượt thứ năm sau sửa đọc phòng thành công, 15,35 giây tổng / 4,62 giây CRM | Giữ kết quả lỗi lịch sử; năm mẫu không phải p95 hoặc mọi quyền |
 
 Nhãn “Đang đồng bộ với trợ lý…” trên web còn là việc riêng phải hoàn thiện: trang đã lưu liên kết, nhưng chưa có xác nhận đầy đủ rằng tiến trình trợ lý đã nạp cấu hình tương ứng. Không yêu cầu người dùng tạo lại kết nối để xử lý nhãn này.
+
+## Đọc phòng sau sửa, 23:43 ngày 19/10
+
+MCP trực tiếp phòng 2.158 ms, 1 dòng; hội thoại Zalo thật 15,35 giây, riêng tool 4,62 giây. Trace có search→call→final, không describe; ngoài CRM còn 10,73 giây. Không quy chênh hai phép đo khác thời điểm cho mạng. [Phân tích từng bước và kế hoạch](hermes-crm/TOI-UU-TOC-DO-HIEN-HANH.md#2-một-câu-hỏi-hiện-tốn-thời-gian-ở-đâu). Phần 23:02–23:05 dưới đây giữ nguyên kết quả trước sửa.
 
 ## Chat thử trực tiếp qua CRM, 23:02–23:05 ngày 19/10
 
