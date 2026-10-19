@@ -2,7 +2,7 @@
 
 ## Checkpoint hiện hành
 
-**19/10/2026, checkpoint 22:55 UTC+7; VPS đã kích hoạt lúc 21:38.**
+**19/10/2026, checkpoint 23:08 UTC+7; VPS đã kích hoạt lúc 21:38.**
 
 **Ghép nick và áp kết nối đã hoàn tất:** chủ đã chuyển nick sang tài khoản Gmail đã chọn. DB chỉ đọc xác minh binding ACTIVE, challenge CONFIRMED, đúng user/assistant và credential do chính chủ chọn. Đã áp credential đó vào profile owner qua CLI CAS đúng UID, giữ địa chỉ nội bộ hiện hành và cấu hình kênh. Không yêu cầu ghép nick lại; không ghi định danh hoặc credential thật vào repo.
 
@@ -10,7 +10,9 @@
 
 **Triển khai đã thực hiện:** backup connector và profile mã hóa ngoài VPS, xác minh giải mã/byte từ bản đã lưu; switch runtime; xác minh lại đường Docker bridge → socket proxy → loopback connector; dừng gateway/connector sạch, publish profile, khởi động lại. Gateway dừng khoảng 4,3 giây trong lần áp profile. Candidate dùng dependency tree baseline `0fbc263f` đã kiểm manifests/ownership/mode/link confinement: phải giữ baseline khi symlink còn được dùng. Fast production vẫn OFF. Không tự ACK queue provisioning từ kết quả ghi file.
 
-**MCP thực sau kích hoạt, 21:39 UTC+7: đạt 5/6 phép thử.** Initialize và tools/list thành công; đọc khách hàng, hợp đồng, hóa đơn đều HTTP 200 và có dữ liệu, lần lượt khoảng 3,12 / 2,87 / 2,87 giây. Đây là mẫu một lượt từ VPS tới connector, chưa gồm Zalo/LLM hoặc p95 người dùng. `crm_available_rooms` trả `backend_unavailable`; không gọi tổng nghiệm thu là PASS. Agent chưa gửi tin Zalo; đã đề nghị chủ thử một câu hỏi riêng cho bot, còn chờ phản hồi để xác minh toàn tuyến.
+**MCP thực sau kích hoạt, 21:39 UTC+7: đạt 5/6 phép thử.** Initialize và tools/list thành công; đọc khách hàng, hợp đồng, hóa đơn đều HTTP 200 và có dữ liệu, lần lượt khoảng 3,12 / 2,87 / 2,87 giây. Đây là mẫu một lượt từ VPS tới connector, chưa gồm Zalo/LLM hoặc p95 người dùng. `crm_available_rooms` trả `backend_unavailable`; không gọi tổng nghiệm thu là PASS. Đây là checkpoint MCP trước lượt chat thật; kết quả Zalo mới nằm ngay dưới.
+
+**Zalo Chat qua CRM đã kiểm thật lúc 23:02–23:05:** chủ cho phép agent trực tiếp gửi bốn câu riêng cho bot. 4/4 có phản hồi: nhận câu hỏi; đọc khách hàng; đọc phòng báo `backend_unavailable`; sau lỗi vẫn đọc hợp đồng được. UI báo 1 bản ghi ở khách hàng/hợp đồng; trace SQLite chỉ đọc trên đúng phiên xác nhận có các tool `crm_read_customers`, `crm_available_rooms`, `crm_read_contracts`, lỗi phòng khớp log gateway. Thời gian timestamp tin hỏi → assistant cuối: 4,12 / 15,66 / 13,15 / 18,02 giây; riêng công cụ CRM 3,08 / 2,10 (lỗi) / 5,12 giây. Không coi là thời gian bấm-gửi tới điện thoại hoặc p95. Các lượt đọc dùng search → describe → call; nhiều thời gian nằm ở model giữa các bước. Ảnh chủ gửi 22:26 là câu trả lời đã hoàn tất, không phải bot đang hẹn làm tiếp. Không có thay đổi source/quyền/profile/binding/nghiệp vụ; không gửi nhóm. [Sơ đồ, giới hạn phép đo và hướng tối ưu](../2026-10-19-crm-hermes-jev-performance.md#chat-thử-trực-tiếp-qua-crm-23022305-ngày-1910). Lỗi không đồng nghĩa danh sách phòng rỗng; cách bot nói “0 bản ghi” cần cải thiện riêng. Receipt lược bỏ dữ liệu riêng được giữ ngoài repo; screenshot cuối timeout nên không có artifact ảnh cuối.
 
 **Lỗi phòng trống đã khoanh nguyên nhân:** trace cùng source triển khai và JWT thật xác minh authority/store/Auth đều đạt; `hermes_room_scope_map_v1` trả HTTP 400, SQLSTATE `22023`, `hermes_scope_invalid` trước khi đọc nguồn Sale. Phép đọc tổng hợp DB xác nhận kết nối `inherit_crm/unrestricted` đang chứa scope trỏ tới tòa nhà/khu vực đã xóa mềm. Projection TG2 lấy mọi scope cùng công ty, còn room RPC đúng thiết kế từ chối node đã xóa; vì vậy toàn danh sách bị lỗi. Không đổi quyền, sửa dữ liệu nghiệp vụ hoặc bỏ kiểm RPC để né lỗi.
 
@@ -26,7 +28,7 @@
 
 **Web:** lần `release:verify` gần nhất xác nhận production phục vụ `039fc36a0679460ba76cf908dbf8ca92cbe2efed` READY. Preview của PR #227 đã READY; đây không phải bằng chứng web production đã phát hành UI bổ sung. Hạn mức từng chặn preview trước đó được giữ trong lịch sử. Không tạo tài khoản/project hoặc gửi thêm deployment để né hạn mức.
 
-**Tiếp theo:** chờ runtime bắt buộc và CI main hoàn tất → apply production bằng forward lane có backup → gọi lại MCP phòng trống bằng kết nối hiện có → ghi kết quả Zalo thật khi chủ phản hồi. Fast OFF tới khi có đối chiếu kết quả cùng quyền có dữ liệu; không coi việc ghép nick hay ba phép đọc thành công là đủ để bật. Các mốc sớm hơn dưới đây là lịch sử.
+**Tiếp theo:** chờ runtime bắt buộc và CI main hoàn tất → apply production bằng forward lane có backup → gọi lại MCP phòng trống bằng kết nối hiện có → kiểm lại đọc phòng qua Zalo Chat bằng phiên đã ghép. Lượt chat thật hiện đã xác minh gửi/nhận và khách hàng/hợp đồng; không yêu cầu chủ thử lại các lượt đã đạt. Fast OFF tới khi có đối chiếu kết quả cùng quyền có dữ liệu; không coi việc ghép nick hay ba phép đọc thành công là đủ để bật. Các mốc sớm hơn dưới đây là lịch sử.
 
 **Lịch sử xác minh Vercel lúc 19:05 UTC+7:** sau khi chủ báo đã lên bản mới, API lúc `12:05:18Z` xác nhận deployment production `0fbc263f48d896baf633eba84dbf3cd4a222387a` ở trạng thái READY, không có deployment đang chờ/chạy. Lệnh chính thức `release:verify -- --sha 0fbc263f48d896baf633eba84dbf3cd4a222387a --wait-seconds 0` PASS: trang `https://ptcrm.vercel.app/` thực sự phục vụ đúng meta build-sha. Không chỉ dựa vào nhánh Git hoặc dashboard. Receipt API ngoài repo: `hermes-vercel-goal-checkpoint-20261019-1205.json`. Blocker phát hành của candidate đã gỡ; agent không tạo tài khoản/project khác, thanh toán, đổi gói hoặc gửi thêm deployment POST trong lượt này.
 
