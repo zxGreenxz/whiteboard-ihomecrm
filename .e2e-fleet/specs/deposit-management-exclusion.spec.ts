@@ -1,13 +1,16 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { USERS } from './auth';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 // Read-only acceptance after the reviewed exclusion migration is seeded on TEST.
-// Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5198,
+// Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5197 (same loopback
+// origin the contract specs pin, so one receipt run of scripts/e2e-fleet-bien-nhan.mjs
+// covers every required spec against one dev server pointing at TEST),
 // TEST_SUPABASE_PUBLISHABLE_KEY and FLEET_PASS_TEST_CHU supplied through env.
 // TEST Nano times out when the unrelated contract/refund dashboard fans out.
 // Those readers and the building picker use explicit fixtures below. Reservation
 // list/summary, voucher/exclusion reads, authentication and authorization stay live.
-const APP_ORIGIN = 'http://127.0.0.1:5198';
+const APP_ORIGIN = 'http://127.0.0.1:5197';
 const TEST_REF = 'hzulujxgonszuleqticb';
 const TEST_HOST = `${TEST_REF}.supabase.co`;
 const TEST_ORIGIN = `https://${TEST_HOST}`;
@@ -17,15 +20,9 @@ const BUILDING_ID = '59c6fc2c-2369-4ec8-b253-1ac64abb2f45';
 const ROOM_ID = '46a8f5e8-cc72-4c32-a288-0dafe93f343c';
 
 // Source: OrganizationContext, useMyPermissions, useDepositDashboard,
-// useReservationSettlement, useRoomReservations and Sidebar's organization read.
-const READ_RPCS = new Set([
-  'list_my_copilot_organizations_v1', 'get_my_permissions_v2', 'get_my_permissions',
-  'is_admin', 'is_super_admin', 'is_company_owner_self_v1',
-  'business_performance_organizations_v1', 'get_held_deposit_summary',
-  'get_refund_forfeit_summary', 'get_reservation_deposit_summary',
-  'get_reservation_settlement_summary_v1', 'get_reservation_settlements_v1',
-  'list_room_reservations_v1',
-]);
+// useReservationSettlement, useRoomReservations and Sidebar's organization read
+// (shared module; shell and shared readers included).
+const READ_RPCS = readRpcAllowlist('deposits');
 
 const CONTROLLED_REFUND_SUMMARY = {
   refund_total: 0, refund_count: 0, forfeit_total: 0, forfeit_count: 0,
@@ -151,6 +148,14 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
         return;
       }
       const rpc = url.pathname.startsWith('/rest/v1/rpc/') ? url.pathname.split('/').at(-1) : null;
+      if (url.origin === TEST_ORIGIN && rpc === 'set_my_ui_preference' && method === 'POST') {
+        // App ghi nhớ công ty đã chọn lên hồ sơ; trả lời giả để lượt chỉ-đọc không ghi vào TEST.
+        const fake = uiPreferenceFakeBody(req, ORGANIZATION_ID);
+        if (fake) { await route.fulfill({ status: 200, contentType: 'application/json', body: fake }); return; }
+        unexpectedRequests.push(`${method} ${url.hostname}${url.pathname}`);
+        await route.abort('blockedbyclient');
+        return;
+      }
       const allowedRpc = url.origin === TEST_ORIGIN && rpc && READ_RPCS.has(rpc) && ['GET', 'POST'].includes(method);
       const allowedAuth = url.origin === TEST_ORIGIN && url.pathname === '/auth/v1/token' && method === 'POST';
       const allowedRead = method === 'OPTIONS' || (['GET', 'HEAD'].includes(method) && !rpc);
@@ -173,7 +178,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     });
     await page.routeWebSocket('**/*', socket => {
       const url = new URL(socket.url());
-      const isLocal = url.hostname === '127.0.0.1' && url.port === '5198';
+      const isLocal = url.hostname === '127.0.0.1' && url.port === '5197';
       if (!isLocal && url.hostname !== TEST_HOST) {
         unexpectedRequests.push(`blocked websocket: ${url.hostname}`);
         socket.close();
