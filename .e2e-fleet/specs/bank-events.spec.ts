@@ -30,11 +30,20 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.close(); });
 
+// Tóm tắt giả lập (không phải tin thật) để kiểm tổng hôm nay, lọc chiều tiền và bảng nhóm theo ngày.
+const summary = { balance: null, account: null, description: null, bank: null, transactedAt: null };
+const parsedEvents = [
+  { ...fixtureEvent, id: '55555555-5555-4555-8555-555555555551', externalId: 'fixture-event-000000003', receivedAt: '2026-10-09T01:59:30Z', summaryStatus: 'parsed', summary: { ...summary, direction: 'in', amount: 5_500_000, balance: 12_000_000, bank: 'Vietcombank', account: '••4821', description: 'KHACH THU NGHIEM CK TIEN PHONG' } },
+  { ...fixtureEvent, id: '55555555-5555-4555-8555-555555555552', externalId: 'fixture-event-000000002', receivedAt: '2026-10-09T01:58:30Z', summaryStatus: 'parsed', summary: { ...summary, direction: 'out', amount: 1_250_000, bank: 'MB', account: '••7730', description: 'THANH TOAN THU NGHIEM' } },
+];
+const arrival = { ...fixtureEvent, id: '55555555-5555-4555-8555-555555555553', externalId: 'fixture-event-000000004', receivedAt: '2026-10-09T02:00:30Z', summaryStatus: 'parsed', summary: { ...summary, direction: 'in', amount: 3_000_000, bank: 'Vietcombank', description: 'TIN MOI THU NGHIEM' } };
+
 async function setup(page: Page) {
   const calls: Record<string, unknown>[] = [], errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   let sources = [{ ...fixtureSource }];
+  const feed = { arrived: false };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
@@ -45,7 +54,12 @@ async function setup(page: Page) {
     switch (body.action) {
       case 'status': data = fixtureStatus; break;
       case 'list_sources': data = { sources }; break;
-      case 'list_events': data = { events: body.query === 'khong-co' ? [] : [fixtureEvent], nextCursor: body.cursor || body.query === 'khong-co' ? null : 'fixture-next-page' }; break;
+      case 'list_events': {
+        const list = [...(feed.arrived ? [arrival] : []), ...parsedEvents, fixtureEvent];
+        data = body.from && body.limit === 100 ? { events: list, nextCursor: null }
+          : { events: body.query === 'khong-co' ? [] : body.cursor ? [fixtureEvent] : list, nextCursor: body.cursor || body.query === 'khong-co' ? null : 'fixture-next-page' };
+        break;
+      }
       case 'get_event': data = { event: fixtureEvent, payload: { event: 'sms.received', sender: 'BANK-FIXTURE', body: 'NOI_DUNG_THU_NGHIEM_KHONG_PHAI_TIN_THAT' } }; break;
       case 'create_source': { const source = { ...fixtureSource, id: '44444444-4444-4444-8444-444444444444', name: String(body.name), deviceId: null }; sources.push(source); data = { source, token: 'fixture-token-' + 'x'.repeat(40) }; break; }
       case 'rotate_source': data = { source: sources.find(source => source.id === body.sourceId), token: 'fixture-rotated-' + 'y'.repeat(40) }; break;
@@ -55,28 +69,54 @@ async function setup(page: Page) {
     }
     await route.fulfill({ json: { ok: true, data } });
   });
-  return { calls, errors };
+  return { calls, errors, feed };
 }
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) test(`inbox, raw detail and filters at ${viewport.width}px`, async ({ page }, info) => {
+const viewports = [{ width: 1440, height: 1000 }, { width: 390, height: 844 }];
+for (const viewport of viewports) test(`inbox, raw detail and filters at ${viewport.width}px`, async ({ page }, info) => {
+  const phone = viewport.width < 768;
   await page.setViewportSize(viewport); const evidence = await setup(page); await page.goto(base + '/__bank.html', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Biến động số dư', exact: true })).toBeVisible();
-  await expect(page.getByText('Điện thoại thử nghiệm', { exact: true }).last()).toBeVisible();
+  const today = page.getByRole('region', { name: 'Tổng quan hôm nay' });
+  await expect(today).toContainText('+5.500.000'); await expect(today).toContainText('−1.250.000');
+  await expect(page.getByText('KHACH THU NGHIEM CK TIEN PHONG')).toBeVisible();
+  await expect(page.getByText('Không phải tin biến động số dư').or(page.getByText('Chưa có tóm tắt')).first()).toBeVisible();
   await page.screenshot({ path: info.outputPath(`bank-events-inbox-${viewport.width}.png`), fullPage: true });
   expect(evidence.calls.some(call => call.action === 'get_event')).toBe(false);
-  await page.getByRole('button', { name: /Xem tin Điện thoại thử nghiệm/ }).click();
-  await expect(page.getByRole('dialog')).toContainText('NOI_DUNG_THU_NGHIEM_KHONG_PHAI_TIN_THAT');
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Sau', exact: true }).click(); await expect(page.getByText('Trang 2 · tối đa 25 tin')).toBeVisible();
-  await page.getByLabel('Tìm theo thông tin nguồn').fill('khong-co'); await page.getByRole('button', { name: 'Áp dụng bộ lọc' }).click();
+  await page.getByRole('button', { name: 'Xem tin Điện thoại thử nghiệm fixture-e…000003' }).click();
+  const detail = page.getByRole('dialog');
+  await expect(detail).toContainText('+5.500.000 ₫');
+  if (phone) {
+    // Điện thoại: tóm tắt hiện ngay, nội dung nguyên văn chỉ tải (và ghi dấu vết đọc) khi bấm xem.
+    expect(evidence.calls.some(call => call.action === 'get_event')).toBe(false);
+    await detail.getByRole('button', { name: 'Xem nội dung nguyên văn' }).click();
+  }
+  await expect(detail).toContainText('NOI_DUNG_THU_NGHIEM_KHONG_PHAI_TIN_THAT');
+  await page.screenshot({ path: info.outputPath(`bank-events-detail-${viewport.width}.png`), animations: 'disabled' });
+  await detail.getByRole('button', { name: 'Close', exact: true }).click(); await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tiền ra', exact: false }).first().click();
+  await expect(page.getByText('THANH TOAN THU NGHIEM')).toBeVisible(); await expect(page.getByText('KHACH THU NGHIEM CK TIEN PHONG')).toHaveCount(0);
+  await page.getByRole('button', { name: /^Tất cả/ }).first().click();
+  await page.getByRole('button', { name: phone ? 'Trang sau' : 'Sau', exact: true }).click(); await expect(page.getByText('Trang 2 · tối đa 25 tin')).toBeVisible();
+  if (phone) await page.getByRole('button', { name: /^Bộ lọc/ }).click();
+  await page.getByLabel('Tìm theo thông tin nguồn').fill('khong-co'); await page.getByLabel('Tìm theo thông tin nguồn').press('Enter');
   await expect(page.getByText('Chưa có dữ liệu phù hợp')).toBeVisible();
-  expect(evidence.calls.at(-1)).toMatchObject({ action: 'list_events', query: 'khong-co' });
+  expect(evidence.calls.some(call => call.action === 'list_events' && call.query === 'khong-co' && !call.cursor)).toBe(true);
   await page.screenshot({ path: info.outputPath(`bank-events-${viewport.width}.png`), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(evidence.errors).toEqual([]);
 });
-test('source lifecycle shows credentials once and pauses/revokes with explicit actions', async ({ page }, info) => {
-  const evidence = await setup(page); await page.goto(base + '/__bank.html', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('tab', { name: 'Nguồn kết nối' }).click(); await page.getByRole('button', { name: 'Thêm nguồn' }).click();
+test('a newly received event is marked and announced without opening its raw content', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 }); const evidence = await setup(page); await page.goto(base + '/__bank.html', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('KHACH THU NGHIEM CK TIEN PHONG')).toBeVisible();
+  evidence.feed.arrived = true; await page.getByRole('button', { name: 'Làm mới' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Tin mới · Vietcombank' })).toContainText('+3.000.000');
+  await expect(page.getByRole('button', { name: /fixture-e…000004/ })).toContainText('MỚI');
+  await expect(page.getByRole('button', { name: /fixture-e…000003/ })).not.toContainText('MỚI');
+  expect(evidence.calls.some(call => call.action === 'get_event')).toBe(false); expect(evidence.errors).toEqual([]);
+});
+for (const viewport of viewports) test(`source lifecycle shows credentials once and pauses/revokes with explicit actions at ${viewport.width}px`, async ({ page }, info) => {
+  await page.setViewportSize(viewport); const evidence = await setup(page); await page.goto(base + '/__bank.html', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: viewport.width < 768 ? 'Nguồn' : 'Nguồn kết nối' }).click(); await page.getByRole('button', { name: 'Thêm nguồn' }).click();
   await page.getByLabel('Tên nguồn').fill('Nguồn mới giả lập'); await page.getByRole('button', { name: 'Tạo nguồn và cấp khóa' }).click();
   await expect(page.getByLabel('Khóa xác thực')).toHaveValue('fixture-token-' + 'x'.repeat(40));
   await page.getByRole('button', { name: 'Tôi đã lưu khóa · Đóng' }).click(); await expect(page.getByLabel('Khóa xác thực')).toHaveCount(0);
@@ -84,7 +124,12 @@ test('source lifecycle shows credentials once and pauses/revokes with explicit a
   await card.getByRole('button', { name: 'Tạm dừng', exact: true }).click(); await expect(card.getByRole('button', { name: 'Bật lại' })).toBeVisible();
   await card.getByRole('button', { name: 'Thu hồi', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: 'Thu hồi nguồn', exact: true }).click(); await expect(card.getByText('Đã thu hồi', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath('bank-events-sources.png'), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: info.outputPath(`bank-events-sources-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('tab', { name: 'Vận hành' }).click();
+  await expect(page.getByText('https://fixture.example.test/webhooks/sms')).toBeVisible(); await expect(page.getByText('Đang tiếp nhận')).toBeVisible();
+  await page.screenshot({ path: info.outputPath(`bank-events-operations-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(evidence.calls.filter(call => call.action === 'create_source')).toHaveLength(1); expect(evidence.errors).toEqual([]);
 });
 test('non-superadmin never mounts the inbox or calls the admin API', async ({ page }) => {
