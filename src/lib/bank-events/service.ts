@@ -3,7 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 const timestamp = z.string().datetime({ offset: true });
 const nullableTime = timestamp.nullable();
+// hermes-parity:begin bank-events — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export const eventType = z.enum(['sms.received', 'notification.received', 'gateway.test', 'email.received']);
+// hermes-parity:end bank-events
 export const sourceKind = z.enum(['android', 'gmail']);
 export const gmailSchedule = z.enum(['day-1m', 'night-10m', 'saver-5m']);
 const androidHeartbeat = z.object({ smsEnabled: z.boolean(), notificationsEnabled: z.boolean(),
@@ -22,15 +24,19 @@ const summarySchema = z.object({
   direction: z.enum(['in', 'out']).nullable(), amount: z.number().nullable(), balance: z.number().nullable(),
   account: z.string().nullable(), description: z.string().nullable(), bank: z.string().nullable(), transactedAt: nullableTime,
 });
+// hermes-parity:begin bank-events
 const eventSchema = z.object({
   id: z.string(), externalId: z.string(), sourceId: z.string(), sourceName: z.string(),
   eventType, deviceId: z.string(), occurredAt: timestamp, receivedAt: timestamp,
   duplicateCount: z.number().int().nonnegative(), organizationId: z.string().nullable(),
   summary: summarySchema.nullable().optional(), summaryStatus: z.enum(['parsed', 'unparsed', 'unavailable']).optional(),
 });
+// hermes-parity:end bank-events
+// hermes-parity:begin bank-events
 const statusSchema = z.object({ serverTime: timestamp, totalSources: z.number().int().nonnegative(),
   enabledSources: z.number().int().nonnegative(), totalEvents: z.number().int().nonnegative(),
   lastReceivedAt: nullableTime, ingestUrl: z.string().url().refine(value => value.startsWith('https://')).nullable() });
+// hermes-parity:end bank-events
 export type BankSource = z.infer<typeof sourceSchema>;
 export type BankSourceKind = z.infer<typeof sourceKind>;
 export type BankEvent = z.infer<typeof eventSchema>;
@@ -41,7 +47,9 @@ export function isGmailHeartbeat(value: GmailHeartbeat | AndroidHeartbeat): valu
   return 'channel' in value && value.channel === 'gmail';
 }
 export type BankStatus = z.infer<typeof statusSchema>;
+// hermes-parity:begin bank-events
 export interface EventFilters { sourceId?: string; eventType?: z.infer<typeof eventType>; query?: string; from?: string; to?: string; cursor?: string; limit?: number }
+// hermes-parity:end bank-events
 export class BankEventError extends Error {
   constructor(message: string, public readonly outcomeUnknown = false) { super(message); this.name = 'BankEventError'; }
 }
@@ -76,9 +84,13 @@ export async function invokeBankAdmin<T>(actorId: string, body: Record<string, u
 export function bankEventService(actorId: string) {
   return {
     sources: () => invokeBankAdmin(actorId, { action: 'list_sources' }, z.object({ sources: z.array(sourceSchema) })),
+    // hermes-parity:begin bank-events
     events: (filters: EventFilters) => invokeBankAdmin(actorId, { action: 'list_events', ...filters }, z.object({ events: z.array(eventSchema), nextCursor: z.string().nullable() })),
+    // hermes-parity:end bank-events
     detail: (eventId: string) => invokeBankAdmin(actorId, { action: 'get_event', eventId }, z.object({ event: eventSchema, payload: z.record(z.unknown()) })),
+    // hermes-parity:begin bank-events
     status: () => invokeBankAdmin(actorId, { action: 'status' }, statusSchema),
+    // hermes-parity:end bank-events
     create: (name: string, kind: BankSourceKind = 'android') => invokeBankAdmin(actorId, { action: 'create_source', name, kind }, z.object({ source: sourceSchema, token: z.string().min(32) }), true),
     rotate: (sourceId: string) => invokeBankAdmin(actorId, { action: 'rotate_source', sourceId }, z.object({ source: sourceSchema, token: z.string().min(32) }), true),
     enabled: (sourceId: string, enabled: boolean) => invokeBankAdmin(actorId, { action: 'set_source_enabled', sourceId, enabled }, z.object({ source: sourceSchema }), true),

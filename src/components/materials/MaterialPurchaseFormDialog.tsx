@@ -47,11 +47,13 @@ function useSuppliersList() {
   return useQuery({
     queryKey: ['suppliers', 'simple'],
     queryFn: async (): Promise<{ id: string; name: string }[]> => {
+      // hermes-parity:begin w2d-suppliers — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase
         .from('suppliers' as any)
         .select('id,name')
         .is('deleted_at', null)
         .order('name');
+      // hermes-parity:end w2d-suppliers
       if (error) throw error;
       if (!Array.isArray(data)) throw new Error('Chưa xác nhận được danh sách nhà cung cấp. Tải lại để kiểm tra.');
       return (data ?? []) as unknown as { id: string; name: string }[];

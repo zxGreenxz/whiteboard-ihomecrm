@@ -6,14 +6,19 @@ import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
-// Only lifecycle list links depend on selected-org context. Legacy notifications
-// retain their current visibility; null-event rows must pass SQL NULL semantics.
-function lifecycleInboxScope(organizationId: string | null): string {
-  const legacy = 'metadata->>event.neq.LIFECYCLE,metadata->>event.is.null';
+// Mọi dòng notifications đều mang organization_id (trigger autofill_org_strict
+// fail-closed từ 15/09/2026, đo 0 dòng NULL) ⇒ đã chốt công ty thì MỌI thông báo —
+// kể cả thông báo thường — chỉ hiện của công ty đó. Trước đây chỉ LIFECYCLE bị lọc
+// nên người thuộc hai công ty thấy cả thông báo thường của công ty kia.
+// Chưa chốt (null) giữ hành vi cũ: ẩn LIFECYCLE (link phụ thuộc công ty), dòng
+// không có event phải qua được ngữ nghĩa NULL của SQL.
+// hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1: phạm vi công ty)
+function inboxScope(organizationId: string | null): string {
   return organizationId
-    ? `${legacy},and(metadata->>event.eq.LIFECYCLE,organization_id.eq.${organizationId})`
-    : legacy;
+    ? `organization_id.eq.${organizationId}`
+    : 'metadata->>event.neq.LIFECYCLE,metadata->>event.is.null';
 }
+// hermes-parity:end w2c-notifications
 
 // Types
 export type NotificationType =
@@ -94,6 +99,7 @@ export function useNotifications() {
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1)
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -101,10 +107,11 @@ export function useNotifications() {
         // + tránh quét thừa. Xem migration 20260729130000_notifications_rls_own_row.sql.
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .or(lifecycleInboxScope(selectedOrganizationId))
+        .or(inboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
         .limit(200);
+      // hermes-parity:end w2c-notifications
 
       if (error) throw error;
       return data as Notification[];
@@ -128,13 +135,15 @@ export function useUnreadNotificationsCount() {
 
       // Dùng PENDING làm cờ chưa đọc. Hôm nay bảng chỉ có PENDING/READ nên tương đương
       // `!= READ`; nếu sau này có dòng SENT/FAILED thì phải xem lại (đã ghi trong plan).
+      // hermes-parity:begin w2c-notifications — Hermes chép vùng này (public.notifications_inbox_v1: chưa đọc = PENDING)
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .or(lifecycleInboxScope(selectedOrganizationId))
+        .or(inboxScope(selectedOrganizationId))
         .eq('status', 'PENDING');
+      // hermes-parity:end w2c-notifications
 
       if (error) throw error;
       return count || 0;
@@ -161,7 +170,7 @@ export function useRecentNotifications(limit: number = 5) {
         .select('*')
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .or(lifecycleInboxScope(selectedOrganizationId))
+        .or(inboxScope(selectedOrganizationId))
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -213,18 +222,21 @@ export function useMarkAsRead() {
 export function useMarkAllAsRead() {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('notifications')
         .update({ status: 'READ' })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ')
-        .select('id');
+        .neq('status', 'READ');
+      // Cùng phạm vi với hộp thư đang hiện: không đánh dấu ngầm thông báo của công ty khác.
+      if (selectedOrganizationId) query = query.eq('organization_id', selectedOrganizationId);
+      const { data, error } = await query.select('id');
 
       if (error) throw error;
       if (!Array.isArray(data)) throw new Error("Chưa xác nhận được số thông báo đã thay đổi.");
@@ -314,18 +326,21 @@ export function useDeleteNotification() {
 export function useDeleteAllRead() {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('notifications')
         .delete()
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .eq('status', 'READ')
-        .select('id');
+        .eq('status', 'READ');
+      // Cùng phạm vi với hộp thư đang hiện: không xoá ngầm thông báo của công ty khác.
+      if (selectedOrganizationId) query = query.eq('organization_id', selectedOrganizationId);
+      const { data, error } = await query.select('id');
 
       if (error) throw error;
       if (!Array.isArray(data)) throw new Error("Chưa xác nhận được số thông báo đã thay đổi.");

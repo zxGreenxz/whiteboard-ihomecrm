@@ -36,6 +36,7 @@ export const useVehicles = (
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // hermes-parity:begin w2c-vehicles — Hermes chép vùng này (public.vehicles_list_v1)
       let query = (supabase
         .from("vehicles")
         .select(
@@ -126,6 +127,7 @@ export const useVehicles = (
         const offset = (pagination.page - 1) * pagination.pageSize;
         query = query.range(offset, offset + pagination.pageSize - 1);
       }
+      // hermes-parity:end w2c-vehicles
 
       const { data, error, count } = await query;
       if (error) {

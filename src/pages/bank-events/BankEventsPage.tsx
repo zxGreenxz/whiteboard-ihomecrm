@@ -99,10 +99,12 @@ export default function BankEventsPage() {
     const next: EventFilters = { limit: 25 };
     if (query.trim()) next.query = query.trim();
     if (sourceId) next.sourceId = sourceId;
+    // hermes-parity:begin bank-events — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
     const type = eventType.safeParse(kind);
     if (type.success) next.eventType = type.data;
     if (from) next.from = new Date(`${from}T00:00:00+07:00`).toISOString();
     if (to) next.to = new Date(new Date(`${to}T00:00:00+07:00`).getTime() + 86_400_000).toISOString();
+    // hermes-parity:end bank-events
     setCursorHistory([]); setFilters(next);
   }
   const activeSecret = allowed && secret?.actorId === actorId ? secret : null;

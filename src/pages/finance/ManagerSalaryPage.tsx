@@ -101,10 +101,12 @@ export default function ManagerSalaryPage() {
   const { data: myMgr, isLoading: myLoading } = managerConfigQuery;
   const phone = usePhoneViewport();
 
+  // hermes-parity:begin w2c-salary-locked — Hermes chép vùng này (public.salary_is_admin_v1: admin trang lương)
   const canLock = canUse(perms, "salary", "lock");
   const canManageSalary = canUse(perms, "salary", "manage_salary");
   const canPay = canUse(perms, "salary", "distribute");
   const isAdmin = !!(perms as any)?.__superadmin || canLock || canManageSalary || canPay;
+  // hermes-parity:end w2c-salary-locked
 
   const [periodMonth, setPeriodMonth] = usePersistedState<string>("flt:salary-manager:period", currentPeriodMonth());
   const [rawTab, setTab] = usePersistedState<"overview" | "people" | "ledger" | "leave" | "config" | "sheet">("flt:salary-manager:tab", "overview");

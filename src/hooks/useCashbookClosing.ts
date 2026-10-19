@@ -35,6 +35,7 @@ export interface ClosingBlocker {
   count_n: number;
 }
 
+// hermes-parity:begin cashbook-closings — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
 export interface PendingClosure {
   request_id: string;
   cashbook_id: string;
@@ -65,6 +66,7 @@ export interface ConfirmedClosure {
   proposed_by_name: string | null;
   confirmed_by_name: string | null;
 }
+// hermes-parity:end cashbook-closings
 
 /**
  * PA4 — trạng thái chốt của từng sổ so với MỘT THÁNG. Đây là lưới an toàn:
@@ -202,6 +204,7 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<{ pending: PendingClosure[]; closures: ConfirmedClosure[] }> => {
+      // hermes-parity:begin cashbook-closings
       const { data, error } = await supabase.rpc("list_cashbook_closings_v1", {
         p_cashbook: cashbookId ?? undefined,
       });
@@ -212,6 +215,7 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
         pending: PendingClosure[];
         closures: ConfirmedClosure[];
       };
+      // hermes-parity:end cashbook-closings
     },
   });
 

@@ -37,6 +37,11 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
     expect(retryOnlyConcurrency(0, { code: 'PT413' })).toBe(false);
   });
 
+  it('XX000 (Hermes wave-2 package result shape broken) is an internal invariant, never retried', () => {
+    expect(classifyDbError({ code: 'XX000', message: 'hermes_w2_package_result_invalid' })).toBe('internal_invariant');
+    expect(retryOnlyConcurrency(0, { code: 'XX000' })).toBe(false);
+  });
+
   it('PT409 domain stale state requires reload, while native 40001 keeps concurrency semantics', () => {
     const stale = { code: 'PT409', message: 'Hóa đơn vừa thay đổi; vui lòng tải lại' };
     const category = classifyDbError(stale);

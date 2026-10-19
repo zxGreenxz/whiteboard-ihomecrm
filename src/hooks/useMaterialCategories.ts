@@ -13,10 +13,12 @@ export const useMaterialCategories = () => {
   return useQuery({
     queryKey: KEY,
     queryFn: async (): Promise<MaterialCategory[]> => {
+      // hermes-parity:begin w2c-material-categories — Hermes chép vùng này (public.materials_categories_v1)
       const { data, error } = await supabase
         .from('material_categories' as any)
         .select('*')
         .order('name', { ascending: true });
+      // hermes-parity:end w2c-material-categories
       if (error) {
         console.error('useMaterialCategories error:', error);
         throw error;

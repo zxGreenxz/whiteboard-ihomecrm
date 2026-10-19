@@ -88,6 +88,9 @@ export function aggregateGateEvidence({ plan, receipts = [], jobs = {}, registry
     evidenceScope: 'ci-technical', browserRequirements: plan?.browserRequirements ?? [],
     manualUiValidation: 'not-attested-by-ci',
     requiredExternalWorkflows: plan?.requiredExternalWorkflows ?? [],
+    // Live-browser obligations satisfied by a committed local E2E receipt; the plan
+    // validated each receipt against Git history (gate-e2e-local-evidence.mjs).
+    localEvidence: plan?.localEvidence ?? [],
     // PR-only: live gates that main must still run. Never release evidence.
     pendingMainGates: plan?.pendingMainGates ?? [],
     releaseReady: failures.length === 0 && !(plan?.requiredExternalWorkflows?.length) && !(plan?.pendingMainGates?.length),

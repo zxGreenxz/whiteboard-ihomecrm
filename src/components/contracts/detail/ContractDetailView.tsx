@@ -2,9 +2,9 @@ import { QueryRegion } from '@/components/errors/QueryRegion';
 import type { ContractDetailQueries } from './ContractDetailRegions';
 import { Button } from '@/components/ui/button';
 import { useContract } from '@/hooks/useContracts';
-import { isContractInEffect } from '@/types/contract';
+import { contractDisplayStatusOn, isContractInEffect } from '@/types/contract';
+import { diffDaysISO, vnTodayISO } from '@/lib/vnDate';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
-import { differenceInDays } from 'date-fns';
 import { lazy, Suspense, useState } from 'react';
 // Data layer tách riêng (Phase 9B) — UI không gọi supabase trực tiếp nữa.
 import {
@@ -192,17 +192,18 @@ const ContractDetailView = ({ id, onBack, showBackButton = true, title }: Contra
     );
   }
 
-  // Calculate contract metrics
-  const today = new Date();
-  const endDate = new Date(contract.end_date);
-  const startDate = new Date(contract.start_date);
-  const daysRemaining = differenceInDays(endDate, today);
-  const totalDays = differenceInDays(endDate, startDate);
-  const daysElapsed = differenceInDays(today, startDate);
+  // Mốc ngày theo GIỜ VN, cùng nguồn với nhãn danh sách (contractDisplayStatusOn, = SQL
+  // contract_display_status_v1): cảnh báo "sắp hết hạn" bật đúng khi nhãn là Sắp hết hạn,
+  // không đọc giờ máy (máy UTC lệch một ngày trong 00:00–07:00 giờ VN).
+  const todayISO = vnTodayISO();
+  const daysRemaining = diffDaysISO(contract.end_date, todayISO) ?? 0;
+  const totalDays = diffDaysISO(contract.end_date, contract.start_date) ?? 0;
+  const daysElapsed = diffDaysISO(todayISO, contract.start_date) ?? 0;
   const progressPercent = Math.min(Math.max((daysElapsed / totalDays) * 100, 0), 100);
 
-  const isExpiringSoon = daysRemaining > 0 && daysRemaining <= 30;
-  const isExpired = daysRemaining < 0;
+  const displayStatus = contractDisplayStatusOn(contract, todayISO);
+  const isExpiringSoon = displayStatus === 'EXPIRING';
+  const isExpired = displayStatus === 'EXPIRED';
   const isActive = isContractInEffect(contract.status);
 
   // Calculate total paid and outstanding from invoices

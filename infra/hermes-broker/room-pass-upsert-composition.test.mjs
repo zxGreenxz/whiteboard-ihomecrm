@@ -86,8 +86,15 @@ test('MCP pass message flow: lookup → requestId → upsert through bound JWT S
   const requestId = issued.value.requestId;
   const input = { requestId, roomId: ROOM, customerPhone: '0900 000 001', customerName: 'Duẩn', passPrice: 3500000, availDate: '2026-11-01',
     salePolicy: 'Điện 3.5k; nước 100k/người; phí DV 150k/phòng; tối đa 2 người 2 xe', contactManager: false, active: true };
+  // Rào chữ công khai (public-text-guard.mjs): có tên/SĐT/chính sách ⇒ lần đầu chỉ trả bản xem trước, không chạm SQL.
+  events.length = 0;
+  const preview = await mcp('crm_room_pass_upsert', input);
+  assert.equal(preview.isError, false); assert.equal(preview.value.outcome, 'confirmation_required');
+  assert.deepEqual(preview.value.preview, { customerName: 'Duẩn', customerPhone: '0900000001', salePolicy: input.salePolicy });
+  assert.equal(events.some(event => event.endsWith(':upsert')), false); assert.equal(state.writes, 0);
+  const confirmed = { ...input, confirmToken: preview.value.confirmToken };
   events.length = 0; state.loseAck = true;
-  const unknown = await mcp('crm_room_pass_upsert', input);
+  const unknown = await mcp('crm_room_pass_upsert', confirmed);
   assert.equal(unknown.isError, true); assert.deepEqual(unknown.value, { error: 'room_pass_outcome_unknown', requestId });
   assert.ok(events.indexOf('audit:prepared') < events.indexOf('upsert2:upsert'), 'audited before the write');
   assert.equal(events.filter(event => event.endsWith(':upsert')).length, 1, 'ACK loss is never retried (nor routed to v1)');
@@ -95,17 +102,22 @@ test('MCP pass message flow: lookup → requestId → upsert through bound JWT S
   const status = await mcp('crm_room_pass_status', { requestId });
   assert.equal(status.value.outcome, 'applied'); assert.equal(status.value.change, 'created'); assert.equal(status.value.contactSource, 'provided');
   assert.deepEqual(status.value.contact, { name: 'Duẩn', phone: '0900000001' });
-  const replay = await mcp('crm_room_pass_upsert', input);
+  // Token đã dùng; gọi lại cùng requestId vẫn xin xác nhận, rồi SQL trả biên nhận cũ chứ không ghi lại.
+  assert.deepEqual((await mcp('crm_room_pass_upsert', confirmed)).value, { error: 'confirmation_invalid' });
+  const again = await mcp('crm_room_pass_upsert', input);
+  assert.equal(again.value.outcome, 'confirmation_required');
+  const replay = await mcp('crm_room_pass_upsert', { ...input, confirmToken: again.value.confirmToken });
   assert.deepEqual(replay.value, status.value, 'retry with the same requestId returns the receipt');
   assert.equal(await count('public.room_pass_listings'), 2);
   const stored = (await db.query('SELECT contact_phone,pass_price::text,avail_date::text,active FROM public.room_pass_listings WHERE id=$1', [status.value.listing.listingId])).rows[0];
   assert.deepEqual(stored, { contact_phone: '0900000001', pass_price: '3500000', avail_date: '2026-11-01', active: true });
-  const drift = await mcp('crm_room_pass_upsert', { ...input, passPrice: 3600000 });
+  const driftPreview = await mcp('crm_room_pass_upsert', { ...input, passPrice: 3600000 });
+  const drift = await mcp('crm_room_pass_upsert', { ...input, passPrice: 3600000, confirmToken: driftPreview.value.confirmToken });
   assert.deepEqual(drift.value, { error: 'context_changed' }, 'a reused requestId cannot carry another intent');
   for (const extra of [{ userId: FOREIGN }, { organizationId: FOREIGN }, { rpc: 'upsert_room_pass_listing' }, { listingId: LISTING }])
     assert.equal((await mcp('crm_room_pass_upsert', { ...input, requestId: req(9), ...extra })).value.error, 'invalid_request');
   assert.equal((await mcp('crm_room_pass_upsert', { ...input, requestId: req(9), passPrice: 0 })).value.error, 'invalid_request');
-  assert.equal(JSON.stringify([unknown, status, replay]).includes(accessToken), false);
+  assert.equal(JSON.stringify([preview, unknown, status, replay]).includes(accessToken), false);
   // The Action overlay is re-read per call: removing it hides every tool.
   await db.exec("UPDATE app_private.hermes_connections SET action_capabilities='{}'");
   assert.equal((await mcp('crm_room_lookup', { buildingName: 'Lê Văn Thọ', roomCode: '103' })).value.error, 'tool_not_available');

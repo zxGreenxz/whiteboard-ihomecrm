@@ -170,8 +170,8 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
     assert.equal(options.headers.authorization,'Bearer '+accessToken);assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.redirect,'error');
     const name=new URL(url).pathname,args=JSON.parse(options.body);events.push(name);
     if(name==='/rest/v1/rpc/hermes_domain_read_v1'&&beforeRead){const hook=beforeRead;beforeRead=undefined;await hook();}
-    // Family v2 is a later forward file and is absent in this v1 fixture.
-    if(name==='/rest/v1/rpc/hermes_domain_capabilities_v2')return Response.json({code:'PGRST202',message:'missing',details:null,hint:null},{status:404});
+    // Families v2 and v3 (wave 2 keys) are later forward files and are absent in this v1 fixture.
+    if(['/rest/v1/rpc/hermes_domain_capabilities_v2','/rest/v1/rpc/hermes_domain_capabilities_v3'].includes(name))return Response.json({code:'PGRST202',message:'missing',details:null,hint:null},{status:404});
     try {return Response.json(name==='/rest/v1/rpc/hermes_domain_capabilities_v1'?await sqlCall('capabilities',[args.p_organization_id]):
       (assert.equal(name,'/rest/v1/rpc/hermes_domain_read_v1'),await sqlCall('read',[JSON.stringify(args.p_binding),args.p_domain,JSON.stringify(args.p_input)])));}
     catch(error){return Response.json({code:error.code,message:error.message,details:null,hint:null},{status:error.code==='42501'?403:error.code==='PT409'?409:400});}

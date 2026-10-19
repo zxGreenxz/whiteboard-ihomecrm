@@ -30,6 +30,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const buildingName = (id?: string) => buildings.find((b) => b.id === id)?.name ?? "—";
   const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
 
+  // hermes-parity:begin shareholder-profit — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
   const summary = useMemo(
     () => computeShareholderSummary([me.id], allocations, distributions)[me.id],
     [me.id, allocations, distributions]
@@ -39,6 +40,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
     () => allocations.filter((a) => (a.period_month ?? "").startsWith(String(year))),
     [allocations, year]
   );
+  // hermes-parity:end shareholder-profit
 
   // Thêm lọc tháng cho biểu đồ cơ cấu theo nhà + 2 bảng (biểu đồ cột giữ cả 12 tháng).
   const allocScoped = useMemo(
