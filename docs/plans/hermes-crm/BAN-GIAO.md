@@ -2,17 +2,35 @@
 
 ## Cập nhật yêu cầu và khảo sát tinh giản — 19/10/2026
 
-**Đã khảo sát/audit, chủ đã yêu cầu hiện thực toàn bộ plan. Checkpoint 19/10, 12:51 UTC+7:** core `8bcee906` ở draft [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); cả sáu production migration official forward lane PASS lúc `2026-10-19T05:51:09.263Z`. Gate5 core 67/67 Node 24.18.0, TEST read-only 64/64, fast fixture 15/15, binding 19/19 PASS. Production post-apply verifier 23/23 PASS; catalog 53 hàm (51 digest + 2 SQL standard), ACL 17, metadata 11. Read-only org có ACTIVE membership xác nhận ba cặp wrapper/core deepEqual, mỗi cặp 5 hàng; DEMO ban đầu rỗng. Chưa deploy VPS/phát hành app; fast production, UI, broker/provider, p95 và CI head cuối chưa kiểm. **Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes.** Giữ tắt/bật lại trên connection hiện có trong giới hạn CRM/trần công ty, ghi audit thay đổi; tinh giản cấp lại gần 60 ô và kiểm lặp. Chấp nhận lượt đọc đã nhận hoàn tất và độ trễ cập nhật quyền vài phút; bỏ hai kiểm cuối đọc phòng. Superadmin quản lý/ngắt runtime tại VPS, nút Thu hồi web vẫn giữ.
+**Checkpoint hiện hành 19/10:** Gate6 **67/67 PASS**, Node 24.18.0, 610 giây; candidate `c3709badb` chưa push. Sáu migration nền đã TEST và production qua lane chính thức, có receipt. Adapter VPS vẫn `b023563a`; migration `20261019061954` chỉ bổ sung 3 keys cho `inherit_crm`, giữ legacy wire shape, không DML/đổi expiry. Compat TEST đã qua official lane sau backup/2 lượt rollback; post-apply 7/7 xác nhận helper digest, legacy 8 trường, inherit 11 trường, ACL và expired deny. JWT HTTP 200 nhưng list rỗng, chưa có nonempty proof. Production compat đã qua official lane lúc 13:33 UTC+7, có backup/2 lượt rollback; kiểm sau áp dụng 7/7 PASS. Maintenance cũ swallow lỗi đọc nên có đường ngừng renew; credential/session profile đã expired. Không biết first miss hay token in-memory, không claim phục hồi. Alias operator fix 33/33 + review PASS; chưa VPS/profile write, restart hoặc gửi Zalo. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) là nguồn receipts/trạng thái mới nhất.
 
-Checkpoint kỹ thuật: sáu migration production forward lane đã PASS; Gate5 core 67/67 Node 24.18.0, TEST read-only 64/64, fast fixture 15/15 và binding 19/19 PASS. Production post-apply verifier 23/23 PASS; catalog 53 hàm (51 digest + 2 SQL standard), ACL 17, metadata 11. Read-only org có ACTIVE membership xác nhận ba cặp wrapper/core deepEqual, mỗi cặp 5 hàng; DEMO ban đầu rỗng. Baseline broker DEMO trước thay đổi list/options/status median 2,73/5,06/2,67 giây. Chưa deploy VPS/phát hành app; fast production, UI, broker/provider, p95 và CI head cuối chưa kiểm. TG4 helper operator qua Astra review và 30 focused cases nhưng chưa Linux/live, chưa gửi tin Zalo thật; không tự reload/ack runtime, không coi file/restart là xác nhận Zalo. Hermes 0.22.2 chỉ cập nhật danh sách MCP mỗi 60 giây; đổi authorization cần cơ chế restart gateway có kiểm soát hiện có. Helper dùng token được chọn qua stdin, dưới profile owner; bỏ hẳn trường `zaloProvisioning` khỏi connector config trên VPS ba UID; không đặt trường này thành `false`. [STATUS](STATUS.md) giữ trạng thái vận hành mới nhất; các mục dưới mô tả hệ thống production hiện tại.
+**Snapshot kỹ thuật lịch sử 12:51 UTC+7:** kết quả sáu migration nền/Gate5/verifier production và baseline broker tại mốc đó được giữ trong lịch sử. Không dùng lại làm trạng thái rollout mới; xem [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) cho compat migration, candidate và receipts hiện hành.
 
 **Làm rõ sau audit:** §9 của báo cáo là đề xuất agent khác, không phải quyết định của chủ. Không áp đặt thu hồi 100 ms, cấm cache hoặc thêm epoch vào mọi RPC. Giữ quyền/RLS vốn có của CRM; kiểm phần tắt Hermes một lần. Xác nhận chữ công khai: đang đề nghị giữ tạm đúng luồng hiện có, chưa được chủ chốt giữ/bỏ. PII xét từng trường; Network Center cần giữ rào RLS khách tới khi chuẩn hóa nguồn chung. [Kết luận audit §10](TINH-GON-KIEM-QUYEN.md#10-kết-quả-audit-lại-và-đề-nghị-thực-hiện).
 
 [Báo cáo, sơ đồ thao tác và plan TG0–TG7](TINH-GON-KIEM-QUYEN.md) ghi đủ tám lớp, phần bỏ/gộp/giữ và bằng chứng. **Cả ba lỗi đã biết thuộc phạm vi này:** báo “Chưa đọc được…” lúc tải, API connections mất 7–9 giây theo báo cáo vận hành, link Zalo khó dùng. Source xác nhận loading/error bị gộp, tải hai đợt, quản trị và link dựng full quyền trước/sau. Candidate đã sửa các đường này; chưa đo lại tốc độ và nghiệm thu link trên VPS.
 
-Agent tiếp theo theo thứ tự §7: TG1 UI/API nhẹ; TG-L metadata không khóa và TG3a/m bỏ hai kiểm cuối/maintenance; TG2 exclusions; TG4 link; TG3b/TG5 gom RPC và parity theo từng họ. Không xóa helper khóa writer toàn CRM; Sidebar/báo cáo tài chính nghiệm thu riêng. Ghép Zalo theo assistant ổn định; hiện production vẫn dùng connection binding. Các hướng dẫn bên dưới mô tả **hệ thống đang chạy**. Không tự chuyển connection, thu hồi, deploy hoặc đánh dấu nghiệm thu từ bản plan này. [Tiến độ](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910).
+Bước tiếp theo của root là chốt gate/CI của candidate, tiếp tục runtime deploy/verify sau khi compat TEST/production đã đạt và ghi nhận đúng phần đã quan sát. Chưa có bằng chứng VPS/profile write, restart hay gửi tin Zalo; không đánh dấu khôi phục từ migration hoặc file profile. Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes; không áp mốc 100 ms. Đợt này thực hiện TG0–TG7, không tự đóng các mốc chương trình P0–P11. [Checkpoint vận hành](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910).
 
-Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật sáng 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
+
+### Khôi phục sau khi runtime tương thích sẵn sàng
+
+Credential đã hết hạn không thể canonical-refresh qua session gate; tài khoản vault đã đọc/lookup không phải đúng chủ profile. Chỉ hướng dẫn chủ profile tạo kết nối mới sau khi root hoàn tất deploy/verify. Không xin mật khẩu trong chat, không sửa expiry bằng SQL và không tuyên bố phiên đã khôi phục trước thao tác thật.
+
+```mermaid
+flowchart TD
+  A["Root deploy và verify compat/runtime"] --> B["Chủ: /settings/hermes → Mở tạo kết nối"]
+  B --> C["Giữ quyền tắt và phạm vi phù hợp"]
+  C --> D["Xác nhận mật khẩu CRM, tạo kết nối"]
+  D --> E["Zalo: chọn connection mới"]
+  E --> F["Dùng kết nối này cho trợ lý"]
+  F --> G["Operator áp credential đã chọn cho profile owner"]
+  G --> H["Xác minh runtime/Zalo theo quy trình vận hành"]
+```
+
+Native Zalo trên VPS ba UID cần bỏ hẳn `zaloProvisioning` khỏi connector config (không đặt `false`); operator chạy theo UID owner hiện hữu. `prepare_v2` tái sử dụng assistant cùng user/org; `selectCredentialCAS` giữ nick, bot và binding, không cần ghép mã Zalo lại. Đây là flow đã đối chiếu source, chưa phải bằng chứng runtime phục hồi.
+
+Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật theo checkpoint 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 
 ## 1. Hermes đang chạy thế nào
 

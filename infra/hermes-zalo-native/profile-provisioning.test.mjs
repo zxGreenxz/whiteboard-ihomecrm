@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel } from './profile-provisioning.mjs';
+import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel, provisionNativeProfile } from './profile-provisioning.mjs';
 import { runProfileProvisioningCli, PROFILE_INPUT_MAX_BYTES } from './profile-provisioning-cli.mjs';
 
 const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
@@ -109,7 +109,7 @@ test('revision binds credential, arguments and both exact files; stale preview n
     assert.throws(()=>applyNativeProfileUpdate(f.options,f.request,revision),/revision_changed/);assert.equal(read(file),edited);fs.writeFileSync(file,before);
   }
   assert.throws(()=>applyNativeProfileUpdate(f.options,{...f.request,credential:'hc_'+'d'.repeat(43)},revision),/revision_changed/);
-  assert.throws(()=>applyNativeProfileUpdate({...f.options,mcpUrl:'https://crm.example.test/mcp'},f.request,revision),/revision_changed/);
+  assert.throws(()=>applyNativeProfileUpdate({...f.options,accountId:id('9')},f.request,revision),/revision_changed/);
   const lock=path.join(f.home,'.hermes-profile-provisioning.lock');fs.mkdirSync(lock,{mode:0o700});
   assert.throws(()=>applyNativeProfileUpdate(f.options,f.request,revision),/locked/);assert.equal(fs.existsSync(lock),true);fs.rmdirSync(lock);
 });
@@ -209,4 +209,84 @@ test('executable CLI accepts the private handoff through stdin without secret ar
   const result=spawnSync(process.execPath,[cli,...args(f.options)],{input:JSON.stringify(f.request),encoding:'utf8',timeout:10000});
   assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).status,'planned');
   assert(!result.stdout.includes(f.request.credential));assert(!result.stderr.includes(f.request.credential));
+});
+
+
+function aliasProfile(f,aliases) {
+  const config=structuredClone(f.config);delete config.mcp_servers.crm;
+  Object.assign(config.mcp_servers,aliases);fs.writeFileSync(f.configFile,yaml.dump(config));return config;
+}
+function sameUidProfileOptions(f,extra={}) {
+  return {configuration:{configFile:f.nativeFile,mcpUrl:f.options.mcpUrl,listenPort:f.channel.listenPort},
+    mapping:{home:f.home,profile:f.options.profile,accountId:f.options.accountId},
+    snapshot:{senderUid:f.options.pairedUid,ownUid:f.options.ownUid},...extra};
+}
+test('managed alias preserves ihomecrm with an env-ref authorization and writes no second CRM server',t=>{
+  const f=fixture(t),original=aliasProfile(f,{ihomecrm:{...f.config.mcp_servers.crm,headers:{Authorization:'Bearer '+'$'+'{IHOME_CRM_TOKEN}',authorization:'Bearer '+'$'+'{OLDER_CRM_TOKEN}','X-Keep':'existing'}}});
+  const env=f.env+'IHOME_CRM_TOKEN=hc_'+'b'.repeat(43)+'\r\nOLDER_CRM_TOKEN=hc_'+'d'.repeat(43)+'\r\n';fs.writeFileSync(f.envFile,env);
+  const beforeNative=[f.nativeFile,f.tokenFile,f.journalFile].map(read);apply(f);
+  const actual=yaml.load(read(f.configFile)),expected=structuredClone(original);
+  expected.mcp_servers.ihomecrm.headers={Authorization:'Bearer '+f.request.credential,'X-Keep':'existing'};expected.mcp_servers.ihomecrm.strict_redirect_headers=true;
+  assert.deepEqual(actual,expected);assert.equal(actual.mcp_servers.crm,undefined);assert.equal(read(f.envFile),env);
+  assert.deepEqual([f.nativeFile,f.tokenFile,f.journalFile].map(read),beforeNative);
+});
+test('managed alias defaults to crm only when neither reserved alias exists',t=>{
+  const f=fixture(t);aliasProfile(f,{});apply(f);const actual=yaml.load(read(f.configFile));
+  assert.equal(actual.mcp_servers.crm.headers.Authorization,'Bearer '+f.request.credential);assert.equal(actual.mcp_servers.ihomecrm,undefined);
+  assert.deepEqual(actual.mcp_servers.other,f.config.mcp_servers.other);assert.equal(read(f.envFile),f.env);
+});
+test('managed alias refuses an existing reserved alias with a different URL before any update or removal',t=>{
+  for(const key of ['crm','ihomecrm'])for(const server of [null,[],false,'not-a-server',{url:'https://unrelated.example.test/mcp',headers:{Authorization:'Bearer synthetic-other'}}]){
+    const f=fixture(t);aliasProfile(f,{[key]:server});
+    const before=snapshot(f.root);
+    assert.throws(()=>planNativeProfileUpdate(f.options,f.request),/native_profile_provisioning_failed/);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{credentialPending:true})),/native_profile_provisioning_failed/);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{revoked:true})),/native_profile_provisioning_failed/);
+    assert.deepEqual(snapshot(f.root),before);
+  }
+});
+test('managed alias refuses both exact-URL aliases for update, pending and revoke before publishing files',t=>{
+  const f=fixture(t);aliasProfile(f,{crm:f.config.mcp_servers.crm,ihomecrm:{...f.config.mcp_servers.crm,headers:{Authorization:'Bearer '+'$'+'{OTHER_CRM_TOKEN}'}}});
+  const before=snapshot(f.root);
+  assert.throws(()=>planNativeProfileUpdate(f.options,f.request),/native_profile_provisioning_failed/);
+  assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{credentialPending:true})),/native_profile_provisioning_failed/);
+  assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{revoked:true})),/native_profile_provisioning_failed/);
+  assert.deepEqual(snapshot(f.root),before);
+});
+test('managed alias pending and revoke remove the exact ihomecrm capability while preserving other MCP servers',t=>{
+  for(const mode of ['credentialPending','revoked']){
+    const f=fixture(t),original=aliasProfile(f,{ihomecrm:{...f.config.mcp_servers.crm,headers:{Authorization:'Bearer '+'$'+'{IHOME_CRM_TOKEN}'}}});
+    const beforeNative=[f.nativeFile,f.tokenFile,f.journalFile].map(read);
+    provisionNativeProfile(sameUidProfileOptions(f,{[mode]:true}));const actual=yaml.load(read(f.configFile));
+    assert.equal(actual.mcp_servers.ihomecrm,undefined);assert.equal(actual.mcp_servers.crm,undefined);assert.deepEqual(actual.mcp_servers.other,original.mcp_servers.other);
+    assert.deepEqual([f.nativeFile,f.tokenFile,f.journalFile].map(read),beforeNative);
+    if(mode==='credentialPending'){assert.equal(read(f.envFile),f.env);assert.deepEqual(actual.platforms,original.platforms);}
+    else{assert.equal(actual.platforms.zalo_personal.enabled,false);assert(!read(f.envFile).includes('HERMES_ZALO_BRIDGE_TOKEN'));}
+    const after=snapshot(f.root),repeat=provisionNativeProfile(sameUidProfileOptions(f,{[mode]:true}));
+    assert.equal(repeat.changed,false);assert.deepEqual(snapshot(f.root),after);
+  }
+});
+test('managed alias refuses both reserved aliases even at different URLs before update, pending or revoke',t=>{
+  const f=fixture(t),other={url:'https://another.example.test/mcp',headers:{Authorization:'Bearer unrelated'}};
+  aliasProfile(f,{ihomecrm:f.config.mcp_servers.crm,crm:other});const before=snapshot(f.root);
+  assert.throws(()=>planNativeProfileUpdate(f.options,f.request),/native_profile_provisioning_failed/);
+  assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{credentialPending:true})),/native_profile_provisioning_failed/);
+  assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{revoked:true})),/native_profile_provisioning_failed/);
+  assert.deepEqual(snapshot(f.root),before);
+});
+test('managed alias repeated pending resumes with one default CRM server and preserves exact native env',t=>{
+  for(const key of ['crm','ihomecrm']){
+    const f=fixture(t);aliasProfile(f,{[key]:f.config.mcp_servers.crm});const nativeBefore=[f.nativeFile,f.tokenFile,f.journalFile].map(read);
+    provisionNativeProfile(sameUidProfileOptions(f,{credentialPending:true}));
+    assert.equal(provisionNativeProfile(sameUidProfileOptions(f,{credentialPending:true})).changed,false);
+    assert.equal(read(f.envFile),f.env);apply(f);const actual=yaml.load(read(f.configFile));
+    assert.equal(actual.mcp_servers.ihomecrm,undefined);assert.equal(actual.mcp_servers.crm.headers.Authorization,'Bearer '+f.request.credential);
+    assert.equal(read(f.envFile),f.env);assert.deepEqual(actual.mcp_servers.other,f.config.mcp_servers.other);
+    assert.deepEqual([f.nativeFile,f.tokenFile,f.journalFile].map(read),nativeBefore);assert.equal(apply(f).changed,false);
+  }
+});
+test('managed alias first-binding projection preserves the existing ihomecrm key',t=>{
+  const f=fixture(t,{bound:false});aliasProfile(f,{ihomecrm:f.config.mcp_servers.crm});apply(f,{...f.request,channel:f.channel});
+  const actual=yaml.load(read(f.configFile));assert.equal(actual.mcp_servers.crm,undefined);assert.equal(actual.mcp_servers.ihomecrm.headers.Authorization,'Bearer '+f.request.credential);
+  assert(read(f.envFile).includes('HERMES_ZALO_GENERATION='+f.channel.generation));
 });

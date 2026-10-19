@@ -873,9 +873,9 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all six reviewed forward migrations and their 53 definitions remain covered, including CRM wrappers', () => {
+test('all seven reviewed forward migrations and their 53 latest definitions remain covered, including CRM wrappers', () => {
   const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
-  assert.equal(paths.length, 6);
+  assert.equal(paths.length, 7);
   assert.equal(FORWARD_FUNCTIONS.length, 53);
   const actualNames = [];
   for (const path of paths) {
@@ -883,9 +883,17 @@ test('all six reviewed forward migrations and their 53 definitions remain covere
     for (const statement of source) {
       const match = /^CREATE OR REPLACE FUNCTION ((?:public|app_private)\.\w+)\(/.exec(statement);
       if (!match) continue;
-      actualNames.push(match[1]);
       const spec = FORWARD_BY_NAME.get(match[1]);
       assert(spec, `${match[1]}: new forward function requires review`);
+      if (spec.sourcePath !== path) {
+        // One reviewed projection is replaced by the legacy compatibility
+        // migration. Pin its historical body too; no other shadow is ignored.
+        assert.equal(match[1], 'app_private.hermes_connection_json_v1');
+        assert.equal(path, 'supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql');
+        assert.equal(digest(statement), 'd0f19ef4a868b3b975e3c3e3b0850c7eaca85fd3a1bdfc4f08dc13f26e33c09a');
+        continue;
+      }
+      actualNames.push(match[1]);
       assert.equal(spec.sourcePath, path);
       forwardDefinitionContract(match[1], statement);
       assert.equal(functions.get(match[1]), statement, `${match[1]}: inspect the actual latest definition`);

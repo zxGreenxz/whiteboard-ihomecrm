@@ -120,6 +120,13 @@ export function readNativeProfileChannel({configFile,profile}={}) {
  * comes from encrypted enrollment handoff, never SQL digests or model input.
  * This writes valid YAML plus scoped plugin env; it never restarts a process.
  */
+function managedCrmServer(servers,url) {
+  const present=['crm','ihomecrm'].filter(key=>Object.hasOwn(servers,key));
+  if(present.length>1)fail();
+  const key=present[0]??'crm';
+  if(present.length&&(!plain(servers[key])||servers[key].url!==url))fail();
+  return key;
+}
 function prepareProfile({configuration,mapping,snapshot,token,revoked=false,credentialPending=false,nativeChannel,credentialOnly=false}) {
   nativeDirectory(mapping.home);
   const file=path.join(mapping.home,'config.yaml'),envFile=path.join(mapping.home,'.env');
@@ -127,11 +134,11 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
   if(before===null)fail(); // The operator must already own/configure the profile.
   const config=yaml.load(before,{schema:yaml.JSON_SCHEMA});
   if(!plain(config)||config.mcp_servers!==undefined&&!plain(config.mcp_servers))fail();
-  const servers={...(config.mcp_servers??{})};
+  const servers={...(config.mcp_servers??{})},serverKey=managedCrmServer(servers,configuration.mcpUrl);
   const envOriginal=readOptional(envFile,PROFILE_MAX);
   let env=envOriginal??'';
   if(revoked||credentialPending) {
-    delete servers.crm;
+    delete servers[serverKey];
     if(revoked) env=env.split(/\r?\n/).filter(line=>!nativeKeys.includes(envKey(line))).join('\n');
   } else {
     if(!full(/hc_[A-Za-z0-9_-]{43}/,token))fail();
@@ -140,10 +147,10 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
       channel??=readNativeConfig(configuration.configFile)?.channels.find(value=>value.profile===mapping.profile);
       if(!channel||channel.accountId!==mapping.accountId||channel.pairedUid!==snapshot.senderUid||channel.ownUid!==snapshot.ownUid)fail();
     }
-    const existing=servers.crm;
+    const existing=servers[serverKey];
     if(existing!==undefined&&!plain(existing))fail();
     const headers=Object.fromEntries(Object.entries(plain(existing?.headers)?existing.headers:{}).filter(([key])=>key.toLowerCase()!=='authorization'));
-    servers.crm={...(existing??{}),url:configuration.mcpUrl,
+    servers[serverKey]={...(existing??{}),url:configuration.mcpUrl,
       headers:{...headers,Authorization:'Bearer '+token},strict_redirect_headers:true};
     if(!credentialOnly){
       const values=channelEnv({...channel,listenPort:configuration.listenPort});

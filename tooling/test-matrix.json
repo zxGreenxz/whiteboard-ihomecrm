@@ -1359,6 +1359,19 @@
       ]
     },
     {
+      "id": "hermes-legacy-connection-json-compat",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_legacy_connection_json_compat_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/inherit-crm-sql.test.mjs",
+        "infra/hermes-broker/connection-*.test.mjs",
+        "infra/hermes-broker/durable-*.test.mjs",
+        "scripts/__tests__/hermes-durable-schema.test.mjs"
+      ]
+    },
+    {
       "id": "hermes-stable-zalo-binding",
       "sourcePaths": [
         "supabase/migrations/*_hermes_zalo_stable_binding_v1.sql"

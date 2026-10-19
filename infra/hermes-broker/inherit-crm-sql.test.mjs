@@ -9,11 +9,14 @@ import pg from 'pg';
 import { splitSqlStatements } from '../../scripts/network-center-function-bodies.mjs';
 import { splitHermesFunctionStatements } from '../../scripts/hermes-task-function-contract.mjs';
 import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from '../../scripts/network-center-disposable-db.mjs';
+import { createDurableConnectionStore } from './durable-connection-store.mjs';
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 
 // Real local PostgreSQL role/JWT-claim/RLS fixture. No signed HTTP JWT or
 // PostgREST integration claim: this exercises the actual SQL under SET ROLE.
 const migrationName = '20261019034754_hermes_inherit_crm_limits_v1.sql';
 const originalMigration = readFileSync(new URL(`../../supabase/migrations/${migrationName}`, import.meta.url), 'utf8');
+const legacyCompatibilityMigration = readFileSync(new URL('../../supabase/migrations/20261019061954_hermes_legacy_connection_json_compat_v1.sql', import.meta.url), 'utf8');
 // Negative-control invocation changes SQL only in this disposable fixture;
 // repository SQL is never edited while other agents/gates may read it.
 const mutation = process.env.HERMES_TG2_SQL_MUTATION;
@@ -118,6 +121,7 @@ const common = ['app_private.scope_covers_v3','app_private.authorized_scope_v3',
  'app_private.hermes_validate_limits_v1','app_private.lock_org_for_decision_v1','app_private.is_actor_offboarded_v1',
  'app_private.hermes_uuid_v1','app_private.hermes_integer_v1','app_private.hermes_request_v1',
  'app_private.hermes_envelope_v1','app_private.hermes_session_json_v1','app_private.append_authz_audit_v1'];
+common.push('public.hermes_prepare_connection_v1');
 const audit = `CREATE TABLE public.authorization_audit_events(id uuid PRIMARY KEY,organization_id uuid,occurred_at timestamptz,
  actor_user_id uuid,actor_membership_id uuid,event_type text,resource_type text,resource_id uuid,old_state jsonb,new_state jsonb,
  reason text,prev_hash text,event_hash text);`;
@@ -139,6 +143,7 @@ async function setup(pool) {
  ('customers.view','read',true),('tasks.create','action',true),('not.ready','read',false);`);
  await pool.query('SET check_function_bodies=off');
  await pool.query(migration);await pool.query(migration); // Idempotency, same candidate.
+ await pool.query(legacyCompatibilityMigration);await pool.query(legacyCompatibilityMigration);
  await pool.query('SET check_function_bodies=on');
  await pool.query(`GRANT USAGE ON SCHEMA app_private TO authenticated;
  CREATE TABLE public.hermes_fixture_rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid);
@@ -245,11 +250,55 @@ test('TG2 actual PostgreSQL: legacy preserved, inheritance projections/exclusion
  VALUES($1,$2,$3,$4,now()+interval '5 minutes')`,[row.assistantId,ORG,USER,'b'.repeat(64)]);
  await pool.query("INSERT INTO app_private.hermes_capabilities VALUES('future.view','read',true)");
  const legacy=(await pool.query("SELECT app_private.hermes_connection_json_v1(c) value FROM app_private.hermes_connections c WHERE state='PENDING'")).rows[0].value;
- assert.equal(legacy.permissionMode,'legacy_allowlist');assert.equal(legacy.scopeMode,'restricted');assert.deepEqual(legacy.restrictions,{read:[],action:[]});
+ const v1Keys=['id','assistantId','organizationId','userId','state','epoch','restrictions','scopeIds'];
+ // This is the exact v1 adapter key boundary, not a reproduction of its full
+ // authorization logic. The deployed old adapter is independently reproduced
+ // with synthetic data; current callers below consume actual PostgreSQL output.
+ const v1Accepts=(value,keys=v1Keys)=>Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
+ assert.deepEqual(Object.keys(legacy).sort(),[...v1Keys].sort());assert(v1Accepts(legacy));
+ const historical=await pool.connect();try {
+  await historical.query('BEGIN');
+  await historical.query(live.get('app_private.hermes_connection_json_v1'));
+  const original=(await historical.query('SELECT app_private.hermes_connection_json_v1(c) value FROM app_private.hermes_connections c WHERE id=$1',[legacy.id])).rows[0].value;
+  assert.deepEqual(legacy,original,'Legacy JSON must equal the actual pre-TG2 PostgreSQL projection');
+ } finally {await historical.query('ROLLBACK');historical.release();}
+ assert.deepEqual(legacy.restrictions,{read:[],action:[]});assert.deepEqual(legacy.scopeIds,[]);
+ assert(permissionShape(legacy,v1Keys));
+ assert.deepEqual(connectionPermissionSettings(legacy,()=>assert.fail('legacy has no exclusions to parse'),()=>assert.fail('legacy rejected')),{});
+ const inherited=await pool.query('SELECT app_private.hermes_connection_json_v1(c) value FROM app_private.hermes_connections c WHERE id=$1',[row.id]);
+ assert(!v1Accepts(inherited.rows[0].value));assert.equal(inherited.rows[0].value.permissionMode,'inherit_crm');
+ assert.deepEqual(inherited.rows[0].value.exclusions,{read:[],action:[]});
+ assert.equal(Object.keys(inherited.rows[0].value).length,v1Keys.length+3);
  const renewal=(await pool.query('SELECT app_private.hermes_store_renew_connection_v1($1::jsonb) value',[JSON.stringify({tokenDigest:digest,
  connectionId:row.id,expectedEpoch:row.epoch,credentialRef:credential,expectedRevision:1,expectedExpiresAt:lease,requestedTtlMs:900000})])).rows[0].value;
  assert.equal(renewal.status,'renewed');assert(renewal.expiresAt>lease);
  await pool.query('SELECT app_private.hermes_store_revoke_connection_v1($1::jsonb)',[JSON.stringify({connectionId:row.id,expectedEpoch:row.epoch})]);
  const revoked=(await pool.query("SELECT * FROM authorization_audit_events WHERE event_type='HERMES_CONNECTION_REVOKED'")).rows[0];
  assert.equal(revoked.actor_user_id,USER);assert.equal(revoked.new_state.state,'revoked');
+
+ await t.test('forward projection: current adapter prepare/activate/read/restrict/renew/revoke accepts legacy without v2 fields',async()=>{
+  const preparedLegacy=await jwt(pool,async c=>(await c.query("SELECT public.hermes_prepare_connection_v1($1,'{}','{}','{}') value",[ORG])).rows[0].value);
+  assert(v1Accepts(preparedLegacy,[...v1Keys,'intentSecret','intentExpiresAt']));
+  const operations={activate:'activate',readConnection:'read_connection',restrictConnection:'restrict_connection',renewConnection:'renew_connection',revokeConnection:'revoke_connection'};
+  const store=createDurableConnectionStore({transport:{call:async(operation,payload)=>{
+   assert(Object.hasOwn(operations,operation));
+   return (await pool.query(`SELECT app_private.hermes_store_${operations[operation]}_v1($1::jsonb) value`,[JSON.stringify(payload)])).rows[0].value;
+  }}});
+  const options={signal:AbortSignal.timeout(10000)},legacyCredential=id(41),legacyProvider=id(42),legacyDigest='c'.repeat(64),legacyLease=Date.now()+600000;
+  const activation=await store.activate({prepared:preparedLegacy,operationId:id(43),credentialRef:legacyCredential,
+   binding:{assistantId:preparedLegacy.assistantId,userId:USER,organizationId:ORG,sessionId:legacyProvider},tokenDigest:legacyDigest,
+   tokenExpiresAt:legacyLease,sessionExpiresAt:Date.now()+3600000,sessionEnvelope:{v:1,algorithm:'A256GCM',keyVersion:'fixture',
+    nonce:Buffer.alloc(12,1).toString('base64url'),tag:Buffer.alloc(16,1).toString('base64url'),ciphertext:Buffer.from('synthetic').toString('base64url')}},options);
+  assert(v1Accepts(activation.connection));
+  let snapshot=await store.readConnection({tokenDigest:legacyDigest},options);assert.equal(snapshot.status,'active');
+  assert(v1Accepts(snapshot.connection,[...v1Keys,'tokenDigest','credentialRef','expiresAt']));
+  assert.equal(snapshot.connection.permissionMode,undefined);
+  const narrowed=await store.restrictConnection({connection:snapshot.connection,restrictions:{read:[],action:[]},scopeIds:[]},options);
+  assert(v1Accepts(narrowed.connection));snapshot=await store.readConnection({tokenDigest:legacyDigest},options);
+  const renewed=await store.renewConnection({tokenDigest:legacyDigest,connectionId:snapshot.connection.id,expectedEpoch:snapshot.connection.epoch,
+   credentialRef:legacyCredential,expectedRevision:snapshot.session.revision,expectedExpiresAt:snapshot.connection.expiresAt,requestedTtlMs:900000},options);
+  assert.equal(renewed.status,'renewed');assert(renewed.expiresAt>legacyLease);
+  assert.equal((await store.revokeConnection({connectionId:snapshot.connection.id,expectedEpoch:snapshot.connection.epoch},options)).status,'revoked');
+  assert.equal(await store.readConnection({tokenDigest:legacyDigest},options),null);
+ });
 });
