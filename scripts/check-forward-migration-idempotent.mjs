@@ -147,8 +147,9 @@ export function docLoiSql(text) {
     if (body.code || body.sqlState) {
       return { sqlState: String(body.code ?? body.sqlState), message: String(body.message ?? "") };
     }
-    const wrapped = /^Failed to run sql query: ERROR:  +([0-9A-Z]{5}): ([^\r\n]+)(?:\r?\nCONTEXT:[^\r\n]*)*\r?\n?$/.exec(String(body.message ?? ""));
-    if (wrapped) return { sqlState: wrapped[1], message: wrapped[2] };
+    // DETAIL/HINT là một phần của lỗi nên giữ trong message (pin phải khớp nguyên văn); chỉ bỏ CONTEXT.
+    const wrapped = /^Failed to run sql query: ERROR:  +([0-9A-Z]{5}): ([^\r\n]+)((?:\r?\n(?:DETAIL|HINT):[^\r\n]*)*)(?:\r?\nCONTEXT:[^\r\n]*)*\r?\n?$/.exec(String(body.message ?? ""));
+    if (wrapped) return { sqlState: wrapped[1], message: wrapped[2] + wrapped[3].replace(/\r\n/g, "\n") };
     return { sqlState: "", message: String(body.message ?? "") };
   } catch {
     return { sqlState: "", message: String(text) };
