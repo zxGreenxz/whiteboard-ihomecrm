@@ -1,5 +1,15 @@
 # SUPER PLAN — Hermes × iHomeCRM
 
+## Điều chỉnh đích quyền và hiệu năng — 19/10/2026
+
+**Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes.** Giữ tắt/bật lại trên kết nối hiện có trong giới hạn quyền user/trần công ty, có audit thay đổi; tinh giản cấp lại và kiểm lặp. Mode kế thừa kèm exclusions, giữ hạn chế có chủ đích khi chuyển dữ liệu cũ. Chức năng chưa có công cụ vẫn là “chưa hỗ trợ”, không phải quyền bị user tắt.
+
+Chủ chấp nhận quyền/phạm vi đổi giữa lúc một lượt đọc đã được nhận mà lượt đó vẫn hoàn tất, yêu cầu bỏ hai kiểm cuối của đọc phòng, và tự quản lý/ngắt Hermes ở VPS. Ba lỗi loading, API connections 7–9 giây và link Zalo khó dùng thuộc cùng đợt. Xác minh người dùng ban đầu, đúng công ty, chống ghi/gửi trùng và version dữ liệu/refresh vẫn có mục đích riêng.
+
+**Kết quả audit lại:** các yêu cầu 100 ms/cấm cache/epoch mọi RPC ở §9 báo cáo là ý kiến agent khác, chủ chưa chốt và không đưa vào đợt này. Giữ quyền/RLS CRM sẵn có; bỏ kiểm Hermes trùng. TG-L chỉ gỡ khóa metadata đã rà helper, không đổi khóa writer chung; PII theo từng field, Network Center giữ RLS khách tới khi chuẩn hóa nguồn. Hai bước chữ công khai hiện tại được đề nghị giữ tạm, chưa có quyết định mới của chủ; TG6 chọn riêng, không cản ba lỗi. Thứ tự và file test trong [§7–§10 báo cáo](TINH-GON-KIEM-QUYEN.md#7-plan-triển-khai-sau-đánh-giá).
+
+[Khảo sát, báo cáo, sơ đồ và TG0–TG7](TINH-GON-KIEM-QUYEN.md) đã sửa theo lời làm rõ của chủ, **candidate runtime/migration đang kiểm; đủ sáu migration đã áp TEST, TG-L JWT/PostgREST 46/46; chưa áp VPS/production**. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) giữ tiến độ và phần chưa đạt. D02/D05/D16, T04/T32/T40/T44/T47 đã điều chỉnh: giữ phần tắt quyền có chủ đích, bỏ allowlist chụp cứng/nhiều vòng recheck. Các đoạn v1.4 giải thích triển khai cũ không bắt buộc giữ cách lưu/kiểm cũ; các ô đạt trước đây không tự chứng minh mode mới.
+
 Phiên bản 1.4 · Phạm vi duyệt ngày 12/10/2026; rà toàn bộ yêu cầu và chốt Hermes độc lập + connector CRM ngày 14/10/2026 (Asia/Bangkok).
 
 **Trạng thái hiện hành — sáng 19/10/2026:** Toàn P0–P11 chưa hoàn tất. P0–P5 đạt; P6, P7, P9, P10, P11 còn ô mở; P8 miền ghi chủ hoãn 16/10, miền đọc đã lên production hai đợt (đợt 1 17/10 qua #190; đợt 2 19/10 qua #215 và #217: 28 migration, 32 khoá đọc bật, ~70 báo cáo, 3 khoá giữ tắt). Production: connector main `b023563a` (65 tool; bản lùi `14c6588a`), app `81c49363` (promote 19/10). Kết nối Hermes mới (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) đã thay vào profile owner, Hermes thấy 69 báo cáo; liên kết Zalo với kết nối mới đã xong sáng 19/10; còn lại của chủ: thử vài câu qua Zalo rồi thu hồi kết nối cũ; nghiệm thu đợt 2 qua Zalo thật chưa làm. Đợt 3 thao tác ghi: **đề xuất, chờ chủ chốt nhóm** ([DOT-3-THAO-TAC-GHI](DOT-3-THAO-TAC-GHI.md)). Hermes không còn phụ thuộc lúc chạy vào Copilot (#189, #193). Công thức dùng chung web + Hermes chuyển dần sang hàm SQL INVOKER + RLS (#196, #197, #201 đã merge và ở production; Hermes chưa chuyển sang gọi). Không có ô nghiệm thu mới đủ tiêu chí trong 17–19/10; tiến triển ghi kèm ngày ở từng ô. Chi tiết: [STATUS](STATUS.md#cập-nhật-1910); hướng dẫn: [BAN-GIAO](BAN-GIAO.md).
@@ -22,7 +32,7 @@ Phiên bản 1.4 · Phạm vi duyệt ngày 12/10/2026; rà toàn bộ yêu cầ
 
 - **Hermes là trợ lý mã nguồn mở độc lập và đầy đủ.** User tự cài/cấu hình/cập nhật Hermes, model, native tools, workspace và memory cá nhân ngoài CRM. CRM cung cấp connector MCP/plugin có protocol ổn định, không viết lại nhân Hermes, không ép dùng engine Copilot, model relay hoặc wrapper phòng trống của CRM.
 - “Độc lập ngoài CRM” nghĩa là theo cấu hình và hạn mức Hermes/provider của user, không có nghĩa tự bật mọi native tool hoặc quota vô hạn.
-- **Quyền hiệu lực duy nhất: quyền user hiện tại ∩ phần Đọc/Thao tác bật cho Hermes.** Quyền user hiện tại đã gồm công ty, scope dữ liệu và các deny/khóa khẩn cấp của CRM; phần Hermes chỉ là một lớp thu hẹp. Không clone RBAC, không bắt quản trị viên cấp lại cùng quyền ở hai bộ cấu hình. Nếu cần kill switch/trần cho trợ lý của công ty, giải quyết trong cùng lớp giới hạn Hermes và trả một kết quả quyền hiệu lực.
+- **Đích quyền cập nhật 19/10: quyền CRM hiện tại trừ các quyền tắt riêng cho Hermes.** Connection xác định user/công ty/phiên; registry xác định công cụ đã hỗ trợ. Giữ một cấu hình giới hạn có chủ đích; tính cùng quyết định quyền, không nhiều vòng full Auth. Chuyển allowlist cũ sang kế thừa + exclusions theo TG2, chưa triển khai.
 - Công thức trên **chỉ điều khiển truy cập CRM**. Tắt/thu hồi CRM không vô hiệu hóa hội thoại cá nhân, model, memory cá nhân hoặc native tools của Hermes. Credential/JWT/service key CRM và phiên Zalo ở broker/worker; Hermes chỉ nhận credential connector hạn chế. Mọi đường truy cập CRM đều qua cùng backend ACL.
 - Hermes là trợ lý ảo riêng, hiểu yêu cầu và chủ động hoàn tất các bước cần thiết trong phần quyền đã bật. Lệnh rõ thì làm; chỉ soạn thì không gửi; thiếu dữ kiện thì hỏi ngay trong Zalo và tiếp tục qua nhiều lượt với ngữ cảnh riêng. Không bắt mở CRM, nhập PIN, bấm approve hoặc bật Copilot để thực hiện công việc thông thường. Điều kiện nghiệp vụ thực sự áp dụng cho chính user, như trạng thái hợp đồng hay phê duyệt chứng từ, vẫn được backend áp dụng; không chép cơ chế approval của Copilot thành điều kiện của Hermes.
 
@@ -140,6 +150,8 @@ Không tạo Hermes → Copilot AI → CRM. Trong giai đoạn chuyển đổi, 
 | Giao diện CRM | Kết nối, một cấu hình Đọc/Thao tác, bản nháp khi cần, lịch sử, dừng | Bước bắt buộc giữa mọi lệnh Zalo và thực thi; UI ẩn nút không thay kiểm server |
 
 ## 04 · Quyền user và lớp giới hạn trợ lý
+
+**Ghi chú đính chính 19/10:** giữ ý nghĩa thu hẹp của v1.4, không xóa khả năng tắt riêng. Đích là quyền web hiện hành trừ danh sách tắt có chủ đích, thay allowlist chụp lúc tạo bằng kế thừa + exclusions; không tạo connection mới khi tắt/bật lại. Giới hạn tài nguyên/cấp công ty đã có phải được đối chiếu, không tự bỏ. Xem [ma trận và chuyển đổi](TINH-GON-KIEM-QUYEN.md#3-đánh-giá-tám-lớp-bỏ-gộp-hay-giữ). Quyền nền và phần tắt được quyết cùng nơi, thay full context nhiều checkpoint.
 
 **Quyền hiệu lực = quyền user hiện tại ∩ phần Đọc/Thao tác bật cho Hermes.** Backend CRM sở hữu quyền user hiện tại, gồm membership/vai trò, công ty, scope tài nguyên và deny khẩn cấp. Hermes chỉ thu hẹp trong tập đó, gồm phạm vi dữ liệu/nhóm nhận được bật. Kiểm điều kiện nghiệp vụ, tính toàn vẹn và quota khi chạy; không biến chúng thành bộ RBAC song song.
 
@@ -697,7 +709,7 @@ Gỡ engine và dependency chết có thể làm sớm song song core sau khi x�
 | T01 | Danh tính | Giả actor/org trong prompt và payload | Bị bỏ qua/từ chối; server lấy từ connection đã xác minh |
 | T02 | Danh tính | Credential CRM hết hạn/thu hồi/refresh lỗi | Không đọc/ghi CRM; personal chat vẫn hoạt động; liên kết lại CRM đúng người |
 | T03 | Quyền | User không có quyền dù Hermes bật | Từ chối server, không trả dữ liệu |
-| T04 | Quyền | User có quyền nhưng Hermes tắt | Hermes bị chặn; user dùng CRM trực tiếp vẫn được |
+| T04 | Quyền | User có quyền web, công cụ đã hỗ trợ; thử tắt rồi bật lại riêng cho Hermes | Tắt thì Hermes bị chặn nhưng user vẫn dùng web; bật lại chỉ được dùng khi user còn quyền. Không mất lựa chọn tắt qua refresh/reconnect |
 | T05 | Quyền | Gọi thẳng tool bị ẩn / công cụ cũ | Cổng kiểm lại và chặn; không dựa tools/list |
 | T06 | Phạm vi | Khác org/tòa/sổ/nhóm nhận | Chỉ tập được phép; JWT/role thật, không chứng minh bằng superuser |
 | T07 | Đọc | Giá/phòng thay đổi sau lượt chat trước | Đọc CRM mới; ghi nguồn và thời điểm |
@@ -725,7 +737,7 @@ Gỡ engine và dependency chết có thể làm sớm song song core sau khi x�
 | T29 | Rollback | Tắt Hermes, restore cấu hình, quay phiên bản | Không hồi sinh revoke, không replay tin đã gửi, không mất audit |
 | T30 | Chất lượng kiểm | Đột biến invariant quyền/org/tiền/migration | Bộ kiểm liên quan phải đỏ; skip/DEFERRED không được tính pass |
 | T31 | Chuyển lịch | Cutover/rollback khi có lịch cũ và job chờ | Một owner lịch active; không replay, mất audit hay giả provenance |
-| T32 | Thu hồi | Quyền mất khi model đang soạn DM | Outbound kiểm lại; không gửi dữ liệu CRM đã bị thu hồi |
+| T32 | Thu hồi | Quyền đổi khi lượt đọc đã được nhận đang xử lý | Theo yêu cầu 19/10, lượt đọc có thể hoàn tất bằng quyền/phạm vi ban đầu; không full-authority recheck chỉ để chặn thay đổi giữa lượt |
 | T33 | Thu hồi | Revoke cạnh tranh với dispatch_started | Trước dispatch bị chặn; in-flight đối soát, không gắn sai đã hủy |
 | T34 | Ngoại lệ superadmin | User thường cố đổi org; superadmin nhiều công ty rồi hạ quyền | Kiểm role hiện tại; context/work memory/grant/lịch CRM theo công ty, phần mất quyền bị chặn; personal assistant không reset |
 | T35 | Cách ly | Hai user cùng công ty dùng Hermes riêng và gọi connector đồng thời | Không lẫn tuyến/credential/context/work memory CRM; managed adapter nếu dùng có một owner/profile |
@@ -733,14 +745,14 @@ Gỡ engine và dependency chết có thể làm sớm song song core sau khi x�
 | T37 | Giám sát | Superadmin bật quyền đọc memory công việc A, không bật B | Chỉ A được trả; thường user và giả role đều bị chặn |
 | T38 | Riêng tư | Superadmin truy hồi work memory và yêu cầu personal chat/filesystem | Chỉ work memory CRM được phép; personal memory không tự thuộc quyền CRM; không mount raw memory |
 | T39 | Giao việc | Superadmin giao việc vượt quyền user nhận | Bị chặn; không thừa hưởng quyền người giao, không tự impersonate |
-| T40 | Thu hồi | Revoke task/grant/hạ role khi chờ hoặc soạn báo cáo CRM | Chặn tác vụ/DM có CRM data chưa dispatch và cache connector; in-flight đối soát; không xóa native personal history ngoài hệ thống |
+| T40 | Thu hồi | Dừng task/grant, ngắt runtime, thay quyền giữa lượt | Job nền có điểm nhận việc riêng theo quyền CRM; lượt đọc đã nhận được hoàn tất. Ngắt runtime không tự dừng lịch CRM độc lập; in-flight đối soát, không xóa personal history |
 | T41 | Đa công ty | Tổng hợp có quyền ở X, không quyền ở Y | Chỉ kết quả được phép có nhãn nguồn; không trộn raw memory hoặc làm user thường cross-org |
 | T42 | Lưu và audit | Truy hồi/giao việc/retry/xóa nguồn memory | Có requester/executor/source/version; dedup; không tự lưu lâu dài memory người khác, xử lý bản dẫn xuất |
 | T43 | Độc lập model | User dùng model riêng; Copilot tắt hoặc thiếu ai_copilot.view | Hermes cá nhân bình thường; connector CRM kiểm riêng ACL. Relay CRM tùy chọn nếu dùng có admission/budget đúng, không là điều kiện mặc định |
-| T44 | Read/Action | User chỉ được đọc nhóm/phòng và Hermes Read bật, Action gửi tắt | Directory/đọc/soạn được trong scope; gửi bị chặn; không yêu cầu quyền gửi để đọc |
+| T44 | Read/Action | User có quyền đọc; quyền gửi thiếu ở CRM hoặc bị tắt riêng cho Hermes | Đọc/soạn vẫn được nếu không bị tắt; gửi bị chặn đúng nguồn. Không đòi quyền gửi để cấp quyền đọc |
 | T45 | Hội thoại | “Soạn”, bổ sung tiêu chí, rồi “gửi bản này”; nhiều nháp/đích mơ hồ | Giữ đúng ngữ cảnh nhiều lượt; không gửi trước lệnh; rõ thì gửi, mơ hồ hỏi Zalo; không bắt CRM/PIN |
 | T46 | Tool dùng chung | Capability nhiều miền, resource thay quyền sau tools/list | Một backend ACL map schema/RPC đúng; kiểm quyền hiện tại từng resource; không giới hạn kiến trúc ở rooms hoặc cho SQL/RPC tùy ý |
-| T47 | Cấu hình | Quyền CRM đổi; bật/tắt Hermes; có khóa/trần công ty tùy chọn | Một overlay Đọc/Thao tác, không tạo role/cấp quyền lặp; API và UI trả một tập quyền hiệu lực và lý do |
+| T47 | Cấu hình | Quyền web đổi, mất rồi cấp lại; chỉnh quyền bị tắt riêng | Hermes = CRM trừ exclusions; lựa chọn tắt bền vững, không tạo connection/token/link mới; registry chưa triển khai không thành exclusion của user |
 | T48 | Memory và chủ động | Bật chia sẻ work memory/grant CRM, reconnect rồi revoke | Đúng assistant/context CRM; không duyệt mỗi ghi chú/job; chặn CRM mới; personal memory/native functions giữ nguyên |
 | T49 | Độc lập Hermes | Tắt/revoke connector CRM trong khi user chat cá nhân/dùng native tools | Chỉ CRM tools/data/jobs bị chặn; personal chat/model/tools vẫn theo cấu hình user, không room-only prompt/ba cặp lượt bắt buộc |
 | T50 | Tương thích | User cập nhật Hermes ngoài CRM | Connector protocol/schema tương thích hoạt động hoặc báo lỗi rõ tại adapter; không cần fork/rewrite/pin toàn engine |
@@ -786,10 +798,10 @@ Dữ liệu thật chỉ đọc theo Contract. Kiểm ghi dùng project TEST ho�
 | ID | Quyết định | Nội dung | Trạng thái |
 | --- | --- | --- | --- |
 | D01 | Đích cuối | Hermes upstream đầy đủ, độc lập do user cấu hình/update; CRM là MCP/plugin + backend ACL, không fork/custom kernel | Chốt v1.4 theo quyết định mới nhất |
-| D02 | Quyền | Quyền user hiện tại ∩ Đọc/Thao tác Hermes; công ty/scope/deny ở quyền CRM, khóa/trần trợ lý nếu cần gộp trong một overlay; không clone role hoặc cấu hình quyền hai lần. User thường một công ty; superadmin chọn đích rõ. | Chốt v1.4 ngày 14/10/2026 |
+| D02 | Quyền | Hermes = quyền CRM user − phần tắt trong cài đặt Hermes. Giữ giới hạn có chủ đích, đơn giản hóa thành kế thừa + exclusions; không cấp vượt CRM, không tạo connection mới chỉ để chỉnh quyền. | Chủ làm rõ 19/10/2026; đã sửa plan, chưa triển khai |
 | D03 | Zalo | Một worker giữ nick phụ; nick chính chỉ DM; nhóm không có quyền chủ | Đã duyệt mặc định |
 | D04 | Nguồn cập nhật | CRM là nguồn phòng/chính sách; tự lấy nội dung nhóm ghi ngược CRM là phần tùy chọn riêng | Đã duyệt mặc định |
-| D05 | Thao tác trực tiếp | Hermes tự làm theo quyền user ∩ giới hạn Đọc/Thao tác; đề xuất/xác nhận Zalo khi cần; không bắt CRM/PIN cho thao tác thông thường | Chủ dự án thay thế quyết định cũ ngày 13/10/2026 |
+| D05 | Thao tác trực tiếp | Theo quyền CRM trừ phần tắt; lệnh rõ thì làm, hỏi khi thiếu dữ kiện/ý định. Giữ approval nghiệp vụ thật/chống trùng; bỏ kiểm quyền lặp cuối đọc. Rào chữ công khai hiện có được đánh giá riêng ở TG6, chưa có quyết định bỏ hoặc giữ bắt buộc mới. | Yêu cầu và audit 19/10/2026; xem §10 báo cáo tinh giản |
 | D06 | Lịch tự động | Grant mục tiêu/template rõ, có hạn/scope và thu hồi; dữ liệu mới và kiểm quyền mỗi lần chạy; không approve từng job | Làm rõ v1.4 theo phạm vi đã giao |
 | D07 | Phạm vi toàn chương trình | Toàn inventory CRM qua connector, miền nhạy cảm theo gate; native tools ngoài CRM do user quản lý trong Hermes, không bị đóng bởi CRM | Làm rõ v1.4 |
 | D08 | Lịch sử cũ | Giữ để xem; không nạp toàn bộ vào memory Hermes; chỉ migrate mục được chọn | Đã duyệt mặc định |
@@ -800,7 +812,7 @@ Dữ liệu thật chỉ đọc theo Contract. Kiểm ghi dùng project TEST ho�
 | D13 | Memory riêng và giám sát | Mỗi user một personal Hermes/workspace; context/work memory CRM tách công ty và chia sẻ rõ. Hermes tổng chỉ work memory/giao việc theo CRM ACL, không personal history/filesystem | Chốt v1.4 |
 | D14 | Backend dùng chung | Reuse ACL/RPC/schema/queue và quota dịch vụ CRM; model relay CRM không bắt buộc. Stable MCP connector, không phụ thuộc engine/UI Copilot; capability theo mapping thật | Chốt v1.4 |
 | D15 | Trợ lý hội thoại | Lệnh rõ thì chủ động làm đủ bước; chỉ soạn không gửi; thiếu dữ kiện hỏi trong Zalo; nhiều lượt giữ đúng user/công ty/intent | Chốt v1.4 |
-| D16 | Phạm vi ACL | CRM user rights ∩ Hermes Read/Action chỉ chặn CRM; personal conversation/memory/native tools không chịu quyền CRM, user update Hermes độc lập | Chốt v1.4 |
+| D16 | Phạm vi ACL | Quyền CRM trừ phần tắt cho Hermes điều khiển truy cập CRM; personal conversation/memory/native tools do user quản lý. Superadmin có thể ngắt runtime VPS; không buộc mỗi tool kiểm thu hồi nhiều lần. | Làm rõ 19/10/2026; candidate đang kiểm, runtime production chưa đổi |
 
 ## 19 · Điều kiện hoàn tất toàn chương trình
 

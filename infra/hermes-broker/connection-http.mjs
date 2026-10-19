@@ -2,11 +2,12 @@ import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capabili
 import { ConnectionControlError } from './connection-control-plane.mjs';
 import { ConnectionManagementError } from './connection-management.mjs';
 import { connectionOptions } from './connection-options.mjs';
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 
 const PREFIX = '/api/hermes/connections/';
-const OPERATIONS = ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'status'];
-const OWNER_READS = ['connect', 'list', 'options', 'status'];
-const WRITES = new Set(['connect', 'restrict', 'revoke']);
+const OPERATIONS = ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'settings', 'status', 'overview'];
+const OWNER_READS = ['connect', 'list', 'options', 'status', 'overview'];
+const WRITES = new Set(['connect', 'restrict', 'revoke', 'settings']);
 const MAX_BODY_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -30,6 +31,8 @@ const limits = value => exact(value, ['read', 'action']) && ['read', 'action'].e
   validList(value[kind], key => typeof key === 'string' && CAP.test(key)));
 const sameSet = (a, b) => a.length === b.length && a.every(value => b.includes(value));
 const sameLimits = (a, b) => ['read', 'action'].every(kind => sameSet(a[kind], b[kind]));
+const sameSettings = (row, input) => row.permissionMode === input.permissionMode && row.scopeMode === input.scopeMode &&
+  sameLimits(row.exclusions, input.exclusions) && (input.scopeMode === 'unrestricted' || sameSet(row.scopeIds, input.scopeIds));
 class HttpError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
 }
@@ -49,27 +52,41 @@ function allowedConfiguration(values, origin) {
 }
 function inputBody(value, operation) {
   const fields = ['organizationId'];
-  if (operation === 'connect') fields.push('email', 'password', 'restrictions', 'scopeIds');
+  const inherited = plain(value) && Object.hasOwn(value, 'permissionMode');
+  if (operation === 'connect') fields.push('email', 'password', ...(inherited ? ['permissionMode', 'exclusions', 'scopeMode'] : ['restrictions']), 'scopeIds');
   if (!OWNER_READS.includes(operation)) fields.push('connectionId');
-  if (['restrict', 'revoke'].includes(operation)) fields.push('expectedEpoch');
+  if (['restrict', 'revoke', 'settings'].includes(operation)) fields.push('expectedEpoch');
   if (operation === 'restrict') fields.push('restrictions', 'scopeIds');
+  if (operation === 'settings') fields.push('permissionMode', 'exclusions', 'scopeMode', 'scopeIds');
   if (!exact(value, fields) || !id(value.organizationId) ||
       (fields.includes('connectionId') && !id(value.connectionId)) ||
       (fields.includes('expectedEpoch') && !positive(value.expectedEpoch)) ||
-      (fields.includes('scopeIds') && (!validList(value.scopeIds, id) || !limits(value.restrictions)))) invalid();
+      (fields.includes('scopeIds') && (!validList(value.scopeIds, id) || !limits(inherited ? value.exclusions : value.restrictions)))) invalid();
+  if (fields.includes('permissionMode') && (value.permissionMode !== 'inherit_crm' || !['restricted', 'unrestricted'].includes(value.scopeMode) ||
+      (value.scopeMode === 'unrestricted' && value.scopeIds.length))) invalid();
   if (operation === 'connect' && (typeof value.email !== 'string' || value.email.length > 320 ||
       !/^[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+\.[^\s@\x00-\x1f\x7f]+$/.test(value.email) ||
       typeof value.password !== 'string' || value.password.length < 1 || Buffer.byteLength(value.password) > 4096 ||
-      value.restrictions.action.some(key => !HERMES_ACTION_CAPABILITIES.includes(key)) || value.restrictions.read.some(key => !HERMES_READ_CAPABILITIES.includes(key)))) invalid();
+      (!inherited && (value.restrictions.action.some(key => !HERMES_ACTION_CAPABILITIES.includes(key)) ||
+        value.restrictions.read.some(key => !HERMES_READ_CAPABILITIES.includes(key)))))) invalid();
   return value;
 }
 function row(value, org, fields = ROW) {
-  if (!exact(value, fields) || ROW.slice(0, 4).some(key => !id(value[key])) || value.organizationId !== org ||
+  if (!plain(value) || !permissionShape(value, fields) || ROW.slice(0, 4).some(key => !id(value[key])) || value.organizationId !== org ||
       !['pending', 'active', 'revoked'].includes(value.state) || !positive(value.epoch) ||
       !limits(value.restrictions) || !validList(value.scopeIds, id)) badOutput();
-  return Object.fromEntries(ROW.map(key => [key, structuredClone(value[key])]));
+  return { ...Object.fromEntries(ROW.map(key => [key, structuredClone(value[key])])),
+    ...connectionPermissionSettings(value, raw => { if (!limits(raw)) badOutput(); return structuredClone(raw); }, badOutput) };
 }
 function output(value, operation, input) {
+  if (operation === 'overview') {
+    if (!exact(value, ['connections', 'status'])) badOutput();
+    const { connections } = output({ connections: value.connections }, 'list', input);
+    const status = output(value.status, 'status', input);
+    if (!sameSet(connections.map(item => item.id), status.connections.map(item => item.id)) ||
+        new Set(connections.map(item => item.userId)).size > 1) badOutput();
+    return { connections, status };
+  }
   if (operation === 'options') {
     if (!exact(value, ['options'])) badOutput();
     return { options: connectionOptions(value.options, input.organizationId) };
@@ -78,7 +95,8 @@ function output(value, operation, input) {
     if (!exact(value, ['status', 'connection', 'token', 'tokenExpiresAt']) || value.status !== 'active' ||
         typeof value.token !== 'string' || !/^hc_[A-Za-z0-9_-]{43}$/.test(value.token) || !positive(value.tokenExpiresAt)) badOutput();
     const connection = row(value.connection, input.organizationId);
-    if (connection.state !== 'active' || !sameLimits(connection.restrictions, input.restrictions) || !sameSet(connection.scopeIds, input.scopeIds)) badOutput();
+    if (connection.state !== 'active' || (input.permissionMode === 'inherit_crm' ? !sameSettings(connection, input) :
+      !sameLimits(connection.restrictions, input.restrictions) || !sameSet(connection.scopeIds, input.scopeIds))) badOutput();
     // The sole credential allowed over this browser boundary is the one-time
     // opaque handoff from successful connect. No provider token is serialized.
     return { status: 'active', connection, token: value.token, tokenExpiresAt: value.tokenExpiresAt };
@@ -115,11 +133,12 @@ function output(value, operation, input) {
           raw.effective[kind].some(key => !context.restrictions[kind].includes(key) || !raw.companyCeilings[kind].includes(key)))) badOutput();
     return { context: { ...context, ...Object.fromEntries(CONTEXT.slice(ROW.length).map(key => [key, structuredClone(raw[key])])) } };
   }
-  if (operation === 'restrict') {
+  if (['restrict', 'settings'].includes(operation)) {
     if (!exact(value, ['ok', 'connection']) || value.ok !== true) badOutput();
     const connection = row(value.connection, input.organizationId);
     if (connection.id !== input.connectionId || connection.state !== 'active' || connection.epoch !== input.expectedEpoch + 1 ||
-        !sameLimits(connection.restrictions, input.restrictions) || !sameSet(connection.scopeIds, input.scopeIds)) badOutput();
+        (operation === 'settings' ? !sameSettings(connection, input) :
+          !sameLimits(connection.restrictions, input.restrictions) || !sameSet(connection.scopeIds, input.scopeIds))) badOutput();
     return { ok: true, connection };
   }
   if (!exact(value, ['ok', 'status', 'connectionId']) || value.ok !== true ||
@@ -130,7 +149,7 @@ function safeReceipt(value, operation) {
   if (operation === 'connect' && exact(value, ['connectionId', 'operationId']) && id(value.connectionId) && id(value.operationId)) {
     return { connectionId: value.connectionId, operationId: value.operationId };
   }
-  if (['restrict', 'revoke'].includes(operation) && exact(value, ['connectionId', 'expectedEpoch', 'operation']) &&
+  if (['restrict', 'revoke', 'settings'].includes(operation) && exact(value, ['connectionId', 'expectedEpoch', 'operation']) &&
       id(value.connectionId) && positive(value.expectedEpoch) && value.operation === operation) {
     return { connectionId: value.connectionId, expectedEpoch: value.expectedEpoch, operation };
   }
@@ -180,8 +199,8 @@ function readBody(request, signal) {
 }
 
 /** Embeddable browser control-plane handler; return false for non-owned routes.
- * All routes are POST /api/hermes/connections/{connect,list,context,options,restrict,revoke,status};
- * status (connector activity of the caller's own connections) exists only when
+ * All routes are POST /api/hermes/connections/{connect,list,context,options,restrict,revoke,settings,status,overview};
+ * status/overview (activity of the caller's own connections) exist only when
  * management composes a health port, otherwise it stays an unowned route.
  * The browser bearer is a syntactic JWT only here; the injected existing control
  * and management primitives MUST perform actual Auth/CRM ownership verification.
@@ -207,7 +226,7 @@ export function createConnectionHttpHandler({ controlPlane, management, allowedH
   let active = 0;
   return async function handleConnectionHttp(request, response) {
     const operation = typeof request.url === 'string' && request.url.startsWith(PREFIX) ? request.url.slice(PREFIX.length) : '';
-    if (!OPERATIONS.includes(operation) || (operation === 'status' && typeof management.status !== 'function')) return false;
+    if (!OPERATIONS.includes(operation) || (['status', 'overview', 'settings'].includes(operation) && typeof management[operation] !== 'function')) return false;
     let dispatched = false, body, input;
     const seen = new Set();
     for (let i = 0; i < request.rawHeaders.length; i += 2) {
@@ -252,7 +271,7 @@ export function createConnectionHttpHandler({ controlPlane, management, allowedH
       if (controller.signal.aborted) throw new HttpError(408, 'cancelled');
       // The dependency receives its own request, not the stable protocol fence.
       // Keep no password or browser bearer in the expected response projection.
-      const expected = Object.fromEntries(['organizationId', 'connectionId', 'expectedEpoch', 'restrictions', 'scopeIds']
+      const expected = Object.fromEntries(['organizationId', 'connectionId', 'expectedEpoch', 'restrictions', 'scopeIds', 'permissionMode', 'exclusions', 'scopeMode']
         .filter(key => Object.hasOwn(body, key)).map(key => [key, structuredClone(body[key])]));
       input = { browserAccessToken: match[1], ...body };
       dispatched = true;

@@ -95,6 +95,65 @@ test('status route exists only with a health port, needs only the org and projec
   }
 });
 
+test('overview validates both metadata and health, including the exact same owned connection set', async t => {
+  const absent = await fixture(t);
+  assert.equal((await absent.send('overview', { value: { organizationId: ids.org } })).status, 404);
+  const overview = () => ({ connections: [row()], status: {
+    connector: { version: '0.2.0', startedAt: NOW, observedAt: NOW },
+    connections: [{ id: ids.connection, lastSuccessAt: null, lastToolCallAt: null, lastErrorCode: null, lastErrorAt: null }],
+  } });
+  let value = overview(); const calls = [];
+  const f = await fixture(t, { management: { ...dependencies().management, async overview(input) { calls.push(input); return value; } } });
+  const ok = await f.send('overview', { value: { organizationId: ids.org } });
+  assert.equal(ok.status, 200); assert.deepEqual(ok.body, overview());
+  assert.equal(calls[0].organizationId, ids.org);
+  for (const mutate of [v => { v.connections[0].organizationId = ids.other; }, v => { v.status.connections[0].id = ids.other; },
+    v => { v.connections[0].token = 'private'; }, v => { v.status.connections.push({ ...v.status.connections[0] }); },
+    v => { v.status.connections = []; }, v => { v.status.connector.secret = 'private'; }]) {
+    value = overview(); mutate(value);
+    const denied = await f.send('overview', { value: { organizationId: ids.org } });
+    assert.equal(denied.status, 503); assert.deepEqual(denied.body, { error: 'backend_unavailable' });
+  }
+  assert.equal((await f.send('overview', { value: { organizationId: ids.org, connectionId: ids.connection } })).status, 400);
+});
+
+test('settings HTTP forwards explicit inherited limits and validates the projected ACK without a new token', async t => {
+  const input = { organizationId: ids.org, connectionId: ids.connection, expectedEpoch: 2,
+    permissionMode: 'inherit_crm', exclusions: { read: ['assistant.context.read'], action: [] }, scopeMode: 'unrestricted', scopeIds: [] };
+  const response = () => ({ ok: true, connection: { ...row(), epoch: 3, restrictions: { read: [], action: [] },
+    permissionMode: input.permissionMode, exclusions: structuredClone(input.exclusions), scopeMode: input.scopeMode, scopeIds: [ids.other] } });
+  let value = response(); const calls = [];
+  const f = await fixture(t, { management: { ...dependencies().management, async settings(request) { calls.push(structuredClone(request)); return value; } } });
+  const ok = await f.send('settings', { value: input });
+  assert.equal(ok.status, 200); assert.deepEqual(ok.body, response());
+  assert.equal(calls[0].browserAccessToken, 'browser.jwt.token');
+  assert.equal((await f.send('settings', { value: input, headers: { origin: undefined } })).status, 403);
+  for (const delta of [{ permissionMode: 'legacy_allowlist' }, { exclusions: { read: [], action: [], token: 'bad' } }, { scopeIds: [ids.other] }, { restrictions: limits() }]) {
+    assert.equal((await f.send('settings', { value: { ...input, ...delta } })).status, 400);
+  }
+  for (const mutate of [v => { v.connection.epoch++; }, v => { v.connection.exclusions.read = []; },
+    v => { v.connection.token = 'private'; }, v => { v.connection.restrictions.read = ['assistant.context.read']; }]) {
+    value = response(); mutate(value);
+    const unknown = await f.send('settings', { value: input });
+    assert.equal(unknown.status, 503); assert.equal(unknown.body.error, 'operation_outcome_unknown');
+  }
+});
+
+test('connect HTTP accepts explicit inheritance with projected permissions and retains legacy connect compatibility', async t => {
+  const input = { organizationId: ids.org, email: 'synthetic@example.invalid', password: 'synthetic-password',
+    permissionMode: 'inherit_crm', exclusions: { read: [], action: [] }, scopeMode: 'unrestricted', scopeIds: [] };
+  const f = await fixture(t, { controlPlane: { async connect(request) {
+    assert.equal(request.permissionMode, 'inherit_crm'); assert(!Object.hasOwn(request, 'restrictions'));
+    return { ...result('connect'), connection: { ...row(), permissionMode: 'inherit_crm', exclusions: { read: [], action: [] },
+      scopeMode: 'unrestricted', scopeIds: [ids.other] } };
+  } } });
+  assert.equal((await f.send('connect', { value: input })).status, 200);
+  for (const delta of [{ permissionMode: 'legacy_allowlist' }, { exclusions: { read: [], action: [], extra: true } },
+    { scopeIds: [ids.other] }, { restrictions: limits() }]) {
+    assert.equal((await f.send('connect', { value: { ...input, ...delta } })).status, 400);
+  }
+});
+
 test('HTTP context and choices preserve neutral policy version zero', async t => {
   const deps = dependencies();
   deps.management.options = async () => ({ options: { ...result('options').options, policyVersion: 0 } });

@@ -27,6 +27,7 @@ vi.mock('@/hooks/useMyPermissions',()=>({useMyPermissions:()=>({data:{}})}));
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:(_key:string,value:unknown)=>useState(value)};});
 vi.mock('@/hooks/useRenewedContracts',()=>({useRenewedContractIds:()=>({data:new Set(),status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()})}));
 vi.mock('@/hooks/useDashboard',()=>({
+ useDashboardSummary:()=>({data:{leads_total:0,leads_new_month:0,leads_converted:0,deposits_total:0,deposits_new_month:0,deposits_moved_in:0},status:'success',fetchStatus:'idle',isLoading:false,isError:false,error:null,refetch:vi.fn()}),
  useDashboardStats:()=>({data:{revenueThisMonth:100,totalDebt:10,occupancyRate:50,occupiedRooms:1,totalRooms:2,unresolvedIssues:0}}),
  useRevenueChart:()=>({data:[]}),useOccupancyChart:()=>({data:[]}),useAlerts:()=>({data:[]}),useRecentActivities:()=>({data:[]}),
 }));

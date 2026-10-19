@@ -3,8 +3,12 @@
 // Runtime Hermes has no access to this object, DB credential or encrypted rows.
 const FUNCTIONS = Object.freeze({
   activate: 'app_private.hermes_store_activate_v1',
+  readZaloProvisioningWork: 'app_private.hermes_zalo_provisioning_work_v1',
+  acknowledgeZaloProvisioning: 'app_private.hermes_zalo_provisioning_ack_v1',
+  readZaloBinding: 'app_private.hermes_zalo_provisioning_v1',
   readConnection: 'app_private.hermes_store_read_connection_v1',
   restrictConnection: 'app_private.hermes_store_restrict_connection_v1',
+  updateConnectionSettings: 'app_private.hermes_store_connection_settings_v1',
   renewConnection: 'app_private.hermes_store_renew_connection_v1',
   revokeConnection: 'app_private.hermes_store_revoke_connection_v1',
   acquireRefresh: 'app_private.hermes_store_acquire_refresh_v1',
@@ -77,7 +81,7 @@ export function createStoreTransport({ pool, expectedRole, timeoutMs = 10_000,
       if (!signal || typeof signal.addEventListener !== 'function') fail('invalid_store_request');
       if (signal.aborted) fail('store_cancelled');
       let client, released = false, stopped = false, dispatched = false;
-      const write = operation !== 'readConnection';
+      const write = !['readConnection', 'readZaloBinding', 'readZaloProvisioningWork'].includes(operation);
       const release = destroy => {
         if (!client || released) return;
         released = true;

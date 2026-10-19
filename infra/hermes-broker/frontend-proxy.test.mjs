@@ -7,8 +7,8 @@ import { createHermesFrontendProxy } from './frontend-proxy.mjs';
 const CRM = 'https://crm.example.test', UPSTREAM = 'https://hermes.example.test';
 const JWT = 'Bearer synthetic.jwt.signature';
 const BODY = '{"organizationId":"10000000-0000-4000-8000-000000000001"}';
-const ops = { connections: ['connect','list','context','options','restrict','revoke','status'],
-  zalo: ['bots','manageBots','setBot','begin','status','confirm','unlink','list'] };
+const ops = { connections: ['connect','list','context','options','restrict','revoke','settings','status','overview'],
+  zalo: ['bots','manageBots','setBot','selectCredential','begin','status','confirm','unlink','list'] };
 const send = (port, { path = '/api/hermes/connections/list', method = 'POST', body = BODY, headers = {}, chunked = false } = {}) =>
   new Promise((resolve, reject) => {
     const req = httpRequest({ hostname: '127.0.0.1', port, path, method, headers: {
@@ -62,7 +62,7 @@ test('all existing connection and Zalo routes traverse an actual Node HTTP handl
     assert.equal(f.calls.at(-1).url, UPSTREAM + path);
     assert.equal(f.observed.at(-1).body, BODY);
   }
-  assert.equal(f.calls.length, 15);
+  assert.equal(f.calls.length, 18);
 });
 
 test('only fixed transport headers pass; host, cookies and upstream response headers are not copied', async t => {
@@ -110,7 +110,7 @@ test('Vercel dynamic route metadata is accepted only when it agrees with the fix
   }
   for (const suffix of ['operation=revoke', 'operation=list&operation=revoke', 'operation=list&upstream=https://evil.test',
     'operation=%6cist', 'other=list']) assert.equal((await f.send({ path: `/api/hermes/connections/list?${suffix}` })).status, 404);
-  assert.equal(f.calls.length, 15);
+  assert.equal(f.calls.length, 18);
 });
 
 test('method, origin, host and bearer boundaries reject before upstream', async t => {
@@ -143,10 +143,10 @@ test('host denial and reconciliation receipts pass through without inventing an 
 test('redirects are never followed and dispatched writes remain unknown', async t => {
   const f = await fixture(t, { remote(req, res) { res.writeHead(307, { location: 'https://evil.test', 'content-type': 'application/json' }); res.end('{}'); } });
   for (const [path, code] of [['/api/hermes/connections/revoke','operation_outcome_unknown'],
-    ['/api/hermes/zalo/confirm','binding_outcome_unknown'], ['/api/hermes/connections/list','backend_unavailable']]) {
+    ['/api/hermes/zalo/confirm','binding_outcome_unknown'], ['/api/hermes/zalo/selectCredential','binding_outcome_unknown'], ['/api/hermes/connections/list','backend_unavailable']]) {
     const result = await f.send({ path }); assert.equal(result.status, 503); assert.equal(payload(result).error, code);
   }
-  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls.length, 4);
 });
 
 test('malformed/oversized/encoded upstream output is bounded and never relayed as success', async t => {
@@ -167,10 +167,10 @@ test('malformed/oversized/encoded upstream output is bounded and never relayed a
 test('deadline after dispatch distinguishes reads and writes and never retries', async t => {
   const f = await fixture(t, { timeoutMs: 40, remote() {} });
   for (const [path, status, code] of [['/api/hermes/connections/list',504,'timeout'],
-    ['/api/hermes/connections/connect',503,'operation_outcome_unknown'], ['/api/hermes/zalo/setBot',503,'binding_outcome_unknown']]) {
+    ['/api/hermes/connections/connect',503,'operation_outcome_unknown'], ['/api/hermes/zalo/setBot',503,'binding_outcome_unknown'], ['/api/hermes/zalo/selectCredential',503,'binding_outcome_unknown']]) {
     const result = await f.send({ path }); assert.equal(result.status, status); assert.equal(payload(result).error, code);
   }
-  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls.length, 4);
 });
 
 test('upstream socket loss after a write has exactly one dispatch and an unknown result', async t => {

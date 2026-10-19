@@ -77,7 +77,12 @@ export const TASK_FUNCTIONS = Object.freeze([
     "searchPath": "pg_catalog,public,app_private",
     "authenticated": true,
     "standard": false,
-    "header": "CREATE OR REPLACE FUNCTION public.hermes_task_create_capabilities_v1(p_organization_id uuid) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private"
+    "header": "CREATE OR REPLACE FUNCTION public.hermes_task_create_capabilities_v1(p_organization_id uuid) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private",
+    successors: Object.freeze({
+      'supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql': Object.freeze({
+        bodyDigest: 'e8e9326bbff99b15e08de2603314f54844391c5e9c9e85fc2a6c00d35a6b3e6b', volatility: 's',
+      }),
+    }),
   },
   {
     "signature": "app_private.hermes_task_extend_options_v1(jsonb,text)",
@@ -308,5 +313,10 @@ export const CUSTOMER_FUNCTIONS = Object.freeze([
     language: 'plpgsql', definer: true, searchPath: 'pg_catalog,public,app_private', authenticated: true, standard: false,
     header: 'CREATE OR REPLACE FUNCTION public.hermes_customer_create_capabilities_v1(p_organization_id uuid) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private',
     bodyDigest: 'a9229c475115460477ff596d87fb67feee857c812a67661f3d12f50b991d3829',
+    successors: Object.freeze({
+      'supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql': Object.freeze({
+        bodyDigest: 'fb237008487973741f2974effbb4b2e668afdf7e9208ece91004b31cf5349e30', volatility: 's',
+      }),
+    }),
   },
 ]);

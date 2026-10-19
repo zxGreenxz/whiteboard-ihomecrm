@@ -1333,6 +1333,71 @@
         "infra/hermes-zalo-router/**/*.test.mjs",
         "infra/hermes-broker/server.test.mjs"
       ]
+    },
+    {
+      "id": "hermes-metadata-read-snapshot",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_metadata_read_snapshot_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/metadata-read-sql.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-inherit-crm-limits",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_inherit_crm_limits_v1.sql",
+        "infra/hermes-broker/connection-permissions.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/inherit-crm-sql.test.mjs",
+        "infra/hermes-broker/connection-*.test.mjs",
+        "infra/hermes-broker/durable-*.test.mjs",
+        "infra/hermes-broker/store-transport.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-stable-zalo-binding",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_zalo_stable_binding_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-zalo-router/stable-binding-*.test.mjs",
+        "infra/hermes-zalo-router/binding-*.test.mjs",
+        "infra/hermes-zalo-native/binding-*.test.mjs",
+        "infra/hermes-runtime/host-*.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-shared-read-fastpath",
+      "sourcePaths": [
+        "supabase/migrations/*_crm_shared_read_cores_v1.sql",
+        "supabase/migrations/*_hermes_domain_read_fast_v1.sql",
+        "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
+        "infra/hermes-broker/domain-read-fast.mjs",
+        "infra/hermes-broker/read-catalog-authority.mjs"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/crm-shared-read-sql.test.mjs",
+        "infra/hermes-broker/read-catalog-authority.test.mjs",
+        "infra/hermes-broker/domain-*.test.mjs",
+        "infra/hermes-broker/server.test.mjs"
+      ]
+    },
+    {
+      "id": "hermes-copied-text-parity",
+      "sourcePaths": [
+        "supabase/migrations/*_hermes_copied_text_parity_v1.sql"
+      ],
+      "suiteId": "node-native",
+      "testPatterns": [
+        "infra/hermes-broker/copied-text-parity-sql.test.mjs",
+        "infra/hermes-broker/full-read-*.test.mjs"
+      ]
     }
   ],
   "notes": [

@@ -408,7 +408,8 @@ function roomsFixture(options = {}) {
       await options.prepare?.(f, signal);
       const value = Object.freeze(options.badReceipt ?? {}); prepared.add(value); return value;
     },
-    async finalizeAvailableRooms(token, receipt, { signal }) {
+    async finalizeAvailableRooms(token, receipt, { signal, useInitialAdmission }) {
+      assert.equal(useInitialAdmission, true);
       assert.equal(token, f.token); assert(prepared.has(receipt)); prepared.delete(receipt); events.push('final');
       assert(signal instanceof AbortSignal); await options.final?.(f, signal);
       return options.result ? options.result() : roomPayload();
@@ -440,10 +441,10 @@ test('room discovery requires the explicit durable service, current read capabil
   await assert.rejects(noService.broker.callTool(noService.token, 'crm_available_rooms', {}), error('tool_not_available'));
 });
 
-test('room preparation, awaited audit and original authority precede the final fence; no async check follows it', async () => {
+test('direct room preparation and awaited audit precede receipt consumption without repeated authority checks', async () => {
   const f = roomsFixture();
   assert.deepEqual(context(await f.broker.callTool(f.token, 'crm_available_rooms', {})), roomPayload());
-  assert.deepEqual(f.events, ['prepare', 'prepared', 'check', 'final']);
+  assert.deepEqual(f.events, ['prepare', 'prepared', 'final']);
   assert.deepEqual(f.input(), { buildingName: '', offset: 0, limit: 50 }); assert(Object.isFrozen(f.input()));
   const exposed = JSON.stringify([f.broker.auditReceipts(), roomPayload()]); assert(!exposed.includes(f.token));
 });
@@ -462,20 +463,20 @@ test('room arguments reject scope/RPC/field overrides and snapshot filters befor
   assert.deepEqual(f.input(), { buildingName: 'House', offset: 0, limit: 1 });
 });
 
-test('audit-time authority changes or failed audit suppress final room disclosure', async () => {
+test('direct rooms finish on initial admission after audit-time changes; failed audit still suppresses disclosure', async () => {
   const changed = roomsFixture({ audit: async (event, f) => { if (event.outcome === 'prepared') f.state.contextVersion = '3'.repeat(64); } });
-  await assert.rejects(changed.broker.callTool(changed.token, 'crm_available_rooms', {}), error('context_changed'));
-  assert(!changed.events.includes('final')); assert.equal(changed.events.at(-1), 'denied');
+  assert.deepEqual(context(await changed.broker.callTool(changed.token, 'crm_available_rooms', {})), roomPayload());
+  assert.deepEqual(changed.events, ['prepare', 'prepared', 'final']);
   const failed = roomsFixture({ audit: async () => { throw new Error('PRIVATE audit'); } });
   await assert.rejects(failed.broker.callTool(failed.token, 'crm_available_rooms', {}), error('backend_unavailable'));
   assert(!failed.events.includes('final'));
 });
 
-test('a final scope/policy denial wins after successful audit and branded broker authority check', async () => {
+test('a receipt finalizer rejection still wins after successful audit', async () => {
   for (const code of ['context_changed', 'forbidden', 'unauthorized']) {
     const f = roomsFixture({ final: async () => { throw new BrokerError(code); } });
     await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', {}), error(code));
-    assert.deepEqual(f.events, ['prepare', 'prepared', 'check', 'final', 'denied']);
+    assert.deepEqual(f.events, ['prepare', 'prepared', 'final', 'denied']);
   }
 });
 

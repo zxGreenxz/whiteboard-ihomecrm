@@ -391,3 +391,36 @@ test('a fast Auth rejection returns at once and aborts the concurrent CRM author
     await assert.rejects(f.resolve(),code('backend_unavailable',503));
   }
  });
+
+
+test('CRM inheritance keeps the same token through settings epoch changes, new/lost/regranted CRM rights and policy ceilings', async t => {
+ const f=fixture(t), row=f.state.reply.connection;
+ Object.assign(row,{permissionMode:'inherit_crm',exclusions:{read:['customers.view'],action:[]},scopeMode:'unrestricted'});
+ row.restrictions={read:['assistant.context.read','rooms.view'],action:['tasks.create']};
+ f.state.reply.policy.read=['assistant.context.read','rooms.view','customers.view'];f.state.reply.policy.action=['tasks.create'];
+ const grant=key=>{const kind=key==='tasks.create'?'action':'read';f.state.auth.permissions[kind].push(key);f.state.auth.companyCeilings[kind].push(key);
+  f.state.auth.scopesByPermission[key]={buildingIds:[ids.building],cashbookIds:[]};};
+ grant('rooms.view');grant('customers.view');grant('tasks.create');
+ let result=await f.resolve();assert.deepEqual(result.effective,{read:['assistant.context.read','rooms.view'],action:['tasks.create']});
+ f.state.auth.permissions.read=f.state.auth.permissions.read.filter(k=>k!=='rooms.view');
+ assert(!(await f.resolve()).effective.read.includes('rooms.view'));
+ f.state.auth.permissions.read.push('rooms.view');assert((await f.resolve()).effective.read.includes('rooms.view'));
+ assert(!(await f.resolve()).effective.read.includes('customers.view')); // Explicit off survives CRM regrant.
+ f.state.reply.policy.read=['assistant.context.read'];assert.deepEqual((await f.resolve()).effective.read,['assistant.context.read']);
+ f.state.reply.policy.read.push('rooms.view','customers.view');assert((await f.resolve()).effective.read.includes('rooms.view'));
+ // Registry/new permissions update the maintained projection, not token AAD.
+ row.restrictions.read.push('vehicles.view');f.state.reply.policy.read.push('vehicles.view');grant('vehicles.view');
+ assert((await f.resolve()).effective.read.includes('vehicles.view'));
+ row.epoch++;row.exclusions={read:[],action:[]};row.restrictions.read.push('customers.view');
+ result=await f.resolve();assert(result.effective.read.includes('customers.view'));assert.equal(result.row.epoch,3);
+ for(let i=0;i<3;i++)assert.equal((await f.resolve()).contextVersion,result.contextVersion);
+ assert(f.calls.filter(c=>c.operation==='readConnection').every(c=>c.payload.tokenDigest===tokenDigest));
+ assert.equal(f.state.reply.session.revision,1);assert.equal(f.state.reply.session.binding.sessionId,ids.session);
+});
+
+test('inheritance metadata fails closed when exclusions collide with projection or mode is partial',async t=>{
+ for(const change of [r=>{r.permissionMode='inherit_crm';},r=>{Object.assign(r,{permissionMode:'inherit_crm',scopeMode:'unrestricted',exclusions:grants()});},
+ r=>{Object.assign(r,{permissionMode:'legacy_allowlist',scopeMode:'unrestricted',exclusions:{read:[],action:[]}});}]) {
+  const f=fixture(t);change(f.state.reply.connection);await assert.rejects(f.resolve(),code('backend_unavailable',503));
+ }
+});

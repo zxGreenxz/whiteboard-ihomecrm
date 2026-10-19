@@ -1,11 +1,11 @@
 import { request as httpsRequest } from 'node:https';
 
 const ROUTES = Object.freeze({
-  connections: ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'status'],
-  zalo: ['bots', 'manageBots', 'setBot', 'begin', 'status', 'confirm', 'unlink', 'list'],
+  connections: ['connect', 'list', 'context', 'options', 'restrict', 'revoke', 'settings', 'status', 'overview'],
+  zalo: ['bots', 'manageBots', 'setBot', 'selectCredential', 'begin', 'status', 'confirm', 'unlink', 'list'],
 });
-const WRITES = new Set(['connections/connect', 'connections/restrict', 'connections/revoke',
-  'zalo/setBot', 'zalo/begin', 'zalo/confirm', 'zalo/unlink']);
+const WRITES = new Set(['connections/connect', 'connections/restrict', 'connections/revoke', 'connections/settings',
+  'zalo/setBot', 'zalo/selectCredential', 'zalo/begin', 'zalo/confirm', 'zalo/unlink']);
 const JSON_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/i;
 const CRITICAL = new Set(['host', 'origin', 'authorization', 'content-type', 'content-length', 'content-encoding', 'transfer-encoding']);
 class ProxyError extends Error {

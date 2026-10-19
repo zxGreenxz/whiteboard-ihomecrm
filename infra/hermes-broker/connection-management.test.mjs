@@ -55,18 +55,112 @@ test('read operations use the same verified browser bearer and project exact sec
   assert.deepEqual(Object.keys(api), ['list', 'context', 'options', 'restrict', 'revoke']);
   assert.deepEqual(await api.list(request('list'), f.options), { connections: [row()] });
   assert.deepEqual(await api.context(request('context'), f.options), { context: context() });
-  assert.deepEqual(f.events.map(e => e[0]), ['verify', 'authz', 'list', 'verify', 'authz', 'verify', 'authz', 'context', 'verify', 'authz', 'context']);
+  assert.deepEqual(f.events.map(e => e[0]), ['verify', 'list', 'verify', 'context']);
   for (const [, input] of f.events) assert.equal(input.accessToken, 'browser.jwt.token');
   assert.equal(f.writes.length, 0); assert.equal(getEventListeners(f.controller.signal, 'abort').length, 0);
 });
 
-test('neutral policy options and context are usable; first explicit policy invalidates a pending read', async () => {
+test('TG1 metadata and revoke use one verified session and canonical owner RPC without the full capability catalog', async () => {
+  for (const operation of ['list', 'options', 'context', 'revoke']) {
+    const f = fixture();
+    f.auth.readAuthorization = async () => { throw new Error('metadata must not construct the capability catalog'); };
+    const response = await f.create()[operation](request(operation), f.options);
+    assert(response);
+    assert.equal(f.events.filter(([kind]) => kind === 'verify').length, 1);
+    assert.equal(f.events.filter(([kind]) => ['list', 'context', 'options'].includes(kind)).length, 1);
+    assert.equal(f.writes.length, operation === 'revoke' ? 1 : 0);
+  }
+});
+
+test('TG1 overview combines the owned list and in-process health without another authorization or DB read', async () => {
+  const f = fixture(), healthCalls = [];
+  f.auth.readAuthorization = async () => { throw new Error('no full capability catalog'); };
+  const status = { connector: { version: '0.2.0', startedAt: now, observedAt: now }, connections: [] };
+  const api = f.create({ health: { snapshot(ownedIds) { healthCalls.push(ownedIds); return status; } } });
+  assert.deepEqual(await api.overview(request('list'), f.options), { connections: [row()], status });
+  assert.deepEqual(f.events.map(([kind]) => kind), ['verify', 'list']);
+  assert.deepEqual(healthCalls, [[ids.connection]]);
+});
+
+const settingsRequest = () => ({ ...request('revoke'), permissionMode: 'inherit_crm',
+  exclusions: { read: ['assistant.context.read'], action: [] }, scopeMode: 'unrestricted', scopeIds: [] });
+function settingsFixture() {
+  const f = fixture();
+  f.connectionStore.updateConnectionSettings = async (input, options) => {
+    f.writes.push({ operation: 'settings', input: structuredClone(input), signal: options.signal });
+    return { ok: true, connection: { ...row(), epoch: input.connection.epoch + 1,
+      restrictions: { read: limits().read.filter(key => !input.exclusions.read.includes(key)), action: [] },
+      permissionMode: input.permissionMode, exclusions: structuredClone(input.exclusions), scopeMode: input.scopeMode,
+      scopeIds: input.scopeMode === 'unrestricted' ? [ids.scope] : input.scopeIds } };
+  };
+  return f;
+}
+
+test('settings turn exclusions off/on on the existing connection without token handoff or full catalog auth', async () => {
+  const f = settingsFixture(); f.auth.readAuthorization = async () => { throw new Error('no full catalog'); };
+  const disabled = await f.create().settings(settingsRequest(), f.options);
+  assert.deepEqual(disabled.connection.exclusions, { read: ['assistant.context.read'], action: [] });
+  assert.deepEqual(disabled.connection.restrictions.read, []);
+  assert.equal(disabled.connection.id, ids.connection); assert.equal(disabled.connection.assistantId, ids.assistant);
+  assert.equal(disabled.connection.epoch, 3); assert.equal(disabled.connection.scopeMode, 'unrestricted');
+  assert.deepEqual(f.events.map(([kind]) => kind), ['verify', 'list']);
+  f.reads.listConnections = async () => [disabled.connection];
+  const enabled = await f.create().settings({ ...settingsRequest(), expectedEpoch: 3, exclusions: { read: [], action: [] } }, f.options);
+  assert.equal(enabled.connection.epoch, 4); assert.deepEqual(enabled.connection.restrictions, limits());
+  assert.equal(f.writes.length, 2); assert(!JSON.stringify(enabled).includes('token'));
+});
+
+test('settings preserve explicit restricted scope and cannot write with forged ownership, state or stale epoch', async () => {
+  const f = settingsFixture();
+  const result = await f.create().settings({ ...settingsRequest(), scopeMode: 'restricted', scopeIds: [] }, f.options);
+  assert.deepEqual(result.connection.scopeIds, []);
+  for (const [delta, expected] of [[{ userId: ids.foreign }, 'backend_unavailable'], [{ organizationId: ids.foreign }, 'backend_unavailable'],
+    [{ state: 'revoked' }, 'context_changed'], [{ epoch: 4 }, 'context_changed']]) {
+    const g = settingsFixture(); g.reads.listConnections = async () => [{ ...row(), ...delta }];
+    await assert.rejects(g.create().settings(settingsRequest(), g.options), code(expected)); assert.equal(g.writes.length, 0);
+  }
+  const g = settingsFixture(); g.reads.listConnections = async () => [];
+  await assert.rejects(g.create().settings(settingsRequest(), g.options), code('forbidden')); assert.equal(g.writes.length, 0);
+});
+
+test('settings reject partial/invalid modes and forged grant payloads before authentication', async () => {
+  for (const delta of [{ permissionMode: 'legacy_allowlist' }, { scopeMode: 'all' }, { scopeIds: [ids.scope] },
+    { exclusions: { read: new Array(1), action: [] } }, { restrictions: limits() }, { userId: ids.foreign }]) {
+    const f = settingsFixture();
+    await assert.rejects(f.create().settings({ ...settingsRequest(), ...delta }, f.options), code('invalid_request'));
+    assert.equal(f.events.length, 0); assert.equal(f.writes.length, 0);
+  }
+});
+
+test('settings lost or mismatched ACK stays unknown with a settings receipt and never retries', async () => {
+  for (const mode of ['lost', 'wrongOwner', 'wrongExclusions', 'secret', 'wrongEpoch']) {
+    const f = settingsFixture(), original = f.connectionStore.updateConnectionSettings;
+    f.connectionStore.updateConnectionSettings = async (...args) => {
+      const result = await original(...args);
+      if (mode === 'lost') throw new Error('private');
+      if (mode === 'wrongOwner') result.connection.userId = ids.foreign;
+      if (mode === 'wrongExclusions') result.connection.exclusions.read = [];
+      if (mode === 'secret') result.connection.token = 'private';
+      if (mode === 'wrongEpoch') result.connection.epoch++;
+      return result;
+    };
+    await assert.rejects(f.create().settings(settingsRequest(), f.options), error => {
+      assert(code('operation_outcome_unknown')(error));
+      assert.deepEqual(error.receipt, { connectionId: ids.connection, expectedEpoch: 2, operation: 'settings' }); return true;
+    });
+    assert.equal(f.writes.length, 1);
+  }
+});
+
+test('neutral policy is usable and a later metadata request observes the next SQL snapshot', async () => {
   const f = fixture(); f.reads.connectionOptions = async () => ({ ...grantOptions(), policyVersion: 0 });
   f.reads.connectionContext = async () => ({ ...context(), policyVersion: 0 });
   assert.equal((await f.create().options(request('options'), f.options)).options.policyVersion, 0);
   assert.equal((await f.create().context(request('context'), f.options)).context.policyVersion, 0);
   let calls = 0; f.reads.connectionContext = async () => ({ ...context(), policyVersion: calls++ });
-  await assert.rejects(f.create().context(request('context'), f.options), code('context_changed'));
+  assert.equal((await f.create().context(request('context'), f.options)).context.policyVersion, 0);
+  assert.equal((await f.create().context(request('context'), f.options)).context.policyVersion, 1);
+  assert.equal(calls, 2);
 });
 test('restrict uses trusted owner/epoch metadata, narrows both parts and rechecks actual Auth after reads before one write', async () => {
   const f = fixture();
@@ -107,7 +201,7 @@ test('malformed Auth, revoked/expired membership and ordinary multi-company meta
     value => { value.membership.status = 'INVITED'; }, value => { value.permissions.read = new Array(1); }];
   for (const mutate of mutations) {
     const f = fixture(); f.auth.readAuthorization = async () => { const value = authorization(); mutate(value); return value; };
-    await assert.rejects(f.create().revoke(request('revoke'), f.options), code('forbidden')); assert.equal(f.writes.length, 0);
+    await assert.rejects(f.create().restrict(request('restrict'), f.options), code('forbidden')); assert.equal(f.writes.length, 0);
   }
   for (const value of [{ ...session(), expiresAt: now }, { ...session(), userId: 'invalid' }, { ...session(), token: 'private' }]) {
     const f = fixture(); f.auth.verifySession = async () => value;
@@ -271,12 +365,12 @@ test('configuration and malformed scopes/signals fail before an external depende
   const error = new ConnectionManagementError('private password'); assert.equal(error.code, 'backend_unavailable');
 });
 
-test('authority identity/version/role and canonical permission changes after reads invalidate every operation', async () => {
+test('legacy restrict still rejects authority identity/version/role and permission changes before writing', async () => {
   const mutations = [value => { value.membership.membershipId = ids.foreign; },
     value => { value.membership.authorizationVersion++; }, value => { value.isSuperadmin = true; },
     value => { value.epoch = 'authorization-epoch-2'; }, value => { value.permissions.read = []; },
     value => { value.companyCeilings.read = []; }];
-  for (const operation of ['list', 'context', 'options', 'restrict', 'revoke']) {
+  for (const operation of ['restrict']) {
     for (const mutate of mutations) {
       const f = fixture(); let calls = 0;
       f.auth.readAuthorization = async () => { const value = authorization(); if (++calls === 2) mutate(value); return value; };
@@ -290,32 +384,33 @@ test('missing authority metadata cannot silently fall back to the P1 adapter con
   for (const mutate of [value => { delete value.membership.membershipId; }, value => { delete value.membership.authorizationVersion; },
     value => { delete value.epoch; }, value => { value.membership.authorizationVersion = 0; }]) {
     const f = fixture(); f.auth.readAuthorization = async () => { const value = authorization(); mutate(value); return value; };
-    await assert.rejects(f.create().context(request('context'), f.options), code('forbidden'));
+    await assert.rejects(f.create().restrict(request('restrict'), f.options), code('forbidden'));
     assert(!f.events.some(([kind]) => kind === 'context')); assert.equal(f.writes.length, 0);
   }
 });
 
-test('context membership and role must match actual current authority before metadata can be returned', async () => {
-  for (const delta of [{ membershipId: ids.foreign }, { authorizationVersion: 2 }, { isSuperadmin: true }]) {
+test('canonical context must retain owner/org and well-formed membership/version/effective rights', async () => {
+  for (const delta of [{ userId: ids.foreign }, { organizationId: ids.foreign }, { membershipId: null },
+    { authorizationVersion: 0 }, { isSuperadmin: 'true' }, { effective: { read: ['rooms.view'], action: [] } }]) {
     const f = fixture(); f.reads.connectionContext = async () => ({ ...context(), ...delta });
-    await assert.rejects(f.create().context(request('context'), f.options), code('context_changed'));
+    await assert.rejects(f.create().context(request('context'), f.options), code('backend_unavailable'));
     assert.equal(f.writes.length, 0);
   }
-  const f = fixture(); f.auth.readAuthorization = async () => ({ ...authorization(), permissions: { read: [], action: [] } });
-  await assert.rejects(f.create().context(request('context'), f.options), code('context_changed'));
 });
 
-test('a final self-context fence rejects policy/connection changes or revocation during the final Auth read', async () => {
+test('metadata snapshots observe policy/connection changes or revocation on the next request', async () => {
   for (const delta of [{ policyVersion: 2 }, { epoch: 3 }, { scopeIds: [] }, { effective: { read: [], action: [] } },
     { restrictions: { read: [], action: [] }, effective: { read: [], action: [] } },
     { companyCeilings: { read: [], action: [] }, effective: { read: [], action: [] } }]) {
     const f = fixture(); let calls = 0;
     f.reads.connectionContext = async () => ({ ...context(), ...(++calls === 2 ? delta : {}) });
-    await assert.rejects(f.create().context(request('context'), f.options), code('context_changed'));
+    assert.deepEqual((await f.create().context(request('context'), f.options)).context, context());
+    assert.deepEqual((await f.create().context(request('context'), f.options)).context, { ...context(), ...delta });
     assert.equal(calls, 2); assert.equal(f.writes.length, 0);
   }
   const f = fixture(); let calls = 0;
   f.reads.connectionContext = async () => { if (++calls === 2) throw new BrokerError('forbidden'); return context(); };
+  await f.create().context(request('context'), f.options);
   await assert.rejects(f.create().context(request('context'), f.options), code('forbidden'));
   assert.equal(calls, 2);
 });
@@ -324,41 +419,44 @@ test('authority snapshots cannot be changed by mutating an earlier provider resu
   const f = fixture(), source = authorization();
   f.auth.readAuthorization = async () => source;
   f.reads.listConnections = async () => { source.membership.authorizationVersion++; source.permissions.read = []; return [row()]; };
-  await assert.rejects(f.create().list(request('list'), f.options), code('context_changed'));
+  await assert.rejects(f.create().restrict(request('restrict'), f.options), code('context_changed'));
 });
 
-test('superadmin removal during reads rejects cached role metadata even while ordinary membership remains active', async () => {
+test('metadata does not cache the SQL role projection across requests', async () => {
   const f = fixture(); let calls = 0;
-  f.auth.readAuthorization = async () => ({ ...authorization(), isSuperadmin: ++calls === 1 });
-  f.reads.connectionContext = async () => ({ ...context(), isSuperadmin: true });
-  await assert.rejects(f.create().context(request('context'), f.options), code('context_changed'));
+  f.reads.connectionContext = async () => ({ ...context(), isSuperadmin: ++calls === 1 });
+  assert.equal((await f.create().context(request('context'), f.options)).context.isSuperadmin, true);
+  assert.equal((await f.create().context(request('context'), f.options)).context.isSuperadmin, false);
   assert.equal(calls, 2);
 });
 
 test('canonical permission and organization ordering does not invent an authority change', async () => {
   const f = fixture(); let calls = 0;
+  f.reads.connectionContext = async () => ({ ...context(), isSuperadmin: true });
   f.auth.readAuthorization = async () => {
     const value = authorization(); value.isSuperadmin = true;
     value.activeOrganizationIds = [ids.org, ids.foreign]; value.permissions.read.push('rooms.view'); value.companyCeilings.read.push('rooms.view');
     if (++calls === 2) { value.activeOrganizationIds.reverse(); value.permissions.read.reverse(); value.companyCeilings.read.reverse(); }
     return value;
   };
-  assert.deepEqual(await f.create().list(request('list'), f.options), { connections: [row()] });
+  assert.equal((await f.create().restrict(request('restrict'), f.options)).ok, true);
+  assert.equal(calls, 2);
 });
 
-test('session or membership expiry during the final context fence cannot return successful metadata', async () => {
-  for (const expired of ['session', 'membership']) {
-    const f = fixture(); let time = now, calls = 0;
-    f.auth.readAuthorization = async () => { const value = authorization(); if (expired === 'membership') value.membership.validTo = now + 5; return value; };
-    f.reads.connectionContext = async () => { if (++calls === 2) time = now + (expired === 'session' ? 60_000 : 5); return context(); };
-    await assert.rejects(f.create({ clock: () => time }).context(request('context'), f.options),
-      code(expired === 'session' ? 'reauthentication_required' : 'forbidden'));
-    assert.equal(calls, 2);
+test('JWT expiry while the canonical metadata RPC is pending cannot return success or dispatch revoke', async () => {
+  for (const operation of ['list', 'context', 'options', 'revoke']) {
+    const f = fixture(); let time = now;
+    for (const method of ['listConnections', 'connectionContext', 'connectionOptions']) {
+      const read = f.reads[method];
+      f.reads[method] = async (...args) => { const value = await read(...args); time = now + 60_000; return value; };
+    }
+    await assert.rejects(f.create({ clock: () => time })[operation](request(operation), f.options), code('reauthentication_required'));
+    assert.equal(f.writes.length, 0);
   }
 });
 
-test('a session expiring while either Authz read is pending prevents all four operations from using its result', async () => {
-  for (const operation of ['list', 'context', 'options', 'restrict', 'revoke']) {
+test('legacy restrict rejects a session expiring during either full authorization read', async () => {
+  for (const operation of ['restrict']) {
     for (const expiryRead of [1, 2]) {
       const f = fixture(); let time = now, calls = 0;
       f.auth.readAuthorization = async () => {
@@ -386,29 +484,30 @@ test('expiry after write dispatch remains unknown with a safe receipt and never 
   }
 });
 
-test('self options use the verified browser identity and reread the fixed choices after final authority check',async()=>{
+test('self options use the verified browser identity and one canonical choices snapshot',async()=>{
  const f=fixture(),result=await f.create().options(request('options'),f.options);
  assert.deepEqual(result,{options:grantOptions()});assert.equal(f.writes.length,0);
- assert.deepEqual(f.events.map(e=>e[0]),['verify','authz','options','verify','authz','options']);
+ assert.deepEqual(f.events.map(e=>e[0]),['verify','options']);
  for(const [,input] of f.events)assert.equal(input.accessToken,'browser.jwt.token');
 });
-test('options reject wrong owner, changed membership, policy/scope drift and removed current rights',async()=>{
- for(const delta of [{userId:ids.foreign},{organizationId:ids.foreign},{membershipId:ids.foreign},{authorizationVersion:2},{isSuperadmin:true}]) {
+test('options reject wrong owner or malformed canonical membership and observe later policy snapshots',async()=>{
+ for(const delta of [{userId:ids.foreign},{organizationId:ids.foreign},{membershipId:null},{authorizationVersion:0},{isSuperadmin:'true'}]) {
   const f=fixture();f.reads.connectionOptions=async()=>({...grantOptions(),...delta});
   await assert.rejects(f.create().options(request('options'),f.options));assert.equal(f.writes.length,0);
  }
  for(const field of ['policyVersion','enabled']) {
   const f=fixture();let calls=0;
   f.reads.connectionOptions=async()=>{const value=grantOptions();if(++calls===2){if(field==='policyVersion')value.policyVersion++;else{value.enabled=false;value.read=[];}}return value;};
-  await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));assert.equal(calls,2);
+  const before = (await f.create().options(request('options'),f.options)).options;
+  const after = (await f.create().options(request('options'),f.options)).options;
+  assert.notEqual(before[field],after[field]);assert.equal(calls,2);
  }
- const f=fixture();f.auth.readAuthorization=async()=>({...authorization(),permissions:{read:[],action:[]}});
- await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));
 });
 test('options are snapshots, cannot trust changed earlier objects or accept arbitrary RPC inputs',async()=>{
  const f=fixture(),source=grantOptions();f.reads.connectionOptions=async()=>source;
- let count=0;f.auth.readAuthorization=async()=>{if(++count===2)source.policyVersion++;return authorization();};
- await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));
+ const result=await f.create().options(request('options'),f.options);
+ source.policyVersion++;source.read.push('rooms.view');
+ assert.deepEqual(result.options,grantOptions());
 });
 test('fixed options read uses selected organization and never a caller-selected admin catalog',async()=>{
  const calls=[],controller=new AbortController();
@@ -421,19 +520,19 @@ test('fixed options read uses selected organization and never a caller-selected 
  assert.equal(calls.length,1);
 });
 
-test('options fixed action is cross-checked against current user and company authority before disclosure',async()=>{
- for(const kind of ['permissions','companyCeilings',null]){
-  const f=fixture();f.reads.connectionOptions=async()=>({...grantOptions(),action:['chat_zalo.send']});
-  f.auth.readAuthorization=async()=>{const v=authorization();v.permissions.action=['chat_zalo.send'];v.companyCeilings.action=['chat_zalo.send'];if(kind)v[kind].action=[];return v;};
-  if(kind)await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));
-  else assert.deepEqual((await f.create().options(request('options'),f.options)).options.action,['chat_zalo.send']);
+test('canonical RPC denial for inactive membership or foreign org prevents metadata and revoke',async()=>{
+ for(const operation of ['list','context','options','revoke']){
+  const f=fixture();
+  for(const method of Object.keys(f.reads))f.reads[method]=async()=>{throw new BrokerError('forbidden');};
+  await assert.rejects(f.create()[operation](request(operation),f.options),code('forbidden'));
   assert.equal(f.writes.length,0);
  }
 });
-test('revoking action while options await cannot return the earlier snapshot',async()=>{
+test('the next options request reflects action revocation from canonical SQL',async()=>{
  const f=fixture();let reads=0;f.reads.connectionOptions=async()=>({...grantOptions(),action:['chat_zalo.send']});
- f.auth.readAuthorization=async()=>{const v=authorization();v.permissions.action=reads++?[]:['chat_zalo.send'];v.companyCeilings.action=['chat_zalo.send'];return v;};
- await assert.rejects(f.create().options(request('options'),f.options),code('context_changed'));assert.equal(f.writes.length,0);
+ f.reads.connectionOptions=async()=>({...grantOptions(),action:reads++?[]:['chat_zalo.send']});
+ assert.deepEqual((await f.create().options(request('options'),f.options)).options.action,['chat_zalo.send']);
+ assert.deepEqual((await f.create().options(request('options'),f.options)).options.action,[]);assert.equal(f.writes.length,0);
 });
 
 test('missing v7 read schema keeps v6 action metadata with the same caller', async () => {

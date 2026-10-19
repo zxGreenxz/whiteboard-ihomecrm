@@ -24,14 +24,13 @@ import "@/styles/mobileApp.css";
 import "@/styles/dashboardMobile.css";
 import {
   useDashboardStats,
+  useDashboardSummary,
   useRevenueChart,
   useOccupancyChart,
   useAlerts,
   useRecentActivities,
 } from "@/hooks/useDashboard";
 import { useContractDashboardCounts } from "@/hooks/useContracts";
-import { useLeads } from "@/hooks/useLeads";
-import { useDeposits } from "@/hooks/useDeposits";
 import { useBuildings } from "@/hooks/useBuildings";
 import { formatDistanceToNow, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -82,7 +81,7 @@ const ACTIVITY = {
  * Bảng tin — màn hình app full-screen trên mobile (web-app). Dựng theo handoff
  * Claude Design (ui_kits/mobile-app: DashboardScreen) nối DỮ LIỆU THẬT của
  * dashboard desktop: KPI (useDashboardStats), tỷ lệ lấp đầy (useOccupancyChart),
- * doanh thu 12 tháng (useRevenueChart), tổng quan vận hành (useLeads/useDeposits/
+ * doanh thu 12 tháng (useRevenueChart), tổng quan vận hành (useDashboardSummary/
  * useContractDashboardCounts), cảnh báo (useAlerts), hoạt động gần đây
  * (useRecentActivities). Lọc theo toà giống desktop. Nút ← về trang chủ.
  * Scope .cm-stage/.cm-app, ngoài MainLayout.
@@ -113,26 +112,26 @@ export default function DashboardMobilePage() {
   const { data: alerts = [] } = alertsQuery;
   const { data: activities = [] } = activitiesQuery;
 
-  // Tổng quan vận hành — tính y hệt OperationsSummary desktop.
-  const leadsQuery = useLeads();
-  const depositsQuery = useDeposits();
-  const { data: leads = [] } = leadsQuery;
-  const { data: deposits = [] } = depositsQuery;
+  // Dùng tổng hợp KPI đã tải, cùng quy tắc tháng/công ty với desktop.
+  // Hợp đồng giữ reader riêng vì nhãn sắp hết hạn đã chuyển sang contract_stats_v2.
+  const operationsQuery = useDashboardSummary(buildingId);
+  const { data: operations } = operationsQuery;
   const contractCountsQuery = useContractDashboardCounts(buildingId);
   const { data: contractCounts } = contractCountsQuery;
 
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const newLeads = leads.filter((l: any) => l.created_at && new Date(l.created_at) >= startOfMonth).length;
-  const convertedLeads = leads.filter((l: any) => l.status === "CONVERTED").length;
-  const leadConversion = leads.length ? `${Math.round((convertedLeads / leads.length) * 100)}%` : "0%";
-  const newDeposits = deposits.filter((d: any) => d.created_at && new Date(d.created_at) >= startOfMonth).length;
-  const movedIn = deposits.filter((d: any) => d.status === "CONVERTED").length;
-  const depositConversion = deposits.length ? `${Math.round((movedIn / deposits.length) * 100)}%` : "0%";
+  const leadsTotal = operations?.leads_total ?? 0;
+  const newLeads = operations?.leads_new_month ?? 0;
+  const convertedLeads = operations?.leads_converted ?? 0;
+  const leadConversion = leadsTotal ? `${Math.round((convertedLeads / leadsTotal) * 100)}%` : "0%";
+  const depositsTotal = operations?.deposits_total ?? 0;
+  const newDeposits = operations?.deposits_new_month ?? 0;
+  const movedIn = operations?.deposits_moved_in ?? 0;
+  const depositConversion = depositsTotal ? `${Math.round((movedIn / depositsTotal) * 100)}%` : "0%";
 
   const ops = [
     {
       title: "Tổng quan khách hẹn",
-      queries: [leadsQuery],
+      queries: [operationsQuery],
       Icon: UserPlus,
       iconC: "#2563eb",
       to: "/leads",
@@ -140,12 +139,12 @@ export default function DashboardMobilePage() {
         { label: "Khách hẹn mới", value: newLeads, tone: "#2563eb" },
         { label: "Đã chuyển đổi", value: convertedLeads, tone: "#1f9d57" },
         { label: "Tỷ lệ chuyển đổi", value: leadConversion },
-        { label: "Đang theo dõi", value: leads.length },
+        { label: "Đang theo dõi", value: leadsTotal },
       ],
     },
     {
       title: "Tổng quan đặt cọc",
-      queries: [depositsQuery],
+      queries: [operationsQuery],
       Icon: Wallet,
       iconC: "#d97706",
       to: "/deposits",
@@ -153,7 +152,7 @@ export default function DashboardMobilePage() {
         { label: "Cọc mới (tháng)", value: newDeposits, tone: "#d97706" },
         { label: "Khách vào thuê", value: movedIn, tone: "#1f9d57" },
         { label: "Tỷ lệ chuyển đổi", value: depositConversion },
-        { label: "Tổng phiếu cọc", value: deposits.length },
+        { label: "Tổng phiếu cọc", value: depositsTotal },
       ],
     },
     {

@@ -47,7 +47,8 @@ function fixture(t, options = {}) {
     calls.push({ operation, payload: clone(payload), signal: opts.signal }); state.activation = clone(payload);
     await options.beforeActivate?.(state, payload);
     return { ok: true, status: 'activated', connection: { id: ids.connection, assistantId: ids.assistant, organizationId: ids.org,
-      userId: ids.user, state: 'active', epoch: 2, restrictions: clone(state.prepared.restrictions), scopeIds: [ids.scope] }, credentialRef: payload.credentialRef };
+      userId: ids.user, state: 'active', epoch: 2, restrictions: clone(state.prepared.restrictions), scopeIds: [ids.scope],
+      ...(state.prepared.permissionMode ? {permissionMode:state.prepared.permissionMode,exclusions:clone(state.prepared.exclusions),scopeMode:state.prepared.scopeMode}: {}) }, credentialRef: payload.credentialRef };
   } } });
   const factory = createConnectionControlPlane({ auth, signInProvider, preparation, connectionStore, crypto,
     clock: () => state.now, ...options.factory });
@@ -524,4 +525,23 @@ test('control-plane independently rejects an activation port that adds or drops 
  for(const requested of [[],['chat_zalo.send']]){
   const f=fixture(t,{factory:{connectionStore:{async activate(input){const p=input.prepared;return {ok:true,status:'activated',credentialRef:input.credentialRef,connection:{id:p.id,assistantId:p.assistantId,organizationId:p.organizationId,userId:p.userId,state:'active',epoch:p.epoch+1,restrictions:{...p.restrictions,action:requested.length?[]:['chat_zalo.send']},scopeIds:p.scopeIds}}}}}}),input=request();input.restrictions.action=requested;f.state.prepared.restrictions.action=requested;f.state.auth.permissions.action=['chat_zalo.send'];f.state.auth.companyCeilings.action=['chat_zalo.send'];await assert.rejects(f.connect(input),code('activation_outcome_unknown'));
  }
+});
+
+
+test('inheritance enrollment attests explicit exclusions instead of requiring every registry projection key as a CRM grant',async t=>{
+ const f=fixture(t), input=request();delete input.restrictions;
+ Object.assign(input,{permissionMode:'inherit_crm',exclusions:{read:['customers.view'],action:['tasks.create']},scopeMode:'unrestricted',scopeIds:[]});
+ Object.assign(f.state.prepared,{permissionMode:input.permissionMode,exclusions:structuredClone(input.exclusions),scopeMode:'unrestricted'});
+ // Projection includes supported capabilities the user does not have yet.
+ f.state.prepared.restrictions.read.push('rooms.view');
+ const value=await f.connect(input);assert.equal(value.connection.permissionMode,'inherit_crm');assert.deepEqual(value.connection.exclusions,input.exclusions);
+ const prepare=f.calls.find(c=>c.operation==='prepare');assert.equal(prepare.restrictions,undefined);assert.deepEqual(prepare.exclusions,input.exclusions);
+ assert.equal(f.calls.filter(c=>c.operation==='signIn').length,1);
+});
+
+test('inheritance prepare adapter uses v2 only and sends no legacy allowlist',async()=>{
+ const calls=[];const adapter=createSupabaseConnectionPreparation({url:'https://fixture.supabase.co',publishableKey:'sb_publishable_fixture',
+ fetch:async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return new Response(JSON.stringify({fixture:true}),{headers:{'content-type':'application/json'}});}});
+ await adapter.prepareConnection({accessToken:'BROWSER_ACCESS',organizationId:ids.org,permissionMode:'inherit_crm',exclusions:{read:['customers.view'],action:[]},scopeMode:'unrestricted',scopeIds:[]},{signal:new AbortController().signal});
+ assert(calls[0].url.endsWith('/hermes_prepare_connection_v2'));assert.deepEqual(calls[0].body,{p_org:ids.org,p_excluded_read:['customers.view'],p_excluded_action:[],p_scope_mode:'unrestricted',p_scope_ids:[]});
 });

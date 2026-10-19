@@ -1,5 +1,13 @@
 # Bản đồ năng lực CRM → Hermes (P0.06)
 
+## Cập nhật đích quyền và trạng thái — 19/10/2026
+
+**Quyền Hermes = quyền web của user − những quyền bị tắt trong cài đặt Hermes.** [Plan và audit §10](TINH-GON-KIEM-QUYEN.md) đang được hiện thực trong candidate; [STATUS](STATUS.md) giữ tiến độ kiểm, chưa áp runtime production. Mode kế thừa giữ giới hạn có chủ đích; bỏ cấp lại/kiểm lặp, giữ registry readiness và quyền/RLS/nghiệp vụ CRM thật. Không áp đặt 100 ms/cấm cache/epoch mọi RPC từ ý kiến audit khác. Allowlist cũ chuyển sang exclusions có bằng chứng. PII xét từng field/output/search; Network Center giữ tạm RLS khách, không gỡ theo web RPC DEFINER. Khóa chưa hỗ trợ không được coi là user đã tắt.
+
+Source thực thi `81c49363`: 52 khóa đọc + 11 khóa thao tác khai báo; ba khóa Wave2 chưa có báo cáo giữ tắt. Wave2 có 70 báo cáo qua hai tool; số khóa, số tool và số báo cáo là ba đơn vị khác nhau. Theo bàn giao sáng 19/10, đợt 2 và #217 đã production; connection mới có 48 + 11 khóa, thấy 69 báo cáo, đã ghép Zalo nhưng chưa nghiệm thu đợt 2 qua Zalo. Đây là báo cáo vận hành, không là số đo live mới của phiên khảo sát.
+
+Các nhãn “chưa gắn broker”, “chưa áp” và “chưa đo” trong các mục snapshot cũ phải đối chiếu [STATUS](STATUS.md#cập-nhật-1910); không dùng chúng để bật quyền hoặc kết luận chức năng hiện đang thiếu. Parity còn phải rà superadmin, sổ quỹ/owner, dữ liệu không gắn tòa và PII che thêm riêng của Hermes. Ba reader khách/hợp đồng/hóa đơn đã có candidate shared core + fast RPC dưới cờ mặc định tắt; PostgreSQL local đã kiểm parity, đủ sáu migration đã áp TEST, chưa production/VPS. Không đổi marker production `mirrored` thành `rpc` chỉ bằng sửa tài liệu.
+
 Snapshot 15/10/2026, nhánh gói E từ `0991db1a`; cập nhật 18/10/2026 (Gói Z) cho đợt 2 đọc đầy đủ — §2 cột Hermes/Disposition và §5.4. Đối chiếu [inventory](../../../tooling/hermes-crm-inventory.generated.json) schemaVersion 2 (67 tool, 32 action, 29 bề mặt UI) với source, migration và broker hiện có. Chỉ dựa trên repo: **chưa đo catalog/ACL TEST hay production**, chưa gọi PostgREST thật. Inventory là manifest Copilot, không phải cấu hình quyền; file này không cấp quyền hay bật capability nào.
 
 ## 1. Quy ước
@@ -157,11 +165,11 @@ Khoá v2 chưa nằm trong `HERMES_CAPABILITIES` (capability contract) nên chư
 
 Định nghĩa lại `public.hermes_org_policy_options_v5`, `public.hermes_connection_options_v5`, `public.hermes_connection_context_v5` (giữ chữ ký/ACL), bọc thêm `app_private.hermes_finance_extend_options_v1` cho 4 khoá đọc v2 và 2 khoá action. Người tích hợp gộp với hook song song khác thành một chuỗi.
 
-### 5.4 Đợt 2 đọc đầy đủ (Gói 0 + A–D + Z, 18/10/2026 — chưa áp TEST/production)
+### 5.4 Đợt 2 đọc đầy đủ (Gói 0 + A–D + Z — đã production 19/10/2026 theo bàn giao)
 
 - **Mặt tool:** hai tool meta `crm_read_report_list` (mục lục theo quyền lúc gọi) và `crm_read_report` (chạy một báo cáo) thay cho ~70 tool riêng; sổ báo cáo gom ở `infra/hermes-broker/wave2-registry.mjs` từ `wave2-{a,b,c,d}-contract.mjs`. 70 báo cáo, đều `private=true`: A thu tiền/công nợ/cọc 9, B sổ quỹ/KQKD/lợi nhuận/ví/biến động số dư 19, C xe/kho/thông báo/lương/Network Center 20, D BĐS/tài sản/danh mục/toà-phòng 22.
 - **Quyền:** cổng SQL `public.hermes_w2_read_v1` (INVOKER) → bước kiểm quyền DEFINER (CRM thật ∩ registry ∩ chính sách công ty ∩ Read kết nối ∩ overlay toà) → hàm đọc gói INVOKER dưới RLS người hỏi → bước kết thúc rào đầu ra (toà/sổ/công ty mọi hàng, phân trang, trần 2000 hàng). Ngoại lệ nền đã duyệt: [CODEBASE_STRUCTURE.md](../../CODEBASE_STRUCTURE.md#công-thức-dùng-chung).
-- **Công tắc:** `20261018090000_hermes_w2_enable_v1` bật 32 khoá (khoá của ít nhất một báo cáo + khoá phụ `income_expenses.restricted_view`); giữ tắt `reports_finance.deposits_report`, `reports_finance.handover_report`, `reports_finance.collection_cycle` (chưa có báo cáo). Khoá đợt 1 dùng lại (`invoices.view`, `deposits.view`, `reports_finance.analysis`, `assets.view`, `services.view`, `rooms.view`) đã bật từ 16/10: báo cáo dùng chúng sống ngay khi phát hành SQL + connector. Chủ phải tạo lại kết nối (và liên kết lại Zalo) để kết nối nhận khoá mới.
+- **Công tắc:** `20261018090000_hermes_w2_enable_v1` bật 32 khoá (khoá của ít nhất một báo cáo + khoá phụ `income_expenses.restricted_view`); giữ tắt `reports_finance.deposits_report`, `reports_finance.handover_report`, `reports_finance.collection_cycle` (chưa có báo cáo). Khoá đợt 1 dùng lại (`invoices.view`, `deposits.view`, `reports_finance.analysis`, `assets.view`, `services.view`, `rooms.view`) đã bật từ 16/10. Hợp đồng overlay hiện hành cần connection mới để nhận khóa mới; bàn giao sáng 19/10 ghi đã tạo và ghép lại. Đích TG2/TG4 sẽ kế thừa quyền web và giữ binding khi đổi quyền, chưa triển khai.
 - **Thứ tự áp:** nền `20261018000000 → 000500 → 000600 → 000700`; A `010000 → 010100`; B `020050 → 020200 → 020250 → 020300`; C `030100 → 030200 → 030300 → 030400 → 030500 → 030600`; D `040000 → 040100 → 040200 → 040300`; Z sửa tích hợp `080000` (hàm dùng chung) `→ 080100 → 080200 → 080300` (hàm đọc A, B, D); công tắc `090000`.
 - **Riêng tư / tin nhóm:** như đợt 1, rào là cấu trúc (kênh Zalo cá nhân chỉ DM với người đã ghép; mọi tool gửi nhóm chỉ nhận ID/tuỳ chọn có khuôn, thân tin do broker/SQL dựng từ dữ liệu phòng công khai), cộng `PRIVATE_HINT` trong mô tả tool. Không có rào runtime đọc cờ `private`; test `wave2-z.test.mjs` khoá rào cấu trúc. Chữ tự do Hermes ghi ra trang công khai (`crm_room_pass_upsert`: tên/SĐT/chính sách sale) luôn qua xác nhận hai bước do broker ép (`public-text-guard.mjs`).
 

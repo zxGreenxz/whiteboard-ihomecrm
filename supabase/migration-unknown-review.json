@@ -873,6 +873,136 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql": {
+      "sha256": "1375fe0532047d9925a951c8dddbd2f3cf9496cdc9e16990d2958b686133bd94",
+      "missingObjects": [
+        "function:app_private.hermes_metadata_org_allowed_v1",
+        "function:app_private.hermes_metadata_member_v1",
+        "function:app_private.hermes_metadata_domain_grant_v1",
+        "function:app_private.hermes_metadata_w2_grant_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_metadata_org_allowed_v1(p_org uuid,p_key text)\nCREATE OR REPLACE FUNCTION app_private.hermes_metadata_member_v1(p_user uuid,p_org uuid)\nCREATE OR REPLACE FUNCTION app_private.hermes_metadata_domain_grant_v1(p_org uuid,p_key text,p_enabled boolean,p_context jsonb)\nCREATE OR REPLACE FUNCTION app_private.hermes_metadata_w2_grant_v1(p_org uuid,p_key text,p_enabled boolean,p_context jsonb,p_member jsonb)"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
+    },
+    "supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql": {
+      "sha256": "22ebceef4c703372695ad9307257c15b59cafa43bdea15a5d5b49a02e68e052c",
+      "missingObjects": [
+        "function:app_private.hermes_project_connection_limits_v2",
+        "function:app_private.hermes_refresh_scope_projection_v2",
+        "function:app_private.hermes_refresh_scope_update_projection_v2",
+        "function:app_private.hermes_refresh_registry_projection_v2",
+        "function:app_private.hermes_validate_exclusions_v2"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_connection_json_v1(p_row app_private.hermes_connections)\nCREATE OR REPLACE FUNCTION app_private.hermes_project_connection_limits_v2()\nCREATE OR REPLACE FUNCTION app_private.hermes_refresh_scope_projection_v2()\nCREATE OR REPLACE FUNCTION app_private.hermes_refresh_scope_update_projection_v2()"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
+    },
+    "supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql": {
+      "sha256": "ad22b5c51df7533f35cc178bf1146a57915b5e210ecaf01d2969664d2f9d649c",
+      "missingObjects": [
+        "table:app_private.hermes_zalo_active_credentials",
+        "table:app_private.hermes_zalo_provisioning_queue",
+        "function:app_private.hermes_zalo_project_credential_v1",
+        "function:app_private.hermes_zalo_enqueue_provisioning_v1",
+        "function:app_private.hermes_zalo_provisioning_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_zalo_active_credentials (\nCREATE OR REPLACE FUNCTION app_private.hermes_zalo_project_credential_v1()\nCREATE OR REPLACE FUNCTION app_private.hermes_zalo_context_v1(p_connection uuid,p_user uuid,p_org uuid,p_epoch bigint)\nCREATE OR REPLACE FUNCTION public.hermes_zalo_binding_v1(p jsonb)"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
+    },
+    "supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql": {
+      "sha256": "1b7bbe8a90cba0d75b657189aa94b40c26525738925bbfaa7d312881a0749747",
+      "missingObjects": [
+        "function:public.customer_list_core_v1",
+        "function:public.hermes_read_text_v1",
+        "function:public.contract_list_core_v1",
+        "function:public.invoice_list_core_v1",
+        "function:app_private.hermes_domain_read_rows_fast_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.customer_list_core_v1(\nCREATE OR REPLACE FUNCTION public.hermes_read_text_v1(p_text text)\nCREATE OR REPLACE FUNCTION public.customer_list_v1(\nCREATE OR REPLACE FUNCTION public.contract_list_core_v1("
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
+    },
+    "supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql": {
+      "sha256": "543055ab7b85b6d33408df75df361edfc023d9ca159828e984ff0dd3e64312ff",
+      "missingObjects": [
+        "function:app_private.hermes_domain_read_scope_fast_v1",
+        "function:public.hermes_domain_read_fast_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_domain_read_scope_fast_v1(p_binding jsonb,p_domain text,p_input jsonb,p_caller text)\nCREATE OR REPLACE FUNCTION public.hermes_domain_read_fast_v1(p_binding jsonb,p_domain text,p_input jsonb)"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
+    },
+    "supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql": {
+      "sha256": "5c537c32c6f87b59a60b840827b2e44b6fdf9b488ffffd1bb8398259fb77d6ca",
+      "missingObjects": [
+        "function:public.vehicles_list_core_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới của candidate tinh giản Hermes 19/10/2026, chưa chạy production. Object vắng mặt là trạng thái triển khai có chủ đích, không phải suy đoán đã chạy hoặc bị DROP. SQL/auth và runtime đã được review độc lập; fixture PostgreSQL17 kiểm quyền/RLS/lock, parity và mutation đúng scope. Chưa coi fixture là PostgREST/VPS hoặc bằng chứng apply. Phải đi forward lane TEST/JWT rồi production với backup/catalog/evidence theo Contract. readFastPath mặc định false trước schema. Khi apply xong cập nhật provenance và dọn hồ sơ thừa.",
+      "raSoatBoi": "Codex — đối chiếu source/candidate, review SQL-auth Astra high và runtime Astra high 19/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_w2_scope_v1(p_binding jsonb,p_domain text,p_input jsonb,p_caller text)\nCREATE OR REPLACE FUNCTION app_private.hermes_w2a_read_v1(p_report text,p_params jsonb,p_ctx jsonb)\nCREATE OR REPLACE FUNCTION public.vehicles_list_core_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,\nCREATE OR REPLACE FUNCTION public.vehicles_list_v1(p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL,"
+        },
+        {
+          "duong_dan": "docs/plans/hermes-crm/STATUS.md",
+          "trich_doan": "Trạng thái: chủ đã yêu cầu hiện thực toàn bộ plan; đang triển khai candidate, chưa áp DB/VPS/production."
+        }
+      ]
     }
   }
 }

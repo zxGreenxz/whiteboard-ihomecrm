@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { validateNativeProvisioningConfiguration } from '../hermes-zalo-native/profile-provisioning.mjs';
 
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const fail = () => { throw new Error('host_config_invalid'); };
@@ -87,8 +88,8 @@ function httpList(values, origin) {
 // Safe connector defaults: per-connection sliding windows, a whole-invocation
 // deadline with headroom for slow whole-company CRM reads yet below the Hermes
 // MCP client timeout (30 s documented profile), and a short maintenance wait.
-// Revocation is unaffected: every call still re-reads authority at admission
-// and again after its audit, whatever the deadline.
+// The separately opted-in private read lane uses a bounded discovery catalog
+// and current business SQL; all other operations retain their admission checks.
 const CONNECTOR_LIMITS = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinute: 30, callTimeoutMs: 20_000, maintenanceWaitMs: 5000 });
 function connectorLimits(value) {
   if (value === undefined) return CONNECTOR_LIMITS;
@@ -117,7 +118,8 @@ export async function loadHostConfiguration(configPath) {
     let input;
     try { input = parse(bytes); } finally { bytes.fill(0); }
     if (input?.version !== 2 || input?.mode !== 'connector') fail();
-    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits']);
+    exact(input, ['version', 'mode', 'supabase', 'store', 'encryption', 'http', 'stateRoot', 'listenPort'], ['limits', 'zaloProvisioning', 'readFastPath']);
+    if (Object.hasOwn(input, 'readFastPath') && typeof input.readFastPath !== 'boolean') fail();
     const limits = connectorLimits(input.limits);
     exact(input.supabase, ['url', 'publishableKey']); exact(input.store, ['projectRef', 'host', 'role', 'passwordFile'], ['caFile']);
     exact(input.encryption, ['activeKeyVersion', 'keys']); exact(input.http, ['allowedHosts', 'allowedOrigins']);
@@ -160,10 +162,15 @@ export async function loadHostConfiguration(configPath) {
       const material = await privateRead(ref.file, 32); owned.push(material);
       if (material.length !== 32) fail(); keys.set(ref.version, material);
     }
+    const zaloProvisioning=input.zaloProvisioning===undefined?undefined:validateNativeProvisioningConfiguration(input.zaloProvisioning);
+    if(zaloProvisioning) for(const target of [zaloProvisioning.configFile,zaloProvisioning.stateRoot,...zaloProvisioning.profiles.map(row=>row.home)]) {
+      if(inside(paths.handoffDirectory,target)||inside(target,paths.handoffDirectory))fail();
+    }
     let disposed = false;
     return Object.freeze({ supabase: Object.freeze({ url: url.origin, publishableKey: input.supabase.publishableKey }),
       store: Object.freeze({ projectRef, host, role, password, ...(ca === undefined ? {} : { ca }) }),
-      encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, mode: 'connector', limits, listenPort: input.listenPort,
+      encryption: Object.freeze({ activeKeyVersion, keys }), http, paths, ...(zaloProvisioning===undefined?{}:{zaloProvisioning}),
+      ...(input.readFastPath === undefined ? {} : { readFastPath: input.readFastPath }), mode: 'connector', limits, listenPort: input.listenPort,
       dispose() { if (disposed) return; disposed = true; for (const material of owned) material.fill(0); keys.clear(); },
     });
   } catch { for (const material of owned) material.fill(0); keys.clear(); fail(); }

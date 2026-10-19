@@ -1,5 +1,17 @@
 # Bàn giao Hermes × iHomeCRM
 
+## Cập nhật yêu cầu và khảo sát tinh giản — 19/10/2026
+
+**Đã khảo sát/audit, chủ đã yêu cầu hiện thực toàn bộ plan; candidate đang kiểm, đủ sáu migration đã áp TEST; chưa áp VPS/production. Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes.** Giữ tắt/bật lại trên connection hiện có trong giới hạn CRM/trần công ty, ghi audit thay đổi; tinh giản cấp lại gần 60 ô và kiểm lặp. Chấp nhận lượt đọc đã nhận hoàn tất và độ trễ cập nhật quyền vài phút; bỏ hai kiểm cuối đọc phòng. Superadmin quản lý/ngắt runtime tại VPS, nút Thu hồi web vẫn giữ.
+
+Checkpoint: TG-L PostgREST/JWT TEST thật đạt 46/46; đủ sáu migration TEST, đang kiểm cả candidate. Local gate lượt hai 66/67; delta sửa bộ kiểm Node native/parser đã review, chờ chạy lại gate chính. SSH đã hoạt động; baseline direct broker DEMO list/options/status trung vị 2,73/5,06/2,67 giây. Ba lỗi có sửa trong candidate, chưa có số đo sau triển khai hoặc nghiệm thu Zalo. Native generation chưa có API/receipt xác nhận, cấu hình đã cập nhật vẫn hiện restart_pending. Tiến độ và giới hạn mới nhất ở [STATUS](STATUS.md); các mục vận hành bên dưới mô tả bản production cũ.
+
+**Làm rõ sau audit:** §9 của báo cáo là đề xuất agent khác, không phải quyết định của chủ. Không áp đặt thu hồi 100 ms, cấm cache hoặc thêm epoch vào mọi RPC. Giữ quyền/RLS vốn có của CRM; kiểm phần tắt Hermes một lần. Xác nhận chữ công khai: đang đề nghị giữ tạm đúng luồng hiện có, chưa được chủ chốt giữ/bỏ. PII xét từng trường; Network Center cần giữ rào RLS khách tới khi chuẩn hóa nguồn chung. [Kết luận audit §10](TINH-GON-KIEM-QUYEN.md#10-kết-quả-audit-lại-và-đề-nghị-thực-hiện).
+
+[Báo cáo, sơ đồ thao tác và plan TG0–TG7](TINH-GON-KIEM-QUYEN.md) ghi đủ tám lớp, phần bỏ/gộp/giữ và bằng chứng. **Cả ba lỗi đã biết thuộc phạm vi này:** báo “Chưa đọc được…” lúc tải, API connections mất 7–9 giây theo báo cáo vận hành, link Zalo khó dùng. Source xác nhận loading/error bị gộp, tải hai đợt, quản trị và link dựng full quyền trước/sau. Candidate đã sửa các đường này; chưa đo lại tốc độ và nghiệm thu link trên VPS.
+
+Agent tiếp theo theo thứ tự §7: TG1 UI/API nhẹ; TG-L metadata không khóa và TG3a/m bỏ hai kiểm cuối/maintenance; TG2 exclusions; TG4 link; TG3b/TG5 gom RPC và parity theo từng họ. Không xóa helper khóa writer toàn CRM; Sidebar/báo cáo tài chính nghiệm thu riêng. Ghép Zalo theo assistant ổn định; hiện production vẫn dùng connection binding. Các hướng dẫn bên dưới mô tả **hệ thống đang chạy**. Không tự chuyển connection, thu hồi, deploy hoặc đánh dấu nghiệm thu từ bản plan này. [Tiến độ](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910).
+
 Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật sáng 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 
 ## 1. Hermes đang chạy thế nào

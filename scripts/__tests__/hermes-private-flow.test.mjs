@@ -359,6 +359,9 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
     .matchAll(/(\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\$)([\s\S]*?)\1/g)].map(match => [sha(match[2]), match[2]])));
   const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path))
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item]));
+  const volatility = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').matchAll(
+    /CREATE OR REPLACE FUNCTION ((?:public|app_private)\.hermes_\w+)\([^)]*\)[\s\S]*?LANGUAGE \w+ (STABLE|VOLATILE|IMMUTABLE)/g)]
+    .map(match => [match[1], { STABLE: 's', VOLATILE: 'v', IMMUTABLE: 'i' }[match[2]]])));
   const calls = [];
   const mock = { calls, async connect() { return { query: mock.query, release() {} }; }, async query(sql, parameters = []) {
     calls.push({ sql, parameters });
@@ -367,7 +370,7 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
       const requested = new Set(Array.isArray(parameters[0]) ? parameters[0] : []);
       return { rows: [...TASK_FUNCTIONS, ...CUSTOMER_FUNCTIONS].filter(spec => requested.size === 0 || requested.has(spec.name)).map(spec => ({
       name: spec.name, signature: spec.signature, owner: 'postgres', language: spec.language, prosecdef: spec.definer,
-      provolatile: 'v', proparallel: 'u', proleakproof: false, proisstrict: false,
+      provolatile: volatility.get(spec.name), proparallel: 'u', proleakproof: false, proisstrict: false,
       proconfig: ['search_path=' + spec.searchPath.replaceAll(',', ', ')],
       arguments: spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item => item.trim()).join(', '),
       result: spec.name === 'app_private.hermes_task_assignee_member_v1' ? 'boolean' : 'jsonb',
@@ -734,5 +737,20 @@ test('Hermes function attributes come from the last reviewed CREATE statement',(
   assert.deepEqual(attributes.get('app_private.hermes_task_follow_apply_v1'),{definer:false,searchPath:'pg_catalog,public'});
   assert.deepEqual(attributes.get('app_private.hermes_schedule_message_v1'),{definer:false,searchPath:'pg_catalog'});
   assert.deepEqual(attributes.get('app_private.hermes_work_memory_int_v1'),{definer:true,searchPath:'pg_catalog'});
-  assert.ok([...attributes.values()].every(item=>item.searchPath?.startsWith('pg_catalog')));
+  assert.deepEqual([...attributes].filter(([,item])=>item.searchPath==='').map(([name])=>name).sort(),
+    ['app_private.hermes_domain_read_rows_fast_v1','public.hermes_read_text_v1']);
+  assert.ok([...attributes.values()].every(item=>item.searchPath===''||item.searchPath?.startsWith('pg_catalog')));
+});
+
+test('shared read source is fingerprinted and empty paths require exact reviewed function, file and bytes',()=>{
+  const path='supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql';
+  const source=migrationSources().find(item=>item.path===path);assert(source);
+  assert.match(captureSourceIdentity()[path],/^[a-f0-9]{64}$/);
+  const text=source.bytes.toString('utf8');
+  for(const changed of [
+    {...source,path:path.replace('crm_shared_read_cores','unreviewed')},
+    {...source,bytes:Buffer.from(text.replace('public.hermes_read_text_v1(p_text text)','public.hermes_unreviewed_text_v1(p_text text)'))},
+    {...source,bytes:Buffer.from(text.replace('SELECT left(regexp_replace','SELECT  left(regexp_replace'))},
+    {...source,bytes:Buffer.from(text.replace('IMMUTABLE PARALLEL SAFE SECURITY INVOKER','IMMUTABLE PARALLEL SAFE SECURITY DEFINER'))},
+  ])assert.throws(()=>hermesFunctionAttributes([changed]),{code:'live_schema_empty_path_unreviewed'});
 });

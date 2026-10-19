@@ -45,7 +45,7 @@ export function createZaloBindingPorts({ auth, url, publishableKey, fetch: reque
     if (base.protocol !== 'https:' || base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error();
     endpoint = new URL('/rest/v1/rpc/hermes_zalo_binding_v1', base).href;
   } catch { throw new TypeError('invalid_binding_adapter'); }
-  if (typeof auth?.verifySession !== 'function' || typeof auth?.readAuthorization !== 'function' ||
+  if (typeof auth?.verifySession !== 'function' ||
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) ||
       typeof request !== 'function' || typeof clock !== 'function') throw new TypeError('invalid_binding_adapter');
   const now = () => { const value = clock(); if (!positive(value)) fail('backend_unavailable'); return value; };
@@ -62,20 +62,9 @@ export function createZaloBindingPorts({ auth, url, publishableKey, fetch: reque
         const raw = await auth.verifySession({ accessToken, signal });
         if (signal.aborted) fail('cancelled');
         if (!raw || !id(raw.userId) || !id(raw.sessionId) || !positive(raw.expiresAt) || raw.expiresAt <= now()) fail('reauthentication_required');
-        const session = { userId: raw.userId, sessionId: raw.sessionId, expiresAt: raw.expiresAt };
-        const context = await auth.readAuthorization({ accessToken, userId: session.userId, organizationId, signal });
-        if (signal.aborted) fail('cancelled');
-        const time = now(), member = context?.membership, orgs = context?.activeOrganizationIds;
-        if (session.expiresAt <= time) fail('reauthentication_required');
-        if (context?.userId !== session.userId || typeof context.isSuperadmin !== 'boolean' ||
-            !Array.isArray(orgs) || orgs.length > 256 || !orgs.every(id) || new Set(orgs).size !== orgs.length ||
-            !orgs.includes(organizationId) || !context.isSuperadmin && orgs.length !== 1 ||
-            !member || member.organizationId !== organizationId || member.status !== 'ACTIVE' || member.revokedAt !== null ||
-            !id(member.membershipId) || !positive(member.authorizationVersion) ||
-            !(member.validFrom === null || positive(member.validFrom) && member.validFrom <= time) ||
-            !(member.validTo === null || positive(member.validTo) && member.validTo > time)) fail('forbidden');
-        return Object.freeze({ userId: session.userId, organizationId, membershipId: member.membershipId,
-          authorizationVersion: member.authorizationVersion, sessionId: session.sessionId });
+        // The caller-JWT SQL function validates the selected organization and
+        // membership. Building all CRM capabilities here duplicates that work.
+        return Object.freeze({ userId: raw.userId, organizationId, sessionId: raw.sessionId });
       } catch (error) {
         if (error instanceof ZaloBindingError) throw error;
         if (error instanceof BrokerError && error.code === 'unauthorized') fail('reauthentication_required');
@@ -86,7 +75,7 @@ export function createZaloBindingPorts({ auth, url, publishableKey, fetch: reque
     async rpc({ accessToken, functionName, args, signal } = {}) {
       validate({ accessToken, signal }, false);
       if (functionName !== 'hermes_zalo_binding_v1' || !args || Object.keys(args).length !== 1 || !args.p ||
-          !['bots','manageBots','setBot','begin','status','confirm','unlink','list'].includes(args.p.operation)) fail('invalid_request');
+          !['bots','manageBots','setBot','selectCredential','begin','status','confirm','unlink','list'].includes(args.p.operation)) fail('invalid_request');
       const body = JSON.stringify(args);
       if (Buffer.byteLength(body) > 4096) fail('invalid_request');
       let response;

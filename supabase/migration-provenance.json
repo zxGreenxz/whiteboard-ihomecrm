@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-18T19:49:15.050Z",
+  "generatedAt": "2026-10-19T04:26:19.452Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 766,
-    "unknown": 80,
+    "unknown": 86,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12287,6 +12287,94 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-18T19:49:07.144Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql",
+      "version": "20261019034254",
+      "name": "hermes_metadata_read_snapshot_v1",
+      "scheme": "timestamp14",
+      "sha256": "1375fe0532047d9925a951c8dddbd2f3cf9496cdc9e16990d2958b686133bd94",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_metadata_org_allowed_v1",
+        "function:app_private.hermes_metadata_member_v1",
+        "function:app_private.hermes_metadata_domain_grant_v1",
+        "function:app_private.hermes_metadata_w2_grant_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql",
+      "version": "20261019034754",
+      "name": "hermes_inherit_crm_limits_v1",
+      "scheme": "timestamp14",
+      "sha256": "22ebceef4c703372695ad9307257c15b59cafa43bdea15a5d5b49a02e68e052c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_project_connection_limits_v2",
+        "function:app_private.hermes_refresh_scope_projection_v2",
+        "function:app_private.hermes_refresh_scope_update_projection_v2",
+        "function:app_private.hermes_refresh_registry_projection_v2",
+        "function:app_private.hermes_validate_exclusions_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019034850_hermes_zalo_stable_binding_v1.sql",
+      "version": "20261019034850",
+      "name": "hermes_zalo_stable_binding_v1",
+      "scheme": "timestamp14",
+      "sha256": "ad22b5c51df7533f35cc178bf1146a57915b5e210ecaf01d2969664d2f9d649c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_zalo_active_credentials",
+        "table:app_private.hermes_zalo_provisioning_queue",
+        "function:app_private.hermes_zalo_project_credential_v1",
+        "function:app_private.hermes_zalo_enqueue_provisioning_v1",
+        "function:app_private.hermes_zalo_provisioning_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql",
+      "version": "20261019040055",
+      "name": "crm_shared_read_cores_v1",
+      "scheme": "timestamp14",
+      "sha256": "1b7bbe8a90cba0d75b657189aa94b40c26525738925bbfaa7d312881a0749747",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.customer_list_core_v1",
+        "function:public.hermes_read_text_v1",
+        "function:public.contract_list_core_v1",
+        "function:public.invoice_list_core_v1",
+        "function:app_private.hermes_domain_read_rows_fast_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql",
+      "version": "20261019040111",
+      "name": "hermes_domain_read_fast_v1",
+      "scheme": "timestamp14",
+      "sha256": "543055ab7b85b6d33408df75df361edfc023d9ca159828e984ff0dd3e64312ff",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.hermes_domain_read_scope_fast_v1",
+        "function:public.hermes_domain_read_fast_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql",
+      "version": "20261019040948",
+      "name": "hermes_copied_text_parity_v1",
+      "scheme": "timestamp14",
+      "sha256": "5c537c32c6f87b59a60b840827b2e44b6fdf9b488ffffd1bb8398259fb77d6ca",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.vehicles_list_core_v1"
       ]
     },
     {

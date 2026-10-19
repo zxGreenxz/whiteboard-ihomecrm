@@ -41,9 +41,9 @@ function fixture(handler, clock = () => now) {
   return { store, calls, controller, options: { signal: controller.signal } };
 }
 
-test('only five fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
+test('only six fixed connection operations exist; activation is one atomic encrypted bundle', async () => {
   const f = fixture(), input = activation();
-  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'renewConnection', 'restrictConnection', 'revokeConnection']);
+  assert.deepEqual(Object.keys(f.store).sort(), ['activate', 'readConnection', 'renewConnection', 'restrictConnection', 'revokeConnection', 'updateConnectionSettings']);
   assert.deepEqual(await f.store.activate(input, f.options), activationReply());
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0], { operation: 'activate', signal: f.controller.signal, payload: {
@@ -298,4 +298,18 @@ test('renewal snapshots its scalar CAS tuple and does not accept success after c
     else assert.deepEqual(await pending, renewalReply());
     assert.deepEqual(f.calls[0].payload, renewal()); assert.equal(f.calls.length, 1);
   }
+});
+
+
+test('settings re-enable on the same connection is one CAS and never mints a credential; malformed ACK stays unknown',async()=>{
+ const previous={...connection(),permissionMode:'inherit_crm',scopeMode:'unrestricted',exclusions:{read:['rooms.view'],action:[]}};
+ const input={connection:previous,permissionMode:'inherit_crm',exclusions:{read:[],action:[]},scopeMode:'unrestricted',scopeIds:[]};
+ const reply={ok:true,connection:{...previous,epoch:3,exclusions:{read:[],action:[]},restrictions:{read:['assistant.context.read','rooms.view'],action:[]}}};
+ const f=fixture(()=>structuredClone(reply));assert.deepEqual(await f.store.updateConnectionSettings(input,f.options),reply);
+ assert.deepEqual(f.calls[0].payload,{connectionId:ids.connection,expectedEpoch:2,permissionMode:'inherit_crm',exclusions:{read:[],action:[]},scopeMode:'unrestricted',scopeIds:[]});
+ await assert.rejects(f.store.restrictConnection({connection:previous,restrictions:{read:[],action:[]},scopeIds:[]},f.options),code('connection_store_request_invalid'));
+ const malformed=fixture(()=>({...reply,connection:{...reply.connection,epoch:2}}));
+ await assert.rejects(malformed.store.updateConnectionSettings(input,malformed.options),code('store_outcome_unknown'));assert.equal(malformed.calls.length,1);
+ const lost=fixture(()=>{throw new StoreTransportError('store_outcome_unknown');});
+ await assert.rejects(lost.store.updateConnectionSettings(input,lost.options),code('store_outcome_unknown'));assert.equal(lost.calls.length,1);
 });

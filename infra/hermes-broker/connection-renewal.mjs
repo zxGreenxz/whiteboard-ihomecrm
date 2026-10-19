@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { DurableConnectionStoreError } from './durable-connection-store.mjs';
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -57,7 +58,7 @@ function joined(value, initial, tokenDigest, now) {
   if (value === null) fail('unauthorized');
   if (!exact(value, ['status', 'connection', 'session', 'membership', 'policy']) || value.status !== 'active') fail('backend_unavailable');
   const { connection: row, session, membership, policy } = value;
-  if (!exact(row, ['id', 'assistantId', 'userId', 'organizationId', 'state', 'epoch', 'expiresAt', 'restrictions', 'scopeIds', 'tokenDigest', 'credentialRef']) ||
+  if (!permissionShape(row, ['id', 'assistantId', 'userId', 'organizationId', 'state', 'epoch', 'expiresAt', 'restrictions', 'scopeIds', 'tokenDigest', 'credentialRef']) ||
       !id(row.credentialRef) || row.tokenDigest !== tokenDigest || !positive(row.expiresAt) ||
       !exact(session, ['credentialRef', 'revision', 'expiresAt', 'binding', 'envelope']) || session.credentialRef !== row.credentialRef ||
       !positive(session.revision) || !positive(session.expiresAt) || !exact(session.binding, ['assistantId', 'userId', 'organizationId', 'sessionId']) ||
@@ -72,7 +73,8 @@ function joined(value, initial, tokenDigest, now) {
   if (['id', 'assistantId', 'userId', 'organizationId', 'state', 'epoch'].some(key => row[key] !== owner[key]) ||
       ['assistantId', 'userId', 'organizationId'].some(key => session.binding[key] !== owner[key]) ||
       !same(permissions(row.restrictions), owner.restrictions)) fail('context_changed');
-  const stable = { connection: { ...owner, tokenDigest, credentialRef: row.credentialRef, scopeIds: list(row.scopeIds, id) },
+  const stable = { connection: { ...owner, ...connectionPermissionSettings(row, permissions, () => fail('backend_unavailable')),
+      tokenDigest, credentialRef: row.credentialRef, scopeIds: list(row.scopeIds, id) },
     session: { credentialRef: session.credentialRef, revision: session.revision, expiresAt: session.expiresAt,
       binding: { assistantId: session.binding.assistantId, userId: session.binding.userId, organizationId: session.binding.organizationId, sessionId: session.binding.sessionId },
       envelope: Object.fromEntries(['v', 'algorithm', 'keyVersion', 'nonce', 'ciphertext', 'tag'].map(key => [key, session.envelope[key]])) },
