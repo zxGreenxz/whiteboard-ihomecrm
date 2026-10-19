@@ -261,8 +261,8 @@ export function planFromGit({ root, mode = "staged", base, head = "HEAD", full =
     const receipts = entries.filter((e) => e.path.startsWith(`${LOCAL_E2E_EVIDENCE_DIR}/`) && e.path.endsWith(".json")).map((e) => {
       try { return { path: e.path, receipt: JSON.parse(read(tree, e.path)) }; } catch { return { path: e.path, receipt: null }; }
     });
-    const { fleetTreeOf, resolveCommit } = gitFleetResolver(git, target);
-    p = applyLocalE2eEvidence(p, { receipts, planFleetTree: fleetTreeOf(tree), resolveCommit });
+    const { fleetTreeOf, resolveCommit, isAncestorCommit } = gitFleetResolver(git, target);
+    p = applyLocalE2eEvidence(p, { receipts, planFleetTree: fleetTreeOf(tree), resolveCommit, isAncestorCommit });
   }
   for (const obligation of p.requiredExternalWorkflows) {
     const workflow = yaml.load(read(tree, obligation.workflow));

@@ -10,7 +10,7 @@ import {
   LOCAL_E2E_EVIDENCE_DIR, PROD_SUPABASE_REF, TEST_SUPABASE_REF, applyLocalE2eEvidence, classifyTarget, createLocalE2eReceipt,
   describeLocalEvidence, summarizePlaywrightReport, validateLocalE2eReceipt,
 } from "../lib/gate-e2e-local-evidence.mjs";
-import { dirtyEntries, extractBuildSha, extractSupabaseRefs, probeTarget, referencedScripts, verifyTestTarget } from "../lib/e2e-fleet-runner.mjs";
+import { dirtyEntries, extractBuildSha, extractSupabaseRefs, probeTarget, referencedScripts, resolveRunAgent, verifyTestTarget, worktreeDirt } from "../lib/e2e-fleet-runner.mjs";
 
 const SPEC_A = ".e2e-fleet/specs/fixture-room-a.spec.ts";
 const SPEC_B = ".e2e-fleet/specs/fixture-room-b.spec.ts";
@@ -20,7 +20,7 @@ const OTHER_TREE = "f".repeat(40);
 const NOW = Date.parse("2026-10-19T10:00:00Z");
 const COMMITTED = Date.parse("2026-10-19T08:00:00Z");
 const row = (file, patch = {}) => ({ file, tests: 3, passed: 3, failed: 0, skipped: 0, flaky: 0, ...patch });
-const IDENTITY = { targetSupabaseRef: TEST_SUPABASE_REF, targetBuildSha: null, actor: { gitUser: "Fixture", host: "fixture-host" }, reportSha256: "a".repeat(64) };
+const IDENTITY = { targetSupabaseRef: TEST_SUPABASE_REF, targetBuildSha: null, actor: { gitUser: "Fixture", agent: "claude" }, reportSha256: "a".repeat(64) };
 const receipt = (specs = [row(SPEC_A)], patch = {}) => ({
   ...createLocalE2eReceipt({
     commit: COMMIT, fleetTree: TREE, target: { kind: "loopback", origin: "http://localhost:8080" }, ...IDENTITY,
@@ -59,12 +59,16 @@ describe("local E2E receipt satisfies only an exact, fully green fleet obligatio
     expect(validateLocalE2eReceipt(receipt(), context({ planFleetTree: OTHER_TREE })).problems).toContain("Fleet tree changed after the run");
     expect(apply([receipt()], [SPEC_A], { planFleetTree: null }).unavailable).toHaveLength(1);
   });
-  it("one red spec blocks, even when another green receipt at the same tree covers it", () => {
+  it("one red spec blocks, even when another green receipt of the same commit covers it", () => {
     const red = receipt([row(SPEC_A, { passed: 2, failed: 1 })]);
     expect(apply([red], [SPEC_A]).unavailable).toHaveLength(1);
     const p = apply([receipt(), red], [SPEC_A]);
     expect(p.unavailable).toHaveLength(1);
     expect(p.unavailable[0].localEvidence.failedReceipts).toEqual([`${LOCAL_E2E_EVIDENCE_DIR}/r1.json`]);
+    // A crashed run (status failed, rows green) is red for every spec it lists.
+    expect(apply([receipt(), receipt(undefined, { status: "failed" })], [SPEC_A]).unavailable).toHaveLength(1);
+    // A red receipt of an unrelated spec does not block this obligation.
+    expect(apply([receipt(), receipt([row(SPEC_B, { passed: 0, failed: 3 })])], [SPEC_A]).unavailable).toEqual([]);
     for (const patch of [{ skipped: 1, passed: 2 }, { flaky: 1, passed: 2 }, { tests: 0, passed: 0 }, { passed: 2 }]) {
       expect(apply([receipt([row(SPEC_A, patch)])], [SPEC_A]).unavailable).toHaveLength(1);
       // A hand-edited "passed" status cannot hide the row; it still blocks a green receipt.
@@ -73,6 +77,23 @@ describe("local E2E receipt satisfies only an exact, fully green fleet obligatio
       expect(apply([receipt(), lying], [SPEC_A]).unavailable).toHaveLength(1);
     }
     expect(apply([receipt(undefined, { status: "failed" })], [SPEC_A]).unavailable).toHaveLength(1);
+  });
+  it("a red receipt binds to its commit: a later fixed commit can turn it green, an older green cannot", () => {
+    const FIXED = "d".repeat(40); const OLDER = "b".repeat(40);
+    const lineage = { ...known, [FIXED]: { fleetTree: TREE, committedAt: COMMITTED, isAncestor: true }, [OLDER]: { fleetTree: TREE, committedAt: COMMITTED, isAncestor: true } };
+    // History: OLDER → COMMIT (red) → FIXED (app fixed, same fleet tree).
+    const isAncestorCommit = (a, b) => (a === OLDER && [COMMIT, FIXED].includes(b)) || (a === COMMIT && b === FIXED);
+    const red = receipt([row(SPEC_A, { passed: 2, failed: 1 })]);
+    const greenFixed = receipt(undefined, { commit: FIXED });
+    const greenOlder = receipt(undefined, { commit: OLDER });
+    const ctx = { resolveCommit: (sha) => lineage[sha] ?? null, isAncestorCommit };
+    expect(apply([red, greenFixed], [SPEC_A], ctx).unavailable).toEqual([]);
+    expect(apply([red, greenFixed], [SPEC_A], ctx).localEvidence[0].receipts.map((r) => r.commit)).toEqual([FIXED]);
+    expect(apply([red, greenOlder], [SPEC_A], ctx).unavailable).toHaveLength(1);
+    expect(apply([red, receipt()], [SPEC_A], ctx).unavailable).toHaveLength(1);
+    // A newer red supersedes a green that came before it.
+    const redFixed = receipt([row(SPEC_A, { passed: 0, failed: 3 })], { commit: FIXED });
+    expect(apply([receipt(), redFixed], [SPEC_A], ctx).unavailable).toHaveLength(1);
   });
   it("forged commit SHA or tree blocks", () => {
     expect(apply([receipt(undefined, { commit: "d".repeat(40) })], [SPEC_A]).unavailable).toHaveLength(1);
@@ -90,14 +111,14 @@ describe("local E2E receipt satisfies only an exact, fully green fleet obligatio
   });
   it("rejects non-TEST targets, extra fields and malformed receipts", () => {
     for (const patch of [
-      { environment: "PRODUCTION" }, { target: { kind: "loopback", origin: "https://ptcrm.vercel.app" } },
+      { status: "failed" }, { environment: "PRODUCTION" }, { target: { kind: "loopback", origin: "https://ptcrm.vercel.app" } },
       { target: { kind: "test-env-preview", origin: "https://ptcrm.vercel.app" } }, { token: "x" },
       { schemaVersion: 2 }, { suiteId: "voucher-detail-read-test" }, { completedAt: "2026-10-20T00:00:00.000Z" },
       { runId: "local" }, { specs: [] }, { specs: [{ ...row(SPEC_A), title: "x" }] }, { specs: [row(SPEC_A), row(SPEC_A)] },
       { specs: [row("src/foo.spec.ts")] }, { runner: { node: "v22", playwright: "1", password: "x" } },
       { targetSupabaseRef: PROD_SUPABASE_REF }, { targetSupabaseRef: "abcdefghijklmnopqrst" }, { targetSupabaseRef: undefined },
-      { targetBuildSha: "abc" }, { targetBuildSha: "A".repeat(40) }, { actor: { gitUser: "x" } }, { actor: { gitUser: "x", host: "h", email: "e" } },
-      { actor: { gitUser: "x\ny", host: "h" } }, { actor: { gitUser: "", host: "h" } }, { reportSha256: "a".repeat(63) }, { reportSha256: null },
+      { targetBuildSha: "abc" }, { targetBuildSha: "A".repeat(40) }, { actor: { gitUser: "x" } }, { actor: { gitUser: "x", agent: "human", host: "h" } },
+      { actor: { gitUser: "x\ny", agent: "human" } }, { actor: { gitUser: "", agent: "human" } }, { actor: { gitUser: "x", agent: "robot" } }, { actor: { gitUser: "x", host: "h" } }, { reportSha256: "a".repeat(63) }, { reportSha256: null },
     ]) expect(validateLocalE2eReceipt(receipt(undefined, patch), context()).valid, JSON.stringify(patch)).toBe(false);
     expect(validateLocalE2eReceipt(null, context()).valid).toBe(false);
     expect(apply([null], [SPEC_A]).unavailable).toHaveLength(1);
@@ -185,6 +206,35 @@ describe("runner helpers", () => {
     expect(dirtyEntries("")).toEqual([]);
     expect(dirtyEntries("\n")).toEqual([]);
     expect(dirtyEntries(" M src/a.ts\nA  b.ts\n?? c.txt\n")).toEqual([" M src/a.ts", "A  b.ts", "?? c.txt"]);
+  });
+  it("dirty check covers the whole repository, not only .e2e-fleet/", () => {
+    const fx = gitFixture();
+    const git = (...args) => execFileSync("git", args, { cwd: fx.root, encoding: "utf8" });
+    expect(worktreeDirt(git)).toEqual([]);
+    fx.put(".gitignore", "ignored.log\n"); fx.git("add", ".gitignore"); fx.git("commit", "-qm", "ignore");
+    fx.put("ignored.log", "x");
+    expect(worktreeDirt(git)).toEqual([]);
+    // Each kind of dirt lives OUTSIDE the fleet directory: app source, staged, untracked.
+    fx.put("tooling/risk-map.json", "{}");
+    fx.put("src/staged.ts", "export {}"); fx.git("add", "src/staged.ts");
+    fx.put("scripts/new/untracked.mjs", "export {}");
+    const dirt = worktreeDirt(git).join("\n");
+    expect(dirt).toMatch(/^ M tooling\/risk-map\.json$/m);
+    expect(dirt).toMatch(/^A  src\/staged\.ts$/m);
+    expect(dirt).toMatch(/^\?\? scripts\/new\/untracked\.mjs$/m);
+    // The runner must use this whole-repo check, not its own narrower git status.
+    const runner = readFileSync(new URL("../e2e-fleet-bien-nhan.mjs", import.meta.url), "utf8");
+    expect(runner).toContain("const dirty = () => worktreeDirt(git);");
+    expect(runner).not.toMatch(/['"]status['"]/);
+  });
+  it("records who ran it without the machine name", () => {
+    expect(resolveRunAgent({})).toBe("human");
+    expect(resolveRunAgent({ FLEET_AGENT: "Codex" })).toBe("codex");
+    expect(resolveRunAgent({ FLEET_AGENT: "human", CLAUDECODE: "1" })).toBe("human");
+    expect(resolveRunAgent({ CLAUDECODE: "1" })).toBe("claude");
+    expect(resolveRunAgent({ CODEX_SANDBOX: "seatbelt" })).toBe("codex");
+    expect(resolveRunAgent({ FLEET_AGENT: "robot" })).toBeNull();
+    expect(Object.keys(receipt().actor).sort()).toEqual(["agent", "gitUser"]);
   });
   it("reads the Supabase ref and build SHA the target really serves", () => {
     const test = `https://${TEST_SUPABASE_REF}.supabase.co`; const prod = `https://${PROD_SUPABASE_REF}.supabase.co`;
@@ -287,6 +337,20 @@ describe("planFromGit reads committed receipts from the planned snapshot", () =>
     fx.git("tag", "-a", "-m", "tag", "run-tag", "HEAD");
     writeReceipt(fx, "tag", { commit: fx.git("rev-parse", "run-tag") });
     expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
+  });
+  it("red receipt in Git history: blocks greens of its commit and older ones, a fixed later commit passes", () => {
+    const fx = gitFixture(); const base = fx.git("rev-parse", "HEAD");
+    fx.put(SPEC_A, "test('a2', () => {});\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "spec");
+    writeReceipt(fx, "1-green-old");
+    fx.put("src/app.ts", "export const broken = 1;\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "app change");
+    writeReceipt(fx, "2-red", { status: "failed", specs: [row(SPEC_A, { passed: 1, failed: 2 })] });
+    // The older green (ancestor of the red commit) no longer counts.
+    expect(fleetBlocked(planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" }))).toBe(true);
+    fx.put("src/app.ts", "export const fixed = 1;\n"); fx.git("add", "-A"); fx.git("commit", "-qm", "fix app");
+    writeReceipt(fx, "3-green-fixed");
+    const ok = planFromGit({ root: fx.root, mode: "commit", base, head: "HEAD" });
+    expect(fleetBlocked(ok)).toBe(false);
+    expect(ok.localEvidence[0].receipts.map((r) => r.path)).toEqual([`${LOCAL_E2E_EVIDENCE_DIR}/3-green-fixed.json`]);
   });
   it("staged mode reads receipt and fleet tree from the index, not from HEAD", () => {
     const fx = gitFixture(); const base = fx.git("rev-parse", "HEAD");

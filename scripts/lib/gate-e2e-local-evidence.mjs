@@ -16,9 +16,9 @@
 //     kỳ byte nào trong fleet sau lượt chạy ⇒ biên nhận vô hiệu, phải chạy lại.
 //   - Đích phải là project Supabase TEST: runner đọc ref thật từ HTML/JS của đích trước
 //     khi chạy (targetSupabaseRef); gate chỉ nhận ref TEST.
-//   - Mỗi spec trong biên nhận phải đạt hết (≥1 test, không failed/skipped/flaky); một
-//     biên nhận ở đúng tree hiện tại có spec bắt buộc bị đỏ thì CHẶN, kể cả khi có biên
-//     nhận xanh khác. Runner ghi cả biên nhận đỏ.
+//   - Mỗi spec trong biên nhận phải đạt hết (≥1 test, không failed/skipped/flaky). Runner
+//     ghi cả biên nhận đỏ; biên nhận đỏ vô hiệu biên nhận xanh của CÙNG commit và của
+//     commit cũ hơn nó — chạy lại tới khi xanh không gỡ được, sửa mã rồi chạy ở commit mới thì gỡ.
 //   - Chỉ suite trong LOCAL_E2E_SUITES được nhận; mọi nghĩa vụ khác giữ nguyên.
 //   - Khoá của biên nhận là danh sách trắng: không chỗ nào để nhét token/mật khẩu/dữ liệu
 //     khách; đích chỉ ghi origin (không path/query); report Playwright giữ ngoài repo,
@@ -50,7 +50,9 @@ const TOP_KEYS = ['actor', 'commit', 'completedAt', 'environment', 'fleetTree', 
 const SPEC_KEYS = ['failed', 'file', 'flaky', 'passed', 'skipped', 'tests'];
 const RUNNER_KEYS = ['node', 'playwright'];
 const TARGET_KEYS = ['kind', 'origin'];
-const ACTOR_KEYS = ['gitUser', 'host'];
+const ACTOR_KEYS = ['agent', 'gitUser'];
+// Ai chạy: tự khai qua FLEET_AGENT (hoặc env harness), không ghi tên máy vào repo PUBLIC.
+export const RUN_AGENTS = Object.freeze(['claude', 'codex', 'human']);
 // Web Preview nhánh test-env (host thật, ghim cả team slug) hoặc dev server loopback.
 // Origin chỉ là lớp đầu; lớp quyết định là targetSupabaseRef đọc từ chính đích.
 export const TARGETS = Object.freeze({
@@ -106,7 +108,7 @@ export function createLocalE2eReceipt({ commit, fleetTree, target, targetSupabas
     schemaVersion: 1, kind: RECEIPT_KIND, suiteId: 'e2e-fleet', status: allPassed ? 'passed' : 'failed',
     commit, fleetTree, environment: 'TEST', target: { kind: target.kind, origin: target.origin },
     targetSupabaseRef, targetBuildSha: targetBuildSha ?? null,
-    actor: { gitUser: String(actor.gitUser), host: String(actor.host) }, reportSha256,
+    actor: { gitUser: String(actor.gitUser), agent: String(actor.agent) }, reportSha256,
     runner: { node: String(runner.node), playwright: String(runner.playwright) }, runId, startedAt, completedAt,
     specs: specs.map(({ file, tests, passed, failed, skipped, flaky }) => ({ file, tests, passed, failed, skipped, flaky })),
   };
@@ -129,7 +131,7 @@ export function validateLocalE2eReceipt(receipt, { planFleetTree, resolveCommit,
   if (!sameKeys(receipt.target, TARGET_KEYS) || !TARGETS[receipt.target.kind]?.test(receipt.target.origin)) problems.push('Target is not an accepted TEST origin');
   if (receipt.targetSupabaseRef !== TEST_SUPABASE_REF) problems.push('Target Supabase project is not TEST');
   if (receipt.targetBuildSha !== null && !(typeof receipt.targetBuildSha === 'string' && SHA40.test(receipt.targetBuildSha))) problems.push('Invalid target build SHA');
-  if (!sameKeys(receipt.actor, ACTOR_KEYS) || ACTOR_KEYS.some((k) => typeof receipt.actor[k] !== 'string' || !LABEL.test(receipt.actor[k]))) problems.push('Invalid actor');
+  if (!sameKeys(receipt.actor, ACTOR_KEYS) || typeof receipt.actor.gitUser !== 'string' || !LABEL.test(receipt.actor.gitUser) || !RUN_AGENTS.includes(receipt.actor.agent)) problems.push('Invalid actor');
   if (typeof receipt.reportSha256 !== 'string' || !SHA256.test(receipt.reportSha256)) problems.push('Invalid report digest');
   if (!sameKeys(receipt.runner, RUNNER_KEYS) || RUNNER_KEYS.some((k) => typeof receipt.runner[k] !== 'string' || receipt.runner[k].length > 40)) problems.push('Invalid runner identity');
   if (typeof receipt.runId !== 'string' || !UUID.test(receipt.runId)) problems.push('Invalid run id');
@@ -173,19 +175,26 @@ const newestFirst = (planFleetTree) => (a, b) =>
  * Thay nghĩa vụ live-browser của suite cho phép bằng biên nhận hợp lệ. Trả plan mới;
  * nghĩa vụ không thoả giữ nguyên trong `unavailable` kèm chẩn đoán.
  */
-export function applyLocalE2eEvidence(plan, { receipts = [], planFleetTree, resolveCommit, now = Date.now() } = {}) {
+export function applyLocalE2eEvidence(plan, { receipts = [], planFleetTree, resolveCommit, isAncestorCommit = () => false, now = Date.now() } = {}) {
   const remaining = []; const accepted = [];
   const checked = receipts.map(({ path, receipt }) => ({ path, receipt, result: validateLocalE2eReceipt(receipt, { planFleetTree, resolveCommit, now }) }))
     .sort(newestFirst(planFleetTree));
+  // Spec đỏ của một lượt: dòng không đạt; lượt hỏng (status failed) mà dòng đều xanh thì cả lượt.
+  const redFiles = (c) => c.result.failedFiles.length ? c.result.failedFiles
+    : c.receipt?.status !== 'passed' && Array.isArray(c.receipt?.specs) ? c.receipt.specs.map((s) => s?.file) : [];
+  const commitOf = (c) => (typeof c.receipt?.commit === 'string' && HASH.test(c.receipt.commit) ? c.receipt.commit : null);
   for (const obligation of plan.unavailable ?? []) {
     const eligible = obligation && typeof obligation === 'object' && LOCAL_E2E_SUITES.includes(obligation.suiteId) &&
       obligation.kind === LIVE_BROWSER_OBLIGATION && Array.isArray(obligation.files) && obligation.files.length > 0;
     if (!eligible) { remaining.push(obligation); continue; }
-    const red = checked.filter((c) => planFleetTree && c.receipt?.fleetTree === planFleetTree && c.result.failedFiles.some((f) => obligation.files.includes(f)));
-    const valid = checked.filter((c) => c.result.valid && c.receipt.suiteId === obligation.suiteId);
+    // Biên nhận đỏ chặn biên nhận xanh của CÙNG commit (chạy lại tới khi xanh) và của commit
+    // cũ hơn nó; lượt xanh ở commit con cháu (mã đã thật sự đổi) thay được nó.
+    const red = checked.filter((c) => commitOf(c) && redFiles(c).some((f) => obligation.files.includes(f)));
+    const supersededByRed = (c) => red.some((r) => commitOf(r) === c.receipt.commit || isAncestorCommit(c.receipt.commit, commitOf(r)));
+    const valid = checked.filter((c) => c.result.valid && c.receipt.suiteId === obligation.suiteId && !supersededByRed(c));
     const covered = new Set(valid.flatMap((c) => c.receipt.specs.map((s) => s.file)));
     const missing = obligation.files.filter((f) => !covered.has(f));
-    if (!red.length && !missing.length) {
+    if (!missing.length) {
       accepted.push({ suiteId: obligation.suiteId, files: [...obligation.files], fleetTree: planFleetTree,
         receipts: valid.filter((c) => c.receipt.specs.some((s) => obligation.files.includes(s.file)))
           .map((c) => ({ path: c.path, commit: c.receipt.commit, runId: c.receipt.runId, completedAt: c.receipt.completedAt })) });
@@ -210,7 +219,9 @@ export function gitFleetResolver(git, target) {
     if (!isAncestor) { try { git('merge-base', '--is-ancestor', sha, target); isAncestor = true; } catch { isAncestor = false; } }
     return { fleetTree: fleetTreeOf(sha), committedAt: Number(git('show', '-s', '--format=%ct', sha).trim()) * 1000, isAncestor };
   };
-  return { fleetTreeOf, resolveCommit };
+  // a là tổ tiên thật sự (khác) của b; lỗi/không có commit ⇒ false.
+  const isAncestorCommit = (a, b) => { if (a === b) return false; try { git('merge-base', '--is-ancestor', a, b); return true; } catch { return false; } };
+  return { fleetTreeOf, resolveCommit, isAncestorCommit };
 }
 
 /** Hình dạng tối thiểu của localEvidence trong aggregate (promote kiểm lại). */

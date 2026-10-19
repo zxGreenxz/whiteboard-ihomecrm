@@ -13,8 +13,9 @@
 //   - TOÀN BỘ cây làm việc phải sạch (không sửa, không staged, không untracked) để
 //     commit = HEAD trong biên nhận đúng là byte đã chạy;
 //   - đích phải thật sự dùng Supabase TEST: đọc ref từ HTML/JS của đích, lệch ⇒ dừng.
-// Sau khi chạy luôn ghi biên nhận (xanh hoặc ĐỎ) nếu có report; biên nhận đỏ cùng tree
-// làm gate chặn. Report Playwright (có thể chứa dữ liệu nhạy cảm) giữ NGOÀI repo ở
+// Sau khi chạy luôn ghi biên nhận (xanh hoặc ĐỎ) nếu có report; biên nhận đỏ vô hiệu biên
+// nhận xanh của cùng commit và commit cũ hơn. `actor.agent` lấy từ FLEET_AGENT
+// (claude|codex|human) hoặc env harness; không ghi tên máy. Report Playwright (có thể chứa dữ liệu nhạy cảm) giữ NGOÀI repo ở
 // FLEET_REPORT_DIR (mặc định ~/ihomecrm-backups/e2e-fleet-reports); biên nhận chỉ mang sha256.
 //
 // Thoát 0 biên nhận xanh (hoặc không có gì phải chạy) · 1 có spec không đạt · 3 không chạy được.
@@ -22,17 +23,17 @@
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir, hostname } from 'node:os';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { planFromGit } from './lib/gate-plan.mjs';
 import { khopGlob } from './check-risk-classifier.mjs';
 import { isDeferredTest } from './lib/deferred-modules.mjs';
 import {
-  FLEET_ROOT, LIVE_BROWSER_OBLIGATION, LOCAL_E2E_EVIDENCE_DIR, LOCAL_E2E_SUITES, classifyTarget,
+  FLEET_ROOT, LIVE_BROWSER_OBLIGATION, LOCAL_E2E_EVIDENCE_DIR, LOCAL_E2E_SUITES, RUN_AGENTS, classifyTarget,
   createLocalE2eReceipt, gitFleetResolver, summarizePlaywrightReport, validateLocalE2eReceipt,
 } from './lib/gate-e2e-local-evidence.mjs';
-import { dirtyEntries, probeTarget, verifyTestTarget } from './lib/e2e-fleet-runner.mjs';
+import { probeTarget, resolveRunAgent, verifyTestTarget, worktreeDirt } from './lib/e2e-fleet-runner.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -52,7 +53,7 @@ function args(argv) {
   return out;
 }
 
-const dirty = () => dirtyEntries(git('status', '--porcelain', '--untracked-files=all'));
+const dirty = () => worktreeDirt(git);
 // Tên git (không lấy email: repo PUBLIC). Thiếu cấu hình thì ghi rõ là không biết.
 const gitUserName = () => { try { return git('config', 'user.name').trim() || 'unknown'; } catch { return 'unknown'; } };
 
@@ -91,6 +92,8 @@ async function main() {
   const target = classifyTarget(process.env.FLEET_BASE_URL);
   if (!target) stop('FLEET_BASE_URL phải là web Preview nhánh test-env (https://ihomecrm-git-test-env-zxgreenxzs-projects.vercel.app) hoặc dev server loopback trỏ TEST.');
   if (process.env.EXPECTED_SOURCE_SHA && process.env.EXPECTED_SOURCE_SHA !== head) stop('EXPECTED_SOURCE_SHA khác HEAD; checkout đúng commit cần kiểm.');
+  const agent = resolveRunAgent(process.env);
+  if (!agent) stop(`FLEET_AGENT phải là một trong: ${RUN_AGENTS.join(', ')}.`);
   const before = dirty();
   if (before.length) stop(`Cây làm việc chưa sạch (${before.length} mục, vd ${before[0]}); commit/bỏ hết — kể cả file untracked hay biên nhận chưa commit — rồi chạy lại.`);
   const { fleetTreeOf, resolveCommit } = gitFleetResolver(git, head);
@@ -127,7 +130,7 @@ async function main() {
   const red = specs.filter((s) => s.tests < 1 || s.passed !== s.tests);
   const receipt = createLocalE2eReceipt({
     commit: head, fleetTree, target, targetSupabaseRef: verdict.ref, targetBuildSha: probe.buildSha,
-    actor: { gitUser: gitUserName(), host: hostname() || 'unknown' },
+    actor: { gitUser: gitUserName(), agent },
     reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
     runner: { node: process.version, playwright: String(parsed?.config?.version ?? 'unknown') }, runId, startedAt, completedAt, specs,
     runOk: run.status === 0 && missing.length === 0,
@@ -140,11 +143,11 @@ async function main() {
   console.log(`\nReport (ngoài repo, không commit): ${report}`);
   console.log(`Biên nhận: ${LOCAL_E2E_EVIDENCE_DIR}/${name}`);
   if (receipt.status !== 'passed' || !checked.valid) {
-    const lines = [`KHÔNG ĐẠT (exit ${run.status}) — đã ghi biên nhận ĐỎ; gate sẽ chặn tree ${fleetTree.slice(0, 12)} của .e2e-fleet/.`,
+    const lines = [`KHÔNG ĐẠT (exit ${run.status}) — đã ghi biên nhận ĐỎ cho commit ${head.slice(0, 12)}.`,
       ...missing.map((f) => `  - chưa chạy: ${f}`),
       ...red.map((s) => `  - ${s.file}: ${s.passed}/${s.tests} đạt, ${s.failed} đỏ, ${s.skipped} skip, ${s.flaky} flaky`),
       ...(receipt.status === 'passed' ? checked.problems.map((p) => `  - ${p}`) : []),
-      `Commit biên nhận đỏ này (git add -- ${LOCAL_E2E_EVIDENCE_DIR}/${name}); xoá nó để chạy lại là che lượt đỏ. Sửa spec/app rồi chạy lại.`];
+      `Commit biên nhận đỏ này (git add -- ${LOCAL_E2E_EVIDENCE_DIR}/${name}); xoá nó để chạy lại là che lượt đỏ. Nó vô hiệu mọi biên nhận xanh ở commit này và commit cũ hơn: sửa spec/app, commit, rồi chạy lại ở commit mới.`];
     stop(lines.join('\n'), 1);
   }
   console.log(`ĐẠT ${specs.length} spec. Tiếp theo: git add -- ${LOCAL_E2E_EVIDENCE_DIR}/${name} rồi commit riêng; KHÔNG sửa ${FLEET_ROOT}/ sau đó (biên nhận gắn tree ${fleetTree.slice(0, 12)}).`);

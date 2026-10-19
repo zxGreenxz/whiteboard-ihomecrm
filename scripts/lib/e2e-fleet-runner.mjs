@@ -6,11 +6,29 @@
 // chạy trên sổ thật trong khi biên nhận vẫn ghi TEST. Nên runner đọc ref Supabase từ
 // chính HTML/JS mà đích phục vụ, và chỉ chạy khi tập ref tìm thấy đúng bằng {TEST}.
 
-import { PROD_SUPABASE_REF, TEST_SUPABASE_REF } from './gate-e2e-local-evidence.mjs';
+import { PROD_SUPABASE_REF, RUN_AGENTS, TEST_SUPABASE_REF } from './gate-e2e-local-evidence.mjs';
 
 /** Dòng `git status --porcelain --untracked-files=all` khác rỗng ⇒ cây bẩn. */
 export function dirtyEntries(porcelain) {
   return String(porcelain ?? '').split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean);
+}
+
+/**
+ * Mục bẩn trên TOÀN repo (sửa, staged, untracked; file ignore không tính). Spec import mã
+ * ngoài `.e2e-fleet/` và dev server phục vụ `src/` từ đĩa, nên thu hẹp phạm vi là để
+ * byte chưa commit chạy dưới nhãn commit = HEAD.
+ */
+export function worktreeDirt(git) {
+  return dirtyEntries(git('status', '--porcelain', '--untracked-files=all'));
+}
+
+/** Ai chạy: FLEET_AGENT nếu khai (phải hợp lệ), không thì đoán từ env harness, cuối cùng 'human'. */
+export function resolveRunAgent(env = process.env) {
+  const declared = env.FLEET_AGENT?.trim().toLowerCase();
+  if (declared) return RUN_AGENTS.includes(declared) ? declared : null;
+  if (env.CLAUDECODE) return 'claude';
+  if (Object.keys(env).some((k) => k.startsWith('CODEX_'))) return 'codex';
+  return 'human';
 }
 
 /** Mọi ref `<20 ký tự>.supabase.co` xuất hiện trong văn bản. */

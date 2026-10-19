@@ -3,11 +3,11 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1508,
   "soFileDocBangFs": 380,
-  "tongLoiGoi": 871,
+  "tongLoiGoi": 872,
   "khongPhanLoaiDuoc": 396,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 56,
+      "soFile": 57,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -36,6 +36,7 @@
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/copilot-g1-acceptance.test.mjs",
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
+    "scripts/__tests__/gate-e2e-local-evidence.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
     "scripts/__tests__/hermes-cde-live.test.mjs",
@@ -1070,6 +1071,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/gate-e2e-local-evidence.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/hermes-private-flow.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1783,12 +1792,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gate-e2e-local-evidence.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/gate-plan.test.mjs",
