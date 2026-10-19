@@ -1,6 +1,15 @@
 # SUPER PLAN — Hermes × iHomeCRM
 
-## Checkpoint triển khai hiện hành — 19/10/2026, cập nhật tới 16:05:01 UTC+7
+## Tiếp tục từ checkpoint 19/10, 18:16 UTC+7
+
+**Trạng thái vận hành duy nhất cần đọc trước là [STATUS — checkpoint hiện hành](STATUS.md#checkpoint-hiện-hành).** Các checkpoint có giờ sớm hơn bên dưới là lịch sử, không ghi đè trạng thái này. Bản tài liệu kiểm UI `be910be0b` đã lên main, [CI đúng commit đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39243588199).
+
+- Code candidate `0fbc263f` và bảy migration đã triển khai ở VPS/DB; web Vercel còn bản `81c49363`. Dashboard và commit-status đã xác nhận lỗi cụ thể là **giới hạn số lần deployment, thử lại sau 24 giờ**; chưa xác định giờ mở lại, không kết luận nợ phí từ mã `402` cũ.
+- **Browser đã dùng được.** Ba tài khoản thật chủ/quản lý/hệ thống trên Supabase TEST riêng đã kiểm loading, tạo kết nối kế thừa CRM, đọc lại quyền, thu hồi và logout; tài khoản chủ kiểm thêm tắt/bật lại một quyền. Có 23 request HTTP 200, đã dọn toàn bộ hạ tầng UI thử; production không đổi, fast OFF. Đây là bản build TEST tĩnh qua proxy/SSH riêng, chưa phải HTTPS Vercel hoặc Zalo gửi nhận. [Số đo và sơ đồ](../2026-10-19-crm-hermes-jev-performance.md#nghiệm-thu-giao-diện-bằng-ba-tài-khoản-test-thật).
+- **Việc còn phải hoàn tất theo thứ tự:** phát hành và xác minh web đúng candidate qua lane chính thức khi Vercel cho phép → chính chủ tạo/chọn kết nối hợp lệ thay credential hết hạn → áp đúng profile đã chọn và nghiệm thu MCP có dữ liệu/cùng quyền, rồi luồng Zalo thật. Chỉ quyết định bật đọc nhanh production sau bằng chứng tương ứng; không dùng kết quả TEST để tuyên bố phiên chủ đã chạy.
+- Jev là pilot tùy chọn, chưa có key/nhà cung cấp đo; TG6 chữ công khai vẫn giữ hành vi hiện có và chọn riêng. Không chặn phát hành ba lỗi bằng hai nhánh tùy chọn này, cũng không tự đánh dấu P0–P11 hoàn tất. Không chạy lại migration, benchmark hoặc bộ kiểm không đổi chỉ để chờ Vercel.
+
+## Snapshot triển khai — 19/10/2026 tới 16:05:01 UTC+7
 
 Candidate `0fbc263f48d896baf633eba84dbf3cd4a222387a` (tree `519a726286fe951826004f9589554124f177c76c`), PR #222. Gate7 delta **65/65 PASS** trong 529 giây; Gate5/6 **67/67** được dùng lại vì đầu vào không đổi. Main CI **5/5 PASS**: CI `39211903664`, synthetic `39211903814`, Android `39211903731`, migrationvalidation `39211903783`, restoredrill `39211903671`. Chạy thử promote chính thức **18 jobs/178 bước PASS**. Receipt E2E fleet bảy spec là LOCAL, không phải CI E2E thật.
 
@@ -46,7 +55,7 @@ Phiên bản 1.4 · Phạm vi duyệt ngày 12/10/2026; rà toàn bộ yêu cầ
 
 - **Hermes là trợ lý mã nguồn mở độc lập và đầy đủ.** User tự cài/cấu hình/cập nhật Hermes, model, native tools, workspace và memory cá nhân ngoài CRM. CRM cung cấp connector MCP/plugin có protocol ổn định, không viết lại nhân Hermes, không ép dùng engine Copilot, model relay hoặc wrapper phòng trống của CRM.
 - “Độc lập ngoài CRM” nghĩa là theo cấu hình và hạn mức Hermes/provider của user, không có nghĩa tự bật mọi native tool hoặc quota vô hạn.
-- **Đích quyền cập nhật 19/10: quyền CRM hiện tại trừ các quyền tắt riêng cho Hermes.** Connection xác định user/công ty/phiên; registry xác định công cụ đã hỗ trợ. Giữ một cấu hình giới hạn có chủ đích; tính cùng quyết định quyền, không nhiều vòng full Auth. Chuyển allowlist cũ sang kế thừa + exclusions theo TG2, chưa triển khai.
+- **Đích quyền cập nhật 19/10: quyền CRM hiện tại trừ các quyền tắt riêng cho Hermes.** Connection xác định user/công ty/phiên; registry xác định công cụ đã hỗ trợ. Giữ một cấu hình giới hạn có chủ đích; tính cùng quyết định quyền, không nhiều vòng full Auth. TG2 đã có chuyển đổi allowlist cũ sang kế thừa + exclusions và đã kiểm giữ hạn chế; source/migration đã triển khai, giao diện mới chờ Vercel.
 - Công thức trên **chỉ điều khiển truy cập CRM**. Tắt/thu hồi CRM không vô hiệu hóa hội thoại cá nhân, model, memory cá nhân hoặc native tools của Hermes. Credential/JWT/service key CRM và phiên Zalo ở broker/worker; Hermes chỉ nhận credential connector hạn chế. Mọi đường truy cập CRM đều qua cùng backend ACL.
 - Hermes là trợ lý ảo riêng, hiểu yêu cầu và chủ động hoàn tất các bước cần thiết trong phần quyền đã bật. Lệnh rõ thì làm; chỉ soạn thì không gửi; thiếu dữ kiện thì hỏi ngay trong Zalo và tiếp tục qua nhiều lượt với ngữ cảnh riêng. Không bắt mở CRM, nhập PIN, bấm approve hoặc bật Copilot để thực hiện công việc thông thường. Điều kiện nghiệp vụ thực sự áp dụng cho chính user, như trạng thái hợp đồng hay phê duyệt chứng từ, vẫn được backend áp dụng; không chép cơ chế approval của Copilot thành điều kiện của Hermes.
 
