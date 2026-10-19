@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1508,
-  "soFileDocBangFs": 380,
-  "tongLoiGoi": 872,
+  "tongSoFileTest": 1509,
+  "soFileDocBangFs": 381,
+  "tongLoiGoi": 874,
   "khongPhanLoaiDuoc": 396,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 57,
+      "soFile": 58,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 49,
+      "soFile": 50,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -36,6 +36,7 @@
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/copilot-g1-acceptance.test.mjs",
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
+    "scripts/__tests__/e2e-fleet-read-rpc-allowlist.test.mjs",
     "scripts/__tests__/gate-e2e-local-evidence.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -1059,6 +1060,15 @@
       "soGoi": 2,
       "loai": {
         "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/e2e-fleet-read-rpc-allowlist.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1,
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
     },

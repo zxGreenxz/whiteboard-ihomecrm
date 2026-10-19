@@ -314,3 +314,27 @@ gaps:
       bên tiêu thụ, ghi trạng thái 'suppressed' và có test cho nhánh đó; rồi quyết định giữ hay
       gỡ RPC hermes_zalo_private_command_v1 cùng hàng đợi qua lane migration. Hoặc dựng lại một
       bên tiêu thụ thật cho hàng đợi, có test đầu-cuối.
+  - id: e2e-fleet-rent-support-schedule-chua-chay
+    where: >
+      .e2e-fleet/specs/rent-support-schedule.spec.ts · .e2e-fleet/specs/rent-support-browser.ts
+      (READERS = readRpcAllowlist(...) từ PR #205)
+    expires_at: 2026-11-30
+    why: >
+      Thu hẹp từ mục e2e-fleet-read-rpc-allowlist-chua-chay mà PR #205 đóng khi spec này chưa chạy
+      (review độc lập P2). PR #205 đổi READERS của helper sang module dùng chung (66 → 82 tên, tập
+      cha của danh sách cũ); gate không đòi biên nhận vì helper không khớp `specs/**/*.spec.ts`.
+      Helper chỉ dùng READERS để hỏi "có trong tập" (dòng 78, 104, 168–170) nên tập cha không làm
+      ca nào đỏ, nhưng spec chưa chạy lại. Lý do chưa chạy (19/10/2026): spec đòi
+      RENT_SUPPORT_BROWSER_FIXTURE gắn `source_sha` = HEAD (org/toà/6 hợp đồng hỗ trợ thuê, nháp,
+      ba actor `@example.invalid` với mật khẩu RENT_SUPPORT_TEST_PASS_*), do luồng tích hợp
+      Task7/8/10 dựng ngoài repo; luồng đó đã dọn sạch TEST ngày 01/10/2026 (c2551ff6) và repo
+      không có script dựng lại, vault không có khoá RENT_SUPPORT_TEST_PASS_*. Spec ghi tiền thật
+      trên TEST (chi hợp đồng, hoá đơn, nguồn lương). Chạy runner không fixture chỉ sinh biên nhận
+      ĐỎ, mà biên nhận đỏ vô hiệu biên nhận xanh của commit cũ hơn. Đã kiểm thay: `playwright
+      --list` nạp đủ 10 ca với helper mới; test scripts/__tests__/e2e-fleet-read-rpc-allowlist.test.mjs
+      chặn tên VOLATILE ngoài 17 ngoại lệ kế thừa.
+    exit_condition: >
+      Có script trong repo dựng/dọn fixture rent-support trên TEST (gắn HEAD, actor tổng hợp, mật
+      khẩu qua env), rồi `npm run e2e:fleet:bien-nhan -- --spec .e2e-fleet/specs/rent-support-schedule.spec.ts`
+      ra biên nhận xanh 10/10 ca với helper dùng module; hoặc chủ dự án quyết định gỡ/hoãn spec này
+      khỏi suite e2e-fleet (deferred-modules) kèm lý do.
