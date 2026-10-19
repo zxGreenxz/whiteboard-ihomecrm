@@ -1,18 +1,11 @@
 import {test,expect,type Page} from '@playwright/test';
 import {credentials,type UserKey} from './auth';
+import {customerListReadBody,isContractStatsRead,isCustomerListRead,readRpcAllowlist} from '../support/read-rpc-allowlist';
 const ORG='dddd0000-0000-4000-8000-000000000001';
-const HOST='tryymsxyyckgbrmmvozx.supabase.co';
-const READ_RPC=new Set([
- 'is_company_owner_self_v1','read_income_expense_details_v1',
- 'ie_form_buildings','ie_form_rooms','get_finance_v2_client_flags_v1','list_my_cashbook_access_v2',
- 'get_dashboard_summary','revenue_by_month','get_contract_stats','get_my_context','get_my_assignments','is_admin','is_super_admin',
- 'get_my_permissions','get_my_permissions_v2','list_my_copilot_organizations_v1','business_performance_organizations_v1','my_org_ids',
- 'get_notification_org_config_v1','get_my_notification_preferences_v1','list_cashbook_visibility_v2','list_due_contract_move_out_notices_v1',
- 'list_contract_exit_cases_v1','list_contract_meter_followups_v1','get_contract_move_out_notice_v1','read_contract_meter_boundary_set_v1',
- 'read_contract_transfer_links_v1','list_contract_drafts','list_room_reservations_v1','get_income_expense_layer_stats','get_invoice_statistics_v2',
- 'get_receiving_cashbooks_v1','get_my_cashbook_access_v2','list_cashbooks_for_expense_v2','get_income_expense_stats','get_pending_approvals_count',
- 'list_active_memberships_v1','list_organization_members_v2','read_authorization_catalog_v1','get_finance_v2_routes_v1'
-]);
+// Project Supabase TEST (như các spec chỉ-đọc khác): biên nhận E2E (scripts/e2e-fleet-bien-nhan.mjs)
+// chỉ nhận lượt chạy trên TEST, và mọi POST tới host khác HOST bị chặn 403 bên dưới.
+const HOST='hzulujxgonszuleqticb.supabase.co';
+const READ_RPC=readRpcAllowlist('dashboard','contracts','incomeExpense');
 const diagnostics = new WeakMap<Page,{runtime:string[];console:string[]}>();
 test.beforeEach(async({page})=>{
  const captured={runtime:[] as string[],console:[] as string[]};diagnostics.set(page,captured);
@@ -96,10 +89,9 @@ for(const mobile of [false,true]){
    const buildingId=params.get('building_id')?.replace(/^eq\./,'')??ORG;
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:roomId,building_id:buildingId,name:'Phòng kiểm thử thông báo',status:'AVAILABLE',price:3000000,rent_price:3000000,organization_id:ORG}])});
   });
-  await page.route(`https://${HOST}/rest/v1/customers?*`,async route=>{
-   if(route.request().method()!=='GET')return route.fallback();
-   if(Number(new URL(route.request().url()).searchParams.get('offset')??0)>0)return route.fulfill({status:200,contentType:'application/json',body:'[]'});
-   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'e2e00000-0000-4000-8000-000000000112',full_name:'Khách kiểm thử thông báo',phone:'0900000112',id_number:'000000000112',organization_id:ORG}])});
+  await page.route(`https://${HOST}/rest/v1/**`,async route=>{
+   if(!isCustomerListRead(route.request()))return route.fallback();
+   return route.fulfill({status:200,contentType:'application/json',body:customerListReadBody(route.request(),[{id:'e2e00000-0000-4000-8000-000000000112',full_name:'Khách kiểm thử thông báo',phone:'0900000112',id_number:'000000000112',organization_id:ORG}])});
   });
   let mockedWrites=0;
   if(variant==='server')await page.route(`https://${HOST}/rest/v1/rpc/create_contract_v2`,async route=>{
@@ -155,7 +147,8 @@ for(const mobile of [false,true]){
 for(const who of ['chunha','ketoan','quanly','quanly2'] as const){
  test(`DEMO lỗi tải thống kê và quyền: ${who}`,async({page},info)=>{
   let reads=0;
-  await page.route(`https://${HOST}/rest/v1/rpc/get_contract_stats`,async route=>{
+  await page.route(`https://${HOST}/rest/v1/rpc/**`,async route=>{
+   if(!isContractStatsRead(route.request()))return route.fallback();
    reads++;await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:'42501',message:'permission denied table SQL_INTERNAL_TEST'})});
   });
   const audit=await setup(page,who);
