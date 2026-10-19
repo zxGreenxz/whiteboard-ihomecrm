@@ -1,5 +1,6 @@
 // Real TEST roles and database, supplied only by the guarded disposable-fixture runner.
 import { expect, test, type Page } from '@playwright/test';
+import { readRpcAllowlist, uiPreferenceFakeBody } from '../support/read-rpc-allowlist';
 
 type Actor = { id: string; email: string; password: string };
 type Fixtures = { org: string; ref: string; url: string; writer: Actor; viewer: Actor };
@@ -13,6 +14,7 @@ type LedgerSnapshot = {
   budgets: Array<{ id: string; amount: number; category_id: string | null }>;
 };
 type NetworkControl = { loseReceiptFor?: string; lostReceipts: number; sttCalls: number; aiReads: number; snapshot?: LedgerSnapshot };
+const PERSONAL_FINANCE_READ_RPC = readRpcAllowlist('personalFinance');
 const fixture = JSON.parse(process.env.PERSONAL_FINANCE_TEST_FIXTURES || 'null') as Fixtures | null;
 if (!fixture || fixture.ref === 'tryymsxyyckgbrmmvozx' || fixture.org !== 'dddd0000-0000-4000-8000-000000000001') {
   throw new Error('Run scripts/test-personal-finance-browser.mjs; guarded TEST fixtures are required');
@@ -79,10 +81,16 @@ async function openAs(page: Page, actor: Actor, canWrite: boolean) {
           await route.fulfill({ status: 200, contentType: 'application/json', json: { receiptUnavailable: true } });
           return;
         }
+      } else if (target.pathname === '/rest/v1/rpc/set_my_ui_preference') {
+        // Sở thích giao diện (công ty đã chọn) là hàm ghi ngoài ví: trả lời giả, không ghi TEST.
+        const fake = uiPreferenceFakeBody(request, f.org);
+        if (!fake) return deny();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: fake });
       } else if (target.pathname.startsWith('/rest/v1/rpc/')) {
         const name = target.pathname.split('/').pop() || '';
-        // Existing layout roster RPC is SELECT-only (20260725001000 migration).
-        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !['personal_finance_bootstrap', 'personal_finance_snapshot', 'business_performance_organizations_v1'].includes(name)) return deny();
+        // Existing layout roster RPC is SELECT-only (20260725001000 migration); shared
+        // readers (contract_stats_v2, invoice_list_v1…) come from the shared module.
+        if (!/^(?:get_|read_|list_|is_|has_|can_)/.test(name) && !PERSONAL_FINANCE_READ_RPC.has(name)) return deny();
       } else if (!['/auth/v1/token', '/auth/v1/logout'].includes(target.pathname)) return deny();
     }
     await route.continue();
@@ -145,7 +153,11 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await expect(page.getByTestId('total-balance')).toContainText('0');
   await expect(page.getByTestId('month-income')).toContainText('0');
   await expect(page.getByTestId('month-expense')).toContainText('0');
-  await expect(page.getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(0);
+  // Từ c7b42b66 (ví công ty, 09/10/2026) bộ chọn "Nhóm ví" Cá nhân/Công ty hiện cho mọi người; nút
+  // "Công ty" DUY NHẤT trên màn phải là nút đó — chip "Công ty" của bảng giao dịch (FinanceViews, gate
+  // quyền tiền công ty) không được có với fixture chỉ có quyền ví cá nhân.
+  await expect(page.getByRole('group', { name: 'Nhóm ví', exact: true }).getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(1);
 
   await page.getByRole('button', { name: 'Quản lý ví', exact: true }).click();
   await page.getByRole('button', { name: 'Thêm ví', exact: true }).click();

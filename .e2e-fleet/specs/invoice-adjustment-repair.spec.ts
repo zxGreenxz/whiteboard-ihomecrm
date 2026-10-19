@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
+import { isInvoiceListRead, listReadRows } from '../support/read-rpc-allowlist';
 import { loadSupabaseAdminConfig } from '../../scripts/apply-accounting-rollout.mjs';
 import { DEMO_ORG_ID, DEMO_OWNER_EMAIL, runQuery, fixtureInvoiceSql,
   committedAdjustmentFixtureTeardownSql, fixtureMarker, newRunId, sqlLiteral, uuidLiteral,
@@ -72,6 +73,12 @@ test('issued adjustment, collection, review, mobile history and edit after rever
       ) SELECT set_config('v5h.account_tm',id::text,true) FROM fixture_account;
       INSERT INTO public.cashbook_possession_bindings(organization_id,cashbook_id,membership_id,possession_kind,valid_from,reason)
       SELECT m.organization_id,current_setting('v5h.account_tm')::uuid,m.id,'KNOWER',now()-interval '1 minute',${sqlLiteral(marker)}
+      FROM public.organization_memberships m WHERE m.organization_id='${DEMO_ORG_ID}' AND m.user_id=${uuidLiteral(actor)} AND m.status='ACTIVE';
+      -- Luật "Sổ nhận tiền" (20260925082815): tiền mặt chỉ vào sổ tiền mặt riêng đang hiệu lực của người thu,
+      -- không có thì nút "Ghi nhận thanh toán" bị khoá. Chủ công ty DEMO không có sổ riêng (prod lẫn TEST) nên
+      -- fixture đặt sổ vừa tạo làm sổ riêng của người thu; teardown gỡ cùng sổ.
+      INSERT INTO app_private.personal_cash_books(organization_id,membership_id,account_id,valid_from,created_by)
+      SELECT m.organization_id,m.id,current_setting('v5h.account_tm')::uuid,now()-interval '1 minute',${uuidLiteral(actor)}
       FROM public.organization_memberships m WHERE m.organization_id='${DEMO_ORG_ID}' AND m.user_id=${uuidLiteral(actor)} AND m.status='ACTIVE';
       SELECT current_setting('v5h.invoice') AS invoice_id,current_setting('v5h.building') AS building_id,
         (SELECT name FROM public.rooms WHERE id=current_setting('v5h.room')::uuid) AS room_name; COMMIT;`);
@@ -169,14 +176,11 @@ test('issued adjustment, collection, review, mobile history and edit after rever
       sessionStorage.setItem('flt:invoices:filters', JSON.stringify({ building_id: building, billing_month: billingMonth, adjustment_review_status: 'pending' }));
       sessionStorage.setItem('flt:invoices:search', JSON.stringify(''));
     }, { building: fixture.building_id, billingMonth: month });
-    const filtered = page.waitForResponse(response => {
-      const url = new URL(response.url());
-      return url.pathname === '/rest/v1/invoices' && url.searchParams.get('adjustment_review_status') === 'eq.PENDING' && response.request().method() === 'GET';
-    });
+    const filtered = page.waitForResponse(response => isInvoiceListRead(response.request(), { adjustmentReviewStatus: 'pending' }));
     await page.goto('/invoices');
     const filterResponse = await filtered;
     expect(filterResponse.ok()).toBe(true);
-    expect((await filterResponse.json()).some((row: { id: string }) => row.id === invoiceId)).toBe(true);
+    expect((await listReadRows<{ id: string }>(filterResponse)).some(row => row.id === invoiceId)).toBe(true);
     await expect(page.getByRole('combobox').filter({ hasText: 'Bản mới nhất chưa kiểm tra' })).toBeVisible();
 
     // Canonical reversal, then the issued editor must remain available at paid_amount=0.
@@ -224,6 +228,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
         expect(await query(`SELECT income_expense_id FROM app_private.income_expense_cancellations WHERE income_expense_id IN(${ids})`)).toEqual([]);
       }
     }
+    await query(`DELETE FROM app_private.personal_cash_books WHERE organization_id='${DEMO_ORG_ID}' AND account_id IN (SELECT id FROM public.accounts WHERE organization_id='${DEMO_ORG_ID}' AND description=${sqlLiteral(marker)})`);
     await query(`DELETE FROM public.cashbook_possession_bindings WHERE organization_id='${DEMO_ORG_ID}' AND reason=${sqlLiteral(marker)}`);
     await query(`DELETE FROM public.accounts WHERE organization_id='${DEMO_ORG_ID}' AND description=${sqlLiteral(marker)}`);
     } finally {
