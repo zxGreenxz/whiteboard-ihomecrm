@@ -1,3 +1,5 @@
+import { useQuickExpense } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseToolbar } from '@/components/income-expenses/QuickExpenseActions';
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
@@ -364,6 +366,7 @@ const IncomeExpenseDesktopPage = () => {
     );
   const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } = batchQuery;
 
+  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, searchQuery, viewMode]), listQuery.isSuccess && !listQuery.isFetching && !listQuery.isPlaceholderData && !parsedSearch.pending);
   const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
@@ -859,9 +862,11 @@ const IncomeExpenseDesktopPage = () => {
           </div>
         </div>
 
+        {viewMode === "individual" && <QuickExpenseToolbar quick={quickExpense} filters={effectiveFilters} search={parsedSearch.text} />}
         <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]} skeleton="table" rows={8}>
         {viewMode === "individual" ? (
           <IncomeExpenseList
+            quickExpense={quickExpense}
             vouchers={vouchers}
             isLoading={isLoading || parsedSearch.pending}
             onView={handleView}
@@ -923,6 +928,7 @@ const IncomeExpenseDesktopPage = () => {
         defaultType={formType}
       />
       <IncomeExpenseDetailDialog
+        quickExpense={quickExpense}
         open={!!detailVoucherId}
         onOpenChange={(o) => {
           if (!o) setDetailVoucher(null);

@@ -1,3 +1,5 @@
+import { useQuickExpense } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseButton, QuickExpenseFeedback } from '@/components/income-expenses/QuickExpenseActions';
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
@@ -419,6 +421,7 @@ export default function IncomeExpenseMobilePage() {
   const statsQuery = useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true, inlineErrors: true });
   const { data: stats, isLoading: isStatsLoading } = statsQuery;
 
+  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, search, viewMode]), listQuery.isSuccess && !listQuery.isFetching && !listQuery.isPlaceholderData && !parsed.pending);
   const vouchers = listResult?.data ?? [];
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));
@@ -788,6 +791,7 @@ export default function IncomeExpenseMobilePage() {
               </button>
             </div>
 
+            <QuickExpenseFeedback quick={quickExpense} />
             <QueryRegion label="danh sách phiếu thu chi" queries={[viewMode === "individual" ? listQuery : batchQuery]} skeleton="list">
         {viewMode === "individual" ? (
               isLoading || parsed.pending ? (
@@ -957,6 +961,8 @@ export default function IncomeExpenseMobilePage() {
                             {v.building_name ? ` · ${v.building_name}` : ""}
                             {v.room_name ? ` - ${v.room_name}` : ""}
                           </div>
+                          <div className="ml-auto flex shrink-0 items-center gap-2">
+                          <QuickExpenseButton voucher={v} quick={quickExpense} />
                           {/* Đợt 4 (parity desktop): lịch sử phiếu — mốc
                               lập/duyệt/huỷ + lý do + nhật ký trước/sau. Với
                               phiếu đã huỷ đây là chỗ đối soát duy nhất. */}
@@ -982,6 +988,7 @@ export default function IncomeExpenseMobilePage() {
                               <Share2 size={15} />
                             </button>
                           )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1015,6 +1022,7 @@ export default function IncomeExpenseMobilePage() {
           {/* Chi tiết phiếu — bottom sheet */}
           {detailVoucherId && (
             <IncomeExpenseDetailMobile
+              quickExpense={quickExpense}
               voucherId={detailVoucherId}
               organizationIdHint={detailOrgHint}
               previewVoucher={detailPreview}
