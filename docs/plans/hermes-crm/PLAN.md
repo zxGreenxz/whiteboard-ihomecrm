@@ -1,6 +1,6 @@
 # SUPER PLAN — Hermes × iHomeCRM
 
-## Checkpoint triển khai hiện hành — 19/10/2026, cập nhật tới 15:46:13 UTC+7
+## Checkpoint triển khai hiện hành — 19/10/2026, cập nhật tới 16:05:01 UTC+7
 
 Candidate `0fbc263f48d896baf633eba84dbf3cd4a222387a` (tree `519a726286fe951826004f9589554124f177c76c`), PR #222. Gate7 delta **65/65 PASS** trong 529 giây; Gate5/6 **67/67** được dùng lại vì đầu vào không đổi. Main CI **5/5 PASS**: CI `39211903664`, synthetic `39211903814`, Android `39211903731`, migrationvalidation `39211903783`, restoredrill `39211903671`. Chạy thử promote chính thức **18 jobs/178 bước PASS**. Receipt E2E fleet bảy spec là LOCAL, không phải CI E2E thật.
 
@@ -10,7 +10,7 @@ Benchmark endpoint quản trị localhost dùng cùng DEMO/list rỗng, n=5; 20/
 
 Chi tiết biên nhận, lịch sử và giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành), [bàn giao](BAN-GIAO.md#trạng-thái-hiện-hành) và [báo cáo tinh giản](TINH-GON-KIEM-QUYEN.md).
 
-**Cập nhật 15:46 UTC+7:** run2 TEST actual accounts ghi nhận fast khớp public shared core CRM **45/45**. Strict legacy parity (normal so với fast) đạt contract/invoice 30/30, customer 0/15; trường gây khác biệt chưa xác định. Exclusion test chỉ dùng `leads.view` (**6/6**), không đại diện cho toàn bộ quyền. Run1 dừng do lỗi Host trong harness trước MCP; chỉ harness tạm sửa. Cleanup hạ tầng run2 hoàn tất; fast production OFF, browser chưa kiểm, owner reconnect/Zalo còn chờ. Chi tiết số đo/giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành).
+**Cập nhật 16:05 UTC+7:** run3 có 15 cặp customer TEST; fast khớp shared core CRM 15/15, còn bốn trường contract/building/room chỉ có ở normal. Đây là run riêng, không cộng với 45 cặp run2; trạng thái/RLS từng record chưa xác minh. Cả ba run đã cleanup, không còn benchmark. Fast production OFF; browser, phiên MCP owner production và Zalo chưa nghiệm thu. Chi tiết và giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành); số đo ở [tài liệu hiệu năng](../2026-10-19-crm-hermes-jev-performance.md).
 
 ## Điều chỉnh đích quyền và hiệu năng — 19/10/2026
 

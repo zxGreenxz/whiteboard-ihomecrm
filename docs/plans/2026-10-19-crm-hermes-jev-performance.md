@@ -1,6 +1,6 @@
 # Đánh giá và kế hoạch tối ưu tốc độ CRM và Hermes
 
-Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 15:46:13 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Web production vẫn chưa xác minh bản mới: lane phát hành đã đẩy đúng commit lên nhánh production, nhưng lần tạo deployment trước bị từ chối `402 payment_required`; lần kiểm trang đã ghi nhận `81c49363`. Chủ đang hỗ trợ đăng nhập Vercel. Theo yêu cầu mới nhất, đã kiểm qua broker thật với ba tài khoản hiện có trên project riêng `ihomecrm-test`: 45 cặp mẫu có dữ liệu, đường nhanh khớp core CRM, quyền tắt và thu hồi đạt. Phần khách hàng còn khác đường cũ; chưa kiểm UI/Zalo hoặc phiên owner production. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
+Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 16:05:01 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Web production vẫn chưa xác minh bản mới: lane phát hành đã đẩy đúng commit lên nhánh production, nhưng lần tạo deployment trước bị từ chối `402 payment_required`; lần kiểm trang đã ghi nhận `81c49363`. Chủ đang hỗ trợ đăng nhập Vercel. Theo yêu cầu mới nhất, đã kiểm qua broker thật với ba tài khoản hiện có trên project riêng `ihomecrm-test`: 45 cặp mẫu có dữ liệu, đường nhanh khớp core CRM, quyền tắt và thu hồi đạt. Lượt bổ sung 15 cặp đã khoanh khác biệt khách hàng vào bốn trường phòng/hợp đồng; giữ công thức CRM, không đổi quyền hoặc SQL để khớp đường cũ. Chưa kiểm UI/Zalo hoặc phiên owner production, chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
 
 **Đích quyền: quyền Hermes = quyền CRM user − những quyền bị tắt trong cài đặt Hermes.** [Báo cáo tinh giản, ba lỗi, sơ đồ và audit §10](hermes-crm/TINH-GON-KIEM-QUYEN.md) giữ plan Hermes hiện hành và tiến độ candidate. Chủ đã làm rõ §9 chỉ là đề xuất agent khác: không áp đặt 100 ms, cấm cache hoặc epoch mọi RPC. Giữ quyền/RLS CRM vốn có; bỏ hai kiểm cuối và công việc lặp. Xác nhận chữ công khai là lựa chọn riêng, chưa chốt mới. Báo cáo dưới giữ bằng chứng và phạm vi CRM/Jev rộng hơn.
 
@@ -51,13 +51,13 @@ Cả bốn kết nối thử được thu hồi qua API chính thức; token c�
 
 Tổng **9/9 mẫu nonempty**, đăng xuất local 3/3; không tạo kết nối Hermes, ghi nghiệp vụ, đổi schema, profile hay mật khẩu. Đây chỉ là preflight bằng JWT/RLS cho phép đo tiếp theo qua broker thật, chưa chứng minh MCP, fast, UI hoặc Zalo. Receipt giữ ngoài repo: `test-accounts-readonly-report.json`. Quyền/phạm vi quan sát từ JWT và RPC, không suy ra chỉ từ nhãn tài khoản.
 
-Web TEST kiểm lúc15:07:02 UTC+7 trả **HTTP410**; trong 100 deployment gần nhất không thấy nhánh `test-env`. Metadata có ba biến preview riêng cho nhánh TEST (`VITE_APP_ENV`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`), nhưng chưa kiểm giá trị hay bản build hiện hành. Quyền truy cập browser của agent vẫn bị công cụ chặn khi chủ gắn `@Browser`; đăng nhập extension/Vercel chưa phải bằng chứng agent đã điều khiển được. Phần broker độc lập đã kiểm bên dưới; UI và Zalo còn chờ. Cờ fast trên VPS production giữ OFF.
+Web TEST kiểm lại lúc16:02:15 UTC+7 vẫn trả **HTTP410**; trong 100 deployment gần nhất không thấy nhánh `test-env` hoặc deployment production của candidate. Có hai preview READY cùng SHA candidate, nhưng chưa xác minh chúng dùng TEST nên không lấy làm môi trường nghiệm thu. Metadata có ba biến preview riêng cho nhánh TEST (`VITE_APP_ENV`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`), nhưng chưa kiểm giá trị hay bản build hiện hành. Lần kiểm này chỉ đọc, không tạo deployment. Quyền truy cập browser của agent vẫn bị công cụ chặn khi chủ gắn `@Browser`; đăng nhập extension/Vercel chưa phải bằng chứng agent đã điều khiển được. Phần broker độc lập đã kiểm bên dưới; UI và Zalo còn chờ. Cờ fast trên VPS production giữ OFF.
 
 Môi trường chạy riêng chuẩn bị đạt lúc15:28:10 UTC+7: Node24.18.0, PostgreSQL client17, thao tác ghi bền trên thư mục Linux, module broker và 916 hash source khớp candidate. Docker cục bộ bị lỗi khởi động nên dùng Docker có sẵn trên VPS, không thay dịch vụ production. Backup full TEST mới15:22:30 UTC+7 đã xác minh dung lượng, hash và 654 bảng có dữ liệu; dump giữ tại máy cục bộ. Lượt đầu dừng trước tạo kết nối/đọc MCP vì bộ đo dùng Node24 `fetch`, làm Host nhận thêm cổng và bị allowlist HTTP từ chối 403. Phép thử riêng xác nhận cùng yêu cầu: `fetch` bị 403, `node:http` giữ Host đúng và được 200. Chỉ sửa bộ đo TEMP; giữ nguyên ứng dụng, quyền và RLS. Receipt thất bại được giữ riêng; cleanup DB đạt và container/thư mục/volume lượt đầu đã dọn lúc15:42:52.
 
 ### Kết quả broker TEST với ba tài khoản thật
 
-Lượt hai chạy **15:38:46–15:42:36 UTC+7**, hai broker dùng cùng source candidate, cùng TEST, cùng tài khoản và giới hạn; chỉ khác cờ đọc nhanh. Ba tài khoản × ba nhóm dữ liệu × năm lượt = **45 cặp mẫu**, tức 90 lời gọi đọc MCP. Mỗi đường thường/nhanh/core đều trả một dòng; cả 45 kết quả đường nhanh khớp core CRM. Hợp đồng và hóa đơn cũng khớp đường thường ở 30/30 cặp. Khách hàng không khớp hoàn toàn đường thường ở 15/15 cặp; report chưa ghi tên field khác, nên không dùng khác biệt location đã thấy trong source để khẳng định nguyên nhân của mẫu thật này.
+Lượt hai chạy **15:38:46–15:42:36 UTC+7**, hai broker dùng cùng source candidate, cùng TEST, cùng tài khoản và giới hạn; chỉ khác cờ đọc nhanh. Ba tài khoản × ba nhóm dữ liệu × năm lượt = **45 cặp mẫu**, tức 90 lời gọi đọc MCP. Mỗi đường thường/nhanh/core đều trả một dòng; cả 45 kết quả đường nhanh khớp core CRM. Hợp đồng và hóa đơn cũng khớp đường thường ở 30/30 cặp. Khách hàng không khớp hoàn toàn đường thường ở 15/15 cặp. Receipt lượt hai chưa ghi tên trường khác; lượt ba bổ sung bên dưới đã đo riêng phần này, không sửa hoặc thay thế receipt cũ.
 
 | Tài khoản TEST | Danh sách | Trung vị đường thường | Trung vị đường nhanh | Số cặp |
 |---|---|---:|---:|---:|
@@ -88,6 +88,40 @@ flowchart LR
 Hạ tầng thử của cả hai lượt đã dọn xong: container riêng, volume đi kèm và thư mục trạng thái riêng; lượt hai hoàn tất lúc15:46:13 UTC+7. Biên nhận được giữ ngoài repo. Không còn benchmark đang chạy; production vẫn đúng PID/release/hash cấu hình và fast OFF sau cleanup.
 
 **Giới hạn số đo:** đây là HTTP loopback trong container giới hạn 0,5 CPU/256 MiB → Supabase TEST. Giữ cả mẫu đầu, đổi thứ tự thường/nhanh giữa các lượt; kiểm lease của bộ đo nằm trước đồng hồ, còn các truy vấn scope/core giữa lượt có thể làm ấm cache. Năm mẫu mỗi ô không đủ tính p95. Các con số không bao gồm browser, mạng từ máy người dùng, Vercel, model hoặc Zalo; không phải số đo tốc độ production hay lời hứa thời gian trả lời đầu cuối. Tạo kết nối mới đo riêng một lần mỗi tài khoản mất 3,41–5,08 giây, không lấy thời gian này làm độ trễ của mỗi câu hỏi.
+
+### Đã khoanh khác biệt khách hàng — lượt bổ sung 16:01–16:03 UTC+7
+
+Lượt ba giữ nguyên source, ba tài khoản TEST và cấu hình quyền của lượt hai; chỉ đọc danh sách khách hàng, năm cặp mỗi tài khoản, mỗi kết quả một dòng. **15/15 cặp cùng khách hàng, đường nhanh khớp core CRM; chỉ bốn trường dưới khác đường cũ.** Đây là các lần đọc lặp, không phải 15 khách hàng riêng biệt. Không ghi ID, tên, số điện thoại hay giá trị phòng vào biên nhận công khai.
+
+| Trường | Đường cũ trong 15 cặp | Đường nhanh/core CRM trong 15 cặp |
+|---|---|---|
+| `contractId` | Có giá trị | `null` |
+| `buildingId` | Có giá trị | `null` |
+| `roomId` | Có giá trị | `null` |
+| `roomName` | Có giá trị | `null` |
+
+Source giải thích vì sao hai cách có thể khác nhau: nhánh khách hàng trong `hermes_domain_read_v3` ưu tiên hợp đồng ACTIVE/EXTENDED nhưng có thể chọn hợp đồng lịch sử; `customer_list_core_v1` chỉ chọn hợp đồng ACTIVE còn được thấy qua RLS, theo ngày bắt đầu mới nhất. Web gọi `customer_list_v1`, dùng chính core này. **Mẫu thật đã chứng minh khác trường nào; chưa kiểm trạng thái hợp đồng/RLS của chính bản ghi đó để khẳng định nguyên nhân cụ thể.** `null` không có nghĩa khách chưa từng thuê.
+
+```mermaid
+flowchart LR
+  A["Cùng một khách hàng"] --> B["Hermes cũ chọn liên kết hợp đồng theo công thức cũ"]
+  A --> C["Đường nhanh chọn liên kết theo danh sách khách hàng CRM"]
+  B --> D["Mẫu TEST có thông tin phòng/hợp đồng"]
+  C --> E["Mẫu TEST để trống phòng/hợp đồng, giống core CRM"]
+  E --> F["Muốn xem hồ sơ và lịch sử: dùng công cụ chi tiết khách hàng"]
+```
+
+Chốt theo yêu cầu chủ: giữ cách đọc của CRM, không ép đường nhanh quay về công thức lịch sử hoặc mở rộng RLS chỉ để đạt so sánh với đường cũ. Mô tả công cụ “phòng gần nhất” hơi mơ hồ nhưng schema không khẳng định “đang ở”; đổi thành “thông tin phòng” là cải thiện câu chữ tùy chọn, không phải điều kiện mới cản bật fast. Không sửa source sản phẩm ở lượt này.
+
+| Tài khoản TEST | Trung vị thường (n=5) | Trung vị nhanh (n=5) |
+|---|---:|---:|
+| Chủ | 2.613,92 ms | 612,10 ms |
+| Quản lý | 2.114,41 ms | 548,53 ms |
+| Hệ thống | 2.455,25 ms | 524,54 ms |
+
+Số đo bổ sung giữ cả mẫu đầu: mẫu nhanh đầu của ba tài khoản mất 1,10–1,79 giây; không mô tả mọi lượt đều dưới một giây. Điều kiện và giới hạn giống lượt hai, không suy ra p95 hoặc tốc độ Zalo/UI. Receipt `hermes-test-vps-execution-run3-report-20261019.json` có SHA256 `8351e87e7d8f730f3a56e27d9ba0e3ed50d5aa09e74579d7f27c0126d55f2773`, giữ ngoài repo. Quyền tắt đại diện đạt 6/6; ba kết nối được thu hồi, 12 lượt token cũ bị từ chối, ba phiên đăng nhập local đã đăng xuất và role tạm đã xóa.
+
+Cleanup hạ tầng lượt ba hoàn tất **16:05:01 UTC+7**: container, volume và thư mục riêng đã dọn, receipt local/remote khớp; production vẫn active, cùng PID/release/hash cấu hình, fast OFF. Cả ba môi trường thử đã dọn; không còn benchmark đang chạy. Audit và bản ghi đã thu hồi giữ theo thiết kế. Chưa kiểm UI, phiên owner production hoặc Zalo. CI tài liệu trước đó của `7f4ea700b` [đã đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39225686978); không dùng CI đó để tuyên bố phiên bản tài liệu tiếp theo đã kiểm.
 
 ### Bằng chứng trước rollout — giữ làm lịch sử
 

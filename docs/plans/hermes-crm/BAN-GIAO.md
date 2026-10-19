@@ -2,7 +2,7 @@
 
 ## Trạng thái hiện hành
 
-**19/10/2026, cập nhật tới 15:46:13 UTC+7.**
+**19/10/2026, cập nhật tới 16:05:01 UTC+7.**
 
 Candidate `0fbc263f48d896baf633eba84dbf3cd4a222387a` (tree `519a726286fe951826004f9589554124f177c76c`), PR #222. Gate7 delta **65/65 PASS** trong 529 giây; Gate5/6 **67/67** được dùng lại do đầu vào không đổi. Main CI **5/5 PASS**: CI `39211903664`, synthetic `39211903814`, Android `39211903731`, migrationvalidation `39211903783`, restoredrill `39211903671`. Chạy thử promote chính thức **18 jobs/178 bước PASS**. Receipt E2E fleet bảy spec là LOCAL (`docs/generated/e2e-fleet-evidence/2026-10-19-d4818a9a682c-fa428022.json`), không phải CI E2E thật.
 
@@ -10,7 +10,7 @@ Lệnh `--apply` trước đó chưa tạo được bản phát hành do API tr�
 
 Cả 7 migration đã áp TEST và production; migration thứ bảy `20261019061954` hậu kiểm **7/7 mỗi đích**. Legacy 8 trường, inherit 11, joinedlegacy 11; credential hết hạn không được hồi sinh. `readFastPath` false/absent; `zaloProvisioning` được bỏ khỏi connector config ở layout ba UID. Credential owner đã hết hạn và chính chủ cần kết nối lại theo luồng chính thức sau khi web sẵn sàng. Tài khoản vault test không phải owner; không xin mật khẩu qua chat. TEMP fence/drain bug đã sửa, 4 ca kiểm đạt và review PASS, nhưng profile live chưa được áp.
 
-**Cập nhật 15:46 UTC+7:** run2 actual-account TEST ghi nhận fast khớp public shared core CRM **45/45**; strict legacy parity (normal so với fast) đạt contract/invoice 30/30, customer 0/15. Một quyền đại diện `leads.view` được thử 6/6, không phải toàn bộ quyền. Run1 dừng trước MCP do lỗi Host trong harness; chỉ harness tạm được sửa, không đổi app/RLS. Cleanup run2 hoàn tất, production fast OFF; browser chưa kiểm, owner reconnect/Zalo còn chờ. Chi tiết ở [STATUS](STATUS.md#checkpoint-hiện-hành).
+**Cập nhật 16:05 UTC+7:** run3 có 15 cặp customer TEST; cùng customerId, bốn trường contract/building/room khác nhau (normal có giá trị, fast rỗng), fast khớp shared core CRM 15/15. Đây là run riêng, không cộng với 45 cặp run2; trạng thái/RLS từng record chưa xác minh. Cả ba run đã cleanup; không còn benchmark. Fast production OFF; browser, phiên MCP owner production và Zalo chưa nghiệm thu. Chi tiết ở [STATUS](STATUS.md#checkpoint-hiện-hành); số đo ở [tài liệu hiệu năng](../2026-10-19-crm-hermes-jev-performance.md).
 
 Benchmark quản trị được đo trên VPS localhost với dữ liệu rỗng; chi tiết và giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành). Trong DEMO lượt bốn (`07:35:11–07:36:46Z`), report đạt **12 PASS/0 FAIL** và canonical Web parity **3/3**, nhưng cả ba fast query rỗng, normal mỗi query có một dòng. Strict legacy parity false do `items/nextCursor`; chưa chứng minh sai lệch location hay parity trên dữ liệu có dòng. Fast đã rollback OFF; readback `07:37:26Z` khớp hash gốc, PID `192430` chạy `0fbc`, không còn cấu hình tạm. Bốn lượt đã cleanup; không còn benchmark chạy. Tiếp theo: Billing → web phát hành → owner reconnect → nghiệm thu MCP nonempty cùng scope và Zalo.
 
