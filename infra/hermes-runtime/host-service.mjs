@@ -1,5 +1,7 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { createNativeBindingReconciler } from '../hermes-zalo-native/binding-reconciler.mjs';
+import { createStoreTransport } from '../hermes-broker/store-transport.mjs';
 import { createStorePool } from '../hermes-broker/store-pool.mjs';
 import { createConnectionHandoff } from '../hermes-broker/connection-handoff.mjs';
 import { createHermesBackend } from '../hermes-broker/server.mjs';
@@ -26,13 +28,14 @@ async function prepareState(paths) {
 }
 const DEFAULTS = Object.freeze({
   acquireHostOwnership, prepareState, createHostAudit, createStorePool, createConnectionHandoff, createHermesBackend,
-  createConnectorMaintenance,
+  createConnectorMaintenance, createNativeBindingReconciler,
 });
 
 /** Connector host lifecycle (`mode: "connector"` only). Factories are a trusted
  * in-process test seam, never configuration/HTTP input. All production defaults
  * are the real adapters. Owns one host lock, listener, WAL, backend, pool and the
- * connection maintenance loop. It never starts a model, container or profile.
+ * connection maintenance and optional allowlisted Zalo provisioning. It never
+ * starts a model, container or profile; configuration changes await controlled restart.
  * Unknown shutdown retains that lock; no process/PID/age-based recovery occurs.
  * Config must come from loadHostConfiguration; key buffers are disposed after
  * the backend and WAL have copied them, including partial startup failures.
@@ -43,7 +46,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       Object.keys(overrides).some(key => !Object.hasOwn(DEFAULTS, key)) ||
       Object.keys(DEFAULTS).some(key => typeof factories[key] !== 'function') ||
       configuration.mode !== 'connector') fail('invalid_host_configuration');
-  let ownership, audit, pool, handoff, backend, maintenance;
+  let ownership, audit, pool, handoff, backend, maintenance, zaloReconciler;
   let started, startupSettled = Promise.resolve(), closing = false, closePromise, cleanupPromise, maintenanceClosed, disposed = false;
   let state = 'idle', failureCode, finishResolve, finishReject;
   const finished = new Promise((resolve, reject) => { finishResolve = resolve; finishReject = reject; });
@@ -52,7 +55,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
   const live = () => { if (closing || controller.signal.aborted) fail('host_stopped'); };
   const dispose = () => { if (!disposed) { disposed = true; configuration.dispose(); } };
   const stopMaintenance = () => {
-    maintenanceClosed ??= invoke(() => maintenance?.close());
+    maintenanceClosed ??= Promise.all([invoke(() => maintenance?.close()),invoke(() => zaloReconciler?.close())]);
     void maintenanceClosed.catch(() => {}); return maintenanceClosed;
   };
   const closeListener = () => {
@@ -99,12 +102,17 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       pool = factories.createStorePool(configuration.store);
       backend = factories.createHermesBackend({ supabase: configuration.supabase, store: { pool, expectedRole: configuration.store.role },
         encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
-        connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}) });
+        connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}),
+        ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });
       dispose();
       maintenance = factories.createConnectorMaintenance({ handoff, backend });
+      if(configuration.zaloProvisioning) zaloReconciler=factories.createNativeBindingReconciler({
+        configuration:configuration.zaloProvisioning,handoff,backend,
+        transport:createStoreTransport({pool,expectedRole:configuration.store.role})});
+
       live();
       await new Promise((resolve, reject) => {
         const failed = () => { backend.server.off('listening', ready); reject(new Error('host_listener_failed')); };
@@ -112,7 +120,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
         backend.server.once('error', failed); backend.server.once('listening', ready);
         backend.server.listen({ host: '127.0.0.1', port: configuration.listenPort, exclusive: true });
       });
-      live(); backend.startWorkMemoryRetention(); maintenance.start(); state = 'running';
+      live(); backend.startWorkMemoryRetention(); maintenance.start(); zaloReconciler?.start(); state = 'running';
     } catch {
       if (!closing) failureCode = 'host_start_failed';
       await cleanup(); fail('host_start_failed');
@@ -129,6 +137,6 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
     },
     close: closeHost,
     finished,
-    status() { return Object.freeze({ state }); },
+    status() { return Object.freeze({ state, ...(zaloReconciler ? { zaloProvisioning: zaloReconciler.status() } : {}) }); },
   });
 }

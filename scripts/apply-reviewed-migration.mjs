@@ -39,6 +39,7 @@
 //        digest) — nhưng ba lớp đó kiểm XUẤT XỨ, không kiểm Ý ĐỊNH.
 
 import { splitSqlStatements, normalizeSqlSource } from "./network-center-function-bodies.mjs";
+import { HERMES_READ_STANDARD_FUNCTIONS } from "./hermes-read-function-specs.mjs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -272,7 +273,11 @@ function cheSqlStandard(sql) {
     if (!/^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/i.test(header) || !/\bBEGIN\s+ATOMIC\b/i.test(header)) continue;
     const match = /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:[a-z_]\w*\.)?[a-z_]\w*\s*\([^()'"$;]*\)\s+RETURNS\s+(?:[a-z_]\w*\.)?[a-z_]\w*\s+LANGUAGE\s+sql\s+VOLATILE\s+SECURITY\s+INVOKER\s+SET\s+search_path\s*=\s*pg_catalog\s*,\s*public\s+BEGIN\s+ATOMIC\s+(?:SELECT|WITH)\b/i.exec(header);
     const next = parts[index + 1];
-    if (!match || !next || plain(next) !== 'END') throw new Error('Unsupported SQL-standard function boundary; expected one SELECT/WITH statement and END.');
+    // The reviewed STABLE read lane has a different search_path. Admit only
+    // its exact statements; keep every other unsupported header/body closed.
+    const reviewedRead = HERMES_READ_STANDARD_FUNCTIONS.some(spec =>
+      createHash('sha256').update(body + ';\nEND').digest('hex') === spec.statementSha256);
+    if ((!match && !reviewedRead) || !next || plain(next) !== 'END') throw new Error('Unsupported SQL-standard function boundary; expected one SELECT/WITH statement and END.');
     const endStart = normalized.indexOf(next, cursor);
     ranges.push({start: start + part.indexOf(body) + body.search(/\bBEGIN\s+ATOMIC\b/i), end: endStart + next.length});
     cursor = endStart + next.length; index++;

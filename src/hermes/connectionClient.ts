@@ -28,6 +28,8 @@ const grantOptions = z.object({ userId: uuid, organizationId: uuid, membershipId
 const row = z.object({
   id: uuid, assistantId: uuid, organizationId: uuid, userId: uuid,
   state: z.enum(['pending', 'active', 'revoked']), epoch: positive, restrictions, scopeIds: ids,
+  permissionMode: z.enum(['legacy_allowlist', 'inherit_crm']).optional(), exclusions: restrictions.optional(),
+  scopeMode: z.enum(['restricted', 'unrestricted']).optional(),
 }).strict();
 const context = row.extend({
   state: z.literal('active'), membershipId: uuid, authorizationVersion: positive,
@@ -38,13 +40,22 @@ const emptyInput = z.object({}).strict();
 const contextInput = z.object({ connectionId: uuid }).strict();
 const revokeInput = contextInput.extend({ expectedEpoch: positive });
 const restrictInput = revokeInput.extend({ restrictions, scopeIds: ids });
-const connectInput = z.object({
+const legacyConnectInput = z.object({
   email: z.string().max(320).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
     .refine(value => [...value].every(char => char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127)),
   password: z.string().min(1).refine(value => new TextEncoder().encode(value).byteLength <= 4096),
   restrictions, scopeIds: ids,
 }).strict().refine(value => value.restrictions.action.every(key => HERMES_ACTION_CAPABILITIES.includes(key)) &&
   value.restrictions.read.every(key => HERMES_READ_CAPABILITIES.includes(key)));
+const inheritedSettings = z.object({ permissionMode: z.literal('inherit_crm'), exclusions: restrictions,
+  scopeMode: z.enum(['restricted', 'unrestricted']), scopeIds: ids }).strict();
+const validScopeMode = (value: z.infer<typeof inheritedSettings>) => value.scopeMode !== 'unrestricted' || value.scopeIds.length === 0;
+const inheritedConnectInput = inheritedSettings.extend({ email: legacyConnectInput.innerType().shape.email,
+  password: legacyConnectInput.innerType().shape.password }).strict().refine(validScopeMode);
+const settingsInput = inheritedSettings.extend({ connectionId: uuid, expectedEpoch: positive }).strict().refine(validScopeMode);
+const connectInput = z.union([legacyConnectInput, inheritedConnectInput]);
+const isInheritedConnect = (value: z.infer<typeof connectInput>): value is z.infer<typeof inheritedConnectInput> =>
+  'permissionMode' in value && value.permissionMode === 'inherit_crm';
 const listResult = z.object({ connections: z.array(row).max(256)
   .refine(values => new Set(values.map(value => value.id)).size === values.length) }).strict();
 const connectionStatus = z.object({ id: uuid, lastSuccessAt: positive.nullable(), lastToolCallAt: positive.nullable(),
@@ -58,6 +69,7 @@ const statusResult = z.object({
     .transform(value => ({ version: value.version, startedAt: value.startedAt, observedAt: value.observedAt })),
   connections: z.array(connectionStatus).max(256).refine(values => new Set(values.map(value => value.id)).size === values.length),
 }).strict();
+const overviewResult = z.object({ connections: listResult.shape.connections, status: statusResult }).strict();
 const contextResult = z.object({ context }).strict();
 const optionsResult = z.object({ options: grantOptions }).strict();
 const connectResult = z.object({ status: z.literal('active'), connection: row.extend({ state: z.literal('active') }),
@@ -72,9 +84,11 @@ export type HermesConnectionRestrictions = z.infer<typeof restrictions>;
 export type HermesGrantOptions = z.infer<typeof grantOptions>;
 /** Process-memory observations of the CRM connector since `connector.startedAt`; not durable history. */
 export type HermesConnectorStatus = z.infer<typeof statusResult>;
+export type HermesConnectionsOverview = z.infer<typeof overviewResult>;
 export type HermesConnectionStatus = HermesConnectorStatus['connections'][number];
 export type HermesConnectInput = z.infer<typeof connectInput>;
 export type HermesRestrictInput = z.infer<typeof restrictInput>;
+export type HermesSettingsInput = z.infer<typeof settingsInput>;
 export type HermesRevokeInput = z.infer<typeof revokeInput>;
 /** One-time opaque handoff only. The caller must not put this result in a query cache or persistent browser storage. */
 export type HermesConnectResult = z.infer<typeof connectResult>;
@@ -89,12 +103,12 @@ const statuses = {
 } as const;
 type ServerCode = keyof typeof statuses;
 export type HermesConnectionErrorCode = ServerCode | 'invalid_response';
-type Operation = 'list' | 'context' | 'options' | 'status' | 'connect' | 'restrict' | 'revoke';
-type WriteOperation = 'connect' | 'restrict' | 'revoke';
+type Operation = 'overview' | 'list' | 'context' | 'options' | 'status' | 'connect' | 'restrict' | 'revoke' | 'settings';
+type WriteOperation = 'connect' | 'restrict' | 'revoke' | 'settings';
 type Outcome = 'not_dispatched' | 'rejected' | 'unknown';
 const serverCode = z.custom<ServerCode>(value => typeof value === 'string' && Object.prototype.hasOwnProperty.call(statuses, value));
 const connectReceipt = z.object({ connectionId: uuid, operationId: uuid }).strict();
-const mutationReceipt = revokeInput.extend({ operation: z.enum(['restrict', 'revoke']) });
+const mutationReceipt = revokeInput.extend({ operation: z.enum(['restrict', 'revoke', 'settings']) });
 const errorResult = z.object({ error: serverCode, receipt: z.union([connectReceipt, mutationReceipt]).optional() }).strict();
 
 /** Only locally pinned request identifiers; never a server message, JWT, password, token, or unbound server ID. */
@@ -137,7 +151,7 @@ export interface HermesRequestOptions { signal?: AbortSignal }
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(value => b.includes(value));
 const sameRestrictions = (a: HermesConnectionRestrictions, b: HermesConnectionRestrictions) =>
   sameSet(a.read, b.read) && sameSet(a.action, b.action);
-const writeOperation = (operation: Operation): operation is WriteOperation => !['list', 'context', 'options', 'status'].includes(operation);
+const writeOperation = (operation: Operation): operation is WriteOperation => !['overview', 'list', 'context', 'options', 'status'].includes(operation);
 const MAX_REQUEST_BYTES = 65_536;
 const MAX_RESPONSE_BYTES = 1_048_576;
 
@@ -190,7 +204,8 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
       Object.keys(options).some(key => !['userId', 'organizationId', 'currentScope', 'getSession', 'fetch', 'timeoutMs'].includes(key))) {
     throw new TypeError('invalid_hermes_client_config');
   }
-  const ownRow = (value: HermesConnectionMetadata) => value.userId === userId && value.organizationId === organizationId;
+  const ownRow = (value: HermesConnectionMetadata) => value.userId === userId && value.organizationId === organizationId &&
+    (value.permissionMode !== 'inherit_crm' || Boolean(value.exclusions && value.scopeMode));
 
   async function invoke<Input, Result>(operation: Operation, input: Input, inputSchema: z.ZodType<Input>,
     resultSchema: z.ZodType<Result, z.ZodTypeDef, unknown>, matches: (result: Result, request: Input) => boolean,
@@ -301,6 +316,8 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
   }
 
   return {
+    overview: (requestOptions?: HermesRequestOptions) => invoke('overview', {}, emptyInput, overviewResult,
+      value => value.connections.every(ownRow), requestOptions),
     list: (requestOptions?: HermesRequestOptions) => invoke('list', {}, emptyInput, listResult,
       value => value.connections.every(ownRow), requestOptions),
     options: (requestOptions?: HermesRequestOptions) => invoke('options', {}, emptyInput, optionsResult,
@@ -309,8 +326,16 @@ export function createHermesConnectionClient(options: HermesConnectionClientOpti
     context: (input: z.infer<typeof contextInput>, requestOptions?: HermesRequestOptions) => invoke('context', input, contextInput, contextResult,
       (value, request) => ownRow(value.context) && value.context.id === request.connectionId, requestOptions),
     connect: (input: HermesConnectInput, requestOptions?: HermesRequestOptions) => invoke('connect', input, connectInput, connectResult,
-      (value, request) => ownRow(value.connection) && sameRestrictions(value.connection.restrictions, request.restrictions) &&
-        sameSet(value.connection.scopeIds, request.scopeIds), requestOptions),
+      (value, request) => ownRow(value.connection) && (isInheritedConnect(request)
+        ? value.connection.permissionMode === 'inherit_crm' && value.connection.scopeMode === request.scopeMode &&
+          Boolean(value.connection.exclusions && sameRestrictions(value.connection.exclusions, request.exclusions)) &&
+          (request.scopeMode === 'unrestricted' || sameSet(value.connection.scopeIds, request.scopeIds))
+        : sameRestrictions(value.connection.restrictions, request.restrictions) && sameSet(value.connection.scopeIds, request.scopeIds)), requestOptions),
+    settings: (input: HermesSettingsInput, requestOptions?: HermesRequestOptions) => invoke('settings', input, settingsInput, restrictResult,
+      (value, request) => ownRow(value.connection) && value.connection.id === request.connectionId && value.connection.epoch === request.expectedEpoch + 1 &&
+        value.connection.permissionMode === 'inherit_crm' && value.connection.scopeMode === request.scopeMode &&
+        Boolean(value.connection.exclusions && sameRestrictions(value.connection.exclusions, request.exclusions)) &&
+        (request.scopeMode === 'unrestricted' || sameSet(value.connection.scopeIds, request.scopeIds)), requestOptions),
     restrict: (input: HermesRestrictInput, requestOptions?: HermesRequestOptions) => invoke('restrict', input, restrictInput, restrictResult,
       (value, request) => ownRow(value.connection) && value.connection.id === request.connectionId && value.connection.epoch === request.expectedEpoch + 1 &&
         sameRestrictions(value.connection.restrictions, request.restrictions) && sameSet(value.connection.scopeIds, request.scopeIds), requestOptions),

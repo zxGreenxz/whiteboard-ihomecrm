@@ -22318,6 +22318,25 @@ export type Database = {
         }
         Returns: string
       }
+      contract_list_core_v1: {
+        Args: {
+          p_after_id?: string
+          p_building_ids?: string[]
+          p_customer_building_ids?: string[]
+          p_exact_status?: string
+          p_lifecycle?: string
+          p_limit?: number
+          p_month?: string
+          p_offset?: number
+          p_order?: string
+          p_organization_id?: string
+          p_room_name?: string
+          p_search?: string
+          p_stat?: string
+          p_with_customers?: boolean
+        }
+        Returns: Json
+      }
       contract_list_v1: {
         Args: {
           p_building_ids?: string[]
@@ -23599,6 +23618,23 @@ export type Database = {
         Args: { _customer_id: string; _owner: string }
         Returns: boolean
       }
+      customer_list_core_v1: {
+        Args: {
+          p_after_id?: string
+          p_building_ids?: string[]
+          p_include_location?: boolean
+          p_kind?: string
+          p_limit?: number
+          p_location_building_ids?: string[]
+          p_offset?: number
+          p_order?: string
+          p_organization_id: string
+          p_room_id?: string
+          p_search?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
       customer_list_v1: {
         Args: {
           p_building_ids?: string[]
@@ -24799,6 +24835,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      hermes_domain_read_fast_v1: {
+        Args: { p_binding: Json; p_domain: string; p_input: Json }
+        Returns: Json
+      }
       hermes_domain_read_v1: {
         Args: { p_binding: Json; p_domain: string; p_input: Json }
         Returns: Json
@@ -24878,6 +24918,17 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_prepare_connection_v2: {
+        Args: {
+          p_excluded_action: string[]
+          p_excluded_read: string[]
+          p_org: string
+          p_scope_ids: string[]
+          p_scope_mode: string
+        }
+        Returns: Json
+      }
+      hermes_read_text_v1: { Args: { p_text: string }; Returns: string }
       hermes_room_pass_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
@@ -25159,6 +25210,31 @@ export type Database = {
           p_building_ids?: string[]
           p_invoice_id: string
           p_organization_id: string
+        }
+        Returns: Json
+      }
+      invoice_list_core_v1: {
+        Args: {
+          p_adjustment_review_status?: string
+          p_after_id?: string
+          p_amount_target?: number
+          p_billing_month?: string
+          p_building_ids?: string[]
+          p_contract_id?: string
+          p_customer_building_ids?: string[]
+          p_filter_building_ids?: string[]
+          p_issue_date_from?: string
+          p_issue_date_to?: string
+          p_limit?: number
+          p_offset?: number
+          p_order?: string
+          p_organization_id?: string
+          p_payment_method?: Database["public"]["Enums"]["payment_method"]
+          p_payment_status?: string
+          p_room_ids?: string[]
+          p_search?: string
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+          p_view_status?: string
         }
         Returns: Json
       }
@@ -28872,6 +28948,41 @@ export type Database = {
           p_user: string
         }
         Returns: Json
+      }
+      vehicles_list_core_v1: {
+        Args: {
+          p_allow_copied_owner?: boolean
+          p_building_ids?: string[]
+          p_customer_building_ids?: string[]
+          p_customer_id?: string
+          p_include_unassigned?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_query?: string
+          p_room_id?: string
+          p_vehicle_type?: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          color: string
+          created_at: string
+          customer_id: string
+          customer_name: string
+          customer_phone: string
+          id: string
+          license_plate: string
+          organization_id: string
+          owner_name: string
+          parking_fee: number
+          room_id: string
+          room_name: string
+          ticket_number: string
+          total_count: number
+          vehicle_name: string
+          vehicle_type: string
+        }[]
       }
       vehicles_list_v1: {
         Args: {

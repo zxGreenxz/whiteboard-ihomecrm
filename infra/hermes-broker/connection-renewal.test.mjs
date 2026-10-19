@@ -49,6 +49,18 @@ test('same opaque renewal uses fresh real authority and precise CAS; response co
   assert.equal(f.state.verifies, 4);
   assert.doesNotMatch(JSON.stringify(result), /PRIVATE|hc_|credential|tokenDigest|sessionId/);
 });
+
+test('inheritance metadata renews the same opaque after a settings epoch change and retains explicit exclusions', async t => {
+  const f = fixture(t);
+  Object.assign(f.state.row.connection, { permissionMode: 'inherit_crm', scopeMode: 'unrestricted', epoch: 3,
+    exclusions: { read: ['customers.view'], action: ['tasks.create'] } });
+  const result = await f.run();
+  assert.equal(result.status, 'renewed');
+  assert.equal(f.state.writes[0].expectedEpoch, 3);
+  assert.equal(f.state.writes[0].tokenDigest, tokenDigest);
+  assert.deepEqual(f.state.row.connection.exclusions, { read: ['customers.view'], action: ['tasks.create'] });
+  assert.equal(f.state.row.session.revision, 1);
+});
 test('Auth failure before dispatch never renews', async t => {
   const f = fixture(t, { verify: () => { throw Error('PRIVATE'); } });
   await assert.rejects(f.run(), error('not_dispatched')); assert.equal(f.state.writes.length, 0);

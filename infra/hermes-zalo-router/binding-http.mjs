@@ -1,7 +1,7 @@
 import { ZaloBindingError } from './binding-service.mjs';
 
 const PREFIX = '/api/hermes/zalo/';
-const OPERATIONS = new Set(['bots', 'manageBots', 'setBot', 'begin', 'status', 'confirm', 'unlink', 'list']);
+const OPERATIONS = new Set(['bots', 'manageBots', 'setBot', 'selectCredential', 'begin', 'status', 'confirm', 'unlink', 'list']);
 const writes = operation => !['bots', 'manageBots', 'status', 'list'].includes(operation);
 const STATUS = { invalid_request: 400, forbidden: 403, reauthentication_required: 401, context_changed: 409,
   backend_unavailable: 503, binding_outcome_unknown: 503, cancelled: 408, timeout: 504, busy: 429, backend_closed: 503 };

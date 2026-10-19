@@ -26,14 +26,18 @@ const inputs = {
   bots: ['afterAccountId'],
   manageBots: ['afterAccountId'],
   setBot: ['accountId', 'expectedVersion', 'enabled'],
+  selectCredential: ['connectionId', 'expectedConnectionEpoch', 'expectedActiveConnectionId'],
   begin: ['connectionId', 'expectedConnectionEpoch', 'accountId'],
   status: ['challengeId'],
   confirm: ['challengeId', 'expectedCandidateVersion', 'expectedSenderUid'],
   unlink: ['bindingId', 'expectedEpoch'],
 };
 const common = ['userId', 'organizationId'];
+const provisioningStates = new Set(['pending','pending_credential','restart_pending','synchronized','unavailable']);
+const withProvisioning = (row, keys) => (exact(row, keys) || exact(row, [...keys,'provisioningState'])) &&
+  (!Object.hasOwn(row,'provisioningState') || provisioningStates.has(row.provisioningState));
 function response(operation, value, input) {
-  const binding = row => exact(row, ['bindingId','epoch','state','accountId','connectionId','senderUid']) &&
+  const binding = row => withProvisioning(row, ['bindingId','epoch','state','accountId','connectionId','senderUid']) &&
     ['bindingId','accountId','connectionId'].every(key => id(row[key])) && positive(row.epoch) &&
     ['active','revoked'].includes(row.state) && typeof row.senderUid === 'string' && UID.test(row.senderUid);
   let valid = false;
@@ -51,6 +55,7 @@ function response(operation, value, input) {
       typeof row.name === 'string' && row.name.length <= 160 && typeof row.zaloUid === 'string' && UID.test(row.zaloUid)) &&
     value.bots.every((row, index) => index === 0 ? input.afterAccountId === null || row.accountId > input.afterAccountId : row.accountId > value.bots[index - 1].accountId) &&
     (value.nextCursor === null || value.bots.length === 100 && value.nextCursor === value.bots.at(-1).accountId);
+  if (operation === 'selectCredential') valid = exact(value, [...common,'status','connectionId']) && value.status === 'selected' && value.connectionId === input.connectionId;
   if (operation === 'begin') valid = exact(value, [...common,'status','challengeId','challenge','accountId','connectionId','expiresAt']) &&
     value.status === 'waiting' && id(value.challengeId) && /^hz_[a-f0-9]{64}$/.test(value.challenge) &&
     value.accountId === input.accountId && value.connectionId === input.connectionId && positive(value.expiresAt);
@@ -59,7 +64,7 @@ function response(operation, value, input) {
     id(value.accountId) && id(value.connectionId) && positive(value.expiresAt) &&
     (value.status === 'waiting' ? value.candidateVersion === 0 && value.senderUid === null :
       value.candidateVersion === 1 && typeof value.senderUid === 'string' && UID.test(value.senderUid));
-  if (operation === 'confirm') valid = exact(value, [...common,'status','bindingId','epoch','accountId','connectionId','senderUid']) &&
+  if (operation === 'confirm') valid = withProvisioning(value, [...common,'status','bindingId','epoch','accountId','connectionId','senderUid']) &&
     value.status === 'active' && id(value.bindingId) && id(value.accountId) && id(value.connectionId) && positive(value.epoch) && value.senderUid === input.expectedSenderUid;
   if (operation === 'unlink') valid = exact(value, [...common,'status','bindingId','epoch']) && value.status === 'revoked' &&
     value.bindingId === input.bindingId && [input.expectedEpoch,input.expectedEpoch + 1].includes(value.epoch);
@@ -73,7 +78,7 @@ function response(operation, value, input) {
 function request(operation, input, organizationId) {
   if (!Object.hasOwn(inputs, operation) || !exact(input, inputs[operation]) || !id(organizationId)) fail('invalid_request');
   for (const [key, value] of Object.entries(input)) {
-    if (['afterBindingId', 'afterAccountId'].includes(key) && value === null) continue;
+    if (['afterBindingId', 'afterAccountId', 'expectedActiveConnectionId'].includes(key) && value === null) continue;
     if (key.endsWith('Id') && !id(value)) fail('invalid_request');
     if (key === 'expectedVersion') {
       if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER - 1) fail('invalid_request');
@@ -86,8 +91,8 @@ function request(operation, input, organizationId) {
 
 /** Trusted browser-auth service seam for public.hermes_zalo_binding_v1.
  * rpc receives the caller JWT, never a service-role or runtime credential.
- * verifyCaller must freshly verify Auth and selected-org membership; SQL repeats
- * membership/ownership/epoch checks at mutation time. Normal user has one org;
+ * verifyCaller verifies Auth once. SQL owns current membership, selected company,
+ * ownership and credential checks at mutation time. Normal user has one org;
  * superadmin still selects an explicit company and its own company bot. Same-org
  * is mandatory: a central cross-company inbox requires a separate privacy design.
  * Writes never retry. Unknown ACK requires status/readback, not a second begin.
@@ -115,10 +120,9 @@ export function createZaloBindingService({ verifyCaller, rpc, timeoutMs = 30000,
     const check = () => { if (controller.signal.aborted || signal.aborted || closing) fail('cancelled'); };
     const work = Promise.resolve().then(async () => {
       check(); const before = await verifyCaller({ accessToken, organizationId, signal: controller.signal }); check();
-      if (!exact(before, ['userId', 'organizationId', 'membershipId', 'authorizationVersion', 'sessionId']) ||
-          !['userId', 'organizationId', 'membershipId', 'sessionId'].every(key => id(before[key])) ||
-          before.organizationId !== organizationId || !positive(before.authorizationVersion)) fail('forbidden');
-      const pinned = JSON.stringify(before);
+      if (!exact(before, ['userId', 'organizationId', 'sessionId']) ||
+          !['userId', 'organizationId', 'sessionId'].every(key => id(before[key])) ||
+          before.organizationId !== organizationId) fail('forbidden');
       dispatched = true;
       let result;
       try { result = await rpc({ accessToken, functionName: 'hermes_zalo_binding_v1', args: { p: payload }, signal: controller.signal }); }
@@ -127,8 +131,6 @@ export function createZaloBindingService({ verifyCaller, rpc, timeoutMs = 30000,
         throw error;
       }
       check();
-      const after = await verifyCaller({ accessToken, organizationId, signal: controller.signal }); check();
-      if (JSON.stringify(after) !== pinned) fail('context_changed');
       if (!plain(result) || result.userId !== before.userId || result.organizationId !== organizationId) fail('invalid_response');
       return response(operation, result, payload);
     });

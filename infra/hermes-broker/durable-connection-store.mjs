@@ -1,3 +1,4 @@
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 import { StoreTransportError } from './store-transport.mjs';
 
 // SQL serializes UUIDs in lowercase. Never normalize an already sealed AAD tuple.
@@ -50,16 +51,17 @@ function envelope(value, invalid) {
   return Object.fromEntries(ENVELOPE.map(key => [key, value[key]]));
 }
 function connection(value, keys, state, invalid) {
-  if (!exact(value, keys) || ['id', 'assistantId', 'organizationId', 'userId'].some(key => !uuid(value[key])) ||
+  if (!permissionShape(value, keys) || ['id', 'assistantId', 'organizationId', 'userId'].some(key => !uuid(value[key])) ||
       value.state !== state || !positive(value.epoch) || value.epoch >= Number.MAX_SAFE_INTEGER) invalid();
   return { id: value.id, assistantId: value.assistantId, organizationId: value.organizationId, userId: value.userId,
+    ...connectionPermissionSettings(value, x => restrictions(x, invalid), invalid),
     state, epoch: value.epoch, restrictions: restrictions(value.restrictions, invalid), scopeIds: list(value.scopeIds, uuid, invalid) };
 }
 function sameOwner(actual, expected, invalid) {
   if (['id', 'assistantId', 'userId', 'organizationId'].some(key => actual[key] !== expected[key])) invalid();
 }
 function activeSnapshot(value, invalid) {
-  if (exact(value, JOINED)) {
+  if (permissionShape(value, JOINED)) {
     if (!digest(value.tokenDigest) || !uuid(value.credentialRef) || !positive(value.expiresAt)) invalid();
     return connection(value, JOINED, 'active', invalid);
   }
@@ -67,7 +69,11 @@ function activeSnapshot(value, invalid) {
 }
 function sameLimits(actual, expected, invalid) {
   if (!equalSet(actual.restrictions.read, expected.restrictions.read) ||
-      !equalSet(actual.restrictions.action, expected.restrictions.action) || !equalSet(actual.scopeIds, expected.scopeIds)) invalid();
+      !equalSet(actual.restrictions.action, expected.restrictions.action) || !equalSet(actual.scopeIds, expected.scopeIds) ||
+      (actual.permissionMode ?? 'legacy_allowlist') !== (expected.permissionMode ?? 'legacy_allowlist') ||
+      (actual.scopeMode ?? 'restricted') !== (expected.scopeMode ?? 'restricted') ||
+      !equalSet(actual.exclusions?.read ?? [], expected.exclusions?.read ?? []) ||
+      !equalSet(actual.exclusions?.action ?? [], expected.exclusions?.action ?? [])) invalid();
 }
 function narrow(next, previous, invalid) {
   if (!subset(next.restrictions.read, previous.restrictions.read) ||
@@ -160,9 +166,27 @@ export function createDurableConnectionStore({ transport, clock = Date.now } = {
       membership: { membershipId: membership.membershipId, authorizationVersion: membership.authorizationVersion, isSuperadmin: membership.isSuperadmin },
       policy: copiedPolicy };
     },
+    async updateConnectionSettings(input, options) {
+      if (!exact(input, ['connection', 'permissionMode', 'exclusions', 'scopeMode', 'scopeIds']) || input.permissionMode !== 'inherit_crm' ||
+          !['restricted', 'unrestricted'].includes(input.scopeMode)) invalidRequest();
+      const previous = activeSnapshot(input.connection, invalidRequest);
+      const exclusions = restrictions(input.exclusions, invalidRequest), scopeIds = list(input.scopeIds, uuid, invalidRequest);
+      if (input.scopeMode === 'unrestricted' && scopeIds.length) invalidRequest();
+      const payload = { connectionId: previous.id, expectedEpoch: previous.epoch, permissionMode: input.permissionMode,
+        exclusions, scopeMode: input.scopeMode, scopeIds };
+      const result = await call('updateConnectionSettings', payload, options);
+      if (!exact(result, ['ok', 'connection']) || result.ok !== true) invalidAck();
+      const row = connection(result.connection, CONNECTION, 'active', invalidAck);
+      sameOwner(row, previous, invalidAck);
+      if (row.epoch !== previous.epoch + 1 || row.permissionMode !== 'inherit_crm' || row.scopeMode !== payload.scopeMode ||
+          !equalSet(row.exclusions.read, exclusions.read) || !equalSet(row.exclusions.action, exclusions.action) ||
+          (payload.scopeMode === 'restricted' && !equalSet(row.scopeIds, scopeIds))) invalidAck();
+      return { ok: true, connection: row };
+    },
     async restrictConnection(input, options) {
       if (!exact(input, ['connection', 'restrictions', 'scopeIds'])) invalidRequest();
       const previous = activeSnapshot(input.connection, invalidRequest);
+      if (previous.permissionMode === 'inherit_crm') invalidRequest();
       const next = { restrictions: restrictions(input.restrictions, invalidRequest), scopeIds: list(input.scopeIds, uuid, invalidRequest) };
       narrow(next, previous, invalidRequest);
       const payload = { connectionId: previous.id, expectedEpoch: previous.epoch,

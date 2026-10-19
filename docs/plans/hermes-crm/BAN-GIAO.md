@@ -1,6 +1,36 @@
 # Bàn giao Hermes × iHomeCRM
 
-Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật sáng 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
+## Cập nhật yêu cầu và khảo sát tinh giản — 19/10/2026
+
+**Checkpoint hiện hành 19/10:** Gate6 **67/67 PASS**, Node 24.18.0, 610 giây; candidate `c3709badb` chưa push. Sáu migration nền đã TEST và production qua lane chính thức, có receipt. Adapter VPS vẫn `b023563a`; migration `20261019061954` chỉ bổ sung 3 keys cho `inherit_crm`, giữ legacy wire shape, không DML/đổi expiry. Compat TEST đã qua official lane sau backup/2 lượt rollback; post-apply 7/7 xác nhận helper digest, legacy 8 trường, inherit 11 trường, ACL và expired deny. JWT HTTP 200 nhưng list rỗng, chưa có nonempty proof. Production compat đã qua official lane lúc 13:33 UTC+7, có backup/2 lượt rollback; kiểm sau áp dụng 7/7 PASS. Maintenance cũ swallow lỗi đọc nên có đường ngừng renew; credential/session profile đã expired. Không biết first miss hay token in-memory, không claim phục hồi. Alias operator fix 33/33 + review PASS; chưa VPS/profile write, restart hoặc gửi Zalo. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) là nguồn receipts/trạng thái mới nhất.
+
+**Snapshot kỹ thuật lịch sử 12:51 UTC+7:** kết quả sáu migration nền/Gate5/verifier production và baseline broker tại mốc đó được giữ trong lịch sử. Không dùng lại làm trạng thái rollout mới; xem [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) cho compat migration, candidate và receipts hiện hành.
+
+**Làm rõ sau audit:** §9 của báo cáo là đề xuất agent khác, không phải quyết định của chủ. Không áp đặt thu hồi 100 ms, cấm cache hoặc thêm epoch vào mọi RPC. Giữ quyền/RLS vốn có của CRM; kiểm phần tắt Hermes một lần. Xác nhận chữ công khai: đang đề nghị giữ tạm đúng luồng hiện có, chưa được chủ chốt giữ/bỏ. PII xét từng trường; Network Center cần giữ rào RLS khách tới khi chuẩn hóa nguồn chung. [Kết luận audit §10](TINH-GON-KIEM-QUYEN.md#10-kết-quả-audit-lại-và-đề-nghị-thực-hiện).
+
+[Báo cáo, sơ đồ thao tác và plan TG0–TG7](TINH-GON-KIEM-QUYEN.md) ghi đủ tám lớp, phần bỏ/gộp/giữ và bằng chứng. **Cả ba lỗi đã biết thuộc phạm vi này:** báo “Chưa đọc được…” lúc tải, API connections mất 7–9 giây theo báo cáo vận hành, link Zalo khó dùng. Source xác nhận loading/error bị gộp, tải hai đợt, quản trị và link dựng full quyền trước/sau. Candidate đã sửa các đường này; chưa đo lại tốc độ và nghiệm thu link trên VPS.
+
+Bước tiếp theo của root là chốt gate/CI của candidate, tiếp tục runtime deploy/verify sau khi compat TEST/production đã đạt và ghi nhận đúng phần đã quan sát. Chưa có bằng chứng VPS/profile write, restart hay gửi tin Zalo; không đánh dấu khôi phục từ migration hoặc file profile. Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes; không áp mốc 100 ms. Đợt này thực hiện TG0–TG7, không tự đóng các mốc chương trình P0–P11. [Checkpoint vận hành](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910).
+
+
+### Khôi phục sau khi runtime tương thích sẵn sàng
+
+Credential đã hết hạn không thể canonical-refresh qua session gate; tài khoản vault đã đọc/lookup không phải đúng chủ profile. Chỉ hướng dẫn chủ profile tạo kết nối mới sau khi root hoàn tất deploy/verify. Không xin mật khẩu trong chat, không sửa expiry bằng SQL và không tuyên bố phiên đã khôi phục trước thao tác thật.
+
+```mermaid
+flowchart TD
+  A["Root deploy và verify compat/runtime"] --> B["Chủ: /settings/hermes → Mở tạo kết nối"]
+  B --> C["Giữ quyền tắt và phạm vi phù hợp"]
+  C --> D["Xác nhận mật khẩu CRM, tạo kết nối"]
+  D --> E["Zalo: chọn connection mới"]
+  E --> F["Dùng kết nối này cho trợ lý"]
+  F --> G["Operator áp credential đã chọn cho profile owner"]
+  G --> H["Xác minh runtime/Zalo theo quy trình vận hành"]
+```
+
+Native Zalo trên VPS ba UID cần bỏ hẳn `zaloProvisioning` khỏi connector config (không đặt `false`); operator chạy theo UID owner hiện hữu. `prepare_v2` tái sử dụng assistant cùng user/org; `selectCredentialCAS` giữ nick, bot và binding, không cần ghép mã Zalo lại. Đây là flow đã đối chiếu source, chưa phải bằng chứng runtime phục hồi.
+
+Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật theo checkpoint 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 
 ## 1. Hermes đang chạy thế nào
 

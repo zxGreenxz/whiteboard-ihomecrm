@@ -232,9 +232,20 @@ export const useAlerts = (buildingId?: string | null) => {
       if (!userId) throw new Error('Not authenticated');
 
       const alerts: Alert[] = [];
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-      // Overdue invoices
-      const { data: overdueInvoices, error: overdueInvoicesError } = await supabase
+      // Independent sources share one network wave; retain each source error and
+      // the existing severity/order and monetary projection below.
+      const [
+        { data: overdueInvoices, error: overdueInvoicesError },
+        { data: expiringContracts, error: expiringContractsError },
+        { data: urgentIssues, error: urgentIssuesError },
+        { data: depositShortContracts, error: depositShortContractsError },
+      ] = await Promise.all([
+        supabase
         .from("invoices")
         .select(
           `id, invoice_number, due_date, total_amount, paid_amount,
@@ -249,7 +260,47 @@ export const useAlerts = (buildingId?: string | null) => {
         .is("deleted_at", null)
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
-        .limit(5);
+        .limit(5),
+        supabase
+        .from("contracts")
+        .select(
+          `id, contract_number, end_date,
+           contract_customers!contract_customers_contract_id_fkey(
+             is_representative,
+             customer:customers!contract_customers_customer_id_fkey(full_name)
+           )`
+        )
+        .in("status", ["ACTIVE"])
+        .lte("end_date", thirtyDaysFromNow.toISOString())
+        .gte("end_date", new Date().toISOString())
+        .order("end_date", { ascending: true })
+        .limit(5),
+        supabase
+        .from("issues")
+        .select("id, title, priority, created_at")
+        .eq("priority", "URGENT")
+        .not("status", "in", '("RESOLVED","CLOSED")')
+        .lt("created_at", twentyFourHoursAgo.toISOString())
+        .order("created_at", { ascending: true })
+        .limit(5),
+        supabase
+        .from("contracts")
+        .select(
+          `id, contract_number, total_deposit, deposit_paid, deposit_remaining, deposit_topup_due_date,
+           contract_customers!contract_customers_contract_id_fkey(
+             is_representative,
+             customer:customers!contract_customers_customer_id_fkey(full_name)
+           )`
+        )
+        .in("status", ["ACTIVE"])
+        .is("deleted_at", null)
+        .gte("deposit_remaining", 10000)
+        .or("deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT")
+        .order("deposit_remaining", { ascending: false })
+        .limit(5),
+      ]);
+
+      // Overdue invoices
 
       if (overdueInvoicesError) throw overdueInvoicesError;
 
@@ -268,23 +319,6 @@ export const useAlerts = (buildingId?: string | null) => {
       });
 
       // Expiring contracts (within 30 days)
-      const thirtyDaysFromNow = new Date();
-      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-      const { data: expiringContracts, error: expiringContractsError } = await supabase
-        .from("contracts")
-        .select(
-          `id, contract_number, end_date,
-           contract_customers!contract_customers_contract_id_fkey(
-             is_representative,
-             customer:customers!contract_customers_customer_id_fkey(full_name)
-           )`
-        )
-        .in("status", ["ACTIVE"])
-        .lte("end_date", thirtyDaysFromNow.toISOString())
-        .gte("end_date", new Date().toISOString())
-        .order("end_date", { ascending: true })
-        .limit(5);
 
       if (expiringContractsError) throw expiringContractsError;
 
@@ -303,17 +337,6 @@ export const useAlerts = (buildingId?: string | null) => {
       });
 
       // Unresolved urgent issues > 24h
-      const twentyFourHoursAgo = new Date();
-      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-
-      const { data: urgentIssues, error: urgentIssuesError } = await supabase
-        .from("issues")
-        .select("id, title, priority, created_at")
-        .eq("priority", "URGENT")
-        .not("status", "in", '("RESOLVED","CLOSED")')
-        .lt("created_at", twentyFourHoursAgo.toISOString())
-        .order("created_at", { ascending: true })
-        .limit(5);
 
       if (urgentIssuesError) throw urgentIssuesError;
 
@@ -332,21 +355,6 @@ export const useAlerts = (buildingId?: string | null) => {
       // Deposit shortfall — HĐ đang hiệu lực còn thiếu cọc (mode DEBT/legacy;
       // KHÔNG gồm FIRST_INVOICE vì khoản đó thu qua hoá đơn đầu, đã có cảnh báo
       // hoá đơn quá hạn riêng). Đánh dấu để admin nhớ thu đủ cọc.
-      const { data: depositShortContracts, error: depositShortContractsError } = await supabase
-        .from("contracts")
-        .select(
-          `id, contract_number, total_deposit, deposit_paid, deposit_remaining, deposit_topup_due_date,
-           contract_customers!contract_customers_contract_id_fkey(
-             is_representative,
-             customer:customers!contract_customers_customer_id_fkey(full_name)
-           )`
-        )
-        .in("status", ["ACTIVE"])
-        .is("deleted_at", null)
-        .gte("deposit_remaining", 10000)
-        .or("deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT")
-        .order("deposit_remaining", { ascending: false })
-        .limit(5);
 
       if (depositShortContractsError) throw depositShortContractsError;
 
@@ -393,19 +401,41 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: recentContracts, error: recentContractsError } = await supabase
-        .from("contracts")
-        .select(
-          `id, contract_number, created_at,
-           contract_customers!contract_customers_contract_id_fkey(
-             is_representative,
-             customer:customers!contract_customers_customer_id_fkey(full_name)
-           ),
-           room:rooms(name)`
-        )
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(5);
+      // Start independent sources together; invoice lookup below depends on receipts.
+      const [
+        { data: recentContracts, error: recentContractsError },
+        { data: recentReceipts, error: receiptsError },
+        { data: recentIssues, error: recentIssuesError },
+      ] = await Promise.all([
+        supabase
+          .from("contracts")
+          .select(
+            `id, contract_number, created_at,
+             contract_customers!contract_customers_contract_id_fkey(
+               is_representative,
+               customer:customers!contract_customers_customer_id_fkey(full_name)
+             ),
+             room:rooms(name)`
+          )
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("active_payment_receipts")
+          .select("id, invoice_id, collected_amount, payment_date")
+          .neq("payment_method", "CT")
+          .gt("collected_amount", 0)
+          .gte("payment_date", format(sevenDaysAgo, "yyyy-MM-dd"))
+          .order("payment_date", { ascending: false })
+          .order("id", { ascending: true })
+          .limit(5),
+        supabase
+          .from("issues")
+          .select("id, title, priority, created_at")
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
 
       if (recentContractsError) throw recentContractsError;
 
@@ -422,15 +452,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
 
       // Cash collection activities only. The view removes reversals and returned
       // change; customer credit stays included, while non-cash CT is excluded.
-      const { data: recentReceipts, error: receiptsError } = await supabase
-        .from("active_payment_receipts")
-        .select("id, invoice_id, collected_amount, payment_date")
-        .neq("payment_method", "CT")
-        .gt("collected_amount", 0)
-        .gte("payment_date", format(sevenDaysAgo, "yyyy-MM-dd"))
-        .order("payment_date", { ascending: false })
-        .order("id", { ascending: true })
-        .limit(5);
+
       if (receiptsError) throw receiptsError;
 
       const invoiceIds = Array.from(new Set(
@@ -472,12 +494,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
       });
 
       // Recent issues (last 7 days)
-      const { data: recentIssues, error: recentIssuesError } = await supabase
-        .from("issues")
-        .select("id, title, priority, created_at")
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(5);
+
 
       if (recentIssuesError) throw recentIssuesError;
 

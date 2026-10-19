@@ -3,6 +3,8 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { FORWARD_FUNCTIONS, FORWARD_ACL_BLOCKS, INHERITED_CRM_ACL, FORWARD_DEFAULTS } from './hermes-durable-forward-fixture.mjs';
 import { splitHermesFunctionStatements as splitSqlStatements, TASK_FUNCTIONS, extractHermesFunctionDefinitions } from '../hermes-task-function-contract.mjs';
 import { buildTransaction } from '../apply-reviewed-migration.mjs';
 
@@ -15,19 +17,42 @@ const sources = readdirSync(directory).filter(name => name.endsWith('.sql')).sor
   .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }))
   .filter(({ sql }) => /\bhermes_/i.test(sql));
 const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+const digest = sql => createHash('sha256').update(clean(sql)).digest('hex');
+const FORWARD_BY_NAME = new Map(FORWARD_FUNCTIONS.map(spec => [spec.name, spec]));
+const FORWARD_REVOKE_ROLES = new Map([
+  ...FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read').targets.map(([target]) => [target.split('(')[0], 'PUBLIC,anon,authenticated,service_role']),
+  ['public.vehicles_list_core_v1', 'PUBLIC,anon,authenticated,service_role'],
+  ...INHERITED_CRM_ACL.map(spec => [spec.name, spec.acl.find(statement => statement.startsWith('REVOKE ALL')).split(' FROM ')[1].replace(/\s/g, '')]),
+]);
+// CREATE OR REPLACE inherits these existing caller ACLs. Read their actual
+// historical declaration and ACL, pin the complete source statements, then
+// project only the one wrapper into this scoped replay (no invented grants).
+const inheritedCrmStatements = INHERITED_CRM_ACL.flatMap(spec => {
+  const source = splitSqlStatements(readFileSync(join(directory, spec.sourcePath.split('/').at(-1)), 'utf8')).map(clean);
+  const definition = source.find(statement => statement.startsWith(`CREATE OR REPLACE FUNCTION ${spec.name}(`));
+  assert.equal(digest(definition), spec.definitionSha256, `${spec.name}: inherited declaration source`);
+  const acl = source.filter(statement => /^(?:GRANT|REVOKE|ALTER FUNCTION)/.test(statement) && statement.includes(`${spec.name}(`));
+  assert.deepEqual(acl, spec.acl, `${spec.name}: exact inherited ACL source`);
+  return [definition, ...acl.map(statement => {
+    if (statement.startsWith('ALTER FUNCTION')) return `ALTER FUNCTION ${spec.signature} OWNER TO postgres`;
+    const match = /^(GRANT EXECUTE|REVOKE ALL) ON FUNCTION .+ (TO|FROM) (.+)$/.exec(statement);
+    assert(match, 'inherited ACL uses reviewed explicit syntax');
+    return `${match[1]} ON FUNCTION ${spec.signature} ${match[2]} ${match[3]}`;
+  })];
+});
 // The group migration re-closes the existing worker entry's ACL. Include its
 // original declaration so that replay proves that its default PUBLIC grant is
 // revoked too, rather than accepting an ACL target with no known signature.
 const priorWorker = splitSqlStatements(readFileSync(join(directory, '20261011052259_zalo_rpc_only_scope_va_atomic_queue.sql'), 'utf8'))
   .map(clean).find(sql => /^CREATE OR REPLACE FUNCTION public\.zalo_worker_begin_provider_v1\(/i.test(sql));
 assert(priorWorker, 'existing worker entry must have a source definition');
-const statements = [priorWorker, ...sources.flatMap(({ sql }) => splitSqlStatements(sql).map(clean))];
+const statements = [priorWorker, ...inheritedCrmStatements, ...sources.flatMap(({ sql }) => splitSqlStatements(sql).map(clean))];
 const functions = new Map();
 for (const statement of statements) {
   const head = /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+((?:app_private|public)\.\w+)\(/i.exec(statement);
   // The legacy worker's body is patched dynamically, so only its declaration
   // participates in ACL replay; the newly declared companion is checked fully.
-  if (head && (/\.hermes_/.test(head[1]) || head[1] === 'public.zalo_worker_begin_hermes_group_provider_v1')) functions.set(head[1], statement);
+  if (head && (/\.hermes_/.test(head[1]) || FORWARD_BY_NAME.has(head[1]) || head[1] === 'public.zalo_worker_begin_hermes_group_provider_v1')) functions.set(head[1], statement);
 }
 const fn = (name, registry = functions) => {
   const value = registry.get(name.startsWith('public.') ? name : `app_private.${name}`);
@@ -38,7 +63,7 @@ const all = statements.join(';\n');
 const STORE = ['activate', 'read_connection', 'restrict_connection', 'renew_connection', 'revoke_connection', 'acquire_refresh',
   'dispatch_refresh', 'stage_refresh', 'publish_refresh', 'reconnect_session', 'revoke_session', 'release_refresh',
   'claim_private_command', 'dispatch_private_command', 'finish_private_command', 'fail_private_command', 'prune_private_commands',
-  'prune_work_memories'];
+  'prune_work_memories', 'connection_settings'];
 const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid[])',
   'hermes_prepare_connection_v1(uuid,text[],text[],uuid[])', 'hermes_my_connections_v1(uuid)',
   'hermes_connection_context_v1(uuid)', 'hermes_room_scope_map_v1(uuid,uuid[],uuid,text,bigint,bigint,uuid,bigint,bigint)',
@@ -81,7 +106,8 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   // Wave 2 foundation (20261018000000): capability state of the wave-2 read keys.
   'hermes_domain_capabilities_v3(uuid)',
   // Wave 2 INVOKER report entry (20261018000600): package reads run under the asker's RLS.
-  'hermes_w2_read_v1(jsonb,text,jsonb)'];
+  'hermes_w2_read_v1(jsonb,text,jsonb)',
+  'hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'hermes_domain_read_fast_v1(jsonb,text,jsonb)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -112,6 +138,7 @@ const TABLES = ['capabilities', 'assistants', 'org_policies', 'sessions', 'conne
 // expressions/modes fail. A function may pin several reviewed defaults.
 const TYPE = /^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*(?:\[\])?$/;
 const REVIEWED_DEFAULTS = new Map([
+  ...FORWARD_DEFAULTS,
   ['public.hermes_room_schedule_due_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['public.hermes_room_schedule_sweep_v1', [["p_organization_ids uuid[] DEFAULT '{}'", 'p_organization_ids uuid[]']]],
   ['app_private.hermes_task_follow_tick_v1', [['p_limit integer DEFAULT 500', 'p_limit integer']]],
@@ -392,7 +419,7 @@ END $acl$`), targets: [
     'app_private.hermes_task_follow_extend_options_v1(jsonb,text)', 'public.hermes_org_policy_options_v6(uuid)',
     'public.hermes_connection_options_v6(uuid)', 'public.hermes_connection_context_v6(uuid)'].map(target => [target, null]) },
 ];
-const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL, ...CD_FORWARD_ACL_BLOCKS];
+const REVIEWED_FUNCTION_ACL_BLOCKS = [...CDE_ACL_BLOCKS, ROOM_PASS_OPTIONS_ACL, TASK_OPTIONS_ACL, CUSTOMER_ACTION_ACL, ...CD_FORWARD_ACL_BLOCKS, ...FORWARD_ACL_BLOCKS];
 const TASK_BY_NAME = new Map(TASK_FUNCTIONS.map(spec => [spec.name, spec]));
 const CUSTOMER_INVOKER = new Set(['app_private.hermes_customer_insert_v1', 'public.hermes_customer_create_action_v1']);
 // Wave 2 (20261018000600): the INVOKER report entry and the four package read functions (run under the
@@ -428,7 +455,7 @@ function expandReviewedFunctionAcl(sql) {
     }
     return block.targets.flatMap(([target, role]) => [
       `ALTER FUNCTION ${target} OWNER TO postgres`,
-      `REVOKE ALL ON FUNCTION ${target} FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`,
+      `REVOKE ALL ON FUNCTION ${target} FROM ${block.revokedRoles ?? 'PUBLIC,anon,authenticated,service_role,hermes_store_executor'}`,
       ...(role ? [`GRANT EXECUTE ON FUNCTION ${target} TO ${role}`] : []),
     ]);
   }).join(';\n');
@@ -621,8 +648,13 @@ function formatterContract(definition) {
   assert.equal(definition.split('$fn$')[2].trim(), '', 'no trailing privilege or function options');
 }
 
+function forwardDefinitionContract(name, definition) {
+  assert.equal(digest(definition), FORWARD_BY_NAME.get(name).sha256, `${name}: exact reviewed forward definition`);
+}
+
 function securityContract(sql = all, registry = functions) {
   sql = expandReviewedFunctionAcl(sql);
+  const normalizedAclSql = sql.replace(/,\s+/g, ',');
   assert.match(sql, /CREATE ROLE hermes_store_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT/i);
   assert.match(sql, /pg_auth_members WHERE member='hermes_store_executor'::regrole/i);
   for (const role of ['anon', 'authenticated', 'service_role']) assert(sql.includes(`pg_has_role('${role}','hermes_store_executor','MEMBER')`));
@@ -639,7 +671,9 @@ function securityContract(sql = all, registry = functions) {
   for (const name of TABLES) assert(tableRevoke.includes(`app_private.hermes_${name}`));
   for (const [name, definition] of registry) {
     const header = definition.split(/\b(?:AS\s+\$|BEGIN ATOMIC)/i)[0].trim();
-    if (TASK_BY_NAME.has(name)) {
+    if (FORWARD_BY_NAME.has(name) && !W2_READERS.has(name)) {
+      forwardDefinitionContract(name, definition);
+    } else if (TASK_BY_NAME.has(name)) {
       const spec = TASK_BY_NAME.get(name);
       assert.equal(header, spec.header, 'exact task signature/security/search path');
       if (spec.standard) assert.equal(definition, clean(spec.statement), 'exact task SQL-standard body');
@@ -657,8 +691,15 @@ function securityContract(sql = all, registry = functions) {
     }
     else assert.match(header, /SECURITY DEFINER SET search_path=pg_catalog,(?:public,)?app_private/i, name);
     assert.match(sql, new RegExp(`ALTER FUNCTION ${name.replace('.', '\\.')}\\([^;]*?\\) OWNER TO postgres`, 'i'), name);
-    assert.match(sql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`, 'i'), `${name}: revoke default/API execute explicitly`);
-    assert.doesNotMatch(definition, /\bEXECUTE\s+(?!ON\b)|set_config\s*\(\s*'request\.jwt|\bSET\s+ROLE\b/i, name);
+    const revokedRoles = FORWARD_REVOKE_ROLES.get(name) ?? 'PUBLIC,anon,authenticated,service_role,hermes_store_executor';
+    assert.match(normalizedAclSql, new RegExp(`REVOKE ALL ON FUNCTION [^;]*?${name.replace('.', '\\.')}\\([^;]*?FROM ${revokedRoles}(?:;|$)`, 'i'), `${name}: revoke default/API execute explicitly`);
+    assert.doesNotMatch(definition, /\bEXECUTE\s+(?!ON\b)|\bSET\s+ROLE\b/i, name);
+    // This reviewed audit bridge temporarily attributes its owner-bound audit
+    // event and restores both prior claims. Its entire body is pinned above;
+    // no other function receives a JWT mutation exception.
+    if (name !== 'app_private.hermes_audit_connection_change_v2')
+      assert.doesNotMatch(definition, /set_config\s*\(\s*'request\.jwt/i, name);
+    if (FORWARD_BY_NAME.has(name)) forwardDefinitionContract(name, definition);
   }
   // Forward migrations may grant one new function or replace/revoke/regrant an
   // existing subset. Replay ACL statements in order, rather than requiring each
@@ -668,8 +709,12 @@ function securityContract(sql = all, registry = functions) {
   const allowed = new Map([
     ['authenticated', new Set([...PUBLIC.map(name => `public.${name}`), ...TASK_FUNCTIONS.filter(spec => spec.authenticated).map(spec => spec.signature),
       ...CUSTOMER_ACTION_ACL.targets.filter(([, role]) => role === 'authenticated').map(([target]) => target), ...TASK_FOLLOW_STEPS,
-      ...ZALO_ONESHOT_CALLER, ...W2_CALLER])],
-    ['hermes_store_executor', new Set(STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`))],
+      ...ZALO_ONESHOT_CALLER, ...W2_CALLER, ...INHERITED_CRM_ACL.map(spec => spec.signature),
+      ...FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read').targets.map(([target]) => target),
+      'public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean)',
+      'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)'])],
+    ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
+      ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
   ]);
   for (const statement of splitSqlStatements(sql).map(clean)) {
@@ -827,6 +872,104 @@ function revokeContract(registry = functions) {
 }
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
+
+test('all seven reviewed forward migrations and their 53 latest definitions remain covered, including CRM wrappers', () => {
+  const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
+  assert.equal(paths.length, 7);
+  assert.equal(FORWARD_FUNCTIONS.length, 53);
+  const actualNames = [];
+  for (const path of paths) {
+    const source = splitSqlStatements(readFileSync(join(directory, path.split('/').at(-1)), 'utf8')).map(clean);
+    for (const statement of source) {
+      const match = /^CREATE OR REPLACE FUNCTION ((?:public|app_private)\.\w+)\(/.exec(statement);
+      if (!match) continue;
+      const spec = FORWARD_BY_NAME.get(match[1]);
+      assert(spec, `${match[1]}: new forward function requires review`);
+      if (spec.sourcePath !== path) {
+        // One reviewed projection is replaced by the legacy compatibility
+        // migration. Pin its historical body too; no other shadow is ignored.
+        assert.equal(match[1], 'app_private.hermes_connection_json_v1');
+        assert.equal(path, 'supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql');
+        assert.equal(digest(statement), 'd0f19ef4a868b3b975e3c3e3b0850c7eaca85fd3a1bdfc4f08dc13f26e33c09a');
+        continue;
+      }
+      actualNames.push(match[1]);
+      assert.equal(spec.sourcePath, path);
+      forwardDefinitionContract(match[1], statement);
+      assert.equal(functions.get(match[1]), statement, `${match[1]}: inspect the actual latest definition`);
+    }
+  }
+  assert.deepEqual(actualNames.sort(), [...FORWARD_BY_NAME.keys()].sort());
+});
+
+test('every forward definition rejects body, privilege mode and search-path mutants', () => {
+  for (const { name } of FORWARD_FUNCTIONS) {
+    const current = functions.get(name);
+    for (const [label, changed] of [
+      ['body', current.replace(/(AS \$\w*\$|BEGIN ATOMIC)/, '$1 SELECT 1;')],
+      ['mode', current.replace(/SECURITY (DEFINER|INVOKER)/, (_, mode) => `SECURITY ${mode === 'DEFINER' ? 'INVOKER' : 'DEFINER'}`)],
+      ['path', current.replace(/SET search_path\s*=\s*/, '$&untrusted,')],
+    ]) {
+      assert.notEqual(changed, current, `${name}: ${label} mutation applies`);
+      assert.throws(() => forwardDefinitionContract(name, changed), /exact reviewed forward definition/, `${name}: ${label}`);
+    }
+  }
+});
+
+test('forward ACL adapters retain the real recipients, catalog signatures and omitted executor revoke', () => {
+  for (const block of FORWARD_ACL_BLOCKS) {
+    assert(all.includes(block.sql));
+    const expanded = expandReviewedFunctionAcl(all);
+    for (const [target] of block.targets) assert(expanded.includes(`REVOKE ALL ON FUNCTION ${target} FROM ${block.revokedRoles}`));
+    for (const [before, after] of [['FROM PUBLIC,anon', 'FROM anon'], ['OWNER TO postgres', 'OWNER TO authenticated'],
+      ["n.nspname='app_private'", "n.nspname IN ('app_private','public')"]]) {
+      const changed = block.sql.replace(before, after); assert.notEqual(changed, block.sql);
+      assert.throws(() => expandReviewedFunctionAcl(all.replace(block.sql, () => changed)), /unreviewed function ACL DO block/);
+    }
+    const target = block.targets[0][0], name = target.split('(')[0];
+    const overload = functions.get(name).replace(/\([^)]*\)/, '(p_unreviewed text)');
+    assert.throws(() => expandReviewedFunctionAcl(all.replace(block.sql, () => `${overload}; ${block.sql}`)), /catalog ACL loop must resolve only the reviewed signatures/);
+  }
+  const core = FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read');
+  assert.equal(core.revokedRoles, 'PUBLIC,anon,authenticated,service_role');
+  const expanded = expandReviewedFunctionAcl(all);
+  for (const [target] of core.targets)
+    assert(!expanded.includes(`REVOKE ALL ON FUNCTION ${target} FROM ${core.revokedRoles},hermes_store_executor`), 'adapter must never invent an executor revoke');
+  assert.throws(() => expandReviewedFunctionAcl(all.replace(core.sql, () => core.sql.replace('TO authenticated', 'TO service_role'))), /unreviewed function ACL DO block/);
+});
+
+test('new caller/store ports and inherited CRM grants cannot be widened or dropped', () => {
+  const ports = [
+    ['public.hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'authenticated'],
+    ['public.hermes_domain_read_fast_v1(jsonb,text,jsonb)', 'authenticated'],
+    ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
+    ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
+    ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
+    ...INHERITED_CRM_ACL.map(spec => [spec.signature, 'authenticated']),
+  ];
+  for (const [target, role] of ports) {
+    assert.throws(() => securityContract(`${all}; GRANT EXECUTE ON FUNCTION ${target} TO service_role`), /cannot execute/, target);
+    assert.throws(() => securityContract(`${all}; REVOKE EXECUTE ON FUNCTION ${target} FROM ${role}`), /effective execute ACL/, target);
+  }
+  for (const spec of INHERITED_CRM_ACL) {
+    const grant = `GRANT EXECUTE ON FUNCTION ${spec.signature} TO authenticated`;
+    assert(all.includes(grant));
+    assert.throws(() => securityContract(all.replace(grant, '')), /effective execute ACL/, `${spec.name}: replacement must inherit actual historical caller grant`);
+  }
+});
+
+test('reviewed CRM defaults are exact and the audit attribution/restore cannot change', () => {
+  for (const [name, defaults] of FORWARD_DEFAULTS) for (const [argument] of defaults) {
+    assert.doesNotThrow(() => signature(name, argument, true));
+    assert.throws(() => signature(name, argument.replace(' DEFAULT ', ' DEFAULT unreviewed_'), true), /reviewed argument grammar/);
+  }
+  const name = 'app_private.hermes_audit_connection_change_v2', current = functions.get(name);
+  for (const [before, after] of [['c.user_id::text', "'other-user'"], ["COALESCE(previous_sub,'')", "c.user_id::text"],
+    ["COALESCE(previous_claims,'')", "'{}'"], ['app_private.append_authz_audit_v1', 'app_private.other_function']]) {
+    const changed = current.replace(before, after); assert.notEqual(changed, current);
+    assert.throws(() => forwardDefinitionContract(name, changed), /exact reviewed forward definition/);
+  }
+});
 
 test('room-pass v1 and v4 retain exact caller-only signatures and private helpers', () => {
   const caller = ['public.hermes_room_pass_action_v1(jsonb,text,jsonb)', 'public.hermes_room_pass_capabilities_v1(uuid)',
@@ -1172,7 +1315,7 @@ test('task exact signatures retain caller ACL and no worker/service/helper widen
     if (spec.authenticated) assert.throws(() => securityContract(all + '; REVOKE EXECUTE ON FUNCTION ' + spec.signature + ' FROM authenticated'), /effective execute ACL/);
     const registry = new Map(functions), original = registry.get(spec.name);
     registry.set(spec.name, original.replace(spec.definer ? 'SECURITY DEFINER' : 'SECURITY INVOKER', spec.definer ? 'SECURITY INVOKER' : 'SECURITY DEFINER'));
-    assert.throws(() => securityContract(all, registry), /exact task signature/);
+    assert.throws(() => securityContract(all, registry), FORWARD_BY_NAME.has(spec.name) ? /exact reviewed forward definition/ : /exact task signature/);
   }
 });
 test('task-v5 exact dynamic ACL adapter rejects changed recipient or helper namespace', () => {

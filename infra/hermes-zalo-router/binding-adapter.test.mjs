@@ -16,7 +16,7 @@ function fixture() {
   const options = { accessToken: 'fixture.browser.jwt', organizationId: ORG, signal: new AbortController().signal };
   return { calls, context, session, configuration, options };
 }
-test('real service and ports use live identity twice and the fixed caller-JWT RPC', async () => {
+test('real service and ports verify Auth once and the fixed caller-JWT RPC', async () => {
   const f = fixture(); const service = createZaloBindingService(createZaloBindingPorts(f.configuration));
   assert.deepEqual((await service.invoke('list', { afterBindingId: null }, f.options)).bindings, []);
   assert.equal(f.calls.length, 1); const call = f.calls[0];
@@ -26,31 +26,21 @@ test('real service and ports use live identity twice and the fixed caller-JWT RP
   assert.deepEqual(JSON.parse(call.options.body), { p: { operation: 'list', organizationId: ORG, afterBindingId: null } });
   await service.close();
 });
-for (const [name, mutate] of [
-  ['another actor', f => f.context.userId = id('9')],
-  ['another selected company', f => f.context.membership.organizationId = id('9')],
-  ['revoked membership', f => f.context.membership.revokedAt = NOW - 1],
-  ['expired membership', f => f.context.membership.validTo = NOW],
-  ['future membership', f => f.context.membership.validFrom = NOW + 1],
-  ['ordinary multi-company user', f => f.context.activeOrganizationIds.push(id('9'))],
-  ['superadmin without membership', f => { f.context.isSuperadmin = true; f.context.activeOrganizationIds = [id('9')]; }],
-  ['expired session', f => f.session.expiresAt = NOW],
-]) test(`live Auth denies ${name} before SQL`, async () => {
-  const f = fixture(); mutate(f);
-  const service = createZaloBindingService(createZaloBindingPorts(f.configuration));
-  await assert.rejects(service.invoke('list', { afterBindingId: null }, f.options), error => ['forbidden','reauthentication_required'].includes(error.code));
-  assert.equal(f.calls.length, 0);
+test('expired or invalid Auth sessions deny before the caller-JWT SQL call', async () => {
+  for (const mutate of [f => f.session.expiresAt = NOW, f => f.session.userId = 'invalid', f => f.session.sessionId = 'invalid']) {
+    const f = fixture(); mutate(f);
+    const service = createZaloBindingService(createZaloBindingPorts(f.configuration));
+    await assert.rejects(service.invoke('list', { afterBindingId: null }, f.options), { code: 'reauthentication_required' });
+    assert.equal(f.calls.length, 0);
+  }
 });
-test('superadmin still pins an explicitly selected current membership', async () => {
-  const f = fixture(); f.context.isSuperadmin = true; f.context.activeOrganizationIds.push(id('9'));
-  const ports = createZaloBindingPorts(f.configuration);
-  assert.equal((await ports.verifyCaller(f.options)).organizationId, ORG);
-});
-test('post-RPC membership change suppresses a read response', async () => {
-  const f = fixture(), original = f.configuration.fetch;
-  f.configuration.fetch = async (...args) => { const result = await original(...args); f.context.membership.authorizationVersion++; return result; };
+test('membership/cross-company authorization belongs to SQL; the adapter never resolves full CRM capabilities', async () => {
+  const f = fixture(); let authCalls = 0;
+  f.configuration.auth.verifySession = async () => { authCalls++; return structuredClone(f.session); };
+  f.configuration.auth.readAuthorization = async () => { throw Error('full CRM capability read must not run'); };
   const service = createZaloBindingService(createZaloBindingPorts(f.configuration));
-  await assert.rejects(service.invoke('list', { afterBindingId: null }, f.options), { code: 'context_changed' });
+  await service.invoke('list', { afterBindingId: null }, f.options);
+  assert.equal(authCalls, 1); assert.equal(f.calls.length, 1);
 });
 for (const [status, code, expected, known] of [[403,'42501','forbidden',true],[409,'PT409','context_changed',true],
   [409,'40001','backend_unavailable',false],[503,'42501','backend_unavailable',false],[400,'22023','invalid_request',true]]) {

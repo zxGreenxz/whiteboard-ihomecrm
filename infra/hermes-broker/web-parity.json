@@ -284,7 +284,7 @@
           "contains": "'paid', 'partial', 'unpaid', 'cancelled'"
         }
       ],
-      "notes": "Web gọi hàm SQL dùng chung (migration 20261017115809_invoice_read_shared_v1, mô hình INVOKER + RLS 18/10/2026), không còn vùng mã web chép; Hermes CHƯA chuyển — hermes_report_read_v2 vẫn tự chép bộ lọc nên giữ loại mirrored. PR Hermes kế tiếp gọi thẳng hàm bằng JWT người dùng (hàm từ chối khi current_user khác authenticated) và truyền p_building_ids = toà của kết nối (chỉ thu hẹp), rồi đổi mục này sang kind \"rpc\". Đã biết 17/10: web xếp toà/phòng theo name_sort (tự nhiên), Hermes theo name; web không cắt 200 khách khi tìm tên.",
+      "notes": "Web gọi hàm SQL dùng chung (migration 20261017115809_invoice_read_shared_v1, mô hình INVOKER + RLS 18/10/2026), không còn vùng mã web chép; Hermes CHƯA chuyển — hermes_report_read_v2 vẫn tự chép bộ lọc nên giữ loại mirrored. PR Hermes kế tiếp gọi thẳng hàm bằng JWT người dùng (hàm từ chối khi current_user khác authenticated) và truyền p_building_ids = toà của kết nối (chỉ thu hẹp), rồi đổi mục này sang kind \"rpc\". Đã biết 17/10: web xếp toà/phòng theo name_sort (tự nhiên), Hermes theo name; web không cắt 200 khách khi tìm tên. Candidate 19/10: web wrapper invoice_list_v1 gọi invoice_list_core_v1; giữ mirrored cho đường legacy/report còn chép công thức. Fast read trực tiếp miền invoices có mục rpc riêng, chỉ chạy khi readFastPath=true; không chuyển trạng thái của báo cáo này chỉ vì đã có core.",
       "webCalls": [
         {
           "path": "src/hooks/useInvoices.ts",
@@ -294,7 +294,7 @@
       "sql": [
         {
           "function": "public.invoice_list_v1",
-          "sha256": "f347c11a5c131d209cfa8708588b2815dfffde2264423cfaba2c322b2f058bc2"
+          "sha256": "7e8a737dd53cc94c073cbe1761da914e38902723e88884fe59fd7857ace7a042"
         },
         {
           "function": "public.invoice_scope_building_ids_v1",
@@ -303,6 +303,10 @@
         {
           "function": "public.invoice_receipt_methods_v1",
           "sha256": "139f25c244437a4b51901ff76f0773231326d40fe016e079a7188eec1027a045"
+        },
+        {
+          "function": "public.invoice_list_core_v1",
+          "sha256": "9cec2cd8bdaa920f387fb623ca752ba0680518b57774d7cb7cc5db345b595273"
         }
       ]
     },
@@ -342,7 +346,7 @@
       "id": "contract-search",
       "kind": "mirrored",
       "description": "Danh sách Hợp đồng (crm_read_contract_search). Nguồn công thức nay là hàm SQL dùng chung public.contract_list_v1 + public.contract_stats_v2 (SECURITY INVOKER, RLS người gọi; migration 20261017115636): tìm số HĐ / tên-SĐT khách / tên phòng, lọc vòng đời, thẻ sắp hết hạn/quá hạn/thanh lý, tháng, toà/phòng, nhãn hiển thị (public.contract_display_status_v1, mốc org_today_v1), phân trang, 4 ô thống kê. Web /contracts đã gọi hai hàm này; nhãn JS getContractDisplayStatus/contractDisplayStatusOn (cùng công thức, ngày giờ VN) còn cho màn chi tiết và ghi chú phiếu.",
-      "notes": "HERMES CHƯA CHUYỂN (18/10/2026): app_private.hermes_report_read_v2 nhánh contract_search vẫn chép bộ lọc/nhãn. PR Hermes sau: gọi public.contract_list_v1 qua đường INVOKER bằng JWT người dùng (KHÔNG từ thân hàm SECURITY DEFINER — hàm tự chặn 42501), p_building_ids = toà kết nối (NULL = toàn phạm vi RLS, {} = rỗng), p_with_customers theo khoá Read customers.view của kết nối; rồi đổi mục này thành kind rpc (rpc + webCalls + hermes.calls), bỏ nguồn sql.",
+      "notes": "HERMES CHƯA CHUYỂN (18/10/2026): app_private.hermes_report_read_v2 nhánh contract_search vẫn chép bộ lọc/nhãn. PR Hermes sau: gọi public.contract_list_v1 qua đường INVOKER bằng JWT người dùng (KHÔNG từ thân hàm SECURITY DEFINER — hàm tự chặn 42501), p_building_ids = toà kết nối (NULL = toàn phạm vi RLS, {} = rỗng), p_with_customers theo khoá Read customers.view của kết nối; rồi đổi mục này thành kind rpc (rpc + webCalls + hermes.calls), bỏ nguồn sql. Candidate 19/10: web wrapper contract_list_v1 gọi contract_list_core_v1; giữ mirrored cho đường legacy/report còn chép công thức. Fast read trực tiếp miền contracts có mục rpc riêng, chỉ chạy khi readFastPath=true; không chuyển trạng thái của báo cáo này chỉ vì đã có core.",
       "web": [
         {
           "path": "src/types/contract.ts",
@@ -363,7 +367,7 @@
       "sql": [
         {
           "function": "public.contract_list_v1",
-          "sha256": "ad823a77889c58d6766a03c9734899037eaf6dc84495bd9cd1f2547c9c3da9e0"
+          "sha256": "2036d0e500961e5811a704cb18f61260d43d69c82108aeb92516082c52387a0a"
         },
         {
           "function": "public.contract_stats_v2",
@@ -376,6 +380,10 @@
         {
           "function": "public.contract_display_label_v1",
           "sha256": "5d2bcfa00bd0a6c8e01b13b5a0b974866802768a354e0c33354fc041857241d5"
+        },
+        {
+          "function": "public.contract_list_core_v1",
+          "sha256": "fb9ef154fff942d504d9a2927ac57ba9e438e59c2c7a1aa454fd3cff30e1a8eb"
         }
       ],
       "hermes": [
@@ -414,7 +422,7 @@
     {
       "id": "customer-list",
       "kind": "mirrored",
-      "description": "Danh sách /customers: web gọi hàm dùng chung customer_list_v1 (migration 20261017115708) cho danh sách, tổng, thẻ thống kê, tìm không dấu và toà/phòng hiện tại. Hermes (crm_read_customers) CHƯA chuyển, vẫn tự chép bộ lọc.",
+      "description": "Danh sách /customers: theo dõi đường Hermes legacy (readFastPath=false) còn chép bộ lọc. Web đã gọi wrapper customer_list_v1 → customer_list_core_v1; fast path có mục riêng.",
       "webCalls": [
         {
           "path": "src/hooks/useCustomers.ts",
@@ -424,7 +432,7 @@
       "sql": [
         {
           "function": "public.customer_list_v1",
-          "sha256": "990c2ead1296fa54234ed211b46caa365f82b0f5f2d9a9c516794c89368fe27f"
+          "sha256": "d2bda68d9403144f7576f107a48cbc1d05b31288c874d93b6f704b0d3c082b0d"
         },
         {
           "function": "public.customer_search_patterns_v1",
@@ -433,6 +441,10 @@
         {
           "function": "public.customer_location_ids_v1",
           "sha256": "a8a5987d7e7438be8060f5e5b9def33609baf826e4761a1ca70b4a6c1dad281d"
+        },
+        {
+          "function": "public.customer_list_core_v1",
+          "sha256": "8924cd3114425a3fa35bdd6d6d2160bd9eaed5c2cf4dd2c6218e83d32b30ac3b"
         }
       ],
       "hermes": [
@@ -441,7 +453,7 @@
           "note": "customers"
         }
       ],
-      "notes": "17/10: web bỏ PostgREST + customerSearchFilter, gọi customer_list_v1 (SECURITY INVOKER, RLS người gọi; danh sách, tổng và thẻ đếm trong MỘT lời gọi). Hermes chuyển ở PR sau: đổi mục này thành kind rpc, rpc [customer_list_v1], hermes.calls [customer_list_v1]. BẪY khi chuyển: p_building_ids NULL = toàn phạm vi RLS, '{}' = rỗng ⇒ truyền COALESCE(tập toà kết nối, '{}'); p_search tối đa 200 ký tự. LỆCH ĐÃ BIẾT đến lúc đó: Hermes tìm tên có dấu + số SĐT (web tìm tên không dấu + SĐT/email/CCCD); Hermes ưu tiên HĐ ACTIVE/EXTENDED rồi HĐ gần nhất (web: HĐ ACTIVE còn sống thấy được qua RLS, bắt đầu muộn nhất); Hermes chỉ khách có HĐ ở toà được giao trừ kết nối Toàn tổ chức."
+      "notes": "17/10: web bỏ PostgREST + customerSearchFilter, gọi customer_list_v1 (SECURITY INVOKER, RLS người gọi; danh sách, tổng và thẻ đếm trong MỘT lời gọi). Hermes chuyển ở PR sau: đổi mục này thành kind rpc, rpc [customer_list_v1], hermes.calls [customer_list_v1]. BẪY khi chuyển: p_building_ids NULL = toàn phạm vi RLS, '{}' = rỗng ⇒ truyền COALESCE(tập toà kết nối, '{}'); p_search tối đa 200 ký tự. LỆCH ĐÃ BIẾT đến lúc đó: Hermes tìm tên có dấu + số SĐT (web tìm tên không dấu + SĐT/email/CCCD); Hermes ưu tiên HĐ ACTIVE/EXTENDED rồi HĐ gần nhất (web: HĐ ACTIVE còn sống thấy được qua RLS, bắt đầu muộn nhất); Hermes chỉ khách có HĐ ở toà được giao trừ kết nối Toàn tổ chức. Candidate 19/10: web wrapper customer_list_v1 gọi customer_list_core_v1; giữ mirrored cho đường legacy/report còn chép công thức. Fast read trực tiếp miền customers có mục rpc riêng, chỉ chạy khi readFastPath=true; không chuyển trạng thái của báo cáo này chỉ vì đã có core."
     },
     {
       "id": "customer-detail",
@@ -1098,12 +1110,15 @@
       ],
       "hermes": [
         {
-          "sql": "public.vehicles_list_v1"
+          "sql": "public.vehicles_list_v1",
+          "calls": [
+            "vehicles_list_core_v1"
+          ]
         },
         {
           "sql": "app_private.hermes_w2c_read_v1",
           "calls": [
-            "vehicles_list_v1"
+            "vehicles_list_core_v1"
           ],
           "note": "vehicles"
         },
@@ -1112,7 +1127,17 @@
           "contains": "crm.vehicles_list_v1"
         }
       ],
-      "notes": "Khác web (ghi để báo chủ): trang desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_ trong ô tìm; tên chủ xe và tên/SĐT khách chỉ hiện (và chỉ tìm được) khi hồ sơ khách của xe đọc được dưới RLS customers và kết nối có customers.view ở toà đó — web hiện tên chủ xe của mọi xe đọc được (review PR #204); Hermes chưa lọc theo dòng xe/màu. Kết nối không phải Toàn tổ chức: Hermes bỏ xe không gắn toà (web vẫn hiện) — so trên TEST 18/10."
+      "notes": "Candidate 19/10: Hermes dùng vehicles_list_core_v1 INVOKER; wrapper vehicles_list_v1 giữ mặc định cũ. Mode inherit cho phép copied owner_name từ chính xe qua source RLS, trừ khi customers bị tắt; legacy vẫn che theo customer visibility như trước. Tìm chủ xe dùng cùng điều kiện với đầu ra. Tên/SĐT hồ sơ khách nhúng vẫn phải qua customer RLS và phạm vi/exclusions. Các khác biệt còn giữ: desktop cố định xe máy, Hermes kind trống = mọi loại; Hermes thoát %/_; chưa lọc dòng xe/màu; connection không Toàn tổ chức bỏ xe không gắn toà. Web hook vẫn tự truy vấn nên giữ mirrored và marker, không gọi đây là toàn bộ parity đã xong.",
+      "sql": [
+        {
+          "function": "public.vehicles_list_core_v1",
+          "sha256": "0fe9cbcadddc7f25b70063567206a1b4dd42dc0364d4ab164a4ce70c245f15ff"
+        },
+        {
+          "function": "public.vehicles_list_v1",
+          "sha256": "b7cae0282637334ef8734f2bd1de4c15cb07e95eca0632005766aded88f78490"
+        }
+      ]
     },
     {
       "id": "w2c-materials",
@@ -2352,6 +2377,138 @@
           "contains": "crm.cashbook_change_ledger_v1"
         }
       ]
+    },
+    {
+      "id": "customers-shared-fast-read",
+      "kind": "rpc",
+      "description": "Fast read trực tiếp customers: web và Hermes cùng gọi core INVOKER/RLS. Candidate 19/10, readFastPath mặc định false.",
+      "rpc": [
+        "customer_list_core_v1"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useCustomers.ts",
+          "rpc": "customer_list_v1"
+        }
+      ],
+      "successorGuard": [
+        "public.customer_list_core_v1"
+      ],
+      "sql": [
+        {
+          "function": "public.customer_list_v1",
+          "sha256": "d2bda68d9403144f7576f107a48cbc1d05b31288c874d93b6f704b0d3c082b0d"
+        },
+        {
+          "function": "public.customer_list_core_v1",
+          "sha256": "8924cd3114425a3fa35bdd6d6d2160bd9eaed5c2cf4dd2c6218e83d32b30ac3b"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_domain_read_rows_fast_v1",
+          "calls": [
+            "customer_list_core_v1"
+          ],
+          "note": "miền customers; JWT người dùng và phạm vi chỉ thu hẹp"
+        },
+        {
+          "sql": "public.customer_list_v1",
+          "calls": [
+            "customer_list_core_v1"
+          ],
+          "note": "Cầu nối web → core: kiểm wrapper thực sự gọi core chung"
+        }
+      ],
+      "notes": "Web giữ chữ ký, mặc định và thứ tự/phân trang cũ. Hermes dùng id tăng dần, cursor và limit+1; projection trả DTO Hermes. Các report/legacy khác vẫn có mục mirrored. successorGuard dùng vì hook gọi wrapper thay vì gọi core trực tiếp."
+    },
+    {
+      "id": "contracts-shared-fast-read",
+      "kind": "rpc",
+      "description": "Fast read trực tiếp contracts: web và Hermes cùng gọi core INVOKER/RLS. Candidate 19/10, readFastPath mặc định false.",
+      "rpc": [
+        "contract_list_core_v1"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useContracts.ts",
+          "rpc": "contract_list_v1"
+        }
+      ],
+      "successorGuard": [
+        "public.contract_list_core_v1"
+      ],
+      "sql": [
+        {
+          "function": "public.contract_list_v1",
+          "sha256": "2036d0e500961e5811a704cb18f61260d43d69c82108aeb92516082c52387a0a"
+        },
+        {
+          "function": "public.contract_list_core_v1",
+          "sha256": "fb9ef154fff942d504d9a2927ac57ba9e438e59c2c7a1aa454fd3cff30e1a8eb"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_domain_read_rows_fast_v1",
+          "calls": [
+            "contract_list_core_v1"
+          ],
+          "note": "miền contracts; JWT người dùng và phạm vi chỉ thu hẹp"
+        },
+        {
+          "sql": "public.contract_list_v1",
+          "calls": [
+            "contract_list_core_v1"
+          ],
+          "note": "Cầu nối web → core: kiểm wrapper thực sự gọi core chung"
+        }
+      ],
+      "notes": "Web giữ chữ ký, mặc định và thứ tự/phân trang cũ. Hermes dùng id tăng dần, cursor và limit+1; projection trả DTO Hermes. Các report/legacy khác vẫn có mục mirrored. successorGuard dùng vì hook gọi wrapper thay vì gọi core trực tiếp."
+    },
+    {
+      "id": "invoices-shared-fast-read",
+      "kind": "rpc",
+      "description": "Fast read trực tiếp invoices: web và Hermes cùng gọi core INVOKER/RLS. Candidate 19/10, readFastPath mặc định false.",
+      "rpc": [
+        "invoice_list_core_v1"
+      ],
+      "webCalls": [
+        {
+          "path": "src/hooks/useInvoices.ts",
+          "rpc": "invoice_list_v1"
+        }
+      ],
+      "successorGuard": [
+        "public.invoice_list_core_v1"
+      ],
+      "sql": [
+        {
+          "function": "public.invoice_list_v1",
+          "sha256": "7e8a737dd53cc94c073cbe1761da914e38902723e88884fe59fd7857ace7a042"
+        },
+        {
+          "function": "public.invoice_list_core_v1",
+          "sha256": "9cec2cd8bdaa920f387fb623ca752ba0680518b57774d7cb7cc5db345b595273"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_domain_read_rows_fast_v1",
+          "calls": [
+            "invoice_list_core_v1"
+          ],
+          "note": "miền invoices; JWT người dùng và phạm vi chỉ thu hẹp"
+        },
+        {
+          "sql": "public.invoice_list_v1",
+          "calls": [
+            "invoice_list_core_v1"
+          ],
+          "note": "Cầu nối web → core: kiểm wrapper thực sự gọi core chung"
+        }
+      ],
+      "notes": "Web giữ chữ ký, mặc định và thứ tự/phân trang cũ. Hermes dùng id tăng dần, cursor và limit+1; projection trả DTO Hermes. Các report/legacy khác vẫn có mục mirrored. successorGuard dùng vì hook gọi wrapper thay vì gọi core trực tiếp."
     }
   ]
 }

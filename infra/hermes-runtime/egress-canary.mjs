@@ -15,6 +15,27 @@ const bind = (server, options) => new Promise((resolve, reject) => {
   server.once('error', reject); server.bind(options, () => { server.removeListener('error', reject); resolve(); });
 });
 const LOOPBACK = Object.freeze({ ipv4: '127.0.0.1', ipv6: '::1' });
+const RENAME_RETRY_MS = Object.freeze([25, 50, 100, 200, 400]);
+const WINDOWS_RENAME_BUSY = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const retryWait = new Int32Array(new SharedArrayBuffer(4));
+
+// Keep publication synchronous so TCP/UDP hits cannot interleave writes to
+// the same temporary file. Windows scanners/readers may briefly deny replace;
+// retry only that atomic rename, with at most 775 ms of waiting. Never unlink
+// the old evidence or fall back to writing a partially visible target.
+export function publishCanaryCounts(output, counts, { platform = process.platform, rename = renameSync,
+  wait = delay => Atomics.wait(retryWait, 0, 0, delay) } = {}) {
+  const target = path.join(output, 'egress-counts.json'), temporary = `${target}.tmp`;
+  writeFileSync(temporary, JSON.stringify(counts));
+  for (let attempt = 0; ; attempt++) {
+    try { rename(temporary, target); return; }
+    catch (error) {
+      if (platform !== 'win32' || !WINDOWS_RENAME_BUSY.has(error?.code) || attempt === RENAME_RETRY_MS.length) throw error;
+      wait(RENAME_RETRY_MS[attempt]);
+    }
+  }
+}
+
 function bindAddresses(value, allowWildcard = false) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Object.keys(value).some(key => !['ipv4', 'ipv6'].includes(key)) ||
@@ -71,15 +92,15 @@ export async function startEgressCanary({ name, output, tcpPort = 19090, dnsPort
   // callers/tests default to loopback and may inject exact literal addresses.
   const hosts = bindAddresses(addresses, true);
   const counts = { tcp4: 0, tcp6: 0, udpDns4: 0, udpDns6: 0, tcpDns4: 0, tcpDns6: 0 }, servers = [], sockets = [], endpoints = {}, boundAddresses = {};
-  const save = () => { const target = path.join(output, 'egress-counts.json');
-    writeFileSync(`${target}.tmp`, JSON.stringify(counts)); renameSync(`${target}.tmp`, target); };
+  const save = () => publishCanaryCounts(output, counts);
   const hit = key => { counts[key]++; save(); };
   try {
     for (const [suffix, host] of [['4', hosts.ipv4], ['6', hosts.ipv6]]) {
       const ipv6Only = suffix === '6';
       const tcp = net.createServer(socket => {
         socket.on('error', () => socket.destroy()); socket.setTimeout(2000, () => socket.destroy());
-        hit(`tcp${suffix}`); socket.end(CANARY_REPLY);
+        try { hit(`tcp${suffix}`); } catch (error) { socket.destroy(); throw error; }
+        socket.end(CANARY_REPLY);
       }); servers.push(tcp);
       await listen(tcp, { host, port: tcpPort, ipv6Only });
       endpoints[`tcp${suffix}`] = tcp.address().port;
@@ -92,7 +113,11 @@ export async function startEgressCanary({ name, output, tcpPort = 19090, dnsPort
       boundAddresses[`udpDns${suffix}`] = udp.address().address;
       const dns = net.createServer(socket => {
         socket.on('error', () => socket.destroy());
-        hit(`tcpDns${suffix}`); let data = Buffer.alloc(0); socket.setTimeout(2000, () => socket.destroy());
+        socket.setTimeout(2000, () => socket.destroy());
+        // A failed evidence rename must still fail the control, but cannot
+        // strand an unread accepted socket and hang server.close() forever.
+        try { hit(`tcpDns${suffix}`); } catch (error) { socket.destroy(); throw error; }
+        let data = Buffer.alloc(0);
         socket.on('data', chunk => {
           data = Buffer.concat([data, chunk]); if (data.length > 514) { socket.destroy(); return; }
           if (data.length < 2 || data.length < data.readUInt16BE(0) + 2) return;

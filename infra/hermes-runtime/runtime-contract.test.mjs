@@ -6,7 +6,7 @@ import dgram from 'node:dgram';
 import { Resolver } from 'node:dns/promises';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, renameSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { assertEgressProof, assertFixtureInspection, assertHermesDenial, assertImageProvenance, assertInputsUnchanged, assertInside,
   assertIsolatedNetwork, assertMcpDenial, assertPinnedImageInspection, assertRuntimeInspection, assertUnavailableTerminal, assertUnavailableTool,
@@ -14,7 +14,7 @@ import { assertEgressProof, assertFixtureInspection, assertHermesDenial, assertI
   controlBridgeAddresses, isolatedNetworkArgs, runtimeArgs, runtimeUser, sourceHashes,
   fixtureMounts, fixtureFailureDiagnostics, sanitizeFixtureDiagnostic } from './runtime-contract.mjs';
 import { modelReply, sseReply } from './fake-model.mjs';
-import { CANARY_REPLY, dnsReply, startEgressCanary, startHostCanary } from './egress-canary.mjs';
+import { CANARY_REPLY, dnsReply, publishCanaryCounts, startEgressCanary, startHostCanary } from './egress-canary.mjs';
 
 const root = path.resolve('.cache/hermes-p1/test-root');
 const spec = { name: 'hermes-p1-test-a', network: 'hermes-p1-test', actor: 'a',
@@ -427,6 +427,76 @@ test('live local canary serves/counts TCP and UDP DNS independently on both addr
   }
   assert.deepEqual(JSON.parse(await readFile(path.join(output, 'egress-counts.json'), 'utf8')),
     { tcp4: 1, tcp6: 1, udpDns4: 1, udpDns6: 1, tcpDns4: 1, tcpDns6: 1 });
+});
+
+test('Windows transient evidence replace retries preserve the old complete snapshot and every counter', async () => {
+  await mkdir(root, { recursive: true });
+  const output = await mkdtemp(path.join(root, 'canary-transient-'));
+  const target = path.join(output, 'egress-counts.json');
+  const counts = { tcp4: 0, tcp6: 0, udpDns4: 0, udpDns6: 0, tcpDns4: 0, tcpDns6: 0 };
+  publishCanaryCounts(output, counts);
+  for (const code of ['EPERM', 'EACCES', 'EBUSY']) {
+    const before = { ...counts }; counts.tcp4++; counts.tcpDns6++;
+    let attempts = 0; const waits = [];
+    publishCanaryCounts(output, counts, { platform: 'win32', wait: delay => waits.push(delay), rename: (from, to) => {
+      assert.equal(from, target + '.tmp'); assert.equal(to, target);
+      assert.deepEqual(JSON.parse(readFileSync(target, 'utf8')), before, 'old evidence remains readable until atomic replace');
+      assert.deepEqual(JSON.parse(readFileSync(from, 'utf8')), counts, 'one complete snapshot survives every retry');
+      if (++attempts <= 5) throw Object.assign(new Error('transient sharing conflict'), { code });
+      renameSync(from, to);
+    } });
+    assert.equal(attempts, 6); assert.deepEqual(waits, [25, 50, 100, 200, 400]);
+    assert.deepEqual(JSON.parse(readFileSync(target, 'utf8')), counts);
+  }
+  assert.deepEqual([counts.tcp4, counts.tcpDns6], [3, 3]);
+});
+
+test('permanent or unrelated evidence failures stay bounded and retain the previous target', async () => {
+  await mkdir(root, { recursive: true });
+  const output = await mkdtemp(path.join(root, 'canary-permanent-'));
+  const target = path.join(output, 'egress-counts.json'), before = { tcp4: 7 }, next = { tcp4: 8 };
+  publishCanaryCounts(output, before);
+  for (const [platform, code, expectedAttempts] of [['win32', 'EPERM', 6], ['win32', 'EACCES', 6], ['win32', 'EBUSY', 6],
+    ['win32', 'EIO', 1], ['linux', 'EPERM', 1]]) {
+    const failure = Object.assign(new Error('permanent publication failure'), { code });
+    let attempts = 0; const waits = [];
+    assert.throws(() => publishCanaryCounts(output, next, { platform, wait: delay => waits.push(delay),
+      rename: () => { attempts++; throw failure; } }), error => error === failure);
+    assert.equal(attempts, expectedAttempts); assert.equal(waits.length, expectedAttempts - 1);
+    assert(waits.reduce((sum, delay) => sum + delay, 0) <= 775);
+    assert.deepEqual(JSON.parse(readFileSync(target, 'utf8')), before);
+    assert.deepEqual(JSON.parse(readFileSync(target + '.tmp', 'utf8')), next);
+  }
+});
+
+for (const endpoint of ['tcp6', 'tcpDns6']) test(`${endpoint} evidence failure surfaces its error and cannot strand listener cleanup`, () => {
+  // Isolate the intentionally uncaught I/O failure from node:test. The child
+  // records that the control failed; it must also close the accepted socket.
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { mkdtempSync, unlinkSync, mkdirSync } from 'node:fs';
+    import path from 'node:path';
+    import net from 'node:net';
+    import { startEgressCanary } from './infra/hermes-runtime/egress-canary.mjs';
+    const parent = path.resolve('.cache/hermes-p1/test-root'); mkdirSync(parent, { recursive: true });
+    const output = mkdtempSync(path.join(parent, 'canary-publish-failure-'));
+    const service = await startEgressCanary({ name: 'canary.hermes-p1-publish.test', output, tcpPort: 0, dnsPort: 0 });
+    const target = path.join(output, 'egress-counts.json');
+    unlinkSync(target); mkdirSync(target); // deterministic rename failure on Windows and POSIX
+    let errorCode = null;
+    process.once('uncaughtException', error => { errorCode = error.code; });
+    const socket = net.connect({ host: '::1', port: service.endpoints.${endpoint} });
+    socket.on('error', () => {});
+    socket.setTimeout(200, () => socket.destroy());
+    socket.once('connect', () => socket.write(Buffer.from('000101', 'hex')));
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const closed = await Promise.race([service.close().then(() => true),
+      new Promise(resolve => setTimeout(() => resolve(false), 1000))]);
+    console.log(JSON.stringify({ errorCode, closed })); process.exit(0);
+  `], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const evidence = JSON.parse(result.stdout.trim());
+  assert.match(evidence.errorCode, /^(?:EPERM|EISDIR|EACCES)$/);
+  assert.equal(evidence.closed, true, 'failed evidence must not keep server.close waiting on an unread socket');
 });
 
 test('partial canary bind failure closes the listeners created earlier', async t => {

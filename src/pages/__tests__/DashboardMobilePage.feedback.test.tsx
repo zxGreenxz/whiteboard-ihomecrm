@@ -12,14 +12,13 @@ type DashboardFixtures={
  occupancy:{status:string;count:number;percentage:number}[];
  alerts:{id:string;title:string;description:string;type:string;severity:string;date:string}[];
  activities:{id:string;title:string;description:string;type:string;date:string}[];
- leads:{id:string;created_at:string;status:string}[];
- deposits:{id:string;created_at:string;status:string}[];
+ operations:{leads_total:number;leads_new_month:number;leads_converted:number;deposits_total:number;deposits_new_month:number;deposits_moved_in:number};
 };
 const fixture=<Source extends keyof DashboardFixtures>(source:Source):DashboardFixtures[Source]=>{
  const data:DashboardFixtures=h.empty?{
   buildings:[],stats:{revenueThisMonth:0,totalDebt:0,occupancyRate:0,occupiedRooms:0,totalRooms:0,unresolvedIssues:0},
   contracts:{active:0,newThisMonth:0,expiringSoon:0,terminatedThisMonth:0},
-  revenue:[],occupancy:[],alerts:[],activities:[],leads:[],deposits:[],
+  revenue:[],occupancy:[],alerts:[],activities:[],operations:{leads_total:0,leads_new_month:0,leads_converted:0,deposits_total:0,deposits_new_month:0,deposits_moved_in:0},
  }:{
   buildings:[{id:'b1',name:'Tòa Demo'}],
   stats:{revenueThisMonth:100,totalDebt:10,occupancyRate:50,occupiedRooms:1,totalRooms:2,unresolvedIssues:0},
@@ -28,19 +27,18 @@ const fixture=<Source extends keyof DashboardFixtures>(source:Source):DashboardF
   occupancy:[{status:'Đã thuê',count:1,percentage:50}],
   alerts:[{id:'a1',title:'Cảnh báo Demo',description:'Khoản thu đang quá hạn',type:'overdue_invoice',severity:'high',date:'2026-09-30'}],
   activities:[{id:'ac1',title:'Hoạt động Demo',description:'Đã tạo hợp đồng',type:'contract',date:'2026-09-30'}],
-  leads:[{id:'l1',created_at:new Date().toISOString(),status:'CONVERTED'}],
-  deposits:[{id:'d1',created_at:new Date().toISOString(),status:'CONVERTED'}],
+  operations:{leads_total:2005,leads_new_month:5,leads_converted:401,deposits_total:1600,deposits_new_month:3,deposits_moved_in:400},
  };
  return data[source];
 };
 vi.mock('@/hooks/useDashboard',async()=>{
  const {useQuery}=await import('@tanstack/react-query');
  const useFixtureQuery=<Source extends keyof DashboardFixtures>(source:Source,scope:string|null)=>useQuery({queryKey:['mobile-dashboard-test',source,scope],queryFn:async()=>{h.reads.push(source);if(h.failed===source)throw h.permission?{code:'42501',message:'SELECT secret FROM private'}:new Error('network unavailable');return fixture(source);},retry:false});
- return {useDashboardStats:(scope:string|null)=>useFixtureQuery('stats',scope),useRevenueChart:(_months:number,scope:string|null)=>useFixtureQuery('revenue',scope),useOccupancyChart:(scope:string|null)=>useFixtureQuery('occupancy',scope),useAlerts:(scope:string|null)=>useFixtureQuery('alerts',scope),useRecentActivities:(scope:string|null)=>useFixtureQuery('activities',scope)};
+ return {useDashboardSummary:(scope:string|null)=>useFixtureQuery('operations',scope),useDashboardStats:(scope:string|null)=>useFixtureQuery('stats',scope),useRevenueChart:(_months:number,scope:string|null)=>useFixtureQuery('revenue',scope),useOccupancyChart:(scope:string|null)=>useFixtureQuery('occupancy',scope),useAlerts:(scope:string|null)=>useFixtureQuery('alerts',scope),useRecentActivities:(scope:string|null)=>useFixtureQuery('activities',scope)};
 });
 vi.mock('@/hooks/useBuildings',async()=>{const {useQuery}=await import('@tanstack/react-query');return {useBuildings:()=>useQuery({queryKey:['mobile-dashboard-test','buildings'],queryFn:async()=>{h.reads.push('buildings');if(h.failed==='buildings')throw new Error('network unavailable');return fixture('buildings');},retry:false})};});
-vi.mock('@/hooks/useLeads',async()=>{const {useQuery}=await import('@tanstack/react-query');return {useLeads:()=>useQuery({queryKey:['mobile-dashboard-test','leads'],queryFn:async()=>{h.reads.push('leads');if(h.failed==='leads')throw new Error('network unavailable');return fixture('leads');},retry:false})};});
-vi.mock('@/hooks/useDeposits',async()=>{const {useQuery}=await import('@tanstack/react-query');return {useDeposits:()=>useQuery({queryKey:['mobile-dashboard-test','deposits'],queryFn:async()=>{h.reads.push('deposits');if(h.failed==='deposits')throw new Error('network unavailable');return fixture('deposits');},retry:false})};});
+vi.mock('@/hooks/useLeads',()=>({useLeads:()=>{throw new Error('Dashboard must not fetch full leads');}}));
+vi.mock('@/hooks/useDeposits',()=>({useDeposits:()=>{throw new Error('Dashboard must not fetch full deposits');}}));
 vi.mock('@/hooks/useContracts',async()=>{const {useQuery}=await import('@tanstack/react-query');return {useContractDashboardCounts:(scope:string|null)=>useQuery({queryKey:['mobile-dashboard-test','contracts',scope],queryFn:async()=>{h.reads.push('contracts');return fixture('contracts');},retry:false})};});
 vi.mock('@/hooks/usePersistedState',async()=>{const {useState}=await import('react');return {usePersistedState:()=>useState(h.selected)};});
 import DashboardMobilePage from '../DashboardMobilePage';
@@ -56,8 +54,7 @@ it.each([
  ['occupancy','tỷ lệ lấp đầy'],
  ['alerts','cảnh báo'],
  ['activities','hoạt động gần đây'],
- ['leads','tổng quan khách hẹn'],
- ['deposits','tổng quan đặt cọc'],
+ ['operations','tổng quan khách hẹn'],
 ])('%s read failure is visible in its block and retry preserves selected building without reloading unrelated sources',async(source,label)=>{
  h.failed=source;show();
  const alert=await alertFor('Chưa tải được '+label);
@@ -68,9 +65,8 @@ it.each([
  if(source==='occupancy')expect(document.querySelector('.occ-leg')).toBeNull();
  if(source==='alerts')expect(screen.queryByText(/Không có cảnh báo/)).toBeNull();
  if(source==='activities')expect(screen.queryByText('Chưa có hoạt động nào.')).toBeNull();
- if(source==='leads'||source==='deposits'){
-  const card=screen.getByText(source==='leads'?'Tổng quan khách hẹn':'Tổng quan đặt cọc').closest('.opsb')!;
-  expect(card.querySelector('.opsb-stat')).toBeNull();
+ if(source==='operations'){
+  for(const label of ['Tổng quan khách hẹn','Tổng quan đặt cọc'])expect(screen.getByText(label).closest('.opsb')!.querySelector('.opsb-stat')).toBeNull();
  }
  const readCounts=Object.fromEntries(h.reads.map(name=>[name,h.reads.filter(other=>other===name).length]));
  h.failed=null;fireEvent.click(within(alert).getByRole('button',{name:'Tải lại'}));
@@ -103,4 +99,16 @@ it.each([false,true])('cached alerts refetch permission=%s distinguishes stale d
  expect(document.body.textContent).not.toContain('SELECT secret');
  h.failed=null;fireEvent.click(within(alert).getByRole('button',{name:'Tải lại'}));
  await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(screen.getByText('Cảnh báo Demo')).toBeTruthy();
+});
+
+it('uses complete server totals above a single page while preserving canonical contract counts',async()=>{
+ show();await waitFor(()=>expect(document.querySelectorAll('.opsb-stat').length).toBe(12));
+ const leads=screen.getByText('Tổng quan khách hẹn').closest('.opsb')!;
+ const deposits=screen.getByText('Tổng quan đặt cọc').closest('.opsb')!;
+ expect(within(leads as HTMLElement).getByText('2005')).toBeTruthy();
+ expect(within(leads as HTMLElement).getByText('20%')).toBeTruthy();
+ expect(within(deposits as HTMLElement).getByText('1600')).toBeTruthy();
+ expect(within(deposits as HTMLElement).getByText('25%')).toBeTruthy();
+ expect(h.reads.filter(name=>name==='operations')).toHaveLength(1);
+ expect(h.reads.filter(name=>name==='contracts')).toHaveLength(1);
 });

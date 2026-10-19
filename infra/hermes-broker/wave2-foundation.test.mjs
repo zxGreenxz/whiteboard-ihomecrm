@@ -184,6 +184,15 @@ test('cấu trúc: v3 = bản 20261017033630 + hai dòng định tuyến; file s
 
 test('hàng rào gói (P2-4): file dải gói chỉ tạo hermes_w2<gói>_* hoặc hàm public.<miền>_*_v<n> MỚI; hàm nền chỉ sống ở dải nền/Z', () => {
   assert.deepEqual(w2FenceViolations(w2AllMigrations()), [], 'repo hiện tại');
+  for (const name of ['20261019034254_hermes_metadata_read_snapshot_v1.sql', '20261019040948_hermes_copied_text_parity_v1.sql']) {
+    const original = w2AllMigrations();
+    assert(original.some(file => file.name === name));
+    for (const change of [file => ({ ...file, sql: file.sql + '\n-- changed source\n' }),
+      file => ({ ...file, name: '20261020000000_unreviewed_successor.sql' })]) {
+      assert(w2FenceViolations(original.map(file => file.name === name ? change(file) : file)).length > 0,
+        'reviewed successor remains filename and byte bound');
+    }
+  }
   const base = w2AllMigrations().filter(({ name }) => name < '20261018010000');
   const fn = name => `CREATE OR REPLACE FUNCTION ${name}(p jsonb) RETURNS jsonb LANGUAGE sql AS $fn$ SELECT p $fn$;`;
   const check = (...extra) => w2FenceViolations([...base, ...extra]);

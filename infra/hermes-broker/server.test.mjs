@@ -4,6 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
+import { DOMAIN_FAMILIES } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -112,7 +113,11 @@ function fakeBackend() {
       prepareCount++; return Response.json({ id: I.connection, assistantId: I.assistant, userId: I.user, organizationId: I.org,
         state: 'pending', epoch: 1, restrictions: limits(), scopeIds: [], intentSecret: 'a'.repeat(64), intentExpiresAt: NOW + 300_000 });
     }
-    if (endpoint.pathname === '/rest/v1/rpc/hermes_my_connections_v1') return Response.json(joined ? [metadata(joined.connection)] : []);
+    if (endpoint.pathname === '/rest/v1/rpc/hermes_my_connections_v1') {
+      // Canonical SQL checks membership even when this owner has no connections.
+      if (args.p_org !== I.org) return Response.json({ code: '42501' }, { status: 403 });
+      return Response.json(joined ? [metadata(joined.connection)] : []);
+    }
     if (endpoint.pathname === '/rest/v1/rpc/hermes_connection_context_v1') return Response.json({ ...metadata(joined.connection),
       membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: 1,
       companyCeilings: limits(), effective: structuredClone(joined.connection.restrictions) });
@@ -151,6 +156,61 @@ async function listening(t, configuration) {
     { authorization: `Bearer ${token}`, ...headers });
   return { ...backend, address, send, browser, connect, mcp };
 }
+
+test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
+  const measured = [];
+  for (const enabled of [false, true]) {
+    const f = fakeBackend(), events = [], baseFetch = f.configuration.fetch;
+    let missingFastRpc = false;
+    f.configuration.readFastPath = enabled;
+    const allowed = ['customers.view', 'contracts.view', 'invoices.view'];
+    f.configuration.fetch = async (url, options) => {
+      const path = new URL(url).pathname; events.push(path);
+      if (path.endsWith('/hermes_domain_capabilities_v1')) return Response.json({ organizationId: I.org, userId: I.user,
+        membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
+        permissions: Object.fromEntries(DOMAIN_FAMILIES.v1.capabilities.map(key => [key,
+          { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
+      if (/\/hermes_domain_read_(?:fast_v1|v1|v3)$/.test(path)) {
+        if (missingFastRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
+        const args = JSON.parse(options.body), operation = args.p_domain;
+        assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
+          ...(operation === 'customers' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
+        if (!path.endsWith('/hermes_domain_read_fast_v1')) return Response.json(result);
+        assert.deepEqual(Object.keys(args.p_binding).sort(), ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'].sort());
+        return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection,
+          permission: `${operation}.view`, buildingIds: [I.building], cashbookIds: [] }, result });
+      }
+      return baseFetch(url, options);
+    };
+    f.configuration.audit = async value => { f.audits.push(value); events.push(`audit:${value.outcome}`); };
+    const backend = await listening(t, f.configuration), connected = await backend.connect();
+    assert.equal(connected.status, 200); const token = connected.body.token;
+    const joined = f.read().joined; joined.connection.restrictions.read.push(...allowed); joined.policy.read.push(...allowed);
+    joined.connection.scopeIds = [I.scope]; joined.policy.scopeIds = [I.scope];
+    events.length = 0;
+    for (const operation of ['customers', 'contracts', 'invoices']) {
+      const start = events.length;
+      const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
+      assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
+      assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
+      if (enabled) assert.deepEqual(events.slice(start).slice(events.slice(start).indexOf('audit:prepared') + 1), ['/rest/v1/rpc/hermes_domain_read_fast_v1']);
+    }
+    const authRequests = events.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
+    measured.push(authRequests);
+    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, 3);
+    if (enabled) {
+      missingFastRpc = true; const start = events.length;
+      const failed = await backend.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
+      assert.equal(failed.status, 200); assert.equal(failed.body.result.isError, true);
+      assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
+      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).length, 1, 'missing candidate SQL is not retried or silently routed to the legacy reader');
+    }
+    await backend.close();
+  }
+  assert(measured[0] > 0); assert(measured[1] <= measured[0] * 0.3, JSON.stringify(measured));
+  t.diagnostic(`Auth/capability requests over the same cold+warm three-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
+});
 
 test('construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact', async () => {
   const f = fakeBackend(), original = Buffer.from(f.key);
@@ -335,7 +395,7 @@ test('closing MCP stops delivery but waits for bounded broker work rather than c
   assert((await response).error); assert.equal(f.read().poolEnds, 0);
 });
 
-test('composed room tool uses the encrypted assistant JWT, fixed scope/data RPCs and a final decision after audit', async t => {
+test('composed room tool uses the encrypted assistant JWT, initial scope/data RPCs and awaited audit', async t => {
   const f = fakeBackend(), order = []; const original = f.configuration.fetch;
   f.configuration.fetch = async (url, options) => { order.push(new URL(url).pathname.split('/').at(-1)); return original(url, options); };
   f.configuration.audit = async event => { f.audits.push(event); order.push(`audit:${event.outcome}`); };
@@ -351,9 +411,9 @@ test('composed room tool uses the encrypted assistant JWT, fixed scope/data RPCs
   const data = JSON.parse(response.body.result.content[0].text);
   assert.equal(data.rooms.length, 1); assert.equal(data.rooms[0].building.id, I.building); assert.equal(data.rooms[0].availability.label, 'Trống sẵn');
   assert.equal(data.totalInSnapshot, 1); assert.equal(data.nextOffset, null); assert.equal(data.completeness, 'complete');
-  assert.equal(order.filter(value => value === 'hermes_room_scope_map_v1').length, 2);
+  assert.equal(order.filter(value => value === 'hermes_room_scope_map_v1').length, 1);
   assert(order.indexOf('hermes_sale_listing_rooms_v1') < order.indexOf('audit:prepared'));
-  assert.equal(order.at(-1), 'hermes_room_scope_map_v1');
+  assert.equal(order.at(-1), 'audit:prepared');
   const exposed = response.text + JSON.stringify(f.audits);
   for (const secret of [token, browserJwt, assistantJwt, 'SYNTHETIC-REFRESH-SECRET', 'PRIVATE-CONTACT', 'PRIVATE-NOTE', 'PRIVATE-BUILDING-NOTE', 'Outside scope']) assert(!exposed.includes(secret));
   const invalid = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { organizationId: id(99) } });
@@ -375,20 +435,19 @@ test('server auth chain consults customer/expense capability RPCs; absent RPCs k
   assert(!f.calls.some(call => /hermes_(customer_create|expense)_action_v1$/.test(call.path)), 'no action RPC without capability');
 });
 
-test('composed room response is withheld if policy changes at the final bound RPC after successful audit', async t => {
-  const f = fakeBackend(), original = f.configuration.fetch; let maps = 0, sawAudit = false;
-  f.configuration.audit = async event => { f.audits.push(event); if (event.outcome === 'prepared' && maps === 1) sawAudit = true; };
+test('composed direct room response finishes with initial admission after audit-time revoke; the next call is rejected', async t => {
+  const f = fakeBackend(), original = f.configuration.fetch; let maps = 0;
+  f.configuration.audit = async event => { f.audits.push(event); if (event.outcome === 'prepared' && maps === 1) f.read().joined.connection.state = 'revoked'; };
   f.configuration.fetch = async (url, options) => {
-    if (new URL(url).pathname.endsWith('/hermes_room_scope_map_v1') && ++maps === 2) {
-      assert(sawAudit); f.read().joined.policy.version++;
-    }
+    if (new URL(url).pathname.endsWith('/hermes_room_scope_map_v1')) maps++;
     return original(url, options);
   };
   const http = await listening(t, f.configuration), created = await http.connect(); f.grantRooms();
   const response = await http.mcp(created.body.token, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
-  assert.equal(maps, 2); assert.equal(response.body.result.isError, true);
-  assert.deepEqual(JSON.parse(response.body.result.content[0].text), { error: 'context_changed' });
-  assert(!response.text.includes('House A')); assert.equal(f.audits.at(-1).outcome, 'denied');
+  assert.equal(maps, 1); assert.equal(response.body.result.isError, false);
+  assert.equal(JSON.parse(response.body.result.content[0].text).rooms.length, 1); assert.equal(f.audits.at(-1).outcome, 'prepared');
+  const denied = await http.mcp(created.body.token, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
+  assert.equal(denied.status, 401); assert.equal(maps, 1);
 });
 
 test('mounted Zalo routes use verified browser identity and cannot dispatch ingress or arbitrary operations', async t => {
@@ -410,7 +469,7 @@ test('mounted Zalo routes use verified browser identity and cannot dispatch ingr
   assert.equal((await http.send('/api/hermes/zalo/list', {}, { authorization: 'Bearer hc_' + 'a'.repeat(43) })).status, 401);
   assert.equal((await http.send('/api/hermes/zalo/begin', {}, { origin: undefined })).status, 403);
   assert.equal(bindings.length, 2); assert.equal(f.sql.length, 0);
-  assert.equal(f.calls.filter(c => c.path === '/auth/v1/user').length, 4);
+  assert.equal(f.calls.filter(c => c.path === '/auth/v1/user').length, 2);
 });
 
 test('bot administration reaches only caller-JWT SQL, preserves permission denial and rejects stale configuration', async t => {
@@ -665,6 +724,23 @@ test('connector status shows only the caller\'s own connections with last MCP ac
   assert.equal((await http.browser('status', { connectionId: I.connection })).status, 400);
 });
 
+test('management overview and revoke avoid the capability catalog in the composed HTTP backend', async t => {
+  const f = fakeBackend(), http = await listening(t, f.configuration);
+  await http.connect();
+  f.calls.length = 0; f.sql.length = 0;
+  const overview = await http.browser('overview');
+  assert.equal(overview.status, 200);
+  assert.deepEqual(overview.body.connections.map(row => row.id), [I.connection]);
+  assert.deepEqual(overview.body.status.connections.map(row => row.id), [I.connection]);
+  assert.deepEqual(f.calls.map(call => call.path), ['/auth/v1/user', '/rest/v1/rpc/hermes_my_connections_v1']);
+  assert.equal(f.sql.length, 0);
+  f.calls.length = 0;
+  const revoked = await http.browser('revoke', { connectionId: I.connection, expectedEpoch: 2 });
+  assert.equal(revoked.status, 200);
+  assert.deepEqual(f.calls.map(call => call.path), ['/auth/v1/user', '/rest/v1/rpc/hermes_my_connections_v1']);
+  assert.equal(f.sql.filter(query => query.text.startsWith('SELECT app_private.hermes_store_revoke_connection_v1')).length, 1);
+});
+
 test('backend close holds key and maintenance capacity until ignored-abort refresh fetch actually drains', async t => {
   const f = fakeBackend(), http = await listening(t, f.configuration), token = (await http.connect()).body.token;
   f.nearSessionExpiry(); const refresh = arrangeRefresh(f), entered = deferred(), held = deferred();
@@ -747,7 +823,7 @@ test('backend options composes real Auth and management using the fixed self RPC
     }return base(url,options);
   };
   const http=await listening(t,f.configuration),result=await http.browser('options');
-  assert.equal(result.status,200);assert.deepEqual(result.body,{options:choices});assert.equal(reads,2);
+  assert.equal(result.status,200);assert.deepEqual(result.body,{options:choices});assert.equal(reads,1);
   assert.equal(f.read().signInCount,0);assert.equal(f.sql.length,0);
   for(const secret of [browserJwt,assistantJwt,'SYNTHETIC-REFRESH-SECRET'])assert(!result.text.includes(secret));
 });

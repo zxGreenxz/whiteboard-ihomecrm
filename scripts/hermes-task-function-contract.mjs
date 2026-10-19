@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {extractFunctionDefinitions,splitSqlStatements,normalizeSqlSource} from './network-center-function-bodies.mjs';
 import {TASK_FUNCTIONS,CUSTOMER_FUNCTIONS} from './hermes-task-function-specs.mjs';
+import {HERMES_READ_STANDARD_FUNCTIONS} from './hermes-read-function-specs.mjs';
 export {TASK_FUNCTIONS,CUSTOMER_FUNCTIONS};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const requireValue=(value,code)=>{if(!value)throw Object.assign(new Error(code),{code});};
@@ -10,6 +11,7 @@ const standard=new Map([...TASK_FUNCTIONS,...CUSTOMER_FUNCTIONS].filter(item=>it
 // explicit and byte-bound so adding a new BEGIN ATOMIC body cannot silently
 // weaken task source verification.
 const externalStandard=new Map([
+ ...HERMES_READ_STANDARD_FUNCTIONS.map(spec=>[spec.name,spec]),
  ['public.hermes_customer_create_action_v1',{
   name:'public.hermes_customer_create_action_v1',
   sourcePath:'supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql',
@@ -78,7 +80,8 @@ export function extractHermesFunctionDefinitions(sql,path='migration.sql'){
 // Run on one owned connection so the deparser's search_path is deterministic.
 // READ ONLY + ROLLBACK: no schema/function/session state survives this check.
 export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,receiptTable}){
- const expected=new Map(sources.flatMap(source=>extractHermesFunctionDefinitions(source.bytes.toString('utf8'),source.path))
+ const expected=new Map(sources.flatMap(source=>extractHermesFunctionDefinitions(source.bytes.toString('utf8'),source.path)
+  .map(item=>({...item,sourcePath:source.path})))
   .map(item=>[item.qualifiedName,item]));
  const prefix=errorPrefix;
  requireValue(functions.every(spec=>expected.has(spec.name)), 'live_'+prefix+'_source_incomplete');
@@ -102,8 +105,9 @@ export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,
   requireValue(rows.length===functions.length,'live_'+prefix+'_signature_mismatch');
   for(const spec of functions){
    const row=rows.find(item=>item.name===spec.name);
+   const source=expected.get(spec.name),successor=spec.successors?.[source.sourcePath];
    requireValue(row?.signature===spec.signature&&row.owner==='postgres'&&row.language===spec.language&&row.prosecdef===spec.definer
-    &&row.provolatile==='v'&&row.proparallel==='u'&&row.proleakproof===false&&row.proisstrict===false
+    &&row.provolatile===(successor?.volatility??'v')&&row.proparallel==='u'&&row.proleakproof===false&&row.proisstrict===false
     &&JSON.stringify(row.proconfig)===JSON.stringify(['search_path='+spec.searchPath.replaceAll(',',', ')])
     &&row.arguments===spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item=>item.trim()).join(', ')
     &&row.result===(spec.name==='app_private.hermes_task_assignee_member_v1'?'boolean':'jsonb'),'live_'+prefix+'_definition_mismatch');
@@ -111,7 +115,11 @@ export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,
     requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===spec.deparsedSha256,'live_'+prefix+'_sql_standard_body_mismatch');
     requireValue(Array.isArray(row.dependencies)&&row.dependencies.every(item=>Number.isInteger(item.bound_oid)&&item.bound_oid>0&&item.bound_oid===item.resolved_oid)
      &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(spec.dependencies),'live_'+prefix+'_dependency_mismatch');
-   }else requireValue(row.parsed_body===false&&typeof row.prosrc==='string'&&hash(normalizeSqlSource(row.prosrc))===(spec.bodyDigest??expected.get(spec.name).bodyDigest),'live_'+prefix+'_body_mismatch');
+   }else {
+    const digest=successor?.bodyDigest??spec.bodyDigest??source.bodyDigest;
+    requireValue(source.bodyDigest===digest&&row.parsed_body===false&&typeof row.prosrc==='string'
+     &&hash(normalizeSqlSource(row.prosrc))===digest,'live_'+prefix+'_body_mismatch');
+   }
    const grantees=spec.authenticated?['authenticated','postgres']:['postgres'];
    requireValue(Array.isArray(row.acl)&&row.acl.length===grantees.length&&row.acl.every(item=>grantees.includes(item.grantee)&&item.privilege==='EXECUTE'&&item.grantable===false)
     &&new Set(row.acl.map(item=>item.grantee)).size===grantees.length,'live_'+prefix+'_acl_mismatch');

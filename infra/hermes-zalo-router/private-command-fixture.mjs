@@ -9,8 +9,8 @@ export const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repea
 export const ORG=id('1'),USER=id('2'),ACCOUNT=id('3'),INSTANCE=id('4'),ASSISTANT=id('5'),SESSION=id('6'),CONNECTION=id('7');
 export const BINDING=id('8'),GENERATION=id('9'),CHALLENGE=id('a'),CONVERSATION=id('b'),MESSAGE=id('c'),FOREIGN=id('d');
 
-export async function fixture(t, { migrations = [] } = {}) {
-  const db = new PGlite(); t.after(() => db.close());
+export async function fixture(t, { migrations = [], database } = {}) {
+  const db = database ?? new PGlite(); t.after(() => db.close());
   await db.exec(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA app_private; CREATE SCHEMA auth;

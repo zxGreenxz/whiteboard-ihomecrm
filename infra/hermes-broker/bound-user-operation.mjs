@@ -9,10 +9,14 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 /** Prepare carries only a branded receipt. The broker awaits its existing audit
  * between prepare/finalize. Final RPC uses the actual caller JWT and is the last
- * await, with live SQL identity, ownership, sharing and TTL decisions. */
-export function createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads, mayUse, validateInput, validateResult, clock = Date.now } = {}) {
+ * await, with live SQL identity, ownership, sharing and TTL decisions.
+ * initialReadAdmission is reserved for the fixed private domain read mount:
+ * its RPC owns current CRM/exclusion decisions and returns the output scope.
+ * Writer/group/schedule mounts retain the default verification and final check. */
+export function createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads, mayUse, validateInput, validateResult, clock = Date.now, initialReadAdmission = false } = {}) {
   if ([authority?.resolve, authority?.checkUnchanged, connectionStore?.readConnection, crypto?.open,
-    auth?.verifySession, reads?.execute, mayUse, validateInput, validateResult, clock].some(fn => typeof fn !== 'function')) throw new TypeError('invalid_bound_user_operation_service');
+    auth?.verifySession, reads?.execute, mayUse, validateInput, validateResult, clock].some(fn => typeof fn !== 'function') ||
+    typeof initialReadAdmission !== 'boolean') throw new TypeError('invalid_bound_user_operation_service');
   const issued = new WeakMap();
   const check = signal => { if (!(signal instanceof AbortSignal)) fail('invalid_request'); if (signal.aborted) fail('timeout'); };
   return Object.freeze({
@@ -32,14 +36,18 @@ export function createBoundUserOperationService({ authority, connectionStore, cr
       const material = validateSessionMaterial(crypto.open(s.envelope, s.binding)); material.refreshToken = undefined;
       const { accessToken, expiresAt } = material;
       if (expiresAt !== s.expiresAt || expiresAt <= clock() || c.expiresAt <= clock()) fail('unauthorized');
-      const verified = await auth.verifySession({ accessToken, signal }); check(signal);
-      if (!exact(verified, ['userId', 'sessionId', 'expiresAt']) || verified.userId !== c.userId ||
-        verified.sessionId !== s.binding.sessionId || verified.expiresAt !== expiresAt) fail('unauthorized');
+      if (!initialReadAdmission) {
+        const verified = await auth.verifySession({ accessToken, signal }); check(signal);
+        if (!exact(verified, ['userId', 'sessionId', 'expiresAt']) || verified.userId !== c.userId ||
+          verified.sessionId !== s.binding.sessionId || verified.expiresAt !== expiresAt) fail('unauthorized');
+      }
       if (!id(joined.membership?.membershipId) || !positive(joined.membership?.authorizationVersion) ||
         !(joined.policy?.version === 0 || positive(joined.policy?.version))) fail('backend_unavailable');
-      const binding = { connectionId: c.id, tokenDigest, expectedEpoch: c.epoch, expectedPolicyVersion: joined.policy.version,
-        expectedMembershipId: joined.membership.membershipId, expectedAuthorizationVersion: joined.membership.authorizationVersion,
-        expectedSessionRevision: s.revision };
+      const binding = initialReadAdmission
+        ? { connectionId: c.id, tokenDigest, expectedEpoch: c.epoch, expectedSessionRevision: s.revision }
+        : { connectionId: c.id, tokenDigest, expectedEpoch: c.epoch, expectedPolicyVersion: joined.policy.version,
+          expectedMembershipId: joined.membership.membershipId, expectedAuthorizationVersion: joined.membership.authorizationVersion,
+          expectedSessionRevision: s.revision };
       const receipt = Object.freeze({});
       issued.set(receipt, { tokenDigest, operation, input, binding, accessToken, expiresAt,
         identity, authorityReceipt, deadline: clock() + 30000 });
@@ -52,7 +60,7 @@ export function createBoundUserOperationService({ authority, connectionStore, cr
       const fresh = () => { check(signal); if (value.expiresAt <= clock() || value.identity.row.expiresAt <= clock()) fail('unauthorized');
         if (value.deadline <= clock()) fail('timeout'); };
       fresh();
-      await authority.checkUnchanged(token, value.authorityReceipt, { signal }); fresh();
+      if (!initialReadAdmission) { await authority.checkUnchanged(token, value.authorityReceipt, { signal }); fresh(); }
       const result = await reads.execute(value.operation, { accessToken: value.accessToken, binding: value.binding, input: value.input },
         { signal, onDispatch, onRejected }); fresh();
       try { return validateResult(value.operation, result, value.identity, value.input); } catch { fail('backend_unavailable'); }

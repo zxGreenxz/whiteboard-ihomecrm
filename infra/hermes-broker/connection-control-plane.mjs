@@ -1,3 +1,4 @@
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
@@ -54,14 +55,21 @@ function credentials(value) {
   return { email: value.email, password: value.password };
 }
 function request(value, withCredentials) {
-  const keys = withCredentials ? ['browserAccessToken', 'email', 'password', 'organizationId', 'restrictions', 'scopeIds']
-    : ['accessToken', 'organizationId', 'restrictions', 'scopeIds'];
+  if (!record(value)) fail('invalid_request');
+  const inherited = Object.getOwnPropertyDescriptor(value, 'permissionMode')?.value === 'inherit_crm';
+  const limits = inherited ? ['permissionMode', 'exclusions', 'scopeMode', 'scopeIds'] : ['restrictions', 'scopeIds'];
+  const keys = withCredentials ? ['browserAccessToken', 'email', 'password', 'organizationId', ...limits]
+    : ['accessToken', 'organizationId', ...limits];
   if (!exact(value, keys) || !uuid(value.organizationId)) fail('invalid_request');
   const bearer = value[withCredentials ? 'browserAccessToken' : 'accessToken'];
   if (typeof bearer !== 'string' || !TOKEN.test(bearer)) fail('invalid_request');
   if (withCredentials) credentials(value);
-  const result = { ...value, restrictions: restrictions(value.restrictions, 'invalid_request'), scopeIds: ids(value.scopeIds, 'invalid_request') };
-  return result;
+  const scopeIds = ids(value.scopeIds, 'invalid_request');
+  if (inherited) {
+    if (!['restricted', 'unrestricted'].includes(value.scopeMode) || value.scopeMode === 'unrestricted' && scopeIds.length) fail('invalid_request');
+    return { ...value, exclusions: restrictions(value.exclusions, 'invalid_request'), scopeIds };
+  }
+  return { ...value, restrictions: restrictions(value.restrictions, 'invalid_request'), scopeIds };
 }
 function session(value, now) {
   if (!exact(value, ['userId', 'sessionId', 'expiresAt']) || !uuid(value.userId) || !uuid(value.sessionId) ||
@@ -84,21 +92,34 @@ function allowed(value, actor, org, requested, now) {
   }
 }
 function prepared(value, expected, now) {
-  if (!exact(value, [...ROW, 'intentSecret', 'intentExpiresAt']) || ROW.slice(0, 4).some(key => !uuid(value[key])) ||
+  if (!permissionShape(value, [...ROW, 'intentSecret', 'intentExpiresAt']) || ROW.slice(0, 4).some(key => !uuid(value[key])) ||
       value.userId !== expected.userId || value.organizationId !== expected.organizationId || value.state !== 'pending' ||
       !positive(value.epoch) || typeof value.intentSecret !== 'string' || !DIGEST.test(value.intentSecret) ||
       !positive(value.intentExpiresAt) || value.intentExpiresAt <= now ||
-      value.intentExpiresAt > now + PREPARE_INTENT_LIFETIME_MS + MAX_PREPARE_CLOCK_SKEW_MS ||
-      ['read', 'action'].some(kind => !sameSet(restrictions(value.restrictions, 'prepare_outcome_unknown')[kind], expected.restrictions[kind])) ||
-      !sameSet(ids(value.scopeIds, 'prepare_outcome_unknown'), expected.scopeIds)) fail('prepare_outcome_unknown');
+      value.intentExpiresAt > now + PREPARE_INTENT_LIFETIME_MS + MAX_PREPARE_CLOCK_SKEW_MS) fail('prepare_outcome_unknown');
+  const invalid = () => fail('prepare_outcome_unknown');
+  connectionPermissionSettings(value, x => restrictions(x, 'prepare_outcome_unknown'), invalid);
+  restrictions(value.restrictions, 'prepare_outcome_unknown');
+  ids(value.scopeIds, 'prepare_outcome_unknown');
+  if (expected.permissionMode === 'inherit_crm') {
+    if (value.permissionMode !== expected.permissionMode || value.scopeMode !== expected.scopeMode ||
+        ['read', 'action'].some(kind => !sameSet(value.exclusions[kind], expected.exclusions[kind])) ||
+        expected.scopeMode === 'restricted' && !sameSet(value.scopeIds, expected.scopeIds)) invalid();
+  } else if ((value.permissionMode ?? 'legacy_allowlist') !== 'legacy_allowlist' ||
+      ['read', 'action'].some(kind => !sameSet(value.restrictions[kind], expected.restrictions[kind])) ||
+      !sameSet(value.scopeIds, expected.scopeIds)) invalid();
   return structuredClone(value);
 }
 function activated(value, input) {
   const expected = input.prepared;
   if (!exact(value, ['ok', 'status', 'connection', 'credentialRef']) || value.ok !== true ||
       !['activated', 'already_activated'].includes(value.status) || value.credentialRef !== input.credentialRef ||
-      !exact(value.connection, ROW)) fail('activation_outcome_unknown');
+      !permissionShape(value.connection, ROW)) fail('activation_outcome_unknown');
   const row = value.connection;
+  connectionPermissionSettings(row, x => restrictions(x, 'activation_outcome_unknown'), () => fail('activation_outcome_unknown'));
+  if ((row.permissionMode ?? 'legacy_allowlist') !== (expected.permissionMode ?? 'legacy_allowlist') ||
+      (row.scopeMode ?? 'restricted') !== (expected.scopeMode ?? 'restricted') ||
+      ['read', 'action'].some(kind => !sameSet(row.exclusions?.[kind] ?? [], expected.exclusions?.[kind] ?? []))) fail('activation_outcome_unknown');
   if (ROW.slice(0, 4).some(key => row[key] !== expected[key]) || row.state !== 'active' || row.epoch !== expected.epoch + 1 ||
       ['read', 'action'].some(kind => !sameSet(restrictions(row.restrictions, 'activation_outcome_unknown')[kind], expected.restrictions[kind])) ||
       !sameSet(ids(row.scopeIds, 'activation_outcome_unknown'), expected.scopeIds)) fail('activation_outcome_unknown');
@@ -177,7 +198,7 @@ export function createConnectionControlPlane({ auth, signInProvider, preparation
           const read = async token => {
             const value = await auth.readAuthorization({ accessToken: token, userId: browser.userId,
               organizationId: requested.organizationId, signal: innerSignal }); check();
-            allowed(value, browser.userId, requested.organizationId, requested.restrictions, now());
+            allowed(value, browser.userId, requested.organizationId, requested.permissionMode === 'inherit_crm' ? { read: [], action: [] } : requested.restrictions, now());
           };
           await read(requested.browserAccessToken);
           stage = 'signIn';
@@ -198,7 +219,9 @@ export function createConnectionControlPlane({ auth, signInProvider, preparation
           await read(requested.browserAccessToken);
           stage = 'prepare';
           const pending = prepared(await preparation.prepareConnection({ accessToken: requested.browserAccessToken,
-            organizationId: requested.organizationId, restrictions: requested.restrictions, scopeIds: requested.scopeIds }, { signal: innerSignal }),
+            organizationId: requested.organizationId, ...(requested.permissionMode === 'inherit_crm'
+              ? { permissionMode: requested.permissionMode, exclusions: requested.exclusions, scopeMode: requested.scopeMode }
+              : { restrictions: requested.restrictions }), scopeIds: requested.scopeIds }, { signal: innerSignal }),
           { ...requested, userId: browser.userId }, now()); check();
           stage = 'seal';
           const operationId = randomUUID();
@@ -268,14 +291,17 @@ export function createSupabaseConnectionPreparation({ url, publishableKey, fetch
   return Object.freeze({
     async prepareConnection(input, { signal } = {}) {
       const value = request(input, false);
-      const body = JSON.stringify({ p_org: value.organizationId, p_read: value.restrictions.read,
-        p_action: value.restrictions.action, p_scope_ids: value.scopeIds });
+      const inherited = value.permissionMode === 'inherit_crm';
+      const selectedEndpoint = inherited ? new URL('/rest/v1/rpc/hermes_prepare_connection_v2', origin).href : endpoint;
+      const body = JSON.stringify(inherited ? { p_org: value.organizationId, p_excluded_read: value.exclusions.read,
+        p_excluded_action: value.exclusions.action, p_scope_mode: value.scopeMode, p_scope_ids: value.scopeIds }
+        : { p_org: value.organizationId, p_read: value.restrictions.read, p_action: value.restrictions.action, p_scope_ids: value.scopeIds });
       let dispatched = false;
       const abortError = () => new ConnectionControlError(dispatched ? 'prepare_outcome_unknown' : 'cancelled');
       try {
         return await bounded(signal, timeoutMs, async (innerSignal, check) => {
           dispatched = true;
-          const response = await transport(endpoint, { method: 'POST', signal: innerSignal, redirect: 'error',
+          const response = await transport(selectedEndpoint, { method: 'POST', signal: innerSignal, redirect: 'error',
             headers: { apikey: publishableKey, authorization: `Bearer ${value.accessToken}`, 'content-type': 'application/json',
               'accept-profile': 'public', 'content-profile': 'public' }, body }); check();
           const data = await responseJson(response, maxResponseBytes, innerSignal); check();

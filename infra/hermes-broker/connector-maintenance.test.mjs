@@ -8,32 +8,33 @@ const row = { connectionId: id(1), assistantId: id(2), userId: id(3), organizati
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(done => setImmediate(done));
 function fixture(t, changes = {}) {
-  let expiry = NOW + 120000, calls = 0, reads = 0, scheduled;
-  const ack = () => ({ ok: true, status: 'renewed', connectionId: row.connectionId, expiresAt: NOW + 900000, reconciled: false });
+  let time = NOW, expiry = NOW + 120000, calls = 0, reads = 0, scheduled;
+  const ack = () => ({ ok: true, status: 'renewed', connectionId: row.connectionId, expiresAt: time + 900000, reconciled: false });
   const backend = {
     async resolveConnection(token, options) {
-      reads++; assert.equal(token, row.token); assert(options.signal instanceof AbortSignal);
+      reads++; assert.equal(token, changes.rows?.[0]?.token ?? row.token); assert(options.signal instanceof AbortSignal);
       if (changes.resolve) return changes.resolve();
       return Object.fromEntries([...['connectionId', 'assistantId', 'userId', 'organizationId'].map(key => [key, row[key]]), ['expiresAt', expiry]]);
     },
     beginExternalConnectionMaintenance(token, options) {
       calls++; assert.equal(token, row.token); assert(options.signal instanceof AbortSignal);
       if (changes.begin) return changes.begin(ack());
-      expiry = NOW + 900000; return { result: Promise.resolve(ack()), drained: Promise.resolve() };
+      expiry = time + 900000; return { result: Promise.resolve(ack()), drained: Promise.resolve() };
     },
   };
   const service = createConnectorMaintenance({ handoff: { async list() { return changes.rows ?? [row]; } }, backend,
-    clock: () => NOW, timers: { setTimeout(fn) { scheduled = fn; return 1; }, clearTimeout() { scheduled = undefined; } } });
+    clock: () => time, timers: { setTimeout(fn) { scheduled = fn; return 1; }, clearTimeout() { scheduled = undefined; } } });
   t.after(() => service.close().catch(() => {}));
-  return { service, ack, counts: () => ({ calls, reads }), nearExpiry() { expiry = NOW + 120000; },
+  return { service, ack, counts: () => ({ calls, reads }), advance(ms) { time += ms; }, nearExpiry() { expiry = time + 120000; },
     async cycle() { if (!scheduled) service.start(); else { const callback = scheduled; scheduled = undefined; callback(); } await tick(); } };
 }
 
 test('external maintenance renews the same enrolled token without touching any personal runtime and skips fresh connections', async t => {
   const f = fixture(t); assert.deepEqual(f.counts(), { calls: 0, reads: 0 });
   await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 }); assert.equal(f.service.status().state, 'ready');
-  await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 2 });
-  f.nearExpiry(); await f.cycle(); assert.equal(f.counts().calls, 2);
+  for (let i = 0; i < 19; i++) { f.advance(30000); await f.cycle(); }
+  assert.deepEqual(f.counts(), { calls: 1, reads: 1 });
+  f.advance(30000); await f.cycle(); assert.deepEqual(f.counts(), { calls: 2, reads: 2 });
   await f.service.close(); assert.equal(f.service.status().state, 'closed');
 });
 
@@ -44,7 +45,8 @@ for (const ahead of [50, 4000]) {
     const f = fixture(t, { resolve: () => Object.fromEntries([...['connectionId', 'assistantId', 'userId', 'organizationId'].map(k => [k, row[k]]), ['expiresAt', expiry]]) });
     await f.cycle(); assert.deepEqual(f.counts(), { calls: 0, reads: 1 });
     assert.deepEqual(f.service.status(), { state: 'ready', requiresReconnect: 0 });
-    expiry = NOW + 120000; await f.cycle(); assert.equal(f.counts().calls, 1); // still renewable, i.e. never latched
+    f.advance(600000 + ahead); expiry = NOW + 900000 + ahead;
+    await f.cycle(); assert.equal(f.counts().calls, 1); // still renewable, i.e. never latched
   });
 }
 
@@ -59,7 +61,8 @@ for (const ahead of [50, 4000]) {
   test(`renewal ACK ${ahead} ms past the 15-minute TTL (DB clock ahead) unlocks the next renewal`, async t => {
     const f = fixture(t, { begin: ack => ({ result: Promise.resolve({ ...ack, expiresAt: NOW + 900000 + ahead }), drained: Promise.resolve() }) });
     await f.cycle(); assert.equal(f.counts().calls, 1); assert.deepEqual(f.service.status(), { state: 'ready', requiresReconnect: 0 });
-    await f.cycle(); assert.equal(f.counts().calls, 2); // owner stays near expiry in this fixture
+    await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 }); // ACK is the next schedule source.
+    f.advance(600000 + ahead); f.nearExpiry(); await f.cycle(); assert.equal(f.counts().calls, 2);
   });
 }
 
@@ -114,4 +117,28 @@ test('unknown dependency drain fails shutdown so host keeps credential and owner
 test('invalid renewal ACK does not unlock a repeated operation', async t => {
   const f = fixture(t, { begin(ack) { return { result: Promise.resolve({ ...ack, connectionId: id(99) }), drained: Promise.resolve() }; } });
   await f.cycle(); await f.cycle(); assert.equal(f.counts().calls, 1); assert.equal(f.service.status().requiresReconnect, 1);
+});
+
+test('changed enrollment token or owner invalidates a cached due time; cache never grants authority', async t => {
+  const rows = [{ ...row }], f = fixture(t, { rows });
+  await f.cycle(); await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 });
+  rows[0].token = 'hc_' + 'b'.repeat(43);
+  await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 2 });
+  rows[0].userId = id(99);
+  await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 3 });
+  assert.deepEqual(f.service.status(), { state: 'needs_attention', requiresReconnect: 1 });
+});
+
+test('removed enrollment discards its scheduling cache before it can return', async t => {
+  const rows = [{ ...row }], f = fixture(t, { rows });
+  await f.cycle(); rows.length = 0; await f.cycle(); rows.push({ ...row });
+  await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 2 });
+});
+
+test('slow renewal keeps one polling flight and publishes no next schedule until ACK and actual drain', async t => {
+  const result = deferred(), drain = deferred();
+  const f = fixture(t, { begin: () => ({ result: result.promise, drained: drain.promise }) });
+  await f.cycle(); await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 });
+  result.resolve(f.ack()); await tick(); await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 });
+  drain.resolve(); await tick(); await f.cycle(); assert.deepEqual(f.counts(), { calls: 1, reads: 1 });
 });
