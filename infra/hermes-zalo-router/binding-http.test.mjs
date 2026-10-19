@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
 import { createZaloBindingHttpHandler } from './binding-http.mjs';
-import { ZaloBindingError } from './binding-service.mjs';
+import { createZaloBindingService, ZaloBindingError } from './binding-service.mjs';
+import { createZaloBindingPorts } from './binding-adapter.mjs';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 async function fixture(t, service, options = {}) {
@@ -54,6 +55,25 @@ test('typed errors remain distinct while raw backend diagnostics never reach the
   error = new Error('PRIVATE-JWT');
   assert.deepEqual((await send('begin', body)).body, { error: 'binding_outcome_unknown' });
   assert.deepEqual((await send('list', body)).body, { error: 'backend_unavailable' });
+});
+test('an already linked sender is a definitive conflict through SQL adapter, service and HTTP without leaking identity or retrying', async t => {
+  let calls = 0;
+  const service = createZaloBindingService(createZaloBindingPorts({
+    url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture',
+    auth: { verifySession: async () => ({ userId: ORG, sessionId: ORG, expiresAt: Date.now() + 60000 }) },
+    fetch: async () => {
+      calls++;
+      return Response.json({ code: '23505', message: 'duplicate key value violates unique constraint "hermes_zalo_one_sender"',
+        details: 'PRIVATE-SENDER-AND-ACCOUNT', hint: null }, { status: 409 });
+    },
+  }));
+  t.after(() => service.close());
+  const send = await fixture(t, service);
+  const result = await send('confirm', JSON.stringify({ organizationId: ORG, challengeId: ORG,
+    expectedCandidateVersion: 1, expectedSenderUid: '98765' }));
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body, { error: 'sender_already_linked' });
+  assert.equal(calls, 1);
 });
 test('write timeout retains admission until ignored-abort dependency settles', async t => {
   let settle, signal, calls = 0;

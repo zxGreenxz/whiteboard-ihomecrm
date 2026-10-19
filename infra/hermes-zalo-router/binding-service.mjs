@@ -7,7 +7,7 @@ const exact = (value, keys) => plain(value) && Reflect.ownKeys(value).length ===
   Object.hasOwn(value, key) && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
 const id = value => typeof value === 'string' && UUID.test(value);
 const positive = value => Number.isSafeInteger(value) && value > 0 && value < Number.MAX_SAFE_INTEGER;
-const CODES = new Set(['invalid_request', 'forbidden', 'reauthentication_required', 'context_changed',
+const CODES = new Set(['invalid_request', 'forbidden', 'reauthentication_required', 'context_changed', 'sender_already_linked',
   'backend_unavailable', 'binding_outcome_unknown', 'cancelled', 'timeout', 'busy', 'backend_closed']);
 export class ZaloBindingError extends Error {
   constructor(code) {
