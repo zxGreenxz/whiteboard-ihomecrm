@@ -1,10 +1,47 @@
 # Đánh giá và kế hoạch tối ưu tốc độ CRM và Hermes
 
-Ngày đánh giá: 19/10/2026. Source khảo sát tại `81c49363c3d1abbac574c5db1870654988c431d8`, tài liệu đối chiếu tới `b4050f6b`. Chủ đã yêu cầu hiện thực toàn bộ plan. **Checkpoint 19/10, 12:51 UTC+7:** candidate core `8bcee906` đã push lên draft [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); cả sáu production migration official forward lane đều PASS lúc `2026-10-19T05:51:09.263Z`. Gate5 core 67/67 trên Node 24.18.0 PASS; TEST read-only 64/64, fast fixture 15/15 và binding 19/19 PASS. Production post-apply verifier 23/23 PASS; catalog 53 hàm (51 digest + 2 SQL standard), ACL 17, metadata 11. Read-only trên org có ACTIVE membership xác nhận ba cặp wrapper/core deepEqual, mỗi cặp 5 hàng; fixture DEMO ban đầu rỗng. Chưa deploy VPS/phát hành app; fast production, UI, broker/provider và p95 chưa kiểm, chưa CI head cuối hoặc benchmark sau thay đổi. [STATUS](hermes-crm/STATUS.md) giữ tiến độ vận hành.
+Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 14:37:26 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Web production vẫn `81c49363`: lane phát hành đã đẩy đúng commit lên nhánh production, nhưng Vercel chưa tạo deployment; yêu cầu tạo đúng commit bị từ chối `402 payment_required`. Chủ đã được đề nghị kiểm tra Billing. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
 
 **Đích quyền: quyền Hermes = quyền CRM user − những quyền bị tắt trong cài đặt Hermes.** [Báo cáo tinh giản, ba lỗi, sơ đồ và audit §10](hermes-crm/TINH-GON-KIEM-QUYEN.md) giữ plan Hermes hiện hành và tiến độ candidate. Chủ đã làm rõ §9 chỉ là đề xuất agent khác: không áp đặt 100 ms, cấm cache hoặc epoch mọi RPC. Giữ quyền/RLS CRM vốn có; bỏ hai kiểm cuối và công việc lặp. Xác nhận chữ công khai là lựa chọn riêng, chưa chốt mới. Báo cáo dưới giữ bằng chứng và phạm vi CRM/Jev rộng hơn.
 
-## Checkpoint triển khai 19/10 — migration production xong, runtime chưa phát hành
+## Checkpoint triển khai 19/10 — VPS đã đổi, web chờ Vercel
+
+VPS đã chuyển sang `0fbc263f…` sau backup mã hóa ngoài máy và kiểm đọc lại/giải mã đúng bytes. Xác minh tiến trình thật lúc 14:05 UTC+7: active/running, đường chạy và thư mục làm việc cùng release mới. `POST /mcp` không credential trả 401 đúng source. Đây chưa phải bằng chứng khôi phục phiên owner hoặc gửi nhận Zalo. Sau lần thử đọc nhanh, cấu hình gốc được hoàn nguyên và đọc lại độc lập lúc 14:37:26 UTC+7: hash khớp, dịch vụ hoạt động, `readFastPath` vắng mặt/mặc định false. `zaloProvisioning` được bỏ khỏi connector config trên layout ba UID.
+
+Migration tương thích thứ bảy `20261019061954` đã qua lane TEST/production và kiểm sau áp dụng 7/7 mỗi đích: legacy giữ8 trường cơ sở, inherit11 trường; không sửa expiry. Đã xác nhận schema TG2 làm adapter cũ từ chối ba trường bổ sung và maintenance bỏ qua lỗi đọc. Phiên owner hiện hết hạn; chưa xác định thời điểm lần gia hạn đầu tiên bị bỏ qua hoặc token đang giữ trong bộ nhớ. Bản sửa format không tự phục hồi phiên. Sau khi web phát hành được, chủ cần tạo/chọn kết nối mới qua luồng chính thức; không dùng tài khoản kiểm thay owner hoặc xin mật khẩu qua chat.
+
+Gate7 delta65/65 dùng Node24.18.0,529 giây; Gate5/6 67/67 giữ làm bằng chứng phần không đổi. Năm lượt CI của đúng SHA main đều PASS; official promote dry-run nhận18 job/178 bước, gồm biên nhận E2E fleet **local** bảy spec đã có, không gọi đó là CI chạy E2E thật. Web chưa đổi vì lỗi Vercel nêu trên; chưa bỏ kiểm hoặc đổi project để vượt lỗi phát hành.
+
+### Số đo quản trị trước và sau trên VPS
+
+Giữ cùng cách đo: loopback HTTP trực tiếp broker → Supabase production; JWT đăng nhập thật, công ty DEMO, danh sách kết nối rỗng, năm mẫu mỗi endpoint và giữ cả mẫu đầu. Trước ở `b023563a`, sau ở `0fbc263f…`; 15/15 và20/20 HTTP200. Cột sau đo lúc14:04 UTC+7.
+
+| Thao tác | Trung vị trước | Trung vị sau |
+|---|---:|---:|
+| Danh sách kết nối `list` | 2.732,44 ms | 205,93 ms |
+| Danh sách quyền `options` | 5.060,10 ms | 1.260,06 ms |
+| Trạng thái `status` | 2.667,77 ms | 177,53 ms |
+| Tổng quan mới `overview` | Chưa có endpoint | 173,27 ms |
+
+```mermaid
+flowchart LR
+  A["Mở trang quản trị"] --> B["Web gọi tổng quan"]
+  B --> C["VPS xác minh phiên và đọc kết nối: trung vị 0,17 giây"]
+  C --> D["Hiện danh sách và trạng thái"]
+  D --> E["Khi mở form mới tải quyền: trung vị 1,26 giây tại VPS"]
+```
+
+Sơ đồ là **luồng web mới trong source, đang chờ Vercel phát hành**. Số đo không gồm browser/WAN/Vercel, công ty có nhiều kết nối, tải đồng thời hoặc model/Zalo; năm mẫu không đủ kết luận p95. Không lấy0,17 giây làm lời hứa thời gian mở trang của người dùng. Raw trace được giữ ngoài repo trong các file `hermes-readonly-baseline-before-20261019.json` và `hermes-readonly-baseline-after-20261019.jsonl`.
+
+### Đọc nghiệp vụ: phần đã kiểm và điểm còn thiếu
+
+Lượt DEMO thứ tư kết thúc 14:36:46 UTC+7: khởi tạo, quyền, phạm vi và đối chiếu ba công thức dùng chung đều đạt, tổng 12 ca kiểm. Tuy nhiên đường thông thường trả một dòng cho mỗi miền khách hàng/hợp đồng/hóa đơn, còn đường nhanh và public shared core cùng trả **không dòng** ở cả ba miền. So sánh với đường cũ không đạt; khác biệt quan sát được nằm ở số dòng và con trỏ trang, chưa chứng minh do các trường vị trí khách hàng.
+
+Đây chỉ là bằng chứng đường nhanh khớp core trên kết quả rỗng. Cờ `fastVerified` trong báo cáo đo có phạm vi hẹp đó; **chưa đủ nghiệm thu nghiệp vụ có dữ liệu**, chưa đủ so sánh tốc độ khi trả cùng kết quả. Cờ nhanh đã được trả về tắt như trạng thái phía trên. Không thay RLS hoặc mở quyền để làm phép đo đạt. Cần tiếp tục đối chiếu khi có phiên owner hợp lệ, cùng công ty/phạm vi và dữ liệu thấy được trên web. Ba lượt kiểm trước và kết quả thất bại được giữ riêng ngoài repo; lượt ba vướng giả định sai của harness về phạm vi sổ quỹ, đã sửa theo contract trước lượt bốn.
+
+Cả bốn kết nối thử được thu hồi qua API chính thức; token của chính kết nối bị từ chối khi khởi tạo/gọi công cụ, không còn kết nối thử đang hoạt động. Phiên đăng nhập nhà cung cấp, bàn giao mã hóa và audit giữ theo thời hạn thiết kế; không kết luận không còn session. Không ghi dữ liệu nghiệp vụ, thay profile owner hoặc gửi Zalo. Sau khi xử lý Billing và phát hành web, thứ tự còn lại là chủ kết nối lại → kiểm dữ liệu thật đúng phạm vi → quyết định bật đọc nhanh → kiểm luồng Hermes/Zalo.
+
+### Bằng chứng trước rollout — giữ làm lịch sử
 
 Sáu migration đã qua official forward lane trên production với backup/receipt; hoàn tất lúc `2026-10-19T05:51:09.263Z`. Các kiểm TEST signed-JWT/read-only 64/64, fixture nhanh 15/15, binding 19/19 và Gate5 core 67/67 Node 24.18.0 đều PASS. Production post-apply verifier 23/23 PASS; catalog 53 hàm (51 digest + 2 SQL standard), ACL 17, metadata 11. Read-only org có ACTIVE membership chứng minh ba cặp wrapper/core deepEqual, mỗi cặp 5 hàng; DEMO ban đầu rỗng. Chưa deploy connector VPS/promote app; fast production, UI, broker/provider và p95 chưa kiểm. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành và receipt chi tiết.
 
@@ -40,7 +77,7 @@ Jev: kiểm tên `TYPESAFE_API_KEY`/`JEV_API_KEY` trong env/vault không có cre
 
 ## Yêu cầu cập nhật của chủ hệ thống
 
-Trạng thái: **đã đánh giá/audit và đang hiện thực theo yêu cầu tiếp theo của chủ**. Có candidate/kiểm mô phỏng và PostgreSQL local của các gói đầu; chưa có số đo sau tối ưu trên VPS/production. TG7 chỉ mở rộng Jev khi đo được lợi ích, không thay SQL tiền hoặc quyền.
+Trạng thái: **đã đánh giá/audit và đang hiện thực theo yêu cầu tiếp theo của chủ**. Đã có số đo quản trị trước/sau trên VPS ở checkpoint phía trên; web, khôi phục owner và nghiệm thu Zalo chưa hoàn tất. TG7 chỉ mở rộng Jev khi đo được lợi ích, không thay SQL tiền hoặc quyền.
 
 1. Công ty cá nhân, ít người, công việc chủ yếu đơn nhiệm; không cần thiết kế thu hồi quyền chính xác từng giây hoặc chặn một lượt đọc chỉ vì quyền/phạm vi vừa thay đổi trong vài phút.
 2. Chủ hệ thống yêu cầu bỏ hai kiểm cuối đã chỉ trên sơ đồ luồng đọc phòng: **kiểm lại toàn bộ quyền sau khi lấy dữ liệu/ghi nhật ký** và **đọc lại phạm vi phòng lần cuối trước trả kết quả**. Mục tiêu là một lượt đọc đã được chấp nhận theo quyền/phạm vi ban đầu được phép hoàn tất.
