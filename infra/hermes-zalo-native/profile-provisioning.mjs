@@ -19,6 +19,14 @@ function mcpUrl(value) {
     url.username||url.password||url.pathname!=='/mcp'||url.search||url.hash)fail();
   return url.href;
 }
+function preservedHttpUrl(value,origin) {
+  let allowed;try{allowed=new URL(origin);}catch{fail();}
+  const parts=allowed.hostname.split('.').map(Number);
+  const privateIp=parts.length===4&&parts.every(n=>Number.isInteger(n)&&n>=0&&n<=255)&&
+    (parts[0]===10||parts[0]===172&&parts[1]>=16&&parts[1]<=31||parts[0]===192&&parts[1]===168);
+  if(allowed.protocol!=='http:'||!privateIp||allowed.origin!==origin||value!==origin+'/mcp')fail();
+  return value;
+}
 export function validateNativeProvisioningConfiguration(input) {
   if(!plain(input)||Object.keys(input).some(key=>!['configFile','stateRoot','listenPort','mcpUrl','profiles','pollIntervalMs'].includes(key))||
     !Number.isInteger(input.listenPort)||input.listenPort<1024||input.listenPort>65535||
@@ -127,7 +135,7 @@ function managedCrmServer(servers,url) {
   if(present.length&&(!plain(servers[key])||servers[key].url!==url))fail();
   return key;
 }
-function prepareProfile({configuration,mapping,snapshot,token,revoked=false,credentialPending=false,nativeChannel,credentialOnly=false}) {
+function prepareProfile({configuration,mapping,snapshot,token,revoked=false,credentialPending=false,nativeChannel,credentialOnly=false,requireExistingServer=false}) {
   nativeDirectory(mapping.home);
   const file=path.join(mapping.home,'config.yaml'),envFile=path.join(mapping.home,'.env');
   const before=readOptional(file,PROFILE_MAX);
@@ -135,6 +143,7 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
   const config=yaml.load(before,{schema:yaml.JSON_SCHEMA});
   if(!plain(config)||config.mcp_servers!==undefined&&!plain(config.mcp_servers))fail();
   const servers={...(config.mcp_servers??{})},serverKey=managedCrmServer(servers,configuration.mcpUrl);
+  if(requireExistingServer&&!Object.hasOwn(servers,serverKey))fail();
   const envOriginal=readOptional(envFile,PROFILE_MAX);
   let env=envOriginal??'';
   if(revoked||credentialPending) {
@@ -203,11 +212,17 @@ function validateExistingEnv(values,options) {
 }
 function prepareUpdate(options,input) {
   const keys=['home','mcpUrl','profile','accountId','ownUid','pairedUid'];
-  if(!exact(options,keys)||!full(/[a-z][a-z0-9_-]{0,63}/,options.profile)||!uuid(options.accountId)||
+  const preserve=Object.hasOwn(options??{},'preserveExistingHttpOrigin');
+  if(!exact(options,preserve?[...keys,'preserveExistingHttpOrigin']:keys)||!full(/[a-z][a-z0-9_-]{0,63}/,options.profile)||!uuid(options.accountId)||
     !nativeUid(options.ownUid)||!nativeUid(options.pairedUid)||options.ownUid===options.pairedUid)fail();
-  const normalized={...options,home:nativeAbsolute(options.home),mcpUrl:mcpUrl(options.mcpUrl)};
   if(!exact(input,Object.hasOwn(input??{},'channel')?['version','credential','channel']:['version','credential'])||
     input.version!==1||!full(/hc_[A-Za-z0-9_-]{43}/,input.credential))fail();
+  // Explicit local-operator compatibility for an already configured Docker/LAN
+  // route. Never creates or redirects a server; normal provisioning stays strict.
+  // The operator must verify the exact host route before selecting this origin.
+  if(preserve&&Object.hasOwn(input,'channel'))fail();
+  const normalized={...options,home:nativeAbsolute(options.home),mcpUrl:preserve?
+    preservedHttpUrl(options.mcpUrl,options.preserveExistingHttpOrigin):mcpUrl(options.mcpUrl)};
   nativeDirectory(normalized.home);
   const env=readOptional(path.join(normalized.home,'.env'),PROFILE_MAX),values=managedEnv(env);
   let channel;
@@ -221,7 +236,7 @@ function prepareUpdate(options,input) {
   } else validateExistingEnv(values,normalized);
   const prepared=prepareProfile({configuration:{mcpUrl:normalized.mcpUrl,listenPort:channel?.listenPort},
     mapping:normalized,snapshot:{senderUid:normalized.pairedUid,ownUid:normalized.ownUid},token:input.credential,
-    nativeChannel:channel,credentialOnly:!channel});
+    nativeChannel:channel,credentialOnly:!channel,requireExistingServer:preserve});
   // Re-read env within the same snapshot; absent/mismatched native identity is
   // never repaired by a credential-only operation. Account/own UID validation
   // belongs to the upstream native operator: the legacy env has neither field.
