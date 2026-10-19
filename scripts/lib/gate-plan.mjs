@@ -7,6 +7,7 @@ import { khopGlob, phanLoai } from "../check-risk-classifier.mjs";
 import { isDeferredGate, isDeferredTest, DEFERRED_TEST_PATTERNS } from "./deferred-modules.mjs";
 import { GATE_REGISTRY, GENERATOR_REGISTRY, isOfflineBrowserSelection } from "./gate-registry.mjs";
 import { indexInputConflicts } from "./local-gate-snapshot.mjs";
+import { LIVE_BROWSER_OBLIGATION, LOCAL_E2E_EVIDENCE_DIR, applyLocalE2eEvidence, gitFleetResolver } from "./gate-e2e-local-evidence.mjs";
 
 const riskDefault = JSON.parse(readFileSync(new URL("../../tooling/risk-map.json", import.meta.url), "utf8"));
 const testsDefault = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
@@ -202,7 +203,7 @@ export function createGatePlan({ changes = [], snapshot, full = false, environme
     suiteSelections.push(selection);
     if (suite.runner === "playwright") {
       browserRequirements.push({ suiteId: suite.id, files, viewports: selection.viewports.length ? selection.viewports : ["affected"], reason: selection.reason });
-      if (!isOfflineBrowserSelection(suite.id, files)) { unavailable.push({ suiteId: suite.id, reason: "Live browser evidence requires affected preview/role; not default CI pass" }); continue; }
+      if (!isOfflineBrowserSelection(suite.id, files)) { unavailable.push({ suiteId: suite.id, kind: LIVE_BROWSER_OBLIGATION, files, reason: "Live browser evidence requires affected preview/role; not default CI pass" }); continue; }
     }
     const id = `suite:${suite.id}`;
     if (registry[id]) gates.add(id); else unavailable.push({ suiteId: suite.id, reason: "Runner belongs to a separate workflow" });
@@ -234,7 +235,7 @@ function parseChanges(raw) {
   return changes;
 }
 /** Index only locally; explicit event before/after for commit scope. */
-export function planFromGit({ root, mode = "staged", base, head = "HEAD", full = false, environment = "local" } = {}) {
+export function planFromGit({ root, mode = "staged", base, head = "HEAD", full = false, environment = "local", localEvidence = true } = {}) {
   if (!root || !["staged", "commit"].includes(mode)) throw new Error("root and a valid snapshot mode are required");
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
   const resolve = (ref) => git("rev-parse", "--verify", `${ref}^{commit}`).trim();
@@ -253,7 +254,16 @@ export function planFromGit({ root, mode = "staged", base, head = "HEAD", full =
   const riskMap = JSON.parse(riskText); const testMatrix = JSON.parse(matrixText);
   const policyFiles = entries.filter((e) => matches(e.path, ["tooling/risk-map.json", "tooling/test-matrix.json", "tooling/deferred-modules.json", "scripts/lib/gate-*.mjs", "scripts/lib/deferred-modules.mjs", "scripts/check-risk-classifier.mjs", ".github/workflows/**", "package.json"]));
   const runtimeFiles = entries.filter((e) => matches(e.path, ["tooling/runtime-matrix.json", "**/package-lock.json", "**/deno.lock", "package.json", "**/package.json"]));
-  const p = createGatePlan({ changes, snapshot, full, environment, riskMap, testMatrix, trackedPaths: entries.map((e) => e.path), testFiles: entries.map((e) => e.path).filter((f) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)), digests: { policyDigest: digest(policyFiles), runtimeDigest: digest(runtimeFiles), inputDigest: digest(entries) } });
+  let p = createGatePlan({ changes, snapshot, full, environment, riskMap, testMatrix, trackedPaths: entries.map((e) => e.path), testFiles: entries.map((e) => e.path).filter((f) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)), digests: { policyDigest: digest(policyFiles), runtimeDigest: digest(runtimeFiles), inputDigest: digest(entries) } });
+  // Local fleet E2E receipts come from the planned snapshot itself and are checked
+  // against this repository's history; no receipt field is trusted on its own.
+  if (localEvidence && p.unavailable.some((u) => u?.kind === LIVE_BROWSER_OBLIGATION)) {
+    const receipts = entries.filter((e) => e.path.startsWith(`${LOCAL_E2E_EVIDENCE_DIR}/`) && e.path.endsWith(".json")).map((e) => {
+      try { return { path: e.path, receipt: JSON.parse(read(tree, e.path)) }; } catch { return { path: e.path, receipt: null }; }
+    });
+    const { fleetTreeOf, resolveCommit, isAncestorCommit } = gitFleetResolver(git, target);
+    p = applyLocalE2eEvidence(p, { receipts, planFleetTree: fleetTreeOf(tree), resolveCommit, isAncestorCommit });
+  }
   for (const obligation of p.requiredExternalWorkflows) {
     const workflow = yaml.load(read(tree, obligation.workflow));
     obligation.jobIds = [...obligation.jobs];

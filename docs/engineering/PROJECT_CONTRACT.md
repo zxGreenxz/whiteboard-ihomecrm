@@ -2,7 +2,7 @@
 
 Đọc adapter và file này một lần; chỉ mở thêm một tài liệu domain/runbook khi cần rồi tra source, không tự đọc audit, plan cũ hay lần theo mọi liên kết.
 Luật chung ở đây; chi tiết chỉ ở nguồn được dẫn.
-Copilot mở lại core cho Hermes (12/10/2026); UI/model/live còn hoãn. Zalo unit mở lại (10/10/2026), fleet còn hoãn. Chi tiết: [hồ sơ riêng](../deferred/zalo-copilot.md).
+Copilot mở lại core cho Hermes (12/10/2026); UI/model/live còn hoãn. Zalo unit mở lại (10/10/2026), fleet còn hoãn. [Hồ sơ](../deferred/zalo-copilot.md).
 
 ## 1. Dự án và nguồn tra cứu
 
@@ -21,8 +21,8 @@ Trước thao tác dữ liệu/quyền, đọc [DATA_ENVIRONMENTS](DATA_ENVIRONM
 - Fetch/rebase `origin/main` trước tích hợp; conflict source sửa tay, file máy sinh lấy bản của main rồi chạy lại generator.
 - Commit nêu lý do/kiểm chứng; trailer theo adapter. Push `git push origin HEAD:main` sau kiểm ancestor; không force-push né conflict.
 - Tiền, quyền, lịch sử migration và bộ kiểm (workflow, gate, promote, risk-map) cần draft PR. Theo `crossReview`: review một lần trên diff cuối và receipts, ghi base/head/kết luận vào PR, không chạy lại gate; sửa xong chỉ re-review phần sửa.
-- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng (tự chờ Vercel; kiểm lại bằng `npm run release:verify`). Không push trực tiếp bỏ lane.
-- Đổi phát hành phải kiểm `npm run check:external-controls`. Gate đỏ/skip/thiếu bằng chứng không phải đạt; rollback app bằng deployment đã xác minh, không tự rollback schema phá huỷ.
+- `main` là Preview; app phát hành từ `production` qua `npm run promote:production -- --sha <sha>`, chỉ thêm `--apply` khi đủ bằng chứng (tự chờ Vercel; kiểm bằng `npm run release:verify`). Không push trực tiếp bỏ lane.
+- Đổi phát hành phải kiểm `npm run check:external-controls`. Gate đỏ/skip/thiếu bằng chứng không phải đạt; rollback app bằng deployment đã xác minh, không tự rollback schema phá huỷ. Biên nhận E2E chỉ do `npm run e2e:fleet:bien-nhan` sinh, cấm viết tay; promote in biên nhận đã nhận.
 
 ## 4. Ghi schema production và backup
 
@@ -47,7 +47,7 @@ Module mới strict-clean; không tăng baseline né lỗi. Chi tiết auth/dead
 ## 8. Kiểm thử đúng phạm vi
 
 - Test hành vi bị đổi bằng runner trong manifest. Sửa UI kiểm luồng/vai trò và viewport bị ảnh hưởng, ảnh chụp cùng console; không mặc định quét desktop lẫn mobile hay E2E toàn app.
-- Build/bundle ở CI một lần cho đúng candidate; local chỉ chạy khi cần chẩn đoán hoặc thiếu bằng chứng. Không dựng lại bản không đổi chỉ để báo xong.
+- Build/bundle ở CI một lần cho đúng candidate; local chỉ khi chẩn đoán/thiếu bằng chứng. Không dựng lại bản không đổi chỉ để báo xong.
 - Tiền, quyền, cách ly org, migration và verifier có thể xanh rỗng cần kiểm đột biến; [hướng dẫn kiểm](../CODEBASE_STRUCTURE.md#kiểm-thử) giữ quy trình hash/khôi phục và E2E headless.
 - Test skip/DEFERRED hoặc thiếu runner là chưa kiểm; không hạ kiểm soát để CI xanh.
 
@@ -71,12 +71,12 @@ Không nuốt lỗi, tăng baseline hoặc gọi phần chưa đo là pass. Quy�
 ## 12. Tra cứu mã nguồn và GitNexus
 
 Tra file/symbol bằng `rg`, đọc imports/callers và tests. Source, Git diff, contract/harness là căn cứ; graph không chứng minh SQL/RLS hay production.
-GitNexus tùy chọn qua `scripts/run-pinned-gitnexus.mjs`, pin ở `tooling/agent-tools.json`; chỉ analyze khi thật cần và tối đa một lần/task. Lỗi/hết giờ dùng source; không đưa graph/Understand Anything vào CI hay sinh lại hướng dẫn.
+GitNexus tùy chọn qua `scripts/run-pinned-gitnexus.mjs`, pin ở `tooling/agent-tools.json`; analyze tối đa một lần/task khi cần. Lỗi/hết giờ dùng source; không đưa graph/Understand Anything vào CI hay sinh lại hướng dẫn.
 
 ## 13. Hướng dẫn chuyên đề và khoảng trống
 
 Chỉ mở runbook theo thao tác: [migration](MIGRATION_STRATEGY.md), [dữ liệu/org](DATA_ENVIRONMENTS.md), [Network Center](../../infra/network-center-worker/README.md).
-[known-gaps](../../tooling/known-gaps.yaml) là khoảng trống hoạt động; đóng bằng evidence, không chép sự cố cũ thành luật. Plan/audit là snapshot, chỉ đọc khi task cần.
+[known-gaps](../../tooling/known-gaps.yaml) là khoảng trống hoạt động; đóng bằng evidence, không chép sự cố cũ thành luật.
 
 ## 14. Quy ước code
 

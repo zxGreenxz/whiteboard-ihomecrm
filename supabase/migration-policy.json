@@ -263,6 +263,23 @@
       "why": "File 10:14:50 vá public.zalo_worker_begin_provider_v1 (nhánh lượt gửi một lần) và tự chặn mọi thân lạ: chỉ nhận bản đã phát hành 73deb1cf hoặc chính bản của nó c832f76d. File 11:05:39 đã được review và áp sau đó để thêm chặn dừng khẩn cấp vào chính hàm này (thân 0f46fcba). Phát lại riêng file 10:14:50 trên catalog cuối vì vậy phải ném unexpected source; chuỗi baseline + forward theo thứ tự không gặp lỗi này.",
       "heQua": "Không sửa migration đã áp. Gate vẫn gọi production mỗi lượt, chỉ chấp nhận đúng digest file gốc, đúng P0001/message (kèm sha thân 0f46fcba của file thay thế) và đúng biên nhận của cả file gốc lẫn file thay thế.",
       "exitCondition": "Gỡ khi gate kiểm replay theo đúng thứ tự trên database dùng một lần; không được đổi mục này thành idempotent PASS."
+    },
+    {
+      "file": "20261018030100_hermes_w2c_shared_v1.sql",
+      "sha256": "8ff45a533ffc3b8b7cd0c2f9caa35fe8947d68cca85a73b8f6a37907799b0839",
+      "expectedSqlState": "42P13",
+      "expectedMessage": "cannot change return type of existing function\nDETAIL:  Row type defined by OUT parameters is different.\nHINT:  Use DROP FUNCTION vehicles_list_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer) first.",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018030100_hermes_w2c_shared_v1.json",
+      "supersededBy": {
+        "file": "20261018030300_hermes_w2c_shared_org_v1.sql",
+        "sha256": "d41b3d3afaa93ba7e699c19d490f2b0ac1b90b4e4b4204e9a83955d868d07d23",
+        "appliedEvidencePath": "docs/generated/schema-change-evidence/20261018030300_hermes_w2c_shared_org_v1.json"
+      },
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39162531678",
+      "lop": "phép đo replay đơn lẻ gặp hàm đã được migration sau đổi kiểu trả về",
+      "why": "File 030100 (Hermes đợt 2 Gói C) tạo 8 hàm dùng chung (vehicles_list_v1, materials_*_v1, warehouses_list_v1, salary_locked_month_v1) bằng CREATE OR REPLACE. File 030300 áp sau (cùng ngày, chưa phát hành) DROP rồi CREATE lại 8 hàm đó với kiểu trả về mới. Replay 030100 trên catalog đã có 030300 nên CREATE OR REPLACE ngã 42P13 — đúng hành vi Postgres, không phải lỗi file.",
+      "heQua": "Mục này ghim file 030100 và migration 030300 đã áp production (biên nhận backup); lỗi khác, digest khác hoặc evidence khác đều tiếp tục làm gate đỏ.",
+      "exitCondition": "Gỡ khi phép đo replay đúng thứ tự trên database dùng một lần; không dùng ngoại lệ để bỏ qua thay đổi hàm ngoài chuỗi đã ghim."
     }
   ],
   "idempotencyRetirementRule": "Chỉ ngừng replay migration lịch sử đã được compensation áp thật thay thế: pin SQL và biên nhận của cả hai phía, kiểm catalog sống đầy đủ mỗi lượt. Chưa có receipt compensation chỉ giữ ACTIVE khi catalog cũ khớp. Receipt thiếu/sai hoặc catalog partial/drift phải đỏ, không replay feature để tự sửa. RETIRED không phải idempotent PASS, không ghi/giữ chứng nhận cache cho các file đó; lane apply không dùng retirement để bỏ kiểm hai lượt của migration mới.",
