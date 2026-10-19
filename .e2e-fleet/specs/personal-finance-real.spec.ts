@@ -153,7 +153,11 @@ test('real TEST writer: wallet, category, money CRUD, exact retry, transfers, bu
   await expect(page.getByTestId('total-balance')).toContainText('0');
   await expect(page.getByTestId('month-income')).toContainText('0');
   await expect(page.getByTestId('month-expense')).toContainText('0');
-  await expect(page.getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(0);
+  // Từ c7b42b66 (ví công ty, 09/10/2026) bộ chọn "Nhóm ví" Cá nhân/Công ty hiện cho mọi người; nút
+  // "Công ty" DUY NHẤT trên màn phải là nút đó — chip "Công ty" của bảng giao dịch (FinanceViews, gate
+  // quyền tiền công ty) không được có với fixture chỉ có quyền ví cá nhân.
+  await expect(page.getByRole('group', { name: 'Nhóm ví', exact: true }).getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Công ty', exact: true })).toHaveCount(1);
 
   await page.getByRole('button', { name: 'Quản lý ví', exact: true }).click();
   await page.getByRole('button', { name: 'Thêm ví', exact: true }).click();

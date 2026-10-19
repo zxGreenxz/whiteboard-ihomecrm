@@ -74,6 +74,12 @@ test('issued adjustment, collection, review, mobile history and edit after rever
       INSERT INTO public.cashbook_possession_bindings(organization_id,cashbook_id,membership_id,possession_kind,valid_from,reason)
       SELECT m.organization_id,current_setting('v5h.account_tm')::uuid,m.id,'KNOWER',now()-interval '1 minute',${sqlLiteral(marker)}
       FROM public.organization_memberships m WHERE m.organization_id='${DEMO_ORG_ID}' AND m.user_id=${uuidLiteral(actor)} AND m.status='ACTIVE';
+      -- Luật "Sổ nhận tiền" (20260925082815): tiền mặt chỉ vào sổ tiền mặt riêng đang hiệu lực của người thu,
+      -- không có thì nút "Ghi nhận thanh toán" bị khoá. Chủ công ty DEMO không có sổ riêng (prod lẫn TEST) nên
+      -- fixture đặt sổ vừa tạo làm sổ riêng của người thu; teardown gỡ cùng sổ.
+      INSERT INTO app_private.personal_cash_books(organization_id,membership_id,account_id,valid_from,created_by)
+      SELECT m.organization_id,m.id,current_setting('v5h.account_tm')::uuid,now()-interval '1 minute',${uuidLiteral(actor)}
+      FROM public.organization_memberships m WHERE m.organization_id='${DEMO_ORG_ID}' AND m.user_id=${uuidLiteral(actor)} AND m.status='ACTIVE';
       SELECT current_setting('v5h.invoice') AS invoice_id,current_setting('v5h.building') AS building_id,
         (SELECT name FROM public.rooms WHERE id=current_setting('v5h.room')::uuid) AS room_name; COMMIT;`);
     const fixture = rows.find((row: { invoice_id?: string }) => row.invoice_id);
@@ -222,6 +228,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
         expect(await query(`SELECT income_expense_id FROM app_private.income_expense_cancellations WHERE income_expense_id IN(${ids})`)).toEqual([]);
       }
     }
+    await query(`DELETE FROM app_private.personal_cash_books WHERE organization_id='${DEMO_ORG_ID}' AND account_id IN (SELECT id FROM public.accounts WHERE organization_id='${DEMO_ORG_ID}' AND description=${sqlLiteral(marker)})`);
     await query(`DELETE FROM public.cashbook_possession_bindings WHERE organization_id='${DEMO_ORG_ID}' AND reason=${sqlLiteral(marker)}`);
     await query(`DELETE FROM public.accounts WHERE organization_id='${DEMO_ORG_ID}' AND description=${sqlLiteral(marker)}`);
     } finally {
