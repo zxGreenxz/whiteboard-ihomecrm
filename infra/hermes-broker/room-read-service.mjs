@@ -69,7 +69,9 @@ function authoritySnapshot(value, now) {
  * Projection: {organizationId,complete:true,scopes:[{id,scopeType,buildingId,
  * areaId,cashbookId}],areaBuildings:[{organizationId,areaId,buildingId}]}.
  * SQL must resolve EVERY requested authorization_scopes.id in this org, reject
- * missing/deleted reference nodes, and return all selected AREA edges intersected
+ * missing/foreign nodes (and deleted targets for restricted/legacy selection).
+ * Inherited unrestricted tombstones contribute zero buildings/AREA edges.
+ * Return all selected live AREA edges intersected
  * with current rooms.view. It must not silently LIMIT/paginate: overflow denies.
  * No labels or names are used as authority. CASHBOOK adds no building permission.
  */

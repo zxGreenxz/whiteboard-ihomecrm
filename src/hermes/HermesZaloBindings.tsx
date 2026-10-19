@@ -34,6 +34,7 @@ function messageFor(error: unknown, write: boolean) {
     if (error.outcomeUnknown) return 'Chưa xác định thao tác liên kết đã hoàn tất. Tải lại danh sách để đối chiếu trước khi thao tác tiếp.';
     if (error.code === 'forbidden') return 'Bạn chưa được phép liên kết với bot này, hoặc quyền trong công ty đã thay đổi.';
     if (error.code === 'reauthentication_required') return 'Phiên CRM cần được xác minh lại. Hãy đăng nhập lại.';
+    if (error.code === 'sender_already_linked') return 'Nick Zalo này đã có liên kết với bot. Hãy kiểm tra tài khoản CRM đang đăng nhập. Nếu muốn chuyển tài khoản, hãy ngắt liên kết ở tài khoản cũ trước khi ghép lại.';
     if (error.code === 'context_changed') return 'Liên kết, phiên bot hoặc quyền đã thay đổi. Tải lại danh sách để kiểm tra.';
   }
   return write ? 'Chưa xác định kết quả liên kết. Tải lại danh sách trước khi thao tác tiếp.' : 'Chưa đọc được thông tin liên kết Zalo. Hãy tải lại khi dịch vụ sẵn sàng.';

@@ -107,6 +107,20 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     expect(screen.queryByLabelText('Nội dung gửi cho bot')).toBe(null); expect(calls('confirm')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Tải lại liên kết' })); await ready(); expect(calls('confirm')).toHaveLength(1);
   });
+  it('explains an existing sender link without retrying or changing either account automatically', async () => {
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/confirm')
+      ? Response.json({ error: 'sender_already_linked' }, { status: 409 }) : respond(path, init));
+    render(view()); await ready(); await observed();
+    fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
+    await screen.findByText(/Nick Zalo này đã có liên kết với bot/);
+    expect(screen.getByText(/ngắt liên kết ở tài khoản cũ trước khi ghép lại/)).toBeTruthy();
+    expect(screen.queryByText(/Chưa xác định thao tác liên kết đã hoàn tất/)).toBe(null);
+    expect(screen.queryByLabelText('Nội dung gửi cho bot')).toBe(null);
+    expect(calls('confirm')).toHaveLength(1); expect(calls('unlink')).toHaveLength(0);
+    expect(calls('selectCredential')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại liên kết' })); await ready();
+    expect(calls('confirm')).toHaveLength(1);
+  });
   it('withdraws the challenge when the parent connection is revoked', async () => {
     const { rerender } = render(view()); await ready(); await begin();
     rerender(view('initial', [{ ...row(), state: 'revoked', epoch: 3 }]));

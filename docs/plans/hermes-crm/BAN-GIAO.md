@@ -1,21 +1,46 @@
 # Bàn giao Hermes × iHomeCRM
 
+## Trạng thái hiện hành
+
+**Trạng thái vận hành duy nhất cần đọc trước là [STATUS — checkpoint hiện hành](STATUS.md#checkpoint-hiện-hành).** Các checkpoint có giờ sớm hơn bên dưới là lịch sử, không ghi đè trạng thái này. Bản tài liệu kiểm UI `be910be0b` đã lên main, [CI đúng commit đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39243588199).
+
+- **Mốc trước lúc 19:05 UTC+7:** code `0fbc263f` và bảy migration đã triển khai ở VPS/DB; web Vercel phục vụ đúng SHA này, `release:verify` PASS. Đây là bằng chứng lịch sử; trạng thái mới nhất ở checkpoint dưới. Không chạy lại migration/promote để tạo thêm biên nhận.
+- **Browser đã dùng được.** Ba tài khoản thật chủ/quản lý/hệ thống trên Supabase TEST riêng đã kiểm loading, tạo kết nối kế thừa CRM, đọc lại quyền, thu hồi và logout; tài khoản chủ kiểm thêm tắt/bật lại một quyền. Có 23 request HTTP 200, đã dọn toàn bộ hạ tầng UI thử; production không đổi, fast OFF. Đây là bản build TEST tĩnh qua proxy/SSH riêng, chưa phải HTTPS Vercel hoặc Zalo gửi nhận. [Số đo và sơ đồ](../2026-10-19-crm-hermes-jev-performance.md#nghiệm-thu-giao-diện-bằng-ba-tài-khoản-test-thật).
+- **Checkpoint sau kích hoạt 21:38 UTC+7:** nick đã ghép; runtime `8ee1fd0` và credential chủ chọn đã áp trên VPS sau main CI 2/2 PASS, backup và review. MCP đạt 5/6; phòng trống lỗi vì scope kế thừa chứa đích đã xóa mềm. Candidate cuối `20261019144508_hermes_inherited_room_scope_tombstones_v1.sql` xử lý tại lần đọc: đích đã xóa góp zero phòng, giữ quyền CRM/company/restricted; không thêm target trigger/khóa/backfill. Review source PASS; PostgreSQL local 3/3, static 98/98 + 18/18 PASS, mutant bị bắt. Gate live 64/65 (native Windows có timeout; assertion cũ đã sửa riêng). TEST forward apply + backup đầy đủ PASS lúc 22:09; signed HTTP TEST/Linux CI/production còn chờ. Draft target trigger bị bỏ vì hai lỗi concurrency, chưa triển khai. Còn chờ Zalo thật; fast OFF; web xác minh `039fc36a`, UI mới bị hạn mức. Xem [STATUS](STATUS.md#checkpoint-hiện-hành); không ghép nick lại.
+- Jev là pilot tùy chọn, chưa có key/nhà cung cấp đo; TG6 chữ công khai vẫn giữ hành vi hiện có và chọn riêng. Không chặn phát hành ba lỗi bằng hai nhánh tùy chọn này, cũng không tự đánh dấu P0–P11 hoàn tất. Không chạy lại migration, benchmark hoặc bộ kiểm không đổi chỉ để chờ Vercel.
+
+## Snapshot triển khai 19/10 tới 16:05:01 UTC+7
+
+**Snapshot lịch sử 19/10/2026 tới 16:05:01 UTC+7; trạng thái mới ở đầu file.**
+
+Candidate `0fbc263f48d896baf633eba84dbf3cd4a222387a` (tree `519a726286fe951826004f9589554124f177c76c`), PR #222. Gate7 delta **65/65 PASS** trong 529 giây; Gate5/6 **67/67** được dùng lại do đầu vào không đổi. Main CI **5/5 PASS**: CI `39211903664`, synthetic `39211903814`, Android `39211903731`, migrationvalidation `39211903783`, restoredrill `39211903671`. Chạy thử promote chính thức **18 jobs/178 bước PASS**. Receipt E2E fleet bảy spec là LOCAL (`docs/generated/e2e-fleet-evidence/2026-10-19-d4818a9a682c-fa428022.json`), không phải CI E2E thật.
+
+Lệnh `--apply` trước đó chưa tạo được bản phát hành do API trả `402 payment_required`; chưa gọi lại. Lần kiểm web trước ghi nhận `81c49363`, chưa kiểm lại. Artifact backup mã hóa được xác minh lúc `07:03:56Z`; VPS được chuyển `0fbc263f`, lần đọc đầy đủ PID/MCP gần nhất `07:37:26Z` (PID `192430`). Kiểm tra production sau đó chỉ đọc config/trạng thái; không đổi owner profile, restart Hermes hay gửi Zalo.
+
+Cả 7 migration đã áp TEST và production; migration thứ bảy `20261019061954` hậu kiểm **7/7 mỗi đích**. Legacy 8 trường, inherit 11, joinedlegacy 11; credential hết hạn không được hồi sinh. `readFastPath` false/absent; `zaloProvisioning` được bỏ khỏi connector config ở layout ba UID. Credential owner đã hết hạn và chính chủ cần kết nối lại theo luồng chính thức sau khi web sẵn sàng. Tài khoản vault test không phải owner; không xin mật khẩu qua chat. TEMP fence/drain bug đã sửa, 4 ca kiểm đạt và review PASS, nhưng profile live chưa được áp.
+
+**Cập nhật 16:05 UTC+7:** run3 có 15 cặp customer TEST; cùng customerId, bốn trường contract/building/room khác nhau (normal có giá trị, fast rỗng), fast khớp shared core CRM 15/15. Đây là run riêng, không cộng với 45 cặp run2; trạng thái/RLS từng record chưa xác minh. Cả ba run đã cleanup; không còn benchmark. Fast production OFF; browser, phiên MCP owner production và Zalo chưa nghiệm thu. Chi tiết ở [STATUS](STATUS.md#checkpoint-hiện-hành); số đo ở [tài liệu hiệu năng](../2026-10-19-crm-hermes-jev-performance.md).
+
+Benchmark quản trị được đo trên VPS localhost với dữ liệu rỗng; chi tiết và giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành). Trong DEMO lượt bốn (`07:35:11–07:36:46Z`), report đạt **12 PASS/0 FAIL** và canonical Web parity **3/3**, nhưng cả ba fast query rỗng, normal mỗi query có một dòng. Strict legacy parity false do `items/nextCursor`; chưa chứng minh sai lệch location hay parity trên dữ liệu có dòng. Fast đã rollback OFF; readback `07:37:26Z` khớp hash gốc, PID `192430` chạy `0fbc`, không còn cấu hình tạm. Bốn lượt đã cleanup; không còn benchmark chạy. Tiếp theo: Billing → web phát hành → owner reconnect → nghiệm thu MCP nonempty cùng scope và Zalo.
+
+## Lịch sử checkpoint và hướng dẫn trước rollout hiện hành
+
 ## Cập nhật yêu cầu và khảo sát tinh giản — 19/10/2026
 
-**Checkpoint hiện hành 19/10:** Gate6 **67/67 PASS**, Node 24.18.0, 610 giây; candidate `c3709badb` chưa push. Sáu migration nền đã TEST và production qua lane chính thức, có receipt. Adapter VPS vẫn `b023563a`; migration `20261019061954` chỉ bổ sung 3 keys cho `inherit_crm`, giữ legacy wire shape, không DML/đổi expiry. Compat TEST đã qua official lane sau backup/2 lượt rollback; post-apply 7/7 xác nhận helper digest, legacy 8 trường, inherit 11 trường, ACL và expired deny. JWT HTTP 200 nhưng list rỗng, chưa có nonempty proof. Production compat đã qua official lane lúc 13:33 UTC+7, có backup/2 lượt rollback; kiểm sau áp dụng 7/7 PASS. Maintenance cũ swallow lỗi đọc nên có đường ngừng renew; credential/session profile đã expired. Không biết first miss hay token in-memory, không claim phục hồi. Alias operator fix 33/33 + review PASS; chưa VPS/profile write, restart hoặc gửi Zalo. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) là nguồn receipts/trạng thái mới nhất.
+**Snapshot lịch sử 13:34 UTC+7:** Gate6 **67/67 PASS**, candidate `c3709badb`; VPS còn `b023563a`. Sáu migration nền và phần tương thích `20261019061954` đã qua TEST/production ở thời điểm snapshot. Không dùng đoạn này làm trạng thái hiện hành; xem [STATUS](STATUS.md#checkpoint-hiện-hành).
 
-**Snapshot kỹ thuật lịch sử 12:51 UTC+7:** kết quả sáu migration nền/Gate5/verifier production và baseline broker tại mốc đó được giữ trong lịch sử. Không dùng lại làm trạng thái rollout mới; xem [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) cho compat migration, candidate và receipts hiện hành.
+**Snapshot kỹ thuật lịch sử 12:51 UTC+7:** kết quả sáu migration nền/Gate5/verifier production và baseline broker tại mốc đó được giữ trong lịch sử. Không dùng lại làm trạng thái rollout mới; xem [STATUS](STATUS.md#checkpoint-hiện-hành) cho compat migration, candidate và receipts hiện hành.
 
 **Làm rõ sau audit:** §9 của báo cáo là đề xuất agent khác, không phải quyết định của chủ. Không áp đặt thu hồi 100 ms, cấm cache hoặc thêm epoch vào mọi RPC. Giữ quyền/RLS vốn có của CRM; kiểm phần tắt Hermes một lần. Xác nhận chữ công khai: đang đề nghị giữ tạm đúng luồng hiện có, chưa được chủ chốt giữ/bỏ. PII xét từng trường; Network Center cần giữ rào RLS khách tới khi chuẩn hóa nguồn chung. [Kết luận audit §10](TINH-GON-KIEM-QUYEN.md#10-kết-quả-audit-lại-và-đề-nghị-thực-hiện).
 
 [Báo cáo, sơ đồ thao tác và plan TG0–TG7](TINH-GON-KIEM-QUYEN.md) ghi đủ tám lớp, phần bỏ/gộp/giữ và bằng chứng. **Cả ba lỗi đã biết thuộc phạm vi này:** báo “Chưa đọc được…” lúc tải, API connections mất 7–9 giây theo báo cáo vận hành, link Zalo khó dùng. Source xác nhận loading/error bị gộp, tải hai đợt, quản trị và link dựng full quyền trước/sau. Candidate đã sửa các đường này; chưa đo lại tốc độ và nghiệm thu link trên VPS.
 
-Bước tiếp theo của root là chốt gate/CI của candidate, tiếp tục runtime deploy/verify sau khi compat TEST/production đã đạt và ghi nhận đúng phần đã quan sát. Chưa có bằng chứng VPS/profile write, restart hay gửi tin Zalo; không đánh dấu khôi phục từ migration hoặc file profile. Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes; không áp mốc 100 ms. Đợt này thực hiện TG0–TG7, không tự đóng các mốc chương trình P0–P11. [Checkpoint vận hành](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910).
+**Bước tiếp theo tại snapshot cũ:** xử lý lỗi phát hành; nguyên nhân mới đã xác định là giới hạn deployment, xem đầu file; sau đó owner reconnect và nghiệm thu MCP nonempty cùng scope/Zalo. Fast vẫn OFF, chưa xác minh; không có benchmark đang chạy. Chưa thay profile owner, restart Hermes hoặc gửi Zalo. Quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes; không áp mốc 100 ms. Đợt này thực hiện TG0–TG7, không tự đóng P0–P11. [Checkpoint vận hành](STATUS.md#checkpoint-hiện-hành).
 
 
 ### Khôi phục sau khi runtime tương thích sẵn sàng
 
-Credential đã hết hạn không thể canonical-refresh qua session gate; tài khoản vault đã đọc/lookup không phải đúng chủ profile. Chỉ hướng dẫn chủ profile tạo kết nối mới sau khi root hoàn tất deploy/verify. Không xin mật khẩu trong chat, không sửa expiry bằng SQL và không tuyên bố phiên đã khôi phục trước thao tác thật.
+Credential đã hết hạn không thể được gia hạn qua session gate; tài khoản vault dùng để đọc/tra cứu không phải đúng chủ profile. Chỉ hướng dẫn chủ profile tạo kết nối mới sau khi root hoàn tất phát hành và kiểm tra. Không xin mật khẩu trong chat, không sửa expiry bằng SQL và không tuyên bố phiên đã khôi phục trước thao tác thật.
 
 ```mermaid
 flowchart TD
@@ -28,7 +53,7 @@ flowchart TD
   G --> H["Xác minh runtime/Zalo theo quy trình vận hành"]
 ```
 
-Native Zalo trên VPS ba UID cần bỏ hẳn `zaloProvisioning` khỏi connector config (không đặt `false`); operator chạy theo UID owner hiện hữu. `prepare_v2` tái sử dụng assistant cùng user/org; `selectCredentialCAS` giữ nick, bot và binding, không cần ghép mã Zalo lại. Đây là flow đã đối chiếu source, chưa phải bằng chứng runtime phục hồi.
+Native Zalo trên VPS ba UID cần bỏ hẳn `zaloProvisioning` khỏi connector config (không đặt `false`); operator chạy theo UID owner hiện hữu. `prepare_v2` tái sử dụng assistant cùng user/org; `selectCredentialCAS` giữ nick, bot và binding, không cần ghép mã Zalo lại. Đây là luồng đã đối chiếu source, chưa phải bằng chứng runtime phục hồi.
 
 Dành cho chủ công ty, quản trị CRM và người vận hành VPS. Cập nhật theo checkpoint 19/10/2026. Trạng thái chi tiết, bằng chứng và lịch sử nằm ở [STATUS.md](STATUS.md); quyết định đã chốt ở [PLAN.md](PLAN.md); đề xuất đợt 3 (thao tác ghi), chưa chốt, ở [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 

@@ -1,6 +1,23 @@
 # Báo cáo và plan tinh giản kiểm quyền Hermes × iHomeCRM
 
-Ngày 19/10/2026. **Đã khảo sát/audit; chủ đã yêu cầu hiện thực toàn bộ plan. Checkpoint hiện hành:** Gate6 **67/67 PASS**, Node 24.18.0, 610 giây; candidate `c3709badb` chưa push. Sáu migration nền đã TEST và production qua lane chính thức, đủ receipt. Migration tương thích `20261019061954` chỉ thêm 3 keys cho `inherit_crm`, giữ legacy shape, không DML/đổi expiry. TEST compat đã qua official lane sau backup/2 lượt rollback; post-apply 7/7 xác nhận helper digest, legacy 8 trường, inherit 11 trường, ACL và expired deny; JWT trả HTTP 200 nhưng list rỗng, chưa có nonempty proof. Production compat đã qua official lane lúc 13:33 UTC+7 và kiểm sau áp dụng 7/7 PASS; đủ backup/2 lượt rollback. Adapter VPS vẫn `b023563a`. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) là checkpoint vận hành/receipt mới nhất; snapshot 12:51 UTC+7 là lịch sử. Sơ đồ mô tả đích, không chứng minh runtime đã đổi.
+## Tiếp tục từ checkpoint 19/10, 19:16 UTC+7
+
+**Trạng thái vận hành duy nhất cần đọc trước là [STATUS — checkpoint hiện hành](STATUS.md#checkpoint-hiện-hành).** Các checkpoint có giờ sớm hơn bên dưới là lịch sử, không ghi đè trạng thái này. Bản tài liệu kiểm UI `be910be0b` đã lên main, [CI đúng commit đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39243588199).
+
+- **Mốc trước lúc 19:05 UTC+7:** code `0fbc263f` và bảy migration đã triển khai ở VPS/DB; web Vercel phục vụ đúng SHA này, `release:verify` PASS. Đây là bằng chứng lịch sử; trạng thái mới nhất ở checkpoint dưới. Không chạy lại migration/promote để tạo thêm biên nhận.
+- **Browser đã dùng được.** Ba tài khoản thật chủ/quản lý/hệ thống trên Supabase TEST riêng đã kiểm loading, tạo kết nối kế thừa CRM, đọc lại quyền, thu hồi và logout; tài khoản chủ kiểm thêm tắt/bật lại một quyền. Có 23 request HTTP 200, đã dọn toàn bộ hạ tầng UI thử; production không đổi, fast OFF. Đây là bản build TEST tĩnh qua proxy/SSH riêng, chưa phải HTTPS Vercel hoặc Zalo gửi nhận. [Số đo và sơ đồ](../2026-10-19-crm-hermes-jev-performance.md#nghiệm-thu-giao-diện-bằng-ba-tài-khoản-test-thật).
+- **Checkpoint sau kích hoạt 21:38 UTC+7:** nick đã ghép; runtime `8ee1fd0` và credential chủ chọn đã áp trên VPS sau main CI 2/2 PASS, backup và review. MCP đạt 5/6; phòng trống lỗi vì scope kế thừa chứa đích đã xóa mềm. Candidate cuối `20261019144508_hermes_inherited_room_scope_tombstones_v1.sql` xử lý tại lần đọc: đích đã xóa góp zero phòng, giữ quyền CRM/company/restricted; không thêm target trigger/khóa/backfill. Review source PASS; PostgreSQL local 3/3, static 98/98 + 18/18 PASS, mutant bị bắt. Gate live 64/65 (native Windows có timeout; assertion cũ đã sửa riêng). TEST forward apply + backup đầy đủ PASS lúc 22:09; signed HTTP TEST/Linux CI/production còn chờ. Draft target trigger bị bỏ vì hai lỗi concurrency, chưa triển khai. Còn chờ Zalo thật; fast OFF; web xác minh `039fc36a`, UI mới bị hạn mức. Xem [STATUS](STATUS.md#checkpoint-hiện-hành); không ghép nick lại.
+- Jev là pilot tùy chọn, chưa có key/nhà cung cấp đo; TG6 chữ công khai vẫn giữ hành vi hiện có và chọn riêng. Không chặn phát hành ba lỗi bằng hai nhánh tùy chọn này, cũng không tự đánh dấu P0–P11 hoàn tất. Không chạy lại migration, benchmark hoặc bộ kiểm không đổi chỉ để chờ Vercel.
+
+Ngày 19/10/2026. **Snapshot lịch sử tới 16:05:01 UTC+7:** candidate `0fbc263f48d896baf633eba84dbf3cd4a222387a`, tree `519a726286fe951826004f9589554124f177c76c`, PR #222. Gate7 delta **65/65 PASS** trong 529 giây; Gate5/6 **67/67** được dùng lại vì đầu vào không đổi. Main CI **5/5 PASS** (CI `39211903664`, synthetic `39211903814`, Android `39211903731`, migrationvalidation `39211903783`, restoredrill `39211903671`). Chạy thử promote chính thức **18 jobs/178 bước PASS**; receipt E2E fleet bảy spec là LOCAL tại `docs/generated/e2e-fleet-evidence/2026-10-19-d4818a9a682c-fa428022.json`, không phải CI E2E thật.
+
+Lệnh promote `--apply` trước đó chưa tạo được bản phát hành do API trả `402 payment_required`; chưa gọi lại. Lần kiểm web trước ghi nhận `81c49363`, checkpoint này chưa kiểm lại. Artifact backup mã hóa được xác minh lúc `07:03:56Z`; VPS được chuyển sang release `0fbc263f`, lần đọc đầy đủ PID/MCP gần nhất lúc `07:37:26Z` xác nhận PID `192430`. Kiểm tra production sau đó chỉ đọc config/trạng thái. Chưa thay profile owner, restart Hermes hoặc gửi Zalo. Cả 7 migration đã áp TEST/production; migration thứ bảy hậu kiểm **7/7 mỗi đích**. `readFastPath` vắng mặt, mặc định false; `zaloProvisioning` được bỏ khỏi connector config ở layout ba UID. Credential owner hết hạn; chính chủ cần kết nối lại sau khi web sẵn sàng.
+
+DEMO lượt ba dừng ở scope guard; source cho thấy giả định harness về sổ quỹ rỗng không đúng contract, nhưng chưa xác định nhánh live gây dữ liệu rỗng. Lượt bốn chạy `07:35:11–07:36:46Z`: report **12 PASS/0 FAIL**, đối chiếu Web **3/3**; cả ba fast query trả 0 dòng, normal mỗi query trả 1 dòng. Strict legacy parity false do `items/nextCursor`, chưa chứng minh sai lệch location. Kết quả chỉ xác nhận phần lõi trên dữ liệu rỗng, chưa phải kiểm nonempty, nghiệm thu fast hay so tốc độ cùng dữ liệu. Fast đã rollback OFF; readback `07:37:26Z` khớp hash gốc, PID `192430` chạy `0fbc`, không có cấu hình tạm. Bốn lượt cleanup PASS; không còn benchmark đang chạy. Bước tiếp theo là xử lý Billing → web phát hành → owner reconnect → nghiệm thu MCP nonempty cùng scope và Zalo; giữ fast OFF tới khi có bằng chứng. Source audit và giới hạn ở [STATUS](STATUS.md#checkpoint-hiện-hành).
+
+**Cập nhật 16:05 UTC+7:** run3 có 15 cặp customer TEST; fast khớp shared core CRM 15/15, còn bốn trường contract/building/room chỉ có ở normal. Đây là run riêng, không cộng với 45 cặp run2; trạng thái/RLS từng record chưa xác minh. Cả ba run đã cleanup, không còn benchmark. Fast production OFF; browser, phiên MCP owner production và Zalo chưa nghiệm thu. Chi tiết ở [STATUS](STATUS.md#checkpoint-hiện-hành); số đo ở [tài liệu hiệu năng](../2026-10-19-crm-hermes-jev-performance.md).
+
+**Lịch sử khảo sát, biên nhận và kế hoạch bên dưới:** các checkpoint cũ được giữ làm chứng cứ theo thời điểm; không dùng các mô tả Gate6, sáu migration hoặc VPS chưa đổi làm trạng thái hiện hành.
 
 ## 1. Kết luận cho chủ hệ thống
 
@@ -76,6 +93,18 @@ flowchart TD
 ```
 
 Không đợi tải toàn bộ quyền khách hàng, tài chính, lịch và memory để hiện danh sách kết nối. Sơ đồ thể hiện phụ thuộc dữ liệu trong một API, không yêu cầu bỏ chạy song song: các việc độc lập vẫn song song; ghép health từ bộ nhớ không thêm một lượt mạng. Refresh cùng tài khoản giữ nội dung đang có; đổi tài khoản/công ty phải bỏ nội dung cũ.
+
+Flow dưới đây mô tả cách trang tải dữ liệu sau thay đổi; số đo từng endpoint nằm riêng ở §5. Không cộng các số đo endpoint thành thời gian tải toàn trang hoặc suy ra p95:
+
+```mermaid
+flowchart LR
+  A["Mở /settings/hermes"] --> B["Một overview: kết nối + trạng thái"]
+  B --> C["Hiện danh sách kết nối"]
+  C --> D["Người dùng mở form quyền"]
+  D --> E["Tải lựa chọn quyền khi cần"]
+```
+
+Overview duy nhất gồm kết nối và trạng thái; không gọi endpoint list/status riêng nối tiếp. Lựa chọn quyền chỉ tải khi mở form quyền. Đây không phải thời gian tải toàn trang hay phép đo flow quản trị qua trình duyệt. Số đo browser qua môi trường TEST riêng đã có ở checkpoint mới; HTTPS Vercel, p95 và LLM/Zalo end-to-end vẫn chưa đo. Phần giao diện mới vẫn chờ Vercel phát hành. Xem [benchmark và giới hạn](STATUS.md#checkpoint-hiện-hành).
 
 ### 4.2 Tạo kết nối và giữ quyền được tắt bớt
 
@@ -194,9 +223,10 @@ Hiện maintenance cứ 30 giây lấy toàn quyền rồi mới kiểm có cầ
 | Quan sát DB chỉ đọc 40,276 giây sáng 19/10 | 126 capability RPC; 21/74 mẫu có câu Hermes bị khóa chặn | Đã xác nhận contention thật. Chưa chứng minh toàn bộ do trang quản trị hoặc maintenance |
 | Mô phỏng ba lượt phòng ấm | Hai kiểm cuối tổng 340–344 ms; cả connector 1.401–1.415 ms | Chỉ là harness có độ trễ giả lập, không phải số giây chắc chắn tiết kiệm trên VPS |
 | API Zalo ghép nick | Source có full authority trước/sau | Chưa đo thời gian riêng, không gán mốc 7–9 giây của connections cho Zalo |
+| Benchmark VPS quản trị, 19/10 | Cùng DEMO/list rỗng, n=5 mỗi endpoint: list 2732.44→205.93 ms; options 5060.10→1260.06 ms; status 2667.77→177.53 ms; overview sau 173.27 ms; tổng 20/20 HTTP 200 | Đo loopback median. Browser/WAN, p95, LLM và Zalo end-to-end **chưa đo/chưa xác minh**. Tệp thô ngoài repo: `hermes-readonly-baseline-before-20261019.json` và `hermes-readonly-baseline-after-20261019.jsonl` |
 | Candidate đang triển khai | Overview: 1 Auth + 1 REST; đọc phòng ấm: 11 → 7 bước mạng, khoảng 1.396 → 1.047 ms mô phỏng | Có kiểm request qua HTTP local/harness; chưa có p50/p95 VPS, không hứa tỷ lệ tăng tốc production |
 
-Một reload hiện là `list` (2 Auth + 29 REST), rồi `options` (2 + 30) song song `status` (2 + 29). `getSession()` trong client chủ yếu đọc phiên cục bộ; không đếm mặc định thành request mạng. User thường còn có thể phát sinh probe tổ chức nên số khác. Cụ thể về SQL, fixture và giả định xem [bằng chứng chi tiết](../2026-10-19-crm-hermes-jev-performance.md#bằng-chứng-và-giới-hạn-của-số-liệu).
+Trong baseline trước thay đổi, một lần tải gồm `list` (2 Auth + 29 REST), rồi `options` (2 + 30) song song `status` (2 + 29). Luồng hiện tại dùng một overview; chỉ tải lựa chọn quyền khi mở form. Các phép đọc nghiệp vụ DEMO bình thường là bằng chứng riêng: khách hàng, hợp đồng và hóa đơn đều trả một dòng; danh sách rỗng của benchmark quản trị không phủ định các phép đọc có kết quả này. `getSession()` trong client chủ yếu đọc phiên cục bộ; không đếm mặc định thành request mạng. User thường còn có thể phát sinh probe tổ chức nên số khác. Cụ thể về SQL, fixture và giả định xem [bằng chứng chi tiết](../2026-10-19-crm-hermes-jev-performance.md#bằng-chứng-và-giới-hạn-của-số-liệu).
 
 ## 6. Tác động dùng chung và các chỗ phải sửa cùng nhau
 
@@ -216,7 +246,7 @@ Nguồn: [broker](../../../infra/hermes-broker/broker.mjs), [bound operation](..
 
 ## 7. Plan triển khai sau đánh giá
 
-Các gói dưới đây là phạm vi đã được chủ yêu cầu hiện thực. **Tiến độ thực tế ở §8; chưa có nghiệm thu production.** Tên gói là để agent nhận việc và ghi tiến độ, không phải thêm tầng runtime.
+Các gói dưới đây là phạm vi đã được chủ yêu cầu hiện thực. Tiến độ gói chi tiết ở §8 là snapshot trước checkpoint 14:15; trạng thái rollout hiện hành ở đầu file và [STATUS](STATUS.md#checkpoint-hiện-hành). Tên gói là để agent nhận việc và ghi tiến độ, không phải thêm tầng runtime.
 
 | Gói / thứ tự | Việc làm cụ thể | Điều kiện hoàn tất |
 |---|---|---|
@@ -243,7 +273,7 @@ Thứ tự ưu tiên: **TG0 baseline theo gói → TG1 → TG-L + TG3a/TG3m → 
 
 ## 8. Tiến độ và bàn giao
 
-**Snapshot lịch sử 19/10, 12:51 UTC+7:** sáu migration production, Gate5 67/67 và verifier production 23/23 đã đạt ở mốc đó. Candidate sau đó tiếp tục tới Gate6/commit `c3709badb`; trạng thái tương thích, TEST và production hiện hành xem [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910). Không dùng snapshot này làm bằng chứng cho compat migration hoặc runtime.
+**Snapshot lịch sử 19/10, trước 14:15 UTC+7:** bảng tiến độ dưới đây giữ trạng thái gói, biên nhận và mô tả candidate tại thời điểm trước Gate7/deploy VPS. Các câu “chưa deploy/chưa CI/chưa benchmark” trong bảng chỉ đúng tại snapshot đó; không dùng chúng làm rollout hiện hành. Checkpoint mới ở đầu file và [STATUS](STATUS.md#checkpoint-hiện-hành).
 
 **Phân bổ agent phụ do chủ chốt 19/10:** agent điều phối tự chọn theo phạm vi công việc, không cần hỏi lại từng lần. Cấu hình này áp dụng cho nhiệm vụ Hermes/CRM này, không tự thay model của phiên chính.
 
@@ -272,7 +302,7 @@ Thứ tự ưu tiên: **TG0 baseline theo gói → TG1 → TG-L + TG3a/TG3m → 
 | Migration production | Cả sáu official forward lane PASS lúc 2026-10-19T05:51:09.263Z |
 | Phát hành runtime / xác nhận đã nhanh hơn | Chưa deploy VPS hoặc promote app; production read-only harness đang chạy, chưa tính PASS; chưa CI trên head cuối hay benchmark sau |
 
-Bước tiếp theo của root là chốt gate/CI của candidate, tiếp tục runtime deploy/verify sau khi compat TEST/production đã đạt; việc cập nhật tài liệu này không phải bằng chứng deploy hay nghiệm thu. Giữ CRM-exclusions và không áp mốc 100 ms. Đợt này thực hiện TG0–TG7, không tự đóng các mốc chương trình P0–P11. [STATUS](STATUS.md#tinh-giản-kiểm-quyền--khảo-sát-và-plan-1910) giữ receipts, trạng thái vận hành và điểm tiếp tục.
+**Ghi chú lịch sử trước checkpoint đầu file:** khi đó Vercel chưa tạo bản phát hành và benchmark nghiệp vụ còn tiếp tục. Trạng thái, source audit và bước tiếp theo hiện hành ở [STATUS](STATUS.md#checkpoint-hiện-hành). Giữ CRM-exclusions, không áp mốc 100 ms và không tự đóng P0–P11.
 
 Các tài liệu `PLAN`, `BAN-GIAO`, `CAPABILITY-MAP` còn mô tả hệ thống overlay đang chạy để phục vụ vận hành. Phần cập nhật ngày 19/10 và báo cáo này thay thế chúng ở **đích quyền cần triển khai**, không giả rằng runtime đã đổi. Những kiểm riêng của hệ thống cũ chỉ có giá trị giải thích/hồi quy mode cũ, không tự trở thành điều kiện thiết kế mới.
 

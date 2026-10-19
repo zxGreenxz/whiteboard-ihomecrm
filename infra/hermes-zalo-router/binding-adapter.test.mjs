@@ -62,3 +62,17 @@ test('redirects, oversized/untyped/invalid JSON and arbitrary function dispatch 
     await assert.rejects(ports.rpc({ ...request, functionName: 'admin' }), { code: 'invalid_request' });
   }
 });
+test('unrelated database conflicts do not claim that a sender is already linked', async () => {
+  for (const [operation, status, code, message, expected] of [
+    ['confirm', 409, '23505', 'duplicate key value violates unique constraint "hermes_zalo_one_user_bot"', 'context_changed'],
+    ['confirm', 409, '23505', 'PRIVATE', 'context_changed'],
+    ['confirm', 409, 'PT409', 'duplicate key value violates unique constraint "hermes_zalo_one_sender"', 'context_changed'],
+    ['list', 409, '23505', 'duplicate key value violates unique constraint "hermes_zalo_one_sender"', 'context_changed'],
+    ['confirm', 503, '23505', 'duplicate key value violates unique constraint "hermes_zalo_one_sender"', 'backend_unavailable'],
+  ]) {
+    const f = fixture(); f.configuration.fetch = async () => Response.json({ code, message }, { status });
+    const ports = createZaloBindingPorts(f.configuration);
+    await assert.rejects(ports.rpc({ accessToken: f.options.accessToken, functionName: 'hermes_zalo_binding_v1',
+      args: { p: { operation } }, signal: f.options.signal }), { code: expected });
+  }
+});

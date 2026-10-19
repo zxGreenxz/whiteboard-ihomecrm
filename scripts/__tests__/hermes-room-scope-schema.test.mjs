@@ -63,8 +63,11 @@ function mappedScope(sql) {
   for (const value of ['SELECT unnest(v_c.scope_ids) AS id INTERSECT SELECT unnest(v_p.scope_ids) AS id',
     'NOT(p_scope_ids<@v_allowed) OR NOT(v_allowed<@p_scope_ids)',
     'cardinality(p_scope_ids)>256', 's.id=requested.id AND s.organization_id=p_organization_id',
-    'a.id=s.area_id AND a.organization_id=p_organization_id AND a.deleted_at IS NULL',
-    'b.id=s.building_id AND b.organization_id=p_organization_id AND b.deleted_at IS NULL',
+    "v_inherited_unrestricted:=v_c.permission_mode='inherit_crm' AND v_c.scope_mode='unrestricted'",
+    'a.id=s.area_id AND a.organization_id=p_organization_id AND (a.deleted_at IS NULL OR v_inherited_unrestricted)',
+    'b.id=s.building_id AND b.organization_id=p_organization_id AND (b.deleted_at IS NULL OR v_inherited_unrestricted)',
+    'JOIN public.areas a ON a.id=ab.area_id AND a.organization_id=ab.organization_id AND a.deleted_at IS NULL',
+    'JOIN public.buildings b ON b.id=ab.building_id AND b.organization_id=ab.organization_id AND b.deleted_at IS NULL',
     'ab.organization_id=p_organization_id AND ab.building_id=ANY(v_buildings)',
     "s.id=ANY(p_scope_ids) AND s.scope_type='AREA' AND s.area_id=ab.area_id",
     'jsonb_array_length(v_scopes)<>cardinality(p_scope_ids)', 'jsonb_array_length(v_edges)>=4096',
@@ -78,7 +81,7 @@ function mappedScope(sql) {
 test('final room decision uses one STABLE snapshot and the canonical boolean plus concrete scope resolver', () => coherentDecision(source));
 test('final map binds actual assistant JWT session, token, lifecycle, capabilities and every expected version', () => ownershipFence(source));
 test('membership identity/time/ordinary-org rules match Hermes strict semantics with explicit superadmin membership', () => membershipParity(source));
-test('mapping uses exact assistant constraint intersection, complete same-org live nodes and canonical permission building IDs', () => mappedScope(source));
+test('mapping uses exact company intersection, same-org nodes, inherited-only tombstones and live building/AREA edges', () => mappedScope(source));
 
 test('canonical scope/context dependencies are STABLE in their source definitions', () => {
   const definitions = [
@@ -102,6 +105,9 @@ for (const [name, contract, from, to] of [
   ['unbounded neutral policy', ownershipFence, 'p_organization_id,v_c.read_capabilities,v_c.action_capabilities,v_c.scope_ids', 'p_organization_id,NULL,NULL,NULL'],
   ['missing session revision fence', ownershipFence, ' OR v_s.revision<>p_expected_session_revision', ''],
   ['broadened assistant scope union', mappedScope, 'INTERSECT SELECT unnest(v_p.scope_ids)', 'UNION SELECT unnest(v_p.scope_ids)'],
+  ['tombstone exception for restricted selection', mappedScope, "v_c.permission_mode='inherit_crm' AND v_c.scope_mode='unrestricted'", "v_c.permission_mode='inherit_crm'"],
+  ['deleted AREA grants live edge', mappedScope, 'a.organization_id=ab.organization_id AND a.deleted_at IS NULL', 'a.organization_id=ab.organization_id'],
+  ['deleted BUILDING grants live edge', mappedScope, 'b.organization_id=ab.organization_id AND b.deleted_at IS NULL', 'b.organization_id=ab.organization_id'],
   ['missing ordinary single-org rule', membershipParity, "IF v_count<>1 THEN RAISE EXCEPTION 'hermes_ordinary_org_ambiguous'", "IF false THEN RAISE EXCEPTION 'hermes_ordinary_org_ambiguous'"],
 ]) test(`mutation witness rejects ${name}`, () => {
   const mutated = source.replace(from, to); assert.notEqual(mutated, source, 'mutation must change the source');
