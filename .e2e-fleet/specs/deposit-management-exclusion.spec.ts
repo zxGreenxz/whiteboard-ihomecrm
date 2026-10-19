@@ -3,12 +3,14 @@ import { USERS } from './auth';
 import { readRpcAllowlist } from '../support/read-rpc-allowlist';
 
 // Read-only acceptance after the reviewed exclusion migration is seeded on TEST.
-// Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5198,
+// Run from .e2e-fleet with FLEET_BASE_URL=http://127.0.0.1:5197 (same loopback
+// origin the contract specs pin, so one receipt run of scripts/e2e-fleet-bien-nhan.mjs
+// covers every required spec against one dev server pointing at TEST),
 // TEST_SUPABASE_PUBLISHABLE_KEY and FLEET_PASS_TEST_CHU supplied through env.
 // TEST Nano times out when the unrelated contract/refund dashboard fans out.
 // Those readers and the building picker use explicit fixtures below. Reservation
 // list/summary, voucher/exclusion reads, authentication and authorization stay live.
-const APP_ORIGIN = 'http://127.0.0.1:5198';
+const APP_ORIGIN = 'http://127.0.0.1:5197';
 const TEST_REF = 'hzulujxgonszuleqticb';
 const TEST_HOST = `${TEST_REF}.supabase.co`;
 const TEST_ORIGIN = `https://${TEST_HOST}`;
@@ -168,7 +170,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     });
     await page.routeWebSocket('**/*', socket => {
       const url = new URL(socket.url());
-      const isLocal = url.hostname === '127.0.0.1' && url.port === '5198';
+      const isLocal = url.hostname === '127.0.0.1' && url.port === '5197';
       if (!isLocal && url.hostname !== TEST_HOST) {
         unexpectedRequests.push(`blocked websocket: ${url.hostname}`);
         socket.close();

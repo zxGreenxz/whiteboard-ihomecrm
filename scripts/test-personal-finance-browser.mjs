@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 // Provision disposable real roles only on guarded TEST; never persist credentials.
 // Start the candidate app against TEST first, then run this wrapper for the fleet spec.
+//
+//   node scripts/test-personal-finance-browser.mjs                 # chạy riêng spec personal-finance-real
+//   node scripts/test-personal-finance-browser.mjs --self-check    # chỉ cấp + dọn fixture, không mở trình duyệt
+//   node scripts/test-personal-finance-browser.mjs --wrap -- node scripts/e2e-fleet-bien-nhan.mjs
+//     Cấp fixture (PERSONAL_FINANCE_TEST_FIXTURES) cho MỘT LỆNH NGOÀI rồi dọn: dùng khi runner
+//     biên nhận chạy cả bộ spec bắt buộc trong một lượt Playwright. Lệnh bọc tự chấm từng spec;
+//     mã thoát của nó được trả lại nguyên vẹn, và khi nó thoát 0 thì vẫn đòi lượt ghi thật của
+//     writer trong public.personal_finance_requests như chế độ thường. Truyền `node <script>`,
+//     không truyền shim .cmd (npm/npx) — Node không spawn .cmd khi không có shell.
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
@@ -15,6 +24,11 @@ const org = 'dddd0000-0000-4000-8000-000000000001';
 const base = process.env.FLEET_BASE_URL || 'http://127.0.0.1:5187';
 assert.match(base, /^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/, 'Use a local candidate targeting TEST');
 const preflightOnly = process.argv.includes('--self-check');
+// `--wrap -- <lệnh…>`: lệnh ngoài nhận fixture qua env thay vì script tự gọi Playwright.
+const wrapAt = process.argv.indexOf('--wrap');
+const wrapped = wrapAt >= 0 ? process.argv.slice(wrapAt + 1).filter((arg, i) => !(i === 0 && arg === '--')) : null;
+assert(!wrapped || wrapped.length > 0, 'Usage: --wrap -- <command> [args...]');
+assert(!(wrapped && preflightOnly), '--wrap and --self-check are exclusive');
 const spec = 'specs/personal-finance-real.spec.ts';
 if (!preflightOnly) assert(existsSync(resolve(root, '.e2e-fleet', spec)), 'Real browser spec missing');
 const cred = credential();
@@ -95,24 +109,35 @@ try {
     console.log('FIXTURE PREFLIGHT PASS; browser was not run');
   } else {
     const fixtures = { org, ref: cred.testRef, url, writer: { id: writer.id, email: writer.email, password: writer.password }, viewer: { id: viewer.id, email: viewer.email, password: viewer.password } };
-    const child = spawn(process.execPath, [resolve(root, 'node_modules/@playwright/test/cli.js'), 'test', spec, '--workers=1', '--reporter=list,json', '--output', resolve(root, '.e2e-fleet/test-results/personal-finance-real')], {
-      cwd: resolve(root, '.e2e-fleet'), windowsHide: true, stdio: 'inherit',
-      env: { ...process.env, FLEET_BASE_URL: base, PERSONAL_FINANCE_TEST_FIXTURES: JSON.stringify(fixtures), PLAYWRIGHT_JSON_OUTPUT_NAME: browserReport },
-    });
+    const fixtureEnv = { ...process.env, FLEET_BASE_URL: base, PERSONAL_FINANCE_TEST_FIXTURES: JSON.stringify(fixtures) };
+    const child = wrapped
+      ? spawn(wrapped[0], wrapped.slice(1), { cwd: root, windowsHide: true, stdio: 'inherit', env: fixtureEnv })
+      : spawn(process.execPath, [resolve(root, 'node_modules/@playwright/test/cli.js'), 'test', spec, '--workers=1', '--reporter=list,json', '--output', resolve(root, '.e2e-fleet/test-results/personal-finance-real')], {
+        cwd: resolve(root, '.e2e-fleet'), windowsHide: true, stdio: 'inherit',
+        env: { ...fixtureEnv, PLAYWRIGHT_JSON_OUTPUT_NAME: browserReport },
+      });
     const exitCode = await new Promise((resolveExit, reject) => { child.once('error', reject); child.once('exit', code => resolveExit(code ?? 1)); });
-    assert.equal(exitCode, 0, 'real personal finance browser suite failed');
-    const result = JSON.parse(readFileSync(browserReport, 'utf8'));
-    assert(result.stats.expected >= 2, 'writer and viewer browser scenarios must actually run');
-    for (const key of ['unexpected', 'skipped', 'flaky']) assert.equal(result.stats[key], 0, `browser ${key} scenarios`);
-    assert.equal(result.errors.length, 0, 'browser runner errors');
-    // Browser success alone cannot stand in for actual persisted money operations.
-    const committed = psqlJson(db, `select distinct payload->>'action' action from public.personal_finance_requests where user_id=${lit(writer.id)}`);
-    const actions = new Set(committed.map(row => row.action));
-    for (const action of ['wallet.create', 'wallet.update', 'category.create', 'transaction.create', 'transaction.update', 'transaction.delete', 'transaction.batch', 'transfer.create', 'budget.create', 'goal.create']) {
-      assert(actions.has(action), `real TEST browser did not persist ${action}`);
+    if (wrapped) {
+      // Lệnh bọc tự chấm từng spec (runner biên nhận ghi kết quả); chỉ trả lại mã thoát của nó.
+      process.exitCode = exitCode;
+      if (exitCode !== 0) console.error(`WRAPPED command exited ${exitCode}; persisted-write checks skipped`);
+    } else {
+      assert.equal(exitCode, 0, 'real personal finance browser suite failed');
+      const result = JSON.parse(readFileSync(browserReport, 'utf8'));
+      assert(result.stats.expected >= 2, 'writer and viewer browser scenarios must actually run');
+      for (const key of ['unexpected', 'skipped', 'flaky']) assert.equal(result.stats[key], 0, `browser ${key} scenarios`);
+      assert.equal(result.errors.length, 0, 'browser runner errors');
     }
-    assert.equal(psqlJson(db, `select count(*)::int n from public.personal_finance_requests where user_id=${lit(viewer.id)}`)[0].n, 0, 'view-only browser must not mutate');
-    console.log('PASS real browser receipts cover wallet/category/transaction CRUD/transfer/budget/goal; viewer has zero writes');
+    if (exitCode === 0) {
+      // Browser success alone cannot stand in for actual persisted money operations.
+      const committed = psqlJson(db, `select distinct payload->>'action' action from public.personal_finance_requests where user_id=${lit(writer.id)}`);
+      const actions = new Set(committed.map(row => row.action));
+      for (const action of ['wallet.create', 'wallet.update', 'category.create', 'transaction.create', 'transaction.update', 'transaction.delete', 'transaction.batch', 'transfer.create', 'budget.create', 'goal.create']) {
+        assert(actions.has(action), `real TEST browser did not persist ${action}`);
+      }
+      assert.equal(psqlJson(db, `select count(*)::int n from public.personal_finance_requests where user_id=${lit(viewer.id)}`)[0].n, 0, 'view-only browser must not mutate');
+      console.log('PASS real browser receipts cover wallet/category/transaction CRUD/transfer/budget/goal; viewer has zero writes');
+    }
   }
 } finally {
   if (emails.length) {

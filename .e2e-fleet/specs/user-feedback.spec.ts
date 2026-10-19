@@ -2,7 +2,9 @@ import {test,expect,type Page} from '@playwright/test';
 import {credentials,type UserKey} from './auth';
 import {customerListReadBody,isContractStatsRead,isCustomerListRead,readRpcAllowlist} from '../support/read-rpc-allowlist';
 const ORG='dddd0000-0000-4000-8000-000000000001';
-const HOST='tryymsxyyckgbrmmvozx.supabase.co';
+// Project Supabase TEST (như các spec chỉ-đọc khác): biên nhận E2E (scripts/e2e-fleet-bien-nhan.mjs)
+// chỉ nhận lượt chạy trên TEST, và mọi POST tới host khác HOST bị chặn 403 bên dưới.
+const HOST='hzulujxgonszuleqticb.supabase.co';
 const READ_RPC=readRpcAllowlist('dashboard','contracts','incomeExpense');
 const diagnostics = new WeakMap<Page,{runtime:string[];console:string[]}>();
 test.beforeEach(async({page})=>{
