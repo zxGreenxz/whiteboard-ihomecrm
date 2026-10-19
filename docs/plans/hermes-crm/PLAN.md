@@ -1,12 +1,12 @@
 # SUPER PLAN — Hermes × iHomeCRM
 
-## Tiếp tục từ checkpoint 19/10, 18:16 UTC+7
+## Tiếp tục từ checkpoint 19/10, 19:16 UTC+7
 
 **Trạng thái vận hành duy nhất cần đọc trước là [STATUS — checkpoint hiện hành](STATUS.md#checkpoint-hiện-hành).** Các checkpoint có giờ sớm hơn bên dưới là lịch sử, không ghi đè trạng thái này. Bản tài liệu kiểm UI `be910be0b` đã lên main, [CI đúng commit đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39243588199).
 
-- Code candidate `0fbc263f` và bảy migration đã triển khai ở VPS/DB; web Vercel còn bản `81c49363`. Dashboard và commit-status đã xác nhận lỗi cụ thể là **giới hạn số lần deployment, thử lại sau 24 giờ**; chưa xác định giờ mở lại, không kết luận nợ phí từ mã `402` cũ.
+- Code candidate `0fbc263f` và bảy migration đã triển khai ở VPS/DB. **Web Vercel đã phục vụ đúng candidate:** API production READY và `release:verify` PASS lúc 19:05 UTC+7. Blocker hạn mức trước đó đã gỡ; không chạy lại migration/promote để tạo thêm biên nhận.
 - **Browser đã dùng được.** Ba tài khoản thật chủ/quản lý/hệ thống trên Supabase TEST riêng đã kiểm loading, tạo kết nối kế thừa CRM, đọc lại quyền, thu hồi và logout; tài khoản chủ kiểm thêm tắt/bật lại một quyền. Có 23 request HTTP 200, đã dọn toàn bộ hạ tầng UI thử; production không đổi, fast OFF. Đây là bản build TEST tĩnh qua proxy/SSH riêng, chưa phải HTTPS Vercel hoặc Zalo gửi nhận. [Số đo và sơ đồ](../2026-10-19-crm-hermes-jev-performance.md#nghiệm-thu-giao-diện-bằng-ba-tài-khoản-test-thật).
-- **Việc còn phải hoàn tất theo thứ tự:** phát hành và xác minh web đúng candidate qua lane chính thức khi Vercel cho phép → chính chủ tạo/chọn kết nối hợp lệ thay credential hết hạn → áp đúng profile đã chọn và nghiệm thu MCP có dữ liệu/cùng quyền, rồi luồng Zalo thật. Chỉ quyết định bật đọc nhanh production sau bằng chứng tương ứng; không dùng kết quả TEST để tuyên bố phiên chủ đã chạy.
+- **Giao diện production:** tổng quan/quyền/bot đã tải qua HTTPS; chủ tự tạo kết nối mới thành công. Đã chọn một kết nối và phát hành mã Zalo, đang chờ chủ gửi mã từ nick chính và xác nhận trên web. Chưa coi lựa chọn trong form là binding/selectCredential đã lưu. Tiếp theo: xác minh liên kết đã xác nhận → áp đúng profile đã chọn → nghiệm thu MCP có dữ liệu/cùng quyền và Zalo thật → quyết định bật đọc nhanh production theo bằng chứng. Không dùng kết quả TEST để tuyên bố phiên chủ đã chạy.
 - Jev là pilot tùy chọn, chưa có key/nhà cung cấp đo; TG6 chữ công khai vẫn giữ hành vi hiện có và chọn riêng. Không chặn phát hành ba lỗi bằng hai nhánh tùy chọn này, cũng không tự đánh dấu P0–P11 hoàn tất. Không chạy lại migration, benchmark hoặc bộ kiểm không đổi chỉ để chờ Vercel.
 
 ## Snapshot triển khai — 19/10/2026 tới 16:05:01 UTC+7
