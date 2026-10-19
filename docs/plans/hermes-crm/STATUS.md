@@ -2,13 +2,15 @@
 
 ## Checkpoint hiện hành
 
-**19/10/2026, cập nhật tới 19:16 UTC+7.**
+**19/10/2026, cập nhật tới 19:21 UTC+7.**
 
 **Vercel đã phát hành đúng candidate:** sau khi chủ báo đã lên bản mới, API lúc `12:05:18Z` xác nhận deployment production `0fbc263f48d896baf633eba84dbf3cd4a222387a` ở trạng thái READY, không có deployment đang chờ/chạy. Lệnh chính thức `release:verify -- --sha 0fbc263f48d896baf633eba84dbf3cd4a222387a --wait-seconds 0` PASS: trang `https://ptcrm.vercel.app/` thực sự phục vụ đúng meta build-sha. Không chỉ dựa vào nhánh Git hoặc dashboard. Receipt API ngoài repo: `hermes-vercel-goal-checkpoint-20261019-1205.json`. Blocker phát hành của candidate đã gỡ; agent không tạo tài khoản/project khác, thanh toán, đổi gói hoặc gửi thêm deployment POST trong lượt này.
 
 **Giao diện production đã mở bằng phiên Chrome của chủ:** `/settings/hermes` tải được tổng quan, trạng thái connector, bot và danh sách liên kết. Mở form tạo kết nối thấy “Đang tải…” rồi hiện lựa chọn kế thừa quyền CRM; không có lỗi giả trong lần quan sát này. Như vậy đường HTTPS phục vụ các thao tác đọc vừa nêu đã có bằng chứng UI thật, chưa phải toàn bộ API hoặc số đo p95.
 
 **Chủ đã tạo kết nối mới:** sau khi chủ tự nhập mật khẩu và báo hoàn tất, UI hiển thị hai kết nối mới, mỗi kết nối có 49 quyền đọc và 11 quyền thao tác. Agent không thu hồi kết nối nào; đã chọn rõ một kết nối trong form liên kết Zalo và tạo mã cho bot của công ty. Mã dùng tối đa 15 phút, UI đang tự kiểm tra và báo chờ tin nhắn riêng. Đã yêu cầu chủ gửi mã từ nick Zalo chính rồi xác nhận đúng nick trên web. Chọn trong dropdown và phát hành mã chưa phải bằng chứng binding/selectCredential đã lưu. Chưa áp profile VPS, khôi phục phiên MCP owner, gửi nhận Zalo hoặc bật đọc nhanh production; fast vẫn OFF. Không đưa mật khẩu, token, mã liên kết hoặc định danh thật vào repo.
+
+**Chuẩn bị phục hồi profile đã xong lúc `12:20:36Z`:** đã đọc đúng `config.yaml` và `.env` của profile owner bằng helper đã kiểm, chuyển trong pipe riêng và mã hóa ngoài VPS bằng khóa nhận có sẵn. Đọc lại artifact đã lưu, giải mã và so khớp toàn bộ bytes cùng metadata owner đạt; chưa thử restore trên Linux thật. Proof riêng nằm trong thư mục backup ngoài repo `owner-profile-2026-10-19T12-20-36-257Z/private-profile-backup-proof.json`; ciphertext SHA-256 `81959003bd56d84ec21677546fb5521705e98e1ee980da4007a247299e8c105b`. Không thay profile, dừng/khởi động lại dịch vụ hay sửa binding. Khi được phép áp profile vẫn phải đối chiếu hash hiện tại với proof và xác minh binding được chọn; không dùng backup làm bằng chứng phiên MCP đã chạy. Commit tài liệu `7ac3a8b20` đã lên main, [CI đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39250872317).
 
 **Lịch sử blocker Vercel trước khi được gỡ:** commit-status của candidate báo `Deployment rate limited — retry in 24 hours.` lúc `07:03:47Z`, cụ thể hơn mã `402 payment_required`. Lần đọc API `11:26:27Z` vẫn ghi production `81c49363`, không có deployment đang chạy. Không suy nợ phí hoặc giờ mở lại chính xác từ các thông báo đó. CI tài liệu `e51475f6b` đã đạt (`39244254814`); các status Vercel của commit chỉ sửa tài liệu là “Canceled by Ignored Build Step”, không phải deployment mới.
 
