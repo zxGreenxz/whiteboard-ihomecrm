@@ -1,8 +1,39 @@
 # Đánh giá và kế hoạch tối ưu tốc độ CRM và Hermes
 
-Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 19:16 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Vercel production đã READY và `release:verify` PASS: web thực sự phục vụ đúng candidate, blocker hạn mức đã gỡ. Chrome production tải được tổng quan/quyền/bot qua HTTPS; chủ tự tạo kết nối mới, hiện đang chờ gửi mã Zalo và xác nhận nick trên web. Chưa áp profile VPS, khôi phục MCP owner hoặc kiểm gửi nhận Zalo; fast production OFF. Trên project riêng `ihomecrm-test`, 45 cặp mẫu có dữ liệu khớp core CRM; lượt bổ sung 15 cặp khoanh khác biệt khách hàng vào bốn trường phòng/hợp đồng, giữ công thức CRM. Cả ba tài khoản TEST đã kiểm Chrome: loading, tạo kết nối, đọc lại quyền, thu hồi và đăng xuất; tài khoản chủ kiểm thêm tắt/bật lại quyền. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
+Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 22:55 UTC+7:** nick đã ghép đúng tài khoản Gmail và credential chủ chọn đã áp vào profile owner; runtime VPS `8ee1fd0` hoạt động. MCP thật đạt 5/6: đọc khách hàng/hợp đồng/hóa đơn được, phòng lỗi do phạm vi trỏ tới tòa/khu đã xóa. Bản sửa ở [PR #227](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/227) đã merge main `b16d9afd`, TEST signed PostgREST đạt 3/3 tài khoản; production mới dry-run/ROLLBACK, chưa apply. Main aggregate 74/74 đạt nhưng chưa đủ điều kiện phát hành vì kiểm tra runtime bắt buộc còn xếp hàng. Chrome xác nhận đã liên kết nhưng nhãn đồng bộ vẫn pending; chưa có phản hồi thử Zalo của chủ. Không yêu cầu ghép nick lại. Fast production vẫn OFF: 45 cặp mẫu khớp core CRM, lượt bổ sung 15 cặp khoanh khác biệt khách hàng vào bốn trường phòng/hợp đồng; chưa bật khi chưa đối chiếu đủ nghĩa nghiệp vụ. Ba tài khoản TEST đã kiểm Chrome loading/tạo/đọc lại quyền/thu hồi/logout, chủ kiểm thêm tắt/bật quyền. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md#checkpoint-hiện-hành) giữ bằng chứng vận hành chi tiết.
 
 **Đích quyền: quyền Hermes = quyền CRM user − những quyền bị tắt trong cài đặt Hermes.** [Báo cáo tinh giản, ba lỗi, sơ đồ và audit §10](hermes-crm/TINH-GON-KIEM-QUYEN.md) giữ plan Hermes hiện hành và tiến độ candidate. Chủ đã làm rõ §9 chỉ là đề xuất agent khác: không áp đặt 100 ms, cấm cache hoặc epoch mọi RPC. Giữ quyền/RLS CRM vốn có; bỏ hai kiểm cuối và công việc lặp. Xác nhận chữ công khai là lựa chọn riêng, chưa chốt mới. Báo cáo dưới giữ bằng chứng và phạm vi CRM/Jev rộng hơn.
+
+## Luồng sau ghép nick và bản sửa đọc phòng
+
+Bạn đã làm xong phần ghép nick. Khi hỏi bot, luồng dự kiến như sau; việc ghép thành công chưa tự chứng minh bot đã trả lời đúng qua Zalo.
+
+```mermaid
+flowchart LR
+  A["Bạn nhắn riêng cho Ihome"] --> B["Hermes hiểu câu hỏi và chọn công cụ"]
+  B --> C["Dùng kết nối CRM đúng tài khoản của bạn"]
+  C --> D["Đọc dữ liệu theo quyền CRM và phần đã tắt riêng"]
+  D --> E["Hermes soạn câu trả lời"]
+  E --> F["Bot trả lời riêng trên Zalo"]
+```
+
+Lỗi đọc phòng nằm trong bước đọc dữ liệu. Trước đây chỉ cần danh sách phạm vi còn một tòa đã xóa là toàn bộ yêu cầu bị lỗi. Bản sửa giữ danh sách phạm vi làm thông tin, nhưng tòa/khu đã xóa không đóng góp phòng nào; các giới hạn của người dùng và công ty vẫn được áp dụng.
+
+```mermaid
+flowchart LR
+  A["Lấy phạm vi đúng quyền"] --> B["Bỏ qua đóng góp của tòa hoặc khu đã xóa"]
+  B --> C["Chỉ giữ các tòa đang hoạt động và được phép xem"]
+  C --> D["Đọc và trả danh sách phòng"]
+```
+
+| Đã đo | Kết quả | Giới hạn của bằng chứng |
+|---|---|---|
+| MCP sau kích hoạt trên VPS: khách hàng / hợp đồng / hóa đơn | Khoảng 3,12 / 2,87 / 2,87 giây, có dữ liệu | Một lượt mẫu; chưa gồm thời gian model và Zalo |
+| Bước ánh xạ phạm vi phòng trên TEST: chủ / quản lý / hệ thống | 481 / 309 / 357 ms; cả ba đúng quyền và không lỗi vì scope đã xóa | Chỉ một RPC và mapper, không phải toàn bộ lời hỏi phòng |
+| Bản sửa trên production | Dry-run đạt và đã hoàn tác | Chưa áp dụng; chờ kiểm tra runtime bắt buộc, backup và đo MCP sau apply |
+| Gửi hỏi và nhận trả lời qua Zalo | Chưa xác minh | Còn chờ kết quả thử từ chủ |
+
+Nhãn “Đang đồng bộ với trợ lý…” trên web còn là việc riêng phải hoàn thiện: trang đã lưu liên kết, nhưng chưa có xác nhận đầy đủ rằng tiến trình trợ lý đã nạp cấu hình tương ứng. Không yêu cầu người dùng tạo lại kết nối để xử lý nhãn này.
 
 ## Snapshot lịch sử trước 19:05 ngày 19/10 — VPS đã đổi, web còn chờ Vercel
 
@@ -545,9 +576,9 @@ So sánh trước/sau trên cùng dữ liệu và đầu vào; ghi p50/p95, lỗ
 ## Phần còn chưa xác minh
 
 - Chưa benchmark Jev bằng API trả phí, chưa đo độ chính xác tiếng Việt trên câu hỏi CRM thực tế.
-- Chưa kiểm profile/model/version, trace hoặc cấu hình offboarding trên VPS; khả năng superadmin dừng runtime là thông tin chủ hệ thống cung cấp.
-- Chưa đo browser, LCP/INP, network waterfall hoặc UI/E2E của web. Phân tích frontend là source, không phải kết quả trải nghiệm người dùng đã đo.
+- Đã kiểm runtime/profile và trace MCP trên VPS, có bằng chứng dừng/khởi động có kiểm soát. Chưa nghiệm thu một ca nhân viên nghỉ việc xuyên suốt mọi lịch/grant hoặc toàn bộ đường hỏi đáp model/Zalo.
+- Đã kiểm UI bằng ba tài khoản TEST và quan sát Chrome production trong phạm vi Hermes nêu trên. Chưa đo LCP/INP, p95 trình duyệt hoặc E2E toàn ứng dụng.
 - Đã có delta 40 giây và bằng chứng contention trực tiếp; chưa có p95 hiện hành, mẫu giờ cao điểm hoặc `EXPLAIN ANALYZE` theo JWT/role TEST.
-- Truy vấn catalog/statistics dùng role quản trị chỉ chứng minh cấu trúc/thống kê, không chứng minh RLS người dùng. Đã chạy duy nhất harness latency/authz mô phỏng liên quan; chưa chạy lại gate toàn dự án vì chưa sửa code thực thi.
+- Truy vấn catalog/statistics dùng role quản trị chỉ chứng minh cấu trúc/thống kê. Bằng chứng JWT/RLS thật bổ sung chỉ áp dụng cho các tài khoản, ca thử và endpoint đã ghi trong checkpoint; không suy rộng thành toàn bộ CRM đã đạt. Giữ riêng kết quả mô phỏng, TEST, CI và production.
 
 **Lựa chọn tổng thể: maintenance theo hạn + phương án B tối giản + tối ưu dashboard/SQL. Jev nên thử ở phân hạng mục Báo chi nhanh và phân luồng Hermes có đo đối chứng; fast-read chỉ mở rộng khi giữ được lịch sử và nghĩa nghiệp vụ. Nén ngữ cảnh bằng Jev, bảng lease quyền và rollup báo cáo chưa cần mặc định triển khai.**
