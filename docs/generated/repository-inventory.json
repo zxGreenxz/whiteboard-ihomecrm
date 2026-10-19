@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1524,
   "soFileDocBangFs": 395,
-  "tongLoiGoi": 931,
+  "tongLoiGoi": 932,
   "khongPhanLoaiDuoc": 423,
   "theoLoai": {
     "ma-nguon": {
@@ -330,6 +330,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/inherit-crm-sql.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-broker/wave2-foundation.test.mjs",
       "soGoi": 5,
       "loai": {},
@@ -438,14 +446,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/hermes-broker/inherit-crm-sql.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/wave2-a.test.mjs",

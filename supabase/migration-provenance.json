@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-19T12:36:46.638Z",
+  "generatedAt": "2026-10-19T15:41:55.465Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 773,
     "unknown": 81,
-    "catalog-proven": 208,
+    "catalog-proven": 209,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12409,6 +12409,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-19T06:33:16.411Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261019144508_hermes_inherited_room_scope_tombstones_v1.sql",
+      "version": "20261019144508",
+      "name": "hermes_inherited_room_scope_tombstones_v1",
+      "scheme": "timestamp14",
+      "sha256": "c0fa83f55f5ddbc4b18dcbab13b1c8a53aee4ee819120b0e3739f11e616ed7d5",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_room_scope_map_v1"
       ]
     },
     {

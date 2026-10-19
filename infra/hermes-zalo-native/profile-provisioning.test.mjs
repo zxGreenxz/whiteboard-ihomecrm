@@ -290,3 +290,50 @@ test('managed alias first-binding projection preserves the existing ihomecrm key
   const actual=yaml.load(read(f.configFile));assert.equal(actual.mcp_servers.crm,undefined);assert.equal(actual.mcp_servers.ihomecrm.headers.Authorization,'Bearer '+f.request.credential);
   assert(read(f.envFile).includes('HERMES_ZALO_GENERATION='+f.channel.generation));
 });
+
+test('credential-only operator can explicitly preserve an existing private HTTP origin without changing native state',async t=>{
+  const f=fixture(t),origin='http://172.17.0.1:8740';
+  f.options.mcpUrl=origin+'/mcp';
+  aliasProfile(f,{ihomecrm:{...f.config.mcp_servers.crm,url:f.options.mcpUrl}});
+  const before=snapshot(f.root),nativeBefore=[f.envFile,f.nativeFile,f.tokenFile,f.journalFile].map(read);
+  assert.throws(()=>planNativeProfileUpdate(f.options,f.request),/native_profile_provisioning_failed/);
+  const options={...f.options,preserveExistingHttpOrigin:origin},plan=planNativeProfileUpdate(options,f.request);
+  assert.deepEqual(snapshot(f.root),before);
+  let output='',error='';
+  const code=await runProfileProvisioningCli([...args(f.options),'--preserve-existing-http-origin',origin,'--apply','--expect',plan.expectedRevision],
+    {input:input(f.request),write:s=>output+=s,error:s=>error+=s});
+  assert.equal(code,0);assert.equal(error,'');assert.equal(JSON.parse(output).changed,true);
+  const config=yaml.load(read(f.configFile));
+  assert.equal(config.mcp_servers.ihomecrm.url,origin+'/mcp');
+  assert.equal(config.mcp_servers.ihomecrm.headers.Authorization,'Bearer '+f.request.credential);
+  assert.equal(config.mcp_servers.ihomecrm.strict_redirect_headers,true);assert.equal(config.mcp_servers.crm,undefined);
+  assert.deepEqual([f.envFile,f.nativeFile,f.tokenFile,f.journalFile].map(read),nativeBefore);
+});
+
+test('preserving HTTP cannot create a server, change its destination, or accompany a first-binding projection',t=>{
+  const origin='http://172.17.0.1:8740',url=origin+'/mcp';
+  for(const variant of ['absent','other-host','other-port','channel']){
+    const f=fixture(t);f.options.mcpUrl=url;
+    aliasProfile(f,variant==='absent'?{}:{ihomecrm:{...f.config.mcp_servers.crm,
+      url:variant==='other-host'?'http://172.17.0.2:8740/mcp':variant==='other-port'?'http://172.17.0.1:8741/mcp':url}});
+    const before=snapshot(f.root);
+    assert.throws(()=>planNativeProfileUpdate({...f.options,preserveExistingHttpOrigin:origin},
+      variant==='channel'?{...f.request,channel:f.channel}:f.request),/native_profile_provisioning_failed/);
+    assert.deepEqual(snapshot(f.root),before);
+  }
+});
+
+test('preserving HTTP requires a canonical private IP origin and exact /mcp URL',t=>{
+  const origin='http://172.17.0.1:8740';
+  for(const [allow,url] of [
+    [origin+'/',origin+'/mcp'],['http://example.test:8740','http://example.test:8740/mcp'],
+    ['http://8.8.8.8:8740','http://8.8.8.8:8740/mcp'],['http://2853249585:8740','http://172.17.0.1:8740/mcp'],
+    [origin,origin+'/other'],[origin,origin+'/mcp?key=secret'],[origin,origin+'/mcp#x'],
+    [origin,'http://user:pass@172.17.0.1:8740/mcp'],[origin,'http://172.17.0.2:8740/mcp'],
+    [origin,'http://172.17.0.1:8741/mcp'],[origin,origin+'/%6dcp'],
+  ]){
+    const f=fixture(t),before=snapshot(f.root);
+    assert.throws(()=>planNativeProfileUpdate({...f.options,mcpUrl:url,preserveExistingHttpOrigin:allow},f.request),/native_profile_provisioning_failed/);
+    assert.deepEqual(snapshot(f.root),before);
+  }
+});
