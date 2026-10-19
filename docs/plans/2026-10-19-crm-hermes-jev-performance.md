@@ -1,6 +1,6 @@
 # Đánh giá và kế hoạch tối ưu tốc độ CRM và Hermes
 
-Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 14:37:26 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Web production vẫn `81c49363`: lane phát hành đã đẩy đúng commit lên nhánh production, nhưng Vercel chưa tạo deployment; yêu cầu tạo đúng commit bị từ chối `402 payment_required`. Chủ đã được đề nghị kiểm tra Billing. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
+Ngày đánh giá: 19/10/2026. Source khảo sát ban đầu `81c49363`, tài liệu đối chiếu tới `b4050f6b`. **Checkpoint triển khai 19/10, 15:46:13 UTC+7:** source `0fbc263f48d896baf633eba84dbf3cd4a222387a` đã lên main và VPS qua [PR #222](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/222); đủ bảy migration trên TEST/production, Gate7 delta 65/65 và năm lượt CI main đạt. Web production vẫn chưa xác minh bản mới: lane phát hành đã đẩy đúng commit lên nhánh production, nhưng lần tạo deployment trước bị từ chối `402 payment_required`; lần kiểm trang đã ghi nhận `81c49363`. Chủ đang hỗ trợ đăng nhập Vercel. Theo yêu cầu mới nhất, đã kiểm qua broker thật với ba tài khoản hiện có trên project riêng `ihomecrm-test`: 45 cặp mẫu có dữ liệu, đường nhanh khớp core CRM, quyền tắt và thu hồi đạt. Phần khách hàng còn khác đường cũ; chưa kiểm UI/Zalo hoặc phiên owner production. Chưa hoàn tất toàn bộ plan. [STATUS](hermes-crm/STATUS.md) giữ checkpoint vận hành mới nhất.
 
 **Đích quyền: quyền Hermes = quyền CRM user − những quyền bị tắt trong cài đặt Hermes.** [Báo cáo tinh giản, ba lỗi, sơ đồ và audit §10](hermes-crm/TINH-GON-KIEM-QUYEN.md) giữ plan Hermes hiện hành và tiến độ candidate. Chủ đã làm rõ §9 chỉ là đề xuất agent khác: không áp đặt 100 ms, cấm cache hoặc epoch mọi RPC. Giữ quyền/RLS CRM vốn có; bỏ hai kiểm cuối và công việc lặp. Xác nhận chữ công khai là lựa chọn riêng, chưa chốt mới. Báo cáo dưới giữ bằng chứng và phạm vi CRM/Jev rộng hơn.
 
@@ -37,9 +37,57 @@ Sơ đồ là **luồng web mới trong source, đang chờ Vercel phát hành**
 
 Lượt DEMO thứ tư kết thúc 14:36:46 UTC+7: khởi tạo, quyền, phạm vi và đối chiếu ba công thức dùng chung đều đạt, tổng 12 ca kiểm. Tuy nhiên đường thông thường trả một dòng cho mỗi miền khách hàng/hợp đồng/hóa đơn, còn đường nhanh và public shared core cùng trả **không dòng** ở cả ba miền. So sánh với đường cũ không đạt; khác biệt quan sát được nằm ở số dòng và con trỏ trang, chưa chứng minh do các trường vị trí khách hàng.
 
-Đây chỉ là bằng chứng đường nhanh khớp core trên kết quả rỗng. Cờ `fastVerified` trong báo cáo đo có phạm vi hẹp đó; **chưa đủ nghiệm thu nghiệp vụ có dữ liệu**, chưa đủ so sánh tốc độ khi trả cùng kết quả. Cờ nhanh đã được trả về tắt như trạng thái phía trên. Không thay RLS hoặc mở quyền để làm phép đo đạt. Cần tiếp tục đối chiếu khi có phiên owner hợp lệ, cùng công ty/phạm vi và dữ liệu thấy được trên web. Ba lượt kiểm trước và kết quả thất bại được giữ riêng ngoài repo; lượt ba vướng giả định sai của harness về phạm vi sổ quỹ, đã sửa theo contract trước lượt bốn.
+Đây chỉ là bằng chứng đường nhanh khớp core trên kết quả rỗng. Cờ `fastVerified` trong báo cáo đo có phạm vi hẹp đó; **chưa đủ nghiệm thu nghiệp vụ có dữ liệu**, chưa đủ so sánh tốc độ khi trả cùng kết quả. Cờ nhanh đã được trả về tắt như trạng thái phía trên. Không thay RLS hoặc mở quyền để làm phép đo đạt. Ba lượt kiểm trước và kết quả thất bại được giữ riêng ngoài repo; lượt ba vướng giả định sai của harness về phạm vi sổ quỹ, đã sửa theo contract trước lượt bốn.
 
-Cả bốn kết nối thử được thu hồi qua API chính thức; token của chính kết nối bị từ chối khi khởi tạo/gọi công cụ, không còn kết nối thử đang hoạt động. Phiên đăng nhập nhà cung cấp, bàn giao mã hóa và audit giữ theo thời hạn thiết kế; không kết luận không còn session. Không ghi dữ liệu nghiệp vụ, thay profile owner hoặc gửi Zalo. Sau khi xử lý Billing và phát hành web, thứ tự còn lại là chủ kết nối lại → kiểm dữ liệu thật đúng phạm vi → quyết định bật đọc nhanh → kiểm luồng Hermes/Zalo.
+Cả bốn kết nối thử được thu hồi qua API chính thức; token của chính kết nối bị từ chối khi khởi tạo/gọi công cụ, không còn kết nối thử đang hoạt động. Phiên đăng nhập nhà cung cấp, bàn giao mã hóa và audit giữ theo thời hạn thiết kế; không kết luận không còn session. Không ghi dữ liệu nghiệp vụ, thay profile owner hoặc gửi Zalo. Production vẫn cần xử lý phát hành web → chủ kết nối lại → nghiệm thu đúng phiên/phạm vi → quyết định bật đọc nhanh → kiểm luồng Hermes/Zalo.
+
+**Nghiệm thu TEST theo yêu cầu chủ, 15:05:35–15:05:45 UTC+7:** dùng tài khoản chủ, quản lý và hệ thống hiện có trên Supabase `ihomecrm-test` riêng; không dùng tổ chức TEST cũ nằm trong production. Đã kiểm ref khác production, đúng tên/trạng thái project, marker có sẵn, ba core `INVOKER` và phần thân helper tương thích. Đăng nhập thật, lấy công ty/phạm vi qua RPC ngữ cảnh của chính user; cả ba thuộc cùng công ty bản sao.
+
+| Tài khoản TEST | Vai trò từ phiên thật | Mẫu core khách hàng / hợp đồng / hóa đơn |
+|---|---|---|
+| Chủ | OWNER, không phải platform admin | 3/3, mỗi danh sách 1 dòng đúng phạm vi |
+| Quản lý | STAFF, không phải platform admin | 3/3, mỗi danh sách 1 dòng đúng phạm vi |
+| Hệ thống | OWNER, platform admin | 3/3, mỗi danh sách 1 dòng đúng phạm vi |
+
+Tổng **9/9 mẫu nonempty**, đăng xuất local 3/3; không tạo kết nối Hermes, ghi nghiệp vụ, đổi schema, profile hay mật khẩu. Đây chỉ là preflight bằng JWT/RLS cho phép đo tiếp theo qua broker thật, chưa chứng minh MCP, fast, UI hoặc Zalo. Receipt giữ ngoài repo: `test-accounts-readonly-report.json`. Quyền/phạm vi quan sát từ JWT và RPC, không suy ra chỉ từ nhãn tài khoản.
+
+Web TEST kiểm lúc15:07:02 UTC+7 trả **HTTP410**; trong 100 deployment gần nhất không thấy nhánh `test-env`. Metadata có ba biến preview riêng cho nhánh TEST (`VITE_APP_ENV`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`), nhưng chưa kiểm giá trị hay bản build hiện hành. Quyền truy cập browser của agent vẫn bị công cụ chặn khi chủ gắn `@Browser`; đăng nhập extension/Vercel chưa phải bằng chứng agent đã điều khiển được. Phần broker độc lập đã kiểm bên dưới; UI và Zalo còn chờ. Cờ fast trên VPS production giữ OFF.
+
+Môi trường chạy riêng chuẩn bị đạt lúc15:28:10 UTC+7: Node24.18.0, PostgreSQL client17, thao tác ghi bền trên thư mục Linux, module broker và 916 hash source khớp candidate. Docker cục bộ bị lỗi khởi động nên dùng Docker có sẵn trên VPS, không thay dịch vụ production. Backup full TEST mới15:22:30 UTC+7 đã xác minh dung lượng, hash và 654 bảng có dữ liệu; dump giữ tại máy cục bộ. Lượt đầu dừng trước tạo kết nối/đọc MCP vì bộ đo dùng Node24 `fetch`, làm Host nhận thêm cổng và bị allowlist HTTP từ chối 403. Phép thử riêng xác nhận cùng yêu cầu: `fetch` bị 403, `node:http` giữ Host đúng và được 200. Chỉ sửa bộ đo TEMP; giữ nguyên ứng dụng, quyền và RLS. Receipt thất bại được giữ riêng; cleanup DB đạt và container/thư mục/volume lượt đầu đã dọn lúc15:42:52.
+
+### Kết quả broker TEST với ba tài khoản thật
+
+Lượt hai chạy **15:38:46–15:42:36 UTC+7**, hai broker dùng cùng source candidate, cùng TEST, cùng tài khoản và giới hạn; chỉ khác cờ đọc nhanh. Ba tài khoản × ba nhóm dữ liệu × năm lượt = **45 cặp mẫu**, tức 90 lời gọi đọc MCP. Mỗi đường thường/nhanh/core đều trả một dòng; cả 45 kết quả đường nhanh khớp core CRM. Hợp đồng và hóa đơn cũng khớp đường thường ở 30/30 cặp. Khách hàng không khớp hoàn toàn đường thường ở 15/15 cặp; report chưa ghi tên field khác, nên không dùng khác biệt location đã thấy trong source để khẳng định nguyên nhân của mẫu thật này.
+
+| Tài khoản TEST | Danh sách | Trung vị đường thường | Trung vị đường nhanh | Số cặp |
+|---|---|---:|---:|---:|
+| Chủ | Khách hàng | 2.081,22 ms | 524,30 ms | 5 |
+| Chủ | Hợp đồng | 2.059,21 ms | 489,91 ms | 5 |
+| Chủ | Hóa đơn | 2.183,51 ms | 488,03 ms | 5 |
+| Quản lý | Khách hàng | 2.041,45 ms | 500,93 ms | 5 |
+| Quản lý | Hợp đồng | 2.086,94 ms | 509,67 ms | 5 |
+| Quản lý | Hóa đơn | 2.096,14 ms | 488,05 ms | 5 |
+| Hệ thống | Khách hàng | 2.526,41 ms | 537,69 ms | 5 |
+| Hệ thống | Hợp đồng | 2.598,52 ms | 497,12 ms | 5 |
+| Hệ thống | Hóa đơn | 2.473,05 ms | 517,69 ms | 5 |
+
+```mermaid
+flowchart LR
+  A["Tài khoản TEST thật"] --> B["Tạo kết nối kế thừa quyền CRM và trừ quyền đã tắt"]
+  B --> C["Gọi đọc 1 danh sách qua Hermes"]
+  C --> D["Đường thường: trung vị 2,04–2,60 giây"]
+  C --> E["Đường nhanh: trung vị 0,49–0,54 giây"]
+  E --> F["Đối chiếu cùng tài khoản với core CRM: 45/45 khớp"]
+  D --> G["Thu hồi kết nối thử"]
+  F --> G
+  G --> H["12 lượt dùng token cũ đều bị từ chối"]
+```
+
+Đã kiểm một quyền tắt đại diện (`leads.view`, đọc khách hẹn) ở cả hai broker cho ba tài khoản: **6/6 lượt bị chặn đúng**. Ba kết nối thử được thu hồi qua API; cả 12 lượt khởi tạo/gọi tool bằng token cũ trả401. Đã đăng xuất local ba phiên thử, xóa role DB tạm và xác nhận cleanup. Audit, bản ghi kết nối đã thu hồi và các phiên trợ lý thuộc cơ chế lưu giữ hiện có; không kết luận còn 0 session. Cả 138 HTTP request nằm trong report ngoài repo `hermes-test-vps-execution-run2-report-20261019.json`. Kiểm trước/sau xác nhận production active, PID không đổi, đúng release/hash cấu hình gốc và fast OFF; không đổi profile owner hoặc gửi Zalo.
+
+Hạ tầng thử của cả hai lượt đã dọn xong: container riêng, volume đi kèm và thư mục trạng thái riêng; lượt hai hoàn tất lúc15:46:13 UTC+7. Biên nhận được giữ ngoài repo. Không còn benchmark đang chạy; production vẫn đúng PID/release/hash cấu hình và fast OFF sau cleanup.
+
+**Giới hạn số đo:** đây là HTTP loopback trong container giới hạn 0,5 CPU/256 MiB → Supabase TEST. Giữ cả mẫu đầu, đổi thứ tự thường/nhanh giữa các lượt; kiểm lease của bộ đo nằm trước đồng hồ, còn các truy vấn scope/core giữa lượt có thể làm ấm cache. Năm mẫu mỗi ô không đủ tính p95. Các con số không bao gồm browser, mạng từ máy người dùng, Vercel, model hoặc Zalo; không phải số đo tốc độ production hay lời hứa thời gian trả lời đầu cuối. Tạo kết nối mới đo riêng một lần mỗi tài khoản mất 3,41–5,08 giây, không lấy thời gian này làm độ trễ của mỗi câu hỏi.
 
 ### Bằng chứng trước rollout — giữ làm lịch sử
 
