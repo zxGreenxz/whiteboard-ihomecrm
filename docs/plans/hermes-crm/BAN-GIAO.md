@@ -48,7 +48,7 @@ Nhắn riêng cho bot từ nick Zalo chính đã liên kết. Ví dụ:
 
 Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản/dịch vụ và các miền ghi khác ngoài danh sách trên. Hermes sẽ nói không có công cụ; làm trực tiếp trên CRM. Hiện Hermes có 11 quyền thao tác (việc, khách/lead, phiếu thu chi, tin pass phòng, gửi và tự động hoá Zalo, ghi nhớ). Đề xuất mở thêm các nhóm thao tác ghi (đợt 3) đang chờ chủ chọn nhóm: [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 
-Đọc đầy đủ đợt 2 (lương, cổ đông, ví cá nhân, biến động số dư, sổ quỹ, tài sản/dịch vụ/vật tư, Network Center, thu tiền/công nợ/cọc…) **đã lên production 19/10** (#215): khoảng 70 báo cáo qua hai tool `crm_read_report_list` (mục lục) và `crm_read_report` (chạy báo cáo), mọi báo cáo private (chỉ trong tin nhắn riêng). Kết nối cũ chỉ thấy 20 báo cáo vì kết nối chỉ thu hẹp, không tự có quyền mới; kết nối mới (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) đã thay vào profile owner 19/10 và Hermes thấy 69 báo cáo. **Liên kết Zalo với kết nối mới chưa xong** nên chưa nhắn thử đợt 2 qua Zalo (phần 3). Ba khoá còn tắt vì chưa có báo cáo: `reports_finance.deposits_report`, `handover_report`, `collection_cycle` ([STATUS](STATUS.md#cập-nhật-1910)).
+Đọc đầy đủ đợt 2 (lương, cổ đông, ví cá nhân, biến động số dư, sổ quỹ, tài sản/dịch vụ/vật tư, Network Center, thu tiền/công nợ/cọc…) **đã lên production 19/10** (#215): khoảng 70 báo cáo qua hai tool `crm_read_report_list` (mục lục) và `crm_read_report` (chạy báo cáo), mọi báo cáo private (chỉ trong tin nhắn riêng). Kết nối cũ chỉ thấy 20 báo cáo vì kết nối chỉ thu hẹp, không tự có quyền mới; kết nối mới (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) đã thay vào profile owner 19/10 và Hermes thấy 69 báo cáo. Liên kết Zalo với kết nối mới **đã xong sáng 19/10**; chưa nhắn thử đợt 2 qua Zalo (phần 3). Ba khoá còn tắt vì chưa có báo cáo: `reports_finance.deposits_report`, `handover_report`, `collection_cycle` ([STATUS](STATUS.md#cập-nhật-1910)).
 
 ## 3. Quản trị trên CRM (`/settings/hermes`)
 
@@ -60,9 +60,13 @@ Chưa ghi được qua Hermes (chủ hoãn 16/10): hợp đồng, cọc, hoá đ
 
 **Đợt 2 đọc đầy đủ — việc của chủ (19/10):** registry đã bật 32 khoá đọc mới (Gói Z, migration `20261018090000`); 3 khoá giữ tắt. Trang `/settings/hermes` chỉ đọc được danh sách quyền đợt 2 từ khi web production lên `81c49363` (promote 19/10 sáng).
 - Đã làm 19/10: tạo kết nối mới (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) và thay token trong profile owner (`MCP_IHOMECRM_API_KEY`). Hermes thấy 69 báo cáo (kết nối cũ 20). Hai kết nối tạo hỏng đã thu hồi. Liên kết Zalo cũ đã ngắt.
-- **CHƯA xong:** liên kết Zalo với kết nối mới. Mã `/hermes-link` không tới được bot dưới dạng mã liên kết (đang điều tra). Kết nối cũ `…624ef30e` **chưa thu hồi**; thu hồi sau khi liên kết xong và nhắn thử được.
+- Đã xong sáng 19/10: liên kết Zalo với kết nối mới. Bot Ihome ghi nhận đúng nick chính và web báo "Đã liên kết nick Zalo của bạn với kết nối Hermes".
+- Còn lại của chủ: thử vài câu qua Zalo trên kết nối mới, rồi thu hồi kết nối cũ `…624ef30e` (**chưa thu hồi**).
 
-**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 5 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web.
+**Liên kết Zalo:** mục "Điều khiển Hermes qua Zalo" → chọn kết nối và bot → tạo mã → từ nick chính nhắn mã cho bot → bấm xác nhận. UID Zalo là theo góc nhìn bot (cùng một người có UID khác nhau ở mỗi nick). Mã chỉ sống 5 phút và theo tài khoản; sau khi nhắn phải bấm kiểm tra trên web. Bài học 19/10:
+- Phải **ngắt liên kết cũ trước** (một nick chính + một bot chỉ có một liên kết đang hoạt động).
+- Mã `/hermes-link` hạn 5 phút: gửi ngay sau khi tạo.
+- Kiểm bot đã nhận mã qua log worker (container `ihome-zalo-worker`): dòng `hermes link <status>`.
 
 **Lỗi đã biết trên `/settings/hermes`, CHƯA sửa (19/10):**
 - Trang báo nhầm "Chưa đọc được danh sách quyền…" trong lúc đang tải; chờ tải xong rồi xem lại.
@@ -156,8 +160,8 @@ Phiên cập nhật tài liệu 19/10 không có quyền VPS/DB: release VPS và
 
 Chi tiết ở [STATUS.md](STATUS.md#cập-nhật-1910). Tóm tắt:
 
-- Đọc đầy đủ đợt 2 đã lên production 19/10 (kèm #217). Kết nối mới đã thay vào profile owner (Hermes thấy 69 báo cáo). Còn chờ (CHƯA xong): liên kết Zalo với kết nối mới (mã `/hermes-link` chưa tới bot dưới dạng mã liên kết, đang điều tra) rồi thu hồi kết nối cũ `…624ef30e`.
-- Nghiệm thu đợt 2 qua Zalo thật: chưa làm (chờ liên kết Zalo). Phiếu cọc giữ chỗ đã khớp web (#217).
+- Đọc đầy đủ đợt 2 đã lên production 19/10 (kèm #217). Kết nối mới đã thay vào profile owner (Hermes thấy 69 báo cáo). Liên kết Zalo với kết nối mới đã xong sáng 19/10. Còn lại của chủ: thử vài câu qua Zalo rồi thu hồi kết nối cũ `…624ef30e` (chưa thu hồi).
+- Nghiệm thu đợt 2 qua Zalo thật: chưa làm (chưa nhắn thử câu nào trên kết nối mới). Phiếu cọc giữ chỗ đã khớp web (#217).
 - Ba lỗi đã biết ở `/settings/hermes` chưa sửa (báo nhầm "Chưa đọc được danh sách quyền…" lúc đang tải; gọi `/api/hermes/connections/*` mất 7–9 s; quy trình liên kết Zalo khó dùng).
 - Hàm dùng chung web + Hermes: Hermes chưa chuyển sang gọi `customer_list_v1` / `contract_list_v1` / `invoice_list_v1` (PR sau).
 - Thử thật qua Zalo trên connector mới (`b023563a`): gửi ảnh phòng trống, đọc đầy đủ đợt 1 và 2, `crm_group_directory` sau #191.

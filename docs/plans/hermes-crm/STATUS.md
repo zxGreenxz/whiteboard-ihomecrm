@@ -12,7 +12,7 @@ Giờ Việt Nam (UTC+7). Gồm việc 18/10 – sáng 19/10. Nguồn: `git log 
 | App | phục vụ `81c49363` (promote 19/10). Trước đó `d001edac` (18/10; Vercel chặn hạn mức dựng do push git nên dựng qua API) |
 | Migration production mới | 18/10: #206 `20261018044046_toi_uu_ham_quyen_rls_v1`. 19/10: đọc đầy đủ đợt 2, 25 migration `20261018000000…20261018090000` qua lane `migrate:forward` (mỗi file backup + hai lượt ROLLBACK trước khi áp, 25/25 đạt, không thử lại). 19/10 sau đó: #217 ba migration `20261018182656`, `20261018185339`, `20261018185413` qua lane, biên nhận `92e028b6` |
 | Registry năng lực | 32 khoá đọc đợt 2 bật (`20261018090000_hermes_w2_enable_v1`); giữ tắt `reports_finance.deposits_report`, `handover_report`, `collection_cycle` vì chưa có báo cáo |
-| Kết nối / model | Kết nối mới (tài khoản CRM của chủ đang dùng cho Hermes; 48 quyền Đọc + 11 quyền Thao tác; Toàn tổ chức) đã thay vào profile owner 19/10. Kết nối cũ `…624ef30e` chưa thu hồi. Model `cx/gpt-6-luna` không đổi |
+| Kết nối / model | Kết nối mới (tài khoản CRM của chủ đang dùng cho Hermes; 48 quyền Đọc + 11 quyền Thao tác; Toàn tổ chức) đã thay vào profile owner 19/10; liên kết Zalo nick chính → bot Ihome với kết nối mới đã xong sáng 19/10. Kết nối cũ `…624ef30e` chưa thu hồi. Model `cx/gpt-6-luna` không đổi |
 | VPS (đĩa) | Sau khi xoá release cũ và image hermes-agent cũ: đĩa ~71% đã dùng, 5,2 GB trống. Không còn bản lùi runtime Hermes cũ (chủ đồng ý) |
 
 **PR 18–19/10:**
@@ -47,14 +47,14 @@ Khách hàng (#196) đã ở production từ trước; Hợp đồng và Hoá đ
 - **#218, cửa idempotent (merge `81c49363`).** `check-forward-migration-idempotent` đỏ trên main: `20261018030100` (Gói C) chạy lại lần hai ngã `42P13` vì `20261018030300` đổi kiểu trả về của 8 hàm. Ghim ngoại lệ pinned cho `030100` (digest, SQLSTATE, nguyên văn lỗi, evidence apply của cả hai file; lỗi khác vẫn đỏ); `docLoiSql` giữ DETAIL/HINT trong message ghim. Không sửa migration đã áp.
 - **Promote web production `81c49363` (19/10).** Trước đó web đứng `d001edac` nên trang `/settings/hermes` không đọc được danh sách quyền đợt 2 (web kiểm khoá bằng danh sách đóng gói sẵn). Bài học: áp DB đợt có khoá mới phải promote web cùng lúc.
 - **Connector `b023563a` và dọn VPS.** Đổi connector sang `b023563a` (65 tool); bản lùi giữ trên VPS: release `14c6588a`. Dọn đĩa: xoá release cũ và image hermes-agent cũ (bản rollback runtime v0.22.2 trước đó; chủ đồng ý) ⇒ đĩa ~71% (5,2 GB trống); KHÔNG còn bản lùi runtime Hermes cũ.
-- **Kết nối Hermes mới.** Kết nối của tài khoản CRM chủ đang dùng cho Hermes (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) đã thay vào profile owner 19/10; Hermes thấy 69 báo cáo (kết nối cũ 20). Hai kết nối tạo hỏng đã thu hồi. Liên kết Zalo cũ đã ngắt; **liên kết Zalo với kết nối mới CHƯA xong**: mã `/hermes-link` không tới được bot dưới dạng mã liên kết (đang điều tra). Kết nối cũ `…624ef30e` chưa thu hồi. Mỗi kết nối và mỗi liên kết Zalo thuộc đúng MỘT tài khoản CRM; `/settings/hermes` chỉ hiện kết nối của tài khoản đang đăng nhập.
+- **Kết nối Hermes mới.** Kết nối của tài khoản CRM chủ đang dùng cho Hermes (48 quyền Đọc + 11 quyền Thao tác, Toàn tổ chức) đã thay vào profile owner 19/10; Hermes thấy 69 báo cáo (kết nối cũ 20). Hai kết nối tạo hỏng đã thu hồi. Liên kết Zalo cũ đã ngắt; **liên kết Zalo với kết nối mới đã xong sáng 19/10**: bot Ihome ghi nhận đúng nick chính và web báo "Đã liên kết nick Zalo của bạn với kết nối Hermes". Kết nối cũ `…624ef30e` chưa thu hồi; việc còn lại của chủ là thử vài câu qua Zalo rồi thu hồi. Mỗi kết nối và mỗi liên kết Zalo thuộc đúng MỘT tài khoản CRM; `/settings/hermes` chỉ hiện kết nối của tài khoản đang đăng nhập.
 - **Lỗi đã biết, CHƯA sửa:** (1) `/settings/hermes` báo nhầm "Chưa đọc được danh sách quyền…" trong lúc đang tải; (2) mỗi lời gọi `/api/hermes/connections/*` mất 7–9 s; (3) quy trình liên kết Zalo khó dùng (mã 5 phút, theo tài khoản, phải bấm kiểm tra trên web).
 - **#219 (draft) và #205.** #219 cho gate nhận biên nhận E2E fleet chạy local (`docs/generated/e2e-fleet-evidence/`, chỉ do runner sinh, fail-closed); đã review (APPROVE, không P0/P1) và vá P2; chưa merge. Sau khi merge sẽ chạy fleet thật để có biên nhận cho #205; #205 còn draft, chưa merge vì sửa spec fleet làm gate chặn promote cho tới khi có biên nhận. Chưa chạy fleet thật.
 - **Đợt 3, thao tác ghi: đề xuất, chưa chốt.** Nhóm 3A–3E và nền 3-0 bắt buộc, chờ chủ chọn nhóm: [DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md).
 
 **Chưa xác minh / chưa làm:**
 
-- **Liên kết Zalo với kết nối mới chưa xong** (xem trên) và kết nối cũ `…624ef30e` chưa thu hồi; sau khi liên kết xong mới nhắn thử được Hermes qua kết nối mới.
+- Liên kết Zalo với kết nối mới đã xong sáng 19/10, nhưng chưa nhắn thử câu nào qua Zalo trên kết nối mới; kết nối cũ `…624ef30e` chưa thu hồi, thu hồi sau khi thử xong.
 - Nghiệm thu đợt 2 qua Zalo thật: chưa làm. Đọc đợt 1 và gửi ảnh phòng trống qua Zalo vẫn chưa có bằng chứng thử thật trong repo.
 - Connector `b023563a`, 65 tool, bản lùi `14c6588a`, đĩa VPS, 69 báo cáo của kết nối mới: theo báo cáo vận hành 19/10, không kiểm lại VPS/DB trong phiên này. Lùi về `14c6588a` thì broker cũ từ chối kiểu phạm vi `rls_buildings` (báo cáo `reservation_vouchers` lỗi); chưa thử lùi thật. Giới hạn kích thước `tools/list` của client MCP Hermes chưa kiểm riêng (số đo gần nhất 63.872 B, còn ~130 B tới trần test).
 - Ba khoá đọc còn tắt chờ có báo cáo tương ứng.
@@ -63,7 +63,7 @@ Khách hàng (#196) đã ở production từ trước; Hợp đồng và Hoá đ
 
 | Việc | Mục PLAN |
 | --- | --- |
-| Hoàn tất liên kết Zalo với kết nối mới (điều tra mã `/hermes-link`), thu hồi kết nối cũ; nghiệm thu đợt 2 qua Zalo thật | P8.01/P8.06 |
+| Thử vài câu qua Zalo trên kết nối mới (liên kết đã xong 19/10), rồi thu hồi kết nối cũ; nghiệm thu đợt 2 qua Zalo thật | P8.01/P8.06 |
 | Hermes chuyển sang gọi `customer_list_v1` / `contract_list_v1` / `invoice_list_v1` (phiếu cọc giữ chỗ đã khớp web ở #217) | P8.02 |
 | Sửa 3 lỗi trang `/settings/hermes` và quy trình liên kết Zalo (ở trên) | P8.01 |
 | Merge #219, chạy fleet thật, biên nhận cho #205 | — |
@@ -1006,7 +1006,7 @@ Cập nhật sáng 19/10/2026; bằng chứng từng ô ở [PLAN.md](PLAN.md) m
 | P5 | Đạt P5.01–P5.06 (canary nhóm Web nội bộ 15/10) | — |
 | P6 | Đạt P6.01–P6.04 (lịch thật `e6968b09…` 16/10 + TEST CDE 11/11) | P6.05 restart/catch-up/đồng thời/quá tải/lỗi một phần chưa thử đủ; P6.06 cutover đã phát hành (#187: CRM là bộ lập lịch duy nhất), còn canary qua Zalo |
 | P7 | Đạt P7.01–P7.03, P7.06, P7.07 | P7.04 lịch sử Copilot cũ còn xem được; P7.05 revoke khi context CRM mở |
-| P8 | Miền ghi chủ hoãn 16/10; miền đọc: đợt 1 production 17/10 (#190), đợt 2 production 19/10 (#215, #217; 32 khoá bật, 3 tắt). Đợt 3 thao tác ghi: đề xuất, chờ chủ chốt ([DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md)) | P8.01–P8.06: liên kết Zalo với kết nối mới + nghiệm thu đợt 2 qua Zalo thật; Hermes gọi hàm dùng chung #196/#197/#201; miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản |
+| P8 | Miền ghi chủ hoãn 16/10; miền đọc: đợt 1 production 17/10 (#190), đợt 2 production 19/10 (#215, #217; 32 khoá bật, 3 tắt). Đợt 3 thao tác ghi: đề xuất, chờ chủ chốt ([DOT-3-THAO-TAC-GHI.md](DOT-3-THAO-TAC-GHI.md)) | P8.01–P8.06: nghiệm thu đợt 2 qua Zalo thật (liên kết Zalo với kết nối mới đã xong 19/10) và thu hồi kết nối cũ; Hermes gọi hàm dùng chung #196/#197/#201; miền ghi hợp đồng, cọc, hoá đơn, lương/cổ đông, tài sản |
 | P9 | Đạt P9.01–P9.03 | P9.04 diễn tập lỗi (hết quota, đĩa đầy…); P9.05 backup/restore connector thật |
 | P10 | Đạt P10.01, P10.06 | P10.02 số đo; P10.03 user thứ hai; P10.04 trần ngân sách/độ trễ; P10.05 nghiệm thu toàn tuyến |
 | P11 | Đạt P11.02–P11.05; Hermes không còn gọi `copilot_*` (#189, #193) | P11.01: chọn thu hồi/giữ cho 131 RPC `copilot_*` (P11-COPILOT-RETIREMENT §5B); chủ chốt 17/10 không sửa/xoá |
