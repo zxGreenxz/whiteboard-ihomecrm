@@ -1,4 +1,4 @@
-// Frozen contracts for the six SQL-reviewed 20261019 migrations.
+// Frozen contracts for eight 20261019 forward migrations; source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -18,6 +18,7 @@ export const FORWARD_DEFAULTS = [
 ];
 
 export const FORWARD_FUNCTIONS = [
+  {"name":"public.hermes_room_scope_map_v1","sourcePath":"supabase/migrations/20261019144508_hermes_inherited_room_scope_tombstones_v1.sql","sha256":"5e6da7091c591f74a34cbb459fc67ba8a84a82137dc2060c6b9f70916737f6e1","args":"p_organization_id uuid,p_scope_ids uuid[], p_connection_id uuid,p_token_digest text,p_expected_epoch bigint,p_expected_policy_version bigint, p_expected_membership_id uuid,p_expected_authorization_version bigint,p_expected_session_revision bigint"},
   {"name":"app_private.hermes_metadata_org_allowed_v1","sourcePath":"supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql","sha256":"20244609373cd35c7239e7006145dd75b008a304428d44ccf664e40432c47249","args":"p_org uuid,p_key text"},
   {"name":"app_private.hermes_metadata_member_v1","sourcePath":"supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql","sha256":"de6d1e2882c4adf272eadb8262ab75beb8a409373b988c1f9e4a8822eeecb22f","args":"p_user uuid,p_org uuid"},
   {"name":"app_private.hermes_metadata_domain_grant_v1","sourcePath":"supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql","sha256":"a92fe028a59d999cecba1c5781011cc8a6bc21c88a31329661cfbd36d94ba815","args":"p_org uuid,p_key text,p_enabled boolean,p_context jsonb"},

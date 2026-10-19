@@ -11,6 +11,7 @@ import { splitHermesFunctionStatements } from '../../scripts/hermes-task-functio
 import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from '../../scripts/network-center-disposable-db.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
+import { mapRoomBuildingScope } from './room-read-service.mjs';
 
 // Real local PostgreSQL role/JWT-claim/RLS fixture. No signed HTTP JWT or
 // PostgREST integration claim: this exercises the actual SQL under SET ROLE.
@@ -71,6 +72,7 @@ CREATE TABLE public.member_override_scopes(organization_id uuid,override_id uuid
 CREATE TABLE public.area_buildings(organization_id uuid,area_id uuid,building_id uuid);
 CREATE TABLE public.cashbook_possession_bindings(organization_id uuid,membership_id uuid,cashbook_id uuid,possession_kind text,valid_from timestamptz,valid_to timestamptz);
 CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz);
+CREATE TABLE public.areas(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz);
 CREATE TABLE public.accounts(id uuid PRIMARY KEY,organization_id uuid,deleted_at timestamptz);
 `;
 function run(binary, args, options = {}) {
@@ -301,4 +303,125 @@ test('TG2 actual PostgreSQL: legacy preserved, inheritance projections/exclusion
   assert.equal((await store.revokeConnection({connectionId:snapshot.connection.id,expectedEpoch:snapshot.connection.epoch},options)).status,'revoked');
   assert.equal(await store.readConnection({tokenDigest:legacyDigest},options),null);
  });
+});
+
+test('inherited room tombstones contribute no rooms, preserve ceilings and survive concurrent target edits', {timeout:120000},async t=>{
+ const {pool,cleanup}=await localCluster(t);t.after(async()=>{await pool.end();cleanup();});await setup(pool);
+ const [DEAD_BUILDING,DEAD_AREA,LIVE_AREA,DEAD_BUILDING_SCOPE,DEAD_AREA_SCOPE,LIVE_AREA_SCOPE,WRONG_SCOPE]=[61,62,63,64,65,66,67].map(id);
+ await pool.query('INSERT INTO public.buildings VALUES($1,$2,now())',[DEAD_BUILDING,ORG]);
+ await pool.query('INSERT INTO public.areas VALUES($1,$2,now()),($3,$2,null)',[DEAD_AREA,ORG,LIVE_AREA]);
+ await pool.query(`INSERT INTO public.authorization_scopes(id,organization_id,scope_type,building_id,area_id) VALUES
+ ($1,$2,'BUILDING',$3,null),($4,$2,'AREA',null,$5),($6,$2,'AREA',null,$7),($8,$2,'BUILDING',$9,null)`,
+ [DEAD_BUILDING_SCOPE,ORG,DEAD_BUILDING,DEAD_AREA_SCOPE,DEAD_AREA,LIVE_AREA_SCOPE,LIVE_AREA,BUILDING_SCOPE,BUILDING]);
+ // An edge under a deleted AREA deliberately points to a live, CRM-permitted
+ // building. The final mapper must still contribute zero from that AREA.
+ await pool.query('INSERT INTO public.area_buildings VALUES($1,$2,$3),($1,$4,$3)',[ORG,DEAD_AREA,BUILDING,LIVE_AREA]);
+ for(const name of ['public.hermes_scope_buildings_v1','public.hermes_room_scope_map_v1'])await pool.query(live.get(name));
+ const prepareSql="SELECT public.hermes_prepare_connection_v2($1,'{customers.view}','{}','unrestricted','{}') value";
+ const prepare=()=>jwt(pool,async c=>(await c.query(prepareSql,[ORG])).rows[0].value);
+ const snapshot=async connection=>(await pool.query('SELECT * FROM app_private.hermes_connections WHERE id=$1',[connection.id])).rows[0];
+ const sessions=new Map();let sequence=100;
+ const activate=async connection=>{
+  const provider=id(sequence++),digest=String(sequence++).padStart(64,'a');
+  const result=(await pool.query('SELECT app_private.hermes_store_activate_v1($1::jsonb) value',[JSON.stringify({connectionId:connection.id,
+   expectedEpoch:1,operationId:id(sequence++),intentSecret:connection.intentSecret,userId:USER,providerSessionId:provider,credentialRef:id(sequence++),
+   tokenDigest:digest,tokenExpiresAt:Date.now()+600000,sessionExpiresAt:Date.now()+3600000,
+   sessionEnvelope:{v:1,algorithm:'A256GCM',keyVersion:'fixture',nonce:'a'.repeat(16),tag:'a'.repeat(22),ciphertext:'abcd'}})])).rows[0].value;
+  assert.equal(result.status,'activated');sessions.set(connection.id,{provider,digest});return connection;
+ };
+ const before=await activate(await prepare());assert(before.scopeIds.includes(DEAD_BUILDING_SCOPE));
+ const roomMap=async(connection=before,{org=ORG,scopes=null,policyVersion=0}={})=>{
+  const bound=await snapshot(connection),session=sessions.get(connection.id);
+  return jwt(pool,async c=>{
+   await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({session_id:session.provider})]);
+   return(await c.query('SELECT public.hermes_room_scope_map_v1($1,$2,$3,$4,$5,$6,$7,$8,$9) value',
+    [org,scopes??bound.scope_ids,bound.id,session.digest,bound.epoch,policyVersion,MEMBER,1,1])).rows[0].value;
+  });
+ };
+ const map=value=>mapRoomBuildingScope({organizationId:value.organizationId,assistantScopeIds:value.scopes.map(s=>s.id),
+  permissionBuildingIds:value.permissionBuildingIds},Object.fromEntries(['organizationId','complete','scopes','areaBuildings'].map(k=>[k,value[k]])));
+ // Reproduce the real RPC failure before applying the one-function replacement.
+ await assert.rejects(roomMap(),{code:'22023',message:'hermes_scope_invalid'});
+ const unchanged=await snapshot(before);
+ const originalCandidate=readFileSync(new URL('../../supabase/migrations/20261019144508_hermes_inherited_room_scope_tombstones_v1.sql',import.meta.url),'utf8');
+ const mutation=process.env.HERMES_LIVE_SCOPE_MUTATION;
+ assert(!mutation||mutation==='reject-tombstones');
+ const candidate=mutation?originalCandidate.replaceAll(' OR v_inherited_unrestricted',''):originalCandidate;
+ await pool.query(candidate);await pool.query(candidate);
+ assert.deepEqual(await snapshot(before),unchanged,'Read-side repair never rewrites connection identity, epoch, scopes or exclusions');
+ let mapped=await roomMap();assert.deepEqual(map(mapped),[BUILDING]);
+ assert.deepEqual(mapped.scopes.map(s=>s.id),unchanged.scope_ids,'Every bound scope ID stays accounted for');
+ assert(!mapped.permissionBuildingIds.includes(DEAD_BUILDING));
+ assert(!mapped.areaBuildings.some(edge=>edge.areaId===DEAD_AREA));
+ await assert.rejects(roomMap(before,{org:FOREIGN}),{code:'42501'});
+ await assert.rejects(roomMap(before,{scopes:[ORG_SCOPE]}),{code:'PT409'});
+ await pool.query("UPDATE public.role_permissions SET effect='DENY' WHERE permission_key='rooms.view'");
+ await assert.rejects(roomMap(),{code:'42501'});
+ await pool.query("UPDATE public.role_permissions SET effect='ALLOW' WHERE permission_key='rooms.view'");
+ // Company ceilings still apply, including the empty effective result. No
+ // fallback to all permitted buildings when only a deleted target is selected.
+ await pool.query("INSERT INTO app_private.hermes_org_policies(organization_id,enabled,version,read_capabilities,scope_ids,updated_by) VALUES($1,true,1,'{rooms.view}',$2,$3)",[ORG,[DEAD_AREA_SCOPE],USER]);
+ mapped=await roomMap(before,{scopes:[DEAD_AREA_SCOPE],policyVersion:1});
+ assert.deepEqual(mapped.permissionBuildingIds,[BUILDING]);assert.deepEqual(mapped.areaBuildings,[]);
+ assert.throws(()=>map(mapped),{code:'forbidden'});
+ await pool.query('UPDATE app_private.hermes_org_policies SET scope_ids=$2 WHERE organization_id=$1',[ORG,[DEAD_BUILDING_SCOPE]]);
+ mapped=await roomMap(before,{scopes:[DEAD_BUILDING_SCOPE],policyVersion:1});assert.throws(()=>map(mapped),{code:'forbidden'});
+ await pool.query('UPDATE app_private.hermes_org_policies SET scope_ids=$2 WHERE organization_id=$1',[ORG,[LIVE_AREA_SCOPE]]);
+ assert.deepEqual(map(await roomMap(before,{scopes:[LIVE_AREA_SCOPE],policyVersion:1})),[BUILDING]);
+ await pool.query('UPDATE public.areas SET deleted_at=now() WHERE id=$1',[LIVE_AREA]);
+ mapped=await roomMap(before,{scopes:[LIVE_AREA_SCOPE],policyVersion:1});assert.throws(()=>map(mapped),{code:'forbidden'});
+ await pool.query('UPDATE public.areas SET deleted_at=null WHERE id=$1',[LIVE_AREA]);
+ assert.deepEqual(map(await roomMap(before,{scopes:[LIVE_AREA_SCOPE],policyVersion:1})),[BUILDING]);
+ await pool.query('DELETE FROM app_private.hermes_org_policies WHERE organization_id=$1',[ORG]);
+ // A target writer can finish its UPDATE while an admitted action holds the
+ // connection FOR SHARE, then that action waits only for the target commit.
+ // AFTER-trigger connection refresh used to create the opposite lock order.
+ const actor=await pool.connect(),writer=await pool.connect();
+ try{
+  await actor.query('BEGIN');await actor.query('SELECT id FROM app_private.hermes_connections WHERE id=$1 FOR SHARE',[before.id]);
+  await writer.query("BEGIN;SET LOCAL statement_timeout='2s'");
+  await writer.query('UPDATE public.buildings SET deleted_at=null WHERE id=$1',[DEAD_BUILDING]);
+  const actorPid=(await actor.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+  const pending=actor.query('SELECT id FROM public.buildings WHERE id=$1 FOR SHARE',[DEAD_BUILDING]);
+  let blocked=false;
+  for(let attempt=0;attempt<100;attempt++){
+   blocked=(await pool.query('SELECT cardinality(pg_blocking_pids($1))>0 value',[actorPid])).rows[0].value;
+   if(blocked)break;await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  await writer.query('COMMIT');await pending;await actor.query('COMMIT');
+  assert(blocked,'Action actually waits on the target, with no connection/target lock cycle');
+ }finally{await actor.query('ROLLBACK');await writer.query('ROLLBACK');actor.release();writer.release();}
+ assert.deepEqual(map(await roomMap()),[BUILDING,DEAD_BUILDING].sort());
+ // Uncommitted admission sees the old target state; target deletion commits
+ // first. After admission commits, the read resolves the tombstone live.
+ const creator=await pool.connect();let fresh;
+ try{
+  await creator.query('BEGIN');
+  await creator.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[USER]);
+  await creator.query('SET LOCAL ROLE authenticated');
+  fresh=(await creator.query(prepareSql,[ORG])).rows[0].value;
+  assert(fresh.scopeIds.includes(DEAD_BUILDING_SCOPE));
+  await pool.query('UPDATE public.buildings SET deleted_at=now() WHERE id=$1',[DEAD_BUILDING]);
+  await creator.query('COMMIT');
+ }finally{await creator.query('ROLLBACK');creator.release();}
+ await activate(fresh);assert.deepEqual(map(await roomMap(fresh)),[BUILDING]);
+ assert.deepEqual(map(await roomMap()),[BUILDING]);
+ // Missing or foreign targets are corruption, not valid same-org tombstones.
+ for(const [kind,target] of [['BUILDING',OTHER_BUILDING],['BUILDING',id(199)],['AREA',id(198)]]){
+  await pool.query('INSERT INTO public.authorization_scopes(id,organization_id,scope_type,building_id,area_id) VALUES($1,$2,$3,$4,$5)',
+   [WRONG_SCOPE,ORG,kind,kind==='BUILDING'?target:null,kind==='AREA'?target:null]);
+  await assert.rejects(roomMap(),{code:'22023',message:'hermes_scope_invalid'});
+  await pool.query('DELETE FROM public.authorization_scopes WHERE id=$1',[WRONG_SCOPE]);
+ }
+ // Preserve explicit restricted/legacy refusal semantics. Restoring the same
+ // target makes the same selected scope usable again, without a new credential.
+ await pool.query("UPDATE app_private.hermes_connections SET scope_mode='restricted',scope_ids=$2 WHERE id=$1",[fresh.id,[DEAD_BUILDING_SCOPE]]);
+ await assert.rejects(roomMap(fresh),{code:'22023'});
+ await pool.query('UPDATE public.buildings SET deleted_at=null WHERE id=$1',[DEAD_BUILDING]);
+ assert.deepEqual(map(await roomMap(fresh)),[DEAD_BUILDING]);
+ await pool.query("UPDATE app_private.hermes_connections SET permission_mode='legacy_allowlist',excluded_read='{}',scope_ids=$2 WHERE id=$1",[fresh.id,[DEAD_AREA_SCOPE]]);
+ await assert.rejects(roomMap(fresh),{code:'22023'});
+ await pool.query('UPDATE public.areas SET deleted_at=null WHERE id=$1',[DEAD_AREA]);
+ assert.deepEqual(map(await roomMap(fresh)),[BUILDING]);
+ await assert.rejects(jwt(pool,c=>c.query('SELECT * FROM app_private.hermes_connections')),{code:'42501'});
 });
