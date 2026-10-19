@@ -22,6 +22,7 @@ import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createSupabaseDurableAuthAdapter } from './supabase-durable-auth-adapter.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createConnectionControlPlane, createSupabaseAssistantSignIn, createSupabaseConnectionPreparation } from './connection-control-plane.mjs';
 import { createConnectionManagement, createSupabaseConnectionManagementReads } from './connection-management.mjs';
 import { createConnectionHttpHandler } from './connection-http.mjs';
@@ -103,13 +104,14 @@ function backendLimits(value) {
  * before answering 503 connection_maintenance (0 keeps the immediate 503).
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
       typeof configuration.audit !== 'function' || (Object.hasOwn(configuration, 'fetch') && typeof configuration.fetch !== 'function') ||
       (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
       (Object.hasOwn(configuration, 'connectorOnly') && configuration.connectorOnly !== true) ||
+      (Object.hasOwn(configuration, 'readFastPath') && typeof configuration.readFastPath !== 'boolean') ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
@@ -138,6 +140,9 @@ export function createHermesBackend(configuration = {}) {
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const auth = createTaskAuth({ baseAuth: expenseAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
+    const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
+      authority: createDurableAuthority({ connectionStore, crypto, clock,
+        auth: createDomainAuthAdapter({ baseAuth, reads: createSupabaseDomainReads({ ...supabase, fetch: request, dependencyScope }) }) }) }) : undefined;
     const workMemory = createWorkMemoryService({ authority, connectionStore, crypto, auth, reads: memoryReads, clock });
     const renewal = createConnectionRenewal({ authority, connectionStore, clock });
     const refreshProvider = createSupabaseRefreshProvider({ ...supabase, fetch: request, clock, dependencyScope });
@@ -156,7 +161,7 @@ export function createHermesBackend(configuration = {}) {
     // Same composed auth: chat_zalo.view/send (group) and manage_automation (schedule).
     const zaloBroadcasts = createZaloBroadcastService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const schedules = createScheduleMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
-    const domains = createDomainMount({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
+    const domains = createDomainMount({ auth, authority, readAuthority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request }).createService();
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });

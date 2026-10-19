@@ -45,6 +45,20 @@ test('loader accepts bounded explicit rotation and CA with matching session-pool
   assert.ok(config.store.ca.startsWith('-----BEGIN CERTIFICATE-----')); config.dispose();
 });
 
+test('private read fastpath requires an explicit boolean opt-in and defaults to the deployed lane', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'readFastPath'), false); } finally { baseline.dispose(); }
+  for (const readFastPath of [false, true]) {
+    await f.save({ ...f.input, readFastPath });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.equal(config.readFastPath, readFastPath); } finally { config.dispose(); }
+  }
+  for (const readFastPath of [null, 'true', 1, {}]) {
+    await f.save({ ...f.input, readFastPath }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
 test('connector config needs no model or personal profile and rejects the removed managed (version 1) shape', async t => {
   const f = await fixture(t), input = structuredClone(f.input);
   const config = await loadHostConfiguration(f.configPath);
@@ -170,4 +184,20 @@ test('Linux requires private config/secret modes, trusted root and existing subd
     await chmod(target, invalid); await assert.rejects(loadHostConfiguration(f.configPath), refused); await chmod(target, valid);
   }
   const handoff = path.join(f.stateRoot, 'handoff'); await mkdir(handoff, { mode: 0o750 }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+});
+
+test('optional native provisioning keeps an explicit private allowlist and rejects WAL/profile namespace overlap',async t=>{
+  const f=await fixture(t),row={assistantId:'11111111-1111-4111-8111-111111111111',userId:'22222222-2222-4222-8222-222222222222',
+    organizationId:'33333333-3333-4333-8333-333333333333',accountId:'44444444-4444-4444-8444-444444444444',
+    profile:'alpha',home:path.join(f.root,'profiles','alpha')};
+  const native={configFile:path.join(f.root,'native.json'),stateRoot:path.join(f.root,'native-state'),listenPort:8991,
+    mcpUrl:'http://127.0.0.1:8740/mcp',profiles:[row]};
+  await f.save({...f.input,zaloProvisioning:native});
+  const config=await loadHostConfiguration(f.configPath);
+  try {assert.equal(config.zaloProvisioning.profiles[0].assistantId,row.assistantId);assert.equal(config.zaloProvisioning.pollIntervalMs,30000);}
+  finally {config.dispose();}
+  for(const bad of [{...native,profiles:[row,row]},{...native,stateRoot:path.join(f.stateRoot,'handoff')},
+    {...native,profiles:[{...row,home:path.join(f.stateRoot,'handoff','runtime')}]}]) {
+    await f.save({...f.input,zaloProvisioning:bad});await assert.rejects(loadHostConfiguration(f.configPath),refused);
+  }
 });

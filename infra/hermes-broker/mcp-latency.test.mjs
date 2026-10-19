@@ -150,7 +150,9 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   assert.equal(JSON.parse(cold.response.body.result.content[0].text).items.length, 1);
   assert.equal(JSON.parse(rooms.response.body.result.content[0].text).rooms.length, 1);
   // Room discovery keeps its reviewed order: bound scope map, then the snapshot.
-  assert.ok(rooms.stats.sequentialNetwork <= 11 && rooms.stats.elapsedMs < 2500, JSON.stringify(rooms.stats));
+  assert.ok(rooms.stats.sequentialNetwork <= 7 && rooms.stats.elapsedMs < 2500, JSON.stringify(rooms.stats));
+  assert.equal(rooms.stats.sqlStatements, 3); assert.equal(rooms.stats.authCalls, 2);
+  assert.equal(rooms.stats.restCalls, 16); // One full admission plus initial scope map + room snapshot.
   assert.ok(listed.stats.sequentialNetwork <= 6, JSON.stringify(listed.stats));
   // A warm pool reuses its verified session: no reconnect and no per-call principal query.
   assert.equal(cold.stats.poolConnects, 1); assert.equal(warm.stats.poolConnects, 0); assert.equal(f.opened(), 1);
@@ -182,6 +184,17 @@ test('revocation or a CRM authorization change during a call is caught after the
     assert.notEqual(response.status === 200 && response.body.result?.isError === false, true, JSON.stringify(response.body));
     assert(!JSON.stringify(response.body).includes('Synthetic resident'));
   }
+});
+
+test('direct room reads complete after audit-time revocation without repeated authority work; next request is denied', async t => {
+  const f = await started(t, { latency: FAST, onAudit(event, state) { if (event.outcome === 'prepared') state.revoked = true; } });
+  const { response, stats } = await measure(f.backend, f.events, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
+  assert.equal(response.status, 200); assert.equal(response.body.result.isError, false);
+  assert.equal(JSON.parse(response.body.result.content[0].text).rooms.length, 1);
+  assert.equal(stats.sqlStatements, 4); assert.equal(stats.poolConnects, 1); // Cold pool also verifies its principal once.
+  assert.equal(stats.authCalls, 2); assert.equal(stats.restCalls, 16);
+  const denied = await measure(f.backend, f.events, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
+  assert.equal(denied.response.status, 401); assert.equal(denied.stats.restCalls + denied.stats.authCalls, 0);
 });
 
 test('tools/call has its own sliding-window rate limit with a model-readable retry hint', async t => {

@@ -233,6 +233,30 @@ test('two-phase seam exposes no data before audit, consumes its branded receipt 
   f.crypto.destroy();
 });
 
+test('direct-read finalization uses initial scope without authority/map I/O after audit-time revocation', async t => {
+  const f = fixture(); t.after(() => f.crypto.destroy()); const service = f.create();
+  const prepared = await service.prepareAvailableRooms(opaque, {}, f.options);
+  const before = [...f.events];
+  f.joined.connection.state = 'revoked'; f.joined.policy.version++; f.authz.permissions.read = [];
+  f.reads.scopeMap = async () => { throw Error('unexpected final scope query'); };
+  const result = await service.finalizeAvailableRooms(opaque, prepared, { ...f.options, useInitialAdmission: true });
+  assert.deepEqual(result.rooms.map(room => room.building.id), [I.a]); assert.deepEqual(f.events, before);
+  await assert.rejects(service.finalizeAvailableRooms(opaque, prepared, { ...f.options, useInitialAdmission: true }), code('context_changed'));
+  await assert.rejects(service.prepareAvailableRooms(opaque, {}, f.options), error => error instanceof BrokerError);
+});
+
+test('direct-read receipt retains token binding, expiry/deadline and abort checks', async t => {
+  for (const cause of ['token', 'expiry', 'deadline', 'abort']) {
+    const f = fixture(); t.after(() => f.crypto.destroy()); const service = f.create({ timeoutMs: 1000 });
+    const prepared = await service.prepareAvailableRooms(opaque, {}, f.options);
+    if (cause === 'expiry') f.time(NOW + 600_000);
+    if (cause === 'deadline') f.time(NOW + 1000);
+    if (cause === 'abort') f.controller.abort();
+    await assert.rejects(service.finalizeAvailableRooms(cause === 'token' ? 'hc_' + 'B'.repeat(43) : opaque, prepared,
+      { ...f.options, useInitialAdmission: true }), code(cause === 'token' ? 'context_changed' : cause === 'expiry' ? 'unauthorized' : 'timeout'));
+  }
+});
+
 const origin = 'https://fixture.supabase.co', publishableKey = 'sb_publishable_fixture';
 test('HTTP adapter pins exactly two read RPCs, actual authenticated JWT and selected-org/scope arguments', async () => {
   const calls = [], f = new AbortController();

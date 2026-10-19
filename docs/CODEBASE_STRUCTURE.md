@@ -31,6 +31,12 @@ Client chỉ phản chiếu quyền; quyết định cuối ở backend. Không 
 
 ## Công thức dùng chung
 
+**Đích Hermes 19/10/2026: quyền Hermes = quyền CRM hiện tại của user − những quyền bị tắt trong cài đặt Hermes.** [Plan và audit §10](plans/hermes-crm/TINH-GON-KIEM-QUYEN.md) đang được hiện thực; cả sáu production migration official forward lane PASS lúc `2026-10-19T05:51:09.263Z`. Core `8bcee906` ở draft PR #222; Gate5 core 67/67 Node 24.18.0, TEST read-only 64/64, fast fixture 15/15 và binding 19/19 PASS. Production post-apply verifier 23/23 PASS; catalog 53 hàm (51 digest + 2 SQL standard), ACL 17, metadata 11. Read-only org có ACTIVE membership xác nhận ba cặp wrapper/core deepEqual, mỗi cặp 5 hàng; DEMO ban đầu rỗng. Chưa deploy VPS/phát hành app; fast production, UI, broker/provider, p95 và CI head cuối chưa kiểm. Giữ tắt/bật lại trên connection cũ trong giới hạn CRM và audit atomic; bỏ kiểm lặp, không xóa quyền nền. Không áp mốc 100 ms/cấm cache/epoch mọi RPC. Metadata không giữ org lock; writer settings/revoke/Zalo theo thứ tự organization → audit advisory → session/connection để tránh deadlock với canonical writer.
+
+Candidate `20261019040055` tách ba core `customer_list_core_v1`, `contract_list_core_v1`, `invoice_list_core_v1`: web wrapper giữ chữ ký/default/order, Hermes fast read dùng cùng INVOKER core với cursor id tăng dần và phạm vi chỉ thu hẹp. `readFastPath` vẫn giữ tắt đến khi runtime rollout/đo được; thiếu RPC thì báo lỗi, không ngầm fallback. Không gọi INVOKER qua DEFINER rồi coi quyền như web. Legacy và các report chưa chuyển vẫn có mục `mirrored` riêng trong bản đồ parity.
+
+PII candidate xét từng field: tên phiếu/người nộp đặt cọc và tên chủ xe được trả/tìm theo source RLS khi mode inherit cho phép customer text; legacy giữ hành vi che hiện hành. Khách JOIN vẫn theo RLS và exclusions; ghi chú tài chính, ghi chú thanh lý và Network Center giữ rào hiện hành vì bằng chứng parity chưa đủ. Vị trí khách trên fast path theo web: hợp đồng ACTIVE thấy được, ngày bắt đầu muộn nhất; không giữ quy tắc ACTIVE/EXTENDED của legacy.
+
 Công thức/bộ lọc có từ hai nơi trở lên cùng dùng (web, Hermes, báo cáo, worker) hoặc dính tiền/quyền đặt trong hàm SQL dùng chung mà mọi nơi cùng gọi; frontend chỉ giữ hiển thị (định dạng, sắp xếp cột, ẩn/hiện) và truy vấn chỉ trang đó dùng. Chỗ còn chép công thức sang Hermes phải có marker `hermes-parity` (chủ chốt 17/10/2026).
 
 - Chuyển từng màn một: đưa công thức của một màn vào hàm SQL chung, đổi màn đó gọi hàm, xong mới sang màn kế.

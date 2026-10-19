@@ -11,7 +11,8 @@ const bot = z.object({ accountId: uuid, name: z.string().max(160), zaloUid: uid 
 const managedBot = z.object({ accountId: uuid, name: z.string().max(160), zaloUid: uid.nullable(), connected: z.boolean(),
   enabled: z.boolean(), version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1) }).strict()
   .refine(value => (!value.connected || value.zaloUid !== null) && (value.version > 0 || !value.enabled));
-const binding = z.object({ bindingId: uuid, epoch: positive, state: z.enum(['active', 'revoked']), accountId: uuid, connectionId: uuid, senderUid: uid }).strict();
+const provisioningState = z.enum(['pending','pending_credential','restart_pending','synchronized','unavailable']).optional();
+const binding = z.object({ bindingId: uuid, epoch: positive, state: z.enum(['active', 'revoked']), accountId: uuid, connectionId: uuid, senderUid: uid, provisioningState }).strict();
 const page = z.object({ ...owner, status: z.literal('listed'), bindings: z.array(binding).max(100), nextCursor: uuid.nullable() }).strict();
 const bots = z.object({ ...owner, status: z.literal('listed'), bots: z.array(bot).max(100), nextCursor: uuid.nullable() }).strict();
 const managedBots = z.object({ ...owner, status: z.literal('listed'), bots: z.array(managedBot).max(100), nextCursor: uuid.nullable() }).strict();
@@ -21,8 +22,10 @@ const begin = z.object({ ...owner, status: z.literal('waiting'), challengeId: uu
 const status = z.object({ ...owner, status: z.enum(['waiting', 'observed', 'confirmed']), challengeId: uuid, accountId: uuid, connectionId: uuid,
   candidateVersion: z.number().int().min(0).max(1), senderUid: uid.nullable(), expiresAt: positive }).strict()
   .refine(value => value.status === 'waiting' ? value.candidateVersion === 0 && value.senderUid === null : value.candidateVersion === 1 && value.senderUid !== null);
-const confirmed = z.object({ ...owner, status: z.literal('active'), bindingId: uuid, epoch: positive, accountId: uuid, connectionId: uuid, senderUid: uid }).strict();
+const confirmed = z.object({ ...owner, status: z.literal('active'), bindingId: uuid, epoch: positive, accountId: uuid, connectionId: uuid, senderUid: uid, provisioningState }).strict();
 const unlinked = z.object({ ...owner, status: z.literal('revoked'), bindingId: uuid, epoch: positive }).strict();
+const selected = z.object({ ...owner, status: z.literal('selected'), connectionId: uuid }).strict();
+const selectCredentialInput = z.object({ connectionId: uuid, expectedConnectionEpoch: positive, expectedActiveConnectionId: uuid.nullable() }).strict();
 const beginInput = z.object({ connectionId: uuid, expectedConnectionEpoch: positive, accountId: uuid }).strict();
 const confirmInput = z.object({ challengeId: uuid, expectedCandidateVersion: z.literal(1), expectedSenderUid: uid }).strict();
 const unlinkInput = z.object({ bindingId: uuid, expectedEpoch: positive }).strict();
@@ -38,8 +41,8 @@ export type HermesZaloStatus = z.infer<typeof status>;
 const statuses = { invalid_request: 400, forbidden: 403, reauthentication_required: 401, context_changed: 409,
   backend_unavailable: 503, binding_outcome_unknown: 503, cancelled: 408, timeout: 504, busy: 429, backend_closed: 503 } as const;
 type ErrorCode = keyof typeof statuses | 'invalid_response';
-type Operation = 'bots' | 'manageBots' | 'setBot' | 'list' | 'begin' | 'status' | 'confirm' | 'unlink';
-const isWrite = (operation: Operation) => ['begin','confirm','unlink','setBot'].includes(operation);
+type Operation = 'bots' | 'manageBots' | 'setBot' | 'selectCredential' | 'list' | 'begin' | 'status' | 'confirm' | 'unlink';
+const isWrite = (operation: Operation) => ['begin','confirm','unlink','setBot','selectCredential'].includes(operation);
 export class HermesZaloClientError extends Error {
   constructor(readonly code: ErrorCode, readonly outcomeUnknown: boolean) { super(code); }
 }
@@ -143,6 +146,8 @@ export function createHermesZaloClient({ userId, organizationId, currentScope, g
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); controller.abort(); }
   }
   return {
+    selectCredential: (input: z.infer<typeof selectCredentialInput>, options?: RequestOptions) => invoke('selectCredential', input, selectCredentialInput, selected,
+      (r, q) => r.connectionId === q.connectionId, options),
     manageBots: (input: z.infer<typeof botsInput>, options?: RequestOptions) => invoke('manageBots', input, botsInput, managedBots,
       (r, q) => ordered(r.bots.map(b => b.accountId), q.afterAccountId, r.nextCursor), options),
     setBot: (input: z.infer<typeof setBotInput>, options?: RequestOptions) => invoke('setBot', input, setBotInput, configuredBot,

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createHermesConnectionClient, HermesConnectionClientError, type HermesCallerScope,
   type HermesConnectionContext, type HermesConnectionMetadata, type HermesConnectInput,
-  type HermesConnectResult, type HermesConnectionRestrictions, type HermesConnectorStatus, type HermesGrantOptions } from './connectionClient';
+  type HermesSettingsInput, type HermesConnectResult, type HermesConnectionRestrictions, type HermesConnectorStatus, type HermesGrantOptions } from './connectionClient';
 
-type Operation = 'list' | 'context' | 'connect' | 'restrict' | 'revoke';
+type Operation = 'list' | 'context' | 'connect' | 'restrict' | 'revoke' | 'settings';
 interface State {
   connections: HermesConnectionMetadata[] | null;
   context: HermesConnectionContext | null;
   options: HermesGrantOptions | null;
+  optionsState: 'idle' | 'loading' | 'ready' | 'error';
   /** Connector process memory since its start; null while loading or when unavailable. */
   connectorStatus: HermesConnectorStatus | null;
   connectorStatusError: boolean;
@@ -16,7 +17,7 @@ interface State {
   message: string | null;
   needsReload: boolean;
 }
-const initial = (): State => ({ connections: null, context: null, options: null, connectorStatus: null, connectorStatusError: false,
+const initial = (): State => ({ connections: null, context: null, options: null, optionsState: 'idle', connectorStatus: null, connectorStatusError: false,
   handoff: null, busy: null, message: null, needsReload: false });
 const errorMessage = (error: unknown, write: boolean) => {
   if (error instanceof HermesConnectionClientError) {
@@ -42,10 +43,11 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   const client = useMemo(() => createHermesConnectionClient({ userId, organizationId, currentScope }), [userId, organizationId, currentScope]);
   const [state, setState] = useState<State>(initial);
   const lifecycle = useRef({ alive: false, generation: 0, controller: null as AbortController | null, ready: false, needsReload: false });
+  const optionsRequest = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
     const life = lifecycle.current;
     life.alive = true; life.generation++;
-    return () => { life.alive = false; life.generation++; life.controller?.abort(); life.controller = null; };
+    return () => { life.alive = false; life.generation++; life.controller?.abort(); life.controller = null; optionsRequest.current?.abort(); };
   }, []);
 
   const run = useCallback(async <T,>(operation: Operation, work: (signal: AbortSignal) => Promise<T>,
@@ -61,9 +63,11 @@ export function useHermesConnections(userId: string, organizationId: string, cur
         current.userId === scope.userId && current.organizationId === scope.organizationId && current.generation === scope.generation;
     };
     const write = !['list', 'context'].includes(operation);
-    if (operation === 'list') life.ready = false;
+    if (operation === 'list') {
+      life.ready = false; optionsRequest.current?.abort(); optionsRequest.current = null;
+    }
     setState(previous => ({ ...previous, busy: operation, message: null,
-      ...(operation === 'list' ? { connections: null, context: null, options: null, connectorStatus: null, connectorStatusError: false } : {}),
+      ...(operation === 'list' ? { context: null, options: null, optionsState: 'idle' as const } : {}),
       ...(operation === 'context' || write ? { context: null } : {}),
       ...(write ? { handoff: null } : {}) }));
     try {
@@ -74,22 +78,37 @@ export function useHermesConnections(userId: string, organizationId: string, cur
         ...(operation === 'list' ? { needsReload: false } : {}) }));
     } catch (error) {
       if (!valid()) return;
-      if (write) life.needsReload = true;
+      if (write || operation === 'list') life.needsReload = true;
       setState(previous => ({ ...previous, busy: null, context: null,
         message: errorMessage(error, write), needsReload: life.needsReload }));
     } finally {
       if (life.controller === controller) life.controller = null;
     }
   }, [client, currentScope, userId, organizationId]);
-  const reload = useCallback(() => run('list', async signal => {
-    const result = await client.list({ signal });
-    // Independent reads: a missing grant list or an older connector without
-    // `status` must not hide the stored connections.
-    const [options, status] = await Promise.allSettled([client.options({ signal }), client.status({ signal })]);
-    return { ...result, options: options.status === 'fulfilled' ? options.value.options : null,
-      connectorStatus: status.status === 'fulfilled' ? status.value : null, connectorStatusError: status.status === 'rejected' };
-  }, (result, previous) => ({ ...previous, connections: result.connections, options: result.options,
-    connectorStatus: result.connectorStatus, connectorStatusError: result.connectorStatusError })), [client, run]);
+  const reload = useCallback(() => run('list', signal => client.overview({ signal }),
+    (result, previous) => ({ ...previous, connections: result.connections,
+      connectorStatus: result.status, connectorStatusError: false })), [client, run]);
+  const ensureOptions = useCallback(async () => {
+    const life = lifecycle.current, scope = { ...currentScope() };
+    if (!life.alive || !life.ready || life.needsReload || optionsRequest.current ||
+        scope.userId !== userId || scope.organizationId !== organizationId) return;
+    const generation = life.generation, controller = new AbortController();
+    optionsRequest.current = controller;
+    const valid = () => {
+      const current = currentScope();
+      return life.alive && life.generation === generation && !controller.signal.aborted &&
+        current.userId === scope.userId && current.organizationId === scope.organizationId && current.generation === scope.generation;
+    };
+    setState(previous => ({ ...previous, optionsState: 'loading' }));
+    try {
+      const result = await client.options({ signal: controller.signal });
+      if (valid()) setState(previous => ({ ...previous, options: result.options, optionsState: 'ready' }));
+    } catch {
+      if (valid()) setState(previous => ({ ...previous, options: null, optionsState: 'error' }));
+    } finally {
+      if (optionsRequest.current === controller) optionsRequest.current = null;
+    }
+  }, [client, currentScope, userId, organizationId]);
   useEffect(() => { void reload(); }, [reload]);
 
   const invalidatePolicy = useCallback(() => {
@@ -98,6 +117,7 @@ export function useHermesConnections(userId: string, organizationId: string, cur
     // A policy write may race any read or enrollment. Invalidate their local
     // authority before aborting; an abort-ignorant late result must stay stale.
     life.generation++;
+    optionsRequest.current?.abort(); optionsRequest.current = null;
     life.controller?.abort(); life.controller = null;
     life.ready = false; life.needsReload = true;
     setState({ ...initial(), needsReload: true });
@@ -118,13 +138,19 @@ export function useHermesConnections(userId: string, organizationId: string, cur
   }, [state.handoff]);
 
   return {
-    ...state, reload, invalidatePolicy, policyChanged,
+    ...state, reload, ensureOptions, invalidatePolicy, policyChanged,
     clearHandoff: () => setState(previous => ({ ...previous, handoff: null })),
-    contextFor: (connection: HermesConnectionMetadata) => run('context', signal => client.context({ connectionId: connection.id }, { signal }),
-      (result, previous) => ({ ...previous, context: result.context })),
+    contextFor: (connection: HermesConnectionMetadata) => {
+      if (state.optionsState === 'idle' || state.optionsState === 'error') void ensureOptions();
+      return run('context', signal => client.context({ connectionId: connection.id }, { signal }),
+      (result, previous) => ({ ...previous, context: result.context }));
+    },
     connect: (input: HermesConnectInput) => run('connect', signal => client.connect(input, { signal }),
       (result, previous) => ({ ...previous, handoff: result, connections: [result.connection,
         ...(previous.connections ?? []).filter(item => item.id !== result.connection.id)] })),
+    settings: (input: HermesSettingsInput) => run('settings', signal => client.settings(input, { signal }),
+      (result, previous) => ({ ...previous, connections: (previous.connections ?? []).map(item => item.id === result.connection.id ? result.connection : item),
+        message: 'Đã lưu giới hạn cho Hermes. Mở lại quyền để xem hiệu lực hiện tại.' })),
     restrict: (connection: HermesConnectionContext, restrictions: HermesConnectionRestrictions, scopeIds = connection.scopeIds) => {
       // UI may only narrow the last authoritative connection sets. Never infer
       // new rights or an org-wide scope from labels, company ceilings or UUIDs.

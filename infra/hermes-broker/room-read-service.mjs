@@ -152,9 +152,10 @@ async function bounded(signal, timeoutMs, operation, dependencyScope) {
  * data is present on the receipt. The future broker must place its awaited audit
  * BETWEEN prepare and finalize. availableRooms is their trusted-only convenience
  * composition, not an audit/quota bypass suitable for a public endpoint.
- * Finalize verifies authority then makes a bound STABLE SQL decision as its LAST
- * await. That RPC observes lifecycle, versions, CRM scopes and AREA mapping in
- * one statement snapshot, not promises about changes after that decision point.
+ * Shared preview/send callers retain the final authority and bound SQL decision.
+ * The direct read broker opts into useInitialAdmission after its awaited audit:
+ * that read may finish with the initial permission/scope snapshot. Finalization
+ * still consumes the receipt and enforces token, expiry, deadline and abort.
  * Receipt is single-use and expires within timeoutMs. No finalization retry or
  * cache is supplied; a changed context requires a fresh admission and room read.
  */
@@ -207,7 +208,8 @@ export function createRoomReadService({ authority, connectionStore, crypto, auth
       return prepared;
     });
   }
-  async function finalizeAvailableRooms(presentedToken, prepared, { signal } = {}) {
+  async function finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission = false } = {}) {
+    if (typeof useInitialAdmission !== 'boolean') fail('invalid_request');
     if (typeof presentedToken !== 'string' || !OPAQUE.test(presentedToken)) fail('unauthorized');
     if (!issued.has(prepared)) fail('context_changed');
     const snapshot = issued.get(prepared); issued.delete(prepared);
@@ -217,6 +219,7 @@ export function createRoomReadService({ authority, connectionStore, crypto, auth
         if (snapshot.expiresAt <= time || snapshot.current.row.expiresAt <= time) fail('unauthorized');
         if (time >= snapshot.deadline) fail('timeout'); };
       fresh();
+      if (useInitialAdmission) return snapshot.result;
       const checked = await authority.checkUnchanged(presentedToken, snapshot.receipt, { signal: innerSignal }); fresh();
       if (checked !== undefined || snapshot.receipt.contextVersion !== snapshot.current.contextVersion) fail('context_changed');
       // Last await: one bound SQL snapshot checks both the assistant lifecycle

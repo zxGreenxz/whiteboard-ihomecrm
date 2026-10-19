@@ -24,11 +24,12 @@ async function respond(path: RequestInfo | URL, init?: RequestInit) {
   if (op === 'begin') return Response.json({ ...base, status: 'waiting', challengeId: CHALLENGE, challenge: secret, accountId: BOT, connectionId: CONNECTION, expiresAt: Date.now() + ttl });
   if (op === 'status') return Response.json({ ...base, status: 'observed', challengeId: CHALLENGE, accountId: BOT, connectionId: CONNECTION, expiresAt: Date.now() + ttl, candidateVersion: 1, senderUid: '98765' });
   if (op === 'confirm') return Response.json({ ...base, status: 'active', bindingId: BINDING, epoch: 1, accountId: BOT, connectionId: CONNECTION, senderUid: input.expectedSenderUid });
+  if (op === 'selectCredential') return Response.json({ ...base, status: 'selected', connectionId: input.connectionId });
   if (op === 'unlink') return Response.json({ ...base, status: 'revoked', bindingId: BINDING, epoch: input.expectedEpoch + 1 });
   throw new Error('unexpected fixture route');
 }
 beforeEach(() => {
-  scope.userId = USER; scope.organizationId = ORG; scope.generation = 0; ttl = 300000;
+  scope.userId = USER; scope.organizationId = ORG; scope.generation = 0; ttl = 900000;
   fetchMock = vi.fn<typeof globalThis.fetch>(respond); vi.stubGlobal('fetch', fetchMock);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => {}) } });
 });
@@ -41,7 +42,7 @@ async function ready() {
   fireEvent.change(screen.getByLabelText('Bot nhận tin nhắn'), { target: { value: BOT } });
 }
 async function begin() { fireEvent.click(screen.getByRole('button', { name: 'Tạo mã liên kết Zalo' })); await screen.findByLabelText('Nội dung gửi cho bot'); }
-async function observed() { await begin(); fireEvent.click(screen.getByRole('button', { name: 'Tôi đã gửi, kiểm tra người gửi' })); await screen.findByText('98765'); }
+async function observed() { await begin(); await screen.findByText('98765'); }
 const calls = (op: string) => fetchMock.mock.calls.filter(([path]) => path === '/api/hermes/zalo/' + op);
 describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
   it('loads again after the StrictMode cleanup aborts the first mount', async () => {
@@ -49,11 +50,11 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     await ready(); await begin();
     expect(calls('begin')).toHaveLength(1);
   });
-  it('requires explicit sender confirmation, then supports unlink without replaying a write', async () => {
+  it('polls the real sender and requires one explicit pairing action, then supports unlink without replaying a write', async () => {
     render(view()); await ready(); await observed();
-    const confirm = screen.getByRole('button', { name: 'Xác nhận liên kết nick này' }) as HTMLButtonElement;
-    expect(confirm.disabled).toBe(true); expect(calls('confirm')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('checkbox')); fireEvent.click(confirm);
+    const confirm = screen.getByRole('button', { name: 'Ghép nick Zalo này' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false); expect(calls('confirm')).toHaveLength(0);
+    fireEvent.click(confirm);
     await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
     expect(screen.queryByLabelText('Nội dung gửi cho bot')).toBe(null);
     expect(JSON.parse(calls('confirm')[0][1]!.body as string)).toEqual({ challengeId: CHALLENGE, expectedCandidateVersion: 1, expectedSenderUid: '98765', organizationId: ORG });
@@ -80,8 +81,7 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
           connectionId: CONNECTION, senderUid: '98765' }] : history });
     });
     render(view()); await ready(); await observed();
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận liên kết nick này' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
     await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
     fireEvent.click(screen.getByRole('button', { name: 'Xem thêm liên kết' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Xem thêm liên kết' })).toBe(null));
@@ -100,8 +100,8 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
   });
   it('unknown confirm blocks further writes until explicit readback and does not retry automatically', async () => {
     fetchMock.mockImplementation(async (path, init) => { if (String(path).endsWith('/confirm')) throw new Error('PRIVATE'); return respond(path, init); });
-    render(view()); await ready(); await observed(); fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận liên kết nick này' }));
+    render(view()); await ready(); await observed();
+    fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
     await screen.findByText(/Chưa xác định thao tác liên kết đã hoàn tất/);
     expect((screen.getByRole('button', { name: 'Tạo mã liên kết Zalo' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByLabelText('Nội dung gửi cho bot')).toBe(null); expect(calls('confirm')).toHaveLength(1);
@@ -121,4 +121,47 @@ describe('Hermes Zalo link UI with real client and synthetic HTTP', () => {
     await ready(); expect(screen.queryByLabelText('Nội dung gửi cho bot')).toBe(null);
     expect(calls('begin')[0][1]!.signal!.aborted).toBe(true);
   });
+  it('stops automatic status reads after recognizing the sender and after leaving the page', async () => {
+    const { unmount } = render(view()); await ready(); await observed();
+    expect(screen.queryByRole('checkbox')).toBe(null);
+    expect(screen.queryByRole('button', { name: 'Tôi đã gửi, kiểm tra người gửi' })).toBe(null);
+    const count = calls('status').length;
+    vi.useFakeTimers();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6500); });
+    expect(calls('status')).toHaveLength(count);
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6500); });
+    expect(calls('status')).toHaveLength(count);
+  });
+  it('keeps a live code when only permissions or connection revision change', async () => {
+    const { rerender } = render(view()); await ready(); await begin();
+    rerender(view('initial', [{ ...row(), epoch: 3, restrictions: { read: [], action: [] } }]));
+    expect(screen.getByLabelText('Nội dung gửi cho bot')).toBeTruthy();
+    await screen.findByText('98765');
+    expect(calls('begin')).toHaveLength(1);
+  });
+  it('switches the explicit CRM credential with CAS while preserving the Zalo pairing', async () => {
+    const next = '77777777-7777-4777-8777-777777777777';
+    render(view('initial', [row(), { ...row(), id: next }]));
+    await ready(); await observed();
+    fireEvent.click(screen.getByRole('button', { name: 'Ghép nick Zalo này' }));
+    await screen.findByText('Đã liên kết nick Zalo của bạn với kết nối Hermes.');
+    fireEvent.change(screen.getByLabelText('1. Chọn kết nối Hermes'), { target: { value: next } });
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng kết nối này cho trợ lý' }));
+    await screen.findByText('Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.');
+    expect(JSON.parse(calls('selectCredential')[0][1]!.body as string)).toEqual({ connectionId: next,
+      expectedConnectionEpoch: 2, expectedActiveConnectionId: CONNECTION, organizationId: ORG });
+    expect(screen.getByText('Nick của bạn: 98765')).toBeTruthy();
+    expect(calls('begin')).toHaveLength(1); expect(calls('confirm')).toHaveLength(1);
+  });
+
+  it('shows missing credential and pending activation separately from an already verified nick', async () => {
+    fetchMock.mockImplementation(async (path, init) => String(path).endsWith('/list') ?
+      Response.json({ ...base, status: 'listed', nextCursor: null, bindings: [{ bindingId: BINDING, epoch: 1,
+        state: 'active', accountId: BOT, connectionId: CONNECTION, senderUid: '98765', provisioningState: 'pending_credential' }] }) : respond(path, init));
+    render(view()); await ready();
+    expect(await screen.findByText('Đang chờ kết nối CRM của trợ lý.')).toBeTruthy();
+    expect(screen.getByText('Nick của bạn: 98765')).toBeTruthy();
+  });
+
 });

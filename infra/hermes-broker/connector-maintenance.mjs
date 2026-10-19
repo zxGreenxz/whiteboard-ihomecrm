@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DB_CLOCK_SKEW_MS } from './clock-skew.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -21,7 +22,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     !positive(pollIntervalMs) || pollIntervalMs > 60000 || !positive(renewBeforeMs) || renewBeforeMs > 600000) {
     throw new TypeError('invalid_connector_maintenance_config');
   }
-  const controller = new AbortController(), blocked = new Set();
+  const controller = new AbortController(), blocked = new Set(), schedule = new Map();
   let running, timer, closing = false, started = false, closed, retained = false, state = 'idle';
   const checkTime = () => { const time = clock(); if (!positive(time)) throw new Error('connector_clock_invalid'); return time; };
   const cycle = async () => {
@@ -37,9 +38,17 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
           typeof row.token !== 'string' || !TOKEN.test(row.token) || seen.has(row.operationId)) throw new Error('connector_handoff_invalid');
         seen.add(row.operationId);
       }
+      for (const key of schedule.keys()) if (!seen.has(key)) schedule.delete(key);
       for (const row of rows) {
         if (closing) break;
         if (blocked.has(row.operationId)) continue;
+        // A lease/ACK is only a scheduling hint, never cached authority. Changed
+        // enrollment ownership or token requires discovery again. Due work still
+        // enters the backend's live, single-flight revision/refresh pipeline.
+        const fingerprint = createHash('sha256').update(JSON.stringify([...OWNER.map(key => row[key]), row.token])).digest('hex');
+        const cached = schedule.get(row.operationId);
+        if (cached?.fingerprint === fingerprint && checkTime() < cached.nextDue) continue;
+        schedule.delete(row.operationId);
         let owner;
         try { owner = await backend.resolveConnection(row.token, { signal: controller.signal }); }
         catch { unavailable = true; continue; } // Read-only discovery may recover after a temporary outage.
@@ -47,6 +56,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
         // Token expiries are DB clock_timestamp() + TTL after any renewal.
         if (!exact(owner, [...OWNER, 'expiresAt']) || !same(row, owner) || !positive(owner.expiresAt) ||
           owner.expiresAt <= checkTime() || owner.expiresAt > checkTime() + 900000 + DB_CLOCK_SKEW_MS) { blocked.add(row.operationId); continue; }
+        schedule.set(row.operationId, { fingerprint, nextDue: owner.expiresAt - renewBeforeMs });
         if (owner.expiresAt - checkTime() > renewBeforeMs) continue;
         // Latch before dispatch. Only a fully validated ACK plus actual drain
         // allows a later scheduled renewal of this connection.
@@ -70,6 +80,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
           if (!exact(result, ['ok', 'status', 'connectionId', 'expiresAt', 'reconciled']) || result.ok !== true || result.status !== 'renewed' ||
             result.connectionId !== row.connectionId || !positive(result.expiresAt) || result.expiresAt <= owner.expiresAt ||
             result.expiresAt > checkTime() + 900000 + DB_CLOCK_SKEW_MS || typeof result.reconciled !== 'boolean') continue;
+          schedule.set(row.operationId, { fingerprint, nextDue: result.expiresAt - renewBeforeMs });
           blocked.delete(row.operationId);
         } catch (error) {
           // The backend rejects admission synchronously before any write when

@@ -44,10 +44,9 @@ function messageFor(error: unknown, write: boolean) {
 export function HermesZaloBindings({ userId, organizationId, currentScope, connections, disabled }: Props) {
   const client = useMemo(() => createHermesZaloClient({ userId, organizationId, currentScope }), [userId, organizationId, currentScope]);
   const [state, setState] = useState<State>(initial);
-  const [accountId, setAccountId] = useState(''), [connectionId, setConnectionId] = useState(''), [checked, setChecked] = useState(false);
+  const [accountId, setAccountId] = useState(''), [connectionId, setConnectionId] = useState('');
   const life = useRef({ alive: false, generation: 0, controller: null as AbortController | null, blocked: false });
   const challengeId = useRef<string | null>(null); challengeId.current = state.challenge?.challengeId ?? null;
-  const connectionEpoch = useRef<number | null>(null);
   useLayoutEffect(() => {
     const current = life.current; current.alive = true; current.generation++;
     return () => {
@@ -82,7 +81,6 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
     } finally { if (current.controller === controller) current.controller = null; }
   }, [currentScope, userId, organizationId]);
   const reload = useCallback(() => {
-    setChecked(false);
     return run(false, async signal => {
       const [bots, bindings] = await Promise.all([client.bots({ afterAccountId: null }, { signal }), client.list({ afterBindingId: null }, { signal })]);
       return { bots, bindings };
@@ -94,7 +92,6 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
     if (!state.challenge) return;
     const id = state.challenge.challengeId;
     const timer = setTimeout(() => {
-      setChecked(false);
       setState(previous => previous.challenge?.challengeId === id ? { ...previous, challenge: null, observed: null, message: 'Mã liên kết đã hết hạn. Hãy tạo mã mới nếu bạn vẫn cần liên kết.' } : previous);
     }, Math.max(0, Math.min(2147483647, state.challenge.expiresAt - Date.now())));
     return () => clearTimeout(timer);
@@ -102,8 +99,8 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
   useEffect(() => {
     if (!state.challenge) return;
     const current = connections.find(value => value.id === state.challenge?.connectionId);
-    if (!current || current.state !== 'active' || current.epoch !== connectionEpoch.current) {
-      setChecked(false); setState(previous => ({ ...previous, challenge: null, observed: null, message: 'Kết nối Hermes đã thay đổi. Chọn lại kết nối trước khi liên kết Zalo.' }));
+    if (!current || current.state !== 'active') {
+      setState(previous => ({ ...previous, challenge: null, observed: null, message: 'Kết nối Hermes đã thay đổi. Chọn lại kết nối trước khi liên kết Zalo.' }));
     }
   }, [connections, state.challenge]);
   const activeConnections = connections.filter(value => value.state === 'active');
@@ -111,26 +108,31 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
   const begin = () => {
     const connection = activeConnections.find(value => value.id === connectionId);
     if (blocked || !connection || !state.bots?.some(bot => bot.accountId === accountId)) return;
-    connectionEpoch.current = connection.epoch; setChecked(false);
     void run(true, signal => client.begin({ accountId, connectionId, expectedConnectionEpoch: connection.epoch }, { signal }),
       (challenge, previous) => ({ ...previous, challenge, observed: null }));
   };
-  const checkMessage = () => {
+  const checkMessage = useCallback(() => {
     const challenge = state.challenge;
-    if (blocked || !challenge) return;
-    setChecked(false);
+    if (disabled || state.blocked || !challenge || state.observed?.status === 'observed') return;
     void run(false, signal => client.status({ challengeId: challenge.challengeId }, { signal }), (observed, previous) => {
       if (observed.accountId !== challenge.accountId || observed.connectionId !== challenge.connectionId) return { ...previous, challenge: null, observed: null, message: 'Thông tin liên kết không khớp. Hãy tải lại danh sách.' };
-      return { ...previous, observed, message: observed.status === 'waiting' ? 'Bot chưa ghi nhận mã. Gửi đúng mã qua tin nhắn riêng rồi kiểm tra lại.'
+      return { ...previous, observed, message: observed.status === 'waiting' ? 'Đang chờ bot nhận mã qua tin nhắn riêng. Trang sẽ tự cập nhật.'
         : observed.status === 'confirmed' ? 'Liên kết đã được xác nhận. Tải lại danh sách để xem.' : null };
     });
-  };
+  }, [state.challenge, state.observed?.status, state.blocked, disabled, run, client]);
+  useEffect(() => {
+    if (!state.challenge || state.observed?.status === 'observed' || state.observed?.status === 'confirmed' || state.blocked || disabled) return;
+    // Poll reads only; the run guard prevents overlapping requests.
+    const first = setTimeout(checkMessage, 500);
+    const timer = setInterval(checkMessage, 2000);
+    return () => { clearTimeout(first); clearInterval(timer); };
+  }, [state.challenge, state.observed?.status, state.blocked, disabled, checkMessage]);
   const confirm = () => {
     const observed = state.observed, challenge = state.challenge;
-    if (blocked || !checked || !challenge || observed?.status !== 'observed' || !observed.senderUid || challenge.expiresAt <= Date.now()) return;
+    if (blocked || !challenge || observed?.status !== 'observed' || !observed.senderUid || challenge.expiresAt <= Date.now()) return;
     void run(true, signal => client.confirm({ challengeId: challenge.challengeId, expectedCandidateVersion: 1, expectedSenderUid: observed.senderUid! }, { signal }),
       (result, previous) => ({ ...previous, challenge: null, observed: null,
-        bindings: [{ bindingId: result.bindingId, epoch: result.epoch, state: 'active', accountId: result.accountId, connectionId: result.connectionId, senderUid: result.senderUid },
+        bindings: [{ bindingId: result.bindingId, epoch: result.epoch, state: 'active', accountId: result.accountId, connectionId: result.connectionId, senderUid: result.senderUid, provisioningState: result.provisioningState },
           ...(previous.bindings ?? []).filter(value => value.bindingId !== result.bindingId)], message: 'Đã liên kết nick Zalo của bạn với kết nối Hermes.' }));
   };
   const copy = async () => {
@@ -165,26 +167,37 @@ export function HermesZaloBindings({ userId, organizationId, currentScope, conne
     {state.botCursor && <Button variant="outline" disabled={blocked} onClick={() => void run(false, signal => client.bots({ afterAccountId: state.botCursor }, { signal }),
       (result, previous) => ({ ...previous, bots: [...(previous.bots ?? []), ...result.bots], botCursor: result.nextCursor }))}>Xem thêm bot</Button>}
     <Button disabled={blocked || !accountId || !connectionId} onClick={begin}>Tạo mã liên kết Zalo</Button>
+    {state.bindings?.some(value => value.state === 'active') && <Button variant="outline" disabled={blocked || !connectionId} onClick={() => {
+      const connection = activeConnections.find(value => value.id === connectionId);
+      const existing = state.bindings?.find(value => value.state === 'active');
+      if (!connection || !existing) return;
+      void run(true, signal => client.selectCredential({ connectionId, expectedConnectionEpoch: connection.epoch,
+        expectedActiveConnectionId: existing.connectionId }, { signal }), (result, previous) => ({ ...previous,
+        bindings: (previous.bindings ?? []).map(value => value.state === 'active' ? { ...value, connectionId: result.connectionId } : value),
+        message: 'Đã chọn kết nối CRM cho trợ lý. Nick Zalo vẫn được giữ.' }));
+    }}>Dùng kết nối này cho trợ lý</Button>}
     {state.challenge && <div className="space-y-3 rounded-lg border p-3">
       <h3 className="font-medium">2. Gửi mã bằng nick Zalo chính</h3>
-      <p className="text-sm">Gửi riêng cho bot {state.bots?.find(value => value.accountId === state.challenge?.accountId)?.name ?? 'đã chọn'}. Mã có hiệu lực tối đa 5 phút.</p>
+      <p className="text-sm">Gửi riêng cho bot {state.bots?.find(value => value.accountId === state.challenge?.accountId)?.name ?? 'đã chọn'}. Mã có hiệu lực tối đa 15 phút. Trang tự cập nhật khi bot nhận được mã.</p>
       <Label htmlFor="hermes-zalo-code">Nội dung gửi cho bot</Label>
       <Input id="hermes-zalo-code" readOnly autoComplete="off" value={'/hermes-link ' + state.challenge.challenge} className="font-mono text-xs" />
-      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void copy()}>Sao chép mã Zalo</Button>
-        <Button variant="outline" disabled={blocked} onClick={checkMessage}>Tôi đã gửi, kiểm tra người gửi</Button></div>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void copy()}>Sao chép mã Zalo</Button></div>
       {state.observed?.status === 'observed' && <div className="space-y-3">
         <h3 className="font-medium">3. Xác nhận nick gửi mã</h3>
         <p className="break-all text-sm">Bot ghi nhận UID Zalo: <strong>{state.observed.senderUid}</strong></p>
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={checked} disabled={blocked} onChange={event => setChecked(event.target.checked)} />
-          Tôi đã kiểm tra đúng nick Zalo chính của mình gửi mã này.</label>
-        <Button disabled={blocked || !checked} onClick={confirm}>Xác nhận liên kết nick này</Button>
+        <Button disabled={blocked} onClick={confirm}>Ghép nick Zalo này</Button>
       </div>}
     </div>}
     {state.bindings && <div className="space-y-2" aria-label="Danh sách liên kết Zalo">
       {state.bindings.length === 0 && <p className="text-sm text-muted-foreground">Bạn chưa có liên kết Zalo trong công ty này.</p>}
       {state.bindings.map(value => <div key={value.bindingId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
         <div className="min-w-0 text-sm"><p className="break-all">Nick của bạn: {value.senderUid}</p>
-          <p className="text-muted-foreground">{state.bots?.find(bot => bot.accountId === value.accountId)?.name ?? `Bot …${value.accountId.slice(-8)}`} · {value.state === 'active' ? 'Đã liên kết' : 'Đã ngắt liên kết'}</p></div>
+          <p className="text-muted-foreground">{state.bots?.find(bot => bot.accountId === value.accountId)?.name ?? `Bot …${value.accountId.slice(-8)}`} · {value.state === 'active' ? 'Đã liên kết' : 'Đã ngắt liên kết'}</p>
+          {value.state === 'active' && value.provisioningState && <p role="status" className="text-muted-foreground">{
+            value.provisioningState === 'pending_credential' ? 'Đang chờ kết nối CRM của trợ lý.' :
+            value.provisioningState === 'restart_pending' ? 'Đang chờ quản trị viên kích hoạt trợ lý.' :
+            value.provisioningState === 'unavailable' ? 'Chưa đồng bộ được với trợ lý. Hệ thống sẽ thử lại.' :
+            value.provisioningState === 'synchronized' ? 'Đã đồng bộ với trợ lý.' : 'Đang đồng bộ với trợ lý…'}</p>}</div>
         <Button variant="outline" size="sm" disabled={blocked || value.state !== 'active'} onClick={() => void run(true,
           signal => client.unlink({ bindingId: value.bindingId, expectedEpoch: value.epoch }, { signal }),
           (result, previous) => ({ ...previous, bindings: (previous.bindings ?? []).map(row => row.bindingId === result.bindingId ? { ...row, state: 'revoked', epoch: result.epoch } : row),

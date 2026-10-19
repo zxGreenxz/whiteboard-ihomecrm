@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {setup,input} from '../../infra/hermes-broker/task-fixture.mjs';
 import {prepareTaskMetadata} from '../../infra/hermes-broker/task-input-fixture.mjs';
-import {TASK_FUNCTIONS,extractHermesFunctionDefinitions,verifyTaskFunctionCatalog} from '../hermes-task-function-contract.mjs';
+import {TASK_FUNCTIONS,extractHermesFunctionDefinitions,verifyTaskFunctionCatalog,splitHermesFunctionStatements} from '../hermes-task-function-contract.mjs';
+import {HERMES_READ_STANDARD_FUNCTIONS} from '../hermes-read-function-specs.mjs';
 const paths=['supabase/migrations/20261014092945_hermes_task_create_action_v1.sql','supabase/migrations/20261014094913_hermes_assistant_capabilities_v5.sql'];
 const customerPath='supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql';
 const sources=()=>paths.map(path=>({path,bytes:readFileSync(path)}));
@@ -18,6 +19,21 @@ test('exact 13 task catalog bodies, signatures, dependencies and ACL verify in a
  await verify();assert.deepEqual((await db.query('SHOW search_path')).rows,before,'local deparser configuration rolls back');
  const rows=(await db.query("SELECT prosrc,prosqlbody IS NOT NULL parsed FROM pg_proc WHERE oid=ANY($1::regprocedure[])",[TASK_FUNCTIONS.filter(item=>item.standard).map(item=>item.signature)])).rows;
  assert.equal(rows.length,3);assert.ok(rows.every(row=>row.prosrc===''&&row.parsed));
+});
+
+test('task metadata successor remains exact and STABLE without changing legacy catalog expectations',{timeout:60000},async t=>{
+ const{db,pool}=await fixture(t);
+ const path='supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql',bytes=readFileSync(path),candidate={path,bytes};
+ const declaration=splitHermesFunctionStatements(bytes.toString('utf8')).find(statement=>statement.includes('CREATE OR REPLACE FUNCTION public.hermes_task_create_capabilities_v1('));
+ assert(declaration);await db.exec(declaration);
+ const verify=next=>verifyTaskFunctionCatalog(pool,[...sources(),next??candidate]);
+ await verify();
+ await assert.rejects(verify({...candidate,path:path.replace('metadata_read_snapshot','unreviewed')}),{code:'live_task_definition_mismatch'});
+ const changed=bytes.toString('utf8').replace(declaration,declaration.replace('DECLARE','DECLARE '));
+ assert.notEqual(changed,bytes.toString('utf8'));
+ await assert.rejects(verify({...candidate,bytes:Buffer.from(changed)}),{code:'live_task_body_mismatch'});
+ await db.exec('ALTER FUNCTION public.hermes_task_create_capabilities_v1(uuid) VOLATILE');
+ await assert.rejects(verify(),{code:'live_task_definition_mismatch'});
 });
 
 test('catalog verification rejects actual changed callee even with empty prosrc and rejects mode widening',{timeout:60000},async t=>{
@@ -75,6 +91,17 @@ test('external SQL-standard source is accepted only through its exact migration 
  assert.equal(definitions.find(item=>item.qualifiedName==='public.hermes_customer_create_action_v1')?.bodyKind,'sql-standard');
  assert.throws(()=>extractHermesFunctionDefinitions(source,'migration.sql'),/task_sql_standard_source_mismatch/);
  assert.throws(()=>extractHermesFunctionDefinitions(source.replace('public.hermes_customer_create_action_v1','public.hermes_unreviewed_customer_action_v1'),customerPath),/task_sql_standard_source_mismatch/);
+});
+
+test('reviewed fast-read SQL-standard sources remain path and byte bound',()=>{
+ for(const spec of HERMES_READ_STANDARD_FUNCTIONS){
+  const source=readFileSync(spec.sourcePath,'utf8');
+  assert.equal(extractHermesFunctionDefinitions(source,spec.sourcePath).find(item=>item.qualifiedName===spec.name)?.bodyKind,'sql-standard');
+  assert.throws(()=>extractHermesFunctionDefinitions(source,'unreviewed.sql'),/task_sql_standard_source_mismatch/);
+  for(const changed of [source.replace(spec.name,spec.name+'_unreviewed'),source.replace('BEGIN ATOMIC','BEGIN ATOMIC SELECT 1;'),
+   source.replace('BEGIN ATOMIC','BEGIN ATOMIC\n -- changed reviewed source')])
+   assert.throws(()=>extractHermesFunctionDefinitions(changed,spec.sourcePath),/task_sql_standard_source_mismatch/);
+ }
 });
 
 test('SQL-standard body edit with unchanged dependency identities is rejected',{timeout:60000},async t=>{

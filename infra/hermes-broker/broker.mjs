@@ -340,6 +340,12 @@ export function createBroker({
     if (!injectedAuthority || ['prepareDomain', 'finalizeDomain'].some(key => typeof domains?.[key] !== 'function') ||
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_domain_service_required');
     domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
+    if (domains.readAuthority !== undefined) {
+      if (['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof domains.readAuthority?.[key] !== 'function') ||
+          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== 3 ||
+          !['customers', 'contracts', 'invoices'].every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
+      domain.readAuthority = domains.readAuthority;
+    }
   }
   let schedule;
   if (schedules !== undefined) {
@@ -575,21 +581,20 @@ export function createBroker({
         let result = await handler(identity, signal);
         if (signal.aborted) fail('timeout');
         if (!finalize && Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
-        // This receipt means a response was prepared, not delivered. An async
-        // audit sink can wait while DB authority changes, so the authoritative
-        // post-read check must be the LAST awaited step before releasing data.
+        // A prepared response still needs its audit receipt before disclosure.
+        // Direct room reads may complete using the initial admission; shared
+        // group/writer paths retain their post-audit authority check.
         await recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
-        // Everything below must observe authority read after the audit await.
-        advanceAuthorityRequest();
-        if (selectedAuthority) {
-          const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
-          if (checked !== undefined) fail('backend_unavailable');
-          if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
-        } else await checkUnchanged(presentedToken, identity, signal);
+        if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
+          advanceAuthorityRequest();
+          if (selectedAuthority) {
+            const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
+            if (checked !== undefined) fail('backend_unavailable');
+            if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
+          } else await checkUnchanged(presentedToken, identity, signal);
+        }
         if (signal.aborted) fail('timeout');
-        // The room service consumes a private receipt after the audit and original
-        // branded authority check. Its bound scope decision is the last I/O here;
-        // only local protocol/byte validation and serialization may follow it.
+        // Finalizers consume private receipts before local result validation.
         if (finalize) result = await finalize(result, identity, signal);
         if (signal.aborted) fail('timeout');
         if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
@@ -873,7 +878,9 @@ export function createBroker({
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
-          await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }));
+          await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }),
+        domain.readAuthority && ['customers', 'contracts', 'invoices'].includes(domainOp)
+          ? { authority: domain.readAuthority, initialDomainReadAdmission: true } : {});
       }
       const scheduleOp = scheduleOperation(name);
       if (schedule && scheduleOp) {
@@ -980,7 +987,8 @@ export function createBroker({
         };
         return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
       }, name === ROOM_TOOL.name && rooms ? async (prepared, identity, signal) =>
-        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal }), request, identity) : undefined);
+        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission: true }), request, identity) : undefined,
+      { initialRoomAdmission: name === ROOM_TOOL.name && Boolean(rooms) });
     },
   });
 }

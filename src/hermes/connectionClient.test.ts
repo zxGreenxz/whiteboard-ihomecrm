@@ -52,6 +52,57 @@ describe('Hermes connection browser boundary', () => {
     }));
   });
 
+  it('loads one overview with strict self-owned records and connector status', async () => {
+    const { client, fetch } = setup();
+    const status = { connector: { version: '1.4.0', startedAt: 1, observedAt: 2 }, connections: [] };
+    fetch.mockResolvedValueOnce(json({ connections: [metadata()], status }));
+    await expect(client.overview()).resolves.toEqual({ connections: [metadata()], status });
+    expect(fetch).toHaveBeenCalledWith('/api/hermes/connections/overview', expect.objectContaining({ body: JSON.stringify({ organizationId: ORG }) }));
+    for (const body of [
+      { connections: [{ ...metadata(), userId: OTHER }], status },
+      { connections: [{ ...metadata(), organizationId: OTHER }], status },
+      { connections: [metadata(), metadata()], status },
+      { connections: [metadata()], status, token: OPAQUE },
+      { connections: [metadata()], status: { ...status, connector: { ...status.connector, startedAt: 0 } } },
+    ]) {
+      fetch.mockResolvedValueOnce(json(body));
+      await expect(client.overview()).rejects.toMatchObject({ code: 'invalid_response', outcomeUnknown: false });
+    }
+  });
+
+  it('creates inherited CRM permissions and updates exclusions on the same connection without a token', async () => {
+    const { client, fetch } = setup();
+    const inherited = { ...metadata(), permissionMode: 'inherit_crm', exclusions: { read: [], action: [] }, scopeMode: 'unrestricted' };
+    const input = { email: 'fixture@example.invalid', password: 'ephemeral-only', permissionMode: 'inherit_crm' as const,
+      exclusions: { read: [], action: [] }, scopeMode: 'unrestricted' as const, scopeIds: [] };
+    fetch.mockResolvedValueOnce(json({ ...newConnection(), connection: inherited }));
+    await expect(client.connect(input)).resolves.toMatchObject({ connection: inherited });
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).toEqual({ ...input, organizationId: ORG });
+    expect(JSON.parse(fetch.mock.calls[0][1]!.body as string)).not.toHaveProperty('restrictions');
+    const settings = { connectionId: CONNECTION, expectedEpoch: 2, permissionMode: 'inherit_crm' as const,
+      exclusions: { read: ['rooms.view'], action: ['temporarily.unavailable'] }, scopeMode: 'restricted' as const, scopeIds: [] };
+    const updated = { ...inherited, epoch: 3, exclusions: settings.exclusions, scopeMode: 'restricted', scopeIds: [] };
+    fetch.mockResolvedValueOnce(json({ ok: true, connection: updated }));
+    await expect(client.settings(settings)).resolves.toEqual({ ok: true, connection: updated });
+    expect(fetch.mock.calls[1][0]).toBe('/api/hermes/connections/settings');
+    expect(JSON.parse(fetch.mock.calls[1][1]!.body as string)).toEqual({ ...settings, organizationId: ORG });
+    fetch.mockResolvedValueOnce(json({ ok: true, connection: { ...updated, exclusions: { read: [], action: [] } } }));
+    await expect(client.settings(settings)).rejects.toMatchObject({ code: 'operation_outcome_unknown', outcomeUnknown: true });
+    await expect(client.settings({ ...settings, scopeMode: 'unrestricted', scopeIds: [SCOPE] })).rejects.toMatchObject({ code: 'invalid_request', outcome: 'not_dispatched' });
+    fetch.mockResolvedValueOnce(json({ connections: [{ ...metadata(), permissionMode: 'inherit_crm' }], status: { connector: { version: '1.4.0', startedAt: 1, observedAt: 2 }, connections: [] } }));
+    await expect(client.overview()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('fences inherited settings when the company changes while awaiting its response', async () => {
+    const { client, fetch, scope } = setup();
+    const wait = pending<Response>(); fetch.mockImplementationOnce(() => wait.promise);
+    const task = client.settings({ connectionId: CONNECTION, expectedEpoch: 2, permissionMode: 'inherit_crm',
+      exclusions: { read: [], action: [] }, scopeMode: 'unrestricted', scopeIds: [] });
+    await Promise.resolve(); await Promise.resolve(); scope.organizationId = OTHER; scope.generation++;
+    wait.resolve(json({ ok: true, connection: { ...metadata(), epoch: 3, permissionMode: 'inherit_crm', exclusions: { read: [], action: [] }, scopeMode: 'unrestricted' } }));
+    await expect(task).rejects.toMatchObject({ code: 'context_changed', outcomeUnknown: true });
+  });
+
   it('projects all five protocols and returns the connect opaque only in that one result', async () => {
     const { client, fetch } = setup();
     const connected = newConnection();

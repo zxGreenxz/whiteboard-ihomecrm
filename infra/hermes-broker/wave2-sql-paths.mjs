@@ -14,6 +14,7 @@
 // trở đi), tiền tố của đúng gói (vd. 20261018182656_hermes_w2a_reservation_fund_member_v1) ⇒ thuộc gói đó, áp sau công tắc;
 // tiền tố hermes_w2_ (vd. 20261018185339_hermes_w2_rls_buildings_scope_v1) ⇒ thuộc nền (được thay hàm nền).
 import { readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 export const W2_MIGRATION_DIR = 'supabase/migrations';
 export const W2_FOUNDATION_FILE = '20261018000000_hermes_w2_foundation_v1.sql';
@@ -69,6 +70,20 @@ const alteredFunctions = sql => [...stripComments(sql).matchAll(new RegExp(Strin
 const dynamicBlocks = sql => [...stripComments(sql).matchAll(/\bDO\s+(?:LANGUAGE\s+[a-z]+\s+)?(\$[a-z_]*\$)([\s\S]*?)\1/gi)]
   .filter(match => /\bEXECUTE\b/i.test(match[2])).length + (/\bDO\s+(?:LANGUAGE\s+[a-z]+\s+)?'/i.test(stripComments(sql)) ? 1 : 0);
 
+// Reviewed cross-cutting successors outside the original package bands. Bind
+// both the filename and complete source; an edited or later override is not a
+// new package permission, and cannot reconcile an unrelated shared function.
+const REVIEWED_SUCCESSORS = new Map([
+  ['20261019034254_hermes_metadata_read_snapshot_v1.sql', {
+    sha256: '1375fe0532047d9925a951c8dddbd2f3cf9496cdc9e16990d2958b686133bd94',
+    functions: ['public.hermes_domain_capabilities_v3'],
+  }],
+  ['20261019040948_hermes_copied_text_parity_v1.sql', {
+    sha256: '5c537c32c6f87b59a60b840827b2e44b6fdf9b488ffffd1bb8398259fb77d6ca',
+    functions: ['app_private.hermes_w2_scope_v1', 'public.vehicles_list_v1'],
+  }],
+]);
+
 /** Hàng rào gói (P2-4, review PR #195; mở rộng sau review cổng INVOKER). files: [{name, sql}] mọi migration theo
  * thứ tự tên. Trả danh sách vi phạm: file trong dải gói <x> chỉ được tạo/thay hermes_w2<x>_* (public hoặc
  * app_private) hoặc hàm dùng chung MỚI public.<miền>_*_v<n> (không bắt đầu bằng hermes_, chỉ do file của chính gói
@@ -77,6 +92,11 @@ const dynamicBlocks = sql => [...stripComments(sql).matchAll(/\bDO\s+(?:LANGUAGE
  * nền hoặc Z (test PGlite còn so định nghĩa SỐNG trong catalog với bản của file nền). */
 export function w2FenceViolations(files) {
   const violations = [], definedBy = new Map();
+  const reviewed = (name, fn) => {
+    const spec = REVIEWED_SUCCESSORS.get(name), source = files.find(file => file.name === name);
+    return spec?.functions.includes(fn) && source &&
+      createHash('sha256').update(source.sql.replace(/\r\n?/g, '\n')).digest('hex') === spec.sha256;
+  };
   for (const { name, sql } of files) for (const fn of createdFunctions(sql)) definedBy.set(fn, [...(definedBy.get(fn) ?? []), name]);
   for (const { name, sql } of files) {
     const letter = W2_PACKAGE_LETTERS.find(item => W2_RANGES[item].test(name));
@@ -86,7 +106,7 @@ export function w2FenceViolations(files) {
     const reconciled = fn => W2_RANGES.z.test((definedBy.get(fn) ?? []).at(-1) ?? '');
     const mine = fn => new RegExp(`^(public|app_private)\\.hermes_w2${letter}_[a-z0-9_]+$`).test(fn) ||
       /^public\.[a-z][a-z0-9_]*_v\d+$/.test(fn) && !/^public\.hermes_/.test(fn) &&
-        ((definedBy.get(fn) ?? []).every(file => W2_RANGES[letter].test(file) || W2_RANGES.z.test(file)) || reconciled(fn));
+        ((definedBy.get(fn) ?? []).every(file => W2_RANGES[letter].test(file) || W2_RANGES.z.test(file) || reviewed(file, fn)) || reconciled(fn));
     for (const fn of createdFunctions(sql)) if (!mine(fn)) violations.push(`${name}: ${fn}`);
     for (const fn of unqualifiedFunctions(sql)) violations.push(`${name}: ${fn} (thiếu schema)`);
     for (const { fn, action } of alteredFunctions(sql))
@@ -96,7 +116,7 @@ export function w2FenceViolations(files) {
   for (const fn of W2_FOUNDATION_FUNCTIONS) {
     const last = (definedBy.get(fn) ?? []).at(-1);
     if (!last) violations.push(`thiếu định nghĩa ${fn}`);
-    else if (!W2_RANGES.foundation.test(last) && !W2_RANGES.z.test(last)) violations.push(`${fn}: định nghĩa cuối ở ${last}`);
+    else if (!W2_RANGES.foundation.test(last) && !W2_RANGES.z.test(last) && !reviewed(last, fn)) violations.push(`${fn}: định nghĩa cuối ở ${last}`);
   }
   return violations;
 }

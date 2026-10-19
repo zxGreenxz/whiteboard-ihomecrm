@@ -1,6 +1,7 @@
 import { BrokerError } from './broker.mjs';
 import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 import { connectionOptions } from './connection-options.mjs';
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TOKEN = /^[A-Za-z0-9._~-]{1,16384}$/;
@@ -36,10 +37,11 @@ function restrictions(value, code) {
   return Object.fromEntries(['read', 'action'].map(kind => [kind, list(value[kind], key => typeof key === 'string' && CAP.test(key), code)]));
 }
 function metadata(value, actor, org, keys = ROW) {
-  if (!exact(value, keys) || ROW.slice(0, 4).some(key => !uuid(value[key])) || value.userId !== actor || value.organizationId !== org ||
+  if (!record(value) || !permissionShape(value, keys) || ROW.slice(0, 4).some(key => !uuid(value[key])) || value.userId !== actor || value.organizationId !== org ||
       !['pending', 'active', 'revoked'].includes(value.state) || !positive(value.epoch) || value.epoch >= Number.MAX_SAFE_INTEGER) fail('backend_unavailable');
   return { id: value.id, assistantId: value.assistantId, organizationId: org, userId: actor, state: value.state, epoch: value.epoch,
-    restrictions: restrictions(value.restrictions, 'backend_unavailable'), scopeIds: list(value.scopeIds, uuid, 'backend_unavailable') };
+    restrictions: restrictions(value.restrictions, 'backend_unavailable'), scopeIds: list(value.scopeIds, uuid, 'backend_unavailable'),
+    ...connectionPermissionSettings(value, raw => restrictions(raw, 'backend_unavailable'), () => fail('backend_unavailable')) };
 }
 function contextMetadata(value, actor, org, id) {
   const row = metadata(value, actor, org, CONTEXT);
@@ -51,18 +53,25 @@ function contextMetadata(value, actor, org, id) {
   return { ...row, membershipId: value.membershipId, authorizationVersion: value.authorizationVersion,
     isSuperadmin: value.isSuperadmin, policyVersion: value.policyVersion, companyCeilings, effective };
 }
-const OWNER_READS = ['list', 'options', 'status'];
+const OWNER_READS = ['list', 'options', 'status', 'overview'];
 function inputRequest(input, operation) {
   const keys = ['browserAccessToken', 'organizationId'];
   if (!OWNER_READS.includes(operation)) keys.push('connectionId');
-  if (['restrict', 'revoke'].includes(operation)) keys.push('expectedEpoch');
+  if (['restrict', 'revoke', 'settings'].includes(operation)) keys.push('expectedEpoch');
   if (operation === 'restrict') keys.push('restrictions', 'scopeIds');
+  if (operation === 'settings') keys.push('permissionMode', 'exclusions', 'scopeMode', 'scopeIds');
   if (!exact(input, keys) || typeof input.browserAccessToken !== 'string' || !TOKEN.test(input.browserAccessToken) ||
       !uuid(input.organizationId) || (!OWNER_READS.includes(operation) && !uuid(input.connectionId)) ||
       (keys.includes('expectedEpoch') && (!positive(input.expectedEpoch) || input.expectedEpoch >= Number.MAX_SAFE_INTEGER))) fail('invalid_request');
   const request = { ...input };
   if (operation === 'restrict') {
     request.restrictions = restrictions(input.restrictions, 'invalid_request'); request.scopeIds = list(input.scopeIds, uuid, 'invalid_request');
+  }
+  if (operation === 'settings') {
+    request.exclusions = restrictions(input.exclusions, 'invalid_request');
+    request.scopeIds = list(input.scopeIds, uuid, 'invalid_request');
+    if (input.permissionMode !== 'inherit_crm' || !['restricted', 'unrestricted'].includes(input.scopeMode) ||
+        (input.scopeMode === 'unrestricted' && request.scopeIds.length)) fail('invalid_request');
   }
   return request;
 }
@@ -121,21 +130,16 @@ async function bounded(signal, timeoutMs, operation, outcome, dependencyScope) {
 }
 
 /** Browser control-plane orchestration, never exposed as an MCP tool.
- * auth must verify actual Auth and current CRM membership, with the durable Auth
- * adapter's membershipId/authorizationVersion and epoch contract; missing fields
- * deny, including an unextended P1 adapter. reads must be the fixed
- * self-owned public RPC adapter below, using that SAME browser bearer. Private
- * store methods provide CAS, not browser authorization, so they are called only
- * after ownership/org/limits checks and a second actual Auth/CRM check.
- * Reads are metadata, not proof that an assistant provider session/runtime lives.
- * Context reads fence the entire public context once more after final Auth/CRM,
- * so a policy or connection change during that check cannot return stale context.
- * These are bounded observations, not a transaction across Auth and PostgreSQL.
- * Revoke accepts self-owned pending/revoked/expired rows from the list, so it does
- * not depend on a healthy assistant session or enabled assistant policy.
- * Lost write ACK is unknown; no retries, new credentials or cached admission.
- * status (optional health port) answers connector activity only for the ids
- * the verified owner list returned for this actor/org, after the final recheck.
+ * Verify actual Auth once for metadata. The fixed self-owned public RPCs use
+ * that same browser bearer and enforce canonical membership, org and ownership
+ * inside SQL. Their metadata is a snapshot, not runtime admission for a tool.
+ * Do not rebuild the full capability catalog before/after that same decision.
+ * Legacy restrict still uses the full authority check until settings supports
+ * the inherited-rights mode. Private store ports provide CAS, not browser auth.
+ * Revoke requires a row from the canonical owner list and its current epoch;
+ * it remains usable for pending/expired rows and without enabled tool rights.
+ * Lost write ACK is unknown; no retries or cached write admission.
+ * Optional status/overview use in-process health only for verified owned ids.
  */
 export function createConnectionManagement({ auth, reads, connectionStore, health, clock = Date.now, timeoutMs = 30_000 } = {}) {
   if ([auth?.verifySession, auth?.readAuthorization, reads?.listConnections, reads?.connectionContext,
@@ -152,10 +156,11 @@ export function createConnectionManagement({ auth, reads, connectionStore, healt
           check();
           const observedAt = now();
           if (current.session.expiresAt <= observedAt) throw outcome('reauthentication_required');
-          if (current.membership.validTo !== null && current.membership.validTo <= observedAt) throw outcome('forbidden');
+          if (current.membership?.validTo != null && current.membership.validTo <= observedAt) throw outcome('forbidden');
         };
         const principal = async () => {
           const session = verified(await auth.verifySession({ accessToken: request.browserAccessToken, signal: innerSignal }), now()); check();
+          if (operation !== 'restrict') return { session };
           const current = authorization(await auth.readAuthorization({ accessToken: request.browserAccessToken, userId: session.userId,
             organizationId: request.organizationId, signal: innerSignal }), session.userId, request.organizationId, now()); check();
           const result = { session, ...current };
@@ -180,48 +185,53 @@ export function createConnectionManagement({ auth, reads, connectionStore, healt
           return contextMetadata(raw, initial.session.userId, request.organizationId, request.connectionId);
         };
         if (operation === 'options') {
-          const choices = async () => {
-            const raw = await reads.connectionOptions({ accessToken: request.browserAccessToken, organizationId: request.organizationId }, { signal: innerSignal }); check();
-            const value = connectionOptions(raw, request.organizationId, initial.session.userId);
-            if (value.membershipId !== initial.membership.membershipId || value.authorizationVersion !== initial.membership.authorizationVersion ||
-                value.isSuperadmin !== initial.isSuperadmin || ['read', 'action'].some(kind => value[kind].some(key => !initial.permissions[kind].includes(key) || !initial.companyCeilings[kind].includes(key)))) fail('context_changed');
-            return value;
-          };
-          const before = await choices(), current = await recheck(), options = await choices();
-          if (!same(before, options)) fail('context_changed');
-          checkLifetime(current); return { options };
+          const raw = await reads.connectionOptions({ accessToken: request.browserAccessToken, organizationId: request.organizationId }, { signal: innerSignal }); check();
+          const options = connectionOptions(raw, request.organizationId, initial.session.userId);
+          checkLifetime(initial); return { options };
         }
-        if (operation === 'list') {
-          const connections = await ownList(); const current = await recheck(); checkLifetime(current);
-          return { connections };
-        }
-        if (operation === 'status') {
-          const connections = await ownList(); const current = await recheck(); checkLifetime(current);
-          return health.snapshot(connections.map(row => row.id));
+        if (['list', 'status', 'overview'].includes(operation)) {
+          const connections = await ownList(); checkLifetime(initial);
+          if (operation === 'list') return { connections };
+          const status = health.snapshot(connections.map(row => row.id));
+          return operation === 'overview' ? { connections, status } : status;
         }
         if (operation === 'context') {
-          const context = await ownContext(); contextMatchesAuthority(context, initial);
-          const current = await recheck();
-          const finalContext = await ownContext(); contextMatchesAuthority(finalContext, current);
-          if (!same(finalContext, context)) fail('context_changed');
-          checkLifetime(current);
-          return { context: finalContext };
+          const context = await ownContext(); checkLifetime(initial);
+          return { context };
         }
         const previous = (await ownList()).find(row => row.id === request.connectionId);
         if (!previous) fail('forbidden');
         if (previous.epoch !== request.expectedEpoch) fail('context_changed');
+        if (operation === 'settings') {
+          if (previous.state !== 'active') fail('context_changed');
+          checkLifetime(initial);
+          receipt = { connectionId: previous.id, expectedEpoch: previous.epoch, operation };
+          write = true;
+          const result = await connectionStore.updateConnectionSettings({ connection: previous, permissionMode: request.permissionMode,
+            exclusions: request.exclusions, scopeMode: request.scopeMode, scopeIds: request.scopeIds }, { signal: innerSignal }); check();
+          if (!exact(result, ['ok', 'connection']) || result.ok !== true) throw outcome('operation_outcome_unknown');
+          let row;
+          try { row = metadata(result.connection, previous.userId, previous.organizationId); } catch { throw outcome('operation_outcome_unknown'); }
+          if (row.id !== previous.id || row.assistantId !== previous.assistantId || row.state !== 'active' || row.epoch !== previous.epoch + 1 ||
+              row.permissionMode !== request.permissionMode || row.scopeMode !== request.scopeMode || !same(row.exclusions, request.exclusions) ||
+              (request.scopeMode === 'restricted' && !same(row.scopeIds, request.scopeIds))) throw outcome('operation_outcome_unknown');
+          checkLifetime(initial);
+          return { ok: true, connection: row };
+        }
         let effective;
         if (operation === 'restrict') {
           if (previous.state !== 'active') fail('context_changed');
+          if (previous.permissionMode === 'inherit_crm') fail('forbidden');
           effective = await ownContext();
           contextMatchesAuthority(effective, initial);
-          if (!same(Object.fromEntries(ROW.map(key => [key, effective[key]])), previous)) fail('context_changed');
+          if (!same(metadata(effective, previous.userId, previous.organizationId, CONTEXT), previous)) fail('context_changed');
           if (['read', 'action'].some(kind => !subset(request.restrictions[kind], previous.restrictions[kind]) ||
             !subset(request.restrictions[kind], effective.companyCeilings[kind])) || !subset(request.scopeIds, previous.scopeIds)) fail('forbidden');
         }
-        // The final Auth/CRM check follows all metadata reads. SQL checks the
-        // immutable owner binding/current membership and atomically fences epoch.
-        const current = await recheck(); check();
+        // Only the legacy narrowing operation needs the composed authority.
+        // Revoke has already checked membership/immutable ownership in ownList;
+        // the private store atomically fences the selected connection's epoch.
+        const current = operation === 'restrict' ? await recheck() : initial; check();
         if (operation === 'restrict' && ['read', 'action'].some(kind => !subset(request.restrictions[kind], current.permissions[kind]) ||
             !subset(request.restrictions[kind], current.companyCeilings[kind]))) fail('forbidden');
         checkLifetime(current);
@@ -245,7 +255,8 @@ export function createConnectionManagement({ auth, reads, connectionStore, healt
       }, outcome);
     } catch (error) { throw sanitize(error, write, receipt); }
   }
-  return Object.freeze(Object.fromEntries(['list', 'context', 'options', 'restrict', 'revoke', ...(health ? ['status'] : [])].map(operation => [operation,
+  return Object.freeze(Object.fromEntries(['list', 'context', 'options', 'restrict', 'revoke',
+    ...(typeof connectionStore.updateConnectionSettings === 'function' ? ['settings'] : []), ...(health ? ['status', 'overview'] : [])].map(operation => [operation,
     (input, options) => execute(operation, input, options)])));
 }
 

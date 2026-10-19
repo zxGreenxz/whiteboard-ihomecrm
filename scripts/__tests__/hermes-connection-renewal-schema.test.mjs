@@ -54,11 +54,40 @@ function authorityContract(body) {
 }
 test('renewal computes a canonical bounded lease after locks using DB time and CAS', () => leaseContract(current));
 test('renewal preserves current ownership, policy, revocation and session state without minting authority', () => authorityContract(current));
-test('renewal execute is granted only to the dedicated store principal, never an API role', () => {
-  const relevant = statements.filter(sql => /^(?:ALTER FUNCTION|REVOKE|GRANT)/.test(sql) && sql.includes(`${name}(jsonb)`));
+function renewalAclContract(input = statements) {
+  const relevant = input.filter(sql => /^(?:ALTER FUNCTION|REVOKE|GRANT)/i.test(sql) && sql.toLowerCase().includes(`${name}(jsonb)`));
   assert(relevant.includes(`ALTER FUNCTION ${name}(jsonb) OWNER TO postgres`));
   assert(relevant.includes(`REVOKE ALL ON FUNCTION ${name}(jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor`));
-  assert.equal(relevant.at(-1), `GRANT EXECUTE ON FUNCTION ${name}(jsonb) TO hermes_store_executor`);
+  const privileges = new Set(['PUBLIC']);
+  for (const sql of relevant) {
+    if (/^ALTER FUNCTION/i.test(sql)) {
+      assert.equal(sql.toLowerCase(), `alter function ${name}(jsonb) owner to postgres`);
+      continue;
+    }
+    const parsed = /^(GRANT EXECUTE|REVOKE ALL|REVOKE EXECUTE) ON FUNCTION (.+) (?:TO|FROM) ([a-z_, ]+)$/i.exec(sql);
+    assert(parsed, 'renewal ACL must use explicit functions and roles');
+    // Commas inside another function signature do not split its target.
+    const targets = (parsed[2].match(/(?:app_private|public)\.\w+\([^)]*\)/gi) ?? []).map(target => target.replace(/\s+/g, '').toLowerCase());
+    assert.equal(targets.join(','), parsed[2].replace(/\s+/g, '').toLowerCase(), 'unsupported ACL target syntax');
+    if (!targets.includes(`${name}(jsonb)`)) continue;
+    for (const role of parsed[3].split(',').map(value => value.trim() === 'PUBLIC' ? 'PUBLIC' : value.trim().toLowerCase())) {
+      if (parsed[1].toUpperCase() === 'GRANT EXECUTE') {
+        assert.equal(role, 'hermes_store_executor', 'API or other roles cannot receive renewal execute');
+        privileges.add(role);
+      } else privileges.delete(role);
+    }
+  }
+  assert.deepEqual([...privileges], ['hermes_store_executor']);
+}
+test('renewal execute is granted only to the dedicated store principal, never an API role', () => renewalAclContract());
+
+test('renewal ACL replay rejects grouped API grants and a later store revoke', () => {
+  for (const sql of [`GRANT EXECUTE ON FUNCTION public.example_v1(jsonb,text),${name}(jsonb) TO authenticated`,
+    `grant execute on function ${name}(jsonb) to authenticated`,
+    `GRANT EXECUTE ON FUNCTION ${name}(jsonb),public.example_v1(jsonb,text) TO PUBLIC`,
+    `REVOKE EXECUTE ON FUNCTION public.example_v1(jsonb,text),${name}(jsonb) FROM hermes_store_executor`]) {
+    assert.throws(() => renewalAclContract([...statements, sql]));
+  }
 });
 
 for (const [label, before, after, validate] of [

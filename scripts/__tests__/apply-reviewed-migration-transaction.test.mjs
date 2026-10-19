@@ -24,6 +24,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { buildTransaction } from "../apply-reviewed-migration.mjs";
+import { readFileSync } from "node:fs";
+import { HERMES_READ_STANDARD_FUNCTIONS } from "../hermes-read-function-specs.mjs";
 
 /** Migration điển hình của repo: BEGIN/COMMIT thật + hàm plpgsql kết thúc `END;`. */
 const CO_HAM_PLPGSQL = `BEGIN;
@@ -160,6 +162,24 @@ test('SQL-standard recognition never masks outer transaction escapes or unsuppor
     SQL_STANDARD.replace('END;\nINSERT','COMMIT;\nEND;\nINSERT'),
     SQL_STANDARD.replace('END;\nINSERT','INSERT'),SQL_STANDARD.replace('LANGUAGE sql VOLATILE','LANGUAGE sql STABLE')])
     assert.throws(()=>buildTransaction(changed,{rollback:true}),/Unsupported SQL-standard function boundary/);
+});
+
+test('reviewed fast-read STABLE bodies retain END without admitting unknown bodies or transaction escapes', () => {
+  for (const spec of HERMES_READ_STANDARD_FUNCTIONS) {
+    const source = readFileSync(spec.sourcePath, 'utf8');
+    for (const newline of ['\n', '\r\n']) for (const lanChay of [1, 2]) {
+      const wrapped = buildTransaction(source.replace(/\r\n?/g, '\n').replaceAll('\n', newline), { rollback: true, lanChay });
+      assert.equal((wrapped.match(/BEGIN ATOMIC/g) ?? []).length, lanChay);
+      assert.doesNotMatch(wrapped, /^COMMIT;\r?$/m);
+      assert.match(wrapped, /END;/);
+    }
+    for (const changed of [source.replace(spec.name, spec.name + '_unreviewed'),
+      source.replace('BEGIN ATOMIC', 'BEGIN ATOMIC SELECT 1;'),
+      source.replace('BEGIN ATOMIC', 'BEGIN ATOMIC\n -- changed reviewed source')]) {
+      assert.throws(() => buildTransaction(changed, { rollback: true }), /Unsupported SQL-standard function boundary/);
+    }
+    assert.throws(() => buildTransaction(source + '\nSELECT 1; COMMIT;', { rollback: true }), /kết thúc transaction/);
+  }
 });
 
 test('commented or inline outer COMMIT cannot escape the SQL-standard dry-run', () => {

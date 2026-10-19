@@ -35,7 +35,7 @@ test('provider model class is supported but accessor text is never executed',()=
 });
 function fixture(overrides={}) {
   const calls=[];let verifies=0;
-  const caller={userId:USER,organizationId:ORG,membershipId:id('8'),authorizationVersion:1,sessionId:id('9')};
+  const caller={userId:USER,organizationId:ORG,sessionId:id('9')};
   const result={status:'waiting',userId:USER,organizationId:ORG,challengeId:CHALLENGE,challenge:secret,accountId:ACCOUNT,connectionId:CONNECTION,expiresAt:1800000000000};
   const service=createZaloBindingService({verifyCaller:async()=>{verifies++;return overrides.verify?overrides.verify(verifies,caller):structuredClone(caller)},
     rpc:async request=>{calls.push(request);return overrides.rpc?overrides.rpc(request,result):structuredClone(result)}});
@@ -43,8 +43,8 @@ function fixture(overrides={}) {
   const begin=()=>service.invoke('begin',{connectionId:CONNECTION,expectedConnectionEpoch:2,accountId:ACCOUNT},options);
   return {service,calls,options,begin,get verifies(){return verifies}};
 }
-test('fresh CRM identity surrounds exactly one fixed caller-JWT RPC',async()=>{
-  const f=fixture();assert.equal((await f.begin()).challenge,secret);assert.equal(f.verifies,2);assert.equal(f.calls.length,1);
+test('CRM Auth runs once before the fixed caller-JWT RPC',async()=>{
+  const f=fixture();assert.equal((await f.begin()).challenge,secret);assert.equal(f.verifies,1);assert.equal(f.calls.length,1);
   assert.equal(f.calls[0].functionName,'hermes_zalo_binding_v1');assert.equal(f.calls[0].accessToken,'fixture.browser.jwt');
   assert.deepEqual(f.calls[0].args,{p:{operation:'begin',organizationId:ORG,connectionId:CONNECTION,expectedConnectionEpoch:2,accountId:ACCOUNT}});
 });
@@ -54,8 +54,8 @@ test('caller cannot supply another user or choose organization through payload',
 test('wrong-company Auth result denies before dispatch even for presumed superadmin',async()=>{
   const f=fixture({verify:(_n,c)=>({...c,organizationId:id('9')})});await assert.rejects(f.begin(),/forbidden/);assert.equal(f.calls.length,0);
 });
-test('post-write membership change is unknown, never replayed',async()=>{
-  const f=fixture({verify:(n,c)=>({...c,authorizationVersion:n})});await assert.rejects(f.begin(),e=>e.outcomeUnknown&&e.message==='binding_outcome_unknown');assert.equal(f.calls.length,1);
+test('membership is owned by the canonical caller-JWT SQL decision, without a second Auth round trip',async()=>{
+  const f=fixture(); await f.begin(); assert.equal(f.verifies,1); assert.equal(f.calls.length,1);
 });
 for(const [name,mutate] of [
   ['extra credential',r=>({...r,accessToken:'DO_NOT_EXPOSE'})],['wrong owner',r=>({...r,userId:id('9')})],
@@ -183,7 +183,7 @@ test('timeout keeps admission until the underlying write settles; close drains a
   let resolveWrite, entered;
   const enteredPromise = new Promise(resolve => { entered = resolve; });
   let calls = 0, signal;
-  const caller = { userId: USER, organizationId: ORG, membershipId: id('8'), authorizationVersion: 1, sessionId: id('9') };
+  const caller = { userId: USER, organizationId: ORG, sessionId: id('9') };
   const service = createZaloBindingService({ verifyCaller: async () => caller, timeoutMs: 25, maxConcurrent: 1,
     rpc: q => { calls++; signal = q.signal; entered(); return new Promise(resolve => { resolveWrite = resolve; }); } });
   const options = { accessToken: 'fixture.browser.jwt', organizationId: ORG, signal: new AbortController().signal };

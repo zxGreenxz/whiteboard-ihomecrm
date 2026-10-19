@@ -1,3 +1,4 @@
+import { permissionShape, connectionPermissionSettings } from './connection-permissions.mjs';
 import { DurableConnectionStoreError } from './durable-connection-store.mjs';
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
@@ -52,7 +53,7 @@ function snapshot(value, tokenDigest, now) {
   const result = copyBounded(value);
   if (!exact(result, ['status', 'connection', 'session', 'membership', 'policy']) || result.status !== 'active') malformed();
   const { connection: row, session, membership, policy } = result;
-  if (!exact(row, ROW) || ['id', 'assistantId', 'organizationId', 'userId', 'credentialRef'].some(key => !uuid(row[key])) ||
+  if (!permissionShape(row, ROW) || ['id', 'assistantId', 'organizationId', 'userId', 'credentialRef'].some(key => !uuid(row[key])) ||
       row.state !== 'active' || row.tokenDigest !== tokenDigest || !positive(row.epoch) || !positive(row.expiresAt) ||
       !exact(session, ['credentialRef', 'revision', 'envelope', 'expiresAt', 'binding']) || session.credentialRef !== row.credentialRef ||
       !positive(session.revision) || !positive(session.expiresAt) || !exact(session.binding, OWNER) || OWNER.some(key => !uuid(session.binding[key])) ||
@@ -64,7 +65,7 @@ function snapshot(value, tokenDigest, now) {
   // The connection-store adapter and crypto validate ciphertext structure. Keep
   // the envelope in this internal comparison only; it never enters the result.
   if (!record(session.envelope)) malformed();
-  return { connection: { ...row, restrictions: permissions(row.restrictions), scopeIds: list(row.scopeIds, uuid) },
+  return { connection: { ...row, ...connectionPermissionSettings(row, permissions, malformed), restrictions: permissions(row.restrictions), scopeIds: list(row.scopeIds, uuid) },
     session, membership, policy: { version: policy.version, ...permissions({ read: policy.read, action: policy.action }),
       scopeIds: list(policy.scopeIds, uuid) } };
 }

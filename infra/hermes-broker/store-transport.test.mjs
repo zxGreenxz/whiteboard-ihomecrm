@@ -215,3 +215,21 @@ test('dangerous principals and unbounded deadlines are rejected at configuration
   }
   assert.throws(() => setup({ timeoutMs: Infinity }));
 });
+
+test('Zalo provisioning reads only the fixed host snapshot and lost ACK remains a read failure', async () => {
+  const f=setup();
+  await f.transport.call('readZaloBinding',{bindingId:'synthetic'},f);
+  assert.equal(f.calls[1].text,'SELECT app_private.hermes_zalo_provisioning_v1($1::jsonb) AS result');
+  const lost=setup({query:()=>{throw Error('PRIVATE');}});
+  await assert.rejects(lost.transport.call('readZaloBinding',{},lost),code('store_unavailable'));
+});
+
+test('Zalo queue uses fixed read/ACK functions and only ACK uncertainty is a write outcome unknown',async()=>{
+  for(const [op,name,expected] of [['readZaloProvisioningWork','work','store_unavailable'],
+    ['acknowledgeZaloProvisioning','ack','store_outcome_unknown']]){
+    const f=setup();await f.transport.call(op,{},f);
+    assert.equal(f.calls[1].text,'SELECT app_private.hermes_zalo_provisioning_'+name+'_v1($1::jsonb) AS result');
+    const lost=setup({query:()=>{throw Error('PRIVATE');}});
+    await assert.rejects(lost.transport.call(op,{},lost),code(expected));
+  }
+});

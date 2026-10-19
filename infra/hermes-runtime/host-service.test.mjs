@@ -13,7 +13,9 @@ function fixture(t, changes = {}) {
   let closes = 0, stage;
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
+    ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
     http: {}, mode: 'connector', limits: connectorLimits, listenPort: 0,
+    ...(changes.readFastPath === undefined ? {} : { readFastPath: changes.readFastPath }),
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -26,10 +28,18 @@ function fixture(t, changes = {}) {
     async prepareState(paths) { assert.equal(paths, configuration.paths); events.push('state'); return '/state/audit'; },
     createHostAudit() { return { write: async () => {}, async close() { events.push('audit-close'); await changes.auditClose?.(); } }; },
     createConnectionHandoff(options) { assert.equal(options.keys.get('k1')[0], 7); events.push('wal-copy'); return handoff; },
-    createStorePool() { events.push('pool'); return { async end() { events.push('pool-close'); await changes.poolClose?.(); } }; },
+    createStorePool() { events.push('pool'); return { async connect(){throw Error('unexpected fixture SQL');}, async end() { events.push('pool-close'); await changes.poolClose?.(); } }; },
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
+      assert.equal(options.readFastPath, changes.readFastPath);
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
+    createNativeBindingReconciler(options) {
+      assert.equal(options.handoff,handoff);assert.equal(options.backend,backend);
+      assert.equal(options.configuration,changes.zaloProvisioning);events.push('zalo-reconciler-create');
+      return {start(){assert(server.listening);events.push('zalo-reconciler-start');},
+        status(){return{state:'pending',pending:1};},
+        async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
+    },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
@@ -63,6 +73,10 @@ test('only a connector configuration composes a host; the removed managed (versi
   for (const factory of ['createDockerEngine', 'createRuntimeOrchestrator', 'createHandoffReconciler', 'preflight']) {
     assert.throws(() => createHermesHost({ ...base, mode: 'connector' }, { factories: { [factory]: () => {} } }), /invalid_host_configuration/);
   }
+});
+
+test('host forwards the explicit private read rollout flag to the backend', async t => {
+  const f = fixture(t, { readFastPath: true }); await f.host.start(); await f.host.close();
 });
 
 test('connector shutdown closes the listener while maintenance drains and keeps keys/pool/WAL/lock until that barrier', async t => {
@@ -171,4 +185,15 @@ test('actual backend and connector maintenance compose behind the real loopback 
   } finally { await host.close(); }
   assert.equal(server.listening, false); assert.equal(host.status().state, 'closed');
   assert.deepEqual(events, ['wal-close', 'pool-close', 'audit-close', 'release']);
+});
+
+test('optional native provisioning shares the host lifecycle and retains WAL/pool until its actual drain',async t=>{
+  const pending=deferred(),entered=deferred();
+  const f=fixture(t,{zaloProvisioning:{profiles:[]},zaloClose:()=>{entered.resolve();return pending.promise;}});
+  await f.host.start();
+  assert(f.events.includes('zalo-reconciler-create'));assert(f.events.includes('zalo-reconciler-start'));
+  assert.deepEqual(f.host.status().zaloProvisioning,{state:'pending',pending:1});
+  const closing=f.host.close();await entered.promise;
+  assert(!f.events.includes('pool-close'));assert(!f.events.includes('wal-close'));assert(!f.events.includes('release'));
+  pending.resolve();await closing;assert(f.events.includes('pool-close'));assert(f.events.includes('release'));
 });
