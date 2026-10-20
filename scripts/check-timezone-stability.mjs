@@ -42,6 +42,26 @@ const TARGETS = ['src/lib', 'src/hooks', 'src/copilot'];
 // Hai đầu mút là để bắt lỗi mà hai cái trên bỏ lọt: chênh nhau 25 giờ.
 const ZONES = ['UTC', 'Asia/Ho_Chi_Minh', 'Pacific/Kiritimati', 'Pacific/Midway'];
 
+/**
+ * Tên test/file ĐỎ và dòng lỗi đầu tiên của chúng, lấy từ output vitest (đã bỏ màu).
+ * Gate trước đây chỉ in "2 ĐỎ" nên CI đỏ ba lần liên tiếp (20/10/2026) mà không ai
+ * biết test nào; log CI không giữ output vitest. Giữ tối đa `limit` dòng để log
+ * không phình. Chỉ đọc, không đổi cách chạy vitest.
+ */
+export function extractVitestFailures(output, limit = 40) {
+  const plain = output.replace(/\[[0-9;]*m/g, '');
+  const lines = [];
+  for (const raw of plain.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (/^\s*(FAIL|×|✗)\s/.test(line) || /^\s*(Error|AssertionError|TypeError|RangeError)\b/.test(line) ||
+        /timed out in \d+ms/.test(line) || /^\s*❯\s+\S+\.test\.[cm]?[jt]sx?:\d+/.test(line)) {
+      lines.push(line.trim());
+      if (lines.length >= limit) break;
+    }
+  }
+  return lines;
+}
+
 export function parseVitestSummary(output) {
   // Vitest in màu ANSI; bỏ trước khi khớp, nếu không regex trượt hết.
   const plain = output.replace(/\[[0-9;]*m/g, '');
@@ -66,7 +86,8 @@ function runUnder(tz) {
     [join(repoRoot, "node_modules/vitest/vitest.mjs"), "run", ...TARGETS],
     { cwd: repoRoot, encoding: "utf8", env: { ...process.env, TZ: tz } },
   );
-  return { tz, code: r.status, summary: parseVitestSummary(`${r.stdout ?? ''}${r.stderr ?? ''}`) };
+  const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  return { tz, code: r.status, summary: parseVitestSummary(output), failures: extractVitestFailures(output) };
 }
 
 function main(argv) {
@@ -89,6 +110,11 @@ function main(argv) {
   const failing = results.filter((r) => r.code !== 0 || r.summary.testsFailed > 0);
   if (failing.length > 0) {
     console.error(`\n❌ Test ĐỎ dưới ${failing.length}/${results.length} múi giờ: ${failing.map((r) => r.tz).join(', ')}`);
+    for (const r of failing) {
+      console.error(`  TZ=${r.tz} (exit ${r.code}):`);
+      if (r.failures.length === 0) console.error('     (vitest không in dòng FAIL nào — xem exit code)');
+      for (const line of r.failures) console.error(`     ${line}`);
+    }
     console.error('  → chạy lại tay để xem chi tiết:');
     console.error(`     TZ=${failing[0].tz} npx vitest run ${TARGETS.join(' ')}`);
     process.exitCode = 1;
