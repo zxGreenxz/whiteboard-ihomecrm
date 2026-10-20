@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
-import { DOMAIN_FAMILIES } from './domain-contract.mjs';
+import { DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -157,8 +157,9 @@ async function listening(t, configuration) {
   return { ...backend, address, send, browser, connect, mcp };
 }
 
-test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
+test('TG3b opt-in runtime: four reads (incl. receivables, family v2) reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
   const measured = [];
+  assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
   for (const enabled of [false, true]) {
     const f = fakeBackend(), events = [], baseFetch = f.configuration.fetch;
     let missingFastRpc = false;
@@ -170,16 +171,19 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
         membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
         permissions: Object.fromEntries(DOMAIN_FAMILIES.v1.capabilities.map(key => [key,
           { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
-      if (/\/hermes_domain_read_(?:fast_v1|v1|v3)$/.test(path)) {
+      if (/\/hermes_domain_read_(?:fast_v1|v1|v2|v3)$/.test(path)) {
         if (missingFastRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
-        const args = JSON.parse(options.body), operation = args.p_domain;
+        const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation];
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        // Each family keeps its own result envelope on both lanes: v2 adds source and time, v3 adds time.
         const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
-          ...(operation === 'customers' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
+          ...(definition.family === 'v2' ? { source: definition.source, fetchedAt: new Date(NOW).toISOString() } : {}),
+          ...(definition.family === 'v3' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
         if (!path.endsWith('/hermes_domain_read_fast_v1')) return Response.json(result);
         assert.deepEqual(Object.keys(args.p_binding).sort(), ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'].sort());
+        assert.deepEqual(Object.keys(args.p_input).sort(), [...DOMAIN_FAMILIES[definition.family].inputKeys].sort(), `${operation}: the family input shape reaches the fast RPC`);
         return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection,
-          permission: `${operation}.view`, buildingIds: [I.building], cashbookIds: [] }, result });
+          permission: definition.permission, buildingIds: [I.building], cashbookIds: [] }, result });
       }
       return baseFetch(url, options);
     };
@@ -189,16 +193,18 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
     const joined = f.read().joined; joined.connection.restrictions.read.push(...allowed); joined.policy.read.push(...allowed);
     joined.connection.scopeIds = [I.scope]; joined.policy.scopeIds = [I.scope];
     events.length = 0;
-    for (const operation of ['customers', 'contracts', 'invoices']) {
+    for (const operation of FAST_READ_OPERATIONS) {
       const start = events.length;
       const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
       assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
       assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
+      const expectedRpc = enabled ? 'hermes_domain_read_fast_v1' : DOMAIN_FAMILIES[DOMAIN_READS[operation].family].readRpc;
+      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).at(-1), `/rest/v1/rpc/${expectedRpc}`, `${operation}: ${enabled ? 'fast' : 'legacy'} lane`);
       if (enabled) assert.deepEqual(events.slice(start).slice(events.slice(start).indexOf('audit:prepared') + 1), ['/rest/v1/rpc/hermes_domain_read_fast_v1']);
     }
     const authRequests = events.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
     measured.push(authRequests);
-    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, 3);
+    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, FAST_READ_OPERATIONS.length);
     if (enabled) {
       missingFastRpc = true; const start = events.length;
       const failed = await backend.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
@@ -209,7 +215,7 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
     await backend.close();
   }
   assert(measured[0] > 0); assert(measured[1] <= measured[0] * 0.3, JSON.stringify(measured));
-  t.diagnostic(`Auth/capability requests over the same cold+warm three-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
+  t.diagnostic(`Auth/capability requests over the same cold+warm four-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
 });
 
 test('construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact', async () => {

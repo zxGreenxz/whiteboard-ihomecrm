@@ -1,6 +1,6 @@
 {
   "$comment": "Chuông báo Hermes ↔ web (chủ chốt 17/10/2026, phương án A). Mỗi mục: chỗ web mà Hermes gọi theo (rpc) hoặc chép lại (mirrored), kèm nơi Hermes chép. Kiểm: node scripts/check-hermes-web-parity.mjs; ghi hash mới SAU KHI Hermes đã theo web: --write. Thêm mục: bọc mã web bằng // hermes-parity:begin <vùng> … // hermes-parity:end <vùng>, thêm một mục ở đây (web + hermes), chạy --write. Hướng dẫn: docs/plans/hermes-crm/BAN-GIAO.md.",
-  "notes": "Đã rà 17/10 (review PR #194), CHƯA vào bản đồ vì Hermes tự định nghĩa bộ lọc chứ không chép một màn web cụ thể: income_expenses (hermes_domain_read_v2: bỏ phiếu có hạng mục hạn chế/lương/cổ đông/quản lý lợi nhuận, lọc trạng thái duyệt/ngày/tên-mã), receivables (v2: APPROVED/PARTIAL_PAID/OVERDUE và còn nợ >0 — cùng tập trạng thái web dùng ở nhiều chỗ như useExcelInvoiceData, useContracts, không phải một trang), meter_readings (v2), leads và tasks (hermes_domain_read_v1: danh sách đơn giản theo toà/trạng thái/tên). Nếu sau này nói \"như trang X\" thì thêm mục mirrored + marker.",
+  "notes": "Đã rà 17/10 (review PR #194), CHƯA vào bản đồ vì Hermes tự định nghĩa bộ lọc chứ không chép một màn web cụ thể: income_expenses (hermes_domain_read_v2: bỏ phiếu có hạng mục hạn chế/lương/cổ đông/quản lý lợi nhuận, lọc trạng thái duyệt/ngày/tên-mã), receivables (v2: APPROVED/PARTIAL_PAID/OVERDUE và còn nợ >0 — cùng tập trạng thái web dùng ở nhiều chỗ như useExcelInvoiceData, useContracts, không phải một trang; đường nhanh B2 20/10 chép lại nhánh v2 này: mục receivables-fast-read), meter_readings (v2), leads và tasks (hermes_domain_read_v1: danh sách đơn giản theo toà/trạng thái/tên). Nếu sau này nói \"như trang X\" thì thêm mục mirrored + marker.",
   "schemaVersion": 1,
   "entries": [
     {
@@ -2549,6 +2549,35 @@
         }
       ],
       "notes": "Bản chép thứ tư của trang Sale (R1 thiết kế B3); hướng sạch dài hạn là trích lõi dùng chung và đổi get_public_available_rooms thành wrapper (PR riêng). Khối admission so với FAST và các vị từ chép từ get_public_available_rooms ở infra/hermes-broker/available-rooms-page-parity.test.mjs; parity với oracle thật trên PG17 ở infra/hermes-broker/available-rooms-page-sql.test.mjs. LỆCH ĐÃ BIẾT (R7): tìm tên tòa SQL dùng lower() theo lc_ctype của database, connector legacy dùng toLowerCase() Unicode; chưa đo trên production."
+    },
+    {
+      "id": "receivables-fast-read",
+      "kind": "mirrored",
+      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false.",
+      "sql": [
+        {
+          "function": "public.hermes_domain_read_v2",
+          "sha256": "88fedba5236e53c1c0c7e62e42cfb757be2dbe9493cacc918caf038d03aba329"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "app_private.hermes_domain_read_rows_fast_v1",
+          "calls": [
+            "hermes_read_text_v1"
+          ],
+          "note": "miền receivables; JWT người dùng, RLS invoices/rooms, phạm vi chỉ thu hẹp, trả source/fetchedAt như v2"
+        },
+        {
+          "sql": "app_private.hermes_domain_read_scope_fast_v1",
+          "note": "admission: receivables → invoices.view, 7 khoá input v2 (fromDate/toDate kiểm bằng hermes_domain_date_v2)"
+        },
+        {
+          "path": "infra/hermes-broker/domain-contract.mjs",
+          "contains": "'receivables']"
+        }
+      ],
+      "notes": "Không có trang web để bắt chước (ghi chú đầu file): nguồn chép là nhánh v2 của chính Hermes, nên đổi hermes_domain_read_v2 phải soát lại nhánh fast; parity normal↔fast trên cùng dữ liệu/JWT ở infra/hermes-broker/domain-receivables-fast-sql.test.mjs. Khác biệt đã biết: fast đọc dưới RLS (rooms/invoices theo buildings.view, ẩn demo/sandbox với admin) nên có thể ÍT dòng hơn v2, không bao giờ nhiều hơn."
     }
   ]
 }

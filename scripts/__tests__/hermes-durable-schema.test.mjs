@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { FORWARD_FUNCTIONS, FORWARD_ACL_BLOCKS, INHERITED_CRM_ACL, FORWARD_DEFAULTS } from './hermes-durable-forward-fixture.mjs';
+import { FORWARD_FUNCTIONS, FORWARD_ACL_BLOCKS, FORWARD_SUPERSEDED, INHERITED_CRM_ACL, FORWARD_DEFAULTS } from './hermes-durable-forward-fixture.mjs';
 import { splitHermesFunctionStatements as splitSqlStatements, TASK_FUNCTIONS, extractHermesFunctionDefinitions } from '../hermes-task-function-contract.mjs';
 import { buildTransaction } from '../apply-reviewed-migration.mjs';
 
@@ -878,11 +878,18 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all eight reviewed forward migrations and their 54 latest definitions remain covered, including CRM wrappers', () => {
+test('all nine reviewed forward migrations and their 54 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
-  assert.equal(paths.length, 8);
+  assert.equal(paths.length, 9);
   assert.equal(FORWARD_FUNCTIONS.length, 54);
-  const actualNames = [];
+  assert.equal(FORWARD_BY_NAME.size, 54, 'one live definition per reviewed name');
+  const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
+  for (const item of FORWARD_SUPERSEDED) {
+    const live = FORWARD_BY_NAME.get(item.name);
+    assert(live && live.sourcePath !== item.sourcePath && version(live.sourcePath) > version(item.sourcePath), `${item.name}: superseded pin must name an earlier reviewed file`);
+    assert(paths.includes(item.sourcePath), `${item.name}: superseded file is a reviewed forward migration`);
+  }
+  const actualNames = [], superseded = [];
   for (const path of paths) {
     const source = splitSqlStatements(readFileSync(join(directory, path.split('/').at(-1)), 'utf8')).map(clean);
     for (const statement of source) {
@@ -891,11 +898,12 @@ test('all eight reviewed forward migrations and their 54 latest definitions rema
       const spec = FORWARD_BY_NAME.get(match[1]);
       assert(spec, `${match[1]}: new forward function requires review`);
       if (spec.sourcePath !== path) {
-        // One reviewed projection is replaced by the legacy compatibility
-        // migration. Pin its historical body too; no other shadow is ignored.
-        assert.equal(match[1], 'app_private.hermes_connection_json_v1');
-        assert.equal(path, 'supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql');
-        assert.equal(digest(statement), 'd0f19ef4a868b3b975e3c3e3b0850c7eaca85fd3a1bdfc4f08dc13f26e33c09a');
+        // A later forward migration replaced this reviewed body (CREATE OR
+        // REPLACE). Pin the historical statement too; no other shadow is ignored.
+        const pin = FORWARD_SUPERSEDED.find(item => item.name === match[1] && item.sourcePath === path);
+        assert(pin, `${match[1]}: superseded body in ${path} requires a pinned historical digest`);
+        assert.equal(digest(statement), pin.sha256, `${match[1]}: exact superseded body in ${path}`);
+        superseded.push(pin);
         continue;
       }
       actualNames.push(match[1]);
@@ -905,6 +913,7 @@ test('all eight reviewed forward migrations and their 54 latest definitions rema
     }
   }
   assert.deepEqual(actualNames.sort(), [...FORWARD_BY_NAME.keys()].sort());
+  assert.equal(superseded.length, FORWARD_SUPERSEDED.length, 'every superseded pin still matches one historical statement');
 });
 
 test('every forward definition rejects body, privilege mode and search-path mutants', () => {
