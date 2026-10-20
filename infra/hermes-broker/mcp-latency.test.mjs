@@ -25,7 +25,9 @@ const READS = ['assistant.context.read', 'customers.view', 'rooms.view'];
 // granted here answers PGRST202, exactly like an absent SQL family.
 const optional = ['hermes_group_action_context_v1', 'hermes_work_memory_capabilities_v1', 'hermes_room_schedule_capabilities_v1',
   'hermes_room_pass_capabilities_v1', 'hermes_task_create_capabilities_v1', 'hermes_task_follow_capabilities_v1',
-  'hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3'].map(name => `/rest/v1/rpc/${name}`);
+  'hermes_customer_create_capabilities_v1', 'hermes_expense_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3',
+  // B5d: crm_auth_context directory (company name, buildings) — absent SQL degrades to null, one extra store read and one REST wave.
+  'hermes_organization_name_v1', 'hermes_building_directory_v1'].map(name => `/rest/v1/rpc/${name}`);
 const principal = { role: 'hermes_store_test', session_role: 'hermes_store_test', scoped: true, privileged_member: false,
   rolsuper: false, rolbypassrls: false, rolcreaterole: false, rolcreatedb: false, rolreplication: false };
 
@@ -159,7 +161,10 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   assert.ok(warm.stats.sqlStatements <= 5, 'identify + opening/closing reads + prepare read + final-check reads');
   assert.ok(warm.stats.authCalls <= 3, 'admission, prepare and the post-audit check each verify the session once');
   assert.ok(warm.stats.sequentialHttp <= 4 && warm.stats.sequentialNetwork <= 10);
-  assert.ok(context.stats.sequentialNetwork <= 6);
+  // B5d (21/10): crm_auth_context also reads the company name and the buildings in scope — one store read for the
+  // asker JWT before the audit and one REST wave (two RPCs in parallel) after it: 6 → 8 sequential steps, no more.
+  assert.ok(context.stats.sequentialNetwork <= 8, JSON.stringify(context.stats));
+  assert.equal(context.stats.sequentialHttp, 3); assert.equal(context.stats.restCalls, 30);
   assert.ok(warm.stats.elapsedMs < 2000, `warm call took ${warm.stats.elapsedMs} ms`);
 });
 

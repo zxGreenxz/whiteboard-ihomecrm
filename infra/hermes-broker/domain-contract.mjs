@@ -73,7 +73,9 @@ export const DOMAIN_READS = Object.freeze({
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
     id: domainId, name: text, status: text, buildingId: nullable(domainId), roomId: nullable(domainId), nextFollowUp: nullable(text) },
   ['B1_LEAD', 'B2_APPOINTMENT', 'B3_CONSULTATION', 'CONVERTED', 'FAILED']),
-  contracts: define('contracts.view', 'Tra hợp đồng và thời hạn thuê', {
+  // 21/10: status=ACTIVE là trạng thái DB. "Đang ở" như màn Hợp đồng web = mọi trạng thái trừ TERMINATED; "đang ở" của
+  // một phòng = HĐ ACTIVE. Sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search. Chỉ câu chữ; validator không đổi.
+  contracts: define('contracts.view', 'Tra hợp đồng và thời hạn thuê. status=ACTIVE là trạng thái DB; "đang ở" như màn Hợp đồng = trừ TERMINATED, của phòng = ACTIVE; sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search', {
     id: domainId, number: nullable(text), status: text, buildingId: domainId, roomId: domainId, startDate: nullable(date), endDate: nullable(date) },
   ['DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED']),
   invoices: define('invoices.view', 'Tra hóa đơn; số tiền giữ dạng chuỗi thập phân', {
@@ -202,18 +204,96 @@ const dateSchema = required => ({ type: required ? 'string' : ['string', 'null']
 // 16/10 19:44Z production: the model put a building code in `query` (text filter
 // inside each row ⇒ empty), took the company id as buildingId, and repeated the
 // same call 20+ times reading [] as a glitch. Wording only; validators unchanged.
-export const DOMAIN_QUERY_HINT = 'Lọc chữ trong từng mục (tên, phòng, mã); lọc toà thì dùng buildingId.';
-export const DOMAIN_BUILDING_HINT = 'ID toà, không phải ID công ty; trống = mọi toà.';
-export const EMPTY_RESULT_HINT = 'Rỗng là kết quả thật; không gọi lại cùng đối số.';
+// 21/10 (B5d, audit 26 tool đọc): một câu hint chung "(tên, phòng, mã)" hứa thứ SQL
+// không làm (customers chỉ khớp tên/SĐT; occupancy/deposits/building_profit khớp
+// TÊN TOÀ). Hint nay theo cột SQL thật của từng miền (v1 20261014081902, v2
+// 20261015120000, v3 20261017033630, lõi nhanh 20261019040055).
+export const READ_QUERY_HINTS = Object.freeze({
+  customers: 'Tên hoặc SĐT khách; không khớp phòng.',
+  leads: 'Tên khách hẹn.',
+  contracts: 'Số HĐ; đường nhanh thêm tên phòng, khách.',
+  invoices: 'Số hoá đơn; đường nhanh thêm tên khách.',
+  assets: 'Tên hoặc mã tài sản.',
+  services: 'Tên hoặc mã dịch vụ.',
+  tasks: 'Tên hoặc mã công việc.',
+  occupancy: 'Tên toà.',
+  income_expenses: 'Tên hoặc mã phiếu; không khớp phòng.',
+  receivables: 'Số hoá đơn hoặc tên phòng.',
+  meter_readings: 'Mã chỉ số hoặc tên phòng.',
+  deposits_held: 'Tên toà.',
+  building_profit: 'Tên toà.',
+});
+// 21/10 rút chữ (tools/list ≤ 64 000 B sau khi thêm buildingName/roomName); giữ đủ ba ý của sự cố 16/10.
+export const DOMAIN_BUILDING_HINT = 'ID toà (không phải công ty).';
+export const EMPTY_RESULT_HINT = 'Rỗng là thật; không gọi lại.';
+// B5d (21/10/2026; sự cố 00:11 "khách nào đang ở phòng London 5 950NK" → crm_read_customers
+// {buildingId, query:"LONDON 5"} → 0): mọi tool đọc danh sách nhận TÊN toà (buildingName) và,
+// nơi hàng có phòng, TÊN phòng (roomName). Connector giải tên → ID qua danh bạ trong phạm vi
+// (read-name-resolution.mjs; hermes_building_directory_v1/hermes_room_directory_v1,
+// 20261020175803) sau khi có JWT + identity và TRƯỚC validator; SQL đọc và tập khoá input
+// không đổi (hermes_request_v1 khoá đúng tập khoá; các hàm đọc thuộc B5c). Cách lọc phòng:
+//   rows  — SQL không nhận ID phòng: connector lọc hàng của trang theo roomId (trang SQL 50
+//           dòng, tự lấy tới 4 trang rồi gộp, giữ thứ tự, cursor/offset vẫn dùng được);
+//           queryRoom = lane mà SQL khớp room.name trong `query` ('always' | 'fast' | null):
+//           khi query trống thì đặt query = tên phòng để trang hẹp hơn, rồi vẫn lọc hàng.
+//   param — crm_read_report: params.roomId (SQL lọc thật; đúng một phòng).
+// Phòng trùng tên ở nhiều toà mà không nêu toà: như web (gộp mọi phòng cùng tên) tới 5 phòng;
+// hơn thì báo lỗi nêu toà. Toà mơ hồ (≥2 khớp) luôn báo lỗi nêu tên.
+export const READ_NAME_LIMITS = Object.freeze({ buildingName: 120, roomName: 60 });
+const names = (room, queryRoom = null, options = {}) => Object.freeze({ room, queryRoom, paging: 'cursor', reports: null, ...options });
+export const READ_NAMES = Object.freeze({
+  customers: names('rows'), leads: names(null), contracts: names('rows', 'fast'), invoices: names('rows'), assets: names('rows'),
+  services: names(null), tasks: names('rows'), occupancy: names(null), income_expenses: names('rows'), receivables: names('rows', 'always'),
+  meter_readings: names('rows', 'always'), deposits_held: names(null), building_profit: names(null),
+  occupancy_report: names(null, null, { paging: 'offset' }), invoice_report: names('rows', null, { paging: 'offset', reports: Object.freeze(['search']) }),
+  monthly_pnl: names(null, null, { paging: 'offset' }), contract_search: names('rows', 'always', { paging: 'offset' }),
+  report: names('param'),
+});
+export const BUILDING_NAME_HINT = 'Tên/mã toà thay buildingId.';
+export const ROOM_NAME_HINT = 'Tên/mã phòng (lọc trang).';
+// Không quảng bá maxLength (−423 B trên tools/list 64 000 B); splitReadNames vẫn chặn theo READ_NAME_LIMITS.
+export const readNameProperties = operation => {
+  const spec = READ_NAMES[operation];
+  if (!spec || spec.room === 'param') return {};
+  return { buildingName: { type: 'string', description: BUILDING_NAME_HINT },
+    ...(spec.room ? { roomName: { type: 'string', description: spec.reports ? `${ROOM_NAME_HINT} Chỉ report=${spec.reports.join('/')}.` : ROOM_NAME_HINT } } : {}) };
+};
+const withReadNames = (operation, schema) => {
+  const extra = readNameProperties(operation);
+  return Object.keys(extra).length ? { ...schema, properties: { ...schema.properties, ...extra } } : schema;
+};
+const NAME_CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
+/** Tách buildingName/roomName khỏi đối số tool đọc TRƯỚC validator hiện có (validator và tập khoá SQL
+ * không đổi). Trả { args: bản không còn tên, names: null | {buildingName?, roomName?} } — chuỗi trống/khoảng
+ * trắng coi như không gửi; sai kiểu/quá dài/ký tự điều khiển ⇒ TypeError (broker: invalid_request).
+ * crm_read_report mang tên trong params. Tool không khai tên (chi tiết, mục lục, zalo, chờ duyệt) trả nguyên. */
+export function splitReadNames(operation, args) {
+  const spec = Object.hasOwn(READ_NAMES, operation) ? READ_NAMES[operation] : null;
+  if (!spec || !domainRecord(args)) return { args, names: null };
+  const nested = spec.room === 'param';
+  const source = nested ? args.params : args;
+  if (!domainRecord(source)) return { args, names: null };
+  const picked = {}, rest = { ...source };
+  for (const key of Object.keys(READ_NAME_LIMITS)) {
+    if (!Object.hasOwn(rest, key)) continue;
+    const value = rest[key]; delete rest[key];
+    if (value === null || value === undefined) continue;
+    if (typeof value !== 'string' || NAME_CONTROL.test(value) || [...value].length > READ_NAME_LIMITS[key]) throw new TypeError('invalid_read_name');
+    const trimmed = value.trim();
+    if (trimmed !== '') picked[key] = trimmed;
+  }
+  const names = Object.keys(picked).length ? picked : null;
+  return { args: nested ? { ...args, params: rest } : rest, names };
+}
 export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze(definition.inputSchema ? {
-  name: `crm_read_${operation}`, description: definition.description, inputSchema: definition.inputSchema,
+  name: `crm_read_${operation}`, description: definition.description, inputSchema: withReadNames(operation, definition.inputSchema),
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 } : {
   name: `crm_read_${operation}`, description: `${definition.label}. ${EMPTY_RESULT_HINT}`,
   inputSchema: { type: 'object', additionalProperties: false, ...(definition.requiresDates ? { required: ['fromDate', 'toDate'] } : {}), properties: {
-    query: { type: 'string', maxLength: 200, description: DOMAIN_QUERY_HINT }, limit: { type: 'integer', minimum: 1, maximum: 50 },
+    query: { type: 'string', maxLength: 200, description: READ_QUERY_HINTS[operation] }, limit: { type: 'integer', minimum: 1, maximum: 50 },
     cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid', description: DOMAIN_BUILDING_HINT },
-    status: { enum: [null, ...definition.statuses] },
+    ...readNameProperties(operation), status: { enum: [null, ...definition.statuses] },
     ...(definition.dated ? { fromDate: dateSchema(definition.requiresDates), toDate: dateSchema(definition.requiresDates) } : {}),
   } }, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 })));

@@ -164,9 +164,11 @@ const reportResult = (operation, permission) => (value, identity, input) => {
   return structuredClone({ report: value.report, source: value.source, unavailable: null, summary: value.summary, items: value.items, offset: value.offset,
     nextOffset: value.nextOffset, sourceCapped: value.sourceCapped });
 };
+// 21/10 (B5d): `query` nói đúng cột SQL khớp (hermes_report_read_v2, 20261017033630) thay vì không mô tả.
 const QUERY = { type: 'string', maxLength: 200 }, LIMIT = { type: 'integer', minimum: 1, maximum: 50 }, OFFSET = { type: 'integer', minimum: 0, maximum: 2000 };
+const query = description => ({ ...QUERY, description });
 const DATE = { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, REQUIRED_DATE = { type: 'string', pattern: DATE.pattern };
-const BUILDING = { type: ['string', 'null'], format: 'uuid', description: 'ID toà, không phải ID công ty; trống = mọi toà.' };
+const BUILDING = { type: ['string', 'null'], format: 'uuid', description: 'ID toà (không phải công ty).' };
 const reportSchema = (properties, required = []) => ({ type: 'object', additionalProperties: false, ...(required.length ? { required } : {}), properties });
 const PAGE = 'Trang sau: offset=nextOffset; sourceCapped=true thì thu hẹp bộ lọc.';
 const ORG_ONLY = 'Chỉ kết nối Toàn tổ chức; thiếu thì unavailable=organization_scope_required.';
@@ -177,18 +179,19 @@ const reportDefine = (operation, description, properties, required) => define(RE
   result: reportResult(operation, REPORTS[operation].permission), reports: REPORTS[operation].reports });
 const REPORT_READS = Object.freeze({
   occupancy_report: reportDefine('occupancy_report', 'Báo cáo lấp đầy. snapshot: từng toà đang ở/giữ chỗ/bảo trì/không khai thác/trống, tỷ lệ, doanh thu bỏ lỡ tại fromDate (mặc định hôm nay). upcoming: phòng sắp trống trong days ngày (mặc định 30) từ fromDate.',
-    { report: { enum: ['snapshot', 'upcoming'] }, fromDate: DATE, days: { type: ['integer', 'null'], minimum: 1, maximum: 365 }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
+    { report: { enum: ['snapshot', 'upcoming'] }, fromDate: DATE, days: { type: ['integer', 'null'], minimum: 1, maximum: 365 }, buildingId: BUILDING,
+      query: query('Tên toà; upcoming: thêm tên phòng, số HĐ.'), limit: LIMIT, offset: OFFSET }, ['report']),
   invoice_report: reportDefine('invoice_report', 'Hoá đơn như trang Hoá đơn. search: month (YYYY-MM), status (paid, partial, unpaid = chưa thu đồng nào, cancelled; mặc định ẩn huỷ), query (số HĐ; tên khách nếu có quyền khách hàng). Còn nợ kể cả thu một phần: crm_read_receivables. stats: tổng kỳ month (số HĐ, tổng, đã thu, còn nợ, phòng/điện/nước/dịch vụ). Tiền là chuỗi VND.',
     { report: { enum: ['search', 'stats'] }, month: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}$' }, status: { enum: [null, 'paid', 'partial', 'unpaid', 'cancelled'] },
-      buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['report']),
+      buildingId: BUILDING, query: query('Số HĐ; tên khách nếu có quyền khách hàng; không khớp phòng.'), limit: LIMIT, offset: OFFSET }, ['report']),
   monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng tháng từng toà như "Phân tích tài chính", fromDate..toDate ≤ 366 ngày; basis=accrual (mặc định) hoặc cash. Hàng chỉ gồm phiếu đã duyệt; summary.pending* = thu/chi chờ duyệt mà "BC Doanh Thu Chi Phí" cộng thêm, cùng các toà của hàng. Tiền là chuỗi VND.',
-    { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
+    { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: query('Tên toà.'), limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
   pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals). Hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
-    { query: QUERY, limit: LIMIT, offset: OFFSET }),
+    { query: query('Mã/tên phiếu hoặc người lập.'), limit: LIMIT, offset: OFFSET }),
   zalo_conversations: reportDefine('zalo_conversations', `Hội thoại Zalo của công ty như Chat Zalo (cần quyền Chat Zalo toàn công ty): người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự; query theo tên/SĐT/nhãn. ${PRIVATE_HINT} ${ORG_ONLY}`,
-    { query: QUERY, limit: LIMIT, offset: OFFSET }),
+    { query: query('Tên, SĐT hoặc nhãn; không khớp phòng.'), limit: LIMIT, offset: OFFSET }),
   contract_search: reportDefine('contract_search', `Tìm hợp đồng như danh sách Hợp đồng: query số HĐ/tên phòng/tên-SĐT khách; status ACTIVE (trừ đã thanh lý), TERMINATED, EXPIRING (≤30 ngày), EXPIRED; displayLabel như web. Tên khách chỉ khi có quyền khách hàng ở mọi toà của kết quả. Chi tiết: crm_read_contract_detail. ${PRIVATE_HINT}`,
-    { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: QUERY, limit: LIMIT, offset: OFFSET }),
+    { status: { enum: [null, 'ACTIVE', 'TERMINATED', 'EXPIRING', 'EXPIRED'] }, buildingId: BUILDING, query: query('Số HĐ, tên phòng, tên/SĐT khách.'), limit: LIMIT, offset: OFFSET }),
 });
 
 export const FULL_READS = Object.freeze({

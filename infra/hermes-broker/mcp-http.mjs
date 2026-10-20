@@ -117,7 +117,9 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.dispatchId)
           ? { dispatchId: safe.dispatchId } : REQUEST_RECEIPT_UNKNOWN.includes(safe.code) && typeof safe.requestId === 'string' &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
-          ? { requestId: safe.requestId } : safe.code === 'result_too_large' ? { hint: RESULT_TOO_LARGE_HINT } : {};
+          ? { requestId: safe.requestId } : safe.code === 'result_too_large' ? { hint: RESULT_TOO_LARGE_HINT }
+          // B5d: tên toà/phòng không giải được — mô hình cần lý do (toà/phòng trong phạm vi của chính kết nối) để hỏi lại.
+          : safe.code === 'read_name_unresolved' && typeof safe.detail === 'string' ? { detail: safe.detail } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });
