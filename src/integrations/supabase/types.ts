@@ -24782,6 +24782,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hermes_building_directory_v1: {
+        Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: Json
+      }
       hermes_connection_context_v1: {
         Args: { p_connection_id: string }
         Returns: Json
@@ -24921,6 +24925,10 @@ export type Database = {
       hermes_org_policy_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_org_policy_options_v7: { Args: { p_org: string }; Returns: Json }
+      hermes_organization_name_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       hermes_prepare_connection_v1: {
         Args: {
           p_action: string[]
@@ -24941,6 +24949,14 @@ export type Database = {
         Returns: Json
       }
       hermes_read_text_v1: { Args: { p_text: string }; Returns: string }
+      hermes_room_directory_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_organization_id: string
+          p_room_name: string
+        }
+        Returns: Json
+      }
       hermes_room_pass_action_v1: {
         Args: { p_binding: Json; p_input: Json; p_operation: string }
         Returns: Json
