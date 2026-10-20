@@ -61,7 +61,7 @@ const INVALIDATE_KEYS = [
   ["finance-v2-routes"],
 ] as const;
 
-function useInvalidateMoney() {
+export function useInvalidateMoney() {
   const qc = useQueryClient();
   return () => {
     for (const key of INVALIDATE_KEYS) qc.invalidateQueries({ queryKey: [...key] });
@@ -150,7 +150,7 @@ export function usePostApprovedIncomeExpenseV2() {
 }
 
 /** Duyệt và Thu/Chi atomic (actor vừa approver vừa CUSTODIAN). */
-export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
+export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'; deferFeedback?:boolean}={}) {
   const invalidate = useInvalidateMoney();
   const {selectedOrganizationId}=useOrganization();
   const workflow=useRef(persistentFinancialWorkflow('voucher-v2-approve-post',options));
@@ -168,11 +168,13 @@ export function useApproveAndPostIncomeExpenseV2(options:{scope?:'target'}={}) {
       },undefined,organizationId??selectedOrganizationId??undefined);
     },
     onSuccess: (data) => {
-      invalidate();
-      const feedback = voucherLifecycleFeedback(data, "approvePost");
-      toast[feedback.kind](feedback.message);
+      if (!options.deferFeedback) {
+        invalidate();
+        const feedback = voucherLifecycleFeedback(data, "approvePost");
+        toast[feedback.kind](feedback.message);
+      }
     },
-    onError: (e: unknown) => { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); },
+    onError: (e: unknown) => { if (!options.deferFeedback) { if (voucherOutcomeUnknown(e)) invalidate(); toast.error(workflowErrorMessage(e,'duyệt và ghi nhận thu/chi')); } },
   });
 }
 

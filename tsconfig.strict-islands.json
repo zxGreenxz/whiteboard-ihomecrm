@@ -16,6 +16,9 @@
   },
   "include": [],
   "files": [
+    "src/lib/quickExpense.ts",
+    "src/hooks/income-expenses/useQuickExpense.ts",
+    "src/components/income-expenses/QuickExpenseActions.tsx",
     "src/lib/invoiceReadArgs.ts",
     "src/lib/customerSearch.ts",
     "src/lib/customerList.ts",
