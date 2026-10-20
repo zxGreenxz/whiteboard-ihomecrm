@@ -14,8 +14,11 @@ import { candidateLocalPostgresBins, assertSupportedLocalPostgresVersion } from 
 const migrationName='20261019040055_crm_shared_read_cores_v1.sql';
 const migration=readFileSync('supabase/migrations/20261019034754_hermes_inherit_crm_limits_v1.sql','utf8');
 const sharedSql=readFileSync(`supabase/migrations/${migrationName}`,'utf8');
-const fastOriginal=readFileSync('supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql','utf8');
-const fastSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? fastOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : fastOriginal;
+const fastSql=readFileSync('supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql','utf8');
+// B2 (20261020101836) replaces the admission and the shared reader; the mutation
+// probe targets that last definition because it is the one that runs.
+const receivablesOriginal=readFileSync('supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql','utf8');
+const receivablesSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? receivablesOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : receivablesOriginal;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -68,13 +71,20 @@ function run(binary, args, options = {}) {
   assert.equal(result.status, 0, `${binary}: ${result.error?.message ?? result.stderr}`);
   return result.stdout;
 }
-async function localCluster(t) {
+/** initdbArgs: extra initdb switches after the fixed C-locale set, e.g. the PostgreSQL 17
+ * builtin C.UTF-8 provider when a test needs Unicode lower()/upper() like production. */
+async function localCluster(t, { initdbArgs = [] } = {}) {
   const suffix = process.platform === 'win32' ? '.exe' : '';
   const bin = candidateLocalPostgresBins().find(p => existsSync(join(p, `initdb${suffix}`)));
   assert(bin, 'PostgreSQL 16+ required: set POSTGRES_BIN; no remote fallback');
   const binary = name => join(bin, name + suffix);
   const version = run(binary('initdb'), ['--version']);
   assertSupportedLocalPostgresVersion('initdb', version); t.diagnostic(version.trim());
+  // PostgreSQL 16 (CI runner) has no builtin locale provider: the libc C.UTF-8 locale
+  // gives the same Unicode-aware lower()/upper() as production for these fixtures.
+  const major = Number(/\b(\d+)\.\d+/.exec(version)?.[1]);
+  const builtin = arg => arg.startsWith('--locale-provider=') || arg.startsWith('--builtin-locale=');
+  const localeArgs = major >= 17 || !initdbArgs.some(builtin) ? initdbArgs : [...initdbArgs.filter(arg => !builtin(arg)), '--locale=C.UTF-8'];
   const root = mkdtempSync(join(tmpdir(), 'hermes-metadata-pg-'));
   const server = createServer();
   await new Promise((ok, bad) => server.once('error', bad).listen(0, '127.0.0.1', ok));
@@ -88,7 +98,7 @@ async function localCluster(t) {
     rmSync(target, { recursive: true });
   };
   try {
-    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale']);
+    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale', ...localeArgs]);
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
@@ -194,6 +204,10 @@ async function setup(pool) {
  ...[1,2,3].map(n=>`public.hermes_domain_capabilities_v${n}`)]) {assert(live.has(name),name);await pool.query(live.get(name));}
  for(const name of ['hermes_group_action_context_v1',...['work_memory','room_schedule','room_pass','task_create','task_follow','customer_create','expense'].map(n=>`hermes_${n}_capabilities_v1`),...[1,2,3].map(n=>`hermes_domain_capabilities_v${n}`)])
  await pool.query(`REVOKE ALL ON FUNCTION public.${name}(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;GRANT EXECUTE ON FUNCTION public.${name}(uuid) TO authenticated;`);
+ // Family v2 reader (normal lane) and the date helper the B2 admission depends on,
+ // so receivables can be compared normal-vs-fast on the same data and JWT.
+ for(const name of ['app_private.hermes_domain_text_v1','app_private.hermes_domain_date_v2','app_private.hermes_private_command_connection_v1','public.hermes_domain_read_v2'])
+ {assert(live.has(name),name);await pool.query(live.get(name));}
  await pool.query(readFileSync('supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql','utf8'));
  await pool.query(`INSERT INTO public.permission_definitions(key) VALUES('buildings.view'),('contracts.view'),('invoices.view') ON CONFLICT DO NOTHING;
  INSERT INTO public.role_permissions SELECT '${ORG}','${ROLE}',key,'ALLOW' FROM public.permission_definitions WHERE key IN('buildings.view','customers.view','contracts.view','invoices.view');
@@ -232,6 +246,7 @@ async function setup(pool) {
  `);
  const before={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])before[fn]=await web(pool,fn);
  await pool.query(sharedSql);await pool.query(sharedSql);await pool.query(fastSql);
+ await pool.query(receivablesSql);await pool.query(receivablesSql); // Idempotency, same candidate.
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};
@@ -239,9 +254,16 @@ async function setup(pool) {
 async function web(pool,fn,extra=''){
  return jwt(pool,async c=>(await c.query(`SELECT public.${fn}(${fn==='customer_list_v1'?`'${ORG}'::uuid`:''}${extra}) value`)).rows[0].value);
 }
+// Family v2 domains (receivables) send the seven-key input; v1/v3 keep five keys.
+const domainInputOf=(domain,input)=>({query:'',limit:20,cursor:null,buildingId:null,status:null,...(domain==='receivables'?{fromDate:null,toDate:null}:{}),...input});
 async function fast(pool,binding,domain,input={},actor={}) {
  return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
- return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify({query:'',limit:20,cursor:null,buildingId:null,status:null,...input})])).rows[0].value;},actor.user??USER);
+ return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
+}
+// Normal lane of family v2 (hermes_domain_read_v2, seven-key binding) on the same JWT claims.
+async function normal(pool,binding,domain,input={},actor={}) {
+ return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
+ return (await c.query('SELECT public.hermes_domain_read_v2($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
 }
 
-export {settings,localCluster,setup,jwt,fast,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};
+export {settings,localCluster,setup,jwt,fast,normal,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};

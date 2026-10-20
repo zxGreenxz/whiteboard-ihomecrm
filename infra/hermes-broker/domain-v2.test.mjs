@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { setup, READS_PATH, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
@@ -110,6 +111,32 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
   assert.throws(() => domainResult('receivables', { ...value, domain: 'receivables', source: 'crm.invoices', items: [debt] }, identity('invoices.view'), input('receivables')), 'settled invoice is not a debt');
   const profit = { id: ROOM, buildingId: BUILDING, name: 'x', revenue: '1', expense: '0', net: '1', months: 1 };
   assert.throws(() => domainResult('building_profit', { ...value, domain: 'building_profit', source: 'crm.fa_monthly_pnl', items: [profit] }, identity('reports_finance.analysis'), input('building_profit')), 'per-building row id');
+});
+
+test('B2: receivables joins the fixed private read plan with family v2 input and result semantics', () => {
+  assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
+  assert.equal(DOMAIN_READS.receivables.family, 'v2');
+  const connection = uuid(), fastInput = domainInput('receivables', { fromDate: '2026-10-01', toDate: '2026-10-31', status: 'OVERDUE' });
+  assert.deepEqual(Object.keys(fastInput).sort(), ['buildingId', 'cursor', 'fromDate', 'limit', 'query', 'status', 'toDate'], 'the fast RPC receives the seven v2 keys');
+  // The live business statement supplies the output scope; the identity row only fixes actor, company and connection.
+  const fastIdentity = { row: { id: connection, userId: USER, organizationId: ORG }, scopesByPermission: {} };
+  const debt = { id: uuid(), number: 'HD1', status: 'OVERDUE', buildingId: BUILDING, roomId: ROOM, roomName: 'P101', billingMonth: '2026-10',
+    dueDate: '2026-10-10', totalAmount: '3000000.00', paidAmount: '1000000.00', remainingAmount: '2000000.00' };
+  const envelope = { authority: { organizationId: ORG, userId: USER, connectionId: connection, permission: 'invoices.view', buildingIds: [BUILDING], cashbookIds: [] },
+    result: { organizationId: ORG, domain: 'receivables', items: [debt], nextCursor: null, source: 'crm.invoices', fetchedAt: '2026-10-20T01:02:03.004Z' } };
+  assert.deepEqual(domainFastResult('receivables', envelope, fastIdentity, fastInput), envelope.result);
+  for (const [label, change] of [
+    ['v1-shaped result without source/fetchedAt', value => { delete value.result.source; delete value.result.fetchedAt; }],
+    ['source of another domain', value => { value.result.source = 'crm.income_expenses'; }],
+    ['time that is not an instant', value => { value.result.fetchedAt = '2026-10-20'; }],
+    ['permission of another domain', value => { value.authority.permission = 'customers.view'; }],
+    ['row outside the live building scope', value => { value.authority.buildingIds = [OTHER_BUILDING]; }],
+    ['settled invoice', value => { value.result.items[0].remainingAmount = '0.00'; }],
+    ['due date outside the requested range', value => { value.result.items[0].dueDate = '2026-11-01'; }],
+    ['status outside the requested filter', value => { value.result.items[0].status = 'APPROVED'; }],
+    ['private field on the row', value => { value.result.items[0].notes = 'x'; }],
+    ['cursor without a full page', value => { value.result.nextCursor = debt.id; value.result.items = []; }],
+  ]) { const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('receivables', value, fastIdentity, fastInput), label); }
 });
 
 test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM ACL ports, no live JWT proof', { timeout: 120000 }, async t => {

@@ -494,13 +494,15 @@ async function context() {
 }
 
 const normalizeSearchPath = value => value.replace(/["\s]/g, '');
-const REVIEWED_EMPTY_SEARCH_PATH = new Map([
-  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => spec.name === 'app_private.hermes_domain_read_rows_fast_v1').map(spec => [spec.name, spec]),
-  ['public.hermes_read_text_v1', {
+// One name may hold several reviewed (file, bytes) pairs: the applied file of a
+// replaced reader is immutable, so its historical statement still verifies.
+const REVIEWED_EMPTY_SEARCH_PATH = new Map();
+for (const spec of [
+  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => spec.name === 'app_private.hermes_domain_read_rows_fast_v1'),
+  { name: 'public.hermes_read_text_v1',
     sourcePath: 'supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql',
-    statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105',
-  }],
-]);
+    statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105' },
+]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
  * CREATE statement (later migrations replace earlier ones, as in the catalog).
@@ -519,8 +521,8 @@ export function hermesFunctionAttributes(sources) {
     // Identifier list only: a later clause such as SET lock_timeout is separate.
     const empty = /\bSET\s+search_path\s*(?:=|\bTO\b)\s*''(?:\s|$)/i.test(header);
     if (empty) {
-      const reviewed = REVIEWED_EMPTY_SEARCH_PATH.get(head[1]);
-      demand(reviewed?.sourcePath === source.path && sha(statement.replace(/\r\n?/g, '\n')) === reviewed.statementSha256,
+      const reviewed = REVIEWED_EMPTY_SEARCH_PATH.get(head[1]) ?? [];
+      demand(reviewed.some(spec => spec.sourcePath === source.path && sha(statement.replace(/\r\n?/g, '\n')) === spec.statementSha256),
         'live_schema_empty_path_unreviewed');
     }
     const path = /\bSET\s+search_path\s*(?:=|\bTO\b)\s*((?:"?[A-Za-z_][A-Za-z_0-9]*"?\s*,\s*)*"?[A-Za-z_][A-Za-z_0-9]*"?)/i.exec(header)?.[1];

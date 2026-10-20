@@ -1389,6 +1389,7 @@
       "sourcePaths": [
         "supabase/migrations/*_crm_shared_read_cores_v1.sql",
         "supabase/migrations/*_hermes_domain_read_fast_v1.sql",
+        "supabase/migrations/*_hermes_domain_read_fast_receivables_v1.sql",
         "infra/hermes-broker/crm-shared-read-sql-fixture.mjs",
         "infra/hermes-broker/domain-read-fast.mjs",
         "infra/hermes-broker/read-catalog-authority.mjs"

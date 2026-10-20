@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
-import { DOMAIN_FAMILIES } from './domain-contract.mjs';
+import { DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -157,8 +157,9 @@ async function listening(t, configuration) {
   return { ...backend, address, send, browser, connect, mcp };
 }
 
-test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
+test('TG3b opt-in runtime: four reads (incl. receivables, family v2) reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
   const measured = [];
+  assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
   for (const enabled of [false, true]) {
     const f = fakeBackend(), events = [], baseFetch = f.configuration.fetch;
     let missingFastRpc = false;
@@ -170,16 +171,19 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
         membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
         permissions: Object.fromEntries(DOMAIN_FAMILIES.v1.capabilities.map(key => [key,
           { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
-      if (/\/hermes_domain_read_(?:fast_v1|v1|v3)$/.test(path)) {
+      if (/\/hermes_domain_read_(?:fast_v1|v1|v2|v3)$/.test(path)) {
         if (missingFastRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
-        const args = JSON.parse(options.body), operation = args.p_domain;
+        const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation];
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+        // Each family keeps its own result envelope on both lanes: v2 adds source and time, v3 adds time.
         const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
-          ...(operation === 'customers' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
+          ...(definition.family === 'v2' ? { source: definition.source, fetchedAt: new Date(NOW).toISOString() } : {}),
+          ...(definition.family === 'v3' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
         if (!path.endsWith('/hermes_domain_read_fast_v1')) return Response.json(result);
         assert.deepEqual(Object.keys(args.p_binding).sort(), ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'].sort());
+        assert.deepEqual(Object.keys(args.p_input).sort(), [...DOMAIN_FAMILIES[definition.family].inputKeys].sort(), `${operation}: the family input shape reaches the fast RPC`);
         return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection,
-          permission: `${operation}.view`, buildingIds: [I.building], cashbookIds: [] }, result });
+          permission: definition.permission, buildingIds: [I.building], cashbookIds: [] }, result });
       }
       return baseFetch(url, options);
     };
@@ -189,16 +193,18 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
     const joined = f.read().joined; joined.connection.restrictions.read.push(...allowed); joined.policy.read.push(...allowed);
     joined.connection.scopeIds = [I.scope]; joined.policy.scopeIds = [I.scope];
     events.length = 0;
-    for (const operation of ['customers', 'contracts', 'invoices']) {
+    for (const operation of FAST_READ_OPERATIONS) {
       const start = events.length;
       const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
       assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
       assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
+      const expectedRpc = enabled ? 'hermes_domain_read_fast_v1' : DOMAIN_FAMILIES[DOMAIN_READS[operation].family].readRpc;
+      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).at(-1), `/rest/v1/rpc/${expectedRpc}`, `${operation}: ${enabled ? 'fast' : 'legacy'} lane`);
       if (enabled) assert.deepEqual(events.slice(start).slice(events.slice(start).indexOf('audit:prepared') + 1), ['/rest/v1/rpc/hermes_domain_read_fast_v1']);
     }
     const authRequests = events.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
     measured.push(authRequests);
-    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, 3);
+    if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, FAST_READ_OPERATIONS.length);
     if (enabled) {
       missingFastRpc = true; const start = events.length;
       const failed = await backend.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
@@ -209,7 +215,7 @@ test('TG3b opt-in runtime: three reads reduce actual Auth/capability adapter req
     await backend.close();
   }
   assert(measured[0] > 0); assert(measured[1] <= measured[0] * 0.3, JSON.stringify(measured));
-  t.diagnostic(`Auth/capability requests over the same cold+warm three-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
+  t.diagnostic(`Auth/capability requests over the same cold+warm four-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
 });
 
 test('construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact', async () => {
@@ -419,6 +425,51 @@ test('composed room tool uses the encrypted assistant JWT, initial scope/data RP
   const invalid = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { organizationId: id(99) } });
   assert.equal(JSON.parse(invalid.body.result.content[0].text).error, 'invalid_request');
   assert.equal(f.calls.filter(call => call.path.endsWith('hermes_sale_listing_rooms_v1')).length, 1);
+});
+
+test('roomRead=page: the direct room tool reads one bound page RPC (no scope map, no whole-page RPC), never falls back, and an unknown flag is refused', async t => {
+  const f = fakeBackend(), order = [], original = f.configuration.fetch;
+  assert.throws(() => createHermesBackend({ ...f.configuration, roomRead: 'other' }), { message: 'invalid_backend_config' });
+  assert.throws(() => createHermesBackend({ ...f.configuration, roomRead: true }), { message: 'invalid_backend_config' });
+  f.configuration.roomRead = 'page';
+  let missing = false;
+  f.configuration.fetch = async (url, options) => {
+    const path = new URL(url).pathname; order.push(path.split('/').at(-1));
+    if (path === '/rest/v1/rpc/hermes_available_rooms_page_v1') {
+      if (missing) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
+      assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
+      const args = JSON.parse(options.body), joined = f.read().joined;
+      assert.deepEqual(Object.keys(args).sort(), ['p_binding', 'p_building_ids', 'p_building_name', 'p_limit', 'p_offset', 'p_organization_id', 'p_statuses'].sort());
+      assert.deepEqual(args.p_binding, { connectionId: I.connection, tokenDigest: joined.connection.tokenDigest, expectedEpoch: joined.connection.epoch, expectedSessionRevision: joined.session.revision });
+      assert.deepEqual([args.p_organization_id, args.p_building_ids, args.p_building_name, args.p_statuses, args.p_limit, args.p_offset], [I.org, null, 'House', null, 100, 0]);
+      return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection, permission: 'rooms.view', buildingIds: [I.building], cashbookIds: [] },
+        result: { publishedPages: 1, totalCount: 1, offset: 0, limit: 100, nextOffset: null, salePolicies: ['Chính sách thử'],
+          rooms: [{ id: id(10), building_id: I.building, floor: 1, name: '101', code: '101', area: 20, rent_price: 3000000, deposit_amount: 3000000, amenities: ['Máy lạnh'],
+            description: null, sale_note: null, room_type: null, status_public: 'free', sale_state: 'READY', avail_date: null, sale_today: '2026-10-12', expected_ready_on: null,
+            pass_contact_name: null, pass_contact_phone: null, pass_sale_policy: null, pass_price: null, pass_avail_date: null, pass_contact_manager: false }],
+          buildings: [{ id: I.building, name: 'House A', code: 'A', address: 'Đường Thử', public_contact_name: null, public_contact_phone: null, page_contact_name: 'Hotline thử', page_contact_phone: '0900000001' }] } });
+    }
+    return original(url, options);
+  };
+  f.configuration.audit = async event => { f.audits.push(event); order.push(`audit:${event.outcome}`); };
+  const http = await listening(t, f.configuration), created = await http.connect(), token = created.body.token;
+  f.grantRooms(); order.length = 0;
+  const response = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: { buildingName: 'House', limit: 100 } });
+  assert.equal(response.body.result.isError, false, response.text);
+  const data = JSON.parse(response.body.result.content[0].text);
+  assert.deepEqual([data.source, data.rooms.length, data.rooms[0].building.id, data.rooms[0].availability.label, data.rooms[0].amenities, data.totalInSnapshot, data.nextOffset, data.completeness, data.salePolicies],
+    ['hermes_available_rooms_page_v1', 1, I.building, 'Trống sẵn', 'Máy lạnh', 1, null, 'complete', ['Chính sách thử']]);
+  assert.equal(order.filter(value => value === 'hermes_available_rooms_page_v1').length, 1);
+  assert(!order.includes('hermes_room_scope_map_v1')); assert(!order.includes('hermes_sale_listing_rooms_v1'));
+  assert(order.indexOf('hermes_available_rooms_page_v1') < order.indexOf('audit:prepared')); assert.equal(order.at(-1), 'audit:prepared');
+  const exposed = response.text + JSON.stringify(f.audits);
+  for (const secret of [token, browserJwt, assistantJwt, 'SYNTHETIC-REFRESH-SECRET']) assert(!exposed.includes(secret));
+  // Missing candidate SQL: backend_unavailable, never a silent fallback to the legacy whole-page read.
+  missing = true; order.length = 0;
+  const failed = await http.mcp(token, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
+  assert.equal(failed.body.result.isError, true); assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
+  assert.equal(order.filter(value => value === 'hermes_available_rooms_page_v1').length, 1);
+  assert(!order.includes('hermes_room_scope_map_v1')); assert(!order.includes('hermes_sale_listing_rooms_v1'));
 });
 
 test('server auth chain consults customer/expense capability RPCs; absent RPCs keep their create tools closed', async t => {

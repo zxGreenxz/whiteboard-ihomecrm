@@ -107,6 +107,7 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
         encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
         connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}),
         ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }),
+        ...(configuration.roomRead === undefined ? {} : { roomRead: configuration.roomRead }),
         ...(callLog ? { callLog } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.

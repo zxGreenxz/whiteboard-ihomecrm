@@ -10,26 +10,31 @@ const standard=new Map([...TASK_FUNCTIONS,...CUSTOMER_FUNCTIONS].filter(item=>it
 // accounted for when a candidate migration is parsed.  Keep this allowlist
 // explicit and byte-bound so adding a new BEGIN ATOMIC body cannot silently
 // weaken task source verification.
-const externalStandard=new Map([
- ...HERMES_READ_STANDARD_FUNCTIONS.map(spec=>[spec.name,spec]),
- ['public.hermes_customer_create_action_v1',{
+// One name may carry several reviewed (file, bytes) pairs: a forward migration
+// that CREATE OR REPLACEs a reader leaves the applied file immutable, so both
+// the historical and the live statement stay path- and byte-bound.
+const externalStandard=new Map();
+const addExternal=spec=>externalStandard.set(spec.name,[...(externalStandard.get(spec.name)??[]),spec]);
+for(const spec of [
+ ...HERMES_READ_STANDARD_FUNCTIONS,
+ {
   name:'public.hermes_customer_create_action_v1',
   sourcePath:'supabase/migrations/20261014104442_hermes_customer_lead_create_action_v1.sql',
   statementSha256:'a65c0caaa8e6fbaf04c73d0af4eb9bc6d3d6cad2871b6271fa1fdace9660b451',
- }],
+ },
  // Gói D: invoker binds private helper OIDs at definition time (no app_private USAGE).
- ['public.hermes_task_follow_action_v1',{
+ {
   name:'public.hermes_task_follow_action_v1',
   sourcePath:'supabase/migrations/20261015110000_hermes_task_follow_v1.sql',
   statementSha256:'d9a1a93cbcc59910e6c1f2f39a9d2be90c4a70fb080da760c952eec93b1387ee',
- }],
+ },
  // Đợt 2 Gói 0: lối vào báo cáo INVOKER gắn OID bước kiểm quyền / hàm gói / bước kết thúc lúc tạo.
- ['public.hermes_w2_read_v1',{
+ {
   name:'public.hermes_w2_read_v1',
   sourcePath:'supabase/migrations/20261018000600_hermes_w2_invoker_gate_v1.sql',
   statementSha256:'eb3603767a8a0c47bbae0c367b3f6714c6a2fc585f64d568f9ab7f85817c5ba5',
- }],
-]);
+ },
+])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){
  let next=text.trimStart();
@@ -66,8 +71,8 @@ export function extractHermesFunctionDefinitions(sql,path='migration.sql'){
   const spec=head&&standard.get(head[1]);
   const external=head&&externalStandard.get(head[1]);
   if(external){
-   requireValue(path===external.sourcePath&&hash(statement)===external.statementSha256,'task_sql_standard_source_mismatch');
-   return [{qualifiedName:external.name,bodyKind:'sql-standard',bodyDigest:null,external:true}];
+   requireValue(external.some(spec=>path===spec.sourcePath&&hash(statement)===spec.statementSha256),'task_sql_standard_source_mismatch');
+   return [{qualifiedName:head[1],bodyKind:'sql-standard',bodyDigest:null,external:true}];
   }
   if(spec){
    requireValue(hash(statement)===spec.statementSha256,'task_sql_standard_source_mismatch');

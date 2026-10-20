@@ -1,0 +1,168 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {settings,localCluster,setup,jwt,fast,normal,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,BUILDING_SCOPE,ROOM,INVOICE} from './crm-shared-read-sql-fixture.mjs';
+
+// B2 (20261020101836): crm_read_receivables through the fixed private read plan
+// must return the same rows, order, fields and cursor as the receivables branch
+// of hermes_domain_read_v2 on the same data and JWT, and fail closed the same
+// way. The v2 reader is SECURITY DEFINER with hand-written filters; the fast
+// reader runs under the asker's RLS, so it may only ever narrow (last subtest
+// documents that narrowing), never widen. Real PostgreSQL 16+/17 only.
+const ISO=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const [B2,R2,R3,R4]=[300,301,302,303].map(id);
+const inv=n=>id(300+n);
+const DEBTS=[INVOICE,inv(10),inv(11),inv(18),inv(20)];
+
+test('B2 receivables: fast plan equals hermes_domain_read_v2 (rows, order, fields, cursor) and denies the same way',{timeout:240000},async t=>{
+ const {pool,cleanup}=await localCluster(t);t.after(async()=>{await pool.end();cleanup();});await setup(pool);
+ const prepared=await jwt(pool,async c=>(await c.query("SELECT public.hermes_prepare_connection_v2($1,'{}','{}','unrestricted','{}') value",[ORG])).rows[0].value);
+ const tokenDigest='b'.repeat(64),expiry=Date.now()+600000;
+ const activated=(await pool.query('SELECT app_private.hermes_store_activate_v1($1::jsonb) value',[JSON.stringify({connectionId:prepared.id,expectedEpoch:1,operationId:id(43),intentSecret:prepared.intentSecret,
+  userId:USER,providerSessionId:id(32),credentialRef:id(41),tokenDigest,tokenExpiresAt:expiry,sessionExpiresAt:Date.now()+3600000,
+  sessionEnvelope:{v:1,algorithm:'A256GCM',keyVersion:'fixture',nonce:'a'.repeat(16),tag:'a'.repeat(22),ciphertext:'abcd'}})])).rows[0].value;
+ let epoch=activated.connection.epoch;assert.equal(epoch,2);
+ const bind4=()=>({connectionId:prepared.id,tokenDigest,expectedEpoch:epoch,expectedSessionRevision:1});
+ // Normal lane binds the full seven keys; no org policy row ⇒ policy version 0 (hermes_effective_org_policy_v1 fallback).
+ const bind7=()=>({...bind4(),expectedPolicyVersion:0,expectedMembershipId:MEMBER,expectedAuthorizationVersion:1});
+ // Synthetic rows only. Included (ORG, live room of the same building, debt status, remaining>0): INVOICE (fixture, due NULL),
+ // 310 PARTIAL_PAID due 2026-10-15, 311 OVERDUE due 2026-09-30, 318 APPROVED due 2026-11-05, 320 OVERDUE due NULL.
+ // Excluded on both lanes: 312 settled, 313 DRAFT, 314 PAID, 315 soft-deleted, 316 deleted room, 317 room of another
+ // building, 319 foreign company, INVOICE2 CANCELLED.
+ await pool.query(`INSERT INTO public.buildings(id,organization_id,user_id,name,name_sort) VALUES('${B2}','${ORG}','${USER}','Second building','second');
+ INSERT INTO public.rooms VALUES('${R2}','${ORG}','${B2}','P201','p201',null),('${R3}','${ORG}','${B2}','P202','p202',now()),('${R4}','${FOREIGN}','${OTHER_BUILDING}','P301','p301',null);
+ INSERT INTO public.invoices(id,organization_id,user_id,building_id,room_id,invoice_number,billing_month,due_date,status,total_amount,paid_amount,created_at,deleted_at) VALUES
+ ('${inv(10)}','${ORG}','${USER}','${B2}','${R2}','HDON310','2026-10','2026-10-15','PARTIAL_PAID',1000,300,now(),null),
+ ('${inv(11)}','${ORG}','${USER}','${B2}','${R2}','HDON311','2026-09','2026-09-30','OVERDUE',2000,0,now(),null),
+ ('${inv(12)}','${ORG}','${USER}','${B2}','${R2}','HDON312','2026-10','2026-10-16','APPROVED',500,500,now(),null),
+ ('${inv(13)}','${ORG}','${USER}','${B2}','${R2}','HDON313','2026-10','2026-10-20','DRAFT',700,0,now(),null),
+ ('${inv(14)}','${ORG}','${USER}','${B2}','${R2}','HDON314','2026-10','2026-10-21','PAID',800,800,now(),null),
+ ('${inv(15)}','${ORG}','${USER}','${B2}','${R2}','HDON315','2026-10','2026-10-01','APPROVED',900,0,now(),now()),
+ ('${inv(16)}','${ORG}','${USER}','${B2}','${R3}','HDON316','2026-10','2026-10-02','APPROVED',950,0,now(),null),
+ ('${inv(17)}','${ORG}','${USER}','${B2}','${ROOM}','HDON317','2026-10','2026-10-03','APPROVED',960,0,now(),null),
+ ('${inv(18)}','${ORG}','${USER}','${BUILDING}','${ROOM}','HDON318','2026-11','2026-11-05','APPROVED',1100,100,now(),null),
+ ('${inv(19)}','${FOREIGN}','${USER}','${OTHER_BUILDING}','${R4}','HDON319','2026-10','2026-10-04','APPROVED',970,0,now(),null),
+ ('${inv(20)}','${ORG}','${USER}','${BUILDING}','${ROOM}','HDON320','2026-10',null,'OVERDUE',1200,0,now(),null);`);
+
+ const same=async(input={},label=JSON.stringify(input))=>{
+  const legacy=await normal(pool,bind7(),'receivables',input);
+  const quick=(await fast(pool,bind4(),'receivables',input)).result;
+  assert.equal(quick.source,'crm.invoices',label);assert.match(quick.fetchedAt,ISO,label);assert.match(legacy.fetchedAt,ISO,label);
+  assert.deepEqual({...quick,fetchedAt:null},{...legacy,fetchedAt:null},`normal-vs-fast ${label}`);
+  return quick;
+ };
+ const bothReject=async(input,expected,label)=>{
+  await assert.rejects(normal(pool,bind7(),'receivables',input),expected,`v2 ${label}`);
+  await assert.rejects(fast(pool,bind4(),'receivables',input),expected,`fast ${label}`);
+ };
+ const ids=r=>r.items.map(x=>x.id);
+
+ await t.test('no filter: the same five debts in UUID order, v2 envelope and row shape',async()=>{
+  const r=await same();
+  assert.deepEqual(ids(r),DEBTS);assert.equal(r.nextCursor,null);
+  assert.deepEqual(Object.keys(r).sort(),['domain','fetchedAt','items','nextCursor','organizationId','source']);
+  assert.equal(r.organizationId,ORG);assert.equal(r.domain,'receivables');
+  assert.deepEqual(r.items[1],{id:inv(10),number:'HDON310',status:'PARTIAL_PAID',buildingId:B2,roomId:R2,roomName:'P201',billingMonth:'2026-10',
+   dueDate:'2026-10-15',totalAmount:'1000',paidAmount:'300',remainingAmount:'700'});
+  assert.equal(r.items[0].remainingAmount,'123000.25');assert.equal(r.items[0].dueDate,null);assert.equal(r.items[4].dueDate,null);
+  assert.equal(JSON.stringify(r).includes('HDON31'),true);for(const hidden of ['HDON312','HDON313','HDON314','HDON315','HDON316','HDON317','HDON319','HDON002'])assert.equal(JSON.stringify(r).includes(hidden),false,hidden);
+ });
+ await t.test('cursor pages of two stay aligned, limit equal to the row count has no cursor',async()=>{
+  const first=await same({limit:2});assert.deepEqual(ids(first),DEBTS.slice(0,2));assert.equal(first.nextCursor,inv(10));
+  const second=await same({limit:2,cursor:first.nextCursor});assert.deepEqual(ids(second),DEBTS.slice(2,4));assert.equal(second.nextCursor,inv(18));
+  const third=await same({limit:2,cursor:second.nextCursor});assert.deepEqual(ids(third),DEBTS.slice(4));assert.equal(third.nextCursor,null);
+  const exact=await same({limit:5});assert.equal(exact.items.length,5);assert.equal(exact.nextCursor,null);
+  const one=await same({limit:1,cursor:inv(18)});assert.deepEqual(ids(one),[inv(20)]);assert.equal(one.nextCursor,null);
+ });
+ await t.test('status, due-date range, literal query and building filters agree',async()=>{
+  assert.deepEqual(ids(await same({status:'OVERDUE'})),[inv(11),inv(20)]);
+  assert.deepEqual(ids(await same({status:'APPROVED'})),[INVOICE,inv(18)]);
+  assert.deepEqual(ids(await same({status:'PARTIAL_PAID'})),[inv(10)]);
+  assert.deepEqual(ids(await same({fromDate:'2026-10-01',toDate:'2026-10-31'})),[inv(10)]);
+  assert.deepEqual(ids(await same({fromDate:'2026-10-01'})),[inv(10),inv(18)]);
+  assert.deepEqual(ids(await same({toDate:'2026-09-30'})),[inv(11)]);
+  assert.deepEqual(ids(await same({fromDate:'2026-09-30',toDate:'2026-09-30',status:'OVERDUE'})),[inv(11)]);
+  assert.deepEqual(ids(await same({fromDate:'2026-09-30',toDate:'2026-09-30',status:'APPROVED'})),[]);
+  const empty=await same({fromDate:'2027-01-01',toDate:'2027-01-31'});assert.deepEqual(empty.items,[]);assert.equal(empty.nextCursor,null);
+  assert.deepEqual(ids(await same({query:'hdon31'})),[inv(10),inv(11),inv(18)],'literal substring of the invoice number (HDON310/311/318)');
+  assert.deepEqual(ids(await same({query:'HDON310'})),[inv(10)]);
+  assert.deepEqual(ids(await same({query:'  P201 '})),[inv(10),inv(11)]);
+  assert.deepEqual(ids(await same({query:'p101'})),[INVOICE,inv(18),inv(20)]);
+  assert.deepEqual((await same({query:'nothing-here'})).items,[]);
+  assert.deepEqual(ids(await same({buildingId:B2})),[inv(10),inv(11)]);
+  assert.deepEqual(ids(await same({buildingId:BUILDING})),[INVOICE,inv(18),inv(20)]);
+  assert.deepEqual(ids(await same({buildingId:B2,status:'OVERDUE',query:'hdon'})),[inv(11)]);
+  assert.deepEqual(ids(await same({buildingId:B2,limit:1,cursor:inv(10)})),[inv(11)]);
+ });
+ await t.test('invalid input is refused identically (22023) and families keep their exact input shape',async()=>{
+  await bothReject({status:'DRAFT'},{code:'22023'},'status outside the debt set');
+  await bothReject({status:'PAID'},{code:'22023'},'status outside the debt set');
+  await bothReject({fromDate:'2026-10-02',toDate:'2026-10-01'},{code:'22023'},'reversed range');
+  await bothReject({fromDate:'2026-02-30'},{code:'22023'},'impossible date');
+  await bothReject({toDate:'20261001'},{code:'22023'},'date format');
+  await bothReject({limit:51},{code:'22023'},'limit above 50');
+  await bothReject({query:'x'.repeat(201)},{code:'22023'},'query too long');
+  const raw=(domain,input)=>jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:USER,session_id:id(32)})]);
+   return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(bind4()),domain,JSON.stringify(input)])).rows[0].value;});
+  await assert.rejects(raw('receivables',{query:'',limit:20,cursor:null,buildingId:null,status:null}),{code:'22023'},'v1 shape is not accepted for receivables');
+  await assert.rejects(raw('invoices',{query:'',limit:20,cursor:null,buildingId:null,status:null,fromDate:null,toDate:null}),{code:'22023'},'v2 shape is not accepted for invoices');
+  await assert.rejects(raw('invoices',{query:'',limit:20,cursor:null,buildingId:null,status:'APPROVED'}),{code:'22023'},'invoices still has no status filter');
+  await assert.rejects(raw('contracts',{query:'',limit:20,cursor:null,buildingId:null,status:'OVERDUE'}),{code:'22023'},'debt statuses do not leak into contracts');
+ });
+ await t.test('narrow connection scope: both lanes see one building; the other building is denied',async()=>{
+  await pool.query(`INSERT INTO public.authorization_scopes(id,organization_id,scope_type,building_id) VALUES('${BUILDING_SCOPE}','${ORG}','BUILDING','${BUILDING}')`);
+  let changed=await settings(pool,{...activated.connection,epoch},{read:[],action:[]},'restricted',[BUILDING_SCOPE]);epoch=changed.epoch;
+  assert.deepEqual(ids(await same()),[INVOICE,inv(18),inv(20)]);
+  assert.deepEqual(ids(await same({buildingId:BUILDING})),[INVOICE,inv(18),inv(20)]);
+  await bothReject({buildingId:B2},{code:'42501'},'building outside the connection scope');
+  changed=await settings(pool,changed);epoch=changed.epoch;
+  assert.deepEqual(ids(await same()),DEBTS);
+  await bothReject({buildingId:OTHER_BUILDING},{code:'42501'},'building of another company');
+ });
+ await t.test('exclusion, CRM revocation, stale binding, foreign session and revoked token deny on both lanes',async()=>{
+  let changed=await settings(pool,{...activated.connection,epoch},{read:['invoices.view'],action:[]});epoch=changed.epoch;
+  await bothReject({},{code:'42501'},'invoices.view excluded on the connection');
+  changed=await settings(pool,changed);epoch=changed.epoch;
+  await pool.query("UPDATE role_permissions SET effect='DENY' WHERE permission_key='invoices.view'");
+  await bothReject({},{code:'42501'},'CRM grant revoked');
+  await pool.query("UPDATE role_permissions SET effect='ALLOW' WHERE permission_key='invoices.view'");
+  assert.deepEqual(ids(await same()),DEBTS);
+  await pool.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability='invoices.view'");
+  await bothReject({},{code:'42501'},'registry kill switch');
+  await pool.query("UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability='invoices.view'");
+  await assert.rejects(normal(pool,{...bind7(),expectedEpoch:epoch-1},'receivables'),{code:'PT409'});
+  await assert.rejects(fast(pool,{...bind4(),expectedEpoch:epoch-1},'receivables'),{code:'PT409'});
+  await assert.rejects(normal(pool,{...bind7(),expectedSessionRevision:2},'receivables'),{code:'PT409'});
+  await assert.rejects(fast(pool,{...bind4(),expectedSessionRevision:2},'receivables'),{code:'PT409'});
+  await assert.rejects(normal(pool,bind7(),'receivables',{},{session:id(998)}),{code:'42501'});
+  await assert.rejects(fast(pool,bind4(),'receivables',{},{session:id(998)}),{code:'42501'});
+  await assert.rejects(fast(pool,bind4(),'receivables',{},{user:id(997)}),{code:'42501'});
+  await pool.query('UPDATE app_private.hermes_connection_tokens SET revoked_at=now() WHERE token_digest=$1',[tokenDigest]);
+  await bothReject({},{code:'42501'},'token revoked');
+  await pool.query('UPDATE app_private.hermes_connection_tokens SET revoked_at=null WHERE token_digest=$1',[tokenDigest]);
+  assert.deepEqual(ids(await same()),DEBTS);
+ });
+ await t.test('documented narrowing: rooms hidden by RLS drop out of the fast lane while v2 (DEFINER) still lists them',async()=>{
+  // Fixture rooms policy = buildings.view, like production rooms_select_rbac (accessible_building_ids = buildings.view).
+  // The normal lane copies the filter under SECURITY DEFINER and never consults rooms RLS. Fast ⊆ v2 holds; equality does not.
+  await pool.query("UPDATE role_permissions SET effect='DENY' WHERE permission_key='buildings.view'");
+  const legacy=await normal(pool,bind7(),'receivables'),quick=(await fast(pool,bind4(),'receivables')).result;
+  assert.equal(legacy.items.length,5,'v2 keeps every debt without buildings.view');
+  assert.deepEqual(quick.items,[],'fast reads invoices/rooms under RLS: fewer rows, never more (B2 decision point)');
+  assert.equal(quick.source,'crm.invoices');assert.equal(quick.nextCursor,null);
+  await pool.query("UPDATE role_permissions SET effect='ALLOW' WHERE permission_key='buildings.view'");
+  assert.deepEqual(ids(await same()),DEBTS);
+ });
+ await t.test('catalog after the forward migration: signatures kept, parsed INVOKER reader with empty search_path, authenticated-only ACL',async()=>{
+  const rows=(await pool.query(`SELECT n.nspname||'.'||p.proname||'('||array_to_string(p.proargtypes::oid[]::regtype[],',')||')' signature,p.prosecdef,p.provolatile,p.prosqlbody IS NOT NULL parsed,p.proconfig
+   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname IN
+   ('app_private.hermes_domain_read_scope_fast_v1','app_private.hermes_domain_read_rows_fast_v1','public.hermes_domain_read_fast_v1') ORDER BY 1`)).rows;
+  assert.deepEqual(rows.map(r=>[r.signature,r.prosecdef,r.provolatile,r.parsed]),[
+   ['app_private.hermes_domain_read_rows_fast_v1(jsonb)',false,'s',true],
+   ['app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)',true,'s',false],
+   ['public.hermes_domain_read_fast_v1(jsonb,text,jsonb)',false,'s',true]]);
+  assert.deepEqual(rows[0].proconfig.map(v=>v.replace(/"/g,'')),['search_path='],'empty search_path (stored as search_path="")');
+  for(const {signature} of rows)for(const [role,expected] of [['authenticated',true],['anon',false],['service_role',false],['hermes_store_executor',false]])
+   assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,signature,'EXECUTE'])).rows[0].value,expected,`${role} ${signature}`);
+  assert.equal((await pool.query("SELECT count(*)::int value FROM pg_proc WHERE proname IN ('hermes_domain_read_scope_fast_v1','hermes_domain_read_rows_fast_v1','hermes_domain_read_fast_v1')")).rows[0].value,3,'no overload was created');
+ });
+});

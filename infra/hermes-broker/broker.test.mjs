@@ -509,6 +509,25 @@ test('room result rejects fields outside its protocol, foreign buildings and inv
   assert(!f.events.includes('prepared')); assert(!f.events.includes('final'));
 });
 
+test('J5: the direct room tool accepts the B3 page source with an exact total above the legacy cap and the 2000 paging ceiling', async () => {
+  const page = (offset, limit, total, source = 'hermes_available_rooms_page_v1') => {
+    const value = roomPayload(); value.source = source; value.totalInSnapshot = total; value.completeness = total > 2000 ? 'source_capped' : 'complete';
+    value.offset = offset; value.nextOffset = offset + limit < total && offset + limit <= 2000 ? offset + limit : null;
+    value.rooms = value.rooms.slice(0, Math.min(limit, Math.max(0, total - offset))); return value;
+  };
+  for (const [args, total, nextOffset] of [[{ limit: 2 }, 2500, 2], [{ offset: 2000, limit: 2 }, 2500, null], [{ offset: 1998, limit: 2 }, 2500, 2000], [{ limit: 2 }, 2, null]]) {
+    const f = roomsFixture({ result: () => page(args.offset ?? 0, args.limit, total) });
+    const value = context(await f.broker.callTool(f.token, 'crm_available_rooms', args));
+    assert.deepEqual([value.source, value.totalInSnapshot, value.nextOffset, value.rooms.length], ['hermes_available_rooms_page_v1', total, nextOffset, 2]);
+  }
+  for (const [args, result] of [[{ limit: 2 }, () => page(0, 2, 2500, 'hermes_sale_listing_rooms_v1')], [{ offset: 2000, limit: 2 }, () => ({ ...page(2000, 2, 2500), nextOffset: 2002 })],
+    [{ limit: 2 }, () => ({ ...page(0, 2, 2500), totalInSnapshot: 10_000_001 })], [{ limit: 2 }, () => ({ ...page(0, 2, 2500), source: 'hermes_available_rooms_page_v2' })],
+    [{ limit: 2 }, () => ({ ...page(0, 2, 2500), completeness: 'complete' })]]) {
+    const f = roomsFixture({ result });
+    await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', args), error('backend_unavailable'));
+  }
+});
+
 test('a company without a live share link gets an explicit no_sale_page result, not an empty room list', async () => {
   const f = roomsFixture({ result: () => ({ ...roomPayload(), listing: 'no_sale_page', publishedPages: 0, totalInSnapshot: 0, salePolicies: [],
     buildings: [], rooms: [], notice: 'Công ty chưa có trang Sale phòng/link chia sẻ còn hiệu lực. Đây không phải là hết phòng.' }) });

@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1527,
-  "soFileDocBangFs": 391,
-  "tongLoiGoi": 927,
-  "khongPhanLoaiDuoc": 419,
+  "tongSoFileTest": 1530,
+  "soFileDocBangFs": 393,
+  "tongLoiGoi": 930,
+  "khongPhanLoaiDuoc": 421,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 52,
+      "soFile": 53,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -913,6 +913,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "infra/hermes-broker/available-rooms-page-parity.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/connection-options-sql.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1555,6 +1563,12 @@
     },
     {
       "file": ".e2e-fleet/specs/phong-trong-export-image.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/available-rooms-page-sql.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

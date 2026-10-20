@@ -3,7 +3,7 @@ import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction }
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
@@ -119,6 +119,10 @@ function roomFilters(value) {
   return Object.freeze({ buildingName, offset, limit });
 }
 
+// Legacy: the whole published page is read (≤2000 rows) and sliced here. Page: one
+// SQL page with the exact filtered total; the tool can still only page to offset 2000.
+const ROOM_SOURCES = Object.freeze({ hermes_sale_listing_rooms_v1: 2000, hermes_available_rooms_page_v1: 10_000_000 });
+const ROOM_MAX_OFFSET = 2000;
 // Protocol validation only. Sale facts and authorization are owned by the shared
 // room service/projection. Never serialize extra fields from a dependency.
 function roomResult(value, request, identity) {
@@ -126,16 +130,19 @@ function roomResult(value, request, identity) {
   const amount = value => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER);
   const day = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
+  const next = request.offset + request.limit;
   if (!exactData(value, ['source', 'readAt', 'currency', 'completeness', 'listing', 'notice', 'publishedPages', 'totalInSnapshot', 'offset', 'nextOffset',
     'salePolicies', 'buildings', 'rooms']) ||
-      value.source !== 'hermes_sale_listing_rooms_v1' || value.currency !== 'VND' ||
+      !Object.hasOwn(ROOM_SOURCES, value.source) || value.currency !== 'VND' ||
       value.listing !== (value.publishedPages > 0 ? 'published' : 'no_sale_page') ||
       (value.listing === 'published' ? value.notice !== null : !text(value.notice, 600) || value.totalInSnapshot !== 0) ||
       !['complete', 'source_capped'].includes(value.completeness) || typeof value.readAt !== 'string' ||
+      // The page source knows its exact total: capped means (and only means) deeper than the tool can page.
+      (value.source === 'hermes_available_rooms_page_v1' && value.completeness !== (value.totalInSnapshot > ROOM_MAX_OFFSET ? 'source_capped' : 'complete')) ||
       !Number.isFinite(Date.parse(value.readAt)) || new Date(value.readAt).toISOString() !== value.readAt ||
       !Number.isSafeInteger(value.publishedPages) || value.publishedPages < 0 || value.publishedPages > 1000 ||
-      !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > 2000 ||
-      value.offset !== request.offset || value.nextOffset !== (request.offset + request.limit < value.totalInSnapshot ? request.offset + request.limit : null) ||
+      !Number.isInteger(value.totalInSnapshot) || value.totalInSnapshot < 0 || value.totalInSnapshot > ROOM_SOURCES[value.source] ||
+      value.offset !== request.offset || value.nextOffset !== (next < value.totalInSnapshot && next <= ROOM_MAX_OFFSET ? next : null) ||
       !Array.isArray(value.salePolicies) || value.salePolicies.length > 50 || !value.salePolicies.every(policy => text(policy, 2000)) ||
       !Array.isArray(value.buildings) || value.buildings.length > 100 ||
       !Array.isArray(value.rooms) || value.rooms.length !== Math.min(request.limit, Math.max(0, value.totalInSnapshot - request.offset))) fail('backend_unavailable');
@@ -345,8 +352,8 @@ export function createBroker({
     domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
     if (domains.readAuthority !== undefined) {
       if (['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof domains.readAuthority?.[key] !== 'function') ||
-          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== 3 ||
-          !['customers', 'contracts', 'invoices'].every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
+          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== FAST_READ_OPERATIONS.length ||
+          !FAST_READ_OPERATIONS.every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
       domain.readAuthority = domains.readAuthority;
     }
   }
@@ -920,7 +927,7 @@ export function createBroker({
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
           await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }),
-        domain.readAuthority && ['customers', 'contracts', 'invoices'].includes(domainOp)
+        domain.readAuthority && FAST_READ_OPERATIONS.includes(domainOp)
           ? { authority: domain.readAuthority, initialDomainReadAdmission: true } : {});
       }
       const scheduleOp = scheduleOperation(name);
