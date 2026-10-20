@@ -2,6 +2,7 @@
   "version": 2,
   "mode": "connector",
   "readFastPath": false,
+  "roomRead": "legacy",
   "supabase": {
     "url": "https://abcdefghijklmnopqrst.supabase.co",
     "publishableKey": "sb_publishable_replace_with_project_publishable_key"

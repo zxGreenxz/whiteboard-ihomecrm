@@ -68,7 +68,9 @@ function run(binary, args, options = {}) {
   assert.equal(result.status, 0, `${binary}: ${result.error?.message ?? result.stderr}`);
   return result.stdout;
 }
-async function localCluster(t) {
+/** initdbArgs: extra initdb switches after the fixed C-locale set, e.g. the PostgreSQL 17
+ * builtin C.UTF-8 provider when a test needs Unicode lower()/upper() like production. */
+async function localCluster(t, { initdbArgs = [] } = {}) {
   const suffix = process.platform === 'win32' ? '.exe' : '';
   const bin = candidateLocalPostgresBins().find(p => existsSync(join(p, `initdb${suffix}`)));
   assert(bin, 'PostgreSQL 16+ required: set POSTGRES_BIN; no remote fallback');
@@ -88,7 +90,7 @@ async function localCluster(t) {
     rmSync(target, { recursive: true });
   };
   try {
-    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale']);
+    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale', ...initdbArgs]);
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;

@@ -16,6 +16,7 @@ function fixture(t, changes = {}) {
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
     http: {}, mode: 'connector', limits: connectorLimits, listenPort: 0,
     ...(changes.readFastPath === undefined ? {} : { readFastPath: changes.readFastPath }),
+    ...(changes.roomRead === undefined ? {} : { roomRead: changes.roomRead }),
     dispose() { events.push('dispose'); key.fill(0); } };
   const handoff = { stage: async () => {}, async list() { events.push('list'); await changes.list?.(); return []; },
     async close() { events.push('wal-close'); await changes.walClose?.(); } };
@@ -32,6 +33,7 @@ function fixture(t, changes = {}) {
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
       assert.equal(options.readFastPath, changes.readFastPath);
+      assert.equal(options.roomRead, changes.roomRead);
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createNativeBindingReconciler(options) {
       assert.equal(options.handoff,handoff);assert.equal(options.backend,backend);
@@ -77,6 +79,12 @@ test('only a connector configuration composes a host; the removed managed (versi
 
 test('host forwards the explicit private read rollout flag to the backend', async t => {
   const f = fixture(t, { readFastPath: true }); await f.host.start(); await f.host.close();
+});
+
+test('host forwards the explicit room read source flag to the backend and omits it by default', async t => {
+  for (const roomRead of [undefined, 'legacy', 'page']) {
+    const f = fixture(t, roomRead === undefined ? {} : { roomRead }); await f.host.start(); await f.host.close();
+  }
 });
 
 test('connector shutdown closes the listener while maintenance drains and keeps keys/pool/WAL/lock until that barrier', async t => {
