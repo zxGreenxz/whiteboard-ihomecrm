@@ -265,7 +265,9 @@ export function createGroupRoomPreviewService({ roomReads, decisions, clock = Da
       // Check both read capabilities before reading the selected room facts.
       const decisionReceipt = await prepareDecision(presentedToken, intent, { signal: innerSignal }); check();
       if (decisionReceipt === null || typeof decisionReceipt !== 'object') deny('backend_unavailable');
-      const roomReceipt = await prepareRooms(presentedToken, { offset: 0, limit: 100 }, { signal: innerSignal }); check();
+      // Always the legacy whole-page read: the SQL decision recomputes this exact
+      // legacy projection digest, so the B3 page source must never serve a preview.
+      const roomReceipt = await prepareRooms(presentedToken, { offset: 0, limit: 100 }, { signal: innerSignal, roomRead: 'legacy' }); check();
       if (roomReceipt === null || typeof roomReceipt !== 'object') deny('backend_unavailable');
       const receipt = Object.freeze({});
       issued.set(receipt, { digest, intent, intentDigest: hash(intent), startedAt, deadline, decisionReceipt, roomReceipt });

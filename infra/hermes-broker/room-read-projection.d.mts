@@ -5,6 +5,11 @@ export interface ProjectAvailableRoomsOptions {
   limit?: number;
   readAt: number;
 }
+export interface ProjectAvailableRoomsPageOptions {
+  offset: number;
+  limit: number;
+  readAt: number;
+}
 export interface HermesSaleListingRoom {
   id: string;
   code: string | null;
@@ -23,7 +28,7 @@ export interface HermesSaleListingRoom {
   salePolicy: string | null;
 }
 export interface HermesSaleListing {
-  source: 'hermes_sale_listing_rooms_v1';
+  source: 'hermes_sale_listing_rooms_v1' | 'hermes_available_rooms_page_v1';
   readAt: string;
   currency: 'VND';
   completeness: 'complete' | 'source_capped';
@@ -39,4 +44,7 @@ export interface HermesSaleListing {
 }
 export const PASS_CONTACT_CHARS: number;
 export const NO_SALE_PAGE_NOTICE: string;
+export const MAX_OFFSET: number;
+export const PAGE_SOURCE: 'hermes_available_rooms_page_v1';
 export function projectAvailableRooms(payload: unknown, options: ProjectAvailableRoomsOptions): HermesSaleListing;
+export function projectAvailableRoomsPage(payload: unknown, options: ProjectAvailableRoomsPageOptions): HermesSaleListing;

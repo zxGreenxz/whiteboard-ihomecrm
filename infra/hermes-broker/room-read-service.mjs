@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { validateSessionMaterial } from './session-crypto.mjs';
-import { projectAvailableRooms } from './room-read-projection.mjs';
+import { projectAvailableRooms, projectAvailableRoomsPage } from './room-read-projection.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OPAQUE = /^hc_[A-Za-z0-9_-]{43}$/;
@@ -11,6 +11,12 @@ const PERMISSION = 'rooms.view';
 const BOUND_INPUT = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedPolicyVersion', 'expectedMembershipId',
   'expectedAuthorizationVersion', 'expectedSessionRevision'];
 const MAP_BINDING = ['connectionId', 'epoch', 'policyVersion', 'membershipId', 'authorizationVersion', 'sessionRevision'];
+/** The page RPC binds only the connection/token/epoch/session revision; membership,
+ * policy and scope are decided by that one STABLE SQL statement (like the fast domain read). */
+const PAGE_BINDING = ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'];
+const PAGE_AUTHORITY = ['organizationId', 'userId', 'connectionId', 'permission', 'buildingIds', 'cashbookIds'];
+export const ROOM_READ_MODES = Object.freeze(['legacy', 'page']);
+const PAGE_RPC = 'hermes_available_rooms_page_v1';
 const record = value => value !== null && typeof value === 'object' &&
   [Object.prototype, null].includes(Object.getPrototypeOf(value)) && Reflect.ownKeys(value).every(key => typeof key === 'string' &&
     Object.getOwnPropertyDescriptor(value, key)?.enumerable === true && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
@@ -42,6 +48,11 @@ function filters(value) {
   if (typeof buildingName !== 'string' || buildingName.length > 120 || !Number.isInteger(offset) || offset < 0 || offset > 2000 ||
       !Number.isInteger(limit) || limit < 1 || limit > 100) fail('invalid_request');
   return { buildingName, offset, limit };
+}
+function pageBinding(value) {
+  if (!exact(value, PAGE_BINDING) || !id(value.connectionId) || typeof value.tokenDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.tokenDigest) ||
+      !positive(value.expectedEpoch) || !positive(value.expectedSessionRevision)) fail('invalid_request');
+  return Object.fromEntries(PAGE_BINDING.map(key => [key, value[key]]));
 }
 function authoritySnapshot(value, now) {
   if (!exact(value, ['row', 'effective', 'policyEpoch', 'isSuperadmin', 'assistantScopeIds', 'scopesByPermission', 'contextVersion']) ||
@@ -130,6 +141,22 @@ function boundMapping(snapshot, payload) {
   if (!same(buildings, snapshot.scopeInput.permissionBuildingIds)) fail('context_changed');
   return mappingSnapshot(snapshot.scopeInput, Object.fromEntries(['organizationId', 'complete', 'scopes', 'areaBuildings'].map(key => [key, payload[key]])));
 }
+/** The page RPC's authority envelope must name this very admitted connection and
+ * only buildings the connector's own rooms.view snapshot already allows. The SQL
+ * decided the assistant/CRM scope; the result must still fit the admitted view. */
+function pageEnvelope(payload, current, binding) {
+  if (!exact(payload, ['authority', 'result'])) fail('backend_unavailable');
+  const live = payload.authority;
+  if (!exact(live, PAGE_AUTHORITY) || live.organizationId !== current.row.organizationId || live.userId !== current.row.userId ||
+      live.connectionId !== binding.connectionId || live.permission !== PERMISSION || !Array.isArray(live.cashbookIds) || live.cashbookIds.length) fail('backend_unavailable');
+  const buildings = list(live.buildingIds);
+  if (!buildings.length) fail('forbidden');
+  if (buildings.some(value => !current.buildingIds.includes(value))) fail('context_changed');
+  // Every page building must be inside the set the same statement admitted.
+  if (!record(payload.result) || !Array.isArray(payload.result.buildings) ||
+      payload.result.buildings.some(row => !record(row) || !buildings.includes(row.id))) fail('backend_unavailable');
+  return payload.result;
+}
 
 async function bounded(signal, timeoutMs, operation, dependencyScope) {
   if (!(signal instanceof AbortSignal)) fail('invalid_request');
@@ -160,17 +187,28 @@ async function bounded(signal, timeoutMs, operation, dependencyScope) {
  * still consumes the receipt and enforces token, expiry, deadline and abort.
  * Receipt is single-use and expires within timeoutMs. No finalization retry or
  * cache is supplied; a changed context requires a fresh admission and room read.
+ *
+ * roomRead selects the DIRECT tool's source: 'legacy' (scope map RPC + whole
+ * company sale page, filtered and paged here) or 'page' (one bound RPC
+ * hermes_available_rooms_page_v1 that admits the connection, derives the building
+ * set and returns the filtered page; no scope map call, no fallback when the RPC
+ * is missing). Callers may pin a mode per call; group preview/send always pin
+ * 'legacy' because their SQL decision recomputes the legacy digest. A page
+ * receipt is only finalized with useInitialAdmission (the direct read lane).
  */
-export function createRoomReadService({ authority, connectionStore, crypto, auth, reads, clock = Date.now, timeoutMs = 30000 } = {}) {
+export function createRoomReadService({ authority, connectionStore, crypto, auth, reads, clock = Date.now, timeoutMs = 30000, roomRead = 'legacy' } = {}) {
   if ([authority?.resolve, authority?.checkUnchanged, connectionStore?.readConnection, crypto?.open, auth?.verifySession,
-    reads?.scopeMap, reads?.availableRooms, clock].some(fn => typeof fn !== 'function') || !positive(timeoutMs) || timeoutMs > 30000) throw new TypeError('invalid_room_read_service_config');
+    reads?.scopeMap, reads?.availableRooms, clock].some(fn => typeof fn !== 'function') || !positive(timeoutMs) || timeoutMs > 30000 ||
+    !ROOM_READ_MODES.includes(roomRead) || (roomRead === 'page' && typeof reads.availableRoomsPage !== 'function')) throw new TypeError('invalid_room_read_service_config');
   const now = () => { const value = clock(); if (!positive(value) || value > 8_640_000_000_000_000) fail('backend_unavailable'); return value; };
   const issued = new WeakMap();
   const map = async (snapshot, signal) => reads.scopeMap({ accessToken: snapshot.accessToken,
     organizationId: snapshot.scopeInput.organizationId, scopeIds: [...snapshot.scopeInput.assistantScopeIds],
     ...snapshot.bound }, { signal });
-  async function prepareAvailableRooms(presentedToken, suppliedFilters = {}, { signal } = {}) {
+  async function prepareAvailableRooms(presentedToken, suppliedFilters = {}, { signal, roomRead: mode = roomRead } = {}) {
     if (typeof presentedToken !== 'string' || !OPAQUE.test(presentedToken)) fail('unauthorized');
+    if (!ROOM_READ_MODES.includes(mode)) fail('invalid_request');
+    if (mode === 'page' && typeof reads.availableRoomsPage !== 'function') fail('backend_unavailable');
     const options = filters(suppliedFilters), tokenDigest = hash(presentedToken);
     return bounded(signal, timeoutMs, async (innerSignal, check) => {
       const receipt = await authority.resolve(presentedToken, { signal: innerSignal }); check();
@@ -199,7 +237,17 @@ export function createRoomReadService({ authority, connectionStore, crypto, auth
         expectedPolicyVersion: joined.policy.version, expectedMembershipId: joined.membership.membershipId,
         expectedAuthorizationVersion: joined.membership.authorizationVersion, expectedSessionRevision: session.revision }); }
       catch { fail('backend_unavailable'); }
-      const snapshot = { accessToken, tokenDigest, expiresAt, current, receipt, scopeInput, bound };
+      const snapshot = { accessToken, tokenDigest, expiresAt, current, receipt, scopeInput, bound, mode };
+      if (mode === 'page') {
+        // One bound STABLE statement admits the connection, derives the building set
+        // (rooms.view ∩ assistant scope) and returns the already filtered page.
+        const pageBound = pageBinding({ connectionId: current.row.id, tokenDigest, expectedEpoch: current.row.epoch, expectedSessionRevision: session.revision });
+        const payload = await reads.availableRoomsPage({ accessToken, organizationId: current.row.organizationId, binding: pageBound, filters: options }, { signal: innerSignal }); fresh();
+        const result = projectAvailableRoomsPage(pageEnvelope(payload, current, pageBound), { offset: options.offset, limit: options.limit, readAt: now() });
+        const prepared = Object.freeze({});
+        issued.set(prepared, { ...snapshot, result, deadline: now() + timeoutMs });
+        return prepared;
+      }
       const initial = await map(snapshot, innerSignal); fresh();
       const before = boundMapping(snapshot, initial);
       if (!before.allowedBuildingIds.length) fail('forbidden');
@@ -216,6 +264,9 @@ export function createRoomReadService({ authority, connectionStore, crypto, auth
     if (!issued.has(prepared)) fail('context_changed');
     const snapshot = issued.get(prepared); issued.delete(prepared);
     if (hash(presentedToken) !== snapshot.tokenDigest) fail('context_changed');
+    // A page receipt carries no scope map to recompare: only the direct read lane
+    // (initial admission after its audit) may consume it.
+    if (snapshot.mode === 'page' && !useInitialAdmission) fail('invalid_request');
     return bounded(signal, timeoutMs, async (innerSignal, check) => {
       const fresh = () => { check(); const time = now();
         if (snapshot.expiresAt <= time || snapshot.current.row.expiresAt <= time) fail('unauthorized');
@@ -252,13 +303,31 @@ async function jsonBody(response, cap, signal) {
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
   } finally { signal.removeEventListener('abort', stop); await stop(); reader.releaseLock(); }
 }
+/** PostgREST error envelope of the bound page RPC: the same status+SQLSTATE map as
+ * bound-user-rpc. A missing function (PGRST202) is backend_unavailable, never a
+ * fallback to the legacy whole-company read. */
+function pageRpcError(response, data) {
+  const error = exact(data, ['code', 'message', 'details', 'hint']) && typeof data.code === 'string' && typeof data.message === 'string' &&
+    [data.details, data.hint].every(v => v === null || typeof v === 'string');
+  if (response.status === 401) fail('unauthorized');
+  if (response.status === 403 && error && data.code === '42501') fail('forbidden');
+  if (response.status === 409 && error && data.code === 'PT409') fail('context_changed');
+  if (response.status === 400 && error && data.code === '22023') fail('invalid_request');
+  if (response.status === 413 && error && data.code === 'PT413') fail('result_too_large');
+  if (!response.ok || !record(data) || ['error', 'error_code', 'error_description'].some(key => Object.hasOwn(data, key))) fail('backend_unavailable');
+}
 
-/** Exactly two fixed POST RPCs with the verified assistant's real JWT.
+/** Exactly three fixed POST RPCs with the verified assistant's real JWT.
  * Rooms come from hermes_sale_listing_rooms_v1: the company's published sale page
  * (the same get_public_available_rooms reader as the share link), cut to the
  * caller's current rooms.view scope in SQL and to the assistant scope here.
  * hermes_room_scope_map_v1 requires its separately reviewed/applied migration;
  * this module neither creates it nor treats a missing RPC as an empty map.
+ * availableRoomsPage posts the 4-field binding plus the caller's filters to
+ * hermes_available_rooms_page_v1 (B3): the SQL admits the connection, derives
+ * the building set and returns one filtered page. Its arguments are all seven
+ * named parameters (narrowing lists are sent as null: this read never narrows
+ * below the derived set); a missing RPC is backend_unavailable, no fallback.
  * The backend derives its expected binding and token digest from the admitted
  * connection; they must never become model/tool arguments. Its STABLE decision
  * checks live membership, rooms.view, connection lifecycle and mapping together.
@@ -271,7 +340,10 @@ export function createSupabaseRoomReads({ url, publishableKey, fetch: request = 
       typeof publishableKey !== 'string' || !/^sb_publishable_[A-Za-z0-9_-]{1,512}$/.test(publishableKey) || typeof request !== 'function' ||
       !positive(timeoutMs) || timeoutMs > 30000 || !positive(maxResponseBytes) || maxResponseBytes > 4_194_304 ||
       (dependencyScope !== undefined && typeof dependencyScope?.track !== 'function')) throw new TypeError('invalid_room_reads_config');
-  return Object.freeze(Object.fromEntries(['scopeMap', 'availableRooms'].map(operation => [operation, async (input, { signal } = {}) => {
+  const post = (path, accessToken, body, signal) => request(new URL(`/rest/v1/rpc/${path}`, origin).href, { method: 'POST', redirect: 'error', signal,
+    headers: { apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
+      'content-profile': 'public', 'accept-profile': 'public' }, body });
+  const legacy = Object.fromEntries(['scopeMap', 'availableRooms'].map(operation => [operation, async (input, { signal } = {}) => {
     if (!exact(input, operation === 'scopeMap' ? ['accessToken', 'organizationId', 'scopeIds', ...BOUND_INPUT] : ['accessToken', 'organizationId']) ||
         !userJwt(input.accessToken) || !id(input.organizationId)) fail('invalid_request');
     const accessToken = input.accessToken;
@@ -285,9 +357,7 @@ export function createSupabaseRoomReads({ url, publishableKey, fetch: request = 
     }
     const body = JSON.stringify(args), path = operation === 'scopeMap' ? 'hermes_room_scope_map_v1' : 'hermes_sale_listing_rooms_v1';
     return bounded(signal, timeoutMs, async (innerSignal, check) => {
-      const response = await request(new URL(`/rest/v1/rpc/${path}`, origin).href, { method: 'POST', redirect: 'error', signal: innerSignal,
-        headers: { apikey: publishableKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
-          'content-profile': 'public', 'accept-profile': 'public' }, body });
+      const response = await post(path, accessToken, body, innerSignal);
       if (innerSignal.aborted) { await response.body?.cancel().catch(() => {}); check(); }
       const data = await jsonBody(response, maxResponseBytes, innerSignal); check();
       if (response.status === 401) fail('unauthorized');
@@ -296,5 +366,19 @@ export function createSupabaseRoomReads({ url, publishableKey, fetch: request = 
       if (!response.ok || !record(data) || ['error', 'error_code', 'error_description'].some(key => Object.hasOwn(data, key))) fail('backend_unavailable');
       return data;
     }, dependencyScope);
-  }])));
+  }]));
+  async function availableRoomsPage(input, { signal } = {}) {
+    if (!exact(input, ['accessToken', 'organizationId', 'binding', 'filters']) || !userJwt(input.accessToken) || !id(input.organizationId)) fail('invalid_request');
+    const binding = pageBinding(input.binding), page = filters(input.filters), accessToken = input.accessToken;
+    const body = JSON.stringify({ p_binding: binding, p_organization_id: input.organizationId, p_building_ids: null,
+      p_building_name: page.buildingName, p_statuses: null, p_limit: page.limit, p_offset: page.offset });
+    return bounded(signal, timeoutMs, async (innerSignal, check) => {
+      const response = await post(PAGE_RPC, accessToken, body, innerSignal);
+      if (innerSignal.aborted) { await response.body?.cancel().catch(() => {}); check(); }
+      const data = await jsonBody(response, maxResponseBytes, innerSignal); check();
+      pageRpcError(response, data);
+      return data;
+    }, dependencyScope);
+  }
+  return Object.freeze({ ...legacy, availableRoomsPage });
 }
