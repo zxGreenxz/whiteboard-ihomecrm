@@ -95,11 +95,11 @@ function dataSql() {
       { owner_id: USER, soon_days: 30, hotline_id: null, sale_policy: 'Chính sách A', organization_id: ORG },
       { owner_id: USER2, soon_days: 10, hotline_id: H.c2, sale_policy: '  Chính sách C  ', organization_id: ORG }]),
     insert('public.public_room_share_tokens', ['token', 'owner_id', 'organization_id', 'revoked', 'created_at'], [
-      { token: 'tok-PRIVATE-a1', owner_id: USER, organization_id: ORG, revoked: false, created_at: '2026-01-01' },
-      { token: 'tok-PRIVATE-a2', owner_id: USER, organization_id: ORG, revoked: false, created_at: '2026-02-01' },
-      { token: 'tok-PRIVATE-c', owner_id: USER2, organization_id: ORG, revoked: false, created_at: '2026-01-01' },
-      { token: 'tok-PRIVATE-d', owner_id: USER3, organization_id: ORG, revoked: true, created_at: '2026-01-01' },
-      { token: 'tok-PRIVATE-f', owner_id: USER, organization_id: FOREIGN, revoked: false, created_at: '2026-01-01' }]),
+      { token: 'tok-PRIVATE-fake-a1', owner_id: USER, organization_id: ORG, revoked: false, created_at: '2026-01-01' },
+      { token: 'tok-PRIVATE-fake-a2', owner_id: USER, organization_id: ORG, revoked: false, created_at: '2026-02-01' },
+      { token: 'tok-PRIVATE-fake-c', owner_id: USER2, organization_id: ORG, revoked: false, created_at: '2026-01-01' },
+      { token: 'tok-PRIVATE-fake-d', owner_id: USER3, organization_id: ORG, revoked: true, created_at: '2026-01-01' },
+      { token: 'tok-PRIVATE-fake-f', owner_id: USER, organization_id: FOREIGN, revoked: false, created_at: '2026-01-01' }]),
     insert('public.room_turnovers', ['organization_id', 'room_id', 'status', 'expected_ready_on'], [
       { organization_id: ORG, room_id: R(2), status: 'PENDING', expected_ready_on: '2026-10-25' },
       { organization_id: ORG, room_id: R(35), status: 'PENDING', expected_ready_on: null },
@@ -279,7 +279,7 @@ test('B3: hermes_available_rooms_page_v1 equals the legacy sale-page read slice 
       assert.deepEqual(strip(projected), strip(await oracle(pool, all, {})));
       assert.deepEqual([projected.listing, projected.publishedPages, projected.totalInSnapshot, projected.rooms, projected.buildings], ['no_sale_page', 0, 0, [], []]);
       assert.match(projected.notice, /không phải là hết phòng/);
-    } finally { await pool.query("UPDATE public.public_room_share_tokens SET revoked=false WHERE organization_id=$1 AND token<>'tok-PRIVATE-d'", [ORG]); }
+    } finally { await pool.query("UPDATE public.public_room_share_tokens SET revoked=false WHERE organization_id=$1 AND token<>'tok-PRIVATE-fake-d'", [ORG]); }
     // One owner's page withdrawn: the other owner's buildings stay, publishedPages drops to 1.
     await pool.query('UPDATE public.public_room_share_tokens SET revoked=true WHERE owner_id=$1', [USER2]);
     try {
