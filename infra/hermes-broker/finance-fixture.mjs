@@ -12,10 +12,11 @@ export { id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT };
 // and the canonical expense writer are fixture ports: they prove Hermes'
 // intersection/receipt logic, not the canonical writer, RLS or a live JWT.
 export const READS_PATH = 'supabase/migrations/20261015120000_hermes_domain_reads_v2.sql';
-// B5c (20261020171321) CREATE OR REPLACEs hermes_domain_read_v2 (receivables rows name their
-// building). readsSql() runs the applied v2 file with that later body swapped in, so every v2
-// test and mutation measures the definition production has after the forward lane.
-export const READS_B5C_PATH = 'supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql';
+// B5c (20261020171321, then step 2 20261020173818) CREATE OR REPLACEs hermes_domain_read_v2
+// (receivables, income_expenses and meter_readings rows name their building). readsSql() runs the
+// applied v2 file with the latest body swapped in, so every v2 test and mutation measures the
+// definition production has after the forward lane.
+export const READS_B5C_PATH = 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql';
 export const ACTION_PATH = 'supabase/migrations/20261015120100_hermes_expense_create_action_v1.sql';
 export const HOOK_PATH = 'supabase/migrations/20261015120200_hermes_finance_capabilities_hook.sql';
 export const BUILDING = id('a'), OTHER_BUILDING = id('b'), ROOM = id('c'), OTHER_ROOM = id('e'), ITEM = id('f'), SCOPE = id('0');

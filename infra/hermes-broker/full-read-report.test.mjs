@@ -120,8 +120,9 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
     // Đợt 2 thay v3 MỘT lần (20261018000000): thêm định tuyến report/report_list, phần còn lại giữ nguyên
     // bản review-fix (wave2-foundation.test.mjs so từng ký tự); đột biến ở file này vẫn nhắm bản review-fix.
+    // B5c bước 2 (20261020173819, dải nền hermes_w2_): customers thêm buildingName, mọi dòng khác giữ bản nền.
     if (name === 'public.hermes_domain_read_v3')
-      assert.equal(`supabase/migrations/${last[0]}`, W2_FOUNDATION_PATH, `${name} lives in the wave-2 foundation migration`);
+      assert.equal(`supabase/migrations/${last[0]}`, 'supabase/migrations/20261020173819_hermes_w2_customers_building_name_v1.sql', `${name} lives in the B5c wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])

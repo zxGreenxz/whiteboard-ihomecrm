@@ -878,11 +878,13 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all ten reviewed forward migrations and their 55 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
-  const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
-  assert.equal(paths.length, 10);
-  assert.equal(FORWARD_FUNCTIONS.length, 55);
-  assert.equal(FORWARD_BY_NAME.size, 55, 'one live definition per reviewed name');
+test('all eleven reviewed forward migrations and their 56 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+  // A reviewed file stays under review after every body it declared was replaced
+  // (B5c 20261020171321): its statements are then only superseded pins.
+  const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
+  assert.equal(paths.length, 11);
+  assert.equal(FORWARD_FUNCTIONS.length, 56);
+  assert.equal(FORWARD_BY_NAME.size, 56, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

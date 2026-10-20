@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-20T17:27:10.214Z",
+  "generatedAt": "2026-10-20T18:10:42.132Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 776,
     "unknown": 80,
-    "catalog-proven": 206,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12409,6 +12409,29 @@
       "evidence": [
         "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
         "catalog:function:public.hermes_domain_read_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql",
+      "version": "20261020173818",
+      "name": "hermes_domain_reads_building_name_v1",
+      "scheme": "timestamp14",
+      "sha256": "b91cea55e945db59d65eb7c7ffd670281436011f22275aaae756cfa81a4634d7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
+        "catalog:function:public.hermes_domain_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020173819_hermes_w2_customers_building_name_v1.sql",
+      "version": "20261020173819",
+      "name": "hermes_w2_customers_building_name_v1",
+      "scheme": "timestamp14",
+      "sha256": "3bd2cdd4a0d003f50e70191b1f05bf522dcb667625538bfc245706ef258f2de9",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v3"
       ]
     },
     {

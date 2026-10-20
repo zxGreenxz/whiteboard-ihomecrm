@@ -23,6 +23,13 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql',
     statementSha256: '193af7b6a9f640514f9cc3b856d04bc62efecb789f5737034214c74b91e64a30',
   }),
+  // B5c step 2 (20261020173818): customers, contracts and invoices rows name their
+  // building/room too. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql',
+    statementSha256: 'e6604edd92a995b8cf823e3785e8f730fa179a5d03e65e0872a7534e23374326',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

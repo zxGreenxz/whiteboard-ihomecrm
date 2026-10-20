@@ -12,7 +12,13 @@ import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
-const candidate = readFileSync(process.env.HERMES_DOMAIN_SQL ?? 'supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8');
+// B5c step 2 (20261020173818) CREATE OR REPLACEs hermes_domain_read_v1 (buildingName/roomName on leads, contracts,
+// invoices, assets, tasks). The applied v1 file runs with that latest body swapped in, so every v1 test measures the
+// live definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
+const LIVE_V1_PATH = 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql';
+const v1Block = src => src.match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v1\([\s\S]*?\$fn\$;/)[0];
+const candidate = process.env.HERMES_DOMAIN_SQL ? readFileSync(process.env.HERMES_DOMAIN_SQL, 'utf8') : (applied => applied.replace(v1Block(applied), () => v1Block(readFileSync(LIVE_V1_PATH, 'utf8'))))(
+  readFileSync('supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8'));
 const forward = source('20261014000503_hermes_optional_org_policy_v1');
 const actual = name => forward.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}[\\s\\S]*?\\$(?:fn)?\\$;`))[0];
 const BUILDING=id('a'), OTHER_BUILDING=id('b'), ROOM=id('c'), OTHER_ROOM=id('e'), ITEM=id('f'), SCOPE=id('0');
@@ -28,7 +34,7 @@ async function setup(t) {
     CREATE TABLE public.areas(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
     CREATE TABLE public.area_buildings(organization_id uuid,area_id uuid,building_id uuid);
     CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
-    CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,status text,deleted_at timestamptz);
+    CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,status text,deleted_at timestamptz,name text);
     CREATE TABLE public.customers(id uuid PRIMARY KEY,organization_id uuid,full_name text,phone text,deleted_at timestamptz);
     CREATE TABLE public.contracts(id uuid PRIMARY KEY,organization_id uuid,room_id uuid,contract_number text,status text,start_date date,end_date date,actual_end_date date,deleted_at timestamptz);
     CREATE TABLE public.contract_customers(organization_id uuid,contract_id uuid,customer_id uuid);
@@ -46,7 +52,7 @@ async function setup(t) {
       'organizationId',p_org,'isOffboarded',false,'membershipId','${USER}','authorizationVersion',o.authorization_version,
       'permissions',(SELECT jsonb_object_agg(permission,allowed) FROM public.fixture_domain_acl)) FROM public.organizations o WHERE o.id=p_org$$;
     INSERT INTO public.buildings VALUES('${BUILDING}','${ORG}','Allowed',null),('${OTHER_BUILDING}','${ORG}','Denied',null),('${FOREIGN}','${FOREIGN}','Foreign',null);
-    INSERT INTO public.rooms VALUES('${ROOM}','${ORG}','${BUILDING}','OCCUPIED',null),('${OTHER_ROOM}','${ORG}','${OTHER_BUILDING}','AVAILABLE',null);
+    INSERT INTO public.rooms VALUES('${ROOM}','${ORG}','${BUILDING}','OCCUPIED',null,'P101'),('${OTHER_ROOM}','${ORG}','${OTHER_BUILDING}','AVAILABLE',null,'P201');
     INSERT INTO public.authorization_scopes VALUES('${SCOPE}','${ORG}','BUILDING','${BUILDING}',null,null);
     INSERT INTO public.customers VALUES('${ITEM}','${ORG}','Synthetic Resident','0901234567',null);
     INSERT INTO public.contracts VALUES('${ITEM}','${ORG}','${ROOM}','CONTRACT','ACTIVE','2026-01-01','2027-01-01',null,null);
@@ -84,7 +90,7 @@ test('domain contract rejects caller-controlled identity, RPC, implicit writes a
   assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,6);assert.equal(DOMAIN_READS.occupancy.family,'v3');assert.equal(DOMAIN_READS.customers.family,'v3');
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
-  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
+  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,buildingName:'Allowed',roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
   assert.deepEqual(domainResult('customers',result,identity,domainInput('customers',{})),result);
   for(const changed of [{...result,organizationId:FOREIGN},{...result,items:[{...result.items[0],buildingId:OTHER_BUILDING}]},{...result,items:[{...result.items[0],phoneMasked:'***4567'}]},{...result,fetchedAt:'now'},{...result,nextCursor:ITEM}]) assert.throws(()=>domainResult('customers',changed,identity,domainInput('customers',{})));
 });
@@ -97,6 +103,8 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       domainResult(operation,result,{row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}},domainInput(operation,{}));
       if(operation==='customers')assert.equal(result.items[0].phoneMasked,'***4567');
       if(operation==='invoices')assert.equal(result.items[0].totalAmount,'123.45');
+      // B5c step 2: every list row names its building and room (fixture: building 'Allowed', room 'P101').
+      if(['leads','contracts','invoices','assets','tasks'].includes(operation))assert.deepEqual([result.items[0].buildingName,result.items[0].roomName],['Allowed','P101'],operation);
       if(operation==='services')assert.deepEqual(result.items[0].buildingIds,[BUILDING]);
       if(operation==='occupancy')assert.equal(result.items[0].total,1);
     }

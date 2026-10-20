@@ -145,6 +145,10 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   if (fix !== null) { await db.exec(fix); await db.exec(fix); }
   if (parity !== null) { await db.exec(parity); await db.exec(parity); }
   if (owner !== null) { await db.exec(owner); await db.exec(owner); }
+  // B5c step 2 (20261020173819, wave-2 foundation band): the live v3 names the building of the customer's
+  // contract. Only the CREATE statement runs here (the file's DO blocks need the wave-2 routing body, which the
+  // wave-2 fixture installs later and then re-applies this file in full); twice, as the lane would.
+  if (owner !== null) { const v3 = definition(migrationSql('20261020173819_hermes_w2_customers_building_name_v1'), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

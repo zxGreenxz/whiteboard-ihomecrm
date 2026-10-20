@@ -87,7 +87,7 @@ function connector({ latency = LATENCY, onAudit = () => {}, limits } = {}) {
       const args = JSON.parse(options.body);
       assert.equal(args.p_domain, 'customers'); assert.equal(args.p_binding.tokenDigest, DIGEST);
       return Response.json({ organizationId: I.org, domain: 'customers', nextCursor: null, fetchedAt: '2026-10-16T00:00:00.000Z', items: [{ id: I.item,
-        name: 'Synthetic resident', phone: '0900000567', contractId: I.item, buildingId: I.building, roomId: I.item, roomName: '101' }] });
+        name: 'Synthetic resident', phone: '0900000567', contractId: I.item, buildingId: I.building, buildingName: 'Toà mẫu', roomId: I.item, roomName: '101' }] });
     }
     assert.fail(`unexpected ${path}`);
   };

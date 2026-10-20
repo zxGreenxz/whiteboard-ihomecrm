@@ -95,7 +95,7 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
     ['building_profit', { fromDate: '2025-01-01', toDate: '2026-12-31' }], ['income_expenses', { fromDate: '2026-02-30' }], ['income_expenses', { fromDate: '2026-10-02', toDate: '2026-10-01' }],
     ['income_expenses', { status: 'PAID' }], ['receivables', { status: 'DRAFT' }], ['income_expenses', { organizationId: FOREIGN }], ['meter_readings', { table: 'x' }]])
     assert.throws(() => domainInput(domain, extra), `${domain} ${JSON.stringify(extra)}`);
-  const row = { id: BUILDING, code: 'PC1', type: 'EXPENSE', name: 'x', buildingId: BUILDING, roomId: null, roomName: null, voucherDate: '2026-10-02', totalAmount: '150000.00', approvalStatus: 'UNAPPROVED' };
+  const row = { id: BUILDING, code: 'PC1', type: 'EXPENSE', name: 'x', buildingId: BUILDING, buildingName: 'Toà A', roomId: null, roomName: null, voucherDate: '2026-10-02', totalAmount: '150000.00', approvalStatus: 'UNAPPROVED' };
   const value = { organizationId: ORG, domain: 'income_expenses', items: [row], nextCursor: null, source: 'crm.income_expenses', fetchedAt: '2026-10-15T01:02:03.004Z' };
   const filtered = input('income_expenses', { status: 'UNAPPROVED', fromDate: '2026-10-01', toDate: '2026-10-31' });
   assert.deepEqual(domainResult('income_expenses', value, identity('income_expenses.view'), filtered), value);
@@ -161,7 +161,10 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
     assert.deepEqual(debts.items.map(row => [row.id, row.remainingAmount, row.roomName, row.buildingName, row.buildingCode]), [[ids.debt, '2000000.00', 'P101', 'Toà A', null]],
       'B5c: the reserve lane names the building of the debt (code null when the building has none)');
     const readings = await read('meter_readings', input('meter_readings'));
-    assert.deepEqual(readings.items.map(row => [row.id, row.consumption]), [[ids.reading, '50.00']]); assert.equal(JSON.stringify(readings).includes('example.invalid'), false);
+    assert.deepEqual(readings.items.map(row => [row.id, row.consumption, row.buildingName, row.roomName]), [[ids.reading, '50.00', 'Toà A', 'P101']]); assert.equal(JSON.stringify(readings).includes('example.invalid'), false);
+    // B5c step 2: vouchers name their building too (room only when the voucher has one).
+    const vouchers = await read('income_expenses', input('income_expenses'));
+    assert.deepEqual(vouchers.items.map(row => `${row.buildingName}|${row.roomId === null ? String(row.roomName) : 'room'}`).sort(), ['Toà A|null', 'Toà A|room', 'Toà A|room']);
     const deposits = await read('deposits_held', input('deposits_held'));
     assert.deepEqual(deposits.items, [{ id: BUILDING, buildingId: BUILDING, name: 'Toà A', contractCount: 1, expected: '3000000', held: '3000000',
       shortfallAll: '0', shortfallShort: '0', fullCount: 1, shortCount: 0, firstInvoiceCount: 0 }]);

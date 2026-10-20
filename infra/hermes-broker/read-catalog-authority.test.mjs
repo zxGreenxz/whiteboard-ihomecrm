@@ -67,7 +67,7 @@ test('business-statement output authority replaces stale discovery scope and val
   const identity = { row: { id: connection, userId: user, organizationId: org }, scopesByPermission: { 'customers.view': { buildingIds: [building], cashbookIds: [] } } };
   const envelope = { authority: { organizationId: org, userId: user, connectionId: connection, permission: 'customers.view', buildingIds: [other], cashbookIds: [] },
     result: { organizationId: org, domain: 'customers', fetchedAt: new Date(NOW).toISOString(), nextCursor: null,
-      items: [{ id: id(20), name: 'Fixture', phone: null, contractId: id(21), buildingId: other, roomId: id(22), roomName: 'A' }] } };
+      items: [{ id: id(20), name: 'Fixture', phone: null, contractId: id(21), buildingId: other, buildingName: 'Toà B', roomId: id(22), roomName: 'A' }] } };
   assert.deepEqual(domainFastResult('customers', envelope, identity, domainInput('customers', {})), envelope.result);
   for (const change of [value => { value.authority.userId = other; }, value => { value.authority.organizationId = other; },
     value => { value.authority.connectionId = other; }, value => { value.authority.permission = 'contracts.view'; },
