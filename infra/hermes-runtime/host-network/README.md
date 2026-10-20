@@ -42,6 +42,7 @@ ss -ltnp | grep -E '172.17.0.1%docker0:(20128|8740)'
 | `tool_args` | `arguments` của một tool call vượt giới hạn | `GUARD_ARGS_MAX=8192`; tool trong `GUARD_LARGE_TOOLS` dùng `GUARD_LARGE_ARGS_MAX=131072` | ký tự |
 | `wall_clock` | Cả lượt stream quá thời gian, tính từ lúc guard nhận request; hẹn giờ đặt khi upstream trả header (treo trước header do stale timeout của Hermes lo) | `GUARD_MAX_STREAM_SECONDS=300` | ms |
 | `events` | Quá số dòng `data:` | `GUARD_MAX_EVENTS=40000` | sự kiện |
+| `whitespace_run` | `arguments` của một tool call có chuỗi khoảng trắng liên tiếp **ngoài** chuỗi JSON (dấu hiệu model chạy loạn đo 20/10: `…"cursor":` rồi phun khoảng trắng); bộ đếm giữ qua các delta, đặt lại khi gặp ký tự khác | `GUARD_WHITESPACE_RUN=512` | ký tự trắng liên tiếp |
 
 Unit trong repo (bản chạy trên VPS) hạ `GUARD_LARGE_ARGS_MAX=32768` và `GUARD_MAX_STREAM_SECONDS=180`: chạy loạn đo được sinh 100–500 ký tự/giây, nên với 128 KB/300 s một tool lớn (`terminal`…) chạy loạn vẫn treo tới 5 phút; tham số hợp lệ của tool lớn trong kênh Zalo nhỏ hơn nhiều (Hermes tự giới hạn output tool 50 KB).
 
