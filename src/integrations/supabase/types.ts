@@ -24770,6 +24770,18 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: boolean
       }
+      hermes_available_rooms_page_v1: {
+        Args: {
+          p_binding: Json
+          p_building_ids?: string[]
+          p_building_name?: string
+          p_limit?: number
+          p_offset?: number
+          p_organization_id: string
+          p_statuses?: string[]
+        }
+        Returns: Json
+      }
       hermes_connection_context_v1: {
         Args: { p_connection_id: string }
         Returns: Json

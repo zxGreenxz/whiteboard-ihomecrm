@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-20T10:54:19.617Z",
+  "generatedAt": "2026-10-20T12:07:14.226Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 774,
-    "unknown": 81,
+    "ledger-applied": 775,
+    "unknown": 80,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12383,11 +12383,9 @@
       "name": "hermes_available_rooms_page_v1",
       "scheme": "timestamp14",
       "sha256": "b8f2d524e395063ff1ecd0f8f2e0a6314b74f388683bafcd12f892cb6c9c77e0",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.hermes_room_page_admission_v1",
-        "function:public.hermes_available_rooms_page_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-20T12:07:11.518Z|bien-nhan-backup"
       ]
     },
     {
