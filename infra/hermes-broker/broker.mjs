@@ -70,7 +70,10 @@ const DEFAULT_LIMITS = Object.freeze({
   maxToolsListBytes: TOOLS_LIST_MAX_BYTES,
 });
 const RATE_WINDOW_MS = 60_000;
-const ERROR_STATUS = Object.freeze({
+// Every code here can be audited as a denied/timeout tools/call event (recordAudit in invoke), so the host audit
+// protocol must accept all of them: infra/hermes-runtime/audit-codes.test.mjs pins ERROR_STATUS ⊆ AUDIT_CODES
+// (21/10 production: read_name_unresolved missing there became backend_unavailable for every unresolved name).
+export const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
   // B5d: buildingName/roomName the directory in scope could not resolve (0 or ambiguous); `detail` names only
   // the model's own string and buildings/rooms the asker's RLS already lists (mcp-http forwards it).

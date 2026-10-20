@@ -268,7 +268,8 @@ test('bound-user-operation: names reach the resolver with the asker JWT and iden
 test('domain mount end to end: buildingName/roomName become directory RPCs with the asker JWT, the read RPC gets p_input with the id, rows are filtered and merged; crm_auth_context directory port', async t => {
   const f = services(t), dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
   const calls = [], fetchedAt = new Date(f.clock.now).toISOString();
-  const customersRow = (n, roomId) => ({ id: id(600 + n), name: `Khách ${n}`, phone: null, contractId: null, buildingId: A, roomId, roomName: roomId === R(1) ? 'London 5' : null });
+  // Dòng đầy đủ sau B5c: buildingName bắt buộc (tolerant đã gỡ 21/10, domain-tolerance.test.mjs).
+  const customersRow = (n, roomId) => ({ id: id(600 + n), name: `Khách ${n}`, phone: null, contractId: null, buildingId: A, buildingName: 'Toà 950NK', roomId, roomName: roomId === R(1) ? 'London 5' : null });
   const fetch = async (url, options) => {
     const name = new URL(url).pathname.replace('/rest/v1/rpc/', ''), args = JSON.parse(options.body);
     calls.push({ name, args, bearer: options.headers.authorization });

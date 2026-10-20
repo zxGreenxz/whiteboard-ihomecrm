@@ -143,10 +143,10 @@ test('B2: receivables joins the fixed private read plan with family v2 input and
   ]) { const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('receivables', value, fastIdentity, fastInput), label); }
   const unnamed = structuredClone(envelope); unnamed.result.items[0].buildingName = ''; unnamed.result.items[0].buildingCode = null;
   assert.deepEqual(domainFastResult('receivables', unnamed, fastIdentity, fastInput), unnamed.result, 'an unnamed building (empty text, null code) is a valid row');
-  // Cửa sổ phát hành (SQL và connector không đổi cùng lúc): dòng của SQL trước B5c, không có hai khoá mới, vẫn qua —
-  // tolerant một bản phát hành, xem domain-tolerance.test.mjs.
+  // Khuôn chính xác: `tolerant` của B5c đã gỡ 21/10 sau khi prod áp đủ ba migration, nên dòng của SQL trước B5c (không
+  // có hai khoá mới) bị từ chối — xem domain-tolerance.test.mjs.
   const preB5c = structuredClone(envelope); delete preB5c.result.items[0].buildingName; delete preB5c.result.items[0].buildingCode;
-  assert.deepEqual(domainFastResult('receivables', preB5c, fastIdentity, fastInput), preB5c.result, 'pre-B5c row passes during the release window');
+  assert.throws(() => domainFastResult('receivables', preB5c, fastIdentity, fastInput), 'pre-B5c row is refused once the release window has closed');
 });
 
 test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM ACL ports, no live JWT proof', { timeout: 120000 }, async t => {
