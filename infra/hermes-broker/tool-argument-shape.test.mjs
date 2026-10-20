@@ -18,7 +18,7 @@ import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
 import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
-import { DOMAIN_QUERY_HINT, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT } from './domain-contract.mjs';
+import { READ_QUERY_HINTS, READ_NAMES, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT, BUILDING_NAME_HINT, ROOM_NAME_HINT, domainOperation } from './domain-contract.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 
 const NIL = '00000000-0000-0000-0000-000000000000';
@@ -99,7 +99,8 @@ test('20/10: read tools advertise no null at the top level; the originals, norma
   assert.deepEqual(domainInput('customers', normalizeToolArguments(tool('crm_read_customers'), { cursor: '', buildingId: NIL, limit: 1 })),
     domainInput('customers', { limit: 1 }));
   assert.throws(() => domainInput('customers', { status: 'ACTIVE' }), 'customers never had a status filter');
-  assert.deepEqual(Object.keys(advertisedTool(tool('crm_read_customers')).inputSchema.properties), ['query', 'limit', 'cursor', 'buildingId']);
+  // B5d (21/10): buildingName/roomName (tên) đứng sau buildingId; status của customers vẫn bị gỡ (enum rỗng).
+  assert.deepEqual(Object.keys(advertisedTool(tool('crm_read_customers')).inputSchema.properties), ['query', 'limit', 'cursor', 'buildingId', 'buildingName', 'roomName']);
   assert.deepEqual(advertisedTool(tool('crm_read_income_expenses')).inputSchema.properties.status, { enum: ['UNAPPROVED', 'APPROVED', 'CANCELLED'], description: OMIT });
   // Non-UUID nullable fields keep their pattern/format and get the hint: a blank date would reach the validator.
   assert.deepEqual(advertisedTool(tool('crm_read_income_expenses')).inputSchema.properties.fromDate, { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: OMIT });
@@ -292,16 +293,21 @@ test('optional nullable UUID fields (crm_read_*) map nil/blank to null and keep 
 });
 
 test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not the company id, [] is final', () => {
-  // 17/10 rút gọn (tools/list ≤ ngân sách) nhưng giữ đủ ba ý của sự cố.
+  // 17/10 rút gọn (tools/list ≤ ngân sách) nhưng giữ đủ ba ý của sự cố. 21/10 (B5d): hint `query` theo cột SQL
+  // thật của từng miền thay cho một câu chung hứa "(tên, phòng, mã)" (audit L1); buildingName/roomName là tên.
   const EMPTY = EMPTY_RESULT_HINT;
-  assert.match(EMPTY, /kết quả thật; không gọi lại cùng đối số\.$/);
-  assert.match(DOMAIN_QUERY_HINT, /^Lọc chữ trong từng mục .*lọc toà thì dùng buildingId\.$/);
-  assert.match(DOMAIN_BUILDING_HINT, /^ID toà, không phải ID công ty; trống = mọi toà\.$/);
+  assert.match(EMPTY, /^Rỗng là thật; không gọi lại\.$/);
+  assert.match(DOMAIN_BUILDING_HINT, /^ID toà \(không phải công ty\)\.$/);
+  assert.match(BUILDING_NAME_HINT, /thay buildingId\.$/); assert.match(ROOM_NAME_HINT, /lọc trang/);
+  for (const [operation, hint] of Object.entries(READ_QUERY_HINTS)) assert.ok(/^[^\s].{6,70}\.$/u.test(hint) && !/\(tên, phòng, mã\)/.test(hint), operation);
   for (const read of LIST_READS) {
-    const listed = advertisedTool(read), { query, buildingId } = listed.inputSchema.properties;
+    const listed = advertisedTool(read), { query, buildingId, buildingName, roomName } = listed.inputSchema.properties, operation = domainOperation(read.name);
     assert.ok(listed.description.endsWith(`. ${EMPTY}`), read.name);
-    assert.equal(query.description, DOMAIN_QUERY_HINT, read.name);
+    assert.equal(query.description, READ_QUERY_HINTS[operation], read.name);
     assert.equal(buildingId.description, DOMAIN_BUILDING_HINT, read.name);
+    // Tên: chuỗi thuần (không maxLength quảng bá — splitReadNames chặn 120/60; không null, không format).
+    assert.deepEqual(buildingName, { type: 'string', description: BUILDING_NAME_HINT }, read.name);
+    assert.deepEqual(roomName, READ_NAMES[operation].room === 'rows' ? { type: 'string', description: ROOM_NAME_HINT } : undefined, read.name);
     // Text only here; since 20/10 the advertised read shape is null-free and format-free (validators unchanged).
     assert.deepEqual([query.type, query.maxLength, buildingId.type, buildingId.format], ['string', 200, 'string', undefined], read.name);
     assert.deepEqual([read.inputSchema.properties.buildingId.type, read.inputSchema.properties.buildingId.format], [['string', 'null'], 'uuid'], read.name);
@@ -366,7 +372,9 @@ test('tools/list of a connection holding every grantable key lists every family 
   const full = listed.filter(value => ['crm_read_customers', 'crm_read_occupancy', 'crm_read_customer_detail', 'crm_read_contract_detail', 'crm_read_occupancy_report',
     'crm_read_invoice_report', 'crm_read_monthly_pnl', 'crm_read_pending_approvals', 'crm_read_zalo_conversations', 'crm_read_contract_search'].includes(value.name));
   assert.equal(full.length, 10);
-  assert.ok(Buffer.byteLength(JSON.stringify(full)) <= 10_000, 'full-read family stays compact');
+  // 21/10 (B5d): +buildingName trên 4 báo cáo và customers, +roomName trên customers/invoice_report/contract_search, hint query
+  // theo SQL thật ⇒ đo 10 518 B; trần nâng 10 000 → 11 000 B (tổng tools/list vẫn ≤ 64 000 B ở phép đo trên).
+  assert.ok(Buffer.byteLength(JSON.stringify(full)) <= 11_000, 'full-read family stays compact');
 });
 
 test('tools/list has its own 192 KiB cap; tools/call data keeps the result cap', async t => {

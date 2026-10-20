@@ -39,8 +39,9 @@ const RUN_DESCRIPTION = 'Chạy một báo cáo của crm_read_report_list; para
   'Trang sau: offset=nextOffset; sourceCapped=true thì thu hẹp lọc. unavailable: no_building_scope = kết nối không còn toà (không phải số 0), ' +
   `organization_scope_required = cần kết nối Toàn tổ chức. private=true: ${PRIVATE_HINT}`;
 const LIST_SCHEMA = Object.freeze({ type: 'object', additionalProperties: false, properties: { topic: { enum: [null, ...Object.keys(W2_TOPICS)] } } });
+// B5d (21/10): params.buildingName/roomName (tên) được connector giải thành buildingId/roomId trước khi kiểm (wave2-kit w2CatalogEntry nêu ở mục lục).
 const RUN_SCHEMA = Object.freeze({ type: 'object', additionalProperties: false, required: ['report'], properties: {
-  report: { type: 'string', pattern: '^[a-z][a-z0-9_]{1,47}$' }, params: { type: 'object' },
+  report: { type: 'string', pattern: '^[a-z][a-z0-9_]{1,47}$' }, params: { type: 'object', description: 'buildingName/roomName = tên thay buildingId/roomId.' },
   limit: { type: 'integer', minimum: 1, maximum: 50 }, offset: { type: 'integer', minimum: 0, maximum: 2000 } } });
 
 const granted = (effective, permission) => Array.isArray(effective?.read) && effective.read.includes(permission);

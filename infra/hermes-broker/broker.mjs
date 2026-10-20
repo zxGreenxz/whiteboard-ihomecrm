@@ -3,7 +3,7 @@ import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction }
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain, splitReadNames } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
@@ -25,7 +25,9 @@ const TOKEN = /^hc_[A-Za-z0-9_-]{43}$/;
 const CONTEXT_PERMISSION = 'assistant.context.read';
 const TOOL = Object.freeze({
   name: 'crm_auth_context',
-  description: 'Read the verified identity and effective assistant permissions of this connection.',
+  // B5d (21/10): also the company name and the buildings (id, name, code) of the widest read scope, so one call
+  // gives the names the read tools accept as buildingName.
+  description: 'Read the verified identity, effective assistant permissions, company name and the buildings (id, name, code) this connection may read.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 });
@@ -70,6 +72,9 @@ const DEFAULT_LIMITS = Object.freeze({
 const RATE_WINDOW_MS = 60_000;
 const ERROR_STATUS = Object.freeze({
   unauthorized: 401, forbidden: 403, context_changed: 409, invalid_request: 400,
+  // B5d: buildingName/roomName the directory in scope could not resolve (0 or ambiguous); `detail` names only
+  // the model's own string and buildings/rooms the asker's RLS already lists (mcp-http forwards it).
+  read_name_unresolved: 400,
   group_recipient_limit: 400, group_room_limit: 400,
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
@@ -357,6 +362,11 @@ export function createBroker({
           !sameSet(domains.fastReadOperations, FAST_READ_OPERATIONS) ||
           !sameSet(domains.cachedReadOperations, CACHED_READ_OPERATIONS)) throw new TypeError('trusted_domain_service_required');
       domain.readAuthority = domains.readAuthority;
+    }
+    // B5d: optional directory port for crm_auth_context (company name + buildings in scope). Both or neither.
+    if (domains.prepareContext !== undefined || domains.finalizeContext !== undefined) {
+      if (['prepareContext', 'finalizeContext'].some(key => typeof domains[key] !== 'function')) throw new TypeError('trusted_domain_service_required');
+      domain.prepareContext = domains.prepareContext.bind(domains); domain.finalizeContext = domains.finalizeContext.bind(domains);
     }
   }
   let schedule;
@@ -929,14 +939,19 @@ export function createBroker({
       }
       const domainOp = domainOperation(name);
       if (domain && domainOp) {
-        let input, invalid = false;
-        try { input = domainInput(domainOp, args); } catch { invalid = true; }
+        let input, invalid = false, names = null, deferred = false;
+        // B5d: buildingName/roomName leave the arguments before the unchanged validator; the mount resolves
+        // them to ids with the asker's JWT (directory under RLS) inside prepare, then validates again. An
+        // input that only passes once the names are ids (a report whose roomId is required) is validated there.
+        try { ({ args, names } = splitReadNames(domainOp, args)); } catch { invalid = true; }
+        if (!invalid) { try { input = domainInput(domainOp, args); } catch { if (names === null || !dataRecord(args)) invalid = true; else { input = args; deferred = true; } } }
         return call(async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
-          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
-          if (!mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
-          const receipt = await domain.prepareDomain(presentedToken, domainOp, input, { signal });
+          // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó
+          // (a deferred input is checked by the mount once resolved and validated).
+          if (!deferred && !mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
+          const receipt = await domain.prepareDomain(presentedToken, domainOp, input, names === null ? { signal } : { signal, names });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
@@ -1029,8 +1044,9 @@ export function createBroker({
       }
       // Snapshot caller-controlled filters before any awaited admission. Invalid
       // input still goes through the shared admission/audit path.
-      let request, invalidFilters = false;
+      let request, invalidFilters = false, contextReceipt;
       if (name === ROOM_TOOL.name) { try { request = roomFilters(args); } catch { invalidFilters = true; } }
+      const contextDirectory = name === TOOL.name && Boolean(domain?.prepareContext);
       return call(async (identity, signal) => {
         if (name === ROOM_TOOL.name) {
           if (!mayReadRooms(identity)) fail('tool_not_available');
@@ -1046,9 +1062,24 @@ export function createBroker({
           organizationId: identity.row.organizationId, permissions: identity.effective,
           contextVersion: identity.contextVersion,
         };
-        return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        if (!contextDirectory) return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
+        // B5d: company name and the buildings of the widest read scope, read with the asker's JWT (directory under RLS).
+        const buildingIds = [...new Set(identity.effective.read.flatMap(key => identity.scopesByPermission[key]?.buildingIds ?? []))].slice(0, 256);
+        contextReceipt = await domain.prepareContext(presentedToken, { organizationId: identity.row.organizationId, buildingIds, contextVersion: identity.contextVersion }, { signal });
+        if (!exactData(contextReceipt, []) || !Object.isFrozen(contextReceipt)) fail('backend_unavailable');
+        return result;
       }, name === ROOM_TOOL.name && rooms ? async (prepared, identity, signal) =>
-        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission: true }), request, identity) : undefined,
+        roomResult(await rooms.finalizeAvailableRooms(presentedToken, prepared, { signal, useInitialAdmission: true }), request, identity)
+        : contextDirectory ? async (result, _identity, signal) => {
+          // null: the directory SQL is not deployed yet (never an empty list standing in for "no buildings").
+          const directory = await domain.finalizeContext(presentedToken, contextReceipt, { signal });
+          if (!exactData(directory, ['organizationName', 'buildings']) || !(directory.organizationName === null || typeof directory.organizationName === 'string') ||
+              !(directory.buildings === null || Array.isArray(directory.buildings) && directory.buildings.length <= 256 &&
+                directory.buildings.every(row => exactData(row, ['id', 'name', 'code']) && canonicalId(row.id)))) fail('backend_unavailable');
+          const { assistantId, userId, organizationId, permissions, contextVersion } = result;
+          return { content: [{ type: 'text', text: JSON.stringify({ assistantId, userId, organizationId, organizationName: directory.organizationName,
+            permissions, contextVersion, buildings: structuredClone(directory.buildings) }) }], isError: false };
+        } : undefined,
       { initialRoomAdmission: name === ROOM_TOOL.name && Boolean(rooms) });
     },
   });

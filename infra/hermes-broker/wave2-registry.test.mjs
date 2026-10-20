@@ -153,7 +153,8 @@ test('mục lục: chiếu từ khai báo, chỉ báo cáo SQL vừa xác nhận
     { report: 'probe_rows', permission: 'vehicles.view' }]), identity(['vehicles.view', 'materials.view']), input);
   assert.deepEqual(value.items, [w2CatalogEntry('probe_org', PROBE.reports.probe_org, 'b'), w2CatalogEntry('probe_rows', PROBE.reports.probe_rows, 'a')]);
   assert.deepEqual(value.items[1], { report: 'probe_rows', topic: 'thu_tien', title: 'Thăm dò hàng có toà', private: true,
-    params: { query: 'chữ tìm ≤200 ký tự', buildingId: 'ID toà (không phải ID công ty)', fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD', status: 'open|closed' } });
+    // B5d: buildingName (tên) đứng cạnh buildingId — connector giải thành ID trước khi kiểm params.
+    params: { query: 'chữ tìm ≤200 ký tự', buildingId: 'ID toà (không phải ID công ty)', buildingName: 'tên/mã toà thay buildingId', fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD', status: 'open|closed' } });
   assert.equal(list.result(sql([{ report: 'probe_self', permission: 'assistant.salary.self' }]), identity(['assistant.salary.self']), input).items[0].params.month,
     'YYYY-MM, bắt buộc');
   for (const [items, who, topic] of [[[{ report: 'probe_rows', permission: 'materials.view' }], ['vehicles.view', 'materials.view'], {}],

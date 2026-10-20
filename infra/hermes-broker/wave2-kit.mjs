@@ -235,12 +235,16 @@ export function w2Params(spec, supplied) {
   return value;
 }
 
-/** Dòng mục lục cho mô hình: tham số kèm gợi ý, status/kind liệt kê giá trị, "bắt buộc". */
+/** Dòng mục lục cho mô hình: tham số kèm gợi ý, status/kind liệt kê giá trị, "bắt buộc".
+ * B5d (21/10): báo cáo nhận buildingId/roomId còn nêu buildingName/roomName — tên mà connector giải thành ID
+ * trước khi kiểm params (read-name-resolution.mjs); không phải tham số SQL, nên không nằm trong W2_PARAMS. */
+export const W2_NAME_PARAMS = Object.freeze({ buildingId: ['buildingName', 'tên/mã toà thay buildingId'], roomId: ['roomName', 'tên/mã phòng thay roomId'] });
 export function w2CatalogEntry(reportId, spec, letter) {
   return { report: reportId, topic: W2_PACKAGES[letter], title: spec.title, private: spec.private,
-    params: Object.fromEntries(spec.params.map(name => {
+    params: Object.fromEntries(spec.params.flatMap(name => {
       const values = name === 'status' ? spec.statuses : name === 'kind' ? spec.kinds : null;
       const hint = values ? values.join('|') : W2_PARAMS[name].hint;
-      return [name, spec.required.includes(name) ? `${hint}, bắt buộc` : hint];
+      const entry = [name, spec.required.includes(name) ? `${hint}, bắt buộc` : hint];
+      return Object.hasOwn(W2_NAME_PARAMS, name) ? [entry, W2_NAME_PARAMS[name]] : [entry];
     })) };
 }
