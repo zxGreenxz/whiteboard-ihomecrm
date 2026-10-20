@@ -59,6 +59,20 @@ test('private read fastpath requires an explicit boolean opt-in and defaults to 
   }
 });
 
+test('room read source accepts only legacy|page, is absent by default and never coerces', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'roomRead'), false); } finally { baseline.dispose(); }
+  for (const roomRead of ['legacy', 'page']) {
+    await f.save({ ...f.input, roomRead });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.equal(config.roomRead, roomRead); } finally { config.dispose(); }
+  }
+  for (const roomRead of [null, true, 'PAGE', 'fast', 1, {}, ['page']]) {
+    await f.save({ ...f.input, roomRead }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
 test('connector config needs no model or personal profile and rejects the removed managed (version 1) shape', async t => {
   const f = await fixture(t), input = structuredClone(f.input);
   const config = await loadHostConfiguration(f.configPath);

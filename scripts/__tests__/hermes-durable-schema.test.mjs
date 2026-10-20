@@ -107,7 +107,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_domain_capabilities_v3(uuid)',
   // Wave 2 INVOKER report entry (20261018000600): package reads run under the asker's RLS.
   'hermes_w2_read_v1(jsonb,text,jsonb)',
-  'hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'hermes_domain_read_fast_v1(jsonb,text,jsonb)'];
+  'hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'hermes_domain_read_fast_v1(jsonb,text,jsonb)',
+  // B3 (20261020101453): one filtered sale-room page per bound connection; the admission helper stays private.
+  'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -148,6 +150,9 @@ const REVIEWED_DEFAULTS = new Map([
   ['public.zalo_hen_gui_phong_trong_v1', [["p_mode text DEFAULT 'full'", 'p_mode text'], ["p_origin text DEFAULT 'ui'", 'p_origin text']]],
   ['public.zalo_ds_hen_gui_phong_trong_v1', [['p_limit integer DEFAULT 20', 'p_limit integer']]],
   ['public.zalo_worker_finish_oneshot_v1', [["p_result jsonb DEFAULT '{}'", 'p_result jsonb']]],
+  // B3 room page (20261020101453): the connector always sends all seven arguments; these defaults are reviewed literals.
+  ['public.hermes_available_rooms_page_v1', [["p_building_name text DEFAULT ''", 'p_building_name text'],
+    ['p_limit integer DEFAULT 50', 'p_limit integer'], ['p_offset integer DEFAULT 0', 'p_offset integer']]],
 ]);
 function signature(name, args, named = false) {
   const reviewed = named ? REVIEWED_DEFAULTS.get(name) ?? [] : [];

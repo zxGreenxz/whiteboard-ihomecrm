@@ -68,13 +68,20 @@ function run(binary, args, options = {}) {
   assert.equal(result.status, 0, `${binary}: ${result.error?.message ?? result.stderr}`);
   return result.stdout;
 }
-async function localCluster(t) {
+/** initdbArgs: extra initdb switches after the fixed C-locale set, e.g. the PostgreSQL 17
+ * builtin C.UTF-8 provider when a test needs Unicode lower()/upper() like production. */
+async function localCluster(t, { initdbArgs = [] } = {}) {
   const suffix = process.platform === 'win32' ? '.exe' : '';
   const bin = candidateLocalPostgresBins().find(p => existsSync(join(p, `initdb${suffix}`)));
   assert(bin, 'PostgreSQL 16+ required: set POSTGRES_BIN; no remote fallback');
   const binary = name => join(bin, name + suffix);
   const version = run(binary('initdb'), ['--version']);
   assertSupportedLocalPostgresVersion('initdb', version); t.diagnostic(version.trim());
+  // PostgreSQL 16 (CI runner) has no builtin locale provider: the libc C.UTF-8 locale
+  // gives the same Unicode-aware lower()/upper() as production for these fixtures.
+  const major = Number(/\b(\d+)\.\d+/.exec(version)?.[1]);
+  const builtin = arg => arg.startsWith('--locale-provider=') || arg.startsWith('--builtin-locale=');
+  const localeArgs = major >= 17 || !initdbArgs.some(builtin) ? initdbArgs : [...initdbArgs.filter(arg => !builtin(arg)), '--locale=C.UTF-8'];
   const root = mkdtempSync(join(tmpdir(), 'hermes-metadata-pg-'));
   const server = createServer();
   await new Promise((ok, bad) => server.once('error', bad).listen(0, '127.0.0.1', ok));
@@ -88,7 +95,7 @@ async function localCluster(t) {
     rmSync(target, { recursive: true });
   };
   try {
-    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale']);
+    run(binary('initdb'), ['-D', root, '--auth=trust', '--username=postgres', '--encoding=UTF8', '--no-locale', ...localeArgs]);
     const sockets = process.platform !== 'win32' ? " -k ''" : '';
     run(binary('pg_ctl'), ['-D', root, '-l', join(root, 'postgres.log'), '-o', `-p ${port} -h 127.0.0.1${sockets}`, '-w', 'start'], { stdio: 'ignore' });
     started = true;
