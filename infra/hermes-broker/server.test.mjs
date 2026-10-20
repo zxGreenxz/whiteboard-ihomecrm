@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
-import { DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
+import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -157,29 +157,39 @@ async function listening(t, configuration) {
   return { ...backend, address, send, browser, connect, mcp };
 }
 
-test('TG3b opt-in runtime: four reads (incl. receivables, family v2) reduce actual Auth/capability adapter requests >=70%; audit is followed only by business RPC', async t => {
-  const measured = [];
+test('TG3b opt-in runtime: the fast plan (4 reads) and the cached admission (B2-2) both cut Auth/capability adapter requests >=70%; audit is followed only by the business RPC; flag off = legacy lane', async t => {
+  const measured = { cached: [], fast: [] };
   assert.deepEqual([...FAST_READ_OPERATIONS], ['customers', 'contracts', 'invoices', 'receivables']);
+  // B2-2 sample: cached domains this fixture can grant (v1 leads/tasks, v2 income_expenses); W2 keys need capabilities_v3, absent here.
+  const CACHED_SAMPLE = ['leads', 'tasks', 'income_expenses'];
+  assert.ok(CACHED_SAMPLE.every(operation => CACHED_READ_OPERATIONS.includes(operation)));
+  const allowed = ['customers.view', 'contracts.view', 'invoices.view', 'leads.view', 'tasks.view', 'income_expenses.view'];
   for (const enabled of [false, true]) {
-    const f = fakeBackend(), events = [], baseFetch = f.configuration.fetch;
-    let missingFastRpc = false;
-    f.configuration.readFastPath = enabled;
-    const allowed = ['customers.view', 'contracts.view', 'invoices.view'];
+    const f = fakeBackend(), events = [], records = [], baseFetch = f.configuration.fetch;
+    let missingRpc = false;
+    f.configuration.readFastPath = enabled; f.configuration.callLog = record => { records.push(record); };
+    const capabilities = family => Response.json({ organizationId: I.org, userId: I.user,
+      membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
+      permissions: Object.fromEntries(DOMAIN_FAMILIES[family].capabilities.map(key => [key,
+        { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
     f.configuration.fetch = async (url, options) => {
       const path = new URL(url).pathname; events.push(path);
-      if (path.endsWith('/hermes_domain_capabilities_v1')) return Response.json({ organizationId: I.org, userId: I.user,
-        membershipId: I.member, authorizationVersion: 1, isSuperadmin: false, policyVersion: f.read().joined?.policy.version ?? 1,
-        permissions: Object.fromEntries(DOMAIN_FAMILIES.v1.capabilities.map(key => [key,
-          { allowed: allowed.includes(key), companyEnabled: allowed.includes(key), buildingIds: allowed.includes(key) ? [I.building] : [] }])) });
+      if (path.endsWith('/hermes_domain_capabilities_v1')) return capabilities('v1');
+      if (path.endsWith('/hermes_domain_capabilities_v2')) return capabilities('v2');
       if (/\/hermes_domain_read_(?:fast_v1|v1|v2|v3)$/.test(path)) {
-        if (missingFastRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
-        const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation];
+        if (missingRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
+        const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation], joined = f.read().joined;
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
-        // Each family keeps its own result envelope on both lanes: v2 adds source and time, v3 adds time.
+        // Each family keeps its own result envelope on every lane: v2 adds source and time, v3 adds time.
         const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
           ...(definition.family === 'v2' ? { source: definition.source, fetchedAt: new Date(NOW).toISOString() } : {}),
           ...(definition.family === 'v3' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
-        if (!path.endsWith('/hermes_domain_read_fast_v1')) return Response.json(result);
+        if (!path.endsWith('/hermes_domain_read_fast_v1')) {
+          // Legacy and cached lanes send the same reviewed RPC the same seven keys, read from the live snapshot.
+          assert.deepEqual(args.p_binding, { connectionId: I.connection, tokenDigest: joined.connection.tokenDigest, expectedEpoch: joined.connection.epoch,
+            expectedPolicyVersion: joined.policy.version, expectedMembershipId: I.member, expectedAuthorizationVersion: 1, expectedSessionRevision: joined.session.revision }, operation);
+          return Response.json(result);
+        }
         assert.deepEqual(Object.keys(args.p_binding).sort(), ['connectionId', 'tokenDigest', 'expectedEpoch', 'expectedSessionRevision'].sort());
         assert.deepEqual(Object.keys(args.p_input).sort(), [...DOMAIN_FAMILIES[definition.family].inputKeys].sort(), `${operation}: the family input shape reaches the fast RPC`);
         return Response.json({ authority: { organizationId: I.org, userId: I.user, connectionId: I.connection,
@@ -193,29 +203,46 @@ test('TG3b opt-in runtime: four reads (incl. receivables, family v2) reduce actu
     const joined = f.read().joined; joined.connection.restrictions.read.push(...allowed); joined.policy.read.push(...allowed);
     joined.connection.scopeIds = [I.scope]; joined.policy.scopeIds = [I.scope];
     events.length = 0;
-    for (const operation of FAST_READ_OPERATIONS) {
+    const authRequests = list => list.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
+    // Cold catalog first on the cached lane, then the fast plan warm: both lanes share the one read catalog entry.
+    const lane = async (operations, label) => {
       const start = events.length;
-      const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
-      assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
-      assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
-      const expectedRpc = enabled ? 'hermes_domain_read_fast_v1' : DOMAIN_FAMILIES[DOMAIN_READS[operation].family].readRpc;
-      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).at(-1), `/rest/v1/rpc/${expectedRpc}`, `${operation}: ${enabled ? 'fast' : 'legacy'} lane`);
-      if (enabled) assert.deepEqual(events.slice(start).slice(events.slice(start).indexOf('audit:prepared') + 1), ['/rest/v1/rpc/hermes_domain_read_fast_v1']);
-    }
-    const authRequests = events.filter(path => path === '/auth/v1/user' || /capabilities|group_action_context|get_authorization_context|get_my_organizations|hermes_scope_buildings/.test(path)).length;
-    measured.push(authRequests);
+      for (const operation of operations) {
+        const at = events.length;
+        const response = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
+        assert.equal(response.status, 200); assert.equal(response.body.error, undefined, JSON.stringify(response.body));
+        assert.equal(response.body.result.isError, false, JSON.stringify(response.body));
+        const expectedRpc = enabled && label === 'fast' ? 'hermes_domain_read_fast_v1' : DOMAIN_FAMILIES[DOMAIN_READS[operation].family].readRpc;
+        const tail = events.slice(at), afterAudit = tail.slice(tail.indexOf('audit:prepared') + 1);
+        assert.equal(tail.filter(path => path.includes('/hermes_domain_read_')).at(-1), `/rest/v1/rpc/${expectedRpc}`, `${operation}: ${enabled ? label : 'legacy'} lane`);
+        if (enabled) assert.deepEqual(afterAudit, [`/rest/v1/rpc/${expectedRpc}`], `${operation}: audit followed only by the business RPC`);
+        else assert.ok(afterAudit.includes('/auth/v1/user') && afterAudit.at(-1) === `/rest/v1/rpc/${expectedRpc}`, `${operation}: the legacy lane rebuilds authority after the audit`);
+        const record = records.at(-1);
+        assert.equal(record.tool, `crm_read_${operation}`); assert.equal(record.path, enabled ? label : 'normal', operation);
+        assert.equal(record.checkMs === null, enabled, `${operation}: checkMs only on the legacy lane`);
+      }
+      return authRequests(events.slice(start));
+    };
+    measured.cached.push(await lane(CACHED_SAMPLE, 'cached'));
+    measured.fast.push(await lane(FAST_READ_OPERATIONS, 'fast'));
     if (enabled) assert.equal(events.filter(path => path.endsWith('/hermes_domain_read_fast_v1')).length, FAST_READ_OPERATIONS.length);
     if (enabled) {
-      missingFastRpc = true; const start = events.length;
-      const failed = await backend.mcp(token, 'tools/call', { name: 'crm_read_customers', arguments: {} });
-      assert.equal(failed.status, 200); assert.equal(failed.body.result.isError, true);
-      assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
-      assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).length, 1, 'missing candidate SQL is not retried or silently routed to the legacy reader');
+      missingRpc = true;
+      for (const operation of ['customers', 'leads']) {
+        const start = events.length;
+        const failed = await backend.mcp(token, 'tools/call', { name: `crm_read_${operation}`, arguments: {} });
+        assert.equal(failed.status, 200); assert.equal(failed.body.result.isError, true);
+        assert.deepEqual(JSON.parse(failed.body.result.content[0].text), { error: 'backend_unavailable' });
+        assert.equal(events.slice(start).filter(path => path.includes('/hermes_domain_read_')).length, 1, `${operation}: missing SQL is not retried or silently routed to another reader`);
+      }
     }
     await backend.close();
   }
-  assert(measured[0] > 0); assert(measured[1] <= measured[0] * 0.3, JSON.stringify(measured));
-  t.diagnostic(`Auth/capability requests over the same cold+warm four-domain set: legacy=${measured[0]}, candidate=${measured[1]}, reduction=${(100 * (1 - measured[1] / measured[0])).toFixed(1)}%. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
+  for (const label of ['cached', 'fast']) {
+    const [legacy, candidate] = measured[label];
+    assert(legacy > 0, label); assert(candidate <= legacy * 0.3, `${label}: ${JSON.stringify(measured[label])}`);
+  }
+  t.diagnostic(`Auth/capability requests, same cold+warm set per lane: cached (${CACHED_SAMPLE.length} reads) legacy=${measured.cached[0]}, candidate=${measured.cached[1]}; fast (${FAST_READ_OPERATIONS.length} reads, warm) legacy=${measured.fast[0]}, candidate=${measured.fast[1]}. HTTP adapters are real; server and SQL responses are fixture ports, not remote latency evidence.`);
 });
 
 test('construction does no I/O, requires explicit audit/config, exposes no private services and leaves caller pool/key ownership intact', async () => {

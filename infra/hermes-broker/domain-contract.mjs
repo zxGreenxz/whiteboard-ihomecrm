@@ -3,7 +3,7 @@
 // One registry drives tools, input/result validation and the SQL family (fixed
 // RPC pair) of each domain; the model never names a table, RPC or actor.
 import { FULL_READS, PRIVATE_HINT } from './full-read-contract.mjs';
-import { W2_READS, W2_READ_KEY_LIST } from './wave2-registry.mjs';
+import { W2, W2_READS, W2_READ_KEY_LIST } from './wave2-registry.mjs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const domainId = value => typeof value === 'string' && UUID.test(value);
 export const domainRecord = value => value !== null && typeof value === 'object' &&
@@ -125,6 +125,17 @@ export const domainOperation = name => typeof name === 'string' && name.startsWi
 // since 20261020101836 B2): the domains the broker routes through the fast mount
 // when the host opts in (readFastPath). Missing SQL fails closed, never falls back.
 export const FAST_READ_OPERATIONS = Object.freeze(['customers', 'contracts', 'invoices', 'receivables']);
+// B2-2 (20/10): under the same host opt-in, every other domain keeps its reviewed RPC and the seven-key
+// binding built from the live connection snapshot, but admits through the bounded read catalog and skips
+// the broker's second authority build: hermes_domain_read_v1/v2/v3 and hermes_w2_read_v1 compare the caller
+// JWT session and all seven binding fields themselves (42501/PT409), so verifySession/checkUnchanged only
+// repeated that decision. Only keys the read catalog authority can grant qualify (server.mjs: base Auth
+// self/rooms.view + the three capability families); chat_zalo.view comes from the group adapter, so
+// zalo_conversations stays on the full authority — the cached lane could only refuse it.
+const READ_CATALOG_KEYS = Object.freeze(['assistant.context.read', 'rooms.view', ...ALL_DOMAIN_READ_CAPABILITIES]);
+const readKeys = definition => definition.family === 'w2' ? W2.permissions : [definition.permission];
+export const CACHED_READ_OPERATIONS = Object.freeze(Object.keys(DOMAIN_READS).filter(operation =>
+  !FAST_READ_OPERATIONS.includes(operation) && readKeys(DOMAIN_READS[operation]).every(key => READ_CATALOG_KEYS.includes(key))));
 // Không input (tools/list, chặn sớm): tool có hiện không. Có input đã kiểm (đợt 2: crm_read_report):
 // đúng khoá của báo cáo được gọi. Họ cũ: một khoá cố định, input không đổi kết quả.
 export const mayUseDomain = (effective, operation, input) => {
