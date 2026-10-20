@@ -41,8 +41,14 @@ const integer = value => Number.isSafeInteger(value) && value >= 0;
 const ids = value => Array.isArray(value) && value.length <= 256 && value.every(domainId) && new Set(value).size === value.length;
 const oneOf = values => value => values.includes(value);
 const instant = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value));
+// Phát hành an toàn B5c (21/10/2026): SQL (3 migration 20261020171321/173818/173819, mỗi migration backup ~2,5 phút ⇒
+// cửa sổ ~8 phút) và connector KHÔNG đổi cùng lúc. Trong cửa sổ đó SQL cũ trả dòng chưa có khoá mới, hoặc connector cũ
+// nhận dòng có khoá mới. `tolerant` liệt kê các khoá MỚI của một miền (buildingName, buildingCode, roomName ở miền trước
+// đây chưa có): vắng = chưa áp SQL ⇒ vẫn qua; có mặt ⇒ kiểm kiểu như mọi khoá; khoá lạ vẫn bị từ chối (domainResult).
+// Tolerant MỘT bản phát hành: gỡ `tolerant` (về khuôn chính xác) ở bản sau khi prod đã áp đủ 3 migration.
 const define = (permission, label, fields, statuses = [], options = {}) => Object.freeze({ family: 'v1', permission, label,
-  fields: Object.freeze(fields), statuses: Object.freeze(statuses), dated: false, requiresDates: false, perBuilding: false, source: null, ...options });
+  fields: Object.freeze(fields), statuses: Object.freeze(statuses), dated: false, requiresDates: false, perBuilding: false, source: null, ...options,
+  tolerant: Object.freeze([...(options.tolerant ?? [])]) });
 
 // Family = one reviewed SQL pair. v1 is the applied 20261014081902 contract and
 // keeps its exact 5-key input/4-key result; v2 adds date range, source and time.
@@ -68,39 +74,48 @@ export const DOMAIN_READS = Object.freeze({
   // 20/10: phòng/HĐ trong dòng là hợp đồng ĐANG hiệu lực (không phải "gần nhất"); bốn trường trống không nói gì về
   // việc đã trả phòng hay chưa thuê. Chỉ câu chữ; validator/chiếu trường không đổi.
   customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ). contractId/buildingId/roomId/roomName = hợp đồng ĐANG hiệu lực, cần quyền hợp đồng; trống = không thấy HĐ đang hiệu lực trong phạm vi được xem (không suy ra đã trả phòng/chưa thuê); lịch sử HĐ: crm_read_customer_detail. Toàn tổ chức thấy cả khách chưa có HĐ. Lỗi ≠ rỗng; số dòng một trang ≠ tổng số. ${PRIVATE_HINT}`, {
-    id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), roomId: nullable(domainId),
-    roomName: nullable(text) }, [], { family: 'v3' }),
+    id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId),
+    roomName: nullable(text) }, [], { family: 'v3', tolerant: ['buildingName'] }),
+  // B5c bước 2 (20261020173818/173819): mọi tool danh sách trả buildingName (chữ, có thể rỗng) cạnh buildingId và
+  // roomName cạnh roomId — chỉ UUID thì model không gom theo toà được (prod 21/10). Mô tả không đổi; khoá mới `tolerant`
+  // (vắng được) cho tới bản sau khi prod đã áp SQL — xem chú thích ở define.
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
-    id: domainId, name: text, status: text, buildingId: nullable(domainId), roomId: nullable(domainId), nextFollowUp: nullable(text) },
-  ['B1_LEAD', 'B2_APPOINTMENT', 'B3_CONSULTATION', 'CONVERTED', 'FAILED']),
-  contracts: define('contracts.view', 'Tra hợp đồng và thời hạn thuê', {
-    id: domainId, number: nullable(text), status: text, buildingId: domainId, roomId: domainId, startDate: nullable(date), endDate: nullable(date) },
-  ['DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED']),
+    id: domainId, name: text, status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), nextFollowUp: nullable(text) },
+  ['B1_LEAD', 'B2_APPOINTMENT', 'B3_CONSULTATION', 'CONVERTED', 'FAILED'], { tolerant: ['buildingName', 'roomName'] }),
+  // 21/10: status=ACTIVE là trạng thái DB. "Đang ở" như màn Hợp đồng web = mọi trạng thái trừ TERMINATED; "đang ở" của
+  // một phòng = HĐ ACTIVE. Sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search. Chỉ câu chữ; validator không đổi.
+  contracts: define('contracts.view', 'Tra hợp đồng và thời hạn thuê. status=ACTIVE là trạng thái DB; "đang ở" như màn Hợp đồng = trừ TERMINATED, của phòng = ACTIVE; sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search', {
+    id: domainId, number: nullable(text), status: text, buildingId: domainId, buildingName: text, roomId: domainId, roomName: nullable(text), startDate: nullable(date), endDate: nullable(date) },
+  ['DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED'], { tolerant: ['buildingName', 'roomName'] }),
   invoices: define('invoices.view', 'Tra hóa đơn; số tiền giữ dạng chuỗi thập phân', {
-    id: domainId, number: nullable(text), status: text, buildingId: domainId, roomId: domainId, billingMonth: nullable(text), totalAmount: amount }),
+    id: domainId, number: nullable(text), status: text, buildingId: domainId, buildingName: text, roomId: domainId, roomName: nullable(text), billingMonth: nullable(text), totalAmount: amount },
+  [], { tolerant: ['buildingName', 'roomName'] }),
   assets: define('assets.view', 'Tra tài sản, vị trí và số lượng', {
-    id: domainId, name: text, code: nullable(text), condition: nullable(text), buildingId: nullable(domainId), roomId: nullable(domainId), quantity: amount }),
+    id: domainId, name: text, code: nullable(text), condition: nullable(text), buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), quantity: amount },
+  [], { tolerant: ['buildingName', 'roomName'] }),
   services: define('services.view', 'Tra danh mục dịch vụ và các tòa áp dụng được phép xem', {
     id: domainId, name: text, code: nullable(text), unit: nullable(text), unitPrice: amount, buildingIds: ids }),
   tasks: define('tasks.view', 'Tra công việc và hạn hoàn thành', {
-    id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), roomId: nullable(domainId), deadline: nullable(text) },
-  ['IN_PROGRESS', 'COMPLETED']),
+    id: domainId, title: text, code: nullable(text), status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), deadline: nullable(text) },
+  ['IN_PROGRESS', 'COMPLETED'], { tolerant: ['buildingName', 'roomName'] }),
   // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
   occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
     id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
   income_expenses: define('income_expenses.view', 'Tra phiếu thu/chi theo ngày phiếu và trạng thái duyệt (UNAPPROVED = chờ duyệt; hỏi "phiếu chờ duyệt" thì dùng tool này với status=UNAPPROVED). Không gồm phiếu có hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Số tiền là chuỗi VND', {
-    id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, roomId: nullable(domainId),
+    id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, buildingName: text, roomId: nullable(domainId),
     roomName: nullable(text), voucherDate: date, totalAmount: amount, approvalStatus: oneOf(['UNAPPROVED', 'APPROVED', 'CANCELLED']) },
-  ['UNAPPROVED', 'APPROVED', 'CANCELLED'], { family: 'v2', dated: true, source: 'crm.income_expenses' }),
-  receivables: define('invoices.view', 'Tra công nợ: hoá đơn đã duyệt/thu một phần/quá hạn còn tiền chưa thu (remainingAmount do CRM tính); lọc theo hạn thanh toán', {
-    id: domainId, number: nullable(text), status: oneOf(['APPROVED', 'PARTIAL_PAID', 'OVERDUE']), buildingId: domainId, roomId: domainId,
-    roomName: nullable(text), billingMonth: nullable(text), dueDate: nullable(date), totalAmount: amount, paidAmount: amount, remainingAmount: amount },
-  ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'], { family: 'v2', dated: true, source: 'crm.invoices' }),
+  ['UNAPPROVED', 'APPROVED', 'CANCELLED'], { family: 'v2', dated: true, source: 'crm.income_expenses', tolerant: ['buildingName'] }),
+  // B5c (20261020171321): buildingName/buildingCode on each debt — with buildingId (UUID) alone the model could not
+  // group "phòng nào chưa đóng tiền" by building (room "201" repeats across buildings). Both SQL lanes project them.
+  receivables: define('invoices.view', 'Tra công nợ: hoá đơn đã duyệt/thu một phần/quá hạn còn tiền chưa thu (remainingAmount do CRM tính); lọc theo hạn thanh toán; có tên toà — gom theo toà khi nhiều phòng', {
+    id: domainId, number: nullable(text), status: oneOf(['APPROVED', 'PARTIAL_PAID', 'OVERDUE']), buildingId: domainId, buildingName: text, buildingCode: nullable(text),
+    roomId: domainId, roomName: nullable(text), billingMonth: nullable(text), dueDate: nullable(date), totalAmount: amount, paidAmount: amount, remainingAmount: amount },
+  ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'], { family: 'v2', dated: true, source: 'crm.invoices', tolerant: ['buildingName', 'buildingCode'] }),
   meter_readings: define('meter_readings.view', 'Tra chỉ số công tơ điện/nước theo ngày đọc và trạng thái duyệt; tiêu thụ do CRM tính', {
-    id: domainId, code: nullable(text), buildingId: domainId, roomId: nullable(domainId), roomName: nullable(text),
+    id: domainId, code: nullable(text), buildingId: domainId, buildingName: text, roomId: nullable(domainId), roomName: nullable(text),
     meterType: oneOf(['ELECTRICITY', 'WATER', 'GAS', 'OTHER']), settlementMonth: nullable(text), readingDate: date,
     previousReading: amount, currentReading: amount, consumption: amount, status: oneOf(['UNAPPROVED', 'APPROVED']) },
-  ['UNAPPROVED', 'APPROVED'], { family: 'v2', dated: true, source: 'crm.meter_readings' }),
+  ['UNAPPROVED', 'APPROVED'], { family: 'v2', dated: true, source: 'crm.meter_readings', tolerant: ['buildingName'] }),
   deposits_held: define('deposits.view', 'Tổng cọc của hợp đồng đang hiệu lực theo từng toà từ báo cáo cọc CRM (phải thu, đã giữ, còn thiếu); không có chi tiết khách', {
     id: domainId, buildingId: domainId, name: text, contractCount: integer, expected: amount, held: amount, shortfallAll: amount,
     shortfallShort: amount, fullCount: integer, shortCount: integer, firstInvoiceCount: integer },
@@ -180,7 +195,10 @@ export function domainResult(operation, value, identity, input) {
   // SQL is final authority. If supplied, the earlier CRM scope also fences output;
   // it is never a substitute for the saved authorization_scopes overlay in SQL.
   const items = value.items.map(row => {
-    if (!domainExact(row, Object.keys(definition.fields)) || Object.entries(definition.fields).some(([key, check]) => !check(row[key]))) fail();
+    // Khuôn dòng cố định: không khoá lạ, mọi khoá đã khai phải có mặt và đúng kiểu — trừ khoá `tolerant` (mới thêm,
+    // một bản phát hành): vắng = SQL chưa áp ⇒ qua; có mặt ⇒ kiểm kiểu như thường.
+    if (!domainRecord(row) || !Object.keys(row).every(key => Object.hasOwn(definition.fields, key)) ||
+        Object.entries(definition.fields).some(([key, check]) => Object.hasOwn(row, key) ? !check(row[key]) : !definition.tolerant.includes(key))) fail();
     const buildings = row.buildingIds ?? (row.buildingId ? [row.buildingId] : []);
     if (Array.isArray(scopes) && buildings.some(building => !scopes.includes(building))) fail();
     if (input.buildingId && !buildings.includes(input.buildingId)) fail();
@@ -202,18 +220,96 @@ const dateSchema = required => ({ type: required ? 'string' : ['string', 'null']
 // 16/10 19:44Z production: the model put a building code in `query` (text filter
 // inside each row ⇒ empty), took the company id as buildingId, and repeated the
 // same call 20+ times reading [] as a glitch. Wording only; validators unchanged.
-export const DOMAIN_QUERY_HINT = 'Lọc chữ trong từng mục (tên, phòng, mã); lọc toà thì dùng buildingId.';
-export const DOMAIN_BUILDING_HINT = 'ID toà, không phải ID công ty; trống = mọi toà.';
-export const EMPTY_RESULT_HINT = 'Rỗng là kết quả thật; không gọi lại cùng đối số.';
+// 21/10 (B5d, audit 26 tool đọc): một câu hint chung "(tên, phòng, mã)" hứa thứ SQL
+// không làm (customers chỉ khớp tên/SĐT; occupancy/deposits/building_profit khớp
+// TÊN TOÀ). Hint nay theo cột SQL thật của từng miền (v1 20261014081902, v2
+// 20261015120000, v3 20261017033630, lõi nhanh 20261019040055).
+export const READ_QUERY_HINTS = Object.freeze({
+  customers: 'Tên hoặc SĐT khách; không khớp phòng.',
+  leads: 'Tên khách hẹn.',
+  contracts: 'Số HĐ; đường nhanh thêm tên phòng, khách.',
+  invoices: 'Số hoá đơn; đường nhanh thêm tên khách.',
+  assets: 'Tên hoặc mã tài sản.',
+  services: 'Tên hoặc mã dịch vụ.',
+  tasks: 'Tên hoặc mã công việc.',
+  occupancy: 'Tên toà.',
+  income_expenses: 'Tên hoặc mã phiếu; không khớp phòng.',
+  receivables: 'Số hoá đơn hoặc tên phòng.',
+  meter_readings: 'Mã chỉ số hoặc tên phòng.',
+  deposits_held: 'Tên toà.',
+  building_profit: 'Tên toà.',
+});
+// 21/10 rút chữ (tools/list ≤ 64 000 B sau khi thêm buildingName/roomName); giữ đủ ba ý của sự cố 16/10.
+export const DOMAIN_BUILDING_HINT = 'ID toà (không phải công ty).';
+export const EMPTY_RESULT_HINT = 'Rỗng sau lọc đúng = không có.';
+// B5d (21/10/2026; sự cố 00:11 "khách nào đang ở phòng London 5 950NK" → crm_read_customers
+// {buildingId, query:"LONDON 5"} → 0): mọi tool đọc danh sách nhận TÊN toà (buildingName) và,
+// nơi hàng có phòng, TÊN phòng (roomName). Connector giải tên → ID qua danh bạ trong phạm vi
+// (read-name-resolution.mjs; hermes_building_directory_v1/hermes_room_directory_v1,
+// 20261020175803) sau khi có JWT + identity và TRƯỚC validator; SQL đọc và tập khoá input
+// không đổi (hermes_request_v1 khoá đúng tập khoá; các hàm đọc thuộc B5c). Cách lọc phòng:
+//   rows  — SQL không nhận ID phòng: connector lọc hàng của trang theo roomId (trang SQL 50
+//           dòng, tự lấy tới 4 trang rồi gộp, giữ thứ tự, cursor/offset vẫn dùng được);
+//           queryRoom = lane mà SQL khớp room.name trong `query` ('always' | 'fast' | null):
+//           khi query trống thì đặt query = tên phòng để trang hẹp hơn, rồi vẫn lọc hàng.
+//   param — crm_read_report: params.roomId (SQL lọc thật; đúng một phòng).
+// Phòng trùng tên ở nhiều toà mà không nêu toà: như web (gộp mọi phòng cùng tên) tới 5 phòng;
+// hơn thì báo lỗi nêu toà. Toà mơ hồ (≥2 khớp) luôn báo lỗi nêu tên.
+export const READ_NAME_LIMITS = Object.freeze({ buildingName: 120, roomName: 60 });
+const names = (room, queryRoom = null, options = {}) => Object.freeze({ room, queryRoom, paging: 'cursor', reports: null, ...options });
+export const READ_NAMES = Object.freeze({
+  customers: names('rows'), leads: names(null), contracts: names('rows', 'fast'), invoices: names('rows'), assets: names('rows'),
+  services: names(null), tasks: names('rows'), occupancy: names(null), income_expenses: names('rows'), receivables: names('rows', 'always'),
+  meter_readings: names('rows', 'always'), deposits_held: names(null), building_profit: names(null),
+  occupancy_report: names(null, null, { paging: 'offset' }), invoice_report: names('rows', null, { paging: 'offset', reports: Object.freeze(['search']) }),
+  monthly_pnl: names(null, null, { paging: 'offset' }), contract_search: names('rows', 'always', { paging: 'offset' }),
+  report: names('param'),
+});
+export const BUILDING_NAME_HINT = 'Tên/mã toà thay buildingId.';
+export const ROOM_NAME_HINT = 'Tên/mã phòng (lọc trang).';
+// Không quảng bá maxLength (−423 B trên tools/list 64 000 B); splitReadNames vẫn chặn theo READ_NAME_LIMITS.
+export const readNameProperties = operation => {
+  const spec = READ_NAMES[operation];
+  if (!spec || spec.room === 'param') return {};
+  return { buildingName: { type: 'string', description: BUILDING_NAME_HINT },
+    ...(spec.room ? { roomName: { type: 'string', description: spec.reports ? `${ROOM_NAME_HINT} Chỉ report=${spec.reports.join('/')}.` : ROOM_NAME_HINT } } : {}) };
+};
+const withReadNames = (operation, schema) => {
+  const extra = readNameProperties(operation);
+  return Object.keys(extra).length ? { ...schema, properties: { ...schema.properties, ...extra } } : schema;
+};
+const NAME_CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
+/** Tách buildingName/roomName khỏi đối số tool đọc TRƯỚC validator hiện có (validator và tập khoá SQL
+ * không đổi). Trả { args: bản không còn tên, names: null | {buildingName?, roomName?} } — chuỗi trống/khoảng
+ * trắng coi như không gửi; sai kiểu/quá dài/ký tự điều khiển ⇒ TypeError (broker: invalid_request).
+ * crm_read_report mang tên trong params. Tool không khai tên (chi tiết, mục lục, zalo, chờ duyệt) trả nguyên. */
+export function splitReadNames(operation, args) {
+  const spec = Object.hasOwn(READ_NAMES, operation) ? READ_NAMES[operation] : null;
+  if (!spec || !domainRecord(args)) return { args, names: null };
+  const nested = spec.room === 'param';
+  const source = nested ? args.params : args;
+  if (!domainRecord(source)) return { args, names: null };
+  const picked = {}, rest = { ...source };
+  for (const key of Object.keys(READ_NAME_LIMITS)) {
+    if (!Object.hasOwn(rest, key)) continue;
+    const value = rest[key]; delete rest[key];
+    if (value === null || value === undefined) continue;
+    if (typeof value !== 'string' || NAME_CONTROL.test(value) || [...value].length > READ_NAME_LIMITS[key]) throw new TypeError('invalid_read_name');
+    const trimmed = value.trim();
+    if (trimmed !== '') picked[key] = trimmed;
+  }
+  const names = Object.keys(picked).length ? picked : null;
+  return { args: nested ? { ...args, params: rest } : rest, names };
+}
 export const DOMAIN_TOOLS = Object.freeze(Object.entries(DOMAIN_READS).map(([operation, definition]) => Object.freeze(definition.inputSchema ? {
-  name: `crm_read_${operation}`, description: definition.description, inputSchema: definition.inputSchema,
+  name: `crm_read_${operation}`, description: definition.description, inputSchema: withReadNames(operation, definition.inputSchema),
   annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 } : {
   name: `crm_read_${operation}`, description: `${definition.label}. ${EMPTY_RESULT_HINT}`,
   inputSchema: { type: 'object', additionalProperties: false, ...(definition.requiresDates ? { required: ['fromDate', 'toDate'] } : {}), properties: {
-    query: { type: 'string', maxLength: 200, description: DOMAIN_QUERY_HINT }, limit: { type: 'integer', minimum: 1, maximum: 50 },
+    query: { type: 'string', maxLength: 200, description: READ_QUERY_HINTS[operation] }, limit: { type: 'integer', minimum: 1, maximum: 50 },
     cursor: { type: ['string', 'null'], format: 'uuid' }, buildingId: { type: ['string', 'null'], format: 'uuid', description: DOMAIN_BUILDING_HINT },
-    status: { enum: [null, ...definition.statuses] },
+    ...readNameProperties(operation), status: { enum: [null, ...definition.statuses] },
     ...(definition.dated ? { fromDate: dateSchema(definition.requiresDates), toDate: dateSchema(definition.requiresDates) } : {}),
   } }, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 })));

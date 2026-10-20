@@ -128,7 +128,9 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     ['hermes_w2_read_v1', 'hermes_w2_read_v1', null]);
   // Nền đợt 2 + bản sửa nền sau phát hành (giờ thực, tiền tố hermes_w2_; 19/10: kiểu phạm vi rls_buildings).
   assert.deepEqual(w2MigrationPaths({ packages: [] }), [W2_FOUNDATION_PATH, W2_FIXES_PATH, W2_INVOKER_PATH, W2_ORG_FENCE_PATH,
-    'supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql']);
+    'supabase/migrations/20261018185339_hermes_w2_rls_buildings_scope_v1.sql',
+    // B5c bước 2 (21/10): customers của v3 thêm buildingName — hàm nền nên bản kế nằm trong dải nền.
+    'supabase/migrations/20261020173819_hermes_w2_customers_building_name_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 

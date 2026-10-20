@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BrokerError, createBroker } from './broker.mjs';
 import { MemoryConnectionStore, MemorySessionStore } from './stores.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
 
 const USER_A = '10000000-0000-4000-8000-000000000001';
 const USER_B = '10000000-0000-4000-8000-000000000002';
@@ -317,6 +318,35 @@ test('injected authority reuses dispatcher and forwards branded receipt; P1 stor
   for (const bad of [null, {}, { resolve() {}, checkUnchanged() {} }]) {
     assert.throws(() => createBroker({ authority: bad }), /trusted_authority_adapter_required/);
   }
+});
+
+// B5d (21/10): with the domain mount's directory port, crm_auth_context also reports the company name and the
+// buildings (id, name, code) of the widest read scope — read after the audit receipt and before the post-audit
+// authority check, through the mount (asker JWT, RLS). Without the port the answer keeps its five keys (above).
+test('crm_auth_context adds organizationName and the buildings of the widest read scope through the domain directory port', async () => {
+  const BUILDING = '50000000-0000-4000-8000-000000000001', OTHER = '50000000-0000-4000-8000-000000000002', seen = [];
+  const scope = createDependencyScope();
+  const domains = { async prepareDomain() { return Object.freeze({}); }, async finalizeDomain() { return {}; },
+    async prepareContext(token, input, { signal }) { seen.push({ token, input, signal }); return Object.freeze({}); },
+    async finalizeContext(token, receipt, { signal }) { seen.push({ token, receipt, signal }); return { organizationName: 'Công ty Thử', buildings: [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }] }; } };
+  const f = authorityFixture({ broker: { domains, dependencyScope: scope }, mutate(value) {
+    value.effective.read = ['assistant.context.read', 'rooms.view']; value.row.restrictions.read = ['assistant.context.read', 'rooms.view'];
+    value.scopesByPermission['rooms.view'].buildingIds = [BUILDING, OTHER]; value.scopesByPermission['assistant.context.read'].buildingIds = [OTHER];
+  } });
+  try {
+    const result = context(await f.broker.callTool(f.token, 'crm_auth_context', {}));
+    assert.deepEqual(Object.keys(result), ['assistantId', 'userId', 'organizationId', 'organizationName', 'permissions', 'contextVersion', 'buildings']);
+    assert.equal(result.organizationName, 'Công ty Thử'); assert.deepEqual(result.buildings, [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }]);
+    assert.equal(result.contextVersion, f.state.contextVersion);
+    assert.deepEqual(seen[0].input, { organizationId: ORG_A, buildingIds: [OTHER, BUILDING], contextVersion: f.state.contextVersion }, 'union of every read key scope, in effective.read order');
+    assert.ok(seen.every(call => call.token === f.token && call.signal instanceof AbortSignal));
+    assert.deepEqual(f.calls.map(call => call.operation), ['identify', 'resolve', 'check'], 'the post-audit check stays');
+    // A directory answer of the wrong shape never reaches the model; a port that is half-wired is refused at construction.
+    const bad = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains,
+      async finalizeContext() { return { organizationName: 'x', buildings: [{ id: 'not-a-uuid', name: 'x', code: null }] }; } } } });
+    await assert.rejects(bad.broker.callTool(bad.token, 'crm_auth_context', {}), error('backend_unavailable'));
+    assert.throws(() => createBroker({ authority: f.authority, dependencyScope: scope, domains: { ...domains, finalizeContext: undefined } }), /trusted_domain_service_required/);
+  } finally { await scope.close(); }
 });
 
 test('injected identity shape and scopes are checked before any handler prepares data', async () => {

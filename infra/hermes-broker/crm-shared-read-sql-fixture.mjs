@@ -19,6 +19,12 @@ const fastSql=readFileSync('supabase/migrations/20261019040111_hermes_domain_rea
 // probe targets that last definition because it is the one that runs.
 const receivablesOriginal=readFileSync('supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql','utf8');
 const receivablesSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? receivablesOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : receivablesOriginal;
+// B5c (20261020171321) replaces the shared reader and hermes_domain_read_v2 again:
+// receivables rows name their building on both lanes. Applied after B2, twice.
+const buildingSql=readFileSync('supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql','utf8');
+// B5c step 2 (20261020173818): the reader names the building/room on customers, contracts and
+// invoices; hermes_domain_read_v1/v2 follow (requires v1 to be installed first). Applied last, twice.
+const buildingNameSql=readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -168,7 +174,7 @@ const [ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2]=Array
 async function setup(pool) {
  await setupBase(pool);
  await pool.query(`ALTER TABLE auth.users ADD COLUMN email text;
- ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,
+ ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,ADD COLUMN code text,
  ADD COLUMN default_account_id_tt uuid,ADD COLUMN default_account_id_tk uuid;
  CREATE TYPE public.invoice_status AS ENUM('DRAFT','APPROVED','PARTIAL_PAID','PAID','OVERDUE','CANCELLED');
  CREATE TYPE public.payment_method AS ENUM('TM','TK','TT','CT');
@@ -206,7 +212,10 @@ async function setup(pool) {
  await pool.query(`REVOKE ALL ON FUNCTION public.${name}(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;GRANT EXECUTE ON FUNCTION public.${name}(uuid) TO authenticated;`);
  // Family v2 reader (normal lane) and the date helper the B2 admission depends on,
  // so receivables can be compared normal-vs-fast on the same data and JWT.
- for(const name of ['app_private.hermes_domain_text_v1','app_private.hermes_domain_date_v2','app_private.hermes_private_command_connection_v1','public.hermes_domain_read_v2'])
+ for(const name of ['app_private.hermes_domain_text_v1','app_private.hermes_domain_date_v2','app_private.hermes_private_command_connection_v1','public.hermes_domain_read_v2',
+  // Family v1 reader (normal lane of contracts/invoices) so the B5c step-2 migration can require it and the
+  // fast rows can be compared with it on the same data and JWT.
+  'app_private.hermes_domain_permission_v1','public.hermes_domain_read_v1'])
  {assert(live.has(name),name);await pool.query(live.get(name));}
  await pool.query(readFileSync('supabase/migrations/20261019034254_hermes_metadata_read_snapshot_v1.sql','utf8'));
  await pool.query(`INSERT INTO public.permission_definitions(key) VALUES('buildings.view'),('contracts.view'),('invoices.view') ON CONFLICT DO NOTHING;
@@ -247,6 +256,8 @@ async function setup(pool) {
  const before={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])before[fn]=await web(pool,fn);
  await pool.query(sharedSql);await pool.query(sharedSql);await pool.query(fastSql);
  await pool.query(receivablesSql);await pool.query(receivablesSql); // Idempotency, same candidate.
+ await pool.query(buildingSql);await pool.query(buildingSql); // B5c after B2, twice.
+ await pool.query(buildingNameSql);await pool.query(buildingNameSql); // B5c step 2 after B5c, twice.
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};
@@ -265,5 +276,10 @@ async function normal(pool,binding,domain,input={},actor={}) {
  return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
  return (await c.query('SELECT public.hermes_domain_read_v2($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
 }
+// Normal lane of family v1 (hermes_domain_read_v1, seven-key binding, five-key input) on the same JWT claims.
+async function normal1(pool,binding,domain,input={},actor={}) {
+ return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
+ return (await c.query('SELECT public.hermes_domain_read_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);
+}
 
-export {settings,localCluster,setup,jwt,fast,normal,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};
+export {settings,localCluster,setup,jwt,fast,normal,normal1,web,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROLE,BINDING,ORG_SCOPE,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2};

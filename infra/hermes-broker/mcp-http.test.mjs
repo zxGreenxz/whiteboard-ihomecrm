@@ -119,6 +119,25 @@ test('oversized SQL read: PT413 maps to result_too_large with a narrow-the-call 
   assert.match(value.hint, /limit nhỏ hơn hoặc bộ lọc hẹp hơn/);
 });
 
+// B5d (21/10): a building/room name the directory in scope could not resolve reaches the model as a readable tool
+// error with the reason (its own string plus names the asker's RLS already lists); a non-string detail is dropped.
+test('read_name_unresolved forwards its detail string to the model and nothing else', async t => {
+  let problem = Object.assign(new BrokerError('read_name_unresolved'), { detail: "Nhiều toà khớp 'London': London Garden, London Park — nêu rõ.", token: 'PRIVATE' });
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw problem; } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const invoke = async () => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}` }, body: JSON.stringify(call('crm_read_customers', { buildingName: 'London' })) });
+    const body = await response.json(); assert.equal(response.status, 200); assert.equal(body.result.isError, true);
+    return JSON.parse(body.result.content[0].text);
+  };
+  assert.deepEqual(await invoke(), { error: 'read_name_unresolved', detail: "Nhiều toà khớp 'London': London Garden, London Park — nêu rõ." });
+  assert.equal(new BrokerError('read_name_unresolved').status, 400);
+  problem = Object.assign(new BrokerError('read_name_unresolved'), { detail: { secret: 'PRIVATE' } });
+  assert.deepEqual(await invoke(), { error: 'read_name_unresolved' });
+});
+
 test('unknown send returns only validated dispatch correlation so native Hermes can check status', async t => {
   const dispatchId = '10000000-0000-4000-8000-000000000099';
   let problem = Object.assign(new BrokerError('send_outcome_unknown'), { dispatchId, token: 'PRIVATE', cause: 'PRIVATE' });

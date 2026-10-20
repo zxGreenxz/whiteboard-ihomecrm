@@ -109,7 +109,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   'hermes_w2_read_v1(jsonb,text,jsonb)',
   'hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'hermes_domain_read_fast_v1(jsonb,text,jsonb)',
   // B3 (20261020101453): one filtered sale-room page per bound connection; the admission helper stays private.
-  'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)'];
+  'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)',
+  // B5d (20261020175803): name directories under the asker's RLS (INVOKER) and the member-only company name (DEFINER).
+  'hermes_building_directory_v1(uuid,uuid[])', 'hermes_room_directory_v1(uuid,uuid[],text)', 'hermes_organization_name_v1(uuid)'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -432,6 +434,9 @@ const CUSTOMER_INVOKER = new Set(['app_private.hermes_customer_insert_v1', 'publ
 // SQL-standard body (OIDs bound at creation; authenticated keeps no USAGE on app_private).
 const W2_READERS = new Set(['a', 'b', 'c', 'd'].map(letter => `app_private.hermes_w2${letter}_read_v1`));
 const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
+// B5d (20261020175803): the building/room directories run as the asker (RLS of buildings/rooms decides what is
+// listed), so they are plpgsql STABLE INVOKER and may not name app_private; the company-name helper stays DEFINER.
+const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1']);
 const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
   ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
 
@@ -689,6 +694,10 @@ function securityContract(sql = all, registry = functions) {
     else if (name === 'app_private.hermes_task_follow_apply_v1') assert.equal(header, TASK_FOLLOW_APPLY_HEADER, 'exact task-follow invoker step');
     else if (name === 'public.hermes_task_follow_action_v1') assert.equal(definition, TASK_FOLLOW_ACTION, 'exact task-follow SQL-standard wrapper');
     else if (CUSTOMER_INVOKER.has(name)) assert.match(header, /SECURITY INVOKER SET search_path=pg_catalog,public/i, name);
+    else if (NAME_DIRECTORY_INVOKER.has(name)) {
+      assert.match(header, /LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public$/i, name);
+      assert.doesNotMatch(definition.split(/\bAS\s+\$/i).slice(1).join(''), /\bapp_private\./i, `${name}: invoker directory names app_private`);
+    }
     else if (W2_INVOKER.has(name)) {
       assert.match(header, /LANGUAGE (?:plpgsql|sql) (?:VOLATILE|STABLE) SECURITY INVOKER SET search_path=pg_catalog,public$/i, name);
       // A plpgsql body resolves names as the asker, who has no USAGE on app_private: it may not name it.
@@ -878,11 +887,13 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all nine reviewed forward migrations and their 54 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
-  const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
-  assert.equal(paths.length, 9);
-  assert.equal(FORWARD_FUNCTIONS.length, 54);
-  assert.equal(FORWARD_BY_NAME.size, 54, 'one live definition per reviewed name');
+test('all eleven reviewed forward migrations and their 56 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+  // A reviewed file stays under review after every body it declared was replaced
+  // (B5c 20261020171321): its statements are then only superseded pins.
+  const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
+  assert.equal(paths.length, 11);
+  assert.equal(FORWARD_FUNCTIONS.length, 56);
+  assert.equal(FORWARD_BY_NAME.size, 56, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

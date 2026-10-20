@@ -49,7 +49,8 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   const first = await read3('customers', list());
   assert.deepEqual(ids(first.items), [CUSTOMER_A, CO_TENANT].sort(), 'building overlay only; foreign org never');
   const a = first.items.find(row => row.id === CUSTOMER_A);
-  assert.deepEqual(a, { id: CUSTOMER_A, name: 'Nguyễn Văn An', phone: PHONE_A, contractId: CONTRACT_A, buildingId: BUILDING, roomId: ROOM, roomName: 'P101' });
+  // B5c step 2 (20261020173819): the building of the active contract is named next to its id.
+  assert.deepEqual(a, { id: CUSTOMER_A, name: 'Nguyễn Văn An', phone: PHONE_A, contractId: CONTRACT_A, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101' });
   assert.deepEqual(domainResult('customers', first, identity('customers.view'), list()), first);
   assert.deepEqual(ids((await read3('customers', list({ query: '4567' }))).items), [CUSTOMER_A], 'phone digits search');
   assert.deepEqual(ids((await read3('customers', list({ query: '090 123' }))).items), [CUSTOMER_A], 'spaced digits');
@@ -295,7 +296,7 @@ test('P1 customer side: without contracts.view the profile and list keep the cus
     const people = await read3('customers', list());
     assert.deepEqual(people.items.map(row => row.contractId), [null, null], 'contractId only with contracts.view');
     // P3-6: phòng/toà gần nhất đi cùng hợp đồng nên cũng cần contracts.view.
-    assert.deepEqual(people.items.map(row => [row.buildingId, row.roomId, row.roomName]), [[null, null, null], [null, null, null]]);
+    assert.deepEqual(people.items.map(row => [row.buildingId, row.buildingName, row.roomId, row.roomName]), [[null, '', null, null], [null, '', null, null]], 'B5c: no name without contracts.view');
   } finally { await db.exec(on); }
   assert.equal((await read3('customers', list())).items.find(row => row.id === CUSTOMER_A).contractId, CONTRACT_A);
 }));

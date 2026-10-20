@@ -142,9 +142,10 @@ test('domain mount under the host opt-in: fast plan, cached seven-key admission 
   const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' };
   const shared = { connectionStore: f.connectionStore, crypto: f.crypto, auth: f.auth, supabase, dependencyScope, fetch, clock: () => f.clock.now };
   const plain = createDomainMount({ authority: full, ...shared }).createService();
-  assert.deepEqual(Object.keys(plain), ['prepareDomain', 'finalizeDomain'], 'without the opt-in nothing is advertised');
+  // B5d: the crm_auth_context directory port (company name + buildings) exists on both mounts.
+  assert.deepEqual(Object.keys(plain), ['prepareDomain', 'finalizeDomain', 'prepareContext', 'finalizeContext'], 'without the opt-in nothing is advertised');
   const domains = createDomainMount({ authority: full, ...shared, readAuthority }).createService();
-  assert.deepEqual(Object.keys(domains), ['readAuthority', 'fastReadOperations', 'cachedReadOperations', 'prepareDomain', 'finalizeDomain']);
+  assert.deepEqual(Object.keys(domains), ['readAuthority', 'fastReadOperations', 'cachedReadOperations', 'prepareContext', 'finalizeContext', 'prepareDomain', 'finalizeDomain']);
   assert.deepEqual([...domains.fastReadOperations], [...FAST_READ_OPERATIONS]); assert.deepEqual([...domains.cachedReadOperations], [...CACHED_READ_OPERATIONS]);
   const options = { signal: f.signal };
   const run = async (operation, input = {}) => { const receipt = await domains.prepareDomain(TOKEN, operation, input, options); return domains.finalizeDomain(TOKEN, receipt, options); };

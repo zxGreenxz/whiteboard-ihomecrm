@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1531,
-  "soFileDocBangFs": 393,
-  "tongLoiGoi": 930,
-  "khongPhanLoaiDuoc": 421,
+  "tongSoFileTest": 1534,
+  "soFileDocBangFs": 394,
+  "tongLoiGoi": 932,
+  "khongPhanLoaiDuoc": 422,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -448,6 +448,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "infra/hermes-broker/domain-composition.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "infra/hermes-broker/wave2-a.test.mjs",
       "soGoi": 4,
       "loai": {
@@ -638,12 +646,6 @@
     },
     {
       "file": "infra/hermes-broker/copilot-independence.test.mjs",
-      "soGoi": 3,
-      "loai": {},
-      "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/hermes-broker/domain-v2.test.mjs",
       "soGoi": 3,
       "loai": {},
       "khongPhanLoaiDuoc": 3
@@ -929,12 +931,10 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "infra/hermes-broker/domain-composition.test.mjs",
+      "file": "infra/hermes-broker/domain-v2.test.mjs",
       "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "infra/hermes-broker/full-read-report.test.mjs",
@@ -1635,6 +1635,12 @@
     },
     {
       "file": "infra/hermes-broker/group-preview-composition.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/name-directory-sql.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
