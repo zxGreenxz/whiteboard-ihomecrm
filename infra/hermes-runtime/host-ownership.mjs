@@ -13,6 +13,9 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   'tool_not_available', 'rate_limited', 'busy', 'timeout', 'backend_unavailable', 'response_too_large', 'send_outcome_unknown',
   // Báo cáo vượt trần trang của PostgREST (PT413, bound-user-rpc.mjs): mô hình cần thu hẹp bộ lọc, không phải thử lại.
   'result_too_large',
+  // B5d (infra/hermes-broker/read-name-resolution.mjs): tên toà/phòng không giải được — mô hình phải hỏi lại. Audit
+  // không nhận mã này ⇒ audit đỏ ⇒ đóng an toàn thành backend_unavailable cho MỌI tên sai (sự cố 21/10 03:30).
+  'read_name_unresolved',
   // Rào chữ công khai (infra/hermes-broker/public-text-guard.mjs): token xác nhận sai/hết hạn/đã dùng.
   'confirmation_invalid']);
 const AUDIT_OWNERS = new Map();

@@ -201,7 +201,10 @@ export function domainResult(operation, value, identity, input) {
         Object.entries(definition.fields).some(([key, check]) => Object.hasOwn(row, key) ? !check(row[key]) : !definition.tolerant.includes(key))) fail();
     const buildings = row.buildingIds ?? (row.buildingId ? [row.buildingId] : []);
     if (Array.isArray(scopes) && buildings.some(building => !scopes.includes(building))) fail();
-    if (input.buildingId && !buildings.includes(input.buildingId)) fail();
+    // customers: bộ lọc buildingId = khách TỪNG có hợp đồng ở toà (lõi: p_location_building_ids), còn dòng mang toà của
+    // hợp đồng ĐANG hiệu lực (hoặc null khi không có) ⇒ không đòi trùng; kiểm phạm vi ngay trên vẫn giữ. Miền khác: dòng
+    // phải thuộc đúng toà lọc. (21/10: đòi trùng làm crm_read_customers {buildingId} đỏ backend_unavailable với mọi toà.)
+    if (input.buildingId && operation !== 'customers' && !buildings.includes(input.buildingId)) fail();
     if (definition.perBuilding && row.id !== row.buildingId) fail();
     if (operation === 'occupancy' && row.occupied + row.available > row.total) fail();
     if (input.status && Object.hasOwn(row, operation === 'income_expenses' ? 'approvalStatus' : 'status') &&
