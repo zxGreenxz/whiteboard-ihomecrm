@@ -12,6 +12,10 @@ export { id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT };
 // and the canonical expense writer are fixture ports: they prove Hermes'
 // intersection/receipt logic, not the canonical writer, RLS or a live JWT.
 export const READS_PATH = 'supabase/migrations/20261015120000_hermes_domain_reads_v2.sql';
+// B5c (20261020171321) CREATE OR REPLACEs hermes_domain_read_v2 (receivables rows name their
+// building). readsSql() runs the applied v2 file with that later body swapped in, so every v2
+// test and mutation measures the definition production has after the forward lane.
+export const READS_B5C_PATH = 'supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql';
 export const ACTION_PATH = 'supabase/migrations/20261015120100_hermes_expense_create_action_v1.sql';
 export const HOOK_PATH = 'supabase/migrations/20261015120200_hermes_finance_capabilities_hook.sql';
 export const BUILDING = id('a'), OTHER_BUILDING = id('b'), ROOM = id('c'), OTHER_ROOM = id('e'), ITEM = id('f'), SCOPE = id('0');
@@ -28,7 +32,11 @@ const fn = (src, name) => {
   assert.ok(match, `function ${name} exists`); return match[0];
 };
 export const ACTION_KEYS = ['income_expenses.create', 'income_expenses.approve'];
-export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {
+export const readsSql = () => {
+  const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_B5C_PATH, 'utf8'), 'public.hermes_domain_read_v2');
+  return applied.replace(fn(applied, 'public.hermes_domain_read_v2'), () => live);
+};
+export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {
   const f = await fixture(t, { migrations: ['20261013084000_hermes_private_command_dispatch_v1'] }), { db } = f;
   await db.exec(`CREATE SCHEMA extensions;
     CREATE FUNCTION extensions.digest(value text,algorithm text) RETURNS bytea LANGUAGE sql IMMUTABLE AS $$SELECT decode(md5(value)||md5(value),'hex')$$;
@@ -38,7 +46,7 @@ export async function setup(t, { reads = readFileSync(READS_PATH, 'utf8'), actio
     CREATE TABLE public.authorization_scopes(id uuid PRIMARY KEY,organization_id uuid,scope_type text,building_id uuid,area_id uuid,cashbook_id uuid);
     CREATE TABLE public.areas(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
     CREATE TABLE public.area_buildings(organization_id uuid,area_id uuid,building_id uuid);
-    CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,is_virtual boolean DEFAULT false,deleted_at timestamptz);
+    CREATE TABLE public.buildings(id uuid PRIMARY KEY,organization_id uuid,name text,is_virtual boolean DEFAULT false,deleted_at timestamptz,code text);
     CREATE TABLE public.rooms(id uuid PRIMARY KEY,organization_id uuid,building_id uuid,name text,status text,deleted_at timestamptz);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid NOT NULL,user_id uuid NOT NULL,code text,type text NOT NULL,
       name text NOT NULL,building_id uuid NOT NULL,room_id uuid,account_id uuid,voucher_date date NOT NULL,total_amount numeric(15,2) NOT NULL DEFAULT 0,

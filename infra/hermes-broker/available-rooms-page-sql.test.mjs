@@ -121,7 +121,7 @@ const SCHEMA = `
 ALTER TABLE public.rooms ADD COLUMN code text,ADD COLUMN floor integer,ADD COLUMN status text NOT NULL DEFAULT 'AVAILABLE',ADD COLUMN area numeric(10,2),
   ADD COLUMN max_occupants integer,ADD COLUMN rent_price numeric(15,2),ADD COLUMN deposit_amount numeric(15,2),ADD COLUMN description text,
   ADD COLUMN images jsonb DEFAULT '[]',ADD COLUMN amenities jsonb DEFAULT '[]',ADD COLUMN sale_note text,ADD COLUMN room_type text,ADD COLUMN sale_bonus_note text;
-ALTER TABLE public.buildings ADD COLUMN code text,ADD COLUMN is_virtual boolean NOT NULL DEFAULT false,ADD COLUMN province text,ADD COLUMN district text,
+ALTER TABLE public.buildings ADD COLUMN IF NOT EXISTS code text,ADD COLUMN is_virtual boolean NOT NULL DEFAULT false,ADD COLUMN province text,ADD COLUMN district text,
   ADD COLUMN ward text,ADD COLUMN street_address text,ADD COLUMN total_floors integer,ADD COLUMN floor_layouts jsonb,ADD COLUMN images jsonb DEFAULT '[]',
   ADD COLUMN public_contact_name text,ADD COLUMN public_contact_phone text,ADD COLUMN public_map_url text,ADD COLUMN public_lift_type text;
 ALTER TABLE public.areas ADD COLUMN user_id uuid,ADD COLUMN name text;

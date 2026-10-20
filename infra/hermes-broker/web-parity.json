@@ -2553,11 +2553,11 @@
     {
       "id": "receivables-fast-read",
       "kind": "mirrored",
-      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false.",
+      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false. B5c 21/10 (20261020171321): cả hai lane thêm buildingName/buildingCode (LEFT JOIN buildings theo room.building_id) để model gom nợ theo toà.",
       "sql": [
         {
           "function": "public.hermes_domain_read_v2",
-          "sha256": "88fedba5236e53c1c0c7e62e42cfb757be2dbe9493cacc918caf038d03aba329"
+          "sha256": "f10e774b75e8dc77350525e78596b23eed54b4653921dc9388aec7f2c884896d"
         }
       ],
       "hermes": [

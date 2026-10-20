@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { setup, READS_PATH, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
+import { setup, readsSql, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
@@ -108,7 +108,7 @@ test('v2 contract: registry-driven tools, exact family inputs and fail-closed pr
     { ...value, items: [{ ...row, voucherDate: '2026-09-30' }] }, { ...value, items: [{ ...row, notes: 'x' }] }, { ...value, items: [{ ...row, totalAmount: 150000 }] }])
     assert.throws(() => domainResult('income_expenses', changed, identity('income_expenses.view'), filtered));
   assert.throws(() => domainResult('income_expenses', value, identity('income_expenses.view', [OTHER_BUILDING]), filtered), 'CRM scope fence');
-  const debt = { id: BUILDING, number: null, status: 'APPROVED', buildingId: BUILDING, roomId: ROOM, roomName: null, billingMonth: null, dueDate: null, totalAmount: '1', paidAmount: '1', remainingAmount: '0.00' };
+  const debt = { id: BUILDING, number: null, status: 'APPROVED', buildingId: BUILDING, buildingName: '', buildingCode: null, roomId: ROOM, roomName: null, billingMonth: null, dueDate: null, totalAmount: '1', paidAmount: '1', remainingAmount: '0.00' };
   assert.throws(() => domainResult('receivables', { ...value, domain: 'receivables', source: 'crm.invoices', items: [debt] }, identity('invoices.view'), input('receivables')), 'settled invoice is not a debt');
   const profit = { id: ROOM, buildingId: BUILDING, name: 'x', revenue: '1', expense: '0', net: '1', months: 1 };
   assert.throws(() => domainResult('building_profit', { ...value, domain: 'building_profit', source: 'crm.fa_monthly_pnl', items: [profit] }, identity('reports_finance.analysis'), input('building_profit')), 'per-building row id');
@@ -121,7 +121,7 @@ test('B2: receivables joins the fixed private read plan with family v2 input and
   assert.deepEqual(Object.keys(fastInput).sort(), ['buildingId', 'cursor', 'fromDate', 'limit', 'query', 'status', 'toDate'], 'the fast RPC receives the seven v2 keys');
   // The live business statement supplies the output scope; the identity row only fixes actor, company and connection.
   const fastIdentity = { row: { id: connection, userId: USER, organizationId: ORG }, scopesByPermission: {} };
-  const debt = { id: uuid(), number: 'HD1', status: 'OVERDUE', buildingId: BUILDING, roomId: ROOM, roomName: 'P101', billingMonth: '2026-10',
+  const debt = { id: uuid(), number: 'HD1', status: 'OVERDUE', buildingId: BUILDING, buildingName: 'Toà A', buildingCode: 'A', roomId: ROOM, roomName: 'P101', billingMonth: '2026-10',
     dueDate: '2026-10-10', totalAmount: '3000000.00', paidAmount: '1000000.00', remainingAmount: '2000000.00' };
   const envelope = { authority: { organizationId: ORG, userId: USER, connectionId: connection, permission: 'invoices.view', buildingIds: [BUILDING], cashbookIds: [] },
     result: { organizationId: ORG, domain: 'receivables', items: [debt], nextCursor: null, source: 'crm.invoices', fetchedAt: '2026-10-20T01:02:03.004Z' } };
@@ -137,7 +137,13 @@ test('B2: receivables joins the fixed private read plan with family v2 input and
     ['status outside the requested filter', value => { value.result.items[0].status = 'APPROVED'; }],
     ['private field on the row', value => { value.result.items[0].notes = 'x'; }],
     ['cursor without a full page', value => { value.result.nextCursor = debt.id; value.result.items = []; }],
+    // B5c: the building columns are part of the fixed row; a pre-B5c row (no name) or a non-text name is refused.
+    ['row without the building name', value => { delete value.result.items[0].buildingName; }],
+    ['building name that is not text', value => { value.result.items[0].buildingName = null; }],
+    ['building code that is not text', value => { value.result.items[0].buildingCode = 7; }],
   ]) { const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('receivables', value, fastIdentity, fastInput), label); }
+  const unnamed = structuredClone(envelope); unnamed.result.items[0].buildingName = ''; unnamed.result.items[0].buildingCode = null;
+  assert.deepEqual(domainFastResult('receivables', unnamed, fastIdentity, fastInput), unnamed.result, 'an unnamed building (empty text, null code) is a valid row');
 });
 
 test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM ACL ports, no live JWT proof', { timeout: 120000 }, async t => {
@@ -152,7 +158,8 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
       for (const item of result.items) assert.equal(item.buildingId, BUILDING, `${domain}: overlay building only`);
     }
     const debts = await read('receivables', input('receivables'));
-    assert.deepEqual(debts.items.map(row => [row.id, row.remainingAmount, row.roomName]), [[ids.debt, '2000000.00', 'P101']]);
+    assert.deepEqual(debts.items.map(row => [row.id, row.remainingAmount, row.roomName, row.buildingName, row.buildingCode]), [[ids.debt, '2000000.00', 'P101', 'Toà A', null]],
+      'B5c: the reserve lane names the building of the debt (code null when the building has none)');
     const readings = await read('meter_readings', input('meter_readings'));
     assert.deepEqual(readings.items.map(row => [row.id, row.consumption]), [[ids.reading, '50.00']]); assert.equal(JSON.stringify(readings).includes('example.invalid'), false);
     const deposits = await read('deposits_held', input('deposits_held'));
@@ -196,7 +203,8 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
 });
 
 test('v2 SQL mutations: removing overlay, CRM scope, org, restricted, permission, registry or connection checks turns a check red', { timeout: 300000 }, async t => {
-  const candidate = readFileSync(READS_PATH, 'utf8');
+  // The applied v2 file with the live B5c body of hermes_domain_read_v2 swapped in (finance-fixture.readsSql).
+  const candidate = readsSql();
   for (const [label, before, after, check] of [
     ['unselected overlay scope accepted', 'WHERE scope.id=ANY(scopes) AND scope.organization_id=c.organization_id', 'WHERE scope.organization_id=c.organization_id', 'projection'],
     ['building overlay matches any building', "(scope.scope_type='BUILDING' AND scope.building_id=b.id)", "scope.scope_type='BUILDING'", 'projection'],

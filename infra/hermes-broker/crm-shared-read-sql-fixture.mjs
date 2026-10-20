@@ -19,6 +19,9 @@ const fastSql=readFileSync('supabase/migrations/20261019040111_hermes_domain_rea
 // probe targets that last definition because it is the one that runs.
 const receivablesOriginal=readFileSync('supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql','utf8');
 const receivablesSql=process.env.HERMES_SHARED_SQL_MUTATION==='primary-exclusion' ? receivablesOriginal.replace("IF state->'allowed' IS DISTINCT FROM 'true'::jsonb THEN",'IF false THEN') : receivablesOriginal;
+// B5c (20261020171321) replaces the shared reader and hermes_domain_read_v2 again:
+// receivables rows name their building on both lanes. Applied after B2, twice.
+const buildingSql=readFileSync('supabase/migrations/20261020171321_hermes_receivables_building_name_v1.sql','utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -168,7 +171,7 @@ const [ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,CONTRACT2,INVOICE,INVOICE2]=Array
 async function setup(pool) {
  await setupBase(pool);
  await pool.query(`ALTER TABLE auth.users ADD COLUMN email text;
- ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,
+ ALTER TABLE public.buildings ADD COLUMN user_id uuid,ADD COLUMN name text,ADD COLUMN name_sort text,ADD COLUMN code text,
  ADD COLUMN default_account_id_tt uuid,ADD COLUMN default_account_id_tk uuid;
  CREATE TYPE public.invoice_status AS ENUM('DRAFT','APPROVED','PARTIAL_PAID','PAID','OVERDUE','CANCELLED');
  CREATE TYPE public.payment_method AS ENUM('TM','TK','TT','CT');
@@ -247,6 +250,7 @@ async function setup(pool) {
  const before={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])before[fn]=await web(pool,fn);
  await pool.query(sharedSql);await pool.query(sharedSql);await pool.query(fastSql);
  await pool.query(receivablesSql);await pool.query(receivablesSql); // Idempotency, same candidate.
+ await pool.query(buildingSql);await pool.query(buildingSql); // B5c after B2, twice.
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};

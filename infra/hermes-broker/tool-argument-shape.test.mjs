@@ -323,7 +323,8 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // 162 B tới trần chung. 20/10 tool đọc không null (bỏ format uuid, bỏ status enum [null], OMITTABLE trừ UUID):
 // 63 554 B; mô tả crm_read_customers theo HĐ đang hiệu lực: 63 769 B — còn 231 B. 20/10 B5b: 5 tool task
 // (follow_list/set/stop, progress, cancel) bỏ organizationId khỏi properties + required: 62 619 B — còn 1 381 B.
-// B1c (alias snake_case + kẹp limit) chỉ đổi normalizeToolArguments, không đổi một byte tools/list. Trần tổng giữ
+// B1c (alias snake_case + kẹp limit) chỉ đổi normalizeToolArguments, không đổi một byte tools/list. B5c 21/10:
+// crm_read_receivables thêm "; có tên toà — gom theo toà khi nhiều phòng" (+52 B): 62 671 B — còn 1 329 B. Trần tổng giữ
 // 64 000 B (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
