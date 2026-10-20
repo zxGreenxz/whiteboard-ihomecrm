@@ -119,6 +119,10 @@ export const DOMAIN_READ_CAPABILITIES_V3 = DOMAIN_FAMILIES.v3.capabilities;
 export const ALL_DOMAIN_READ_CAPABILITIES = Object.freeze([...DOMAIN_FAMILIES.v1.capabilities, ...DOMAIN_FAMILIES.v2.capabilities, ...DOMAIN_FAMILIES.v3.capabilities]);
 export const domainFamily = operation => Object.hasOwn(DOMAIN_READS, operation) ? DOMAIN_FAMILIES[DOMAIN_READS[operation].family] : undefined;
 export const domainOperation = name => typeof name === 'string' && name.startsWith('crm_read_') && Object.hasOwn(DOMAIN_READS, name.slice(9)) ? name.slice(9) : undefined;
+// Fixed private read plan (hermes_domain_read_fast_v1, 20261019040111; receivables
+// since 20261020101836 B2): the domains the broker routes through the fast mount
+// when the host opts in (readFastPath). Missing SQL fails closed, never falls back.
+export const FAST_READ_OPERATIONS = Object.freeze(['customers', 'contracts', 'invoices', 'receivables']);
 // Không input (tools/list, chặn sớm): tool có hiện không. Có input đã kiểm (đợt 2: crm_read_report):
 // đúng khoá của báo cáo được gọi. Họ cũ: một khoá cố định, input không đổi kết quả.
 export const mayUseDomain = (effective, operation, input) => {

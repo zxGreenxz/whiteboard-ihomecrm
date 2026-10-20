@@ -2,7 +2,7 @@ import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
@@ -342,8 +342,8 @@ export function createBroker({
     domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
     if (domains.readAuthority !== undefined) {
       if (['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof domains.readAuthority?.[key] !== 'function') ||
-          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== 3 ||
-          !['customers', 'contracts', 'invoices'].every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
+          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== FAST_READ_OPERATIONS.length ||
+          !FAST_READ_OPERATIONS.every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
       domain.readAuthority = domains.readAuthority;
     }
   }
@@ -879,7 +879,7 @@ export function createBroker({
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
           await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }),
-        domain.readAuthority && ['customers', 'contracts', 'invoices'].includes(domainOp)
+        domain.readAuthority && FAST_READ_OPERATIONS.includes(domainOp)
           ? { authority: domain.readAuthority, initialDomainReadAdmission: true } : {});
       }
       const scheduleOp = scheduleOperation(name);

@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-19T16:42:55.888Z",
+  "generatedAt": "2026-10-20T10:47:10.947Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -8,7 +8,7 @@
   "counts": {
     "ledger-applied": 774,
     "unknown": 80,
-    "catalog-proven": 205,
+    "catalog-proven": 206,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12375,6 +12375,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-19T16:41:30.711Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261020101836_hermes_domain_read_fast_receivables_v1.sql",
+      "version": "20261020101836",
+      "name": "hermes_domain_read_fast_receivables_v1",
+      "scheme": "timestamp14",
+      "sha256": "d493042470038f285d3a7b644f1efd3bb7981a87d11bd43f4e82717b5004c430",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_domain_read_scope_fast_v1",
+        "catalog:function:app_private.hermes_domain_read_rows_fast_v1"
       ]
     },
     {
