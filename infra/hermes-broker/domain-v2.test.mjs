@@ -8,6 +8,7 @@ import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPAB
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -296,4 +297,61 @@ test('domain mount routes v2 tools to the v2 RPC with the bound user JWT and mer
   const before = events.filter(name => name.endsWith('read_v2')).length;
   await assert.rejects(service.finalizeDomain(token, stale, options), code('context_changed'));
   assert.equal(events.filter(name => name.endsWith('read_v2')).length, before, 'no data RPC after a permission change');
+});
+
+test('B2-2 cached admission: income_expenses keeps hermes_domain_read_v2 with the live seven-key binding; the statement alone refuses a lost grant (42501) and a moved session (PT409); a changed snapshot re-resolves', { timeout: 120000 }, async t => {
+  const env = await ready(t), { db, call } = env, events = [], bindings = [];
+  const expiresAt = (Math.floor(Date.now() / 1000) + 3600) * 1000;
+  const accessToken = ['header', Buffer.from(JSON.stringify({ role: 'authenticated', sub: USER, session_id: SESSION, exp: expiresAt / 1000 })).toString('base64url'), 'signature'].join('.');
+  const crypto = createSessionCrypto({ activeKeyVersion: 'test', keys: new Map([['test', randomBytes(32)]]) }); t.after(() => crypto.destroy());
+  const envelope = crypto.seal({ accessToken, refreshToken: 'SYNTHETIC_REFRESH', expiresAt }, { assistantId: ASSISTANT, userId: USER, organizationId: ORG, sessionId: SESSION });
+  await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0)', [JSON.stringify(envelope), expiresAt]);
+  const dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
+  const sql = { '/rest/v1/rpc/hermes_domain_capabilities_v1': 'SELECT public.hermes_domain_capabilities_v1($1::uuid) result',
+    '/rest/v1/rpc/hermes_domain_capabilities_v2': 'SELECT public.hermes_domain_capabilities_v2($1::uuid) result',
+    '/rest/v1/rpc/hermes_domain_read_v2': 'SELECT public.hermes_domain_read_v2($1::jsonb,$2::text,$3::jsonb) result' };
+  const fetch = async (url, options) => {
+    assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
+    const name = new URL(url).pathname, args = JSON.parse(options.body); events.push(name);
+    if (name === '/rest/v1/rpc/hermes_domain_capabilities_v3') return Response.json({ code: 'PGRST202', message: 'missing', details: null, hint: null }, { status: 404 });
+    assert.ok(Object.hasOwn(sql, name), `unexpected RPC ${name}`);
+    if (name.endsWith('read_v2')) bindings.push(args.p_binding);
+    try { return Response.json(await call(sql[name], name.includes('capabilities') ? [args.p_organization_id] : [JSON.stringify(args.p_binding), args.p_domain, JSON.stringify(args.p_input)])); }
+    catch (error) { return Response.json({ code: error.code, message: error.message, details: null, hint: null }, { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 }); }
+  };
+  const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' }, reads = createSupabaseDomainReads({ ...supabase, fetch, dependencyScope });
+  let verifications = 0;
+  const baseAuth = { async verifySession() { verifications++; return { userId: USER, sessionId: SESSION, expiresAt }; }, async readAuthorization() { return {
+    userId: USER, isSuperadmin: false, activeOrganizationIds: [ORG], epoch: 'synthetic-base', membership: { organizationId: ORG, status: 'ACTIVE', revokedAt: null, validFrom: null, validTo: null, membershipId: USER, authorizationVersion: 1 },
+    permissions: { read: [], action: [] }, companyCeilings: { read: [], action: [] }, scopesByPermission: {} }; } };
+  const auth = createDomainAuthAdapter({ baseAuth, reads });
+  const connectionStore = createDurableConnectionStore({ transport: { async call(operation, payload) { assert.equal(operation, 'readConnection'); return env.rpc('app_private.hermes_store_read_connection_v1', payload); } } });
+  const authority = createDurableAuthority({ connectionStore, crypto, auth });
+  const readAuthority = createReadCatalogAuthority({ authority: createDurableAuthority({ connectionStore, crypto, auth }), connectionStore });
+  const service = createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, readAuthority }).createService(), options = { signal: new AbortController().signal };
+  assert.ok(service.cachedReadOperations.includes('income_expenses')); assert.ok(service.fastReadOperations.includes('receivables'));
+  const run = async () => { const receipt = await service.prepareDomain(token, 'income_expenses', {}, options); return service.finalizeDomain(token, receipt, options); };
+  const first = await run();
+  assert.deepEqual(sorted(first.items.map(row => row.id)), sorted([env.ids.spend, env.ids.income, env.ids.pnlExpense]));
+  assert.equal(events.at(-1), '/rest/v1/rpc/hermes_domain_read_v2'); assert.deepEqual(bindings.at(-1), binding, 'the seven keys of the full lane, read from the live snapshot');
+  const cold = verifications; assert.equal(cold, 1, 'one catalog resolve');
+  await run(); await run();
+  assert.equal(verifications, cold, 'warm reads: no provider verification, no second authority build');
+  assert.equal(bindings.length, 3);
+  // Grant lost between prepare and finalize: the full lane answered context_changed before any RPC (test above);
+  // here the reviewed statement itself is asked and answers 42501 ⇒ forbidden.
+  const stale = await service.prepareDomain(token, 'income_expenses', {}, options);
+  await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='income_expenses.view'");
+  await assert.rejects(service.finalizeDomain(token, stale, options), code('forbidden'));
+  assert.equal(bindings.length, 4, 'the statement decided');
+  await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='income_expenses.view'");
+  // Session moved on after prepare: the receipt binds revision 1, SQL sees 2 ⇒ PT409 ⇒ context_changed.
+  const moved = await service.prepareDomain(token, 'income_expenses', {}, options);
+  await db.exec('UPDATE app_private.hermes_sessions SET revision=2');
+  await assert.rejects(service.finalizeDomain(token, moved, options), code('context_changed'));
+  assert.equal(bindings.at(-1).expectedSessionRevision, 1);
+  // The persisted snapshot changed, so the next read misses the catalog, resolves again and binds revision 2.
+  const next = await run();
+  assert.equal(next.items.length, 3); assert.equal(verifications, cold + 1); assert.equal(bindings.at(-1).expectedSessionRevision, 2);
+  assert.deepEqual(bindings.at(-1), { ...binding, expectedSessionRevision: 2 });
 });

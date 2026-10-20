@@ -6,6 +6,7 @@ import { fixture, id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT } from 
 import { DOMAIN_READS, DOMAIN_READ_CAPABILITIES, DOMAIN_TOOLS, domainInput, domainResult } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -165,10 +166,11 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
   const envelope=crypto.seal({accessToken,refreshToken:'SYNTHETIC_REFRESH',expiresAt},{assistantId:ASSISTANT,userId:USER,organizationId:ORG,sessionId:SESSION});
   await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0)',[JSON.stringify(envelope),expiresAt]);
   const dependencyScope=createDependencyScope();t.after(()=>dependencyScope.close());
-  let beforeRead;
+  let beforeRead,verifications=0;const bindings=[];
   const fetch=async(url,options)=>{
     assert.equal(options.headers.authorization,'Bearer '+accessToken);assert.equal(options.headers.apikey,'sb_publishable_test');assert.equal(options.redirect,'error');
     const name=new URL(url).pathname,args=JSON.parse(options.body);events.push(name);
+    if(name==='/rest/v1/rpc/hermes_domain_read_v1')bindings.push(args.p_binding);
     if(name==='/rest/v1/rpc/hermes_domain_read_v1'&&beforeRead){const hook=beforeRead;beforeRead=undefined;await hook();}
     // Families v2 and v3 (wave 2 keys) are later forward files and are absent in this v1 fixture.
     if(['/rest/v1/rpc/hermes_domain_capabilities_v2','/rest/v1/rpc/hermes_domain_capabilities_v3'].includes(name))return Response.json({code:'PGRST202',message:'missing',details:null,hint:null},{status:404});
@@ -177,7 +179,7 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
     catch(error){return Response.json({code:error.code,message:error.message,details:null,hint:null},{status:error.code==='42501'?403:error.code==='PT409'?409:400});}
   };
   const supabase={url:'https://example.invalid/',publishableKey:'sb_publishable_test'},reads=createSupabaseDomainReads({...supabase,fetch,dependencyScope});
-  const baseAuth={async verifySession({accessToken:provided}){assert.equal(provided,accessToken);return{userId:USER,sessionId:SESSION,expiresAt};},async readAuthorization(){return{
+  const baseAuth={async verifySession({accessToken:provided}){assert.equal(provided,accessToken);verifications++;return{userId:USER,sessionId:SESSION,expiresAt};},async readAuthorization(){return{
     userId:USER,isSuperadmin:false,activeOrganizationIds:[ORG],epoch:'synthetic-base',membership:{organizationId:ORG,status:'ACTIVE',revokedAt:null,validFrom:null,validTo:null,membershipId:USER,authorizationVersion:1},
     permissions:{read:[],action:[]},companyCeilings:{read:[],action:[]},scopesByPermission:{}};}};
   const auth=createDomainAuthAdapter({baseAuth,reads});
@@ -196,4 +198,13 @@ test('domain mount sends the decrypted bound user bearer to actual SQL and rejec
   const finalFence=await service.prepareDomain(token,'contracts',{},options);
   beforeRead=()=>db.exec("UPDATE app_private.hermes_connections SET read_capabilities=ARRAY['tasks.view']");
   await assert.rejects(service.finalizeDomain(token,finalFence,options),code('forbidden'));
+  // B2-2: with the read catalog opt-in, tasks (v1, outside the fast plan) keeps hermes_domain_read_v1 and the seven live
+  // keys; the catalog resolves once (one provider verification), then warm reads verify nothing and rebuild nothing.
+  const readAuthority=createReadCatalogAuthority({authority:createDurableAuthority({connectionStore,crypto,auth}),connectionStore});
+  const cached=createDomainMount({authority,connectionStore,crypto,auth,supabase,dependencyScope,fetch,readAuthority}).createService();
+  assert.ok(cached.cachedReadOperations.includes('tasks'));assert.ok(!cached.cachedReadOperations.includes('contracts'));
+  const cold=verifications,sent=bindings.length;
+  for(let i=0;i<2;i++){const r=await cached.prepareDomain(token,'tasks',{},options);assert.equal((await cached.finalizeDomain(token,r,options)).items[0].title,'Synthetic Task');}
+  assert.equal(bindings.length,sent+2);assert.deepEqual(bindings.at(-1),binding);assert.equal(verifications,cold+1,'one catalog resolve, no per-read verification');
+  assert.equal(events.at(-1),'/rest/v1/rpc/hermes_domain_read_v1');
 });

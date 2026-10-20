@@ -3,7 +3,7 @@ import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction }
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
-import { DOMAIN_TOOLS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_TOOLS, CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
 import { ZALO_BROADCAST_TOOLS, zaloBroadcastOperation, zaloBroadcastInput, mayUseZaloBroadcast } from './zalo-broadcast-contract.mjs';
 import { WORK_MEMORY_TOOLS, workMemoryOperation, workMemoryInput, mayUseWorkMemory } from './work-memory-contract.mjs';
@@ -351,9 +351,11 @@ export function createBroker({
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_domain_service_required');
     domain = Object.fromEntries(['prepareDomain', 'finalizeDomain'].map(key => [key, domains[key].bind(domains)]));
     if (domains.readAuthority !== undefined) {
+      // The mount and this dispatcher must agree on both opt-in lanes (fast plan, cached admission).
+      const sameSet = (value, expected) => Array.isArray(value) && value.length === expected.length && expected.every(op => value.includes(op));
       if (['identifyConnection', 'resolve', 'checkUnchanged'].some(key => typeof domains.readAuthority?.[key] !== 'function') ||
-          !Array.isArray(domains.fastReadOperations) || domains.fastReadOperations.length !== FAST_READ_OPERATIONS.length ||
-          !FAST_READ_OPERATIONS.every(op => domains.fastReadOperations.includes(op))) throw new TypeError('trusted_domain_service_required');
+          !sameSet(domains.fastReadOperations, FAST_READ_OPERATIONS) ||
+          !sameSet(domains.cachedReadOperations, CACHED_READ_OPERATIONS)) throw new TypeError('trusted_domain_service_required');
       domain.readAuthority = domains.readAuthority;
     }
   }
@@ -413,6 +415,16 @@ export function createBroker({
   }
   const mayReadRooms = identity => Boolean(rooms && identity.effective.read.includes(ROOM_PERMISSION) &&
     identity.assistantScopeIds.length && identity.scopesByPermission[ROOM_PERMISSION]?.buildingIds.length);
+  // Host opt-in (readFastPath): the fixed private plan ('fast') and the cached
+  // catalog admission ('cached', B2-2) both read current authority inside their
+  // business RPC, so the second authority build is skipped and the read catalog
+  // supplies the identity. Every other domain (zalo_conversations) and a host
+  // without the opt-in keep the full authority and post-audit check unchanged.
+  const domainReadContext = operation => {
+    if (!domain?.readAuthority) return {};
+    const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
+    return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
+  };
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
@@ -608,8 +620,10 @@ export function createBroker({
         if (signal.aborted) fail('timeout');
         if (!finalize && Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
         // A prepared response still needs its audit receipt before disclosure.
-        // Direct room reads may complete using the initial admission; shared
-        // group/writer paths retain their post-audit authority check.
+        // Direct room reads and the opt-in domain lanes (fast plan, cached
+        // admission: their SQL compares session and binding live) complete on
+        // the initial admission; shared group/writer paths retain their
+        // post-audit authority check.
         await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
@@ -651,7 +665,7 @@ export function createBroker({
       if (pending && timing[pending.phase] === null) timing[pending.phase] = Math.round(performance.now() - pending.at);
       return { event: 'tool_call_timing', ts: new Date(clock()).toISOString(), operation,
         tool: operation === 'tools/call' && typeof context.tool === 'string' && definitions.has(context.tool) ? context.tool : null,
-        path: context.initialDomainReadAdmission ? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
+        path: context.initialDomainReadAdmission ? context.domainReadPath ?? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
         ...timing, totalMs: Math.round(performance.now() - startedAt), resultBytes: error ? 0 : resultBytes,
         outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown') : null,
         connection: canonicalId(id) ? hash(id).slice(0, 8) : null };
@@ -927,8 +941,7 @@ export function createBroker({
           return receipt;
         }, async (receipt, _identity, signal) => ({ content: [{ type: 'text', text: JSON.stringify(
           await domain.finalizeDomain(presentedToken, receipt, { signal })) }], isError: false }),
-        domain.readAuthority && FAST_READ_OPERATIONS.includes(domainOp)
-          ? { authority: domain.readAuthority, initialDomainReadAdmission: true } : {});
+        domainReadContext(domainOp));
       }
       const scheduleOp = scheduleOperation(name);
       if (schedule && scheduleOp) {

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { BrokerError, createBroker } from './broker.mjs';
+import { createDependencyScope } from './dependency-scope.mjs';
+import { CACHED_READ_OPERATIONS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
 
 const USER = '10000000-0000-4000-8000-000000000001';
 const ORG = '20000000-0000-4000-8000-000000000001';
@@ -166,4 +168,57 @@ test("đường room (crm_available_rooms) ghi path 'room', bỏ checkUnchanged 
   await f.broker.callTool(f.token, 'crm_auth_context', {});
   assert.equal(f.records.length, 2); assert.equal(f.records[1].path, 'normal'); assert(ms(f.records[1].checkMs));
   assert.equal(f.records[1].finalizeMs, null);
+});
+
+/** Injected authority + domain mount stub. With the host opt-in (readAuthority) crm_read_* goes 'fast' or 'cached'
+ * on the read catalog authority; without it, and for zalo_conversations, every domain keeps the full authority. */
+function domainFixture({ readFastPath }) {
+  const records = [], calls = { full: [], read: [] }, prepared = new WeakSet();
+  const keys = ['assistant.context.read', 'leads.view', 'customers.view', 'chat_zalo.view'];
+  const identity = grants => ({ row: { id: CONNECTION, assistantId: '40000000-0000-4000-8000-000000000001', userId: USER, organizationId: ORG,
+    state: 'active', epoch: 2, expiresAt: 1_060_000, restrictions: { read: [...keys], action: [] } },
+  effective: { read: [...grants], action: [] }, policyEpoch: '1'.repeat(64), isSuperadmin: false, assistantScopeIds: [],
+  scopesByPermission: Object.fromEntries(grants.map(key => [key, { buildingIds: [], cashbookIds: [] }])), contextVersion: '2'.repeat(64) });
+  const authority = (log, grants) => {
+    const branded = new WeakSet();
+    return { async identifyConnection() { log.push('identify'); return { connectionId: CONNECTION }; },
+      async resolve() { log.push('resolve'); const receipt = identity(grants); branded.add(receipt); return receipt; },
+      async checkUnchanged(_token, before) { log.push('check'); if (!branded.has(before)) throw new BrokerError('context_changed'); } };
+  };
+  const full = authority(calls.full, keys), read = authority(calls.read, keys.filter(key => key !== 'chat_zalo.view'));
+  const domains = { async prepareDomain() { const receipt = Object.freeze({}); prepared.add(receipt); return receipt; },
+    async finalizeDomain(_token, receipt) { assert(prepared.has(receipt)); return { items: [] }; },
+    ...(readFastPath ? { readAuthority: read, fastReadOperations: FAST_READ_OPERATIONS, cachedReadOperations: CACHED_READ_OPERATIONS } : {}) };
+  const dependencyScope = createDependencyScope();
+  const broker = createBroker({ authority: full, domains, dependencyScope, clock: () => 1_000_000, callLog: record => { records.push(record); } });
+  return { broker, records, calls, domains, full, token: `hc_${'a'.repeat(43)}`, close: () => dependencyScope.close() };
+}
+
+test("đường cached (B2-2): miền đọc ngoài đường nhanh ghi path 'cached', checkMs null, identity từ readAuthority; zalo_conversations và host tắt readFastPath giữ 'normal' có checkMs", async t => {
+  const on = domainFixture({ readFastPath: true }); t.after(on.close);
+  for (const [tool, path, log] of [['crm_read_leads', 'cached', on.calls.read], ['crm_read_customers', 'fast', on.calls.read], ['crm_read_zalo_conversations', 'normal', on.calls.full]]) {
+    on.calls.full.length = 0; on.calls.read.length = 0;
+    const reply = await on.broker.callTool(on.token, tool, {});
+    const record = on.records.at(-1);
+    assert.deepEqual(Object.keys(record), KEYS);
+    assert.equal(record.tool, tool); assert.equal(record.path, path); assert.equal(record.outcome, 'ok'); assert.equal(record.resultBytes, bytes(reply));
+    for (const key of ['identifyMs', 'resolveMs', 'handlerMs', 'auditMs', 'finalizeMs', 'totalMs']) assert(ms(record[key]), `${tool} ${key}`);
+    if (path === 'normal') { assert(ms(record.checkMs)); assert.deepEqual(log, ['identify', 'resolve', 'check']); assert.deepEqual(on.calls.read, []); }
+    else { assert.equal(record.checkMs, null); assert.deepEqual(log, ['identify', 'resolve']); assert.deepEqual(on.calls.full, []); }
+  }
+  const off = domainFixture({ readFastPath: false }); t.after(off.close);
+  for (const tool of ['crm_read_leads', 'crm_read_customers', 'crm_read_zalo_conversations']) {
+    off.calls.full.length = 0;
+    await off.broker.callTool(off.token, tool, {});
+    assert.equal(off.records.at(-1).path, 'normal', tool); assert(ms(off.records.at(-1).checkMs));
+    assert.deepEqual(off.calls.full, ['identify', 'resolve', 'check']); assert.deepEqual(off.calls.read, []);
+  }
+  // The mount and the dispatcher must agree on both opt-in lanes.
+  const agreed = domainFixture({ readFastPath: true }); t.after(agreed.close);
+  for (const bad of [{ ...agreed.domains, cachedReadOperations: undefined }, { ...agreed.domains, cachedReadOperations: [...CACHED_READ_OPERATIONS, 'zalo_conversations'] },
+    { ...agreed.domains, cachedReadOperations: CACHED_READ_OPERATIONS.slice(1) }, { ...agreed.domains, fastReadOperations: [] }]) {
+    const scope = createDependencyScope();
+    assert.throws(() => createBroker({ authority: agreed.full, domains: bad, dependencyScope: scope, clock: () => 1_000_000 }), /trusted_domain_service_required/);
+    await scope.close();
+  }
 });

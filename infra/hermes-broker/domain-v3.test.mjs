@@ -8,6 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { ASSISTANT, token } from './finance-fixture.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
+import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createBroker } from './broker.mjs';
 import { createDurableAuthority } from './durable-authority.mjs';
 import { createDurableConnectionStore } from './durable-connection-store.mjs';
@@ -204,6 +205,55 @@ test('composition: broker → domain mount → bound user JWT → hermes_domain_
   const after = (await broker.listTools(token)).tools.map(tool => tool.name);
   assert.equal(after.some(name => ['crm_read_customers', 'crm_read_customer_detail', 'crm_read_contract_detail'].includes(name)), false);
   await assert.rejects(broker.callTool(token, 'crm_read_contract_detail', { contractId: CONTRACT_A }), code('tool_not_available'));
+}));
+
+test('composition B2-2: under the read catalog opt-in, customer/contract detail keep hermes_domain_read_v3 with the seven live keys; the audit is followed only by that statement; path cached, no second build', { timeout: 120000 }, t => inCase(async env => {
+  const { db, call } = env, events = [], bindings = [], records = [];
+  const expiresAt = (Math.floor(Date.now() / 1000) + 3600) * 1000;
+  const accessToken = ['header', Buffer.from(JSON.stringify({ role: 'authenticated', sub: USER, session_id: SESSION, exp: expiresAt / 1000 })).toString('base64url'), 'signature'].join('.');
+  const crypto = createSessionCrypto({ activeKeyVersion: 'test', keys: new Map([['test', randomBytes(32)]]) }); t.after(() => crypto.destroy());
+  const envelope = crypto.seal({ accessToken, refreshToken: 'SYNTHETIC_REFRESH', expiresAt }, { assistantId: ASSISTANT, userId: USER, organizationId: ORG, sessionId: SESSION });
+  await db.query('UPDATE app_private.hermes_sessions SET envelope=$1::jsonb,expires_at=to_timestamp($2/1000.0)', [JSON.stringify(envelope), expiresAt]);
+  const dependencyScope = createDependencyScope(); t.after(() => dependencyScope.close());
+  const SQL = { hermes_domain_capabilities_v1: 'SELECT public.hermes_domain_capabilities_v1($1::uuid) result', hermes_domain_capabilities_v2: 'SELECT public.hermes_domain_capabilities_v2($1::uuid) result',
+    hermes_domain_read_v3: 'SELECT public.hermes_domain_read_v3($1::jsonb,$2::text,$3::jsonb) result' };
+  const fetch = async (url, options) => {
+    assert.equal(options.headers.authorization, 'Bearer ' + accessToken);
+    const name = new URL(url).pathname.replace('/rest/v1/rpc/', ''), args = JSON.parse(options.body); events.push(name);
+    if (name === 'hermes_domain_capabilities_v3') return Response.json({ code: 'PGRST202', message: 'missing', details: null, hint: null }, { status: 404 });
+    assert.ok(Object.hasOwn(SQL, name), `unexpected RPC ${name}`);
+    if (name === 'hermes_domain_read_v3') bindings.push(args.p_binding);
+    try { return Response.json(await call(SQL[name], name.includes('capabilities') ? [args.p_organization_id] : [JSON.stringify(args.p_binding), args.p_domain, JSON.stringify(args.p_input)])); }
+    catch (error) { return Response.json({ code: error.code, message: error.message, details: null, hint: null }, { status: error.code === '42501' ? 403 : error.code === 'PT409' ? 409 : 400 }); }
+  };
+  const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' };
+  let verifications = 0;
+  const baseAuth = { async verifySession() { verifications++; return { userId: USER, sessionId: SESSION, expiresAt }; }, async readAuthorization() { return {
+    userId: USER, isSuperadmin: false, activeOrganizationIds: [ORG], epoch: 'base', membership: { organizationId: ORG, status: 'ACTIVE', revokedAt: null, validFrom: null, validTo: null,
+      membershipId: USER, authorizationVersion: 1 }, permissions: { read: [], action: [] }, companyCeilings: { read: [], action: [] }, scopesByPermission: {} }; } };
+  const auth = createDomainAuthAdapter({ baseAuth, reads: createSupabaseDomainReads({ ...supabase, fetch, dependencyScope }) });
+  const connectionStore = createDurableConnectionStore({ transport: { async call(operation, payload) { return env.rpc('app_private.hermes_store_read_connection_v1', payload); } } });
+  const authority = createDurableAuthority({ connectionStore, crypto, auth });
+  const readAuthority = createReadCatalogAuthority({ authority: createDurableAuthority({ connectionStore, crypto, auth }), connectionStore });
+  const domains = createDomainMount({ authority, connectionStore, crypto, auth, supabase, dependencyScope, fetch, readAuthority }).createService();
+  assert.ok(['customer_detail', 'contract_detail'].every(operation => domains.cachedReadOperations.includes(operation)));
+  const broker = createBroker({ authority, domains, dependencyScope, limits: { maxResultBytes: 65_536 },
+    audit: async entry => { events.push(`audit:${entry.outcome}`); }, callLog: record => { records.push(record); } });
+  const detail = JSON.parse((await broker.callTool(token, 'crm_read_customer_detail', { customerId: CUSTOMER_A })).content[0].text);
+  assert.equal(detail.item.idNumber, CCCD_A);
+  assert.deepEqual(events.slice(events.indexOf('audit:prepared') + 1), ['hermes_domain_read_v3'], 'after the audit only the reviewed statement runs');
+  assert.deepEqual(bindings.at(-1), binding, 'the seven live keys, as on the full lane');
+  assert.deepEqual([records.at(-1).tool, records.at(-1).path, records.at(-1).checkMs], ['crm_read_customer_detail', 'cached', null]);
+  // Warm: the whole second call touches no Auth/capability adapter — one statement after the audit.
+  const cold = verifications, start = events.length;
+  const contract = JSON.parse((await broker.callTool(token, 'crm_read_contract_detail', { contractId: CONTRACT_A })).content[0].text);
+  assert.equal(contract.item.number, 'HD-A');
+  assert.deepEqual(events.slice(start), ['audit:prepared', 'hermes_domain_read_v3']); assert.equal(verifications, cold);
+  assert.equal(records.at(-1).path, 'cached');
+  // Removing the saved Read overlay changes the persisted snapshot: the catalog misses, resolves again and the tool is gone at once.
+  await db.exec("UPDATE app_private.hermes_connections SET read_capabilities=array_remove(read_capabilities,'customers.view')");
+  await assert.rejects(broker.callTool(token, 'crm_read_customer_detail', { customerId: CUSTOMER_A }), code('tool_not_available'));
+  assert.equal(verifications, cold + 1);
 }));
 
 // P1 (review 9aef3a21): như web — người ở chỉ qua customers.view, hợp đồng của khách chỉ

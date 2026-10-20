@@ -6,17 +6,29 @@ const id = v => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]
 const positive = v => Number.isSafeInteger(v) && v > 0 && v < Number.MAX_SAFE_INTEGER;
 const fail = code => { throw new BrokerError(code); };
 const digest = value => createHash('sha256').update(value).digest('hex');
+/** Admission modes. 'full' (default) verifies the provider session in prepare and
+ * re-resolves authority in finalize. 'initialRead' (the older initialReadAdmission
+ * flag) is reserved for the fixed private domain read mount: its RPC owns current
+ * CRM/exclusion decisions and returns the output scope (four-key binding).
+ * 'cachedBinding' (B2-2, 20/10) keeps the reviewed RPC and the seven-key binding
+ * built from the LIVE connection snapshot, takes its identity from the bounded read
+ * catalog (readAuthority) and skips both repeats: hermes_domain_read_v1/v2/v3 and
+ * hermes_w2_read_v1 compare the caller JWT session and every binding field
+ * themselves (42501/PT409), so verifySession/checkUnchanged added no decision. */
+export const BOUND_USER_ADMISSIONS = Object.freeze(['full', 'initialRead', 'cachedBinding']);
 
 /** Prepare carries only a branded receipt. The broker awaits its existing audit
  * between prepare/finalize. Final RPC uses the actual caller JWT and is the last
  * await, with live SQL identity, ownership, sharing and TTL decisions.
- * initialReadAdmission is reserved for the fixed private domain read mount:
- * its RPC owns current CRM/exclusion decisions and returns the output scope.
- * Writer/group/schedule mounts retain the default verification and final check. */
-export function createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads, mayUse, validateInput, validateResult, clock = Date.now, initialReadAdmission = false } = {}) {
+ * Writer/group/schedule mounts retain the default ('full') verification and final check. */
+export function createBoundUserOperationService({ authority, connectionStore, crypto, auth, reads, mayUse, validateInput, validateResult, clock = Date.now,
+  initialReadAdmission = false, admission = initialReadAdmission === true ? 'initialRead' : 'full' } = {}) {
   if ([authority?.resolve, authority?.checkUnchanged, connectionStore?.readConnection, crypto?.open,
     auth?.verifySession, reads?.execute, mayUse, validateInput, validateResult, clock].some(fn => typeof fn !== 'function') ||
-    typeof initialReadAdmission !== 'boolean') throw new TypeError('invalid_bound_user_operation_service');
+    typeof initialReadAdmission !== 'boolean' || !BOUND_USER_ADMISSIONS.includes(admission) ||
+    (initialReadAdmission && admission !== 'initialRead')) throw new TypeError('invalid_bound_user_operation_service');
+  // Only the full mode repeats what the final SQL statement already decides.
+  const liveRecheck = admission === 'full', fourKeyBinding = admission === 'initialRead';
   const issued = new WeakMap();
   const check = signal => { if (!(signal instanceof AbortSignal)) fail('invalid_request'); if (signal.aborted) fail('timeout'); };
   return Object.freeze({
@@ -36,14 +48,15 @@ export function createBoundUserOperationService({ authority, connectionStore, cr
       const material = validateSessionMaterial(crypto.open(s.envelope, s.binding)); material.refreshToken = undefined;
       const { accessToken, expiresAt } = material;
       if (expiresAt !== s.expiresAt || expiresAt <= clock() || c.expiresAt <= clock()) fail('unauthorized');
-      if (!initialReadAdmission) {
+      if (liveRecheck) {
         const verified = await auth.verifySession({ accessToken, signal }); check(signal);
         if (!exact(verified, ['userId', 'sessionId', 'expiresAt']) || verified.userId !== c.userId ||
           verified.sessionId !== s.binding.sessionId || verified.expiresAt !== expiresAt) fail('unauthorized');
       }
       if (!id(joined.membership?.membershipId) || !positive(joined.membership?.authorizationVersion) ||
         !(joined.policy?.version === 0 || positive(joined.policy?.version))) fail('backend_unavailable');
-      const binding = initialReadAdmission
+      // Seven-key binding from the live snapshot just read (never from the cached identity).
+      const binding = fourKeyBinding
         ? { connectionId: c.id, tokenDigest, expectedEpoch: c.epoch, expectedSessionRevision: s.revision }
         : { connectionId: c.id, tokenDigest, expectedEpoch: c.epoch, expectedPolicyVersion: joined.policy.version,
           expectedMembershipId: joined.membership.membershipId, expectedAuthorizationVersion: joined.membership.authorizationVersion,
@@ -60,7 +73,7 @@ export function createBoundUserOperationService({ authority, connectionStore, cr
       const fresh = () => { check(signal); if (value.expiresAt <= clock() || value.identity.row.expiresAt <= clock()) fail('unauthorized');
         if (value.deadline <= clock()) fail('timeout'); };
       fresh();
-      if (!initialReadAdmission) { await authority.checkUnchanged(token, value.authorityReceipt, { signal }); fresh(); }
+      if (liveRecheck) { await authority.checkUnchanged(token, value.authorityReceipt, { signal }); fresh(); }
       const result = await reads.execute(value.operation, { accessToken: value.accessToken, binding: value.binding, input: value.input },
         { signal, onDispatch, onRejected }); fresh();
       try { return validateResult(value.operation, result, value.identity, value.input); } catch { fail('backend_unavailable'); }
