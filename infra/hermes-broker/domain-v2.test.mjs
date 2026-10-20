@@ -137,13 +137,16 @@ test('B2: receivables joins the fixed private read plan with family v2 input and
     ['status outside the requested filter', value => { value.result.items[0].status = 'APPROVED'; }],
     ['private field on the row', value => { value.result.items[0].notes = 'x'; }],
     ['cursor without a full page', value => { value.result.nextCursor = debt.id; value.result.items = []; }],
-    // B5c: the building columns are part of the fixed row; a pre-B5c row (no name) or a non-text name is refused.
-    ['row without the building name', value => { delete value.result.items[0].buildingName; }],
+    // B5c: the building columns are typed when present; a non-text name/code is refused.
     ['building name that is not text', value => { value.result.items[0].buildingName = null; }],
     ['building code that is not text', value => { value.result.items[0].buildingCode = 7; }],
   ]) { const value = structuredClone(envelope); change(value); assert.throws(() => domainFastResult('receivables', value, fastIdentity, fastInput), label); }
   const unnamed = structuredClone(envelope); unnamed.result.items[0].buildingName = ''; unnamed.result.items[0].buildingCode = null;
   assert.deepEqual(domainFastResult('receivables', unnamed, fastIdentity, fastInput), unnamed.result, 'an unnamed building (empty text, null code) is a valid row');
+  // Cửa sổ phát hành (SQL và connector không đổi cùng lúc): dòng của SQL trước B5c, không có hai khoá mới, vẫn qua —
+  // tolerant một bản phát hành, xem domain-tolerance.test.mjs.
+  const preB5c = structuredClone(envelope); delete preB5c.result.items[0].buildingName; delete preB5c.result.items[0].buildingCode;
+  assert.deepEqual(domainFastResult('receivables', preB5c, fastIdentity, fastInput), preB5c.result, 'pre-B5c row passes during the release window');
 });
 
 test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM ACL ports, no live JWT proof', { timeout: 120000 }, async t => {
