@@ -2,6 +2,8 @@
 
 ## Tiếp tục từ checkpoint 19/10, 23:44 UTC+7
 
+**Đã lên Vercel production — xác minh 07:43 ngày 20/10/2026 (UTC+7):** `https://ptcrm.vercel.app/` thực sự phục vụ `b5a0686d61d296ecc73eb82efb9c8653ca158298`, deployment READY; canonical `release:verify` PASS. Bản này chứa main `a9ef26308` và cập nhật PR #229, gồm thông báo liên kết Zalo mới. Đây là xác minh bản đang phục vụ, chưa phải kiểm UI/E2E thông báo mới. PR #229 vẫn Draft/chưa merge, nhánh Git `production` còn `039fc36a`; không đánh đồng việc đã lên Vercel với hoàn tất lane phát hành trong Git. Theo yêu cầu chủ, lượt này chỉ cập nhật trạng thái tài liệu.
+
 **Trạng thái vận hành duy nhất cần đọc trước là [STATUS — checkpoint hiện hành](STATUS.md#checkpoint-hiện-hành).** Các checkpoint có giờ sớm hơn bên dưới là lịch sử, không ghi đè trạng thái này. Bản tài liệu kiểm UI `be910be0b` đã lên main, [CI đúng commit đạt](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/39243588199).
 
 - **Mốc trước lúc 19:05 UTC+7:** code `0fbc263f` và bảy migration đã triển khai ở VPS/DB; web Vercel phục vụ đúng SHA này, `release:verify` PASS. Đây là bằng chứng lịch sử; trạng thái mới nhất ở checkpoint dưới. Không chạy lại migration/promote để tạo thêm biên nhận.

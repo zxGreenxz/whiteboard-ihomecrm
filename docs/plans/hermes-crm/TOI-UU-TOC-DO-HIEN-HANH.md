@@ -1,10 +1,12 @@
 # Hermes × iHomeCRM — chậm ở đâu và ưu tiên xử lý
 
+**Đã lên Vercel production — xác minh 07:43 ngày 20/10/2026 (UTC+7):** `https://ptcrm.vercel.app/` thực sự phục vụ `b5a0686d61d296ecc73eb82efb9c8653ca158298`, deployment READY; canonical `release:verify` PASS. Bản này chứa main `a9ef26308` và cập nhật PR #229, gồm thông báo liên kết Zalo mới. Đây là xác minh bản đang phục vụ, chưa phải kiểm UI/E2E thông báo mới. PR #229 vẫn Draft/chưa merge, nhánh Git `production` còn `039fc36a`; không đánh đồng việc đã lên Vercel với hoàn tất lane phát hành trong Git. Theo yêu cầu chủ, lượt này chỉ cập nhật trạng thái tài liệu.
+
 Cập nhật 19/10/2026, bằng chứng vận hành tới 23:44 UTC+7. Đây là bản tổng hợp hiện hành từ các báo cáo hiệu năng, tinh giản quyền, thử model và checkpoint; không thay lịch sử phép đo. Đã đối chiếu source tại `a9ef26308` với runtime VPS `8ee1fd0`, migration production và trace hội thoại thật. Tài liệu này là **đánh giá và kế hoạch tiếp theo**, không có nghĩa các tối ưu đề xuất đã được bật.
 
 **Dành cho chủ hệ thống:** [báo cáo dễ hiểu với các sơ đồ luồng](BAO-CAO-TOC-DO-DE-HIEU.md). Bản dưới giữ chi tiết để agent triển khai.
 
-**Đối chiếu phiên bản web, VPS và DB lúc gần 00:00 ngày 20/10:** canonical `release:verify` xác nhận `https://ptcrm.vercel.app/` vẫn phục vụ `039fc36a`, deployment READY, chưa phải main `a9ef26308`. Diff frontend tới bản mới gồm thông báo `sender_already_linked` và phép kiểm của nó; chưa nghiệm thu thông báo mới trên Vercel. VPS chạy `8ee1fd0`; diff broker từ đó tới main chỉ thay chú thích trong `room-read-service.mjs` và test, không đổi lệnh thực thi. Phần sửa phòng thật nằm ở migration đã áp production 23:41. Vì vậy trace chat đo đúng luồng Hermes/DB đang chạy, nhưng không chứng minh frontend mới đã phát hành. UI TEST đo candidate `0fbc263f`, ghi riêng; không đổi nhãn thành E2E frontend main mới nhất.
+**Lịch sử đối chiếu phiên bản web, VPS và DB lúc gần 00:00 ngày 20/10 (Vercel đã cập nhật sau mốc này):** canonical `release:verify` xác nhận `https://ptcrm.vercel.app/` vẫn phục vụ `039fc36a`, deployment READY, chưa phải main `a9ef26308`. Diff frontend tới bản mới gồm thông báo `sender_already_linked` và phép kiểm của nó; chưa nghiệm thu thông báo mới trên Vercel. VPS chạy `8ee1fd0`; diff broker từ đó tới main chỉ thay chú thích trong `room-read-service.mjs` và test, không đổi lệnh thực thi. Phần sửa phòng thật nằm ở migration đã áp production 23:41. Vì vậy trace chat đo đúng luồng Hermes/DB đang chạy, nhưng không chứng minh frontend mới đã phát hành. UI TEST đo candidate `0fbc263f`, ghi riêng; không đổi nhãn thành E2E frontend main mới nhất.
 
 ## 1. Kết luận và trạng thái thật
 

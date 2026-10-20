@@ -2,6 +2,8 @@
 
 ## Checkpoint hiện hành
 
+**Đã lên Vercel production — xác minh 07:43 ngày 20/10/2026 (UTC+7):** `https://ptcrm.vercel.app/` thực sự phục vụ `b5a0686d61d296ecc73eb82efb9c8653ca158298`, deployment READY; canonical `release:verify` PASS. Bản này chứa main `a9ef26308` và cập nhật PR #229, gồm thông báo liên kết Zalo mới. Đây là xác minh bản đang phục vụ, chưa phải kiểm UI/E2E thông báo mới. PR #229 vẫn Draft/chưa merge, nhánh Git `production` còn `039fc36a`; không đánh đồng việc đã lên Vercel với hoàn tất lane phát hành trong Git. Theo yêu cầu chủ, lượt này chỉ cập nhật trạng thái tài liệu.
+
 **19/10/2026, checkpoint 23:44 UTC+7; VPS đã kích hoạt lúc 21:38, bản sửa SQL phòng đã áp production lúc 23:41.**
 
 **Bổ sung 20/10 gần 00:00 — phiên bản đã đo:** `release:verify` xác nhận web production vẫn phục vụ `039fc36a` READY. Frontend mới hơn chỉ bổ sung lời báo nick đã liên kết ở tài khoản khác và test liên quan; chưa có E2E thông báo mới trên Vercel. Broker VPS `8ee1fd0` không thiếu thay đổi executable so với main `a9ef26308` trong phạm vi này: diff chỉ comment/test; SQL phòng mới đã áp riêng. Vì vậy số đo Zalo/Hermes vẫn hợp lệ cho luồng chạy thật, không gọi đó là nghiệm thu UI mới nhất. [Báo cáo dễ hiểu có sơ đồ](BAO-CAO-TOC-DO-DE-HIEU.md), [phân tích kỹ thuật và plan](TOI-UU-TOC-DO-HIEN-HANH.md).

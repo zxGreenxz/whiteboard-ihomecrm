@@ -1,6 +1,6 @@
 # Báo cáo dễ hiểu: làm sao để Hermes và CRM nhanh hơn?
 
-Cập nhật 20/10/2026, từ các phép kiểm ngày 19/10 và xác minh bản web lúc gần 00:00. [Bản phân tích kỹ thuật và bàn giao cho agent](TOI-UU-TOC-DO-HIEN-HANH.md) giữ số đo, nguồn và giới hạn đầy đủ.
+Cập nhật 20/10/2026: **đã xác minh bản mới lên Vercel production lúc 07:43 (UTC+7)**; số đo tốc độ vẫn là các phép kiểm ngày 19/10. [Bản phân tích kỹ thuật và bàn giao cho agent](TOI-UU-TOC-DO-HIEN-HANH.md) giữ số đo, nguồn và giới hạn đầy đủ.
 
 ## 1. Chậm nhất hiện nay là gì?
 
@@ -74,17 +74,17 @@ Ví dụ kiểm tra kết nối hoặc đọc một danh sách ngắn đã xác 
 
 **Không cần bỏ hết kiểm quyền.** Phần kiểm lặp đã được tinh giản; quyền vẫn là quyền user trên web trừ phần đã tắt. Các lượt AI trung gian mới là nơi nên ưu tiên ở những câu đã đo. Tính tiền vẫn dùng công thức CRM.
 
-## 4. Vercel chưa lên bản mới có làm phép đo sai không?
+## 4. Bản mới đã lên Vercel production
 
 Hệ thống có ba phần, cập nhật riêng:
 
 | Phần | Bản đã xác minh | Phép đo nào phụ thuộc? |
 |---|---|---|
-| Web Vercel | Đang phục vụ `039fc36a`, chưa phải GitHub mới nhất | Giao diện, tải trang, thông báo liên kết |
+| Web Vercel | Đã phục vụ `b5a0686d`, READY; xác minh 07:43 ngày 20/10 | Giao diện, tải trang, thông báo liên kết |
 | Hermes trên VPS | `8ee1fd0`; phần xử lý broker không có thay đổi chạy được trong chênh lệch mới, chỉ chú thích/test | AI chọn công cụ và trả lời |
 | Database | Bản sửa phạm vi phòng đã áp 23:41 ngày 19/10 | Đọc dữ liệu và quyền/phạm vi |
 
-**Đo chat hiện tại vẫn có giá trị cho Hermes đang chạy.** Phần web chưa phát hành là thông báo rõ hơn khi nick đã liên kết với tài khoản khác, không nằm trong bước đọc khách hàng/phòng. Nhưng chưa được gọi giao diện mới đó là đã nghiệm thu production; cần kiểm sau khi Vercel phát hành.
+**Trang CRM đã chạy bản mới, gồm thông báo rõ hơn khi nick Zalo đã liên kết với tài khoản khác.** Đã kiểm cả trạng thái bản phát hành và mã phiên bản trên trang thật. Các số đo chat trước đó vẫn có giá trị cho luồng Hermes/VPS/DB đã nêu; chưa đo lại giao diện mới hoặc tốc độ sau mốc 07:43. GitHub còn PR Draft và nhánh phát hành cũ: đây là trạng thái quản lý code riêng, không có nghĩa Vercel vẫn phục vụ bản cũ.
 
 Lỗi phòng `backend_unavailable` đã sửa và kiểm thật: bot đọc được một bản ghi. CI đỏ trong ảnh là phép thử một migration Zalo cũ gặp chờ khóa database quá hạn; không phải phát hiện rò dữ liệu. Tình trạng CI mới nhất được ghi tại [STATUS](STATUS.md#checkpoint-hiện-hành), tách khỏi kết quả đọc phòng.
 
