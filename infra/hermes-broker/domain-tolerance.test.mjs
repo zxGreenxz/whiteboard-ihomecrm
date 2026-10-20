@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { DOMAIN_READS, DOMAIN_FAMILIES, domainInput, domainResult } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 
-// Phát hành B5c (21/10/2026): ba migration (20261020171321, 20261020173818, 20261020173819; mỗi migration backup
-// ~2,5 phút ⇒ cửa sổ ~8 phút) và connector không đổi cùng lúc. Trong cửa sổ đó SQL cũ trả dòng KHÔNG có khoá mới,
-// hoặc connector cũ nhận dòng CÓ khoá mới. Validator vì thế chấp nhận VẮNG các khoá mới (vắng = chưa áp SQL), kiểm
-// kiểu khi có mặt và vẫn từ chối khoá lạ. Tolerant MỘT bản phát hành: gỡ `tolerant` ở bản sau khi prod đã áp đủ ba
-// migration — khi đó file test này đổi sang khẳng định khuôn chính xác.
+// Khuôn dòng CHÍNH XÁC sau B5c. Cửa sổ phát hành B5c (21/10/2026: ba migration 20261020171321, 20261020173818,
+// 20261020173819 và connector không đổi cùng lúc) từng cho validator chấp nhận VẮNG các khoá mới (`tolerant`, đúng một
+// bản phát hành). Production đã áp đủ ba migration ⇒ `tolerant` đã gỡ ở mọi miền (21/10): dòng thiếu buildingName,
+// roomName hay buildingCode nay bị từ chối như thiếu bất kỳ khoá đã khai nào; cơ chế `tolerant` trong define()/
+// domainResult vẫn còn cho lần đổi khuôn sau. File này khoá: không miền nào khai `tolerant`, khoá B5c bắt buộc có mặt,
+// khoá lạ/sai kiểu vẫn bị từ chối, đường nhanh (domainFastResult) cùng luật.
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(1), BUILDING = id(2), ROOM = id(3), USER = id(4), CONNECTION = id(5), ITEM = id(10);
 // Dòng ĐẦY ĐỦ (sau ba migration) của từng miền; dữ liệu tổng hợp.
@@ -25,8 +26,9 @@ const ROWS = {
   meter_readings: { id: ITEM, code: null, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101', meterType: 'WATER', settlementMonth: null,
     readingDate: '2026-10-01', previousReading: '0', currentReading: '1', consumption: '1', status: 'APPROVED' },
 };
-// Khoá MỚI của B5c theo miền: buildingName khắp nơi, buildingCode ở receivables, roomName ở miền trước đây chưa có.
-const TOLERANT = {
+// Khoá B5c theo miền (từng là `tolerant` trong cửa sổ phát hành): buildingName khắp nơi, buildingCode ở receivables,
+// roomName ở miền trước đây chưa có. Nay bắt buộc như mọi khoá đã khai.
+const B5C_KEYS = {
   customers: ['buildingName'], leads: ['buildingName', 'roomName'], contracts: ['buildingName', 'roomName'], invoices: ['buildingName', 'roomName'],
   assets: ['buildingName', 'roomName'], tasks: ['buildingName', 'roomName'], income_expenses: ['buildingName'],
   receivables: ['buildingName', 'buildingCode'], meter_readings: ['buildingName'],
@@ -41,40 +43,46 @@ const envelope = (operation, row) => {
 const identity = operation => ({ row: { id: CONNECTION, organizationId: ORG, userId: USER },
   scopesByPermission: { [DOMAIN_READS[operation].permission]: { buildingIds: [BUILDING], cashbookIds: [] } } });
 
-test('release tolerance: exactly the B5c keys are tolerant, each is a declared field, perBuilding/report domains declare none', () => {
-  const declared = Object.fromEntries(Object.entries(DOMAIN_READS).filter(([, definition]) => definition.tolerant?.length).map(([key, definition]) => [key, [...definition.tolerant]]));
-  assert.deepEqual(declared, TOLERANT);
-  for (const [operation, keys] of Object.entries(TOLERANT)) for (const key of keys) assert.ok(Object.hasOwn(DOMAIN_READS[operation].fields, key), `${operation}.${key} is a declared field`);
-  for (const operation of Object.keys(DOMAIN_READS)) assert.ok(Object.isFrozen(DOMAIN_READS[operation].tolerant ?? Object.freeze([])), `${operation}: frozen`);
+test('exact shape: no domain declares tolerant keys any more; the B5c keys are declared fields; the mechanism stays frozen and empty', () => {
+  const declared = Object.entries(DOMAIN_READS).filter(([, definition]) => definition.tolerant?.length).map(([key]) => key);
+  assert.deepEqual(declared, [], 'tolerant was removed on 21/10 after production applied the three B5c migrations');
+  for (const operation of Object.keys(DOMAIN_READS)) {
+    const { tolerant } = DOMAIN_READS[operation];
+    if (tolerant !== undefined) assert.ok(Array.isArray(tolerant) && tolerant.length === 0 && Object.isFrozen(tolerant), `${operation}: tolerant is a frozen empty list`);
+  }
+  for (const [operation, keys] of Object.entries(B5C_KEYS)) for (const key of keys) assert.ok(Object.hasOwn(DOMAIN_READS[operation].fields, key), `${operation}.${key} is a declared field`);
 });
 
 for (const [operation, row] of Object.entries(ROWS)) {
-  test(`release tolerance ${operation}: rows with or without the new keys pass; unknown keys, wrong types and missing old keys fail`, () => {
+  test(`exact shape ${operation}: the full row passes; a row missing any declared key (B5c keys included), an unknown key or a wrong type fails`, () => {
     const input = domainInput(operation, {}), who = identity(operation), fields = DOMAIN_READS[operation].fields;
-    const full = envelope(operation, row), legacy = envelope(operation, without(row, TOLERANT[operation]));
-    assert.deepEqual(domainResult(operation, full, who, input), full, 'row after the three migrations (new keys present)');
-    assert.deepEqual(domainResult(operation, legacy, who, input), legacy, 'row of the SQL before the migrations (new keys absent)');
-    assert.throws(() => domainResult(operation, envelope(operation, { ...row, notes: 'x' }), who, input), 'unknown key next to the new keys');
-    assert.throws(() => domainResult(operation, envelope(operation, { ...without(row, TOLERANT[operation]), notes: 'x' }), who, input), 'unknown key on the old shape');
-    for (const key of TOLERANT[operation]) {
+    const full = envelope(operation, row);
+    assert.deepEqual(domainResult(operation, full, who, input), full, 'row after the three migrations (every key present)');
+    assert.throws(() => domainResult(operation, envelope(operation, without(row, B5C_KEYS[operation])), who, input), 'row of the SQL before the migrations (B5c keys absent) is refused');
+    assert.throws(() => domainResult(operation, envelope(operation, { ...row, notes: 'x' }), who, input), 'unknown key');
+    for (const key of B5C_KEYS[operation]) {
+      assert.throws(() => domainResult(operation, envelope(operation, without(row, [key])), who, input), `${key} absent`);
       assert.throws(() => domainResult(operation, envelope(operation, { ...row, [key]: 7 }), who, input), `${key} present but not text`);
-      if (key === 'buildingName') assert.throws(() => domainResult(operation, envelope(operation, { ...row, [key]: null }), who, input), 'buildingName present but null');
-      const partial = envelope(operation, without(row, [key]));
-      assert.deepEqual(domainResult(operation, partial, who, input), partial, `${key} alone may be absent`);
+      if (key === 'buildingName') assert.throws(() => domainResult(operation, envelope(operation, { ...row, [key]: null }), who, input), 'buildingName null');
     }
-    // Mọi khoá đã có từ trước vẫn bắt buộc — kể cả roomName ở miền đã có nó trước B5c.
-    for (const key of Object.keys(fields).filter(key => key !== 'id' && !TOLERANT[operation].includes(key)))
-      assert.throws(() => domainResult(operation, envelope(operation, without(row, [key])), who, input), `${key} stays required`);
+    // Mọi khoá đã khai bắt buộc — khoá cũ lẫn khoá B5c, không còn ngoại lệ.
+    for (const key of Object.keys(fields)) assert.throws(() => domainResult(operation, envelope(operation, without(row, [key])), who, input), `${key} is required`);
+    // Toà không tên (chuỗi rỗng), phòng/mã toà null vẫn là dòng đầy đủ hợp lệ: kiểm kiểu, không phải vắng khoá.
+    const unnamed = { ...row, buildingName: '', roomName: null, ...(Object.hasOwn(row, 'buildingCode') ? { buildingCode: null } : {}) };
+    const unnamedEnvelope = envelope(operation, unnamed);
+    assert.deepEqual(domainResult(operation, unnamedEnvelope, who, input), unnamedEnvelope, 'unnamed building and room without a name are valid full rows');
   });
 }
 
-test('release tolerance on the fast lane: domainFastResult applies the same row rule', () => {
+test('exact shape on the fast lane: domainFastResult applies the same row rule', () => {
   for (const operation of FAST_READ_OPERATIONS) {
     const row = ROWS[operation], input = domainInput(operation, {}), who = identity(operation);
     const authority = { organizationId: ORG, userId: USER, connectionId: CONNECTION, permission: DOMAIN_READS[operation].permission, buildingIds: [BUILDING], cashbookIds: [] };
-    const full = { authority, result: envelope(operation, row) }, legacy = { authority, result: envelope(operation, without(row, TOLERANT[operation])) };
-    assert.deepEqual(domainFastResult(operation, full, who, input), full.result, `${operation}: new keys present`);
-    assert.deepEqual(domainFastResult(operation, legacy, who, input), legacy.result, `${operation}: new keys absent`);
+    const full = { authority, result: envelope(operation, row) };
+    assert.deepEqual(domainFastResult(operation, full, who, input), full.result, `${operation}: every key present`);
+    assert.throws(() => domainFastResult(operation, { authority, result: envelope(operation, without(row, B5C_KEYS[operation])) }, who, input), `${operation}: B5c keys absent`);
+    for (const key of B5C_KEYS[operation])
+      assert.throws(() => domainFastResult(operation, { authority, result: envelope(operation, without(row, [key])) }, who, input), `${operation}: ${key} absent`);
     assert.throws(() => domainFastResult(operation, { authority, result: envelope(operation, { ...row, notes: 'x' }) }, who, input), `${operation}: unknown key`);
     assert.throws(() => domainFastResult(operation, { authority, result: envelope(operation, { ...row, buildingName: 7 }) }, who, input), `${operation}: buildingName not text`);
   }

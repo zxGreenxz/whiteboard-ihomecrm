@@ -17,7 +17,14 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   // không nhận mã này ⇒ audit đỏ ⇒ đóng an toàn thành backend_unavailable cho MỌI tên sai (sự cố 21/10 03:30).
   'read_name_unresolved',
   // Rào chữ công khai (infra/hermes-broker/public-text-guard.mjs): token xác nhận sai/hết hạn/đã dùng.
-  'confirmation_invalid']);
+  'confirmation_invalid',
+  // Mã bất định của ghi (broker MUTATION_UNKNOWN): broker vẫn ghi sổ outcome=denied với đúng mã rồi ném cho mô hình đối
+  // chiếu bằng *_status; broker nuốt lỗi audit cho riêng các mã này nên thiếu ở đây không đóng broker, nhưng sổ audit sẽ
+  // không có dòng cho lượt ghi bất định. Mọi mã ERROR_STATUS của broker phải có mặt (audit-codes.test.mjs).
+  'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown',
+  'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+/** Bản sao chỉ đọc của giao thức mã lỗi sổ audit chấp nhận; audit-codes.test.mjs khoá nó bằng ERROR_STATUS của broker. */
+export const AUDIT_CODES = Object.freeze([...CODES]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
   constructor(code) { super(code); this.name = 'HostOwnershipError'; this.code = code; }
