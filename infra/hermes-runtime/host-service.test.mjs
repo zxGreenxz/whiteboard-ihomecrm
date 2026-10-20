@@ -10,7 +10,7 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage;
+  let closes = 0, stage, callLog;
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
@@ -32,6 +32,7 @@ function fixture(t, changes = {}) {
     createHermesBackend(options) { events.push('backend-copy'); assert.equal(options.encryption.keys.get('k1')[0], 7);
       assert.equal(options.connectorOnly, true); assert.equal(options.limits, connectorLimits);
       assert.equal(options.readFastPath, changes.readFastPath);
+      assert.equal(typeof options.callLog, changes.callLogOff ? 'undefined' : 'function'); callLog = options.callLog;
       assert.deepEqual(Object.keys(options.handoff), ['stage']); stage = options.handoff.stage; return backend; },
     createNativeBindingReconciler(options) {
       assert.equal(options.handoff,handoff);assert.equal(options.backend,backend);
@@ -46,7 +47,7 @@ function fixture(t, changes = {}) {
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, get stage() { return stage; } };
+  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -196,4 +197,18 @@ test('optional native provisioning shares the host lifecycle and retains WAL/poo
   const closing=f.host.close();await entered.promise;
   assert(!f.events.includes('pool-close'));assert(!f.events.includes('wal-close'));assert(!f.events.includes('release'));
   pending.resolve();await closing;assert(f.events.includes('pool-close'));assert(f.events.includes('release'));
+});
+
+test('tool_call_timing sink: one stdout JSON line per record like host_* events; HERMES_CALL_LOG=0 passes no callLog', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  delete process.env.HERMES_CALL_LOG;
+  const on = fixture(t); await on.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'tool_call_timing', ts: '2026-10-20T00:00:00.000Z', operation: 'tools/call', tool: 'crm_auth_context', totalMs: 3 };
+  on.callLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await on.host.close();
+  process.env.HERMES_CALL_LOG = '0';
+  const off = fixture(t, { callLogOff: true }); await off.host.start(); assert.equal(off.callLog, undefined); await off.host.close();
 });

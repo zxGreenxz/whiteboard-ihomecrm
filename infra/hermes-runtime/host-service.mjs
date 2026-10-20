@@ -100,10 +100,14 @@ export function createHermesHost(configuration, { factories: overrides = {} } = 
       // Read once before enrollment is exposed: reject unreadable/tampered WAL.
       await handoff.list({ signal: controller.signal }); live();
       pool = factories.createStorePool(configuration.store);
+      // Mỗi lần broker invoke một dòng JSON tool_call_timing ra stdout (journal), cùng kênh và
+      // cùng khuôn với các event host_* của host-cli (console.info nuốt lỗi ghi); HERMES_CALL_LOG=0 tắt.
+      const callLog = process.env.HERMES_CALL_LOG === '0' ? undefined : record => console.info(JSON.stringify(record));
       backend = factories.createHermesBackend({ supabase: configuration.supabase, store: { pool, expectedRole: configuration.store.role },
         encryption: configuration.encryption, http: configuration.http, audit: audit.write, handoff: { stage: handoff.stage },
         connectorOnly: true, ...(configuration.limits ? { limits: configuration.limits } : {}),
-        ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }) });
+        ...(configuration.readFastPath === undefined ? {} : { readFastPath: configuration.readFastPath }),
+        ...(callLog ? { callLog } : {}) });
       // Own asynchronous server errors for the entire listener lifetime. Never
       // let a post-listen error bypass maintenance drain via an uncaught exception.
       backend.server.on('error', () => { failureCode = 'host_failed'; void closeHost().catch(() => {}); });

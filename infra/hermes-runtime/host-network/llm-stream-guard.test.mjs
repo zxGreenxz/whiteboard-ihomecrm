@@ -399,3 +399,115 @@ test('socket activation: nhận fd 3 từ systemd và thoát 0 khi SIGTERM', {
   child.kill('SIGTERM');
   assert.equal(await within(exited, 3000, 'guard không thoát sau SIGTERM'), 0);
 });
+
+/** Đẩy text qua inspector mới theo từng mảnh `size` byte; trả vi phạm đầu tiên (hoặc null) và summary. */
+function feedArgs(pieces, size, config = loadConfig({})) {
+  const inspector = createStreamInspector(config);
+  const bytes = Buffer.from(pieces.join(''));
+  for (let at = 0; at < bytes.length; at += size) {
+    const violation = inspector.push(bytes.subarray(at, at + size));
+    if (violation) return { violation, summary: inspector.summary() };
+  }
+  return { violation: null, summary: inspector.summary() };
+}
+
+test('khoảng trắng dài TRONG chuỗi JSON (mô tả nhiều dấu cách, tin nhắn xuống dòng) không bị cắt, qua mọi biên mảnh', () => {
+  // Dấu cách, xuống dòng thô và tab trong chuỗi đều dài hơn ngưỡng 512; ngoài chuỗi chỉ có thụt lề ngắn.
+  const message = `Chào anh,${'\n'.repeat(300)}${' '.repeat(700)}phòng 203 còn trống.${'\t'.repeat(600)}Hẹn gặp \\"sớm\\"!`;
+  const pretty = JSON.stringify({ room: 'A1', note: ' '.repeat(600), tags: ['a b', 'c  d'] }, null, 4);
+  const args = `{"content":"${message}","note":"${' '.repeat(1000)}",\n    "extra": ${pretty}\n}`;
+  const pieces = [toolStart('skill_view'), toolArgs(args.slice(0, 40)), toolArgs(args.slice(40))];
+  for (const size of [1, 7, 64, 4096, Infinity]) {
+    const { violation, summary } = feedArgs(pieces, size);
+    assert.equal(violation, null, `size ${size}`);
+    assert.deepEqual([summary.tool, summary.argsChars], ['skill_view', args.length], `size ${size}`);
+  }
+});
+
+test('chạy loạn kiểu khoảng trắng: `{"command":"date","background":f` + 600 dấu cách bị cắt dưới ngưỡng byte, cả với tool lớn', async t => {
+  const prefix = '{"command":"date","background":f';
+  const f = await setup(t, (req, res) => {
+    res.writeHead(200, SSE_HEADERS);
+    writeSlowly(res, [toolStart('terminal'), toolArgs(prefix), toolArgs(`${' '.repeat(600)}OFFENDING`),
+      ...Array.from({ length: 50 }, () => toolArgs(' '.repeat(100)))]);
+  });
+  const reply = await send(f.port);
+  assert.equal(reply.status, 200);
+  assert.equal(reply.complete, false, 'client phải thấy body chunked dở dang để Hermes thử lại');
+  assert.doesNotMatch(f.written(), /OFFENDING| {20}/, 'mảnh chứa chuỗi trắng vi phạm không được chuyển');
+  assert.match(f.written(), /background/, 'các mảnh trước đó vẫn đi qua');
+  await f.calls[0].closed;
+  assert.equal(f.calls[0].aborted, true, 'upstream phải bị huỷ');
+  assert.equal(f.logs.length, 1);
+  assert.doesNotMatch(f.logs[0], /OFFENDING|date| {4}|Bearer|sk-test/);
+  const record = JSON.parse(f.logs[0]);
+  assert.deepEqual(Object.keys(record), ['event', 'reason', 'tool', 'argsChars', 'limit', 'elapsedMs', 'events', 'model'], 'giữ đúng các khoá log cũ');
+  assert.equal(record.event, 'llm_stream_guard_cut');
+  assert.equal(record.reason, 'whitespace_run');
+  assert.equal(record.tool, 'terminal');
+  assert.equal(record.argsChars, prefix.length + 609, 'đếm cả delta vi phạm, như tool_args');
+  assert.ok(record.argsChars < 8192, 'cắt sớm hơn hẳn ngưỡng byte');
+  assert.equal(record.limit, 512);
+  assert.equal(record.events, 3);
+  assert.equal(record.model, MODEL);
+  assert.equal(typeof record.elapsedMs, 'number');
+});
+
+test('khoảng trắng chia nhỏ qua nhiều delta (100 × 6 dấu cách) bị cắt ngay khi chạm 512; ký tự khác ngoài chuỗi đặt lại bộ đếm', () => {
+  const prefix = '{"status":null,"query":"","limit":1,"cursor":';
+  const inspector = createStreamInspector(loadConfig({}));
+  assert.equal(inspector.push(Buffer.from(toolStart('skill_view') + toolArgs(prefix))), null);
+  const cutAt = Math.ceil(512 / 6); // delta thứ 86 đưa chuỗi trắng từ 510 lên 512
+  for (let i = 1; i < cutAt; i++) assert.equal(inspector.push(Buffer.from(toolArgs(' '.repeat(6)))), null, `delta ${i}`);
+  assert.deepEqual(inspector.push(Buffer.from(toolArgs(' '.repeat(6)))),
+    { reason: 'whitespace_run', tool: 'skill_view', argsChars: prefix.length + cutAt * 6, limit: 512 });
+
+  // 500 trắng, một ký tự thường, 500 trắng nữa: hai chuỗi riêng, chưa chạm ngưỡng; thêm 12 thì chạm.
+  const again = createStreamInspector(loadConfig({}));
+  assert.equal(again.push(Buffer.from(toolStart('skill_view') + toolArgs(`{"a":${' '.repeat(500)}`) + toolArgs(`1${'\n\t\r '.repeat(125)}`))), null);
+  assert.equal(again.push(Buffer.from(toolArgs(' '.repeat(11)))), null);
+  assert.equal(again.push(Buffer.from(toolArgs(' ')))?.reason, 'whitespace_run');
+});
+
+test('dấu nháy escape `\\"` và `\\\\` không làm lệch trạng thái chuỗi, kể cả khi delta kết thúc bằng `\\`', () => {
+  // `\` cuối delta 1 escape dấu `"` đầu delta 2: chuỗi vẫn mở, 600 dấu cách nằm trong chuỗi → không cắt.
+  const open = [toolStart('skill_view'), toolArgs('{"msg":"x\\'), toolArgs(`"${' '.repeat(600)}y"}`)];
+  for (const size of [1, 5, Infinity]) assert.equal(feedArgs(open, size).violation, null, `size ${size}`);
+  // `\\` chia đôi qua biên delta rồi `"` đóng chuỗi đúng chỗ: 600 dấu cách sau đó là ngoài chuỗi → cắt.
+  const closed = [toolStart('skill_view'), toolArgs('{"msg":"a\\'), toolArgs('\\",'), toolArgs(`"k":${' '.repeat(600)}`)];
+  for (const size of [1, 5, Infinity]) assert.equal(feedArgs(closed, size).violation?.reason, 'whitespace_run', `size ${size}`);
+  // Escape ngay trước dấu đóng trong cùng delta.
+  assert.equal(feedArgs([toolStart('skill_view'), toolArgs(`{"msg":"a\\\\","k":${' '.repeat(600)}`)], Infinity).violation?.reason, 'whitespace_run');
+  assert.equal(feedArgs([toolStart('skill_view'), toolArgs(`{"msg":"a\\"${' '.repeat(600)}b"}`)], Infinity).violation, null);
+});
+
+test('hai tool call song song có bộ đếm khoảng trắng riêng; call mới cùng index (id khác) đếm lại từ đầu', () => {
+  const inspector = createStreamInspector(loadConfig({}));
+  const sent = toolStart('skill_view') + toolStart('terminal', 1)
+    + toolArgs(`{"a":${' '.repeat(300)}`) + toolArgs(`{"b":${' '.repeat(300)}`, 1)
+    + toolArgs(`${' '.repeat(200)}`, 1) + toolArgs('1', 1) + toolArgs(' '.repeat(400), 1);
+  assert.equal(inspector.push(Buffer.from(sent)), null, 'tổng 600 nhưng mỗi call chỉ 300; call 1 được đặt lại');
+  assert.deepEqual(inspector.push(Buffer.from(toolArgs(' '.repeat(212)))),
+    { reason: 'whitespace_run', tool: 'skill_view', argsChars: 5 + 300 + 212, limit: 512 });
+
+  const renewed = createStreamInspector(loadConfig({}));
+  const first = toolStart('skill_view') + toolArgs(`{"a":${' '.repeat(400)}`)
+    + chunk({ tool_calls: [{ index: 0, id: 'call_next', type: 'function', function: { name: 'write_file', arguments: '' } }] })
+    + toolArgs(`{"c":${' '.repeat(400)}`);
+  assert.equal(renewed.push(Buffer.from(first)), null, 'call mới ở cùng index không thừa hưởng 400 trắng của call cũ');
+  assert.deepEqual(renewed.push(Buffer.from(toolArgs(' '.repeat(112)))),
+    { reason: 'whitespace_run', tool: 'write_file', argsChars: 5 + 400 + 112, limit: 512 });
+});
+
+test('GUARD_WHITESPACE_RUN: mặc định 512, ghi đè được, giá trị sai thì thoát; ngưỡng byte vẫn xét trước', () => {
+  assert.equal(loadConfig({}).whitespaceRunLimit, 512);
+  assert.equal(loadConfig({ GUARD_WHITESPACE_RUN: '100' }).whitespaceRunLimit, 100);
+  assert.throws(() => loadConfig({ GUARD_WHITESPACE_RUN: '0' }), /GUARD_WHITESPACE_RUN/);
+  assert.throws(() => loadConfig({ GUARD_WHITESPACE_RUN: 'abc' }), /GUARD_WHITESPACE_RUN/);
+  const small = feedArgs([toolStart('skill_view'), toolArgs(`{"a":${' '.repeat(100)}`)], Infinity, loadConfig({ GUARD_WHITESPACE_RUN: '100' }));
+  assert.deepEqual(small.violation, { reason: 'whitespace_run', tool: 'skill_view', argsChars: 105, limit: 100 });
+  assert.equal(feedArgs([toolStart('skill_view'), toolArgs(`{"a":${' '.repeat(99)}`)], Infinity, loadConfig({ GUARD_WHITESPACE_RUN: '100' })).violation, null);
+  // Một delta vi phạm cả hai: giữ hành vi cũ (tool_args).
+  const both = feedArgs([toolStart('skill_view'), toolArgs('x'.repeat(8000)), toolArgs(' '.repeat(600))], Infinity);
+  assert.deepEqual(both.violation, { reason: 'tool_args', tool: 'skill_view', argsChars: 8600, limit: 8192 });
+});

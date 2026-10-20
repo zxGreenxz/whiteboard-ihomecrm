@@ -28,10 +28,28 @@ const ALL = [...TASK_TOOLS, ...TASK_INPUT_TOOLS, ...ROOM_PASS_TOOLS, ...DOMAIN_T
 const tool = name => ALL.find(value => value.name === name);
 const nullable = property => Array.isArray(property?.type) && property.type.includes('null');
 const requiredNullable = value => (value.inputSchema.required ?? []).filter(key => nullable(value.inputSchema.properties?.[key]));
+const readOnly = value => value.annotations?.readOnlyHint === true;
+const OMIT = 'Bỏ trống nếu không có.';
+const withHint = property => property.description?.includes(OMIT) ? property : { ...property, description: [property.description, OMIT].filter(Boolean).join(' ') };
+// 20/10/2026: a read tool advertises no null at the top level (Hermes turns ['string','null'] into
+// nullable:true, which stalled gpt-6 on the OpenAI route). Non-null type, no format:uuid, enum without
+// null (a property left with no value disappears); OMIT on every converted field except UUIDs, whose
+// blank/nil placeholders normalizeToolArguments already turns into null.
+function readAdvertised(property) {
+  if (nullable(property)) {
+    const { format, ...rest } = property, types = property.type.filter(type => type !== 'null');
+    const shaped = { ...rest, type: types.length === 1 ? types[0] : types, ...(format === undefined || format === 'uuid' ? {} : { format }) };
+    return format === 'uuid' ? shaped : withHint(shaped);
+  }
+  if (!Array.isArray(property.enum) || !property.enum.includes(null)) return property;
+  const values = property.enum.filter(value => value !== null);
+  return values.length ? withHint({ ...property, enum: values }) : undefined;
+}
+const nullFree = schema => Object.values(schema.properties ?? {}).every(property => !nullable(property) && !(Array.isArray(property.enum) && property.enum.includes(null)));
 // Exact production arguments of 16/10/2026 (cx/gpt-6-sol via 9router), sent three times.
 const INCIDENT = Object.freeze({ kind: 'buildings', buildingId: NIL, query: '', limit: 50, cursor: NIL });
 
-test('advertised schemas make required nullable fields omittable and leave every original unchanged', () => {
+test('advertised schemas make required nullable fields omittable, read tools null-free, and leave every original unchanged', () => {
   const before = JSON.stringify(ALL);
   assert.deepEqual(ALL.filter(value => requiredNullable(value).length).map(value => value.name).sort(), ['crm_customer_create',
     'crm_expense_create', 'crm_lead_create', 'crm_task_create', 'crm_task_input_options', 'crm_work_memory_upsert', 'crm_zalo_broadcast_send']);
@@ -40,11 +58,12 @@ test('advertised schemas make required nullable fields omittable and leave every
     assert.deepEqual(requiredNullable(listed), [], original.name);
     assert.deepEqual(listed.inputSchema.required, original.inputSchema.required?.filter(key => !dropped.includes(key)));
     assert.equal(listed.inputSchema.additionalProperties, original.inputSchema.additionalProperties);
-    assert.deepEqual(Object.keys(listed.inputSchema.properties ?? {}), Object.keys(properties));
-    for (const [key, property] of Object.entries(properties)) {
-      assert.deepEqual(listed.inputSchema.properties[key], dropped.includes(key) ?
-        { ...property, description: [property.description, 'Bỏ trống nếu không có.'].filter(Boolean).join(' ') } : property);
-    }
+    // Every tool: required+nullable gets the hint. Read tools: the null-free shape on top; write tools: nothing else.
+    const expected = Object.entries(properties).map(([key, property]) => [key, dropped.includes(key) ? withHint(property) : property])
+      .map(([key, property]) => [key, readOnly(original) ? readAdvertised(property) : property]).filter(([, property]) => property !== undefined);
+    assert.deepEqual(Object.keys(listed.inputSchema.properties ?? {}), expected.map(([key]) => key), original.name);
+    assert.deepEqual(listed.inputSchema.properties, Object.fromEntries(expected), original.name);
+    assert.equal(nullFree(listed.inputSchema), readOnly(original) || nullFree(original.inputSchema), original.name);
     assert.deepEqual({ ...listed, inputSchema: null }, { ...original, inputSchema: null });
   }
   assert.equal(JSON.stringify(ALL), before, 'definitions are never mutated');
@@ -56,6 +75,76 @@ test('advertised schemas make required nullable fields omittable and leave every
   assert.deepEqual(tool('crm_read_income_expenses').inputSchema.properties.fromDate.type, ['string', 'null']);
   // Host-only private group tools are listed without shaping; keep them free of the pattern.
   for (const value of [GROUP_DIRECTORY_TOOL, GROUP_PREVIEW_TOOL, GROUP_SEND_TOOL, GROUP_SEND_STATUS_TOOL]) assert.deepEqual(requiredNullable(value), []);
+});
+
+// 20/10/2026 (đo thật): Hermes upstream v0.21.6 chuẩn hoá ['string','null'] thành {"type":"string","nullable":true};
+// trên đường OpenAI-compatible, gpt-6 (sol/astra) kẹt ngay sau `"cursor":` ở 6/6 lần gọi crm_read_customers.
+test('20/10: read tools advertise no null at the top level; the originals, normalization and validators are untouched', () => {
+  const before = JSON.stringify(DOMAIN_TOOLS);
+  assert.ok(LIST_READS.length >= 13);
+  for (const read of LIST_READS) {
+    const listed = advertisedTool(read), { cursor, buildingId, status } = listed.inputSchema.properties, original = read.inputSchema.properties;
+    assert.deepEqual(cursor, { type: 'string' }, read.name);
+    assert.deepEqual(buildingId, { type: 'string', description: DOMAIN_BUILDING_HINT }, read.name);
+    assert.ok(nullFree(listed.inputSchema), read.name);
+    assert.ok(!JSON.stringify(listed.inputSchema).includes('uuid'), read.name);
+    // status: a domain without statuses loses the property; otherwise the enum loses null and says it is omittable.
+    if (original.status.enum.length === 1) assert.equal(status, undefined, read.name);
+    else assert.deepEqual(status, { enum: original.status.enum.slice(1), description: OMIT }, read.name);
+    assert.deepEqual(original.cursor, { type: ['string', 'null'], format: 'uuid' }, read.name);
+    assert.deepEqual(original.buildingId, { type: ['string', 'null'], format: 'uuid', description: DOMAIN_BUILDING_HINT }, read.name);
+    // The incident placeholders still normalize against the original and pass the unchanged validator.
+    assert.deepEqual(normalizeToolArguments(read, { cursor: '', buildingId: NIL }), { cursor: null, buildingId: null }, read.name);
+  }
+  assert.deepEqual(domainInput('customers', normalizeToolArguments(tool('crm_read_customers'), { cursor: '', buildingId: NIL, limit: 1 })),
+    domainInput('customers', { limit: 1 }));
+  assert.throws(() => domainInput('customers', { status: 'ACTIVE' }), 'customers never had a status filter');
+  assert.deepEqual(Object.keys(advertisedTool(tool('crm_read_customers')).inputSchema.properties), ['query', 'limit', 'cursor', 'buildingId']);
+  assert.deepEqual(advertisedTool(tool('crm_read_income_expenses')).inputSchema.properties.status, { enum: ['UNAPPROVED', 'APPROVED', 'CANCELLED'], description: OMIT });
+  // Non-UUID nullable fields keep their pattern/format and get the hint: a blank date would reach the validator.
+  assert.deepEqual(advertisedTool(tool('crm_read_income_expenses')).inputSchema.properties.fromDate, { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: OMIT });
+  assert.deepEqual(advertisedTool(tool('crm_read_occupancy_report')).inputSchema.properties.days, { type: 'integer', minimum: 1, maximum: 365, description: OMIT });
+  assert.deepEqual(advertisedTool(tool('crm_read_invoice_report')).inputSchema.properties.month, { type: 'string', pattern: '^\\d{4}-\\d{2}$', description: OMIT });
+  assert.deepEqual(advertisedTool(tool('crm_read_monthly_pnl')).inputSchema.properties.basis, { enum: ['accrual', 'cash'], description: OMIT });
+  assert.deepEqual(advertisedTool(tool('crm_work_memory_list')).inputSchema.properties.updatedSince, { type: 'string', format: 'date-time', description: OMIT });
+  // Required+nullable of a read tool: omittable (hint once) and null-free.
+  const options = advertisedTool(tool('crm_task_input_options')).inputSchema;
+  assert.deepEqual(options.required, ['kind', 'query', 'limit']);
+  assert.deepEqual(options.properties.cursor, { type: 'string', description: OMIT });
+  assert.deepEqual(options.properties.buildingId, { type: 'string', description: `${tool('crm_task_input_options').inputSchema.properties.buildingId.description} ${OMIT}` });
+  // An own description of a UUID field is kept verbatim (task-follow-composition asserts it on tools/list).
+  assert.deepEqual(advertisedTool(tool('crm_task_follow_list')).inputSchema.properties.assigneeUserId, { type: 'string', description: 'Chỉ dùng với role=team; khác thì bỏ qua.' });
+  assert.deepEqual(advertisedTool(tool('crm_read_report_list')).inputSchema.properties.topic.enum.includes(null), false);
+  for (const read of ALL.filter(readOnly)) assert.ok(nullFree(advertisedTool(read).inputSchema), read.name);
+  assert.equal(JSON.stringify(DOMAIN_TOOLS), before, 'definitions are never mutated');
+  // Synthetic edges: several non-null types stay a list; an enum left empty leaves `required` too; the hint is never doubled.
+  const synthetic = { name: 'x', annotations: { readOnlyHint: true }, inputSchema: { type: 'object', required: ['kind', 'mode'], properties: {
+    kind: { enum: [null] }, mode: { type: ['integer', 'string', 'null'], description: OMIT }, when: { type: ['string', 'null'], format: 'date' } } } };
+  assert.deepEqual(advertisedTool(synthetic).inputSchema, { type: 'object', required: [], properties: {
+    mode: { type: ['integer', 'string'], description: OMIT }, when: { type: 'string', format: 'date', description: OMIT } } });
+  // Not read-only: only the required-nullable path (mode omittable, hint already present), null and enum kept.
+  const written = { ...synthetic.inputSchema, required: ['kind'] };
+  assert.deepEqual(advertisedTool({ ...synthetic, annotations: { readOnlyHint: false } }).inputSchema, written, 'only readOnlyHint === true');
+  assert.deepEqual(advertisedTool({ ...synthetic, annotations: undefined }).inputSchema, written);
+});
+
+test('write tools keep their advertised shape: only required+nullable becomes omittable', () => {
+  for (const name of ['crm_room_pass_upsert', 'crm_task_create', 'crm_expense_create', 'crm_customer_create', 'crm_zalo_broadcast_send', 'crm_task_follow_set']) {
+    const original = tool(name), listed = advertisedTool(original), dropped = requiredNullable(original);
+    assert.equal(readOnly(original), false, name);
+    assert.deepEqual(Object.keys(listed.inputSchema.properties), Object.keys(original.inputSchema.properties), name);
+    for (const [key, property] of Object.entries(original.inputSchema.properties)) {
+      assert.deepEqual(listed.inputSchema.properties[key], dropped.includes(key) ? withHint(property) : property, `${name}.${key}`);
+    }
+  }
+  // Absent = keep, null = clear: the model must still be able to send null here.
+  const upsert = advertisedTool(tool('crm_room_pass_upsert')).inputSchema.properties, original = tool('crm_room_pass_upsert').inputSchema.properties;
+  for (const key of ['customerName', 'customerPhone', 'passPrice', 'availDate', 'salePolicy']) {
+    assert.deepEqual(upsert[key], original[key], key); assert.ok(upsert[key].type.includes('null'), key); assert.equal(upsert[key].description, original[key].description, key);
+  }
+  assert.deepEqual(upsert.availDate.pattern, '^\\d{4}-\\d{2}-\\d{2}$');
+  assert.deepEqual(advertisedTool(tool('crm_task_create')).inputSchema.properties.roomId, { type: ['string', 'null'], format: 'uuid', description: OMIT });
+  assert.deepEqual(advertisedTool(tool('crm_task_create')).inputSchema.required, ['requestId', 'title', 'buildingId', 'jobTypeId', 'priority']);
 });
 
 test('required nullable fields: absent, blank and nil UUID become null; everything else is exact', () => {
@@ -130,8 +219,9 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
     assert.ok(listed.description.endsWith(`. ${EMPTY}`), read.name);
     assert.equal(query.description, DOMAIN_QUERY_HINT, read.name);
     assert.equal(buildingId.description, DOMAIN_BUILDING_HINT, read.name);
-    // Text only: types and formats are what the validators already enforce.
-    assert.deepEqual([query.type, query.maxLength, buildingId.type, buildingId.format], ['string', 200, ['string', 'null'], 'uuid'], read.name);
+    // Text only here; since 20/10 the advertised read shape is null-free and format-free (validators unchanged).
+    assert.deepEqual([query.type, query.maxLength, buildingId.type, buildingId.format], ['string', 200, 'string', undefined], read.name);
+    assert.deepEqual([read.inputSchema.properties.buildingId.type, read.inputSchema.properties.buildingId.format], [['string', 'null'], 'uuid'], read.name);
   }
   const options = advertisedTool(tool('crm_task_input_options'));
   assert.ok(options.description.endsWith(` ${EMPTY}`));
@@ -147,8 +237,9 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // Gói Z 18/10/2026 (tích hợp đợt 2: Gói 0 + A + B + C + D + Z, hai tool meta crm_read_report_list/crm_read_report):
 // 65 tool, 63 654 B. Rào chữ công khai sau khi đọc dữ liệu riêng (crm_room_pass_upsert: confirmToken + một câu, +187 B):
 // 63 841 B. Rào chuyển sang luôn xác nhận hai bước (bỏ phụ thuộc dấu đọc riêng, rút một câu): 63 838 B — còn
-// 162 B tới trần chung. Trần tổng giữ 64 000 B (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới
-// phải rút chỗ khác, không nâng trần này.
+// 162 B tới trần chung. 20/10 tool đọc không null (bỏ format uuid, bỏ status enum [null], OMITTABLE trừ UUID):
+// 63 554 B; mô tả crm_read_customers theo HĐ đang hiệu lực: 63 769 B — còn 231 B. Trần tổng giữ 64 000 B
+// (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
   const scope = createDependencyScope(); t.after(() => scope.close());

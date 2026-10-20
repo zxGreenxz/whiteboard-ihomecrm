@@ -1,6 +1,7 @@
 import { TASK_TOOLS } from './task-contract.mjs';
 import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
 import { DOMAIN_TOOLS, FAST_READ_OPERATIONS, domainOperation, domainInput, mayUseDomain } from './domain-contract.mjs';
 import { SCHEDULE_TOOLS, scheduleOperation, scheduleInput, mayUseSchedule } from './schedule-contract.mjs';
@@ -292,8 +293,10 @@ export function createBroker({
   assistantStore,
   audit,
   observe,
+  callLog,
 } = {}) {
   if (observe !== undefined && typeof observe !== 'function') throw new TypeError('invalid_observer');
+  if (callLog !== undefined && typeof callLog !== 'function') throw new TypeError('invalid_call_log');
   const definitions = toolDefinitions();
   let injectedAuthority;
   if (authority !== undefined) {
@@ -546,6 +549,13 @@ export function createBroker({
     try { observe(Object.freeze({ connectionId, operation, ...(code === undefined ? {} : { code }) })); }
     catch { /* Health observation never changes the call outcome. */ }
   };
+  // Một dòng tool_call_timing mỗi lần invoke (option callLog): mốc ms từng pha,
+  // cỡ kết quả, kết cục. Không tham số, kết quả, token, ID đầy đủ hay dữ liệu
+  // khách; tên tool chỉ khi có trong catalogue. Lỗi của sink bị nuốt.
+  const logCall = (record) => {
+    if (!callLog) return;
+    try { callLog(record()); } catch { /* Timing log never changes the call outcome. */ }
+  };
 
   async function invoke(presentedToken, operation, handler, finalize, context = {}) {
     let release;
@@ -555,16 +565,25 @@ export function createBroker({
     const selectedAuthority = context.authority ?? injectedAuthority;
     const maxBytes = operation === 'tools/list' ? limits.maxToolsListBytes : limits.maxResultBytes;
     let connectionId;
+    const startedAt = performance.now();
+    // Each phase stays null until it has run (or thrown); checkMs is skipped on the initial-admission paths.
+    // A phase still pending when the call settles (timeout/abort) reports its elapsed time so far.
+    const timing = { identifyMs: null, resolveMs: null, handlerMs: null, auditMs: null, checkMs: null, finalizeMs: null };
+    let resultBytes = 0, pending = null;
+    const timed = async (phase, step) => {
+      const at = performance.now(); pending = { phase, at };
+      try { return await step(); } finally { timing[phase] = Math.round(performance.now() - at); if (pending?.phase === phase) pending = null; }
+    };
     // One authority request window per invocation; see authority-request-scope.
     const work = () => runAuthorityRequest(async () => { try {
       const result = await bounded(async (signal) => {
         if (typeof presentedToken !== 'string' || !TOKEN.test(presentedToken)) fail('unauthorized');
         if (selectedAuthority) {
-          const identified = await selectedAuthority.identifyConnection(presentedToken, { signal, [BROKER_AUTHORITY]: true });
+          const identified = await timed('identifyMs', () => selectedAuthority.identifyConnection(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
           if (!exactRecord(identified, ['connectionId']) || !canonicalId(identified.connectionId)) fail('backend_unavailable');
           connectionId = identified.connectionId;
         } else {
-          const cheap = await connectionStore.getByDigest(hash(presentedToken));
+          const cheap = await timed('identifyMs', () => connectionStore.getByDigest(hash(presentedToken)));
           if (!cheap || cheap.state !== 'active' || cheap.expiresAt <= clock()) fail('unauthorized');
           connectionId = cheap.id;
         }
@@ -572,32 +591,36 @@ export function createBroker({
         // The joined identify read precedes admission; expensive Auth/crypto does not.
         release = enter(connectionId, operation);
         if (selectedAuthority) {
-          comparisonReceipt = await selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true });
+          comparisonReceipt = await timed('resolveMs', () => selectedAuthority.resolve(presentedToken, { signal, [BROKER_AUTHORITY]: true }));
           identity = authorityIdentity(comparisonReceipt, clock());
-        } else identity = await authorize(presentedToken, signal);
+        } else identity = await timed('resolveMs', () => authorize(presentedToken, signal));
         if (signal.aborted) fail('timeout');
         // A token cannot switch actors after reserving another connection's quota.
         if (identity.row.id !== connectionId) fail('context_changed');
-        let result = await handler(identity, signal);
+        let result = await timed('handlerMs', () => handler(identity, signal));
         if (signal.aborted) fail('timeout');
         if (!finalize && Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
         // A prepared response still needs its audit receipt before disclosure.
         // Direct room reads may complete using the initial admission; shared
         // group/writer paths retain their post-audit authority check.
-        await recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' });
+        await timed('auditMs', () => recordAudit({ requestId, operation, connectionId: identity.row.id, outcome: 'prepared' }));
         if (!context.initialRoomAdmission && !context.initialDomainReadAdmission) {
           advanceAuthorityRequest();
-          if (selectedAuthority) {
-            const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
-            if (checked !== undefined) fail('backend_unavailable');
-            if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
-          } else await checkUnchanged(presentedToken, identity, signal);
+          await timed('checkMs', async () => {
+            if (selectedAuthority) {
+              const checked = await selectedAuthority.checkUnchanged(presentedToken, comparisonReceipt, { signal, [BROKER_AUTHORITY]: true });
+              if (checked !== undefined) fail('backend_unavailable');
+              if (comparisonReceipt.contextVersion !== identity.contextVersion) fail('context_changed');
+            } else await checkUnchanged(presentedToken, identity, signal);
+          });
         }
         if (signal.aborted) fail('timeout');
         // Finalizers consume private receipts before local result validation.
-        if (finalize) result = await finalize(result, identity, signal);
+        if (finalize) result = await timed('finalizeMs', () => finalize(result, identity, signal));
         if (signal.aborted) fail('timeout');
-        if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) fail('response_too_large');
+        const bytes = Buffer.byteLength(JSON.stringify(result));
+        if (bytes > maxBytes) fail('response_too_large');
+        resultBytes = bytes;
         return result;
       }, context.signal);
       report(identity?.row.id, operation);
@@ -616,14 +639,30 @@ export function createBroker({
       catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
     } });
-    if (dependencyScope) {
-      // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
-      // The public timeout remains bounded; release belongs to actual drain.
-      const owned = dependencyScope.begin(work);
-      void owned.drained.then(() => release?.(), () => release?.());
-      return owned.result;
-    }
-    try { return await work(); } finally { release?.(); }
+    const settle = (error) => logCall(() => {
+      const id = identity?.row.id ?? connectionId;
+      if (pending && timing[pending.phase] === null) timing[pending.phase] = Math.round(performance.now() - pending.at);
+      return { event: 'tool_call_timing', ts: new Date(clock()).toISOString(), operation,
+        tool: operation === 'tools/call' && typeof context.tool === 'string' && definitions.has(context.tool) ? context.tool : null,
+        path: context.initialDomainReadAdmission ? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
+        ...timing, totalMs: Math.round(performance.now() - startedAt), resultBytes: error ? 0 : resultBytes,
+        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown') : null,
+        connection: canonicalId(id) ? hash(id).slice(0, 8) : null };
+    });
+    try {
+      let result;
+      if (dependencyScope) {
+        // Keep the per-connection slot while raw SQL/Auth/audit ignores abort.
+        // The public timeout remains bounded; release belongs to actual drain.
+        const owned = dependencyScope.begin(work);
+        void owned.drained.then(() => release?.(), () => release?.());
+        result = await owned.result;
+      } else {
+        try { result = await work(); } finally { release?.(); }
+      }
+      settle();
+      return result;
+    } catch (error) { settle(error); throw error; }
   }
 
   return Object.freeze({
@@ -779,12 +818,14 @@ export function createBroker({
       // Omitted/blank/nil-UUID placeholders of nullable fields become null per
       // the original definition; an unknown name or non-object is left as is.
       args = normalizeToolArguments(definitions.get(name), args);
+      // Every tools/call carries its tool name for tool_call_timing (name only; invoke logs it only when catalogued).
+      const call = (handler, finalize, context = {}) => invoke(presentedToken, 'tools/call', handler, finalize, { ...context, tool: name });
       // No CRM read/write and no stored state, but the same token/authority,
       // per-connection tools/call quota, audit and post-audit authority check
       // as every tool: a revoked or expired connection never receives an id.
       if (name === NEW_REQUEST_ID_TOOL.name) {
         const invalid = !dataRecord(args) || Object.keys(args).length !== 0;
-        return invoke(presentedToken, 'tools/call', (identity) => {
+        return call((identity) => {
           if (!mayIssueRequestId(identity)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           return { content: [{ type: 'text', text: JSON.stringify({ requestId: randomUUID() }) }], isError: false };
@@ -794,7 +835,7 @@ export function createBroker({
       if (task && taskOperation) {
         let input, invalid = false, uncertain = false;
         try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
@@ -812,7 +853,7 @@ export function createBroker({
         const split = splitConfirmToken(name, args);
         let input, invalid = split.invalid, uncertain = false, confirmation;
         try { input = roomPassInput(passOperation, split.args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseRoomPass(identity.effective, passOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Trước mọi I/O ghi: chữ công khai mới luôn phải qua xác nhận hai bước.
@@ -837,7 +878,7 @@ export function createBroker({
       if (customer && customerOp) {
         let input, invalid = false, uncertain = false;
         try { input = customerActionInput(customerOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseCustomerAction(identity.effective, customerOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await customer.prepareCustomerAction(presentedToken, customerOp, input, { signal });
@@ -853,7 +894,7 @@ export function createBroker({
       if (expense && expenseOp) {
         let input, invalid = false, uncertain = false;
         try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseExpenseAction(identity.effective, expenseOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
@@ -869,7 +910,7 @@ export function createBroker({
       if (domain && domainOp) {
         let input, invalid = false;
         try { input = domainInput(domainOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó.
@@ -886,7 +927,7 @@ export function createBroker({
       if (schedule && scheduleOp) {
         let input, invalid = false, uncertain = false;
         try { input = scheduleInput(scheduleOp, args, clock()); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOp) || !mayUseSchedule(identity.effective, scheduleOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await schedule.prepareSchedule(presentedToken, scheduleOp, input, { signal });
@@ -905,7 +946,7 @@ export function createBroker({
       if (broadcast && broadcastOp) {
         let input, invalid = false, uncertain = false;
         try { input = zaloBroadcastInput(broadcastOp, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseZaloBroadcast(identity.effective, broadcastOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           // Listed for manage_automation, but turning sends on/adding recipients also needs chat_zalo.send.
@@ -923,7 +964,7 @@ export function createBroker({
       if (memory && memoryOperation) {
         let input, invalid = false, uncertain = false;
         try { input = workMemoryInput(memoryOperation, args); } catch { invalid = true; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseWorkMemory(identity.effective, memoryOperation)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await memory.prepareMemory(presentedToken, memoryOperation, input, { signal });
@@ -941,7 +982,7 @@ export function createBroker({
         let input, invalid, service, uncertain = false, dispatchId;
         try { input = externalGroupInput(operation, args); }
         catch (error) { invalid = ['group_recipient_limit', 'group_room_limit'].includes(error?.code) ? error.code : 'invalid_request'; }
-        return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+        return call(async (identity, signal) => {
           if (!mayUseGroupTool(identity.effective, operation) ||
               ['preview', 'send'].includes(operation) && !mayReadRooms(identity)) fail('tool_not_available');
           if (invalid) fail(invalid);
@@ -970,7 +1011,7 @@ export function createBroker({
       // input still goes through the shared admission/audit path.
       let request, invalidFilters = false;
       if (name === ROOM_TOOL.name) { try { request = roomFilters(args); } catch { invalidFilters = true; } }
-      return invoke(presentedToken, 'tools/call', async (identity, signal) => {
+      return call(async (identity, signal) => {
         if (name === ROOM_TOOL.name) {
           if (!mayReadRooms(identity)) fail('tool_not_available');
           if (invalidFilters) fail('invalid_request');
