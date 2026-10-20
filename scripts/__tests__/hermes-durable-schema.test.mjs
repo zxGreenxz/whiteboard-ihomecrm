@@ -873,10 +873,10 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all seven reviewed forward migrations and their 53 latest definitions remain covered, including CRM wrappers', () => {
+test('all eight reviewed forward migrations and their 54 latest definitions remain covered, including CRM wrappers', () => {
   const paths = [...new Set(FORWARD_FUNCTIONS.map(spec => spec.sourcePath))];
-  assert.equal(paths.length, 7);
-  assert.equal(FORWARD_FUNCTIONS.length, 53);
+  assert.equal(paths.length, 8);
+  assert.equal(FORWARD_FUNCTIONS.length, 54);
   const actualNames = [];
   for (const path of paths) {
     const source = splitSqlStatements(readFileSync(join(directory, path.split('/').at(-1)), 'utf8')).map(clean);
