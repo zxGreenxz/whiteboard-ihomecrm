@@ -22,8 +22,8 @@ test('name directory: buildings and rooms under the asker RLS, company name for 
   t.after(async () => { await pool.end(); cleanup(); });
   await setup(pool);
   // Columns the directories read that the shared fixture does not declare; a second member limited to one building.
-  await pool.query(`ALTER TABLE public.buildings ADD COLUMN code text, ADD COLUMN is_virtual boolean NOT NULL DEFAULT false;
-    ALTER TABLE public.rooms ADD COLUMN code text, ADD COLUMN floor integer;
+  await pool.query(`ALTER TABLE public.buildings ADD COLUMN IF NOT EXISTS code text, ADD COLUMN IF NOT EXISTS is_virtual boolean NOT NULL DEFAULT false;
+    ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS code text, ADD COLUMN IF NOT EXISTS floor integer;
     UPDATE public.organizations SET name='Công ty Thử' WHERE id='${ORG}';
     UPDATE public.organizations SET name='Công ty Khác' WHERE id='${FOREIGN}';
     UPDATE public.buildings SET name='Toà 950NK', code='950NK' WHERE id='${BUILDING}';
