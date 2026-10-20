@@ -2511,6 +2511,46 @@
       "notes": "Web giữ chữ ký, mặc định và thứ tự/phân trang cũ. Hermes dùng id tăng dần, cursor và limit+1; projection trả DTO Hermes. Các report/legacy khác vẫn có mục mirrored. successorGuard dùng vì hook gọi wrapper thay vì gọi core trực tiếp."
     },
     {
+      "id": "sale-listing-page",
+      "kind": "mirrored",
+      "description": "Trang Sale Phòng công khai, bản lọc tòa/trạng thái và phân trang trong SQL (B3, 20/10/2026): hermes_available_rooms_page_v1 chép vị từ chọn trang của get_public_available_rooms (chủ có link còn hiệu lực, tòa thật của chủ, soon_days/hotline/chính sách theo chủ, overlay pass đúng chủ, che liên hệ khi contact_manager, địa chỉ) và gọi nguyên room_sale_workflow_fact_v1; connector dùng khi roomRead=page (crm_available_rooms). Group preview/send và lịch vẫn đi hermes_sale_listing_rooms_v1 (mục sale-listing).",
+      "webCalls": [
+        {
+          "path": "src/pages/phong-trong/usePhongTrong.ts",
+          "rpc": "get_public_available_rooms"
+        }
+      ],
+      "sql": [
+        {
+          "function": "public.get_public_available_rooms",
+          "sha256": "9b58252b5dea0ffd02288325bc8b791b5ef483fc5a48e877dd18516b980f182c"
+        }
+      ],
+      "hermes": [
+        {
+          "sql": "public.hermes_available_rooms_page_v1",
+          "calls": [
+            "room_sale_workflow_fact_v1",
+            "hermes_room_page_admission_v1"
+          ],
+          "note": "trang phòng đã lọc; không gọi get_public_available_rooms"
+        },
+        {
+          "sql": "app_private.hermes_room_page_admission_v1",
+          "calls": [
+            "hermes_metadata_domain_grant_v1",
+            "get_authorization_context_v1"
+          ],
+          "note": "nhận kết nối + tập tòa, chép khối admission của hermes_domain_read_scope_fast_v1"
+        },
+        {
+          "path": "infra/hermes-broker/room-read-service.mjs",
+          "contains": "hermes_available_rooms_page_v1"
+        }
+      ],
+      "notes": "Bản chép thứ tư của trang Sale (R1 thiết kế B3); hướng sạch dài hạn là trích lõi dùng chung và đổi get_public_available_rooms thành wrapper (PR riêng). Khối admission so với FAST và các vị từ chép từ get_public_available_rooms ở infra/hermes-broker/available-rooms-page-parity.test.mjs; parity với oracle thật trên PG17 ở infra/hermes-broker/available-rooms-page-sql.test.mjs. LỆCH ĐÃ BIẾT (R7): tìm tên tòa SQL dùng lower() theo lc_ctype của database, connector legacy dùng toLowerCase() Unicode; chưa đo trên production."
+    },
+    {
       "id": "receivables-fast-read",
       "kind": "mirrored",
       "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false.",

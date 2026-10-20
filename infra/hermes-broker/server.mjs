@@ -32,7 +32,7 @@ import { createRefreshManager } from './refresh-manager.mjs';
 import { createDurableRefreshStore } from './durable-refresh-store.mjs';
 import { createSupabaseRefreshProvider } from './supabase-refresh-provider.mjs';
 import { createMcpHttpHandler } from './mcp-http.mjs';
-import { createRoomReadService, createSupabaseRoomReads } from './room-read-service.mjs';
+import { createRoomReadService, createSupabaseRoomReads, ROOM_READ_MODES } from './room-read-service.mjs';
 import { createZaloBindingService } from '../hermes-zalo-router/binding-service.mjs';
 import { createZaloBindingPorts } from '../hermes-zalo-router/binding-adapter.mjs';
 import { createZaloBindingHttpHandler } from '../hermes-zalo-router/binding-http.mjs';
@@ -107,7 +107,7 @@ function backendLimits(value) {
  * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'callLog'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'roomRead', 'callLog'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -115,6 +115,8 @@ export function createHermesBackend(configuration = {}) {
       (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
       (Object.hasOwn(configuration, 'connectorOnly') && configuration.connectorOnly !== true) ||
       (Object.hasOwn(configuration, 'readFastPath') && typeof configuration.readFastPath !== 'boolean') ||
+      // Direct room tool source: 'legacy' (scope map + whole sale page) or 'page' (B3 SQL page RPC).
+      (Object.hasOwn(configuration, 'roomRead') && !ROOM_READ_MODES.includes(configuration.roomRead)) ||
       (Object.hasOwn(configuration, 'callLog') && typeof configuration.callLog !== 'function') ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
@@ -153,7 +155,7 @@ export function createHermesBackend(configuration = {}) {
     const refreshManager = createRefreshManager({ store: createDurableRefreshStore({ transport }),
       provider: refreshProvider, crypto, clock, dependencyScope });
     const maintenance = createConnectionMaintenance({ authority, connectionStore, refreshManager, renewal, clock, dependencyScope });
-    const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock,
+    const roomReads = createRoomReadService({ authority, connectionStore, crypto, auth, clock, roomRead: configuration.roomRead ?? 'legacy',
       reads: createSupabaseRoomReads({ ...supabase, fetch: request, dependencyScope }) });
     // The concrete preview stack is reachable only through the broker's group
     // methods that need a host-supplied private command context (no MCP route).
