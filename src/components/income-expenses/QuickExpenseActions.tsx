@@ -1,6 +1,6 @@
 import { LoaderCircle, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { IncomeExpenseFilters, IncomeExpenseWithRelations } from '@/hooks/income-expenses/types';
+import type { IncomeExpenseBatchSummary, IncomeExpenseFilters, IncomeExpenseWithRelations } from '@/hooks/income-expenses/types';
 import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
 import { formatVND } from '@/lib/utils';
 
@@ -14,6 +14,18 @@ export function QuickExpenseButton({ voucher, quick }: { voucher: IncomeExpenseW
       disabled={!!reason || quick.busy || quick.collecting} aria-label="Chi nhanh" aria-busy={quick.activeId === voucher.id}
       onClick={e => { e.stopPropagation(); void quick.run([voucher]); }}>
       {quick.activeId === voucher.id ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
+    </Button>
+  </span>;
+}
+
+export function QuickExpenseBatchButton({ batch, quick }: { batch: IncomeExpenseBatchSummary; quick?: QuickExpenseActions }) {
+  if (!quick || batch.type !== 'EXPENSE' || !batch.vouchers.some(v => v.approval_status === 'UNAPPROVED')) return null;
+  const reason = quick.batchReason(batch);
+  return <span className="inline-flex shrink-0 items-center" onClick={e => e.stopPropagation()} title={reason ?? 'Chi nhanh phiếu tổng: duyệt và chi ngay các phiếu còn chờ bằng sổ quỹ, chứng từ đã lưu'}>
+    <Button type="button" size="icon" variant="outline" className={`h-7 w-7 ${quickButtonClass}`}
+      disabled={!!reason || quick.busy || quick.collecting} aria-label="Chi nhanh phiếu tổng" aria-busy={quick.activeBatchId === batch.id}
+      onClick={e => { e.stopPropagation(); void quick.runBatch(batch); }}>
+      {quick.activeBatchId === batch.id ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
     </Button>
   </span>;
 }

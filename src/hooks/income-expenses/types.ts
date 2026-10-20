@@ -248,6 +248,9 @@ export interface IncomeExpenseAuditLog {
 
 export interface IncomeExpenseBatchSummary {
   id: string;
+  /** Full membership before list filters; absent metadata cannot authorize quick posting. */
+  organization_id?: string | null;
+  voucher_ids?: string[];
   user_id: string;
   name: string;
   type: "INCOME" | "EXPENSE";
