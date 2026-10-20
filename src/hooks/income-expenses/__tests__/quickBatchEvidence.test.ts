@@ -15,8 +15,9 @@ vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ sel
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
-import { prepareQuickExpenseBatchEvidence, useApproveAndPostIncomeExpenseV2 } from '../financeV2Mutations';
+import { createQuickExpenseBatchEvidenceSession, prepareQuickExpenseBatchEvidence, useApproveAndPostIncomeExpenseV2 } from '../financeV2Mutations';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
+import { quickExpenseAttachmentKeys, runQuickExpenseQueue } from '@/lib/quickExpenseQueue';
 
 const origin = 'https://evidence-test.supabase.co';
 const bucket = 'income-expense-attachments';
@@ -54,6 +55,139 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('Chứng từ dùng chung trong chi nhanh phiếu tổng', () => {
+  it('13 phiếu dùng chung ảnh chạy tối đa 3 phiếu đồng thời, tải nguồn một lần và giữ evidence riêng', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    let consumed = false;
+    let created = 0;
+    let writing = 0;
+    let peak = 0;
+    const attached = new Set<string>();
+    const written: string[][] = [];
+    h.rpc.mockImplementation(async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'adopt_voucher_attachments_as_evidence_v2') return consumed ? adopted() : adopted([], ['original']);
+      if (fn === 'create_finance_evidence_upload_intent_v2') {
+        const id = `copy-${++created}`;
+        return { data: { evidence_id: id, bucket_id: bucket, object_name: `v2/org/actor/${id}` }, error: null };
+      }
+      if (fn === 'finalize_finance_evidence_v2') return { data: { evidence_id: args.p_evidence_id, state: 'FINALIZED' }, error: null };
+      if (fn === 'approve_and_post_income_expense_v2') {
+        const input = args.input as FinancePostingInput;
+        for (const id of input.evidenceIds) {
+          if (attached.has(id)) return { data: null, error: { code: '55000', message: 'Evidence must be FINALIZED' } };
+          attached.add(id);
+        }
+        writing++;
+        peak = Math.max(peak, writing);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        written.push(input.evidenceIds);
+        consumed = true;
+        writing--;
+        return { data: { voucherId: input.subjectId, approvalStatus: 'APPROVED', postingStatus: 'POSTED' }, error: null };
+      }
+      throw new Error(`Unexpected RPC ${fn}`);
+    });
+    const writer = renderHook(() => useApproveAndPostIncomeExpenseV2({ deferFeedback: true })).result.current as unknown as {
+      mutationFn: (input: FinancePostingInput) => Promise<unknown>;
+    };
+    await runQuickExpenseQueue(Array.from({ length: 13 }, (_, index) => voucher([url], `voucher-${index}`)), {
+      concurrency: 3, attachmentKeys: quickExpenseAttachmentKeys, shouldStop: () => false,
+      skip: () => { throw new Error('Unexpected skipped voucher'); },
+      run: async row => {
+        await writer.mutationFn(postingInput(row.id, (await prepare(row)).evidenceIds));
+        return true;
+      },
+    });
+    expect(peak).toBe(3);
+    expect(h.download).toHaveBeenCalledExactlyOnceWith(path);
+    expect(h.upload).toHaveBeenCalledTimes(12);
+    expect(h.rpc.mock.calls.filter(([fn]) => fn === 'adopt_voucher_attachments_as_evidence_v2')).toHaveLength(13);
+    expect(h.rpc.mock.calls.filter(([fn]) => fn === 'create_finance_evidence_upload_intent_v2')).toHaveLength(12);
+    expect(h.rpc.mock.calls.filter(([fn]) => fn === 'finalize_finance_evidence_v2')).toHaveLength(12);
+    expect(written.flat()).toEqual(['original', ...Array.from({ length: 12 }, (_, i) => `copy-${i + 1}`)]);
+    for (const [, file] of h.upload.mock.calls) {
+      expect((file as File).type).toBe('image/png');
+      expect(await blobBytes(file as File)).toEqual([...bytes]);
+    }
+  });
+
+  it('cache tách theo tổ chức, URL chính xác và lần chạy; phiên sau đọc lại bytes mới', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    await prepare(voucher());
+    await prepare({ ...voucher(), organization_id: 'other-org' });
+    expect(h.download).toHaveBeenCalledTimes(2);
+    const otherUrl = `${url}?version=2`;
+    h.rpc.mockResolvedValueOnce(adopted([{ url: otherUrl, reason: 'ATTACHED' }]));
+    await prepare(voucher([otherUrl]));
+    expect(h.download).toHaveBeenCalledTimes(3);
+    const newBytes = new Uint8Array([7, 8, 9]);
+    h.download.mockResolvedValue({ data: new Blob([newBytes], { type: 'image/png' }), error: null });
+    await createQuickExpenseBatchEvidenceSession()(voucher());
+    expect(h.download).toHaveBeenCalledTimes(4);
+    expect(await blobBytes(h.upload.mock.lastCall![1] as File)).toEqual([...newBytes]);
+  });
+
+  it.each(['QUARANTINED', 'FILE_THUOC_TO_CHUC_KHAC', 'FILE_KHONG_CON_TRONG_STORAGE'])('có cache vẫn từ chối adoption mới trả %s', async reason => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    await prepare(voucher());
+    const original = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => fn === 'adopt_voucher_attachments_as_evidence_v2'
+      ? Promise.resolve(adopted([{ url, reason }])) : original(fn, args));
+    await expect(prepare(voucher())).rejects.toMatchObject({ outcome: 'failure' });
+    expect(h.rpc.mock.calls.filter(([fn]) => fn === 'adopt_voucher_attachments_as_evidence_v2')).toHaveLength(2);
+    expect(h.download).toHaveBeenCalledOnce();
+    expect(h.upload).toHaveBeenCalledOnce();
+  });
+
+  it('cache không vượt qua lỗi quyền hoặc nguồn ngoài snapshot trong lần chuẩn bị sau', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    await prepare(voucher());
+    const original = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => fn === 'adopt_voucher_attachments_as_evidence_v2'
+      ? Promise.resolve({ data: null, error: { code: '42501', message: 'Denied' } }) : original(fn, args));
+    await expect(prepare(voucher())).rejects.toMatchObject({ outcome: 'failure' });
+    h.rpc.mockImplementation(original);
+    await expect(prepare(voucher([`${url}?changed`]))).rejects.toMatchObject({ outcome: 'failure' });
+    expect(h.upload).toHaveBeenCalledOnce();
+  });
+
+  it('kiểm toàn bộ URL trước khi dùng cache, không tải hay upload khi URL sau bị sai', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    await prepare(voucher());
+    const invalidUrl = url.replace(origin, 'https://another-project.supabase.co');
+    const original = h.rpc.getMockImplementation()!;
+    h.rpc.mockImplementation((fn: string, args: Record<string, unknown>) => fn === 'adopt_voucher_attachments_as_evidence_v2'
+      ? Promise.resolve(adopted([{ url, reason: 'ATTACHED' }, { url: invalidUrl, reason: 'ATTACHED' }])) : original(fn, args));
+    await expect(prepare(voucher([url, invalidUrl]))).rejects.toMatchObject({ outcome: 'failure' });
+    expect(h.download).toHaveBeenCalledOnce();
+    expect(h.upload).toHaveBeenCalledOnce();
+  });
+
+  it('download lỗi không được cache; lỗi upload xoá bytes để retry đọc lại', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    h.download.mockResolvedValueOnce({ data: null, error: { message: 'Download failed' } });
+    await expect(prepare(voucher())).rejects.toMatchObject({ outcome: 'failure' });
+    h.upload.mockResolvedValueOnce({ data: null, error: { message: 'Upload failed' } });
+    await expect(prepare(voucher())).rejects.toMatchObject({ outcome: 'failure' });
+    await prepare(voucher());
+    expect(h.download).toHaveBeenCalledTimes(3);
+    expect(h.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('cache không giữ hơn 20 MiB trong một lần chạy', async () => {
+    const prepare = createQuickExpenseBatchEvidenceSession();
+    h.download.mockResolvedValue({ data: new Blob([new Uint8Array(5 * 1024 * 1024)], { type: 'image/png' }), error: null });
+    const prepareUrl = async (index: number) => {
+      const nextUrl = url.replace('shared.png', `image-${index}.png`);
+      h.rpc.mockResolvedValueOnce(adopted([{ url: nextUrl, reason: 'ATTACHED' }]));
+      await prepare(voucher([nextUrl]));
+    };
+    for (let index = 0; index < 5; index++) await prepareUrl(index);
+    await prepareUrl(0);
+    await prepareUrl(4);
+    expect(h.download).toHaveBeenCalledTimes(6);
+    expect(h.upload).toHaveBeenCalledTimes(7);
+  });
+
   it('hai phiếu dùng cùng URL: ghi sổ lần đầu tiêu thụ evidence gốc, lần sau tạo evidence riêng và giữ nguyên bytes', async () => {
     const states = new Map<string, string>([['original', 'FINALIZED']]);
     const written: string[][] = [];

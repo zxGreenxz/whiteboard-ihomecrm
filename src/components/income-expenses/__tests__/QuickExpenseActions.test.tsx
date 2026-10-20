@@ -8,8 +8,8 @@ afterEach(cleanup);
 const voucher = { id: 'one', type: 'EXPENSE', approval_status: 'UNAPPROVED', total_amount: 100 } as IncomeExpenseWithRelations;
 const batch = { id: 'batch', type: 'EXPENSE', vouchers: [voucher], voucher_ids: [voucher.id], voucher_count: 1, total_amount: 100 } as IncomeExpenseBatchSummary;
 function actions(patch: Partial<QuickExpenseActions> = {}): QuickExpenseActions {
-  return { reason: () => null, batchReason: () => null, busy: false, collecting: false, activeId: null, activeBatchId: null, progress: { done: 0, total: 0 }, selected: [], results: [], error: null, ready: true, checksError: null, retryChecks: vi.fn(async () => {}),
-    run: vi.fn(async () => {}), runBatch: vi.fn(async () => {}), toggle: vi.fn(), togglePage: vi.fn(), clear: vi.fn(), selectAll: vi.fn(async () => {}), ...patch };
+  return { reason: () => null, batchReason: () => null, busy: false, collecting: false, activeId: null, activeIds: [], activeBatchId: null, progress: { done: 0, total: 0 }, selected: [], results: [], error: null, ready: true, checksError: null, retryChecks: vi.fn(async () => {}),
+    run: vi.fn(async () => {}), runBatch: vi.fn(async () => {}), toggle: vi.fn(), togglePage: vi.fn(), clear: vi.fn(), resetSelection: vi.fn(), selectAll: vi.fn(async () => {}), ...patch };
 }
 it('bấm chi nhanh không mở chi tiết hoặc hộp xác nhận', () => {
   const quick = actions(); const openDetail = vi.fn();

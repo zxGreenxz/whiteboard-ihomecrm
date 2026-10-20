@@ -297,10 +297,50 @@ export async function adoptVoucherAttachmentsAsEvidence(
   };
 }
 
+type QuickExpenseEvidenceResult = { evidenceIds: string[]; skipped: { url: string; reason: string }[] };
+type QuickExpenseEvidenceCache = {
+  blobs: Map<string, Blob>; downloads: Map<string, Promise<Blob | null>>;
+  bytes: number; generation: number;
+};
+const QUICK_EXPENSE_EVIDENCE_CACHE_BYTES = 20 * 1024 * 1024;
+
+/** One run may reuse downloaded bytes; authority and evidence IDs are never cached. */
+export function createQuickExpenseBatchEvidenceSession() {
+  const cache: QuickExpenseEvidenceCache = { blobs: new Map(), downloads: new Map(), bytes: 0, generation: 0 };
+  return (voucher: IncomeExpenseWithRelations) => prepareQuickExpenseBatchEvidenceWithCache(voucher, cache);
+}
+
+async function readQuickExpenseEvidenceBlob(key: string, bucket: string, path: string, cache?: QuickExpenseEvidenceCache) {
+  const saved = cache?.blobs.get(key);
+  if (saved) return saved;
+  const generation = cache?.generation;
+  const download = cache?.downloads.get(key) ?? withDetailReadDeadline(downloadFile(bucket, path));
+  cache?.downloads.set(key, download);
+  try {
+    const blob = await download;
+    if (!(blob instanceof Blob) || !blob.size) throw new Error('Chưa đọc được đầy đủ tệp chứng từ đã lưu.');
+    if (cache && cache.generation === generation && !cache.blobs.has(key) &&
+        cache.bytes + blob.size <= QUICK_EXPENSE_EVIDENCE_CACHE_BYTES) {
+      cache.blobs.set(key, blob);
+      cache.bytes += blob.size;
+    }
+    return blob;
+  } finally {
+    if (cache?.downloads.get(key) === download) cache.downloads.delete(key);
+  }
+}
+
 /** Phiếu tổng dùng chung ảnh, nhưng mỗi lần ghi sổ phải có evidence ORIGINAL riêng. */
 export async function prepareQuickExpenseBatchEvidence(
   voucher: IncomeExpenseWithRelations,
-): Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] }> {
+): Promise<QuickExpenseEvidenceResult> {
+  return prepareQuickExpenseBatchEvidenceWithCache(voucher);
+}
+
+async function prepareQuickExpenseBatchEvidenceWithCache(
+  voucher: IncomeExpenseWithRelations,
+  cache?: QuickExpenseEvidenceCache,
+): Promise<QuickExpenseEvidenceResult> {
   const reject = (message: string, cause?: unknown) => new FinancialWorkflowError(message, 'failure', [], cause);
   try {
     if (!voucher.id || !voucher.organization_id || !Array.isArray(voucher.attachments) || !voucher.attachments.length) {
@@ -329,12 +369,14 @@ export async function prepareQuickExpenseBatchEvidence(
           rawPath.includes('\\') || rawPath.split('/').some(part => !part || part === '.' || part === '..')) {
         throw reject('Đường dẫn chứng từ không khớp kho lưu của phiếu. Chưa duyệt và chi.');
       }
-      return ref;
+      return { ref, url };
     });
     const evidenceIds = [...new Set(adopted.evidenceIds)];
-    for (const ref of copies) {
-      const blob = await withDetailReadDeadline(downloadFile(ref.bucket, ref.path));
-      if (!(blob instanceof Blob) || !blob.size) throw reject('Chưa đọc được đầy đủ tệp chứng từ đã lưu.');
+    for (const { ref, url } of copies) {
+      // Only consult bytes after this voucher's adoption and every source URL
+      // passed validation. A new run/retry must create a new session.
+      const key = JSON.stringify([voucher.organization_id, url]);
+      const blob = await readQuickExpenseEvidenceBlob(key, ref.bucket, ref.path, cache);
       const file = new File([blob], ref.path.split('/').pop() || 'chung-tu', { type: blob.type });
       const evidenceId = await uploadFinanceEvidence(file, voucher.organization_id);
       if (!evidenceId || evidenceIds.includes(evidenceId)) {
@@ -344,6 +386,12 @@ export async function prepareQuickExpenseBatchEvidence(
     }
     return { evidenceIds, skipped: [] };
   } catch (error) {
+    if (cache) {
+      cache.blobs.clear();
+      cache.downloads.clear();
+      cache.bytes = 0;
+      cache.generation++;
+    }
     if (error instanceof FinancialWorkflowError) throw error;
     throw reject('Không chuẩn bị được chứng từ đã lưu cho phiếu tổng. Chưa duyệt và chi.', error);
   }

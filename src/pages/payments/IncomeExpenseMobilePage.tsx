@@ -1,4 +1,4 @@
-import { useQuickExpense } from '@/hooks/income-expenses/useQuickExpense';
+import { usePageQuickExpense } from '@/components/income-expenses/QuickExpenseProvider';
 import { QuickExpenseButton, QuickExpenseFeedback } from '@/components/income-expenses/QuickExpenseActions';
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
@@ -422,7 +422,7 @@ export default function IncomeExpenseMobilePage() {
   const { data: stats, isLoading: isStatsLoading } = statsQuery;
 
   const activeListQuery = viewMode === "individual" ? listQuery : batchQuery;
-  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, search, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsed.pending);
+  const quickExpense = usePageQuickExpense(JSON.stringify([effectiveFilters, search, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsed.pending);
   const vouchers = listResult?.data ?? [];
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));

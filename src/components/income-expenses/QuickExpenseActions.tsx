@@ -9,11 +9,12 @@ const quickButtonClass = 'shrink-0 rounded-[9px] border-orange-200 bg-orange-50 
 export function QuickExpenseButton({ voucher, quick }: { voucher: IncomeExpenseWithRelations; quick?: QuickExpenseActions }) {
   if (!quick || voucher.type !== 'EXPENSE' || voucher.approval_status !== 'UNAPPROVED') return null;
   const reason = quick.reason(voucher);
+  const active = quick.activeIds.includes(voucher.id);
   return <span className="inline-flex shrink-0 items-center" onClick={e => e.stopPropagation()} title={reason ?? 'Chi nhanh: duyệt và chi ngay bằng sổ quỹ, chứng từ đã lưu'}>
     <Button type="button" size="icon" variant="outline" className={`h-7 w-7 ${quickButtonClass}`}
-      disabled={!!reason || quick.busy || quick.collecting} aria-label="Chi nhanh" aria-busy={quick.activeId === voucher.id}
+      disabled={!!reason || quick.busy || quick.collecting} aria-label="Chi nhanh" aria-busy={active}
       onClick={e => { e.stopPropagation(); void quick.run([voucher]); }}>
-      {quick.activeId === voucher.id ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
+      {active ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
     </Button>
   </span>;
 }
@@ -33,7 +34,7 @@ export function QuickExpenseBatchButton({ batch, quick }: { batch: IncomeExpense
 export function QuickExpenseFeedback({ quick }: { quick: QuickExpenseActions }) {
   const success = quick.results.filter(r => r.status === 'success').length;
   return <div className="space-y-2 text-sm" aria-live="polite">
-    {quick.busy && <p role="status">Đang xử lý {quick.progress.done}/{quick.progress.total} phiếu…</p>}
+    {quick.busy && <p role="status">Đang xử lý {quick.progress.done}/{quick.progress.total} phiếu…{quick.activeIds.length > 1 && ` · ${quick.activeIds.length} phiếu cùng lúc`}</p>}
     {quick.error && <p role="alert" className="text-destructive">{quick.error}</p>}
     {quick.checksError && <Button size="sm" variant="outline" disabled={quick.busy || quick.collecting} onClick={() => void quick.retryChecks()}>Thử lại kiểm tra</Button>}
     {!!quick.results.length && <div className="rounded-md border p-3">

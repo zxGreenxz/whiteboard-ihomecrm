@@ -6,13 +6,14 @@ import type { FinanceV2OrgRoutes } from '@/lib/financeV2Route';
 
 const state = vi.hoisted(() => ({
   org: '11111111-1111-4111-8111-111111111111',
+  actor: 'actor',
   permissions: { __superadmin: true } as unknown,
   read: vi.fn(), adopt: vi.fn(), write: vi.fn(), list: vi.fn(), books: vi.fn(),
-  batchRead: vi.fn(), membershipRead: vi.fn(),
+  batchRead: vi.fn(), membershipRead: vi.fn(), snapshotRead: vi.fn(),
 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.org }) }));
-vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: 'actor' } }) }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ data: { id: state.actor } }) }));
 vi.mock('@/hooks/useMyPermissions', () => ({
   useMyPermissions: () => ({ data: state.permissions, isSuccess: true, isFetching: false }),
   fetchMyPermissions: async () => state.permissions,
@@ -29,8 +30,9 @@ vi.mock('../financeV2Mutations', () => ({
   useApproveAndPostIncomeExpenseV2: () => ({ mutateAsync: state.write }),
   useInvalidateMoney: () => vi.fn(),
   adoptVoucherAttachmentsAsEvidence: state.adopt,
-  prepareQuickExpenseBatchEvidence: (row: IncomeExpenseWithRelations) => state.adopt(row.id),
+  createQuickExpenseBatchEvidenceSession: () => (row: IncomeExpenseWithRelations) => state.adopt(row.id),
 }));
+vi.mock('@/lib/incomeExpenseDetailRpc', () => ({ loadIncomeExpenseDetails: state.snapshotRead }));
 vi.mock('../detailRead', () => ({ loadIncomeExpenseDetail: state.read, withDetailReadDeadline: (p: Promise<unknown>) => p }));
 vi.mock('../queries', () => ({ incomeExpensesListQuery: (...args: unknown[]) => ({ queryFn: () => state.list(...args) }) }));
 vi.mock('@/hooks/useVoucherDetail', () => ({
@@ -47,7 +49,7 @@ function voucher(i = 1, patch: Partial<IncomeExpenseWithRelations> = {}): Income
     organization_id: state.org, type: 'EXPENSE', building_id: null, total_amount: 100,
     approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED', posting_mode: 'CASHBOOK', review_state: 'PENDING',
     approval_version: 1, posting_version: 1, updated_at: '2026-10-19T00:00:00Z',
-    account_id: book, account_is_virtual: false, attachments: [`https://storage.test/receipt-${i}.jpg`],
+    account_id: book, account_is_virtual: false, attachments: ['https://storage.test/shared-receipt.jpg'],
     detail_read: { complete: true, expected_item_count: 0 }, items: [], system_source: null,
     ...patch } as IncomeExpenseWithRelations;
 }
@@ -74,10 +76,13 @@ function setBatchReads(target: IncomeExpenseBatchSummary) {
   state.batchRead.mockResolvedValue(target);
   state.membershipRead.mockResolvedValue(membership(target));
   state.read.mockImplementation(async (id: string) => target.vouchers.find(row => row.id === id) ?? null);
+  state.snapshotRead.mockImplementation(async (_org: string, ids: string[]) => target.vouchers.filter(row => ids.includes(row.id)));
 }
 beforeEach(() => {
   vi.resetAllMocks(); state.org = '11111111-1111-4111-8111-111111111111'; state.permissions = { __superadmin: true };
+  state.actor = 'actor';
   state.read.mockImplementation(async (id: string) => voucher(Number(id.slice(-12))));
+  state.snapshotRead.mockImplementation(async (_org: string, ids: string[]) => ids.map(id => voucher(Number(id.slice(-12)))));
   state.adopt.mockResolvedValue({ evidenceIds: ['evidence-1'], skipped: [] });
   state.write.mockResolvedValue({}); state.books.mockResolvedValue({ data: [{ id: book }], error: null });
   state.batchRead.mockResolvedValue(batch()); state.membershipRead.mockResolvedValue(membership());
@@ -221,7 +226,7 @@ describe('thực thi chi nhanh phiếu tổng', () => {
     await act(async () => { finish(target); await running; });
     expect(state.write).toHaveBeenCalledTimes(2);
   });
-  it('đổi phạm vi trong lúc đọc đợt thì không ghi dù kết quả cũ về sau', async () => {
+  it('đổi tab trong lúc đọc đợt vẫn hoàn tất các phiếu đã bắt đầu', async () => {
     let finish!: (value: IncomeExpenseBatchSummary) => void;
     state.batchRead.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const target = batch();
@@ -230,23 +235,41 @@ describe('thực thi chi nhanh phiếu tổng', () => {
     await act(async () => { running = result.current.runBatch(target); });
     rerender({ filter: 'b' });
     await act(async () => { finish(target); await running; });
-    expect(state.write).not.toHaveBeenCalled();
+    expect(state.write).toHaveBeenCalledTimes(2);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'success']);
   });
-  it('lỗi ghi xác định ở một con cũng dừng phần còn lại của phiếu tổng', async () => {
-    const target = batch([voucher(), voucher(2), voucher(3)]); setBatchReads(target);
+  it('đổi tab và bộ lọc giữa hai lần chi vẫn giữ tiến trình, khóa và tập phiếu ban đầu', async () => {
+    let finish!: (value: unknown) => void;
+    state.write.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const target = batch();
+    const { result, rerender } = renderHook(({ filter }) => useQuickExpense(filter), { initialProps: { filter: 'batch' } });
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.runBatch(target); });
+    rerender({ filter: 'individual:other-filter' });
+    expect(result.current.busy).toBe(true);
+    expect(result.current.activeBatchId).toBe(target.id);
+    await act(async () => { await result.current.run([voucher(3)]); });
+    expect(state.write).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({}); await running; });
+    expect(state.write.mock.calls.map(call => call[0].subjectId)).toEqual(target.voucher_ids);
+    expect(result.current.progress).toEqual({ done: 2, total: 2 });
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'success']);
+  });
+  it('lỗi ghi xác định dừng phiếu tổng chưa gửi, vẫn ghi nhận các lệnh đã gửi đồng thời', async () => {
+    const target = batch([voucher(), voucher(2), voucher(3), voucher(4), voucher(5)]); setBatchReads(target);
     state.write.mockResolvedValueOnce({}).mockRejectedValueOnce(new FinancialWorkflowError('Kỳ sổ đã khóa', 'failure', []));
     const { result } = renderHook(() => useQuickExpense('batch-view'));
     await act(() => result.current.runBatch(target));
-    expect(state.write).toHaveBeenCalledTimes(2);
-    expect(result.current.results.map(row => row.status)).toEqual(['success', 'skipped', 'skipped']);
+    expect(state.write).toHaveBeenCalledTimes(4);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'skipped', 'success', 'success', 'skipped']);
   });
   it('kết quả không rõ ở con thứ hai dừng phần còn lại và giữ phiếu đầu đã thành công', async () => {
-    const target = batch([voucher(), voucher(2), voucher(3)]); setBatchReads(target);
+    const target = batch([voucher(), voucher(2), voucher(3), voucher(4), voucher(5)]); setBatchReads(target);
     state.write.mockResolvedValueOnce({}).mockRejectedValueOnce(new FinancialWorkflowError('Mất kết nối', 'unknown', []));
     const { result } = renderHook(() => useQuickExpense('batch-view'));
     await act(() => result.current.runBatch(target));
-    expect(state.write).toHaveBeenCalledTimes(2);
-    expect(result.current.results.map(row => row.status)).toEqual(['success', 'unknown', 'skipped']);
+    expect(state.write).toHaveBeenCalledTimes(4);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'unknown', 'success', 'success', 'skipped']);
     expect(result.current.reason(voucher(2))).toMatch(/đối chiếu/);
     expect(result.current.batchReason(target)).toBeTruthy();
   });
@@ -297,7 +320,7 @@ describe('thực thi và chọn hàng loạt', () => {
     expect(state.write).not.toHaveBeenCalled(); expect(result.current.results[0].status).toBe('skipped');
   });
   it('không duyệt dữ liệu bị sửa sau khi chọn hoặc sau khi nhận chứng từ', async () => {
-    state.read.mockResolvedValueOnce(voucher()).mockResolvedValueOnce(voucher(1, { attachments: ['changed'] }));
+    state.snapshotRead.mockResolvedValueOnce([voucher(1, { attachments: ['changed'] })]);
     const { result } = renderHook(() => useQuickExpense('filter'));
     await act(() => result.current.run([voucher()]));
     expect(state.write).not.toHaveBeenCalled(); expect(result.current.results[0].message).toMatch(/thay đổi/);
@@ -347,5 +370,118 @@ describe('thực thi và chọn hàng loạt', () => {
     state.org = '44444444-4444-4444-8444-444444444444'; rerender();
     await act(async () => { resolve(target); await running; });
     expect(state.write).not.toHaveBeenCalled();
+  });
+  it('đổi tài khoản trong lúc đọc phiếu thì không gửi lệnh chi', async () => {
+    let finish!: (v: IncomeExpenseWithRelations) => void;
+    state.read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const { result, rerender } = renderHook(() => useQuickExpense('a'));
+    const target = voucher(); let running!: Promise<void>;
+    await act(async () => { running = result.current.run([target]); });
+    state.actor = 'other-actor'; rerender();
+    await act(async () => { finish(target); await running; });
+    expect(state.adopt).not.toHaveBeenCalled();
+    expect(state.write).not.toHaveBeenCalled();
+  });
+  it('rời trang vẫn dừng phần chưa gửi và giữ lần chi đã hoàn tất', async () => {
+    let finish!: (value: unknown) => void;
+    state.write.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const { result, unmount } = renderHook(() => useQuickExpense('a'));
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.runBatch(batch()); });
+    unmount();
+    await act(async () => { finish({}); await running; });
+    expect(state.write).toHaveBeenCalledTimes(1);
+  });
+  it('đổi tab hủy kết quả chọn tất cả đang tải, không khôi phục lựa chọn cũ', async () => {
+    let finish!: (value: unknown) => void;
+    state.list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => useQuickExpense('page-owner'));
+    let collecting!: Promise<void>;
+    await act(async () => { collecting = result.current.selectAll({}); });
+    act(() => result.current.resetSelection());
+    await act(async () => { finish({ data: [voucher()], totalCount: 1 }); await collecting; });
+    expect(result.current.selected).toEqual([]);
+    expect(result.current.collecting).toBe(false);
+  });
+  it('đọc snapshot và membership song song, chỉ chi sau khi cả hai xác nhận', async () => {
+    let finishSnapshot!: (value: IncomeExpenseWithRelations[]) => void;
+    let finishMembership!: (value: ReturnType<typeof membership>) => void;
+    const target = batch([voucher()]);
+    setBatchReads(target);
+    state.snapshotRead.mockImplementationOnce(() => new Promise(resolve => { finishSnapshot = resolve; }));
+    state.membershipRead.mockImplementationOnce(() => new Promise(resolve => { finishMembership = resolve; }));
+    const { result } = renderHook(() => useQuickExpense('batch'));
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.runBatch(target); });
+    expect(state.snapshotRead).toHaveBeenCalledWith(state.org, [voucher().id]);
+    expect(state.membershipRead).toHaveBeenCalledTimes(1);
+    expect(state.write).not.toHaveBeenCalled();
+    await act(async () => { finishSnapshot([voucher()]); });
+    expect(state.write).not.toHaveBeenCalled();
+    await act(async () => { finishMembership(membership(target)); await running; });
+    expect(state.write).toHaveBeenCalledTimes(1);
+    expect(state.read).toHaveBeenCalledTimes(1);
+  });
+  it('snapshot rỗng/lỗi sau khi nhận chứng từ vẫn dừng trước chi', async () => {
+    state.snapshotRead.mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useQuickExpense('batch'));
+    await act(() => result.current.runBatch(batch()));
+    expect(state.write).not.toHaveBeenCalled();
+    expect(result.current.results.map(row => row.status)).toEqual(['skipped', 'skipped']);
+  });
+  it.each(['individual', 'batch'] as const)('%s chạy 3 phiếu độc lập cùng lúc và giữ thứ tự kết quả khi phản hồi đảo thứ tự', async mode => {
+    const rows = Array.from({ length: 5 }, (_, index) => voucher(index + 1, {
+      attachments: [`https://storage.test/receipt-${index + 1}.jpg`],
+    }));
+    const target = batch(rows); setBatchReads(target);
+    const finish: ((value: object) => void)[] = [];
+    for (let i = 0; i < 3; i++) {
+      state.write.mockImplementationOnce(() => new Promise(resolve => { finish.push(resolve); }));
+    }
+    const { result, rerender } = renderHook(({ scope }) => useQuickExpense(scope), { initialProps: { scope: 'batch' } });
+    let running!: Promise<void>;
+    await act(async () => { running = mode === 'batch' ? result.current.runBatch(target) : result.current.run(rows); });
+    expect(state.write).toHaveBeenCalledTimes(3);
+    expect(result.current.activeIds).toEqual(rows.slice(0, 3).map(row => row.id));
+    rerender({ scope: 'individual' });
+    await act(async () => { await result.current.run(rows); });
+    expect(state.write).toHaveBeenCalledTimes(3);
+    await act(async () => { finish[1]({}); });
+    expect(state.write).toHaveBeenCalledTimes(5);
+    expect(result.current.busy).toBe(true);
+    expect(result.current.results.map(row => row.id)).toEqual([rows[1].id, rows[3].id, rows[4].id]);
+    await act(async () => { finish[0]({}); finish[2]({}); await running; });
+    expect(result.current.results.map(row => row.id)).toEqual(rows.map(row => row.id));
+    expect(result.current.results.every(row => row.status === 'success')).toBe(true);
+    expect(result.current.progress).toEqual({ done: 5, total: 5 });
+    expect(result.current.activeIds).toEqual([]);
+  });
+  it('kết quả không rõ chặn phiếu chưa gửi và giữ khóa đến khi mọi lệnh đang chạy trả về', async () => {
+    const rows = Array.from({ length: 5 }, (_, index) => voucher(index + 1, {
+      attachments: [`https://storage.test/receipt-${index + 1}.jpg`],
+    }));
+    setBatchReads(batch(rows));
+    let fail!: (error: unknown) => void;
+    let finish!: (value: object) => void;
+    let finishThird!: (value: object) => void;
+    state.write
+      .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishThird = resolve; }));
+    const { result } = renderHook(() => useQuickExpense('individual'));
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.run(rows); });
+    expect(state.write).toHaveBeenCalledTimes(3);
+    await act(async () => { fail(new FinancialWorkflowError('Mất kết nối', 'unknown', [])); });
+    expect(result.current.busy).toBe(true);
+    await act(async () => { await result.current.run(rows); });
+    expect(state.write).toHaveBeenCalledTimes(3);
+    await act(async () => { finish({}); finishThird({}); await running; });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.reason(rows[0])).toMatch(/đối chiếu/);
+    expect(result.current.results).toHaveLength(5);
+    expect(result.current.results[0].status).toBe('unknown');
+    expect(result.current.results[1].status).toBe('success');
+    expect(result.current.results.map(row => row.status)).toEqual(['unknown', 'success', 'success', 'skipped', 'skipped']);
   });
 });

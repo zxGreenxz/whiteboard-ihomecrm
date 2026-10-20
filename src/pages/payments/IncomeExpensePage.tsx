@@ -1,4 +1,4 @@
-import { useQuickExpense } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseProvider, usePageQuickExpense } from '@/components/income-expenses/QuickExpenseProvider';
 import { QuickExpenseFeedback, QuickExpenseToolbar } from '@/components/income-expenses/QuickExpenseActions';
 import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
@@ -367,7 +367,7 @@ const IncomeExpenseDesktopPage = () => {
   const { data: batchResult, isLoading: isBatchLoading, isError: batchError, refetch: retryBatch } = batchQuery;
 
   const activeListQuery = viewMode === "individual" ? listQuery : batchQuery;
-  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, searchQuery, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsedSearch.pending);
+  const quickExpense = usePageQuickExpense(JSON.stringify([effectiveFilters, searchQuery, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsedSearch.pending);
   const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
@@ -1468,12 +1468,13 @@ const IncomeExpenseDesktopPage = () => {
 // từ matchMedia để không nháy desktop / không mount query nặng trên điện thoại.
 export default function IncomeExpensePage() {
   const isPhone = usePhoneViewport();
-  if (isPhone) {
-    return (
-      <Suspense fallback={null}>
-        <IncomeExpenseMobilePage />
-      </Suspense>
-    );
-  }
-  return <IncomeExpenseDesktopPage />;
+  return (
+    <QuickExpenseProvider>
+      {isPhone ? (
+        <Suspense fallback={null}>
+          <IncomeExpenseMobilePage />
+        </Suspense>
+      ) : <IncomeExpenseDesktopPage />}
+    </QuickExpenseProvider>
+  );
 }
