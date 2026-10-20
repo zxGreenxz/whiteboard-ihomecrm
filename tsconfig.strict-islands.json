@@ -19,6 +19,8 @@
     "src/lib/quickExpense.ts",
     "src/hooks/income-expenses/useQuickExpense.ts",
     "src/components/income-expenses/QuickExpenseActions.tsx",
+    "src/components/income-expenses/QuickExpenseProvider.tsx",
+    "src/lib/quickExpenseQueue.ts",
     "src/lib/invoiceReadArgs.ts",
     "src/lib/customerSearch.ts",
     "src/lib/customerList.ts",
