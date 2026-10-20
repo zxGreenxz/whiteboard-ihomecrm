@@ -65,7 +65,9 @@ export const DOMAIN_FAMILIES = Object.freeze({
     capabilities: Object.freeze([]) }),
 });
 export const DOMAIN_READS = Object.freeze({
-  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ; phòng gần nhất và contractId khi có quyền hợp đồng). Toàn tổ chức thấy cả khách chưa có hợp đồng. Hồ sơ: crm_read_customer_detail. ${PRIVATE_HINT}`, {
+  // 20/10: phòng/HĐ trong dòng là hợp đồng ĐANG hiệu lực (không phải "gần nhất"); bốn trường trống không nói gì về
+  // việc đã trả phòng hay chưa thuê. Chỉ câu chữ; validator/chiếu trường không đổi.
+  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ). contractId/buildingId/roomId/roomName = hợp đồng ĐANG hiệu lực, cần quyền hợp đồng; trống = không thấy HĐ đang hiệu lực trong phạm vi được xem (không suy ra đã trả phòng/chưa thuê); lịch sử HĐ: crm_read_customer_detail. Toàn tổ chức thấy cả khách chưa có HĐ. Lỗi ≠ rỗng; số dòng một trang ≠ tổng số. ${PRIVATE_HINT}`, {
     id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), roomId: nullable(domainId),
     roomName: nullable(text) }, [], { family: 'v3' }),
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
