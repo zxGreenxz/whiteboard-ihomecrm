@@ -1,4 +1,4 @@
-import type { IncomeExpenseWithRelations } from '@/hooks/income-expenses/types';
+import type { IncomeExpenseBatchSummary, IncomeExpenseWithRelations } from '@/hooks/income-expenses/types';
 import type { PermissionsMap } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { canWritePosting, canWriteWorkflow, type FinanceV2OrgRoutes } from '@/lib/financeV2Route';
@@ -39,6 +39,50 @@ export function sameQuickExpenseSnapshot(a: IncomeExpenseWithRelations, b: Incom
     'approval_status', 'posting_status', 'posting_mode', 'review_state', 'approval_version',
     'posting_version', 'updated_at'] as const;
   return fields.every(key => a[key] === b[key]) && JSON.stringify(a.attachments) === JSON.stringify(b.attachments);
+}
+
+/** Completed/cancelled children are not paid again when continuing an unfinished batch. */
+export function quickExpenseBatchTargets(batch: IncomeExpenseBatchSummary): IncomeExpenseWithRelations[] {
+  return batch.vouchers.filter(v => v.approval_status !== 'CANCELLED' &&
+    !(v.approval_status === 'APPROVED' && v.posting_status === 'POSTED'));
+}
+
+type BatchMembership = { id: string; organization_id?: string | null; type: string; voucher_ids?: readonly string[] };
+export function sameQuickExpenseBatchMembership(a: BatchMembership, b: BatchMembership): boolean {
+  const ids = new Set(a.voucher_ids);
+  return a.id === b.id && a.organization_id === b.organization_id && a.type === b.type &&
+    !!a.voucher_ids?.length && !!b.voucher_ids?.length && ids.size === a.voucher_ids.length &&
+    new Set(b.voucher_ids).size === b.voucher_ids.length && ids.size === b.voucher_ids.length && b.voucher_ids.every(id => ids.has(id));
+}
+
+export function quickExpenseBatchReason(
+  batch: IncomeExpenseBatchSummary, ctx: QuickExpenseContext,
+  childReason: (v: IncomeExpenseWithRelations) => string | null = v => quickExpenseReason(v, ctx),
+): string | null {
+  if (!ctx.ready) return 'Đang kiểm tra quyền và sổ quỹ. Vui lòng chờ.';
+  if (!ctx.organizationId || batch.organization_id !== ctx.organizationId) return 'Phiếu tổng không thuộc công ty đang chọn.';
+  if (batch.type !== 'EXPENSE') return 'Chi nhanh chỉ áp dụng cho phiếu tổng chi.';
+  const ids = new Set(batch.voucher_ids);
+  if (!batch.voucher_ids?.length || ids.size !== batch.voucher_ids.length ||
+    batch.vouchers.length !== ids.size || batch.voucher_count !== ids.size ||
+    new Set(batch.vouchers.map(v => v.id)).size !== ids.size || batch.vouchers.some(v => !ids.has(v.id))) {
+    return 'Chưa hiển thị đủ toàn bộ phiếu trong đợt. Mở chi tiết phiếu tổng hoặc bỏ bộ lọc để kiểm tra.';
+  }
+  if (batch.vouchers.some(v => v.organization_id !== ctx.organizationId || v.type !== 'EXPENSE')) return 'Có phiếu con không đúng công ty hoặc loại phiếu chi.';
+  const targets = quickExpenseBatchTargets(batch);
+  if (!targets.length) return 'Đợt này không còn phiếu chờ duyệt và chi.';
+  for (const child of targets) {
+    const reason = childReason(child);
+    if (reason) return `${child.code || child.name}: ${reason}`;
+  }
+  return null;
+}
+
+export function sameQuickExpenseBatchSnapshot(a: IncomeExpenseBatchSummary, b: IncomeExpenseBatchSummary): boolean {
+  if (!sameQuickExpenseBatchMembership(a, b) || a.vouchers.length !== b.vouchers.length ||
+    JSON.stringify(a.attachments) !== JSON.stringify(b.attachments)) return false;
+  const fresh = new Map(b.vouchers.map(v => [v.id, v]));
+  return a.vouchers.every(v => { const row = fresh.get(v.id); return !!row && sameQuickExpenseSnapshot(v, row); });
 }
 
 export interface QuickExpenseResult {

@@ -421,7 +421,8 @@ export default function IncomeExpenseMobilePage() {
   const statsQuery = useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true, inlineErrors: true });
   const { data: stats, isLoading: isStatsLoading } = statsQuery;
 
-  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, search, viewMode]), listQuery.isSuccess && !listQuery.isFetching && !listQuery.isPlaceholderData && !parsed.pending);
+  const activeListQuery = viewMode === "individual" ? listQuery : batchQuery;
+  const quickExpense = useQuickExpense(JSON.stringify([effectiveFilters, search, viewMode]), activeListQuery.isSuccess && !activeListQuery.isFetching && !activeListQuery.isPlaceholderData && !parsed.pending);
   const vouchers = listResult?.data ?? [];
   // Dấu "Đã sửa N lần": câu riêng, không làm chậm câu đọc danh sách.
   const { data: revisionCounts } = useRevisionCounts(vouchers.map((x) => x.id));
@@ -1007,6 +1008,7 @@ export default function IncomeExpenseMobilePage() {
               )
             ) : (
               <IncomeExpenseBatchListMobile
+                quickExpense={quickExpense}
                 batches={batches}
                 isLoading={isBatchLoading || parsed.pending}
                 onView={setDetailBatchId}
@@ -1045,6 +1047,7 @@ export default function IncomeExpenseMobilePage() {
           {/* Chi tiết phiếu tổng — bottom sheet */}
           {detailBatch && (
             <IncomeExpenseBatchDetailMobile
+              quickExpense={quickExpense}
               batch={detailBatch}
               onClose={() => setDetailBatchId(null)}
               onCancelBatch={setCancelBatchTarget}

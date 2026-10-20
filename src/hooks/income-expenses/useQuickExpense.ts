@@ -3,14 +3,15 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchMyPermissions, useMyPermissions } from '@/hooks/useMyPermissions';
 import { fetchFinanceV2ClientFlags, LEGACY_ROUTES, useFinanceV2Routes } from '@/lib/financeV2Route';
-import { quickExpenseReason, sameQuickExpenseSnapshot, type QuickExpenseContext, type QuickExpenseResult } from '@/lib/quickExpense';
+import { quickExpenseReason, quickExpenseBatchReason, quickExpenseBatchTargets, sameQuickExpenseBatchMembership, sameQuickExpenseBatchSnapshot, sameQuickExpenseSnapshot, type QuickExpenseContext, type QuickExpenseResult } from '@/lib/quickExpense';
+import { loadIncomeExpenseBatch, readIncomeExpenseBatchMembership } from '@/hooks/useVoucherDetail';
 import { todayISO } from '@/lib/collect';
 import { FinancialWorkflowError, workflowErrorMessage } from '@/lib/financialWorkflow';
 import { validatePostFinanceExecutionInput } from '@/lib/incomeExpensePostingValidation';
 import { loadIncomeExpenseDetail, withDetailReadDeadline } from './detailRead';
-import { adoptVoucherAttachmentsAsEvidence, useApproveAndPostIncomeExpenseV2, useCustodianCashbooksV2, useInvalidateMoney } from './financeV2Mutations';
+import { adoptVoucherAttachmentsAsEvidence, prepareQuickExpenseBatchEvidence, useApproveAndPostIncomeExpenseV2, useCustodianCashbooksV2, useInvalidateMoney } from './financeV2Mutations';
 import { incomeExpensesListQuery } from './queries';
-import type { IncomeExpenseFilters, IncomeExpenseWithRelations } from './types';
+import type { IncomeExpenseBatchSummary, IncomeExpenseFilters, IncomeExpenseWithRelations } from './types';
 
 const rejectQuickExpense = (message: string) => new FinancialWorkflowError(message, 'failure', []);
 
@@ -33,6 +34,7 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
   const [busy, setBusy] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [selection, setSelection] = useState<{ scope: string; rows: IncomeExpenseWithRelations[] }>({ scope, rows: [] });
   const [results, setResults] = useState<QuickExpenseResult[]>([]);
@@ -50,6 +52,7 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
   };
   const reason = (v: IncomeExpenseWithRelations) => blocked.current.has(`${v.organization_id}:${v.id}`)
     ? 'Chưa xác nhận kết quả lần chi trước. Cần đối chiếu phiếu trước khi tiếp tục.' : checksError ?? quickExpenseReason(v, ctx);
+  const batchReason = (batch: IncomeExpenseBatchSummary) => checksError ?? quickExpenseBatchReason(batch, ctx, reason);
   const clear = () => { if (!lock.current) setSelection({ scope, rows: [] }); };
   const toggle = (v: IncomeExpenseWithRelations, checked: boolean) => {
     if (lock.current || (checked && reason(v))) return;
@@ -94,12 +97,17 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
     finally { lock.current = false; setCollecting(false); }
   }
 
-  async function run(rows: IncomeExpenseWithRelations[]) {
+  async function run(rows: IncomeExpenseWithRelations[], batch?: IncomeExpenseBatchSummary) {
     if (lock.current || !rows.length || !ctx.ready) return;
+    if (batch) {
+      const invalid = batchReason(batch);
+      if (invalid) { setError(invalid); return; }
+    }
     lock.current = true;
     const startedGeneration = generation.current;
     setBusy(true); setError(null); setResults([]);
-    const targets = [...new Map(rows.map(v => [v.id, v])).values()];
+    setActiveBatchId(batch?.id ?? null);
+    const targets = [...new Map((batch ? quickExpenseBatchTargets(batch) : rows).map(v => [v.id, v])).values()];
     setProgress({ done: 0, total: targets.length });
     const outcome: QuickExpenseResult[] = [];
     try {
@@ -110,6 +118,12 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
       const freshCtx: QuickExpenseContext = { ...ctx, ready: true, permissions: freshPermissions,
         routes: freshRoutes.get(selectedOrganizationId ?? '') ?? LEGACY_ROUTES,
         cashbookIds: new Set(freshBooks.data.map(b => b.id)) };
+      if (batch) {
+        const freshBatch = await withDetailReadDeadline(loadIncomeExpenseBatch(batch.id, selectedOrganizationId!));
+        if (!freshBatch || !sameQuickExpenseBatchSnapshot(batch, freshBatch)) throw rejectQuickExpense('Phiếu tổng hoặc danh sách phiếu con vừa thay đổi. Vui lòng tải lại trước khi chi nhanh.');
+        const invalid = quickExpenseBatchReason(freshBatch, freshCtx);
+        if (invalid) throw rejectQuickExpense(invalid);
+      }
       let stopped = false;
       const postedOn = todayISO();
       for (const target of targets) {
@@ -122,7 +136,7 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
           if (!fresh || !sameQuickExpenseSnapshot(target, fresh)) throw rejectQuickExpense('Phiếu vừa thay đổi. Tải lại và kiểm tra trước khi chọn lại.');
           const invalid = quickExpenseReason(fresh, freshCtx);
           if (invalid) throw rejectQuickExpense(invalid);
-          const evidence = await adoptVoucherAttachmentsAsEvidence(fresh.id);
+          const evidence = batch ? await prepareQuickExpenseBatchEvidence(fresh) : await adoptVoucherAttachmentsAsEvidence(fresh.id);
           if (evidence.skipped.length || !evidence.evidenceIds.length) throw rejectQuickExpense('Chưa dùng được toàn bộ ảnh/chứng từ đã lưu. Hãy kiểm tra chứng từ của phiếu.');
           // Adoption is separate from money posting. Recheck attachments and the
           // snapshot afterwards; never silently use new attachments added meanwhile.
@@ -135,9 +149,17 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
             expectedPostingVersion: fresh.posting_version, idempotencyKey: crypto.randomUUID() };
           const validation = validatePostFinanceExecutionInput(input);
           if (!validation.ok) throw rejectQuickExpense(Object.values(validation.errors).join(' '));
+          if (batch) {
+            const membership = await withDetailReadDeadline(readIncomeExpenseBatchMembership(batch.id, selectedOrganizationId!));
+            if (!membership || !sameQuickExpenseBatchMembership(batch, membership)) throw rejectQuickExpense('Danh sách phiếu trong đợt vừa thay đổi. Đã dừng phần chưa chi; hãy tải lại và kiểm tra kết quả.');
+            if (!mounted.current || generation.current !== startedGeneration) throw rejectQuickExpense('Chưa gửi lệnh chi vì bộ lọc/công ty đã thay đổi.');
+          }
           await writer.mutateAsync(input);
           result.status = 'success'; result.message = 'Đã duyệt và chi.';
         } catch (e) {
+          // A group is not one atomic transaction: stop on a child failure and
+          // report each completed/remaining child rather than claim the group succeeded.
+          if (batch) stopped = true;
           if (e instanceof FinancialWorkflowError && e.outcome !== 'failure') {
             result.status = 'unknown'; stopped = true;
             blocked.current.add(`${target.organization_id}:${target.id}`);
@@ -151,9 +173,10 @@ export function useQuickExpense(scopeKey: string, readReady = true) {
       // remain in the batch, and uncertain outcomes remain blocked by the writer.
       setSelection(old => old.scope === scope ? { scope, rows: [] } : old);
     } catch (e) { setError(workflowErrorMessage(e, 'duyệt và chi nhanh')); }
-    finally { invalidate(); lock.current = false; setBusy(false); setActiveId(null); }
+    finally { invalidate(); lock.current = false; setBusy(false); setActiveId(null); setActiveBatchId(null); }
   }
-  return { reason, busy, collecting, activeId, progress, selected, results, error: error ?? checksError,
+  const runBatch = (batch: IncomeExpenseBatchSummary) => run(batch.vouchers, batch);
+  return { reason, batchReason, runBatch, activeBatchId, busy, collecting, activeId, progress, selected, results, error: error ?? checksError,
     checksError, retryChecks, ready: ctx.ready, toggle, togglePage, clear, selectAll, run };
 }
 

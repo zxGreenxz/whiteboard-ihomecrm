@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IncomeExpenseWithRelations } from '../types';
+import type { IncomeExpenseBatchSummary, IncomeExpenseWithRelations } from '../types';
 import type { FinanceV2OrgRoutes } from '@/lib/financeV2Route';
 
 const state = vi.hoisted(() => ({
   org: '11111111-1111-4111-8111-111111111111',
   permissions: { __superadmin: true } as unknown,
   read: vi.fn(), adopt: vi.fn(), write: vi.fn(), list: vi.fn(), books: vi.fn(),
+  batchRead: vi.fn(), membershipRead: vi.fn(),
 }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: state.org }) }));
@@ -28,12 +29,17 @@ vi.mock('../financeV2Mutations', () => ({
   useApproveAndPostIncomeExpenseV2: () => ({ mutateAsync: state.write }),
   useInvalidateMoney: () => vi.fn(),
   adoptVoucherAttachmentsAsEvidence: state.adopt,
+  prepareQuickExpenseBatchEvidence: (row: IncomeExpenseWithRelations) => state.adopt(row.id),
 }));
 vi.mock('../detailRead', () => ({ loadIncomeExpenseDetail: state.read, withDetailReadDeadline: (p: Promise<unknown>) => p }));
 vi.mock('../queries', () => ({ incomeExpensesListQuery: (...args: unknown[]) => ({ queryFn: () => state.list(...args) }) }));
+vi.mock('@/hooks/useVoucherDetail', () => ({
+  loadIncomeExpenseBatch: state.batchRead,
+  readIncomeExpenseBatchMembership: state.membershipRead,
+}));
 
 import { useQuickExpense } from '../useQuickExpense';
-import { quickExpenseReason, sameQuickExpenseSnapshot, type QuickExpenseContext } from '@/lib/quickExpense';
+import { quickExpenseBatchReason, quickExpenseBatchTargets, quickExpenseReason, sameQuickExpenseBatchSnapshot, sameQuickExpenseSnapshot, type QuickExpenseContext } from '@/lib/quickExpense';
 import { FinancialWorkflowError } from '@/lib/financialWorkflow';
 
 function voucher(i = 1, patch: Partial<IncomeExpenseWithRelations> = {}): IncomeExpenseWithRelations {
@@ -41,18 +47,209 @@ function voucher(i = 1, patch: Partial<IncomeExpenseWithRelations> = {}): Income
     organization_id: state.org, type: 'EXPENSE', building_id: null, total_amount: 100,
     approval_status: 'UNAPPROVED', posting_status: 'UNPOSTED', posting_mode: 'CASHBOOK', review_state: 'PENDING',
     approval_version: 1, posting_version: 1, updated_at: '2026-10-19T00:00:00Z',
-    account_id: book, account_is_virtual: false, attachments: ['https://storage.test/receipt.jpg'],
+    account_id: book, account_is_virtual: false, attachments: [`https://storage.test/receipt-${i}.jpg`],
     detail_read: { complete: true, expected_item_count: 0 }, items: [], system_source: null,
     ...patch } as IncomeExpenseWithRelations;
 }
 function context(): QuickExpenseContext {
   return { organizationId: state.org, permissions: { income_expenses: { approve: true } }, routes, cashbookIds: new Set([book]), ready: true };
 }
+function batch(rows = [voucher(), voucher(2)], patch: Partial<IncomeExpenseBatchSummary> = {}): IncomeExpenseBatchSummary {
+  return {
+    id: '55555555-5555-4555-8555-555555555555', organization_id: state.org,
+    name: 'Đợt chi tháng 10', type: 'EXPENSE', user_id: 'actor', payer_name: null,
+    attachments: ['https://storage.test/receipt.jpg'], notes: null, created_at: '2026-10-19T00:00:00Z',
+    voucher_date: '2026-10-19', account_id: book, account_name: 'Quỹ tiền mặt',
+    business_result_accounting: null, creator_name: null, vouchers: rows,
+    voucher_ids: rows.map(row => row.id), voucher_count: rows.length,
+    total_amount: rows.reduce((sum, row) => sum + row.total_amount, 0), building_names: [],
+    has_approved: rows.some(row => row.approval_status === 'APPROVED'),
+    all_cancelled: rows.every(row => row.approval_status === 'CANCELLED'), ...patch,
+  };
+}
+function membership(target = batch()) {
+  return { id: target.id, organization_id: target.organization_id, type: target.type, voucher_ids: target.voucher_ids };
+}
+function setBatchReads(target: IncomeExpenseBatchSummary) {
+  state.batchRead.mockResolvedValue(target);
+  state.membershipRead.mockResolvedValue(membership(target));
+  state.read.mockImplementation(async (id: string) => target.vouchers.find(row => row.id === id) ?? null);
+}
 beforeEach(() => {
-  vi.clearAllMocks(); state.org = '11111111-1111-4111-8111-111111111111'; state.permissions = { __superadmin: true };
+  vi.resetAllMocks(); state.org = '11111111-1111-4111-8111-111111111111'; state.permissions = { __superadmin: true };
   state.read.mockImplementation(async (id: string) => voucher(Number(id.slice(-12))));
   state.adopt.mockResolvedValue({ evidenceIds: ['evidence-1'], skipped: [] });
   state.write.mockResolvedValue({}); state.books.mockResolvedValue({ data: [{ id: book }], error: null });
+  state.batchRead.mockResolvedValue(batch()); state.membershipRead.mockResolvedValue(membership());
+});
+
+describe('điều kiện chi nhanh phiếu tổng', () => {
+  it('chỉ chọn con còn chờ duyệt; bỏ qua con đã chi và đã hủy', () => {
+    const target = batch([voucher(), voucher(2, { approval_status: 'APPROVED', posting_status: 'POSTED', review_state: 'RESOLVED' }),
+      voucher(3, { approval_status: 'CANCELLED' })]);
+    expect(quickExpenseBatchTargets(target).map(row => row.id)).toEqual([voucher().id]);
+    expect(quickExpenseBatchReason(target, context())).toBeNull();
+  });
+  it.each([
+    () => batch([voucher()], { voucher_ids: [voucher().id, voucher(2).id] }),
+    () => batch([voucher(), voucher(2)], { voucher_ids: [voucher().id] }),
+    () => batch([voucher(), voucher(2)], { voucher_ids: [voucher().id, voucher().id] }),
+    () => batch([voucher(), voucher()], { voucher_ids: [voucher().id, voucher(2).id] }),
+    () => batch([voucher()], { voucher_ids: undefined }),
+    () => batch([voucher()], { voucher_count: 2 }),
+    () => batch([voucher()], { organization_id: undefined }),
+    () => batch([voucher()], { organization_id: 'other-org' }),
+    () => batch([voucher(1, { organization_id: 'other-org' })]),
+    () => batch([voucher(1, { type: 'INCOME' })]),
+  ])('khóa phiếu tổng nếu thiếu toàn bộ tập con hoặc sai tổ chức/loại #%#', create => {
+    expect(quickExpenseBatchReason(create(), context())).toBeTruthy();
+  });
+  it.each([
+    { approval_status: 'APPROVED', posting_status: 'UNPOSTED', review_state: 'RESOLVED' },
+    { attachments: [] },
+    { account_id: null },
+    { posting_status: 'REVERSED' },
+  ] as Partial<IncomeExpenseWithRelations>[])('một con chưa xong không hợp lệ thì khóa cả đợt %j', patch => {
+    expect(quickExpenseBatchReason(batch([voucher(), voucher(2, patch)]), context())).toBeTruthy();
+  });
+  it('không cho chạy lại đợt đã hoàn tất hoặc không có con', () => {
+    expect(quickExpenseBatchReason(batch([voucher(1, { approval_status: 'APPROVED', posting_status: 'POSTED' })]), context())).toBeTruthy();
+    expect(quickExpenseBatchReason(batch([]), context())).toBeTruthy();
+  });
+  it('snapshot chặn thêm, bớt, sửa con và sửa ảnh tổng nhưng không phụ thuộc thứ tự con', () => {
+    const initial = batch();
+    expect(sameQuickExpenseBatchSnapshot(initial, batch([...initial.vouchers].reverse()))).toBe(true);
+    for (const changed of [
+      batch([voucher()]), batch([voucher(), voucher(2), voucher(3)]),
+      batch([voucher(), voucher(2, { total_amount: 200 })]),
+      batch([voucher(), voucher(2, { attachments: ['different'] })]),
+      batch(initial.vouchers, { attachments: ['different'] }),
+    ]) expect(sameQuickExpenseBatchSnapshot(initial, changed)).toBe(false);
+  });
+});
+
+describe('thực thi chi nhanh phiếu tổng', () => {
+  it('duyệt và chi tất cả con bằng sổ, ảnh và phiên bản riêng của từng con', async () => {
+    const target = batch();
+    state.adopt.mockImplementation(async (id: string) => ({ evidenceIds: [`evidence-${id}`], skipped: [] }));
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.batchRead).toHaveBeenCalledWith(target.id, state.org);
+    expect(state.write).toHaveBeenCalledTimes(2);
+    expect(state.write.mock.calls.map(call => call[0])).toEqual(target.vouchers.map(row => expect.objectContaining({
+      subjectId: row.id, organizationId: row.organization_id, cashbookId: row.account_id,
+      evidenceIds: [`evidence-${row.id}`], expectedApprovalVersion: row.approval_version, expectedPostingVersion: row.posting_version,
+    })));
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'success']);
+    expect(result.current.activeBatchId).toBeNull(); expect(result.current.busy).toBe(false);
+  });
+  it('danh sách bị lọc mất con không được âm thầm chi phần con đang thấy', async () => {
+    const partial = batch([voucher()], { voucher_ids: [voucher().id, voucher(2).id] });
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(partial));
+    expect(state.write).not.toHaveBeenCalled(); expect(state.adopt).not.toHaveBeenCalled();
+  });
+  it.each([
+    () => null,
+    () => batch([voucher(), voucher(2, { total_amount: 200 })]),
+    () => batch([voucher(), voucher(2, { attachments: ['changed'] })]),
+    () => batch([voucher(), voucher(2), voucher(3)]),
+    () => batch([voucher()]),
+  ])('đọc mới thấy đợt bị xóa/thay đổi thì không ghi con nào #%#', async fresh => {
+    state.batchRead.mockResolvedValue(fresh());
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(batch()));
+    expect(state.write).not.toHaveBeenCalled(); expect(state.adopt).not.toHaveBeenCalled();
+    expect(result.current.error).toBeTruthy();
+  });
+  it.each([
+    { approval_status: 'APPROVED', posting_status: 'UNPOSTED', review_state: 'RESOLVED' },
+    { attachments: [] },
+  ] as Partial<IncomeExpenseWithRelations>[])('kiểm toàn đợt trước lệnh đầu, không chi con đầu nếu con sau không hợp lệ %j', async patch => {
+    const target = batch([voucher(), voucher(2, patch)]); setBatchReads(target);
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.write).not.toHaveBeenCalled(); expect(state.adopt).not.toHaveBeenCalled();
+  });
+  it('tiếp tục chỉ con còn chờ duyệt trong đợt có con đã chi hoặc hủy', async () => {
+    const target = batch([voucher(), voucher(2, { approval_status: 'APPROVED', posting_status: 'POSTED', review_state: 'RESOLVED' }),
+      voucher(3, { approval_status: 'CANCELLED' })]); setBatchReads(target);
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.write).toHaveBeenCalledTimes(1);
+    expect(state.write).toHaveBeenCalledWith(expect.objectContaining({ subjectId: voucher().id }));
+    expect(result.current.results).toHaveLength(1);
+  });
+  it('tập con đổi trong lúc nhận chứng từ thì dừng cả đợt trước lệnh đầu', async () => {
+    state.adopt.mockImplementation(async () => {
+      state.membershipRead.mockResolvedValue(membership(batch([voucher(), voucher(2), voucher(3)])));
+      return { evidenceIds: ['e1'], skipped: [] };
+    });
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(batch()));
+    expect(state.write).not.toHaveBeenCalled();
+    expect(result.current.results.every(row => row.status !== 'success')).toBe(true);
+  });
+  it('tập con đổi sau một lần chi thì giữ kết quả thành công và không gửi các con còn lại', async () => {
+    const target = batch([voucher(), voucher(2), voucher(3)]); setBatchReads(target);
+    state.write.mockImplementation(async () => {
+      state.membershipRead.mockResolvedValue(membership(batch([voucher(), voucher(2)])));
+      return {};
+    });
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.write).toHaveBeenCalledTimes(1);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'skipped', 'skipped']);
+  });
+  it('mất quyền đọc đợt trước lệnh chi thì dừng và không gửi các con còn lại', async () => {
+    state.membershipRead.mockResolvedValue(null);
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(batch()));
+    expect(state.write).not.toHaveBeenCalled();
+    expect(result.current.results.map(row => row.status)).toEqual(['skipped', 'skipped']);
+  });
+  it('khóa chung phiếu tổng và phiếu lẻ ngay khi bắt đầu đọc đợt', async () => {
+    let finish!: (value: IncomeExpenseBatchSummary) => void;
+    state.batchRead.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const target = batch();
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.runBatch(target); });
+    expect(result.current.activeBatchId).toBe(target.id);
+    await act(async () => { await Promise.all([result.current.runBatch(target), result.current.run([voucher()])]); });
+    expect(state.batchRead).toHaveBeenCalledTimes(1); expect(state.write).not.toHaveBeenCalled();
+    await act(async () => { finish(target); await running; });
+    expect(state.write).toHaveBeenCalledTimes(2);
+  });
+  it('đổi phạm vi trong lúc đọc đợt thì không ghi dù kết quả cũ về sau', async () => {
+    let finish!: (value: IncomeExpenseBatchSummary) => void;
+    state.batchRead.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const target = batch();
+    const { result, rerender } = renderHook(({ filter }) => useQuickExpense(filter), { initialProps: { filter: 'a' } });
+    let running!: Promise<void>;
+    await act(async () => { running = result.current.runBatch(target); });
+    rerender({ filter: 'b' });
+    await act(async () => { finish(target); await running; });
+    expect(state.write).not.toHaveBeenCalled();
+  });
+  it('lỗi ghi xác định ở một con cũng dừng phần còn lại của phiếu tổng', async () => {
+    const target = batch([voucher(), voucher(2), voucher(3)]); setBatchReads(target);
+    state.write.mockResolvedValueOnce({}).mockRejectedValueOnce(new FinancialWorkflowError('Kỳ sổ đã khóa', 'failure', []));
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.write).toHaveBeenCalledTimes(2);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'skipped', 'skipped']);
+  });
+  it('kết quả không rõ ở con thứ hai dừng phần còn lại và giữ phiếu đầu đã thành công', async () => {
+    const target = batch([voucher(), voucher(2), voucher(3)]); setBatchReads(target);
+    state.write.mockResolvedValueOnce({}).mockRejectedValueOnce(new FinancialWorkflowError('Mất kết nối', 'unknown', []));
+    const { result } = renderHook(() => useQuickExpense('batch-view'));
+    await act(() => result.current.runBatch(target));
+    expect(state.write).toHaveBeenCalledTimes(2);
+    expect(result.current.results.map(row => row.status)).toEqual(['success', 'unknown', 'skipped']);
+    expect(result.current.reason(voucher(2))).toMatch(/đối chiếu/);
+    expect(result.current.batchReason(target)).toBeTruthy();
+  });
 });
 afterEach(cleanup);
 

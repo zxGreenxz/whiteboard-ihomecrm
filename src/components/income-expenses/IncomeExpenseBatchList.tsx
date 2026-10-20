@@ -1,3 +1,5 @@
+import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpense';
+import { QuickExpenseBatchButton } from './QuickExpenseActions';
 import { useMemo } from 'react';
 import {
   Table,
@@ -34,6 +36,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 interface IncomeExpenseBatchListProps {
+  quickExpense?: QuickExpenseActions;
   batches: IncomeExpenseBatchSummary[];
   isLoading: boolean;
   onView: (batchId: string) => void;
@@ -50,6 +53,7 @@ const formatVND = (amount: number): string =>
 
 const IncomeExpenseBatchList = ({
   batches,
+  quickExpense,
   isLoading,
   onView,
   onCancel,
@@ -227,11 +231,13 @@ const IncomeExpenseBatchList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                    <QuickExpenseBatchButton batch={batch} quick={quickExpense} />
                     {isAdmin && onEdit && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        disabled={quickExpense?.busy || quickExpense?.collecting}
                         onClick={() => onEdit(batch.id)}
                         title="Sửa phiếu trong đợt (Super Admin)"
                       >
@@ -243,6 +249,7 @@ const IncomeExpenseBatchList = ({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        disabled={quickExpense?.busy || quickExpense?.collecting}
                         onClick={() => onCancel(batch.id)}
                         title="Huỷ cả đợt"
                       >

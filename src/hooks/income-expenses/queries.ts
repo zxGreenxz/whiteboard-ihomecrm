@@ -1013,6 +1013,8 @@ export const useIncomeExpenseBatches = (
 
         summaries.push({
           id: b.id,
+          organization_id: b.organization_id ?? null,
+          voucher_ids: vIds,
           user_id: b.user_id,
           name: b.name,
           type: b.type,
