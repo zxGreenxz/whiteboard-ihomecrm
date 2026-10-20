@@ -3,7 +3,8 @@
 // a blank string or nothing, then repeat the same rejected call. The broker
 // therefore advertises such fields as omittable and maps those placeholders to
 // null against the ORIGINAL definition before any validator. Validators stay the
-// only acceptance fence; nothing else in the arguments is touched.
+// only acceptance fence; beyond that and the read-tool aliases below
+// (shapeReadArguments) nothing in the arguments is touched.
 const NIL_UUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
 const OMITTABLE = 'Bỏ trống nếu không có.';
 const plain = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -68,12 +69,43 @@ export function advertisedTool(tool) {
   return copy;
 }
 
+// 20/10/2026 (production trace, 18 standard questions): a model that calls a
+// hidden read tool straight away guesses snake_case names (from_date/to_date,
+// building_id) or a limit above the ceiling, is rejected and calls again
+// (≈3–5 s per miss). Read tools (readOnlyHint) therefore accept, top level only:
+// a snake_case key whose camelCase form is a schema property the call does not
+// already carry (both present: camelCase wins, the snake key is dropped), and an
+// integer `limit` outside minimum..maximum clamped to that bound. No synonym is
+// guessed (start_date, type stay unknown keys for the validator); write tools
+// and the advertised definitions are untouched. The camelCase form must be an
+// own schema property, so `__proto__` and the like can never become a target.
+const camelCase = key => key.replace(/_+([a-zA-Z0-9])/g, (_, next) => next.toUpperCase());
+function shapeReadArguments(tool, descriptors) {
+  if (own(tool, 'annotations')?.readOnlyHint !== true) return;
+  const properties = own(own(tool, 'inputSchema'), 'properties');
+  if (!plain(properties)) return;
+  for (const key of Object.keys(descriptors)) {
+    if (!key.includes('_')) continue;
+    const target = camelCase(key);
+    if (target === key || !Object.hasOwn(properties, target)) continue;
+    if (!Object.hasOwn(descriptors, target)) descriptors[target] = descriptors[key];
+    delete descriptors[key];
+  }
+  const limit = own(properties, 'limit'), current = Object.hasOwn(descriptors, 'limit') ? descriptors.limit : undefined;
+  if (!plain(limit) || !current || !Object.hasOwn(current, 'value') || !Number.isSafeInteger(current.value)) return;
+  const { minimum, maximum } = limit;
+  if (Number.isSafeInteger(maximum) && current.value > maximum) descriptors.limit = { ...current, value: maximum };
+  else if (Number.isSafeInteger(minimum) && current.value < minimum) descriptors.limit = { ...current, value: minimum };
+}
+
 export function normalizeToolArguments(tool, args) {
   try {
     if (!plain(args)) return args;
     // Descriptor copy: accessors, prototype and every other key reach the
     // validator exactly as supplied (an accessor is still rejected there).
     const descriptors = Object.getOwnPropertyDescriptors(args);
+    // Aliases first: an aliased nullable UUID (building_id: nil) still becomes null below.
+    shapeReadArguments(tool, descriptors);
     for (const { key, required, uuid } of nullableFields(tool)) {
       const current = Object.hasOwn(descriptors, key) ? descriptors[key] : undefined;
       if (!current) { if (required) descriptors[key] = { value: null, writable: true, enumerable: true, configurable: true }; continue; }

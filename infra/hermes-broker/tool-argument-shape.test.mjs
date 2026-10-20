@@ -173,6 +173,89 @@ test('required nullable fields: absent, blank and nil UUID become null; everythi
   assert.equal(normalizeToolArguments(tool('crm_work_memory_upsert'), { expectedId: NIL }).expectedId, null);
 });
 
+// 20/10/2026 (production trace, 18 câu chuẩn): model gọi thẳng tool đọc bị ẩn, đoán tên snake_case rồi phải gọi lại:
+// crm_read_monthly_pnl {from_date,to_date} → lỗi → {fromDate,toDate}; crm_read_income_expenses {start_date,end_date,type,limit:5}
+// → lỗi → {fromDate,toDate,limit:50,query:''}; crm_read_invoices {limit:100} (trần 50) → lỗi. Mỗi lần lỗi ≈3–5 s.
+test('B1c: read tools alias snake_case to a schema camelCase key and clamp limit; no synonym, no write tool, no advertised change', () => {
+  const pnl = tool('crm_read_monthly_pnl'), invoices = tool('crm_read_invoices'), expenses = tool('crm_read_income_expenses');
+  const before = JSON.stringify([pnl, invoices, expenses, advertisedTool(pnl), advertisedTool(invoices), advertisedTool(expenses)]);
+  // Trace 1: the first (rejected) monthly_pnl call now reaches the validator as the second one did.
+  assert.deepEqual(normalizeToolArguments(pnl, { from_date: '2026-09-01', to_date: '2026-09-30' }), { fromDate: '2026-09-01', toDate: '2026-09-30' });
+  assert.deepEqual(domainInput('monthly_pnl', normalizeToolArguments(pnl, { from_date: '2026-09-01', to_date: '2026-09-30' })),
+    domainInput('monthly_pnl', { fromDate: '2026-09-01', toDate: '2026-09-30' }));
+  assert.throws(() => domainInput('monthly_pnl', { from_date: '2026-09-01', to_date: '2026-09-30' }), 'the validator itself is unchanged');
+  // Trace 2: synonyms are not guessed; start_date/end_date/type stay unknown keys and the call stays invalid.
+  const guessed = { start_date: '2026-09-01', end_date: '2026-09-30', type: 'EXPENSE', limit: 5 };
+  assert.deepEqual(normalizeToolArguments(expenses, guessed), guessed);
+  assert.throws(() => domainInput('income_expenses', normalizeToolArguments(expenses, guessed)));
+  // Trace 3: an integer limit beyond the schema bound is clamped to the bound; anything non-integer is left for the validator.
+  assert.deepEqual(normalizeToolArguments(invoices, { limit: 100 }), { limit: 50 });
+  assert.deepEqual(domainInput('invoices', normalizeToolArguments(invoices, { limit: 100 })), domainInput('invoices', { limit: 50 }));
+  for (const [limit, expected] of [[51, 50], [1_000_000, 50], [0, 1], [-7, 1], [1, 1], [50, 50], [20, 20]]) assert.equal(normalizeToolArguments(invoices, { limit }).limit, expected, String(limit));
+  for (const limit of ['100', 100.5, 2 ** 53, Number.MAX_VALUE, -Infinity, NaN, null, true, [100], {}]) assert.deepEqual(normalizeToolArguments(invoices, { limit }), { limit }, String(limit));
+  assert.throws(() => domainInput('invoices', normalizeToolArguments(invoices, { limit: '100' })));
+  assert.deepEqual(normalizeToolArguments(invoices, { limit: 100, offset: 5000 }), { limit: 50, offset: 5000 }, 'only limit is clamped');
+  // Alias rules: only an own camelCase schema key; both present keeps camelCase and drops the snake key; aliased
+  // placeholders still become null; unknown, trailing/leading-underscore and upper-case keys are untouched.
+  assert.deepEqual(normalizeToolArguments(invoices, { building_id: id('2') }), { buildingId: id('2') });
+  assert.deepEqual(normalizeToolArguments(invoices, { building_id: NIL, buildingId: id('1') }), { buildingId: id('1') });
+  assert.deepEqual(normalizeToolArguments(invoices, { building_id: id('2'), buildingId: NIL }), { buildingId: null });
+  assert.deepEqual(normalizeToolArguments(invoices, { building_id: NIL }), { buildingId: null });
+  assert.deepEqual(normalizeToolArguments(invoices, { building_id: '' }), { buildingId: null });
+  for (const key of ['room_id', 'foo_bar', 'query_', '_query', 'FROM_DATE', 'from__date_', 'from_dates', 'organization_id', '__proto__', 'constructor_']) {
+    assert.deepEqual(normalizeToolArguments(invoices, { [key]: 'x' }), { [key]: 'x' }, key);
+  }
+  assert.deepEqual(normalizeToolArguments(pnl, { from__date: '2026-09-01' }), { fromDate: '2026-09-01' }, 'repeated underscores collapse');
+  assert.deepEqual(normalizeToolArguments(invoices, { from_date: '2026-09-01' }), { from_date: '2026-09-01' }, 'a key the tool does not have is never aliased');
+  assert.deepEqual(normalizeToolArguments(tool('crm_read_occupancy_report'), { report: 'upcoming', from_date: '2026-10-01', days: 10 }), { report: 'upcoming', fromDate: '2026-10-01', days: 10 });
+  // Accessors travel as descriptors: an aliased getter is neither read nor dropped (the validator rejects it as before).
+  let reads = 0;
+  const accessor = Object.defineProperty({ limit: 100 }, 'from_date', { enumerable: true, get() { reads += 1; return '2026-09-01'; } });
+  const shaped = normalizeToolArguments(pnl, accessor);
+  assert.equal(reads, 0); assert.equal(typeof Object.getOwnPropertyDescriptor(shaped, 'fromDate').get, 'function'); assert.equal(Object.hasOwn(shaped, 'from_date'), false);
+  assert.equal(shaped.limit, 50); assert.throws(() => domainInput('monthly_pnl', shaped));
+  const bare = Object.assign(Object.create(null), { to_date: '2026-09-30', limit: 99 });
+  const bareShaped = normalizeToolArguments(pnl, bare);
+  assert.equal(Object.getPrototypeOf(bareShaped), null); assert.deepEqual({ ...bareShaped }, { toDate: '2026-09-30', limit: 50 }); assert.deepEqual({ ...bare }, { to_date: '2026-09-30', limit: 99 });
+  // The read task tool (readOnlyHint) takes the same aliases; every write tool keeps its arguments byte for byte.
+  assert.deepEqual(normalizeToolArguments(tool('crm_task_follow_list'), { role: 'team', assignee_user_id: id('3'), limit: 99 }), { role: 'team', assigneeUserId: id('3'), limit: 50 });
+  assert.deepEqual(taskActionInput('list', normalizeToolArguments(tool('crm_task_follow_list'), { role: 'team', assignee_user_id: id('3'), limit: 99 })),
+    { role: 'team', assigneeUserId: id('3'), status: 'open', limit: 50, offset: 0 });
+  const create = { requestId: id('3'), title: 'x', description: null, building_id: id('4'), roomId: null, jobTypeId: id('5'), priority: 'NORMAL', assigneeId: null, deadline: null };
+  assert.deepEqual(normalizeToolArguments(tool('crm_task_create'), create), create);
+  assert.throws(() => taskActionInput('create', normalizeToolArguments(tool('crm_task_create'), create)));
+  const follow = { requestId: id('3'), job_id: id('5'), objective: 'x' };
+  assert.deepEqual(normalizeToolArguments(tool('crm_task_follow_set'), follow), follow);
+  assert.throws(() => taskActionInput('set', normalizeToolArguments(tool('crm_task_follow_set'), follow)));
+  assert.deepEqual(normalizeToolArguments(tool('crm_expense_create'), { requestId: id('3'), building_id: id('4') }).building_id, id('4'));
+  assert.deepEqual(normalizeToolArguments(tool('crm_work_memory_upsert'), { key: 'k', expected_version: 1 }).expected_version, 1);
+  for (const write of ALL.filter(value => !readOnly(value))) assert.equal(Object.hasOwn(normalizeToolArguments(write, { limit: 10 ** 6, building_id: id('4') }), 'building_id'), true, write.name);
+  // Nil/blank UUID behaviour of the 16/10 fix is unchanged next to the aliases.
+  assert.deepEqual(normalizeToolArguments(tool('crm_read_customers'), { cursor: NIL, buildingId: ' ', limit: 100 }), { cursor: null, buildingId: null, limit: 50 });
+  assert.deepEqual(normalizeToolArguments(tool('crm_task_input_options'), { kind: 'buildings', query: '', limit: 500 }), { kind: 'buildings', query: '', limit: 50, buildingId: null, cursor: null });
+  // No read tool owns a snake_case property, so an alias can never shadow a real key (a new tool with one must revisit the rule).
+  for (const read of ALL.filter(readOnly)) for (const key of Object.keys(read.inputSchema.properties ?? {})) assert.equal(key.includes('_'), false, `${read.name}.${key}`);
+  // Neither the originals nor the advertised definitions moved: tools/list keeps its bytes (budget test below).
+  assert.equal(JSON.stringify([pnl, invoices, expenses, advertisedTool(pnl), advertisedTool(invoices), advertisedTool(expenses)]), before);
+  assert.deepEqual(Object.keys(advertisedTool(pnl).inputSchema.properties), Object.keys(pnl.inputSchema.properties));
+  assert.equal(JSON.stringify(advertisedTool(pnl)).includes('from_date'), false);
+});
+
+test('B1c: the broker applies the read aliases before its validators; write tools and synonyms still fail as before', async t => {
+  const { broker, seen, token } = brokerFixture(t);
+  assert.equal((await broker.callTool(token, 'crm_read_monthly_pnl', { from_date: '2026-09-01', to_date: '2026-09-30' })).isError, false);
+  assert.deepEqual(seen, [['monthly_pnl', domainInput('monthly_pnl', { fromDate: '2026-09-01', toDate: '2026-09-30' })]]);
+  seen.length = 0;
+  assert.equal((await broker.callTool(token, 'crm_read_invoices', { limit: 100, building_id: NIL })).isError, false);
+  assert.deepEqual(seen, [['invoices', domainInput('invoices', { limit: 50 })]]);
+  seen.length = 0;
+  await assert.rejects(broker.callTool(token, 'crm_read_income_expenses', { start_date: '2026-09-01', end_date: '2026-09-30', type: 'EXPENSE', limit: 5 }),
+    error => error.code === 'invalid_request' && error.status === 400);
+  await assert.rejects(broker.callTool(token, 'crm_task_create', { requestId: id('3'), title: 'x', description: null, building_id: id('4'), roomId: null, jobTypeId: id('5'), priority: 'NORMAL', assigneeId: null, deadline: null }),
+    error => error.code === 'invalid_request' && error.status === 400);
+  assert.deepEqual(seen, []);
+});
+
 test('non-objects, unknown tools, prototypes, accessors and hostile proxies pass through', () => {
   const options = tool('crm_task_input_options');
   for (const value of [undefined, null, [], [NIL], 'x', 5, new Date(0), new Map()]) assert.equal(normalizeToolArguments(options, value), value);
@@ -238,8 +321,10 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // 65 tool, 63 654 B. Rào chữ công khai sau khi đọc dữ liệu riêng (crm_room_pass_upsert: confirmToken + một câu, +187 B):
 // 63 841 B. Rào chuyển sang luôn xác nhận hai bước (bỏ phụ thuộc dấu đọc riêng, rút một câu): 63 838 B — còn
 // 162 B tới trần chung. 20/10 tool đọc không null (bỏ format uuid, bỏ status enum [null], OMITTABLE trừ UUID):
-// 63 554 B; mô tả crm_read_customers theo HĐ đang hiệu lực: 63 769 B — còn 231 B. Trần tổng giữ 64 000 B
-// (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
+// 63 554 B; mô tả crm_read_customers theo HĐ đang hiệu lực: 63 769 B — còn 231 B. 20/10 B5b: 5 tool task
+// (follow_list/set/stop, progress, cancel) bỏ organizationId khỏi properties + required: 62 619 B — còn 1 381 B.
+// B1c (alias snake_case + kẹp limit) chỉ đổi normalizeToolArguments, không đổi một byte tools/list. Trần tổng giữ
+// 64 000 B (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
 const TOOLS_LIST_BUDGET = 64_000;
 function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
   const scope = createDependencyScope(); t.after(() => scope.close());

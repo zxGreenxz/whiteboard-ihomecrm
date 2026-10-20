@@ -451,11 +451,19 @@ test('direct room preparation and awaited audit precede receipt consumption with
 
 test('room arguments reject scope/RPC/field overrides and snapshot filters before admission awaits', async () => {
   for (const args of [null, [], { organizationId: ORG_B }, { fields: ['*'] }, { rpc: 'arbitrary' }, { buildingIds: [USER_B] },
-    { limit: 101 }, { limit: 0 }, { offset: -1 }, { offset: 2001 }, { offset: 1.5 }, { buildingName: 'x'.repeat(121) },
+    { limit: 1.5 }, { limit: '100' }, { offset: -1 }, { offset: 2001 }, { offset: 1.5 }, { buildingName: 'x'.repeat(121) },
     Object.defineProperty({}, 'limit', { enumerable: true, get() { throw new Error('private'); } })]) {
     const f = roomsFixture(); await assert.rejects(f.broker.callTool(f.token, 'crm_available_rooms', args), error('invalid_request'));
     assert(!f.events.includes('prepare')); assert(f.events.includes('denied'));
   }
+  // B1c (20/10): a read tool clamps an integer limit outside 1..100 to the bound before its validator (tool-argument-shape);
+  // offset, non-integer limits and accessors above are still rejected.
+  const capped = roomsFixture();
+  await capped.broker.callTool(capped.token, 'crm_available_rooms', { limit: 101 });
+  assert.deepEqual(capped.input(), { buildingName: '', offset: 0, limit: 100 });
+  const floored = roomsFixture({ result: () => { const value = roomPayload(); value.rooms = value.rooms.slice(0, 1); value.nextOffset = 1; return value; } });
+  await floored.broker.callTool(floored.token, 'crm_available_rooms', { limit: 0 });
+  assert.deepEqual(floored.input(), { buildingName: '', offset: 0, limit: 1 });
   const args = { buildingName: 'House', limit: 1 };
   const f = roomsFixture({ beforeResolve: async () => { args.buildingName = 'Other'; args.limit = 100; },
     result: () => { const value = roomPayload(); value.rooms = value.rooms.slice(0, 1); value.nextOffset = 1; return value; } });
