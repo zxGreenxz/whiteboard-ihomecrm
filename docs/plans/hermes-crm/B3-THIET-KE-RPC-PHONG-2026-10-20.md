@@ -1,6 +1,6 @@
 # B3 — Thiết kế RPC phòng lọc trong SQL `hermes_available_rooms_page_v1` (20/10/2026, chưa viết migration)
 
-Thiết kế từ khảo sát source (chỉ đọc) trên worktree `claude/hermes-toc-do-dot1-20261020`; chưa đo thời gian/plan trên TEST. Mục tiêu theo [PLAN §3 B3 và §10](PLAN-TOI-UU-TOC-DO-TOI-DA-2026-10-20.md): đẩy lọc tòa/trạng thái/trang xuống SQL, giữ đủ điều kiện trang Sale, dùng chung công thức trạng thái, tổng trên cùng tập lọc, không ảnh/JSON thừa nhưng giữ nội thất chữ/giá/trạng thái/che contact.
+Thiết kế từ khảo sát source (chỉ đọc) trên worktree `claude/hermes-toc-do-dot1-20261020`; chưa đo thời gian/plan trên TEST. Mục tiêu theo PLAN-TOI-UU-TOC-DO-TOI-DA §3 B3 và §10 (plan nằm ở worktree Codex, chưa commit): đẩy lọc tòa/trạng thái/trang xuống SQL, giữ đủ điều kiện trang Sale, dùng chung công thức trạng thái, tổng trên cùng tập lọc, không ảnh/JSON thừa nhưng giữ nội thất chữ/giá/trạng thái/che contact.
 
 Nguồn chính: `supabase/migrations/20261010022101_public_room_sale_policy.sql` (PUB, `get_public_available_rooms`), `20261010114500_…` (FACT, `room_sale_workflow_fact_v1`), `20261016080232_hermes_sale_listing_parity_v1.sql` (PAYLOAD), `20261017023242_hermes_scope_buildings_v1.sql` (SCOPE), `20261019144508_…tombstones_v1.sql` (TOMB), `20261019040111_hermes_domain_read_fast_v1.sql` (FAST), `infra/hermes-broker/room-read-service.mjs` (SVC), `room-read-projection.mjs` (PROJ), `broker.mjs` (BRK), `group-preview-adapter.mjs` (GADAPT), `web-parity.json`, `scripts/check-hermes-web-parity.mjs`.
 

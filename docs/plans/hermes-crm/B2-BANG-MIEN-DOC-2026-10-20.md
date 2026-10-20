@@ -1,6 +1,6 @@
 # B2 — Bảng miền đọc chưa đi đường nhanh (khảo sát source 20/10/2026)
 
-Khảo sát chỉ đọc trên worktree `claude/hermes-toc-do-dot1-20261020` (base `b37089f1d`), không chạy test/SQL. Mục đích: chọn miền chuyển sang đường nhanh theo [PLAN §3 B2](PLAN-TOI-UU-TOC-DO-TOI-DA-2026-10-20.md). Số trong ngoặc = số lượt gọi trong 17 phiên Zalo thật 15–19/10.
+Khảo sát chỉ đọc trên worktree `claude/hermes-toc-do-dot1-20261020` (base `b37089f1d`), không chạy test/SQL. Mục đích: chọn miền chuyển sang đường nhanh theo PLAN-TOI-UU-TOC-DO-TOI-DA §3 B2 (plan nằm ở worktree Codex, chưa commit). Số trong ngoặc = số lượt gọi trong 17 phiên Zalo thật 15–19/10.
 
 Quy ước: V/S = VOLATILE/STABLE; D/I = DEFINER/INVOKER; phạm vi T = tòa, C = công ty, S = sổ quỹ, P = platform, Me = người hỏi. Bind7 = `connectionId, tokenDigest, expectedEpoch, expectedPolicyVersion, expectedMembershipId, expectedAuthorizationVersion, expectedSessionRevision` (`bound-user-operation.mjs:48-50`); Bind4 (fast) = `connectionId, tokenDigest, expectedEpoch, expectedSessionRevision` (`domain-read-fast.mjs:13-16`). readAuthority = authority gọn của đường nhanh: `rooms.view` + caps v1/v2/v3 (`server.mjs:147-149`).
 
