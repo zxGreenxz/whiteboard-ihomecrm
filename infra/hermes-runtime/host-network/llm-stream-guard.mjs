@@ -2,6 +2,7 @@
 // llm-stream-guard: relay HTTP giữa Hermes (cửa docker0) và 9router (127.0.0.1:20128).
 // Chuyển nguyên mọi request/response theo luồng, không đệm. Chỉ đọc kèm SSE của
 // POST /v1/chat/completions để cắt khi model sinh `arguments` của tool call không dứt
+// hoặc phun chuỗi khoảng trắng dài ngoài chuỗi JSON (dấu hiệu chạy loạn sớm, trước khi đủ byte)
 // (Hermes v0.21.6 không bắt được, 9router bỏ qua max_tokens). Lý do và cách vận hành: README.md.
 import { realpathSync } from 'node:fs';
 import http from 'node:http';
@@ -41,6 +42,7 @@ export function loadConfig(env = process.env) {
     largeTools: new Set(tools),
     maxStreamMs: streamMs(positiveNumber(env, 'GUARD_MAX_STREAM_SECONDS', 300, false)),
     maxEvents: positiveNumber(env, 'GUARD_MAX_EVENTS', 40_000),
+    whitespaceRunLimit: positiveNumber(env, 'GUARD_WHITESPACE_RUN', 512),
   };
 }
 
@@ -54,8 +56,38 @@ function streamMs(seconds) {
 // Tên tool/model do model sinh ra: chỉ giữ ký tự an toàn cho log, tối đa 100 ký tự.
 const safeLabel = value => (typeof value === 'string' && value ? value.replace(/[^\w.:/@+-]/g, '?').slice(0, 100) : null);
 
+// Mã ký tự: khoảng trắng JSON (space, tab, LF, CR), dấu nháy kép và gạch chéo ngược.
+const SPACE = 0x20, TAB = 0x09, LF = 0x0a, CR = 0x0d, QUOTE = 0x22, BACKSLASH = 0x5c;
+
+/**
+ * Đếm khoảng trắng liên tiếp NGOÀI chuỗi JSON trong `arguments` của một tool call. Model chạy loạn
+ * phun hàng nghìn ký tự trắng sau `"background":f` hay `"cursor":`; khoảng trắng trong chuỗi
+ * (mô tả dài, tin nhắn xuống dòng) không tính. Trạng thái (đang trong chuỗi, vừa gặp `\`, độ dài
+ * chuỗi trắng) nằm trên `call` nên giữ nguyên qua mọi biên delta, kể cả delta kết thúc bằng `\`.
+ * Trả true ngay khi chuỗi trắng chạm `limit`; ký tự khác khoảng trắng ngoài chuỗi đặt lại bộ đếm.
+ */
+function whitespaceRun(call, text, limit) {
+  let { inString, escaped, run } = call;
+  let hit = false;
+  for (let at = 0; at < text.length; at++) {
+    const code = text.charCodeAt(at);
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (code === BACKSLASH) escaped = true;
+      else if (code === QUOTE) inString = false;
+    } else if (code === SPACE || code === LF || code === TAB || code === CR) {
+      if (++run >= limit) { hit = true; break; }
+    } else {
+      run = 0;
+      if (code === QUOTE) inString = true;
+    }
+  }
+  call.inString = inString; call.escaped = escaped; call.run = run;
+  return hit;
+}
+
 /** Đọc SSE theo từng mảnh TCP; push() trả vi phạm đầu tiên hoặc null. Không bao giờ ném lỗi vì dữ liệu lạ. */
-export function createStreamInspector({ argsMax, largeArgsMax, largeTools, maxEvents }) {
+export function createStreamInspector({ argsMax, largeArgsMax, largeTools, maxEvents, whitespaceRunLimit }) {
   const decoder = new StringDecoder('utf8');
   const calls = new Map(), seen = [];
   let tail = '', skipping = false, events = 0, model = null;
@@ -65,13 +97,19 @@ export function createStreamInspector({ argsMax, largeArgsMax, largeTools, maxEv
     let call = calls.get(key);
     // `id` chỉ có ở delta đầu của mỗi tool call; id mới ở cùng index là call mới, đếm lại từ 0.
     if (!call || (typeof id === 'string' && id && call.id && id !== call.id)) {
-      calls.set(key, call = { id: typeof id === 'string' ? id : '', name: '', chars: 0 });
+      calls.set(key, call = { id: typeof id === 'string' ? id : '', name: '', chars: 0, inString: false, escaped: false, run: 0 });
       seen.push(call);
     }
     if (!call.name && typeof fn.name === 'string') call.name = fn.name;
-    if (typeof fn.arguments === 'string') call.chars += fn.arguments.length;
+    const text = typeof fn.arguments === 'string' ? fn.arguments : '';
+    call.chars += text.length;
     const limit = largeTools.has(call.name) ? largeArgsMax : argsMax;
-    return call.chars > limit ? { reason: 'tool_args', tool: safeLabel(call.name), argsChars: call.chars, limit } : null;
+    // Giới hạn byte xét trước để giữ nguyên hành vi cũ khi một delta vi phạm cả hai.
+    if (call.chars > limit) return { reason: 'tool_args', tool: safeLabel(call.name), argsChars: call.chars, limit };
+    if (text && whitespaceRun(call, text, whitespaceRunLimit)) {
+      return { reason: 'whitespace_run', tool: safeLabel(call.name), argsChars: call.chars, limit: whitespaceRunLimit };
+    }
+    return null;
   }
 
   // Mỗi dòng `data:` là một sự kiện: chunk OpenAI luôn là JSON một dòng.
@@ -185,7 +223,8 @@ export function createGuard(config, { log = line => process.stdout.write(`${line
         cut = true;
         clearTimeout(timer);
         const seen = inspector.summary();
-        const own = violation.reason === 'tool_args'; // đúng call vi phạm, kể cả khi call chưa có tên
+        // Vi phạm gắn với một tool call cụ thể: ghi đúng call đó, kể cả khi call chưa có tên.
+        const own = violation.reason === 'tool_args' || violation.reason === 'whitespace_run';
         emit({ event: 'llm_stream_guard_cut', reason: violation.reason, tool: own ? violation.tool : seen.tool,
           argsChars: own ? violation.argsChars : seen.argsChars, limit: violation.limit,
           elapsedMs: Date.now() - startedAt, events: seen.events, model: seen.model });
@@ -266,7 +305,8 @@ async function main() {
     listen: target.fd === 3 ? 'systemd-fd:3' : `${address.address}:${address.port}`,
     upstream: config.upstream.origin + config.upstream.pathname.replace(/\/+$/, ''),
     argsMax: config.argsMax, largeArgsMax: config.largeArgsMax, largeTools: [...config.largeTools],
-    maxStreamSeconds: config.maxStreamMs / 1000, maxEvents: config.maxEvents }));
+    maxStreamSeconds: config.maxStreamMs / 1000, maxEvents: config.maxEvents,
+    whitespaceRunLimit: config.whitespaceRunLimit }));
   const shutdown = () => guard.close().then(() => process.exit(0));
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);

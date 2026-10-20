@@ -21,14 +21,50 @@ function nullableFields(tool) {
     .map(([key, property]) => Object.freeze({ key, required: needed(key), uuid: property.format === 'uuid' }));
 }
 
+// A fresh object per key: structuredClone keeps shared property objects shared
+// (crm_task_create roomId/assigneeId), so in-place edits would apply twice.
+const hinted = property => typeof property.description === 'string' && property.description.includes(OMITTABLE) ? property :
+  { ...property, description: [property.description, OMITTABLE].filter(Boolean).join(' ') };
+
+// 20/10/2026 (measured): Hermes (upstream v0.21.6) rewrites ['string','null'] as
+// {"type":"string","nullable":true} before the model sees it. `nullable` is not
+// standard on OpenAI-compatible routes and gpt-6 (sol/astra) froze right after
+// `"cursor":` on 6/6 crm_read_customers calls. Read tools (readOnlyHint) are
+// therefore advertised with no null at the top level: a nullable type keeps its
+// non-null types and loses format:uuid, an enum loses null (and the property
+// when nothing is left, e.g. status of a domain without statuses). A converted
+// field gets OMITTABLE unless it is a UUID: a blank or nil UUID already becomes
+// null above, while a blank date/enum/number would reach the validator (and the
+// hint costs 44 B per field of a 64 000 B tools/list). The original stays the
+// validator's and normalizeToolArguments' only definition. Write tools keep the
+// original shape beyond required-nullable: absent = keep and null = clear differ.
+function advertisedReadProperty(property) {
+  if (nullable(property)) {
+    const types = property.type.filter(type => type !== 'null'), shaped = { ...property, type: types.length === 1 ? types[0] : types };
+    if (shaped.format !== 'uuid') return hinted(shaped);
+    delete shaped.format;
+    return shaped;
+  }
+  if (!Array.isArray(property.enum) || !property.enum.includes(null)) return property;
+  const values = property.enum.filter(value => value !== null);
+  return values.length ? hinted({ ...property, enum: values }) : undefined;
+}
+
 export function advertisedTool(tool) {
   const copy = structuredClone(tool), schema = own(copy, 'inputSchema'), properties = own(schema, 'properties');
-  if (!Array.isArray(own(schema, 'required')) || !plain(properties)) return copy;
-  const omittable = schema.required.filter(key => nullable(own(properties, key)));
-  schema.required = schema.required.filter(key => !omittable.includes(key));
-  // A fresh object per key: structuredClone keeps shared property objects shared
-  // (crm_task_create roomId/assigneeId), so in-place edits would apply twice.
-  for (const key of omittable) properties[key] = { ...properties[key], description: [properties[key].description, OMITTABLE].filter(Boolean).join(' ') };
+  if (!plain(properties)) return copy;
+  const required = Array.isArray(own(schema, 'required')) ? schema.required : [];
+  const omittable = required.filter(key => nullable(own(properties, key)));
+  if (omittable.length) schema.required = required.filter(key => !omittable.includes(key));
+  // Required+nullable (every tool): omittable, with the hint even next to an own description.
+  for (const key of omittable) properties[key] = hinted(properties[key]);
+  if (own(tool, 'annotations')?.readOnlyHint !== true) return copy;
+  for (const [key, property] of Object.entries(properties)) {
+    if (!plain(property)) continue;
+    const shaped = advertisedReadProperty(property);
+    if (shaped === undefined) { delete properties[key]; if (Array.isArray(schema.required)) schema.required = schema.required.filter(name => name !== key); }
+    else properties[key] = shaped;
+  }
   return copy;
 }
 

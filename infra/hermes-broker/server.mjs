@@ -102,9 +102,12 @@ function backendLimits(value) {
  * tools/call rates, the broker's total deadline for one MCP invocation, and how
  * long an external MCP request waits for its connection's maintenance fence
  * before answering 503 connection_maintenance (0 keeps the immediate 503).
+ * Optional `callLog(record)`: one tool_call_timing record per broker invocation
+ * (phase durations, result size, outcome; never arguments, results or tokens).
+ * The host owns the sink; this composition still has no logger of its own.
  */
 export function createHermesBackend(configuration = {}) {
-  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath'];
+  const optional = ['fetch', 'clock', 'handoff', 'connectorOnly', 'limits', 'readFastPath', 'callLog'];
   if (!plain(configuration) || Object.keys(configuration).some(key => !['supabase', 'store', 'encryption', 'http', 'audit', ...optional].includes(key)) ||
       !exact(configuration.supabase, ['url', 'publishableKey']) || !exact(configuration.store, ['pool', 'expectedRole']) ||
       !exact(configuration.encryption, ['activeKeyVersion', 'keys']) || !exact(configuration.http, ['allowedHosts', 'allowedOrigins']) ||
@@ -112,10 +115,11 @@ export function createHermesBackend(configuration = {}) {
       (Object.hasOwn(configuration, 'clock') && typeof configuration.clock !== 'function') ||
       (Object.hasOwn(configuration, 'connectorOnly') && configuration.connectorOnly !== true) ||
       (Object.hasOwn(configuration, 'readFastPath') && typeof configuration.readFastPath !== 'boolean') ||
+      (Object.hasOwn(configuration, 'callLog') && typeof configuration.callLog !== 'function') ||
       (Object.hasOwn(configuration, 'handoff') && (!exact(configuration.handoff, ['stage']) ||
         !Object.hasOwn(Object.getOwnPropertyDescriptor(configuration.handoff, 'stage') ?? {}, 'value') ||
         typeof configuration.handoff.stage !== 'function'))) throw new TypeError('invalid_backend_config');
-  const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now } = configuration;
+  const { supabase, store, encryption, http, audit, fetch: request = globalThis.fetch, clock = Date.now, callLog } = configuration;
   let crypto;
   try {
     const limits = backendLimits(configuration.limits);
@@ -168,7 +172,7 @@ export function createHermesBackend(configuration = {}) {
     const expenses = createExpenseActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const broker = createBroker({ tasks, roomPass, customers, expenses, authority, roomReads, groupPreviews, externalGroups, workMemory, schedules, zaloBroadcasts, domains, dependencyScope, audit, clock,
-      observe: health.record, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
+      observe: health.record, callLog, limits: { maxResultBytes: 65_536, maxToolsListBytes: TOOLS_LIST_MAX_BYTES, maxRequestsPerMinute: limits.requestsPerMinute,
         maxToolCallsPerMinute: limits.toolCallsPerMinute, timeoutMs: limits.callTimeoutMs } });
     // The host owns the WAL and its keyring. Track the actual filesystem promise
     // so an HTTP/control timeout cannot let close erase keys while stage is live.
