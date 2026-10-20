@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-20T19:34:12.830Z",
+  "generatedAt": "2026-10-20T20:25:42.589Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 777,
+    "ledger-applied": 780,
     "unknown": 80,
-    "catalog-proven": 208,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12405,10 +12405,9 @@
       "name": "hermes_receivables_building_name_v1",
       "scheme": "timestamp14",
       "sha256": "b49611f6bc224c800d5a0f2a568695b93586f8454afd11f843973d642380c702",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
-        "catalog:function:public.hermes_domain_read_v2"
+        "receipt:2026-10-20T20:20:54.871Z|bien-nhan-backup"
       ]
     },
     {
@@ -12417,10 +12416,9 @@
       "name": "hermes_domain_reads_building_name_v1",
       "scheme": "timestamp14",
       "sha256": "b91cea55e945db59d65eb7c7ffd670281436011f22275aaae756cfa81a4634d7",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
-        "catalog:function:public.hermes_domain_read_v1"
+        "receipt:2026-10-20T20:22:58.406Z|bien-nhan-backup"
       ]
     },
     {
@@ -12429,9 +12427,9 @@
       "name": "hermes_w2_customers_building_name_v1",
       "scheme": "timestamp14",
       "sha256": "3bd2cdd4a0d003f50e70191b1f05bf522dcb667625538bfc245706ef258f2de9",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_domain_read_v3"
+        "receipt:2026-10-20T20:25:39.829Z|bien-nhan-backup"
       ]
     },
     {
