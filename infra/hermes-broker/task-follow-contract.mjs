@@ -36,6 +36,11 @@ const label = (value, max) => typeof value === 'string' && value.length > 0 && [
 const instant = value => typeof value === 'string' && /^[1-9]\d{3}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && new Date(value).toISOString() === value;
 const digest = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
 
+// SQL input of each operation. organizationId is the connection's company:
+// since 20/10/2026 (B5b) the model no longer names it (the 16/10 schema made it
+// required, so "how many jobs am I following?" first cost a crm_auth_context
+// call, ≈5 s); the adapter binds it before any RPC (bindTaskFollowCompany) and
+// a value the model still sends may only restate it.
 const KEYS = Object.freeze({
   list: ['organizationId', 'role', 'assigneeUserId', 'status', 'limit', 'offset'],
   set: ['organizationId', 'requestId', 'jobId', 'objective', 'remindBeforeMinutes', 'notifyAssigner', 'parentFollowId'],
@@ -47,7 +52,8 @@ export function taskFollowInput(operation, raw) {
   if (!isTaskFollowOperation(operation) || !domainExact(raw, Object.keys(raw ?? {})) || Object.keys(raw).some(key => !KEYS[operation].includes(key))) fail();
   const value = operation === 'list' ? { assigneeUserId: null, status: 'open', limit: 20, offset: 0, ...raw }
     : operation === 'set' ? { remindBeforeMinutes: null, notifyAssigner: true, parentFollowId: null, ...raw } : { ...raw };
-  if (!domainExact(value, KEYS[operation]) || !domainId(value.organizationId)) fail();
+  const company = Object.hasOwn(value, 'organizationId');
+  if (!domainExact(value, company ? KEYS[operation] : KEYS[operation].filter(key => key !== 'organizationId')) || (company && !domainId(value.organizationId))) fail();
   if (operation === 'list') {
     if (!['assigned_to_me', 'assigned_by_me', 'team'].includes(value.role) || !['open', 'completed', 'all'].includes(value.status) ||
       !(value.role === 'team' ? nullable(domainId)(value.assigneeUserId) : value.assigneeUserId === null || typeof value.assigneeUserId === 'string') ||
@@ -62,6 +68,15 @@ export function taskFollowInput(operation, raw) {
   if (operation === 'progress' && (!domainId(value.jobId) || !text(value.note, 1000, true) || !digest(value.expectedNoteDigest))) fail();
   if (operation === 'cancel' && (!domainId(value.jobId) || !text(value.reason, 300))) fail();
   return Object.freeze(value);
+}
+/** Bind the connection's company to a validated input before any RPC: SQL
+ * compares p_input.organizationId with the connection row, so the value sent is
+ * always the connection's. A company the model named must restate it exactly;
+ * any other one is refused here (task_follow_company), as SQL would refuse it. */
+export function bindTaskFollowCompany(input, organizationId) {
+  if (!domainExact(input, Object.keys(input ?? {})) || !domainId(organizationId)) fail();
+  if (Object.hasOwn(input, 'organizationId') && input.organizationId !== organizationId) throw new TypeError('task_follow_company');
+  return Object.freeze({ ...input, organizationId });
 }
 
 const FOLLOW_KEYS = ['id', 'version', 'state', 'closeReason', 'jobId', 'jobCode', 'assignerUserId', 'executorUserId', 'mode', 'depth',
@@ -138,28 +153,28 @@ export function taskFollowResult(operation, value, identity, input) {
 
 const uuid = { type: 'string', format: 'uuid' };
 const nullableUuid = { type: ['string', 'null'], format: 'uuid' };
-const company = { ...uuid, description: 'Công ty của kết nối hiện tại (lấy từ crm_auth_context). Superadmin phải nêu rõ công ty; khác công ty sẽ bị từ chối.' };
+// No organizationId property (B5b, 20/10/2026): the company is the connection's.
 const tool = (name, description, properties, required, annotations) => Object.freeze({ name, description,
   inputSchema: { type: 'object', additionalProperties: false, required, properties }, annotations });
 export const TASK_FOLLOW_TOOLS = Object.freeze([
   tool('crm_task_follow_list', 'Xem việc CRM giao cho tôi, tôi giao hoặc của nhóm (team) trong phạm vi quyền xem công việc hiện tại: trạng thái, người thực hiện, hạn, quá hạn, ghi chú tiến độ và mục tiêu theo dõi. Dữ liệu hiện hành lấy từ CRM, không dùng ký ức thay thế.',
-    { organizationId: company, role: { enum: ['assigned_to_me', 'assigned_by_me', 'team'] }, assigneeUserId: { ...nullableUuid, description: 'Chỉ dùng với role=team; khác thì bỏ qua.' },
+    { role: { enum: ['assigned_to_me', 'assigned_by_me', 'team'] }, assigneeUserId: { ...nullableUuid, description: 'Chỉ dùng với role=team; khác thì bỏ qua.' },
       status: { enum: ['open', 'completed', 'all'], default: 'open' }, limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
-      offset: { type: 'integer', minimum: 0, maximum: 200, default: 0 } }, ['organizationId', 'role'],
+      offset: { type: 'integer', minimum: 0, maximum: 200, default: 0 } }, ['role'],
     { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
   tool('crm_task_follow_set', `Đặt theo dõi chủ động (standing grant) cho một việc CRM đang mở đã có người thực hiện: nhắc người thực hiện trước hạn, báo quá hạn/hoàn thành/tiến độ cho người giao. Ghi bạn là người giao; không làm thay người nhận. ${REQUEST_ID_GUIDANCE} Mất phản hồi thì gọi lại đúng requestId để đối soát. Chuỗi giao lại cần parentFollowId; giao ngược cho người đang giao việc cho bạn bị chặn để chống vòng lặp.`,
-    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, objective: { type: 'string', minLength: 1, maxLength: 500 },
+    { requestId: REQUEST_ID_PROPERTY, jobId: uuid, objective: { type: 'string', minLength: 1, maxLength: 500 },
       remindBeforeMinutes: { type: ['integer', 'null'], minimum: 0, maximum: 10080, default: null }, notifyAssigner: { type: 'boolean', default: true },
-      parentFollowId: { ...nullableUuid, default: null } }, ['organizationId', 'requestId', 'jobId', 'objective'],
+      parentFollowId: { ...nullableUuid, default: null } }, ['requestId', 'jobId', 'objective'],
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }),
   tool('crm_task_follow_stop', `Dừng theo dõi/nhắc do chính bạn đã đặt (dùng version hiện tại). Không xoá việc CRM. ${REQUEST_ID_GUIDANCE}`,
-    { organizationId: company, requestId: REQUEST_ID_PROPERTY, followId: uuid, expectedVersion: { type: 'integer', minimum: 1 } },
-    ['organizationId', 'requestId', 'followId', 'expectedVersion'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
+    { requestId: REQUEST_ID_PROPERTY, followId: uuid, expectedVersion: { type: 'integer', minimum: 1 } },
+    ['requestId', 'followId', 'expectedVersion'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
   tool('crm_task_progress', `Ghi tiến độ (ghi chú) cho việc CRM đang mở mà bạn thực hiện hoặc đã tạo, theo quyền sửa công việc. Thay toàn bộ ghi chú: lấy progressDigest từ crm_task_follow_list. Hoàn thành việc vẫn làm trong CRM (ảnh, vị trí). ${REQUEST_ID_GUIDANCE}`,
-    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, note: { type: 'string', minLength: 1, maxLength: 1000 },
-      expectedNoteDigest: { type: 'string', pattern: '^[a-f0-9]{32}$' } }, ['organizationId', 'requestId', 'jobId', 'note', 'expectedNoteDigest'],
+    { requestId: REQUEST_ID_PROPERTY, jobId: uuid, note: { type: 'string', minLength: 1, maxLength: 1000 },
+      expectedNoteDigest: { type: 'string', pattern: '^[a-f0-9]{32}$' } }, ['requestId', 'jobId', 'note', 'expectedNoteDigest'],
     { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
   tool('crm_task_cancel', `Huỷ (xoá) một việc CRM đang mở theo quyền xoá công việc hiện tại khi người dùng yêu cầu rõ. Không huỷ việc đã hoàn thành hoặc đã ghi vật tư. Báo người thực hiện và đóng các theo dõi; ghi người huỷ và người thực hiện. ${REQUEST_ID_GUIDANCE}`,
-    { organizationId: company, requestId: REQUEST_ID_PROPERTY, jobId: uuid, reason: { type: 'string', minLength: 1, maxLength: 300 } },
-    ['organizationId', 'requestId', 'jobId', 'reason'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
+    { requestId: REQUEST_ID_PROPERTY, jobId: uuid, reason: { type: 'string', minLength: 1, maxLength: 300 } },
+    ['requestId', 'jobId', 'reason'], { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }),
 ]);
