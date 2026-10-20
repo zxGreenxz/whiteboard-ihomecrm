@@ -296,7 +296,7 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
   // 17/10 rút gọn (tools/list ≤ ngân sách) nhưng giữ đủ ba ý của sự cố. 21/10 (B5d): hint `query` theo cột SQL
   // thật của từng miền thay cho một câu chung hứa "(tên, phòng, mã)" (audit L1); buildingName/roomName là tên.
   const EMPTY = EMPTY_RESULT_HINT;
-  assert.match(EMPTY, /^Rỗng là thật; không gọi lại\.$/);
+  assert.match(EMPTY, /^Rỗng sau lọc đúng = không có\.$/);
   assert.match(DOMAIN_BUILDING_HINT, /^ID toà \(không phải công ty\)\.$/);
   assert.match(BUILDING_NAME_HINT, /thay buildingId\.$/); assert.match(ROOM_NAME_HINT, /lọc trang/);
   for (const [operation, hint] of Object.entries(READ_QUERY_HINTS)) assert.ok(/^[^\s].{6,70}\.$/u.test(hint) && !/\(tên, phòng, mã\)/.test(hint), operation);

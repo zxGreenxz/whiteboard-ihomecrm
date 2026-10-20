@@ -241,7 +241,7 @@ export const READ_QUERY_HINTS = Object.freeze({
 });
 // 21/10 rút chữ (tools/list ≤ 64 000 B sau khi thêm buildingName/roomName); giữ đủ ba ý của sự cố 16/10.
 export const DOMAIN_BUILDING_HINT = 'ID toà (không phải công ty).';
-export const EMPTY_RESULT_HINT = 'Rỗng là thật; không gọi lại.';
+export const EMPTY_RESULT_HINT = 'Rỗng sau lọc đúng = không có.';
 // B5d (21/10/2026; sự cố 00:11 "khách nào đang ở phòng London 5 950NK" → crm_read_customers
 // {buildingId, query:"LONDON 5"} → 0): mọi tool đọc danh sách nhận TÊN toà (buildingName) và,
 // nơi hàng có phòng, TÊN phòng (roomName). Connector giải tên → ID qua danh bạ trong phạm vi
