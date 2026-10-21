@@ -14,6 +14,8 @@
 //   - KHÔNG VAPID ⇒ send-push trên TEST không bao giờ đẩy được tới thiết bị thật.
 //   - quick-entry: các QUICK_ENTRY_* nạp tay (xem supabase/functions/README.md) — thiếu thì hàm
 //     trả quick_entry_disabled, trang /chi-tieu vẫn nhập tay được.
+//   - door-access: KHÔNG BAO GIỜ nạp TUYA_* (khoá thật mở được cửa thật) ⇒ trên TEST hàm trả not_configured,
+//     trang /cua-van-tay báo "chưa kết nối" — đúng ý đồ. Thấy TUYA_* trên TEST thì script dừng đỏ.
 // network-center-worker cố ý bỏ: không worker nào của TEST.
 
 import { randomBytes } from "node:crypto";
@@ -22,11 +24,11 @@ import { join } from "node:path";
 
 import { PROD_REF, credential, docVault, ghiLog, mgmt, repoRoot } from "./lib.mjs";
 
-export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry"];
+export const DANH_SACH = ["admin-create-user", "llm-proxy", "salary-v5-jobs", "demo-reset", "send-push", "quick-entry", "door-access"];
 
 // Hàm MỚI chưa từng lên production thì chưa có cờ verify_jwt để chép ⇒ khai sẵn ở đây. Lên production
 // rồi thì cờ production thắng (vòng dưới đọc production trước) — hai bên vẫn phải khớp.
-export const CHUA_CO_O_PRODUCTION = { "quick-entry": { verify_jwt: true } };
+export const CHUA_CO_O_PRODUCTION = { "quick-entry": { verify_jwt: true }, "door-access": { verify_jwt: true } };
 
 function tepFunction(slug) {
   const goc = join(repoRoot, "supabase", "functions", slug);
@@ -76,6 +78,7 @@ async function main(argv) {
   if (moi.length) await mgmt(cred.testPat, "POST", `/v1/projects/${cred.testRef}/secrets`, moi);
   const sau = (await mgmt(cred.testPat, "GET", `/v1/projects/${cred.testRef}/secrets`)).map((x) => x.name);
   if (sau.some((n) => /^VAPID_/.test(n))) throw new Error("TEST có secret VAPID — push có thể tới thiết bị thật. Xoá ngay.");
+  if (sau.some((n) => /^TUYA_/.test(n))) throw new Error("TEST có secret TUYA_* — door-access có thể mở cửa thật. Xoá ngay.");
   ghiLog("edge", `secret TEST: ${sau.filter((n) => !/^SUPABASE_/.test(n)).join(", ") || "(không)"} · nạp mới ${moi.map((m) => m.name).join(", ") || "không"} · không VAPID`);
   return 0;
 }

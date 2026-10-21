@@ -10,6 +10,7 @@
 | `demo-reset` | Reset dữ liệu demo có cooldown/tripwire | POST + header `x-demo-secret` (không dùng admin JWT) |
 | `llm-proxy` | Proxy model cho AI Copilot, quota/reservation/usage | JWT + entitlement + cấu hình provider |
 | `quick-entry` | AI của trang Báo chi nhanh `/chi-tieu`: chép giọng (OpenRouter) + đọc chữ/ảnh bill (9router) | JWT + quyền ghi chi + công tắc `QUICK_ENTRY_MODE` |
+| `door-access` | Cửa vân tay SmartLife/Tuya của trang `/cua-van-tay`: tìm máy, lịch sử ra vào, đối chiếu vân tay, mật khẩu tạm, mở cửa từ xa, xoá vân tay trên máy | JWT + công ty `DOOR_ACCESS_ORG_ID` + quyền `door_access.*` theo toà (RPC) + công tắc `DOOR_ACCESS_MODE` |
 | `salary-v5-jobs` | Chạy job V5 (`nightly`, `digest`, `close_period`...) | cron secret, service role hoặc JWT admin |
 | `send-push` | Gửi Web Push từ notification pipeline | JWT/service caller theo implementation |
 | `network-center-worker` | API hẹp cho worker MikroTik/Aruba trên Vultr | `x-network-worker-secret`, không nhận JWT trình duyệt |
@@ -160,6 +161,42 @@ Secret (thiếu khoá của đường nào thì đường đó trả `quick_entr
 ```powershell
 npx --yes deno@2.9.4 test --config supabase/functions/quick-entry/deno.json `
   supabase/functions/quick-entry/index.test.ts --allow-env
+```
+
+## Cửa vân tay (`door-access`)
+
+Hợp đồng (hành động, tham số, dạng trả, mã lỗi, RPC): [26-cua-van-tay.md](../../docs/he-thong/26-cua-van-tay.md).
+Một `POST` với thân `{action, ...}` (≤ 16 KB), trả `{ok:true, data}` hoặc `{ok:false, error:{code, message, tuyaCode?,
+outcomeUnknown?}}` kèm HTTP theo mã lỗi; mọi câu trả lời `Cache-Control: no-store`. Thư mục chỉ gồm file cấp cao nhất
+(`index.ts` + thư viện `tuyaClient.ts`/`tuyaCrypto.ts`/`tuyaDoor.ts`, không import `_shared`).
+
+Thứ tự kiểm: phương thức → thân → cấu hình (thiếu/sai khoá Tuya hoặc `DOOR_ACCESS_ORG_ID` ⇒ `not_configured`, trừ
+`status`) → phiên (`/auth/v1/user`) → `x-organization-id` (khác `DOOR_ACCESS_ORG_ID` ⇒ `org_not_connected`) → công tắc
+(`off` ⇒ `mode_off`; `read` ⇒ thao tác ghi bị `writes_disabled`) → tham số → RPC quyền → Tuya. `status` không gọi Tuya.
+
+Quyền nằm trong SQL, gọi bằng JWT CỦA NGƯỜI DÙNG: `door_access_authorize_v1` (đọc theo máy),
+`door_access_can_any_v1` và `door_access_devices_v1` (tìm máy), `door_access_begin_action_v1` (thao tác ghi: quyền,
+trần tần suất, ghi `PENDING`). Riêng `door_access_finish_action_v1` dùng service role. Thao tác ghi gọi Tuya ĐÚNG MỘT lần rồi chốt `OK` /
+`FAILED` (Tuya từ chối ⇒ 502 `tuya_rejected` + `tuyaCode`) / `UNKNOWN` (mạng, hết giờ, HTTP lỗi, kết quả lạ ⇒ 504
+`tuya_unavailable` + `outcomeUnknown` — lệnh có thể đã chạy, hàm không gửi lại). Chốt hỏng ⇒ vẫn trả kết quả, kèm
+`logPending`. Mật khẩu tạm sinh trong hàm, chỉ có trong câu trả lời tạo (một lần) — không vào nhật ký, không ghi log.
+
+Secret (thiếu/sai bộ khoá Tuya hoặc `DOOR_ACCESS_ORG_ID` thì mọi hành động trừ `status` trả `not_configured`):
+
+| Secret | Ý nghĩa |
+|---|---|
+| `TUYA_ACCESS_ID` | Access ID của project Tuya Cloud (tài khoản SmartLife đã liên kết) |
+| `TUYA_ACCESS_SECRET` | Access Secret (đúng 32 ký tự — cũng là khoá giải vé mật khẩu tạm) |
+| `TUYA_BASE_URL` | `https://<máy chủ OpenAPI>` theo trung tâm dữ liệu của project; chỉ nhận máy trong danh sách cho phép (`TUYA_HOSTS` ở `tuyaClient.ts`) |
+| `DOOR_ACCESS_ORG_ID` | uuid của công ty DUY NHẤT được nối với tài khoản SmartLife này |
+| `DOOR_ACCESS_MODE` | `off` · `read` (mặc định khi vắng) · `all` (mở thao tác ghi sau khi kiểm trên máy thật); giá trị lạ ⇒ `off` |
+
+**Không nạp khoá Tuya lên TEST.** `npm run test-env:edge -- door-access` deploy mã lên TEST; ở đó hàm trả
+`not_configured` (đúng ý đồ) và script dừng đỏ nếu thấy secret `TUYA_*` trên project TEST.
+
+```powershell
+npx --yes deno@2.9.4 test --config supabase/functions/door-access/deno.json `
+  supabase/functions/door-access/ --allow-env
 ```
 
 ## Salary V5 (`salary-v5-jobs`)
