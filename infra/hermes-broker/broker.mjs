@@ -1,5 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
+import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
@@ -873,17 +873,31 @@ export function createBroker({
       }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
-        let input, invalid = false, uncertain = false;
+        let input, invalid = false, uncertain = false, retry = null;
         try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
+        // 22/10 (câu 29): a crm_task_input_options call refused by the validator answers ONE static hint
+        // (task-input-contract.mjs) as an ordinary result, never reaching CRM: Hermes pauses the whole MCP
+        // server for ~60 s after three isError results in a row (TEST 21/10: 21/27 task creations lost).
+        const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
         return call(async (identity, signal) => {
           if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => {
-          const result = await task.finalizeTask(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          if (retry !== null) return { content: [{ type: 'text', text: JSON.stringify(retry) }], isError: false };
+          let result;
+          try {
+            result = await task.finalizeTask(presentedToken, receipt, { signal,
+              onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          } catch (error) {
+            // SQL before 20261021172540 (v5) refuses a company-wide jobTypes/assignees lookup with 22023: the same
+            // static guidance (pass a building) instead of a plain error, until that migration is live.
+            if (!(error instanceof BrokerError) || error.code !== 'invalid_request' || !taskOptionsCompanyWide(taskOperation, input)) throw error;
+            return { content: [{ type: 'text', text: JSON.stringify(taskOptionsRetry(TASK_OPTIONS_HINTS.legacy)) }], isError: false };
+          }
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
         }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId });
       }
