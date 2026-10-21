@@ -12,6 +12,14 @@ const reservationSettlementPrefixes = [
   "reservation-settlement-by-voucher",
 ] as const;
 const voucherDetailPrefixes = ["income-expense", "voucher-with-batch"] as const;
+/** Màn chi tiết khác (HĐ, hoá đơn, chốt sổ, huỷ phiếu thu) đọc phiếu thu chi. */
+const detailVoucherPrefixes = [
+  "contract-pending-forfeit", // useContractDetailData — phiếu bỏ cọc chờ
+  "contract-termination-info", // thẻ Quyết toán thanh lý (đọc cả phiếu hoàn)
+  "invoice-vouchers", // InvoiceDetailView — phiếu của hoá đơn
+  "cashbook-closing-blockers",
+  "income-cancel-eligibility",
+] as const;
 
 /**
  * Descriptor realtime của miền TIỀN: hoá đơn, phiếu thu chi, khoản thu, hạng mục,
@@ -46,6 +54,15 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "recent-activities",
       "dashboard-summary",
       "business-performance",
+      // --- 21/10/2026: màn đọc hoá đơn bằng key riêng, trước đây bỏ sót ---
+      "room-detail-invoices", // RT-HUB-3: chi tiết phòng/toà, dialog phòng
+      "building-detail-invoices",
+      "room-latest-invoice",
+      "ie-related-invoice", // RT-HUB-5: chi tiết phiếu hiện hoá đơn liên quan
+      "income-cancel-eligibility",
+      "revenue-chart", // RT-HUB-11: biểu đồ Dashboard
+      "debt-chart",
+      "reports", // báo cáo lịch thu, thừa tiền… — ["reports",…]
     ]),
     domain: "invoices",
   },
@@ -110,6 +127,18 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       // ba query đó đã xoá cùng hoa hồng/chi thanh lý/thưởng Sale cũ của trang.
       "tt-deposit-ledger",
       "utility-chart",
+      // --- 21/10/2026 (RT-HUB-5): chi tiết HĐ, chi tiết hoá đơn, chặn chốt sổ
+      // đọc phiếu bằng key riêng. Máy khác duyệt/huỷ/vào sổ phiếu hoàn hay phiếu
+      // thu gắn hoá đơn thì các thẻ này giữ số cũ tới F5.
+      ...detailVoucherPrefixes,
+      "revenue-chart", // RT-HUB-11
+      "reports",
+      // RT-HUB-4: hộp duyệt. Chỉ phủ lúc NỘP và bước duyệt CUỐI (hai lúc đó mới
+      // ghi income_expenses); từ chối / duyệt bước giữa chỉ ghi
+      // approval_request_steps — bảng đó KHÔNG publish được (không có policy
+      // SELECT nào cho authenticated, xem migration realtime_publication_toi_uu),
+      // nên usePendingApprovals tự poll 60s + làm tươi khi focus.
+      "pending-approvals",
     ]),
     domain: "income-expenses",
   },
@@ -146,6 +175,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "invoice-collectors",
       "can-reverse-collection",
       "settlement-report",
+      "payments-summary", // RT-HUB-5: usePayments — tổng thu theo kỳ
     ]),
   },
   // income_expense_items: sửa hạng mục đổi total_amount của phiếu qua trigger,
@@ -160,6 +190,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       "accounts-with-balance",
       "cash-book-summary",
       "financial-analysis",
+      ...detailVoucherPrefixes, // RT-HUB-5: sửa hạng mục đổi tổng phiếu
     ]),
   },
   // accounts: chốt sổ đặt lock_date, đổi số dư đầu, đổi người phụ trách.

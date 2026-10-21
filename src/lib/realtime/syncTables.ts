@@ -43,6 +43,12 @@ export const REALTIME_SYNC_TABLES = [
   // Publication: 20260828130000_realtime_building_fee_tables.sql.
   "building_fee_accounts",
   "building_utility_accounts",
+  // 21/10/2026 (RT-HUB-6): CÔNG TƠ — publication ở
+  // 20261021…_realtime_publication_toi_uu.sql. Chưa áp migration đó lên
+  // production thì check-realtime-descriptors đỏ đúng hai bảng này: subscribe
+  // vẫn SUBSCRIBED nhưng không có event — áp migration TRƯỚC khi coi gate đạt.
+  "meter_readings",
+  "meters",
 ] as const;
 
 /** Union tên bảng, suy ra TỪ danh sách — không khai hai lần rồi trôi khỏi nhau. */

@@ -919,11 +919,23 @@ export function useBusinessPerformancePnl(
   });
 }
 
+/**
+ * Sidebar chỉ cần biết "có công ty nào xem được báo cáo không" để hiện MỘT mục
+ * menu, mà Sidebar mount trên MỌI trang: poll 5 phút RPC này (~759 ms/lượt, đo
+ * 21/10/2026: 7.240 lượt ≈ 1% thời gian SQL) chỉ cho một cờ hiếm khi đổi
+ * (RT-OTHER-4). Hub realtime đã invalidate subtype 'organizations' khi buildings
+ * đổi; đăng nhập/đổi quyền cũng làm tươi. refetchInterval tính THEO OBSERVER nên
+ * trang báo cáo dùng chung key vẫn giữ poll 5 phút của mình.
+ */
+export const BUSINESS_PERFORMANCE_ORGANIZATIONS_MENU_STALE_TIME = 30 * 60 * 1000;
+
 export function useBusinessPerformanceOrganizations(
   enabled = true,
+  options: { poll?: boolean } = {},
 ): UseQueryResult<BusinessPerformanceOrganization[], Error> {
   const { data: user } = useAuth();
   const userId = user?.id ?? null;
+  const poll = options.poll ?? true;
   return useQuery({
     queryKey: [
       BUSINESS_PERFORMANCE_QUERY_KEY,
@@ -931,8 +943,8 @@ export function useBusinessPerformanceOrganizations(
       "organizations",
     ] as const,
     enabled: Boolean(userId) && enabled,
-    staleTime: HISTORICAL_STALE_TIME,
-    refetchInterval: HISTORICAL_STALE_TIME,
+    staleTime: poll ? HISTORICAL_STALE_TIME : BUSINESS_PERFORMANCE_ORGANIZATIONS_MENU_STALE_TIME,
+    refetchInterval: poll ? HISTORICAL_STALE_TIME : false,
     queryFn: async () => {
       // hermes-parity:begin business-performance
       const { data, error } = await supabase.rpc(
