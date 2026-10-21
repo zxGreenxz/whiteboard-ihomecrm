@@ -13,7 +13,7 @@ import { W2 } from './wave2-registry.mjs';
 
 // B5d (21/10/2026): tên toà/phòng → ID ở connector. Không PostgreSQL ở đây (hai hàm danh bạ dưới RLS:
 // name-directory-sql.test.mjs); file này chứng minh hợp đồng phía connector: tách tên trước validator,
-// khớp bằng/chứa/hoa thường/mã, 0 và ≥2 toà ⇒ lỗi mang chi tiết, phòng trùng tên ở nhiều toà như web
+// khớp bằng/chứa/hoa thường/dấu/mã/tiền tố "Toà", 0 và ≥2 toà ⇒ lỗi mang chi tiết, phòng trùng tên ở nhiều toà như web
 // (≤5 gộp, hơn thì hỏi lại), cache theo contextVersion, kế hoạch lọc hàng nhiều trang, và đường đi thật
 // qua bound-user-operation + domain mount (JWT người hỏi, RPC danh bạ, p_input đã thay ID).
 const id = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -58,6 +58,35 @@ const setup = (overrides = {}) => {
     accessToken: 'bearer-fixture', identity: identityOf(KEYS), tokenDigest: DIGEST, signal, ...options });
   return { calls, clock, resolver, resolve };
 };
+
+// 21/10: tên toà không phân biệt dấu (NFD bỏ dấu kết hợp, đ/Đ → d, gộp khoảng trắng) và mô hình hay gửi "Toà <mã>":
+// "le van tho" không khớp "Lê Văn Thọ" thì bot trả lời "không có toà" — sai. Phòng giữ luật cũ (SQL khớp room.name có dấu).
+const ACCENTED = [{ id: A, name: 'Lê Văn Thọ', code: '44TL' }, { id: B, name: 'Đường Láng', code: null }, { id: C, name: 'Toà A', code: 'TA' },
+  { id: V, name: 'Lê Văn Thọ 2', code: null }];
+test('buildingName without accents: le van tho, DUONG, "Toà 44TL" match; exact still before contains; two matches and no match still refuse', async () => {
+  const ids = name => matchBuildings(ACCENTED, name).map(row => row.id);
+  assert.deepEqual(ids('le van tho'), [A], 'exact name without accents (not the contains match on "… 2")');
+  assert.deepEqual(ids('  LÊ   VĂN  thọ '), [A], 'case, accents and repeated spaces');
+  assert.deepEqual(ids('DUONG'), [B], 'Đ/đ as d, contains');
+  assert.deepEqual(ids('đường láng'), [B]);
+  assert.deepEqual([ids('Toà 44TL'), ids('toa 44tl'), ids('TOÀ  44tl')], [[A], [A], [A]], 'the model\'s "Toà" prefix is dropped to reach the code');
+  assert.deepEqual(ids('Toà A'), [C], 'a building really named "Toà A" still matches exactly first');
+  assert.deepEqual(ids('ta'), [C], 'code');
+  assert.deepEqual(ids('le van'), [A, V], 'contains: two buildings');
+  assert.deepEqual(ids('toa'), [C], 'a bare word "toa" is a needle, not a prefix');
+  assert.deepEqual(ids('Sài Gòn'), []);
+  const resolver = createReadNameResolver({ rpc: async (name, accessToken, args) => {
+    assert.equal(name, 'hermes_building_directory_v1');
+    return { buildings: ACCENTED.filter(row => args.p_building_ids.includes(row.id)) };
+  } });
+  const resolve = names => resolver.resolve({ operation: 'customers', input: domainInput('customers', {}), names, lane: 'legacy', accessToken: 'bearer-fixture',
+    identity: identityOf(KEYS, [A, B, C, V]), tokenDigest: DIGEST, signal });
+  assert.equal((await resolve({ buildingName: 'le van tho' })).input.buildingId, A);
+  assert.equal((await resolve({ buildingName: 'Toà 44TL' })).input.buildingId, A);
+  assert.equal((await resolve({ buildingName: 'DUONG' })).input.buildingId, B);
+  await assert.rejects(resolve({ buildingName: 'le van' }), unresolved(/^Nhiều toà khớp 'le van': Lê Văn Thọ, Lê Văn Thọ 2 — nêu rõ\.$/));
+  await assert.rejects(resolve({ buildingName: 'Sài Gòn' }), unresolved(/^Không thấy toà 'Sài Gòn' trong phạm vi được xem\.$/));
+});
 
 test('splitReadNames: names leave the arguments before the validator; blanks are absence; shape errors throw; nested params for crm_read_report', () => {
   assert.deepEqual(splitReadNames('customers', { query: '', buildingName: ' 950NK ', roomName: '   ', limit: 5 }), { args: { query: '', limit: 5 }, names: { buildingName: '950NK' } });

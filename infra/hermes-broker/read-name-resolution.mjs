@@ -23,7 +23,11 @@ const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
 const text = value => typeof value === 'string' && value.length > 0 && value.length <= TEXT_CAP && !CONTROL.test(value);
 const nullableText = value => value === null || (typeof value === 'string' && value.length <= TEXT_CAP && !CONTROL.test(value));
 const canonical = value => domainId(value) && value === value.toLowerCase();
+// Phòng: so không phân biệt hoa thường, GIỮ dấu — chỉ để quyết định đặt query = tên phòng cho SQL (khớp room.name có dấu).
 const fold = value => value.normalize('NFC').toLowerCase().trim();
+// Toà (21/10): không phân biệt dấu — NFD bỏ dấu kết hợp, đ/Đ → d, chữ thường, bỏ khoảng trắng đầu/cuối, gộp khoảng trắng
+// liên tiếp. "le van tho" phải khớp "Lê Văn Thọ": trước đây không khớp nên bot trả lời "không có toà" — sai.
+const foldName = value => value.normalize('NFD').replace(/\p{M}/gu, '').replace(/[đĐ]/g, 'd').toLowerCase().trim().replace(/\s+/g, ' ');
 const list = values => values.slice(0, LIST_CAP).join(', ') + (values.length > LIST_CAP ? ', …' : '');
 export function unresolved(detail) {
   const error = new BrokerError('read_name_unresolved');
@@ -43,13 +47,18 @@ function rows(data, key, check, max) {
 const building = row => domainExact(row, ['id', 'name', 'code']) && canonical(row.id) && text(row.name) && nullableText(row.code);
 const room = row => domainExact(row, ['id', 'name', 'code', 'floor', 'buildingId']) && canonical(row.id) && text(row.name) && nullableText(row.code) &&
   (row.floor === null || Number.isSafeInteger(row.floor)) && canonical(row.buildingId);
-const matches = (entry, needle) => fold(entry.name) === needle || (entry.code !== null && fold(entry.code) === needle);
-const contains = (entry, needle) => fold(entry.name).includes(needle) || (entry.code !== null && fold(entry.code).includes(needle));
-/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường) trước; không có thì chứa. */
+const matches = (entry, needle) => foldName(entry.name) === needle || (entry.code !== null && foldName(entry.code) === needle);
+const contains = (entry, needle) => foldName(entry.name).includes(needle) || (entry.code !== null && foldName(entry.code).includes(needle));
+/** Khớp bằng (tên hoặc mã, không phân biệt hoa thường lẫn dấu) trước; không có thì chứa. Mô hình hay gửi "Toà 44TL": tên
+ * bắt đầu bằng "toa " (sau khi bỏ dấu) được thử thêm KHÔNG có tiền tố đó — sau dạng đầy đủ ở cùng bậc (toà có tên thật
+ * "Toà A" vẫn khớp bằng trước), nên luật bằng-trước-rồi-chứa giữ nguyên. */
 export function matchBuildings(directory, name) {
-  const needle = fold(name);
-  const exact = directory.filter(entry => matches(entry, needle));
-  return exact.length ? exact : directory.filter(entry => contains(entry, needle));
+  const folded = foldName(name), needles = folded.startsWith('toa ') && folded.length > 4 ? [folded, folded.slice(4)] : [folded];
+  for (const test of [matches, contains]) for (const needle of needles) {
+    const found = directory.filter(entry => test(entry, needle));
+    if (found.length) return found;
+  }
+  return [];
 }
 
 /** Kế hoạch lọc hàng theo phòng cho tool mà SQL không nhận ID phòng: trang SQL 50 dòng, lấy thêm trang (cursor
