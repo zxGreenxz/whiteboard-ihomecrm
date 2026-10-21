@@ -11,7 +11,7 @@ import { runHarness } from '../test-voucher-detail-read-authz.mjs';
 import { credential, ghiLog, ketNoi, kiemCongCu, psqlJson, repoRoot } from './lib.mjs';
 import { assertTestLease, withTestLock } from './lock.mjs';
 import { assertSuite, catalogDigest, checkSnapshot } from './receipt.mjs';
-import { ownersDigest, sqlOwners } from './owners.mjs';
+import { ownersDigestTest, sqlOwners } from './owners.mjs';
 import { syncTest } from './sync.mjs';
 import { sqlVanTay } from './van-tay.mjs';
 
@@ -75,7 +75,7 @@ export async function checkTest(argv = []) {
         const [exists] = psqlJson(context.test, "select to_regclass('test_env.lich_su') is not null as ready");
         const latest = exists.ready ? psqlJson(context.test, 'select ket_qua, snapshot_prod, chi_tiet from test_env.lich_su order by id desc limit 1')[0] : null;
         return checkSnapshot(latest, { digest: catalogDigest(psqlJson(context.test, sqlVanTay())),
-          ownersDigest: ownersDigest(psqlJson(context.test, sqlOwners())[0]), maxAgeHours });
+          ownersDigest: ownersDigestTest(psqlJson(context.test, sqlOwners())[0]), maxAgeHours });
       });
       await step('data-jwt', async () => assertSuite(await runHarness({ context, lease, reportPath: join(reportDir, 'jwt-report.md') }), 33));
       await step('chrome', async () => {
