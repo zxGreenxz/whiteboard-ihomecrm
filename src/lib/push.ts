@@ -243,6 +243,112 @@ export async function disablePush(): Promise<'disabled' | 'already-disabled' | '
   return 'disabled';
 }
 
+export type EnsurePushOutcome =
+  | 'unsupported'
+  | 'no-permission'
+  | 'no-subscription'
+  | 'other-key'
+  | 'in-sync'
+  | 'saved'
+  | 'resubscribed';
+
+/**
+ * Đối chiếu đăng ký push của MÁY NÀY với máy chủ lúc khởi động (đã có phiên +
+ * đã chốt công ty). Không bao giờ xin quyền, không tự bật push cho ai chưa bật.
+ *
+ * Vì sao cần (đo prod 21/10): từ 05/10 có 0 thiết bị active — send-push prune
+ * (404/410) đặt is_active=false và không ai biết; trình duyệt xoay subscription
+ * (pushsubscriptionchange) mà không tab nào mở thì dòng mới không bao giờ được lưu.
+ *
+ *   - chưa cấp quyền / không có subscription ⇒ không làm gì;
+ *   - subscription theo khoá VAPID khác ⇒ để nút bật/tắt tự xoay khoá (enablePush);
+ *   - máy chủ THIẾU dòng ⇒ lưu (subscription mới do pushsubscriptionchange);
+ *   - dòng is_active=false ⇒ endpoint đã chết (prune): upsert lại là vô ích vì
+ *     lần gửi sau bị prune tiếp — phải unsubscribe + subscribe MỚI rồi mới lưu;
+ *   - dòng active nhưng khoá p256dh/auth lệch ⇒ lưu lại (upsert theo endpoint).
+ * Lỗi được NÉM (kèm PushOperationError khi đã đụng trình duyệt) để bên gọi ghi lại.
+ */
+export async function ensurePushSubscription(organizationId: string | null | undefined): Promise<EnsurePushOutcome> {
+  if (!isPushSupported()) return 'unsupported';
+  if (Notification.permission !== 'granted') return 'no-permission';
+  const registered = await navigator.serviceWorker.getRegistration();
+  if (!registered) return 'no-subscription';
+  const reg = await activeRegistration(registered);
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return 'no-subscription';
+  const wantKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  if (!sameApplicationServerKey(sub, wantKey)) return 'other-key';
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
+  const stored = await readStoredSubscription(sub.endpoint, actorId);
+  const keys = extractKeys(sub);
+  if (stored?.is_active && stored.p256dh === keys.p256dh && stored.auth === keys.auth) return 'in-sync';
+  if (!stored || stored.is_active) {
+    try {
+      await saveSubscription(sub, actorId, organizationId);
+    } catch (cause) {
+      throw new PushOperationError('Trình duyệt có đăng ký nhưng chưa lưu lại được trên máy chủ.',
+        'unknown', cause, 'enable', sub.endpoint, actorId);
+    }
+    return 'saved';
+  }
+  await unsubscribeConfirmed(sub, 'enable', actorId);
+  let fresh: PushSubscription | null = null;
+  try {
+    fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
+    if (!fresh || !sameApplicationServerKey(fresh, wantKey)) throw new TypeError('Unconfirmed application server key');
+    await saveSubscription(fresh, actorId, organizationId);
+  } catch (cause) {
+    throw new PushOperationError(fresh
+      ? 'Đã tạo đăng ký mới thay đăng ký hết hạn; chưa xác nhận lưu trên máy chủ.'
+      : 'Đăng ký hết hạn đã hủy; chưa tạo được đăng ký mới. Bật lại thông báo trong Cài đặt thông báo.',
+      'partial', cause, 'enable', fresh?.endpoint ?? sub.endpoint, actorId);
+  }
+  // Dòng cũ trỏ endpoint đã chết: dọn để danh sách thiết bị không còn bóng ma. Hỏng
+  // cũng không sao (đã is_active=false, send-push không gửi tới nữa). Trình duyệt trả
+  // lại đúng endpoint cũ thì dòng đó chính là dòng vừa lưu — không được xoá.
+  if (fresh.endpoint !== sub.endpoint) {
+    const { error: cleanupError } = await supabase.from('push_subscriptions').delete()
+      .eq('endpoint', sub.endpoint).eq('user_id', actorId);
+    if (cleanupError) console.warn('[push] chưa dọn được đăng ký hết hạn cũ', cleanupError);
+  }
+  return 'resubscribed';
+}
+
+/** Giới hạn thời gian dọn push trước khi đăng xuất: không bao giờ giữ chân người dùng. */
+export const LOGOUT_PUSH_CLEANUP_MS = 3000;
+
+export type LogoutPushCleanup = 'removed' | 'none' | 'unsupported' | 'timeout' | 'failed';
+
+/**
+ * Gỡ đăng ký push của máy này TRƯỚC khi đăng xuất (còn phiên để xoá dòng của
+ * chính mình). Best-effort: tối đa LOGOUT_PUSH_CLEANUP_MS, KHÔNG BAO GIỜ ném —
+ * đăng xuất không được kẹt vì push.
+ *
+ * Vì sao: send-push gửi theo push_subscriptions.user_id, không biết máy đã đổi
+ * người. Không gỡ thì máy dùng chung tiếp tục hiện trên màn khoá phiếu chờ duyệt
+ * (kèm số tiền), việc được giao… của tài khoản vừa thoát; người đăng nhập sau
+ * còn không bật được push vì endpoint đang thuộc dòng của người trước (RLS).
+ * disablePush hủy ở trình duyệt TRƯỚC rồi mới xoá dòng: hỏng giữa chừng thì máy
+ * vẫn thôi nhận push (dòng mồ côi sẽ bị prune ở lần gửi sau).
+ */
+export async function disablePushForLogout(timeoutMs: number = LOGOUT_PUSH_CLEANUP_MS): Promise<LogoutPushCleanup> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<LogoutPushCleanup>([
+      disablePush().then((result) => (result === 'disabled' ? 'removed' : result === 'already-disabled' ? 'none' : 'unsupported')),
+      new Promise<LogoutPushCleanup>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    console.warn('[push] chưa gỡ được đăng ký push trước khi đăng xuất', error);
+    return 'failed';
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export interface PushSendError {
   status?: number;
   host: string;
@@ -255,6 +361,57 @@ export interface SendTestPushResult {
   total: number;
   pruned: number;
   errors: PushSendError[];
+  /**
+   * `outcome` của send-push: SENT · DUPLICATE · PARTIAL · NO_DEVICE · ALL_FAILED ·
+   * PROVIDER_ERROR. Đọc trường này, KHÔNG suy từ HTTP status (send-push §D.1a).
+   */
+  outcome: string;
+}
+
+/**
+ * Mã HTTP mà send-push dùng cho kết quả GỬI THẬT (không phải lỗi gọi hàm), và
+ * outcome hợp lệ đi kèm. supabase.functions.invoke biến mọi non-2xx thành error,
+ * nên trước 21/10 NO_DEVICE/ALL_FAILED thành "lỗi chung" và UI không bao giờ tới
+ * được nhánh "chưa có thiết bị"/"không gửi được N/M". 207 là 2xx nên đi đường data.
+ */
+const OUTCOME_THEO_HTTP: Readonly<Record<number, readonly string[]>> = {
+  207: ['PARTIAL'],
+  422: ['NO_DEVICE'],
+  502: ['ALL_FAILED', 'PROVIDER_ERROR'],
+};
+
+function docKetQuaGuiThu(data: unknown): SendTestPushResult | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const row = data as Record<string, unknown>;
+  const n = (key: string) => (Number.isSafeInteger(row[key]) && (row[key] as number) >= 0 ? (row[key] as number) : null);
+  const sent = n('sent');
+  const failed = n('failed');
+  const total = n('total');
+  const pruned = n('pruned');
+  if (sent === null || failed === null || total === null || pruned === null) return null;
+  if (sent + failed !== total || pruned > failed || typeof row.outcome !== 'string' || !row.outcome) return null;
+  if (!Array.isArray(row.errors) || !row.errors.every((e: unknown) => e !== null && typeof e === 'object' &&
+    typeof (e as Record<string, unknown>).host === 'string' && typeof (e as Record<string, unknown>).body === 'string')) return null;
+  return { sent, failed, total, pruned, errors: row.errors as PushSendError[], outcome: row.outcome };
+}
+
+/** FunctionsHttpError.context là Response gốc; chỉ đọc body khi mã thuộc nhóm "kết quả gửi". */
+async function ketQuaTuLoiHttp(error: unknown): Promise<SendTestPushResult | null> {
+  const context = (error as { context?: unknown } | null)?.context;
+  if (!context || typeof context !== 'object') return null;
+  const status = (context as { status?: unknown }).status;
+  const json = (context as { json?: unknown }).json;
+  if (typeof status !== 'number' || typeof json !== 'function') return null;
+  const allowed = OUTCOME_THEO_HTTP[status];
+  if (!allowed) return null;
+  let body: unknown;
+  try {
+    body = await (json as () => Promise<unknown>).call(context);
+  } catch {
+    return null;
+  }
+  const result = docKetQuaGuiThu(body);
+  return result && allowed.includes(result.outcome) ? result : null;
 }
 
 /** Gọi edge function gửi thông báo thử về chính mình. */
@@ -268,14 +425,16 @@ export async function sendTestPush(): Promise<SendTestPushResult> {
     },
   });
 
-  if (error) throw error;
-  if (!data || typeof data !== 'object' || Array.isArray(data) ||
-      !['sent', 'failed', 'total', 'pruned'].every(key => Number.isSafeInteger(data[key]) && data[key] >= 0) ||
-      data.sent + data.failed !== data.total || data.pruned > data.failed || !Array.isArray(data.errors) ||
-      !data.errors.every((row: unknown) => row && typeof row === 'object' &&
-        typeof (row as Record<string, unknown>).host === 'string' &&
-        typeof (row as Record<string, unknown>).body === 'string'))
+  if (error) {
+    // NO_DEVICE / ALL_FAILED / PROVIDER_ERROR là KẾT QUẢ để UI giải thích, không
+    // phải lỗi gọi hàm. Mọi lỗi khác (401, 400, 500, mạng) giữ nguyên lỗi gốc.
+    const result = await ketQuaTuLoiHttp(error);
+    if (result) return result;
+    throw error;
+  }
+  const result = docKetQuaGuiThu(data);
+  if (!result)
     throw new PushOperationError('Chưa xác nhận được kết quả gửi thử. Kiểm tra trạng thái thiết bị trước khi gửi tiếp.',
       'unknown', new TypeError('Malformed push test result'), 'enable');
-  return { sent: data.sent, failed: data.failed, total: data.total, pruned: data.pruned, errors: data.errors as PushSendError[] };
+  return result;
 }

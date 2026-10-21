@@ -4,7 +4,7 @@
 // GATE scripts/check-route-guards.mjs QUÉT CẢ THƯ MỤC NÀY, nên mọi route ở đây
 // vẫn phải nằm dưới một guard đã biết hoặc được khai TƯỜNG MINH là công khai —
 // y như khi chúng còn ở App.tsx.
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useState, type ComponentType, type ReactElement } from "react";
 import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { hideAppSplash } from "@/lib/appSplash";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
@@ -34,6 +34,25 @@ const RouteTreeCommit = (): null => {
     window.dispatchEvent(new Event('pwa-route-change'));
   }, [pathname, search]);
   return null;
+};
+
+/**
+ * Cầu nối service worker ↔ app (bấm push, số trên icon, đối chiếu đăng ký push).
+ * Nằm ở đây vì cần cả Router lẫn OrganizationProvider — xem đầu file cầu nối.
+ * Nạp lười bằng effect (không React.lazy): chunk vào app đang sát ngưỡng bundle,
+ * và nạp hỏng chỉ được làm mất tính năng này, không được ném lên ErrorBoundary
+ * hạ cả cây như một lazy component lỗi.
+ */
+const ServiceWorkerBridgeLazy = (): ReactElement | null => {
+  const [Bridge, setBridge] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    let alive = true;
+    import("@/lib/push/serviceWorkerBridge")
+      .then((m) => { if (alive) setBridge(() => m.ServiceWorkerBridge); })
+      .catch((error: unknown) => console.warn("[push] chưa nạp được cầu nối service worker", error));
+    return () => { alive = false; };
+  }, []);
+  return Bridge ? <Bridge /> : null;
 };
 
 export function AppRoutes() {
@@ -75,6 +94,7 @@ export function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <RouteTreeCommit />
+      <ServiceWorkerBridgeLazy />
     </>
   );
 }
