@@ -470,7 +470,10 @@ BEGIN
   IF d.id IS NULL THEN
     IF NOT app_private.door_access_manage_all_v1(p_organization_id) THEN
       RAISE EXCEPTION 'Chỉ người quản lý máy cửa ở mọi tòa mới gắn được máy mới' USING ERRCODE='42501';END IF;
-    -- Unique index vẫn chặn nếu hai công ty gắn cùng lúc; đây chỉ để báo câu dễ hiểu.
+    -- Unique index vẫn chặn khi hai bên gắn cùng lúc; đây chỉ để báo câu đúng: cùng công ty vừa gắn (giao dịch khác
+    -- commit sau lần đọc đầu) khác với máy thuộc công ty khác.
+    IF EXISTS(SELECT 1 FROM public.door_devices x WHERE x.tuya_device_id=p_tuya_device_id AND x.organization_id=p_organization_id) THEN
+      RAISE EXCEPTION 'Máy vừa được gắn — tải lại danh sách máy' USING ERRCODE='55000';END IF;
     IF EXISTS(SELECT 1 FROM public.door_devices x WHERE x.tuya_device_id=p_tuya_device_id) THEN
       RAISE EXCEPTION 'Máy này đã được gắn ở một công ty khác' USING ERRCODE='23505';END IF;
   ELSIF NOT app_private.door_access_authorized_v1(p_organization_id,p_building_id,'door_access.manage_devices')
