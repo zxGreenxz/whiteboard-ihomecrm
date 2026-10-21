@@ -10,7 +10,7 @@ const connectorLimits = Object.freeze({ requestsPerMinute: 60, toolCallsPerMinut
 function fixture(t, changes = {}) {
   const events = [], server = createServer((_req, res) => res.end('fixture'));
   const key = Buffer.alloc(32, 7);
-  let closes = 0, stage, callLog;
+  let closes = 0, stage, callLog, maintenanceLog;
   const configuration = { paths: { stateRoot: '/state', handoffDirectory: '/state/handoff' },
     supabase: {}, store: { role: 'hermes_store_fixture' }, encryption: { activeKeyVersion: 'k1', keys: new Map([['k1', key]]) },
     ...(changes.zaloProvisioning ? { zaloProvisioning: changes.zaloProvisioning } : {}),
@@ -44,12 +44,13 @@ function fixture(t, changes = {}) {
         async close(){events.push('zalo-reconciler-stop');await changes.zaloClose?.();}};
     },
     createConnectorMaintenance(options) { assert.equal(options.backend, backend); assert.equal(options.handoff, handoff);
+      assert.deepEqual(Object.keys(options), ['handoff', 'backend', 'log']); assert.equal(typeof options.log, 'function'); maintenanceLog = options.log;
       return { start() { events.push('connector-maintenance-start'); assert(server.listening); },
         async close() { events.push('connector-maintenance-stop'); await changes.maintenanceClose?.(); } }; },
   };
   const host = createHermesHost(configuration, { factories });
   t.after(async () => { await host.close().catch(() => {}); server.close(); server.closeAllConnections(); });
-  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; } };
+  return { host, events, server, key, handoff, get stage() { return stage; }, get callLog() { return callLog; }, get maintenanceLog() { return maintenanceLog; } };
 }
 
 test('connector composition is inert until start, requires WAL, binds loopback and disposes original keys after both copies', async t => {
@@ -219,4 +220,17 @@ test('tool_call_timing sink: one stdout JSON line per record like host_* events;
   info.mock.restore(); await on.host.close();
   process.env.HERMES_CALL_LOG = '0';
   const off = fixture(t, { callLogOff: true }); await off.host.start(); assert.equal(off.callLog, undefined); await off.host.close();
+});
+
+test('connector maintenance sink: one stdout JSON line per record, and HERMES_CALL_LOG=0 does not silence it', async t => {
+  const previous = process.env.HERMES_CALL_LOG;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_CALL_LOG; else process.env.HERMES_CALL_LOG = previous; });
+  process.env.HERMES_CALL_LOG = '0';
+  const f = fixture(t, { callLogOff: true }); await f.host.start();
+  const info = t.mock.method(console, 'info', () => {});
+  const record = { event: 'connector_maintenance_connection', ts: '2026-10-21T08:46:00.000Z', connectionId: '1a2b3c4d', action: 'renewal_failed',
+    code: 'maintenance_outcome_unknown', attempt: 1, retryInMs: 30000, expiresInMs: 270000 };
+  f.maintenanceLog(record);
+  assert.equal(info.mock.callCount(), 1); assert.deepEqual(info.mock.calls[0].arguments, [JSON.stringify(record)]);
+  info.mock.restore(); await f.host.close();
 });
