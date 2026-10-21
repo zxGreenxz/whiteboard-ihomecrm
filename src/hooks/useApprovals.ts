@@ -41,12 +41,28 @@ const invalidateAfterDecision = (queryClient: ReturnType<typeof useQueryClient>)
   queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
 };
 
+/**
+ * Nhịp làm tươi hộp duyệt khi KHÔNG có realtime phủ (21/10/2026, RT-HUB-4).
+ *
+ * Từ chối và duyệt bước giữa chỉ ghi approval_requests / approval_request_steps.
+ * Hai bảng đó không đưa vào publication được: cả hai chỉ có policy RESTRICTIVE
+ * (ranh giới công ty, ẩn sandbox), KHÔNG có policy SELECT cho phép nào, nên
+ * Realtime — vốn chỉ giao event cho dòng người nghe SELECT được — sẽ không giao
+ * gì cho ai (đọc thật đi qua RPC SECURITY DEFINER list_my_pending_approvals_v1).
+ * Hub chỉ phủ lúc nộp và bước cuối (qua income_expenses). Phần còn lại: poll
+ * 60s khi tab đang hiện + tải lại lúc quay về tab.
+ */
+export const PENDING_APPROVALS_POLL_MS = 60_000;
+
 // Danh sách yêu cầu chờ tôi duyệt. numeric/bigint của Postgres về JS dưới dạng
 // string qua PostgREST → ép Number ngay để UI khỏi cộng chuỗi.
 export const usePendingApprovals = () => {
   return useQuery({
     queryKey: ["pending-approvals"],
     meta: {errorDisplay:"inline",label:"yêu cầu chờ duyệt"},
+    refetchInterval: PENDING_APPROVALS_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<PendingApproval[]> => {
       // hermes-parity:begin pending-approvals — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const { data, error } = await supabase.rpc("list_my_pending_approvals_v1");

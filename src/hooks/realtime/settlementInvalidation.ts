@@ -1,5 +1,4 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { delayConTrongTran } from '@/lib/realtime/hubDebounce';
 import type { SyncTable } from '@/lib/realtime/syncTables';
 import { CONTRACT_SETTLEMENT_INVALIDATION_RULES, SETTLEMENT_FACTS_INVALIDATION_RULES } from './index';
 
@@ -7,37 +6,26 @@ import { CONTRACT_SETTLEMENT_INVALIDATION_RULES, SETTLEMENT_FACTS_INVALIDATION_R
 export const isSettlementQueryKey = (key: readonly unknown[]): boolean =>
   key[0] === 'contract-settlement' || key[0] === 'termination-refund-facts' || key[0] === 'commission-voucher-facts';
 
-export function createSettlementInvalidationCollector(client: QueryClient) {
-  const pending = new Set<string>();
-  const pendingFacts = new Set<string>();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let firstEvent = 0;
-
-  return {
-    enqueue(table: SyncTable, now: number) {
-      const keys = CONTRACT_SETTLEMENT_INVALIDATION_RULES[table];
-      if (!keys) return;
-      keys.forEach((key) => pending.add(key));
-      SETTLEMENT_FACTS_INVALIDATION_RULES[table]?.forEach((key) => pendingFacts.add(key));
-      if (timer !== undefined) clearTimeout(timer);
-      else firstEvent = now;
-      timer = setTimeout(() => {
-        timer = undefined;
-        const subtypes = new Set(pending);
-        pending.clear();
-        client.invalidateQueries({
-          queryKey: ['contract-settlement'],
-          predicate: (query) => subtypes.has(String(query.queryKey[1])),
-        });
-        for (const root of pendingFacts) client.invalidateQueries({ queryKey: [root] });
-        pendingFacts.clear();
-      }, delayConTrongTran(firstEvent, now));
-    },
-    dispose() {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
-      pending.clear();
-      pendingFacts.clear();
-    },
-  };
+/**
+ * Làm mới nhóm quyết toán cho MỘT cụm sự kiện xuyên bảng.
+ *
+ * Trước 21/10/2026 nhóm này có bộ gom riêng (timer riêng) chạy song song với
+ * timer từng bảng và timer báo cáo. Nay bộ gom toàn cục của hub
+ * (src/lib/realtime/hubCollector.ts) giữ MỘT nhịp cho cả cụm và gọi hàm này khi
+ * nhả — luật subtype vẫn nằm ở đây, cạnh descriptor.
+ */
+export function flushSettlementInvalidation(client: QueryClient, tables: Iterable<SyncTable>): void {
+  const subtypes = new Set<string>();
+  const facts = new Set<string>();
+  for (const table of tables) {
+    CONTRACT_SETTLEMENT_INVALIDATION_RULES[table]?.forEach((key) => subtypes.add(key));
+    SETTLEMENT_FACTS_INVALIDATION_RULES[table]?.forEach((key) => facts.add(key));
+  }
+  if (subtypes.size > 0) {
+    client.invalidateQueries({
+      queryKey: ['contract-settlement'],
+      predicate: (query) => subtypes.has(String(query.queryKey[1])),
+    });
+  }
+  for (const root of facts) client.invalidateQueries({ queryKey: [root] });
 }

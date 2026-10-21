@@ -139,8 +139,11 @@ export function subscribeResilient(options: ResilientChannelOptions): () => void
     if (everSubscribed) resync(false);
   };
 
-  const hasDocument = typeof document !== "undefined";
-  const hasWindow = typeof window !== "undefined";
+  // Kiểm cả hàm chứ không chỉ đối tượng: môi trường test (và vài webview) có
+  // `document`/`window` dạng rút gọn không có addEventListener — thiếu nghe
+  // visibility/online thì chỉ mất hai nguồn bắt kịp phụ, không được làm vỡ kênh.
+  const hasDocument = typeof document !== "undefined" && typeof document.addEventListener === "function";
+  const hasWindow = typeof window !== "undefined" && typeof window.addEventListener === "function";
   if (hasDocument) document.addEventListener("visibilitychange", onVisibility);
   if (hasWindow) window.addEventListener("online", onOnline);
   const stopManual = onResyncAll(() => resync(true));
