@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, ORG, USER } from './finance-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
+import { HERMES_ACTION_FOUNDATION_KEYS, HERMES_CAPABILITIES } from './capability-contract.mjs';
 
 // M1 (NEN-CHUNG-THAO-TAC-GHI.md mục 9) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính sách công ty thật
 // của các migration Hermes; quyền CRM giả qua fixture_acl). Kiểm: guard chung, capabilities, sổ biên nhận chung (phát lại,
@@ -156,6 +157,9 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
     assert.equal(rows.length, 13);
     assert.ok(rows.every(row => row.mode === 'action' && row.enabled === false));
     assert.equal(rows.some(row => row.capability === 'thu_tien.collect'), false);
+    // Hợp đồng quyền của web + connector biết ĐÚNG các khoá SQL seed (13 khoá M2 + khoá thử M1), cùng mode action, theo toà.
+    assert.deepEqual([...rows.map(row => row.capability), PROBE].sort(), [...HERMES_ACTION_FOUNDATION_KEYS].sort());
+    for (const key of HERMES_ACTION_FOUNDATION_KEYS) assert.deepEqual(HERMES_CAPABILITIES[key], { mode: 'action', resource: 'building' }, key);
     await f.rollbackCase(async () => {
       await db.query("UPDATE app_private.hermes_capabilities SET mode='read' WHERE capability='contracts.renew'");
       await assert.rejects(db.exec(SEED), /hermes_action_keys_mode_conflict/);

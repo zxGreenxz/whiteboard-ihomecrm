@@ -32,6 +32,11 @@ test('họ thao tác hiện (danh mục thử) + họ phiếu chi cũ tắt: too
   t.diagnostic(`tools/list ${listed.length} tools, ${bytes} bytes; họ thao tác ${family} B`);
   assert.ok(bytes <= TOOLS_LIST_BUDGET, `tools/list ${bytes} bytes > ${TOOLS_LIST_BUDGET}`);
   assert.ok(family <= 2_000, `họ thao tác ${family} B > 2 000 B`);
+  // Production 21/10 tối: registry còn tắt thêm tasks.delete (PR #259) ⇒ crm_task_cancel cũng ẩn; chỗ trống rộng hơn.
+  const now = fullGrantBroker(t, undefined, { actions: runtime, actionKeys: [PROBE_KEY], withoutAction: ['income_expenses.create', 'tasks.delete'] });
+  const nowBytes = bytesOf((await now.broker.listTools(now.token)).tools);
+  t.diagnostic(`như production 21/10 (không income_expenses.create, không tasks.delete): ${nowBytes} bytes, còn ${TOOLS_LIST_BUDGET - nowBytes} B`);
+  assert.ok(nowBytes < bytes);
   // Ghi lại vì sao D4 là điều kiện: còn họ phiếu chi cũ thì họ thao tác không vừa trần.
   const both = fullGrantBroker(t, undefined, { actions: runtime, actionKeys: [PROBE_KEY] });
   const withOld = bytesOf((await both.broker.listTools(both.token)).tools);

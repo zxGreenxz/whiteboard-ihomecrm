@@ -551,7 +551,7 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
 
   Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
 - `public.hermes_action_probe_v1` là RPC thử (D6) và là khuôn cho RPC từng trang. Nó chỉ ghi biên nhận + audit; note `!raise XXXXX` giả lập lỗi hàm ghi để thử đường ánh xạ lý do.
-- M2 seed TẮT 13 khoá, không có `thu_tien.collect`. Khoá thử `assistant.action_probe` seed TẮT ở M1. `capability-contract.mjs` và nhãn web **chưa** thêm các khoá này: phải thêm trước khi bật bất kỳ khoá nào. Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
+- M2 seed TẮT 13 khoá, không có `thu_tien.collect`. Khoá thử `assistant.action_probe` seed TẮT ở M1. Sửa trước review (3): cả 14 khoá đã vào `capability-contract.mjs` (`HERMES_ACTION_FOUNDATION_KEYS`, mode action, theo toà) và có nhãn/gợi ý ở `src/hermes/capabilityLabels.ts` (hai khoá riêng Hermes có nhãn riêng, 12 khoá CRM có gợi ý "Hermes: …"). Lần promote web phải đi cùng M2. Test khoá chéo: SQL seed đúng bằng danh sách này. Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 
 | Mốc | Nội dung | Migration | Công |
 | --- | --- | --- | --- |
