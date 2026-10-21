@@ -9,7 +9,7 @@ import type { DiscoverResult, DoorAccessMode, DoorDevice } from "@/lib/door-acce
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { isDoorAccessError } from "@/lib/door-access/errors";
 import { DOOR_TAB_LABEL, isDoorTab, visibleTabs, type DoorTab } from "@/lib/door-access/view";
-import { canUse } from "@/lib/permissionPages";
+import { canUse } from "@/lib/permissionCheck";
 
 import { ActionLogTab } from "./ActionLogTab";
 import { ModeOffState, NotConnectedState } from "./ConnectionStates";

@@ -23,6 +23,7 @@ import {
   type ActionKey,
   type PermissionsMap,
 } from "@/lib/permissions";
+import { asPerms, type PermsLike } from "@/lib/permissionCheck";
 
 export type FeatureTier = "view" | "manage" | "elevated";
 
@@ -637,67 +638,9 @@ export const ALL_PAGE_FEATURES: PageFeature[] = ALL_PAGES.flatMap((p) => p.featu
 /** Key lưu trữ của 1 feature. */
 export const featureKey = (ft: PageFeature) => `${ft.module}.${ft.action}`;
 
-/**
- * Phạm vi hiệu lực của MỘT (module, action) — hình dạng do
- * `get_my_permissions_v2(p_org)` trả về (migration 20260915143713).
- *
- * `org_wide` true = được ở mọi toà của công ty. Ngược lại chỉ được ở các toà
- * trong `building_ids`, và các sổ trong `cashbook_ids` với quyền đòi
- * đang-giữ-sổ (`cashbooks.post`, `cashbooks.manage_custody`). Cả ba vế
- * rỗng/false nghĩa là KHÔNG có quyền — máy chủ đã lọc những khoá như thế ra,
- * nhưng `canUse` vẫn phải fail-closed nếu gặp.
- */
-export interface PermissionScope {
-  org_wide: boolean;
-  building_ids: string[];
-  cashbook_ids?: string[];
-}
-
-/**
- * Kiểu permissions "lỏng" — chấp nhận cả PermissionsMap (lib/permissions), shape
- * BOOLEAN của `get_my_permissions()` lẫn shape CÓ PHẠM VI của
- * `get_my_permissions_v2()`, để gọi thẳng không cần cast.
- *
- * Hai hình dạng cùng sống một đợt: bản khách đang mở sẵn trong trình duyệt
- * người dùng lúc deploy vẫn gọi v1.
- */
-export type PermsLike =
-  | PermissionsMap
-  | (Record<string, Record<string, boolean | PermissionScope>> & { __superadmin?: boolean })
-  | null
-  | undefined;
-
-const asPerms = (p: PermsLike): PermissionsMap | null =>
-  (p ?? null) as PermissionsMap | null;
-
-/** Mảng chuỗi hay không — dữ liệu méo phải đọc thành "rỗng", không được ném. */
-const dsChuoi = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-
-/**
- * Giá trị thô trong map đọc thành quyết định.
- *
- * - `true` / `false`: hình dạng v1 — KHÔNG biết phạm vi. `buildingId` bị bỏ
- *   qua có chủ ý: siết theo toà khi không có dữ liệu toà là tắt nút của người
- *   ĐANG CÓ quyền, hỏng nặng hơn lỗi đang vá.
- * - object: hình dạng v2 — trả lời đúng câu được hỏi.
- * - còn lại: fail-closed.
- */
-function quyetDinhTheoPhamVi(raw: unknown, buildingId?: string | null): boolean {
-  if (typeof raw === "boolean") return raw;
-  if (raw === null || typeof raw !== "object") return false;
-
-  const scope = raw as Partial<PermissionScope>;
-  if (scope.org_wide === true) return true;
-
-  const toa = dsChuoi(scope.building_ids);
-  if (buildingId) return toa.includes(buildingId);
-
-  // Không hỏi toà = hỏi "có quyền này ở đâu đó không". Bề mặt không gắn toà
-  // (mục menu, route guard) phải mở, nếu không người dùng không vào nổi trang
-  // để chọn toà.
-  return toa.length > 0 || dsChuoi(scope.cashbook_ids).length > 0;
-}
+// `canUse` + kiểu phạm vi (PermissionScope, PermsLike) nằm ở src/lib/permissionCheck.ts để chunk entry
+// không kéo cả catalog này; re-export để mọi import cũ giữ nguyên.
+export { canUse, type PermissionScope, type PermsLike } from "@/lib/permissionCheck";
 
 /** Tra feature theo (module, action) — dùng cho gate runtime. */
 const FEATURE_BY_KEY: Record<string, PageFeature> = Object.fromEntries(
@@ -715,33 +658,6 @@ export function featureValue(perms: PermsLike, ft: PageFeature): boolean {
   const p = asPerms(perms);
   if (isSuperAdminPerms(p)) return true;
   return canFeature(p, ft.module, ft.action);
-}
-
-/**
- * Gate runtime chuẩn cho FE.
- *
- * `buildingId` là câu hỏi ĐẦY ĐỦ: "người này được làm việc đó TRÊN TOÀ NÀY
- * không". Bề mặt nào biết mình đang đứng ở toà nào thì phải truyền — đó là
- * cách duy nhất giao diện thôi hứa thay máy chủ (D1).
- *
- * Bỏ trống `buildingId` là hỏi câu yếu hơn: "có quyền này ở đâu đó không".
- * Đúng cho route guard và mục menu, KHÔNG đủ cho nút thao tác trên một toà.
- */
-export function canUse(
-  perms: PermsLike,
-  module: string,
-  action: ActionKey,
-  buildingId?: string | null,
-): boolean {
-  const p = asPerms(perms);
-  if (!p) return false;
-  if (isSuperAdminPerms(p)) return true;
-
-  const raw = (p as Record<string, Record<string, unknown> | undefined>)[module]?.[action];
-  // Khoá vắng mặt: giữ nguyên đường cũ (canFeature) để không lệch ngữ nghĩa
-  // "không suy diễn xuyên module" đã chốt ngày 26/07.
-  if (raw === undefined) return canFeature(p, module, action);
-  return quyetDinhTheoPhamVi(raw, buildingId);
 }
 
 /**

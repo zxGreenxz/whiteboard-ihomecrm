@@ -1364,6 +1364,7 @@
     "src/lib/pendingCollection.ts",
     "src/lib/perfTrace.ts",
     "src/lib/periodFeeSlots.ts",
+    "src/lib/permissionCheck.ts",
     "src/lib/permissionPages.ts",
     "src/lib/permissions.ts",
     "src/lib/persistentFinancialWorkflow.ts",
