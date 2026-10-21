@@ -891,17 +891,19 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all sixteen reviewed forward migrations and their 60 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all seventeen reviewed forward migrations and their 62 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
   // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
   // R2d 20261021063452; the 20261019034254 capabilities v1 and metadata grant and the R2c
   // 20261021035022 v2 reader after the web building scope 20261021170452): its statements are
-  // then only superseded pins.
+  // then only superseded pins. 20261021172540 replaces the two task-input steps of
+  // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
+  // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 16);
-  assert.equal(FORWARD_FUNCTIONS.length, 60);
-  assert.equal(FORWARD_BY_NAME.size, 60, 'one live definition per reviewed name');
+  assert.equal(paths.length, 17);
+  assert.equal(FORWARD_FUNCTIONS.length, 62);
+  assert.equal(FORWARD_BY_NAME.size, 62, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);

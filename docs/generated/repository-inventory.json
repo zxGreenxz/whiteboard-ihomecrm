@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1542,
-  "soFileDocBangFs": 399,
-  "tongLoiGoi": 964,
-  "khongPhanLoaiDuoc": 431,
+  "tongSoFileTest": 1544,
+  "soFileDocBangFs": 400,
+  "tongLoiGoi": 970,
+  "khongPhanLoaiDuoc": 432,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 155,
+      "soFile": 156,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -303,6 +303,14 @@
       "khongPhanLoaiDuoc": 6
     },
     {
+      "file": "scripts/__tests__/hermes-task-function-catalog.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/network-center-disposable-supabase.test.mjs",
       "soGoi": 6,
       "loai": {
@@ -552,14 +560,6 @@
       "khongPhanLoaiDuoc": 3
     },
     {
-      "file": "scripts/__tests__/hermes-task-function-catalog.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "sql": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "scripts/__tests__/pwa-manifest.test.ts",
       "soGoi": 4,
       "loai": {
@@ -689,6 +689,22 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/task-composition.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/task-input-options-no-building.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-zalo-native/operator-reconcile.test.mjs",
@@ -997,14 +1013,6 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/task-composition.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/wave2-a-coc-quy.test.mjs",
