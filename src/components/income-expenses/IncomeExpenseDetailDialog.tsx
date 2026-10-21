@@ -3,7 +3,6 @@ import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpens
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
-import { useSelfApproveGate } from "@/hooks/income-expenses/selfApproveGate";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -208,11 +207,6 @@ function IncomeExpenseDetailDialogContent({
   const needsSettlementLookup = isSettlementLeg || !!(voucher?.type === "INCOME" && !voucher.contract_id && voucher.items.some((item) => item.is_deposit));
   const settlement = useReservationSettlementForVoucher(voucher?.id ?? null, open && needsSettlementLookup);
   const monetaryActionsAllowed = !isSettlementLeg && (!needsSettlementLookup || (settlement.isSuccess && !settlement.data));
-  // Câu 25: máy chủ trả lời người đang xem có phải người lập không được tự duyệt phiếu này.
-  const selfApprove = useSelfApproveGate(
-    voucher?.id,
-    open && monetaryActionsAllowed && !!onApprove && voucher?.approval_status === "UNAPPROVED",
-  );
 
   if (!voucher) return null;
 
@@ -316,10 +310,7 @@ function IncomeExpenseDetailDialogContent({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-green-600 hover:bg-green-700"
-                  title={selfApprove.message ?? "Duyệt phiếu"}
-                  aria-label="Duyệt phiếu"
-                  aria-describedby={selfApprove.blocked ? "ie-self-approve-note" : undefined}
-                  disabled={selfApprove.blocked}
+                  title="Duyệt phiếu"
                   onClick={() => {
                     onApprove(voucher);
                     onOpenChange(false);
@@ -403,15 +394,6 @@ function IncomeExpenseDetailDialogContent({
               </Button>
             </div>
           </div>
-          {selfApprove.blocked && (
-            <p
-              id="ie-self-approve-note"
-              role="note"
-              className="-mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-            >
-              {selfApprove.message}
-            </p>
-          )}
 
           {quickExpense && <QuickExpenseFeedback quick={quickExpense} />}
           {/* Bảng key-value */}

@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const PATCH = 'supabase/migrations/20261021175815_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql';
+const PATCH = 'supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql';
 const SUA_PHIEU = 'supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql';
 const PAY_DRAFT = 'supabase/migrations/20260831161000_pay_draft_fee_voucher_gate_truoc_doc.sql';
 const COPILOT_DUYET = 'supabase/migrations/20260906012317_copilot_ie_duyet_thang_ba_bac_v1.sql';
@@ -46,6 +46,7 @@ const OTHER_SCOPE = id(25); // có quyền duyệt CHỈ ở toà B
 const LOCKER_NO_APPROVE = id(26); // có salary.lock nhưng không có quyền duyệt (giả định)
 const OFFBOARDED = id(27);
 const STAFF = id(28);
+const ORG_APPROVER = id(29); // có quyền duyệt phạm vi CÔNG TY, không super admin
 const ACC_MAKER = id(31);
 const ACC_MAKER_APPROVER = id(32);
 const ACC_LOCKER = id(33);
@@ -101,7 +102,8 @@ async function build(db: PGlite, { patch }: { patch: boolean }) {
     -- Quyền giả: một dòng = income_expenses.approve ở một toà; building_id NULL = phạm vi công ty.
     CREATE TABLE app_private.approve_grants(actor uuid, building_id uuid);
     INSERT INTO app_private.approve_grants VALUES
-      ('${APPROVER}', '${B_A}'), ('${MAKER_APPROVER}', '${B_A}'), ('${OTHER_SCOPE}', '${B_B}'), ('${OFFBOARDED}', NULL);
+      ('${APPROVER}', '${B_A}'), ('${MAKER_APPROVER}', '${B_A}'), ('${OTHER_SCOPE}', '${B_B}'), ('${OFFBOARDED}', NULL),
+      ('${ORG_APPROVER}', NULL);
     CREATE TABLE app_private.salary_lock_grants(actor uuid);
     INSERT INTO app_private.salary_lock_grants VALUES ('${MAKER_APPROVER}'), ('${LOCKER_NO_APPROVE}');
     CREATE TABLE app_private.offboarded(actor uuid);
@@ -343,14 +345,22 @@ describe('câu 25 — sau vá', () => {
     await expectSelfApproveBlocked(db.query('SELECT public.approve_voucher($1)', [id(214)]));
   });
 
-  it('phiếu không gắn toà: có quyền duyệt ở phạm vi nào đó thì tự duyệt (như SELF_APPROVER lúc lập); không có ⇒ chặn; đã nghỉ việc ⇒ chặn', async () => {
+  it('phiếu không gắn toà: đúng rào duyệt của writer — chỉ super admin tự duyệt; quyền ở toà khác hay cả công ty đều KHÔNG đủ', async () => {
     await seed(db, { id: id(215), maker: OTHER_SCOPE, total: 1_200_000, building: null });
     await seed(db, { id: id(216), maker: MAKER, total: 1_200_000, building: null });
     await seed(db, { id: id(217), maker: OFFBOARDED, total: 1_200_000, building: null });
     await seed(db, { id: id(226), maker: OWNER, total: 1_200_000, building: null });
+    await seed(db, { id: id(227), maker: ORG_APPROVER, total: 1_200_000, building: null });
+    await seed(db, { id: id(228), maker: ORG_APPROVER, total: 1_200_000 });
+    // Có quyền duyệt ở toà B (has_any_scope_v3 cũ sẽ cho qua — lỗ review A) ⇒ nay chặn.
     await as(db, OTHER_SCOPE);
-    await db.query('SELECT public.approve_voucher($1)', [id(215)]);
-    expect((await status(db, id(215))).approval_status).toBe('APPROVED');
+    await expectSelfApproveBlocked(db.query('SELECT public.approve_voucher($1)', [id(215)]));
+    // Quyền duyệt cả công ty: phiếu toà A tự duyệt được, phiếu không toà thì không (writer cũng
+    // chỉ cho super admin duyệt phiếu không toà).
+    await as(db, ORG_APPROVER);
+    await expectSelfApproveBlocked(db.query('SELECT public.approve_voucher($1)', [id(227)]));
+    await db.query('SELECT public.approve_voucher($1)', [id(228)]);
+    expect((await status(db, id(228))).approval_status).toBe('APPROVED');
     // Super admin không có dòng quyền nào: vẫn là người có quyền duyệt.
     await as(db, OWNER);
     await db.query('SELECT public.approve_voucher($1)', [id(226)]);
@@ -359,6 +369,30 @@ describe('câu 25 — sau vá', () => {
     await expectSelfApproveBlocked(db.query('SELECT public.approve_voucher($1)', [id(216)]));
     await as(db, OFFBOARDED);
     await expectSelfApproveBlocked(db.query('SELECT public.approve_voucher($1)', [id(217)]));
+    for (const v of [id(215), id(216), id(217), id(227)]) {
+      expect((await status(db, v)).approval_status).toBe('UNAPPROVED');
+    }
+  });
+
+  it('has_building_perm_v1: một khoá đủ trong nhiều khoá, toà NULL chỉ super admin, khoá sai ⇒ 22023, chưa đăng nhập ⇒ false', async () => {
+    const co = async (actor: string | null, building: string | null, ...keys: string[]) => {
+      await as(db, actor);
+      const r = await db.query<{ ok: boolean }>(
+        `SELECT app_private.has_building_perm_v1($1::uuid, VARIADIC $2::text[]) AS ok`, [building, keys]);
+      return r.rows[0].ok;
+    };
+    expect(await co(APPROVER, B_A, 'income_expenses.approve')).toBe(true);
+    expect(await co(APPROVER, B_B, 'income_expenses.approve')).toBe(false);
+    expect(await co(APPROVER, B_B, 'contracts.terminate', 'income_expenses.approve')).toBe(false);
+    expect(await co(APPROVER, B_A, 'contracts.terminate', 'income_expenses.approve')).toBe(true);
+    expect(await co(ORG_APPROVER, B_B, 'income_expenses.approve')).toBe(true);
+    expect(await co(ORG_APPROVER, null, 'income_expenses.approve')).toBe(false);
+    expect(await co(OWNER, null, 'income_expenses.approve')).toBe(true);
+    expect(await co(OFFBOARDED, B_A, 'income_expenses.approve')).toBe(false);
+    expect(await co(null, B_A, 'income_expenses.approve')).toBe(false);
+    await as(db, APPROVER);
+    const e = await failure(db.query(`SELECT app_private.has_building_perm_v1($1::uuid, VARIADIC $2::text[])`, [B_A, ['khong hop le']]));
+    expect(e.code).toBe('22023');
   });
 
   it('phiếu THU và công ty chưa đặt ngưỡng: luật không áp (ngưỡng chỉ cho phiếu chi)', async () => {
@@ -428,9 +462,11 @@ describe('câu 25 — sau vá', () => {
       (await db.query<{ ok: boolean }>(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS ok`, [role, sig])).rows[0].ok;
     expect(await priv('authenticated', 'public.ie_self_approve_gate_v1(uuid)')).toBe(true);
     expect(await priv('anon', 'public.ie_self_approve_gate_v1(uuid)')).toBe(false);
-    expect(await priv('authenticated', 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)')).toBe(false);
-    expect(await priv('anon', 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)')).toBe(false);
-    expect(await priv('service_role', 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)')).toBe(false);
+    for (const sig of ['app_private.ie_self_approve_over_threshold_blocked_v1(uuid)', 'app_private.has_building_perm_v1(uuid, text[])']) {
+      for (const role of ['authenticated', 'anon', 'service_role']) {
+        expect(await priv(role, sig), `${role} → ${sig}`).toBe(false);
+      }
+    }
     // Đường REST thật: SET ROLE authenticated rồi gọi.
     await as(db, MAKER);
     await db.exec('SET ROLE authenticated');
@@ -449,11 +485,12 @@ describe('câu 25 — sau vá', () => {
       SELECT p.proname, count(*)::int AS n, bool_and(p.prosecdef) AS definer
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE p.proname IN ('approve_income_expense_v1', 'approve_voucher', 'ie_self_approve_gate_v1',
-                           'ie_self_approve_over_threshold_blocked_v1')
+                           'ie_self_approve_over_threshold_blocked_v1', 'has_building_perm_v1')
        GROUP BY p.proname ORDER BY p.proname`);
     expect(r.rows).toEqual([
       { proname: 'approve_income_expense_v1', n: 1, definer: true },
       { proname: 'approve_voucher', n: 1, definer: true },
+      { proname: 'has_building_perm_v1', n: 1, definer: true },
       { proname: 'ie_self_approve_gate_v1', n: 1, definer: true },
       { proname: 'ie_self_approve_over_threshold_blocked_v1', n: 1, definer: true },
     ]);

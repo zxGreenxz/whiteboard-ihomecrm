@@ -9,10 +9,12 @@
 -- LỖ
 --   Hai writer duyệt cũ — approve_income_expense_v1 và approve_voucher — cho qua khi
 --   `user_id = auth.uid()` (người lập) mà không hỏi quyền income_expenses.approve. Cả hai
---   GRANT authenticated, và là bậc 2/3 của approve_pending_income_expense_checked_v1 (nút
---   Duyệt trên web). Nên người lập KHÔNG có quyền duyệt bấm Duyệt ở hộp chi tiết phiếu, hoặc
---   gọi REST thẳng, là duyệt được phiếu chi của mình kể cả khi phiếu sinh ra ở Chờ duyệt vì
---   tổng >= ngưỡng. Migration 20260915144703 đã cố ý giữ nhánh này chờ chủ quyết.
+--   GRANT authenticated, là bậc 2/3 của approve_pending_income_expense_checked_v1 (nút Duyệt
+--   của công ty còn luồng duyệt LEGACY) và nằm dưới Thanh toán phiếu phí nháp, Chốt lương. Hai
+--   công ty hiện có đều ở luồng duyệt CANONICAL nên nút web đi approve_income_expense_v2 (vốn
+--   đòi quyền duyệt), nhưng người lập không có quyền duyệt vẫn gọi REST thẳng hai writer cũ là
+--   duyệt được phiếu chi của mình kể cả khi phiếu sinh ra ở Chờ duyệt vì tổng >= ngưỡng.
+--   Migration 20260915144703 đã cố ý giữ nhánh này chờ chủ quyết.
 --
 -- ĐO PRODUCTION (chỉ đọc, 22/10/2026; chỉ đếm, không chép tên/ID)
 --   * Công ty thật: ngưỡng 600.000đ; 5 thành viên, chỉ 2 tài khoản vai chủ (Super Admin /
@@ -23,6 +25,8 @@
 --     1 approve_voucher) — giữ nguyên.
 --   * Đang chờ duyệt: 49 phiếu chi >= ngưỡng của hai người lập không có quyền duyệt — sau vá
 --     họ không tự duyệt được nữa, người có quyền duyệt vẫn duyệt như cũ.
+--   * Phiếu chi KHÔNG gắn toà: 0 phiếu (mọi thời điểm, mọi công ty) ⇒ siết phiếu không toà về
+--     "chỉ super admin" (mục VÁ 1) không chặn ai đang làm thật.
 --   * Hai luồng nội bộ đi qua hai writer cũ dưới danh tính người bấm:
 --       lock_salary_month_v1 (web lock_salary_month_v2 → rent_support_salary_lock_before_v2):
 --         90 ngày 0 lần; cả đời 1 lần (07/2026, tài khoản Super Admin). Người có salary.lock
@@ -34,13 +38,20 @@
 --       chặn (fail-closed, cả lượt ROLLBACK) — không mở ngữ cảnh hệ thống / cửa hậu nào.
 --
 -- VÁ
+--   0. app_private.has_building_perm_v1(toà, VARIADIC khoá) — hàm kiểm quyền TRẢ BOOLEAN dùng
+--      chung, cùng ngữ nghĩa phép kiểm của app_private.require_building_perm_v1 (câu 26, đã lên
+--      production): can_do_on_building theo ĐÚNG toà của bản ghi (super admin qua, tài khoản đã
+--      nghỉ bị chặn), nhiều khoá = chỉ cần một, toà NULL chỉ qua với super admin — cũng là rào
+--      duyệt của chính hai writer cũ (toà NULL ⇒ chỉ super admin). Không gọi thẳng
+--      require_building_perm_v1 vì hàm đó RAISE với HINT [THIEU_QUYEN] chung, mất mã
+--      ie_self_approve_over_threshold mà web/Hermes đọc. Đổi require_building_perm_v1 sang gọi hàm
+--      này để một PR sau khi #265 đã gộp (hàm đó chưa có trên main).
 --   1. app_private.ie_self_approve_over_threshold_blocked_v1(p_voucher_id) — MỘT hàm luật dùng
 --      chung (luật 17/10: quyền + tiền dùng >= 2 nơi đặt trong database). TRUE khi người gọi
 --      (auth.uid()) là người lập, phiếu là CHI, tổng >= ngưỡng của công ty (cùng phép so với lúc
---      lập trong create_income_expense_v1), và người gọi KHÔNG có quyền duyệt: không super
---      admin, không income_expenses.approve ở toà của phiếu (phiếu không toà: không có ở phạm
---      vi nào — đúng phép hỏi SELF_APPROVER lúc lập). Chưa đặt ngưỡng ⇒ FALSE. Phiếu của người
---      khác ⇒ FALSE (luật chỉ nói về phiếu của chính mình). DEFINER vì đọc
+--      lập trong create_income_expense_v1), và người gọi KHÔNG có quyền duyệt theo
+--      has_building_perm_v1(toà của phiếu, 'income_expenses.approve'). Chưa đặt ngưỡng ⇒ FALSE.
+--      Phiếu của người khác ⇒ FALSE (luật chỉ nói về phiếu của chính mình). DEFINER vì đọc
 --      app_private.ie_auto_approve_config; không cấp cho authenticated/anon/service_role.
 --   2. approve_income_expense_v1, approve_voucher: hỏi hàm (1) ngay trước kiểm sổ quỹ/quyền,
 --      chặn 42501 với câu báo cố định + HINT 'ie_self_approve_over_threshold' (mã máy đọc cho
@@ -53,8 +64,8 @@
 --      FALSE) nên không thành máy dò. GRANT authenticated.
 --
 -- ĐI QUA HÀM (1) — CÙNG MỘT LUẬT
---   web (approve_pending_income_expense_checked_v1 → v1 / approve_voucher), REST thẳng hai
---   writer, pay_draft_fee_voucher, lock_salary_month_v1, Copilot copilot_execute_ie_duyet_v1
+--   web luồng LEGACY (approve_pending_income_expense_checked_v1 → v1 / approve_voucher), REST
+--   thẳng hai writer, pay_draft_fee_voucher, lock_salary_month_v1, Copilot copilot_execute_ie_duyet_v1
 --   (cổng Copilot vốn đòi income_expenses.approve). Hermes chưa có công cụ duyệt (ghi phiếu
 --   chi đã tắt 21/10); công cụ duyệt sau này dùng chung hàm (1)/(3).
 --
@@ -63,16 +74,17 @@
 --   status_v1 / decide_financial_request (đã đòi quyền duyệt; engine cấm maker tự duyệt).
 --   Người lập CÓ quyền duyệt vẫn tự duyệt (chủ chốt 25/07, giữ ở câu 05). Luật lúc lập (tự
 --   duyệt dưới ngưỡng, SELF_APPROVER, bộ máy cam kết/trần, phí cố định, định kỳ tự duyệt, cặp
---   bỏ cọc trong thanh lý) không đổi. Phiếu chờ duyệt DƯỚI ngưỡng (hạng mục bắt buộc duyệt,
---   bộ máy chi, G6) — người lập vẫn tự duyệt được như cũ: ngoài câu 25, chờ chủ quyết riêng.
---   Không sửa dữ liệu.
+--   bỏ cọc trong thanh lý) không đổi — kể cả lỗ cùng loại ở SELF_APPROVER lúc lập cho phiếu không
+--   toà (has_any_scope_v3 không lọc công ty), ghi "Còn mở" trong PR. Phiếu chờ duyệt DƯỚI ngưỡng
+--   (hạng mục bắt buộc duyệt, bộ máy chi, G6) — người lập vẫn tự duyệt được như cũ: ngoài câu 25,
+--   chờ chủ quyết riêng. Không sửa dữ liệu.
 --
 -- ĐƯỜNG LÙI (một forward migration khác, không phá dữ liệu)
 --   CREATE OR REPLACE public.approve_income_expense_v1 bằng thân mục 8 của
 --   20260925080906_sua_phieu_cho_duyet.sql; CREATE OR REPLACE public.approve_voucher bằng thân
---   trong supabase/baseline/schema.sql; DROP FUNCTION public.ie_self_approve_gate_v1(uuid) và
---   app_private.ie_self_approve_over_threshold_blocked_v1(uuid) (web tự mở nút khi hàm cổng
---   vắng).
+--   trong supabase/baseline/schema.sql; DROP FUNCTION public.ie_self_approve_gate_v1(uuid),
+--   app_private.ie_self_approve_over_threshold_blocked_v1(uuid) và (khi không còn ai gọi)
+--   app_private.has_building_perm_v1(uuid, text[]) (web tự mở nút khi hàm cổng vắng).
 -- ============================================================
 
 -- 0. Tiền kiểm — không vá mù lên một định nghĩa lạ.
@@ -83,10 +95,8 @@ DECLARE
 BEGIN
   IF to_regprocedure('public.can_do_on_building(text, text, uuid)') IS NULL
      OR to_regprocedure('public.is_super_admin()') IS NULL
-     OR to_regprocedure('app_private.has_any_scope_v3(text)') IS NULL
-     OR to_regprocedure('app_private.is_actor_offboarded_v1()') IS NULL
      OR to_regprocedure('app_private.assert_no_engine_request_v1(uuid)') IS NULL THEN
-    RAISE EXCEPTION 'Thiếu helper quyền (can_do_on_building / is_super_admin / has_any_scope_v3 / is_actor_offboarded_v1 / assert_no_engine_request_v1) — DỪNG.'
+    RAISE EXCEPTION 'Thiếu helper quyền (can_do_on_building / is_super_admin / assert_no_engine_request_v1) — DỪNG.'
       USING ERRCODE = '55000';
   END IF;
   IF to_regclass('app_private.ie_auto_approve_config') IS NULL THEN
@@ -115,6 +125,45 @@ BEGIN
   END LOOP;
 END
 $truoc$;
+
+-- 0b. Kiểm quyền trả boolean dùng chung (cùng phép kiểm của require_building_perm_v1, câu 26).
+CREATE OR REPLACE FUNCTION app_private.has_building_perm_v1(p_building_id uuid, VARIADIC p_permission_keys text[])
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'app_private'
+AS $function$
+DECLARE
+  v_key text;
+BEGIN
+  IF coalesce(cardinality(p_permission_keys), 0) = 0
+     OR EXISTS (SELECT 1 FROM unnest(p_permission_keys) k WHERE k IS NULL OR k !~ '^[a-z_]+\.[a-z_]+$') THEN
+    RAISE EXCEPTION 'has_building_perm_v1: khoá quyền không hợp lệ (%)', array_to_string(p_permission_keys, '|')
+      USING ERRCODE = '22023';
+  END IF;
+  IF auth.uid() IS NULL THEN
+    RETURN false;
+  END IF;
+  -- Toà NULL chỉ qua với super admin (fail-closed cho người thường) — đúng rào duyệt của
+  -- approve_income_expense_v1 / approve_voucher và của require_building_perm_v1.
+  IF p_building_id IS NULL AND NOT COALESCE(public.is_super_admin(), false) THEN
+    RETURN false;
+  END IF;
+  FOREACH v_key IN ARRAY p_permission_keys LOOP
+    IF COALESCE(public.can_do_on_building(split_part(v_key, '.', 1), split_part(v_key, '.', 2), p_building_id), false) THEN
+      RETURN true;
+    END IF;
+  END LOOP;
+  RETURN false;
+END
+$function$;
+
+COMMENT ON FUNCTION app_private.has_building_perm_v1(uuid, text[]) IS
+  'Kiểm quyền TRẢ BOOLEAN dùng chung: người gọi (auth.uid()) có MỘT trong các khoá ở ĐÚNG toà của bản ghi theo can_do_on_building (super admin qua, tài khoản đã nghỉ bị chặn); toà NULL chỉ super admin. Cùng phép kiểm của require_building_perm_v1 (câu 26) nhưng không RAISE, để luật gọi nó giữ được mã lỗi riêng. Câu 25 (21/10/2026).';
+
+REVOKE ALL ON FUNCTION app_private.has_building_perm_v1(uuid, text[])
+  FROM PUBLIC, anon, authenticated, service_role;
 
 -- 1. Luật dùng chung.
 CREATE OR REPLACE FUNCTION app_private.ie_self_approve_over_threshold_blocked_v1(p_voucher_id uuid)
@@ -153,22 +202,15 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Người lập CÓ quyền duyệt vẫn tự duyệt (chủ chốt 25/07, giữ ở câu 05).
-  IF public.is_super_admin() THEN
-    RETURN false;
-  END IF;
-  IF v_ie.building_id IS NOT NULL THEN
-    RETURN NOT COALESCE(public.can_do_on_building('income_expenses', 'approve', v_ie.building_id), false);
-  END IF;
-  -- Phiếu không gắn toà: income_expenses.approve khai required_dimensions=['BUILDING'],
-  -- nên hỏi "có ở bất kỳ phạm vi nào" — đúng phép hỏi SELF_APPROVER lúc lập.
-  RETURN NOT (COALESCE(app_private.has_any_scope_v3('income_expenses.approve'), false)
-              AND NOT COALESCE(app_private.is_actor_offboarded_v1(), false));
+  -- Người lập CÓ quyền duyệt vẫn tự duyệt (chủ chốt 25/07, giữ ở câu 05). "Có quyền duyệt" =
+  -- đúng rào duyệt của chính writer: income_expenses.approve ở toà của phiếu; phiếu không toà
+  -- chỉ super admin (has_any_scope_v3 KHÔNG dùng: nó không lọc theo công ty của phiếu).
+  RETURN NOT COALESCE(app_private.has_building_perm_v1(v_ie.building_id, 'income_expenses.approve'), false);
 END
 $function$;
 
 COMMENT ON FUNCTION app_private.ie_self_approve_over_threshold_blocked_v1(uuid) IS
-  'Câu 25 (chủ chốt 21/10/2026): TRUE khi auth.uid() là người lập phiếu CHI có tổng >= ngưỡng tự duyệt của công ty mà không có quyền duyệt (không super admin, không income_expenses.approve ở toà của phiếu; phiếu không toà: ở bất kỳ phạm vi nào). Chưa đặt ngưỡng / phiếu thu / phiếu người khác ⇒ FALSE. Một luật cho mọi writer duyệt và cổng web.';
+  'Câu 25 (chủ chốt 21/10/2026): TRUE khi auth.uid() là người lập phiếu CHI có tổng >= ngưỡng tự duyệt của công ty mà không có quyền duyệt theo has_building_perm_v1(toà của phiếu, income_expenses.approve) — phiếu không toà chỉ super admin. Chưa đặt ngưỡng / phiếu thu / phiếu người khác ⇒ FALSE. Một luật cho mọi writer duyệt và cổng web.';
 
 REVOKE ALL ON FUNCTION app_private.ie_self_approve_over_threshold_blocked_v1(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
@@ -382,14 +424,22 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF NOT (SELECT prosecdef FROM pg_proc
-           WHERE oid = 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)'::regprocedure) THEN
-    RAISE EXCEPTION 'ie_self_approve_over_threshold_blocked_v1 phải SECURITY DEFINER' USING ERRCODE = '55000';
+  IF position('app_private.has_building_perm_v1(v_ie.building_id, ''income_expenses.approve'')' IN
+              pg_get_functiondef('app_private.ie_self_approve_over_threshold_blocked_v1(uuid)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'ie_self_approve_over_threshold_blocked_v1 phải hỏi quyền duyệt qua has_building_perm_v1 theo toà của phiếu'
+      USING ERRCODE = '55000';
   END IF;
-  IF has_function_privilege('anon', 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'app_private.ie_self_approve_over_threshold_blocked_v1(uuid)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'anon/authenticated còn EXECUTE trên ie_self_approve_over_threshold_blocked_v1' USING ERRCODE = '55000';
-  END IF;
+  FOREACH v_sig IN ARRAY ARRAY['app_private.ie_self_approve_over_threshold_blocked_v1(uuid)',
+                               'app_private.has_building_perm_v1(uuid, text[])'] LOOP
+    IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = v_sig::regprocedure) THEN
+      RAISE EXCEPTION '% phải SECURITY DEFINER', v_sig USING ERRCODE = '55000';
+    END IF;
+    IF has_function_privilege('anon', v_sig, 'EXECUTE')
+       OR has_function_privilege('authenticated', v_sig, 'EXECUTE')
+       OR has_function_privilege('service_role', v_sig, 'EXECUTE') THEN
+      RAISE EXCEPTION 'anon/authenticated/service_role còn EXECUTE trên %', v_sig USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
   IF NOT has_function_privilege('authenticated', 'public.ie_self_approve_gate_v1(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.ie_self_approve_gate_v1(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ie_self_approve_gate_v1 phải chỉ mở cho authenticated' USING ERRCODE = '55000';
@@ -399,9 +449,10 @@ BEGIN
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE (n.nspname, p.proname) IN (('public', 'approve_income_expense_v1'), ('public', 'approve_voucher'),
                                     ('public', 'ie_self_approve_gate_v1'),
-                                    ('app_private', 'ie_self_approve_over_threshold_blocked_v1'));
-  IF v_n <> 4 THEN
-    RAISE EXCEPTION 'Sai số overload (% thay vì 4) cho bốn hàm câu 25', v_n USING ERRCODE = '55000';
+                                    ('app_private', 'ie_self_approve_over_threshold_blocked_v1'),
+                                    ('app_private', 'has_building_perm_v1'));
+  IF v_n <> 5 THEN
+    RAISE EXCEPTION 'Sai số overload (% thay vì 5) cho năm hàm câu 25', v_n USING ERRCODE = '55000';
   END IF;
 END
 $sau$;

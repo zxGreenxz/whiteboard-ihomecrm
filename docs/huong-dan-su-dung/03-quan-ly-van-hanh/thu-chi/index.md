@@ -149,7 +149,7 @@ Màn Thu chi trên điện thoại có nút **+ Phiếu**, ô tìm, nút lọc, 
 | Không thấy nút bút chì | Phiếu không còn Chờ duyệt, hoặc là phiếu hoá đơn/cổ đông phải sửa ở luồng gốc. |
 | Báo "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa" | Đổi sang ngày ở kỳ hiện tại; kỳ đã chốt không ghi thêm được. |
 | Phiếu mới vào Chờ duyệt dù số tiền nhỏ | Hạng mục thuộc nhóm bắt buộc duyệt, vượt cam kết chi, hoặc bạn không giữ sổ đã chọn. |
-| Nút **Duyệt** ở chi tiết phiếu bị khoá, kèm câu "Phiếu chi từ … trở lên cần người có quyền duyệt thu chi duyệt" | Bạn là người lập phiếu chi từ ngưỡng tự duyệt trở lên và không có quyền duyệt thu chi — chủ chốt 21/10/2026: phiếu vượt ngưỡng phải do người có quyền duyệt duyệt. Nhờ người có quyền duyệt duyệt phiếu; phiếu dưới ngưỡng vẫn vào sổ ngay như cũ. |
+| Hộp **Xác nhận duyệt phiếu** khoá nút duyệt, kèm câu "Phiếu chi từ … trở lên cần người có quyền duyệt thu chi duyệt" | Bạn là người lập phiếu chi từ ngưỡng tự duyệt trở lên và không có quyền duyệt thu chi — chủ chốt 21/10/2026: phiếu vượt ngưỡng phải do người có quyền duyệt duyệt. Nhờ người có quyền duyệt duyệt phiếu; phiếu dưới ngưỡng vẫn vào sổ ngay như cũ. Hệ thống kiểm trước khi lưu nên sổ quỹ/ảnh vừa chọn trong hộp không bị lưu dở. |
 | Chi tiết phiếu báo chưa tải được | Bấm **Thử lại**; trong lúc đọc lại, các nút thao tác bị khoá để tránh thao tác trên bản cũ. |
 
 ## Quy trình liên quan
