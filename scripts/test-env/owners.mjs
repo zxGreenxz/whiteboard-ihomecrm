@@ -33,6 +33,12 @@ export function ownersDigest(meta) {
   return createHash('sha256').update(JSON.stringify(canonical(meta))).digest('hex');
 }
 
+/** Digest cho quick check trên TEST: connector Hermes TEST có thể đang bật LOGIN cho vai dịch vụ đã duyệt giữa hai lần
+ * sync, còn sync luôn dựng NOLOGIN ⇒ so như ngay sau sync. Vai khác bật LOGIN vẫn làm digest lệch. */
+export function ownersDigestTest(meta) {
+  return ownersDigest(haDangNhapVaiDichVu(meta));
+}
+
 export function kiemOwnersSnapshot(source, target, parts = ['roles', 'memberships', 'routines', 'schemaAcl']) {
   kiemMetadataOwners(source);
   for (const part of parts) {
@@ -123,9 +129,17 @@ export function sqlKhoiPhucVai(meta) {
   kiemMetadataOwners(meta);
   const sql = ['BEGIN;'];
   for (const role of meta.roles) {
+    // Connector Hermes TEST (21/10/2026) bật LOGIN cho đúng vai dịch vụ đã duyệt trên TEST giữa hai lần sync. Khôi phục hạ
+    // về NOLOGIN và ngắt phiên của vai đó (dữ liệu kết nối vừa bị xoá cùng app_private), thay vì dừng sync sau khi đã xoá
+    // dữ liệu. Chỉ khi LOGIN là thuộc tính lạ DUY NHẤT; superuser/createdb/createrole/replication/bypassrls vẫn dừng như cũ.
+    const serviceLogin = PROD_LOGIN_SERVICE_ROLES.includes(role.name) ? `
+      ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname=${lit(role.name)} AND rolcanlogin
+        AND NOT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
+        ALTER ROLE ${ident(role.name)} NOLOGIN;
+        PERFORM pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = ${lit(role.name)} AND pid <> pg_backend_pid();` : '';
     sql.push(`DO $owner_restore$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${lit(role.name)}) THEN
-        CREATE ROLE ${ident(role.name)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+        CREATE ROLE ${ident(role.name)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;${serviceLogin}
       ELSIF EXISTS (SELECT 1 FROM pg_roles WHERE rolname=${lit(role.name)}
         AND (rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
         RAISE EXCEPTION 'Existing TEST role is not restricted';
