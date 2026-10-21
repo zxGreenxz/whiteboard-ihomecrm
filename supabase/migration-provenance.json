@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T12:34:05.379Z",
+  "generatedAt": "2026-10-21T16:27:29.757Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 788,
-    "unknown": 81,
+    "unknown": 82,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12537,6 +12537,18 @@
       "name": "hermes_expense_tools_disable_v1",
       "scheme": "timestamp14",
       "sha256": "3b2d36259988151696742ad4f64ad7a67f6670e8a321c36c679766c9629b1e76",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021162612_hermes_task_cancel_disable_v1.sql",
+      "version": "20261021162612",
+      "name": "hermes_task_cancel_disable_v1",
+      "scheme": "timestamp14",
+      "sha256": "03602e45d568d4a3540f7ded924366722816627c9df18d254f5eaa3561e9a5e3",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
