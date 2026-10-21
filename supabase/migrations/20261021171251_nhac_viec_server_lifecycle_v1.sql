@@ -27,6 +27,9 @@
 --   * Cổng: app_private.lifecycle_gate_v2(user, org, họ) đọc đúng khoá sở thích + events công ty theo họ; sweep/claim/
 --     validate chuyển sang v2. Claim dùng giờ yên chung app_private.notify_in_quiet_hours_v1 (công ty HOẶC cá nhân).
 --   * Nội dung chỉ là số đếm, không tên khách, không số tiền (như lane lifecycle hiện tại).
+--   * Chi phí: RPC chạy dưới PostgREST (statement_timeout 8 s của authenticator). "Hôm nay" tính một lần trong
+--     sources; sweep quét nguồn một lần/công ty và bỏ qua (người, họ) chưa đổi vân tay trong ngày
+--     (app_private.lifecycle_reminder_sweep_state); claim hỏi giờ yên trước khi dựng payload.
 -- url: /contracts, /rooms có trong NOTIFICATION_URL_ALLOWLIST; /invoices (trang danh sách, RequirePermission
 -- module invoices) CHƯA có bản không-id trong allowlist — gói C/tích hợp thêm (ghi trong báo cáo gói B).
 --
@@ -50,6 +53,22 @@ BEGIN
     RAISE EXCEPTION 'nhac_viec_server_lifecycle_v1: áp 20261021171249_notify_pipeline_v2 trước' USING ERRCODE = '55000';
   END IF;
 END $tien_quyet$;
+
+-- Vân tay lần tính gần nhất theo (công ty, người, họ): sweep chạy 15' một lần, nhưng kết quả chỉ đổi khi nguồn đổi
+-- (id/revision), quyền/membership đổi (organizations.authorization_version tăng) hoặc cổng đổi — còn lại bỏ qua phần kiểm
+-- quyền theo toà. Hết hạn quyền theo thời gian (valid_to) không tăng version: được tính lại từ ngày hôm sau (và lúc
+-- claim/validate push luôn tính lại payload). Bảng nội bộ, không ai ngoài sweep đọc.
+CREATE TABLE IF NOT EXISTS app_private.lifecycle_reminder_sweep_state (
+  organization_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  source_family text NOT NULL,
+  reminder_day date NOT NULL,
+  fingerprint text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (organization_id, user_id, source_family)
+);
+ALTER TABLE app_private.lifecycle_reminder_sweep_state ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app_private.lifecycle_reminder_sweep_state FROM PUBLIC, anon, authenticated, service_role;
 
 ALTER TABLE app_private.lifecycle_reminder_deliveries DROP CONSTRAINT IF EXISTS lifecycle_reminder_deliveries_source_family_check;
 ALTER TABLE app_private.lifecycle_reminder_deliveries ADD CONSTRAINT lifecycle_reminder_deliveries_source_family_check
@@ -86,39 +105,42 @@ AS $fn$
           END)::public.notification_type;
 $fn$;
 
+-- "Hôm nay" của công ty tính MỘT lần (CTE d) thay vì gọi org_today_v1 trên từng dòng: đo TEST 22/10 bản gọi theo
+-- dòng mất ~60 ms/lượt, mà sweep + claim gọi hàm này vài chục lần mỗi 15' trong ngân sách statement_timeout 8 s
+-- của authenticator (PostgREST).
 CREATE OR REPLACE FUNCTION app_private.lifecycle_reminder_sources_v1(p_org uuid)
 RETURNS TABLE(source_family text,source_id uuid,building_id uuid,revision text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
-  SELECT 'NOTICE',c.id,b.id,c.updated_at::text FROM public.contracts c
+  WITH d AS MATERIALIZED (SELECT public.org_today_v1(p_org) AS today)
+  SELECT 'NOTICE',c.id,b.id,c.updated_at::text FROM d, public.contracts c
     JOIN public.rooms r ON r.id=c.room_id AND r.organization_id=c.organization_id
     JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=c.organization_id
     WHERE c.organization_id=p_org AND c.status='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL
-      AND r.deleted_at IS NULL AND b.deleted_at IS NULL AND c.expected_move_out_date<=public.org_today_v1(p_org)
+      AND r.deleted_at IS NULL AND b.deleted_at IS NULL AND c.expected_move_out_date<=d.today
   UNION ALL
-  SELECT 'TURNOVER',t.id,b.id,t.epoch::text||':'||t.version::text FROM public.room_turnovers t
+  SELECT 'TURNOVER',t.id,b.id,t.epoch::text||':'||t.version::text FROM d, public.room_turnovers t
     JOIN public.rooms r ON r.id=t.room_id AND r.organization_id=t.organization_id
     JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=t.organization_id
     WHERE t.organization_id=p_org AND t.status='PENDING' AND r.deleted_at IS NULL AND b.deleted_at IS NULL
-      AND (t.expected_ready_on IS NULL OR t.expected_ready_on<=public.org_today_v1(p_org))
+      AND (t.expected_ready_on IS NULL OR t.expected_ready_on<=d.today)
   UNION ALL
   SELECT 'EXIT',e.id,e.building_id,e.version::text FROM public.contract_exit_cases e
     WHERE e.organization_id=p_org AND e.state='PENDING'
   UNION ALL
   -- Hoá đơn còn nợ: quá hạn (kể cả trạng thái OVERDUE) hoặc đến hạn trong 3 ngày tới. remaining_amount là cột
   -- GENERATED (total_amount - paid_amount) — cùng điều kiện "nợ" của Hermes (20261020233934).
-  SELECT CASE WHEN i.due_date<public.org_today_v1(p_org) THEN 'INVOICE_OVERDUE' ELSE 'INVOICE_DUE' END,
-         i.id,b.id,i.updated_at::text FROM public.invoices i
+  SELECT CASE WHEN i.due_date<d.today THEN 'INVOICE_OVERDUE' ELSE 'INVOICE_DUE' END,
+         i.id,b.id,i.updated_at::text FROM d, public.invoices i
     JOIN public.buildings b ON b.id=i.building_id AND b.organization_id=i.organization_id
     WHERE i.organization_id=p_org AND i.deleted_at IS NULL AND b.deleted_at IS NULL AND i.remaining_amount>0
-      AND ((i.status::text IN ('APPROVED','PARTIAL_PAID','OVERDUE') AND i.due_date<public.org_today_v1(p_org))
-        OR (i.status::text IN ('APPROVED','PARTIAL_PAID')
-            AND i.due_date BETWEEN public.org_today_v1(p_org) AND public.org_today_v1(p_org)+3))
+      AND ((i.status::text IN ('APPROVED','PARTIAL_PAID','OVERDUE') AND i.due_date<d.today)
+        OR (i.status::text IN ('APPROVED','PARTIAL_PAID') AND i.due_date BETWEEN d.today AND d.today+3))
   UNION ALL
-  SELECT 'CONTRACT_EXPIRING',c.id,b.id,c.updated_at::text FROM public.contracts c
+  SELECT 'CONTRACT_EXPIRING',c.id,b.id,c.updated_at::text FROM d, public.contracts c
     JOIN public.rooms r ON r.id=c.room_id AND r.organization_id=c.organization_id
     JOIN public.buildings b ON b.id=r.building_id AND b.organization_id=c.organization_id
     WHERE c.organization_id=p_org AND c.status='ACTIVE' AND c.actual_end_date IS NULL AND c.deleted_at IS NULL
-      AND r.deleted_at IS NULL AND b.deleted_at IS NULL AND c.end_date<=public.org_today_v1(p_org)+30
+      AND r.deleted_at IS NULL AND b.deleted_at IS NULL AND c.end_date<=d.today+30
   UNION ALL
   SELECT 'DEPOSIT_SHORTFALL',c.id,b.id,c.updated_at::text FROM public.contracts c
     JOIN public.rooms r ON r.id=c.room_id AND r.organization_id=c.organization_id
@@ -188,7 +210,8 @@ RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_cata
 DECLARE v_org record; u record; family text; payload jsonb; gate record; delivery uuid; notif uuid; today date;
   inserted integer:=0; org_inserted integer; missing jsonb; recipient_count integer; local_now timestamp;
   existing_delivery record; has_sources boolean; v_event text; v_type public.notification_type; v_day text;
-  cancelled integer:=0; v_n integer; v_now timestamptz;
+  cancelled integer:=0; v_n integer; v_now timestamptz; v_families text[]; v_fp jsonb; v_authz bigint; v_fpr text;
+  v_same boolean; skipped integer:=0;
 BEGIN
   IF NOT pg_try_advisory_xact_lock(hashtext('lifecycle_reminder_sweep_v1')::bigint) THEN RETURN jsonb_build_object('inserted',0,'busy',true); END IF;
   FOR v_org IN SELECT id FROM public.organizations WHERE status='ACTIVE' AND (p_organization_id IS NULL OR id=p_organization_id) ORDER BY id LOOP
@@ -196,12 +219,37 @@ BEGIN
     IF extract(hour FROM local_now)<8 THEN CONTINUE; END IF;
     PERFORM app_private.lock_org_for_decision_v1(v_org.id);
     today:=public.org_today_v1(v_org.id); v_day:=to_char(today,'YYYY-MM-DD'); org_inserted:=0; missing:='[]';
+    -- Một lượt quét nguồn cho cả 7 họ (bản cũ quét lại mỗi họ) + vân tay nguồn theo họ.
+    SELECT COALESCE(array_agg(q.f),'{}'),COALESCE(jsonb_object_agg(q.f,q.fp),'{}') INTO v_families,v_fp FROM (
+      SELECT s.source_family AS f,md5(string_agg(s.source_id::text||'@'||COALESCE(s.revision,''),',' ORDER BY s.source_id)) AS fp
+        FROM app_private.lifecycle_reminder_sources_v1(v_org.id) s GROUP BY s.source_family) q;
+    SELECT o.authorization_version INTO v_authz FROM public.organizations o WHERE o.id=v_org.id;
     FOREACH family IN ARRAY ARRAY['NOTICE','TURNOVER','EXIT','INVOICE_DUE','INVOICE_OVERDUE','CONTRACT_EXPIRING','DEPOSIT_SHORTFALL'] LOOP
       v_event:=app_private.lifecycle_family_event_v1(family);
       v_type:=app_private.lifecycle_family_type_v1(family);
-      has_sources:=EXISTS(SELECT 1 FROM app_private.lifecycle_reminder_sources_v1(v_org.id) s WHERE s.source_family=family);
+      has_sources:=family=ANY(v_families);
       recipient_count:=0;
       FOR u IN SELECT DISTINCT user_id FROM public.organization_memberships WHERE organization_id=v_org.id AND status='ACTIVE' ORDER BY user_id LOOP
+        SELECT * INTO gate FROM app_private.lifecycle_gate_v2(u.user_id,v_org.id,family);
+        -- Đã tính hôm nay với CÙNG nguồn (id+revision), cùng authorization_version của công ty (đổi quyền/membership
+        -- ⇒ tăng) và cùng cổng ⇒ kết quả không thể khác: bỏ qua phần đắt (kiểm quyền theo toà ~28 ms/toà/người).
+        -- Đo TEST 22/10: không bỏ qua thì 2 công ty mất ~4 s mỗi 15', sát trần statement_timeout 8 s của PostgREST.
+        v_fpr:=COALESCE(v_fp->>family,'-')||':'||COALESCE(v_authz::text,'-')||':'||gate.in_app::text||':'||gate.push::text;
+        v_same:=NULL;
+        SELECT (st.reminder_day=today AND st.fingerprint=v_fpr) INTO v_same FROM app_private.lifecycle_reminder_sweep_state st
+          WHERE st.organization_id=v_org.id AND st.user_id=u.user_id AND st.source_family=family;
+        IF COALESCE(v_same,false) THEN
+          IF EXISTS(SELECT 1 FROM app_private.lifecycle_reminder_deliveries d WHERE d.organization_id=v_org.id
+              AND d.user_id=u.user_id AND d.reminder_day=today AND d.source_family=family) THEN
+            recipient_count:=recipient_count+1;
+          END IF;
+          skipped:=skipped+1;
+          CONTINUE;
+        END IF;
+        INSERT INTO app_private.lifecycle_reminder_sweep_state(organization_id,user_id,source_family,reminder_day,fingerprint,updated_at)
+          VALUES(v_org.id,u.user_id,family,today,v_fpr,clock_timestamp())
+          ON CONFLICT(organization_id,user_id,source_family) DO UPDATE
+            SET reminder_day=excluded.reminder_day,fingerprint=excluded.fingerprint,updated_at=excluded.updated_at;
         payload:=CASE WHEN has_sources THEN app_private.lifecycle_reminder_payload_v1(u.user_id,v_org.id,family) END;
         v_now:=clock_timestamp();
         IF payload IS NULL THEN
@@ -222,7 +270,6 @@ BEGIN
           CONTINUE;
         END IF;
         recipient_count:=recipient_count+1;
-        SELECT * INTO gate FROM app_private.lifecycle_gate_v2(u.user_id,v_org.id,family);
         INSERT INTO app_private.lifecycle_reminder_deliveries(organization_id,user_id,reminder_day,source_family,push_status,last_error)
           VALUES(v_org.id,u.user_id,today,family,CASE WHEN gate.push THEN 'PENDING' ELSE 'DISABLED' END,
             CASE WHEN gate.push THEN NULL ELSE 'Organization/personal push preference disabled or cadence DIGEST/OFF' END)
@@ -273,7 +320,7 @@ BEGIN
       VALUES(v_org.id,org_inserted,missing,CASE WHEN missing='[]'::jsonb THEN 'OK' ELSE 'NO_RECIPIENT' END);
     inserted:=inserted+org_inserted;
   END LOOP;
-  RETURN jsonb_build_object('inserted',inserted,'cancelled',cancelled);
+  RETURN jsonb_build_object('inserted',inserted,'cancelled',cancelled,'unchanged',skipped);
 END $fn$;
 
 CREATE OR REPLACE FUNCTION public.lifecycle_reminder_validate_v1(p_id uuid,p_lease uuid)
@@ -312,13 +359,8 @@ BEGIN
       UPDATE app_private.lifecycle_reminder_deliveries SET push_status='SENT',delivered_at=clock_timestamp(),lease=NULL,leased_at=NULL WHERE id=d.id;
       CONTINUE;
     END IF;
-    payload:=app_private.lifecycle_reminder_payload_v1(d.user_id,d.organization_id,d.source_family);
-    SELECT * INTO gate FROM app_private.lifecycle_gate_v2(d.user_id,d.organization_id,d.source_family);
-    IF payload IS NULL OR d.reminder_day<>public.org_today_v1(d.organization_id) OR NOT gate.push THEN
-      UPDATE app_private.lifecycle_reminder_deliveries SET push_status=CASE WHEN NOT gate.push THEN 'DISABLED' ELSE 'SKIPPED' END,
-        last_error='Source resolved, read scope changed, day expired, or push disabled',lease=NULL,leased_at=NULL WHERE id=d.id;
-      CONTINUE;
-    END IF;
+    -- Ba phép rẻ (thiết bị, lượt, giờ yên) đi TRƯỚC payload (đắt: quét nguồn + kiểm quyền theo toà, ~100 ms): đo TEST
+    -- 22/10 với 0 thiết bị, bản cũ dựng payload cho từng delivery rồi mới đóng NO_DEVICE (~2 s mỗi lô 10).
     IF NOT EXISTS(SELECT 1 FROM public.push_subscriptions WHERE user_id=d.user_id AND is_active) THEN
       UPDATE app_private.lifecycle_reminder_deliveries SET push_status='NO_DEVICE',last_error='No active push device',lease=NULL,leased_at=NULL WHERE id=d.id;
       CONTINUE;
@@ -329,6 +371,13 @@ BEGIN
     END IF;
     -- Giờ yên công ty (mặc định 21→7 khi chưa cấu hình) HOẶC giờ yên cá nhân, theo múi giờ công ty ⇒ hoãn lượt sau.
     IF app_private.notify_in_quiet_hours_v1(d.user_id,d.organization_id,clock_timestamp()) THEN CONTINUE; END IF;
+    payload:=app_private.lifecycle_reminder_payload_v1(d.user_id,d.organization_id,d.source_family);
+    SELECT * INTO gate FROM app_private.lifecycle_gate_v2(d.user_id,d.organization_id,d.source_family);
+    IF payload IS NULL OR d.reminder_day<>public.org_today_v1(d.organization_id) OR NOT gate.push THEN
+      UPDATE app_private.lifecycle_reminder_deliveries SET push_status=CASE WHEN NOT gate.push THEN 'DISABLED' ELSE 'SKIPPED' END,
+        last_error='Source resolved, read scope changed, day expired, or push disabled',lease=NULL,leased_at=NULL WHERE id=d.id;
+      CONTINUE;
+    END IF;
     v_lease:=gen_random_uuid();
     UPDATE app_private.lifecycle_reminder_deliveries SET push_status='SENDING',attempts=attempts+1,lease=v_lease,leased_at=clock_timestamp(),
       idempotency_key='lifecycle:'||id::text||':'||(attempts+1)::text WHERE id=d.id;

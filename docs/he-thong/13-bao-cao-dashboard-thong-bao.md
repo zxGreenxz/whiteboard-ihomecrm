@@ -325,7 +325,10 @@ Từ migration `20261021171251_nhac_viec_server_lifecycle_v1` cùng lane còn nh
 
 Một dòng/người/ngày/họ, nội dung chỉ là số đếm; số cập nhật mỗi lượt 15'. Việc về 0 ⇒ dòng chưa đọc thành `CANCELLED`
 (áp cả ba nhóm trên; dòng đã đọc giữ nguyên), nguồn quay lại trong ngày ⇒ mở lại; ngày mới thay dòng chưa đọc của ngày
-trước. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ (§4.5).
+trước. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ (§4.5). Sweep chỉ tính lại (người, họ) khi nguồn
+(id+revision), `organizations.authorization_version` hoặc cổng đổi so với lần tính trong ngày
+(`app_private.lifecycle_reminder_sweep_state`); đo TEST 22/10: lượt đầu ngày ~4,5 s cho hai công ty, các lượt sau ~0,04 s
+(RPC qua PostgREST có trần 8 s).
 
 ### 4.2a. Bộ sinh thông báo hiện hữu ở Dashboard — runScheduledNotifications
 

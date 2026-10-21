@@ -45,7 +45,8 @@ const NEN = `
   CREATE TYPE public.notification_status AS ENUM ('PENDING','SENT','FAILED','CANCELLED','READ');
   CREATE TYPE public.notification_channel AS ENUM ('IN_APP','EMAIL','SMS','ZALO','PUSH');
 
-  CREATE TABLE public.organizations(id uuid PRIMARY KEY, name text, status text, is_demo boolean DEFAULT false);
+  CREATE TABLE public.organizations(id uuid PRIMARY KEY, name text, status text, is_demo boolean DEFAULT false,
+    authorization_version bigint NOT NULL DEFAULT 1);
   INSERT INTO public.organizations VALUES ('${ID.org}', 'Công ty A', 'ACTIVE', false), ('${ID.orgKhac}', 'Công ty B', 'ACTIVE', true);
   CREATE TABLE public.organization_memberships(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid, user_id uuid,
     status text, valid_from timestamptz, valid_to timestamptz, revoked_at timestamptz);

@@ -27,6 +27,7 @@ beforeEach(async () => {
     DELETE FROM public.invoices; DELETE FROM public.contracts; DELETE FROM public.contract_exit_cases; DELETE FROM public.room_turnovers;
     DELETE FROM test_permissions; DELETE FROM public.notification_preferences; DELETE FROM public.push_subscriptions;
     DELETE FROM public.notification_quiet_hours; DELETE FROM app_private.notification_org_config;
+    DELETE FROM app_private.lifecycle_reminder_sweep_state;
     INSERT INTO app_private.notification_org_config(organization_id, quiet_start, quiet_end) VALUES ('${ID.org}', 0, 0);
     UPDATE test_clock SET local_now = date_trunc('day', now()) + interval '9 hours';
     INSERT INTO test_permissions VALUES
@@ -115,6 +116,28 @@ describe('bốn họ nhắc server', () => {
     expect(moLai.status).toBe('PENDING');
     expect(moLai.metadata.cancelled_reason).toBeUndefined();
     expect(moLai.metadata.count).toBe(1);
+  });
+
+  it('lượt không đổi gì bỏ qua phần kiểm quyền; đổi quyền (authorization_version tăng) hay đổi cổng ⇒ tính lại', async () => {
+    await sweep();
+    // Gỡ quyền hoá đơn của chủ nhưng KHÔNG tăng version: vân tay như cũ ⇒ bỏ qua, dòng giữ nguyên.
+    await db.query("UPDATE test_permissions SET allowed = false WHERE user_id = $1 AND permission = 'invoices.view'", [ID.chu]);
+    const r1 = await sweep();
+    expect(r1).toMatchObject({ inserted: 0, cancelled: 0 });
+    expect((r1 as unknown as { unchanged: number }).unchanged).toBeGreaterThanOrEqual(14);
+    expect((await thongBao(ID.chu, 'INVOICE_OVERDUE'))[0].status).toBe('PENDING');
+    // Bảng quyền đổi ⇒ trigger production tăng authorization_version ⇒ tính lại ⇒ mất phạm vi ⇒ CANCELLED.
+    await db.query('UPDATE public.organizations SET authorization_version = authorization_version + 1 WHERE id = $1', [ID.org]);
+    await sweep();
+    expect((await thongBao(ID.chu, 'INVOICE_OVERDUE'))[0].status).toBe('CANCELLED');
+    // Cổng đổi (tắt trong app) cũng nằm trong vân tay — họ khác của cùng người không bị đụng.
+    await db.query("INSERT INTO public.notification_preferences(user_id, organization_id, event_key, push) VALUES ($1, $2, 'DEPOSIT', false)", [ID.nhanVien, ID.org]);
+    await sweep();
+    const coc = await db.query<{ push_status: string }>(
+      "SELECT push_status FROM app_private.lifecycle_reminder_deliveries WHERE user_id = $1 AND source_family = 'DEPOSIT_SHORTFALL'", [ID.nhanVien]);
+    // Delivery hôm nay đã có (PENDING) — cổng đổi giữa ngày không đẻ delivery mới; claim/validate đọc cổng lúc gửi.
+    expect(coc.rows).toHaveLength(1);
+    expect((await thongBao(ID.nhanVien, 'DEPOSIT_SHORTFALL'))[0].status).toBe('PENDING');
   });
 
   it('ngày mới: dòng chưa đọc hôm trước cùng họ thành CANCELLED (SUPERSEDED), dòng mới thay', async () => {
