@@ -67,13 +67,26 @@ describe("Hiệu lực mật khẩu tạm", () => {
     [{ from: "2026-10-21T15:00", to: "" }, "to", "Chọn thời điểm kết thúc."],
     [{ from: "2026-10-21T15:00", to: "2026-10-21T15:00" }, "to", "Kết thúc phải sau bắt đầu."],
     [{ from: "2026-10-20T08:00", to: "2026-10-21T14:00" }, "to", "Kết thúc phải sau hiện tại."],
-    [{ from: "2026-10-21T15:00", to: "2026-10-28T15:01" }, "to", "Hiệu lực tối đa 7 ngày."],
+    // Bắt đầu từ hôm qua, kết thúc vẫn trong 7 ngày kể từ bây giờ — nhưng KÉO DÀI quá 7 ngày.
+    [{ from: "2026-10-20T08:00", to: "2026-10-27T09:00" }, "to", "Hiệu lực tối đa 7 ngày."],
+    // Kéo dài chỉ 4 ngày nhưng hết hạn sau mốc bây giờ + 7 ngày (14:05:30 28/10).
+    [{ from: "2026-10-25T08:00", to: "2026-10-29T08:00" }, "to", "Mã phải hết hạn trong 7 ngày kể từ bây giờ — muộn nhất 14:05 28/10."],
+    [{ from: "2026-10-21T15:00", to: "2026-10-28T15:01" }, "to", "Mã phải hết hạn trong 7 ngày kể từ bây giờ — muộn nhất 14:05 28/10."],
   ])("tuỳ chọn sai %o ⇒ %s", (range, field, message) => {
     expect(computeValidity({ preset: "custom", ...range }, NOW)).toEqual({ ok: false, field, message });
   });
 
-  it("đúng 7 ngày vẫn được", () => {
-    expect(computeValidity({ preset: "custom", from: "2026-10-21T15:00", to: "2026-10-28T15:00" }, NOW).ok).toBe(true);
+  it("đúng 7 ngày kể từ bây giờ vẫn được; quá một phút thì chặn", () => {
+    expect(computeValidity({ preset: "custom", from: "2026-10-21T14:05", to: "2026-10-28T14:05" }, NOW).ok).toBe(true);
+    expect(computeValidity({ preset: "custom", from: "2026-10-21T14:05", to: "2026-10-28T14:06" }, NOW)).toMatchObject({ ok: false, field: "to" });
+  });
+
+  it("chọn nhanh không bị mốc 7 ngày ảnh hưởng", () => {
+    for (const preset of ["1h", "2h", "today"] as const) {
+      const result = computeValidity({ preset, from: "", to: "" }, NOW);
+      expect(result.ok, preset).toBe(true);
+      expect((result.invalidSec ?? 0) - NOW_SEC).toBeLessThanOrEqual(7 * 86_400);
+    }
   });
 });
 

@@ -15,7 +15,7 @@ import { DEVICE_KINDS, type DiscoveredDevice, type DoorDevice } from "@/lib/door
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorErrorMessage, isDoorAccessError } from "@/lib/door-access/errors";
 import { DEVICE_KIND_LABEL } from "@/lib/door-access/format";
-import { DEVICE_NAME_MAX, deviceFormSchema, type DeviceFormValues } from "@/lib/door-access/forms";
+import { DEVICE_NAME_MAX, deviceFormSchema, isDeviceKind, type DeviceFormValues } from "@/lib/door-access/forms";
 import { focusFirstError } from "@/lib/formErrors";
 
 import { Notice, type NoticeTone } from "./parts";
@@ -37,7 +37,8 @@ function defaults(target: DeviceEditorTarget): DeviceFormValues {
   return {
     buildingId: target.suggestedBuildingId ?? "",
     displayName: (target.discovered.name ?? "").slice(0, DEVICE_NAME_MAX),
-    deviceKind: target.discovered.kind ?? "access_control",
+    // SmartLife không rõ loại ⇒ để trống, người gắn phải tự chọn (không mặc định ngầm).
+    deviceKind: target.discovered.kind ?? "",
     channelId: "1",
     passwordLength: "7",
   };
@@ -59,7 +60,7 @@ export function DeviceEditorDialog({
   const save = useSaveDevice(caller);
   const form = useForm<DeviceFormValues>({
     resolver: zodResolver(deviceFormSchema),
-    defaultValues: { buildingId: "", displayName: "", deviceKind: "access_control", channelId: "1", passwordLength: "7" },
+    defaultValues: { buildingId: "", displayName: "", deviceKind: "", channelId: "1", passwordLength: "7" },
   });
   const { reset } = form;
   const resetMutation = save.reset;
@@ -92,12 +93,15 @@ export function DeviceEditorDialog({
   const submit = form.handleSubmit(
     (values) => {
       form.clearErrors("root.server");
+      // zod đã chặn loại trống/lạ; kiểm lại để kiểu thu hẹp về DoorDeviceKind.
+      const deviceKind = values.deviceKind;
+      if (!isDeviceKind(deviceKind)) return;
       save.mutate(
         {
           tuyaDeviceId,
           buildingId: values.buildingId,
           displayName: values.displayName.trim(),
-          deviceKind: values.deviceKind,
+          deviceKind,
           tuyaCategory,
           tuyaProductName,
           channelId: Number(values.channelId),
@@ -135,7 +139,10 @@ export function DeviceEditorDialog({
           </DialogDescription>
         </DialogHeader>
         {discovered && discovered.kind === null && (
-          <Notice tone="warning">SmartLife không nhận ra đây là máy cửa. Chỉ gắn khi chắc chắn đây là khoá hoặc máy kiểm soát ra vào.</Notice>
+          <Notice tone="warning">
+            SmartLife không nhận ra đây là máy cửa. Chỉ gắn khi chắc chắn đây là khoá hoặc máy kiểm soát ra vào, và chọn đúng loại máy
+            bên dưới.
+          </Notice>
         )}
         {reactivating && <Notice tone="info">Máy đang tắt khỏi CRM. Lưu để bật lại.</Notice>}
         <Form {...form}>
@@ -184,8 +191,8 @@ export function DeviceEditorDialog({
                   <FormLabel>Loại máy</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange} disabled={busy}>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
+                      <SelectTrigger aria-label="Loại máy">
+                        <SelectValue placeholder="Chọn loại máy" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

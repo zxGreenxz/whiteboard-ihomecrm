@@ -159,3 +159,40 @@ describe("rpcFailure", () => {
     expect(rpcFailure({ code: "PGRST301", message: "JWT expired" }, { operation: "tải", mutation: false }).kind).toBe("session");
   });
 });
+
+describe("logPending: lệnh đã chạy nhưng nhật ký chưa chốt được", () => {
+  it("thành công: giữ cờ logPending trong dữ liệu (zod không được bỏ mất)", async () => {
+    const d = deps({ data: { ok: true, data: { unlocked: true, logId: "log-1", logPending: true } }, error: null });
+    await expect(doorAccessEdge(caller, d.deps).remoteUnlock(DEVICE_1)).resolves.toEqual({ unlocked: true, logId: "log-1", logPending: true });
+    const plain = deps({ data: { ok: true, data: { deleted: true, logId: "log-2" } }, error: null });
+    await expect(doorAccessEdge(caller, plain.deps).deleteTempPassword(DEVICE_1, 3001)).resolves.toEqual({ deleted: true, logId: "log-2" });
+  });
+
+  it("thất bại: cờ logPending đi theo lỗi", async () => {
+    const d = deps({
+      data: null,
+      error: httpError(502, { ok: false, error: { code: "tuya_rejected", message: "device is offline", tuyaCode: 2001, logPending: true } }),
+    });
+    await expect(doorAccessEdge(caller, d.deps).remoteUnlock(DEVICE_1)).rejects.toMatchObject({ kind: "tuya_rejected", logPending: true });
+    const without = edgeFailure({ transport: "http", status: 502, body: { ok: false, error: { code: "tuya_rejected" } }, operation: "x", mutation: true });
+    expect(without.logPending).toBe(false);
+  });
+});
+
+describe("rpcFailure 42501: câu tiếng Việt của máy chủ hiện nguyên", () => {
+  it("gắn số cho khách chưa từng có hợp đồng ở tòa ⇒ đúng lý do máy chủ nói", () => {
+    const error = rpcFailure(
+      { code: "42501", message: "Khách chưa từng có hợp đồng ở tòa của máy này" },
+      { operation: "gắn số trên máy", mutation: true },
+    );
+    expect(error).toMatchObject({ kind: "permission", message: "Khách chưa từng có hợp đồng ở tòa của máy này", outcomeUnknown: false });
+  });
+
+  it("câu kỹ thuật tiếng Anh ⇒ câu chung, không lộ chữ kỹ thuật", () => {
+    const error = rpcFailure(
+      { code: "42501", message: "permission denied for function door_access_link_key_v1" },
+      { operation: "gắn số trên máy", mutation: true },
+    );
+    expect(error.message).toBe("Bạn chưa có quyền gắn số trên máy ở tòa này.");
+  });
+});

@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldAlert } from "lucid
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { isDoorAccessError } from "@/lib/door-access/errors";
+import { LOG_PENDING_TEXT } from "@/lib/door-access/view";
 import { cn } from "@/lib/utils";
 
 /** Khung lỗi tại chỗ: nói rõ đây là lỗi QUYỀN, MẠNG hay DỮ LIỆU, kèm nút thử lại khi đáng thử. */
@@ -60,6 +61,23 @@ export function Notice({ tone, children, className }: { tone: NoticeTone; childr
     <div role={tone === "error" || tone === "warning" ? "alert" : "status"} className={cn("flex items-start gap-2 rounded-lg border px-3 py-2 text-sm", box, className)}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0 flex-1 break-words">{children}</div>
+    </div>
+  );
+}
+
+/** Kết quả một thao tác ghi, kèm cờ hàm Edge chưa chốt được nhật ký (`logPending`). */
+export interface ActionResult {
+  tone: NoticeTone;
+  text: string;
+  logPending?: boolean;
+}
+
+/** Dòng kết quả + (nếu có) dòng trung tính "nhật ký chưa chốt được" ngay dưới. */
+export function ActionNotice({ result, className }: { result: ActionResult; className?: string }) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <Notice tone={result.tone}>{result.text}</Notice>
+      {result.logPending && <Notice tone="info">{LOG_PENDING_TEXT}</Notice>}
     </div>
   );
 }

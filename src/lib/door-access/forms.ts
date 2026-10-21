@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { DEVICE_KINDS, type DoorTenant } from "./dto";
+import { DEVICE_KINDS, type DoorDeviceKind, type DoorTenant } from "./dto";
 
 /** Gắn một số trên máy: với khách đang thuê ở tòa, hoặc một nhãn (vd nhân viên). */
 export const KEY_LABEL_MAX = 80;
@@ -57,13 +57,18 @@ export const DEVICE_NAME_MAX = 60;
 const integerIn = (min: number, max: number, message: string) =>
   z.string().refine((value) => /^\d{1,3}$/.test(value.trim()) && Number(value) >= min && Number(value) <= max, { message });
 
+export const isDeviceKind = (value: string): value is DoorDeviceKind => (DEVICE_KINDS as readonly string[]).includes(value);
+
 export const deviceFormSchema = z.object({
   buildingId: z.string().uuid({ message: "Chọn tòa." }),
   displayName: z
     .string()
     .refine((value) => value.trim().length > 0, { message: "Nhập tên hiển thị." })
     .refine((value) => [...value.trim()].length <= DEVICE_NAME_MAX, { message: `Tên tối đa ${DEVICE_NAME_MAX} ký tự.` }),
-  deviceKind: z.enum(DEVICE_KINDS),
+  // Chuỗi rỗng = CHƯA CHỌN (máy SmartLife không rõ loại): bắt người dùng chọn, không mặc định ngầm.
+  // Trả `boolean` tường minh: type guard (kể cả guard TS tự suy từ arrow) làm zod thu hẹp kiểu ĐẦU RA và
+  // form không còn nhận được giá trị "" lúc chưa chọn.
+  deviceKind: z.string().refine((value): boolean => isDeviceKind(value), { message: "Chọn loại máy: kiểm soát ra vào hoặc khoá Wi-Fi." }),
   channelId: integerIn(1, 64, "Kênh mở cửa là số từ 1 đến 64."),
   passwordLength: integerIn(6, 10, "Độ dài mật khẩu tạm từ 6 đến 10 số."),
 });

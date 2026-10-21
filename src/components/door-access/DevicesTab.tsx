@@ -18,12 +18,14 @@ import { Switch } from "@/components/ui/switch";
 import { useDisableDevice } from "@/hooks/door-access/useDoorAccessMutations";
 import { useDoorDevices, useDoorDiscover } from "@/hooks/door-access/useDoorAccessQueries";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { suggestBuilding } from "@/lib/door-access/buildingMatch";
 import type { DoorDevice } from "@/lib/door-access/dto";
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorErrorMessage, isDoorAccessError } from "@/lib/door-access/errors";
 import { DEVICE_KIND_LABEL } from "@/lib/door-access/format";
-import { organizationBuildings } from "@/lib/door-access/view";
+import { manageableBuildings, organizationBuildings } from "@/lib/door-access/view";
+import { canUseOrgWide } from "@/lib/permissionCheck";
 import { cn } from "@/lib/utils";
 
 import { DeviceEditorDialog, type DeviceEditorTarget } from "./DeviceEditorDialog";
@@ -37,6 +39,10 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
   const buildingsQuery = useBuildings();
   const buildings = useMemo(() => organizationBuildings(buildingsQuery.data, caller.organizationId), [buildingsQuery.data, caller.organizationId]);
   const buildingName = useMemo(() => new Map(buildings.map((b) => [b.id, b.name])), [buildings]);
+  const permissions = useMyPermissions();
+  // Gắn máy MỚI (và tìm máy trên SmartLife) đòi quyền Quản lý máy ở MỌI tòa; sửa/tắt máy thì theo tòa của máy.
+  const canRegister = canUseOrgWide(permissions.data, "door_access", "manage_devices");
+  const manageable = useMemo(() => manageableBuildings(buildings, permissions.data), [buildings, permissions.data]);
   const disable = useDisableDevice(caller);
 
   const [editor, setEditor] = useState<DeviceEditorTarget | null>(null);
@@ -47,8 +53,8 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
     const devices = discover.data?.devices ?? [];
     return devices
       .filter((device) => device.registered === null && (showOthers || device.kind !== null))
-      .map((device) => ({ device, suggestion: suggestBuilding(device.name, buildings) }));
-  }, [discover.data, showOthers, buildings]);
+      .map((device) => ({ device, suggestion: suggestBuilding(device.name, manageable) }));
+  }, [discover.data, showOthers, manageable]);
   const hiddenOthers = (discover.data?.devices ?? []).filter((d) => d.registered === null && d.kind === null).length;
 
   const confirmDisable = () => {
@@ -93,7 +99,7 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
         )}
         {registered.data !== undefined && devices.length === 0 && (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            Chưa có máy nào. Bấm “Tìm máy trên SmartLife” để gắn máy đầu tiên.
+            {canRegister ? "Chưa có máy nào. Bấm “Tìm máy trên SmartLife” để gắn máy đầu tiên." : "Chưa có máy nào ở các tòa bạn quản lý."}
           </p>
         )}
         {devices.length > 0 && (
@@ -139,87 +145,92 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
         )}
       </section>
 
-      <section className="space-y-3" aria-labelledby="door-discover">
-        <SectionTitle
-          action={
-            <Button
-              type="button"
-              size="sm"
-              variant={discoverOn ? "ghost" : "default"}
-              disabled={discover.isFetching}
-              onClick={() => (discoverOn ? void discover.refetch() : setDiscoverOn(true))}
-            >
-              {discoverOn ? (
-                <RefreshCw className={cn("mr-1.5 h-4 w-4", discover.isFetching && "animate-spin")} aria-hidden="true" />
-              ) : (
-                <Search className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              )}
-              {discoverOn ? "Tìm lại" : "Tìm máy trên SmartLife"}
-            </Button>
-          }
-        >
-          <span id="door-discover">Máy trên SmartLife chưa gắn</span>
-        </SectionTitle>
-        {discoverOn && (
-          <div className="flex items-center gap-2">
-            <Switch id="door-show-others" checked={showOthers} onCheckedChange={setShowOthers} />
-            <Label htmlFor="door-show-others" className="text-sm">
-              Hiện cả thiết bị khác{hiddenOthers > 0 && !showOthers ? ` (${hiddenOthers})` : ""}
-            </Label>
-          </div>
-        )}
-        {discoverOn && discover.data === undefined && discover.isPending && <LoadingState label="máy trên SmartLife" variant="list" rows={3} />}
-        {discoverOn && discover.data === undefined && discover.isError && (
-          <ErrorPanel error={discover.error} title="Chưa tìm được máy trên SmartLife" onRetry={() => void discover.refetch()} />
-        )}
-        {discover.data !== undefined && candidates.length === 0 && (
-          <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            Không còn máy cửa nào chưa gắn tòa.
-          </p>
-        )}
-        {discover.data !== undefined && candidates.length > 0 && (
-          <div className="relative">
-            <RefreshBar active={discover.isFetching} />
-            <ul className="divide-y rounded-xl border bg-card" aria-label="Máy chưa gắn">
-              {candidates.map(({ device, suggestion }) => (
-                <li key={device.tuyaDeviceId} className="flex flex-wrap items-start justify-between gap-2 px-3 py-3">
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="font-medium">{device.name ?? device.tuyaDeviceId}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {device.productName ?? device.category ?? "Không rõ loại"} ·{" "}
-                      {device.kind ? DEVICE_KIND_LABEL[device.kind] : "Không phải máy cửa"}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      {device.online === true && <Pill tone="green">Trực tuyến</Pill>}
-                      {device.online === false && <Pill tone="red">Mất kết nối</Pill>}
-                      {suggestion ? (
-                        <span>
-                          Gợi ý tòa: <span className="font-medium">{buildingName.get(suggestion.buildingId) ?? "?"}</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">Chưa đoán được tòa — chọn tay.</span>
-                      )}
+      {permissions.data !== undefined && !canRegister && (
+        <Notice tone="info">Chỉ người có quyền Quản lý máy ở mọi tòa mới gắn được máy mới.</Notice>
+      )}
+      {canRegister && (
+        <section className="space-y-3" aria-labelledby="door-discover">
+          <SectionTitle
+            action={
+              <Button
+                type="button"
+                size="sm"
+                variant={discoverOn ? "ghost" : "default"}
+                disabled={discover.isFetching}
+                onClick={() => (discoverOn ? void discover.refetch() : setDiscoverOn(true))}
+              >
+                {discoverOn ? (
+                  <RefreshCw className={cn("mr-1.5 h-4 w-4", discover.isFetching && "animate-spin")} aria-hidden="true" />
+                ) : (
+                  <Search className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                )}
+                {discoverOn ? "Tìm lại" : "Tìm máy trên SmartLife"}
+              </Button>
+            }
+          >
+            <span id="door-discover">Máy trên SmartLife chưa gắn</span>
+          </SectionTitle>
+          {discoverOn && (
+            <div className="flex items-center gap-2">
+              <Switch id="door-show-others" checked={showOthers} onCheckedChange={setShowOthers} />
+              <Label htmlFor="door-show-others" className="text-sm">
+                Hiện cả thiết bị khác{hiddenOthers > 0 && !showOthers ? ` (${hiddenOthers})` : ""}
+              </Label>
+            </div>
+          )}
+          {discoverOn && discover.data === undefined && discover.isPending && <LoadingState label="máy trên SmartLife" variant="list" rows={3} />}
+          {discoverOn && discover.data === undefined && discover.isError && (
+            <ErrorPanel error={discover.error} title="Chưa tìm được máy trên SmartLife" onRetry={() => void discover.refetch()} />
+          )}
+          {discover.data !== undefined && candidates.length === 0 && (
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+              Không còn máy cửa nào chưa gắn tòa.
+            </p>
+          )}
+          {discover.data !== undefined && candidates.length > 0 && (
+            <div className="relative">
+              <RefreshBar active={discover.isFetching} />
+              <ul className="divide-y rounded-xl border bg-card" aria-label="Máy chưa gắn">
+                {candidates.map(({ device, suggestion }) => (
+                  <li key={device.tuyaDeviceId} className="flex flex-wrap items-start justify-between gap-2 px-3 py-3">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="font-medium">{device.name ?? device.tuyaDeviceId}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {device.productName ?? device.category ?? "Không rõ loại"} ·{" "}
+                        {device.kind ? DEVICE_KIND_LABEL[device.kind] : "Không phải máy cửa"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {device.online === true && <Pill tone="green">Trực tuyến</Pill>}
+                        {device.online === false && <Pill tone="red">Mất kết nối</Pill>}
+                        {suggestion ? (
+                          <span>
+                            Gợi ý tòa: <span className="font-medium">{buildingName.get(suggestion.buildingId) ?? "?"}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Chưa đoán được tòa — chọn tay.</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setEditor({ mode: "new", discovered: device, suggestedBuildingId: suggestion?.buildingId ?? null })}
-                  >
-                    Gắn tòa
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {discover.data?.hasMore && <p className="text-xs text-muted-foreground">SmartLife còn thiết bị chưa liệt kê hết.</p>}
-        {discover.data !== undefined && discover.isRefetchError && (
-          <Notice tone="warning">Chưa tìm lại được — đang hiện kết quả lần trước.</Notice>
-        )}
-      </section>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setEditor({ mode: "new", discovered: device, suggestedBuildingId: suggestion?.buildingId ?? null })}
+                    >
+                      Gắn tòa
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {discover.data?.hasMore && <p className="text-xs text-muted-foreground">SmartLife còn thiết bị chưa liệt kê hết.</p>}
+          {discover.data !== undefined && discover.isRefetchError && (
+            <Notice tone="warning">Chưa tìm lại được — đang hiện kết quả lần trước.</Notice>
+          )}
+        </section>
+      )}
 
-      <DeviceEditorDialog caller={caller} target={editor} buildings={buildings} onClose={() => setEditor(null)} onSaved={setNotice} />
+      <DeviceEditorDialog caller={caller} target={editor} buildings={manageable} onClose={() => setEditor(null)} onSaved={setNotice} />
 
       <AlertDialog open={toDisable !== null} onOpenChange={(open) => !open && setToDisable(null)}>
         <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">

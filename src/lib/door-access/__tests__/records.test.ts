@@ -69,6 +69,24 @@ describe("Lịch sử ra vào ↔ liên kết", () => {
     expect(recordPerson(record({ ...temp, slot: 3 }), links, names)).toMatchObject({ name: "—" });
   });
 
+  it("chỉ gán cho liên kết lượt ra vào XẢY RA TỪ lúc gắn; lượt trước đó về tên trên máy", () => {
+    // Liên kết vân tay #12 gắn lúc 03:00 UTC 01/10 (fixtures).
+    const linkedAt = Date.parse("2026-10-01T03:00:00+00:00");
+    expect(recordPerson(record({ at: linkedAt }), links)).toMatchObject({ name: "Nguyễn Văn Thử", source: "link" });
+    expect(recordPerson(record({ at: linkedAt - 1, userName: "Người cũ" }), links)).toMatchObject({
+      name: "Người cũ",
+      source: "device",
+      link: null,
+    });
+    // Không có tên trên máy ⇒ "Chưa gắn", không mượn tên khách mới.
+    expect(recordPerson(record({ at: linkedAt - 86_400_000, userName: null, unlockName: null }), links)).toMatchObject({
+      name: "Chưa gắn",
+      source: "none",
+    });
+    // Không rõ giờ ⇒ không kết luận được là của khách đang gắn.
+    expect(recordPerson(record({ at: null, userName: null, unlockName: null }), links)).toMatchObject({ name: "Chưa gắn", link: null });
+  });
+
   it("gộp trang Xem thêm, bỏ bản trùng id", () => {
     const merged = mergeRecordPages([{ records: [record({ id: "a" }), record({ id: "b" })] }, { records: [record({ id: "b" }), record({ id: "c" })] }]);
     expect(merged.map((r) => r.id)).toEqual(["a", "b", "c"]);

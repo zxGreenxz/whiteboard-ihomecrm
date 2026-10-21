@@ -23,7 +23,7 @@ import { indexTempPasswordLogs, validityText } from "@/lib/door-access/tempPassw
 import { READ_ONLY_REASON } from "@/lib/door-access/view";
 import { cn } from "@/lib/utils";
 
-import { ErrorPanel, GuardedButton, Notice, Pill, SectionTitle, type NoticeTone } from "./parts";
+import { ActionNotice, ErrorPanel, GuardedButton, Notice, Pill, SectionTitle, type ActionResult } from "./parts";
 import { CreateTempPasswordDialog, TempPasswordResultDialog } from "./TempPasswordDialogs";
 
 const passwordName = (item: DoorTempPassword) => item.name ?? `Mật khẩu #${item.id}`;
@@ -38,7 +38,7 @@ export function TempPasswordTab({ caller, device, writable }: { caller: DoorAcce
   // Mã vừa tạo CHỈ nằm ở đây, và bị xoá khi đóng hộp kết quả.
   const [created, setCreated] = useState<CreatedTempPassword | null>(null);
   const [toDelete, setToDelete] = useState<DoorTempPassword | null>(null);
-  const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const [notice, setNotice] = useState<ActionResult | null>(null);
   const readOnly = writable ? null : READ_ONLY_REASON;
 
   const confirmDelete = () => {
@@ -50,17 +50,19 @@ export function TempPasswordTab({ caller, device, writable }: { caller: DoorAcce
       { deviceId: device.id, passwordId: target.id },
       {
         onSuccess: (data) =>
-          setNotice(
-            data.deleted
-              ? { tone: "success", text: `Đã gửi lệnh xoá mật khẩu tạm “${passwordName(target)}”.` }
-              : { tone: "warning", text: "SmartLife chưa xác nhận đã xoá — tải lại danh sách để kiểm tra." },
-          ),
+          setNotice({
+            logPending: data.logPending === true,
+            ...(data.deleted
+              ? { tone: "success" as const, text: `Đã gửi lệnh xoá mật khẩu tạm “${passwordName(target)}”.` }
+              : { tone: "warning" as const, text: "SmartLife chưa xác nhận đã xoá — tải lại danh sách để kiểm tra." }),
+          }),
         onError: (error) =>
-          setNotice(
-            isDoorAccessError(error) && error.outcomeUnknown
-              ? { tone: "warning", text: "Chưa rõ đã xoá chưa — tải lại danh sách và xem Nhật ký thao tác trước khi thử lại." }
-              : { tone: "error", text: doorErrorMessage(error, "Chưa xoá được mật khẩu tạm.") },
-          ),
+          setNotice({
+            logPending: isDoorAccessError(error) && error.logPending,
+            ...(isDoorAccessError(error) && error.outcomeUnknown
+              ? { tone: "warning" as const, text: "Chưa rõ đã xoá chưa — tải lại danh sách và xem Nhật ký thao tác trước khi thử lại." }
+              : { tone: "error" as const, text: doorErrorMessage(error, "Chưa xoá được mật khẩu tạm.") }),
+          }),
       },
     );
   };
@@ -86,7 +88,7 @@ export function TempPasswordTab({ caller, device, writable }: { caller: DoorAcce
         Mật khẩu tạm còn hiệu lực
       </SectionTitle>
       {readOnly && <p className="text-xs text-muted-foreground">{readOnly}.</p>}
-      {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+      {notice && <ActionNotice result={notice} />}
       {logs.isError && (
         <Notice tone="warning">
           Chưa tải được nhật ký tạo mật khẩu — chưa hiện được người tạo.{" "}

@@ -28,11 +28,13 @@ export class DoorAccessError extends Error {
   readonly code: string | null;
   readonly tuyaCode: string | null;
   readonly outcomeUnknown: boolean;
+  /** Hàm Edge chưa chốt được dòng nhật ký của thao tác này (PENDING còn treo) — nhắc kiểm tab Nhật ký. */
+  readonly logPending: boolean;
 
   constructor(
     kind: DoorAccessErrorKind,
     message: string,
-    options: { code?: string | null; tuyaCode?: string | null; outcomeUnknown?: boolean } = {},
+    options: { code?: string | null; tuyaCode?: string | null; outcomeUnknown?: boolean; logPending?: boolean } = {},
   ) {
     super(message);
     this.name = "DoorAccessError";
@@ -40,6 +42,7 @@ export class DoorAccessError extends Error {
     this.code = options.code ?? null;
     this.tuyaCode = options.tuyaCode ?? null;
     this.outcomeUnknown = options.outcomeUnknown ?? false;
+    this.logPending = options.logPending ?? false;
   }
 
   /** Thử lại (bấm tay) có thể khác kết quả: mạng, máy chủ, dữ liệu trả về lạ. */
@@ -68,6 +71,12 @@ function serverText(value: unknown): string | null {
   return text.length > MAX_SERVER_TEXT ? `${text.slice(0, MAX_SERVER_TEXT - 1)}…` : text;
 }
 
+/**
+ * Câu do migration Cửa vân tay tự viết (tiếng Việt, có dấu) — hiện nguyên cho người dùng. Câu kỹ thuật của
+ * Postgres/PostgREST (tiếng Anh, vd "permission denied for function …") thì không.
+ */
+const VIETNAMESE = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+
 const unknownOutcome = (operation: string) =>
   `Chưa rõ đã ${operation} chưa — mạng hoặc máy chủ không phản hồi kịp. Xem Nhật ký thao tác trước khi thử lại.`;
 
@@ -93,7 +102,13 @@ export function rpcFailure(error: RpcErrorLike, context: { operation: string; mu
   const { operation, mutation } = context;
   switch (code) {
     case "42501":
-      return new DoorAccessError("permission", `Bạn chưa có quyền ${operation} ở tòa này.`, { code });
+      // Cùng mã 42501 cho cả "không có quyền" lẫn "khách chưa từng có hợp đồng ở tòa của máy" (gắn số):
+      // câu tiếng Việt của máy chủ nói đúng lý do nên hiện nguyên; còn lại dùng câu chung.
+      return new DoorAccessError(
+        "permission",
+        message && VIETNAMESE.test(message) ? message : `Bạn chưa có quyền ${operation} ở tòa này.`,
+        { code },
+      );
     case "22023":
       return new DoorAccessError("validation", message ?? "Dữ liệu chưa hợp lệ.", { code });
     case "23505":
@@ -143,16 +158,19 @@ export interface EdgeFailureInput {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** `{ok:false, error:{code, message, tuyaCode?, outcomeUnknown?}}` ⇒ phần `error`, không đúng dạng ⇒ null. */
-export function edgeErrorEnvelope(body: unknown): { code: string; message: string | null; tuyaCode: string | null; outcomeUnknown: boolean | null } | null {
+/** `{ok:false, error:{code, message, tuyaCode?, outcomeUnknown?, logPending?}}` ⇒ phần `error`, không đúng dạng ⇒ null. */
+export function edgeErrorEnvelope(
+  body: unknown,
+): { code: string; message: string | null; tuyaCode: string | null; outcomeUnknown: boolean | null; logPending: boolean } | null {
   if (!isRecord(body) || body.ok !== false || !isRecord(body.error)) return null;
-  const { code, message, tuyaCode, outcomeUnknown } = body.error;
+  const { code, message, tuyaCode, outcomeUnknown, logPending } = body.error;
   if (typeof code !== "string" || !code) return null;
   return {
     code,
     message: serverText(message),
     tuyaCode: typeof tuyaCode === "string" || typeof tuyaCode === "number" ? String(tuyaCode) : null,
     outcomeUnknown: typeof outcomeUnknown === "boolean" ? outcomeUnknown : null,
+    logPending: logPending === true,
   };
 }
 
@@ -164,7 +182,7 @@ export function edgeFailure(input: EdgeFailureInput): DoorAccessError {
     const { code, message, tuyaCode } = envelope;
     // Máy chủ nói rõ thì theo máy chủ; lỗi nội bộ của thao tác ghi mà máy chủ không nói ⇒ coi như chưa rõ.
     const isUnknown = envelope.outcomeUnknown ?? (mutation && (code === "internal" || code === "tuya_unavailable"));
-    const options = { code, tuyaCode, outcomeUnknown: isUnknown };
+    const options = { code, tuyaCode, outcomeUnknown: isUnknown, logPending: envelope.logPending };
     switch (code) {
       case "unauthorized":
         return new DoorAccessError("session", "Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.", options);

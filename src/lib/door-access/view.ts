@@ -1,3 +1,5 @@
+import { canUse, type PermsLike } from "@/lib/permissionCheck";
+
 import type { BuildingCandidate } from "./buildingMatch";
 import type { DoorActionLog, DoorDevice, DoorDeviceCan } from "./dto";
 import { DAY_MS, UNLOCK_TYPE_LABEL, vnDayStartMs } from "./format";
@@ -7,6 +9,9 @@ import { linkDisplayName } from "./records";
 /** Hàm thuần phục vụ màn /cua-van-tay (tách khỏi component để test và để Fast Refresh gọn). */
 
 export const READ_ONLY_REASON = "Đang ở chế độ chỉ đọc — chưa thao tác được trên máy";
+
+/** Kèm sau kết quả thao tác khi hàm Edge trả `logPending: true` (thành công hay lỗi đều có thể). */
+export const LOG_PENDING_TEXT = "Nhật ký thao tác chưa chốt được — kiểm lại ở tab Nhật ký";
 
 // ---------------------------------------------------------------------------------------------
 // Tab
@@ -93,6 +98,14 @@ export function deleteBlockedReason(row: ReconcileRow, writable: boolean): strin
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Tòa được đưa vào ô chọn của hộp sửa/gắn máy: chỉ tòa mà người dùng có `door_access.manage_devices`
+ * (hỏi ĐÚNG tòa đó). Máy chủ vẫn chặn thật; lọc ở đây để không chào mời tòa sẽ bị từ chối.
+ */
+export function manageableBuildings(buildings: readonly BuildingCandidate[], perms: PermsLike): BuildingCandidate[] {
+  return buildings.filter((building) => canUse(perms, "door_access", "manage_devices", building.id));
+}
 
 /** Tòa của CÔNG TY ĐANG CHỌN, từ hook tòa dùng chung (đọc phòng thủ, bỏ dòng sai dạng). */
 export function organizationBuildings(rows: unknown, organizationId: string): BuildingCandidate[] {

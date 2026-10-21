@@ -24,10 +24,11 @@ import {
   validityText,
   type TempPasswordFormValues,
 } from "@/lib/door-access/tempPassword";
+import { LOG_PENDING_TEXT } from "@/lib/door-access/view";
 import { focusFirstError } from "@/lib/formErrors";
 import { cn } from "@/lib/utils";
 
-import { Notice } from "./parts";
+import { ActionNotice, Notice } from "./parts";
 
 function ChoiceChips<T extends string>({
   label,
@@ -90,11 +91,14 @@ export function CreateTempPasswordDialog({
   });
   const { reset } = form;
   const resetMutation = create.reset;
+  // Lỗi kèm `logPending` (thao tác hỏng VÀ chưa chốt được nhật ký) — hiện dòng nhắc dưới lỗi.
+  const [errorLogPending, setErrorLogPending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     reset(defaultTempPasswordValues(Date.now()));
     resetMutation();
+    setErrorLogPending(false);
   }, [open, reset, resetMutation]);
 
   const values = form.watch();
@@ -104,6 +108,7 @@ export function CreateTempPasswordDialog({
   const submit = form.handleSubmit(
     async (data) => {
       form.clearErrors("root.server");
+      setErrorLogPending(false);
       const validity = computeValidity({ preset: data.preset, from: data.from, to: data.to }, Date.now());
       if (!validity.ok) {
         form.setError(validity.field, { message: validity.message });
@@ -122,6 +127,7 @@ export function CreateTempPasswordDialog({
         onCreated(result);
         onOpenChange(false);
       } catch (error) {
+        setErrorLogPending(isDoorAccessError(error) && error.logPending);
         form.setError("root.server", {
           message: isDoorAccessError(error) && error.outcomeUnknown ? UNKNOWN_CREATE : doorErrorMessage(error, "Chưa tạo được mật khẩu tạm."),
         });
@@ -222,7 +228,9 @@ export function CreateTempPasswordDialog({
                 Hiệu lực {validityText(preview.effectiveSec, preview.invalidSec)}
               </p>
             )}
-            {form.formState.errors.root?.server?.message && <Notice tone="error">{form.formState.errors.root.server.message}</Notice>}
+            {form.formState.errors.root?.server?.message && (
+              <ActionNotice result={{ tone: "error", text: form.formState.errors.root.server.message, logPending: errorLogPending }} />
+            )}
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
                 Huỷ
@@ -290,6 +298,7 @@ export function TempPasswordResultDialog({
         <Notice tone="warning">
           <span className="font-medium">Mã chỉ hiện một lần.</span> CRM không lưu mã — sao chép hoặc ghi lại trước khi đóng.
         </Notice>
+        {result.logPending && <Notice tone="info">{LOG_PENDING_TEXT}</Notice>}
         <div className="grid gap-2 sm:grid-cols-2">
           <Button type="button" variant="outline" onClick={() => void copy("code")}>
             <Copy className="mr-2 h-4 w-4" aria-hidden="true" />

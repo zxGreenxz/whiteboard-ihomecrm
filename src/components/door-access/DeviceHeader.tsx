@@ -19,7 +19,7 @@ import { doorErrorMessage, isDoorAccessError } from "@/lib/door-access/errors";
 import { DEVICE_KIND_LABEL } from "@/lib/door-access/format";
 import { READ_ONLY_REASON, groupDevicesByBuilding } from "@/lib/door-access/view";
 
-import { GuardedButton, Notice, Pill, type NoticeTone } from "./parts";
+import { ActionNotice, GuardedButton, Pill, type ActionResult } from "./parts";
 
 export function DeviceHeader({
   caller,
@@ -87,7 +87,7 @@ const UNKNOWN_UNLOCK = "Chưa rõ cửa đã mở chưa — xem Lịch sử ra v
 function RemoteUnlock({ caller, device, writable }: { caller: DoorAccessCaller; device: DoorDevice; writable: boolean }) {
   const unlock = useRemoteUnlock(caller);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [result, setResult] = useState<{ deviceId: string; tone: NoticeTone; text: string } | null>(null);
+  const [result, setResult] = useState<(ActionResult & { deviceId: string }) | null>(null);
   const shown = result && result.deviceId === device.id ? result : null;
 
   const run = () => {
@@ -97,17 +97,21 @@ function RemoteUnlock({ caller, device, writable }: { caller: DoorAccessCaller; 
     const target = device;
     unlock.mutate(target.id, {
       onSuccess: (data) =>
-        setResult(
-          data.unlocked
-            ? { deviceId: target.id, tone: "success", text: `Đã gửi lệnh mở cửa ${target.display_name}.` }
-            : { deviceId: target.id, tone: "warning", text: "SmartLife chưa xác nhận đã mở cửa — xem Lịch sử ra vào trước khi bấm lại." },
-        ),
+        setResult({
+          deviceId: target.id,
+          logPending: data.logPending === true,
+          ...(data.unlocked
+            ? { tone: "success" as const, text: `Đã gửi lệnh mở cửa ${target.display_name}.` }
+            : { tone: "warning" as const, text: "SmartLife chưa xác nhận đã mở cửa — xem Lịch sử ra vào trước khi bấm lại." }),
+        }),
       onError: (error) =>
-        setResult(
-          isDoorAccessError(error) && error.outcomeUnknown
-            ? { deviceId: target.id, tone: "warning", text: UNKNOWN_UNLOCK }
-            : { deviceId: target.id, tone: "error", text: doorErrorMessage(error, "Chưa mở được cửa. Thử lại sau.") },
-        ),
+        setResult({
+          deviceId: target.id,
+          logPending: isDoorAccessError(error) && error.logPending,
+          ...(isDoorAccessError(error) && error.outcomeUnknown
+            ? { tone: "warning" as const, text: UNKNOWN_UNLOCK }
+            : { tone: "error" as const, text: doorErrorMessage(error, "Chưa mở được cửa. Thử lại sau.") }),
+        }),
     });
   };
 
@@ -128,7 +132,7 @@ function RemoteUnlock({ caller, device, writable }: { caller: DoorAccessCaller; 
         )}
         {unlock.isPending ? "Đang mở cửa…" : "Mở cửa"}
       </GuardedButton>
-      {shown && <Notice tone={shown.tone}>{shown.text}</Notice>}
+      {shown && <ActionNotice result={shown} />}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
           <AlertDialogHeader>

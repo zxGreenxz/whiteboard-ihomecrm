@@ -30,9 +30,9 @@ import { linkDisplayName } from "@/lib/door-access/records";
 import { rowOwner } from "@/lib/door-access/view";
 import { focusFirstError } from "@/lib/formErrors";
 
-import { ErrorPanel, Notice, type NoticeTone } from "./parts";
+import { ActionNotice, ErrorPanel, Notice, type ActionResult } from "./parts";
 
-export type KeyActionDone = (notice: { tone: NoticeTone; text: string }) => void;
+export type KeyActionDone = (notice: ActionResult) => void;
 
 // ---------------------------------------------------------------------------------------------
 // Gắn khách / nhãn
@@ -271,7 +271,7 @@ export function DeleteKeyDialog({
 }) {
   const remove = useDeleteKey(caller);
   const [step, setStep] = useState<1 | 2>(1);
-  const [problem, setProblem] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const [problem, setProblem] = useState<ActionResult | null>(null);
   const resetMutation = remove.reset;
   useEffect(() => {
     setStep(1);
@@ -292,19 +292,21 @@ export function DeleteKeyDialog({
       { deviceId: device.id, unlockType: row.unlockType, unlockNo: row.sn, tuyaUserId },
       {
         onSuccess: (data) => {
+          const logPending = data.logPending === true;
           if (data.deleted) {
-            onDone({ tone: "success", text: `Đã xoá ${what} (${owner}) trên máy ${device.display_name}.` });
+            onDone({ tone: "success", text: `Đã xoá ${what} (${owner}) trên máy ${device.display_name}.`, logPending });
             onClose();
             return;
           }
-          setProblem({ tone: "warning", text: "SmartLife chưa xác nhận đã xoá — tải lại danh sách để kiểm tra." });
+          setProblem({ tone: "warning", text: "SmartLife chưa xác nhận đã xoá — tải lại danh sách để kiểm tra.", logPending });
         },
         onError: (error) =>
-          setProblem(
-            isDoorAccessError(error) && error.outcomeUnknown
-              ? { tone: "warning", text: "Chưa rõ đã xoá chưa — tải lại danh sách và xem Nhật ký thao tác trước khi thử lại." }
-              : { tone: "error", text: doorErrorMessage(error, "Chưa xoá được trên máy.") },
-          ),
+          setProblem({
+            logPending: isDoorAccessError(error) && error.logPending,
+            ...(isDoorAccessError(error) && error.outcomeUnknown
+              ? { tone: "warning" as const, text: "Chưa rõ đã xoá chưa — tải lại danh sách và xem Nhật ký thao tác trước khi thử lại." }
+              : { tone: "error" as const, text: doorErrorMessage(error, "Chưa xoá được trên máy.") }),
+          }),
       },
     );
   };
@@ -344,7 +346,7 @@ export function DeleteKeyDialog({
                 <span className="font-medium text-foreground">{owner}</span> trên máy {device.display_name}. Không hoàn tác được.
               </DialogDescription>
             </DialogHeader>
-            {problem && <Notice tone={problem.tone}>{problem.text}</Notice>}
+            {problem && <ActionNotice result={problem} />}
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" disabled={busy} onClick={() => setStep(1)}>
                 Quay lại

@@ -216,6 +216,12 @@ export type DoorTempPassword = z.infer<typeof tempPasswordSchema>;
 export const tempPasswordsSchema = z.object({ passwords: z.array(tempPasswordSchema), hasMore: z.boolean() });
 export type DoorTempPasswordsResult = z.infer<typeof tempPasswordsSchema>;
 
+/**
+ * `logPending: true` = lệnh đã chạy trên máy nhưng hàm Edge chưa chốt được dòng nhật ký (PENDING còn
+ * treo) — kết quả vẫn đúng, chỉ cần nhắc người dùng kiểm lại ở tab Nhật ký.
+ */
+const logPending = z.boolean().optional();
+
 /** Mã chỉ đi qua đúng một lần trong kết quả này — không lưu ở đâu khác. */
 export const createdTempPasswordSchema = z.object({
   passwordId: z.number().int().nonnegative(),
@@ -223,8 +229,9 @@ export const createdTempPasswordSchema = z.object({
   effectiveSec: z.number().int().positive(),
   invalidSec: z.number().int().positive(),
   logId: z.string().min(1),
+  logPending,
 });
 export type CreatedTempPassword = z.infer<typeof createdTempPasswordSchema>;
 
-export const deletedSchema = z.object({ deleted: z.boolean(), logId: z.string().min(1) });
-export const unlockedSchema = z.object({ unlocked: z.boolean(), logId: z.string().min(1) });
+export const deletedSchema = z.object({ deleted: z.boolean(), logId: z.string().min(1), logPending });
+export const unlockedSchema = z.object({ unlocked: z.boolean(), logId: z.string().min(1), logPending });

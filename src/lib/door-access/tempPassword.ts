@@ -58,6 +58,16 @@ export function computeValidity(input: ValidityInput, nowMs: number): ValidityRe
       const invalidSec = Math.floor(to / 1000);
       if (invalidSec <= effectiveSec) return { ok: false, field: "to", message: "Kết thúc phải sau bắt đầu." };
       if (invalidSec <= nowSec) return { ok: false, field: "to", message: "Kết thúc phải sau hiện tại." };
+      // Mã phải hết hạn trong 7 ngày kể từ BÂY GIỜ (máy chủ chặn invalid > now + 7 ngày + 300 s), không chỉ
+      // "dài tối đa 7 ngày": bắt đầu muộn thì kết thúc cũng không được vượt mốc này.
+      const latestSec = nowSec + TEMP_PASSWORD_MAX_DAYS * 86_400;
+      if (invalidSec > latestSec) {
+        return {
+          ok: false,
+          field: "to",
+          message: `Mã phải hết hạn trong ${TEMP_PASSWORD_MAX_DAYS} ngày kể từ bây giờ — muộn nhất ${formatTimeDay(latestSec * 1000)}.`,
+        };
+      }
       if (invalidSec - effectiveSec > TEMP_PASSWORD_MAX_DAYS * 86_400) {
         return { ok: false, field: "to", message: `Hiệu lực tối đa ${TEMP_PASSWORD_MAX_DAYS} ngày.` };
       }

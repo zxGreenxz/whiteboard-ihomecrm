@@ -53,6 +53,16 @@ export function indexTempPasswordNames(
   return names;
 }
 
+/**
+ * Lượt ra vào chỉ thuộc về một liên kết nếu xảy ra TỪ lúc gắn trở đi: trước đó số trên máy có thể là của
+ * người khác (số được gán lại, hoặc gắn lại cho khách mới). Không rõ giờ ⇒ không kết luận được ⇒ không gán.
+ */
+export function linkCoversRecord(link: Pick<DoorKeyLink, "linked_at">, at: number | null): boolean {
+  if (at === null) return false;
+  const since = Date.parse(link.linked_at);
+  return Number.isFinite(since) && at >= since;
+}
+
 export function recordPerson(
   record: DoorRecord,
   links: ReadonlyMap<string, DoorKeyLink>,
@@ -60,7 +70,9 @@ export function recordPerson(
 ): RecordPerson {
   if (isLinkableMethod(record.method) && typeof record.slot === "number" && Number.isInteger(record.slot)) {
     const link = links.get(keyOf(record.method, record.slot)) ?? null;
-    if (link) return { name: linkDisplayName(link), detail: link.room_name, source: "link", link };
+    if (link && linkCoversRecord(link, record.at)) {
+      return { name: linkDisplayName(link), detail: link.room_name, source: "link", link };
+    }
   }
   // Mật khẩu tạm: slot = id mật khẩu (Tuya). Tạo từ CRM thì có tên; không thì không có gì để "gắn".
   if (record.method === "temporary" && record.slot !== null) {

@@ -13,7 +13,7 @@ import { deleteBlockedReason } from "@/lib/door-access/view";
 import { cn } from "@/lib/utils";
 
 import { DeleteKeyDialog, LinkKeyDialog, UnlinkKeyDialog, type KeyActionDone } from "./KeyDialogs";
-import { ErrorPanel, GuardedButton, Notice, Pill, SectionTitle, type NoticeTone } from "./parts";
+import { ActionNotice, ErrorPanel, GuardedButton, Notice, Pill, SectionTitle, type ActionResult } from "./parts";
 
 const TENANCY_TONE: Record<DoorTenancy, "green" | "red" | "amber" | "blue"> = {
   CURRENT: "green",
@@ -31,7 +31,7 @@ export function ReconcileTab({ caller, device, writable }: { caller: DoorAccessC
   const [linkRow, setLinkRow] = useState<ReconcileRow | null>(null);
   const [unlinkRow, setUnlinkRow] = useState<ReconcileRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<ReconcileRow | null>(null);
-  const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const [notice, setNotice] = useState<ActionResult | null>(null);
   const done: KeyActionDone = (next) => setNotice(next);
 
   const refresh = () => {
@@ -91,7 +91,7 @@ export function ReconcileTab({ caller, device, writable }: { caller: DoorAccessC
       <p className="text-xs text-muted-foreground">
         Thêm vân tay/thẻ mới vẫn làm tại máy hoặc app SmartLife; ở đây chỉ gắn số với khách và dọn số của khách đã trả phòng.
       </p>
-      {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+      {notice && <ActionNotice result={notice} />}
 
       {keys.isError && keys.data === undefined && (
         <ErrorPanel error={keys.error} title="Chưa đọc được danh sách trên máy" onRetry={() => void keys.refetch()} />

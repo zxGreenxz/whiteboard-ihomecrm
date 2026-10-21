@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   ORG: "00000000-0000-4000-8000-000000000001",
   ACTOR: "00000000-0000-4000-8000-000000000002",
   perms: {} as Record<string, unknown>,
+  buildings: [] as unknown[],
   edge: {
     status: vi.fn(),
     discover: vi.fn(),
@@ -40,7 +41,26 @@ vi.mock("@/components/layout/MainLayout", () => ({ default: ({ children }: { chi
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ data: { id: m.ACTOR } }) }));
 vi.mock("@/contexts/OrganizationContext", () => ({ useOrganization: () => ({ selectedOrganizationId: m.ORG }) }));
 vi.mock("@/hooks/useMyPermissions", () => ({ useMyPermissions: () => ({ data: m.perms }) }));
-vi.mock("@/hooks/useBuildings", () => ({ useBuildings: () => ({ data: [], isError: false, refetch: vi.fn() }) }));
+vi.mock("@/hooks/useBuildings", () => ({ useBuildings: () => ({ data: m.buildings, isError: false, refetch: vi.fn() }) }));
+// Ô chọn có tìm kiếm (Popover + cmdk) khó bấm trong jsdom: thay bằng <select> thường, giữ nguyên hợp đồng props.
+vi.mock("@/components/ui/searchable-select", () => ({
+  SearchableSelect: (props: {
+    value?: string;
+    onValueChange: (value: string) => void;
+    options: Array<{ value: string; label: ReactNode }>;
+    disabled?: boolean;
+    "aria-label"?: string;
+  }) => (
+    <select aria-label={props["aria-label"]} value={props.value ?? ""} disabled={props.disabled} onChange={(event) => props.onValueChange(event.target.value)}>
+      <option value="">—</option>
+      {props.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {typeof option.label === "string" ? option.label : option.value}
+        </option>
+      ))}
+    </select>
+  ),
+}));
 vi.mock("@/lib/door-access/edge", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/door-access/edge")>()),
   doorAccessEdge: () => m.edge,
@@ -97,6 +117,7 @@ const openTab = (name: string) => fireEvent.mouseDown(screen.getByRole("tab", { 
 beforeEach(() => {
   vi.clearAllMocks();
   m.perms = {};
+  m.buildings = [];
   try {
     window.localStorage.clear();
   } catch {
@@ -252,5 +273,128 @@ describe("trang Cửa vân tay", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Tạo mật khẩu" }));
     expect(await screen.findByText("Nhập tên mật khẩu.")).toBeTruthy();
     expect(m.edge.createTempPassword).not.toHaveBeenCalled();
+  });
+});
+
+const BUILDING_A = "00000000-0000-4000-8000-0000000000a1";
+const BUILDING_B = "00000000-0000-4000-8000-0000000000b1";
+const CUSTOMER = "00000000-0000-4000-8000-0000000000c1";
+const twoBuildings = () => [
+  { id: BUILDING_A, name: "Tòa A", code: null, street_address: "12/3 Đường Số 1", organization_id: m.ORG },
+  { id: BUILDING_B, name: "Tòa B", code: null, street_address: "45 Đường Số 2", organization_id: m.ORG },
+];
+const LOG_PENDING = "Nhật ký thao tác chưa chốt được — kiểm lại ở tab Nhật ký";
+
+describe("rà soát chéo 22/10", () => {
+  it("Thiết bị: chỉ Quản lý ở MỘT tòa ⇒ không tìm máy mới (chỉ ghi chú); ô chọn tòa chỉ còn tòa được quản lý", async () => {
+    connected("all", [device()]);
+    m.perms = { door_access: { view: { org_wide: true, building_ids: [] }, manage_devices: { org_wide: false, building_ids: [BUILDING_A] } } };
+    m.buildings = twoBuildings();
+    renderPage();
+    await screen.findByRole("tab", { name: "Thiết bị" });
+    openTab("Thiết bị");
+    expect(await screen.findByText("Chỉ người có quyền Quản lý máy ở mọi tòa mới gắn được máy mới.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tìm máy trên SmartLife" })).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sửa" }));
+    const picker = await screen.findByLabelText("Chọn tòa");
+    expect(within(picker).getAllByRole("option").map((option) => option.textContent)).toEqual(["—", "Tòa A"]);
+    expect(m.edge.discover).not.toHaveBeenCalled();
+  });
+
+  it("Thiết bị: Quản lý ở mọi tòa ⇒ tìm máy; máy không rõ loại ẩn mặc định, gắn thì PHẢI chọn loại", async () => {
+    connected("all", [device()]);
+    m.perms = { door_access: { view: { org_wide: true, building_ids: [] }, manage_devices: { org_wide: true, building_ids: [] } } };
+    m.buildings = twoBuildings();
+    m.edge.discover.mockResolvedValue({
+      devices: [
+        { tuyaDeviceId: "tuyaLock405", name: "405XYZ", category: "mk", productName: null, online: true, kind: "access_control", registered: null },
+        { tuyaDeviceId: "tuyaOther01", name: "Thiết bị lạ", category: "xyz", productName: null, online: null, kind: null, registered: null },
+        {
+          tuyaDeviceId: "tuyaDevFake001",
+          name: "Cửa chính đã gắn",
+          category: "mk",
+          productName: null,
+          online: true,
+          kind: "access_control",
+          registered: { deviceId: DEVICE_ID, buildingId: BUILDING_A },
+        },
+      ],
+      hasMore: false,
+    });
+    renderPage();
+    await screen.findByRole("tab", { name: "Thiết bị" });
+    openTab("Thiết bị");
+    fireEvent.click(await screen.findByRole("button", { name: "Tìm máy trên SmartLife" }));
+    expect(await screen.findByText("405XYZ")).toBeTruthy();
+    expect(screen.queryByText("Thiết bị lạ")).toBeNull();
+    expect(screen.queryByText("Cửa chính đã gắn")).toBeNull();
+
+    fireEvent.click(screen.getByRole("switch"));
+    const other = (await screen.findByText("Thiết bị lạ")).closest("li");
+    expect(other).toBeTruthy();
+    fireEvent.click(within(other as HTMLElement).getByRole("button", { name: "Gắn tòa" }));
+    fireEvent.change(await screen.findByLabelText("Chọn tòa"), { target: { value: BUILDING_A } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu máy" }));
+    expect(await screen.findByText("Chọn loại máy: kiểm soát ra vào hoặc khoá Wi-Fi.")).toBeTruthy();
+    expect(m.repo.saveDevice).not.toHaveBeenCalled();
+  });
+
+  it("Mở cửa thành công nhưng nhật ký chưa chốt ⇒ thêm dòng nhắc trung tính", async () => {
+    connected("all", [device()]);
+    m.edge.remoteUnlock.mockResolvedValue({ unlocked: true, logId: "log-1", logPending: true });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở cửa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mở cửa ngay" }));
+    expect(await screen.findByText("Đã gửi lệnh mở cửa Cửa chính Tòa A.")).toBeTruthy();
+    expect(screen.getByText(LOG_PENDING)).toBeTruthy();
+  });
+
+  it("Mở cửa lỗi kèm logPending ⇒ báo lỗi + dòng nhắc; không có cờ thì không nhắc", async () => {
+    connected("all", [device()]);
+    m.edge.remoteUnlock.mockRejectedValueOnce(new DoorAccessError("tuya_rejected", "SmartLife từ chối (mã 2001).", { logPending: true }));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Mở cửa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mở cửa ngay" }));
+    expect(await screen.findByText("SmartLife từ chối (mã 2001).")).toBeTruthy();
+    expect(screen.getByText(LOG_PENDING)).toBeTruthy();
+
+    m.edge.remoteUnlock.mockResolvedValueOnce({ unlocked: true, logId: "log-2" });
+    fireEvent.click(screen.getByRole("button", { name: "Mở cửa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mở cửa ngay" }));
+    expect(await screen.findByText("Đã gửi lệnh mở cửa Cửa chính Tòa A.")).toBeTruthy();
+    expect(screen.queryByText(LOG_PENDING)).toBeNull();
+  });
+
+  it("Gắn khách bị máy chủ từ chối 42501 ⇒ câu lý do hiện ngay trong hộp, hộp vẫn mở", async () => {
+    connected("all", [device()]);
+    m.edge.keys.mockResolvedValue({
+      users: [
+        {
+          userId: "tuyaUserFake01",
+          name: "Người dùng 01",
+          role: "member",
+          userType: 20,
+          methods: [{ method: "fingerprint", methodCode: "unlock_fingerprint", sn: 12, name: null }],
+        },
+      ],
+      unassigned: [],
+      partial: false,
+    });
+    m.repo.listBuildingTenants.mockResolvedValue([
+      { customer_id: CUSTOMER, full_name: "Nguyễn Văn Thử", room_id: null, room_name: "P302", contract_id: null, is_representative: true },
+    ]);
+    m.repo.linkKey.mockRejectedValue(new DoorAccessError("permission", "Khách chưa từng có hợp đồng ở tòa của máy này", { code: "42501" }));
+    renderPage();
+    await screen.findByRole("tab", { name: "Đối chiếu vân tay" });
+    openTab("Đối chiếu vân tay");
+    fireEvent.click(await screen.findByRole("button", { name: "Gắn" }));
+    const picker = await screen.findByLabelText("Chọn khách");
+    await waitFor(() => expect(within(picker).getAllByRole("option")).toHaveLength(2));
+    fireEvent.change(picker, { target: { value: CUSTOMER } });
+    fireEvent.click(screen.getByRole("button", { name: "Gắn" }));
+    expect(await screen.findByText("Khách chưa từng có hợp đồng ở tòa của máy này")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(m.repo.linkKey).toHaveBeenCalledWith(m.ORG, expect.objectContaining({ customerId: CUSTOMER, unlockType: "fingerprint", unlockSn: 12 }));
   });
 });
