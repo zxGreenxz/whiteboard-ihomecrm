@@ -1,11 +1,12 @@
-// Frozen contracts for fifteen forward migrations (eight of 20261019, the B2
+// Frozen contracts for seventeen forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
 // income/expense type 20261021035022, the R2c part 2 customer contract status
 // and asset date 20261021044801, and the R2d customers without a contract — a
-// new private DEFINER count — and asset batch 20261021063452); source review
-// covers each pin.
+// new private DEFINER count — and asset batch 20261021063452, and the shared
+// write foundation: name resolution 20261021132433 and action guard/receipts/
+// probe 20261021133823); source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -81,7 +82,19 @@ export const FORWARD_FUNCTIONS = [
   {"name":"app_private.hermes_w2a_read_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"1dbcd03bef4d53c57d7673641bbf1d594ca4e8168cef946827e6603de3e67398","args":"p_report text,p_params jsonb,p_ctx jsonb"},
   {"name":"public.vehicles_list_core_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"cdba4d0740e806c95b69b5abafcd1563d2c6d91d7ef2d5b36765f465bcc6a6ed","args":"p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL, p_customer_building_ids uuid[] DEFAULT NULL,p_include_unassigned boolean DEFAULT true,p_query text DEFAULT NULL, p_vehicle_type text DEFAULT NULL,p_room_id uuid DEFAULT NULL,p_customer_id uuid DEFAULT NULL,p_limit integer DEFAULT NULL,p_offset integer DEFAULT 0,p_allow_copied_owner boolean DEFAULT true"},
   {"name":"public.vehicles_list_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"5b1a6e3ee7e86c7702b08717ff5c8e7c7f917b7b93ef63854da024678844b0c0","args":"p_organization_id uuid,p_building_ids uuid[] DEFAULT NULL, p_customer_building_ids uuid[] DEFAULT NULL,p_include_unassigned boolean DEFAULT true,p_query text DEFAULT NULL, p_vehicle_type text DEFAULT NULL,p_room_id uuid DEFAULT NULL,p_customer_id uuid DEFAULT NULL,p_limit integer DEFAULT NULL,p_offset integer DEFAULT 0"},
-  {"name":"app_private.hermes_w2c_read_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"de8163e81b739f5d57a43754b75d8cf84a585fe2f6106142cc11d884966fcf0e","args":"p_report text,p_params jsonb,p_ctx jsonb"}
+  {"name":"app_private.hermes_w2c_read_v1","sourcePath":"supabase/migrations/20261019040948_hermes_copied_text_parity_v1.sql","sha256":"de8163e81b739f5d57a43754b75d8cf84a585fe2f6106142cc11d884966fcf0e","args":"p_report text,p_params jsonb,p_ctx jsonb"},
+  {"name":"public.hermes_name_fold_v1","sourcePath":"supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql","sha256":"6abffee49c9e02da56b02b748c6b8ea792a4f1dea7e6243f4334361565506774","args":"p_text text"},
+  {"name":"public.hermes_room_key_v1","sourcePath":"supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql","sha256":"5461a6704a244c16599ae2e6465ce7b770bef37f2c79208acd352ff1f407bfdd","args":"p_text text"},
+  {"name":"app_private.hermes_write_name_resolve_core_v1","sourcePath":"supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql","sha256":"30281eb58fad3e27615fc7930ab29606dd86bbbf43f14da1b3eb55bdace85ad0","args":"p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_member_ids uuid[]"},
+  {"name":"public.hermes_write_name_resolve_v1","sourcePath":"supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql","sha256":"6710224af6557e5747a778a9b5d4b43304c05cf836abc43f83b1244e8c5af7f1","args":"p_organization_id uuid,p_building_ids uuid[],p_names jsonb"},
+  {"name":"app_private.hermes_action_reason_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"166c668e26a682585ec273e20ae1847dc2acb8cfcd8a844030d86d31533d776e","args":"p_sqlstate text,p_message text"},
+  {"name":"app_private.hermes_action_guard_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"c7066ae476329c6d7ca5077d398d0740aae17fb40ff5939937207946d58c54a3","args":"p_binding jsonb,p_action text"},
+  {"name":"app_private.hermes_action_receipt_begin_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"7b4bc36399732cf9bce0c5d15cf0c6b3da54bfa0661d49db1ef4230f36694193","args":"p_binding jsonb,p_action text,p_request_id uuid,p_input jsonb"},
+  {"name":"app_private.hermes_action_receipt_finish_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"493b7f08d004e39cc684391665fd565e1f799ef65a8513a767a1819faf8aa0e1","args":"p_binding jsonb,p_action text,p_request_id uuid,p_outcome jsonb, p_sqlstate text DEFAULT NULL,p_message text DEFAULT NULL"},
+  {"name":"public.hermes_action_status_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"b060bcb9de9cb68bd38f99cab06f1ec5b25f8d9742ce275669b326561e774403","args":"p_binding jsonb,p_request_id uuid"},
+  {"name":"public.hermes_action_capabilities_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"93ea3b90124be23b3ceb022dedce6013185947d62d875a7ea265d6a8a64de6a9","args":"p_organization_id uuid"},
+  {"name":"app_private.hermes_action_probe_step_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"be17d271ffdaf8af3d902ebc1af469d2ca020da3ab50e2a20a26a266447cde08","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
+  {"name":"public.hermes_action_probe_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"87df58c7f3bdfc05ae5ab7d9ebe05b3a719a5aaff0378b5df2f0b6d36153d705","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.

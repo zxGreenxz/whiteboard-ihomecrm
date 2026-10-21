@@ -79,7 +79,7 @@ INSERT INTO app_private.hermes_action_policies(action,capability,crm_permission,
 
 -- 3. Mã lý do (danh sách đóng; chuỗi lạ ⇒ crm_refused). Câu tiếng Việt của hàm ghi web đã biết đi trước SQLSTATE.
 CREATE OR REPLACE FUNCTION app_private.hermes_action_reason_v1(p_sqlstate text,p_message text)
-RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog AS $fn$
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_path=pg_catalog AS $fn$
   SELECT CASE
     WHEN COALESCE(p_message,'') ~ '\[(PROFIT_LOCKED|CASHBOOK_CLOSED|HANDOVER_LOCKED|PERIOD_CLOSED)\]'
       OR COALESCE(p_message,'') ~* '(sổ quỹ đã khoá|locked cashbook period)' THEN 'period_locked'
@@ -311,9 +311,11 @@ BEGIN
   RETURN app_private.hermes_action_receipt_finish_v1(p_binding,p_action,p_request_id,v_outcome);
 END $fn$;
 
+-- Đầu hàm theo đúng khuôn lane migrate:forward nhận cho thân SQL-standard ghi (như hermes_task_follow_action_v1);
+-- mọi tên trong thân đã ghi đủ schema và gắn OID lúc tạo. Câu lệnh được ghim băm ở scripts/hermes-task-function-contract.mjs.
 CREATE OR REPLACE FUNCTION public.hermes_action_probe_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
   p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL)
-RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=''
+RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public
 BEGIN ATOMIC
   WITH g AS MATERIALIZED (SELECT app_private.hermes_action_guard_v1(p_binding,p_action) AS ctx),
   r AS MATERIALIZED (SELECT CASE WHEN p_phase IN ('preview','auto') AND jsonb_typeof(p_params)='object'

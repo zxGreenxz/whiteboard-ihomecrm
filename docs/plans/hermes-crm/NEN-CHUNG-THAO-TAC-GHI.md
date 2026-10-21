@@ -552,6 +552,12 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
   - **Bước ghi.** Hàm DEFINER trong `app_private`: chạy lại guard, kiểm bản đã giải còn trong phạm vi (toà của khoá, phòng thuộc đúng toà), rồi đến biên nhận, basis và hàm ghi.
 
   Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
+
+  **Sửa trước review (5), 22/10:** CI `quality-gates` của `1ed925638` đỏ ở `copilot-independence` và `hermes-durable-schema`: mọi thân `BEGIN ATOMIC` của Hermes phải được đăng ký kèm băm câu lệnh. Lane `migrate:forward` (`apply-reviewed-migration.mjs`) cũng từ chối M1 và M5 với lỗi "Unsupported SQL-standard function boundary". Đã sửa theo đúng hai tiền lệ:
+  - vỏ ghi M1 đổi `search_path` sang `pg_catalog,public` (khuôn lane nhận cho thân ghi, như `hermes_task_follow_action_v1`) và ghim băm ở `scripts/hermes-task-function-contract.mjs`;
+  - vỏ giải tên M5 (STABLE, `search_path=''`) ghim băm ở `scripts/hermes-read-function-specs.mjs`, như R2d.
+
+  `buildTransaction` của lane nay nhận cả ba migration. Sửa thân vỏ thì phải tính lại băm.
 - `public.hermes_action_probe_v1` là RPC thử (D6) và là khuôn cho RPC từng trang. Nó chỉ ghi biên nhận + audit; note `!raise XXXXX` giả lập lỗi hàm ghi để thử đường ánh xạ lý do.
 - M2 seed TẮT 13 khoá, không có `thu_tien.collect`. Khoá thử `assistant.action_probe` seed TẮT ở M1. Sửa trước review (3): cả 14 khoá đã vào `capability-contract.mjs` (`HERMES_ACTION_FOUNDATION_KEYS`, mode action, theo toà) và có nhãn/gợi ý ở `src/hermes/capabilityLabels.ts` (hai khoá riêng Hermes có nhãn riêng, 12 khoá CRM có gợi ý "Hermes: …"). Lần promote web phải đi cùng M2. Test khoá chéo: SQL seed đúng bằng danh sách này. Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 

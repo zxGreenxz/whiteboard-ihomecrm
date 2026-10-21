@@ -5,8 +5,8 @@
 --  (1) public.hermes_name_fold_v1(text)  IMMUTABLE: NFC, chữ thường, bỏ dấu tiếng Việt (đ → d), gộp khoảng trắng.
 --  (2) public.hermes_room_key_v1(text)   IMMUTABLE: như (1) rồi chỉ giữ chữ + số, bỏ tiền tố "phòng/ph/p" trước chữ số
 --      ("P.302", "Phòng 302" ⇒ "302"), đúng khoá phòng của web (src/lib/quickEntry/resolve.ts roomKey).
---  (3) public.hermes_write_name_resolve_v1(org, toà[], names jsonb)  STABLE, SECURITY INVOKER, search_path='', thân
---      SQL-standard (BEGIN ATOMIC): gắn OID của lõi (4) và của helper thành viên app_private.hermes_task_assignee_member_v1
+--  (3) vỏ hermes_write_name_resolve_v1 (schema public; org, toà[], names jsonb)  STABLE, SECURITY INVOKER, search_path='',
+--      thân SQL-standard: gắn OID của lõi (4) và của helper thành viên app_private.hermes_task_assignee_member_v1
 --      ngay lúc tạo, nên lúc chạy KHÔNG cần USAGE trên app_private (authenticated không có quyền đó ở production lẫn TEST,
 --      đọc 21/10 23:35; cùng mẫu R2d 20261021063452). Đọc DƯỚI RLS của chính người gọi (buildings, rooms,
 --      building_common_names, job_types, profiles). Người: hồ sơ thấy được qua RLS ∩ thành viên ACTIVE theo đúng helper mà

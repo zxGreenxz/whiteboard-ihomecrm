@@ -53,6 +53,13 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql',
     statementSha256: '193528a3d333798560c15e7e9d1647a3bb4aec886f247aba52489995d722bc45',
   }),
+  // Nền chung thao tác ghi (M5, 20261021132433): vỏ giải tên INVOKER gắn OID lõi app_private và
+  // hàm thành viên lúc tạo, nên chạy được khi authenticated không có USAGE app_private.
+  Object.freeze({
+    name: 'public.hermes_write_name_resolve_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: '0f05b8b4cd418bac3450f4ab830dddf98a3511df81be2be40499c5bb4dab8899',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

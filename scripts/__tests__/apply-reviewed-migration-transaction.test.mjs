@@ -182,6 +182,16 @@ test('reviewed fast-read STABLE bodies retain END without admitting unknown bodi
   }
 });
 
+test('write-foundation probe wrapper uses the lane write header; an empty path or STABLE header is refused', () => {
+  const source = readFileSync('supabase/migrations/20261021133823_hermes_action_foundation_v1.sql', 'utf8');
+  const header = 'VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public\nBEGIN ATOMIC';
+  assert.equal(source.split(header).length, 2);
+  for (const lanChay of [1, 2]) assert.equal(buildTransaction(source, { rollback: true, lanChay }).split(header).length - 1, lanChay);
+  for (const changed of [source.replace(header, "VOLATILE SECURITY INVOKER SET search_path=''\nBEGIN ATOMIC"),
+    source.replace(header, header.replace('VOLATILE', 'STABLE'))])
+    assert.throws(() => buildTransaction(changed, { rollback: true }), /Unsupported SQL-standard function boundary/);
+});
+
 test('commented or inline outer COMMIT cannot escape the SQL-standard dry-run', () => {
   for(const close of ['COMMIT; -- outside body', 'COMMIT; /* outside /* nested */ body */',
     '/* leading */ COMMIT /* before semicolon */;', 'COMMIT -- before semicolon\n;', 'END; -- commit synonym', 'ROLLBACK; -- closes wrapper']) {
