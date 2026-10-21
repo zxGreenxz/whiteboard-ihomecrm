@@ -1,6 +1,6 @@
 # Cổ đông, Profit Close V2 và ví cá nhân
 
-> **Reviewed:** 2026-08-27
+> **Reviewed:** 2026-10-21
 > Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts` và migrations `20260720210000`–`20260720223000`.
 
 ## 1. Phạm vi
@@ -177,3 +177,14 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 8. Nếu migration đụng view, chạy `node scripts/check-view-invoker.mjs`.
 
 Xem hướng dẫn thao tác: [Chia lợi nhuận](../huong-dan-su-dung/03-quan-ly-van-hanh/chia-loi-nhuan/).
+
+## 9. Toà vận hành cho chủ nhà — quyết toán tháng (chủ chốt 21/10/2026)
+
+Toà do chủ nhà sở hữu, công ty vận hành và nhận % lợi nhuận tháng theo thoả thuận riêng từng toà — không thuê lại, không có tiền nhà. Toà loại này **không** quyết toán qua Profit Close V2 hay chia cổ đông ở trên.
+
+- Màn `/reports/finance/quyet-toan-van-hanh` (chủ công ty / super admin, RPC chặn 42501) và link chỉ đọc `/qt/:token` cho chủ nhà (không đăng nhập, thu hồi được, không lộ id nội bộ).
+- Công thức một nơi: `app_private.landlord_settlement_compute_v1` ([migration](../../supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql)). Phiếu đã duyệt, chia tháng theo **ngày phiếu**; dòng tính như KQKD canonical (`business_result_accounting IS DISTINCT FROM false` và (`IS TRUE` hoặc `accounting_class = 'PNL'`)). Phiếu ở sổ quỹ thuộc danh sách sổ chủ nhà ⇒ chủ nhà giữ; mọi sổ khác ⇒ quản lý giữ.
+- Phần quản lý = `round(LN × %)` khi LN > 0, ngược lại 0đ. Chủ nhà trả quản lý = phần quản lý + quản lý chi − quản lý thu (âm ⇒ quản lý trả lại chủ nhà). Cọc chỉ hiển thị, không vào quyết toán.
+- Chốt tháng: chỉ tháng đã qua, không còn dòng KQKD chờ duyệt, CAS theo `source_hash`, append-only. Chốt **không khoá phiếu**: phiếu đổi sau khi chốt ⇒ màn báo "đổi sau khi chốt"; mở chốt (lý do ≥ 8 ký tự) rồi chốt lại.
+- Thanh toán quyết toán giữa hai bên ghi ở `app_private.landlord_settlement_payments` (không sinh phiếu thu/chi, huỷ phải có lý do). Còn lại = Σ quyết toán tháng đã chốt − chủ nhà đã trả + quản lý đã trả.
+- Báo cáo Lợi Nhuận/KQKD và Chốt LN tháng **không đổi**: toà vận hành vẫn hiện lợi nhuận toàn toà ở đó.

@@ -1667,7 +1667,17 @@
     "src/hermes/capabilityLabels.ts",
     "src/hermes/workAssistantClient.ts",
     "src/hermes/useHermesWorkAssistant.ts",
-    "src/hermes/HermesWorkAssistant.tsx"
+    "src/hermes/HermesWorkAssistant.tsx",
+    "src/lib/landlordSettlement.ts",
+    "src/hooks/useLandlordSettlement.ts",
+    "src/components/landlord-settlement/VoucherBreakdown.tsx",
+    "src/components/landlord-settlement/SettlementStatementCard.tsx",
+    "src/components/landlord-settlement/SettlementOverviewCard.tsx",
+    "src/components/landlord-settlement/OperationConfigDialog.tsx",
+    "src/components/landlord-settlement/SettlementActionDialogs.tsx",
+    "src/components/landlord-settlement/ShareLinkDialog.tsx",
+    "src/pages/reports/finance/LandlordSettlementPage.tsx",
+    "src/pages/public/LandlordSettlementPublicPage.tsx"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }
