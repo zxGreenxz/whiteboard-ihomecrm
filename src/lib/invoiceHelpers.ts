@@ -94,63 +94,10 @@ export async function createInvoiceNotification(
   });
 }
 
-/**
- * Create payment reminder notification
- *
- * @param invoiceId - Invoice ID
- * @param userId - User ID
- * @param tenantName - Tenant name
- * @param invoiceNumber - Invoice number
- * @param amount - Remaining amount
- * @param dueDate - Due date
- */
-export async function createPaymentReminderNotification(
-  invoiceId: string,
-  userId: string,
-  tenantName: string,
-  invoiceNumber: string,
-  amount: number,
-  dueDate: string
-): Promise<void> {
-  // Create reminder notification
-  await supabase.from('notifications').insert({
-    user_id: userId,
-    type: 'PAYMENT_REMINDER',
-    channel: 'IN_APP',
-    subject: 'Nhắc nhở thanh toán',
-    content: `Hóa đơn ${invoiceNumber} sẽ đến hạn vào ${new Date(dueDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}. Vui lòng thanh toán ${amount.toLocaleString('vi-VN')}đ.`,
-    invoice_id: invoiceId,
-    status: 'PENDING',
-  });
-}
-
-/**
- * Create overdue invoice notification
- *
- * @param invoiceId - Invoice ID
- * @param userId - User ID
- * @param tenantName - Tenant name
- * @param invoiceNumber - Invoice number
- * @param amount - Remaining amount
- */
-export async function createOverdueNotification(
-  invoiceId: string,
-  userId: string,
-  tenantName: string,
-  invoiceNumber: string,
-  amount: number
-): Promise<void> {
-  // Create overdue notification
-  await supabase.from('notifications').insert({
-    user_id: userId,
-    type: 'OVERDUE_INVOICE',
-    channel: 'IN_APP',
-    subject: 'Hóa đơn quá hạn',
-    content: `Hóa đơn ${invoiceNumber} đã quá hạn thanh toán. Vui lòng liên hệ với ${tenantName} để thu hồi nợ. Số tiền: ${amount.toLocaleString('vi-VN')}đ.`,
-    invoice_id: invoiceId,
-    status: 'PENDING',
-  });
-}
+// createPaymentReminderNotification / createOverdueNotification đã GỠ 21/10/2026
+// cùng bộ nhắc trình duyệt (notificationScheduler.ts) — caller duy nhất của chúng.
+// Nhắc hoá đơn giờ do máy chủ sinh (plan realtime + thông báo, mục B5), và guard
+// notifications (B1) bỏ qua INSERT 4 loại nhắc legacy từ client.
 
 /**
  * Create payment confirmation notification
