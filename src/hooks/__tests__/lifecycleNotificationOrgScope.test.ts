@@ -6,7 +6,7 @@ vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn(),info:vi.fn()}}));
 vi.mock('@tanstack/react-query',()=>({useQuery:(config:{queryKey:unknown[];queryFn:()=>Promise<unknown>})=>{io.configs.push(config);return config;},useMutation:vi.fn(),useQueryClient:vi.fn()}));
 vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{
   const query: Record<string,unknown>={};
-  for(const name of ['select','eq','order','limit']) query[name]=()=>query;
+  for(const name of ['select','eq','neq','order','limit']) query[name]=()=>query;
   query.or=(filter:string)=>{io.filters.push(filter);return query;};
   query.then=(resolve:(value:unknown)=>unknown)=>Promise.resolve({data:[],count:0,error:null}).then(resolve);
   return query;
