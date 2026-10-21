@@ -314,7 +314,24 @@ Ba nhóm nhắc việc dưới đây chạy theo lịch trên máy chủ, không
 
 Thông báo được gom theo người nhận và ngày, theo quyền hiện có. Nhắc việc không tự hủy giữ chỗ, hoàn thành dọn/sửa hay quyết toán. Thấy thông báo trong ứng dụng chưa chứng minh thiết bị đã nhận Web Push; phần gửi tới thiết bị cần kiểm riêng.
 
+Từ migration `20261021171251_nhac_viec_server_lifecycle_v1` cùng lane còn nhắc thêm bốn họ (thay bộ nhắc trình duyệt §4.2a):
+
+| Họ | Nguồn | Người nhận (theo toà) | `type` / `metadata.event` |
+|---|---|---|---|
+| Hoá đơn sắp đến hạn | `APPROVED`/`PARTIAL_PAID`, còn nợ, hạn trong ≤ 3 ngày | `buildings.view` + `invoices.view` | `PAYMENT_REMINDER` / `BILLING` |
+| Hoá đơn quá hạn | `APPROVED`/`PARTIAL_PAID`/`OVERDUE`, còn nợ, quá hạn | `buildings.view` + `invoices.view` | `OVERDUE_INVOICE` / `BILLING` |
+| Hợp đồng sắp hết hạn | HĐ `ACTIVE`, chưa kết thúc thực, `end_date` ≤ hôm nay + 30 | `buildings.view` + `contracts.view` | `CONTRACT_EXPIRING` / `CONTRACT_EXPIRY` |
+| Hợp đồng thiếu cọc | HĐ `ACTIVE`, `deposit_remaining` ≥ 10.000, `deposit_debt_mode` NULL/DEBT | `buildings.view` + `contracts.view` | `DEPOSIT_SHORTFALL` / `DEPOSIT` |
+
+Một dòng/người/ngày/họ, nội dung chỉ là số đếm; số cập nhật mỗi lượt 15'. Việc về 0 ⇒ dòng chưa đọc thành `CANCELLED`
+(áp cả ba nhóm trên; dòng đã đọc giữ nguyên), nguồn quay lại trong ngày ⇒ mở lại; ngày mới thay dòng chưa đọc của ngày
+trước. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ (§4.5).
+
 ### 4.2a. Bộ sinh thông báo hiện hữu ở Dashboard — runScheduledNotifications
+
+> Đang thay bằng nhắc server (§4.2, đợt 21/10/2026): từ `20261021171249` trigger `a00_notifications_guard` bỏ êm mọi
+> INSERT của bộ nhắc này (4 loại nhắc thiếu `metadata.event`) và dòng cũ còn PENDING được chuyển `CANCELLED`; gói client
+> gỡ hook. Phần dưới mô tả bản web cũ.
 
 Vị trí: [notificationScheduler.ts](src/lib/notificationScheduler.ts). Gọi từ
 [useScheduledNotifications](src/hooks/useScheduledNotifications.ts) — chạy **ở
@@ -423,43 +440,83 @@ ProfitHubPage **tự gate từng tab bên trong** (xem [doc 12](docs/he-thong/12
 — người được thu tiền tự xem chu kỳ Thu→Bàn giao của MÌNH dù chủ tắt
 `reports_finance.view` (không mở được các báo cáo tài chính khác).
 
-### 4.5. Kênh thông báo đẩy — Web Push PWA (2026-06-27)
+### 4.5. Hai kênh thông báo: chuông trong app + Web Push (thiết kế 21/10/2026)
 
-Đẩy thông báo lên **thanh trạng thái điện thoại/desktop** kể cả khi không mở
-tab app. Hạ tầng 4 mảnh:
+Nguồn: plan [2026-10-21-realtime-thong-bao-toi-uu](../plans/2026-10-21-realtime-thong-bao-toi-uu.md), migration
+`20261021171249_notify_pipeline_v2` … `20261021171253_hoan_push_gio_yen_lane_thang_v1` (gói B). Chỉ có HAI kênh:
+dòng `notifications` (`channel='IN_APP'`) và Web Push; push là cột `push_state` của chính dòng đó, không phải
+`channel='PUSH'`. `notification_logs`/`notification_templates` và các giá trị EMAIL/SMS/ZALO/PUSH của enum kênh không
+được dùng.
 
-- **Service worker [public/sw.js](public/sw.js)** — nhận sự kiện `push`, hiện
-  notification, click mở đúng `url` deep-link.
-- **[src/lib/push.ts](src/lib/push.ts)** — phía client: đăng ký SW, xin quyền,
-  subscribe PushManager rồi lưu vào bảng `push_subscriptions` (§2.3b). VAPID
-  **public** key nhúng FE (override được qua `VITE_VAPID_PUBLIC_KEY`); có
-  helper `isStandalone()`/`isIOS()` vì iOS chỉ cho push khi đã "Thêm vào màn
-  hình chính".
-- **Edge function [send-push](supabase/functions/send-push/index.ts)** — gửi
-  thật bằng VAPID private key (chỉ nằm trong **Supabase secrets**:
-  `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`). 2 chế độ theo
-  caller: **service role** (worker Zalo, trigger nội bộ — tin `body.userId`,
-  gửi cho user bất kỳ) vs **JWT user thường** (self-mode — chỉ gửi cho chính
-  mình, chống spam người khác). Tự dọn subscription chết (404/410).
-- **Bảng `push_subscriptions`** — RLS own-only.
+```text
+producer ──▶ cổng notify_gate_v1 (E1–E6, Hermes task = E4) / lifecycle_gate_v2 (LIFECYCLE, BILLING, CONTRACT_EXPIRY, DEPOSIT)
+   │ in_app                                   │ push
+   ▼                                          ▼
+ notifications (status)            push_state='QUEUED'  |  lifecycle_reminder_deliveries PENDING
+   │ realtime INSERT/UPDATE/DELETE            │  edge lifecycle-reminders, pg_cron 15'
+   ▼                                          ▼
+ chuông/hộp thư mọi thiết bị       claim v2 / lifecycle claim → send-push → settle
+```
 
-Nguồn phát hiện có 2 luồng:
+**Bất biến**
+- Chưa đọc = `status='PENDING'` ở MỌI nơi: chuông web, Hermes `notifications_inbox_v1`, Copilot
+  `copilot_notification_feed_v1` (một hàm định nghĩa: `public.notification_is_unread_v1`). `READ` = đã đọc;
+  `CANCELLED` = việc đã xong, ẩn khỏi hộp thư (không xoá; `metadata.cancelled_reason/cancelled_at` để khôi phục).
+- Push chỉ gửi dòng còn `PENDING`: đọc ở bất kỳ đâu (hoặc huỷ) mà push còn `QUEUED` ⇒ `SKIPPED` (trigger + claim).
+- Một sự kiện = một dòng chuông (nếu in_app) + tối đa một push, cùng tiêu đề/nội dung/url, cùng công ty.
+- Client (authenticated) không chạm được hàng đợi: trigger `a00_notifications_guard` (SECURITY INVOKER) ép
+  `push_*`/`sent_at`/`created_at` khi INSERT, UPDATE chỉ đổi được `status` PENDING→READ; INSERT 4 loại nhắc cũ
+  (`PAYMENT_REMINDER`, `OVERDUE_INVOICE`, `CONTRACT_EXPIRING`, `DEPOSIT_SHORTFALL`) thiếu `metadata.event` bị bỏ
+  (bộ nhắc trình duyệt của bản web cũ). `REPLICA IDENTITY FULL` để DELETE/UPDATE qua được filter `user_id` của realtime.
 
-1. **Thưởng hoàn thành việc** ([salaryBonusNotify.ts](src/lib/salaryBonusNotify.ts),
-   8576430): hoàn thành job có thưởng → RPC `award_job_bonus(p_job_id)`
-   (SECURITY DEFINER, mirror `salary_work_ledger` + insert `notifications`
-   type `SALARY_BONUS` có `job_id`/`metadata` dedup ở DB) → hiện popup
-   [BonusToast](src/components/tasks/BonusToast.tsx) trong app + **self-push**
-   qua `send-push` (JWT mode, deep-link `/finance/salary`). Mọi lỗi nuốt êm —
-   không chặn UI hoàn thành việc. Chi tiết quy tắc thưởng: [doc 17](docs/he-thong/17-luong-thuong.md).
-2. **Tin nhắn Zalo mới** — worker Zalo ([worker/index.js](worker/index.js) L71+)
-   gọi `send-push` bằng service role khi có tin nhắn đến (fire & forget; đổi
-   logic phải restart worker). Chi tiết: [doc 18](docs/he-thong/18-zalo-chat.md).
+**Các lane push**
 
-Lưu ý kiến trúc: Web Push **không đi qua** hàng đợi `notifications` với
-`channel='PUSH'` — 2 hệ độc lập (IN_APP lưu bảng, push bắn thẳng theo
-`push_subscriptions`); riêng luồng thưởng ghi CẢ notification IN_APP (để có
-lịch sử + BonusToast) lẫn push.
+| Lane | Ai sinh | Gửi khi nào | Giờ yên |
+|---|---|---|---|
+| Drain chung v2 | Trigger E1–E6 (`push_state='QUEUED'` theo cổng), lane gửi thẳng bị hoãn | Edge `lifecycle-reminders` pha 3, 15'/lần (gói B-EDGE): `notify_claim_push_batch_v2` → `send-push` → `notify_settle_push_batch_v2`, sổ `notify_drain_record_run_v1` | Hoãn |
+| Lifecycle | `lifecycle_reminder_sweep_v1` (từ 08:00 giờ công ty) | Cùng edge, `lifecycle_reminder_claim_v1/validate_v1/settle_v1`, tối đa một push/người/ngày/họ | Hoãn |
+| Gửi thẳng (pg_net) | Hermes task, lịch Hermes, canh gác Zalo | Ngay trong giao dịch sinh; đang giờ yên ⇒ không bắn, dòng `QUEUED` cho drain | Hoãn (B13) |
+| Self-push thưởng | Client sau `award_job_bonus` (`salaryBonusNotify.ts`, JWT mode) | Ngay | Không áp |
+| Tin nhắn Zalo | Worker Zalo gọi `send-push` service role | Ngay — đang bị 400 vì thiếu `idempotencyKey` (NOTIF-SERVER-7, để sau theo chủ) | Không áp |
+
+**Drain chung v2** (`notify_claim_push_batch_v2`, khoá advisory chung với v1 — bản v1 giữ chữ ký, thân gọi v2):
+dọn `SENDING` quá 15' (tra `push_send_log` của khoá lượt đó: SENT/PARTIAL ⇒ SENT); dòng không còn PENDING ⇒ SKIPPED;
+đã 3 lượt ⇒ FAILED; gọi lại cổng (amount NULL) ⇒ tắt thì SKIPPED; không thiết bị ⇒ NO_DEVICE; giờ yên ⇒ để QUEUED;
+debounce 10' cho dòng gộp E1. Gộp theo (người, công ty); khoá idempotency đổi theo lượt thử; trả `organization_id` và
+`data = {notificationIds (≤20 mới nhất), organizationId}` để service worker đánh dấu đọc/đổi công ty khi bấm. Settle:
+`DUPLICATE` chỉ thành SENT khi sổ của khoá là SENT/PARTIAL; sổ `SENDING` ⇒ không đụng; còn lại ⇒ thử lại. E1 bump
+(số phiếu tăng) reset `push_attempts`. `url` chỉ nhận đường nội bộ `/…`, còn lại `/my-day`.
+
+**Giờ yên** = giờ yên công ty (`app_private.notification_org_config`, chưa có dòng ⇒ 21→7) HOẶC giờ yên cá nhân
+(`public.notification_quiet_hours`, bật/tắt theo người×công ty), khoảng `[start, end)` theo múi giờ công ty
+(`org_timezone_v1`), vắt nửa đêm được, `start = end` = không có. Push bị HOÃN, chuông vẫn ghi
+(`app_private.notify_in_quiet_hours_v1`, `notify_push_allowed_now_v1`).
+
+**Nhắc việc server** (thay bộ nhắc trình duyệt ở §4.2a): xem §4.2. `type` giữ enum cũ để bản web cũ hiện đúng biểu
+tượng, `metadata.event` là `LIFECYCLE` | `BILLING` | `CONTRACT_EXPIRY` | `DEPOSIT`.
+
+**Cài đặt** — sở thích cá nhân 10 họ × (trong app / đẩy về máy / nhịp): `E1`–`E6`, `LIFECYCLE`, `BILLING`,
+`CONTRACT_EXPIRY`, `DEPOSIT` (`get/set_my_notification_preferences_v1`). Cấu hình công ty (bật/tắt họ, ngưỡng tiền,
+giờ yên công ty): `get/set_notification_org_config_v2(p_organization_id …)` — cần `settings.view`/`settings.edit` của
+đúng công ty; `set` có `p_expected_updated_at`, lệch ⇒ `PT409`. Ngưỡng tiền chỉ áp E2*, E3, E6c (E5/E6a/E6b là việc
+chờ người nhận — không lọc). Giờ yên cá nhân: `get/set_my_notification_quiet_hours_v1` (membership ACTIVE).
+
+**Quan sát** — `get_notification_delivery_health_v1(p_organization_id)` (`settings.view`): thành viên/thiết bị active,
+hàng đợi, kết quả push 7 ngày theo `push_state`, trạng thái lifecycle, `push_log_7d` (chỉ khoá gắn được với công ty),
+"không có người nhận" 7 ngày, `last_drain_at`. `get_my_push_log_v1(p_limit)`: 1–50 lần gửi gần nhất của chính mình.
+Bảo trì mỗi lượt edge (`notification_maintenance_v1`): huỷ nhắc legacy còn PENDING, E5/E6a trỏ bàn giao đã
+CONFIRMED/CANCELLED; dọn `push_send_log` > 30 ngày tối đa một lần/ngày.
+
+**Hạ tầng client** — service worker [public/sw.js](public/sw.js), [src/lib/push.ts](src/lib/push.ts) (đăng ký, lưu
+`push_subscriptions`, iOS chỉ có push khi "Thêm vào màn hình chính"), edge
+[send-push](supabase/functions/send-push/index.ts) (VAPID chỉ trong Supabase secrets; service role tin `body.userId`,
+JWT thường chỉ gửi cho chính mình; tự `is_active=false` thiết bị 404/410). `push_subscriptions`: RLS own-row; anon
+không còn quyền nào, authenticated không có TRUNCATE (20261021171249).
+
+**Số đo trước đợt sửa (production, chỉ đọc, 21–22/10/2026)**: 0 thiết bị push active từ 05/10; drain cũ chạy 1
+lần/ngày ~07:40 VN (trễ trung vị 15,9 giờ); 2.696 nhắc trình duyệt PENDING (đa số trỏ việc đã xong) + 31 E5/E6a lỗi
+thời — được chuyển `CANCELLED` lúc áp migration; digest v5 lỗi 42501 mỗi ngày thường từ 17/09 (sửa ở
+`20261021171252`). Đo lại sau apply theo §5 của plan.
 
 ## 5. Quy trình theo từng trang
 
