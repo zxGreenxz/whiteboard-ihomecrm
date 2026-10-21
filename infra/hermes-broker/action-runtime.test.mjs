@@ -151,6 +151,10 @@ test('từ chối thật của SQL ⇒ lỗi action_rejected mang reason + câu 
   assert.deepEqual([unresolved.outcome, unresolved.reason, unresolved.detail], ['needs_input', 'name_unresolved',
     "Phòng '201' khớp nhiều: 201 (Toà A), 201 (Toà B) — hỏi người dùng nêu rõ."]);
   assert.equal(unresolved.candidates.length, 2);
+  reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'building', wanted: '44TL', why: 'outside_scope', candidates: [{ name: '44TL' }], more: false };
+  assert.match((await env.call('crm_action_run', { action: 'probe.note', params: { note: 'x' } })).detail, /ngoài phạm vi toà mà kết nối được ghi/);
+  reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'room', wanted: '201', why: 'nope', candidates: [] };
+  await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }), error => error.code === 'backend_unavailable');
   reply = { kind: 'needs_input', reason: 'name_unresolved', field: 'room', wanted: '201', candidates: [{ name: '201', id: id('f') }] };
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }), error => error.code === 'backend_unavailable',
     'ứng viên mang thêm trường (ID) ⇒ sai khuôn');

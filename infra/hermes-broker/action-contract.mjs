@@ -133,15 +133,21 @@ export function confirmationRequired({ action, requestId, preview, warnings, con
   return { outcome: 'confirmation_required', applied: false, action, requestId, preview, warnings, confirmToken, expiresAt, huongDan: CONFIRM_GUIDANCE };
 }
 
-const LABELS = Object.freeze({ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn' });
+export const NAME_FIELDS = Object.freeze(['building', 'room', 'jobType', 'customer', 'person', 'voucher', 'invoice']);
+export const NAME_WHYS = Object.freeze(['ambiguous', 'outside_scope', 'not_visible']);
+const LABELS = Object.freeze({ building: 'toà', room: 'phòng', jobType: 'loại việc', customer: 'khách', person: 'người', voucher: 'phiếu', invoice: 'hoá đơn' });
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/gu;
 const quoted = value => `'${String(value).replace(CONTROL, ' ').trim().slice(0, 60)}'`;
-/** detail của name_unresolved từ kết quả hàm giải tên SQL: chỉ chuỗi mô hình gửi + ứng viên trong phạm vi quyền.
- * Nói "trong phạm vi quyền của anh/chị", không nói "không có" (RLS có thể ẩn đối tượng có thật). */
-export function nameUnresolvedDetail({ field, wanted, candidates = [], more = false }) {
-  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates)) throw new TypeError('invalid_name_detail');
-  const label = LABELS[field];
-  if (!candidates.length) return `Không thấy ${label} ${quoted(wanted)} trong phạm vi quyền của anh/chị; hỏi lại người dùng.`;
+/** detail của name_unresolved từ kết quả hàm giải tên SQL (hermes_write_name_resolve_v1): chỉ chuỗi mô hình gửi + ứng viên mà
+ * RLS của người hỏi đã cho thấy. why: ambiguous (≥ 2 trong phạm vi được ghi) / outside_scope (thấy nhưng ngoài phạm vi toà của
+ * khoá ghi) / not_visible. Không bao giờ nói "không có": hàm INVOKER không biết điều đó (RLS có thể ẩn đối tượng có thật). */
+export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more = false }) {
+  if (!Object.hasOwn(LABELS, field) || typeof wanted !== 'string' || !Array.isArray(candidates) || !(why === undefined || NAME_WHYS.includes(why))) throw new TypeError('invalid_name_detail');
+  const label = LABELS[field], Label = `${label[0].toUpperCase()}${label.slice(1)}`;
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
-  return `${label[0].toUpperCase()}${label.slice(1)} ${quoted(wanted)} khớp nhiều: ${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''} — hỏi người dùng nêu rõ.`;
+  const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
+  const kind = why ?? (candidates.length ? 'ambiguous' : 'not_visible');
+  if (kind === 'outside_scope' && names.length) return `${Label} ${quoted(wanted)} (${list}) nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
+  if (kind === 'ambiguous' && names.length) return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng nêu rõ.`;
+  return `Không thấy ${label} ${quoted(wanted)} trong phạm vi quyền của anh/chị; hỏi lại người dùng.`;
 }

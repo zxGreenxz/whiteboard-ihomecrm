@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1542,
-  "soFileDocBangFs": 398,
-  "tongLoiGoi": 958,
-  "khongPhanLoaiDuoc": 431,
+  "tongSoFileTest": 1548,
+  "soFileDocBangFs": 400,
+  "tongLoiGoi": 961,
+  "khongPhanLoaiDuoc": 432,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 53,
+      "soFile": 55,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -1044,6 +1044,14 @@
       "soGoi": 2,
       "loai": {
         "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "infra/hermes-broker/write-name-resolve-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
     },
@@ -2657,6 +2665,14 @@
       "soGoi": 1,
       "loai": {
         "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/hermesNameMatchParity.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
       },
       "khongPhanLoaiDuoc": 0
     },

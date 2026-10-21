@@ -14,8 +14,8 @@ import { randomUUID } from 'node:crypto';
 import { BrokerError, actionRejected } from './broker.mjs';
 import { canonicalJson, validateActionParams } from './action-catalog.mjs';
 import { ACTION_INPUT_REASONS, ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
-import { ACTION_TOOL_SHAPE, actionEnvelope, actionToolRoute, actionTools, confirmationRequired, listedActionTools, nameUnresolvedDetail,
-  needsInput } from './action-contract.mjs';
+import { ACTION_TOOL_SHAPE, NAME_FIELDS, NAME_WHYS, actionEnvelope, actionToolRoute, actionTools, confirmationRequired, listedActionTools,
+  nameUnresolvedDetail, needsInput } from './action-contract.mjs';
 import { confirmBinding, createConfirmStore, splitConfirmField } from './confirm-guard.mjs';
 
 const fail = code => { throw new BrokerError(code); };
@@ -40,13 +40,14 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
   const mint = () => { const value = mintRequestId(); if (typeof value !== 'string' || !UUID.test(value)) fail('backend_unavailable'); return value; };
 
   function needsFromOutcome(plan, outcome) {
-    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'candidates', 'more']) || !ACTION_INPUT_REASONS.includes(outcome.reason)) fail('backend_unavailable');
+    if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more']) || !ACTION_INPUT_REASONS.includes(outcome.reason)) fail('backend_unavailable');
     if (outcome.reason !== 'name_unresolved') return needsInput({ action: plan.action, reason: outcome.reason });
-    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice'].includes(outcome.field) || !shortText(outcome.wanted, 200) ||
+    // Khuôn kết quả "unresolved" của hermes_write_name_resolve_v1 (field, wanted, why, candidates ≤ 8, more).
+    if (!NAME_FIELDS.includes(outcome.field) || !shortText(outcome.wanted, 200) || !(outcome.why === undefined || NAME_WHYS.includes(outcome.why)) ||
         !candidatesOf(outcome.candidates ?? []) || !(outcome.more === undefined || typeof outcome.more === 'boolean')) fail('backend_unavailable');
     const candidates = outcome.candidates ?? [];
     return needsInput({ action: plan.action, reason: 'name_unresolved', candidates,
-      detail: nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, candidates, more: outcome.more === true }) });
+      detail: nameUnresolvedDetail({ field: outcome.field, wanted: outcome.wanted, why: outcome.why, candidates, more: outcome.more === true }) });
   }
 
   return Object.freeze({

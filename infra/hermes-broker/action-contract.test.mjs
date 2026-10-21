@@ -83,4 +83,12 @@ test('needs_input là kết quả thường có huongDan; detail tên chỉ nêu
   assert.match(nameUnresolvedDetail({ field: 'building', wanted: 'x', candidates: many }), /201 \(Toà 7\), …/);
   assert.equal(nameUnresolvedDetail({ field: 'building', wanted: `a\nb${'c'.repeat(80)}` }).includes('\n'), false);
   assert.throws(() => nameUnresolvedDetail({ field: 'planet', wanted: 'x' }), /invalid_name_detail/);
+  // why của hermes_write_name_resolve_v1: ngoài phạm vi ghi ≠ không thấy; không bao giờ "không có".
+  assert.equal(nameUnresolvedDetail({ field: 'building', wanted: '44TL', why: 'outside_scope', candidates: [{ name: '44TL' }] }),
+    "Toà '44TL' (44TL) nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.");
+  assert.equal(nameUnresolvedDetail({ field: 'jobType', wanted: 'lau', why: 'not_visible' }), "Không thấy loại việc 'lau' trong phạm vi quyền của anh/chị; hỏi lại người dùng.");
+  assert.equal(nameUnresolvedDetail({ field: 'person', wanted: 'nguyen van', why: 'ambiguous', candidates: [{ name: 'An' }, { name: 'Anh' }] }),
+    "Người 'nguyen van' khớp nhiều: An, Anh — hỏi người dùng nêu rõ.");
+  for (const why of ['outside_scope', 'ambiguous', 'not_visible', undefined]) assert.doesNotMatch(nameUnresolvedDetail({ field: 'room', wanted: 'x', why }), /không có/);
+  assert.throws(() => nameUnresolvedDetail({ field: 'room', wanted: 'x', why: 'missing' }), /invalid_name_detail/);
 });

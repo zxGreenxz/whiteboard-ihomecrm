@@ -278,7 +278,15 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
   - Từ chối (42501) khi `current_user <> 'authenticated'` hoặc `auth.uid()` rỗng.
   - Đọc dưới RLS của chính người gọi: `buildings`, `rooms`, `building_common_names` (đọc = ai xem được toà). Không có hàm DEFINER nào chép policy.
 - **Ai gọi.** RPC xem trước của từng trang gọi hàm này trong cùng transaction, cùng JWT người dùng. Connector chỉ chuyển đối số và dựng `needs_input` từ kết quả; connector không tự khớp tên.
-- **Kết quả.** `{status: 'resolved', building: {id, name}, room: {id, name} | null}` hoặc `{status: 'unresolved', field, wanted, candidates: [{name, buildingName}] (≤ 8), more: boolean}`.
+- **Đã viết (Mốc 5)** ở `supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql` (chỉ file, chưa áp). Kèm hai hàm thuần IMMUTABLE dùng chung: `public.hermes_name_fold_v1(text)` (NFC, chữ thường, bỏ 67 chữ có dấu + đ, gộp khoảng trắng) và `public.hermes_room_key_v1(text)` (khoá phòng như `roomKey` của web).
+- **Đầu vào.** `p_names` có thể gồm `building`, `room`, `jobType` (loại việc, bỏ loại đã tắt), `person` (hồ sơ thấy được qua RLS + thành viên ACTIVE theo đúng helper `app_private.hermes_task_assignee_member_v1` mà hàm tạo việc đang dùng). Chỉ nêu phòng thì toà suy ra từ phòng duy nhất khớp.
+- **Kết quả.** `{status: 'resolved', building, room, jobType, person}` (mỗi mục `{id, name}` hoặc null; phòng có thêm `buildingId`) hoặc `{status: 'unresolved', field, wanted, why, candidates: [{name[, buildingName]}] (≤ 8), more}`. Trường đầu tiên không giải được thì trả về luôn.
+- **`why` phân biệt ba trường hợp**, và không bao giờ khẳng định "không có" (hàm INVOKER không biết, RLS có thể ẩn đối tượng có thật):
+  - `ambiguous`: ≥ 2 ứng viên trong phạm vi được ghi;
+  - `outside_scope`: người dùng *thấy* đối tượng (RLS) nhưng nó ngoài phạm vi toà của khoá ghi;
+  - `not_visible`: không thấy gì trong phạm vi quyền.
+
+  Connector dựng câu theo `why` (`nameUnresolvedDetail`).
 
 | | Đọc (hiện có, ở connector) | Ghi (Đợt 1, trong SQL) |
 | --- | --- | --- |
@@ -289,14 +297,14 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 | ≥ 2 khớp | liệt kê | kết quả `needs_input`, `detail` liệt kê tối đa 8 ứng viên **trong phạm vi khoá ghi**, ví dụ "Phòng '201' có ở toà A, B, C, … — nêu toà." Không đoán |
 
 - **Bỏ dấu trong SQL.** Hàm tự bỏ dấu bằng `translate` (bảng chữ có dấu tiếng Việt → không dấu, đ → d) rồi `lower`. Không phụ thuộc extension `unaccent`, vì chưa xác minh extension này có trên mọi môi trường (TEST, PGlite, Restore Drill).
-- **Bộ vector dùng chung.** Bộ vector đặt ở `infra/hermes-broker/name-match-vectors.json`. Test PGlite của hàm SQL và test web (`src/lib/__tests__/jobQuickInput.test.ts`, test của `src/lib/quickEntry`) cùng đọc file này, nên luật của SQL không lệch luật web. Các ca:
+- **Bộ vector dùng chung.** Bộ vector đặt ở `infra/hermes-broker/name-match-vectors.json` (43 ca, dữ liệu giả). `infra/hermes-broker/write-name-resolve-sql.test.mjs` chạy MỌI ca trên cụm PostgreSQL 17 dùng một lần (fixture RLS thật theo `buildings.view`). `src/lib/__tests__/hermesNameMatchParity.test.ts` chạy các ca `web: true` qua `parseJobQuickInput` của web (cùng luật với `jobQuickInput.test.ts`). Ca `web: false` là chỗ web còn hẹp hơn: so toà/phòng giữ dấu, khớp một token, không tên thường gọi. Các ca:
   - "le van tho" khớp toà có dấu;
   - "Toà 44TL" và "toa 44tl";
   - bí danh số trong mã;
   - "15" khớp mã 15KV chứ không chứa trong "158PVC";
   - "P.302", "phòng 302";
   - "201" có ở nhiều toà.
-- **Phần JS còn trùng.** Nếu buộc phải giữ một đoạn JS cùng luật (ví dụ để dựng `detail` hoặc test), đoạn đó đánh dấu `// hermes-parity:begin` … `// hermes-parity:end`.
+- **Phần JS còn trùng.** Nếu buộc phải giữ một đoạn JS cùng luật (ví dụ để dựng `detail` hoặc test), đoạn đó đánh dấu `// hermes-parity:begin` … `// hermes-parity:end`. Mốc 5 không cần đoạn nào như vậy: connector không tự khớp tên, chỉ dựng câu từ kết quả SQL.
 - **Việc về sau (ngoài Đợt 1).** Web chuyển sang gọi cùng hàm SQL thay cho luật khớp đang chạy ở trình duyệt.
 - **Câu đọc bằng lời** ("một lẻ hai…") của Báo chi nhanh *không* đưa vào. Kênh Zalo là chữ gõ, còn câu đọc bằng lời chỉ có ở trang nhập bằng giọng nói.
 - **Phần riêng từng trang.** Mỗi trang cắm phần giải riêng vào hàm xem trước của trang: Hợp đồng tìm khách theo SĐT, Thu chi tìm mã phiếu, Hoá đơn tìm kỳ và hoá đơn, Công việc tìm người nhận. Đầu ra luôn là ID nằm trong phạm vi, kèm tên để dựng bản xem trước. Giải người phải nói rõ "không thấy trong phạm vi quyền của anh/chị".
@@ -525,7 +533,7 @@ Mỗi ca chạy 3 lần. Chấm theo `app_private.hermes_action_receipts` và au
 
 Mỗi mốc là một commit có test xanh.
 
-**Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓, Mốc 4 ✓ (khung + danh mục thử, chưa nối adapter SQL). Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
+**Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓ (`b7c200344`), Mốc 4 ✓ (`a13fb3c13`, khung + danh mục thử, chưa nối adapter SQL), Mốc 5 ✓ (hàm SQL giải tên, file migration chưa áp). Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 
 | Mốc | Nội dung | Migration | Công |
 | --- | --- | --- | --- |
