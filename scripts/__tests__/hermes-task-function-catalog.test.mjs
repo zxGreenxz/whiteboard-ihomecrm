@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {setup,input} from '../../infra/hermes-broker/task-fixture.mjs';
 import {prepareTaskMetadata} from '../../infra/hermes-broker/task-input-fixture.mjs';
 import {TASK_FUNCTIONS,extractHermesFunctionDefinitions,verifyTaskFunctionCatalog,splitHermesFunctionStatements} from '../hermes-task-function-contract.mjs';
@@ -34,6 +35,33 @@ test('task metadata successor remains exact and STABLE without changing legacy c
  await assert.rejects(verify({...candidate,bytes:Buffer.from(changed)}),{code:'live_task_body_mismatch'});
  await db.exec('ALTER FUNCTION public.hermes_task_create_capabilities_v1(uuid) VOLATILE');
  await assert.rejects(verify(),{code:'live_task_definition_mismatch'});
+});
+
+test('task input successor (20261021172540) is path- and byte-bound and decides which bodies are live',{timeout:60000},async t=>{
+ const{db,pool,verify}=await fixture(t);
+ const path='supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql',text=readFileSync(path,'utf8'),candidate={path,bytes:Buffer.from(text)};
+ const spec=TASK_FUNCTIONS.find(item=>item.name==='app_private.hermes_task_input_rows_v1'),successor=spec.successors[path];
+ const sha=value=>createHash('sha256').update(value).digest('hex');
+ assert.equal(sha(successor.statement),successor.statementSha256);assert.equal(sha(successor.deparsedDefinition),successor.deparsedSha256);
+ assert.equal(successor.dependencies,undefined,'same callee/column identities as the base');
+ const withCandidate=()=>verifyTaskFunctionCatalog(pool,[...sources(),candidate]);
+ const v5guard=readFileSync(paths[1],'utf8').match(/CREATE OR REPLACE FUNCTION app_private\.hermes_task_input_guard_v1[\s\S]*?END \$fn\$;/)[0];
+ const newGuard=text.match(/CREATE OR REPLACE FUNCTION app_private\.hermes_task_input_guard_v1[\s\S]*?END \$fn\$;/)[0];
+ // Live v5 while the reviewed sources end with the successor: the guard body is checked first.
+ await assert.rejects(withCandidate(),{code:'live_task_body_mismatch'});
+ await db.exec(text);await withCandidate();
+ await assert.rejects(verify(),{code:'live_task_body_mismatch'},'base sources expect the v5 guard');
+ // Rows alone: each source set accepts only its own reviewed deparse.
+ await db.exec(v5guard);await assert.rejects(verify(),{code:'live_task_sql_standard_body_mismatch'});
+ await db.exec(newGuard);await db.exec(spec.statement+';');await assert.rejects(withCandidate(),{code:'live_task_sql_standard_body_mismatch'});
+ await db.exec(successor.statement+';');await withCandidate();
+ // Source side: the successor bytes only at their path; base bytes are not the successor; any edit fails.
+ assert.equal(extractHermesFunctionDefinitions(text,path).find(item=>item.qualifiedName===spec.name)?.bodyKind,'sql-standard');
+ assert.throws(()=>extractHermesFunctionDefinitions(text,path.replace('no_building','unreviewed')),/task_sql_standard_source_mismatch/);
+ assert.throws(()=>extractHermesFunctionDefinitions(spec.statement+';',path),/task_sql_standard_source_mismatch/);
+ for(const changed of [text.replace("x.input->>'buildingId' IS NULL OR ",''),text.replace('BEGIN ATOMIC','BEGIN ATOMIC\n -- changed reviewed source')]){
+  assert.notEqual(changed,text);assert.throws(()=>extractHermesFunctionDefinitions(changed,path),/task_sql_standard_source_mismatch/);
+ }
 });
 
 test('catalog verification rejects actual changed callee even with empty prosrc and rejects mode widening',{timeout:60000},async t=>{

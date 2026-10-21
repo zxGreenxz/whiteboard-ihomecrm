@@ -75,7 +75,9 @@ export function extractHermesFunctionDefinitions(sql,path='migration.sql'){
    return [{qualifiedName:head[1],bodyKind:'sql-standard',bodyDigest:null,external:true}];
   }
   if(spec){
-   requireValue(hash(statement)===spec.statementSha256,'task_sql_standard_source_mismatch');
+   // A reviewed forward migration that CREATE OR REPLACEs a SQL-standard task body is path- and byte-bound
+   // through spec.successors[path] (22/10: hermes_task_input_rows_v1); every other path keeps the base bytes.
+   requireValue(hash(statement)===(spec.successors?.[path]?.statementSha256??spec.statementSha256),'task_sql_standard_source_mismatch');
    return [{qualifiedName:spec.name,bodyKind:'sql-standard',bodyDigest:null}];
   }
   return extractFunctionDefinitions(raw,path);
@@ -117,9 +119,10 @@ export async function verifyFunctionCatalog(pool,sources,{functions,errorPrefix,
     &&row.arguments===spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item=>item.trim()).join(', ')
     &&row.result===(spec.name==='app_private.hermes_task_assignee_member_v1'?'boolean':'jsonb'),'live_'+prefix+'_definition_mismatch');
    if(spec.standard){
-    requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===spec.deparsedSha256,'live_'+prefix+'_sql_standard_body_mismatch');
+    // The latest source decides which reviewed deparse is live: a successor's, else the base.
+    requireValue(row.parsed_body===true&&row.prosrc===''&&hash(normalizeSqlSource(row.definition))===(successor?.deparsedSha256??spec.deparsedSha256),'live_'+prefix+'_sql_standard_body_mismatch');
     requireValue(Array.isArray(row.dependencies)&&row.dependencies.every(item=>Number.isInteger(item.bound_oid)&&item.bound_oid>0&&item.bound_oid===item.resolved_oid)
-     &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(spec.dependencies),'live_'+prefix+'_dependency_mismatch');
+     &&JSON.stringify(row.dependencies.map(({type,identity,deptype})=>({type,identity,deptype})))===JSON.stringify(successor?.dependencies??spec.dependencies),'live_'+prefix+'_dependency_mismatch');
    }else {
     const digest=successor?.bodyDigest??spec.bodyDigest??source.bodyDigest;
     requireValue(source.bodyDigest===digest&&row.parsed_body===false&&typeof row.prosrc==='string'
