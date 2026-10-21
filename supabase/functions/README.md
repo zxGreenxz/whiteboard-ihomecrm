@@ -175,10 +175,11 @@ Thứ tự kiểm: phương thức → thân → cấu hình (thiếu/sai khoá 
 (`off` ⇒ `mode_off`; `read` ⇒ thao tác ghi bị `writes_disabled`) → tham số → RPC quyền → Tuya. `status` không gọi Tuya.
 
 Quyền nằm trong SQL, gọi bằng JWT CỦA NGƯỜI DÙNG: `door_access_authorize_v1` (đọc theo máy),
-`door_access_can_any_v1` và `door_access_devices_v1` (tìm máy), `door_access_begin_action_v1` (thao tác ghi: quyền,
-trần tần suất, ghi `PENDING`). Riêng `door_access_finish_action_v1` dùng service role. Thao tác ghi gọi Tuya ĐÚNG MỘT lần rồi chốt `OK` /
-`FAILED` (Tuya từ chối ⇒ 502 `tuya_rejected` + `tuyaCode`) / `UNKNOWN` (mạng, hết giờ, HTTP lỗi, kết quả lạ ⇒ 504
-`tuya_unavailable` + `outcomeUnknown` — lệnh có thể đã chạy, hàm không gửi lại). Chốt hỏng ⇒ vẫn trả kết quả, kèm
+`door_access_can_manage_org_v1` (Quản lý máy ở MỌI toà) và `door_access_devices_v1` (tìm máy), `door_access_begin_action_v1`
+(thao tác ghi: quyền, trần tần suất, ghi `PENDING`). Riêng `door_access_finish_action_v1` dùng service role. Thao tác ghi gọi
+Tuya ĐÚNG MỘT lần rồi chốt `OK` / `FAILED` (Tuya từ chối, hoặc hỏng ở bước xin/giải vé — lệnh chưa gửi) / `UNKNOWN` (Tuya
+500/501, mạng, hết giờ, HTTP lỗi, kết quả lạ SAU khi gửi lệnh ⇒ 504 `tuya_unavailable` + `outcomeUnknown` — lệnh có thể
+đã chạy, hàm không gửi lại). Chốt hỏng ⇒ vẫn trả kết quả, kèm
 `logPending`. Mật khẩu tạm sinh trong hàm, chỉ có trong câu trả lời tạo (một lần) — không vào nhật ký, không ghi log.
 
 Secret (thiếu/sai bộ khoá Tuya hoặc `DOOR_ACCESS_ORG_ID` thì mọi hành động trừ `status` trả `not_configured`):
