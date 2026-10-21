@@ -37,6 +37,11 @@ const largestByTypeSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
 // rows carry createdAt and the summary the latest asset. Applied after R2c, twice (idempotent).
 export const CUSTOMER_STATUS_PATH='supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql';
 const customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
+// R2d (20261021063452): the reader's customers summary counts the customers without a contract in the connection's
+// contract scope (withoutContract, through the DEFINER helper hermes_customers_without_contract_v1); v1 assets count
+// the latest import batch (latestCount). Applied after R2c part 2, twice (idempotent).
+export const WITHOUT_CONTRACT_PATH='supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
+const withoutContractSql=readFileSync(WITHOUT_CONTRACT_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -276,6 +281,7 @@ async function setup(pool) {
  await pool.query(summarySql);await pool.query(summarySql); // R2a summary after B5c step 2, twice (idempotent).
  await pool.query(largestByTypeSql);await pool.query(largestByTypeSql); // R2c after R2a, twice (idempotent).
  await pool.query(customerStatusSql);await pool.query(customerStatusSql); // R2c part 2 after R2c, twice (idempotent).
+ await pool.query(withoutContractSql);await pool.query(withoutContractSql); // R2d after R2c part 2, twice (idempotent).
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};

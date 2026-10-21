@@ -314,8 +314,8 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(value.items.map(row => row.id), [id(602), id(650), id(651)]);
   assert.deepEqual(value.roomFilter, { roomIds: [R(1)], roomNames: ['London 5'], buildingIds: [A], scannedRows: 52, pages: 2, more: false, filteredOn: 'page' });
   assert.equal(value.nextCursor, null);
-  assert.deepEqual(value.summary, { count: 3, byStatus: null, sum: {} },
-    'every page read: the summary of the kept rows, never the SQL 52 of the building; their contract status is not in the rows (null)');
+  assert.deepEqual(value.summary, { count: 3, byStatus: null, sum: {}, withoutContract: null },
+    'every page read: the summary of the kept rows, never the SQL 52 of the building; their contract status/history is not in the rows (null)');
   // Asking for two: the first page already holds them ⇒ one read, cut, cursor = last kept row, more = true.
   calls.length = 0;
   const two = await run('customers', domainInput('customers', { limit: 2 }), { buildingName: '950nk', roomName: 'London 5' });

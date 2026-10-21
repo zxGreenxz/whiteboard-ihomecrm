@@ -46,6 +46,13 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql',
     statementSha256: '729dd8b9a53073c7a552202a40da781c74a067c06f61a69752abf2d00f669631',
   }),
+  // R2d (20261021063452): the customers summary adds withoutContract, counted by the
+  // private DEFINER helper the body binds. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql',
+    statementSha256: '193528a3d333798560c15e7e9d1647a3bb4aec886f247aba52489995d722bc45',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

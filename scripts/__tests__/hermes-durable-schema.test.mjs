@@ -728,7 +728,9 @@ function securityContract(sql = all, registry = functions) {
       ...ZALO_ONESHOT_CALLER, ...W2_CALLER, ...INHERITED_CRM_ACL.map(spec => spec.signature),
       ...FORWARD_ACL_BLOCKS.find(block => block.name === 'shared-read').targets.map(([target]) => target),
       'public.vehicles_list_core_v1(uuid,uuid[],uuid[],boolean,text,text,uuid,uuid,integer,integer,boolean)',
-      'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)'])],
+      'app_private.hermes_domain_read_scope_fast_v1(jsonb,text,jsonb,text)',
+      // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
+      'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])'])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
@@ -889,15 +891,15 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all fourteen reviewed forward migrations and their 56 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all fifteen reviewed forward migrations and their 57 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
   // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
-  // R2a body after R2c 20261021035022 and R2c part 2 20261021044801): its statements
-  // are then only superseded pins.
+  // R2a body after R2c 20261021035022 and R2c part 2 20261021044801; R2c part 2 after
+  // R2d 20261021063452): its statements are then only superseded pins.
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 14);
-  assert.equal(FORWARD_FUNCTIONS.length, 56);
-  assert.equal(FORWARD_BY_NAME.size, 56, 'one live definition per reviewed name');
+  assert.equal(paths.length, 15);
+  assert.equal(FORWARD_FUNCTIONS.length, 57);
+  assert.equal(FORWARD_BY_NAME.size, 57, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -972,6 +974,7 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     ['public.hermes_prepare_connection_v2(uuid,text[],text[],text,uuid[])', 'authenticated'],
     ['public.hermes_domain_read_fast_v1(jsonb,text,jsonb)', 'authenticated'],
     ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
+    ['app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])', 'authenticated'],
     ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
     ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
     ...INHERITED_CRM_ACL.map(spec => [spec.signature, 'authenticated']),
