@@ -44,13 +44,13 @@ test('validateActionParams: chuẩn hoá snake_case, số dạng chuỗi chữ s
   assert.deepEqual(validateActionParams(PROBE_CONFIRM, { amount: '3500000', building_name: ' Toà 44TL ', roomName: '', date: '2026-10-21' }),
     { ok: true, value: { amount: 3_500_000, buildingName: 'Toà 44TL', date: '2026-10-21' } });
   assert.deepEqual(validateActionParams(PROBE_NOTE, undefined), { ok: false, detail: validateActionParams(PROBE_NOTE, {}).detail });
-  const secret = 'PRIVATE-0987654321';
+  const canary = 'tok-PRIVATE-fake-q1';
   for (const raw of [{ amount: '3tr5', buildingName: 'A' }, { amount: 0, buildingName: 'A' }, { amount: 10_000_001, buildingName: 'A' }, { buildingName: 'A' },
-    { amount: 1000, buildingName: 'A', date: '21/10/2026' }, { amount: 1000, buildingName: 'A', reason: 'ngắn' }, { amount: 1000, buildingName: secret, [secret]: 1 },
+    { amount: 1000, buildingName: 'A', date: '21/10/2026' }, { amount: 1000, buildingName: 'A', reason: 'ngắn' }, { amount: 1000, buildingName: canary, [canary]: 1 },
     { amount: 1000, buildingName: 'A', building_name: 'B' }, { amount: 1000, buildingName: `A\nB` }, [1], 'x']) {
     const checked = validateActionParams(PROBE_CONFIRM, raw);
     assert.equal(checked.ok, false, JSON.stringify(raw));
-    assert.doesNotMatch(checked.detail, /PRIVATE|0987654321|21\/10\/2026|ngắn/, 'không nhắc lại giá trị mô hình gửi');
+    assert.doesNotMatch(checked.detail, /tok-PRIVATE-fake|21\/10\/2026|ngắn/, 'không nhắc lại giá trị mô hình gửi');
     assert.match(checked.detail, /Khuôn probe\.confirm: amount\* \(số nguyên VND/);
   }
   assert.match(validateActionParams(PROBE_CONFIRM, { buildingName: 'A' }).detail, /^Thiếu hoặc sai: amount \(số nguyên VND/);

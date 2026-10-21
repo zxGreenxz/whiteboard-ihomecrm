@@ -139,7 +139,7 @@ test('từ chối thật của SQL ⇒ lỗi action_rejected mang reason + câu 
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
     error => error.code === 'action_rejected' && error.reason === 'period_locked' && error.detail === ACTION_REASONS.period_locked.text);
   assert.deepEqual([env.audits.at(-1).code, env.audits.at(-1).reason], ['action_rejected', 'period_locked']);
-  reply = { kind: 'rejected', reason: 'sql said: PRIVATE 0987' };
+  reply = { kind: 'rejected', reason: 'sql said: tok-PRIVATE-fake-s1' };
   await assert.rejects(env.broker.callTool(TOKEN_A, 'crm_action_run', { action: 'probe.note', params: { note: 'x' } }),
     error => error.code === 'action_rejected' && error.reason === 'crm_refused');
   // Lý do dạng needs_input từ SQL (thiếu lý do lúc ghi) vẫn là kết quả thường.

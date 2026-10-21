@@ -66,7 +66,7 @@ test('mcp-http: action_rejected chuyển đúng reason + câu tĩnh; reason lạ
     assert.deepEqual(await invoke(), { error: 'action_rejected', reason: code, detail: ACTION_REASONS[code].text }, code);
   }
   const forged = (reason, detail) => Object.assign(new BrokerError('action_rejected'), { reason, detail });
-  for (const [reason, detail] of [['period_locked', 'Kỳ đã chốt — PRIVATE id 11111111'], ['invalid_params', ACTION_REASONS.invalid_params.text],
+  for (const [reason, detail] of [['period_locked', 'Kỳ đã chốt — tok-PRIVATE-fake-r1'], ['invalid_params', ACTION_REASONS.invalid_params.text],
     ['nope', ACTION_REASONS.crm_refused.text], [null, null], ['period_locked', { text: ACTION_REASONS.period_locked.text }]]) {
     problem = forged(reason, detail);
     assert.deepEqual(await invoke(), { error: 'action_rejected' }, String(reason));
