@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { dichThongBao, duongDanDuPhong, nhanHoThongBao } from "@/lib/notifications/notificationTarget";
 import { NOTIFICATION_FALLBACK_URL } from "@/lib/notificationRoutes";
+import type { PermsLike } from "@/lib/permissionPages";
 
 const INV = "11111111-1111-4111-8111-111111111111";
 const CON = "22222222-2222-4222-8222-222222222222";
-const ALL = { __superadmin: true };
-const CHI_HOP_DONG = { contracts: { view: true } };
+// Bản đồ quyền siêu quản trị; PermsLike có chỉ mục kiểu khác nên phải ép qua unknown.
+const ALL = { __superadmin: true } as unknown as PermsLike;
+const CHI_HOP_DONG: PermsLike = { contracts: { view: true } };
 
 describe("dichThongBao — mọi đích qua allow-list + kiểm quyền", () => {
   it("metadata.url đứng trước khoá ngoại", () => {

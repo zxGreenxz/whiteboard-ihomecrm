@@ -75,7 +75,9 @@ function bufToBase64Url(buf: ArrayBuffer | null): string {
   if (!buf) return '';
   const bytes = new Uint8Array(buf);
   let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  // for…of thay chỉ số: push.ts giờ nằm trong cây import của đảo nuia (useAuth nạp
+  // lười nó khi đăng xuất), nơi `bytes[i]` có kiểu number | undefined.
+  for (const byte of bytes) bin += String.fromCharCode(byte);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 

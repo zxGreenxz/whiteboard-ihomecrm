@@ -37,11 +37,11 @@ function dungSw() {
     clients: {
       claim: vi.fn(async () => undefined),
       matchAll: vi.fn(async () => clientsList),
-      openWindow: vi.fn(async () => null),
+      openWindow: vi.fn(async (_url: string) => null),
     },
     registration: {
-      showNotification: vi.fn(async () => undefined),
-      pushManager: { subscribe: vi.fn(async () => ({ endpoint: "https://push.example/new" })) },
+      showNotification: vi.fn(async (_title: string, _options: unknown) => undefined),
+      pushManager: { subscribe: vi.fn(async (_options: unknown) => ({ endpoint: "https://push.example/new" })) },
     },
   };
   new Function("self", "MessageChannel", SW_SOURCE)(self, FakeChannel);
