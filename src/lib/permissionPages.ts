@@ -459,6 +459,18 @@ export const PAGE_GROUPS: PageGroup[] = [
         ],
       },
       {
+        key: "door_access",
+        label: "Cửa vân tay",
+        route: "/cua-van-tay",
+        // Không desc (file nằm trong chunk entry sát ngưỡng); chi tiết ở docs/he-thong/26-cua-van-tay.md.
+        features: [
+          f("door_access", "view", "Xem", "view"),
+          f("door_access", "temp_password", "Mật khẩu tạm", "elevated"),
+          f("door_access", "remote_unlock", "Mở cửa từ xa", "elevated"),
+          f("door_access", "manage_devices", "Quản lý máy & vân tay", "elevated"),
+        ],
+      },
+      {
         key: "tasks",
         label: "Công việc",
         route: "/tasks",
