@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1541,
-  "soFileDocBangFs": 398,
-  "tongLoiGoi": 962,
+  "tongSoFileTest": 1542,
+  "soFileDocBangFs": 399,
+  "tongLoiGoi": 964,
   "khongPhanLoaiDuoc": 431,
   "theoLoai": {
     "ma-nguon": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 154,
+      "soFile": 155,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1032,6 +1032,14 @@
     },
     {
       "file": "infra/hermes-broker/wave2-z-d.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/web-building-scope-sql.test.mjs",
       "soGoi": 2,
       "loai": {
         "sql": 2
