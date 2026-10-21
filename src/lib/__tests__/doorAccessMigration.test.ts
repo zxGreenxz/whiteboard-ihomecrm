@@ -146,8 +146,12 @@ describe('quyền và ACL', () => {
       has_function_privilege('authenticated','door_access_begin_action_v1(uuid,uuid,text,jsonb)','EXECUTE') f2,
       has_function_privilege('authenticated','door_access_finish_action_v1(uuid,text,bigint,text,text)','EXECUTE') f3,
       has_function_privilege('service_role','door_access_finish_action_v1(uuid,text,bigint,text,text)','EXECUTE') f4,
-      has_function_privilege('authenticated','app_private.door_sync_fingerprint_code_v1(uuid)','EXECUTE') f5`)).rows[0];
-    expect(acl).toEqual({ t1: false, t2: false, t3: false, f1: false, f2: true, f3: false, f4: true, f5: false });
+      has_function_privilege('authenticated','app_private.door_sync_fingerprint_codes_v1(uuid[])','EXECUTE') f5,
+      has_function_privilege('authenticated','app_private.door_access_manage_all_v1(uuid)','EXECUTE') f6,
+      has_function_privilege('authenticated','door_access_can_manage_org_v1(uuid)','EXECUTE') f7,
+      to_regprocedure('door_access_can_any_v1(uuid,text)') IS NULL g1,
+      to_regprocedure('app_private.door_sync_fingerprint_code_v1(uuid)') IS NULL g2`)).rows[0];
+    expect(acl).toEqual({ t1: false, t2: false, t3: false, f1: false, f2: true, f3: false, f4: true, f5: false, f6: false, f7: true, g1: true, g2: true });
     const d = await save();
     const { log_id } = await begin(d.id, 'REMOTE_UNLOCK') as { log_id: string };
     await db.exec('SET ROLE authenticated');
@@ -188,6 +192,23 @@ describe('máy cửa', () => {
     await db.query(`INSERT INTO door_devices(organization_id,building_id,tuya_device_id,display_name,device_kind)
       VALUES($1,$2,'devother','X','access_control')`, [otherOrg, bX]);
     await deny(() => save('devother'), '23505');
+    // Người không đủ quyền gắn máy mới KHÔNG được biết máy đó thuộc công ty khác (42501, không phải 23505).
+    await setting('test.deny_keys', 'door_access.manage_devices');
+    await deny(() => save('devother'), '42501');
+  });
+
+  it('gắn máy MỚI cần quyền Quản lý ở MỌI tòa; sửa máy đã có chỉ cần quyền ở tòa của máy', async () => {
+    const d = await save('dev1', bA);
+    // Quản lý tòa A nhưng không quản lý tòa B: không gắn được máy mới (kể cả vào tòa A) — chặn chiếm máy tòa khác.
+    await setting('test.deny_pairs', `door_access.manage_devices@${bB}`);
+    await deny(() => save('devNewOfB', bA), '42501');
+    expect((await db.query<Row>(`SELECT door_access_can_manage_org_v1($1) r`, [org])).rows[0]).toEqual({ r: false });
+    // Máy đã có ở tòa A vẫn sửa được.
+    expect(await save('dev1', bA, 'Cổng A mới')).toMatchObject({ id: d.id, display_name: 'Cổng A mới' });
+    await setting('test.deny_pairs', '');
+    expect((await db.query<Row>(`SELECT door_access_can_manage_org_v1($1) r`, [org])).rows[0]).toEqual({ r: true });
+    await as(stranger);
+    expect((await db.query<Row>(`SELECT door_access_can_manage_org_v1($1) r`, [org])).rows[0]).toEqual({ r: false });
   });
 
   it('đổi tòa cần quyền Quản lý ở cả tòa cũ', async () => {
@@ -225,7 +246,9 @@ describe('máy cửa', () => {
       await db.query('SELECT door_access_key_links_v1($1,$2)', [org, d.id]);
       await db.query('SELECT door_access_building_tenants_v1($1,$2)', [org, d.id]);
       await db.query('SELECT door_access_action_logs_v1($1)', [org]);
-      await db.query(`SELECT door_access_can_any_v1($1,'door_access.manage_devices')`, [org]);
+      await db.query('SELECT door_access_can_manage_org_v1($1)', [org]);
+      // Quyết định đọc của hàm Edge không khoá dòng tổ chức.
+      await db.query(`SELECT door_access_authorize_v1($1,$2,'door_access.view')`, [org, d.id]);
     } finally { await db.exec('ROLLBACK'); }
   });
 });
@@ -248,8 +271,8 @@ describe('gắn vân tay với khách', () => {
     expect(await code(c1)).toBe('3');
     expect(await code(c2)).toBe('12');
     // Thẻ không đụng tới mã vân tay.
-    await link(d.id, 7, c3, null, 'card');
-    expect(await code(c3)).toBeNull();
+    await link(d.id, 7, c1, null, 'card');
+    expect(await code(c1)).toBe('3');
     const out = await one('SELECT door_access_unlink_key_v1($1,$2) r', [org, l2.id]);
     expect(out).toEqual({ id: l2.id, unlinked: true });
     expect(await code(c2)).toBeNull();
@@ -258,11 +281,32 @@ describe('gắn vân tay với khách', () => {
     expect(unlinkLogs).toEqual({ n: 1 });
   });
 
+  it('chỉ gắn được khách từng/đang có hợp đồng ở tòa của máy', async () => {
+    const d = await save();
+    await deny(() => link(d.id, 1, c4), '42501'); // khách tòa B
+    await deny(() => link(d.id, 1, c3), '42501'); // chưa có hợp đồng nào
+    await db.query(`INSERT INTO contracts(id,organization_id,room_id,status,start_date) VALUES('00000000-0000-4000-8000-0000000000d4',$1,$2,'DRAFT','2026-11-01')`, [org, rA2]);
+    await db.query(`INSERT INTO contract_customers VALUES('00000000-0000-4000-8000-0000000000d4',$1,true)`, [c3]);
+    await deny(() => link(d.id, 1, c3), '42501'); // hợp đồng nháp chưa tính
+    expect(await link(d.id, 2, c2)).toMatchObject({ tenancy: 'MOVED_OUT' }); // khách đã đi vẫn gắn được để dọn
+    // Hợp đồng đã thanh lý/chuyển nhượng mà quên ngày trả phòng vẫn là ĐÃ ĐI (không giữ vân tay vì thiếu một ngày).
+    await db.query(`UPDATE contracts SET status='TRANSFERRED', actual_end_date=NULL WHERE id='00000000-0000-4000-8000-0000000000d2'`);
+    expect((await one<{ links: Row[] }>('SELECT door_access_key_links_v1($1,$2) r', [org, d.id])).links)
+      .toMatchObject([{ unlock_sn: 2, tenancy: 'MOVED_OUT' }]);
+    await db.query(`UPDATE contracts SET status='TERMINATED' WHERE id='00000000-0000-4000-8000-0000000000d2'`);
+    expect((await one<{ links: Row[] }>('SELECT door_access_key_links_v1($1,$2) r', [org, d.id])).links)
+      .toMatchObject([{ unlock_sn: 2, tenancy: 'MOVED_OUT' }]);
+  });
+
   it('tình trạng thuê: đang ở, đã trả phòng (cần xoá), chưa có HĐ ở tòa, nhân viên', async () => {
     const d = await save();
     await link(d.id, 1, c1);
     await link(d.id, 2, c2);
-    await link(d.id, 3, c4); // khách tòa B gắn nhầm vào máy tòa A
+    // Khách từng có hợp đồng ở tòa A; hợp đồng sau đó bị xoá ⇒ NO_CONTRACT (kiểm lại).
+    await db.query(`INSERT INTO contracts(id,organization_id,room_id,status,start_date,actual_end_date) VALUES('00000000-0000-4000-8000-0000000000d5',$1,$2,'TERMINATED','2025-01-01','2025-06-01')`, [org, rA2]);
+    await db.query(`INSERT INTO contract_customers VALUES('00000000-0000-4000-8000-0000000000d5',$1,true)`, [c4]);
+    await link(d.id, 3, c4);
+    await db.query(`UPDATE contracts SET deleted_at=now() WHERE id='00000000-0000-4000-8000-0000000000d5'`);
     await link(d.id, 4, null, 'Bảo vệ');
     const links = (await one<{ links: Row[] }>('SELECT door_access_key_links_v1($1,$2) r', [org, d.id])).links;
     expect(links.map((l) => [l.unlock_sn, l.tenancy, l.room_name, l.contract_end_date])).toEqual([
@@ -313,9 +357,9 @@ describe('lệnh gửi xuống máy (hàm Edge)', () => {
     await setting('test.deny_pairs', '');
     await one('SELECT door_access_disable_device_v1($1,$2) r', [org, d.id]);
     await deny(() => db.query(`SELECT door_access_authorize_v1($1,$2,'door_access.view')`, [org, d.id]), '55000');
-    expect((await db.query<Row>(`SELECT door_access_can_any_v1($1,'door_access.manage_devices') r`, [org])).rows[0]).toEqual({ r: true });
+    expect((await db.query<Row>(`SELECT door_access_can_manage_org_v1($1) r`, [org])).rows[0]).toEqual({ r: true });
     await setting('test.deny_keys', 'door_access.manage_devices');
-    expect((await db.query<Row>(`SELECT door_access_can_any_v1($1,'door_access.manage_devices') r`, [org])).rows[0]).toEqual({ r: false });
+    expect((await db.query<Row>(`SELECT door_access_can_manage_org_v1($1) r`, [org])).rows[0]).toEqual({ r: false });
   });
 
   it('begin: quyền theo thao tác, chi tiết đúng khuôn, không bao giờ nhận mật khẩu', async () => {
@@ -331,6 +375,9 @@ describe('lệnh gửi xuống máy (hàm Edge)', () => {
     await deny(() => begin(d.id, 'TEMP_PASSWORD_CREATE', { ...tempDetail(), name: 'x'.repeat(21) }), '22023');
     await deny(() => begin(d.id, 'TEMP_PASSWORD_CREATE', { ...tempDetail(), invalid_sec: nowSec() + 8 * 86400 }), '22023');
     await deny(() => begin(d.id, 'TEMP_PASSWORD_CREATE', { ...tempDetail(), effective_sec: nowSec() - 3600 }), '22023');
+    // Dài 6 ngày nhưng bắt đầu sau 2 ngày ⇒ hết hạn quá 7 ngày kể từ bây giờ ⇒ chặn.
+    await deny(() => begin(d.id, 'TEMP_PASSWORD_CREATE', { ...tempDetail(), effective_sec: nowSec() + 2 * 86400, invalid_sec: nowSec() + 8 * 86400 }), '22023');
+    expect(await begin(d.id, 'TEMP_PASSWORD_CREATE', { ...tempDetail(), effective_sec: nowSec() + 86400, invalid_sec: nowSec() + 7 * 86400 })).toHaveProperty('log_id');
     await deny(() => begin(d.id, 'TEMP_PASSWORD_DELETE', { password_id: 'abc' }), '22023');
     await deny(() => begin(d.id, 'KEY_DELETE', { unlock_type: 'fingerprint', unlock_sn: 3 }), '22023');
     await deny(() => begin(d.id, 'KEY_DELETE', { unlock_type: 'fingerprint', unlock_sn: 9999999999, tuya_user_id: 'u1' }), '22023');

@@ -255,25 +255,66 @@ END;
 $function$;
 
 -- customers.fingerprint_code = các số vân tay đang gắn của khách (tăng dần, ", "); hết liên kết ⇒ NULL.
-CREATE OR REPLACE FUNCTION app_private.door_sync_fingerprint_code_v1(p_customer_id uuid)
+-- Khoá dòng khách (theo thứ tự id, chống deadlock) TRƯỚC khi đếm: hai giao dịch cùng đổi liên kết của một khách
+-- (gắn ở máy A, chốt xoá ở máy B) chạy lần lượt, câu đếm của giao dịch sau thấy thay đổi đã commit của giao dịch trước
+-- (READ COMMITTED lấy snapshot mới mỗi câu) — không ghi đè nhau ra mã sai.
+CREATE OR REPLACE FUNCTION app_private.door_sync_fingerprint_codes_v1(p_customer_ids uuid[])
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private
 AS $function$
-DECLARE v_code text;
+DECLARE v_id uuid;v_code text;
 BEGIN
-  IF p_customer_id IS NULL THEN RETURN;END IF;
-  SELECT string_agg(s.sn::text, ', ' ORDER BY s.sn) INTO v_code
-  FROM (SELECT DISTINCT l.unlock_sn AS sn FROM public.door_key_links l
-        WHERE l.customer_id=p_customer_id AND l.unlock_type='fingerprint' AND l.unlinked_at IS NULL) s;
-  UPDATE public.customers SET fingerprint_code=v_code
-   WHERE id=p_customer_id AND fingerprint_code IS DISTINCT FROM v_code;
+  FOR v_id IN SELECT DISTINCT x FROM unnest(COALESCE(p_customer_ids,ARRAY[]::uuid[])) AS t(x) WHERE x IS NOT NULL ORDER BY x LOOP
+    PERFORM 1 FROM public.customers WHERE id=v_id FOR NO KEY UPDATE;
+  END LOOP;
+  FOR v_id IN SELECT DISTINCT x FROM unnest(COALESCE(p_customer_ids,ARRAY[]::uuid[])) AS t(x) WHERE x IS NOT NULL ORDER BY x LOOP
+    SELECT string_agg(s.sn::text, ', ' ORDER BY s.sn) INTO v_code
+    FROM (SELECT DISTINCT l.unlock_sn AS sn FROM public.door_key_links l
+          WHERE l.customer_id=v_id AND l.unlock_type='fingerprint' AND l.unlinked_at IS NULL) s;
+    UPDATE public.customers SET fingerprint_code=v_code
+     WHERE id=v_id AND fingerprint_code IS DISTINCT FROM v_code;
+  END LOOP;
+END;
+$function$;
+-- Bản nháp một khách (chỉ từng áp TEST) — thay bằng bản nhiều khách có khoá ở trên.
+DROP FUNCTION IF EXISTS app_private.door_sync_fingerprint_code_v1(uuid);
+
+-- Quản lý máy ở MỌI tòa (chưa xoá) của công ty, ít nhất một tòa. Gắn máy MỚI và tìm máy trên SmartLife cần mức
+-- này: người quản lý một tòa không được tự gắn máy của tòa khác (máy chưa có trong CRM) vào tòa mình rồi mở cửa tòa
+-- đó. Bản ghi: gọi SAU lock_org_for_decision_v1. Bản đọc: không khoá (dùng trong hàm STABLE).
+CREATE OR REPLACE FUNCTION app_private.door_access_manage_all_v1(p_org uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private
+AS $function$
+DECLARE v_id uuid;v_any boolean:=false;
+BEGIN
+  FOR v_id IN SELECT b.id FROM public.buildings b WHERE b.organization_id=p_org AND b.deleted_at IS NULL ORDER BY b.id LOOP
+    v_any:=true;
+    IF NOT app_private.door_access_authorized_v1(p_org,v_id,'door_access.manage_devices') THEN RETURN false;END IF;
+  END LOOP;
+  RETURN v_any;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION app_private.door_access_can_manage_all_v1(p_org uuid)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=pg_catalog,public,app_private
+AS $function$
+DECLARE v_id uuid;v_any boolean:=false;
+BEGIN
+  FOR v_id IN SELECT b.id FROM public.buildings b WHERE b.organization_id=p_org AND b.deleted_at IS NULL ORDER BY b.id LOOP
+    v_any:=true;
+    IF NOT app_private.door_access_can_read_v1(p_org,v_id,'door_access.manage_devices') THEN RETURN false;END IF;
+  END LOOP;
+  RETURN v_any;
 END;
 $function$;
 
 REVOKE ALL ON FUNCTION app_private.door_access_authorized_v1(uuid,uuid,text), app_private.door_access_can_read_v1(uuid,uuid,text),
   app_private.door_link_tenancy_v1(uuid,uuid,uuid), app_private.door_device_shape_v1(public.door_devices,text,jsonb),
   app_private.door_access_can_json_v1(uuid,uuid), app_private.door_device_json_v1(uuid), app_private.door_link_json_v1(uuid),
-  app_private.door_access_log_done_v1(uuid,text,jsonb), app_private.door_sync_fingerprint_code_v1(uuid)
+  app_private.door_access_log_done_v1(uuid,text,jsonb), app_private.door_sync_fingerprint_codes_v1(uuid[]),
+  app_private.door_access_manage_all_v1(uuid), app_private.door_access_can_manage_all_v1(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
 
 -- ── 4. RPC đọc ──────────────────────────────────────────────────────
@@ -285,9 +326,9 @@ AS $function$
 BEGIN
   IF auth.uid() IS NULL OR p_organization_id IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN
     RAISE EXCEPTION 'Không có quyền xem cửa vân tay trong tổ chức' USING ERRCODE='42501';END IF;
-  -- Quyền tính một lần mỗi tòa có máy (không lặp theo từng máy).
+  -- Quyền tính một lần mỗi tòa có máy (MATERIALIZED: không để planner lặp hàm quyền theo từng máy).
   RETURN jsonb_build_object('devices',COALESCE((
-    WITH blds AS (
+    WITH blds AS MATERIALIZED (
       SELECT b.id, b.name, app_private.door_access_can_json_v1(p_organization_id,b.id) AS can
       FROM public.buildings b
       WHERE b.organization_id=p_organization_id
@@ -360,7 +401,7 @@ BEGIN
   IF auth.uid() IS NULL OR p_organization_id IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN
     RAISE EXCEPTION 'Không có quyền xem nhật ký cửa vân tay trong tổ chức' USING ERRCODE='42501';END IF;
   -- Quyền xem tính một lần mỗi tòa (tòa ghi trên nhật ký = tòa của máy lúc thao tác), rồi mới lọc dòng.
-  WITH allowed AS (
+  WITH allowed AS MATERIALIZED (
     SELECT b.id FROM public.buildings b
     WHERE b.organization_id=p_organization_id
       AND EXISTS(SELECT 1 FROM public.door_action_logs x WHERE x.organization_id=p_organization_id AND x.building_id=b.id)
@@ -396,7 +437,9 @@ END;
 $function$;
 
 -- ── 5. RPC ghi từ trình duyệt ───────────────────────────────────────
--- Lưu máy (tạo mới hoặc dựng lại dòng cũ theo tuya_device_id). Đổi tòa cần quyền Quản lý ở cả hai tòa.
+-- Lưu máy (tạo mới hoặc dựng lại dòng cũ theo tuya_device_id).
+--   Máy MỚI với công ty: cần quyền Quản lý máy ở MỌI tòa (người quản lý một tòa không chiếm được máy tòa khác).
+--   Máy đã có: cần Quản lý ở tòa mới, và ở tòa cũ nếu đổi tòa.
 CREATE OR REPLACE FUNCTION public.door_access_save_device_v1(p_organization_id uuid,p_tuya_device_id text,p_building_id uuid,
   p_display_name text,p_device_kind text,p_tuya_category text DEFAULT NULL,p_tuya_product_name text DEFAULT NULL,
   p_channel_id integer DEFAULT 1,p_password_length integer DEFAULT 7)
@@ -420,13 +463,18 @@ BEGIN
   IF char_length(v_category)>32 OR char_length(v_product)>120 THEN RAISE EXCEPTION 'Thông tin máy quá dài' USING ERRCODE='22023';END IF;
   IF NOT EXISTS(SELECT 1 FROM public.buildings b WHERE b.id=p_building_id AND b.organization_id=p_organization_id AND b.deleted_at IS NULL) THEN
     RAISE EXCEPTION 'Không tìm thấy tòa trong tổ chức' USING ERRCODE='42501';END IF;
-  -- Thứ tự khoá: dòng máy (nếu có) trước, tổ chức sau — cùng thứ tự với mọi RPC ghi khác của bảng này.
-  SELECT * INTO d FROM public.door_devices WHERE tuya_device_id=p_tuya_device_id FOR UPDATE;
-  IF FOUND AND d.organization_id<>p_organization_id THEN
-    RAISE EXCEPTION 'Máy này đã được gắn ở một công ty khác' USING ERRCODE='23505';END IF;
+  -- Thứ tự khoá: dòng máy CỦA CÔNG TY NÀY (nếu có) trước, tổ chức sau — cùng thứ tự với mọi RPC ghi khác của bảng
+  -- này. Không khoá, không nhắc tới dòng của công ty khác trước khi người gọi qua kiểm quyền.
+  SELECT * INTO d FROM public.door_devices WHERE tuya_device_id=p_tuya_device_id AND organization_id=p_organization_id FOR UPDATE;
   PERFORM app_private.lock_org_for_decision_v1(p_organization_id);
-  IF NOT app_private.door_access_authorized_v1(p_organization_id,p_building_id,'door_access.manage_devices')
-     OR (d.id IS NOT NULL AND d.building_id<>p_building_id
+  IF d.id IS NULL THEN
+    IF NOT app_private.door_access_manage_all_v1(p_organization_id) THEN
+      RAISE EXCEPTION 'Chỉ người quản lý máy cửa ở mọi tòa mới gắn được máy mới' USING ERRCODE='42501';END IF;
+    -- Unique index vẫn chặn nếu hai công ty gắn cùng lúc; đây chỉ để báo câu dễ hiểu.
+    IF EXISTS(SELECT 1 FROM public.door_devices x WHERE x.tuya_device_id=p_tuya_device_id) THEN
+      RAISE EXCEPTION 'Máy này đã được gắn ở một công ty khác' USING ERRCODE='23505';END IF;
+  ELSIF NOT app_private.door_access_authorized_v1(p_organization_id,p_building_id,'door_access.manage_devices')
+     OR (d.building_id<>p_building_id
          AND NOT app_private.door_access_authorized_v1(p_organization_id,d.building_id,'door_access.manage_devices')) THEN
     RAISE EXCEPTION 'Không có quyền quản lý máy cửa ở tòa này' USING ERRCODE='42501';END IF;
   v_at:=clock_timestamp();
@@ -497,9 +545,15 @@ BEGIN
   IF NOT app_private.door_access_authorized_v1(p_organization_id,d.building_id,'door_access.manage_devices') THEN
     RAISE EXCEPTION 'Không có quyền gắn vân tay ở máy này' USING ERRCODE='42501';END IF;
   IF NOT d.is_active THEN RAISE EXCEPTION 'Máy đã tắt khỏi CRM' USING ERRCODE='55000';END IF;
-  IF p_customer_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.customers c WHERE c.id=p_customer_id
-       AND c.organization_id=p_organization_id AND c.deleted_at IS NULL) THEN
-    RAISE EXCEPTION 'Không tìm thấy khách trong tổ chức' USING ERRCODE='42501';END IF;
+  -- Chỉ khách TỪNG/ĐANG có hợp đồng (không nháp) ở tòa của máy: không gắn được (rồi đọc tên, ghi ô vân tay của) một
+  -- khách bất kỳ trong công ty chỉ vì biết id của họ.
+  IF p_customer_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.customers c
+       JOIN public.contract_customers cc ON cc.customer_id=c.id
+       JOIN public.contracts k ON k.id=cc.contract_id AND k.organization_id=p_organization_id AND k.deleted_at IS NULL
+         AND k.status::text<>'DRAFT'
+       JOIN public.rooms r ON r.id=k.room_id AND r.building_id=d.building_id
+       WHERE c.id=p_customer_id AND c.organization_id=p_organization_id AND c.deleted_at IS NULL) THEN
+    RAISE EXCEPTION 'Khách không có hợp đồng ở tòa của máy này' USING ERRCODE='42501';END IF;
   SELECT * INTO old FROM public.door_key_links WHERE door_device_id=d.id AND unlock_type=p_unlock_type
     AND unlock_sn=p_unlock_sn AND unlinked_at IS NULL FOR UPDATE;
   v_had_old:=FOUND;
@@ -516,8 +570,7 @@ BEGIN
   VALUES(p_organization_id,d.id,p_unlock_type,p_unlock_sn,v_tuya_user,v_user_name,p_customer_id,v_label,auth.uid(),v_at)
   RETURNING * INTO l;
   IF p_unlock_type='fingerprint' THEN
-    PERFORM app_private.door_sync_fingerprint_code_v1(old.customer_id);
-    PERFORM app_private.door_sync_fingerprint_code_v1(l.customer_id);
+    PERFORM app_private.door_sync_fingerprint_codes_v1(ARRAY[old.customer_id,l.customer_id]);
   END IF;
   PERFORM app_private.door_access_log_done_v1(d.id,'KEY_LINK',jsonb_build_object('link_id',l.id,'unlock_type',l.unlock_type,
     'unlock_sn',l.unlock_sn,'customer_id',l.customer_id,'label',l.label,'replaced_link_id',old.id));
@@ -543,7 +596,7 @@ BEGIN
   SELECT * INTO l FROM public.door_key_links WHERE id=p_link_id FOR UPDATE;
   IF l.unlinked_at IS NULL THEN
     UPDATE public.door_key_links SET unlinked_at=clock_timestamp(),unlinked_by=auth.uid(),unlink_reason='MANUAL' WHERE id=l.id;
-    IF l.unlock_type='fingerprint' THEN PERFORM app_private.door_sync_fingerprint_code_v1(l.customer_id);END IF;
+    IF l.unlock_type='fingerprint' THEN PERFORM app_private.door_sync_fingerprint_codes_v1(ARRAY[l.customer_id]);END IF;
     PERFORM app_private.door_access_log_done_v1(d.id,'KEY_UNLINK',jsonb_build_object('link_id',l.id,'unlock_type',l.unlock_type,
       'unlock_sn',l.unlock_sn,'customer_id',l.customer_id,'label',l.label));
   END IF;
@@ -553,8 +606,9 @@ $function$;
 
 -- ── 6. RPC cho hàm Edge door-access ─────────────────────────────────
 -- Đọc từ Tuya (lịch sử, danh sách khoá, mật khẩu tạm): máy đang hoạt động + quyền ở tòa ⇒ ngữ cảnh máy.
+-- Chỉ là quyết định ĐỌC ⇒ không khoá dòng tổ chức (can_v3), không tranh khoá với các writer khác của công ty.
 CREATE OR REPLACE FUNCTION public.door_access_authorize_v1(p_organization_id uuid,p_device_id uuid,p_permission text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private
 AS $function$
 DECLARE d public.door_devices%ROWTYPE;
@@ -565,8 +619,7 @@ BEGIN
     RAISE EXCEPTION 'Quyền cửa vân tay không hợp lệ' USING ERRCODE='22023';END IF;
   SELECT * INTO d FROM public.door_devices WHERE id=p_device_id AND organization_id=p_organization_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Không tìm thấy máy cửa trong tổ chức' USING ERRCODE='42501';END IF;
-  PERFORM app_private.lock_org_for_decision_v1(p_organization_id);
-  IF NOT app_private.door_access_authorized_v1(p_organization_id,d.building_id,p_permission) THEN
+  IF NOT app_private.door_access_can_read_v1(p_organization_id,d.building_id,p_permission) THEN
     RAISE EXCEPTION 'Không có quyền với máy cửa này' USING ERRCODE='42501';END IF;
   IF NOT d.is_active THEN RAISE EXCEPTION 'Máy đã tắt khỏi CRM' USING ERRCODE='55000';END IF;
   RETURN jsonb_build_object('device_id',d.id,'tuya_device_id',d.tuya_device_id,'device_kind',d.device_kind,
@@ -574,16 +627,17 @@ BEGIN
 END;
 $function$;
 
--- Có quyền ở ít nhất một tòa của công ty (tìm máy trên SmartLife cần quyền Quản lý).
-CREATE OR REPLACE FUNCTION public.door_access_can_any_v1(p_organization_id uuid,p_permission text)
+-- Tìm máy trên SmartLife (thấy MỌI máy của tài khoản) cần quyền Quản lý máy ở MỌI tòa — cùng mức với gắn máy mới.
+-- Bản nháp "có quyền ở ít nhất một tòa" (chỉ từng áp TEST) quá rộng: bỏ.
+DROP FUNCTION IF EXISTS public.door_access_can_any_v1(uuid,text);
+CREATE OR REPLACE FUNCTION public.door_access_can_manage_org_v1(p_organization_id uuid)
 RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private
 AS $function$
 BEGIN
   IF auth.uid() IS NULL OR p_organization_id IS NULL OR NOT COALESCE(p_organization_id=ANY(public.my_org_ids()),false) THEN
     RETURN false;END IF;
-  RETURN EXISTS(SELECT 1 FROM public.buildings b WHERE b.organization_id=p_organization_id AND b.deleted_at IS NULL
-    AND app_private.door_access_can_read_v1(p_organization_id,b.id,p_permission));
+  RETURN app_private.door_access_can_manage_all_v1(p_organization_id);
 END;
 $function$;
 
@@ -621,8 +675,10 @@ BEGIN
     IF (v_detail->>'effective_sec')!~'^[0-9]{1,12}$' OR (v_detail->>'invalid_sec')!~'^[0-9]{1,12}$' THEN
       RAISE EXCEPTION 'Mốc giờ mật khẩu tạm phải là số giây nguyên' USING ERRCODE='22023';END IF;
     v_eff:=(v_detail->>'effective_sec')::bigint;v_inv:=(v_detail->>'invalid_sec')::bigint;
-    IF v_inv<=v_eff OR v_inv<=v_now_sec OR v_eff<v_now_sec-300 OR v_inv-v_eff>7*86400 THEN
-      RAISE EXCEPTION 'Hiệu lực mật khẩu tạm phải kết thúc sau hiện tại và dài tối đa 7 ngày' USING ERRCODE='22023';END IF;
+    -- Hết hạn chậm nhất 7 ngày KỂ TỪ BÂY GIỜ (không chỉ dài ≤ 7 ngày): không tạo được mã bắt đầu vài tháng sau rồi dùng
+    -- sau khi người tạo nghỉ việc. Lùi 300 giây cho lệch đồng hồ máy khách.
+    IF v_inv<=v_eff OR v_inv<=v_now_sec OR v_eff<v_now_sec-300 OR v_inv-v_eff>7*86400 OR v_inv>v_now_sec+7*86400+300 THEN
+      RAISE EXCEPTION 'Mật khẩu tạm phải hết hạn trong vòng 7 ngày kể từ bây giờ' USING ERRCODE='22023';END IF;
     v_clean:=jsonb_build_object('name',v_name,'purpose',v_detail->>'purpose','effective_sec',v_eff,'invalid_sec',v_inv);
   ELSIF p_action='TEMP_PASSWORD_DELETE' THEN
     IF EXISTS(SELECT 1 FROM jsonb_object_keys(v_detail) k WHERE k<>'password_id') OR (v_detail->>'password_id') IS NULL
@@ -672,7 +728,7 @@ CREATE OR REPLACE FUNCTION public.door_access_finish_action_v1(p_log_id uuid,p_s
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private
 AS $function$
-DECLARE g public.door_action_logs%ROWTYPE;l public.door_key_links%ROWTYPE;v_at timestamptz;
+DECLARE g public.door_action_logs%ROWTYPE;l public.door_key_links%ROWTYPE;v_at timestamptz;v_customers uuid[]:=ARRAY[]::uuid[];
 BEGIN
   IF p_status IS NULL OR p_status NOT IN ('OK','FAILED','UNKNOWN') THEN
     RAISE EXCEPTION 'Kết quả thao tác không hợp lệ' USING ERRCODE='22023';END IF;
@@ -694,12 +750,15 @@ BEGIN
     error_message=CASE WHEN p_status='OK' THEN NULL ELSE left(NULLIF(btrim(COALESCE(p_error_message,'')),''),300) END
   WHERE id=g.id;
   IF g.action='KEY_DELETE' AND p_status='OK' THEN
+    -- Cùng thứ tự khoá với gắn/bỏ gắn (dòng máy trước liên kết): không đua với một lần gắn lại cùng số.
+    PERFORM 1 FROM public.door_devices WHERE id=g.door_device_id FOR NO KEY UPDATE;
     FOR l IN SELECT * FROM public.door_key_links WHERE door_device_id=g.door_device_id AND unlinked_at IS NULL
       AND unlock_type=g.detail->>'unlock_type' AND unlock_sn=(g.detail->>'unlock_sn')::integer FOR UPDATE
     LOOP
       UPDATE public.door_key_links SET unlinked_at=v_at,unlinked_by=g.actor_id,unlink_reason='DELETED_ON_DEVICE' WHERE id=l.id;
-      IF l.unlock_type='fingerprint' THEN PERFORM app_private.door_sync_fingerprint_code_v1(l.customer_id);END IF;
+      IF l.unlock_type='fingerprint' THEN v_customers:=v_customers||l.customer_id;END IF;
     END LOOP;
+    PERFORM app_private.door_sync_fingerprint_codes_v1(v_customers);
   END IF;
   RETURN jsonb_build_object('log_id',g.id,'status',p_status);
 END;
@@ -710,14 +769,14 @@ REVOKE ALL ON FUNCTION public.door_access_devices_v1(uuid,boolean), public.door_
   public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz,uuid),
   public.door_access_save_device_v1(uuid,text,uuid,text,text,text,text,integer,integer), public.door_access_disable_device_v1(uuid,uuid),
   public.door_access_link_key_v1(uuid,uuid,text,integer,text,text,uuid,text), public.door_access_unlink_key_v1(uuid,uuid),
-  public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_any_v1(uuid,text),
+  public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_manage_org_v1(uuid),
   public.door_access_begin_action_v1(uuid,uuid,text,jsonb), public.door_access_finish_action_v1(uuid,text,bigint,text,text)
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.door_access_devices_v1(uuid,boolean), public.door_access_key_links_v1(uuid,uuid),
   public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz,uuid),
   public.door_access_save_device_v1(uuid,text,uuid,text,text,text,text,integer,integer), public.door_access_disable_device_v1(uuid,uuid),
   public.door_access_link_key_v1(uuid,uuid,text,integer,text,text,uuid,text), public.door_access_unlink_key_v1(uuid,uuid),
-  public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_any_v1(uuid,text),
+  public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_manage_org_v1(uuid),
   public.door_access_begin_action_v1(uuid,uuid,text,jsonb)
   TO authenticated;
 GRANT EXECUTE ON FUNCTION public.door_access_finish_action_v1(uuid,text,bigint,text,text) TO service_role;
@@ -738,6 +797,12 @@ BEGIN
     OR has_table_privilege('authenticated','public.door_devices','SELECT')
     OR has_table_privilege('authenticated','public.door_key_links','SELECT') THEN
     RAISE EXCEPTION 'ACL cửa vân tay mở quá rộng';
+  END IF;
+  -- Bản nháp từng áp TEST phải đi hẳn (PostgREST không được gặp hai hàm cùng tên, hàm "một tòa là đủ" không được sống).
+  IF to_regprocedure('public.door_access_can_any_v1(uuid,text)') IS NOT NULL
+    OR to_regprocedure('public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz)') IS NOT NULL
+    OR to_regprocedure('app_private.door_sync_fingerprint_code_v1(uuid)') IS NOT NULL THEN
+    RAISE EXCEPTION 'Còn hàm nháp của cửa vân tay';
   END IF;
 END
 $assert$;
