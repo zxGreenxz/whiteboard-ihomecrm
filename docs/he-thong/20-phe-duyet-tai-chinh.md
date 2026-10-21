@@ -88,8 +88,8 @@ Owner mở `/settings/general` → tab **Thu chi**:
   quyền duyệt thì không tự duyệt được; chuyển người duyệt đúng rule.
 - Câu 25 (chủ chốt 21/10/2026; migration `20261021231237`, **chờ áp**): phiếu CHI có tổng **từ ngưỡng trở
   lên** thì người lập không có quyền duyệt **không tự duyệt được** — "có quyền duyệt" = đúng rào duyệt của
-  writer: `income_expenses.approve` ở toà của phiếu (`app_private.has_building_perm_v1`, cùng phép kiểm của
-  `require_building_perm_v1` câu 26); phiếu không gắn toà chỉ super admin. Mọi đường cùng một hàm luật
+  writer: `income_expenses.approve` ở toà của phiếu (`app_private.has_building_perm_v1` — hàm boolean dùng
+  chung, `require_building_perm_v1` của câu 26 cũng gọi hàm này); phiếu không gắn toà chỉ super admin. Mọi đường cùng một hàm luật
   `app_private.ie_self_approve_over_threshold_blocked_v1`: REST thẳng `approve_income_expense_v1`/`approve_voucher`,
   nút Duyệt của công ty còn luồng LEGACY, Thanh toán phiếu phí nháp, Chốt lương, Copilot. Bị chặn ⇒ 42501 +
   HINT `ie_self_approve_over_threshold`; web hỏi cổng `ie_self_approve_gate_v1` ở hộp **Xác nhận duyệt phiếu**

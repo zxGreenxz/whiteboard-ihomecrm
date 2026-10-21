@@ -7,6 +7,8 @@
 // income_expenses.approve theo toà, ngưỡng) là stub đọc bảng giả; engine/sổ sách ngoài phạm vi.
 // Copilot/Hermes không dựng lại được trên PGlite (xác nhận + kế hoạch L5): soi thân định nghĩa
 // SỐNG — chỉ duyệt qua hai writer đã vá hoặc cửa cặp bỏ cọc (đòi quyền duyệt).
+// require_building_perm_v1 (câu 26, md5 production) đổi sang gọi has_building_perm_v1: ma trận
+// người × toà × khoá chạy trước/sau vá phải trùng từng ca.
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,15 +18,17 @@ const SUA_PHIEU = 'supabase/migrations/20260925080906_sua_phieu_cho_duyet.sql';
 const PAY_DRAFT = 'supabase/migrations/20260831161000_pay_draft_fee_voucher_gate_truoc_doc.sql';
 const COPILOT_DUYET = 'supabase/migrations/20260906012317_copilot_ie_duyet_thang_ba_bac_v1.sql';
 const HERMES_EXPENSE = 'supabase/migrations/20261015120100_hermes_expense_create_action_v1.sql';
+const CAU26 = 'supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql';
 const BASELINE = 'supabase/baseline/schema.sql';
 
-// md5(pg_get_functiondef) đọc trên production 22/10/2026 (chỉ đọc).
+// md5(pg_get_functiondef) đọc trên production 22/10/2026 (chỉ đọc; TEST cùng md5).
 const PROD_MD5 = {
   v1: '10fdb43c85df855db3ab9c26be7ee6e1',
   approveVoucher: 'b8529fc96ee1ba71f6af780f8dcc97b3',
   checked: '69e9e4eb240089dfb6020d916e51ca0f',
   payDraft: '9001f16232b91291ee47d8fcb63e151f',
   lockSalary: '4dd21e9c38ddb3249ce144a543d27764',
+  requirePerm: '57e80783ec9c9157a92d47798a06fe24',
 };
 
 const MSG = 'Phiếu chi từ ngưỡng tự duyệt trở lên cần người có quyền duyệt thu chi duyệt — người lập phiếu không tự duyệt được.';
@@ -66,6 +70,9 @@ const SOURCES = {
   approveVoucher: () => cut(BASELINE, 'CREATE FUNCTION public.approve_voucher(voucher_id uuid)', '\n$$;'),
   lockSalary: () => cut(BASELINE, 'CREATE FUNCTION public.lock_salary_month_v1(', '\n$$;'),
   payDraft: () => cut(PAY_DRAFT, 'CREATE OR REPLACE FUNCTION public.pay_draft_fee_voucher', '\n$$;'),
+  // Câu 26 (đã lên production): hàm kiểm quyền RAISE mà migration câu 25 đổi sang gọi has_building_perm_v1.
+  requirePerm: () => `${cut(CAU26, 'CREATE OR REPLACE FUNCTION app_private.require_building_perm_v1', '$fn$;')}
+    REVOKE ALL ON FUNCTION app_private.require_building_perm_v1(uuid, text, text[]) FROM PUBLIC, anon, authenticated, service_role;`,
 };
 
 async function build(db: PGlite, { patch }: { patch: boolean }) {
@@ -169,6 +176,7 @@ async function build(db: PGlite, { patch }: { patch: boolean }) {
   await db.exec(SOURCES.approveVoucher());
   await db.exec(SOURCES.lockSalary());
   await db.exec(SOURCES.payDraft());
+  await db.exec(SOURCES.requirePerm());
   if (patch) {
     // Lane chạy file hai lượt: lượt hai phải đi nhánh "đã vá".
     await db.exec(readFileSync(PATCH, 'utf8'));
@@ -236,12 +244,13 @@ describe('câu 25 — nền: bản đang chạy khớp production và lỗ có t
   });
   afterAll(async () => db.close());
 
-  it('năm writer duyệt dựng trên PGlite khớp md5 production 22/10/2026', async () => {
+  it('năm writer duyệt + require_building_perm_v1 (câu 26) dựng trên PGlite khớp md5 production 22/10/2026', async () => {
     expect(await md5(db, 'public.approve_income_expense_v1(uuid)')).toBe(PROD_MD5.v1);
     expect(await md5(db, 'public.approve_voucher(uuid)')).toBe(PROD_MD5.approveVoucher);
     expect(await md5(db, 'public.approve_pending_income_expense_checked_v1(uuid,bigint)')).toBe(PROD_MD5.checked);
     expect(await md5(db, 'public.pay_draft_fee_voucher(uuid,uuid,jsonb)')).toBe(PROD_MD5.payDraft);
     expect(await md5(db, 'public.lock_salary_month_v1(date,jsonb,text)')).toBe(PROD_MD5.lockSalary);
+    expect(await md5(db, 'app_private.require_building_perm_v1(uuid,text,text[])')).toBe(PROD_MD5.requirePerm);
   });
 
   it('TRƯỚC vá: người lập không có quyền duyệt tự duyệt phiếu chi 1,2tr của mình (cả hai writer)', async () => {
@@ -462,7 +471,8 @@ describe('câu 25 — sau vá', () => {
       (await db.query<{ ok: boolean }>(`SELECT has_function_privilege($1, $2, 'EXECUTE') AS ok`, [role, sig])).rows[0].ok;
     expect(await priv('authenticated', 'public.ie_self_approve_gate_v1(uuid)')).toBe(true);
     expect(await priv('anon', 'public.ie_self_approve_gate_v1(uuid)')).toBe(false);
-    for (const sig of ['app_private.ie_self_approve_over_threshold_blocked_v1(uuid)', 'app_private.has_building_perm_v1(uuid, text[])']) {
+    for (const sig of ['app_private.ie_self_approve_over_threshold_blocked_v1(uuid)', 'app_private.has_building_perm_v1(uuid, text[])',
+      'app_private.require_building_perm_v1(uuid, text, text[])']) {
       for (const role of ['authenticated', 'anon', 'service_role']) {
         expect(await priv(role, sig), `${role} → ${sig}`).toBe(false);
       }
@@ -485,7 +495,7 @@ describe('câu 25 — sau vá', () => {
       SELECT p.proname, count(*)::int AS n, bool_and(p.prosecdef) AS definer
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE p.proname IN ('approve_income_expense_v1', 'approve_voucher', 'ie_self_approve_gate_v1',
-                           'ie_self_approve_over_threshold_blocked_v1', 'has_building_perm_v1')
+                           'ie_self_approve_over_threshold_blocked_v1', 'has_building_perm_v1', 'require_building_perm_v1')
        GROUP BY p.proname ORDER BY p.proname`);
     expect(r.rows).toEqual([
       { proname: 'approve_income_expense_v1', n: 1, definer: true },
@@ -493,7 +503,77 @@ describe('câu 25 — sau vá', () => {
       { proname: 'has_building_perm_v1', n: 1, definer: true },
       { proname: 'ie_self_approve_gate_v1', n: 1, definer: true },
       { proname: 'ie_self_approve_over_threshold_blocked_v1', n: 1, definer: true },
+      { proname: 'require_building_perm_v1', n: 1, definer: true },
     ]);
+  });
+});
+
+describe('câu 25 — require_building_perm_v1 (câu 26) gọi has_building_perm_v1: hành vi y hệt bản production', () => {
+  // Một ma trận người × toà × khoá × việc; ghi kết quả TRƯỚC vá (bản câu 26 đang chạy) rồi SAU vá
+  // (hai lượt như lane) — phải trùng từng ca: qua / ERRCODE / câu báo / HINT.
+  const NGUOI = [null, MAKER, APPROVER, OTHER_SCOPE, ORG_APPROVER, OWNER, OFFBOARDED];
+  const TOA = [B_A, B_B, null];
+  const KHOA: string[][] = [
+    ['income_expenses.approve'], ['contracts.terminate'], ['contracts.terminate', 'income_expenses.approve'],
+    ['khong hop le'], [],
+  ];
+  const VIEC = ['thanh lý hợp đồng', ''];
+
+  async function chayMaTran(db: PGlite) {
+    const ketQua: string[] = [];
+    for (const nguoi of NGUOI) {
+      await as(db, nguoi);
+      for (const toa of TOA) {
+        for (const khoa of KHOA) {
+          for (const viec of VIEC) {
+            const ca = `${nguoi ?? 'chưa đăng nhập'} · ${toa ?? 'toà NULL'} · [${khoa.join('|')}] · "${viec}"`;
+            try {
+              await db.query('SELECT app_private.require_building_perm_v1($1::uuid, $2, VARIADIC $3::text[])', [toa, viec, khoa]);
+              ketQua.push(`${ca} ⇒ qua`);
+            } catch (error) {
+              const e = error as PgError;
+              ketQua.push(`${ca} ⇒ ${e.code} | ${e.message} | ${e.hint ?? ''}`);
+            }
+          }
+        }
+      }
+    }
+    return ketQua;
+  }
+
+  it('trùng từng ca trước/sau vá; ma trận có đủ qua, 42501 [THIEU_QUYEN] và 22023', async () => {
+    const db = new PGlite();
+    try {
+      await build(db, { patch: false });
+      const truoc = await chayMaTran(db);
+      await db.exec(readFileSync(PATCH, 'utf8'));
+      await db.exec(readFileSync(PATCH, 'utf8'));
+      expect(await md5(db, 'app_private.require_building_perm_v1(uuid,text,text[])')).not.toBe(PROD_MD5.requirePerm);
+      const sau = await chayMaTran(db);
+      expect(sau).toEqual(truoc);
+      expect(truoc).toHaveLength(NGUOI.length * TOA.length * KHOA.length * VIEC.length);
+      expect(truoc.filter((x) => x.endsWith('⇒ qua')).length).toBeGreaterThan(10);
+      expect(truoc.some((x) => x.includes('⇒ 42501 | [THIEU_QUYEN:income_expenses.approve] Bạn không có quyền thanh lý hợp đồng ở toà nhà này.'))).toBe(true);
+      expect(truoc.some((x) => x.includes('⇒ 42501 | [THIEU_QUYEN] Bạn chưa đăng nhập.'))).toBe(true);
+      expect(truoc.some((x) => x.includes('⇒ 22023 | require_building_perm_v1: khoá quyền không hợp lệ'))).toBe(true);
+      // Toà NULL: chỉ super admin qua (kể cả người có quyền cả công ty).
+      expect(truoc.filter((x) => x.includes('· toà NULL ·') && x.endsWith('⇒ qua')).every((x) => x.startsWith(OWNER))).toBe(true);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('tiền kiểm: require_building_perm_v1 khác bản câu 26 đã đối chiếu ⇒ dừng 55000', async () => {
+    const db = new PGlite();
+    try {
+      await build(db, { patch: false });
+      await db.exec(SOURCES.requirePerm().replace('Bạn chưa đăng nhập.', 'Bạn chưa đăng nhập!'));
+      const e = await failure(db.exec(readFileSync(PATCH, 'utf8')));
+      expect(e.code).toBe('55000');
+      expect(e.message).toContain('app_private.require_building_perm_v1(uuid, text, text[]) KHÁC bản đã đối chiếu');
+    } finally {
+      await db.close();
+    }
   });
 });
 

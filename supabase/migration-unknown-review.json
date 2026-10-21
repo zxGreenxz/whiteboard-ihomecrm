@@ -873,6 +873,27 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021231237_chan_tu_duyet_phieu_chi_vuot_nguong_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.has_building_perm_v1(uuid, text[]); CREATE OR REPLACE FUNCTION app_private.ie_self_approve_over_threshold_blocked_v1(uuid); CREATE OR REPLACE FUNCTION public.ie_self_approve_gate_v1(uuid); CREATE OR REPLACE public.approve_income_expense_v1 (thân 20260925080906 + chặn câu 25) và public.approve_voucher (thân baseline + FOR UPDATE + chặn câu 25); CREATE OR REPLACE app_private.require_building_perm_v1 (thân 20261021180057, phép kiểm chuyển sang has_building_perm_v1)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 3 hàm mới — sinh 22/10/2026 ngay sau khi tạo/đổi tên file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (câu 25 chủ chốt 21/10: người lập không tự duyệt phiếu chi vượt ngưỡng), đổi tên từ 20261021175815 sang mốc sau 20261021181209 (câu 26, đã áp production) theo review; chưa đi qua lane apply — 3 hàm mới vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Chạy trên TEST trong BEGIN…ROLLBACK (test-env:thu-sql, không --ghi), hai lượt: tiền kiểm md5 và tự kiểm catalog qua; thăm dò bằng role authenticated + JWT: người lập không có quyền duyệt bị 42501 + HINT ie_self_approve_over_threshold ở nút web và REST, người khác có quyền duyệt và Super Admin vẫn duyệt được, Thanh toán phiếu phí nháp vẫn chạy; require_building_perm_v1 (câu 26) trước/sau vá trùng 1872/1872 ca trên dữ liệu quyền thật của TEST. PGlite + đột biến (scripts/dot-bien.mjs). Áp qua npm run migrate:forward sau review độc lập và chủ duyệt PR; khi đó provenance chuyển ledger-applied/catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.has_building_perm_v1",
+        "function:app_private.ie_self_approve_over_threshold_blocked_v1",
+        "function:public.ie_self_approve_gate_v1"
+      ],
+      "raSoatBoi": "Claude Code — câu 25 chặn tự duyệt phiếu chi vượt ngưỡng 22/10/2026",
+      "sha256": "3ab6ff41436134e6c7fc79068a5de696b2ea6f064cae4e932c184b78ea66ce93"
     }
   }
 }
