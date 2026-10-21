@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1540,
-  "soFileDocBangFs": 397,
-  "tongLoiGoi": 956,
-  "khongPhanLoaiDuoc": 430,
+  "tongSoFileTest": 1542,
+  "soFileDocBangFs": 398,
+  "tongLoiGoi": 958,
+  "khongPhanLoaiDuoc": 431,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 59,
+      "soFile": 60,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -29,6 +29,7 @@
   },
   "testDocMaNguon": [
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
+    "infra/hermes-broker/confirm-guard.test.mjs",
     "infra/hermes-broker/read-catalog-authority.test.mjs",
     "infra/hermes-broker/room-pass-upsert-mutation.test.mjs",
     "infra/hermes-runtime/host-cli.test.mjs",
@@ -1055,6 +1056,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-runtime/audit-codes.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/hermes-zalo-router/privacy-schema.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1600,6 +1607,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "infra/hermes-broker/confirm-guard.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/hermes-broker/connection-control-plane.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -1771,12 +1786,6 @@
     },
     {
       "file": "infra/hermes-broker/wave2-z.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-runtime/audit-codes.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

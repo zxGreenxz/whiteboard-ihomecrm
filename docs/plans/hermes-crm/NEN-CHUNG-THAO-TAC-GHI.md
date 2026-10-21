@@ -263,9 +263,9 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
   - Sự kiện audit nhận trường tuỳ chọn `reason`, hợp lệ khi và chỉ khi `code === 'action_rejected'` và `reason ∈ AUDIT_REASONS`.
   - Broker ghi `reason` vào audit, để đếm được lý do từ chối mà không phải đọc DB.
 - **Test khoá.** `audit-codes.test.mjs` đã khoá `ERROR_STATUS ⊆ AUDIT_CODES` theo cả hai chiều. Đợt 1 thêm:
-  - `ACTION_REASONS == AUDIT_REASONS`, cả hai chiều;
+  - `AUDIT_REASONS == ACTION_REJECT_REASONS` (13 mã dạng `rejected`), cả hai chiều; mã dạng `needs_input` không bao giờ vào sổ audit như lỗi;
   - sổ audit thật nhận một dòng `action_rejected` cho mỗi mã lý do;
-  - sổ audit từ chối mã lý do lạ.
+  - sổ audit từ chối mã lý do lạ, lý do dạng `needs_input`, lý do đi kèm mã khác, và lý do trên sự kiện `prepared`.
 
   Thêm mã lý do mà quên `host-ownership.mjs` thì test đỏ ngay trong commit đó. Đây là đúng lớp sự cố 21/10.
 

@@ -19,6 +19,7 @@ import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
 import { readMisuseHint } from './read-misuse-hints.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
+import { ACTION_REASONS, ACTION_REJECT_REASONS } from './action-reasons.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z0-9_.:-]{0,127}$/;
@@ -88,13 +89,16 @@ export const ERROR_STATUS = Object.freeze({
   tool_not_available: 403, rate_limited: 429, busy: 429, timeout: 504, confirmation_invalid: 400,
   backend_unavailable: 503, response_too_large: 502, result_too_large: 413, send_outcome_unknown: 503, memory_outcome_unknown: 503, schedule_outcome_unknown: 503, room_pass_outcome_unknown: 503, task_outcome_unknown: 503,
   customer_outcome_unknown: 503, expense_outcome_unknown: 503, zalo_broadcast_outcome_unknown: 503,
+  // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật (quyền/nghiệp vụ) mang `reason` của danh sách đóng
+  // action-reasons.mjs (dạng rejected) + `detail` = câu tĩnh của mã đó; thiếu/mơ hồ đầu vào KHÔNG là lỗi (needs_input).
+  action_rejected: 400, action_outcome_unknown: 503,
 });
 // Write uncertainty codes. Each carries the caller's stable requestId so the
 // model reconciles with the matching *_status tool instead of creating again.
 const MUTATION_UNKNOWN = Object.freeze(['memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown',
-  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'task_outcome_unknown', 'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 export const REQUEST_RECEIPT_UNKNOWN = Object.freeze(['room_pass_outcome_unknown', 'task_outcome_unknown', 'customer_outcome_unknown',
-  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown', 'action_outcome_unknown']);
 // Cutover P6.06: the CRM automation "Gửi ảnh phòng trống" is the one scheduler for
 // vacant-room sends (crm_zalo_broadcast_*). Hermes' own text schedules stay
 // readable/revocable for existing rows but can no longer be created or replaced.
@@ -107,6 +111,14 @@ export class BrokerError extends Error {
     this.code = this.message;
     this.status = ERROR_STATUS[this.code];
   }
+}
+
+/** Lỗi thật của thao tác ghi: reason ngoài danh sách đóng hoặc không phải dạng rejected ⇒ crm_refused. */
+export function actionRejected(code) {
+  const error = new BrokerError('action_rejected');
+  error.reason = ACTION_REJECT_REASONS.includes(code) ? code : 'crm_refused';
+  error.detail = ACTION_REASONS[error.reason].text;
+  return error;
 }
 
 const fail = (code) => { throw new BrokerError(code); };
@@ -674,8 +686,10 @@ export function createBroker({
       // A quota/concurrency rejection is attributable to the identified connection.
       report(identity?.row.id ?? connectionId, operation, safe.code);
       // Audit failure is fail-closed. Never return a successful data response without a receipt.
+      // D9: lý do của action_rejected vào sổ audit (danh sách đóng; host-ownership.mjs REASONS nhận đúng tập này).
+      const reason = safe.code === 'action_rejected' && ACTION_REJECT_REASONS.includes(safe.reason) ? { reason: safe.reason } : {};
       try { await bounded(() => recordAudit({ requestId, operation, connectionId: identity?.row.id ?? null,
-        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code })); }
+        outcome: safe.code === 'timeout' ? 'timeout' : 'denied', code: safe.code, ...reason })); }
       catch (auditError) { if (safe.code !== 'send_outcome_unknown' && !MUTATION_UNKNOWN.includes(safe.code)) throw auditError; }
       throw safe;
     } });

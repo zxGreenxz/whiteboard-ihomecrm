@@ -5,7 +5,8 @@ import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ERROR_STATUS } from '../hermes-broker/broker.mjs';
-import { AUDIT_CODES, createHostAudit } from './host-ownership.mjs';
+import { ACTION_INPUT_REASONS, ACTION_REJECT_REASONS } from '../hermes-broker/action-reasons.mjs';
+import { AUDIT_CODES, AUDIT_REASONS, createHostAudit } from './host-ownership.mjs';
 
 // Sự cố production 21/10/2026 03:30 (B5e): broker ném `read_name_unresolved` (ERROR_STATUS) nhưng sổ audit host (CODES
 // trong host-ownership.mjs) không nhận ⇒ host_audit_invalid ⇒ broker đóng an toàn ⇒ mọi lỗi tên thành backend_unavailable.
@@ -25,7 +26,7 @@ test('every broker error code is an audit code the host accepts (ERROR_STATUS �
   assert.deepEqual(foreign, [], `audit codes the broker never raises: ${foreign.join(', ')}`);
 });
 
-test('the real audit sink appends a denied/timeout tools/call receipt for every broker error code', async t => {
+async function auditRoot(t) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-audit-codes-')));
   await fs.chmod(root, 0o700);
   t.after(async () => { t.mock.restoreAll(); await fs.rm(root, { recursive: true, force: true }); });
@@ -40,6 +41,11 @@ test('the real audit sink appends a denied/timeout tools/call receipt for every 
       return open(name, flags, mode);
     });
   }
+  return root;
+}
+
+test('the real audit sink appends a denied/timeout tools/call receipt for every broker error code', async t => {
+  const root = await auditRoot(t);
   const sink = createHostAudit({ directory: root });
   for (const code of BROKER_CODES) await sink.write({ ...EVENT, outcome: code === 'timeout' ? 'timeout' : 'denied', code });
   await assert.rejects(sink.write({ ...EVENT, outcome: 'denied', code: 'not_a_broker_code' }), /host_audit_invalid/);
@@ -47,4 +53,29 @@ test('the real audit sink appends a denied/timeout tools/call receipt for every 
   const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(rows.map(row => row.code), BROKER_CODES);
   assert.deepEqual(rows.map(row => row.outcome), BROKER_CODES.map(code => code === 'timeout' ? 'timeout' : 'denied'));
+});
+
+// Đợt 1 nền chung (D9): action_rejected ghi kèm reason của danh sách đóng infra/hermes-broker/action-reasons.mjs. Thêm lý do
+// dạng rejected mà quên REASONS của host-ownership.mjs ⇒ đỏ ngay ở đây (cùng lớp sự cố 21/10 với mã lỗi).
+test('audit reasons are exactly the broker rejected-form action reasons (both directions); needs_input reasons never reach audit', () => {
+  assert.ok(Object.isFrozen(AUDIT_REASONS));
+  const missing = ACTION_REJECT_REASONS.filter(code => !AUDIT_REASONS.includes(code));
+  assert.deepEqual(missing, [], `action reasons the host audit would refuse: ${missing.join(', ')}`);
+  const foreign = AUDIT_REASONS.filter(code => !ACTION_REJECT_REASONS.includes(code));
+  assert.deepEqual(foreign, [], `audit reasons the broker never records: ${foreign.join(', ')}`);
+  assert.deepEqual(ACTION_INPUT_REASONS.filter(code => AUDIT_REASONS.includes(code)), []);
+});
+
+test('the real audit sink records action_rejected with every reason and refuses a reason anywhere else', async t => {
+  const root = await auditRoot(t);
+  const sink = createHostAudit({ directory: root });
+  for (const reason of ACTION_REJECT_REASONS) await sink.write({ ...EVENT, outcome: 'denied', code: 'action_rejected', reason });
+  await sink.write({ ...EVENT, outcome: 'denied', code: 'action_rejected' });
+  for (const bad of [{ code: 'action_rejected', reason: 'not_a_reason' }, { code: 'action_rejected', reason: ACTION_INPUT_REASONS[0] },
+    { code: 'forbidden', reason: ACTION_REJECT_REASONS[0] }, { code: 'action_rejected', reason: null }])
+    await assert.rejects(sink.write({ ...EVENT, outcome: 'denied', ...bad }), /host_audit_invalid/, JSON.stringify(bad));
+  await assert.rejects(sink.write({ ...EVENT, outcome: 'prepared', reason: ACTION_REJECT_REASONS[0] }), /host_audit_invalid/);
+  await sink.close();
+  const rows = (await fs.readFile(path.join(root, 'broker-audit.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(row => row.reason ?? null), [...ACTION_REJECT_REASONS, null]);
 });

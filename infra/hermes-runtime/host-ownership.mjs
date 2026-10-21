@@ -22,9 +22,18 @@ const CODES = new Set(['unauthorized', 'forbidden', 'context_changed', 'invalid_
   // chiếu bằng *_status; broker nuốt lỗi audit cho riêng các mã này nên thiếu ở đây không đóng broker, nhưng sổ audit sẽ
   // không có dòng cho lượt ghi bất định. Mọi mã ERROR_STATUS của broker phải có mặt (audit-codes.test.mjs).
   'memory_outcome_unknown', 'schedule_outcome_unknown', 'room_pass_outcome_unknown', 'task_outcome_unknown',
-  'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown']);
+  'customer_outcome_unknown', 'expense_outcome_unknown', 'zalo_broadcast_outcome_unknown',
+  // Đợt 1 nền chung thao tác ghi (crm_action_*): lỗi thật mang reason (dưới) và mã bất định của ghi.
+  'action_rejected', 'action_outcome_unknown']);
 /** Bản sao chỉ đọc của giao thức mã lỗi sổ audit chấp nhận; audit-codes.test.mjs khoá nó bằng ERROR_STATUS của broker. */
 export const AUDIT_CODES = Object.freeze([...CODES]);
+// Lý do của action_rejected (dạng rejected của danh sách đóng infra/hermes-broker/action-reasons.mjs, D9). Sự kiện
+// audit chỉ nhận trường reason khi code = action_rejected và reason thuộc tập này; audit-codes.test.mjs khoá tập bằng
+// ACTION_REJECT_REASONS cả hai chiều (thiếu mã ⇒ audit đỏ ⇒ broker đóng an toàn thành backend_unavailable — đúng lớp
+// sự cố 21/10). Lý do dạng needs_input là kết quả thường, không bao giờ tới sổ audit như lỗi.
+const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
+  'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused']);
+export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
   constructor(code) { super(code); this.name = 'HostOwnershipError'; this.code = code; }
@@ -127,13 +136,14 @@ export async function acquireHostOwnership(options) {
 }
 
 function auditEvent(raw) {
-  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code']);
+  const event = data(raw, ['requestId', 'operation', 'connectionId', 'outcome'], ['code', 'reason']);
   if (typeof event.requestId !== 'string' || !UUID.test(event.requestId) || !OPERATIONS.has(event.operation) ||
     (event.connectionId !== null && (typeof event.connectionId !== 'string' || !UUID.test(event.connectionId)))) fail('host_audit_invalid');
   if (event.outcome === 'prepared') {
-    if (event.connectionId === null || Object.hasOwn(event, 'code')) fail('host_audit_invalid');
+    if (event.connectionId === null || Object.hasOwn(event, 'code') || Object.hasOwn(event, 'reason')) fail('host_audit_invalid');
   } else if (!['denied', 'timeout'].includes(event.outcome) || !CODES.has(event.code) ||
       ((event.outcome === 'timeout') !== (event.code === 'timeout'))) fail('host_audit_invalid');
+  if (Object.hasOwn(event, 'reason') && (event.code !== 'action_rejected' || !REASONS.has(event.reason))) fail('host_audit_invalid');
   return Buffer.from(JSON.stringify(event) + '\n');
 }
 
