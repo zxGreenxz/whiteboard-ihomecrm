@@ -4,7 +4,7 @@ import { sharedFullRead, changedFunctions, fullReadSql, fullReadFixSql, fullRead
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
 import { readFileSync } from 'node:fs';
-import { W2_CUSTOMER_STATUS_FILE } from './full-read-sql-fixture.mjs';
+import { W2_WITHOUT_CONTRACT_FILE, OTHER_ROOM } from './full-read-sql-fixture.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { randomBytes } from 'node:crypto';
 import { ASSISTANT, token } from './finance-fixture.mjs';
@@ -55,11 +55,12 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   assert.deepEqual(a, { id: CUSTOMER_A, name: 'Nguyễn Văn An', phone: PHONE_A, contractId: CONTRACT_A, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101' });
   assert.deepEqual(domainResult('customers', first, identity('customers.view'), list()), first);
   // R2a (20261021004841): the count of the whole filtered set, no money column. R2c part 2 (20261021044814): byStatus =
-  // contract status of that set (customers.status_v2, the /customers tabs; only values present). The rows carry no status,
-  // so summarizeRows has byStatus null and the oracle compares the rest.
-  assert.deepEqual(first.summary, { count: 2, byStatus: { RENTING: 2 }, sum: {} });
-  assert.deepEqual({ ...first.summary, byStatus: null }, summarizeRows('customers', first.items));
-  assert.deepEqual((await read3('customers', list({ query: '4567' }))).summary, { count: 1, byStatus: { RENTING: 1 }, sum: {} }, 'query filter');
+  // contract status of that set (customers.status_v2, the /customers tabs; only values present). R2d (20261021063453):
+  // withoutContract (both hold contract A here). The rows carry neither, so summarizeRows has null and the oracle compares
+  // the rest.
+  assert.deepEqual(first.summary, { count: 2, byStatus: { RENTING: 2 }, sum: {}, withoutContract: 0 });
+  assert.deepEqual({ ...first.summary, byStatus: null, withoutContract: null }, summarizeRows('customers', first.items));
+  assert.deepEqual((await read3('customers', list({ query: '4567' }))).summary, { count: 1, byStatus: { RENTING: 1 }, sum: {}, withoutContract: 0 }, 'query filter');
   assert.deepEqual(ids((await read3('customers', list({ query: '4567' }))).items), [CUSTOMER_A], 'phone digits search');
   assert.deepEqual(ids((await read3('customers', list({ query: '090 123' }))).items), [CUSTOMER_A], 'spaced digits');
   assert.deepEqual(ids((await read3('customers', list({ query: 'văn an' }))).items), [CUSTOMER_A]);
@@ -74,7 +75,7 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   // P2-2: như RLS customers_select_rbac, chủ hồ sơ (customers.user_id) phải là thành viên ACTIVE — kể cả khách có hợp đồng.
   await db.exec(`DELETE FROM public.fixture_visible_owners`);
   const hidden = await read3('customers', list());
-  assert.deepEqual([ids(hidden.items), hidden.summary], [[], { count: 0, byStatus: {}, sum: {} }], 'no row without a visible owner; the empty count is 0');
+  assert.deepEqual([ids(hidden.items), hidden.summary], [[], { count: 0, byStatus: {}, sum: {}, withoutContract: 0 }], 'no row without a visible owner; the empty count is 0');
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${USER}')`);
   const narrowed = await read3('customers', list({ buildingId: BUILDING }));
   assert.deepEqual(ids(narrowed.items), [CUSTOMER_A, CO_TENANT].sort(), 'buildingId drops the org-wide branch');
@@ -83,19 +84,86 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   assert.equal(page.items.length, 2); assert.equal(page.nextCursor, page.items[1].id);
   const rest = await read3('customers', list({ limit: 2, cursor: page.nextCursor }));
   assert.deepEqual([...ids(page.items), ...ids(rest.items)].sort(), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
-  // Toàn tổ chức: 4 khách; limit/cursor không đổi summary — trang nào cũng nói đủ 4, và 1 khách chưa có hợp đồng (WALK_IN).
-  const all = { count: 4, byStatus: { RENTING: 2, MOVED_OUT: 1, WALK_IN: 1 }, sum: {} };
+  // Toàn tổ chức: 4 khách; limit/cursor không đổi summary — trang nào cũng nói đủ 4, và 1 khách chưa có hợp đồng (WALK_IN;
+  // R2d: B's contract is in the other building, inside the contract scope).
+  const all = { count: 4, byStatus: { RENTING: 2, MOVED_OUT: 1, WALK_IN: 1 }, sum: {}, withoutContract: 1 };
   assert.deepEqual([page.summary, rest.summary], [all, all]);
-  assert.deepEqual(summarizeRows('customers', [...page.items, ...rest.items]), { ...page.summary, byStatus: null }, 'count === rows once every page is read');
+  assert.deepEqual(summarizeRows('customers', [...page.items, ...rest.items]), { ...page.summary, byStatus: null, withoutContract: null }, 'count === rows once every page is read');
   assert.deepEqual(domainResult('customers', page, identity('customers.view'), list({ limit: 2 })).summary, page.summary);
   // Mutant of the status statement (rolled back with the case): every customer counted as unclassified ⇒ the tabs vanish.
-  const live = readFileSync(`supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`, 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3\([\s\S]*?\$fn\$;/)[0];
-  const anchor = 'SELECT customer.status_v2::text status,count(*) n FROM public.customers customer';
+  const live = readFileSync(`supabase/migrations/${W2_WITHOUT_CONTRACT_FILE}.sql`, 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3\([\s\S]*?\$fn\$;/)[0];
+  const anchor = 'SELECT customer.status_v2::text status,count(*) n,';
   assert.equal(live.split(anchor).length, 2);
-  await db.exec(live.replace(anchor, 'SELECT NULL::text status,count(*) n FROM public.customers customer'));
-  assert.deepEqual((await read3('customers', list())).summary, { count: 4, byStatus: {}, sum: {} }, 'the mutant loses the tabs (the expectation above catches it)');
+  await db.exec(live.replace(anchor, 'SELECT NULL::text status,count(*) n,'));
+  assert.deepEqual((await read3('customers', list())).summary, { count: 4, byStatus: {}, sum: {}, withoutContract: 1 }, 'the mutant loses the tabs (the expectation above catches it)');
   await db.exec(live);
   assert.deepEqual((await read3('customers', list())).summary, all, 'reviewed body restored');
+}));
+
+// R2d (20261021063453, wave-2 band): withoutContract of crm_read_customers on v3 (SECURITY DEFINER) — "Có bao nhiêu khách
+// trong CRM chưa có hợp đồng nào?": the customers of the set with no contract of any status (a soft-deleted contract is not
+// one; a soft-deleted room does not remove one) in a building of the connection's contract scope (v_contract_scope); null
+// when that scope does not cover the customer buildings, so a contract out of reach never shows as "no contract" and is
+// never revealed. Synthetic customers, rolled back with the case.
+test('SQL customers (v3) R2d: withoutContract = customers without any contract in the contract scope; null when it does not cover the customers; mutants', { timeout: 90000 }, t => inCase(async env => {
+  const { db, read3, orgWide } = env;
+  const X = n => `dddddddd-dddd-4ddd-8ddd-dddddddddd${String(n).padStart(2, '0')}`;
+  const [DELETED_CONTRACT, DELETED_ROOM, TERMINATED, GONE_BUILDING_CUSTOMER] = [X(1), X(2), X(3), X(4)];
+  const [ROOM_GONE, ROOM_IN_GONE_BUILDING, GONE_BUILDING] = [X(11), X(12), X(13)];
+  await db.exec(`INSERT INTO public.buildings(id,organization_id,name,deleted_at) VALUES('${GONE_BUILDING}','${ORG}','Toà đã xoá',now());
+    INSERT INTO public.rooms(id,organization_id,building_id,name,status,deleted_at) VALUES('${ROOM_GONE}','${ORG}','${BUILDING}','P109','AVAILABLE',now()),
+      ('${ROOM_IN_GONE_BUILDING}','${ORG}','${GONE_BUILDING}','Z1','OCCUPIED',null);
+    INSERT INTO public.customers(id,organization_id,user_id,full_name,phone,status_v2) VALUES
+      ('${DELETED_CONTRACT}','${ORG}','${USER}','Khách HĐ đã xoá','0960000001','MOVED_OUT'),('${DELETED_ROOM}','${ORG}','${USER}','Khách phòng đã xoá','0960000002','RENTING'),
+      ('${TERMINATED}','${ORG}','${USER}','Khách đã thanh lý','0960000003','MOVED_OUT'),('${GONE_BUILDING_CUSTOMER}','${ORG}','${USER}','Khách toà đã xoá','0960000004','RENTING');
+    INSERT INTO public.contracts(id,organization_id,room_id,status,deleted_at) VALUES('${X(21)}','${ORG}','${ROOM}','ACTIVE',now()),
+      ('${X(22)}','${ORG}','${ROOM_GONE}','DRAFT',null),('${X(23)}','${ORG}','${OTHER_ROOM}','TERMINATED',null),('${X(24)}','${ORG}','${ROOM_IN_GONE_BUILDING}','ACTIVE',null);
+    INSERT INTO public.contract_customers(organization_id,contract_id,customer_id) VALUES('${ORG}','${X(21)}','${DELETED_CONTRACT}'),
+      ('${ORG}','${X(22)}','${DELETED_ROOM}'),('${ORG}','${X(23)}','${TERMINATED}'),('${ORG}','${X(24)}','${GONE_BUILDING_CUSTOMER}')`);
+  const value = async (input = {}) => (await read3('customers', list(input))).summary.withoutContract;
+  // The fixture overlay (one building): only customers with a live contract there, so none is without one.
+  assert.equal(await value(), 0, 'building-scoped set: every customer holds a contract in it');
+  await orgWide('customers.view');
+  // Toàn tổ chức: C (never), the soft-deleted contract, the contract of a soft-deleted building (outside every scope) —
+  // not B (other building, in scope), the TERMINATED one, the DRAFT in a soft-deleted room, A, the co-tenant.
+  const whole = await read3('customers', list());
+  assert.deepEqual([whole.summary.count, whole.summary.withoutContract], [8, 3]);
+  assert.deepEqual(domainResult('customers', whole, identity('customers.view'), list()).summary, whole.summary, 'the connector accepts it');
+  const page = await read3('customers', list({ limit: 3 }));
+  assert.deepEqual(page.summary, whole.summary, 'limit/cursor never narrow it');
+  assert.equal(await value({ query: 'khách' }), 3, 'a query narrows the set (v3 copies the name/phone search)');
+  assert.equal(await value({ query: 'đã thanh lý' }), 0);
+  assert.equal(await value({ buildingId: BUILDING }), 0, 'buildingId drops the org-wide branch');
+  // The contract scope no longer covers the customers' buildings: null — never a count that hides or reveals B's contract.
+  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='contracts.view'`);
+  assert.equal(await value(), null, 'contracts.view lost the other building');
+  assert.equal(await value({ buildingId: BUILDING }), 0, 'the filtered building is covered again');
+  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid,'${OTHER_BUILDING}'::uuid] WHERE permission='contracts.view'`);
+  await db.exec("UPDATE public.fixture_acl SET allowed=false WHERE permission='contracts.view'");
+  assert.equal(await value(), null, 'no contracts.view at all');
+  await db.exec("UPDATE public.fixture_acl SET allowed=true WHERE permission='contracts.view'");
+  assert.equal(await value(), 3, 'restored');
+  // Mutants of the statement (rolled back with the case): deleted contracts counted as contracts, deleted rooms dropping
+  // one, contracts of any building (outside the scope), no coverage check — each turns an expectation red.
+  const live = readFileSync(`supabase/migrations/${W2_WITHOUT_CONTRACT_FILE}.sql`, 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3\([\s\S]*?\$fn\$;/)[0];
+  const exists = ` AND contract.deleted_at IS NULL
+          JOIN public.rooms room ON room.id=contract.room_id
+          WHERE cc.customer_id=customer.id AND room.building_id=ANY(v_contract_scope))) without_contract`;
+  const mutate = (from, to) => { assert.equal(live.split(from).length, 2, `anchor: ${from}`); return live.replace(from, () => to); };
+  for (const [label, mutant, expected] of [
+    ['a soft-deleted contract counts', mutate(exists, exists.replace(' AND contract.deleted_at IS NULL', '')), 2],
+    ['a soft-deleted room drops its contract', mutate(exists, exists.replace('ON room.id=contract.room_id', 'ON room.id=contract.room_id AND room.deleted_at IS NULL')), 4],
+    ['contracts of any building', mutate(exists, exists.replace(' AND room.building_id=ANY(v_contract_scope)', '')), 2],
+  ]) {
+    await db.exec(mutant);
+    assert.equal(await value(), expected, `${label}: the mutant counts another set`);
+    await db.exec(live);
+  }
+  await db.exec(mutate('CASE WHEN buildings<@v_contract_scope THEN COALESCE(sum(s.without_contract),0)::bigint END', 'COALESCE(sum(s.without_contract),0)::bigint'));
+  await db.exec(`UPDATE public.fixture_acl SET building_ids=ARRAY['${BUILDING}'::uuid] WHERE permission='contracts.view'`);
+  assert.equal(await value(), 5, 'without the coverage check B and the TERMINATED one (contracts out of reach) count as without one');
+  await db.exec(live);
+  assert.equal(await value(), null, 'reviewed body restored');
 }));
 
 test('SQL customer_detail: the /customers/:id fields in full, never images, bank account or fingerprint; out of scope is null', { timeout: 90000 }, t => inCase(async env => {

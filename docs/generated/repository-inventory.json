@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1540,
   "soFileDocBangFs": 397,
-  "tongLoiGoi": 950,
-  "khongPhanLoaiDuoc": 428,
+  "tongLoiGoi": 956,
+  "khongPhanLoaiDuoc": 430,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -164,6 +164,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
+      "soGoi": 11,
+      "loai": {
+        "sql": 7
+      },
+      "khongPhanLoaiDuoc": 4
+    },
+    {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",
       "soGoi": 11,
       "loai": {},
@@ -185,14 +193,6 @@
         "sql": 9
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
-      "soGoi": 9,
-      "loai": {
-        "sql": 6
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "infra/hermes-runtime/runtime-contract.test.mjs",
@@ -224,6 +224,14 @@
         "ma-nguon": 3
       },
       "khongPhanLoaiDuoc": 6
+    },
+    {
+      "file": "infra/hermes-broker/domain-composition.test.mjs",
+      "soGoi": 8,
+      "loai": {
+        "sql": 7
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
@@ -284,9 +292,9 @@
       "file": "infra/hermes-broker/full-read-report.test.mjs",
       "soGoi": 6,
       "loai": {
-        "sql": 3
+        "sql": 2
       },
-      "khongPhanLoaiDuoc": 3
+      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",
@@ -344,14 +352,6 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 4
-    },
-    {
-      "file": "infra/hermes-broker/domain-composition.test.mjs",
-      "soGoi": 5,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/inherit-crm-sql.test.mjs",
@@ -959,6 +959,14 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "infra/hermes-broker/domain-v3.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/hermes-broker/metadata-read-sql.test.mjs",
@@ -1623,14 +1631,6 @@
     },
     {
       "file": "infra/hermes-broker/customer-options-v7.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/hermes-broker/domain-v3.test.mjs",
       "soGoi": 1,
       "loai": {
         "sql": 1

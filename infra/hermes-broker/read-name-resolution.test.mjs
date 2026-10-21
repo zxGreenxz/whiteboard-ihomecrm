@@ -13,7 +13,7 @@ import { W2 } from './wave2-registry.mjs';
 
 // B5d (21/10/2026): tên toà/phòng → ID ở connector. Không PostgreSQL ở đây (hai hàm danh bạ dưới RLS:
 // name-directory-sql.test.mjs); file này chứng minh hợp đồng phía connector: tách tên trước validator,
-// khớp bằng/chứa/hoa thường/mã, 0 và ≥2 toà ⇒ lỗi mang chi tiết, phòng trùng tên ở nhiều toà như web
+// khớp bằng/chứa/hoa thường/dấu/mã/tiền tố "Toà", 0 và ≥2 toà ⇒ lỗi mang chi tiết, phòng trùng tên ở nhiều toà như web
 // (≤5 gộp, hơn thì hỏi lại), cache theo contextVersion, kế hoạch lọc hàng nhiều trang, và đường đi thật
 // qua bound-user-operation + domain mount (JWT người hỏi, RPC danh bạ, p_input đã thay ID).
 const id = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -58,6 +58,35 @@ const setup = (overrides = {}) => {
     accessToken: 'bearer-fixture', identity: identityOf(KEYS), tokenDigest: DIGEST, signal, ...options });
   return { calls, clock, resolver, resolve };
 };
+
+// 21/10: tên toà không phân biệt dấu (NFD bỏ dấu kết hợp, đ/Đ → d, gộp khoảng trắng) và mô hình hay gửi "Toà <mã>":
+// "le van tho" không khớp "Lê Văn Thọ" thì bot trả lời "không có toà" — sai. Phòng giữ luật cũ (SQL khớp room.name có dấu).
+const ACCENTED = [{ id: A, name: 'Lê Văn Thọ', code: '44TL' }, { id: B, name: 'Đường Láng', code: null }, { id: C, name: 'Toà A', code: 'TA' },
+  { id: V, name: 'Lê Văn Thọ 2', code: null }];
+test('buildingName without accents: le van tho, DUONG, "Toà 44TL" match; exact still before contains; two matches and no match still refuse', async () => {
+  const ids = name => matchBuildings(ACCENTED, name).map(row => row.id);
+  assert.deepEqual(ids('le van tho'), [A], 'exact name without accents (not the contains match on "… 2")');
+  assert.deepEqual(ids('  LÊ   VĂN  thọ '), [A], 'case, accents and repeated spaces');
+  assert.deepEqual(ids('DUONG'), [B], 'Đ/đ as d, contains');
+  assert.deepEqual(ids('đường láng'), [B]);
+  assert.deepEqual([ids('Toà 44TL'), ids('toa 44tl'), ids('TOÀ  44tl')], [[A], [A], [A]], 'the model\'s "Toà" prefix is dropped to reach the code');
+  assert.deepEqual(ids('Toà A'), [C], 'a building really named "Toà A" still matches exactly first');
+  assert.deepEqual(ids('ta'), [C], 'code');
+  assert.deepEqual(ids('le van'), [A, V], 'contains: two buildings');
+  assert.deepEqual(ids('toa'), [C], 'a bare word "toa" is a needle, not a prefix');
+  assert.deepEqual(ids('Sài Gòn'), []);
+  const resolver = createReadNameResolver({ rpc: async (name, accessToken, args) => {
+    assert.equal(name, 'hermes_building_directory_v1');
+    return { buildings: ACCENTED.filter(row => args.p_building_ids.includes(row.id)) };
+  } });
+  const resolve = names => resolver.resolve({ operation: 'customers', input: domainInput('customers', {}), names, lane: 'legacy', accessToken: 'bearer-fixture',
+    identity: identityOf(KEYS, [A, B, C, V]), tokenDigest: DIGEST, signal });
+  assert.equal((await resolve({ buildingName: 'le van tho' })).input.buildingId, A);
+  assert.equal((await resolve({ buildingName: 'Toà 44TL' })).input.buildingId, A);
+  assert.equal((await resolve({ buildingName: 'DUONG' })).input.buildingId, B);
+  await assert.rejects(resolve({ buildingName: 'le van' }), unresolved(/^Nhiều toà khớp 'le van': Lê Văn Thọ, Lê Văn Thọ 2 — nêu rõ\.$/));
+  await assert.rejects(resolve({ buildingName: 'Sài Gòn' }), unresolved(/^Không thấy toà 'Sài Gòn' trong phạm vi được xem\.$/));
+});
 
 test('splitReadNames: names leave the arguments before the validator; blanks are absence; shape errors throw; nested params for crm_read_report', () => {
   assert.deepEqual(splitReadNames('customers', { query: '', buildingName: ' 950NK ', roomName: '   ', limit: 5 }), { args: { query: '', limit: 5 }, names: { buildingName: '950NK' } });
@@ -293,6 +322,14 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
         result: { organizationId: ORG, domain: 'customers', summary: { count: 52, byStatus: {}, sum: {} }, ...page, fetchedAt } });
     }
     if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
+    // crm_read_occupancy_report upcoming (v3 report, offset paging, no summary of its own): 15 synthetic contracts.
+    if (name === 'hermes_domain_read_v3' && args.p_domain === 'occupancy_report') {
+      const all = Array.from({ length: 15 }, (_, n) => ({ contractId: id(800 + n), contractNumber: `HD${n}`, buildingId: A, buildingName: 'Toà 950NK', roomId: id(850 + n),
+        roomName: `P${n}`, effectiveEndDate: '2026-11-30', daysRemaining: 40, rentPrice: '3000000', extensionApplied: false }));
+      const { offset, limit } = args.p_input, items = all.slice(offset, offset + limit);
+      return Response.json({ organizationId: ORG, domain: 'occupancy_report', fetchedAt, report: 'upcoming', source: 'crm.occupancy_upcoming_vacancy_v2', unavailable: null,
+        summary: null, items, offset, nextOffset: offset + items.length < all.length ? offset + items.length : null, sourceCapped: false });
+    }
     if (name === 'hermes_w2_read_v1') return Response.json({ organizationId: ORG, domain: 'report', fetchedAt, report: args.p_input.report, source: W2.reports[args.p_input.report].source,
       unavailable: null, summary: null, items: [], offset: 0, nextOffset: null, sourceCapped: false, fence: { buildings: [B], cashbooks: [], orgWide: false } });
     return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null });
@@ -314,8 +351,8 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(value.items.map(row => row.id), [id(602), id(650), id(651)]);
   assert.deepEqual(value.roomFilter, { roomIds: [R(1)], roomNames: ['London 5'], buildingIds: [A], scannedRows: 52, pages: 2, more: false, filteredOn: 'page' });
   assert.equal(value.nextCursor, null);
-  assert.deepEqual(value.summary, { count: 3, byStatus: null, sum: {} },
-    'every page read: the summary of the kept rows, never the SQL 52 of the building; their contract status is not in the rows (null)');
+  assert.deepEqual(value.summary, { count: 3, byStatus: null, sum: {}, withoutContract: null },
+    'every page read: the summary of the kept rows, never the SQL 52 of the building; their contract status/history is not in the rows (null)');
   // Asking for two: the first page already holds them ⇒ one read, cut, cursor = last kept row, more = true.
   calls.length = 0;
   const two = await run('customers', domainInput('customers', { limit: 2 }), { buildingName: '950nk', roomName: 'London 5' });
@@ -336,6 +373,15 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(calls[2].args.p_input, { report: 'room_detail', params: { roomId: R(3) }, limit: 20, offset: 0 });
   await assert.rejects(run('report', { report: 'room_detail', params: {} }, { buildingName: 'London Garden' }), unresolved(/^Báo cáo room_detail không lọc theo toà\.$/), 'a building alone fits no slot of room_detail');
   await assert.rejects(run('report', { report: 'room_detail', params: {} }), code('invalid_request'), 'no names: the validator still requires roomId');
+  // A complete offset-paged report without a summary of its own gets {count} after the validator; a page of it never does.
+  const upcoming = extra => run('occupancy_report', domainInput('occupancy_report', { report: 'upcoming', days: 60, ...extra }));
+  const whole = await upcoming({ limit: 50 });
+  assert.deepEqual([whole.items.length, whole.nextOffset, whole.summary], [15, null, { count: 15 }], 'full50e question 14: 15, not a count by the model');
+  const first = await upcoming({ limit: 10 }), last = await upcoming({ limit: 10, offset: 10 });
+  assert.deepEqual([first.items.length, first.nextOffset, first.summary], [10, 10, null], 'more to read: null');
+  assert.deepEqual([last.items.length, last.nextOffset, last.summary], [5, null, null], 'the last page alone is not the set');
+  // crm_read_report (wave 2) has the same shape: the complete empty run above counts 0.
+  assert.deepEqual((await run('report', { report: 'room_detail', params: {} }, { buildingName: 'London Garden', roomName: 'London 5' })).summary, { count: 0 });
   // crm_auth_context directory port: company name and the buildings of the widest read scope.
   calls.length = 0;
   const receipt = await domains.prepareContext(f.token, { organizationId: ORG, buildingIds: [A, B, C], contextVersion: VERSION }, { signal: f.signal });

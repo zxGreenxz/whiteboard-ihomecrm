@@ -9,6 +9,7 @@
 -- hermes_domain_customer_status_asset_created_revert_v1` gives; pin the reader in scripts/hermes-read-function-specs.mjs
 -- and the forward pins (live → the new file, 20261021044801 → FORWARD_SUPERSEDED); TEST lane, then production.
 -- Before hermes_domain_summary_revert_v1.sql (R2a) when both are needed: that artifact refuses this file's v1 body.
+-- After hermes_domain_without_contract_latest_count_revert_v1.sql (R2d) while R2d is live: $requires$ refuses its bodies.
 -- $requires$ refuses to run over other bodies; idempotent (CREATE OR REPLACE).
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -26,6 +27,10 @@ BEGIN
   IF NOT FOUND OR p.prosecdef OR p.provolatile<>'s' OR pg_get_userbyid(p.proowner)<>'postgres' OR p.prosqlbody IS NULL
     OR position('''summary''' IN pg_get_function_sqlbody(p.oid))=0 OR position('total_count' IN pg_get_function_sqlbody(p.oid))=0
     THEN RAISE EXCEPTION 'hermes_customer_status_asset_revert_unexpected_reader'; END IF;
+  -- R2d (20261021063452) live: its own revert (hermes_domain_without_contract_latest_count_revert_v1.sql) runs first.
+  IF position('withoutContract' IN pg_get_function_sqlbody(p.oid))>0
+    OR position('latestCount' IN (SELECT q.prosrc FROM pg_proc q WHERE q.oid=to_regprocedure('public.hermes_domain_read_v1(jsonb,text,jsonb)')))>0
+    THEN RAISE EXCEPTION 'hermes_customer_status_asset_revert_requires_r2d_revert'; END IF;
 END $requires$;
 
 -- The 20261020233934 bodies, verbatim.

@@ -6,6 +6,7 @@
 -- hermes_w2_customer_status_summary_revert_v1` gives — the hermes_w2_ prefix is required (wave-2 fence, last definition
 -- of hermes_domain_read_v3 in the foundation band); add it to the w2MigrationPaths expectation (wave2-foundation.test.mjs)
 -- and the last-definition file of full-read-report.test.mjs.
+-- After hermes_w2_customers_without_contract_revert_v1.sql (R2d) while R2d is live: $requires$ refuses its body.
 -- $requires$ refuses to run over other v3 bodies; idempotent (CREATE OR REPLACE).
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -18,6 +19,8 @@ BEGIN
   IF NOT FOUND OR NOT p.prosecdef OR p.provolatile<>'v' OR pg_get_userbyid(p.proowner)<>'postgres'
     OR position('app_private.hermes_w2_gate_v1(p_binding,p_domain,p_input)' IN p.prosrc)=0 OR (length(p.prosrc)-length(replace(p.prosrc,'''summary'',v_summary','')))/length('''summary'',v_summary')<>2
     THEN RAISE EXCEPTION 'hermes_w2_customer_status_revert_unexpected_v3'; END IF;
+  -- R2d (20261021063453) live: its own wave-2 revert (hermes_w2_customers_without_contract_revert_v1.sql) runs first.
+  IF position('withoutContract' IN p.prosrc)>0 THEN RAISE EXCEPTION 'hermes_w2_customer_status_revert_requires_r2d_revert'; END IF;
 END $requires$;
 
 -- The 20261021004841 body, verbatim.

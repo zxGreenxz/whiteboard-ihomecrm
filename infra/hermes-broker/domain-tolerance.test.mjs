@@ -10,7 +10,9 @@ import { REPORTS } from './full-read-contract.mjs';
 // bản phát hành). Production đã áp đủ ba migration ⇒ `tolerant` đã gỡ ở mọi miền (21/10): dòng thiếu buildingName,
 // roomName hay buildingCode nay bị từ chối như thiếu bất kỳ khoá đã khai nào; cơ chế `tolerant` trong define()/
 // domainResult vẫn còn cho lần đổi khuôn sau. File này khoá: không miền nào khai `tolerant`, khoá B5c bắt buộc có mặt,
-// khoá lạ/sai kiểu vẫn bị từ chối, đường nhanh (domainFastResult) cùng luật.
+// khoá lạ/sai kiểu vẫn bị từ chối, đường nhanh (domainFastResult) cùng luật. Bản R2d (21/10, sau khi production áp đủ
+// bốn migration R2c): đóng cửa sổ R2c (assets.createdAt, byType.*.largest, assets.latest) và mở cửa sổ một bản cho hai khoá
+// summary mới customers.withoutContract, assets.latestCount.
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(1), BUILDING = id(2), ROOM = id(3), USER = id(4), CONNECTION = id(5), ITEM = id(10);
 // Dòng ĐẦY ĐỦ (sau ba migration) của từng miền; dữ liệu tổng hợp.
@@ -49,9 +51,9 @@ const envelope = (operation, row) => ({ ...bare(operation, row), summary: summar
 const identity = operation => ({ row: { id: CONNECTION, organizationId: ORG, userId: USER },
   scopesByPermission: { [DOMAIN_READS[operation].permission]: { buildingIds: [BUILDING], cashbookIds: [] } } });
 
-test('exact shape: the B5c keys are declared fields with no window; only assets.createdAt (R2c part 2) is tolerant, for this release', () => {
+test('exact shape: the B5c keys and assets.createdAt are declared fields with no window; no domain declares tolerant keys', () => {
   const declared = Object.fromEntries(Object.entries(DOMAIN_READS).filter(([, definition]) => definition.tolerant?.length).map(([key, definition]) => [key, [...definition.tolerant]]));
-  assert.deepEqual(declared, { assets: ['createdAt'] }, 'B5c window closed 21/10; R2c part 2 (20261021044801) opens assets.createdAt — next release: {}');
+  assert.deepEqual(declared, {}, 'B5c window closed 21/10; the R2c part 2 window (assets.createdAt, 20261021044801) closed by the R2d connector');
   for (const operation of Object.keys(DOMAIN_READS)) {
     const { tolerant } = DOMAIN_READS[operation];
     if (tolerant !== undefined) assert.ok(Array.isArray(tolerant) && Object.isFrozen(tolerant) && tolerant.every(key => Object.hasOwn(DOMAIN_READS[operation].fields, key)),
@@ -108,14 +110,11 @@ test('R2a window closed: summary is required on all 13 list tools; no report kee
   }
 });
 
-// R2c (21/10/2026): cửa sổ phát hành MỚI, chỉ cho khoá con byType.<INCOME|EXPENSE>.largest của income_expenses
-// (20261021035022 lên SAU connector): byType của SQL R2a (không largest ở MỌI phần tử) vẫn qua; có largest thì phải có ở
-// mọi phần tử và đúng kiểu; một phần tử có, phần tử kia không ⇒ từ chối. Bản kế (sau khi production áp 20261021035022):
-// DOMAIN_SUMMARY_ENTRY_TOLERANT = {} — largest bắt buộc — và đổi test này theo.
-test('R2c release window: byType entries of income_expenses may lack `largest` in every entry, for this release only; mixed or mistyped is refused', () => {
-  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT, { income_expenses: { byType: ['largest'] } }, 'next release: {}');
-  assert.ok(Object.isFrozen(DOMAIN_SUMMARY_ENTRY_TOLERANT) && Object.isFrozen(DOMAIN_SUMMARY_ENTRY_TOLERANT.income_expenses) &&
-    Object.isFrozen(DOMAIN_SUMMARY_ENTRY_TOLERANT.income_expenses.byType));
+// R2c (21/10/2026): cửa sổ phát hành của khoá con byType.<INCOME|EXPENSE>.largest (income_expenses, 20261021035022) ĐÃ
+// ĐÓNG ở bản R2d — production áp 21/10: largest bắt buộc ở mọi phần tử byType; byType kiểu R2a (không largest) bị từ chối.
+test('R2c window closed: byType entries of income_expenses must name their largest voucher; the R2a entries, mixed or mistyped are refused', () => {
+  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT, {}, 'closed by the R2d connector');
+  assert.ok(Object.isFrozen(DOMAIN_SUMMARY_ENTRY_TOLERANT));
   const operation = 'income_expenses', who = identity(operation), input = domainInput(operation, {});
   const income = { ...ROWS.income_expenses, id: id(12), code: 'PT1', type: 'INCOME', name: 'Thu', totalAmount: '5' };
   const rows = [ROWS.income_expenses, income], summary = summarizeRows(operation, rows);
@@ -123,7 +122,7 @@ test('R2c release window: byType entries of income_expenses may lack `largest` i
   assert.deepEqual(Object.keys(summary.byType).sort(), ['EXPENSE', 'INCOME']);
   assert.deepEqual(domainResult(operation, value(summary), who, input).summary, summary, 'R2c SQL: largest in every entry');
   const r2a = { ...summary, byType: Object.fromEntries(Object.entries(summary.byType).map(([type, { largest, ...rest }]) => [type, rest])) };
-  assert.deepEqual(domainResult(operation, value(r2a), who, input).summary, r2a, 'R2a SQL (window): no largest in any entry');
+  assert.throws(() => domainResult(operation, value(r2a), who, input), 'R2a SQL (no largest in any entry): refused since the window closed');
   assert.throws(() => domainResult(operation, value({ ...r2a, byType: { ...r2a.byType, INCOME: summary.byType.INCOME } }), who, input), 'mixed: one entry only');
   assert.throws(() => domainResult(operation, value({ ...summary, byType: { ...summary.byType, EXPENSE: { ...summary.byType.EXPENSE, largest: 7 } } }), who, input), 'largest not a voucher');
   assert.throws(() => domainResult(operation, value({ ...summary, byType: { ...summary.byType, EXPENSE: { ...summary.byType.EXPENSE, top: summary.byType.EXPENSE.largest } } }), who, input), 'unknown entry key');
@@ -131,22 +130,20 @@ test('R2c release window: byType entries of income_expenses may lack `largest` i
   assert.equal(FAST_READ_OPERATIONS.includes(operation), false);
 });
 
-// R2c phần 2 (21/10/2026): cửa sổ phát hành của assets — dòng có createdAt và summary có latest đến cùng 20261021044801
-// (lên SAU connector). Bản này nhận SQL trước đó (dòng không createdAt VÀ summary không latest) và SQL mới (cả hai); trộn
-// (một nửa) ⇒ từ chối. customers.byStatus mới không cần cửa sổ: {} của SQL trước vẫn hợp lệ. Bản kế (sau khi production
-// áp): DOMAIN_READS.assets.tolerant = [] và DOMAIN_SUMMARY_KEY_TOLERANT = {} — đổi test này theo.
-test('R2c part 2 release window: assets rows without createdAt with a summary without latest pass for this release; half of one is refused', () => {
-  assert.deepEqual(DOMAIN_SUMMARY_KEY_TOLERANT, { assets: ['latest'] }, 'next release: {}');
-  assert.ok(Object.isFrozen(DOMAIN_SUMMARY_KEY_TOLERANT) && Object.isFrozen(DOMAIN_SUMMARY_KEY_TOLERANT.assets));
+// R2c phần 2 (21/10/2026): cửa sổ phát hành của assets (dòng createdAt + summary.latest, 20261021044801) ĐÃ ĐÓNG ở bản R2d
+// — production áp 21/10: dòng thiếu createdAt hay summary thiếu latest đều bị từ chối. customers.byStatus không cần cửa sổ:
+// {} của SQL trước vẫn hợp lệ.
+test('R2c part 2 window closed: assets rows need createdAt and the summary needs latest; customers keep the tabs, {} or null', () => {
+  assert.equal(Object.hasOwn(DOMAIN_SUMMARY_KEY_TOLERANT, 'assets') && DOMAIN_SUMMARY_KEY_TOLERANT.assets.includes('latest'), false, 'assets.latest has no window');
   const operation = 'assets', who = identity(operation), input = domainInput(operation, {});
   const second = { ...ROWS.assets, id: id(12), name: 'Tài sản 2', createdAt: '2026-10-25' }, rows = [ROWS.assets, second];
   const value = (items, summary) => ({ ...bare(operation, items[0]), items, summary });
-  const fresh = summarizeRows(operation, rows), old = rows.map(row => without(row, ['createdAt'])), oldSummary = summarizeRows(operation, old);
-  assert.deepEqual([fresh.latest.id, Object.hasOwn(oldSummary, 'latest')], [id(12), false], 'summarizeRows mirrors both SQL versions');
+  const fresh = summarizeRows(operation, rows), old = rows.map(row => without(row, ['createdAt'])), withoutLatest = without(fresh, ['latest']);
+  assert.equal(fresh.latest.id, id(12));
   assert.deepEqual(domainResult(operation, value(rows, fresh), who, input).summary, fresh, 'SQL 20261021044801: createdAt and latest');
-  assert.deepEqual(domainResult(operation, value(old, oldSummary), who, input).summary, oldSummary, 'SQL before it (window): neither');
-  for (const [label, items, summary] of [['rows dated, summary without latest', rows, oldSummary], ['rows not dated, summary with latest', old, fresh],
-    ['one row dated, one not', [ROWS.assets, old[1]], fresh], ['latest of the wrong shape', rows, { ...fresh, latest: { ...fresh.latest, quantity: '1' } }]])
+  for (const [label, items, summary] of [['SQL before it: neither', old, withoutLatest], ['rows dated, summary without latest', rows, withoutLatest],
+    ['rows not dated, summary with latest', old, fresh], ['one row dated, one not', [ROWS.assets, old[1]], fresh],
+    ['latest of the wrong shape', rows, { ...fresh, latest: { ...fresh.latest, quantity: '1' } }]])
     assert.throws(() => domainResult(operation, value(items, summary), who, input), label);
   // customers: the contract-status tabs or null (fast lane with a query); never another key, never above count.
   const customers = 'customers', base = summarizeRows(customers, [ROWS.customers]);
@@ -154,6 +151,31 @@ test('R2c part 2 release window: assets rows without createdAt with a summary wi
     assert.deepEqual(domainResult(customers, { ...bare(customers, ROWS.customers), summary: { ...base, byStatus } }, identity(customers), domainInput(customers, {})).summary.byStatus, byStatus);
   for (const byStatus of [{ ACTIVE: 1 }, { RENTING: 1, WALK_IN: 1 }, { RENTING: -1 }, []])
     assert.throws(() => domainResult(customers, { ...bare(customers, ROWS.customers), summary: { ...base, byStatus } }, identity(customers), domainInput(customers, {})), JSON.stringify(byStatus));
+});
+
+// R2d (21/10/2026): cửa sổ phát hành MỚI cho hai khoá summary cấp một — customers.withoutContract (20261021063452 đường
+// nhanh, 20261021063453 v3) và assets.latestCount (20261021063452) — lên SAU connector này. Bản này nhận SQL R2c (vắng) và
+// SQL R2d (có mặt, đúng kiểu, đúng bất biến); khoá lạ, sai kiểu vẫn bị từ chối. Bản kế (sau khi production áp hai migration):
+// DOMAIN_SUMMARY_KEY_TOLERANT = {} — hai khoá bắt buộc — và đổi test này theo.
+test('R2d release window: customers.withoutContract and assets.latestCount may be absent this release; present means checked', () => {
+  assert.deepEqual(DOMAIN_SUMMARY_KEY_TOLERANT, { customers: ['withoutContract'], assets: ['latestCount'] }, 'next release: {}');
+  assert.ok(Object.isFrozen(DOMAIN_SUMMARY_KEY_TOLERANT) && Object.values(DOMAIN_SUMMARY_KEY_TOLERANT).every(Object.isFrozen));
+  for (const [operation, key, fresh] of [['customers', 'withoutContract', 0], ['assets', 'latestCount', 1]]) {
+    const who = identity(operation), input = domainInput(operation, {}), base = summarizeRows(operation, [ROWS[operation]]);
+    const value = summary => ({ ...bare(operation, ROWS[operation]), summary });
+    assert.ok(Object.hasOwn(DOMAIN_SUMMARIES[operation].fields, key), `${operation}.${key} is a declared summary key`);
+    assert.deepEqual(domainResult(operation, value({ ...base, [key]: fresh }), who, input).summary[key], fresh, `${operation}: R2d SQL`);
+    assert.equal(domainResult(operation, value({ ...base, [key]: null }), who, input).summary[key], null, `${operation}: unknown (null)`);
+    assert.equal(Object.hasOwn(domainResult(operation, value(without(base, [key])), who, input).summary, key), false, `${operation}: R2c SQL (window)`);
+    for (const bad of ['1', -1, 2.5, true, [], {}])
+      assert.throws(() => domainResult(operation, value({ ...base, [key]: bad }), who, input), `${operation}.${key} = ${JSON.stringify(bad)}`);
+    assert.throws(() => domainResult(operation, value({ ...base, [key]: fresh, [`${key}V2`]: fresh }), who, input), `${operation}: unknown summary key`);
+  }
+  // The invariants hold in the window too: the one customer on the page holds a contract; one asset ⇒ a batch of one.
+  assert.throws(() => domainResult('customers', { ...bare('customers', ROWS.customers), summary: { ...summarizeRows('customers', [ROWS.customers]), withoutContract: 1 } },
+    identity('customers'), domainInput('customers', {})), 'the page row with a contract cannot be without one');
+  assert.throws(() => domainResult('assets', { ...bare('assets', ROWS.assets), summary: { ...summarizeRows('assets', [ROWS.assets]), latestCount: 0 } },
+    identity('assets'), domainInput('assets', {})), 'a latest asset with an empty batch');
 });
 
 test('exact shape on the fast lane: domainFastResult applies the same row rule', () => {

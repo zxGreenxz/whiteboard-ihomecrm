@@ -31,6 +31,9 @@ export const W2_SUMMARY_PATH = `supabase/migrations/${W2_SUMMARY_FILE}.sql`;
 // R2c part 2 (wave-2 band): v3 customers summary byStatus = contract status (customers.status_v2).
 export const W2_CUSTOMER_STATUS_FILE = '20261021044814_hermes_w2_customer_status_summary_v1';
 export const W2_CUSTOMER_STATUS_PATH = `supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`;
+// R2d (wave-2 band): v3 customers summary withoutContract (no contract in the connection's contract scope).
+export const W2_WITHOUT_CONTRACT_FILE = '20261021063453_hermes_w2_customers_without_contract_v1';
+export const W2_WITHOUT_CONTRACT_PATH = `supabase/migrations/${W2_WITHOUT_CONTRACT_FILE}.sql`;
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -163,6 +166,8 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   }
   // R2c part 2 (20261021044814, wave-2 band): v3 customers count the contract status. Same CREATE-only pattern, twice.
   if (owner !== null) { const v3 = definition(migrationSql(W2_CUSTOMER_STATUS_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // R2d (20261021063453, wave-2 band): v3 customers count the customers without a contract. Same pattern, twice.
+  if (owner !== null) { const v3 = definition(migrationSql(W2_WITHOUT_CONTRACT_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);
