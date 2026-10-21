@@ -19,23 +19,25 @@ import {
   FileText,
   ChevronRight,
   Trash2,
+  Settings,
 } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/dashboardMobile.css";
 import {
-  useNotifications,
   useMarkAsRead,
   useMarkAllAsRead,
   useDeleteNotification,
   type Notification,
   type NotificationType,
 } from "@/hooks/useNotifications";
+import { useNotificationInbox, type InboxTab } from "@/hooks/useNotificationPages";
 import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { usePersistedState } from "@/hooks/usePersistedState";
-import { resolveNotificationUrl } from "@/lib/notificationRoutes";
+import { dichThongBao, nhanHoThongBao } from "@/lib/notifications/notificationTarget";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import type { PermsLike } from "@/lib/permissionPages";
+import { friendlyError } from "@/lib/friendlyError";
 
 type NotifMeta = { label: string; Icon: typeof Bell; c: string; bg: string; line: string };
 
@@ -54,6 +56,12 @@ const NT_META: Record<string, NotifMeta> = {
   CUSTOM: { label: "Thông báo", Icon: Bell, c: "#52525b", bg: "#f4f4f5", line: "#e4e4e7" },
 };
 const metaOf = (t: NotificationType | string): NotifMeta => NT_META[t] || NT_META.CUSTOM;
+/** Như metaOf, nhưng dòng do server sinh mang nhãn HỌ (nhắc hoá đơn/HĐ/cọc, trả phòng). */
+const metaOfRow = (n: Notification): NotifMeta => {
+  const meta = metaOf(n.type);
+  const ho = nhanHoThongBao(n);
+  return ho ? { ...meta, label: ho } : meta;
+};
 
 const TYPE_CHIPS: { v: NotificationType | "all"; label: string }[] = [
   { v: "all", label: "Tất cả" },
@@ -75,20 +83,16 @@ const linkOf = (
   n: Notification,
   perms: PermsLike,
 ): { Icon: typeof Bell; to: string; label: string } | null => {
-  // metadata.url ĐỨNG TRƯỚC mọi nhánh id — nơi phát sự kiện mới biết đích đúng.
-  const url = resolveNotificationUrl(n.metadata?.url, perms);
-  if (url) {
-    if (url.startsWith("/invoices/")) return { Icon: Receipt, to: url, label: "Xem hóa đơn" };
-    if (url.startsWith("/contracts/")) return { Icon: FileText, to: url, label: "Xem hợp đồng" };
-    if (url.startsWith("/tasks")) return { Icon: ClipboardCheck, to: url, label: "Xem công việc" };
-    if (url.startsWith("/finance/salary")) return { Icon: Sparkles, to: url, label: "Xem bảng lương" };
-    return { Icon: ChevronRight, to: url, label: "Xem chi tiết" };
-  }
-  if (n.invoice_id) return { Icon: Receipt, to: `/invoices/${n.invoice_id}`, label: "Xem hóa đơn" };
-  if (n.contract_id) return { Icon: FileText, to: `/contracts/${n.contract_id}`, label: "Xem hợp đồng" };
-  // Nhánh issue_id ĐÃ XOÁ: route /issues/:id không tồn tại trong App.tsx — nút cũ
-  // dẫn thẳng vào trang trắng.
-  return null;
+  // metadata.url ĐỨNG TRƯỚC mọi nhánh id — nơi phát sự kiện mới biết đích đúng; đường
+  // suy từ invoice_id/contract_id cũng qua allow-list + kiểm quyền (dichThongBao).
+  // Nhánh issue_id ĐÃ XOÁ: route /issues/:id không tồn tại — nút cũ dẫn vào trang trắng.
+  const url = dichThongBao(n, perms);
+  if (!url) return null;
+  if (url.startsWith("/invoices/")) return { Icon: Receipt, to: url, label: "Xem hóa đơn" };
+  if (url.startsWith("/contracts/")) return { Icon: FileText, to: url, label: "Xem hợp đồng" };
+  if (url.startsWith("/tasks")) return { Icon: ClipboardCheck, to: url, label: "Xem công việc" };
+  if (url.startsWith("/finance/salary")) return { Icon: Sparkles, to: url, label: "Xem bảng lương" };
+  return { Icon: ChevronRight, to: url, label: "Xem chi tiết" };
 };
 
 const relTime = (iso: string) => {
@@ -110,29 +114,25 @@ const relTime = (iso: string) => {
  */
 export default function NotificationsMobilePage() {
   const navigate = useNavigate();
-  const notificationsQuery = useNotifications();
-  const { data: list = [] } = notificationsQuery;
+  const [tab, setTab] = usePersistedState<InboxTab>("flt:notifications-mb:tab", "all");
+  const [type, setType] = usePersistedState<NotificationType | "all">("flt:notifications-mb:type", "all");
+  // Giữ BẢN CHỤP dòng đang xem: mở chi tiết ở tab "Chưa đọc" đánh dấu đọc ⇒ dòng rời
+  // danh sách (lọc ở server) — tra theo id thì màn chi tiết tự đóng ngay.
+  const [sel, setSel] = useState<Notification | null>(null);
+
+  // 200 dòng parity + "Xem thêm" keyset; tab "Chưa đọc" lọc ở server; số chưa đọc là
+  // count exact (cùng nguồn với chuông) — xem useNotificationInbox.
+  const inbox = useNotificationInbox(tab);
+  const notificationsQuery = inbox.query;
+  const list = inbox.rows;
+  const unread = inbox.unreadCount;
   // Allow-list URL cần quyền của người bấm (route bị chặn → hạ về /my-day).
   const { data: perms } = useMyPermissions();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
   const deleteNotification = useDeleteNotification();
 
-  const [tab, setTab] = usePersistedState<"all" | "unread">("flt:notifications-mb:tab", "all");
-  const [type, setType] = usePersistedState<NotificationType | "all">("flt:notifications-mb:type", "all");
-  const [sel, setSel] = useState<string | null>(null);
-
-  const unread = useMemo(() => list.filter((n) => n.status !== "READ").length, [list]);
-
-  const rows = useMemo(
-    () =>
-      list.filter((n) => {
-        if (tab === "unread" && n.status === "READ") return false;
-        if (type !== "all" && n.type !== type) return false;
-        return true;
-      }),
-    [list, tab, type],
-  );
+  const rows = useMemo(() => list.filter((n) => type === "all" || n.type === type), [list, type]);
 
   // Đếm theo loại: chip nào 0 dòng thì ẩn (không xoá khỏi TYPE_CHIPS — có dữ liệu là
   // tự hiện lại). Màn hình điện thoại chỉ đủ chỗ cho vài chip, bày 12 chip rỗng là nhiễu.
@@ -162,26 +162,32 @@ export default function NotificationsMobilePage() {
     if (list.length > 0 && (typeCounts.get(type) ?? 0) === 0) setType("all");
   }, [type, setType, list.length, typeCounts]);
 
-  const current = sel ? list.find((n) => n.id === sel) : undefined;
+  // Bản mới nhất nếu còn trong danh sách đã tải, không thì bản chụp lúc mở.
+  const current = sel ? list.find((n) => n.id === sel.id) ?? sel : undefined;
 
   const openDetail = (n: Notification) => {
-    if (n.status !== "READ") markAsRead.mutate(n.id);
-    setSel(n.id);
+    if (n.status === "PENDING") markAsRead.mutate(n.id);
+    setSel(n);
   };
 
   // Chưa có dữ liệu đáng tin (đang tải lần đầu hoặc đọc lỗi): khung màn (nút về, tiêu đề, tab,
   // bộ lọc) vẫn hiện nhưng không hiện số đếm / nút "Đã đọc"; số đếm là vạch xám khi đang tải.
   // Danh sách nằm trong QueryRegion bên dưới (khối xám / thẻ lỗi + Tải lại) — chủ chốt 02/10/2026.
   const chuaCoDuLieu = notificationsQuery.data === undefined || notificationsQuery.isError;
-  const demCho = notificationsQuery.isLoading ? (
+  // Số chưa đọc có nguồn riêng (count exact): chưa có số thì không đoán.
+  const chuaCoSoDem = unread === undefined;
+  const demCho = notificationsQuery.isLoading || inbox.countQuery.isLoading ? (
     <span className="ld-appear inline-flex align-middle" aria-hidden="true">
       <SkeletonBar className="h-2.5" style={{ width: "0.9rem" }} />
     </span>
   ) : null;
+  const loiTaiThem = inbox.loiTaiThem
+    ? friendlyError(inbox.loiTaiThem, "Chưa tải thêm được thông báo cũ hơn", { operation: "xem thêm thông báo" })
+    : null;
 
   // ---- Chi tiết bản tin ----
   if (current) {
-    const meta = metaOf(current.type);
+    const meta = metaOfRow(current);
     const HeroIcon = meta.Icon;
     const link = linkOf(current, perms);
     const paragraphs = (current.content || "").split("\n");
@@ -259,15 +265,15 @@ export default function NotificationsMobilePage() {
             <div className="mtitle">
               <h1>Bản tin</h1>
               <p>
-                {chuaCoDuLieu
-                  ? notificationsQuery.isLoading
+                {chuaCoSoDem
+                  ? inbox.countQuery.isLoading
                     ? <span className="ld-appear block py-0.5" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: "8rem" }} /></span>
                     : null
                   : unread > 0 ? `${unread} thông báo chưa đọc` : "Đã đọc hết thông báo"}
               </p>
             </div>
-            {unread > 0 && !chuaCoDuLieu && (
-              <div className="mtop-act">
+            <div className="mtop-act">
+              {!chuaCoSoDem && unread > 0 && (
                 <button
                   className="mtop-btn ghost"
                   onClick={() => markAllAsRead.mutate()}
@@ -276,19 +282,28 @@ export default function NotificationsMobilePage() {
                   <CheckCheck size={15} />
                   Đã đọc
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                className="mtop-btn ghost"
+                aria-label="Cài đặt thông báo"
+                title="Cài đặt thông báo"
+                onClick={() => navigate("/account/notifications")}
+              >
+                <Settings size={15} />
+              </button>
+            </div>
           </div>
 
           <div className="mbody">
             <div className="ntseg">
               <button className={"ntseg-b" + (tab === "all" ? " on" : "")} onClick={() => setTab("all")}>
                 Tất cả
-                <span className="ntseg-n">{chuaCoDuLieu ? demCho : list.length}</span>
+                {/* Số dòng ĐÃ TẢI; "+" khi còn trang để xem thêm. */}
+                {tab === "all" && <span className="ntseg-n">{chuaCoDuLieu ? demCho : `${list.length}${inbox.coThem ? "+" : ""}`}</span>}
               </button>
               <button className={"ntseg-b" + (tab === "unread" ? " on" : "")} onClick={() => setTab("unread")}>
                 Chưa đọc
-                <span className="ntseg-n">{chuaCoDuLieu ? demCho : unread}</span>
+                <span className="ntseg-n">{chuaCoSoDem ? demCho : unread}</span>
               </button>
             </div>
 
@@ -305,7 +320,7 @@ export default function NotificationsMobilePage() {
             </div>
 
             <QueryRegion label="Danh sách thông báo" queries={[notificationsQuery]} skeleton="list" rows={5}>
-            {rows.length === 0 ? (
+            {rows.length === 0 && !inbox.coThem ? (
               <div className="stub" style={{ padding: "52px 24px" }}>
                 <Bell size={26} style={{ color: "var(--ink-faint)" }} />
                 <p style={{ fontWeight: 700, color: "var(--ink-2)" }}>Không có thông báo</p>
@@ -314,9 +329,9 @@ export default function NotificationsMobilePage() {
             ) : (
               <div className="rowlist">
                 {rows.map((n) => {
-                  const meta = metaOf(n.type);
+                  const meta = metaOfRow(n);
                   const Ico = meta.Icon;
-                  const un = n.status !== "READ";
+                  const un = n.status === "PENDING";
                   return (
                     <div className={"ntcard" + (un ? " unread" : "")} key={n.id} onClick={() => openDetail(n)}>
                       <span className="ntcard-ic" style={{ color: meta.c, background: meta.bg }}>
@@ -349,6 +364,29 @@ export default function NotificationsMobilePage() {
                     </div>
                   );
                 })}
+                {inbox.dangTaiThem && (
+                  <div className="ld-appear" aria-hidden="true">
+                    <SkeletonBar className="h-14" style={{ width: "100%" }} />
+                  </div>
+                )}
+                {loiTaiThem && (
+                  <div role="alert" className="stub" style={{ padding: "16px 12px" }}>
+                    <p style={{ fontWeight: 700, color: "var(--ink-2)" }}>{loiTaiThem.title}</p>
+                    <p>{loiTaiThem.description}</p>
+                    <button className="mtop-btn ghost" onClick={inbox.thuLaiTaiThem}>Tải lại</button>
+                  </div>
+                )}
+                {inbox.coThem && !loiTaiThem && (
+                  <button
+                    className="mtop-btn ghost"
+                    style={{ alignSelf: "center" }}
+                    onClick={inbox.taiThem}
+                    disabled={inbox.dangTaiThem}
+                    aria-busy={inbox.dangTaiThem}
+                  >
+                    Xem thêm
+                  </button>
+                )}
               </div>
             )}
             </QueryRegion>

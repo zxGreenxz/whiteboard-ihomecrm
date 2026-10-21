@@ -49,7 +49,7 @@ Domain này gồm 3 nhóm chức năng tách biệt về dữ liệu nhưng cùn
   + cột template; `notification_logs` chưa được ghi từ code app (chỉ có schema
   + RLS đọc).
 - **Auto-sinh thông báo chạy ở client và scope theo OWNER**, không phải cron DB:
-  hook [useScheduledNotifications](src/hooks/useScheduledNotifications.ts) gọi
+  (**ĐÃ GỠ 21/10/2026** — nhắc chuyển lên máy chủ, plan realtime + thông báo mục B5) hook `useScheduledNotifications` gọi
   `runScheduledNotifications(userId)` khi mount Dashboard và lặp mỗi 6 giờ.
   Mọi query quét đều `.eq('user_id', userId)` của **user đang đăng nhập** →
   staff mở app sẽ không match HĐ/hoá đơn của employer (user_id = owner), tức
@@ -139,7 +139,7 @@ Cột chủ chốt:
 - `id`, `created_at` — chuẩn.
 
 Hiện trạng: **chưa có UI quản lý template** trong mã front-end; mọi nội dung
-IN_APP auto-sinh được hard-code trong [notificationScheduler.ts](src/lib/notificationScheduler.ts)
+IN_APP auto-sinh được hard-code trong `notificationScheduler.ts` (đã gỡ 21/10/2026)
 và [invoiceHelpers.ts](src/lib/invoiceHelpers.ts) (helper `getNotificationContent()`
 ở [useNotifications.ts](src/hooks/useNotifications.ts) dòng 285–335 cũng sinh
 nội dung mẫu nhưng hiện là dead code — xem §6), **không** đọc từ bảng này.
@@ -332,12 +332,14 @@ trước. Cổng `lifecycle_gate_v2` đọc đúng khoá sở thích của họ 
 
 ### 4.2a. Bộ sinh thông báo hiện hữu ở Dashboard — runScheduledNotifications
 
-> Đang thay bằng nhắc server (§4.2, đợt 21/10/2026): từ `20261021171249` trigger `a00_notifications_guard` bỏ êm mọi
-> INSERT của bộ nhắc này (4 loại nhắc thiếu `metadata.event`) và dòng cũ còn PENDING được chuyển `CANCELLED`; gói client
-> gỡ hook. Phần dưới mô tả bản web cũ.
+> **ĐÃ GỠ 21/10/2026.** Cả bộ sinh này (`notificationScheduler.ts`, `useScheduledNotifications.ts`) đã bị xoá khỏi
+> mã nguồn; nhắc hoá đơn/HĐ/cọc do máy chủ sinh (§4.2, plan `docs/plans/2026-10-21-realtime-thong-bao-toi-uu.md`, mục B5).
+> Từ `20261021171249` trigger `a00_notifications_guard` còn bỏ êm mọi INSERT của 4 loại nhắc thiếu `metadata.event`
+> (bản web cũ chưa promote) và dòng cũ còn PENDING được chuyển `CANCELLED`. Phần dưới mô tả hành vi CŨ để đối chiếu
+> dữ liệu lịch sử.
 
-Vị trí: [notificationScheduler.ts](src/lib/notificationScheduler.ts). Gọi từ
-[useScheduledNotifications](src/hooks/useScheduledNotifications.ts) — chạy **ở
+Vị trí (cũ): `notificationScheduler.ts`. Gọi từ
+`useScheduledNotifications` — chạy **ở
 client** khi Dashboard mount + lặp **mỗi 6 giờ** (`setInterval`). Chạy song song
 4 kiểm tra (`Promise.all`). **Mọi hàm đều quét dữ liệu với `.eq('user_id', userId)`**
 (userId = user đang đăng nhập) → chỉ sinh thông báo khi chính owner mở app:

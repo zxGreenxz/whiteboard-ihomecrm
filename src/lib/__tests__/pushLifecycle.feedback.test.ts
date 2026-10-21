@@ -9,7 +9,7 @@ vi.mock('@/integrations/supabase/client',()=>({supabase:{from:()=>{
  single:()=>execute(),maybeSingle:()=>execute(),then:(resolve:(value:unknown)=>unknown,reject:(error:unknown)=>unknown)=>Promise.resolve(execute()).then(resolve,reject)};
  return q;
 },functions:{invoke:io.invoke}}}));
-import { enablePush,disablePush,registerServiceWorker,getExistingSubscription,isSubscribed,sendTestPush,VAPID_PUBLIC_KEY } from '../push';
+import { enablePush,disablePush,registerServiceWorker,getExistingSubscription,isSubscribed,sendTestPush,VAPID_PUBLIC_KEY,ensurePushSubscription,disablePushForLogout } from '../push';
 import {FinancialWorkflowError} from '../financialWorkflowError';
 let current:PushSubscription|null;
 let registration:ServiceWorkerRegistration;
@@ -129,5 +129,105 @@ describe('push lifecycle truthful receipts',()=>{
   const failure={code:'EDGE_HTTP',context:{json:vi.fn().mockResolvedValue({error:'PRIVATE_PROVIDER_BODY'})}};
   io.invoke.mockResolvedValue({data:null,error:failure});
   await expect(sendTestPush()).rejects.toBe(failure);
+ });
+});
+
+// ---- 21/10/2026: đối chiếu lúc khởi động (C7), dọn khi đăng xuất (C7), gửi thử đọc outcome (C8) ----
+describe('ensurePushSubscription — đối chiếu đăng ký máy này với máy chủ',()=>{
+ it('chưa cấp quyền hoặc không có subscription: không đọc/ghi máy chủ, không xin quyền',async()=>{
+  vi.stubGlobal('Notification',{permission:'default',requestPermission:io.permission});
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('no-permission');
+  vi.stubGlobal('Notification',{permission:'granted',requestPermission:io.permission});
+  current=null;
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('no-subscription');
+  expect(io.db).not.toHaveBeenCalled();expect(io.permission).not.toHaveBeenCalled();expect(io.subscribe).not.toHaveBeenCalled();
+ });
+ it('subscription theo khoá VAPID khác: để nút bật/tắt tự xoay khoá, không đụng gì',async()=>{
+  current=subscription(new Uint8Array([9]).buffer);
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('other-key');
+  expect(io.db).not.toHaveBeenCalled();expect(io.unsubscribe).not.toHaveBeenCalled();
+ });
+ it('đã khớp dòng active: không ghi gì',async()=>{
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('in-sync');
+  expect(io.db).toHaveBeenCalledTimes(1);expect(io.db.mock.calls[0][0]).toMatchObject({mode:'read'});
+ });
+ it('máy chủ thiếu dòng (đăng ký mới do trình duyệt xoay): lưu với công ty đang chọn',async()=>{
+  io.db.mockImplementation(async({mode,input}:{mode:string;input:Record<string,unknown>})=>({data:mode==='upsert'?{id:'device-a',...input}:null,error:null}));
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('saved');
+  expect(io.db).toHaveBeenCalledWith(expect.objectContaining({mode:'upsert',input:expect.objectContaining({organization_id:'org-a',is_active:true})}));
+  expect(io.unsubscribe).not.toHaveBeenCalled();
+ });
+ it('dòng bị prune (is_active=false): KHÔNG upsert lại endpoint chết — hủy, đăng ký mới, lưu, dọn dòng cũ',async()=>{
+  const fresh={...subscription(),endpoint:'https://private-push.example/FRESH_ENDPOINT'} as PushSubscription;
+  io.subscribe.mockImplementation(async()=>{current=fresh;return fresh;});
+  io.db.mockImplementation(async({mode,input}:{mode:string;input:Record<string,unknown>})=>({data:mode==='upsert'?{id:'device-b',...input}:mode==='delete'?[]:{...stored(),is_active:false},error:null}));
+  await expect(ensurePushSubscription('org-a')).resolves.toBe('resubscribed');
+  expect(io.unsubscribe).toHaveBeenCalledOnce();expect(io.subscribe).toHaveBeenCalledOnce();
+  const modes=io.db.mock.calls.map(([call])=>call.mode);
+  expect(modes).toEqual(['read','upsert','delete']);
+  expect(io.db.mock.calls[1][0].input).toMatchObject({endpoint:'https://private-push.example/FRESH_ENDPOINT'});
+  expect(io.db.mock.calls[2][0].filters).toMatchObject({endpoint:'https://private-push.example/SECRET_ENDPOINT',user_id:'actor-a'});
+ });
+ it('lưu hỏng: ném PushOperationError mang lỗi gốc (bên gọi ghi log), không nuốt',async()=>{
+  const failure={code:'42501',message:'PRIVATE_RLS'};
+  io.db.mockImplementation(async({mode}:{mode:string})=>mode==='upsert'?{data:null,error:failure}:{data:null,error:null});
+  await expect(ensurePushSubscription('org-a')).rejects.toMatchObject({cause:failure});
+ });
+});
+describe('disablePushForLogout — best-effort, không bao giờ chặn đăng xuất',()=>{
+ it('gỡ được: hủy trình duyệt trước rồi xoá dòng của chính mình',async()=>{
+  await expect(disablePushForLogout()).resolves.toBe('removed');
+  expect(io.unsubscribe).toHaveBeenCalledOnce();
+  expect(io.db).toHaveBeenCalledWith(expect.objectContaining({mode:'delete',filters:expect.objectContaining({user_id:'actor-a'})}));
+ });
+ it('lỗi giữa chừng: trả failed, không ném',async()=>{
+  io.unsubscribe.mockRejectedValue(new Error('PRIVATE_UNSUBSCRIBE'));
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>undefined);
+  await expect(disablePushForLogout()).resolves.toBe('failed');
+  warn.mockRestore();
+ });
+ it('treo (service worker không kích hoạt): hết 3 giây thì trả timeout',async()=>{
+  vi.useFakeTimers();io.getReg.mockImplementation(()=>new Promise(()=>{}));
+  const result=disablePushForLogout(3000);
+  await vi.advanceTimersByTimeAsync(3000);
+  await expect(result).resolves.toBe('timeout');
+ });
+});
+describe('sendTestPush — kết quả gửi đọc từ outcome, kể cả khi HTTP không 2xx',()=>{
+ const body=(over:Record<string,unknown>)=>({outcome:'SENT',total:1,sent:1,failed:0,pruned:0,errors:[],...over});
+ const httpError=(status:number,json:unknown)=>({name:'FunctionsHttpError',context:{status,json:vi.fn().mockResolvedValue(json)}});
+ it('SENT (200) trả outcome',async()=>{
+  io.invoke.mockResolvedValue({data:body({}),error:null});
+  await expect(sendTestPush()).resolves.toMatchObject({outcome:'SENT',sent:1});
+ });
+ it('PARTIAL (207 là 2xx) trả qua data',async()=>{
+  io.invoke.mockResolvedValue({data:body({outcome:'PARTIAL',total:2,sent:1,failed:1,errors:[{host:'fcm',body:''}]}),error:null});
+  await expect(sendTestPush()).resolves.toMatchObject({outcome:'PARTIAL',failed:1});
+ });
+ it.each([
+  [422,{outcome:'NO_DEVICE',total:0,sent:0,failed:0,pruned:0,errors:[]}],
+  [502,{outcome:'ALL_FAILED',total:2,sent:0,failed:2,pruned:1,errors:[{host:'fcm',body:'gone'},{host:'apple',body:''}]}],
+  [502,{outcome:'PROVIDER_ERROR',total:0,sent:0,failed:0,pruned:0,errors:[]}],
+ ])('HTTP %i là KẾT QUẢ gửi, không ném',async(status,json)=>{
+  io.invoke.mockResolvedValue({data:null,error:httpError(status,json)});
+  await expect(sendTestPush()).resolves.toMatchObject({outcome:(json as {outcome:string}).outcome});
+ });
+ it.each([
+  [401,{outcome:'UNAUTHORIZED',total:0,sent:0,failed:0,pruned:0,errors:[]}],
+  [502,{outcome:'SENT',total:0,sent:0,failed:0,pruned:0,errors:[]}],
+  [422,{outcome:'NO_DEVICE'}],
+ ])('HTTP %i với body %j: giữ nguyên lỗi gốc',async(status,json)=>{
+  const failure=httpError(status,json);
+  io.invoke.mockResolvedValue({data:null,error:failure});
+  await expect(sendTestPush()).rejects.toBe(failure);
+ });
+ it('body không đọc được: giữ nguyên lỗi gốc',async()=>{
+  const failure={context:{status:422,json:vi.fn().mockRejectedValue(new SyntaxError('PRIVATE'))}};
+  io.invoke.mockResolvedValue({data:null,error:failure});
+  await expect(sendTestPush()).rejects.toBe(failure);
+ });
+ it('200 thiếu outcome là kết quả méo',async()=>{
+  io.invoke.mockResolvedValue({data:{total:1,sent:1,failed:0,pruned:0,errors:[]},error:null});
+  await expect(sendTestPush()).rejects.toBeInstanceOf(FinancialWorkflowError);
  });
 });

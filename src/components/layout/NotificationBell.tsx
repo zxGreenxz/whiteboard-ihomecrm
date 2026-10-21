@@ -1,7 +1,7 @@
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useState } from 'react';
-import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react';
+import { Bell, CheckCheck, Settings, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -27,7 +27,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { dichThongBao } from '@/lib/notifications/notificationTarget';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 
 const NotificationBell = () => {
@@ -50,32 +50,17 @@ const NotificationBell = () => {
   const deleteAllReadMutation = useDeleteAllRead();
 
   const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
-    if (notification.status !== 'READ') {
+    // Chưa đọc = PENDING (cùng định nghĩa với số đếm và Hermes).
+    if (notification.status === 'PENDING') {
       markAsReadMutation.mutate(notification.id);
     }
 
-    // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — nơi phát sự kiện mới biết đích đúng
-    // (danh sách đã lọc sẵn, phiếu cụ thể, tab bàn giao…), không suy ra được từ id.
-    const url = resolveNotificationUrl(notification.metadata?.url, perms);
+    // metadata.url trước, rồi mới tới đường suy từ invoice_id/contract_id — CẢ HAI
+    // đều qua allow-list + kiểm quyền (dichThongBao). Nhánh issue_id đã bị XOÁ: route
+    // /issues/:id KHÔNG tồn tại, bấm vào chỉ đóng dropdown như app đơ.
+    const url = dichThongBao(notification, perms);
     if (url) {
       navigate(url);
-      setOpen(false);
-      return;
-    }
-
-    // Fallback cho dòng cũ không có metadata.url.
-    // (Nhánh issue_id đã bị XOÁ: route /issues/:id KHÔNG tồn tại — bấm vào chỉ đóng
-    // dropdown và không đi đâu cả, khiến người dùng tưởng app đơ.)
-    if (notification.invoice_id) {
-      navigate(`/invoices/${notification.invoice_id}`);
-      setOpen(false);
-    } else if (notification.contract_id) {
-      navigate(`/contracts/${notification.contract_id}`);
-      setOpen(false);
-    } else if (notification.type === 'SALARY_BONUS') {
-      // Giữ lại: 52 dòng SALARY_BONUS cũ không có metadata.url.
-      navigate('/finance/salary');
       setOpen(false);
     }
   };
@@ -173,6 +158,19 @@ const NotificationBell = () => {
         <DropdownMenuLabel className="flex items-center justify-between">
           <span className="font-semibold">Thông báo</span>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Cài đặt thông báo"
+              title="Cài đặt thông báo"
+              onClick={() => {
+                navigate('/account/notifications');
+                setOpen(false);
+              }}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
             {unreadCount > 0 && (
               <Button
                 variant="ghost"
@@ -223,9 +221,9 @@ const NotificationBell = () => {
                   key={notification.id}
                   className={cn(
                     'cursor-pointer p-3 flex-col items-start gap-2',
-                    notification.status === 'READ'
-                      ? 'bg-white'
-                      : 'bg-blue-50/50'
+                    notification.status === 'PENDING'
+                      ? 'bg-blue-50/50'
+                      : 'bg-white'
                   )}
                   onClick={() => handleNotificationClick(notification)}
                 >
@@ -265,7 +263,7 @@ const NotificationBell = () => {
 
                     {/* Actions */}
                     <div className="flex-shrink-0 flex items-center gap-1">
-                      {notification.status !== 'READ' && (
+                      {notification.status === 'PENDING' && (
                         <div className="h-2 w-2 rounded-full bg-blue-600" />
                       )}
                       <Button

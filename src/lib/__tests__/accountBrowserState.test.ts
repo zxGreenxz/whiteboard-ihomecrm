@@ -114,7 +114,6 @@ const LOCAL_STORAGE_FILES: Record<string, LocalStorageRole> = {
   "src/hooks/quick-entry/useQuickEntryFeed.ts": "gan-nguoi-dung",
   "src/lib/quickEntry/models.ts": "gan-nguoi-dung",
   "src/pages/quick-entry/QuickEntryPage.tsx": "gan-nguoi-dung",
-  "src/hooks/useScheduledNotifications.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTasks.ts": "gan-nguoi-dung",
   "src/hooks/usePersonalTaskReminders.ts": "gan-nguoi-dung",
   "src/hooks/personal-finance/usePersonalFinance.ts": "nhat-ky-chong-ghi-trung",

@@ -16,9 +16,11 @@ import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
   onMenuClick?: () => void;
+  /** false khi bố cục đã dựng chuông ở sidebar (desktop) — mỗi trang chỉ một chuông. */
+  showNotifications?: boolean;
 }
 
-const Header = ({ onMenuClick }: HeaderProps) => {
+const Header = ({ onMenuClick, showNotifications = true }: HeaderProps) => {
   const { data: user } = useAuth();
   const { data: profile } = useProfile();
   const logoutMutation = useLogout();
@@ -69,7 +71,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         {/* Right Section */}
         <div className="flex items-center gap-2">
           {/* Notifications */}
-          <NotificationBell />
+          {showNotifications && <NotificationBell />}
 
           {/* User Menu */}
           <DropdownMenu>
