@@ -9,6 +9,7 @@ const migrationSql = readFileSync('supabase/migrations/20261021072938_cua_van_ta
 const org = '00000000-0000-4000-8000-0000000000a1';
 const otherOrg = '00000000-0000-4000-8000-0000000000b1';
 const ownerRole = '00000000-0000-4000-8000-0000000000a0';
+const companyOwnerRole = '00000000-0000-4000-8000-0000000000ac';
 const owner = '00000000-0000-4000-8000-0000000000a2';
 const manager = '00000000-0000-4000-8000-0000000000a3';
 const stranger = '00000000-0000-4000-8000-0000000000a4';
@@ -37,7 +38,9 @@ beforeAll(async () => {
       is_active boolean,scope_match_mode text,requires_cashbook_possession boolean,accepted_possession_kinds text[],required_dimensions text[]);
     CREATE TABLE organization_roles(id uuid PRIMARY KEY,organization_id uuid,name text,system_key text);
     INSERT INTO organization_roles VALUES('${ownerRole}','${org}','Chủ sở hữu tổ chức','TENANT_OWNER'),
-      ('00000000-0000-4000-8000-0000000000aa','${org}','Sale',NULL);
+      ('00000000-0000-4000-8000-0000000000aa','${org}','Sale',NULL),
+      ('${companyOwnerRole}','${org}','Chủ công ty',NULL),
+      ('00000000-0000-4000-8000-0000000000ab','${otherOrg}','Chủ công ty','TENANT_OWNER');
     CREATE TABLE role_permissions(organization_id uuid,role_id uuid,permission_key text REFERENCES permission_definitions(key),effect text,
       UNIQUE(organization_id,role_id,permission_key));
     CREATE TABLE buildings(id uuid PRIMARY KEY,organization_id uuid,name text,deleted_at timestamptz);
@@ -117,7 +120,7 @@ async function finish(logId: unknown, status: string, passwordId: number | null 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
 describe('quyền và ACL', () => {
-  it('thêm bốn khoá theo tòa, chỉ vai chủ sở hữu có sẵn, chạy lại không nhân đôi', async () => {
+  it('thêm bốn khoá theo tòa, chỉ vai chủ công ty (TENANT_OWNER hoặc vai tự tạo "Chủ công ty") có sẵn, chạy lại không nhân đôi', async () => {
     const keys = (await db.query<Row>(`SELECT key,sensitivity,required_dimensions FROM permission_definitions ORDER BY key`)).rows;
     expect(keys).toEqual([
       { key: 'door_access.manage_devices', sensitivity: 'MANAGE', required_dimensions: ['BUILDING'] },
@@ -125,9 +128,13 @@ describe('quyền và ACL', () => {
       { key: 'door_access.temp_password', sensitivity: 'ELEVATED', required_dimensions: ['BUILDING'] },
       { key: 'door_access.view', sensitivity: 'VIEW', required_dimensions: ['BUILDING'] },
     ]);
-    const grants = (await db.query<Row>('SELECT role_id,permission_key FROM role_permissions ORDER BY permission_key')).rows;
-    expect(grants).toHaveLength(4);
-    expect(grants.every((g) => g.role_id === ownerRole)).toBe(true);
+    const grants = (await db.query<Row>(`SELECT r.name,r.organization_id,count(*)::int n FROM role_permissions rp
+      JOIN organization_roles r ON r.id=rp.role_id GROUP BY 1,2 ORDER BY 1,2`)).rows;
+    expect(grants).toEqual([
+      { name: 'Chủ công ty', organization_id: org, n: 4 },
+      { name: 'Chủ công ty', organization_id: otherOrg, n: 4 },
+      { name: 'Chủ sở hữu tổ chức', organization_id: org, n: 4 },
+    ]);
   });
 
   it('trình duyệt không đọc bảng, không chốt nhật ký; chỉ service_role chốt', async () => {
@@ -383,10 +390,24 @@ describe('lệnh gửi xuống máy (hàm Edge)', () => {
     expect(page1.logs).toHaveLength(2);
     expect(page1.has_more).toBe(true);
     expect(page1.logs[0]).toMatchObject({ device_name: 'Máy A', building_name: 'Tòa A', actor_name: 'Chủ A', status: 'PENDING' });
-    const page2 = await one<{ logs: Row[]; has_more: boolean }>(`SELECT door_access_action_logs_v1($1,$2,ARRAY['REMOTE_UNLOCK'],2,$3) r`,
-      [org, a.id, page1.logs[1].created_at]);
+    const page2 = await one<{ logs: Row[]; has_more: boolean }>(`SELECT door_access_action_logs_v1($1,$2,ARRAY['REMOTE_UNLOCK'],2,$3,$4) r`,
+      [org, a.id, page1.logs[1].created_at, page1.logs[1].id]);
     expect(page2.logs).toHaveLength(1);
     expect(page2.has_more).toBe(false);
+    // Ba dòng cùng một mốc giờ vẫn lật đủ (khoá lật trang là cặp mốc giờ + id).
+    await db.query(`UPDATE door_action_logs SET created_at='2026-10-21 10:00:00+07' WHERE door_device_id=$1`, [a.id]);
+    const seen: unknown[] = [];
+    let cursor: Row | null = null;
+    for (let i = 0; i < 10; i++) {
+      const page: { logs: Row[]; has_more: boolean } = await one(`SELECT door_access_action_logs_v1($1,$2,NULL,1,$3,$4) r`,
+        [org, a.id, cursor?.created_at ?? null, cursor?.id ?? null]);
+      seen.push(...page.logs.map((g) => g.id));
+      cursor = page.logs[0] ?? null;
+      if (!page.has_more) break;
+    }
+    // Máy A có 4 dòng: DEVICE_SAVE + 3 lần mở cửa — lật từng dòng một, không sót, không trùng.
+    expect(seen).toHaveLength(4);
+    expect(new Set(seen).size).toBe(4);
     await setting('test.deny_pairs', `door_access.view@${bA}`);
     const all = await one<{ logs: Row[] }>('SELECT door_access_action_logs_v1($1) r', [org]);
     expect(new Set(all.logs.map((g) => g.building_name))).toEqual(new Set(['Tòa B']));

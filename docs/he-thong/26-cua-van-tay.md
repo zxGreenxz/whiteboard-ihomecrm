@@ -2,7 +2,7 @@
 
 Trang `/cua-van-tay` nối CRM với máy vân tay ở cửa các tòa (thiết bị SmartLife, nền Tuya Cloud). Chủ chốt 21/10/2026, tám điểm:
 
-1. Bốn quyền mới theo tòa: **Xem**, **Mật khẩu tạm**, **Mở cửa từ xa**, **Quản lý máy & vân tay**. Chỉ vai Chủ sở hữu tổ chức có sẵn; vai khác chủ tự bật ở Phân quyền. Mọi thao tác ghi lưu nhật ký (ai, lúc nào, cửa nào, kết quả).
+1. Bốn quyền mới theo tòa: **Xem**, **Mật khẩu tạm**, **Mở cửa từ xa**, **Quản lý máy & vân tay**. Chỉ vai chủ công ty có sẵn (vai TENANT_OWNER, hoặc vai tự tạo tên "Chủ sở hữu tổ chức"/"Chủ công ty" — cùng định nghĩa `ie_actor_is_company_owner_v1`); vai khác chủ tự bật ở Phân quyền. Mọi thao tác ghi lưu nhật ký (ai, lúc nào, cửa nào, kết quả).
 2. CRM liệt kê máy trong tài khoản SmartLife, gợi ý tòa theo tên; người có quyền Quản lý xác nhận. Chỉ nhận máy cửa (bỏ cảm biến, báo khói).
 3. Màn **Đối chiếu**: số vân tay/thẻ/mật khẩu trên máy ↔ khách đang thuê tòa. Gắn vân tay thì số được điền vào ô "Mã vân tay cửa ra vào" của khách. Thêm vân tay mới vẫn làm tại máy hoặc app SmartLife.
 4. Mục **Cần xóa**: vân tay gắn với khách không còn hợp đồng hiệu lực ở tòa. Người quản lý tự bấm xóa (xác nhận); CRM không tự xóa.
@@ -44,7 +44,7 @@ Gọi từ trình duyệt (authenticated):
 | `door_access_devices_v1(p_organization_id uuid, p_include_inactive boolean default false)` | quyền cửa bất kỳ ở tòa; máy tắt chỉ hiện với Quản lý | `{devices:[Device]}` |
 | `door_access_key_links_v1(p_organization_id uuid, p_device_id uuid)` | Xem | `{links:[Link]}` |
 | `door_access_building_tenants_v1(p_organization_id uuid, p_device_id uuid)` | Quản lý | `{tenants:[{customer_id, full_name, room_id, room_name, contract_id, is_representative}]}` |
-| `door_access_action_logs_v1(p_organization_id uuid, p_device_id uuid default null, p_actions text[] default null, p_limit int default 100, p_before timestamptz default null)` | Xem (lọc theo tòa) | `{logs:[Log], has_more}` |
+| `door_access_action_logs_v1(p_organization_id uuid, p_device_id uuid default null, p_actions text[] default null, p_limit int default 100, p_before timestamptz default null, p_before_id uuid default null)` | Xem (lọc theo tòa) | `{logs:[Log], has_more}`; trang sau: `p_before`/`p_before_id` = `created_at`/`id` của dòng cuối trang trước |
 | `door_access_save_device_v1(p_organization_id uuid, p_tuya_device_id text, p_building_id uuid, p_display_name text, p_device_kind text, p_tuya_category text default null, p_tuya_product_name text default null, p_channel_id int default 1, p_password_length int default 7)` | Quản lý ở tòa mới (và tòa cũ nếu đổi tòa) | `Device` |
 | `door_access_disable_device_v1(p_organization_id uuid, p_device_id uuid)` | Quản lý | `Device` |
 | `door_access_link_key_v1(p_organization_id uuid, p_device_id uuid, p_unlock_type text, p_unlock_sn int, p_tuya_user_id text default null, p_device_user_name text default null, p_customer_id uuid default null, p_label text default null)` | Quản lý | `Link` |

@@ -37,13 +37,16 @@ ON CONFLICT (key) DO UPDATE SET
   accepted_possession_kinds = EXCLUDED.accepted_possession_kinds,
   required_dimensions = EXCLUDED.required_dimensions;
 
--- Vai chủ sở hữu có sẵn cả bốn quyền; vai khác chủ tự gán ở Phân quyền.
+-- Vai chủ công ty có sẵn cả bốn quyền; vai khác chủ tự gán ở Phân quyền. "Chủ công ty" theo đúng định nghĩa của
+-- app_private.ie_actor_is_company_owner_v1: system_key TENANT_OWNER, hoặc vai tự tạo tên "Chủ sở hữu tổ chức"/"Chủ
+-- công ty". Chỉ gieo vai TENANT_OWNER là thiếu: ở org thật, chủ nhận quyền qua vai tự tạo "Chủ công ty" (phạm vi
+-- ORGANIZATION), còn binding TENANT_OWNER của họ không có phạm vi nào nên không cấp được quyền theo tòa (đo 21/10/2026).
 INSERT INTO public.role_permissions (organization_id, role_id, permission_key, effect)
 SELECT r.organization_id, r.id, k.key, 'ALLOW'
 FROM public.organization_roles r
 CROSS JOIN (VALUES ('door_access.view'), ('door_access.temp_password'), ('door_access.remote_unlock'),
   ('door_access.manage_devices')) AS k(key)
-WHERE r.system_key = 'TENANT_OWNER' OR r.name = 'Chủ sở hữu tổ chức'
+WHERE r.system_key = 'TENANT_OWNER' OR (r.system_key IS NULL AND r.name IN ('Chủ sở hữu tổ chức', 'Chủ công ty'))
 ON CONFLICT (organization_id, role_id, permission_key) DO NOTHING;
 
 -- ── 2. Bảng ─────────────────────────────────────────────────────────
@@ -345,8 +348,10 @@ BEGIN
 END;
 $function$;
 
+-- Bản nháp 5 tham số (không có p_before_id) chỉ từng áp lên TEST; bỏ để PostgREST không gặp hai hàm cùng tên.
+DROP FUNCTION IF EXISTS public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz);
 CREATE OR REPLACE FUNCTION public.door_access_action_logs_v1(p_organization_id uuid,p_device_id uuid DEFAULT NULL,
-  p_actions text[] DEFAULT NULL,p_limit integer DEFAULT 100,p_before timestamptz DEFAULT NULL)
+  p_actions text[] DEFAULT NULL,p_limit integer DEFAULT 100,p_before timestamptz DEFAULT NULL,p_before_id uuid DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,app_private
 AS $function$
@@ -366,7 +371,9 @@ BEGIN
     WHERE g.organization_id=p_organization_id
       AND (p_device_id IS NULL OR g.door_device_id=p_device_id)
       AND (p_actions IS NULL OR g.action=ANY(p_actions))
-      AND (p_before IS NULL OR g.created_at<p_before)
+      -- Lật trang theo cặp (created_at, id) của dòng cuối trang trước: hai dòng cùng mốc giờ không bị bỏ sót.
+      AND (p_before IS NULL OR g.created_at<p_before
+           OR (p_before_id IS NOT NULL AND g.created_at=p_before AND g.id<p_before_id))
     ORDER BY g.created_at DESC, g.id DESC
     LIMIT v_limit+1
   )
@@ -700,14 +707,14 @@ $function$;
 
 -- ── 7. ACL ──────────────────────────────────────────────────────────
 REVOKE ALL ON FUNCTION public.door_access_devices_v1(uuid,boolean), public.door_access_key_links_v1(uuid,uuid),
-  public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz),
+  public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz,uuid),
   public.door_access_save_device_v1(uuid,text,uuid,text,text,text,text,integer,integer), public.door_access_disable_device_v1(uuid,uuid),
   public.door_access_link_key_v1(uuid,uuid,text,integer,text,text,uuid,text), public.door_access_unlink_key_v1(uuid,uuid),
   public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_any_v1(uuid,text),
   public.door_access_begin_action_v1(uuid,uuid,text,jsonb), public.door_access_finish_action_v1(uuid,text,bigint,text,text)
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.door_access_devices_v1(uuid,boolean), public.door_access_key_links_v1(uuid,uuid),
-  public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz),
+  public.door_access_building_tenants_v1(uuid,uuid), public.door_access_action_logs_v1(uuid,uuid,text[],integer,timestamptz,uuid),
   public.door_access_save_device_v1(uuid,text,uuid,text,text,text,text,integer,integer), public.door_access_disable_device_v1(uuid,uuid),
   public.door_access_link_key_v1(uuid,uuid,text,integer,text,text,uuid,text), public.door_access_unlink_key_v1(uuid,uuid),
   public.door_access_authorize_v1(uuid,uuid,text), public.door_access_can_any_v1(uuid,text),
