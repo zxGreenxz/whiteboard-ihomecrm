@@ -97,17 +97,3 @@ export function canUse(
   if (raw === undefined) return canFeature(p, module, action);
   return quyetDinhTheoPhamVi(raw, buildingId);
 }
-
-/**
- * Có quyền ở MỌI toà của công ty (`org_wide`) — cho thao tác không gắn một toà nào (vd gắn máy cửa
- * mới). Khác `canUse` không truyền toà: câu đó trả lời "ở đâu đó", câu này đòi "ở mọi toà".
- * Hình dạng v1 (boolean) không biết phạm vi ⇒ theo đúng giá trị như `canUse`; máy chủ vẫn chặn thật.
- */
-export function canUseOrgWide(perms: PermsLike, module: string, action: ActionKey): boolean {
-  const p = asPerms(perms);
-  if (!p) return false;
-  if (isSuperAdminPerms(p)) return true;
-  const raw = (p as Record<string, Record<string, unknown> | undefined>)[module]?.[action];
-  if (typeof raw === "boolean") return raw;
-  return raw !== null && typeof raw === "object" && (raw as Partial<PermissionScope>).org_wide === true;
-}

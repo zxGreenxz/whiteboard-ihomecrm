@@ -126,6 +126,15 @@ describe("edgeFailure: bảng mã lỗi", () => {
     expect(error.message).toContain("Chưa rõ");
   });
 
+  it("tuya_unavailable khi ghi mà KHÔNG có cờ ⇒ hỏng ở bước xin vé, lệnh chưa gửi (không phải 'chưa rõ')", () => {
+    const error = write(env("tuya_unavailable"), 504);
+    expect(error).toMatchObject({ kind: "unavailable", outcomeUnknown: false });
+    expect(error.message).toContain("Chưa gửi được lệnh");
+    expect(error.message).not.toContain("Chưa rõ");
+    // Lỗi nội bộ của thao tác ghi mà máy chủ không nói gì vẫn là chưa rõ.
+    expect(write(env("internal"), 500)).toMatchObject({ outcomeUnknown: true });
+  });
+
   it("tuya_unavailable khi đọc ⇒ lỗi mạng, thử lại được", () => {
     const error = read(env("tuya_unavailable"), 504);
     expect(error).toMatchObject({ kind: "unavailable", outcomeUnknown: false, retryable: true });

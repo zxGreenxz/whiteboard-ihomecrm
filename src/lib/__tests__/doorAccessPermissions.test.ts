@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { manageableBuildings } from "@/lib/door-access/view";
-import { canUseOrgWide } from "@/lib/permissionCheck";
 import { ALL_PAGES, canUse, featureValue, setPageViewOnly } from "@/lib/permissionPages";
 import {
   ACTION_LABELS,
@@ -53,27 +52,16 @@ describe("quyền Cửa vân tay", () => {
     expect(canUse(perms, "door_access", "remote_unlock")).toBe(false);
   });
 
-  it("gắn máy MỚI đòi quyền Quản lý ở MỌI tòa (org_wide), không phải 'ở đâu đó'", () => {
-    const someBuildings = { door_access: { manage_devices: { org_wide: false, building_ids: ["toa-a", "toa-b"] } } };
-    const everywhere = { door_access: { manage_devices: { org_wide: true, building_ids: [] } } };
-    expect(canUseOrgWide(someBuildings, "door_access", "manage_devices")).toBe(false);
-    expect(canUseOrgWide(everywhere, "door_access", "manage_devices")).toBe(true);
-    const owner = { __superadmin: true } as unknown as Parameters<typeof canUseOrgWide>[0];
-    expect(canUseOrgWide(owner, "door_access", "manage_devices")).toBe(true);
-    expect(canUseOrgWide({}, "door_access", "manage_devices")).toBe(false);
-    expect(canUseOrgWide(null, "door_access", "manage_devices")).toBe(false);
-    // Dạng v1 (boolean) không biết phạm vi ⇒ như canUse; máy chủ vẫn chặn thật.
-    expect(canUseOrgWide({ door_access: { manage_devices: true } }, "door_access", "manage_devices")).toBe(true);
-  });
-
-  it("ô chọn tòa của hộp gắn/sửa máy chỉ có tòa được Quản lý máy", () => {
+  it("ô chọn tòa của hộp gắn/sửa máy chỉ có tòa được Quản lý máy (dạng THẬT của get_my_permissions_v2)", () => {
     const buildings = [
       { id: "toa-a", name: "Tòa A", code: null, street_address: null },
       { id: "toa-b", name: "Tòa B", code: null, street_address: null },
     ];
-    const perms = { door_access: { manage_devices: { org_wide: false, building_ids: ["toa-a"] }, view: { org_wide: true, building_ids: [] } } };
+    // Khoá có chiều BUILDING: máy chủ luôn trả org_wide=false + danh sách tòa, kể cả chủ công ty (phạm vi ORGANIZATION).
+    const perms = { door_access: { manage_devices: { org_wide: false, building_ids: ["toa-a"] }, view: { org_wide: false, building_ids: ["toa-a", "toa-b"] } } };
     expect(manageableBuildings(buildings, perms).map((b) => b.id)).toEqual(["toa-a"]);
-    expect(manageableBuildings(buildings, { door_access: { manage_devices: { org_wide: true, building_ids: [] } } })).toHaveLength(2);
+    const owner = { door_access: { manage_devices: { org_wide: false, building_ids: ["toa-a", "toa-b"] } } };
+    expect(manageableBuildings(buildings, owner)).toHaveLength(2);
     expect(manageableBuildings(buildings, {})).toEqual([]);
   });
 });

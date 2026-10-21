@@ -180,8 +180,10 @@ export function edgeFailure(input: EdgeFailureInput): DoorAccessError {
   const envelope = edgeErrorEnvelope(input.body);
   if (envelope) {
     const { code, message, tuyaCode } = envelope;
-    // Máy chủ nói rõ thì theo máy chủ; lỗi nội bộ của thao tác ghi mà máy chủ không nói ⇒ coi như chưa rõ.
-    const isUnknown = envelope.outcomeUnknown ?? (mutation && (code === "internal" || code === "tuya_unavailable"));
+    // Máy chủ nói rõ thì theo máy chủ. Hàm door-access LUÔN gửi outcomeUnknown:true khi lệnh đã đi xuống máy mà
+    // không rõ kết quả; tuya_unavailable KHÔNG kèm cờ = hỏng ở bước xin vé, lệnh chưa gửi. Chỉ lỗi nội bộ của thao
+    // tác ghi mà máy chủ không nói gì mới coi như chưa rõ.
+    const isUnknown = envelope.outcomeUnknown ?? (mutation && code === "internal");
     const options = { code, tuyaCode, outcomeUnknown: isUnknown, logPending: envelope.logPending };
     switch (code) {
       case "unauthorized":
@@ -214,7 +216,11 @@ export function edgeFailure(input: EdgeFailureInput): DoorAccessError {
       case "tuya_unavailable":
         return new DoorAccessError(
           "unavailable",
-          isUnknown ? unknownOutcome(operation) : "Không kết nối được SmartLife. Thử lại sau giây lát.",
+          isUnknown
+            ? unknownOutcome(operation)
+            : mutation
+              ? "Chưa gửi được lệnh xuống máy (mạng/hết giờ khi xin vé SmartLife) — có thể thử lại."
+              : "Không kết nối được SmartLife. Thử lại sau giây lát.",
           options,
         );
       default:

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useDisableDevice } from "@/hooks/door-access/useDoorAccessMutations";
-import { useDoorDevices, useDoorDiscover } from "@/hooks/door-access/useDoorAccessQueries";
+import { useDoorCanManageOrg, useDoorDevices, useDoorDiscover } from "@/hooks/door-access/useDoorAccessQueries";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { suggestBuilding } from "@/lib/door-access/buildingMatch";
@@ -25,7 +25,6 @@ import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorErrorMessage, isDoorAccessError } from "@/lib/door-access/errors";
 import { DEVICE_KIND_LABEL } from "@/lib/door-access/format";
 import { manageableBuildings, organizationBuildings } from "@/lib/door-access/view";
-import { canUseOrgWide } from "@/lib/permissionCheck";
 import { cn } from "@/lib/utils";
 
 import { DeviceEditorDialog, type DeviceEditorTarget } from "./DeviceEditorDialog";
@@ -41,7 +40,10 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
   const buildingName = useMemo(() => new Map(buildings.map((b) => [b.id, b.name])), [buildings]);
   const permissions = useMyPermissions();
   // Gắn máy MỚI (và tìm máy trên SmartLife) đòi quyền Quản lý máy ở MỌI tòa; sửa/tắt máy thì theo tòa của máy.
-  const canRegister = canUseOrgWide(permissions.data, "door_access", "manage_devices");
+  // Hỏi chính hàm máy chủ dùng để chặn: get_my_permissions_v2 trả org_wide=false cho mọi khoá có chiều BUILDING,
+  // kể cả chủ công ty, nên không suy được "mọi tòa" từ đó.
+  const canManageOrg = useDoorCanManageOrg(caller);
+  const canRegister = canManageOrg.data === true;
   const manageable = useMemo(() => manageableBuildings(buildings, permissions.data), [buildings, permissions.data]);
   const disable = useDisableDevice(caller);
 
@@ -145,8 +147,16 @@ export function DevicesTab({ caller }: { caller: DoorAccessCaller }) {
         )}
       </section>
 
-      {permissions.data !== undefined && !canRegister && (
+      {canManageOrg.data === false && (
         <Notice tone="info">Chỉ người có quyền Quản lý máy ở mọi tòa mới gắn được máy mới.</Notice>
+      )}
+      {canManageOrg.isError && (
+        <Notice tone="warning">
+          Chưa kiểm được quyền gắn máy mới. {doorErrorMessage(canManageOrg.error, "Thử lại sau.")}{" "}
+          <button type="button" className="font-medium underline" onClick={() => void canManageOrg.refetch()}>
+            Thử lại
+          </button>
+        </Notice>
       )}
       {canRegister && (
         <section className="space-y-3" aria-labelledby="door-discover">

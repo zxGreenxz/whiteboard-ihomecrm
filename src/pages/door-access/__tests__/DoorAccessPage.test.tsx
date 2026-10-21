@@ -24,6 +24,7 @@ const m = vi.hoisted(() => ({
     deleteKey: vi.fn(),
   },
   repo: {
+    canManageOrganization: vi.fn(),
     listDevices: vi.fn(),
     listKeyLinks: vi.fn(),
     listBuildingTenants: vi.fn(),
@@ -128,6 +129,7 @@ beforeEach(() => {
   m.edge.keys.mockResolvedValue({ users: [], unassigned: [], partial: false });
   m.repo.listKeyLinks.mockResolvedValue([]);
   m.repo.listActionLogs.mockResolvedValue({ logs: [], has_more: false });
+  m.repo.canManageOrganization.mockResolvedValue(false);
 });
 afterEach(() => {
   cleanup();
@@ -286,9 +288,18 @@ const twoBuildings = () => [
 const LOG_PENDING = "Nhật ký thao tác chưa chốt được — kiểm lại ở tab Nhật ký";
 
 describe("rà soát chéo 22/10", () => {
-  it("Thiết bị: chỉ Quản lý ở MỘT tòa ⇒ không tìm máy mới (chỉ ghi chú); ô chọn tòa chỉ còn tòa được quản lý", async () => {
+  // Dạng THẬT của get_my_permissions_v2 cho khoá có chiều BUILDING: org_wide luôn false, kể cả chủ công ty.
+  const realPerms = (manageBuildings: string[]) => ({
+    door_access: {
+      view: { org_wide: false, building_ids: [BUILDING_A, BUILDING_B] },
+      manage_devices: { org_wide: false, building_ids: manageBuildings },
+    },
+  });
+
+  it("Thiết bị: máy chủ nói KHÔNG quản lý mọi tòa ⇒ không tìm máy mới (chỉ ghi chú); ô chọn tòa chỉ còn tòa được quản lý", async () => {
     connected("all", [device()]);
-    m.perms = { door_access: { view: { org_wide: true, building_ids: [] }, manage_devices: { org_wide: false, building_ids: [BUILDING_A] } } };
+    m.perms = realPerms([BUILDING_A]);
+    m.repo.canManageOrganization.mockResolvedValue(false);
     m.buildings = twoBuildings();
     renderPage();
     await screen.findByRole("tab", { name: "Thiết bị" });
@@ -302,9 +313,23 @@ describe("rà soát chéo 22/10", () => {
     expect(m.edge.discover).not.toHaveBeenCalled();
   });
 
-  it("Thiết bị: Quản lý ở mọi tòa ⇒ tìm máy; máy không rõ loại ẩn mặc định, gắn thì PHẢI chọn loại", async () => {
+  it("Thiết bị: chủ công ty (quyền mọi tòa, org_wide=false như máy chủ thật) mà máy chủ chưa xác nhận ⇒ vẫn ẩn tìm máy", async () => {
     connected("all", [device()]);
-    m.perms = { door_access: { view: { org_wide: true, building_ids: [] }, manage_devices: { org_wide: true, building_ids: [] } } };
+    m.perms = realPerms([BUILDING_A, BUILDING_B]);
+    m.repo.canManageOrganization.mockResolvedValue(false);
+    m.buildings = twoBuildings();
+    renderPage();
+    await screen.findByRole("tab", { name: "Thiết bị" });
+    openTab("Thiết bị");
+    expect(await screen.findByText("Chỉ người có quyền Quản lý máy ở mọi tòa mới gắn được máy mới.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tìm máy trên SmartLife" })).toBeNull();
+    expect(m.repo.canManageOrganization).toHaveBeenCalledWith(m.ORG);
+  });
+
+  it("Thiết bị: máy chủ xác nhận Quản lý ở mọi tòa ⇒ tìm máy; máy không rõ loại ẩn mặc định, gắn thì PHẢI chọn loại", async () => {
+    connected("all", [device()]);
+    m.perms = realPerms([BUILDING_A, BUILDING_B]);
+    m.repo.canManageOrganization.mockResolvedValue(true);
     m.buildings = twoBuildings();
     m.edge.discover.mockResolvedValue({
       devices: [

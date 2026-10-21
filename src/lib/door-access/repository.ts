@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 
 import { supabase } from "@/integrations/supabase/client";
 
@@ -128,6 +128,18 @@ export function createDoorAccessRepository(transport: DoorRpcTransport = { rpc: 
         { operation: "tải danh sách máy cửa", mutation: false },
       );
       return result.devices;
+    },
+
+    /**
+     * Gắn máy MỚI / tìm máy trên SmartLife: máy chủ đòi quyền Quản lý máy ở MỌI tòa. Hỏi đúng hàm máy chủ dùng để
+     * chặn — không suy từ get_my_permissions_v2 (khoá có chiều BUILDING luôn trả org_wide=false kể cả với chủ).
+     */
+    async canManageOrganization(organizationId: string): Promise<boolean> {
+      return call(
+        () => transport.rpc("door_access_can_manage_org_v1", { p_organization_id: organizationId }),
+        z.boolean(),
+        { operation: "kiểm quyền gắn máy mới", mutation: false },
+      );
     },
 
     async listKeyLinks(organizationId: string, deviceId: string): Promise<DoorKeyLink[]> {

@@ -54,6 +54,7 @@ export const doorKeys = {
   devices: (caller: DoorAccessCaller | null, includeInactive: boolean) => [...root(caller), "devices", includeInactive] as const,
   allDevices: (caller: DoorAccessCaller | null) => [...root(caller), "devices"] as const,
   discover: (caller: DoorAccessCaller | null) => [...root(caller), "discover"] as const,
+  canManageOrg: (caller: DoorAccessCaller | null) => [...root(caller), "can-manage-org"] as const,
   records: (caller: DoorAccessCaller | null, deviceId: string | null, startMs: number, endMs: number) =>
     [...root(caller), "records", deviceId, startMs, endMs] as const,
   allRecords: (caller: DoorAccessCaller | null, deviceId: string | null) => [...root(caller), "records", deviceId] as const,
@@ -97,6 +98,17 @@ export function useDoorDevices(caller: DoorAccessCaller | null, options: { inclu
     enabled: caller !== null && (options.enabled ?? true),
     staleTime: 60_000,
     queryFn: () => doorAccessRepository.listDevices(need(caller).organizationId, includeInactive),
+  });
+}
+
+/** Có quyền gắn máy MỚI / tìm máy trên SmartLife không — đúng phép kiểm máy chủ dùng (Quản lý máy ở mọi tòa). */
+export function useDoorCanManageOrg(caller: DoorAccessCaller | null) {
+  return useQuery({
+    ...common,
+    queryKey: doorKeys.canManageOrg(caller),
+    enabled: caller !== null,
+    staleTime: 60_000,
+    queryFn: () => doorAccessRepository.canManageOrganization(need(caller).organizationId),
   });
 }
 

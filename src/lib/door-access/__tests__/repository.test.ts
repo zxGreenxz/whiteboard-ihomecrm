@@ -62,6 +62,15 @@ function repoWith(response: { data: unknown; error: { code?: string; message?: s
 }
 
 describe("repository: tên RPC + tham số đúng hợp đồng", () => {
+  it("door_access_can_manage_org_v1: hỏi đúng hàm máy chủ chặn gắn máy mới; kết quả không phải boolean ⇒ lỗi", async () => {
+    const yes = repoWith({ data: true, error: null });
+    await expect(yes.repo.canManageOrganization(ORG)).resolves.toBe(true);
+    expect(yes.rpc).toHaveBeenCalledWith("door_access_can_manage_org_v1", { p_organization_id: ORG });
+    await expect(repoWith({ data: false, error: null }).repo.canManageOrganization(ORG)).resolves.toBe(false);
+    await expect(repoWith({ data: "true", error: null }).repo.canManageOrganization(ORG)).rejects.toBeInstanceOf(DoorAccessError);
+    await expect(repoWith({ data: null, error: null }).repo.canManageOrganization(ORG)).rejects.toBeInstanceOf(DoorAccessError);
+  });
+
   it("door_access_devices_v1 với công ty và cờ máy tắt", async () => {
     const { rpc, repo } = repoWith({ data: { devices: [device()] }, error: null });
     await expect(repo.listDevices(ORG, true)).resolves.toHaveLength(1);
