@@ -61,8 +61,10 @@ export const param = Object.freeze({
 const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool', 'attachments']);
 
 /** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs). */
-export function defineAction({ id, page, key, class: kind, title, params = {}, reasons = [], ...rest } = {}) {
-  if (Object.keys(rest).length || typeof id !== 'string' || !ACTION_ID.test(id) || !ACTION_PAGES.includes(page) || !id.startsWith(`${page}.`) ||
+export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], ...rest } = {}) {
+  // rpc: RPC của trang (INVOKER) nhận (p_binding, p_action, p_phase, p_request_id, p_params, p_resolved, p_expected_basis), khuôn
+  // public.hermes_action_probe_v1 (20261021133823); adapter chỉ gọi đúng các tên đã khai ở đây.
+  if (Object.keys(rest).length || typeof rpc !== 'string' || !/^hermes_[a-z0-9_]+_v[1-9][0-9]*$/.test(rpc) || typeof id !== 'string' || !ACTION_ID.test(id) || !ACTION_PAGES.includes(page) || !id.startsWith(`${page}.`) ||
       typeof key !== 'string' || !/^[a-z][a-z0-9_.]{0,127}$/.test(key) || !ACTION_CLASSES.includes(kind) ||
       typeof title !== 'string' || !title.trim() || title.length > 120 || CONTROL.test(title) ||
       !plain(params) || Object.keys(params).length > MAX_PARAMS || !Array.isArray(reasons) ||
@@ -71,7 +73,7 @@ export function defineAction({ id, page, key, class: kind, title, params = {}, r
     if (!PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !KINDS.includes(value.kind)) fail();
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
   }
-  return Object.freeze({ id, page, key, class: kind, title, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
+  return Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
 }
 
 /** Gom danh mục. `keys` = tập khoá Action hợp lệ (mặc định truyền từ capability-contract ở nơi dựng). */
@@ -91,6 +93,7 @@ export function createActionCatalog(actions, { keys } = {}) {
     actions: byId, ids, keys: actionKeys, get,
     get empty() { return ids.length === 0; },
     pages: Object.freeze([...new Set(ids.map(id => byId[id].page))]),
+    rpcs: Object.freeze([...new Set(ids.map(id => byId[id].rpc))].sort()),
     /** Ít nhất một thao tác của danh mục mà kết nối giữ khoá. */
     any: effective => ids.some(id => granted(effective, byId[id])),
     granted: (effective, id) => { const action = get(id); return action !== null && granted(effective, action); },

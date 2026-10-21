@@ -10,7 +10,7 @@ import { PROBE_KEY, probeCatalog } from './action-probe.fixture.mjs';
 // Mặt tool của thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 4). D1 = A; khuôn B sinh từ cùng danh mục.
 const bytes = tool => Buffer.byteLength(JSON.stringify(advertisedTool(tool)));
 const firstSentence = tool => tool.description.split(/(?<=[.!?])\s/)[0];
-const TASK = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', title: 'Tạo việc', params: { title: param.text(1, 200) } });
+const TASK = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const mixed = () => createActionCatalog([...probeCatalog().ids.map(id => probeCatalog().actions[id]), TASK], { keys: [PROBE_KEY, 'tasks.create'] });
 
 test('A (D1): ba tool chung ≤ 2 000 B tools/list, câu đầu ≤ 60 ký tự có từ khoá ASCII; khuôn B sinh từ cùng danh mục', t => {

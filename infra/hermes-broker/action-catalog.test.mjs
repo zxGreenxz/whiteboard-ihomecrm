@@ -5,7 +5,7 @@ import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE, probeCatalog } from './action-pro
 
 // Sổ danh mục thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 5): kiểm khi nạp, kiểm params ở connector với gợi ý
 // TĨNH dựng từ khuôn (không nhắc lại giá trị mô hình gửi), JSON chuẩn hoá cho khoá binding xác nhận.
-const base = { id: 'probe.sample', page: 'probe', key: PROBE_KEY, class: 'money', title: 'Thử' };
+const base = { id: 'probe.sample', page: 'probe', key: PROBE_KEY, class: 'money', title: 'Thử', rpc: 'hermes_action_probe_v1' };
 
 test('defineAction từ chối khai sai: mã, trang, lớp, khoá, tiêu đề, khuôn, lý do ngoài danh sách đóng, tham số ảnh khi chưa có luồng ảnh', () => {
   assert.ok(Object.isFrozen(defineAction(base)));

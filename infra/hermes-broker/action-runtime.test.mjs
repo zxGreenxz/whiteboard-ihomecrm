@@ -17,7 +17,7 @@ const id = n => `${n.repeat(8)}-${n.repeat(4)}-4${n.repeat(3)}-8${n.repeat(3)}-$
 const TOKEN_A = `hc_${'A'.repeat(43)}`, TOKEN_B = `hc_${'B'.repeat(43)}`;
 const CONNECTIONS = { [TOKEN_A]: id('a'), [TOKEN_B]: id('9') };
 const START = Date.parse('2026-10-21T12:00:00.000Z');
-const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', title: 'Tạo việc', params: { title: param.text(1, 200) } });
+const OTHER = defineAction({ id: 'task.create', page: 'task', key: 'tasks.create', class: 'reversible', rpc: 'hermes_task_action_v1', title: 'Tạo việc', params: { title: param.text(1, 200) } });
 const CF = /^cf_[A-Za-z0-9_-]{43}$/;
 
 function setup(t, { action = [PROBE_KEY], respond } = {}) {

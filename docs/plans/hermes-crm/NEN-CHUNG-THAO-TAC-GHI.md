@@ -533,7 +533,15 @@ Mỗi ca chạy 3 lần. Chấm theo `app_private.hermes_action_receipts` và au
 
 Mỗi mốc là một commit có test xanh.
 
-**Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓ (`b7c200344`), Mốc 4 ✓ (`a13fb3c13`, khung + danh mục thử, chưa nối adapter SQL), Mốc 5 ✓ (hàm SQL giải tên, file migration chưa áp). Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
+**Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓ (`b7c200344`), Mốc 4 ✓ (`a13fb3c13`, khung + danh mục thử, chưa nối adapter SQL), Mốc 5 ✓ (`f25717f9a`, hàm SQL giải tên, file migration chưa áp), Mốc 6 ✓ (M1 `20261021133823_hermes_action_foundation_v1`, M2 `20261021134531_hermes_action_keys_seed_v1`, adapter `action-adapter.mjs`; chỉ file, chưa áp).
+
+**Mốc 6 — điểm khác bảng mục 9:**
+- Guard chung là `app_private.hermes_action_guard_v1(binding, action)`. Thân kiểm binding theo đúng `hermes_expense_action_v1`; hàm cũ không đổi. Quyền CRM giao vào lấy từ cột `crm_permission` của `app_private.hermes_action_policies`.
+- `hermes_action_policies` vừa là danh mục thao tác phía SQL (khoá, quyền CRM, lớp) vừa là bảng chính sách. Ràng buộc `hermes_action_policy_floor` giữ sàn D2 ngay trong DB: lớp money/irreversible không thể khai `never`.
+- Biên nhận: `receipt_begin/finish` luôn chạy lại guard và không nhận ngữ cảnh do người gọi đưa. Audit `HERMES_ACTION_APPLIED/REJECTED` nằm cùng transaction.
+- RPC trang là INVOKER và gọi guard/biên nhận trong `app_private`, nên M1 **dừng không áp** nếu `authenticated` thiếu USAGE trên `app_private`. Production nhiều khả năng có quyền này (suy từ `hermes_task_input_options_v1` đang chạy), nhưng chưa xác minh trực tiếp.
+- `public.hermes_action_probe_v1` là RPC thử (D6) và là khuôn cho RPC từng trang. Nó chỉ ghi biên nhận + audit; note `!raise XXXXX` giả lập lỗi hàm ghi để thử đường ánh xạ lý do.
+- M2 seed TẮT 13 khoá, không có `thu_tien.collect`. Khoá thử `assistant.action_probe` seed TẮT ở M1. `capability-contract.mjs` và nhãn web **chưa** thêm các khoá này: phải thêm trước khi bật bất kỳ khoá nào. Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 
 | Mốc | Nội dung | Migration | Công |
 | --- | --- | --- | --- |
