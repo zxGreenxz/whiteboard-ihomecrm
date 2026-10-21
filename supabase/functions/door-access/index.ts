@@ -14,8 +14,9 @@
 // Thao tác ghi (tạo/xoá mật khẩu tạm, mở cửa từ xa, xoá vân tay/thẻ/mật khẩu trên máy):
 //   door_access_begin_action_v1 (JWT người dùng: quyền, trần tần suất, ghi PENDING) ⇒ gọi Tuya ĐÚNG MỘT lần ⇒
 //   door_access_finish_action_v1 (CHỈ service role — người dùng không tự chốt kết quả) chốt OK | FAILED | UNKNOWN.
-//   Lỗi mạng/hết giờ/kết quả lạ ⇒ UNKNOWN + outcomeUnknown (lệnh có thể đã chạy) — KHÔNG gửi lại. Chốt nhật ký hỏng
-//   thì vẫn trả kết quả Tuya, kèm logPending.
+//   Lỗi ở bước vé (trước khi lệnh được gửi) ⇒ luôn FAILED. Lỗi của lệnh: mạng/hết giờ/kết quả lạ/Tuya 500–501 ⇒
+//   UNKNOWN + outcomeUnknown (lệnh có thể đã chạy) — KHÔNG gửi lại. Chốt nhật ký hỏng thì vẫn trả kết quả Tuya, kèm
+//   logPending.
 //
 // Mật khẩu tạm sinh ở đây, chỉ nằm trong câu trả lời tạo (một lần; mọi câu trả lời đều Cache-Control: no-store);
 // không vào p_detail/finish, không ghi log. console.error chỉ ghi mã ngắn — không token, secret, mật khẩu, vé.
@@ -46,6 +47,7 @@ import {
   listUserUnlockMethods,
   remoteUnlock,
   TEMP_PASSWORD_NAME_MAX,
+  TuyaTicketStageError,
   type UserUnlockMethod,
 } from "./tuyaDoor.ts";
 
@@ -64,7 +66,10 @@ const NGAY_MS = 86_400_000;
 export const TRAN_KHOANG_NHAT_KY_MS = 31 * NGAY_MS;
 export const TRAN_TRANG_NHAT_KY = 50;
 export const TRANG_NHAT_KY_MAC_DINH = 20;
-/** Mật khẩu tạm: hạn tối đa 7 ngày; giờ bắt đầu được lùi tối đa 5 phút so với đồng hồ máy chủ (lệch giờ máy khách). */
+/**
+ * Mật khẩu tạm: dài tối đa 7 ngày VÀ hết hạn trong 7 ngày kể từ lúc tạo; giờ bắt đầu được lùi, giờ hết hạn được vượt
+ * tối đa 5 phút so với đồng hồ máy chủ (lệch giờ máy khách).
+ */
 export const TRAN_HAN_MAT_KHAU_GIAY = 7 * 86_400;
 export const LUI_BAT_DAU_GIAY = 300;
 /** Đối chiếu vân tay: người dùng trên máy đọc trang 50, tối đa 5 trang; cách mở khoá đọc tối đa 4 người cùng lúc. */
@@ -480,12 +485,24 @@ async function xinQuyenMay(ng: NguCanh, deviceId: string, permission: string): P
 // ---------------------------------------------------------------------------------------------------
 // Lỗi Tuya
 
-/** Mã ngắn của lỗi không phải "Tuya từ chối": http_502, bad_json, bad_result, bad_token, timeout, network. */
+/** Mã ngắn của lỗi: mã Tuya (từ chối) hoặc http_502, bad_json, bad_result, bad_token, timeout, network. */
 function maLoiMang(e: unknown): string {
   if (e instanceof TuyaError) return catChu(String(e.code), 64);
   if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) return "timeout";
   return "network";
 }
+
+/** Mô tả ngắn để chốt nhật ký (không lấy message của lỗi mạng — có thể mang URL). */
+function moTaLoiMang(e: unknown, ma: string): string {
+  if (e instanceof TuyaError) return catChu(e.msg || ma, 300);
+  return ma === "timeout" ? "Tuya không trả lời trong hạn" : "Lỗi mạng khi gọi Tuya";
+}
+
+/**
+ * Mã "lỗi hệ thống" của Tuya (500 system error, 501 request exception): success:false nhưng lỗi ở phía Tuya, có thể
+ * SAU khi lệnh đã tới máy ⇒ ở bước lệnh coi là CHƯA RÕ, không phải "từ chối". Mã từ chối khác vẫn là thất bại.
+ */
+const MA_TUYA_CHUA_RO: ReadonlySet<string> = new Set(["500", "501"]);
 
 /** Hành động đọc: Tuya từ chối ⇒ 502 (+tuyaCode); tham số ⇒ 400; mạng/hết giờ/HTTP/kết quả lạ ⇒ 504. */
 function loiTuyaDoc(e: unknown, action: string): LoiTra {
@@ -517,15 +534,62 @@ interface KetCuc {
 }
 
 /**
+ * Lỗi ở BƯỚC VÉ (TuyaTicketStageError — xin vé, giải ticket_key, mã hoá mật khẩu): lệnh chính CHƯA gửi xuống máy ⇒
+ * luôn FAILED, không bao giờ outcomeUnknown; người dùng thử lại được.
+ *   Tuya từ chối cấp vé (mọi mã, kể cả 500/501) ⇒ FAILED ticket_<mã Tuya>    · 502 tuya_rejected + tuyaCode
+ *   giải vé / mã hoá hỏng                       ⇒ FAILED ticket_crypto_<mã>  · 502 tuya_rejected
+ *   mạng, hết giờ, HTTP, kết quả lạ             ⇒ FAILED ticket_<mã>         · 504 tuya_unavailable (không outcomeUnknown)
+ */
+function ketCucBuocVe(cause: unknown): KetCuc {
+  if (cause instanceof TuyaError && cause.rejected) {
+    return {
+      status: "FAILED",
+      errorCode: catChu(`ticket_${maLoiMang(cause)}`, 64),
+      errorMessage: catChu(cause.msg || `Tuya từ chối cấp vé (mã ${String(cause.code)})`, 300),
+      traVe: {
+        code: "tuya_rejected",
+        message: `SmartLife từ chối cấp vé (mã ${String(cause.code)}) — lệnh chưa được gửi xuống máy.`,
+        tuyaCode: cause.code,
+      },
+    };
+  }
+  if (cause instanceof TuyaCryptoError) {
+    return {
+      status: "FAILED",
+      errorCode: `ticket_crypto_${cause.code}`,
+      errorMessage: catChu(cause.message, 300),
+      traVe: { code: "tuya_rejected", message: "Không giải được vé mật khẩu của SmartLife — lệnh chưa được gửi xuống máy." },
+    };
+  }
+  const ma = maLoiMang(cause);
+  return {
+    status: "FAILED",
+    errorCode: catChu(`ticket_${ma}`, 64),
+    errorMessage: moTaLoiMang(cause, ma),
+    traVe: {
+      code: "tuya_unavailable",
+      message: "Không lấy được vé từ SmartLife (mạng/hết giờ) — lệnh chưa được gửi xuống máy, có thể thử lại.",
+    },
+  };
+}
+
+/**
  * Lỗi của một thao tác ghi ⇒ cách chốt nhật ký + câu trả lời.
- *   Tuya từ chối (success:false)       ⇒ FAILED <mã Tuya>     · 502 tuya_rejected + tuyaCode
- *   tham số (chặn trước khi gửi)        ⇒ FAILED invalid_input  · 400 invalid_request
- *   giải vé hỏng (chưa gửi lệnh tạo)    ⇒ FAILED crypto_<mã>    · 502 tuya_rejected
- *   cấu hình                            ⇒ FAILED not_configured · 503 not_configured
- *   còn lại (mạng, hết giờ, HTTP, kết quả lạ) ⇒ UNKNOWN — lệnh CÓ THỂ đã chạy · 504 tuya_unavailable + outcomeUnknown
+ *   bước vé (TuyaTicketStageError)          ⇒ FAILED ticket_…       · xem ketCucBuocVe (chưa gửi lệnh)
+ *   Tuya từ chối lệnh (trừ 500/501)          ⇒ FAILED <mã Tuya>     · 502 tuya_rejected + tuyaCode
+ *   tham số (chặn trước khi gửi)             ⇒ FAILED invalid_input  · 400 invalid_request
+ *   mã hoá/sinh mật khẩu hỏng (trước khi gửi) ⇒ FAILED crypto_<mã>    · 502 tuya_rejected
+ *   cấu hình                                 ⇒ FAILED not_configured · 503 not_configured
+ *   còn lại — mạng, hết giờ, HTTP, kết quả lạ, Tuya 500/501 ⇒ UNKNOWN (lệnh CÓ THỂ đã chạy)
+ *                                            · 504 tuya_unavailable + outcomeUnknown (+ tuyaCode nếu Tuya có trả mã)
  */
 function ketCucLoiGhi(e: unknown, thaoTac: ThaoTac): KetCuc {
-  if (e instanceof TuyaError && e.rejected) {
+  if (e instanceof TuyaTicketStageError) {
+    // Tham số/cấu hình hỏng ở bước vé: như khi ném thẳng (đều FAILED, chưa gửi gì).
+    const cause = e.cause;
+    return cause instanceof TuyaInputError || cause instanceof TuyaConfigError ? ketCucLoiGhi(cause, thaoTac) : ketCucBuocVe(cause);
+  }
+  if (e instanceof TuyaError && e.rejected && !MA_TUYA_CHUA_RO.has(String(e.code))) {
     return {
       status: "FAILED",
       errorCode: maLoiMang(e),
@@ -546,23 +610,23 @@ function ketCucLoiGhi(e: unknown, thaoTac: ThaoTac): KetCuc {
       status: "FAILED",
       errorCode: `crypto_${e.code}`,
       errorMessage: catChu(e.message, 300),
-      traVe: { code: "tuya_rejected", message: "Không giải được vé mật khẩu của SmartLife — lệnh chưa được gửi xuống máy." },
+      traVe: { code: "tuya_rejected", message: "Lỗi mã hoá trước khi gửi lệnh — lệnh chưa được gửi xuống máy." },
     };
   }
   if (e instanceof TuyaConfigError) {
     return { status: "FAILED", errorCode: "not_configured", errorMessage: catChu(e.message, 300), traVe: LOI_CHUA_CAU_HINH };
   }
   const ma = maLoiMang(e);
-  const moTa = e instanceof TuyaError
-    ? catChu(e.msg, 300)
-    : ma === "timeout"
-    ? "Tuya không trả lời trong hạn"
-    : "Lỗi mạng khi gọi Tuya";
   return {
     status: "UNKNOWN",
     errorCode: ma,
-    errorMessage: moTa,
-    traVe: { code: "tuya_unavailable", message: CHUA_RO[thaoTac], outcomeUnknown: true },
+    errorMessage: moTaLoiMang(e, ma),
+    traVe: {
+      code: "tuya_unavailable",
+      message: CHUA_RO[thaoTac],
+      outcomeUnknown: true,
+      ...(e instanceof TuyaError && e.rejected ? { tuyaCode: e.code } : {}),
+    },
   };
 }
 
@@ -763,10 +827,9 @@ async function dieuPhoi(action: string, body: Record<string, unknown>, ng: NguCa
   const { tuya } = mt;
   switch (action) {
     case "discover": {
-      const quyen = await goiRpc(ng, "door_access_can_any_v1", {
-        p_organization_id: ng.org,
-        p_permission: "door_access.manage_devices",
-      });
+      // Tìm máy cần Quản lý ở MỌI toà đang hoạt động của công ty: người quản lý một toà không được thấy (rồi gắn về toà
+      // mình và mở) máy chưa gắn của toà khác.
+      const quyen = await goiRpc(ng, "door_access_can_manage_org_v1", { p_organization_id: ng.org });
       if (!quyen.ok) return loi(quyen.loi);
       if (quyen.data !== true) return loi(LOI_KHONG_QUYEN);
       const ds = await goiRpc(ng, "door_access_devices_v1", { p_organization_id: ng.org, p_include_inactive: true });
@@ -779,8 +842,9 @@ async function dieuPhoi(action: string, body: Record<string, unknown>, ng: NguCa
       try {
         const kq = await listProjectDevices(tuya, { maxPages: SO_TRANG_THIET_BI });
         return thanhCong({
-          // Chỉ máy cửa (kiểm soát ra vào / khoá Wi-Fi): bỏ cảm biến, báo khói… — loại khác không gắn toà được.
-          devices: kq.devices.filter((d) => d.kind !== null).map((d) => ({
+          // TRẢ MỌI máy của project, kể cả kind = null (category chưa nhận ra): mã category thật chưa kiểm trên máy thật,
+          // lọc ở đây có thể làm máy cửa thật không gắn được. Trang ẩn kind = null sau một công tắc.
+          devices: kq.devices.map((d) => ({
             tuyaDeviceId: d.id,
             name: d.name,
             category: d.category,
@@ -855,6 +919,11 @@ async function dieuPhoi(action: string, body: Record<string, unknown>, ng: NguCa
       if (invalidSec <= nowSec) throw new ThamSoSai("Giờ hết hạn phải sau hiện tại.");
       if (invalidSec <= effectiveSec) throw new ThamSoSai("Giờ hết hạn phải sau giờ bắt đầu.");
       if (invalidSec - effectiveSec > TRAN_HAN_MAT_KHAU_GIAY) throw new ThamSoSai("Mật khẩu tạm dùng tối đa 7 ngày.");
+      // Mã phải hết hạn trong 7 ngày kể từ LÚC TẠO (không chỉ dài ≤ 7 ngày): không đặt trước mã sống ở tương lai xa.
+      // Dung sai 300 s như giờ bắt đầu; SQL begin_action kiểm cùng luật.
+      if (invalidSec > nowSec + TRAN_HAN_MAT_KHAU_GIAY + LUI_BAT_DAU_GIAY) {
+        throw new ThamSoSai("Mật khẩu tạm phải hết hạn trong vòng 7 ngày kể từ bây giờ.");
+      }
       // p_detail KHÔNG chứa mật khẩu: mật khẩu sinh SAU begin (độ dài theo máy) và chỉ đi tới Tuya (đã mã hoá bằng vé).
       return await chayGhi(ng, deviceId, "TEMP_PASSWORD_CREATE", {
         name,

@@ -12,6 +12,7 @@ import {
   type TuyaRequestOptions,
   tuyaSign,
 } from "./tuyaClient.ts";
+import { TuyaCryptoError } from "./tuyaCrypto.ts";
 import { chayGioiHan, docCauHinh, docCheDo, HTTP_THEO_MA, type PhuThuoc, xuLy } from "./index.ts";
 
 const URL_HAM = "https://proj.supabase.co/functions/v1/door-access";
@@ -196,7 +197,7 @@ function setup(k: Kich = {}) {
   const calls: GoiSupabase[] = [];
   const rpcMacDinh: Record<string, KichRpc> = {
     door_access_authorize_v1: { body: ctxMau() },
-    door_access_can_any_v1: { body: true },
+    door_access_can_manage_org_v1: { body: true },
     door_access_devices_v1: { body: { devices: [] } },
     door_access_begin_action_v1: { body: { ...ctxMau(), log_id: LOG } },
     door_access_finish_action_v1: { body: { id: LOG } },
@@ -845,7 +846,7 @@ Deno.test("keys wifi_lock: người dùng v1.0 không lật trang, không đọc
   assert.equal(tuya.calls.length, 2);
 });
 
-Deno.test("discover: cần can_any (Quản lý ở ≥1 toà); gắn registered theo tuya_device_id; chỉ máy cửa", async () => {
+Deno.test("discover: cần can_manage_org (Quản lý ở MỌI toà); gắn registered theo tuya_device_id; trả MỌI máy kể cả kind null", async () => {
   const thietBi = [
     { id: TUYA_DEV, name: "Cổng chính", category: "mk", productName: "Máy kiểm soát", isOnline: true },
     { id: "vdevo00000000000000002", customName: "Khoá phòng 101", category: "jtmspro", isOnline: false },
@@ -882,22 +883,41 @@ Deno.test("discover: cần can_any (Quản lý ở ≥1 toà); gắn registered 
         kind: "wifi_lock",
         registered: null,
       },
+      // Category chưa nhận ra vẫn được trả (kind null) — trang ẩn sau công tắc; mã category thật chưa kiểm trên máy thật.
+      {
+        tuyaDeviceId: "vdevo00000000000000003",
+        name: "Báo khói",
+        category: "ywbj",
+        productName: null,
+        online: true,
+        kind: null,
+        registered: null,
+      },
     ],
     hasMore: false,
   });
-  assert.deepEqual(s.rpcNames(), ["door_access_can_any_v1", "door_access_devices_v1"]);
-  const [canAny, devices] = [s.rpc("door_access_can_any_v1")[0], s.rpc("door_access_devices_v1")[0]];
-  laJwtNguoiDung(canAny);
+  assert.deepEqual(s.rpcNames(), ["door_access_can_manage_org_v1", "door_access_devices_v1"]);
+  const [canManage, devices] = [s.rpc("door_access_can_manage_org_v1")[0], s.rpc("door_access_devices_v1")[0]];
+  laJwtNguoiDung(canManage);
   laJwtNguoiDung(devices);
-  assert.deepEqual(canAny.body, { p_organization_id: ORG, p_permission: "door_access.manage_devices" });
+  assert.deepEqual(canManage.body, { p_organization_id: ORG });
   assert.deepEqual(devices.body, { p_organization_id: ORG, p_include_inactive: true });
   assert.equal(tuya.calls[0].query?.page_size, 20);
 
-  // can_any không đúng true (false, object, lỗi quyền) ⇒ 403, không đọc máy, không gọi Tuya.
-  for (const tra of [{ body: false }, { body: { allowed: true } }, { body: "true" }, { status: 403, body: { code: "42501", message: "x" } }]) {
-    const t = setup({ rpc: { door_access_can_any_v1: tra } });
+  // can_manage_org không đúng true (false, object, chuỗi, số, null, lỗi quyền) ⇒ 403, không đọc máy, không gọi Tuya.
+  for (
+    const tra of [
+      { body: false },
+      { body: { allowed: true } },
+      { body: "true" },
+      { body: 1 },
+      { body: null },
+      { status: 403, body: { code: "42501", message: "x" } },
+    ]
+  ) {
+    const t = setup({ rpc: { door_access_can_manage_org_v1: tra } });
     loiLa(await goi(yeuCau({ action: "discover" }), t.deps), "not_permitted");
-    assert.deepEqual(t.rpcNames(), ["door_access_can_any_v1"]);
+    assert.deepEqual(t.rpcNames(), ["door_access_can_manage_org_v1"], JSON.stringify(tra));
     assert.equal(t.tuya.calls.length, 0);
   }
   // devices_v1 sai dạng ⇒ 500 (không coi là "chưa gắn máy nào").
@@ -994,10 +1014,26 @@ Deno.test("create_temp_password: tham số sai ⇒ 400 trước begin (tên 1–
     assert.deepEqual(s.rpcNames(), [], JSON.stringify(patch));
     assert.equal(s.tuya.calls.length, 0);
   }
-  // Biên hợp lệ: lùi đúng 300 s, đúng 7 ngày, tên 20 emoji (20 code point, 40 đơn vị UTF-16).
+  // Hết hạn quá 7 ngày (+300 s) kể từ bây giờ ⇒ 400 dù độ dài ≤ 7 ngày: không đặt trước mã sống ở tương lai xa.
+  for (
+    const patch of [
+      { effectiveSec: NOW_SEC + 2 * 86_400, invalidSec: NOW_SEC + 8 * 86_400 },
+      { effectiveSec: NOW_SEC + 301, invalidSec: NOW_SEC + 7 * 86_400 + 301 },
+      { effectiveSec: NOW_SEC + 30 * 86_400, invalidSec: NOW_SEC + 30 * 86_400 + 3600 },
+    ]
+  ) {
+    const s = setup();
+    const res = await goi(yeuCau({ ...THAN_HOP_LE.create_temp_password, ...patch }), s.deps);
+    loiLa(res, "invalid_request");
+    assert.equal(res.tra.error?.message, "Mật khẩu tạm phải hết hạn trong vòng 7 ngày kể từ bây giờ.", JSON.stringify(patch));
+    assert.deepEqual(s.rpcNames(), []);
+  }
+  // Biên hợp lệ: lùi đúng 300 s, đúng 7 ngày, hết hạn đúng 7 ngày + 300 s kể từ bây giờ, tên 20 emoji
+  // (20 code point, 40 đơn vị UTF-16).
   for (
     const patch of [
       { effectiveSec: NOW_SEC - 300, invalidSec: NOW_SEC - 300 + 7 * 86_400 },
+      { effectiveSec: NOW_SEC + 300, invalidSec: NOW_SEC + 7 * 86_400 + 300 },
       { name: "😀".repeat(20) },
     ]
   ) {
@@ -1112,31 +1148,101 @@ Deno.test("delete_key thiếu tuyaUserId ⇒ 400 với câu hướng dẫn, KHÔ
   }
 });
 
-Deno.test("Tuya từ chối thao tác ghi ⇒ finish FAILED (mã + câu Tuya) + 502 tuya_rejected + tuyaCode", async () => {
-  const tuya = new TuyaGia([[P.ticket, () => veGia().ticket], [P.unlockAc, () => {
-    throw new TuyaError(2001, "device is offline", "/open-door", true);
+Deno.test("Tuya từ chối LỆNH (mã khác 500/501) ⇒ finish FAILED (mã + câu Tuya) + 502 tuya_rejected + tuyaCode", async () => {
+  for (const [code, msg] of [[2001, "device is offline"], [1106, "permission deny"]] as const) {
+    const tuya = new TuyaGia([[P.ticket, () => veGia().ticket], [P.unlockAc, () => {
+      throw new TuyaError(code, msg, "/open-door", true);
+    }]]);
+    const s = setup({ tuya });
+    const res = await goi(yeuCau(THAN_HOP_LE.remote_unlock), s.deps);
+    loiLa(res, "tuya_rejected");
+    assert.equal(res.tra.error?.tuyaCode, code);
+    assert.equal(res.tra.error?.outcomeUnknown, undefined);
+    assert.equal(res.tra.error?.logPending, undefined);
+    laServiceRole(s.rpc("door_access_finish_action_v1")[0]);
+    assert.deepEqual(
+      s.rpc("door_access_finish_action_v1")[0].body,
+      finishArgs("FAILED", { p_error_code: String(code), p_error_message: msg }),
+    );
+    assert.equal(tuya.goiToi(P.unlockAc).length, 1);
+  }
+  // Xoá vân tay bị từ chối ⇒ FAILED (không chốt OK nên không tự bỏ gắn liên kết).
+  const tuya = new TuyaGia([[P.keyDelete, () => {
+    throw new TuyaError(1106, "permission deny", "/keys", true);
   }]]);
   const s = setup({ tuya });
-  const res = await goi(yeuCau(THAN_HOP_LE.remote_unlock), s.deps);
-  loiLa(res, "tuya_rejected");
-  assert.equal(res.tra.error?.tuyaCode, 2001);
-  assert.equal(res.tra.error?.outcomeUnknown, undefined);
-  assert.equal(res.tra.error?.logPending, undefined);
-  laServiceRole(s.rpc("door_access_finish_action_v1")[0]);
-  assert.deepEqual(
-    s.rpc("door_access_finish_action_v1")[0].body,
-    finishArgs("FAILED", { p_error_code: "2001", p_error_message: "device is offline" }),
-  );
-  assert.equal(tuya.goiToi(P.unlockAc).length, 1);
+  loiLa(await goi(yeuCau(THAN_HOP_LE.delete_key), s.deps), "tuya_rejected");
+  assert.equal(s.rpc("door_access_finish_action_v1")[0].body?.p_status, "FAILED");
+});
 
-  // Từ chối ngay ở bước xin vé ⇒ không gửi lệnh mở.
-  const ve = new TuyaGia([[P.ticket, () => {
-    throw new TuyaError(1106, "permission deny", "/password-ticket", true);
-  }], [P.unlockAc, () => true]]);
-  const t = setup({ tuya: ve });
-  loiLa(await goi(yeuCau(THAN_HOP_LE.remote_unlock), t.deps), "tuya_rejected");
-  assert.equal(ve.goiToi(P.unlockAc).length, 0);
-  assert.equal(t.rpc("door_access_finish_action_v1")[0].body?.p_status, "FAILED");
+Deno.test("Tuya báo 500/501 (lỗi hệ thống) cho LỆNH ⇒ UNKNOWN + 504 outcomeUnknown (+tuyaCode), lệnh gửi đúng một lần", async () => {
+  for (const [code, msg] of [[500, "system error"], [501, "request exception"], ["500", "system error"]] as const) {
+    const tuya = new TuyaGia([[P.ticket, () => veGia().ticket], [P.unlockAc, () => {
+      throw new TuyaError(code, msg, "/open-door", true);
+    }]]);
+    const s = setup({ tuya });
+    const res = await goi(yeuCau(THAN_HOP_LE.remote_unlock), s.deps);
+    loiLa(res, "tuya_unavailable");
+    assert.equal(res.tra.error?.outcomeUnknown, true, String(code));
+    assert.equal(res.tra.error?.tuyaCode, code);
+    assert.match(res.tra.error?.message ?? "", /Chưa rõ cửa đã mở chưa/);
+    assert.equal(tuya.goiToi(P.unlockAc).length, 1, "không gửi lại");
+    assert.deepEqual(
+      s.rpc("door_access_finish_action_v1")[0].body,
+      finishArgs("UNKNOWN", { p_error_code: String(code), p_error_message: msg }),
+    );
+  }
+  // Tạo mật khẩu tạm: 500 ở lệnh tạo ⇒ chưa rõ (mật khẩu có thể đã nạp), không trả mật khẩu.
+  const { tuya } = tuyaTaoMatKhau(() => {
+    throw new TuyaError(500, "system error", "/temp-password", true);
+  });
+  const s = setup({ tuya });
+  const res = await goi(yeuCau(THAN_HOP_LE.create_temp_password), s.deps);
+  loiLa(res, "tuya_unavailable");
+  assert.equal(res.tra.error?.outcomeUnknown, true);
+  assert.equal(res.tra.data, undefined);
+  assert.equal(s.rpc("door_access_finish_action_v1")[0].body?.p_status, "UNKNOWN");
+});
+
+Deno.test("lỗi ở BƯỚC VÉ (trước khi gửi lệnh) ⇒ finish FAILED ticket_…, không outcomeUnknown, không gửi lệnh", async () => {
+  const cases: Array<[XuLyTuya, string, string, number | string | undefined]> = [
+    [() => {
+      throw new TypeError("error sending request");
+    }, "ticket_network", "tuya_unavailable", undefined],
+    [() => {
+      throw new DOMException("Tuya không trả lời trong 15000 ms", "TimeoutError");
+    }, "ticket_timeout", "tuya_unavailable", undefined],
+    [() => {
+      throw new TuyaError("http_502", "HTTP 502", "/password-ticket");
+    }, "ticket_http_502", "tuya_unavailable", undefined],
+    [() => ({ ticket_id: "t" }), "ticket_bad_result", "tuya_unavailable", undefined],
+    [() => {
+      throw new TuyaError(1106, "permission deny", "/password-ticket", true);
+    }, "ticket_1106", "tuya_rejected", 1106],
+    // 500 ở bước vé vẫn là "chưa làm": lệnh chưa được gửi.
+    [() => {
+      throw new TuyaError(500, "system error", "/password-ticket", true);
+    }, "ticket_500", "tuya_rejected", 500],
+  ];
+  for (const [reply, errorCode, code, tuyaCode] of cases) {
+    for (const action of ["remote_unlock", "create_temp_password"] as const) {
+      const tuya = new TuyaGia([[P.ticket, reply], [P.unlockAc, () => true], [P.tempCreate, () => ({ id: 1 })]]);
+      const s = setup({ tuya });
+      const res = await goi(yeuCau(THAN_HOP_LE[action]), s.deps);
+      loiLa(res, code);
+      assert.equal(res.tra.error?.outcomeUnknown, undefined, `${action} ${errorCode}`);
+      assert.equal(res.tra.error?.tuyaCode, tuyaCode);
+      assert.match(res.tra.error?.message ?? "", /chưa được gửi/);
+      assert.equal(tuya.goiToi(P.ticket).length, 1, "xin vé đúng một lần");
+      assert.equal(tuya.goiToi(P.unlockAc).length + tuya.goiToi(P.tempCreate).length, 0, `${action} ${errorCode}: không gửi lệnh`);
+      const finish = s.rpc("door_access_finish_action_v1");
+      assert.equal(finish.length, 1);
+      laServiceRole(finish[0]);
+      assert.equal(finish[0].body?.p_status, "FAILED");
+      assert.equal(finish[0].body?.p_error_code, errorCode);
+      assert.equal(res.tra.data, undefined);
+    }
+  }
 });
 
 Deno.test("lỗi mạng/hết giờ/HTTP/kết quả lạ khi ghi ⇒ finish UNKNOWN + 504 outcomeUnknown; lệnh gửi ĐÚNG MỘT lần", async () => {
@@ -1212,7 +1318,7 @@ Deno.test("Tuya trả success nhưng kết quả false ⇒ FAILED result_false +
   }
 });
 
-Deno.test("giải vé hỏng ⇒ FAILED crypto_<mã> + 502, lệnh tạo không được gửi; TuyaInputError ⇒ FAILED invalid_input + 400", async () => {
+Deno.test("giải vé hỏng ⇒ FAILED ticket_crypto_<mã> + 502, lệnh tạo không được gửi; TuyaInputError ⇒ FAILED invalid_input + 400", async () => {
   const tuya = new TuyaGia([
     [P.ticket, () => ({ ticket_id: "fake-ticket-01", ticket_key: "ABCD", expire_time: 300 })],
     [P.tempCreate, () => ({ id: 1 })],
@@ -1223,14 +1329,26 @@ Deno.test("giải vé hỏng ⇒ FAILED crypto_<mã> + 502, lệnh tạo không 
   assert.equal(res.tra.error?.outcomeUnknown, undefined);
   assert.equal(tuya.goiToi(P.tempCreate).length, 0);
   assert.equal(s.rpc("door_access_finish_action_v1")[0].body?.p_status, "FAILED");
-  assert.equal(s.rpc("door_access_finish_action_v1")[0].body?.p_error_code, "crypto_bad_hex");
+  assert.equal(s.rpc("door_access_finish_action_v1")[0].body?.p_error_code, "ticket_crypto_bad_hex");
 
   // Vé mã bằng secret khác ⇒ hỏng đệm/độ dài khoá — vẫn là lỗi giải vé, không phải "chưa rõ".
   const khac = new TuyaGia([[P.ticket, () => veGia("fake_secret_other_0123456789abcd").ticket], [P.tempCreate, () => ({ id: 1 })]]);
   const k = setup({ tuya: khac });
   loiLa(await goi(yeuCau(THAN_HOP_LE.create_temp_password), k.deps), "tuya_rejected");
-  assert.match(String(k.rpc("door_access_finish_action_v1")[0].body?.p_error_code), /^crypto_/);
+  assert.match(String(k.rpc("door_access_finish_action_v1")[0].body?.p_error_code), /^ticket_crypto_/);
   assert.equal(khac.goiToi(P.tempCreate).length, 0);
+
+  // Sinh mật khẩu hỏng (TuyaCryptoError ngoài bước vé, trước khi gửi gì) ⇒ FAILED crypto_<mã>, không xin vé.
+  const sinhHong = new TuyaGia([[P.ticket, () => veGia().ticket], [P.tempCreate, () => ({ id: 1 })]]);
+  const g = setup({
+    tuya: sinhHong,
+    randomPassword: () => {
+      throw new TuyaCryptoError("no_entropy", "Nguồn ngẫu nhiên không cho đủ chữ số");
+    },
+  });
+  loiLa(await goi(yeuCau(THAN_HOP_LE.create_temp_password), g.deps), "tuya_rejected");
+  assert.equal(g.rpc("door_access_finish_action_v1")[0].body?.p_error_code, "crypto_no_entropy");
+  assert.equal(sinhHong.calls.length, 0);
 
   const input = new TuyaGia([[P.ticket, () => veGia().ticket], [P.unlockAc, () => {
     throw new TuyaInputError("channelId phải là số nguyên 1–64");

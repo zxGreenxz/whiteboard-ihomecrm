@@ -27,6 +27,7 @@ import {
   RECORD_TIME_UNIT,
   recordTimeParam,
   remoteUnlock,
+  TuyaTicketStageError,
   unlockMethodFromCode,
 } from "./tuyaDoor.ts";
 
@@ -598,10 +599,13 @@ Deno.test("createTempPassword: đầu vào sai bị chặn TRƯỚC khi xin vé;
   }
   assert.equal(h.calls.length + h.tokenCalls(), 0);
 
-  // Vé mã bằng secret khác ⇒ TuyaCryptoError, không gửi lệnh tạo mật khẩu.
+  // Vé mã bằng secret khác ⇒ lỗi bước vé (gốc là TuyaCryptoError), không gửi lệnh tạo mật khẩu.
   const wrong = fakeTicket("ticket-demo-0003", "Y".repeat(32));
   const h2 = harness([wrong.reply, ok({ id: 1 })]);
-  await assert.rejects(createTempPassword(h2.client, base), (error: unknown) => error instanceof TuyaCryptoError);
+  await assert.rejects(
+    createTempPassword(h2.client, base),
+    (error: unknown) => error instanceof TuyaTicketStageError && error.cause instanceof TuyaCryptoError,
+  );
   assert.deepEqual(h2.calls.map((c) => c.path), [TICKET_PATH]);
 
   // Tuya báo thành công nhưng thiếu id ⇒ bad_result (không chắc đã tạo hay chưa — rejected = false).
@@ -714,6 +718,63 @@ Deno.test("remoteUnlock: lỗi Tuya / lỗi mạng ⇒ ném, gửi lệnh mở �
   assert.equal(await remoteUnlock(expired.client, { deviceId: DEVICE, kind: "access_control" }), true);
   assert.deepEqual(expired.calls.map((c) => c.body), [undefined, { ticket_id: "ticket-x", channel_id: 1 }, { ticket_id: "ticket-x", channel_id: 1 }]);
   assert.equal(expired.tokenCalls(), 2);
+});
+
+Deno.test("bước vé lỗi ⇒ TuyaTicketStageError {cause} và KHÔNG gửi lệnh; lỗi của lệnh ném nguyên (không bọc)", async () => {
+  const stage = (check: (cause: unknown) => boolean) => (error: unknown) => {
+    assert.ok(error instanceof TuyaTicketStageError, String(error));
+    assert.ok(check(error.cause), String(error.cause));
+    return true;
+  };
+  const input: CreateTempPasswordInput = {
+    deviceId: DEVICE,
+    name: "Khách",
+    password: "123456",
+    effectiveSec: 1_760_000_000,
+    invalidSec: 1_760_086_400,
+    accessSecret: ACCESS_SECRET_EXAMPLE,
+  };
+  const reset = new TypeError("connection reset");
+  const ticketStage: Array<[string, Envelope | Error, (cause: unknown) => boolean]> = [
+    ["từ chối", fail(1106, "permission deny"), (c) => c instanceof TuyaError && c.rejected && c.code === 1106 && c.path === TICKET_PATH],
+    ["lỗi hệ thống 500", fail(500, "system error"), (c) => c instanceof TuyaError && c.rejected && c.code === 500],
+    ["mạng", reset, (c) => c === reset],
+    ["vé sai dạng", ok({ ticket_id: "t" }), (c) => c instanceof TuyaError && c.code === "bad_result" && !c.rejected],
+  ];
+  for (const [label, reply, check] of ticketStage) {
+    const unlock = harness([reply, ok(true)]);
+    await assert.rejects(remoteUnlock(unlock.client, { deviceId: DEVICE, kind: "access_control" }), stage(check), label);
+    assert.deepEqual(unlock.calls.map((c) => c.path), [TICKET_PATH], `${label}: không gửi lệnh mở`);
+    const create = harness([reply, ok({ id: 1 })]);
+    await assert.rejects(createTempPassword(create.client, input), stage(check), label);
+    assert.deepEqual(create.calls.map((c) => c.path), [TICKET_PATH], `${label}: không gửi lệnh tạo`);
+  }
+
+  // Xin token hỏng ngay ở lời gọi vé cũng là bước vé (chưa gửi lệnh nào).
+  const dns = new TypeError("dns");
+  const down = new TuyaClient(
+    { baseUrl: BASE, accessId: ACCESS_ID_EXAMPLE, accessSecret: ACCESS_SECRET_EXAMPLE },
+    { fetch: () => Promise.reject(dns), now: () => NOW, tokenCache: new Map() },
+  );
+  await assert.rejects(remoteUnlock(down, { deviceId: DEVICE, kind: "wifi_lock" }), stage((c) => c === dns));
+
+  // Lỗi ở LỆNH (sau khi có vé) ném nguyên trạng — người gọi coi là chưa rõ/từ chối tuỳ lỗi, không phải bước vé.
+  const ticket = ok({ ticket_id: "ticket-y", ticket_key: "00", expire_time: 300 });
+  const sysError = harness([ticket, fail(500, "system error")]);
+  await assert.rejects(remoteUnlock(sysError.client, { deviceId: DEVICE, kind: "access_control" }), (error: unknown) => {
+    assert.ok(error instanceof TuyaError && !(error instanceof TuyaTicketStageError));
+    assert.deepEqual([error.code, error.rejected], [500, true]);
+    return true;
+  });
+  assert.equal(sysError.calls.length, 2);
+  const createDown = harness([fakeTicket("ticket-demo-0005").reply, reset]);
+  await assert.rejects(createTempPassword(createDown.client, input), (error: unknown) => error === reset);
+  assert.equal(createDown.calls.length, 2);
+  const createRejected = harness([fakeTicket("ticket-demo-0006").reply, fail(2001, "device is offline")]);
+  await assert.rejects(
+    createTempPassword(createRejected.client, input),
+    (error: unknown) => error instanceof TuyaError && error.rejected && error.code === 2001,
+  );
 });
 
 Deno.test("id ghép vào đường dẫn được kiểm ở MỌI hàm — không gọi Tuya khi id sai", async () => {

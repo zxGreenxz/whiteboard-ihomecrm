@@ -11,6 +11,9 @@
 // - Không thử lại: mỗi request tới Tuya gửi đúng một lần (lật trang là request mới; ngoại lệ duy nhất là gửi lại
 //   khi token hỏng — xem tuyaClient.ts).
 // - Không trả/ghi mật khẩu (thô hay đã mã hoá) ra ngoài; tạo mật khẩu tạm chỉ trả passwordId.
+// - Tạo mật khẩu tạm / mở cửa từ xa có hai bước: VÉ (xin vé, giải ticket_key, mã hoá mật khẩu) rồi LỆNH. Mọi lỗi ở
+//   bước vé — kể cả mạng/hết giờ — được bọc trong TuyaTicketStageError {cause}: lệnh chưa được gửi, kết quả chắc
+//   chắn là "chưa làm". Lỗi ở bước lệnh ném nguyên trạng (mạng/hết giờ ⇒ lệnh CÓ THỂ đã chạy).
 
 import { TuyaConfigError, TuyaError, TuyaInputError, type TuyaRequester } from "./tuyaClient.ts";
 import { decryptTicketKey, encryptPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./tuyaCrypto.ts";
@@ -44,6 +47,31 @@ export const RECORD_TIME_UNIT: "ms" | "s" = "ms";
 export const DEVICE_PAGE_SIZE = 20;
 export const TEMP_PASSWORD_PAGE_SIZE = 50;
 export const TEMP_PASSWORD_NAME_MAX = 20;
+
+/**
+ * Lỗi ở BƯỚC VÉ của createTempPassword/remoteUnlock (xin vé mật khẩu, giải ticket_key, mã hoá mật khẩu bằng khoá vé):
+ * lệnh chính (tạo mật khẩu tạm / mở cửa) CHƯA được gửi tới Tuya. `cause` là lỗi gốc nguyên trạng — TuyaError
+ * (từ chối hoặc HTTP/kết quả lạ), TuyaCryptoError, lỗi mạng/hết giờ… Chỉ ném từ bước vé; người gọi chốt "thất bại",
+ * không bao giờ "chưa rõ". Không thử lại.
+ */
+export class TuyaTicketStageError extends Error {
+  override readonly cause: unknown;
+  constructor(cause: unknown) {
+    // Không chép message của lỗi gốc (lỗi mạng có thể mang URL): chỉ tên loại lỗi.
+    super(`Bước vé mật khẩu lỗi (${cause instanceof Error ? cause.name : typeof cause}) — lệnh chưa được gửi`);
+    this.name = "TuyaTicketStageError";
+    this.cause = cause;
+  }
+}
+
+/** Chạy bước vé: lỗi nào cũng bọc thành TuyaTicketStageError (lệnh chính chưa gửi). */
+async function buocVe<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw new TuyaTicketStageError(error);
+  }
+}
 
 export interface DoorDevice {
   id: string;
@@ -580,7 +608,10 @@ export interface CreateTempPasswordInput {
   accessSecret: string;
 }
 
-/** Mật khẩu tạm dùng nhiều lần tới khi hết hạn (type 0). Chỉ trả passwordId — không trả mật khẩu. */
+/**
+ * Mật khẩu tạm dùng nhiều lần tới khi hết hạn (type 0). Chỉ trả passwordId — không trả mật khẩu.
+ * Lỗi bước vé (xin vé, giải ticket_key, mã hoá) ⇒ TuyaTicketStageError (chưa gửi lệnh tạo); lỗi của lệnh tạo ném nguyên.
+ */
 export async function createTempPassword(
   client: TuyaRequester,
   input: CreateTempPasswordInput,
@@ -598,14 +629,15 @@ export async function createTempPassword(
     throw new TuyaConfigError("Access Secret phải đúng 32 byte để giải vé mật khẩu");
   }
 
-  const ticket = await getPasswordTicket(client, id);
-  const key = await decryptTicketKey(ticket.ticketKey, input.accessSecret);
-  let encrypted: string;
-  try {
-    encrypted = await encryptPassword(input.password, key);
-  } finally {
-    key.fill(0);
-  }
+  const { ticket, encrypted } = await buocVe(async () => {
+    const ticket = await getPasswordTicket(client, id);
+    const key = await decryptTicketKey(ticket.ticketKey, input.accessSecret);
+    try {
+      return { ticket, encrypted: await encryptPassword(input.password, key) };
+    } finally {
+      key.fill(0);
+    }
+  });
   const path = `/v1.0/devices/${id}/door-lock/temp-password`;
   const result = await client.request<unknown>("POST", path, {
     body: {
@@ -673,8 +705,9 @@ export async function deleteTempPassword(
 }
 
 /**
- * Mở cửa từ xa không cần mật khẩu: xin vé rồi gửi lệnh mở MỘT lần. Lỗi mạng/hết giờ ⇒ ném nguyên (cửa có thể đã
- * mở) — không tự gửi lại. channelId chỉ dùng cho access_control (mặc định 1); khoá Wi-Fi bỏ qua.
+ * Mở cửa từ xa không cần mật khẩu: xin vé rồi gửi lệnh mở MỘT lần. Lỗi khi xin vé ⇒ TuyaTicketStageError (chưa gửi
+ * lệnh mở); lỗi mạng/hết giờ của lệnh mở ⇒ ném nguyên (cửa có thể đã mở) — không tự gửi lại. channelId chỉ dùng cho
+ * access_control (mặc định 1); khoá Wi-Fi bỏ qua.
  */
 export async function remoteUnlock(
   client: TuyaRequester,
@@ -683,7 +716,7 @@ export async function remoteUnlock(
   const id = idSegment(input.deviceId, "deviceId");
   const kind = checkKind(input.kind);
   const channelId = intValue(input.channelId ?? 1, "channelId", 1, 64);
-  const ticket = await getPasswordTicket(client, id);
+  const ticket = await buocVe(() => getPasswordTicket(client, id));
   if (kind === "access_control") {
     const path = `/v1.1/devices/${id}/door-lock/password-free/open-door`;
     return (await client.request<unknown>("POST", path, { body: { ticket_id: ticket.ticketId, channel_id: channelId } })) === true;
