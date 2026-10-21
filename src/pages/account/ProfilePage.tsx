@@ -4,20 +4,19 @@ import { actionErrorMessage, notifyActionError } from '@/lib/actionFeedback';
 import { QueryRegion } from '@/components/errors/QueryRegion';
 import { LoadingState } from '@/components/loading/LoadingState';
 import { useState, useRef, lazy, Suspense } from "react";
+import { Link } from "react-router-dom";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { User, Camera, Lock, Loader2 } from "lucide-react";
+import { User, Camera, Lock, Loader2, Bell, ChevronRight } from "lucide-react";
 import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from "@/hooks/useProfile";
 import { toast } from "sonner";
 import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
-import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
-import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 
 function ProfileDesktop() {
@@ -239,13 +238,27 @@ function ProfileDesktop() {
           </CardContent>
         </Card>
 
-        {/* Push Notification Section */}
-        <PushNotificationSettings />
-
-        {/* Sở thích thông báo cá nhân — ĐẶT Ở ĐÂY chứ không ở /settings/general:
-            8/10 người nhận thông báo không có `settings.view` nên không mở nổi trang
-            cài đặt để tự tắt. /account/profile chỉ bọc ProtectedRoute. */}
-        <NotificationPreferencesCard />
+        {/* Thông báo: thiết bị nhận, loại thông báo, giờ yên… gom về /account/notifications
+            (cũng chỉ bọc ProtectedRoute — mọi thành viên tự chỉnh được, không cần settings.view). */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Thông báo
+            </CardTitle>
+            <CardDescription>
+              Bật thông báo đẩy trên thiết bị, chọn loại thông báo muốn nhận và đặt giờ yên.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link to="/account/notifications">
+                Mở Cài đặt thông báo
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
       </QueryRegion>
     </MainLayout>

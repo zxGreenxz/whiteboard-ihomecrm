@@ -9,10 +9,9 @@ import { actionErrorMessage } from '@/lib/actionFeedback';
 import { useAuth } from '@/hooks/useAuth';
 import { focusFirstError } from '@/lib/formErrors';
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from "@/components/layout/MainLayout";
-import NotificationOrgConfigCard from '@/components/notifications/NotificationOrgConfigCard';
 import { supabase } from '@/integrations/supabase/client';
 import { useIeAutoApproveThreshold, useSetIeAutoApproveThreshold } from '@/hooks/useIeAutoApproveThreshold';
 import { CurrencyInput } from '@/components/ui/currency-input';
@@ -114,12 +113,6 @@ const CONTRACT_SETTINGS: SettingItem[] = [
     label: 'Hiển thị trạng thái sắp hết hạn',
     tooltip: 'Hiển thị cảnh báo khi hợp đồng sắp hết hạn trên danh sách và bảng tin',
   },
-  {
-    type: 'toggle',
-    key: 'contract_overdue_notification',
-    label: 'Nhận thông báo quá hạn HĐ',
-    tooltip: 'Gửi thông báo tự động khi hợp đồng quá hạn chưa được gia hạn hoặc thanh lý',
-  },
 ];
 
 const INVOICE_SETTINGS: SettingItem[] = [
@@ -206,20 +199,10 @@ const PAYMENT_SETTINGS: SettingItem[] = [
   },
 ];
 
-const NOTIFICATION_SETTINGS: SettingItem[] = [
-  {
-    type: 'toggle',
-    key: 'notification_invoice_reminder',
-    label: 'Nhắc ngày lập hóa đơn',
-    tooltip: 'Gửi thông báo nhắc nhở khi đến ngày lập hóa đơn hàng tháng',
-  },
-  {
-    type: 'toggle',
-    key: 'notification_payment_reminder',
-    label: 'Nhắc hạn thanh toán',
-    tooltip: 'Gửi thông báo nhắc nhở khách hàng khi sắp đến hạn thanh toán hóa đơn',
-  },
-];
+// Tab Thông báo KHÔNG còn công tắc riêng: ba công tắc cũ ('Nhắc ngày lập hóa đơn', 'Nhắc hạn
+// thanh toán', 'Nhận thông báo quá hạn HĐ') lưu vào bảng `settings` mà không nơi nào đọc —
+// cài đặt giả (NOTIF-SETTINGS-1). Nhắc hoá đơn/HĐ/cọc nay chạy ở máy chủ và bật/tắt theo họ
+// BILLING/CONTRACT_EXPIRY/DEPOSIT trên trang /account/notifications, cùng cấu hình công ty.
 
 // =============================================
 // Reusable Setting Row Component with Tooltip
@@ -539,7 +522,7 @@ const GeneralSettingsPage = () => {
   const updateGeofence = useUpdateAcceptanceGeofenceSetting();
 
   const handleSettingChange = (key: string, value: boolean | string | number) => {
-    const label = [...CONTRACT_SETTINGS, ...INVOICE_SETTINGS, ...PAYMENT_SETTINGS, ...NOTIFICATION_SETTINGS].find(item => item.key === key)?.label;
+    const label = [...CONTRACT_SETTINGS, ...INVOICE_SETTINGS, ...PAYMENT_SETTINGS].find(item => item.key === key)?.label;
     updateSetting.mutate({ key, value, label });
   };
 
@@ -780,17 +763,25 @@ const GeneralSettingsPage = () => {
 
           {/* Tab: Thông báo */}
           <TabsContent value="notification">
-            <div className="space-y-4">
-              <SettingsTabContent
-                title="Cấu hình thông báo"
-                description="Các tùy chọn thông báo tự động cho hệ thống"
-                items={NOTIFICATION_SETTINGS}
-                settings={settings}
-                onSettingChange={handleSettingChange}
-              />
-              {/* Card RỜI (khuôn giống tab Thu chi): nguồn sự thật khác bảng `settings`. */}
-              <NotificationOrgConfigCard />
-            </div>
+            {/* Giữ tab để deep-link `?tab=notification` cũ không gãy; cấu hình thật đã chuyển trang. */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Cấu hình thông báo</CardTitle>
+                <CardDescription>
+                  Bật/tắt từng loại thông báo cho cả công ty, giờ yên của công ty và sức khoẻ giao
+                  thông báo nay nằm ở trang Cài đặt thông báo — cùng chỗ với thiết bị nhận và tuỳ
+                  chọn riêng của từng người.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild>
+                  <Link to="/account/notifications">
+                    <Bell className="h-4 w-4 mr-2" />
+                    Mở Cài đặt thông báo
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
         </QueryRegion>
