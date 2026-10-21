@@ -54,8 +54,12 @@ RouterOS tại từng toà  ◄── WireGuard wg0 (một file cấu hình dùn
   `cap_drop: ALL`, `no-new-privileges`, giới hạn 0.5 CPU / 512 MiB / 128 pids.
 - **Secret không nằm trong `.env`** mà ở `/run/secrets/network-center/`; pointer release khoá cả image
   ID lẫn thế hệ secret.
-- **Realtime** chỉ 5 bảng: `network_device_current`, `network_interface_current`, `network_incidents`,
-  `network_command_events`, `network_worker_building_status` — kênh `network-center-<actorId>`.
+- **Realtime** chỉ 4 bảng: `network_device_current`, `network_interface_current`, `network_incidents`,
+  `network_command_events` — kênh `network-center-<actorId>`, mở qua `subscribeResilient`
+  ([realtimeSync.ts](../../src/lib/network-center/realtimeSync.ts)): gom 5 s (trần 15 s), tab ẩn chỉ giữ
+  cờ, nối lại thì làm tươi mọi query NC đang hiện. Từ 21/10/2026 `network_worker_building_status`
+  rời publication (migration `20261021170902_realtime_publication_toi_uu.sql`): nhịp tim ~30 s ghi
+  ~6.300 lần/ngày mà không màn/RPC nào đọc. Xem [realtime-sync.md](realtime-sync.md).
 
 ## 3. Luồng dữ liệu
 
