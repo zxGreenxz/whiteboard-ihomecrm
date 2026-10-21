@@ -1,41 +1,87 @@
 import {getSessionUserId} from '@/lib/authSession';
-import {requireReadRows,readString} from '@/lib/accountProfitReadModels';
 import { notifyActionError } from '@/lib/actionFeedback';
-// Tầng dữ liệu cho hai màn cài đặt thông báo (PR-7b · §C + §E.3).
+// Tầng dữ liệu cho trang Cài đặt thông báo `/account/notifications` (plan 21/10/2026, gói D).
 //
-// Hai lớp cấu hình RIÊNG BIỆT, đừng trộn:
+// Các lớp cấu hình RIÊNG BIỆT, đừng trộn:
 //
-//  1. CẤP TỔ CHỨC — `app_private.notification_org_config` (bật/tắt từng sự kiện E1…E6,
-//     ngưỡng tiền, giờ yên tĩnh). Đọc/ghi qua `get/set_notification_org_config_v1`,
-//     server tự gate `settings.view` / `settings.edit`. Render ở tab Thông báo của
-//     /settings/general (chỉ Chủ sở hữu tổ chức vào được route đó).
+//  1. CẤP CÔNG TY — `app_private.notification_org_config` (bật/tắt từng họ, ngưỡng tiền,
+//     giờ yên công ty). Đọc/ghi qua `get/set_notification_org_config_v2(p_organization_id…)`:
+//     theo CÔNG TY ĐANG CHỌN (bản v1 sửa ngầm công ty do current_admin_org_v1 chọn —
+//     NOTIF-SETTINGS-14), ghi kèm `p_expected_updated_at` để hai quản trị không đè nhau
+//     (máy chủ trả PT409). Server tự gate `settings.view` / `settings.edit`.
 //
-//  2. SỞ THÍCH CÁ NHÂN — `public.notification_preferences` (mỗi người × mỗi tổ chức ×
-//     5 họ sự kiện × in_app/push). Đọc/ghi qua `get/set_my_notification_preferences_v1`,
-//     server chỉ kiểm membership ACTIVE. Render ở /account/profile — 10/10 tài khoản mở
-//     được, KHÔNG đặt trong /settings/general vì 8/10 người nhận thông báo không có
-//     `settings.view` (nathan ôm 658/1130 dòng mà không mở nổi trang để tự tắt).
+//  2. SỞ THÍCH CÁ NHÂN — `public.notification_preferences` (mỗi người × mỗi công ty ×
+//     mỗi họ × in_app/push). Đọc/ghi qua `get/set_my_notification_preferences_v1`, server chỉ
+//     kiểm membership ACTIVE ⇒ mọi thành viên tự chỉnh được, không cần `settings.view`.
+//     Ghi CHỈ khoá/trường vừa đổi (NOTIF-SETTINGS-8): gửi đủ mọi khoá từ bản nháp cũ là
+//     bật lại âm thầm cái người dùng vừa tắt trên máy khác.
+//
+//  3. GIỜ YÊN CÁ NHÂN — `public.notification_quiet_hours` qua `get/set_my_notification_quiet_hours_v1`.
+//
+//  4. THIẾT BỊ — `public.push_subscriptions` của chính mình (RLS select_own/delete_own), đọc
+//     và gỡ trực tiếp; nhật ký gửi qua `get_my_push_log_v1`.
 //
 // Lỗi đọc phải có trạng thái riêng. Chỉ dùng giá trị mặc định khi máy chủ xác nhận chưa có cấu hình.
+// RPC mới đi qua `@/lib/notifications/settingsRpc` (một file wrapper typed duy nhất).
 
-import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
+import { getExistingSubscription, isPushSupported } from "@/lib/push";
+import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import {
+  NotificationOrgConfigConflictError,
+  NotificationSettingsReceiptError,
+  fetchDeliveryHealth,
+  fetchMyPushLog,
+  fetchMyQuietHours,
+  fetchOrgConfigV2,
+  saveMyQuietHours,
+  saveOrgConfigV2,
+  type MyQuietHours,
+  type NotificationOrgConfigV2,
+  type OrgEventConfig,
+} from "@/lib/notifications/settingsRpc";
 import { toast } from "sonner";
 
-/* ────────────────────────────── Kiểu dữ liệu ───────────────────────────── */
+export { NotificationOrgConfigConflictError, NotificationSettingsReceiptError };
+export type { MyQuietHours };
+
+/* ────────────────────────────── Họ sự kiện ───────────────────────────── */
 
 /**
- * 6 HỌ sự kiện. `metadata.event` có 10 nhánh (E1, E2, E2b, E2c, E3, E4, E5, E6a,
- * E6b, E6c) nhưng cấu hình chỉ có 6 khoá — quy tắc ánh xạ `E2*` → `E2` và
- * `E6*` → `E6` nằm ở phía SQL (`notify_gate_v1`), frontend không được tự ánh xạ
- * lần nữa kẻo đẻ nguồn sự thật thứ hai.
+ * 7 họ đã có trên máy chủ từ trước. `metadata.event` có 10 nhánh (E1, E2, E2b, E2c, E3, E4,
+ * E5, E6a, E6b, E6c) nhưng cấu hình chỉ có khoá họ — ánh xạ `E2*` → `E2`, `E6*` → `E6` nằm ở
+ * phía SQL (`notify_gate_v1`), frontend không tự ánh xạ lần nữa kẻo đẻ nguồn sự thật thứ hai.
+ * Phong bì đọc THIẾU một khoá ở đây là lỗi hợp đồng.
  */
-export const NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5", "E6", "LIFECYCLE"] as const;
+export const LEGACY_NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5", "E6", "LIFECYCLE"] as const;
+/**
+ * 3 họ nhắc chuyển lên máy chủ (plan B5/B8: lane lifecycle mở rộng). Máy chủ chưa áp migration
+ * thì phong bì chưa có các khoá này — dòng tương ứng hiện "máy chủ chưa hỗ trợ", không vỡ cả ma trận.
+ */
+export const SERVER_REMINDER_EVENT_KEYS = ["BILLING", "CONTRACT_EXPIRY", "DEPOSIT"] as const;
+export const NOTIFICATION_EVENT_KEYS = [...LEGACY_NOTIFICATION_EVENT_KEYS, ...SERVER_REMINDER_EVENT_KEYS] as const;
+export type LegacyNotificationEventKey = (typeof LEGACY_NOTIFICATION_EVENT_KEYS)[number];
+export type ServerReminderEventKey = (typeof SERVER_REMINDER_EVENT_KEYS)[number];
 export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number];
 
-/** Nhãn tiếng Việt cho 6 họ — dùng chung cho cả card tổ chức lẫn card cá nhân. */
+/**
+ * Họ mà producer CHỈ ghi dòng chuông khi `in_app` bật và push đi KÈM dòng đó (E1–E6 và nhắc
+ * việc Hermes dùng cổng E4 — NOTIF-SETTINGS-6). Với các họ này "Trong app tắt + Đẩy bật" không
+ * giao gì ⇒ UI khoá công tắc Đẩy. Không đổi phép đọc ở máy chủ: hook so biên nhận từng trường.
+ * Lane lifecycle (LIFECYCLE + 3 họ nhắc) tách push khỏi dòng hộp thư nên không khoá.
+ */
+export const PUSH_FOLLOWS_IN_APP_KEYS: ReadonlySet<NotificationEventKey> = new Set<NotificationEventKey>(["E1", "E2", "E3", "E4", "E5", "E6"]);
+
+/**
+ * Ô ngưỡng tiền chỉ có nghĩa ở họ THÔNG TIN có truyền số tiền (NOTIF-SETTINGS-9): E1/E4 truyền
+ * NULL nên ngưỡng vô tác dụng; E5/E6a/E6b là việc chờ tôi — lọc theo tiền là nuốt việc. Cấu hình
+ * chỉ có MỘT khoá `E6` cho cả E6a/b/c nên chưa tách được E6c ⇒ chỉ E2, E3.
+ */
+export const ORG_MIN_AMOUNT_KEYS: ReadonlySet<NotificationEventKey> = new Set<NotificationEventKey>(["E2", "E3"]);
+
+/** Nhãn tiếng Việt cho các họ — dùng chung cho thẻ công ty lẫn ma trận cá nhân. */
 export const NOTIFICATION_EVENT_LABELS: Record<
   NotificationEventKey,
   { title: string; desc: string }
@@ -53,8 +99,10 @@ export const NOTIFICATION_EVENT_LABELS: Record<
     desc: "Báo người duyệt biết khỏi phải chờ nữa.",
   },
   E4: {
-    title: "Việc được giao cho tôi",
-    desc: "Có công việc mới gán về tên bạn.",
+    title: "Việc được giao & nhắc việc",
+    // NOTIF-SETTINGS-13: cổng E4 điều khiển cả 7 loại nhắc việc Hermes (due, overdue,
+    // overdue_report, done, progress, cancelled, deleted), có loại gửi cho NGƯỜI GIAO.
+    desc: "Việc mới gán cho bạn; nhắc việc sắp tới hạn / quá hạn; báo người giao khi việc xong, có tiến độ, bị huỷ hoặc quá hạn chưa xong.",
   },
   E5: {
     title: "Bàn giao tiền mặt chờ tôi xác nhận",
@@ -68,29 +116,36 @@ export const NOTIFICATION_EVENT_LABELS: Record<
     title: "Việc cần theo dõi khi trả phòng",
     desc: "Nhắc báo trả đến hẹn, phòng dọn/sửa quá hạn hoặc chưa hẹn, và hồ sơ trả phòng chờ hoàn tất.",
   },
+  BILLING: {
+    title: "Hoá đơn sắp đến hạn / quá hạn",
+    desc: "Gộp mỗi ngày: hoá đơn đến hạn trong 3 ngày tới và hoá đơn đã quá hạn ở các toà bạn phụ trách.",
+  },
+  CONTRACT_EXPIRY: {
+    title: "Hợp đồng sắp hết hạn",
+    desc: "Gộp mỗi ngày: hợp đồng đang hiệu lực sẽ hết hạn trong 30 ngày tới.",
+  },
+  DEPOSIT: {
+    title: "Hợp đồng còn thiếu cọc",
+    desc: "Gộp mỗi ngày: hợp đồng đang hiệu lực vẫn còn nợ tiền cọc.",
+  },
 };
 
-// `type` chứ không phải `interface`: chỉ type alias mới gán được vào `Json`, nên
-// cả map cấu hình mới đi thẳng làm tham số RPC mà không phải ép kiểu.
-export type NotificationEventConfig = {
-  enabled: boolean;
-  /**
-   * Ngưỡng tiền tối thiểu để phát thông báo; `null` = KHÔNG lọc theo tiền.
-   * ⚠ Đã đo: nâng ngưỡng 300k → 3tr chỉ hạ đỉnh từ 15 xuống 14 thông báo/ngày, và
-   * đường compat ép UNAPPROVED bất kể số tiền — nên ngưỡng gần như vô dụng để chống
-   * ồn. Cơ chế chống ồn thật là GỘP ở phía server. Giữ ô này chỉ vì hợp đồng dữ liệu.
-   */
-  min_amount: number | null;
-}
+/* ────────────────────────────── Kiểu dữ liệu ───────────────────────────── */
+
+// `type` chứ không phải `interface`: chỉ type alias mới gán được vào `Json`.
+export type NotificationEventConfig = OrgEventConfig;
+export type NotificationOrgEventMap = Record<LegacyNotificationEventKey, NotificationEventConfig>
+  & Partial<Record<ServerReminderEventKey, NotificationEventConfig>>;
 
 export interface NotificationOrgConfig {
   organizationId: string;
-  events: Record<NotificationEventKey, NotificationEventConfig>;
-  /** Giờ bắt đầu / kết thúc khoảng yên tĩnh (0..23, theo giờ máy chủ). */
-  quiet_start: number;
-  quiet_end: number;
-  /** false = RPC chưa có trên server (FE ship trước migration) hoặc gọi lỗi. */
-  available: boolean;
+  organizationName: string | null;
+  events: NotificationOrgEventMap;
+  /** Giờ bắt đầu / kết thúc khoảng yên (0..23, theo giờ công ty). Bằng nhau = không có khoảng yên. */
+  quietStart: number;
+  quietEnd: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export type NotificationCadence = "IMMEDIATE" | "DIGEST" | "OFF";
@@ -102,9 +157,11 @@ export interface NotificationPreferenceRow {
   cadence: NotificationCadence;
 }
 
+export type NotificationPreferenceMap = Record<LegacyNotificationEventKey, NotificationPreferenceRow>
+  & Partial<Record<ServerReminderEventKey, NotificationPreferenceRow>>;
+
 export interface MyNotificationPreferences {
-  prefs: Record<NotificationEventKey, NotificationPreferenceRow>;
-  /** false = RPC chưa có trên server hoặc gọi lỗi ⇒ đang hiển thị mặc định, không lưu được. */
+  prefs: NotificationPreferenceMap;
   available: boolean;
 }
 
@@ -115,148 +172,118 @@ type Json = Record<string, unknown>;
 const asRecord = (v: unknown): Json | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : null;
 
-/** Các RPC SQL trả một JSON envelope; array/null không phải trạng thái đã xác minh. */
-const unwrapRow = (data: unknown): Json | null => {
-  if (Array.isArray(data)) return null;
-  return asRecord(data);
-};
+const CADENCES: readonly string[] = ["IMMEDIATE", "DIGEST", "OFF"];
 
-/**
- * Log chẩn đoán kèm lỗi query; card hiển thị lỗi đọc và chặn lưu.
- */
-const warnUnavailable = (fn: string, message: string) => {
-  // eslint-disable-next-line no-console
-  console.warn(`[notification-settings] ${fn} chưa dùng được (${message})`);
-};
-
-export class NotificationSettingsReceiptError extends Error {
-  constructor() { super('Chưa xác nhận được cấu hình thông báo đã lưu. Đọc lại trạng thái trước khi thay đổi tiếp.'); }
+function readPreference(key: NotificationEventKey, raw: unknown): NotificationPreferenceRow {
+  const pref = asRecord(raw);
+  if (!pref || typeof pref.in_app !== "boolean" || typeof pref.push !== "boolean" || !CADENCES.includes(String(pref.cadence)))
+    throw new NotificationSettingsReceiptError();
+  return { event_key: key, in_app: pref.in_app, push: pref.push, cadence: pref.cadence as NotificationCadence };
 }
 
-// SQL returns a complete envelope, including defaults when no configuration exists.
-// A missing envelope is a failed read/unknown write, never a default configuration.
-function requireNotificationConfig(data: unknown): Json {
-  const row = unwrapRow(data);
-  const events = asRecord(row?.events);
-  if (!row || typeof row.organization_id !== 'string' || !row.organization_id || !events
-    || !Number.isInteger(row.quiet_start) || Number(row.quiet_start) < 0 || Number(row.quiet_start) > 23
-    || !Number.isInteger(row.quiet_end) || Number(row.quiet_end) < 0 || Number(row.quiet_end) > 23
-    || NOTIFICATION_EVENT_KEYS.some(key => {
-      const event = asRecord(events[key]);
-      return !event || typeof event.enabled !== 'boolean'
-        || (event.min_amount !== null && (typeof event.min_amount !== 'number' || !Number.isFinite(event.min_amount) || event.min_amount < 0));
-    })) throw new NotificationSettingsReceiptError();
-  return row;
-}
-function requireNotificationPreferences(data: unknown, organizationId: string, actorId: string): Json {
-  const row = unwrapRow(data);
-  const prefs = asRecord(row?.preferences);
-  if (!row || row.organization_id !== organizationId || row.user_id !== actorId || !prefs
-    || NOTIFICATION_EVENT_KEYS.some(key => {
-      const pref = asRecord(prefs[key]);
-      return !pref || typeof pref.in_app !== 'boolean' || typeof pref.push !== 'boolean'
-        || !['IMMEDIATE','DIGEST','OFF'].includes(String(pref.cadence));
-    })) throw new NotificationSettingsReceiptError();
-  return row;
+// Phong bì phải đúng người, đúng công ty và đủ 7 khoá cũ. Khoá nhắc mới: có thì phải đúng hình dạng.
+function parseNotificationPreferences(data: unknown, organizationId: string, actorId: string): MyNotificationPreferences {
+  const row = asRecord(data);
+  const bag = asRecord(row?.preferences);
+  if (!row || row.organization_id !== organizationId || row.user_id !== actorId || !bag) throw new NotificationSettingsReceiptError();
+  const prefs = Object.fromEntries(LEGACY_NOTIFICATION_EVENT_KEYS.map(key => [key, readPreference(key, bag[key])])) as NotificationPreferenceMap;
+  for (const key of SERVER_REMINDER_EVENT_KEYS) if (bag[key] !== undefined) prefs[key] = readPreference(key, bag[key]);
+  return { prefs, available: true };
 }
 
-/* ─────────────────────────── Tổ chức: đọc / ghi ─────────────────────────── */
+function toOrgConfig(row: NotificationOrgConfigV2): NotificationOrgConfig {
+  const events = Object.fromEntries(LEGACY_NOTIFICATION_EVENT_KEYS.map(key => [key, row.events[key]])) as NotificationOrgEventMap;
+  for (const key of SERVER_REMINDER_EVENT_KEYS) if (row.events[key]) events[key] = row.events[key];
+  return {
+    organizationId: row.organizationId, organizationName: row.organizationName, events,
+    quietStart: row.quietStart, quietEnd: row.quietEnd, updatedAt: row.updatedAt, updatedBy: row.updatedBy,
+  };
+}
 
-export const NOTIFICATION_ORG_CONFIG_KEY = ["notification-org-config"] as const;
+async function requireActor(): Promise<string> {
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: "PGRST301", message: "Not authenticated" };
+  return actorId;
+}
 
-export function useNotificationOrgConfig() {
+/* ─────────────────────────── Công ty: đọc / ghi (v2) ─────────────────────────── */
+
+export const NOTIFICATION_ORG_CONFIG_KEY = (orgId: string | null) => ["notification-org-config", orgId] as const;
+
+export function useNotificationOrgConfig(organizationId: string | null, enabled = true) {
   return useQuery({
-    queryKey: NOTIFICATION_ORG_CONFIG_KEY,
-    meta: { label: "cấu hình thông báo", errorDisplay: "inline" },
-    queryFn: async (): Promise<NotificationOrgConfig> => {
-      const { data, error } = await supabase.rpc("get_notification_org_config_v1");
-      if (error) {
-        throw error;
-      }
-      const row = requireNotificationConfig(data);
-
-      return {organizationId: row.organization_id as string,events:row.events as Record<NotificationEventKey,NotificationEventConfig>,quiet_start:row.quiet_start as number,quiet_end:row.quiet_end as number,available:true};
-    },
+    queryKey: NOTIFICATION_ORG_CONFIG_KEY(organizationId),
+    enabled: enabled && !!organizationId,
+    meta: { label: "cấu hình thông báo của công ty", errorDisplay: "inline" },
+    queryFn: async (): Promise<NotificationOrgConfig> =>
+      toOrgConfig(await fetchOrgConfigV2(batBuoc(organizationId, "organizationId"), LEGACY_NOTIFICATION_EVENT_KEYS)),
     staleTime: 60_000,
     retry: false,
   });
 }
 
-export function useSetNotificationOrgConfig() {
-  const qc = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (input: {
-      organizationId: string;
-      events: Record<NotificationEventKey, NotificationEventConfig>;
-      quiet_start: number;
-      quiet_end: number;
-    }) => {
-      const { data, error } = await supabase.rpc("set_notification_org_config_v1", {
-        p_events: input.events,
-        p_quiet_start: input.quiet_start,
-        p_quiet_end: input.quiet_end,
-      });
-      if (error) throw error;
-      const row=requireNotificationConfig(data);
-      const events=row.events as Record<NotificationEventKey,NotificationEventConfig>;
-      if(row.organization_id!==input.organizationId||row.quiet_start!==input.quiet_start||row.quiet_end!==input.quiet_end||NOTIFICATION_EVENT_KEYS.some(key=>events[key].enabled!==input.events[key].enabled||events[key].min_amount!==input.events[key].min_amount)) throw new NotificationSettingsReceiptError();
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: NOTIFICATION_ORG_CONFIG_KEY });
-      toast.success("Đã lưu cấu hình thông báo của tổ chức");
-    },
-    onError: (e: Error) => {
-      notifyActionError(e, "Không lưu được cấu hình thông báo");
-    },
-  });
+export interface NotificationOrgConfigChange {
+  /** CHỈ họ/trường vừa đổi. */
+  events: Partial<Record<NotificationEventKey, Partial<NotificationEventConfig>>>;
+  quietStart: number;
+  quietEnd: number;
+  /** `updatedAt` của lần đọc mà bản nháp dựa trên. */
+  expectedUpdatedAt: string | null;
 }
-
-/* ──────────────────────── Cá nhân: tổ chức + đọc / ghi ──────────────────── */
 
 /**
- * Danh sách tổ chức của chính người đang đăng nhập.
- *
- * Vì sao cần: hai RPC preferences nhận `p_organization_id` BẮT BUỘC (preferences là
- * per-user × per-org), mà frontend không có sẵn khái niệm "org hiện tại". `my_org_ids()`
- * là SECURITY DEFINER đã grant cho `authenticated` và có sẵn trong types.ts.
- * ⚠ `public.organizations` CHỈ super admin đọc được nên KHÔNG lấy được tên từ đó —
- * tên (nếu cần) lấy từ `list_ie_accounting_standard_v1`, và chỉ khi có >1 tổ chức
- * (đo thật: 9/10 tài khoản có đúng 1 tổ chức, chỉ chủ có 2).
+ * Chỉ họ × trường khác giữa bản đọc máy chủ (`base`) và bản nháp. Họ không đổi không có mặt;
+ * trong một họ chỉ trường đổi có mặt — máy chủ merge sâu tới cấp trường.
  */
-export function useMyOrgIds() {
-  return useQuery({
-    queryKey: ["my-org-ids"],
-    queryFn: async (): Promise<string[]> => {
-      const { data, error } = await supabase.rpc("my_org_ids");
-      if (error) {
-        warnUnavailable("my_org_ids", error.message);
-        throw error;
-      }
-      // `my_org_ids()` là array_agg thô trên organization_memberships — hai membership
-      // ACTIVE trong cùng một tổ chức sẽ ra id TRÙNG, làm vỡ key React của ô chọn.
-      // Sắp xếp để thứ tự ỔN ĐỊNH giữa các lần gọi: array_agg không đảm bảo thứ tự, mà
-      // ô chọn lấy phần tử đầu làm mặc định — thứ tự nhảy = mỗi lần mở trang lại đặt sở
-      // thích cho một tổ chức khác.
-      if(!Array.isArray(data)||data.some(id=>!readString(id)))throw new TypeError('Invalid organization IDs');
-      return Array.from(new Set(data as string[])).sort();
+export function diffOrgEvents(base: NotificationOrgEventMap, draft: NotificationOrgEventMap): NotificationOrgConfigChange["events"] {
+  const out: NotificationOrgConfigChange["events"] = {};
+  for (const key of NOTIFICATION_EVENT_KEYS) {
+    const before = base[key];
+    const after = draft[key];
+    if (!before || !after) continue;
+    const patch: Partial<NotificationEventConfig> = {};
+    if (after.enabled !== before.enabled) patch.enabled = after.enabled;
+    if (!Object.is(after.min_amount, before.min_amount)) patch.min_amount = after.min_amount;
+    if (Object.keys(patch).length) out[key] = patch;
+  }
+  return out;
+}
+
+export function useSetNotificationOrgConfig(organizationId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (change: NotificationOrgConfigChange): Promise<NotificationOrgConfig> => {
+      if (!organizationId) throw new Error("Chưa xác định được công ty đang chọn");
+      const saved = toOrgConfig(await saveOrgConfigV2({
+        organizationId, events: change.events, quietStart: change.quietStart, quietEnd: change.quietEnd,
+        expectedUpdatedAt: change.expectedUpdatedAt,
+      }, LEGACY_NOTIFICATION_EVENT_KEYS));
+      // Biên nhận: đúng công ty, đúng giờ yên, và từng trường vừa gửi phải có hiệu lực.
+      const mismatch = saved.organizationId !== organizationId || saved.quietStart !== change.quietStart || saved.quietEnd !== change.quietEnd
+        || Object.entries(change.events).some(([key, patch]) => {
+          const actual = saved.events[key as NotificationEventKey];
+          return !actual || Object.entries(patch ?? {}).some(([field, value]) => actual[field as keyof NotificationEventConfig] !== value);
+        });
+      if (mismatch) throw new NotificationSettingsReceiptError();
+      return saved;
     },
-    staleTime: 5 * 60_000,
-    retry: false,
+    onSuccess: (saved) => {
+      qc.setQueryData(NOTIFICATION_ORG_CONFIG_KEY(organizationId), saved);
+      toast.success("Đã lưu cấu hình thông báo của công ty");
+    },
+    onError: async (e: Error) => {
+      if (e instanceof NotificationOrgConfigConflictError) {
+        // Đọc lại TRƯỚC khi báo "đã tải lại" — mutation chỉ kết thúc sau khi refetch xong.
+        await qc.refetchQueries({ queryKey: NOTIFICATION_ORG_CONFIG_KEY(organizationId) });
+        toast.warning(e.message);
+        return;
+      }
+      notifyActionError(e, "Không lưu được cấu hình thông báo của công ty");
+    },
   });
 }
 
-export function useMyOrgOptions() {
-  const idsQuery=useMyOrgIds();
-  const ids=idsQuery.data??[];
-  const needsNames=ids.length>1;
-  const namesQuery=useQuery({queryKey:['my-org-names'],enabled:needsNames,retry:false,staleTime:5*60_000,queryFn:async()=>{const {data,error}=await supabase.rpc('list_ie_accounting_standard_v1');if(error)throw error;return requireReadRows<{organization_id:string;organization_name:string}>(data,row=>readString(row.organization_id)&&readString(row.organization_name));}});
-  const named=namesQuery.data;
-  const options=useMemo(()=>{if(needsNames&&!named)return [];const byId=new Map(named?.map(o=>[o.organization_id,o.organization_name])??[]);return ids.map(id=>({id,name:byId.get(id)||`Tổ chức ${id.slice(0,8)}…`}));},[ids,named,needsNames]);
-  const error=idsQuery.error??(needsNames?namesQuery.error:null);
-  return {options,isLoading:idsQuery.isLoading||(needsNames&&namesQuery.isLoading),isError:idsQuery.isError||(needsNames&&namesQuery.isError),error,refetch:()=>Promise.allSettled(needsNames?[idsQuery.refetch(),namesQuery.refetch()]:[idsQuery.refetch()])};
-}
+/* ──────────────────────── Cá nhân: sở thích theo họ ──────────────────────── */
 
 export const MY_NOTIFICATION_PREFS_KEY = (orgId: string | null) =>
   ["my-notification-preferences", orgId] as const;
@@ -277,48 +304,198 @@ export function useMyNotificationPreferences(organizationId: string | null) {
       if (error) {
         throw error;
       }
-
-      const actorId=await getSessionUserId();
-      if(!actorId)throw new Error('Chưa đăng nhập');
-      const envelope=requireNotificationPreferences(data,batBuoc(organizationId,'organizationId'),actorId);
-      const bag=envelope.preferences as Record<NotificationEventKey,{in_app:boolean;push:boolean;cadence:NotificationCadence}>;
-      const prefs=Object.fromEntries(NOTIFICATION_EVENT_KEYS.map(key=>[key,{event_key:key,...bag[key]}])) as Record<NotificationEventKey,NotificationPreferenceRow>;
-      return { prefs, available: true };
+      const actorId = await requireActor();
+      return parseNotificationPreferences(data, batBuoc(organizationId, "organizationId"), actorId);
     },
   });
 }
 
-export function useSetMyNotificationPreferences(organizationId: string | null) {
+export interface NotificationPreferenceChange {
+  key: NotificationEventKey;
+  field: "in_app" | "push";
+  value: boolean;
+}
+
+/**
+ * Ghi ĐÚNG một khoá × một trường: `{[key]:{[field]:value}}`. Máy chủ (`notification_prefs_normalize_v1`)
+ * phát `null` cho trường vắng và setter giữ giá trị cũ, nên các khoá/trường khác không bị đụng.
+ * Phong bì trả về là trạng thái ĐẦY ĐỦ mới nhất ⇒ ghi thẳng vào cache, các công tắc khác cũng
+ * bắt kịp thay đổi từ máy khác.
+ */
+export function useSetMyNotificationPreference(organizationId: string | null) {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (prefs: Record<NotificationEventKey, NotificationPreferenceRow>) => {
-      if (!organizationId) throw new Error("Chưa xác định được tổ chức của bạn");
-      // Gửi ĐÚNG 3 khoá server cần; `event_key` đã là khoá của object nên nhét lại vào
-      // trong value là nguồn sự thật thứ hai.
-      const actorId=await getSessionUserId();
-      if(!actorId)throw new Error('Chưa đăng nhập');
-      const payload = Object.fromEntries(
-        NOTIFICATION_EVENT_KEYS.map((k) => [
-          k,
-          { in_app: prefs[k].in_app, push: prefs[k].push, cadence: prefs[k].cadence },
-        ]),
-      );
+    mutationFn: async (change: NotificationPreferenceChange): Promise<MyNotificationPreferences> => {
+      if (!organizationId) throw new Error("Chưa xác định được công ty đang chọn");
+      const actorId = await requireActor();
       const { data, error } = await supabase.rpc(
         "set_my_notification_preferences_v1",
-        { p_organization_id: organizationId, p_prefs: payload },
+        { p_organization_id: organizationId, p_prefs: { [change.key]: { [change.field]: change.value } } },
       );
       if (error) throw error;
-      const row=requireNotificationPreferences(data,organizationId,actorId);
-      const actual=row.preferences as Record<NotificationEventKey,NotificationPreferenceRow>;
-      if(NOTIFICATION_EVENT_KEYS.some(key=>actual[key].in_app!==prefs[key].in_app||actual[key].push!==prefs[key].push||actual[key].cadence!==prefs[key].cadence))throw new NotificationSettingsReceiptError();
-      return data;
+      const saved = parseNotificationPreferences(data, organizationId, actorId);
+      if (saved.prefs[change.key]?.[change.field] !== change.value) throw new NotificationSettingsReceiptError();
+      return saved;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: MY_NOTIFICATION_PREFS_KEY(organizationId) });
+    onSuccess: (saved) => {
+      qc.setQueryData(MY_NOTIFICATION_PREFS_KEY(organizationId), saved);
     },
     onError: (e: Error) => {
       notifyActionError(e, "Không lưu được tuỳ chọn thông báo");
+    },
+  });
+}
+
+/* ──────────────────────── Cá nhân: giờ yên ──────────────────────── */
+
+export const MY_QUIET_HOURS_KEY = (orgId: string | null) => ["my-notification-quiet-hours", orgId] as const;
+
+export function useMyQuietHours(organizationId: string | null) {
+  return useQuery({
+    queryKey: MY_QUIET_HOURS_KEY(organizationId),
+    enabled: !!organizationId,
+    retry: false,
+    staleTime: 60_000,
+    meta: { label: "giờ yên của bạn", errorDisplay: "inline" },
+    queryFn: () => fetchMyQuietHours(batBuoc(organizationId, "organizationId")),
+  });
+}
+
+export function useSetMyQuietHours(organizationId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { enabled: boolean; quietStart: number; quietEnd: number }): Promise<MyQuietHours> => {
+      if (!organizationId) throw new Error("Chưa xác định được công ty đang chọn");
+      const saved = await saveMyQuietHours({ organizationId, ...input });
+      if (saved.enabled !== input.enabled || saved.quietStart !== input.quietStart || saved.quietEnd !== input.quietEnd)
+        throw new NotificationSettingsReceiptError();
+      return saved;
+    },
+    onSuccess: (saved) => {
+      qc.setQueryData(MY_QUIET_HOURS_KEY(organizationId), saved);
+      toast.success("Đã lưu giờ yên của bạn");
+    },
+    onError: (e: Error) => {
+      notifyActionError(e, "Không lưu được giờ yên của bạn");
+    },
+  });
+}
+
+/* ──────────────────────── Sức khoẻ giao thông báo (settings.view) ──────────────────────── */
+
+export function useNotificationDeliveryHealth(organizationId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["notification-delivery-health", organizationId] as const,
+    enabled: enabled && !!organizationId,
+    retry: false,
+    staleTime: 60_000,
+    meta: { label: "sức khoẻ giao thông báo", errorDisplay: "inline" },
+    queryFn: () => fetchDeliveryHealth(batBuoc(organizationId, "organizationId")),
+  });
+}
+
+/* ──────────────────────── Thiết bị & nhật ký push của tôi ──────────────────────── */
+
+export const MY_PUSH_LOG_KEY = ["my-push-log"] as const;
+
+export function useMyPushLog(limit = 5) {
+  return useQuery({
+    queryKey: [...MY_PUSH_LOG_KEY, limit] as const,
+    retry: false,
+    staleTime: 30_000,
+    meta: { label: "nhật ký gửi thông báo", errorDisplay: "inline" },
+    queryFn: () => fetchMyPushLog(limit),
+  });
+}
+
+export interface MyPushDevice {
+  id: string;
+  endpoint: string;
+  userAgent: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const MY_PUSH_DEVICES_KEY = ["my-push-devices"] as const;
+
+export function useMyPushDevices() {
+  return useQuery({
+    queryKey: MY_PUSH_DEVICES_KEY,
+    retry: false,
+    staleTime: 30_000,
+    meta: { label: "thiết bị nhận thông báo", errorDisplay: "inline" },
+    queryFn: async (): Promise<MyPushDevice[]> => {
+      const actorId = await requireActor();
+      const { data, error } = await supabase.from("push_subscriptions")
+        .select("id,user_id,endpoint,user_agent,is_active,created_at,updated_at")
+        .eq("user_id", actorId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new NotificationSettingsReceiptError();
+      return data.map((row) => {
+        if (!row || row.user_id !== actorId || typeof row.id !== "string" || typeof row.endpoint !== "string"
+          || typeof row.is_active !== "boolean" || typeof row.created_at !== "string")
+          throw new NotificationSettingsReceiptError();
+        return {
+          id: row.id, endpoint: row.endpoint, userAgent: row.user_agent ?? null, isActive: row.is_active,
+          createdAt: row.created_at, updatedAt: row.updated_at,
+        };
+      });
+    },
+  });
+}
+
+/** Gỡ một máy KHÁC của chính mình (máy đang dùng thì tắt bằng công tắc để huỷ cả đăng ký trình duyệt). */
+export function useRemovePushDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (deviceId: string): Promise<string> => {
+      const actorId = await requireActor();
+      const { data, error } = await supabase.from("push_subscriptions").delete()
+        .eq("id", deviceId).eq("user_id", actorId).select("id,user_id,endpoint");
+      if (error) throw error;
+      // Mảng rỗng = không xoá được dòng nào (RLS hoặc đã gỡ ở nơi khác) — không phải "đã gỡ".
+      if (!Array.isArray(data) || data.length !== 1) throw new NotificationSettingsReceiptError();
+      requireAccountWriteReceipt(data[0], { id: deviceId, user_id: actorId });
+      return deviceId;
+    },
+    onSuccess: () => {
+      toast.success("Đã gỡ thiết bị khỏi danh sách nhận thông báo");
+    },
+    onError: (e: Error) => {
+      notifyActionError(e, "Chưa gỡ được thiết bị");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: MY_PUSH_DEVICES_KEY }),
+  });
+}
+
+/* ──────────────────────── Trạng thái cục bộ của máy đang dùng ──────────────────────── */
+
+export const CURRENT_PUSH_DEVICE_KEY = ["push-current-device"] as const;
+
+export interface CurrentPushDeviceState {
+  /** Endpoint đăng ký push của trình duyệt này; null = chưa đăng ký. */
+  endpoint: string | null;
+  serviceWorker: "active" | "waiting" | "none" | "unsupported";
+}
+
+/**
+ * Chẩn đoán phía trình duyệt: service worker có chạy không, máy này đang đăng ký endpoint nào
+ * (để đánh dấu "Máy này" trong danh sách và đối chiếu với máy chủ). Không gọi mạng.
+ */
+export function useCurrentPushDevice() {
+  return useQuery({
+    queryKey: CURRENT_PUSH_DEVICE_KEY,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async (): Promise<CurrentPushDeviceState> => {
+      if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return { endpoint: null, serviceWorker: "unsupported" };
+      const reg = await navigator.serviceWorker.getRegistration();
+      const serviceWorker = !reg ? "none" : reg.active ? "active" : "waiting";
+      const endpoint = serviceWorker === "active" && isPushSupported() ? (await getExistingSubscription())?.endpoint ?? null : null;
+      return { endpoint, serviceWorker };
     },
   });
 }

@@ -100,6 +100,7 @@ const routeLabels: Record<string, string> = {
   // Tài khoản
   '/account': 'Tài khoản',
   '/account/profile': 'Thông tin cá nhân',
+  '/account/notifications': 'Cài đặt thông báo',
   '/account/subscription': 'Gói cước',
 
   // Thông tin khác
