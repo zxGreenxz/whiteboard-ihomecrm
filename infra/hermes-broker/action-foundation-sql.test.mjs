@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG, USER } from './finance-fixture.mjs';
+import { setup, binding, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, ORG, USER } from './finance-fixture.mjs';
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
 
 // M1 (NEN-CHUNG-THAO-TAC-GHI.md mục 9) trên PGlite với fixture Hermes của thu chi (binding/phiên/chính sách công ty thật
@@ -19,8 +19,9 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
   CREATE TABLE IF NOT EXISTS public.job_types(id uuid PRIMARY KEY,organization_id uuid,name text,is_active boolean);
   CREATE TABLE IF NOT EXISTS public.profiles(id uuid PRIMARY KEY,full_name text);
   ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS code text;
-  -- Như production (và crm-shared-read-sql-fixture): authenticated dùng được schema app_private (M1 kiểm điều này khi áp).
-  GRANT USAGE ON SCHEMA app_private TO authenticated;
+  -- Như production và TEST (đọc 21/10 23:35): authenticated KHÔNG có USAGE trên app_private. Vỏ public SQL-standard phải tới
+  -- guard / bước ghi / lõi giải tên qua OID gắn lúc tạo; một thân plpgsql tra app_private lúc chạy sẽ đỏ ở đây (42501).
+  REVOKE USAGE ON SCHEMA app_private FROM authenticated, PUBLIC;
   GRANT SELECT ON public.building_common_names,public.job_types,public.profiles,public.buildings,public.rooms TO authenticated;
   CREATE OR REPLACE FUNCTION app_private.hermes_task_assignee_member_v1(p_user uuid,p_org uuid) RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
     SET search_path=pg_catalog,public AS $f$ SELECT false $f$;
@@ -84,6 +85,10 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
     // Toà B: CRM cho xem nhưng overlay của kết nối chỉ có toà A ⇒ ngoài phạm vi được ghi, không đoán.
     assert.deepEqual(await probe('probe.confirm', 'preview', rid(10), { amount: 1, buildingName: 'Toà B' }), { kind: 'needs_input', reason: 'name_unresolved',
       field: 'building', wanted: 'Toà B', why: 'outside_scope', candidates: [{ name: 'Toà B' }], more: false });
+    // Bản đã giải đưa lại ở lượt 2: toà ngoài phạm vi khoá, hay phòng không thuộc toà đó ⇒ not_allowed, không mở biên nhận.
+    assert.deepEqual(await probe('probe.confirm', 'apply', rid(11), { amount: 1 }, { resolved: { buildingId: OTHER_BUILDING }, basis: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
+    assert.deepEqual(await probe('probe.confirm', 'apply', rid(12), { amount: 1 }, { resolved: { buildingId: BUILDING, roomId: OTHER_ROOM }, basis: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
+    assert.equal((await receipts()).some(row => [rid(11), rid(12)].includes(row.request_id)), false);
     // Model-supplied resolved ids outside the current scope are refused even with a matching basis.
     await assert.rejects(probe('probe.confirm', 'apply', rid(4), { amount: 1 }, { resolved: {}, basis: null }), code('22023'));
   });
@@ -125,9 +130,11 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
       await assert.rejects(probe('probe.note', 'auto', rid(21), { note: 'x' }), code('42501'));
     });
     await assert.rejects(probe('probe.note', 'auto', rid(22), { note: 'x' }, {}, { ...binding, expectedEpoch: 99 }), code('PT409'));
-    await assert.rejects(probe('probe.nope', 'auto', rid(23), { note: 'x' }), code('22023'));
+    await assert.rejects(probe('probe.nope', 'auto', rid(23), { note: 'x' }), code('42501'), 'thao tác không có trong hermes_action_policies');
     await assert.rejects(probe('probe.note', 'auto', rid(24), { note: 'x' }, {}, binding, { role: 'anon' }));
-    await assert.rejects(call('SELECT app_private.hermes_action_guard_v1($1::jsonb,$2) result', [JSON.stringify(binding), 'probe.nope']), code('42501'));
+    // Client không gọi thẳng được hàm app_private nào bằng tên (không USAGE), kể cả guard.
+    await assert.rejects(call('SELECT app_private.hermes_action_guard_v1($1::jsonb,$2) result', [JSON.stringify(binding), 'probe.note']),
+      error => error.code === '42501' && /schema app_private/.test(error.message));
     assert.equal((await receipts()).length, before);
   });
 
@@ -160,8 +167,14 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
       has_table_privilege('authenticated','app_private.hermes_action_policies','SELECT') p,
       has_function_privilege('anon','public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE') a,
       (SELECT prosecdef FROM pg_proc WHERE oid='public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure) probe_definer,
-      (SELECT prosecdef FROM pg_proc WHERE oid='app_private.hermes_action_guard_v1(jsonb,text)'::regprocedure) guard_definer`);
-    assert.deepEqual(rows[0], { r: false, p: false, a: false, probe_definer: false, guard_definer: true });
+      (SELECT prosecdef FROM pg_proc WHERE oid='app_private.hermes_action_guard_v1(jsonb,text)'::regprocedure) guard_definer,
+      (SELECT prosqlbody IS NOT NULL FROM pg_proc WHERE oid='public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure) probe_bound,
+      has_schema_privilege('authenticated','app_private','USAGE') usage,
+      has_function_privilege('authenticated','app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)','EXECUTE') begin_exec,
+      has_function_privilege('authenticated','app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)','EXECUTE') finish_exec,
+      has_function_privilege('authenticated','app_private.hermes_action_reason_v1(text,text)','EXECUTE') reason_exec`);
+    assert.deepEqual(rows[0], { r: false, p: false, a: false, probe_definer: false, guard_definer: true, probe_bound: true, usage: false,
+      begin_exec: false, finish_exec: false, reason_exec: false });
     void ROOM; void SCOPE; void USER;
   });
 });

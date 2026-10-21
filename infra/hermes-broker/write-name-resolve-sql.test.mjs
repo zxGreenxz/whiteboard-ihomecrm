@@ -70,6 +70,10 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
   await setup(pool);
   await seed(pool);
   await pool.query(sql); await pool.query(sql); // Idempotent re-apply of the same candidate.
+  // Như production và TEST (đọc 21/10 23:35): authenticated KHÔNG có USAGE trên app_private. Vỏ public SQL-standard phải
+  // tới lõi + helper thành viên qua OID gắn lúc tạo; một thân plpgsql tra app_private lúc chạy sẽ đỏ ở đây (42501).
+  await pool.query('REVOKE USAGE ON SCHEMA app_private FROM authenticated, PUBLIC');
+  assert.equal((await pool.query("SELECT has_schema_privilege('authenticated','app_private','USAGE') u")).rows[0].u, false);
   const scope = vectors.buildings.filter(x => x.inScope).map(x => uuidOf(x.key));
   const resolve = (names, { ids = scope, user = USER, org = ORG } = {}) => jwt(pool, async c =>
     (await c.query('SELECT public.hermes_write_name_resolve_v1($1::uuid,$2::uuid[],$3::jsonb) value', [org, ids, JSON.stringify(names)])).rows[0].value, user);
@@ -139,11 +143,15 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
     const { rows } = await pool.query(`SELECT p.proname,p.prosecdef,p.provolatile::text v,p.proconfig,
         has_function_privilege('anon',p.oid,'EXECUTE') anon,has_function_privilege('authenticated',p.oid,'EXECUTE') auth,
         has_function_privilege('hermes_store_executor',p.oid,'EXECUTE') store
-      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('hermes_name_fold_v1','hermes_room_key_v1','hermes_write_name_resolve_v1') ORDER BY 1`);
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','app_private') AND p.proname IN ('hermes_name_fold_v1','hermes_room_key_v1','hermes_write_name_resolve_v1','hermes_write_name_resolve_core_v1') ORDER BY 1`);
     assert.deepEqual(rows.map(row => [row.proname, row.prosecdef, row.v, row.proconfig, row.anon, row.auth, row.store]), [
       ['hermes_name_fold_v1', false, 'i', ['search_path=""'], false, true, false],
       ['hermes_room_key_v1', false, 'i', ['search_path=""'], false, true, false],
+      ['hermes_write_name_resolve_core_v1', false, 's', ['search_path=""'], false, true, false],
       ['hermes_write_name_resolve_v1', false, 's', ['search_path=""'], false, true, false]]);
+    // Vỏ public là thân SQL-standard (OID gắn lúc tạo), không phải plpgsql.
+    const body = (await pool.query("SELECT l.lanname, p.prosqlbody IS NOT NULL bound FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang WHERE p.oid='public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)'::regprocedure")).rows[0];
+    assert.deepEqual(body, { lanname: 'sql', bound: true });
     const fold = async text => (await pool.query('SELECT public.hermes_name_fold_v1($1) v, public.hermes_room_key_v1($1) k', [text])).rows[0];
     assert.deepEqual(await fold('  TÒA  Điện   Biên Phủ '), { v: 'toa dien bien phu', k: 'toadienbienphu' });
     assert.deepEqual(await fold('Phòng 302'), { v: 'phong 302', k: '302' });

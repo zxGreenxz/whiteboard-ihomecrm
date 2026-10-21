@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T13:46:24.229Z",
+  "generatedAt": "2026-10-21T16:43:33.929Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12548,12 +12548,13 @@
       "version": "20261021132433",
       "name": "hermes_write_name_resolve_v1",
       "scheme": "timestamp14",
-      "sha256": "f033b44f478aa97502f5cb5be7eea6ddeb2ddc34648999ae6865c97ea2e72b77",
+      "sha256": "6a97be065c4e2c3d5f501a2c299384e0b11f376f4827380d4576722c22990ec9",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "function:public.hermes_name_fold_v1",
         "function:public.hermes_room_key_v1",
+        "function:app_private.hermes_write_name_resolve_core_v1",
         "function:public.hermes_write_name_resolve_v1"
       ]
     },
@@ -12562,7 +12563,7 @@
       "version": "20261021133823",
       "name": "hermes_action_foundation_v1",
       "scheme": "timestamp14",
-      "sha256": "6a5b912a3362ad86012815500a4c6de9e87673dc14fba2d020997f3432fef29c",
+      "sha256": "d8ed364ba690292d041b460795acc4e19970bc797895a9eab5f62d6915607fc8",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [

@@ -12,9 +12,11 @@
 --  (5) receipt_begin/finish: luôn chạy lại guard (không nhận ngữ cảnh do người gọi đưa ⇒ không giả được), mở/chốt biên
 --      nhận + audit HERMES_ACTION_* trong cùng transaction với thao tác.
 --  (6) public.hermes_action_status_v1, public.hermes_action_capabilities_v1 (khuôn hermes_expense_capabilities_v1).
---  (7) public.hermes_action_probe_v1: thao tác THỬ (D6) probe.note / probe.confirm — chỉ ghi biên nhận + audit, không
---      đụng bảng nghiệp vụ; khoá assistant.action_probe seed TẮT, chỉ bật trên TEST. Là khuôn cho RPC của từng trang:
---      INVOKER (giải tên dưới RLS người gọi), basis tính lại trong transaction ghi, lỗi "hàm ghi" ⇒ lý do đóng.
+--  (7) Thao tác THỬ (D6) probe.note / probe.confirm — chỉ ghi biên nhận + audit, không đụng bảng nghiệp vụ; khoá
+--      assistant.action_probe seed TẮT, chỉ bật trên TEST. Là khuôn cho RPC của từng trang, hai tầng vì authenticated KHÔNG
+--      có USAGE trên app_private (production + TEST, đọc 21/10 23:35): vỏ public.hermes_action_probe_v1 INVOKER thân
+--      SQL-standard gắn OID guard + hàm giải tên (dưới RLS người gọi) + bước ghi app_private.hermes_action_probe_step_v1
+--      (DEFINER: basis tính lại trong transaction ghi, lỗi "hàm ghi" ⇒ lý do đóng). Không cấp USAGE app_private cho ai.
 -- Không đổi hàm cũ nào. Idempotent; khối kiểm cuối chỉ đọc catalog.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -34,10 +36,6 @@ BEGIN
     OR to_regprocedure('app_private.append_authz_audit_v1(uuid,text,text,uuid,jsonb,jsonb,text)') IS NULL
     OR to_regprocedure('public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)') IS NULL THEN
     RAISE EXCEPTION 'hermes_action_foundation_dependency_invalid'; END IF;
-  -- RPC INVOKER của trang gọi guard/biên nhận trong app_private dưới vai authenticated (như hermes_task_input_options_v1
-  -- gọi app_private.hermes_task_input_rows_v1). Thiếu USAGE thì thiết kế này không chạy được: dừng, không áp.
-  IF NOT has_schema_privilege('authenticated','app_private','USAGE') THEN
-    RAISE EXCEPTION 'hermes_action_foundation_requires_app_private_usage'; END IF;
 END $requires$;
 
 CREATE TABLE IF NOT EXISTS app_private.hermes_action_policies(
@@ -248,39 +246,46 @@ BEGIN
   RETURN member||jsonb_build_object('organizationId',p_organization_id,'userId',auth.uid(),'policyVersion',policy.version,'permissions',permissions,'actions',actions);
 END $fn$;
 
--- 7. Thao tác THỬ: khuôn cho RPC của từng trang. INVOKER (giải tên dưới RLS người gọi); guard/biên nhận là DEFINER và
--- tự kiểm lại binding. phase: preview (chỉ đọc) | auto (theo chính sách: ghi thẳng hoặc trả bản xem trước) | apply
--- (lượt 2: đúng bản đã giải + expectedBasis; basis tính lại ở đây, lệch ⇒ state_changed, không mở biên nhận).
--- probe.note với note '!raise XXXXX' giả lập lỗi "hàm ghi" SQLSTATE XXXXX để thử đường ánh xạ lý do.
-CREATE OR REPLACE FUNCTION public.hermes_action_probe_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
-  p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL)
-RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path='' AS $fn$
-DECLARE ctx jsonb; v_names jsonb; v_resolution jsonb; v_resolved jsonb; v_basis text; v_begin jsonb; v_outcome jsonb; v_note text;
+-- 7. Thao tác THỬ: khuôn cho RPC của từng trang, hai tầng (authenticated KHÔNG có USAGE trên app_private ở production lẫn
+-- TEST, đọc 21/10 23:35 — nên RPC INVOKER không được gọi app_private bằng tên lúc chạy):
+--  (a) app_private.hermes_action_probe_step_v1: DEFINER, chạy lại guard, nhận kết quả giải tên mà vỏ (b) đã tính dưới RLS
+--      của người gọi, rồi xem trước / mở biên nhận / "ghi" / chốt. Client không gọi thẳng được (không USAGE app_private).
+--  (b) public.hermes_action_probe_v1: INVOKER, thân SQL-standard (BEGIN ATOMIC) gắn OID của guard, hàm giải tên và (a) lúc
+--      tạo (mẫu R2d 20261021063452). Thứ tự: guard (phạm vi toà của khoá) → giải tên ghi dưới RLS người gọi (D7: hàm SQL
+--      dùng chung INVOKER) → bước (a).
+-- phase: preview (chỉ đọc) | auto (theo chính sách: ghi thẳng hoặc trả bản xem trước) | apply (lượt 2: đúng bản đã giải +
+-- expectedBasis; basis tính lại ở đây, lệch ⇒ state_changed, không mở biên nhận). probe.note với note '!raise XXXXX' giả
+-- lập lỗi "hàm ghi" SQLSTATE XXXXX để thử đường ánh xạ lý do.
+CREATE OR REPLACE FUNCTION app_private.hermes_action_probe_step_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
+  p_resolved jsonb,p_expected_basis text,p_resolution jsonb)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $fn$
+DECLARE ctx jsonb; v_resolved jsonb; v_basis text; v_begin jsonb; v_outcome jsonb; v_note text;
 BEGIN
-  IF current_user<>'authenticated' THEN RAISE EXCEPTION 'hermes_action_denied' USING ERRCODE='42501'; END IF;
   IF p_action NOT IN ('probe.note','probe.confirm') OR p_phase NOT IN ('preview','auto','apply') OR p_request_id IS NULL
     OR p_params IS NULL OR jsonb_typeof(p_params)<>'object' OR (p_phase='apply' AND (p_resolved IS NULL OR p_expected_basis IS NULL)) THEN
     RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023'; END IF;
   ctx:=app_private.hermes_action_guard_v1(p_binding,p_action);
   IF p_phase='apply' THEN
     v_resolved:=p_resolved;
-    -- Bản đã giải phải còn nằm trong phạm vi hiện tại (quyền có thể đã hẹp lại giữa hai lượt).
-    IF v_resolved->>'buildingId' IS NOT NULL AND NOT ((v_resolved->>'buildingId')::uuid IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid)) THEN
-      RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
-  ELSE
-    v_names:=jsonb_strip_nulls(jsonb_build_object('building',p_params->>'buildingName','room',p_params->>'roomName'));
+  ELSIF p_resolution IS NULL THEN
+    -- Không có tên nào để giải (vỏ chỉ giải khi params có buildingName/roomName).
+    IF p_params ? 'buildingName' OR p_params ? 'roomName' THEN RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023'; END IF;
     v_resolved:='{}'::jsonb;
-    IF v_names<>'{}'::jsonb THEN
-      v_resolution:=public.hermes_write_name_resolve_v1((ctx->>'organizationId')::uuid,
-        ARRAY(SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid),v_names);
-      IF v_resolution->>'status'='unresolved' THEN
-        RETURN jsonb_build_object('kind','needs_input','reason','name_unresolved','field',v_resolution->'field','wanted',v_resolution->'wanted',
-          'why',v_resolution->'why','candidates',v_resolution->'candidates','more',v_resolution->'more'); END IF;
-      v_resolved:=jsonb_strip_nulls(jsonb_build_object('buildingId',v_resolution#>'{building,id}','buildingName',v_resolution#>'{building,name}',
-        'roomId',v_resolution#>'{room,id}','roomName',v_resolution#>'{room,name}'));
-    END IF;
+  ELSIF p_resolution->>'status'='unresolved' THEN
+    RETURN jsonb_build_object('kind','needs_input','reason','name_unresolved','field',p_resolution->'field','wanted',p_resolution->'wanted',
+      'why',p_resolution->'why','candidates',p_resolution->'candidates','more',p_resolution->'more');
+  ELSIF p_resolution->>'status'='resolved' THEN
+    v_resolved:=jsonb_strip_nulls(jsonb_build_object('buildingId',p_resolution#>'{building,id}','buildingName',p_resolution#>'{building,name}',
+      'roomId',p_resolution#>'{room,id}','roomName',p_resolution#>'{room,name}'));
+  ELSE RAISE EXCEPTION 'hermes_action_invalid' USING ERRCODE='22023';
   END IF;
-  -- basis = trạng thái đã cho người dùng xem (ở đây: tên toà hiện tại dưới RLS); đổi tên toà giữa hai lượt ⇒ lệch.
+  -- Bản đã giải (lượt 1 hay đưa lại ở lượt 2) phải nằm trong phạm vi hiện tại của khoá; phòng phải thuộc đúng toà đó.
+  IF v_resolved->>'buildingId' IS NOT NULL AND NOT ((v_resolved->>'buildingId')::uuid IN (SELECT jsonb_array_elements_text(ctx->'buildingIds')::uuid)) THEN
+    RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
+  IF v_resolved->>'roomId' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.rooms r WHERE r.id=(v_resolved->>'roomId')::uuid
+      AND r.building_id=(v_resolved->>'buildingId')::uuid AND r.deleted_at IS NULL) THEN
+    RETURN jsonb_build_object('kind','rejected','reason','not_allowed'); END IF;
+  -- basis = trạng thái đã cho người dùng xem (ở đây: tên toà hiện tại); đổi tên toà giữa hai lượt ⇒ lệch.
   v_basis:=md5(jsonb_build_array(p_action,v_resolved->'buildingId',v_resolved->'roomId',
     (SELECT b.name FROM public.buildings b WHERE b.id=(v_resolved->>'buildingId')::uuid))::text);
   IF p_phase='apply' AND p_expected_basis IS DISTINCT FROM v_basis THEN RETURN jsonb_build_object('kind','rejected','reason','state_changed'); END IF;
@@ -306,10 +311,23 @@ BEGIN
   RETURN app_private.hermes_action_receipt_finish_v1(p_binding,p_action,p_request_id,v_outcome);
 END $fn$;
 
+CREATE OR REPLACE FUNCTION public.hermes_action_probe_v1(p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb,
+  p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL)
+RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path=''
+BEGIN ATOMIC
+  WITH g AS MATERIALIZED (SELECT app_private.hermes_action_guard_v1(p_binding,p_action) AS ctx),
+  r AS MATERIALIZED (SELECT CASE WHEN p_phase IN ('preview','auto') AND jsonb_typeof(p_params)='object'
+      AND (p_params ? 'buildingName' OR p_params ? 'roomName') THEN
+      public.hermes_write_name_resolve_v1((g.ctx->>'organizationId')::uuid,ARRAY(SELECT jsonb_array_elements_text(g.ctx->'buildingIds')::uuid),
+        jsonb_strip_nulls(jsonb_build_object('building',p_params->>'buildingName','room',p_params->>'roomName'))) END AS resolution FROM g)
+  SELECT app_private.hermes_action_probe_step_v1(p_binding,p_action,p_phase,p_request_id,p_params,p_resolved,p_expected_basis,r.resolution) FROM r;
+END;
+
 ALTER FUNCTION app_private.hermes_action_reason_v1(text,text) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_action_guard_v1(jsonb,text) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb) OWNER TO postgres;
 ALTER FUNCTION app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text) OWNER TO postgres;
+ALTER FUNCTION app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) OWNER TO postgres;
 ALTER FUNCTION public.hermes_action_status_v1(jsonb,uuid) OWNER TO postgres;
 ALTER FUNCTION public.hermes_action_capabilities_v1(uuid) OWNER TO postgres;
 ALTER FUNCTION public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text) OWNER TO postgres;
@@ -317,14 +335,14 @@ REVOKE ALL ON FUNCTION app_private.hermes_action_reason_v1(text,text) FROM PUBLI
 REVOKE ALL ON FUNCTION app_private.hermes_action_guard_v1(jsonb,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
+REVOKE ALL ON FUNCTION app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_action_status_v1(jsonb,uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_action_capabilities_v1(uuid) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
--- RPC INVOKER của trang gọi guard/biên nhận/ánh xạ dưới vai authenticated: các hàm này tự kiểm lại binding + JWT.
-GRANT EXECUTE ON FUNCTION app_private.hermes_action_reason_v1(text,text) TO authenticated;
+-- Vỏ INVOKER chạy dưới vai authenticated nên cần EXECUTE trên đúng hai hàm app_private nó gắn OID (guard, bước ghi; tới qua
+-- OID, không qua tên). Biên nhận và ánh xạ lý do chỉ được bước ghi DEFINER gọi: không cấp cho authenticated.
 GRANT EXECUTE ON FUNCTION app_private.hermes_action_guard_v1(jsonb,text) TO authenticated;
-GRANT EXECUTE ON FUNCTION app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_action_status_v1(jsonb,uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_action_capabilities_v1(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text) TO authenticated;
@@ -333,10 +351,15 @@ DO $check$
 BEGIN
   IF EXISTS(SELECT 1 FROM app_private.hermes_capabilities WHERE capability='assistant.action_probe' AND (mode<>'action'))
     OR NOT EXISTS(SELECT 1 FROM app_private.hermes_capabilities WHERE capability='assistant.action_probe')
-    OR EXISTS(SELECT 1 FROM pg_proc WHERE oid='public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure AND prosecdef)
+    -- Vỏ public: INVOKER + thân SQL-standard (OID gắn lúc tạo), không phải plpgsql tra app_private lúc chạy.
+    OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'::regprocedure
+      AND NOT prosecdef AND prosqlbody IS NOT NULL)
     OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_action_guard_v1(jsonb,text)'::regprocedure AND prosecdef)
+    OR NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)'::regprocedure AND prosecdef)
     OR has_function_privilege('anon','public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)','EXECUTE')
     OR has_function_privilege('anon','public.hermes_action_status_v1(jsonb,uuid)','EXECUTE')
+    OR has_function_privilege('authenticated','app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)','EXECUTE')
+    OR has_function_privilege('authenticated','app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)','EXECUTE')
     OR has_table_privilege('authenticated','app_private.hermes_action_receipts','SELECT')
     OR has_table_privilege('authenticated','app_private.hermes_action_policies','SELECT') THEN
     RAISE EXCEPTION 'hermes_action_foundation_catalog_invalid'; END IF;

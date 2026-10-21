@@ -278,7 +278,9 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
   - Từ chối (42501) khi `current_user <> 'authenticated'` hoặc `auth.uid()` rỗng.
   - Đọc dưới RLS của chính người gọi: `buildings`, `rooms`, `building_common_names` (đọc = ai xem được toà). Không có hàm DEFINER nào chép policy.
 - **Ai gọi.** RPC xem trước của từng trang gọi hàm này trong cùng transaction, cùng JWT người dùng. Connector chỉ chuyển đối số và dựng `needs_input` từ kết quả; connector không tự khớp tên.
-- **Đã viết (Mốc 5)** ở `supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql` (chỉ file, chưa áp). Kèm hai hàm thuần IMMUTABLE dùng chung: `public.hermes_name_fold_v1(text)` (NFC, chữ thường, bỏ 67 chữ có dấu + đ, gộp khoảng trắng) và `public.hermes_room_key_v1(text)` (khoá phòng như `roomKey` của web).
+- **Đã viết (Mốc 5)** ở `supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql` (chỉ file, chưa áp).
+  - Hàm public là vỏ SQL-standard INVOKER. Nó gắn OID của lõi `app_private.hermes_write_name_resolve_core_v1` (plpgsql INVOKER, chỉ tham chiếu `public.*`) và của helper thành viên lúc tạo, nên không cần USAGE `app_private` (xem mục 13).
+  - Kèm hai hàm thuần IMMUTABLE dùng chung: `public.hermes_name_fold_v1(text)` (NFC, chữ thường, bỏ 67 chữ có dấu + đ, gộp khoảng trắng) và `public.hermes_room_key_v1(text)` (khoá phòng như `roomKey` của web).
 - **Đầu vào.** `p_names` có thể gồm `building`, `room`, `jobType` (loại việc, bỏ loại đã tắt), `person` (hồ sơ thấy được qua RLS + thành viên ACTIVE theo đúng helper `app_private.hermes_task_assignee_member_v1` mà hàm tạo việc đang dùng). Chỉ nêu phòng thì toà suy ra từ phòng duy nhất khớp.
 - **Kết quả.** `{status: 'resolved', building, room, jobType, person}` (mỗi mục `{id, name}` hoặc null; phòng có thêm `buildingId`) hoặc `{status: 'unresolved', field, wanted, why, candidates: [{name[, buildingName]}] (≤ 8), more}`. Trường đầu tiên không giải được thì trả về luôn.
 - **`why` phân biệt ba trường hợp**, và không bao giờ khẳng định "không có" (hàm INVOKER không biết, RLS có thể ẩn đối tượng có thật):
@@ -543,7 +545,11 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
 - Guard chung là `app_private.hermes_action_guard_v1(binding, action)`. Thân kiểm binding theo đúng `hermes_expense_action_v1`; hàm cũ không đổi. Quyền CRM giao vào lấy từ cột `crm_permission` của `app_private.hermes_action_policies`.
 - `hermes_action_policies` vừa là danh mục thao tác phía SQL (khoá, quyền CRM, lớp) vừa là bảng chính sách. Ràng buộc `hermes_action_policy_floor` giữ sàn D2 ngay trong DB: lớp money/irreversible không thể khai `never`.
 - Biên nhận: `receipt_begin/finish` luôn chạy lại guard và không nhận ngữ cảnh do người gọi đưa. Audit `HERMES_ACTION_APPLIED/REJECTED` nằm cùng transaction.
-- RPC trang là INVOKER và gọi guard/biên nhận trong `app_private`, nên M1 **dừng không áp** nếu `authenticated` thiếu USAGE trên `app_private`. Production nhiều khả năng có quyền này (suy từ `hermes_task_input_options_v1` đang chạy), nhưng chưa xác minh trực tiếp.
+- **Không có USAGE `app_private` cho `authenticated`** (phiên chính đọc production và TEST, 21/10 23:35: `false` ở cả hai). Không cấp USAGE, vì như vậy mở bề mặt mọi object `app_private`. Thay vào đó RPC trang có hai tầng, theo mẫu R2d (`20261021063452`):
+  - **Vỏ public.** INVOKER, thân SQL-standard (`BEGIN ATOMIC`). Thân này gắn OID của guard, của hàm giải tên và của bước ghi ngay lúc tạo, nên lúc chạy không cần USAGE (chỉ cần EXECUTE trên đúng các hàm đó).
+  - **Bước ghi.** Hàm DEFINER trong `app_private`: chạy lại guard, kiểm bản đã giải còn trong phạm vi (toà của khoá, phòng thuộc đúng toà), rồi đến biên nhận, basis và hàm ghi.
+
+  Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
 - `public.hermes_action_probe_v1` là RPC thử (D6) và là khuôn cho RPC từng trang. Nó chỉ ghi biên nhận + audit; note `!raise XXXXX` giả lập lỗi hàm ghi để thử đường ánh xạ lý do.
 - M2 seed TẮT 13 khoá, không có `thu_tien.collect`. Khoá thử `assistant.action_probe` seed TẮT ở M1. `capability-contract.mjs` và nhãn web **chưa** thêm các khoá này: phải thêm trước khi bật bất kỳ khoá nào. Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 
