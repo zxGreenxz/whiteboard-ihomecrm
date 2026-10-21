@@ -290,7 +290,9 @@ export default function PushNotificationSettings() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void handleTest()} disabled={!subscribed || testing}>
+          {/* Không đòi máy này đã bật: gửi thử đi tới MỌI thiết bị đang bật của tài khoản (vd thử
+              điện thoại từ máy tính), và NO_DEVICE là câu trả lời hữu ích chứ không phải lỗi. */}
+          <Button variant="outline" onClick={() => void handleTest()} disabled={testing}>
             {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
             Gửi thông báo thử
           </Button>
@@ -301,6 +303,8 @@ export default function PushNotificationSettings() {
             </Button>
           )}
         </div>
+
+        <p className="text-xs text-muted-foreground">Gửi thử tới mọi thiết bị đang bật nhận thông báo của tài khoản bạn.</p>
 
         {testResult && (
           <div role="status" className="rounded-md border p-3 text-sm">

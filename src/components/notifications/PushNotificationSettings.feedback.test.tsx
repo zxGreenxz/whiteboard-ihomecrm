@@ -51,6 +51,14 @@ describe('nhánh iPhone/iPad chưa thêm vào màn hình chính', () => {
  expect(screen.queryByRole('switch')).toBeNull();
  expect(mocks.subscribed).not.toHaveBeenCalled();
  });
+ it('máy chưa bật vẫn gửi thử được tới máy khác; không có máy nào thì nói rõ NO_DEVICE', async()=>{
+ mocks.env={supported:false,ios:true,standalone:false};
+ mocks.send.mockResolvedValue({sent:0,total:0,failed:0,pruned:0,errors:[],outcome:'NO_DEVICE'});
+ renderCard();
+ fireEvent.click(screen.getByRole('button',{name:'Gửi thông báo thử'}));
+ await waitFor(()=>expect(screen.getByRole('status').textContent).toMatch(/Chưa có thiết bị nào đang bật/));
+ expect(mocks.send).toHaveBeenCalledTimes(1);
+ });
  it('trình duyệt khác không hỗ trợ vẫn báo không hỗ trợ', ()=>{
  mocks.env={supported:false,ios:false,standalone:false};
  renderCard();
