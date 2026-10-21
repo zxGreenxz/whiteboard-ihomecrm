@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { setup,BUILDING,REQUEST,input } from './task-fixture.mjs';
 import { prepareTaskMetadata,taskMetadataRpc } from './task-input-fixture.mjs';
 import { createTaskServiceWithOptions } from './task-input-adapter.mjs';
+import { TASK_OPTIONS_HINTS } from './task-input-contract.mjs';
 const forward=readFileSync('supabase/migrations/20261014000503_hermes_optional_org_policy_v1.sql','utf8');
 const extract=(src,name)=>src.match(new RegExp('CREATE OR REPLACE FUNCTION '+name.replaceAll('.', '\\.')+'[\\s\\S]*?\\$(?:fn)?\\$;'))[0];
 import { USER,ORG,FOREIGN,CONNECTION,SESSION,ASSISTANT,id } from '../hermes-zalo-router/private-command-fixture.mjs';
@@ -83,11 +84,29 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
  for(const args of [{kind:'buildings',buildingId:NIL,query:'',limit:50,cursor:NIL},{kind:'buildings',buildingId:`\t${NIL}\n`,query:'',limit:50,cursor:' '},{kind:'buildings',query:'',limit:50}]){
    const placeholder=await call('crm_task_input_options',args);assert.equal(placeholder.isError,false);assert.deepEqual(placeholder.value.items,[{id:BUILDING,label:'Nhà A'}]);
  }
- assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:NIL,query:'',limit:50,cursor:NIL})).value.error,'invalid_request');
+ // 22/10 (câu 29): a refused lookup answers one static hint as an ORDINARY result (no isError: Hermes pauses the
+ // whole MCP server after three in a row, TEST 21/10) and never reaches SQL.
+ const hinted=async(args,hint)=>{sent.length=0;const refused=await call('crm_task_input_options',args);
+   assert.equal(refused.isError,false);assert.deepEqual(refused.value,{ok:false,code:'invalid_request',huongDan:hint});assert.deepEqual(sent,[]);};
+ await hinted({kind:'rooms',buildingId:NIL,query:'',limit:50,cursor:NIL},TASK_OPTIONS_HINTS.rooms);
+ await hinted({kind:'staff',query:'',limit:20},TASK_OPTIONS_HINTS.kind);
+ await hinted({kind:'assignees',buildingId:'417LVT',query:'',limit:20},TASK_OPTIONS_HINTS.buildingId);
+ // Connector first, SQL second: v5 (production/TEST 21/10) still refuses a company-wide lookup with 22023 ⇒ the legacy hint.
+ for(const kind of ['jobTypes','assignees']){
+   sent.length=0;const legacy=await call('crm_task_input_options',{kind,query:'',limit:20});
+   assert.equal(legacy.isError,false);assert.deepEqual(legacy.value,{ok:false,code:'invalid_request',huongDan:TASK_OPTIONS_HINTS.legacy});
+   assert.deepEqual(sent,[{kind,buildingId:null,query:'',limit:20,cursor:null}],'it reached the old SQL');
+ }
+ // Once 20261021172540 is live the same calls list the company catalog end to end; a building still narrows as before.
+ await db.exec(readFileSync(process.env.HERMES_TASK_OPTIONS_NO_BUILDING_SQL??new URL('../../supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql',import.meta.url),'utf8'));
+ assert.deepEqual((await call('crm_task_input_options',{kind:'jobTypes',query:'',limit:20})).value,{organizationId:ORG,kind:'jobTypes',buildingId:null,items:[{id:input.jobTypeId,label:'Sửa chữa'}],nextCursor:null});
+ const company=await call('crm_task_input_options',{kind:'assignees',query:'',limit:20});
+ assert.equal(company.isError,false);assert.equal(company.value.buildingId,null);
+ assert.deepEqual(company.value.items,(await options('assignees',BUILDING)).value.items);assert.ok(company.value.items.some(row=>row.id===input.assigneeId));
  // 16/10 19:38Z production (after #176): the model put the company id (organizationId) into buildingId for
  // kind=buildings; any string there is dropped and SQL must receive null.
  const COMPANY_ID='aaaa0000-0000-4000-8000-000000000001';
- assert.match(listedOptions.inputSchema.properties.buildingId.description,/kind=buildings: không cần buildingId/);
+ assert.match(listedOptions.inputSchema.properties.buildingId.description,/^Chỉ kind=rooms \(bắt buộc\): id toà từ kind=buildings/);
  await db.exec("UPDATE public.buildings SET name='Toà 417LVT'");sent.length=0;
  const misplaced=await call('crm_task_input_options',{kind:'buildings',buildingId:COMPANY_ID,query:'417LVT',limit:20,cursor:NIL});
  assert.equal(misplaced.isError,false);assert.deepEqual(misplaced.value,{organizationId:ORG,kind:'buildings',buildingId:null,items:[{id:BUILDING,label:'Toà 417LVT'}],nextCursor:null});
@@ -96,7 +115,10 @@ test('external MCP → bound JWT → audited final caller SQL: task-create actio
  // Child kinds are not loosened: the company id is not a building; it reaches SQL, which denies it.
  assert.equal((await call('crm_task_input_options',{kind:'rooms',buildingId:COMPANY_ID,query:'',limit:20,cursor:null})).value.error,'forbidden');
  assert.deepEqual(sent.map(value=>value.buildingId),[COMPANY_ID]);sent.length=0;
- for(const buildingId of [7,{},[COMPANY_ID],true])assert.equal((await call('crm_task_input_options',{kind:'buildings',buildingId,query:'',limit:20,cursor:null})).value.error,'invalid_request');
+ for(const buildingId of [7,{},[COMPANY_ID],true]){
+   const refused=await call('crm_task_input_options',{kind:'buildings',buildingId,query:'',limit:20,cursor:null});
+   assert.equal(refused.isError,false);assert.deepEqual(refused.value,{ok:false,code:'invalid_request',huongDan:TASK_OPTIONS_HINTS.input});
+ }
  assert.deepEqual(sent,[],'non-string buildingId never reaches SQL');
  assert.equal((await call('crm_read_tasks',{})).value.error,'tool_not_available');
  assert.equal((await call('crm_read_customers',{})).value.error,'tool_not_available');
