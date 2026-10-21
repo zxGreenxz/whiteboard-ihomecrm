@@ -5,7 +5,7 @@ import './external-group-mount.mjs';
 import { actionRequest, createActionAuth, createActionReads } from './action-adapter.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
-import { PROBE_KEY, probeCatalog } from './action-probe.fixture.mjs';
+import { PROBE_KEY, probeCatalog } from './action-probe-contract.mjs';
 
 // Adapter SQL của thao tác ghi dùng chung (Mốc 6): đúng tên RPC + đối số, ghi/không ghi theo phase, thiếu hàm (PGRST202) ⇒
 // không cấp khoá nào (họ thao tác ẩn), chỉ khoá danh mục biết mới được gộp, khuôn capabilities sai ⇒ context_changed.

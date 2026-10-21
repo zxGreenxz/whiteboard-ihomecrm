@@ -5,7 +5,7 @@ import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 import { ACTION_LIST_TOOL, ACTION_RUN_TOOL, ACTION_STATUS_TOOL, ACTION_TOOL_SHAPE, actionEnvelope, actionToolRoute, actionTools, listedActionTools,
   nameUnresolvedDetail, needsInput, pageActionTool } from './action-contract.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
-import { PROBE_KEY, probeCatalog } from './action-probe.fixture.mjs';
+import { PROBE_KEY, probeCatalog } from './action-probe-contract.mjs';
 
 // Mặt tool của thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 4). D1 = A; khuôn B sinh từ cùng danh mục.
 const bytes = tool => Buffer.byteLength(JSON.stringify(advertisedTool(tool)));

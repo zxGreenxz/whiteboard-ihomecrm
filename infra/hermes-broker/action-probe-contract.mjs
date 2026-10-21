@@ -1,6 +1,7 @@
 // Danh mục THỬ của khung thao tác ghi (D6, NEN-CHUNG-THAO-TAC-GHI.md mục 12.4): probe.note (reversible, ghi thẳng theo
 // chính sách) và probe.confirm (money giả: sàn xác nhận luôn áp). Khoá assistant.action_probe chỉ bật trên TEST; RPC thử
-// chỉ ghi biên nhận + audit, không đụng bảng nghiệp vụ. Production không nạp danh mục này.
+// chỉ ghi biên nhận + audit, không đụng bảng nghiệp vụ (public.hermes_action_probe_v1, 20261021133823). server.mjs chỉ nạp danh mục này
+// khi cấu hình host bật actionProbe (connector TEST); production mặc định danh mục rỗng.
 import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 
 export const PROBE_KEY = 'assistant.action_probe';

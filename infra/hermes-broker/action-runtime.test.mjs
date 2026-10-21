@@ -8,7 +8,7 @@ import { createActionCatalog, defineAction, param } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { ACTION_REASONS } from './action-reasons.mjs';
 import { CONFIRM_TTL_MS } from './confirm-guard.mjs';
-import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe.fixture.mjs';
+import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
 
 // Vòng đời một lệnh ghi qua broker thật (NEN-CHUNG-THAO-TAC-GHI.md mục 3): needs_input là kết quả thường, sàn xác nhận
 // cho money, requestId do connector cấp, token một lần gắn nội dung, lượt 2 gửi bản đã giải + basis của lượt 1,

@@ -4,7 +4,7 @@ import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
-import { PROBE_KEY, probeCatalog } from './action-probe.fixture.mjs';
+import { PROBE_KEY, probeCatalog } from './action-probe-contract.mjs';
 
 // Ngân sách tools/list khi họ thao tác ghi dùng chung hiện (NEN-CHUNG-THAO-TAC-GHI.md mục 10). Trần chung 64 000 B
 // (tool-argument-shape.test.mjs) giữ nguyên. Đợt 1: production không nạp danh mục nào ⇒ ba tool ẩn, tools/list không

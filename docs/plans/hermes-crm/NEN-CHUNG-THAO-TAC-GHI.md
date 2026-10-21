@@ -344,7 +344,9 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 | K3 | Đọc loại chat trong `_meta` | Chưa xác minh Hermes upstream có điền `_meta` theo chat. Dù có điền thì đó là dữ liệu do client tự khai |
 | K4 | Kết nối riêng chỉ có quyền Đọc cho mọi profile hoặc nền tảng có nhóm | Đúng khi nền tảng đó dùng token riêng |
 
-Đề xuất: làm K1 ngay. K2 làm khi thêm kênh thứ hai, và phải xong trước khi kênh đó nhận token có khoá ghi. Nếu chọn K2 sớm hơn, phải backfill `channel_binding` cho 5 kết nối hiện có, nếu không mọi thao tác mới sẽ bị chặn. Quyết định D3.
+Đề xuất: làm K1 ngay. K2 làm khi thêm kênh thứ hai, và phải xong trước khi kênh đó nhận token có khoá ghi.
+
+**Phát hiện khi làm Mốc 7 (đọc mã, 21/10):** bất biến của K1 hiện **không** được bảo đảm. `infra/hermes-zalo-native/profile-provisioning.mjs` gộp `platforms` có sẵn của profile rồi chỉ đặt `zalo_personal.enabled`; mọi nền tảng khác đang bật được giữ nguyên. Fixture của chính test đó có `telegram: {enabled: true}` đi cùng token CRM. Muốn K1 có hiệu lực thì provisioning phải từ chối (hoặc tắt) nền tảng khác khi profile mang token CRM, và phải có test khoá điều đó. Việc này đổi hồ sơ thật trên VPS nên để phiên chính quyết; Đợt 1 chưa sửa. Nếu chọn K2 sớm hơn, phải backfill `channel_binding` cho 5 kết nối hiện có, nếu không mọi thao tác mới sẽ bị chặn. Quyết định D3.
 
 ### 8.3 Câu 5: đăng ký sẵn khoá ghi ở trạng thái TẮT
 
@@ -534,6 +536,8 @@ Mỗi ca chạy 3 lần. Chấm theo `app_private.hermes_action_receipts` và au
 Mỗi mốc là một commit có test xanh.
 
 **Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓ (`b7c200344`), Mốc 4 ✓ (`a13fb3c13`, khung + danh mục thử, chưa nối adapter SQL), Mốc 5 ✓ (`f25717f9a`, hàm SQL giải tên, file migration chưa áp), Mốc 6 ✓ (M1 `20261021133823_hermes_action_foundation_v1`, M2 `20261021134531_hermes_action_keys_seed_v1`, adapter `action-adapter.mjs`; chỉ file, chưa áp).
+
+Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định, cờ host `actionProbe` chỉ cho connector TEST); `CONNECTOR.md` có dòng `crm_action_*`.
 
 **Mốc 6 — điểm khác bảng mục 9:**
 - Guard chung là `app_private.hermes_action_guard_v1(binding, action)`. Thân kiểm binding theo đúng `hermes_expense_action_v1`; hàm cũ không đổi. Quyền CRM giao vào lấy từ cột `crm_permission` của `app_private.hermes_action_policies`.

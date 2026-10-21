@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTION_PAGES, ATTACHMENTS_READY, canonicalJson, createActionCatalog, defineAction, param, validateActionParams } from './action-catalog.mjs';
-import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE, probeCatalog } from './action-probe.fixture.mjs';
+import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE, probeCatalog } from './action-probe-contract.mjs';
 
 // Sổ danh mục thao tác ghi dùng chung (NEN-CHUNG-THAO-TAC-GHI.md mục 5): kiểm khi nạp, kiểm params ở connector với gợi ý
 // TĨNH dựng từ khuôn (không nhắc lại giá trị mô hình gửi), JSON chuẩn hoá cho khoá binding xác nhận.
