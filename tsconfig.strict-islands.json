@@ -787,6 +787,7 @@
     "src/hooks/income-expenses/recurring.ts",
     "src/hooks/income-expenses/reservationCreators.ts",
     "src/hooks/income-expenses/revisions.ts",
+    "src/hooks/income-expenses/selfApproveGate.ts",
     "src/hooks/income-expenses/specialized.ts",
     "src/hooks/income-expenses/statusMutations.test.ts",
     "src/hooks/income-expenses/statusMutations.ts",

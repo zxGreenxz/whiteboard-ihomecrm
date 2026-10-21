@@ -3,6 +3,7 @@ import type { QuickExpenseActions } from '@/hooks/income-expenses/useQuickExpens
 import {QueryRegion} from '@/components/errors/QueryRegion';
 import { RefreshBar } from '@/components/loading/LoadingState';
 import { useIncomeExpenseDetail } from "@/hooks/income-expenses/detailRead";
+import { useSelfApproveGate } from "@/hooks/income-expenses/selfApproveGate";
 import { hasCompleteVoucherDetail } from "@/lib/incomeExpenseDetailRead";
 import { useNavigate } from "react-router-dom";
 import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
@@ -194,6 +195,8 @@ function IncomeExpenseDetailMobileContent({
 
   const isCancelled = v.approval_status === "CANCELLED";
   const isUnapproved = v.approval_status === "UNAPPROVED";
+  // Câu 25: máy chủ trả lời người đang xem có phải người lập không được tự duyệt phiếu này.
+  const selfApprove = useSelfApproveGate(v.id, monetaryActionsAllowed && !!onApprove && isUnapproved);
   // V2 route-aware: posting_status/organization_id chưa vào generated types → cast.
   const v2Routes = useFinanceV2Routes();
   const vv = v as { organization_id?: string | null; posting_status?: string | null };
@@ -296,8 +299,11 @@ function IncomeExpenseDetailMobileContent({
             {monetaryActionsAllowed && isUnapproved && onApprove && (
               <button
                 className="vd-act"
-                style={{ background: "#16a34a" }}
+                style={{ background: "#16a34a", ...(selfApprove.blocked ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}
                 aria-label="Duyệt"
+                title={selfApprove.message ?? undefined}
+                aria-describedby={selfApprove.blocked ? "ie-self-approve-note-m" : undefined}
+                disabled={selfApprove.blocked}
                 onClick={() => {
                   onApprove(v);
                   onClose();
@@ -400,6 +406,15 @@ function IncomeExpenseDetailMobileContent({
             </button>
           </div>
         </div>
+        {selfApprove.blocked && (
+          <p
+            id="ie-self-approve-note-m"
+            role="note"
+            style={{ margin: "0 0 8px", padding: "8px 10px", borderRadius: 8, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontSize: 12, lineHeight: 1.4 }}
+          >
+            {selfApprove.message}
+          </p>
+        )}
 
         <div className="vd-table">
           <div className="vd-row">
