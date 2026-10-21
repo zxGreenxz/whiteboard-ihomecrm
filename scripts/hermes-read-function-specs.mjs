@@ -38,6 +38,14 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql',
     statementSha256: '79cf9b42a5233cc9971e00331dd370e581b12013fd06c5eeb0160d6053c2b953',
   }),
+  // R2c part 2 (20261021044801): the customers summary counts the contract status
+  // (customers.status_v2) of the core's set under the asker's RLS. Earlier bodies stay
+  // pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql',
+    statementSha256: '729dd8b9a53073c7a552202a40da781c74a067c06f61a69752abf2d00f669631',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

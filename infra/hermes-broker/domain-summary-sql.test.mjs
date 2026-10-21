@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {localCluster,setup,jwt,fast,normal,live,id,ORG,FOREIGN,USER,MEMBER,ROLE,BUILDING,OTHER_BUILDING,ROOM,INVOICE,SUMMARY_PATH,LARGEST_BY_TYPE_PATH} from './crm-shared-read-sql-fixture.mjs';
+import {localCluster,setup,jwt,fast,normal,live,settings,id,ORG,FOREIGN,USER,MEMBER,ROLE,BUILDING,OTHER_BUILDING,BUILDING_SCOPE,ROOM,CUSTOMER,CUSTOMER2,HIDDEN,CONTRACT,
+ SUMMARY_PATH,LARGEST_BY_TYPE_PATH,CUSTOMER_STATUS_PATH,INVOICE} from './crm-shared-read-sql-fixture.mjs';
 import { DOMAIN_SUMMARY_ENTRY_TOLERANT, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { domainFastResult } from './domain-read-fast.mjs';
 
@@ -18,15 +19,18 @@ import { domainFastResult } from './domain-read-fast.mjs';
 const [B2,R2,R3,R4,B3,R5]=[300,301,302,303,304,305].map(id);
 const inv=n=>id(300+n);
 const DEBTS=[INVOICE,inv(10),inv(11),inv(18),inv(20)];
-const summarySql=readFileSync(SUMMARY_PATH,'utf8'),largestSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
-// Prepared rollbacks (not migrations): R2a → the 20261020173818 bodies of the three functions; R2c → the R2a v2 body.
+const summarySql=readFileSync(SUMMARY_PATH,'utf8'),largestSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8'),customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
+// Prepared rollbacks (not migrations): R2a → the 20261020173818 bodies of the three functions; R2c → the R2a v2 body;
+// R2c part 2 → the R2a reader and v1 bodies.
 const REVERT=readFileSync('docs/plans/hermes-crm/revert/hermes_domain_summary_revert_v1.sql','utf8');
 const REVERT_LARGEST=readFileSync('docs/plans/hermes-crm/revert/hermes_domain_summary_largest_by_type_revert_v1.sql','utf8');
+const REVERT_CUSTOMER_STATUS=readFileSync('docs/plans/hermes-crm/revert/hermes_domain_customer_status_asset_created_revert_v1.sql','utf8');
 // The CREATE statement of one function in a file (plpgsql ends at $fn$;, the SQL-standard reader at END;).
 const statement=(name,end,sql=summarySql)=>{const start=sql.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`),stop=sql.indexOf(end,start);
  assert.ok(start>=0&&stop>start,name);return sql.slice(start,stop+end.length);};
-// The reader is the R2a body; v2 is the live R2c body (receivables unchanged since R2a), so a restored mutant is the live body.
-const READER=statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;'),V2=statement('public.hermes_domain_read_v2','$fn$;',largestSql);
+// The live bodies: the reader of R2c part 2 (receivables unchanged since R2a) and the R2c v2, so a restored mutant is live.
+const READER=statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;',customerStatusSql),V2=statement('public.hermes_domain_read_v2','$fn$;',largestSql);
+const R2A_READER=statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;');
 const R2A_V2=statement('public.hermes_domain_read_v2','$fn$;'),B5C_V2=statement('public.hermes_domain_read_v2','$fn$;',
  readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8'));
 const once=(sql,from,to)=>{assert.equal(sql.split(from).length,2,`anchor: ${from.trim()}`);return sql.replace(from,()=>to);};
@@ -172,8 +176,12 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
  await t.test('revert artifact (docs/plans/hermes-crm/revert): restores the exact 20261020173818 bodies (no summary), runs twice, and R2a re-applies after it',async()=>{
   const bodies=async()=>(await pool.query(`SELECT p.proname,CASE WHEN p.prosqlbody IS NULL THEN md5(p.prosrc) ELSE md5(pg_get_function_sqlbody(p.oid)) END body
    FROM pg_proc p WHERE p.proname IN ('hermes_domain_read_rows_fast_v1','hermes_domain_read_v1','hermes_domain_read_v2') ORDER BY 1`)).rows;
-  // The live bodies: R2a reader and v1, R2c v2 (its R2a summary extended). The R2a artifact also runs over the R2c v2.
+  // The live bodies: the R2c part 2 reader and v1, R2c v2 (its R2a summary extended). The R2a artifact runs over the R2c
+  // v2 but refuses the part 2 v1 (one more building name): its own revert runs first, as the artifact header says.
   const r2a=await bodies();
+  await assert.rejects(pool.query(REVERT),/hermes_domain_summary_revert_unexpected_reads_v1/);
+  assert.deepEqual(await bodies(),r2a,'refused: nothing replaced');
+  await pool.query(REVERT_CUSTOMER_STATUS);
   await pool.query(REVERT);
   const reverted=await bodies();
   for(const [index,row] of reverted.entries())assert.notEqual(row.body,r2a[index].body,`${row.proname}: replaced`);
@@ -190,8 +198,8 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
   await pool.query(readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8'));
   assert.deepEqual(await bodies(),reverted,'the revert bodies are the 20261020173818 bodies');
   await pool.query(REVERT);assert.deepEqual(await bodies(),reverted,'a second run changes nothing');
-  await pool.query(summarySql);await pool.query(largestSql);
-  assert.deepEqual(await bodies(),r2a,'R2a then R2c forward again: the reviewed bodies');
+  await pool.query(summarySql);await pool.query(largestSql);await pool.query(customerStatusSql);
+  assert.deepEqual(await bodies(),r2a,'R2a, R2c and R2c part 2 forward again: the reviewed bodies');
   assert.equal((await lanes()).summary.count,5);
  });
  await t.test('catalog: applied twice (idempotent) — one definition each, signatures, owner, ACL and the reader path kept',async()=>{
@@ -203,7 +211,7 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
   for(const signature of ['app_private.hermes_domain_read_rows_fast_v1(jsonb)','public.hermes_domain_read_v1(jsonb,text,jsonb)','public.hermes_domain_read_v2(jsonb,text,jsonb)'])
    for(const [role,expected] of [['authenticated',true],['anon',false],['service_role',false],['hermes_store_executor',false]])
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,signature,'EXECUTE'])).rows[0].value,expected,`${role} ${signature}`);
-  await pool.query(summarySql);await pool.query(largestSql);
+  await pool.query(summarySql);await pool.query(largestSql);await pool.query(customerStatusSql);
   assert.equal((await lanes()).summary.count,5,'a third run changes nothing');
  });
 });
@@ -365,5 +373,127 @@ test('R2c income_expenses: byType.<type>.largest = the largest live voucher of t
    assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,'public.hermes_domain_read_v2(jsonb,text,jsonb)','EXECUTE'])).rows[0].value,expected,role);
   await pool.query(largestSql);
   assert.equal((await oracle()).byType.EXPENSE.largest.id,E7,'a third run changes nothing');
+ });
+});
+
+// R2c part 2 (20261021044801) on real PostgreSQL 16+/17: summary.byStatus of crm_read_customers on the fast reader (the
+// live lane) — "Có bao nhiêu khách chưa có hợp đồng nào?" — counts the core's set by customers.status_v2, the three tabs
+// of /customers (RENTING đang thuê, MOVED_OUT đã chuyển đi, WALK_IN vãng lai = chưa có hợp đồng), under the asker's RLS.
+// Oracle: the web core itself per tab (customer_list_v1 p_status). With a query: null (search not copied). A
+// building-scoped connection sees only customers the core locates in its buildings (WALK_IN customers have none).
+// Mutants of the status statement turn it red; the prepared revert restores the exact R2a reader and v1; $requires$
+// stops before R2a. Synthetic customers only.
+const C=n=>id(450+n);
+test('R2c part 2 customers: byStatus by contract status on the fast reader, as the web tabs count them; null with a query; revert and $requires$',{timeout:240000},async t=>{
+ const {pool,cleanup}=await localCluster(t);t.after(async()=>{await pool.end();cleanup();});await setup(pool);
+ // Fixture owner-visible customers: CUSTOMER (active contract, fixture building), CUSTOMER2 (terminated contract). HIDDEN
+ // (owner not visible) and the foreign customer never count; a deleted walk-in neither; one customer has no status yet.
+ await pool.query(`UPDATE public.customers SET status_v2='RENTING' WHERE id='${CUSTOMER}';
+  UPDATE public.customers SET status_v2='MOVED_OUT' WHERE id='${CUSTOMER2}';
+  INSERT INTO public.customers(id,organization_id,user_id,full_name,phone,created_at,status_v2,deleted_at) VALUES
+  ('${C(1)}','${ORG}','${USER}','Khách vãng lai','0920000001','2026-10-20','WALK_IN',null),
+  ('${C(2)}','${ORG}','${USER}','Khách đã xoá','0920000002','2026-10-20','WALK_IN',now()),
+  ('${C(3)}','${ORG}','${USER}','Khách chưa phân loại','0920000003','2026-10-20',null,null);`);
+ const prepared=await jwt(pool,async c=>(await c.query("SELECT public.hermes_prepare_connection_v2($1,'{}','{}','unrestricted','{}') value",[ORG])).rows[0].value);
+ const tokenDigest='e'.repeat(64),expiry=Date.now()+600000;
+ const activated=(await pool.query('SELECT app_private.hermes_store_activate_v1($1::jsonb) value',[JSON.stringify({connectionId:prepared.id,expectedEpoch:1,operationId:id(53),intentSecret:prepared.intentSecret,
+  userId:USER,providerSessionId:id(32),credentialRef:id(51),tokenDigest,tokenExpiresAt:expiry,sessionExpiresAt:Date.now()+3600000,
+  sessionEnvelope:{v:1,algorithm:'A256GCM',keyVersion:'fixture',nonce:'a'.repeat(16),tag:'a'.repeat(22),ciphertext:'abcd'}})])).rows[0].value;
+ let connection={...activated.connection};
+ const value=async(input={})=>fast(pool,{connectionId:prepared.id,tokenDigest,expectedEpoch:connection.epoch,expectedSessionRevision:1},'customers',input);
+ const read=async(input={})=>(await value(input)).result;
+ const who={row:{id:prepared.id,userId:USER,organizationId:ORG},scopesByPermission:{}};
+ // The web's own count of one tab (customer_list_v1 = the core, p_status), whole company.
+ const tab=async status=>(await jwt(pool,async c=>(await c.query('SELECT public.customer_list_v1($1::uuid,$2) value',[ORG,status])).rows[0].value)).total;
+ const reader=async()=>(await pool.query("SELECT md5(pg_get_function_sqlbody(oid)) v FROM pg_proc WHERE proname='hermes_domain_read_rows_fast_v1'")).rows[0].v;
+ const v1=async()=>(await pool.query("SELECT md5(prosrc) v FROM pg_proc WHERE oid='public.hermes_domain_read_v1(jsonb,text,jsonb)'::regprocedure")).rows[0].v;
+
+ await t.test('Toàn tổ chức: count of the core, byStatus of every tab equal to the web tab, the same on every page; the connector accepts it',async()=>{
+  const whole=await read();
+  assert.deepEqual(whole.summary,{count:4,byStatus:{RENTING:1,MOVED_OUT:1,WALK_IN:1},sum:{}},'deleted, hidden-owner and foreign customers never count; no status: counted, no tab');
+  for(const status of ['RENTING','MOVED_OUT','WALK_IN'])assert.equal(whole.summary.byStatus[status],await tab(status),`${status}: the web tab`);
+  assert.equal(whole.summary.byStatus.WALK_IN,1,'the answer to "bao nhiêu khách chưa có hợp đồng"');
+  const first=await read({limit:1}),second=await read({limit:1,cursor:first.nextCursor});
+  assert.deepEqual([first.summary,second.summary],[whole.summary,whole.summary],'limit and cursor never narrow it');
+  assert.deepEqual(domainFastResult('customers',await value(),who,domainInput('customers',{})).summary,whole.summary);
+ });
+ await t.test('a query: count of the core search, byStatus null (the search patterns are not copied); no match: 0 and null',async()=>{
+  assert.deepEqual((await read({query:'khách'})).summary,{count:2,byStatus:null,sum:{}},'the walk-in and the unclassified customer (the deleted one never)');
+  assert.deepEqual((await read({query:'không-ai-cả'})).summary,{count:0,byStatus:null,sum:{}});
+  assert.equal(domainFastResult('customers',await value({query:'khách'}),who,domainInput('customers',{query:'khách'})).summary.byStatus,null);
+ });
+ await t.test('building-scoped connection: only the customers the core locates in its buildings (WALK_IN customers have none)',async()=>{
+  await pool.query(`INSERT INTO public.authorization_scopes(id,organization_id,scope_type,building_id) VALUES('${BUILDING_SCOPE}','${ORG}','BUILDING','${BUILDING}')`);
+  connection=await settings(pool,connection,{read:[],action:[]},'restricted',[BUILDING_SCOPE]);
+  try{
+   const scoped=await read();
+   assert.deepEqual([scoped.items.map(row=>row.id),scoped.summary],[[CUSTOMER],{count:1,byStatus:{RENTING:1},sum:{}}]);
+   assert.equal(scoped.summary.count,(await jwt(pool,async c=>(await c.query('SELECT public.customer_list_v1($1::uuid,NULL,NULL,NULL,$2::uuid[]) value',[ORG,[BUILDING]])).rows[0].value)).total,
+    'the same set as the web list filtered to the building');
+  }finally{connection=await settings(pool,connection);}
+ });
+ await t.test('mutants of the status statement are caught: location filter dropped (also refused by the connector), deleted customers counted',async()=>{
+  const whole=(await read()).summary;
+  // Building-scoped read under each body: the summary of the core's located set, and the connector's verdict on it.
+  const scopedRead=async()=>{
+   connection=await settings(pool,connection,{read:[],action:[]},'restricted',[BUILDING_SCOPE]);
+   try{const scoped=await value();let refused=false;
+    try{domainFastResult('customers',scoped,who,domainInput('customers',{}));}catch{refused=true;}
+    return [scoped.result.summary,refused];}
+   finally{connection=await settings(pool,connection);}
+  };
+  const tabs=async summary=>{for(const status of ['RENTING','MOVED_OUT','WALK_IN'])assert.equal(summary.byStatus[status],await tab(status),status);};
+  assert.deepEqual(await scopedRead(),[{count:1,byStatus:{RENTING:1},sum:{}},false],'reviewed body');
+  await pool.query(once(READER,"AND ((p->>'orgWide')::boolean OR cu.id=ANY(","AND (true OR cu.id=ANY("));
+  try{
+   const [summary,refused]=await scopedRead();
+   assert.deepEqual([summary.byStatus,refused],[{RENTING:1,MOVED_OUT:1,WALK_IN:1},true],'the mutant counts every tab and the connector refuses it (Σ byStatus > count)');
+  }finally{await pool.query(READER);}
+  assert.deepEqual(await scopedRead(),[{count:1,byStatus:{RENTING:1},sum:{}},false],'restored');
+  await tabs(whole);
+  await pool.query(once(READER,"WHERE cu.organization_id=(p->>'organizationId')::uuid AND cu.deleted_at IS NULL AND cu.status_v2 IS NOT NULL",
+   "WHERE cu.organization_id=(p->>'organizationId')::uuid AND cu.status_v2 IS NOT NULL"));
+  try{await assert.rejects(tabs((await read()).summary),{code:'ERR_ASSERTION'},'the deleted walk-in is counted: only the web tab (oracle) sees it');}
+  finally{await pool.query(READER);}
+  assert.deepEqual((await read()).summary,whole,'reviewed body restored');
+ });
+ await t.test('$requires$: before R2a (the B5c step 2 reader) the file stops and replaces nothing (one transaction)',async()=>{
+  const client=await pool.connect();
+  try{
+   const before=[await reader(),await v1()];
+   await client.query('BEGIN');
+   await client.query(statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;',readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8')));
+   await assert.rejects(client.query(customerStatusSql),/hermes_customer_status_asset_requires_applied_r2a_reader/);
+   await client.query('ROLLBACK');
+   assert.deepEqual([await reader(),await v1()],before,'reader and v1 untouched');
+  }finally{await client.query('ROLLBACK').catch(()=>{});client.release();}
+ });
+ await t.test('revert artifact: the exact R2a reader and v1 (customers byStatus {} again, accepted), twice; part 2 forward again',async()=>{
+  const live=[await reader(),await v1()];
+  assert.equal(REVERT_CUSTOMER_STATUS.split('\nBEGIN;\n').length,2);assert.equal(REVERT_CUSTOMER_STATUS.split('\nCOMMIT;\n').length,2);
+  await pool.query(REVERT_CUSTOMER_STATUS);
+  const reverted=[await reader(),await v1()];
+  assert.ok(reverted[0]!==live[0]&&reverted[1]!==live[1],'both replaced');
+  await pool.query(R2A_READER);await pool.query(statement('public.hermes_domain_read_v1','$fn$;'));
+  assert.deepEqual([await reader(),await v1()],reverted,'the revert bodies are the 20261020233934 bodies');
+  await pool.query(REVERT_CUSTOMER_STATUS);assert.deepEqual([await reader(),await v1()],reverted,'a second run changes nothing');
+  const legacy=await value();
+  assert.deepEqual(legacy.result.summary,{count:4,byStatus:{},sum:{}});
+  assert.deepEqual(domainFastResult('customers',legacy,who,domainInput('customers',{})).summary,{count:4,byStatus:{},sum:{}},'this connector accepts the R2a summary');
+  await pool.query(customerStatusSql);
+  assert.deepEqual([await reader(),await v1()],live,'part 2 forward again: the reviewed bodies');
+  assert.equal((await read()).summary.byStatus.WALK_IN,1);
+ });
+ await t.test('catalog: applied three times — one definition each, owner, ACL, reader path and DEFINER v1 kept',async()=>{
+  await pool.query(customerStatusSql);
+  const rows=(await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosecdef,p.provolatile,pg_get_userbyid(p.proowner) owner,p.proconfig
+   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.proname IN ('hermes_domain_read_rows_fast_v1','hermes_domain_read_v1') ORDER BY 1`)).rows;
+  assert.deepEqual(rows.map(row=>[row.name,row.prosecdef,row.provolatile,row.owner]),[['app_private.hermes_domain_read_rows_fast_v1',false,'s','postgres'],
+   ['public.hermes_domain_read_v1',true,'v','postgres']]);
+  assert.deepEqual(rows[0].proconfig.map(item=>item.replace(/"/g,'')),['search_path=']);
+  for(const signature of ['app_private.hermes_domain_read_rows_fast_v1(jsonb)','public.hermes_domain_read_v1(jsonb,text,jsonb)'])
+   for(const [role,expected] of [['authenticated',true],['anon',false],['service_role',false],['hermes_store_executor',false]])
+    assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,signature,'EXECUTE'])).rows[0].value,expected,`${role} ${signature}`);
+  assert.equal((await read()).summary.byStatus.RENTING,1);
  });
 });

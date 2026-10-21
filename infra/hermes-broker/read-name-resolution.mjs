@@ -11,7 +11,9 @@ import { DOMAIN_READS, READ_NAMES, READ_NAME_LIMITS, domainId, domainInput, doma
 import { W2 } from './wave2-registry.mjs';
 import { isW2ReportId } from './wave2-kit.mjs';
 
-export const DIRECTORY_RPCS = Object.freeze(['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1']);
+// R2c phần 2 (c): hermes_user_display_name_v1 (20261021044821, INVOKER) — tên hiển thị của CHÍNH người hỏi cho crm_auth_context.
+export const DIRECTORY_RPCS = Object.freeze(['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1',
+  'hermes_user_display_name_v1']);
 // Như web (hoá đơn/thu chi/công việc/chỉ số gộp room_ids của mọi toà cùng tên): tới 5 phòng trùng tên đi cùng
 // một lần; hơn thì hỏi lại. Trang SQL 50 dòng, tối đa 4 trang một lượt gọi (≤ 200 dòng quét) khi lọc hàng.
 export const ROOM_MATCH_LIMIT = 5, ROOM_FILTER_PAGE_LIMIT = 50, ROOM_FILTER_MAX_PAGES = 4;
@@ -132,6 +134,18 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
     if (!domainExact(data, ['id', 'name']) || data.id !== organizationId || !text(data.name)) fail('backend_unavailable');
     return remember(key, contextVersion, organizationId, data.name);
   }
+  // R2c phần 2 (c): tên hiển thị của chính người hỏi (JWT của họ; SQL chỉ đọc hồ sơ auth.uid()). id khác người của kết
+  // nối ⇒ backend_unavailable; null = hàm chưa có (PGRST202, optional) hoặc hồ sơ không đọc được.
+  async function userName({ accessToken, userId, tokenDigest, contextVersion, signal, optional = false }) {
+    check(signal);
+    if (!domainId(userId) || typeof tokenDigest !== 'string' || typeof contextVersion !== 'string' || typeof optional !== 'boolean') fail('invalid_request');
+    const key = `${tokenDigest}:user`, hit = cached(key, contextVersion, userId);
+    if (hit !== undefined) return hit;
+    const data = await rpc('hermes_user_display_name_v1', accessToken, {}, { signal }, { optional }); check(signal);
+    if (data === null && optional) return remember(key, contextVersion, userId, null);
+    if (!domainExact(data, ['id', 'name']) || data.id !== userId || !(data.name === null || text(data.name))) fail('backend_unavailable');
+    return remember(key, contextVersion, userId, data.name);
+  }
   async function resolve({ operation, input, names, lane = 'legacy', accessToken, identity, tokenDigest, signal }) {
     check(signal);
     const spec = Object.hasOwn(READ_NAMES, operation) ? READ_NAMES[operation] : null;
@@ -203,5 +217,5 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
     }
     return { input: resolved, plan };
   }
-  return Object.freeze({ resolve, directory, organizationName });
+  return Object.freeze({ resolve, directory, organizationName, userName });
 }

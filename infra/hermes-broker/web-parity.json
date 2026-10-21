@@ -2408,9 +2408,10 @@
         {
           "sql": "app_private.hermes_domain_read_rows_fast_v1",
           "calls": [
-            "customer_list_core_v1"
+            "customer_list_core_v1",
+            "customer_location_ids_v1"
           ],
-          "note": "miền customers; JWT người dùng và phạm vi chỉ thu hẹp"
+          "note": "miền customers; JWT người dùng và phạm vi chỉ thu hẹp. R2c phần 2 (20261021044801): summary.byStatus đếm customers.status_v2 trên đúng tập base của lõi khi không có query (công ty, deleted_at, customer_location_ids_v1 lịch sử khi không Toàn tổ chức) — lõi đổi bộ lọc base thì soát lại câu đếm này (test PG17 so với tab web customer_list_v1 p_status)."
         },
         {
           "sql": "public.customer_list_v1",

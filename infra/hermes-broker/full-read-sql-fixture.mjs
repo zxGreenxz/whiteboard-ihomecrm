@@ -28,6 +28,9 @@ export const fullReadOwnerSql = () => readFileSync(process.env.HERMES_FULL_READ_
 // vẫn nhắm bản review-fix (FULL_READ_OWNER_PATH) — thay cả thân hàm nên probe không phụ thuộc summary.
 export const W2_SUMMARY_FILE = '20261021004841_hermes_w2_domain_summary_v1';
 export const W2_SUMMARY_PATH = `supabase/migrations/${W2_SUMMARY_FILE}.sql`;
+// R2c part 2 (wave-2 band): v3 customers summary byStatus = contract status (customers.status_v2).
+export const W2_CUSTOMER_STATUS_FILE = '20261021044814_hermes_w2_customer_status_summary_v1';
+export const W2_CUSTOMER_STATUS_PATH = `supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`;
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -158,6 +161,8 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   if (owner !== null) for (const name of ['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2']) {
     const body = definition(migrationSql(W2_SUMMARY_FILE), name); await db.exec(body); await db.exec(body);
   }
+  // R2c part 2 (20261021044814, wave-2 band): v3 customers count the contract status. Same CREATE-only pattern, twice.
+  if (owner !== null) { const v3 = definition(migrationSql(W2_CUSTOMER_STATUS_FILE), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

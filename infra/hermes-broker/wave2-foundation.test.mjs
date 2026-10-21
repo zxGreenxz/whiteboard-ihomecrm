@@ -132,7 +132,9 @@ test('nền: 35 khoá đợt 2 khớp JS, seed ở trạng thái tắt; khoá se
     // B5c bước 2 (21/10): customers của v3 thêm buildingName — hàm nền nên bản kế nằm trong dải nền.
     'supabase/migrations/20261020173819_hermes_w2_customers_building_name_v1.sql',
     // R2a (21/10): v3 customers/occupancy thêm summary (+ báo cáo monthly_pnl có tổng) — cũng là bản kế của hàm nền.
-    'supabase/migrations/20261021004841_hermes_w2_domain_summary_v1.sql']);
+    'supabase/migrations/20261021004841_hermes_w2_domain_summary_v1.sql',
+    // R2c phần 2 (21/10): v3 customers đếm tình trạng hợp đồng (status_v2) — bản kế tiếp của hàm nền.
+    'supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql']);
   for (const letter of ['a', 'b', 'c', 'd']) await assertPackageParity({ db }, letter);
 }));
 

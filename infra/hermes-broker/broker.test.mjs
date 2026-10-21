@@ -328,14 +328,16 @@ test('crm_auth_context adds organizationName and the buildings of the widest rea
   const scope = createDependencyScope();
   const domains = { async prepareDomain() { return Object.freeze({}); }, async finalizeDomain() { return {}; },
     async prepareContext(token, input, { signal }) { seen.push({ token, input, signal }); return Object.freeze({}); },
-    async finalizeContext(token, receipt, { signal }) { seen.push({ token, receipt, signal }); return { organizationName: 'Công ty Thử', buildings: [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }] }; } };
+    async finalizeContext(token, receipt, { signal }) { seen.push({ token, receipt, signal }); return { organizationName: 'Công ty Thử', userName: 'Người Dùng Thử', buildings: [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }] }; } };
   const f = authorityFixture({ broker: { domains, dependencyScope: scope }, mutate(value) {
     value.effective.read = ['assistant.context.read', 'rooms.view']; value.row.restrictions.read = ['assistant.context.read', 'rooms.view'];
     value.scopesByPermission['rooms.view'].buildingIds = [BUILDING, OTHER]; value.scopesByPermission['assistant.context.read'].buildingIds = [OTHER];
   } });
   try {
     const result = context(await f.broker.callTool(f.token, 'crm_auth_context', {}));
-    assert.deepEqual(Object.keys(result), ['assistantId', 'userId', 'organizationId', 'organizationName', 'permissions', 'contextVersion', 'buildings']);
+    // R2c part 2 (c): the asker's own display name next to the user id ("Tôi đang kết nối CRM bằng tài khoản nào?").
+    assert.deepEqual(Object.keys(result), ['assistantId', 'userId', 'userName', 'organizationId', 'organizationName', 'permissions', 'contextVersion', 'buildings']);
+    assert.equal(result.userName, 'Người Dùng Thử');
     assert.equal(result.organizationName, 'Công ty Thử'); assert.deepEqual(result.buildings, [{ id: BUILDING, name: 'Toà 950NK', code: '950NK' }]);
     assert.equal(result.contextVersion, f.state.contextVersion);
     assert.deepEqual(seen[0].input, { organizationId: ORG_A, buildingIds: [OTHER, BUILDING], contextVersion: f.state.contextVersion }, 'union of every read key scope, in effective.read order');
@@ -343,8 +345,18 @@ test('crm_auth_context adds organizationName and the buildings of the widest rea
     assert.deepEqual(f.calls.map(call => call.operation), ['identify', 'resolve', 'check'], 'the post-audit check stays');
     // A directory answer of the wrong shape never reaches the model; a port that is half-wired is refused at construction.
     const bad = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains,
-      async finalizeContext() { return { organizationName: 'x', buildings: [{ id: 'not-a-uuid', name: 'x', code: null }] }; } } } });
+      async finalizeContext() { return { organizationName: 'x', userName: null, buildings: [{ id: 'not-a-uuid', name: 'x', code: null }] }; } } } });
     await assert.rejects(bad.broker.callTool(bad.token, 'crm_auth_context', {}), error('backend_unavailable'));
+    // userName: text or null (function not deployed yet); anything else, or a port without the key, never reaches the model.
+    for (const [label, directory] of [['userName not text', { organizationName: 'x', userName: 7, buildings: [] }],
+      ['userName missing (older port)', { organizationName: 'x', buildings: [] }]]) {
+      const wrong = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains, async finalizeContext() { return directory; } } } });
+      await assert.rejects(wrong.broker.callTool(wrong.token, 'crm_auth_context', {}), error('backend_unavailable'), label);
+    }
+    const absent = authorityFixture({ broker: { dependencyScope: scope, domains: { ...domains, async finalizeContext() { return { organizationName: null, userName: null, buildings: null }; } } },
+      mutate(value) { value.effective.read = ['assistant.context.read', 'rooms.view']; value.row.restrictions.read = ['assistant.context.read', 'rooms.view'];
+        value.scopesByPermission['rooms.view'].buildingIds = [BUILDING]; } });
+    assert.equal(context(await absent.broker.callTool(absent.token, 'crm_auth_context', {})).userName, null, 'SQL not deployed: null, not an error');
     assert.throws(() => createBroker({ authority: f.authority, dependencyScope: scope, domains: { ...domains, finalizeContext: undefined } }), /trusted_domain_service_required/);
   } finally { await scope.close(); }
 });

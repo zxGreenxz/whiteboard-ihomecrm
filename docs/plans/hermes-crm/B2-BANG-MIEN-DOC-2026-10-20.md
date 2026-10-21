@@ -12,12 +12,14 @@ Quy ước: V/S = VOLATILE/STABLE; D/I = DEFINER/INVOKER; phạm vi T = tòa, C 
 
 **R2c — phiếu lớn nhất theo loại (21/10, migration `20261021035022_hermes_domain_summary_largest_by_type_v1`, CHƯA áp TEST/production):** production hỏi "khoản chi lớn nhất tháng này" ⇒ `crm_read_income_expenses {fromDate,toDate}` (tool không có tham số loại) ⇒ `summary.largest` là phiếu lớn nhất của cả thu lẫn chi (một phiếu THU). Mỗi phần tử `byType.<INCOME|EXPENSE>` thêm `largest` (cùng khuôn `largest`, phiếu lớn nhất của loại đó trên cùng tập đã lọc, bỏ CANCELLED, hoà thì id nhỏ hơn); `largest` toàn bộ giữ nguyên. Chỉ nhánh income_expenses của `hermes_domain_read_v2` đổi. Connector R2c đóng cửa sổ R2a (summary bắt buộc) và mở cửa sổ một bản cho khoá con này (`DOMAIN_SUMMARY_ENTRY_TOLERANT`) ⇒ connector lên TRƯỚC, migration SAU; revert soạn sẵn `docs/plans/hermes-crm/revert/hermes_domain_summary_largest_by_type_revert_v1.sql`. Không đổi byte `tools/list`.
 
+**R2c phần 2 (21/10, `20261021044801` reader nhanh + v1, `20261021044814` v3 dải nền, `20261021044821` hàm mới; CHƯA áp TEST/production):** (a) `crm_read_customers` `summary.byStatus` = số khách theo `customers.status_v2` — ba tab của /customers: RENTING đang thuê, MOVED_OUT đã chuyển đi, WALK_IN vãng lai = chưa có hợp đồng ("bao nhiêu khách chưa có hợp đồng" ⇒ `byStatus.WALK_IN`, kết nối Toàn tổ chức); đường nhanh đếm trên đúng tập base của lõi dưới RLS khi không có `query` (có `query` ⇒ `null`), v3 đếm trên tập của chính nó. (b) `crm_read_assets`: dòng thêm `createdAt` (ngày thêm, múi giờ nghiệp vụ của công ty) và `summary.latest` {id, name, code, buildingId, buildingName, roomName, createdAt} = tài sản thêm gần đây nhất của cả tập lọc. (c) `crm_auth_context` thêm `userName` (tên hiển thị của chính người hỏi). Không thêm tham số, không đổi byte `tools/list` (63 819 B).
+
 ## 1. Họ v1 — `hermes_domain_read_v1` (V/D, `20261014081902`), Bind7, `domainResult` generic, test `domain-composition.test.mjs`
 
 | Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 | `summary` (R2a) |
 |---|---|---|---|---|
 | `crm_read_leads` | `leads.view` · T (lead không tòa cần C) | Không (web đọc bảng dưới RLS) | Vừa: chưa có core INVOKER, ít dùng | `{count, byStatus (status), sum {}}` |
-| `crm_read_assets` | `assets.view` · T (+C) | `assets_list_v1` (W2D, S/I; sắp theo created_at ≠ keyset id) | Vừa: nên đi qua `crm_read_report` | `{count, byStatus (condition), sum {quantity}}` |
+| `crm_read_assets` | `assets.view` · T (+C) | `assets_list_v1` (W2D, S/I; sắp theo created_at ≠ keyset id) | Vừa: nên đi qua `crm_read_report` | `{count, byStatus (condition), sum {quantity}, latest}` — `latest` (R2c phần 2) = tài sản thêm gần đây nhất; dòng có `createdAt` |
 | `crm_read_services` | `services.view` · T | `services_list_v1` (W2D, S/I) | Vừa | `{count, byStatus {}, sum {}}` |
 | `crm_read_tasks` | `tasks.view` · T | Không (`useJobs.ts` đọc bảng jobs) | Vừa: cần core jobs INVOKER | `{count, byStatus (status), sum {}, overdue}` — `overdue` = IN_PROGRESS có `deadline` < now() |
 

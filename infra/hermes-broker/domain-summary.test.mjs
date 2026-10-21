@@ -28,8 +28,9 @@ const ROWS = {
     { id: id(13), number: 'HD3', status: 'ACTIVE', ...place(3, B), startDate: '2026-02-01', endDate: null }],
   invoices: [{ id: id(11), number: 'INV1', status: 'APPROVED', ...place(1), billingMonth: '2026-10', totalAmount: '100.50' },
     { id: id(12), number: 'INV2', status: 'CANCELLED', ...place(2, B), billingMonth: '2026-10', totalAmount: '7' }],
-  assets: [{ id: id(11), name: 'Máy lạnh', code: 'ML', condition: 'GOOD', ...place(1), quantity: '2' },
-    { id: id(12), name: 'Bàn', code: null, condition: 'BROKEN', ...place(2, B), quantity: '1.5' }, { id: id(13), name: 'Ghế', code: null, condition: null, ...place(3), quantity: '4' }],
+  assets: [{ id: id(11), name: 'Máy lạnh', code: 'ML', condition: 'GOOD', ...place(1), quantity: '2', createdAt: '2026-10-01' },
+    { id: id(12), name: 'Bàn', code: null, condition: 'BROKEN', ...place(2, B), quantity: '1.5', createdAt: '2026-10-15' },
+    { id: id(13), name: 'Ghế', code: null, condition: null, ...place(3), quantity: '4', createdAt: '2026-10-15' }],
   services: [{ id: id(11), name: 'Điện', code: 'DIEN', unit: 'kWh', unitPrice: '3500', buildingIds: [A, B] }],
   tasks: [{ id: id(11), title: 'Sửa vòi', code: null, status: 'IN_PROGRESS', ...place(1), deadline: '2026-10-20T03:00:00+00:00' },
     { id: id(12), title: 'Thay đèn', code: null, status: 'IN_PROGRESS', ...place(2), deadline: '2026-10-22T03:00:00+00:00' },
@@ -140,9 +141,10 @@ test('R2a invariants: status filter, scope and building filter of byBuilding, or
   assert.throws(() => check('meter_readings', { ...full('meter_readings'), byType: { WATER: 4 } }), 'meter types above count');
   assert.throws(() => check('meter_readings', { ...full('meter_readings'), byType: { STEAM: 1 } }), 'unknown meter type');
   assert.throws(() => check('occupancy', { ...full('occupancy'), occupied: 15, available: 1 }), 'occupied + available above total');
-  // The fast lane of contracts has no byStatus when the core matched a query (null, not {}).
+  // The fast lane of contracts (and, since R2c part 2, customers) has no byStatus when the core matched a query (null, not {}).
   assert.equal(check('contracts', { ...full('contracts'), byStatus: null }).summary.byStatus, null);
-  assert.throws(() => check('customers', { ...full('customers'), byStatus: null }), 'only contracts may send null');
+  assert.equal(check('customers', { ...full('customers'), byStatus: null }).summary.byStatus, null);
+  assert.throws(() => check('invoices', { ...full('invoices'), byStatus: null }), 'only contracts and customers may send null');
   // The core's count may exceed the projected rows (rows without a room): count above items is fine.
   assert.equal(check('invoices', { ...full('invoices'), count: 9 }).summary.count, 9);
 });
@@ -176,12 +178,15 @@ test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CA
   assert.deepEqual(summarizeRows('income_expenses', []), { count: 0, byStatus: {}, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'empty set: {} and 0, never null');
   assert.deepEqual(full('meter_readings'), { count: 3, byStatus: { APPROVED: 2, UNAPPROVED: 1 }, sum: { consumption: '53.50' }, byType: { ELECTRICITY: 1, WATER: 2 }, rooms: 1 });
   assert.deepEqual(full('tasks'), { count: 4, byStatus: { IN_PROGRESS: 3, COMPLETED: 1 }, sum: {}, overdue: 1 }, 'past deadline and still IN_PROGRESS');
-  assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' } }, 'condition null counts in count only');
+  assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' },
+    latest: { id: id(12), name: 'Bàn', code: null, buildingId: B, buildingName: 'Toà B', roomName: 'P2', createdAt: '2026-10-15' } },
+  'condition null counts in count only; latest: the newest day, the smaller id within it (SQL orders the real instant)');
   assert.deepEqual(full('occupancy'), { count: 2, total: 15, occupied: 12, available: 2 });
   assert.deepEqual(full('deposits_held'), { count: 2, sum: { expected: '10000000', held: '7000000.50', shortfallAll: '2999999.50' }, contractCount: 4, fullCount: 3, shortCount: 1 });
   assert.deepEqual(full('building_profit'), { count: 2, sum: { revenue: '2500000.00', expense: '770000.50', net: '1729999.50' } });
   assert.deepEqual(full('contracts'), { count: 3, byStatus: { ACTIVE: 2, TERMINATED: 1 }, sum: {} });
-  for (const operation of ['customers', 'invoices', 'services']) assert.deepEqual(full(operation), { count: ROWS[operation].length, byStatus: {}, sum: {} });
+  for (const operation of ['invoices', 'services']) assert.deepEqual(full(operation), { count: ROWS[operation].length, byStatus: {}, sum: {} });
+  assert.deepEqual(full('customers'), { count: ROWS.customers.length, byStatus: null, sum: {} }, 'customer rows carry no contract status: unknown, not {}');
   // 55 buildings: k = 0..4 hold two rows (2 × (100 + k) = 200..208), k = 5..54 one row (105..154).
   const many = Array.from({ length: 60 }, (_, n) => ({ ...ROWS.receivables[0], id: id(1000 + n), buildingId: id(2000 + (n % 55)), remainingAmount: String(100 + (n % 55)) }));
   const capped = summarizeRows('receivables', many).byBuilding;
@@ -233,6 +238,34 @@ test('R2c byType.<type>.largest: the largest live voucher of each type; invarian
   assert.deepEqual(check('income_expenses', r2a, ROWS.income_expenses, month).summary, r2a);
   assert.throws(() => check('income_expenses', { ...r2a, largest: null }, ROWS.income_expenses, month), 'the R2a invariants still hold in the window');
   assert.throws(() => check('income_expenses', { ...r2a, byType: { EXPENSE: r2a.byType.EXPENSE } }, ROWS.income_expenses, month), 'the type of summary.largest is in byType');
+});
+
+// R2c part 2 (SQL 20261021044801/20261021044814; PostgreSQL 17 in domain-summary-sql.test.mjs, PGlite in
+// domain-composition/domain-v3): assets.latest — the most recently added asset of the whole set — and customers.byStatus —
+// the contract-status tabs of /customers (RENTING đang thuê, MOVED_OUT đã chuyển đi, WALK_IN vãng lai = chưa có hợp đồng).
+test('R2c part 2 invariants: assets.latest of the whole set (null only when empty, in the key scope and building filter, never older than a page row); customer tabs', () => {
+  const assets = full('assets'), latest = assets.latest;
+  assert.deepEqual(check('assets', assets).summary.latest, latest);
+  for (const [label, changed, items = ROWS.assets, extra = {}] of [
+    ['null latest for a non-empty set', { ...assets, latest: null }],
+    ['a latest for an empty set', { count: 0, byStatus: {}, sum: { quantity: '0' }, latest }, []],
+    ['latest older than a page row', { ...assets, latest: { ...latest, createdAt: '2026-10-14' } }],
+    ['latest outside the key scope', { ...assets, latest: { ...latest, buildingId: OUT } }],
+    ['latest of another building than the filter', { ...summarizeRows('assets', ROWS.assets.filter(row => row.buildingId === A)), latest },
+      ROWS.assets.filter(row => row.buildingId === A), { buildingId: A }],
+    ['latest with an extra field', { ...assets, latest: { ...latest, quantity: '1' } }],
+    ['latest without its room', { ...assets, latest: (({ roomName, ...rest }) => rest)(latest) }],
+    ['latest date not a date', { ...assets, latest: { ...latest, createdAt: '15/10/2026' } }],
+  ]) assert.throws(() => check('assets', changed, items, extra), label);
+  // Unassigned (company-wide) assets have no building: such a latest is not fenced by building.
+  assert.equal(check('assets', { ...assets, latest: { ...latest, createdAt: '2026-10-20', buildingId: null, buildingName: '', roomName: null } }).summary.latest.buildingId, null);
+  assert.deepEqual(summarizeRows('assets', []), { count: 0, byStatus: {}, sum: { quantity: '0' }, latest: null }, 'empty set: latest null');
+  // Customers: the three tabs only, their total never above count; null (fast lane with a query) or {} (SQL before part 2).
+  const customers = full('customers');
+  for (const byStatus of [{ RENTING: 1, WALK_IN: 1 }, { MOVED_OUT: 2 }, {}, null])
+    assert.deepEqual(check('customers', { ...customers, byStatus }).summary.byStatus, byStatus);
+  for (const byStatus of [{ RENTING: 2, WALK_IN: 1 }, { ACTIVE: 1 }, { WALK_IN: 1.5 }])
+    assert.throws(() => check('customers', { ...customers, byStatus }), JSON.stringify(byStatus));
 });
 
 test('R2a room filter: the connector filters rows by room, so the merge replaces the SQL summary with the kept rows (complete) or null (more to read)', async () => {
