@@ -338,3 +338,19 @@ gaps:
       khẩu qua env), rồi `npm run e2e:fleet:bien-nhan -- --spec .e2e-fleet/specs/rent-support-schedule.spec.ts`
       ra biên nhận xanh 10/10 ca với helper dùng module; hoặc chủ dự án quyết định gỡ/hoãn spec này
       khỏi suite e2e-fleet (deferred-modules) kèm lý do.
+  - id: push-thang-chua-qua-cong-gio-yen
+    where: >
+      src/lib/salaryBonusNotify.ts (self-push thưởng, JWT mode) · worker/lib/ctx.js notifyPush (tin nhắn Zalo)
+    expires_at: 2026-12-31
+    why: >
+      Đợt thông báo 21/10/2026 (gói B, B13, migration 20261021171253) đưa bốn lane pg_net phía database
+      (Hermes task, lịch Hermes v1/v2, canh gác Zalo) qua app_private.notify_push_allowed_now_v1: đang giờ
+      yên công ty/cá nhân thì không bắn, dòng chuông thành QUEUED cho drain chung. Còn hai đường gửi THẲNG
+      ngoài database không qua cổng sở thích lẫn giờ yên: (1) client tự bắn push thưởng sau award_job_bonus
+      (dòng SALARY_BONUS ghi push_state NULL); (2) worker Zalo gọi send-push cho tin nhắn đến — hiện còn bị
+      400 vì thiếu idempotencyKey (NOTIF-SERVER-7), chủ dự án để push Zalo sang đợt sau.
+    exit_condition: >
+      award_job_bonus ghi push_state theo notify_gate (họ có khoá sở thích) và salaryBonusNotify bỏ
+      self-push, có test PGlite/vitest; worker Zalo ghi thông báo qua RPC (push_state QUEUED theo cổng)
+      hoặc gửi kèm idempotencyKey và hỏi giờ yên, có test worker — hoặc chủ dự án ghi quyết định giữ
+      nguyên kèm lý do.
