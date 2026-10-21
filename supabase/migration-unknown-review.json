@@ -873,55 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.require_building_perm_v1(uuid,text,VARIADIC text[]) SECURITY DEFINER; tám hàm hợp đồng (renew/confirm/finalize/update_kind/terminate_move_out/terminate_forfeit/approve/set_notice) chèn một dòng kiểm contracts.terminate|contracts.renew (dấu [q26]); CREATE FUNCTION app_private.guard_contract_lifecycle_columns_v1(); CREATE TRIGGER a01_contract_lifecycle_columns_guard ON public.contracts"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/contractLifecyclePermissionGuardMigration.test.ts",
-          "trich_doan": "PGlite: thân 8 hàm = thân migration bỏ dòng [q26], md5 khớp md5 production ghim; trước vá tái hiện lỗ; sau vá thiếu khoá riêng ⇒ 42501, đủ quyền/super admin/writer DEFINER/service_role chạy như cũ"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 3 object trên — sinh 22/10/2026 ngay sau khi tạo file"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (UTC 21/10; câu 26 chủ chốt 21/10: siết kiểm quyền máy chủ cho thanh lý, gia hạn, sửa trạng thái hợp đồng), chưa đi qua lane apply — 3 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST trong một giao dịch ROLLBACK (test-env:thu-sql, không --ghi): tiền kiểm md5 thân production và tự kiểm catalog qua; thăm dò bằng JWT một Quản lý toà thật (SET LOCAL ROLE authenticated): đủ quyền thì báo trả/gia hạn/trả phòng/huỷ-khôi phục/hoàn tiền vẫn chạy; khi vai bị tước khoá riêng (DENY trong giao dịch) thì 7/7 đường trả 42501 [THIEU_QUYEN:<khoá>]; trước vá cùng kịch bản đều lọt. PGlite theo vai + 11 đột biến (scripts/dot-bien.mjs) đều bị bắt. Áp qua npm run migrate:forward (20261021180057 TRƯỚC 20261021181209) sau review độc lập và chủ duyệt PR; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "function:app_private.require_building_perm_v1",
-        "function:app_private.guard_contract_lifecycle_columns_v1",
-        "trigger:public.contracts.a01_contract_lifecycle_columns_guard"
-      ],
-      "raSoatBoi": "Claude Code — câu 26 kiểm quyền máy chủ khớp web 22/10/2026",
-      "sha256": "3fa711a88b1d8fe0ec0d9f0ecaeeeb320ad5b831bfdc8693217357a758a2a159"
-    },
-    "supabase/migrations/20261021181209_invoice_cancel_refund_permission_guard_v1.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261021181209_invoice_cancel_refund_permission_guard_v1.sql",
-          "trich_doan": "năm hàm hoá đơn (cancel_invoice_with_credit_v1, cancel_invoice_v1, restore_invoice_with_credit_v1, restore_invoice_v1, create_invoice_refund_obligation_v2) chèn một dòng kiểm invoices.cancel|invoices.delete hoặc invoices.record_payment (dấu [q26]); CREATE FUNCTION app_private.guard_invoice_cancel_status_v1(); CREATE TRIGGER a01_invoice_cancel_status_guard ON public.invoices"
-        },
-        {
-          "duong_dan": "src/lib/__tests__/invoiceCancelRefundPermissionGuardMigration.test.ts",
-          "trich_doan": "PGlite: thân 5 hàm = thân migration bỏ dòng [q26], md5 khớp md5 production ghim; dừng 55000 khi thiếu helper của 20261021180057; trước vá tái hiện lỗ; sau vá thiếu khoá ⇒ 42501, đủ quyền/super admin/writer DEFINER/service_role chạy như cũ"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 2 object trên — sinh 22/10/2026 ngay sau khi tạo file"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 22/10/2026 (UTC 21/10; câu 26: siết kiểm quyền máy chủ cho huỷ/khôi phục hoá đơn và hoàn tiền hoá đơn), chưa đi qua lane apply — 2 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST trong một giao dịch ROLLBACK (test-env:thu-sql, không --ghi): tiền kiểm md5 thân production và tự kiểm catalog qua; thăm dò bằng JWT một Quản lý toà thật (SET LOCAL ROLE authenticated): đủ quyền thì báo trả/gia hạn/trả phòng/huỷ-khôi phục/hoàn tiền vẫn chạy; khi vai bị tước khoá riêng (DENY trong giao dịch) thì 7/7 đường trả 42501 [THIEU_QUYEN:<khoá>]; trước vá cùng kịch bản đều lọt. PGlite theo vai + 11 đột biến (scripts/dot-bien.mjs) đều bị bắt. Áp qua npm run migrate:forward (20261021180057 TRƯỚC 20261021181209) sau review độc lập và chủ duyệt PR; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "function:app_private.guard_invoice_cancel_status_v1",
-        "trigger:public.invoices.a01_invoice_cancel_status_guard"
-      ],
-      "raSoatBoi": "Claude Code — câu 26 kiểm quyền máy chủ khớp web 22/10/2026",
-      "sha256": "2d9e9ae416dc5e1b92ef35acda76956fd4aebf37e604b2203d5b45c99b3a7b52"
     }
   }
 }
