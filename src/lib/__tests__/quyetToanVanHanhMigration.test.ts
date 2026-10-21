@@ -49,15 +49,18 @@ async function expectLoi(sql: string, params: unknown[], code: string) {
 let n = 100;
 async function phieu(p: {
   toa?: string; loai: "INCOME" | "EXPENSE"; so: string | null; thang: string; trangThai?: string;
-  kqkd?: boolean | null; xoa?: boolean; dong?: { lop: string; tien: number }[]; tong?: number;
+  kqkd?: boolean | null; xoa?: boolean; dong?: { lop: string; tien: number }[]; tong?: number; nguon?: string;
+  butToan?: string; lamTron?: { so: string; tien: number };
 }) {
   const pid = id(n++);
   await db.query(
     `INSERT INTO public.income_expenses(id, organization_id, building_id, code, name, type, voucher_date, account_id,
-       approval_status, business_result_accounting, total_amount, deleted_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       approval_status, business_result_accounting, total_amount, deleted_at, system_source, posting_status,
+       rounding_account_id, rounding_amount)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [pid, ORG_A, p.toa ?? TOA_A, `P${n}`, `Phiếu ${n}`, p.loai, p.thang, p.so, p.trangThai ?? "APPROVED",
-      p.kqkd ?? null, p.tong ?? (p.dong ?? []).reduce((s, d) => s + d.tien, 0), p.xoa ? new Date().toISOString() : null],
+      p.kqkd ?? null, p.tong ?? (p.dong ?? []).reduce((s, d) => s + d.tien, 0), p.xoa ? new Date().toISOString() : null,
+      p.nguon ?? null, p.butToan ?? "POSTED", p.lamTron?.so ?? null, p.lamTron?.tien ?? 0],
   );
   for (const d of p.dong ?? []) {
     await db.query(
@@ -96,7 +99,8 @@ beforeAll(async () => {
       is_virtual boolean DEFAULT false, deleted_at timestamptz);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY, organization_id uuid, building_id uuid, code text, name text,
       type text, voucher_date date, account_id uuid, approval_status text, business_result_accounting boolean,
-      total_amount numeric, deleted_at timestamptz);
+      total_amount numeric, deleted_at timestamptz, system_source text, posting_status text,
+      change_account_id uuid, change_amount numeric DEFAULT 0, rounding_account_id uuid, rounding_amount numeric DEFAULT 0);
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), income_expense_id uuid,
       amount numeric, unit_price numeric, quantity numeric, accounting_class text);
     CREATE TABLE public.profiles(id uuid PRIMARY KEY, full_name text, email text);
@@ -119,8 +123,17 @@ beforeAll(async () => {
   await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-07", dong: [{ lop: "PNL", tien: 2_000_000 }] });
   await phieu({ loai: "EXPENSE", so: SO_CHU_NHA, thang: "2025-01-08", dong: [{ lop: "PNL", tien: 500_000 }] });
   await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-09", dong: [{ lop: "DEPOSIT", tien: 3_000_000 }] });
-  await phieu({ loai: "EXPENSE", so: SO_AO, thang: "2025-01-10", dong: [{ lop: "DEPOSIT", tien: 400_000 }] });
-  await phieu({ loai: "INCOME", so: SO_AO, thang: "2025-01-10", dong: [{ lop: "PNL", tien: 400_000 }] });
+  // thanh lý: cấn 400k cọc vào khoản khách phải trả (sổ ảo cấn trừ) ⇒ doanh thu bên quản lý
+  await phieu({ loai: "EXPENSE", so: SO_AO, thang: "2025-01-10", nguon: "termination.offset", dong: [{ lop: "DEPOSIT", tien: 400_000 }] });
+  await phieu({ loai: "INCOME", so: SO_AO, thang: "2025-01-10", nguon: "termination.revenue", dong: [{ lop: "PNL", tien: 400_000 }] });
+  // thanh lý: trả thêm cho khách 150k ngoài cọc (PNL) + hoàn 850k cọc (DEPOSIT), một phiếu, sổ quản lý
+  await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-10", nguon: "termination.refund",
+    dong: [{ lop: "PNL", tien: 150_000 }, { lop: "DEPOSIT", tien: 850_000 }] });
+  // khách chuyển cọc + trả thừa vào SỔ CHỦ NHÀ: chủ nhà giữ hộ tiền quản lý phải hoàn
+  await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-19", dong: [{ lop: "DEPOSIT", tien: 800_000 }] });
+  await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-19", dong: [{ lop: "CUSTOMER_CREDIT", tien: 5_000 }] });
+  // dòng nội bộ: không tính, nhưng phải hiện ở nhóm "không tính"
+  await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-20", dong: [{ lop: "INTERNAL", tien: 20_000 }] });
   await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-11", trangThai: "UNAPPROVED", dong: [{ lop: "PNL", tien: 700_000 }] });
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-11", trangThai: "UNAPPROVED", dong: [{ lop: "PNL", tien: 600_000 }] });
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-12", trangThai: "CANCELLED", dong: [{ lop: "PNL", tien: 9_999 }] });
@@ -133,6 +146,12 @@ beforeAll(async () => {
   // Tháng 02/2025 — lỗ.
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-02-03", dong: [{ lop: "PNL", tien: 1_000_000 }] });
   PHIEU_LO_CHI = await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-04", dong: [{ lop: "PNL", tien: 3_000_000 }] });
+  // Tháng 03/2025 — phiếu đã duyệt nhưng bút toán bị đảo; làm tròn rơi vào sổ chủ nhà.
+  await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-03-03", butToan: "REVERSED", dong: [{ lop: "PNL", tien: 100_000 }] });
+  await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-03-04", lamTron: { so: SO_CHU_NHA, tien: 1_000 },
+    dong: [{ lop: "PNL", tien: 50_000 }] });
+  // Trước ngày áp dụng: khách chuyển cọc 700k vào sổ chủ nhà (gợi ý số dư đầu kỳ).
+  await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2024-12-20", dong: [{ lop: "DEPOSIT", tien: 700_000 }] });
 
   const sql = readFileSync(FILE, "utf8");
   await db.exec(sql);
@@ -160,18 +179,31 @@ describe("công thức quyết toán tháng", () => {
     // quản lý thu = sổ quản lý 1tr + cấn cọc (sổ ảo) 400k + phiếu không dòng 100k + phiếu không sổ 50k
     expect(so(t.manager_collected)).toBe(1_550_000);
     expect(so(t.landlord_paid)).toBe(500_000);
-    // quản lý chi = 2tr + dòng DEPOSIT bị ép tính KQKD (business_result_accounting = true) 30k
-    expect(so(t.manager_paid)).toBe(2_030_000);
+    // quản lý chi = 2tr + DEPOSIT bị ép tính KQKD 30k + trả thêm cho khách ngoài cọc khi thanh lý 150k
+    expect(so(t.manager_paid)).toBe(2_180_000);
     expect(so(t.revenue)).toBe(11_550_000);
-    expect(so(t.expense)).toBe(2_530_000);
-    expect(so(t.profit)).toBe(9_020_000);
-    expect(so(t.manager_share)).toBe(2_706_000);
-    expect(so(t.landlord_share)).toBe(6_314_000);
-    expect(so(t.landlord_owes_manager)).toBe(3_186_000);
-    // bảo toàn: chủ nhà đang giữ − phần chủ nhà được hưởng = số chủ nhà phải trả
-    expect(so(t.landlord_collected) - so(t.landlord_paid) - so(t.landlord_share)).toBe(so(t.landlord_owes_manager));
-    expect(st.deposits).toEqual({ received: 3_000_000, paid_out: 400_000 });
+    expect(so(t.expense)).toBe(2_680_000);
+    expect(so(t.profit)).toBe(8_870_000);
+    expect(so(t.manager_share)).toBe(2_661_000);
+    expect(so(t.landlord_share)).toBe(6_209_000);
+    // cọc 800k + trả thừa 5k khách chuyển vào sổ chủ nhà
+    expect(so(t.landlord_held_deposits)).toBe(805_000);
+    expect(so(t.landlord_owes_manager)).toBe(4_096_000);
+    // bảo toàn: chủ nhà đang giữ (thu − chi + cọc giữ hộ) − phần chủ nhà được hưởng = số chủ nhà phải trả
+    expect(so(t.landlord_collected) - so(t.landlord_paid) + so(t.landlord_held_deposits) - so(t.landlord_share))
+      .toBe(so(t.landlord_owes_manager));
+    expect(st.deposits).toEqual({ received: 3_805_000, paid_out: 1_250_000, landlord_received: 805_000, landlord_paid_out: 0 });
+    expect(st.termination).toEqual({
+      revenue_from_deposit: 400_000, forfeit_revenue: 0, extra_receipt: 0, refund_beyond_deposit: 150_000,
+      deposit_refunded: 850_000, deposit_offset: 400_000, pending_refund: 0,
+    });
     expect(st.pending).toMatchObject({ voucher_count: 2, income: 600_000, expense: 700_000 });
+    // không khoản nào biến mất: dòng tắt KQKD (5k) và dòng nội bộ (20k) vẫn hiện ở nhóm "không tính"
+    expect(st.excluded).toEqual({ voucher_count: 2, income: 25_000, expense: 0 });
+    const ex = (st.vouchers as Json[]).filter((v) => v.group === "EXCLUDED").map((v) => v.excluded_reason).sort();
+    expect(ex).toEqual(["INTERNAL", "NOT_KQKD"]);
+    const nguon = (st.vouchers as Json[]).map((v) => v.source).filter(Boolean).sort();
+    expect(nguon).toEqual(["DEPOSIT_OFFSET", "TERMINATION_REFUND", "TERMINATION_REFUND", "TERMINATION_REVENUE"]);
     expect(thang.can_close).toBe(false);
     expect(thang.close_blockers).toEqual(["PENDING_VOUCHERS"]);
   });
@@ -195,6 +227,24 @@ describe("công thức quyết toán tháng", () => {
     });
     expect(m.status).toBe("NOT_APPLICABLE");
     expect(m.statement).toBeNull();
+  });
+
+  it("phiếu duyệt mà bút toán đã đảo: vẫn tính KQKD nhưng chặn chốt; làm tròn vào sổ chủ nhà được bù trừ", async () => {
+    const m = await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      return rpc<Json>("public.landlord_settlement_month_v1($1, $2::date)", [TOA_A, "2025-03-01"]);
+    });
+    const st = m.statement as Json;
+    const t = st.totals as Json;
+    expect(st.reversed_voucher_count).toBe(1);
+    expect(m.can_close).toBe(false);
+    expect(m.close_blockers).toEqual(["REVERSED_POSTINGS"]);
+    expect(so(t.profit)).toBe(150_000);
+    expect(so(t.manager_share)).toBe(45_000);
+    expect(so(t.landlord_extra_cash)).toBe(1_000);
+    // 45k + 0 − 50k + 0 + 1k
+    expect(so(t.landlord_owes_manager)).toBe(-4_000);
+    expect((st.vouchers as Json[]).filter((v) => v.cash_reversed).length).toBe(1);
   });
 });
 
@@ -268,6 +318,35 @@ describe("cài đặt toà", () => {
     expect((opts.current as Json).effective_from).toBe("2025-01-01");
     expect(so((opts.current as Json).manager_percent)).toBe(25);
     expect((opts.history as Json[]).length).toBe(1);
+  });
+
+  it("lưu lại y nguyên không sinh lịch sử; số dư đầu kỳ vào tổng quyết toán; gợi ý cọc ở sổ chủ nhà trước ngày áp dụng", async () => {
+    const [h1, h2, opts, ov] = await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const sql = "public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, true, 300000)";
+      await rpc(sql, [TOA_A, [SO_CHU_NHA]]);
+      const a = ((await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A])).history as Json[]).length;
+      await rpc(sql, [TOA_A, [SO_CHU_NHA]]);
+      const o = await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A]);
+      const b = (o.history as Json[]).length;
+      const v = await rpc<Json>("public.landlord_settlement_overview_v1($1)", [TOA_A]);
+      return [a, b, o, v];
+    });
+    expect(h1).toBe(1);
+    expect(h2).toBe(1);
+    expect(so((opts.current as Json).opening_balance)).toBe(300_000);
+    expect(so((opts.current as Json).pre_start_landlord_deposits)).toBe(700_000);
+    const t = ov.totals as Json;
+    expect(so(t.opening_balance)).toBe(300_000);
+    expect(so(t.balance_closed)).toBe(300_000);
+  });
+
+  it("số dư đầu kỳ lẻ đồng ⇒ 22023", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await expectLoi("SELECT public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, true, 10.5)",
+        [TOA_A, [SO_CHU_NHA]], "22023");
+    });
   });
 });
 
@@ -345,7 +424,8 @@ describe("thanh toán và số còn lại", () => {
       expect(so(t.paid_by_manager)).toBe(200_000);
       expect(so(t.balance_closed)).toBe(2_200_000);
       // tháng 01 còn mở: cộng vào số "gồm cả tạm tính"
-      expect(so(t.balance_with_open)).toBe(2_200_000 + 3_186_000);
+      // tháng 01 (4.096.000) và 03 (−4.000) còn mở: cộng vào số "gồm cả tạm tính"
+      expect(so(t.balance_with_open)).toBe(2_200_000 + 4_096_000 - 4_000);
 
       expect(await rpc<Json>("public.landlord_settlement_void_payment_v1($1, 'ghi nhầm chiều tiền')", [p2.id]))
         .toEqual({ id: p2.id, status: "VOIDED" });
@@ -367,7 +447,7 @@ describe("link công khai cho chủ nhà", () => {
       const pub = await rpc<Json>("public.landlord_settlement_public_v1($1, '2025-01-01'::date)", [token]);
       const month = pub.month as Json;
       const st = month.statement as Json;
-      expect(so((st.totals as Json).landlord_owes_manager)).toBe(3_186_000);
+      expect(so((st.totals as Json).landlord_owes_manager)).toBe(4_096_000);
       expect((st.vouchers as Json[]).length).toBeGreaterThan(0);
       expect((st.vouchers as Json[]).every((v) => !("id" in v))).toBe(true);
       expect("building_id" in st).toBe(false);

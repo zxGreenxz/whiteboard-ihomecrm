@@ -33,14 +33,23 @@ chi_phi      = chủ nhà chi + quản lý chi
 loi_nhuan    = doanh_thu − chi_phi
 phan_quan_ly = loi_nhuan > 0 ? round(loi_nhuan × % / 100) : 0
 phan_chu_nha = loi_nhuan − phan_quan_ly
-chu_nha_tra_quan_ly = phan_quan_ly + quản lý chi − quản lý thu   (âm ⇒ quản lý trả lại chủ nhà)
+coc_chu_nha_giu = cọc/tiền khách trả thừa vào sổ chủ nhà − chi ra từ sổ chủ nhà
+                  + tiền thối/làm tròn rơi vào sổ chủ nhà
+chu_nha_tra_quan_ly = phan_quan_ly + quản lý chi − quản lý thu + coc_chu_nha_giu   (âm ⇒ quản lý trả lại chủ nhà)
 ```
 
-Kiểm chứng: chủ nhà đang giữ (chủ nhà thu − chủ nhà chi) và được hưởng `phan_chu_nha`; phần chênh đúng bằng
-`phan_quan_ly + quản lý chi − quản lý thu`.
+Kiểm chứng: chủ nhà đang giữ (chủ nhà thu − chủ nhà chi + coc_chu_nha_giu) nhưng chỉ được hưởng `phan_chu_nha`
+(cọc là tiền quản lý giữ để hoàn khách); phần chênh đúng bằng công thức trên.
 
-- **Cọc** (`accounting_class = 'DEPOSIT'`): chỉ hiện "thu cọc / chi cọc trong tháng", không vào quyết toán.
-- **Phiếu chờ duyệt:** chưa tính, liệt kê riêng; còn phiếu chờ thì không chốt được (giống chốt LN).
+- **Cọc & tiền khách trả thừa** (`DEPOSIT`, `CUSTOMER_CREDIT`): ở sổ quản lý thì chỉ hiển thị; vào sổ chủ nhà thì đưa vào bù trừ.
+- **Thanh lý hợp đồng** tách theo `system_source`: cấn cọc vào khoản khách phải trả (`termination.revenue`) và bỏ cọc
+  (`termination.forfeit_revenue`) là doanh thu ở sổ ảo cấn trừ ⇒ bên quản lý; khách trả thêm phần vượt cọc
+  (`termination.extra_receipt`) theo sổ nhận; trả thêm cho khách ngoài cọc (dòng PNL của `termination.refund`) là quản lý chi;
+  hoàn cọc không tính; cặp `termination.rent_refund_*` tự triệt tiêu.
+- **Không khoản nào biến mất:** mọi dòng thuộc đúng một nhóm — tính KQKD / cọc / không tính (nội bộ, phiếu tắt KQKD) — nhóm
+  "không tính" vẫn liệt kê kèm lý do.
+- **Phiếu chờ duyệt** chưa tính, liệt kê riêng; còn phiếu chờ (hoặc phiếu đã duyệt mà bút toán sổ quỹ bị đảo) thì không chốt được.
+- **Số dư đầu kỳ** khai ở Cài đặt toà; màn gợi ý số cọc đang nằm ở sổ chủ nhà trước tháng áp dụng.
 - **Cộng dồn:** còn lại = Σ quyết toán các tháng **đã chốt** − chủ nhà đã trả + quản lý đã trả. Màn hiện thêm số
   "gồm cả tháng tạm tính".
 

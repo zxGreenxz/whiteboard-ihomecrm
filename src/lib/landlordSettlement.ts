@@ -20,7 +20,13 @@ export const settlementVoucherSchema = z.object({
   name: z.string().nullable(),
   account_name: z.string().nullable(),
   side: z.enum(['LANDLORD', 'MANAGER']),
-  group: z.enum(['PNL', 'DEPOSIT']),
+  /** PNL: tính lợi nhuận · DEPOSIT: cọc/tiền khách trả thừa · EXCLUDED: không tính (vẫn liệt kê). */
+  group: z.enum(['PNL', 'DEPOSIT', 'EXCLUDED']),
+  /** Phiếu do thanh lý hợp đồng sinh ra (system_source termination.*). */
+  source: z.enum(['TERMINATION_REVENUE', 'FORFEIT_REVENUE', 'TERMINATION_REFUND', 'DEPOSIT_OFFSET', 'EXTRA_RECEIPT', 'RENT_REFUND_INTERNAL']).nullable(),
+  /** Đã duyệt nhưng bút toán sổ quỹ đã bị đảo — tiền không còn ở sổ nào. */
+  cash_reversed: z.boolean(),
+  excluded_reason: z.enum(['NOT_KQKD', 'INTERNAL']).nullable(),
   status: z.enum(['APPROVED', 'UNAPPROVED']),
   amount: money,
 });
@@ -39,16 +45,31 @@ export const settlementStatementSchema = z.object({
     profit: money,
     manager_share: money,
     landlord_share: money,
+    /** Cọc/tiền khách trả thừa vào sổ chủ nhà − chi ra từ sổ chủ nhà (chủ nhà giữ hộ quản lý). */
+    landlord_held_deposits: money,
+    /** Tiền thối / làm tròn rơi vào sổ chủ nhà (tiền của khách, chủ nhà giữ hộ). */
+    landlord_extra_cash: money,
     landlord_owes_manager: money,
   }),
-  deposits: z.object({ received: money, paid_out: money }),
+  reversed_voucher_count: z.number().int().nonnegative(),
+  deposits: z.object({ received: money, paid_out: money, landlord_received: money, landlord_paid_out: money }),
+  termination: z.object({
+    revenue_from_deposit: money,
+    forfeit_revenue: money,
+    extra_receipt: money,
+    refund_beyond_deposit: money,
+    deposit_refunded: money,
+    deposit_offset: money,
+    pending_refund: money,
+  }),
   pending: z.object({ voucher_count: z.number().int().nonnegative(), income: money, expense: money }),
+  excluded: z.object({ voucher_count: z.number().int().nonnegative(), income: money, expense: money }),
   vouchers: z.array(settlementVoucherSchema),
   source_hash: z.string().min(1),
 });
 export type SettlementStatement = z.infer<typeof settlementStatementSchema>;
 
-export const CLOSE_BLOCKERS = ['MONTH_NOT_ENDED', 'PENDING_VOUCHERS', 'INACTIVE'] as const;
+export const CLOSE_BLOCKERS = ['MONTH_NOT_ENDED', 'PENDING_VOUCHERS', 'REVERSED_POSTINGS', 'INACTIVE'] as const;
 export type CloseBlocker = typeof CLOSE_BLOCKERS[number];
 
 export const settlementMonthSchema = z.object({
@@ -108,6 +129,7 @@ export const settlementOverviewSchema = z.object({
   })),
   payments: z.array(settlementPaymentSchema),
   totals: z.object({
+    opening_balance: money,
     closed_net: money,
     open_net: money,
     paid_by_landlord: money,
@@ -153,6 +175,9 @@ export const landlordOperationOptionsSchema = z.object({
     landlord_account_ids: z.array(z.string().uuid()),
     note: z.string().nullable(),
     is_active: z.boolean(),
+    opening_balance: money,
+    /** Gợi ý: cọc/trả thừa đã nằm ở sổ chủ nhà trước tháng áp dụng. */
+    pre_start_landlord_deposits: money,
     updated_at: z.string(),
   }).nullable(),
   accounts: z.array(z.object({
@@ -199,7 +224,22 @@ export const linkRevokeReceiptSchema = z.object({ status: z.enum(['REVOKED', 'AL
 export const CLOSE_BLOCKER_LABEL: Record<CloseBlocker, string> = {
   MONTH_NOT_ENDED: 'Tháng chưa kết thúc — chỉ chốt được tháng đã qua',
   PENDING_VOUCHERS: 'Còn phiếu chờ duyệt trong tháng — duyệt hoặc huỷ trước khi chốt',
+  REVERSED_POSTINGS: 'Có phiếu đã duyệt nhưng bút toán sổ quỹ đã bị đảo (tiền không ở sổ nào) — xử lý phiếu trước khi chốt',
   INACTIVE: 'Toà đang ngừng áp dụng vận hành cho chủ nhà',
+};
+
+export const VOUCHER_SOURCE_LABEL: Record<NonNullable<SettlementVoucher['source']>, string> = {
+  TERMINATION_REVENUE: 'Thanh lý: cấn cọc vào khoản khách phải trả',
+  FORFEIT_REVENUE: 'Thanh lý: khách bỏ cọc',
+  TERMINATION_REFUND: 'Thanh lý: trả lại khách',
+  DEPOSIT_OFFSET: 'Thanh lý: cấn trừ cọc',
+  EXTRA_RECEIPT: 'Thanh lý: khách trả thêm phần vượt cọc',
+  RENT_REFUND_INTERNAL: 'Thanh lý: bù trừ nội bộ tiền phòng (tự triệt tiêu)',
+};
+
+export const EXCLUDED_REASON_LABEL: Record<NonNullable<SettlementVoucher['excluded_reason']>, string> = {
+  NOT_KQKD: 'phiếu tắt tính KQKD',
+  INTERNAL: 'khoản nội bộ',
 };
 
 export const PAYMENT_DIRECTION_LABEL: Record<PaymentDirection, string> = {

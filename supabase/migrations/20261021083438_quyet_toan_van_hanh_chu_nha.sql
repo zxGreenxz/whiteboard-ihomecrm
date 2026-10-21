@@ -32,11 +32,17 @@
 --     loi_nhuan = doanh_thu − chi_phi
 --     phan_quan_ly = loi_nhuan > 0 ? round(loi_nhuan × % / 100) : 0
 --     phan_chu_nha = loi_nhuan − phan_quan_ly
---     chu_nha_tra_quan_ly = phan_quan_ly + quan_ly_chi − quan_ly_thu
+--     coc_chu_nha_giu = cọc/tiền khách trả thừa vào sổ chủ nhà − cọc/trả thừa chi từ sổ chủ nhà
+--     chu_nha_tra_quan_ly = phan_quan_ly + quan_ly_chi − quan_ly_thu + coc_chu_nha_giu
 --       (> 0: chủ nhà trả quản lý; < 0: quản lý trả lại chủ nhà)
---   Chứng minh: chủ nhà đang giữ chu_nha_thu − chu_nha_chi, được hưởng
---   phan_chu_nha; phần chênh = phan_quan_ly + quan_ly_chi − quan_ly_thu.
---   Cọc (accounting_class DEPOSIT) chỉ hiển thị, không vào quyết toán.
+--   Chứng minh: chủ nhà đang giữ (chu_nha_thu − chu_nha_chi + coc_chu_nha_giu), chỉ được
+--   hưởng phan_chu_nha; cọc là tiền quản lý giữ để hoàn cho khách ⇒ phần chênh như trên.
+--   Cọc/trả thừa (DEPOSIT, CUSTOMER_CREDIT) ở sổ quản lý không đổi quyết toán, chỉ hiển thị.
+--   Thanh lý: cấn cọc vào khoản khách phải trả (termination.revenue) và bỏ cọc
+--   (termination.forfeit_revenue) là doanh thu ở sổ ảo cấn trừ ⇒ bên quản lý (tiền cọc nằm ở
+--   sổ quản lý); tiền trả thêm cho khách ngoài cọc (dòng PNL của termination.refund) là quản
+--   lý chi; hoàn cọc (dòng DEPOSIT) không tính. Dòng không tính KQKD (nội bộ, tắt KQKD) vẫn
+--   được liệt kê ở nhóm "không tính" để không khoản nào biến mất khỏi màn.
 --
 -- LÀM GÌ
 --   1. app_private.landlord_operations (+ landlord_operation_changes): cấu hình
@@ -98,6 +104,10 @@ CREATE TABLE IF NOT EXISTS app_private.landlord_operations (
   updated_by           uuid NOT NULL,
   updated_at           timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+-- Số dư đầu kỳ (dương: chủ nhà còn phải trả quản lý) — vd cọc khách đã chuyển vào sổ chủ nhà
+-- TRƯỚC tháng áp dụng mà quản lý phải hoàn, hoặc phần hai bên còn nợ nhau trước thoả thuận.
+ALTER TABLE app_private.landlord_operations
+  ADD COLUMN IF NOT EXISTS opening_balance numeric(16,2) NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS landlord_operations_org
   ON app_private.landlord_operations (organization_id);
 
@@ -257,7 +267,15 @@ AS $fn$
     SELECT v.id, v.code, v.voucher_date, v.type::text AS loai, v.name,
            v.account_id, a.name AS so_quy, v.approval_status,
            v.business_result_accounting AS kqkd, v.total_amount,
-           COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false) AS ben_chu_nha
+           COALESCE(v.system_source, '') AS nguon,
+           COALESCE(v.posting_status, '') AS but_toan,
+           COALESCE(v.account_id = ANY (cfg.landlord_account_ids), false) AS ben_chu_nha,
+           -- tiền thối / làm tròn rơi vào sổ chủ nhà: tiền của khách, chủ nhà giữ hộ
+           (CASE WHEN v.change_account_id = ANY (cfg.landlord_account_ids)
+                 THEN COALESCE(v.change_amount, 0) ELSE 0 END
+            + CASE WHEN v.rounding_account_id = ANY (cfg.landlord_account_ids)
+                 THEN COALESCE(v.rounding_amount, 0) ELSE 0 END)
+           * CASE WHEN v.type::text = 'EXPENSE' THEN -1 ELSE 1 END AS du_chu_nha
       FROM cfg
       CROSS JOIN ky
       JOIN public.income_expenses v
@@ -269,26 +287,26 @@ AS $fn$
       LEFT JOIN public.accounts a ON a.id = v.account_id
   ),
   dong AS (
-    -- dòng tính KQKD, đúng vị ngữ của fa_accrual_allocations
-    SELECT p.id, 'KQKD'::text AS nhom,
+    -- MỌI dòng của phiếu đều vào đúng MỘT nhóm — không dòng nào rơi mất im lặng:
+    --   KQKD  đúng vị ngữ của fa_accrual_allocations (tính lợi nhuận);
+    --   COC   cọc / tiền khách trả thừa — tiền giữ hộ khách, quản lý chịu trách nhiệm hoàn;
+    --   KHAC  không tính (nội bộ, phiếu tắt KQKD…) — vẫn liệt kê để đối chiếu.
+    SELECT p.id,
+           CASE
+             WHEN p.kqkd IS TRUE THEN 'KQKD'
+             WHEN i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT') THEN 'COC'
+             WHEN p.kqkd IS NULL AND i.accounting_class = 'PNL' THEN 'KQKD'
+             ELSE 'KHAC'
+           END::text AS nhom,
            COALESCE(i.amount, i.unit_price * i.quantity)::numeric AS so_tien
       FROM phieu p
       JOIN public.income_expense_items i ON i.income_expense_id = p.id
-     WHERE p.kqkd IS DISTINCT FROM false
-       AND (p.kqkd IS TRUE OR i.accounting_class = 'PNL')
     UNION ALL
     -- phiếu không có dòng hạng mục: lấy cả phiếu, như canonical
-    SELECT p.id, 'KQKD'::text, COALESCE(p.total_amount, 0)::numeric
+    SELECT p.id, CASE WHEN p.kqkd IS DISTINCT FROM false THEN 'KQKD' ELSE 'KHAC' END::text,
+           COALESCE(p.total_amount, 0)::numeric
       FROM phieu p
-     WHERE p.kqkd IS DISTINCT FROM false
-       AND NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = p.id)
-    UNION ALL
-    -- cọc: chỉ để hiển thị, không vào quyết toán
-    SELECT p.id, 'COC'::text, COALESCE(i.amount, i.unit_price * i.quantity)::numeric
-      FROM phieu p
-      JOIN public.income_expense_items i ON i.income_expense_id = p.id
-     WHERE i.accounting_class = 'DEPOSIT'
-       AND p.kqkd IS NOT TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM public.income_expense_items i WHERE i.income_expense_id = p.id)
   ),
   gop AS (
     SELECT d.id, d.nhom, sum(d.so_tien) AS so_tien
@@ -297,9 +315,20 @@ AS $fn$
   ),
   ct AS (
     SELECT p.id, p.code, p.voucher_date, p.loai, p.name, p.account_id, p.so_quy,
-           p.approval_status, p.ben_chu_nha, g.nhom, g.so_tien
+           p.approval_status, p.ben_chu_nha, p.nguon, p.kqkd, p.but_toan, g.nhom, g.so_tien
       FROM phieu p
       JOIN gop g ON g.id = p.id
+     WHERE g.so_tien <> 0
+  ),
+  -- phiếu đã duyệt nhưng bút toán sổ quỹ đã bị đảo: tiền KHÔNG còn ở sổ nào ⇒ chặn chốt
+  dao AS (
+    SELECT count(DISTINCT ct.id) AS so_phieu_dao
+      FROM ct
+     WHERE ct.approval_status = 'APPROVED' AND ct.but_toan = 'REVERSED' AND ct.nhom IN ('KQKD', 'COC')
+  ),
+  du AS (
+    SELECT COALESCE(sum(p.du_chu_nha) FILTER (WHERE p.approval_status = 'APPROVED'), 0) AS du_chu_nha
+      FROM phieu p
   ),
   so AS (
     SELECT
@@ -309,18 +338,33 @@ AS $fn$
       COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'APPROVED' AND loai = 'EXPENSE' AND NOT ben_chu_nha), 0) AS quan_ly_chi,
       COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC' AND approval_status = 'APPROVED' AND loai = 'INCOME'), 0)  AS coc_thu,
       COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC' AND approval_status = 'APPROVED' AND loai = 'EXPENSE'), 0) AS coc_chi,
-      count(DISTINCT id) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'UNAPPROVED') AS cho_duyet_so_phieu,
+      -- cọc/tiền trả thừa đi qua SỔ CHỦ NHÀ: chủ nhà đang giữ hộ khoản quản lý phải hoàn cho khách
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC' AND approval_status = 'APPROVED' AND loai = 'INCOME'  AND ben_chu_nha), 0) AS coc_chu_nha_thu,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC' AND approval_status = 'APPROVED' AND loai = 'EXPENSE' AND ben_chu_nha), 0) AS coc_chu_nha_chi,
+      -- thanh lý hợp đồng, tách theo nguồn phiếu hệ thống sinh
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'APPROVED' AND nguon = 'termination.revenue'), 0)         AS tl_doanh_thu_tu_coc,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'APPROVED' AND nguon = 'termination.forfeit_revenue'), 0) AS tl_doanh_thu_bo_coc,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'APPROVED' AND nguon = 'termination.extra_receipt'), 0)   AS tl_khach_tra_them,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'APPROVED' AND nguon = 'termination.refund'), 0)          AS tl_tra_them_ngoai_coc,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC'  AND approval_status = 'APPROVED' AND nguon = 'termination.refund'), 0)          AS tl_hoan_coc,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'COC'  AND approval_status = 'APPROVED' AND nguon IN ('termination.offset', 'termination.forfeit_offset')), 0) AS tl_can_coc,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'UNAPPROVED' AND nguon = 'termination.refund'), 0)        AS tl_cho_duyet,
+      count(DISTINCT id) FILTER (WHERE approval_status = 'UNAPPROVED'
+                                   AND (nhom = 'KQKD' OR (nhom = 'COC' AND ben_chu_nha))) AS cho_duyet_so_phieu,
       COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'UNAPPROVED' AND loai = 'INCOME'), 0)  AS cho_duyet_thu,
-      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'UNAPPROVED' AND loai = 'EXPENSE'), 0) AS cho_duyet_chi
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KQKD' AND approval_status = 'UNAPPROVED' AND loai = 'EXPENSE'), 0) AS cho_duyet_chi,
+      count(DISTINCT id) FILTER (WHERE nhom = 'KHAC') AS khac_so_phieu,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KHAC' AND loai = 'INCOME'), 0)  AS khac_thu,
+      COALESCE(sum(so_tien) FILTER (WHERE nhom = 'KHAC' AND loai = 'EXPENSE'), 0) AS khac_chi
       FROM ct
   ),
   kq AS (
-    SELECT so.*,
+    SELECT so.*, du.du_chu_nha, dao.so_phieu_dao,
            so.chu_nha_thu + so.quan_ly_thu AS doanh_thu,
            so.chu_nha_chi + so.quan_ly_chi AS chi_phi,
            so.chu_nha_thu + so.quan_ly_thu - so.chu_nha_chi - so.quan_ly_chi AS loi_nhuan,
            cfg.manager_percent
-      FROM so CROSS JOIN cfg
+      FROM so CROSS JOIN cfg CROSS JOIN du CROSS JOIN dao
   ),
   chia AS (
     SELECT kq.*,
@@ -331,11 +375,13 @@ AS $fn$
   ),
   vet AS (
     SELECT pg_catalog.md5(
+             -- chỉ dòng làm đổi số (KQKD, cọc); dòng "không tính" đổi không làm tháng đã chốt hoá cũ
              COALESCE((SELECT pg_catalog.string_agg(
-                         pg_catalog.concat_ws('|', ct.id, ct.approval_status, ct.account_id,
+                         pg_catalog.concat_ws('|', ct.id, ct.approval_status, ct.but_toan, ct.account_id,
                                               ct.loai, ct.nhom, ct.so_tien, ct.voucher_date),
                          ';' ORDER BY ct.id, ct.nhom)
-                         FROM ct), '')
+                         FROM ct WHERE ct.nhom IN ('KQKD', 'COC')), '')
+             || '#' || (SELECT du.du_chu_nha::text FROM du)
              || '#' ||
              (SELECT pg_catalog.concat_ws('|', cfg.manager_percent,
                        pg_catalog.array_to_string(
@@ -357,14 +403,32 @@ AS $fn$
               'profit',             chia.loi_nhuan,
               'manager_share',      chia.phan_quan_ly,
               'landlord_share',     chia.loi_nhuan - chia.phan_quan_ly,
-              'landlord_owes_manager', chia.phan_quan_ly + chia.quan_ly_chi - chia.quan_ly_thu),
+              'landlord_held_deposits', chia.coc_chu_nha_thu - chia.coc_chu_nha_chi,
+              'landlord_extra_cash', chia.du_chu_nha,
+              'landlord_owes_manager', chia.phan_quan_ly + chia.quan_ly_chi - chia.quan_ly_thu
+                                       + chia.coc_chu_nha_thu - chia.coc_chu_nha_chi + chia.du_chu_nha),
+           'reversed_voucher_count', chia.so_phieu_dao,
            'deposits', pg_catalog.jsonb_build_object(
               'received', chia.coc_thu,
-              'paid_out', chia.coc_chi),
+              'paid_out', chia.coc_chi,
+              'landlord_received', chia.coc_chu_nha_thu,
+              'landlord_paid_out', chia.coc_chu_nha_chi),
+           'termination', pg_catalog.jsonb_build_object(
+              'revenue_from_deposit', chia.tl_doanh_thu_tu_coc,
+              'forfeit_revenue', chia.tl_doanh_thu_bo_coc,
+              'extra_receipt', chia.tl_khach_tra_them,
+              'refund_beyond_deposit', chia.tl_tra_them_ngoai_coc,
+              'deposit_refunded', chia.tl_hoan_coc,
+              'deposit_offset', chia.tl_can_coc,
+              'pending_refund', chia.tl_cho_duyet),
            'pending', pg_catalog.jsonb_build_object(
               'voucher_count', chia.cho_duyet_so_phieu,
               'income', chia.cho_duyet_thu,
               'expense', chia.cho_duyet_chi),
+           'excluded', pg_catalog.jsonb_build_object(
+              'voucher_count', chia.khac_so_phieu,
+              'income', chia.khac_thu,
+              'expense', chia.khac_chi),
            'vouchers', COALESCE((
               SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
                        'id', ct.id,
@@ -374,7 +438,19 @@ AS $fn$
                        'name', ct.name,
                        'account_name', ct.so_quy,
                        'side', CASE WHEN ct.ben_chu_nha THEN 'LANDLORD' ELSE 'MANAGER' END,
-                       'group', CASE WHEN ct.nhom = 'COC' THEN 'DEPOSIT' ELSE 'PNL' END,
+                       'group', CASE ct.nhom WHEN 'COC' THEN 'DEPOSIT' WHEN 'KHAC' THEN 'EXCLUDED' ELSE 'PNL' END,
+                       'source', CASE
+                                   WHEN ct.nguon = 'termination.revenue' THEN 'TERMINATION_REVENUE'
+                                   WHEN ct.nguon = 'termination.forfeit_revenue' THEN 'FORFEIT_REVENUE'
+                                   WHEN ct.nguon = 'termination.refund' THEN 'TERMINATION_REFUND'
+                                   WHEN ct.nguon IN ('termination.offset', 'termination.forfeit_offset') THEN 'DEPOSIT_OFFSET'
+                                   WHEN ct.nguon = 'termination.extra_receipt' THEN 'EXTRA_RECEIPT'
+                                   WHEN ct.nguon IN ('termination.rent_refund_offset', 'termination.rent_refund_revenue') THEN 'RENT_REFUND_INTERNAL'
+                                   ELSE NULL END,
+                       'cash_reversed', ct.approval_status = 'APPROVED' AND ct.but_toan = 'REVERSED',
+                       'excluded_reason', CASE WHEN ct.nhom <> 'KHAC' THEN NULL
+                                               WHEN ct.kqkd IS FALSE THEN 'NOT_KQKD'
+                                               ELSE 'INTERNAL' END,
                        'status', ct.approval_status,
                        'amount', ct.so_tien)
                      ORDER BY ct.voucher_date, ct.code, ct.nhom)
@@ -484,6 +560,9 @@ BEGIN
     END IF;
     IF v_pending > 0 THEN
       v_blockers := v_blockers || pg_catalog.to_jsonb('PENDING_VOUCHERS'::text);
+    END IF;
+    IF COALESCE((v_live->>'reversed_voucher_count')::integer, 0) > 0 THEN
+      v_blockers := v_blockers || pg_catalog.to_jsonb('REVERSED_POSTINGS'::text);
     END IF;
     IF NOT v_cfg.is_active THEN
       v_blockers := v_blockers || pg_catalog.to_jsonb('INACTIVE'::text);
@@ -600,12 +679,13 @@ BEGIN
     'months', v_months,
     'payments', v_payments,
     'totals', pg_catalog.jsonb_build_object(
+      'opening_balance', v_cfg.opening_balance,
       'closed_net', v_closed_net,
       'open_net', v_open_net,
       'paid_by_landlord', v_paid_l,
       'paid_by_manager', v_paid_m,
-      'balance_closed', v_closed_net - v_paid_l + v_paid_m,
-      'balance_with_open', v_closed_net + v_open_net - v_paid_l + v_paid_m));
+      'balance_closed', v_cfg.opening_balance + v_closed_net - v_paid_l + v_paid_m,
+      'balance_with_open', v_cfg.opening_balance + v_closed_net + v_open_net - v_paid_l + v_paid_m));
 END
 $fn$;
 
@@ -692,6 +772,21 @@ BEGIN
                'landlord_account_ids', to_jsonb(o.landlord_account_ids),
                'note', o.note,
                'is_active', o.is_active,
+               'opening_balance', o.opening_balance,
+               -- gợi ý số dư đầu kỳ: cọc / tiền trả thừa / tiền thối đã nằm ở sổ chủ nhà TRƯỚC tháng áp
+               -- dụng (chủ nhà giữ hộ khoản quản lý phải hoàn) — chủ tự quyết có đưa vào hay không
+               'pre_start_landlord_deposits', (
+                 SELECT COALESCE(sum(COALESCE(i.amount, i.unit_price * i.quantity)
+                                     * CASE WHEN v.type::text = 'EXPENSE' THEN -1 ELSE 1 END), 0)
+                   FROM public.income_expenses v
+                   JOIN public.income_expense_items i ON i.income_expense_id = v.id
+                  WHERE v.building_id = p_building_id
+                    AND v.deleted_at IS NULL
+                    AND v.approval_status = 'APPROVED'
+                    AND v.voucher_date < o.effective_from
+                    AND v.account_id = ANY (o.landlord_account_ids)
+                    AND v.business_result_accounting IS NOT TRUE
+                    AND i.accounting_class IN ('DEPOSIT', 'CUSTOMER_CREDIT')),
                'updated_at', o.updated_at)
         FROM app_private.landlord_operations o WHERE o.building_id = p_building_id),
     -- gợi ý sổ chủ nhà: sổ nhận nhiều phiếu thu của toà trong 120 ngày gần nhất lên đầu
@@ -804,7 +899,8 @@ CREATE OR REPLACE FUNCTION public.landlord_operation_upsert_v1(
   p_effective_from       date,
   p_landlord_account_ids uuid[],
   p_note                 text DEFAULT NULL,
-  p_is_active            boolean DEFAULT true
+  p_is_active            boolean DEFAULT true,
+  p_opening_balance      numeric DEFAULT 0
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -815,6 +911,7 @@ AS $fn$
 DECLARE
   v_actor   uuid := auth.uid();
   v_org     uuid;
+  v_opening numeric := COALESCE(p_opening_balance, 0);
   v_name    text := NULLIF(btrim(COALESCE(p_landlord_name, '')), '');
   v_note    text := NULLIF(btrim(COALESCE(p_note, '')), '');
   v_from    date := date_trunc('month', p_effective_from)::date;
@@ -842,6 +939,9 @@ BEGIN
   IF v_note IS NOT NULL AND length(v_note) > 500 THEN
     RAISE EXCEPTION 'Ghi chú tối đa 500 ký tự' USING ERRCODE = '22023';
   END IF;
+  IF v_opening <> round(v_opening) OR abs(v_opening) >= 1e13 THEN
+    RAISE EXCEPTION 'Số dư đầu kỳ phải là số nguyên đồng' USING ERRCODE = '22023';
+  END IF;
 
   SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_ids
     FROM unnest(COALESCE(p_landlord_account_ids, '{}'::uuid[])) AS x
@@ -860,15 +960,16 @@ BEGIN
   -- khoá cùng chìa với chốt tháng: không đổi cấu hình giữa lúc đang chốt
   PERFORM pg_advisory_xact_lock(hashtextextended('landlord_settlement:' || p_building_id::text, 0));
 
-  SELECT to_jsonb(o) - 'created_by' - 'updated_by' INTO v_before
+  -- so nội dung, bỏ cột dấu thời gian/người sửa: lưu lại y nguyên thì không sinh dòng lịch sử
+  SELECT to_jsonb(o) - 'created_by' - 'updated_by' - 'created_at' - 'updated_at' INTO v_before
     FROM app_private.landlord_operations o WHERE o.building_id = p_building_id;
 
   INSERT INTO app_private.landlord_operations AS o
     (building_id, organization_id, landlord_name, manager_percent, effective_from,
-     landlord_account_ids, note, is_active, created_by, updated_by)
+     landlord_account_ids, note, is_active, opening_balance, created_by, updated_by)
   VALUES
     (p_building_id, v_org, v_name, p_manager_percent, v_from,
-     v_ids, v_note, COALESCE(p_is_active, true), v_actor, v_actor)
+     v_ids, v_note, COALESCE(p_is_active, true), v_opening, v_actor, v_actor)
   ON CONFLICT (building_id) DO UPDATE
      SET landlord_name = EXCLUDED.landlord_name,
          manager_percent = EXCLUDED.manager_percent,
@@ -876,10 +977,11 @@ BEGIN
          landlord_account_ids = EXCLUDED.landlord_account_ids,
          note = EXCLUDED.note,
          is_active = EXCLUDED.is_active,
+         opening_balance = EXCLUDED.opening_balance,
          updated_by = v_actor,
          updated_at = clock_timestamp();
 
-  SELECT to_jsonb(o) - 'created_by' - 'updated_by' INTO v_after
+  SELECT to_jsonb(o) - 'created_by' - 'updated_by' - 'created_at' - 'updated_at' INTO v_after
     FROM app_private.landlord_operations o WHERE o.building_id = p_building_id;
 
   IF v_before IS DISTINCT FROM v_after THEN
@@ -963,6 +1065,10 @@ BEGIN
   IF v_pending > 0 THEN
     RAISE EXCEPTION 'Còn % phiếu chờ duyệt trong tháng % — duyệt hoặc huỷ trước khi chốt',
       v_pending, to_char(v_month, 'MM/YYYY') USING ERRCODE = '55000';
+  END IF;
+  IF COALESCE((v_live->>'reversed_voucher_count')::integer, 0) > 0 THEN
+    RAISE EXCEPTION 'Có % phiếu đã duyệt nhưng bút toán sổ quỹ đã bị đảo (tiền không còn ở sổ nào) trong tháng % — xử lý phiếu trước khi chốt',
+      (v_live->>'reversed_voucher_count')::integer, to_char(v_month, 'MM/YYYY') USING ERRCODE = '55000';
   END IF;
   IF p_expected_hash IS DISTINCT FROM v_live->>'source_hash' THEN
     RAISE EXCEPTION 'Số liệu vừa thay đổi — tải lại màn rồi chốt' USING ERRCODE = '40001';
@@ -1271,7 +1377,7 @@ REVOKE ALL ON FUNCTION public.landlord_operation_options_v1(uuid) FROM PUBLIC, a
 REVOKE ALL ON FUNCTION public.landlord_settlement_month_v1(uuid, date) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_overview_v1(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_share_links_v1(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_close_v1(uuid, date, text, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_reopen_v1(uuid, date, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.landlord_settlement_add_payment_v1(uuid, date, text, numeric, text, text) FROM PUBLIC, anon;
@@ -1285,7 +1391,7 @@ GRANT EXECUTE ON FUNCTION public.landlord_operation_options_v1(uuid) TO authenti
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_month_v1(uuid, date) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_overview_v1(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_share_links_v1(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.landlord_operation_upsert_v1(uuid, text, numeric, date, uuid[], text, boolean, numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_close_v1(uuid, date, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_reopen_v1(uuid, date, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.landlord_settlement_add_payment_v1(uuid, date, text, numeric, text, text) TO authenticated;

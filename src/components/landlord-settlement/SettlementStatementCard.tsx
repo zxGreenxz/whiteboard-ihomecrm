@@ -10,6 +10,7 @@ import {
   describeNet,
   monthLabel,
   type SettlementMonth,
+  type SettlementStatement,
 } from '@/lib/landlordSettlement';
 import { VoucherBreakdown } from './VoucherBreakdown';
 
@@ -33,6 +34,41 @@ function Kpi({ label, value, hint, tone }: { label: string; value: number; hint?
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`mt-1 whitespace-nowrap text-base font-semibold tabular-nums sm:text-lg ${color}`}>{formatVND(value)}</p>
       {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+/** Thanh lý hợp đồng trong tháng — số lấy nguyên từ server (đã nằm trong các tổng phía trên). */
+function TerminationBlock({ st }: { st: SettlementStatement }) {
+  const tl = st.termination;
+  const rows: { label: string; value: number; note: string }[] = [
+    { label: 'Cấn cọc vào khoản khách phải trả (điện, nước, ngày ở, phí…)', value: tl.revenue_from_deposit, note: 'doanh thu · tiền nằm ở sổ cọc của quản lý' },
+    { label: 'Khách bỏ cọc', value: tl.forfeit_revenue, note: 'doanh thu · tiền nằm ở sổ cọc của quản lý' },
+    { label: 'Khách trả thêm phần phí vượt cọc', value: tl.extra_receipt, note: 'doanh thu · bên giữ tiền theo sổ nhận' },
+    { label: 'Trả thêm cho khách ngoài cọc (hoàn tiền phòng/tiền thừa)', value: tl.refund_beyond_deposit, note: 'chi phí · quản lý chi' },
+    { label: 'Hoàn cọc cho khách', value: tl.deposit_refunded, note: 'trả lại tiền cọc · không tính lợi nhuận' },
+  ];
+  const shown = rows.filter((r) => r.value !== 0);
+  if (shown.length === 0 && tl.pending_refund === 0) return null;
+  return (
+    <div className="rounded-lg border p-3" data-testid="settlement-termination">
+      <p className="mb-2 text-sm font-medium">Thanh lý hợp đồng trong tháng</p>
+      <dl className="space-y-1.5 text-sm">
+        {shown.map((r) => (
+          <div key={r.label} className="flex justify-between gap-3">
+            <dt>
+              {r.label}
+              <span className="block text-[11px] text-muted-foreground">{r.note}</span>
+            </dt>
+            <dd className="whitespace-nowrap tabular-nums">{formatVND(r.value)}</dd>
+          </div>
+        ))}
+      </dl>
+      {tl.pending_refund > 0 && (
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+          Còn {formatVND(tl.pending_refund)} tiền trả thêm cho khách đang chờ duyệt — chưa tính, duyệt xong mới vào quyết toán.
+        </p>
+      )}
     </div>
   );
 }
@@ -72,6 +108,14 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
         {month.status === 'CLOSED' && month.is_stale && mode === 'admin' && (
           <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
             Có phiếu của tháng này được sửa/thêm/huỷ sau khi chốt. Số dưới đây là số lúc chốt — mở chốt rồi chốt lại để cập nhật.
+          </p>
+        )}
+        {st.reversed_voucher_count > 0 && (
+          <p role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {st.reversed_voucher_count} phiếu đã duyệt nhưng bút toán sổ quỹ đã bị đảo — tiền không còn ở sổ nào. Phiếu vẫn được tính như Báo cáo Lợi Nhuận; xử lý phiếu (đăng lại hoặc huỷ) trước khi chốt.
+            </span>
           </p>
         )}
         {st.pending.voucher_count > 0 && (
@@ -139,6 +183,22 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
               <dt className="text-muted-foreground">− Quản lý đã thu hộ (tiền lọt vào sổ quản lý)</dt>
               <dd className="whitespace-nowrap tabular-nums">{formatVND(t.manager_collected)}</dd>
             </div>
+            {t.landlord_held_deposits !== 0 && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  {t.landlord_held_deposits > 0 ? '+ Cọc/tiền khách trả thừa vào sổ chủ nhà (quản lý phải hoàn cho khách)' : '− Cọc chủ nhà đã chi trả khách thay quản lý'}
+                </dt>
+                <dd className="whitespace-nowrap tabular-nums">{formatVND(Math.abs(t.landlord_held_deposits))}</dd>
+              </div>
+            )}
+            {t.landlord_extra_cash !== 0 && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  {t.landlord_extra_cash > 0 ? '+ Tiền thối/làm tròn của khách nằm ở sổ chủ nhà' : '− Tiền thối/làm tròn chủ nhà đã chi'}
+                </dt>
+                <dd className="whitespace-nowrap tabular-nums">{formatVND(Math.abs(t.landlord_extra_cash))}</dd>
+              </div>
+            )}
           </dl>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
             <span className="flex items-center gap-1.5 font-semibold">
@@ -149,9 +209,17 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
           </div>
         </div>
 
+        <TerminationBlock st={st} />
+
         {(st.deposits.received > 0 || st.deposits.paid_out > 0) && (
           <p className="text-xs text-muted-foreground">
-            Cọc trong tháng (quản lý giữ, không tính vào quyết toán): thu {formatVND(st.deposits.received)} · chi/cấn cọc {formatVND(st.deposits.paid_out)}.
+            Cọc & tiền khách trả thừa trong tháng: thu {formatVND(st.deposits.received)} · chi/hoàn/cấn {formatVND(st.deposits.paid_out)}.
+            Phần ở sổ quản lý không tính quyết toán (quản lý giữ để hoàn khách); phần vào sổ chủ nhà đã đưa vào bù trừ ở trên.
+          </p>
+        )}
+        {st.excluded.voucher_count > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {st.excluded.voucher_count} phiếu không tính vào lợi nhuận (khoản nội bộ hoặc phiếu tắt tính KQKD): thu {formatVND(st.excluded.income)} · chi {formatVND(st.excluded.expense)} — xem tab "Không tính".
           </p>
         )}
 

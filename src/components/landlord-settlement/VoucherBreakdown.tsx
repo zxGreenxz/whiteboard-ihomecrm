@@ -1,10 +1,18 @@
 // Danh sách phiếu đứng sau từng con số của bảng quyết toán, chia theo nhóm để chủ
-// nhà và quản lý đối chiếu được với sổ của mình.
+// nhà và quản lý đối chiếu được với sổ của mình. Mọi dòng server trả về đều thuộc ít
+// nhất một tab — kể cả dòng không tính (nội bộ, tắt KQKD) — để không khoản nào biến mất.
 import { useMemo, useState } from 'react';
 import { formatVND } from '@/lib/utils';
-import type { SettlementStatement, SettlementVoucher } from '@/lib/landlordSettlement';
+import {
+  EXCLUDED_REASON_LABEL,
+  VOUCHER_SOURCE_LABEL,
+  type SettlementStatement,
+  type SettlementVoucher,
+} from '@/lib/landlordSettlement';
 
-type GroupKey = 'landlord_in' | 'manager_in' | 'landlord_out' | 'manager_out' | 'deposit' | 'pending';
+type GroupKey =
+  | 'landlord_in' | 'manager_in' | 'landlord_out' | 'manager_out'
+  | 'termination' | 'deposit' | 'pending' | 'excluded';
 
 /** Dòng "Cộng" lấy đúng số tổng server đã tính — client không cộng tiền. */
 const SERVER_TOTAL: Partial<Record<GroupKey, keyof SettlementStatement['totals']>> = {
@@ -19,16 +27,32 @@ const GROUPS: { key: GroupKey; label: string; match: (v: SettlementVoucher) => b
   { key: 'manager_in', label: 'Quản lý thu', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'INCOME' && v.side === 'MANAGER' },
   { key: 'landlord_out', label: 'Chủ nhà chi', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'EXPENSE' && v.side === 'LANDLORD' },
   { key: 'manager_out', label: 'Quản lý chi', match: (v) => v.status === 'APPROVED' && v.group === 'PNL' && v.type === 'EXPENSE' && v.side === 'MANAGER' },
-  // Cọc không vào quyết toán: hiện cả phiếu cọc đã duyệt lẫn đang chờ để đối chiếu.
-  { key: 'deposit', label: 'Cọc', match: (v) => v.group === 'DEPOSIT' },
-  // Đúng tập server đếm ở "phiếu chờ duyệt" (chặn chốt): dòng tính KQKD chưa duyệt.
-  { key: 'pending', label: 'Chờ duyệt', match: (v) => v.status === 'UNAPPROVED' && v.group === 'PNL' },
+  // Lát cắt khác của cùng các dòng trên + dòng cọc: mọi phiếu do thanh lý hợp đồng sinh ra.
+  { key: 'termination', label: 'Thanh lý', match: (v) => v.source !== null },
+  { key: 'deposit', label: 'Cọc & trả thừa', match: (v) => v.group === 'DEPOSIT' },
+  // Đúng tập server đếm ở "phiếu chờ duyệt" (chặn chốt).
+  { key: 'pending', label: 'Chờ duyệt', match: (v) => v.status === 'UNAPPROVED' && (v.group === 'PNL' || (v.group === 'DEPOSIT' && v.side === 'LANDLORD')) },
+  { key: 'excluded', label: 'Không tính', match: (v) => v.group === 'EXCLUDED' },
 ];
 
 const fmtDay = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 };
+
+function rowNote(v: SettlementVoucher, key: GroupKey): string {
+  const parts: string[] = [];
+  if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);
+  if (key === 'termination' || key === 'deposit' || key === 'pending' || key === 'excluded') {
+    if (v.group === 'DEPOSIT') parts.push(v.type === 'INCOME' ? 'thu cọc/trả thừa' : 'hoàn/cấn cọc');
+    else if (v.group === 'PNL') parts.push(v.type === 'INCOME' ? 'doanh thu' : 'chi phí');
+    parts.push(v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý');
+  }
+  if (v.excluded_reason) parts.push(`không tính: ${EXCLUDED_REASON_LABEL[v.excluded_reason]}`);
+  if (v.cash_reversed) parts.push('bút toán sổ quỹ đã bị đảo');
+  if (v.status === 'UNAPPROVED') parts.push('chờ duyệt');
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
+}
 
 export function VoucherBreakdown({ vouchers, totals }: {
   vouchers: SettlementVoucher[];
@@ -74,8 +98,7 @@ export function VoucherBreakdown({ vouchers, totals }: {
               <span className="text-right font-medium tabular-nums">{formatVND(v.amount)}</span>
               <span className="text-xs text-muted-foreground">
                 {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · sổ ${v.account_name}` : ''}
-                {current.key === 'deposit' ? ` · ${v.type === 'INCOME' ? 'thu cọc' : 'chi/cấn cọc'}${v.status === 'UNAPPROVED' ? ' · chờ duyệt' : ''}` : ''}
-                {current.key === 'pending' ? ` · ${v.type === 'INCOME' ? 'thu' : 'chi'} · ${v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý'}` : ''}
+                {rowNote(v, current.key)}
               </span>
               <span />
             </div>

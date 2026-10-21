@@ -84,6 +84,11 @@ export function SettlementOverviewCard({
             {!hasOpen && <p className="text-[11px] text-muted-foreground">Mọi tháng đều đã chốt.</p>}
           </div>
         </div>
+        {t.opening_balance !== 0 && (
+          <p className="text-xs text-muted-foreground">
+            Đã gồm số dư đầu kỳ: <NetText value={t.opening_balance} /> (khai ở Cài đặt toà).
+          </p>
+        )}
 
         {/* Điện thoại (chủ nhà mở link): mỗi tháng một thẻ, không cuộn ngang. */}
         <div className="divide-y rounded-lg border sm:hidden">

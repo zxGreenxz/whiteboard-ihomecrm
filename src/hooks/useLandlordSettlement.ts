@@ -160,6 +160,8 @@ export interface UpsertLandlordOperationInput {
   landlordAccountIds: string[];
   note: string | null;
   isActive: boolean;
+  /** Dương: chủ nhà còn phải trả quản lý từ trước tháng áp dụng; âm: ngược lại. Nguyên đồng. */
+  openingBalance: number;
 }
 
 export const useUpsertLandlordOperation = () => {
@@ -175,6 +177,7 @@ export const useUpsertLandlordOperation = () => {
         p_landlord_account_ids: input.landlordAccountIds,
         p_note: input.note,
         p_is_active: input.isActive,
+        p_opening_balance: input.openingBalance,
       });
       if (error) throw error;
       const receipt = upsertReceiptSchema.parse(data);

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -23,6 +24,7 @@ import {
   type LandlordOperationsList,
 } from '@/lib/landlordSettlement';
 import { vnYmOf } from '@/lib/salaryPeriod';
+import { formatVND } from '@/lib/utils';
 
 interface Draft {
   landlordName: string;
@@ -31,9 +33,10 @@ interface Draft {
   accountIds: string[];
   note: string;
   isActive: boolean;
+  openingBalance: number;
 }
 
-const EMPTY: Draft = { landlordName: '', percent: Number.NaN, month: '', accountIds: [], note: '', isActive: true };
+const EMPTY: Draft = { landlordName: '', percent: Number.NaN, month: '', accountIds: [], note: '', isActive: true, openingBalance: 0 };
 
 export function OperationConfigDialog({
   open,
@@ -79,6 +82,7 @@ export function OperationConfigDialog({
           accountIds: cur.landlord_account_ids,
           note: cur.note ?? '',
           isActive: cur.is_active,
+          openingBalance: cur.opening_balance,
         }
       : { ...EMPTY, month: vnYmOf() });
     setLoadedFor(buildingId);
@@ -104,6 +108,7 @@ export function OperationConfigDialog({
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(draft.month)) e.month = 'Chọn tháng bắt đầu áp dụng.';
     if (draft.accountIds.length === 0) e.accounts = 'Chọn ít nhất một sổ quỹ của chủ nhà.';
     if (draft.note.trim().length > 500) e.note = 'Ghi chú tối đa 500 ký tự.';
+    if (!Number.isFinite(draft.openingBalance) || !Number.isInteger(draft.openingBalance)) e.opening = 'Nhập số tiền nguyên đồng (âm nếu quản lý còn nợ chủ nhà).';
     return e;
   };
 
@@ -121,6 +126,7 @@ export function OperationConfigDialog({
         landlordAccountIds: draft.accountIds,
         note: draft.note.trim() || null,
         isActive: draft.isActive,
+        openingBalance: draft.openingBalance,
       });
       toast.success('Đã lưu cài đặt toà vận hành');
       onSaved?.(buildingId);
@@ -210,6 +216,26 @@ export function OperationConfigDialog({
                   })}
                 </div>
                 {errors.accounts && <p className="text-xs text-destructive">{errors.accounts}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="lo-opening">Số dư đầu kỳ</Label>
+                <p className="text-xs text-muted-foreground">
+                  Khoản chủ nhà còn phải trả quản lý từ trước tháng áp dụng (âm nếu ngược lại) — vd cọc khách đã chuyển vào sổ chủ nhà mà quản lý phải hoàn.
+                </p>
+                <CurrencyInput id="lo-opening" allowNegative value={draft.openingBalance}
+                  onChange={(v) => setDraft((d) => ({ ...d, openingBalance: v }))} />
+                {options.data.current && options.data.current.pre_start_landlord_deposits !== 0 && (
+                  <p className="text-xs">
+                    Gợi ý: cọc/tiền khách trả thừa đang nằm ở sổ chủ nhà trước tháng áp dụng là{' '}
+                    <b>{formatVND(options.data.current.pre_start_landlord_deposits)}</b>.{' '}
+                    <button type="button" className="text-primary underline underline-offset-2"
+                      onClick={() => setDraft((d) => ({ ...d, openingBalance: options.data?.current?.pre_start_landlord_deposits ?? 0 }))}>
+                      Dùng số này
+                    </button>
+                  </p>
+                )}
+                {errors.opening && <p className="text-xs text-destructive">{errors.opening}</p>}
               </div>
 
               <div className="space-y-1.5">

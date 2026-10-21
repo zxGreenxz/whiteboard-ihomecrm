@@ -17,13 +17,20 @@ const statement = {
   totals: {
     landlord_collected: 10_000_000, manager_collected: 1_550_000, revenue: 11_550_000,
     landlord_paid: 500_000, manager_paid: 2_030_000, expense: 2_530_000, profit: 9_020_000,
-    manager_share: 2_706_000, landlord_share: 6_314_000, landlord_owes_manager: 3_186_000,
+    manager_share: 2_706_000, landlord_share: 6_314_000, landlord_held_deposits: 0, landlord_extra_cash: 0,
+    landlord_owes_manager: 3_186_000,
   },
-  deposits: { received: 3_000_000, paid_out: 400_000 },
+  reversed_voucher_count: 0,
+  deposits: { received: 3_000_000, paid_out: 400_000, landlord_received: 0, landlord_paid_out: 0 },
+  termination: {
+    revenue_from_deposit: 400_000, forfeit_revenue: 0, extra_receipt: 0, refund_beyond_deposit: 0,
+    deposit_refunded: 0, deposit_offset: 400_000, pending_refund: 0,
+  },
   pending: { voucher_count: 1, income: 0, expense: 700_000 },
+  excluded: { voucher_count: 0, income: 0, expense: 0 },
   vouchers: [{
     code: 'PT1', voucher_date: '2025-01-05', type: 'INCOME', name: 'Tiền phòng', account_name: 'Sổ chủ nhà',
-    side: 'LANDLORD', group: 'PNL', status: 'APPROVED', amount: 10_000_000,
+    side: 'LANDLORD', group: 'PNL', source: null, cash_reversed: false, excluded_reason: null, status: 'APPROVED', amount: 10_000_000,
   }],
   source_hash: 'abc',
 };
@@ -45,7 +52,7 @@ describe('đọc gói quyết toán', () => {
           profit: 1, manager_share: 0, landlord_owes_manager: 0, pending_count: 0,
         }],
         payments: [{ paid_on: '2025-02-03', direction: 'LANDLORD_TO_MANAGER', amount: 1_000_000, note: null }],
-        totals: { closed_net: 0, open_net: 0, paid_by_landlord: 1_000_000, paid_by_manager: 0, balance_closed: -1_000_000, balance_with_open: -1_000_000 },
+        totals: { opening_balance: 0, closed_net: 0, open_net: 0, paid_by_landlord: 1_000_000, paid_by_manager: 0, balance_closed: -1_000_000, balance_with_open: -1_000_000 },
       },
       month,
     });
