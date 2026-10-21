@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T19:13:24.809Z",
+  "generatedAt": "2026-10-21T23:22:09.600Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 791,
+    "ledger-applied": 794,
     "unknown": 83,
-    "catalog-proven": 206,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12613,10 +12613,31 @@
       "name": "hermes_task_input_options_no_building_v1",
       "scheme": "timestamp14",
       "sha256": "20dc3b21839e70f3a3fab36454f2e3617a209383050d597caa4c6fcabb4a3f6a",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_task_input_guard_v1",
-        "catalog:function:app_private.hermes_task_input_rows_v1"
+        "receipt:2026-10-21T22:39:17.320Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql",
+      "version": "20261021180057",
+      "name": "contract_lifecycle_permission_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "3fa711a88b1d8fe0ec0d9f0ecaeeeb320ad5b831bfdc8693217357a758a2a159",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T22:53:46.812Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021181209_invoice_cancel_refund_permission_guard_v1.sql",
+      "version": "20261021181209",
+      "name": "invoice_cancel_refund_permission_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "2d9e9ae416dc5e1b92ef35acda76956fd4aebf37e604b2203d5b45c99b3a7b52",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
       ]
     },
     {
