@@ -873,29 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261021072938_cua_van_tay_tuya.sql": {
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261021072938_cua_van_tay_tuya.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS public.door_devices / door_key_links / door_action_logs; CREATE OR REPLACE FUNCTION app_private.door_access_authorized_v1, app_private.door_access_can_read_v1 cùng 12 RPC public.door_access_*_v1"
-        },
-        {
-          "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects đủ 5 object trên — sinh 21/10/2026 ngay sau khi tạo file"
-        }
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 21/10/2026 (cửa vân tay SmartLife/Tuya — docs/he-thong/26-cua-van-tay.md), chưa đi qua lane apply production — object vắng mặt vì migration CHƯA CHẠY, không phải bị DROP. Đã dry-run production xanh (ROLLBACK), áp TEST qua lane (backup + biên nhận), PGlite 17/17 + kiểm đột biến 12/12, gọi thật 12 RPC trên TEST bằng JWT claims chủ công ty trong ROLLBACK. Sẽ áp qua npm run migrate:forward sau review chéo; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
-      "missingObjects": [
-        "table:public.door_devices",
-        "table:public.door_key_links",
-        "table:public.door_action_logs",
-        "function:app_private.door_access_authorized_v1",
-        "function:app_private.door_access_can_read_v1"
-      ],
-      "raSoatBoi": "Claude Code — cửa vân tay 21/10/2026",
-      "sha256": "49f5124482c209ba59aded22e43c2f242d9410b814be6ef39caf9a73cc7e1071"
     }
   }
 }
