@@ -3,13 +3,12 @@ import { LoadingState, SkeletonBar } from '@/components/loading/LoadingState';
 import { Suspense, lazy, useEffect, useMemo } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from '@/hooks/use-mobile';
-import { Bell, CheckCheck, Trash2, Filter, X } from 'lucide-react';
+import { Bell, CheckCheck, Trash2, Filter, X, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  useNotifications,
   useMarkAsRead,
   useMarkAllAsRead,
   useDeleteNotification,
@@ -17,13 +16,15 @@ import {
   type Notification,
   type NotificationType,
 } from '@/hooks/useNotifications';
+import { useNotificationInbox, type InboxTab } from '@/hooks/useNotificationPages';
 import { formatDistanceToNow, format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
-import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { dichThongBao, nhanHoThongBao } from '@/lib/notifications/notificationTarget';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { friendlyError } from '@/lib/friendlyError';
 
 // Bản tin mobile: web-app full-screen riêng (scope CSS .cm-app) — lazy.
 const NotificationsMobilePage = lazy(() => import('./NotificationsMobilePage'));
@@ -108,15 +109,19 @@ const KNOWN_FILTER_VALUES = new Set<string>(['all', ...KNOWN_TYPES]);
 
 const NotificationsDesktopPage = () => {
   const navigate = useNavigate();
-  const [selectedTab, setSelectedTab] = usePersistedState<'all' | 'unread'>('flt:notifications:tab', 'all');
+  const [selectedTab, setSelectedTab] = usePersistedState<InboxTab>('flt:notifications:tab', 'all');
   const [selectedType, setSelectedType] = usePersistedState<NotificationType | 'all'>(
     'flt:notifications:type',
     'all'
   );
 
-  // Queries
-  const notificationsQuery = useNotifications();
-  const { data: allNotifications = [], isLoading } = notificationsQuery;
+  // Queries — 200 dòng đầu từ hook parity + "Xem thêm" keyset; tab "Chưa đọc" lọc ở
+  // server; số chưa đọc là count exact (cùng nguồn với chuông).
+  const inbox = useNotificationInbox(selectedTab);
+  const notificationsQuery = inbox.query;
+  const allNotifications = inbox.rows;
+  const isLoading = notificationsQuery.isLoading;
+  const unreadCount = inbox.unreadCount;
   // Allow-list URL cần quyền của người bấm: route bị chặn sẽ được hạ về /my-day
   // thay vì ném thẳng vào một trang họ không mở được.
   const { data: perms } = useMyPermissions();
@@ -127,49 +132,28 @@ const NotificationsDesktopPage = () => {
   const deleteNotificationMutation = useDeleteNotification();
   const deleteAllReadMutation = useDeleteAllRead();
 
-  // Filter notifications
-  const filteredNotifications = allNotifications.filter((notification) => {
-    // Filter by read/unread
-    if (selectedTab === 'unread' && notification.status === 'READ') {
-      return false;
-    }
-
-    // Filter by type
-    if (selectedType !== 'all' && notification.type !== selectedType) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const unreadCount = allNotifications.filter((n) => n.status !== 'READ').length;
+  // Lọc theo loại vẫn ở client, trên các dòng ĐÃ TẢI (chip chỉ hiện loại có dòng).
+  const filteredNotifications = allNotifications.filter(
+    (notification) => selectedType === 'all' || notification.type === selectedType,
+  );
 
   const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
-    if (notification.status !== 'READ') {
+    // Chưa đọc = PENDING (cùng định nghĩa với số đếm và Hermes).
+    if (notification.status === 'PENDING') {
       markAsReadMutation.mutate(notification.id);
     }
 
-    // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — đó là đích do chính nơi phát sự kiện
-    // chỉ định (đã có 223 dòng cũ mang metadata.url = '/my-day').
-    const url = resolveNotificationUrl(notification.metadata?.url, perms);
-    if (url) {
-      navigate(url);
-      return;
-    }
-
-    // Fallback cho các dòng cũ không có metadata.url.
-    // (Nhánh issue_id đã bị XOÁ: route /issues/:id KHÔNG tồn tại trong App.tsx.)
-    if (notification.invoice_id) {
-      navigate(`/invoices/${notification.invoice_id}`);
-    } else if (notification.contract_id) {
-      navigate(`/contracts/${notification.contract_id}`);
-    }
+    // metadata.url trước (đã có 223 dòng cũ mang '/my-day'), rồi mới tới đường suy
+    // từ invoice_id/contract_id — cả hai qua allow-list + kiểm quyền. Nhánh issue_id
+    // đã bị XOÁ: route /issues/:id KHÔNG tồn tại.
+    const url = dichThongBao(notification, perms);
+    if (url) navigate(url);
   };
 
   const getNotificationIcon = (type: NotificationType) => TYPE_META[type]?.icon ?? '🔔';
 
-  const getNotificationTypeLabel = (type: NotificationType) => TYPE_META[type]?.label ?? 'Khác';
+  const getNotificationTypeLabel = (notification: Notification) =>
+    nhanHoThongBao(notification) ?? TYPE_META[notification.type]?.label ?? 'Khác';
 
   const getNotificationColor = (type: NotificationType) =>
     TYPE_META[type]?.color ?? 'bg-gray-100 text-gray-700 border-gray-200';
@@ -214,11 +198,16 @@ const NotificationsDesktopPage = () => {
   // chưa có dữ liệu đáng tin (đang tải lần đầu / đọc lỗi) thì không hiện số đếm và nút thao
   // tác hàng loạt; đang tải thì số đếm là vạch xám — chủ chốt 02/10/2026.
   const chuaCoDuLieu = notificationsQuery.data === undefined || notificationsQuery.isError;
-  const demCho = isLoading ? (
+  // Số chưa đọc có nguồn riêng (count exact): chưa có số thì không đoán.
+  const chuaCoSoDem = unreadCount === undefined;
+  const demCho = isLoading || inbox.countQuery.isLoading ? (
     <span className="ld-appear inline-flex align-middle" aria-hidden="true">
       <SkeletonBar className="h-3" style={{ width: '1rem' }} />
     </span>
   ) : null;
+  const loiTaiThem = inbox.loiTaiThem
+    ? friendlyError(inbox.loiTaiThem, 'Chưa tải thêm được thông báo cũ hơn', { operation: 'xem thêm thông báo' })
+    : null;
 
   return (
     <MainLayout>
@@ -232,8 +221,8 @@ const NotificationsDesktopPage = () => {
           <div>
             <h1 className="text-2xl font-bold">Thông báo</h1>
             <p className="text-sm text-muted-foreground">
-              {chuaCoDuLieu
-                ? isLoading
+              {chuaCoSoDem
+                ? inbox.countQuery.isLoading
                   ? <span className="ld-appear block py-1" aria-hidden="true"><SkeletonBar className="h-3" style={{ width: '10rem' }} /></span>
                   : null
                 : unreadCount > 0
@@ -244,7 +233,7 @@ const NotificationsDesktopPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {!chuaCoDuLieu && unreadCount > 0 && (
+          {!chuaCoSoDem && unreadCount > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -267,18 +256,29 @@ const NotificationsDesktopPage = () => {
               Xóa đã đọc
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Cài đặt thông báo"
+            title="Cài đặt thông báo"
+            onClick={() => navigate('/account/notifications')}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="mb-6 space-y-4">
         {/* Tabs: All / Unread */}
-        <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as any)}>
+        <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v === 'unread' ? 'unread' : 'all')}>
           <TabsList>
             <TabsTrigger value="all">
-              Tất cả{' '}{chuaCoDuLieu ? demCho : `(${allNotifications.length})`}
+              {/* Số dòng ĐÃ TẢI; "+" khi còn trang để xem thêm. */}
+              Tất cả{selectedTab === 'all' && <>{' '}{chuaCoDuLieu ? demCho : `(${allNotifications.length}${inbox.coThem ? '+' : ''})`}</>}
             </TabsTrigger>
-            <TabsTrigger value="unread">Chưa đọc{' '}{chuaCoDuLieu ? demCho : `(${unreadCount})`}</TabsTrigger>
+            <TabsTrigger value="unread">Chưa đọc{' '}{chuaCoSoDem ? demCho : `(${unreadCount})`}</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -304,7 +304,7 @@ const NotificationsDesktopPage = () => {
       <div className="space-y-3">
         {isLoading ? (
           <LoadingState label="thông báo" variant="list" rows={5} />
-        ) : filteredNotifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 && !inbox.coThem ? (
           <Card className="p-12 text-center">
             <Bell className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
             <h3 className="text-lg font-semibold mb-2">Không có thông báo</h3>
@@ -320,7 +320,7 @@ const NotificationsDesktopPage = () => {
               key={notification.id}
               className={cn(
                 'p-4 cursor-pointer hover:shadow-md transition-shadow',
-                notification.status === 'READ' ? 'bg-white' : 'bg-blue-50/30'
+                notification.status === 'PENDING' ? 'bg-blue-50/30' : 'bg-white'
               )}
               onClick={() => handleNotificationClick(notification)}
             >
@@ -341,7 +341,7 @@ const NotificationsDesktopPage = () => {
                         getNotificationColor(notification.type)
                       )}
                     >
-                      {getNotificationTypeLabel(notification.type)}
+                      {getNotificationTypeLabel(notification)}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(notification.created_at), 'dd/MM/yyyy HH:mm')}
@@ -352,7 +352,7 @@ const NotificationsDesktopPage = () => {
                         locale: vi,
                       })})
                     </span>
-                    {notification.status !== 'READ' && (
+                    {notification.status === 'PENDING' && (
                       <div className="h-2 w-2 rounded-full bg-blue-600" />
                     )}
                   </div>
@@ -374,6 +374,7 @@ const NotificationsDesktopPage = () => {
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Xoá thông báo"
                   className="flex-shrink-0 text-gray-400 hover:text-red-600"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -385,6 +386,23 @@ const NotificationsDesktopPage = () => {
               </div>
             </Card>
           ))
+        )}
+        {loiTaiThem && (
+          <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm">
+            <p className="font-medium text-destructive">{loiTaiThem.title}</p>
+            <p className="mt-1 text-muted-foreground">{loiTaiThem.description}</p>
+            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={inbox.thuLaiTaiThem}>
+              Tải lại
+            </Button>
+          </div>
+        )}
+        {inbox.dangTaiThem && <LoadingState label="thông báo cũ hơn" variant="list" rows={2} />}
+        {!isLoading && inbox.coThem && !loiTaiThem && (
+          <div className="flex justify-center pt-2">
+            <Button variant="outline" onClick={inbox.taiThem} disabled={inbox.dangTaiThem} aria-busy={inbox.dangTaiThem}>
+              Xem thêm
+            </Button>
+          </div>
         )}
         </div>
       </QueryRegion>
