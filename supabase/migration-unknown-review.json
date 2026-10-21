@@ -878,24 +878,24 @@
       "bangChung": [
         {
           "duong_dan": "supabase/migrations/20261021170452_hermes_read_web_building_scope_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_web_building_ids_v1(p_org uuid) RETURNS uuid[] … SECURITY DEFINER; bốn hàm phạm vi (hermes_domain_capabilities_v1, hermes_domain_grant_v2, hermes_metadata_domain_grant_v1, hermes_task_follow_buildings_v1) thêm vế AND b.id=ANY(v_web)"
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.hermes_web_building_ids_v1(p_org uuid) RETURNS uuid[] … SECURITY DEFINER; capabilities v1 và theo dõi việc thêm AND b.id=ANY(v_web); hai grant giữ phạm vi khoá cho customers.view/income_expenses.view, còn lại giao v_web; hermes_domain_read_v2 thêm nhánh sổ quỹ (accessible_account_ids) cho income_expenses"
         },
         {
           "duong_dan": "infra/hermes-broker/web-building-scope-sql.test.mjs",
-          "trich_doan": "PostgreSQL 17: lỗ tái hiện trên thân production trước file; sau file (hai lượt) mọi phạm vi/dòng Hermes ⊆ RLS web; super admin và buildings.view toàn công ty giữ phạm vi rộng; $requires$ từ chối thân lạ; revert trả đúng md5 thân cũ rồi tiến lại"
+          "trich_doan": "PostgreSQL 17: lỗ tái hiện trên thân production trước file; sau file (hai lượt) mọi phạm vi/dòng Hermes ⊆ RLS web, phiếu = web (gồm nhánh sổ quỹ, connector nhận); R2d withoutContract null khi phạm vi hợp đồng không phủ; $requires$ từ chối thân lạ có chuỗi neo; revert trả đúng md5 thân cũ rồi tiến lại; 13 đột biến dot-bien bị bắt"
         },
         {
           "duong_dan": "supabase/migration-provenance.json",
-          "trich_doan": "state unknown, missingObjects function:app_private.hermes_web_building_ids_v1 — sinh 21/10/2026 ngay sau khi tạo file"
+          "trich_doan": "state unknown, missingObjects function:app_private.hermes_web_building_ids_v1 — sinh lại 22/10/2026 sau bản sửa theo review"
         }
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 21/10/2026 (UTC; sự cố TEST: crm_read_tasks của một tài khoản Partner trả việc ở toà ngoài phạm vi web), chưa đi qua lane apply — hàm phụ app_private.hermes_web_building_ids_v1 vắng trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST trong một giao dịch ROLLBACK (thân file, không BEGIN/COMMIT) rồi gọi THẬT hermes_domain_read_v1/v2/v3 bằng binding của kết nối đang sống: tài khoản Partner hết lọt ở mọi miền (việc đang mở 10 = web 10), tài khoản Quản lý toà giữ nguyên mọi con số. Test PostgreSQL 17 (web-building-scope-sql) áp hai lượt, kiểm $requires$, revert về đúng md5 thân production rồi tiến lại; 8 đột biến bằng scripts/dot-bien.mjs đều bị bắt. Sẽ áp qua npm run migrate:forward (TEST rồi production) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 21/10/2026 (UTC; sự cố TEST: crm_read_tasks của một tài khoản Partner trả việc ở toà ngoài phạm vi web), sửa 22/10 theo review độc lập PR #261 (nhánh sổ quỹ của phiếu thu chi, withoutContract R2d, ghim md5 ở $requires$, chi phí gọi resolver), chưa đi qua lane apply — hàm phụ app_private.hermes_web_building_ids_v1 vắng trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST trong một giao dịch ROLLBACK (thân file, không BEGIN/COMMIT) rồi gọi THẬT hermes_domain_read_v1/v2/v3 bằng binding của kết nối đang sống: tài khoản Partner hết lọt ở mọi miền, phiếu thu chi khớp web (0 thiếu, gồm phiếu sổ quỹ ở toà ngoài phạm vi), tài khoản Quản lý toà giữ nguyên mọi con số; capabilities v1/v2/v3 không chậm hơn. Test PostgreSQL 17 (web-building-scope-sql) áp hai lượt, kiểm $requires$, revert về đúng md5 thân production rồi tiến lại; 13 đột biến bằng scripts/dot-bien.mjs đều bị bắt. Sẽ áp qua npm run migrate:forward (TEST rồi production) sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
       "missingObjects": [
         "function:app_private.hermes_web_building_ids_v1"
       ],
       "raSoatBoi": "Claude Code — phạm vi toà Hermes không rộng hơn web 21–22/10/2026",
-      "sha256": "b18bd6f40e28dfdf0673b8e4625f9685eb4c6eb783808a87f654a8e602d03e11"
+      "sha256": "554d65ed8cc61cccd54c0f114a5def8f0ef03a9e04409972abf01d7389bc122d"
     }
   }
 }
