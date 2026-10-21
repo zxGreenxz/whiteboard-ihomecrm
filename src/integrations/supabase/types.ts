@@ -25064,6 +25064,7 @@ export type Database = {
         Args: { p_binding: Json; p_input: Json }
         Returns: Json
       }
+      hermes_user_display_name_v1: { Args: never; Returns: Json }
       hermes_w2_read_v1: {
         Args: { p_binding: Json; p_domain: string; p_input: Json }
         Returns: Json
