@@ -73,7 +73,8 @@ export default function ChatZaloPage() {
   const { sendSeen, sendTyping } = useThreadPresence();
 
   // Chốt hội thoại mặc định + bỏ chọn khi đổi công ty (RT-OTHER-M2/7) — xem hook.
-  const [activeId, setActiveId] = useActiveConversation(conversations, useZaloOrgId());
+  const zaloOrgId = useZaloOrgId();
+  const [activeId, setActiveId] = useActiveConversation(conversations, zaloOrgId);
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
