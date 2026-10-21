@@ -80,7 +80,7 @@ function ConnectedDoorAccess({ caller, mode }: { caller: DoorAccessCaller; mode:
       {devicesQuery.data !== undefined && devices.length === 0 && (
         <Notice tone="info">
           {canManageAnywhere
-            ? "Chưa có máy cửa nào trong CRM — mở tab Thiết bị để tìm máy trên SmartLife và gắn tòa."
+            ? "Chưa có máy cửa nào trong CRM. Người có quyền Quản lý máy ở mọi tòa mở tab Thiết bị để tìm máy trên SmartLife và gắn tòa."
             : "Chưa có máy cửa nào bạn được xem. Nhờ người quản lý gắn máy vào tòa hoặc cấp quyền."}
         </Notice>
       )}
