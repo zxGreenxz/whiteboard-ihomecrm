@@ -14,14 +14,16 @@ const MIG_DIR = join(process.cwd(), "supabase", "migrations");
  * test xanh vĩnh viễn kể cả khi hàm thật đổi hành vi.
  * Xem scripts/check-migration-test-liveness.mjs.
  */
+let corpus: string[] | null = null;
 function thanHamDangChay(tenHam: string): string {
   const signature = `FUNCTION public.${tenHam}(`;
-  const files = readdirSync(MIG_DIR)
+  // Đọc cả thư mục MỘT lần cho mọi lời gọi (≈1.100 file; đọc lại mỗi lần làm test sát trần 5 s).
+  corpus ??= readdirSync(MIG_DIR)
     .filter((f) => f.endsWith(".sql"))
-    .sort();
+    .sort()
+    .map((f) => readFileSync(join(MIG_DIR, f), "utf8"));
   let hit: string | null = null;
-  for (const f of files) {
-    const sql = readFileSync(join(MIG_DIR, f), "utf8");
+  for (const sql of corpus) {
     if (sql.includes(signature)) hit = sql;
   }
   expect(hit, `không thấy định nghĩa nào của ${tenHam}`).not.toBeNull();
@@ -129,12 +131,16 @@ describe("termination non-cash payment migration", () => {
   });
 
   it("scopes both termination wrappers around their required capabilities", () => {
-    const forfeitWrapper = functionBody(
-      "CREATE OR REPLACE FUNCTION public.terminate_contract_forfeit(",
-    );
-    // Đo ĐỊNH NGHĨA SỐNG: hàm này đã được DROP/CREATE lại ở đợt "Hoàn lại
-    // khách" (22/08/2026) nên không còn nằm trong file migration của đợt này.
+    // Đo ĐỊNH NGHĨA SỐNG cả hai: move_out được DROP/CREATE lại ở đợt "Hoàn lại
+    // khách" (22/08/2026); cả hai được thêm kiểm contracts.terminate ở câu 26
+    // (20261021180057) nên không còn nằm trong file migration của đợt này.
+    const forfeitWrapper = thanHamDangChay("terminate_contract_forfeit");
     const moveOutWrapper = thanHamDangChay("terminate_contract_move_out");
+    for (const wrapper of [forfeitWrapper, moveOutWrapper]) {
+      expect(wrapper).toContain("public.can_do_on_building(\n        'contracts', 'edit',");
+      expect(wrapper).toContain("app_private.require_building_perm_v1(");
+      expect(wrapper).toContain("'contracts.terminate');");
+    }
     expect(forfeitWrapper).toContain("begin_accounting_chain_write_v1");
     expect(forfeitWrapper).toContain("terminate_contract_forfeit_impl");
     expect(forfeitWrapper).toContain("end_accounting_chain_write_v1");
