@@ -33,10 +33,20 @@ const RUN_RESULT = Object.freeze([...RUN_OUTPUT, 'fence']);
 const uuids = value => Array.isArray(value) && value.length <= 256 && value.every(id) && new Set(value).size === value.length;
 const FENCE = Object.freeze({ buildings: uuids, cashbooks: uuids, orgWide: value => typeof value === 'boolean' });
 // Mô tả gọn (tools/list): đủ ý chọn tool, phân trang, "không có toà" ≠ số 0, riêng tư.
-const LIST_DESCRIPTION = 'Mục lục báo cáo CRM mở rộng kết nối được xem lúc này: report, mô tả, params, private. Gọi trước crm_read_report. ' +
-  'topic: thu_tien=thu tiền/công nợ/cọc; tai_chinh=sổ quỹ/KQKD/lợi nhuận/ví; van_hanh=xe/kho/lương/thông báo/mạng; danh_muc=tài sản/danh mục/toà phòng/BĐS.';
-const RUN_DESCRIPTION = 'Chạy một báo cáo của crm_read_report_list; params đúng tên mục lục, bỏ trống = không lọc. Tiền là chuỗi VND. ' +
-  'Trang sau: offset=nextOffset; sourceCapped=true thì thu hẹp lọc. unavailable: no_building_scope = kết nối không còn toà (không phải số 0), ' +
+// R2b (21/10/2026, câu 71/72/73/76; full50c: 3 lần tool_search "hotline" rỗng, "vehicle"/"cashbook" không ra báo cáo):
+// tool_search của Hermes v0.22.2 (tools/tool_search_catalog.py, đọc trên VPS 21/10) xếp hạng BM25 trên tên tool + toàn bộ
+// description + tên tham số cấp một, token [A-Za-z0-9]+ rồi stem tiếng Anh ⇒ chữ có dấu bị cắt vụn, và một từ của truy vấn
+// không có ở tool nào là trả rỗng. Vì vậy mã báo cáo hay hỏi (ASCII: vehicles, hotlines, cashbooks, re_vacant_rooms,
+// top_expenses) nằm ngay trong mô tả crm_read_report, trong câu đầu (danh sách tool_search chỉ hiện ≤ 60 ký tự đầu) kèm chữ
+// tiếng Việt khi mã không tự nói (xe). wave2-registry.test.mjs khoá mọi mã ở W2_DISCOVERY_REPORTS có trong sổ và trong mô tả;
+// hai tool meta vẫn trong trần riêng 1 600 B (đổi lại bỏ câu "gọi trước crm_read_report": mô tả RUN đã chỉ về mục lục).
+const DISCOVERY = Object.freeze([['xe', 'vehicles'], [null, 'hotlines'], [null, 'cashbooks'], [null, 're_vacant_rooms'], [null, 'top_expenses']]);
+export const W2_DISCOVERY_REPORTS = Object.freeze(DISCOVERY.map(([, report]) => report));
+const LIST_DESCRIPTION = 'Mục lục báo cáo kết nối được xem: report, mô tả, params, private. ' +
+  'topic: thu_tien=thu tiền/công nợ/cọc; tai_chinh=sổ quỹ/KQKD/lợi nhuận/ví; van_hanh=xe/kho/lương/thông báo/mạng; danh_muc=tài sản/danh mục/hotline/toà phòng/BĐS.';
+const RUN_DESCRIPTION = `Báo cáo theo mã: ${DISCOVERY.map(([label, report]) => label ? `${label}=${report}` : report).join(', ')}; ` +
+  'mã khác: crm_read_report_list. params đúng tên mục lục, bỏ trống = không lọc. Tiền là chuỗi VND. ' +
+  'Trang sau: offset=nextOffset; sourceCapped=true thì thu hẹp lọc. unavailable: no_building_scope = hết toà (≠ số 0), ' +
   `organization_scope_required = cần kết nối Toàn tổ chức. private=true: ${PRIVATE_HINT}`;
 const LIST_SCHEMA = Object.freeze({ type: 'object', additionalProperties: false, properties: { topic: { enum: [null, ...Object.keys(W2_TOPICS)] } } });
 // B5d (21/10): params.buildingName/roomName (tên) được connector giải thành buildingId/roomId trước khi kiểm (wave2-kit w2CatalogEntry nêu ở mục lục).

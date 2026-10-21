@@ -74,7 +74,8 @@ export const DOMAIN_FAMILIES = Object.freeze({
 export const DOMAIN_READS = Object.freeze({
   // 20/10: phòng/HĐ trong dòng là hợp đồng ĐANG hiệu lực (không phải "gần nhất"); bốn trường trống không nói gì về
   // việc đã trả phòng hay chưa thuê. Chỉ câu chữ; validator/chiếu trường không đổi.
-  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ). contractId/buildingId/roomId/roomName = hợp đồng ĐANG hiệu lực, cần quyền hợp đồng; trống = không thấy HĐ đang hiệu lực trong phạm vi được xem (không suy ra đã trả phòng/chưa thuê); lịch sử HĐ: crm_read_customer_detail. Toàn tổ chức thấy cả khách chưa có HĐ. Lỗi ≠ rỗng; số dòng một trang ≠ tổng số. ${PRIVATE_HINT}`, {
+  // R2b (21/10, C4): bỏ câu "Lỗi ≠ rỗng; số dòng một trang ≠ tổng số." — SOUL v4 và `summary` (R2a) đã phủ; −58 B tools/list.
+  customers: define('customers.view', `Tra khách (tên, SĐT đầy đủ). contractId/buildingId/roomId/roomName = hợp đồng ĐANG hiệu lực, cần quyền hợp đồng; trống = không thấy HĐ đang hiệu lực trong phạm vi được xem (không suy ra đã trả phòng/chưa thuê); lịch sử HĐ: crm_read_customer_detail. Toàn tổ chức thấy cả khách chưa có HĐ. ${PRIVATE_HINT}`, {
     id: domainId, name: text, phone: nullable(text), contractId: nullable(domainId), buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId),
     roomName: nullable(text) }, [], { family: 'v3' }),
   // B5c bước 2 (20261020173818/173819): mọi tool danh sách trả buildingName (chữ, có thể rỗng) cạnh buildingId và
@@ -83,14 +84,17 @@ export const DOMAIN_READS = Object.freeze({
   leads: define('leads.view', 'Tra khách hẹn và mốc liên hệ tiếp theo', {
     id: domainId, name: text, status: text, buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), nextFollowUp: nullable(text) },
   ['B1_LEAD', 'B2_APPOINTMENT', 'B3_CONSULTATION', 'CONVERTED', 'FAILED']),
-  // 21/10: status=ACTIVE là trạng thái DB. "Đang ở" như màn Hợp đồng web = mọi trạng thái trừ TERMINATED; "đang ở" của
-  // một phòng = HĐ ACTIVE. Sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search. Chỉ câu chữ; validator không đổi.
-  contracts: define('contracts.view', 'Tra hợp đồng và thời hạn thuê. status=ACTIVE là trạng thái DB; "đang ở" như màn Hợp đồng = trừ TERMINATED, của phòng = ACTIVE; sắp hết hạn/quá hạn/thanh lý: crm_read_contract_search', {
+  // 21/10: status=ACTIVE là trạng thái DB. "Đang ở" như màn Hợp đồng web = mọi trạng thái trừ TERMINATED. R2b (câu 13/14):
+  // tool KHÔNG lọc ngày — câu đầu (≤ 60 ký tự, phần danh sách tool_search hiện) chỉ thẳng contract_search; sau đó EXPIRING
+  // (≤30 ngày) / occupancy_report upcoming days=N / EXPIRED, TERMINATED. Gọi kèm ngày nhận hint (read-misuse-hints.mjs).
+  // Chỉ câu chữ; validator không đổi.
+  contracts: define('contracts.view', 'Tra hợp đồng; KHÔNG lọc ngày (sắp hết hạn: contract_search). ≤30 ngày: crm_read_contract_search status=EXPIRING; N ngày: crm_read_occupancy_report upcoming days=N; quá hạn/thanh lý: contract_search EXPIRED/TERMINATED. status=ACTIVE là trạng thái DB ("đang ở" web = trừ TERMINATED)', {
     id: domainId, number: nullable(text), status: text, buildingId: domainId, buildingName: text, roomId: domainId, roomName: nullable(text), startDate: nullable(date), endDate: nullable(date) },
   ['DRAFT', 'ACTIVE', 'EXTENDED', 'TRANSFERRED', 'TERMINATED', 'EXPIRED']),
   invoices: define('invoices.view', 'Tra hóa đơn; số tiền giữ dạng chuỗi thập phân', {
     id: domainId, number: nullable(text), status: text, buildingId: domainId, buildingName: text, roomId: domainId, roomName: nullable(text), billingMonth: nullable(text), totalAmount: amount }),
-  assets: define('assets.view', 'Tra tài sản, vị trí và số lượng', {
+  // R2b (câu 73): xe không phải tài sản — báo cáo vehicles của crm_read_report; câu đầu đúng 60 ký tự (danh sách tool_search).
+  assets: define('assets.view', 'Tra tài sản, vị trí, số lượng; xe: crm_read_report vehicles', {
     id: domainId, name: text, code: nullable(text), condition: nullable(text), buildingId: nullable(domainId), buildingName: text, roomId: nullable(domainId), roomName: nullable(text), quantity: amount }),
   services: define('services.view', 'Tra danh mục dịch vụ và các tòa áp dụng được phép xem', {
     id: domainId, name: text, code: nullable(text), unit: nullable(text), unitPrice: amount, buildingIds: ids }),
@@ -100,7 +104,11 @@ export const DOMAIN_READS = Object.freeze({
   // Đọc snapshot như trang Báo cáo lấp đầy (occupancy_snapshot_v2), không đếm rooms.status (họ v3, 20261017021554).
   occupancy: define('reports_real_estate.occupancy', 'Số phòng đang ở/trống/tổng từng toà hôm nay như Báo cáo lấp đầy; giữ chỗ, tỷ lệ, dự báo: crm_read_occupancy_report', {
     id: domainId, buildingId: domainId, name: text, total: integer, occupied: integer, available: integer }, [], { perBuilding: true, family: 'v3' }),
-  income_expenses: define('income_expenses.view', 'Tra phiếu thu/chi theo ngày phiếu và trạng thái duyệt (UNAPPROVED = chờ duyệt; hỏi "phiếu chờ duyệt" thì dùng tool này với status=UNAPPROVED). Không gồm phiếu có hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Số tiền là chuỗi VND', {
+  // R2b (câu 32/36): "phiếu chờ duyệt" — toàn công ty hay theo toà — là tool này với status=UNAPPROVED, không phải hộp
+  // duyệt cá nhân crm_read_pending_approvals (mô tả bên đó chỉ ngược về đây; hint khi gọi nhầm ở read-misuse-hints.mjs).
+  // Câu đầu ≤ 60 ký tự mang cụm phân biệt (danh sách tool_search chỉ hiện chừng đó); tên tool kia trong mô tả cũng đưa
+  // các từ "pending approvals" vào chỉ mục BM25 của tool này.
+  income_expenses: define('income_expenses.view', 'Phiếu thu/chi; chờ duyệt: status=UNAPPROVED (cả theo toà). Không dùng crm_read_pending_approvals cho phiếu. Lọc ngày phiếu, trạng thái duyệt, toà. Không gồm phiếu hạng mục hạn chế, lương, cổ đông; không trả người nộp/nhận, tài khoản, ghi chú, chứng từ. Tiền là chuỗi VND', {
     id: domainId, code: nullable(text), type: oneOf(['INCOME', 'EXPENSE']), name: text, buildingId: domainId, buildingName: text, roomId: nullable(domainId),
     roomName: nullable(text), voucherDate: date, totalAmount: amount, approvalStatus: oneOf(['UNAPPROVED', 'APPROVED', 'CANCELLED']) },
   ['UNAPPROVED', 'APPROVED', 'CANCELLED'], { family: 'v2', dated: true, source: 'crm.income_expenses' }),

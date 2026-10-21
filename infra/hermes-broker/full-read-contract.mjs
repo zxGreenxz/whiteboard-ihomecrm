@@ -186,7 +186,10 @@ const REPORT_READS = Object.freeze({
       buildingId: BUILDING, query: query('Số HĐ; tên khách nếu có quyền khách hàng; không khớp phòng.'), limit: LIMIT, offset: OFFSET }, ['report']),
   monthly_pnl: reportDefine('monthly_pnl', 'Lãi lỗ từng tháng từng toà như "Phân tích tài chính", fromDate..toDate ≤ 366 ngày; basis=accrual (mặc định) hoặc cash. Hàng chỉ gồm phiếu đã duyệt; summary.pending* = thu/chi chờ duyệt mà "BC Doanh Thu Chi Phí" cộng thêm, cùng các toà của hàng. Tiền là chuỗi VND.',
     { fromDate: REQUIRED_DATE, toDate: REQUIRED_DATE, basis: { enum: [null, 'accrual', 'cash'] }, buildingId: BUILDING, query: query('Tên toà.'), limit: LIMIT, offset: OFFSET }, ['fromDate', 'toDate']),
-  pending_approvals: reportDefine('pending_approvals', `Việc chờ CHÍNH người hỏi duyệt (hộp /approvals). Hỏi "phiếu chờ duyệt" thì dùng crm_read_income_expenses với status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
+  // R2b (21/10, câu 32/36): chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt (kể cả theo toà) là crm_read_income_expenses. Câu đầu
+  // ≤ 60 ký tự (danh sách tool_search chỉ hiện chừng đó) đã chỉ đường; gọi tool này kèm buildingName/buildingId/status nhận
+  // invalid_request + hint (read-misuse-hints.mjs).
+  pending_approvals: reportDefine('pending_approvals', `Chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt: income_expenses. Không lọc toà; phiếu (cả theo toà): crm_read_income_expenses status=UNAPPROVED. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Mã/tên phiếu hoặc người lập.'), limit: LIMIT, offset: OFFSET }),
   zalo_conversations: reportDefine('zalo_conversations', `Hội thoại Zalo của công ty như Chat Zalo (cần quyền Chat Zalo toàn công ty): người nhắn, SĐT, phòng/toà, chưa đọc, ghim, tin cuối ≤160 ký tự; query theo tên/SĐT/nhãn. ${PRIVATE_HINT} ${ORG_ONLY}`,
     { query: query('Tên, SĐT hoặc nhãn; không khớp phòng.'), limit: LIMIT, offset: OFFSET }),

@@ -5,6 +5,7 @@ import { createFixtureBroker } from './fixture.mjs';
 import { createMcpHttpHandler, createMcpHttpServer } from './mcp-http.mjs';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserRpcTransport } from './bound-user-rpc.mjs';
+import { READ_MISUSE_HINTS, READ_MISUSE_HINT_TEXTS, BUILDING_ID_HINT } from './read-misuse-hints.mjs';
 
 async function fixture(t, options) {
   const state = await createFixtureBroker();
@@ -136,6 +137,36 @@ test('read_name_unresolved forwards its detail string to the model and nothing e
   assert.equal(new BrokerError('read_name_unresolved').status, 400);
   problem = Object.assign(new BrokerError('read_name_unresolved'), { detail: { secret: 'PRIVATE' } });
   assert.deepEqual(await invoke(), { error: 'read_name_unresolved' });
+});
+
+// R2b (21/10): a read tool called the wrong way gets invalid_request with ONE of the static routing hints of
+// read-misuse-hints.mjs as detail (it names the right tool/parameter, never data). Only those strings pass: any other
+// detail on invalid_request — a programming slip, a message carrying arguments — is dropped, and the code is unchanged.
+test('invalid_request forwards only a static read-misuse hint as detail, nothing else', async t => {
+  let problem = null;
+  const server = createMcpHttpServer({ broker: { callTool: async () => { throw problem; } } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+  const invoke = async (name, args) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/mcp`, { method: 'POST', headers: {
+      'content-type': 'application/json', authorization: `Bearer hc_${'a'.repeat(43)}` }, body: JSON.stringify(call(name, args)) });
+    const body = await response.json(); assert.equal(response.status, 200); assert.equal(body.result.isError, true);
+    return JSON.parse(body.result.content[0].text);
+  };
+  for (const hint of READ_MISUSE_HINT_TEXTS) {
+    problem = Object.assign(new BrokerError('invalid_request'), { detail: hint, args: { query: 'PRIVATE' } });
+    assert.deepEqual(await invoke('crm_read_contracts', { fromDate: '2026-10-21' }), { error: 'invalid_request', detail: hint });
+  }
+  assert.ok(READ_MISUSE_HINT_TEXTS.includes(READ_MISUSE_HINTS.pending_approvals.hint) && READ_MISUSE_HINT_TEXTS.includes(BUILDING_ID_HINT));
+  for (const detail of [`${READ_MISUSE_HINTS.contracts.hint} PRIVATE`, 'buildingId PRIVATE không hợp lệ', '', { hint: READ_MISUSE_HINTS.contracts.hint }, null]) {
+    problem = Object.assign(new BrokerError('invalid_request'), { detail });
+    assert.deepEqual(await invoke('crm_read_contracts', { fromDate: '2026-10-21' }), { error: 'invalid_request' }, JSON.stringify(detail));
+  }
+  problem = new BrokerError('invalid_request');
+  assert.deepEqual(await invoke('crm_read_contracts', {}), { error: 'invalid_request' });
+  // A static hint on another code is not forwarded either (only invalid_request and read_name_unresolved carry detail).
+  problem = Object.assign(new BrokerError('forbidden'), { detail: READ_MISUSE_HINTS.contracts.hint });
+  assert.deepEqual(await invoke('crm_read_contracts', {}), { error: 'forbidden' });
 });
 
 test('unknown send returns only validated dispatch correlation so native Hermes can check status', async t => {

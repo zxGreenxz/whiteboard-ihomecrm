@@ -17,6 +17,7 @@ import { EXTERNAL_GROUP_TOOLS, externalGroupOperation, externalGroupInput } from
 import { advanceAuthorityRequest, BROKER_AUTHORITY, runAuthorityRequest } from './authority-request-scope.mjs';
 import { NEW_REQUEST_ID_TOOL, startsCrmRequest } from './request-id-contract.mjs';
 import { advertisedTool, normalizeToolArguments } from './tool-argument-shape.mjs';
+import { readMisuseHint } from './read-misuse-hints.mjs';
 import { createPublicTextGuard, splitConfirmToken } from './public-text-guard.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -34,7 +35,12 @@ const TOOL = Object.freeze({
 const ROOM_PERMISSION = 'rooms.view';
 const ROOM_TOOL = Object.freeze({
   name: 'crm_available_rooms',
-  description: 'Rooms currently listed for sale: exactly the rooms the CRM "Sale phòng" public share link lists — vacant, soon-vacant and customer-pass (khách pass) rooms, with listed price, availability, room type, furniture, sale policy and the contact that page prints (status text is the automatic one; a status typed inside the app is not included). Use it for any question about which rooms are listed, on sale or vacant. listing "no_sale_page" means the company has no live share link: say so, never "no rooms". Limited to this connection’s building scope; pagination belongs to one read snapshot.',
+  // R2b C1 (21/10/2026, audit L33 + câu 10/49/54/56/76): mô tả tiếng Anh 600 B → tiếng Việt gọn, nói rõ đây là trang Sale
+  // công khai chứ không phải trạng thái CRM, rồi chỉ sang tool đúng cho phòng trống thật / sắp trống / một phòng cụ thể.
+  // Câu đầu ≤ 60 ký tự vì danh sách tool_search của Hermes chỉ hiện câu đầu cắt còn 60 ký tự; "price" giữ chữ tiếng Anh mà
+  // chỉ mục BM25 (token ASCII) của bản cũ có cho truy vấn "available rooms … price". Bù byte cho các mô tả định tuyến mới
+  // (tools/list ≤ 64 000 B, đo ở tool-argument-shape.test.mjs).
+  description: 'Trang Sale công khai: phòng rao (trống/sắp trống/pass), giá (price). Kèm ngày trống, nội thất, chính sách, liên hệ; không phải trạng thái CRM. Phòng trống thật: crm_read_occupancy (số), crm_read_report re_vacant_rooms (danh sách); sắp trống N ngày: crm_read_occupancy_report upcoming; một phòng (ai ở, trống): crm_room_lookup. listing=no_sale_page: chưa có link Sale, không phải hết phòng.',
   inputSchema: { type: 'object', properties: {
     buildingName: { type: 'string', maxLength: 120 },
     offset: { type: 'integer', minimum: 0, maximum: 2000, default: 0 },
@@ -943,14 +949,21 @@ export function createBroker({
       const domainOp = domainOperation(name);
       if (domain && domainOp) {
         let input, invalid = false, names = null, deferred = false;
+        // R2b: a call shaped the wrong way (contracts/invoices + dates, pending_approvals + building/status, income_expenses +
+        // type, assets asking for vehicles, a building code as buildingId) carries a static routing hint as `detail` of its
+        // invalid_request (read-misuse-hints.mjs; mcp-http forwards only those strings). Computed on the normalized arguments,
+        // before the names leave them; attached only when the validator refused. Every hint rule names input that no name
+        // resolution can repair (the mount runs domainInput before any directory RPC), so a list-domain call with names and a
+        // hint is refused here with the same code it would get from the mount, now with the detail.
+        const hint = readMisuseHint(domainOp, args);
         // B5d: buildingName/roomName leave the arguments before the unchanged validator; the mount resolves
         // them to ids with the asker's JWT (directory under RLS) inside prepare, then validates again. An
         // input that only passes once the names are ids (a report whose roomId is required) is validated there.
         try { ({ args, names } = splitReadNames(domainOp, args)); } catch { invalid = true; }
-        if (!invalid) { try { input = domainInput(domainOp, args); } catch { if (names === null || !dataRecord(args)) invalid = true; else { input = args; deferred = true; } } }
+        if (!invalid) { try { input = domainInput(domainOp, args); } catch { if (names === null || !dataRecord(args) || hint !== null) invalid = true; else { input = args; deferred = true; } } }
         return call(async (identity, signal) => {
           if (!mayUseDomain(identity.effective, domainOp)) fail('tool_not_available');
-          if (invalid) fail('invalid_request');
+          if (invalid) { const error = new BrokerError('invalid_request'); if (hint !== null) error.detail = hint; throw error; }
           // Đợt 2 (crm_read_report): tool hiện vì có khoá của MỘT báo cáo nào đó; báo cáo được gọi cần đúng khoá của nó
           // (a deferred input is checked by the mount once resolved and validated).
           if (!deferred && !mayUseDomain(identity.effective, domainOp, input)) fail('forbidden');
