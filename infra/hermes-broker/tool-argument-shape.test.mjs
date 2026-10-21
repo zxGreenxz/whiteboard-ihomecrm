@@ -17,7 +17,7 @@ import { CUSTOMER_ACTION_TOOLS } from './customer-action-contract.mjs';
 import { EXPENSE_ACTION_TOOLS } from './expense-action-contract.mjs';
 import { NEW_REQUEST_ID_TOOL } from './request-id-contract.mjs';
 import { ZALO_BROADCAST_TOOLS } from './zalo-broadcast-contract.mjs';
-import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
+import { fullGrantBroker } from './full-grant-broker.fixture.mjs';
 import { READ_QUERY_HINTS, READ_NAMES, DOMAIN_BUILDING_HINT, EMPTY_RESULT_HINT, BUILDING_NAME_HINT, ROOM_NAME_HINT, domainOperation } from './domain-contract.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
 
@@ -257,6 +257,47 @@ test('B1c: the broker applies the read aliases before its validators; write tool
   assert.deepEqual(seen, []);
 });
 
+// R2b 21/10/2026 (full50c: 6/17 lời gọi bị schema từ chối vì trạng thái sai chữ — 'liquidated', 'overdue', 'approved',
+// 'pending', 'OPEN' ×2): tool đọc đổi `status` cấp một thành đúng phần tử enum của CHÍNH tool đó — không phân biệt hoa
+// thường, rồi bốn từ đồng nghĩa cố định khi đích có trong enum. Hermes kiểm schema quảng bá (enum) trước khi gọi connector,
+// nên đây là lưới thứ hai cho client không tự kiểm; tools/list không đổi (định nghĩa gốc và bản quảng bá giữ nguyên).
+test('R2b: read tools alias a status to a member of their own enum; anything else reaches the validator unchanged', () => {
+  const before = JSON.stringify([...ALL, ...ALL.map(advertisedTool)]);
+  for (const [name, status, expected] of [
+    ['crm_read_contracts', 'active', 'ACTIVE'], ['crm_read_contracts', ' Terminated ', 'TERMINATED'], ['crm_read_contracts', 'liquidated', 'TERMINATED'],
+    ['crm_read_income_expenses', 'approved', 'APPROVED'], ['crm_read_income_expenses', 'pending', 'UNAPPROVED'], ['crm_read_meter_readings', 'PENDING', 'UNAPPROVED'],
+    ['crm_read_tasks', 'OPEN', 'IN_PROGRESS'], ['crm_read_tasks', 'completed', 'COMPLETED'], ['crm_task_follow_list', 'OPEN', 'open'],
+    ['crm_read_receivables', 'overdue', 'OVERDUE'], ['crm_read_receivables', 'partial_paid', 'PARTIAL_PAID'], ['crm_read_invoice_report', 'UNPAID', 'unpaid'],
+    ['crm_read_contract_search', 'expiring', 'EXPIRING'], ['crm_read_contract_search', 'liquidated', 'TERMINATED'], ['crm_read_leads', 'converted', 'CONVERTED'],
+    // No member to name: unchanged for the validator (pending of invoice_report, open of contracts, a tool without statuses).
+    ['crm_read_invoice_report', 'pending', 'pending'], ['crm_read_contracts', 'open', 'open'], ['crm_read_contracts', 'expiring', 'expiring'],
+    ['crm_read_customers', 'active', 'active'], ['crm_read_contracts', 'ACTIVE', 'ACTIVE'], ['crm_read_contracts', '', ''], ['crm_read_contracts', 'đang ở', 'đang ở']])
+    assert.deepEqual(normalizeToolArguments(tool(name), { status, limit: 5 }), { status: expected, limit: 5 }, `${name} ${JSON.stringify(status)}`);
+  assert.deepEqual(domainInput('contracts', normalizeToolArguments(tool('crm_read_contracts'), { status: 'liquidated' })), domainInput('contracts', { status: 'TERMINATED' }));
+  assert.throws(() => domainInput('contracts', { status: 'liquidated' }), 'the validator itself is unchanged');
+  // Non-strings, accessors (never read), nested params.status of crm_read_report and write tools stay exactly as sent.
+  for (const status of [null, 5, true, ['ACTIVE'], { value: 'ACTIVE' }]) assert.deepEqual(normalizeToolArguments(tool('crm_read_contracts'), { status }), { status }, JSON.stringify(status));
+  let reads = 0;
+  const accessor = Object.defineProperty({}, 'status', { enumerable: true, get() { reads += 1; return 'active'; } });
+  assert.equal(typeof Object.getOwnPropertyDescriptor(normalizeToolArguments(tool('crm_read_contracts'), accessor), 'status').get, 'function'); assert.equal(reads, 0);
+  assert.deepEqual(normalizeToolArguments(tool('crm_read_report'), { report: 'vehicles', params: { status: 'active' } }), { report: 'vehicles', params: { status: 'active' } });
+  const written = { name: 'w', annotations: { readOnlyHint: false }, inputSchema: { type: 'object', properties: { status: { enum: ['ACTIVE'] } } } };
+  assert.deepEqual(normalizeToolArguments(written, { status: 'active' }), { status: 'active' });
+  assert.deepEqual(normalizeToolArguments({ ...written, annotations: { readOnlyHint: true } }, { status: 'active' }), { status: 'ACTIVE' });
+  assert.equal(JSON.stringify([...ALL, ...ALL.map(advertisedTool)]), before, 'definitions and advertised schemas are untouched');
+});
+
+test('R2b: the broker applies the status alias before its validators; a word with no member still fails as before', async t => {
+  const { broker, seen, token } = brokerFixture(t);
+  assert.equal((await broker.callTool(token, 'crm_read_contracts', { status: 'liquidated', limit: 50 })).isError, false);
+  assert.equal((await broker.callTool(token, 'crm_read_income_expenses', { status: 'approved', fromDate: '2026-10-01', toDate: '2026-10-21' })).isError, false);
+  assert.deepEqual(seen, [['contracts', domainInput('contracts', { status: 'TERMINATED', limit: 50 })],
+    ['income_expenses', domainInput('income_expenses', { status: 'APPROVED', fromDate: '2026-10-01', toDate: '2026-10-21' })]]);
+  seen.length = 0;
+  await assert.rejects(broker.callTool(token, 'crm_read_invoice_report', { report: 'search', status: 'pending' }), error => error.code === 'invalid_request' && error.detail === undefined);
+  assert.deepEqual(seen, []);
+});
+
 test('non-objects, unknown tools, prototypes, accessors and hostile proxies pass through', () => {
   const options = tool('crm_task_input_options');
   for (const value of [undefined, null, [], [NIL], 'x', 5, new Date(0), new Map()]) assert.equal(normalizeToolArguments(options, value), value);
@@ -332,30 +373,13 @@ test('16/10 19:44Z: read tools say query is a row text filter, buildingId is not
 // B1c (alias snake_case + kẹp limit) chỉ đổi normalizeToolArguments, không đổi một byte tools/list. B5c 21/10:
 // crm_read_receivables thêm "; có tên toà — gom theo toà khi nhiều phòng" (+52 B): 62 671 B — còn 1 329 B. Trần tổng giữ
 // 64 000 B (connector bản cũ một trần 65 536 B); thêm tool hoặc mô tả mới phải rút chỗ khác, không nâng trần này.
+// Trước R2b (e2c525c88, sau B5d tên toà/phòng): 63 926 B — còn 74 B. R2b 21/10 (chọn đúng tool, câu đầu ≤ 60 ký tự vì danh sách
+// tool_search của Hermes chỉ hiện chừng đó): C1 crm_available_rooms tiếng Anh → tiếng Việt gọn −155 B, C4 crm_read_customers
+// −58 B; định tuyến contracts +91, assets +27, income_expenses −11, pending_approvals +10; hai tool meta W2 mang mã báo cáo
+// ASCII cho tool_search (report_list −50, report +39; trần riêng 1 600 B ở wave2-registry.test.mjs): 63 819 B — còn 181 B.
+// Hint invalid_request (read-misuse-hints.mjs) và alias trạng thái (normalizeToolArguments) không đổi một byte tools/list.
+// fullGrantBroker: full-grant-broker.fixture.mjs (dùng chung với tool-plan.test.mjs).
 const TOOLS_LIST_BUDGET = 64_000;
-function fullGrantBroker(t, limits = { maxResultBytes: 65_536 }) {
-  const scope = createDependencyScope(); t.after(() => scope.close());
-  const CONNECTION = id('a'), BUILDING = id('f');
-  const read = [...new Set([...HERMES_READ_CAPABILITIES, ...ALL_DOMAIN_READ_CAPABILITIES, 'chat_zalo.view', 'rooms.view', 'assistant.context.read', 'assistant.memory.read'])];
-  const action = [...new Set([...HERMES_ACTION_CAPABILITIES, 'tasks.create', 'tasks.edit', 'tasks.delete', 'sale_phong.manage_pass_listings', 'customers.create',
-    'leads.create', 'income_expenses.create', 'chat_zalo.manage_automation', 'chat_zalo.send', 'assistant.memory.write'])];
-  const identity = { row: { id: CONNECTION, assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 600_000,
-    epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
-  policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [id('e')],
-  scopesByPermission: Object.fromEntries([...read, ...action].map(key => [key, { buildingIds: [BUILDING], cashbookIds: [] }])) };
-  const authority = { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} };
-  const port = (prepare, finalize) => ({ async [prepare]() { return Object.freeze({}); }, async [finalize]() { return { ok: true }; } });
-  const broker = createBroker({ authority, dependencyScope: scope, audit: async () => {}, limits,
-    tasks: port('prepareTask', 'finalizeTask'), domains: port('prepareDomain', 'finalizeDomain'), roomPass: port('prepareRoomPass', 'finalizeRoomPass'),
-    customers: port('prepareCustomerAction', 'finalizeCustomerAction'), expenses: port('prepareExpenseAction', 'finalizeExpenseAction'),
-    schedules: port('prepareSchedule', 'finalizeSchedule'), workMemory: port('prepareMemory', 'finalizeMemory'),
-    zaloBroadcasts: port('prepareZaloBroadcast', 'finalizeZaloBroadcast'), roomReads: port('prepareAvailableRooms', 'finalizeAvailableRooms'),
-    externalGroups: { authority, createService: () => ({}) },
-    // Host-only private port (never in tools/list): a directory result of a few hundred bytes.
-    groupPreviews: { authority, createService: () => ({ async prepareGroupDirectory() { return Object.freeze({}); },
-      async finalizeGroupDirectory() { return { groups: ['1', '2', '3', '4'].map(n => ({ conversationId: id(n), name: `Nhóm ${n}` })) }; } }) } });
-  return { broker, token: `hc_${'A'.repeat(43)}` };
-}
 
 test('tools/list of a connection holding every grantable key lists every family and stays inside the budget', async t => {
   const { broker, token } = fullGrantBroker(t);

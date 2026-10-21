@@ -7,7 +7,7 @@ import { createDependencyScope } from './dependency-scope.mjs';
 import { advertisedTool } from './tool-argument-shape.mjs';
 import { DOMAIN_TOOLS, DOMAIN_READS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
 import { HERMES_READ_CAPABILITIES, HERMES_ACTION_CAPABILITIES, HERMES_CAPABILITIES, requiresBuildingScope } from './capability-contract.mjs';
-import { W2, W2_READ_KEYS, W2_READ_KEY_LIST, W2_SELF_KEYS, W2_TOOL_NAMES, createW2Registry } from './wave2-registry.mjs';
+import { W2, W2_DISCOVERY_REPORTS, W2_READ_KEYS, W2_READ_KEY_LIST, W2_SELF_KEYS, W2_TOOL_NAMES, createW2Registry } from './wave2-registry.mjs';
 import { W2_TOPICS, PRIVATE_HINT, w2Report, w2Params, w2CatalogEntry, id, nullable, longText, amount } from './wave2-kit.mjs';
 import { W2A_REPORTS } from './wave2-a-contract.mjs';
 import { W2B_REPORTS } from './wave2-b-contract.mjs';
@@ -111,6 +111,21 @@ test('mặt tool: đúng hai tool meta, gọn (≤ 1 600 B), không nhắc bản
   assert.equal(W2.permissions.length === 0, !mayUseDomain(all, 'report_list'), 'hiện ⇔ có ít nhất một báo cáo đã đăng ký');
   // Lối vào INVOKER riêng (20261018000600): hàm gói chạy dưới RLS của người hỏi.
   assert.equal(DOMAIN_READS.report.family, 'w2'); assert.equal(DOMAIN_READS.report_list.family, 'w2');
+});
+
+// R2b (21/10/2026): tool_search của Hermes (BM25, token [A-Za-z0-9]+ rồi stem tiếng Anh; một từ không có ở tool nào ⇒ rỗng)
+// không tìm được báo cáo W2 khi mã của nó không nằm trong chữ nào của tools/list (full50c: "crm hotline view" → []). Mã hay hỏi
+// nằm trong mô tả crm_read_report — phải là báo cáo có thật của sổ, chữ ASCII, và hai mã đầu nằm trong 60 ký tự đầu (danh
+// sách tool_search chỉ hiện chừng đó).
+test('khám phá: mã báo cáo nêu trong mô tả crm_read_report có trong sổ, ASCII, câu đầu nêu xe/hotline', () => {
+  const run = DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_report').description;
+  assert.deepEqual(W2_DISCOVERY_REPORTS, ['vehicles', 'hotlines', 'cashbooks', 're_vacant_rooms', 'top_expenses']);
+  for (const report of W2_DISCOVERY_REPORTS) {
+    assert.ok(Object.hasOwn(W2.reports, report), `${report} có trong sổ W2`);
+    assert.match(report, /^[a-z][a-z_]+$/); assert.match(run, new RegExp(`\\b${report}\\b`), report);
+  }
+  assert.match([...run].slice(0, 60).join(''), /^Báo cáo theo mã: xe=vehicles, hotlines/);
+  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_report_list').description, /danh_muc=[^;]*hotline/);
 });
 
 test('quyền theo báo cáo: tool hiện khi giữ khoá của MỘT báo cáo; chạy đòi đúng khoá của báo cáo được gọi', () => {

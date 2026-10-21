@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
+import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -119,7 +120,10 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
           /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(safe.requestId)
           ? { requestId: safe.requestId } : safe.code === 'result_too_large' ? { hint: RESULT_TOO_LARGE_HINT }
           // B5d: tên toà/phòng không giải được — mô hình cần lý do (toà/phòng trong phạm vi của chính kết nối) để hỏi lại.
-          : safe.code === 'read_name_unresolved' && typeof safe.detail === 'string' ? { detail: safe.detail } : {};
+          : safe.code === 'read_name_unresolved' && typeof safe.detail === 'string' ? { detail: safe.detail }
+          // R2b: invalid_request của tool đọc gọi sai cách mang MỘT trong các hint tĩnh của read-misuse-hints.mjs (danh sách
+          // đóng, chỉ nêu tool/tham số đúng); chuỗi nào khác — kể cả gán nhầm vào detail — không tới mô hình.
+          : safe.code === 'invalid_request' && READ_MISUSE_HINT_TEXTS.includes(safe.detail) ? { detail: safe.detail } : {};
         reply(response, 200, { jsonrpc: '2.0', id: message.id, result: {
           content: [{ type: 'text', text: JSON.stringify({ error: safe.code, ...receipt }) }], isError: true,
         } });

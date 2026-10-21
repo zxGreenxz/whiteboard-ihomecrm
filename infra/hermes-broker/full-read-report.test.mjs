@@ -92,7 +92,9 @@ test('contract: one tool per existing permission key, SQL catalog matches the JS
   assert.ok(Buffer.byteLength(JSON.stringify(tools)) < 8000, 'six report tools fit the remaining tools/list budget');
   for (const tool of tools) assert.doesNotMatch(tool.description, /copilot|hermes_|SELECT/i, tool.name);
   assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_zalo_conversations').description, new RegExp(PRIVATE_HINT));
-  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /crm_read_income_expenses với status=UNAPPROVED/);
+  // R2b (21/10): câu đầu ≤ 60 ký tự chỉ sang thu chi (danh sách tool_search của Hermes chỉ hiện chừng đó).
+  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /^Chỉ "việc chờ TÔI duyệt"; phiếu chờ duyệt: income_expenses\./);
+  assert.match(DOMAIN_TOOLS.find(tool => tool.name === 'crm_read_pending_approvals').description, /crm_read_income_expenses status=UNAPPROVED/);
   for (const bad of [{ report: 'nope' }, { report: 'search', status: 'PAID' }, { report: 'stats', days: 3 }, { report: 'search', month: '2026-13' },
     { report: 'search', limit: 51 }, { report: 'search', offset: -1 }, { report: 'search', query: 'a\nb' }, { report: 'search', organizationId: ORG },
     { report: 'search', basis: 'cash' }])

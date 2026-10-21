@@ -80,6 +80,26 @@ export function advertisedTool(tool) {
 // and the advertised definitions are untouched. The camelCase form must be an
 // own schema property, so `__proto__` and the like can never become a target.
 const camelCase = key => key.replace(/_+([a-zA-Z0-9])/g, (_, next) => next.toUpperCase());
+// R2b 21/10/2026 (full50c trace: 6 of the 17 calls the advertised schema refused were a status outside the enum —
+// 'liquidated', 'overdue', 'approved', 'pending', 'OPEN' twice): a top-level `status` string that is not a member of THIS
+// read tool's enum becomes the member it names case-insensitively ('active' → 'ACTIVE', 'UNPAID' → 'unpaid' of
+// invoice_report, 'OPEN' → 'open' of task follow) or, failing that, the member a fixed synonym points at — only when that
+// member is in the enum (pending → UNAPPROVED of income_expenses/meter_readings, open → IN_PROGRESS of tasks, overdue →
+// OVERDUE of receivables, liquidated → TERMINATED of contracts). Anything else (unknown word, non-string, nested
+// params.status, write tools) stays for the validator unchanged. Hermes validates `tool_call` arguments against the
+// ADVERTISED enum before the connector sees them, so this helps only a client that does not (Hermes's own enum error
+// already lists the members, and the model retried correctly in the trace).
+const STATUS_SYNONYMS = Object.freeze({ pending: 'UNAPPROVED', open: 'IN_PROGRESS', overdue: 'OVERDUE', liquidated: 'TERMINATED' });
+function aliasStatus(properties, descriptors) {
+  const status = own(properties, 'status'), current = Object.hasOwn(descriptors, 'status') ? descriptors.status : undefined;
+  if (!plain(status) || !Array.isArray(status.enum) || !current || !Object.hasOwn(current, 'value') || typeof current.value !== 'string') return;
+  const members = status.enum.filter(member => typeof member === 'string');
+  if (members.includes(current.value)) return;
+  const folded = current.value.trim().toLowerCase();
+  const target = members.find(member => member.toLowerCase() === folded) ??
+    (Object.hasOwn(STATUS_SYNONYMS, folded) && members.includes(STATUS_SYNONYMS[folded]) ? STATUS_SYNONYMS[folded] : undefined);
+  if (target !== undefined) descriptors.status = { ...current, value: target };
+}
 function shapeReadArguments(tool, descriptors) {
   if (own(tool, 'annotations')?.readOnlyHint !== true) return;
   const properties = own(own(tool, 'inputSchema'), 'properties');
@@ -91,6 +111,7 @@ function shapeReadArguments(tool, descriptors) {
     if (!Object.hasOwn(descriptors, target)) descriptors[target] = descriptors[key];
     delete descriptors[key];
   }
+  aliasStatus(properties, descriptors);
   const limit = own(properties, 'limit'), current = Object.hasOwn(descriptors, 'limit') ? descriptors.limit : undefined;
   if (!plain(limit) || !current || !Object.hasOwn(current, 'value') || !Number.isSafeInteger(current.value)) return;
   const { minimum, maximum } = limit;
