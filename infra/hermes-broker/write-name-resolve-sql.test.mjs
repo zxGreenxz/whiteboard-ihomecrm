@@ -7,7 +7,8 @@ import { localCluster, setup, jwt, id, ORG, FOREIGN, USER, ROLE, BUILDING } from
 // trên cụm PostgreSQL 17 dùng một lần với fixture crm-shared-read (RLS thật theo buildings.view + authorized_scope_v3). Bảng
 // tên thường gọi, loại việc, hồ sơ là bảng fixture với RLS tối giản do test khai (không phải bản chép policy production).
 // Chạy MỌI ca của name-match-vectors.json (cùng bộ vector với test web hermesNameMatchParity.test.ts), cộng các cạnh
-// 42501/22023, RLS hẹp, idempotent, ACL/catalog. Dữ liệu giả.
+// 42501/22023, RLS hẹp, idempotent, ACL/catalog. Người, phòng, loại việc là giả; tên/mã toà trùng mã toà đã có sẵn trong repo
+// (không phải dữ liệu khách).
 const slug = 'hermes_write_name_resolve_v1';
 const files = readdirSync('supabase/migrations').filter(name => new RegExp(`^\\d{14}_${slug}\\.sql$`).test(name));
 assert.equal(files.length, 1);
@@ -108,9 +109,12 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
   });
 
   await t.test('scope vs RLS: outside the write scope is outside_scope; what RLS hides is only not_visible; foreign org never named', async () => {
-    // The same building outside the write key's scope: seen, so named, but never resolved.
+    // The same building outside the write key's scope: never resolved and never NAMED (review #253 R3: a connection whose overlay
+    // excludes it must not list it, not even through 2-character probes).
     assert.deepEqual(await resolve({ building: '1392QT' }, { ids: [uuidOf('b2')] }), { status: 'unresolved', field: 'building', wanted: '1392QT',
-      why: 'outside_scope', candidates: [{ name: '1392QT' }], more: false });
+      why: 'outside_scope', candidates: [], more: false });
+    const probe2 = await resolve({ building: 'qt' }, { ids: [uuidOf('b2')] });
+    assert.deepEqual([probe2.why, probe2.candidates, probe2.more], ['outside_scope', [], false]);
     assert.equal((await resolve({ room: '201' }, { ids: [] })).why, 'not_visible');
     // A member whose CRM scope (buildings.view) is one other building sees none of these: not_visible, no names leaked.
     for (const wanted of ['1392QT', 'London', '44TL']) {
@@ -137,6 +141,10 @@ test('write name resolve: every shared vector, scope vs RLS, refusal edges, idem
     await assert.rejects(resolve({ building: 'qt' }, { ids: [null] }), code('22023'));
     await assert.rejects(resolve({ building: 'qt' }, { ids: Array.from({ length: 257 }, (_, n) => id(5000 + n)) }), code('22023'));
     await assert.rejects(resolve({ building: 'qt' }, { org: null }), code('22023'));
+    // Review #253 mục 5: the caller must be an ACTIVE member of the company asked about; otherwise the member helper (DEFINER) would
+    // tell an outsider whether a profile is ACTIVE in another company ({"person":"ng"} + a foreign organization UUID).
+    for (const names of [{ person: 'ng' }, { building: 'qt' }, {}])
+      await assert.rejects(resolve(names, { org: FOREIGN, ids: [] }), code('42501'), JSON.stringify(names));
   });
 
   await t.test('catalog: INVOKER, search_path empty, STABLE/IMMUTABLE, execute for authenticated only', async () => {

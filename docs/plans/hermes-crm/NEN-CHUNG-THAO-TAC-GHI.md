@@ -235,8 +235,12 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 
 ### 6.2 Ánh xạ từ SQL
 
-- **Hàm ánh xạ dùng chung trong DB.** `app_private.hermes_action_reason_v1(p_sqlstate text, p_message text) RETURNS text` (IMMUTABLE) ánh xạ theo SQLSTATE và tiền tố thông điệp, theo quy tắc "công thức dùng chung đặt trong database".
+- **Hàm ánh xạ dùng chung trong DB.** `app_private.hermes_action_reason_v1(p_sqlstate text, p_message text, p_constraint text DEFAULT NULL) RETURNS text` (IMMUTABLE) ánh xạ theo SQLSTATE và tiền tố thông điệp, theo quy tắc "công thức dùng chung đặt trong database".
+  - `23505` chỉ là `duplicate_request` khi `p_constraint` (lấy bằng `GET STACKED DIAGNOSTICS … CONSTRAINT_NAME`) đúng là ràng buộc idempotency: hiện có `hermes_action_receipts_pkey`. Trang có khoá idempotency riêng thì thêm tên ràng buộc vào danh sách bằng forward migration.
+  - Trùng ràng buộc khác (vd kẹt dãy mã phiếu, từng gặp với thu chi) là `crm_refused`. Nó không bao giờ được báo "đã được ghi trước đó" khi chưa ghi gì (review #253, mục 4).
 - **Bắt lỗi ở wrapper ghi của trang.** Wrapper bắt lỗi của hàm ghi web bằng `EXCEPTION WHEN OTHERS` quanh lời gọi, lấy mã từ hàm trên, rồi chốt `{outcome:'rejected', reason}` vào biên nhận. Lỗi không mang theo thông điệp gốc ra ngoài.
+  - **Lỗi tạm không được chốt** (review #253, mục 3; đúng mục 3.1): `40001`, `40P01`, `55P03`, `PT409` bị wrapper `RAISE` lại. Cả giao dịch lùi, kể cả biên nhận vừa mở, nên cùng `requestId` gọi lại được. Trước đây lỗi tạm bị chốt thành `state_changed`, và lần gọi lại cùng `requestId` (connector giữ mã) cứ phát lại `state_changed` mãi.
+  - **Rào khung:** ràng buộc trigger DEFERRED `hermes_action_receipt_settled` làm COMMIT thất bại khi còn biên nhận `started`. Trang quên gọi finish thì cả giao dịch lùi, không để `requestId` kẹt ở `unknown` vĩnh viễn.
 - **SQLSTATE và câu thô chỉ nằm trong biên nhận.** Biên nhận (`app_private`, không ai đọc được ngoài DEFINER) giữ thêm `sqlstate` và 200 ký tự đầu của thông điệp, để phân loại các ca `crm_refused` về sau.
 - **Connector chỉ nhận mã trong danh sách.** Connector kiểm `reason ∈ ACTION_REASONS`; ngoài danh sách thì đổi thành `crm_refused`. Mô hình không bao giờ nhận nguyên văn lỗi SQL, vì lỗi có thể chứa ID hoặc dữ liệu.
 - **Lỗi thoát khỏi wrapper.** Lỗi PostgREST thoát ra ngoài wrapper (wrapper chưa có, hết giờ…) vẫn theo `bound-user-rpc.mjs`. Riêng RPC thao tác mới đổi thêm như sau:
@@ -276,6 +280,7 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 - **Hàm.** `public.hermes_write_name_resolve_v1(p_organization_id uuid, p_building_ids uuid[], p_names jsonb) RETURNS jsonb`.
   - `SECURITY INVOKER`, `STABLE`, `SET search_path = ''` (mọi tên đều ghi đủ schema).
   - Từ chối (42501) khi `current_user <> 'authenticated'` hoặc `auth.uid()` rỗng.
+  - Từ chối (42501) khi **người gọi** không là thành viên ACTIVE của `p_organization_id` (review #253, mục 5). Nếu không có rào này, tài khoản `authenticated` bất kỳ gọi thẳng RPC với `{"person":"ng"}` và UUID của công ty khác là biết được một hồ sơ có ACTIVE ở đó không, vì helper thành viên là DEFINER. Vỏ tính cờ này bằng helper gắn OID rồi truyền vào lõi; client không gọi thẳng được lõi.
   - Đọc dưới RLS của chính người gọi: `buildings`, `rooms`, `building_common_names` (đọc = ai xem được toà). Không có hàm DEFINER nào chép policy.
 - **Ai gọi.** RPC xem trước của từng trang gọi hàm này trong cùng transaction, cùng JWT người dùng. Connector chỉ chuyển đối số và dựng `needs_input` từ kết quả; connector không tự khớp tên.
 - **Đã viết (Mốc 5)** ở `supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql` (chỉ file, chưa áp).
@@ -284,11 +289,11 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 - **Đầu vào.** `p_names` có thể gồm `building`, `room`, `jobType` (loại việc, bỏ loại đã tắt), `person` (hồ sơ thấy được qua RLS + thành viên ACTIVE theo đúng helper `app_private.hermes_task_assignee_member_v1` mà hàm tạo việc đang dùng). Chỉ nêu phòng thì toà suy ra từ phòng duy nhất khớp.
 - **Kết quả.** `{status: 'resolved', building, room, jobType, person}` (mỗi mục `{id, name}` hoặc null; phòng có thêm `buildingId`) hoặc `{status: 'unresolved', field, wanted, why, candidates: [{name[, buildingName]}] (≤ 8), more}`. Trường đầu tiên không giải được thì trả về luôn.
 - **`why` phân biệt ba trường hợp**, và không bao giờ khẳng định "không có" (hàm INVOKER không biết, RLS có thể ẩn đối tượng có thật):
-  - `ambiguous`: ≥ 2 ứng viên trong phạm vi được ghi;
-  - `outside_scope`: người dùng *thấy* đối tượng (RLS) nhưng nó ngoài phạm vi toà của khoá ghi;
+  - `ambiguous`: ≥ 2 ứng viên trong phạm vi được ghi. Ứng viên là các tên đó, tối đa 8; `more` bật khi có hơn 8 ứng viên **trong phạm vi**;
+  - `outside_scope`: người dùng *thấy* đối tượng (RLS) nhưng nó ngoài phạm vi toà của khoá ghi. **Không kèm tên** (review #253, mục 2). Lý do: phạm vi được ghi là phạm vi khoá ∩ overlay kết nối, hẹp hơn `buildings.view` của web. Nêu tên thì một kết nối bị overlay giới hạn sẽ liệt kê được toà ngoài overlay (dò chuỗi 2 ký tự ra tới 8 tên mỗi lần). Danh bạ đọc (`20261020175803`) cũng không bao giờ nêu tên ngoài danh sách được giao;
   - `not_visible`: không thấy gì trong phạm vi quyền.
 
-  Connector dựng câu theo `why` (`nameUnresolvedDetail`).
+  Connector dựng câu theo `why` (`nameUnresolvedDetail`). `outside_scope` không có tên thì rơi về câu "không thấy … trong phạm vi quyền".
 
 | | Đọc (hiện có, ở connector) | Ghi (Đợt 1, trong SQL) |
 | --- | --- | --- |
@@ -379,6 +384,13 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 
 Đã chốt D5 = O1. Còn chưa xác minh: `hermes_validate_limits_v1` có nhận khoá đang tắt trong danh sách loại trừ không (cần cho cách thứ hai ở điểm 4).
 
+**Tắt khoá về sau (review #253, mục 9).** Mọi migration TẮT một khoá ghi đã bật đều phải mang rào legacy theo mẫu `20261021162612_hermes_task_cancel_disable_v1.sql`. Điều này áp dụng cả script TEST tắt `assistant.action_probe`. Rào gồm:
+- khoá phải tồn tại đúng mode (`action`);
+- từ chối khi còn kết nối `legacy_allowlist` ACTIVE giữ khoá đó. Lý do: lúc gia hạn token, `action_capabilities` đã lưu được kiểm với registry, nên tắt khoá sẽ làm các kết nối đó không gia hạn được;
+- chỉ `UPDATE … SET enabled=false WHERE … AND enabled`.
+
+Bật lại cũng bằng một forward migration khác.
+
 ## 9. SQL nền (migration dự kiến, chưa viết)
 
 Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc kiểm làm bằng PGlite và test offline. Phiên chính áp qua lane.
@@ -394,6 +406,14 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc ki�
 | M1.7 | `public.hermes_action_capabilities_v1(p_organization_id)` | DEFINER, STABLE | Với mỗi khoá thao tác: `allowed`, `companyEnabled`, `buildingIds`, theo khuôn `hermes_expense_capabilities_v1`; kèm chính sách từng thao tác |
 | M1.8 | `public.hermes_write_name_resolve_v1(org, toà[], names jsonb)` | INVOKER, STABLE, `search_path=''` | Giải tên toà/phòng chế độ ghi (mục 7), từ chối khi `current_user <> 'authenticated'` |
 | M2 | Seed registry TẮT (mục 8.3) + hook options chung | migration riêng | Không có tác dụng cho tới khi bật |
+
+**Bản đã viết khác bảng dự kiến** (sau review #253):
+- M1.2 tách làm hai hàm:
+  - `app_private.hermes_action_binding_v1(p_binding)`: chỉ kiểm binding; tra trạng thái dùng hàm này;
+  - `app_private.hermes_action_guard_v1(p_binding, p_action)`: binding cộng thao tác bắt buộc. Action NULL hay lạ ⇒ 42501; không còn nhánh "chỉ kiểm binding" để lọt.
+- M1.3 mở biên nhận bằng `ON CONFLICT DO NOTHING` rồi `FOR UPDATE`, nên lời gọi song song cùng `requestId` được phát lại. Thêm ràng buộc trigger DEFERRED: không COMMIT được khi còn `started`.
+- M1.5 nhận thêm `p_constraint`.
+- Mọi phép kiểm tham số đóng khi gặp NULL.
 
 **Khuôn cho trang cắm vào sau** (không làm trong Đợt 1):
 - `public.hermes_<page>_preview_v1`: INVOKER, STABLE, dựng `preview` + `basis` dưới RLS của người dùng.
@@ -553,6 +573,18 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
 
   Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
 
+  **Sửa theo review độc lập SQL + quyền (#253, lượt 5, 22/10):**
+  - NULL không lọt rào (guard đòi thao tác; bước ghi kiểm `IS NULL`);
+  - `outside_scope` không nêu tên;
+  - lỗi tạm `RAISE` lại, không chốt biên nhận;
+  - 23505 chỉ `duplicate_request` theo tên ràng buộc;
+  - người gọi phải là thành viên ACTIVE của công ty được hỏi;
+  - mở biên nhận chịu được lời gọi song song;
+  - rào trigger: biên nhận không COMMIT khi còn `started`;
+  - `more` tính theo ứng viên trong phạm vi.
+
+  Các ca R1–R5 của reviewer đã thành test trong repo (đỏ trên bản cũ, xanh trên bản mới), 11/11 đột biến bị bắt. Mục 6 (giao `buildings.view`) chờ PR #261, xem mục 16.
+
   **Sửa trước review (5), 22/10:** CI `quality-gates` của `1ed925638` đỏ ở `copilot-independence` và `hermes-durable-schema`: mọi thân `BEGIN ATOMIC` của Hermes phải được đăng ký kèm băm câu lệnh. Lane `migrate:forward` (`apply-reviewed-migration.mjs`) cũng từ chối M1 và M5 với lỗi "Unsupported SQL-standard function boundary". Đã sửa theo đúng hai tiền lệ:
   - vỏ ghi M1 đổi `search_path` sang `pg_catalog,public` (khuôn lane nhận cho thân ghi, như `hermes_task_follow_action_v1`) và ghim băm ở `scripts/hermes-task-function-contract.mjs`;
   - vỏ giải tên M5 (STABLE, `search_path=''`) ghim băm ở `scripts/hermes-read-function-specs.mjs`, như R2d.
@@ -619,6 +651,7 @@ Thêm từ ca thử Công việc trên TEST (bot thật, 21/10 18:24–18:47): t
 6. Xin chủ trả lời câu 4 (tắt 3 tool phiếu chi cũ) trước khi hiện thao tác thật đầu tiên.
 7. SOUL bản 5: luật hai lượt, chỉ chat riêng, đọc `detail` khi bị từ chối.
 8. Trước khi đưa bản `profile-provisioning.mjs` có luật K1 lên VPS: đọc (chỉ đọc) `platforms` của mọi profile mang token CRM, kể cả profile TEST. Profile nào còn nền tảng khác `zalo_personal` chưa ghi `enabled: false` sẽ bị từ chối ở lần provisioning hoặc đổi credential kế tiếp.
+9. **Còn mở từ review #253 (mục 6):** phạm vi toà của guard và capabilities phải giao với `buildings.view` của web. Hiện đang dùng `authorized_scope_v3(crm_permission)` ∩ overlay, cùng lớp lỗi PR #261. Việc này chờ #261 (`app_private.hermes_web_building_ids_v1`) vào `main`. Ngày 22/10 #261 còn OPEN nên nhánh này chưa làm.
 
 ## 17. Chưa xác minh
 

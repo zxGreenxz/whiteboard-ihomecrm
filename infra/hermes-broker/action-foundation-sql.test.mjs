@@ -24,8 +24,9 @@ const SUPPORT = `CREATE TABLE IF NOT EXISTS public.building_common_names(id uuid
   -- guard / bước ghi / lõi giải tên qua OID gắn lúc tạo; một thân plpgsql tra app_private lúc chạy sẽ đỏ ở đây (42501).
   REVOKE USAGE ON SCHEMA app_private FROM authenticated, PUBLIC;
   GRANT SELECT ON public.building_common_names,public.job_types,public.profiles,public.buildings,public.rooms TO authenticated;
+  -- Helper thành viên giả: chỉ người gọi là thành viên ACTIVE (giải tên đòi người gọi thuộc công ty; không ai khác để giao việc).
   CREATE OR REPLACE FUNCTION app_private.hermes_task_assignee_member_v1(p_user uuid,p_org uuid) RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
-    SET search_path=pg_catalog,public AS $f$ SELECT false $f$;
+    SET search_path=pg_catalog,public AS $f$ SELECT p_user=auth.uid() $f$;
   GRANT EXECUTE ON FUNCTION app_private.hermes_task_assignee_member_v1(uuid,uuid) TO authenticated;`;
 
 test('action foundation M1: guard, capabilities, receipts, basis, reasons, status, policy floor', { timeout: 240000 }, async t => {
@@ -83,9 +84,12 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
     assert.deepEqual(await probe('probe.confirm', 'apply', rid(3), { amount: 2000, buildingName: 'Toà A' }, again), { kind: 'rejected', reason: 'state_changed' });
     assert.equal((await receipts()).some(row => row.request_id === rid(3)), false, 'từ chối trước khi ghi không chốt biên nhận');
     await db.query("UPDATE public.buildings SET name='Toà A' WHERE id=$1", [BUILDING]);
-    // Toà B: CRM cho xem nhưng overlay của kết nối chỉ có toà A ⇒ ngoài phạm vi được ghi, không đoán.
+    // R3 (review #253): Toà B: CRM cho xem nhưng overlay của kết nối chỉ có toà A ⇒ ngoài phạm vi được ghi, không đoán, và
+    // KHÔNG nêu tên (kết nối bị overlay giới hạn không được liệt kê toà ngoài overlay, kể cả khi dò bằng chuỗi 2 ký tự).
     assert.deepEqual(await probe('probe.confirm', 'preview', rid(10), { amount: 1, buildingName: 'Toà B' }), { kind: 'needs_input', reason: 'name_unresolved',
-      field: 'building', wanted: 'Toà B', why: 'outside_scope', candidates: [{ name: 'Toà B' }], more: false });
+      field: 'building', wanted: 'Toà B', why: 'outside_scope', candidates: [], more: false });
+    assert.deepEqual(await probe('probe.note', 'preview', rid(13), { note: 'x', buildingName: 'a b' }), { kind: 'needs_input', reason: 'name_unresolved',
+      field: 'building', wanted: 'a b', why: 'outside_scope', candidates: [], more: false });
     // Bản đã giải đưa lại ở lượt 2: toà ngoài phạm vi khoá, hay phòng không thuộc toà đó ⇒ not_allowed, không mở biên nhận.
     assert.deepEqual(await probe('probe.confirm', 'apply', rid(11), { amount: 1 }, { resolved: { buildingId: OTHER_BUILDING }, basis: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
     assert.deepEqual(await probe('probe.confirm', 'apply', rid(12), { amount: 1 }, { resolved: { buildingId: BUILDING, roomId: OTHER_ROOM }, basis: 'x' }), { kind: 'rejected', reason: 'not_allowed' });
@@ -100,24 +104,67 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
     assert.equal((await receipts()).some(row => row.request_id === rid(5)), false);
   });
 
-  await t.test('writer failures map to the closed reason list and are stored as final rejections', async () => {
-    for (const [n, sqlstate, reason] of [[6, '23505', 'duplicate_request'], [7, '42501', 'not_allowed'], [8, 'PT409', 'state_changed'], [9, 'XX000', 'crm_refused']]) {
+  await t.test('writer failures: final ones map to the closed list and are stored; transient ones roll the receipt back (R4, R5)', async () => {
+    // R5: 23505 của một ràng buộc khác khoá idempotency (vd kẹt dãy mã phiếu) KHÔNG phải "đã được ghi trước đó".
+    for (const [n, sqlstate, reason] of [[6, '23505', 'crm_refused'], [7, '42501', 'not_allowed'], [9, 'XX000', 'crm_refused']]) {
       const outcome = await probe('probe.note', 'auto', rid(n), { note: `!raise ${sqlstate}` });
       assert.deepEqual(outcome, { kind: 'rejected', reason }, sqlstate);
       assert.deepEqual(await status(rid(n)), { kind: 'status', outcome: 'rejected', action: 'probe.note', reason });
       assert.deepEqual(await probe('probe.note', 'auto', rid(n), { note: `!raise ${sqlstate}` }), outcome, 'từ chối cuối phát lại y nguyên');
     }
-    assert.deepEqual((await receipts()).filter(row => row.state === 'rejected').map(row => row.sqlstate), ['23505', '42501', 'PT409', 'XX000']);
+    assert.deepEqual((await receipts()).filter(row => row.state === 'rejected').map(row => row.sqlstate), ['23505', '42501', 'XX000']);
+    // R4: lỗi tạm (tranh chấp tuần tự, deadlock, chờ khoá, ngữ cảnh đổi) KHÔNG chốt biên nhận: cả giao dịch lùi, cùng requestId
+    // gọi lại được (connector giữ requestId cho lần thử lại) thay vì phát lại state_changed mãi.
+    for (const [n, sqlstate] of [[50, '40001'], [51, '40P01'], [52, '55P03'], [53, 'PT409']]) {
+      await assert.rejects(probe('probe.note', 'auto', rid(n), { note: `!raise ${sqlstate}` }), code(sqlstate), sqlstate);
+      assert.equal((await receipts()).some(row => row.request_id === rid(n)), false, `${sqlstate}: biên nhận lùi theo giao dịch`);
+      assert.deepEqual(await status(rid(n)), { kind: 'status', outcome: 'not_found' }, sqlstate);
+      assert.equal((await probe('probe.note', 'auto', rid(n), { note: 'thử lại sau lỗi tạm' })).kind, 'applied', `${sqlstate}: cùng requestId ghi được khi gọi lại`);
+    }
     assert.equal((await receipts()).filter(row => row.state === 'started').length, 0);
-    const mapped = async (sqlstate, message) => (await db.query('SELECT app_private.hermes_action_reason_v1($1,$2) r', [sqlstate, message])).rows[0].r;
-    for (const [sqlstate, message, expected] of [['P0001', 'Không ghi được: [PROFIT_LOCKED] tháng 09', 'period_locked'], ['P0001', 'Sổ quỹ đã khoá tại ngày phiếu', 'period_locked'],
+    const mapped = async (sqlstate, message, constraint = null) => (await db.query('SELECT app_private.hermes_action_reason_v1($1,$2,$3) r', [sqlstate, message, constraint])).rows[0].r;
+    for (const [sqlstate, message, expected, constraint] of [['P0001', 'Không ghi được: [PROFIT_LOCKED] tháng 09', 'period_locked'], ['P0001', 'Sổ quỹ đã khoá tại ngày phiếu', 'period_locked'],
       ['P0001', '[STRICT_MODE] chặn', 'strict_mode'], ['42501', 'Không có quyền sử dụng sổ quỹ này', 'cashbook_not_held'], ['P0001', 'Chỉ sửa được phiếu Chờ duyệt', 'not_pending'],
       ['P0001', 'Tổng tiền phiếu vượt giới hạn', 'amount_out_of_range'], ['P0001', 'hermes_task_quota_exceeded', 'quota_exceeded'], ['22023', 'Cần lý do ít nhất 8 ký tự', 'reason_required'],
-      ['40001', 'serialization', 'state_changed'], ['42501', 'denied', 'not_allowed'], ['23505', 'dup', 'duplicate_request'], ['22023', 'bad', 'crm_refused'], [null, null, 'crm_refused']]) {
-      const got = await mapped(sqlstate, message);
-      assert.equal(got, expected, `${sqlstate} ${message}`);
+      ['40001', 'serialization', 'state_changed'], ['40P01', 'deadlock', 'state_changed'], ['55P03', 'lock not available', 'state_changed'], ['42501', 'denied', 'not_allowed'],
+      ['23505', 'dup', 'crm_refused'], ['23505', 'duplicate key value violates unique constraint "income_expenses_code_key"', 'crm_refused', 'income_expenses_code_key'],
+      ['23505', 'dup', 'duplicate_request', 'hermes_action_receipts_pkey'], ['22023', 'bad', 'crm_refused'], [null, null, 'crm_refused']]) {
+      const got = await mapped(sqlstate, message, constraint);
+      assert.equal(got, expected, `${sqlstate} ${message} ${constraint}`);
       assert.ok(ACTION_REASON_CODES.includes(got), 'chỉ mã trong danh sách đóng');
     }
+  });
+
+  await t.test('R1–R2: a NULL action or phase never slips past the fence; nothing answered, nothing written', async () => {
+    const before = (await receipts()).length, auditsBefore = await audits();
+    // R1: khoá thử TẮT (trạng thái production) + action NULL ⇒ không còn nhánh "chỉ kiểm binding": không trả kết quả giải tên.
+    await f.rollbackCase(async () => {
+      await db.query("UPDATE app_private.hermes_capabilities SET enabled=false WHERE capability=$1", [PROBE]);
+      for (const phase of ['preview', 'auto', 'apply'])
+        await assert.rejects(probe(null, phase, rid(40), { note: 'x', buildingName: 'Toà A' }, phase === 'apply' ? { resolved: { buildingId: BUILDING }, basis: 'x' } : {}), code('42501'), phase);
+    });
+    await assert.rejects(probe(null, 'preview', rid(41), { buildingName: 'Toà A' }), code('42501'), 'khoá bật vẫn đòi thao tác');
+    // R2: thao tác tiền với phase NULL/lạ ⇒ 22023, không bao giờ ghi thẳng mà bỏ qua xem trước.
+    for (const phase of [null, 'write', 'APPLY']) {
+      await assert.rejects(probe('probe.confirm', phase, rid(42), { amount: 1000 }), code('22023'), String(phase));
+      await assert.rejects(probe('probe.note', phase, rid(43), { note: 'x' }), code('22023'), String(phase));
+    }
+    // Lượt 2 phải đưa lại đúng bản đã giải dạng object.
+    for (const resolved of [['x'], 'x', 1])
+      await assert.rejects(probe('probe.confirm', 'apply', rid(44), { amount: 1 }, { resolved, basis: 'x' }), code('22023'), JSON.stringify(resolved));
+    assert.equal((await receipts()).length, before, 'không mở biên nhận');
+    assert.equal(await audits(), auditsBefore, 'không có audit');
+  });
+
+  await t.test('frame: a receipt is never committed while still started (a page that forgets finish rolls back)', async () => {
+    await assert.rejects(db.exec(`BEGIN; INSERT INTO app_private.hermes_action_receipts(organization_id,user_id,request_id,connection_id,action,input)
+      VALUES('${ORG}','${USER}','${rid(60)}','${binding.connectionId}','probe.note','{}'); COMMIT;`), /hermes_action_receipt_unfinished/);
+    assert.equal((await receipts()).some(row => row.request_id === rid(60)), false);
+    // Mở rồi chốt trong cùng giao dịch thì COMMIT được (đường của mọi thao tác).
+    await db.exec(`BEGIN; INSERT INTO app_private.hermes_action_receipts(organization_id,user_id,request_id,connection_id,action,input)
+      VALUES('${ORG}','${USER}','${rid(61)}','${binding.connectionId}','probe.note','{}');
+      UPDATE app_private.hermes_action_receipts SET state='rejected',finished_at=clock_timestamp() WHERE request_id='${rid(61)}'; COMMIT;`);
+    assert.deepEqual((await receipts()).filter(row => row.request_id === rid(61)).map(row => row.state), ['rejected']);
   });
 
   await t.test('guard: registry off, key not on the connection, stale binding, non-authenticated role all refused; nothing written', async () => {
@@ -176,9 +223,11 @@ test('action foundation M1: guard, capabilities, receipts, basis, reasons, statu
       has_schema_privilege('authenticated','app_private','USAGE') usage,
       has_function_privilege('authenticated','app_private.hermes_action_receipt_begin_v1(jsonb,text,uuid,jsonb)','EXECUTE') begin_exec,
       has_function_privilege('authenticated','app_private.hermes_action_receipt_finish_v1(jsonb,text,uuid,jsonb,text,text)','EXECUTE') finish_exec,
-      has_function_privilege('authenticated','app_private.hermes_action_reason_v1(text,text)','EXECUTE') reason_exec`);
+      has_function_privilege('authenticated','app_private.hermes_action_reason_v1(text,text,text)','EXECUTE') reason_exec,
+      has_function_privilege('authenticated','app_private.hermes_action_binding_v1(jsonb)','EXECUTE') binding_exec,
+      (SELECT tgdeferrable AND tginitdeferred FROM pg_trigger WHERE tgrelid='app_private.hermes_action_receipts'::regclass AND tgname='hermes_action_receipt_settled') settled_deferred`);
     assert.deepEqual(rows[0], { r: false, p: false, a: false, probe_definer: false, guard_definer: true, probe_bound: true, usage: false,
-      begin_exec: false, finish_exec: false, reason_exec: false });
+      begin_exec: false, finish_exec: false, reason_exec: false, binding_exec: false, settled_deferred: true });
     void ROOM; void SCOPE; void USER;
   });
 });

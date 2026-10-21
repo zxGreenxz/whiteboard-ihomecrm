@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T17:45:11.556Z",
+  "generatedAt": "2026-10-21T19:06:25.431Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12558,7 +12558,7 @@
       "version": "20261021132433",
       "name": "hermes_write_name_resolve_v1",
       "scheme": "timestamp14",
-      "sha256": "3684e441b159af2ecced00ba3be116a3dd8e0fbedf0ed498a0bcf7671337985e",
+      "sha256": "b4a83ad70210df1c286234367adc6dfce511033584c3f42882f32ce147987c82",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -12573,15 +12573,15 @@
       "version": "20261021133823",
       "name": "hermes_action_foundation_v1",
       "scheme": "timestamp14",
-      "sha256": "2238645d1271825b5eed9770bb409ba3f6d5782b46630f41a08b3e78b9ddf45c",
+      "sha256": "efb79ce06243f49944b2915b3e6fd13c71cc317c0d427d7497c19331b98bd979",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
         "table:app_private.hermes_action_policies",
         "table:app_private.hermes_action_receipts",
         "function:app_private.hermes_action_reason_v1",
-        "function:app_private.hermes_action_guard_v1",
-        "function:app_private.hermes_action_receipt_begin_v1"
+        "function:app_private.hermes_action_binding_v1",
+        "function:app_private.hermes_action_guard_v1"
       ]
     },
     {

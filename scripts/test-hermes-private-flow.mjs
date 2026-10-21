@@ -512,7 +512,7 @@ for (const spec of [
     statementSha256: '801ff7b91a46c35be4fd9f1f0dd338d20a89738d7e97e94baa3eb2dc25b96527' },
   { name: 'app_private.hermes_write_name_resolve_core_v1',
     sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
-    statementSha256: '70252749e7e09e2166afce808e2397db0ddf62329ee34687dcc38bf0ed99974a' },
+    statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last

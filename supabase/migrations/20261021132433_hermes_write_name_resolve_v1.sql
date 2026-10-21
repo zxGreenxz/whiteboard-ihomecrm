@@ -11,9 +11,11 @@
 --      đọc 21/10 23:35; cùng mẫu R2d 20261021063452). Đọc DƯỚI RLS của chính người gọi (buildings, rooms,
 --      building_common_names, job_types, profiles). Người: hồ sơ thấy được qua RLS ∩ thành viên ACTIVE theo đúng helper mà
 --      hàm tạo việc đang dùng (RLS organization_memberships chỉ cho siêu quản trị đọc, nên không lọc thuần RLS được).
---  (4) app_private.hermes_write_name_resolve_core_v1(org, toà[], names, thành viên[])  plpgsql STABLE, SECURITY INVOKER,
---      search_path='': thân giải tên; chỉ tham chiếu bảng/hàm public (plpgsql tra tên lúc chạy). Từ chối 42501 khi
---      current_user <> 'authenticated'. Client không gọi thẳng được (không USAGE app_private); chỉ tới qua OID của (3).
+--  (4) app_private.hermes_write_name_resolve_core_v1(org, toà[], names, thành viên[], người gọi là thành viên)  plpgsql
+--      STABLE, SECURITY INVOKER, search_path='': thân giải tên; chỉ tham chiếu bảng/hàm public (plpgsql tra tên lúc chạy).
+--      Từ chối 42501 khi current_user <> 'authenticated' hoặc NGƯỜI GỌI không là thành viên ACTIVE của công ty được hỏi
+--      (review #253: nếu không, helper thành viên DEFINER cho người ngoài dò hồ sơ có ACTIVE ở công ty khác không). Client
+--      không gọi thẳng được (không USAGE app_private); chỉ tới qua OID của (3), nên cờ thành viên do (3) tính là tin được.
 --      Không có hàm DEFINER mới, không chép policy.
 --      names = {"building","room","jobType","person"} (mỗi khoá tuỳ chọn, chuỗi 1–120 ký tự).
 --      Toà: tên / mã / từng bí danh trong mã tách dấu phẩy (như web splitAliases) / tên thường gọi, so sau khi bỏ dấu;
@@ -22,11 +24,13 @@
 --      phạm vi. Loại việc: bỏ dấu, bằng rồi chứa, bỏ loại đã tắt. Người: bỏ dấu, bằng rồi chứa.
 --      Kết quả: {"status":"resolved","building","room","jobType","person"} (mỗi mục {id,name} hoặc null) hoặc
 --      {"status":"unresolved","field","wanted","why","candidates":[{name[,buildingName]}] ≤ 8,"more"} với why:
---        ambiguous      — ≥ 2 ứng viên trong phạm vi được ghi;
---        outside_scope  — người gọi THẤY đối tượng (RLS) nhưng nó nằm ngoài phạm vi toà của khoá ghi;
+--        ambiguous      — ≥ 2 ứng viên trong phạm vi được ghi (ứng viên = các tên đó, ≤ 8; more khi > 8);
+--        outside_scope  — người gọi THẤY đối tượng (RLS) nhưng nó nằm ngoài phạm vi toà của khoá ghi. KHÔNG kèm tên (review
+--                         #253): phạm vi được ghi = phạm vi khoá ∩ overlay kết nối, hẹp hơn buildings.view của web, nên nêu tên
+--                         sẽ cho kết nối liệt kê toà ngoài overlay (dò chuỗi 2 ký tự);
 --        not_visible    — không thấy gì trong phạm vi quyền. Hàm INVOKER không bao giờ biết "không có": RLS có thể ẩn
 --                         đối tượng có thật, nên câu cho người dùng là "không thấy trong phạm vi quyền", không phải "không có".
---      Ứng viên chỉ gồm tên mà RLS của người gọi đã cho thấy; không có ID nào ngoài mục đã giải.
+--      Ứng viên chỉ gồm tên trong phạm vi được ghi mà RLS của người gọi đã cho thấy; không có ID nào ngoài mục đã giải.
 -- Không ghi dữ liệu. Idempotent (CREATE OR REPLACE); khối kiểm cuối chỉ đọc catalog.
 BEGIN;
 SET LOCAL lock_timeout='5s';
@@ -62,8 +66,10 @@ RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SECURITY INVOKER SET search_pa
   SELECT regexp_replace(regexp_replace(public.hermes_name_fold_v1(p_text),'[^a-z0-9]','','g'),'^(phong|ph|p)(?=[0-9])','')
 $fn$;
 
--- 4. Lõi giải tên cho thao tác ghi, dưới RLS của người gọi. p_member_ids = hồ sơ là thành viên ACTIVE (do (3) tính).
-CREATE OR REPLACE FUNCTION app_private.hermes_write_name_resolve_core_v1(p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_member_ids uuid[])
+-- 4. Lõi giải tên cho thao tác ghi, dưới RLS của người gọi. p_member_ids = hồ sơ là thành viên ACTIVE, p_caller_member =
+-- người gọi là thành viên ACTIVE của công ty (cả hai do (3) tính qua helper DEFINER gắn OID).
+CREATE OR REPLACE FUNCTION app_private.hermes_write_name_resolve_core_v1(p_organization_id uuid,p_building_ids uuid[],p_names jsonb,p_member_ids uuid[],
+  p_caller_member boolean)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $fn$
 DECLARE
   v_entry record; v_value text;
@@ -77,6 +83,7 @@ BEGIN
     OR cardinality(p_building_ids)>256 OR array_position(p_building_ids,NULL) IS NOT NULL
     OR p_names IS NULL OR jsonb_typeof(p_names)<>'object' THEN
     RAISE EXCEPTION 'hermes_write_name_invalid' USING ERRCODE='22023'; END IF;
+  IF p_caller_member IS NOT TRUE THEN RAISE EXCEPTION 'hermes_write_name_denied' USING ERRCODE='42501'; END IF;
   FOR v_entry IN SELECT e.key, e.value FROM jsonb_each(p_names) e LOOP
     IF v_entry.key NOT IN ('building','room','jobType','person') OR jsonb_typeof(v_entry.value)<>'string' THEN
       RAISE EXCEPTION 'hermes_write_name_invalid' USING ERRCODE='22023'; END IF;
@@ -120,11 +127,12 @@ BEGIN
     IF jsonb_array_length(v_in)=1 THEN
       r_building:=jsonb_build_object('id',v_in->0->'id','name',v_in->0->'name');
     ELSE
+      -- Chỉ nêu tên trong phạm vi được ghi (ambiguous); outside_scope không bao giờ kèm tên.
       RETURN jsonb_build_object('status','unresolved','field','building','wanted',v_building,
         'why',CASE WHEN jsonb_array_length(v_in)>1 THEN 'ambiguous' WHEN jsonb_array_length(v_out)>0 THEN 'outside_scope' ELSE 'not_visible' END,
-        'candidates',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',e->'name') ORDER BY ord),'[]'::jsonb) FROM jsonb_array_elements(
-          CASE WHEN jsonb_array_length(v_in)>1 THEN v_in ELSE v_out END) WITH ORDINALITY AS x(e,ord) WHERE ord<=8),
-        'more',GREATEST(jsonb_array_length(v_in),jsonb_array_length(v_out))>8);
+        'candidates',(SELECT COALESCE(jsonb_agg(jsonb_build_object('name',e->'name') ORDER BY ord),'[]'::jsonb) FROM jsonb_array_elements(v_in)
+          WITH ORDINALITY AS x(e,ord) WHERE ord<=8),
+        'more',jsonb_array_length(v_in)>8);
     END IF;
   END IF;
 
@@ -194,38 +202,41 @@ BEGIN
   RETURN jsonb_build_object('status','resolved','building',r_building,'room',r_room,'jobType',r_job,'person',r_person);
 END $fn$;
 
--- 3. Vỏ public SQL-standard: OID của lõi và helper thành viên gắn lúc tạo (không cần USAGE app_private lúc chạy). Danh sách
--- thành viên chỉ tính khi có hỏi người: hồ sơ thấy được qua RLS của người gọi ∩ thành viên ACTIVE của công ty.
+-- 3. Vỏ public SQL-standard: OID của lõi và helper thành viên gắn lúc tạo (không cần USAGE app_private lúc chạy). Người gọi
+-- phải là thành viên ACTIVE của công ty (lõi từ chối 42501 nếu không). Danh sách thành viên chỉ tính khi có hỏi người và người
+-- gọi thuộc công ty: hồ sơ thấy được qua RLS của người gọi ∩ thành viên ACTIVE của công ty.
 CREATE OR REPLACE FUNCTION public.hermes_write_name_resolve_v1(p_organization_id uuid,p_building_ids uuid[],p_names jsonb)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path=''
 BEGIN ATOMIC
+  WITH caller AS MATERIALIZED (SELECT COALESCE(app_private.hermes_task_assignee_member_v1(auth.uid(),p_organization_id),false) AS member)
   SELECT app_private.hermes_write_name_resolve_core_v1(p_organization_id,p_building_ids,p_names,
-    CASE WHEN jsonb_typeof(p_names)='object' AND p_names ? 'person' THEN ARRAY(SELECT p.id FROM public.profiles p
-      WHERE p.full_name IS NOT NULL AND app_private.hermes_task_assignee_member_v1(p.id,p_organization_id)) ELSE '{}'::uuid[] END);
+    CASE WHEN caller.member AND jsonb_typeof(p_names)='object' AND p_names ? 'person' THEN ARRAY(SELECT p.id FROM public.profiles p
+      WHERE p.full_name IS NOT NULL AND app_private.hermes_task_assignee_member_v1(p.id,p_organization_id)) ELSE '{}'::uuid[] END,
+    caller.member) FROM caller;
 END;
 
 ALTER FUNCTION public.hermes_name_fold_v1(text) OWNER TO postgres;
 ALTER FUNCTION public.hermes_room_key_v1(text) OWNER TO postgres;
-ALTER FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[]) OWNER TO postgres;
+ALTER FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean) OWNER TO postgres;
 ALTER FUNCTION public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.hermes_name_fold_v1(text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_room_key_v1(text) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
-REVOKE ALL ON FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[]) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
+REVOKE ALL ON FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 REVOKE ALL ON FUNCTION public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb) FROM PUBLIC,anon,authenticated,service_role,hermes_store_executor;
 GRANT EXECUTE ON FUNCTION public.hermes_name_fold_v1(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_room_key_v1(text) TO authenticated;
 -- Vỏ chạy dưới vai authenticated nên cần EXECUTE trên lõi (tới qua OID, không qua tên).
-GRANT EXECUTE ON FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb) TO authenticated;
 
 DO $check$
 DECLARE fn regprocedure;
 BEGIN
   FOREACH fn IN ARRAY ARRAY['public.hermes_name_fold_v1(text)','public.hermes_room_key_v1(text)',
-      'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)','app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[])']::regprocedure[] LOOP
+      'public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)','app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)']::regprocedure[] LOOP
     IF EXISTS(SELECT 1 FROM pg_proc p WHERE p.oid=fn AND (p.prosecdef OR NOT ('search_path=""'=ANY(COALESCE(p.proconfig,'{}'::text[])))
         OR p.provolatile::text<>CASE WHEN fn IN ('public.hermes_write_name_resolve_v1(uuid,uuid[],jsonb)'::regprocedure,
-          'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[])'::regprocedure) THEN 's' ELSE 'i' END))
+          'app_private.hermes_write_name_resolve_core_v1(uuid,uuid[],jsonb,uuid[],boolean)'::regprocedure) THEN 's' ELSE 'i' END))
       OR has_function_privilege('anon',fn,'EXECUTE') OR NOT has_function_privilege('authenticated',fn,'EXECUTE') THEN
       RAISE EXCEPTION 'hermes_write_name_resolve_catalog_invalid: %',fn; END IF;
   END LOOP;

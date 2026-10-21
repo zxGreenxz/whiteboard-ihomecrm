@@ -1,5 +1,5 @@
 {
-  "$comment": "Bộ vector giải tên cho thao tác ghi, dùng chung (D7, NEN-CHUNG-THAO-TAC-GHI.md mục 7). Hàm SQL public.hermes_write_name_resolve_v1 phải thoả MỌI ca (write-name-resolve-sql.test.mjs). Ca có web=true thì bộ nhập nhanh của web (src/lib/jobQuickInput.ts) cũng phải cho cùng kết quả (src/lib/__tests__/hermesNameMatchParity.test.ts); web=false là chỗ web còn hẹp hơn (giữ dấu, khớp bằng một token, không tên thường gọi) — web chuyển sang gọi hàm SQL là việc sau. Dữ liệu giả, không phải dữ liệu thật.",
+  "$comment": "Bộ vector giải tên cho thao tác ghi, dùng chung (D7, NEN-CHUNG-THAO-TAC-GHI.md mục 7). Hàm SQL public.hermes_write_name_resolve_v1 phải thoả MỌI ca (write-name-resolve-sql.test.mjs). Ca có web=true thì bộ nhập nhanh của web (src/lib/jobQuickInput.ts) cũng phải cho cùng kết quả (src/lib/__tests__/hermesNameMatchParity.test.ts); web=false là chỗ web còn hẹp hơn (giữ dấu, khớp bằng một token, không tên thường gọi) — web chuyển sang gọi hàm SQL là việc sau. Người, phòng, loại việc là giả; tên/mã toà (1392QT, 158PVC, 15KV, 44TL…) trùng mã toà thật đã có sẵn ở nhiều file khác trong repo — không phải dữ liệu khách. outside_scope không bao giờ kèm tên ứng viên (review #253).",
   "buildings": [
     { "key": "b1", "name": "1392QT", "code": "1392QT, 1392, QT", "inScope": true },
     { "key": "b2", "name": "Lê Văn Thọ 102", "code": "102LVT", "commonNames": ["Một lẻ hai"], "inScope": true },
@@ -52,7 +52,7 @@
     { "field": "building", "wanted": "Toà A", "expect": "b5", "web": false },
     { "field": "building", "wanted": "ta", "expect": "b5", "web": true },
     { "field": "building", "wanted": "London", "why": "ambiguous", "candidates": ["London Garden", "London Park"], "web": false },
-    { "field": "building", "wanted": "44TL", "why": "outside_scope", "candidates": ["44TL"], "web": false },
+    { "field": "building", "wanted": "44TL", "why": "outside_scope", "candidates": [], "web": false },
     { "field": "building", "wanted": "Kho Ảo", "why": "not_visible", "web": false },
     { "field": "building", "wanted": "XOA", "why": "not_visible", "web": false },
     { "field": "building", "wanted": "Không Tồn Tại", "why": "not_visible", "web": true },
