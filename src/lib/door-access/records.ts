@@ -1,4 +1,4 @@
-import type { DoorKeyLink, DoorRecord, DoorUnlockType } from "./dto";
+import type { DoorActionLog, DoorKeyLink, DoorRecord, DoorUnlockType } from "./dto";
 
 /**
  * Lịch sử ra vào ↔ liên kết số trên máy (docs/he-thong/26 §Người dùng thấy gì: "người (tên khách
@@ -32,19 +32,46 @@ export interface RecordPerson {
   name: string;
   /** Phòng (nếu có) — dòng phụ. */
   detail: string | null;
-  source: "link" | "device" | "none";
+  /** temp = mật khẩu tạm tạo từ CRM (tên lấy từ nhật ký TEMP_PASSWORD_CREATE). */
+  source: "link" | "temp" | "device" | "none";
   link: DoorKeyLink | null;
 }
 
-export function recordPerson(record: DoorRecord, links: ReadonlyMap<string, DoorKeyLink>): RecordPerson {
+/**
+ * Id mật khẩu tạm (Tuya, dạng chuỗi như DTO nhật ký) ⇒ tên đặt lúc tạo từ CRM. Không có nhật ký ⇒ không có tên
+ * (mật khẩu tạo ngoài CRM, hoặc nhật ký chưa tải được).
+ */
+export function indexTempPasswordNames(
+  logs: ReadonlyArray<Pick<DoorActionLog, "action" | "status" | "tuya_password_id" | "detail">>,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const log of logs) {
+    if (log.action !== "TEMP_PASSWORD_CREATE" || log.status !== "OK" || log.tuya_password_id === null) continue;
+    const name = log.detail?.name;
+    if (typeof name === "string" && name.trim() !== "") names.set(log.tuya_password_id, name.trim());
+  }
+  return names;
+}
+
+export function recordPerson(
+  record: DoorRecord,
+  links: ReadonlyMap<string, DoorKeyLink>,
+  tempNames: ReadonlyMap<string, string> = new Map(),
+): RecordPerson {
   if (isLinkableMethod(record.method) && typeof record.slot === "number" && Number.isInteger(record.slot)) {
     const link = links.get(keyOf(record.method, record.slot)) ?? null;
     if (link) return { name: linkDisplayName(link), detail: link.room_name, source: "link", link };
   }
+  // Mật khẩu tạm: slot = id mật khẩu (Tuya). Tạo từ CRM thì có tên; không thì không có gì để "gắn".
+  if (record.method === "temporary" && record.slot !== null) {
+    const name = tempNames.get(String(record.slot));
+    if (name) return { name, detail: null, source: "temp", link: null };
+  }
   const deviceName = record.userName ?? record.unlockName;
   if (deviceName) return { name: deviceName, detail: null, source: "device", link: null };
-  if (record.kind === "alarm" || record.kind === "doorbell") return { name: "—", detail: null, source: "none", link: null };
-  return { name: "Chưa gắn", detail: null, source: "none", link: null };
+  // "Chưa gắn" chỉ có nghĩa với số vân tay/thẻ/mật khẩu (gắn được với khách ở tab Đối chiếu).
+  if (isLinkableMethod(record.method)) return { name: "Chưa gắn", detail: null, source: "none", link: null };
+  return { name: "—", detail: null, source: "none", link: null };
 }
 
 /** Gộp các trang (Xem thêm) và bỏ bản ghi trùng id giữa hai trang. */

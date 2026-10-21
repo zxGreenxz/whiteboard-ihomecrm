@@ -5,12 +5,12 @@ import { LoadingState, RefreshBar } from "@/components/loading/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useDoorKeyLinks, useDoorRecords } from "@/hooks/door-access/useDoorAccessQueries";
+import { useDoorKeyLinks, useDoorRecords, useDoorTempPasswordLogs } from "@/hooks/door-access/useDoorAccessQueries";
 import type { DoorDevice } from "@/lib/door-access/dto";
 import type { DoorAccessCaller } from "@/lib/door-access/edge";
 import { doorErrorMessage } from "@/lib/door-access/errors";
 import { DAY_MS, formatDayTime, recordMethodLabel, vnDate } from "@/lib/door-access/format";
-import { indexLinks, mergeRecordPages, recordPerson } from "@/lib/door-access/records";
+import { indexLinks, indexTempPasswordNames, mergeRecordPages, recordPerson } from "@/lib/door-access/records";
 import { historyRange } from "@/lib/door-access/view";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,9 @@ export function HistoryTab({ caller, device }: { caller: DoorAccessCaller; devic
   const records = useDoorRecords(caller, device.id, range);
   const links = useDoorKeyLinks(caller, device.id);
   const linkIndex = useMemo(() => indexLinks(links.data ?? []), [links.data]);
+  // Tên mật khẩu tạm tạo từ CRM — lỗi tải thì cột Người chỉ thiếu tên, không chặn lịch sử.
+  const tempLogs = useDoorTempPasswordLogs(caller, device.id);
+  const tempNames = useMemo(() => indexTempPasswordNames(tempLogs.data?.logs ?? []), [tempLogs.data]);
   const rows = useMemo(() => mergeRecordPages(records.data?.pages ?? []), [records.data]);
 
   const pickQuick = (value: Exclude<Quick, null>) => {
@@ -126,7 +129,7 @@ export function HistoryTab({ caller, device }: { caller: DoorAccessCaller; devic
           <RefreshBar active={records.isFetching && !records.isFetchingNextPage} />
           <ul className="divide-y rounded-xl border bg-card" aria-label="Lịch sử ra vào">
             {rows.map((record) => {
-              const person = recordPerson(record, linkIndex);
+              const person = recordPerson(record, linkIndex, tempNames);
               return (
                 <li key={record.id} className="grid grid-cols-[4.75rem_1fr] gap-x-3 gap-y-0.5 px-3 py-2.5 sm:grid-cols-[6rem_11rem_1fr]">
                   <span className="text-sm tabular-nums text-muted-foreground">{record.at === null ? "—" : formatDayTime(record.at)}</span>

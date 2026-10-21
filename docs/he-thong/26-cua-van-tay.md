@@ -15,8 +15,8 @@ Trang `/cua-van-tay` nối CRM với máy vân tay ở cửa các tòa (thiết 
 
 | Phần | Quyền | Nội dung |
 |---|---|---|
-| Chọn máy | Xem (hoặc quyền cửa bất kỳ ở tòa) | Máy đang hoạt động ở các tòa được phép |
-| Lịch sử ra vào | Xem | Giờ, cách mở (vân tay số mấy, thẻ, mật khẩu, mật khẩu tạm, app), người (tên khách nếu số đã gắn, không thì tên trên máy) |
+| Vào trang, chọn máy | Xem (vào trang); máy hiện ở tòa có quyền cửa bất kỳ | Máy đang hoạt động ở các tòa được phép. Người chỉ có "Mật khẩu tạm" mà không có "Xem" chưa vào được trang (registry capability chỉ nhận một quyền) |
+| Lịch sử ra vào | Xem | Giờ, cách mở (vân tay số mấy, thẻ, mật khẩu, mật khẩu tạm, app), người (tên khách nếu số đã gắn; mật khẩu tạm tạo từ CRM ⇒ tên đặt lúc tạo; không thì tên trên máy) |
 | Mật khẩu tạm | Mật khẩu tạm | Danh sách còn hiệu lực, người tạo (nếu tạo từ CRM), tạo mới, xóa |
 | Đối chiếu vân tay | Xem; gắn/bỏ gắn/xóa cần Quản lý | Số trên máy ↔ khách; mục Cần xóa |
 | Thiết bị | Quản lý | Tìm máy trên SmartLife, gắn tòa, tắt máy khỏi CRM |

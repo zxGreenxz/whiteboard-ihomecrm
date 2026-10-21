@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { recordMethodLabel } from "../format";
 import { reconcileKeys } from "../reconcile";
-import { indexLinks, mergeRecordPages, recordPerson } from "../records";
+import { indexLinks, indexTempPasswordNames, mergeRecordPages, recordPerson } from "../records";
 import { keys, link, record } from "./fixtures";
 
 describe("Lịch sử ra vào: cách mở", () => {
@@ -48,8 +48,25 @@ describe("Lịch sử ra vào ↔ liên kết", () => {
     expect(recordPerson(record({ slot: 99, userName: null, unlockName: null }), links)).toMatchObject({ name: "Chưa gắn" });
   });
 
-  it("App/Từ xa không tra liên kết dù slot trùng số", () => {
+  it("App/Từ xa không tra liên kết dù slot trùng số; không có tên thì '—' (không phải 'Chưa gắn')", () => {
     expect(recordPerson(record({ method: "app", slot: 12, userName: "Chủ nhà" }), links)).toMatchObject({ name: "Chủ nhà", source: "device" });
+    expect(recordPerson(record({ method: "app", slot: null, userName: null, unlockName: null }), links)).toMatchObject({ name: "—", source: "none" });
+  });
+
+  it("mật khẩu tạm tạo từ CRM ⇒ tên đặt lúc tạo; tạo ngoài CRM ⇒ '—'", () => {
+    const names = indexTempPasswordNames([
+      { action: "TEMP_PASSWORD_CREATE", status: "OK", tuya_password_id: "3001", detail: { name: " Xem phòng 201 ", purpose: "XEM_PHONG" } },
+      { action: "TEMP_PASSWORD_CREATE", status: "FAILED", tuya_password_id: null, detail: { name: "Hỏng" } },
+      { action: "TEMP_PASSWORD_DELETE", status: "OK", tuya_password_id: "3002", detail: { password_id: 3002 } },
+      { action: "TEMP_PASSWORD_CREATE", status: "OK", tuya_password_id: "3003", detail: null },
+    ]);
+    expect([...names]).toEqual([["3001", "Xem phòng 201"]]);
+    const temp = { method: "temporary" as const, userName: null, unlockName: null };
+    expect(recordPerson(record({ ...temp, slot: 3001 }), links, names)).toMatchObject({ name: "Xem phòng 201", source: "temp" });
+    expect(recordPerson(record({ ...temp, slot: "3001" }), links, names)).toMatchObject({ name: "Xem phòng 201" });
+    expect(recordPerson(record({ ...temp, slot: 9999 }), links, names)).toMatchObject({ name: "—", source: "none" });
+    // Mật khẩu tạm không bao giờ ghép nhầm với liên kết mật khẩu cố định cùng số.
+    expect(recordPerson(record({ ...temp, slot: 3 }), links, names)).toMatchObject({ name: "—" });
   });
 
   it("gộp trang Xem thêm, bỏ bản trùng id", () => {
