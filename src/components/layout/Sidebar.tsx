@@ -315,7 +315,8 @@ const Sidebar = ({
     return user?.email?.substring(0, 2).toUpperCase() || 'U';
   };
 
-  const businessPerformanceOrganizations = useBusinessPerformanceOrganizations();
+  // Không poll: chỉ để quyết định hiện một mục menu (RT-OTHER-4) — xem hook.
+  const businessPerformanceOrganizations = useBusinessPerformanceOrganizations(true, { poll: false });
   const superAdmin = useIsSuperAdmin();
   const canShowBusinessPerformance =
     businessPerformanceOrganizations.isSuccess &&

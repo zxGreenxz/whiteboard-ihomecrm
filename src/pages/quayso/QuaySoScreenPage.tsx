@@ -30,6 +30,7 @@ import {
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
 import MultiRoundStage from './MultiRoundStage';
+import { daQuayXong } from './quaySoPolling';
 import './quayso.css';
 
 /** Bật/tắt chế độ toàn màn hình thật (Fullscreen API). */
@@ -83,6 +84,9 @@ export default function QuaySoScreenPage() {
     refetchInterval: (query) => {
       const s = query.state.data;
       if (!s?.ok) return 5000;
+      // Màn chiếu giữ chế độ hỏi ở nền (máy chiếu hay mất focus), nhưng quay
+      // xong hết thì dừng — trước đây hỏi 5 s/lần mãi mãi (RT-OTHER-6, 21/10/2026).
+      if (daQuayXong(s)) return false;
       const conLuot = (s.rounds ?? []).some((r) => r.status !== 'drawn');
       return conLuot ? 1500 : 5000;
     },

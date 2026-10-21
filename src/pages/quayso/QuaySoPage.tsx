@@ -37,6 +37,7 @@ import { formatCountdown } from '@/lib/luckyWheel';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
 import MultiRoundStage from './MultiRoundStage';
+import { daQuayXong } from './quaySoPolling';
 import './quayso.css';
 
 const CODE_KEY = 'qs_code_v1';
@@ -419,10 +420,14 @@ export default function QuaySoPage() {
     meta: { errorDisplay: "inline", label: "trạng thái sự kiện quay số" },
     enabled: Boolean(eventParam || slug || savedCode),
     queryFn: () => fetchLuckyPublicState(eventParam, savedCode || null, slug),
-    refetchIntervalInBackground: true,
+    // Trang NGƯỜI XEM: tab nền thì thôi hỏi (21/10/2026, RT-OTHER-6) — quay lại
+    // tab thì nhịp hỏi chạy tiếp; đếm ngược tính theo giờ server nên không lệch.
+    refetchIntervalInBackground: false,
     refetchInterval: (query) => {
       const s = query.state.data;
       if (!s?.ok || !s.event) return 4000;
+      // Quay xong hết thì dừng hẳn — trước đây vẫn hỏi 10 s/lần mãi mãi.
+      if (daQuayXong(s)) return false;
       if (s.event.status === 'drawn') return 10000;
       if (s.event.drawAt) {
         const offset = serverClockOffset(s.event.serverNow);
