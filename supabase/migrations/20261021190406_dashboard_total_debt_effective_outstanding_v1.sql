@@ -6,7 +6,9 @@
 -- docs/superpowers/plans/2026-10-07-sua-loi-sau-kiem-thu-test.md; DebtChart/AlertsList/nhắc nợ (frontend) CHƯA đổi.
 -- NGUỒN: định nghĩa SỐNG production (pg_get_functiondef 22/10, md5 prosrc ab00ff7341ceee35d31fdf31e7c8116c) — repo lệch (bản cuối
 -- 20260703180000 không khớp), file này đưa repo về đúng bản đang chạy + một khối đổi (đánh dấu 20261021190406).
--- Chữ ký, kiểu trả về, INVOKER, STABLE, search_path, ACL giữ nguyên (CREATE OR REPLACE, không GRANT/REVOKE).
+-- Chữ ký, kiểu trả về, INVOKER, STABLE, search_path giữ nguyên (CREATE OR REPLACE). ACL nêu lại đúng bản production 22/10
+-- ({postgres, authenticated, service_role}, không PUBLIC/anon): không đổi gì trên production; bản dựng lại từ baseline
+-- --no-acl (Restore Drill) mặc định cho PUBLIC/anon EXECUTE nên file phải tự đặt lại.
 -- THỨ TỰ ÁP: 20261021183549_invoice_effective_outstanding_v1 TRƯỚC. Có thể bỏ riêng file này (không file nào phụ thuộc).
 -- LÙI: áp lại định nghĩa production cũ (md5 ab00ff7341ceee35d31fdf31e7c8116c); không có dữ liệu phải khôi phục.
 
@@ -180,6 +182,10 @@ BEGIN
   );
 END;
 $function$;
+
+-- ACL như production 22/10 (no-op ở đó); bản dựng lại --no-acl cần hai dòng này để không còn PUBLIC/anon EXECUTE.
+REVOKE ALL ON FUNCTION public.get_dashboard_summary(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_dashboard_summary(uuid) TO authenticated, service_role;
 
 DO $assert$
 DECLARE p record; sig text := 'public.get_dashboard_summary(uuid)';

@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T23:12:29.951Z",
+  "generatedAt": "2026-10-21T23:29:33.310Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
@@ -12615,7 +12615,7 @@
       "version": "20261021190215",
       "name": "receivable_kpis_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "0d683cd777e9fbc493e3703db17b0b026d3df3a3cdc1ceb36223b4f926c0c470",
+      "sha256": "9366332e331cb2603c7030fd35a755ba9abbbee978ab03a6b66aca51ce0a8907",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.fa_snapshot_kpis"
@@ -12626,7 +12626,7 @@
       "version": "20261021190406",
       "name": "dashboard_total_debt_effective_outstanding_v1",
       "scheme": "timestamp14",
-      "sha256": "6e694f9eff94914586314af6cb3a4d13fdf1ace674393cea73d245c76313241d",
+      "sha256": "44071f3d0d60878c38b90708698ff3fea03f8d6bc807bb6d572b56d0b41dd20d",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.get_dashboard_summary"

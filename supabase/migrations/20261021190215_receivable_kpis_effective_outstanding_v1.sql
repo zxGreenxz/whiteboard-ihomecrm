@@ -5,7 +5,9 @@
 -- Sau: Σ nợ thực (public.invoice_effective_outstanding_v1, 20261021183549) trên đúng tập cũ (hoá đơn mở, còn nợ, toà
 -- được xem); năm khoảng tuổi nợ đọc cùng con số nên receivable_total = Σ khoảng (bất biến client giữ nguyên).
 -- Thân = 20260731070000 (định nghĩa sống, md5 prosrc khớp production 22/10) với một chỗ đổi: CTE receivables.
--- Chữ ký, kiểu trả về, SECURITY DEFINER, search_path, ACL giữ nguyên (CREATE OR REPLACE, không GRANT/REVOKE).
+-- Chữ ký, kiểu trả về, SECURITY DEFINER, search_path giữ nguyên (CREATE OR REPLACE). ACL nêu lại đúng bản production 22/10
+-- ({postgres, authenticated, service_role}, không PUBLIC/anon): không đổi gì trên production; bản dựng lại từ baseline
+-- --no-acl (Restore Drill) mặc định cho PUBLIC/anon EXECUTE nên file phải tự đặt lại.
 -- THỨ TỰ ÁP: 20261021183549_invoice_effective_outstanding_v1 TRƯỚC, rồi file này.
 -- LÙI: áp lại thân fa_snapshot_kpis của 20260731070000 (CREATE OR REPLACE). Không có dữ liệu phải khôi phục.
 
@@ -116,6 +118,10 @@ AS $function$
   LEFT JOIN receivables    rc ON rc.bid = a.id
   ORDER BY a.name;
 $function$;
+
+-- ACL như production 22/10 (no-op ở đó); bản dựng lại --no-acl cần hai dòng này để không còn PUBLIC/anon EXECUTE.
+REVOKE ALL ON FUNCTION public.fa_snapshot_kpis(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fa_snapshot_kpis(uuid[]) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.fa_snapshot_kpis(uuid[]) IS
   'KPI thời điểm hiện tại × toà (Phân tích tài chính, Hiệu quả kinh doanh, Hermes fa_snapshot_kpis). receivable_total và tuổi nợ = Σ nợ thực của hoá đơn mở (invoice_effective_outstanding_v1: không đếm hai lần nợ đã kéo sang hoá đơn gánh còn mở); tuổi phần đã kéo theo hạn hoá đơn gánh.';

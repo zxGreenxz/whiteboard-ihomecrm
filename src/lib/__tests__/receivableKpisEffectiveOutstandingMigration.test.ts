@@ -71,10 +71,8 @@ beforeAll(async () => {
   const kpiOld = readFileSync('supabase/migrations/20260731070000_current_date_to_org_today.sql', 'utf8');
   const start = kpiOld.indexOf('CREATE OR REPLACE FUNCTION public.fa_snapshot_kpis(');
   await db.exec(kpiOld.slice(start, kpiOld.indexOf('\n$function$;', start) + '\n$function$;'.length));
-  // ACL như production 22/10: {postgres, authenticated, service_role}, không PUBLIC/anon (hai file chỉ CREATE OR REPLACE).
-  await db.exec(`
-    REVOKE ALL ON FUNCTION public.fa_snapshot_kpis(uuid[]), public.get_dashboard_summary(uuid) FROM PUBLIC, anon;
-    GRANT EXECUTE ON FUNCTION public.fa_snapshot_kpis(uuid[]), public.get_dashboard_summary(uuid) TO authenticated, service_role;`);
+  // ACL để mặc định (PUBLIC/anon có EXECUTE) như bản dựng lại từ baseline --no-acl của Restore Drill: lượt áp đầu phải tự
+  // đặt lại đúng ACL production; lượt thứ hai bắt đầu từ ACL production (đường production) và phải giữ nguyên.
   await db.exec(`
     CREATE TEMP TABLE before_kpis AS SELECT * FROM public.fa_snapshot_kpis(NULL);
     CREATE TEMP TABLE before_dash AS SELECT public.get_dashboard_summary(NULL) AS d;`);
@@ -145,5 +143,18 @@ describe('fa_snapshot_kpis (20261021190215)', () => {
     expect(res.rows).toHaveLength(1);
     expect(res.rows[0].prosecdef).toBe(true);
     expect(res.rows[0].cfg).toBe('search_path=public');
+  });
+});
+
+describe('ACL hai hàm sau hai lượt áp (bắt đầu từ ACL mặc định của bản dựng lại --no-acl)', () => {
+  it('đúng chuỗi ACL production 22/10; anon không EXECUTE', async () => {
+    const res = await db.query<{ sig: string; acl: string; anon_x: boolean }>(`
+      SELECT p.oid::regprocedure::text AS sig, p.proacl::text AS acl, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_x
+        FROM pg_proc p WHERE p.proname IN ('fa_snapshot_kpis', 'get_dashboard_summary') ORDER BY 1`);
+    const prodAcl = '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}';
+    expect(res.rows).toEqual([
+      { sig: 'fa_snapshot_kpis(uuid[])', acl: prodAcl, anon_x: false },
+      { sig: 'get_dashboard_summary(uuid)', acl: prodAcl, anon_x: false },
+    ]);
   });
 });
