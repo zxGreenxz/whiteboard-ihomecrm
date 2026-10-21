@@ -11,10 +11,11 @@ import { notifyActionError } from "@/lib/asyncActionFeedback";
  *
  * CRM nội bộ: dữ liệu 1 phút tuổi chấp nhận được. `staleTime = 0` +
  * `refetchOnWindowFocus` mặc định khiến MỌI query đang mount refetch lại mỗi lần
- * Alt-Tab — nhân 3–5 lần số request không cần thiết. Hook cần tươi hơn
- * (notifications, dashboard-stats) tự khai staleTime/refetchInterval riêng nên
- * không bị ảnh hưởng; mutation vẫn cập nhật đúng vì toàn repo dùng
- * invalidateQueries sau mutation.
+ * Alt-Tab — nhân 3–5 lần số request không cần thiết. Độ tươi đến từ realtime:
+ * các kênh dùng `subscribeResilient` tự làm tươi query active sau khi kênh rớt
+ * rồi nối lại, khi tab ẩn lâu rồi hiện lại, hoặc khi có lại mạng. Hook rẻ cần
+ * tươi hơn (đếm + recent của chuông) tự bật refetchOnWindowFocus; mutation vẫn
+ * cập nhật đúng vì toàn repo dùng invalidateQueries sau mutation.
  *
  * Query đọc được thử lại một lần. Mutation ghi không tự thử lại; kết quả
  * chưa rõ cần đối chiếu theo ID giao dịch trước khi người dùng gửi tiếp.

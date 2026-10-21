@@ -1384,7 +1384,6 @@
     "src/lib/realtime/prefetchGate.ts",
     "src/lib/realtime/subscribeResilient.ts",
     "src/lib/realtime/syncTables.ts",
-    "src/components/layout/RealtimeSyncBanner.tsx",
     "src/hooks/chat-zalo/useActiveConversation.ts",
     "src/pages/quayso/quaySoPolling.ts",
     "src/lib/receiptUpload.ts",

@@ -41,5 +41,5 @@ export function catchUp(qc: QueryClient): void {
       refetchType: "active",
       predicate: (query) => GOC_BAT_KIP.has(String(query.queryKey[0])),
     }),
-  ).catch(() => undefined);
+  ).catch(() => { /* lỗi refetch nằm ở state từng query (throwOnError mặc định false); bắt kịp không có kênh báo lỗi riêng */ });
 }

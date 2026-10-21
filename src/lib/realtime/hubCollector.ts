@@ -103,7 +103,7 @@ function nhaCum(qc: QueryClient, cum: readonly BangCho[]): void {
     if (!nenPrefetchTuHub(domain)) continue;
     import("@/lib/prefetchPages")
       .then((m) => m.prefetchDomainTuHub(qc, domain))
-      .catch(() => {});
+      .catch(() => { /* hâm cache prefetch là tuỳ chọn: lỗi tải chunk/prefetch không làm sai dữ liệu đang hiện */ });
   }
 }
 

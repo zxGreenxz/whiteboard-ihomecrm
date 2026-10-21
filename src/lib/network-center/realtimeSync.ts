@@ -117,7 +117,7 @@ export function subscribeNetworkCenterRealtime(options: NetworkCenterRealtimeOpt
       void Promise.resolve(queryClient.invalidateQueries({
         queryKey: networkCenterQueryKeys.user(actorId),
         refetchType: "active",
-      })).catch(() => undefined);
+      })).catch(() => { /* lỗi refetch nằm ở state từng query (throwOnError mặc định false), không có gì để xử lý thêm ở đây */ });
     },
   });
 

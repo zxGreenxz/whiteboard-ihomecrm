@@ -141,6 +141,8 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/finance/cashbooks/closure", idSegment: true, idKind: "int", module: "cashbooks" },
   // App.tsx:365 / :345 — fallback cho các dòng thông báo cũ mang invoice_id/contract_id.
   { path: "/invoices", idSegment: true, module: "invoices" },
+  // Nhắc hoá đơn sắp đến hạn/quá hạn phía server (lane lifecycle mở rộng 21/10/2026) trỏ danh sách.
+  { path: "/invoices", module: "invoices" },
   { path: "/contracts", idSegment: true, module: "contracts" },
   { path: "/contracts", module: "contracts" },
   { path: "/rooms", module: "rooms" },

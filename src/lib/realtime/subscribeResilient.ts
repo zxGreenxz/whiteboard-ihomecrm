@@ -90,7 +90,7 @@ export function subscribeResilient(options: ResilientChannelOptions): () => void
       if (disposed) return;
       const old = current;
       current = null;
-      if (old) await Promise.resolve(supabase.removeChannel(old)).catch(() => undefined);
+      if (old) await goKenh(old, label);
       if (disposed) return;
       generation += 1;
       open();
@@ -160,6 +160,16 @@ export function subscribeResilient(options: ResilientChannelOptions): () => void
     forgetChannel(options.id);
     const channel = current;
     current = null;
-    if (channel) void Promise.resolve(supabase.removeChannel(channel)).catch(() => undefined);
+    if (channel) void goKenh(channel, label);
   };
+}
+
+/** Gỡ kênh khỏi socket. Lỗi gỡ không chặn dựng lại/dọn — kênh cũ đã bị bỏ khỏi
+ *  vòng đời — nhưng phải để lại vết, không nuốt câm. */
+async function goKenh(channel: RealtimeChannel, label: string): Promise<void> {
+  try {
+    await supabase.removeChannel(channel);
+  } catch (error) {
+    console.warn(`[realtime] ${label} gỡ kênh lỗi`, error);
+  }
 }
