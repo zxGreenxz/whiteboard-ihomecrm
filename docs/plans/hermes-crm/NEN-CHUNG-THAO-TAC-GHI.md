@@ -1,6 +1,6 @@
-# Nền chung cho thao tác ghi của Hermes — Đợt 1 (THIẾT KẾ, chờ duyệt)
+# Nền chung cho thao tác ghi của Hermes — Đợt 1 (THIẾT KẾ ĐÃ DUYỆT, đang hiện thực)
 
-Ngày 21/10/2026 (giờ Việt Nam). Đây là **Mốc 1: thiết kế**, chưa có dòng mã nào. Không có migration, không đổi connector, không đổi production.
+Ngày 21/10/2026 (giờ Việt Nam). Mốc 1 (thiết kế) đã được phiên chính duyệt; chủ đã trả lời đủ 27 câu của plan gộp (21/10, 18:31–18:36). Các quyết định D1–D9 đã chốt ở mục 15; chỗ nào khác bản thiết kế đầu thì đã sửa ngay trong mục tương ứng. Hiện thực đi theo các mốc ở mục 13. Chưa có migration nào được áp, chưa đổi production.
 
 Đợt 1 dựng phần dùng chung cho mọi thao tác ghi mới của Hermes. Ba trang Thu chi, Hoá đơn, Hợp đồng dùng nó trước; mảng Công việc dùng sau. Đợt 1 không làm thao tác cụ thể nào của từng trang (ghi phiếu chi, thu tiền, gia hạn…).
 
@@ -9,27 +9,28 @@ Nguồn:
 - Plan gộp "Plan thao tác Hermes" gửi chủ ngày 21/10, mục 4–8.
 - Ba plan chi tiết Thu chi, Hoá đơn, Hợp đồng và bản khảo sát Công việc, cùng ngày 21/10.
 
-Plan gộp, ba plan chi tiết và bản khảo sát nằm ở máy làm việc, không nằm trong repo. Chủ chưa trả lời các câu 1, 2, 3, 5 của plan gộp, nên thiết kế này tạm theo **mặc định đề xuất** của từng câu. Mỗi chỗ dựa vào mặc định đều bật/tắt được, và mục 15 liệt kê lại.
+Plan gộp, ba plan chi tiết và bản khảo sát nằm ở máy làm việc, không nằm trong repo. Câu 1, 2, 3, 5 chủ chọn đúng mặc định đề xuất; câu 4 chủ đồng ý tắt 3 tool phiếu chi cũ. Riêng D7 (luật khớp tên) phiên chính đổi: giải tên cho thao tác ghi đặt trong hàm SQL dùng chung (mục 7).
 
 ## 0. Kết luận
 
 1. **Ba tool ghi dùng chung tốn 1 830 B trong `tools/list`.** Đó là `crm_action_list`, `crm_action_run` và `crm_action_status`, đo bằng `advertisedTool` thật trên bản nháp định nghĩa. Thêm thao tác mới không tốn thêm byte, vì danh mục thao tác và khuôn tham số nằm trong *kết quả* của `crm_action_list`.
 2. **Danh sách công cụ hiện chỉ còn 168 B.** Đo trên `origin/main` `27e0f9d10`: 65 tool, 63 832 B, trần test 64 000 B.
    - Vì vậy Đợt 1 phát hành ba tool ở trạng thái **ẩn**: chúng chỉ hiện khi kết nối giữ khoá của ít nhất một thao tác đã đăng ký và đang bật. Đợt 1 không đăng ký thao tác thật nào, nên production giữ nguyên 63 832 B.
-   - Thao tác thật đầu tiên chỉ hiện được khi rút đủ byte. Nguồn đề xuất là tắt ba tool phiếu chi cũ (−3 152 B, câu 4 của chủ, đang chờ). Sau đó tổng còn khoảng 62 510 B.
+   - Thao tác thật đầu tiên chỉ hiện được khi rút đủ byte. Chủ đã đồng ý tắt ba tool phiếu chi cũ (−3 152 B, câu 4); phiên chính làm ở draft PR #254 (khoá registry `income_expenses.create` = TẮT). Sau đó tổng còn khoảng 62 510 B.
 3. **Rào xác nhận của tin pass phòng tách thành module chung `confirm-guard.mjs`.**
    - Token vẫn dùng một lần, sống 10 phút, gắn kết nối + thao tác + nội dung.
    - Phần mở rộng cho thao tác ghi: token gắn thêm `requestId` do connector cấp ở lượt xem trước, gắn dấu trạng thái `basis` mà máy chủ đọc lúc xem trước, và gắn bản đầu vào đã giải tên. Lượt 2 gửi xuống SQL đúng bản đã giải, không giải tên lần hai.
    - Máy chủ tính lại `basis` trong transaction ghi. Lệch thì từ chối với lý do `state_changed`, và bot xem trước lại.
    - `crm_room_pass_upsert` chuyển sang module chung mà không đổi hành vi; test cũ phải xanh nguyên.
 4. **Lý do lỗi là một danh sách đóng, có câu tiếng Việt tĩnh.**
-   - Danh sách có 19 mã dùng chung. Mỗi trang thêm mã riêng vào cùng danh sách.
+   - Danh sách có 20 mã dùng chung. Mỗi trang thêm mã riêng vào cùng danh sách.
    - SQL ánh xạ lỗi của hàm ghi web sang mã. Connector chỉ chuyển cho mô hình các mã và câu trong danh sách. Mã lạ thành `crm_refused`, không chuyển nguyên văn lỗi SQL.
-   - Có thêm 3 mã lỗi broker: `action_rejected`, `action_input_unresolved`, `action_outcome_unknown`. Cả 3 mã và mọi mã lý do phải vào sổ kiểm toán `host-ownership.mjs` cùng commit. Test `audit-codes.test.mjs` đã khoá `ERROR_STATUS ⊆ AUDIT_CODES`; Đợt 1 khoá thêm tập mã lý do.
+   - **Thiếu hoặc mơ hồ đầu vào không phải lỗi.** Tên không giải được, thiếu tham số, tham số sai, thao tác lạ trả về *kết quả thường* `outcome: "needs_input"` kèm `detail` và ứng viên. Lý do: ca thử Công việc trên TEST (21/10) cho thấy sau 3 lời gọi bị từ chối liên tiếp, Hermes tạm khoá cả MCP server khoảng 59 giây và bot bỏ cuộc. Chỉ lỗi thật (quyền, nghiệp vụ, hệ thống) mới là lỗi.
+   - Có thêm 2 mã lỗi broker: `action_rejected`, `action_outcome_unknown`. Cả 2 mã và mọi mã lý do phải vào sổ kiểm toán `host-ownership.mjs` cùng commit. Test `audit-codes.test.mjs` đã khoá `ERROR_STATUS ⊆ AUDIT_CODES`; Đợt 1 khoá thêm tập mã lý do.
 5. **Chính sách câu 2, 3, 5 có chỗ bật/tắt, nhưng có hai giới hạn thật.**
    - **Câu 2.** Thao tác tiền hoặc không lùi được luôn xem trước. Đây là sàn trong mã; cấu hình chỉ siết thêm được, không nới được. Các thao tác khác theo bảng chính sách trong DB.
    - **Câu 3.** Connector **không biết** loại chat: `_meta` bị bỏ, không có header nào mang loại chat. Rào hiện có nằm ở kênh: adapter Zalo chỉ nhận DM của người đã ghép. Mục 8.2 nêu phương án và giới hạn.
-   - **Câu 5.** Khoá đang tắt trong registry **không hiện** ở màn tạo kết nối. Kết nối kiểu `inherit_crm` thì tự nhận khoá khi khoá được bật. "Tạo kết nối một lần rồi bật dần" vì vậy chỉ đúng với kết nối `inherit_crm`, và cần chủ chấp nhận việc khoá tự chảy xuống (mục 8.3).
+   - **Câu 5.** Khoá đang tắt trong registry **không hiện** ở màn tạo kết nối. Kết nối kiểu `inherit_crm` thì tự nhận khoá khi khoá được bật. Phiên chính đã đọc production: cả 6 kết nối ACTIVE đều `inherit_crm`, nên không cần tạo lại kết nối; mỗi lần bật khoá là kết nối nhận ngay (mục 8.3).
 6. **Ước công Đợt 1: 4–6 ngày kỹ sư**, chia 6 mốc. Mỗi mốc là một commit có test xanh. Hai mốc đầu chỉ đụng connector, không cần migration.
 
 ## 1. Phạm vi
@@ -53,10 +54,10 @@ Tất cả đường dẫn dưới đây tính từ `infra/hermes-broker/`, tr�
 | Rào chữ công khai | `public-text-guard.mjs`; broker gọi tại `broker.mjs` nhánh `crm_room_pass_*` | Tách phần token (cấp, dùng một lần, TTL, giới hạn 1 024 token chờ, tách `confirmToken` trước validator) thành `confirm-guard.mjs` | Token chỉ gắn `roomId` + 3 trường chữ. Không có `requestId`, không có dấu trạng thái, không có bản xem trước do máy chủ dựng |
 | Cấp requestId | `request-id-contract.mjs`, tool `crm_new_request_id` (531 B) | Connector tự cấp ở lượt xem trước; tool ghi mới không bắt buộc `requestId`, nên `startsCrmRequest` không kéo thêm `crm_new_request_id` | Tool ghi cũ vẫn cần `crm_new_request_id` cho tới khi chuyển hết |
 | Khuôn ghi prepare/finalize | `bound-user-operation.mjs`; ví dụ `expense-action-adapter.mjs`, `task-adapter.mjs` | Thêm một service cùng khuôn cho thao tác: biên nhận có nhãn, lời gọi RPC JWT người dùng là lệnh `await` cuối | Mỗi họ tool có adapter, biên nhận và tool `*_status` riêng |
-| Mã lỗi broker | `broker.mjs` `ERROR_STATUS`, `MUTATION_UNKNOWN`, `REQUEST_RECEIPT_UNKNOWN` | Thêm 3 mã (mục 6.3) | Lỗi nghiệp vụ SQL chỉ còn 4 mã trơn |
+| Mã lỗi broker | `broker.mjs` `ERROR_STATUS`, `MUTATION_UNKNOWN`, `REQUEST_RECEIPT_UNKNOWN` | Thêm 2 mã (mục 6.3) | Lỗi nghiệp vụ SQL chỉ còn 4 mã trơn |
 | Ánh xạ lỗi PostgREST | `bound-user-rpc.mjs`: 401 → `unauthorized`, 42501 → `forbidden`, PT409 → `context_changed`, 22023 → `invalid_request`, PT413 → `result_too_large`, còn lại → `backend_unavailable` | Giữ nguyên cho tool cũ. RPC thao tác mới trả lý do trong JSON 200 nên không đi qua nhánh này | Mất câu lý do (sự cố R2 của khảo sát Công việc) |
-| Chuyển `detail` cho mô hình | `mcp-http.mjs`: chỉ `read_name_unresolved.detail` và gợi ý tĩnh `READ_MISUSE_HINT_TEXTS` | Thêm nhánh cho `action_rejected` (`reason` + `detail` trong danh sách đóng) và `action_input_unresolved` (`detail`) | — |
-| Sổ kiểm toán host | `infra/hermes-runtime/host-ownership.mjs` `CODES`; test `infra/hermes-runtime/audit-codes.test.mjs` | Thêm 3 mã + tập `AUDIT_REASONS` + trường `reason` tuỳ chọn; mở rộng test | Thiếu mã là nguyên nhân sự cố 21/10: mọi lỗi tên hiện thành "CRM tạm lỗi" |
+| Chuyển `detail` cho mô hình | `mcp-http.mjs`: chỉ `read_name_unresolved.detail` và gợi ý tĩnh `READ_MISUSE_HINT_TEXTS` | Thêm nhánh cho `action_rejected` (`reason` + `detail` trong danh sách đóng). Thiếu/mơ hồ đầu vào đi bằng kết quả `needs_input`, không qua nhánh lỗi | — |
+| Sổ kiểm toán host | `infra/hermes-runtime/host-ownership.mjs` `CODES`; test `infra/hermes-runtime/audit-codes.test.mjs` | Thêm 2 mã + tập `AUDIT_REASONS` + trường `reason` tuỳ chọn; mở rộng test | Thiếu mã là nguyên nhân sự cố 21/10: mọi lỗi tên hiện thành "CRM tạm lỗi" |
 | Giải tên đọc | `read-name-resolution.mjs`: toà bỏ dấu, bỏ tiền tố "toà", khớp bằng rồi chứa; phòng gọi `hermes_room_directory_v1` | Dùng lại `foldName`, `matchBuildings`, cache danh bạ toà 5 phút | Mã toà không tách bí danh theo dấu phẩy như web (`splitAliases`). Không có tên thường gọi (`building_common_names`). Phòng khớp chứa |
 | Tên thường gọi | Bảng `building_common_names` (migration `20261002050652`); web đọc ở `src/lib/quickEntry/spokenBuilding.ts`, `resolve.ts` | Danh bạ toà v2 trả thêm `commonNames` | `hermes_building_directory_v1` không trả trường này |
 | Tool meta đọc | `wave2-registry.mjs`: `crm_read_report_list` + `crm_read_report`, mục lục theo quyền, trần riêng 1 600 B | Mẫu cho `crm_action_list` + `crm_action_run`: mục lục trong kết quả, sổ khai báo kiểm khi nạp | — |
@@ -72,11 +73,12 @@ Người dùng ── "Gia hạn 302 toà 44TL thêm 6 tháng" ──► Hermes
 Hermes ── crm_action_run {action:"contract.renew", params:{buildingName:"44TL", roomName:"302", months:6}} ──► connector
 connector:
   1. admission, quyền, audit như mọi tool (broker invoke)
-  2. tra danh mục: thao tác có đăng ký? kết nối giữ khoá? (không ⇒ action_rejected: unknown_action / action_disabled)
-  3. kiểm params theo khuôn của thao tác (sai ⇒ action_rejected: invalid_params + gợi ý tĩnh)
+  2. tra danh mục: thao tác có đăng ký? (không ⇒ KẾT QUẢ needs_input: unknown_action) kết nối giữ khoá? (không ⇒ lỗi action_rejected: action_disabled)
+  3. kiểm params theo khuôn của thao tác (sai/thiếu ⇒ KẾT QUẢ needs_input: invalid_params + gợi ý tĩnh)
   4. chính sách kênh (mục 8.2)
-  5. giải tên ở chế độ ghi bằng JWT người dùng, trong phạm vi toà của KHOÁ GHI (0/≥2 ⇒ action_input_unresolved + detail)
-  6. gọi RPC xem trước của trang (INVOKER, STABLE): preview có tên, basis, warnings, hoặc lý do từ chối sớm
+  5. gọi RPC xem trước của trang (INVOKER, STABLE) bằng JWT người dùng; trong đó SQL giải tên ở chế độ ghi, trong phạm
+     vi toà của KHOÁ GHI (mục 7; 0/≥2 ⇒ KẾT QUẢ needs_input: name_unresolved + ứng viên)
+  6. cùng RPC đó dựng preview có tên, basis, warnings, hoặc trả lý do từ chối sớm (lỗi action_rejected)
   7. quyết định xác nhận = sàn theo lớp thao tác ∨ chính sách DB ∨ máy chủ đòi (mục 8.1)
      ├─ không cần ⇒ cấp requestId, đi thẳng bước 10 trong cùng lượt gọi
      └─ cần ⇒ cấp requestId; lưu {binding, đầu vào đã giải, basis, requestId} trong bộ nhớ, sau confirmToken
@@ -143,10 +145,11 @@ Annotations:
   - `items[]` gồm `action`, `page`, `title` tiếng Việt, `confirm` (`always` / `never`), `params` (tên, kiểu, bắt buộc, giới hạn, ví dụ) và `nameParams`.
   - Danh sách chỉ có thao tác mà kết nối giữ khoá và khoá đang bật.
   - `organizationId` và `fetchedAt`.
-- **`crm_action_run`** trả một trong ba khuôn:
+- **`crm_action_run`** trả một trong ba khuôn kết quả thường, hoặc một lỗi:
+  - cần thêm thông tin: `{outcome:'needs_input', applied:false, action, reason, detail, candidates?, huongDan}`. `reason` là một trong 7 mã dạng `needs_input` (mục 6.1). Đây **không** phải lỗi MCP (`isError: false`), để không dính rào "3 lời gọi bị từ chối" của Hermes;
   - xác nhận: `{outcome:'confirmation_required', applied:false, action, requestId, preview, warnings[], confirmToken, expiresAt, huongDan}`;
   - đã ghi: `{outcome:'applied', applied:true, action, requestId, result, link}`;
-  - lỗi `action_rejected`, `action_input_unresolved`, `action_outcome_unknown`, `confirmation_invalid` (mục 6).
+  - lỗi thật: `action_rejected` (quyền, nghiệp vụ), `action_outcome_unknown`, `confirmation_invalid` (mục 6).
 - **`crm_action_status`** trả `{requestId, outcome: applied | rejected | not_found | unknown, action, result | reason+detail}`.
   - `not_found` nghĩa là chưa có biên nhận: chưa ghi, có thể chỉ mới xem trước.
   - `unknown` nghĩa là biên nhận đã mở nhưng chưa chốt.
@@ -184,7 +187,8 @@ defineAction({
   - thiếu trường bắt buộc;
   - sai kiểu hoặc khoảng giá trị;
   - chuỗi có ký tự điều khiển.
-- **Gợi ý tĩnh khi sai.** Sai thì trả `action_rejected` với lý do `invalid_params` và `detail` dựng từ khuôn, ví dụ "`months`: số nguyên 1–60". Câu gợi ý chỉ chứa tên tham số và mô tả kiểu lấy từ khuôn, không chứa giá trị mô hình gửi.
+- **Gợi ý tĩnh khi sai.** Sai hoặc thiếu thì trả *kết quả* `needs_input` với lý do `invalid_params` và `detail` dựng từ khuôn, ví dụ "`months`: số nguyên 1–60". Câu gợi ý chỉ chứa tên tham số và mô tả kiểu lấy từ khuôn, không chứa giá trị mô hình gửi.
+- **Kiểu tham số dự phòng cho ảnh.** Khuôn có sẵn kiểu `attachments`: mảng tham chiếu tới ảnh đã tải lên (không phải ảnh thô). Câu 11 chủ chọn làm đường nhận ảnh bill qua Zalo ở đợt Thu chi và dùng chung cho Công việc; Đợt 1 chỉ chừa kiểu, chưa làm luồng ảnh. Thao tác nào khai `attachments` mà chưa có luồng ảnh thì sổ danh mục từ chối khi nạp.
 - **Chuẩn hoá trước khi kiểm.** Tên tham số kiểu snake_case và số tiền dạng chuỗi số (`"3500000"`) được chuẩn hoá trước khi kiểm, giống `normalizeToolArguments`. Đọc kiểu "3tr5" là việc của mô hình.
 - **Danh mục production của Đợt 1 rỗng.** Test và TEST dùng danh mục thử `probe.*` (mục 12.4).
 
@@ -192,12 +196,17 @@ defineAction({
 
 ### 6.1 Danh sách đóng dùng chung
 
-Lý do nằm trong `infra/hermes-broker/action-reasons.mjs`. Mỗi mã có một câu tĩnh và một chỉ dẫn thử lại (`retry`).
+Lý do nằm trong `infra/hermes-broker/action-reasons.mjs`. Mỗi mã có một câu tĩnh, một chỉ dẫn thử lại (`retry`) và một **dạng**:
+- dạng `needs_input` (7 mã: `unknown_action`, `invalid_params`, `name_unresolved`, `reason_required`, `amount_out_of_range`, `date_out_of_range`, `not_found`): trả về như *kết quả thường* `outcome:'needs_input'`, không phải lỗi MCP. Đây đều là chỗ người dùng phải nói thêm hoặc sửa lại (thiếu lý do, số tiền hay ngày sai, không tìm thấy trong phạm vi), nên không được dính rào "3 lời gọi bị từ chối" của Hermes;
+- dạng `rejected` (13 mã còn lại): lỗi `action_rejected` kèm `reason` + `detail`.
+
+Câu chữ chốt nằm trong `action-reasons.mjs`; bảng dưới là tóm tắt.
 
 | Mã | Câu cho người dùng (tĩnh) | `retry` | Nguồn |
 | --- | --- | --- | --- |
 | `unknown_action` | Không có thao tác này; xem `crm_action_list`. | sửa lệnh | connector |
 | `invalid_params` | Tham số sai: {gợi ý từ khuôn}. | sửa lệnh | connector |
+| `name_unresolved` | Chưa xác định được toà/phòng/người; hỏi lại người dùng. `detail` nêu ứng viên trong phạm vi quyền. | hỏi lại | hàm giải tên SQL (mục 7) |
 | `action_disabled` | Thao tác này chưa được bật cho kết nối. | không | registry tắt / kết nối thiếu khoá |
 | `not_allowed` | Anh/chị không có quyền làm thao tác này ở toà này. | không | 42501, phạm vi toà |
 | `private_chat_only` | Lệnh ghi chỉ nhận trong chat riêng. | không | chính sách kênh (mục 8.2) |
@@ -222,7 +231,7 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 - Hợp đồng: `room_has_no_active_contract`, `already_returned`, `renew_end_not_after_current`, `room_not_lockable`, `room_already_locked`, `cannot_remove_last_representative`, `customer_ambiguous`.
 - Công việc: `loop_blocked`, `cancel_blocked`, `follow_exists`, `assignee_cannot_see_building`.
 
-Đợt 1 chỉ khai 19 mã chung. Mã của trang vào cùng commit với thao tác của trang; test ở mục 12 bắt thiếu.
+Đợt 1 chỉ khai 20 mã chung. Mã của trang vào cùng commit với thao tác của trang; test ở mục 12 bắt thiếu.
 
 ### 6.2 Ánh xạ từ SQL
 
@@ -241,15 +250,15 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 
   | Mã | HTTP | Ghi chú |
   | --- | --- | --- |
-  | `action_rejected` | 400 | kèm `reason` và `detail`; `detail` = câu tĩnh của `reason`, hoặc gợi ý khuôn tham số |
-  | `action_input_unresolved` | 400 | kèm `detail` như `read_name_unresolved` |
+  | `action_rejected` | 400 | kèm `reason` (dạng `rejected`) và `detail` = câu tĩnh của `reason` |
   | `action_outcome_unknown` | 503 | vào `MUTATION_UNKNOWN` và `REQUEST_RECEIPT_UNKNOWN`, kèm `requestId` |
 
+  Bản thiết kế đầu có thêm `action_input_unresolved` (lỗi 400). Đã bỏ: tên không giải được nay là kết quả `needs_input` (mục 4.1).
 - **`mcp-http.mjs`** chỉ chuyển `reason` và `detail` khi:
-  - `reason ∈ ACTION_REASONS`;
-  - và `detail` đúng là câu tĩnh của mã đó, hoặc gợi ý dựng từ khuôn đã đăng ký (tập đóng, sinh lúc nạp danh mục).
+  - `reason ∈ ACTION_REASONS` và có dạng `rejected`;
+  - và `detail` đúng là câu tĩnh của mã đó.
 - **`host-ownership.mjs`.**
-  - `CODES` thêm 3 mã trên.
+  - `CODES` thêm 2 mã trên.
   - Thêm tập `AUDIT_REASONS`.
   - Sự kiện audit nhận trường tuỳ chọn `reason`, hợp lệ khi và chỉ khi `code === 'action_rejected'` và `reason ∈ AUDIT_REASONS`.
   - Broker ghi `reason` vào audit, để đếm được lý do từ chối mà không phải đọc DB.
@@ -262,28 +271,35 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 
 ## 7. Giải tên cho thao tác ghi
 
-Đặt ở `write-name-resolution.mjs`. Module dùng lại `foldName`, `matchBuildings` và bộ đệm danh bạ của `read-name-resolution.mjs`, nhưng không đổi hành vi của đường đọc.
+**Đã chốt (D7): luật khớp tên cho thao tác ghi nằm trong hàm SQL dùng chung**, theo quy tắc chủ chốt 17/10: công thức dùng ở ≥ 2 nơi (web + Hermes) hoặc dính tiền/quyền thì đặt trong database. Ghi tiền vào sai toà là sai tiền, nên luật này coi là dính tiền. Bản thiết kế đầu định chép luật sang connector; phương án đó đã bỏ.
 
-| | Đọc (hiện có) | Ghi (Đợt 1) |
+- **Hàm.** `public.hermes_write_name_resolve_v1(p_organization_id uuid, p_building_ids uuid[], p_names jsonb) RETURNS jsonb`.
+  - `SECURITY INVOKER`, `STABLE`, `SET search_path = ''` (mọi tên đều ghi đủ schema).
+  - Từ chối (42501) khi `current_user <> 'authenticated'` hoặc `auth.uid()` rỗng.
+  - Đọc dưới RLS của chính người gọi: `buildings`, `rooms`, `building_common_names` (đọc = ai xem được toà). Không có hàm DEFINER nào chép policy.
+- **Ai gọi.** RPC xem trước của từng trang gọi hàm này trong cùng transaction, cùng JWT người dùng. Connector chỉ chuyển đối số và dựng `needs_input` từ kết quả; connector không tự khớp tên.
+- **Kết quả.** `{status: 'resolved', building: {id, name}, room: {id, name} | null}` hoặc `{status: 'unresolved', field, wanted, candidates: [{name, buildingName}] (≤ 8), more: boolean}`.
+
+| | Đọc (hiện có, ở connector) | Ghi (Đợt 1, trong SQL) |
 | --- | --- | --- |
-| Phạm vi | toà của khoá Đọc | toà của **khoá Ghi** của thao tác (`scopesByPermission[key]`) |
+| Phạm vi | toà của khoá Đọc | toà của **khoá Ghi** của thao tác (`scopesByPermission[key]`, connector truyền vào `p_building_ids`) ∩ RLS |
 | Toà | bỏ dấu, bỏ tiền tố "toà"; tên hoặc mã khớp bằng rồi chứa | như đọc, **cộng thêm**: (a) mã tách bí danh theo dấu phẩy như web `splitAliases` (`src/lib/textMatch.ts`); (b) tên thường gọi `building_common_names`; (c) so dạng gọn (chỉ chữ + số) cho mã. Khớp chứa chỉ nhận khi đúng **một** toà |
 | Phòng | `hermes_room_directory_v1`: khớp bằng, không có thì chứa; tối đa 5 phòng trùng tên đi chung | **chỉ khớp bằng** tên hoặc mã sau khi bỏ dấu và bỏ tiền tố "phòng / ph / p" như `roomKey` của web. "20" không khớp "201". Không nêu toà ⇒ chỉ nhận khi đúng một phòng trong cả phạm vi |
-| 0 khớp | `read_name_unresolved` | `action_input_unresolved`, `detail`: "Không thấy toà/phòng '…' trong phạm vi được ghi." |
-| ≥ 2 khớp | liệt kê | `action_input_unresolved`, `detail` liệt kê tối đa 8 ứng viên **trong phạm vi khoá ghi**, ví dụ "Phòng '201' có ở toà A, B, C, … — nêu toà." Không đoán |
+| 0 khớp | lỗi `read_name_unresolved` | kết quả `needs_input`, `detail`: "Không thấy toà/phòng '…' trong phạm vi quyền của anh/chị." Câu nói rõ *trong phạm vi quyền*, không nói "không có": ca thử Công việc cho thấy một tài khoản chủ không thấy hồ sơ nhân viên do RLS `profiles` |
+| ≥ 2 khớp | liệt kê | kết quả `needs_input`, `detail` liệt kê tối đa 8 ứng viên **trong phạm vi khoá ghi**, ví dụ "Phòng '201' có ở toà A, B, C, … — nêu toà." Không đoán |
 
-- **Tên thường gọi.** `public.hermes_building_directory_v2(org, toà[])` (INVOKER, STABLE) trả thêm `commonNames[]`, đọc dưới RLS `building_common_names` (đọc = ai xem được toà).
-  - Connector gọi v2 trước. Gặp PGRST202 (hàm chưa áp) thì lùi về v1, khi đó không có tên thường gọi.
-  - Tên ngoài phạm vi không bao giờ lộ, vì danh bạ chỉ trả toà trong danh sách của khoá ghi mà RLS cho thấy.
-- **Bộ vector dùng chung.** Bộ vector đặt ở `infra/hermes-broker/name-match-vectors.json`. Cả `node:test` của connector và một test vitest nhỏ của web cùng đọc file này, nên luật khớp của connector không lệch luật của web. Các ca:
+- **Bỏ dấu trong SQL.** Hàm tự bỏ dấu bằng `translate` (bảng chữ có dấu tiếng Việt → không dấu, đ → d) rồi `lower`. Không phụ thuộc extension `unaccent`, vì chưa xác minh extension này có trên mọi môi trường (TEST, PGlite, Restore Drill).
+- **Bộ vector dùng chung.** Bộ vector đặt ở `infra/hermes-broker/name-match-vectors.json`. Test PGlite của hàm SQL và test web (`src/lib/__tests__/jobQuickInput.test.ts`, test của `src/lib/quickEntry`) cùng đọc file này, nên luật của SQL không lệch luật web. Các ca:
   - "le van tho" khớp toà có dấu;
   - "Toà 44TL" và "toa 44tl";
   - bí danh số trong mã;
   - "15" khớp mã 15KV chứ không chứa trong "158PVC";
   - "P.302", "phòng 302";
   - "201" có ở nhiều toà.
+- **Phần JS còn trùng.** Nếu buộc phải giữ một đoạn JS cùng luật (ví dụ để dựng `detail` hoặc test), đoạn đó đánh dấu `// hermes-parity:begin` … `// hermes-parity:end`.
+- **Việc về sau (ngoài Đợt 1).** Web chuyển sang gọi cùng hàm SQL thay cho luật khớp đang chạy ở trình duyệt.
 - **Câu đọc bằng lời** ("một lẻ hai…") của Báo chi nhanh *không* đưa vào. Kênh Zalo là chữ gõ, còn câu đọc bằng lời chỉ có ở trang nhập bằng giọng nói.
-- Mỗi trang cắm phần giải riêng vào khung. Ví dụ: Hợp đồng tìm khách theo SĐT, Thu chi tìm mã phiếu, Hoá đơn tìm kỳ và hoá đơn. Đầu ra của phần giải luôn là ID nằm trong phạm vi, kèm tên để dựng bản xem trước.
+- **Phần riêng từng trang.** Mỗi trang cắm phần giải riêng vào hàm xem trước của trang: Hợp đồng tìm khách theo SĐT, Thu chi tìm mã phiếu, Hoá đơn tìm kỳ và hoá đơn, Công việc tìm người nhận. Đầu ra luôn là ID nằm trong phạm vi, kèm tên để dựng bản xem trước. Giải người phải nói rõ "không thấy trong phạm vi quyền của anh/chị".
 
 ## 8. Chính sách bật/tắt
 
@@ -333,21 +349,21 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 **Cách làm đề xuất:**
 1. Một migration seed TẮT mọi khoá ghi dự kiến của ba trang. Cùng promote đó thêm khoá vào `capability-contract.mjs` và nhãn ở `src/hermes/capabilityLabels.ts`. Các khoá:
    - Thu chi: `income_expenses.edit`, `income_expenses.cancel`, khoá duyệt riêng của Hermes `income_expenses.approve_vouchers` (tên tạm).
-   - Hoá đơn: `thu_tien.collect`, `meter_readings.create`, `invoices.edit`, `invoices.cancel`, `invoices.approve`.
+   - Hoá đơn: `meter_readings.create`, `invoices.edit`, `invoices.cancel`, `invoices.approve`. **Không** seed `thu_tien.collect`: chủ chọn không thu tiền mặt qua bot (câu 13) và không hoàn tác lần thu qua bot (câu 14), nên cũng không có thao tác hoàn tác lần thu.
    - Hợp đồng: `contracts.terminate`, `contracts.renew`, `contracts.edit`, `sale_phong.lock_room`, `contracts.create`, `contracts.transfer`.
    - Thêm khoá thử `assistant.action_probe`, chỉ bật trên TEST.
    - Tên chốt cuối cùng do plan từng trang quyết. Khoá nào trùng tên khoá CRM thì ánh xạ thẳng; khoá riêng của Hermes thì ánh xạ trong SQL.
 2. Hàm `hermes_action_capabilities_v1` và hook options chung cho các khoá này, theo khuôn `hermes_expense_capabilities_v1` và `hermes_finance_extend_options_v1`.
-3. **Điều kiện để chủ chỉ tạo kết nối một lần:** kết nối của chủ phải là `inherit_crm`. Nếu đang là `legacy_allowlist`, chủ tạo lại **một lần** dưới dạng `inherit_crm` sau khi migration seed đã áp. Sau đó mỗi lần bật khoá bằng migration là kết nối nhận khoá, không cần tạo lại.
-4. **Mặt trái:** bật khoá là mọi kết nối `inherit_crm` của người có quyền CRM tương ứng nhận ngay. Hiện cả 5 kết nối đều của chủ.
-   - Khi cấp Hermes cho hai Quản Lý Tòa (câu 7), cần chọn hoặc là loại trừ khoá tiền khi tạo kết nối cho họ, hoặc là thêm cờ `opt_in` cho khoá (phương án O2 dưới).
+3. **Điều kiện để chủ chỉ tạo kết nối một lần:** kết nối của chủ phải là `inherit_crm`. Phiên chính đã đọc production (chỉ đọc, 21/10): cả 6 kết nối ACTIVE đều `inherit_crm`, `scope_mode = unrestricted`, `excluded_read` và `excluded_action` rỗng; `hermes_org_policies` có 0 dòng (trần công ty trung tính); registry đang tắt 3 khoá `reports_finance.*`. Vậy không cần tạo lại kết nối: mỗi lần bật khoá bằng migration là kết nối nhận khoá.
+4. **Mặt trái:** bật khoá là mọi kết nối `inherit_crm` của người có quyền CRM tương ứng nhận ngay, và hiện không có trần công ty nào chặn. Cả 6 kết nối hiện đều của chủ.
+   - **Bắt buộc trước khi cấp Hermes cho hai Quản Lý Tòa** (câu 7: sau 1 tuần canary): hoặc làm O2, hoặc tạo kết nối của họ với khoá tiền nằm trong danh sách loại trừ. Không làm một trong hai thì kết nối của quản lý nhận mọi khoá tiền đang bật.
 
 | Phương án | Nội dung | Công |
 | --- | --- | --- |
-| **O1 (đề xuất)** | Như trên. Dựa vào `inherit_crm`, trần chính sách công ty và sàn xác nhận cho thao tác tiền | trong Đợt 1 |
+| **O1 (đã chốt)** | Như trên. Dựa vào `inherit_crm`, trần chính sách công ty và sàn xác nhận cho thao tác tiền | trong Đợt 1 |
 | O2 | Thêm cột `hermes_capabilities.opt_in`. Kết nối `inherit_crm` chỉ nhận khoá `opt_in` khi khoá nằm trong danh sách chọn lúc tạo. Màn tạo kết nối hiện cả khoá đang tắt với nhãn "chưa bật" | +1–1,5 ngày; đổi trigger quyền, màn web và hàm kiểm lúc lưu |
 
-Quyết định D5. Phiên chính cần đọc production (chỉ đọc) xem 5 kết nối đang là `permission_mode` nào, công ty đã có hàng `hermes_org_policies` chưa, và `excluded_action` có nhận khoá đang tắt không.
+Đã chốt D5 = O1. Còn chưa xác minh: `hermes_validate_limits_v1` có nhận khoá đang tắt trong danh sách loại trừ không (cần cho cách thứ hai ở điểm 4).
 
 ## 9. SQL nền (migration dự kiến, chưa viết)
 
@@ -362,7 +378,7 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc ki�
 | M1.5 | `app_private.hermes_action_reason_v1(p_sqlstate, p_message)` | IMMUTABLE | Ánh xạ mục 6.2; chỉ trả mã trong danh sách đóng |
 | M1.6 | `app_private.hermes_action_policies` + seed | bảng | Mục 8.1; thiếu dòng = đóng an toàn |
 | M1.7 | `public.hermes_action_capabilities_v1(p_organization_id)` | DEFINER, STABLE | Với mỗi khoá thao tác: `allowed`, `companyEnabled`, `buildingIds`, theo khuôn `hermes_expense_capabilities_v1`; kèm chính sách từng thao tác |
-| M1.8 | `public.hermes_building_directory_v2(org, toà[])` | INVOKER, STABLE | Như v1, thêm `commonNames[]` |
+| M1.8 | `public.hermes_write_name_resolve_v1(org, toà[], names jsonb)` | INVOKER, STABLE, `search_path=''` | Giải tên toà/phòng chế độ ghi (mục 7), từ chối khi `current_user <> 'authenticated'` |
 | M2 | Seed registry TẮT (mục 8.3) + hook options chung | migration riêng | Không có tác dụng cho tới khi bật |
 
 **Khuôn cho trang cắm vào sau** (không làm trong Đợt 1):
@@ -395,9 +411,9 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc ki�
 Thứ tự theo bài học R2a/B5c: connector chịu được cả bản cũ lẫn bản mới, rồi mới áp migration, rồi bật khoá, rồi cập nhật SOUL.
 
 1. **Connector bản N, chịu được thiếu SQL.**
-   - Nội dung: `confirm-guard`; tin pass phòng chuyển sang module chung, không đổi hành vi; khung thao tác với danh mục rỗng; 3 mã broker + lý do trong `host-ownership.mjs`.
+   - Nội dung: `confirm-guard`; tin pass phòng chuyển sang module chung, không đổi hành vi; khung thao tác với danh mục rỗng; 2 mã broker + lý do trong `host-ownership.mjs`.
    - Broker và `host-ownership.mjs` nằm cùng gói phát hành, đổi cùng lúc khi đổi symlink.
-   - Khi `hermes_action_capabilities_v1` hoặc `hermes_building_directory_v2` chưa có (PGRST202): họ thao tác ẩn, danh bạ lùi về v1.
+   - Khi `hermes_action_capabilities_v1` chưa có (PGRST202): họ thao tác ẩn.
    - Production không đổi một byte `tools/list`.
 2. **Migration M1** (SQL nền), áp lên TEST rồi production qua `migrate:forward`. Vì có hàm public mới nên chạy `gen:types`.
 3. **Migration M2** (seed khoá TẮT + hook options) **cùng một lần promote web** có khoá trong `capability-contract.mjs` và nhãn. Chủ tạo lại kết nối một lần nếu đang là `legacy_allowlist` (mục 8.3).
@@ -439,11 +455,7 @@ Thứ tự theo bài học R2a/B5c: connector chịu được cả bản cũ l�
   - `mcp-http` chỉ chuyển mã và câu trong danh sách;
   - `detail` gán bậy không tới mô hình.
 - **`infra/hermes-runtime/audit-codes.test.mjs` mở rộng** như mục 6.3.
-- **`write-name-resolution.test.mjs`**:
-  - bộ vector chung;
-  - phạm vi khoá ghi khác phạm vi khoá đọc;
-  - toà ngoài phạm vi không lộ trong `detail`;
-  - lùi từ v2 về v1.
+- **`needs_input` không phải lỗi**: thao tác lạ, tham số sai/thiếu, tên không giải được trả `isError: false`; ba lần liên tiếp như vậy không sinh lỗi MCP nào (rào "3 lời gọi bị từ chối" của Hermes không bị chạm).
 - **`tool-argument-shape.test.mjs`** thêm 3 phép đo ở mục 10.
 - **`tool-plan-cases.mjs`** thêm ca khung:
   - thao tác lạ ⇒ gọi `crm_action_list`;
@@ -510,13 +522,13 @@ Mỗi mốc là một commit có test xanh.
 | Mốc | Nội dung | Migration | Công |
 | --- | --- | --- | --- |
 | 2 | `confirm-guard.mjs`; `public-text-guard.mjs` thành lớp chính sách trên module chung, giữ nguyên export và câu chữ; test thí điểm xanh nguyên | không | 0,5 |
-| 3 | `action-reasons.mjs`, 3 mã broker, `mcp-http`, `host-ownership.mjs` (`AUDIT_REASONS`, trường `reason`), test kiểm toán | không | 0,5–1 |
+| 3 | `action-reasons.mjs`, 2 mã broker, `mcp-http`, `host-ownership.mjs` (`AUDIT_REASONS`, trường `reason`), test kiểm toán | không | 0,5–1 |
 | 4 | Sổ danh mục, ba tool (ẩn khi danh mục rỗng), định tuyến broker, kiểm tham số, danh mục thử, test byte, khuôn B | không | 1–1,5 |
-| 5 | `write-name-resolution.mjs` + bộ vector chung (+ test web nhỏ) | không | 0,5–1 |
+| 5 | Hàm SQL `hermes_write_name_resolve_v1` (file migration, không áp) + bộ vector chung dùng cho PGlite và test web | có (file, không áp) | 1 |
 | 6 | M1 + M2 (tên qua `tao-ten-migration`), PGlite, kiểm đột biến, adapter gọi RPC thật, chịu được thiếu hàm | có (file, không áp) | 1,5–2 |
 | 7 | Nối chính sách 8.1/8.2; cập nhật `CONNECTOR.md`; review một lượt diff cuối theo Contract | không | 0,5 |
 
-Worktree hiện chưa có `node_modules`. Các test chỉ dùng `node:` (như test byte) chạy được. Test PGlite cần nối junction tới `node_modules` của checkout chính trước Mốc 6; nhớ gỡ junction trước khi dọn worktree.
+Worktree dùng junction `node_modules` trỏ tới checkout chính (nối ở Mốc 2); nhớ gỡ junction trước khi dọn worktree.
 
 ## 14. Rủi ro
 
@@ -533,23 +545,25 @@ Worktree hiện chưa có `node_modules`. Các test chỉ dùng `node:` (như te
 | Kênh thứ hai dùng chung token có khoá ghi | Thấp hiện nay | K1 test cấp profile; K2 trước khi thêm kênh |
 | Chia sẻ phiên song song (index, worktree) | Thấp | Chỉ stage file cụ thể; không `git stash`; commit WIP |
 
-## 15. Quyết định cần phiên chính/chủ chốt
+## 15. Quyết định đã chốt (phiên chính, 21/10)
 
-| # | Quyết định | Mặc định trong thiết kế này |
+| # | Quyết định | Đã chốt |
 | --- | --- | --- |
-| D1 | Câu 1: phương án A (ba tool chung) hay B (mỗi trang một tool) | A; khuôn B dựng sẵn, đổi bằng một hằng số |
-| D2 | Câu 2: sàn xác nhận cho `money`/`irreversible` nằm trong mã, cấu hình chỉ siết | Có |
-| D3 | Câu 3: K1 ngay, K2 khi có kênh thứ hai | K1 |
-| D4 | Nguồn rút byte cho thao tác thật đầu tiên | Tắt 3 tool phiếu chi cũ (câu 4) cùng lúc hiện họ thao tác |
-| D5 | Câu 5: O1 (dựa vào `inherit_crm`) hay O2 (cờ `opt_in`) | O1, sau khi phiên chính đọc `permission_mode` của 5 kết nối |
-| D6 | Danh mục thử `probe.*` + khoá `assistant.action_probe` (seed TẮT trên production, bật trên TEST) | Có |
-| D7 | Luật khớp tên: chép sang connector + bộ vector chung với web, hay đưa vào hàm SQL | Chép + vector chung. Luật khớp không dính tiền hay quyền, web khớp trên danh sách đã nạp ở trình duyệt, và bản xem trước là chốt chặn |
-| D8 | Lỗi lạ: chỉ `crm_refused`, không chuyển nguyên văn lỗi SQL | Có. Câu thô chỉ lưu trong biên nhận để phân loại sau |
-| D9 | Trường `reason` trong sự kiện audit host | Có |
+| D1 | Câu 1: phương án A (ba tool chung) hay B (mỗi trang một tool) | **A** (chủ: dùng chung, đo trên TEST, kém thì tách); khuôn B dựng sẵn, đổi bằng một hằng số |
+| D2 | Câu 2: sàn xác nhận cho `money`/`irreversible` nằm trong mã, cấu hình chỉ siết | **Có** |
+| D3 | Câu 3: K1 ngay, K2 khi có kênh thứ hai | **K1** |
+| D4 | Nguồn rút byte cho thao tác thật đầu tiên | **Tắt 3 tool phiếu chi cũ** (chủ đồng ý câu 4; draft PR #254 của phiên chính, đã áp TEST) |
+| D5 | Câu 5: O1 (dựa vào `inherit_crm`) hay O2 (cờ `opt_in`) | **O1** (6/6 kết nối ACTIVE là `inherit_crm`); O2 hoặc loại trừ khoá tiền là điều kiện trước khi cấp Hermes cho Quản Lý Tòa |
+| D6 | Danh mục thử `probe.*` + khoá `assistant.action_probe` (seed TẮT trên production, bật trên TEST) | **Có** |
+| D7 | Luật khớp tên: chép sang connector + bộ vector chung với web, hay đưa vào hàm SQL | **ĐỔI: hàm SQL dùng chung** (INVOKER + RLS, `search_path=''`), vì sai toà khi ghi tiền là sai tiền; bộ vector dùng chung với test web; web chuyển sang hàm SQL là việc sau |
+| D8 | Lỗi lạ: chỉ `crm_refused`, không chuyển nguyên văn lỗi SQL | **Có**. Câu thô chỉ lưu trong biên nhận để phân loại sau |
+| D9 | Trường `reason` trong sự kiện audit host | **Có** |
+
+Thêm từ ca thử Công việc trên TEST (bot thật, 21/10 18:24–18:47): thiếu/mơ hồ đầu vào trả kết quả `needs_input`, không phải lỗi (mục 4.1, 6.1).
 
 ## 16. Việc phiên chính phải làm
 
-1. Duyệt thiết kế này: D1–D9.
+1. ~~Duyệt thiết kế: D1–D9~~ (đã xong 21/10).
 2. Đọc production, chỉ đọc:
    - `permission_mode`, `excluded_action` của 5 kết nối;
    - công ty có hàng `hermes_org_policies` không;
