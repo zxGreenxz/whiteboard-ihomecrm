@@ -323,7 +323,7 @@
       "sql": [
         {
           "function": "public.invoice_statistics_v3",
-          "sha256": "13c812437725268d9151ef3264c637e409287e94bd30b1a264225dd6dffc0454"
+          "sha256": "078b3fe08290f192491ab69607edd73f42500aa3cd5b6a7f32216ae14892541f"
         },
         {
           "function": "public.invoice_scope_building_ids_v1",
@@ -337,7 +337,10 @@
       "hermes": [
         {
           "sql": "app_private.hermes_report_read_v2",
-          "note": "invoice_report stats"
+          "note": "invoice_report stats; totalRemaining = nợ thực như thẻ Phải thu (20261021190212)",
+          "calls": [
+            "invoice_effective_outstanding_v1"
+          ]
         }
       ],
       "notes": "Web gọi hàm SQL dùng chung (migration 20261017115809_invoice_read_shared_v1, mô hình INVOKER + RLS 18/10/2026), không còn vùng mã web chép; Hermes CHƯA chuyển — hermes_report_read_v2 vẫn tự chép bộ lọc nên giữ loại mirrored. PR Hermes kế tiếp gọi thẳng hàm bằng JWT người dùng (hàm từ chối khi current_user khác authenticated) và truyền p_building_ids = toà của kết nối (chỉ thu hẹp), rồi đổi mục này sang kind \"rpc\"."
@@ -2555,18 +2558,26 @@
     {
       "id": "receivables-fast-read",
       "kind": "mirrored",
-      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false. B5c 21/10 (20261020171321): cả hai lane thêm buildingName/buildingCode (LEFT JOIN buildings theo room.building_id) để model gom nợ theo toà.",
+      "description": "Fast read công nợ (crm_read_receivables qua hermes_domain_read_fast_v1): nhánh receivables của hermes_domain_read_v2 (APPROVED/PARTIAL_PAID/OVERDUE, còn nợ >0, lọc due_date/trạng thái/chữ, keyset id, limit+1) chép sang reader INVOKER dưới RLS. Candidate B2 20/10, readFastPath mặc định false. B5c 21/10 (20261020171321): cả hai lane thêm buildingName/buildingCode (LEFT JOIN buildings theo room.building_id) để model gom nợ theo toà. Nợ thực 22/10 (20261021185540): cả hai lane gọi cùng public.invoice_effective_outstanding_v1 cho cả tập lọc — nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần.",
       "sql": [
         {
           "function": "public.hermes_domain_read_v2",
-          "sha256": "7f21c0dda6f21d3b96a27336b0d5e3b8e0fb7e19d86ad531fabe85111a29a82f"
+          "sha256": "81609af8a672c46d141dbcb07e75823806653d3f45b562c2845fed1322236b10"
         }
       ],
       "hermes": [
         {
+          "sql": "public.hermes_domain_read_v2",
+          "calls": [
+            "invoice_effective_outstanding_v1"
+          ],
+          "note": "lane thường (DEFINER) của crm_read_receivables: cùng hàm nợ thực với lane nhanh"
+        },
+        {
           "sql": "app_private.hermes_domain_read_rows_fast_v1",
           "calls": [
-            "hermes_read_text_v1"
+            "hermes_read_text_v1",
+            "invoice_effective_outstanding_v1"
           ],
           "note": "miền receivables; JWT người dùng, RLS invoices/rooms, phạm vi chỉ thu hẹp, trả source/fetchedAt như v2"
         },

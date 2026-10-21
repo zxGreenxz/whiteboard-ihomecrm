@@ -873,6 +873,25 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.invoice_effective_outstanding_v1(p_invoice_ids uuid[]) … SECURITY INVOKER SET search_path = ''; CREATE OR REPLACE FUNCTION public.invoice_statistics_v3(…) (total_remaining đọc nợ thực)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects function:public.invoice_effective_outstanding_v1 — sinh 22/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 22/10/2026 (công nợ không đếm hai lần nợ cũ đã kéo sang hoá đơn sau — hàm dùng chung), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST cùng bốn file đi kèm (20261021185540, 20261021190212, 20261021190215, 20261021190406) HAI lượt trong một giao dịch ROLLBACK (lượt hai không lỗi) và một lượt kèm đo trước/sau; test PGlite + PostgreSQL 17 thật. Sẽ áp qua npm run migrate:forward sau khi PR được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.invoice_effective_outstanding_v1"
+      ],
+      "raSoatBoi": "Claude Code — công nợ nợ kéo 22/10/2026",
+      "sha256": "846b6ce91ebd23ef2b68f52e29d8b25eb59d34602fc94e8184af0b72f134b4fd"
     }
   }
 }

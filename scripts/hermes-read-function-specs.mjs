@@ -53,6 +53,13 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql',
     statementSha256: '193528a3d333798560c15e7e9d1647a3bb4aec886f247aba52489995d722bc45',
   }),
+  // Nợ thực (20261021185540): nhánh receivables đọc public.invoice_effective_outstanding_v1 cho cả tập lọc —
+  // nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần. Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql',
+    statementSha256: '5c7c0295e29b3fa60b7ffb9135e154706536dc38b79f138d0c7444eee5cbbebc',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

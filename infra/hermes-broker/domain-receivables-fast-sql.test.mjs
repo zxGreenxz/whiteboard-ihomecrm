@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {settings,localCluster,setup,jwt,fast,normal,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,BUILDING_SCOPE,ROOM,INVOICE} from './crm-shared-read-sql-fixture.mjs';
+import {readFileSync} from 'node:fs';
+import {settings,localCluster,setup,jwt,fast,normal,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,BUILDING_SCOPE,ROOM,INVOICE,RECEIVABLES_OUTSTANDING_PATH} from './crm-shared-read-sql-fixture.mjs';
+import {summarizeRows} from './domain-contract.mjs';
 
 // B2 (20261020101836): crm_read_receivables through the fixed private read plan
 // must return the same rows, order, fields and cursor as the receivables branch
@@ -120,6 +122,57 @@ test('B2/B5c receivables: fast plan equals hermes_domain_read_v2 (rows, order, f
   assert.deepEqual(ids(await same({buildingId:BUILDING})),[INVOICE,inv(18),inv(20)]);
   assert.deepEqual(ids(await same({buildingId:B2,status:'OVERDUE',query:'hdon'})),[inv(11)]);
   assert.deepEqual(ids(await same({buildingId:B2,limit:1,cursor:inv(10)})),[inv(11)]);
+ });
+ await t.test('nợ thực (20261021185540): nợ đã kéo sang hoá đơn gánh còn mở cùng tập chỉ đếm một lần, hai lane như nhau, summary = các dòng',async()=>{
+  // Khuôn thật đã che (TEST 22/10): chuỗi 3 tầng c1→c2→c3→c4 (gánh trọn dư nợ tầng trước), một cặp d1→d2 mà hoá đơn gánh
+  // đã thu một phần, và một cặp e1→e2 chỉ kéo MỘT PHẦN (nguồn tăng sau khi kéo: phần chưa kéo vẫn là nợ của nguồn).
+  // Phòng riêng P209 ở toà B2; dọn ở finally để các ca sau vẫn thấy đúng DEBTS.
+  const R6=id(306),[c1,c2,c3,c4,d1,d2,e1,e2]=[30,31,32,33,35,36,37,38].map(inv);
+  const src=(source,amount)=>JSON.stringify([{type:'invoice',id:source,amount,label:'nhãn'}]);
+  try {
+   await pool.query(`INSERT INTO public.rooms VALUES('${R6}','${ORG}','${B2}','P209','p209',null);
+   INSERT INTO public.invoices(id,organization_id,user_id,building_id,room_id,invoice_number,billing_month,due_date,status,total_amount,paid_amount,created_at,previous_debt,previous_debt_sources) VALUES
+   ('${c1}','${ORG}','${USER}','${B2}','${R6}','HDON330','2026-07','2026-07-31','OVERDUE',1600,1000,'2026-07-01',0,'[]'),
+   ('${c2}','${ORG}','${USER}','${B2}','${R6}','HDON331','2026-08','2026-08-31','OVERDUE',1340,0,'2026-08-01',600,'${src(c1,600)}'),
+   ('${c3}','${ORG}','${USER}','${B2}','${R6}','HDON332','2026-09','2026-09-30','OVERDUE',2380,0,'2026-09-01',1340,'${src(c2,1340)}'),
+   ('${c4}','${ORG}','${USER}','${B2}','${R6}','HDON333','2026-10','2026-11-05','APPROVED',3380,0,'2026-10-01',2380,'${src(c3,2380)}'),
+   ('${d1}','${ORG}','${USER}','${B2}','${R6}','HDON335','2026-09','2026-09-30','OVERDUE',500,0,'2026-09-02',0,'[]'),
+   ('${d2}','${ORG}','${USER}','${B2}','${R6}','HDON336','2026-10','2026-10-20','PARTIAL_PAID',1500,700,'2026-10-02',500,'${src(d1,500)}'),
+   ('${e1}','${ORG}','${USER}','${B2}','${R6}','HDON337','2026-09','2026-09-30','OVERDUE',1500,0,'2026-09-03',0,'[]'),
+   ('${e2}','${ORG}','${USER}','${B2}','${R6}','HDON338','2026-10','2026-11-05','APPROVED',2000,0,'2026-10-03',1000,'${src(e1,1000)}');`);
+   const money=r=>[r.summary.count,r.summary.sum.remainingAmount,r.items.map(x=>[x.id,x.remainingAmount])];
+   // Cả toà B2: c1..c3 và d1 đã nằm trọn trong c4/d2 ⇒ rơi khỏi danh sách; e1 chỉ còn phần chưa kéo (1500 − 1000).
+   // Cộng thẳng sẽ là 15200.
+   const ALL=[[inv(10),'700'],[inv(11),'2000'],[c4,'3380'],[d2,'800'],[e1,'500'],[e2,'2000']];
+   const all=await same({buildingId:B2});
+   assert.deepEqual(money(all),[6,'9380',ALL]);
+   assert.deepEqual(all.summary.byBuilding,[{buildingId:B2,buildingName:'Second building',count:6,remainingAmount:'9380'}]);
+   assert.deepEqual(all.summary,summarizeRows('receivables',all.items),'summary của SQL = cộng các dòng (như connector gộp lọc phòng)');
+   // Nợ quá hạn theo trạng thái / theo hạn: hoá đơn gánh chưa tới hạn (c4, e2) hay đã thu một phần (d2) nằm NGOÀI tập ⇒
+   // nợ cũ vẫn là nợ quá hạn ở tầng cuối trong tập (c3 gom c1, c2), không mất cũng không đếm hai lần.
+   for (const input of [{buildingId:B2,status:'OVERDUE'},{buildingId:B2,toDate:'2026-09-30'}])
+    assert.deepEqual(money(await same(input)),[4,'6380',[[inv(11),'2000'],[c3,'2380'],[d1,'500'],[e1,'1500']]],JSON.stringify(input));
+   assert.deepEqual(money(await same({query:'p209'})),[4,'6680',[[c4,'3380'],[d2,'800'],[e1,'500'],[e2,'2000']]]);
+   // Trang con trỏ đọc nợ thực của CẢ tập lọc: trang sau không làm sống lại nguồn đã bị gánh.
+   const page1=await same({buildingId:B2,limit:2}),page2=await same({buildingId:B2,limit:2,cursor:page1.nextCursor});
+   const page3=await same({buildingId:B2,limit:2,cursor:page2.nextCursor});
+   assert.deepEqual([...page1.items,...page2.items,...page3.items].map(x=>[x.id,x.remainingAmount]),ALL);assert.equal(page3.nextCursor,null);
+   // Bản lùi chuẩn bị sẵn (docs/plans/hermes-crm/revert): về đúng thân R2c/R2d — cộng thẳng (đếm trùng 5820), hai lane vẫn
+   // như nhau; chạy hai lần. Rồi forward lại (hai lần) về nợ thực.
+   const revert=readFileSync('docs/plans/hermes-crm/revert/hermes_receivables_effective_outstanding_revert_v1.sql','utf8');
+   await pool.query(revert);await pool.query(revert);
+   assert.deepEqual(money(await same({buildingId:B2})),[10,'15200',[[inv(10),'700'],[inv(11),'2000'],[c1,'600'],[c2,'1340'],[c3,'2380'],[c4,'3380'],
+    [d1,'500'],[d2,'800'],[e1,'1500'],[e2,'2000']]]);
+   const forward=readFileSync(RECEIVABLES_OUTSTANDING_PATH,'utf8');
+   await pool.query(forward);await pool.query(forward);
+   assert.deepEqual(money(await same({buildingId:B2})),[6,'9380',ALL]);
+   // Hoá đơn gánh bị huỷ ⇒ nợ trở lại nguồn.
+   await pool.query(`UPDATE public.invoices SET status='CANCELLED' WHERE id='${c4}'`);
+   assert.deepEqual(money(await same({query:'p209'})),[4,'5680',[[c3,'2380'],[d2,'800'],[e1,'500'],[e2,'2000']]]);
+  } finally {
+   await pool.query(`DELETE FROM public.invoices WHERE id IN ('${c1}','${c2}','${c3}','${c4}','${d1}','${d2}','${e1}','${e2}');DELETE FROM public.rooms WHERE id='${R6}';`);
+  }
+  assert.deepEqual(ids(await same()),DEBTS);
  });
  await t.test('invalid input is refused identically (22023) and families keep their exact input shape',async()=>{
   await bothReject({status:'DRAFT'},{code:'22023'},'status outside the debt set');

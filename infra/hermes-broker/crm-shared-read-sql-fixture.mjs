@@ -42,6 +42,13 @@ const customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
 // the latest import batch (latestCount). Applied after R2c part 2, twice (idempotent).
 export const WITHOUT_CONTRACT_PATH='supabase/migrations/20261021063452_hermes_domain_without_contract_latest_count_v1.sql';
 const withoutContractSql=readFileSync(WITHOUT_CONTRACT_PATH,'utf8');
+// Nợ thực (22/10/2026): hàm dùng chung public.invoice_effective_outstanding_v1 (20261021183549), rồi cả hai
+// đường đọc công nợ (v2 + đọc nhanh) không đếm hai lần nợ đã kéo sang hoá đơn gánh (20261021185540).
+// Áp sau R2d, mỗi file hai lượt (idempotent).
+export const OUTSTANDING_PATH='supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql';
+const outstandingSql=readFileSync(OUTSTANDING_PATH,'utf8');
+export const RECEIVABLES_OUTSTANDING_PATH='supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql';
+const receivablesOutstandingSql=readFileSync(RECEIVABLES_OUTSTANDING_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -207,7 +214,8 @@ async function setup(pool) {
  CREATE TABLE public.contract_extensions(contract_id uuid,new_contract_id uuid,extension_type text,status text);
  CREATE TABLE public.invoices(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,contract_id uuid,building_id uuid,room_id uuid,
  invoice_number text,billing_month text,issue_date date,due_date date,status public.invoice_status,total_amount numeric,paid_amount numeric,
- remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz);
+ remaining_amount numeric GENERATED ALWAYS AS(total_amount-paid_amount) STORED,adjustment_review_status text,created_at timestamptz,deleted_at timestamptz,
+ previous_debt numeric DEFAULT 0,previous_debt_sources jsonb NOT NULL DEFAULT '[]'::jsonb);
  CREATE TABLE public.invoice_items(id uuid,invoice_id uuid,type text,accounting_class text,description text,unit_price numeric,quantity numeric,coefficient numeric,amount numeric,
  service_id uuid,previous_reading numeric,current_reading numeric,from_date date,to_date date,sort_order integer);
  CREATE TABLE public.payments(id uuid,invoice_id uuid,amount numeric,payment_date date,payment_method public.payment_method,notes text,receipt_image_url text,collection_id uuid,reversed_at timestamptz);
@@ -282,6 +290,8 @@ async function setup(pool) {
  await pool.query(largestByTypeSql);await pool.query(largestByTypeSql); // R2c after R2a, twice (idempotent).
  await pool.query(customerStatusSql);await pool.query(customerStatusSql); // R2c part 2 after R2c, twice (idempotent).
  await pool.query(withoutContractSql);await pool.query(withoutContractSql); // R2d after R2c part 2, twice (idempotent).
+ await pool.query(outstandingSql);await pool.query(outstandingSql); // Nợ thực: hàm dùng chung, twice (idempotent).
+ await pool.query(receivablesOutstandingSql);await pool.query(receivablesOutstandingSql); // Nợ thực ở hai đường công nợ, twice.
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};

@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T22:39:26.807Z",
+  "generatedAt": "2026-10-21T23:12:29.951Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 792,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 209,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12573,6 +12573,63 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T22:39:17.320Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021183549_invoice_effective_outstanding_v1.sql",
+      "version": "20261021183549",
+      "name": "invoice_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "846b6ce91ebd23ef2b68f52e29d8b25eb59d34602fc94e8184af0b72f134b4fd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.invoice_effective_outstanding_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021185540_hermes_receivables_effective_outstanding_v1.sql",
+      "version": "20261021185540",
+      "name": "hermes_receivables_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "b16cfaf1c089cfff176aa42d1d3e431e5d4c6ab41ac1bb51392fd622fe3d9430",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v2",
+        "catalog:function:app_private.hermes_domain_read_rows_fast_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190212_hermes_invoice_report_effective_outstanding_v1.sql",
+      "version": "20261021190212",
+      "name": "hermes_invoice_report_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "5716023b0ca1c5bcc3d1d5147212583efb1653c1d57be01c20cc8e487d997b09",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_report_read_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190215_receivable_kpis_effective_outstanding_v1.sql",
+      "version": "20261021190215",
+      "name": "receivable_kpis_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "0d683cd777e9fbc493e3703db17b0b026d3df3a3cdc1ceb36223b4f926c0c470",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.fa_snapshot_kpis"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021190406_dashboard_total_debt_effective_outstanding_v1.sql",
+      "version": "20261021190406",
+      "name": "dashboard_total_debt_effective_outstanding_v1",
+      "scheme": "timestamp14",
+      "sha256": "6e694f9eff94914586314af6cb3a4d13fdf1ace674393cea73d245c76313241d",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.get_dashboard_summary"
       ]
     },
     {

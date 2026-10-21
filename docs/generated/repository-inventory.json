@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1543,
-  "soFileDocBangFs": 399,
-  "tongLoiGoi": 968,
-  "khongPhanLoaiDuoc": 432,
+  "tongSoFileTest": 1545,
+  "soFileDocBangFs": 402,
+  "tongLoiGoi": 976,
+  "khongPhanLoaiDuoc": 433,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 155,
+      "soFile": 158,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -637,6 +637,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/receivableKpisEffectiveOutstandingMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/roomSaleLockMigration.test.ts",
       "soGoi": 4,
       "loai": {
@@ -977,6 +985,14 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "infra/hermes-broker/domain-receivables-fast-sql.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/domain-v2.test.mjs",
@@ -1448,6 +1464,14 @@
       "loai": {
         "sql": 1,
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/invoiceReadSharedMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -2748,18 +2772,18 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/lib/__tests__/invoiceGeneration.property.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/invoiceReadSharedMigration.test.ts",
+      "file": "src/lib/__tests__/invoiceEffectiveOutstandingMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/invoiceGeneration.property.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/networkCenterH196aMigration.test.ts",
