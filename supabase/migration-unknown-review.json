@@ -873,6 +873,51 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_name_fold_v1 / public.hermes_room_key_v1 / app_private.hermes_write_name_resolve_core_v1 / public.hermes_write_name_resolve_v1 (vỏ SQL-standard)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 4 hàm trên — sinh 22/10/2026 khi gộp main vào nhánh nền chung"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 21/10/2026 (Hermes Đợt 1 nền chung thao tác ghi, M5: giải tên khi ghi), chưa đi qua lane apply — 4 hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Chưa chạy trên TEST. Bằng chứng hiện có: PostgreSQL 17 dùng một lần (write-name-resolve-sql 6/6, đã thu hồi USAGE app_private như production; 43 vector khớp tên dùng chung với web), buildTransaction của lane nhận file (một và hai lượt), hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. Sẽ áp qua npm run migrate:forward (TEST trước, rồi production; người dùng chạy, có backup) sau khi PR #253 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:public.hermes_name_fold_v1",
+        "function:public.hermes_room_key_v1",
+        "function:app_private.hermes_write_name_resolve_core_v1",
+        "function:public.hermes_write_name_resolve_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes nền chung thao tác ghi 22/10/2026",
+      "sha256": "3684e441b159af2ecced00ba3be116a3dd8e0fbedf0ed498a0bcf7671337985e"
+    },
+    "supabase/migrations/20261021133823_hermes_action_foundation_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021133823_hermes_action_foundation_v1.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.hermes_action_policies / app_private.hermes_action_receipts; CREATE OR REPLACE FUNCTION app_private.hermes_action_reason_v1 / hermes_action_guard_v1 / hermes_action_receipt_begin_v1 / … / public.hermes_action_probe_v1"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 5 object trên — sinh 22/10/2026 khi gộp main vào nhánh nền chung"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 21/10/2026 (Hermes Đợt 1 nền chung thao tác ghi, M1: guard chung, sổ biên nhận, chính sách có sàn, RPC thử), chưa đi qua lane apply — object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Chưa chạy trên TEST. Bằng chứng hiện có: PGlite với fixture Hermes của thu chi (action-foundation-sql 10/10, đã thu hồi USAGE app_private như production; 8 đột biến cũ + 4 đột biến USAGE đều bị bắt), buildTransaction của lane nhận file (một và hai lượt), hợp đồng duyệt hàm Hermes ghim băm từng câu lệnh. Sẽ áp qua npm run migrate:forward (TEST trước, rồi production; người dùng chạy, có backup) sau 20261021132433 và khi PR #253 được duyệt; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "table:app_private.hermes_action_policies",
+        "table:app_private.hermes_action_receipts",
+        "function:app_private.hermes_action_reason_v1",
+        "function:app_private.hermes_action_guard_v1",
+        "function:app_private.hermes_action_receipt_begin_v1"
+      ],
+      "raSoatBoi": "Claude Code — Hermes nền chung thao tác ghi 22/10/2026",
+      "sha256": "2238645d1271825b5eed9770bb409ba3f6d5782b46630f41a08b3e78b9ddf45c"
     }
   }
 }
