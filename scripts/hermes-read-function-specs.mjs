@@ -30,6 +30,14 @@ export const HERMES_READ_STANDARD_FUNCTIONS = Object.freeze([
     sourcePath: 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql',
     statementSha256: 'e6604edd92a995b8cf823e3785e8f730fa179a5d03e65e0872a7534e23374326',
   }),
+  // R2a (20261020233934): every list domain of the reader carries the summary of the
+  // whole filtered set (receivables recomputed under RLS; customers/invoices/contracts
+  // from the core totals). Earlier bodies stay pinned for the same reason.
+  Object.freeze({
+    name: 'app_private.hermes_domain_read_rows_fast_v1',
+    sourcePath: 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql',
+    statementSha256: '79cf9b42a5233cc9971e00331dd370e581b12013fd06c5eeb0160d6053c2b953',
+  }),
   Object.freeze({
     name: 'public.hermes_domain_read_fast_v1',
     sourcePath: 'supabase/migrations/20261019040111_hermes_domain_read_fast_v1.sql',

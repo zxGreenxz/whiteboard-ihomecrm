@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { fixture, id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT } from '../hermes-zalo-router/private-command-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_READ_CAPABILITIES, DOMAIN_TOOLS, domainInput, domainResult } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_READ_CAPABILITIES, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
@@ -13,9 +13,10 @@ import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
 const source = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 // B5c step 2 (20261020173818) CREATE OR REPLACEs hermes_domain_read_v1 (buildingName/roomName on leads, contracts,
-// invoices, assets, tasks). The applied v1 file runs with that latest body swapped in, so every v1 test measures the
-// live definition; an explicit HERMES_DOMAIN_SQL candidate is taken as given.
-const LIVE_V1_PATH = 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql';
+// invoices, assets, tasks); R2a (20261020233934) adds the `summary` of the whole filtered set to every branch. The
+// applied v1 file runs with that latest body swapped in, so every v1 test measures the live definition; an explicit
+// HERMES_DOMAIN_SQL candidate is taken as given.
+const LIVE_V1_PATH = 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
 const v1Block = src => src.match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v1\([\s\S]*?\$fn\$;/)[0];
 const candidate = process.env.HERMES_DOMAIN_SQL ? readFileSync(process.env.HERMES_DOMAIN_SQL, 'utf8') : (applied => applied.replace(v1Block(applied), () => v1Block(readFileSync(LIVE_V1_PATH, 'utf8'))))(
   readFileSync('supabase/migrations/20261014081902_hermes_domain_reads_v1.sql', 'utf8'));
@@ -108,6 +109,41 @@ test('domain SQL: real foundation binding and fixed queries; synthetic CRM ACL/A
       if(operation==='services')assert.deepEqual(result.items[0].buildingIds,[BUILDING]);
       if(operation==='occupancy')assert.equal(result.items[0].total,1);
     }
+  });
+  // R2a (20261020233934): every list read of v1 carries the summary of the whole filtered set — same WHERE as the
+  // page without the cursor or LIMIT. Synthetic rows; the extra tasks are removed again at the end.
+  await t.test('R2a summary: counts, byStatus (assets: condition), asset quantity and overdue tasks over the whole filtered set, the same on every page',async()=>{
+    const scoped=operation=>({row:{organizationId:ORG},scopesByPermission:{[DOMAIN_READS[operation].permission]:{buildingIds:[BUILDING,OTHER_BUILDING]}}});
+    for(const operation of Object.keys(DOMAIN_READS).filter(key=>DOMAIN_READS[key].family==='v1')){
+      const result=await rpc(operation);
+      assert.deepEqual(Object.keys(result).sort(),['domain','items','nextCursor','organizationId','summary'],operation);
+      assert.deepEqual(result.summary,summarizeRows(operation,result.items),`${operation}: one page holds every row, so the summary is the rows'`);
+      assert.deepEqual(domainResult(operation,result,scoped(operation),domainInput(operation,{})).summary,result.summary,operation);
+    }
+    assert.deepEqual((await rpc('assets')).summary,{count:1,byStatus:{GOOD:1},sum:{quantity:'2'}});
+    assert.deepEqual((await rpc('contracts')).summary,{count:1,byStatus:{ACTIVE:1},sum:{}});
+    assert.deepEqual((await rpc('leads')).summary,{count:1,byStatus:{B1_LEAD:1},sum:{}});
+    assert.deepEqual((await rpc('invoices')).summary,{count:1,byStatus:{},sum:{}},'invoices count only: a total over every status would mislead');
+    assert.deepEqual((await rpc('services')).summary,{count:1,byStatus:{},sum:{}});
+    assert.deepEqual((await rpc('tasks')).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:0},'no deadline is never overdue');
+    // Legacy branches (the tools moved to v3) summarise too: customers count, occupancy room totals.
+    assert.deepEqual((await rpc('customers')).summary,{count:1,byStatus:{},sum:{}});
+    assert.deepEqual((await rpc('occupancy')).summary,{count:1,total:1,occupied:1,available:0});
+    const late='77777777-7777-4777-8777-777777777771',done='77777777-7777-4777-8777-777777777772',outside='77777777-7777-4777-8777-777777777773';
+    await db.exec(`INSERT INTO public.jobs VALUES('${late}','${ORG}','Quá hạn','LATE','IN_PROGRESS','${BUILDING}',null,'2020-01-01T00:00:00Z'),
+      ('${done}','${ORG}','Đã xong','DONE','COMPLETED','${BUILDING}',null,'2020-01-01T00:00:00Z'),
+      ('${outside}','${ORG}','Toà khác','OUT','IN_PROGRESS','${OTHER_BUILDING}',null,'2020-01-01T00:00:00Z')`);
+    try{
+      const all={count:3,byStatus:{IN_PROGRESS:2,COMPLETED:1},sum:{},overdue:1};
+      const first=await rpc('tasks',{limit:1}),second=await rpc('tasks',{limit:1,cursor:first.nextCursor});
+      assert.deepEqual([first.items.length,first.summary,second.summary],[1,all,all],'cursor and limit never narrow the summary; the overlay building only');
+      const pages=[first.items,second.items,(await rpc('tasks',{limit:1,cursor:second.nextCursor})).items].flat();
+      assert.deepEqual(summarizeRows('tasks',pages),all,'the summary equals the summary of every page read');
+      assert.deepEqual((await rpc('tasks',{status:'COMPLETED'})).summary,{count:1,byStatus:{COMPLETED:1},sum:{},overdue:0},'status filter');
+      assert.deepEqual((await rpc('tasks',{query:'late'})).summary,{count:1,byStatus:{IN_PROGRESS:1},sum:{},overdue:1},'query filter (code)');
+      assert.deepEqual((await rpc('tasks',{query:'không có'})).summary,{count:0,byStatus:{},sum:{},overdue:0},'empty set: 0 and {} — never null');
+      assert.deepEqual((await rpc('assets',{query:'không có'})).summary,{count:0,byStatus:{},sum:{quantity:'0'}});
+    }finally{await db.exec(`DELETE FROM public.jobs WHERE id IN ('${late}','${done}','${outside}')`);}
   });
   await t.test('role, caller, provider session, all binding versions and current CRM denial fail closed',async()=>{
     for(const role of ['anon','service_role'])await assert.rejects(rpc('customers',{},binding,role),/permission denied/);

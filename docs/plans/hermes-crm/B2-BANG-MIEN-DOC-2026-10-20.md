@@ -8,38 +8,40 @@ Quy ước: V/S = VOLATILE/STABLE; D/I = DEFINER/INVOKER; phạm vi T = tòa, C 
 
 **B2-2 — đường thường dùng cache catalog (20/10, nhánh `claude/hermes-b2-2-cached-admission-20261020`):** khi host bật `readFastPath`, 18 miền còn lại (`CACHED_READ_OPERATIONS` trong `domain-contract.mjs`; trừ `crm_read_zalo_conversations`) giữ nguyên RPC đã review (`hermes_domain_read_v1/v2/v3`, `hermes_w2_read_v1`) và Bind7 dựng từ snapshot `readConnection` sống, nhưng lấy identity từ `createReadCatalogAuthority` (cache ≤5 phút, khoá = hash cả snapshot) và bỏ `auth.verifySession` ở prepare lẫn `checkUnchanged` ở broker và finalize (`bound-user-operation.mjs` chế độ `admission: 'cachedBinding'`) — vì chính SQL đã so `auth.uid()`, `session_id` của JWT, gate phiên và đủ 7 trường binding (42501/PT409), cùng lập luận đường nhanh chủ đã chấp nhận 19/10. Kỳ vọng mỗi lượt: bỏ ≈1,1 s checkUnchanged, resolve 1,0–1,7 s → ≈60 ms khi cache trúng; TG3b (server.test): 93 → 7 request Auth/capability cho 3 lượt lạnh+ấm. `tool_call_timing.path` = `cached`, `checkMs` null. `zalo_conversations` giữ đường thường vì `chat_zalo.view` do group adapter cấp, không có trong readAuthority (nếu ép sẽ `tool_not_available`). Hệ quả: rào `scopesByPermission` phía broker có thể cũ ≤5 phút nhưng chỉ thu hẹp, không nới (SQL quyết định cuối; mọi đổi phân quyền nhảy `authorizationVersion` ⇒ cache trượt). Tắt cờ: không đổi gì; §6 (4 lần `hermes_store_read_connection_v1`/lượt) vẫn là chỗ tối ưu tiếp.
 
+**R2a — `summary` phía máy chủ (21/10, migration `20261020233934_hermes_domain_summary_v1` + `20261021004841_hermes_w2_domain_summary_v1`, CHƯA áp TEST/production):** mỗi kết quả của 13 tool danh sách mang `summary` ngay sau `domain`, tính trên TOÀN tập đã lọc (query/buildingId/status/fromDate/toDate), bỏ cursor/limit, cùng phạm vi quyền/toà với `items` (đường nhanh: cùng RLS người hỏi). Khuôn chung `{count, byStatus, sum}`: `byStatus` đếm theo cột trạng thái (assets: `condition`), chỉ giá trị có mặt, `{}` khi miền không có; `sum` là tiền/số lượng dạng chuỗi như dòng, `{}` khi miền không có. Ba miền đường nhanh không có trong bảng dưới: `crm_read_customers` (v3 + lõi nhanh) `{count, {}, {}}`; `crm_read_contracts` `{count, byStatus, {}}` — đường nhanh `count` = `total` của lõi, `byStatus` = null khi có `query` (lõi khớp ILIKE nhiều cột); `crm_read_invoices` `{count, {}, {}}` (cả hai lane không cộng tiền: tổng mọi trạng thái dễ đọc sai, tổng kỳ ở `crm_read_invoice_report report=stats`). Connector kiểm khuôn chính xác + bất biến (`count` ≥ số dòng trang, `byStatus` đúng bộ lọc, `byBuilding` trong phạm vi khoá); lọc theo phòng ở connector thay `summary` bằng summary của các hàng giữ lại khi đã đọc hết, còn trang thì `null`. Cửa sổ phát hành: connector chấp nhận VẮNG summary một bản (`DOMAIN_SUMMARY_TOLERANT`, `summaryTolerant` của monthly_pnl) ⇒ connector lên TRƯỚC, hai migration SAU; revert soạn sẵn ở `docs/plans/hermes-crm/revert/`. Không đổi byte `tools/list`.
+
 ## 1. Họ v1 — `hermes_domain_read_v1` (V/D, `20261014081902`), Bind7, `domainResult` generic, test `domain-composition.test.mjs`
 
-| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 |
-|---|---|---|---|
-| `crm_read_leads` | `leads.view` · T (lead không tòa cần C) | Không (web đọc bảng dưới RLS) | Vừa: chưa có core INVOKER, ít dùng |
-| `crm_read_assets` | `assets.view` · T (+C) | `assets_list_v1` (W2D, S/I; sắp theo created_at ≠ keyset id) | Vừa: nên đi qua `crm_read_report` |
-| `crm_read_services` | `services.view` · T | `services_list_v1` (W2D, S/I) | Vừa |
-| `crm_read_tasks` | `tasks.view` · T | Không (`useJobs.ts` đọc bảng jobs) | Vừa: cần core jobs INVOKER |
+| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 | `summary` (R2a) |
+|---|---|---|---|---|
+| `crm_read_leads` | `leads.view` · T (lead không tòa cần C) | Không (web đọc bảng dưới RLS) | Vừa: chưa có core INVOKER, ít dùng | `{count, byStatus (status), sum {}}` |
+| `crm_read_assets` | `assets.view` · T (+C) | `assets_list_v1` (W2D, S/I; sắp theo created_at ≠ keyset id) | Vừa: nên đi qua `crm_read_report` | `{count, byStatus (condition), sum {quantity}}` |
+| `crm_read_services` | `services.view` · T | `services_list_v1` (W2D, S/I) | Vừa | `{count, byStatus {}, sum {}}` |
+| `crm_read_tasks` | `tasks.view` · T | Không (`useJobs.ts` đọc bảng jobs) | Vừa: cần core jobs INVOKER | `{count, byStatus (status), sum {}, overdue}` — `overdue` = IN_PROGRESS có `deadline` < now() |
 
 ## 2. Họ v2 — `hermes_domain_read_v2` (V/D, `20261015120000`, khoá org 2 lần), Bind7, `domainResult` v2 (+`source`, `fetchedAt`, kiểm ngày), test `domain-v2.test.mjs`
 
-| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 |
-|---|---|---|---|
-| `crm_read_income_expenses` | `income_expenses.view` · T | Không (`queries.ts` đọc bảng) | Lớn: loại phiếu hạn chế, RLS phiếu thu nặng (`20261018044046`) |
-| `crm_read_receivables` **(23)** | `invoices.view` · T | Không RPC riêng; web đọc bảng invoices (`useDashboard.ts:251-262`, `financeReports.ts:28-68`); `invoice_list_core_v1` thiếu lọc due_date/remaining>0/trạng thái | **Vừa — chuyển trước số 1** |
-| `crm_read_meter_readings` | `meter_readings.view` · T | Không | Vừa |
-| `crm_read_deposits_held` | `deposits.view` · T | `get_held_deposit_summary` (S/I) — Hermes đã gọi đúng RPC | Nhỏ |
-| `crm_read_building_profit` | `reports_finance.analysis` · T | `fa_monthly_pnl` (S/D, tự kiểm `can_access_building`) | Nhỏ–Vừa |
+| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 | `summary` (R2a) |
+|---|---|---|---|---|
+| `crm_read_income_expenses` | `income_expenses.view` · T | Không (`queries.ts` đọc bảng) | Lớn: loại phiếu hạn chế, RLS phiếu thu nặng (`20261018044046`) | `{count, byStatus (approvalStatus), sum {totalAmount}, byType {INCOME/EXPENSE: {count, sum}}, largest}` — tiền (`sum`, `byType`, `largest`) KHÔNG gồm phiếu CANCELLED, `count`/`byStatus` gồm |
+| `crm_read_receivables` **(23)** | `invoices.view` · T | Không RPC riêng; web đọc bảng invoices (`useDashboard.ts:251-262`, `financeReports.ts:28-68`); `invoice_list_core_v1` thiếu lọc due_date/remaining>0/trạng thái | **Vừa — chuyển trước số 1** | `{count, byStatus, sum {totalAmount, paidAmount, remainingAmount}, byBuilding}` — `byBuilding` ≤ 50 toà, `remainingAmount` giảm dần; cùng SQL hai lane |
+| `crm_read_meter_readings` | `meter_readings.view` · T | Không | Vừa | `{count, byStatus, sum {consumption}, byType (meterType), rooms}` |
+| `crm_read_deposits_held` | `deposits.view` · T | `get_held_deposit_summary` (S/I) — Hermes đã gọi đúng RPC | Nhỏ | `{count (toà), sum {expected, held, shortfallAll}, contractCount, fullCount, shortCount}` |
+| `crm_read_building_profit` | `reports_finance.analysis` · T | `fa_monthly_pnl` (S/D, tự kiểm `can_access_building`) | Nhỏ–Vừa | `{count (toà), sum {revenue, expense, net}}` |
 
 ## 3. Họ v3 — `hermes_domain_read_v3` (V/D, `20261018000000:528-792`); báo cáo qua `app_private.hermes_report_read_v2` (V/D); Bind7; test `domain-v3`, `full-read-report`, `full-read-sql-fixture`
 
-| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 |
-|---|---|---|---|
-| `crm_read_occupancy` (3) | `reports_real_estate.occupancy` · T | `occupancy_snapshot_v2` (S/I) — cùng RPC | Nhỏ |
-| `crm_read_occupancy_report` | cùng khoá · T | `occupancy_snapshot_v2`, `occupancy_upcoming_vacancy_v2` | Nhỏ–Vừa (phong bì báo cáo) |
-| `crm_read_monthly_pnl` (4) | `reports_finance.analysis` · T | `fa_monthly_pnl_accrual`/`fa_monthly_pnl` (S/D); phần chờ duyệt `hermes_pnl_pending_v1` chỉ ở `app_private` (D) | Vừa: 11 khoá input; chưa có số đo SQL |
-| `crm_read_invoice_report` | `invoices.view` (+`customers.view`) · T | `invoice_list_v1`/core, `invoice_statistics_v3` | Vừa: core đã đủ lọc |
-| `crm_read_contract_search` | `contracts.view` (+`customers.view`) · T | `contract_list_v1`/core, `contract_stats_v2` | Vừa |
-| `crm_read_pending_approvals` | `income_expenses.view` · C và Me | `list_my_pending_approvals_v1` | Vừa: scope fast phải tính org_wide ∩ overlay |
-| `crm_read_zalo_conversations` | `chat_zalo.view` · C | Không (RLS `zalo_authorized_org_ids`) | Vừa–Lớn: khoá không nằm trong readAuthority |
-| `crm_read_customer_detail` | `customers.view` (+`contracts.view`) | Không | Vừa–Lớn: SQL lớn, PII |
-| `crm_read_contract_detail` | `contracts.view` (+`customers.view`) | Không | Vừa–Lớn |
+| Tool | Quyền · phạm vi | Web RPC/core chung | Công B2 | `summary` (R2a) |
+|---|---|---|---|---|
+| `crm_read_occupancy` (3) | `reports_real_estate.occupancy` · T | `occupancy_snapshot_v2` (S/I) — cùng RPC | Nhỏ | `{count (toà), total, occupied, available}` — tổng các dòng snapshot |
+| `crm_read_occupancy_report` | cùng khoá · T | `occupancy_snapshot_v2`, `occupancy_upcoming_vacancy_v2` | Nhỏ–Vừa (phong bì báo cáo) | — (`summary` null như trước) |
+| `crm_read_monthly_pnl` (4) | `reports_finance.analysis` · T | `fa_monthly_pnl_accrual`/`fa_monthly_pnl` (S/D); phần chờ duyệt `hermes_pnl_pending_v1` chỉ ở `app_private` (D) | Vừa: 11 khoá input; chưa có số đo SQL | `{basis, pendingIncome, pendingExpense, pendingVouchers}` + `{revenue, expense, net, rows}` — tổng MỌI hàng (mọi trang, cùng toà/kỳ) |
+| `crm_read_invoice_report` | `invoices.view` (+`customers.view`) · T | `invoice_list_v1`/core, `invoice_statistics_v3` | Vừa: core đã đủ lọc | `report=stats`: summary sẵn có (không đổi) |
+| `crm_read_contract_search` | `contracts.view` (+`customers.view`) · T | `contract_list_v1`/core, `contract_stats_v2` | Vừa | — |
+| `crm_read_pending_approvals` | `income_expenses.view` · C và Me | `list_my_pending_approvals_v1` | Vừa: scope fast phải tính org_wide ∩ overlay | — |
+| `crm_read_zalo_conversations` | `chat_zalo.view` · C | Không (RLS `zalo_authorized_org_ids`) | Vừa–Lớn: khoá không nằm trong readAuthority | summary sẵn có (không đổi) |
+| `crm_read_customer_detail` | `customers.view` (+`contracts.view`) | Không | Vừa–Lớn: SQL lớn, PII | — (chi tiết) |
+| `crm_read_contract_detail` | `contracts.view` (+`customers.view`) | Không | Vừa–Lớn | — (chi tiết) |
 
 ## 4. W2 — `crm_read_report_list`, `crm_read_report` (`hermes_w2_read_v1` V/I → `hermes_w2_scope_v1` V/D → gói `hermes_w2{a..d}_read_v1` V/I dưới RLS → `hermes_w2_finish_v1` V/D), Bind7, 35 khoá W2, phạm vi T/C/S/Me/P, projection `listResult`/`runResult` (fence)
 

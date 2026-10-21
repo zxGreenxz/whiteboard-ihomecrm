@@ -4,20 +4,14 @@
 //   tool/args   lời gọi đúng: phải có trong tools/list đủ quyền, qua được schema QUẢNG BÁO (Hermes kiểm trước khi gọi
 //               connector) và broker tới đúng cổng prepare.
 //   answerFrom  đường trong khuôn kết quả khai báo: items[].x, summary.x(.y), rooms[].x, truncated. summary của tool danh sách
-//               là của R2a (chưa có trong khuôn trên nhánh này) ⇒ phải nằm trong SUMMARY_PENDING; khi R2a gộp, test in
-//               chẩn đoán những mục đã khai để gỡ khỏi danh sách.
+//               do R2a khai (DOMAIN_SUMMARIES, domain-contract.mjs) ⇒ phải có trong khuôn; SUMMARY_PENDING chỉ dành cho khoá
+//               summary chưa khai (R2a đã khai đủ 12 mục ban đầu, 21/10 ⇒ rỗng; test in chẩn đoán mục nào đã khai để gỡ).
 //   wrong       lời gọi sai cách lấy từ trace (full50/full50c): `hermes` = schema quảng bá chặn ('rejects') hay để qua
 //               ('passes'); broker luôn trả invalid_request, `hint` = regex của detail tĩnh (null: không detail).
 //   alias       đối số sai chữ của trace ⇒ normalizeToolArguments cho đúng giá trị enum (Hermes vẫn chặn trước nếu `hermes`).
 //   mentions    mô tả quảng bá của tool (đúng hoặc nhầm) phải chỉ đường bằng chữ này.
 //   listing     60 ký tự đầu của mô tả (phần danh sách tool_search của Hermes hiện) phải chứa cụm này.
-export const SUMMARY_PENDING = Object.freeze([
-  'crm_read_contracts summary.count', 'crm_read_contracts summary.byStatus',
-  'crm_read_receivables summary.sum.remainingAmount', 'crm_read_receivables summary.byBuilding',
-  'crm_read_income_expenses summary.count', 'crm_read_income_expenses summary.sum.totalAmount', 'crm_read_income_expenses summary.byType',
-  'crm_read_income_expenses summary.largest', 'crm_read_meter_readings summary.rooms', 'crm_read_occupancy summary.total',
-  'crm_read_occupancy summary.occupied', 'crm_read_assets summary.count',
-]);
+export const SUMMARY_PENDING = Object.freeze([]);
 
 const SALE_PAGE = Object.freeze({ tool: 'crm_available_rooms', match: /^Trang Sale công khai/ });
 const CONTRACTS_NO_DATES = Object.freeze({ tool: 'crm_read_contracts', match: /KHÔNG lọc ngày \(sắp hết hạn: contract_search\)/ });

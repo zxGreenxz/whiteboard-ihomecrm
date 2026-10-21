@@ -135,6 +135,49 @@ export const DOMAIN_READS = Object.freeze({
   // Đợt 2: hai tool meta crm_read_report_list / crm_read_report (wave2-registry.mjs, điểm đăng ký cố định).
   ...W2_READS,
 });
+// R2a (21/10/2026): `summary` của mọi tool danh sách — SQL tính trên TOÀN tập đã lọc (query/buildingId/status/fromDate/
+// toDate), bỏ cursor/limit, cùng phạm vi với items (20261020233934: v1, v2, đọc nhanh; 20261021004841: v3 customers/
+// occupancy). Mô hình đọc count/tổng ở đây thay vì tự đếm/cộng hàng (T9) hay đọc thêm trang để đếm (T5). Khuôn chung
+// {count, byStatus, sum}: count = số dòng cả tập; byStatus = số dòng theo cột trạng thái (assets: condition), chỉ giá trị
+// có mặt; sum = tiền/số lượng dạng chuỗi như items. Phần riêng: tasks.overdue; income_expenses byType/largest (tiền
+// KHÔNG gồm phiếu CANCELLED, count/byStatus gồm); receivables byBuilding (≤ 50 toà, remainingAmount giảm dần);
+// meter_readings byType/rooms; occupancy/deposits_held/building_profit tổng các toà. Đường nhanh: contracts.byStatus = null
+// khi có query (lõi khớp ILIKE nhiều cột, SQL không chép lại); customers/contracts/invoices đếm như lõi (có thể > số
+// dòng chiếu khi lõi gồm dòng không phòng) ⇒ connector chỉ đòi count ≥ items.length, đẳng thức kiểm ở test SQL.
+// Mỗi summary kiểm chính xác theo miền (khoá lạ/sai kiểu ⇒ backend_unavailable) và các bất biến ở domainSummary.
+const summaryCounts = (keys = null) => value => domainRecord(value) && Object.keys(value).length <= 32 &&
+  Object.entries(value).every(([key, n]) => (keys === null ? text(key) && key !== '' : keys.includes(key)) && integer(n));
+const summarySums = keys => value => domainExact(value, keys) && keys.every(key => amount(value[key]));
+const summaryTyped = value => domainExact(value, ['count', 'sum']) && integer(value.count) && amount(value.sum);
+const LARGEST_FIELDS = Object.freeze({ id: domainId, code: nullable(text), name: text, type: oneOf(['INCOME', 'EXPENSE']), totalAmount: amount, voucherDate: date });
+const BY_BUILDING_FIELDS = Object.freeze({ buildingId: domainId, buildingName: text, count: integer, remainingAmount: amount });
+const summaryShape = (fields, statusKey = null) => Object.freeze({ fields: Object.freeze(fields), statusKey });
+const COMMON = (byStatus, sum = []) => ({ count: integer, byStatus, sum: summarySums(sum) });
+export const DOMAIN_SUMMARIES = Object.freeze({
+  customers: summaryShape(COMMON(summaryCounts([]))),
+  leads: summaryShape(COMMON(summaryCounts()), 'status'),
+  contracts: summaryShape(COMMON(nullable(summaryCounts())), 'status'),
+  invoices: summaryShape(COMMON(summaryCounts([]))),
+  assets: summaryShape(COMMON(summaryCounts(), ['quantity']), 'condition'),
+  services: summaryShape(COMMON(summaryCounts([]))),
+  tasks: summaryShape({ ...COMMON(summaryCounts()), overdue: integer }, 'status'),
+  occupancy: summaryShape({ count: integer, total: integer, occupied: integer, available: integer }),
+  income_expenses: summaryShape({ ...COMMON(summaryCounts(['UNAPPROVED', 'APPROVED', 'CANCELLED']), ['totalAmount']),
+    byType: value => domainRecord(value) && Object.keys(value).every(key => ['INCOME', 'EXPENSE'].includes(key)) && Object.values(value).every(summaryTyped),
+    largest: nullable(value => domainExact(value, Object.keys(LARGEST_FIELDS)) && Object.entries(LARGEST_FIELDS).every(([key, check]) => check(value[key]))) },
+  'approvalStatus'),
+  receivables: summaryShape({ ...COMMON(summaryCounts(['APPROVED', 'PARTIAL_PAID', 'OVERDUE']), ['totalAmount', 'paidAmount', 'remainingAmount']),
+    byBuilding: value => Array.isArray(value) && value.length <= 50 && value.every(entry => domainExact(entry, Object.keys(BY_BUILDING_FIELDS)) &&
+      Object.entries(BY_BUILDING_FIELDS).every(([key, check]) => check(entry[key]))) }, 'status'),
+  meter_readings: summaryShape({ ...COMMON(summaryCounts(['UNAPPROVED', 'APPROVED']), ['consumption']),
+    byType: summaryCounts(['ELECTRICITY', 'WATER', 'GAS', 'OTHER']), rooms: integer }, 'status'),
+  deposits_held: summaryShape({ count: integer, sum: summarySums(['expected', 'held', 'shortfallAll']), contractCount: integer, fullCount: integer, shortCount: integer }),
+  building_profit: summaryShape({ count: integer, sum: summarySums(['revenue', 'expense', 'net']) }),
+});
+// Cửa sổ phát hành (như `tolerant` B5c): connector lên TRƯỚC migration ⇒ một bản phát hành chấp nhận VẮNG summary ở các
+// miền này (SQL chưa áp); có mặt ⇒ kiểm đủ. Bản connector kế tiếp (sau khi prod áp 20261020233934 + 20261021004841) đưa
+// danh sách về rỗng: summary bắt buộc (domain-tolerance.test.mjs khoá cả hai trạng thái).
+export const DOMAIN_SUMMARY_TOLERANT = Object.freeze(Object.keys(DOMAIN_SUMMARIES));
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
 export const DOMAIN_READ_CAPABILITIES = DOMAIN_FAMILIES.v1.capabilities;
@@ -193,7 +236,11 @@ export function domainResult(operation, value, identity, input) {
     // outputKeys (đợt 2): khoá chỉ dùng để rào (fence) không đi tới mô hình.
     return Object.fromEntries((definition.outputKeys ?? definition.resultKeys).map(key => [key, Object.hasOwn(projected, key) ? projected[key] : value[key]]));
   }
-  if (!definition || !domainExact(value, family.resultKeys) ||
+  // R2a: `summary` là một khoá thêm ngoài family.resultKeys; vắng chỉ được trong cửa sổ DOMAIN_SUMMARY_TOLERANT.
+  const shape = Object.hasOwn(DOMAIN_SUMMARIES, operation) ? DOMAIN_SUMMARIES[operation] : null;
+  const withSummary = shape !== null && domainRecord(value) && Object.hasOwn(value, 'summary');
+  if (!definition || !domainExact(value, withSummary ? [...family.resultKeys, 'summary'] : family.resultKeys) ||
+      shape !== null && !withSummary && !DOMAIN_SUMMARY_TOLERANT.includes(operation) ||
       value.organizationId !== identity.row.organizationId || value.domain !== operation || !Array.isArray(value.items) ||
       value.items.length > input.limit || !nullable(domainId)(value.nextCursor) ||
       family === DOMAIN_FAMILIES.v2 && (value.source !== definition.source || !instant(value.fetchedAt)) ||
@@ -223,7 +270,108 @@ export function domainResult(operation, value, identity, input) {
   });
   if (items.some((row, index) => row.id <= (index ? items[index - 1].id : input.cursor ?? '')) ||
       value.nextCursor !== null && (items.length !== input.limit || value.nextCursor !== items.at(-1)?.id)) fail();
-  return Object.fromEntries(family.resultKeys.map(key => [key, key === 'items' ? items : value[key]]));
+  if (!withSummary) return Object.fromEntries(family.resultKeys.map(key => [key, key === 'items' ? items : value[key]]));
+  // Summary ngay sau domain: mô hình gặp số tổng trước các dòng của trang.
+  const summary = domainSummary(operation, shape, value.summary, items, input, scopes);
+  return Object.fromEntries(family.resultKeys.flatMap(key => key === 'items' ? [['items', items]] :
+    key === 'domain' ? [['domain', value.domain], ['summary', summary]] : [[key, value[key]]]));
+}
+// Tiền là chuỗi thập phân (numeric::text): so/cộng bằng BigInt theo thang lớn nhất, như sum(numeric) của PostgreSQL
+// (thang kết quả = thang lớn nhất của các số hạng) — để summarizeRows trả đúng từng ký tự như SQL.
+const decimalParts = value => {
+  const [, sign, whole, fraction = ''] = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+  return [BigInt(`${sign}${whole}${fraction}`), fraction.length];
+};
+const scaled = ([units, scale], target) => units * 10n ** BigInt(target - scale);
+const compareAmounts = (left, right) => {
+  const a = decimalParts(left), b = decimalParts(right), scale = Math.max(a[1], b[1]), x = scaled(a, scale), y = scaled(b, scale);
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+const sumAmounts = values => {
+  const parts = values.map(decimalParts), scale = parts.reduce((max, [, part]) => Math.max(max, part), 0);
+  const units = parts.reduce((sum, part) => sum + scaled(part, scale), 0n), negative = units < 0n;
+  const digits = (negative ? -units : units).toString().padStart(scale + 1, '0');
+  return `${negative ? '-' : ''}${scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}` : digits}`;
+};
+/** Kiểm summary của MỘT trang: khuôn chính xác theo miền + bất biến giữa summary, các dòng, bộ lọc và phạm vi khoá.
+ * Không đòi count === items.length (đường nhanh contracts/invoices đếm như lõi); đẳng thức kiểm ở test SQL. */
+function domainSummary(operation, shape, summary, items, input, scopes) {
+  if (!domainExact(summary, Object.keys(shape.fields)) || Object.entries(shape.fields).some(([key, check]) => !check(summary[key])) ||
+      summary.count < items.length) fail();
+  const total = values => values.reduce((sum, n) => sum + n, 0), within = n => n <= summary.count;
+  if (domainRecord(summary.byStatus) && (!within(total(Object.values(summary.byStatus))) ||
+      input.status && shape.statusKey !== null && Object.keys(summary.byStatus).some(key => key !== input.status))) fail();
+  if (operation === 'tasks' && !within(summary.overdue)) fail();
+  if (operation === 'occupancy' && summary.occupied + summary.available > summary.total) fail();
+  if (operation === 'meter_readings' && (!within(summary.rooms) || !within(total(Object.values(summary.byType))))) fail();
+  if (operation === 'income_expenses') {
+    const { largest } = summary;
+    if (!within(total(Object.values(summary.byType).map(entry => entry.count))) || largest !== null && (summary.count < 1 ||
+        input.fromDate && largest.voucherDate < input.fromDate || input.toDate && largest.voucherDate > input.toDate)) fail();
+  }
+  if (operation === 'receivables') {
+    // Toà của byBuilding như toà của dòng: trong phạm vi khoá, đúng toà lọc; giảm dần theo remainingAmount, hoà thì theo id.
+    const seen = new Set();
+    summary.byBuilding.forEach((entry, index) => {
+      const previous = summary.byBuilding[index - 1], order = previous ? compareAmounts(previous.remainingAmount, entry.remainingAmount) : 1;
+      if (seen.has(entry.buildingId) || Array.isArray(scopes) && !scopes.includes(entry.buildingId) || input.buildingId && entry.buildingId !== input.buildingId ||
+          entry.count < 1 || compareAmounts(entry.remainingAmount, '0') <= 0 || order < 0 || order === 0 && previous.buildingId >= entry.buildingId) fail();
+      seen.add(entry.buildingId);
+    });
+    if (!within(total(summary.byBuilding.map(entry => entry.count)))) fail();
+  }
+  return structuredClone(summary);
+}
+/** Cùng khuôn summary tính từ một mảng dòng ĐÃ kiểm (thuần, không I/O): lọc phòng ở connector (read-name-resolution
+ * rowsPlan.merge — summary SQL mô tả tập CHƯA lọc phòng) và oracle của test SQL (summary SQL = summarizeRows(mọi dòng
+ * của tập lọc)). now: mốc của tasks.overdue (SQL dùng now() của câu lệnh). */
+export function summarizeRows(operation, rows, { now = Date.now() } = {}) {
+  if (!Object.hasOwn(DOMAIN_SUMMARIES, operation) || !Array.isArray(rows)) fail();
+  const count = rows.length;
+  const tally = (key, keep = () => true) => {
+    const seen = new Map();
+    for (const row of rows) if (keep(row) && row[key] !== null && row[key] !== undefined) seen.set(row[key], (seen.get(row[key]) ?? 0) + 1);
+    return Object.fromEntries(seen);
+  };
+  const money = (key, keep = () => true) => sumAmounts(rows.filter(keep).map(row => row[key]));
+  const add = key => rows.reduce((sum, row) => sum + row[key], 0);
+  switch (operation) {
+    case 'customers': case 'invoices': case 'services': return { count, byStatus: {}, sum: {} };
+    case 'leads': case 'contracts': return { count, byStatus: tally('status'), sum: {} };
+    case 'tasks': return { count, byStatus: tally('status'), sum: {},
+      overdue: rows.filter(row => row.status === 'IN_PROGRESS' && row.deadline !== null && Date.parse(row.deadline) < now).length };
+    case 'assets': return { count, byStatus: tally('condition'), sum: { quantity: money('quantity') } };
+    case 'occupancy': return { count, total: add('total'), occupied: add('occupied'), available: add('available') };
+    case 'income_expenses': {
+      const live = row => row.approvalStatus !== 'CANCELLED', byType = {};
+      for (const type of ['INCOME', 'EXPENSE']) {
+        const of = rows.filter(row => live(row) && row.type === type);
+        if (of.length) byType[type] = { count: of.length, sum: sumAmounts(of.map(row => row.totalAmount)) };
+      }
+      const largest = rows.filter(live).reduce((best, row) => best === null || compareAmounts(row.totalAmount, best.totalAmount) > 0 ||
+        compareAmounts(row.totalAmount, best.totalAmount) === 0 && row.id < best.id ? row : best, null);
+      return { count, byStatus: tally('approvalStatus'), sum: { totalAmount: money('totalAmount', live) }, byType,
+        largest: largest === null ? null : { id: largest.id, code: largest.code, name: largest.name, type: largest.type,
+          totalAmount: largest.totalAmount, voucherDate: largest.voucherDate } };
+    }
+    case 'receivables': {
+      const buildings = new Map();
+      for (const row of rows) {
+        const entry = buildings.get(row.buildingId) ?? { buildingId: row.buildingId, buildingName: row.buildingName, count: 0, amounts: [] };
+        if (row.buildingName > entry.buildingName) entry.buildingName = row.buildingName;
+        entry.count += 1; entry.amounts.push(row.remainingAmount); buildings.set(row.buildingId, entry);
+      }
+      const byBuilding = [...buildings.values()].map(({ amounts, ...entry }) => ({ ...entry, remainingAmount: sumAmounts(amounts) }))
+        .sort((a, b) => compareAmounts(b.remainingAmount, a.remainingAmount) || (a.buildingId < b.buildingId ? -1 : 1)).slice(0, 50);
+      return { count, byStatus: tally('status'), sum: { totalAmount: money('totalAmount'), paidAmount: money('paidAmount'),
+        remainingAmount: money('remainingAmount') }, byBuilding };
+    }
+    case 'meter_readings': return { count, byStatus: tally('status'), sum: { consumption: money('consumption') }, byType: tally('meterType'),
+      rooms: new Set(rows.map(row => row.roomId).filter(room => room !== null)).size };
+    case 'deposits_held': return { count, sum: { expected: money('expected'), held: money('held'), shortfallAll: money('shortfallAll') },
+      contractCount: add('contractCount'), fullCount: add('fullCount'), shortCount: add('shortCount') };
+    default: return { count, sum: { revenue: money('revenue'), expense: money('expense'), net: money('net') } };
+  }
 }
 // requiresDates never accepts null, so its required dates are not nullable.
 const dateSchema = required => ({ type: required ? 'string' : ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' });

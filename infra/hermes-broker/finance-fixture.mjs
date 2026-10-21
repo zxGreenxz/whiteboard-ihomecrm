@@ -13,10 +13,12 @@ export { id, USER, ORG, FOREIGN, CONNECTION, SESSION, ASSISTANT };
 // intersection/receipt logic, not the canonical writer, RLS or a live JWT.
 export const READS_PATH = 'supabase/migrations/20261015120000_hermes_domain_reads_v2.sql';
 // B5c (20261020171321, then step 2 20261020173818) CREATE OR REPLACEs hermes_domain_read_v2
-// (receivables, income_expenses and meter_readings rows name their building). readsSql() runs the
-// applied v2 file with the latest body swapped in, so every v2 test and mutation measures the
-// definition production has after the forward lane.
+// (receivables, income_expenses and meter_readings rows name their building); R2a (20261020233934)
+// then adds the `summary` of the whole filtered set to every branch. readsSql() runs the applied v2
+// file with the latest body swapped in, so every v2 test and mutation measures the definition
+// production has after the forward lane.
 export const READS_B5C_PATH = 'supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql';
+export const READS_SUMMARY_PATH = 'supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
 export const ACTION_PATH = 'supabase/migrations/20261015120100_hermes_expense_create_action_v1.sql';
 export const HOOK_PATH = 'supabase/migrations/20261015120200_hermes_finance_capabilities_hook.sql';
 export const BUILDING = id('a'), OTHER_BUILDING = id('b'), ROOM = id('c'), OTHER_ROOM = id('e'), ITEM = id('f'), SCOPE = id('0');
@@ -34,7 +36,7 @@ const fn = (src, name) => {
 };
 export const ACTION_KEYS = ['income_expenses.create', 'income_expenses.approve'];
 export const readsSql = () => {
-  const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_B5C_PATH, 'utf8'), 'public.hermes_domain_read_v2');
+  const applied = readFileSync(READS_PATH, 'utf8'), live = fn(readFileSync(READS_SUMMARY_PATH, 'utf8'), 'public.hermes_domain_read_v2');
   return applied.replace(fn(applied, 'public.hermes_domain_read_v2'), () => live);
 };
 export async function setup(t, { reads = readsSql(), action = readFileSync(ACTION_PATH, 'utf8'), hook = null, fixes = null } = {}) {

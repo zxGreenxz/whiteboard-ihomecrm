@@ -25,6 +25,10 @@ const buildingSql=readFileSync('supabase/migrations/20261020171321_hermes_receiv
 // B5c step 2 (20261020173818): the reader names the building/room on customers, contracts and
 // invoices; hermes_domain_read_v1/v2 follow (requires v1 to be installed first). Applied last, twice.
 const buildingNameSql=readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8');
+// R2a (20261020233934): every list read of v1/v2 and the reader carries `summary` over the whole filtered
+// set (requires B5c step 2 live). Applied last, twice (idempotent).
+export const SUMMARY_PATH='supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
+const summarySql=readFileSync(SUMMARY_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -258,6 +262,7 @@ async function setup(pool) {
  await pool.query(receivablesSql);await pool.query(receivablesSql); // Idempotency, same candidate.
  await pool.query(buildingSql);await pool.query(buildingSql); // B5c after B2, twice.
  await pool.query(buildingNameSql);await pool.query(buildingNameSql); // B5c step 2 after B5c, twice.
+ await pool.query(summarySql);await pool.query(summarySql); // R2a summary after B5c step 2, twice (idempotent).
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};

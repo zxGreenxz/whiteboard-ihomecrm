@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DOMAIN_READS, DOMAIN_FAMILIES, domainInput, domainResult } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, domainInput, domainResult } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
+import { REPORTS } from './full-read-contract.mjs';
 
 // Khuôn dòng CHÍNH XÁC sau B5c. Cửa sổ phát hành B5c (21/10/2026: ba migration 20261020171321, 20261020173818,
 // 20261020173819 và connector không đổi cùng lúc) từng cho validator chấp nhận VẮNG các khoá mới (`tolerant`, đúng một
@@ -73,6 +74,29 @@ for (const [operation, row] of Object.entries(ROWS)) {
     assert.deepEqual(domainResult(operation, unnamedEnvelope, who, input), unnamedEnvelope, 'unnamed building and room without a name are valid full rows');
   });
 }
+
+// R2a (21/10/2026): cửa sổ phát hành của `summary` (20261020233934 + 20261021004841 lên SAU connector). Bản connector này
+// chấp nhận VẮNG summary ở ĐÚNG 13 tool danh sách (DOMAIN_SUMMARY_TOLERANT) và vắng CẢ NHÓM bốn tổng của monthly_pnl
+// (summaryTolerant); có mặt thì kiểm chính xác. Bản kế (sau khi production áp hai migration): đưa cả hai danh sách về [] —
+// summary bắt buộc như khoá B5c ở trên — và đổi test này theo.
+test('R2a release window: an absent summary passes on exactly the 13 list tools and the monthly_pnl totals, for this release only', () => {
+  const lists = Object.keys(DOMAIN_READS).filter(operation => typeof DOMAIN_READS[operation].result !== 'function' && DOMAIN_READS[operation].family !== 'w2');
+  assert.equal(lists.length, 13);
+  assert.deepEqual([...DOMAIN_SUMMARY_TOLERANT].sort(), [...lists].sort(), 'next release: []');
+  assert.deepEqual(Object.keys(DOMAIN_SUMMARIES).sort(), [...lists].sort(), 'every list tool declares its summary shape');
+  assert.ok(Object.isFrozen(DOMAIN_SUMMARY_TOLERANT));
+  const pnl = REPORTS.monthly_pnl.reports.by_month;
+  assert.deepEqual([...pnl.summaryTolerant], ['revenue', 'expense', 'net', 'rows'], 'next release: summaryTolerant removed');
+  assert.ok(Object.isFrozen(pnl.summaryTolerant));
+  const tolerantReports = Object.entries(REPORTS).flatMap(([domain, { reports }]) => Object.entries(reports).filter(([, spec]) => spec.summaryTolerant?.length).map(([name]) => `${domain}:${name}`));
+  assert.deepEqual(tolerantReports, ['monthly_pnl:by_month'], 'no other report is in a release window');
+  // Vắng summary: qua (SQL trước R2a); khoá lạ trong phong bì vẫn bị từ chối.
+  for (const operation of ['customers', 'receivables']) {
+    const input = domainInput(operation, {}), who = identity(operation), legacy = envelope(operation, ROWS[operation]);
+    assert.deepEqual(domainResult(operation, legacy, who, input), legacy, `${operation}: SQL before R2a`);
+    assert.throws(() => domainResult(operation, { ...legacy, summaryV2: {} }, who, input), `${operation}: unknown envelope key`);
+  }
+});
 
 test('exact shape on the fast lane: domainFastResult applies the same row rule', () => {
   for (const operation of FAST_READ_OPERATIONS) {

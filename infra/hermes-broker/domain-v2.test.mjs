@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { setup, readsSql, HOOK_PATH, binding, token, BUILDING, OTHER_BUILDING, ROOM, OTHER_ROOM, SCOPE, UNSELECTED_ORG_SCOPE, USER, ORG, FOREIGN, SESSION, ASSISTANT } from './finance-fixture.mjs';
 import { reviewFixesSql } from './review-fixes-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_TOOLS, DOMAIN_READ_CAPABILITIES, DOMAIN_READ_CAPABILITIES_V2, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createDomainAuthAdapter, createSupabaseDomainReads } from './domain-adapter.mjs';
 import { createDomainMount } from './domain-mount.mjs';
@@ -205,6 +205,94 @@ test('v2 SQL: five fixed projections on real foundation binding; synthetic CRM A
     await db.exec(`UPDATE public.authorization_scopes SET building_id='${BUILDING}'`);
     await db.exec('UPDATE app_private.hermes_connection_tokens SET revoked_at=clock_timestamp()');
     await assert.rejects(read('income_expenses', input('income_expenses')), code('42501'));
+  });
+});
+
+// R2a (20261020233934): every v2 branch adds the summary of the whole filtered set (same WHERE as the page, no cursor,
+// no LIMIT). Money of income_expenses (sum, byType, largest) leaves CANCELLED vouchers out; count/byStatus keep them.
+test('R2a v2 SQL summary: whole filtered set on every page, CANCELLED money left out, filters and scope as the rows; mutants of the summary turn it red', { timeout: 180000 }, async t => {
+  const env = await ready(t), { db, read, ids } = env, cancelled = uuid();
+  await db.exec(`INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,voucher_date,total_amount,approval_status,kqkd_amount)
+    VALUES('${cancelled}','${ORG}','${USER}','PC8','EXPENSE','Huỷ lớn','${BUILDING}','2026-10-04',9000000,'CANCELLED',0)`);
+  const pages = async (domain, extra = {}) => {
+    const seen = [], summaries = [];
+    for (let cursor = null, n = 0; n < 10; n++) {
+      const page = await read(domain, input(domain, { ...extra, limit: 1, cursor }));
+      seen.push(...page.items); summaries.push(page.summary); cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    return { rows: seen, summaries };
+  };
+  const live = { id: ids.income, code: 'PT1', name: 'Thu tiền phòng', type: 'INCOME', totalAmount: '2500000.00', voucherDate: '2026-10-05' };
+  await t.test('income_expenses: count/byStatus with CANCELLED, money without it, largest live voucher, same summary on every page', async () => {
+    const whole = await read('income_expenses', input('income_expenses'));
+    assert.deepEqual(whole.summary, { count: 4, byStatus: { UNAPPROVED: 1, APPROVED: 2, CANCELLED: 1 }, sum: { totalAmount: '3150000.00' },
+      byType: { INCOME: { count: 1, sum: '2500000.00' }, EXPENSE: { count: 2, sum: '650000.00' } }, largest: live }, 'the 9 000 000 voucher is CANCELLED');
+    assert.deepEqual(whole.summary, summarizeRows('income_expenses', whole.items), 'oracle: the rows of the one page');
+    assert.deepEqual(domainResult('income_expenses', whole, identity('income_expenses.view'), input('income_expenses')).summary, whole.summary);
+    const paged = await pages('income_expenses');
+    assert.equal(paged.rows.length, 4);
+    for (const summary of paged.summaries) assert.deepEqual(summary, whole.summary, 'cursor and limit never change the summary');
+    assert.deepEqual(summarizeRows('income_expenses', paged.rows), whole.summary, 'count === rows once every page is read');
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { status: 'UNAPPROVED' }))).summary, { count: 1, byStatus: { UNAPPROVED: 1 },
+      sum: { totalAmount: '150000.00' }, byType: { EXPENSE: { count: 1, sum: '150000.00' } },
+      largest: { id: ids.spend, code: 'PC1', name: 'Sửa điện', type: 'EXPENSE', totalAmount: '150000.00', voucherDate: '2026-10-02' } });
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { status: 'CANCELLED' }))).summary,
+      { count: 1, byStatus: { CANCELLED: 1 }, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'only CANCELLED: counted, no money');
+    const dated = await read('income_expenses', input('income_expenses', { fromDate: '2026-10-03', toDate: '2026-10-04' }));
+    assert.deepEqual([dated.summary.count, dated.summary.sum.totalAmount, dated.summary.largest.id], [2, '500000.00', ids.pnlExpense], 'date range');
+    assert.deepEqual((await read('income_expenses', input('income_expenses', { query: '%_' }))).summary,
+      { count: 0, byStatus: {}, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'empty set: 0, {} and null — never a NULL summary');
+  });
+  await t.test('receivables, meter_readings, deposits_held, building_profit: totals of the overlay buildings only', async () => {
+    const debts = await read('receivables', input('receivables'));
+    assert.deepEqual(debts.summary, { count: 1, byStatus: { APPROVED: 1 }, sum: { totalAmount: '3000000.00', paidAmount: '1000000.00', remainingAmount: '2000000.00' },
+      byBuilding: [{ buildingId: BUILDING, buildingName: 'Toà A', count: 1, remainingAmount: '2000000.00' }] }, 'PAID/DRAFT are not debts; OTHER_BUILDING is outside the overlay');
+    assert.deepEqual((await read('receivables', input('receivables', { status: 'OVERDUE' }))).summary,
+      { count: 0, byStatus: {}, sum: { totalAmount: '0', paidAmount: '0', remainingAmount: '0' }, byBuilding: [] });
+    const readings = await read('meter_readings', input('meter_readings'));
+    assert.deepEqual(readings.summary, { count: 1, byStatus: { APPROVED: 1 }, sum: { consumption: '50.00' }, byType: { ELECTRICITY: 1 }, rooms: 1 });
+    const deposits = await read('deposits_held', input('deposits_held'));
+    assert.deepEqual(deposits.summary, { count: 1, sum: { expected: '3000000', held: '3000000', shortfallAll: '0' }, contractCount: 1, fullCount: 1, shortCount: 0 });
+    const profit = await read('building_profit', input('building_profit'));
+    assert.deepEqual(profit.summary, { count: 1, sum: { revenue: '2500000.00', expense: '500000.00', net: '2000000.00' } });
+    for (const [domain, result] of [['receivables', debts], ['meter_readings', readings], ['deposits_held', deposits], ['building_profit', profit]]) {
+      assert.deepEqual(result.summary, summarizeRows(domain, result.items), `${domain}: oracle`);
+      assert.deepEqual(domainResult(domain, result, identity(DOMAIN_READS[domain].permission), input(domain)).summary, result.summary, domain);
+    }
+    // Overlay Toàn tổ chức (cả toà B): công nợ theo toà giảm dần theo tiền còn nợ; buildingId lọc đúng một toà.
+    await db.exec(`UPDATE public.authorization_scopes SET scope_type='ORGANIZATION',building_id=null WHERE id='${SCOPE}'`);
+    try {
+      const both = await read('receivables', input('receivables'));
+      assert.deepEqual(both.summary.byBuilding.map(entry => [entry.buildingId, entry.count, entry.remainingAmount]), [[OTHER_BUILDING, 1, '3000000.00'], [BUILDING, 1, '2000000.00']]);
+      assert.deepEqual([both.summary.count, both.summary.byStatus, both.summary.sum.remainingAmount], [2, { APPROVED: 1, OVERDUE: 1 }, '5000000.00']);
+      assert.deepEqual(both.summary, summarizeRows('receivables', both.items));
+      assert.deepEqual(domainResult('receivables', both, identity('invoices.view'), input('receivables')).summary, both.summary);
+      // Rows of toà A only (in scope) but a byBuilding naming toà B: the earlier CRM scope fences the summary too.
+      const onlyA = { ...both, items: both.items.filter(row => row.buildingId === BUILDING) };
+      assert.throws(() => domainResult('receivables', onlyA, identity('invoices.view', [BUILDING]), input('receivables')), 'byBuilding outside the CRM scope is refused');
+      const one = await read('receivables', input('receivables', { buildingId: BUILDING }));
+      assert.deepEqual([one.summary.count, one.summary.byBuilding.map(entry => entry.buildingId)], [1, [BUILDING]], 'buildingId filter');
+    } finally { await db.exec(`UPDATE public.authorization_scopes SET scope_type='BUILDING',building_id='${BUILDING}' WHERE id='${SCOPE}'`); }
+  });
+  await t.test('mutants of the summary statement are caught by the oracle checks (status filter, CANCELLED money, cursor)', async () => {
+    const statement = readsSql().match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v2\([\s\S]*?\$fn\$;/)[0];
+    const once = (from, to) => { assert.equal(statement.split(from).length, 2, `anchor: ${from}`); return statement.replace(from, () => to); };
+    const vouchers = async extra => { const value = await read('income_expenses', input('income_expenses', extra)); return [value.summary, summarizeRows('income_expenses', value.items)]; };
+    for (const [label, mutant, probe] of [
+      ['summary ignores the status filter', once(`          AND (v_status IS NULL OR ie.approval_status=v_status)\n`, ''), () => vouchers({ status: 'APPROVED' })],
+      ['summary keeps CANCELLED money', once(`live AS (SELECT * FROM f WHERE f.approval_status IS DISTINCT FROM 'CANCELLED')`, 'live AS (SELECT * FROM f)'), () => vouchers({})],
+      ['summary follows the cursor', once(`      SELECT jsonb_build_object('count',(SELECT count(*) FROM f),`, `      SELECT jsonb_build_object('count',(SELECT count(*) FROM f WHERE cursor_id IS NULL OR f.id>cursor_id),`),
+        async () => { const first = await read('income_expenses', input('income_expenses', { limit: 1 }));
+          return [(await read('income_expenses', input('income_expenses', { limit: 1, cursor: first.nextCursor }))).summary, first.summary]; }],
+    ]) {
+      const [before, expected] = await probe();
+      assert.deepEqual(before, expected, `${label}: the reviewed body passes`);
+      await db.exec(mutant);
+      try { const [changed, oracle] = await probe(); assert.notDeepEqual(changed, oracle, `${label}: the mutant is detected`); }
+      finally { await db.exec(statement); }
+    }
+    assert.deepEqual(...(await vouchers({})), 'reviewed body restored');
   });
 });
 
