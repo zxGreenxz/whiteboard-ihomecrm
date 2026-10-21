@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { BrokerError, REQUEST_RECEIPT_UNKNOWN } from './broker.mjs';
 import { CONNECTOR_VERSION } from './connector-health.mjs';
 import { READ_MISUSE_HINT_TEXTS } from './read-misuse-hints.mjs';
+import { vietnamToolResult } from './vietnam-time.mjs';
 
 const VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -99,7 +100,8 @@ export function createMcpHttpHandler({ broker, allowedHosts = ['127.0.0.1', 'loc
         if (!keys(message.params, ['name', 'arguments', '_meta']) || typeof message.params.name !== 'string') {
           reply(response, 200, rpcError(id, -32602, 'invalid_params')); return;
         }
-        result = await broker.callTool(presentedToken, message.params.name, message.params.arguments ?? {});
+        // R2e: mốc giờ UTC trong kết quả đổi sẵn sang giờ Việt Nam (+07:00) — mô hình hay lệch một ngày khi tự đổi.
+        result = vietnamToolResult(await broker.callTool(presentedToken, message.params.name, message.params.arguments ?? {}));
       } else if (message.method === 'ping') {
         await broker.authenticate(presentedToken); result = {};
       } else {
