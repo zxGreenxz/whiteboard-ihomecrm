@@ -91,8 +91,10 @@ test('domain contract rejects caller-controlled identity, RPC, implicit writes a
   assert.equal(DOMAIN_TOOLS.filter(tool=>DOMAIN_READS[tool.name.slice(9)].family==='v1').length,6);assert.equal(DOMAIN_READS.occupancy.family,'v3');assert.equal(DOMAIN_READS.customers.family,'v3');
   for(const extra of [{organizationId:FOREIGN},{userId:USER},{rpc:'drop_all'},{table:'customers'},{query:'x\n'},{limit:51},{status:'APPROVED'}]) assert.throws(()=>domainInput('customers',extra));
   const identity={row:{organizationId:ORG},effective:{read:['customers.view']},scopesByPermission:{'customers.view':{buildingIds:[BUILDING]}}};
-  const result={organizationId:ORG,domain:'customers',items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,buildingName:'Allowed',roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
+  // summary is required since the R2a release window closed (R2c connector).
+  const result={organizationId:ORG,domain:'customers',summary:{count:1,byStatus:{},sum:{}},items:[{id:ITEM,name:'Name',phone:'0901234567',contractId:ITEM,buildingId:BUILDING,buildingName:'Allowed',roomId:ROOM,roomName:'P101'}],nextCursor:null,fetchedAt:'2026-10-16T00:00:00.000Z'};
   assert.deepEqual(domainResult('customers',result,identity,domainInput('customers',{})),result);
+  assert.throws(()=>domainResult('customers',(({summary,...rest})=>rest)(result),identity,domainInput('customers',{})),'no summary');
   for(const changed of [{...result,organizationId:FOREIGN},{...result,items:[{...result.items[0],buildingId:OTHER_BUILDING}]},{...result,items:[{...result.items[0],phoneMasked:'***4567'}]},{...result,fetchedAt:'now'},{...result,nextCursor:ITEM}]) assert.throws(()=>domainResult('customers',changed,identity,domainInput('customers',{})));
 });
 

@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1539,
   "soFileDocBangFs": 396,
-  "tongLoiGoi": 939,
-  "khongPhanLoaiDuoc": 425,
+  "tongLoiGoi": 942,
+  "khongPhanLoaiDuoc": 426,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 59,
@@ -271,6 +271,14 @@
         "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 5
+    },
+    {
+      "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "sql": 4
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",
@@ -657,14 +665,6 @@
       "soGoi": 3,
       "loai": {},
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/hermes-broker/domain-summary-sql.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/hermes-broker/org-policy-sql.test.mjs",

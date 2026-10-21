@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { createHermesBackend } from './server.mjs';
 import { W2, W2_TOOL_NAMES } from './wave2-registry.mjs';
-import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
+import { CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 
 const HOST = 'broker.example:8443', ORIGIN = 'https://crm.example', NOW = 1_800_000_000_000;
 const id = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -182,8 +182,10 @@ test('TG3b opt-in runtime: the fast plan (4 reads) and the cached admission (B2-
         if (missingRpc) return Response.json({ code: 'PGRST202', message: 'fixture missing function', details: null, hint: null }, { status: 404 });
         const args = JSON.parse(options.body), operation = args.p_domain, definition = DOMAIN_READS[operation], joined = f.read().joined;
         assert.equal(options.headers.authorization, `Bearer ${assistantJwt}`);
-        // Each family keeps its own result envelope on every lane: v2 adds source and time, v3 adds time.
+        // Each family keeps its own result envelope on every lane: v2 adds source and time, v3 adds time; list reads carry
+        // `summary` (required since the R2a release window closed) — here the summary of the empty page.
         const result = { organizationId: I.org, domain: operation, items: [], nextCursor: null,
+          ...(Object.hasOwn(DOMAIN_SUMMARIES, operation) ? { summary: summarizeRows(operation, []) } : {}),
           ...(definition.family === 'v2' ? { source: definition.source, fetchedAt: new Date(NOW).toISOString() } : {}),
           ...(definition.family === 'v3' ? { fetchedAt: new Date(NOW).toISOString() } : {}) };
         if (!path.endsWith('/hermes_domain_read_fast_v1')) {

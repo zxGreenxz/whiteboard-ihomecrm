@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
 import { createReadNameResolver, matchBuildings, ROOM_MATCH_LIMIT, ROOM_FILTER_PAGE_LIMIT, ROOM_FILTER_MAX_PAGES, DIRECTORY_RPCS } from './read-name-resolution.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, READ_NAMES, READ_NAME_LIMITS, domainInput, splitReadNames } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_SUMMARIES, DOMAIN_TOOLS, READ_NAMES, READ_NAME_LIMITS, domainInput, splitReadNames, summarizeRows } from './domain-contract.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -270,6 +270,8 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   const calls = [], fetchedAt = new Date(f.clock.now).toISOString();
   // Dòng đầy đủ sau B5c: buildingName bắt buộc (tolerant đã gỡ 21/10, domain-tolerance.test.mjs).
   const customersRow = (n, roomId) => ({ id: id(600 + n), name: `Khách ${n}`, phone: null, contractId: null, buildingId: A, buildingName: 'Toà 950NK', roomId, roomName: roomId === R(1) ? 'London 5' : null });
+  // List reads carry `summary` (required since the R2a release window closed); empty pages carry the summary of no row.
+  const empty = domain => Object.hasOwn(DOMAIN_SUMMARIES, domain) ? { summary: summarizeRows(domain, []) } : {};
   const fetch = async (url, options) => {
     const name = new URL(url).pathname.replace('/rest/v1/rpc/', ''), args = JSON.parse(options.body);
     calls.push({ name, args, bearer: options.headers.authorization });
@@ -277,19 +279,20 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
     if (name === 'hermes_room_directory_v1') return Response.json({ rooms: directoryRooms(args) });
     if (name === 'hermes_organization_name_v1') return Response.json({ id: args.p_organization_id, name: 'Công ty Thử' });
     if (name === 'hermes_domain_read_fast_v1' && args.p_domain === 'receivables') return Response.json({ authority: { organizationId: ORG, userId: USER, connectionId: CONNECTION,
-      permission: 'invoices.view', buildingIds: [A, B, C], cashbookIds: [] }, result: { organizationId: ORG, domain: 'receivables', items: [], nextCursor: null, source: 'crm.invoices', fetchedAt } });
+      permission: 'invoices.view', buildingIds: [A, B, C], cashbookIds: [] }, result: { organizationId: ORG, domain: 'receivables', ...empty('receivables'), items: [], nextCursor: null, source: 'crm.invoices', fetchedAt } });
     if (name === 'hermes_domain_read_fast_v1') {
       // Full SQL page of 50 (the validator only accepts a cursor on a full page): matches at rows 2 and 50; the tail page holds one more.
+      // The SQL summary counts the whole filtered set (52 rows of the building, before the connector filters the room).
       const page = args.p_input.cursor === null
         ? { items: Array.from({ length: 50 }, (_, index) => customersRow(index + 1, [2, 50].includes(index + 1) ? R(1) : index % 2 ? R(2) : null)), nextCursor: id(650) }
         : { items: [customersRow(51, R(1)), customersRow(52, null)], nextCursor: null };
       return Response.json({ authority: { organizationId: ORG, userId: USER, connectionId: CONNECTION, permission: 'customers.view', buildingIds: [A, B, C], cashbookIds: [] },
-        result: { organizationId: ORG, domain: 'customers', ...page, fetchedAt } });
+        result: { organizationId: ORG, domain: 'customers', summary: { count: 52, byStatus: {}, sum: {} }, ...page, fetchedAt } });
     }
-    if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
+    if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
     if (name === 'hermes_w2_read_v1') return Response.json({ organizationId: ORG, domain: 'report', fetchedAt, report: args.p_input.report, source: W2.reports[args.p_input.report].source,
       unavailable: null, summary: null, items: [], offset: 0, nextOffset: null, sourceCapped: false, fence: { buildings: [B], cashbooks: [], orgWide: false } });
-    return Response.json({ organizationId: ORG, domain: args.p_domain, items: [], nextCursor: null });
+    return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null });
   };
   const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' };
   const readAuthority = createReadCatalogAuthority({ authority: f.authority, connectionStore: f.connectionStore, clock: () => f.clock.now });
@@ -308,10 +311,12 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(value.items.map(row => row.id), [id(602), id(650), id(651)]);
   assert.deepEqual(value.roomFilter, { roomIds: [R(1)], roomNames: ['London 5'], buildingIds: [A], scannedRows: 52, pages: 2, more: false, filteredOn: 'page' });
   assert.equal(value.nextCursor, null);
+  assert.deepEqual(value.summary, { count: 3, byStatus: {}, sum: {} }, 'every page read: the summary of the kept rows, never the SQL 52 of the building');
   // Asking for two: the first page already holds them ⇒ one read, cut, cursor = last kept row, more = true.
   calls.length = 0;
   const two = await run('customers', domainInput('customers', { limit: 2 }), { buildingName: '950nk', roomName: 'London 5' });
   assert.deepEqual([calls.filter(call => call.name === 'hermes_domain_read_fast_v1').length, two.items.map(row => row.id), two.nextCursor, two.roomFilter.more], [1, [id(602), id(650)], id(650), true]);
+  assert.equal(two.summary, null, 'rows left unread: no figure rather than a wrong one');
   // Receivables (fast plan since B2): query becomes the room name, the seven v2 keys stay; the cached lane (leads) makes no directory call without names.
   calls.length = 0;
   await run('receivables', domainInput('receivables', {}), { buildingName: '950NK', roomName: 'London 5' });

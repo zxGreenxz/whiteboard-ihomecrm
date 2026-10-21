@@ -2557,7 +2557,7 @@
       "sql": [
         {
           "function": "public.hermes_domain_read_v2",
-          "sha256": "1069eb4d1f4359b214457e16973476755ed7d5501d08588e0d4dd53e6749fe23"
+          "sha256": "7f21c0dda6f21d3b96a27336b0d5e3b8e0fb7e19d86ad531fabe85111a29a82f"
         }
       ],
       "hermes": [

@@ -145,11 +145,17 @@ export const DOMAIN_READS = Object.freeze({
 // khi có query (lõi khớp ILIKE nhiều cột, SQL không chép lại); customers/contracts/invoices đếm như lõi (có thể > số
 // dòng chiếu khi lõi gồm dòng không phòng) ⇒ connector chỉ đòi count ≥ items.length, đẳng thức kiểm ở test SQL.
 // Mỗi summary kiểm chính xác theo miền (khoá lạ/sai kiểu ⇒ backend_unavailable) và các bất biến ở domainSummary.
+// R2c (21/10/2026; prod: "khoản chi lớn nhất tháng này" ⇒ crm_read_income_expenses {fromDate,toDate} không lọc loại, nên
+// summary.largest là một phiếu THU): mỗi phần tử byType thêm `largest` — phiếu lớn nhất CỦA LOẠI đó trên tập đã lọc, bỏ
+// CANCELLED, cùng khuôn summary.largest; summary.largest (cả hai loại) giữ nguyên cho tương thích.
 const summaryCounts = (keys = null) => value => domainRecord(value) && Object.keys(value).length <= 32 &&
   Object.entries(value).every(([key, n]) => (keys === null ? text(key) && key !== '' : keys.includes(key)) && integer(n));
 const summarySums = keys => value => domainExact(value, keys) && keys.every(key => amount(value[key]));
-const summaryTyped = value => domainExact(value, ['count', 'sum']) && integer(value.count) && amount(value.sum);
 const LARGEST_FIELDS = Object.freeze({ id: domainId, code: nullable(text), name: text, type: oneOf(['INCOME', 'EXPENSE']), totalAmount: amount, voucherDate: date });
+const summaryLargest = value => domainExact(value, Object.keys(LARGEST_FIELDS)) && Object.entries(LARGEST_FIELDS).every(([key, check]) => check(value[key]));
+// {count, sum, largest}; {count, sum} (SQL R2a) chỉ qua trong cửa sổ DOMAIN_SUMMARY_ENTRY_TOLERANT và đồng loạt (domainSummary).
+const summaryTyped = value => (domainExact(value, ['count', 'sum']) || domainExact(value, ['count', 'sum', 'largest']) && nullable(summaryLargest)(value.largest)) &&
+  integer(value.count) && amount(value.sum);
 const BY_BUILDING_FIELDS = Object.freeze({ buildingId: domainId, buildingName: text, count: integer, remainingAmount: amount });
 const summaryShape = (fields, statusKey = null) => Object.freeze({ fields: Object.freeze(fields), statusKey });
 const COMMON = (byStatus, sum = []) => ({ count: integer, byStatus, sum: summarySums(sum) });
@@ -164,7 +170,7 @@ export const DOMAIN_SUMMARIES = Object.freeze({
   occupancy: summaryShape({ count: integer, total: integer, occupied: integer, available: integer }),
   income_expenses: summaryShape({ ...COMMON(summaryCounts(['UNAPPROVED', 'APPROVED', 'CANCELLED']), ['totalAmount']),
     byType: value => domainRecord(value) && Object.keys(value).every(key => ['INCOME', 'EXPENSE'].includes(key)) && Object.values(value).every(summaryTyped),
-    largest: nullable(value => domainExact(value, Object.keys(LARGEST_FIELDS)) && Object.entries(LARGEST_FIELDS).every(([key, check]) => check(value[key]))) },
+    largest: nullable(summaryLargest) },
   'approvalStatus'),
   receivables: summaryShape({ ...COMMON(summaryCounts(['APPROVED', 'PARTIAL_PAID', 'OVERDUE']), ['totalAmount', 'paidAmount', 'remainingAmount']),
     byBuilding: value => Array.isArray(value) && value.length <= 50 && value.every(entry => domainExact(entry, Object.keys(BY_BUILDING_FIELDS)) &&
@@ -175,9 +181,16 @@ export const DOMAIN_SUMMARIES = Object.freeze({
   building_profit: summaryShape({ count: integer, sum: summarySums(['revenue', 'expense', 'net']) }),
 });
 // Cửa sổ phát hành (như `tolerant` B5c): connector lên TRƯỚC migration ⇒ một bản phát hành chấp nhận VẮNG summary ở các
-// miền này (SQL chưa áp); có mặt ⇒ kiểm đủ. Bản connector kế tiếp (sau khi prod áp 20261020233934 + 20261021004841) đưa
-// danh sách về rỗng: summary bắt buộc (domain-tolerance.test.mjs khoá cả hai trạng thái).
-export const DOMAIN_SUMMARY_TOLERANT = Object.freeze(Object.keys(DOMAIN_SUMMARIES));
+// miền liệt kê (SQL chưa áp); có mặt ⇒ kiểm đủ. R2a (13 miền) đã đóng 21/10 sau khi prod áp 20261020233934 +
+// 20261021004841 (09:46–09:51) ⇒ rỗng: summary BẮT BUỘC ở mọi miền khai DOMAIN_SUMMARIES (domain-tolerance.test.mjs khoá).
+// Cơ chế giữ cho lần đổi khuôn sau.
+export const DOMAIN_SUMMARY_TOLERANT = Object.freeze([]);
+// Cửa sổ phát hành cho khoá con MỚI trong phần tử của một khoá summary: { miền: { khoá summary: [khoá con] } }. Vắng = SQL
+// chưa áp ⇒ qua, nhưng vắng ĐỒNG LOẠT ở mọi phần tử; có mặt ở một phần tử ⇒ đủ ở mọi phần tử, kiểm kiểu + bất biến. R2c
+// (21/10/2026): byType.<INCOME|EXPENSE>.largest — connector lên TRƯỚC 20261021035022_hermes_domain_summary_largest_by_type_v1;
+// bản connector kế tiếp (sau khi prod áp) đưa về {} (domain-tolerance.test.mjs khoá cả hai trạng thái).
+export const DOMAIN_SUMMARY_ENTRY_TOLERANT = Object.freeze({ income_expenses: Object.freeze({ byType: Object.freeze(['largest']) }) });
+const entryTolerant = (operation, key, entry) => DOMAIN_SUMMARY_ENTRY_TOLERANT[operation]?.[key]?.includes(entry) === true;
 // Family v1 keys keep their historic export (capability contract, schedule and
 // CDE fixtures). v2 keys are separate until the capability contract adds them.
 export const DOMAIN_READ_CAPABILITIES = DOMAIN_FAMILIES.v1.capabilities;
@@ -236,7 +249,7 @@ export function domainResult(operation, value, identity, input) {
     // outputKeys (đợt 2): khoá chỉ dùng để rào (fence) không đi tới mô hình.
     return Object.fromEntries((definition.outputKeys ?? definition.resultKeys).map(key => [key, Object.hasOwn(projected, key) ? projected[key] : value[key]]));
   }
-  // R2a: `summary` là một khoá thêm ngoài family.resultKeys; vắng chỉ được trong cửa sổ DOMAIN_SUMMARY_TOLERANT.
+  // R2a: `summary` là một khoá thêm ngoài family.resultKeys; vắng chỉ được trong cửa sổ DOMAIN_SUMMARY_TOLERANT (đã đóng: rỗng).
   const shape = Object.hasOwn(DOMAIN_SUMMARIES, operation) ? DOMAIN_SUMMARIES[operation] : null;
   const withSummary = shape !== null && domainRecord(value) && Object.hasOwn(value, 'summary');
   if (!definition || !domainExact(value, withSummary ? [...family.resultKeys, 'summary'] : family.resultKeys) ||
@@ -305,9 +318,25 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
   if (operation === 'occupancy' && summary.occupied + summary.available > summary.total) fail();
   if (operation === 'meter_readings' && (!within(summary.rooms) || !within(total(Object.values(summary.byType))))) fail();
   if (operation === 'income_expenses') {
-    const { largest } = summary;
-    if (!within(total(Object.values(summary.byType).map(entry => entry.count))) || largest !== null && (summary.count < 1 ||
-        input.fromDate && largest.voucherDate < input.fromDate || input.toDate && largest.voucherDate > input.toDate)) fail();
+    const { largest, byType } = summary, entries = Object.entries(byType);
+    const outside = day => input.fromDate && day < input.fromDate || input.toDate && day > input.toDate;
+    // byType và largest cùng tính trên phiếu chưa huỷ: không có phiếu nào ⇔ byType rỗng ⇔ largest null; có thì loại của
+    // largest có mặt trong byType.
+    if (!within(total(entries.map(([, entry]) => entry.count))) || (largest === null) !== (entries.length === 0) ||
+        largest !== null && (summary.count < 1 || outside(largest.voucherDate) || !Object.hasOwn(byType, largest.type))) fail();
+    // R2c: byType.<loại>.largest có ở MỌI phần tử, hoặc vắng ở mọi phần tử chỉ trong cửa sổ phát hành (SQL R2a).
+    const typed = entries.filter(([, entry]) => Object.hasOwn(entry, 'largest'));
+    if (typed.length < entries.length && (typed.length > 0 || !entryTolerant(operation, 'byType', 'largest'))) fail();
+    for (const [type, { count, sum, largest: best }] of typed) {
+      // Phiếu lớn nhất CỦA LOẠI: null chỉ khi loại không có phiếu (SQL không trả phần tử count 0); đúng loại, trong kỳ; không
+      // vượt tổng của loại (tiền ≥ 0: CHECK income_expenses_total_amount_non_negative) và không đứng trước largest toàn bộ
+      // theo cùng thứ tự SQL (tiền giảm dần, rồi id).
+      const order = best === null ? 0 : compareAmounts(best.totalAmount, largest.totalAmount);
+      if ((best === null) !== (count === 0) || best !== null && (best.type !== type || outside(best.voucherDate) ||
+          compareAmounts(best.totalAmount, sum) > 0 || order > 0 || order === 0 && best.id < largest.id)) fail();
+    }
+    // largest toàn bộ chính là largest của loại nó.
+    if (typed.length > 0 && !Object.keys(LARGEST_FIELDS).every(key => byType[largest.type]?.largest?.[key] === largest[key])) fail();
   }
   if (operation === 'receivables') {
     // Toà của byBuilding như toà của dòng: trong phạm vi khoá, đúng toà lọc; giảm dần theo remainingAmount, hoà thì theo id.
@@ -343,16 +372,18 @@ export function summarizeRows(operation, rows, { now = Date.now() } = {}) {
     case 'assets': return { count, byStatus: tally('condition'), sum: { quantity: money('quantity') } };
     case 'occupancy': return { count, total: add('total'), occupied: add('occupied'), available: add('available') };
     case 'income_expenses': {
+      // Phiếu lớn nhất như ORDER BY total_amount DESC, id LIMIT 1 của SQL; R2c: cả toàn bộ lẫn từng loại.
       const live = row => row.approvalStatus !== 'CANCELLED', byType = {};
+      const top = of => of.reduce((best, row) => best === null || compareAmounts(row.totalAmount, best.totalAmount) > 0 ||
+        compareAmounts(row.totalAmount, best.totalAmount) === 0 && row.id < best.id ? row : best, null);
+      const project = row => row === null ? null : { id: row.id, code: row.code, name: row.name, type: row.type, totalAmount: row.totalAmount,
+        voucherDate: row.voucherDate };
       for (const type of ['INCOME', 'EXPENSE']) {
         const of = rows.filter(row => live(row) && row.type === type);
-        if (of.length) byType[type] = { count: of.length, sum: sumAmounts(of.map(row => row.totalAmount)) };
+        if (of.length) byType[type] = { count: of.length, sum: sumAmounts(of.map(row => row.totalAmount)), largest: project(top(of)) };
       }
-      const largest = rows.filter(live).reduce((best, row) => best === null || compareAmounts(row.totalAmount, best.totalAmount) > 0 ||
-        compareAmounts(row.totalAmount, best.totalAmount) === 0 && row.id < best.id ? row : best, null);
       return { count, byStatus: tally('approvalStatus'), sum: { totalAmount: money('totalAmount', live) }, byType,
-        largest: largest === null ? null : { id: largest.id, code: largest.code, name: largest.name, type: largest.type,
-          totalAmount: largest.totalAmount, voucherDate: largest.voucherDate } };
+        largest: project(top(rows.filter(live))) };
     }
     case 'receivables': {
       const buildings = new Map();

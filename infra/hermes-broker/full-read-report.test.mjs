@@ -267,7 +267,7 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
 // BEGIN/COMMIT (the case is one transaction, rolled back after). It restores the exact 20261020173819 v3 and
 // 20261017033630 report bodies: no summary on customers/occupancy, the four-key monthly_pnl summary — which this
 // connector release still accepts (release window), the safe order the revert header asks for.
-test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 report bodies exactly; this connector accepts the result', { timeout: 120000 }, () => inCase(async env => {
+test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 report bodies exactly; this connector (window closed) refuses the result', { timeout: 120000 }, () => inCase(async env => {
   const { db } = env;
   await seedPnl(db); await seedRooms(db);
   const file = readFileSync('docs/plans/hermes-crm/revert/hermes_w2_domain_summary_revert_v1.sql', 'utf8');
@@ -283,10 +283,12 @@ test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 
   assert.deepEqual(await bodies(), reverted, 'the revert bodies are the 20261020173819 / 20261017033630 bodies');
   const occupancy = await env.read3('occupancy', domainInput('occupancy', {}));
   assert.equal(Object.hasOwn(occupancy, 'summary'), false);
-  assert.deepEqual(domainResult('occupancy', occupancy, identity('reports_real_estate.occupancy'), domainInput('occupancy', {})).items, occupancy.items);
-  const pnl = await run(env, 'monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' });
-  assert.deepEqual(Object.keys(pnl.value.summary).sort(), ['basis', 'pendingExpense', 'pendingIncome', 'pendingVouchers'], 'the four keys before R2a');
-  assert.deepEqual(pnl.checked.summary, pnl.value.summary, 'accepted while summaryTolerant is set');
+  // The R2a window is closed (DOMAIN_SUMMARY_TOLERANT = [], no summaryTolerant): this connector refuses the reverted SQL.
+  // The artifact's SAFE ORDER rolls the connector back to the R2a release (3762b3a0) before applying it.
+  assert.throws(() => domainResult('occupancy', occupancy, identity('reports_real_estate.occupancy'), domainInput('occupancy', {})), 'summary is required');
+  const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' }), pnl = await env.read3('monthly_pnl', pnlInput);
+  assert.deepEqual(Object.keys(pnl.summary).sort(), ['basis', 'pendingExpense', 'pendingIncome', 'pendingVouchers'], 'the four keys before R2a');
+  assert.throws(() => domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput), 'the four totals are required');
   await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3')); await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
   assert.deepEqual(await bodies(), r2a, 'R2a forward again');
 }));
@@ -474,16 +476,18 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
   // P3-8: ảnh chụp không có phạm vi của khoá ⇒ đóng (trước đây coi là mở).
   assert.throws(() => domainResult('invoice_report', value, { row: { organizationId: ORG }, scopesByPermission: {} }, input), 'no scope for the key ⇒ refused');
   const pnlInput = domainInput('monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-08-31' });
+  const pending = { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 };
   const pnl = { ...value, domain: 'monthly_pnl', report: 'by_month', source: 'crm.fa_monthly_pnl', items: [],
-    summary: { basis: 'accrual', pendingIncome: '0', pendingExpense: '1', pendingVouchers: 1 } };
+    summary: { ...pending, revenue: '0', expense: '0', net: '0', rows: 0 } };
   assert.equal(domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput).summary.basis, 'accrual');
   for (const summary of [{ ...pnl.summary, basis: 'kqkd' }, { ...pnl.summary, pendingExpense: 1 }, (({ basis, ...rest }) => rest)(pnl.summary)])
     assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity('reports_finance.analysis'), pnlInput), JSON.stringify(summary));
-  // R2a: tổng các hàng (revenue/expense/net/rows) đi cùng summary. Cửa sổ phát hành (summaryTolerant): SQL cũ (bốn khoá ở
-  // trên) vẫn qua; có mặt thì đủ cả bốn, đúng kiểu — vắng LẺ một khoá là khuôn hỏng.
+  // R2a: tổng các hàng (revenue/expense/net/rows) đi cùng summary. Cửa sổ phát hành (summaryTolerant) đã đóng 21/10: SQL cũ
+  // (chỉ bốn khoá chờ duyệt) bị từ chối như vắng LẺ một khoá; có mặt thì đủ cả bốn, đúng kiểu.
   const pnlCheck = value => domainResult('monthly_pnl', value, identity('reports_finance.analysis'), pnlInput);
-  const totals = { ...pnl.summary, revenue: '0', expense: '0', net: '0', rows: 0 };
+  const totals = pnl.summary;
   assert.deepEqual(pnlCheck({ ...pnl, summary: totals }).summary, totals);
+  assert.throws(() => pnlCheck({ ...pnl, summary: pending }), 'the four keys of the SQL before R2a: refused since the window closed');
   for (const key of ['revenue', 'expense', 'net', 'rows'])
     assert.throws(() => pnlCheck({ ...pnl, summary: (({ [key]: _, ...rest }) => rest)(totals) }), `${key} absent alone`);
   for (const [label, changed] of [['revenue as a number', { revenue: 0 }], ['net not a decimal', { net: '1e3' }], ['negative rows', { rows: -1 }],

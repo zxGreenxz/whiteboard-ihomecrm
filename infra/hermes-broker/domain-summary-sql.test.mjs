@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {localCluster,setup,jwt,fast,normal,live,id,ORG,FOREIGN,USER,MEMBER,BUILDING,OTHER_BUILDING,ROOM,INVOICE,SUMMARY_PATH} from './crm-shared-read-sql-fixture.mjs';
-import { domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
+import {localCluster,setup,jwt,fast,normal,live,id,ORG,FOREIGN,USER,MEMBER,ROLE,BUILDING,OTHER_BUILDING,ROOM,INVOICE,SUMMARY_PATH,LARGEST_BY_TYPE_PATH} from './crm-shared-read-sql-fixture.mjs';
+import { DOMAIN_SUMMARY_ENTRY_TOLERANT, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { domainFastResult } from './domain-read-fast.mjs';
 
 // R2a (20261020233934) on real PostgreSQL 16+/17: the `summary` of crm_read_receivables on both lanes — the fast
@@ -13,17 +13,22 @@ import { domainFastResult } from './domain-read-fast.mjs';
 // the summary statement (cursor kept, building scope dropped, status filter dropped) turning these checks red, and
 // (7) the $requires$ guard stopping the file before it replaces anything when B5c step 2 is not live, and (8) the
 // prepared revert artifact restoring the exact B5c step 2 bodies (then R2a forward again).
+// R2c (20261021035022, second test below): byType.<INCOME|EXPENSE>.largest of crm_read_income_expenses on v2.
 // Synthetic rows only (no customer data).
 const [B2,R2,R3,R4,B3,R5]=[300,301,302,303,304,305].map(id);
 const inv=n=>id(300+n);
 const DEBTS=[INVOICE,inv(10),inv(11),inv(18),inv(20)];
-const summarySql=readFileSync(SUMMARY_PATH,'utf8');
-// Prepared rollback (not a migration): the 20261020173818 bodies of the three functions, with its own guards.
+const summarySql=readFileSync(SUMMARY_PATH,'utf8'),largestSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
+// Prepared rollbacks (not migrations): R2a → the 20261020173818 bodies of the three functions; R2c → the R2a v2 body.
 const REVERT=readFileSync('docs/plans/hermes-crm/revert/hermes_domain_summary_revert_v1.sql','utf8');
-// The CREATE statement of one function in the R2a file (plpgsql ends at $fn$;, the SQL-standard reader at END;).
-const statement=(name,end)=>{const start=summarySql.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`),stop=summarySql.indexOf(end,start);
- assert.ok(start>=0&&stop>start,name);return summarySql.slice(start,stop+end.length);};
-const READER=statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;'),V2=statement('public.hermes_domain_read_v2','$fn$;');
+const REVERT_LARGEST=readFileSync('docs/plans/hermes-crm/revert/hermes_domain_summary_largest_by_type_revert_v1.sql','utf8');
+// The CREATE statement of one function in a file (plpgsql ends at $fn$;, the SQL-standard reader at END;).
+const statement=(name,end,sql=summarySql)=>{const start=sql.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`),stop=sql.indexOf(end,start);
+ assert.ok(start>=0&&stop>start,name);return sql.slice(start,stop+end.length);};
+// The reader is the R2a body; v2 is the live R2c body (receivables unchanged since R2a), so a restored mutant is the live body.
+const READER=statement('app_private.hermes_domain_read_rows_fast_v1','\nEND;'),V2=statement('public.hermes_domain_read_v2','$fn$;',largestSql);
+const R2A_V2=statement('public.hermes_domain_read_v2','$fn$;'),B5C_V2=statement('public.hermes_domain_read_v2','$fn$;',
+ readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8'));
 const once=(sql,from,to)=>{assert.equal(sql.split(from).length,2,`anchor: ${from.trim()}`);return sql.replace(from,()=>to);};
 
 test('R2a receivables summary: whole filtered set on both lanes, every page alike, filters and RLS narrow it like the rows; mutants are caught',{timeout:240000},async t=>{
@@ -167,6 +172,7 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
  await t.test('revert artifact (docs/plans/hermes-crm/revert): restores the exact 20261020173818 bodies (no summary), runs twice, and R2a re-applies after it',async()=>{
   const bodies=async()=>(await pool.query(`SELECT p.proname,CASE WHEN p.prosqlbody IS NULL THEN md5(p.prosrc) ELSE md5(pg_get_function_sqlbody(p.oid)) END body
    FROM pg_proc p WHERE p.proname IN ('hermes_domain_read_rows_fast_v1','hermes_domain_read_v1','hermes_domain_read_v2') ORDER BY 1`)).rows;
+  // The live bodies: R2a reader and v1, R2c v2 (its R2a summary extended). The R2a artifact also runs over the R2c v2.
   const r2a=await bodies();
   await pool.query(REVERT);
   const reverted=await bodies();
@@ -176,14 +182,16 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
   assert.deepEqual({...quick,fetchedAt:null},{...legacy,fetchedAt:null},'the lanes still agree');
   assert.deepEqual(quick.items.map(row=>row.id),DEBTS,'rows unchanged');
   assert.equal(Object.hasOwn((await fast(pool,bind4,'contracts')).result,'summary'),false);
-  assert.deepEqual(domainFastResult('receivables',await fast(pool,bind4,'receivables',{}),who,domainInput('receivables',{})).items.length,5,
-   'this connector release still accepts the reverted SQL (summary tolerant)');
+  // The R2a window is closed (DOMAIN_SUMMARY_TOLERANT = [], R2c connector): the reverted SQL is refused. The artifact's
+  // SAFE ORDER rolls the connector back to the R2a release (3762b3a0) before applying it.
+  const withoutSummary=await fast(pool,bind4,'receivables',{});
+  assert.throws(()=>domainFastResult('receivables',withoutSummary,who,domainInput('receivables',{})),'summary is required: the reverted SQL is refused');
   // Byte-identical to B5c step 2: running its file again changes no body.
   await pool.query(readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8'));
   assert.deepEqual(await bodies(),reverted,'the revert bodies are the 20261020173818 bodies');
   await pool.query(REVERT);assert.deepEqual(await bodies(),reverted,'a second run changes nothing');
-  await pool.query(summarySql);
-  assert.deepEqual(await bodies(),r2a,'R2a forward again: the reviewed bodies');
+  await pool.query(summarySql);await pool.query(largestSql);
+  assert.deepEqual(await bodies(),r2a,'R2a then R2c forward again: the reviewed bodies');
   assert.equal((await lanes()).summary.count,5);
  });
  await t.test('catalog: applied twice (idempotent) — one definition each, signatures, owner, ACL and the reader path kept',async()=>{
@@ -195,7 +203,167 @@ test('R2a receivables summary: whole filtered set on both lanes, every page alik
   for(const signature of ['app_private.hermes_domain_read_rows_fast_v1(jsonb)','public.hermes_domain_read_v1(jsonb,text,jsonb)','public.hermes_domain_read_v2(jsonb,text,jsonb)'])
    for(const [role,expected] of [['authenticated',true],['anon',false],['service_role',false],['hermes_store_executor',false]])
     assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,signature,'EXECUTE'])).rows[0].value,expected,`${role} ${signature}`);
-  await pool.query(summarySql);
+  await pool.query(summarySql);await pool.query(largestSql);
   assert.equal((await lanes()).summary.count,5,'a third run changes nothing');
+ });
+});
+
+// R2c (20261021035022) on real PostgreSQL 16+/17: crm_read_income_expenses runs on hermes_domain_read_v2 only (DEFINER;
+// the fast reader has no income_expenses branch). Production 21/10: "khoản chi lớn nhất tháng này" ⇒ {fromDate,toDate}
+// (no type parameter) ⇒ summary.largest was an income voucher. Each byType entry now names the largest live voucher of
+// ITS type over the whole filtered set. Proved by concrete synthetic vouchers (tie by id, CANCELLED and excluded vouchers
+// left out, every filter), the oracle summarizeRows(every row read page by page) on every page, the connector accepting
+// it, mutants of the per-type statement turning the checks red (three also refused by the connector's own invariants),
+// $requires$ stopping the file before R2a, the prepared revert artifact restoring the exact R2a body (accepted by this
+// connector release: DOMAIN_SUMMARY_ENTRY_TOLERANT), and catalog/idempotency.
+const ie=n=>id(400+n);
+const [E7,I1,E2,E3,I2,I3,E1]=[11,12,13,14,15,16,20].map(ie);
+test('R2c income_expenses: byType.<type>.largest = the largest live voucher of that type on the whole filtered set; mutants are caught',{timeout:240000},async t=>{
+ const {pool,cleanup}=await localCluster(t);t.after(async()=>{await pool.end();cleanup();});await setup(pool);
+ // The production columns the v2 branch reads (amounts >= 0 like CHECK income_expenses_total_amount_non_negative).
+ await pool.query(`CREATE TABLE public.income_expenses(id uuid PRIMARY KEY,organization_id uuid NOT NULL,user_id uuid,code text,
+  type text NOT NULL CHECK(type IN('INCOME','EXPENSE')),name text NOT NULL,building_id uuid NOT NULL,room_id uuid,voucher_date date NOT NULL,
+  total_amount numeric(15,2) NOT NULL DEFAULT 0 CHECK(total_amount>=0),approval_status text NOT NULL DEFAULT 'APPROVED',
+  has_restricted_item boolean NOT NULL DEFAULT false,salary_staff_id uuid,shareholder_id uuid,profit_manager_id uuid,deleted_at timestamptz);
+ INSERT INTO public.permission_definitions(key) VALUES('income_expenses.view') ON CONFLICT DO NOTHING;
+ INSERT INTO public.role_permissions VALUES('${ORG}','${ROLE}','income_expenses.view','ALLOW');
+ INSERT INTO app_private.hermes_capabilities VALUES('income_expenses.view','read',true) ON CONFLICT DO NOTHING;
+ INSERT INTO public.buildings(id,organization_id,user_id,name,name_sort,code,deleted_at) VALUES('${B2}','${ORG}','${USER}','Second building','second',null,null),
+ ('${B3}','${ORG}','${USER}','Deleted building','deleted','DEL',now());
+ INSERT INTO public.rooms VALUES('${R2}','${ORG}','${B2}','P201','p201',null);
+ INSERT INTO public.income_expenses(id,organization_id,user_id,code,type,name,building_id,room_id,voucher_date,total_amount,approval_status,
+  has_restricted_item,salary_staff_id,shareholder_id,profit_manager_id,deleted_at) VALUES
+ ('${E7}','${ORG}','${USER}','PC07','EXPENSE','Sơn lại','${B2}',null,'2026-10-20',4500000,'APPROVED',false,null,null,null,null),
+ ('${I1}','${ORG}','${USER}','PT01','INCOME','Thu tiền phòng','${BUILDING}','${ROOM}','2026-10-01',6000000,'APPROVED',false,null,null,null,null),
+ ('${E2}','${ORG}','${USER}','PC02','EXPENSE','Vật tư điện','${BUILDING}',null,'2026-10-12',1200000.50,'UNAPPROVED',false,null,null,null,null),
+ ('${E3}','${ORG}','${USER}','PC03','EXPENSE','Huỷ lớn','${BUILDING}',null,'2026-10-08',90000000,'CANCELLED',false,null,null,null,null),
+ ('${I2}','${ORG}','${USER}','PT02','INCOME','Thu cọc','${BUILDING}',null,'2026-09-28',3000000,'APPROVED',false,null,null,null,null),
+ ('${I3}','${ORG}','${USER}','PT03','INCOME','Thu điện nước','${B2}','${R2}','2026-10-15',800000,'UNAPPROVED',false,null,null,null,null),
+ ('${E1}','${ORG}','${USER}','PC01','EXPENSE','Sửa máy bơm','${BUILDING}',null,'2026-10-05',4500000,'APPROVED',false,null,null,null,null),
+ ('${ie(30)}','${ORG}','${USER}','PC30','EXPENSE','Lương','${BUILDING}',null,'2026-10-06',99999999,'APPROVED',false,'${USER}',null,null,null),
+ ('${ie(31)}','${ORG}','${USER}','PC31','EXPENSE','Hạn chế','${BUILDING}',null,'2026-10-06',88888888,'APPROVED',true,null,null,null,null),
+ ('${ie(32)}','${ORG}','${USER}','PC32','EXPENSE','Cổ đông','${BUILDING}',null,'2026-10-06',77777777,'APPROVED',false,null,'${USER}',null,null),
+ ('${ie(33)}','${ORG}','${USER}','PC33','EXPENSE','Quản lý lợi nhuận','${BUILDING}',null,'2026-10-06',66666666,'APPROVED',false,null,null,'${USER}',null),
+ ('${ie(34)}','${ORG}','${USER}','PC34','EXPENSE','Đã xoá','${BUILDING}',null,'2026-10-06',55555555,'APPROVED',false,null,null,null,now()),
+ ('${ie(35)}','${FOREIGN}','${USER}','PC35','EXPENSE','Công ty khác','${OTHER_BUILDING}',null,'2026-10-06',44444444,'APPROVED',false,null,null,null,null),
+ ('${ie(36)}','${ORG}','${USER}','PC36','EXPENSE','Toà đã xoá','${B3}',null,'2026-10-06',33333333,'APPROVED',false,null,null,null,null);`);
+ const prepared=await jwt(pool,async c=>(await c.query("SELECT public.hermes_prepare_connection_v2($1,'{}','{}','unrestricted','{}') value",[ORG])).rows[0].value);
+ const tokenDigest='c'.repeat(64),expiry=Date.now()+600000;
+ const activated=(await pool.query('SELECT app_private.hermes_store_activate_v1($1::jsonb) value',[JSON.stringify({connectionId:prepared.id,expectedEpoch:1,operationId:id(53),intentSecret:prepared.intentSecret,
+  userId:USER,providerSessionId:id(32),credentialRef:id(51),tokenDigest,tokenExpiresAt:expiry,sessionExpiresAt:Date.now()+3600000,
+  sessionEnvelope:{v:1,algorithm:'A256GCM',keyVersion:'fixture',nonce:'a'.repeat(16),tag:'a'.repeat(22),ciphertext:'abcd'}})])).rows[0].value;
+ const bind7={connectionId:prepared.id,tokenDigest,expectedEpoch:activated.connection.epoch,expectedSessionRevision:1,expectedPolicyVersion:0,expectedMembershipId:MEMBER,expectedAuthorizationVersion:1};
+ const who={row:{id:prepared.id,userId:USER,organizationId:ORG},scopesByPermission:{'income_expenses.view':{buildingIds:[BUILDING,B2],cashbookIds:[]}}};
+ const read=(input={})=>normal(pool,bind7,'income_expenses',input);
+ const voucher=(voucherId,code,name,type,totalAmount,voucherDate)=>({id:voucherId,code,name,type,totalAmount,voucherDate});
+ const V={E7:voucher(E7,'PC07','Sơn lại','EXPENSE','4500000.00','2026-10-20'),I1:voucher(I1,'PT01','Thu tiền phòng','INCOME','6000000.00','2026-10-01'),
+  E2:voucher(E2,'PC02','Vật tư điện','EXPENSE','1200000.50','2026-10-12'),I3:voucher(I3,'PT03','Thu điện nước','INCOME','800000.00','2026-10-15'),
+  E1:voucher(E1,'PC01','Sửa máy bơm','EXPENSE','4500000.00','2026-10-05')};
+ // Oracle: the SQL summary equals the summary of every row of the filtered set (read one row per page), on every page,
+ // and the connector accepts it.
+ const oracle=async(input={},label=JSON.stringify(input))=>{
+  const whole=await read(input),rows=[],summaries=[];
+  for(let cursor=null,n=0;n<20;n++){
+   const page=await read({...input,limit:1,cursor});
+   rows.push(...page.items);summaries.push(page.summary);cursor=page.nextCursor;if(cursor===null)break;
+  }
+  assert.deepEqual(whole.summary,summarizeRows('income_expenses',rows),`${label}: summary = summarizeRows(every row)`);
+  assert.equal(whole.summary.count,rows.length,`${label}: count = rows once every page is read`);
+  for(const summary of summaries)assert.deepEqual(summary,whole.summary,`${label}: every page carries the whole set`);
+  assert.deepEqual(domainResult('income_expenses',whole,who,domainInput('income_expenses',input)).summary,whole.summary,`${label}: the connector accepts it`);
+  return whole.summary;
+ };
+ const month={fromDate:'2026-10-01',toDate:'2026-10-31'};
+
+ await t.test('whole set and the production question (this month): byType.EXPENSE.largest is the largest expense while summary.largest is an income voucher',async()=>{
+  assert.deepEqual(await oracle(),{count:7,byStatus:{APPROVED:4,UNAPPROVED:2,CANCELLED:1},sum:{totalAmount:'20000000.50'},
+   byType:{INCOME:{count:3,sum:'9800000.00',largest:V.I1},EXPENSE:{count:3,sum:'10200000.50',largest:V.E7}},largest:V.I1},
+   'the 90 000 000 voucher is CANCELLED; salary, restricted, shareholder, profit-manager, deleted, foreign and deleted-building vouchers never count');
+  const october=await oracle(month);
+  assert.deepEqual([october.largest.type,october.byType.EXPENSE.largest,october.byType.INCOME],['INCOME',V.E7,{count:2,sum:'6800000.00',largest:V.I1}],
+   'summary.largest stays the income voucher (compatibility); the answer is byType.EXPENSE.largest');
+  assert.equal(october.byType.EXPENSE.largest.id,E7,'4 500 000 twice: the smaller id, like ORDER BY total_amount DESC, id');
+ });
+ await t.test('filters narrow each type like the rows: status, period, building, query; an absent type has no entry; CANCELLED only or nothing: {} and null',async()=>{
+  assert.deepEqual((await oracle({status:'APPROVED'})).byType,{INCOME:{count:2,sum:'9000000.00',largest:V.I1},EXPENSE:{count:2,sum:'9000000.00',largest:V.E7}});
+  const pending=await oracle({status:'UNAPPROVED'});
+  assert.deepEqual([pending.byType.INCOME.largest,pending.byType.EXPENSE.largest,pending.largest],[V.I3,V.E2,V.E2]);
+  const early=await oracle({fromDate:'2026-10-01',toDate:'2026-10-10'});
+  assert.deepEqual([early.byType.EXPENSE,early.byType.INCOME.largest],[{count:1,sum:'4500000.00',largest:V.E1},V.I1],'the CANCELLED voucher of the period is left out');
+  const second=await oracle({buildingId:B2});
+  assert.deepEqual([second.byType.EXPENSE.largest,second.byType.INCOME.largest,second.largest],[V.E7,V.I3,V.E7]);
+  const income=await oracle({query:'thu'});
+  assert.deepEqual([Object.keys(income.byType),income.byType.INCOME.count,income.largest.id],[['INCOME'],3,I1],'no expense matches: no EXPENSE entry, so no largest expense');
+  assert.deepEqual(await oracle({status:'CANCELLED'}),{count:1,byStatus:{CANCELLED:1},sum:{totalAmount:'0'},byType:{},largest:null});
+  assert.deepEqual(await oracle({query:'khong-co-phieu'}),{count:0,byStatus:{},sum:{totalAmount:'0'},byType:{},largest:null},'empty set: never a NULL summary');
+ });
+ await t.test('mutants of the per-type statement are caught by the oracle; three also by the connector invariants; the reviewed body is restored',async()=>{
+  for(const [label,from,to,refusedByConnector] of [
+   ['the per-type largest ignores the type','FROM live big WHERE big.type=t.type ORDER BY','FROM live big ORDER BY',true],
+   ['the per-type largest keeps CANCELLED vouchers','FROM live big WHERE','FROM f big WHERE',true],
+   ['the per-type largest takes the smallest voucher','ORDER BY big.total_amount DESC,big.id LIMIT 1','ORDER BY big.total_amount,big.id LIMIT 1',true],
+   ['the per-type tie is broken the wrong way','ORDER BY big.total_amount DESC,big.id LIMIT 1','ORDER BY big.total_amount DESC,big.id DESC LIMIT 1',false]]){
+   await oracle(month);
+   await pool.query(once(V2,from,to));
+   try{
+    await assert.rejects(oracle(month),{code:'ERR_ASSERTION'},`${label}: the mutant is detected`);
+    const mutated=await read(month);
+    if(refusedByConnector)assert.throws(()=>domainResult('income_expenses',mutated,who,domainInput('income_expenses',month)),`${label}: refused by the connector`);
+    else assert.deepEqual(domainResult('income_expenses',mutated,who,domainInput('income_expenses',month)).summary.byType.EXPENSE.largest,V.E1,`${label}: only the oracle sees it`);
+   }finally{await pool.query(V2);}
+   await oracle(month);
+  }
+ });
+ await t.test('$requires$: before R2a (v2 without summary) the file stops and replaces nothing (one transaction)',async()=>{
+  const client=await pool.connect();
+  const body=async()=>(await client.query("SELECT md5(prosrc) v FROM pg_proc WHERE oid='public.hermes_domain_read_v2(jsonb,text,jsonb)'::regprocedure")).rows[0].v;
+  try{
+   const before=await body();
+   await client.query('BEGIN');
+   await client.query(B5C_V2); // the 20261020173818 body — as on a database where R2a has not run
+   await assert.rejects(client.query(largestSql),/hermes_domain_summary_largest_requires_applied_r2a_reads_v2/);
+   await client.query('ROLLBACK');
+   assert.equal(await body(),before,'v2 untouched');
+  }finally{await client.query('ROLLBACK').catch(()=>{});client.release();}
+  await oracle();
+ });
+ await t.test('revert artifact (docs/plans/hermes-crm/revert): the exact R2a body (byType without largest, nothing else changed), runs twice, this connector release accepts it, R2c forward again',async()=>{
+  const body=async()=>(await pool.query("SELECT md5(prosrc) v FROM pg_proc WHERE oid='public.hermes_domain_read_v2(jsonb,text,jsonb)'::regprocedure")).rows[0].v;
+  const r2c=await body(),forward=await read(month);
+  assert.equal(REVERT_LARGEST.split('\nBEGIN;\n').length,2);assert.equal(REVERT_LARGEST.split('\nCOMMIT;\n').length,2);
+  await pool.query(REVERT_LARGEST);
+  const reverted=await body();assert.notEqual(reverted,r2c,'replaced');
+  await pool.query(R2A_V2);assert.equal(await body(),reverted,'the revert body is the 20261020233934 body');
+  await pool.query(REVERT_LARGEST);assert.equal(await body(),reverted,'a second run changes nothing');
+  const legacy=await read(month);
+  const strip=summary=>({...summary,byType:Object.fromEntries(Object.entries(summary.byType).map(([type,{largest,...rest}])=>[type,rest]))});
+  assert.deepEqual([legacy.items,legacy.summary],[forward.items,strip(forward.summary)],'only byType.<type>.largest differs between R2a and R2c');
+  // Release window: an R2a summary (no largest in ANY entry) still passes this connector release; a mixed one never does.
+  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT,{income_expenses:{byType:['largest']}});
+  assert.deepEqual(domainResult('income_expenses',legacy,who,domainInput('income_expenses',month)).summary,legacy.summary);
+  const mixed=structuredClone(legacy);mixed.summary.byType.EXPENSE.largest=V.E7;
+  assert.throws(()=>domainResult('income_expenses',mixed,who,domainInput('income_expenses',month)),'largest in one entry only');
+  // The artifact refuses a v2 that is neither R2c nor R2a (here the B5c step 2 body): it would undo it.
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');await client.query(B5C_V2);
+   await assert.rejects(client.query(REVERT_LARGEST),/hermes_domain_summary_largest_revert_unexpected_reads_v2/);
+   await client.query('ROLLBACK');
+  }finally{await client.query('ROLLBACK').catch(()=>{});client.release();}
+  assert.equal(await body(),reverted);
+  await pool.query(largestSql);
+  assert.equal(await body(),r2c,'R2c forward again: the reviewed body');
+  const again=await read(month);
+  assert.deepEqual({...again,fetchedAt:null},{...forward,fetchedAt:null},'the R2c output again');
+ });
+ await t.test('catalog: applied twice (idempotent) — one definition, signature, owner, DEFINER, search path and ACL kept',async()=>{
+  const rows=(await pool.query(`SELECT p.oid::regprocedure::text signature,p.prosecdef,p.provolatile,pg_get_userbyid(p.proowner) owner,p.proconfig
+   FROM pg_proc p WHERE p.proname='hermes_domain_read_v2'`)).rows;
+  assert.deepEqual(rows.map(row=>[row.signature,row.prosecdef,row.provolatile,row.owner]),[['hermes_domain_read_v2(jsonb,text,jsonb)',true,'v','postgres']]);
+  assert.deepEqual(rows[0].proconfig,['search_path=pg_catalog, public, app_private']);
+  for(const [role,expected] of [['authenticated',true],['anon',false],['service_role',false],['hermes_store_executor',false]])
+   assert.equal((await pool.query('SELECT has_function_privilege($1,$2,$3) value',[role,'public.hermes_domain_read_v2(jsonb,text,jsonb)','EXECUTE'])).rows[0].value,expected,role);
+  await pool.query(largestSql);
+  assert.equal((await oracle()).byType.EXPENSE.largest.id,E7,'a third run changes nothing');
  });
 });
