@@ -9,8 +9,9 @@ export const candidatePath='supabase/migrations/20261014092945_hermes_task_creat
 const source=name=>readFileSync(`supabase/migrations/${name}.sql`,'utf8');
 const extract=(src,name)=>src.match(new RegExp(`CREATE OR REPLACE FUNCTION ${name.replaceAll('.', '\\.')}[\\s\\S]*?\\$(?:fn)?\\$;`,'i'))[0];
 const policy=(src,name)=>src.match(new RegExp(`(?:CREATE|ALTER) POLICY "?${name}"? ON (?:public\\.)?\\w+[\\s\\S]*?;`,'i'))[0];
-export async function setup(t,{sql=readFileSync(process.env.HERMES_TASK_SQL??candidatePath,'utf8')}={}) {
- const {db}=await fixture(t,{migrations:['20261013084000_hermes_private_command_dispatch_v1']});
+// `database`: a PGlite-shaped { exec, query, close } over real PostgreSQL (one-off PG17 checks); default PGlite.
+export async function setup(t,{sql=readFileSync(process.env.HERMES_TASK_SQL??candidatePath,'utf8'),database}={}) {
+ const {db}=await fixture(t,{migrations:['20261013084000_hermes_private_command_dispatch_v1'],database});
  await db.exec(`
   CREATE SCHEMA extensions;
   -- Digest port only: test actual audit invocation/transaction, not hash crypto.
