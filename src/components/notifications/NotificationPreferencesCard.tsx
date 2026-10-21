@@ -1,190 +1,77 @@
 import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
-// Sở thích thông báo CỦA CHÍNH TÔI — 5 họ sự kiện × 2 công tắc (trong app / đẩy về máy).
+// "Loại thông báo" — mục D4: sở thích CỦA CHÍNH TÔI, họ sự kiện × 2 kênh (trong app / đẩy về máy),
+// trong CÔNG TY ĐANG CHỌN.
 //
-// 🔴 Vì sao card này nằm ở /account/profile chứ KHÔNG phải /settings/general:
-// đo thật bằng `get_my_permissions()` dưới JWT thật, `settings.view` chỉ TRUE với đúng
-// một tài khoản (demo.chunha); nathan, joey, bosshuy, demo.sale, demo.ketoan, demo.quanly,
-// demo.kythuat, demo.codong đều FALSE. 8/10 người NHẬN thông báo không mở nổi trang cài
-// đặt để tắt thông báo của chính mình — mà nathan đang ôm 658/1130 dòng. Ba lớp cùng chặn
-// họ: RequirePermission ở route, mục menu bị lọc khỏi Sidebar/HomeLauncher, và
-// GeneralSettingsPage không có nhánh mobile trong khi push chỉ có nghĩa trên điện thoại.
-// /account/profile chỉ bọc ProtectedRoute ⇒ 10/10 tài khoản vào được, cả desktop lẫn mobile.
+// 🔴 Vì sao nằm ở /account/notifications chứ KHÔNG phải /settings/general: đo thật bằng
+// `get_my_permissions()` dưới JWT thật, `settings.view` chỉ TRUE với số ít tài khoản chủ; người
+// NHẬN thông báo đa số không mở nổi trang cài đặt chung để tự tắt. Route này chỉ bọc
+// ProtectedRoute ⇒ mọi thành viên vào được, cả desktop lẫn mobile.
 //
-// Một component, hai lớp áo: desktop dùng shadcn Card/Switch, mobile dùng bộ class
-// .cd-card/.sp-rowcard/.sp-switch của web-app (.cm-app) để không lạc tông với màn Tài khoản.
+// Ghi ĐÚNG khoá × trường vừa gạt (NOTIF-SETTINGS-8) và lấy phong bì máy chủ trả về làm trạng
+// thái mới — không giữ bản nháp 7 khoá riêng có thể cũ hơn máy chủ.
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Bell } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { LoadingState } from '@/components/loading/LoadingState';
 import {
   NotificationSettingsReceiptError,
   NOTIFICATION_EVENT_KEYS,
   NOTIFICATION_EVENT_LABELS,
+  PUSH_FOLLOWS_IN_APP_KEYS,
   useMyNotificationPreferences,
-  useMyOrgOptions,
-  useSetMyNotificationPreferences,
+  useSetMyNotificationPreference,
   type NotificationEventKey,
-  type NotificationPreferenceRow,
+  type NotificationPreferenceChange,
 } from "@/hooks/useNotificationSettings";
 
-type PrefMap = Record<NotificationEventKey, NotificationPreferenceRow>;
+const isUncertain = (error: unknown) => error instanceof NotificationSettingsReceiptError || hasUnconfirmedResponse(error);
 
-interface Props {
-  /** "desktop" = thẻ shadcn trong ProfilePage; "mobile" = thẻ .cd-card trong AccountMobilePage. */
-  variant?: "desktop" | "mobile";
-}
+export default function NotificationPreferencesCard({ organizationId }: { organizationId: string | null }) {
+  const { data, isLoading, isError, refetch } = useMyNotificationPreferences(organizationId);
+  const save = useSetMyNotificationPreference(organizationId);
+  // Giá trị đang gửi: công tắc phải nhảy ngay, không đợi mạng. Chỉ một thay đổi một lúc.
+  const [pending, setPending] = useState<NotificationPreferenceChange | null>(null);
 
-export default function NotificationPreferencesCard({ variant = "desktop" }: Props) {
-  const { options, isLoading: loadingOrgs, isError: orgError, refetch: retryOrgs } = useMyOrgOptions();
-  const [orgId, setOrgId] = useState<string | null>(null);
-
-  // 9/10 tài khoản có đúng 1 tổ chức ⇒ tự chọn, không bắt bấm. Chỉ chủ (2 tổ chức)
-  // mới thấy ô chọn bên dưới.
-  const effectiveOrgId = orgId ?? options[0]?.id ?? null;
-
-  const { data, isLoading, isError, refetch } = useMyNotificationPreferences(effectiveOrgId);
-  const save = useSetMyNotificationPreferences(effectiveOrgId);
-
-  const [draft, setDraft] = useState<PrefMap | null>(null);
-
-  useEffect(() => {
-    if (data?.prefs) setDraft(data.prefs);
-  }, [data]);
-
-  const rows = useMemo(() => draft, [draft]);
-  const uncertain = save.error instanceof NotificationSettingsReceiptError || hasUnconfirmedResponse(save.error);
+  const uncertain = isUncertain(save.error);
   const readAfterUnknown = async () => {
     const result = await refetch();
-    if (!result.isError && result.data) save.reset();
+    if (!result.isError && result.data) { save.reset(); setPending(null); }
   };
-  const uncertainNotice = uncertain ? <div role="alert" className="rounded-md border border-amber-400 p-3 text-sm">
-    <p>Chưa xác nhận được cấu hình thông báo đã lưu. Giữ nguyên nội dung đang sửa và đọc lại trạng thái trước khi thay đổi tiếp.</p>
-    <Button type="button" variant="outline" size="sm" onClick={() => void readAfterUnknown()}>Đọc lại trạng thái</Button>
-  </div> : null;
 
-  const locked = uncertain || isError || orgError || !data?.available || save.isPending || !effectiveOrgId;
+  const locked = uncertain || isError || !data?.available || save.isPending || !organizationId;
 
-  const toggle = (key: NotificationEventKey, field: "in_app" | "push", next: boolean) => {
-    if (!rows) return;
-    const updated: PrefMap = { ...rows, [key]: { ...rows[key], [field]: next } };
-    // Cập nhật lạc quan rồi mới gọi RPC: công tắc phải nhảy ngay, không đợi mạng.
-    setDraft(updated);
-    save.mutate(updated, {
-      onError: (error) => { if (!(error instanceof NotificationSettingsReceiptError) && !hasUnconfirmedResponse(error)) setDraft(rows); }, // Chỉ hoàn nguyên khi biết chắc lưu thất bại.
+  const valueOf = (key: NotificationEventKey, field: "in_app" | "push"): boolean => {
+    if (pending && pending.key === key && pending.field === field) return pending.value;
+    return data?.prefs[key]?.[field] ?? false;
+  };
+
+  const toggle = (key: NotificationEventKey, field: "in_app" | "push", value: boolean) => {
+    if (locked) return;
+    const change: NotificationPreferenceChange = { key, field, value };
+    setPending(change);
+    save.mutate(change, {
+      onSuccess: () => setPending(null),
+      // Chỉ hoàn nguyên khi biết chắc lưu thất bại; chưa xác nhận thì giữ và khoá tới khi đọc lại.
+      onError: (error) => { if (!isUncertain(error)) setPending(null); },
     });
   };
 
-  // Không thuộc tổ chức nào ⇒ query bị `enabled:false` và sẽ treo ở "Đang tải…" mãi mãi
-  // nếu không tách riêng nhánh này.
-  const noOrg = !orgError && !loadingOrgs && !effectiveOrgId;
-  const busy = !noOrg && (loadingOrgs || isLoading || !rows);
-
-  const notice = noOrg
-    ? "Bạn chưa thuộc tổ chức nào nên chưa có tuỳ chọn thông báo để đặt."
-    : !busy && data && !data.available
-      ? "Tuỳ chọn cá nhân chưa bật trên máy chủ — đang hiển thị mặc định (nhận tất cả) và tạm thời chưa lưu được."
-      : null;
-
-  if (isError || orgError) {
-    return <Card><CardContent className="space-y-3 p-4"><p role="alert">Chưa tải được tùy chọn thông báo của bạn. Chưa xác định được trạng thái các công tắc.</p><Button variant="outline" onClick={() => void (orgError ? retryOrgs() : refetch())}>Tải lại tùy chọn</Button></CardContent></Card>;
+  if (!organizationId) {
+    return <Card><CardContent className="p-4 text-sm text-muted-foreground">Bạn chưa thuộc công ty nào nên chưa có tuỳ chọn thông báo để đặt.</CardContent></Card>;
+  }
+  if (isError) {
+    return <Card><CardContent className="space-y-3 p-4"><p role="alert">Chưa tải được tùy chọn thông báo của bạn. Chưa xác định được trạng thái các công tắc.</p><Button variant="outline" onClick={() => void refetch()}>Tải lại tùy chọn</Button></CardContent></Card>;
   }
 
-  /* ───────────────────────────── Mobile (.cm-app) ──────────────────────── */
-  if (variant === "mobile") {
-    return (
-      <div className="cd-card">
-        <div className="cd-card-h">
-          <div className="cd-card-t">
-            <Bell size={17} />
-            Thông báo tôi muốn nhận
-          </div>
-        </div>
-
-        {uncertainNotice}
-        {options.length > 1 && (
-          <div className="ff">
-            <label className="ff-lbl">Tổ chức</label>
-            <select
-              className="ff-input"
-              value={effectiveOrgId ?? ""}
-              onChange={(e) => setOrgId(e.target.value)}
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {notice && (
-          <div style={{ padding: "8px 14px", fontSize: 12, color: "var(--ink-2, #52525b)" }}>
-            {notice}
-          </div>
-        )}
-
-        {noOrg ? null : busy ? (
-          <div style={{ padding: "4px 14px 10px" }}>
-            <LoadingState label="tùy chọn thông báo" variant="lines" rows={5} onRetry={() => void (loadingOrgs ? retryOrgs() : refetch())} />
-          </div>
-        ) : (
-          <div className="acc-rows" style={{ padding: "4px 0 10px" }}>
-            {NOTIFICATION_EVENT_KEYS.map((k) => (
-              <div className="sp-rowcard" key={k}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span className="gn">{NOTIFICATION_EVENT_LABELS[k].title}</span>
-                  <span className="gv">{NOTIFICATION_EVENT_LABELS[k].desc}</span>
-                </div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 10, color: "var(--ink-2, #52525b)", marginBottom: 2 }}>
-                      Trong app
-                    </div>
-                    <button
-                      type="button"
-                      className={"sp-switch" + (rows![k].in_app ? " on" : "")}
-                      aria-label={`Trong app · ${NOTIFICATION_EVENT_LABELS[k].title}`}
-                      disabled={locked}
-                      onClick={() => !locked && toggle(k, "in_app", !rows![k].in_app)}
-                    >
-                      <span className="knob" />
-                    </button>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 10, color: "var(--ink-2, #52525b)", marginBottom: 2 }}>
-                      Đẩy về máy
-                    </div>
-                    <button
-                      type="button"
-                      className={"sp-switch" + (rows![k].push ? " on" : "")}
-                      aria-label={`Đẩy về máy · ${NOTIFICATION_EVENT_LABELS[k].title}`}
-                      disabled={locked}
-                      onClick={() => !locked && toggle(k, "push", !rows![k].push)}
-                    >
-                      <span className="knob" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* ───────────────────────────── Desktop (shadcn) ──────────────────────── */
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bell className="h-5 w-5" />
-          Thông báo tôi muốn nhận
+          <ListChecks className="h-5 w-5" />
+          Loại thông báo
         </CardTitle>
         <CardDescription>
           Áp dụng cho riêng tài khoản của bạn. "Trong app" là chuông và trang Bản tin;
@@ -192,72 +79,77 @@ export default function NotificationPreferencesCard({ variant = "desktop" }: Pro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {uncertainNotice}
-        {options.length > 1 && (
-          <div className="flex items-center gap-3">
-            <Label className="text-sm">Tổ chức</Label>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={effectiveOrgId ?? ""}
-              onChange={(e) => setOrgId(e.target.value)}
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {uncertain && <div role="alert" className="space-y-2 rounded-md border border-amber-400 p-3 text-sm">
+          <p>Chưa xác nhận được cấu hình thông báo đã lưu. Đọc lại trạng thái trước khi thay đổi tiếp.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void readAfterUnknown()}>Đọc lại trạng thái</Button>
+        </div>}
 
-        {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
-
-        {noOrg ? null : busy ? (
-          <LoadingState label="tùy chọn thông báo" variant="lines" rows={5} onRetry={() => void (loadingOrgs ? retryOrgs() : refetch())} />
+        {isLoading || !data ? (
+          <LoadingState label="tùy chọn thông báo" variant="lines" rows={6} onRetry={() => void refetch()} />
         ) : (
           <div className="divide-y">
-            <div className="flex items-center justify-end gap-6 pb-2 text-xs text-muted-foreground">
-              <span className="w-16 text-center">Trong app</span>
-              <span className="w-16 text-center">Đẩy về máy</span>
+            <div className="flex items-end justify-end gap-3 pb-2 text-[11px] leading-tight text-muted-foreground">
+              <span className="w-14 text-center">Trong app</span>
+              <span className="w-14 text-center">Đẩy về máy</span>
             </div>
-            {NOTIFICATION_EVENT_KEYS.map((k) => (
-              <div key={k} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{NOTIFICATION_EVENT_LABELS[k].title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {NOTIFICATION_EVENT_LABELS[k].desc}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-6">
-                  <div className="w-16 text-center">
-                    <Switch
-                      checked={rows![k].in_app}
-                      disabled={locked}
-                      onCheckedChange={(v) => toggle(k, "in_app", v)}
-                      aria-label={`Trong app · ${NOTIFICATION_EVENT_LABELS[k].title}`}
-                    />
+            {NOTIFICATION_EVENT_KEYS.map((k) => {
+              const label = NOTIFICATION_EVENT_LABELS[k];
+              const row = data.prefs[k];
+              if (!row) {
+                return (
+                  <div key={k} className="flex items-start justify-between gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{label.title}</p>
+                      <p className="text-xs text-muted-foreground">{label.desc}</p>
+                      <p className="mt-1 text-xs text-amber-700">Máy chủ chưa hỗ trợ loại này — công tắc sẽ mở sau khi máy chủ cập nhật.</p>
+                    </div>
                   </div>
-                  <div className="w-16 text-center">
-                    <Switch
-                      checked={rows![k].push}
-                      disabled={locked}
-                      onCheckedChange={(v) => toggle(k, "push", v)}
-                      aria-label={`Đẩy về máy · ${NOTIFICATION_EVENT_LABELS[k].title}`}
-                    />
+                );
+              }
+              const inApp = valueOf(k, "in_app");
+              const pushLocked = PUSH_FOLLOWS_IN_APP_KEYS.has(k) && !inApp;
+              const hintId = `push-locked-${k}`;
+              return (
+                <div key={k} className="flex items-start justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{label.title}</p>
+                    <p className="text-xs text-muted-foreground">{label.desc}</p>
+                    {pushLocked && (
+                      <p id={hintId} className="mt-1 text-xs text-muted-foreground">
+                        Đẩy về máy đi kèm dòng trong app — bật "Trong app" trước.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 pt-0.5">
+                    <div className="flex w-14 justify-center">
+                      <Switch
+                        checked={inApp}
+                        disabled={locked}
+                        onCheckedChange={(v) => toggle(k, "in_app", v)}
+                        aria-label={`Trong app · ${label.title}`}
+                      />
+                    </div>
+                    <div className="flex w-14 justify-center">
+                      <Switch
+                        checked={pushLocked ? false : valueOf(k, "push")}
+                        disabled={locked || pushLocked}
+                        onCheckedChange={(v) => toggle(k, "push", v)}
+                        aria-label={`Đẩy về máy · ${label.title}`}
+                        aria-describedby={pushLocked ? hintId : undefined}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {!noOrg && (
-          <p className="text-xs text-muted-foreground">
-            Tắt "Đẩy về máy" chỉ ngừng thông báo bật lên ngoài màn hình; dòng vẫn nằm trong
-            Bản tin nếu "Trong app" còn bật. Công tắc push chung của thiết bị nằm ở thẻ
-            "Thông báo đẩy" phía trên.
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground">
+          Tắt "Đẩy về máy" chỉ ngừng thông báo bật lên ngoài màn hình; dòng vẫn nằm trong
+          Bản tin nếu "Trong app" còn bật. Nếu công ty đã tắt cả một loại ở "Cấu hình công ty"
+          thì không ai nhận loại đó, dù bạn bật ở đây.
+        </p>
       </CardContent>
     </Card>
   );

@@ -14,6 +14,7 @@ import {
   ChangelogPage,
   FaqPage,
   MembersPage,
+  NotificationSettingsPage,
   OrganizationPage,
   ProfilePage,
   RolesPage,
@@ -41,6 +42,8 @@ export const adminAccountRoutes = (
 
     {/* === TÀI KHOẢN === */}
     <Route path="/account/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+    {/* Cài đặt thông báo: mọi thành viên tự chỉnh thông báo CỦA MÌNH; mục công ty tự ẩn khi thiếu settings.view. */}
+    <Route path="/account/notifications" element={<ProtectedRoute><NotificationSettingsPage /></ProtectedRoute>} />
     <Route path="/account/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
 
     {/* === THÔNG TIN KHÁC === */}
