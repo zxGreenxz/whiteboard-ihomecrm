@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1550,
-  "soFileDocBangFs": 401,
-  "tongLoiGoi": 962,
-  "khongPhanLoaiDuoc": 433,
+  "tongSoFileTest": 1551,
+  "soFileDocBangFs": 402,
+  "tongLoiGoi": 969,
+  "khongPhanLoaiDuoc": 434,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 153,
+      "soFile": 155,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -337,6 +337,14 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/contractTerminationSecondRefundGuardMigration.test.ts",
+      "soGoi": 6,
+      "loai": {
+        "sql": 5
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/voucherDetailReadMigration.test.ts",
@@ -1104,6 +1112,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -1848,12 +1864,6 @@
     },
     {
       "file": "infra/network-center-worker/test/sshConnector.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
