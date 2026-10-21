@@ -322,6 +322,14 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
         result: { organizationId: ORG, domain: 'customers', summary: { count: 52, byStatus: {}, sum: {} }, ...page, fetchedAt } });
     }
     if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
+    // crm_read_occupancy_report upcoming (v3 report, offset paging, no summary of its own): 15 synthetic contracts.
+    if (name === 'hermes_domain_read_v3' && args.p_domain === 'occupancy_report') {
+      const all = Array.from({ length: 15 }, (_, n) => ({ contractId: id(800 + n), contractNumber: `HD${n}`, buildingId: A, buildingName: 'Toà 950NK', roomId: id(850 + n),
+        roomName: `P${n}`, effectiveEndDate: '2026-11-30', daysRemaining: 40, rentPrice: '3000000', extensionApplied: false }));
+      const { offset, limit } = args.p_input, items = all.slice(offset, offset + limit);
+      return Response.json({ organizationId: ORG, domain: 'occupancy_report', fetchedAt, report: 'upcoming', source: 'crm.occupancy_upcoming_vacancy_v2', unavailable: null,
+        summary: null, items, offset, nextOffset: offset + items.length < all.length ? offset + items.length : null, sourceCapped: false });
+    }
     if (name === 'hermes_w2_read_v1') return Response.json({ organizationId: ORG, domain: 'report', fetchedAt, report: args.p_input.report, source: W2.reports[args.p_input.report].source,
       unavailable: null, summary: null, items: [], offset: 0, nextOffset: null, sourceCapped: false, fence: { buildings: [B], cashbooks: [], orgWide: false } });
     return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null });
@@ -365,6 +373,15 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(calls[2].args.p_input, { report: 'room_detail', params: { roomId: R(3) }, limit: 20, offset: 0 });
   await assert.rejects(run('report', { report: 'room_detail', params: {} }, { buildingName: 'London Garden' }), unresolved(/^Báo cáo room_detail không lọc theo toà\.$/), 'a building alone fits no slot of room_detail');
   await assert.rejects(run('report', { report: 'room_detail', params: {} }), code('invalid_request'), 'no names: the validator still requires roomId');
+  // A complete offset-paged report without a summary of its own gets {count} after the validator; a page of it never does.
+  const upcoming = extra => run('occupancy_report', domainInput('occupancy_report', { report: 'upcoming', days: 60, ...extra }));
+  const whole = await upcoming({ limit: 50 });
+  assert.deepEqual([whole.items.length, whole.nextOffset, whole.summary], [15, null, { count: 15 }], 'full50e question 14: 15, not a count by the model');
+  const first = await upcoming({ limit: 10 }), last = await upcoming({ limit: 10, offset: 10 });
+  assert.deepEqual([first.items.length, first.nextOffset, first.summary], [10, 10, null], 'more to read: null');
+  assert.deepEqual([last.items.length, last.nextOffset, last.summary], [5, null, null], 'the last page alone is not the set');
+  // crm_read_report (wave 2) has the same shape: the complete empty run above counts 0.
+  assert.deepEqual((await run('report', { report: 'room_detail', params: {} }, { buildingName: 'London Garden', roomName: 'London 5' })).summary, { count: 0 });
   // crm_auth_context directory port: company name and the buildings of the widest read scope.
   calls.length = 0;
   const receipt = await domains.prepareContext(f.token, { organizationId: ORG, buildingIds: [A, B, C], contextVersion: VERSION }, { signal: f.signal });

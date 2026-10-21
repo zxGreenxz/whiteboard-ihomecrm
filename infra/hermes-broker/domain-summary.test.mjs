@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_SUMMARY_ENTRY_TOLERANT, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_SUMMARY_ENTRY_TOLERANT, DOMAIN_TOOLS, completeListSummary, domainInput, domainResult,
+  summarizeRows } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver } from './read-name-resolution.mjs';
 
@@ -302,6 +303,46 @@ test('R2d invariants: customers.withoutContract never counts a customer shown wi
   const result = envelope('customers', ROWS.customers, { ...customers, withoutContract: 1 });
   assert.equal(domainFastResult('customers', { authority, result }, identity('customers'), input('customers')).summary.withoutContract, 1);
   assert.throws(() => domainFastResult('customers', { authority, result: { ...result, summary: { ...customers, withoutContract: 2 } } }, identity('customers'), input('customers')));
+});
+
+// Hậu xử lý sau validator (21/10; full50e câu 14, production: crm_read_occupancy_report {report:upcoming, days:60} trả 15
+// dòng, summary null ⇒ mô hình tự đếm bảng và nói "14 hợp đồng"): báo cáo phân trang offset mà SQL không có tổng riêng được
+// connector cấp summary = {count: items.length} khi tập đã TRỌN; một phần thì không bao giờ.
+test('completeListSummary: a complete offset-paged report without a summary of its own gets {count: items.length}; a part, a summary of its own and cursor lists are left alone', () => {
+  const upcomingRow = n => ({ contractId: id(800 + n), contractNumber: `HD${n}`, buildingId: n % 2 ? A : B, buildingName: n % 2 ? 'Toà A' : 'Toà B', roomId: id(900 + n),
+    roomName: `P${n}`, effectiveEndDate: '2026-11-30', daysRemaining: 40, rentPrice: '3000000', extensionApplied: false });
+  const report = (operation, name, source, items, extra = {}) => ({ organizationId: ORG, domain: operation, fetchedAt: '2026-10-21T00:00:00.000Z', report: name, source,
+    unavailable: null, summary: null, items, offset: 0, nextOffset: null, sourceCapped: false, ...extra });
+  const upcoming = (items, extra) => report('occupancy_report', 'upcoming', 'crm.occupancy_upcoming_vacancy_v2', items, extra);
+  const fifteen = Array.from({ length: 15 }, (_, n) => upcomingRow(n + 1));
+  const validated = domainResult('occupancy_report', upcoming(fifteen), identity('occupancy_report'),
+    domainInput('occupancy_report', { report: 'upcoming', days: 60, limit: 50 }));
+  assert.equal(validated.summary, null, 'the validator is unchanged: this report has no summary of its own');
+  const complete = completeListSummary(validated);
+  assert.deepEqual(complete.summary, { count: 15 }, 'the production question: 15 contracts, read from summary.count');
+  assert.deepEqual(Object.keys(complete), Object.keys(validated), 'same keys in the same order');
+  assert.deepEqual({ ...complete, summary: null }, validated, 'nothing else changes');
+  assert.equal(validated.summary, null, 'the validated result is not mutated');
+  assert.deepEqual(completeListSummary(upcoming([])).summary, { count: 0 }, 'a complete empty report: 0');
+  for (const [label, extra, items = fifteen] of [['a next page (nextOffset)', { nextOffset: 15 }], ['the source capped', { sourceCapped: true }],
+    ['a later page (offset > 0: the earlier rows are not in it)', { offset: 20 }], ['unavailable (no building: not a 0)', { unavailable: 'no_building_scope' }, []],
+    ['sourceCapped not a boolean', { sourceCapped: undefined }]])
+    assert.equal(completeListSummary(upcoming(items, extra)).summary, null, label);
+  // Another report of the same shape (v3 invoice search) and a crm_read_report run (wave 2, same items/offset/summary shape).
+  const invoices = report('invoice_report', 'search', 'crm.invoices', [{ id: id(801) }, { id: id(802) }]);
+  assert.deepEqual(completeListSummary(invoices).summary, { count: 2 });
+  const run = report('report', 'room_detail', 'crm.rooms', [{ id: id(803) }]);
+  assert.deepEqual(completeListSummary(run).summary, { count: 1 });
+  // A summary of its own is never replaced (invoice stats, monthly_pnl, Zalo).
+  const stats = report('invoice_report', 'stats', 'crm.invoices', [], { summary: { totalCount: 3 } });
+  assert.equal(completeListSummary(stats), stats, 'returned as is');
+  // Cursor lists keep the SQL summary (required since R2a); a room-filter merge with rows left keeps null.
+  const list = { organizationId: ORG, domain: 'contracts', summary: full('contracts'), items: ROWS.contracts, nextCursor: null };
+  assert.equal(completeListSummary(list), list);
+  const partial = { ...list, summary: null, nextCursor: id(13) };
+  assert.equal(completeListSummary(partial), partial);
+  assert.equal(completeListSummary({ ...partial, nextCursor: null }).summary, null, 'a cursor list never gets a count from here');
+  for (const other of [null, [], 'x', { items: [] }, { organizationId: ORG, domain: 'customer_detail', item: null }]) assert.equal(completeListSummary(other), other);
 });
 
 test('R2a room filter: the connector filters rows by room, so the merge replaces the SQL summary with the kept rows (complete) or null (more to read)', async () => {

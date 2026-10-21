@@ -394,6 +394,20 @@ function domainSummary(operation, shape, summary, items, input, scopes) {
   }
   return structuredClone(summary);
 }
+/** Hậu xử lý SAU validator (và sau khi gộp trang lọc phòng), không nới validator: kết quả phân trang offset (báo cáo họ v3
+ * crm_read_occupancy_report/invoice_report/pending_approvals/zalo_conversations/contract_search và crm_read_report của đợt
+ * 2 — cùng khuôn items/offset/nextOffset/sourceCapped/unavailable/summary) mà SQL trả `summary: null` (báo cáo không có
+ * tổng riêng) và tập đã TRỌN — bắt đầu từ offset 0, không còn trang sau (nextOffset null), nguồn không bị cắt
+ * (sourceCapped false), không unavailable — thì số dòng chính là tổng: summary = {count: items.length}. Ca thật (full50e
+ * câu 14, production 21/10): upcoming days=60 trả 15 dòng, summary null ⇒ mô hình tự đếm bảng và nói "14 hợp đồng". Còn
+ * trang sau, bị cắt, offset > 0 (không biết các trang trước) hay unavailable ⇒ giữ null: không bao giờ là số của một phần.
+ * summary khác null giữ nguyên. Tool danh sách con trỏ (nextCursor) không đổi: summary của SQL bắt buộc từ R2a, và gộp
+ * lọc phòng đã thay bằng summary của các hàng giữ lại khi đọc hết. Trả object mới, không sửa đầu vào. */
+export function completeListSummary(value) {
+  if (!domainRecord(value) || value.summary !== null || !Array.isArray(value.items) || !Object.hasOwn(value, 'nextOffset') ||
+      value.offset !== 0 || value.nextOffset !== null || value.sourceCapped !== false || value.unavailable !== null) return value;
+  return { ...value, summary: { count: value.items.length } };
+}
 /** Cùng khuôn summary tính từ một mảng dòng ĐÃ kiểm (thuần, không I/O): lọc phòng ở connector (read-name-resolution
  * rowsPlan.merge — summary SQL mô tả tập CHƯA lọc phòng) và oracle của test SQL (summary SQL = summarizeRows(mọi dòng
  * của tập lọc)). now: mốc của tasks.overdue (SQL dùng now() của câu lệnh). */
