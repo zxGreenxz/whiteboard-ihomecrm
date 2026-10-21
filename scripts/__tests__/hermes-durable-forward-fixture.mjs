@@ -1,12 +1,13 @@
-// Frozen contracts for seventeen forward migrations (eight of 20261019, the B2
+// Frozen contracts for eighteen forward migrations (eight of 20261019, the B2
 // receivables fast read 20261020101836, the B5c receivables building name
 // 20261020171321, its step 2 for every list domain 20261020173818, the R2a
 // summary of every list read 20261020233934, the R2c largest voucher of each
 // income/expense type 20261021035022, the R2c part 2 customer contract status
-// and asset date 20261021044801, and the R2d customers without a contract — a
-// new private DEFINER count — and asset batch 20261021063452, and the shared
-// write foundation: name resolution 20261021132433 and action guard/receipts/
-// probe 20261021133823); source review covers each pin.
+// and asset date 20261021044801, the R2d customers without a contract — a
+// new private DEFINER count — and asset batch 20261021063452, the shared write
+// foundation: name resolution 20261021132433 and action guard/receipts/probe
+// 20261021133823, and the task input lookup without buildingId for
+// jobTypes/assignees 20261021172540); source review covers each pin.
 // Digests cover complete normalized function definitions, including mode, path and body.
 // Change only after source review; do not learn expectations from source at runtime.
 export const FORWARD_ACL_BLOCKS = [
@@ -96,7 +97,9 @@ export const FORWARD_FUNCTIONS = [
   {"name":"public.hermes_action_status_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"5078706276ac84d29b7ee8fc87cb8a541adb09b3043b19773dfdba983ca54f78","args":"p_binding jsonb,p_request_id uuid"},
   {"name":"public.hermes_action_capabilities_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"93ea3b90124be23b3ceb022dedce6013185947d62d875a7ea265d6a8a64de6a9","args":"p_organization_id uuid"},
   {"name":"app_private.hermes_action_probe_step_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"e6471981e7e3c7f122d41a48c0efa0a47597b16f94d5c0ffd6a3a8bc73ae92c9","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb,p_expected_basis text,p_resolution jsonb"},
-  {"name":"public.hermes_action_probe_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"87df58c7f3bdfc05ae5ab7d9ebe05b3a719a5aaff0378b5df2f0b6d36153d705","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"}
+  {"name":"public.hermes_action_probe_v1","sourcePath":"supabase/migrations/20261021133823_hermes_action_foundation_v1.sql","sha256":"87df58c7f3bdfc05ae5ab7d9ebe05b3a719a5aaff0378b5df2f0b6d36153d705","args":"p_binding jsonb,p_action text,p_phase text,p_request_id uuid,p_params jsonb, p_resolved jsonb DEFAULT NULL,p_expected_basis text DEFAULT NULL"},
+  {"name":"app_private.hermes_task_input_guard_v1","sourcePath":"supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql","sha256":"aa3077d19d508e8d35815e4c6893e0510dc8df81a37a8f858bca74dd1bbc71a4","args":"p_binding jsonb,p_input jsonb"},
+  {"name":"app_private.hermes_task_input_rows_v1","sourcePath":"supabase/migrations/20261021172540_hermes_task_input_options_no_building_v1.sql","sha256":"cb9303357e2066677d114525cef2b72fa8bf70604490bd26fcb06074ab518c32","args":"p_plan jsonb"}
 ];
 
 // Reviewed bodies that a later forward migration replaced with CREATE OR REPLACE.

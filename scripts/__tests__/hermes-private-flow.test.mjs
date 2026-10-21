@@ -357,8 +357,11 @@ test('policy fixture does not retry or continue after permission mutation failur
 function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
   const sources = migrationSources(); const bodies = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').replace(/\r\n?/g, '\n')
     .matchAll(/(\$(?:[a-zA-Z_][a-zA-Z_0-9]*)?\$)([\s\S]*?)\1/g)].map(match => [sha(match[2]), match[2]])));
-  const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path))
+  const definitions = new Map(sources.flatMap(item => extractFunctionDefinitions(item.bytes.toString('utf8'), item.path)
+    .map(definition => ({ ...definition, sourcePath: item.path })))
     .filter(item => /^(?:public|app_private)\.hermes_/.test(item.qualifiedName)).map(item => [item.qualifiedName, item]));
+  // What PostgreSQL holds after every source ran: a reviewed successor of the latest source, else the base spec.
+  const live = spec => spec.successors?.[definitions.get(spec.name)?.sourcePath] ?? {};
   const volatility = new Map(sources.flatMap(item => [...item.bytes.toString('utf8').matchAll(
     /CREATE OR REPLACE FUNCTION ((?:public|app_private)\.hermes_\w+)\([^)]*\)[\s\S]*?LANGUAGE \w+ (STABLE|VOLATILE|IMMUTABLE)/g)]
     .map(match => [match[1], { STABLE: 's', VOLATILE: 'v', IMMUTABLE: 'i' }[match[2]]])));
@@ -374,8 +377,9 @@ function mockSchema({ foreignPolicyGrant = false, mutateRows } = {}) {
       proconfig: ['search_path=' + spec.searchPath.replaceAll(',', ', ')],
       arguments: spec.header.match(/\(([^)]*)\)/)[1].split(',').map(item => item.trim()).join(', '),
       result: spec.name === 'app_private.hermes_task_assignee_member_v1' ? 'boolean' : 'jsonb',
-      parsed_body: spec.standard, prosrc: spec.standard ? '' : bodies.get(definitions.get(spec.name).bodyDigest), definition: spec.deparsedDefinition,
-      dependencies: spec.dependencies?.map((item,index) => ({...item,bound_oid:1000+index,resolved_oid:1000+index})),
+      parsed_body: spec.standard, prosrc: spec.standard ? '' : bodies.get(definitions.get(spec.name).bodyDigest),
+      definition: live(spec).deparsedDefinition ?? spec.deparsedDefinition,
+      dependencies: (live(spec).dependencies ?? spec.dependencies)?.map((item,index) => ({...item,bound_oid:1000+index,resolved_oid:1000+index})),
       acl: ['postgres', ...(spec.authenticated ? ['authenticated'] : [])].map(grantee => ({grantee,privilege:'EXECUTE',grantable:false})),
       })) };
     }

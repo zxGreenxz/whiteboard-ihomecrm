@@ -1,5 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
-import { TASK_INPUT_TOOLS,taskActionOperation,taskActionInput,mayUseTaskAction } from './task-input-contract.mjs';
+import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { ROOM_PASS_TOOLS, roomPassOperation, roomPassInput, mayUseRoomPass } from './room-pass-contract.mjs';
@@ -616,6 +616,7 @@ export function createBroker({
   // Một dòng tool_call_timing mỗi lần invoke (option callLog): mốc ms từng pha,
   // cỡ kết quả, kết cục. Không tham số, kết quả, token, ID đầy đủ hay dữ liệu
   // khách; tên tool chỉ khi có trong catalogue. Lỗi của sink bị nuốt.
+  const OK_RESULT_CODES = Object.freeze(['task_options_hint', 'task_options_legacy']);
   const logCall = (record) => {
     if (!callLog) return;
     try { callLog(record()); } catch { /* Timing log never changes the call outcome. */ }
@@ -714,7 +715,10 @@ export function createBroker({
         tool: operation === 'tools/call' && typeof context.tool === 'string' && definitions.has(context.tool) ? context.tool : null,
         path: context.initialDomainReadAdmission ? context.domainReadPath ?? 'fast' : context.initialRoomAdmission ? 'room' : 'normal',
         ...timing, totalMs: Math.round(performance.now() - startedAt), resultBytes: error ? 0 : resultBytes,
-        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown') : null,
+        // An ordinary result that only carries guidance (crm_task_input_options hint) keeps outcome 'ok' and names
+        // itself with one fixed code, so misuse stays countable in the journal (OK_RESULT_CODES).
+        outcome: error ? 'error' : 'ok', code: error ? (error instanceof BrokerError ? error.code : 'unknown')
+          : OK_RESULT_CODES.includes(context.resultCode?.()) ? context.resultCode() : null,
         connection: canonicalId(id) ? hash(id).slice(0, 8) : null };
     });
     try {
@@ -909,19 +913,38 @@ export function createBroker({
       }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
-        let input, invalid = false, uncertain = false;
+        let input, invalid = false, uncertain = false, retry = null, resultCode = null;
         try { input = taskActionInput(taskOperation, args); } catch { invalid = true; }
+        // 22/10 (câu 29): a crm_task_input_options call refused by the validator answers ONE static hint
+        // (task-input-contract.mjs) as an ordinary result, never reaching CRM: Hermes pauses the whole MCP
+        // server for ~60 s after three isError results in a row (TEST 21/10: 21/27 task creations lost).
+        // tool_call_timing still names it (code task_options_hint / task_options_legacy, outcome ok).
+        const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
         return call(async (identity, signal) => {
           if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');
           return receipt;
         }, async (receipt, _identity, signal) => {
-          const result = await task.finalizeTask(presentedToken, receipt, { signal,
-            onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          if (retry !== null) { resultCode = 'task_options_hint'; return { content: [{ type: 'text', text: JSON.stringify(retry) }], isError: false }; }
+          let result;
+          try {
+            result = await task.finalizeTask(presentedToken, receipt, { signal,
+              onDispatch() { uncertain = true; }, onRejected() { uncertain = false; } });
+          } catch (error) {
+            // SQL before 20261021172540 (v5) refuses a company-wide jobTypes/assignees lookup with 22023: the same
+            // static guidance (pass a building) instead of a plain error. Transition only: remove this branch (and
+            // TASK_OPTIONS_HINTS.legacy) once 20261021172540 is live on production — afterwards a 22023 here (e.g. the
+            // 256-building cap) would get a misleading "pass buildingId" instead of the plain error.
+            if (!(error instanceof BrokerError) || error.code !== 'invalid_request' || !taskOptionsCompanyWide(taskOperation, input)) throw error;
+            resultCode = 'task_options_legacy';
+            return { content: [{ type: 'text', text: JSON.stringify(taskOptionsRetry(TASK_OPTIONS_HINTS.legacy)) }], isError: false };
+          }
           return { content: [{ type: 'text', text: JSON.stringify(result) }], isError: false };
-        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId });
+        }, { mutationUncertain: () => uncertain, mutationCode: 'task_outcome_unknown', mutationRequestId: () => input?.requestId,
+          resultCode: () => resultCode });
       }
       const passOperation = roomPassOperation(name);
       if (pass && passOperation) {
