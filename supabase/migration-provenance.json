@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T01:52:28.178Z",
+  "generatedAt": "2026-10-21T02:51:11.800Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 780,
+    "ledger-applied": 782,
     "unknown": 80,
-    "catalog-proven": 207,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12449,10 +12449,9 @@
       "name": "hermes_domain_summary_v1",
       "scheme": "timestamp14",
       "sha256": "3e3f9ac667d2f5caca84c5d4da9f986ac312ab2d853afadd9ddee230a2c061e3",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
-        "catalog:function:public.hermes_domain_read_v1"
+        "receipt:2026-10-21T02:48:47.109Z|bien-nhan-backup"
       ]
     },
     {
@@ -12461,10 +12460,9 @@
       "name": "hermes_w2_domain_summary_v1",
       "scheme": "timestamp14",
       "sha256": "56246062b447c82ef962001b1fcf0a0c3e1b97bc5852e110fc5dc66be0949489",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_domain_read_v3",
-        "catalog:function:app_private.hermes_report_read_v2"
+        "receipt:2026-10-21T02:51:08.334Z|bien-nhan-backup"
       ]
     },
     {
