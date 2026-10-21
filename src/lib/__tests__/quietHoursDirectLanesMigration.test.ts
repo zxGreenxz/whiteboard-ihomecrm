@@ -17,6 +17,12 @@ const NGUON = {
   lich2: ['supabase/migrations/20261015185559_hermes_notify_retry_digest_v1.sql', 'app_private.hermes_schedule_notify_v2'],
   zalo: ['supabase/migrations/20261009171352_zalo_canh_gac_worker.sql', 'app_private.zalo_canh_gac_bao_v1'],
 } as const;
+// Hàm phụ mà bốn hàm trên gọi — cũng lấy bản SỐNG (định nghĩa cuối) thay vì giả.
+const PHU = [
+  ['supabase/migrations/20261015130000_hermes_review_fixes_v1.sql', 'app_private.hermes_task_follow_member_v1'],
+  ['supabase/migrations/20261015110000_hermes_task_follow_v1.sql', 'app_private.hermes_task_follow_iso_v1'],
+  ['supabase/migrations/20261016085117_hermes_sale_listing_no_page_v1.sql', 'app_private.hermes_schedule_message_v1'],
+] as const;
 
 /** Câu CREATE OR REPLACE FUNCTION cuối cùng của `ten` trong file, tới hết dollar-quote đóng thân. */
 function trichHam(file: string, ten: string): string {
@@ -42,18 +48,15 @@ beforeAll(async () => {
       timeout_milliseconds integer DEFAULT 5000) RETURNS bigint LANGUAGE sql AS $$
       INSERT INTO public.test_http(url, body, headers) VALUES (url, body, headers) RETURNING id $$;
     CREATE FUNCTION app_private.lifecycle_reminder_service_jwt_v1() RETURNS text LANGUAGE sql AS $$ SELECT 'jwt-thu'::text $$;
-    CREATE FUNCTION app_private.hermes_task_follow_member_v1(uuid, uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
-    CREATE FUNCTION app_private.hermes_task_follow_iso_v1(timestamptz) RETURNS text LANGUAGE sql AS $$ SELECT $1::text $$;
     CREATE FUNCTION app_private.ie_actor_is_company_owner_v1(uuid, uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT $2 = '${ID.chu}'::uuid $$;
     CREATE TABLE app_private.hermes_room_schedules(id uuid PRIMARY KEY, grant_id uuid);
     CREATE TABLE app_private.hermes_schedule_grants(id uuid PRIMARY KEY, settings jsonb NOT NULL DEFAULT '{}', expires_at timestamptz);
     CREATE TABLE app_private.hermes_schedule_incidents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), schedule_id uuid, user_id uuid,
       organization_id uuid, reason text, detail jsonb NOT NULL DEFAULT '{}', opened_at timestamptz DEFAULT clock_timestamp(), closed_at timestamptz);
-    CREATE FUNCTION app_private.hermes_schedule_message_v1(text, text, jsonb, text, timestamptz) RETURNS jsonb LANGUAGE sql AS $$
-      SELECT jsonb_build_object('title', 'Lịch có vấn đề', 'body', $4 || ': ' || $1) $$;
     INSERT INTO app_private.hermes_room_schedules VALUES ('${SCHEDULE}', '${GRANT}');
     INSERT INTO app_private.hermes_schedule_grants VALUES ('${GRANT}', '{}', now() + interval '1 day');
   `);
+  for (const [file, ten] of PHU) await db.exec(trichHam(file, ten));
   for (const [file, ten] of Object.values(NGUON)) {
     await db.exec(trichHam(file, ten));
     // ACL production 22/10: chỉ postgres (proacl postgres=X/postgres) — file nguồn REVOKE ở khối riêng.
