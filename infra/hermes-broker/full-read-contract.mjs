@@ -106,9 +106,13 @@ export const REPORTS = Object.freeze({
     stats: report('crm.invoices', 'buildings', {}, { month: true, summary: INVOICE_STATS }) }) }),
   monthly_pnl: Object.freeze({ permission: 'reports_finance.analysis', reports: Object.freeze({
     // Mặc định dồn tích như BC Doanh Thu Chi Phí / Phân tích tài chính; chờ duyệt tách riêng.
+    // R2a (20261021004841): summary thêm tổng MỌI hàng của báo cáo (mọi trang, cùng toà/kỳ): revenue, expense, net, rows.
+    // summaryTolerant: một bản phát hành chấp nhận VẮNG cả bốn khoá (SQL chưa áp); có mặt ⇒ đủ cả bốn, đúng kiểu.
     by_month: report('crm.fa_monthly_pnl', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
       { fromDate: true, toDate: true, requiresDates: true, basis: true,
-        summary: Object.freeze({ basis: value => value === 'accrual' || value === 'cash', pendingIncome: amount, pendingExpense: amount, pendingVouchers: count }) }) }) }),
+        summary: Object.freeze({ basis: value => value === 'accrual' || value === 'cash', pendingIncome: amount, pendingExpense: amount, pendingVouchers: count,
+          revenue: amount, expense: amount, net: amount, rows: count }),
+        summaryTolerant: Object.freeze(['revenue', 'expense', 'net', 'rows']) }) }) }),
   pending_approvals: Object.freeze({ permission: 'income_expenses.view', reports: Object.freeze({
     inbox: report('crm.list_my_pending_approvals_v1', 'organization', { requestId: id, submissionNo: int, submittedAt: nullable(instant), amount: money,
       voucherId: nullable(id), voucherCode: name100, voucherName: name200, voucherType: nullable(code), makerName: name200, stepNo: int }) }) }),
@@ -145,6 +149,13 @@ const reportInput = operation => input => {
       !(value.buildingId === null || spec.buildingFilter && id(value.buildingId))) fail();
   return Object.fromEntries(REPORT_INPUT_KEYS.map(key => [key, value[key]]));
 };
+// Khuôn summary chính xác; khoá mới của cửa sổ phát hành (spec.summaryTolerant) được vắng CẢ nhóm, không vắng lẻ.
+function summaryShaped(value, spec) {
+  if (shaped(value, spec.summary)) return true;
+  const tolerant = spec.summaryTolerant ?? [];
+  return tolerant.length > 0 && record(value) && !tolerant.some(key => Object.hasOwn(value, key)) &&
+    shaped(value, Object.fromEntries(Object.entries(spec.summary).filter(([key]) => !tolerant.includes(key))));
+}
 const reportResult = (operation, permission) => (value, identity, input) => {
   const spec = REPORTS[operation].reports[input.report];
   if (value.report !== input.report || value.source !== spec.source || value.offset !== input.offset || typeof value.sourceCapped !== 'boolean' ||
@@ -156,7 +167,11 @@ const reportResult = (operation, permission) => (value, identity, input) => {
         value.items.length || value.summary !== null || value.nextOffset !== null) fail();
     return { report: value.report, source: value.source, unavailable: value.unavailable, summary: null, items: [], offset: value.offset, nextOffset: null, sourceCapped: false };
   }
-  if (!(spec.summary === null ? value.summary === null : shaped(value.summary, spec.summary))) fail();
+  if (!(spec.summary === null ? value.summary === null : summaryShaped(value.summary, spec))) fail();
+  // R2a: `rows` (monthly_pnl) đếm mọi hàng của báo cáo trước khi chia trang ⇒ không ít hơn hàng đã trả; trang cuối có hàng
+  // (nextOffset null) thì đúng bằng offset + số hàng của trang.
+  if (spec.summary !== null && Object.hasOwn(value.summary, 'rows') && value.items.length > 0 && (value.summary.rows < value.offset + value.items.length ||
+      value.nextOffset === null && value.summary.rows !== value.offset + value.items.length)) fail();
   for (const row of value.items) {
     if (!shaped(row, spec.fields)) fail();
     if (Object.hasOwn(row, 'buildingId') && (!inScope(identity, permission, [row.buildingId]) || input.buildingId && row.buildingId !== input.buildingId)) fail();

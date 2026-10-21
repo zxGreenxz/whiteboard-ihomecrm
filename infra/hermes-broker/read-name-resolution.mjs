@@ -7,7 +7,7 @@
 // của chính người hỏi trong phạm vi khoá — đã trả; không bao giờ nêu toà ngoài phạm vi.
 import { createHash } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
-import { DOMAIN_READS, READ_NAMES, READ_NAME_LIMITS, domainId, domainInput, domainRecord, domainExact } from './domain-contract.mjs';
+import { DOMAIN_READS, READ_NAMES, READ_NAME_LIMITS, domainId, domainInput, domainRecord, domainExact, summarizeRows } from './domain-contract.mjs';
 import { W2 } from './wave2-registry.mjs';
 import { isW2ReportId } from './wave2-kit.mjs';
 
@@ -52,8 +52,10 @@ export function matchBuildings(directory, name) {
 
 /** Kế hoạch lọc hàng theo phòng cho tool mà SQL không nhận ID phòng: trang SQL 50 dòng, lấy thêm trang (cursor
  * hoặc offset) tới khi đủ `requested` hàng khớp hoặc hết trang/hết quota; gộp giữ thứ tự SQL. Cắt bớt thì
- * cursor = id hàng cuối giữ lại (keyset vẫn đúng) / nextOffset = vị trí tuyệt đối sau hàng cuối giữ lại. */
-function rowsPlan(spec, resolved, rooms) {
+ * cursor = id hàng cuối giữ lại (keyset vẫn đúng) / nextOffset = vị trí tuyệt đối sau hàng cuối giữ lại.
+ * R2a: `summary` của SQL tả tập CHƯA lọc phòng (lọc phòng ở đây) ⇒ tool danh sách (cursor) thay bằng summary của chính
+ * các hàng giữ lại khi đã đọc hết (nextCursor = null), còn hàng chưa đọc thì null — không bao giờ trả số của tập rộng hơn. */
+function rowsPlan(operation, spec, resolved, rooms) {
   const requested = resolved.limit, ids = new Set(rooms.map(entry => entry.id)), offset = spec.paging === 'offset';
   resolved.limit = ROOM_FILTER_PAGE_LIMIT;
   const keep = page => page.items.filter(row => typeof row.roomId === 'string' && ids.has(row.roomId));
@@ -80,8 +82,9 @@ function rowsPlan(spec, resolved, rooms) {
         return { ...last, items: items.map(entry => entry.row), offset: pages[0].offset, nextOffset,
           sourceCapped: pages.some(page => page.sourceCapped), roomFilter: note(scanned, pages.length, nextOffset !== null) };
       }
-      const nextCursor = cut ? items.at(-1).row.id : last.nextCursor;
-      return { ...last, items: items.map(entry => entry.row), nextCursor, roomFilter: note(scanned, pages.length, nextCursor !== null) };
+      const nextCursor = cut ? items.at(-1).row.id : last.nextCursor, kept = items.map(entry => entry.row);
+      const summary = Object.hasOwn(last, 'summary') ? { summary: nextCursor === null ? summarizeRows(operation, kept) : null } : {};
+      return { ...last, items: kept, nextCursor, ...summary, roomFilter: note(scanned, pages.length, nextCursor !== null) };
     } });
 }
 
@@ -195,7 +198,7 @@ export function createReadNameResolver({ rpc, clock = Date.now, ttlMs = 300_000,
       } else {
         const needle = fold(wanted);
         if ((spec.queryRoom === 'always' || spec.queryRoom === lane) && resolved.query === '' && found.every(entry => fold(entry.name).includes(needle))) resolved.query = wanted;
-        plan = rowsPlan(spec, resolved, found);
+        plan = rowsPlan(operation, spec, resolved, found);
       }
     }
     return { input: resolved, plan };

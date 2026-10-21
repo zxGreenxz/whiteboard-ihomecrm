@@ -1,11 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, FULL_READ_OWNER_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
+import { sharedFullRead, changedFunctions, fullReadParitySql, fullReadOwnerSql, FULL_READ_PARITY_PATH, W2_SUMMARY_PATH, REPORT_KEYS, USER, BUILDING, OTHER_BUILDING, ROOM, ORG_SCOPE, binding, ORG, FOREIGN,
   CONTRACT_A, CONTRACT_B, INVOICE_A, INVOICE_B, INVOICE_CANCELLED, INVOICE_PARTIAL, PENDING, FOREIGN_PENDING, VOUCHER, CONVERSATION, ZALO_PHONE,
   PHONE_A, CO_TENANT, CUSTOMER_A } from './full-read-sql-fixture.mjs';
 import { CATEGORY } from './finance-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
 import { REPORTS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { W2_FOUNDATION_PATH } from './wave2-sql-paths.mjs';
 
@@ -36,6 +36,8 @@ const grantCustomers = db => db.exec(`UPDATE app_private.hermes_capabilities SET
   UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||ARRAY['customers.view']`);
 // Gọi thẳng RPC web như người dùng (jwt sub = USER) để so từng con số với Hermes.
 const web = (env, sql, args = []) => env.call(sql, args, { role: 'postgres' });
+// Câu CREATE của một hàm trong một file migration (thân plpgsql kết thúc ở $fn$;).
+const definitionOf = (path, fn) => readFileSync(path, 'utf8').match(new RegExp(`CREATE OR REPLACE FUNCTION ${fn.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`))[0];
 
 // Phòng toà A thêm cho lấp đầy: P102 ghi OCCUPIED nhưng không có hợp đồng (snapshot web xếp
 // "không khai thác", rooms.status đếm là đang ở), P103 trống có giá, P104 giữ chỗ.
@@ -118,13 +120,13 @@ test('no copilot_*: the final Hermes full-read definitions (migrations and PGlit
     assert.ok(last, name);
     if (['app_private.hermes_report_catalog_v1', 'app_private.hermes_pnl_pending_v1'].includes(name))
       assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_PARITY_PATH, `${name} lives in the web-parity migration`);
-    if (name === 'app_private.hermes_report_read_v2')
-      assert.equal(`supabase/migrations/${last[0]}`, FULL_READ_OWNER_PATH, `${name} lives in the review-fix migration`);
     // Đợt 2 thay v3 MỘT lần (20261018000000): thêm định tuyến report/report_list, phần còn lại giữ nguyên
     // bản review-fix (wave2-foundation.test.mjs so từng ký tự); đột biến ở file này vẫn nhắm bản review-fix.
     // B5c bước 2 (20261020173819, dải nền hermes_w2_): customers thêm buildingName, mọi dòng khác giữ bản nền.
-    if (name === 'public.hermes_domain_read_v3')
-      assert.equal(`supabase/migrations/${last[0]}`, 'supabase/migrations/20261020173819_hermes_w2_customers_building_name_v1.sql', `${name} lives in the B5c wave-2 successor`);
+    // R2a (20261021004841, dải nền hermes_w2_): v3 customers/occupancy thêm summary, báo cáo monthly_pnl thêm tổng;
+    // mọi dòng khác giữ bản 20261020173819 (v3) và 20261017033630 (báo cáo).
+    if (['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2'].includes(name))
+      assert.equal(`supabase/migrations/${last[0]}`, W2_SUMMARY_PATH, `${name} lives in the R2a wave-2 successor`);
     assert.doesNotMatch(last[1].replace(/--[^\n]*/g, ''), /copilot_/i, `${name} (${last[0]})`);
   }
   for (const sql of [fullReadParitySql(), fullReadOwnerSql(), readFileSync(W2_FOUNDATION_PATH, 'utf8')])
@@ -157,6 +159,10 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   const input = domainInput('occupancy', {}), domain = await env.read3('occupancy', input);
   assert.deepEqual(domain.items, [{ id: BUILDING, buildingId: BUILDING, name: 'Toà A', total: 4, occupied: 1, available: 1 }]);
   assert.deepEqual(domainResult('occupancy', domain, identity('reports_real_estate.occupancy'), input).items, domain.items);
+  // R2a (20261021004841): summary = tổng các dòng snapshot của tập toà đã lọc (mọi trang), count = số toà.
+  assert.deepEqual(domain.summary, { count: 1, total: 4, occupied: 1, available: 1 });
+  assert.deepEqual(domain.summary, summarizeRows('occupancy', domain.items));
+  assert.deepEqual(domainResult('occupancy', domain, identity('reports_real_estate.occupancy'), input).summary, domain.summary);
   // Phòng sắp trống: hợp đồng gia hạn đã duyệt đẩy ngày trống như web (contract_extensions).
   const upcoming = await run(env, 'occupancy_report', { report: 'upcoming', fromDate: '2026-12-15', days: 30 });
   assert.deepEqual(upcoming.value.items.map(row => [row.contractId, row.daysRemaining, row.extensionApplied]), [[CONTRACT_A, 17, false]]);
@@ -169,6 +175,17 @@ test('occupancy: snapshot/upcoming are the web RPCs on the connection buildings;
   const both = (await run(env, 'occupancy_report', { report: 'snapshot' })).value.items;
   assert.deepEqual(both.map(row => [row.buildingId, row.total, row.occupied]), [[BUILDING, 4, 1], [OTHER_BUILDING, 1, 1]]);
   assert.deepEqual((await run(env, 'occupancy_report', { report: 'snapshot', buildingId: OTHER_BUILDING })).value.items.map(row => row.buildingId), [OTHER_BUILDING]);
+  // R2a: hai toà — summary cộng cả hai; limit/cursor không thu hẹp; query tên toà và buildingId thu hẹp như các dòng.
+  const wide = await env.read3('occupancy', domainInput('occupancy', {}));
+  assert.deepEqual(wide.summary, { count: 2, total: 5, occupied: 2, available: 1 });
+  assert.deepEqual(wide.summary, summarizeRows('occupancy', wide.items));
+  const first = await env.read3('occupancy', domainInput('occupancy', { limit: 1 }));
+  const second = await env.read3('occupancy', domainInput('occupancy', { limit: 1, cursor: first.nextCursor }));
+  assert.deepEqual([first.items.length, first.summary, second.summary], [1, wide.summary, wide.summary], 'every page carries the whole set');
+  assert.deepEqual(domainResult('occupancy', first, identity('reports_real_estate.occupancy'), domainInput('occupancy', { limit: 1 })).summary, wide.summary);
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { query: 'toà a' }))).summary, { count: 1, total: 4, occupied: 1, available: 1 }, 'building-name query');
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { buildingId: OTHER_BUILDING }))).summary, { count: 1, total: 1, occupied: 1, available: 0 }, 'buildingId');
+  assert.deepEqual((await env.read3('occupancy', domainInput('occupancy', { query: 'không có' }))).summary, { count: 0, total: 0, occupied: 0, available: 0 }, 'empty set: zeros, not null');
 }));
 
 test('invoice search like /invoices: cancelled hidden by default, unpaid = no money collected, customer-name search needs customers.view', { timeout: 120000 }, () => inCase(async env => {
@@ -211,6 +228,13 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
     ['2026-10-01', BUILDING, 400000, 0, 400000]], 'approved only, re-perioded like fa_monthly_pnl_accrual');
   assert.deepEqual([accrual.value.summary.basis, Number(accrual.value.summary.pendingIncome), Number(accrual.value.summary.pendingExpense),
     accrual.value.summary.pendingVouchers], ['accrual', 600000, 500000, 2], 'pending V5 (T9+T10 of T9–T11) and V3; V4 is outside the overlay');
+  // R2a (20261021004841): summary cũng cộng MỌI hàng của báo cáo (cùng toà/kỳ, mọi trang): 3 tháng; số tiền cộng đúng thang
+  // như sum(numeric) (oracle: summarizeRows của building_profit cộng đúng ba khoá revenue/expense/net).
+  const totals = summary => [summary.revenue, summary.expense, summary.net, summary.rows];
+  const pnlOracle = rows => { const { revenue, expense, net } = summarizeRows('building_profit', rows).sum; return [revenue, expense, net, rows.length]; };
+  assert.deepEqual(totals(accrual.value.summary).map((value, index) => index < 3 ? Number(value) : value), [1200000, 300000, 900000, 3]);
+  assert.deepEqual(totals(accrual.value.summary), pnlOracle(accrual.value.items));
+  assert.deepEqual(accrual.checked.summary, accrual.value.summary, 'the broker passes the eight keys');
   // Từng hàng bằng RPC web (useFinancialAnalysis.ts, hermes-parity:monthly-pnl) trên cùng tập toà.
   const direct = await web(env, `SELECT jsonb_agg(jsonb_build_object('month',month,'buildingId',building_id,'revenue',revenue::text,'expense',expense::text,
     'net',net::text) ORDER BY month) result FROM public.fa_monthly_pnl_accrual($1::date,$2::date,$3::uuid[])`, [range.fromDate, range.toDate, [BUILDING]]);
@@ -218,10 +242,14 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
   const cash = await run(env, 'monthly_pnl', { ...range, basis: 'cash' });
   assert.deepEqual(money(cash.value.items), [['2026-08-01', BUILDING, 1200000, 0, 1200000], ['2026-09-01', BUILDING, 0, 300000, -300000]]);
   assert.deepEqual([cash.value.summary.basis, Number(cash.value.summary.pendingIncome), Number(cash.value.summary.pendingExpense)], ['cash', 900000, 500000]);
+  assert.deepEqual(totals(cash.value.summary), pnlOracle(cash.value.items), 'cash basis: totals of its own two rows');
   const page = await run(env, 'monthly_pnl', { ...range, limit: 2 });
   assert.deepEqual([page.value.items.map(row => row.month), page.value.nextOffset], [['2026-08-01', '2026-09-01'], 2]);
   const next = await run(env, 'monthly_pnl', { ...range, limit: 2, offset: 2 });
   assert.deepEqual([next.value.items.map(row => row.month), next.value.nextOffset], [['2026-10-01'], null]);
+  assert.deepEqual([totals(page.value.summary), totals(next.value.summary)], [totals(accrual.value.summary), totals(accrual.value.summary)],
+    'limit/offset never narrow the totals: rows = 3 on both pages');
+  assert.deepEqual(totals((await run(env, 'monthly_pnl', { ...range, query: 'không có' })).value.summary), ['0', '0', '0', 0], 'no building: zeros, not null');
   // Phần chờ duyệt phân bổ đúng như bản canonical: duyệt xong thì hàng tăng đúng bằng nó.
   await db.exec(`UPDATE public.income_expenses SET approval_status='APPROVED' WHERE id IN ('${V3}','${V5}')`);
   const approved = await run(env, 'monthly_pnl', range);
@@ -233,6 +261,34 @@ test('monthly_pnl = the Phân tích tài chính RPC (accrual by default, cash on
   await orgWideOverlay(db);
   const wide = await run(env, 'monthly_pnl', range);
   assert.deepEqual([Number(wide.value.summary.pendingIncome), wide.value.summary.pendingVouchers], [700000, 1]);
+}));
+
+// R2a revert artifact, wave-2 half (docs/plans/hermes-crm/revert, not a migration): run inside the case without its own
+// BEGIN/COMMIT (the case is one transaction, rolled back after). It restores the exact 20261020173819 v3 and
+// 20261017033630 report bodies: no summary on customers/occupancy, the four-key monthly_pnl summary — which this
+// connector release still accepts (release window), the safe order the revert header asks for.
+test('R2a W2 revert artifact: restores the 20261020173819 v3 and 20261017033630 report bodies exactly; this connector accepts the result', { timeout: 120000 }, () => inCase(async env => {
+  const { db } = env;
+  await seedPnl(db); await seedRooms(db);
+  const file = readFileSync('docs/plans/hermes-crm/revert/hermes_w2_domain_summary_revert_v1.sql', 'utf8');
+  assert.equal(file.split('\nBEGIN;\n').length, 2); assert.equal(file.split('\nCOMMIT;\n').length, 2);
+  const bodies = async () => (await db.query(`SELECT proname,md5(prosrc) body FROM pg_proc WHERE proname IN ('hermes_domain_read_v3','hermes_report_read_v2') ORDER BY 1`)).rows;
+  const r2a = await bodies();
+  await db.exec(file.replace('\nBEGIN;\n', '\n').replace('\nCOMMIT;\n', '\n'));
+  const reverted = await bodies();
+  for (const [index, row] of reverted.entries()) assert.notEqual(row.body, r2a[index].body, `${row.proname}: replaced`);
+  const last = (name, fn) => readFileSync(`supabase/migrations/${name}.sql`, 'utf8').match(new RegExp(`CREATE OR REPLACE FUNCTION ${fn.replaceAll('.', '\\.')}\\([\\s\\S]*?\\$fn\\$;`))[0];
+  await db.exec(last('20261020173819_hermes_w2_customers_building_name_v1', 'public.hermes_domain_read_v3'));
+  await db.exec(last('20261017033630_hermes_full_read_owner_scope_v1', 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), reverted, 'the revert bodies are the 20261020173819 / 20261017033630 bodies');
+  const occupancy = await env.read3('occupancy', domainInput('occupancy', {}));
+  assert.equal(Object.hasOwn(occupancy, 'summary'), false);
+  assert.deepEqual(domainResult('occupancy', occupancy, identity('reports_real_estate.occupancy'), domainInput('occupancy', {})).items, occupancy.items);
+  const pnl = await run(env, 'monthly_pnl', { fromDate: '2026-08-01', toDate: '2026-10-31' });
+  assert.deepEqual(Object.keys(pnl.value.summary).sort(), ['basis', 'pendingExpense', 'pendingIncome', 'pendingVouchers'], 'the four keys before R2a');
+  assert.deepEqual(pnl.checked.summary, pnl.value.summary, 'accepted while summaryTolerant is set');
+  await db.exec(definitionOf(W2_SUMMARY_PATH, 'public.hermes_domain_read_v3')); await db.exec(definitionOf(W2_SUMMARY_PATH, 'app_private.hermes_report_read_v2'));
+  assert.deepEqual(await bodies(), r2a, 'R2a forward again');
 }));
 
 test('organization reports: approvals inbox of the asker in this company; Zalo needs Chat Zalo company-wide like the web', { timeout: 120000 }, () => inCase(async env => {
@@ -423,6 +479,26 @@ test('broker fence: report rows outside the CRM scope, wrong source or forged un
   assert.equal(domainResult('monthly_pnl', pnl, identity('reports_finance.analysis'), pnlInput).summary.basis, 'accrual');
   for (const summary of [{ ...pnl.summary, basis: 'kqkd' }, { ...pnl.summary, pendingExpense: 1 }, (({ basis, ...rest }) => rest)(pnl.summary)])
     assert.throws(() => domainResult('monthly_pnl', { ...pnl, summary }, identity('reports_finance.analysis'), pnlInput), JSON.stringify(summary));
+  // R2a: tổng các hàng (revenue/expense/net/rows) đi cùng summary. Cửa sổ phát hành (summaryTolerant): SQL cũ (bốn khoá ở
+  // trên) vẫn qua; có mặt thì đủ cả bốn, đúng kiểu — vắng LẺ một khoá là khuôn hỏng.
+  const pnlCheck = value => domainResult('monthly_pnl', value, identity('reports_finance.analysis'), pnlInput);
+  const totals = { ...pnl.summary, revenue: '0', expense: '0', net: '0', rows: 0 };
+  assert.deepEqual(pnlCheck({ ...pnl, summary: totals }).summary, totals);
+  for (const key of ['revenue', 'expense', 'net', 'rows'])
+    assert.throws(() => pnlCheck({ ...pnl, summary: (({ [key]: _, ...rest }) => rest)(totals) }), `${key} absent alone`);
+  for (const [label, changed] of [['revenue as a number', { revenue: 0 }], ['net not a decimal', { net: '1e3' }], ['negative rows', { rows: -1 }],
+    ['rows as text', { rows: '0' }], ['unknown total', { profit: '0' }]])
+    assert.throws(() => pnlCheck({ ...pnl, summary: { ...totals, ...changed } }), label);
+  // rows đếm mọi hàng trước khi chia trang: không ít hơn offset + hàng của trang; trang cuối có hàng thì đúng bằng.
+  const month = { month: '2026-08-01', buildingId: BUILDING, buildingName: 'Toà A', revenue: '5', expense: '2', net: '3' };
+  const last = { ...pnl, items: [month], summary: { ...totals, revenue: '5', expense: '2', net: '3', rows: 1 } };
+  assert.equal(pnlCheck(last).summary.rows, 1);
+  assert.throws(() => pnlCheck({ ...last, summary: { ...last.summary, rows: 2 } }), 'last page: rows = offset + items');
+  assert.throws(() => pnlCheck({ ...last, summary: { ...last.summary, rows: 0 } }), 'rows below the rows returned');
+  const more = { ...last, nextOffset: 1, summary: { ...last.summary, rows: 3 } };
+  assert.equal(pnlCheck(more).summary.rows, 3, 'more pages: rows above the page');
+  assert.throws(() => pnlCheck({ ...more, summary: { ...more.summary, rows: 0 } }), 'rows below the page while more pages remain');
+  assert.equal(pnlCheck({ ...pnl, summary: { ...totals, rows: 4 } }).summary.rows, 4, 'an empty page (offset past the end) proves nothing about rows');
 });
 
 // Mutation evidence: v3 / reader live in the review-fix file (20261017033630); catalog and the

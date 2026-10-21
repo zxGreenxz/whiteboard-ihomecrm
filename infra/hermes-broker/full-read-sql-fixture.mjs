@@ -24,6 +24,10 @@ export const fullReadParitySql = () => readFileSync(process.env.HERMES_FULL_READ
 // của v3 / báo cáo / room pass v2 ở file này.
 export const FULL_READ_OWNER_PATH = 'supabase/migrations/20261017033630_hermes_full_read_owner_scope_v1.sql';
 export const fullReadOwnerSql = () => readFileSync(process.env.HERMES_FULL_READ_OWNER_SQL ?? FULL_READ_OWNER_PATH, 'utf8');
+// R2a: định nghĩa SỐNG của v3 (customers/occupancy có summary) và báo cáo (monthly_pnl có tổng) ở file này; đột biến
+// vẫn nhắm bản review-fix (FULL_READ_OWNER_PATH) — thay cả thân hàm nên probe không phụ thuộc summary.
+export const W2_SUMMARY_FILE = '20261021004841_hermes_w2_domain_summary_v1';
+export const W2_SUMMARY_PATH = `supabase/migrations/${W2_SUMMARY_FILE}.sql`;
 const baseline = readFileSync('supabase/baseline/schema.sql', 'utf8');
 const migrationSql = name => readFileSync(`supabase/migrations/${name}.sql`, 'utf8');
 const definition = (src, name) => {
@@ -149,6 +153,11 @@ export async function setupFullRead(t, { sql = fullReadSql(), fix = fullReadFixS
   // contract. Only the CREATE statement runs here (the file's DO blocks need the wave-2 routing body, which the
   // wave-2 fixture installs later and then re-applies this file in full); twice, as the lane would.
   if (owner !== null) { const v3 = definition(migrationSql('20261020173819_hermes_w2_customers_building_name_v1'), 'public.hermes_domain_read_v3'); await db.exec(v3); await db.exec(v3); }
+  // R2a (20261021004841, wave-2 foundation band): v3 customers/occupancy and the report reader (monthly_pnl totals)
+  // carry the summary of the whole filtered set. The same two CREATE statements only, twice, for the same reason.
+  if (owner !== null) for (const name of ['public.hermes_domain_read_v3', 'app_private.hermes_report_read_v2']) {
+    const body = definition(migrationSql(W2_SUMMARY_FILE), name); await db.exec(body); await db.exec(body);
+  }
   await db.query('UPDATE app_private.hermes_capabilities SET enabled=true WHERE capability=ANY($1)', [reads]);
   await db.query('UPDATE app_private.hermes_org_policies SET read_capabilities=read_capabilities||$1::text[]', [reads]);
   await db.query('UPDATE app_private.hermes_connections SET read_capabilities=read_capabilities||$1::text[]', [reads]);

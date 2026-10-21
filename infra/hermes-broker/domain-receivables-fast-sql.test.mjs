@@ -65,7 +65,8 @@ test('B2/B5c receivables: fast plan equals hermes_domain_read_v2 (rows, order, f
  await t.test('no filter: the same five debts in UUID order, v2 envelope and row shape',async()=>{
   const r=await same();
   assert.deepEqual(ids(r),DEBTS);assert.equal(r.nextCursor,null);
-  assert.deepEqual(Object.keys(r).sort(),['domain','fetchedAt','items','nextCursor','organizationId','source']);
+  // R2a (20261020233934): both lanes add the same `summary` of the whole filtered set (same() compares it).
+  assert.deepEqual(Object.keys(r).sort(),['domain','fetchedAt','items','nextCursor','organizationId','source','summary']);
   assert.equal(r.organizationId,ORG);assert.equal(r.domain,'receivables');
   assert.deepEqual(r.items[1],{id:inv(10),number:'HDON310',status:'PARTIAL_PAID',buildingId:B2,buildingName:'Second building',buildingCode:null,roomId:R2,roomName:'P201',
    billingMonth:'2026-10',dueDate:'2026-10-15',totalAmount:'1000',paidAmount:'300',remainingAmount:'700'});

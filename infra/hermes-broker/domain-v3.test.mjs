@@ -2,7 +2,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { sharedFullRead, changedFunctions, fullReadSql, fullReadFixSql, fullReadParitySql, fullReadOwnerSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { randomBytes } from 'node:crypto';
 import { ASSISTANT, token } from './finance-fixture.mjs';
@@ -52,6 +52,10 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   // B5c step 2 (20261020173819): the building of the active contract is named next to its id.
   assert.deepEqual(a, { id: CUSTOMER_A, name: 'Nguyễn Văn An', phone: PHONE_A, contractId: CONTRACT_A, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101' });
   assert.deepEqual(domainResult('customers', first, identity('customers.view'), list()), first);
+  // R2a (20261021004841): the count of the whole filtered set, no status or money column.
+  assert.deepEqual(first.summary, { count: 2, byStatus: {}, sum: {} });
+  assert.deepEqual(first.summary, summarizeRows('customers', first.items));
+  assert.deepEqual((await read3('customers', list({ query: '4567' }))).summary, { count: 1, byStatus: {}, sum: {} }, 'query filter');
   assert.deepEqual(ids((await read3('customers', list({ query: '4567' }))).items), [CUSTOMER_A], 'phone digits search');
   assert.deepEqual(ids((await read3('customers', list({ query: '090 123' }))).items), [CUSTOMER_A], 'spaced digits');
   assert.deepEqual(ids((await read3('customers', list({ query: 'văn an' }))).items), [CUSTOMER_A]);
@@ -63,13 +67,20 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
   // P2-2: như RLS customers_select_rbac, chủ hồ sơ (customers.user_id) phải là thành viên ACTIVE — kể cả khách có hợp đồng.
   await db.exec(`DELETE FROM public.fixture_visible_owners`);
-  assert.deepEqual(ids((await read3('customers', list())).items), [], 'no row without a visible owner');
+  const hidden = await read3('customers', list());
+  assert.deepEqual([ids(hidden.items), hidden.summary], [[], { count: 0, byStatus: {}, sum: {} }], 'no row without a visible owner; the empty count is 0');
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${USER}')`);
-  assert.deepEqual(ids((await read3('customers', list({ buildingId: BUILDING }))).items), [CUSTOMER_A, CO_TENANT].sort(), 'buildingId drops the org-wide branch');
+  const narrowed = await read3('customers', list({ buildingId: BUILDING }));
+  assert.deepEqual(ids(narrowed.items), [CUSTOMER_A, CO_TENANT].sort(), 'buildingId drops the org-wide branch');
+  assert.equal(narrowed.summary.count, 2, 'the summary drops it too');
   const page = await read3('customers', list({ limit: 2 }));
   assert.equal(page.items.length, 2); assert.equal(page.nextCursor, page.items[1].id);
   const rest = await read3('customers', list({ limit: 2, cursor: page.nextCursor }));
   assert.deepEqual([...ids(page.items), ...ids(rest.items)].sort(), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
+  // Toàn tổ chức: 4 khách; limit/cursor không đổi summary — trang nào cũng nói đủ 4.
+  assert.deepEqual([page.summary, rest.summary], [{ count: 4, byStatus: {}, sum: {} }, { count: 4, byStatus: {}, sum: {} }]);
+  assert.deepEqual(summarizeRows('customers', [...page.items, ...rest.items]), page.summary, 'count === rows once every page is read');
+  assert.deepEqual(domainResult('customers', page, identity('customers.view'), list({ limit: 2 })).summary, page.summary);
 }));
 
 test('SQL customer_detail: the /customers/:id fields in full, never images, bank account or fingerprint; out of scope is null', { timeout: 90000 }, t => inCase(async env => {
