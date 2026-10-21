@@ -18,7 +18,7 @@ function fixture(t,{bound=true}={}) {
   const channel={accountId:id('1'),ownUid:'123',pairedUid:'456',mainUid:'456',profile:'alpha',generation:id('2'),token:'hzn_'+'a'.repeat(64),listenPort:8991};
   const options={home,mcpUrl:'http://127.0.0.1:8740/mcp',profile:'alpha',accountId:channel.accountId,ownUid:channel.ownUid,pairedUid:channel.pairedUid};
   const configFile=path.join(home,'config.yaml'),envFile=path.join(home,'.env'),tokenFile=path.join(nativeRoot,'alpha.token'),nativeFile=path.join(nativeRoot,'native.json'),journalFile=path.join(stateRoot,'unknown.json');
-  const config={model:{default:'private-existing'},mcp_servers:{other:{command:'existing',args:['unchanged']},crm:{url:options.mcpUrl,headers:{Authorization:'Bearer hc_'+'b'.repeat(43),'X-Keep':'existing'},timeout:30}},platforms:{zalo_personal:{enabled:true,keep:'existing'},telegram:{enabled:true}}};
+  const config={model:{default:'private-existing'},mcp_servers:{other:{command:'existing',args:['unchanged']},crm:{url:options.mcpUrl,headers:{Authorization:'Bearer hc_'+'b'.repeat(43),'X-Keep':'existing'},timeout:30}},platforms:{zalo_personal:{enabled:true,keep:'existing'},telegram:{enabled:false,keep:'existing'}}};
   fs.writeFileSync(configFile,yaml.dump(config),{mode:0o600});
   const env='# exact env comment\r\nKEEP_OTHER="unchanged with spaces"\r\n'+(bound?
     `export HERMES_ZALO_BRIDGE_URL=http://127.0.0.1:8991\r\nHERMES_ZALO_BRIDGE_TOKEN=${channel.token}\r\nHERMES_ZALO_PROFILE=alpha\r\nHERMES_ZALO_PAIRED_UID=456\r\nHERMES_ZALO_GENERATION=${channel.generation}\r\n`:'');
@@ -335,5 +335,23 @@ test('preserving HTTP requires a canonical private IP origin and exact /mcp URL'
     const f=fixture(t),before=snapshot(f.root);
     assert.throws(()=>planNativeProfileUpdate({...f.options,mcpUrl:url,preserveExistingHttpOrigin:allow},f.request),/native_profile_provisioning_failed/);
     assert.deepEqual(snapshot(f.root),before);
+  }
+});
+
+test('K1: a profile that would carry a CRM token refuses any platform besides zalo_personal not explicitly off; pending/revoke still remove it',async t=>{
+  for(const [name,value] of [['telegram',{enabled:true}],['discord',{}],['api_server','on'],['slack',{enabled:'false'}]]){
+    const f=fixture(t),config=structuredClone(f.config);config.platforms[name]=value;fs.writeFileSync(f.configFile,yaml.dump(config));
+    const before=snapshot(f.root),shared=/^Error: native_profile_shared_platform$/;
+    assert.throws(()=>planNativeProfileUpdate(f.options,f.request),shared);
+    assert.throws(()=>planNativeProfileUpdate(f.options,{...f.request,channel:f.channel}),shared);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential})),shared);
+    const errors=[];
+    assert.equal(await runProfileProvisioningCli(args(f.options),{input:input(f.request),write:()=>{},error:value=>errors.push(JSON.parse(value))}),1);
+    assert.equal(errors[0].error,'native_profile_shared_platform');assert(!JSON.stringify(errors).includes(f.request.credential));
+    assert.deepEqual(snapshot(f.root),before);
+    for(const mode of ['credentialPending','revoked']){
+      provisionNativeProfile(sameUidProfileOptions(f,{[mode]:true}));const actual=yaml.load(read(f.configFile));
+      assert.equal(actual.mcp_servers.crm,undefined);assert.deepEqual(actual.platforms[name],value);
+    }
   }
 });

@@ -12,6 +12,7 @@ const plain=value=>value&&Object.getPrototypeOf(value)===Object.prototype;
 const full=(pattern,value)=>typeof value==='string'&&pattern.exec(value)?.[0]===value;
 const exact=(value,keys)=>plain(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const PROFILE_MAX=131072;
+const DM_ONLY_PLATFORMS=['zalo_personal'];
 const nativeKeys=['HERMES_ZALO_BRIDGE_URL','HERMES_ZALO_BRIDGE_TOKEN','HERMES_ZALO_PROFILE','HERMES_ZALO_PAIRED_UID','HERMES_ZALO_GENERATION'];
 function mcpUrl(value) {
   let url;try{url=new URL(value);}catch{fail();}
@@ -171,6 +172,11 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
   const platforms={...(config.platforms??{})};
   if(platforms.zalo_personal!==undefined&&!plain(platforms.zalo_personal))fail();
   if(!credentialPending&&!credentialOnly) platforms.zalo_personal={...(platforms.zalo_personal??{}),enabled:!revoked};
+  // K1 (NEN-CHUNG-THAO-TAC-GHI.md §8.2): a profile that carries a CRM token may only
+  // serve the paired 1-1 Zalo channel; any other platform not explicitly
+  // `enabled: false` could relay group chats to write tools. Refuse, never disable.
+  if(Object.hasOwn(servers,serverKey)&&Object.entries(platforms).some(([name,value])=>
+    !DM_ONLY_PLATFORMS.includes(name)&&!(plain(value)&&value.enabled===false)))fail('native_profile_shared_platform');
   const next=credentialOnly?{...config,mcp_servers:servers}:{...config,mcp_servers:servers,platforms};
   const encoded=yaml.dump(next,{schema:yaml.JSON_SCHEMA,noRefs:true,lineWidth:-1,sortKeys:false});
   // Preserve the original bytes on a semantic no-op, including comments.

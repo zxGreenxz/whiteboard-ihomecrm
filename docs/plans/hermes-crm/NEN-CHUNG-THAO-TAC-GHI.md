@@ -350,6 +350,8 @@ Mỗi trang thêm mã riêng vào cùng file khi làm trang đó, ví dụ:
 
 **Phát hiện khi làm Mốc 7 (đọc mã, 21/10):** bất biến của K1 hiện **không** được bảo đảm. `infra/hermes-zalo-native/profile-provisioning.mjs` gộp `platforms` có sẵn của profile rồi chỉ đặt `zalo_personal.enabled`; mọi nền tảng khác đang bật được giữ nguyên. Fixture của chính test đó có `telegram: {enabled: true}` đi cùng token CRM. Muốn K1 có hiệu lực thì provisioning phải từ chối (hoặc tắt) nền tảng khác khi profile mang token CRM, và phải có test khoá điều đó. Việc này đổi hồ sơ thật trên VPS nên để phiên chính quyết; Đợt 1 chưa sửa. Nếu chọn K2 sớm hơn, phải backfill `channel_binding` cho 5 kết nối hiện có, nếu không mọi thao tác mới sẽ bị chặn. Quyết định D3.
 
+**Sửa trước review (4), 21/10:** phiên chính đọc profile owner production: `platforms: {}`, Zalo đi qua gateway/plugin, không bật Telegram/Discord. Giữ K1, không đổi VPS. Provisioning nay **từ chối** (mã `native_profile_shared_platform`, không ghi file nào, không tự tắt gì) khi profile sẽ mang token CRM mà còn mục `platforms` ngoài `zalo_personal` chưa ghi đúng `enabled: false` (thiếu `enabled`, giá trị lạ hay không phải object đều tính là bật). Thu hồi và chờ credential vẫn gỡ được token. Mọi token CRM được coi là có thể có khoá ghi, vì kết nối `inherit_crm` tự nhận khoá registry vừa bật. Fixture test đổi `telegram` sang `enabled: false` (vẫn kiểm giữ nguyên mục lạ); test K1 mới đỏ khi bỏ hoặc nới luật (6/6 đột biến bị bắt). Giới hạn ghi ở `CONNECTOR.md`: chỉ thấy `platforms` trong `config.yaml` lúc provisioning; nền tảng bật qua biến môi trường, plugin gateway hoặc sửa tay sau đó không bị chặn.
+
 ### 8.3 Câu 5: đăng ký sẵn khoá ghi ở trạng thái TẮT
 
 **Đã tra (đọc mã, chưa thử):**
@@ -610,6 +612,7 @@ Thêm từ ca thử Công việc trên TEST (bot thật, 21/10 18:24–18:47): t
 5. Bật `assistant.action_probe` trên TEST; chạy ca N1–N10, mỗi ca 3 lần; đồng bộ lại TEST nếu cần.
 6. Xin chủ trả lời câu 4 (tắt 3 tool phiếu chi cũ) trước khi hiện thao tác thật đầu tiên.
 7. SOUL bản 5: luật hai lượt, chỉ chat riêng, đọc `detail` khi bị từ chối.
+8. Trước khi đưa bản `profile-provisioning.mjs` có luật K1 lên VPS: đọc (chỉ đọc) `platforms` của mọi profile mang token CRM, kể cả profile TEST. Profile nào còn nền tảng khác `zalo_personal` chưa ghi `enabled: false` sẽ bị từ chối ở lần provisioning hoặc đổi credential kế tiếp.
 
 ## 17. Chưa xác minh
 
