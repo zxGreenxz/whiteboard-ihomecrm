@@ -873,6 +873,26 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021114556_contract_termination_second_refund_guard_v1.sql": {
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021114556_contract_termination_second_refund_guard_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.guard_contract_termination_open_contract_v1(); CREATE TRIGGER a01_contract_termination_open_contract_guard ON public.contract_terminations; CREATE OR REPLACE public.approve_contract_termination_v1 (thân 20260915074638 + rào [TERMINATION_CONTRACT_CLOSED])"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects đủ 2 object trên — sinh 21/10/2026 ngay sau khi tạo file"
+        }
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 21/10/2026 (P0a: vá lỗ phiếu hoàn cọc thứ hai ở thanh lý hợp đồng), chưa đi qua lane apply — 2 object vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đã chạy trên TEST trong BEGIN…ROLLBACK (test-env:thu-sql, không --ghi): tiền kiểm md5 và tự kiểm catalog qua; kịch bản G1 trước vá tái hiện lỗ (REST tạo DRAFT, approve sinh phiếu không nguồn, finalize 23505), sau vá REST và approve đều 55000, quyết toán ca đang chờ vẫn FINALIZED. PGlite 29 ca + 23 đột biến (scripts/dot-bien.mjs); review độc lập APPROVE_WITH_NITS, đã sửa các P2 về phạm vi trả lời của trigger, re-review APPROVE. Áp qua npm run migrate:forward sau review độc lập và chủ duyệt PR; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "missingObjects": [
+        "function:app_private.guard_contract_termination_open_contract_v1",
+        "trigger:public.contract_terminations.a01_contract_termination_open_contract_guard"
+      ],
+      "raSoatBoi": "Claude Code — P0a vá phiếu hoàn cọc thứ hai 21/10/2026",
+      "sha256": "982d5b638a66ca6b3814b79652e40316762865950a2242fbf6c016b55840cc07"
     }
   }
 }
