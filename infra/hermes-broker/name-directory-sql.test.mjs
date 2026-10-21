@@ -104,3 +104,72 @@ test('name directory: buildings and rooms under the asker RLS, company name for 
     for (const row of rows.filter(row => !row.prosecdef)) assert.doesNotMatch(row.def, /app_private/, row.proname);
   });
 });
+
+// R2c part 2 (c) (20261021044821): public.hermes_user_display_name_v1() — the display name of the CALLER's own profile,
+// read under the caller's RLS (INVOKER), for crm_auth_context ("Tôi đang kết nối CRM bằng tài khoản nào?"). Proves: own
+// name only (another user's JWT gives that user's own), sanitised text, null without a visible profile, RLS decides
+// (a DEFINER mutant leaks the hidden name and is caught), anon/service_role denied, no email/phone, $requires$, revert.
+const displayName = readdirSync('supabase/migrations').filter(name => /^\d{14}_hermes_user_display_name_v1\.sql$/.test(name));
+test('user display name: the caller\'s own profile name under the caller\'s RLS; never another user, email or phone', { timeout: 240000 }, async t => {
+  assert.equal(displayName.length, 1);
+  const forward = readFileSync(`supabase/migrations/${displayName[0]}`, 'utf8');
+  const revert = readFileSync('docs/plans/hermes-crm/revert/hermes_user_display_name_revert_v1.sql', 'utf8');
+  const { pool, cleanup } = await localCluster(t, { initdbArgs: ['--locale-provider=builtin', '--builtin-locale=C.UTF-8'] });
+  t.after(async () => { await pool.end(); cleanup(); });
+  await setup(pool);
+  const [OTHER_USER, NO_PROFILE] = [30, 31].map(id);
+  // The production shape of profiles that matters here, and its self-view RLS ("Users can view own profile").
+  await pool.query(`CREATE TABLE public.profiles(id uuid PRIMARY KEY,full_name text NOT NULL CHECK (char_length(full_name)>0),phone text,email text);
+    ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid()=id);
+    GRANT SELECT ON public.profiles TO authenticated;
+    INSERT INTO public.profiles VALUES('${USER}','  Người Dùng'||chr(10)||'Thử  ','0900000001','nguoi.dung@example.invalid'),
+      ('${OTHER_USER}',repeat('Ă',130),null,'khac@example.invalid');`);
+  await pool.query(forward); await pool.query(forward); // idempotent, as the lane runs it twice
+  const read = user => jwt(pool, async c => (await c.query('SELECT public.hermes_user_display_name_v1() value')).rows[0].value, user);
+  assert.deepEqual(await read(USER), { id: USER, name: 'Người Dùng Thử' }, 'own name; the newline becomes a space, outer spaces trimmed');
+  assert.deepEqual(await read(OTHER_USER), { id: OTHER_USER, name: 'Ă'.repeat(120) }, 'another JWT: that user\'s own name only, 120 characters');
+  assert.deepEqual(await read(NO_PROFILE), { id: NO_PROFILE, name: null }, 'no profile: null');
+  const answer = JSON.stringify(await read(USER));
+  assert.ok(!answer.includes('example.invalid') && !answer.includes('0900000001'), 'never email or phone');
+  // RLS decides: without the self-view policy the caller sees no profile and gets null (INVOKER). A DEFINER mutant would
+  // bypass RLS and leak the name — caught here.
+  const live = forward.slice(forward.indexOf('CREATE OR REPLACE FUNCTION public.hermes_user_display_name_v1()'), forward.indexOf('END $fn$;') + 'END $fn$;'.length);
+  await pool.query('DROP POLICY "Users can view own profile" ON public.profiles');
+  try {
+    assert.deepEqual(await read(USER), { id: USER, name: null }, 'RLS hides the profile: null');
+    await pool.query(live.replace('SECURITY INVOKER', 'SECURITY DEFINER'));
+    await assert.rejects(async () => assert.deepEqual(await read(USER), { id: USER, name: null }), { code: 'ERR_ASSERTION' }, 'the DEFINER mutant leaks the hidden name');
+    await pool.query(live);
+  } finally { await pool.query('CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid()=id)'); }
+  assert.equal((await read(USER)).name, 'Người Dùng Thử');
+  // Roles: anon and service_role cannot execute; authenticated without a user id is refused.
+  for (const role of ['anon', 'service_role']) {
+    const client = await pool.connect();
+    try { await client.query('BEGIN'); await client.query(`SET LOCAL ROLE ${role}`);
+      await assert.rejects(client.query('SELECT public.hermes_user_display_name_v1()'), /permission denied/, role);
+    } finally { await client.query('ROLLBACK').catch(() => {}); client.release(); }
+  }
+  const anonymous = await pool.connect();
+  try { await anonymous.query('BEGIN'); await anonymous.query("SELECT set_config('request.jwt.claim.role','authenticated',true)"); await anonymous.query('SET LOCAL ROLE authenticated');
+    await assert.rejects(anonymous.query('SELECT public.hermes_user_display_name_v1()'), error => error.code === '42501');
+  } finally { await anonymous.query('ROLLBACK').catch(() => {}); anonymous.release(); }
+  // Catalog: INVOKER, STABLE, owner postgres, fixed search path, exact ACL.
+  const row = (await pool.query(`SELECT p.prosecdef,p.provolatile,pg_get_userbyid(p.proowner) owner,p.proconfig,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') a,has_function_privilege('anon',p.oid,'EXECUTE') n,has_function_privilege('service_role',p.oid,'EXECUTE') s,
+    has_function_privilege('hermes_store_executor',p.oid,'EXECUTE') h FROM pg_proc p WHERE p.oid='public.hermes_user_display_name_v1()'::regprocedure`)).rows[0];
+  assert.deepEqual(row, { prosecdef: false, provolatile: 's', owner: 'postgres', proconfig: ['search_path=pg_catalog, public'], a: true, n: false, s: false, h: false });
+  // $requires$: without profiles.full_name the file stops (one transaction, nothing created).
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await client.query('DROP FUNCTION public.hermes_user_display_name_v1()'); await client.query('ALTER TABLE public.profiles RENAME COLUMN full_name TO display_name');
+    await assert.rejects(client.query(forward), /hermes_user_display_name_dependency_invalid: public\.profiles\.full_name/);
+    await client.query('ROLLBACK');
+  } finally { await client.query('ROLLBACK').catch(() => {}); client.release(); }
+  assert.equal((await read(USER)).name, 'Người Dùng Thử', 'rolled back: the function is still there');
+  // Revert artifact: removes the function (PostgREST answers PGRST202 ⇒ the connector reports null); twice; forward again.
+  await pool.query(revert); await pool.query(revert);
+  assert.equal((await pool.query("SELECT to_regprocedure('public.hermes_user_display_name_v1()') v")).rows[0].v, null);
+  await pool.query(forward);
+  assert.deepEqual(await read(USER), { id: USER, name: 'Người Dùng Thử' });
+});

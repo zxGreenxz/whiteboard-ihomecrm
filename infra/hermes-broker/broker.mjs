@@ -1089,11 +1089,13 @@ export function createBroker({
         : contextDirectory ? async (result, _identity, signal) => {
           // null: the directory SQL is not deployed yet (never an empty list standing in for "no buildings").
           const directory = await domain.finalizeContext(presentedToken, contextReceipt, { signal });
-          if (!exactData(directory, ['organizationName', 'buildings']) || !(directory.organizationName === null || typeof directory.organizationName === 'string') ||
+          // R2c phần 2 (c): userName = tên hiển thị của chính người hỏi (null: hàm SQL chưa có hoặc hồ sơ không đọc được).
+          if (!exactData(directory, ['organizationName', 'userName', 'buildings']) || !(directory.organizationName === null || typeof directory.organizationName === 'string') ||
+              !(directory.userName === null || typeof directory.userName === 'string') ||
               !(directory.buildings === null || Array.isArray(directory.buildings) && directory.buildings.length <= 256 &&
                 directory.buildings.every(row => exactData(row, ['id', 'name', 'code']) && canonicalId(row.id)))) fail('backend_unavailable');
           const { assistantId, userId, organizationId, permissions, contextVersion } = result;
-          return { content: [{ type: 'text', text: JSON.stringify({ assistantId, userId, organizationId, organizationName: directory.organizationName,
+          return { content: [{ type: 'text', text: JSON.stringify({ assistantId, userId, userName: directory.userName, organizationId, organizationName: directory.organizationName,
             permissions, contextVersion, buildings: structuredClone(directory.buildings) }) }], isError: false };
         } : undefined,
       { initialRoomAdmission: name === ROOM_TOOL.name && Boolean(rooms) });

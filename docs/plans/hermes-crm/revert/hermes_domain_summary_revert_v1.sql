@@ -7,6 +7,8 @@
 -- SAFE ORDER: the running connector must accept an ABSENT summary first (DOMAIN_SUMMARY_TOLERANT lists the
 -- domains, domain-contract.mjs). A connector that already requires summary sees every list tool as
 -- backend_unavailable once this runs — roll the connector back to the tolerant release before applying.
+-- With R2c (20261021035022) live, apply hermes_domain_summary_largest_by_type_revert_v1.sql FIRST: the tolerant
+-- release (3762b3a0) refuses byType.largest, and the R2c connector requires summary.
 -- TO APPLY: copy into supabase/migrations under the name `node scripts/tao-ten-migration.mjs
 -- hermes_domain_summary_revert_v1` gives; pin the reader in scripts/hermes-read-function-specs.mjs and the three
 -- forward pins in scripts/__tests__/hermes-durable-forward-fixture.mjs (live → the new file, 20261020233934 →

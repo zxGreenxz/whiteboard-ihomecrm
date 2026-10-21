@@ -38,7 +38,8 @@ function createContextDirectory({ connectionStore, crypto, resolver, clock }) {
       const material = validateSessionMaterial(crypto.open(s.envelope, s.binding)); material.refreshToken = undefined;
       if (material.expiresAt !== s.expiresAt || material.expiresAt <= clock() || c.expiresAt <= clock()) fail('unauthorized');
       const receipt = Object.freeze({});
-      issued.set(receipt, { tokenDigest, accessToken: material.accessToken, expiresAt: material.expiresAt, input, deadline: clock() + 30000 });
+      // R2c phần 2 (c): người của kết nối (đã đối chiếu với session ở trên) — tên hiển thị SQL trả phải là của chính người này.
+      issued.set(receipt, { tokenDigest, accessToken: material.accessToken, expiresAt: material.expiresAt, input, userId: c.userId, deadline: clock() + 30000 });
       return receipt;
     },
     async finalizeContext(token, receipt, { signal } = {}) {
@@ -47,12 +48,13 @@ function createContextDirectory({ connectionStore, crypto, resolver, clock }) {
       if (!value || typeof token !== 'string' || digest(token) !== value.tokenDigest) fail('context_changed');
       if (value.expiresAt <= clock()) fail('unauthorized');
       if (value.deadline <= clock()) fail('timeout');
-      const { organizationId, buildingIds, contextVersion } = value.input, { accessToken, tokenDigest } = value;
-      const [organizationName, buildings] = await Promise.all([
+      const { organizationId, buildingIds, contextVersion } = value.input, { accessToken, tokenDigest, userId } = value;
+      const [organizationName, userName, buildings] = await Promise.all([
         resolver.organizationName({ accessToken, organizationId, tokenDigest, contextVersion, signal, optional: true }),
+        resolver.userName({ accessToken, userId, tokenDigest, contextVersion, signal, optional: true }),
         buildingIds.length ? resolver.directory({ accessToken, organizationId, buildingIds, tokenDigest, contextVersion, label: CONTEXT_PERMISSION, signal, optional: true }) : []]);
       check(signal);
-      return { organizationName, buildings: buildings === null ? null : structuredClone(buildings) };
+      return { organizationName, userName, buildings: buildings === null ? null : structuredClone(buildings) };
     },
   });
 }

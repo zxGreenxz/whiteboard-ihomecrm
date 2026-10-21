@@ -46,14 +46,16 @@ test('TG5 shared INVOKER cores preserve web semantics while Hermes reuses UUID k
  }
  assert.deepEqual((await fast(pool,binding,'contracts')).result.summary,{count:2,byStatus:{ACTIVE:1,TERMINATED:1},sum:{}});
  assert.deepEqual((await fast(pool,binding,'invoices')).result.summary,{count:2,byStatus:{},sum:{}},'invoices: count only, CANCELLED included like the rows');
- assert.deepEqual((await fast(pool,binding,'customers')).result.summary,{count:2,byStatus:{},sum:{}},'customers: the core total (owner-visible only)');
+ // R2c part 2 (20261021044801): customers byStatus = contract status (status_v2) of the core's set; the fixture
+ // customers keep the table default WALK_IN (domain-summary-sql.test.mjs sets real tabs).
+ assert.deepEqual((await fast(pool,binding,'customers')).result.summary,{count:2,byStatus:{WALK_IN:2},sum:{}},'customers: the core total (owner-visible only)');
  assert.deepEqual((await fast(pool,binding,'contracts',{status:'TERMINATED'})).result.summary,{count:1,byStatus:{TERMINATED:1},sum:{}},'status filter');
  // With a query the core matches ILIKE on several columns, not copied by the summary: contracts.byStatus is null (the
  // count stays the core's); v1 matches the number only and keeps its byStatus.
  const searched=(await fast(pool,binding,'contracts',{query:'HD001'})).result,searched1=await normal1(pool,bind7,'contracts',{query:'hd001'});
  assert.deepEqual([searched.items.map(r=>r.id),searched.summary],[[CONTRACT],{count:1,byStatus:null,sum:{}}]);
  assert.deepEqual(searched1.summary,{count:1,byStatus:{ACTIVE:1},sum:{}});
- assert.deepEqual((await fast(pool,binding,'customers',{query:'không có'})).result.summary,{count:0,byStatus:{},sum:{}},'empty set: count 0, not null');
+ assert.deepEqual((await fast(pool,binding,'customers',{query:'không có'})).result.summary,{count:0,byStatus:null,sum:{}},'empty set: count 0, not null; byStatus null with a query (R2c part 2)');
  const scoped={...activated.connection};let changed=await settings(pool,scoped,{read:['customers.view'],action:[]});binding.expectedEpoch=changed.epoch;
  assert.deepEqual((await fast(pool,binding,'invoices',{query:'Nguyễn An'})).result.items,[]);
  assert.deepEqual((await fast(pool,binding,'contracts',{query:'Nguyễn An'})).result.items,[]);

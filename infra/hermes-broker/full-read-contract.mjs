@@ -107,12 +107,11 @@ export const REPORTS = Object.freeze({
   monthly_pnl: Object.freeze({ permission: 'reports_finance.analysis', reports: Object.freeze({
     // Mặc định dồn tích như BC Doanh Thu Chi Phí / Phân tích tài chính; chờ duyệt tách riêng.
     // R2a (20261021004841): summary thêm tổng MỌI hàng của báo cáo (mọi trang, cùng toà/kỳ): revenue, expense, net, rows.
-    // summaryTolerant: một bản phát hành chấp nhận VẮNG cả bốn khoá (SQL chưa áp); có mặt ⇒ đủ cả bốn, đúng kiểu.
+    // Cửa sổ phát hành (summaryTolerant: vắng cả bốn khoá) đã đóng 21/10 sau khi prod áp 20261021004841 ⇒ bốn khoá BẮT BUỘC.
     by_month: report('crm.fa_monthly_pnl', 'rows', { month: date, buildingId: id, buildingName: name200, revenue: amount, expense: amount, net: amount },
       { fromDate: true, toDate: true, requiresDates: true, basis: true,
         summary: Object.freeze({ basis: value => value === 'accrual' || value === 'cash', pendingIncome: amount, pendingExpense: amount, pendingVouchers: count,
-          revenue: amount, expense: amount, net: amount, rows: count }),
-        summaryTolerant: Object.freeze(['revenue', 'expense', 'net', 'rows']) }) }) }),
+          revenue: amount, expense: amount, net: amount, rows: count }) }) }) }),
   pending_approvals: Object.freeze({ permission: 'income_expenses.view', reports: Object.freeze({
     inbox: report('crm.list_my_pending_approvals_v1', 'organization', { requestId: id, submissionNo: int, submittedAt: nullable(instant), amount: money,
       voucherId: nullable(id), voucherCode: name100, voucherName: name200, voucherType: nullable(code), makerName: name200, stepNo: int }) }) }),

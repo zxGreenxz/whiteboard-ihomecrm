@@ -3,9 +3,11 @@
 // không tên khách, không SĐT, không số tiền. Ngày tương đối tính từ 21/10/2026 (ngày của bộ câu hỏi).
 //   tool/args   lời gọi đúng: phải có trong tools/list đủ quyền, qua được schema QUẢNG BÁO (Hermes kiểm trước khi gọi
 //               connector) và broker tới đúng cổng prepare.
-//   answerFrom  đường trong khuôn kết quả khai báo: items[].x, summary.x(.y), rooms[].x, truncated. summary của tool danh sách
-//               do R2a khai (DOMAIN_SUMMARIES, domain-contract.mjs) ⇒ phải có trong khuôn; SUMMARY_PENDING chỉ dành cho khoá
-//               summary chưa khai (R2a đã khai đủ 12 mục ban đầu, 21/10 ⇒ rỗng; test in chẩn đoán mục nào đã khai để gỡ).
+//   answerFrom  đường trong khuôn kết quả khai báo: items[].x, summary.x(.y…), rooms[].x, truncated. summary của tool danh sách
+//               do R2a khai (DOMAIN_SUMMARIES, domain-contract.mjs) ⇒ phải có trong khuôn; đường sâu hơn summary.x (vd
+//               summary.byType.EXPENSE.largest, R2c) phải có thật trong summary mà connector nhận (tool-plan.test.mjs đi đường
+//               trên summary của hàng mẫu). SUMMARY_PENDING chỉ dành cho khoá summary chưa khai (R2a đã khai đủ 12 mục ban đầu,
+//               21/10 ⇒ rỗng; test in chẩn đoán mục nào đã khai để gỡ).
 //   wrong       lời gọi sai cách lấy từ trace (full50/full50c): `hermes` = schema quảng bá chặn ('rejects') hay để qua
 //               ('passes'); broker luôn trả invalid_request, `hint` = regex của detail tĩnh (null: không detail).
 //   alias       đối số sai chữ của trace ⇒ normalizeToolArguments cho đúng giá trị enum (Hermes vẫn chặn trước nếu `hermes`).
@@ -22,6 +24,10 @@ export const TOOL_PLAN_CASES = Object.freeze([
   { n: 3, q: 'Phòng 305 toà 102LVT hiện ai đang ở? Cho tôi số điện thoại của khách.',
     tool: 'crm_room_lookup', args: { buildingName: '102LVT', roomCode: '305' }, answerFrom: ['rooms[].hasActiveContract', 'rooms[].representative'],
     mentions: [{ tool: 'crm_available_rooms', match: /một phòng \(ai ở, trống\): crm_room_lookup/ }], listing: [SALE_PAGE] },
+  // R2c phần 2 (a): đếm khách theo tình trạng hợp đồng (status_v2, ba tab /customers; WALK_IN = chưa có hợp đồng) —
+  // 20261021044801 (đường nhanh, khi query rỗng) và 20261021044814 (v3). Trace full50c/d: crm_read_customers query rỗng.
+  { n: 5, q: 'Có bao nhiêu khách trong CRM chưa có hợp đồng nào?',
+    tool: 'crm_read_customers', args: { query: '' }, answerFrom: ['summary.byStatus'] },
   { n: 10, q: 'Phòng 999 toà 44TL có ai ở không?',
     tool: 'crm_room_lookup', args: { buildingName: '44TL', roomCode: '999' }, answerFrom: ['rooms', 'truncated'],
     wrong: [{ tool: 'crm_available_rooms', args: { buildingName: '44TL', roomName: '999' }, hermes: 'rejects', hint: null }],
@@ -64,8 +70,10 @@ export const TOOL_PLAN_CASES = Object.freeze([
       hint: /không có tham số type/ }],
     alias: [{ tool: 'crm_read_income_expenses', args: { buildingName: '44TL', fromDate: '2026-10-01', toDate: '2026-10-21', status: 'approved', limit: 50 },
       expect: { buildingName: '44TL', fromDate: '2026-10-01', toDate: '2026-10-21', status: 'APPROVED', limit: 50 }, hermes: 'rejects' }] },
+  // R2c (prod 21/10): tool không lọc loại nên summary.largest (cả thu lẫn chi) là một phiếu THU; khoản CHI lớn nhất ở
+  // summary.byType.EXPENSE.largest (20261021035022).
   { n: 35, q: 'Khoản chi lớn nhất tháng này là gì, bao nhiêu tiền?',
-    tool: 'crm_read_income_expenses', args: { fromDate: '2026-10-01', toDate: '2026-10-31' }, answerFrom: ['summary.largest'],
+    tool: 'crm_read_income_expenses', args: { fromDate: '2026-10-01', toDate: '2026-10-31' }, answerFrom: ['summary.byType.EXPENSE.largest'],
     wrong: [{ tool: 'crm_read_income_expenses', args: { fromDate: '2026-10-01', toDate: '2026-10-21', type: 'expense', limit: 50 }, hermes: 'rejects', hint: /summary\.byType/ }] },
   { n: 36, q: 'Toà 1392QT có bao nhiêu phiếu đang chờ duyệt?',
     tool: 'crm_read_income_expenses', args: { buildingName: '1392QT', status: 'UNAPPROVED' }, answerFrom: ['summary.count'],
@@ -82,6 +90,9 @@ export const TOOL_PLAN_CASES = Object.freeze([
     mentions: [{ tool: 'crm_available_rooms', match: /sắp trống N ngày: crm_read_occupancy_report upcoming/ }], listing: [SALE_PAGE] },
   { n: 58, q: 'Toà 162NVK có bao nhiêu tài sản?',
     tool: 'crm_read_assets', args: { buildingName: '162NVK' }, answerFrom: ['summary.count'] },
+  // R2c phần 2 (b): tài sản thêm gần đây nhất của cả tập lọc + ngày thêm của từng dòng (20261021044801).
+  { n: 59, q: 'Tài sản nào được thêm vào gần đây nhất?',
+    tool: 'crm_read_assets', args: {}, answerFrom: ['summary.latest', 'items[].createdAt'] },
   { n: 72, q: 'Hotline của công ty là số nào?',
     tool: 'crm_read_report', args: { report: 'hotlines' }, answerFrom: ['items[].phoneNumber', 'summary.total'],
     mentions: [{ tool: 'crm_read_report', match: /\bhotlines\b/ }], listing: [{ tool: 'crm_read_report', match: /hotlines/ }] },

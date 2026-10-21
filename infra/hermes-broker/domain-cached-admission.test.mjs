@@ -7,7 +7,7 @@ import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
 import { createDependencyScope } from './dependency-scope.mjs';
-import { ALL_DOMAIN_READ_CAPABILITIES, CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, FAST_READ_OPERATIONS } from './domain-contract.mjs';
+import { ALL_DOMAIN_READ_CAPABILITIES, CACHED_READ_OPERATIONS, DOMAIN_FAMILIES, DOMAIN_READS, DOMAIN_SUMMARIES, FAST_READ_OPERATIONS, summarizeRows } from './domain-contract.mjs';
 import { W2 } from './wave2-registry.mjs';
 
 // B2-2 (20/10/2026): the cached admission of the domain reads outside the fast plan. No PostgreSQL here:
@@ -130,7 +130,9 @@ test('domain mount under the host opt-in: fast plan, cached seven-key admission 
     calls.push({ name, domain: args.p_domain, binding: args.p_binding, bearer: options.headers.authorization });
     if (verdict) { const { status, sqlstate } = verdict; verdict = null; return Response.json({ code: sqlstate, message: 'fixture', details: null, hint: null }, { status }); }
     const definition = DOMAIN_READS[args.p_domain], family = definition.family;
+    // List tools carry `summary` (required since the R2a release window closed): the summary of the empty page.
     const envelope = { organizationId: ORG, domain: args.p_domain, items: [], nextCursor: null,
+      ...(Object.hasOwn(DOMAIN_SUMMARIES, args.p_domain) ? { summary: summarizeRows(args.p_domain, []) } : {}),
       ...(family === 'v2' ? { source: definition.source, fetchedAt } : {}), ...(family === 'v3' ? { fetchedAt } : {}) };
     if (name === 'hermes_domain_read_fast_v1') return Response.json({ authority: { organizationId: ORG, userId: USER, connectionId: CONNECTION,
       permission: definition.permission, buildingIds: [BUILDING], cashbookIds: [] }, result: envelope });

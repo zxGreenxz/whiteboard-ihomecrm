@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_FAMILIES, DOMAIN_SUMMARIES, DOMAIN_SUMMARY_TOLERANT, DOMAIN_SUMMARY_ENTRY_TOLERANT, DOMAIN_TOOLS, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { domainFastResult, FAST_READ_OPERATIONS } from './domain-read-fast.mjs';
 import { createReadNameResolver } from './read-name-resolution.mjs';
 
 // R2a (21/10/2026), phía connector của `summary` (SQL: domain-summary-sql.test.mjs trên PostgreSQL 17 và các test PGlite
 // v1/v2/v3): khuôn chính xác theo miền, bất biến giữa summary và trang (count ≥ số dòng, byStatus đúng bộ lọc, byBuilding
-// trong phạm vi khoá, largest trong kỳ), cửa sổ phát hành (vắng summary vẫn qua đúng một bản), summarizeRows khớp từng ký tự
-// cách SQL cộng numeric, lọc phòng ở connector thay summary. Dữ liệu tổng hợp, không có dữ liệu khách thật.
+// trong phạm vi khoá, largest trong kỳ), summary BẮT BUỘC (cửa sổ phát hành R2a đã đóng 21/10), summarizeRows khớp từng ký
+// tự cách SQL cộng numeric, lọc phòng ở connector thay summary. R2c: byType.<loại>.largest của income_expenses (bất biến +
+// cửa sổ phát hành của riêng khoá con này). Dữ liệu tổng hợp, không có dữ liệu khách thật.
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(1), A = id(2), B = id(3), OUT = id(4), ROOM = id(5), USER = id(6), CONNECTION = id(7);
 const NOW = Date.parse('2026-10-21T00:00:00.000Z');
@@ -27,8 +28,9 @@ const ROWS = {
     { id: id(13), number: 'HD3', status: 'ACTIVE', ...place(3, B), startDate: '2026-02-01', endDate: null }],
   invoices: [{ id: id(11), number: 'INV1', status: 'APPROVED', ...place(1), billingMonth: '2026-10', totalAmount: '100.50' },
     { id: id(12), number: 'INV2', status: 'CANCELLED', ...place(2, B), billingMonth: '2026-10', totalAmount: '7' }],
-  assets: [{ id: id(11), name: 'Máy lạnh', code: 'ML', condition: 'GOOD', ...place(1), quantity: '2' },
-    { id: id(12), name: 'Bàn', code: null, condition: 'BROKEN', ...place(2, B), quantity: '1.5' }, { id: id(13), name: 'Ghế', code: null, condition: null, ...place(3), quantity: '4' }],
+  assets: [{ id: id(11), name: 'Máy lạnh', code: 'ML', condition: 'GOOD', ...place(1), quantity: '2', createdAt: '2026-10-01' },
+    { id: id(12), name: 'Bàn', code: null, condition: 'BROKEN', ...place(2, B), quantity: '1.5', createdAt: '2026-10-15' },
+    { id: id(13), name: 'Ghế', code: null, condition: null, ...place(3), quantity: '4', createdAt: '2026-10-15' }],
   services: [{ id: id(11), name: 'Điện', code: 'DIEN', unit: 'kWh', unitPrice: '3500', buildingIds: [A, B] }],
   tasks: [{ id: id(11), title: 'Sửa vòi', code: null, status: 'IN_PROGRESS', ...place(1), deadline: '2026-10-20T03:00:00+00:00' },
     { id: id(12), title: 'Thay đèn', code: null, status: 'IN_PROGRESS', ...place(2), deadline: '2026-10-22T03:00:00+00:00' },
@@ -61,23 +63,23 @@ const envelope = (operation, items, summary) => {
 const check = (operation, summary, items = ROWS[operation], extra = {}) => domainResult(operation, envelope(operation, items, summary), identity(operation), input(operation, extra));
 const full = operation => summarizeRows(operation, ROWS[operation], { now: NOW });
 
-test('R2a contract: one summary shape per list tool, all tolerant for exactly this release; tools/list unchanged by R2a', () => {
+test('R2a contract: one summary shape per list tool, required since the release window closed; tools/list unchanged by R2a/R2c', () => {
   assert.equal(LIST.length, 13);
   assert.deepEqual(sorted(Object.keys(DOMAIN_SUMMARIES)), sorted(LIST));
-  assert.deepEqual(sorted(DOMAIN_SUMMARY_TOLERANT), sorted(LIST), 'release window: an absent summary still passes; the next connector empties this list');
+  assert.deepEqual([...DOMAIN_SUMMARY_TOLERANT], [], 'R2a window closed (production applied both migrations 21/10): summary is required');
   assert.ok(Object.isFrozen(DOMAIN_SUMMARIES) && Object.isFrozen(DOMAIN_SUMMARY_TOLERANT));
   // summary is a result key only: no tool input, schema or description mentions it (0 byte on tools/list).
   for (const tool of DOMAIN_TOOLS) assert.equal(JSON.stringify(tool.inputSchema).includes('summary'), false, tool.name);
 });
 
 for (const operation of Object.keys(ROWS)) {
-  test(`R2a ${operation}: the full-set summary passes, is projected right after domain, and an absent one passes only by the release window`, () => {
+  test(`R2a ${operation}: the full-set summary passes, is projected right after domain, and an absent one is refused`, () => {
     const summary = full(operation), value = envelope(operation, ROWS[operation], summary);
     const result = check(operation, summary);
     assert.deepEqual(result, value);
     assert.deepEqual(Object.keys(result).slice(0, 3), ['organizationId', 'domain', 'summary']);
     result.summary.count += 1; assert.equal(summary.count, ROWS[operation].length, 'the projection is a copy');
-    assert.deepEqual(check(operation, undefined), envelope(operation, ROWS[operation]), 'tolerant: SQL before 20261020233934/20261021004841');
+    assert.throws(() => check(operation, undefined), 'SQL before 20261020233934/20261021004841: refused since the R2a window closed');
     for (const [label, changed] of [['unknown key', { ...summary, extra: 1 }], ['count missing', (({ count, ...rest }) => rest)(summary)],
       ['count text', { ...summary, count: String(summary.count) }], ['count below the page rows', { ...summary, count: ROWS[operation].length - 1 }],
       ['negative count', { ...summary, count: -1 }], ['null summary', null], ['array summary', []]])
@@ -139,9 +141,10 @@ test('R2a invariants: status filter, scope and building filter of byBuilding, or
   assert.throws(() => check('meter_readings', { ...full('meter_readings'), byType: { WATER: 4 } }), 'meter types above count');
   assert.throws(() => check('meter_readings', { ...full('meter_readings'), byType: { STEAM: 1 } }), 'unknown meter type');
   assert.throws(() => check('occupancy', { ...full('occupancy'), occupied: 15, available: 1 }), 'occupied + available above total');
-  // The fast lane of contracts has no byStatus when the core matched a query (null, not {}).
+  // The fast lane of contracts (and, since R2c part 2, customers) has no byStatus when the core matched a query (null, not {}).
   assert.equal(check('contracts', { ...full('contracts'), byStatus: null }).summary.byStatus, null);
-  assert.throws(() => check('customers', { ...full('customers'), byStatus: null }), 'only contracts may send null');
+  assert.equal(check('customers', { ...full('customers'), byStatus: null }).summary.byStatus, null);
+  assert.throws(() => check('invoices', { ...full('invoices'), byStatus: null }), 'only contracts and customers may send null');
   // The core's count may exceed the projected rows (rows without a room): count above items is fine.
   assert.equal(check('invoices', { ...full('invoices'), count: 9 }).summary.count, 9);
 });
@@ -161,22 +164,29 @@ test('R2a fast lane: domainFastResult carries the same summary rule', () => {
 
 test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CANCELLED money is left out, ties and caps follow SQL', () => {
   assert.deepEqual(full('receivables').sum, { totalAmount: '8100.25', paidAmount: '1100', remainingAmount: '7000.25' });
+  const voucher = row => ({ id: row.id, code: row.code, name: row.name, type: row.type, totalAmount: row.totalAmount, voucherDate: row.voucherDate });
   assert.deepEqual(full('income_expenses'), { count: 4, byStatus: { APPROVED: 2, UNAPPROVED: 1, CANCELLED: 1 }, sum: { totalAmount: '3150000.50' },
-    byType: { INCOME: { count: 1, sum: '2500000.00' }, EXPENSE: { count: 2, sum: '650000.50' } }, largest: full('income_expenses').largest });
+    byType: { INCOME: { count: 1, sum: '2500000.00', largest: voucher(ROWS.income_expenses[0]) },
+      EXPENSE: { count: 2, sum: '650000.50', largest: voucher(ROWS.income_expenses[3]) } }, largest: voucher(ROWS.income_expenses[0]) },
+  'R2c: the largest EXPENSE is 500 000.5 (the 9 999 999 one is CANCELLED); the largest of all stays the income voucher');
   assert.equal(full('income_expenses').largest.id, id(11), 'the 9 999 999 voucher is CANCELLED');
   const cancelled = ROWS.income_expenses.filter(row => row.approvalStatus === 'CANCELLED');
   assert.deepEqual(summarizeRows('income_expenses', cancelled), { count: 1, byStatus: { CANCELLED: 1 }, sum: { totalAmount: '0' }, byType: {}, largest: null });
   const tie = [{ ...ROWS.income_expenses[1], id: id(31), totalAmount: '10.0' }, { ...ROWS.income_expenses[1], id: id(30), totalAmount: '10' }];
   assert.equal(summarizeRows('income_expenses', tie).largest.id, id(30), 'equal amounts: the smaller id, like ORDER BY total_amount DESC, id');
+  assert.equal(summarizeRows('income_expenses', tie).byType.EXPENSE.largest.id, id(30), 'per type too');
   assert.deepEqual(summarizeRows('income_expenses', []), { count: 0, byStatus: {}, sum: { totalAmount: '0' }, byType: {}, largest: null }, 'empty set: {} and 0, never null');
   assert.deepEqual(full('meter_readings'), { count: 3, byStatus: { APPROVED: 2, UNAPPROVED: 1 }, sum: { consumption: '53.50' }, byType: { ELECTRICITY: 1, WATER: 2 }, rooms: 1 });
   assert.deepEqual(full('tasks'), { count: 4, byStatus: { IN_PROGRESS: 3, COMPLETED: 1 }, sum: {}, overdue: 1 }, 'past deadline and still IN_PROGRESS');
-  assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' } }, 'condition null counts in count only');
+  assert.deepEqual(full('assets'), { count: 3, byStatus: { GOOD: 1, BROKEN: 1 }, sum: { quantity: '7.5' },
+    latest: { id: id(12), name: 'Bàn', code: null, buildingId: B, buildingName: 'Toà B', roomName: 'P2', createdAt: '2026-10-15' } },
+  'condition null counts in count only; latest: the newest day, the smaller id within it (SQL orders the real instant)');
   assert.deepEqual(full('occupancy'), { count: 2, total: 15, occupied: 12, available: 2 });
   assert.deepEqual(full('deposits_held'), { count: 2, sum: { expected: '10000000', held: '7000000.50', shortfallAll: '2999999.50' }, contractCount: 4, fullCount: 3, shortCount: 1 });
   assert.deepEqual(full('building_profit'), { count: 2, sum: { revenue: '2500000.00', expense: '770000.50', net: '1729999.50' } });
   assert.deepEqual(full('contracts'), { count: 3, byStatus: { ACTIVE: 2, TERMINATED: 1 }, sum: {} });
-  for (const operation of ['customers', 'invoices', 'services']) assert.deepEqual(full(operation), { count: ROWS[operation].length, byStatus: {}, sum: {} });
+  for (const operation of ['invoices', 'services']) assert.deepEqual(full(operation), { count: ROWS[operation].length, byStatus: {}, sum: {} });
+  assert.deepEqual(full('customers'), { count: ROWS.customers.length, byStatus: null, sum: {} }, 'customer rows carry no contract status: unknown, not {}');
   // 55 buildings: k = 0..4 hold two rows (2 × (100 + k) = 200..208), k = 5..54 one row (105..154).
   const many = Array.from({ length: 60 }, (_, n) => ({ ...ROWS.receivables[0], id: id(1000 + n), buildingId: id(2000 + (n % 55)), remainingAmount: String(100 + (n % 55)) }));
   const capped = summarizeRows('receivables', many).byBuilding;
@@ -185,6 +195,77 @@ test('R2a summarizeRows: numeric sums keep the largest scale like PostgreSQL, CA
     'two rows of the top building, the five smallest (105..109) dropped');
   assert.deepEqual(summarizeRows('receivables', [{ ...ROWS.receivables[0], remainingAmount: '-1.5' }, { ...ROWS.receivables[2], remainingAmount: '1' }]).sum.remainingAmount, '-0.5');
   assert.throws(() => summarizeRows('customer_detail', []), 'detail tools have no summary');
+});
+
+// R2c (21/10/2026; SQL 20261021035022, PostgreSQL 17 in domain-summary-sql.test.mjs, PGlite in domain-v2.test.mjs): every
+// byType entry names the largest live voucher of its type. Production asked "khoản chi lớn nhất tháng này" with
+// {fromDate,toDate} only: summary.largest (both types) was an income voucher; byType.EXPENSE.largest is the answer.
+test('R2c byType.<type>.largest: the largest live voucher of each type; invariants against the type, its sum, the period and summary.largest', () => {
+  const money = full('income_expenses'), month = { fromDate: '2026-10-01', toDate: '2026-10-31' };
+  assert.deepEqual(check('income_expenses', money, ROWS.income_expenses, month).summary, money);
+  assert.deepEqual([money.largest.type, money.byType.EXPENSE.largest.id], ['INCOME', id(14)], 'the question of production: summary.largest is income, the answer is byType.EXPENSE.largest');
+  const entry = (type, change) => ({ ...money, byType: { ...money.byType, [type]: { ...money.byType[type], ...change } } });
+  const expense = money.byType.EXPENSE.largest, income = money.byType.INCOME.largest;
+  for (const [label, changed] of [
+    ['largest of another type', entry('EXPENSE', { largest: { ...expense, type: 'INCOME' } })],
+    ['summary.largest above the largest of its type', { ...money, largest: { ...income, id: id(9), totalAmount: '2600000.00' } }],
+    ['largest above the sum of its type', entry('EXPENSE', { largest: { ...expense, totalAmount: '650000.51' } })],
+    ['largest above summary.largest', entry('EXPENSE', { sum: '9999999.00', largest: { ...expense, totalAmount: '2500000.01' } })],
+    ['tie with summary.largest broken the wrong way', entry('EXPENSE', { sum: '9999999.00', largest: { ...expense, id: id(10), totalAmount: '2500000.00' } })],
+    ['null largest for a type with vouchers', entry('EXPENSE', { largest: null })],
+    ['largest outside the period', entry('EXPENSE', { largest: { ...expense, voucherDate: '2026-09-30' } })],
+    ['largest with an extra field', entry('EXPENSE', { largest: { ...expense, payer: 'x' } })],
+    ['largest without its code', entry('EXPENSE', { largest: (({ code, ...rest }) => rest)(expense) })],
+    ['largest amount as a number', entry('EXPENSE', { largest: { ...expense, totalAmount: 500000.5 } })],
+    ['summary.largest is not the largest of its type', { ...money, largest: { ...income, id: id(15) } }],
+    ['summary.largest of a type absent from byType', { ...money, byType: { EXPENSE: money.byType.EXPENSE }, largest: income }],
+    ['no live voucher but a largest', { ...money, byType: {} }],
+    ['live vouchers but no largest', { ...money, largest: null }],
+    ['largest in one entry only', entry('INCOME', { largest: undefined })],
+  ]) assert.throws(() => check('income_expenses', JSON.parse(JSON.stringify(changed)), ROWS.income_expenses, month), label);
+  // count 0 is the only entry that may name no voucher (SQL never sends one; the shape allows it like summary.largest).
+  const zero = { ...money, byType: { ...money.byType, EXPENSE: { count: 0, sum: '0', largest: null } } };
+  assert.deepEqual(check('income_expenses', zero, ROWS.income_expenses, month).summary.byType.EXPENSE, { count: 0, sum: '0', largest: null });
+  assert.throws(() => check('income_expenses', { ...zero, byType: { ...zero.byType, EXPENSE: { count: 0, sum: '0', largest: expense } } }, ROWS.income_expenses, month), 'count 0 naming a voucher');
+  // Ties inside one type: the smaller id; a tie across types with summary.largest keeps the smaller id there too.
+  const tie = [{ ...ROWS.income_expenses[0], id: id(41), type: 'EXPENSE', code: 'PC9', totalAmount: '2500000.00' }, ...ROWS.income_expenses];
+  const tied = summarizeRows('income_expenses', tie);
+  assert.deepEqual([tied.largest.id, tied.byType.EXPENSE.largest.id, tied.byType.INCOME.largest.id], [id(11), id(41), id(11)]);
+  assert.deepEqual(check('income_expenses', tied, [...ROWS.income_expenses, tie[0]].sort((a, b) => a.id < b.id ? -1 : 1), month).summary, tied);
+  // Release window (DOMAIN_SUMMARY_ENTRY_TOLERANT): the R2a shape {count, sum} in EVERY entry still passes this release.
+  assert.deepEqual(DOMAIN_SUMMARY_ENTRY_TOLERANT, { income_expenses: { byType: ['largest'] } }, 'next release: {}');
+  const r2a = { ...money, byType: Object.fromEntries(Object.entries(money.byType).map(([type, { largest, ...rest }]) => [type, rest])) };
+  assert.deepEqual(check('income_expenses', r2a, ROWS.income_expenses, month).summary, r2a);
+  assert.throws(() => check('income_expenses', { ...r2a, largest: null }, ROWS.income_expenses, month), 'the R2a invariants still hold in the window');
+  assert.throws(() => check('income_expenses', { ...r2a, byType: { EXPENSE: r2a.byType.EXPENSE } }, ROWS.income_expenses, month), 'the type of summary.largest is in byType');
+});
+
+// R2c part 2 (SQL 20261021044801/20261021044814; PostgreSQL 17 in domain-summary-sql.test.mjs, PGlite in
+// domain-composition/domain-v3): assets.latest — the most recently added asset of the whole set — and customers.byStatus —
+// the contract-status tabs of /customers (RENTING đang thuê, MOVED_OUT đã chuyển đi, WALK_IN vãng lai = chưa có hợp đồng).
+test('R2c part 2 invariants: assets.latest of the whole set (null only when empty, in the key scope and building filter, never older than a page row); customer tabs', () => {
+  const assets = full('assets'), latest = assets.latest;
+  assert.deepEqual(check('assets', assets).summary.latest, latest);
+  for (const [label, changed, items = ROWS.assets, extra = {}] of [
+    ['null latest for a non-empty set', { ...assets, latest: null }],
+    ['a latest for an empty set', { count: 0, byStatus: {}, sum: { quantity: '0' }, latest }, []],
+    ['latest older than a page row', { ...assets, latest: { ...latest, createdAt: '2026-10-14' } }],
+    ['latest outside the key scope', { ...assets, latest: { ...latest, buildingId: OUT } }],
+    ['latest of another building than the filter', { ...summarizeRows('assets', ROWS.assets.filter(row => row.buildingId === A)), latest },
+      ROWS.assets.filter(row => row.buildingId === A), { buildingId: A }],
+    ['latest with an extra field', { ...assets, latest: { ...latest, quantity: '1' } }],
+    ['latest without its room', { ...assets, latest: (({ roomName, ...rest }) => rest)(latest) }],
+    ['latest date not a date', { ...assets, latest: { ...latest, createdAt: '15/10/2026' } }],
+  ]) assert.throws(() => check('assets', changed, items, extra), label);
+  // Unassigned (company-wide) assets have no building: such a latest is not fenced by building.
+  assert.equal(check('assets', { ...assets, latest: { ...latest, createdAt: '2026-10-20', buildingId: null, buildingName: '', roomName: null } }).summary.latest.buildingId, null);
+  assert.deepEqual(summarizeRows('assets', []), { count: 0, byStatus: {}, sum: { quantity: '0' }, latest: null }, 'empty set: latest null');
+  // Customers: the three tabs only, their total never above count; null (fast lane with a query) or {} (SQL before part 2).
+  const customers = full('customers');
+  for (const byStatus of [{ RENTING: 1, WALK_IN: 1 }, { MOVED_OUT: 2 }, {}, null])
+    assert.deepEqual(check('customers', { ...customers, byStatus }).summary.byStatus, byStatus);
+  for (const byStatus of [{ RENTING: 2, WALK_IN: 1 }, { ACTIVE: 1 }, { WALK_IN: 1.5 }])
+    assert.throws(() => check('customers', { ...customers, byStatus }), JSON.stringify(byStatus));
 });
 
 test('R2a room filter: the connector filters rows by room, so the merge replaces the SQL summary with the kept rows (complete) or null (more to read)', async () => {
@@ -209,7 +290,33 @@ test('R2a room filter: the connector filters rows by room, so the merge replaces
   assert.deepEqual(Object.keys(done), ['organizationId', 'domain', 'summary', 'items', 'nextCursor', 'source', 'fetchedAt', 'roomFilter']);
   const more = plan.merge([page(pageRows, id(13))]);
   assert.deepEqual([more.nextCursor, more.summary, more.roomFilter.more], [id(13), null, true], 'rows left unread: no figure rather than a wrong one');
+  // merge() itself is pure: a page without summary keeps none. Such a page never reaches it now — every page is validated
+  // first (bound-user-operation.finalize) and the R2a window is closed, so a summary-less page is backend_unavailable.
   const legacy = plan.merge([{ ...envelope('receivables', pageRows), nextCursor: null }]);
-  assert.equal(Object.hasOwn(legacy, 'summary'), false, 'SQL before R2a: nothing to replace');
+  assert.equal(Object.hasOwn(legacy, 'summary'), false, 'a page without summary: nothing to replace');
   assert.deepEqual(legacy.items.map(row => row.id), [id(11), id(13)]);
+  const sortedPage = [...pageRows].sort((a, b) => a.id < b.id ? -1 : 1);
+  const valid = { ...envelope('receivables', sortedPage, summarizeRows('receivables', sortedPage)), nextCursor: null };
+  assert.equal(domainResult('receivables', valid, who, resolved).items.length, 3, 'the same page with its summary is accepted');
+  assert.throws(() => domainResult('receivables', (({ summary, ...rest }) => rest)(valid), who, resolved), 'without summary the validator refuses it first');
+});
+
+test('R2c room filter: income_expenses rows filtered by room get the summary of the kept rows, byType.<type>.largest included', async () => {
+  const rooms = [{ id: ROOM, name: 'P1', code: null, floor: 1, buildingId: A }];
+  const rpc = async (name, accessToken, args) => name === 'hermes_building_directory_v1'
+    ? { buildings: [{ id: A, name: 'Toà A', code: 'A' }, { id: B, name: 'Toà B', code: 'B' }].filter(row => args.p_building_ids.includes(row.id)) }
+    : { rooms: rooms.filter(room => args.p_building_ids.includes(room.buildingId)) };
+  const who = { row: { id: CONNECTION, organizationId: ORG, userId: USER }, contextVersion: 'c'.repeat(64),
+    scopesByPermission: { 'income_expenses.view': { buildingIds: [A, B], cashbookIds: [] } } };
+  const { input: resolved, plan } = await createReadNameResolver({ rpc }).resolve({ operation: 'income_expenses', input: domainInput('income_expenses', { limit: 5 }),
+    names: { roomName: 'P1' }, lane: 'legacy', accessToken: 'bearer-fixture', identity: who, tokenDigest: 'd'.repeat(64), signal: new AbortController().signal });
+  assert.deepEqual([resolved.limit, resolved.query], [50, ''], 'SQL does not match rooms in query for vouchers: the connector filters the page');
+  // Page of the SQL (ids ascending): the 9 000 000 expense is in another room, so the kept rows' largest expense is 500 000.5.
+  const other = { ...ROWS.income_expenses[3], id: id(15), code: 'PC9', roomId: id(99), roomName: 'P9', totalAmount: '9000000.00' };
+  const pageRows = [ROWS.income_expenses[0], ROWS.income_expenses[3], other];
+  const done = plan.merge([{ ...envelope('income_expenses', pageRows, summarizeRows('income_expenses', pageRows)), nextCursor: null }]);
+  assert.deepEqual(done.items.map(row => row.id), [id(11), id(14)]);
+  assert.deepEqual(done.summary, summarizeRows('income_expenses', [ROWS.income_expenses[0], ROWS.income_expenses[3]]));
+  assert.deepEqual([done.summary.byType.EXPENSE.largest.id, done.summary.byType.INCOME.largest.id, done.summary.largest.id], [id(14), id(11), id(11)],
+    'never the SQL figure of the unfiltered page (the other room\'s 9 000 000)');
 });

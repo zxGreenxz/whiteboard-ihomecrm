@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DOMAIN_READS, DOMAIN_FAMILIES, domainInput, domainResult } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_FAMILIES, domainInput, domainResult, summarizeRows } from './domain-contract.mjs';
 import { domainFastResult } from './domain-read-fast.mjs';
 
 // 21/10/2026 (sau B5d): crm_read_customers {buildingId} — kể cả buildingId hợp lệ — trả backend_unavailable với mọi toà
@@ -11,9 +11,10 @@ import { domainFastResult } from './domain-read-fast.mjs';
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG = id(1), BUILDING = id(2), OTHER = id(3), ROOM = id(4), USER = id(5), CONNECTION = id(6), ITEM = id(10), OUTSIDE = id(99);
 const SCOPE = [BUILDING, OTHER];
+// summary is required since the R2a release window closed: the envelope carries the summary of its rows.
 const envelope = (operation, rows) => {
   const family = DOMAIN_FAMILIES[DOMAIN_READS[operation].family];
-  return { organizationId: ORG, domain: operation, items: rows, nextCursor: null,
+  return { organizationId: ORG, domain: operation, summary: summarizeRows(operation, rows), items: rows, nextCursor: null,
     ...(family.resultKeys.includes('source') ? { source: DOMAIN_READS[operation].source } : {}),
     ...(family.resultKeys.includes('fetchedAt') ? { fetchedAt: '2026-10-21T00:00:00.000Z' } : {}) };
 };

@@ -111,7 +111,9 @@ const PUBLIC = ['hermes_set_org_policy_v1(uuid,bigint,boolean,text[],text[],uuid
   // B3 (20261020101453): one filtered sale-room page per bound connection; the admission helper stays private.
   'hermes_available_rooms_page_v1(jsonb,uuid,uuid[],text,text[],integer,integer)',
   // B5d (20261020175803): name directories under the asker's RLS (INVOKER) and the member-only company name (DEFINER).
-  'hermes_building_directory_v1(uuid,uuid[])', 'hermes_room_directory_v1(uuid,uuid[],text)', 'hermes_organization_name_v1(uuid)'];
+  'hermes_building_directory_v1(uuid,uuid[])', 'hermes_room_directory_v1(uuid,uuid[],text)', 'hermes_organization_name_v1(uuid)',
+  // R2c part 2 (20261021044821): the caller's own display name for crm_auth_context, under the caller's RLS (INVOKER).
+  'hermes_user_display_name_v1()'];
 const WORKER = ['public.hermes_zalo_ingress_v1(jsonb)', 'public.hermes_zalo_private_command_v1(jsonb)',
   'public.hermes_zalo_private_reply_v1(jsonb)', 'public.zalo_worker_begin_provider_v1(uuid,uuid)',
   'public.zalo_worker_begin_hermes_group_provider_v1(uuid,uuid,jsonb)',
@@ -436,7 +438,7 @@ const W2_READERS = new Set(['a', 'b', 'c', 'd'].map(letter => `app_private.herme
 const W2_INVOKER = new Set(['public.hermes_w2_read_v1', ...W2_READERS]);
 // B5d (20261020175803): the building/room directories run as the asker (RLS of buildings/rooms decides what is
 // listed), so they are plpgsql STABLE INVOKER and may not name app_private; the company-name helper stays DEFINER.
-const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1']);
+const NAME_DIRECTORY_INVOKER = new Set(['public.hermes_building_directory_v1', 'public.hermes_room_directory_v1', 'public.hermes_user_display_name_v1']);
 const W2_CALLER = ['app_private.hermes_w2_scope_v1(jsonb,text,jsonb,text)', 'app_private.hermes_w2_finish_v1(jsonb,jsonb,jsonb)',
   ...[...W2_READERS].map(name => `${name}(text,jsonb,jsonb)`)];
 
@@ -887,12 +889,13 @@ function revokeContract(registry = functions) {
 
 test('private owner, capability role, table RLS and exact execute grants stay closed', () => securityContract());
 
-test('all twelve reviewed forward migrations and their 56 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
+test('all fourteen reviewed forward migrations and their 56 latest definitions remain covered, including CRM wrappers and superseded bodies', () => {
   // A reviewed file stays under review after every body it declared was replaced
-  // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934):
-  // its statements are then only superseded pins.
+  // (B5c 20261020171321; B5c step 2 20261020173818 after R2a 20261020233934; every
+  // R2a body after R2c 20261021035022 and R2c part 2 20261021044801): its statements
+  // are then only superseded pins.
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 12);
+  assert.equal(paths.length, 14);
   assert.equal(FORWARD_FUNCTIONS.length, 56);
   assert.equal(FORWARD_BY_NAME.size, 56, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);

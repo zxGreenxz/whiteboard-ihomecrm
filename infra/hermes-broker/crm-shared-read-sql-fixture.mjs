@@ -26,9 +26,17 @@ const buildingSql=readFileSync('supabase/migrations/20261020171321_hermes_receiv
 // invoices; hermes_domain_read_v1/v2 follow (requires v1 to be installed first). Applied last, twice.
 const buildingNameSql=readFileSync('supabase/migrations/20261020173818_hermes_domain_reads_building_name_v1.sql','utf8');
 // R2a (20261020233934): every list read of v1/v2 and the reader carries `summary` over the whole filtered
-// set (requires B5c step 2 live). Applied last, twice (idempotent).
+// set (requires B5c step 2 live). Applied after B5c step 2, twice (idempotent).
 export const SUMMARY_PATH='supabase/migrations/20261020233934_hermes_domain_summary_v1.sql';
 const summarySql=readFileSync(SUMMARY_PATH,'utf8');
+// R2c (20261021035022): byType entries of the income_expenses summary name their largest voucher (v2 only; requires
+// R2a live). Applied after R2a, twice (idempotent).
+export const LARGEST_BY_TYPE_PATH='supabase/migrations/20261021035022_hermes_domain_summary_largest_by_type_v1.sql';
+const largestByTypeSql=readFileSync(LARGEST_BY_TYPE_PATH,'utf8');
+// R2c part 2 (20261021044801): the reader's customers summary counts the contract status (status_v2); v1 assets
+// rows carry createdAt and the summary the latest asset. Applied after R2c, twice (idempotent).
+export const CUSTOMER_STATUS_PATH='supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql';
+const customerStatusSql=readFileSync(CUSTOMER_STATUS_PATH,'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const [ORG, FOREIGN, USER, MEMBER, BUILDING, OTHER_BUILDING, ROLE, BINDING, ORG_SCOPE, BUILDING_SCOPE] = Array.from({length:10},(_,n)=>id(n+1));
 function definitions() {
@@ -202,6 +210,7 @@ async function setup(pool) {
  after_total numeric,delta numeric,adjusted_by uuid,adjusted_at timestamptz,review_status text,checked_by uuid,checked_at timestamptz);
  CREATE TABLE public.active_payment_receipts(organization_id uuid,invoice_id uuid,payment_method public.payment_method,collected_amount numeric);
  CREATE FUNCTION public.org_today_v1(uuid DEFAULT NULL) RETURNS date LANGUAGE sql STABLE AS $$ SELECT date '2026-10-19' $$;
+ CREATE TABLE public.organization_timezones(organization_id uuid PRIMARY KEY,timezone text NOT NULL);
  CREATE TABLE public.areas(id uuid,organization_id uuid,deleted_at timestamptz);
  `);
  const support=['app_private.can_v3','public.is_admin','public.current_visible_owner_ids','public.sandbox_org_ids','public.demo_user_ids','public.can_access_building','public.can_do_on_building',
@@ -217,6 +226,8 @@ async function setup(pool) {
  // Family v2 reader (normal lane) and the date helper the B2 admission depends on,
  // so receivables can be compared normal-vs-fast on the same data and JWT.
  for(const name of ['app_private.hermes_domain_text_v1','app_private.hermes_domain_date_v2','app_private.hermes_private_command_connection_v1','public.hermes_domain_read_v2',
+  // The company's business time zone (baseline): v1 dates the asset rows with it (R2c part 2).
+  'app_private.org_timezone_v1',
   // Family v1 reader (normal lane of contracts/invoices) so the B5c step-2 migration can require it and the
   // fast rows can be compared with it on the same data and JWT.
   'app_private.hermes_domain_permission_v1','public.hermes_domain_read_v1'])
@@ -263,6 +274,8 @@ async function setup(pool) {
  await pool.query(buildingSql);await pool.query(buildingSql); // B5c after B2, twice.
  await pool.query(buildingNameSql);await pool.query(buildingNameSql); // B5c step 2 after B5c, twice.
  await pool.query(summarySql);await pool.query(summarySql); // R2a summary after B5c step 2, twice (idempotent).
+ await pool.query(largestByTypeSql);await pool.query(largestByTypeSql); // R2c after R2a, twice (idempotent).
+ await pool.query(customerStatusSql);await pool.query(customerStatusSql); // R2c part 2 after R2c, twice (idempotent).
  const after={};for(const fn of ['customer_list_v1','contract_list_v1','invoice_list_v1'])after[fn]=await web(pool,fn);
  assert.deepEqual(after,before,'All old web RPC rows, order, totals and embeds must remain byte-for-byte equivalent');
  return {before,after};
@@ -270,8 +283,8 @@ async function setup(pool) {
 async function web(pool,fn,extra=''){
  return jwt(pool,async c=>(await c.query(`SELECT public.${fn}(${fn==='customer_list_v1'?`'${ORG}'::uuid`:''}${extra}) value`)).rows[0].value);
 }
-// Family v2 domains (receivables) send the seven-key input; v1/v3 keep five keys.
-const domainInputOf=(domain,input)=>({query:'',limit:20,cursor:null,buildingId:null,status:null,...(domain==='receivables'?{fromDate:null,toDate:null}:{}),...input});
+// Family v2 domains (receivables, income_expenses) send the seven-key input; v1/v3 keep five keys.
+const domainInputOf=(domain,input)=>({query:'',limit:20,cursor:null,buildingId:null,status:null,...(['receivables','income_expenses'].includes(domain)?{fromDate:null,toDate:null}:{}),...input});
 async function fast(pool,binding,domain,input={},actor={}) {
  return jwt(pool,async c=>{await c.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:actor.user??USER,session_id:actor.session??id(32)})]);
  return (await c.query('SELECT public.hermes_domain_read_fast_v1($1::jsonb,$2,$3::jsonb) value',[JSON.stringify(binding),domain,JSON.stringify(domainInputOf(domain,input))])).rows[0].value;},actor.user??USER);

@@ -45,6 +45,32 @@ async function catalogue(t) {
 const ORIGINALS = new Map(DOMAIN_TOOLS.map(tool => [tool.name, tool]));
 const LOOKUP_SAMPLE = Object.freeze({ organizationId: FULL_GRANT_ORGANIZATION, truncated: false, rooms: [{ roomId: fullGrantId('1'), roomName: '305', roomCode: null,
   roomStatus: 'OCCUPIED', buildingId: fullGrantId('2'), buildingName: '102LVT', hasActiveContract: true, representative: { name: 'Đại diện', phone: null }, passListing: null }] });
+// Đường sâu hơn summary.<khoá> (vd summary.byType.EXPENSE.largest, R2c): đi đúng đường trên kết quả mà connector trả cho
+// summary của hàng mẫu tổng hợp (summarizeRows → domainResult, cùng bộ lọc của câu) — khoá con phải có thật, không chỉ
+// khoá cấp một. Miền chưa có hàng mẫu ⇒ false (thêm mẫu khi câu mới cần).
+const sampleId = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const SAMPLE_BUILDING = sampleId(900), SAMPLE_PLACE = Object.freeze({ buildingId: SAMPLE_BUILDING, buildingName: 'Toà mẫu', roomId: sampleId(904), roomName: 'P1' });
+const SUMMARY_SAMPLES = Object.freeze({
+  income_expenses: status => [
+    { id: sampleId(901), code: 'PT1', type: 'INCOME', name: 'Thu mẫu', ...SAMPLE_PLACE, voucherDate: '2026-10-05', totalAmount: '5', approvalStatus: status ?? 'APPROVED' },
+    { id: sampleId(902), code: 'PC1', type: 'EXPENSE', name: 'Chi mẫu', ...SAMPLE_PLACE, voucherDate: '2026-10-06', totalAmount: '3', approvalStatus: status ?? 'APPROVED' }],
+  receivables: status => [{ id: sampleId(903), number: 'HD1', status: status ?? 'APPROVED', ...SAMPLE_PLACE, buildingCode: null, billingMonth: '2026-10',
+    dueDate: '2026-10-10', totalAmount: '2', paidAmount: '1', remainingAmount: '1' }],
+});
+function deepSummaryPath(operation, args, path) {
+  if (!Object.hasOwn(SUMMARY_SAMPLES, operation)) return false;
+  const definition = DOMAIN_READS[operation], family = domainContract.DOMAIN_FAMILIES[definition.family];
+  const input = domainContract.domainInput(operation, domainContract.splitReadNames(operation, args).args), rows = SUMMARY_SAMPLES[operation](input.status);
+  const value = { organizationId: FULL_GRANT_ORGANIZATION, domain: operation, summary: domainContract.summarizeRows(operation, rows), items: rows, nextCursor: null,
+    ...(family.resultKeys.includes('source') ? { source: definition.source } : {}), ...(family.resultKeys.includes('fetchedAt') ? { fetchedAt: '2026-10-21T00:00:00.000Z' } : {}) };
+  let node = domainContract.domainResult(operation, value, { row: { organizationId: FULL_GRANT_ORGANIZATION },
+    scopesByPermission: { [definition.permission]: { buildingIds: [SAMPLE_BUILDING] } } }, input);
+  for (const key of path.split('.')) {
+    if (node === null || typeof node !== 'object' || !Object.hasOwn(node, key)) return false;
+    node = node[key];
+  }
+  return node !== null && node !== undefined;
+}
 // 'declared' | 'pending' | false — đường answerFrom có trong khuôn kết quả mà connector kiểm và trả cho mô hình không.
 function answerShape(tool, args, path) {
   if (tool === 'crm_room_lookup') {
@@ -62,12 +88,13 @@ function answerShape(tool, args, path) {
   } else summary = domainContract.DOMAIN_SUMMARIES?.[operation]?.fields ?? null;   // R2a: khuôn summary của tool danh sách
   if (head === 'items') return Object.hasOwn(fields, field) ? 'declared' : false;
   if (head !== 'summary') return false;
-  if (summary !== null && Object.hasOwn(summary, field)) return 'declared';
+  if (summary !== null && Object.hasOwn(summary, field))
+    return path.split('.').length === 2 || deepSummaryPath(operation, args, path) ? 'declared' : false;
   return SUMMARY_PENDING.includes(`${tool} ${path}`) ? 'pending' : false;
 }
 
-test('T4: dữ liệu — đúng 21 câu §B.6, số câu không trùng, không SĐT/mã dài, mọi mục SUMMARY_PENDING có câu dùng', () => {
-  assert.deepEqual(TOOL_PLAN_CASES.map(entry => entry.n), [3, 10, 13, 14, 15, 16, 19, 21, 26, 29, 32, 33, 35, 36, 40, 47, 49, 58, 72, 73, 76]);
+test('T4: dữ liệu — đúng 21 câu §B.6 + câu 5, 59 (R2c phần 2), số câu không trùng, không SĐT/mã dài, mọi mục SUMMARY_PENDING có câu dùng', () => {
+  assert.deepEqual(TOOL_PLAN_CASES.map(entry => entry.n), [3, 5, 10, 13, 14, 15, 16, 19, 21, 26, 29, 32, 33, 35, 36, 40, 47, 49, 58, 59, 72, 73, 76]);
   for (const entry of TOOL_PLAN_CASES) {
     assert.doesNotMatch(JSON.stringify(entry, (_, value) => value instanceof RegExp ? String(value) : value), /\d{7,}/, `câu ${entry.n}: không SĐT/số dài`);
     assert.ok(entry.answerFrom.length > 0, `câu ${entry.n}`);
@@ -104,6 +131,12 @@ test('T4: answerFrom nằm trong khuôn kết quả khai báo; summary của too
   t.diagnostic(`answerFrom chờ R2a: ${pending.length}${pending.length ? ` (${pending.join('; ')})` : ''}`);
   // Khi R2a gộp, summary được khai ⇒ gỡ các mục này khỏi SUMMARY_PENDING để test siết lại.
   if (declaredNow.length) t.diagnostic(`đã khai, gỡ khỏi SUMMARY_PENDING: ${[...new Set(declaredNow)].join('; ')}`);
+  // Đường sâu được đi thật (không chỉ khoá cấp một): khoá con lạ, loại lạ hay miền chưa có hàng mẫu đều không qua.
+  const month = { fromDate: '2026-10-01', toDate: '2026-10-31' };
+  for (const [tool, args, path] of [['crm_read_income_expenses', month, 'summary.byType.EXPENSE.payer'], ['crm_read_income_expenses', month, 'summary.byType.TRANSFER.largest'],
+    ['crm_read_income_expenses', month, 'summary.largest.payer'], ['crm_read_meter_readings', month, 'summary.byType.WATER']])
+    assert.equal(answerShape(tool, args, path), false, `${tool} ${path}`);
+  assert.equal(answerShape('crm_read_income_expenses', month, 'summary.byType.INCOME.largest'), 'declared');
 });
 
 test('T4: lời gọi sai của trace — Hermes chặn/để qua đúng như ghi; broker trả invalid_request kèm đúng hint tĩnh hoặc không detail', async t => {

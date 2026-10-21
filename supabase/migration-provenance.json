@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-21T02:51:11.800Z",
+  "generatedAt": "2026-10-21T05:37:53.879Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 782,
-    "unknown": 80,
-    "catalog-proven": 205,
+    "unknown": 81,
+    "catalog-proven": 208,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12463,6 +12463,52 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T02:51:08.334Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021035022_hermes_domain_summary_largest_by_type_v1.sql",
+      "version": "20261021035022",
+      "name": "hermes_domain_summary_largest_by_type_v1",
+      "scheme": "timestamp14",
+      "sha256": "92dfe22466b70c4f944d424a630edd5fdaff111d4e05ee640c40dcd8ebb97d94",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v2"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021044801_hermes_domain_customer_status_asset_created_v1.sql",
+      "version": "20261021044801",
+      "name": "hermes_domain_customer_status_asset_created_v1",
+      "scheme": "timestamp14",
+      "sha256": "e42d28c5edcd5cb88b52e10a58327f9570d98213eb86d0e787bb3b5fbe146287",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.hermes_domain_read_rows_fast_v1",
+        "catalog:function:public.hermes_domain_read_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021044814_hermes_w2_customer_status_summary_v1.sql",
+      "version": "20261021044814",
+      "name": "hermes_w2_customer_status_summary_v1",
+      "scheme": "timestamp14",
+      "sha256": "d8c258055eb42b95f5e08dd0c2580112b2bb3b67c14b77b447b4403f09482139",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.hermes_domain_read_v3"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261021044821_hermes_user_display_name_v1.sql",
+      "version": "20261021044821",
+      "name": "hermes_user_display_name_v1",
+      "scheme": "timestamp14",
+      "sha256": "e6baeea8b8268c9a733fc00d4495e501956dbf6f109849c1a73dca5d844ef335",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.hermes_user_display_name_v1"
       ]
     },
     {

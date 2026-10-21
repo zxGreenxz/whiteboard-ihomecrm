@@ -873,6 +873,29 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021044821_hermes_user_display_name_v1.sql": {
+      "sha256": "e6baeea8b8268c9a733fc00d4495e501956dbf6f109849c1a73dca5d844ef335",
+      "missingObjects": [
+        "function:public.hermes_user_display_name_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 21/10/2026 (Hermes R2c phần 2 — crm_auth_context trả tên hiển thị của chính người hỏi), chưa đi qua lane apply — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Connector đọc hàm này tuỳ chọn (PGRST202 ⇒ userName null) nên vắng mặt không làm hỏng lời gọi nào. Kiểm trên PostgreSQL 17 local (fixture): chỉ trả hồ sơ của chính người gọi dưới RLS, không email/SĐT, 42501 khi không có JWT người dùng, ACL chỉ authenticated, $requires$ dừng khi thiếu profiles.full_name, áp hai lượt, artifact revert gỡ sạch; diễn tập khôi phục (baseline + forward lane) trên cụm PG17 tạm. Chưa chạy trên TEST/production. Sẽ áp qua lane migrate:forward sau khi connector R2c lên; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "raSoatBoi": "Claude Code — Hermes R2c phần 2, 21/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021044821_hermes_user_display_name_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.hermes_user_display_name_v1()\nRETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects function:public.hermes_user_display_name_v1 — sinh 21/10/2026 ngay sau khi tạo file"
+        },
+        {
+          "duong_dan": "infra/hermes-broker/name-directory-sql.test.mjs",
+          "trich_doan": "user display name: the caller's own profile name under the caller's RLS; never another user, email or phone"
+        }
+      ]
     }
   }
 }

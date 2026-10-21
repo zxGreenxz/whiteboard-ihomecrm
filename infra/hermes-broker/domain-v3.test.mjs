@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { sharedFullRead, changedFunctions, fullReadSql, fullReadFixSql, fullReadParitySql, fullReadOwnerSql, BUILDING, OTHER_BUILDING, ROOM, SCOPE, ORG_SCOPE, binding, USER, ORG, FOREIGN, SESSION,
   CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CUSTOMER_F, CO_TENANT, CONTRACT_A, CONTRACT_B, CONTRACT_F, SERVICE, PHONE_A, CCCD_A, BANK_A, SECRET_IMAGE } from './full-read-sql-fixture.mjs';
 import { DOMAIN_READS, DOMAIN_TOOLS, domainInput, domainResult, mayUseDomain, summarizeRows } from './domain-contract.mjs';
+import { readFileSync } from 'node:fs';
+import { W2_CUSTOMER_STATUS_FILE } from './full-read-sql-fixture.mjs';
 import { CUSTOMER_DETAIL_FIELDS, CONTRACT_DETAIL_FIELDS, PRIVATE_HINT } from './full-read-contract.mjs';
 import { randomBytes } from 'node:crypto';
 import { ASSISTANT, token } from './finance-fixture.mjs';
@@ -52,10 +54,12 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   // B5c step 2 (20261020173819): the building of the active contract is named next to its id.
   assert.deepEqual(a, { id: CUSTOMER_A, name: 'Nguyễn Văn An', phone: PHONE_A, contractId: CONTRACT_A, buildingId: BUILDING, buildingName: 'Toà A', roomId: ROOM, roomName: 'P101' });
   assert.deepEqual(domainResult('customers', first, identity('customers.view'), list()), first);
-  // R2a (20261021004841): the count of the whole filtered set, no status or money column.
-  assert.deepEqual(first.summary, { count: 2, byStatus: {}, sum: {} });
-  assert.deepEqual(first.summary, summarizeRows('customers', first.items));
-  assert.deepEqual((await read3('customers', list({ query: '4567' }))).summary, { count: 1, byStatus: {}, sum: {} }, 'query filter');
+  // R2a (20261021004841): the count of the whole filtered set, no money column. R2c part 2 (20261021044814): byStatus =
+  // contract status of that set (customers.status_v2, the /customers tabs; only values present). The rows carry no status,
+  // so summarizeRows has byStatus null and the oracle compares the rest.
+  assert.deepEqual(first.summary, { count: 2, byStatus: { RENTING: 2 }, sum: {} });
+  assert.deepEqual({ ...first.summary, byStatus: null }, summarizeRows('customers', first.items));
+  assert.deepEqual((await read3('customers', list({ query: '4567' }))).summary, { count: 1, byStatus: { RENTING: 1 }, sum: {} }, 'query filter');
   assert.deepEqual(ids((await read3('customers', list({ query: '4567' }))).items), [CUSTOMER_A], 'phone digits search');
   assert.deepEqual(ids((await read3('customers', list({ query: '090 123' }))).items), [CUSTOMER_A], 'spaced digits');
   assert.deepEqual(ids((await read3('customers', list({ query: 'văn an' }))).items), [CUSTOMER_A]);
@@ -64,6 +68,8 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CO_TENANT].sort());
   await db.exec("UPDATE public.fixture_acl SET org_wide=false WHERE permission='customers.view'");
   await orgWide('customers.view');
+  // Real tabs for the two customers the fixture leaves unclassified: one moved out, one never had a contract (walk-in).
+  await db.exec(`UPDATE public.customers SET status_v2='MOVED_OUT' WHERE id='${CUSTOMER_B}'; UPDATE public.customers SET status_v2='WALK_IN' WHERE id='${CUSTOMER_C}'`);
   assert.deepEqual(ids((await read3('customers', list())).items), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
   // P2-2: như RLS customers_select_rbac, chủ hồ sơ (customers.user_id) phải là thành viên ACTIVE — kể cả khách có hợp đồng.
   await db.exec(`DELETE FROM public.fixture_visible_owners`);
@@ -72,15 +78,24 @@ test('SQL customers (v3): full phone, same overlay/CRM scope as v1; Toàn tổ c
   await db.exec(`INSERT INTO public.fixture_visible_owners VALUES('${USER}')`);
   const narrowed = await read3('customers', list({ buildingId: BUILDING }));
   assert.deepEqual(ids(narrowed.items), [CUSTOMER_A, CO_TENANT].sort(), 'buildingId drops the org-wide branch');
-  assert.equal(narrowed.summary.count, 2, 'the summary drops it too');
+  assert.deepEqual([narrowed.summary.count, narrowed.summary.byStatus], [2, { RENTING: 2 }], 'the summary drops it too');
   const page = await read3('customers', list({ limit: 2 }));
   assert.equal(page.items.length, 2); assert.equal(page.nextCursor, page.items[1].id);
   const rest = await read3('customers', list({ limit: 2, cursor: page.nextCursor }));
   assert.deepEqual([...ids(page.items), ...ids(rest.items)].sort(), [CUSTOMER_A, CUSTOMER_B, CUSTOMER_C, CO_TENANT].sort());
-  // Toàn tổ chức: 4 khách; limit/cursor không đổi summary — trang nào cũng nói đủ 4.
-  assert.deepEqual([page.summary, rest.summary], [{ count: 4, byStatus: {}, sum: {} }, { count: 4, byStatus: {}, sum: {} }]);
-  assert.deepEqual(summarizeRows('customers', [...page.items, ...rest.items]), page.summary, 'count === rows once every page is read');
+  // Toàn tổ chức: 4 khách; limit/cursor không đổi summary — trang nào cũng nói đủ 4, và 1 khách chưa có hợp đồng (WALK_IN).
+  const all = { count: 4, byStatus: { RENTING: 2, MOVED_OUT: 1, WALK_IN: 1 }, sum: {} };
+  assert.deepEqual([page.summary, rest.summary], [all, all]);
+  assert.deepEqual(summarizeRows('customers', [...page.items, ...rest.items]), { ...page.summary, byStatus: null }, 'count === rows once every page is read');
   assert.deepEqual(domainResult('customers', page, identity('customers.view'), list({ limit: 2 })).summary, page.summary);
+  // Mutant of the status statement (rolled back with the case): every customer counted as unclassified ⇒ the tabs vanish.
+  const live = readFileSync(`supabase/migrations/${W2_CUSTOMER_STATUS_FILE}.sql`, 'utf8').match(/CREATE OR REPLACE FUNCTION public\.hermes_domain_read_v3\([\s\S]*?\$fn\$;/)[0];
+  const anchor = 'SELECT customer.status_v2::text status,count(*) n FROM public.customers customer';
+  assert.equal(live.split(anchor).length, 2);
+  await db.exec(live.replace(anchor, 'SELECT NULL::text status,count(*) n FROM public.customers customer'));
+  assert.deepEqual((await read3('customers', list())).summary, { count: 4, byStatus: {}, sum: {} }, 'the mutant loses the tabs (the expectation above catches it)');
+  await db.exec(live);
+  assert.deepEqual((await read3('customers', list())).summary, all, 'reviewed body restored');
 }));
 
 test('SQL customer_detail: the /customers/:id fields in full, never images, bank account or fingerprint; out of scope is null', { timeout: 90000 }, t => inCase(async env => {

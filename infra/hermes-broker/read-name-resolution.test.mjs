@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { BrokerError } from './broker.mjs';
 import { createBoundUserOperationService } from './bound-user-operation.mjs';
 import { createReadNameResolver, matchBuildings, ROOM_MATCH_LIMIT, ROOM_FILTER_PAGE_LIMIT, ROOM_FILTER_MAX_PAGES, DIRECTORY_RPCS } from './read-name-resolution.mjs';
-import { DOMAIN_READS, DOMAIN_TOOLS, READ_NAMES, READ_NAME_LIMITS, domainInput, splitReadNames } from './domain-contract.mjs';
+import { DOMAIN_READS, DOMAIN_SUMMARIES, DOMAIN_TOOLS, READ_NAMES, READ_NAME_LIMITS, domainInput, splitReadNames, summarizeRows } from './domain-contract.mjs';
 import { createDomainMount } from './domain-mount.mjs';
 import { createReadCatalogAuthority } from './read-catalog-authority.mjs';
 import { createSessionCrypto } from './session-crypto.mjs';
@@ -81,7 +81,7 @@ test('splitReadNames: names leave the arguments before the validator; blanks are
     assert.equal(Object.hasOwn(properties, 'roomName'), spec.room === 'rows', tool.name);
     if (spec.room === 'rows' && !spec.reports) assert.ok(Object.hasOwn(DOMAIN_READS[operation].fields ?? {}, 'roomId') || DOMAIN_READS[operation].reports, `${tool.name}: rows carry roomId`);
   }
-  assert.deepEqual(DIRECTORY_RPCS, ['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1']);
+  assert.deepEqual(DIRECTORY_RPCS, ['hermes_building_directory_v1', 'hermes_room_directory_v1', 'hermes_organization_name_v1', 'hermes_user_display_name_v1']);
 });
 
 test('buildingName: exact name/code first (case-insensitive), then contains; 0 ⇒ detail; ≥2 ⇒ detail lists the names in scope; buildingId must agree', async () => {
@@ -270,26 +270,32 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   const calls = [], fetchedAt = new Date(f.clock.now).toISOString();
   // Dòng đầy đủ sau B5c: buildingName bắt buộc (tolerant đã gỡ 21/10, domain-tolerance.test.mjs).
   const customersRow = (n, roomId) => ({ id: id(600 + n), name: `Khách ${n}`, phone: null, contractId: null, buildingId: A, buildingName: 'Toà 950NK', roomId, roomName: roomId === R(1) ? 'London 5' : null });
+  // List reads carry `summary` (required since the R2a release window closed); empty pages carry the summary of no row.
+  const empty = domain => Object.hasOwn(DOMAIN_SUMMARIES, domain) ? { summary: summarizeRows(domain, []) } : {};
+  let displayUser = USER, displayName = 'Người Dùng Thử';
   const fetch = async (url, options) => {
     const name = new URL(url).pathname.replace('/rest/v1/rpc/', ''), args = JSON.parse(options.body);
     calls.push({ name, args, bearer: options.headers.authorization });
     if (name === 'hermes_building_directory_v1') return Response.json({ buildings: BUILDINGS.filter(row => args.p_building_ids.includes(row.id)) });
     if (name === 'hermes_room_directory_v1') return Response.json({ rooms: directoryRooms(args) });
     if (name === 'hermes_organization_name_v1') return Response.json({ id: args.p_organization_id, name: 'Công ty Thử' });
+    // R2c part 2 (c): the asker's own display name (SQL reads auth.uid() only; no argument).
+    if (name === 'hermes_user_display_name_v1') { assert.deepEqual(args, {}); return Response.json({ id: displayUser, name: displayName }); }
     if (name === 'hermes_domain_read_fast_v1' && args.p_domain === 'receivables') return Response.json({ authority: { organizationId: ORG, userId: USER, connectionId: CONNECTION,
-      permission: 'invoices.view', buildingIds: [A, B, C], cashbookIds: [] }, result: { organizationId: ORG, domain: 'receivables', items: [], nextCursor: null, source: 'crm.invoices', fetchedAt } });
+      permission: 'invoices.view', buildingIds: [A, B, C], cashbookIds: [] }, result: { organizationId: ORG, domain: 'receivables', ...empty('receivables'), items: [], nextCursor: null, source: 'crm.invoices', fetchedAt } });
     if (name === 'hermes_domain_read_fast_v1') {
       // Full SQL page of 50 (the validator only accepts a cursor on a full page): matches at rows 2 and 50; the tail page holds one more.
+      // The SQL summary counts the whole filtered set (52 rows of the building, before the connector filters the room).
       const page = args.p_input.cursor === null
         ? { items: Array.from({ length: 50 }, (_, index) => customersRow(index + 1, [2, 50].includes(index + 1) ? R(1) : index % 2 ? R(2) : null)), nextCursor: id(650) }
         : { items: [customersRow(51, R(1)), customersRow(52, null)], nextCursor: null };
       return Response.json({ authority: { organizationId: ORG, userId: USER, connectionId: CONNECTION, permission: 'customers.view', buildingIds: [A, B, C], cashbookIds: [] },
-        result: { organizationId: ORG, domain: 'customers', ...page, fetchedAt } });
+        result: { organizationId: ORG, domain: 'customers', summary: { count: 52, byStatus: {}, sum: {} }, ...page, fetchedAt } });
     }
-    if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
+    if (name === 'hermes_domain_read_v2') return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null, source: DOMAIN_READS[args.p_domain].source, fetchedAt });
     if (name === 'hermes_w2_read_v1') return Response.json({ organizationId: ORG, domain: 'report', fetchedAt, report: args.p_input.report, source: W2.reports[args.p_input.report].source,
       unavailable: null, summary: null, items: [], offset: 0, nextOffset: null, sourceCapped: false, fence: { buildings: [B], cashbooks: [], orgWide: false } });
-    return Response.json({ organizationId: ORG, domain: args.p_domain, items: [], nextCursor: null });
+    return Response.json({ organizationId: ORG, domain: args.p_domain, ...empty(args.p_domain), items: [], nextCursor: null });
   };
   const supabase = { url: 'https://example.invalid/', publishableKey: 'sb_publishable_test' };
   const readAuthority = createReadCatalogAuthority({ authority: f.authority, connectionStore: f.connectionStore, clock: () => f.clock.now });
@@ -308,10 +314,13 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   assert.deepEqual(value.items.map(row => row.id), [id(602), id(650), id(651)]);
   assert.deepEqual(value.roomFilter, { roomIds: [R(1)], roomNames: ['London 5'], buildingIds: [A], scannedRows: 52, pages: 2, more: false, filteredOn: 'page' });
   assert.equal(value.nextCursor, null);
+  assert.deepEqual(value.summary, { count: 3, byStatus: null, sum: {} },
+    'every page read: the summary of the kept rows, never the SQL 52 of the building; their contract status is not in the rows (null)');
   // Asking for two: the first page already holds them ⇒ one read, cut, cursor = last kept row, more = true.
   calls.length = 0;
   const two = await run('customers', domainInput('customers', { limit: 2 }), { buildingName: '950nk', roomName: 'London 5' });
   assert.deepEqual([calls.filter(call => call.name === 'hermes_domain_read_fast_v1').length, two.items.map(row => row.id), two.nextCursor, two.roomFilter.more], [1, [id(602), id(650)], id(650), true]);
+  assert.equal(two.summary, null, 'rows left unread: no figure rather than a wrong one');
   // Receivables (fast plan since B2): query becomes the room name, the seven v2 keys stay; the cached lane (leads) makes no directory call without names.
   calls.length = 0;
   await run('receivables', domainInput('receivables', {}), { buildingName: '950NK', roomName: 'London 5' });
@@ -331,17 +340,35 @@ test('domain mount end to end: buildingName/roomName become directory RPCs with 
   calls.length = 0;
   const receipt = await domains.prepareContext(f.token, { organizationId: ORG, buildingIds: [A, B, C], contextVersion: VERSION }, { signal: f.signal });
   const context = await domains.finalizeContext(f.token, receipt, { signal: f.signal });
-  assert.deepEqual(context, { organizationName: 'Công ty Thử', buildings: BUILDINGS });
-  assert.deepEqual(calls.map(call => call.name).sort(), ['hermes_building_directory_v1', 'hermes_organization_name_v1']);
+  assert.deepEqual(context, { organizationName: 'Công ty Thử', userName: 'Người Dùng Thử', buildings: BUILDINGS });
+  assert.deepEqual(calls.map(call => call.name).sort(), ['hermes_building_directory_v1', 'hermes_organization_name_v1', 'hermes_user_display_name_v1']);
+  // The name must be the connection's own user: another id from SQL fails closed (new token digest, so no cache hit).
+  displayUser = A;
+  const other = services(t), otherDomains = createDomainMount({ authority: other.authority, connectionStore: other.connectionStore, crypto: other.crypto, auth: other.auth,
+    supabase, dependencyScope, fetch, clock: () => other.clock.now }).createService();
+  const otherReceipt = await otherDomains.prepareContext(other.token, { organizationId: ORG, buildingIds: [A], contextVersion: VERSION }, { signal: other.signal });
+  await assert.rejects(otherDomains.finalizeContext(other.token, otherReceipt, { signal: other.signal }), code('backend_unavailable'));
+  displayUser = USER;
+  // The name is display text or null (no profile name): a non-text name fails closed; null passes through as null.
+  for (const [bad, expected] of [[42, 'backend_unavailable'], ['', 'backend_unavailable'], ['Tên\u0007lạ', 'backend_unavailable'], [null, null]]) {
+    displayName = bad;
+    const fresh = services(t), freshDomains = createDomainMount({ authority: fresh.authority, connectionStore: fresh.connectionStore, crypto: fresh.crypto, auth: fresh.auth,
+      supabase, dependencyScope, fetch, clock: () => fresh.clock.now }).createService();
+    const freshReceipt = await freshDomains.prepareContext(fresh.token, { organizationId: ORG, buildingIds: [A], contextVersion: VERSION }, { signal: fresh.signal });
+    const outcome = freshDomains.finalizeContext(fresh.token, freshReceipt, { signal: fresh.signal });
+    if (expected === null) assert.equal((await outcome).userName, null, 'a user without a profile name: null');
+    else await assert.rejects(outcome, code(expected), `name ${JSON.stringify(bad)}`);
+  }
+  displayName = 'Người Dùng Thử';
   await assert.rejects(domains.prepareContext(f.token, { organizationId: ORG, buildingIds: [A] }, { signal: f.signal }), code('invalid_request'));
   // Directory SQL not deployed yet (PGRST202): crm_auth_context degrades to null (another connection, so no cache hit); name
   // resolution itself still fails closed.
-  const absent = async (url, options) => new URL(url).pathname.includes('_directory_v1') || new URL(url).pathname.includes('organization_name')
+  const absent = async (url, options) => ['_directory_v1', 'organization_name', 'user_display_name'].some(part => new URL(url).pathname.includes(part))
     ? Response.json({ code: 'PGRST202', message: 'absent', details: null, hint: null }, { status: 404 }) : fetch(url, options);
   const g = services(t);
   const degraded = createDomainMount({ authority: g.authority, connectionStore: g.connectionStore, crypto: g.crypto, auth: g.auth, supabase, dependencyScope, fetch: absent, clock: () => g.clock.now }).createService();
   const pending = await degraded.prepareContext(g.token, { organizationId: ORG, buildingIds: [A, B, C], contextVersion: VERSION }, { signal: g.signal });
-  assert.deepEqual(await degraded.finalizeContext(g.token, pending, { signal: g.signal }), { organizationName: null, buildings: null });
+  assert.deepEqual(await degraded.finalizeContext(g.token, pending, { signal: g.signal }), { organizationName: null, userName: null, buildings: null });
   const receiptAbsent = await degraded.prepareDomain(g.token, 'leads', domainInput('leads', {}), { signal: g.signal, names: { buildingName: '950NK' } }).catch(error => error);
   assert.ok(code('backend_unavailable')(receiptAbsent), 'a read with a name fails closed without the directory');
 });
