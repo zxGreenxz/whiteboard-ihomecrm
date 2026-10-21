@@ -8,8 +8,8 @@ import { PROBE_KEY, probeCatalog } from './action-probe-contract.mjs';
 
 // Ngân sách tools/list khi họ thao tác ghi dùng chung hiện (NEN-CHUNG-THAO-TAC-GHI.md mục 10). Trần chung 64 000 B
 // (tool-argument-shape.test.mjs) giữ nguyên. Đợt 1: production không nạp danh mục nào ⇒ ba tool ẩn, tools/list không
-// đổi một byte. Họ thao tác chỉ hiện được cùng lúc họ phiếu chi cũ đã tắt (D4: chủ đồng ý câu 4; registry
-// income_expenses.create = TẮT, draft PR #254), nên phép đo bỏ khoá đó khỏi kết nối.
+// đổi một byte. Hai họ không bao giờ cùng hiện: khi họ thao tác hiện thì broker ẩn (và từ chối) họ phiếu chi cũ, không dựa
+// vào trạng thái registry (review #253 mục 2; D4).
 const TOOLS_LIST_BUDGET = 64_000;
 const service = { async prepareAction() { return Object.freeze({}); }, async finalizeAction() { return { kind: 'applied', result: {} }; } };
 const bytesOf = tools => Buffer.byteLength(JSON.stringify({ tools }));
@@ -21,12 +21,15 @@ test('danh mục rỗng (production Đợt 1): ba tool không hiện, tools/list
   assert.deepEqual(after, before);
 });
 
-test('họ thao tác hiện (danh mục thử) + họ phiếu chi cũ tắt: tools/list ≤ 64 000 B; hai họ không cùng hiện', async t => {
+test('họ thao tác hiện (danh mục thử) ⇒ họ phiếu chi cũ ẩn và bị từ chối dù kết nối giữ cả hai khoá; tools/list ≤ 64 000 B', async t => {
   const runtime = createActionRuntime({ catalog: probeCatalog(), service });
-  const { broker, token } = fullGrantBroker(t, undefined, { actions: runtime, actionKeys: [PROBE_KEY], withoutAction: ['income_expenses.create'] });
+  // Kết nối giữ CẢ income_expenses.create (họ phiếu chi cũ) lẫn khoá thử: rào nằm ở broker, không ở registry.
+  const { broker, token } = fullGrantBroker(t, undefined, { actions: runtime, actionKeys: [PROBE_KEY] });
   const listed = (await broker.listTools(token)).tools, names = listed.map(tool => tool.name);
   for (const name of ['crm_action_list', 'crm_action_run', 'crm_action_status']) assert.ok(names.includes(name), name);
   assert.deepEqual(names.filter(name => EXPENSE_ACTION_TOOLS.some(tool => tool.name === name)), [], 'họ phiếu chi cũ không hiện');
+  for (const tool of EXPENSE_ACTION_TOOLS)
+    await assert.rejects(broker.callTool(token, tool.name, {}), error => error.code === 'tool_not_available', `${tool.name} gọi thẳng cũng bị từ chối`);
   const bytes = bytesOf(listed);
   const family = bytesOf(listed.filter(tool => tool.name.startsWith('crm_action_'))) - bytesOf([]);
   t.diagnostic(`tools/list ${listed.length} tools, ${bytes} bytes; họ thao tác ${family} B`);
@@ -37,9 +40,11 @@ test('họ thao tác hiện (danh mục thử) + họ phiếu chi cũ tắt: too
   const nowBytes = bytesOf((await now.broker.listTools(now.token)).tools);
   t.diagnostic(`như production 21/10 (không income_expenses.create, không tasks.delete): ${nowBytes} bytes, còn ${TOOLS_LIST_BUDGET - nowBytes} B`);
   assert.ok(nowBytes < bytes);
-  // Ghi lại vì sao D4 là điều kiện: còn họ phiếu chi cũ thì họ thao tác không vừa trần.
-  const both = fullGrantBroker(t, undefined, { actions: runtime, actionKeys: [PROBE_KEY] });
-  const withOld = bytesOf((await both.broker.listTools(both.token)).tools);
-  t.diagnostic(`nếu còn họ phiếu chi cũ: ${withOld} bytes (trần ${TOOLS_LIST_BUDGET})`);
+  // Ghi lại vì sao phải ẩn: hai họ cùng hiện thì không vừa trần.
+  const plainBroker = fullGrantBroker(t);
+  const oldTools = (await plainBroker.broker.listTools(plainBroker.token)).tools.filter(tool => EXPENSE_ACTION_TOOLS.some(old => old.name === tool.name));
+  assert.ok(oldTools.length > 0, 'không có mount phiếu chi cũ thì phép đo vô nghĩa');
+  const withOld = bytesOf([...listed, ...oldTools]);
+  t.diagnostic(`nếu hai họ cùng hiện: ${withOld} bytes (trần ${TOOLS_LIST_BUDGET})`);
   assert.ok(withOld > TOOLS_LIST_BUDGET, 'nếu phép đo này hết vượt trần thì cập nhật mục 10 của tài liệu');
 });

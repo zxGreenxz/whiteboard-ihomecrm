@@ -13,6 +13,46 @@ const full=(pattern,value)=>typeof value==='string'&&pattern.exec(value)?.[0]===
 const exact=(value,keys)=>plain(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const PROFILE_MAX=131072;
 const DM_ONLY_PLATFORMS=['zalo_personal'];
+// K1: nền tảng Hermes v0.21.6 (commit 818c13be, gateway/config_env.py _ENV_ENABLE_CREDENTIALS + api_server/webhook/
+// msgraph_webhook/relay) TỰ BẬT khi biến môi trường của nó có mặt, trừ khi config.yaml ghi đúng platforms.<tên>.enabled: false.
+// Coi bất kỳ biến nào trong danh sách có giá trị là bật (chặt hơn upstream, vốn đòi đủ bộ với vài nền tảng).
+const PLATFORM_ENV=Object.freeze({telegram:['TELEGRAM_BOT_TOKEN'],discord:['DISCORD_BOT_TOKEN'],slack:['SLACK_BOT_TOKEN'],whatsapp:['WHATSAPP_ENABLED'],
+  whatsapp_cloud:['WHATSAPP_CLOUD_PHONE_NUMBER_ID','WHATSAPP_CLOUD_ACCESS_TOKEN'],signal:['SIGNAL_HTTP_URL'],mattermost:['MATTERMOST_TOKEN'],
+  matrix:['MATRIX_ACCESS_TOKEN','MATRIX_PASSWORD'],email:['EMAIL_ADDRESS','EMAIL_PASSWORD','EMAIL_IMAP_HOST','EMAIL_SMTP_HOST'],sms:['TWILIO_ACCOUNT_SID'],
+  dingtalk:['DINGTALK_CLIENT_ID','DINGTALK_CLIENT_SECRET'],feishu:['FEISHU_APP_ID','FEISHU_APP_SECRET'],wecom:['WECOM_BOT_ID','WECOM_SECRET'],
+  wecom_callback:['WECOM_CALLBACK_CORP_ID','WECOM_CALLBACK_CORP_SECRET'],weixin:['WEIXIN_TOKEN','WEIXIN_ACCOUNT_ID'],
+  bluebubbles:['BLUEBUBBLES_SERVER_URL','BLUEBUBBLES_PASSWORD'],qqbot:['QQ_APP_ID','QQ_CLIENT_SECRET'],
+  yuanbao:['YUANBAO_APP_ID','YUANBAO_APP_KEY','YUANBAO_APP_SECRET'],relay:['GATEWAY_RELAY_URL'],api_server:['API_SERVER_KEY'],
+  webhook:['WEBHOOK_ENABLED'],msgraph_webhook:['MSGRAPH_WEBHOOK_ENABLED']});
+// Biến cờ: chỉ bật khi giá trị là "thật" (upstream is_truthy_value); WHATSAPP_ENABLED=false còn tắt cả YAML.
+const FLAG_ENV=new Set(['WHATSAPP_ENABLED','WEBHOOK_ENABLED','MSGRAPH_WEBHOOK_ENABLED']);
+const truthy=value=>['1','true','yes','on'].includes(value.toLowerCase());
+function envValues(raw) {
+  const values=new Map();
+  for(const line of (raw??'').split(/\r?\n/)){
+    const match=/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);if(!match)continue;
+    let value=match[2].trim();if(/^(['"]).*\1$/.test(value))value=value.slice(1,-1).trim();
+    values.set(match[1],value);
+  }
+  return values;
+}
+/** Nền tảng ngoài zalo_personal mà profile sẽ bật: mục config.yaml chưa ghi đúng `enabled: false`, hoặc biến môi trường bật
+ * nền tảng (trừ khi YAML tắt hẳn nền tảng đó). Plugin bên thứ ba bật bằng biến khác, env của tiến trình (systemd/docker)
+ * ngoài `.env` và sửa tay sau đó KHÔNG được thấy — giới hạn ghi ở CONNECTOR.md. */
+function sharedPlatforms(platforms,envRaw) {
+  const found=new Set(),env=envValues(envRaw);
+  for(const [name,value] of Object.entries(platforms))if(!DM_ONLY_PLATFORMS.includes(name)&&!(plain(value)&&value.enabled===false))found.add(name);
+  for(const [name,keys] of Object.entries(PLATFORM_ENV)){
+    if(plain(platforms[name])&&platforms[name].enabled===false)continue;
+    if(keys.some(key=>{const value=env.get(key);return value!==undefined&&value!==''&&(!FLAG_ENV.has(key)||truthy(value));}))found.add(name);
+  }
+  return [...found].sort();
+}
+const platformsOf=config=>{
+  // `platforms:` để trống (null) như vắng hẳn (dữ liệu VPS 22/10: 6 profile mang token CRM không có khối platforms).
+  if(config.platforms!==undefined&&config.platforms!==null&&!plain(config.platforms))fail();
+  return {...(config.platforms??{})};
+};
 const nativeKeys=['HERMES_ZALO_BRIDGE_URL','HERMES_ZALO_BRIDGE_TOKEN','HERMES_ZALO_PROFILE','HERMES_ZALO_PAIRED_UID','HERMES_ZALO_GENERATION'];
 function mcpUrl(value) {
   let url;try{url=new URL(value);}catch{fail();}
@@ -168,15 +208,14 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
       env+=(env?'\n':'')+Object.entries(values).map(([key,value])=>key+'='+value).join('\n')+'\n';
     }
   }
-  if(config.platforms!==undefined&&!plain(config.platforms))fail();
-  const platforms={...(config.platforms??{})};
+  const platforms=platformsOf(config);
   if(platforms.zalo_personal!==undefined&&!plain(platforms.zalo_personal))fail();
   if(!credentialPending&&!credentialOnly) platforms.zalo_personal={...(platforms.zalo_personal??{}),enabled:!revoked};
   // K1 (NEN-CHUNG-THAO-TAC-GHI.md §8.2): a profile that carries a CRM token may only
-  // serve the paired 1-1 Zalo channel; any other platform not explicitly
-  // `enabled: false` could relay group chats to write tools. Refuse, never disable.
-  if(Object.hasOwn(servers,serverKey)&&Object.entries(platforms).some(([name,value])=>
-    !DM_ONLY_PLATFORMS.includes(name)&&!(plain(value)&&value.enabled===false)))fail('native_profile_shared_platform');
+  // serve the paired 1-1 Zalo channel; any other platform enabled by config.yaml
+  // or by its environment could relay group chats to write tools. Refuse, never disable.
+  if(Object.hasOwn(servers,serverKey)&&sharedPlatforms(platforms,credentialPending||credentialOnly?envOriginal:env).length)
+    fail('native_profile_shared_platform');
   const next=credentialOnly?{...config,mcp_servers:servers}:{...config,mcp_servers:servers,platforms};
   const encoded=yaml.dump(next,{schema:yaml.JSON_SCHEMA,noRefs:true,lineWidth:-1,sortKeys:false});
   // Preserve the original bytes on a semantic no-op, including comments.
@@ -185,6 +224,16 @@ function prepareProfile({configuration,mapping,snapshot,token,revoked=false,cred
     {file:envFile,before:envOriginal,contents:credentialPending||credentialOnly?envOriginal:env}];
   if(files.some(row=>row.contents!==null&&Buffer.byteLength(row.contents)>PROFILE_MAX))fail();
   return {files};
+}
+/** K1 trước mọi ghi (bộ đồng bộ liên kết gọi TRƯỚC khi ghi liên kết native): profile sắp nhận token CRM mà bật nền tảng
+ * có nhóm (config.yaml hoặc .env) ⇒ native_profile_shared_platform; không đọc hay ghi gì khác. */
+export function assertNativeProfileDmOnly(mapping) {
+  nativeDirectory(mapping?.home);
+  const raw=readOptional(path.join(mapping.home,'config.yaml'),PROFILE_MAX);
+  if(raw===null)fail();
+  const config=yaml.load(raw,{schema:yaml.JSON_SCHEMA});
+  if(!plain(config))fail();
+  if(sharedPlatforms(platformsOf(config),readOptional(path.join(mapping.home,'.env'),PROFILE_MAX)).length)fail('native_profile_shared_platform');
 }
 export function provisionNativeProfile(options) {
   return withProfileLock(options.mapping.home,publication=>{

@@ -45,11 +45,11 @@ export function createActionReads({ catalog, ...options } = {}) {
           ['expectedEpoch', 'expectedAuthorizationVersion', 'expectedSessionRevision'].some(key => !positive(value.binding[key])) ||
           !(value.binding.expectedPolicyVersion === 0 || positive(value.binding.expectedPolicyVersion))) fail('invalid_request');
       let input; try { input = actionRequest(catalog, operation, value.input); } catch { fail('invalid_request'); }
-      if (operation === 'status') return rpc('hermes_action_status_v1', value.accessToken, { p_binding: value.binding, p_request_id: input.requestId }, callOptions);
+      if (operation === 'status') return rpc('hermes_action_status_v1', value.accessToken, { p_binding: value.binding, p_request_id: input.requestId }, callOptions, { action: true });
       // preview chỉ đọc; auto/apply có thể ghi ⇒ mất ACK là bất định (không bao giờ tự gọi lại).
       return rpc(catalog.get(input.action).rpc, value.accessToken, { p_binding: value.binding, p_action: input.action, p_phase: input.phase,
         p_request_id: input.requestId, p_params: input.params, p_resolved: input.resolved ?? null, p_expected_basis: input.basis ?? null },
-      callOptions, { write: input.phase !== 'preview' });
+      callOptions, { write: input.phase !== 'preview', action: true });
     },
   });
 }

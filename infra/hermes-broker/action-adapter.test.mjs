@@ -57,6 +57,31 @@ test('reads.execute: page RPC from the catalog with the fixed argument set; prev
     error => error.code === 'invalid_request');
 });
 
+test('review #253 mục 4 + 6: lỗi SQL của RPC trang ⇒ kết cục đã biết (onRejected), đúng mã đóng; không bao giờ "chưa rõ" hay "CRM tạm lỗi"', async t => {
+  const pgError = code => ({ code, message: 'm', details: null, hint: null });
+  const write = { op: 'run', action: 'probe.note', phase: 'auto', requestId: id(7), params: { note: 'x' } };
+  for (const [status, code, expect] of [[500, '40001', ['action_rejected', 'state_changed']], [500, '40P01', ['action_rejected', 'state_changed']],
+    [500, '55P03', ['action_rejected', 'state_changed']], [404, 'PGRST202', ['action_rejected', 'action_disabled']],
+    [403, '42501', ['forbidden']], [409, 'PT409', ['context_changed']]]) {
+    const { reads: r } = reads(t, probeCatalog(), () => json(status, pgError(code)));
+    const seen = hooks();
+    await assert.rejects(r.execute('run', { accessToken: JWT, binding: BINDING, input: write }, seen),
+      error => error.code === expect[0] && (expect[1] === undefined || error.reason === expect[1]), code);
+    assert.deepEqual(seen.seen, ['dispatch', 'rejected'], `${code}: kết cục đã biết, không bất định`);
+  }
+  // Lỗi khác (500 không mã đã biết) vẫn là lỗi chung, và lệnh ghi đã gửi thì giữ bất định.
+  const { reads: other } = reads(t, probeCatalog(), () => json(500, pgError('XX000')));
+  const unknown = hooks();
+  await assert.rejects(other.execute('run', { accessToken: JWT, binding: BINDING, input: write }, unknown), error => error.code === 'backend_unavailable');
+  assert.deepEqual(unknown.seen, ['dispatch']);
+  // Lượt xem trước (không ghi) với lỗi tạm: vẫn state_changed, không có hook ghi.
+  const { reads: previewReads } = reads(t, probeCatalog(), () => json(500, pgError('40001')));
+  const preview = hooks();
+  await assert.rejects(previewReads.execute('run', { accessToken: JWT, binding: BINDING, input: { ...write, action: 'probe.confirm', phase: 'preview', params: { amount: 1 } } }, preview),
+    error => error.code === 'action_rejected' && error.reason === 'state_changed');
+  assert.deepEqual(preview.seen, []);
+});
+
 test('auth: function not deployed (PGRST202) ⇒ no action keys; catalog keys only; malformed capabilities ⇒ context_changed; empty catalog makes no call', async t => {
   const membership = { membershipId: id(4), authorizationVersion: 1 };
   const base = { verifySession: async () => ({}), readAuthorization: async () => ({ userId: USER, isSuperadmin: false, membership, epoch: 'e',

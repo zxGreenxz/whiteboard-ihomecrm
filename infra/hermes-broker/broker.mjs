@@ -469,6 +469,10 @@ export function createBroker({
     const path = FAST_READ_OPERATIONS.includes(operation) ? 'fast' : CACHED_READ_OPERATIONS.includes(operation) ? 'cached' : null;
     return path === null ? {} : { authority: domain.readAuthority, initialDomainReadAdmission: true, domainReadPath: path };
   };
+  // Hai họ ghi phiếu chi không bao giờ cùng hiện (D4; review #253): cùng hiện là 65 705 B > trần tools/list 64 000 B. Khi
+  // họ thao tác dùng chung hiện với kết nối này thì họ phiếu chi cũ (crm_expense_*) ẩn khỏi danh sách VÀ bị từ chối khi gọi.
+  const actionFamilyListed = identity => Boolean(action && action.listed(identity.effective).length);
+  const mayUseOldExpense = (identity, operation) => mayUseExpenseAction(identity.effective, operation) && !actionFamilyListed(identity);
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
@@ -476,7 +480,7 @@ export function createBroker({
     ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
-    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
+    ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseOldExpense(identity, expenseActionOperation(tool.name))) : []),
     ...(action ? action.listed(identity.effective) : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
@@ -994,7 +998,7 @@ export function createBroker({
         let input, invalid = false, uncertain = false;
         try { input = expenseActionInput(expenseOp, args); } catch { invalid = true; }
         return call(async (identity, signal) => {
-          if (!mayUseExpenseAction(identity.effective, expenseOp)) fail('tool_not_available');
+          if (!mayUseOldExpense(identity, expenseOp)) fail('tool_not_available');
           if (invalid) fail('invalid_request');
           const receipt = await expense.prepareExpenseAction(presentedToken, expenseOp, input, { signal });
           if (!exactData(receipt, []) || !Object.isFrozen(receipt)) fail('backend_unavailable');

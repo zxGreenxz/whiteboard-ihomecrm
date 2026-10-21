@@ -14,11 +14,13 @@ const freeze = value => {
   if (value && typeof value === 'object') { for (const item of Object.values(value)) freeze(item); Object.freeze(value); }
   return value;
 };
+// Tool ghi không khai idempotent: requestId tuỳ chọn, thiếu thì connector cấp mã mới ⇒ hai lời gọi y hệt là HAI lệnh.
 const annotations = (write) => write
-  ? { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
+  ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
   : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const RUN_GUIDANCE = 'Kết quả confirmation_required = CHƯA ghi: đọc preview cho người dùng, chỉ khi họ đồng ý rõ mới gọi lại y nguyên kèm requestId và confirmToken. ' +
-  'needs_input = CHƯA ghi: hỏi lại người dùng theo detail. action_rejected: báo đúng detail, không tự thử lại. action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
+  'needs_input = CHƯA ghi: hỏi lại người dùng theo detail. action_rejected: báo đúng detail; detail bảo xem trước lại thì gọi lại không kèm confirmToken, còn lại không tự thử lại. ' +
+  'action_outcome_unknown: crm_action_status cùng requestId, không gọi lại.';
 
 export const ACTION_LIST_TOOL = freeze({
   name: 'crm_action_list',
@@ -147,7 +149,8 @@ export function nameUnresolvedDetail({ field, wanted, why, candidates = [], more
   const names = candidates.slice(0, 8).map(entry => entry.buildingName ? `${entry.name} (${entry.buildingName})` : entry.name).map(name => String(name).replace(CONTROL, ' ').trim());
   const list = `${names.join(', ')}${more || candidates.length > 8 ? ', …' : ''}`;
   const kind = why ?? (candidates.length ? 'ambiguous' : 'not_visible');
-  if (kind === 'outside_scope' && names.length) return `${Label} ${quoted(wanted)} (${list}) nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
+  // outside_scope: câu tĩnh, không bao giờ nêu tên ứng viên (SQL không trả tên ngoài phạm vi được ghi; review #253).
+  if (kind === 'outside_scope') return `${Label} ${quoted(wanted)} nằm ngoài phạm vi toà mà kết nối được ghi; không làm được ở đó, báo người dùng.`;
   if (kind === 'ambiguous' && names.length) return `${Label} ${quoted(wanted)} khớp nhiều: ${list} — hỏi người dùng nêu rõ.`;
   return `Không thấy ${label} ${quoted(wanted)} trong phạm vi quyền của anh/chị; hỏi lại người dùng.`;
 }

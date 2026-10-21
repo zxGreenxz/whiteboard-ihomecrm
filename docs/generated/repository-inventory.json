@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 1553,
   "soFileDocBangFs": 403,
-  "tongLoiGoi": 975,
-  "khongPhanLoaiDuoc": 435,
+  "tongLoiGoi": 979,
+  "khongPhanLoaiDuoc": 437,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -91,6 +91,14 @@
   ],
   "chiTiet": [
     {
+      "file": "infra/hermes-zalo-native/binding-reconciler.test.mjs",
+      "soGoi": 19,
+      "loai": {
+        "manifest": 9
+      },
+      "khongPhanLoaiDuoc": 10
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentHostRuntime.test.ts",
       "soGoi": 19,
       "loai": {
@@ -106,14 +114,6 @@
         "powershell": 2
       },
       "khongPhanLoaiDuoc": 13
-    },
-    {
-      "file": "infra/hermes-zalo-native/binding-reconciler.test.mjs",
-      "soGoi": 15,
-      "loai": {
-        "manifest": 7
-      },
-      "khongPhanLoaiDuoc": 8
     },
     {
       "file": "infra/hermes-runtime/host-ownership.test.mjs",

@@ -441,6 +441,10 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc ki�
 - nếu còn họ phiếu chi cũ: 65 705 B, vượt trần — test ghi lại điều kiện D4;
 - production (không nạp danh mục): vẫn 65 tool, 63 832 B.
 
+**Sau review connector/runtime (#253, lượt 6, 22/10):**
+- **Rào ở broker, không dựa vào registry.** Khi họ thao tác hiện thì họ phiếu chi cũ bị ẩn và bị từ chối khi gọi, kể cả khi kết nối giữ cả hai khoá. Lý do: hai họ cùng hiện là 65 761 B, vượt trần.
+- **Đo lại:** họ thao tác 1 959 B (câu hướng dẫn `crm_action_run` dài thêm cho đúng nghĩa `state_changed`; tool ghi không còn khai `idempotentHint`). Đủ quyền 62 606 B; như production 21/10 là 61 668 B, còn 2 332 B.
+
 **Test byte của Đợt 1:**
 1. Production (danh mục rỗng) giữ đúng tập tool hiện nay và ≤ 64 000 B.
 2. Danh mục thử: họ thao tác hiện khi và chỉ khi có thao tác đăng ký và được cấp. Họ thao tác và họ phiếu chi cũ **không bao giờ cùng hiện**, giống nguyên tắc "không quảng bá cả hai họ" của plan Thu chi. Tổng đủ quyền khi có họ thao tác ≤ 64 000 B.
@@ -572,6 +576,17 @@ Mốc 7 ✓: `server.mjs` nối lõi thao tác (danh mục rỗng mặc định,
   - **Bước ghi.** Hàm DEFINER trong `app_private`: chạy lại guard, kiểm bản đã giải còn trong phạm vi (toà của khoá, phòng thuộc đúng toà), rồi đến biên nhận, basis và hàm ghi.
 
   Giải tên vẫn chạy dưới RLS người gọi, vì vỏ là INVOKER (D7). Biên nhận và ánh xạ lý do không cấp EXECUTE cho `authenticated`: chỉ bước ghi gọi. Khối kiểm của migration đòi vỏ có `prosqlbody` (thân SQL-standard). Fixture PGlite/PG17 thu hồi USAGE như production, và đột biến "vỏ quay về plpgsql" làm test đỏ.
+
+  **Sửa theo review độc lập connector/runtime (#253, lượt 6, 22/10):**
+  - cờ "chưa rõ" chỉ tắt khi phản hồi đủ khuôn: lệnh ghi đã gửi mà khuôn lệch ⇒ `action_outcome_unknown` + requestId;
+  - họ phiếu chi cũ bị ẩn và bị chặn khi họ thao tác hiện;
+  - ánh xạ lỗi §6.2 cho RPC trang (PGRST202, lỗi tạm, 42501, PT409);
+  - danh mục chỉ nhận đầu ra `defineAction`, khoá ⊆ `HERMES_ACTION_CAPABILITIES`;
+  - K1 xét cả biến môi trường và chạy trước khi ghi liên kết native;
+  - `outside_scope` là câu tĩnh không tên;
+  - không phản chiếu chuỗi `action` lạ;
+  - câu hướng dẫn `state_changed` đúng nghĩa; tool ghi bỏ `idempotentHint`;
+  - ca khung §12.1 thành `ACTION_PLAN_CASES`.
 
   **Sửa theo review độc lập SQL + quyền (#253, lượt 5, 22/10):**
   - NULL không lọt rào (guard đòi thao tác; bước ghi kiểm `IS NULL`);

@@ -107,3 +107,15 @@ export const TOOL_PLAN_CASES = Object.freeze([
     tool: 'crm_read_report', args: { report: 're_vacant_rooms' }, answerFrom: ['items[].roomName', 'items[].buildingName', 'summary.total'],
     mentions: [{ tool: 'crm_available_rooms', match: /crm_read_report re_vacant_rooms/ }, { tool: 'crm_read_report', match: /re_vacant_rooms/ }] },
 ].map(entry => Object.freeze(entry)));
+
+// Đợt 1 nền chung (NEN-CHUNG-THAO-TAC-GHI.md §12.1, review #253): ca khung của họ thao tác ghi — kết quả nào dẫn tới lời gọi
+// kế tiếp nào. Kiểm trên câu hướng dẫn tĩnh (mô tả crm_action_run, huongDan của kết quả), không gọi model, không gọi SQL.
+//   source  'run' = mô tả quảng bá của crm_action_run; 'unknown_action' / 'confirmation_required' = huongDan của kết quả đó.
+export const ACTION_PLAN_CASES = Object.freeze([
+  { when: 'thao tác lạ (needs_input unknown_action)', next: 'crm_action_list', source: 'unknown_action', match: /Gọi crm_action_list/ },
+  { when: 'mất phản hồi sau lệnh ghi (action_outcome_unknown)', next: 'crm_action_status', source: 'run',
+    match: /action_outcome_unknown: crm_action_status cùng requestId, không gọi lại/ },
+  { when: 'confirmation_required', next: 'không tự gọi lượt 2', source: 'confirmation_required', match: /chỉ khi họ đồng ý rõ ràng SAU khi xem/ },
+  { when: 'action_rejected state_changed (lỗi tạm, dữ liệu đổi)', next: 'crm_action_run không kèm confirmToken', source: 'run',
+    match: /detail bảo xem trước lại thì gọi lại không kèm confirmToken/ },
+].map(entry => Object.freeze(entry)));

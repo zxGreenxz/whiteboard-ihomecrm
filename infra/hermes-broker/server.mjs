@@ -41,7 +41,7 @@ import { createConnectorHealth } from './connector-health.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
-import { PROBE_CONFIRM, PROBE_KEY, PROBE_NOTE } from './action-probe-contract.mjs';
+import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -153,8 +153,10 @@ export function createHermesBackend(configuration = {}) {
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
     // Thao tác ghi dùng chung (crm_action_*): danh mục production Đợt 1 RỖNG (thao tác của từng trang đăng ký sau); lớp quyền
     // với danh mục rỗng chuyển thẳng xuống lớp gốc, không gọi RPC. hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào.
+    // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
+    // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
     const actionCatalog = configuration.actionProbe === true
-      ? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM], { keys: [PROBE_KEY] }) : createActionCatalog([], { keys: [] });
+      ? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM]) : createActionCatalog([]);
     const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });

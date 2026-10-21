@@ -5,6 +5,7 @@
 // Hermes không tự kiểm được `params` (object tự do) nên connector kiểm theo khuôn ở đây và trả gợi ý TĨNH dựng từ
 // khuôn (tên tham số + mô tả kiểu), không bao giờ nhắc lại giá trị mô hình gửi.
 import { ACTION_REASON_CODES } from './action-reasons.mjs';
+import { HERMES_ACTION_CAPABILITIES } from './capability-contract.mjs';
 
 export const ACTION_PAGES = Object.freeze(['expense', 'invoice', 'contract', 'task', 'probe']);
 // money / irreversible: sàn xác nhận nằm trong mã (D2) — cấu hình chỉ siết được. reversible: theo chính sách DB.
@@ -18,6 +19,9 @@ const MAX_PARAMS = 16, MAX_ACTIONS = 128;
 const CONTROL = /[\x00-\x1f\x7f-\x9f\p{Zl}\p{Zp}]/u;
 const MAX_VND = 9_999_999_999_999;
 const fail = () => { throw new TypeError('invalid_action_catalog'); };
+// Chỉ đầu ra của defineAction() mới vào danh mục: một object tự đông cứng (lý do ngoài danh sách, attachments, class lạ…) bị
+// từ chối lúc nạp, vì mọi phép kiểm nằm trong defineAction (review #253).
+const DEFINED = new WeakSet();
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value) &&
   [Object.prototype, null].includes(Object.getPrototypeOf(value));
 // Bản ghi dữ liệu thuần: chỉ khoá chuỗi, enumerable, có value (không accessor).
@@ -73,15 +77,18 @@ export function defineAction({ id, page, key, class: kind, title, rpc, params = 
     if (!PARAM.test(name) || !plain(value) || !Object.isFrozen(value) || !KINDS.includes(value.kind)) fail();
     if (value.kind === 'attachments' && !ATTACHMENTS_READY) fail();
   }
-  return Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
+  const action = Object.freeze({ id, page, key, class: kind, title, rpc, params: Object.freeze({ ...params }), reasons: Object.freeze([...reasons]) });
+  DEFINED.add(action);
+  return action;
 }
 
-/** Gom danh mục. `keys` = tập khoá Action hợp lệ (mặc định truyền từ capability-contract ở nơi dựng). */
-export function createActionCatalog(actions, { keys } = {}) {
-  if (!Array.isArray(actions) || actions.length > MAX_ACTIONS || !Array.isArray(keys) || keys.some(value => typeof value !== 'string')) fail();
+/** Gom danh mục. `keys` = tập khoá Action được nhận; mặc định và trần là HERMES_ACTION_CAPABILITIES của capability-contract
+ * (truyền tập hẹp hơn được, khoá ngoài hợp đồng thì không). */
+export function createActionCatalog(actions, { keys = HERMES_ACTION_CAPABILITIES } = {}) {
+  if (!Array.isArray(actions) || actions.length > MAX_ACTIONS || !Array.isArray(keys) || keys.some(value => typeof value !== 'string' || !HERMES_ACTION_CAPABILITIES.includes(value))) fail();
   const byId = {};
   for (const action of actions) {
-    if (!plain(action) || !Object.isFrozen(action) || !ACTION_ID.test(action.id) || Object.hasOwn(byId, action.id) || !keys.includes(action.key)) fail();
+    if (!DEFINED.has(action) || !plain(action) || !Object.isFrozen(action) || !ACTION_ID.test(action.id) || Object.hasOwn(byId, action.id) || !keys.includes(action.key)) fail();
     byId[action.id] = action;
   }
   Object.freeze(byId);

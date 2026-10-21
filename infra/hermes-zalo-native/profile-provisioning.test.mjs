@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
-import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel, provisionNativeProfile } from './profile-provisioning.mjs';
+import { planNativeProfileUpdate, applyNativeProfileUpdate, readNativeProfileChannel, validateNativeProfileChannel, provisionNativeProfile, assertNativeProfileDmOnly } from './profile-provisioning.mjs';
 import { runProfileProvisioningCli, PROFILE_INPUT_MAX_BYTES } from './profile-provisioning-cli.mjs';
 
 const id=n=>n.repeat(8)+'-'+n.repeat(4)+'-4'+n.repeat(3)+'-8'+n.repeat(3)+'-'+n.repeat(12);
@@ -353,5 +353,41 @@ test('K1: a profile that would carry a CRM token refuses any platform besides za
       provisionNativeProfile(sameUidProfileOptions(f,{[mode]:true}));const actual=yaml.load(read(f.configFile));
       assert.equal(actual.mcp_servers.crm,undefined);assert.deepEqual(actual.platforms[name],value);
     }
+  }
+});
+
+// Review #253 mục 3: Hermes v0.21.6 (gateway/config_env.py) bật nền tảng khi biến môi trường của nó có mặt, trừ khi config.yaml
+// ghi đúng `enabled: false`. K1 phải thấy cả .env; profile thật trên VPS (22/10) không có khối platforms, chỉ owner có HERMES_ZALO_*.
+const withoutPlatforms=(f,platforms)=>{const config=structuredClone(f.config);if(platforms==='absent')delete config.platforms;else config.platforms=platforms;
+  fs.writeFileSync(f.configFile,yaml.dump(config));};
+test('K1 sees the environment: a group platform credential in .env refuses every token path; YAML enabled:false and falsy flags still pass',async t=>{
+  const shared=/^Error: native_profile_shared_platform$/;
+  for(const line of ['TELEGRAM_BOT_TOKEN=000000:fake-not-a-token','export DISCORD_BOT_TOKEN="fake"','SLACK_BOT_TOKEN=x','WHATSAPP_ENABLED=true',
+    'SIGNAL_HTTP_URL=http://127.0.0.1:8080','MATRIX_PASSWORD=x','EMAIL_ADDRESS=a@example.test','API_SERVER_KEY=fake-api-server-key-1234','WEBHOOK_ENABLED=yes','GATEWAY_RELAY_URL=https://relay.example.test']){
+    const f=fixture(t);withoutPlatforms(f,'absent');fs.appendFileSync(f.envFile,line+'\n');
+    const before=snapshot(f.root);
+    assert.throws(()=>planNativeProfileUpdate(f.options,f.request),shared,line);
+    assert.throws(()=>provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential})),shared,line);
+    assert.throws(()=>assertNativeProfileDmOnly({home:f.home}),shared,line);
+    assert.deepEqual(snapshot(f.root),before,line);
+    // Thu hồi vẫn gỡ token.
+    provisionNativeProfile(sameUidProfileOptions(f,{revoked:true}));assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm,undefined);
+  }
+  for(const [line,platforms] of [['TELEGRAM_BOT_TOKEN=000000:fake',{telegram:{enabled:false}}],['WHATSAPP_ENABLED=false','absent'],['WEBHOOK_ENABLED=0','absent'],
+    ['TELEGRAM_BOT_TOKEN=','absent'],['HERMES_ZALO_EXTRA=1','absent'],['# TELEGRAM_BOT_TOKEN=commented','absent']]){
+    const f=fixture(t);withoutPlatforms(f,platforms);fs.appendFileSync(f.envFile,line+'\n');
+    assert.doesNotThrow(()=>assertNativeProfileDmOnly({home:f.home}),line);
+    assert.doesNotThrow(()=>apply(f),line);
+  }
+});
+test('K1 does not refuse the real VPS shape: platforms absent, null or empty provision, bind, relink and revoke',async t=>{
+  for(const platforms of ['absent',null,{}]){
+    let f=fixture(t);withoutPlatforms(f,platforms);apply(f);
+    assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm.headers.Authorization,'Bearer '+f.request.credential,JSON.stringify(platforms));
+    f=fixture(t,{bound:false});withoutPlatforms(f,platforms);apply(f,{...f.request,channel:f.channel});
+    assert.deepEqual(Object.keys(yaml.load(read(f.configFile)).platforms),['zalo_personal']);
+    f=fixture(t);withoutPlatforms(f,platforms);
+    provisionNativeProfile(sameUidProfileOptions(f,{token:f.request.credential}));provisionNativeProfile(sameUidProfileOptions(f,{revoked:true}));
+    assert.equal(yaml.load(read(f.configFile)).mcp_servers.crm,undefined);
   }
 });

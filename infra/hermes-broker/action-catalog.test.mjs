@@ -24,6 +24,16 @@ test('createActionCatalog: mã trùng hay khoá ngoài tập cho phép ⇒ lỗi
   assert.throws(() => createActionCatalog([PROBE_NOTE, PROBE_NOTE], { keys: [PROBE_KEY] }), /invalid_action_catalog/);
   assert.throws(() => createActionCatalog([PROBE_NOTE], { keys: ['tasks.create'] }), /invalid_action_catalog/);
   assert.throws(() => createActionCatalog([{ ...PROBE_NOTE }], { keys: [PROBE_KEY] }), /invalid_action_catalog/, 'phải qua defineAction (đông cứng)');
+  // Review #253 mục 5: object tự đông cứng (lý do ngoài danh sách, attachments, class lạ) không qua defineAction ⇒ từ chối nạp.
+  const forged = Object.freeze({ ...PROBE_NOTE, id: 'probe.forged', reasons: Object.freeze(['totally_new_reason']),
+    params: Object.freeze({ photos: Object.freeze({ kind: 'attachments', optional: true, hint: 'x', max: 5 }) }), class: 'Money' });
+  assert.throws(() => createActionCatalog([forged], { keys: [PROBE_KEY] }), /invalid_action_catalog/);
+  assert.throws(() => createActionCatalog([Object.freeze({ ...PROBE_NOTE })], { keys: [PROBE_KEY] }), /invalid_action_catalog/, 'bản chép đông cứng cũng không');
+  // Khoá mặc định và trần = HERMES_ACTION_CAPABILITIES: không truyền keys vẫn nạp được khoá thử; khoá ngoài hợp đồng thì không.
+  assert.deepEqual([...createActionCatalog([PROBE_NOTE]).keys], [PROBE_KEY]);
+  assert.throws(() => createActionCatalog([], { keys: ['made.up_key'] }), /invalid_action_catalog/);
+  const outside = defineAction({ ...base, id: 'probe.outside', key: 'made.up_key' });
+  assert.throws(() => createActionCatalog([outside]), /invalid_action_catalog/);
   const empty = createActionCatalog([], { keys: [] });
   assert.equal(empty.empty, true); assert.equal(empty.any({ action: [PROBE_KEY] }), false);
   const catalog = probeCatalog();
