@@ -40,14 +40,15 @@ function fixture(t, changes = {}) {
     },
   };
   const service = createConnectorMaintenance({ handoff: { async list() { return changes.rows ?? [row]; } }, backend,
-    clock: () => time, log: changes.log ?? (record => events.push(record)), timers });
+    clock: () => time, log: changes.log ?? (record => events.push(record)), timers,
+    ...(changes.renewBeforeMs ? { renewBeforeMs: changes.renewBeforeMs } : {}) });
   t.after(() => service.close().catch(() => {}));
   return { service, ack, events, counts: () => ({ calls, reads }), advance(ms) { time += ms; }, now: () => time,
     nearExpiry() { expiry = time + 120000; }, renewInDatabase() { expiry = time + 900000; }, setExpiry(value) { expiry = value; },
     alarm() { timers.take(120000)(); },
     async cycle() { const poll = timers.take(30000); if (!poll) service.start(); else poll(); await tick(); } };
 }
-// Several enrolled connections with distinct 8-character ID prefixes and their own database expiry.
+// Several enrolled connections (distinct first and last 8 ID characters) with their own database expiry.
 function fleet(t, behaviours) {
   let time = NOW;
   const timers = fakeTimers(), events = [];
@@ -69,7 +70,7 @@ function fleet(t, behaviours) {
     log: record => events.push(record), timers });
   t.after(() => service.close().catch(() => {}));
   return { service, rows, events, calls: () => db.map(item => item.calls), reads: () => db.map(item => item.reads),
-    prefix: n => rows[n].connectionId.slice(0, 8), advance(ms) { time += ms; },
+    suffix: n => rows[n].connectionId.slice(-8), advance(ms) { time += ms; }, // as /settings/hermes shows "Kết nối …xxxxxxxx"
     async cycle() { const poll = timers.take(30000); if (!poll) service.start(); else poll(); await tick(); } };
 }
 
@@ -160,12 +161,46 @@ test('shutdown waits actual maintenance drain even when the observed operation a
   const f = fixture(t, { begin() { return settle(Promise.reject(Error('timeout')), drain.promise); } });
   await f.cycle(); let closed = false; const close = f.service.close().then(() => { closed = true; });
   await tick(); assert.equal(closed, false); drain.resolve(); await close; assert.equal(closed, true);
+  assert.deepEqual(actions(f.events), []); // a shutdown-cancelled outcome is neither retried nor logged as a failure
 });
 
 test('unknown dependency drain fails shutdown so host keeps credential and ownership resources', async t => {
   const f = fixture(t, { begin(ack) { return settle(Promise.resolve(ack), Promise.reject(Error('PRIVATE DETAILS'))); } });
   await f.cycle(); assert.deepEqual(f.service.status(), status('retained', { retained: 1 }));
   await assert.rejects(f.service.close(), { message: 'connector_maintenance_retained' });
+  assert.deepEqual(actions(f.events).map(event => [event.action, event.code]), [['retained', 'drain_unknown']]);
+});
+
+test('shutdown during a pending lookup logs no failure for it', async t => {
+  const lookup = deferred();
+  const f = fixture(t, { resolve: () => lookup.promise });
+  await f.cycle(); const closing = f.service.close();
+  lookup.reject(coded('backend_unavailable')); await closing;
+  assert.deepEqual(actions(f.events), []); assert.equal(f.service.status().state, 'closed');
+});
+
+test('a retained connection stays retained after its row leaves the WAL listing, so shutdown still keeps the host resources', async t => {
+  const rows = [{ ...row }];
+  const f = fixture(t, { rows, begin(ack) { return settle(Promise.resolve(ack), Promise.reject(Error('PRIVATE drain'))); } });
+  await f.cycle(); rows.length = 0; await f.cycle();
+  assert.deepEqual(f.service.status(), status('retained', { retained: 1 }));
+  await assert.rejects(f.service.close(), { message: 'connector_maintenance_retained' });
+});
+
+test('an owner whose expiry has already passed is final as expired, not blocked', async t => {
+  const f = fixture(t, { resolve: () => owner(row, NOW) });
+  await f.cycle();
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.deepEqual(actions(f.events).map(event => [event.action, event.code]), [['expired', 'token_expired']]);
+});
+
+test('an uncertain drain that settles while close() waits is still retained, so shutdown keeps the host resources', async t => {
+  const result = deferred(), drain = deferred();
+  const f = fixture(t, { begin: () => settle(result.promise, drain.promise) });
+  await f.cycle(); const closing = f.service.close();
+  result.reject(coded('maintenance_outcome_unknown')); drain.reject(Error('PRIVATE uncertain drain'));
+  await assert.rejects(closing, { message: 'connector_maintenance_retained' });
+  assert.deepEqual(f.service.status(), status('retained', { retained: 1 }));
   assert.deepEqual(actions(f.events).map(event => [event.action, event.code]), [['retained', 'drain_unknown']]);
 });
 
@@ -262,6 +297,71 @@ test('retries back off 30, 60, 120 s, finish ahead of the token expiry, then the
   assert.deepEqual(states(f.events), ['retrying', 'needs_attention']);
 });
 
+test('with a 10-minute renewal lead the fourth retry waits the full 240 s before the expiry cap applies', async t => {
+  const f = fixture(t, { renewBeforeMs: 600000, begin() { return settle(Promise.reject(coded('maintenance_rejected'))); } });
+  f.setExpiry(NOW + 600000);
+  await f.cycle();
+  for (let guard = 0; guard < 10 && !f.service.status().requiresReconnect; guard++) {
+    f.advance(Math.max(actions(f.events).at(-1).retryInMs, 30000)); await f.cycle();
+  }
+  assert.deepEqual(actions(f.events).map(event => [event.action, event.retryInMs]), [['renewal_failed', 30000], ['renewal_failed', 60000],
+    ['renewal_failed', 120000], ['renewal_failed', 240000], ['renewal_failed', 120000], ['renewal_failed', 0], ['expired', undefined]]);
+});
+
+test('unauthorized before the last confirmed expiry is not final: the retry keeps its backoff until that expiry passes', async t => {
+  let refusing = false;
+  const f = fixture(t, { begin() { refusing = true; return settle(Promise.reject(coded('maintenance_outcome_unknown'))); },
+    resolve() { if (refusing) throw coded('unauthorized'); return owner(row, NOW + 300000); } });
+  await f.cycle(); f.advance(30000); await f.cycle();
+  assert.deepEqual(f.service.status(), status('retrying', { retrying: 1 }));
+  for (let guard = 0; guard < 10 && !f.service.status().requiresReconnect; guard++) {
+    f.advance(Math.max(actions(f.events).at(-1).retryInMs, 30000)); await f.cycle();
+  }
+  assert.deepEqual(actions(f.events).map(({ action, code, attempt, retryInMs, deniedForMs }) => [action, code, attempt, retryInMs, deniedForMs]), [
+    ['renewal_failed', 'maintenance_outcome_unknown', 1, 30000, undefined], ['resolve_failed', 'unauthorized', 2, 60000, undefined],
+    ['resolve_failed', 'unauthorized', 3, 120000, undefined], ['resolve_failed', 'unauthorized', 4, 60000, undefined],
+    ['resolve_failed', 'unauthorized', 5, 0, undefined], ['expired', 'unauthorized', undefined, undefined, 270000]]);
+  assert.equal(f.now() - NOW, 300000); // final exactly at the confirmed expiry, never on the first refusal
+  assert.deepEqual(f.counts(), { calls: 1, reads: 6 });
+});
+
+test('a token refused at every read for longer than TTL plus clock tolerance is final without a known expiry (it died before this process started)', async t => {
+  const f = fixture(t); f.setExpiry(NOW - 1); // the fixture database refuses an expired token as unauthorized
+  await f.cycle();
+  while (f.now() - NOW < 900000) { f.advance(30000); await f.cycle(); }
+  assert.deepEqual(f.service.status(), status('unavailable')); // 15 minutes of refusals: not yet beyond TTL + 5 s
+  assert.deepEqual(actions(f.events).map(event => event.action), ['resolve_failed']);
+  f.advance(30000); await f.cycle();
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.deepEqual(actions(f.events).map(({ connectionId, action, code, deniedForMs }) => [connectionId, action, code, deniedForMs]),
+    [[row.connectionId.slice(-8), 'resolve_failed', 'unauthorized', undefined], [row.connectionId.slice(-8), 'expired', 'unauthorized', 930000]]);
+  assert.deepEqual(f.counts(), { calls: 0, reads: 32 });
+  f.advance(600000); await f.cycle(); f.advance(600000); await f.cycle();
+  assert.deepEqual(f.counts(), { calls: 0, reads: 32 }); // final: the database is not polled again
+});
+
+test('any other answer restarts the refusal clock: an outage read between refusals delays finality', async t => {
+  const f = fixture(t, { resolve() { throw coded(f.now() - NOW === 450000 ? 'backend_unavailable' : 'unauthorized'); } });
+  await f.cycle();
+  while (f.now() - NOW < 1380000) { f.advance(30000); await f.cycle(); } // 900 s after the refusals resumed at 480 s
+  assert.equal(f.service.status().requiresReconnect, 0);
+  f.advance(30000); await f.cycle();
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.equal(actions(f.events).at(-1).deniedForMs, 930000);
+});
+
+test('a lookup served between refusals restarts the clock; its confirmed expiry then decides finality', async t => {
+  // Refused until 600 s, served once at 630 s (expiry at 1530 s, next due at 1230 s), refused again from 1230 s.
+  const f = fixture(t, { resolve() { if (f.now() - NOW === 630000) return owner(row, NOW + 1530000); throw coded('unauthorized'); } });
+  await f.cycle();
+  while (f.now() - NOW < 1500000) { f.advance(30000); await f.cycle(); }
+  assert.equal(f.service.status().requiresReconnect, 0); // 1500 s of history, but only 270 s of refusals since it was served
+  f.advance(30000); await f.cycle();
+  assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 }));
+  assert.deepEqual(actions(f.events).map(event => event.action), ['resolve_failed', 'resolve_recovered', 'resolve_failed', 'expired']);
+  assert.equal(actions(f.events).at(-1).deniedForMs, 300000);
+});
+
 test('one failing connection keeps its own backoff while every other connection is still renewed on schedule', async t => {
   const f = fleet(t, [() => settle(Promise.reject(coded('backend_unavailable'))), undefined]);
   await f.cycle(); assert.deepEqual(f.calls(), [1, 1]);
@@ -269,9 +369,9 @@ test('one failing connection keeps its own backoff while every other connection 
   // First: attempts at 0, 30 and 90 s, final at its 120 s expiry. Second: renewed at 0 and 600 s.
   assert.deepEqual(f.calls(), [3, 2]);
   assert.deepEqual(f.service.status(), status('needs_attention', { requiresReconnect: 1 }));
-  assert.deepEqual(actions(f.events).filter(event => event.connectionId === f.prefix(0)).map(event => event.action),
+  assert.deepEqual(actions(f.events).filter(event => event.connectionId === f.suffix(0)).map(event => event.action),
     ['renewal_failed', 'renewal_failed', 'renewal_failed', 'expired']);
-  assert.equal(actions(f.events).filter(event => event.connectionId === f.prefix(1)).length, 0);
+  assert.equal(actions(f.events).filter(event => event.connectionId === f.suffix(1)).length, 0);
 });
 
 test('an uncertain drain retains only that connection: later rows and later polls are still renewed, and close() retains', async t => {
@@ -281,7 +381,7 @@ test('an uncertain drain retains only that connection: later rows and later poll
   for (let poll = 0; poll < 20; poll++) { f.advance(30000); await f.cycle(); }
   assert.deepEqual(f.calls(), [1, 2]); assert.deepEqual(f.reads(), [1, 2]);
   await assert.rejects(f.service.close(), { message: 'connector_maintenance_retained' });
-  assert.deepEqual(actions(f.events).map(event => [event.connectionId, event.action, event.code]), [[f.prefix(0), 'retained', 'drain_unknown']]);
+  assert.deepEqual(actions(f.events).map(event => [event.connectionId, event.action, event.code]), [[f.suffix(0), 'retained', 'drain_unknown']]);
   assert.deepEqual(f.events.filter(event => event.event === 'connector_maintenance_state').map(({ state, retained, halted }) => [state, retained, halted]),
     [['retained', 1, false]]);
 });
@@ -304,6 +404,7 @@ test('maintenance log lines carry fixed fields only: no token, digest, operation
     ack => settle(Promise.resolve(ack), Promise.reject(Error('PRIVATE drain'))),
     () => { throw Object.assign(Error('PRIVATE refusal'), { code: 'invalid_request' }); },
     ack => settle(Promise.resolve({ ...ack, token: ack.connectionId })),
+    () => settle(Promise.reject(Object.assign(Error('PRIVATE'), { code: 'hc_' + 'z'.repeat(10) }))), // short, token-like code
   ]);
   await f.cycle(); f.advance(30000); await f.cycle();
   const text = JSON.stringify(f.events);
@@ -315,18 +416,22 @@ test('maintenance log lines carry fixed fields only: no token, digest, operation
   }
   assert(!text.includes('PRIVATE'));
   const allowed = new Set(['event', 'ts', 'state', 'previous', 'requiresReconnect', 'retrying', 'retained', 'halted', 'code', 'phase',
-    'connectionId', 'action', 'attempt', 'retryInMs', 'expiresInMs', 'source', 'status', 'reconciled']);
+    'connectionId', 'action', 'attempt', 'retryInMs', 'expiresInMs', 'deniedForMs', 'source', 'status', 'reconciled']);
   for (const event of f.events) {
     assert(Object.keys(event).every(key => allowed.has(key)), Object.keys(event).join());
     assert(['connector_maintenance_state', 'connector_maintenance_connection'].includes(event.event));
     assert([NOW, NOW + 30000].map(time => new Date(time).toISOString()).includes(event.ts));
-    if (event.connectionId !== undefined) assert.match(event.connectionId, /^[0-9a-f]{8}$/);
+    if (event.connectionId !== undefined) {
+      assert.match(event.connectionId, /^[0-9a-f]{8}$/);
+      assert(f.rows.some(item => item.connectionId.slice(-8) === event.connectionId), 'connectionId is the last 8 characters shown in the UI');
+    }
   }
   const first = actions(f.events);
   assert.deepEqual(first.filter(event => event.attempt === 1).map(event => [event.connectionId, event.action, event.code, event.status]), [
-    [f.prefix(0), 'renewal_failed', 'unknown', undefined], [f.prefix(1), 'renewal_unconfirmed', 'ack_not_renewed', 'unknown'],
-    [f.prefix(3), 'renewal_not_dispatched', 'invalid_request', undefined], [f.prefix(4), 'renewal_unconfirmed', 'ack_malformed', undefined]]);
-  assert.deepEqual(first.filter(event => event.action === 'retained').map(event => [event.connectionId, event.code]), [[f.prefix(2), 'drain_unknown']]);
+    [f.suffix(0), 'renewal_failed', 'unknown', undefined], [f.suffix(1), 'renewal_unconfirmed', 'ack_not_renewed', 'unknown'],
+    [f.suffix(3), 'renewal_not_dispatched', 'invalid_request', undefined], [f.suffix(4), 'renewal_unconfirmed', 'ack_malformed', undefined],
+    [f.suffix(5), 'renewal_failed', 'unknown', undefined]]);
+  assert.deepEqual(first.filter(event => event.action === 'retained').map(event => [event.connectionId, event.code]), [[f.suffix(2), 'drain_unknown']]);
 });
 
 test('a healthy poll writes nothing; a read outage is logged once and its recovery once', async t => {

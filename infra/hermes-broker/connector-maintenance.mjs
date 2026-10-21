@@ -37,8 +37,9 @@ const codeOf = error => {
  * RETRY_DELAYS_MS backoff the connection is re-read through resolveConnection,
  * the live SQL/Auth/CRM source of truth: an advanced expiry is a committed
  * renewal and is only scheduled; an unchanged one re-enters the same backend
- * lane; a token the database stops serving after its last expiry is final.
- * Re-entering that lane replays nothing:
+ * lane. A token the database refuses (unauthorized) past its last confirmed
+ * expiry, or at every read for longer than TTL + clock tolerance, is final:
+ * nothing renews it while its lookups fail. Re-entering the lane replays nothing:
  * - renewal (hermes_store_renew_connection_v1) is a CAS on the epoch, session
  *   revision and token expiry the lane has just re-read, and only moves this
  *   token's expiry forward within LEAST(now + TTL, session expiry, 30 days);
@@ -50,11 +51,16 @@ const codeOf = error => {
  * - every attempt re-checks live authority; changed ownership/policy fails it.
  * Final for this process: owner mismatch or out-of-bounds expiry, an expired
  * token, and an uncertain drain. That connection keeps its backend fence and
- * resources and close() fails so the host retains them; the other connections
- * continue. Only a malformed handle, whose work cannot be observed, halts all.
+ * resources and close() fails so the host retains them; the loop goes on with
+ * the others. Their fences are separate, but a provider-refresh drain failure
+ * also latches the shared refresh manager/provider, so every later refresh in
+ * this process fails and retains its connection too: a retained line calls for
+ * an early controlled restart. Only a malformed handle, whose work cannot be
+ * observed, halts the whole loop.
  * Optional log(record) gets fixed connector_maintenance_state (on change) and
- * connector_maintenance_connection records with an 8-character connection ID
- * prefix and normalized codes; never a token, digest or error message.
+ * connector_maintenance_connection records with the last 8 characters of the
+ * connection ID (as /settings/hermes shows it) and normalized codes; never a
+ * token, digest or error message.
  */
 export function createConnectorMaintenance({ handoff, backend, clock = Date.now, pollIntervalMs = 30000,
   renewBeforeMs = 300000, stallAfterMs = 120000, log, timers = { setTimeout, clearTimeout } } = {}) {
@@ -75,7 +81,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     try { const time = clock(); if (positive(time)) ts = new Date(time).toISOString(); } catch { /* The timestamp is optional. */ }
     try { log(Object.freeze({ event, ts, ...fields })); } catch { /* A log sink never changes maintenance. */ }
   };
-  const note = (row, action, fields = {}) => emit('connector_maintenance_connection', { connectionId: row.connectionId.slice(0, 8), action, ...fields });
+  const note = (row, action, fields = {}) => emit('connector_maintenance_connection', { connectionId: row.connectionId.slice(-8), action, ...fields });
   const counts = () => {
     const result = { requiresReconnect: 0, retrying: 0, retained: 0 };
     for (const reason of stopped.values()) result[reason === 'retained' ? 'retained' : 'requiresReconnect']++;
@@ -93,7 +99,9 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     const previous = reported; reported = next;
     emit('connector_maintenance_state', { state: next, previous, ...counts(), halted, ...fields });
   };
-  const stop = (row, reason, code) => { tracked.delete(row.operationId); stopped.set(row.operationId, reason); note(row, reason, { code }); };
+  const stop = (row, reason, code, fields = {}) => {
+    tracked.delete(row.operationId); stopped.set(row.operationId, reason); note(row, reason, { code, ...fields });
+  };
   // Backend steps run one at a time, so one alarm reports a step outliving
   // stallAfterMs. The loop still awaits its actual settlement and drain.
   const watched = async (row, phase, work) => {
@@ -143,8 +151,10 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
       try { result = await operation.result; } catch (error) { failed = true; failure = error; }
       try { await operation.drained; } catch { drainFailed = true; }
     });
-    // Unknown drain: the backend keeps this token fenced and its resources owned.
-    // Never re-admit it here; the other connections do not share them.
+    // Unknown drain, checked before closing so a drain failing during close() is
+    // still retained: the backend keeps this token fenced and its resources owned.
+    // Never re-admit it here. Other tokens have their own fences, but a failed
+    // provider-refresh drain latches the shared refresh manager for all of them.
     if (drainFailed) { stop(row, 'retained', 'drain_unknown'); return; }
     if (closing) return;
     if (failed) { retryLater(row, item, 'renewal_failed', { code: codeOf(failure) }); return; }
@@ -166,7 +176,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     const fingerprint = createHash('sha256').update(JSON.stringify([...OWNER.map(key => row[key]), row.token])).digest('hex');
     let item = tracked.get(row.operationId);
     if (item?.fingerprint !== fingerprint) {
-      item = { fingerprint, nextDue: 0, expiresAt: undefined, retry: undefined, condition: 'ok' };
+      item = { fingerprint, nextDue: 0, expiresAt: undefined, retry: undefined, deniedSince: undefined, condition: 'ok' };
       tracked.set(row.operationId, item);
     }
     if (checkTime() < item.nextDue) return true;
@@ -174,10 +184,16 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     try { owner = await watched(row, 'resolve', () => backend.resolveConnection(row.token, { signal: controller.signal })); }
     catch (error) {
       if (closing) return true;
-      const code = codeOf(error);
-      // The database stops serving a token at its expiry; past the last
-      // confirmed one, unauthorized is final (a renewal could not revive it).
-      if (code === 'unauthorized' && item.expiresAt !== undefined && checkTime() >= item.expiresAt) { stop(row, 'expired', code); return true; }
+      const code = codeOf(error), now = checkTime();
+      // Consecutive refusals start a clock; any other answer restarts it.
+      item.deniedSince = code === 'unauthorized' ? item.deniedSince ?? now : undefined;
+      // The database stops serving a token at its expiry, and only this loop
+      // renews it (the store principal's RPC, after a successful lookup), never
+      // while lookups fail. So unauthorized is final past the last confirmed
+      // expiry, or once refusals outlast any renewal (TTL + DB clock tolerance);
+      // the latter also settles WAL rows that died before this process started.
+      if (code === 'unauthorized' && ((item.expiresAt !== undefined && now >= item.expiresAt) ||
+        now - item.deniedSince >= TTL_MS + DB_CLOCK_SKEW_MS)) { stop(row, 'expired', code, { deniedForMs: now - item.deniedSince }); return true; }
       if (item.retry) { retryLater(row, item, 'resolve_failed', { code }); return true; }
       // Read-only discovery may recover after a temporary outage: next poll.
       if (item.condition !== `resolve:${code}`) { item.condition = `resolve:${code}`; note(row, 'resolve_failed', { code }); }
@@ -185,6 +201,7 @@ export function createConnectorMaintenance({ handoff, backend, clock = Date.now,
     }
     if (closing) return true;
     const now = checkTime();
+    item.deniedSince = undefined;
     // Token expiries are DB clock_timestamp() + TTL after any renewal.
     if (!exact(owner, [...OWNER, 'expiresAt']) || !positive(owner.expiresAt)) { stop(row, 'blocked', 'owner_invalid'); return true; }
     if (!same(row, owner)) { stop(row, 'blocked', 'owner_mismatch'); return true; }
