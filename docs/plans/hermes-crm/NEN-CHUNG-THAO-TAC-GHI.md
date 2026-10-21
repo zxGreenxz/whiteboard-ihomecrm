@@ -401,6 +401,12 @@ Tên migration lấy qua `scripts/tao-ten-migration.mjs` ở Mốc 6. Việc ki�
 
 **Hệ quả cho lộ trình:** thao tác thật đầu tiên chỉ hiện được khi họ phiếu chi cũ đã tắt (câu 4 của chủ), hoặc khi rút được ≥ 1 665 B ở chỗ khác. Nếu trang đầu tiên là Hợp đồng (việc của chủ) mà câu 4 chưa có trả lời, phải chọn nguồn rút khác. Quyết định D4.
 
+**Đo thật ở Mốc 4** (`action-tools-budget.test.mjs`, `action-contract.test.mjs`, danh mục thử):
+- ba tool chung: `crm_action_list` 498 + `crm_action_run` 968 + `crm_action_status` 404 = **1 870 B** (`crm_action_run` dài hơn bản nháp 40 B vì thêm câu `needs_input`);
+- đủ quyền + họ thao tác + bỏ khoá `income_expenses.create` (D4): 65 tool, **62 550 B**, còn 1 450 B;
+- nếu còn họ phiếu chi cũ: 65 705 B, vượt trần — test ghi lại điều kiện D4;
+- production (không nạp danh mục): vẫn 65 tool, 63 832 B.
+
 **Test byte của Đợt 1:**
 1. Production (danh mục rỗng) giữ đúng tập tool hiện nay và ≤ 64 000 B.
 2. Danh mục thử: họ thao tác hiện khi và chỉ khi có thao tác đăng ký và được cấp. Họ thao tác và họ phiếu chi cũ **không bao giờ cùng hiện**, giống nguyên tắc "không quảng bá cả hai họ" của plan Thu chi. Tổng đủ quyền khi có họ thao tác ≤ 64 000 B.
@@ -440,7 +446,7 @@ Thứ tự theo bài học R2a/B5c: connector chịu được cả bản cũ l�
   - kiểm tham số trả đúng gợi ý tĩnh;
   - `crm_action_list` chỉ liệt kê thao tác được cấp;
   - định tuyến A và B ra cùng thao tác.
-- **`action-broker.test.mjs`** với danh mục thử, kiểm cả luồng:
+- **`action-runtime.test.mjs`** (qua broker thật) với danh mục thử, kiểm cả luồng; `action-catalog.test.mjs` cho sổ danh mục và kiểm tham số; `action-tools-budget.test.mjs` cho ngân sách byte:
   - thao tác `money` luôn xác nhận dù chính sách ghi `never`;
   - thao tác `reversible` ghi thẳng khi chính sách là `never`, xác nhận khi là `always`;
   - chính sách thiếu thì đóng an toàn;
@@ -518,6 +524,8 @@ Mỗi ca chạy 3 lần. Chấm theo `app_private.hermes_action_receipts` và au
 ## 13. Các mốc hiện thực
 
 Mỗi mốc là một commit có test xanh.
+
+**Tiến độ (21/10):** Mốc 2 ✓ (`8b14fe5e2`), Mốc 3 ✓, Mốc 4 ✓ (khung + danh mục thử, chưa nối adapter SQL). Lõi vòng đời nằm ở `infra/hermes-broker/action-runtime.mjs`; broker chỉ móc ba điểm (định nghĩa tool, danh sách tool, một nhánh `callTool`) qua tuỳ chọn `actions` của `createBroker`. `server.mjs` chưa truyền `actions` nên production không đổi.
 
 | Mốc | Nội dung | Migration | Công |
 | --- | --- | --- | --- |

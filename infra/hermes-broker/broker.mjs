@@ -318,6 +318,7 @@ export function createBroker({
   tasks,
   customers,
   expenses,
+  actions,
   dependencyScope,
   clock = Date.now,
   limits: suppliedLimits = {},
@@ -370,6 +371,18 @@ export function createBroker({
     if (!injectedAuthority || ['prepareExpenseAction', 'finalizeExpenseAction'].some(key => typeof expenses?.[key] !== 'function') ||
         typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_expense_action_service_required');
     expense = Object.fromEntries(['prepareExpenseAction', 'finalizeExpenseAction'].map(key => [key, expenses[key].bind(expenses)]));
+  }
+  // Đợt 1 nền chung: họ thao tác ghi dùng chung (crm_action_*), lõi ở action-runtime.mjs; broker chỉ móc định nghĩa,
+  // danh sách tool và một nhánh callTool. Danh mục rỗng hay kết nối không giữ khoá thao tác nào ⇒ không hiện tool nào.
+  let action;
+  if (actions !== undefined) {
+    if (!injectedAuthority || !Array.isArray(actions?.definitions) || ['listed', 'route', 'begin', 'handle', 'finish', 'context'].some(key => typeof actions?.[key] !== 'function') ||
+        typeof dependencyScope?.begin !== 'function' || typeof dependencyScope?.track !== 'function') throw new TypeError('trusted_action_runtime_required');
+    for (const tool of actions.definitions) {
+      if (definitions.has(tool.name)) throw new TypeError('ambiguous_tool_definition');
+      definitions.set(tool.name, tool);
+    }
+    action = actions;
   }
   let domain;
   if (domains !== undefined) {
@@ -464,6 +477,7 @@ export function createBroker({
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
     ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseExpenseAction(identity.effective, expenseActionOperation(tool.name))) : []),
+    ...(action ? action.listed(identity.effective) : []),
     ...(domain ? DOMAIN_TOOLS.filter(tool => mayUseDomain(identity.effective, domainOperation(tool.name))) : []),
     ...(schedule ? SCHEDULE_TOOLS.filter(tool => !RETIRED_SCHEDULE_OPERATIONS.includes(scheduleOperation(tool.name)) &&
       mayUseSchedule(identity.effective, scheduleOperation(tool.name))) : []),
@@ -884,6 +898,14 @@ export function createBroker({
           if (invalid) fail('invalid_request');
           return { content: [{ type: 'text', text: JSON.stringify({ requestId: randomUUID() }) }], isError: false };
         }, undefined, external ? { authority: external.authority } : {});
+      }
+      // Thao tác ghi dùng chung: needs_input là kết quả thường; lỗi thật mang reason; mất phản hồi ⇒ action_outcome_unknown.
+      const actionRoute = action?.route(name);
+      if (actionRoute) {
+        const plan = action.begin(actionRoute, args);
+        return call((identity, signal) => action.handle(plan, presentedToken, identity, signal),
+          plan.op === 'list' ? undefined : (receipt, identity, signal) => action.finish(plan, presentedToken, receipt, identity, signal),
+          action.context(plan));
       }
       const taskOperation = taskActionOperation(name);
       if (task && taskOperation) {
