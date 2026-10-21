@@ -15,6 +15,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const PATCH = 'supabase/migrations/20261021114556_contract_termination_second_refund_guard_v1.sql';
+// Câu 26 (22/10/2026) thay định nghĩa sống của approve: thân P0a + một dòng kiểm contracts.terminate.
+const Q26_SOURCE = 'supabase/migrations/20261021180057_contract_lifecycle_permission_guard_v1.sql';
 const APPROVE_SOURCE = 'supabase/migrations/20260915074638_coc_thanh_ly_va_cap_hoan_coc.sql';
 const GUARD_SOURCE = 'supabase/migrations/20260731011000_slice_minus1_guards.sql';
 const EXIT_SOURCE = 'supabase/migrations/20260928015559_contract_exit_case_workflow.sql';
@@ -135,6 +137,11 @@ ${physical('p_move_out_date')}
     // Áp hai lượt: lane kiểm idempotency, lượt hai phải đi nhánh "đã vá".
     await db.exec(readFileSync(PATCH, 'utf8'));
     await db.exec(readFileSync(PATCH, 'utf8'));
+    // Rồi định nghĩa SỐNG của approve (câu 26) — mọi khẳng định P0a bên dưới chạy trên bản đó.
+    // Stub can_do_on_building ở trên không xét khoá, nên dòng kiểm contracts.terminate qua được
+    // đúng như người đủ quyền; ca thiếu quyền của câu 26 nằm ở contractLifecyclePermissionGuardMigration.
+    await db.exec(sliceFunction(Q26_SOURCE, 'CREATE OR REPLACE FUNCTION app_private.require_building_perm_v1', '$fn$;'));
+    await db.exec(sliceFunction(Q26_SOURCE, 'CREATE OR REPLACE FUNCTION public.approve_contract_termination_v1', '$function$;'));
   }
 }
 
@@ -397,6 +404,13 @@ describe('migration — ghim bản đang chạy và tự kiểm catalog', () => 
     } finally {
       await after.exec('ROLLBACK');
     }
+  });
+
+  it('after chạy định nghĩa sống của approve (rào P0a + kiểm contracts.terminate của câu 26)', async () => {
+    const def = (await after.query<{ def: string }>(
+      "SELECT pg_get_functiondef('public.approve_contract_termination_v1(uuid,text)'::regprocedure) AS def")).rows[0].def;
+    expect(def).toContain('[TERMINATION_CONTRACT_CLOSED]');
+    expect(def).toContain("'contracts.terminate');");
   });
 
   it('trigger a01 chỉ chạy trên đường REST và hàm trigger không ai gọi trực tiếp được', async () => {
