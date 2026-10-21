@@ -113,17 +113,22 @@ test('with a buildingId every kind answers exactly as v5 (results and error code
  const inputs=[options('buildings'),options('buildings',null,{query:'Nhà'}),options('rooms',BUILDING),options('rooms',FOREIGN),options('rooms',COMPANY_ID),
   options('jobTypes',BUILDING),options('jobTypes',FOREIGN),options('jobTypes',COMPANY_ID),options('assignees',BUILDING),options('assignees',BUILDING,{limit:1}),
   options('assignees',BUILDING,{limit:1,cursor:ASSIGNEE}),options('assignees',BUILDING,{query:'%'}),options('assignees',COMPANY_ID),
-  options('rooms',BUILDING,{cursor:ROOM}),options('jobTypes',BUILDING,{query:'sửa'})];
+  options('rooms',BUILDING,{cursor:ROOM}),options('jobTypes',BUILDING,{query:'sửa'}),options('buildings',BUILDING)];
  const states=[['default',''],['buildings hidden','UPDATE public.fixture_task_acl SET building_rls=false'],['rooms hidden','UPDATE public.fixture_task_acl SET room_rls=false'],
   ['overlay gone','UPDATE public.authorization_scopes SET building_id=null'],['CRM elsewhere',`UPDATE public.fixture_task_acl SET building_id='${FOREIGN}'`]];
+ const seen={rows:0,empty:0,denied:0,invalid:0};
  for(const [label,sql] of states){
   for(const f of [before,after])if(sql)await f.db.exec(sql);
   for(const value of inputs){
-   assert.deepEqual(await outcome(after.call(value)),await outcome(before.call(value)),`${label}: ${JSON.stringify(value)}`);
+   const expected=await outcome(before.call(value));
+   assert.deepEqual(await outcome(after.call(value)),expected,`${label}: ${JSON.stringify(value)}`);
+   seen[expected.value?(expected.value.items.length?'rows':'empty'):expected.code==='42501'?'denied':'invalid']++;
   }
   for(const f of [before,after])await f.db.exec(`UPDATE public.fixture_task_acl SET building_rls=true,room_rls=true,building_id='${BUILDING}';
    UPDATE public.authorization_scopes SET building_id='${BUILDING}'`);
  }
+ // Not a vacuous comparison: every outcome class occurred (rows, RLS-empty, 42501, 22023 for buildings with an id).
+ for(const [kind,count] of Object.entries(seen))assert.ok(count>=3,`${kind}: ${JSON.stringify(seen)}`);
 });
 
 test('migration keeps the reviewed signatures, owner, ACL and entry OIDs, and refuses an unknown guard body',{timeout:60000},async t=>{

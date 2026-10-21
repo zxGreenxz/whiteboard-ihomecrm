@@ -19,16 +19,18 @@ const shaped = args => normalizeToolArguments(TOOL, args);
 // One connection; `finalizeTask` decides what the CRM side answers (a value or a BrokerError).
 function brokerWith(t, { action = ['tasks.create'], finalizeTask = async () => ({ ok: true }) } = {}) {
   const scope = createDependencyScope(); t.after(() => scope.close());
-  const CONNECTION = id('a'), read = [], seen = [], audits = [];
+  const CONNECTION = id('a'), read = [], seen = [], audits = [], timings = [];
   const identity = { row: { id: CONNECTION, assistantId: id('b'), userId: id('c'), organizationId: id('d'), expiresAt: Date.now() + 600_000,
     epoch: 1, state: 'active', restrictions: { read, action } }, effective: { read, action }, isSuperadmin: false,
   policyEpoch: 'a'.repeat(64), contextVersion: 'b'.repeat(64), assistantScopeIds: [id('e')],
   scopesByPermission: Object.fromEntries(action.map(key => [key, { buildingIds: [BUILDING], cashbookIds: [] }])) };
   const broker = createBroker({ authority: { identifyConnection: async () => ({ connectionId: CONNECTION }), resolve: async () => identity, checkUnchanged: async () => {} },
     dependencyScope: scope, audit: async entry => { audits.push(entry.outcome); }, limits: { maxResultBytes: 65_536 },
+    callLog: record => { if (record.operation === 'tools/call') timings.push([record.tool, record.outcome, record.code]); },
     tasks: { async prepareTask(_token, operation, input) { seen.push([operation, input]); return Object.freeze({}); }, finalizeTask } });
-  return { broker, seen, audits, token: `hc_${'A'.repeat(43)}` };
+  return { broker, seen, audits, timings, token: `hc_${'A'.repeat(43)}` };
 }
+const OPTIONS = 'crm_task_input_options';
 const payload = result => JSON.parse(result.content[0].text);
 
 test('static hints: closed list, ASCII parameter keywords, never the sent values, only for refused input', () => {
@@ -76,8 +78,8 @@ test('static hints: closed list, ASCII parameter keywords, never the sent values
     assert.equal(taskOptionsCompanyWide(operation, input), false, JSON.stringify([operation, input]));
 });
 
-test('broker: a refused lookup is an ordinary result with its hint, audited, and never reaches CRM', async t => {
-  const { broker, seen, audits, token } = brokerWith(t);
+test('broker: a refused lookup is an ordinary result with its hint, audited, logged, and never reaches CRM', async t => {
+  const { broker, seen, audits, timings, token } = brokerWith(t);
   for (const [args, key] of [[{ kind: 'rooms', buildingId: NIL, query: '', limit: 20, cursor: NIL }, 'rooms'], [{ kind: 'users', query: '', limit: 20 }, 'kind'],
     [{ kind: 'assignees', buildingId: '417LVT', query: '', limit: 20 }, 'buildingId'], [{ kind: 'jobTypes', query: '', limit: 20, extra: true }, 'input']]) {
     const result = await broker.callTool(token, 'crm_task_input_options', args);
@@ -93,6 +95,9 @@ test('broker: a refused lookup is an ordinary result with its hint, audited, and
   // Company-wide lookups now reach the task port with buildingId null.
   for (const kind of ['jobTypes', 'assignees']) assert.equal((await broker.callTool(token, 'crm_task_input_options', { kind, query: '', limit: 20 })).isError, false);
   assert.deepEqual(seen.map(([, input]) => [input.kind, input.buildingId]), [['jobTypes', null], ['assignees', null]]);
+  // tool_call_timing keeps misuse countable: outcome ok + one fixed code; plain results and errors as before.
+  assert.deepEqual(timings, [...Array(4).fill([OPTIONS, 'ok', 'task_options_hint']), [OPTIONS, 'error', 'invalid_request'],
+    ['crm_task_create', 'error', 'invalid_request'], [OPTIONS, 'ok', null], [OPTIONS, 'ok', null]]);
 });
 
 test('broker: without tasks.create the tool stays unavailable, hint or not', async t => {
@@ -104,7 +109,7 @@ test('broker: without tasks.create the tool stays unavailable, hint or not', asy
 
 test('broker: v5 SQL refusing a company-wide lookup (22023) becomes the legacy hint; every other refusal stays an error', async t => {
   let answer;
-  const { broker, token } = brokerWith(t, { finalizeTask: async () => { throw answer; } });
+  const { broker, timings, token } = brokerWith(t, { finalizeTask: async () => { throw answer; } });
   answer = new BrokerError('invalid_request');
   for (const kind of ['jobTypes', 'assignees']) {
     const result = await broker.callTool(token, 'crm_task_input_options', { kind, query: '', limit: 20 });
@@ -119,4 +124,6 @@ test('broker: v5 SQL refusing a company-wide lookup (22023) becomes the legacy h
     answer = error;
     await assert.rejects(broker.callTool(token, 'crm_task_input_options', { kind: 'assignees', query: '', limit: 20 }), failure => failure.code === code, code);
   }
+  assert.deepEqual(timings, [[OPTIONS, 'ok', 'task_options_legacy'], [OPTIONS, 'ok', 'task_options_legacy'], [OPTIONS, 'error', 'invalid_request'],
+    [OPTIONS, 'error', 'invalid_request'], [OPTIONS, 'error', 'forbidden'], [OPTIONS, 'error', 'context_changed'], [OPTIONS, 'error', 'backend_unavailable']]);
 });
