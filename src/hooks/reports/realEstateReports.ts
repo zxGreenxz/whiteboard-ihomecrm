@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { getRepresentativeCustomer } from "@/lib/contractCustomerHelpers";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { resolveVacancyInfo, type VacancyEvent } from "@/lib/vacancyReason";
+import { addDaysISO, vnTodayISO } from "@/lib/vnDate";
 import {
-  addDays,
   differenceInDays,
   eachMonthOfInterval,
   endOfMonth,
@@ -349,8 +350,13 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
     queryFn: async () => {
       // hermes-parity:begin w2d-re-expiring — Hermes chép vùng này, xem infra/hermes-broker/web-parity.json
       const today = new Date();
-      const futureDate = addDays(today, daysAhead);
+      // Mốc lọc là NGÀY giờ VN: `toISOString()` ra ngày UTC, nên 00:00–07:00 giờ VN
+      // cận dưới lùi về hôm qua (lọt HĐ đã hết hạn) và cận trên hụt ngày thứ N.
+      const todayISO = vnTodayISO(today);
+      const futureISO = addDaysISO(todayISO, daysAhead) ?? todayISO;
 
+      // Khách lấy từ contract_customers: contracts.tenant_id là NULL với mọi HĐ tạo
+      // qua create_contract_v2, nhúng `tenants` cũ luôn rỗng ⇒ cột khách "N/A".
       const query = supabase
         .from("contracts")
         .select(`
@@ -361,11 +367,9 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
           rent_price,
           status,
           room_id,
-          tenants (
-            id,
-            full_name,
-            phone,
-            email
+          contract_customers!contract_customers_contract_id_fkey (
+            is_representative,
+            customer:customers!contract_customers_customer_id_fkey ( full_name, phone, email )
           ),
           rooms (
             id,
@@ -377,8 +381,8 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
         `)
         .in("status", ["ACTIVE"])
         .is("deleted_at", null)
-        .gte("end_date", today.toISOString())
-        .lte("end_date", futureDate.toISOString())
+        .gte("end_date", todayISO)
+        .lte("end_date", futureISO)
         .order("end_date", { ascending: true });
 
       const { data, error } = await query;
@@ -386,6 +390,7 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
 
       let contracts = (data || []).map(contract => ({
         ...contract,
+        customer: getRepresentativeCustomer(contract),
         days_left: differenceInDays(new Date(contract.end_date), today),
       }));
 
@@ -721,22 +726,30 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
           start_date,
           end_date,
           signed_date,
-          tenants:tenant_id (full_name, phone),
+          contract_customers!contract_customers_contract_id_fkey (
+            is_representative,
+            customer:customers!contract_customers_customer_id_fkey ( full_name, phone, email )
+          ),
           rooms:room_id (
             id,
             name,
             buildings:building_id (id, name)
           )
         `)
-        .not("discounts", "is", null)
+        // Form HĐ ghi giảm giá dạng `{ months, amount_per_month }` (useContractSubmit);
+        // HĐ không giảm lưu `[]`, HĐ lịch hỗ trợ v2 chỉ mang dấu `{ version: 2 }`. Lọc
+        // `discounts IS NOT NULL` vì thế kéo về mọi HĐ còn khoá `amount`/`value` không
+        // tồn tại ⇒ giảm giá luôn 0. Lọc đúng khoá ngay ở server.
+        .not("discounts->amount_per_month", "is", null)
         .is("deleted_at", null)
         .order("signed_date", { ascending: false });
 
+      // signed_date là cột DATE: so bằng NGÀY giờ VN của mốc chọn, không phải ngày UTC.
       if (startDate) {
-        query = query.gte("signed_date", startDate.toISOString());
+        query = query.gte("signed_date", vnTodayISO(startDate));
       }
       if (endDate) {
-        query = query.lte("signed_date", endDate.toISOString());
+        query = query.lte("signed_date", vnTodayISO(endDate));
       }
 
       const { data, error } = await query;
@@ -750,7 +763,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
 
       return filtered.map((contract: any) => {
         const discounts = contract.discounts as any;
-        const discountAmount = discounts?.amount || discounts?.value || 0;
+        const discountAmount = Number(discounts?.amount_per_month) || 0;
         const discountType = discounts?.type || "fixed";
         const savings = discountType === "percent"
           ? (contract.rent_price * discountAmount) / 100
@@ -759,6 +772,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
 
         return {
           ...contract,
+          customer: getRepresentativeCustomer(contract),
           rooms: contract.rooms
             ? { ...contract.rooms, room_number: contract.rooms.name }
             : null,
@@ -796,7 +810,10 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
           signed_date,
           status,
           payment_cycle,
-          tenants:tenant_id (full_name, phone),
+          contract_customers!contract_customers_contract_id_fkey (
+            is_representative,
+            customer:customers!contract_customers_customer_id_fkey ( full_name, phone, email )
+          ),
           rooms:room_id (
             id,
             name,
@@ -806,11 +823,12 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
         .is("deleted_at", null)
         .order("signed_date", { ascending: false });
 
+      // signed_date là cột DATE: so bằng NGÀY giờ VN của mốc chọn, không phải ngày UTC.
       if (startDate) {
-        query = query.gte("signed_date", startDate.toISOString());
+        query = query.gte("signed_date", vnTodayISO(startDate));
       }
       if (endDate) {
-        query = query.lte("signed_date", endDate.toISOString());
+        query = query.lte("signed_date", vnTodayISO(endDate));
       }
 
       const { data, error } = await query;
@@ -829,6 +847,7 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
 
         return {
           ...contract,
+          customer: getRepresentativeCustomer(contract),
           rooms: contract.rooms
             ? { ...contract.rooms, room_number: contract.rooms.name }
             : null,
@@ -865,7 +884,10 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
           actual_end_date,
           signed_date,
           status,
-          tenants:tenant_id (full_name, phone),
+          contract_customers!contract_customers_contract_id_fkey (
+            is_representative,
+            customer:customers!contract_customers_customer_id_fkey ( full_name, phone, email )
+          ),
           rooms:room_id (
             id,
             name,
@@ -893,18 +915,20 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
 
       const termMap = new Map(terminations.map(t => [t.contract_id, t]));
 
-      // Filter by building, then by date with fallback actual_end_date ?? end_date
-      const startMs = startDate ? startDate.getTime() : -Infinity;
-      const endMs = endDate ? endDate.getTime() : Infinity;
+      // Filter by building, then by date with fallback actual_end_date ?? end_date.
+      // So NGÀY với NGÀY giờ VN: ngày kết thúc là chuỗi DATE (parse ra 00:00 UTC = 07:00
+      // VN), mốc chọn là thời điểm giờ VN — so mili-giây làm rơi ngày cuối khoảng và
+      // cả "hôm nay" khi xem trước 07:00 VN.
+      const fromISO = startDate ? vnTodayISO(startDate) : null;
+      const toISO = endDate ? vnTodayISO(endDate) : null;
       let filtered = contracts || [];
       if (buildingId) {
         filtered = filtered.filter((c: any) => c.rooms?.buildings?.id === buildingId);
       }
       filtered = filtered.filter((c: any) => {
-        const effective = c.actual_end_date || c.end_date;
+        const effective: string | undefined = (c.actual_end_date || c.end_date)?.slice(0, 10);
         if (!effective) return false;
-        const ms = new Date(effective).getTime();
-        return ms >= startMs && ms <= endMs;
+        return (!fromISO || effective >= fromISO) && (!toISO || effective <= toISO);
       });
 
       // Mẫu số tỉ lệ: contracts đã từng đi vào vận hành (loại DRAFT), không deleted
@@ -924,6 +948,7 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
 
           return {
             ...contract,
+            customer: getRepresentativeCustomer(contract),
             rooms: contract.rooms
               ? { ...contract.rooms, room_number: contract.rooms.name }
               : null,

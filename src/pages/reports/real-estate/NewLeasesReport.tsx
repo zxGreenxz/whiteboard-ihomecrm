@@ -49,7 +49,7 @@ export default function NewLeasesReport() {
 
   const exportData = leases?.map(lease => ({
     "Mã HĐ": lease.contract_number || lease.id.slice(0, 8),
-    "Khách hàng": lease.tenants?.full_name || "N/A",
+    "Khách hàng": lease.customer?.full_name || "N/A",
     "Căn hộ": `${lease.rooms?.buildings?.name} - ${lease.rooms?.room_number}`,
     "Ngày ký": format(new Date(lease.signed_date), "dd/MM/yyyy", { locale: vi }),
     "Giá thuê": lease.monthly_rent,
@@ -109,8 +109,8 @@ export default function NewLeasesReport() {
                         <TableCell className="font-medium">{lease.contract_number || lease.id.slice(0, 8)}</TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            <div className="font-medium">{lease.tenants?.full_name || "N/A"}</div>
-                            <div className="text-muted-foreground">{lease.tenants?.phone || "-"}</div>
+                            <div className="font-medium">{lease.customer?.full_name || "N/A"}</div>
+                            <div className="text-muted-foreground">{lease.customer?.phone || "-"}</div>
                           </div>
                         </TableCell>
                         <TableCell>
