@@ -4,6 +4,8 @@ import { isCommissionVoucher } from "@/lib/commissionIntervention";
 import { CommissionReasonField } from "@/components/income-expenses/CommissionReasonField";
 import { isCommissionReasonValid } from "@/lib/commissionAudit";
 import {useIncomeExpenseRevisions} from '@/hooks/income-expenses/revisions';
+import { checkSelfApproveBeforeApprove, useSelfApproveGate } from '@/hooks/income-expenses/selfApproveGate';
+import { useQueryClient } from '@tanstack/react-query';
 import { focusFirstError } from "@/lib/formErrors";
 import { voucherFailureMessage, voucherOutcomeUnknown, VoucherPartialError } from "@/lib/voucherFeedback";
 import { QueryRegion } from "@/components/errors/QueryRegion";
@@ -252,6 +254,11 @@ export default function IncomeExpenseMobilePage() {
     useState<IncomeExpenseWithRelations | null>(null);
   const approveHistoryQuery=useIncomeExpenseRevisions(approveTarget?.id);
   const approveHistoryBlocked=!!approveTarget&&(approveHistoryQuery.isError||approveHistoryQuery.isLoading||approveHistoryQuery.data===undefined);
+  // Câu 25: hộp xác nhận là MỘT chỗ cho mọi nơi bấm Duyệt (tấm chi tiết, tấm đợt).
+  const queryClient = useQueryClient();
+  const approveSelfGate = useSelfApproveGate(approveTarget?.id, !!approveTarget);
+  // Đang hỏi lại cổng ngay trước khi lưu/duyệt ⇒ khoá các nút của hộp, không bấm hai lần lúc chờ.
+  const [selfApproveChecking, setSelfApproveChecking] = useState(false);
   // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
@@ -600,6 +607,15 @@ export default function IncomeExpenseMobilePage() {
       return;
     }
     setActionError(null);
+    // Câu 25: hỏi lại máy chủ NGAY TRƯỚC khi lưu đổi sổ/ảnh hay duyệt — bị chặn thì không lưu gì
+    // (bị chặn: ghi chú trong hộp tự hiện từ cache cổng; chưa kiểm được: báo lỗi ở đây).
+    setSelfApproveChecking(true);
+    const selfCheck = await checkSelfApproveBeforeApprove(queryClient, target.id);
+    setSelfApproveChecking(false);
+    if (!selfCheck.ok) {
+      if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
+      return;
+    }
     // V2 CANONICAL: duyệt-only qua RPC canonical — KHÔNG đổi tồn quỹ, không quick-update
     // sổ/ảnh (posting fields thuộc Posting dialog, §12.3). Không có fallback legacy.
     if (v2ApproveOnly) {
@@ -1399,6 +1415,17 @@ export default function IncomeExpenseMobilePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {/* Câu 25: máy chủ báo người đang xem là người lập không được tự duyệt phiếu này. */}
+          {approveSelfGate.blocked && (
+            <p
+              id="ie-self-approve-note"
+              role="note"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            >
+              {approveSelfGate.message}
+            </p>
+          )}
+
           {/* Phiếu đã bị sửa khi Chờ duyệt ⇒ người duyệt thấy đổi gì, ai sửa, vì sao. */}
           {approveTarget && <RevisionComparison voucherId={approveTarget.id} />}
 
@@ -1462,7 +1489,8 @@ export default function IncomeExpenseMobilePage() {
               disabled={
                 approveHistoryBlocked || approveMutation.isPending ||
                 reviseMutation.isPending ||
-                approveV2Mutation.isPending
+                approveV2Mutation.isPending ||
+                selfApproveChecking
               }
             >
               Đóng
@@ -1473,8 +1501,20 @@ export default function IncomeExpenseMobilePage() {
               <Button
                 variant="outline"
                 className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending}
-                onClick={() => setApproveAndPostOpen(true)}
+                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending || approveSelfGate.blocked || selfApproveChecking}
+                aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
+                onClick={async () => {
+                  if (!approveTarget) return;
+                  // Câu 25: kiểm trước khi mở hộp ghi sổ (hộp đó nhận chứng từ trước khi duyệt).
+                  setSelfApproveChecking(true);
+                  const selfCheck = await checkSelfApproveBeforeApprove(queryClient, approveTarget.id);
+                  setSelfApproveChecking(false);
+                  if (!selfCheck.ok) {
+                    if (selfCheck.reason === 'unverified') setActionError(selfCheck.message);
+                    return;
+                  }
+                  setApproveAndPostOpen(true);
+                }}
               >
                 {approveTarget?.type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
               </Button>
@@ -1488,13 +1528,17 @@ export default function IncomeExpenseMobilePage() {
                 approveMutation.isPending ||
                 reviseMutation.isPending ||
                 approveV2Mutation.isPending ||
-                blockedVoucherId === approveTarget?.id
+                blockedVoucherId === approveTarget?.id ||
+                approveSelfGate.blocked ||
+                selfApproveChecking
               }
+              aria-describedby={approveSelfGate.blocked ? "ie-self-approve-note" : undefined}
               className="bg-green-600 hover:bg-green-700"
             >
               {approveMutation.isPending ||
               reviseMutation.isPending ||
-              approveV2Mutation.isPending
+              approveV2Mutation.isPending ||
+              selfApproveChecking
                 ? "Đang duyệt…"
                 : v2ApproveOnly
                   ? "Chỉ duyệt"
