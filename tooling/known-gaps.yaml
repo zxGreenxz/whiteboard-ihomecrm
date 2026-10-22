@@ -413,3 +413,17 @@ gaps:
       Đo trên TEST rằng mọi kênh hub join sau khi có JWT (hoặc đổi hub sang kênh private/Broadcast), thu hồi EXECUTE của anon
       trên hai hàm INVOKER (hoặc chứng minh không ai gọi), rồi REVOKE SELECT ON public.meters, public.meter_readings FROM anon
       trong một migration có test; hoặc chủ dự án chấp nhận lộ UUID khi xoá kèm lý do.
+  - id: thiet-bi-push-cong-ty-da-roi-bi-an
+    where: >
+      public.push_subscriptions — policy push_subscriptions_org_boundary (RESTRICTIVE, mọi lệnh) · src/hooks/useNotificationSettings.ts
+      (danh sách/gỡ thiết bị) · src/lib/push.ts (isSubscribed/ensurePushSubscription)
+    expires_at: 2026-12-31
+    why: >
+      Review 22/10 (SETTINGS-2, thử TEST trong ROLLBACK): dòng đăng ký push mang organization_id của công ty lúc bật. Người
+      dùng rời công ty đó nhưng vẫn ở công ty khác thì RLS ẩn dòng: không thấy trong "Thiết bị đã đăng ký", không gỡ được
+      (DELETE/UPDATE 0 dòng), máy đó kẹt trạng thái "Chưa xác định", trong khi send-push (service_role, chọn theo user_id)
+      vẫn gửi tới. Lối thoát hiện có: đăng xuất trên chính máy đó (gỡ đăng ký trình duyệt). Prod 22/10: 0 dòng lệch membership.
+    exit_condition: >
+      Cho dòng của chính người dùng (user_id = auth.uid()) qua org_boundary ở SELECT/UPDATE/DELETE của riêng push_subscriptions
+      (đối chiếu khuôn org_boundary của gate security), HOẶC trigger trên organization_memberships xoá đăng ký của công ty vừa
+      rời, kèm test RLS trên TEST (SET ROLE + ROLLBACK); hoặc chủ dự án chấp nhận kèm lý do.

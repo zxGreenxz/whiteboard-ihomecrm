@@ -79,7 +79,7 @@ BEGIN
   FOR r IN
     SELECT x.sig, x.cu, x.moi, (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = to_regprocedure(x.sig)) AS hien
       FROM (VALUES
-        ('app_private.lifecycle_reminder_sources_v1(uuid)', '51d786ea8f677f9f37a1c5fea85316bc', '4f2b885b8b8674c585e4e79ac1bd0011'),
+        ('app_private.lifecycle_reminder_sources_v1(uuid)', '51d786ea8f677f9f37a1c5fea85316bc', '60b962016fa7911736c275a839aeca53'),
         ('app_private.lifecycle_recipient_allowed_v1(uuid,uuid,uuid,text)', '51a0bf6f5a6544f73b3dd5ba5bb19e2f', 'bf53ab2b0b0d81a1da2e3fdc848f90a0'),
         ('app_private.lifecycle_reminder_payload_v1(uuid,uuid,text)', '941e764dc8afcc46a9488111c00e3499', 'f67dee9159c102e863af83486af3d0b2'),
         ('public.lifecycle_reminder_sweep_v1(uuid)', 'fef27094e008df831b72619ec1262067', 'fcf7e82347572041174351a4488b0632'),
@@ -190,8 +190,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_priva
   UNION ALL
   -- Hoá đơn còn nợ: quá hạn (kể cả trạng thái OVERDUE) hoặc đến hạn trong 3 ngày tới. "Còn nợ" dùng CÔNG THỨC
   -- CHUNG public.invoice_effective_outstanding_v1 (20261021183549) trên tập hoá đơn đã phát hành còn nợ của công
-  -- ty: nợ cũ đã kéo sang hoá đơn sau (previous_debt_sources) tính ở hoá đơn gánh, không nhắc lại ở hoá đơn
-  -- nguồn. Revision kèm số nợ hiệu lực để vân tay sweep đổi khi có hoá đơn gánh mới.
+  -- ty: nợ cũ đã kéo sang hoá đơn sau (previous_debt_sources) tính MỘT lần ở hoá đơn phát sinh gốc (tuổi nợ theo
+  -- hạn gốc) và được trừ khỏi hoá đơn gánh — hoá đơn gánh chỉ đếm khi còn phát sinh mới. Revision kèm số nợ hiệu
+  -- lực để vân tay sweep đổi khi có hoá đơn gánh mới.
   SELECT CASE WHEN i.due_date<d.today THEN 'INVOICE_OVERDUE' ELSE 'INVOICE_DUE' END,
          i.id,b.id,i.updated_at::text||':'||eo.effective_outstanding::text FROM d, public.invoices i
     JOIN public.buildings b ON b.id=i.building_id AND b.organization_id=i.organization_id

@@ -744,4 +744,14 @@ describe('ACL (B10 + RPC mới)', () => {
       "SELECT is_nullable, data_type FROM information_schema.columns WHERE table_name = 'push_subscriptions' AND column_name = 'revoked_at'");
     expect(cot.rows).toEqual([{ is_nullable: 'YES', data_type: 'timestamp with time zone' }]);
   });
+
+  it('bật lại (is_active false→true, như bản web cũ upsert) xoá dấu gỡ; đổi cột khác giữ nguyên dấu', async () => {
+    await donSach();
+    await thietBi(ID.nhanVien);
+    const doc = async (sql: string) => (await voiVai(db, 'authenticated', ID.nhanVien, () => db.query<{ revoked: boolean; is_active: boolean }>(
+      `${sql} WHERE user_id = $1 RETURNING revoked_at IS NOT NULL AS revoked, is_active`, [ID.nhanVien]))).rows;
+    expect(await doc('UPDATE public.push_subscriptions SET is_active = false, revoked_at = now()')).toEqual([{ revoked: true, is_active: false }]);
+    expect(await doc("UPDATE public.push_subscriptions SET endpoint = endpoint || '-x'")).toEqual([{ revoked: true, is_active: false }]);
+    expect(await doc('UPDATE public.push_subscriptions SET is_active = true')).toEqual([{ revoked: false, is_active: true }]);
+  });
 });

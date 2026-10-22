@@ -1485,6 +1485,26 @@ COMMENT ON COLUMN public.push_subscriptions.revoked_at IS
   'Người dùng đã gỡ máy này lúc nào (NULL = chưa gỡ). Có giá trị ⇒ client không tự đăng ký lại khi mở app; chỉ công tắc '
   'bật push chủ động đặt lại NULL. send-push vẫn chọn theo is_active (gỡ = is_active false + revoked_at).';
 
+-- Bật lại (is_active false→true) luôn xoá dấu gỡ (re-review 22/10): bản web/PWA cũ bật push trên máy đã gỡ chỉ ghi
+-- is_active=true — thiếu trigger này dòng vừa nhận push vừa mang revoked_at, công tắc bản mới hiện TẮT và danh sách
+-- ghi "Đã gỡ" sai. Client mới không bao giờ tự bật lại dòng đã gỡ (ensure trả 'revoked' trước khi ghi).
+CREATE OR REPLACE FUNCTION app_private.push_subscriptions_clear_revoked_v1()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog'
+AS $fn$
+BEGIN
+  IF NEW.is_active AND NOT OLD.is_active THEN
+    NEW.revoked_at := NULL;
+  END IF;
+  RETURN NEW;
+END $fn$;
+REVOKE ALL ON FUNCTION app_private.push_subscriptions_clear_revoked_v1() FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS a10_push_subscriptions_clear_revoked ON public.push_subscriptions;
+CREATE TRIGGER a10_push_subscriptions_clear_revoked
+  BEFORE UPDATE OF is_active ON public.push_subscriptions
+  FOR EACH ROW EXECUTE FUNCTION app_private.push_subscriptions_clear_revoked_v1();
+
 -- =====================================================================================================================
 -- 11. Dọn lần đầu (B6). Lượt hai không còn dòng PENDING nào khớp ⇒ 0, không nhân dữ liệu.
 -- =====================================================================================================================

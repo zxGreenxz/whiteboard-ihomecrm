@@ -6,8 +6,9 @@
 --     từ 2026-09-17, chỉ Chủ nhật (nhánh return sớm) là OK.
 --     Sửa: get_salary_v5_config thêm MỘT nhánh cho người gọi tin cậy — JWT role service_role, hoặc không có JWT và
 --     session_user là postgres/supabase_admin (pg_cron, lane) — CHỈ khi auth.uid() IS NULL: p_org tường minh ⇒ bộ luật
---     của công ty đó; p_org NULL (nhân viên không suy được công ty v5 duy nhất) ⇒ NULL như nhánh người dùng
---     (v5_route_candidates có mặc định cho cấu hình NULL) thay vì 42501 làm hỏng cả bản tin (SQL-LIFE-8).
+--     của công ty đó; p_org NULL ⇒ VẪN 42501 (re-review 22/10: v5_close_period/v5_recompute_streak/v5_shield_bank gọi
+--     trần dưới vai máy chủ — trả NULL sẽ cho chúng chạy êm bằng mặc định code thay vì bộ luật công ty). Nhân viên
+--     không suy được công ty chỉ làm hỏng bản tin của riêng người đó nhờ khối bắt lỗi từng nhân viên (SQL-LIFE-8).
 --     Người dùng đăng nhập giữ nguyên cổng cũ (membership ACTIVE trong công ty của bộ luật). Cách nhận người gọi tin cậy
 --     chép 20260727070000_openclaw_crm_event_sources.sql (đọc request.jwt.claim.role / request.jwt.claims).
 --     v5_run_digest (thân = 20260905082200, khớp md5 production 22/10): mỗi nhân viên một khối BEGIN … EXCEPTION —
@@ -54,7 +55,7 @@ BEGIN
   FOR r IN
     SELECT x.sig, x.cu, x.moi, (SELECT md5(replace(p.prosrc, chr(13), '')) FROM pg_proc p WHERE p.oid = to_regprocedure(x.sig)) AS hien
       FROM (VALUES
-        ('public.get_salary_v5_config(uuid)', '47dfbd1de75f887ab76f4531ee8a950c', '8505aa563cb19a9e7af5e7993bf8f699'),
+        ('public.get_salary_v5_config(uuid)', '47dfbd1de75f887ab76f4531ee8a950c', '9854af4b059f347ce4dc1b9f0dd0f283'),
         ('public.v5_route_candidates(uuid)', '4f445a6c3594ab946969e17e26fa4634', '6daa65abf2d8165f2c5fd830109fae38'),
         ('public.v5_appeal(date,text)', 'eb04ee61cfbc666a4c35f93ec876a32b', '71453cf9631cee97ac540961301bd252'),
         ('public.report_device_issue(uuid,text)', '90265955bc94bc8a27d9b8e4e840bc13', 'd1a7a3c5f06026b194ddab5ce562f90c'),
@@ -99,12 +100,11 @@ DECLARE
   v_org uuid;
 BEGIN
   IF v_uid IS NULL THEN
-    -- Job máy chủ (digest v5): KHÔNG có người dùng. Công ty tường minh ⇒ bộ luật của công ty đó; không suy được công ty
-    -- (NULL) ⇒ NULL như nhánh người dùng. Người gọi khác không có JWT ⇒ 42501 như cũ.
-    IF app_private.trusted_server_caller_v1() THEN
-      IF p_org IS NULL THEN
-        RETURN NULL;
-      END IF;
+    -- Job máy chủ (digest v5): KHÔNG có người dùng. Công ty tường minh ⇒ bộ luật của công ty đó. Không có công ty ⇒
+    -- VẪN 42501 (re-review 22/10): v5_close_period/v5_recompute_streak/v5_shield_bank gọi trần hàm này dưới vai máy
+    -- chủ — trả NULL sẽ cho chúng chạy êm bằng mặc định trong code thay vì bộ luật công ty. Digest đã bọc lỗi từng
+    -- nhân viên nên một người không suy được công ty chỉ bị bỏ qua kèm WARNING. Người gọi khác không có JWT ⇒ 42501.
+    IF app_private.trusted_server_caller_v1() AND p_org IS NOT NULL THEN
       RETURN app_private.v5_salary_config_for_org_v1(p_org);
     END IF;
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';

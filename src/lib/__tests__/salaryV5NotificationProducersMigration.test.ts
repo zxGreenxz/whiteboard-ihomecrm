@@ -7,7 +7,7 @@ import { apHaiLuot, docMigration, md5Than, trichHam } from './fixtures/notificat
 /**
  * Migration 20261021171252_sua_producer_v5_thong_bao_v1 (gói B mục B11), chạy THẬT trên PGlite, hai lượt:
  *   - get_salary_v5_config: nhánh người gọi tin cậy (JWT service_role, hoặc không JWT + session postgres) khi
- *     auth.uid() NULL: p_org tường minh ⇒ bộ luật công ty đó, p_org NULL ⇒ NULL (như nhánh người dùng); người dùng giữ
+ *     auth.uid() NULL: p_org tường minh ⇒ bộ luật công ty đó, p_org NULL ⇒ vẫn 42501 (không chạy êm bằng mặc định); người dùng giữ
  *     nguyên cổng membership.
  *   - v5_route_candidates truyền công ty suy từ p_user (digest v5 chạy dưới service_role không còn 42501).
  *   - v5_run_digest (thân THẬT trích từ 20260905082200 — md5 production) cô lập lỗi theo từng nhân viên.
@@ -130,9 +130,9 @@ describe('get_salary_v5_config — nhánh máy chủ', () => {
     expect((await voi(null, null, () => cfg(ORG_B))).rows[0].v).toEqual({ org: ORG_B });
   });
 
-  it('máy chủ không suy được công ty (p_org NULL) ⇒ NULL như nhánh người dùng; JWT không phải service_role ⇒ 42501 như cũ', async () => {
-    expect((await voi(null, '{"role":"service_role"}', () => cfg(null))).rows[0].v).toBeNull();
-    expect((await voi(null, null, () => cfg(null))).rows[0].v).toBeNull();
+  it('máy chủ KHÔNG có công ty (p_org NULL) ⇒ vẫn 42501 (close_period không được chạy êm bằng mặc định); JWT không phải service_role ⇒ 42501', async () => {
+    expect(await maLoi(voi(null, '{"role":"service_role"}', () => cfg(null)))).toBe('42501');
+    expect(await maLoi(voi(null, null, () => cfg(null)))).toBe('42501');
     expect(await maLoi(voi(null, '{"role":"anon"}', () => cfg(ORG_A)))).toBe('42501');
     expect(await maLoi(voi(null, '{"role":"anon"}', () => cfg(null)))).toBe('42501');
     expect(await maLoi(voi(null, '{"role":"authenticated"}', () => cfg(ORG_A)))).toBe('42501');
