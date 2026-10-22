@@ -57,8 +57,8 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 | Chỉ số | Giá trị |
 |---|---|
 | Thư mục mã nguồn | 12 |
-| ĐANG CHẠY trên server | 10 |
-| Có mã mà **chưa deploy** | 2 — door-access, network-watchdog |
+| ĐANG CHẠY trên server | 11 |
+| Có mã mà **chưa deploy** | 1 — network-watchdog |
 | `verify_jwt = false` (ai cũng gọi được) | 4 — bank-event-ingest, demo-reset, network-center-worker, salary-v5-jobs |
 
 Thư mục trong repo **không** có nghĩa là hàm đang chạy: deploy là thao tác riêng,
