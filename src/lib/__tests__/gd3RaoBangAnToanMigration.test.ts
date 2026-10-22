@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -127,7 +127,31 @@ describe("GĐ3 — file phải KHỚP inventory, không được sửa tay", () 
     const mienTru = inventory.rows
       .filter((r: any) => r.group === "EXEMPT")
       .map((r: any) => r.table_name);
-    for (const t of mienTru) expect(bangTrongSql).not.toContain(t);
+    // Inventory SỐNG còn ghi các quyết định đến SAU GĐ3: một migration về sau gỡ rào CÓ CHỦ ĐÍCH (DROP POLICY
+    // <bảng>_org_boundary + ghi app_private.org_boundary_exemptions) — vd personal_transactions, sổ cái cá nhân
+    // theo người (20261004212309, chủ duyệt 05/10/2026). GĐ3 vẫn đúng lúc chạy (preflight của nó chặn bảng đang
+    // miễn trừ); so với inventory sống thì trừ đúng các bảng có quyết định gỡ rào được ghi trong migration sau.
+    const goRaoSau = new Set(
+      readdirSync(resolve(process.cwd(), "supabase/migrations"))
+        .filter((f) => f.endsWith(".sql") && f > "20260808010000_gd3_rao_bang_an_toan.sql")
+        .flatMap((f) => {
+          const src = readFileSync(resolve(process.cwd(), "supabase/migrations", f), "utf8");
+          if (!/org_boundary_exemptions/.test(src)) return [];
+          return mienTru.filter((t: string) =>
+            new RegExp(`DROP POLICY IF EXISTS ${t}_org_boundary ON public\\.${t}\\b`).test(src));
+        }),
+    );
+    for (const t of mienTru) {
+      if (goRaoSau.has(t)) {
+        // Quyết định gỡ rào phải có lý do + người duyệt trong sổ miễn trừ (inventory đọc từ production).
+        const dong = (inventory.rows as Array<{ table_name: string; exemption_reason: string | null; decided_by: string | null }>)
+          .find((r) => r.table_name === t);
+        expect(dong.exemption_reason, t).toBeTruthy();
+        expect(dong.decided_by, t).toBeTruthy();
+        continue;
+      }
+      expect(bangTrongSql).not.toContain(t);
+    }
   });
 
   it("không rào trùng một bảng hai lần", () => {

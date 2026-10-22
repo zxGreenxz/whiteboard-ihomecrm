@@ -162,7 +162,9 @@ export async function saveOrgConfigV2(input: {
     p_events: input.events,
     p_quiet_start: input.quietStart,
     p_quiet_end: input.quietEnd,
-    p_expected_updated_at: input.expectedUpdatedAt,
+    // NULL là giá trị hợp đồng (công ty chưa có dòng cấu hình — xem 20261021171249): tham số
+    // timestamptz không có DEFAULT nên generator khai `string` bắt buộc, dù Postgres nhận NULL.
+    p_expected_updated_at: input.expectedUpdatedAt as string,
   });
   if (error) {
     if (codeOf(error) === 'PT409') throw new NotificationOrgConfigConflictError(error);

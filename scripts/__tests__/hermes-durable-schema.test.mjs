@@ -13,9 +13,16 @@ import { buildTransaction } from '../apply-reviewed-migration.mjs';
 // Always select the latest definition: a later forward migration must be able
 // to turn these tests red instead of leaving a frozen historical test green.
 const directory = fileURLToPath(new URL('../../supabase/migrations/', import.meta.url));
+// Migration chỉ NHẮC tên Hermes (chú thích, khoá sự kiện viết hoa 'HERMES_TASK') mà không khai, vá hay cấp quyền
+// hàm/bảng Hermes nào. Quét chúng sẽ bắt hợp đồng bảo mật Hermes phán xét GRANT/chữ ký của miền khác. Ca
+// 'incidental Hermes mentions …' ở cuối file chốt điều kiện đó để danh sách này không thành chỗ giấu thay đổi Hermes.
+const INCIDENTAL_HERMES_MENTIONS = new Set([
+  // Pipeline thông báo (đã áp production 22/10): chú thích nhắc hermes_task_follow_notify_v1 + nhánh 'HERMES_TASK' → E4.
+  '20261021171249_notify_pipeline_v2.sql',
+]);
 const sources = readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
   .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }))
-  .filter(({ sql }) => /\bhermes_/i.test(sql));
+  .filter(({ name, sql }) => /\bhermes_/i.test(sql) && !INCIDENTAL_HERMES_MENTIONS.has(name));
 const clean = sql => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
 const digest = sql => createHash('sha256').update(clean(sql)).digest('hex');
 const FORWARD_BY_NAME = new Map(FORWARD_FUNCTIONS.map(spec => [spec.name, spec]));
@@ -1546,4 +1553,13 @@ test('wave-2 INVOKER entry and package reads stay INVOKER, keep pg_catalog,publi
   assert.throws(() => securityContract(all, registry), /plpgsql invoker names app_private/);
   for (const target of ['app_private.hermes_w2_catalog_v1(text)', 'app_private.hermes_w2_gate_v1(jsonb,text,jsonb)'])
     assert.throws(() => securityContract(`${all};\nGRANT EXECUTE ON FUNCTION ${target} TO authenticated`), /cannot execute/, target);
+});
+
+test('incidental Hermes mentions stay incidental: no Hermes declaration, patch, grant or table change', () => {
+  for (const name of INCIDENTAL_HERMES_MENTIONS) {
+    // Chú thích bị bỏ; khoá sự kiện viết hoa ('HERMES_TASK') là dữ liệu, không phải định danh SQL.
+    const body = clean(readFileSync(join(directory, name), 'utf8'));
+    assert.doesNotMatch(body, /\bhermes_[a-z0-9_]/, `${name}: định danh hermes_* ngoài chú thích ⇒ phải vào phép quét`);
+    assert.doesNotMatch(body, /\b(?:public|app_private)\.hermes/i, `${name}: tham chiếu đối tượng Hermes`);
+  }
 });

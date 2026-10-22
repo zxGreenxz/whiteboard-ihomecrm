@@ -476,12 +476,16 @@ describe('B6 — dọn lỗi thời + bảo trì', () => {
     const so = { chuaChot: '00000000-0000-4000-8000-000000000511', daChot: '00000000-0000-4000-8000-000000000512',
       khoa: '00000000-0000-4000-8000-000000000513', ao: '00000000-0000-4000-8000-000000000514', xoa: '00000000-0000-4000-8000-000000000515' };
     const h = (n: number) => `00000000-0000-4000-8000-00000000052${n}`;
+    // "Hôm nay" theo GIỜ CÔNG TY — đúng mốc hàm dọn so (confirmed_at AT TIME ZONE org_timezone_v1). `current_date`
+    // theo múi giờ tiến trình test thì lệch một ngày dưới Pacific/Midway vào buổi sáng UTC (timezone-gate).
+    const homNay = (thamSoOrg: string) => `(now() AT TIME ZONE app_private.org_timezone_v1(${thamSoOrg}))::date`;
     await db.query(`INSERT INTO public.accounts(id, organization_id, name, is_virtual, deleted_at, lock_date) VALUES
-      ($1, $6, 'Két A', false, null, null), ($2, $6, 'Két B', false, null, null), ($3, $6, 'Két C', false, null, current_date),
+      ($1, $6, 'Két A', false, null, null), ($2, $6, 'Két B', false, null, null), ($3, $6, 'Két C', false, null, ${homNay('$6')}),
       ($4, $6, 'Thối', true, null, null), ($5, $6, 'Két cũ', false, now(), null)`,
       [so.chuaChot, so.daChot, so.khoa, so.ao, so.xoa, ID.org]);
     // Két A chốt tới HÔM QUA — bàn giao xác nhận hôm nay vẫn phải chốt. Két B chốt tới hôm nay. Két C khoá sổ tới hôm nay.
-    await db.query(`INSERT INTO app_private.cashbook_closures VALUES ($1, current_date - 1), ($2, current_date)`, [so.chuaChot, so.daChot]);
+    await db.query(`INSERT INTO app_private.cashbook_closures VALUES ($1, ${homNay('$3')} - 1), ($2, ${homNay('$3')})`,
+      [so.chuaChot, so.daChot, ID.org]);
     const ds = [so.chuaChot, so.daChot, so.khoa, so.ao, so.xoa];
     for (let i = 0; i < ds.length; i += 1) {
       await db.query("INSERT INTO public.cash_handovers VALUES ($1, 'CONFIRMED', $2, $3, now())", [h(i), ID.org, ds[i]]);
@@ -497,7 +501,7 @@ describe('B6 — dọn lỗi thời + bảo trì', () => {
       expect((await dong(id)).metadata).toMatchObject({ cancelled_reason: 'CASHBOOK_CLOSED', cancelled_by: 'notification_reconcile_stale_v1' });
     }
     // Chốt két A tới hôm nay ⇒ nhịp bảo trì sau huỷ nốt.
-    await db.query('INSERT INTO app_private.cashbook_closures VALUES ($1, current_date)', [so.chuaChot]);
+    await db.query(`INSERT INTO app_private.cashbook_closures VALUES ($1, ${homNay('$2')})`, [so.chuaChot, ID.org]);
     expect((await db.query<{ v: Record<string, number> }>('SELECT public.notification_maintenance_v1() v')).rows[0].v)
       .toMatchObject({ cashbook_closed_cancelled: 1 });
     expect((await dong(e6a[0])).status).toBe('CANCELLED');

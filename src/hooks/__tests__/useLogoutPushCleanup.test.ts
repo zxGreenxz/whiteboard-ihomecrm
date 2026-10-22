@@ -19,6 +19,8 @@ vi.mock("@/lib/push", () => ({ disablePushForLogout: io.disablePushForLogout }))
 
 import { LOGOUT_PUSH_DEADLINE_MS, useLogout } from "@/hooks/useAuth";
 
+// useMutation đã mock trả lại chính options ⇒ gọi hook như hàm thường để lấy mutationFn (không render React).
+// eslint-disable-next-line react-hooks/rules-of-hooks
 const mutationFn = () => (useLogout() as unknown as { mutationFn: () => Promise<void> }).mutationFn();
 
 describe("useLogout gỡ đăng ký push của máy này TRƯỚC khi đăng xuất", () => {

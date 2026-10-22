@@ -18,7 +18,7 @@ const SHELL = [
   'get_my_context', 'get_my_assignments', 'is_admin', 'is_super_admin', 'get_my_permissions', 'get_my_permissions_v2',
   'my_org_ids', 'can_access_building', 'accessible_building_ids', 'list_my_copilot_organizations_v1',
   'business_performance_organizations_v1', 'is_company_owner_self_v1', 'is_org_owner_self_v1',
-  'get_notification_org_config_v1', 'get_my_notification_preferences_v1', 'list_cashbook_visibility_v2',
+  'get_my_notification_preferences_v1', 'list_cashbook_visibility_v2',
 ] as const;
 
 /**
