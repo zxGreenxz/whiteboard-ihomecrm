@@ -1,4 +1,11 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "claude/**": false,
+      "codex/**": false,
+      "worktree-**": false
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
