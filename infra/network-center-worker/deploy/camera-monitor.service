@@ -1,0 +1,38 @@
+[Unit]
+Description=iHomeCRM camera telemetry collector
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/ihome-camera-monitor/current/cameraMain.mjs
+
+[Service]
+Type=simple
+DynamicUser=yes
+UMask=0077
+StateDirectory=ihome-camera-monitor
+StateDirectoryMode=0700
+LoadCredential=worker-secret:/opt/ihome-camera-monitor/secrets/worker-secret
+LoadCredential=camera-credentials:/opt/ihome-camera-monitor/secrets/camera-credentials.json
+EnvironmentFile=/opt/ihome-camera-monitor/config/worker.env
+Environment=CAMERA_WORKER_SECRET_FILE=%d/worker-secret
+Environment=CAMERA_CREDENTIALS_FILE=%d/camera-credentials
+Environment=CAMERA_STATE_DIRECTORY=/var/lib/ihome-camera-monitor
+Environment=NODE_OPTIONS=--max-old-space-size=192
+ExecStartPre=/bin/sh -c 'test "$(/usr/bin/node --version)" = "v22.23.2"'
+ExecStart=/usr/bin/node /opt/ihome-camera-monitor/current/cameraMain.mjs
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=120
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
