@@ -40,6 +40,12 @@ for(const spec of [
   sourcePath:'supabase/migrations/20261021133823_hermes_action_foundation_v1.sql',
   statementSha256:'25af9c8232daf39cd325b4b8ab08c17cfdc534d502abf1aaa6d1145eb301dfca',
  },
+ // Đợt 2b Công việc (CV-M1): vỏ INVOKER gắn OID guard / lõi giải tên / người quản lý toà / ba tầng chuẩn bị-ghi-chốt lúc tạo.
+ {
+  name:'public.hermes_task_action_v1',
+  sourcePath:'supabase/migrations/20261022031548_hermes_task_action_create_v1.sql',
+  statementSha256:'2948cefb90348c6445074b162ec4bbd7906d802965c8a86a4dc7a63208bee61d',
+ },
 ])addExternal(spec);
 const sqlStandard=new Map([...standard,...externalStandard]);
 function withoutLeadingComments(text){

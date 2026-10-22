@@ -37,8 +37,8 @@ export const param = Object.freeze({
   },
   // Tên do SQL giải (D7: hàm giải tên dùng chung, INVOKER + RLS); connector chỉ kiểm dạng chuỗi.
   name: (of, { optional = false } = {}) => {
-    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice'].includes(of)) fail();
-    return spec('name', optional, `tên ${{ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn' }[of]} như người dùng nói`, { of, min: 1, max: 120 });
+    if (!['building', 'room', 'customer', 'person', 'voucher', 'invoice', 'jobType'].includes(of)) fail();
+    return spec('name', optional, `tên ${{ building: 'toà', room: 'phòng', customer: 'khách', person: 'người', voucher: 'mã phiếu', invoice: 'mã hoá đơn', jobType: 'loại việc' }[of]} như người dùng nói`, { of, min: 1, max: 120 });
   },
   int: (min, max, { optional = false } = {}) => {
     if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min) fail();
@@ -50,6 +50,8 @@ export const param = Object.freeze({
   },
   date: ({ optional = false } = {}) => spec('date', optional, 'ngày YYYY-MM-DD (giờ Việt Nam)'),
   month: ({ optional = false } = {}) => spec('month', optional, 'tháng YYYY-MM'),
+  // Trang Công việc (Đợt 2b): giờ trong ngày của hạn việc; trống = cuối ngày như web.
+  time: ({ optional = false } = {}) => spec('time', optional, 'giờ HH:MM (giờ Việt Nam)'),
   oneOf: (values, { optional = false } = {}) => {
     if (!Array.isArray(values) || !values.length || values.length > 16 || values.some(value => typeof value !== 'string' || !/^[A-Za-z0-9_]{1,32}$/.test(value)) ||
         new Set(values).size !== values.length) fail();
@@ -62,7 +64,7 @@ export const param = Object.freeze({
     return spec('attachments', optional, `tối đa ${max} tham chiếu ảnh đã tải lên`, { max });
   },
 });
-const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'oneOf', 'bool', 'attachments']);
+const KINDS = Object.freeze(['text', 'name', 'int', 'vnd', 'date', 'month', 'time', 'oneOf', 'bool', 'attachments']);
 
 /** Khai một thao tác. reasons = lý do riêng của trang (phải có trong danh sách đóng action-reasons.mjs). */
 export function defineAction({ id, page, key, class: kind, title, rpc, params = {}, reasons = [], ...rest } = {}) {
@@ -136,6 +138,7 @@ function checkValue(spec, raw) {
     }
     case 'date': return date(raw) ? raw : undefined;
     case 'month': return month(raw) ? raw : undefined;
+    case 'time': return typeof raw === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(raw.trim()) ? raw.trim() : undefined;
     case 'oneOf': return typeof raw === 'string' && spec.values.includes(raw.trim()) ? raw.trim() : undefined;
     case 'bool': return typeof raw === 'boolean' ? raw : raw === 'true' ? true : raw === 'false' ? false : undefined;
     default: return undefined;

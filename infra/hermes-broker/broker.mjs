@@ -1,4 +1,5 @@
 import { TASK_TOOLS } from './task-contract.mjs';
+import { TASK_RETIRED_OPERATIONS } from './task-actions-contract.mjs';
 import { TASK_INPUT_TOOLS,TASK_OPTIONS_HINTS,taskActionOperation,taskActionInput,mayUseTaskAction,taskOptionsHint,taskOptionsCompanyWide,taskOptionsRetry } from './task-input-contract.mjs';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -473,11 +474,16 @@ export function createBroker({
   // họ thao tác dùng chung hiện với kết nối này thì họ phiếu chi cũ (crm_expense_*) ẩn khỏi danh sách VÀ bị từ chối khi gọi.
   const actionFamilyListed = identity => Boolean(action && action.listed(identity.effective).length);
   const mayUseOldExpense = (identity, operation) => mayUseExpenseAction(identity.effective, operation) && !actionFamilyListed(identity);
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 7): danh mục thao tác có task.create ⇒ tool tạo việc cũ (create, status,
+  // input_options) ẩn VÀ bị từ chối, không để hai đường tạo việc cùng hiện. Theo dõi/tiến độ/huỷ cũ giữ tới khi có thao tác thay.
+  const taskCreateRetired = typeof action?.knows === 'function' && action.knows('task.create');
+  const mayUseLegacyTask = (identity, operation) => mayUseTaskAction(identity.effective, operation) &&
+    !(taskCreateRetired && TASK_RETIRED_OPERATIONS.includes(operation));
   // Shared definitions (not copies) of every tool this identity may call now.
   const grantedTools = identity => [
     ...(identity.effective.read.includes(CONTEXT_PERMISSION) ? [TOOL] : []),
     ...(mayReadRooms(identity) ? [ROOM_TOOL] : []),
-    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseTaskAction(identity.effective, taskActionOperation(tool.name))) : []),
+    ...(task ? [...TASK_TOOLS,...TASK_INPUT_TOOLS].filter(tool => mayUseLegacyTask(identity, taskActionOperation(tool.name))) : []),
     ...(pass ? ROOM_PASS_TOOLS.filter(tool => mayUseRoomPass(identity.effective, roomPassOperation(tool.name))) : []),
     ...(customer ? CUSTOMER_ACTION_TOOLS.filter(tool => mayUseCustomerAction(identity.effective, customerActionOperation(tool.name))) : []),
     ...(expense ? EXPENSE_ACTION_TOOLS.filter(tool => mayUseOldExpense(identity, expenseActionOperation(tool.name))) : []),
@@ -925,7 +931,7 @@ export function createBroker({
         // tool_call_timing still names it (code task_options_hint / task_options_legacy, outcome ok).
         const hint = invalid && taskOperation === 'options' ? taskOptionsHint(args) : null;
         return call(async (identity, signal) => {
-          if (!mayUseTaskAction(identity.effective, taskOperation)) fail('tool_not_available');
+          if (!mayUseLegacyTask(identity, taskOperation)) fail('tool_not_available');
           if (hint !== null) { retry = taskOptionsRetry(hint); return Object.freeze({}); }
           if (invalid) fail('invalid_request');
           const receipt = await task.prepareTask(presentedToken, taskOperation, input, { signal });

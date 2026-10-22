@@ -449,6 +449,14 @@ const WRITE_FOUNDATION_CALLER = ['public.hermes_name_fold_v1(text)', 'public.her
   'app_private.hermes_action_guard_v1(jsonb,text)', 'app_private.hermes_action_probe_step_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb)',
   'public.hermes_action_status_v1(jsonb,uuid)', 'public.hermes_action_capabilities_v1(uuid)',
   'public.hermes_action_probe_v1(jsonb,text,text,uuid,jsonb,jsonb,text)'];
+// Đợt 2b Công việc (20261022031548 task.create, 20261022031600 người nhận thấy việc của mình): the caller executes the page
+// wrapper, the two shared job helpers and the assignee rule, and only the app_private steps the wrapper binds (resolve core,
+// building managers, prepare/write/finish). Quota and the date-text helper stay owner-only.
+const TASK_ACTION_CALLER = ['public.job_deadline_v1(uuid,date,time)', 'public.job_open_duplicates_v1(uuid,uuid,uuid,uuid)',
+  'app_private.hermes_task_building_managers_v1(uuid,uuid)', 'app_private.hermes_task_resolve_core_v1(jsonb,text,jsonb)',
+  'app_private.hermes_task_action_prepare_v1(jsonb,text,text,uuid,jsonb,jsonb,text,jsonb,jsonb)', 'app_private.hermes_task_action_write_v1(jsonb)',
+  'app_private.hermes_task_action_finish_v1(jsonb,text,jsonb)', 'public.hermes_task_action_v1(jsonb,text,text,uuid,jsonb,jsonb,text)',
+  'public.job_visible_as_assignee_v1(uuid)'];
 
 function expandReviewedFunctionAcl(sql) {
   const declared = new Set();
@@ -740,7 +748,7 @@ function securityContract(sql = all, registry = functions) {
       // R2d (20261021063452): the fast reader's DEFINER count, reachable only through its bound OID (no app_private USAGE).
       'app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])',
       // Shared write foundation: SQL-standard INVOKER wrappers bind these app_private OIDs at creation (no app_private USAGE).
-      ...WRITE_FOUNDATION_CALLER])],
+      ...WRITE_FOUNDATION_CALLER, ...TASK_ACTION_CALLER])],
     ['hermes_store_executor', new Set([...STORE.map(name => `app_private.hermes_store_${name}_v1(jsonb)`),
       ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => `app_private.${name}(jsonb)`)])],
     ['service_role', new Set([...WORKER, ...ZALO_ONESHOT_WORKER])],
@@ -911,9 +919,9 @@ test('all nineteen reviewed forward migrations and their 76 latest definitions r
   // 20261014094913 (a task-catalog file, not a forward one: TASK_FUNCTIONS pins its bodies,
   // the rows step through spec.successors).
   const paths = [...new Set([...FORWARD_FUNCTIONS, ...FORWARD_SUPERSEDED].map(spec => spec.sourcePath))].sort();
-  assert.equal(paths.length, 19);
-  assert.equal(FORWARD_FUNCTIONS.length, 76);
-  assert.equal(FORWARD_BY_NAME.size, 76, 'one live definition per reviewed name');
+  assert.equal(paths.length, 21);
+  assert.equal(FORWARD_FUNCTIONS.length, 88);
+  assert.equal(FORWARD_BY_NAME.size, 88, 'one live definition per reviewed name');
   const version = path => path.slice('supabase/migrations/'.length, 'supabase/migrations/'.length + 14);
   for (const item of FORWARD_SUPERSEDED) {
     const live = FORWARD_BY_NAME.get(item.name);
@@ -990,6 +998,7 @@ test('new caller/store ports and inherited CRM grants cannot be widened or dropp
     ['app_private.hermes_domain_read_rows_fast_v1(jsonb)', 'authenticated'],
     ['app_private.hermes_customers_without_contract_v1(uuid,uuid[],uuid[])', 'authenticated'],
     ...WRITE_FOUNDATION_CALLER.map(target => [target, 'authenticated']),
+    ...TASK_ACTION_CALLER.map(target => [target, 'authenticated']),
     ['app_private.hermes_store_connection_settings_v1(jsonb)', 'hermes_store_executor'],
     ...['hermes_zalo_provisioning_v1', 'hermes_zalo_provisioning_work_v1', 'hermes_zalo_provisioning_ack_v1'].map(name => [`app_private.${name}(jsonb)`, 'hermes_store_executor']),
     ...INHERITED_CRM_ACL.map(spec => [spec.signature, 'authenticated']),

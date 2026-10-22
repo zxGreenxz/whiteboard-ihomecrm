@@ -1,7 +1,8 @@
-# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b, Mốc 1: THIẾT KẾ, chờ duyệt)
+# Thao tác ghi Hermes — trang CÔNG VIỆC (Đợt 2b: thiết kế đã duyệt, Mốc 2 đã hiện thực)
 
-Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a`.
-Mốc này chỉ có tài liệu: chưa có migration, chưa sửa connector hay web, chưa đổi TEST hay production.
+Ngày 22/10/2026 (giờ Việt Nam). Nhánh `claude/hermes-cong-viec-ghi-20261022`, gốc `origin/main` `2d0a0099a` (đã gộp `3ae1d57f6`).
+Phiên chính duyệt Mốc 1 (22/10): CV1–CV14 theo mặc định mục 12; CV5 và CV10 chờ chủ (Q64, Q65). Mốc 2 (mục 16) có ba migration
+và mã connector; **chưa áp migration nào, chưa đổi TEST hay production**.
 
 Nguồn:
 - Khung chung [NEN-CHUNG-THAO-TAC-GHI.md](NEN-CHUNG-THAO-TAC-GHI.md) mục 3–8 và 12 (đã gộp `main` #253, đã lên production 22/10).
@@ -434,10 +435,42 @@ Mốc 4 dùng `list`/`record` của Thu chi; nếu PR #271 chưa gộp thì Mố
 
 ## 15. Chưa xác minh
 
-- Reader `tasks` của họ đọc v1 là INVOKER hay DEFINER (quyết cách thêm vế Q35); tra ở Mốc 2.
+- `crm_read_tasks` (họ đọc v1) chưa có vế Q35: Mốc 2 chỉ thêm vào danh sách "giao cho tôi" (`hermes_task_follow_read_v1`) và RLS web; báo cáo `tasks_board` (Mốc 4, qua RLS) sẽ phủ. Chưa tra reader v1 là INVOKER hay DEFINER.
 - Rào `fence` của broker W2 với phạm vi `rls_buildings` (Mốc 4).
 - `list` của Thu chi có nhận phần tử vô hướng (`weekdays`).
-- RLS `profiles` cho tài khoản NG TÂM thấy đủ hồ sơ nhân viên (tên người nhận trong `tasks_board`, giải tên người).
+- ~~RLS `profiles` cho NG TÂM thấy hồ sơ nhân viên~~: tầng 2 trên TEST (Mốc 2) thấy JOEY và B.Huy (giải tên người nhận + gợi ý người quản lý).
 - Thời gian lô 20 việc trong `statement_timeout` của `authenticated` (đo tầng 2).
 - Giờ yên cá nhân (đợt thông báo 21/10) đã có bảng chưa; hiện thiết kế chỉ dùng giờ yên công ty.
 - Nick bot gửi được DM cho người đã nhắn mã liên kết mà không cần kết bạn (phiên chính kiểm trên VPS).
+
+## 16. Mốc 2 — đã làm (22/10)
+
+**Phạm vi:** `task.create` (mục 1 đề bài) + Q35 phần XEM (mục 2 đề bài) + Q64 thành migration riêng (CV5, chờ chủ).
+
+| Migration (chỉ file) | Nội dung | Phụ thuộc / áp |
+| --- | --- | --- |
+| `20261022031548_hermes_task_action_create_v1` (CV-M1) | Dòng chính sách `task.create`; bảng `hermes_task_limits` (seed member 30/10, owner 60/40) và `hermes_task_jobs`; `public.job_deadline_v1`, `public.job_open_duplicates_v1`; `hermes_task_building_managers_v1`, `hermes_task_quota_v1`, `hermes_task_when_v1`; lõi giải tên + ba tầng + vỏ `hermes_task_action_v1` | Cần M5/M1 của nền chung (đã ở production) |
+| `20261022031600_jobs_assignee_visible_v1` (CV-M2, Q35 XEM) | `public.job_visible_as_assignee_v1`; policy SELECT mới `jobs_select_own_assignee` (cộng thêm, không sửa `jobs_select_rbac`); `hermes_task_follow_read_v1` (`assigned_to_me`) thêm cùng vế, dựng từ thân production md5 `78f403b9…` | Độc lập với CV-M1 |
+| `20261022031605_jobs_assignee_progress_complete_v1` (CV-M2b, Q64) | Policy UPDATE `jobs_update_own_assignee` + guard cột `zz_jobs_assignee_update_guard` (DEFINER + WHEN `current_user`): người nhận ngoài phạm vi chỉ ghi tiến độ / hoàn thành việc của mình, không đổi cột khác, không mở lại | Cần CV-M2; **chỉ áp khi chủ chọn Q64 (a)** |
+
+**Khác thiết kế (đã sửa ngay trong mã):**
+- Không làm `hermes_task_reason_v1`: lỗi tầng ghi của `task.create` chỉ có RLS (42501 ⇒ `not_allowed`) và lỗi lạ, ánh xạ chung đủ; hạn mức trả mã thẳng. Mốc 3 thêm nếu `cancel`/`update` cần.
+- Người quản lý toà bỏ thành viên **OWNER** (`member_type`), thay cho "phạm vi Toàn tổ chức" (không đo được phạm vi của người khác ngoài `authorize_tenant_action_v3` từng toà).
+- Q35 phía web là policy cộng thêm, không viết lại `jobs_select_rbac` ⇒ gỡ bằng một `DROP POLICY`.
+- Mốc 2 chỉ gỡ `crm_task_create` / `crm_task_status` / `crm_task_input_options` (−3 KB). `crm_task_progress` và `crm_task_cancel` giữ tới Mốc 3 (khi có `task.update` / `task.cancel`); lớp task cũ vẫn cấp `tasks.edit` / `tasks.delete`.
+- **Lỗi bắt được khi test:** gọi lại cùng `requestId` sau khi đã ghi phải phát lại TRƯỚC mọi quyết định, nếu không việc vừa tạo bị coi là "việc trùng" và lại đòi xem trước. Đã sửa trong bước chuẩn bị.
+
+**Connector:** `task-actions-contract.mjs` (`task.create`); `server.mjs` nạp danh mục production; `createTaskAuth({ createFromActions })` (CV1); broker ẩn + từ chối ba tool tạo việc cũ khi danh mục có `task.create`; `param.time`, `param.name('jobType')`, `why: unspecified`; lý do `task_quota_user`, `task_quota_pair` (+ `host-ownership.mjs`).
+
+**Byte `tools/list`:** như production 22/10 (tắt `income_expenses.create`, `tasks.delete`) 59 708 → 58 796 B (−912 B); đủ quyền 63 801 → 59 734 B.
+
+**Test:**
+- PGlite: `task-action-sql.test.mjs` 12/12; `jobs-assignee-sql.test.mjs` 4/4 (RLS + danh sách "giao cho tôi" + Q64).
+- Connector: `task-actions.test.mjs` 6/6; nhóm `action-*`, `audit-codes`, `tool-argument-shape`, composition xanh (mục báo cáo).
+- Quản trị: `hermes-durable-schema` 98/98 (12 hàm ghim băm, quyền EXECUTE đúng danh sách), private-flow / lane / task-function-catalog / copilot-independence xanh; lane `buildTransaction` nhận cả ba file.
+- Đột biến: 16/16 bị bắt (9 SQL task.create, 3 RLS Q35/Q64, 4 connector).
+- **Tầng 2 trên TEST** (`test-env:thu-sql`, ROLLBACK, 3 persona thật, binding từ kết nối Hermes ACTIVE): tự giao ghi thẳng (597 ms), phát lại cùng `requestId`, giao joey ⇒ xem trước có cảnh báo ⇒ lượt 2 ghi; joey thấy việc ở toà ngoài phạm vi (Q35) và ghi tiến độ được (Q64); joey ngoài phạm vi ⇒ hỏi lại không nêu tên; phòng 201 ⇒ 8 ứng viên; thiếu người nhận ở 111PVC ⇒ hỏi kèm 2 người quản lý; toà ảo ⇒ không nhận.
+
+**Phát hiện trên TEST:**
+- Phạm vi ghi của joey (guard chung) có cả toà ảo "Kho Văn Phòng Chung"; giải tên việc không nhận toà ảo (CV6) nên không ghi được việc ở đó, khớp web.
+- bosshuy không có `task_types.view` ⇒ không thấy loại việc nào ⇒ `needs_input` loại việc. Web cũng không chọn được loại (cùng RLS). Muốn bosshuy giao việc qua bot thì cấp `task_types.view` cho vai đó.

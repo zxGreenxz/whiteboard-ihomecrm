@@ -42,6 +42,8 @@ import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
 import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { TASK_ACTION } from './task-contract.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -151,15 +153,16 @@ export function createHermesBackend(configuration = {}) {
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const expenseAuth = createExpenseActionAuth({ baseAuth: customerAuth, reads: createExpenseActionReads({ ...supabase, fetch: request, dependencyScope }) });
-    // Thao tác ghi dùng chung (crm_action_*): danh mục production Đợt 1 RỖNG (thao tác của từng trang đăng ký sau); lớp quyền
-    // với danh mục rỗng chuyển thẳng xuống lớp gốc, không gọi RPC. hermes_action_capabilities_v1 chưa áp ⇒ không cấp khoá nào.
+    // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác của từng trang đã đăng ký (Đợt 2b: task.create);
+    // cờ host actionProbe thêm danh mục thử (chỉ connector TEST). hermes_action_capabilities_v1 chưa áp hoặc chưa khai khoá ⇒ không
+    // cấp khoá nào. Khoá tasks.create khi đó CHỈ đến từ lớp này (createTaskAuth createFromActions).
     // Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào khai
     // khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
-    const actionCatalog = configuration.actionProbe === true
-      ? createActionCatalog([PROBE_NOTE, PROBE_CONFIRM]) : createActionCatalog([]);
+    const actionCatalog = createActionCatalog([...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : [])]);
     const actionAuth = createActionAuth({ baseAuth: expenseAuth, catalog: actionCatalog,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
-    const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createTaskAuth({ baseAuth: actionAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION) });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,

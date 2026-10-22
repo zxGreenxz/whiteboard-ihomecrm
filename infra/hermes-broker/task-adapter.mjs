@@ -22,9 +22,18 @@ export function createTaskReads(options){
     return rpc('hermes_task_create_action_v1',value.accessToken,{p_binding:value.binding,p_operation:operation,p_input:input},callOptions,{write:operation==='create'});
   }});
 }
-export function createTaskAuth({baseAuth,reads}){
-  if([baseAuth?.verifySession,baseAuth?.readAuthorization,reads?.capabilities].some(fn=>typeof fn!=='function'))throw new TypeError('invalid_task_auth');
+// createFromActions (Đợt 2b, CV1): danh mục thao tác ghi dùng chung có task.create ⇒ tasks.create đến từ lớp đó (phạm vi đã giao
+// buildings.view); lớp này thôi đọc hermes_task_create_capabilities_v1 và chỉ thêm khoá theo dõi/tiến độ/huỷ. Hai lớp cùng cấp một
+// khoá là context_changed (rào bên dưới), nên phải chọn một nguồn.
+export function createTaskAuth({baseAuth,reads,createFromActions=false}){
+  if([baseAuth?.verifySession,baseAuth?.readAuthorization].some(fn=>typeof fn!=='function')||typeof createFromActions!=='boolean'||
+    (!createFromActions&&typeof reads?.capabilities!=='function'))throw new TypeError('invalid_task_auth');
   return Object.freeze({verifySession:input=>baseAuth.verifySession(input),async readAuthorization(input){
+    if(createFromActions){
+      if(typeof reads?.followCapabilities!=='function')return baseAuth.readAuthorization(input);
+      const reading=await readWithBaseAuthorization(baseAuth,input,()=>reads.followCapabilities({accessToken:input.accessToken,organizationId:input.organizationId},{signal:input.signal}));
+      return extendTaskFollowAuthorization(reading.current,reading.capability(),input);
+    }
     // Task and follow capability RPCs start in the same wave as the base chain.
     // The follow observation is still consulted (and its failure surfaced) only
     // after a present, valid task capability, exactly as before.

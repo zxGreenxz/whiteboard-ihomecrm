@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T02:03:07.980Z",
+  "generatedAt": "2026-10-22T03:57:56.389Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 799,
-    "unknown": 80,
+    "unknown": 83,
     "catalog-proven": 205,
     "superseded": 15
   },
@@ -12650,6 +12650,49 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-10-21T22:56:20.746Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022031548_hermes_task_action_create_v1.sql",
+      "version": "20261022031548",
+      "name": "hermes_task_action_create_v1",
+      "scheme": "timestamp14",
+      "sha256": "5c6f6c90993cfa7a9dc221704e073b23f9b3a22643ac16bcf52c89acb01f4a06",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.hermes_task_limits",
+        "table:app_private.hermes_task_jobs",
+        "function:public.job_deadline_v1",
+        "function:public.job_open_duplicates_v1",
+        "function:app_private.hermes_task_building_managers_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022031600_jobs_assignee_visible_v1.sql",
+      "version": "20261022031600",
+      "name": "jobs_assignee_visible_v1",
+      "scheme": "timestamp14",
+      "sha256": "c79fb7c188eb11f63b0ec051abbece9d7bb32eb2e921a914ac0357a118e094b6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.job_visible_as_assignee_v1",
+        "policy:public.jobs.jobs_select_own_assignee"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022031605_jobs_assignee_progress_complete_v1.sql",
+      "version": "20261022031605",
+      "name": "jobs_assignee_progress_complete_v1",
+      "scheme": "timestamp14",
+      "sha256": "be1331ad5fd33f057f9a1b993ec8c6c401a04314b0302eef180c9b711c3c81ad",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.jobs_assignee_update_guard_v1",
+        "policy:public.jobs.jobs_update_own_assignee",
+        "trigger:public.jobs.zz_jobs_assignee_update_guard"
       ]
     },
     {

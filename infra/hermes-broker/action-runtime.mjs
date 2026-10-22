@@ -50,7 +50,9 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     if (!exact(outcome, ['kind', 'reason'], ['field', 'wanted', 'why', 'candidates', 'more']) || !ACTION_INPUT_REASONS.includes(outcome.reason)) fail('backend_unavailable');
     if (outcome.reason !== 'name_unresolved') return needsInput({ action: plan.action, reason: outcome.reason });
     // Khuôn kết quả "unresolved" của hermes_write_name_resolve_v1 (field, wanted, why, candidates ≤ 8, more).
-    if (!NAME_FIELDS.includes(outcome.field) || !shortText(outcome.wanted, 200) || !(outcome.why === undefined || NAME_WHYS.includes(outcome.why)) ||
+    // why unspecified (Công việc, Q31): trường chưa được nêu ⇒ wanted rỗng; mọi why khác phải nhắc lại đúng chuỗi người dùng nói.
+    if (!NAME_FIELDS.includes(outcome.field) || !(outcome.why === 'unspecified' ? outcome.wanted === '' : shortText(outcome.wanted, 200)) ||
+        !(outcome.why === undefined || NAME_WHYS.includes(outcome.why)) ||
         !candidatesOf(outcome.candidates ?? []) || !(outcome.more === undefined || typeof outcome.more === 'boolean')) fail('backend_unavailable');
     // outside_scope không bao giờ kèm tên (SQL không trả tên ngoài phạm vi được ghi; review #253): bỏ mọi tên nếu có.
     const candidates = outcome.why === 'outside_scope' ? [] : outcome.candidates ?? [];
@@ -62,6 +64,8 @@ export function createActionRuntime({ catalog, service, clock = Date.now, shape 
     definitions,
     listed: effective => listedActionTools(catalog, effective, shape),
     route: name => actionToolRoute(name, catalog, shape),
+    /** Danh mục có thao tác này (broker dùng để ẩn họ tool cũ mà thao tác thay thế). */
+    knows: id => catalog.get(id) !== null,
     /** Đồng bộ, trước admission: tách confirmToken (chỉ ở run) và kiểm phong bì. Không đọc gì của CRM. */
     begin(route, args) {
       const plan = { op: route.op, invalid: false, tokenInvalid: false, confirmToken: undefined, uncertain: false, immediate: null };

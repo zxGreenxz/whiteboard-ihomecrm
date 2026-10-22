@@ -81,7 +81,10 @@ function fakeBackend() {
     if (['/rest/v1/rpc/hermes_group_action_context_v1', '/rest/v1/rpc/hermes_work_memory_capabilities_v1', '/rest/v1/rpc/hermes_room_schedule_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v1', '/rest/v1/rpc/hermes_domain_capabilities_v2', '/rest/v1/rpc/hermes_domain_capabilities_v3', '/rest/v1/rpc/hermes_room_pass_capabilities_v1', '/rest/v1/rpc/hermes_task_create_capabilities_v1', '/rest/v1/rpc/hermes_customer_create_capabilities_v1', '/rest/v1/rpc/hermes_expense_capabilities_v1', '/rest/v1/rpc/hermes_connection_options_v7', '/rest/v1/rpc/hermes_connection_context_v7', '/rest/v1/rpc/hermes_connection_options_v6', '/rest/v1/rpc/hermes_connection_context_v6', '/rest/v1/rpc/hermes_connection_options_v5', '/rest/v1/rpc/hermes_connection_context_v5', '/rest/v1/rpc/hermes_connection_options_v4', '/rest/v1/rpc/hermes_connection_context_v4', '/rest/v1/rpc/hermes_connection_options_v3', '/rest/v1/rpc/hermes_connection_context_v3', '/rest/v1/rpc/hermes_connection_options_v2', '/rest/v1/rpc/hermes_connection_context_v2',
       '/rest/v1/rpc/hermes_organization_name_v1', '/rest/v1/rpc/hermes_building_directory_v1',
       // R2c part 2 (c): the asker's own display name is optional the same way.
-      '/rest/v1/rpc/hermes_user_display_name_v1'].includes(endpoint.pathname))
+      '/rest/v1/rpc/hermes_user_display_name_v1',
+      // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác chung đọc hermes_action_capabilities_v1 và lớp task đọc thẳng
+      // capability theo dõi việc; vắng (PGRST202) ⇒ không cấp khoá, như mọi họ tuỳ chọn.
+      '/rest/v1/rpc/hermes_action_capabilities_v1', '/rest/v1/rpc/hermes_task_follow_capabilities_v1'].includes(endpoint.pathname))
       return Response.json({ code: 'PGRST202', message: 'Synthetic optional RPC absent', details: null, hint: null }, { status: 404 });
     if (endpoint.pathname === '/rest/v1/rpc/get_authorization_context_v1') return Response.json({ organizationId: I.org,
       membershipId: I.member, authorizationVersion: 1, isPlatformAdmin: false, isOffboarded: false, permissions: { 'rooms.view': true } });

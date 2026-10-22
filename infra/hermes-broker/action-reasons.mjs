@@ -33,6 +33,10 @@ export const ACTION_REASONS = Object.freeze({
   web_only: reason('rejected', 'never', 'Trường hợp này phải làm trên web.'),
   duplicate_request: reason('rejected', 'never', 'Lệnh này đã được ghi trước đó.'),
   crm_refused: reason('rejected', 'never', 'CRM từ chối, chưa phân loại được lý do; kiểm trên web.'),
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 2.4): hạn mức giao việc qua bot (Q37). Số trong câu là seed của
+  // app_private.hermes_task_limits (20261022031548); task-actions.test.mjs khoá câu với seed — đổi seed phải đổi câu.
+  task_quota_user: reason('rejected', 'later', 'Anh/chị đã giao quá số việc cho phép trong 1 giờ qua bot (mặc định 30 việc/giờ; chủ sở hữu 60); thử lại sau ít phút hoặc tạo trên web.'),
+  task_quota_pair: reason('rejected', 'later', 'Đã giao quá số việc cho phép cho cùng một người nhận trong 1 giờ (mặc định 10 việc/giờ; chủ sở hữu 40); thử lại sau ít phút hoặc tạo trên web.'),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

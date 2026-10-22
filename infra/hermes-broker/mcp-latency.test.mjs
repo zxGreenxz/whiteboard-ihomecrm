@@ -29,7 +29,9 @@ const optional = ['hermes_group_action_context_v1', 'hermes_work_memory_capabili
   // B5d: crm_auth_context directory (company name, buildings) — absent SQL degrades to null, one extra store read and one REST wave.
   'hermes_organization_name_v1', 'hermes_building_directory_v1',
   // R2c part 2 (c): the asker's display name, same optional degradation.
-  'hermes_user_display_name_v1'].map(name => `/rest/v1/rpc/${name}`);
+  'hermes_user_display_name_v1',
+  // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác ghi dùng chung đọc capability của nó (vắng ⇒ không cấp khoá).
+  'hermes_action_capabilities_v1'].map(name => `/rest/v1/rpc/${name}`);
 const principal = { role: 'hermes_store_test', session_role: 'hermes_store_test', scoped: true, privileged_member: false,
   rolsuper: false, rolbypassrls: false, rolcreaterole: false, rolcreatedb: false, rolreplication: false };
 
