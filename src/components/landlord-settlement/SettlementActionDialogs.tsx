@@ -1,6 +1,6 @@
 // Các thao tác ghi của màn quyết toán: ghi nhận thanh toán, huỷ thanh toán, chốt tháng,
 // mở chốt. Server là hàng rào thật; hộp thoại chỉ kiểm hình thức và hiện lỗi server.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { CurrencyInput } from '@/components/ui/currency-input';
@@ -27,6 +27,7 @@ import {
   type SettlementMonth,
   type SettlementPayment,
 } from '@/lib/landlordSettlement';
+import { hasUnconfirmedResponse } from '@/lib/operationOutcome';
 import { formatVND } from '@/lib/utils';
 
 function vnToday(): string {
@@ -43,12 +44,40 @@ function ServerError({ message }: { message: string | null }) {
 
 // ─────────────────────────────── thanh toán ───────────────────────────────
 
+interface PaymentPayload { paidOn: string; direction: PaymentDirection; amount: number; note: string }
+const samePayload = (a: PaymentPayload, b: PaymentPayload) =>
+  a.paidOn === b.paidOn && a.direction === b.direction && a.amount === b.amount && a.note === b.note;
+
+// Lần gửi CHƯA XÁC NHẬN (mạng rớt / treo — server có thể đã ghi), nhớ THEO TOÀ ở mức module: sống qua
+// đóng hộp, đổi toà, rời trang. Đổi / thoát tài khoản thì trang nạp lại hẳn nên không sang tài khoản khác.
+interface PendingPayment { payload: PaymentPayload; key: string }
+const chuaXacNhan = new Map<string, PendingPayment>();
+const ngheChuaXacNhan = new Set<() => void>();
+function datChuaXacNhan(buildingId: string, v: PendingPayment | null) {
+  if (v) chuaXacNhan.set(buildingId, v);
+  else chuaXacNhan.delete(buildingId);
+  ngheChuaXacNhan.forEach((f) => f());
+}
+function theoDoiChuaXacNhan(f: () => void) {
+  ngheChuaXacNhan.add(f);
+  return () => { ngheChuaXacNhan.delete(f); };
+}
+const ngayVn = (iso: string) => iso.split('-').reverse().join('/');
+// Chỉ lỗi server trả MÃ (SQLSTATE / PGRST) mà không thuộc loại "chưa xác nhận" mới chắc chắn là chưa
+// ghi. Lỗi đọc biên nhận (zod) xảy ra SAU khi server đã ghi ⇒ vẫn là chưa xác nhận.
+function serverTuChoiHan(err: unknown): boolean {
+  const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+  return typeof code === 'string' && /^([0-9A-Z]{5}|PGRST\d{3})$/.test(code) && !hasUnconfirmedResponse(err);
+}
+
 export function PaymentDialog({
-  open, onOpenChange, buildingId, suggestedDirection,
+  open, onOpenChange, buildingId, buildingName, suggestedDirection,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   buildingId: string;
+  /** Nêu trong toast: kết quả có thể về khi người dùng đã sang toà khác. */
+  buildingName: string;
   suggestedDirection: PaymentDirection;
 }) {
   const add = useAddLandlordPayment();
@@ -56,21 +85,45 @@ export function PaymentDialog({
   const [direction, setDirection] = useState<PaymentDirection>(suggestedDirection);
   const [amount, setAmount] = useState<number>(Number.NaN);
   const [note, setNote] = useState('');
-  const [key, setKey] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
-
+  // Gửi lại CÙNG nội dung với lần chưa xác nhận của toà này thì dùng lại khoá ⇒ server chỉ đọc lại kết
+  // quả cũ, không ghi thêm.
+  const pending = useSyncExternalStore(theoDoiChuaXacNhan, () => chuaXacNhan.get(buildingId) ?? null);
+  const wasOpen = useRef(false);
+  // hộp đang hiện gì (toà + nội dung): kết quả của một lần gửi chỉ đóng hộp / ghi lỗi vào hộp khi hộp
+  // còn mở và đang hiện ĐÚNG khoản đó; còn lại báo bằng toast (đã đóng, sang toà khác, sửa thành khoản khác)
+  const dangHien = useRef<{ buildingId: string; payload: PaymentPayload } | null>(null);
   useEffect(() => {
-    if (!open) return;
-    setPaidOn(vnToday());
-    setDirection(suggestedDirection);
-    setAmount(Number.NaN);
-    setNote('');
-    // Một khoá cho mỗi lần mở hộp thoại: bấm lại sau lỗi mạng không ghi trùng.
-    setKey(crypto.randomUUID());
-    setErrors({});
-    setServerError(null);
-  }, [open, suggestedDirection]);
+    dangHien.current = { buildingId, payload: { paidOn, direction, amount, note: note.trim() } };
+  });
+  const hienDungKhoan = (b: string, p: PaymentPayload) => {
+    const h = dangHien.current;
+    return wasOpen.current && h !== null && h.buildingId === b && samePayload(h.payload, p);
+  };
+
+  // Khởi tạo đúng MỘT lần mỗi lần mở (đóng → mở). Chiều gợi ý đổi khi dữ liệu nạp lại nền thì không xoá
+  // số đang gõ. Còn một lần gửi chưa xác nhận của chính toà này thì điền lại đúng nội dung đó.
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      if (pending) {
+        setPaidOn(pending.payload.paidOn);
+        setDirection(pending.payload.direction);
+        setAmount(pending.payload.amount);
+        setNote(pending.payload.note);
+      } else {
+        setPaidOn(vnToday());
+        setDirection(suggestedDirection);
+        setAmount(Number.NaN);
+        setNote('');
+      }
+      setErrors({});
+      setServerError(null);
+    }
+    wasOpen.current = open;
+  }, [open, suggestedDirection, pending]);
+
+  const requestClose = (next: boolean) => onOpenChange(next);
 
   const submit = async () => {
     const e: Record<string, string> = {};
@@ -80,23 +133,53 @@ export function PaymentDialog({
     setErrors(e);
     setServerError(null);
     if (Object.keys(e).length > 0) return;
+    const payload: PaymentPayload = { paidOn, direction, amount, note: note.trim() };
+    const b = buildingId;
+    const khoan = `${buildingName} — ${formatVND(payload.amount)} ngày ${ngayVn(payload.paidOn)}`;
+    // khoá theo NỘI DUNG: giống lần chưa xác nhận thì dùng lại khoá cũ, khác thì là một khoản khác
+    const key = pending && samePayload(pending.payload, payload) ? pending.key : crypto.randomUUID();
+    // ghi lại lần gửi TRƯỚC khi chờ: đóng hộp giữa chừng (mạng treo) rồi mở lại vẫn dùng đúng khoá này
+    datChuaXacNhan(b, { payload, key });
+    const xoaNeuCuaMinh = () => { if (chuaXacNhan.get(b)?.key === key) datChuaXacNhan(b, null); };
     try {
-      await add.mutateAsync({ buildingId, paidOn, direction, amount, note: note.trim() || null, idempotencyKey: key });
-      toast.success('Đã ghi nhận thanh toán');
-      onOpenChange(false);
+      const r = await add.mutateAsync({
+        buildingId: b, paidOn, direction, amount, note: payload.note || null, idempotencyKey: key,
+      });
+      xoaNeuCuaMinh();
+      if (r.status === 'REPLAYED') toast.info(`${khoan}: khoản này đã được ghi trước đó — không ghi thêm`);
+      else toast.success(`Đã ghi nhận thanh toán ${khoan}`);
+      // đóng cả phiên mở lại đang hiện đúng khoản này (để nguyên thì bấm lại sẽ sinh khoá mới, ghi trùng);
+      // hộp đã sửa thành khoản khác thì để nguyên cho người dùng ghi tiếp
+      if (hienDungKhoan(b, payload)) onOpenChange(false);
     } catch (err) {
-      setServerError(landlordErrorMessage(err, 'Chưa ghi nhận được thanh toán'));
+      const msg = landlordErrorMessage(err, 'Chưa ghi nhận được thanh toán');
+      // server từ chối hẳn ⇒ chắc chắn chưa ghi, không còn gì "chưa xác nhận" để giữ khoá
+      const chuaRo = !serverTuChoiHan(err);
+      if (!chuaRo) xoaNeuCuaMinh();
+      if (hienDungKhoan(b, payload)) setServerError(msg);
+      // hộp đã đóng / đang mở cho toà khác / đã sửa sang khoản khác: vẫn phải báo, nêu đúng khoản
+      else toast.error(`${khoan}: ${msg}`
+        + (chuaRo ? ` Mở lại "Ghi nhận thanh toán" ở toà ${buildingName}: hộp điền sẵn khoản này, bấm Ghi nhận để thử lại (không ghi trùng).` : ''));
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Ghi nhận thanh toán quyết toán</DialogTitle>
-          <DialogDescription>Khoản chủ nhà và quản lý đã chuyển cho nhau để tất toán. Chỉ ghi ở trang này — không sinh phiếu thu/chi.</DialogDescription>
+          <DialogDescription>
+            Khoản chủ nhà và quản lý đã chuyển cho nhau để tất toán. Chỉ ghi ở trang này — không sinh phiếu thu/chi.
+            Đừng lập thêm phiếu chi/thu tính KQKD cho khoản này ở toà: phiếu đó sẽ bị tính là chi phí/doanh thu của toà.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {pending && !add.isPending && (
+            <p className="rounded-md border border-amber-400 p-2 text-xs">
+              Lần ghi trước chưa xác nhận được. Kiểm danh sách "Hai bên đã trả nhau" — chưa có thì bấm Ghi nhận với
+              đúng nội dung này để thử lại (không ghi trùng). Sửa nội dung thì là một khoản mới.
+            </p>
+          )}
           <RadioGroup value={direction} onValueChange={(v) => setDirection(v as PaymentDirection)} className="gap-2">
             {(['LANDLORD_TO_MANAGER', 'MANAGER_TO_LANDLORD'] as const).map((d) => (
               <label key={d} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm">
@@ -117,7 +200,7 @@ export function PaymentDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="pay-note">Ghi chú</Label>
+            <Label htmlFor="pay-note">Ghi chú <span className="font-normal text-muted-foreground">(chủ nhà xem được qua link)</span></Label>
             <Textarea id="pay-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="vd: chủ nhà chuyển khoản quyết toán tháng 10" />
             {errors.note && <p className="text-xs text-destructive">{errors.note}</p>}
@@ -125,7 +208,7 @@ export function PaymentDialog({
           <ServerError message={serverError} />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
+          <Button type="button" variant="outline" onClick={() => requestClose(false)}>Đóng</Button>
           <Button type="button" onClick={submit} disabled={add.isPending}>{add.isPending ? 'Đang ghi…' : 'Ghi nhận'}</Button>
         </DialogFooter>
       </DialogContent>
@@ -229,7 +312,7 @@ export function CloseMonthDialog({
           </dl>
         )}
         <div className="space-y-1.5">
-          <Label htmlFor="close-note">Ghi chú (không bắt buộc)</Label>
+          <Label htmlFor="close-note">Ghi chú (không bắt buộc · chủ nhà xem được qua link)</Label>
           <Textarea id="close-note" rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
         <ServerError message={serverError} />

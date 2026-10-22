@@ -873,6 +873,33 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
+    },
+    "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql": {
+      "sha256": "ad16d58b15b8a5e85b3130a0c5ce1f1e8295f8c03c1a60ba8d6df2476df1453e",
+      "missingObjects": [
+        "table:app_private.landlord_operations",
+        "table:app_private.landlord_operation_terms",
+        "table:app_private.landlord_operation_changes",
+        "table:app_private.landlord_settlement_closes",
+        "table:app_private.landlord_settlement_payments"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 21/10/2026 (quyết toán toà vận hành cho chủ nhà), chủ dặn \"xem thử ở local rồi mới đưa lên production\" — bảng vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Không writer nào đọc các bảng này; web gọi RPC qua lớp bọc riêng, màn chỉ mở khi có RPC. Đã kiểm: PGlite chạy migration hai lượt + 30 ca (công thức, quyền 42501, chốt CAS, điều khoản theo tháng, số dư đầu kỳ, link công khai che tên sổ, đối chiếu KQKD với fa_accrual_allocations thật, parse zod gói RPC thật); đột biến; áp trên TEST và kiểm giao diện bằng Playwright. Sẽ áp qua lane migrate:forward khi chủ duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "raSoatBoi": "Claude Code — quyết toán vận hành cho chủ nhà, 21/10/2026",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.landlord_operations (… / CREATE TABLE IF NOT EXISTS app_private.landlord_operation_terms (…"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "state unknown, missingObjects table:app_private.landlord_operations, table:app_private.landlord_operation_terms, table:app_private.landlord_operation_changes, table:app_private.landlord_settlement_closes, table:app_private.landlord_settlement_payments — sinh 21/10/2026 sau khi tạo file"
+        },
+        {
+          "duong_dan": "src/lib/__tests__/quyetToanVanHanhMigration.test.ts",
+          "trich_doan": "Chạy THẬT trên PostgreSQL nhúng: migration HAI lượt, rồi gọi RPC bằng vai authenticated / anon như PostgREST."
+        }
+      ]
     }
   }
 }

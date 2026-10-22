@@ -34,7 +34,7 @@ loi_nhuan    = doanh_thu − chi_phi
 phan_quan_ly = loi_nhuan > 0 ? round(loi_nhuan × % / 100) : 0
 phan_chu_nha = loi_nhuan − phan_quan_ly
 coc_chu_nha_giu = cọc/tiền khách trả thừa vào sổ chủ nhà − chi ra từ sổ chủ nhà
-                  + tiền thối/làm tròn rơi vào sổ chủ nhà
+                  + tiền thối rơi vào sổ chủ nhà (làm tròn không phải tiền mặt ⇒ không tính)
 chu_nha_tra_quan_ly = phan_quan_ly + quản lý chi − quản lý thu + coc_chu_nha_giu   (âm ⇒ quản lý trả lại chủ nhà)
 ```
 
@@ -48,8 +48,16 @@ Kiểm chứng: chủ nhà đang giữ (chủ nhà thu − chủ nhà chi + coc_
   hoàn cọc không tính; cặp `termination.rent_refund_*` tự triệt tiêu.
 - **Không khoản nào biến mất:** mọi dòng thuộc đúng một nhóm — tính KQKD / cọc / không tính (nội bộ, phiếu tắt KQKD) — nhóm
   "không tính" vẫn liệt kê kèm lý do.
-- **Phiếu chờ duyệt** chưa tính, liệt kê riêng; còn phiếu chờ (hoặc phiếu đã duyệt mà bút toán sổ quỹ bị đảo) thì không chốt được.
-- **Số dư đầu kỳ** khai ở Cài đặt toà; màn gợi ý số cọc đang nằm ở sổ chủ nhà trước tháng áp dụng.
+- **Phiếu chờ duyệt** chưa tính, liệt kê riêng; còn phiếu chờ (hoặc phiếu đã duyệt mà bút toán sổ quỹ bị đảo / chưa ghi sổ,
+  phiếu dùng sổ chủ nhà của toà vận hành khác, phiếu của toà khác ghi vào sổ chủ nhà toà này) thì không chốt được. Tháng đầu tiên còn chặn phiếu chờ duyệt ghi ngày trước tháng
+  áp dụng (duyệt xong cũng không rơi vào kỳ nào).
+- **Số dư đầu kỳ** khai ở Cài đặt toà; màn gợi ý số cọc đang nằm ở sổ chủ nhà trước tháng áp dụng. Phải đánh dấu "đã đối
+  chiếu với chủ nhà" mới chốt được (khi số dư hoặc cọc trước kỳ khác 0); đổi số thì phải đánh dấu lại.
+- **Điều khoản theo tháng** (bổ sung sau rà 21/10): % và sổ chủ nhà lưu theo `valid_from`; sửa "từ tháng X" (chưa chốt) chỉ
+  ghi trường đã đổi so với điều khoản đang áp ở X, cho X và các mốc sau; tháng đã chốt giữ nguyên. Không dời tháng áp dụng ra
+  sau tháng đã chốt. Xác nhận số dư đầu kỳ chỉ nhận khi đúng số cọc trước kỳ màn đã hiện và cơ sở không đổi trong lần lưu.
+- **Đối chiếu KQKD** (chỉ màn quản trị): lợi nhuận quyết toán (ngày phiếu) cạnh lợi nhuận KQKD toà (kỳ, `fa_accrual_allocations`)
+  và từng phiếu làm hai số khác nhau. Cảnh báo: khoản chi cố định chưa có phiếu, phiếu ở toà khác nhắc mã toà.
 - **Cộng dồn:** còn lại = Σ quyết toán các tháng **đã chốt** − chủ nhà đã trả + quản lý đã trả. Màn hiện thêm số
   "gồm cả tháng tạm tính".
 
@@ -57,7 +65,8 @@ Kiểm chứng: chủ nhà đang giữ (chủ nhà thu − chủ nhà chi + coc_
 
 | Bảng | Vai trò |
 |---|---|
-| `landlord_operations` | Một dòng/toà: tên chủ nhà, % quản lý, tháng áp dụng, danh sách sổ quỹ chủ nhà, đang áp dụng |
+| `landlord_operations` | Một dòng/toà: tên chủ nhà, tháng áp dụng, số dư đầu kỳ (+ dấu đã đối chiếu), đang áp dụng |
+| `landlord_operation_terms` | % quản lý + sổ quỹ chủ nhà theo tháng bắt đầu (`valid_from`) |
 | `landlord_operation_changes` | Sổ thay đổi cấu hình (append-only) |
 | `landlord_settlement_closes` | Chốt / mở chốt tháng, append-only; CLOSE chụp nguyên bảng quyết toán + `source_hash` |
 | `landlord_settlement_payments` | Hai bên đã trả nhau; không xoá, huỷ phải có lý do; khoá chống bấm trùng |
@@ -114,7 +123,9 @@ Quyền: `public.is_super_admin()` hoặc chủ công ty của đúng công ty s
 
 1. Draft PR (tiền + quyền + migration) → CI → review chéo một lượt trên diff cuối.
 2. `npm run migrate:forward -- <file>` dry-run → `--apply` (lane có backup + biên nhận) → provenance, `gen:types`,
-   bỏ lớp bọc kiểu RPC tạm.
+   bỏ lớp bọc kiểu RPC tạm, gỡ hồ sơ "chưa áp có chủ ý" ở `supabase/migration-unknown-review.json`. Ngay sau khi áp:
+   `node scripts/check-definer-acl.mjs --update` (RPC `landlord_settlement_public_v1` cho anon là có chủ đích — hàng rào
+   là token) trong cùng PR nối tiếp, không thì security-gates trên main đỏ.
 3. Promote web theo lane (`promote:production`), `release:verify`.
 4. Chủ nhập cấu hình 3 toà trên production; đánh dấu tiền nhà "không áp dụng" ở Phí cố định theo toà.
 
@@ -123,7 +134,8 @@ Quyền: `public.is_super_admin()` hoặc chủ công ty của đúng công ty s
 - Tính theo **tiền thực thu/chi theo ngày phiếu**, chỉ phiếu đã duyệt.
 - Chỉ **chốt tháng đã qua** và không còn phiếu chờ duyệt.
 - Thanh toán quyết toán ghi trên trang này; **không** tự sinh phiếu thu/chi trong sổ quỹ.
-- Link chủ nhà: không cần đăng nhập, thu hồi được, không lộ id nội bộ; chủ nhà thấy tên phiếu, sổ quỹ, số tiền.
+- Link chủ nhà: không cần đăng nhập, thu hồi được, không lộ id nội bộ; chủ nhà thấy tên phiếu và số tiền, tên sổ chỉ hiện
+  "Sổ chủ nhà" / "Sổ quản lý", phiếu có hạng mục hạn chế bị che tên.
 
 ## 10. Ngoài phạm vi đợt này
 

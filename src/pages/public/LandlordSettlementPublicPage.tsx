@@ -76,19 +76,27 @@ export default function LandlordSettlementPublicPage() {
         {data && (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="qt-month" className="text-sm text-muted-foreground">Tháng</label>
-              <select
-                id="qt-month"
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-                value={selected ?? ''}
-                onChange={(e) => setMonth(e.target.value || null)}
-              >
-                {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-              </select>
+              {months.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Thoả thuận bắt đầu từ {monthLabel(data.overview.effective_from).toLowerCase()}.
+                </p>
+              ) : (
+                <>
+                  <label htmlFor="qt-month" className="text-sm text-muted-foreground">Tháng</label>
+                  <select
+                    id="qt-month"
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    value={selected ?? ''}
+                    onChange={(e) => setMonth(e.target.value || null)}
+                  >
+                    {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                  </select>
+                </>
+              )}
               {q.isFetching && <span className="text-xs text-muted-foreground">Đang cập nhật…</span>}
             </div>
             <SettlementStatementCard month={data.month} mode="public" />
-            <SettlementOverviewCard overview={data.overview} selectedMonth={selected} onSelectMonth={setMonth} />
+            <SettlementOverviewCard overview={data.overview} mode="public" selectedMonth={selected} onSelectMonth={setMonth} />
             <p className="pb-6 text-center text-xs text-muted-foreground">
               Số liệu lấy trực tiếp từ sổ sách của bên quản lý. Tháng "tạm tính" còn thay đổi cho tới khi được chốt.
             </p>

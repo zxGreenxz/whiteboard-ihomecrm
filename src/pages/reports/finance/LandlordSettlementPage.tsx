@@ -135,12 +135,16 @@ export default function LandlordSettlementPage() {
               <QueryRegion label="quyết toán tháng" queries={month ? [overview, monthQ] : [overview]} skeleton="detail">
                 {monthQ.data
                   ? <SettlementStatementCard month={monthQ.data} mode="admin" />
-                  : <EmptyState icon={Handshake} title="Chưa tới tháng áp dụng" description="Thoả thuận của toà này bắt đầu từ tháng sau." />}
+                  : <EmptyState icon={Handshake} title="Chưa tới tháng áp dụng"
+                      description={overview.data
+                        ? `Thoả thuận của toà này bắt đầu từ ${monthLabel(overview.data.effective_from).toLowerCase()}.`
+                        : 'Thoả thuận của toà này chưa tới tháng bắt đầu.'} />}
               </QueryRegion>
               <QueryRegion label="tổng quyết toán" queries={[overview]} skeleton="table">
                 {overview.data && (
                   <SettlementOverviewCard
                     overview={overview.data}
+                    mode="admin"
                     selectedMonth={month}
                     onSelectMonth={(m) => setSavedMonth(m)}
                     onVoidPayment={setVoidTarget}
@@ -164,7 +168,7 @@ export default function LandlordSettlementPage() {
       {buildingId && operation && (
         <>
           <ShareLinkDialog open={shareOpen} onOpenChange={setShareOpen} buildingId={buildingId} buildingName={operation.building_name} />
-          <PaymentDialog open={payOpen} onOpenChange={setPayOpen} buildingId={buildingId}
+          <PaymentDialog open={payOpen} onOpenChange={setPayOpen} buildingId={buildingId} buildingName={operation.building_name}
             suggestedDirection={balance < 0 ? 'MANAGER_TO_LANDLORD' : 'LANDLORD_TO_MANAGER'} />
           <VoidPaymentDialog payment={voidTarget} onOpenChange={(open) => { if (!open) setVoidTarget(null); }} />
         </>

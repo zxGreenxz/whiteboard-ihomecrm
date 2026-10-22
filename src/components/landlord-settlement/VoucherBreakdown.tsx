@@ -40,23 +40,30 @@ const fmtDay = (iso: string) => {
   return `${d}/${m}/${y}`;
 };
 
-function rowNote(v: SettlementVoucher, key: GroupKey): string {
+/** Link chủ nhà: tên sổ đã là nhãn bên giữ tiền ('Sổ chủ nhà' / 'Sổ quản lý' / 'Cấn trừ cọc') — in nguyên. */
+const accountText = (name: string, mode: 'admin' | 'public') => (mode === 'public' ? name : `sổ ${name}`);
+
+function rowNote(v: SettlementVoucher, key: GroupKey, mode: 'admin' | 'public'): string {
   const parts: string[] = [];
   if (v.source) parts.push(VOUCHER_SOURCE_LABEL[v.source]);
   if (key === 'termination' || key === 'deposit' || key === 'pending' || key === 'excluded') {
     if (v.group === 'DEPOSIT') parts.push(v.type === 'INCOME' ? 'thu cọc/trả thừa' : 'hoàn/cấn cọc');
     else if (v.group === 'PNL') parts.push(v.type === 'INCOME' ? 'doanh thu' : 'chi phí');
-    parts.push(v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý');
+    // link chủ nhà: tên sổ đã là nhãn bên giữ tiền thì không nhắc lại
+    if (mode === 'admin' || !v.account_name) parts.push(v.side === 'LANDLORD' ? 'sổ chủ nhà' : 'sổ quản lý');
   }
   if (v.excluded_reason) parts.push(`không tính: ${EXCLUDED_REASON_LABEL[v.excluded_reason]}`);
   if (v.cash_reversed) parts.push('bút toán sổ quỹ đã bị đảo');
+  if (v.cash_unposted) parts.push('chưa ghi sổ quỹ');
+  if (v.foreign_landlord_account) parts.push('sổ chủ nhà của toà khác — chặn chốt');
   if (v.status === 'UNAPPROVED') parts.push('chờ duyệt');
   return parts.length ? ` · ${parts.join(' · ')}` : '';
 }
 
-export function VoucherBreakdown({ vouchers, totals }: {
+export function VoucherBreakdown({ vouchers, totals, mode }: {
   vouchers: SettlementVoucher[];
   totals: SettlementStatement['totals'];
+  mode: 'admin' | 'public';
 }) {
   const grouped = useMemo(
     () => GROUPS.map((g) => ({ ...g, rows: vouchers.filter(g.match) })),
@@ -97,8 +104,8 @@ export function VoucherBreakdown({ vouchers, totals }: {
               <span className="min-w-0 truncate" title={v.name ?? ''}>{v.name || '(không tên)'}</span>
               <span className="text-right font-medium tabular-nums">{formatVND(v.amount)}</span>
               <span className="text-xs text-muted-foreground">
-                {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · sổ ${v.account_name}` : ''}
-                {rowNote(v, current.key)}
+                {fmtDay(v.voucher_date)}{v.code ? ` · ${v.code}` : ''}{v.account_name ? ` · ${accountText(v.account_name, mode)}` : ''}
+                {rowNote(v, current.key, mode)}
               </span>
               <span />
             </div>

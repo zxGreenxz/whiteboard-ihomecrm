@@ -9,14 +9,18 @@ import {
   NET_DIRECTION_LABEL,
   describeNet,
   monthLabel,
+  monthShort,
   type SettlementMonth,
   type SettlementStatement,
 } from '@/lib/landlordSettlement';
+import { KqkdBridgeBlock, SettlementWarningsBlock } from './SettlementChecks';
 import { VoucherBreakdown } from './VoucherBreakdown';
 
-function StatusBadge({ month }: { month: SettlementMonth }) {
+function StatusBadge({ month, mode }: { month: SettlementMonth; mode: 'admin' | 'public' }) {
   if (month.status === 'CLOSED' && month.is_stale) {
-    return <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Phiếu đã đổi sau khi chốt</Badge>;
+    return mode === 'admin'
+      ? <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />Phiếu đã đổi sau khi chốt</Badge>
+      : <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" />Đã chốt — đang chờ chốt lại</Badge>;
   }
   if (month.status === 'CLOSED') {
     return <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600"><Lock className="h-3 w-3" />Đã chốt</Badge>;
@@ -77,12 +81,15 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
   const st = month.statement;
 
   if (month.status === 'NOT_APPLICABLE' || !st) {
+    const chuaToi = month.period_month.slice(0, 7) >= month.effective_from.slice(0, 7);
     return (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{monthLabel(month.period_month)}</CardTitle>
           <CardDescription>
-            Tháng này chưa thuộc thời gian áp dụng (bắt đầu từ {monthLabel(month.effective_from).toLowerCase()}).
+            {chuaToi
+              ? <>Thoả thuận bắt đầu từ {monthLabel(month.effective_from).toLowerCase()} — số liệu có từ khi tháng đó bắt đầu.</>
+              : <>Tháng này chưa thuộc thời gian áp dụng (bắt đầu từ {monthLabel(month.effective_from).toLowerCase()}).</>}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -99,18 +106,25 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
       <CardHeader className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-base">{monthLabel(month.period_month)}</CardTitle>
-          <StatusBadge month={month} />
+          <StatusBadge month={month} mode={mode} />
         </div>
         <CardDescription>
           {month.building_name} · Chủ nhà: {month.landlord_name} · Quản lý nhận {pct}% lợi nhuận tháng (lỗ thì không tính)
+          {st.terms_from !== month.effective_from && <> — tỷ lệ áp từ {monthShort(st.terms_from)}</>}
           {closedAt && <> · Chốt lúc {closedAt}{month.closed?.closed_by_name ? ` bởi ${month.closed.closed_by_name}` : ''}</>}
         </CardDescription>
+        {month.closed?.note && <p className="text-sm">Ghi chú khi chốt: {month.closed.note}</p>}
+        {month.status === 'CLOSED' && month.is_stale && mode === 'public' && (
+          <p className="rounded-md border p-2 text-sm text-muted-foreground">
+            Số dưới đây là số lúc chốt. Sau khi chốt có phiếu của tháng được điều chỉnh; bên quản lý sẽ chốt lại.
+          </p>
+        )}
         {month.status === 'CLOSED' && month.is_stale && mode === 'admin' && (
           <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
             Có phiếu của tháng này được sửa/thêm/huỷ sau khi chốt. Số dưới đây là số lúc chốt — mở chốt rồi chốt lại để cập nhật.
           </p>
         )}
-        {st.reversed_voucher_count > 0 && (
+        {st.reversed_voucher_count > 0 && mode === 'admin' && (
           <p role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
@@ -118,11 +132,33 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
             </span>
           </p>
         )}
+        {st.unposted_voucher_count > 0 && mode === 'admin' && (
+          <p role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {st.unposted_voucher_count} phiếu đã duyệt nhưng chưa ghi sổ quỹ — tiền chưa thực vào/ra. Ghi sổ hoặc huỷ trước khi chốt.
+            </span>
+          </p>
+        )}
+        {(st.reversed_voucher_count > 0 || st.unposted_voucher_count > 0) && mode === 'public' && (
+          <p className="rounded-md border p-2 text-sm text-muted-foreground">
+            Có phiếu của tháng đang được bên quản lý xử lý trên sổ quỹ — số tháng này có thể còn điều chỉnh.
+          </p>
+        )}
+        {mode === 'admin' && st.foreign_account_voucher_count > 0 && (
+          <p role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {st.foreign_account_voucher_count} phiếu dùng sổ chủ nhà của toà vận hành khác — không biết tiền đang ở chủ nhà nào. Chuyển phiếu về đúng sổ, hoặc thêm sổ đó vào sổ chủ nhà của toà này.
+            </span>
+          </p>
+        )}
         {st.pending.voucher_count > 0 && (
           <p className="flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              Còn {st.pending.voucher_count} phiếu chờ duyệt (thu {formatVND(st.pending.income)}, chi {formatVND(st.pending.expense)}) — chưa tính vào quyết toán.
+              Còn {st.pending.voucher_count} phiếu chờ duyệt (thu {formatVND(st.pending.income)}, chi {formatVND(st.pending.expense)}
+              {st.pending.landlord_deposit !== 0 && <>, cọc/trả thừa ở sổ chủ nhà {formatVND(st.pending.landlord_deposit)}</>}) — chưa tính vào quyết toán.
             </span>
           </p>
         )}
@@ -134,8 +170,8 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <Kpi label="Doanh thu" value={t.revenue} />
-          <Kpi label="Chi phí" value={t.expense} />
+          <Kpi label="Doanh thu" value={t.revenue} hint="đã duyệt · theo ngày phiếu" />
+          <Kpi label="Chi phí" value={t.expense} hint="đã duyệt · theo ngày phiếu" />
           <Kpi label="Lợi nhuận" value={t.profit} tone={t.profit < 0 ? 'neg' : 'pos'} />
           <Kpi label={`Phần quản lý (${pct}%)`} value={t.manager_share} hint={t.profit <= 0 ? 'Lỗ hoặc hoà — không tính' : undefined} />
           <Kpi label="Phần chủ nhà" value={t.landlord_share} tone={t.landlord_share < 0 ? 'neg' : undefined} />
@@ -194,7 +230,7 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
             {t.landlord_extra_cash !== 0 && (
               <div className="flex justify-between gap-3">
                 <dt className="text-muted-foreground">
-                  {t.landlord_extra_cash > 0 ? '+ Tiền thối/làm tròn của khách nằm ở sổ chủ nhà' : '− Tiền thối/làm tròn chủ nhà đã chi'}
+                  {t.landlord_extra_cash > 0 ? '+ Tiền thối của khách nằm ở sổ chủ nhà' : '− Tiền thối chủ nhà đã chi'}
                 </dt>
                 <dd className="whitespace-nowrap tabular-nums">{formatVND(Math.abs(t.landlord_extra_cash))}</dd>
               </div>
@@ -208,6 +244,8 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
             <span className="text-xl font-bold tabular-nums">{formatVND(net.amount)}</span>
           </div>
         </div>
+
+        {mode === 'admin' && month.warnings && <SettlementWarningsBlock warnings={month.warnings} />}
 
         <TerminationBlock st={st} />
 
@@ -223,7 +261,9 @@ export function SettlementStatementCard({ month, mode }: { month: SettlementMont
           </p>
         )}
 
-        <VoucherBreakdown vouchers={st.vouchers} totals={t} />
+        <VoucherBreakdown vouchers={st.vouchers} totals={t} mode={mode} />
+
+        {mode === 'admin' && month.kqkd_bridge && <KqkdBridgeBlock bridge={month.kqkd_bridge} />}
       </CardContent>
     </Card>
   );

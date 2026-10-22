@@ -1,21 +1,52 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  landlordOperationOptionsSchema, landlordOperationsListSchema, settlementMonthSchema,
+  settlementOverviewSchema, settlementPublicSchema, shareLinksSchema, upsertReceiptSchema,
+} from "@/lib/landlordSettlement";
 
 /**
  * Migration 20261021083438 — quyết toán toà VẬN HÀNH CHO CHỦ NHÀ (chủ chốt 21/10/2026).
  * Chạy THẬT trên PostgreSQL nhúng: migration HAI lượt, rồi gọi RPC bằng vai
  * authenticated / anon như PostgREST. Kiểm công thức (ai giữ tiền, % quản lý, lỗ thì 0),
  * chặn quyền, chốt có CAS + phát hiện phiếu đổi sau chốt, thanh toán chống bấm trùng,
- * và link công khai không lộ id nội bộ.
+ * link công khai không lộ id/tên sổ, điều khoản theo tháng, đối chiếu KQKD, và gói RPC
+ * thật parse được bằng đúng schema zod mà web dùng.
  *
  * Dữ liệu đặt ở 2025 (tháng đã qua) để phép "chỉ chốt tháng đã qua" không phụ thuộc ngày chạy.
  */
 const FILE = "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql";
+const MIG_DIR = join(process.cwd(), "supabase", "migrations");
+/**
+ * Định nghĩa SỐNG của một hàm public: câu CREATE cuối cùng trong toàn bộ thư mục migration (theo thứ
+ * tự tên file), bỏ qua dòng chú thích. Không ghim file cũ — hàm thật đổi thì test chạy theo bản mới.
+ */
+function liveDefinitionOf(fnName: string): string {
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "gi");
+  let hit: { sql: string; start: number } | null = null;
+  for (const f of readdirSync(MIG_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    const sql = readFileSync(join(MIG_DIR, f), "utf8");
+    for (const m of sql.matchAll(re)) {
+      const lineStart = sql.lastIndexOf("\n", m.index) + 1;
+      if (!sql.slice(lineStart, m.index).includes("--")) hit = { sql, start: m.index };
+    }
+  }
+  if (!hit) throw new Error(`không tìm thấy định nghĩa public.${fnName}`);
+  const rest = hit.sql.slice(hit.start);
+  const open = /\bAS\s+(\$[A-Za-z_]*\$)/i.exec(rest);
+  if (!open) throw new Error(`public.${fnName}: không thấy thân hàm`);
+  const close = rest.indexOf(open[1], open.index + open[0].length);
+  return rest.slice(0, rest.indexOf(";", close + open[1].length) + 1);
+}
+/** Các hàm sống mà quyết toán gọi tới: nguồn KQKD / Chốt LN, bỏ dấu tiếng Việt, khớp hạng mục phí. */
+const LIVE_FNS = ["nrm_vn", "fee_type_matches", "fa_accrual_allocations"].map(liveDefinitionOf);
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const [ORG_A, ORG_B, CHU_A, NHAN_VIEN_A, CHU_B, SUPER] = [1, 2, 3, 4, 5, 6].map(id);
-const [TOA_A, TOA_B, TOA_AO] = [11, 12, 13].map(id);
-const [SO_CHU_NHA, SO_QUAN_LY, SO_AO, SO_CONG_TY_B] = [21, 22, 23, 24].map(id);
+const [TOA_A, TOA_B, TOA_AO, TOA_C] = [11, 12, 13, 14].map(id);
+const [SO_CHU_NHA, SO_QUAN_LY, SO_AO, SO_CONG_TY_B, SO_CHU_NHA_C] = [21, 22, 23, 24, 25].map(id);
+const [LOAI_THU, LOAI_DIEN, LOAI_TU_LANH] = [31, 32, 33].map(id);
 const db = new PGlite();
 
 type Json = Record<string, unknown>;
@@ -37,6 +68,13 @@ async function rpc<T = Json>(sql: string, params: unknown[] = []): Promise<T> {
   return r.rows[0].r;
 }
 const so = (v: unknown) => Number(v);
+/** db.exec cho khối SQL dài: lỗi thì kèm đoạn quanh vị trí lỗi để biết câu nào hỏng. */
+async function chay(sql: string) {
+  try { await db.exec(sql); } catch (e) {
+    const pos = Number((e as { position?: string }).position ?? 0);
+    throw new Error(`${(e as Error).message} — gần: ${sql.slice(Math.max(0, pos - 160), pos + 40)}`);
+  }
+}
 /** Câu mong lỗi chạy trong SAVEPOINT để transaction của ca test còn dùng tiếp được. */
 async function expectLoi(sql: string, params: unknown[], code: string) {
   await db.exec("SAVEPOINT thu_loi");
@@ -49,32 +87,35 @@ async function expectLoi(sql: string, params: unknown[], code: string) {
 let n = 100;
 async function phieu(p: {
   toa?: string; loai: "INCOME" | "EXPENSE"; so: string | null; thang: string; trangThai?: string;
-  kqkd?: boolean | null; xoa?: boolean; dong?: { lop: string; tien: number }[]; tong?: number; nguon?: string;
-  butToan?: string; lamTron?: { so: string; tien: number };
+  kqkd?: boolean | null; xoa?: boolean; dong?: { lop: string; tien: number; tu?: string; den?: string }[]; tong?: number; nguon?: string;
+  butToan?: string; lamTron?: { so: string; tien: number }; thoi?: { so: string; tien: number };
+  ten?: string; hoaDon?: string; hanChe?: boolean; loaiHangMuc?: string;
 }) {
   const pid = id(n++);
   await db.query(
     `INSERT INTO public.income_expenses(id, organization_id, building_id, code, name, type, voucher_date, account_id,
        approval_status, business_result_accounting, total_amount, deleted_at, system_source, posting_status,
-       rounding_account_id, rounding_amount)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [pid, ORG_A, p.toa ?? TOA_A, `P${n}`, `Phiếu ${n}`, p.loai, p.thang, p.so, p.trangThai ?? "APPROVED",
+       rounding_account_id, rounding_amount, change_account_id, change_amount, invoice_id, has_restricted_item)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+    [pid, ORG_A, p.toa ?? TOA_A, `P${n}`, p.ten ?? `Phiếu ${n}`, p.loai, p.thang, p.so, p.trangThai ?? "APPROVED",
       p.kqkd ?? null, p.tong ?? (p.dong ?? []).reduce((s, d) => s + d.tien, 0), p.xoa ? new Date().toISOString() : null,
-      p.nguon ?? null, p.butToan ?? "POSTED", p.lamTron?.so ?? null, p.lamTron?.tien ?? 0],
+      p.nguon ?? null, p.butToan ?? "POSTED", p.lamTron?.so ?? null, p.lamTron?.tien ?? 0,
+      p.thoi?.so ?? null, p.thoi?.tien ?? 0, p.hoaDon ?? null, p.hanChe ?? false],
   );
   for (const d of p.dong ?? []) {
     await db.query(
-      "INSERT INTO public.income_expense_items(income_expense_id, amount, accounting_class) VALUES ($1,$2,$3)",
-      [pid, d.tien, d.lop],
+      "INSERT INTO public.income_expense_items(income_expense_id, amount, accounting_class, income_expense_type_id, start_date, end_date) VALUES ($1,$2,$3,$4,$5,$6)",
+      [pid, d.tien, d.lop, p.loaiHangMuc ?? LOAI_THU, d.tu ?? null, d.den ?? null],
     );
   }
   return pid;
 }
 
 let PHIEU_LO_CHI = "";
+let PHIEU_HAN_CHE_MA = "";
 
 beforeAll(async () => {
-  await db.exec(`
+  await chay(`
     CREATE ROLE authenticated; CREATE ROLE anon; CREATE ROLE service_role;
     CREATE SCHEMA auth; CREATE SCHEMA app_private; CREATE SCHEMA extensions;
     GRANT USAGE ON SCHEMA public, auth TO authenticated, anon;
@@ -98,11 +139,18 @@ beforeAll(async () => {
     CREATE TABLE public.accounts(id uuid PRIMARY KEY, organization_id uuid, name text, code text,
       is_virtual boolean DEFAULT false, deleted_at timestamptz);
     CREATE TABLE public.income_expenses(id uuid PRIMARY KEY, organization_id uuid, building_id uuid, code text, name text,
-      type text, voucher_date date, account_id uuid, approval_status text, business_result_accounting boolean,
+      notes text, type text, voucher_date date, account_id uuid, approval_status text, business_result_accounting boolean,
       total_amount numeric, deleted_at timestamptz, system_source text, posting_status text,
-      change_account_id uuid, change_amount numeric DEFAULT 0, rounding_account_id uuid, rounding_amount numeric DEFAULT 0);
+      change_account_id uuid, change_amount numeric DEFAULT 0, rounding_account_id uuid, rounding_amount numeric DEFAULT 0,
+      invoice_id uuid, has_restricted_item boolean DEFAULT false);
+    CREATE TABLE public.income_expense_types(id uuid PRIMARY KEY, organization_id uuid, name text, category text,
+      fee_category text, type text);
     CREATE TABLE public.income_expense_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), income_expense_id uuid,
-      amount numeric, unit_price numeric, quantity numeric, accounting_class text);
+      amount numeric, unit_price numeric, quantity numeric, accounting_class text, income_expense_type_id uuid,
+      start_date date, end_date date);
+    CREATE TABLE public.invoices(id uuid PRIMARY KEY, billing_month text, deleted_at timestamptz);
+    CREATE TABLE public.building_fee_accounts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), building_id uuid,
+      fee_category text, not_applicable boolean DEFAULT false, deleted_at timestamptz);
     CREATE TABLE public.profiles(id uuid PRIMARY KEY, full_name text, email text);
 
     INSERT INTO public.organizations VALUES ('${ORG_A}','A'),('${ORG_B}','B');
@@ -110,17 +158,30 @@ beforeAll(async () => {
     INSERT INTO public.super_admins VALUES ('${SUPER}');
     INSERT INTO public.profiles VALUES ('${CHU_A}','Chủ A',null);
     INSERT INTO public.buildings(id, organization_id, name, name_sort, is_virtual) VALUES
-      ('${TOA_A}','${ORG_A}','Toà A','toa a',false),('${TOA_B}','${ORG_B}','Toà B','toa b',false),
-      ('${TOA_AO}','${ORG_A}','Kho chung','kho chung',true);
+      ('${TOA_A}','${ORG_A}','44TA','toa a',false),('${TOA_B}','${ORG_B}','55TB','toa b',false),
+      ('${TOA_AO}','${ORG_A}','Kho chung','kho chung',true),('${TOA_C}','${ORG_A}','Hẻm 66 Thành Công','toa c',false);
     INSERT INTO public.accounts(id, organization_id, name, code, is_virtual) VALUES
       ('${SO_CHU_NHA}','${ORG_A}','Sổ chủ nhà','TK1',false),('${SO_QUAN_LY}','${ORG_A}','Sổ quản lý','TK2',false),
-      ('${SO_AO}','${ORG_A}','Cấn trừ thanh lý','TK3',true),('${SO_CONG_TY_B}','${ORG_B}','Sổ B','TK9',false);
+      ('${SO_AO}','${ORG_A}','Cấn trừ thanh lý','TK3',true),('${SO_CONG_TY_B}','${ORG_B}','Sổ B','TK9',false),
+      ('${SO_CHU_NHA_C}','${ORG_A}','Sổ chủ nhà C','TK5',false);
+    INSERT INTO public.income_expense_types(id, organization_id, name, category, fee_category, type) VALUES
+      ('${LOAI_THU}','${ORG_A}','Tiền phòng','Phòng',null,'income'),
+      ('${LOAI_DIEN}','${ORG_A}','Đóng tiền điện','Điện','dien','expense'),
+      ('${LOAI_TU_LANH}','${ORG_A}','Mua tủ lạnh','Điện',null,'expense');
+    -- toà A đã khai điện (chưa có phiếu nào) và tiền nhà "không áp dụng"
+    INSERT INTO public.building_fee_accounts(building_id, fee_category, not_applicable) VALUES
+      ('${TOA_A}','dien',false),('${TOA_A}','tien_nha',true);
   `);
+  // nrm_vn, fee_type_matches, fa_accrual_allocations: chạy đúng ĐỊNH NGHĨA SỐNG (CREATE cuối cùng trong
+  // thư mục migration) để cảnh báo thiếu chi và khối đối chiếu KQKD đo trên hàm thật.
+  for (const fn of LIVE_FNS) await chay(fn);
 
   // Tháng 01/2025 — đủ mọi loại dòng.
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-05", dong: [{ lop: "PNL", tien: 10_000_000 }] });
   await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-06", dong: [{ lop: "PNL", tien: 1_000_000 }] });
-  await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-07", dong: [{ lop: "PNL", tien: 2_000_000 }] });
+  PHIEU_HAN_CHE_MA = `P${n + 1}`; // phieu() tăng n trước khi đặt mã
+  await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-07", hanChe: true, ten: "Lương nhân viên",
+    dong: [{ lop: "PNL", tien: 2_000_000 }] });
   await phieu({ loai: "EXPENSE", so: SO_CHU_NHA, thang: "2025-01-08", dong: [{ lop: "PNL", tien: 500_000 }] });
   await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-01-09", dong: [{ lop: "DEPOSIT", tien: 3_000_000 }] });
   // thanh lý: cấn 400k cọc vào khoản khách phải trả (sổ ảo cấn trừ) ⇒ doanh thu bên quản lý
@@ -146,22 +207,25 @@ beforeAll(async () => {
   // Tháng 02/2025 — lỗ.
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-02-03", dong: [{ lop: "PNL", tien: 1_000_000 }] });
   PHIEU_LO_CHI = await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-04", dong: [{ lop: "PNL", tien: 3_000_000 }] });
-  // Tháng 03/2025 — phiếu đã duyệt nhưng bút toán bị đảo; làm tròn rơi vào sổ chủ nhà.
+  // Tháng 03/2025 — phiếu đã duyệt nhưng bút toán bị đảo; tiền thối (tính) và làm tròn (KHÔNG tính) rơi vào sổ chủ nhà.
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-03-03", butToan: "REVERSED", dong: [{ lop: "PNL", tien: 100_000 }] });
   await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-03-04", lamTron: { so: SO_CHU_NHA, tien: 1_000 },
-    dong: [{ lop: "PNL", tien: 50_000 }] });
+    thoi: { so: SO_CHU_NHA, tien: 2_000 }, dong: [{ lop: "PNL", tien: 50_000 }] });
   // Trước ngày áp dụng: khách chuyển cọc 700k vào sổ chủ nhà (gợi ý số dư đầu kỳ).
   await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2024-12-20", dong: [{ lop: "DEPOSIT", tien: 700_000 }] });
 
   const sql = readFileSync(FILE, "utf8");
-  await db.exec(sql);
-  await db.exec(sql);
+  await chay(sql);
+  await chay(sql);
 
-  // Cấu hình toà A (ghi thẳng như dữ liệu có sẵn; đường RPC thêm/sửa có ca riêng).
-  await db.exec(`
+  // Cấu hình toà A (ghi thẳng như dữ liệu có sẵn; đường RPC thêm/sửa có ca riêng). Số dư đầu kỳ đã xác nhận.
+  await chay(`
     INSERT INTO app_private.landlord_operations
-      (building_id, organization_id, landlord_name, manager_percent, effective_from, landlord_account_ids, created_by, updated_by)
-    VALUES ('${TOA_A}','${ORG_A}','Chủ nhà A',30,'2025-01-01',ARRAY['${SO_CHU_NHA}']::uuid[],'${CHU_A}','${CHU_A}');
+      (building_id, organization_id, landlord_name, effective_from, opening_confirmed_at, opening_confirmed_by,
+       opening_confirmed_from, opening_confirmed_pre_start, created_by, updated_by)
+    VALUES ('${TOA_A}','${ORG_A}','Chủ nhà A','2025-01-01',now(),'${CHU_A}','2025-01-01',700000,'${CHU_A}','${CHU_A}');
+    INSERT INTO app_private.landlord_operation_terms (building_id, valid_from, manager_percent, landlord_account_ids, created_by)
+    VALUES ('${TOA_A}','2025-01-01',30,ARRAY['${SO_CHU_NHA}']::uuid[],'${CHU_A}');
   `);
 }, 60000);
 afterAll(() => db.close());
@@ -206,6 +270,8 @@ describe("công thức quyết toán tháng", () => {
     expect(nguon).toEqual(["DEPOSIT_OFFSET", "TERMINATION_REFUND", "TERMINATION_REFUND", "TERMINATION_REVENUE"]);
     expect(thang.can_close).toBe(false);
     expect(thang.close_blockers).toEqual(["PENDING_VOUCHERS"]);
+    expect(st.terms_from).toBe("2025-01-01");
+    expect(st.foreign_account_voucher_count).toBe(0);
   });
 
   it("tháng lỗ: phần quản lý 0đ, chủ nhà vẫn hoàn khoản quản lý chi hộ", async () => {
@@ -229,7 +295,7 @@ describe("công thức quyết toán tháng", () => {
     expect(m.statement).toBeNull();
   });
 
-  it("phiếu duyệt mà bút toán đã đảo: vẫn tính KQKD nhưng chặn chốt; làm tròn vào sổ chủ nhà được bù trừ", async () => {
+  it("phiếu duyệt mà bút toán đã đảo: vẫn tính KQKD nhưng chặn chốt; tiền thối vào sổ chủ nhà được bù trừ, làm tròn thì không", async () => {
     const m = await trongGiaoDich(async () => {
       await asUser(CHU_A);
       return rpc<Json>("public.landlord_settlement_month_v1($1, $2::date)", [TOA_A, "2025-03-01"]);
@@ -241,9 +307,10 @@ describe("công thức quyết toán tháng", () => {
     expect(m.close_blockers).toEqual(["REVERSED_POSTINGS"]);
     expect(so(t.profit)).toBe(150_000);
     expect(so(t.manager_share)).toBe(45_000);
-    expect(so(t.landlord_extra_cash)).toBe(1_000);
-    // 45k + 0 − 50k + 0 + 1k
-    expect(so(t.landlord_owes_manager)).toBe(-4_000);
+    // chỉ tiền thối 2k; làm tròn 1k là khoản khách trả thiếu được bỏ qua, không phải tiền mặt
+    expect(so(t.landlord_extra_cash)).toBe(2_000);
+    // 45k + 0 − 50k + 0 + 2k
+    expect(so(t.landlord_owes_manager)).toBe(-3_000);
     expect((st.vouchers as Json[]).filter((v) => v.cash_reversed).length).toBe(1);
   });
 });
@@ -286,8 +353,9 @@ describe("quyền", () => {
     expect(nv.operations).toEqual([]);
     expect(chu.can_manage).toBe(true);
     expect((chu.operations as Json[]).map((o) => o.building_id)).toEqual([TOA_A]);
+    expect(so((chu.operations as Json[])[0].manager_percent)).toBe(30);
     // toà ảo không phải ứng viên
-    expect((chu.candidate_buildings as Json[]).map((o) => o.building_id)).toEqual([TOA_A]);
+    expect((chu.candidate_buildings as Json[]).map((o) => o.building_id)).toEqual([TOA_A, TOA_C]);
   });
 });
 
@@ -296,6 +364,7 @@ describe("cài đặt toà", () => {
     ["tỷ lệ > 100", 120, [SO_CHU_NHA]],
     ["sổ của công ty khác", 30, [SO_CONG_TY_B]],
     ["không chọn sổ nào", 30, []],
+    ["sổ ảo (cấn trừ / làm tròn / tiền thối)", 30, [SO_AO]],
   ])("%s ⇒ 22023", async (_ten, pct, accounts) => {
     await trongGiaoDich(async () => {
       await asUser(CHU_A);
@@ -314,7 +383,8 @@ describe("cài đặt toà", () => {
       const b = await rpc<Json>("public.landlord_operation_options_v1($1)", [TOA_A]);
       return [a, b];
     });
-    expect(kq).toEqual({ building_id: TOA_A, created: false });
+    expect(kq).toEqual({ building_id: TOA_A, created: false, terms_from: "2025-01-01", opening_needs_reconfirm: false,
+      opening_needs_confirm: true });
     expect((opts.current as Json).effective_from).toBe("2025-01-01");
     expect(so((opts.current as Json).manager_percent)).toBe(25);
     expect((opts.history as Json[]).length).toBe(1);
@@ -423,9 +493,9 @@ describe("thanh toán và số còn lại", () => {
       expect(so(t.paid_by_landlord)).toBe(1_000_000);
       expect(so(t.paid_by_manager)).toBe(200_000);
       expect(so(t.balance_closed)).toBe(2_200_000);
-      // tháng 01 còn mở: cộng vào số "gồm cả tạm tính"
-      // tháng 01 (4.096.000) và 03 (−4.000) còn mở: cộng vào số "gồm cả tạm tính"
-      expect(so(t.balance_with_open)).toBe(2_200_000 + 4_096_000 - 4_000);
+      // tháng 01 (4.096.000) và 03 (−3.000) còn mở: cộng vào số "gồm cả tạm tính"
+      expect(so(t.balance_with_open)).toBe(2_200_000 + 4_096_000 - 3_000);
+      expect(t.closed_month_count).toBe(1);
 
       expect(await rpc<Json>("public.landlord_settlement_void_payment_v1($1, 'ghi nhầm chiều tiền')", [p2.id]))
         .toEqual({ id: p2.id, status: "VOIDED" });
@@ -450,6 +520,13 @@ describe("link công khai cho chủ nhà", () => {
       expect(so((st.totals as Json).landlord_owes_manager)).toBe(4_096_000);
       expect((st.vouchers as Json[]).length).toBeGreaterThan(0);
       expect((st.vouchers as Json[]).every((v) => !("id" in v))).toBe(true);
+      // không lộ tên sổ của nhân viên: chỉ nói tiền ở bên nào
+      expect(new Set((st.vouchers as Json[]).map((v) => v.account_name)))
+        .toEqual(new Set(["Sổ chủ nhà", "Sổ quản lý", "Cấn trừ cọc (nội bộ)"]));
+      expect((st.vouchers as Json[]).find((v) => v.code === PHIEU_HAN_CHE_MA)?.name).toBe("Khoản hạn chế (ẩn chi tiết)");
+      expect(month.warnings).toBeNull();
+      expect(month.kqkd_bridge).toBeNull();
+      expect(month.close_blockers).toEqual([]);
       expect("building_id" in st).toBe(false);
       expect(month.live_hash).toBeNull();
       expect(month.can_close).toBe(false);
@@ -470,6 +547,516 @@ describe("link công khai cho chủ nhà", () => {
       await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà A', 30, '2025-01-01'::date, $2::uuid[], null, false)", [TOA_A, [SO_CHU_NHA]]);
       await asUser(null);
       expect(await rpc("public.landlord_settlement_public_v1($1, null)", [token])).toBeNull();
+    });
+  });
+
+  it("huỷ thanh toán / thu hồi link: người ngoài không phân biệt được id/token có tồn tại hay không", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const p = await rpc<Json>(
+        "public.landlord_settlement_add_payment_v1($1, '2025-03-05'::date, 'LANDLORD_TO_MANAGER', 1000, null, 'khoa-do-0001')", [TOA_A]);
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asUser(CHU_B);
+      await expectLoi("SELECT public.landlord_settlement_void_payment_v1($1, 'thử huỷ của người khác')", [p.id], "42501");
+      await expectLoi("SELECT public.landlord_settlement_void_payment_v1($1, 'thử huỷ của người khác')", [id(999)], "42501");
+      await expectLoi("SELECT public.landlord_share_link_revoke_v1($1)", [token], "42501");
+      await expectLoi("SELECT public.landlord_share_link_revoke_v1($1)", ["khong-co-token-nay-0123456789abcdef"], "42501");
+    });
+  });
+});
+
+const thang = (toa: string, m: string) => rpc<Json>("public.landlord_settlement_month_v1($1, $2::date)", [toa, m]);
+const UPSERT_A = "public.landlord_operation_upsert_v1($1, 'Chủ nhà A', $2, $3::date, $4::uuid[], null, true, $5, $6, $7::date, $8)";
+/** Cài toà A qua RPC: % · tháng áp dụng · số dư đầu kỳ · đã xác nhận · áp % từ tháng. */
+const caiToaA = (pct: number, tu: string, soDu = 0, xacNhan = true, apTu: string | null = null, daThay: number | null = 700_000) =>
+  rpc<Json>(UPSERT_A, [TOA_A, pct, tu, [SO_CHU_NHA], soDu, xacNhan, apTu, daThay]);
+async function chot(m: string) {
+  const x = await thang(TOA_A, m);
+  return rpc<Json>("public.landlord_settlement_close_v1($1, $2::date, $3, null)", [TOA_A, m, x.live_hash]);
+}
+
+describe("điều khoản theo tháng, tháng áp dụng, số dư đầu kỳ", () => {
+  it("đổi % sau khi chốt: tháng đã chốt giữ % cũ, % mới áp từ tháng sau tháng chốt; không đổi được từ tháng đã chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      expect((await chot("2025-02-01")).status).toBe("CLOSED");
+      const kq = await caiToaA(40, "2025-01-01");
+      expect(upsertReceiptSchema.parse(kq).terms_from).toBe("2025-03-01");
+
+      const feb = await thang(TOA_A, "2025-02-01");
+      expect(feb.is_stale).toBe(false);
+      expect(so((feb.statement as Json).manager_percent)).toBe(30);
+      const jan = await thang(TOA_A, "2025-01-01");
+      expect(so((jan.statement as Json).manager_percent)).toBe(30);
+      const mar = (await thang(TOA_A, "2025-03-01")).statement as Json;
+      expect(so(mar.manager_percent)).toBe(40);
+      expect(mar.terms_from).toBe("2025-03-01");
+      expect(so((mar.totals as Json).manager_share)).toBe(60_000); // 150k × 40%
+
+      await expectLoi(`SELECT ${UPSERT_A}`, [TOA_A, 50, "2025-01-01", [SO_CHU_NHA], 0, true, "2025-02-01", 700_000], "55000");
+      await expectLoi(`SELECT ${UPSERT_A}`, [TOA_A, 50, "2025-01-01", [SO_CHU_NHA], 0, true, "2025-01-01", 700_000], "55000");
+      // từ một tháng chưa chốt về sau thì được; trùng điều khoản ngay trước thì gộp
+      expect((await caiToaA(30, "2025-01-01", 0, true, "2025-04-01")).terms_from).toBe("2025-04-01");
+
+      const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect(ov.months.slice(0, 4).map((x) => x.manager_percent)).toEqual([30, 30, 40, 30]);
+      expect(ov.manager_percent).toBe(30);
+      const opts = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(opts.current?.terms.map((x) => [x.valid_from, x.manager_percent]))
+        .toEqual([["2025-01-01", 30], ["2025-03-01", 40], ["2025-04-01", 30]]);
+      expect(opts.current?.last_closed_month).toBe("2025-02-01");
+      expect(opts.current?.next_terms_month).toBe("2025-03-01");
+      // lịch sử ghi đủ điều khoản trước/sau
+      const h = opts.history[0];
+      expect(Array.isArray(h.after.terms)).toBe(true);
+    });
+  });
+
+  it("dời tháng bắt đầu ra sau tháng đã chốt bị chặn; dời về trước thì mở thêm tháng và điều khoản đầu tiên theo về", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await chot("2025-02-01");
+      await expectLoi(`SELECT ${UPSERT_A}`, [TOA_A, 30, "2025-03-01", [SO_CHU_NHA], 0, true, null, 700_000], "55000");
+      // 01 → 02: tháng 02 đã chốt vẫn trong thời gian áp dụng
+      await caiToaA(30, "2025-02-01");
+      expect((await thang(TOA_A, "2025-01-01")).status).toBe("NOT_APPLICABLE");
+      const feb = await thang(TOA_A, "2025-02-01");
+      expect([feb.status, feb.is_stale]).toEqual(["CLOSED", false]);
+      // về 12/2024: tháng 12 mở ra; cọc 700k khách chuyển vào sổ chủ nhà nay nằm TRONG kỳ
+      await caiToaA(30, "2024-12-01");
+      const dec = await thang(TOA_A, "2024-12-01");
+      expect(dec.status).toBe("OPEN");
+      expect(so(((dec.statement as Json).totals as Json).landlord_held_deposits)).toBe(700_000);
+      const opts = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(opts.current?.terms.map((x) => x.valid_from)).toEqual(["2024-12-01"]);
+      expect(opts.current?.pre_start_landlord_deposits).toBe(0);
+      expect((await thang(TOA_A, "2025-02-01")).is_stale).toBe(false);
+    });
+  });
+
+  it("số dư đầu kỳ chưa xác nhận chặn chốt; xác nhận rồi mới chốt; đổi số thì phải xác nhận lại", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await caiToaA(30, "2025-01-01", 300_000, false);
+      const feb = await thang(TOA_A, "2025-02-01");
+      expect(feb.close_blockers).toEqual(["OPENING_UNCONFIRMED"]);
+      expect(feb.can_close).toBe(false);
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, feb.live_hash], "55000");
+
+      await caiToaA(30, "2025-01-01", 300_000, true);
+      const daXacNhan = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(daXacNhan.current?.opening_confirmed_at).not.toBeNull();
+      expect((await thang(TOA_A, "2025-02-01")).can_close).toBe(true);
+      expect((await chot("2025-02-01")).status).toBe("CLOSED");
+
+      // lưu lại cùng số, vẫn tick: giữ nguyên dấu xác nhận cũ
+      await caiToaA(30, "2025-01-01", 300_000, true);
+      const giuNguyen = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(giuNguyen.current?.opening_confirmed_at).toBe(daXacNhan.current?.opening_confirmed_at);
+
+      // đổi số mà vẫn tick: là một lần xác nhận MỚI (dấu thời gian mới), không mượn dấu cũ
+      await caiToaA(30, "2025-01-01", 350_000, true);
+      const xacNhanLai = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(xacNhanLai.current?.opening_confirmed_at).not.toBeNull();
+      expect(xacNhanLai.current?.opening_confirmed_at).not.toBe(daXacNhan.current?.opening_confirmed_at);
+
+      await caiToaA(30, "2025-01-01", 400_000, false);
+      const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect(ov.opening_confirmed).toBe(false);
+      expect(ov.totals.opening_balance).toBe(400_000);
+    });
+  });
+
+  it("phiếu chờ duyệt ghi ngày trước tháng áp dụng chặn chốt tháng đầu tiên (chỉ tháng đầu)", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2024-12-15", trangThai: "UNAPPROVED", dong: [{ lop: "PNL", tien: 90_000 }] });
+      await asUser(CHU_A);
+      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(jan.close_blockers).toContain("PRE_START_PENDING");
+      expect(jan.warnings?.pre_start_pending).toMatchObject({ voucher_count: 1, income: 0, expense: 90_000 });
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.close_blockers).toEqual([]);
+      expect(feb.warnings?.pre_start_pending).toBeNull();
+    });
+  });
+});
+
+describe("cảnh báo và đối chiếu", () => {
+  it("phiếu dùng sổ chủ nhà của toà vận hành khác: đánh dấu, chặn chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà C', 20, '2025-06-01'::date, $2::uuid[], null, true)",
+        [TOA_C, [SO_CHU_NHA_C]]);
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_CHU_NHA_C, thang: "2025-02-10", dong: [{ lop: "PNL", tien: 100_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.statement?.foreign_account_voucher_count).toBe(1);
+      expect(feb.statement?.vouchers.filter((v) => v.foreign_landlord_account).map((v) => v.amount)).toEqual([100_000]);
+      expect(feb.close_blockers).toEqual(["FOREIGN_LANDLORD_ACCOUNT"]);
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, feb.live_hash], "55000");
+    });
+  });
+
+  it("khoản chi cố định chưa có phiếu; phiếu ở toà khác có nhắc mã toà", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      // toà A khai điện (chưa có phiếu), tiền nhà "không áp dụng"; nước chưa khai vẫn phải có
+      expect((await thang(TOA_A, "2025-01-01") as { warnings: Json }).warnings.missing_fixed_expenses).toEqual(["dien", "nuoc"]);
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-21", trangThai: "UNAPPROVED", loaiHangMuc: LOAI_TU_LANH,
+        ten: "Mua tủ lạnh", dong: [{ lop: "PNL", tien: 3_900_000 }] });
+      await asUser(CHU_A);
+      expect((await thang(TOA_A, "2025-01-01") as { warnings: Json }).warnings.missing_fixed_expenses).toEqual(["dien", "nuoc"]);
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-05", loaiHangMuc: LOAI_DIEN, dong: [{ lop: "PNL", tien: 400_000 }] });
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-06", ten: "in decal 44 TA cho khách",
+        dong: [{ lop: "PNL", tien: 50_000 }] });
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-07", ten: "đồ cho nhà 144TA",
+        dong: [{ lop: "PNL", tien: 60_000 }] });
+      // bàn giao tiền mặt (tắt KQKD) nhắc tên toà: không làm sai lợi nhuận ⇒ không báo
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-08", kqkd: false, ten: "Bàn giao tiền 44TA",
+        dong: [{ lop: "PNL", tien: 70_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.warnings?.missing_fixed_expenses).toEqual(["nuoc"]);
+      expect(feb.warnings?.related_elsewhere.voucher_count).toBe(1);
+      expect(feb.warnings?.related_elsewhere.vouchers[0]).toMatchObject({ building_name: "Kho chung", amount: 50_000 });
+      // đánh dấu nước "không áp dụng" ⇒ không đòi nữa
+      await asPostgres();
+      await db.query("INSERT INTO public.building_fee_accounts(building_id, fee_category, not_applicable) VALUES ($1, 'nuoc', true)", [TOA_A]);
+      await asUser(CHU_A);
+      expect(settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01")).warnings?.missing_fixed_expenses).toEqual([]);
+    });
+  });
+
+  it("đối chiếu KQKD: khớp khi không lệch kỳ; hoá đơn kỳ khác hiện từng phiếu và cộng đúng", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const jan0 = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(jan0.kqkd_bridge).toEqual({ kqkd_profit: 8_870_000, settlement_profit: 8_870_000, rows: [] });
+
+      // tiền phòng hoá đơn tháng 02 thu ngày 28/01: quyết toán tính tháng 01, KQKD tính tháng 02
+      await asPostgres();
+      await db.query("INSERT INTO public.invoices(id, billing_month) VALUES ($1, '2025-02')", [id(901)]);
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-01-28", hoaDon: id(901), dong: [{ lop: "PNL", tien: 500_000 }] });
+      await asUser(CHU_A);
+      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(jan.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
+        .toEqual([["INVOICE_PERIOD", 500_000, 0]]);
+      expect(feb.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
+        .toEqual([["VOUCHER_OTHER_MONTH", 0, 500_000]]);
+      for (const m of [jan, feb]) {
+        const b = m.kqkd_bridge!;
+        // khớp từng đồng: KQKD = quyết toán + Σ(KQKD − quyết toán) của các phiếu lệch
+        expect(b.settlement_profit).toBe(m.statement!.totals.profit);
+        expect(b.kqkd_profit).toBe(b.settlement_profit + b.rows.reduce((s, r) => s + r.kqkd_amount - r.settlement_amount, 0));
+      }
+      expect(feb.kqkd_bridge?.kqkd_profit).toBe(-1_500_000);
+    });
+  });
+
+  it("đối chiếu KQKD: nhãn lý do đúng ngữ cảnh — kỳ dịch vụ tháng khác, phiếu đổi sau khi chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      // trả trong tháng 01 cho kỳ dịch vụ đúng một tháng 02
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-01-25",
+        dong: [{ lop: "PNL", tien: 120_000, tu: "2025-02-01", den: "2025-02-28" }] });
+      await asUser(CHU_A);
+      const jan = settlementMonthSchema.parse(await thang(TOA_A, "2025-01-01"));
+      expect(jan.kqkd_bridge?.rows.map((r) => [r.reason, r.settlement_amount, r.kqkd_amount]))
+        .toEqual([["SERVICE_OTHER_MONTH", -120_000, 0]]);
+      // tháng 02 đã chốt, sau đó phiếu chi của tháng bị sửa ⇒ "đổi sau khi chốt"
+      await chot("2025-02-01");
+      await asPostgres();
+      await db.query("UPDATE public.income_expense_items SET amount = 2500000 WHERE income_expense_id = $1", [PHIEU_LO_CHI]);
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.kqkd_bridge?.rows.find((r) => r.settlement_amount === -3_000_000)?.reason).toBe("CHANGED_AFTER_CLOSE");
+    });
+  });
+
+  it("phiếu đã duyệt nhưng chưa ghi sổ quỹ (UNPOSTED): đánh dấu và chặn chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-15", butToan: "UNPOSTED", dong: [{ lop: "PNL", tien: 300_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.statement?.unposted_voucher_count).toBe(1);
+      expect(feb.statement?.vouchers.filter((v) => v.cash_unposted).map((v) => v.amount)).toEqual([300_000]);
+      expect(feb.close_blockers).toEqual(["UNPOSTED_POSTINGS"]);
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, feb.live_hash], "55000");
+    });
+  });
+
+  it("duyệt cọc giữ chỗ ở sổ QUẢN LÝ sau khi chốt không làm tháng 'đã đổi'; cọc ở sổ chủ nhà chờ duyệt thì chặn chốt", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      const cocQl = await phieu({ loai: "INCOME", so: SO_QUAN_LY, thang: "2025-02-12", trangThai: "UNAPPROVED",
+        dong: [{ lop: "DEPOSIT", tien: 2_000_000 }] });
+      await asUser(CHU_A);
+      expect((await chot("2025-02-01")).status).toBe("CLOSED");
+      await asPostgres();
+      await db.query("UPDATE public.income_expenses SET approval_status = 'APPROVED' WHERE id = $1", [cocQl]);
+      await asUser(CHU_A);
+      expect((await thang(TOA_A, "2025-02-01")).is_stale).toBe(false);
+      await rpc("public.landlord_settlement_reopen_v1($1, '2025-02-01'::date, 'thử cọc sổ chủ nhà')", [TOA_A]);
+      await asPostgres();
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2025-02-13", trangThai: "UNAPPROVED", dong: [{ lop: "DEPOSIT", tien: 900_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.close_blockers).toEqual(["PENDING_VOUCHERS"]);
+      expect(feb.statement?.pending).toMatchObject({ voucher_count: 1, income: 0, expense: 0, landlord_deposit: 900_000 });
+    });
+  });
+
+  it("phiếu toà khác ghi vào sổ chủ nhà của toà này: chặn chốt; trừ toà vận hành khác cũng khai sổ đó", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      // toà C (cùng chủ nhà) khai chung sổ chủ nhà với toà A
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà C', 20, '2025-01-01'::date, $2::uuid[], null, true)",
+        [TOA_C, [SO_CHU_NHA]]);
+      await asPostgres();
+      await phieu({ toa: TOA_C, loai: "INCOME", so: SO_CHU_NHA, thang: "2025-02-09", dong: [{ lop: "PNL", tien: 800_000 }] });
+      await asUser(CHU_A);
+      expect(settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01")).close_blockers).toEqual([]);
+      await asPostgres();
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_CHU_NHA, thang: "2025-02-11", ten: "Mua đồ kho", dong: [{ lop: "PNL", tien: 2_000_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.close_blockers).toEqual(["LANDLORD_ACCOUNT_ELSEWHERE"]);
+      expect(feb.warnings?.landlord_account_elsewhere.vouchers.map((v) => [v.building_name, v.amount]))
+        .toEqual([["Kho chung", 2_000_000]]);
+      await expectLoi("SELECT public.landlord_settlement_close_v1($1, '2025-02-01'::date, $2, null)", [TOA_A, feb.live_hash], "55000");
+      // gợi ý sổ: sổ đang có phiếu của toà khác được đếm (sổ dùng chung)
+      const opts = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(opts.accounts.find((a) => a.id === SO_CHU_NHA)?.other_building_count_120d).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it("phiếu ở toà khác nhắc tên toà có dấu (bỏ dấu, chịu khoảng trắng/gạch nối)", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà C', 20, '2025-01-01'::date, $2::uuid[], null, true)",
+        [TOA_C, [SO_CHU_NHA_C]]);
+      await asPostgres();
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-06", ten: "sửa điện nhà hem 66-thanh cong",
+        dong: [{ lop: "PNL", tien: 450_000 }] });
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-07", ten: "Sơn cửa Hẻm 66 Thành Công",
+        dong: [{ lop: "PNL", tien: 550_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_C, "2025-02-01"));
+      expect(feb.warnings?.related_elsewhere.vouchers.map((v) => v.amount).sort()).toEqual([450_000, 550_000]);
+    });
+  });
+});
+
+describe("vòng 2: xác nhận số dư, sổ đã xoá, áp % từ tháng, link toà đã xoá", () => {
+  it("cọc trước kỳ đổi (phiếu nhập muộn) ⇒ xác nhận số dư cũ hết hiệu lực; tick lại thì hết chặn; dời tháng mà bỏ tick thì chặn", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await caiToaA(30, "2025-01-01", 700_000, true);
+      let o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect([o.current?.opening_confirmation_stale, o.current?.opening_confirmed_pre_start]).toEqual([false, 700_000]);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).toEqual([]);
+
+      await asPostgres();
+      await phieu({ loai: "INCOME", so: SO_CHU_NHA, thang: "2024-12-28", dong: [{ lop: "DEPOSIT", tien: 200_000 }] });
+      await asUser(CHU_A);
+      o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect([o.current?.opening_confirmation_stale, o.current?.pre_start_landlord_deposits]).toEqual([true, 900_000]);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).toEqual(["OPENING_UNCONFIRMED"]);
+      expect(settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A])).opening_confirmed).toBe(false);
+
+      await caiToaA(30, "2025-01-01", 900_000, true, null, 900_000);
+      o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.current?.opening_confirmation_stale).toBe(false);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).toEqual([]);
+
+      await caiToaA(30, "2024-12-01", 900_000, false);
+      expect((await thang(TOA_A, "2024-12-01")).close_blockers).toContain("OPENING_UNCONFIRMED");
+    });
+  });
+
+  it("sổ chủ nhà đang dùng mà bị xoá mềm vẫn lưu được cài đặt; THÊM sổ đã xoá thì không", async () => {
+    await trongGiaoDich(async () => {
+      await asPostgres();
+      await db.query("UPDATE public.accounts SET deleted_at = now() WHERE id IN ($1, $2)", [SO_CHU_NHA, SO_QUAN_LY]);
+      await asUser(CHU_A);
+      expect((await caiToaA(30, "2025-01-01")).building_id).toBe(TOA_A);
+      await expectLoi(`SELECT ${UPSERT_A}`, [TOA_A, 30, "2025-01-01", [SO_CHU_NHA, SO_QUAN_LY], 0, true, null, 700_000], "22023");
+      const opts = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(opts.accounts.find((a) => a.id === SO_CHU_NHA)?.is_deleted).toBe(true);
+    });
+  });
+
+  it("áp % từ một tháng cụ thể so với điều khoản đang áp ở tháng đó (kể cả khi trùng bản mới nhất)", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      expect((await caiToaA(40, "2025-01-01", 0, true, "2025-05-01")).terms_from).toBe("2025-05-01");
+      // muốn 40% sớm từ 03: trùng bản mới nhất nhưng khác điều khoản đang áp ở 03 ⇒ phải đổi
+      expect((await caiToaA(40, "2025-01-01", 0, true, "2025-03-01")).terms_from).toBe("2025-03-01");
+      const o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.current?.terms.map((t) => [t.valid_from, t.manager_percent])).toEqual([["2025-01-01", 30], ["2025-03-01", 40]]);
+      // lặp lại y nguyên ⇒ không đổi gì
+      expect((await caiToaA(40, "2025-01-01", 0, true, "2025-03-01")).terms_from).toBeNull();
+    });
+  });
+
+  it("toà bị xoá mềm hoặc thành toà ảo: link chủ nhà trả NULL", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, null)", [TOA_A]);
+      await asPostgres();
+      await db.query("UPDATE public.buildings SET deleted_at = now() WHERE id = $1", [TOA_A]);
+      await asUser(null);
+      expect(await rpc("public.landlord_settlement_public_v1($1, null)", [token])).toBeNull();
+    });
+  });
+});
+
+describe("vòng 3: xác nhận đúng số đã thấy, đổi điều khoản từng trường, hash, nhãn đối chiếu", () => {
+  it("chỉ ghi xác nhận khi cơ sở không đổi trong lần lưu VÀ đúng số cọc trước kỳ người dùng đã thấy", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      // thấy sai số (vd màn cũ) ⇒ không xác nhận, báo phải đối chiếu lại
+      const sai = upsertReceiptSchema.parse(await caiToaA(30, "2025-01-01", 700_000, true, null, 123));
+      expect(sai.opening_needs_reconfirm).toBe(true);
+      let o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.current?.opening_confirmed_at).toBeNull();
+      // đúng số đã thấy ⇒ xác nhận
+      expect(upsertReceiptSchema.parse(await caiToaA(30, "2025-01-01", 700_000, true, null, 700_000)).opening_needs_reconfirm).toBe(false);
+      o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.current?.opening_confirmed_at).not.toBeNull();
+      // chưa có xác nhận; đổi sổ của điều khoản ĐẦU mà tick ngay (cọc trước kỳ tình cờ không đổi) ⇒ không nhận
+      // trong lần lưu đó (có xác nhận cũ còn khớp số thì được giữ — cơ sở không đổi giá trị)
+      await caiToaA(30, "2025-01-01", 700_000, false);
+      const doiSo = upsertReceiptSchema.parse(
+        await rpc(UPSERT_A, [TOA_A, 30, "2025-01-01", [SO_CHU_NHA, SO_QUAN_LY], 700_000, true, "2025-01-01", 700_000]));
+      expect(doiSo.opening_needs_reconfirm).toBe(true);
+      await caiToaA(30, "2025-01-01", 700_000, true, "2025-01-01", 700_000);
+      // dời tháng áp dụng mà vẫn tick, kể cả gửi đúng số cọc trước kỳ của tháng MỚI ⇒ không nhận
+      const doi = upsertReceiptSchema.parse(await caiToaA(30, "2025-02-01", 700_000, true, null, 1_505_000));
+      expect(doi.opening_needs_reconfirm).toBe(true);
+      expect((await thang(TOA_A, "2025-02-01")).close_blockers).toContain("OPENING_UNCONFIRMED");
+      const lui = upsertReceiptSchema.parse(await caiToaA(30, "2024-12-01", 700_000, true, null, 700_000));
+      expect(lui.opening_needs_reconfirm).toBe(true);
+      expect((await thang(TOA_A, "2024-12-01")).close_blockers).toContain("OPENING_UNCONFIRMED");
+    });
+  });
+
+  it("đổi % từ tháng X chỉ đổi %, giữ sổ của từng mốc sau X (không kéo sổ của mốc mới nhất về X)", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      // từ 04: chủ nhà nhận thêm sổ quản lý cũ làm sổ chủ nhà
+      await rpc(UPSERT_A, [TOA_A, 30, "2025-01-01", [SO_CHU_NHA, SO_QUAN_LY], 0, true, "2025-04-01", 700_000]);
+      // tăng % từ 03, gửi đúng sổ của điều khoản đang áp ở 03
+      expect((await rpc<Json>(UPSERT_A, [TOA_A, 35, "2025-01-01", [SO_CHU_NHA], 0, true, "2025-03-01", 700_000])).terms_from)
+        .toBe("2025-03-01");
+      const o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.current?.terms.map((t) => [t.valid_from, t.manager_percent, t.landlord_account_ids.length]))
+        .toEqual([["2025-01-01", 30, 1], ["2025-03-01", 35, 1], ["2025-04-01", 35, 2]]);
+      // tháng 03: tiền khách vào sổ quản lý vẫn là quản lý thu
+      const mar = settlementMonthSchema.parse(await thang(TOA_A, "2025-03-01"));
+      expect(mar.statement?.totals.manager_collected).toBe(50_000);
+      expect(mar.statement?.manager_percent).toBe(35);
+    });
+  });
+
+  it("phiếu toà khác ghi vào sổ chủ nhà, nhập sau khi chốt, làm tháng 'đã đổi'", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await chot("2025-02-01");
+      await asPostgres();
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_CHU_NHA, thang: "2025-02-20", dong: [{ lop: "PNL", tien: 3_000_000 }] });
+      await asUser(CHU_A);
+      expect((await thang(TOA_A, "2025-02-01")).is_stale).toBe(true);
+      const ov = settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      expect(ov.months.find((m) => m.period_month === "2025-02-01")?.is_stale).toBe(true);
+    });
+  });
+
+  it("đối chiếu KQKD: phiếu bị dời ngày sang tháng khác sau khi chốt ⇒ 'đổi sau khi chốt'", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await chot("2025-02-01");
+      await asPostgres();
+      await db.query("UPDATE public.income_expenses SET voucher_date = '2025-03-02' WHERE id = $1", [PHIEU_LO_CHI]);
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.kqkd_bridge?.rows.find((r) => r.settlement_amount === -3_000_000)?.reason).toBe("CHANGED_AFTER_CLOSE");
+    });
+  });
+
+  it("sổ chủ nhà của toà vận hành đang NGỪNG áp dụng vẫn là tiền chủ nhà kia ⇒ vẫn chặn; tên toà có ' - ' vẫn nhận ra", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      await rpc("public.landlord_operation_upsert_v1($1, 'Chủ nhà C', 20, '2025-01-01'::date, $2::uuid[], null, false)",
+        [TOA_C, [SO_CHU_NHA_C]]);
+      await asPostgres();
+      await phieu({ loai: "EXPENSE", so: SO_CHU_NHA_C, thang: "2025-02-10", dong: [{ lop: "PNL", tien: 100_000 }] });
+      await phieu({ toa: TOA_AO, loai: "EXPENSE", so: SO_QUAN_LY, thang: "2025-02-06", ten: "sửa ống nước 44 - TA",
+        dong: [{ lop: "PNL", tien: 75_000 }] });
+      await asUser(CHU_A);
+      const feb = settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01"));
+      expect(feb.statement?.foreign_account_voucher_count).toBe(1);
+      expect(feb.close_blockers).toContain("FOREIGN_LANDLORD_ACCOUNT");
+      expect(feb.warnings?.related_elsewhere.vouchers.map((v) => v.amount)).toEqual([75_000]);
+      // toà kia bị XOÁ mềm thì không còn chặn (không ai sửa được điều khoản của nó nữa)
+      await asPostgres();
+      await db.query("UPDATE public.buildings SET deleted_at = now() WHERE id = $1", [TOA_C]);
+      await asUser(CHU_A);
+      expect(settlementMonthSchema.parse(await thang(TOA_A, "2025-02-01")).statement?.foreign_account_voucher_count).toBe(0);
+    });
+  });
+});
+
+describe("vòng 4: sổ đã xoá ở phiên bản cũ, kẹp tháng áp tỷ lệ", () => {
+  it("sổ đã xoá còn ở một phiên bản điều khoản cũ vẫn lưu được và vẫn hiện để bỏ chọn", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      // 01: [chủ nhà, quản lý cũ]; từ 04 bỏ sổ quản lý cũ
+      await rpc(UPSERT_A, [TOA_A, 30, "2025-01-01", [SO_CHU_NHA, SO_QUAN_LY], 0, true, "2025-01-01", 700_000]);
+      await rpc(UPSERT_A, [TOA_A, 30, "2025-01-01", [SO_CHU_NHA], 0, true, "2025-04-01", 700_000]);
+      await asPostgres();
+      await db.query("UPDATE public.accounts SET deleted_at = now() WHERE id = $1", [SO_QUAN_LY]);
+      await asUser(CHU_A);
+      // chỉ tăng % từ 02, gửi đúng sổ đang áp ở 02 (có sổ đã xoá)
+      const r = upsertReceiptSchema.parse(
+        await rpc(UPSERT_A, [TOA_A, 35, "2025-01-01", [SO_CHU_NHA, SO_QUAN_LY], 0, true, "2025-02-01", 700_000]));
+      expect(r.terms_from).toBe("2025-02-01");
+      const o = landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      expect(o.accounts.find((a) => a.id === SO_QUAN_LY)?.is_deleted).toBe(true);
+      expect(o.current?.terms.map((t) => [t.valid_from, t.manager_percent, t.landlord_account_ids.length]))
+        .toEqual([["2025-01-01", 30, 2], ["2025-02-01", 35, 2], ["2025-04-01", 35, 1]]);
+    });
+  });
+
+  it("tháng áp tỷ lệ sớm hơn tháng bắt đầu mới: không đổi gì thì không lỗi; có đổi thì kẹp về tháng bắt đầu", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      expect(upsertReceiptSchema.parse(await caiToaA(30, "2025-03-01", 0, true, "2025-01-01")).terms_from).toBeNull();
+      expect(upsertReceiptSchema.parse(await caiToaA(45, "2025-03-01", 0, true, "2025-01-01")).terms_from).toBe("2025-03-01");
+    });
+  });
+});
+
+describe("gói RPC thật và schema zod", () => {
+  it("gói RPC thật parse được bằng đúng schema zod mà web dùng", async () => {
+    await trongGiaoDich(async () => {
+      await asUser(CHU_A);
+      for (const m of ["2024-12-01", "2025-01-01", "2025-02-01", "2025-03-01"]) {
+        settlementMonthSchema.parse(await thang(TOA_A, m));
+      }
+      settlementOverviewSchema.parse(await rpc("public.landlord_settlement_overview_v1($1)", [TOA_A]));
+      landlordOperationOptionsSchema.parse(await rpc("public.landlord_operation_options_v1($1)", [TOA_A]));
+      landlordOperationsListSchema.parse(await rpc("public.landlord_operations_list_v1()"));
+      const { token } = await rpc<{ token: string }>("public.landlord_share_link_create_v1($1, 'Zalo')", [TOA_A]);
+      shareLinksSchema.parse(await rpc("public.landlord_share_links_v1($1)", [TOA_A]));
+      await asUser(null);
+      settlementPublicSchema.parse(await rpc("public.landlord_settlement_public_v1($1, '2025-01-01'::date)", [token]));
     });
   });
 });

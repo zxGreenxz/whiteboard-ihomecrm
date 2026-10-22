@@ -1,5 +1,5 @@
 // Link chỉ đọc cho chủ nhà: mở trên điện thoại, không cần đăng nhập, thu hồi được.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Copy, Link2, Plus, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,10 @@ export function ShareLinkDialog({
   const revoke = useRevokeLandlordShareLink();
   const [label, setLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // thu hồi không lùi được: bấm lần đầu chỉ hỏi lại ngay trên nút
+  const [confirmToken, setConfirmToken] = useState<string | null>(null);
+  // đóng hộp bằng bất kỳ đường nào (nút Đóng, Escape, bấm ra ngoài) đều bỏ trạng thái chờ xác nhận thu hồi
+  useEffect(() => { if (!open) setConfirmToken(null); }, [open]);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   const onCreate = async () => {
@@ -55,6 +59,7 @@ export function ShareLinkDialog({
 
   const onRevoke = async (token: string) => {
     setError(null);
+    setConfirmToken(null);
     try {
       await revoke.mutateAsync({ token });
       toast.success('Đã thu hồi link — chủ nhà mở lại sẽ báo link không còn hiệu lực');
@@ -103,8 +108,10 @@ export function ShareLinkDialog({
                       <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyText(url)}>
                         <Copy className="mr-1 h-3.5 w-3.5" />Sao chép
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-destructive" disabled={revoke.isPending} onClick={() => onRevoke(l.token)}>
-                        <XCircle className="mr-1 h-3.5 w-3.5" />Thu hồi
+                      <Button type="button" variant={confirmToken === l.token ? 'destructive' : 'ghost'} size="sm"
+                        className={confirmToken === l.token ? 'h-7 px-2' : 'h-7 px-2 text-destructive'} disabled={revoke.isPending}
+                        onClick={() => (confirmToken === l.token ? onRevoke(l.token) : setConfirmToken(l.token))}>
+                        <XCircle className="mr-1 h-3.5 w-3.5" />{confirmToken === l.token ? 'Bấm lần nữa để thu hồi' : 'Thu hồi'}
                       </Button>
                     </div>
                     <p className="mt-1 pl-6 text-xs text-muted-foreground">

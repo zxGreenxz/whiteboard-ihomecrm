@@ -162,6 +162,12 @@ export interface UpsertLandlordOperationInput {
   isActive: boolean;
   /** Dương: chủ nhà còn phải trả quản lý từ trước tháng áp dụng; âm: ngược lại. Nguyên đồng. */
   openingBalance: number;
+  /** Đã đối chiếu số dư đầu kỳ với chủ nhà (chưa xác nhận thì không chốt được tháng). */
+  openingConfirmed: boolean;
+  /** 'YYYY-MM-01' — % / sổ mới áp từ tháng này (null: server lấy ngay sau tháng chốt gần nhất). */
+  termsFrom: string | null;
+  /** Số cọc trước kỳ ở sổ chủ nhà mà màn đã hiện — server chỉ nhận xác nhận khi đúng số này. */
+  openingSeenPreStart: number | null;
 }
 
 export const useUpsertLandlordOperation = () => {
@@ -178,6 +184,9 @@ export const useUpsertLandlordOperation = () => {
         p_note: input.note,
         p_is_active: input.isActive,
         p_opening_balance: input.openingBalance,
+        p_opening_confirmed: input.openingConfirmed,
+        p_terms_from: input.termsFrom,
+        p_opening_seen_pre_start: input.openingSeenPreStart,
       });
       if (error) throw error;
       const receipt = upsertReceiptSchema.parse(data);
@@ -250,7 +259,8 @@ export const useAddLandlordPayment = () => {
       if (error) throw error;
       return paymentReceiptSchema.parse(data);
     },
-    onSuccess: () => invalidate(),
+    // lỗi mạng vẫn có thể là server ĐÃ ghi ⇒ nạp lại danh sách cả khi lỗi để thấy khoản đã ghi
+    onSettled: () => invalidate(),
   });
 };
 

@@ -34,9 +34,12 @@ const fmtDay = (iso: string) => {
 };
 
 /** Nhãn trạng thái tháng — <span> để đặt được trong nút (thẻ tháng trên điện thoại). */
-function MonthStatus({ month }: { month: SettlementOverview['months'][number] }) {
+function MonthStatus({ month, mode }: { month: SettlementOverview['months'][number]; mode: 'admin' | 'public' }) {
   if (month.status === 'CLOSED' && month.is_stale) {
-    return <span className={badgeVariants({ variant: 'destructive' })}>Đổi sau khi chốt</span>;
+    // link chủ nhà: chữ trung tính, cùng nghĩa với thẻ tháng ("đã chốt — đang chờ chốt lại")
+    return mode === 'admin'
+      ? <span className={badgeVariants({ variant: 'destructive' })}>Đổi sau khi chốt</span>
+      : <span className={badgeVariants({ variant: 'secondary' })}>Chờ chốt lại</span>;
   }
   if (month.status === 'CLOSED') {
     return <span className={cn(badgeVariants(), 'bg-emerald-600 hover:bg-emerald-600')}>Đã chốt</span>;
@@ -46,11 +49,13 @@ function MonthStatus({ month }: { month: SettlementOverview['months'][number] })
 
 export function SettlementOverviewCard({
   overview,
+  mode,
   selectedMonth,
   onSelectMonth,
   onVoidPayment,
 }: {
   overview: SettlementOverview;
+  mode: 'admin' | 'public';
   /** 'YYYY-MM' */
   selectedMonth: string | null;
   onSelectMonth?: (month: string) => void;
@@ -74,19 +79,37 @@ export function SettlementOverviewCard({
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3" data-testid="settlement-balance">
             <p className="text-xs text-muted-foreground">Còn lại (các tháng đã chốt, trừ phần đã trả)</p>
-            <p className="mt-1 font-semibold">{NET_DIRECTION_LABEL[balance.direction]}</p>
-            <p className="text-xl font-bold tabular-nums">{formatVND(balance.amount)}</p>
+            {t.closed_month_count === 0 ? (
+              // chưa chốt tháng nào: "0 đ — hai bên không còn nợ nhau" là SAI nghĩa
+              <>
+                <p className="mt-1 font-semibold">Chưa chốt tháng nào</p>
+                <p className="text-xs text-muted-foreground">
+                  {t.opening_balance !== 0 || t.paid_by_landlord !== 0 || t.paid_by_manager !== 0
+                    ? <>Tính riêng số dư đầu kỳ và các khoản đã trả: {NET_DIRECTION_LABEL[balance.direction].toLowerCase()} {formatVND(balance.amount)}.</>
+                    : 'Xem số tạm tính bên cạnh.'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 font-semibold">{NET_DIRECTION_LABEL[balance.direction]}</p>
+                <p className="text-xl font-bold tabular-nums">{formatVND(balance.amount)}</p>
+                <p className="text-[11px] text-muted-foreground">{t.closed_month_count} tháng đã chốt</p>
+              </>
+            )}
           </div>
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Nếu tính cả tháng tạm tính</p>
             <p className="mt-1 font-semibold">{NET_DIRECTION_LABEL[balanceAll.direction]}</p>
             <p className="text-xl font-bold tabular-nums">{formatVND(balanceAll.amount)}</p>
-            {!hasOpen && <p className="text-[11px] text-muted-foreground">Mọi tháng đều đã chốt.</p>}
+            {overview.months.length === 0
+              ? <p className="text-[11px] text-muted-foreground">Chưa tới tháng áp dụng ({monthLabel(overview.effective_from).toLowerCase()}).</p>
+              : !hasOpen && <p className="text-[11px] text-muted-foreground">Mọi tháng đều đã chốt.</p>}
           </div>
         </div>
         {t.opening_balance !== 0 && (
           <p className="text-xs text-muted-foreground">
-            Đã gồm số dư đầu kỳ: <NetText value={t.opening_balance} /> (khai ở Cài đặt toà).
+            Đã gồm số dư đầu kỳ: <NetText value={t.opening_balance} /> (khai ở Cài đặt toà
+            {overview.opening_confirmed ? ', đã đối chiếu với chủ nhà' : ' — chưa đối chiếu với chủ nhà'}).
           </p>
         )}
 
@@ -104,11 +127,11 @@ export function SettlementOverviewCard({
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">{monthLabel(m.period_month)}</span>
-                  <MonthStatus month={m} />
+                  <MonthStatus month={m} mode={mode} />
                 </span>
                 <span className="mt-1 flex justify-between gap-2 text-xs text-muted-foreground">
                   <span>Lợi nhuận {formatVND(m.profit)}</span>
-                  <span>Phần quản lý {formatVND(m.manager_share)}</span>
+                  <span>Phần quản lý ({m.manager_percent.toLocaleString('vi-VN')}%) {formatVND(m.manager_share)}</span>
                 </span>
                 <span className="mt-0.5 flex justify-end"><NetText value={m.landlord_owes_manager} className="font-medium" /></span>
               </button>
@@ -139,10 +162,13 @@ export function SettlementOverviewCard({
                   >
                     <td className="px-3 py-2 font-medium">{monthLabel(m.period_month)}</td>
                     <td className={`px-3 py-2 text-right tabular-nums ${m.profit < 0 ? 'text-destructive' : ''}`}>{formatVND(m.profit)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatVND(m.manager_share)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatVND(m.manager_share)}
+                      <span className="ml-1 text-xs text-muted-foreground">({m.manager_percent.toLocaleString('vi-VN')}%)</span>
+                    </td>
                     <td className="px-3 py-2 text-right"><NetText value={m.landlord_owes_manager} /></td>
                     <td className="px-3 py-2">
-                      <MonthStatus month={m} />
+                      <MonthStatus month={m} mode={mode} />
                       {m.pending_count > 0 && <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">{m.pending_count} phiếu chờ</span>}
                     </td>
                   </tr>

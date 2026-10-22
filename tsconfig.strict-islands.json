@@ -1676,6 +1676,8 @@
     "src/components/landlord-settlement/OperationConfigDialog.tsx",
     "src/components/landlord-settlement/SettlementActionDialogs.tsx",
     "src/components/landlord-settlement/ShareLinkDialog.tsx",
+    "src/components/landlord-settlement/SettlementChecks.tsx",
+    "src/components/landlord-settlement/__tests__/PaymentDialog.test.tsx",
     "src/pages/reports/finance/LandlordSettlementPage.tsx",
     "src/pages/public/LandlordSettlementPublicPage.tsx"
   ],
