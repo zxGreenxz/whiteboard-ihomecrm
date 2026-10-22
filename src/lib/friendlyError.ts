@@ -44,6 +44,22 @@ export function isSystemOnlyManualBlocked(error: unknown): boolean {
   return hint.includes('ie_system_only_manual_blocked') || raw.includes('ie_system_only_manual_blocked')
     || /chỉ được tạo từ luồng nghiệp vụ/i.test(raw);
 }
+/**
+ * Câu 25 (chủ chốt 21/10/2026): người lập không có quyền duyệt tự duyệt phiếu chi từ ngưỡng
+ * tự duyệt trở lên ⇒ mọi writer duyệt từ chối 42501 + HINT 'ie_self_approve_over_threshold'
+ * (nút Duyệt, Thanh toán phiếu phí nháp, Chốt lương, Copilot). Không phải "thiếu quyền" chung
+ * chung — người khác có quyền duyệt vẫn duyệt được phiếu này.
+ */
+export const SELF_APPROVE_OVER_THRESHOLD_REASON = 'ie_self_approve_over_threshold';
+export const SELF_APPROVE_OVER_THRESHOLD_FEEDBACK = {
+  title: 'Cần người khác duyệt',
+  description: 'Phiếu chi từ ngưỡng tự duyệt trở lên phải do người có quyền duyệt thu chi duyệt. Bạn là người lập phiếu nên không tự duyệt được — hãy nhờ người có quyền duyệt.',
+} as const;
+export function isSelfApproveOverThreshold(error: unknown): boolean {
+  const record = details(error);
+  return String(record.code ?? '').trim() === '42501'
+    && String(record.hint ?? '').trim() === SELF_APPROVE_OVER_THRESHOLD_REASON;
+}
 const LEGACY_REASONS: Record<string, readonly string[]> = {
   '42501': ['Sổ quỹ cọc không thuộc tổ chức', 'Không có quyền tạo hợp đồng', 'Không có quyền ghi tiền cọc vào sổ đã chọn', 'Khách hàng không thuộc tổ chức'],
   '55000': ['Phiếu cọc được chọn không hợp lệ hoặc đã được dùng', 'Số tiền cọc phải lớn hơn 0', 'Phòng đang có hợp đồng hiệu lực'],
@@ -65,6 +81,7 @@ export function friendlyError(error: unknown, fallbackTitle = 'Chưa thực hi�
     return result({ title: 'Phiên đăng nhập đã hết hạn', description: 'Đăng nhập lại để tiếp tục.', recovery: 'sign-in' });
   }
   if (isSystemOnlyManualBlocked(error)) return result({ ...SYSTEM_ONLY_MANUAL_BLOCKED_FEEDBACK, recovery: 'correct-fields' });
+  if (isSelfApproveOverThreshold(error)) return result({ ...SELF_APPROVE_OVER_THRESHOLD_FEEDBACK, recovery: 'contact-admin' });
   if (options.operation) {
     const rule = options.rules?.find(item => (!item.code || item.code === code) &&
       (typeof item.message === 'string' ? item.message === raw : new RegExp(item.message.source, item.message.flags.replace('g', '')).test(raw)));
