@@ -873,33 +873,6 @@
       ],
       "raSoatBoi": "Claude Code — danh mục chi chuẩn 03/10/2026",
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
-    },
-    "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql": {
-      "sha256": "19358a71c8ba6894411382e68b6ec86feb5f74b4fef2dba50dba997a64eedc5f",
-      "missingObjects": [
-        "table:public.camera_recorders",
-        "table:app_private.camera_recorder_connections",
-        "table:public.camera_recorder_current",
-        "table:public.camera_events",
-        "function:public.network_center_admin_enroll_camera_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "raSoatBoi": "Codex; independent camera_final_review, source 1ef9b114a and delta 02f7f3444",
-      "lyLe": "Migration camera mới chưa áp dụng production. Ngày 23/10/2026 (Asia/Bangkok): PostgreSQL disposable kiểm ingest/replay/stale/RLS và hai đột biến; forward lane TEST kiểm idempotency hai lượt, backup đủ 673 bảng và áp dụng đúng digest; JWT/PostgREST TEST kiểm snapshot, lịch sử keyset, cross-org RPC và RLS, anonymous, chặn browser ingest/delete, đã dọn fixture. Production dry-run đã ROLLBACK thành công. Object vắng trên production là có chủ ý trong khi chờ release gates; không nâng provenance thành đã áp dụng.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20261022145352_network_center_camera_monitoring_v1.sql",
-          "trich_doan": "CREATE TABLE IF NOT EXISTS public.camera_recorders; CREATE TABLE IF NOT EXISTS app_private.camera_recorder_connections; CREATE TABLE IF NOT EXISTS public.camera_recorder_current; CREATE TABLE IF NOT EXISTS public.camera_events; CREATE OR REPLACE FUNCTION public.network_center_admin_enroll_camera_v1"
-        },
-        {
-          "duong_dan": "scripts/__tests__/network-center-camera-runtime.sql",
-          "trich_doan": "CAMERA_PROOF_OK; checks replay, stale snapshot, revoked assignment, browser ingest/delete and cross-org reads."
-        },
-        {
-          "duong_dan": "infra/network-center-worker/README.md",
-          "trich_doan": "Trước phát hành cần migration network_center_camera_monitoring_v1, Edge routes camera-connections/camera-ingest, read RPC và kiểm JWT/RLS theo Contract."
-        }
-      ]
     }
   }
 }
