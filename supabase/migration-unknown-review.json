@@ -875,7 +875,7 @@
       "sha256": "f7b8a6ed24b100ddf55ce46f49d9ff341938e9ee8d47d9b79879c0f3e6842c71"
     },
     "supabase/migrations/20261021083438_quyet_toan_van_hanh_chu_nha.sql": {
-      "sha256": "ad16d58b15b8a5e85b3130a0c5ce1f1e8295f8c03c1a60ba8d6df2476df1453e",
+      "sha256": "6201aece3052bf18792b700147dda9912a4a918af16683ca023c5bb61036ade1",
       "missingObjects": [
         "table:app_private.landlord_operations",
         "table:app_private.landlord_operation_terms",
@@ -884,7 +884,7 @@
         "table:app_private.landlord_settlement_payments"
       ],
       "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 21/10/2026 (quyết toán toà vận hành cho chủ nhà), chủ dặn \"xem thử ở local rồi mới đưa lên production\" — bảng vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Không writer nào đọc các bảng này; web gọi RPC qua lớp bọc riêng, màn chỉ mở khi có RPC. Đã kiểm: PGlite chạy migration hai lượt + 30 ca (công thức, quyền 42501, chốt CAS, điều khoản theo tháng, số dư đầu kỳ, link công khai che tên sổ, đối chiếu KQKD với fa_accrual_allocations thật, parse zod gói RPC thật); đột biến; áp trên TEST và kiểm giao diện bằng Playwright. Sẽ áp qua lane migrate:forward khi chủ duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ.",
+      "lyLe": "File TẠO 21/10/2026 (quyết toán toà vận hành cho chủ nhà), chủ dặn \"xem thử ở local rồi mới đưa lên production\" — bảng vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Không writer nào đọc các bảng này; web gọi RPC qua lớp bọc riêng, màn chỉ mở khi có RPC. Đã kiểm: PGlite chạy migration hai lượt + 30 ca (công thức, quyền 42501, chốt CAS, điều khoản theo tháng, số dư đầu kỳ, link công khai che tên sổ, đối chiếu KQKD với fa_accrual_allocations thật, parse zod gói RPC thật); đột biến; áp trên TEST và kiểm giao diện bằng Playwright. Sẽ áp qua lane migrate:forward khi chủ duyệt; khi đó provenance đổi trạng thái và hồ sơ này thành thừa — gate tự nhắc gỡ. Cập nhật sha 22/10/2026 theo bản của commit 4a527ad73 (chia lợi nhuận theo kỳ): provenance sinh lại vẫn state unknown với đúng 5 bảng vắng mặt ở trên, migration vẫn chưa áp.",
       "raSoatBoi": "Claude Code — quyết toán vận hành cho chủ nhà, 21/10/2026",
       "bangChung": [
         {
