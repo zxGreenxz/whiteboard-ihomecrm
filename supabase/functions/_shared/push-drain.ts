@@ -459,10 +459,13 @@ export async function runGenericPushDrain(
       const sendable = parsed.flatMap((p) => (p.ok ? [p.batch] : []));
       const unsettleable: string[] = [];
       const items: SettleItem[] = [];
+      // Extract tường minh: tsconfig.app.json (strict: false) nạp file này qua src/lib/contract-lifecycle/reminders.ts và
+      // không thu hẹp union theo literal boolean; Deno (strict) thì thu hẹp được.
       for (const p of parsed) {
         if (p.ok) continue;
-        if (p.idemKey) items.push({ idem_key: p.idemKey, outcome: 'BAD_REQUEST', retryable: false, error: p.reason, sent: 0 });
-        else unsettleable.push(p.reason);
+        const hong = p as Extract<ParsedClaim, { ok: false }>;
+        if (hong.idemKey) items.push({ idem_key: hong.idemKey, outcome: 'BAD_REQUEST', retryable: false, error: hong.reason, sent: 0 });
+        else unsettleable.push(hong.reason);
       }
 
       // Mỗi lời gọi tự bắt lỗi ⇒ một lô hỏng không làm rơi settle của các lô khác. Trước khi MỞ lời gọi mới:
@@ -493,7 +496,7 @@ export async function runGenericPushDrain(
           });
           return;
         }
-        const r = attempt.result;
+        const r = (attempt as Extract<SendAttempt, { deferred: false }>).result;
         items.push({ idem_key: batch.idemKey, outcome: r.outcome, retryable: r.retryable, error: r.error, sent: r.sent });
       });
 

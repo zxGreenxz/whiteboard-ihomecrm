@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 1574,
-  "soFileDocBangFs": 412,
-  "tongLoiGoi": 1009,
-  "khongPhanLoaiDuoc": 446,
+  "tongSoFileTest": 1614,
+  "soFileDocBangFs": 416,
+  "tongLoiGoi": 1014,
+  "khongPhanLoaiDuoc": 449,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 60,
@@ -19,7 +19,7 @@
       "moTa": "Đọc tài liệu/asset."
     },
     "sql": {
-      "soFile": 164,
+      "soFile": 166,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     },
     "powershell": {
@@ -1573,6 +1573,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/quietHoursDirectLanesMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/refundKpiSplitMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -2889,6 +2897,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/notificationRoutes.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/orgBoundaryI3.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -2979,6 +2993,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/salaryV5NotificationProducersMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/saleBonusDepositAccountAttachments.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -2994,6 +3016,12 @@
     },
     {
       "file": "src/lib/__tests__/securityRemediationMigrations20260902.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/serviceWorker.handlers.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
