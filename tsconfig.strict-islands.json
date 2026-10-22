@@ -533,6 +533,7 @@
     "src/components/notifications/PushNotificationSettings.tsx",
     "src/components/onboarding/OnboardingWizard.tsx",
     "src/components/pwa/InstallHint.tsx",
+    "src/components/reports/__tests__/ProfitVerificationBar.verify.test.tsx",
     "src/components/reports/DateRangePicker.tsx",
     "src/components/reports/ExportButtons.tsx",
     "src/components/reports/MissingExpenseSettingsDialog.tsx",
