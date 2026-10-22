@@ -114,14 +114,29 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   return (await activeRegistration(reg)).pushManager.getSubscription();
 }
 
+// ── Dấu thu hồi `push_subscriptions.revoked_at` (SETTINGS-1 / NOTIF-CLIENT-3, 22/10/2026) ──
+// "Gỡ" một máy ở mục Thiết bị đã đăng ký KHÔNG xoá dòng mà đặt is_active=false +
+// revoked_at=now(). Xoá cứng thì máy đó (còn phiên, còn đăng ký trình duyệt) mở CRM lần
+// sau là ensurePushSubscription thấy "máy chủ thiếu dòng" và tự lưu lại — gỡ vô hiệu.
+// Có dấu thì: ensure trả 'revoked' và không lưu/không subscribe lại; isSubscribed coi là
+// tắt; CHỈ enablePush (công tắc bật chủ động trên chính máy đó) đặt revoked_at=NULL.
+// Dòng is_active=false mà revoked_at NULL là send-push prune (endpoint chết) — giữ
+// đường cũ (subscribe mới). Client production cũ chỉ đọc is_active nên tương thích.
+//
+// MỌI truy cập cột `revoked_at` nằm trong file này. Cột chưa có trong
+// src/integrations/supabase/types.ts (types chỉ sinh lại SAU khi migration áp): các
+// lỗi typecheck về `revoked_at` ở đây là chờ `npm run gen:types`, KHÔNG ép kiểu để né.
+const STORED_COLUMNS = 'id,user_id,endpoint,p256dh,auth,is_active,revoked_at';
+
 async function readStoredSubscription(endpoint: string, actorId: string) {
   const { data, error } = await supabase.from('push_subscriptions')
-    .select('id,user_id,endpoint,p256dh,auth,is_active')
+    .select(STORED_COLUMNS)
     .eq('endpoint', endpoint).eq('user_id', actorId).maybeSingle();
   if (error) throw error;
   if (data === null) return null;
   requireAccountWriteReceipt(data, { user_id: actorId, endpoint });
-  if (typeof data.is_active !== 'boolean' || typeof data.p256dh !== 'string' || !data.p256dh || typeof data.auth !== 'string' || !data.auth)
+  if (typeof data.is_active !== 'boolean' || typeof data.p256dh !== 'string' || !data.p256dh || typeof data.auth !== 'string' || !data.auth
+    || !(data.revoked_at === null || (typeof data.revoked_at === 'string' && data.revoked_at)))
     throw new TypeError('Malformed stored push subscription');
   return data;
 }
@@ -147,7 +162,8 @@ export async function isSubscribed(pending?: unknown): Promise<boolean> {
   if (!stored || stored.p256dh !== keys.p256dh || stored.auth !== keys.auth)
     throw new PushOperationError('Trình duyệt có đăng ký nhưng chưa xác nhận được đăng ký tương ứng trên máy chủ. Kiểm tra lại trạng thái trước khi thay đổi tiếp.',
       'unknown', new TypeError('Unconfirmed server push subscription'), 'enable', sub.endpoint, actorId);
-  return stored.is_active;
+  // Đã bị gỡ từ máy khác ⇒ tắt (dù dòng có lỡ is_active=true): bật lại bằng công tắc.
+  return stored.is_active && stored.revoked_at === null;
 }
 
 function extractKeys(sub: PushSubscription): { p256dh: string; auth: string } {
@@ -157,16 +173,23 @@ function extractKeys(sub: PushSubscription): { p256dh: string; auth: string } {
   };
 }
 
-async function saveSubscription(sub: PushSubscription, actorId: string, organizationId: string | null | undefined): Promise<void> {
+/**
+ * `bat-chu-dong` (công tắc bật — enablePush) xoá dấu thu hồi: người dùng chủ động bật lại
+ * trên chính máy này. `doi-chieu` (ensure lúc khởi động) KHÔNG đụng revoked_at: chỉ lưu
+ * dòng chưa có (đăng ký mới do trình duyệt xoay) hoặc dòng active lệch khoá.
+ */
+async function saveSubscription(sub: PushSubscription, actorId: string, organizationId: string | null | undefined,
+  mode: 'bat-chu-dong' | 'doi-chieu'): Promise<void> {
   if (await getSessionUserId() !== actorId) throw { code: 'PGRST301', message: 'User session changed' };
   const { p256dh, auth } = extractKeys(sub);
   if (!sub.endpoint || !p256dh || !auth) throw new TypeError('Malformed browser push subscription');
   const expected = { user_id: actorId, endpoint: sub.endpoint, p256dh, auth, is_active: true };
+  const row = mode === 'bat-chu-dong' ? { ...expected, revoked_at: null } : expected;
   const { data, error } = await supabase.from('push_subscriptions').upsert(
-    withOrg({ ...expected, user_agent: navigator.userAgent }, organizationId), { onConflict: 'endpoint' },
-  ).select('id,user_id,endpoint,p256dh,auth,is_active').single();
+    withOrg({ ...row, user_agent: navigator.userAgent }, organizationId), { onConflict: 'endpoint' },
+  ).select(STORED_COLUMNS).single();
   if (error) throw error;
-  requireAccountWriteReceipt(data, expected);
+  requireAccountWriteReceipt(data, row);
 }
 
 async function unsubscribeConfirmed(sub: PushSubscription, operation: 'enable' | 'disable', actorId: string): Promise<void> {
@@ -200,7 +223,7 @@ export async function enablePush(organizationId: string | null | undefined): Pro
   try {
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
     if (!sub || !sameApplicationServerKey(sub, wantKey)) throw new TypeError('Unconfirmed application server key');
-    await saveSubscription(sub, actorId, organizationId);
+    await saveSubscription(sub, actorId, organizationId, 'bat-chu-dong');
   } catch (cause) {
     throw new PushOperationError(sub
       ? 'Trình duyệt đã tạo đăng ký; chưa xác nhận lưu đúng đăng ký trên máy chủ. Giữ trạng thái chưa xác định và kiểm tra lại.'
@@ -252,7 +275,9 @@ export type EnsurePushOutcome =
   | 'other-key'
   | 'in-sync'
   | 'saved'
-  | 'resubscribed';
+  | 'resubscribed'
+  /** Dòng của máy này đã bị gỡ ở "Thiết bị đã đăng ký": tôn trọng, không lưu lại. */
+  | 'revoked';
 
 /**
  * Đối chiếu đăng ký push của MÁY NÀY với máy chủ lúc khởi động (đã có phiên +
@@ -264,9 +289,11 @@ export type EnsurePushOutcome =
  *
  *   - chưa cấp quyền / không có subscription ⇒ không làm gì;
  *   - subscription theo khoá VAPID khác ⇒ để nút bật/tắt tự xoay khoá (enablePush);
+ *   - dòng có revoked_at (đã gỡ từ máy khác) ⇒ 'revoked': không lưu, không subscribe
+ *     lại — chỉ công tắc bật trên chính máy này mới bật lại;
  *   - máy chủ THIẾU dòng ⇒ lưu (subscription mới do pushsubscriptionchange);
- *   - dòng is_active=false ⇒ endpoint đã chết (prune): upsert lại là vô ích vì
- *     lần gửi sau bị prune tiếp — phải unsubscribe + subscribe MỚI rồi mới lưu;
+ *   - dòng is_active=false (revoked_at NULL) ⇒ endpoint đã chết (prune): upsert lại
+ *     là vô ích vì lần gửi sau bị prune tiếp — phải unsubscribe + subscribe MỚI rồi lưu;
  *   - dòng active nhưng khoá p256dh/auth lệch ⇒ lưu lại (upsert theo endpoint).
  * Lỗi được NÉM (kèm PushOperationError khi đã đụng trình duyệt) để bên gọi ghi lại.
  */
@@ -283,11 +310,12 @@ export async function ensurePushSubscription(organizationId: string | null | und
   const actorId = await getSessionUserId();
   if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
   const stored = await readStoredSubscription(sub.endpoint, actorId);
+  if (stored?.revoked_at) return 'revoked';
   const keys = extractKeys(sub);
   if (stored?.is_active && stored.p256dh === keys.p256dh && stored.auth === keys.auth) return 'in-sync';
   if (!stored || stored.is_active) {
     try {
-      await saveSubscription(sub, actorId, organizationId);
+      await saveSubscription(sub, actorId, organizationId, 'doi-chieu');
     } catch (cause) {
       throw new PushOperationError('Trình duyệt có đăng ký nhưng chưa lưu lại được trên máy chủ.',
         'unknown', cause, 'enable', sub.endpoint, actorId);
@@ -299,22 +327,127 @@ export async function ensurePushSubscription(organizationId: string | null | und
   try {
     fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
     if (!fresh || !sameApplicationServerKey(fresh, wantKey)) throw new TypeError('Unconfirmed application server key');
-    await saveSubscription(fresh, actorId, organizationId);
+    await saveSubscription(fresh, actorId, organizationId, 'doi-chieu');
   } catch (cause) {
     throw new PushOperationError(fresh
       ? 'Đã tạo đăng ký mới thay đăng ký hết hạn; chưa xác nhận lưu trên máy chủ.'
       : 'Đăng ký hết hạn đã hủy; chưa tạo được đăng ký mới. Bật lại thông báo trong Cài đặt thông báo.',
       'partial', cause, 'enable', fresh?.endpoint ?? sub.endpoint, actorId);
   }
-  // Dòng cũ trỏ endpoint đã chết: dọn để danh sách thiết bị không còn bóng ma. Hỏng
-  // cũng không sao (đã is_active=false, send-push không gửi tới nữa). Trình duyệt trả
-  // lại đúng endpoint cũ thì dòng đó chính là dòng vừa lưu — không được xoá.
-  if (fresh.endpoint !== sub.endpoint) {
-    const { error: cleanupError } = await supabase.from('push_subscriptions').delete()
-      .eq('endpoint', sub.endpoint).eq('user_id', actorId);
-    if (cleanupError) console.warn('[push] chưa dọn được đăng ký hết hạn cũ', cleanupError);
-  }
+  if (fresh.endpoint !== sub.endpoint) await donDongHetHan(sub.endpoint, actorId);
   return 'resubscribed';
+}
+
+/**
+ * Dòng cũ trỏ endpoint đã chết: dọn để danh sách thiết bị không còn bóng ma. Hỏng cũng
+ * không sao (endpoint chết, send-push prune ở lần gửi sau) nên chỉ ghi console. Bên gọi
+ * phải bảo đảm endpoint cũ KHÁC endpoint vừa lưu (trình duyệt có thể trả lại đúng
+ * endpoint cũ — khi đó dòng cũ chính là dòng vừa lưu).
+ */
+async function donDongHetHan(endpoint: string, actorId: string): Promise<void> {
+  const { error } = await supabase.from('push_subscriptions').delete()
+    .eq('endpoint', endpoint).eq('user_id', actorId);
+  if (error) console.warn('[push] chưa dọn được đăng ký hết hạn cũ', error);
+}
+
+export type RecoverPushOutcome = EnsurePushOutcome | 'no-prior-row';
+
+/**
+ * `pushsubscriptionchange` mà service worker KHÔNG tự đăng ký lại được (endpoint mới
+ * null: Firefox báo hết hạn không kèm khoá cũ, hoặc subscribe trong SW lỗi). SW tĩnh
+ * không biết khoá VAPID của app (có thể override theo môi trường qua
+ * VITE_VAPID_PUBLIC_KEY) nên app đăng ký lại bằng VAPID_PUBLIC_KEY — KHÔNG xin quyền —
+ * và CHỈ khi: quyền vẫn granted, trình duyệt đang không có đăng ký, và máy này từng có
+ * dòng đăng ký của CHÍNH người dùng (dòng của `oldEndpoint`) chưa bị gỡ. Thiếu
+ * `oldEndpoint` thì không xác định được "từng có dòng" ⇒ không tự đăng ký (NOTIF-CLIENT-7).
+ */
+export async function recoverPushAfterBrowserChange(
+  oldEndpoint: string | null, organizationId: string | null | undefined,
+): Promise<RecoverPushOutcome> {
+  if (!isPushSupported()) return 'unsupported';
+  if (Notification.permission !== 'granted') return 'no-permission';
+  const registered = await navigator.serviceWorker.getRegistration();
+  if (!registered) return 'no-subscription';
+  const reg = await activeRegistration(registered);
+  // Trình duyệt vẫn có đăng ký (SW hay trình duyệt tự cấp) ⇒ đối chiếu như thường.
+  if (await reg.pushManager.getSubscription()) return ensurePushSubscription(organizationId);
+  if (!oldEndpoint) return 'no-subscription';
+  const actorId = await getSessionUserId();
+  if (!actorId) throw { code: 'PGRST301', message: 'Not authenticated' };
+  const prior = await readStoredSubscription(oldEndpoint, actorId);
+  if (!prior) return 'no-prior-row';
+  if (prior.revoked_at) return 'revoked';
+  const wantKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  let fresh: PushSubscription | null = null;
+  try {
+    fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: wantKey });
+    if (!fresh || !sameApplicationServerKey(fresh, wantKey)) throw new TypeError('Unconfirmed application server key');
+    await saveSubscription(fresh, actorId, organizationId, 'doi-chieu');
+  } catch (cause) {
+    throw new PushOperationError(fresh
+      ? 'Trình duyệt đã tạo đăng ký mới thay đăng ký bị thu hồi; chưa xác nhận lưu trên máy chủ.'
+      : 'Trình duyệt đã thu hồi đăng ký thông báo; chưa tạo được đăng ký mới. Bật lại thông báo trong Cài đặt thông báo.',
+      fresh ? 'partial' : 'unknown', cause, 'enable', fresh?.endpoint ?? oldEndpoint, actorId);
+  }
+  if (fresh.endpoint !== oldEndpoint) await donDongHetHan(oldEndpoint, actorId);
+  return 'resubscribed';
+}
+
+/* ── Danh sách thiết bị của tôi + gỡ máy khác (mục D3 trang Cài đặt thông báo) ── */
+
+export interface MyPushDevice {
+  id: string;
+  endpoint: string;
+  userAgent: string | null;
+  isActive: boolean;
+  /** Đã gỡ ở "Thiết bị đã đăng ký" (dấu thu hồi); null = chưa gỡ. */
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Mọi dòng `push_subscriptions` của CHÍNH tôi (RLS select_own), mới trước. Lỗi máy chủ
+ * ném nguyên; trả `null` khi phong bì lệch hình dạng — bên gọi báo "chưa xác nhận",
+ * không dựng danh sách rỗng thay cho dữ liệu thật.
+ */
+export async function readMyPushDevices(actorId: string): Promise<MyPushDevice[] | null> {
+  const { data, error } = await supabase.from('push_subscriptions')
+    .select('id,user_id,endpoint,user_agent,is_active,revoked_at,created_at,updated_at')
+    .eq('user_id', actorId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  if (!Array.isArray(data)) return null;
+  const devices: MyPushDevice[] = [];
+  for (const row of data) {
+    if (!row || row.user_id !== actorId || typeof row.id !== 'string' || typeof row.endpoint !== 'string'
+      || typeof row.is_active !== 'boolean' || typeof row.created_at !== 'string'
+      || !(row.revoked_at === null || (typeof row.revoked_at === 'string' && row.revoked_at))) return null;
+    devices.push({
+      id: row.id, endpoint: row.endpoint, userAgent: row.user_agent ?? null, isActive: row.is_active,
+      revokedAt: row.revoked_at, createdAt: row.created_at, updatedAt: row.updated_at,
+    });
+  }
+  return devices;
+}
+
+/**
+ * Gỡ một máy KHÁC của chính mình: UPDATE is_active=false + revoked_at=now() theo id +
+ * user_id (RLS update_own) — KHÔNG xoá dòng, để máy đó mở CRM lần sau không tự lưu lại
+ * (xem chú thích dấu thu hồi ở đầu file). `true` ⇔ biên nhận đúng một dòng khớp; lỗi
+ * máy chủ ném nguyên.
+ */
+export async function revokeMyPushDevice(deviceId: string, actorId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('push_subscriptions')
+    .update({ is_active: false, revoked_at: new Date().toISOString() })
+    .eq('id', deviceId).eq('user_id', actorId)
+    .select('id,user_id,is_active,revoked_at');
+  if (error) throw error;
+  // Mảng rỗng = không đụng được dòng nào (RLS hoặc đã xoá ở nơi khác) — không phải "đã gỡ".
+  if (!Array.isArray(data) || data.length !== 1) return false;
+  const row = data[0];
+  return !!row && row.id === deviceId && row.user_id === actorId && row.is_active === false
+    && typeof row.revoked_at === 'string' && row.revoked_at.length > 0;
 }
 
 /** Giới hạn thời gian dọn push trước khi đăng xuất: không bao giờ giữ chân người dùng. */

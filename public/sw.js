@@ -11,9 +11,15 @@
  *                               url, notificationIds, organizationId} (app tự đánh dấu đã đọc,
  *                               đổi công ty nếu cần, điều hướng SPA — KHÔNG tải lại trang đang
  *                               nhập dở). Tab không xác nhận (bản app cũ) ⇒ navigate như trước.
- *                               Không có tab: openWindow(url?notif=<ids>&org=<id>).
+ *                               Không có tab: openWindow(url?__pn=<ids>&__porg=<id>).
  *   pushsubscriptionchange    → subscribe lại bằng applicationServerKey cũ + postMessage
- *                               {type:'push-subscription-changed'} để app lưu dòng mới.
+ *                               {type:'push-subscription-changed', endpoint, oldEndpoint}
+ *                               để app lưu dòng mới (endpoint null ⇒ app tự subscribe lại).
+ *
+ * Tham số mở app `__pn` (id thông báo) / `__porg` (công ty) là khoá RIÊNG của cầu nối:
+ * không route nào dùng. Từng dùng `notif`/`org` và đụng `?org=` của trang báo cáo KQKD
+ * (cầu nối gỡ, trang ghi lại ⇒ replace URL vô hạn + đổi công ty toàn cục — NOTIF-CLIENT-1).
+ * Đổi tên ở đây thì đổi cùng THAM_SO_* trong src/lib/push/swMessages.ts.
  */
 
 // Đích dự phòng khi url lạ/khác origin — trang ai đăng nhập cũng vào được.
@@ -24,6 +30,9 @@ const MAX_IDS = 50;
 // sẽ im lặng ⇒ quá hạn thì điều hướng kiểu cũ để bấm push không thành "không làm gì".
 const ACK_TIMEOUT_MS = 1500;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Khớp THAM_SO_ID_THONG_BAO / THAM_SO_CONG_TY ở src/lib/push/swMessages.ts.
+const PARAM_IDS = '__pn';
+const PARAM_ORG = '__porg';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -121,8 +130,8 @@ function pickClient(all) {
 
 function launchUrl(url, ids, organizationId) {
   const target = new URL(url, self.location.origin);
-  if (ids.length > 0) target.searchParams.set('notif', ids.join(','));
-  if (organizationId) target.searchParams.set('org', organizationId);
+  if (ids.length > 0) target.searchParams.set(PARAM_IDS, ids.join(','));
+  if (organizationId) target.searchParams.set(PARAM_ORG, organizationId);
   return target.pathname + target.search + target.hash;
 }
 

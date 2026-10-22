@@ -1,4 +1,4 @@
-// Id thông báo đến từ payload push và từ URL (`?notif=`) — không tin hình dạng.
+// Id thông báo đến từ payload push và từ URL (`?__pn=`) — không tin hình dạng.
 // (21/10/2026, plan realtime + thông báo, mục C4.)
 
 /** Trần số id một lần đánh dấu: payload push mang tối đa 20 id (gói B12), chừa biên. */

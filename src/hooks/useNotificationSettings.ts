@@ -18,8 +18,9 @@ import { notifyActionError } from '@/lib/actionFeedback';
 //
 //  3. GIỜ YÊN CÁ NHÂN — `public.notification_quiet_hours` qua `get/set_my_notification_quiet_hours_v1`.
 //
-//  4. THIẾT BỊ — `public.push_subscriptions` của chính mình (RLS select_own/delete_own), đọc
-//     và gỡ trực tiếp; nhật ký gửi qua `get_my_push_log_v1`.
+//  4. THIẾT BỊ — `public.push_subscriptions` của chính mình (RLS select_own/update_own), đọc
+//     và gỡ (gắn dấu thu hồi) qua `@/lib/push` — file duy nhất chạm cột `revoked_at`;
+//     nhật ký gửi qua `get_my_push_log_v1`.
 //
 // Lỗi đọc phải có trạng thái riêng. Chỉ dùng giá trị mặc định khi máy chủ xác nhận chưa có cấu hình.
 // RPC mới đi qua `@/lib/notifications/settingsRpc` (một file wrapper typed duy nhất).
@@ -27,8 +28,7 @@ import { notifyActionError } from '@/lib/actionFeedback';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
-import { getExistingSubscription, isPushSupported } from "@/lib/push";
-import { requireAccountWriteReceipt } from "@/lib/accountSettingsWriteReceipt";
+import { getExistingSubscription, isPushSupported, readMyPushDevices, revokeMyPushDevice, type MyPushDevice } from "@/lib/push";
 import {
   NotificationOrgConfigConflictError,
   NotificationSettingsReceiptError,
@@ -409,14 +409,7 @@ export function useMyPushLog(limit = 5) {
   });
 }
 
-export interface MyPushDevice {
-  id: string;
-  endpoint: string;
-  userAgent: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { MyPushDevice };
 
 export const MY_PUSH_DEVICES_KEY = ["my-push-devices"] as const;
 
@@ -427,42 +420,27 @@ export function useMyPushDevices() {
     staleTime: 30_000,
     meta: { label: "thiết bị nhận thông báo", errorDisplay: "inline" },
     queryFn: async (): Promise<MyPushDevice[]> => {
-      const actorId = await requireActor();
-      const { data, error } = await supabase.from("push_subscriptions")
-        .select("id,user_id,endpoint,user_agent,is_active,created_at,updated_at")
-        .eq("user_id", actorId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      if (!Array.isArray(data)) throw new NotificationSettingsReceiptError();
-      return data.map((row) => {
-        if (!row || row.user_id !== actorId || typeof row.id !== "string" || typeof row.endpoint !== "string"
-          || typeof row.is_active !== "boolean" || typeof row.created_at !== "string")
-          throw new NotificationSettingsReceiptError();
-        return {
-          id: row.id, endpoint: row.endpoint, userAgent: row.user_agent ?? null, isActive: row.is_active,
-          createdAt: row.created_at, updatedAt: row.updated_at,
-        };
-      });
+      const devices = await readMyPushDevices(await requireActor());
+      if (!devices) throw new NotificationSettingsReceiptError();
+      return devices;
     },
   });
 }
 
-/** Gỡ một máy KHÁC của chính mình (máy đang dùng thì tắt bằng công tắc để huỷ cả đăng ký trình duyệt). */
+/**
+ * Gỡ một máy KHÁC của chính mình (máy đang dùng thì tắt bằng công tắc để huỷ cả đăng ký trình
+ * duyệt). Gắn dấu thu hồi chứ không xoá dòng — xem revokeMyPushDevice ở src/lib/push.ts.
+ */
 export function useRemovePushDevice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (deviceId: string): Promise<string> => {
       const actorId = await requireActor();
-      const { data, error } = await supabase.from("push_subscriptions").delete()
-        .eq("id", deviceId).eq("user_id", actorId).select("id,user_id,endpoint");
-      if (error) throw error;
-      // Mảng rỗng = không xoá được dòng nào (RLS hoặc đã gỡ ở nơi khác) — không phải "đã gỡ".
-      if (!Array.isArray(data) || data.length !== 1) throw new NotificationSettingsReceiptError();
-      requireAccountWriteReceipt(data[0], { id: deviceId, user_id: actorId });
+      if (!(await revokeMyPushDevice(deviceId, actorId))) throw new NotificationSettingsReceiptError();
       return deviceId;
     },
     onSuccess: () => {
-      toast.success("Đã gỡ thiết bị khỏi danh sách nhận thông báo");
+      toast.success("Đã gỡ thiết bị — máy đó thôi nhận thông báo đẩy");
     },
     onError: (e: Error) => {
       notifyActionError(e, "Chưa gỡ được thiết bị");

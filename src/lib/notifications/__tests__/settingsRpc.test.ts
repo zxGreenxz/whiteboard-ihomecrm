@@ -75,6 +75,23 @@ describe('wrapper RPC mới theo hợp đồng §4', () => {
     expect(() => parseDeliveryHealth({ ...health, last_7d: { sent: 1 } })).toThrow(NotificationSettingsReceiptError);
     expect(() => parseDeliveryHealth({ ...health, push_log_7d: { SENT: -1 } })).toThrow(NotificationSettingsReceiptError);
   });
+  it('sức khoẻ: trường bổ sung (drain OK/lỗi, hàng chờ đủ điều kiện, hoãn giờ yên) đọc được; vắng thì không vỡ; méo thì lỗi', () => {
+    const old = parseDeliveryHealth(health);
+    expect(old.lastDrainOkAt).toBeUndefined();
+    expect(old.queue.oldestEligibleQueuedAt).toBeUndefined();
+    expect(old.queue.deferredQuiet).toBeUndefined();
+    const full = parseDeliveryHealth({
+      ...health,
+      queue: { ...health.queue, oldest_eligible_queued_at: null, deferred_quiet: 4 },
+      last_drain_ok_at: '2026-10-21T01:45:00Z', last_drain_error: null,
+    });
+    expect(full.queue).toMatchObject({ oldestEligibleQueuedAt: null, deferredQuiet: 4 });
+    expect(full.lastDrainOkAt).toBe('2026-10-21T01:45:00Z');
+    expect(full.lastDrainError).toBeNull();
+    expect(() => parseDeliveryHealth({ ...health, queue: { ...health.queue, deferred_quiet: -1 } })).toThrow(NotificationSettingsReceiptError);
+    expect(() => parseDeliveryHealth({ ...health, last_drain_ok_at: 'bad' })).toThrow(NotificationSettingsReceiptError);
+    expect(() => parseDeliveryHealth({ ...health, last_drain_error: 42 })).toThrow(NotificationSettingsReceiptError);
+  });
   it('nhật ký push: kẹp p_limit 1..50 và kiểm từng dòng', async () => {
     m.rpc.mockResolvedValue({ data: [{ created_at: '2026-10-21T01:00:00Z', outcome: 'SENT', sent: 1 }], error: null });
     await expect(fetchMyPushLog(500)).resolves.toEqual([{ createdAt: '2026-10-21T01:00:00Z', outcome: 'SENT', sent: 1 }]);

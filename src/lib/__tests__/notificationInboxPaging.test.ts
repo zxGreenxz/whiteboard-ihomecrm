@@ -5,7 +5,9 @@ import {
   canDoiMoc,
   dieuKienKeyset,
   gopDongHopThu,
+  khoaThoiGian,
   mocTrangSau,
+  soSanhThoiGian,
   type InboxCursor,
   type InboxRowKey,
 } from "@/lib/notifications/inboxPaging";
@@ -90,11 +92,27 @@ describe("keyset hộp thư", () => {
     expect(merged.map((r) => r.id)).toEqual([B, A, rows[2]!.id]);
   });
 
-  it("dời mốc chỉ khi dòng cuối của top 200 MỚI HƠN mốc (dòng mới chèn lên đầu)", () => {
+  it("có dải hở chỉ khi dòng cuối của top 200 MỚI HƠN mốc neo (dòng mới chèn lên đầu)", () => {
     const moc: InboxCursor = { created_at: T0, id: null };
     expect(canDoiMoc(moc, { id: A, created_at: T1 })).toBe(true);
     expect(canDoiMoc(moc, { id: A, created_at: T0 })).toBe(false);
     expect(canDoiMoc({ created_at: T1, id: null }, { id: A, created_at: T0 })).toBe(false);
     expect(canDoiMoc(moc, undefined)).toBe(false);
+  });
+
+  it("so mốc ở độ phân giải MICRO giây — hai dòng cùng mili giây vẫn phân biệt được (Date.parse thì không)", () => {
+    const sau = "2026-10-21T08:00:00.123457+00:00";
+    expect(Date.parse(sau)).toBe(Date.parse(T1)); // bằng chứng Date.parse cắt về mili giây
+    expect(canDoiMoc({ created_at: T1, id: null }, { id: A, created_at: sau })).toBe(true);
+    expect(soSanhThoiGian(sau, T1)).toBe(1);
+    expect(gopDongHopThu([{ id: A, created_at: T1 }], [{ id: B, created_at: sau }]).map((r) => r.id)).toEqual([B, A]);
+  });
+
+  it("khoá thời gian chuẩn hoá múi giờ và định dạng: cùng thời điểm ⇒ bằng nhau", () => {
+    expect(soSanhThoiGian("2026-10-21T15:00:00.5+07:00", "2026-10-21T08:00:00.500000Z")).toBe(0);
+    expect(soSanhThoiGian("2026-10-21 08:00:00+00", "2026-10-21T08:00:00.000Z")).toBe(0);
+    expect(soSanhThoiGian("2026-10-21T08:00:00-0130", "2026-10-21T09:30:00Z")).toBe(0);
+    expect(soSanhThoiGian("2026-10-21T07:59:59.999999Z", "2026-10-21T08:00:00Z")).toBe(-1);
+    expect(khoaThoiGian("2026-10-21T08:00:00.1234567Z")).toBe(khoaThoiGian("2026-10-21T08:00:00.123456Z"));
   });
 });

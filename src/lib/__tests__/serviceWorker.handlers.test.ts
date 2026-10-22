@@ -126,15 +126,26 @@ describe("public/sw.js", () => {
     const done = sw.ban("notificationclick", bamThongBao({ url: "/my-day", notificationIds: [ID1], organizationId: ORG }));
     await vi.advanceTimersByTimeAsync(1500);
     await done;
-    expect(cu.navigate).toHaveBeenCalledWith(`/my-day?notif=${ID1}&org=${ORG}`);
+    expect(cu.navigate).toHaveBeenCalledWith(`/my-day?__pn=${ID1}&__porg=${ORG}`);
   });
 
-  it("không có tab: mở tab mới với ?notif=&org=", async () => {
+  it("không có tab: mở tab mới với ?__pn=&__porg= (khoá riêng, không đụng `org` của trang đích)", async () => {
     const sw = dungSw();
     await sw.ban("notificationclick", bamThongBao({ url: "/income-expense?approval_status=UNAPPROVED", notificationIds: [ID1, ID2], organizationId: ORG }));
     expect(sw.self.clients.openWindow).toHaveBeenCalledWith(
-      `/income-expense?approval_status=UNAPPROVED&notif=${encodeURIComponent(`${ID1},${ID2}`)}&org=${ORG}`,
+      `/income-expense?approval_status=UNAPPROVED&__pn=${encodeURIComponent(`${ID1},${ID2}`)}&__porg=${ORG}`,
     );
+    const other = "44444444-4444-4444-8444-444444444444";
+    await sw.ban("notificationclick", bamThongBao({ url: `/reports/finance/business-performance?org=${other}`, notificationIds: [ID1], organizationId: ORG }));
+    expect(sw.self.clients.openWindow).toHaveBeenLastCalledWith(
+      `/reports/finance/business-performance?org=${other}&__pn=${ID1}&__porg=${ORG}`,
+    );
+  });
+
+  it("tên tham số mở app khớp hằng số phía app (swMessages.ts)", async () => {
+    const { THAM_SO_CONG_TY, THAM_SO_ID_THONG_BAO } = await import("@/lib/push/swMessages");
+    expect(SW_SOURCE).toContain(`const PARAM_IDS = '${THAM_SO_ID_THONG_BAO}';`);
+    expect(SW_SOURCE).toContain(`const PARAM_ORG = '${THAM_SO_CONG_TY}';`);
   });
 
   it("url khác origin hoặc hỏng ⇒ /my-day; url rỗng ⇒ /", async () => {

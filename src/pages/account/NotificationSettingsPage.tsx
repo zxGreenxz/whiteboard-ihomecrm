@@ -100,14 +100,29 @@ export function NotificationSettingsContent() {
   );
 }
 
+/**
+ * Có trang trước TRONG APP không? React Router ghi `idx` vào history.state cho mỗi mục nó đẩy;
+ * `idx > 0` ⇒ quay lại vẫn ở trong app (vào từ bánh răng ở /notifications, từ chuông…). Mở thẳng
+ * link/tab mới thì idx = 0 — navigate(-1) sẽ rời app, nên về trang Tài khoản.
+ */
+function coTrangTruocTrongApp(): boolean {
+  if (typeof window === "undefined") return false;
+  const idx = (window.history.state as { idx?: unknown } | null)?.idx;
+  return typeof idx === "number" && idx > 0;
+}
+
 function NotificationSettingsMobile() {
   const navigate = useNavigate();
+  const quayLai = () => {
+    if (coTrangTruocTrongApp()) navigate(-1);
+    else navigate("/account/profile");
+  };
   return (
     <div className="cm-stage">
       <div className="cm-app">
         <div className="route route-anim">
           <div className="mtop">
-            <button className="mback" onClick={() => navigate("/account/profile")} aria-label="Về trang Tài khoản">
+            <button className="mback" onClick={quayLai} aria-label="Quay lại">
               <ArrowLeft />
             </button>
             <div className="mtitle">

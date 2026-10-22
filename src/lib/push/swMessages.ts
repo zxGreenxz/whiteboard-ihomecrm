@@ -13,9 +13,10 @@ import { chuanHoaIdThongBao, laUuid } from "@/lib/notifications/notificationIds"
 export type SwMessage =
   | { type: "push-received" }
   | { type: "notification-click"; url: string | null; notificationIds: string[]; organizationId: string | null }
-  | { type: "push-subscription-changed" };
+  | { type: "push-subscription-changed"; endpoint: string | null; oldEndpoint: string | null };
 
 const laObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const chuoiHoacNull = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
 /** Đọc `event.data` của message từ service worker; tin lạ ⇒ null (bỏ qua). */
 export function docTinServiceWorker(data: unknown): SwMessage | null {
@@ -24,7 +25,7 @@ export function docTinServiceWorker(data: unknown): SwMessage | null {
     case "push-received":
       return { type: "push-received" };
     case "push-subscription-changed":
-      return { type: "push-subscription-changed" };
+      return { type: "push-subscription-changed", endpoint: chuoiHoacNull(data.endpoint), oldEndpoint: chuoiHoacNull(data.oldEndpoint) };
     case "notification-click":
       return {
         type: "notification-click",
@@ -37,9 +38,14 @@ export function docTinServiceWorker(data: unknown): SwMessage | null {
   }
 }
 
-/** Tham số service worker gắn khi phải mở tab mới (không có tab nào đang mở). */
-export const THAM_SO_ID_THONG_BAO = "notif";
-export const THAM_SO_CONG_TY = "org";
+/**
+ * Tham số service worker gắn khi phải mở tab mới (không có tab nào đang mở) hoặc
+ * điều hướng tab bản cũ. Khoá RIÊNG của cầu nối, không route nào dùng: tên chung
+ * như `org` đụng `?org=` của trang báo cáo KQKD (NOTIF-CLIENT-1). Đổi ở đây thì
+ * đổi cùng PARAM_IDS / PARAM_ORG trong public/sw.js.
+ */
+export const THAM_SO_ID_THONG_BAO = "__pn";
+export const THAM_SO_CONG_TY = "__porg";
 
 export interface ThamSoMoApp {
   notificationIds: string[];
@@ -48,7 +54,7 @@ export interface ThamSoMoApp {
   conLai: string;
 }
 
-/** Đọc `?notif=<id,id>&org=<id>` lúc mở app; không có tham số nào ⇒ null. */
+/** Đọc `?__pn=<id,id>&__porg=<id>` lúc mở app; không có tham số nào ⇒ null. */
 export function docThamSoMoApp(search: string): ThamSoMoApp | null {
   const params = new URLSearchParams(search);
   if (!params.has(THAM_SO_ID_THONG_BAO) && !params.has(THAM_SO_CONG_TY)) return null;

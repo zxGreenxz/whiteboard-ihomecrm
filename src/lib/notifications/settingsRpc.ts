@@ -178,12 +178,28 @@ export interface NotificationDeliveryHealth {
   membersTotal: number;
   membersWithDevice: number;
   activeDevices: number;
-  queue: { queued: number; sending: number; oldestQueuedAt: string | null };
+  queue: {
+    queued: number;
+    sending: number;
+    /** Dòng QUEUED cũ nhất, KỂ CẢ dòng đang được hoãn hợp lệ vì giờ yên. */
+    oldestQueuedAt: string | null;
+    /**
+     * Dòng QUEUED cũ nhất ĐỦ ĐIỀU KIỆN gửi lúc này (loại dòng trong giờ yên công ty/cá
+     * nhân). `undefined` = máy chủ chưa trả trường này (bản RPC cũ); `null` = không có.
+     */
+    oldestEligibleQueuedAt?: string | null;
+    /** Số dòng đang hoãn vì giờ yên; `undefined` = máy chủ chưa trả. */
+    deferredQuiet?: number;
+  };
   last7d: { sent: number; noDevice: number; failed: number; skipped: number };
   lifecycle: { pushStates: Record<string, number>; lastSuccessAt: string | null };
   pushLog7d: Record<string, number>;
   noRecipient7d: { event: string; reason: string; n: number }[];
   lastDrainAt: string | null;
+  /** Lượt drain THÀNH CÔNG gần nhất (lastDrainAt tính cả lượt lỗi); `undefined` = chưa trả. */
+  lastDrainOkAt?: string | null;
+  /** Lỗi của lượt drain gần nhất — máy chủ chỉ trả khác null cho super admin. */
+  lastDrainError?: string | null;
 }
 
 export function parseDeliveryHealth(data: unknown): NotificationDeliveryHealth {
@@ -197,6 +213,12 @@ export function parseDeliveryHealth(data: unknown): NotificationDeliveryHealth {
     || !['sent', 'no_device', 'failed', 'skipped'].every(key => isCount(last7d[key]))
     || !isInstantOrNull(lifecycle.last_success_at ?? null) || !isInstantOrNull(row.last_drain_at ?? null)
     || !Array.isArray(row.no_recipient_7d)) fail();
+  // Trường bổ sung (SETTINGS-3/5): TUỲ CHỌN — bản RPC chưa có thì vắng, không vỡ. Có mặt
+  // thì phải đúng hình dạng (lệch ⇒ lỗi hợp đồng như mọi trường khác).
+  if (!(queue.oldest_eligible_queued_at === undefined || isInstantOrNull(queue.oldest_eligible_queued_at))
+    || !(queue.deferred_quiet === undefined || isCount(queue.deferred_quiet))
+    || !(row.last_drain_ok_at === undefined || isInstantOrNull(row.last_drain_ok_at))
+    || !(row.last_drain_error === undefined || row.last_drain_error === null || typeof row.last_drain_error === 'string')) fail();
   const noRecipient = (row.no_recipient_7d as unknown[]).map(item => {
     const r = asRecord(item);
     if (!r || typeof r.event !== 'string' || typeof r.reason !== 'string' || !isCount(r.n)) fail();
@@ -207,12 +229,18 @@ export function parseDeliveryHealth(data: unknown): NotificationDeliveryHealth {
     membersTotal: row.members_total as number,
     membersWithDevice: row.members_with_device as number,
     activeDevices: row.active_devices as number,
-    queue: { queued: queue.queued as number, sending: queue.sending as number, oldestQueuedAt: (queue.oldest_queued_at ?? null) as string | null },
+    queue: {
+      queued: queue.queued as number, sending: queue.sending as number, oldestQueuedAt: (queue.oldest_queued_at ?? null) as string | null,
+      ...(queue.oldest_eligible_queued_at !== undefined ? { oldestEligibleQueuedAt: queue.oldest_eligible_queued_at as string | null } : {}),
+      ...(queue.deferred_quiet !== undefined ? { deferredQuiet: queue.deferred_quiet as number } : {}),
+    },
     last7d: { sent: last7d.sent as number, noDevice: last7d.no_device as number, failed: last7d.failed as number, skipped: last7d.skipped as number },
     lifecycle: { pushStates: readCounts(lifecycle.push_states ?? {}), lastSuccessAt: (lifecycle.last_success_at ?? null) as string | null },
     pushLog7d: readCounts(row.push_log_7d ?? {}),
     noRecipient7d: noRecipient,
     lastDrainAt: (row.last_drain_at ?? null) as string | null,
+    ...(row.last_drain_ok_at !== undefined ? { lastDrainOkAt: row.last_drain_ok_at as string | null } : {}),
+    ...(row.last_drain_error !== undefined ? { lastDrainError: row.last_drain_error as string | null } : {}),
   };
 }
 

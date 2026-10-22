@@ -7,11 +7,18 @@
 //                               đã đọc các id, đổi công ty nếu push thuộc công ty khác
 //                               mà người dùng là thành viên, rồi điều hướng SPA qua
 //                               resolveNotificationUrl (allow-list + kiểm quyền).
-//   ?notif=<ids>&org=<id>     ⇒ cùng việc trên khi SW phải mở TAB MỚI; đọc một lần
-//                               lúc khởi động rồi gỡ khỏi URL (trang đích đã đúng).
-//   push-subscription-changed ⇒ đối chiếu lại đăng ký push với máy chủ.
+//   ?__pn=<ids>&__porg=<id>   ⇒ cùng việc trên khi SW phải mở TAB MỚI; mỗi URL xử lý
+//                               một lần rồi gỡ hai tham số khỏi URL (trang đích đã đúng).
+//                               Khoá riêng của cầu nối — KHÔNG đụng `?org=` của trang
+//                               báo cáo KQKD (NOTIF-CLIENT-1: hai bên từng ghi đè nhau vô hạn).
+//   push-subscription-changed ⇒ đối chiếu lại đăng ký push với máy chủ; SW không tự đăng
+//                               ký lại được (endpoint null) thì app đăng ký lại bằng khoá
+//                               VAPID của app nếu máy từng có dòng (NOTIF-CLIENT-7).
+// Url không nằm trong allow-list ⇒ về '/my-day' (khớp đích dự phòng của SQL), không
+// "bấm mà không đi đâu" (NOTIF-CLIENT-5).
 // Kèm theo, cấp app:
-//   - số chưa đọc ⇒ số trên icon PWA; về 0 ⇒ đóng mọi thông báo hộp thư trên màn khoá;
+//   - số chưa đọc CỦA CÔNG TY ĐANG CHỌN ⇒ số trên icon PWA; về 0 ⇒ đóng thông báo hộp thư
+//     của công ty đó (và thông báo không gắn công ty) trên màn khoá — NOTIF-CLIENT-4;
 //   - có phiên + đã chốt công ty ⇒ ensurePushSubscription() một lần mỗi tài khoản.
 //
 // VÌ SAO MOUNT TRONG CÂY ROUTE (src/app/routes/index.tsx) CHỨ KHÔNG Ở AppProviders
@@ -28,7 +35,7 @@ import { useOrganization } from "@/contexts/OrganizationContext";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useUnreadNotificationsCount } from "@/hooks/useNotifications";
 import { useMarkNotificationsRead } from "@/hooks/useMarkNotificationsRead";
-import { resolveNotificationUrl } from "@/lib/notificationRoutes";
+import { NOTIFICATION_FALLBACK_URL, resolveNotificationUrl } from "@/lib/notificationRoutes";
 import { capNhatSoTrenIcon, dongMoiThongBaoHopThu } from "@/lib/push/osNotifications";
 import { docThamSoMoApp, docTinServiceWorker } from "@/lib/push/swMessages";
 
@@ -42,10 +49,18 @@ interface ViecBamPush {
   organizationId: string | null;
 }
 
-async function doiChieuDangKyPush(organizationId: string | null): Promise<void> {
+/**
+ * `doiMoi` = tin push-subscription-changed của SW. Endpoint mới null (SW không tự đăng ký
+ * lại được) ⇒ thử khôi phục bằng khoá VAPID của app; còn lại ⇒ đối chiếu như thường.
+ */
+async function doiChieuDangKyPush(
+  organizationId: string | null,
+  doiMoi?: { endpoint: string | null; oldEndpoint: string | null },
+): Promise<void> {
   try {
     const push = await import("@/lib/push");
-    await push.ensurePushSubscription(organizationId);
+    if (doiMoi && doiMoi.endpoint === null) await push.recoverPushAfterBrowserChange(doiMoi.oldEndpoint, organizationId);
+    else await push.ensurePushSubscription(organizationId);
   } catch (error) {
     console.warn("[push] chưa đối chiếu được đăng ký push của máy này", error);
   }
@@ -84,7 +99,7 @@ export function ServiceWorkerBridge(): null {
         return;
       }
       if (tin.type === "push-subscription-changed") {
-        void doiChieuDangKyPush(congTyRef.current);
+        void doiChieuDangKyPush(congTyRef.current, { endpoint: tin.endpoint, oldEndpoint: tin.oldEndpoint });
         return;
       }
       // Báo SW "đã nhận" TRƯỚC mọi việc khác: SW chờ tối đa 1,5 s rồi tự tải lại trang.
@@ -95,14 +110,21 @@ export function ServiceWorkerBridge(): null {
     return () => container.removeEventListener("message", onMessage);
   }, [queryClient]);
 
-  // ---- Mở app từ push khi không có tab nào: ?notif=&org= ----
+  // ---- Mở app từ push khi không có tab nào: ?__pn=&__porg= ----
   // Đọc MỖI KHI URL mang tham số, không chỉ lần đầu: chưa đăng nhập thì ProtectedRoute
   // gói cả query vào /login?next=… và tham số chỉ quay lại URL sau khi đăng nhập xong.
+  // Nhưng mỗi URL chỉ xử lý MỘT lần (ref theo path+search đã xử lý): render lại hay
+  // effect chạy lại với cùng URL không được đánh dấu/đổi công ty lần nữa.
+  const daXuLyUrl = useRef<string | null>(null);
   useEffect(() => {
     if (location.pathname === "/login") return;
     const thamSo = docThamSoMoApp(location.search);
     if (!thamSo) return;
-    // Gỡ tham số NGAY (replace): F5 hay chia sẻ link không lặp lại việc đánh dấu.
+    const khoa = location.pathname + location.search;
+    if (daXuLyUrl.current === khoa) return;
+    daXuLyUrl.current = khoa;
+    // Gỡ tham số NGAY (replace): F5 hay chia sẻ link không lặp lại việc đánh dấu. Chỉ gỡ
+    // hai khoá của cầu nối — query còn lại của trang đích (kể cả `org`) giữ nguyên.
     navigate({ pathname: location.pathname, search: thamSo.conLai, hash: location.hash }, { replace: true });
     setViec({ url: null, notificationIds: thamSo.notificationIds, organizationId: thamSo.organizationId });
   }, [location.hash, location.pathname, location.search, navigate]);
@@ -137,17 +159,21 @@ export function ServiceWorkerBridge(): null {
     }
     // Quyền phải là quyền của công ty ĐÍCH: đợi useMyPermissions nạp xong sau khi đổi.
     if (dangTaiQuyen) return;
-    const dich = resolveNotificationUrl(viec.url, perms);
+    // Url lạ/không nằm trong allow-list ⇒ đích dự phòng như SQL (url NULL ⇒ '/my-day'),
+    // không để bấm push mà không đi đâu.
+    const dich = resolveNotificationUrl(viec.url, perms) ?? NOTIFICATION_FALLBACK_URL;
     setViec(null);
-    if (dich) navigate(dich);
+    navigate(dich);
   }, [viec, userId, dangTaiCongTy, selectedOrganizationId, organizations, selectOrganization, dangTaiQuyen, perms, navigate, nhip]);
 
   // ---- Số trên icon + dọn màn khoá khi đã đọc hết ----
+  // Số là của CÔNG TY ĐANG CHỌN (cùng số với chuông; xem capNhatSoTrenIcon). Về 0 chỉ
+  // đóng thông báo của công ty đó — công ty khác có thể còn việc chờ.
   useEffect(() => {
     if (!userId || typeof soChuaDoc !== "number") return;
     capNhatSoTrenIcon(soChuaDoc);
-    if (soChuaDoc === 0) void dongMoiThongBaoHopThu();
-  }, [userId, soChuaDoc]);
+    if (soChuaDoc === 0) void dongMoiThongBaoHopThu(selectedOrganizationId);
+  }, [userId, soChuaDoc, selectedOrganizationId]);
   useEffect(() => {
     // Đăng xuất: icon không được giữ số của tài khoản vừa thoát.
     if (!userId) capNhatSoTrenIcon(0);

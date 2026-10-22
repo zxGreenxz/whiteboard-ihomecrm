@@ -21,25 +21,32 @@ describe("docTinServiceWorker", () => {
     expect(docTinServiceWorker("push-received")).toBeNull();
     expect(docTinServiceWorker({ type: "khac" })).toBeNull();
     expect(docTinServiceWorker({ type: "push-received" })).toEqual({ type: "push-received" });
-    expect(docTinServiceWorker({ type: "push-subscription-changed" })).toEqual({ type: "push-subscription-changed" });
+    expect(docTinServiceWorker({ type: "push-subscription-changed" })).toEqual({ type: "push-subscription-changed", endpoint: null, oldEndpoint: null });
+    expect(docTinServiceWorker({ type: "push-subscription-changed", endpoint: "https://p/new", oldEndpoint: 3 }))
+      .toEqual({ type: "push-subscription-changed", endpoint: "https://p/new", oldEndpoint: null });
   });
 });
 
-describe("docThamSoMoApp — ?notif=&org= khi SW mở tab mới", () => {
+describe("docThamSoMoApp — ?__pn=&__porg= khi SW mở tab mới", () => {
   it("không có tham số ⇒ null", () => {
     expect(docThamSoMoApp("?close=abc")).toBeNull();
   });
 
-  it("tách id + công ty và giữ nguyên query còn lại của trang đích", () => {
-    expect(docThamSoMoApp(`?handover=${ID2}&notif=${ID1},${ID2}&org=${ORG}`)).toEqual({
+  it("`org`/`notif` là tham số của trang (báo cáo KQKD ghi ?org=) — KHÔNG phải tín hiệu của cầu nối", () => {
+    expect(docThamSoMoApp(`?org=${ORG}`)).toBeNull();
+    expect(docThamSoMoApp(`?notif=${ID1}&org=${ORG}`)).toBeNull();
+  });
+
+  it("tách id + công ty và giữ nguyên query còn lại của trang đích (kể cả `org`)", () => {
+    expect(docThamSoMoApp(`?handover=${ID2}&org=${ID2}&__pn=${ID1},${ID2}&__porg=${ORG}`)).toEqual({
       notificationIds: [ID1, ID2],
       organizationId: ORG,
-      conLai: `?handover=${ID2}`,
+      conLai: `?handover=${ID2}&org=${ID2}`,
     });
   });
 
   it("id rác bị bỏ, query rỗng sau khi gỡ", () => {
-    expect(docThamSoMoApp("?notif=abc&org=")).toEqual({ notificationIds: [], organizationId: null, conLai: "" });
+    expect(docThamSoMoApp("?__pn=abc&__porg=")).toEqual({ notificationIds: [], organizationId: null, conLai: "" });
   });
 
   it("cắt trần số id một lần đánh dấu", () => {

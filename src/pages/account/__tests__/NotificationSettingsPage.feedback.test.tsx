@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import {cleanup,render,screen} from '@testing-library/react';
-import {MemoryRouter} from 'react-router-dom';
-import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {MemoryRouter,Route,Routes,useLocation} from 'react-router-dom';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({perms:{} as Record<string,unknown>,phone:false,org:{} as Record<string,unknown>,cards:[] as string[]}));
 const {stub}=vi.hoisted(()=>({stub:(name:string)=>({default:(props:Record<string,unknown>)=>{m.cards.push(`${name}:${JSON.stringify(props)}`);return <section aria-label={name}/>;}})}));
 vi.mock('@/hooks/use-mobile',()=>({usePhoneViewport:()=>m.phone}));
@@ -39,6 +39,22 @@ it('điện thoại dùng vỏ app toàn màn hình, nội dung giữ nguyên',(
  expect(container.querySelector('.cm-app')).toBeTruthy();
  expect(screen.getByRole('heading',{name:'Cài đặt thông báo'})).toBeTruthy();
  expect(screen.getByRole('region',{name:'Thiết bị này'})).toBeTruthy();
+});
+describe('nút quay lại trên điện thoại (SETTINGS-6)',()=>{
+ function ViTri(){const l=useLocation();return <output data-testid="loc">{l.pathname}</output>;}
+ const dungMobile=()=>render(<MemoryRouter initialEntries={['/notifications','/account/notifications']} initialIndex={1} future={{v7_startTransition:true,v7_relativeSplatPath:true}}>
+  <Routes><Route path="/account/notifications" element={<NotificationSettingsPage/>}/><Route path="*" element={<ViTri/>}/></Routes></MemoryRouter>);
+ afterEach(()=>window.history.replaceState(null,''));
+ it('có lịch sử trong app (history.state.idx > 0) ⇒ quay lại trang trước (vd /notifications)',()=>{
+  m.phone=true;window.history.replaceState({idx:1},'');dungMobile();
+  fireEvent.click(screen.getByRole('button',{name:'Quay lại'}));
+  expect(screen.getByTestId('loc').textContent).toBe('/notifications');
+ });
+ it('mở thẳng (không có lịch sử trong app) ⇒ về /account/profile',()=>{
+  m.phone=true;window.history.replaceState(null,'');dungMobile();
+  fireEvent.click(screen.getByRole('button',{name:'Quay lại'}));
+  expect(screen.getByTestId('loc').textContent).toBe('/account/profile');
+ });
 });
 it('chưa tải được danh sách công ty thì báo lỗi, không dựng sở thích cho công ty rỗng',()=>{
  m.org={...m.org,selectedOrganizationId:null,organization:null,isError:true};renderPage();

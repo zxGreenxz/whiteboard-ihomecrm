@@ -1,12 +1,71 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assessDeliveryQueue,
   describeUserAgent,
   formatHour,
+  noRecipientLabel,
   pushOutcomeLabel,
   quietHoursLength,
   readTestPushOutcome,
   testPushFeedback,
+  type DeliveryQueueInput,
 } from '../settingsDisplay';
+
+describe('nhãn trạng thái thẻ Sức khoẻ (SETTINGS-5)', () => {
+  it('DISABLED và UNKNOWN có nhãn riêng, không rơi vào "Kết quả khác"', () => {
+    expect(pushOutcomeLabel('DISABLED')).toEqual({ label: 'Người nhận đã tắt đẩy về máy', tone: 'muted' });
+    expect(pushOutcomeLabel('UNKNOWN')).toEqual({ label: 'Chưa rõ kết quả', tone: 'muted' });
+    expect(pushOutcomeLabel('DISABLED').label).not.toContain('Kết quả khác');
+  });
+  it('no_recipient_7d: họ + lý do sang tiếng Việt; mã lạ giữ nguyên mã thô', () => {
+    const titles = { E1: { title: 'Phiếu chờ tôi duyệt' } };
+    expect(noRecipientLabel({ event: 'E1', reason: 'NO_APPROVER_IN_SCOPE' }, titles))
+      .toEqual({ event: 'Phiếu chờ tôi duyệt', reason: 'Không có người duyệt trong phạm vi' });
+    expect(noRecipientLabel({ event: 'INVOICE_OVERDUE', reason: 'NO_RECIPIENT_IN_SCOPE' }, titles))
+      .toEqual({ event: 'Hoá đơn quá hạn', reason: 'Không có ai đủ quyền trong phạm vi toà' });
+    expect(noRecipientLabel({ event: 'X9', reason: 'LA' }, titles)).toEqual({ event: 'X9', reason: 'LA' });
+  });
+});
+
+describe('assessDeliveryQueue — chỉ nói "lượt gửi có thể đang lỗi" khi chính lượt drain hỏng (SETTINGS-3)', () => {
+  const NOW = '2026-10-21T23:00:00Z';
+  const base: DeliveryQueueInput = {
+    generatedAt: NOW,
+    queue: { queued: 3, oldestQueuedAt: '2026-10-21T21:30:00Z' },
+    lastDrainAt: '2026-10-21T22:50:00Z',
+    lastDrainOkAt: '2026-10-21T22:50:00Z',
+    lastDrainError: null,
+  };
+  it('QUEUED cũ 90 phút (giờ yên) nhưng lượt thành công 10 phút trước ⇒ KHÔNG cảnh báo lỗi', () => {
+    const a = assessDeliveryQueue(base);
+    expect(a.drainProblem).toBeNull();
+    // Máy chủ chưa tách dòng giờ yên ⇒ chỉ ghi chú trung tính.
+    expect(a.queueNote).toEqual({ kind: 'old-maybe-quiet', minutes: 90, since: '2026-10-21T21:30:00Z' });
+  });
+  it('máy chủ trả oldest_eligible_queued_at: dòng giờ yên không tính; deferred_quiet là số trung tính', () => {
+    const a = assessDeliveryQueue({ ...base, queue: { ...base.queue, oldestEligibleQueuedAt: null, deferredQuiet: 3 } });
+    expect(a.drainProblem).toBeNull();
+    expect(a.queueNote).toBeNull();
+    expect(a.deferredQuiet).toBe(3);
+    const stuck = assessDeliveryQueue({ ...base, queue: { ...base.queue, oldestEligibleQueuedAt: '2026-10-21T22:00:00Z', deferredQuiet: 0 } });
+    expect(stuck.drainProblem).toBeNull();
+    expect(stuck.queueNote).toEqual({ kind: 'stuck-eligible', minutes: 60, since: '2026-10-21T22:00:00Z' });
+  });
+  it('lượt thành công gần nhất cũ hơn 30 phút ⇒ cảnh báo, kể cả khi hàng chờ trống', () => {
+    const a = assessDeliveryQueue({ ...base, queue: { queued: 0, oldestQueuedAt: null }, lastDrainAt: '2026-10-21T22:55:00Z', lastDrainOkAt: '2026-10-21T22:20:00Z' });
+    expect(a.drainProblem).toEqual({ kind: 'stale', minutes: 40, since: '2026-10-21T22:20:00Z' });
+    expect(a.latestDrainFailed).toBe(true);
+  });
+  it('last_drain_error (super admin) ⇒ cảnh báo kèm lỗi; đã chạy mà chưa lượt nào OK ⇒ cảnh báo', () => {
+    expect(assessDeliveryQueue({ ...base, lastDrainError: 'send-push 500' }).drainProblem).toEqual({ kind: 'error', message: 'send-push 500' });
+    expect(assessDeliveryQueue({ ...base, lastDrainOkAt: null }).drainProblem).toEqual({ kind: 'never-ok' });
+  });
+  it('chưa có lượt nào chạy: chỉ cảnh báo khi có dòng ĐỦ ĐIỀU KIỆN chờ lâu', () => {
+    const chua = { ...base, lastDrainAt: null, lastDrainOkAt: null };
+    expect(assessDeliveryQueue({ ...chua, queue: { ...base.queue, oldestEligibleQueuedAt: null } }).drainProblem).toBeNull();
+    expect(assessDeliveryQueue({ ...chua, queue: { ...base.queue, oldestEligibleQueuedAt: '2026-10-21T21:30:00Z' } }).drainProblem).toEqual({ kind: 'never-ok' });
+  });
+});
 
 describe('quietHoursLength — cùng quy ước với notify_claim_push_batch_v1', () => {
   it.each([
