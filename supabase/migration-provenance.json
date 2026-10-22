@@ -1,14 +1,14 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-10-22T03:28:06.906Z",
+  "generatedAt": "2026-10-22T03:42:33.797Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "environment": "prod",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 796,
-    "unknown": 83,
-    "catalog-proven": 207,
+    "ledger-applied": 799,
+    "unknown": 82,
+    "catalog-proven": 205,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -12570,10 +12570,9 @@
       "name": "hermes_write_name_resolve_v1",
       "scheme": "timestamp14",
       "sha256": "b4a83ad70210df1c286234367adc6dfce511033584c3f42882f32ce147987c82",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.hermes_name_fold_v1",
-        "catalog:function:public.hermes_room_key_v1"
+        "receipt:2026-10-22T01:55:40.022Z|bien-nhan-backup"
       ]
     },
     {
@@ -12582,13 +12581,9 @@
       "name": "hermes_action_foundation_v1",
       "scheme": "timestamp14",
       "sha256": "67061794749877d78f58f99c5325ce83cd51f0924c0437ae8df0487b3846933f",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:table:app_private.hermes_action_policies",
-        "catalog:table:app_private.hermes_action_receipts",
-        "catalog:function:app_private.hermes_action_reason_v1",
-        "catalog:function:app_private.hermes_action_binding_v1",
-        "catalog:trigger:app_private.hermes_action_receipts.hermes_action_receipt_settled"
+        "receipt:2026-10-22T01:58:20.400Z|bien-nhan-backup"
       ]
     },
     {
@@ -12597,10 +12592,9 @@
       "name": "hermes_action_keys_seed_v1",
       "scheme": "timestamp14",
       "sha256": "61e2c81d38617379dccd6551ff49be5a72c8126866d45daad2a3bf8f1d44b814",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-10-22T02:02:49.391Z|bien-nhan-backup"
       ]
     },
     {
