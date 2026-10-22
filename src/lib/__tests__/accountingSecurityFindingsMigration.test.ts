@@ -1,9 +1,37 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 const readNormalized = (path: string) =>
   readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+
+/**
+ * Thân SỐNG của một hàm = lần CREATE cuối (không nằm trong dòng chú thích) theo thứ tự
+ * file migration. Dùng cho hàm đã được forward-fix thay ở file sau (vd kiểm độ tươi chốt
+ * LN: 20261022172459 so theo phiên bản dấu vân tay).
+ */
+function liveFunctionBody(schema: string, fnName: string): string {
+  const dir = "supabase/migrations";
+  const re = new RegExp(
+    `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`,
+    "gi",
+  );
+  let hit: { sql: string; start: number } | null = null;
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+    const sql = readNormalized(join(dir, file));
+    if (!sql.includes(`${schema}.${fnName}`)) continue;
+    for (const m of sql.matchAll(re)) {
+      const lineStart = sql.lastIndexOf("\n", m.index) + 1;
+      if (!sql.slice(lineStart, m.index).includes("--")) hit = { sql, start: m.index };
+    }
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa ${schema}.${fnName}`);
+  const rest = hit.sql.slice(hit.start);
+  const open = /\bAS\s+(\$[A-Za-z0-9_]*\$)/.exec(rest);
+  if (!open) throw new Error(`${schema}.${fnName}: không thấy thân hàm`);
+  return rest.slice(0, rest.indexOf(open[1], open.index + open[0].length) + open[1].length);
+}
 
 const terminationSql = readNormalized(
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
@@ -14,9 +42,8 @@ const payoutSql = readNormalized(
 const rolloutSql = readNormalized(
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
 );
-const finalProfitCloseSql = readNormalized(
-  "supabase/migrations/20260720215000_profit_close_v2_ignore_inactive_managers.sql",
-);
+// Preview core chốt LN: thân SỐNG (forward-fix sau cùng), không phải file 20260720215000.
+const finalProfitCloseSql = liveFunctionBody("public", "_profit_close_preview_core_v2");
 
 function functionBody(sql: string, signature: string): string {
   const start = sql.indexOf(signature);
@@ -187,9 +214,10 @@ describe("accounting security migration regressions", () => {
       payoutSql,
       "CREATE OR REPLACE FUNCTION app_private.current_profit_building_source_hash_v1(",
     );
-    const freshnessHelper = functionBody(
-      payoutSql,
-      "CREATE OR REPLACE FUNCTION app_private.profit_monthly_source_is_current_v1(",
+    // Kiểm độ tươi: thân SỐNG — từ 20261022172459 nó so theo phiên bản dấu lúc chốt.
+    const freshnessHelper = liveFunctionBody(
+      "app_private",
+      "profit_monthly_source_is_current_v1",
     );
 
     expect(hashHelper).toContain("revision.operation IN ('CLOSE', 'RECLOSE')");
@@ -227,9 +255,18 @@ describe("accounting security migration regressions", () => {
     expect(hashHelper).not.toMatch(
       /OR NOT manager\.is_active\s+OR manager\.deleted_at IS NOT NULL/,
     );
+    expect(freshnessHelper).toContain("profit.status = 'LOCKED'");
+    expect(freshnessHelper).toContain("AND NOT profit.is_stale");
     expect(freshnessHelper).toContain("profit.source_hash =");
+    // Dòng chốt bằng thuật toán cũ vẫn so bằng v1; dòng chốt bằng 'profit-close-v2.2' so bằng v2.
     expect(freshnessHelper).toContain(
       "app_private.current_profit_building_source_hash_v1(profit.id)",
+    );
+    expect(freshnessHelper).toContain(
+      "app_private.profit_building_source_hash_algorithm_v1(profit.id)",
+    );
+    expect(freshnessHelper).toContain(
+      "app_private.current_profit_building_source_hash_v2(profit.id)",
     );
     expect(
       payoutSql.match(/profit_monthly_source_is_current_v1\(pm\.id\)/g),
