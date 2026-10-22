@@ -16,7 +16,6 @@ export async function runCameraProof({ repoRoot = root, environment = process.en
 DO $bind$ BEGIN IF NOT EXISTS(SELECT FROM app_private.network_center_disposable_proof WHERE proof_nonce='${localProof.proofNonce}') THEN RAISE EXCEPTION 'Wrong disposable target'; END IF; END $bind$;
 -- This harness models network RBAC; can_access_building is supplied as the
 -- same scoped predicate, not claimed as full production/PostgREST evidence.
-CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO pg_catalog AS 'SELECT public.can_do_on_building(''network_center'',''view'',$1)';
 ${migration}
 ${migration}
 ${proof}`,
