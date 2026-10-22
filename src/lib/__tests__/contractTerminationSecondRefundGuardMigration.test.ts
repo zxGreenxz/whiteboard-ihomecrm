@@ -10,7 +10,8 @@
 // migration vá. Đường REST = SET LOCAL ROLE authenticated + RLS rút gọn; writer
 // SECURITY DEFINER chạy dưới chủ hàm như production. Hàm tiền cũ (trả phòng/bỏ cọc) là
 // stub ghi một phiếu termination.* — ranh giới tiền ngoài phạm vi vá.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -46,6 +47,23 @@ function sliceFunction(path: string, header: string, end: string): string {
   const start = sql.indexOf(header);
   if (start < 0) throw new Error(`Không thấy ${header} trong ${path}`);
   return sql.slice(start, sql.indexOf(end, start) + end.length);
+}
+
+// Định nghĩa SỐNG = lần CREATE cuối theo timestamp migration (khuôn liveDefinitionOf ở
+// salaryCompletionDate.test.ts), cắt từ CREATE tới hết thân dollar-quoted. Đọc thư mục một lần.
+let migrationCorpus: string[] | null = null;
+function liveFunctionSql(schema: string, fnName: string): string {
+  migrationCorpus ??= readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort()
+    .map((f) => readFileSync(join('supabase/migrations', f), 'utf8').replace(/--[^\n]*/g, ''));
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${schema}\\.${fnName}\\s*\\(`, 'gi');
+  let hit: string | null = null;
+  for (const sql of migrationCorpus) {
+    for (const m of sql.matchAll(re)) hit = sql.slice(m.index);
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của ${schema}.${fnName}`);
+  const tag = /\bAS\s+(\$[A-Za-z0-9_]*\$)/.exec(hit);
+  if (!tag) throw new Error(`Không thấy thân hàm ${schema}.${fnName}`);
+  return `${hit.slice(0, hit.indexOf(tag[1], tag.index + tag[0].length) + tag[1].length)};`;
 }
 
 async function build(db: PGlite, { patch }: { patch: boolean }) {
@@ -140,7 +158,9 @@ ${physical('p_move_out_date')}
     // Rồi định nghĩa SỐNG của approve (câu 26) — mọi khẳng định P0a bên dưới chạy trên bản đó.
     // Stub can_do_on_building ở trên không xét khoá, nên dòng kiểm contracts.terminate qua được
     // đúng như người đủ quyền; ca thiếu quyền của câu 26 nằm ở contractLifecyclePermissionGuardMigration.
-    await db.exec(sliceFunction(Q26_SOURCE, 'CREATE OR REPLACE FUNCTION app_private.require_building_perm_v1', '$fn$;'));
+    // Hàm kiểm quyền lấy định nghĩa SỐNG: câu 25 chuyển phép kiểm sang has_building_perm_v1.
+    await db.exec(liveFunctionSql('app_private', 'has_building_perm_v1'));
+    await db.exec(liveFunctionSql('app_private', 'require_building_perm_v1'));
     await db.exec(sliceFunction(Q26_SOURCE, 'CREATE OR REPLACE FUNCTION public.approve_contract_termination_v1', '$function$;'));
   }
 }
