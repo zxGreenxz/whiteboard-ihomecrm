@@ -26,7 +26,8 @@ const READS = ['assistant.context.read', 'customers.view', 'rooms.view'];
 const optional = ['hermes_group_action_context_v1', 'hermes_work_memory_capabilities_v1', 'hermes_room_schedule_capabilities_v1',
   'hermes_room_pass_capabilities_v1', 'hermes_task_create_capabilities_v1', 'hermes_task_follow_capabilities_v1',
   // Đợt 2 Thu chi: phiếu chi đi danh mục thao tác chung (hermes_action_capabilities_v1); họ crm_expense_* cũ đã gỡ.
-  'hermes_customer_create_capabilities_v1', 'hermes_action_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3',
+  'hermes_customer_create_capabilities_v1', 'hermes_action_capabilities_v1', 'hermes_sale_capabilities_v1',
+  'hermes_sale_policy_capabilities_v1', 'hermes_domain_capabilities_v2', 'hermes_domain_capabilities_v3',
   // B5d: crm_auth_context directory (company name, buildings) — absent SQL degrades to null, one extra store read and one REST wave.
   'hermes_organization_name_v1', 'hermes_building_directory_v1',
   // R2c part 2 (c): the asker's display name, same optional degradation.
@@ -160,10 +161,11 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   // Room discovery keeps its reviewed order: bound scope map, then the snapshot.
   assert.ok(rooms.stats.sequentialNetwork <= 7 && rooms.stats.elapsedMs < 2500, JSON.stringify(rooms.stats));
   assert.equal(rooms.stats.sqlStatements, 3); assert.equal(rooms.stats.authCalls, 2);
-  // One full admission plus initial scope map + room snapshot. Thu chi (#271) gỡ capability của họ phiếu chi cũ (−1); Công việc (Đợt 2b):
-  // SQL ở đây chưa có task.create (capability khung chung vắng) ⇒ lớp task đọc thêm capability tạo việc cũ CÙNG ĐỢT (+1,
-  // sequentialNetwork không đổi); DB có dòng task.create thì bỏ lời gọi này (task-actions.test.mjs đếm).
-  assert.equal(rooms.stats.restCalls, 16);
+  // Full admission includes both optional Sale capability RPCs, plus scope map + snapshot. Đợt 2b: task.create dùng CHUNG lời gọi
+  // hermes_action_capabilities_v1 với Thu chi (lời gọi đã thay capability phiếu chi cũ), nên không thêm lời gọi; ở đây capability khung
+  // chung vắng ⇒ task.create chưa sống ⇒ lớp task vẫn đọc capability tạo việc cũ như trước; DB có dòng task.create thì bỏ lời gọi
+  // đó (task-actions.test.mjs đếm).
+  assert.equal(rooms.stats.restCalls, 18);
   assert.ok(listed.stats.sequentialNetwork <= 6, JSON.stringify(listed.stats));
   // A warm pool reuses its verified session: no reconnect and no per-call principal query.
   assert.equal(cold.stats.poolConnects, 1); assert.equal(warm.stats.poolConnects, 0); assert.equal(f.opened(), 1);
@@ -174,9 +176,9 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   // asker JWT before the audit and one REST wave (two RPCs in parallel) after it: 6 → 8 sequential steps, no more.
   // R2c part 2 (c): the display name joins that same wave (three RPCs in parallel): one more call, no extra step.
   assert.ok(context.stats.sequentialNetwork <= 8, JSON.stringify(context.stats));
-  // Hai lần đọc quyền ở đây: Thu chi (#271) bớt capability phiếu chi cũ (−2), Công việc thêm capability tạo việc cũ cùng đợt khi SQL
-  // chưa có task.create (+2) ⇒ vẫn 31, không thêm bước.
-  assert.equal(context.stats.sequentialHttp, 3); assert.equal(context.stats.restCalls, 31);
+  // Two optional Sale capability families run in the existing parallel admission waves twice; no added sequential hop.
+  // Đợt 2b (task.create) dùng chung capability khung chung với Thu chi: không thêm lời gọi.
+  assert.equal(context.stats.sequentialHttp, 3); assert.equal(context.stats.restCalls, 35);
   assert.ok(warm.stats.elapsedMs < 2000, `warm call took ${warm.stats.elapsedMs} ms`);
 });
 
@@ -209,7 +211,7 @@ test('direct room reads complete after audit-time revocation without repeated au
   assert.equal(response.status, 200); assert.equal(response.body.result.isError, false);
   assert.equal(JSON.parse(response.body.result.content[0].text).rooms.length, 1);
   assert.equal(stats.sqlStatements, 4); assert.equal(stats.poolConnects, 1); // Cold pool also verifies its principal once.
-  assert.equal(stats.authCalls, 2); assert.equal(stats.restCalls, 16); // như trên: −1 Thu chi, +1 Công việc (DB chưa có task.create)
+  assert.equal(stats.authCalls, 2); assert.equal(stats.restCalls, 18); // như trên
   const denied = await measure(f.backend, f.events, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
   assert.equal(denied.response.status, 401); assert.equal(denied.stats.restCalls + denied.stats.authCalls, 0);
 });

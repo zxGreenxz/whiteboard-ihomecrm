@@ -1,13 +1,16 @@
 {
   "$comment": "BỀ MẶT REALTIME — biên im lặng nhất trong ba. Subscribe một bảng không được publish KHÔNG báo lỗi: subscribe() vẫn trả SUBSCRIBED, giao diện chỉ lặng lẽ ngừng tự cập nhật. Sinh từ HAI nguồn: pg_publication_tables (live) và call site trong mã nguồn (hub + hệ tự lắng nghe). Sinh bởi scripts/generate-realtime-surface.mjs; kiểm bởi scripts/check-realtime-descriptors.mjs (câu hỏi nhị phân) và scripts/check-realtime-surface.mjs (chống trôi).",
   "counts": {
-    "published": 27,
+    "published": 29,
     "listenedByHub": 17,
     "otherListenerTables": 27,
-    "replicaIdentityDefault": 27
+    "replicaIdentityDefault": 28
   },
   "hubWithoutPublication": [],
-  "publishedWithNoListener": [],
+  "publishedWithNoListener": [
+    "meter_readings",
+    "meters"
+  ],
   "tables": {
     "accounts": {
       "published": true,
@@ -107,6 +110,20 @@
       "listenedByHub": true,
       "otherListeners": []
     },
+    "meter_readings": {
+      "published": true,
+      "replicaIdentity": "DEFAULT",
+      "rlsEnabled": true,
+      "listenedByHub": false,
+      "otherListeners": []
+    },
+    "meters": {
+      "published": true,
+      "replicaIdentity": "DEFAULT",
+      "rlsEnabled": true,
+      "listenedByHub": false,
+      "otherListeners": []
+    },
     "network_command_events": {
       "published": true,
       "replicaIdentity": "DEFAULT",
@@ -154,7 +171,7 @@
     },
     "notifications": {
       "published": true,
-      "replicaIdentity": "DEFAULT",
+      "replicaIdentity": "FULL",
       "rlsEnabled": true,
       "listenedByHub": false,
       "otherListeners": [

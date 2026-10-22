@@ -66,6 +66,10 @@ export interface RoomListSheetEditorProps {
   /** Lỗi theo name ô: hotline_phone, hotline_id, sale_policy, phone:<id>, policy|price|type|amenities|status:<id>. */
   errors: Record<string, string>;
   disabled?: boolean;
+  roomWritable: (roomId: string) => boolean;
+  phoneWritable: (buildingId: string) => boolean;
+  canManageSettings: boolean;
+  activePolicies: Record<string, string>;
 }
 
 /**
@@ -94,8 +98,8 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
     return (
       <>
         <input
-          name={name} type="text" inputMode={field === "price" ? "numeric" : undefined} disabled={disabled}
-          aria-label={`${spec.label} phòng ${code}`} maxLength={spec.max}
+          name={name} type="text" inputMode={field === "price" ? "numeric" : undefined} disabled={disabled || !props.roomWritable(room.id)}
+          aria-label={`${spec.label} phòng ${code}`} maxLength={field === 'price' ? undefined : spec.max}
           value={value}
           onChange={(e) => props.onRoomFieldChange(field, room.id, field === "price" ? formatPriceInput(e.target.value) : e.target.value)}
           placeholder={field === "status" ? autoStatusLines(room).join(" · ")
@@ -130,7 +134,7 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                 Hotline chung cho tất cả nhà
               </label>
               <input
-                id="sheet-hotline-phone" name="hotline_phone" type="tel" inputMode="tel" disabled={disabled}
+                id="sheet-hotline-phone" name="hotline_phone" type="tel" inputMode="tel" disabled={disabled || !props.canManageSettings}
                 value={props.hotlinePhone} onChange={(e) => props.onHotlinePhoneChange(e.target.value)}
                 placeholder={printedPhone ? `Đang in ${printedPhone}` : "Gõ số hotline"}
                 aria-invalid={!!errors.hotline_phone} aria-describedby={errors.hotline_phone ? "hotline_phone-error" : undefined}
@@ -141,7 +145,7 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                 <Select
                   value={hotlineId ?? NONE}
                   onValueChange={(v) => props.onHotlineChange(v === NONE ? null : v)}
-                  disabled={disabled}
+                  disabled={disabled || !props.canManageSettings}
                 >
                   <SelectTrigger
                     aria-label="Chọn số trong danh sách hotline" data-field-name="hotline_id" className="h-8 bg-white text-xs"
@@ -176,7 +180,7 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
               <label htmlFor="sheet-sale-policy" className="sr-only">Chính sách sale chung</label>
               <textarea
                 id="sheet-sale-policy" name="sale_policy" rows={Math.max(3, salePolicy.split("\n").length + 1)}
-                value={salePolicy} disabled={disabled} maxLength={SALE_POLICY_MAX}
+                value={salePolicy} disabled={disabled || !props.canManageSettings} maxLength={SALE_POLICY_MAX}
                 onChange={(e) => props.onSalePolicyChange(e.target.value)}
                 placeholder={"Chính sách sale chung — mỗi dòng một ý, in ở khối trên đầu ảnh. Ví dụ:\nĐiện 3.800đ/số với nhà thang máy\nNước 100k/người, phí dịch vụ 150k/phòng\nXe free, Wifi free, có máy giặt chung"}
                 aria-invalid={!!errors.sale_policy} aria-describedby={errors.sale_policy ? "sale_policy-error" : undefined}
@@ -218,7 +222,7 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                         <Smartphone className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         <span className="sr-only">SĐT riêng của nhà {g.address}</span>
                         <input
-                          name={phoneName} type="tel" inputMode="tel" disabled={disabled}
+                          name={phoneName} type="tel" inputMode="tel" disabled={disabled || !props.phoneWritable(g.buildingId)}
                           value={edits.phones[g.buildingId] ?? (source ? ownPhone(source) : "")}
                           onChange={(e) => props.onPhoneChange(g.buildingId, e.target.value)}
                           placeholder="SĐT riêng (trống = hotline)"
@@ -244,7 +248,7 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                   <td className={CELL} style={{ border: LINE }}>
                     <label className="sr-only" htmlFor={`sheet-${policyName}`}>Chính sách sale phòng {row.code}</label>
                     <textarea
-                      id={`sheet-${policyName}`} name={policyName} rows={2} disabled={disabled} maxLength={ROOM_POLICY_MAX}
+                      id={`sheet-${policyName}`} name={policyName} rows={2} disabled={disabled || !props.roomWritable(row.roomId)} maxLength={ROOM_POLICY_MAX}
                       value={edits.policies[row.roomId] ?? room?.saleNote ?? ""}
                       onChange={(e) => props.onPolicyChange(row.roomId, e.target.value)}
                       placeholder={passPolicy ? `Khách pass: ${passPolicy}` : "Chính sách riêng phòng"}
@@ -252,6 +256,9 @@ export default function RoomListSheetEditor(props: RoomListSheetEditorProps) {
                       className={`${INPUT} resize-none font-bold text-[#c00000]`}
                     />
                     {errorText(policyName)}
+                    {props.activePolicies[row.roomId] && <div className="mt-2 border-t border-green-700/30 pt-1 text-left text-xs text-green-900" aria-label={`Chương trình đang áp dụng phòng ${row.code}`}>
+                      <b>Chương trình đang áp dụng</b><p className="whitespace-pre-line">{props.activePolicies[row.roomId]}</p>
+                    </div>}
                   </td>
                   <td className={CELL} style={{ border: LINE }}>{room ? fieldInput(room, row.code, "type") : row.type}</td>
                   <td className={CELL} style={{ border: LINE }}>{room ? fieldInput(room, row.code, "amenities") : row.amenities}</td>

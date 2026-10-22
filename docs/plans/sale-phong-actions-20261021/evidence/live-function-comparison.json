@@ -1,0 +1,67 @@
+{
+  "sourceSnapshot": "c095d427e",
+  "method": "Extract dollar-quoted body; compare exact text after CRLF/CR to LF only. Do not trim, strip comments, or collapse whitespace. Separately verify supplied catalog MD5 against the raw extracted deployed body.",
+  "evidence": "live-function-audit.json supplied by root from a read-only production catalog query",
+  "allCatalogHashesVerified": true,
+  "allBodiesMatch": true,
+  "routines": [
+    {
+      "routine": "create_room_reservation_v1",
+      "signature": "p_organization_id uuid, p_idempotency_key text, p_payload jsonb",
+      "sourcePath": "supabase/migrations/20261010114500_giu_cho_ten_goi_nho_va_lock_tam_phong.sql",
+      "sourceDefinitionLine": 503,
+      "securityDefiner": true,
+      "catalogReportedBodyMd5": "83516cdcde0b90ecfa5026cdec06c083",
+      "catalogExtractedBodyMd5": "83516cdcde0b90ecfa5026cdec06c083",
+      "catalogReportedMd5MatchesExtracted": true,
+      "sourceBodyLfMd5": "83516cdcde0b90ecfa5026cdec06c083",
+      "catalogBodyLfMd5": "83516cdcde0b90ecfa5026cdec06c083",
+      "bodiesEqualAfterLineEndingNormalization": true
+    },
+    {
+      "routine": "set_reservation_hold_terms_v1",
+      "signature": "p_income_expense_id uuid, p_hold_until date, p_topup_due_date date, p_deposit_target numeric",
+      "sourcePath": "supabase/migrations/20260822120000_han_bo_sung_coc_cho_phieu_giu_cho.sql",
+      "sourceDefinitionLine": 86,
+      "securityDefiner": true,
+      "catalogReportedBodyMd5": "6378d889a73c36b1d422f0002ce3fa84",
+      "catalogExtractedBodyMd5": "6378d889a73c36b1d422f0002ce3fa84",
+      "catalogReportedMd5MatchesExtracted": true,
+      "sourceBodyLfMd5": "6378d889a73c36b1d422f0002ce3fa84",
+      "catalogBodyLfMd5": "6378d889a73c36b1d422f0002ce3fa84",
+      "bodiesEqualAfterLineEndingNormalization": true
+    },
+    {
+      "routine": "update_room_reservation_v1",
+      "signature": "p_organization_id uuid, p_reservation_id uuid, p_expected_revision bigint, p_idempotency_key text, p_action text, p_changes jsonb, p_receipt jsonb",
+      "sourcePath": "supabase/migrations/20260928025848_room_reservation_workflow.sql",
+      "sourceDefinitionLine": 192,
+      "securityDefiner": true,
+      "catalogReportedBodyMd5": "0dd02dd3079fd84e7522e709784e4f80",
+      "catalogExtractedBodyMd5": "0dd02dd3079fd84e7522e709784e4f80",
+      "catalogReportedMd5MatchesExtracted": true,
+      "sourceBodyLfMd5": "0dd02dd3079fd84e7522e709784e4f80",
+      "catalogBodyLfMd5": "0dd02dd3079fd84e7522e709784e4f80",
+      "bodiesEqualAfterLineEndingNormalization": true
+    },
+    {
+      "routine": "upsert_room_pass_listing",
+      "signature": "p_id uuid, p_room_id uuid, p_contact_name text, p_contact_phone text, p_sale_policy text, p_pass_price numeric, p_active boolean, p_avail_date date, p_contact_manager boolean",
+      "sourcePath": "supabase/migrations/20260629100000_room_pass_listings_contact_manager.sql",
+      "sourceDefinitionLine": 28,
+      "securityDefiner": true,
+      "catalogReportedBodyMd5": "1b7a83356e653781972a79c0e585704b",
+      "catalogExtractedBodyMd5": "1b7a83356e653781972a79c0e585704b",
+      "catalogReportedMd5MatchesExtracted": true,
+      "sourceBodyLfMd5": "1b7a83356e653781972a79c0e585704b",
+      "catalogBodyLfMd5": "1b7a83356e653781972a79c0e585704b",
+      "bodiesEqualAfterLineEndingNormalization": true
+    }
+  ],
+  "limits": [
+    "Only these four function bodies and supplied SECURITY DEFINER metadata are compared",
+    "No additional database access or writes",
+    "No JWT/PostgREST exploit or end-to-end authorization test",
+    "No verification of the entire deployed helper/trigger/ACL chain"
+  ]
+}

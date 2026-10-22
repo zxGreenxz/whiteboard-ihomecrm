@@ -1,0 +1,1022 @@
+{
+  "createdAt": "2026-10-20T19:32:00.560Z",
+  "distinctCaseIds": 103,
+  "webAndHermesRequests": 78,
+  "databaseCrossChecks": 25,
+  "roles": [
+    "Chủ trọ",
+    "Quản lý",
+    "Chủ công ty",
+    "Sale Admin",
+    "Sale"
+  ],
+  "counting": "Mỗi ID chỉ tính một lần. Biến thể desktop/mobile, test cha, mutant và chạy lại không tăng số ca. Một nghiệp vụ có thể được kiểm lại ở vai trò/kênh/tầng khác; không phải 103 quy trình hoàn toàn khác nhau.",
+  "scope": "Local dữ liệu tổng hợp. Không phải bảo đảm toàn bộ production hoặc kiểm hiểu ngôn ngữ tự nhiên.",
+  "cases": [
+    {
+      "id": "U01",
+      "role": "Chủ trọ",
+      "request": "cho tôi tìm không dấu đúng tòa và cả phòng đã thuê trên máy tính/điện thoại",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 2
+    },
+    {
+      "id": "U02",
+      "role": "Quản lý",
+      "request": "chỉ lưu giá/chính sách vừa sửa, giữ các trường khác và báo đúng phòng đã lưu",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U03",
+      "role": "Quản lý",
+      "request": "người khác vừa sửa phòng thì giữ nháp của tôi, đối chiếu giá mới trước khi ghi",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U04",
+      "role": "Chủ công ty",
+      "request": "mất phản hồi lưu phải đối chiếu đúng yêu cầu cũ, kể cả sau khi quyền thay đổi",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U05",
+      "role": "Quản lý",
+      "request": "nhập giá sai phải chỉ đúng ô, giữ nháp qua đóng/mở và không lộ sang nhân viên khác",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U06",
+      "role": "Chủ công ty",
+      "request": "nhân viên chỉ sửa ảnh không được sửa giá, xem thưởng nội bộ hoặc tạo cọc/lock/pass",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U07",
+      "role": "Sale Admin",
+      "request": "đang tải ảnh thì không được lưu thiếu ảnh hay chuyển phòng làm mất ảnh",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U08",
+      "role": "Quản lý",
+      "request": "mất kết nối đọc thì vẫn xem dữ liệu cũ có cảnh báo, khóa ghi và cho tải lại",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U09",
+      "role": "Sale Admin",
+      "request": "bấm pass/lock/cọc trên dòng nào phải mở đúng phòng đó, không nhầm phòng trùng tên",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U10",
+      "role": "Chủ trọ",
+      "request": "lọc phòng đang dọn sửa riêng, không gộp thành phòng trống sẵn",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U11",
+      "role": "Sale Admin",
+      "request": "liệt kê phòng thiếu ảnh để tôi bổ sung, kể cả phòng đang có khách",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U12",
+      "role": "Quản lý",
+      "request": "lọc các bản nháp của tôi để hoàn tất sau, không trộn với phòng chưa sửa",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U13",
+      "role": "Chủ công ty",
+      "request": "chuyển tổ chức không được đem nháp hoặc lần lưu của công ty trước sang công ty mới",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U14",
+      "role": "Quản lý",
+      "request": "máy chủ từ chối vì dữ liệu đã đổi thì không được bấm lưu lặp dù lần tải lại chưa về",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U15",
+      "role": "Sale Admin",
+      "request": "trường hợp bị từ chối rõ ràng phải giữ nội dung cho tôi sửa và gửi yêu cầu mới",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U16",
+      "role": "Chủ trọ",
+      "request": "hiện rõ giờ hết lock và chỉ cho người đủ quyền gỡ đúng lock của phòng",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U17",
+      "role": "Chủ công ty",
+      "request": "phòng đã thuê không mở tạo cọc nhanh, phòng lock còn đúng quyền vẫn đi qua quy trình cọc",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U18",
+      "role": "Quản lý",
+      "request": "cập nhật dọn sửa phải dùng quy trình có lịch sử và tải lại trạng thái, không tự sửa status",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U19",
+      "role": "Quản lý",
+      "request": "báo trả phải mở hồ sơ đúng phòng và hợp đồng, không đoán hợp đồng từ số phòng",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U20",
+      "role": "Chủ trọ",
+      "request": "danh sách thực sự rỗng phải nói chưa có phòng, còn đang tải không được báo rỗng",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U21",
+      "role": "Chủ công ty",
+      "request": "phòng bị thu hồi phạm vi giữa lúc sửa không được ghi sang phòng khác",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U22",
+      "role": "Chủ trọ",
+      "request": "phòng khách pass hiển thị giá pass riêng và không làm lẫn với giá niêm yết khi sửa",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U23",
+      "role": "Sale",
+      "request": "tôi chỉ xem các tòa được giao, không tìm ra tòa ngoài phạm vi hay được mở sửa nội bộ",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U24",
+      "role": "Sale",
+      "request": "được lock phòng không có nghĩa được thu cọc, sửa pass hoặc gỡ lock của người khác",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U25",
+      "role": "Sale Admin",
+      "request": "chỉ được cấp sửa ảnh thì vẫn lưu ảnh đúng phòng, không gửi kèm giá hay thưởng sale",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U26",
+      "role": "Sale Admin",
+      "request": "cập nhật ảnh phòng cũ thiếu giá không được tự điền giá 0 hoặc chuẩn hóa ghi chú ngoài ý muốn",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "U27",
+      "role": "Chủ công ty",
+      "request": "form Lock đang mở phải khóa ghi ngay khi dữ liệu lỗi hoặc bị thu quyền",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 3
+    },
+    {
+      "id": "U28",
+      "role": "Quản lý",
+      "request": "giữ giao diện cha ở nguyên tab khi đang sửa/tải ảnh rồi mở lại chuyển tab sau khi đóng",
+      "status": "passed",
+      "layer": "Component/helper local với backend giả lập",
+      "testFile": "src/components/sale-phong/__tests__/QuickRoomBoard.test.tsx",
+      "evidence": "ui-acceptance-mapping.json",
+      "executions": 1
+    },
+    {
+      "id": "M01",
+      "role": "Chủ trọ",
+      "request": "Tôi nhận cọc, thêm cọc, sửa hạn rồi bấm lại yêu cầu cũ: các phiếu phải cùng kỳ hạn, không nhân cọc, bản sửa cũ phải bị chặn.",
+      "testFullName": "sale reservation forward integrity create, replay, topup, update and old terms writer keep every projection atomic and revisioned",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M02",
+      "role": "Quản lý",
+      "request": "Tôi chỉ đổi hạn ký hợp đồng bằng màn hình cũ; hạn bổ sung và cọc cần đủ phải lấy từ hồ sơ đúng, không từ bản chiếu cũ.",
+      "testFullName": "sale reservation forward integrity old deadline-only RPC preserves canonical topup/target instead of stale legacy projection",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M03",
+      "role": "Quản lý",
+      "request": "Khách bổ sung tiền sau ngày hẹn; tôi sửa hạn từ phiếu mới mà vẫn giữ được mốc bổ sung đã quá hạn của hồ sơ.",
+      "testFullName": "sale reservation forward integrity a linked late topup keeps overdue canonical terms; unlinked voucher date validation remains strict",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M04",
+      "role": "Sale",
+      "request": "Tôi được tạo cọc nhưng không được sửa cọc; hệ thống phải chặn tôi sửa kỳ hạn cả phiếu mới lẫn phiếu cũ.",
+      "testFullName": "sale reservation forward integrity denies deadline edits without deposits.edit, including unlinked legacy vouchers and foreign actors",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M05",
+      "role": "Chủ trọ",
+      "request": "Hồ sơ không nhận tiền phải giữ hạn; nếu bước lưu kỳ hạn lỗi thì không được để lại hồ sơ hoặc phiếu thu dang dở.",
+      "testFullName": "sale reservation forward integrity keeps a reservation with no money deadline; target zero projects as null; failed projection rolls back create",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M06",
+      "role": "Sale",
+      "request": "Tôi báo cọc chưa duyệt, không có bút toán vào quỹ: không được coi là đã thu. Phiếu duyệt, quỹ ảo hoặc bút toán đã đảo cũng chưa phải tiền thực nhận.",
+      "testFullName": "sale reservation forward integrity only counts an actual matching unreversed real-account posting, never approval or draft alone",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M07",
+      "role": "Chủ công ty",
+      "request": "Số tiền thực nhận phải theo đúng quyền xem phiếu/quỹ và công ty; người ngoài, khách ẩn danh hoặc danh sách vượt giới hạn phải bị chặn.",
+      "testFullName": "sale reservation forward integrity reader preserves nonbypass parent RLS, fund-member visibility, org/auth and max200 cap",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M08",
+      "role": "Sale Admin",
+      "request": "Tôi chỉ quản lý tòa A: không được lấy mã tin pass tòa B để sửa qua tòa A, và sửa tin không được chuyển sang phòng khác.",
+      "testFullName": "sale reservation forward integrity pass update checks original listing scope; same-room updates and implicit upsert remain valid",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M09",
+      "role": "Chủ trọ",
+      "request": "Khi tôi lock phòng, khách và kênh đăng tin phải ngừng thấy phòng đang bán; nội bộ vẫn xem được ai lock và thời hạn.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán hides a locked room from every sale reader and shows lock facts only in-app",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M10",
+      "role": "Quản lý",
+      "request": "Chỉ cho lock 6, 12 hoặc 24 giờ khi phòng còn bán và người thao tác có quyền.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán accepts only 6/12/24 hours, a permitted user and a room still on sale",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M11",
+      "role": "Sale",
+      "request": "Tôi bấm lock hai lần vì mạng chậm: cùng thao tác phải trả cùng lock; lock khác bị chặn, hết hạn thì phòng xuất hiện lại.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán replays the same click, refuses a second lock and needs no job to expire",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M12",
+      "role": "Quản lý",
+      "request": "Người lock được gỡ lock của mình; người khác chỉ gỡ khi có quyền tạo cọc đúng phạm vi; bấm lại không sinh thao tác khác.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán lets the locker or a deposit creator release, idempotently",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M13",
+      "role": "Chủ công ty",
+      "request": "Danh sách lock là đường đọc, không tự ghi; người ngoài công ty không đọc được.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán lists open locks read-only for the deposits screen and refuses outsiders plainly",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M14",
+      "role": "Chủ trọ",
+      "request": "Khi nhận cọc cho phòng đang lock, hồ sơ cọc và việc đóng lock phải xảy ra trong cùng giao dịch.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán a reservation on the locked room releases the lock in the same transaction",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M15",
+      "role": "Quản lý",
+      "request": "Nếu phòng đã có người thuê qua nghiệp vụ khác, không được vẫn hiển thị là phòng lock đang bán.",
+      "testFullName": "lock tạm phòng khỏi danh sách bán does not badge or list a lock on a room that became occupied for another reason",
+      "testFile": "src/lib/__tests__/saleReservationIntegrityMigration.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-sql-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M16",
+      "role": "Sale Admin",
+      "request": "Quyền tạo cọc của tôi chỉ ở tòa A; nút và hộp tạo cọc phải mở đúng tòa A, không mặc định toàn công ty.",
+      "testFullName": "quick deposit authority matches canonical writer shows and opens quick deposit only within deposits.create building scope",
+      "testFile": "src/pages/phong-trong/__tests__/PhongTrongPage.permissions.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M17",
+      "role": "Sale",
+      "request": "Tôi chỉ có quyền cọc cũ của Sale Phòng, chưa có deposits.create: không được mở luồng nhận cọc mới.",
+      "testFullName": "quick deposit authority matches canonical writer legacy sale_phong.create_deposit alone cannot mount a money dialog",
+      "testFile": "src/pages/phong-trong/__tests__/PhongTrongPage.permissions.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M18",
+      "role": "Chủ công ty",
+      "request": "Người đã đăng xuất dù máy còn cache quyền cũng không được mở hộp tạo cọc.",
+      "testFullName": "quick deposit authority matches canonical writer anonymous never sees the quick deposit action even with a cached permission map",
+      "testFile": "src/pages/phong-trong/__tests__/PhongTrongPage.permissions.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M19",
+      "role": "Chủ công ty",
+      "request": "Tôi thu hồi quyền tòa A trong lúc nhân viên mở hộp cọc; lần cập nhật quyền kế tiếp phải đóng quyền thao tác đó.",
+      "testFullName": "quick deposit authority matches canonical writer revoking building authority removes an already opened modal on rerender",
+      "testFile": "src/pages/phong-trong/__tests__/PhongTrongPage.permissions.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M20",
+      "role": "Chủ trọ",
+      "request": "Khách mới báo thêm cọc nhưng phiếu chưa duyệt: cảnh báo thiếu cọc của phiếu đã thu phải còn nguyên.",
+      "testFullName": "buildDepositWorkQueue — tiền thực nhận đúng hồ sơ không cộng cọc khác hoặc chưa thực nhận: {\"approval_status\":\"UNAPPROVED\"}",
+      "testFile": "src/lib/__tests__/depositWorkQueue.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M21",
+      "role": "Quản lý",
+      "request": "Hai hồ sơ khác nhau cùng một phòng không được lấy tiền của hồ sơ này bù thiếu cho hồ sơ kia.",
+      "testFullName": "buildDepositWorkQueue — tiền thực nhận đúng hồ sơ không cộng cọc khác hoặc chưa thực nhận: {\"reservation_id\":\"other-reservation\"}",
+      "testFile": "src/lib/__tests__/depositWorkQueue.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M22",
+      "role": "Chủ trọ",
+      "request": "Phiếu cọc cũ chưa gắn khách/hồ sơ phải tính riêng, không đoán là cùng khách chỉ vì cùng phòng.",
+      "testFullName": "buildDepositWorkQueue — tiền thực nhận đúng hồ sơ legacy trên cùng phòng vẫn tách từng phiếu, không đoán cùng khách",
+      "testFile": "src/lib/__tests__/depositWorkQueue.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M23",
+      "role": "Chủ công ty",
+      "request": "Tôi có hơn 400 phiếu: phải đọc đủ qua nhiều lượt, bỏ trùng ổn định và không suy phiếu thiếu dữ kiện thành đã thu.",
+      "testFullName": "received facts boundary deduplicates, sorts and pages 401 voucher IDs within max200, preserving missing as unknown",
+      "testFile": "src/lib/__tests__/reservationDepositReceived.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M24",
+      "role": "Quản lý",
+      "request": "Nếu lượt đọc tiền thứ hai lỗi, phải báo lỗi thay vì hiện số tổng từ phần dữ liệu tải được.",
+      "testFullName": "received facts boundary propagates a failed later page instead of returning partially known money",
+      "testFile": "src/lib/__tests__/reservationDepositReceived.test.ts",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M25",
+      "role": "Sale Admin",
+      "request": "Tạo giữ chỗ xong không được gọi thêm bước ghi kỳ hạn cũ làm mất thỏa thuận cọc; thưởng Sale vẫn tách riêng đúng phiếu.",
+      "testFullName": "kỳ hạn nằm trong một lần tạo giữ chỗ, không gọi writer legacy để ghi đè lần hai",
+      "testFile": "src/components/deposits/__tests__/CreateDeposit.feedback.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "M26",
+      "role": "Sale",
+      "request": "Máy chủ chưa xác nhận tiền vào quỹ thì thông báo phải nói rõ chưa xác nhận, không báo đã thu tiền.",
+      "testFullName": "thông báo nhận cọc dùng received=false từ máy chủ",
+      "testFile": "src/components/deposits/__tests__/CreateDeposit.feedback.test.tsx",
+      "status": "passed",
+      "evidence": "deposit-lock-implementation-final.json",
+      "layer": "Test nghiệp vụ SQL/PGlite, hook hoặc component theo testFile"
+    },
+    {
+      "id": "H01",
+      "role": "Chủ trọ",
+      "request": "Tìm phòng 101 thuộc tòa tôi được sửa.",
+      "expected": "Một nhãn phòng đúng phạm vi",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H02",
+      "role": "Sale",
+      "request": "Cho tôi sửa phòng ở tòa ngoài phạm vi được giao.",
+      "expected": "Từ chối phạm vi",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H03",
+      "role": "Quản lý",
+      "request": "Đổi giá phòng 101 thành 3.100.000 đồng theo bản vừa mở.",
+      "expected": "Ghi đúng canonical writer một lần",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H04",
+      "role": "Quản lý",
+      "request": "Lưu giá theo bản phòng đã cũ.",
+      "expected": "Từ chối revision cũ, không ghi",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H05",
+      "role": "Chủ công ty",
+      "request": "Đăng chính sách mới: Wifi miễn phí.",
+      "expected": "Preview chữ công khai, chưa ghi",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H06",
+      "role": "Chủ công ty",
+      "request": "Tôi đồng ý nguyên văn bản chính sách vừa xem.",
+      "expected": "Token đúng được ghi, token một lần",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H07",
+      "role": "Sale Admin",
+      "request": "Dùng xác nhận cũ nhưng đổi chính sách thành miễn tiền điện.",
+      "expected": "Từ chối token không khớp nội dung",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H08",
+      "role": "Sale Admin",
+      "request": "Ghi thưởng sale 500.000 đồng vào ghi chú nội bộ.",
+      "expected": "Ghi trường nội bộ khi có rooms.edit",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H09",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; thay ảnh phòng đã tải lên.",
+      "expected": "Images-only được ghi trong scope",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H10",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; đổi thêm giá phòng.",
+      "expected": "Từ chối thêm trường vượt quyền",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H11",
+      "role": "Chủ trọ",
+      "request": "Lock tạm phòng 101 trong 6 giờ để khách đi xem.",
+      "expected": "Lock không phát sinh phiếu thu",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H12",
+      "role": "Sale",
+      "request": "Lock phòng 101 trong 48 giờ.",
+      "expected": "Từ chối thời lượng ngoài 6/12/24",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H13",
+      "role": "Quản lý",
+      "request": "Mạng lỗi lúc lock; gửi lại đúng mã yêu cầu cũ sau ba ngày.",
+      "expected": "Biên nhận cũ, không tạo lock lần hai",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H14",
+      "role": "Sale Admin",
+      "request": "Giữ mã yêu cầu đã dùng nhưng đổi thời gian lock.",
+      "expected": "Từ chối đổi ý định trên cùng requestId",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H15",
+      "role": "Chủ trọ",
+      "request": "Kiểm tra mã yêu cầu này đã xử lý chưa.",
+      "expected": "not_found rõ ràng; không tự tạo mã mới",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H16",
+      "role": "Chủ công ty",
+      "request": "Đã thu hồi quyền sửa của sale; thử tra lại biên nhận sửa cũ.",
+      "expected": "Tái kiểm quyền và từ chối biên nhận ngoài quyền",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H17",
+      "role": "Sale Admin",
+      "request": "Báo cọc 2 triệu cho Khách An, mục tiêu cọc 3 triệu.",
+      "expected": "APPROVED vẫn received=false nếu chưa nhận; không lộ SĐT",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H18",
+      "role": "Chủ công ty",
+      "request": "Cho sale tạo cọc nhưng chưa cấp quyền duyệt qua Hermes.",
+      "expected": "Không dùng quyền duyệt CRM để vượt overlay Hermes",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H19",
+      "role": "Quản lý",
+      "request": "Đổi hạn thu thêm và ghi chú cọc theo phiên bản 1.",
+      "expected": "Chuyển đúng UPDATE và expectedRevision tới canonical",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H20",
+      "role": "Sale Admin",
+      "request": "Gắn khách danh bạ vào cọc tên gợi nhớ.",
+      "expected": "Chuyển đúng khách và revision tới canonical",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H21",
+      "role": "Quản lý",
+      "request": "Gỡ lock của phòng vừa giữ cho khách xem.",
+      "expected": "Gỡ đúng lock ID, trả trạng thái RELEASED",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H22",
+      "role": "Sale Admin",
+      "request": "Thu thêm 2 triệu vào cọc hiện tại.",
+      "expected": "Dùng TOPUP; không suy diễn đã nhận từ APPROVED",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H23",
+      "role": "Sale",
+      "request": "Tôi chỉ có quyền đọc phòng; hãy sửa giá giúp tôi.",
+      "expected": "Quyền đọc không biến thành quyền ghi",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "H24",
+      "role": "Sale",
+      "request": "Tôi chỉ được quản lý ảnh; xem giá và thưởng nội bộ trước khi sửa ảnh.",
+      "expected": "Projection thao tác chỉ có ảnh; thiếu CRM view phải bị inventory chặn",
+      "status": "passed",
+      "layer": "Tool input đã resolve + SQL fixture; không phải hội thoại LLM thật",
+      "testFile": "infra/hermes-broker/sale-owner-requests.test.mjs",
+      "evidence": "hermes-acceptance-results.xml"
+    },
+    {
+      "id": "R01",
+      "role": "Chủ trọ",
+      "request": "Chủ trọ xem đủ phòng trống và phòng đã thuê",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R02",
+      "role": "Chủ công ty",
+      "request": "Chủ công ty xem hai tòa thuộc công ty, không thấy công ty khác",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R03",
+      "role": "Quản lý",
+      "request": "Quản lý chỉ xem tòa được giao",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R04",
+      "role": "Sale Admin",
+      "request": "Sale Admin chỉ thấy quyền ảnh và báo cọc theo tòa",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R05",
+      "role": "Sale",
+      "request": "Sale chỉ xem và giữ tạm; không thấy thưởng nội bộ",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R06",
+      "role": "Chủ trọ",
+      "request": "Chủ trọ cập nhật giá, ưu đãi, diện tích trong một lần lưu",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R07",
+      "role": "Quản lý",
+      "request": "Quản lý sửa đúng tòa được giao",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R08",
+      "role": "Quản lý",
+      "request": "Quản lý không sửa tòa chưa được giao",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R09",
+      "role": "Sale",
+      "request": "Sale không đổi giá qua gọi trực tiếp",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R10",
+      "role": "Sale Admin",
+      "request": "Sale Admin chỉ có quyền ảnh vẫn tải được ảnh",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R11",
+      "role": "Sale Admin",
+      "request": "Sale Admin không ghép thay đổi giá vào lần lưu ảnh",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R12",
+      "role": "Chủ công ty",
+      "request": "Chủ công ty không ghi chéo công ty",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R13",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Không cho đổi trạng thái thuê qua sửa thông tin",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R14",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Giá âm hoặc lẻ đồng bị từ chối",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R15",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Ảnh tạm và đường dẫn vượt thư mục bị từ chối",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R16",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Hai quản lý mở cùng dữ liệu: lần lưu sau không ghi đè",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R17",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Mất phản hồi: gửi lại cùng yêu cầu chỉ ghi một lần",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R18",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Không tái sử dụng mã yêu cầu cho nội dung khác",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R19",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Thu hồi quyền có hiệu lực cả với yêu cầu đã lưu",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R20",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Tài khoản chưa đăng nhập không đọc/ghi được",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R21",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Hai phiên lưu đồng thời cùng phiên bản: đúng một thành công",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R22",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Hai phiên gửi đồng thời cùng yêu cầu: cùng biên nhận",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R23",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Không công khai biên nhận và dữ liệu trước thay đổi",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R24",
+      "role": "Sale",
+      "request": "Sale bị thu hồi quyền xem không còn thấy phòng",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    },
+    {
+      "id": "R25",
+      "role": "Chủ trọ / chủ công ty",
+      "request": "Thay đổi bằng luồng khác không gán nhầm người vừa cập nhật",
+      "status": "passed",
+      "layer": "PostgreSQL 17.10 thật; quyền và writer canonical; claims local",
+      "testFile": "scripts/test-sale-quick-operations.mjs",
+      "evidence": "quick-final-native.log"
+    }
+  ]
+}
