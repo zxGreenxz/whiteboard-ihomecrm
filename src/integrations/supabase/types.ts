@@ -22580,33 +22580,6 @@ export type Database = {
         }
         Returns: Json
       }
-      contract_move_out_notices_v1: {
-        Args: {
-          p_as_of?: string
-          p_building_ids: string[]
-          p_from?: string
-          p_organization_id: string
-          p_to?: string
-        }
-        Returns: {
-          building_id: string
-          building_name: string
-          contract_id: string
-          contract_number: string
-          days_until: number
-          end_date: string
-          expected_move_out_date: string
-          organization_id: string
-          rent_price: number
-          room_id: string
-          room_name: string
-          status: string
-        }[]
-      }
-      contract_renewal_end_date_v1: {
-        Args: { p_end_date: string; p_months: number }
-        Returns: string
-      }
       contract_stats_v2: { Args: { p_building_ids?: string[] }; Returns: Json }
       copilot_action_ledger_list_v1: {
         Args: { p_limit?: number; p_organization_id: string }
@@ -25214,22 +25187,6 @@ export type Database = {
       hermes_connection_options_v5: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v6: { Args: { p_org: string }; Returns: Json }
       hermes_connection_options_v7: { Args: { p_org: string }; Returns: Json }
-      hermes_contract_action_lookup_v1: {
-        Args: { p_organization_id: string; p_room_id: string }
-        Returns: Json
-      }
-      hermes_contract_action_v1: {
-        Args: {
-          p_action: string
-          p_binding: Json
-          p_expected_basis?: string
-          p_params: Json
-          p_phase: string
-          p_request_id: string
-          p_resolved?: Json
-        }
-        Returns: Json
-      }
       hermes_customer_create_action_v1: {
         Args: {
           p_binding: Json
@@ -25460,18 +25417,6 @@ export type Database = {
           p_org: string
           p_read: string[]
           p_scope_ids: string[]
-        }
-        Returns: Json
-      }
-      hermes_task_action_v1: {
-        Args: {
-          p_action: string
-          p_binding: Json
-          p_expected_basis?: string
-          p_params: Json
-          p_phase: string
-          p_request_id: string
-          p_resolved?: Json
         }
         Returns: Json
       }
@@ -25754,54 +25699,6 @@ export type Database = {
           payment_methods: string[]
         }[]
       }
-      invoice_adjustments_list_v1: {
-        Args: {
-          p_building_ids?: string[]
-          p_from?: string
-          p_organization_id: string
-          p_room_id?: string
-          p_status?: string
-          p_to?: string
-        }
-        Returns: {
-          adjusted_at: string
-          adjusted_by: string
-          adjusted_by_name: string
-          adjustment_id: string
-          after_total: number
-          before_total: number
-          billing_month: string
-          building_id: string
-          checked_at: string
-          checked_by_name: string
-          contract_id: string
-          delta: number
-          invoice_id: string
-          invoice_number: string
-          is_current: boolean
-          organization_id: string
-          reason: string
-          review_status: string
-          revision: number
-          room_id: string
-        }[]
-      }
-      invoice_collection_by_method_v1: {
-        Args: {
-          p_building_ids?: string[]
-          p_from?: string
-          p_organization_id: string
-          p_to?: string
-        }
-        Returns: {
-          amount: number
-          building_id: string
-          invoice_count: number
-          organization_id: string
-          payment_count: number
-          payment_method: string
-        }[]
-      }
       invoice_detail_v1: {
         Args: {
           p_building_ids?: string[]
@@ -25819,31 +25716,6 @@ export type Database = {
           effective_outstanding_at_carrier: number
           invoice_id: string
           remaining_amount: number
-        }[]
-      }
-      invoice_lateness_v1: {
-        Args: {
-          p_as_of?: string
-          p_building_ids?: string[]
-          p_from?: string
-          p_organization_id: string
-          p_room_id?: string
-          p_to?: string
-        }
-        Returns: {
-          billing_month: string
-          building_id: string
-          contract_id: string
-          days_late: number
-          due_date: string
-          invoice_id: string
-          invoice_number: string
-          is_open: boolean
-          organization_id: string
-          remaining_amount: number
-          room_id: string
-          settled_date: string
-          total_amount: number
         }[]
       }
       invoice_list_core_v1: {
@@ -25891,49 +25763,6 @@ export type Database = {
           p_view_status?: string
         }
         Returns: Json
-      }
-      invoice_missing_v1: {
-        Args: {
-          p_billing_month: string
-          p_building_ids?: string[]
-          p_organization_id: string
-        }
-        Returns: {
-          building_id: string
-          contract_id: string
-          contract_number: string
-          customer_name: string
-          end_date: string
-          organization_id: string
-          room_id: string
-          start_date: string
-        }[]
-      }
-      invoice_open_debts_v1: {
-        Args: {
-          p_as_of?: string
-          p_building_ids?: string[]
-          p_organization_id: string
-          p_room_id?: string
-        }
-        Returns: {
-          billing_month: string
-          building_id: string
-          contract_active: boolean
-          contract_id: string
-          customer_name: string
-          due_date: string
-          effective_outstanding: number
-          invoice_id: string
-          invoice_number: string
-          is_overdue: boolean
-          organization_id: string
-          overdue_days: number
-          public_code: string
-          remaining_amount: number
-          room_id: string
-          total_amount: number
-        }[]
       }
       invoice_payment_method_drilldown: {
         Args: {
@@ -25994,38 +25823,6 @@ export type Database = {
         Returns: {
           invoice_ids: string[]
           payment_method: string
-        }[]
-      }
-      invoice_room_invoices_v1: {
-        Args: {
-          p_as_of?: string
-          p_billing_month?: string
-          p_building_ids?: string[]
-          p_organization_id: string
-          p_room_id: string
-        }
-        Returns: {
-          billing_month: string
-          building_id: string
-          carried_in_amount: number
-          carried_out_amount: number
-          contract_id: string
-          due_date: string
-          effective_outstanding: number
-          invoice_id: string
-          invoice_number: string
-          is_overdue: boolean
-          issue_date: string
-          kind: string
-          organization_id: string
-          overdue_days: number
-          paid_amount: number
-          paid_date: string
-          remaining_amount: number
-          room_id: string
-          row_no: number
-          status: string
-          total_amount: number
         }[]
       }
       invoice_scope_building_ids_v1: { Args: never; Returns: string[] }
@@ -26093,19 +25890,6 @@ export type Database = {
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
       is_user_super_admin: { Args: { p_user: string }; Returns: boolean }
-      job_deadline_v1: {
-        Args: { p_date?: string; p_organization_id: string; p_time?: string }
-        Returns: string
-      }
-      job_open_duplicates_v1: {
-        Args: {
-          p_building_id: string
-          p_job_type_id: string
-          p_organization_id: string
-          p_room_id: string
-        }
-        Returns: Json
-      }
       job_photo_ok: {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
@@ -26126,10 +25910,6 @@ export type Database = {
           name: string
           organization_id: string
         }[]
-      }
-      job_visible_as_assignee_v1: {
-        Args: { p_assignee_id: string }
-        Returns: boolean
       }
       json_number_v1: { Args: { p_value: Json }; Returns: Json }
       lifecycle_reminder_claim_v1: { Args: { p_limit?: number }; Returns: Json }
@@ -27678,31 +27458,6 @@ export type Database = {
       real_estate_contract_count_v1: {
         Args: { p_building_ids: string[]; p_organization_id: string }
         Returns: number
-      }
-      real_estate_contracts_ending_v1: {
-        Args: {
-          p_as_of?: string
-          p_building_ids: string[]
-          p_from?: string
-          p_organization_id: string
-          p_to?: string
-        }
-        Returns: {
-          building_id: string
-          building_name: string
-          contract_id: string
-          contract_number: string
-          days_left: number
-          end_date: string
-          expected_move_out_date: string
-          floor: number
-          organization_id: string
-          rent_price: number
-          room_id: string
-          room_name: string
-          start_date: string
-          status: string
-        }[]
       }
       real_estate_expense_ratio_v1: {
         Args: {

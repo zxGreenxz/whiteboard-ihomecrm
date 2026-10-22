@@ -58,7 +58,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 7,
+      "version": 5,
       "verifyJwt": true,
       "callers": []
     },
@@ -98,7 +98,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 30,
+      "version": 28,
       "verifyJwt": false,
       "callers": []
     },
@@ -106,7 +106,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 31,
+      "version": 30,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",
