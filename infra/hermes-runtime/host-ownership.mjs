@@ -37,7 +37,9 @@ const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 
   'system_voucher', 'evidence_required',
   // Trang Hợp đồng (Đợt 2).
   'already_returned', 'renew_price_change_web_only', 'no_notice', 'room_not_lockable', 'room_already_locked', 'no_open_lock',
-  'cannot_remove_representative']);
+  'cannot_remove_representative',
+  // Trang Công việc (Đợt 2b).
+  'task_quota_user', 'task_quota_pair']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {

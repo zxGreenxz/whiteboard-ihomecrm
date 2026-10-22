@@ -42,8 +42,10 @@ import { createDependencyScope } from './dependency-scope.mjs';
 import { createConnectorHealth } from './connector-health.mjs';
 import { createActionCatalog } from './action-catalog.mjs';
 import { createActionRuntime } from './action-runtime.mjs';
-import { createActionAuth, createActionReads, createActionService } from './action-adapter.mjs';
+import { createActionAuth, createActionLiveCatalog, createActionReads, createActionService } from './action-adapter.mjs';
 import { PROBE_CONFIRM, PROBE_NOTE } from './action-probe-contract.mjs';
+import { TASK_ACTIONS } from './task-actions-contract.mjs';
+import { TASK_ACTION } from './task-contract.mjs';
 import { EXPENSE_ACTIONS } from './expense-actions-contract.mjs';
 import { CONTRACT_ACTIONS } from './contract-action-contract.mjs';
 
@@ -163,19 +165,23 @@ export function createHermesBackend(configuration = {}) {
     // a present one is bound to the same caller/membership/policy version.
     const customerAuth = createCustomerActionAuth({ baseAuth: roomPassAuth, reads: createCustomerActionReads({ ...supabase, fetch: request, dependencyScope }) });
     // Thao tác ghi dùng chung (crm_action_*): danh mục production = thao tác trang Thu chi (Đợt 2; họ crm_expense_* cũ đã gỡ — TC1,
-    // cùng khoá income_expenses.create) + thao tác của các trang host bật (actionPages, vd. Hợp đồng). Thao tác chỉ hiện khi khoá
-    // registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒ action_disabled. Trang đã bật mà khoá còn
-    // TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao tác ẩn; hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá
-    // nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe (connector TEST). Khoá nhận được = HERMES_ACTION_CAPABILITIES của
-    // capability-contract (mặc định của createActionCatalog): thao tác nào khai khoá ngoài hợp đồng thì danh mục từ chối nạp,
-    // connector không khởi động.
-    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
+    // cùng khoá income_expenses.create) và Công việc (Đợt 2b: task.create) + thao tác của các trang host bật (actionPages, vd. Hợp
+    // đồng). Thao tác chỉ hiện khi khoá registry bật và hermes_action_capabilities_v1 cấp; RPC trang chưa áp (PGRST202) ⇒
+    // action_disabled. Trang đã bật mà khoá còn TẮT trong registry ⇒ không kết nối nào giữ khoá ⇒ thao tác ẩn;
+    // hermes_action_capabilities_v1 vắng (PGRST202) ⇒ không cấp khoá nào. Thao tác thử chỉ nạp thêm khi host bật actionProbe
+    // (connector TEST). actionLive = danh mục thao tác SỐNG phía SQL, ghi lại mỗi lần đọc capability: khi task.create sống, khoá
+    // tasks.create CHỈ đến từ lớp này và tool tạo việc cũ nghỉ hưu; chưa sống (connector mới + DB cũ) thì lớp task cũ cấp khoá như
+    // trước. Khoá nhận được = HERMES_ACTION_CAPABILITIES của capability-contract (mặc định của createActionCatalog): thao tác nào
+    // khai khoá ngoài hợp đồng thì danh mục từ chối nạp, connector không khởi động.
+    const actionCatalog = createActionCatalog([...EXPENSE_ACTIONS, ...TASK_ACTIONS, ...(configuration.actionProbe === true ? [PROBE_NOTE, PROBE_CONFIRM] : []),
       ...(configuration.actionPages ?? []).flatMap(page => ACTION_PAGE_CATALOGS[page])]);
-    const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog,
+    const actionLive = createActionLiveCatalog();
+    const actionAuth = createActionAuth({ baseAuth: customerAuth, catalog: actionCatalog, live: actionLive,
       reads: createActionReads({ ...supabase, fetch: request, dependencyScope, catalog: actionCatalog }) });
     const saleAuth = createSaleActionAuth({ baseAuth: actionAuth, reads: createSaleActionReads({ ...supabase, fetch: request, dependencyScope }) });
     const policyAuth = createSalePolicyAuth({ baseAuth: saleAuth, reads: createSalePolicyReads({ ...supabase, fetch: request, dependencyScope }) });
-    const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }) });
+    const auth = createTaskAuth({ baseAuth: policyAuth, reads: createTaskReads({ ...supabase, fetch: request, dependencyScope }),
+      createFromActions: actionCatalog.keys.includes(TASK_ACTION), live: actionLive });
     const authority = createDurableAuthority({ auth, connectionStore, crypto, clock });
     const readAuthority = configuration.readFastPath === true ? createReadCatalogAuthority({ connectionStore, clock,
       authority: createDurableAuthority({ connectionStore, crypto, clock,
@@ -202,7 +208,7 @@ export function createHermesBackend(configuration = {}) {
     const roomPass = createRoomPassService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const tasks = createTaskServiceWithOptions({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
     const customers = createCustomerActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request });
-    const actions = createActionRuntime({ catalog: actionCatalog, clock,
+    const actions = createActionRuntime({ catalog: actionCatalog, clock, live: actionLive,
       service: createActionService({ auth, authority, connectionStore, crypto, clock, dependencyScope, supabase, fetch: request, catalog: actionCatalog }) });
     // 64 KiB caps tools/call data (and every other response); the static tools/list catalogue has its own 192 KiB cap.
     const saleActions = createSaleActionService({ authority, connectionStore, crypto, auth, supabase, fetch: request, dependencyScope, clock });

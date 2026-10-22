@@ -37,12 +37,15 @@ export const ACTION_REASONS = Object.freeze({
   ...expenseReasons(),
   // Trang Hợp đồng (Đợt 2, HOP-DONG-THAO-TAC-GHI.md mục 5). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
   ...contractReasons(),
+  // Trang Công việc (Đợt 2b, CONG-VIEC-THAO-TAC-GHI.md mục 2.4). Mã dạng rejected vào cả REASONS của host-ownership.mjs.
+  ...taskReasons(),
 });
 export const ACTION_REASON_CODES = Object.freeze(Object.keys(ACTION_REASONS));
 // Mã riêng từng trang, theo khối (test khoá: danh sách chung 20 mã + đúng các khối này, mỗi khối một trang).
 export const ACTION_PAGE_REASON_BLOCKS = Object.freeze({
   expense: Object.freeze(Object.keys(expenseReasons())),
   contract: Object.freeze(Object.keys(contractReasons())),
+  task: Object.freeze(Object.keys(taskReasons())),
 });
 function expenseReasons() {
   return {
@@ -65,6 +68,14 @@ function contractReasons() {
     room_already_locked: reason('rejected', 'never', 'Phòng đang được khoá tạm; gỡ khoá cũ trước nếu muốn khoá lại.'),
     no_open_lock: reason('rejected', 'never', 'Phòng này không có khoá tạm nào đang mở.'),
     cannot_remove_representative: reason('rejected', 'never', 'Không bỏ được người đại diện hợp đồng qua bot; đổi người đại diện trên web trước.'),
+  };
+}
+// Trang Công việc: hạn mức giao việc qua bot (Q37). Số trong câu là seed của app_private.hermes_task_limits (20261022031548);
+// task-actions.test.mjs khoá câu với seed — đổi seed phải đổi câu.
+function taskReasons() {
+  return {
+    task_quota_user: reason('rejected', 'later', 'Anh/chị đã giao quá số việc cho phép trong 1 giờ qua bot (mặc định 30 việc/giờ; chủ sở hữu 60); thử lại sau ít phút hoặc tạo trên web.'),
+    task_quota_pair: reason('rejected', 'later', 'Đã giao quá số việc cho phép cho cùng một người nhận trong 1 giờ (mặc định 10 việc/giờ; chủ sở hữu 40); thử lại sau ít phút hoặc tạo trên web.'),
   };
 }
 export const ACTION_INPUT_REASONS = Object.freeze(ACTION_REASON_CODES.filter(code => ACTION_REASONS[code].form === 'needs_input'));

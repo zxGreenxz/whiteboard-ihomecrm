@@ -31,11 +31,14 @@ test('danh sách đóng: 20 mã chung + khối riêng từng trang, mỗi mã m�
   // Thu chi (THU-CHI-THAO-TAC-GHI.md mục 2.3): 2 mã, đều là lỗi thật (dạng rejected).
   assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.expense], ['system_voucher', 'evidence_required']);
   assert.ok(ACTION_PAGE_REASON_BLOCKS.expense.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Thu chi là lỗi thật (dạng rejected)');
-  // Đúng hai khối (Thu chi gộp trước, Hợp đồng sau); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng.
-  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract']);
-  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13);
+  // Công việc (CONG-VIEC-THAO-TAC-GHI.md mục 2.4): 2 mã hạn mức giao việc, đều là lỗi thật (dạng rejected).
+  assert.deepEqual([...ACTION_PAGE_REASON_BLOCKS.task], ['task_quota_user', 'task_quota_pair']);
+  assert.ok(ACTION_PAGE_REASON_BLOCKS.task.every(code => ACTION_REJECT_REASONS.includes(code)), 'mã trang Công việc là lỗi thật (dạng rejected)');
+  // Đúng ba khối theo thứ tự gộp (Thu chi, Hợp đồng, Công việc); tổng = 20 chung + 2 Thu chi + 13 Hợp đồng + 2 Công việc.
+  assert.deepEqual(Object.keys(ACTION_PAGE_REASON_BLOCKS), ['expense', 'contract', 'task']);
+  assert.equal(ACTION_REASON_CODES.length, 20 + 2 + 13 + 2);
   assert.equal(ACTION_INPUT_REASONS.length, 7 + 6);
-  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7);
+  assert.equal(ACTION_REJECT_REASONS.length, 13 + 2 + 7 + 2);
   assert.deepEqual([...ACTION_INPUT_REASONS, ...ACTION_REJECT_REASONS].sort(), [...ACTION_REASON_CODES].sort(), 'mỗi mã đúng một dạng');
   const texts = new Set();
   for (const code of ACTION_REASON_CODES) {
