@@ -31,7 +31,9 @@ const optional = ['hermes_group_action_context_v1', 'hermes_work_memory_capabili
   // B5d: crm_auth_context directory (company name, buildings) — absent SQL degrades to null, one extra store read and one REST wave.
   'hermes_organization_name_v1', 'hermes_building_directory_v1',
   // R2c part 2 (c): the asker's display name, same optional degradation.
-  'hermes_user_display_name_v1'].map(name => `/rest/v1/rpc/${name}`);
+  'hermes_user_display_name_v1',
+  // Đợt 2b: danh mục production có task.create ⇒ lớp thao tác ghi dùng chung đọc capability của nó (vắng ⇒ không cấp khoá).
+  'hermes_action_capabilities_v1'].map(name => `/rest/v1/rpc/${name}`);
 const principal = { role: 'hermes_store_test', session_role: 'hermes_store_test', scoped: true, privileged_member: false,
   rolsuper: false, rolbypassrls: false, rolcreaterole: false, rolcreatedb: false, rolreplication: false };
 
@@ -159,7 +161,11 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   // Room discovery keeps its reviewed order: bound scope map, then the snapshot.
   assert.ok(rooms.stats.sequentialNetwork <= 7 && rooms.stats.elapsedMs < 2500, JSON.stringify(rooms.stats));
   assert.equal(rooms.stats.sqlStatements, 3); assert.equal(rooms.stats.authCalls, 2);
-  assert.equal(rooms.stats.restCalls, 18); // Full admission includes both optional Sale capability RPCs, plus scope map + snapshot.
+  // Full admission includes both optional Sale capability RPCs, plus scope map + snapshot. Đợt 2b: task.create dùng CHUNG lời gọi
+  // hermes_action_capabilities_v1 với Thu chi (lời gọi đã thay capability phiếu chi cũ), nên không thêm lời gọi; ở đây capability khung
+  // chung vắng ⇒ task.create chưa sống ⇒ lớp task vẫn đọc capability tạo việc cũ như trước; DB có dòng task.create thì bỏ lời gọi
+  // đó (task-actions.test.mjs đếm).
+  assert.equal(rooms.stats.restCalls, 18);
   assert.ok(listed.stats.sequentialNetwork <= 6, JSON.stringify(listed.stats));
   // A warm pool reuses its verified session: no reconnect and no per-call principal query.
   assert.equal(cold.stats.poolConnects, 1); assert.equal(warm.stats.poolConnects, 0); assert.equal(f.opened(), 1);
@@ -171,6 +177,7 @@ test('one CRM tools/call through the real connector stays within a bounded numbe
   // R2c part 2 (c): the display name joins that same wave (three RPCs in parallel): one more call, no extra step.
   assert.ok(context.stats.sequentialNetwork <= 8, JSON.stringify(context.stats));
   // Two optional Sale capability families run in the existing parallel admission waves twice; no added sequential hop.
+  // Đợt 2b (task.create) dùng chung capability khung chung với Thu chi: không thêm lời gọi.
   assert.equal(context.stats.sequentialHttp, 3); assert.equal(context.stats.restCalls, 35);
   assert.ok(warm.stats.elapsedMs < 2000, `warm call took ${warm.stats.elapsedMs} ms`);
 });
@@ -204,7 +211,7 @@ test('direct room reads complete after audit-time revocation without repeated au
   assert.equal(response.status, 200); assert.equal(response.body.result.isError, false);
   assert.equal(JSON.parse(response.body.result.content[0].text).rooms.length, 1);
   assert.equal(stats.sqlStatements, 4); assert.equal(stats.poolConnects, 1); // Cold pool also verifies its principal once.
-  assert.equal(stats.authCalls, 2); assert.equal(stats.restCalls, 18);
+  assert.equal(stats.authCalls, 2); assert.equal(stats.restCalls, 18); // như trên
   const denied = await measure(f.backend, f.events, 'tools/call', { name: 'crm_available_rooms', arguments: {} });
   assert.equal(denied.response.status, 401); assert.equal(denied.stats.restCalls + denied.stats.authCalls, 0);
 });

@@ -34,7 +34,9 @@ export const AUDIT_CODES = Object.freeze([...CODES]);
 const REASONS = new Set(['action_disabled', 'not_allowed', 'private_chat_only', 'state_changed', 'request_conflict', 'period_locked',
   'cashbook_not_held', 'not_pending', 'quota_exceeded', 'strict_mode', 'web_only', 'duplicate_request', 'crm_refused',
   // Thu chi (Đợt 2).
-  'system_voucher', 'evidence_required']);
+  'system_voucher', 'evidence_required',
+  // Trang Công việc (Đợt 2b).
+  'task_quota_user', 'task_quota_pair']);
 export const AUDIT_REASONS = Object.freeze([...REASONS]);
 const AUDIT_OWNERS = new Map();
 export class HostOwnershipError extends Error {
