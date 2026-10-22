@@ -37,7 +37,7 @@ import { formatCountdown } from '@/lib/luckyWheel';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
 import MultiRoundStage from './MultiRoundStage';
-import { daQuayXong } from './quaySoPolling';
+import { nhipHoiSauKhiXong, NHIP_SAU_XONG_NGUOI_XEM_MS, taoTheoDoiDong } from './quaySoPolling';
 import './quayso.css';
 
 const CODE_KEY = 'qs_code_v1';
@@ -401,6 +401,7 @@ export default function QuaySoPage() {
   // Trang có chứng kiến sự kiện lúc còn 'open' không? Có = đang xem trực tiếp
   // nên bánh xe tự quay; không = vào sau khi đã quay, chờ bấm nút.
   const sawOpenRef = useRef(false);
+  const theoDoiDongRef = useRef(taoTheoDoiDong());
 
   // Đồng hồ 1s cho đếm ngược.
   const [tick, setTick] = useState(0);
@@ -426,8 +427,11 @@ export default function QuaySoPage() {
     refetchInterval: (query) => {
       const s = query.state.data;
       if (!s?.ok || !s.event) return 4000;
-      // Quay xong hết thì dừng hẳn — trước đây vẫn hỏi 10 s/lần mãi mãi.
-      if (daQuayXong(s)) return false;
+      // Quay xong hết (hoặc sự kiện đã đóng) thì GIÃN 60 s chứ không dừng —
+      // quản trị "Huỷ kết quả và mở lại" thì người xem vẫn phải thấy
+      // (RT-CLIENT-2); chỉ dừng hẳn khi đã đóng quá 6 giờ (quaySoPolling.ts).
+      const sauKhiXong = nhipHoiSauKhiXong(s, NHIP_SAU_XONG_NGUOI_XEM_MS, theoDoiDongRef.current);
+      if (sauKhiXong !== null) return sauKhiXong;
       if (s.event.status === 'drawn') return 10000;
       if (s.event.drawAt) {
         const offset = serverClockOffset(s.event.serverNow);

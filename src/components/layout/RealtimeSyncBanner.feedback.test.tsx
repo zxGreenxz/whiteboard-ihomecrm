@@ -47,6 +47,31 @@ describe('RealtimeSyncBanner', () => {
     expect(screen.getByRole('button', { name: 'Tải lại dữ liệu' })).toBeTruthy();
   });
 
+  it('dải NỔI (fixed), không chiếm luồng layout — không đẩy khối fullBleed khỏi viewport (RT-CLIENT-8)', () => {
+    const { container } = render(
+      <div>
+        <RealtimeSyncBanner />
+        <div data-testid="full-bleed" className="h-[calc(100vh-4rem)] lg:h-screen" />
+      </div>,
+    );
+    act(() => reportChannelState('hub', 'interrupted'));
+    act(() => { vi.advanceTimersByTime(NGUONG_HIEN_DAI_MS); });
+
+    const lop = screen.getByTestId('realtime-sync-banner');
+    const classes = lop.className.split(/\s+/);
+    // Lớp ngoài: fixed ở trên, trên header (z-50)/sidebar (z-40), không bắt con trỏ.
+    expect(classes).toEqual(expect.arrayContaining(['fixed', 'inset-x-0', 'z-[60]', 'pointer-events-none']));
+    // Mobile nằm dưới header 4rem, desktop sát mép trên; cả hai cộng safe-area.
+    expect(classes).toContain('top-[calc(env(safe-area-inset-top)+4.5rem)]');
+    expect(classes).toContain('lg:top-[calc(env(safe-area-inset-top)+0.75rem)]');
+    // Viên bên trong nhận bấm; gọn ở 375 px (rộng theo khung, có lề 16 px của lớp ngoài).
+    const vien = screen.getByRole('status');
+    expect(vien.className.split(/\s+/)).toEqual(expect.arrayContaining(['pointer-events-auto', 'w-full', 'max-w-xl']));
+    expect(classes).toContain('px-4');
+    // Khối nội dung vẫn là anh em đứng ngay sau, không bị bọc hay đổi chiều cao.
+    expect(lop.nextElementSibling).toBe(container.querySelector('[data-testid="full-bleed"]'));
+  });
+
   it('mount khi gián đoạn đã kéo dài quá ngưỡng: hiện ngay nhịp kế tiếp', () => {
     reportChannelState('notif', 'interrupted', Date.now() - 60_000);
     render(<RealtimeSyncBanner />);

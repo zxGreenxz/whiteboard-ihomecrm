@@ -32,6 +32,7 @@ import {
   AN_TAB_TOI_THIEU_MS,
   BACKOFF_DUNG_LAI_MS,
   GIAN_CACH_BAT_KIP_MS,
+  ON_DINH_SAU_MS,
   subscribeResilient,
 } from "@/lib/realtime/subscribeResilient";
 import {
@@ -42,6 +43,13 @@ import {
 
 function last() {
   return harness.channels[harness.channels.length - 1];
+}
+
+/** Callback `system` mà subscribeResilient gắn lên kênh (RT-CLIENT-1). */
+function systemCb(channel = last()) {
+  const call = channel.on.mock.calls.find((args: unknown[]) => args[0] === "system");
+  if (!call) throw new Error("kênh chưa gắn listener system");
+  return call[2] as (payload: unknown) => void;
 }
 
 function setVisibility(state: "visible" | "hidden") {
@@ -97,19 +105,87 @@ describe("subscribeResilient", () => {
     expect(onResync).toHaveBeenCalledTimes(1);
   });
 
-  it("hai gián đoạn sát nhau chỉ bắt kịp một lần trong khoảng giãn cách", () => {
+  it("hai gián đoạn sát nhau: lượt bắt kịp thứ hai bị giãn cách thì HOÃN tới hết giãn cách, không vứt (RT-CLIENT-3)", () => {
     const { onResync } = open();
     last().cb!("SUBSCRIBED");
     last().cb!("TIMED_OUT");
     last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS - 1);
     last().cb!("CHANNEL_ERROR");
     last().cb!("SUBSCRIBED");
+    // Chưa hết giãn cách: chưa gọi ngay, nhưng đã hẹn một lượt trailing.
     expect(onResync).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
+    expect(onResync).toHaveBeenCalledTimes(2);
+    // Gián đoạn thứ ba ngay sau lượt trailing: lại hoãn đủ một khoảng giãn cách.
     last().cb!("CHANNEL_ERROR");
     last().cb!("SUBSCRIBED");
     expect(onResync).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS);
+    expect(onResync).toHaveBeenCalledTimes(3);
+    // Không có gián đoạn mới thì không có lượt nào nữa.
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS * 3);
+    expect(onResync).toHaveBeenCalledTimes(3);
+  });
+
+  it("tab hiện lại bắt kịp trước, kênh join lại ngay sau: lượt SUBSCRIBED bị giãn cách được hoãn chứ không mất (RT-CLIENT-3)", () => {
+    const { onResync } = open();
+    last().cb!("SUBSCRIBED");
+    setVisibility("hidden");
+    vi.advanceTimersByTime(AN_TAB_TOI_THIEU_MS);
+    last().cb!("CHANNEL_ERROR");
+    setVisibility("visible");
+    expect(onResync).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1_500);
+    last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS - 1_500);
+    expect(onResync).toHaveBeenCalledTimes(2);
+  });
+
+  it("lượt trailing được phủ bởi lượt bắt kịp chạy trước hạn, và bị huỷ khi dọn kênh", () => {
+    const { onResync, stop } = open();
+    last().cb!("SUBSCRIBED");
+    last().cb!("TIMED_OUT");
+    last().cb!("SUBSCRIBED");
+    last().cb!("TIMED_OUT");
+    last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(1);
+    requestResyncAll();
+    expect(onResync).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS);
+    expect(onResync).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(1);
+    last().cb!("TIMED_OUT");
+    last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(3);
+    last().cb!("TIMED_OUT");
+    last().cb!("SUBSCRIBED");
+    stop();
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS);
+    expect(onResync).toHaveBeenCalledTimes(3);
+  });
+
+  it("join đầu TIMED_OUT trước lần SUBSCRIBED đầu thì vẫn bắt kịp đúng một lần (RT-CLIENT-4)", () => {
+    const { onResync } = open();
+    last().cb!("TIMED_OUT");
+    expect(getRealtimeHealth().state).toBe("interrupted");
+    last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(1);
+    expect(getRealtimeHealth().state).toBe("connected");
+    last().cb!("SUBSCRIBED");
+    vi.advanceTimersByTime(GIAN_CACH_BAT_KIP_MS * 2);
+    expect(onResync).toHaveBeenCalledTimes(1);
+  });
+
+  it("CLOSED trước lần SUBSCRIBED đầu, dựng lại thành công thì bắt kịp (RT-CLIENT-4)", async () => {
+    const { onResync } = open();
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    last().cb!("SUBSCRIBED");
+    expect(onResync).toHaveBeenCalledTimes(1);
   });
 
   it("CLOSED ngoài ý muốn: gỡ kênh cũ, dựng kênh mới có hậu tố thế hệ, bắt kịp khi join lại", async () => {
@@ -139,6 +215,44 @@ describe("subscribeResilient", () => {
     expect(harness.channelFactory).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[1] - BACKOFF_DUNG_LAI_MS[0]);
     expect(harness.channelFactory).toHaveBeenLastCalledWith("crm-data-sync-u1:r2");
+  });
+
+  it("SUBSCRIBED chưa ổn định thì backoff KHÔNG về đầu; giữ đủ ON_DINH_SAU_MS mới về đầu (RT-CLIENT-5)", async () => {
+    open();
+    last().cb!("SUBSCRIBED");
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    // Server nhận join rồi đóng ngay: lần dựng lại sau phải chờ mức backoff kế.
+    last().cb!("SUBSCRIBED");
+    vi.advanceTimersByTime(ON_DINH_SAU_MS - 1);
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[1] - BACKOFF_DUNG_LAI_MS[0]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(3);
+    // Lần này giữ SUBSCRIBED đủ lâu ⇒ lần CLOSED kế tiếp lại chờ mức đầu.
+    last().cb!("SUBSCRIBED");
+    vi.advanceTimersByTime(ON_DINH_SAU_MS);
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(4);
+  });
+
+  it("trong vòng dựng lại store giữ 'interrupted' với mốc của lần rớt đầu, không nhảy về 'connecting' (RT-CLIENT-5)", async () => {
+    open();
+    last().cb!("SUBSCRIBED");
+    const roiLuc = Date.now();
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(getRealtimeHealth()).toMatchObject({ state: "interrupted", interruptedSince: roiLuc });
+    last().cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[1]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(3);
+    expect(getRealtimeHealth()).toMatchObject({ state: "interrupted", interruptedSince: roiLuc });
+    last().cb!("SUBSCRIBED");
+    expect(getRealtimeHealth().state).toBe("connected");
   });
 
   it("teardown chủ động: không cảnh báo, không dựng lại, rời store", async () => {
@@ -195,6 +309,66 @@ describe("subscribeResilient", () => {
     last().cb!("CHANNEL_ERROR");
     expect(() => last().cb!("SUBSCRIBED")).not.toThrow();
     expect(getRealtimeHealth().state).toBe("connected");
+  });
+
+  it("system báo lỗi postgres_changes dù SUBSCRIBED: cảnh báo + 'interrupted'; system 'ok' thì về connected và bắt kịp (RT-CLIENT-1)", () => {
+    const { onResync } = open();
+    last().cb!("SUBSCRIBED");
+    expect(getRealtimeHealth().state).toBe("connected");
+    // Thông điệp system khác (replication_ready…) hoặc 'ok' khi không có lỗi: bỏ qua.
+    systemCb()({ extension: "system", status: "error", message: "khác" });
+    systemCb()({ extension: "postgres_changes", status: "ok", message: "Subscribed to PostgreSQL" });
+    expect(getRealtimeHealth().state).toBe("connected");
+    expect(warn).not.toHaveBeenCalled();
+    expect(onResync).not.toHaveBeenCalled();
+
+    const loiLuc = Date.now();
+    systemCb()({
+      extension: "postgres_changes",
+      status: "error",
+      message: "Unable to subscribe to changes with given parameters … table: meters",
+      channel: "crm-data-sync-u1",
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("postgres_changes lỗi"),
+      expect.stringContaining("table: meters"),
+    );
+    expect(getRealtimeHealth()).toMatchObject({ state: "interrupted", interruptedSince: loiLuc });
+
+    // Join lại trong lúc lỗi chưa gỡ: vẫn 'interrupted' với mốc cũ, chưa bắt kịp.
+    vi.advanceTimersByTime(5_000);
+    last().cb!("CHANNEL_ERROR");
+    last().cb!("SUBSCRIBED");
+    expect(getRealtimeHealth()).toMatchObject({ state: "interrupted", interruptedSince: loiLuc });
+    expect(onResync).not.toHaveBeenCalled();
+
+    systemCb()({ extension: "postgres_changes", status: "ok", message: "Subscribed to PostgreSQL" });
+    expect(getRealtimeHealth().state).toBe("connected");
+    expect(onResync).toHaveBeenCalledTimes(1);
+  });
+
+  it("system của kênh CŨ (đã bị thay khi dựng lại) bị bỏ qua", async () => {
+    open();
+    const first = last();
+    first.cb!("SUBSCRIBED");
+    first.cb!("CLOSED");
+    await vi.advanceTimersByTimeAsync(BACKOFF_DUNG_LAI_MS[0]);
+    last().cb!("SUBSCRIBED");
+    expect(getRealtimeHealth().state).toBe("connected");
+    systemCb(first)({ extension: "postgres_changes", status: "error", message: "cũ" });
+    expect(getRealtimeHealth().state).toBe("connected");
+  });
+
+  it("kênh không có .on hợp lệ (mock/webview rút gọn) vẫn subscribe bình thường, chỉ thiếu listener system", () => {
+    // bind trả về kênh không có .on (mock/webview rút gọn).
+    const bind = (channel: Parameters<Parameters<typeof subscribeResilient>[0]["bind"]>[0]) => {
+      (channel as unknown as { on?: unknown }).on = undefined;
+      return channel;
+    };
+    subscribeResilient({ id: "bare", topic: "bare", bind, onResync: vi.fn() });
+    expect(last().subscribe).toHaveBeenCalledTimes(1);
+    last().cb!("SUBSCRIBED");
+    expect(getRealtimeHealth().channels).toMatchObject({ bare: "connected" });
   });
 
   it("store tổng hợp: một kênh rớt là cả cụm rớt, mốc là kênh rớt sớm nhất", () => {

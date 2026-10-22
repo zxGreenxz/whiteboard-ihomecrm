@@ -403,9 +403,11 @@ describe("useRealtimeDataSync report invalidation", () => {
   it("registers every realtime table exactly once per mount", () => {
     useRealtimeDataSync();
 
-    const registeredTables = harness.channel.on.mock.calls.map(
-      ([, filter]) => (filter as { table: string }).table,
-    );
+    // Listener `system` do subscribeResilient gắn (RT-CLIENT-1, 22/10/2026) để
+    // bắt lỗi postgres_changes — không phải binding bảng, nên loại khỏi phép đếm.
+    const registeredTables = harness.channel.on.mock.calls
+      .filter(([event]) => event !== "system")
+      .map(([, filter]) => (filter as { table: string }).table);
     // SO THEO TẬP, KHÔNG THEO THỨ TỰ.
     //
     // Bản trước so mảng theo đúng thứ tự khai. Thứ tự đăng ký handler không phải

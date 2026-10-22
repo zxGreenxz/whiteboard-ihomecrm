@@ -20,6 +20,8 @@ const harness = vi.hoisted(() => {
       const record = { topic, bindings: [] as Array<{ type: string; filter: Record<string, unknown>; cb: ChangeCallback }>, cb: undefined as StatusCallback | undefined };
       const channel = {
         on: vi.fn((type: string, filter: Record<string, unknown>, cb: ChangeCallback) => {
+          // Listener `system` của subscribeResilient (RT-CLIENT-1) không phải binding dữ liệu.
+          if (type === "system") return channel;
           record.bindings.push({ type, filter, cb });
           return channel;
         }),

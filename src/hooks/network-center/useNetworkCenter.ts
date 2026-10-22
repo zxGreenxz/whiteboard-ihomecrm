@@ -44,6 +44,23 @@ const EXECUTE_DISABLED_MESSAGE =
 // Nhịp gom realtime (5 s, trần 15 s) và lý do đo được nay nằm cạnh kênh ở
 // src/lib/network-center/realtimeSync.ts.
 
+/**
+ * Làm tươi hạm đội + toà đang chọn 60 s/lần, CHỈ khi tab hiện (RT-CLIENT-6,
+ * 22/10/2026). Nhãn độ tươi ("x giây trước", tuổi backup) được tính lúc map
+ * trong queryFn (dto.ts). Trước 21/10 nhịp tim worker (~30 s, kể cả tab ẩn) làm
+ * hai query này refetch nên nhãn luôn đúng tuổi; bỏ nghe nhịp tim thì chỉ còn
+ * event của 4 bảng current-state (worker poll ~30 phút) ⇒ nhãn đứng yên, router
+ * chết giữa hai vòng poll vẫn hiện "giây trước". Không nghe lại nhịp tim: 60 s
+ * khi tab hiện rẻ hơn mà nhãn sai tối đa một phút. (Tính nhãn lúc render bằng
+ * đồng hồ tick phải đổi contracts + mọi component NC — để dành nếu cần chính
+ * xác tới giây.)
+ */
+export const NHIP_LAM_TUOI_DO_TUOI_MS = 60_000;
+const NHIP_LAM_TUOI_NHAN_DO_TUOI = {
+  refetchInterval: NHIP_LAM_TUOI_DO_TUOI_MS,
+  refetchIntervalInBackground: false,
+} as const;
+
 function normalizeId(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
 }
@@ -137,6 +154,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     enabled: canView && !buildingsQuery.isLoading && !permissionsQuery.isLoading,
     retry: shouldRetryNetworkCenterQuery,
     retryOnMount: false,
+    ...NHIP_LAM_TUOI_NHAN_DO_TUOI,
   });
   const fleet = useMemo(() => fleetQuery.data ?? [], [fleetQuery.data]);
 
@@ -183,6 +201,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
     retry: shouldRetryNetworkCenterQuery,
     retryOnMount: false,
+    ...NHIP_LAM_TUOI_NHAN_DO_TUOI,
   });
   const activeIntent = useMemo(
     () => intentRegistry.list({
