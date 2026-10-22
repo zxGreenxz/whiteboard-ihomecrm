@@ -122,6 +122,23 @@
       ]
     },
     {
+      "id": "edge-deploy-bundle",
+      "sourcePaths": [
+        "scripts/test-env/edge.mjs",
+        "scripts/test-env/bootstrap-lifecycle-reminders.mjs",
+        "supabase/functions/_shared/**",
+        "supabase/functions/lifecycle-reminders/**",
+        "supabase/functions/salary-v5-jobs/**",
+        "supabase/functions/send-push/**"
+      ],
+      "suiteId": "app-unit",
+      "testPatterns": [
+        "scripts/__tests__/test-env-edge.test.mjs",
+        "scripts/__tests__/test-env-edge-bundle.test.mjs",
+        "scripts/__tests__/contract-lifecycle-reminders-bootstrap.test.mjs"
+      ]
+    },
+    {
       "id": "door-access-edge",
       "sourcePaths": [
         "supabase/functions/door-access/**"

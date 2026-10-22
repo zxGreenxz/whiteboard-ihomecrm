@@ -1,5 +1,6 @@
 import {
   callSendPush,
+  configErrorCountsAsFailure,
   FAILURE_OUTCOMES,
   formatEdgeError,
   rpcValue,
@@ -12,10 +13,16 @@ import {
 
 // Một lượt cron 15' (B12, plan 2026-10-21 §3) chạy BA pha, mỗi pha cô lập lỗi:
 //   (a) maintenance — notification_maintenance_v1: đối soát thông báo lỗi thời, dọn push_send_log;
-//   (b) lifecycle   — sweep/claim/validate/settle nhắc vòng đời (gồm họ nhắc hoá đơn/HĐ/cọc, logic ở SQL);
+//   (b) lifecycle   — sweep TỪNG công ty, rồi claim/validate/settle nhắc vòng đời (gồm họ nhắc hoá đơn/HĐ/cọc,
+//                     logic ở SQL);
 //   (c) drain       — hàng đợi push E1–E6 dùng chung (_shared/push-drain.ts).
 // Pha lỗi ghi lifecycle_reminder_record_failure_v1 với tiền tố '[maintenance]'/'[lifecycle]'/'[drain]'
 // rồi pha sau VẪN chạy. Kết quả ok=false ⇒ edge trả 503 để cron/health thấy lượt hỏng.
+// Ngân sách thời gian: LIFECYCLE_RUN_BUDGET_MS tính từ lúc vào runLifecycleReminders (đầu handler) cho CẢ ba
+// pha — pg_net gọi hàm này với timeout 120 s; drain ngừng mở lời gọi send-push mới khi hết ngân sách.
+
+/** Tổng ngân sách một lượt cron (3 pha), chừa ~10 s cho settle/record_run trước timeout 120 s của pg_net. */
+export const LIFECYCLE_RUN_BUDGET_MS = 110_000;
 
 export type LifecycleRpc = DrainRpc;
 
@@ -49,15 +56,58 @@ export function parseLifecycleDelivery(value: unknown): LifecycleDelivery {
   };
 }
 
+export interface LifecycleSweepResult {
+  organizationId: string;
+  result: unknown;
+}
+
 export interface LifecyclePhaseState {
-  sweep: unknown;
+  /** Kết quả sweep theo từng công ty (công ty sweep lỗi không có mặt ở đây mà nằm ở `failures`). */
+  sweep: LifecycleSweepResult[];
   batches: number;
   delivered: number;
   outcomes: Record<string, number>;
   failures: string[];
 }
 
-/** Pha (b). Ném khi sweep/claim/validate/settle hỏng; `state` giữ số đếm tới lúc hỏng. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** lifecycle_reminder_org_ids_v1() → uuid[] (công ty ACTIVE). Sai hình dạng ⇒ ném, không đoán. */
+export function parseLifecycleOrgIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string' || !UUID_RE.test(id))) {
+    throw new Error('Malformed lifecycle_reminder_org_ids_v1 response');
+  }
+  return value as string[];
+}
+
+/**
+ * Sweep TỪNG công ty: mỗi RPC có trần statement_timeout 8 s riêng của PostgREST (một lệnh quét mọi công ty
+ * sẽ chạm trần khi dữ liệu/công ty tăng). Không bao giờ ném: lỗi lấy danh sách hay lỗi một công ty chỉ vào
+ * `state.failures` ('sweep <org>: …'), công ty sau vẫn sweep, và claim/validate/settle vẫn chạy cho delivery
+ * đã có sẵn.
+ */
+export async function runLifecycleSweeps(rpc: LifecycleRpc, state: LifecyclePhaseState): Promise<void> {
+  let orgIds: string[];
+  try {
+    orgIds = parseLifecycleOrgIds(await rpcValue(rpc, 'lifecycle_reminder_org_ids_v1'));
+  } catch (reason) {
+    state.failures.push(`sweep org_ids: ${formatEdgeError(reason)}`);
+    return;
+  }
+  for (const organizationId of orgIds) {
+    try {
+      const result = await rpcValue(rpc, 'lifecycle_reminder_sweep_v1', { p_organization_id: organizationId });
+      state.sweep.push({ organizationId, result });
+    } catch (reason) {
+      state.failures.push(`sweep ${organizationId}: ${formatEdgeError(reason)}`);
+    }
+  }
+}
+
+/**
+ * Pha (b). Sweep tự cô lập lỗi (xem runLifecycleSweeps). Ném khi claim/validate/settle hỏng; `state` giữ số đếm
+ * và các lỗi tới lúc hỏng.
+ */
 export async function runLifecyclePhase(
   rpc: LifecycleRpc,
   fetcher: FetchLike,
@@ -65,7 +115,9 @@ export async function runLifecyclePhase(
   serviceKey: string,
   state: LifecyclePhaseState,
 ): Promise<LifecyclePhaseState> {
-  state.sweep = await rpcValue(rpc, 'lifecycle_reminder_sweep_v1');
+  await runLifecycleSweeps(rpc, state);
+  // Không có env đánh dấu TEST: CONFIG_ERROR là lỗi trừ khi URL chứng minh là project TEST (thiếu VAPID cố ý).
+  const configErrorIsFailure = configErrorCountsAsFailure(url);
   const rawBatch = await rpcValue(rpc, 'lifecycle_reminder_claim_v1', { p_limit: 10 });
   if (!Array.isArray(rawBatch)) throw new Error('Malformed lifecycle claim response');
   state.batches = rawBatch.length;
@@ -91,7 +143,9 @@ export async function runLifecyclePhase(
     });
     state.outcomes[pushed.outcome] = (state.outcomes[pushed.outcome] ?? 0) + 1;
     if ((pushed.outcome === 'SENT' || pushed.outcome === 'PARTIAL') && sent > 0) state.delivered++;
-    if (FAILURE_OUTCOMES.has(pushed.outcome)) state.failures.push(`${item.id}: ${pushed.outcome}`);
+    if (FAILURE_OUTCOMES.has(pushed.outcome) || (pushed.outcome === 'CONFIG_ERROR' && configErrorIsFailure)) {
+      state.failures.push(`${item.id}: ${pushed.outcome}`);
+    }
   }
   return state;
 }
@@ -126,7 +180,11 @@ async function recordPhaseFailure(rpc: LifecycleRpc, phase: 'maintenance' | 'lif
   }
 }
 
-/** Server-only. Không phụ thuộc trình duyệt, job tài chính hay lịch Vercel. */
+/**
+ * Server-only. Không phụ thuộc trình duyệt, job tài chính hay lịch Vercel.
+ * `drainOptions.startedAt` vắng ⇒ lấy lúc vào hàm (handler gọi ngay sau kiểm auth, nên đó là đầu request);
+ * `deadlineMs` vắng ⇒ LIFECYCLE_RUN_BUDGET_MS cho cả ba pha.
+ */
 export async function runLifecycleReminders(
   rpc: LifecycleRpc,
   fetcher: FetchLike,
@@ -134,6 +192,14 @@ export async function runLifecycleReminders(
   serviceKey: string,
   drainOptions: DrainOptions = {},
 ): Promise<LifecycleRunResult> {
+  const now = drainOptions.now ?? Date.now;
+  const budget: DrainOptions = {
+    deadlineMs: LIFECYCLE_RUN_BUDGET_MS,
+    ...drainOptions,
+    now,
+    startedAt: drainOptions.startedAt ?? now(),
+  };
+
   // (a) Bảo trì: chạy TRƯỚC để thông báo đã lỗi thời thành CANCELLED trước khi claim/push.
   let maintenance: MaintenanceReport;
   try {
@@ -144,7 +210,7 @@ export async function runLifecycleReminders(
   }
 
   // (b) Lifecycle + họ nhắc server.
-  const state: LifecyclePhaseState = { sweep: null, batches: 0, delivered: 0, outcomes: {}, failures: [] };
+  const state: LifecyclePhaseState = { sweep: [], batches: 0, delivered: 0, outcomes: {}, failures: [] };
   let lifecycle: LifecycleReport;
   try {
     await runLifecyclePhase(rpc, fetcher, url, serviceKey, state);
@@ -152,7 +218,8 @@ export async function runLifecycleReminders(
       ? { ...state, ok: false, error: null, failureLogError: await recordPhaseFailure(rpc, 'lifecycle', state.failures.join('; ')) }
       : { ...state, ok: true, error: null, failureLogError: null };
   } catch (reason) {
-    // Sweep/claim/settle hỏng phải quan sát được và thử lại được ở nhịp sau, không bao giờ là cờ "xong ngày".
+    // Claim/validate/settle hỏng phải quan sát được và thử lại được ở nhịp sau, không bao giờ là cờ "xong ngày".
+    // Lỗi sweep (nếu có) đã nằm trong state.failures nên đi kèm `detail`.
     const error = formatEdgeError(reason);
     const detail = state.failures.length ? `${error} | ${state.failures.join('; ')}` : error;
     lifecycle = { ...state, ok: false, error, failureLogError: await recordPhaseFailure(rpc, 'lifecycle', detail) };
@@ -161,7 +228,7 @@ export async function runLifecycleReminders(
   // (c) Drain chung E1–E6.
   let drain: DrainReport;
   try {
-    const result = await runGenericPushDrain(rpc, fetcher, url, serviceKey, drainOptions);
+    const result = await runGenericPushDrain(rpc, fetcher, url, serviceKey, budget);
     const ok = result.ok && result.failures.length === 0;
     const problems = [result.error, result.recordError && `record_run ${result.recordError}`, result.failures.join('; ')]
       .filter((part): part is string => !!part);

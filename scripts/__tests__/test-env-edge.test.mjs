@@ -74,13 +74,13 @@ describe('test-env edge: secret cấm trên TEST', () => {
     const form = deploy[0].init.body;
     expect(JSON.parse(form.get('metadata'))).toEqual({
       name: 'door-access',
-      entrypoint_path: 'index.ts',
+      entrypoint_path: 'supabase/functions/door-access/index.ts',
+      import_map_path: 'supabase/functions/door-access/deno.json',
       verify_jwt: true,
-      import_map_path: 'deno.json',
     });
     const names = form.getAll('file').map((f) => f.name).sort();
     expect(names).toEqual(tepFunction('door-access').map((f) => f.path));
-    expect(names).toContain('index.ts');
+    expect(names).toContain('supabase/functions/door-access/index.ts');
     expect(names.some((n) => n.endsWith('.test.ts'))).toBe(false);
   });
 
