@@ -498,10 +498,21 @@ const normalizeSearchPath = value => value.replace(/["\s]/g, '');
 // replaced reader is immutable, so its historical statement still verifies.
 const REVIEWED_EMPTY_SEARCH_PATH = new Map();
 for (const spec of [
-  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => spec.name === 'app_private.hermes_domain_read_rows_fast_v1'),
+  ...HERMES_READ_STANDARD_FUNCTIONS.filter(spec => ['app_private.hermes_domain_read_rows_fast_v1', 'public.hermes_write_name_resolve_v1'].includes(spec.name)),
   { name: 'public.hermes_read_text_v1',
     sourcePath: 'supabase/migrations/20261019040055_crm_shared_read_cores_v1.sql',
     statementSha256: '01afb4b8b3e12e971e8e54ccda6122c8f4d2f1d237bc0168e14e0c764ad11105' },
+  // Shared write foundation name resolution (20261021132433): two pure IMMUTABLE helpers and the plpgsql INVOKER core
+  // whose body names only schema-qualified public objects; its SQL-standard wrapper is pinned above.
+  { name: 'public.hermes_name_fold_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: '16ad1c3501346ab5b730a97acafdc918e233b9f27e0a7bc08e3148c42ff2a82a' },
+  { name: 'public.hermes_room_key_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: '801ff7b91a46c35be4fd9f1f0dd338d20a89738d7e97e94baa3eb2dc25b96527' },
+  { name: 'app_private.hermes_write_name_resolve_core_v1',
+    sourcePath: 'supabase/migrations/20261021132433_hermes_write_name_resolve_v1.sql',
+    statementSha256: 'ece48834a6430d821319960b66abe342b819e2547a442aef34c0b0d0c0a88c3d' },
 ]) REVIEWED_EMPTY_SEARCH_PATH.set(spec.name, [...(REVIEWED_EMPTY_SEARCH_PATH.get(spec.name) ?? []), spec]);
 
 /** SECURITY mode and search_path of each Hermes function, read from its last
@@ -539,7 +550,7 @@ export async function verifyLiveSchema(pool) {
   const rows = (await pool.query(`SELECT n.nspname||'.'||p.proname name,p.prosrc,p.prosecdef,pg_get_userbyid(p.proowner) owner,p.proconfig
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname||'.'||p.proname=ANY($1::text[])`, [[...expected.keys()]])).rows;
   const livePath = row => (row.proconfig ?? []).filter(value => value.startsWith('search_path=')).map(value => normalizeSearchPath(value.slice(12)));
-  // Paths are rooted at pg_catalog, except the two byte-bound empty-path
+  // Paths are rooted at pg_catalog, except the byte-bound empty-path
   // readers above; exact value and SECURITY mode still match the source.
   demand(rows.length === expected.size && rows.every(row => {
     const source = attributes.get(row.name), live = livePath(row);

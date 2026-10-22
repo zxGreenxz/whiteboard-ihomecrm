@@ -59,6 +59,21 @@ test('private read fastpath requires an explicit boolean opt-in and defaults to 
   }
 });
 
+// Đợt 1 nền chung: danh mục thao tác thử (probe.*) chỉ bật bằng cờ boolean tường minh (connector TEST); vắng = danh mục rỗng.
+test('action probe catalog requires an explicit boolean opt-in and is absent by default', async t => {
+  const f = await fixture(t);
+  const baseline = await loadHostConfiguration(f.configPath);
+  try { assert.equal(Object.hasOwn(baseline, 'actionProbe'), false); } finally { baseline.dispose(); }
+  for (const actionProbe of [false, true]) {
+    await f.save({ ...f.input, actionProbe });
+    const config = await loadHostConfiguration(f.configPath);
+    try { assert.equal(config.actionProbe, actionProbe); } finally { config.dispose(); }
+  }
+  for (const actionProbe of [null, 'true', 1, {}]) {
+    await f.save({ ...f.input, actionProbe }); await assert.rejects(loadHostConfiguration(f.configPath), refused);
+  }
+});
+
 test('room read source accepts only legacy|page, is absent by default and never coerces', async t => {
   const f = await fixture(t);
   const baseline = await loadHostConfiguration(f.configPath);

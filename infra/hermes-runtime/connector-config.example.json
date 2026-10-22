@@ -3,6 +3,7 @@
   "mode": "connector",
   "readFastPath": false,
   "roomRead": "legacy",
+  "actionProbe": false,
   "supabase": {
     "url": "https://abcdefghijklmnopqrst.supabase.co",
     "publishableKey": "sb_publishable_replace_with_project_publishable_key"
