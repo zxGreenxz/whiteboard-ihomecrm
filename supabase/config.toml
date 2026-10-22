@@ -9,3 +9,7 @@ verify_jwt = true
 
 [functions.lifecycle-reminders]
 verify_jwt = true
+
+[functions.door-access]
+# JWT người dùng do gateway kiểm; trong hàm còn kiểm lại phiên (/auth/v1/user), công ty và quyền theo toà.
+verify_jwt = true

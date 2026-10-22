@@ -533,6 +533,7 @@
     "src/lib/network-center/runtime.ts",
     "src/lib/notificationScheduler.ts",
     "src/lib/paymentRecordRpc.ts",
+    "src/lib/permissionCheck.ts",
     "src/lib/permissionPages.ts",
     "src/lib/permissions.ts",
     "src/lib/profitVerification.ts",
